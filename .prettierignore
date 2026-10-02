@@ -1,2 +1,4 @@
 docs/*.pdf
 package-lock.json
+.kosit
+var

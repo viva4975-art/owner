@@ -5,11 +5,37 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: viva_test
+        ports: ['54322:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      REQUIRE_SERVICES: '1'
+      TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:54322/viva_test
+      KOSIT_VALIDATOR_URL: http://127.0.0.1:8081
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/cache@v4
+        with:
+          path: .kosit
+          key: kosit-${{ hashFiles('scripts/kosit.sh') }}
+      - name: KoSIT-Validator starten
+        run: |
+          ./scripts/kosit.sh > kosit.log 2>&1 &
+          for i in $(seq 1 60); do curl -fs http://127.0.0.1:8081/server/health && exit 0; sleep 2; done
+          cat kosit.log; exit 1
       - run: npm ci
       - run: npm run check

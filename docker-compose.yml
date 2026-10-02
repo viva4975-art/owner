@@ -1,0 +1,18 @@
+# Lokale Entwicklungsumgebung: Datenbank, KoSIT-Validator, Test-Postfach.
+# Start: docker compose up -d   ·   Postfach: http://localhost:8025
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: viva_dev
+    ports: ['127.0.0.1:54322:5432']
+    volumes: [db:/var/lib/postgresql/data, ./docker/initdb:/docker-entrypoint-initdb.d:ro]
+  kosit:
+    build: { context: ., dockerfile: docker/kosit/Dockerfile }
+    ports: ['127.0.0.1:8081:8081']
+  mailpit:
+    image: axllent/mailpit
+    ports: ['127.0.0.1:8025:8025', '127.0.0.1:1025:1025']
+volumes:
+  db:

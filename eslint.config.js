@@ -7,6 +7,8 @@ export default tseslint.config(
   ...tseslint.configs.strict,
   {
     rules: {
+      // DB-Ergebnisse (`const [row] = await sql...`) sind nach Prüfung sicher – Assertion ist hier lesbarer.
+      '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       // Geldbeträge nie als Fließkomma parsen.
       'no-restricted-globals': [

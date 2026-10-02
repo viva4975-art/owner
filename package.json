@@ -13,8 +13,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm test",
-    "env:check:test": "tsx --env-file=.env.test src/config/check.ts",
-    "env:check:live": "tsx --env-file=.env.live src/config/check.ts"
+    "dev": "tsx watch --env-file=.env.dev src/server.ts",
+    "start": "tsx src/server.ts",
+    "db:migrate": "tsx --env-file=.env.dev src/scripts/migrate.ts",
+    "db:seed": "tsx --env-file=.env.dev src/scripts/seed.ts --demo",
+    "kosit": "./scripts/kosit.sh"
   },
   "repository": {
     "type": "git",
@@ -28,6 +31,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.20.5",
+    "@types/nodemailer": "^8.0.2",
     "eslint": "^10.12.0",
     "prettier": "^3.9.9",
     "tsx": "^4.23.15",
@@ -36,6 +40,13 @@
     "vitest": "^5.0.3"
   },
   "dependencies": {
+    "@cantoo/pdf-lib": "^2.11.1",
+    "@e-invoice-eu/core": "^3.3.3",
+    "@hono/node-server": "^2.1.3",
+    "@pdf-lib/fontkit": "^1.1.1",
+    "hono": "^4.13.12",
+    "nodemailer": "^10.0.13",
+    "postgres": "^3.4.9",
     "zod": "^4.6.5"
   },
   "private": true,

@@ -1,55 +1,82 @@
 import { readFile } from 'node:fs/promises';
 import fontkit from '@pdf-lib/fontkit';
-import { PDFDocument, type PDFFont, type PDFPage, degrees, rgb } from '@cantoo/pdf-lib';
+import { PDFDocument, type PDFFont, type PDFImage, type PDFPage, degrees, rgb } from '@cantoo/pdf-lib';
+import QRCode from 'qrcode';
 import { formatDateDe } from '../domain/invoice/calc.js';
-import { type InvoiceDocument, KIND_TITLES, UNIT_LABELS } from '../domain/invoice/types.js';
+import { type InvoiceDocument, KIND_TITLES } from '../domain/invoice/types.js';
 import { type Cents, formatEuro } from '../domain/money/money.js';
-import { percentToXml, quantityToXml } from '../einvoice/mapping.js';
+import { paymentTermsHuman, percentToXml } from '../einvoice/mapping.js';
 
-const FONT_DIR = new URL('../../assets/fonts/', import.meta.url);
-const BORDEAUX = rgb(0x7d / 255, 0x14 / 255, 0x35 / 255);
-const GREY = rgb(0.38, 0.38, 0.38);
-const BLACK = rgb(0.1, 0.1, 0.1);
-const LIGHT = rgb(0.96, 0.93, 0.94);
+/*
+ * Layout nach Fortytools-Rechnung 1038193 (ausgemessen, Koordinaten in pt von oben):
+ * Briefpapier als Hintergrundbild, grauer Titelbalken, Tabelle Pos/Text/Menge/Einheit/Einzelpreis/Gesamtpreis,
+ * Summen rechts, Zahlungsbedingung, Schlusstext + GiroCode. Folgeseiten mit schmalem Titelbalken.
+ */
 
-const mm = (v: number) => (v * 72) / 25.4;
-const PAGE_W = mm(210);
-const PAGE_H = mm(297);
-const LEFT = mm(25);
-const RIGHT = PAGE_W - mm(20);
-const FOOTER_TOP = mm(30);
+const ASSETS = new URL('../../assets/', import.meta.url);
+const PAGE_W = 595.28;
+const PAGE_H = 841.89;
+const LEFT = 56.7;
+const RIGHT = 542.8;
+const CONTENT_BOTTOM = 700; // letzte Grundlinie; darunter beginnt die Fußzeile des Briefpapiers
+const BODY = 9; // Schriftgrößen aus Fortytools-PDF über Textbreiten ermittelt
+const LH = 12.1; // Zeilenabstand Fließtext/Positionen
 
-interface Fonts {
-  regular: PDFFont;
-  bold: PDFFont;
+const INK = rgb(0.13, 0.13, 0.13);
+const GREY = rgb(0.42, 0.42, 0.42);
+const BAND = rgb(0.949, 0.949, 0.949);
+const RULE = rgb(0.88, 0.88, 0.88);
+const PILL = rgb(0.93, 0.93, 0.93);
+
+const COL = { text: 87.3, qty: 364.5, unit: 373.5, price: 465.1, total: 538.8 };
+const TEXT_WIDTH = 240;
+
+/** In der PDF wie bei Fortytools: Pauschalen ohne Einheit. */
+const PDF_UNITS: Record<string, string> = {
+  C62: 'Stk.',
+  HUR: 'Std.',
+  MON: '',
+  LS: '',
+  MTK: 'm²',
+  DAY: 'Tag',
+  E48: '',
+};
+
+interface Assets {
+  regular: Uint8Array;
+  bold: Uint8Array;
+  letterhead: Uint8Array;
 }
-
-let fontCache: { regular: Uint8Array; bold: Uint8Array } | null = null;
-async function loadFonts() {
-  fontCache ??= {
-    regular: await readFile(new URL('LiberationSans-Regular.ttf', FONT_DIR)),
-    bold: await readFile(new URL('LiberationSans-Bold.ttf', FONT_DIR)),
+let cache: Assets | null = null;
+async function loadAssets(): Promise<Assets> {
+  cache ??= {
+    regular: await readFile(new URL('fonts/DejaVuSans.ttf', ASSETS)),
+    bold: await readFile(new URL('fonts/DejaVuSans-Bold.ttf', ASSETS)),
+    letterhead: await readFile(new URL('briefpapier/viva-deluxe-a4.jpg', ASSETS)),
   };
-  return fontCache;
+  return cache;
 }
 
-function eur(c: Cents) {
-  return formatEuro(c);
-}
+const eur = (c: bigint) => formatEuro(c as Cents);
+type Color = ReturnType<typeof rgb>;
 
-function quantityDe(milli: bigint) {
-  return quantityToXml(milli).replace('.', ',');
+/** 1000 → "1,0", 2500 → "2,5", 1250 → "1,25" (mind. eine Nachkommastelle wie Fortytools) */
+export function quantityPdf(milli: bigint): string {
+  const neg = milli < 0n;
+  const abs = neg ? -milli : milli;
+  let frac = (abs % 1000n).toString().padStart(3, '0').replace(/0+$/, '');
+  if (!frac) frac = '0';
+  return `${neg ? '-' : ''}${abs / 1000n},${frac}`;
 }
 
 function wrap(text: string, font: PDFFont, size: number, width: number): string[] {
   const out: string[] = [];
   for (const para of text.split('\n')) {
     let line = '';
-    for (const word of para.split(/\s+/)) {
+    for (const word of para.split(/\s+/).filter(Boolean)) {
       const candidate = line ? `${line} ${word}` : word;
-      if (font.widthOfTextAtSize(candidate, size) <= width) {
-        line = candidate;
-      } else {
+      if (font.widthOfTextAtSize(candidate, size) <= width) line = candidate;
+      else {
         if (line) out.push(line);
         line = word;
       }
@@ -59,84 +86,183 @@ function wrap(text: string, font: PDFFont, size: number, width: number): string[
   return out;
 }
 
-class Writer {
+/** EPC-QR-Code ("GiroCode") für SEPA-Überweisungen. */
+export function girocodePayload(p: {
+  bic: string;
+  name: string;
+  iban: string;
+  amount: Cents;
+  reference: string;
+}): string {
+  const abs = p.amount < 0n ? -p.amount : p.amount;
+  const amount = `EUR${abs / 100n}.${(abs % 100n).toString().padStart(2, '0')}`;
+  return [
+    'BCD',
+    '002',
+    '1',
+    'SCT',
+    p.bic,
+    p.name.slice(0, 70),
+    p.iban.replace(/\s/g, ''),
+    amount,
+    '',
+    '',
+    p.reference.slice(0, 140),
+  ].join('\n');
+}
+
+class Doc {
+  pages: PDFPage[] = [];
   page!: PDFPage;
-  y = 0;
-  pageNo = 0;
+  y = 0; // Position von oben
+  private pageLabels: ((total: number) => void)[] = [];
+
   constructor(
     private pdf: PDFDocument,
-    private fonts: Fonts,
-    private doc: InvoiceDocument,
+    private regular: PDFFont,
+    private bold: PDFFont,
+    private letterhead: PDFImage,
+    private title: string,
     private watermark?: string,
   ) {}
 
-  newPage() {
+  text(s: string, x: number, yTop: number, size = BODY, opts: { bold?: boolean; color?: Color } = {}) {
+    this.page.drawText(s, {
+      x,
+      y: PAGE_H - yTop,
+      size,
+      font: opts.bold ? this.bold : this.regular,
+      color: opts.color ?? INK,
+    });
+  }
+
+  right(s: string, xRight: number, yTop: number, size = BODY, opts: { bold?: boolean; color?: Color } = {}) {
+    const font = opts.bold ? this.bold : this.regular;
+    this.text(s, xRight - font.widthOfTextAtSize(s, size), yTop, size, opts);
+  }
+
+  width(s: string, size = BODY) {
+    return this.regular.widthOfTextAtSize(s, size);
+  }
+
+  rect(x: number, yTop: number, w: number, h: number, color = BAND, radius = 0) {
+    if (!radius) {
+      this.page.drawRectangle({ x, y: PAGE_H - yTop - h, width: w, height: h, color });
+      return;
+    }
+    const r = radius;
+    const path = `M ${r} 0 H ${w - r} A ${r} ${r} 0 0 1 ${w} ${r} V ${h - r} A ${r} ${r} 0 0 1 ${w - r} ${h} H ${r} A ${r} ${r} 0 0 1 0 ${h - r} V ${r} A ${r} ${r} 0 0 1 ${r} 0 Z`;
+    this.page.drawSvgPath(path, { x, y: PAGE_H - yTop, color });
+  }
+
+  rule(yTop: number, x1 = LEFT + 6, x2 = RIGHT + 6) {
+    this.page.drawLine({
+      start: { x: x1, y: PAGE_H - yTop },
+      end: { x: x2, y: PAGE_H - yTop },
+      thickness: 0.5,
+      color: RULE,
+    });
+  }
+
+  private basePage() {
     this.page = this.pdf.addPage([PAGE_W, PAGE_H]);
-    this.pageNo++;
+    this.pages.push(this.page);
+    this.page.drawImage(this.letterhead, { x: 0, y: 0, width: PAGE_W, height: PAGE_H });
     if (this.watermark) {
       this.page.drawText(this.watermark, {
-        x: mm(45),
-        y: mm(90),
+        x: 130,
+        y: 260,
         size: 90,
-        font: this.fonts.bold,
+        font: this.bold,
         color: rgb(0.93, 0.85, 0.88),
         rotate: degrees(45),
       });
     }
-    this.drawFooter();
-    if (this.pageNo > 1) {
-      this.text(
-        `${KIND_TITLES[this.doc.kind]} ${this.doc.number} – Seite ${this.pageNo}`,
-        LEFT,
-        PAGE_H - mm(20),
-        8,
-        GREY,
-      );
-      this.y = PAGE_H - mm(30);
+  }
+
+  /** Erste Seite: Titelbalken mit Infoblock (Fortytools: 290–346 pt). */
+  firstPage(info: [string, string][]) {
+    this.basePage();
+    const rows = info.length + 1; // + Seite
+    const bandTop = 290;
+    const bandH = Math.max(56, 18 + rows * 12.6);
+    this.rect(0, bandTop, PAGE_W, bandH);
+    this.text(this.title, LEFT, bandTop + bandH / 2 + 7, 19.7);
+    let y = bandTop + (bandH - rows * 12.6) / 2 + 9;
+    // Fortytools: Label bei 402 pt, Wert bei 490 pt. Lange Werte (Leitweg-ID) rücken den Block nach links.
+    const valueX = Math.min(490.5, RIGHT - Math.max(...info.map(([, v]) => this.width(v))));
+    const labelX = valueX - 88.3;
+    for (const [k, v] of info) {
+      this.text(k, labelX, y);
+      this.text(v, valueX, y);
+      y += 12.6;
+    }
+    this.text('Seite', labelX, y);
+    const page = this.page;
+    const pageNo = this.pages.length;
+    const yy = y;
+    this.pageLabels.push((total) =>
+      page.drawText(`${pageNo} von ${total}`, {
+        x: valueX,
+        y: PAGE_H - yy,
+        size: BODY,
+        font: this.regular,
+        color: INK,
+      }),
+    );
+    this.y = bandTop + bandH + 60;
+  }
+
+  /** Folgeseite: schmaler Titelbalken (Fortytools: 141–182 pt). */
+  nextPage() {
+    this.basePage();
+    this.rect(0, 141, PAGE_W, 41);
+    this.text(this.title, LEFT, 168.5, 15.7);
+    const page = this.page;
+    const pageNo = this.pages.length;
+    this.pageLabels.push((total) => {
+      const s = `Seite ${pageNo} von ${total}`;
+      page.drawText(s, {
+        x: RIGHT - this.regular.widthOfTextAtSize(s, BODY),
+        y: PAGE_H - 164,
+        size: BODY,
+        font: this.regular,
+        color: INK,
+      });
+    });
+    this.y = 201.7;
+  }
+
+  /** Prüft, ob ein Block ab der aktuellen Grundlinie noch auf die Seite passt (sonst Folgeseite). */
+  ensure(height: number, onNewPage?: () => void) {
+    if (this.y + height - LH > CONTENT_BOTTOM) {
+      this.nextPage();
+      onNewPage?.();
     }
   }
 
-  text(s: string, x: number, y: number, size = 9.5, color = BLACK, bold = false) {
-    this.page.drawText(s, { x, y, size, font: bold ? this.fonts.bold : this.fonts.regular, color });
+  /** Absatz zusammenhalten (wie Fortytools: Zahlungsbedingung nicht über zwei Seiten). */
+  paragraph(text: string, size = BODY, width = RIGHT - LEFT) {
+    const lines = wrap(text, this.regular, size, width);
+    this.ensure(lines.length * LH);
+    for (const l of lines) {
+      this.text(l, LEFT, this.y, size);
+      this.y += LH;
+    }
   }
 
-  textRight(s: string, xRight: number, y: number, size = 9.5, color = BLACK, bold = false) {
-    const font = bold ? this.fonts.bold : this.fonts.regular;
-    this.text(s, xRight - font.widthOfTextAtSize(s, size), y, size, color, bold);
-  }
-
-  ensure(height: number) {
-    if (this.y - height < FOOTER_TOP + mm(8)) this.newPage();
-  }
-
-  drawFooter() {
-    const s = this.doc.seller;
-    const cols = [
-      [s.legalName, s.street, `${s.postalCode} ${s.city}`, s.phone ? `Tel. ${s.phone}` : '', s.email],
-      [
-        s.managingDirector ? 'Geschäftsführer:' : '',
-        s.managingDirector ?? '',
-        s.registerCourt ?? '',
-        s.registerNumber ?? '',
-        s.vatId ? `USt-IdNr.: ${s.vatId}` : '',
-        s.taxNumber ? `Steuernr.: ${s.taxNumber}` : '',
-      ],
-      ...s.bankAccounts.slice(0, 2).map((b) => [b.name, `IBAN ${b.iban}`, `BIC ${b.bic}`]),
-    ];
-    this.page.drawLine({
-      start: { x: LEFT, y: FOOTER_TOP },
-      end: { x: RIGHT, y: FOOTER_TOP },
-      thickness: 0.6,
-      color: BORDEAUX,
-    });
-    // Spaltenanteile: Firma, Register, Bank 1, Bank 2
-    const shares = [0.27, 0.19, 0.27, 0.27];
-    cols.forEach((lines, i) => {
-      const x = LEFT + (RIGHT - LEFT) * shares.slice(0, i).reduce((a, b) => a + b, 0);
-      lines.filter(Boolean).forEach((l, j) => this.text(l, x, FOOTER_TOP - mm(4) - j * 8.5, 6.6, GREY));
-    });
+  finish() {
+    for (const f of this.pageLabels) f(this.pages.length);
   }
 }
+
+const DATE_LABEL: Record<InvoiceDocument['kind'], string> = {
+  invoice: 'Rechnungsdatum',
+  partial: 'Rechnungsdatum',
+  final: 'Rechnungsdatum',
+  cancellation: 'Stornodatum',
+  correction: 'Datum',
+};
 
 /** Erzeugt die sichtbare Rechnungs-PDF (Grundlage auch für ZUGFeRD). */
 export async function renderInvoicePdf(
@@ -145,33 +271,37 @@ export async function renderInvoicePdf(
 ): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
-  const raw = await loadFonts();
-  const fonts: Fonts = {
-    regular: await pdf.embedFont(raw.regular, { subset: false }),
-    bold: await pdf.embedFont(raw.bold, { subset: false }),
-  };
+  const assets = await loadAssets();
+  const regular = await pdf.embedFont(assets.regular, { subset: false });
+  const bold = await pdf.embedFont(assets.bold, { subset: false });
+  const letterhead = await pdf.embedJpg(assets.letterhead);
+
   const title = `${KIND_TITLES[doc.kind]} ${doc.number}`;
   pdf.setTitle(title);
   pdf.setAuthor(doc.seller.legalName);
   pdf.setSubject(`${title} – ${doc.buyer.name}`);
   pdf.setLanguage('de-DE');
   pdf.setCreator('Viva-Deluxe Betriebs-App');
-  pdf.setProducer('Viva-Deluxe Betriebs-App');
+  pdf.setProducer(doc.seller.legalName);
   pdf.setCreationDate(new Date(`${doc.issueDate}T12:00:00Z`));
   pdf.setModificationDate(new Date(`${doc.issueDate}T12:00:00Z`));
 
-  const w = new Writer(pdf, fonts, doc, opts.watermark);
-  w.newPage();
   const s = doc.seller;
   const b = doc.buyer;
+  const w = new Doc(pdf, regular, bold, letterhead, title, opts.watermark);
 
-  // Kopf
-  w.text('VIVA-DELUXE', LEFT, PAGE_H - mm(22), 20, BORDEAUX, true);
-  w.text('Gebäudereinigung · Meisterbetrieb · ISO 9001 / 14001', LEFT, PAGE_H - mm(28), 8.5, GREY);
+  // ---------------------------------------------------------------- Seite 1: Kopf
+  const info: [string, string][] = [
+    [DATE_LABEL[doc.kind], formatDateDe(doc.issueDate)],
+    ['Kundennummer', b.customerNo],
+  ];
+  if (b.leitwegId) info.push(['Leitweg-ID', b.leitwegId]);
+  if (b.supplierNo) info.push(['Lieferanten-Nr.', b.supplierNo]);
+  if (doc.orderReference) info.push(['Bestellnummer', doc.orderReference]);
+  w.firstPage(info);
 
-  // Anschriftfeld (DIN 5008 Form B: 45 mm von oben)
-  const addrTop = PAGE_H - mm(45);
-  w.text(`${s.legalName} · ${s.street} · ${s.postalCode} ${s.city}`, LEFT, addrTop + mm(2), 6.8, GREY);
+  // Absenderzeile + Anschrift (Fortytools: 141,7 / 157,4 pt)
+  w.text(`${s.legalName} | ${s.street} | ${s.postalCode} ${s.city}`, LEFT, 148, 7);
   const addr = [
     b.name,
     b.name2,
@@ -179,166 +309,151 @@ export async function renderInvoicePdf(
     b.street,
     `${b.postalCode} ${b.city}`,
   ].filter((x): x is string => !!x);
-  addr.forEach((l, i) => w.text(l, LEFT, addrTop - mm(5) - i * 12, 10));
+  addr.forEach((l, i) => w.text(l, LEFT, 165.5 + i * 13.2, 10));
 
-  // Infoblock rechts
-  const info: [string, string][] = [
-    [`${KIND_TITLES[doc.kind]}-Nr.`, doc.number],
-    ['Datum', formatDateDe(doc.issueDate)],
-    ['Kunden-Nr.', b.customerNo],
-  ];
-  if (b.leitwegId) info.push(['Leitweg-ID', b.leitwegId]);
-  if (b.supplierNo) info.push(['Lieferanten-Nr.', b.supplierNo]);
-  if (doc.orderReference) info.push(['Bestell-Nr.', doc.orderReference]);
-  if (doc.periodStart && doc.periodEnd) {
-    info.push(['Leistungszeitraum', `${formatDateDe(doc.periodStart)} – ${formatDateDe(doc.periodEnd)}`]);
-  }
-  const infoX = mm(125);
-  info.forEach(([k, v], i) => {
-    const y = addrTop - i * 12;
-    w.text(k, infoX, y, 8.5, GREY);
-    w.textRight(v, RIGHT, y, 8.5, BLACK, i === 0);
-  });
-
-  w.y = addrTop - mm(42);
-
-  // Titel
-  w.text(title, LEFT, w.y, 14, BORDEAUX, true);
-  w.y -= 16;
+  // ---------------------------------------------------------------- Anrede & Einleitung
+  w.text('Sehr geehrte Damen und Herren,', LEFT, w.y);
+  w.y += 24;
   if (doc.original) {
-    const verb = doc.kind === 'cancellation' ? 'Storno' : 'Korrektur';
-    w.text(
-      `${verb} zur Rechnung ${doc.original.number} vom ${formatDateDe(doc.original.issueDate)}`,
-      LEFT,
-      w.y,
-      9.5,
-      BLACK,
-      true,
+    w.paragraph(
+      doc.kind === 'cancellation'
+        ? `hiermit stornieren wir unsere Rechnung ${doc.original.number} vom ${formatDateDe(doc.original.issueDate)} vollständig.`
+        : `hiermit korrigieren wir unsere Rechnung ${doc.original.number} vom ${formatDateDe(doc.original.issueDate)} wie folgt:`,
     );
-    w.y -= 13;
+  } else {
+    w.paragraph(doc.introText ?? 'wir danken für Ihren Auftrag und berechnen unsere Leistungen wie folgt:');
   }
-  if (b.site) {
-    const place = [b.site.street, [b.site.postalCode, b.site.city].filter(Boolean).join(' ')]
-      .filter(Boolean)
-      .join(', ');
-    w.text(`Objekt ${b.site.siteNo}: ${b.site.name}${place ? ` – ${place}` : ''}`, LEFT, w.y, 9.5);
-    w.y -= 13;
-  }
-  if (doc.introText) {
-    w.y -= 4;
-    for (const l of wrap(doc.introText, fonts.regular, 9.5, RIGHT - LEFT)) {
-      w.ensure(12);
-      w.text(l, LEFT, w.y);
-      w.y -= 12;
-    }
-  }
-  w.y -= 8;
+  w.y += 37.4;
 
-  // Tabelle
-  const col = {
-    pos: LEFT + 2,
-    desc: LEFT + mm(10),
-    qty: mm(130),
-    unit: mm(132),
-    price: mm(166),
-    total: RIGHT - 2,
-  };
-  const descWidth = col.qty - col.desc - mm(16);
+  // ---------------------------------------------------------------- Tabelle
   const header = () => {
-    w.page.drawRectangle({ x: LEFT, y: w.y - 4, width: RIGHT - LEFT, height: 15, color: BORDEAUX });
-    w.text('Pos.', col.pos, w.y, 8.5, rgb(1, 1, 1), true);
-    w.text('Leistung', col.desc, w.y, 8.5, rgb(1, 1, 1), true);
-    w.textRight('Menge', col.qty, w.y, 8.5, rgb(1, 1, 1), true);
-    w.text('Einheit', col.unit, w.y, 8.5, rgb(1, 1, 1), true);
-    w.textRight('Einzelpreis', col.price, w.y, 8.5, rgb(1, 1, 1), true);
-    w.textRight('Gesamt', col.total, w.y, 8.5, rgb(1, 1, 1), true);
-    w.y -= 18;
+    w.rect(LEFT - 4.7, w.y - 15.5, RIGHT - LEFT + 25, 25, BAND, 8);
+    w.text('Pos', 62.3, w.y);
+    w.text('Text', COL.text, w.y);
+    w.right('Menge', COL.qty, w.y);
+    w.text('Einheit', COL.unit, w.y);
+    w.right('Einzelpreis', COL.price, w.y);
+    w.right('Gesamtpreis', COL.total, w.y);
+    w.y += 20;
+    w.rule(w.y);
+    w.y += 15.6;
   };
   header();
   const multiRate = doc.vatBreakdown.length > 1;
-  doc.lines.forEach((l, idx) => {
-    const descLines = wrap(l.description, fonts.bold, 9, descWidth);
-    const detailLines = l.detail ? wrap(l.detail, fonts.regular, 8, descWidth) : [];
-    const h = descLines.length * 11 + detailLines.length * 10 + 6;
-    if (w.y - h < FOOTER_TOP + mm(8)) {
-      w.newPage();
+  for (const l of doc.lines) {
+    const textLines = [
+      ...wrap(l.description, regular, BODY, TEXT_WIDTH),
+      ...(l.detail ? wrap(l.detail, regular, BODY, TEXT_WIDTH) : []),
+    ];
+    const h = (textLines.length + (multiRate ? 1 : 0)) * LH;
+    w.ensure(h + 16, () => {
+      w.y += 15.5;
       header();
+    });
+    const top = w.y;
+    w.right(String(l.position), 72.8, top);
+    textLines.forEach((t, i) => w.text(t, COL.text, top + i * LH));
+    w.right(quantityPdf(l.quantity), COL.qty, top);
+    w.text(PDF_UNITS[l.unitCode] ?? l.unitCode, COL.unit, top);
+    w.right(eur(l.unitPrice), COL.price, top);
+    w.right(eur(l.netAmount), COL.total, top);
+    if (multiRate) {
+      w.text(`MwSt ${percentToXml(l.vatRate).replace('.', ',')}%`, COL.text, top + textLines.length * LH, 8, {
+        color: GREY,
+      });
     }
-    if (idx % 2 === 1) {
-      w.page.drawRectangle({ x: LEFT, y: w.y - h + 9, width: RIGHT - LEFT, height: h, color: LIGHT });
-    }
-    w.text(String(l.position), col.pos, w.y, 9);
-    descLines.forEach((t, i) => w.text(t, col.desc, w.y - i * 11, 9, BLACK, true));
-    detailLines.forEach((t, i) => w.text(t, col.desc, w.y - descLines.length * 11 - i * 10, 8, GREY));
-    w.textRight(quantityDe(l.quantity), col.qty, w.y, 9);
-    w.text(UNIT_LABELS[l.unitCode] ?? l.unitCode, col.unit, w.y, 9);
-    w.textRight(eur(l.unitPrice), col.price, w.y, 9);
-    w.textRight(eur(l.netAmount), col.total, w.y, 9);
-    if (multiRate) w.text(`${percentToXml(l.vatRate)} %`, col.total - mm(2), w.y - 10, 7, GREY);
-    w.y -= h;
-  });
+    w.y = top + h - 3;
+    w.rule(w.y);
+    w.y += 15.6;
+  }
 
-  // Summen
-  w.ensure(110);
-  w.y -= 4;
-  w.page.drawLine({
-    start: { x: mm(115), y: w.y + 12 },
-    end: { x: RIGHT, y: w.y + 12 },
-    thickness: 0.5,
-    color: GREY,
-  });
-  const sumRow = (label: string, value: string, bold = false, color = BLACK) => {
-    w.text(label, mm(115), w.y, 9.5, color, bold);
-    w.textRight(value, RIGHT - 2, w.y, 9.5, color, bold);
-    w.y -= 14;
-  };
-  sumRow('Summe netto', eur(doc.netTotal));
+  // ---------------------------------------------------------------- Summen
+  const sumRows: [string, string][] = [['Gesamt netto', eur(doc.netTotal)]];
   for (const v of doc.vatBreakdown) {
-    sumRow(
-      `zzgl. ${percentToXml(v.vatRate).replace('.', ',')} % USt auf ${eur(v.taxableAmount)}`,
+    const rate = percentToXml(v.vatRate).replace('.', ',');
+    sumRows.push([
+      multiRate ? `zzgl. MwSt (${rate}%) auf ${eur(v.taxableAmount)}` : `zzgl. MwSt (${rate}%)`,
       eur(v.taxAmount),
-    );
+    ]);
   }
-  sumRow('Gesamtbetrag', eur(doc.grossTotal), true, BORDEAUX);
-
-  if (doc.prepayments.length) {
-    w.y -= 4;
-    w.text('Abzüglich bereits berechneter Abschläge:', mm(115), w.y, 8.5, GREY, true);
-    w.y -= 12;
+  const prepay = doc.prepayments.length > 0;
+  w.ensure(19.6 * (sumRows.length + 1) + (prepay ? 19.6 * (doc.prepayments.length + 1) : 0) + 10);
+  w.y += 2;
+  for (const [k, v] of sumRows) {
+    w.right(k, COL.price, w.y);
+    w.right(v, COL.total, w.y);
+    w.y += 19.6;
+  }
+  const pill = (label: string, value: string) => {
+    w.rect(COL.total - w.width(value) - 12, w.y - 12.2, w.width(value) + 30, 17.5, PILL, 8.5);
+    w.right(label, COL.price, w.y);
+    w.right(value, COL.total, w.y);
+    w.y += 19.6;
+  };
+  pill('Gesamtbetrag', eur(doc.grossTotal));
+  if (prepay) {
     for (const p of doc.prepayments) {
-      w.ensure(26);
-      w.text(`${p.number} vom ${formatDateDe(p.issueDate)}`, mm(115), w.y, 8.5);
-      w.textRight(`- ${eur(p.grossAmount)}`, RIGHT - 2, w.y, 8.5);
-      w.y -= 10;
-      w.text(`(netto ${eur(p.netAmount)}, darin USt ${eur(p.vatAmount)})`, mm(118), w.y, 7.5, GREY);
-      w.y -= 12;
+      w.right(
+        `abzgl. Abschlag ${p.number} vom ${formatDateDe(p.issueDate)} (darin MwSt ${eur(p.vatAmount)})`,
+        COL.price,
+        w.y,
+      );
+      w.right(eur(-p.grossAmount), COL.total, w.y);
+      w.y += 19.6;
     }
-    sumRow('Verbleibender Zahlbetrag', eur(doc.payableTotal), true, BORDEAUX);
+    pill('Zahlbetrag', eur(doc.payableTotal));
   }
 
-  // Zahlungs-/Schlusstext
-  w.y -= 10;
-  const primary = s.bankAccounts.find((x) => x.primary) ?? s.bankAccounts[0];
-  const payText =
-    doc.payableTotal < 0n
-      ? `Der Betrag von ${eur(-doc.payableTotal as Cents)} wird Ihnen erstattet bzw. mit offenen Forderungen verrechnet.`
-      : doc.kind === 'cancellation'
-        ? 'Diese Stornorechnung hebt die oben genannte Rechnung vollständig auf.'
-        : `Bitte überweisen Sie den Betrag bis zum ${formatDateDe(doc.dueDate)} ohne Abzug` +
-          (primary ? ` auf unser Konto bei der ${primary.name}, IBAN ${primary.iban}` : '') +
-          `, Verwendungszweck: ${doc.number}.`;
-  const texts = [payText, doc.closingText].filter((t): t is string => !!t);
-  if (doc.periodStart && doc.periodEnd && !doc.original) {
-    texts.push(`Leistungszeitraum ${formatDateDe(doc.periodStart)} bis ${formatDateDe(doc.periodEnd)}.`);
-  }
-  for (const t of texts) {
-    for (const l of wrap(t, fonts.regular, 9, RIGHT - LEFT)) {
-      w.ensure(12);
-      w.text(l, LEFT, w.y, 9);
-      w.y -= 12;
-    }
-    w.y -= 4;
+  // ---------------------------------------------------------------- Zahlungsbedingung
+  w.y += 7.4;
+  w.paragraph(paymentTermsHuman(doc));
+  if (doc.closingText) {
+    w.y += 4;
+    w.paragraph(doc.closingText);
   }
 
+  // ---------------------------------------------------------------- Schluss + GiroCode
+  const bank = s.bankAccounts.find((x) => x.primary) ?? s.bankAccounts[0];
+  const withQr = !!bank && doc.payableTotal > 0n && doc.kind !== 'cancellation';
+  const closing =
+    doc.payableTotal > 0n
+      ? 'Wir bitten um Überweisung auf unser Konto. Für Rückfragen zu dieser Rechnung stehen wir jederzeit gerne zur Verfügung.'
+      : 'Für Rückfragen zu dieser Rechnung stehen wir jederzeit gerne zur Verfügung.';
+  w.y += 10;
+  w.ensure(2 * LH + (withQr ? 80 : 0));
+  w.paragraph(closing);
+  if (withQr) {
+    const qr = QRCode.create(
+      girocodePayload({
+        bic: bank.bic,
+        name: s.legalName,
+        iban: bank.iban,
+        amount: doc.payableTotal,
+        reference: doc.number,
+      }),
+      { errorCorrectionLevel: 'M' },
+    );
+    const n = qr.modules.size;
+    const size = 52;
+    const cell = size / n;
+    const top = w.y + 2;
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        if (qr.modules.get(r, c)) {
+          w.page.drawRectangle({
+            x: LEFT + c * cell,
+            y: PAGE_H - top - (r + 1) * cell,
+            width: cell + 0.05,
+            height: cell + 0.05,
+            color: rgb(0, 0, 0),
+          });
+        }
+      }
+    }
+    w.text('Einfach Code mit Banking-App scannen und direkt überweisen.', LEFT + size + 3, top + size - 1);
+    w.y = top + size + 10;
+  }
+
+  w.finish();
   return pdf.save({ useObjectStreams: false });
 }

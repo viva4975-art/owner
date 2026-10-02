@@ -1,4 +1,5 @@
-import { type Cents, type Quantity, type VatRate, lineNet, sum } from '../money/money.js';
+import { type Cents, type Quantity, type VatRate, divRoundHalfUp, lineNet, sum } from '../money/money.js';
+import type { SkontoTerms } from './types.js';
 import { computeTotals } from '../money/totals.js';
 
 export interface DraftLineInput {
@@ -69,10 +70,50 @@ export interface ServiceForRun {
   validFrom: string;
   validTo: string | null;
   active: boolean;
+  note?: string | null;
+}
+
+export interface SiteForRun {
+  siteNo: string;
+  name: string;
+  street: string | null;
+  postalCode: string | null;
+  city: string | null;
+}
+
+/**
+ * Positionstext wie bei Fortytools:
+ *   Unterhaltsreinigung
+ *   3.099,86 € + 5,07% Tariflohnerhöhung ab 01.01.2026   ← Zusatztext der Leistung
+ *   Objekt: Baubüro VE30 (2000201)
+ *   Richelstr. 1c, 80634 München
+ *   01.09.2026 bis 30.09.2026
+ */
+export function serviceDetail(
+  note: string | null | undefined,
+  site: SiteForRun | null,
+  start: string,
+  end: string,
+): string {
+  const place = site
+    ? [site.street, [site.postalCode, site.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+    : '';
+  return [
+    note?.trim() || null,
+    site ? `Objekt: ${site.name} (${site.siteNo})` : null,
+    place || null,
+    `${formatDateDe(start)} bis ${formatDateDe(end)}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 /** Monatslauf: nur aktive Monatspauschalen, die im Abrechnungsmonat gültig sind. */
-export function monthlyRunLines(services: readonly ServiceForRun[], month: string): DraftLineInput[] {
+export function monthlyRunLines(
+  services: readonly ServiceForRun[],
+  month: string,
+  site: SiteForRun | null = null,
+): DraftLineInput[] {
   const { start, end } = monthBounds(month);
   return services
     .filter(
@@ -81,7 +122,7 @@ export function monthlyRunLines(services: readonly ServiceForRun[], month: strin
     )
     .map((s) => ({
       description: s.description,
-      detail: `Leistungszeitraum ${formatDateDe(start)} – ${formatDateDe(end)}`,
+      detail: serviceDetail(s.note, site, start, end),
       quantity: s.quantity,
       unitCode: s.unitCode,
       unitPrice: s.unitPrice,
@@ -129,4 +170,29 @@ export function monthLabelDe(month: string): string {
 /** Heutiges Datum in Deutschland (YYYY-MM-DD), unabhängig von der Server-Zeitzone. */
 export function todayBerlin(now: Date = new Date()): string {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(now);
+}
+
+/** Datum + Tage (YYYY-MM-DD, kalendarisch, ohne Zeitzonenfehler). */
+export function addDays(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Skonto auf den Zahlbetrag (brutto), kaufmännisch gerundet.
+ * Fortytools-Beispiel: 3 % von 3.875,89 € = 116,28 €, Zahlbetrag 3.759,61 €.
+ */
+export function skontoTerms(payable: Cents, percentBp: number, days: number, issueDate: string): SkontoTerms {
+  const amount = divRoundHalfUp(payable * BigInt(percentBp), 10_000n) as Cents;
+  return { percentBp, days, date: addDays(issueDate, days), amount, payable: (payable - amount) as Cents };
+}
+
+/** 300 → "3", 250 → "2,5" */
+export function percentDe(bp: number): string {
+  const int = Math.trunc(bp / 100);
+  const frac = String(bp % 100)
+    .padStart(2, '0')
+    .replace(/0+$/, '');
+  return frac ? `${int},${frac}` : String(int);
 }

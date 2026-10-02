@@ -111,6 +111,22 @@ export const CustomerForm: FC<{ id: string; c: Partial<Customer>; sites: Site[];
           value={c.payment_terms_days ?? 30}
           required
         />
+        <div>
+          <label for="skonto_percent">Skonto % (leer = kein Skonto)</label>
+          <input
+            id="skonto_percent"
+            name="skonto_percent_bp"
+            placeholder="z. B. 3"
+            value={c.skonto_percent_bp ? String(c.skonto_percent_bp / 100).replace('.', ',') : ''}
+          />
+        </div>
+        <Field
+          name="skonto_days"
+          label="Skonto innerhalb (Tage)"
+          type="number"
+          value={c.skonto_days}
+          placeholder="z. B. 7"
+        />
         <div style="grid-column:1/-1">
           <label for="invoice_emails">Rechnungs-E-Mails (mehrere mit Komma)</label>
           <input id="invoice_emails" name="invoice_emails" value={(c.invoice_emails ?? []).join(', ')} />
@@ -266,7 +282,10 @@ export const SiteForm: FC<{
               {services.map((sv) => (
                 <tr style={sv.active ? '' : 'opacity:.5'}>
                   <td>{SERVICE_KIND_LABEL[sv.kind]}</td>
-                  <td>{sv.description}</td>
+                  <td>
+                    {sv.description}
+                    {sv.note && <div class="small mut">{sv.note}</div>}
+                  </td>
                   <td class="r">{milliToInput(sv.quantity_milli)}</td>
                   <td>{UNIT_LABELS[sv.unit_code] ?? sv.unit_code}</td>
                   <td class="r">{euro(sv.unit_price_cents)}</td>
@@ -311,7 +330,9 @@ export const SiteForm: FC<{
               <label for="unit_code">Einheit</label>
               <select id="unit_code" name="unit_code">
                 {Object.entries(UNIT_LABELS).map(([k, v]) => (
-                  <option value={k}>{v}</option>
+                  <option value={k} selected={k === 'LS'}>
+                    {v}
+                  </option>
                 ))}
               </select>
             </div>
@@ -331,6 +352,13 @@ export const SiteForm: FC<{
               required
             />
             <Field name="valid_to" label="Gültig bis" type="date" />
+            <div style="grid-column:1/-1">
+              <Field
+                name="note"
+                label="Zusatztext auf der Rechnung (optional)"
+                placeholder="z. B. 3.099,86 € + 5,07% Tariflohnerhöhung ab 01.01.2026"
+              />
+            </div>
           </div>
           <div class="actions">
             <button class="btn">Leistung speichern</button>

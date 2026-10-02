@@ -1,6 +1,6 @@
 import type { Invoice } from '@e-invoice-eu/core';
-import { type Cents, toXmlDecimal } from '../domain/money/money.js';
-import { formatDateDe } from '../domain/invoice/calc.js';
+import { type Cents, formatEuro, toXmlDecimal } from '../domain/money/money.js';
+import { formatDateDe, percentDe } from '../domain/invoice/calc.js';
 import { type InvoiceDocument, KIND_TITLES, KIND_TYPE_CODES } from '../domain/invoice/types.js';
 
 type UBL = Invoice['ubl:Invoice'];
@@ -38,12 +38,33 @@ function taxCategory(vatRate: number) {
   } as const;
 }
 
-function paymentTermsText(doc: InvoiceDocument): string {
+/** Text der Zahlungsbedingung – identisch für PDF und E-Rechnung. */
+export function paymentTermsHuman(doc: InvoiceDocument): string {
+  const eur = (c: Cents) => formatEuro(c);
   if (doc.payableTotal < 0n) {
-    return `Der Betrag von ${toXmlDecimal(-doc.payableTotal as Cents).replace('.', ',')} EUR wird Ihnen erstattet bzw. verrechnet.`;
+    return `Der Betrag von ${eur(-doc.payableTotal as Cents)} wird Ihnen erstattet bzw. mit offenen Forderungen verrechnet.`;
   }
-  if (doc.kind === 'cancellation') return 'Storno – kein Zahlungsbetrag offen.';
-  return `Zahlbar bis ${formatDateDe(doc.dueDate)} ohne Abzug.`;
+  if (doc.kind === 'cancellation')
+    return 'Diese Stornorechnung hebt die oben genannte Rechnung vollständig auf.';
+  if (doc.skonto) {
+    const s = doc.skonto;
+    return (
+      `Zahlbar bis zum ${formatDateDe(s.date)} mit ${percentDe(s.percentBp)}% Skonto ` +
+      `(Skontobetrag: ${eur(s.amount)}, Zahlbetrag: ${eur(s.payable)}) oder ohne Abzug bis zum ${formatDateDe(doc.dueDate)}.`
+    );
+  }
+  return `Zahlbar ohne Abzug bis zum ${formatDateDe(doc.dueDate)}.`;
+}
+
+/**
+ * BT-20: Skonto maschinenlesbar nach XRechnung-Vorgabe (#SKONTO#TAGE=..#PROZENT=..#, Zeilenumbruch),
+ * danach der Klartext.
+ */
+export function paymentTermsText(doc: InvoiceDocument): string {
+  const human = paymentTermsHuman(doc);
+  if (!doc.skonto) return human;
+  const pct = (doc.skonto.percentBp / 100).toFixed(2);
+  return `#SKONTO#TAGE=${doc.skonto.days}#PROZENT=${pct}#\n${human}`;
 }
 
 /**

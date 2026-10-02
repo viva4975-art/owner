@@ -10,11 +10,12 @@ export const SELLER: SellerSnapshot = {
   city: 'München',
   countryCode: 'DE',
   vatId: 'DE341586171',
-  taxNumber: null,
+  taxNumber: '143/190/63154',
   registerCourt: 'Amtsgericht München',
-  registerNumber: 'HRB 262567',
+  registerNumber: 'HRB 262 567',
   managingDirector: 'Ahmed Chomontek',
   phone: '+49 89 63855496',
+  fax: '+49 89 99753096',
   email: 'info@viva-deluxe-reinigung.de',
   website: 'www.viva-deluxe-reinigung.de',
   bankAccounts: [
@@ -24,7 +25,7 @@ export const SELLER: SellerSnapshot = {
 };
 
 export const BUYER: BuyerSnapshot = {
-  customerNo: 'K-10001',
+  customerNo: '29901',
   name: 'Beispielbehörde Referat für Bildung',
   name2: 'Abteilung Gebäudemanagement',
   street: 'Musterstraße 1',
@@ -37,7 +38,7 @@ export const BUYER: BuyerSnapshot = {
   email: 'rechnungseingang@example.org',
   contactName: null,
   site: {
-    siteNo: 'O-2001',
+    siteNo: '2990101',
     name: 'Grundschule Musterweg',
     street: 'Musterweg 5',
     postalCode: '81369',
@@ -75,7 +76,7 @@ export function sampleDocument(overrides: Partial<InvoiceDocument> = {}, lines =
   const d = calculateDraft(lines);
   return {
     kind: 'invoice',
-    number: 'RE-2026-00001',
+    number: '1038301',
     issueDate: '2026-10-01',
     dueDate: '2026-10-31',
     periodStart: '2026-09-01',
@@ -95,6 +96,7 @@ export function sampleDocument(overrides: Partial<InvoiceDocument> = {}, lines =
     buyer: BUYER,
     original: null,
     prepayments: [],
+    skonto: null,
     ...overrides,
   };
 }
@@ -103,11 +105,11 @@ export function sampleCancellation(): InvoiceDocument {
   const d = calculateDraft(cancellationLines(LINES));
   return sampleDocument({
     kind: 'cancellation',
-    number: 'RE-2026-00002',
+    number: '1038302',
     issueDate: '2026-10-02',
     dueDate: '2026-10-02',
     introText: null,
-    original: { number: 'RE-2026-00001', issueDate: '2026-10-01' },
+    original: { number: '1038301', issueDate: '2026-10-01' },
     lines: d.lines,
     netTotal: d.net,
     vatTotal: d.vat,
@@ -119,7 +121,7 @@ export function sampleCancellation(): InvoiceDocument {
 
 export function sampleFinal(): InvoiceDocument {
   const partial = {
-    number: 'RE-2026-00003',
+    number: '1038303',
     issueDate: '2026-09-15',
     netAmount: parseEuro('2.000,00'),
     vatAmount: parseEuro('380,00'),
@@ -128,7 +130,7 @@ export function sampleFinal(): InvoiceDocument {
   const d = calculateDraft(LINES, partial.grossAmount);
   return sampleDocument({
     kind: 'final',
-    number: 'RE-2026-00004',
+    number: '1038304',
     lines: d.lines,
     netTotal: d.net,
     vatTotal: d.vat,

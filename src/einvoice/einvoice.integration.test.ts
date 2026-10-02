@@ -5,6 +5,7 @@ import { generateCii, generateXRechnungUbl, generateZugferd } from './generate.j
 import { validateWithKosit } from './kosit.js';
 import { PDFDocument } from '@cantoo/pdf-lib';
 import { kositAvailable } from '../services/testing.js';
+import { skontoTerms } from '../domain/invoice/calc.js';
 
 /**
  * Prüft echte E-Rechnungen gegen den KoSIT-Validator.
@@ -13,10 +14,16 @@ import { kositAvailable } from '../services/testing.js';
 const KOSIT = process.env.KOSIT_VALIDATOR_URL ?? 'http://127.0.0.1:8081';
 const available = await kositAvailable();
 
+const withSkonto = (() => {
+  const d = sampleDocument();
+  return { ...d, skonto: skontoTerms(d.payableTotal, 300, 7, d.issueDate) };
+})();
+
 const cases = [
   ['Rechnung', sampleDocument()],
+  ['Rechnung mit Skonto', withSkonto],
   ['Stornorechnung', sampleCancellation()],
-  ['Abschlagsrechnung', sampleDocument({ kind: 'partial', number: 'RE-2026-00003' })],
+  ['Abschlagsrechnung', sampleDocument({ kind: 'partial', number: '1038303' })],
   ['Schlussrechnung', sampleFinal()],
 ] as const;
 
@@ -45,11 +52,16 @@ describe.skipIf(!available)('E-Rechnung gegen KoSIT', () => {
     expect(res.messages.some((m) => m.level === 'error')).toBe(true);
   });
 
+  it('Skonto steht maschinenlesbar in BT-20 (#SKONTO#)', async () => {
+    const xml = await generateXRechnungUbl(withSkonto);
+    expect(xml).toMatch(/<cbc:Note>#SKONTO#TAGE=7#PROZENT=3\.00#\n?Zahlbar bis zum/);
+  });
+
   it('Storno referenziert das Original und hat Belegart 384', async () => {
     const xml = await generateXRechnungUbl(sampleCancellation());
     expect(xml).toContain('<cbc:InvoiceTypeCode>384</cbc:InvoiceTypeCode>');
     expect(xml).toMatch(
-      /<cac:BillingReference>\s*<cac:InvoiceDocumentReference>\s*<cbc:ID>RE-2026-00001<\/cbc:ID>/,
+      /<cac:BillingReference>\s*<cac:InvoiceDocumentReference>\s*<cbc:ID>1038301<\/cbc:ID>/,
     );
     expect(xml).not.toMatch(/Gutschrift/i);
   });
@@ -59,7 +71,7 @@ describe('ZUGFeRD-PDF', () => {
   it('bettet das XML in eine PDF/A-3 ein', async () => {
     const doc = sampleDocument();
     const pdf = await renderInvoicePdf(doc);
-    const zugferd = await generateZugferd(doc, pdf, 'RE-2026-00001.pdf');
+    const zugferd = await generateZugferd(doc, pdf, '1038301.pdf');
     const loaded = await PDFDocument.load(zugferd);
     expect(loaded.getPageCount()).toBeGreaterThanOrEqual(1);
     const text = Buffer.from(zugferd).toString('latin1');

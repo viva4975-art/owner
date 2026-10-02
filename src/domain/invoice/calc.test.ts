@@ -7,6 +7,8 @@ import {
   monthBounds,
   monthlyRunLines,
   prepaidTotal,
+  addDays,
+  skontoTerms,
   todayBerlin,
 } from './calc.js';
 
@@ -95,7 +97,24 @@ describe('Monatslauf', () => {
       '2026-09',
     );
     expect(lines.map((l) => l.sourceServiceId)).toEqual(['s1', 's6']);
-    expect(lines[0]?.detail).toBe('Leistungszeitraum 01.09.2026 – 30.09.2026');
+    expect(lines[0]?.detail).toBe('01.09.2026 bis 30.09.2026');
+  });
+
+  it('Positionstext wie Fortytools', () => {
+    const [line] = monthlyRunLines(
+      [{ ...base, note: '3.099,86 € + 5,07% Tariflohnerhöhung ab 01.01.2026' }],
+      '2026-09',
+      {
+        siteNo: '2000201',
+        name: 'Baubüro VE30',
+        street: 'Richelstr. 1c',
+        postalCode: '80634',
+        city: 'München',
+      },
+    );
+    expect(line?.detail).toBe(
+      '3.099,86 € + 5,07% Tariflohnerhöhung ab 01.01.2026\nObjekt: Baubüro VE30 (2000201)\nRichelstr. 1c, 80634 München\n01.09.2026 bis 30.09.2026',
+    );
   });
 
   it('Monatsgrenzen inkl. Schaltjahr', () => {
@@ -108,5 +127,19 @@ describe('Monatslauf', () => {
 describe('todayBerlin', () => {
   it('nutzt deutsche Zeit (23:30 UTC am 31.12. = 01.01. in Berlin)', () => {
     expect(todayBerlin(new Date('2026-12-31T23:30:00Z'))).toBe('2027-01-01');
+  });
+});
+
+describe('Skonto', () => {
+  it('rechnet wie Fortytools (Rechnung 1038193)', () => {
+    const s = skontoTerms(parseEuro('3.875,89'), 300, 7, '2026-09-25');
+    expect(s.amount).toBe(11628n);
+    expect(s.payable).toBe(375961n);
+    expect(s.date).toBe('2026-10-02');
+  });
+
+  it('Datum über Monats- und Jahresgrenze', () => {
+    expect(addDays('2026-12-28', 7)).toBe('2027-01-04');
+    expect(addDays('2028-02-25', 4)).toBe('2028-02-29');
   });
 });

@@ -33,6 +33,7 @@ export interface SellerSnapshot {
   registerNumber: string | null;
   managingDirector: string | null;
   phone: string | null;
+  fax?: string | null;
   email: string;
   website: string | null;
   bankAccounts: BankAccount[];
@@ -58,6 +59,14 @@ export interface BuyerSnapshot {
     postalCode: string | null;
     city: string | null;
   } | null;
+}
+
+export interface SkontoTerms {
+  percentBp: number; // 3 % = 300
+  days: number;
+  date: string; // YYYY-MM-DD
+  amount: Cents; // Skontobetrag
+  payable: Cents; // Zahlbetrag nach Skonto
 }
 
 export interface InvoiceReference {
@@ -94,6 +103,7 @@ export interface InvoiceDocument {
   buyer: BuyerSnapshot;
   original: InvoiceReference | null;
   prepayments: PrepaymentReference[];
+  skonto: SkontoTerms | null;
 }
 
 export const KIND_TITLES: Record<InvoiceKind, string> = {
@@ -125,6 +135,7 @@ export const UNIT_LABELS: Record<string, string> = {
   MON: 'Monat',
   MTK: 'm²',
   LS: 'pauschal',
+  // MON bleibt für bestehende Daten lesbar; neue Pauschalen nutzen LS (wie Fortytools: Einheit leer).
   DAY: 'Tag',
   E48: 'Leistung',
 };

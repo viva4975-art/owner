@@ -59,17 +59,17 @@ describe.skipIf(!available)('Rechnungen in der Datenbank', () => {
     it('vergibt lückenlos fortlaufende Nummern – auch bei gleichzeitigen Aufrufen', async () => {
       const ids = await Promise.all(Array.from({ length: 12 }, () => draft()));
       const numbers = await Promise.all(ids.map((id) => issue(sql, id, 'test', '2026-10-01')));
-      const seqs = numbers.map((n) => Number(n.split('-')[2])).sort((a, b) => a - b);
-      expect(seqs).toEqual(Array.from({ length: 12 }, (_, i) => seqs[0]! + i));
-      expect(numbers.every((n) => /^RE-2026-\d{5}$/.test(n))).toBe(true);
+      const seqs = numbers.map(Number).sort((a, b) => a - b);
+      expect(seqs).toEqual(Array.from({ length: 12 }, (_, i) => 1038301 + i));
+      expect(numbers.every((n) => /^\d{7}$/.test(n))).toBe(true);
     });
 
     it('fehlgeschlagenes Ausstellen verbraucht keine Nummer', async () => {
-      const [before] = await sql`select last_value from app.invoice_number_counters where year = 2026`;
+      const [before] = await sql`select next_value from app.number_ranges where key = 'invoice'`;
       const empty = await draft([]);
       await expect(issue(sql, empty, 'test', '2026-10-01')).rejects.toThrow(/ohne Positionen/);
-      const [after] = await sql`select last_value from app.invoice_number_counters where year = 2026`;
-      expect(after!.last_value).toBe(before!.last_value);
+      const [after] = await sql`select next_value from app.number_ranges where key = 'invoice'`;
+      expect(after!.next_value).toBe(before!.next_value);
     });
 
     it('erneutes Ausstellen ist idempotent (gleiche Nummer)', async () => {
@@ -79,10 +79,17 @@ describe.skipIf(!available)('Rechnungen in der Datenbank', () => {
       expect(b).toBe(a);
     });
 
-    it('beginnt jedes Jahr bei 00001', async () => {
-      const id = await draft();
-      // Rückdatieren nur zu Testzwecken (Vorjahr) – zeigt den Jahreswechsel.
-      expect(await issue(sql, id, 'test', '2025-12-31')).toBe('RE-2025-00001');
+    it('läuft wie Fortytools über den Jahreswechsel weiter (kein Neustart)', async () => {
+      const a = await issue(sql, await draft(), 'test', '2025-12-31');
+      const b = await issue(sql, await draft(), 'test', '2026-01-02');
+      expect(Number(b)).toBe(Number(a) + 1);
+    });
+
+    it('Startwert ist einstellbar (Übernahme des Fortytools-Kreises)', async () => {
+      const [r] = await sql`select max(number_seq) as m from app.invoices`;
+      const next = Number(r!.m) + 1000;
+      await sql`update app.number_ranges set next_value = ${next} where key = 'invoice'`;
+      expect(await issue(sql, await draft(), 'test', '2026-10-01')).toBe(String(next));
     });
 
     it('lehnt Rechnungsdatum in der Zukunft ab', async () => {
@@ -208,10 +215,7 @@ describe.skipIf(!available)('Rechnungen in der Datenbank', () => {
 
       const school = first.created.find((c) => c.siteName === 'Grundschule Musterweg')!;
       const { invoice, lines } = (await getInvoice(sql, school.invoiceId))!;
-      expect(lines.map((l) => l.description)).toEqual([
-        'Unterhaltsreinigung lt. Leistungsverzeichnis',
-        'Sanitärreinigung täglich',
-      ]);
+      expect(lines.map((l) => l.description)).toEqual(['Unterhaltsreinigung', 'Sanitärreinigung täglich']);
       expect(invoice.net_cents).toBe(485000n + 62000n);
       expect(invoice.period_start).toBe('2026-09-01');
       expect(invoice.period_end).toBe('2026-09-30');
@@ -231,9 +235,17 @@ describe.skipIf(!available)('Rechnungen in der Datenbank', () => {
         await tx`set local role authenticated`;
         const inv = await tx`select count(*)::int as n from app.invoices`;
         const sites = await tx`select count(*)::int as n from app.sites`;
-        const counters = await tx`select count(*)::int as n from app.invoice_number_counters`;
-        return { invoices: inv[0]!.n, sites: sites[0]!.n, counters: counters[0]!.n };
+        return { invoices: inv[0]!.n, sites: sites[0]!.n };
       });
+
+    it('Nummernkreis ist für angemeldete Benutzer nicht lesbar (nur Server)', async () => {
+      await expect(
+        sql.begin(async (tx) => {
+          await tx`set local role authenticated`;
+          await tx`select * from app.number_ranges`;
+        }),
+      ).rejects.toThrow(/permission denied/);
+    });
 
     it('Objektleitung sieht nur eigene Objekte und keine Rechnungen; Büro sieht alles', async () => {
       const office = randomUUID();
@@ -244,13 +256,12 @@ describe.skipIf(!available)('Rechnungen in der Datenbank', () => {
       await sql`update app.sites set manager_user_id = ${manager} where id = ${DEMO.siteSchool}`;
 
       const m = await asUser(manager);
-      expect(m).toEqual({ invoices: 0, sites: 1, counters: 0 });
+      expect(m).toEqual({ invoices: 0, sites: 1 });
       const o = await asUser(office);
       expect(o.invoices).toBeGreaterThan(0);
       expect(o.sites).toBe(3);
-      expect(o.counters).toBe(0); // Nummernkreis nur serverseitig
       const anon = await asUser(randomUUID());
-      expect(anon).toEqual({ invoices: 0, sites: 0, counters: 0 });
+      expect(anon).toEqual({ invoices: 0, sites: 0 });
     });
 
     it('angemeldete Benutzer können nicht direkt schreiben', async () => {

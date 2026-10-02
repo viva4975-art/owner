@@ -32,6 +32,8 @@ import {
   serviceInput,
   setServiceActive,
   siteInput,
+  suggestCustomerNo,
+  suggestSiteNo,
 } from '../services/masterdata.js';
 import {
   type Deps,
@@ -169,7 +171,13 @@ export function createApp(deps: Deps) {
       'kunden',
       <CustomerForm
         id={id}
-        c={customer ?? { payment_terms_days: 30, invoice_format: 'pdf' }}
+        c={
+          customer ?? {
+            payment_terms_days: 30,
+            invoice_format: 'zugferd',
+            customer_no: await suggestCustomerNo(sql),
+          }
+        }
         sites={sites}
         isNew={!customer}
       />,
@@ -230,7 +238,12 @@ export function createApp(deps: Deps) {
       'objekte',
       <SiteForm
         id={id}
-        s={site ?? { customer_id: c.req.query('kunde') ?? '' }}
+        s={
+          site ?? {
+            customer_id: c.req.query('kunde') ?? '',
+            site_no: (c.req.query('kunde') && (await suggestSiteNo(sql, c.req.query('kunde')!))) || '',
+          }
+        }
         customers={customers}
         services={services}
         isNew={!site}
@@ -271,22 +284,25 @@ export function createApp(deps: Deps) {
 
   // ------------------------------------------------------------------ Rechnungen
 
-  app.get('/rechnungen', async (c) =>
-    page(
+  app.get('/rechnungen', async (c) => {
+    const [range] = await sql<{ prefix: string; next_value: bigint }[]>`
+      select prefix, next_value from app.number_ranges where key = 'invoice'`;
+    return page(
       c,
       'Rechnungen',
       'rechnungen',
       <>
         <div class="actions">
           <h1 style="margin:0">Rechnungen</h1>
+          <span class="mut small">Nächste Nr.: {range ? `${range.prefix}${range.next_value}` : '–'}</span>
           <a class="btn" href={`/rechnungen/${randomUUID()}/bearbeiten`} style="margin-left:auto">
             + Einzelrechnung
           </a>
         </div>
         <InvoiceTable rows={await listInvoices(sql)} />
       </>,
-    ),
-  );
+    );
+  });
 
   app.get(`/rechnungen/:id{${UUID}}/bearbeiten`, async (c) => {
     const id = c.req.param('id');

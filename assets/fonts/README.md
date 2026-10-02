@@ -1,3 +1,4 @@
-Liberation Sans 2.x (Red Hat), lizenziert unter der SIL Open Font License 1.1 – Einbetten in PDFs
-und Weitergabe erlaubt. Wird in jede Rechnungs-PDF eingebettet (Pflicht für PDF/A-3 / ZUGFeRD).
-Lizenztext: https://github.com/liberationfonts/liberation-fonts/blob/main/LICENSE
+- DejaVu Sans (Bitstream-Vera-Lizenz, frei einbettbar): Rechnungsschrift. Optisch nah an Verdana, das
+  Fortytools verwendet (Verdana selbst darf nicht weitergegeben werden).
+- Liberation Sans (SIL OFL 1.1): Reserve.
+Alle Schriften werden vollständig in die PDF eingebettet (Pflicht für PDF/A-3 / ZUGFeRD).

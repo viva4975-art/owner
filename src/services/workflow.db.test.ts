@@ -76,12 +76,12 @@ describe.skipIf(!available)('Ablauf: Monatslauf → Ausstellen → Archiv → Ve
 
     const mail = deps.mailer.sent[0]!;
     expect(mail.to).toEqual(['test@viva-deluxe.local']);
-    expect(mail.subject).toMatch(/^\[TEST\] Rechnung RE-\d{4}-\d{5}/);
+    expect(mail.subject).toMatch(/^\[TEST\] Rechnung \d{7} /);
     expect(mail.text).toContain('rechnungseingang@beispielbehoerde.example');
     // Kunde hat Format XRechnung → XML + PDF-Sichtkopie + Anhang
     expect(mail.attachments.map((a) => a.filename.replace(/^[0-9a-f]{12}_/, ''))).toEqual([
       expect.stringMatching(/_xrechnung\.xml$/),
-      expect.stringMatching(/^RE-\d{4}-\d{5}\.pdf$/),
+      expect.stringMatching(/^\d{7}\.pdf$/),
       expect.stringMatching(/Leistungsnachweis September\.pdf$/),
     ]);
 
@@ -137,9 +137,9 @@ describe.skipIf(!available)('Ablauf: Monatslauf → Ausstellen → Archiv → Ve
     await sql`insert into app.invoice_lines (invoice_id, position, description, quantity_milli, unit_price_cents, net_cents, vat_rate_bp)
               values (${id}, 1, 'Test', 1000, 1000, 1000, 0)`;
     await sql`update app.invoices set net_cents = 1000, gross_cents = 1000, payable_cents = 1000 where id = ${id}`;
-    const [before] = await sql`select coalesce(max(last_value), 0) as v from app.invoice_number_counters`;
+    const [before] = await sql`select next_value as v from app.number_ranges where key = 'invoice'`;
     await expect(issueInvoice(deps, id, 'test')).rejects.toThrow(/nicht erzeugt werden|ungültig/);
-    const [after] = await sql`select coalesce(max(last_value), 0) as v from app.invoice_number_counters`;
+    const [after] = await sql`select next_value as v from app.number_ranges where key = 'invoice'`;
     expect(after!.v).toBe(before!.v);
     expect((await getInvoice(sql, id))!.invoice.status).toBe('draft');
   });

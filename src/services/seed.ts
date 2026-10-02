@@ -4,9 +4,10 @@ import type { Sql } from '../db/client.js';
 export async function seedCompany(sql: Sql) {
   await sql`
     insert into app.company (id, legal_name, street, postal_code, city, vat_id, tax_number, register_court,
-                             register_number, managing_director, phone, email, website, bank_accounts)
-    values (1, 'Viva-Deluxe Gebäudereinigung GmbH', 'Würmtalstr. 10', '81375', 'München', 'DE341586171', null,
-            'Amtsgericht München', 'HRB 262567', 'Ahmed Chomontek', '+49 89 63855496',
+                             register_number, managing_director, phone, fax, email, website, bank_accounts)
+    values (1, 'Viva-Deluxe Gebäudereinigung GmbH', 'Würmtalstr. 10', '81375', 'München', 'DE341586171',
+            '143/190/63154', 'Amtsgericht München', 'HRB 262 567', 'Ahmed Chomontek', '+49 89 63855496',
+            '+49 89 99753096',
             'info@viva-deluxe-reinigung.de', 'www.viva-deluxe-reinigung.de',
             ${sql.json([
               {
@@ -34,30 +35,31 @@ export async function seedDemo(sql: Sql) {
   await seedCompany(sql);
   await sql`
     insert into app.customers (id, customer_no, name, name2, street, postal_code, city, is_public_authority,
-                               leitweg_id, supplier_no, invoice_emails, invoice_format, payment_terms_days, contact_name)
+                               leitweg_id, supplier_no, invoice_emails, invoice_format, payment_terms_days,
+                               skonto_percent_bp, skonto_days, contact_name)
     values
-      (${DEMO.authority}, 'K-10001', 'DEMO Beispielbehörde Referat für Bildung', 'Abteilung Gebäudemanagement',
+      (${DEMO.authority}, '29901', 'DEMO Beispielbehörde Referat für Bildung', 'Abteilung Gebäudemanagement',
        'Musterstraße 1', '80331', 'München', true, '04011000-1234512345-06', '4711',
-       ${['rechnungseingang@beispielbehoerde.example']}, 'xrechnung', 30, null),
-      (${DEMO.company}, 'K-10002', 'DEMO Musterfirma GmbH', null, 'Industriestraße 7', '82152', 'Planegg', false,
-       null, null, ${['buchhaltung@musterfirma.example', 'einkauf@musterfirma.example']}, 'zugferd', 14, 'Frau Beispiel')
+       ${['rechnungseingang@beispielbehoerde.example']}, 'xrechnung', 30, null, null, null),
+      (${DEMO.company}, '29902', 'DEMO Musterfirma GmbH', null, 'Industriestraße 7', '82152', 'Planegg', false,
+       null, null, ${['buchhaltung@musterfirma.example', 'einkauf@musterfirma.example']}, 'zugferd', 20, 300, 7, 'Frau Beispiel')
     on conflict (id) do nothing`;
   await sql`
     insert into app.sites (id, customer_id, site_no, name, street, postal_code, city, order_reference)
     values
-      (${DEMO.siteSchool}, ${DEMO.authority}, 'O-2001', 'Grundschule Musterweg', 'Musterweg 5', '81369', 'München', 'BE-2026-0042'),
-      (${DEMO.siteOffice}, ${DEMO.authority}, 'O-2002', 'Verwaltungsgebäude Am Platz', 'Am Platz 3', '80331', 'München', null),
-      (${DEMO.siteHq}, ${DEMO.company}, 'O-3001', 'Firmenzentrale Planegg', 'Industriestraße 7', '82152', 'Planegg', null)
+      (${DEMO.siteSchool}, ${DEMO.authority}, '2990101', 'Grundschule Musterweg', 'Musterweg 5', '81369', 'München', 'BE-2026-0042'),
+      (${DEMO.siteOffice}, ${DEMO.authority}, '2990102', 'Verwaltungsgebäude Am Platz', 'Am Platz 3', '80331', 'München', null),
+      (${DEMO.siteHq}, ${DEMO.company}, '2990201', 'Firmenzentrale Planegg', 'Industriestraße 7', '82152', 'Planegg', null)
     on conflict (id) do nothing`;
   await sql`
-    insert into app.site_services (id, site_id, kind, description, unit_code, quantity_milli, unit_price_cents, vat_rate_bp, valid_from, sort_order)
+    insert into app.site_services (id, site_id, kind, description, unit_code, quantity_milli, unit_price_cents, vat_rate_bp, valid_from, sort_order, note)
     values
-      ('00000000-0000-4000-8000-000000000101', ${DEMO.siteSchool}, 'monthly_flat', 'Unterhaltsreinigung lt. Leistungsverzeichnis', 'MON', 1000, 485000, 1900, '2026-01-01', 1),
-      ('00000000-0000-4000-8000-000000000102', ${DEMO.siteSchool}, 'monthly_flat', 'Sanitärreinigung täglich', 'MON', 1000, 62000, 1900, '2026-01-01', 2),
-      ('00000000-0000-4000-8000-000000000103', ${DEMO.siteSchool}, 'hourly', 'Regiestunden Sonderreinigung', 'HUR', 1000, 2980, 1900, '2026-01-01', 3),
-      ('00000000-0000-4000-8000-000000000104', ${DEMO.siteSchool}, 'special', 'Glasreinigung innen/außen', 'C62', 1000, 38000, 1900, '2026-01-01', 4),
-      ('00000000-0000-4000-8000-000000000105', ${DEMO.siteOffice}, 'monthly_flat', 'Unterhaltsreinigung Büroflächen', 'MON', 1000, 212050, 1900, '2026-01-01', 1),
-      ('00000000-0000-4000-8000-000000000106', ${DEMO.siteHq}, 'monthly_flat', 'Unterhaltsreinigung Pauschale', 'MON', 1000, 139900, 1900, '2026-01-01', 1),
-      ('00000000-0000-4000-8000-000000000107', ${DEMO.siteHq}, 'hourly', 'Regiestunden', 'HUR', 1000, 3150, 1900, '2026-01-01', 2)
+      ('00000000-0000-4000-8000-000000000101', ${DEMO.siteSchool}, 'monthly_flat', 'Unterhaltsreinigung', 'LS', 1000, 485000, 1900, '2026-01-01', 1, 'lt. Leistungsverzeichnis vom 01.01.2026'),
+      ('00000000-0000-4000-8000-000000000102', ${DEMO.siteSchool}, 'monthly_flat', 'Sanitärreinigung täglich', 'LS', 1000, 62000, 1900, '2026-01-01', 2, null),
+      ('00000000-0000-4000-8000-000000000103', ${DEMO.siteSchool}, 'hourly', 'Regiestunden Sonderreinigung', 'HUR', 1000, 2980, 1900, '2026-01-01', 3, null),
+      ('00000000-0000-4000-8000-000000000104', ${DEMO.siteSchool}, 'special', 'Glasreinigung innen/außen', 'C62', 1000, 38000, 1900, '2026-01-01', 4, null),
+      ('00000000-0000-4000-8000-000000000105', ${DEMO.siteOffice}, 'monthly_flat', 'Unterhaltsreinigung', 'LS', 1000, 212050, 1900, '2026-01-01', 1, '2.018,13 € + 5,07% Tariflohnerhöhung ab 01.01.2026'),
+      ('00000000-0000-4000-8000-000000000106', ${DEMO.siteHq}, 'monthly_flat', 'Unterhaltsreinigung', 'LS', 1000, 139900, 1900, '2026-01-01', 1, null),
+      ('00000000-0000-4000-8000-000000000107', ${DEMO.siteHq}, 'hourly', 'Regiestunden', 'HUR', 1000, 3150, 1900, '2026-01-01', 2, null)
     on conflict (id) do nothing`;
 }

@@ -7,6 +7,7 @@ import {
   monthBounds,
   monthLabelDe,
   monthlyRunLines,
+  skontoTerms,
   todayBerlin,
 } from '../domain/invoice/calc.js';
 import type {
@@ -47,6 +48,9 @@ export interface InvoiceRow {
   seller_snapshot: SellerSnapshot | null;
   buyer_snapshot: BuyerSnapshot | null;
   monthly_run_key: string | null;
+  skonto_percent_bp: number | null;
+  skonto_days: number | null;
+  skonto_date: string | null;
   created_at: Date;
   issued_at: Date | null;
 }
@@ -262,12 +266,17 @@ export async function runMonthly(sql: Sql, month: string, actor: string): Promis
     {
       id: string;
       name: string;
+      site_no: string;
+      street: string | null;
+      postal_code: string | null;
+      city: string | null;
       customer_id: string;
       order_reference: string | null;
       customer_active: boolean;
     }[]
   >`
-    select s.id, s.name, s.customer_id, s.order_reference, c.active as customer_active
+    select s.id, s.name, s.site_no, s.street, s.postal_code, s.city, s.customer_id, s.order_reference,
+           c.active as customer_active
       from app.sites s join app.customers c on c.id = s.customer_id
      where s.active order by s.site_no`;
   const result: MonthlyRunResult = { created: [], skipped: [] };
@@ -288,6 +297,7 @@ export async function runMonthly(sql: Sql, month: string, actor: string): Promis
         valid_from: string;
         valid_to: string | null;
         active: boolean;
+        note: string | null;
       }[]
     >`select * from app.site_services where site_id = ${site.id} order by sort_order, description`;
     const lines = monthlyRunLines(
@@ -302,8 +312,16 @@ export async function runMonthly(sql: Sql, month: string, actor: string): Promis
         validFrom: s.valid_from,
         validTo: s.valid_to,
         active: s.active,
+        note: s.note,
       })),
       month,
+      {
+        siteNo: site.site_no,
+        name: site.name,
+        street: site.street,
+        postalCode: site.postal_code,
+        city: site.city,
+      },
     );
     if (!lines.length) {
       result.skipped.push({ siteName: site.name, reason: 'keine gültige Monatspauschale' });
@@ -315,10 +333,9 @@ export async function runMonthly(sql: Sql, month: string, actor: string): Promis
       const customer = await getCustomer(tx as unknown as Sql, site.customer_id);
       const [row] = await tx`
         insert into app.invoices (id, kind, customer_id, site_id, period_start, period_end, invoice_format,
-                                  buyer_reference, order_reference, intro_text, monthly_run_key)
+                                  buyer_reference, order_reference, monthly_run_key)
         values (${id}, 'invoice', ${site.customer_id}, ${site.id}, ${start}, ${end}, ${customer!.invoice_format},
-                ${customer!.leitweg_id}, ${site.order_reference},
-                ${`Für die Unterhaltsreinigung im ${monthLabelDe(month)} berechnen wir Ihnen vereinbarungsgemäß:`}, ${key})
+                ${customer!.leitweg_id}, ${site.order_reference}, ${key})
         on conflict (monthly_run_key) do nothing
         returning id`;
       if (!row) return false;
@@ -429,12 +446,22 @@ export function rowToDocument(
   original: { number: string; issueDate: string } | null,
   prepayments: PrepaymentReference[],
   overrides: { number?: string; issueDate?: string; dueDate?: string } = {},
+  draftSkonto: { percentBp: number; days: number } | null = null,
 ): InvoiceDocument {
   const d = calculateDraft(lines.map(toDraftInput), inv.prepaid_cents as Cents);
+  const issueDate = overrides.issueDate ?? inv.issue_date ?? '';
+  const cfg =
+    inv.status === 'issued'
+      ? inv.skonto_percent_bp && inv.skonto_days
+        ? { percentBp: inv.skonto_percent_bp, days: inv.skonto_days }
+        : null
+      : draftSkonto && ['invoice', 'partial', 'final'].includes(inv.kind) && inv.payable_cents > 0n
+        ? draftSkonto
+        : null;
   return {
     kind: inv.kind,
     number: overrides.number ?? inv.number ?? '',
-    issueDate: overrides.issueDate ?? inv.issue_date ?? '',
+    issueDate,
     dueDate: overrides.dueDate ?? inv.due_date ?? '',
     periodStart: inv.period_start,
     periodEnd: inv.period_end,
@@ -453,6 +480,8 @@ export function rowToDocument(
     buyer,
     original,
     prepayments,
+    skonto:
+      cfg && issueDate ? skontoTerms(inv.payable_cents as Cents, cfg.percentBp, cfg.days, issueDate) : null,
   };
 }
 
@@ -466,6 +495,11 @@ export async function loadDocument(
   const { invoice: inv, lines, prepayments, original } = data;
   const seller = inv.seller_snapshot ?? (await getSeller(sql));
   const buyer = inv.buyer_snapshot ?? (await buildBuyerSnapshot(sql, inv.customer_id, inv.site_id));
+  const customer = inv.status === 'draft' ? await getCustomer(sql, inv.customer_id) : undefined;
+  const draftSkonto =
+    customer?.skonto_percent_bp && customer.skonto_days
+      ? { percentBp: customer.skonto_percent_bp, days: customer.skonto_days }
+      : null;
   return rowToDocument(
     inv,
     lines,
@@ -480,6 +514,7 @@ export async function loadDocument(
       vatAmount: p.vat_cents as Cents,
     })),
     overrides,
+    draftSkonto,
   );
 }
 

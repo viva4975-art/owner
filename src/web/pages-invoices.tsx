@@ -495,6 +495,14 @@ export const InvoiceDetail: FC<{
           <label>Leitweg-ID</label>
           {inv.buyer_reference ?? '–'}
         </div>
+        <div>
+          <label>Skonto</label>
+          {inv.skonto_percent_bp
+            ? `${String(inv.skonto_percent_bp / 100).replace('.', ',')} % bis ${dateDe(inv.skonto_date)}`
+            : inv.status === 'draft' && customer.skonto_percent_bp
+              ? `${String(customer.skonto_percent_bp / 100).replace('.', ',')} % in ${customer.skonto_days} Tagen`
+              : '–'}
+        </div>
         {original && (
           <div>
             <label>Bezieht sich auf</label>

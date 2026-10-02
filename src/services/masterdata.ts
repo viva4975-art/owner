@@ -22,6 +22,7 @@ export async function getSeller(sql: Sql): Promise<SellerSnapshot> {
     registerNumber: c.register_number,
     managingDirector: c.managing_director,
     phone: c.phone,
+    fax: c.fax,
     email: c.email,
     website: c.website,
     bankAccounts: c.bank_accounts as BankAccount[],
@@ -48,6 +49,8 @@ export interface Customer {
   invoice_emails: string[];
   invoice_format: InvoiceFormat;
   payment_terms_days: number;
+  skonto_percent_bp: number | null;
+  skonto_days: number | null;
   contact_name: string | null;
   contact_email: string | null;
   contact_phone: string | null;
@@ -88,6 +91,21 @@ export const customerInput = z
     ),
     invoice_format: z.enum(['pdf', 'zugferd', 'xrechnung']),
     payment_terms_days: z.coerce.number().int().min(0).max(365),
+    // Skonto in Prozent ("3" oder "2,5") → Basispunkte; leer = kein Skonto
+    skonto_percent_bp: z.preprocess(
+      (v) =>
+        typeof v === 'string' && v.trim() !== '' ? Math.round(Number(v.replace(',', '.')) * 100) : null,
+      z
+        .number()
+        .int('Skonto: max. 2 Nachkommastellen')
+        .min(1, 'Skonto muss größer 0 sein')
+        .max(1000, 'Skonto max. 10 %')
+        .nullable(),
+    ),
+    skonto_days: z.preprocess(
+      (v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : null),
+      z.number().int().min(1).max(90).nullable(),
+    ),
     contact_name: optText,
     contact_email: z.preprocess(emptyToNull, z.email('Ungültige Kontakt-E-Mail').nullable().default(null)),
     contact_phone: optText,
@@ -96,6 +114,14 @@ export const customerInput = z
   .refine((c) => c.invoice_format !== 'xrechnung' || !!c.leitweg_id, {
     message: 'XRechnung braucht eine Leitweg-ID',
     path: ['leitweg_id'],
+  })
+  .refine((c) => (c.skonto_percent_bp === null) === (c.skonto_days === null), {
+    message: 'Skonto: Prozent und Tage bitte zusammen angeben (oder beide leer)',
+    path: ['skonto_days'],
+  })
+  .refine((c) => c.skonto_days === null || c.skonto_days < c.payment_terms_days, {
+    message: 'Skontofrist muss kürzer als das Zahlungsziel sein',
+    path: ['skonto_days'],
   });
 
 export type CustomerInput = z.infer<typeof customerInput>;
@@ -190,6 +216,7 @@ export interface SiteService {
   valid_to: string | null;
   active: boolean;
   sort_order: number;
+  note: string | null;
 }
 
 export const serviceInput = z.object({
@@ -217,6 +244,7 @@ export const serviceInput = z.object({
   vat_rate_bp: z.coerce.number().int().min(1, 'Steuersatz 0 % ist im Prototyp nicht freigegeben').max(10000),
   valid_from: z.iso.date(),
   valid_to: z.preprocess(emptyToNull, z.iso.date().nullable().default(null)),
+  note: optText,
 });
 
 export async function listServices(sql: Sql, siteId: string) {
@@ -242,6 +270,7 @@ export async function saveService(
     vat_rate_bp: input.vat_rate_bp,
     valid_from: input.valid_from,
     valid_to: input.valid_to,
+    note: input.note,
   };
   await sql.begin(async (tx) => {
     await tx`insert into app.site_services ${tx({ id, ...row })}
@@ -293,4 +322,25 @@ export async function buildBuyerSnapshot(
         }
       : null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Nummernvorschläge im Fortytools-Schema
+// ---------------------------------------------------------------------------
+
+/** Nächste freie Kundennummer: fünfstellig ab 20000 (Fortytools: 20002, 20207 …). */
+export async function suggestCustomerNo(sql: Sql): Promise<string> {
+  const [r] = await sql<{ n: string | null }[]>`
+    select max(customer_no::bigint)::text as n from app.customers where customer_no ~ '^[0-9]+$'`;
+  return String(Math.max(Number(r?.n ?? 0) + 1, 20000));
+}
+
+/** Nächste Objektnummer: Kundennummer + zweistellig (Kunde 20002 → 2000201, 2000202 …). */
+export async function suggestSiteNo(sql: Sql, customerId: string): Promise<string | null> {
+  const c = await getCustomer(sql, customerId);
+  if (!c || !/^[0-9]+$/.test(c.customer_no)) return null;
+  const [r] = await sql<{ n: number | null }[]>`
+    select max(substr(site_no, ${c.customer_no.length + 1})::int) as n from app.sites
+     where customer_id = ${customerId} and site_no ~ ${'^' + c.customer_no + '[0-9]{2}$'}`;
+  return `${c.customer_no}${String((r?.n ?? 0) + 1).padStart(2, '0')}`;
 }

@@ -37,6 +37,8 @@ const skip = (k) =>
   /^\/(api|static|dateien)\//.test(k) ||
   /\.(csv)$/.test(k) ||
   /pruefen=1/.test(k) ||
+  k.startsWith('/m/sprache') || // ändert die Sprache des Mitarbeiters
+  k.startsWith('/anmelden') ||
   k.startsWith('/health') ||
   /\/vorschau\.pdf/.test(k);
 
@@ -46,13 +48,30 @@ const pdfs = {}; // key → base64
 const pdfKinds = new Set();
 const variantRoots = new Set(); // nur neu angelegte Editoren bekommen Auswahl-Varianten (Kunde → Objekt)
 let css = '';
-const queue = ['/'];
+// Handy-Ansicht als Beispiel-Mitarbeiter (Demo-Daten: Personalnummer 1001, PIN 4821)
+const [DEMO_PN, DEMO_PIN] = (process.env.DEMO_MOBILE ?? '1001:4821').split(':');
+await ctx.request.post(B + '/m/anmelden', {
+  form: { personnel_no: DEMO_PN, pin: DEMO_PIN, next: '/m' },
+  headers: { Origin: B },
+});
+const styles = []; // verschiedene Seiten-Stile (Büro, Handy)
+const SEEDS = ['/', '/m', '/m/nachtrag', '/m/abwesenheit'];
+const queue = [...SEEDS];
+const patternCount = {};
+const PER_PATTERN = Number(process.env.DEMO_PER_PATTERN ?? 6);
 const seen = new Set();
 
 while (queue.length && Object.keys(pages).length < MAX_PAGES) {
   const k = queue.shift();
   if (seen.has(k) || skip(k)) continue;
   seen.add(k);
+  // je Seitentyp nur einige Beispiele (sonst z. B. jede einzelne Zeiterfassung oder jede Woche)
+  const pattern = k
+    .replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, ':id')
+    .replace(/\?.*/, (q) => (q.includes('typ=') ? q : '?'));
+  patternCount[pattern] = (patternCount[pattern] ?? 0) + 1;
+  const isDoc = /\.pdf$/.test(k.split('?')[0]) || k.startsWith('/dokumente/');
+  if (patternCount[pattern] > PER_PATTERN && !SEEDS.includes(k) && !isDoc) continue;
   if (/\.pdf$/.test(new URL(k, B).pathname) || k.startsWith('/dokumente/')) {
     const kind = k.startsWith('/dokumente/') ? 'rechnung' : k.includes('angebot') ? 'angebot' : 'mahnung';
     if (Object.keys(pdfs).length >= MAX_PDFS) continue;
@@ -129,7 +148,9 @@ while (queue.length && Object.keys(pages).length < MAX_PAGES) {
     return { links, variants, style, title: document.title, body: document.body.innerHTML };
   }, withVariants);
   css ||= data.style;
-  pages[finalKey] = { t: data.title, b: data.body };
+  let si = styles.indexOf(data.style);
+  if (si < 0) si = styles.push(data.style) - 1;
+  pages[finalKey] = { t: data.title, b: data.body, s: si };
   for (const h of [...data.links, ...data.variants]) {
     if (!h || !h.startsWith('/')) continue;
     const nk = keyOf(h);
@@ -197,12 +218,14 @@ const RUNTIME = String.raw`
     if (!r) {
       var b = D.pages['/'];
       document.body.innerHTML = b.b.replace(/__LOGO__/g, LOGO);
+      document.getElementById('demo-page-css').textContent = D.styles[b.s || 0];
       var m = document.querySelector('main');
       if (m) m.innerHTML = '<div class="card"><h2 style="margin-top:0">In der Klick-Demo nicht enthalten</h2><p>Diese Seite entsteht in der echten App erst durch eine Eingabe (z. B. nach dem Speichern). <a href="/">Zur Übersicht</a></p></div>';
     } else {
       var pg = D.pages[r];
       document.title = pg.t + ' (Demo)';
       document.body.innerHTML = pg.b.replace(/__LOGO__/g, LOGO);
+      document.getElementById('demo-page-css').textContent = D.styles[pg.s || 0];
     }
     var bar = document.createElement('div');
     bar.className = 'demo-bar';
@@ -273,10 +296,10 @@ const DEMO_CSS = `
 .demo-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1b1f24;color:#fff;padding:12px 18px;border-radius:8px;box-shadow:0 12px 32px rgba(0,0,0,.25);z-index:99;font-size:14px;max-width:90vw}
 `;
 
-const json = JSON.stringify({ pages, alias, pdfs }).replace(/</g, '\\u003c');
+const json = JSON.stringify({ pages, alias, pdfs, styles: styles.map(embed) }).replace(/</g, '\\u003c');
 // DEMO_FRAGMENT=1: ohne <html>/<head>/<body> (für Veröffentlichung als Link, dort wird das Gerüst ergänzt)
 const head = `<title>Viva-Deluxe Klick-Demo</title>
-<style>${embed(css)}${DEMO_CSS}</style>`;
+<style id="demo-page-css">${embed(css)}</style><style>${DEMO_CSS}</style>`;
 const body = `<p style="padding:24px">Lade Demo …</p>
 <script id="demo-data" type="application/json">${json}</script>
 <script>${RUNTIME}</script>`;

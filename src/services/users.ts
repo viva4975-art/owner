@@ -210,20 +210,33 @@ export async function authenticate(sql: Sql, login: string, password: string): P
 
 /** Erster Start: Admin aus APP_BASIC_AUTH anlegen (Passwort danach unter „Mein Konto“ ändern). */
 export async function ensureBootstrapAdmin(sql: Sql, basicAuth: string) {
-  if ((await countUsers(sql)) > 0) return false;
+  if (await hasActiveAdmin(sql)) return false;
   const [login, ...pw] = basicAuth.split(':');
   const password = pw.join(':');
   const id = randomUUID();
   const h = await hash(password);
+  let created = false;
   await sql.begin(async (tx) => {
-    const [again] = await tx`select 1 from app.user_accounts limit 1`;
-    if (again) return;
+    await tx`select pg_advisory_xact_lock(hashtext('bootstrap-admin'))`;
+    if (await hasActiveAdmin(tx as unknown as Sql)) return;
+    const [taken] = await tx`select 1 from app.user_accounts where login = ${login!.toLowerCase()}`;
+    if (taken)
+      throw new Error(
+        `Kein aktiver Admin vorhanden und Benutzername „${login}“ ist belegt – bitte in der Datenbank prüfen`,
+      );
     await tx`insert into auth.users (id, email) values (${id}, null)`;
     await tx`insert into app.profiles (user_id, display_name, role) values (${id}, ${login!.charAt(0).toUpperCase() + login!.slice(1)}, 'admin')`;
     await tx`insert into app.user_accounts (id, login, password_hash, must_change_password, created_by)
              values (${id}, ${login!.toLowerCase()}, ${h}, false, 'system')`;
+    created = true;
   });
-  return true;
+  return created;
+}
+
+async function hasActiveAdmin(sql: Sql) {
+  const [r] = await sql`
+    select 1 from app.user_accounts a join app.profiles p on p.user_id = a.id where p.role = 'admin' and a.active limit 1`;
+  return !!r;
 }
 
 /** Objekte, die eine Objektleitung sehen darf (null = alle). */

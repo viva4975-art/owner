@@ -55,9 +55,10 @@ createdb viva_demo                                   # eigene Demo-Datenbank, ni
 # .env.demo = Kopie von .env.dev mit DATABASE_URL=…/viva_demo, PORT=3001, ARCHIVE_DIR/FILES_DIR=./var/demo-…
 npx tsx --env-file=.env.demo src/scripts/migrate.ts
 npx tsx --env-file=.env.demo src/scripts/seed.ts --demo
-npx tsx --env-file=.env.demo src/scripts/demo-data.ts  # Rechnungen, Storno, Zahlung, Mahnung, Personal (nur DB-Name *demo*)
+npx tsx --env-file=.env.demo src/scripts/demo-data.ts  # Rechnungen, Storno, Mahnung, Personal, Zeiten, Einkauf, Benutzer (nur DB-Name *demo*)
 npx tsx --env-file=.env.demo src/server.ts &          # Demo-Instanz auf Port 3001
 node e2e/klick-demo.mjs                               # → var/klick-demo/viva-deluxe-klick-demo.html
+# Handy-Ansicht in der Demo: Personalnummer 1001 / PIN 4821 (nur Demo-Daten)
 ```
 
 Die Datei enthält alle Seiten mit Beispieldaten; Speichern, Versenden und Hochladen zeigen nur einen Hinweis.

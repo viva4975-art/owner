@@ -16,7 +16,16 @@ import {
 import { addAttachment } from '../services/workflow.js';
 import { type Ctx, UUID } from './app.js';
 
-const LINK_TYPES = ['offer', 'invoice', 'customer', 'site', 'employee', 'supplier'] as const;
+const LINK_TYPES = [
+  'offer',
+  'invoice',
+  'customer',
+  'site',
+  'employee',
+  'supplier',
+  'incoming_invoice',
+  'purchase_order',
+] as const;
 /** Anlagen, die per E-Mail mit der Rechnung rausgehen, dürfen nicht zu groß werden. */
 const INVOICE_ATTACHMENT_MAX = 20 * 1024 * 1024;
 

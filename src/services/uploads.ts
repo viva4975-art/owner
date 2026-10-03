@@ -43,7 +43,15 @@ export interface FileRow {
 }
 
 export type LinkTarget = {
-  type: 'offer' | 'invoice' | 'customer' | 'site' | 'employee' | 'supplier';
+  type:
+    | 'offer'
+    | 'invoice'
+    | 'customer'
+    | 'site'
+    | 'employee'
+    | 'supplier'
+    | 'incoming_invoice'
+    | 'purchase_order';
   id: string;
 };
 

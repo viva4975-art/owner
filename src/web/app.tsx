@@ -18,6 +18,7 @@ import { registerDunningRoutes } from './routes-dunning.js';
 import { registerInventoryRoutes } from './routes-inventory.js';
 import { registerOfferRoutes } from './routes-offers.js';
 import { registerPlanningRoutes } from './routes-planning.js';
+import { registerPurchasingRoutes } from './routes-purchasing.js';
 import { registerTimeRoutes } from './routes-time.js';
 
 export const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
@@ -167,6 +168,7 @@ export function createApp(deps: Deps) {
   registerInventoryRoutes(ctx);
   registerTimeRoutes(ctx);
   registerPlanningRoutes(ctx);
+  registerPurchasingRoutes(ctx);
 
   app.notFound((c) =>
     page(

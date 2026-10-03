@@ -104,6 +104,9 @@ Testadresse.
 - [ ] Mit Steuerberater klären: Belegart 384 für Storno/Korrektur; Bedarf § 13b (Reverse Charge)
 - [ ] Branchen-Mindestlohn Gebäudereinigung (aktueller Wert) unter Zeiterfassung → Einstellungen eintragen
 - [ ] Übersetzungen der Handy-Ansicht (ro, tr, pl, hr, bg) von Muttersprachlern im Team gegenlesen lassen
+- [ ] Steuerberater: DATEV Berater-/Mandantennummer, Kontenrahmen (SKR03/04), BU-Schlüssel für § 13b-Eingangsrechnungen,
+      Behandlung Schlussrechnung/Abschläge und Skonto; ersten Testexport gemeinsam prüfen
+- [ ] Lohnzuschlag für die Nachkalkulation (Vorschlag 45 %) mit Steuerberater/Lohnbüro festlegen
 - [ ] Mahngebühren/Verzugspauschale (40 € § 288 Abs. 5 BGB) mit Steuerberater/Anwalt festlegen
 - [ ] Je Behörde klären: nimmt sie XRechnung per E-Mail an oder nur über ein Portal (ZRE/OZG-RE, Peppol)?
 
@@ -116,6 +119,9 @@ Testadresse.
   Verfahren (0 % + Pflichthinweis). Im Prototyp bewusst gesperrt (0 % wird abgelehnt).
 - **Archiv:** Supabase Storage kennt kein Object Lock. Für 10 Jahre revisionssichere Aufbewahrung (GoBD)
   zusätzlich S3-kompatiblen Speicher mit Object Lock (Compliance-Modus) in Deutschland/EU nutzen.
+- **§ 13b bei Nachunternehmern:** Reinigungsleistungen von Subunternehmern an uns (selbst Gebäudereiniger) → wir
+  schulden die Umsatzsteuer. Eingangsrechnungen dafür ohne USt erfassen (Kennzeichen „§ 13b“), Buchung über
+  BU-Schlüssel – mit Steuerberater abstimmen.
 - **PDF/A-3:** ZUGFeRD-Dateien sind KoSIT-geprüft (XML); die PDF/A-Konformität ist noch nicht mit
   veraPDF geprüft.
 
@@ -236,3 +242,17 @@ Testadresse.
   - Bekannte Grenze: QR-Code kann abfotografiert werden (Anwesenheit nicht bewiesen) – später optional
     Standort oder NFC. Nachtschicht über Mitternacht im Einsatzplan: als zwei Einsätze anlegen.
   - Tests: 133 Unit-/DB-Tests, Browser-Test `npm run e2e:zeit` (24 Prüfungen, Handy + Büro).
+- 2026-10-03: Phase 3 Teil 2 – Einkauf, Zahlungslauf, DATEV, Nachkalkulation:
+  - Bestellungen `BE-JJJJ-NNNN` (Nummernkreis je Jahr), PDF auf Briefpapier, Wareneingang bucht Lager einmalig
+    und aktualisiert den EK. „Nachbestellen“ direkt aus dem Artikel.
+  - Rechnungseingang: Dublettenschutz (Lieferant + Rechnungsnummer eindeutig), USt-Plausibilität, § 13b-Kennzeichen,
+    Kostenart + Objekt + Leistungsmonat, Beleg-Upload (write-once), Freigabe „sachlich und rechnerisch richtig“.
+  - Zahlungslauf: nur freigegebene Rechnungen, Skonto bis Skontodatum (Cent-genau), SEPA pain.001.001.09
+    (DK-Zeichensatz, IBAN-Prüfziffer), Datei unveränderbar archiviert, jede Rechnung höchstens einmal (DB-Index),
+    Rechnungen danach „bezahlt“ und gesperrt.
+  - DATEV: Buchungsstapel EXTF 700 (Windows-1252, nicht festgeschrieben) mit Ausgangsrechnungen je Steuersatz,
+    Zahlungseingängen, Eingangsrechnungen (BU 9/8, § 13b-Schlüssel einstellbar), Zahlungsausgängen. Debitor =
+    Kundennummer, Kreditor = Lieferantennummer. Fälle zum Klären (Schlussrechnung, Skonto, § 13b) als Hinweisliste.
+  - Nachkalkulation je Objekt/Monat: Erlös − Ist-Stunden × Lohn × (1 + Zuschlag) − Material − Nachunternehmer −
+    Sonstiges; Soll-/Ist-Stunden, Erlös je Stunde, Ampel gegen Ziel-Deckungsbeitrag.
+  - Tests: 142 Unit-/DB-Tests; Browser-Test `npm run e2e:einkauf` (14 Prüfungen).

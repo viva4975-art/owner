@@ -20,7 +20,8 @@
     "kosit": "./scripts/kosit.sh",
     "e2e": "node e2e/navigation.e2e.mjs",
     "e2e:module": "node e2e/modules.e2e.mjs",
-    "e2e:zeit": "node e2e/zeit.e2e.mjs"
+    "e2e:zeit": "node e2e/zeit.e2e.mjs",
+    "e2e:einkauf": "node e2e/einkauf.e2e.mjs"
   },
   "repository": {
     "type": "git",

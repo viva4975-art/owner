@@ -164,12 +164,12 @@ export async function seedDemoModules(sql: Sql) {
   }
   await sql`
     insert into app.suppliers (id, supplier_no, name, kind, street, postal_code, city, email, phone, contact_name,
-                               payment_terms_days, exemption_valid_until, clearance_valid_until)
+                               payment_terms_days, exemption_valid_until, clearance_valid_until, iban, bic)
     values
       (${D(21)}, '70001', 'DEMO Reinigungsbedarf Süd GmbH', 'lieferant', 'Gewerbering 4', '85748', 'Garching',
-       'bestellung@reinigungsbedarf.example', '089 1234567', 'Herr Muster', 14, null, null),
+       'bestellung@reinigungsbedarf.example', '089 1234567', 'Herr Muster', 14, null, null, 'DE89370400440532013000', 'COBADEFFXXX'),
       (${D(22)}, '70002', 'DEMO Glas & Fassade Service UG', 'nachunternehmer', 'Seestraße 9', '82319', 'Starnberg',
-       'info@glasfassade.example', '08151 98765', 'Frau Beispiel', 30, ${plus(20)}, ${plus(120)})
+       'info@glasfassade.example', '08151 98765', 'Frau Beispiel', 30, ${plus(20)}, ${plus(120)}, 'DE02120300000000202051', null)
     on conflict (id) do nothing`;
   await sql`
     insert into app.articles (id, article_no, name, unit, stock_milli, min_stock_milli, supplier_id, purchase_price_cents)

@@ -247,9 +247,9 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     label: 'Lieferanten',
     items: [
       { label: 'Lieferanten & Nachunternehmer', href: '/lieferanten' },
-      { label: 'Bestellungen (BE-JJJJ-NNNN)', href: '/geplant/bestellungen', soon: true },
-      { label: 'Rechnungseingang', href: '/geplant/rechnungseingang', soon: true },
-      { label: 'Zahlungslauf SEPA', href: '/geplant/zahlungslauf', soon: true },
+      { label: 'Bestellungen (BE-JJJJ-NNNN)', href: '/bestellungen' },
+      { label: 'Rechnungseingang', href: '/rechnungseingang' },
+      { label: 'Zahlungslauf SEPA', href: '/zahlungslauf' },
     ],
   },
   {
@@ -291,7 +291,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     label: 'Transfer',
     items: [
       { label: 'Export Lexware Lohn (Stammdaten)', href: '/personal/export.csv' },
-      { label: 'DATEV-Export', href: '/geplant/datev', soon: true },
+      { label: 'DATEV-Export', href: '/datev' },
       { label: 'Import aus Fortytools', href: '/geplant/import', soon: true },
     ],
   },
@@ -300,7 +300,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     label: 'Auswertungen',
     items: [
       { label: 'Netto-Umsatz je Monat', href: '/auswertungen/umsatz' },
-      { label: 'Nachkalkulation je Objekt', href: '/geplant/nachkalkulation', soon: true },
+      { label: 'Nachkalkulation je Objekt', href: '/auswertungen/nachkalkulation' },
     ],
   },
 ];

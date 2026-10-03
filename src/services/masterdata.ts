@@ -57,6 +57,8 @@ export interface Customer {
   contact_phone: string | null;
   notes: string | null;
   active: boolean;
+  status: 'kunde' | 'interessent';
+  dunning_block: boolean;
   version: number;
 }
 
@@ -112,6 +114,8 @@ export const customerInput = z
     contact_email: z.preprocess(emptyToNull, z.email('Ungültige Kontakt-E-Mail').nullable().default(null)),
     contact_phone: optText,
     notes: optText,
+    status: z.enum(['kunde', 'interessent']).default('kunde'),
+    dunning_block: z.preprocess((v) => v === 'on' || v === 'true' || v === true, z.boolean()),
   })
   .refine((c) => c.invoice_format !== 'xrechnung' || !!c.leitweg_id, {
     message: 'XRechnung braucht eine Leitweg-ID',

@@ -42,7 +42,22 @@ Ohne Docker: Postgres selbst bereitstellen und den Validator mit `npm run kosit`
 npm run check        # Typecheck + Lint + Format + alle Tests
 npm test             # nur Tests
 npm run e2e          # Browser-Test: Zurück/Vor, Eingaben behalten, zwei Tabs (Server muss laufen, legt Testdaten an)
+npm run e2e:module   # Browser-Test: Angebot + 300-MB-ZIP mit Abbruch/Fortsetzen, Zuschlag, Mahnwesen, Inventar
 ```
+
+### Klick-Demo bauen (eine HTML-Datei zum Durchklicken, offline)
+
+```bash
+createdb viva_demo                                   # eigene Demo-Datenbank, nie die echte
+# .env.demo = Kopie von .env.dev mit DATABASE_URL=…/viva_demo, PORT=3001, ARCHIVE_DIR/FILES_DIR=./var/demo-…
+npx tsx --env-file=.env.demo src/scripts/migrate.ts
+npx tsx --env-file=.env.demo src/scripts/seed.ts --demo
+npx tsx --env-file=.env.demo src/scripts/demo-data.ts  # Rechnungen, Storno, Zahlung, Mahnung, Personal (nur DB-Name *demo*)
+npx tsx --env-file=.env.demo src/server.ts &          # Demo-Instanz auf Port 3001
+node e2e/klick-demo.mjs                               # → var/klick-demo/viva-deluxe-klick-demo.html
+```
+
+Die Datei enthält alle Seiten mit Beispieldaten; Speichern, Versenden und Hochladen zeigen nur einen Hinweis.
 
 Die Tests laufen gegen eine echte Postgres-Datenbank (`viva_test`, wird bei jedem Lauf neu aufgebaut) und
 den echten KoSIT-Validator. Sind diese lokal nicht erreichbar, werden die betroffenen Tests übersprungen;
@@ -52,6 +67,17 @@ Abgedeckt u. a.: lückenloser Nummernkreis auch bei gleichzeitigem Ausstellen, k
 Fehlern, Unveränderbarkeit (Datenbank-Trigger), Storno Cent-genau, einmaliges Stornieren, Abschläge nur
 einmal verrechenbar, Monatslauf ohne Dubletten, Versand genau einmal (auch bei dreifachem Klick),
 Rechnung/Storno/Abschlag/Schluss als XRechnung und ZUGFeRD KoSIT-gültig, Row Level Security.
+
+## Module (Stand Prototyp)
+
+| Bereich     | Was geht                                                                                                                                                                                                                                                                                                            |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Angebote    | Anlegen mit Positionen (einmalig / monatlich), Vergabe-Nr., Plattform, Abgabefrist (Ampel auf Startseite), PDF auf Briefpapier, Status Entwurf → abgegeben → Zuschlag/Absage, Kopieren, bei Zuschlag Übernahme als Monatspauschalen ins Objekt oder als Rechnungsentwurf. Ausschreibungsunterlagen (ZIP) hochladen. |
+| Dateien     | Upload in 8-MB-Stücken, 4 parallel, Wiederholung bei Abbruch, Fortsetzen nach Neuladen (gleiche Datei erneut wählen), SHA-256-Prüfsumme, danach unveränderbar. Grenze `UPLOAD_MAX_BYTES` (Standard 5 GB), Ablage in `FILES_DIR`. Rechnungsanlagen max. 20 MB (gehen per Mail mit).                                  |
+| Mahnwesen   | Vorschläge aus überfälligen offenen Posten, 3 Stufen mit Fristen/Gebühren/Texten (einstellbar), Mahnsperre je Kunde, PDF mit GiroCode, Archiv, Versand genau einmal.                                                                                                                                                |
+| Lieferanten | Lieferanten und Nachunternehmer, Ablauf Freistellungsbescheinigung § 48b / Unbedenklichkeit mit Ampel, Nachweise als Dateien.                                                                                                                                                                                       |
+| Inventar    | Artikel mit Bestand und Nachbestellliste, Buchungen (Zugang/Abgang/Inventur) unveränderbar; Geräte mit Prüfterminen (DGUV V3); Schlüsselbuch mit Ausgabe-/Rückgabeprotokoll.                                                                                                                                        |
+| Kunden      | zusätzlich Status Interessent, Reiter Angebote / Mahnungen / Dokumente.                                                                                                                                                                                                                                             |
 
 ## Bedienung: Zurück/Vor und mehrere Tabs
 

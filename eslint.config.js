@@ -23,6 +23,19 @@ export default tseslint.config(
   },
   {
     files: ['e2e/**/*.mjs'],
-    languageOptions: { globals: { process: 'readonly', console: 'readonly' } },
+    // Browser-Tests: Node + Code, der in page.evaluate im Browser läuft; Zahlen nur für Anzeige-Vergleiche
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        Buffer: 'readonly',
+        document: 'readonly',
+        location: 'readonly',
+        FormData: 'readonly',
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
+      },
+    },
+    rules: { 'no-restricted-globals': 'off' },
   },
 );

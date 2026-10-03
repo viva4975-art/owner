@@ -28,6 +28,7 @@ import {
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { parseLines, str } from './forms.js';
 import { NEW_OPTIONS, PageHead, type Tab, Tabs } from './layout.js';
+import { FileArea } from './files.js';
 import { PaymentsSection } from './pages-hr-finance.js';
 import {
   CorrectionEditor,
@@ -310,6 +311,16 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
           deliveries={deliveries}
           preflight={pre}
           redirectNote={redirectNote}
+          uploadSlot={
+            <FileArea
+              link={{ type: 'invoice', id }}
+              files={[]}
+              category="Anlage zur Rechnung"
+              title="Anlagen hierher ziehen"
+              hint="Leistungsnachweise, Stundenzettel, Arbeitsscheine – PDF, PNG oder JPG bis 20 MB. Gehen mit der Rechnung per E-Mail raus."
+              maxBytes={20 * 1024 * 1024}
+            />
+          }
         />
         {inv.status === 'issued' && ['invoice', 'partial', 'final'].includes(inv.kind) && (
           <PaymentsSection

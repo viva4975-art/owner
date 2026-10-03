@@ -1,7 +1,7 @@
 import type { Sql } from '../db/client.js';
 
 export interface SearchHit {
-  type: 'Kunde' | 'Objekt' | 'Rechnung' | 'Mitarbeiter' | 'Kontakt';
+  type: 'Kunde' | 'Objekt' | 'Rechnung' | 'Angebot' | 'Mitarbeiter' | 'Kontakt' | 'Lieferant' | 'Artikel';
   label: string;
   sub: string | null;
   href: string;
@@ -12,7 +12,7 @@ export async function search(sql: Sql, q: string): Promise<SearchHit[]> {
   const term = q.trim();
   if (term.length < 3) return [];
   const like = `%${term.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
-  const [customers, sites, invoices, employees, contacts] = await Promise.all([
+  const [customers, sites, invoices, employees, contacts, offers, suppliers, articles] = await Promise.all([
     sql<{ id: string; label: string; sub: string }[]>`
       select id, customer_no || ' · ' || name as label, street || ', ' || postal_code || ' ' || city as sub
         from app.customers where name ilike ${like} or customer_no ilike ${like} or coalesce(leitweg_id, '') ilike ${like}
@@ -37,6 +37,17 @@ export async function search(sql: Sql, q: string): Promise<SearchHit[]> {
         from app.contacts k join app.customers c on c.id = k.customer_id
        where (coalesce(k.first_name, '') || ' ' || k.last_name || ' ' || coalesce(k.email, '')) ilike ${like}
        order by k.last_name limit 10`,
+    sql<{ id: string; label: string; sub: string }[]>`
+      select o.id, o.number || ' · ' || o.title as label, c.name as sub
+        from app.offers o join app.customers c on c.id = o.customer_id
+       where o.number ilike ${like} or o.title ilike ${like} or coalesce(o.tender_reference, '') ilike ${like}
+       order by o.created_at desc limit 10`,
+    sql<{ id: string; label: string; sub: string }[]>`
+      select id, supplier_no || ' · ' || name as label, case kind when 'nachunternehmer' then 'Nachunternehmer' else 'Lieferant' end as sub
+        from app.suppliers where name ilike ${like} or supplier_no ilike ${like} order by name limit 10`,
+    sql<{ id: string; label: string; sub: string }[]>`
+      select id, article_no || ' · ' || name as label, 'Artikel' as sub
+        from app.articles where name ilike ${like} or article_no ilike ${like} order by name limit 10`,
   ]);
   return [
     ...customers.map((r) => ({
@@ -51,6 +62,24 @@ export async function search(sql: Sql, q: string): Promise<SearchHit[]> {
       label: r.label,
       sub: r.sub,
       href: `/rechnungen/${r.id}`,
+    })),
+    ...offers.map((r) => ({
+      type: 'Angebot' as const,
+      label: r.label,
+      sub: r.sub,
+      href: `/angebote/${r.id}`,
+    })),
+    ...suppliers.map((r) => ({
+      type: 'Lieferant' as const,
+      label: r.label,
+      sub: r.sub,
+      href: `/lieferanten/${r.id}`,
+    })),
+    ...articles.map((r) => ({
+      type: 'Artikel' as const,
+      label: r.label,
+      sub: r.sub,
+      href: `/artikel/${r.id}`,
     })),
     ...employees.map((r) => ({
       type: 'Mitarbeiter' as const,

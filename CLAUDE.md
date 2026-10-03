@@ -102,6 +102,7 @@ Testadresse.
 - [ ] Fortytools: eine Rechnungsgruppe von innen zeigen (dort stecken vermutlich die Preise je Objekt)
 - [ ] Briefpapier ab 01.11.2026 (neue Adresse) als Datei vom Grafiker, 300 dpi
 - [ ] Mit Steuerberater klären: Belegart 384 für Storno/Korrektur; Bedarf § 13b (Reverse Charge)
+- [ ] Mahngebühren/Verzugspauschale (40 € § 288 Abs. 5 BGB) mit Steuerberater/Anwalt festlegen
 - [ ] Je Behörde klären: nimmt sie XRechnung per E-Mail an oder nur über ein Portal (ZRE/OZG-RE, Peppol)?
 
 ## Risiken (rechtlich/steuerlich)
@@ -198,3 +199,19 @@ Testadresse.
     Nachkalkulation, Benutzer/Rechte mit Supabase Auth, Fortytools-Import.
   - Hinweis Skonto: Zieht ein Kunde Skonto ab, mindert sich die Umsatzsteuer (§ 17 UStG) – Buchung
     „Skonto-Abzug“ ist vorhanden, die USt-Korrektur macht der Steuerberater (DATEV-Export folgt).
+- 2026-10-03: Konzern-Design, große Uploads, Angebote, Mahnwesen, Lieferanten, Inventar, Klick-Demo:
+  - Design: Schrift Inter (lokal eingebunden, keine Google-Abfrage), Lucide-Icons, weißer Kopf mit Logo + Suche,
+    Bordeaux-Menüleiste, Kennzahlen-Kacheln, Formularfuß. Icons werden als SVG-Text ausgegeben (hono/jsx-Eigenheit).
+  - Uploads: eigener fortsetzbarer Upload (8-MiB-Stücke, 4 parallel, Wiederholung, SHA-256, write-once in `FILES_DIR`).
+    300 MB im Browser-Test inkl. Abbruch/Fortsetzen geprüft. Live: Supabase Storage (TUS, ebenfalls fortsetzbar)
+    direkt vom Browser – Datenstrom dann nicht über unseren Server; Grenze im Supabase-Plan prüfen.
+  - Angebote: Nummernkreis `offer` ab 3843 (Fortytools-Stand bestätigen), Abgabefrist als Berliner Ortszeit,
+    nur Entwürfe änderbar, Übernahme ins Objekt idempotent (feste IDs aus Angebot + Position).
+    Interessenten = Kunden mit Status „interessent“ (werden bei Übernahme zu Kunden).
+  - Mahnwesen: Stufen in `dunning_settings` (Zahlungserinnerung 0 €, 1. Mahnung 5 €, letzte Mahnung 10 € –
+    Vorschlag, rechtlich abzustimmen), Mindestabstand 10 Tage, Gebühren ohne USt, Nummern `M-JJJJ-NNNN`,
+    PDF write-once im Archiv. Basiszinssatz bewusst nicht einprogrammiert.
+  - Lieferanten/Nachunternehmer mit § 48b- und Unbedenklichkeits-Fristen; Artikel/Bestand (Buchungen
+    append-only), Geräte mit Prüfterminen, Schlüsselbuch (Protokoll append-only).
+  - Klick-Demo: `e2e/klick-demo.mjs` sammelt alle Seiten einer Demo-Instanz in eine HTML-Datei (offline,
+    Speichern deaktiviert). Demo-Daten: `src/scripts/demo-data.ts` (läuft nur auf DB-Namen mit „demo“).

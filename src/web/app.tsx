@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono, type Context } from 'hono';
 import { basicAuth } from 'hono/basic-auth';
 import { csrf } from 'hono/csrf';
@@ -7,9 +9,13 @@ import { secureHeaders } from 'hono/secure-headers';
 import { BusinessError } from '../services/errors.js';
 import type { Deps } from '../services/workflow.js';
 import { Layout } from './layout.js';
+import { registerFileRoutes } from './routes-files.js';
 import { registerInvoiceRoutes } from './routes-invoices.js';
 import { registerMasterdataRoutes } from './routes-masterdata.js';
 import { registerModuleRoutes } from './routes-modules.js';
+import { registerDunningRoutes } from './routes-dunning.js';
+import { registerInventoryRoutes } from './routes-inventory.js';
+import { registerOfferRoutes } from './routes-offers.js';
 
 export const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 
@@ -33,6 +39,17 @@ export function createApp(deps: Deps) {
   const { env } = deps;
   const app = new Hono<AppEnv>();
   const [user, ...pw] = env.APP_BASIC_AUTH.split(':');
+
+  // Schrift, Logo: ohne Anmeldung, lange zwischenspeicherbar (keine Geheimnisse).
+  const STATIC_ROOT = fileURLToPath(new URL('../../assets/web/', import.meta.url));
+  app.use('/static/*', async (c, next) => {
+    await next();
+    if (c.res.status === 200) c.res.headers.set('Cache-Control', 'public, max-age=604800');
+  });
+  app.use(
+    '/static/*',
+    serveStatic({ root: STATIC_ROOT, rewriteRequestPath: (p) => p.replace(/^\/static/, '') }),
+  );
 
   // Referer nur innerhalb der App (nötig, um nach einem Eingabefehler ins Formular zurückzukehren).
   app.use(secureHeaders({ referrerPolicy: 'same-origin' }));
@@ -110,9 +127,13 @@ export function createApp(deps: Deps) {
   });
 
   const ctx: Ctx = { app, deps, page, back };
+  registerFileRoutes(ctx);
   registerModuleRoutes(ctx);
   registerMasterdataRoutes(ctx);
   registerInvoiceRoutes(ctx);
+  registerOfferRoutes(ctx);
+  registerDunningRoutes(ctx);
+  registerInventoryRoutes(ctx);
 
   app.notFound((c) =>
     page(

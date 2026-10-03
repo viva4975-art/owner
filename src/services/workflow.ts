@@ -182,7 +182,7 @@ export async function addAttachment(
 ) {
   const allowed = ['application/pdf', 'image/png', 'image/jpeg'];
   if (!allowed.includes(contentType)) throw new BusinessError('Erlaubt sind PDF, PNG und JPG');
-  if (bytes.byteLength > 15 * 1024 * 1024) throw new BusinessError('Anhang größer als 15 MB');
+  if (bytes.byteLength > 20 * 1024 * 1024) throw new BusinessError('Anhang größer als 20 MB');
   const data = await getInvoice(deps.sql, invoiceId);
   if (!data) throw new BusinessError('Rechnung nicht gefunden');
   const safe = filename.replace(/[^\w.\-äöüÄÖÜß ]+/g, '_').slice(0, 120) || 'anhang.pdf';

@@ -29,9 +29,14 @@ import {
   suggestCustomerNo,
   suggestSiteNo,
 } from '../services/masterdata.js';
+import { listDunnings } from '../services/dunning.js';
+import { listOffers } from '../services/offers.js';
 import { listOpenItems } from '../services/payments.js';
+import { listFiles } from '../services/uploads.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
-import { PageHead } from './layout.js';
+import { FileArea } from './files.js';
+import { PageHead, dateDe, euro } from './layout.js';
+import { OfferTable } from './pages-offers.js';
 import { ContactsPanel, NotesPanel, TaskBox, TaskForm } from './pages-crm.js';
 import { OpenItemsTable } from './pages-hr-finance.js';
 import { InvoiceTable } from './pages-invoices.js';
@@ -85,7 +90,11 @@ export function registerMasterdataRoutes({ app, deps, page, back }: Ctx) {
     return page(c, 'Kunden', 'kunden', <CustomerList customers={customers} letter={letter} q={q} />);
   });
 
-  app.get('/kunden/neu', (c) => c.redirect(`/kunden/${randomUUID()}/bearbeiten`));
+  app.get('/kunden/neu', (c) =>
+    c.redirect(
+      `/kunden/${randomUUID()}/bearbeiten${c.req.query('interessent') === '1' ? '?interessent=1' : ''}`,
+    ),
+  );
 
   const customerCounts = async (id: string): Promise<CustomerCounts> => {
     const [r] = await sql<CustomerCounts[]>`
@@ -94,7 +103,11 @@ export function registerMasterdataRoutes({ app, deps, page, back }: Ctx) {
              (select count(*)::int from app.invoices where customer_id = ${id} and status = 'issued') as invoices,
              (select count(*)::int from app.sites where customer_id = ${id}) as sites,
              (select count(*)::int from app.tasks where entity_type = 'customer' and entity_id = ${id} and status = 'open') as tasks,
-             (select count(*)::int from app.open_items where customer_id = ${id} and open_cents <> 0) as "openItems"`;
+             (select count(*)::int from app.open_items where customer_id = ${id} and open_cents <> 0) as "openItems",
+             (select count(*)::int from app.offers where customer_id = ${id}) as offers,
+             (select count(*)::int from app.dunnings where customer_id = ${id}) as dunnings,
+             (select count(*)::int from app.file_links l join app.files f on f.id = l.file_id
+               where l.entity_type = 'customer' and l.entity_id = ${id} and f.status = 'complete') as files`;
     return r!;
   };
 
@@ -152,6 +165,7 @@ export function registerMasterdataRoutes({ app, deps, page, back }: Ctx) {
             payment_terms_days: 30,
             invoice_format: 'zugferd',
             customer_no: await suggestCustomerNo(sql),
+            status: c.req.query('interessent') === '1' ? 'interessent' : 'kunde',
           }
         }
         isNew={!cust}
@@ -290,6 +304,76 @@ export function registerMasterdataRoutes({ app, deps, page, back }: Ctx) {
 
   app.get(`/kunden/:id{${UUID}}/offene-posten`, (c) =>
     customerPage(c, 'op', async (cust) => <OpenItemsTable items={await listOpenItems(sql, cust.id)} />),
+  );
+
+  app.get(`/kunden/:id{${UUID}}/angebote`, (c) =>
+    customerPage(c, 'angebote', async (cust) => (
+      <>
+        <div class="actions" style="margin-top:0">
+          <a class="btn sm" href={`/neu?typ=angebot&kunde=${cust.id}`}>
+            + Angebot für diesen Kunden
+          </a>
+        </div>
+        <OfferTable rows={await listOffers(sql, { customerId: cust.id })} showCustomer={false} />
+      </>
+    )),
+  );
+
+  app.get(`/kunden/:id{${UUID}}/mahnungen`, (c) =>
+    customerPage(c, 'mahnungen', async (cust) => {
+      const list = await listDunnings(sql, cust.id);
+      return (
+        <div class="tbl">
+          <table>
+            <thead>
+              <tr>
+                <th>Nr.</th>
+                <th>Stufe</th>
+                <th>Datum</th>
+                <th class="r">Betrag</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.length === 0 && (
+                <tr>
+                  <td colspan={5}>
+                    <div class="empty">
+                      Keine Mahnungen{cust.dunning_block ? ' – Mahnsperre gesetzt' : ''}.
+                    </div>
+                  </td>
+                </tr>
+              )}
+              {list.map((d) => (
+                <tr>
+                  <td>
+                    <a href={`/mahnungen/${d.id}`}>{d.number}</a>
+                  </td>
+                  <td>{d.title}</td>
+                  <td>{dateDe(d.issue_date)}</td>
+                  <td class="r">{euro(d.total_cents)}</td>
+                  <td>{d.status === 'versendet' ? 'Versendet' : 'Erstellt'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }),
+  );
+
+  app.get(`/kunden/:id{${UUID}}/dokumente`, (c) =>
+    customerPage(c, 'dokumente', async (cust) => (
+      <div class="card">
+        <h3>Verträge, Leistungsverzeichnisse, Schriftverkehr</h3>
+        <FileArea
+          link={{ type: 'customer', id: cust.id }}
+          files={await listFiles(sql, { type: 'customer', id: cust.id })}
+          category="Kundendokument"
+          maxBytes={deps.env.UPLOAD_MAX_BYTES}
+        />
+      </div>
+    )),
   );
 
   // ------------------------------------------------------------------ Objekte

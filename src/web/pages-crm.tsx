@@ -265,6 +265,15 @@ export const TaskForm: FC<{
 // Startseite (Aufbau wie Fortytools-Übersicht)
 // ---------------------------------------------------------------------------
 
+export interface DashboardTodo {
+  deadlines: { id: string; number: string; title: string; customer_name: string; days_left: number }[];
+  reorder: { id: string; name: string }[];
+  suppliers: { id: string; name: string }[];
+  devices: { id: string; name: string; next_inspection: string | null }[];
+  proposals: number;
+  unsentDunnings: number;
+}
+
 export const Dashboard: FC<{
   user: string;
   tasks: Task[];
@@ -277,13 +286,34 @@ export const Dashboard: FC<{
     permits: { id: string; name: string; residence_permit_until: string }[];
   };
   month: string;
-}> = ({ user, tasks, drafts, balances, unsent, hr, month }) => {
+  todo: DashboardTodo;
+}> = ({ user, tasks, drafts, balances, unsent, hr, month, todo }) => {
   const total = balances.reduce((s, b) => s + b.open_cents, 0n);
   return (
     <>
       <PageHead title={`Übersicht – ${user}`} create={{ options: NEW_OPTIONS, selected: 'rechnung' }} />
       <div class="cols">
         <div>
+          {todo.deadlines.length > 0 && (
+            <div class="card">
+              <h2 style="margin-top:0">
+                Abgabefristen Angebote <span class="cnt">(14 Tage)</span>
+              </h2>
+              {todo.deadlines.map((o) => (
+                <div class="person" style="justify-content:space-between">
+                  <div>
+                    <a href={`/angebote/${o.id}`}>
+                      <b>{o.number}</b> {o.title}
+                    </a>
+                    <div class="small mut">{o.customer_name}</div>
+                  </div>
+                  <span class={`badge ${o.days_left <= 7 ? 'err' : 'warn'}`}>
+                    {o.days_left === 0 ? 'heute' : `noch ${o.days_left} T.`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
           <div class="card">
             <TaskBox tasks={tasks} title="Aufgaben (7 Tage)" doneLink="/aufgaben?status=done" />
           </div>
@@ -299,6 +329,47 @@ export const Dashboard: FC<{
                   <a href={`/personal/${p.id}`}>{p.name}</a> – bis {dateDe(p.residence_permit_until)}
                 </div>
               ))}
+            </div>
+          )}
+          {(todo.reorder.length > 0 || todo.suppliers.length > 0 || todo.devices.length > 0) && (
+            <div class="card">
+              <h2 style="margin-top:0">Hinweise</h2>
+              {todo.reorder.length > 0 && (
+                <div style="margin-bottom:8px">
+                  <b>Nachbestellen:</b>{' '}
+                  {todo.reorder.map((a, i) => (
+                    <>
+                      {i > 0 && ', '}
+                      <a href={`/artikel/${a.id}`}>{a.name}</a>
+                    </>
+                  ))}{' '}
+                  <a class="small" href="/artikel?ansicht=nachbestellen">
+                    → Liste
+                  </a>
+                </div>
+              )}
+              {todo.suppliers.length > 0 && (
+                <div style="margin-bottom:8px">
+                  <b>Nachunternehmer-Nachweise laufen ab / fehlen:</b>{' '}
+                  {todo.suppliers.map((x, i) => (
+                    <>
+                      {i > 0 && ', '}
+                      <a href={`/lieferanten/${x.id}`}>{x.name}</a>
+                    </>
+                  ))}
+                </div>
+              )}
+              {todo.devices.length > 0 && (
+                <div>
+                  <b>Geräteprüfung fällig:</b>{' '}
+                  {todo.devices.map((d, i) => (
+                    <>
+                      {i > 0 && ', '}
+                      <a href={`/geraete/${d.id}/bearbeiten`}>{d.name}</a> ({dateDe(d.next_inspection)})
+                    </>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           <div class="card">
@@ -383,8 +454,18 @@ export const Dashboard: FC<{
                     </td>
                   </tr>
                   <tr>
-                    <td class="mut">–</td>
-                    <td class="mut">Mahnungen (bald)</td>
+                    <td>
+                      <b>{todo.unsentDunnings}</b>
+                    </td>
+                    <td>
+                      <a href="/mahnungen/liste">Mahnungen</a>
+                      {todo.proposals > 0 && (
+                        <span class="small mut">
+                          {' '}
+                          · <a href="/mahnungen">{todo.proposals} Mahnvorschläge</a>
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 </tbody>
               </table>

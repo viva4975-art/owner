@@ -24,6 +24,14 @@ const schema = z
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
     /** Archiv-Ablage: lokales Verzeichnis (dev/test) – später Supabase Storage / S3 mit Object Lock. */
     ARCHIVE_DIR: z.string().default('./var/archive'),
+    /** Ablage für hochgeladene Dateien (Ausschreibungs-ZIPs, Anlagen). Live: Supabase Storage. */
+    FILES_DIR: z.string().default('./var/files'),
+    /** Maximale Dateigröße für Uploads in Bytes (Standard 5 GiB). */
+    UPLOAD_MAX_BYTES: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(5 * 1024 ** 3),
     /** Im Test-/Dev-Betrieb gehen ALLE Mails nur an diese Adresse. */
     MAIL_TEST_RECIPIENT: z.email().optional(),
     MAIL_FROM: z.string().default('Viva-Deluxe Rechnungen <rechnung@viva-deluxe-reinigung.de>'),

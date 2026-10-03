@@ -1,4 +1,4 @@
-import type { FC } from 'hono/jsx';
+import type { Child, FC } from 'hono/jsx';
 import { KIND_TITLES, UNIT_LABELS } from '../domain/invoice/types.js';
 import type { InvoiceRow, LineRow } from '../services/invoices.js';
 import type { Customer, Site, SiteService } from '../services/masterdata.js';
@@ -96,6 +96,8 @@ export interface EditorLine {
   price: string;
   vat: string;
   src: string;
+  /** nur Angebote: '1' = monatlich wiederkehrend */
+  rec?: string;
 }
 
 export const toEditorLine = (l: LineRow): EditorLine => ({
@@ -108,7 +110,7 @@ export const toEditorLine = (l: LineRow): EditorLine => ({
   src: l.source_service_id ?? '',
 });
 
-const LineRowInputs: FC<{ l?: EditorLine }> = ({ l }) => (
+const LineRowInputs: FC<{ l?: EditorLine; recurring?: boolean | undefined }> = ({ l, recurring }) => (
   <tr>
     <td style="min-width:260px">
       <input name="desc" value={l?.desc ?? ''} placeholder="Leistung" />
@@ -145,6 +147,18 @@ const LineRowInputs: FC<{ l?: EditorLine }> = ({ l }) => (
         </option>
       </select>
     </td>
+    {recurring && (
+      <td style="width:130px">
+        <select name="rec" aria-label="Abrechnung">
+          <option value="0" selected={l?.rec !== '1'}>
+            einmalig
+          </option>
+          <option value="1" selected={l?.rec === '1'}>
+            monatlich
+          </option>
+        </select>
+      </td>
+    )}
     <td class="r ln" style="width:120px;padding-top:12px"></td>
     <td style="width:40px">
       <button type="button" class="btn sm sec del" title="Position entfernen">
@@ -154,7 +168,11 @@ const LineRowInputs: FC<{ l?: EditorLine }> = ({ l }) => (
   </tr>
 );
 
-export const LineEditor: FC<{ lines: EditorLine[]; services?: SiteService[] }> = ({ lines, services }) => (
+export const LineEditor: FC<{
+  lines: EditorLine[];
+  services?: SiteService[];
+  recurring?: boolean | undefined;
+}> = ({ lines, services, recurring }) => (
   <>
     <div class="tbl">
       <table id="lines" class="lines" data-lines>
@@ -165,19 +183,20 @@ export const LineEditor: FC<{ lines: EditorLine[]; services?: SiteService[] }> =
             <th>Einheit</th>
             <th class="r">Einzelpreis €</th>
             <th>USt</th>
+            {recurring && <th>Abrechnung</th>}
             <th class="r">Gesamt</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           {lines.map((l) => (
-            <LineRowInputs l={l} />
+            <LineRowInputs l={l} recurring={recurring} />
           ))}
         </tbody>
       </table>
     </div>
     <template id="line-tpl">
-      <LineRowInputs />
+      <LineRowInputs recurring={recurring} />
     </template>
     <div class="actions">
       <button type="button" class="btn sm sec" id="add-line">
@@ -409,6 +428,7 @@ export const InvoiceDetail: FC<{
   deliveries: DeliveryRow[];
   preflight: PreflightResult | null;
   redirectNote: string;
+  uploadSlot?: Child;
 }> = ({
   inv,
   lines,
@@ -421,6 +441,7 @@ export const InvoiceDetail: FC<{
   deliveries,
   preflight,
   redirectNote,
+  uploadSlot,
 }) => {
   const draft = inv.status === 'draft';
   const sent = deliveries.find((d) => d.status === 'sent');
@@ -678,23 +699,7 @@ export const InvoiceDetail: FC<{
           </tbody>
         </table>
       </div>
-      {!sent && (
-        <form
-          method="post"
-          action={`/rechnungen/${inv.id}/anlage`}
-          enctype="multipart/form-data"
-          class="actions"
-        >
-          <input
-            type="file"
-            name="file"
-            accept="application/pdf,image/png,image/jpeg"
-            required
-            style="max-width:340px"
-          />
-          <button class="btn sm sec">Anlage hinzufügen (Leistungsnachweis, Stundenzettel …)</button>
-        </form>
-      )}
+      {!sent && <div style="margin-top:12px">{uploadSlot}</div>}
 
       <h2>Versandprotokoll</h2>
       <div class="tbl">

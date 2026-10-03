@@ -17,11 +17,15 @@ import { BusinessError } from '../services/errors.js';
 import { listInvoices } from '../services/invoices.js';
 import { listSites } from '../services/masterdata.js';
 import { listBalances, listOpenItems } from '../services/payments.js';
+import { proposals } from '../services/dunning.js';
+import { listArticles, listDevices, supplierWarnings } from '../services/inventory.js';
+import { listOffers } from '../services/offers.js';
 import { search } from '../services/search.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { NEW_OPTIONS, PageHead } from './layout.js';
 import {
   Dashboard,
+  type DashboardTodo,
   NotesPanel,
   PlannedPage,
   PLANNED,
@@ -59,6 +63,31 @@ export function registerModuleRoutes({ app, deps, page, back }: Ctx) {
            and not exists (select 1 from app.invoice_deliveries d where d.invoice_id = i.id and d.status = 'sent')`,
       hrReminders(sql),
     ]);
+    const [offers, reorder, suppliers, devices, dun, unsentDunnings] = await Promise.all([
+      listOffers(sql, { status: ['entwurf'] }),
+      listArticles(sql, { reorder: true }),
+      supplierWarnings(sql),
+      listDevices(sql),
+      proposals(sql),
+      sql<{ n: number }[]>`select count(*)::int as n from app.dunnings where status = 'erstellt'`,
+    ]);
+    const todo: DashboardTodo = {
+      deadlines: offers
+        .filter((o) => o.days_left !== null && o.days_left >= 0 && o.days_left <= 14)
+        .map((o) => ({
+          id: o.id,
+          number: o.number,
+          title: o.title,
+          customer_name: o.customer_name,
+          days_left: o.days_left!,
+        }))
+        .sort((a, b) => a.days_left - b.days_left),
+      reorder,
+      suppliers,
+      devices: devices.filter((d) => d.active && d.days !== null && d.days <= 30),
+      proposals: dun.proposals.length,
+      unsentDunnings: unsentDunnings[0]!.n,
+    };
     return page(
       c,
       'Übersicht',
@@ -71,6 +100,7 @@ export function registerModuleRoutes({ app, deps, page, back }: Ctx) {
         unsent={unsent[0]!}
         hr={hr}
         month={lastMonth()}
+        todo={todo}
       />,
     );
   });
@@ -90,8 +120,12 @@ export function registerModuleRoutes({ app, deps, page, back }: Ctx) {
     switch (typ) {
       case 'rechnung':
         return c.redirect(`/rechnungen/${randomUUID()}/bearbeiten${qs({ kunde, objekt })}`);
+      case 'angebot':
+        return c.redirect(`/angebote/${randomUUID()}/bearbeiten${qs({ kunde, objekt })}`);
       case 'kunde':
         return c.redirect(`/kunden/${randomUUID()}/bearbeiten`);
+      case 'interessent':
+        return c.redirect(`/kunden/${randomUUID()}/bearbeiten?interessent=1`);
       case 'objekt':
         return c.redirect(`/objekte/${randomUUID()}/bearbeiten${qs({ kunde })}`);
       case 'mitarbeiter':

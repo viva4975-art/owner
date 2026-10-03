@@ -98,7 +98,14 @@ export const CustomerList: FC<{ customers: CustomerRow[]; letter: string | null;
               {customers.map((c) => (
                 <tr>
                   <td>
-                    {c.active ? <span class="badge ok">Kunde</span> : <span class="badge">inaktiv</span>}
+                    {!c.active ? (
+                      <span class="badge">inaktiv</span>
+                    ) : c.status === 'interessent' ? (
+                      <span class="badge info">Interessent</span>
+                    ) : (
+                      <span class="badge ok">Kunde</span>
+                    )}
+                    {c.dunning_block && <span class="badge warn">Mahnsperre</span>}
                   </td>
                   <td>{c.customer_no}</td>
                   <td>
@@ -136,6 +143,9 @@ export interface CustomerCounts {
   sites: number;
   tasks: number;
   openItems: number;
+  offers: number;
+  dunnings: number;
+  files: number;
 }
 
 export const CustomerShell: FC<{ c: Customer; counts: CustomerCounts; active: string; children?: Child }> = ({
@@ -156,9 +166,9 @@ export const CustomerShell: FC<{ c: Customer; counts: CustomerCounts; active: st
     { key: 'aufgaben', label: 'Aufgaben', href: `${base}/aufgaben`, count: counts.tasks },
     { key: 'op', label: 'Offene Posten', href: `${base}/offene-posten`, count: counts.openItems },
     { key: 'bearbeiten', label: 'Stammdaten bearbeiten', href: `${base}/bearbeiten` },
-    { key: 'x-angebote', label: 'Angebote (bald)', href: '/geplant/angebote' },
-    { key: 'x-mahnungen', label: 'Mahnungen (bald)', href: '/geplant/mahnungen' },
-    { key: 'x-dokumente', label: 'Dokumente (bald)', href: '/geplant/dokumente' },
+    { key: 'angebote', label: 'Angebote', href: `${base}/angebote`, count: counts.offers },
+    { key: 'mahnungen', label: 'Mahnungen', href: `${base}/mahnungen`, count: counts.dunnings },
+    { key: 'dokumente', label: 'Dokumente', href: `${base}/dokumente`, count: counts.files },
     { key: 'x-einsaetze', label: 'Einsätze (bald)', href: '/geplant/einsatzplanung' },
   ];
   return (
@@ -170,6 +180,7 @@ export const CustomerShell: FC<{ c: Customer; counts: CustomerCounts; active: st
           options: [
             ['aufgabe', 'Aufgabe'],
             ['rechnung', 'Rechnung'],
+            ['angebot', 'Angebot'],
             ['objekt', 'Objekt'],
             ['kontakt', 'Kontakt'],
           ],
@@ -367,6 +378,23 @@ export const CustomerForm: FC<{ id: string; c: Partial<Customer>; isNew: boolean
         <label for="is_public_authority" style="margin:0">
           Öffentlicher Auftraggeber
         </label>
+      </div>
+      <div class="chk">
+        <input type="checkbox" id="dunning_block" name="dunning_block" checked={!!c.dunning_block} />
+        <label for="dunning_block" style="margin:0">
+          Mahnsperre (keine Mahnvorschläge)
+        </label>
+      </div>
+      <div>
+        <label for="status">Status</label>
+        <select id="status" name="status">
+          <option value="kunde" selected={c.status !== 'interessent'}>
+            Kunde
+          </option>
+          <option value="interessent" selected={c.status === 'interessent'}>
+            Interessent (nur Angebote)
+          </option>
+        </select>
       </div>
     </div>
     <h2>Hauptansprechpartner</h2>

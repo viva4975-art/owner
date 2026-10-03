@@ -3,7 +3,12 @@ import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, type PDFFont, type PDFImage, type PDFPage, degrees, rgb } from '@cantoo/pdf-lib';
 import QRCode from 'qrcode';
 import { formatDateDe } from '../domain/invoice/calc.js';
-import { type InvoiceDocument, KIND_TITLES } from '../domain/invoice/types.js';
+import {
+  type BuyerSnapshot,
+  type InvoiceDocument,
+  KIND_TITLES,
+  type SellerSnapshot,
+} from '../domain/invoice/types.js';
 import { type Cents, formatEuro } from '../domain/money/money.js';
 import { paymentTermsHuman, percentToXml } from '../einvoice/mapping.js';
 
@@ -251,6 +256,43 @@ class Doc {
     }
   }
 
+  /** GiroCode (EPC-QR) links an der aktuellen Position, mit Hinweistext. */
+  girocode(payload: string) {
+    const qr = QRCode.create(payload, { errorCorrectionLevel: 'M' });
+    const n = qr.modules.size;
+    const size = 52;
+    const cell = size / n;
+    const top = this.y + 2;
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        if (qr.modules.get(r, c)) {
+          this.page.drawRectangle({
+            x: LEFT + c * cell,
+            y: PAGE_H - top - (r + 1) * cell,
+            width: cell + 0.05,
+            height: cell + 0.05,
+            color: rgb(0, 0, 0),
+          });
+        }
+      }
+    }
+    this.text('Einfach Code mit Banking-App scannen und direkt überweisen.', LEFT + size + 3, top + size - 1);
+    this.y = top + size + 10;
+  }
+
+  /** Absenderzeile + Anschriftfeld (Fortytools: 141,7 / 157,4 pt). */
+  address(s: SellerSnapshot, b: BuyerSnapshot) {
+    this.text(`${s.legalName} | ${s.street} | ${s.postalCode} ${s.city}`, LEFT, 148, 7);
+    const addr = [
+      b.name,
+      b.name2,
+      b.contactName ? `z. Hd. ${b.contactName}` : null,
+      b.street,
+      `${b.postalCode} ${b.city}`,
+    ].filter((x): x is string => !!x);
+    addr.forEach((l, i) => this.text(l, LEFT, 165.5 + i * 13.2, 10));
+  }
+
   finish() {
     for (const f of this.pageLabels) f(this.pages.length);
   }
@@ -267,7 +309,19 @@ const DATE_LABEL: Record<InvoiceDocument['kind'], string> = {
 /** Erzeugt die sichtbare Rechnungs-PDF (Grundlage auch für ZUGFeRD). */
 export async function renderInvoicePdf(
   doc: InvoiceDocument,
-  opts: { watermark?: string } = {},
+  opts: {
+    watermark?: string;
+    /** Für Angebote u. Ä.: eigener Titel statt „Rechnung“ */
+    title?: string;
+    /** Infoblock rechts im Titelbalken (ersetzt den Rechnungs-Infoblock) */
+    info?: [string, string][];
+    /** Text unter den Summen (ersetzt die Zahlungsbedingung) */
+    terms?: string;
+    /** Schlusssatz (ersetzt „Wir bitten um Überweisung …“) */
+    closing?: string;
+    /** GiroCode anzeigen (Standard: bei offenen Rechnungsbeträgen) */
+    qr?: boolean;
+  } = {},
 ): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
@@ -276,7 +330,7 @@ export async function renderInvoicePdf(
   const bold = await pdf.embedFont(assets.bold, { subset: false });
   const letterhead = await pdf.embedJpg(assets.letterhead);
 
-  const title = `${KIND_TITLES[doc.kind]} ${doc.number}`;
+  const title = opts.title ?? `${KIND_TITLES[doc.kind]} ${doc.number}`;
   pdf.setTitle(title);
   pdf.setAuthor(doc.seller.legalName);
   pdf.setSubject(`${title} – ${doc.buyer.name}`);
@@ -291,25 +345,18 @@ export async function renderInvoicePdf(
   const w = new Doc(pdf, regular, bold, letterhead, title, opts.watermark);
 
   // ---------------------------------------------------------------- Seite 1: Kopf
-  const info: [string, string][] = [
+  const info: [string, string][] = opts.info ?? [
     [DATE_LABEL[doc.kind], formatDateDe(doc.issueDate)],
     ['Kundennummer', b.customerNo],
   ];
-  if (b.leitwegId) info.push(['Leitweg-ID', b.leitwegId]);
-  if (b.supplierNo) info.push(['Lieferanten-Nr.', b.supplierNo]);
-  if (doc.orderReference) info.push(['Bestellnummer', doc.orderReference]);
+  if (!opts.info) {
+    if (b.leitwegId) info.push(['Leitweg-ID', b.leitwegId]);
+    if (b.supplierNo) info.push(['Lieferanten-Nr.', b.supplierNo]);
+    if (doc.orderReference) info.push(['Bestellnummer', doc.orderReference]);
+  }
   w.firstPage(info);
 
-  // Absenderzeile + Anschrift (Fortytools: 141,7 / 157,4 pt)
-  w.text(`${s.legalName} | ${s.street} | ${s.postalCode} ${s.city}`, LEFT, 148, 7);
-  const addr = [
-    b.name,
-    b.name2,
-    b.contactName ? `z. Hd. ${b.contactName}` : null,
-    b.street,
-    `${b.postalCode} ${b.city}`,
-  ].filter((x): x is string => !!x);
-  addr.forEach((l, i) => w.text(l, LEFT, 165.5 + i * 13.2, 10));
+  w.address(s, b);
 
   // ---------------------------------------------------------------- Anrede & Einleitung
   w.text('Sehr geehrte Damen und Herren,', LEFT, w.y);
@@ -406,7 +453,7 @@ export async function renderInvoicePdf(
 
   // ---------------------------------------------------------------- Zahlungsbedingung
   w.y += 7.4;
-  w.paragraph(paymentTermsHuman(doc));
+  w.paragraph(opts.terms ?? paymentTermsHuman(doc));
   if (doc.closingText) {
     w.y += 4;
     w.paragraph(doc.closingText);
@@ -414,16 +461,17 @@ export async function renderInvoicePdf(
 
   // ---------------------------------------------------------------- Schluss + GiroCode
   const bank = s.bankAccounts.find((x) => x.primary) ?? s.bankAccounts[0];
-  const withQr = !!bank && doc.payableTotal > 0n && doc.kind !== 'cancellation';
-  const closing =
-    doc.payableTotal > 0n
+  const withQr = !!bank && (opts.qr ?? (doc.payableTotal > 0n && doc.kind !== 'cancellation'));
+  const closing = opts.closing
+    ? opts.closing
+    : doc.payableTotal > 0n
       ? 'Wir bitten um Überweisung auf unser Konto. Für Rückfragen zu dieser Rechnung stehen wir jederzeit gerne zur Verfügung.'
       : 'Für Rückfragen zu dieser Rechnung stehen wir jederzeit gerne zur Verfügung.';
   w.y += 10;
   w.ensure(2 * LH + (withQr ? 80 : 0));
   w.paragraph(closing);
   if (withQr) {
-    const qr = QRCode.create(
+    w.girocode(
       girocodePayload({
         bic: bank.bic,
         name: s.legalName,
@@ -431,29 +479,100 @@ export async function renderInvoicePdf(
         amount: doc.payableTotal,
         reference: doc.number,
       }),
-      { errorCorrectionLevel: 'M' },
     );
-    const n = qr.modules.size;
-    const size = 52;
-    const cell = size / n;
-    const top = w.y + 2;
-    for (let r = 0; r < n; r++) {
-      for (let c = 0; c < n; c++) {
-        if (qr.modules.get(r, c)) {
-          w.page.drawRectangle({
-            x: LEFT + c * cell,
-            y: PAGE_H - top - (r + 1) * cell,
-            width: cell + 0.05,
-            height: cell + 0.05,
-            color: rgb(0, 0, 0),
-          });
-        }
-      }
-    }
-    w.text('Einfach Code mit Banking-App scannen und direkt überweisen.', LEFT + size + 3, top + size - 1);
-    w.y = top + size + 10;
   }
 
+  w.finish();
+  return pdf.save({ useObjectStreams: false });
+}
+
+/**
+ * Brief auf dem Briefpapier mit freier Tabelle (z. B. Mahnung): keine USt-Logik, Beträge fertig formatiert.
+ * Spalten: erste links (Text), übrige rechtsbündig an den angegebenen x-Positionen.
+ */
+export async function renderLetterPdf(p: {
+  title: string;
+  date: string;
+  info: [string, string][];
+  seller: SellerSnapshot;
+  buyer: BuyerSnapshot;
+  intro: string;
+  columns: { label: string; x: number; align?: 'left' | 'right' }[];
+  rows: string[][];
+  sums: [string, string][];
+  /** letzte Summenzeile hervorgehoben */
+  total: [string, string];
+  paragraphs: string[];
+  girocode?: { amount: bigint; reference: string } | null;
+  watermark?: string;
+}): Promise<Uint8Array> {
+  const pdf = await PDFDocument.create();
+  pdf.registerFontkit(fontkit);
+  const assets = await loadAssets();
+  const regular = await pdf.embedFont(assets.regular, { subset: false });
+  const bold = await pdf.embedFont(assets.bold, { subset: false });
+  const letterhead = await pdf.embedJpg(assets.letterhead);
+  pdf.setTitle(p.title);
+  pdf.setAuthor(p.seller.legalName);
+  pdf.setLanguage('de-DE');
+  pdf.setCreator('Viva-Deluxe Betriebs-App');
+  pdf.setCreationDate(new Date(`${p.date}T12:00:00Z`));
+  const w = new Doc(pdf, regular, bold, letterhead, p.title, p.watermark);
+  w.firstPage(p.info);
+  w.address(p.seller, p.buyer);
+  w.text('Sehr geehrte Damen und Herren,', LEFT, w.y);
+  w.y += 24;
+  w.paragraph(p.intro);
+  w.y += 30;
+  const header = () => {
+    w.rect(LEFT - 4.7, w.y - 15.5, RIGHT - LEFT + 25, 25, BAND, 8);
+    for (const c of p.columns) (c.align === 'left' ? w.text : w.right).call(w, c.label, c.x, w.y);
+    w.y += 20;
+    w.rule(w.y);
+    w.y += 15.6;
+  };
+  header();
+  for (const r of p.rows) {
+    w.ensure(LH + 16, () => {
+      w.y += 15.5;
+      header();
+    });
+    p.columns.forEach((c, i) => (c.align === 'left' ? w.text : w.right).call(w, r[i] ?? '', c.x, w.y));
+    w.y += LH - 3;
+    w.rule(w.y);
+    w.y += 15.6;
+  }
+  const last = p.columns[p.columns.length - 1]!.x;
+  const labelX = p.columns[p.columns.length - 2]?.x ?? last - 100;
+  w.ensure(19.6 * (p.sums.length + 1) + 10);
+  w.y += 2;
+  for (const [k, v] of p.sums) {
+    w.right(k, labelX, w.y);
+    w.right(v, last, w.y);
+    w.y += 19.6;
+  }
+  const [tl, tv] = p.total;
+  w.rect(last - w.width(tv) - 12, w.y - 12.2, w.width(tv) + 30, 17.5, PILL, 8.5);
+  w.right(tl, labelX, w.y, BODY, { bold: true });
+  w.right(tv, last, w.y, BODY, { bold: true });
+  w.y += 26;
+  for (const para of p.paragraphs) {
+    w.paragraph(para);
+    w.y += 6;
+  }
+  const bank = p.seller.bankAccounts.find((x) => x.primary) ?? p.seller.bankAccounts[0];
+  if (p.girocode && bank && p.girocode.amount > 0n) {
+    w.ensure(80);
+    w.girocode(
+      girocodePayload({
+        bic: bank.bic,
+        name: p.seller.legalName,
+        iban: bank.iban,
+        amount: p.girocode.amount as Cents,
+        reference: p.girocode.reference,
+      }),
+    );
+  }
   w.finish();
   return pdf.save({ useObjectStreams: false });
 }

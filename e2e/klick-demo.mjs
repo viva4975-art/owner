@@ -2,7 +2,10 @@
 // Navigation, Reiter, Menüs, Auswahlfelder und PDFs funktionieren offline; Speichern/Versenden/Hochladen
 // sind ausgeschaltet und zeigen einen Hinweis.
 // Start: Demo-Instanz mit Demo-DB starten, dann: E2E_BASE_URL=http://127.0.0.1:3001 node e2e/klick-demo.mjs
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { chromium } from 'playwright-core';
 
 const B = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:3001';
@@ -10,7 +13,7 @@ if (!/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(B)) throw new Error('Nur 
 const [USER, PASS] = (process.env.E2E_AUTH ?? 'ahmed:prototyp2026').split(':');
 const OUT = process.env.DEMO_OUT ?? 'var/klick-demo/viva-deluxe-klick-demo.html';
 const MAX_PAGES = Number(process.env.DEMO_MAX_PAGES ?? 400);
-const MAX_PDFS = 3; // je ~1,8 MB (Briefpapier) – eine Rechnung, ein Angebot, eine Mahnung
+const MAX_PDFS = 60; // als Seitenbilder (je ~100 KB pro Seite)
 
 const browser = await chromium.launch({
   ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
@@ -52,10 +55,27 @@ while (queue.length && Object.keys(pages).length < MAX_PAGES) {
   seen.add(k);
   if (/\.pdf$/.test(new URL(k, B).pathname) || k.startsWith('/dokumente/')) {
     const kind = k.startsWith('/dokumente/') ? 'rechnung' : k.includes('angebot') ? 'angebot' : 'mahnung';
-    if (Object.keys(pdfs).length >= MAX_PDFS || pdfKinds.has(kind)) continue;
+    if (Object.keys(pdfs).length >= MAX_PDFS) continue;
     const r = await ctx.request.get(B + k);
     if (r.ok() && r.headers()['content-type']?.includes('pdf')) {
-      pdfs[k] = (await r.body()).toString('base64');
+      // PDF → Seitenbilder (zeigt jedes Handy an; PDF-Betrachter fehlen in eingebetteten Ansichten)
+      const dir = mkdtempSync(join(tmpdir(), 'demo-pdf-'));
+      writeFileSync(join(dir, 'in.pdf'), await r.body());
+      execFileSync('pdftoppm', [
+        '-jpeg',
+        '-jpegopt',
+        'quality=72',
+        '-r',
+        '90',
+        '-l',
+        '3',
+        join(dir, 'in.pdf'),
+        join(dir, 'p'),
+      ]);
+      pdfs[k] = readdirSync(dir)
+        .filter((f) => f.endsWith('.jpg'))
+        .sort()
+        .map((f) => 'data:image/jpeg;base64,' + readFileSync(join(dir, f)).toString('base64'));
       pdfKinds.add(kind);
     }
     continue;
@@ -145,6 +165,8 @@ for (const p of Object.values(pages)) p.b = p.b.split('/static/logo.png').join('
 
 const RUNTIME = String.raw`
 (function () {
+  // Stile/Titel in den Kopf holen (die Seite ersetzt später den Inhalt von <body>)
+  Array.prototype.forEach.call(document.querySelectorAll('body style, body title, body link[rel=icon]'), function (e) { document.head.appendChild(e); });
   var D = JSON.parse(document.getElementById('demo-data').textContent);
   var LOGO = ${JSON.stringify(assets['/static/logo.png'])};
   function norm(u) {
@@ -197,9 +219,12 @@ const RUNTIME = String.raw`
   function go(href) {
     var k = norm(href);
     if (D.pdfs[k]) {
-      var bin = atob(D.pdfs[k]); var arr = new Uint8Array(bin.length);
-      for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-      window.open(URL.createObjectURL(new Blob([arr], { type: 'application/pdf' })), '_blank');
+      var ov = document.createElement('div');
+      ov.className = 'demo-pdf';
+      ov.innerHTML = '<div class="demo-pdf-bar"><span>PDF-Ansicht (Demo)</span><button type="button" class="btn sm">Schließen</button></div>';
+      D.pdfs[k].forEach(function (src) { var im = document.createElement('img'); im.src = src; im.alt = 'PDF-Seite'; ov.appendChild(im); });
+      ov.querySelector('button').addEventListener('click', function () { ov.remove(); });
+      document.body.appendChild(ov);
       return;
     }
     if (/\.pdf$/.test(k.split('?')[0])) { toast('PDF: in der Demo nur für ausgewählte Belege enthalten.'); return; }
@@ -242,19 +267,27 @@ const RUNTIME = String.raw`
 const DEMO_CSS = `
 .demo-bar{background:#1b1f24;color:#e5e7eb;font-size:13px;padding:8px 16px;text-align:center}
 .demo-bar b{color:#fff;margin-right:6px}
+.demo-pdf{position:fixed;inset:0;z-index:98;background:#3a3f46;overflow:auto;padding:calc(56px + env(safe-area-inset-top,0px)) 12px 24px;display:flex;flex-direction:column;align-items:center;gap:12px}
+.demo-pdf img{width:100%;max-width:820px;height:auto;box-shadow:0 4px 18px rgba(0,0,0,.35);background:#fff}
+.demo-pdf-bar{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 10px;background:#1b1f24;color:#fff;font-size:14px}
 .demo-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1b1f24;color:#fff;padding:12px 18px;border-radius:8px;box-shadow:0 12px 32px rgba(0,0,0,.25);z-index:99;font-size:14px;max-width:90vw}
 `;
 
 const json = JSON.stringify({ pages, alias, pdfs }).replace(/</g, '\\u003c');
-const html = `<!doctype html>
-<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Viva-Deluxe Betriebs-App – Klick-Demo</title>
-<link rel="icon" type="image/png" href="${assets['/static/favicon.png']}">
-<style>${embed(css)}${DEMO_CSS}</style></head>
-<body><p style="padding:24px">Lade Demo …</p>
+// DEMO_FRAGMENT=1: ohne <html>/<head>/<body> (für Veröffentlichung als Link, dort wird das Gerüst ergänzt)
+const head = `<title>Viva-Deluxe Klick-Demo</title>
+<style>${embed(css)}${DEMO_CSS}</style>`;
+const body = `<p style="padding:24px">Lade Demo …</p>
 <script id="demo-data" type="application/json">${json}</script>
-<script>${RUNTIME}</script>
-</body></html>`;
+<script>${RUNTIME}</script>`;
+const html =
+  process.env.DEMO_FRAGMENT === '1'
+    ? `${head}\n${body}`
+    : `<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/png" href="${assets['/static/favicon.png']}">
+${head}</head>
+<body>${body}</body></html>`;
 mkdirSync(OUT.replace(/\/[^/]+$/, ''), { recursive: true });
 writeFileSync(OUT, html);
 console.log(

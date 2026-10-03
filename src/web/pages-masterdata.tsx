@@ -165,6 +165,7 @@ export const CustomerShell: FC<{ c: Customer; counts: CustomerCounts; active: st
   const more: Tab[] = [
     { key: 'aufgaben', label: 'Aufgaben', href: `${base}/aufgaben`, count: counts.tasks },
     { key: 'op', label: 'Offene Posten', href: `${base}/offene-posten`, count: counts.openItems },
+    { key: 'rechnungsgruppen', label: 'Rechnungsgruppen', href: `${base}/rechnungsgruppen` },
     { key: 'bearbeiten', label: 'Stammdaten bearbeiten', href: `${base}/bearbeiten` },
     { key: 'angebote', label: 'Angebote', href: `${base}/angebote`, count: counts.offers },
     { key: 'mahnungen', label: 'Mahnungen', href: `${base}/mahnungen`, count: counts.dunnings },

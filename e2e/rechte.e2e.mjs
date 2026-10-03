@@ -100,15 +100,26 @@ await o.goto(B + '/einsatzplanung');
 check('Wochenplan ohne fremde Objekte', !(await o.content()).includes('Verwaltungsgebäude'));
 await o.goto(B + `/objekte/${SCHOOL}/stundenvorgabe`);
 const svText = await o.locator('body').innerText();
-check('Stundenvorgabe ohne Erlöse', svText.includes('Vorgabe laut Raumbuch') && !svText.includes('Monatspauschale'));
+check(
+  'Stundenvorgabe ohne Erlöse',
+  svText.includes('Vorgabe laut Raumbuch') && !svText.includes('Monatspauschale'),
+);
 await o.goto(B + `/objekte/${SCHOOL}/qualitaet`);
-check('Qualitätskontrolle eigenes Objekt', (await o.locator('button:has-text("Qualitätskontrolle starten")').count()) === 1);
+check(
+  'Qualitätskontrolle eigenes Objekt',
+  (await o.locator('button:has-text("Qualitätskontrolle starten")').count()) === 1,
+);
 const lw = await o.request.get(B + '/raumbuch/leistungswerte', { maxRedirects: 0 });
 check('Leistungswerte nur Büro (403)', lw.status() === 403, String(lw.status()));
-const fq = await o.request.get(B + '/objekte/00000000-0000-4000-8000-000000000012/zaehler', { maxRedirects: 0 });
+const fq = await o.request.get(B + '/objekte/00000000-0000-4000-8000-000000000012/zaehler', {
+  maxRedirects: 0,
+});
 check('Zähler fremdes Objekt gesperrt', fq.status() === 403, String(fq.status()));
 await o.goto(B + '/qualitaet');
-check('QK-Liste ohne fremde Objekte', !(await o.locator('select[name=site_id]').innerText()).includes('Verwaltungsgebäude'));
+check(
+  'QK-Liste ohne fremde Objekte',
+  !(await o.locator('select[name=site_id]').innerText()).includes('Verwaltungsgebäude'),
+);
 await o.click('.usr');
 await o.click('button:has-text("Abmelden")');
 await o.waitForLoadState();

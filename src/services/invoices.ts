@@ -32,6 +32,7 @@ export interface InvoiceRow {
   number: string | null;
   customer_id: string;
   site_id: string | null;
+  invoice_group_id: string | null;
   original_invoice_id: string | null;
   issue_date: string | null;
   due_date: string | null;
@@ -105,11 +106,13 @@ export async function listInvoices(sql: Sql, filter: { status?: 'draft' | 'issue
       delivery_status: string | null;
     })[]
   >`
-    select i.*, c.name as customer_name, s.name as site_name, o.number as original_number,
+    select i.*, c.name as customer_name, coalesce(s.name, 'Rechnungsgruppe ' || g.name) as site_name,
+           o.number as original_number,
            (select d.status::text from app.invoice_deliveries d where d.invoice_id = i.id order by d.created_at desc limit 1) as delivery_status
       from app.invoices i
       join app.customers c on c.id = i.customer_id
       left join app.sites s on s.id = i.site_id
+      left join app.invoice_groups g on g.id = i.invoice_group_id
       left join app.invoices o on o.id = i.original_invoice_id
      where ${filter.status ? sql`i.status = ${filter.status}` : sql`true`}
      order by i.status, i.number_year desc nulls first, i.number_seq desc nulls first, i.created_at desc`;
@@ -262,101 +265,168 @@ export interface MonthlyRunResult {
   skipped: { siteName: string; reason: string }[];
 }
 
+interface RunSite {
+  id: string;
+  name: string;
+  site_no: string;
+  street: string | null;
+  postal_code: string | null;
+  city: string | null;
+  customer_id: string;
+  order_reference: string | null;
+  customer_active: boolean;
+  group_id: string | null;
+  group_name: string | null;
+  group_buyer_reference: string | null;
+  group_order_reference: string | null;
+}
+
 /**
- * Erzeugt je aktivem Objekt mit Monatspauschalen genau einen Entwurf für den Monat.
- * Idempotent über monthly_run_key (Objekt + Monat): ein zweiter Lauf legt nichts doppelt an.
+ * Erzeugt je aktivem Objekt mit Monatspauschalen genau einen Entwurf für den Monat – bzw. je Rechnungsgruppe
+ * EINE Sammelrechnung über alle Objekte der Gruppe.
+ * Idempotent: monthly_run_key (Objekt + Monat bzw. Gruppe + Monat) und zusätzlich je Objekt + Monat
+ * (app.monthly_run_sites) – ein Objekt wird pro Monat nie zweimal abgerechnet, auch wenn es die Gruppe wechselt.
  */
 export async function runMonthly(sql: Sql, month: string, actor: string): Promise<MonthlyRunResult> {
   const { start, end } = monthBounds(month);
-  const sites = await sql<
-    {
-      id: string;
-      name: string;
-      site_no: string;
-      street: string | null;
-      postal_code: string | null;
-      city: string | null;
-      customer_id: string;
-      order_reference: string | null;
-      customer_active: boolean;
-    }[]
-  >`
+  const sites = await sql<RunSite[]>`
     select s.id, s.name, s.site_no, s.street, s.postal_code, s.city, s.customer_id, s.order_reference,
-           c.active as customer_active
+           c.active as customer_active,
+           case when g.active then g.id end as group_id, g.name as group_name,
+           g.buyer_reference as group_buyer_reference, g.order_reference as group_order_reference
       from app.sites s join app.customers c on c.id = s.customer_id
+      left join app.invoice_groups g on g.id = s.invoice_group_id
      where s.active order by s.site_no`;
   const result: MonthlyRunResult = { created: [], skipped: [] };
+
+  // Abrechnungseinheiten: Gruppe (mehrere Objekte) oder einzelnes Objekt
+  const units = new Map<string, RunSite[]>();
   for (const site of sites) {
     if (!site.customer_active) {
       result.skipped.push({ siteName: site.name, reason: 'Kunde inaktiv' });
       continue;
     }
-    const services = await sql<
-      {
-        id: string;
-        kind: 'monthly_flat';
-        description: string;
-        unit_code: string;
-        quantity_milli: bigint;
-        unit_price_cents: bigint;
-        vat_rate_bp: number;
-        valid_from: string;
-        valid_to: string | null;
-        active: boolean;
-        note: string | null;
-      }[]
-    >`select * from app.site_services where site_id = ${site.id} order by sort_order, description`;
-    const lines = monthlyRunLines(
-      services.map((s) => ({
-        id: s.id,
-        kind: s.kind,
-        description: s.description,
-        unitCode: s.unit_code,
-        quantity: s.quantity_milli as Quantity,
-        unitPrice: s.unit_price_cents as Cents,
-        vatRate: s.vat_rate_bp,
-        validFrom: s.valid_from,
-        validTo: s.valid_to,
-        active: s.active,
-        note: s.note,
-      })),
-      month,
-      {
-        siteNo: site.site_no,
-        name: site.name,
-        street: site.street,
-        postalCode: site.postal_code,
-        city: site.city,
-      },
-    );
-    if (!lines.length) {
-      result.skipped.push({ siteName: site.name, reason: 'keine gültige Monatspauschale' });
+    const key = site.group_id ? `group:${site.group_id}` : site.id;
+    units.set(key, [...(units.get(key) ?? []), site]);
+  }
+
+  for (const [unitKey, members] of units) {
+    const first = members[0]!;
+    const isGroup = !!first.group_id;
+    const label = isGroup ? `${first.group_name} (Rechnungsgruppe)` : first.name;
+    const perSite: { site: RunSite; lines: DraftLineInput[] }[] = [];
+    for (const site of members) {
+      const lines = await siteMonthLines(sql, site, month);
+      if (lines.length) perSite.push({ site, lines });
+      else if (!isGroup)
+        result.skipped.push({ siteName: site.name, reason: 'keine gültige Monatspauschale' });
+    }
+    if (!perSite.length) {
+      if (isGroup) result.skipped.push({ siteName: label, reason: 'keine gültige Monatspauschale' });
       continue;
     }
-    const key = `${site.id}:${month}`;
     const id = randomUUID();
-    const created = await sql.begin(async (tx) => {
-      const customer = await getCustomer(tx as unknown as Sql, site.customer_id);
-      const [row] = await tx`
-        insert into app.invoices (id, kind, customer_id, site_id, period_start, period_end, invoice_format,
-                                  buyer_reference, order_reference, monthly_run_key)
-        values (${id}, 'invoice', ${site.customer_id}, ${site.id}, ${start}, ${end}, ${customer!.invoice_format},
-                ${customer!.leitweg_id}, ${site.order_reference}, ${key})
-        on conflict (monthly_run_key) do nothing
-        returning id`;
-      if (!row) return false;
-      await writeLines(tx, id, lines, 0n as Cents);
-      await audit(tx, actor, 'monthly_run', id, { month, site_id: site.id });
-      return true;
-    });
-    if (created) result.created.push({ invoiceId: id, siteName: site.name });
-    else
-      result.skipped.push({
-        siteName: site.name,
-        reason: `Entwurf/Rechnung für ${monthLabelDe(month)} existiert bereits`,
+    try {
+      const outcome = await sql.begin(async (tx) => {
+        // schon (anders) abgerechnete Objekte dieses Monats herausnehmen
+        const billed = await tx<{ site_id: string }[]>`
+          select site_id from app.monthly_run_sites
+           where month = ${month} and site_id in ${tx(perSite.map((p) => p.site.id))}`;
+        const done = new Set(billed.map((b) => b.site_id));
+        const todo = perSite.filter((p) => !done.has(p.site.id));
+        if (!todo.length) return { created: false, already: [...done] };
+        const customer = await getCustomer(tx as unknown as Sql, first.customer_id);
+        const [row] = await tx`
+          insert into app.invoices (id, kind, customer_id, site_id, invoice_group_id, period_start, period_end,
+                                    invoice_format, buyer_reference, order_reference, monthly_run_key)
+          values (${id}, 'invoice', ${first.customer_id}, ${isGroup ? null : first.id},
+                  ${isGroup ? first.group_id : null}, ${start}, ${end}, ${customer!.invoice_format},
+                  ${(isGroup && first.group_buyer_reference) || customer!.leitweg_id},
+                  ${isGroup ? first.group_order_reference : first.order_reference},
+                  ${`${unitKey}:${month}`})
+          on conflict (monthly_run_key) do nothing
+          returning id`;
+        if (!row) return { created: false, already: [] };
+        for (const p of todo) {
+          await tx`insert into app.monthly_run_sites (site_id, month, invoice_id) values (${p.site.id}, ${month}, ${id})`;
+        }
+        await writeLines(
+          tx,
+          id,
+          todo.flatMap((p) => p.lines),
+          0n as Cents,
+        );
+        await audit(tx, actor, 'monthly_run', id, {
+          month,
+          ...(isGroup ? { invoice_group_id: first.group_id } : {}),
+          site_ids: todo.map((p) => p.site.id),
+        });
+        return { created: true, already: [...done] };
       });
+      for (const sid of outcome.already) {
+        result.skipped.push({
+          siteName: members.find((m) => m.id === sid)!.name,
+          reason: `Entwurf/Rechnung für ${monthLabelDe(month)} existiert bereits`,
+        });
+      }
+      if (outcome.created) result.created.push({ invoiceId: id, siteName: label });
+      else if (!outcome.already.length)
+        result.skipped.push({
+          siteName: label,
+          reason: `Entwurf/Rechnung für ${monthLabelDe(month)} existiert bereits`,
+        });
+    } catch (e) {
+      // paralleler Lauf hat dasselbe Objekt gerade abgerechnet
+      if ((e as { code?: string }).code === '23505') {
+        result.skipped.push({
+          siteName: label,
+          reason: `Entwurf/Rechnung für ${monthLabelDe(month)} existiert bereits`,
+        });
+      } else throw e;
+    }
   }
   return result;
+}
+
+async function siteMonthLines(sql: Sql, site: RunSite, month: string): Promise<DraftLineInput[]> {
+  const services = await sql<
+    {
+      id: string;
+      kind: 'monthly_flat';
+      description: string;
+      unit_code: string;
+      quantity_milli: bigint;
+      unit_price_cents: bigint;
+      vat_rate_bp: number;
+      valid_from: string;
+      valid_to: string | null;
+      active: boolean;
+      note: string | null;
+    }[]
+  >`select * from app.site_services where site_id = ${site.id} order by sort_order, description`;
+  return monthlyRunLines(
+    services.map((s) => ({
+      id: s.id,
+      kind: s.kind,
+      description: s.description,
+      unitCode: s.unit_code,
+      quantity: s.quantity_milli as Quantity,
+      unitPrice: s.unit_price_cents as Cents,
+      vatRate: s.vat_rate_bp,
+      validFrom: s.valid_from,
+      validTo: s.valid_to,
+      active: s.active,
+      note: s.note,
+    })),
+    month,
+    {
+      siteNo: site.site_no,
+      name: site.name,
+      street: site.street,
+      postalCode: site.postal_code,
+      city: site.city,
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -393,6 +463,7 @@ export async function createCancellation(sql: Sql, originalId: string, actor: st
       kind: 'cancellation',
       customer_id: orig.customer_id,
       site_id: orig.site_id,
+      invoice_group_id: orig.invoice_group_id,
       original_invoice_id: orig.id,
       period_start: orig.period_start,
       period_end: orig.period_end,
@@ -426,6 +497,7 @@ export async function createCorrection(
       kind: 'correction',
       customer_id: orig.customer_id,
       site_id: orig.site_id,
+      invoice_group_id: orig.invoice_group_id,
       original_invoice_id: orig.id,
       period_start: orig.period_start,
       period_end: orig.period_end,

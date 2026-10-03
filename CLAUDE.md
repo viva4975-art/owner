@@ -296,3 +296,12 @@ Testadresse.
     (älter als 35 Tage).
   - Objektleitung: alles davon für die eigenen Objekte, Stundenvorgabe ohne Erlöse, Leistungswerte nur Büro.
   - Tests: 156 Unit-/DB-Tests, Browser-Tests 145 Prüfungen (neu `npm run e2e:objekt`, 25 Prüfungen; Rechte-Test +5).
+- 2026-10-03: Rechnungsgruppen (wie Fortytools):
+  - Kunde → Rechnungsgruppen: mehrere Objekte desselben Kunden zusammenfassen, optional eigene Leitweg-ID und
+    Bestellnummer. Der Monatslauf erzeugt je aktiver Gruppe EINE Sammelrechnung (Positionen je Objekt mit
+    „Objekt: Name (Nr.)“ und Adresse, kein einzelnes Objekt im Kopf). Inaktive Gruppe = Objekte wieder einzeln.
+  - Doppelabrechnung ausgeschlossen: neue Tabelle `monthly_run_sites` (Objekt + Monat eindeutig, Bestand
+    übernommen) – auch wenn ein Objekt mitten im Monat die Gruppe wechselt. Gelöschter Entwurf gibt das Objekt frei.
+  - Storno/Korrektur übernehmen die Gruppe. Sammelrechnung besteht KoSIT.
+  - Offen: Rechnungsgruppen aus dem Fortytools-Export übernehmen (Ahmed zeigt eine Gruppe von innen).
+  - Tests: 159 Unit-/DB-Tests, Browser-Tests 147 Prüfungen.

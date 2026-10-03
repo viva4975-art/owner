@@ -12,6 +12,7 @@ import {
 } from '../services/crm.js';
 import { BusinessError } from '../services/errors.js';
 import { listInvoices } from '../services/invoices.js';
+import { listInvoiceGroups, saveInvoiceGroup } from '../services/invoice-groups.js';
 import {
   type Customer,
   customerInput,
@@ -35,6 +36,7 @@ import { listOpenItems } from '../services/payments.js';
 import { listFiles } from '../services/uploads.js';
 import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { FileArea } from './files.js';
+import { arr, str } from './forms.js';
 import { PageHead, dateDe, euro } from './layout.js';
 import { OfferTable } from './pages-offers.js';
 import { ContactsPanel, NotesPanel, TaskBox, TaskForm } from './pages-crm.js';
@@ -301,6 +303,146 @@ export function registerMasterdataRoutes({ app, deps, page, back, shells }: Ctx)
       </>
     )),
   );
+
+  // Rechnungsgruppen: mehrere Objekte → eine Sammelrechnung im Monatslauf
+  app.get(`/kunden/:id{${UUID}}/rechnungsgruppen`, (c) =>
+    customerPage(c, 'rechnungsgruppen', async (cust) => {
+      const [groups, sites] = await Promise.all([listInvoiceGroups(sql, cust.id), listSites(sql, cust.id)]);
+      const editId = c.req.query('bearbeiten');
+      const g = groups.find((x) => x.id === editId) ?? null;
+      const formId = g?.id ?? randomUUID();
+      const groupOf = new Map(groups.flatMap((x) => x.site_ids.map((sid) => [sid, x] as const)));
+      return (
+        <>
+          <p class="mut" style="max-width:820px;margin-top:0">
+            Objekte einer Rechnungsgruppe werden im Monatslauf auf <b>einer</b> Rechnung abgerechnet (je
+            Objekt eigene Positionen mit Objektname und Adresse). Leitweg-ID und Bestellnummer der Gruppe
+            gehen vor denen des Kunden bzw. Objekts.
+          </p>
+          <div class="tbl">
+            <table>
+              <thead>
+                <tr>
+                  <th>Rechnungsgruppe</th>
+                  <th>Objekte</th>
+                  <th>Leitweg-ID</th>
+                  <th>Bestellnummer</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map((x) => (
+                  <tr>
+                    <td>
+                      <a href={`/kunden/${cust.id}/rechnungsgruppen?bearbeiten=${x.id}`}>{x.name}</a>
+                    </td>
+                    <td class="small">{x.site_names.join(', ') || '–'}</td>
+                    <td>{x.buyer_reference ?? <span class="mut">wie Kunde</span>}</td>
+                    <td>{x.order_reference}</td>
+                    <td>
+                      {x.active ? <span class="badge ok">aktiv</span> : <span class="badge">inaktiv</span>}
+                    </td>
+                  </tr>
+                ))}
+                {!groups.length && (
+                  <tr>
+                    <td colspan={5} class="mut">
+                      Keine Rechnungsgruppen – jedes Objekt bekommt eine eigene Monatsrechnung.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <form
+            method="post"
+            action={`/kunden/${cust.id}/rechnungsgruppen/${formId}`}
+            class="card"
+            style="max-width:820px"
+            data-version={String(g?.version ?? '')}
+          >
+            <h3 style="margin-top:0">
+              {g ? `Rechnungsgruppe „${g.name}“ bearbeiten` : 'Neue Rechnungsgruppe'}
+            </h3>
+            <input type="hidden" name="version" value={String(g?.version ?? '')} />
+            <div class="grid">
+              <div>
+                <label for="g-name">Name</label>
+                <input
+                  id="g-name"
+                  name="name"
+                  value={g?.name ?? ''}
+                  required
+                  placeholder="z. B. Schulen Süd"
+                />
+              </div>
+              <div>
+                <label for="g-leitweg">Leitweg-ID (abweichend)</label>
+                <input
+                  id="g-leitweg"
+                  name="buyer_reference"
+                  value={g?.buyer_reference ?? ''}
+                  placeholder={cust.leitweg_id ?? ''}
+                />
+              </div>
+              <div>
+                <label for="g-order">Bestellnummer</label>
+                <input id="g-order" name="order_reference" value={g?.order_reference ?? ''} />
+              </div>
+            </div>
+            <label>Objekte in dieser Gruppe</label>
+            <div class="grid" style="gap:6px 16px">
+              {sites.map((st) => {
+                const other = groupOf.get(st.id);
+                return (
+                  <label class="chk" style="margin:0">
+                    <input type="checkbox" name="site" value={st.id} checked={!!g && other?.id === g.id} />
+                    {st.name} <span class="mut small">{st.site_no}</span>
+                    {other && other.id !== g?.id && <span class="badge tag">jetzt: {other.name}</span>}
+                  </label>
+                );
+              })}
+            </div>
+            <label for="g-note">Notiz</label>
+            <input id="g-note" name="note" value={g?.note ?? ''} />
+            <div class="chk" style="margin-top:10px">
+              <input type="checkbox" id="g-active" name="active" checked={g ? g.active : true} />
+              <label for="g-active">aktiv (inaktive Gruppe: Objekte werden wieder einzeln abgerechnet)</label>
+            </div>
+            <div class="formfoot">
+              {g && (
+                <a class="btn sec" href={`/kunden/${cust.id}/rechnungsgruppen`}>
+                  Abbrechen
+                </a>
+              )}
+              <button class="btn">{g ? 'Speichern' : 'Rechnungsgruppe anlegen'}</button>
+            </div>
+          </form>
+        </>
+      );
+    }),
+  );
+
+  app.post(`/kunden/:id{${UUID}}/rechnungsgruppen/:gid{${UUID}}`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    await saveInvoiceGroup(
+      sql,
+      c.req.param('gid'),
+      {
+        customerId: id,
+        name: str(b, 'name') ?? '',
+        buyerReference: str(b, 'buyer_reference'),
+        orderReference: str(b, 'order_reference'),
+        note: str(b, 'note'),
+        active: b.active === 'on',
+        siteIds: arr(b, 'site').filter((x) => /^[0-9a-f-]{36}$/.test(x)),
+        expectedVersion: typeof b.version === 'string' && b.version !== '' ? Number(b.version) : null,
+      },
+      c.get('actor'),
+    );
+    return back(c, `/kunden/${id}/rechnungsgruppen`, { ok: 'Rechnungsgruppe gespeichert.' });
+  });
 
   app.get(`/kunden/:id{${UUID}}/offene-posten`, (c) =>
     customerPage(c, 'op', async (cust) => <OpenItemsTable items={await listOpenItems(sql, cust.id)} />),

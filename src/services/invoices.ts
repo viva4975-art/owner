@@ -21,7 +21,9 @@ import type {
 import type { Cents, Quantity } from '../domain/money/money.js';
 import { buildBuyerSnapshot, getCustomer, getSeller } from './masterdata.js';
 
-export class BusinessError extends Error {}
+export { BusinessError } from './errors.js';
+import { BusinessError } from './errors.js';
+import { assertVersion } from './crm.js';
 
 export interface InvoiceRow {
   id: string;
@@ -51,6 +53,7 @@ export interface InvoiceRow {
   skonto_percent_bp: number | null;
   skonto_days: number | null;
   skonto_date: string | null;
+  version: number;
   created_at: Date;
   issued_at: Date | null;
 }
@@ -146,6 +149,8 @@ export interface DraftInput {
   closingText: string | null;
   lines: DraftLineInput[];
   prepaymentIds?: string[];
+  /** Version, die das Formular geladen hat (Schutz vor Überschreiben aus anderem Tab). */
+  expectedVersion?: number | null;
 }
 
 async function writeLines(tx: Tx, invoiceId: string, inputs: DraftLineInput[], prepaid: Cents) {
@@ -201,8 +206,9 @@ export async function saveDraft(sql: Sql, id: string, input: DraftInput, actor: 
   }
   await sql.begin(async (tx) => {
     const [existing] = await tx<
-      { status: string; kind: string }[]
-    >`select status, kind from app.invoices where id = ${id} for update`;
+      { status: string; kind: string; version: number }[]
+    >`select status, kind, version from app.invoices where id = ${id} for update`;
+    assertVersion(existing?.version, input.expectedVersion, 'Der Rechnungsentwurf');
     if (existing && existing.status !== 'draft')
       throw new BusinessError('Ausgestellte Rechnungen sind unveränderbar');
     if (existing && !['invoice', 'partial', 'final'].includes(existing.kind)) {

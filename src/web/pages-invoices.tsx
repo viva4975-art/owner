@@ -68,50 +68,6 @@ export const InvoiceTable: FC<{ rows: ListRow[] }> = ({ rows }) => (
   </div>
 );
 
-export const Dashboard: FC<{
-  drafts: ListRow[];
-  issued: ListRow[];
-  month: string;
-  stats: { customers: number; sites: number; openDrafts: number; unsent: number };
-}> = ({ drafts, issued, month, stats }) => (
-  <>
-    <h1>Übersicht</h1>
-    <div class="stats">
-      <div class="stat">
-        <b>{stats.customers}</b>
-        <span>Kunden</span>
-      </div>
-      <div class="stat">
-        <b>{stats.sites}</b>
-        <span>Objekte</span>
-      </div>
-      <div class="stat">
-        <b>{stats.openDrafts}</b>
-        <span>offene Entwürfe</span>
-      </div>
-      <div class="stat">
-        <b>{stats.unsent}</b>
-        <span>ausgestellt, nicht versendet</span>
-      </div>
-    </div>
-    <form method="post" action="/monatslauf" class="card">
-      <b>Monatslauf</b>
-      <p class="mut small" style="margin:4px 0 10px">
-        Erzeugt für jedes aktive Objekt einen Rechnungsentwurf aus den Monatspauschalen. Mehrfaches Ausführen
-        erzeugt keine Dubletten.
-      </p>
-      <div class="actions" style="margin:0">
-        <input type="month" name="month" value={month} style="max-width:200px" required />
-        <button class="btn">Entwürfe erzeugen</button>
-      </div>
-    </form>
-    <h2>Entwürfe</h2>
-    <InvoiceTable rows={drafts} />
-    <h2>Zuletzt ausgestellt</h2>
-    <InvoiceTable rows={issued.slice(0, 10)} />
-  </>
-);
-
 const lineEditorScript = `
 (function(){
   var tbody=document.querySelector('#lines tbody');
@@ -127,6 +83,7 @@ const lineEditorScript = `
   if(sel)sel.addEventListener('change',function(){if(!sel.value)return;add(JSON.parse(sel.value));sel.value=''});
   tbody.addEventListener('click',function(e){if(e.target.classList.contains('del')){e.target.closest('tr').remove();recalc()}});
   tbody.addEventListener('input',recalc);
+  window.vdLines={set:function(rows){tbody.innerHTML='';rows.forEach(function(r){add(r)});if(!tbody.children.length)add();recalc()}};
   if(!tbody.children.length)add();
   recalc();
 })();`;
@@ -200,7 +157,7 @@ const LineRowInputs: FC<{ l?: EditorLine }> = ({ l }) => (
 export const LineEditor: FC<{ lines: EditorLine[]; services?: SiteService[] }> = ({ lines, services }) => (
   <>
     <div class="tbl">
-      <table id="lines" class="lines">
+      <table id="lines" class="lines" data-lines>
         <thead>
           <tr>
             <th>Leistung</th>
@@ -320,7 +277,14 @@ export const InvoiceEditor: FC<{
       </div>
     </form>
     {inv.customer_id && (
-      <form method="post" action={`/rechnungen/${id}`} class="card">
+      <form
+        method="post"
+        action={`/rechnungen/${id}`}
+        class="card"
+        data-autosave={`/rechnungen/${id}`}
+        data-version={String(inv.version ?? '')}
+      >
+        <input type="hidden" name="version" value={String(inv.version ?? '')} />
         <input type="hidden" name="customer_id" value={inv.customer_id} />
         <input type="hidden" name="site_id" value={inv.site_id ?? ''} />
         <input type="hidden" name="kind" value={inv.kind ?? 'invoice'} />
@@ -394,7 +358,7 @@ export const CorrectionEditor: FC<{ id: string; original: InvoiceRow; newId: str
       Originalrechnung bleibt unverändert; die Korrektur erhält eine eigene Nummer und verweist auf das
       Original.
     </div>
-    <form method="post" action={`/rechnungen/${id}/korrektur`} class="card">
+    <form method="post" action={`/rechnungen/${id}/korrektur`} class="card" data-autosave>
       <input type="hidden" name="new_id" value={newId} />
       <div style="margin-bottom:12px">
         <label for="intro_text">Begründung / Einleitung</label>
@@ -521,9 +485,9 @@ export const InvoiceDetail: FC<{
               Bearbeiten
             </a>
           )}
-          <form method="post" action={`/rechnungen/${inv.id}/pruefen`}>
-            <button class="btn sec">E-Rechnung prüfen (KoSIT)</button>
-          </form>
+          <a class="btn sec" href={`/rechnungen/${inv.id}?pruefen=1`}>
+            E-Rechnung prüfen (KoSIT)
+          </a>
           <form
             method="post"
             action={`/rechnungen/${inv.id}/ausstellen`}
@@ -607,7 +571,11 @@ export const InvoiceDetail: FC<{
                 <td>{l.position}</td>
                 <td>
                   {l.description}
-                  {l.detail && <div class="small mut">{l.detail}</div>}
+                  {l.detail && (
+                    <div class="small mut" style="white-space:pre-line">
+                      {l.detail}
+                    </div>
+                  )}
                 </td>
                 <td class="r">{milliToInput(l.quantity_milli)}</td>
                 <td>{UNIT_LABELS[l.unit_code] ?? l.unit_code}</td>

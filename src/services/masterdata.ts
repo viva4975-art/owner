@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Sql } from '../db/client.js';
+import { assertVersion } from './crm.js';
 import type { BankAccount, BuyerSnapshot, InvoiceFormat, SellerSnapshot } from '../domain/invoice/types.js';
 import { parseEuro, parseQuantity } from '../domain/money/money.js';
 
@@ -56,6 +57,7 @@ export interface Customer {
   contact_phone: string | null;
   notes: string | null;
   active: boolean;
+  version: number;
 }
 
 const emptyToNull = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? null : v);
@@ -138,8 +140,18 @@ export async function getCustomer(sql: Sql, id: string): Promise<Customer | unde
 }
 
 /** Anlegen/Ändern mit fester ID → idempotent bei Wiederholung. */
-export async function saveCustomer(sql: Sql, id: string, input: CustomerInput, actor: string): Promise<void> {
+export async function saveCustomer(
+  sql: Sql,
+  id: string,
+  input: CustomerInput,
+  actor: string,
+  expectedVersion: number | null = null,
+): Promise<void> {
   await sql.begin(async (tx) => {
+    const [cur] = await tx<
+      { version: number }[]
+    >`select version from app.customers where id = ${id} for update`;
+    assertVersion(cur?.version, expectedVersion, 'Der Kunde');
     await tx`
       insert into app.customers ${tx({ id, ...input, invoice_emails: input.invoice_emails })}
       on conflict (id) do update set ${tx({ ...input, invoice_emails: input.invoice_emails, updated_at: new Date() } as Record<string, unknown>)}`;
@@ -163,6 +175,7 @@ export interface Site {
   order_reference: string | null;
   contract_reference: string | null;
   active: boolean;
+  version: number;
 }
 
 export const siteInput = z.object({
@@ -194,8 +207,16 @@ export async function getSite(sql: Sql, id: string) {
   return s;
 }
 
-export async function saveSite(sql: Sql, id: string, input: SiteInput, actor: string) {
+export async function saveSite(
+  sql: Sql,
+  id: string,
+  input: SiteInput,
+  actor: string,
+  expectedVersion: number | null = null,
+) {
   await sql.begin(async (tx) => {
+    const [cur] = await tx<{ version: number }[]>`select version from app.sites where id = ${id} for update`;
+    assertVersion(cur?.version, expectedVersion, 'Das Objekt');
     await tx`insert into app.sites ${tx({ id, ...input })}
              on conflict (id) do update set ${tx({ ...input, updated_at: new Date() } as Record<string, unknown>)}`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)

@@ -41,6 +41,7 @@ Ohne Docker: Postgres selbst bereitstellen und den Validator mit `npm run kosit`
 ```bash
 npm run check        # Typecheck + Lint + Format + alle Tests
 npm test             # nur Tests
+npm run e2e          # Browser-Test: Zurück/Vor, Eingaben behalten, zwei Tabs (Server muss laufen, legt Testdaten an)
 ```
 
 Die Tests laufen gegen eine echte Postgres-Datenbank (`viva_test`, wird bei jedem Lauf neu aufgebaut) und
@@ -51,6 +52,15 @@ Abgedeckt u. a.: lückenloser Nummernkreis auch bei gleichzeitigem Ausstellen, k
 Fehlern, Unveränderbarkeit (Datenbank-Trigger), Storno Cent-genau, einmaliges Stornieren, Abschläge nur
 einmal verrechenbar, Monatslauf ohne Dubletten, Versand genau einmal (auch bei dreifachem Klick),
 Rechnung/Storno/Abschlag/Schluss als XRechnung und ZUGFeRD KoSIT-gültig, Row Level Security.
+
+## Bedienung: Zurück/Vor und mehrere Tabs
+
+- Jede Seite hat eine eigene Adresse; Zurück/Vor im Browser funktioniert überall, auch mitten in einer Bearbeitung.
+- Formulare sichern Eingaben laufend im Speicher des jeweiligen Tabs. Wer die Seite verlässt (Menü, Zurück, Fehler beim
+  Speichern) und zurückkommt, findet seine Eingaben wieder – mit Hinweis und „Verwerfen“.
+- Zwei Tabs stören sich nicht. Bearbeiten beide denselben Datensatz, gewinnt nicht still der Letzte: der zweite bekommt
+  die Meldung „zwischenzeitlich geändert“ und kann seine Eingaben übernehmen.
+- Nach jedem Speichern leitet der Server auf eine normale Seite um – „Neu laden“ oder „Zurück“ schickt nichts doppelt.
 
 ## Umgebungen
 

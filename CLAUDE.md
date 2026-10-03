@@ -174,3 +174,27 @@ Testadresse.
     Kunde, Offene Posten mit Teilzahlungen, Mahnungen, Angebote, Aufträge, Lieferscheine, Arbeitsscheine,
     Artikel/Inventar/Nachbestellung, Schlüssel, Geräte, Zählerstände, Raumbuch, Auditanalyse,
     Stundenvorgaben, Einsatzplanung, Zeiterfassung per App, Aufenthaltserlaubnis-Fristen, Bankabruf.
+- 2026-10-04: Phase 2, Teil 1 (Ahmed: „Design wie Fortytools in unseren Farben, fast alle Menüpunkte,
+  Zurück/Vor muss gehen, zwei Tabs“):
+  - Oberfläche im Fortytools-Aufbau in Bordeaux: Firmenleiste mit Suche (Taste „/“), Hauptmenü Übersicht,
+    Kunden, Angebote, Rechnungen, Lieferanten, Personal, Inventar, Disposition, Transfer, Auswertungen;
+    „Neu anlegen: … Los“; Kunden/Objekte/Mitarbeiter mit Reitern und „Mehr“. Noch nicht gebaute Punkte
+    sind sichtbar und als „bald“ markiert (Seite erklärt, was kommt und in welcher Phase). Handy: Klappmenü.
+  - Zurück/Vor und Tabs: jede Ansicht hat eine eigene URL (Reiter = eigene Adresse), Post/Redirect/Get nach
+    jedem Speichern, KoSIT-Prüfung als GET (kein „Formular erneut senden“), Seiten bfcache-fähig. Eingaben
+    werden je Tab im sessionStorage gesichert und wiederhergestellt (auch dynamische Rechnungspositionen).
+    Versionszähler (`version`) auf Kunden, Objekten, Leistungen, Rechnungen, Kontakten, Mitarbeitern:
+    Speichern mit veraltetem Stand wird abgelehnt statt still zu überschreiben. Doppelklick-Schutz.
+    Bug behoben: `Referrer-Policy: no-referrer` hatte die Rückkehr ins Formular nach Eingabefehlern verhindert.
+  - Neu gebaut: Kontakte je Kunde (mehrere), Notizen (Kunde/Objekt/Mitarbeiter), Aufgaben mit Fälligkeit,
+    Zahlungseingänge (unveränderbar, Korrektur per Gegenbuchung, Überzahlung gesperrt), Offene Posten
+    (Rechnung − Storno/Korrektur − Zahlungen), Startseite wie Fortytools (Aufgaben 7 Tage, Offene Posten je
+    Kunde, nicht versendete Dokumente, Geburtstage/Jubiläen, Aufenthaltserlaubnis-Warnung 60 Tage),
+    Personal-Stammdaten mit getrennten vertraulichen Daten (Steuer-ID, SV-Nr., IBAN mit Prüfziffer,
+    Aufenthaltserlaubnis; RLS nur Admin/Personal, nicht im Protokoll), Zuordnung Mitarbeiter ↔ Objekt,
+    CSV-Export für Lexware Lohn (Format vorläufig), Netto-Umsatz je Monat, globale Suche.
+  - Tests: 101 Unit-/DB-Tests, dazu Browser-Test `npm run e2e` (21 Prüfungen Zurück/Vor/Tabs).
+  - Offen/als Nächstes vorgeschlagen: Mahnwesen (auf Offenen Posten), Zeiterfassung + Einsatzplanung,
+    Nachkalkulation, Benutzer/Rechte mit Supabase Auth, Fortytools-Import.
+  - Hinweis Skonto: Zieht ein Kunde Skonto ab, mindert sich die Umsatzsteuer (§ 17 UStG) – Buchung
+    „Skonto-Abzug“ ist vorhanden, die USt-Korrektur macht der Steuerberater (DATEV-Export folgt).

@@ -21,4 +21,8 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    files: ['e2e/**/*.mjs'],
+    languageOptions: { globals: { process: 'readonly', console: 'readonly' } },
+  },
 );

@@ -11,6 +11,7 @@ import {
   listOffers,
   offerInvoices,
   offerToInvoiceDraft,
+  offerContact,
   renderOfferPdf,
   saveOffer,
   setOfferStatus,
@@ -131,6 +132,7 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
         select at, actor, action, details from app.audit_log where entity = 'offer' and entity_id = ${id} order by at desc limit 30`,
       offerInvoices(sql, id),
     ]);
+    const contact = await offerContact(sql, o.created_by);
     return page(
       c,
       `Angebot ${o.number}`,
@@ -154,6 +156,7 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
         history={history}
         invoices={invoices}
         today={todayBerlin()}
+        contact={contact}
       />,
     );
   });

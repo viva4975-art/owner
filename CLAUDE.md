@@ -342,3 +342,9 @@ Testadresse.
   7. Transfer: Kontoumsätze (Bankabruf), Lastschriften, Dokumenteneingang/-versand.
      Hinweis: Fortytools nennt negative Rechnungen „Gutschrift“ (Gu 1038085) – bei uns Storno/Rechnungskorrektur.
      Screenshots enthalten echte Personaldaten (Steuer-ID, SV-Nr.) – nicht ins Repo übernommen.
+- 2026-10-03: Angebot wie Fortytools (Ahmed: „sieht komisch aus“): Detailseite als Briefansicht (Adresse, grauer
+  Balken „Angebot Nr.“ mit Datum/Kundennummer/Ansprechpartner, Anrede, Einleitung, Positionen mit Einheit, Summen
+  mit hervorgehobenem Gesamtbetrag, Schlusstext), Aktionen darunter untereinander, Übernahme ins Objekt als eigener
+  Kasten. Standardtexte (Einleitung/Schluss) wie Fortytools; Ansprechpartner = Anlegender. PDF: Ansprechpartner,
+  „pauschal“ statt leerer Einheit, Zyklus „monatlich/einmalig“ unter der Position. Neue Positionen standardmäßig
+  „pauschal“.

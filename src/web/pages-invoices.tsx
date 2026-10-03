@@ -128,7 +128,7 @@ const LineRowInputs: FC<{ l?: EditorLine; recurring?: boolean | undefined }> = (
     <td style="width:110px">
       <select name="unit">
         {Object.entries(UNIT_LABELS).map(([k, v]) => (
-          <option value={k} selected={l?.unit === k}>
+          <option value={k} selected={(l?.unit ?? 'LS') === k}>
             {v}
           </option>
         ))}

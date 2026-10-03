@@ -317,6 +317,19 @@ export async function offerInvoices(sql: Sql, offerId: string) {
 }
 
 /** Angebots-PDF auf dem Briefpapier (gleicher Aufbau wie die Rechnung, ohne Zahlungsteil/GiroCode). */
+/** Standardtexte wie in Fortytools (gelten, wenn im Angebot nichts Eigenes steht). */
+export const OFFER_INTRO_DEFAULT =
+  'vielen Dank für Ihre Anfrage und das damit verbundene Interesse an einer Zusammenarbeit. Gerne unterbreiten wir Ihnen folgendes Angebot:';
+export const OFFER_CLOSING_DEFAULT =
+  'Wir hoffen, dass das Angebot Ihren Anforderungen entspricht und würden uns über eine zukünftige Zusammenarbeit sehr freuen. Für Rückfragen und weitere Informationen stehen wir Ihnen gerne jederzeit zur Verfügung.';
+
+/** Ansprechpartner = Anzeigename des Benutzers, der das Angebot angelegt hat (sonst Anmeldename). */
+export async function offerContact(sql: Sql, login: string): Promise<string> {
+  const [p] = await sql<{ name: string | null }[]>`
+    select p.display_name as name from app.user_accounts a join app.profiles p on p.user_id = a.id where a.login = ${login}`;
+  return p?.name || login;
+}
+
 export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8Array; filename: string }> {
   const data = await getOffer(sql, id);
   if (!data) throw new BusinessError('Angebot nicht gefunden');
@@ -326,7 +339,7 @@ export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8
   const d = calculateDraft(
     lines.map((l) => ({
       description: l.description,
-      detail: [l.detail, l.recurring ? 'monatlich wiederkehrend' : null].filter(Boolean).join('\n') || null,
+      detail: [l.detail, l.recurring ? 'monatlich' : 'einmalig'].filter(Boolean).join('\n') || null,
       quantity: l.quantity_milli as Quantity,
       unitCode: l.unit_code,
       unitPrice: l.unit_price_cents as Cents,
@@ -342,8 +355,8 @@ export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8
     periodEnd: null,
     buyerReference: null,
     orderReference: null,
-    introText: o.intro_text ?? `wir danken für Ihre Anfrage und bieten Ihnen für „${o.title}“ an:`,
-    closingText: o.closing_text,
+    introText: o.intro_text ?? OFFER_INTRO_DEFAULT,
+    closingText: null,
     lines: d.lines,
     netTotal: d.net,
     vatTotal: d.vat,
@@ -360,6 +373,7 @@ export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8
   const info: [string, string][] = [
     ['Angebotsdatum', formatDateDe(o.offer_date)],
     ['Kundennummer', buyer.customerNo],
+    ['Ansprechpartner', (await offerContact(sql, o.created_by)).slice(0, 34)],
   ];
   if (o.valid_until) info.push(['Gültig bis', formatDateDe(o.valid_until)]);
   if (o.tender_reference) info.push(['Vergabe-Nr.', o.tender_reference]);
@@ -376,9 +390,10 @@ export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8
         : 'Dieses Angebot ist 30 Tage gültig.') +
       monthly +
       ' Es gelten unsere Allgemeinen Geschäftsbedingungen.',
-    closing:
-      'Für Rückfragen stehen wir Ihnen jederzeit gerne zur Verfügung. Wir freuen uns auf Ihren Auftrag.',
+    closing: o.closing_text ?? OFFER_CLOSING_DEFAULT,
     qr: false,
+    // Angebot wie Fortytools: Pauschalen mit Einheit „pauschal“
+    units: { LS: 'pauschal', MON: 'Monat' },
     ...(o.status === 'entwurf' ? { watermark: 'ENTWURF' } : {}),
   });
   return { pdf, filename: `Angebot_${o.number}.pdf` };

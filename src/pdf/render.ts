@@ -332,6 +332,8 @@ export async function renderInvoicePdf(
     closing?: string;
     /** GiroCode anzeigen (Standard: bei offenen Rechnungsbeträgen) */
     qr?: boolean;
+    /** abweichende Einheiten-Texte (z. B. Angebot: LS → „pauschal“) */
+    units?: Record<string, string>;
   } = {},
 ): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
@@ -412,7 +414,7 @@ export async function renderInvoicePdf(
     w.right(String(l.position), 72.8, top);
     textLines.forEach((t, i) => w.text(t, COL.text, top + i * LH));
     w.right(quantityPdf(l.quantity), COL.qty, top);
-    w.text(PDF_UNITS[l.unitCode] ?? l.unitCode, COL.unit, top);
+    w.text(opts.units?.[l.unitCode] ?? PDF_UNITS[l.unitCode] ?? l.unitCode, COL.unit, top);
     w.right(eur(l.unitPrice), COL.price, top);
     w.right(eur(l.netAmount), COL.total, top);
     if (multiRate) {

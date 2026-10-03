@@ -1,6 +1,14 @@
 import type { Child, FC } from 'hono/jsx';
 import type { Customer, Site } from '../services/masterdata.js';
-import { OFFER_STATUS, type OfferLineRow, type OfferRow, type OfferStatus } from '../services/offers.js';
+import { UNIT_LABELS } from '../domain/invoice/types.js';
+import {
+  OFFER_CLOSING_DEFAULT,
+  OFFER_INTRO_DEFAULT,
+  OFFER_STATUS,
+  type OfferLineRow,
+  type OfferRow,
+  type OfferStatus,
+} from '../services/offers.js';
 import { centsToInput, milliToInput } from './forms.js';
 import { Icon } from './icons.js';
 import { NEW_OPTIONS, PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
@@ -378,7 +386,8 @@ export const OfferDetail: FC<{
   history: { at: Date; actor: string; action: string; details: unknown }[];
   invoices: { id: string; number: string | null; status: string; gross_cents: bigint }[];
   today: string;
-}> = ({ o, lines, customer, site, sites, files, fileCount, history, invoices, today }) => {
+  contact: string;
+}> = ({ o, lines, customer, site, sites, files, fileCount, history, invoices, today, contact }) => {
   const recurring = lines.filter((l) => l.recurring);
   const once = lines.filter((l) => !l.recurring);
   const daysLeft = o.submission_deadline
@@ -400,55 +409,21 @@ export const OfferDetail: FC<{
       <button class={`btn ${opts.cls ?? 'sec'}`}>{label}</button>
     </form>
   );
+  const accepted = o.status === 'angenommen';
+  const vatRates = [...new Set(lines.map((l) => l.vat_rate_bp))];
   return (
     <>
-      <PageHead title={o.title} no={`Angebot ${o.number}`} crumbs={[['Angebote', '/angebote']]}>
+      <style dangerouslySetInnerHTML={{ __html: LETTER_CSS }} />
+      <PageHead
+        title={`Angebot ${o.number}`}
+        no={o.title}
+        crumbs={[
+          ['Angebote', '/angebote'],
+          [`${customer.customer_no} ${customer.name}`, `/kunden/${customer.id}`],
+        ]}
+      >
         <OfferBadge s={o.status} />
       </PageHead>
-      <div class="actions" style="margin-top:-8px">
-        {o.status === 'entwurf' && (
-          <a class="btn" href={`/angebote/${o.id}/bearbeiten`}>
-            Bearbeiten
-          </a>
-        )}
-        <a class="btn sec" href={`/angebote/${o.id}/angebot.pdf`} target="_blank">
-          <Icon name="pdf" /> PDF {o.status === 'entwurf' ? '(Entwurf)' : ''}
-        </a>
-        {o.status === 'entwurf' &&
-          post(
-            'status',
-            <>
-              <Icon name="mail" /> Als abgegeben markieren
-            </>,
-            {
-              cls: 'sec',
-              hidden: { status: 'versendet' },
-              confirm: 'Angebot als abgegeben markieren? Danach ist es nicht mehr änderbar.',
-            },
-          )}
-        {o.status === 'versendet' && (
-          <>
-            {post(
-              'status',
-              <>
-                <Icon name="check" /> Zuschlag erhalten
-              </>,
-              { cls: '', hidden: { status: 'angenommen' } },
-            )}
-            {post('status', 'Absage', {
-              hidden: { status: 'abgelehnt' },
-              confirm: 'Angebot als abgelehnt markieren?',
-            })}
-          </>
-        )}
-        {post('kopieren', 'Als neues Angebot kopieren')}
-        {['entwurf', 'versendet'].includes(o.status) &&
-          post('status', 'Zurückziehen', {
-            cls: 'ghost',
-            hidden: { status: 'zurueckgezogen' },
-            confirm: 'Angebot zurückziehen?',
-          })}
-      </div>
 
       {o.status === 'entwurf' && daysLeft !== null && daysLeft <= 7 && (
         <div class={daysLeft < 0 ? 'warnbox' : 'flash err'} style="display:flex">
@@ -460,15 +435,177 @@ export const OfferDetail: FC<{
         </div>
       )}
 
-      {o.status === 'angenommen' && (
-        <div class="card" style="border-color:#bbf7d0;background:var(--ok-50)">
-          <h3>Zuschlag – jetzt übernehmen</h3>
-          <div class="cols" style="gap:24px">
-            <form method="post" action={`/angebote/${o.id}/objekt`}>
-              <p class="small" style="margin:0 0 10px">
-                {recurring.length} monatliche Position(en) werden <b>Monatspauschalen</b>, {once.length}{' '}
-                einmalige werden <b>Sonderleistungen</b> im Objekt. Mehrfaches Ausführen legt nichts doppelt
-                an.
+      <div class="cols">
+        <div>
+          {/* Briefansicht wie im PDF */}
+          <div class="card letter">
+            <div class="addr">
+              <b>{customer.name}</b>
+              {customer.name2 && <div>{customer.name2}</div>}
+              {customer.contact_name && <div>z. Hd. {customer.contact_name}</div>}
+              <div>{customer.street}</div>
+              <div>
+                {customer.postal_code} {customer.city}
+              </div>
+            </div>
+            <div class="band">
+              <div class="t">Angebot {o.number}</div>
+              <dl>
+                <dt>Datum</dt>
+                <dd>{dateDe(o.offer_date)}</dd>
+                <dt>Kundennummer</dt>
+                <dd>
+                  <a href={`/kunden/${customer.id}`}>{customer.customer_no}</a>
+                </dd>
+                <dt>Ansprechpartner</dt>
+                <dd>{contact}</dd>
+                {o.tender_reference && (
+                  <>
+                    <dt>Vergabe-Nr.</dt>
+                    <dd>{o.tender_reference}</dd>
+                  </>
+                )}
+                {o.valid_until && (
+                  <>
+                    <dt>Gültig bis</dt>
+                    <dd>{dateDe(o.valid_until)}</dd>
+                  </>
+                )}
+              </dl>
+            </div>
+            <p>Sehr geehrte Damen und Herren,</p>
+            <p style="white-space:pre-line">{o.intro_text ?? OFFER_INTRO_DEFAULT}</p>
+            <div class="tbl">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Pos</th>
+                    <th>Text</th>
+                    <th class="r">Menge</th>
+                    <th>Einheit</th>
+                    <th class="r">Einzelpreis</th>
+                    <th class="r">Gesamtpreis</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((l) => (
+                    <tr>
+                      <td>{l.position}</td>
+                      <td>
+                        <b>{l.description}</b>
+                        {l.detail && (
+                          <div class="small" style="white-space:pre-line">
+                            {l.detail}
+                          </div>
+                        )}
+                        <div class="small mut">{l.recurring ? 'monatlich' : 'einmalig'}</div>
+                      </td>
+                      <td class="r">{milliToInput(l.quantity_milli)}</td>
+                      <td>{l.unit_code === 'LS' ? 'pauschal' : (UNIT_LABELS[l.unit_code] ?? l.unit_code)}</td>
+                      <td class="r">{euro(l.unit_price_cents)}</td>
+                      <td class="r">{euro(l.net_cents)}</td>
+                    </tr>
+                  ))}
+                  {!lines.length && (
+                    <tr>
+                      <td colspan={6} class="mut">
+                        Noch keine Positionen.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <table class="totals" style="margin:8px 0 12px auto">
+              <tbody>
+                <tr>
+                  <td>Gesamt netto</td>
+                  <td class="r">{euro(o.net_cents)}</td>
+                </tr>
+                <tr>
+                  <td>zzgl. MwSt {vatRates.length === 1 ? `(${vatRates[0]! / 100}%)` : ''}</td>
+                  <td class="r">{euro(o.vat_cents)}</td>
+                </tr>
+                <tr class="sum">
+                  <td>Gesamtbetrag</td>
+                  <td class="r">
+                    <span class="hl">{euro(o.gross_cents)}</span>
+                  </td>
+                </tr>
+                {o.monthly_net_cents > 0n && (
+                  <tr>
+                    <td class="mut small">davon monatlich wiederkehrend (netto)</td>
+                    <td class="r mut small">{euro(o.monthly_net_cents)}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+            <p style="white-space:pre-line">{o.closing_text ?? OFFER_CLOSING_DEFAULT}</p>
+            <p class="meta">
+              Erstellt von {contact} (
+              {o.created_at.toLocaleString('de-DE', {
+                timeZone: 'Europe/Berlin',
+                dateStyle: 'short',
+                timeStyle: 'short',
+              })}
+              )
+            </p>
+          </div>
+
+          {/* Aktionen wie in Fortytools unter dem Angebot */}
+          <div class="card actlist">
+            {o.status === 'entwurf' && (
+              <a class="btn" href={`/angebote/${o.id}/bearbeiten`}>
+                Bearbeiten
+              </a>
+            )}
+            <a class="btn sec" href={`/angebote/${o.id}/angebot.pdf`} target="_blank">
+              <Icon name="pdf" /> PDF anzeigen {o.status === 'entwurf' ? '(Entwurf)' : ''}
+            </a>
+            {post('kopieren', 'Kopieren (neues Angebot)')}
+            {o.status === 'entwurf' &&
+              post('status', 'Als abgegeben markieren', {
+                hidden: { status: 'versendet' },
+                confirm: 'Angebot als abgegeben markieren? Danach ist es nicht mehr änderbar.',
+              })}
+            {o.status === 'versendet' && (
+              <>
+                {post('status', 'Zuschlag erhalten (angenommen)', {
+                  cls: '',
+                  hidden: { status: 'angenommen' },
+                })}
+                {post('status', 'Absage (abgelehnt)', {
+                  hidden: { status: 'abgelehnt' },
+                  confirm: 'Angebot als abgelehnt markieren?',
+                })}
+              </>
+            )}
+            {accepted && post('auftrag', 'Auftrag erstellen (mit Arbeitsschein)', { cls: '' })}
+            {accepted && post('rechnung', 'Rechnung erstellen (Entwurf)')}
+            {['entwurf', 'versendet'].includes(o.status) &&
+              post('status', 'Zurückziehen', {
+                cls: 'ghost',
+                hidden: { status: 'zurueckgezogen' },
+                confirm: 'Angebot zurückziehen?',
+              })}
+            {invoices.length > 0 && (
+              <div class="small">
+                Rechnungen aus diesem Angebot:{' '}
+                {invoices.map((i) => (
+                  <a href={`/rechnungen/${i.id}`} style="margin-right:8px">
+                    {i.number ?? 'Entwurf'} ({euro(i.gross_cents)})
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {accepted && (
+            <form method="post" action={`/angebote/${o.id}/objekt`} class="card">
+              <h3>Leistungen ins Objekt übernehmen</h3>
+              <p class="small mut" style="margin-top:0">
+                {recurring.length} monatliche Position(en) werden Monatspauschalen, {once.length} einmalige
+                werden Sonderleistungen im Objekt. Mehrfaches Ausführen legt nichts doppelt an.
               </p>
               <div class="grid">
                 <div>
@@ -491,110 +628,16 @@ export const OfferDetail: FC<{
                 </div>
               </div>
               <div class="actions" style="margin-bottom:0">
-                <button class="btn" disabled={sites.length === 0}>
+                <button class="btn sec" disabled={sites.length === 0}>
                   Ins Objekt übernehmen
                 </button>
               </div>
             </form>
-            <div>
-              <p class="small" style="margin:0 0 10px">
-                Einmalige Leistung (z. B. Grundreinigung)? Direkt einen Rechnungsentwurf mit allen Positionen
-                erzeugen.
-              </p>
-              <div class="actions" style="margin:0">
-                {post('auftrag', 'Auftrag anlegen (mit Arbeitsschein)', { cls: '' })}
-                {post('rechnung', 'Direkt Rechnungsentwurf')}
-              </div>
-              {invoices.length > 0 && (
-                <div class="small" style="margin-top:8px">
-                  Bereits erzeugt:{' '}
-                  {invoices.map((i) => (
-                    <a href={`/rechnungen/${i.id}`} style="margin-right:8px">
-                      {i.number ?? 'Entwurf'} ({euro(i.gross_cents)})
-                    </a>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div class="cols">
-        <div>
-          <div class="card">
-            <h3>
-              Ausschreibungsunterlagen <span class="cnt">({fileCount})</span>
-            </h3>
-            {files}
-          </div>
-          <div class="card flush">
-            <div class="tbl">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Pos.</th>
-                    <th>Leistung</th>
-                    <th class="r">Menge</th>
-                    <th class="r">Einzelpreis</th>
-                    <th>Abrechnung</th>
-                    <th class="r">Gesamt netto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lines.map((l) => (
-                    <tr>
-                      <td>{l.position}</td>
-                      <td>
-                        {l.description}
-                        {l.detail && (
-                          <div class="small mut" style="white-space:pre-line">
-                            {l.detail}
-                          </div>
-                        )}
-                      </td>
-                      <td class="r">{milliToInput(l.quantity_milli)}</td>
-                      <td class="r">{euro(l.unit_price_cents)}</td>
-                      <td>
-                        {l.recurring ? (
-                          <span class="badge kind">monatlich</span>
-                        ) : (
-                          <span class="badge">einmalig</span>
-                        )}
-                      </td>
-                      <td class="r">{euro(l.net_cents)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <table class="totals" style="margin:8px 0 12px auto">
-              <tbody>
-                {o.monthly_net_cents > 0n && (
-                  <tr>
-                    <td class="mut">davon monatlich wiederkehrend</td>
-                    <td class="r mut">{euro(o.monthly_net_cents)}</td>
-                  </tr>
-                )}
-                <tr>
-                  <td>Summe netto</td>
-                  <td class="r">{euro(o.net_cents)}</td>
-                </tr>
-                <tr>
-                  <td>Umsatzsteuer</td>
-                  <td class="r">{euro(o.vat_cents)}</td>
-                </tr>
-                <tr class="sum">
-                  <td>Gesamt brutto</td>
-                  <td class="r">{euro(o.gross_cents)}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          )}
         </div>
         <div>
           <div class="card">
-            <h3>Angaben</h3>
+            <h3>Ausschreibung</h3>
             <dl class="kv">
               <dt>Auftraggeber</dt>
               <dd>
@@ -608,21 +651,21 @@ export const OfferDetail: FC<{
               </dd>
               <dt>Objekt</dt>
               <dd>{site ? <a href={`/objekte/${site.id}`}>{site.name}</a> : '–'}</dd>
+              <dt>Bezeichnung</dt>
+              <dd>{o.title}</dd>
               <dt>Vergabe-Nr.</dt>
               <dd>{o.tender_reference ?? '–'}</dd>
               <dt>Plattform</dt>
               <dd>{o.tender_platform ?? '–'}</dd>
               <dt>Abgabefrist</dt>
               <dd>{deadlineDe(o.submission_deadline)}</dd>
-              <dt>Angebotsdatum</dt>
-              <dd>{dateDe(o.offer_date)}</dd>
-              <dt>Gültig bis</dt>
-              <dd>{dateDe(o.valid_until)}</dd>
-              <dt>Erstellt</dt>
-              <dd>
-                {o.created_by}, {o.created_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}
-              </dd>
             </dl>
+          </div>
+          <div class="card">
+            <h3>
+              Anhänge / Ausschreibungsunterlagen <span class="cnt">({fileCount})</span>
+            </h3>
+            {files}
           </div>
           <div class="card">
             <h3>Verlauf</h3>
@@ -644,6 +687,23 @@ export const OfferDetail: FC<{
     </>
   );
 };
+
+/** Briefansicht: angelehnt an Fortytools und unser PDF (Adresse, grauer Titelbalken, Tabelle, Summen). */
+const LETTER_CSS = `
+.letter{padding:28px 32px}
+.letter .addr{font-size:14px;line-height:1.5;margin-bottom:22px}
+.letter .band{background:#eef0f3;margin:0 -32px 20px;padding:16px 32px;display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
+.letter .band .t{font-size:28px;font-weight:600;letter-spacing:-.01em}
+.letter .band dl{display:grid;grid-template-columns:auto auto;gap:2px 18px;margin:0;font-size:13px}
+.letter .band dt{color:var(--mut)}.letter .band dd{margin:0;font-weight:600}
+.letter p{font-size:14px;margin:0 0 12px}
+.letter .hl{background:#fff4b8;padding:2px 6px;border-radius:4px}
+.letter .meta{font-size:12px;color:var(--mut);text-align:right;margin-top:18px}
+.actlist{display:flex;flex-direction:column;gap:8px}
+.actlist form,.actlist .btn{width:100%}
+.actlist .btn{justify-content:center}
+@media (max-width:700px){.letter{padding:18px}.letter .band{margin:0 -18px 16px;padding:12px 18px}}
+`;
 
 function historyText(action: string, details: unknown): string {
   const d = (details ?? {}) as Record<string, unknown>;

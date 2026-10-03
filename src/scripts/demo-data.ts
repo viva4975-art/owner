@@ -271,6 +271,7 @@ try {
   }
   await phase3();
   await phase4();
+  await phase5();
   // Belege (PDF, XRechnung/ZUGFeRD, KoSIT-Prüfbericht) für alle ausgestellten Rechnungen erzeugen
   const issued = await sql<{ id: string }[]>`select id from app.invoices where status = 'issued'`;
   for (const i of issued) await ensureDocuments(deps, i.id);
@@ -922,4 +923,78 @@ async function phase4() {
       });
   }
   console.log('Demo Phase 4 angelegt.');
+}
+
+/** Leistungen wie Fortytools: Leistungsarten, Zyklen, Stundenvorgabe, Ausführungshinweise, Gruppen-Kopftext. */
+async function phase5() {
+  const [done] = await sql`select 1 from app.site_services where service_type_id is not null limit 1`;
+  if (done) return;
+  const T = {
+    unterhalt: '00000000-0000-4000-8000-0000000b1001',
+    glas: '00000000-0000-4000-8000-0000000b1003',
+    sonder: '00000000-0000-4000-8000-0000000b1004',
+  };
+  await sql`update app.site_services set service_type_id = ${T.unterhalt}
+             where kind = 'monthly_flat' and description ilike '%reinigung%' and service_type_id is null`;
+  await sql`update app.site_services set service_type_id = ${T.sonder}
+             where kind <> 'monthly_flat' and service_type_id is null`;
+  await sql`update app.site_services
+               set hours_target_milli = 124000,
+                   execution_notes = 'Schlüssel beim Hausmeister (Raum 0.12). Turnhalle nur nach 16 Uhr. Mülltrennung beachten.',
+                   cost_center = 'KST 100 München Süd', labor_share_bp = 7500
+             where id = '00000000-0000-4000-8000-000000000101'`;
+  const svc = (
+    id: string,
+    siteId: string,
+    d: string,
+    price: string,
+    cycle: string,
+    extra: Record<string, unknown> = {},
+  ) =>
+    sql`insert into app.site_services ${sql({
+      id,
+      site_id: siteId,
+      kind: 'monthly_flat',
+      description: d,
+      unit_code: 'LS',
+      quantity_milli: 1000,
+      unit_price_cents: parseEuro(price),
+      vat_rate_bp: 1900,
+      valid_from: '2026-01-01',
+      sort_order: 20,
+      billing_cycle: cycle,
+      ...extra,
+    } as Record<string, unknown>)} on conflict (id) do nothing`;
+  await svc(
+    '00000000-0000-4000-8000-0000000b2001',
+    DEMO.siteSchool,
+    'Glasreinigung innen/außen',
+    '1.180,00',
+    'quartalsweise',
+    {
+      service_type_id: T.glas,
+      note: 'Fenster, Oberlichter und Glastüren',
+      execution_notes: 'Hubsteiger über Fa. Lift-Rent, Termin 2 Wochen vorher abstimmen.',
+    },
+  );
+  await svc(
+    '00000000-0000-4000-8000-0000000b2002',
+    DEMO.siteHq,
+    'Grundreinigung Teppichböden',
+    '2.450,00',
+    'jaehrlich',
+    {
+      service_type_id: '00000000-0000-4000-8000-0000000b1002',
+      separate_invoice: true,
+      always_unfinished: true,
+      note: 'Menge nach Aufmaß',
+    },
+  );
+  await sql`update app.invoice_groups
+               set intro_text = 'Sehr geehrte Damen und Herren, für die Schulen des Referats berechnen wir unsere Leistungen wie folgt:',
+                   closing_text = 'Bitte geben Sie bei Zahlung die Rechnungsnummer an. Vielen Dank für die gute Zusammenarbeit.'
+             where id = '00000000-0000-4000-8000-0000000f0001'`;
+  // Abrechnung am Objekt für den laufenden Monat (Entwürfe, Rechnungsdatum = Ausstellungstag)
+  await runMonthly(sql, todayBerlin().slice(0, 7), A, { siteIds: [DEMO.siteHq] });
+  console.log('Demo Phase 5 angelegt.');
 }

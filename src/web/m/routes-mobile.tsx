@@ -12,6 +12,13 @@ import {
   requestAbsence,
 } from '../../services/absences.js';
 import { login, signSession, verifySession } from '../../services/employee-auth.js';
+import {
+  getRequest,
+  originalPdf,
+  requestsForEmployee,
+  signRequest,
+  signedPdf,
+} from '../../services/sign-documents.js';
 import { BusinessError } from '../../services/errors.js';
 import {
   clock,
@@ -26,6 +33,7 @@ import {
   runningEntry,
 } from '../../services/time.js';
 import type { AppEnv, Ctx } from '../app.js';
+import { SIGN_JS } from '../routes-orders.js';
 import { type Lang, LANGS, LOCALE, isLang, t } from './i18n.js';
 
 const COOKIE = 'vd_m';
@@ -81,6 +89,11 @@ input:focus,select:focus,textarea:focus{outline:3px solid #f3d6df;border-color:v
 .langs a{padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);text-decoration:none;font-size:15px}
 .langs a.on{border-color:var(--brand);color:var(--brand);font-weight:650}
 button[disabled]{opacity:.6}
+#scanner{position:fixed;inset:0;background:#000;z-index:10;display:flex;flex-direction:column}
+#scanner[hidden]{display:none}
+#scanner video{flex:1;width:100%;object-fit:cover}
+#scanner button{margin:16px;margin-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+canvas.sig{width:100%;height:200px;border:2px dashed #cfd4db;border-radius:12px;background:#fff;touch-action:none;display:block}
 `;
 
 // Formulare robust absenden: bei Funkloch Meldung statt Fehlerseite; gleiche ID → nichts doppelt.
@@ -97,7 +110,46 @@ const JS = `
   var el=document.querySelector('[data-since]');
   if(el){var s=Number(el.getAttribute('data-since'));var tick=function(){var m=Math.max(0,Math.floor((Date.now()-s)/60000));el.textContent=Math.floor(m/60)+':'+String(m%60).padStart(2,'0');};tick();setInterval(tick,15000);
     var br=document.getElementById('break'); if(br&&!br.dataset.touched){var m=(Date.now()-s)/60000; br.value=m>540?45:m>360?30:0; br.addEventListener('input',function(){br.dataset.touched='1'});}}
+  // Installierbare App (Service Worker nur für Offline-Hinweis und Schrift/Logo – keine persönlichen Daten im Cache)
+  if('serviceWorker' in navigator){navigator.serviceWorker.register('/m/sw.js',{scope:'/m'}).catch(function(){});}
+  var standalone=window.matchMedia('(display-mode: standalone)').matches||navigator.standalone||window.Capacitor;
+  var inst=document.getElementById('install');
+  if(inst&&!standalone){
+    var ios=/iphone|ipad|ipod/i.test(navigator.userAgent);
+    if(ios){inst.hidden=false; inst.querySelector('.ios').hidden=false;}
+    window.addEventListener('beforeinstallprompt',function(ev){ev.preventDefault(); inst.hidden=false; var b=inst.querySelector('button'); b.hidden=false; b.onclick=function(){ev.prompt(); inst.hidden=true;};});
+  }
+  // QR-Code am Objekt scannen: in der App nativ (Capacitor), im Browser per BarcodeDetector, sonst Kamera-App
+  var scan=document.getElementById('scan');
+  if(scan){
+    var cap=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.BarcodeScanner;
+    var web='BarcodeDetector' in window&&navigator.mediaDevices&&navigator.mediaDevices.getUserMedia;
+    if(cap||web){scan.hidden=false;}
+    var go=function(v){try{var u=new URL(v,location.href); if(u.origin===location.origin&&/^\\/m\\/o\\/[0-9a-f]{32}$/.test(u.pathname)){location.href=u.pathname;}}catch(e){}};
+    scan.addEventListener('click',function(){
+      if(cap){cap.scan({formats:['QR_CODE']}).then(function(r){if(r&&r.barcodes&&r.barcodes[0])go(r.barcodes[0].rawValue);}).catch(function(){});return;}
+      var ov=document.getElementById('scanner'),v=ov.querySelector('video'),stop=false,st=null;
+      var end=function(){stop=true; if(st)st.getTracks().forEach(function(t){t.stop()}); ov.hidden=true;};
+      ov.querySelector('button').onclick=end; ov.hidden=false;
+      navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(function(s){st=s; v.srcObject=s; return v.play();}).then(function(){
+        var det=new window.BarcodeDetector({formats:['qr_code']});
+        (function loop(){if(stop)return; det.detect(v).then(function(c){if(c[0]){end(); go(c[0].rawValue);} else setTimeout(loop,250);}).catch(function(){setTimeout(loop,400);});})();
+      }).catch(end);
+    });
+  }
 })();`;
+
+/** Service Worker: Offline-Hinweis und Schrift/Logo aus dem Cache. Seiten mit persönlichen Daten werden NIE gecacht. */
+const SW_JS = `
+var C='vd-m-v1';
+self.addEventListener('install',function(e){e.waitUntil(caches.open(C).then(function(c){return c.addAll(['/m/offline','/static/logo.png','/static/inter-latin.woff2','/static/favicon.png']);}).then(function(){return self.skipWaiting();}));});
+self.addEventListener('activate',function(e){e.waitUntil(caches.keys().then(function(ks){return Promise.all(ks.filter(function(k){return k!==C;}).map(function(k){return caches.delete(k);}));}).then(function(){return self.clients.claim();}));});
+self.addEventListener('fetch',function(e){
+  var r=e.request; if(r.method!=='GET')return;
+  var u=new URL(r.url); if(u.origin!==location.origin)return;
+  if(u.pathname.indexOf('/static/')===0){e.respondWith(caches.match(r).then(function(m){return m||fetch(r);}));return;}
+  if(r.mode==='navigate'&&(u.pathname==='/m'||u.pathname.indexOf('/m/')===0)){e.respondWith(fetch(r).catch(function(){return caches.match('/m/offline');}));}
+});`;
 
 const MLayout: FC<{
   lang: Lang;
@@ -112,6 +164,11 @@ const MLayout: FC<{
       <meta name="theme-color" content="#7D1435" />
       <title>{`${t(lang, 'app')} · Viva-Deluxe`}</title>
       <link rel="icon" type="image/png" href="/static/favicon.png" />
+      <link rel="manifest" href="/m/manifest.webmanifest" />
+      <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
+      <meta name="apple-mobile-web-app-capable" content="yes" />
+      <meta name="mobile-web-app-capable" content="yes" />
+      <meta name="apple-mobile-web-app-title" content="Viva-Deluxe" />
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
     </head>
     <body>
@@ -389,11 +446,13 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     const lang = langOf(c, me);
     if (!me) return render(c, lang, null, <LoginForm lang={lang} next={safeNext(c.req.query('next'))} />);
     const today = todayBerlin();
-    const [running, shifts, times] = await Promise.all([
+    const [running, shifts, times, docs] = await Promise.all([
       runningEntry(sql, me.id),
       plannedShifts(sql, { from: addDays(today, -7), to: today, employeeId: me.id }),
       listEntries(sql, { employeeId: me.id, from: addDays(today, -7) }),
+      requestsForEmployee(sql, me.id),
     ]);
+    const openDocs = docs.filter((d) => d.status === 'offen');
     const nowHm = new Date().toLocaleTimeString('de-DE', {
       timeZone: 'Europe/Berlin',
       hour: '2-digit',
@@ -410,6 +469,20 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       me,
       <>
         <h1>{t(lang, 'hello', { name: me.first_name })}</h1>
+        {openDocs.length > 0 && (
+          <a class="big go" href="/m/dokumente" style="font-size:18px">
+            ✍ {t(lang, 'docs_open', { n: openDocs.length })}
+          </a>
+        )}
+        <button type="button" id="scan" class="big sec" hidden>
+          {t(lang, 'scan_qr')}
+        </button>
+        <div id="scanner" hidden>
+          <video playsinline muted></video>
+          <button type="button" class="big sec">
+            {t(lang, 'scan_cancel')}
+          </button>
+        </div>
         <ClockCard
           lang={lang}
           me={{
@@ -461,8 +534,21 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
           <a class="big sec" href="/m/abwesenheit">
             {t(lang, 'absence')}
           </a>
+          {docs.length > 0 && (
+            <a class="big sec" href="/m/dokumente">
+              {t(lang, 'docs')}
+            </a>
+          )}
         </div>
         <Times lang={lang} rows={times} />
+        <div class="card" id="install" hidden>
+          <button type="button" class="big sec" hidden>
+            {t(lang, 'install')}
+          </button>
+          <p class="hint ios" hidden>
+            {t(lang, 'install')}: {t(lang, 'install_ios')}
+          </p>
+        </div>
       </>,
     );
   });
@@ -744,6 +830,191 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         actor: `m:${me.personnel_no}`,
       });
       return back(c, '/m/abwesenheit', { ok: t(lang, 'msg_absence') });
+    });
+  });
+
+  // ---------------------------------------------------------------- Installierbare App (PWA)
+
+  app.get('/m/manifest.webmanifest', (c) =>
+    c.body(
+      JSON.stringify({
+        name: 'Viva-Deluxe Mitarbeiter',
+        short_name: 'Viva-Deluxe',
+        description: 'Zeiterfassung, Urlaub und Dokumente für Mitarbeitende der Viva-Deluxe GmbH',
+        lang: 'de',
+        start_url: '/m',
+        scope: '/m',
+        display: 'standalone',
+        orientation: 'portrait',
+        background_color: '#f4f5f7',
+        theme_color: '#7D1435',
+        icons: [
+          { src: '/static/app-icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/static/app-icon-512.png', sizes: '512x512', type: 'image/png' },
+          {
+            src: '/static/app-icon-maskable-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
+      }),
+      200,
+      { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'public, max-age=86400' },
+    ),
+  );
+
+  app.get('/m/sw.js', (c) =>
+    c.body(SW_JS, 200, {
+      'Content-Type': 'text/javascript; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      'Service-Worker-Allowed': '/m',
+    }),
+  );
+
+  app.get('/m/offline', (c) =>
+    c.html(
+      '<!doctype html>' +
+        String(
+          <MLayout lang="de" flash={{}}>
+            <div class="card warn">
+              <h2>Keine Verbindung</h2>
+              <p class="mut">
+                No connection · Fără conexiune · Bağlantı yok · Brak połączenia · Nema veze · Няма връзка
+              </p>
+              <a class="big sec" href="/m">
+                ↻
+              </a>
+            </div>
+          </MLayout>,
+        ),
+    ),
+  );
+
+  // ---------------------------------------------------------------- Dokumente unterschreiben
+
+  app.get('/m/dokumente', async (c) => {
+    const { me, res } = await requireMe(c);
+    if (!me) return res!;
+    const lang = langOf(c, me);
+    const docs = await requestsForEmployee(sql, me.id);
+    return render(
+      c,
+      lang,
+      me,
+      <>
+        <h1>{t(lang, 'docs')}</h1>
+        <div class="card">
+          {docs.length === 0 && <div class="mut">{t(lang, 'none')}</div>}
+          {docs.map((d) => (
+            <a class="row" href={`/m/dokumente/${d.id}`} style="color:inherit;text-decoration:none">
+              <div>
+                <b>{d.title}</b>
+                {d.due_date && d.status === 'offen' && (
+                  <div class="small mut">{t(lang, 'doc_due', { date: dayLabel(lang, d.due_date) })}</div>
+                )}
+              </div>
+              <div class="r">
+                {d.status === 'offen' ? <span class="pill warn">✍</span> : <span class="pill ok">✓</span>}
+              </div>
+            </a>
+          ))}
+        </div>
+        <a class="big sec" href="/m">
+          {t(lang, 'back')}
+        </a>
+      </>,
+    );
+  });
+
+  app.get('/m/dokumente/:id{[0-9a-f-]{36}}', async (c) => {
+    const { me, res } = await requireMe(c);
+    if (!me) return res!;
+    const lang = langOf(c, me);
+    const d = await getRequest(sql, c.req.param('id'));
+    if (!d || d.employee_id !== me.id || d.status === 'zurueckgezogen') return c.redirect('/m/dokumente');
+    const signedAt = d.signed_at?.toLocaleString(LOCALE[lang], {
+      timeZone: 'Europe/Berlin',
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+    return render(
+      c,
+      lang,
+      me,
+      <>
+        <h1>{d.title}</h1>
+        {d.description && (
+          <p class="mut" style="margin:0">
+            {d.description}
+          </p>
+        )}
+        <a class="big sec" href={`/m/dokumente/${d.id}/dokument.pdf`} target="_blank" rel="noopener">
+          📄 {t(lang, 'doc_open_pdf')}
+        </a>
+        {d.status === 'unterschrieben' ? (
+          <div class="card run">
+            <b>✓ {t(lang, 'doc_signed', { date: signedAt ?? '' })}</b>
+          </div>
+        ) : (
+          <form method="post" action={`/m/dokumente/${d.id}`} class="card">
+            <div class="chk">
+              <input type="checkbox" id="read" name="read" value="1" required />
+              <label for="read">{t(lang, 'doc_read')}</label>
+            </div>
+            <label>{t(lang, 'doc_sign_here')}</label>
+            <canvas id="sig" class="sig"></canvas>
+            <input type="hidden" id="sig-png" name="png" />
+            <p class="hint" id="sig-hint" style="color:var(--err)" hidden>
+              {t(lang, 'e_signature')}
+            </p>
+            <div class="two" style="margin-top:12px">
+              <button type="button" class="big sec" id="sig-clear">
+                {t(lang, 'doc_clear')}
+              </button>
+              <button class="big go">{t(lang, 'doc_sign_btn')}</button>
+            </div>
+          </form>
+        )}
+        <a class="big sec" href="/m/dokumente">
+          {t(lang, 'back')}
+        </a>
+        {d.status === 'offen' && <script dangerouslySetInnerHTML={{ __html: SIGN_JS }} />}
+      </>,
+    );
+  });
+
+  app.get('/m/dokumente/:id{[0-9a-f-]{36}}/dokument.pdf', async (c) => {
+    const { me, res } = await requireMe(c);
+    if (!me) return res!;
+    const d = await getRequest(sql, c.req.param('id'));
+    if (!d || d.employee_id !== me.id || d.status === 'zurueckgezogen') return c.notFound();
+    const pdf = d.signed_pdf_path ? await signedPdf(deps, d.id) : await originalPdf(deps, d.document_id);
+    return new Response(pdf, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': 'inline; filename="dokument.pdf"',
+        'Cache-Control': 'private, no-store',
+      },
+    });
+  });
+
+  app.post('/m/dokumente/:id{[0-9a-f-]{36}}', async (c) => {
+    const { me, res } = await requireMe(c);
+    if (!me) return res!;
+    const lang = langOf(c, me);
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    return guard(c, lang, `/m/dokumente/${id}`, async () => {
+      const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(b.png ?? ''));
+      if (!m) throw new BusinessError('Unterschrift fehlt', 'signature');
+      await signRequest(deps, id, me.id, {
+        png: new Uint8Array(Buffer.from(m[1]!, 'base64')),
+        confirmed: b.read === '1',
+        ip: c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+        userAgent: c.req.header('user-agent') ?? null,
+      });
+      return back(c, `/m/dokumente/${id}`, { ok: t(lang, 'msg_signed') });
     });
   });
 }

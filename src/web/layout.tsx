@@ -264,7 +264,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Prüfbericht Zoll (§ 17 MiLoG)', href: '/zeiterfassung/pruefbericht' },
       { label: 'Urlaub & Abwesenheiten', href: '/urlaub' },
       { label: 'Mitarbeiter-Handyansicht', href: '/m' },
-      { label: 'Dokumente digital unterschreiben', href: '/geplant/unterschrift', soon: true },
+      { label: 'Dokumente digital unterschreiben', href: '/personal/dokumente' },
     ],
   },
   {

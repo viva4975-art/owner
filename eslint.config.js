@@ -22,7 +22,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['e2e/**/*.mjs'],
+    files: ['e2e/**/*.mjs', 'scripts/**/*.mjs'],
     // Browser-Tests: Node + Code, der in page.evaluate im Browser läuft; Zahlen nur für Anzeige-Vergleiche
     languageOptions: {
       globals: {

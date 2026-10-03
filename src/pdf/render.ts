@@ -62,6 +62,12 @@ async function loadAssets(): Promise<Assets> {
   return cache;
 }
 
+/** Schriften (DejaVu, alle europäischen Sonderzeichen) für andere PDF-Erzeuger. */
+export async function pdfFonts(): Promise<{ regular: Uint8Array; bold: Uint8Array }> {
+  const a = await loadAssets();
+  return { regular: a.regular, bold: a.bold };
+}
+
 const eur = (c: bigint) => formatEuro(c as Cents);
 type Color = ReturnType<typeof rgb>;
 

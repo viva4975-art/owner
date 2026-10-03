@@ -305,3 +305,19 @@ Testadresse.
   - Storno/Korrektur übernehmen die Gruppe. Sammelrechnung besteht KoSIT.
   - Offen: Rechnungsgruppen aus dem Fortytools-Export übernehmen (Ahmed zeigt eine Gruppe von innen).
   - Tests: 159 Unit-/DB-Tests, Browser-Tests 147 Prüfungen.
+- 2026-10-03: Mitarbeiter-App und Dokumente digital unterschreiben:
+  - `/m` ist installierbare Web-App (Manifest, Service Worker nur für Offline-Hinweis und Schrift/Logo – keine
+    persönlichen Daten im Cache, Icons `assets/web/app-icon-*.png` via `scripts/app-icons.mjs`). Android:
+    „App installieren“, iPhone: Safari → Teilen → „Zum Home-Bildschirm“.
+  - Knopf „QR-Code am Objekt scannen“: nativ in der App, im Browser per BarcodeDetector (sonst Kamera-App).
+  - `mobile-app/`: Capacitor-Hülle für App Store / Google Play (lädt `/m` vom Live-Server, QR-Scanner- und
+    Push-Plugin vorbereitet). Native Projekte erst mit Mac/Xcode bzw. Android Studio anlegen (README dort).
+    Empfehlung: nicht öffentlich listen (Apple Unlisted/Custom App, Google Private App) – Risiko Apple 4.2.
+  - Personal → Dokumente digital unterschreiben: PDF hochladen (write-once, SHA-256), Empfänger wählen; am Handy
+    „gelesen und verstanden“ + Unterschrift mit dem Finger; Nachweis-PDF = Original + Nachweisblatt (Zeitpunkt,
+    Name/Personalnr., IP, Gerät, Prüfsumme), unveränderbar, nie löschbar. Zurückziehen nur offene Anforderungen.
+  - **Gesperrt (Schriftform):** Kündigung/Aufhebungsvertrag (§ 623 BGB), Befristung (§ 14 Abs. 4 TzBfG), Zeugnis
+    (§ 630 BGB) – keine Kategorie dafür, Titel/Dateiname mit solchen Begriffen wird abgelehnt.
+  - Offen: Push-Benachrichtigungen serverseitig (Firebase/APNs), Apple-/Google-Konten + D-U-N-S (Ahmed),
+    Live-Domain für `capacitor.config.json`, Übersetzungen der neuen Handy-Texte gegenlesen lassen.
+  - Tests: 161 Unit-/DB-Tests, Browser-Tests 162 Prüfungen (neu `npm run e2e:app`, 15 Prüfungen).

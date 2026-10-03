@@ -1,0 +1,23 @@
+{
+  "name": "viva-deluxe-mitarbeiter-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native Hülle (Capacitor) für die Mitarbeiter-Ansicht /m – App Store und Google Play",
+  "scripts": {
+    "add:ios": "cap add ios",
+    "add:android": "cap add android",
+    "sync": "cap sync",
+    "open:ios": "cap open ios",
+    "open:android": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor-mlkit/barcode-scanning": "^7.0.0",
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/ios": "^7.0.0",
+    "@capacitor/push-notifications": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.0.0"
+  }
+}

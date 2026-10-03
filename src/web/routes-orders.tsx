@@ -63,7 +63,7 @@ export const SIGN_JS = `
   function size(){var r=c.getBoundingClientRect(), d=window.devicePixelRatio||1; var img=drawn?c.toDataURL():null; c.width=r.width*d; c.height=r.height*d; ctx.setTransform(d,0,0,d,0,0); ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#111'; if(img){var i=new Image(); i.onload=function(){ctx.drawImage(i,0,0,r.width,r.height)}; i.src=img;}}
   size(); window.addEventListener('resize', size);
   function pos(e){var r=c.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top};}
-  c.addEventListener('pointerdown',function(e){e.preventDefault(); c.setPointerCapture(e.pointerId); last=pos(e); ctx.beginPath(); ctx.arc(last.x,last.y,1.1,0,7); ctx.fill(); drawn=true;});
+  c.addEventListener('pointerdown',function(e){e.preventDefault(); c.setPointerCapture(e.pointerId); last=pos(e); ctx.beginPath(); ctx.arc(last.x,last.y,1.1,0,7); ctx.fill(); drawn=true; var hh=document.getElementById('sig-hint'); if(hh)hh.hidden=true;});
   c.addEventListener('pointermove',function(e){if(!last)return; var p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p;});
   ['pointerup','pointercancel','pointerleave'].forEach(function(t){c.addEventListener(t,function(){last=null;});});
   document.getElementById('sig-clear').addEventListener('click',function(){ctx.clearRect(0,0,c.width,c.height); drawn=false;});

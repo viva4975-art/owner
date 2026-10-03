@@ -47,6 +47,7 @@ npm run e2e:zeit     # Browser-Test: Handy-Zeiterfassung (PIN, QR, Stempeln, Sol
 npm run e2e:einkauf  # Browser-Test: Bestellung → Wareneingang → Eingangsrechnung → SEPA → DATEV → Nachkalkulation
 npm run e2e:rechte   # Browser-Test: Anmeldung, Benutzer anlegen, Objektleitung sieht nur eigene Objekte
 npm run e2e:auftrag  # Browser-Test: Auftrag → Arbeitsschein → Unterschrift auf dem Canvas → Rechnung mit Anlage → Regie
+npm run e2e:objekt   # Browser-Test: Raumbuch → Stundenvorgabe → Qualitätskontrolle mit Unterschrift → Zählerstände
 ```
 
 ### Klick-Demo bauen (eine HTML-Datei zum Durchklicken, offline)

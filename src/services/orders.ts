@@ -429,6 +429,13 @@ export async function saveWorkReport(sql: Sql, id: string, input: WorkReportInpu
 
 const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
+/** Unterschrift aus dem Canvas: echtes PNG, nicht leer, nicht übergroß. */
+export function assertSignaturePng(png: Uint8Array) {
+  if (png.byteLength < 200 || png.byteLength > 600_000 || !PNG_MAGIC.every((b, i) => png[i] === b)) {
+    throw new BusinessError('Unterschrift fehlt oder ist ungültig – bitte erneut unterschreiben');
+  }
+}
+
 /**
  * Unterschrift des Kunden speichern. Danach ist der Schein eingefroren; PDF wird erzeugt und archiviert.
  * Doppelt gesendet → keine zweite Unterschrift (nur aus Status „entwurf“).
@@ -441,9 +448,7 @@ export async function signWorkReport(
 ) {
   const { sql } = deps;
   if (!p.name.trim()) throw new BusinessError('Bitte Namen des Unterzeichners angeben');
-  if (p.png.byteLength < 200 || p.png.byteLength > 600_000 || !PNG_MAGIC.every((b, i) => p.png[i] === b)) {
-    throw new BusinessError('Unterschrift fehlt oder ist ungültig – bitte erneut unterschreiben');
-  }
+  assertSignaturePng(p.png);
   const [w] = await sql<{ status: WorkReportStatus; number: string; work_date: string }[]>`
     select status, number, work_date from app.work_reports where id = ${id}`;
   if (!w) throw new BusinessError('Arbeitsschein nicht gefunden');

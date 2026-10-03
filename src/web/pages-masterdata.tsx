@@ -502,8 +502,10 @@ export const SiteShell: FC<{
     { key: 'qr', label: 'QR-Aushang Zeiterfassung', href: `${base}/qr` },
     { key: 'arbeitsscheine', label: 'Arbeitsscheine', href: `${base}/arbeitsscheine` },
     { key: 'x-schluessel', label: 'Schlüssel (bald)', href: '/geplant/schluessel' },
-    { key: 'x-raumbuch', label: 'Raumbuch (bald)', href: '/geplant/raumbuch' },
-    { key: 'x-audit', label: 'Auditanalyse (bald)', href: '/geplant/audit' },
+    { key: 'raumbuch', label: 'Raumbuch', href: `${base}/raumbuch` },
+    { key: 'stundenvorgabe', label: 'Stundenvorgabe', href: `${base}/stundenvorgabe` },
+    { key: 'qualitaet', label: 'Qualitätskontrolle', href: `${base}/qualitaet` },
+    { key: 'zaehler', label: 'Zähler', href: `${base}/zaehler` },
   ];
   return (
     <>

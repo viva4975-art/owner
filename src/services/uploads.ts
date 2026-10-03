@@ -53,7 +53,8 @@ export type LinkTarget = {
     | 'incoming_invoice'
     | 'purchase_order'
     | 'order'
-    | 'work_report';
+    | 'work_report'
+    | 'quality_check';
   id: string;
 };
 

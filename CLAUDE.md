@@ -280,3 +280,19 @@ Testadresse.
   - Behoben: Doppelklick-Schutz sperrte Formulare auch nach abgebrochenem Absenden (z. B. „Abbrechen“ im
     Bestätigungsdialog) für 8 s. Lange PDF-Titel werden verkleinert statt in den Infoblock zu laufen.
   - Tests: 152 Unit-/DB-Tests, Browser-Tests 115 Prüfungen (neu `npm run e2e:auftrag`, 20 Prüfungen).
+- 2026-10-03: Phase 4 Teil 2 – Raumbuch, Stundenvorgabe, Qualitätskontrolle, Zählerstände:
+  - Raumbuch je Objekt: Etage, Nr., Raum, Raumart, Bodenbelag, Fläche (m² × 100 als ganze Zahl), Intervall als
+    Reinigungen pro Jahr (5×/Woche = 260), Leistungswert je Raumart (m²/h, Richtwerte unter Disposition →
+    Leistungswerte, je Raum abweichend möglich). CSV-Export.
+  - Stundenvorgabe = Fläche ÷ Leistungswert × Reinigungen/Jahr (Woche = ÷ 52, Monat = ÷ 12), Vergleich mit dem heute
+    gültigen Einsatzplan (Abweichung > 10 % rot), fürs Büro Erlös je Vorgabe-/Plan-Stunde aus der Monatspauschale.
+    **Leistungswerte sind Richtwerte – Ahmed bitte mit eigenen Erfahrungswerten abgleichen.**
+  - Qualitätskontrolle `QK-JJJJ-NNNN`: Bereiche aus dem Raumbuch (sonst Standardbereiche), je Bereich i. O. / Mangel /
+    nicht geprüft mit Mangelkategorien und Bemerkung, Fotos. Ergebnis = Anteil i. O. der geprüften Bereiche
+    (grün ≥ 90 %, gelb ≥ 75 %). Abschluss optional mit Unterschrift des Kunden; danach unveränderbar (Trigger),
+    Prüfbericht-PDF write-once; je Mangel automatisch eine Nachbesserungs-Aufgabe (Frist 3 Tage, Objektleitung).
+  - Zählerstände (Strom, Wasser, Gas, Wärme): Ablesungen nur anhängen, nie kleiner als die vorige bzw. größer als eine
+    spätere (DB-Trigger), Zählertausch als Startwert, Verbrauch und Verbrauch/Tag je Zeitraum, Liste „Ablesung fällig“
+    (älter als 35 Tage).
+  - Objektleitung: alles davon für die eigenen Objekte, Stundenvorgabe ohne Erlöse, Leistungswerte nur Büro.
+  - Tests: 156 Unit-/DB-Tests, Browser-Tests 145 Prüfungen (neu `npm run e2e:objekt`, 25 Prüfungen; Rechte-Test +5).

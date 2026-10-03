@@ -23,7 +23,8 @@
     "e2e:zeit": "node e2e/zeit.e2e.mjs",
     "e2e:einkauf": "node e2e/einkauf.e2e.mjs",
     "e2e:rechte": "node e2e/rechte.e2e.mjs",
-    "e2e:auftrag": "node e2e/auftrag.e2e.mjs"
+    "e2e:auftrag": "node e2e/auftrag.e2e.mjs",
+    "e2e:objekt": "node e2e/objekt.e2e.mjs"
   },
   "repository": {
     "type": "git",

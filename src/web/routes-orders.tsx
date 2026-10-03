@@ -56,7 +56,8 @@ const WR_UNITS: [string, string][] = [
 ];
 
 // Unterschriftsfeld: Finger/Stift/Maus, hochauflösend, „Löschen“; PNG wird beim Absenden eingesetzt.
-const SIGN_JS = `
+/** Unterschrift auf dem Canvas; `data-optional="1"` am Canvas erlaubt Absenden ohne Zeichnung. */
+export const SIGN_JS = `
 (function(){
   var c=document.getElementById('sig'), f=c.closest('form'), ctx=c.getContext('2d'), drawn=false, last=null;
   function size(){var r=c.getBoundingClientRect(), d=window.devicePixelRatio||1; var img=drawn?c.toDataURL():null; c.width=r.width*d; c.height=r.height*d; ctx.setTransform(d,0,0,d,0,0); ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#111'; if(img){var i=new Image(); i.onload=function(){ctx.drawImage(i,0,0,r.width,r.height)}; i.src=img;}}
@@ -66,7 +67,7 @@ const SIGN_JS = `
   c.addEventListener('pointermove',function(e){if(!last)return; var p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p;});
   ['pointerup','pointercancel','pointerleave'].forEach(function(t){c.addEventListener(t,function(){last=null;});});
   document.getElementById('sig-clear').addEventListener('click',function(){ctx.clearRect(0,0,c.width,c.height); drawn=false;});
-  f.addEventListener('submit',function(e){ if(!drawn){e.preventDefault(); e.stopImmediatePropagation(); document.getElementById('sig-hint').hidden=false; return;} document.getElementById('sig-png').value=c.toDataURL('image/png'); }, true);
+  f.addEventListener('submit',function(e){ if(!drawn){ if(c.dataset.optional==='1')return; e.preventDefault(); e.stopImmediatePropagation(); document.getElementById('sig-hint').hidden=false; return;} document.getElementById('sig-png').value=c.toDataURL('image/png'); }, true);
 })();`;
 
 // Positionen im Arbeitsschein: Zeile hinzufügen / entfernen

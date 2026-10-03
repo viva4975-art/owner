@@ -282,6 +282,9 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     items: [
       { label: 'Einsatzplanung (Wochenplan)', href: '/einsatzplanung' },
       { label: 'Arbeitsscheine (Unterschrift vor Ort)', href: '/arbeitsscheine' },
+      { label: 'Qualitätskontrollen', href: '/qualitaet' },
+      { label: 'Zählerstände', href: '/zaehler' },
+      { label: 'Leistungswerte je Raumart', href: '/raumbuch/leistungswerte' },
       { label: 'Heute: Soll/Ist', href: '/zeiterfassung' },
       { label: 'Monat: Soll/Ist je Mitarbeiter', href: '/zeiterfassung/monat' },
       { label: 'Urlaubskalender', href: '/urlaub/kalender' },

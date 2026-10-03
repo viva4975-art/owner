@@ -15,6 +15,7 @@ import {
   saveOffer,
   setOfferStatus,
 } from '../services/offers.js';
+import { orderFromOffer } from '../services/orders.js';
 import { listFiles } from '../services/uploads.js';
 import { type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
@@ -202,6 +203,11 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
         ? `${n} Leistung(en) aus dem Angebot übernommen.`
         : 'Leistungen waren bereits übernommen – nichts doppelt angelegt.',
     });
+  });
+
+  app.post(`/angebote/:id{${UUID}}/auftrag`, async (c) => {
+    const orderId = await orderFromOffer(sql, c.req.param('id'), c.get('actor'));
+    return back(c, `/auftraege/${orderId}`, { ok: 'Auftrag aus dem Angebot angelegt.' });
   });
 
   app.post(`/angebote/:id{${UUID}}/rechnung`, async (c) => {

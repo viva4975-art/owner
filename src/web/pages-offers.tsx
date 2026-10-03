@@ -501,7 +501,10 @@ export const OfferDetail: FC<{
                 Einmalige Leistung (z. B. Grundreinigung)? Direkt einen Rechnungsentwurf mit allen Positionen
                 erzeugen.
               </p>
-              {post('rechnung', 'Rechnungsentwurf erstellen')}
+              <div class="actions" style="margin:0">
+                {post('auftrag', 'Auftrag anlegen (mit Arbeitsschein)', { cls: '' })}
+                {post('rechnung', 'Direkt Rechnungsentwurf')}
+              </div>
               {invoices.length > 0 && (
                 <div class="small" style="margin-top:8px">
                   Bereits erzeugt:{' '}

@@ -192,11 +192,16 @@ class Doc {
     const bandTop = 290;
     const bandH = Math.max(56, 18 + rows * 12.6);
     this.rect(0, bandTop, PAGE_W, bandH);
-    this.text(this.title, LEFT, bandTop + bandH / 2 + 7, 19.7);
     let y = bandTop + (bandH - rows * 12.6) / 2 + 9;
     // Fortytools: Label bei 402 pt, Wert bei 490 pt. Lange Werte (Leitweg-ID) rücken den Block nach links.
     const valueX = Math.min(490.5, RIGHT - Math.max(...info.map(([, v]) => this.width(v))));
     const labelX = valueX - 88.3;
+    // Langer Titel (z. B. „Arbeitsschein AS-2026-0001“) darf nicht in den Infoblock laufen → Schrift verkleinern
+    const titleSize = Math.min(
+      19.7,
+      (19.7 * (labelX - LEFT - 14)) / this.regular.widthOfTextAtSize(this.title, 19.7),
+    );
+    this.text(this.title, LEFT, bandTop + bandH / 2 + 7, titleSize);
     for (const [k, v] of info) {
       this.text(k, labelX, y);
       this.text(v, valueX, y);
@@ -500,11 +505,15 @@ export async function renderLetterPdf(p: {
   columns: { label: string; x: number; align?: 'left' | 'right' }[];
   rows: string[][];
   sums: [string, string][];
-  /** letzte Summenzeile hervorgehoben */
-  total: [string, string];
+  /** letzte Summenzeile hervorgehoben (entfällt z. B. beim Arbeitsschein) */
+  total?: [string, string] | null;
   paragraphs: string[];
   girocode?: { amount: bigint; reference: string } | null;
   watermark?: string;
+  /** Anrede (Standard „Sehr geehrte Damen und Herren,“; null = keine) */
+  greeting?: string | null;
+  /** Unterschriftsfeld, z. B. Abnahme durch den Kunden */
+  signature?: { label: string; png: Uint8Array | null; name: string; at: string } | null;
 }): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
@@ -520,8 +529,11 @@ export async function renderLetterPdf(p: {
   const w = new Doc(pdf, regular, bold, letterhead, p.title, p.watermark);
   w.firstPage(p.info);
   w.address(p.seller, p.buyer);
-  w.text('Sehr geehrte Damen und Herren,', LEFT, w.y);
-  w.y += 24;
+  const greeting = p.greeting === undefined ? 'Sehr geehrte Damen und Herren,' : p.greeting;
+  if (greeting) {
+    w.text(greeting, LEFT, w.y);
+    w.y += 24;
+  }
   w.paragraph(p.intro);
   w.y += 30;
   const header = () => {
@@ -551,14 +563,35 @@ export async function renderLetterPdf(p: {
     w.right(v, last, w.y);
     w.y += 19.6;
   }
-  const [tl, tv] = p.total;
-  w.rect(last - w.width(tv) - 12, w.y - 12.2, w.width(tv) + 30, 17.5, PILL, 8.5);
-  w.right(tl, labelX, w.y, BODY, { bold: true });
-  w.right(tv, last, w.y, BODY, { bold: true });
+  if (p.total) {
+    const [tl, tv] = p.total;
+    w.rect(last - w.width(tv) - 12, w.y - 12.2, w.width(tv) + 30, 17.5, PILL, 8.5);
+    w.right(tl, labelX, w.y, BODY, { bold: true });
+    w.right(tv, last, w.y, BODY, { bold: true });
+  }
   w.y += 26;
   for (const para of p.paragraphs) {
     w.paragraph(para);
     w.y += 6;
+  }
+  if (p.signature) {
+    w.ensure(120);
+    w.y += 8;
+    w.text(p.signature.label, LEFT, w.y, BODY, { bold: true });
+    w.y += 12;
+    if (p.signature.png) {
+      const img = await pdf.embedPng(p.signature.png);
+      const h = 60;
+      const wd = Math.min(220, (img.width / img.height) * h);
+      w.page.drawImage(img, { x: LEFT, y: PAGE_H - w.y - h, width: wd, height: h });
+    }
+    w.y += 64;
+    w.rule(w.y, LEFT, LEFT + 230);
+    w.y += 12;
+    w.text(`${p.signature.name}${p.signature.at ? `, ${p.signature.at}` : ''}`, LEFT, w.y, 8, {
+      color: GREY,
+    });
+    w.y += 18;
   }
   const bank = p.seller.bankAccounts.find((x) => x.primary) ?? p.seller.bankAccounts[0];
   if (p.girocode && bank && p.girocode.amount > 0n) {

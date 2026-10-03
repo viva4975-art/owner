@@ -500,7 +500,7 @@ export const SiteShell: FC<{
     { key: 'einsaetze', label: 'Einsatzplan', href: `${base}/einsaetze` },
     { key: 'zeiten', label: 'Erfasste Zeiten', href: `${base}/zeiten` },
     { key: 'qr', label: 'QR-Aushang Zeiterfassung', href: `${base}/qr` },
-    { key: 'x-lieferscheine', label: 'Arbeits-/Lieferscheine (bald)', href: '/geplant/lieferscheine' },
+    { key: 'arbeitsscheine', label: 'Arbeitsscheine', href: `${base}/arbeitsscheine` },
     { key: 'x-schluessel', label: 'Schlüssel (bald)', href: '/geplant/schluessel' },
     { key: 'x-raumbuch', label: 'Raumbuch (bald)', href: '/geplant/raumbuch' },
     { key: 'x-audit', label: 'Auditanalyse (bald)', href: '/geplant/audit' },

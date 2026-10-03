@@ -229,7 +229,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Alle Angebote', href: '/angebote' },
       { label: 'Abgabefristen', href: '/angebote?ansicht=fristen' },
       { label: 'Angebot anlegen', href: '/neu?typ=angebot' },
-      { label: 'Aufträge', href: '/geplant/auftraege', soon: true, sep: true },
+      { label: 'Aufträge', href: '/auftraege', sep: true },
     ],
   },
   {
@@ -241,7 +241,6 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Einzelrechnung anlegen', href: '/neu?typ=rechnung' },
       { label: 'Offene Posten', href: '/offene-posten', sep: true },
       { label: 'Mahnwesen', href: '/mahnungen' },
-      { label: 'Lieferscheine / Arbeitsscheine', href: '/geplant/lieferscheine', soon: true },
     ],
   },
   {
@@ -282,6 +281,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     label: 'Disposition',
     items: [
       { label: 'Einsatzplanung (Wochenplan)', href: '/einsatzplanung' },
+      { label: 'Arbeitsscheine (Unterschrift vor Ort)', href: '/arbeitsscheine' },
       { label: 'Heute: Soll/Ist', href: '/zeiterfassung' },
       { label: 'Monat: Soll/Ist je Mitarbeiter', href: '/zeiterfassung/monat' },
       { label: 'Urlaubskalender', href: '/urlaub/kalender' },

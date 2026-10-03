@@ -265,3 +265,18 @@ Testadresse.
     Schlüsseln, Geräten; keine Preise, Rechnungen, Kunden, Personalakten. Letzter Admin kann nicht entfernt werden.
   - Prototyp-Konten in `app.user_accounts` (Passwort-Hash), Rollen in `app.profiles`. Live: Supabase Auth.
   - Tests: 149 Unit-/DB-Tests, Browser-Tests 95 Prüfungen (`e2e`, `e2e:module`, `e2e:zeit`, `e2e:einkauf`, `e2e:rechte`).
+- 2026-10-03: Phase 4 Teil 1 – Aufträge und Arbeitsscheine (Leistungsnachweise):
+  - Aufträge `AU-JJJJ-NNNN` (Kunde, Objekt, Bestellnummer des Kunden, Positionen mit Preisen), aus angenommenem
+    Angebot übernehmbar (nur einmalige Positionen, idempotent), Auftragsbestätigung als PDF auf Briefpapier.
+  - Arbeitsscheine `AS-JJJJ-NNNN` je Objekt (mit oder ohne Auftrag): Datum, Zeit, Mitarbeitende, Arbeiten, Stunden
+    (aus Beginn/Ende vorbelegt), Material, Bemerkungen, Fotos. Kunde unterschreibt vor Ort auf Handy/Tablet
+    (Canvas). Danach unveränderbar (Trigger), Unterschrift (PNG) und PDF write-once im Archiv. Alternativ
+    „ohne Unterschrift abschließen“ nur mit Grund. Rechtlich: einfache elektronische Signatur = Beweismittel für die
+    Leistung, keine Schriftform.
+  - Abrechnung: Auftrag → Rechnungsentwurf mit Auftragspositionen, abgeschlossene Arbeitsscheine hängen als PDF an
+    (gehen mit der Rechnung raus). Regiearbeiten ohne Auftrag: unter Objekt → Arbeitsscheine auswählen →
+    Rechnungsentwurf mit Regiestundensatz des Objekts. Jeder Schein nur einmal abrechenbar.
+  - Objektleitung: Arbeitsscheine ihrer Objekte anlegen/unterschreiben lassen; Aufträge (Preise) nur Büro.
+  - Behoben: Doppelklick-Schutz sperrte Formulare auch nach abgebrochenem Absenden (z. B. „Abbrechen“ im
+    Bestätigungsdialog) für 8 s. Lange PDF-Titel werden verkleinert statt in den Infoblock zu laufen.
+  - Tests: 152 Unit-/DB-Tests, Browser-Tests 115 Prüfungen (neu `npm run e2e:auftrag`, 20 Prüfungen).

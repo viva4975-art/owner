@@ -22,6 +22,7 @@ import { registerModuleRoutes } from './routes-modules.js';
 import { registerDunningRoutes } from './routes-dunning.js';
 import { registerInventoryRoutes } from './routes-inventory.js';
 import { registerOfferRoutes } from './routes-offers.js';
+import { registerOrderRoutes } from './routes-orders.js';
 import { registerPlanningRoutes } from './routes-planning.js';
 import { registerPurchasingRoutes } from './routes-purchasing.js';
 import { registerTimeRoutes } from './routes-time.js';
@@ -259,6 +260,7 @@ export function createApp(deps: Deps) {
   registerTimeRoutes(ctx);
   registerPlanningRoutes(ctx);
   registerPurchasingRoutes(ctx);
+  registerOrderRoutes(ctx);
 
   app.notFound((c) =>
     page(

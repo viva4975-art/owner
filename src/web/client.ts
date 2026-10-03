@@ -122,14 +122,17 @@ export const CLIENT_JS = String.raw`
   Array.prototype.forEach.call(document.querySelectorAll('form[data-autosave]'), setupForm);
 
   // ---- Doppelklick-Schutz: Formular nur einmal absenden ----
+  // Bubble-Phase: läuft nach den Prüfungen des Formulars (z. B. confirm(), Unterschrift fehlt) –
+  // ein abgebrochenes Absenden sperrt das Formular nicht.
   document.addEventListener('submit', function (e) {
     var f = e.target;
+    if (e.defaultPrevented) return;
     if (f.dataset.sent === '1') { e.preventDefault(); return; }
     if (f.method && f.method.toLowerCase() === 'post') {
       f.dataset.sent = '1';
       setTimeout(function () { f.dataset.sent = ''; }, 8000);
     }
-  }, true);
+  });
   // Beim Zurückkommen aus dem bfcache Formulare wieder freigeben
   window.addEventListener('pageshow', function (e) {
     if (e.persisted) Array.prototype.forEach.call(document.forms, function (f) { f.dataset.sent = ''; });

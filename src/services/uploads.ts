@@ -51,7 +51,9 @@ export type LinkTarget = {
     | 'employee'
     | 'supplier'
     | 'incoming_invoice'
-    | 'purchase_order';
+    | 'purchase_order'
+    | 'order'
+    | 'work_report';
   id: string;
 };
 

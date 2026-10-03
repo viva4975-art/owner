@@ -25,6 +25,8 @@ const LINK_TYPES = [
   'supplier',
   'incoming_invoice',
   'purchase_order',
+  'order',
+  'work_report',
 ] as const;
 /** Anlagen, die per E-Mail mit der Rechnung rausgehen, dürfen nicht zu groß werden. */
 const INVOICE_ATTACHMENT_MAX = 20 * 1024 * 1024;

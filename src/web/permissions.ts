@@ -17,9 +17,10 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/(zeiterfassung|einsatzplanung)(\/|$)/, ['admin', 'personal', 'objektleitung']],
   [/^\/urlaub(\/|$)/, HR],
   // Objekte: Objektleitung nur eigene und ohne Preise/Rechnungen/Bearbeiten
-  [/^\/objekte\/[0-9a-f-]{36}\/(leistungen|rechnungen|bearbeiten)/, OFFICE],
+  [/^\/objekte\/[0-9a-f-]{36}\/(leistungen|rechnungen|bearbeiten|regie-abrechnen)/, OFFICE],
+  [/^\/arbeitsscheine(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
   [
-    /^\/objekte\/[0-9a-f-]{36}(\/(einsaetze|zeiten|qr|notizen|aufgaben)(\/|$)|$)/,
+    /^\/objekte\/[0-9a-f-]{36}(\/(einsaetze|zeiten|qr|notizen|aufgaben|arbeitsscheine)(\/|$)|$)/,
     ['admin', 'buchhaltung', 'objektleitung', 'personal'],
   ],
   [/^\/objekte\/?$/, ['admin', 'buchhaltung', 'objektleitung']],

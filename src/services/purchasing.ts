@@ -50,7 +50,8 @@ export const COST_CATEGORY: Record<CostCategory, string> = {
 
 const eur = (c: bigint) => formatEuro(c as Cents);
 
-async function nextYearNumber(
+/** Fortlaufende Nummer je Jahr, z. B. BE-2026-0001 (Zeilensperre, lückenlos). */
+export async function nextYearNumber(
   tx: Tx,
   base: string,
   prefix: string,

@@ -46,6 +46,7 @@ npm run e2e:module   # Browser-Test: Angebot + 300-MB-ZIP mit Abbruch/Fortsetzen
 npm run e2e:zeit     # Browser-Test: Handy-Zeiterfassung (PIN, QR, Stempeln, Soll bestätigen, Nachtrag, Urlaub) + Büro
 npm run e2e:einkauf  # Browser-Test: Bestellung → Wareneingang → Eingangsrechnung → SEPA → DATEV → Nachkalkulation
 npm run e2e:rechte   # Browser-Test: Anmeldung, Benutzer anlegen, Objektleitung sieht nur eigene Objekte
+npm run e2e:auftrag  # Browser-Test: Auftrag → Arbeitsschein → Unterschrift auf dem Canvas → Rechnung mit Anlage → Regie
 ```
 
 ### Klick-Demo bauen (eine HTML-Datei zum Durchklicken, offline)

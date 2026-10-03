@@ -16,7 +16,7 @@ const browser = await chromium.launch({
   ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
 });
 const office = await browser.newContext({
-  httpCredentials: { username: USER, password: PASS },
+  extraHTTPHeaders: { Authorization: `Basic ${Buffer.from(`${USER}:${PASS}`).toString('base64')}` },
   viewport: { width: 1280, height: 900 },
   locale: 'de-DE',
 });

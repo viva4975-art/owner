@@ -26,7 +26,7 @@ import {
   plannedShifts,
   saveShiftPlan,
 } from '../services/time.js';
-import { type AppEnv, type Ctx, UUID } from './app.js';
+import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { arr } from './forms.js';
 import { Icon } from './icons.js';
 import { PageHead, type Tab, Tabs, dateDe } from './layout.js';
@@ -123,10 +123,13 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     const monday = mondayOf(isDate(c.req.query('woche')) ? c.req.query('woche')! : todayBerlin());
     const sunday = addDays(monday, 6);
     const siteFilter = c.req.query('objekt') || undefined;
-    const [shifts, sites] = await Promise.all([
+    const scope = c.get('sites');
+    const [allShifts, allSites] = await Promise.all([
       plannedShifts(sql, { from: monday, to: sunday, ...(siteFilter ? { siteId: siteFilter } : {}) }),
       listSites(sql),
     ]);
+    const shifts = scope ? allShifts.filter((s) => scope.includes(s.plan.site_id)) : allShifts;
+    const sites = scope ? allSites.filter((s) => scope.includes(s.id)) : allSites;
     const days = [...Array(7).keys()].map((i) => addDays(monday, i));
     const siteIds = [...new Set(shifts.map((s) => s.plan.site_id))];
     const bySite = siteIds
@@ -277,8 +280,9 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                e.last_name || ', ' || e.first_name as employee_name, e.personnel_no, s.name as site_name, s.site_no
           from app.shift_plans p join app.employees e on e.id = p.employee_id join app.sites s on s.id = p.site_id where p.id = ${id}`,
       listEmployees(sql, { status: 'aktiv' }),
-      listSites(sql),
+      listSites(sql).then((l) => l.filter((s) => !c.get('sites') || c.get('sites')!.includes(s.id))),
     ]);
+    if (plan) assertSite(c, plan.site_id);
     const q = c.req.query();
     const v = {
       employee: plan?.employee_id ?? q.mitarbeiter ?? '',
@@ -410,6 +414,9 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     const id = c.req.param('id');
     const b = await c.req.parseBody({ all: true });
     const one = (k: string) => (typeof b[k] === 'string' ? (b[k] as string).trim() : '');
+    assertSite(c, one('site_id'));
+    const [old] = await sql<{ site_id: string }[]>`select site_id from app.shift_plans where id = ${id}`;
+    if (old) assertSite(c, old.site_id);
     await saveShiftPlan(
       sql,
       id,
@@ -438,6 +445,10 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
   app.post(`/einsatzplanung/:id{${UUID}}/beenden`, async (c) => {
     const b = await c.req.parseBody();
     if (!isDate(b.last_day)) throw new BusinessError('Datum ungültig');
+    const [old] = await sql<
+      { site_id: string }[]
+    >`select site_id from app.shift_plans where id = ${c.req.param('id')}`;
+    assertSite(c, old?.site_id);
     await endShiftPlan(sql, c.req.param('id'), b.last_day, c.get('actor'));
     return back(c, '/einsatzplanung', { ok: 'Einsatz beendet.' });
   });

@@ -16,7 +16,7 @@ const browser = await chromium.launch({
   ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
 });
 const ctx = await browser.newContext({
-  httpCredentials: { username: USER, password: PASS },
+  extraHTTPHeaders: { Authorization: `Basic ${Buffer.from(`${USER}:${PASS}`).toString('base64')}` },
   viewport: { width: 1280, height: 900 },
   locale: 'de-DE',
 });
@@ -125,7 +125,12 @@ const body = Buffer.from(await csv.body()).toString('latin1');
 check('EXTF-Kopf', body.startsWith('"EXTF";700;21;"Buchungsstapel"'));
 check('Eingangsrechnung mit Kreditor 70001', body.includes(`"${invNo}"`) && body.includes(';70001;'));
 await p.goto(B + `/auswertungen/nachkalkulation?monat=${today.slice(0, 7)}`);
-check('Nachkalkulation zeigt Material', (await p.content()).includes('289,00'));
+const materialCells = await p.locator('table tbody tr td:nth-child(5)').allInnerTexts();
+check(
+  'Nachkalkulation zeigt Material ≥ 289,00 €',
+  materialCells.some((t) => parseFloat(t.replace(/\./g, '').replace(',', '.')) >= 289),
+  materialCells.join(' | '),
+);
 await p.screenshot({ path: `${out}/e5-nachkalkulation.png`, fullPage: true });
 
 console.log(`\n${ok} ok, ${fail} fehlgeschlagen`);

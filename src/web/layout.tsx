@@ -2,7 +2,9 @@ import type { Child, FC } from 'hono/jsx';
 import { formatEuro, type Cents } from '../domain/money/money.js';
 import { formatDateDe } from '../domain/invoice/calc.js';
 import { CLIENT_JS } from './client.js';
+import type { Role } from '../services/users.js';
 import { Icon } from './icons.js';
+import { canAccess, canOpen } from './permissions.js';
 
 /*
  * Erscheinungsbild „Unternehmenssoftware“: Schrift Inter (lokal), ruhige Grautöne, Bordeaux nur als Akzent
@@ -319,105 +321,143 @@ export const Layout: FC<{
   nav: string;
   env: string;
   user?: string;
+  role?: Role;
+  /** ohne Menü/Suche (Anmeldeseite) */
+  bare?: boolean;
   flash?: { ok?: string | undefined; err?: string | undefined };
   children?: Child;
-}> = ({ title, nav, env, user, flash, children }) => (
-  <html lang="de">
-    <head>
-      <meta charset="utf-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>{`${title} · Viva-Deluxe`}</title>
-      <link rel="icon" type="image/png" href="/static/favicon.png" />
-      <link
-        rel="preload"
-        href="/static/inter-latin.woff2"
-        as="font"
-        type="font/woff2"
-        crossorigin="anonymous"
-      />
-      <style dangerouslySetInnerHTML={{ __html: CSS }} />
-    </head>
-    <body>
-      <header class="top">
-        <div class="in">
-          <a class="logo" href="/" aria-label="Viva-Deluxe – Übersicht">
-            <img src="/static/logo.png" alt="Viva-Deluxe GmbH" width="179" height="36" />
-          </a>
-          <form class="search" action="/suche" method="get" role="search">
-            <Icon name="search" />
-            <input
-              id="q"
-              name="q"
-              placeholder="Kunden, Objekte, Rechnungen, Angebote, Mitarbeiter suchen…"
-              minlength={3}
-              aria-label="Suchen"
-            />
-            <kbd>/</kbd>
-          </form>
-          <div class="right">
-            <span class={`env${env === 'live' ? ' live' : ''}`}>
-              {env === 'live' ? 'LIVE' : env === 'test' ? 'TEST' : 'LOKAL'}
-            </span>
-            {user && (
-              <span class="usr">
-                <span class="av">{initials(user)}</span>
-                <span>{user.charAt(0).toUpperCase() + user.slice(1)}</span>
-              </span>
-            )}
-          </div>
-        </div>
-      </header>
-      <nav class="menu" aria-label="Hauptmenü">
-        <input type="checkbox" id="burger" />
-        <label for="burger" class="burgerbtn">
-          <Icon name="menu" /> Menü
-        </label>
-        <div class="in">
-          {MENU.map((m) =>
-            m.href ? (
-              <a class={`item${nav === m.key ? ' on' : ''}`} href={m.href}>
-                {m.label}
-              </a>
+}> = ({ title, nav, env, user, role, bare, flash, children }) => {
+  const menu = role
+    ? MENU.map((m) => ({
+        ...m,
+        items: m.items?.filter(
+          (i) =>
+            canOpen(role, i.href) &&
+            // geplante Bereiche und Handy-Ansicht nur fürs Büro einblenden
+            (!(i.soon || i.href === '/m') ||
+              role === 'admin' ||
+              role === 'buchhaltung' ||
+              (i.href === '/m' && role === 'personal')),
+        ),
+      })).filter((m) => (m.href ? canAccess(role, m.href) : (m.items?.length ?? 0) > 0))
+    : [];
+  const search = !!role && canAccess(role, '/suche');
+  return (
+    <html lang="de">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>{`${title} · Viva-Deluxe`}</title>
+        <link rel="icon" type="image/png" href="/static/favicon.png" />
+        <link
+          rel="preload"
+          href="/static/inter-latin.woff2"
+          as="font"
+          type="font/woff2"
+          crossorigin="anonymous"
+        />
+        <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      </head>
+      <body>
+        <header class="top">
+          <div class="in">
+            <a class="logo" href="/" aria-label="Viva-Deluxe – Übersicht">
+              <img src="/static/logo.png" alt="Viva-Deluxe GmbH" width="179" height="36" />
+            </a>
+            {search ? (
+              <form class="search" action="/suche" method="get" role="search">
+                <Icon name="search" />
+                <input
+                  id="q"
+                  name="q"
+                  placeholder="Kunden, Objekte, Rechnungen, Angebote, Mitarbeiter suchen…"
+                  minlength={3}
+                  aria-label="Suchen"
+                />
+                <kbd>/</kbd>
+              </form>
             ) : (
-              <details class={`dd item${nav === m.key ? ' on' : ''}`}>
-                <summary>
-                  {m.label} <Icon name="chevron" size={14} />
-                </summary>
-                <div class="drop">
-                  {(m.items ?? []).map((i) => (
-                    <>
-                      {i.sep && <div class="sep" />}
-                      <a href={i.href}>
-                        {i.label}
-                        {i.soon && <span class="soon">bald</span>}
-                      </a>
-                    </>
-                  ))}
-                </div>
-              </details>
-            ),
+              <span style="flex:1" />
+            )}
+            <div class="right">
+              <span class={`env${env === 'live' ? ' live' : ''}`}>
+                {env === 'live' ? 'LIVE' : env === 'test' ? 'TEST' : 'LOKAL'}
+              </span>
+              {user && (
+                <details class="dd">
+                  <summary class="usr" style="cursor:pointer">
+                    <span class="av">{initials(user)}</span>
+                    <span>{user}</span>
+                  </summary>
+                  <div class="drop right">
+                    <a href="/konto">Mein Konto / Passwort</a>
+                    {role === 'admin' && <a href="/benutzer">Benutzer & Rechte</a>}
+                    <div class="sep" />
+                    <form method="post" action="/abmelden" style="margin:0">
+                      <button class="btn ghost" style="width:100%;justify-content:flex-start">
+                        Abmelden
+                      </button>
+                    </form>
+                  </div>
+                </details>
+              )}
+            </div>
+          </div>
+        </header>
+        {!bare && (
+          <nav class="menu" aria-label="Hauptmenü">
+            <input type="checkbox" id="burger" />
+            <label for="burger" class="burgerbtn">
+              <Icon name="menu" /> Menü
+            </label>
+            <div class="in">
+              {menu.map((m) =>
+                m.href ? (
+                  <a class={`item${nav === m.key ? ' on' : ''}`} href={m.href}>
+                    {m.label}
+                  </a>
+                ) : (
+                  <details class={`dd item${nav === m.key ? ' on' : ''}`}>
+                    <summary>
+                      {m.label} <Icon name="chevron" size={14} />
+                    </summary>
+                    <div class="drop">
+                      {(m.items ?? []).map((i) => (
+                        <>
+                          {i.sep && <div class="sep" />}
+                          <a href={i.href}>
+                            {i.label}
+                            {i.soon && <span class="soon">bald</span>}
+                          </a>
+                        </>
+                      ))}
+                    </div>
+                  </details>
+                ),
+              )}
+            </div>
+          </nav>
+        )}
+        <main>
+          {flash?.ok && (
+            <div class="flash ok" role="status">
+              <Icon name="check" />
+              <span>{flash.ok}</span>
+            </div>
           )}
-        </div>
-      </nav>
-      <main>
-        {flash?.ok && (
-          <div class="flash ok" role="status">
-            <Icon name="check" />
-            <span>{flash.ok}</span>
-          </div>
-        )}
-        {flash?.err && (
-          <div class="flash err" role="alert">
-            <Icon name="alert" />
-            <span>{flash.err}</span>
-          </div>
-        )}
-        {children}
-      </main>
-      <script dangerouslySetInnerHTML={{ __html: CLIENT_JS }} />
-    </body>
-  </html>
-);
+          {flash?.err && (
+            <div class="flash err" role="alert">
+              <Icon name="alert" />
+              <span>{flash.err}</span>
+            </div>
+          )}
+          {children}
+        </main>
+        <script dangerouslySetInnerHTML={{ __html: CLIENT_JS }} />
+      </body>
+    </html>
+  );
+};
 
 /** Seitentitel + „Neu anlegen: [Auswahl] Los“ wie Fortytools. */
 export const PageHead: FC<{

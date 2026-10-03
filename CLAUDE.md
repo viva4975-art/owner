@@ -256,3 +256,12 @@ Testadresse.
   - Nachkalkulation je Objekt/Monat: Erlös − Ist-Stunden × Lohn × (1 + Zuschlag) − Material − Nachunternehmer −
     Sonstiges; Soll-/Ist-Stunden, Erlös je Stunde, Ampel gegen Ziel-Deckungsbeitrag.
   - Tests: 142 Unit-/DB-Tests; Browser-Test `npm run e2e:einkauf` (14 Prüfungen).
+- 2026-10-03: Phase 3 Teil 3 – Benutzer und Rollen:
+  - Anmeldeformular statt Basic Auth (Benutzername + Passwort, scrypt, 5 Fehlversuche → 15 Min. gesperrt,
+    Einmal-Passwort bei Anlage/Reset, muss geändert werden). Sitzung 12 h per HMAC-Cookie. Erster Admin aus
+    `APP_BASIC_AUTH`. Basic Auth mit Benutzerdaten bleibt für Tests/Skripte.
+  - Rollen: admin, buchhaltung, personal, objektleitung. Rechte zentral in `src/web/permissions.ts` (Seiten und
+    Menü). Objektleitung: nur eigene Objekte (`sites.manager_user_id`) in Zeiterfassung, Einsatzplanung, Objekten,
+    Schlüsseln, Geräten; keine Preise, Rechnungen, Kunden, Personalakten. Letzter Admin kann nicht entfernt werden.
+  - Prototyp-Konten in `app.user_accounts` (Passwort-Hash), Rollen in `app.profiles`. Live: Supabase Auth.
+  - Tests: 149 Unit-/DB-Tests, Browser-Tests 95 Prüfungen (`e2e`, `e2e:module`, `e2e:zeit`, `e2e:einkauf`, `e2e:rechte`).

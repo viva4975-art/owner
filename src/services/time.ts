@@ -409,19 +409,38 @@ export async function plannedShifts(
         minutes: eh * 60 + em - (sh * 60 + sm) - p.break_minutes,
         absence: abs?.kind ?? null,
         holiday: holidayName(d),
-        entry: entries.find(
-          (e) =>
-            e.employee_id === p.employee_id &&
-            e.site_id === p.site_id &&
-            e.work_date === d &&
-            e.status !== 'abgelehnt',
-        ),
+        entry: undefined,
       });
     }
   }
-  return out.sort(
-    (a, b) => a.date.localeCompare(b.date) || a.plan.start_time.localeCompare(b.plan.start_time),
-  );
+  out.sort((a, b) => a.date.localeCompare(b.date) || a.plan.start_time.localeCompare(b.plan.start_time));
+  // Ist-Zeiten zuordnen: zuerst die ausdrücklich zum Einsatz bestätigten, dann übrige Zeiten desselben
+  // Mitarbeiters am selben Objekt und Tag (jede Zeit höchstens einem Einsatz).
+  const valid = entries.filter((e) => e.status !== 'abgelehnt');
+  const used = new Set<string>();
+  for (const s of out) {
+    const e = valid.find((x) => x.shift_plan_id === s.plan.id && x.work_date === s.date);
+    if (e) {
+      s.entry = e;
+      used.add(e.id);
+    }
+  }
+  for (const s of out) {
+    if (s.entry) continue;
+    const e = valid.find(
+      (x) =>
+        !used.has(x.id) &&
+        !x.shift_plan_id &&
+        x.employee_id === s.plan.employee_id &&
+        x.site_id === s.plan.site_id &&
+        x.work_date === s.date,
+    );
+    if (e) {
+      s.entry = e;
+      used.add(e.id);
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- Soll als Ist, Nachtrag, Büro

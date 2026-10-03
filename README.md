@@ -17,7 +17,7 @@ docker compose up -d              # Postgres, KoSIT-Validator, Test-Postfach (Ma
 cp .env.dev.example .env.dev
 npm run db:migrate                # Schema einspielen
 npm run db:seed                   # Firmenstamm + DEMO-Kunden/Objekte
-npm run dev                       # http://localhost:3000  (Login: siehe APP_BASIC_AUTH in .env.dev)
+npm run dev                       # http://localhost:3000  (erster Start: Admin = APP_BASIC_AUTH aus .env.dev)
 ```
 
 Test-Postfach (alle Mails landen hier): http://localhost:8025
@@ -43,6 +43,9 @@ npm run check        # Typecheck + Lint + Format + alle Tests
 npm test             # nur Tests
 npm run e2e          # Browser-Test: Zurück/Vor, Eingaben behalten, zwei Tabs (Server muss laufen, legt Testdaten an)
 npm run e2e:module   # Browser-Test: Angebot + 300-MB-ZIP mit Abbruch/Fortsetzen, Zuschlag, Mahnwesen, Inventar
+npm run e2e:zeit     # Browser-Test: Handy-Zeiterfassung (PIN, QR, Stempeln, Soll bestätigen, Nachtrag, Urlaub) + Büro
+npm run e2e:einkauf  # Browser-Test: Bestellung → Wareneingang → Eingangsrechnung → SEPA → DATEV → Nachkalkulation
+npm run e2e:rechte   # Browser-Test: Anmeldung, Benutzer anlegen, Objektleitung sieht nur eigene Objekte
 ```
 
 ### Klick-Demo bauen (eine HTML-Datei zum Durchklicken, offline)
@@ -78,6 +81,16 @@ Rechnung/Storno/Abschlag/Schluss als XRechnung und ZUGFeRD KoSIT-gültig, Row Le
 | Lieferanten | Lieferanten und Nachunternehmer, Ablauf Freistellungsbescheinigung § 48b / Unbedenklichkeit mit Ampel, Nachweise als Dateien.                                                                                                                                                                                       |
 | Inventar    | Artikel mit Bestand und Nachbestellliste, Buchungen (Zugang/Abgang/Inventur) unveränderbar; Geräte mit Prüfterminen (DGUV V3); Schlüsselbuch mit Ausgabe-/Rückgabeprotokoll.                                                                                                                                        |
 | Kunden      | zusätzlich Status Interessent, Reiter Angebote / Mahnungen / Dokumente.                                                                                                                                                                                                                                             |
+
+## Anmeldung und Rollen
+
+- Erster Start: Es gibt noch keine Benutzer → Admin wird aus `APP_BASIC_AUTH` angelegt (`benutzer:passwort`).
+  Danach unter „Mein Konto“ ein eigenes Passwort setzen und unter „Benutzer & Rechte“ weitere Konten anlegen
+  (Einmal-Passwort, muss bei der ersten Anmeldung geändert werden).
+- Sitzung 12 Stunden (Cookie, HttpOnly). Basic Auth mit denselben Zugangsdaten funktioniert für Skripte/Tests.
+- `SESSION_SECRET` (mind. 32 Zeichen) ist außerhalb von dev Pflicht – signiert Büro- und Handy-Sitzungen.
+- Beim Umzug auf Supabase übernimmt Supabase Auth die Anmeldung; Rollen (`app.profiles`) und Objekt-Zuordnung
+  (`sites.manager_user_id`) bleiben.
 
 ## Bedienung: Zurück/Vor und mehrere Tabs
 

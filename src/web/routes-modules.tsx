@@ -23,6 +23,7 @@ import { listOffers } from '../services/offers.js';
 import { search } from '../services/search.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { NEW_OPTIONS, PageHead } from './layout.js';
+import { homeFor } from './permissions.js';
 import {
   Dashboard,
   type DashboardTodo,
@@ -52,6 +53,8 @@ export function registerModuleRoutes({ app, deps, page, back, shells }: Ctx) {
   // ------------------------------------------------------------------ Übersicht
 
   app.get('/', async (c) => {
+    const role = c.get('user').role;
+    if (role !== 'admin' && role !== 'buchhaltung') return c.redirect(homeFor(role));
     const [tasks, drafts, balances, unsent, hr] = await Promise.all([
       listTasks(sql, { status: 'open', withinDays: 7 }),
       listInvoices(sql, { status: 'draft' }),

@@ -32,8 +32,9 @@ import {
   zollCsv,
   zollReport,
 } from '../services/time.js';
-import { type AppEnv, type Ctx, UUID } from './app.js';
+import { type AppEnv, type Ctx, UUID, assertSite, inScope } from './app.js';
 import { centsToInput } from './forms.js';
+import { canAccess } from './permissions.js';
 import { Icon } from './icons.js';
 import { PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
 
@@ -155,10 +156,11 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
   const { sql, env } = deps;
 
   const shell = async (c: Context<AppEnv>, active: string, title: string, body: Child, nav = 'personal') => {
+    const scope = c.get('sites');
     const [[cnt]] = await Promise.all([
       sql<{ running: number; requests: number }[]>`
         select count(*) filter (where status = 'laeuft')::int as running, count(*) filter (where status = 'beantragt')::int as requests
-          from app.time_entries`,
+          from app.time_entries where ${scope ? sql`site_id in ${sql(scope.length ? scope : ['00000000-0000-0000-0000-000000000000'])}` : sql`true`}`,
     ]);
     const tabs: Tab[] = [
       { key: 'tag', label: 'Tagesübersicht', href: '/zeiterfassung' },
@@ -167,7 +169,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
       { key: 'monat', label: 'Monat Soll/Ist', href: '/zeiterfassung/monat' },
       { key: 'zoll', label: 'Prüfbericht Zoll', href: '/zeiterfassung/pruefbericht' },
       { key: 'einstellungen', label: 'Einstellungen', href: '/zeiterfassung/einstellungen' },
-    ];
+    ].filter((t) => canAccess(c.get('user').role, t.href));
     return page(
       c,
       title,
@@ -194,10 +196,13 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
 
   app.get('/zeiterfassung', async (c) => {
     const day = isDate(c.req.query('datum')) ? c.req.query('datum')! : todayBerlin();
-    const [shifts, entries] = await Promise.all([
+    const [allShifts, allEntries] = await Promise.all([
       plannedShifts(sql, { from: day, to: day }),
       listEntries(sql, { from: day, to: day }),
     ]);
+    const scope = c.get('sites');
+    const shifts = scope ? allShifts.filter((s) => scope.includes(s.plan.site_id)) : allShifts;
+    const entries = inScope(c, allEntries);
     const nowHm = new Date().toLocaleTimeString('de-DE', {
       timeZone: 'Europe/Berlin',
       hour: '2-digit',
@@ -361,10 +366,12 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
   // ------------------------------------------------------------------ Freigaben
 
   app.get('/zeiterfassung/freigaben', async (c) => {
-    const [requests, running] = await Promise.all([
-      listEntries(sql, { status: ['beantragt'] }),
-      listEntries(sql, { status: ['laeuft'] }),
-    ]);
+    const [requests, running] = (
+      await Promise.all([
+        listEntries(sql, { status: ['beantragt'] }),
+        listEntries(sql, { status: ['laeuft'] }),
+      ])
+    ).map((l) => inScope(c, l)) as [TimeEntryRow[], TimeEntryRow[]];
     const stale = running.filter((e) => e.gross_minutes > 12 * 60);
     return shell(
       c,
@@ -438,6 +445,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
     const id = c.req.param('id');
     const b = await c.req.parseBody();
     const ok = b.ok === '1';
+    assertSite(c, (await getEntry(sql, id))?.site_id);
     await decideCorrection(sql, id, ok, c.get('actor'), typeof b.reason === 'string' ? b.reason : null);
     return back(c, '/zeiterfassung/freigaben', { ok: ok ? 'Freigegeben.' : 'Abgelehnt.' });
   });
@@ -448,7 +456,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
     const q = c.req.query();
     const from = isDate(q.von) ? q.von : addDays(todayBerlin(), -13);
     const to = isDate(q.bis) ? q.bis : todayBerlin();
-    const [rows, emps, sites] = await Promise.all([
+    const [allRows, emps, allSites] = await Promise.all([
       listEntries(sql, {
         from,
         to,
@@ -458,6 +466,8 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
       listEmployees(sql, { status: 'aktiv' }),
       listSites(sql),
     ]);
+    const rows = inScope(c, allRows);
+    const sites = allSites.filter((s) => !c.get('sites') || c.get('sites')!.includes(s.id));
     return shell(
       c,
       'liste',
@@ -508,7 +518,9 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
   app.get(`/zeiterfassung/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
     const q = c.req.query();
-    const [e, emps, sites] = await Promise.all([getEntry(sql, id), listEmployees(sql), listSites(sql)]);
+    const [e, emps, allSites] = await Promise.all([getEntry(sql, id), listEmployees(sql), listSites(sql)]);
+    if (e) assertSite(c, e.site_id);
+    const sites = allSites.filter((s) => !c.get('sites') || c.get('sites')!.includes(s.id));
     const log = e ? await entryLog(sql, id) : [];
     const v = {
       employee: e?.employee_id ?? q.mitarbeiter ?? '',
@@ -645,6 +657,9 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
   app.post(`/zeiterfassung/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
     const b = await c.req.parseBody();
+    const cur = await getEntry(sql, id);
+    if (cur) assertSite(c, cur.site_id);
+    assertSite(c, String(b.site_id ?? ''));
     await officeSave(sql, {
       id,
       employeeId: String(b.employee_id ?? ''),

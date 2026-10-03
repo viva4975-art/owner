@@ -19,7 +19,7 @@ const browser = await chromium.launch({
   ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
 });
 const ctx = await browser.newContext({
-  httpCredentials: { username: USER, password: PASS },
+  extraHTTPHeaders: { Authorization: `Basic ${Buffer.from(`${USER}:${PASS}`).toString('base64')}` },
   locale: 'de-DE',
 });
 const page = await ctx.newPage();

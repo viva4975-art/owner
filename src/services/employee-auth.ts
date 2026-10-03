@@ -106,8 +106,13 @@ export async function login(
 
 // ---------------------------------------------------------------- Sitzung (Cookie)
 
-export function signSession(secret: string, employeeId: string, now = Date.now()): string {
-  const exp = Math.floor(now / 1000) + SESSION_DAYS * 86400;
+export function signSession(
+  secret: string,
+  employeeId: string,
+  now = Date.now(),
+  days = SESSION_DAYS,
+): string {
+  const exp = Math.floor(now / 1000) + Math.round(days * 86400);
   const payload = `${employeeId}.${exp}`;
   const sig = createHmac('sha256', secret).update(payload).digest('base64url');
   return `${payload}.${sig}`;

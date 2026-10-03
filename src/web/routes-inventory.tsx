@@ -28,7 +28,7 @@ import {
 } from '../services/inventory.js';
 import { listSites } from '../services/masterdata.js';
 import { listFiles } from '../services/uploads.js';
-import { type Ctx, UUID } from './app.js';
+import { type Ctx, UUID, assertSite, inScope } from './app.js';
 import { FileArea } from './files.js';
 import { centsToInput, milliToInput } from './forms.js';
 import { Icon } from './icons.js';
@@ -662,7 +662,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
   // ================================================================== Geräte & Prüftermine
 
   app.get('/geraete', async (c) => {
-    const rows = await listDevices(sql);
+    const rows = inScope(c, await listDevices(sql));
     const due = rows.filter((d) => d.active && d.days !== null && d.days <= 30);
     return page(
       c,
@@ -807,7 +807,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
   // ================================================================== Schlüsselbuch
 
   app.get('/schluessel', async (c) => {
-    const rows = await listKeys(sql);
+    const rows = inScope(c, await listKeys(sql));
     const out = rows.filter((k) => k.holder_employee_id).length;
     return page(
       c,
@@ -878,10 +878,11 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
     const id = c.req.param('id');
     const [k, sites, employees, log] = await Promise.all([
       getKey(sql, id),
-      listSites(sql),
+      listSites(sql).then((l) => l.filter((s) => !c.get('sites') || c.get('sites')!.includes(s.id))),
       listEmployees(sql, { status: 'aktiv' }),
       keyLog(sql, id),
     ]);
+    if (k) assertSite(c, k.site_id);
     const holder = k?.holder_employee_id ? employees.find((e) => e.id === k.holder_employee_id) : undefined;
     return page(
       c,
@@ -1010,6 +1011,9 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
   app.post(`/schluessel/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
     const body = await c.req.parseBody();
+    const cur = await getKey(sql, id);
+    if (cur) assertSite(c, cur.site_id);
+    assertSite(c, String(body.site_id ?? ''));
     await saveKey(sql, id, body, versionOf(body.version), c.get('actor'));
     return back(c, `/schluessel/${id}`, { ok: 'Schlüssel gespeichert.' });
   });
@@ -1020,6 +1024,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
     const action = String(b.action) as 'ausgabe' | 'rueckgabe' | 'verlust';
     if (!['ausgabe', 'rueckgabe', 'verlust'].includes(action)) throw new BusinessError('Ungültige Aktion');
     const at = typeof b.at === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.at) ? b.at : todayBerlin();
+    assertSite(c, (await getKey(sql, id))?.site_id);
     await keyAction(
       sql,
       id,

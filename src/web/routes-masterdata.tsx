@@ -33,7 +33,7 @@ import { listDunnings } from '../services/dunning.js';
 import { listOffers } from '../services/offers.js';
 import { listOpenItems } from '../services/payments.js';
 import { listFiles } from '../services/uploads.js';
-import { type AppEnv, type Ctx, UUID } from './app.js';
+import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { FileArea } from './files.js';
 import { PageHead, dateDe, euro } from './layout.js';
 import { OfferTable } from './pages-offers.js';
@@ -395,7 +395,10 @@ export function registerMasterdataRoutes({ app, deps, page, back, shells }: Ctx)
           }}
         />
         <div class="card">
-          <SiteTable sites={await listSites(sql)} showCustomer />
+          <SiteTable
+            sites={(await listSites(sql)).filter((s) => !c.get('sites') || c.get('sites')!.includes(s.id))}
+            showCustomer
+          />
         </div>
       </>,
     ),
@@ -414,6 +417,10 @@ export function registerMasterdataRoutes({ app, deps, page, back, shells }: Ctx)
     body: (s: NonNullable<Awaited<ReturnType<typeof getSite>>>) => Promise<Child> | Child,
   ) => {
     const id = c.req.param('id')!;
+    assertSite(c, id);
+    // Objektleitung sieht keine Preise → statt Übersicht direkt den Einsatzplan
+    if (active === 'uebersicht' && c.get('user').role === 'objektleitung')
+      return c.redirect(`/objekte/${id}/einsaetze`);
     const s = await getSite(sql, id);
     if (!s) return c.redirect(`/objekte/${id}/bearbeiten`);
     const [counts] = await sql<

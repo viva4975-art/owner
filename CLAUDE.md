@@ -321,3 +321,6 @@ Testadresse.
   - Offen: Push-Benachrichtigungen serverseitig (Firebase/APNs), Apple-/Google-Konten + D-U-N-S (Ahmed),
     Live-Domain für `capacitor.config.json`, Übersetzungen der neuen Handy-Texte gegenlesen lassen.
   - Tests: 161 Unit-/DB-Tests, Browser-Tests 162 Prüfungen (neu `npm run e2e:app`, 15 Prüfungen).
+- 2026-10-03: Demo-Daten Phase 4 (Raumbuch Grundschule, 2 Qualitätskontrollen, 4 Zähler mit Ablesungen, Auftrag mit
+  unterschriebenem Arbeitsschein, Regie-Schein, Rechnungsgruppe, Unterweisung zur Unterschrift – 1001 offen,
+  1002 unterschrieben). Klick-Demo neu veröffentlicht (369 Seiten): https://claude.ai/artifact/HpySmrqaJ9wpvpWiabFj4S

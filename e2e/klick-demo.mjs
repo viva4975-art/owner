@@ -38,6 +38,7 @@ const skip = (k) =>
   /\.(csv)$/.test(k) ||
   /pruefen=1/.test(k) ||
   k.startsWith('/m/sprache') || // ändert die Sprache des Mitarbeiters
+  /^\/m\/(sw\.js|manifest\.webmanifest)/.test(k) ||
   k.startsWith('/anmelden') ||
   k.startsWith('/health') ||
   /\/vorschau\.pdf/.test(k);

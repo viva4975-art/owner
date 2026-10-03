@@ -30,6 +30,25 @@ import {
 } from '../services/purchasing.js';
 import { plannedShifts, requestCorrection, saveShiftPlan } from '../services/time.js';
 import { createUser, updateUser } from '../services/users.js';
+import { deflateSync } from 'node:zlib';
+import { PDFDocument, StandardFonts } from '@cantoo/pdf-lib';
+import {
+  addReading,
+  closeQualityCheck,
+  createQualityCheck,
+  getQualityCheck,
+  saveMeter,
+  saveQualityCheck,
+  saveRoom,
+} from '../services/facility.js';
+import { saveInvoiceGroup } from '../services/invoice-groups.js';
+import {
+  closeWithoutSignature,
+  saveOrder as saveCustomerOrder,
+  saveWorkReport,
+  signWorkReport,
+} from '../services/orders.js';
+import { createSignDocument, requestsForEmployee, signRequest } from '../services/sign-documents.js';
 
 const env = loadEnv();
 if (env.APP_ENV === 'live' || !/demo/.test(new URL(env.DATABASE_URL).pathname)) {
@@ -251,6 +270,7 @@ try {
     console.log('Demo-Vorgänge angelegt.');
   }
   await phase3();
+  await phase4();
   // Belege (PDF, XRechnung/ZUGFeRD, KoSIT-Prüfbericht) für alle ausgestellten Rechnungen erzeugen
   const issued = await sql<{ id: string }[]>`select id from app.invoices where status = 'issued'`;
   for (const i of issued) await ensureDocuments(deps, i.id);
@@ -560,4 +580,346 @@ async function phase3() {
     A,
   );
   console.log('Demo Phase 3 angelegt.');
+}
+
+/** Unterschrift als PNG (Schwung) – ohne Canvas, für Demo-Daten. */
+function signaturePng(seed: number): Uint8Array {
+  const w = 360;
+  const h = 110;
+  const px = new Uint8Array(w * h).fill(255);
+  for (let x = 20; x < w - 20; x++) {
+    const y = Math.round(55 + Math.sin(x / (14 + seed)) * 28 * Math.cos(x / 90) + Math.sin(x / 5) * 4);
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) px[(y + dy) * w + x + dx] = 20;
+  }
+  const raw = Buffer.alloc((w + 1) * h);
+  for (let y = 0; y < h; y++) {
+    raw[y * (w + 1)] = 0;
+    Buffer.from(px.subarray(y * w, (y + 1) * w)).copy(raw, y * (w + 1) + 1);
+  }
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (b: Buffer) => {
+    let c = 0xffffffff;
+    for (const x of b) c = crcTable[(c ^ x) & 0xff]! ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type: string, data: Buffer) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type), data]);
+    const c = Buffer.alloc(4);
+    c.writeUInt32BE(crc(td));
+    return Buffer.concat([len, td, c]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8; // Bittiefe
+  ihdr[9] = 0; // Graustufen
+  return new Uint8Array(
+    Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      chunk('IHDR', ihdr),
+      chunk('IDAT', deflateSync(raw)),
+      chunk('IEND', Buffer.alloc(0)),
+    ]),
+  );
+}
+
+/** Aufträge/Arbeitsscheine, Raumbuch, Qualitätskontrolle, Zähler, Rechnungsgruppe, Dokumente. */
+async function phase4() {
+  const [done] = await sql`select 1 from app.rooms limit 1`;
+  if (done) return;
+  const today = todayBerlin();
+  const emps = await sql<{ id: string; personnel_no: string }[]>`select id, personnel_no from app.employees`;
+  const E = Object.fromEntries(emps.map((e) => [e.personnel_no, e.id])) as Record<string, string>;
+
+  // Raumbuch Grundschule
+  const T = (n: number) => `00000000-0000-4000-8000-0000000a000${n.toString(16)}`;
+  const rooms: [string, string, string, number, string, string, number][] = [
+    ['EG', '0.01', 'Eingangshalle', 5, 'Naturstein', '86', 260],
+    ['EG', '0.02', 'Sekretariat', 1, 'Linoleum', '32', 260],
+    ['EG', '0.03', 'Lehrerzimmer', 2, 'Linoleum', '58', 260],
+    ['EG', '0.04', 'WC Mädchen', 6, 'Fliesen', '24', 260],
+    ['EG', '0.05', 'WC Jungen', 6, 'Fliesen', '26', 260],
+    ['EG', '0.10', 'Flur EG', 4, 'Linoleum', '140', 260],
+    ['1. OG', '1.01', 'Klasse 1a', 3, 'Linoleum', '64', 260],
+    ['1. OG', '1.02', 'Klasse 1b', 3, 'Linoleum', '64', 260],
+    ['1. OG', '1.03', 'Klasse 2a', 3, 'Linoleum', '62', 260],
+    ['1. OG', '1.10', 'Flur 1. OG', 4, 'Linoleum', '120', 260],
+    ['1. OG', '1.20', 'Teeküche', 8, 'Fliesen', '14', 260],
+    ['UG', 'U.01', 'Turnhalle', 9, 'Sportboden', '420', 104],
+    ['UG', 'U.02', 'Umkleiden', 7, 'Fliesen', '48', 104],
+    ['UG', 'U.05', 'Technik', 10, 'Beton', '35', 12],
+  ];
+  let i = 0;
+  for (const [floor, no, name, type, cov, area, visits] of rooms) {
+    await saveRoom(sql, `00000000-0000-4000-8000-0000000b${String(++i).padStart(4, '0')}`, {
+      siteId: DEMO.siteSchool,
+      roomNo: no,
+      name,
+      floor,
+      roomTypeId: T(type),
+      floorCovering: cov,
+      areaCenti: parseEuro(area),
+      visitsPerYear: visits,
+      performanceOverride: null,
+      notes: null,
+      active: true,
+      expectedVersion: null,
+    });
+  }
+
+  // Qualitätskontrollen: eine vor 3 Wochen (abgeschlossen), eine heute in Arbeit
+  for (const [id, date, close] of [
+    ['00000000-0000-4000-8000-0000000c0001', addDays(today, -21), true],
+    ['00000000-0000-4000-8000-0000000c0002', today, false],
+  ] as const) {
+    await createQualityCheck(
+      sql,
+      id,
+      { siteId: DEMO.siteSchool, checkDate: date, inspector: 'Ahmed Chomontek', attendee: null },
+      A,
+    );
+    const qc = (await getQualityCheck(sql, id))!;
+    await saveQualityCheck(sql, id, {
+      attendee: 'Hausmeister Maier',
+      summary: close ? 'Insgesamt sauber, Sanitär nacharbeiten.' : null,
+      items: qc.items.map((it, k) => ({
+        id: it.id,
+        rating:
+          !close && k > 6
+            ? 'nicht_geprueft'
+            : it.area.includes('WC Jungen') || (close && it.area.includes('Teeküche'))
+              ? 'mangel'
+              : 'ok',
+        defects: it.area.includes('WC')
+          ? ['Sanitärobjekte', 'Verbrauchsmaterial']
+          : ['Oberflächen / Mobiliar'],
+        note: it.area.includes('WC') ? 'Urinale verkalkt, Seife leer' : 'Arbeitsfläche klebrig',
+      })),
+      extraArea: null,
+      expectedVersion: null,
+    });
+    if (close)
+      await closeQualityCheck(
+        deps,
+        id,
+        { signature: { name: 'Hausmeister Maier', png: signaturePng(1) } },
+        A,
+      );
+  }
+
+  // Zähler mit monatlichen Ablesungen
+  const meters: [string, 'strom' | 'wasser' | 'waerme', string, string, number, number][] = [
+    ['00000000-0000-4000-8000-0000000d0001', 'strom', '1ESY1160455102', 'Hausanschlussraum UG', 48210, 2900],
+    ['00000000-0000-4000-8000-0000000d0002', 'wasser', 'WZ-77421', 'Keller', 1832, 46],
+    ['00000000-0000-4000-8000-0000000d0003', 'waerme', 'WMZ-0815', 'Heizungsraum', 15500, 1800],
+  ];
+  for (const [id, kind, no, loc, start, step] of meters) {
+    await saveMeter(sql, id, {
+      siteId: DEMO.siteSchool,
+      kind,
+      meterNo: no,
+      location: loc,
+      unit: null,
+      active: true,
+      expectedVersion: null,
+    });
+    for (let m = 0; m < 6; m++) {
+      const d = `2026-${String(4 + m).padStart(2, '0')}-01`;
+      await addReading(
+        sql,
+        randomUUID(),
+        {
+          meterId: id,
+          readOn: d,
+          valueMilli: BigInt(Math.round((start + step * m * (1 + (m % 3) * 0.08)) * 1000)),
+          isReplacement: false,
+          note: null,
+        },
+        A,
+      );
+    }
+  }
+  await saveMeter(sql, '00000000-0000-4000-8000-0000000d0004', {
+    siteId: DEMO.siteOffice,
+    kind: 'strom',
+    meterNo: '1EBZ0100771',
+    location: 'Keller',
+    unit: null,
+    active: true,
+    expectedVersion: null,
+  });
+  await addReading(
+    sql,
+    randomUUID(),
+    {
+      meterId: '00000000-0000-4000-8000-0000000d0004',
+      readOn: '2026-07-01',
+      valueMilli: 22100000n,
+      isReplacement: false,
+      note: null,
+    },
+    A,
+  );
+
+  // Auftrag mit unterschriebenem Arbeitsschein, Regiearbeit ohne Unterschrift
+  const order = '00000000-0000-4000-8000-0000000e0001';
+  await saveCustomerOrder(
+    sql,
+    order,
+    {
+      customerId: DEMO.authority,
+      siteId: DEMO.siteSchool,
+      offerId: null,
+      title: 'Grundreinigung Turnhalle nach Sanierung',
+      description: 'Bauendreinigung inkl. Grundreinigung Sportboden',
+      orderReference: 'BE-2026-0117',
+      plannedDate: addDays(today, -3),
+      lines: [
+        {
+          description: 'Grundreinigung Sportboden Turnhalle',
+          detail: null,
+          quantity: parseQuantity('420'),
+          unitCode: 'MTK',
+          unitPrice: parseEuro('2,40'),
+          vatRate: 1900,
+        },
+        {
+          description: 'Bauendreinigung Umkleiden',
+          detail: null,
+          quantity: parseQuantity('1'),
+          unitCode: 'LS',
+          unitPrice: parseEuro('380,00'),
+          vatRate: 1900,
+        },
+      ],
+      expectedVersion: null,
+    },
+    A,
+  );
+  const wr = '00000000-0000-4000-8000-0000000e0101';
+  await saveWorkReport(
+    sql,
+    wr,
+    {
+      orderId: order,
+      siteId: DEMO.siteSchool,
+      workDate: addDays(today, -3),
+      startTime: '07:00',
+      endTime: '14:30',
+      employeeIds: [E['1001'], E['1002']].filter(Boolean) as string[],
+      description: 'Sportboden maschinell grundgereinigt und eingepflegt, Umkleiden bauendgereinigt',
+      materials: 'Grundreiniger 10 l, Sportbodenpflege 5 l',
+      remarks: 'Sehr gut, danke!',
+      lines: [
+        { description: 'Grundreinigung Sportboden', quantity: parseQuantity('420'), unitCode: 'MTK' },
+        { description: 'Regiestunden', quantity: parseQuantity('15'), unitCode: 'HUR' },
+      ],
+      expectedVersion: null,
+    },
+    A,
+  );
+  await signWorkReport(deps, wr, { name: 'Hausmeister Maier', png: signaturePng(2) }, A);
+  const wr2 = '00000000-0000-4000-8000-0000000e0102';
+  await saveWorkReport(
+    sql,
+    wr2,
+    {
+      orderId: null,
+      siteId: DEMO.siteSchool,
+      workDate: addDays(today, -1),
+      startTime: '18:00',
+      endTime: '20:00',
+      employeeIds: [E['1002']].filter(Boolean) as string[],
+      description: 'Wasserschaden Keller: Wasser aufgenommen, Boden getrocknet',
+      materials: null,
+      remarks: null,
+      lines: [{ description: 'Regiestunden', quantity: parseQuantity('2'), unitCode: 'HUR' }],
+      expectedVersion: null,
+    },
+    A,
+  );
+  await closeWithoutSignature(deps, wr2, 'Hausmeister nicht mehr im Haus', A);
+  await saveWorkReport(
+    sql,
+    '00000000-0000-4000-8000-0000000e0103',
+    {
+      orderId: null,
+      siteId: DEMO.siteOffice,
+      workDate: today,
+      startTime: '17:00',
+      endTime: null,
+      employeeIds: [],
+      description: 'Glasreinigung Eingang (Sonderwunsch)',
+      materials: null,
+      remarks: null,
+      lines: [{ description: 'Regiestunden', quantity: parseQuantity('1,5'), unitCode: 'HUR' }],
+      expectedVersion: null,
+    },
+    A,
+  );
+
+  // Rechnungsgruppe (wirkt ab dem nächsten Monatslauf)
+  await saveInvoiceGroup(
+    sql,
+    '00000000-0000-4000-8000-0000000f0001',
+    {
+      customerId: DEMO.authority,
+      name: 'Referat für Bildung – Sammelrechnung',
+      buyerReference: null,
+      orderReference: 'SR-2026-RfB',
+      note: 'Ab November alle Schulen auf einer Rechnung',
+      active: true,
+      siteIds: [DEMO.siteSchool, DEMO.siteOffice],
+      expectedVersion: null,
+    },
+    A,
+  );
+
+  // Dokument zur Unterschrift: 1001 offen (Handy-Demo), 1002 unterschrieben
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const pg = doc.addPage([595.28, 841.89]);
+  pg.drawText('Unterweisung Arbeitsschutz 2026 (DEMO)', { x: 56, y: 780, size: 16, font: bold });
+  const text = [
+    '1. Reinigungsmittel nur nach Betriebsanweisung verwenden, nie mischen.',
+    '2. Schutzhandschuhe bei Sanitärreinigung tragen.',
+    '3. Nasse Böden mit Warnschild kennzeichnen.',
+    '4. Leitern nur geprüft und standsicher benutzen.',
+    '5. Unfälle sofort der Objektleitung melden.',
+  ];
+  text.forEach((t, k) => pg.drawText(t, { x: 56, y: 740 - k * 22, size: 11, font }));
+  const pdf = await doc.save();
+  const docId = '00000000-0000-4000-8000-0000000f0101';
+  await createSignDocument(
+    deps,
+    docId,
+    {
+      title: 'Unterweisung Arbeitsschutz 2026',
+      category: 'unterweisung',
+      description: 'Bitte lesen und bis Monatsende unterschreiben.',
+      dueDate: addDays(today, 14),
+      fileName: 'Unterweisung_Arbeitsschutz_2026.pdf',
+      pdf,
+      employeeIds: [E['1001'], E['1002'], E['1003']].filter(Boolean) as string[],
+    },
+    A,
+  );
+  if (E['1002']) {
+    const [r] = await requestsForEmployee(sql, E['1002']);
+    if (r)
+      await signRequest(deps, r.id, E['1002'], {
+        png: signaturePng(3),
+        confirmed: true,
+        ip: '192.0.2.10',
+        userAgent: 'Demo (Android, Chrome)',
+      });
+  }
+  console.log('Demo Phase 4 angelegt.');
 }

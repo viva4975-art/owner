@@ -324,3 +324,21 @@ Testadresse.
 - 2026-10-03: Demo-Daten Phase 4 (Raumbuch Grundschule, 2 Qualitätskontrollen, 4 Zähler mit Ablesungen, Auftrag mit
   unterschriebenem Arbeitsschein, Regie-Schein, Rechnungsgruppe, Unterweisung zur Unterschrift – 1001 offen,
   1002 unterschrieben). Klick-Demo neu veröffentlicht (369 Seiten): https://claude.ai/artifact/HpySmrqaJ9wpvpWiabFj4S
+- 2026-10-03: Abgleich mit 37 Fortytools-Screenshots (Ahmed, iPad). Lücken gegenüber unserer App (Reihenfolge = Vorschlag):
+  1. Leistungen wie Fortytools-„Aufträge“ am Objekt: Leistungsart (Stammliste), Abrechnungszyklus (monatlich/
+     quartalsweise/jährlich), Stundenvorgabe je Leistung, Ausführungshinweise (→ Arbeitsschein), Kostenstelle,
+     Lohnkostenanteil, „immer unfertig“, Rechnungsgruppe je Leistung abweichend; Rechnungsgruppe mit Kopf-/Fußtext;
+     „Leistungen abrechnen“ je Objekt mit Abrechnungsmonat + Rechnungsdatum; Reiter „Dauerrechnungen“.
+  2. Mahnwesen-Stapelverarbeitung (überfällige Rechnungen je Kunde, Tage überfällig, bisherige Mahnungen, Auswahl).
+  3. Personal: Tags (Minijob/Teilzeit/Vollzeit/Objektleitung), Wochenstunden, Urlaubsanspruch, Lohnstufe/
+     Lohnkonditionen, Krankenkasse, Staatsangehörigkeit, Familienstand, Geburtsort/-land, Warnhinweis, Dokumente je
+     Mitarbeiter mit Kategorien + „Neu aus Vorlage“, Einsatzkalender je Mitarbeiter, Soll/Plan/Ist je Monat,
+     Serienbrief/E-Mail-Verteiler, Rest-Urlaub vortragen/verfällt 31.03.
+  4. Planung: Monatstafel je Mitarbeiter, „Einsätze für abwesende Mitarbeiter“, Einsatzgruppen, Umplanen.
+  5. Auswertungen: Rechnungs-Statistik, Umsatz-Vorschau, Stundenkontrolle Soll/Ist, Ø Stundensätze, Urlaubskonten,
+     Krankheitstage, Dienste-Liste/-Kalender.
+  6. Angebote: Kopieren, Folgeangebot, Auftragsbestätigung, Rechnung aus Angebot, Alternativpositionen,
+     Statistik offen/angenommen/abgelehnt (12 Monate), „zuletzt bearbeitete Kunden“.
+  7. Transfer: Kontoumsätze (Bankabruf), Lastschriften, Dokumenteneingang/-versand.
+     Hinweis: Fortytools nennt negative Rechnungen „Gutschrift“ (Gu 1038085) – bei uns Storno/Rechnungskorrektur.
+     Screenshots enthalten echte Personaldaten (Steuer-ID, SV-Nr.) – nicht ins Repo übernommen.

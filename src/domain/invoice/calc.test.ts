@@ -5,6 +5,7 @@ import {
   calculateDraft,
   cancellationLines,
   monthBounds,
+  billingPeriod,
   monthlyRunLines,
   prepaidTotal,
   addDays,
@@ -98,6 +99,33 @@ describe('Monatslauf', () => {
     );
     expect(lines.map((l) => l.sourceServiceId)).toEqual(['s1', 's6']);
     expect(lines[0]?.detail).toBe('01.09.2026 bis 30.09.2026');
+  });
+
+  it('Abrechnungszyklen: fällig ab Leistungsbeginn alle n Monate, Zeitraum über n Monate', () => {
+    expect(billingPeriod('monatlich', '2026-01-15', '2026-09')).toEqual({
+      start: '2026-09-01',
+      end: '2026-09-30',
+    });
+    expect(billingPeriod('quartalsweise', '2026-02-01', '2026-02')).toEqual({
+      start: '2026-02-01',
+      end: '2026-04-30',
+    });
+    expect(billingPeriod('quartalsweise', '2026-02-01', '2026-03')).toBeNull();
+    expect(billingPeriod('quartalsweise', '2026-02-01', '2026-11')).toEqual({
+      start: '2026-11-01',
+      end: '2027-01-31',
+    });
+    expect(billingPeriod('jaehrlich', '2025-06-04', '2026-06')).toEqual({
+      start: '2026-06-01',
+      end: '2027-05-31',
+    });
+    expect(billingPeriod('halbjaehrlich', '2026-01-01', '2025-12')).toBeNull(); // vor Beginn
+    const q = { ...base, id: 'q', cycle: 'quartalsweise' as const, validFrom: '2026-07-01' };
+    expect(monthlyRunLines([q], '2026-08')).toHaveLength(0);
+    const [l] = monthlyRunLines([q], '2026-10');
+    expect(l?.detail).toBe('01.10.2026 bis 31.12.2026');
+    // endet vor dem Zeitraum → nicht abrechnen
+    expect(monthlyRunLines([{ ...q, validTo: '2026-09-30' }], '2026-10')).toHaveLength(0);
   });
 
   it('Positionstext wie Fortytools', () => {

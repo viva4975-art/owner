@@ -1,17 +1,7 @@
 import type { Child, FC } from 'hono/jsx';
-import { UNIT_LABELS } from '../domain/invoice/types.js';
 import type { Customer, Site, SiteService } from '../services/masterdata.js';
-import { centsToInput, milliToInput } from './forms.js';
-import {
-  FORMAT_LABEL,
-  NEW_OPTIONS,
-  PageHead,
-  SERVICE_KIND_LABEL,
-  type Tab,
-  Tabs,
-  dateDe,
-  euro,
-} from './layout.js';
+import { centsToInput } from './forms.js';
+import { FORMAT_LABEL, NEW_OPTIONS, PageHead, type Tab, Tabs, euro } from './layout.js';
 
 export const Field: FC<{
   name: string;
@@ -571,127 +561,6 @@ export const SiteForm: FC<{ id: string; s: Partial<Site>; customers: Customer[];
       </a>
     </div>
   </form>
-);
-
-export const ServicesPanel: FC<{ siteId: string; services: SiteService[]; newServiceId: string }> = ({
-  siteId,
-  services,
-  newServiceId,
-}) => (
-  <>
-    <p class="mut small" style="margin-top:0">
-      Monatspauschalen werden vom Monatslauf automatisch berechnet. Sonderleistungen und Regiestunden stehen
-      als Vorlagen beim Erfassen von Rechnungspositionen bereit.
-    </p>
-    <div class="tbl">
-      <table>
-        <thead>
-          <tr>
-            <th>Art</th>
-            <th>Beschreibung</th>
-            <th class="r">Menge</th>
-            <th>Einheit</th>
-            <th class="r">Preis netto</th>
-            <th class="r">USt</th>
-            <th>Gültig</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {services.length === 0 && (
-            <tr>
-              <td colspan={8} class="mut">
-                Noch keine Leistungen.
-              </td>
-            </tr>
-          )}
-          {services.map((sv) => (
-            <tr style={sv.active ? '' : 'opacity:.5'}>
-              <td>{SERVICE_KIND_LABEL[sv.kind]}</td>
-              <td>
-                {sv.description}
-                {sv.note && <div class="small mut">{sv.note}</div>}
-              </td>
-              <td class="r">{milliToInput(sv.quantity_milli)}</td>
-              <td>{UNIT_LABELS[sv.unit_code] ?? sv.unit_code}</td>
-              <td class="r">{euro(sv.unit_price_cents)}</td>
-              <td class="r">{sv.vat_rate_bp / 100} %</td>
-              <td class="small">
-                ab {dateDe(sv.valid_from)}
-                {sv.valid_to ? ` bis ${dateDe(sv.valid_to)}` : ''}
-              </td>
-              <td>
-                <form method="post" action={`/leistungen/${sv.id}/aktiv`}>
-                  <input type="hidden" name="active" value={sv.active ? 'false' : 'true'} />
-                  <input type="hidden" name="site_id" value={siteId} />
-                  <button class="btn sm sec">{sv.active ? 'Deaktivieren' : 'Aktivieren'}</button>
-                </form>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-    <form
-      method="post"
-      action={`/objekte/${siteId}/leistungen/${newServiceId}`}
-      class="card"
-      style="margin-top:12px"
-      data-autosave={`/objekte/${siteId}/leistungen/neu`}
-    >
-      <h3>Leistung hinzufügen</h3>
-      <div class="grid">
-        <div>
-          <label for="kind">Art</label>
-          <select id="kind" name="kind">
-            {Object.entries(SERVICE_KIND_LABEL).map(([k, v]) => (
-              <option value={k}>{v}</option>
-            ))}
-          </select>
-        </div>
-        <div style="grid-column:span 2">
-          <Field name="description" label="Beschreibung *" required />
-        </div>
-        <Field name="quantity" label="Menge" value="1" />
-        <div>
-          <label for="unit_code">Einheit</label>
-          <select id="unit_code" name="unit_code">
-            {Object.entries(UNIT_LABELS).map(([k, v]) => (
-              <option value={k} selected={k === 'LS'}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </div>
-        <Field name="unit_price" label="Einzelpreis netto (€) *" placeholder="1.850,00" required />
-        <div>
-          <label for="vat_rate_bp">USt</label>
-          <select id="vat_rate_bp" name="vat_rate_bp">
-            <option value="1900">19 %</option>
-            <option value="700">7 %</option>
-          </select>
-        </div>
-        <Field
-          name="valid_from"
-          label="Gültig ab *"
-          type="date"
-          value={new Date().toISOString().slice(0, 10)}
-          required
-        />
-        <Field name="valid_to" label="Gültig bis" type="date" />
-        <div style="grid-column:1/-1">
-          <Field
-            name="note"
-            label="Zusatztext auf der Rechnung (optional)"
-            placeholder="z. B. 3.099,86 € + 5,07% Tariflohnerhöhung ab 01.01.2026"
-          />
-        </div>
-      </div>
-      <div class="actions">
-        <button class="btn">Leistung speichern</button>
-      </div>
-    </form>
-  </>
 );
 
 export const SiteOverview: FC<{

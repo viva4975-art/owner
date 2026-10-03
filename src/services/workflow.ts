@@ -46,7 +46,9 @@ async function validateBoth(doc: InvoiceDocument, env: Env): Promise<PreflightRe
  * Nur wenn gültig, darf ausgestellt (und damit eine Nummer verbraucht) werden.
  */
 export async function preflight(deps: Deps, id: string): Promise<PreflightResult> {
-  const issueDate = todayBerlin();
+  const [inv] = await deps.sql<{ planned_issue_date: string | null }[]>`
+    select planned_issue_date from app.invoices where id = ${id}`;
+  const issueDate = inv?.planned_issue_date ?? todayBerlin();
   const doc = await loadDocument(deps.sql, id, { number: 'ENTWURF', issueDate, dueDate: issueDate });
   try {
     return await validateBoth(doc, deps.env);
@@ -61,6 +63,16 @@ export async function issueInvoice(deps: Deps, id: string, actor: string) {
   const data = await getInvoice(deps.sql, id);
   if (!data) throw new BusinessError('Rechnung nicht gefunden');
   if (data.invoice.status === 'draft') {
+    if (data.invoice.review_required) {
+      throw new BusinessError(
+        'Rechnung ist als „unfertig“ markiert (Leistung mit „immer unfertig“). Bitte Positionen prüfen und „Geprüft“ setzen.',
+      );
+    }
+    if (data.invoice.planned_issue_date && data.invoice.planned_issue_date > todayBerlin()) {
+      throw new BusinessError(
+        `Rechnungsdatum ${data.invoice.planned_issue_date.split('-').reverse().join('.')} liegt in der Zukunft – Ausstellen ist erst ab diesem Tag möglich (oder Rechnungsdatum ändern).`,
+      );
+    }
     const pre = await preflight(deps, id);
     if (!pre.valid) {
       const msgs = [...pre.ubl.messages, ...pre.cii.messages].filter((m) => m.level === 'error');

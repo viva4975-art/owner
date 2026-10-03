@@ -71,6 +71,43 @@ export interface ServiceForRun {
   validTo: string | null;
   active: boolean;
   note?: string | null;
+  /** Abrechnungszyklus (Standard monatlich); fällig ab dem Monat von validFrom im Abstand des Zyklus */
+  cycle?: BillingCycle;
+}
+
+export type BillingCycle = 'monatlich' | 'zweimonatlich' | 'quartalsweise' | 'halbjaehrlich' | 'jaehrlich';
+export const CYCLE_MONTHS: Record<BillingCycle, number> = {
+  monatlich: 1,
+  zweimonatlich: 2,
+  quartalsweise: 3,
+  halbjaehrlich: 6,
+  jaehrlich: 12,
+};
+export const CYCLE_LABEL: Record<BillingCycle, string> = {
+  monatlich: 'monatlich',
+  zweimonatlich: 'alle 2 Monate',
+  quartalsweise: 'quartalsweise',
+  halbjaehrlich: 'halbjährlich',
+  jaehrlich: 'jährlich',
+};
+
+const monthIndex = (m: string) => Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7)) - 1;
+const monthOf = (i: number) => `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`;
+
+/**
+ * Abrechnungszeitraum einer Leistung, wenn sie im Abrechnungsmonat fällig ist (sonst null).
+ * Fällig im Monat des Leistungsbeginns und danach alle n Monate; der Zeitraum umfasst n Monate
+ * (z. B. quartalsweise ab 01.02.: Feb–Apr, Mai–Jul …).
+ */
+export function billingPeriod(
+  cycle: BillingCycle,
+  validFrom: string,
+  month: string,
+): { start: string; end: string } | null {
+  const n = CYCLE_MONTHS[cycle];
+  const diff = monthIndex(month) - monthIndex(validFrom.slice(0, 7));
+  if (diff < 0 || diff % n !== 0) return null;
+  return { start: monthBounds(month).start, end: monthBounds(monthOf(monthIndex(month) + n - 1)).end };
 }
 
 export interface SiteForRun {
@@ -108,27 +145,28 @@ export function serviceDetail(
     .join('\n');
 }
 
-/** Monatslauf: nur aktive Monatspauschalen, die im Abrechnungsmonat gültig sind. */
+/** Abrechnungslauf: aktive Pauschalen, die im Abrechnungsmonat fällig und im Zeitraum gültig sind. */
 export function monthlyRunLines(
   services: readonly ServiceForRun[],
   month: string,
   site: SiteForRun | null = null,
 ): DraftLineInput[] {
-  const { start, end } = monthBounds(month);
-  return services
-    .filter(
-      (s) =>
-        s.active && s.kind === 'monthly_flat' && s.validFrom <= end && (!s.validTo || s.validTo >= start),
-    )
-    .map((s) => ({
-      description: s.description,
-      detail: serviceDetail(s.note, site, start, end),
-      quantity: s.quantity,
-      unitCode: s.unitCode,
-      unitPrice: s.unitPrice,
-      vatRate: s.vatRate,
-      sourceServiceId: s.id,
-    }));
+  return services.flatMap((s) => {
+    if (!s.active || s.kind !== 'monthly_flat') return [];
+    const p = billingPeriod(s.cycle ?? 'monatlich', s.validFrom, month);
+    if (!p || s.validFrom > p.end || (s.validTo && s.validTo < p.start)) return [];
+    return [
+      {
+        description: s.description,
+        detail: serviceDetail(s.note, site, p.start, p.end),
+        quantity: s.quantity,
+        unitCode: s.unitCode,
+        unitPrice: s.unitPrice,
+        vatRate: s.vatRate,
+        sourceServiceId: s.id,
+      },
+    ];
+  });
 }
 
 /** "2026-09" → { start: "2026-09-01", end: "2026-09-30" } */

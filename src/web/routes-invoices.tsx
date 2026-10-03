@@ -12,8 +12,10 @@ import {
   getInvoice,
   listInvoices,
   loadDocument,
+  markReviewed,
   runMonthly,
   saveDraft,
+  setPlannedIssueDate,
 } from '../services/invoices.js';
 import { getCustomer, getSite, listCustomers, listServices, listSites } from '../services/masterdata.js';
 import { bookPayment, listPayments, paymentInput, reversePayment } from '../services/payments.js';
@@ -125,8 +127,9 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
           <form method="post" action="/monatslauf" class="card">
             <h3>Aus Objektleistungen erstellen (Monatslauf)</h3>
             <p class="mut small" style="margin-top:0">
-              Je aktivem Objekt ein Entwurf aus den Monatspauschalen. Mehrfaches Ausführen erzeugt keine
-              Dubletten.
+              Alle fälligen regelmäßigen Leistungen (monatlich, quartalsweise, jährlich …): je Objekt ein
+              Entwurf, Rechnungsgruppen als Sammelrechnung, Leistungen mit „eigener Rechnung“ einzeln.
+              Mehrfaches Ausführen erzeugt keine Dubletten.
             </p>
             <label for="month">Abrechnungsmonat</label>
             <div class="actions" style="margin-top:4px">
@@ -137,6 +140,13 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                 value={lastMonth()}
                 style="max-width:200px"
                 required
+              />
+              <input
+                type="date"
+                name="invoice_date"
+                aria-label="Rechnungsdatum"
+                title="Rechnungsdatum (leer = Tag des Ausstellens)"
+                style="max-width:180px"
               />
               <button class="btn">Entwürfe erstellen</button>
             </div>
@@ -186,7 +196,8 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
   app.post('/monatslauf', async (c) => {
     const body = await c.req.parseBody();
     const month = String(body.month ?? '');
-    const res = await runMonthly(sql, month, c.get('actor'));
+    const invoiceDate = typeof body.invoice_date === 'string' && body.invoice_date ? body.invoice_date : null;
+    const res = await runMonthly(sql, month, c.get('actor'), { invoiceDate });
     const msg =
       `Monatslauf ${month}: ${res.created.length} Entwurf/Entwürfe erstellt.` +
       (res.skipped.length
@@ -360,6 +371,19 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     return back(c, `/rechnungen/${id}`, {
       ok: `Rechnung ${data!.invoice.number} ausgestellt, geprüft und archiviert.`,
     });
+  });
+
+  app.post(`/rechnungen/:id{${UUID}}/geprueft`, async (c) => {
+    const id = c.req.param('id');
+    await markReviewed(sql, id, c.get('actor'));
+    return back(c, `/rechnungen/${id}`, { ok: 'Als geprüft markiert – Ausstellen ist jetzt möglich.' });
+  });
+
+  app.post(`/rechnungen/:id{${UUID}}/rechnungsdatum`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    await setPlannedIssueDate(sql, id, typeof b.date === 'string' && b.date ? b.date : null, c.get('actor'));
+    return back(c, `/rechnungen/${id}`, { ok: 'Rechnungsdatum gespeichert.' });
   });
 
   app.post(`/rechnungen/:id{${UUID}}/versenden`, async (c) => {

@@ -348,3 +348,16 @@ Testadresse.
   Kasten. Standardtexte (Einleitung/Schluss) wie Fortytools; Ansprechpartner = Anlegender. PDF: Ansprechpartner,
   „pauschal“ statt leerer Einheit, Zyklus „monatlich/einmalig“ unter der Position. Neue Positionen standardmäßig
   „pauschal“.
+- 2026-10-03: Lücke 1 erledigt – Leistungen am Objekt wie Fortytools-„Aufträge“:
+  - Je Leistung: Anfang/Ende, Titel, Leistungsart (Stammliste unter Rechnungen → Leistungsarten, mit Lohnkostenanteil-
+    Vorgabe), Zusatztext, Kostenstelle, Art, Rechnungsgruppe („wie Objekt“ / eigene Rechnung / Gruppe), Abrechnungs-
+    zyklus (monatlich, 2-monatlich, quartalsweise, halbjährlich, jährlich – fällig ab Beginn alle n Monate, Zeitraum über
+    n Monate), Einheit/Menge/Betrag je Zeitraum, USt, Lohnkostenanteil, „immer unfertig“, Stundenvorgabe je Monat,
+    Ausführungshinweise (erscheinen im Arbeitsschein-Editor und -PDF). Leistungen sind jetzt bearbeitbar (Versionszähler).
+  - Abrechnungslauf je Leistung statt je Objekt: Ziel = eigene Rechnung → Gruppe der Leistung → Gruppe des Objekts →
+    Rechnung je Objekt. Doppelabrechnung je Leistung + Monat ausgeschlossen (`monthly_run_services`, Bestand übernommen).
+    Rechnungsgruppen mit Kopf-/Fußtext.
+  - „Regelmäßige Leistung(en) abrechnen“ am Objekt (Abrechnungsmonat + Rechnungsdatum, Vorschau offen/abgerechnet);
+    Monatslauf mit Rechnungsdatum. Rechnungsdatum in der Zukunft → Ausstellen erst ab dem Tag (DB-Regel bleibt).
+  - „Immer unfertig“: Entwurf mit Hinweis, Ausstellen gesperrt bis „Geprüft“.
+  - Tests: 166 Unit-/DB-Tests, Browser-Tests 179 Prüfungen (neu `npm run e2e:leistungen`, 12 Prüfungen).

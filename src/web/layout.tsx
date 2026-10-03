@@ -241,6 +241,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Einzelrechnung anlegen', href: '/neu?typ=rechnung' },
       { label: 'Offene Posten', href: '/offene-posten', sep: true },
       { label: 'Mahnwesen', href: '/mahnungen' },
+      { label: 'Leistungsarten', href: '/einstellungen/leistungsarten', sep: true },
     ],
   },
   {
@@ -582,7 +583,7 @@ export const FORMAT_LABEL: Record<string, string> = {
 };
 
 export const SERVICE_KIND_LABEL: Record<string, string> = {
-  monthly_flat: 'Monatspauschale',
+  monthly_flat: 'Pauschale (regelmäßig)',
   special: 'Sonderleistung',
   hourly: 'Regiestunden',
 };

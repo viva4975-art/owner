@@ -164,6 +164,8 @@ export interface HourTarget {
   plannedPerWeek: number;
   /** monatliche Pauschalen (netto, Cent) – nur fürs Büro anzeigen */
   monthlyFlatCents: bigint;
+  /** Stundenvorgabe laut Leistungen (Std. je Monat, wie Fortytools) */
+  servicesHoursPerMonth: number;
 }
 
 export async function hourTarget(sql: Sql, siteId: string): Promise<HourTarget> {
@@ -183,7 +185,11 @@ export async function hourTarget(sql: Sql, siteId: string): Promise<HourTarget> 
       from app.site_services
      where site_id = ${siteId} and kind = 'monthly_flat' and active
        and valid_from <= ${today} and (valid_to is null or valid_to >= ${today})`;
+  const [sh] = await sql<{ milli: bigint }[]>`
+    select coalesce(sum(hours_target_milli), 0)::bigint as milli from app.site_services
+     where site_id = ${siteId} and active and valid_from <= ${today} and (valid_to is null or valid_to >= ${today})`;
   return {
+    servicesHoursPerMonth: Number(sh?.milli ?? 0n) / 1000,
     rooms,
     areaCenti: rooms.reduce((s, r) => s + r.area_centi, 0n),
     hoursPerYear: perYear,

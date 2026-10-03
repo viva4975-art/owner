@@ -11,7 +11,8 @@ import {
   saveContact,
 } from '../services/crm.js';
 import { BusinessError } from '../services/errors.js';
-import { listInvoices } from '../services/invoices.js';
+import { monthBounds, todayBerlin } from '../domain/invoice/calc.js';
+import { billingPreview, listInvoices, runMonthly } from '../services/invoices.js';
 import { listInvoiceGroups, saveInvoiceGroup } from '../services/invoice-groups.js';
 import {
   type Customer,
@@ -19,7 +20,10 @@ import {
   getCustomer,
   getSite,
   listCustomers,
+  getService,
+  listServiceTypes,
   listServices,
+  saveServiceType,
   listSites,
   saveCustomer,
   saveService,
@@ -42,6 +46,7 @@ import { OfferTable } from './pages-offers.js';
 import { ContactsPanel, NotesPanel, TaskBox, TaskForm } from './pages-crm.js';
 import { OpenItemsTable } from './pages-hr-finance.js';
 import { InvoiceTable } from './pages-invoices.js';
+import { ServiceForm, ServicesPanel } from './pages-services.js';
 import {
   type CustomerCounts,
   CustomerCard,
@@ -49,7 +54,6 @@ import {
   CustomerList,
   CustomerShell,
   RevenueBars,
-  ServicesPanel,
   SiteForm,
   SiteOverview,
   SiteShell,
@@ -403,6 +407,24 @@ export function registerMasterdataRoutes({ app, deps, page, back, shells }: Ctx)
                 );
               })}
             </div>
+            <label for="g-intro">Kopftext der Sammelrechnung (leer = Standard)</label>
+            <textarea
+              id="g-intro"
+              name="intro_text"
+              rows={3}
+              placeholder="Sehr geehrte Damen und Herren, wir danken für Ihren Auftrag und berechnen unsere Leistungen wie folgt:"
+            >
+              {g?.intro_text ?? ''}
+            </textarea>
+            <label for="g-closing">Fußtext (leer = Standard)</label>
+            <textarea
+              id="g-closing"
+              name="closing_text"
+              rows={3}
+              placeholder="Wir bitten um Überweisung auf unser Konto. Für Rückfragen zu dieser Rechnung stehen wir jederzeit gerne zur Verfügung."
+            >
+              {g?.closing_text ?? ''}
+            </textarea>
             <label for="g-note">Notiz</label>
             <input id="g-note" name="note" value={g?.note ?? ''} />
             <div class="chk" style="margin-top:10px">
@@ -435,6 +457,8 @@ export function registerMasterdataRoutes({ app, deps, page, back, shells }: Ctx)
         buyerReference: str(b, 'buyer_reference'),
         orderReference: str(b, 'order_reference'),
         note: str(b, 'note'),
+        introText: str(b, 'intro_text'),
+        closingText: str(b, 'closing_text'),
         active: b.active === 'on',
         siteIds: arr(b, 'site').filter((x) => /^[0-9a-f-]{36}$/.test(x)),
         expectedVersion: typeof b.version === 'string' && b.version !== '' ? Number(b.version) : null,
@@ -650,10 +674,162 @@ export function registerMasterdataRoutes({ app, deps, page, back, shells }: Ctx)
   });
 
   app.get(`/objekte/:id{${UUID}}/leistungen`, (c) =>
-    sitePage(c, 'leistungen', async (s) => (
-      <ServicesPanel siteId={s.id} services={await listServices(sql, s.id)} newServiceId={randomUUID()} />
-    )),
+    sitePage(c, 'leistungen', async (s) => {
+      const today = todayBerlin();
+      const qm = c.req.query('monat');
+      const month = qm && /^\d{4}-\d{2}$/.test(qm) ? qm : today.slice(0, 7);
+      const qd = c.req.query('datum');
+      const monthEnd = monthBounds(month).end;
+      const invoiceDate = qd && /^\d{4}-\d{2}-\d{2}$/.test(qd) ? qd : monthEnd <= today ? monthEnd : '';
+      const [services, preview, [grp]] = await Promise.all([
+        listServices(sql, s.id),
+        billingPreview(sql, s.id, month),
+        sql<
+          { name: string }[]
+        >`select g.name from app.sites x join app.invoice_groups g on g.id = x.invoice_group_id
+                                where x.id = ${s.id} and g.active`,
+      ]);
+      return (
+        <ServicesPanel
+          siteId={s.id}
+          services={services}
+          newServiceId={randomUUID()}
+          siteGroup={grp?.name ?? null}
+          month={month}
+          invoiceDate={invoiceDate}
+          preview={preview}
+        />
+      );
+    }),
   );
+
+  app.get(`/objekte/:id{${UUID}}/leistungen/:sid{${UUID}}`, (c) =>
+    sitePage(c, 'leistungen', async (s) => {
+      const sv = (await getService(sql, c.req.param('sid'))) ?? null;
+      if (sv && sv.site_id !== s.id) throw new BusinessError('Leistung gehört zu einem anderen Objekt');
+      const [types, groups] = await Promise.all([
+        listServiceTypes(sql),
+        listInvoiceGroups(sql, s.customer_id),
+      ]);
+      return (
+        <ServiceForm
+          siteId={s.id}
+          id={c.req.param('sid')}
+          sv={sv}
+          types={types}
+          groups={groups}
+          today={todayBerlin()}
+        />
+      );
+    }),
+  );
+
+  app.post(`/objekte/:id{${UUID}}/abrechnen`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    const month = String(b.monat ?? '');
+    if (!/^\d{4}-\d{2}$/.test(month)) throw new BusinessError('Abrechnungsmonat ungültig');
+    const date = typeof b.datum === 'string' && b.datum ? b.datum : null;
+    const r = await runMonthly(sql, month, c.get('actor'), { siteIds: [id], invoiceDate: date });
+    if (r.created.length === 1) {
+      return back(c, `/rechnungen/${r.created[0]!.invoiceId}`, { ok: 'Rechnungsentwurf erstellt.' });
+    }
+    return back(c, `/objekte/${id}/leistungen?monat=${month}`, {
+      ok: r.created.length ? `${r.created.length} Rechnungsentwürfe erstellt.` : 'Nichts mehr abzurechnen.',
+    });
+  });
+
+  // Leistungsarten (Stammliste)
+  app.get('/einstellungen/leistungsarten', async (c) => {
+    const types = await listServiceTypes(sql, true);
+    return page(
+      c,
+      'Leistungsarten',
+      'rechnungen',
+      <>
+        <PageHead title="Leistungsarten" />
+        <p class="mut" style="max-width:780px">
+          Leistungsarten ordnen die Leistungen an den Objekten (Auswertung, Nachkalkulation). Der
+          Lohnkostenanteil ist die Vorgabe, wenn an der Leistung nichts eingetragen ist.
+        </p>
+        <div class="tbl" style="max-width:780px">
+          <table>
+            <thead>
+              <tr>
+                <th>Leistungsart</th>
+                <th class="r">Lohnkostenanteil %</th>
+                <th>aktiv</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...types, null].map((t) => {
+                const tid = t?.id ?? randomUUID();
+                const f = `st-${tid.slice(0, 8)}`;
+                return (
+                  <tr>
+                    <td>
+                      <form id={f} method="post" action={`/einstellungen/leistungsarten/${tid}`}></form>
+                      <input type="hidden" form={f} name="version" value={String(t?.version ?? '')} />
+                      <input
+                        form={f}
+                        name="name"
+                        value={t?.name ?? ''}
+                        placeholder="neue Leistungsart"
+                        aria-label="Leistungsart"
+                      />
+                    </td>
+                    <td style="width:150px">
+                      <input
+                        form={f}
+                        name="labor_share"
+                        class="right"
+                        value={
+                          t?.labor_share_bp != null ? String(t.labor_share_bp / 100).replace('.', ',') : ''
+                        }
+                        aria-label="Lohnkostenanteil"
+                      />
+                    </td>
+                    <td style="width:70px">
+                      <input
+                        type="checkbox"
+                        form={f}
+                        name="active"
+                        checked={t ? t.active : true}
+                        aria-label="aktiv"
+                      />
+                    </td>
+                    <td style="width:110px">
+                      <button class="btn sm sec" form={f}>
+                        {t ? 'Speichern' : 'Anlegen'}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </>,
+    );
+  });
+
+  app.post(`/einstellungen/leistungsarten/:tid{${UUID}}`, async (c) => {
+    const b = await c.req.parseBody();
+    const ls =
+      typeof b.labor_share === 'string' && b.labor_share.trim()
+        ? Number(b.labor_share.replace(',', '.'))
+        : null;
+    if (ls != null && (!Number.isFinite(ls) || ls < 0 || ls > 100))
+      throw new BusinessError('Lohnkostenanteil bitte in % (0–100)');
+    await saveServiceType(sql, c.req.param('tid'), {
+      name: String(b.name ?? ''),
+      laborShareBp: ls == null ? null : Math.round(ls * 100),
+      active: b.active === 'on',
+      expectedVersion: typeof b.version === 'string' && b.version ? Number(b.version) : null,
+    });
+    return back(c, '/einstellungen/leistungsarten', { ok: 'Gespeichert.' });
+  });
 
   app.post(`/objekte/:id{${UUID}}/leistungen/:sid{${UUID}}`, async (c) => {
     const id = c.req.param('id');

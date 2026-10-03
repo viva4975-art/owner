@@ -479,6 +479,15 @@ export async function closeWithoutSignature(deps: Deps, id: string, reason: stri
 const UNIT: Record<string, string> = { HUR: 'Std.', C62: 'Stk.', LS: 'pauschal', MTK: 'm²', DAY: 'Tag' };
 const qty = (m: bigint) => (Number(m) / 1000).toLocaleString('de-DE', { maximumFractionDigits: 3 });
 
+/** Ausführungshinweise der am Tag gültigen Leistungen des Objekts (für Arbeitsschein und Mitarbeitende). */
+export async function executionNotes(sql: Sql, siteId: string, date: string) {
+  return sql<{ description: string; execution_notes: string }[]>`
+    select description, execution_notes from app.site_services
+     where site_id = ${siteId} and active and execution_notes is not null and execution_notes <> ''
+       and valid_from <= ${date} and (valid_to is null or valid_to >= ${date})
+     order by sort_order, description`;
+}
+
 export async function renderWorkReportPdf(deps: Deps, id: string): Promise<Uint8Array> {
   const data = await getWorkReport(deps.sql, id);
   if (!data) throw new BusinessError('Arbeitsschein nicht gefunden');
@@ -520,6 +529,9 @@ export async function renderWorkReportPdf(deps: Deps, id: string): Promise<Uint8
     sums: [],
     total: null,
     paragraphs: [
+      ...(await executionNotes(deps.sql, w.site_id, w.work_date)).map(
+        (n) => `Ausführungshinweis (${n.description}): ${n.execution_notes}`,
+      ),
       ...(w.materials ? [`Material: ${w.materials}`] : []),
       ...(w.remarks ? [`Bemerkungen des Kunden: ${w.remarks}`] : []),
       ...(w.status === 'ohne_unterschrift'

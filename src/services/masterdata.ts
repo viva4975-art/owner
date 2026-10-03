@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import type { Sql } from '../db/client.js';
 import { assertVersion } from './crm.js';
+import type { BillingCycle } from '../domain/invoice/calc.js';
+import { BusinessError } from './errors.js';
 import type { BankAccount, BuyerSnapshot, InvoiceFormat, SellerSnapshot } from '../domain/invoice/types.js';
 import { parseEuro, parseQuantity } from '../domain/money/money.js';
 
@@ -242,7 +244,52 @@ export interface SiteService {
   active: boolean;
   sort_order: number;
   note: string | null;
+  service_type_id: string | null;
+  billing_cycle: BillingCycle;
+  hours_target_milli: bigint | null;
+  execution_notes: string | null;
+  cost_center: string | null;
+  labor_share_bp: number | null;
+  always_unfinished: boolean;
+  invoice_group_id: string | null;
+  separate_invoice: boolean;
+  version: number;
 }
+
+const optMilli = z.preprocess(
+  emptyToNull,
+  z
+    .string()
+    .nullable()
+    .default(null)
+    .transform((v, ctx) => {
+      if (v == null) return null;
+      try {
+        const q = parseQuantity(v);
+        if (q < 0n) throw new RangeError('darf nicht negativ sein');
+        return q;
+      } catch (e) {
+        ctx.addIssue({ code: 'custom', message: `Stundenvorgabe: ${(e as Error).message}` });
+        return z.NEVER;
+      }
+    }),
+);
+const optPercentBp = z.preprocess(
+  emptyToNull,
+  z
+    .string()
+    .nullable()
+    .default(null)
+    .transform((v, ctx) => {
+      if (v == null) return null;
+      const n = Number(v.replace(',', '.'));
+      if (!Number.isFinite(n) || n < 0 || n > 100) {
+        ctx.addIssue({ code: 'custom', message: 'Lohnkostenanteil bitte in % (0–100)' });
+        return z.NEVER;
+      }
+      return Math.round(n * 100);
+    }),
+);
 
 export const serviceInput = z.object({
   kind: z.enum(['monthly_flat', 'special', 'hourly']),
@@ -270,12 +317,43 @@ export const serviceInput = z.object({
   valid_from: z.iso.date(),
   valid_to: z.preprocess(emptyToNull, z.iso.date().nullable().default(null)),
   note: optText,
+  service_type_id: z.preprocess(emptyToNull, z.uuid().nullable().default(null)),
+  billing_cycle: z
+    .enum(['monatlich', 'zweimonatlich', 'quartalsweise', 'halbjaehrlich', 'jaehrlich'])
+    .default('monatlich'),
+  hours_target: optMilli,
+  execution_notes: optText,
+  cost_center: optText,
+  labor_share: optPercentBp,
+  always_unfinished: z.preprocess((v) => v === 'on' || v === 'true' || v === true, z.boolean()),
+  // „objekt“ = Rechnungsgruppe/Rechnung des Objekts, „separat“ = eigene Rechnung, sonst ID einer Rechnungsgruppe
+  invoice_target: z.preprocess(emptyToNull, z.string().nullable().default(null)),
+  version: z.preprocess(
+    (v) => (typeof v === 'string' && v !== '' ? Number(v) : null),
+    z.number().int().nullable(),
+  ),
 });
 
+export type SiteServiceRow = SiteService & {
+  type_name: string | null;
+  group_name: string | null;
+  last_billed_month: string | null;
+};
+
 export async function listServices(sql: Sql, siteId: string) {
-  return sql<
-    SiteService[]
-  >`select * from app.site_services where site_id = ${siteId} order by active desc, sort_order, kind, description`;
+  return sql<SiteServiceRow[]>`
+    select ss.*, t.name as type_name, g.name as group_name,
+           (select max(month) from app.monthly_run_services r where r.service_id = ss.id) as last_billed_month
+      from app.site_services ss
+      left join app.service_types t on t.id = ss.service_type_id
+      left join app.invoice_groups g on g.id = ss.invoice_group_id
+     where ss.site_id = ${siteId}
+     order by ss.active desc, ss.sort_order, ss.kind, ss.description`;
+}
+
+export async function getService(sql: Sql, id: string) {
+  const [s] = await sql<SiteService[]>`select * from app.site_services where id = ${id}`;
+  return s;
 }
 
 export async function saveService(
@@ -296,9 +374,29 @@ export async function saveService(
     valid_from: input.valid_from,
     valid_to: input.valid_to,
     note: input.note,
+    service_type_id: input.service_type_id,
+    billing_cycle: input.billing_cycle,
+    hours_target_milli: input.hours_target,
+    execution_notes: input.execution_notes,
+    cost_center: input.cost_center,
+    labor_share_bp: input.labor_share,
+    always_unfinished: input.always_unfinished,
+    separate_invoice: input.invoice_target === 'separat',
+    invoice_group_id:
+      input.invoice_target && /^[0-9a-f-]{36}$/.test(input.invoice_target) ? input.invoice_target : null,
   };
   await sql.begin(async (tx) => {
-    await tx`insert into app.site_services ${tx({ id, ...row })}
+    const [cur] = await tx<{ version: number; site_id: string }[]>`
+      select version, site_id from app.site_services where id = ${id} for update`;
+    if (cur && cur.site_id !== siteId) throw new BusinessError('Leistung gehört zu einem anderen Objekt');
+    assertVersion(cur?.version, input.version, 'Die Leistung');
+    const [pos] = await tx<{ next: number }[]>`
+      select coalesce(max(sort_order), 0) + 1 as next from app.site_services where site_id = ${siteId}`;
+    const sortOrder = cur
+      ? (await tx<{ sort_order: number }[]>`select sort_order from app.site_services where id = ${id}`)[0]!
+          .sort_order
+      : pos!.next;
+    await tx`insert into app.site_services ${tx({ id, ...row, sort_order: sortOrder } as Record<string, unknown>)}
              on conflict (id) do update set ${tx({ ...row, updated_at: new Date() } as Record<string, unknown>)}`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
              values (${actor}, 'save', 'site_service', ${id}, ${tx.json({ description: input.description })})`;
@@ -368,4 +466,44 @@ export async function suggestSiteNo(sql: Sql, customerId: string): Promise<strin
     select max(substr(site_no, ${c.customer_no.length + 1})::int) as n from app.sites
      where customer_id = ${customerId} and site_no ~ ${'^' + c.customer_no + '[0-9]{2}$'}`;
   return `${c.customer_no}${String((r?.n ?? 0) + 1).padStart(2, '0')}`;
+}
+
+// ---------------------------------------------------------------------------
+// Leistungsarten (Stammliste wie Fortytools)
+// ---------------------------------------------------------------------------
+
+export interface ServiceType {
+  id: string;
+  name: string;
+  labor_share_bp: number | null;
+  sort_order: number;
+  active: boolean;
+  version: number;
+}
+
+export async function listServiceTypes(sql: Sql, all = false) {
+  return sql<ServiceType[]>`
+    select * from app.service_types where ${all ? sql`true` : sql`active`} order by sort_order, name`;
+}
+
+export async function saveServiceType(
+  sql: Sql,
+  id: string,
+  p: { name: string; laborShareBp: number | null; active: boolean; expectedVersion: number | null },
+) {
+  if (!p.name.trim()) throw new BusinessError('Bitte Bezeichnung angeben');
+  const [cur] = await sql<{ version: number }[]>`select version from app.service_types where id = ${id}`;
+  assertVersion(cur?.version, p.expectedVersion, 'Die Leistungsart');
+  try {
+    await sql`
+      insert into app.service_types (id, name, labor_share_bp, sort_order, active)
+      values (${id}, ${p.name.trim()}, ${p.laborShareBp},
+              (select coalesce(max(sort_order), 0) + 10 from app.service_types), ${p.active})
+      on conflict (id) do update set name = excluded.name, labor_share_bp = excluded.labor_share_bp,
+                                     active = excluded.active`;
+  } catch (e) {
+    if ((e as { code?: string }).code === '23505')
+      throw new BusinessError(`„${p.name.trim()}“ gibt es schon`);
+    throw e;
+  }
 }

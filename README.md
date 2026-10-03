@@ -49,6 +49,7 @@ npm run e2e:rechte   # Browser-Test: Anmeldung, Benutzer anlegen, Objektleitung 
 npm run e2e:auftrag  # Browser-Test: Auftrag → Arbeitsschein → Unterschrift auf dem Canvas → Rechnung mit Anlage → Regie
 npm run e2e:objekt   # Browser-Test: Raumbuch → Stundenvorgabe → Qualitätskontrolle mit Unterschrift → Zählerstände
 npm run e2e:app      # Browser-Test: Manifest/Service Worker, Dokument verteilen → am Handy unterschreiben → Nachweis
+npm run e2e:leistungen # Browser-Test: Leistung (quartalsweise, eigene Rechnung, unfertig) → am Objekt abrechnen → geprüft
 ```
 
 ### Klick-Demo bauen (eine HTML-Datei zum Durchklicken, offline)

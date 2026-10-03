@@ -10,6 +10,8 @@ export interface InvoiceGroup {
   buyer_reference: string | null;
   order_reference: string | null;
   note: string | null;
+  intro_text: string | null;
+  closing_text: string | null;
   active: boolean;
   version: number;
 }
@@ -37,6 +39,8 @@ export interface InvoiceGroupInput {
   buyerReference: string | null;
   orderReference: string | null;
   note: string | null;
+  introText?: string | null;
+  closingText?: string | null;
   active: boolean;
   siteIds: string[];
   expectedVersion: number | null;
@@ -54,6 +58,8 @@ export async function saveInvoiceGroup(sql: Sql, id: string, p: InvoiceGroupInpu
       buyer_reference: p.buyerReference,
       order_reference: p.orderReference,
       note: p.note,
+      intro_text: p.introText ?? null,
+      closing_text: p.closingText ?? null,
       active: p.active,
     };
     try {

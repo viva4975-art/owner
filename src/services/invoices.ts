@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import type { Sql, Tx } from '../db/client.js';
 import {
+  type BillingCycle,
   type DraftLineInput,
   calculateDraft,
   cancellationLines,
   monthBounds,
   monthLabelDe,
+  billingPeriod,
   monthlyRunLines,
   skontoTerms,
   todayBerlin,
@@ -33,6 +35,8 @@ export interface InvoiceRow {
   customer_id: string;
   site_id: string | null;
   invoice_group_id: string | null;
+  planned_issue_date: string | null;
+  review_required: boolean;
   original_invoice_id: string | null;
   issue_date: string | null;
   due_date: string | null;
@@ -275,111 +279,182 @@ interface RunSite {
   customer_id: string;
   order_reference: string | null;
   customer_active: boolean;
-  group_id: string | null;
-  group_name: string | null;
-  group_buyer_reference: string | null;
-  group_order_reference: string | null;
+  invoice_group_id: string | null;
+}
+
+interface RunService {
+  id: string;
+  site_id: string;
+  kind: 'monthly_flat';
+  description: string;
+  unit_code: string;
+  quantity_milli: bigint;
+  unit_price_cents: bigint;
+  vat_rate_bp: number;
+  valid_from: string;
+  valid_to: string | null;
+  active: boolean;
+  note: string | null;
+  billing_cycle: BillingCycle;
+  always_unfinished: boolean;
+  invoice_group_id: string | null;
+  separate_invoice: boolean;
+}
+
+interface RunGroup {
+  id: string;
+  name: string;
+  active: boolean;
+  buyer_reference: string | null;
+  order_reference: string | null;
+  intro_text: string | null;
+  closing_text: string | null;
+}
+
+export interface RunOptions {
+  /** nur diese Objekte abrechnen („Leistungen abrechnen“ am Objekt) */
+  siteIds?: string[];
+  /** Rechnungsdatum, das beim Ausstellen verwendet wird (sonst Ausstellungstag) */
+  invoiceDate?: string | null;
 }
 
 /**
- * Erzeugt je aktivem Objekt mit Monatspauschalen genau einen Entwurf für den Monat – bzw. je Rechnungsgruppe
- * EINE Sammelrechnung über alle Objekte der Gruppe.
- * Idempotent: monthly_run_key (Objekt + Monat bzw. Gruppe + Monat) und zusätzlich je Objekt + Monat
- * (app.monthly_run_sites) – ein Objekt wird pro Monat nie zweimal abgerechnet, auch wenn es die Gruppe wechselt.
+ * Abrechnungslauf für einen Monat (wie Fortytools „Vorfaktura“): jede fällige Pauschale landet auf genau einer
+ * Rechnung. Ziel der Leistung: eigene Rechnung („separat“) → Rechnungsgruppe der Leistung → Rechnungsgruppe des
+ * Objekts → Rechnung je Objekt. Zyklen (monatlich … jährlich) über billingPeriod().
+ * Idempotent: monthly_run_key je Ziel + Monat und zusätzlich je Leistung + Monat (app.monthly_run_services) –
+ * eine Leistung wird je Monat nie zweimal abgerechnet, auch wenn sie das Ziel wechselt.
  */
-export async function runMonthly(sql: Sql, month: string, actor: string): Promise<MonthlyRunResult> {
-  const { start, end } = monthBounds(month);
+export async function runMonthly(
+  sql: Sql,
+  month: string,
+  actor: string,
+  opts: RunOptions = {},
+): Promise<MonthlyRunResult> {
+  monthBounds(month); // prüft das Format
+  if (opts.invoiceDate && !/^\d{4}-\d{2}-\d{2}$/.test(opts.invoiceDate)) {
+    throw new BusinessError('Rechnungsdatum ungültig');
+  }
   const sites = await sql<RunSite[]>`
     select s.id, s.name, s.site_no, s.street, s.postal_code, s.city, s.customer_id, s.order_reference,
-           c.active as customer_active,
-           case when g.active then g.id end as group_id, g.name as group_name,
-           g.buyer_reference as group_buyer_reference, g.order_reference as group_order_reference
+           c.active as customer_active, s.invoice_group_id
       from app.sites s join app.customers c on c.id = s.customer_id
-      left join app.invoice_groups g on g.id = s.invoice_group_id
-     where s.active order by s.site_no`;
+     where s.active and ${opts.siteIds ? (opts.siteIds.length ? sql`s.id in ${sql(opts.siteIds)}` : sql`false`) : sql`true`}
+     order by s.site_no`;
+  const groups = new Map(
+    (
+      await sql<
+        RunGroup[]
+      >`select id, name, active, buyer_reference, order_reference, intro_text, closing_text
+                            from app.invoice_groups`
+    ).map((g) => [g.id, g]),
+  );
   const result: MonthlyRunResult = { created: [], skipped: [] };
 
-  // Abrechnungseinheiten: Gruppe (mehrere Objekte) oder einzelnes Objekt
-  const units = new Map<string, RunSite[]>();
+  // Abrechnungseinheiten bilden
+  interface Unit {
+    key: string;
+    label: string;
+    customerId: string;
+    site: RunSite | null; // Rechnung je Objekt bzw. eigene Rechnung
+    group: RunGroup | null;
+    items: { site: RunSite; service: RunService; line: DraftLineInput }[];
+  }
+  const units = new Map<string, Unit>();
   for (const site of sites) {
     if (!site.customer_active) {
       result.skipped.push({ siteName: site.name, reason: 'Kunde inaktiv' });
       continue;
     }
-    const key = site.group_id ? `group:${site.group_id}` : site.id;
-    units.set(key, [...(units.get(key) ?? []), site]);
+    const services = await sql<RunService[]>`
+      select * from app.site_services where site_id = ${site.id} order by sort_order, description`;
+    let any = false;
+    for (const sv of services) {
+      const [line] = monthlyRunLines([toRunService(sv)], month, siteForRun(site));
+      if (!line) continue;
+      any = true;
+      const gid = sv.separate_invoice ? null : (sv.invoice_group_id ?? site.invoice_group_id);
+      const group = gid ? groups.get(gid) : undefined;
+      const useGroup = group?.active ? group : null;
+      const key = sv.separate_invoice ? `service:${sv.id}` : useGroup ? `group:${useGroup.id}` : site.id;
+      const label = sv.separate_invoice
+        ? `${site.name} – ${sv.description}`
+        : useGroup
+          ? `${useGroup.name} (Rechnungsgruppe)`
+          : site.name;
+      const u = units.get(key) ?? {
+        key,
+        label,
+        customerId: site.customer_id,
+        site: useGroup ? null : site,
+        group: useGroup,
+        items: [],
+      };
+      u.items.push({ site, service: sv, line });
+      units.set(key, u);
+    }
+    if (!any) result.skipped.push({ siteName: site.name, reason: 'keine fällige Pauschale' });
   }
 
-  for (const [unitKey, members] of units) {
-    const first = members[0]!;
-    const isGroup = !!first.group_id;
-    const label = isGroup ? `${first.group_name} (Rechnungsgruppe)` : first.name;
-    const perSite: { site: RunSite; lines: DraftLineInput[] }[] = [];
-    for (const site of members) {
-      const lines = await siteMonthLines(sql, site, month);
-      if (lines.length) perSite.push({ site, lines });
-      else if (!isGroup)
-        result.skipped.push({ siteName: site.name, reason: 'keine gültige Monatspauschale' });
-    }
-    if (!perSite.length) {
-      if (isGroup) result.skipped.push({ siteName: label, reason: 'keine gültige Monatspauschale' });
-      continue;
-    }
+  const { start } = monthBounds(month);
+  for (const u of units.values()) {
+    // Zeitraum der Rechnung = vom frühesten bis spätesten Leistungszeitraum (z. B. quartalsweise)
+    const periodEnd = u.items
+      .map((i) => billingPeriod(i.service.billing_cycle, i.service.valid_from, month)!.end)
+      .reduce((a, b) => (b > a ? b : a), monthBounds(month).end);
     const id = randomUUID();
     try {
       const outcome = await sql.begin(async (tx) => {
-        // schon (anders) abgerechnete Objekte dieses Monats herausnehmen
-        const billed = await tx<{ site_id: string }[]>`
-          select site_id from app.monthly_run_sites
-           where month = ${month} and site_id in ${tx(perSite.map((p) => p.site.id))}`;
-        const done = new Set(billed.map((b) => b.site_id));
-        const todo = perSite.filter((p) => !done.has(p.site.id));
-        if (!todo.length) return { created: false, already: [...done] };
-        const customer = await getCustomer(tx as unknown as Sql, first.customer_id);
+        const billed = await tx<{ service_id: string }[]>`
+          select service_id from app.monthly_run_services
+           where month = ${month} and service_id in ${tx(u.items.map((i) => i.service.id))}`;
+        const done = new Set(billed.map((b) => b.service_id));
+        const todo = u.items.filter((i) => !done.has(i.service.id));
+        if (!todo.length) return { created: false };
+        const customer = await getCustomer(tx as unknown as Sql, u.customerId);
         const [row] = await tx`
           insert into app.invoices (id, kind, customer_id, site_id, invoice_group_id, period_start, period_end,
-                                    invoice_format, buyer_reference, order_reference, monthly_run_key)
-          values (${id}, 'invoice', ${first.customer_id}, ${isGroup ? null : first.id},
-                  ${isGroup ? first.group_id : null}, ${start}, ${end}, ${customer!.invoice_format},
-                  ${(isGroup && first.group_buyer_reference) || customer!.leitweg_id},
-                  ${isGroup ? first.group_order_reference : first.order_reference},
-                  ${`${unitKey}:${month}`})
+                                    invoice_format, buyer_reference, order_reference, intro_text, closing_text,
+                                    monthly_run_key, planned_issue_date, review_required)
+          values (${id}, 'invoice', ${u.customerId}, ${u.site?.id ?? null}, ${u.group?.id ?? null}, ${start},
+                  ${periodEnd}, ${customer!.invoice_format},
+                  ${u.group?.buyer_reference || customer!.leitweg_id},
+                  ${u.group ? u.group.order_reference : (u.site?.order_reference ?? null)},
+                  ${u.group?.intro_text ?? null}, ${u.group?.closing_text ?? null},
+                  ${`${u.key}:${month}`}, ${opts.invoiceDate ?? null},
+                  ${todo.some((i) => i.service.always_unfinished)})
           on conflict (monthly_run_key) do nothing
           returning id`;
-        if (!row) return { created: false, already: [] };
-        for (const p of todo) {
-          await tx`insert into app.monthly_run_sites (site_id, month, invoice_id) values (${p.site.id}, ${month}, ${id})`;
+        if (!row) return { created: false };
+        for (const i of todo) {
+          await tx`insert into app.monthly_run_services (service_id, month, invoice_id)
+                   values (${i.service.id}, ${month}, ${id})`;
         }
         await writeLines(
           tx,
           id,
-          todo.flatMap((p) => p.lines),
+          todo.map((i) => i.line),
           0n as Cents,
         );
         await audit(tx, actor, 'monthly_run', id, {
           month,
-          ...(isGroup ? { invoice_group_id: first.group_id } : {}),
-          site_ids: todo.map((p) => p.site.id),
+          ...(u.group ? { invoice_group_id: u.group.id } : {}),
+          site_ids: [...new Set(todo.map((i) => i.site.id))],
+          service_ids: todo.map((i) => i.service.id),
         });
-        return { created: true, already: [...done] };
+        return { created: true };
       });
-      for (const sid of outcome.already) {
+      if (outcome.created) result.created.push({ invoiceId: id, siteName: u.label });
+      else
         result.skipped.push({
-          siteName: members.find((m) => m.id === sid)!.name,
-          reason: `Entwurf/Rechnung für ${monthLabelDe(month)} existiert bereits`,
-        });
-      }
-      if (outcome.created) result.created.push({ invoiceId: id, siteName: label });
-      else if (!outcome.already.length)
-        result.skipped.push({
-          siteName: label,
+          siteName: u.label,
           reason: `Entwurf/Rechnung für ${monthLabelDe(month)} existiert bereits`,
         });
     } catch (e) {
-      // paralleler Lauf hat dasselbe Objekt gerade abgerechnet
+      // paralleler Lauf hat dieselbe Leistung gerade abgerechnet
       if ((e as { code?: string }).code === '23505') {
         result.skipped.push({
-          siteName: label,
+          siteName: u.label,
           reason: `Entwurf/Rechnung für ${monthLabelDe(month)} existiert bereits`,
         });
       } else throw e;
@@ -388,45 +463,49 @@ export async function runMonthly(sql: Sql, month: string, actor: string): Promis
   return result;
 }
 
-async function siteMonthLines(sql: Sql, site: RunSite, month: string): Promise<DraftLineInput[]> {
+const toRunService = (s: RunService) => ({
+  id: s.id,
+  kind: s.kind,
+  description: s.description,
+  unitCode: s.unit_code,
+  quantity: s.quantity_milli as Quantity,
+  unitPrice: s.unit_price_cents as Cents,
+  vatRate: s.vat_rate_bp,
+  validFrom: s.valid_from,
+  validTo: s.valid_to,
+  active: s.active,
+  note: s.note,
+  cycle: s.billing_cycle,
+});
+
+const siteForRun = (s: RunSite) => ({
+  siteNo: s.site_no,
+  name: s.name,
+  street: s.street,
+  postalCode: s.postal_code,
+  city: s.city,
+});
+
+/** Was ist für den Monat noch abzurechnen? (Vorschau für „Leistungen abrechnen“ am Objekt) */
+export async function billingPreview(sql: Sql, siteId: string, month: string) {
+  const [site] = await sql<RunSite[]>`
+    select s.id, s.name, s.site_no, s.street, s.postal_code, s.city, s.customer_id, s.order_reference,
+           true as customer_active, s.invoice_group_id from app.sites s where s.id = ${siteId}`;
+  if (!site) return [];
   const services = await sql<
-    {
-      id: string;
-      kind: 'monthly_flat';
-      description: string;
-      unit_code: string;
-      quantity_milli: bigint;
-      unit_price_cents: bigint;
-      vat_rate_bp: number;
-      valid_from: string;
-      valid_to: string | null;
-      active: boolean;
-      note: string | null;
-    }[]
-  >`select * from app.site_services where site_id = ${site.id} order by sort_order, description`;
-  return monthlyRunLines(
-    services.map((s) => ({
-      id: s.id,
-      kind: s.kind,
-      description: s.description,
-      unitCode: s.unit_code,
-      quantity: s.quantity_milli as Quantity,
-      unitPrice: s.unit_price_cents as Cents,
-      vatRate: s.vat_rate_bp,
-      validFrom: s.valid_from,
-      validTo: s.valid_to,
-      active: s.active,
-      note: s.note,
-    })),
-    month,
-    {
-      siteNo: site.site_no,
-      name: site.name,
-      street: site.street,
-      postalCode: site.postal_code,
-      city: site.city,
-    },
-  );
+    (RunService & { billed_invoice: string | null; billed_number: string | null })[]
+  >`
+    select ss.*, r.invoice_id as billed_invoice, i.number as billed_number
+      from app.site_services ss
+      left join app.monthly_run_services r on r.service_id = ss.id and r.month = ${month}
+      left join app.invoices i on i.id = r.invoice_id
+     where ss.site_id = ${siteId} order by ss.sort_order, ss.description`;
+  return services.flatMap((sv) => {
+    const [line] = monthlyRunLines([toRunService(sv)], month, siteForRun(site));
+    return line
+      ? [{ service: sv, line, billedInvoice: sv.billed_invoice, billedNumber: sv.billed_number }]
+      : [];
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -600,14 +679,39 @@ export async function loadDocument(
  * Stellt die Rechnung aus: lückenlose Nummer (DB-Funktion), Stammdaten einfrieren.
  * Vorher muss die Vorabprüfung (E-Rechnung gegen KoSIT) bestanden sein – siehe workflow.ts.
  */
-export async function issue(sql: Sql, id: string, actor: string, issueDate = todayBerlin()): Promise<string> {
+export async function issue(sql: Sql, id: string, actor: string, date?: string): Promise<string> {
   const data = await getInvoice(sql, id);
   if (!data) throw new BusinessError('Rechnung nicht gefunden');
   if (data.invoice.status === 'issued') return data.invoice.number!;
+  if (data.invoice.review_required) {
+    throw new BusinessError(
+      'Rechnung ist als „unfertig“ markiert (Leistung mit „immer unfertig“). Bitte Positionen prüfen und „Geprüft“ setzen.',
+    );
+  }
+  const issueDate = date ?? data.invoice.planned_issue_date ?? todayBerlin();
+  if (issueDate > todayBerlin()) {
+    throw new BusinessError(
+      `Rechnungsdatum ${issueDate.split('-').reverse().join('.')} liegt in der Zukunft – Ausstellen ist erst ab diesem Tag möglich (oder Rechnungsdatum ändern).`,
+    );
+  }
   const seller = await getSeller(sql);
   const buyer = await buildBuyerSnapshot(sql, data.invoice.customer_id, data.invoice.site_id);
   const [row] = await sql<{ number: string }[]>`
     select app.issue_invoice(${id}, ${issueDate}, ${sql.json(seller as never)}, ${sql.json(buyer as never)}, null) as number`;
   await audit(sql, actor, 'issued_by', id, { number: row!.number });
   return row!.number;
+}
+
+/** „Unfertig“-Kennzeichen nach Prüfung entfernen bzw. geplantes Rechnungsdatum ändern (nur Entwürfe). */
+export async function markReviewed(sql: Sql, id: string, actor: string) {
+  const res =
+    await sql`update app.invoices set review_required = false where id = ${id} and status = 'draft' returning id`;
+  if (res.length) await audit(sql, actor, 'reviewed', id, {});
+}
+
+export async function setPlannedIssueDate(sql: Sql, id: string, date: string | null, actor: string) {
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new BusinessError('Rechnungsdatum ungültig');
+  const res =
+    await sql`update app.invoices set planned_issue_date = ${date} where id = ${id} and status = 'draft' returning id`;
+  if (res.length) await audit(sql, actor, 'planned_issue_date', id, { date });
 }

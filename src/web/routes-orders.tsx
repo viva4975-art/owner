@@ -12,6 +12,7 @@ import {
   ORDER_STATUS,
   WR_STATUS,
   closeWithoutSignature,
+  executionNotes,
   getOrder,
   getWorkReport,
   listOrders,
@@ -716,6 +717,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
         </td>
       </tr>
     );
+    const notes = siteId ? await executionNotes(sql, siteId, w?.work_date ?? todayBerlin()) : [];
     return page(
       c,
       w ? `Arbeitsschein ${w.number}` : 'Neuer Arbeitsschein',
@@ -754,6 +756,16 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                 Objekt: <b>{sites.find((s) => s.id === siteId)?.name}</b>
                 {(w?.order_number ?? order?.number) && <> · Auftrag {w?.order_number ?? order?.number}</>}
               </p>
+              {notes.length > 0 && (
+                <div class="flash" style="background:var(--warn-50,#fffbeb);border:1px solid #fde68a">
+                  <b>Ausführungshinweise</b>
+                  {notes.map((n) => (
+                    <div class="small" style="white-space:pre-line">
+                      {n.description}: {n.execution_notes}
+                    </div>
+                  ))}
+                </div>
+              )}
               <div class="grid">
                 <div>
                   <label for="work_date">Datum</label>

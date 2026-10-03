@@ -525,6 +525,15 @@ export function registerFacilityRoutes({ app, deps, page, back, shells }: Ctx) {
                 {num(t.hoursPerMonth)} Std./Monat · {num(t.hoursPerYear, 0)} Std./Jahr
               </div>
             </div>
+            {t.servicesHoursPerMonth > 0 && (
+              <div class="kpi">
+                <div class="l">Vorgabe laut Leistungen</div>
+                <div class="v">{num(t.servicesHoursPerMonth)} Std./Monat</div>
+                <div class="s">
+                  <a href={`/objekte/${s.id}/leistungen`}>Leistungen →</a>
+                </div>
+              </div>
+            )}
             <div class="kpi">
               <div class="l">Einsatzplan aktuell</div>
               <div class="v">{num(t.plannedPerWeek)} Std./Woche</div>

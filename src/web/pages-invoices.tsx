@@ -496,6 +496,33 @@ export const InvoiceDetail: FC<{
         )}
       </div>
 
+      {draft && inv.review_required && (
+        <div class="flash err" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <span>
+            <b>Unfertig:</b> Diese Rechnung enthält eine Leistung mit „immer unfertig“. Bitte Positionen
+            prüfen (bearbeiten) und dann freigeben – vorher ist Ausstellen gesperrt.
+          </span>
+          <form method="post" action={`/rechnungen/${inv.id}/geprueft`} style="margin-left:auto">
+            <button class="btn sm">Geprüft</button>
+          </form>
+        </div>
+      )}
+      {draft && (
+        <form method="post" action={`/rechnungen/${inv.id}/rechnungsdatum`} class="actions" style="gap:8px">
+          <label for="planned_issue_date" class="small" style="margin:0">
+            Rechnungsdatum beim Ausstellen
+          </label>
+          <input
+            id="planned_issue_date"
+            type="date"
+            name="date"
+            value={inv.planned_issue_date ?? ''}
+            style="width:170px"
+          />
+          <button class="btn sm sec">Übernehmen</button>
+          <span class="small mut">leer = Tag des Ausstellens</span>
+        </form>
+      )}
       {draft && (
         <div class="actions">
           <a class="btn sec" href={`/rechnungen/${inv.id}/vorschau.pdf`} target="_blank">

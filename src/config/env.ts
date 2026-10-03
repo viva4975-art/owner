@@ -42,6 +42,10 @@ const schema = z
     SMTP_PASS: z.string().optional(),
     KOSIT_VALIDATOR_URL: z.url().default('http://127.0.0.1:8081'),
     /** Zugang zur Oberfläche im Prototyp (Benutzer:Passwort). Später Supabase Auth. */
+    /** Geheimnis zum Signieren der Mitarbeiter-Sitzungen (Handy-Ansicht). Außerhalb von dev Pflicht. */
+    SESSION_SECRET: z.string().min(32, 'SESSION_SECRET: mindestens 32 Zeichen').optional(),
+    /** Öffentliche Adresse der App (für QR-Codes an den Objekten), z. B. https://app.viva-deluxe-reinigung.de */
+    PUBLIC_URL: z.url().optional(),
     APP_BASIC_AUTH: z.string().regex(/^[^:]+:.{8,}$/, 'Format benutzer:passwort (mind. 8 Zeichen)'),
   })
   .superRefine((env, ctx) => {
@@ -75,6 +79,10 @@ const schema = z
       if (env.SUPABASE_REGION !== REQUIRED_SUPABASE_REGION) {
         issue('SUPABASE_REGION', `Supabase muss in ${REQUIRED_SUPABASE_REGION} (Frankfurt) liegen`);
       }
+    }
+
+    if (env.APP_ENV !== 'dev' && !env.SESSION_SECRET) {
+      issue('SESSION_SECRET', `SESSION_SECRET ist im ${env.APP_ENV}-Betrieb Pflicht`);
     }
 
     if (env.APP_ENV !== 'live' && !env.MAIL_TEST_RECIPIENT) {

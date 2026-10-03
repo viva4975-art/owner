@@ -105,11 +105,13 @@ export const EmployeeShell: FC<{
     { key: 'uebersicht', label: 'Übersicht', href: base },
     { key: 'bearbeiten', label: 'Stammdaten', href: `${base}/bearbeiten` },
     { key: 'notizen', label: 'Notizen', href: `${base}/notizen`, count: notes },
-    { key: 'aufgaben', label: 'Aufgaben', href: `${base}/aufgaben`, count: tasks },
+    { key: 'zeiten', label: 'Zeiten', href: `${base}/zeiten` },
+    { key: 'einsaetze', label: 'Einsätze', href: `${base}/einsaetze` },
+    { key: 'abwesenheiten', label: 'Urlaub & Krank', href: `${base}/abwesenheiten` },
   ];
   const more: Tab[] = [
-    { key: 'x-zeiten', label: 'Erfasste Zeiten (bald)', href: '/geplant/zeiterfassung' },
-    { key: 'x-urlaub', label: 'Urlaub (bald)', href: '/geplant/urlaub' },
+    { key: 'aufgaben', label: 'Aufgaben', href: `${base}/aufgaben`, count: tasks },
+    { key: 'app', label: 'Handy-Zugang (PIN)', href: `${base}/app-zugang` },
     { key: 'x-dokumente', label: 'Dokumente (bald)', href: '/geplant/dokumente' },
   ];
   return (

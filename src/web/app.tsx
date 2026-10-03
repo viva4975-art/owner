@@ -12,10 +12,13 @@ import { Layout } from './layout.js';
 import { registerFileRoutes } from './routes-files.js';
 import { registerInvoiceRoutes } from './routes-invoices.js';
 import { registerMasterdataRoutes } from './routes-masterdata.js';
+import { registerMobileRoutes } from './m/routes-mobile.js';
 import { registerModuleRoutes } from './routes-modules.js';
 import { registerDunningRoutes } from './routes-dunning.js';
 import { registerInventoryRoutes } from './routes-inventory.js';
 import { registerOfferRoutes } from './routes-offers.js';
+import { registerPlanningRoutes } from './routes-planning.js';
+import { registerTimeRoutes } from './routes-time.js';
 
 export const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 
@@ -33,6 +36,30 @@ export interface Ctx {
   ) => Response | Promise<Response>;
   /** Post/Redirect/Get: nach jedem Speichern auf eine GET-Seite umleiten → Zurück/Neu laden sendet nichts doppelt. */
   back: (c: Context<AppEnv>, path: string, msg: { ok?: string; fehler?: string }) => Response;
+  /** Seitenrahmen mit Reitern, damit andere Module eigene Reiter ergänzen können. */
+  shells: {
+    employee?: (
+      c: Context<AppEnv>,
+      active: string,
+      body: (e: {
+        id: string;
+        first_name: string;
+        last_name: string;
+        personnel_no: string;
+      }) => Promise<Child> | Child,
+    ) => Promise<Response>;
+    site?: (
+      c: Context<AppEnv>,
+      active: string,
+      body: (s: {
+        id: string;
+        name: string;
+        site_no: string;
+        customer_id: string;
+        clock_token: string;
+      }) => Promise<Child> | Child,
+    ) => Promise<Response>;
+  };
 }
 
 export function createApp(deps: Deps) {
@@ -53,7 +80,10 @@ export function createApp(deps: Deps) {
 
   // Referer nur innerhalb der App (nötig, um nach einem Eingabefehler ins Formular zurückzukehren).
   app.use(secureHeaders({ referrerPolicy: 'same-origin' }));
-  app.use(basicAuth({ username: user!, password: pw.join(':'), realm: 'Viva-Deluxe' }));
+  // Büro: Anmeldung (Prototyp: Basic Auth). Mitarbeiter-Ansicht /m hat eine eigene PIN-Anmeldung.
+  const officeAuth = basicAuth({ username: user!, password: pw.join(':'), realm: 'Viva-Deluxe' });
+  const isMobile = (path: string) => path === '/m' || path.startsWith('/m/');
+  app.use((c, next) => (isMobile(c.req.path) ? next() : officeAuth(c, next)));
   app.use(csrf());
   app.use(async (c, next) => {
     c.set('actor', user!);
@@ -126,7 +156,8 @@ export function createApp(deps: Deps) {
     );
   });
 
-  const ctx: Ctx = { app, deps, page, back };
+  const ctx: Ctx = { app, deps, page, back, shells: {} };
+  registerMobileRoutes(ctx);
   registerFileRoutes(ctx);
   registerModuleRoutes(ctx);
   registerMasterdataRoutes(ctx);
@@ -134,6 +165,8 @@ export function createApp(deps: Deps) {
   registerOfferRoutes(ctx);
   registerDunningRoutes(ctx);
   registerInventoryRoutes(ctx);
+  registerTimeRoutes(ctx);
+  registerPlanningRoutes(ctx);
 
   app.notFound((c) =>
     page(

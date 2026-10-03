@@ -497,8 +497,9 @@ export const SiteShell: FC<{
   const more: Tab[] = [
     { key: 'aufgaben', label: 'Aufgaben', href: `${base}/aufgaben`, count: counts.tasks },
     { key: 'bearbeiten', label: 'Objekt bearbeiten', href: `${base}/bearbeiten` },
-    { key: 'x-stunden', label: 'Stundenvorgaben (bald)', href: '/geplant/einsatzplanung' },
-    { key: 'x-zeiten', label: 'Erfasste Zeiten (bald)', href: '/geplant/zeiterfassung' },
+    { key: 'einsaetze', label: 'Einsatzplan', href: `${base}/einsaetze` },
+    { key: 'zeiten', label: 'Erfasste Zeiten', href: `${base}/zeiten` },
+    { key: 'qr', label: 'QR-Aushang Zeiterfassung', href: `${base}/qr` },
     { key: 'x-lieferscheine', label: 'Arbeits-/Lieferscheine (bald)', href: '/geplant/lieferscheine' },
     { key: 'x-schluessel', label: 'Schlüssel (bald)', href: '/geplant/schluessel' },
     { key: 'x-raumbuch', label: 'Raumbuch (bald)', href: '/geplant/raumbuch' },

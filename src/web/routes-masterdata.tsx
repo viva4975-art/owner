@@ -70,7 +70,7 @@ export async function revenueByMonth(sql: Ctx['deps']['sql'], filter: { customer
      group by m.month order by m.month`;
 }
 
-export function registerMasterdataRoutes({ app, deps, page, back }: Ctx) {
+export function registerMasterdataRoutes({ app, deps, page, back, shells }: Ctx) {
   const { sql } = deps;
 
   // ------------------------------------------------------------------ Kunden
@@ -433,6 +433,8 @@ export function registerMasterdataRoutes({ app, deps, page, back }: Ctx) {
       </SiteShell>,
     );
   };
+
+  shells.site = sitePage as unknown as NonNullable<Ctx['shells']['site']>;
 
   app.get(`/objekte/:id{${UUID}}`, (c) =>
     sitePage(c, 'uebersicht', async (s) => {

@@ -46,7 +46,7 @@ import { revenueByMonth } from './routes-masterdata.js';
 
 const uuidOr = (v: unknown) => (typeof v === 'string' && /^[0-9a-f-]{36}$/.test(v) ? v : randomUUID());
 
-export function registerModuleRoutes({ app, deps, page, back }: Ctx) {
+export function registerModuleRoutes({ app, deps, page, back, shells }: Ctx) {
   const { sql } = deps;
 
   // ------------------------------------------------------------------ Übersicht
@@ -285,6 +285,8 @@ export function registerModuleRoutes({ app, deps, page, back }: Ctx) {
       </EmployeeShell>,
     );
   };
+
+  shells.employee = employeePage as NonNullable<Ctx['shells']['employee']>;
 
   app.get(`/personal/:id{${UUID}}`, (c) =>
     employeePage(c, 'uebersicht', async (e) => {

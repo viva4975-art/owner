@@ -12,6 +12,7 @@ const test = {
   SUPABASE_SERVICE_ROLE_KEY: 'service',
   MAIL_TEST_RECIPIENT: 'test@example.com',
   APP_BASIC_AUTH: 'ahmed:geheim1234',
+  SESSION_SECRET: 'x'.repeat(40),
 };
 
 const dev = {
@@ -58,6 +59,8 @@ describe('loadEnv', () => {
 
   it('verlangt Region Frankfurt', () => {
     expect(() => loadEnv({ ...test, SUPABASE_REGION: 'eu-west-1' })).toThrow(/Frankfurt/);
+    const { SESSION_SECRET: _s, ...noSecret } = test;
+    expect(() => loadEnv(noSecret)).toThrow(/SESSION_SECRET/);
   });
 
   it('verlangt außerhalb von live eine Testadresse für Mails', () => {

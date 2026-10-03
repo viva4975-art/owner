@@ -102,6 +102,8 @@ Testadresse.
 - [ ] Fortytools: eine Rechnungsgruppe von innen zeigen (dort stecken vermutlich die Preise je Objekt)
 - [ ] Briefpapier ab 01.11.2026 (neue Adresse) als Datei vom Grafiker, 300 dpi
 - [ ] Mit Steuerberater klären: Belegart 384 für Storno/Korrektur; Bedarf § 13b (Reverse Charge)
+- [ ] Branchen-Mindestlohn Gebäudereinigung (aktueller Wert) unter Zeiterfassung → Einstellungen eintragen
+- [ ] Übersetzungen der Handy-Ansicht (ro, tr, pl, hr, bg) von Muttersprachlern im Team gegenlesen lassen
 - [ ] Mahngebühren/Verzugspauschale (40 € § 288 Abs. 5 BGB) mit Steuerberater/Anwalt festlegen
 - [ ] Je Behörde klären: nimmt sie XRechnung per E-Mail an oder nur über ein Portal (ZRE/OZG-RE, Peppol)?
 
@@ -215,3 +217,22 @@ Testadresse.
     append-only), Geräte mit Prüfterminen, Schlüsselbuch (Protokoll append-only).
   - Klick-Demo: `e2e/klick-demo.mjs` sammelt alle Seiten einer Demo-Instanz in eine HTML-Datei (offline,
     Speichern deaktiviert). Demo-Daten: `src/scripts/demo-data.ts` (läuft nur auf DB-Namen mit „demo“).
+- 2026-10-03: Phase 3 Teil 1 – Einsatzplanung, Zeiterfassung, Urlaub:
+  - Handy-Ansicht `/m` für Mitarbeitende: Anmeldung Personalnummer + PIN (scrypt, 5 Fehlversuche → 15 Min.
+    Sperre, Sitzung 14 Tage per HMAC-Cookie, `SESSION_SECRET` außerhalb dev Pflicht), 7 Sprachen (de, en, ro, tr,
+    pl, hr/bs/sr, bg), große Knöpfe. QR-Code je Objekt (`/m/o/<token>`, Aushang unter Objekt → QR-Aushang).
+  - Stempeln mit Serverzeit (Europe/Berlin), feste ID je Vorgang (Funkloch → nichts doppelt), max. eine laufende
+    Stempelung, nur zugeordnete Objekte, keine Überschneidungen. „Soll als Ist“ nur mit Häkchen, nach Schichtende,
+    max. 7 Tage zurück. Nachtrag → Freigabe Büro. Büro-Korrektur nur mit Begründung.
+  - § 17 MiLoG: Zeiteinträge nie löschbar (Trigger), jede Änderung mit altem/neuem Stand, Akteur und Grund im
+    Protokoll (`time_entry_log`, unveränderbar), Aufzeichnungszeitpunkt + 7-Tage-Frist-Kennzeichen,
+    Prüfbericht Zoll (HTML + CSV). Hinweise nach ArbZG (Pausen § 4, 10 Std. § 3). Mindestlohn-Prüfung (Wert
+    einstellbar, Branchen-Mindestlohn eintragen).
+  - Einsatzplanung: wiederkehrende Einsätze je Wochentag mit Gültigkeit, Wochenplan mit Feiertagen (Bayern,
+    inkl. Mariä Himmelfahrt) und Abwesenheiten (Vertretung nötig). Soll zählt erst ab dem Tag, an dem der Einsatz
+    angelegt wurde. Monat Soll/Ist je Mitarbeiter.
+  - Urlaub/Krank: Antrag am Handy oder Erfassung im Büro (sofort genehmigt), Kalender, Urlaubskonto
+    (anteilig bei Ein-/Austritt, Arbeitstage ohne Feiertage).
+  - Bekannte Grenze: QR-Code kann abfotografiert werden (Anwesenheit nicht bewiesen) – später optional
+    Standort oder NFC. Nachtschicht über Mitternacht im Einsatzplan: als zwei Einsätze anlegen.
+  - Tests: 133 Unit-/DB-Tests, Browser-Test `npm run e2e:zeit` (24 Prüfungen, Handy + Büro).

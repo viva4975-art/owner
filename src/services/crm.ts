@@ -19,8 +19,8 @@ export function assertVersion(
 ) {
   if (current !== undefined && expected != null && current !== expected) {
     throw new BusinessError(
-      `${what} wurde zwischenzeitlich geändert (anderer Tab oder Benutzer). Ihre Eingaben sind noch im Formular – ` +
-        'bitte prüfen und erneut speichern.',
+      `${what} wurde zwischenzeitlich geändert (anderer Tab oder Benutzer). Angezeigt wird jetzt der neue Stand; ` +
+        'Ihre eigenen Eingaben holen Sie mit „Meine Eingaben übernehmen“ zurück und speichern dann erneut.',
     );
   }
 }

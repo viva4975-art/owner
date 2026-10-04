@@ -1,0 +1,251 @@
+import { randomUUID } from 'node:crypto';
+import {
+  analyze,
+  applyImport,
+  IMPORT_KIND,
+  type ImportKind,
+  listImports,
+  stagedFile,
+  stageFile,
+} from '../services/fortytools-import.js';
+import { BusinessError } from '../services/errors.js';
+import type { Ctx } from './app.js';
+import { PageHead } from './layout.js';
+
+const kindOf = (v: unknown): ImportKind =>
+  typeof v === 'string' && v in IMPORT_KIND ? (v as ImportKind) : 'kunden';
+
+export function registerImportRoutes({ app, deps, page, back }: Ctx) {
+  const { sql } = deps;
+
+  app.get('/transfer/import', async (c) => {
+    const imports = await listImports(sql);
+    return page(
+      c,
+      'Import aus Fortytools',
+      'transfer',
+      <>
+        <PageHead title="Import aus Fortytools" crumbs={[['Transfer', '/transfer/kontoumsaetze']]} />
+        <form method="post" action="/transfer/import" enctype="multipart/form-data" class="card">
+          <p class="small mut" style="margin-top:0">
+            CSV-Export aus Fortytools (oder Excel „Speichern unter → CSV“). Spalten werden über die Kopfzeile
+            erkannt. Reihenfolge: <b>1. Kunden → 2. Objekte → 3. Leistungen</b>. Erst kommt eine Vorschau mit
+            allen Fehlern – gespeichert wird erst nach „Übernehmen“. Zweimal importieren legt nichts doppelt
+            an.
+          </p>
+          <div class="grid">
+            <div>
+              <label for="art">Was wird importiert?</label>
+              <select id="art" name="art">
+                {(Object.keys(IMPORT_KIND) as ImportKind[]).map((k) => (
+                  <option value={k}>{IMPORT_KIND[k]}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label for="datei">CSV-Datei</label>
+              <input id="datei" type="file" name="datei" accept=".csv,.txt" required />
+            </div>
+          </div>
+          <div class="actions" style="margin-bottom:0">
+            <button class="btn">Prüfen (Vorschau)</button>
+          </div>
+        </form>
+        <div class="card">
+          <h3 style="margin-top:0">Erkannte Spalten</h3>
+          <ul class="small">
+            <li>
+              <b>Kunden:</b> Kundennummer*, Name/Firma*, Straße*, PLZ*, Ort*, Name 2, USt-ID, Leitweg-ID,
+              Lieferantennummer, Rechnungs-E-Mail, Rechnungsformat, Zahlungsziel, Skonto, Skontotage,
+              Ansprechpartner, Telefon
+            </li>
+            <li>
+              <b>Objekte:</b> Objektnummer*, Kundennummer*, Bezeichnung*, Straße, PLZ, Ort, Bestellnummer,
+              Vertragsnummer
+            </li>
+            <li>
+              <b>Leistungen:</b> Objektnummer*, Leistung*, Preis*, Menge, Einheit, USt, Beginn, Ende, Zyklus
+              (monatlich, quartalsweise …), Art (Pauschale, Sonderleistung, Regie), Zusatztext
+            </li>
+          </ul>
+          <p class="small mut">* Pflicht. Ohne Rechnungsformat: mit Leitweg-ID XRechnung, sonst ZUGFeRD.</p>
+        </div>
+        {imports.length > 0 && (
+          <div class="card">
+            <h3 style="margin-top:0">Bisherige Importe</h3>
+            <div class="tbl">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Zeitpunkt</th>
+                    <th>Art</th>
+                    <th>Datei</th>
+                    <th class="r">Zeilen</th>
+                    <th class="r">neu</th>
+                    <th class="r">aktualisiert</th>
+                    <th class="r">übersprungen</th>
+                    <th class="r">Fehler</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {imports.map((i) => (
+                    <tr>
+                      <td>
+                        {i.created_at.toLocaleString('de-DE', {
+                          timeZone: 'Europe/Berlin',
+                          dateStyle: 'short',
+                          timeStyle: 'short',
+                        })}
+                      </td>
+                      <td>{IMPORT_KIND[i.kind]}</td>
+                      <td>{i.filename}</td>
+                      <td class="r">{i.row_count}</td>
+                      <td class="r">{i.created_count}</td>
+                      <td class="r">{i.updated_count}</td>
+                      <td class="r">{i.skipped_count}</td>
+                      <td class="r" style={i.error_count ? 'color:var(--err)' : ''}>
+                        {i.error_count}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </>,
+    );
+  });
+
+  app.post('/transfer/import', async (c) => {
+    const b = await c.req.parseBody();
+    const file = b.datei;
+    if (!(file instanceof File) || !file.size) throw new BusinessError('Bitte eine CSV-Datei wählen');
+    const sha = await stageFile(deps, new Uint8Array(await file.arrayBuffer()));
+    const name = encodeURIComponent(file.name.slice(0, 120));
+    return c.redirect(`/transfer/import/vorschau?art=${kindOf(b.art)}&datei=${sha}&name=${name}`, 303);
+  });
+
+  app.get('/transfer/import/vorschau', async (c) => {
+    const kind = kindOf(c.req.query('art'));
+    const sha = c.req.query('datei') ?? '';
+    const name = c.req.query('name') ?? 'import.csv';
+    const a = await analyze(sql, kind, await stagedFile(deps, sha));
+    const count = (s: string) => a.rows.filter((r) => r.status === s).length;
+    return page(
+      c,
+      'Import prüfen',
+      'transfer',
+      <>
+        <PageHead
+          title={`Import prüfen: ${IMPORT_KIND[kind]}`}
+          no={name}
+          crumbs={[
+            ['Transfer', '/transfer/kontoumsaetze'],
+            ['Import aus Fortytools', '/transfer/import'],
+          ]}
+        />
+        <div class="kpis">
+          <div class="kpi">
+            <div class="l">neu</div>
+            <div class="v">{count('neu')}</div>
+          </div>
+          <div class="kpi">
+            <div class="l">schon vorhanden</div>
+            <div class="v">{count('vorhanden')}</div>
+          </div>
+          <div class="kpi">
+            <div class="l">mit Fehlern (werden nicht übernommen)</div>
+            <div class="v" style={count('fehler') ? 'color:var(--err)' : ''}>
+              {count('fehler')}
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0">Spaltenzuordnung</h3>
+          <p class="small">
+            {a.columns.map((col) => (
+              <span class={`badge ${col.header ? 'ok' : col.required ? 'err' : ''}`} style="margin:2px">
+                {col.label} ← {col.header ?? '–'}
+              </span>
+            ))}
+          </p>
+          {a.unknownHeaders.length > 0 && (
+            <p class="small mut">Nicht verwendet: {a.unknownHeaders.join(', ')}</p>
+          )}
+        </div>
+        <form method="post" action="/transfer/import/uebernehmen" class="card">
+          <input type="hidden" name="id" value={randomUUID()} />
+          <input type="hidden" name="art" value={kind} />
+          <input type="hidden" name="datei" value={sha} />
+          <input type="hidden" name="name" value={name} />
+          <div class="tbl" style="max-height:60vh;overflow:auto">
+            <table class="small">
+              <thead>
+                <tr>
+                  <th>Zeile</th>
+                  <th>Status</th>
+                  {a.columns
+                    .filter((col) => col.header)
+                    .map((col) => (
+                      <th>{col.label}</th>
+                    ))}
+                  <th>Fehler</th>
+                </tr>
+              </thead>
+              <tbody>
+                {a.rows.map((r) => (
+                  <tr style={r.status === 'fehler' ? 'background:var(--err-50)' : ''}>
+                    <td>{r.line}</td>
+                    <td>
+                      <span
+                        class={`badge ${r.status === 'neu' ? 'ok' : r.status === 'fehler' ? 'err' : 'info'}`}
+                      >
+                        {r.status}
+                      </span>
+                    </td>
+                    {a.columns
+                      .filter((col) => col.header)
+                      .map((col) => (
+                        <td>{r.data[col.field]}</td>
+                      ))}
+                    <td style="color:var(--err)">{r.errors.join('; ')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <label>
+            <input type="checkbox" name="update" /> vorhandene Datensätze mit den Werten aus der Datei
+            überschreiben
+          </label>
+          <div class="formfoot">
+            <a class="btn sec" href="/transfer/import">
+              Andere Datei
+            </a>
+            <button class="btn" disabled={!count('neu') && !count('vorhanden')}>
+              {count('neu')} neue übernehmen
+            </button>
+          </div>
+        </form>
+      </>,
+    );
+  });
+
+  app.post('/transfer/import/uebernehmen', async (c) => {
+    const b = await c.req.parseBody();
+    const id = typeof b.id === 'string' && /^[0-9a-f-]{36}$/.test(b.id) ? b.id : randomUUID();
+    const kind = kindOf(b.art);
+    const r = await applyImport(deps, {
+      id,
+      kind,
+      filename: typeof b.name === 'string' ? b.name : 'import.csv',
+      bytes: await stagedFile(deps, String(b.datei ?? '')),
+      update: b.update === 'on',
+      actor: c.get('actor'),
+    });
+    return back(c, '/transfer/import', {
+      ok: `${IMPORT_KIND[kind]}: ${r.created} neu, ${r.updated} aktualisiert, ${r.skipped} übersprungen, ${r.errors} mit Fehlern.`,
+    });
+  });
+}

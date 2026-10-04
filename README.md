@@ -57,6 +57,7 @@ npm run e2e:auswertung # Browser-Test: alle Auswertungen, Reiter, CSV-Exporte
 npm run e2e:angebot  # Browser-Test: Alternativposition, Statistik, zuletzt bearbeitete Kunden, Folgeangebot
 npm run e2e:transfer # Browser-Test: Kontoauszug einlesen/zuordnen, Lastschrift-Einstellungen, Dokumenteneingang, Versand
 npm run e2e:sonderdienst # Browser-Test: Sonderdienst anlegen, Termin, Aushang, erledigt → Arbeitsschein, Rechnung
+npm run e2e:import   # Browser-Test: Fortytools-CSV prüfen und übernehmen (Kunden, Objekte), nichts doppelt
 ```
 
 ### Klick-Demo bauen (eine HTML-Datei zum Durchklicken, offline)

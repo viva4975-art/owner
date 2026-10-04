@@ -306,7 +306,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Dokumenteneingang', href: '/transfer/dokumenteneingang' },
       { label: 'Export Lexware Lohn (Stammdaten)', href: '/personal/export.csv' },
       { label: 'DATEV-Export', href: '/datev' },
-      { label: 'Import aus Fortytools', href: '/geplant/import', soon: true },
+      { label: 'Import aus Fortytools (CSV)', href: '/transfer/import' },
     ],
   },
   {

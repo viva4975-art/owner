@@ -119,7 +119,7 @@ const norm = (s: string) =>
     .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z]/g, '');
 
-function splitCsvLine(line: string, sep: string): string[] {
+export function splitCsvLine(line: string, sep: string): string[] {
   const out: string[] = [];
   let cur = '';
   let q = false;

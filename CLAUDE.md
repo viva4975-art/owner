@@ -455,3 +455,12 @@ Testadresse.
   eigene Objekte, ohne Preise/Rechnung. **Ahmed: Wie waren Glasreinigung/Tiefgarage in der alten App genau aufgebaut
   (Felder, Intervalle, Preise)? Dann gleiche ich an und übernehme die Daten.**
   Tests: neu `special-services.db.test.ts`, Browser-Test `npm run e2e:sonderdienst` (8 Prüfungen).
+- 2026-10-04: Schritt 7 vorbereitet – Import aus Fortytools (Transfer → Import aus Fortytools): CSV (Semikolon/Komma/Tab,
+  UTF-8 oder Windows-1252) für Kunden → Objekte → Leistungen. Spalten werden über die Kopfzeile erkannt (deutsche Namen,
+  z. B. „Kd-Nr.“, „Firma“, „Objekt-Nr“, „Betrag“, „MwSt“, „Zyklus“), unbekannte Spalten angezeigt. Vorschau als GET-Seite
+  (Datei write-once im Archiv), je Zeile neu / vorhanden / Fehler mit Grund; übernommen werden nur fehlerfreie Zeilen,
+  vorhandene nur mit „überschreiben“. Prüfung über dieselben Regeln wie die Formulare (PLZ 5-stellig – Excel-PLZ ohne
+  führende Null wird ergänzt, Leitweg-ID, E-Mail, USt nur 7/19 %). Ohne Rechnungsformat: Leitweg-ID → XRechnung, sonst
+  ZUGFeRD. Feste IDs aus Kunden-/Objektnummer, Protokoll `data_imports`. **Sobald die echten Exporte da sind:
+  Spaltennamen abgleichen, Probeimport in der Testumgebung, dann Abgleich der Summen (Monatsumsatz je Kunde).**
+  Tests: `fortytools-import.db.test.ts`, Browser-Test `npm run e2e:import` (8 Prüfungen).

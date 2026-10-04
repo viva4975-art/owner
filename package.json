@@ -33,7 +33,8 @@
     "e2e:auswertung": "node e2e/auswertung.e2e.mjs",
     "e2e:angebot": "node e2e/angebot.e2e.mjs",
     "e2e:transfer": "node e2e/transfer.e2e.mjs",
-    "e2e:sonderdienst": "node e2e/sonderdienst.e2e.mjs"
+    "e2e:sonderdienst": "node e2e/sonderdienst.e2e.mjs",
+    "e2e:import": "node e2e/import.e2e.mjs"
   },
   "repository": {
     "type": "git",

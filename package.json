@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:supabase": "./scripts/test-supabase-image.sh",
+    "check:pdfa": "./scripts/check-pdfa.sh",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm test",
     "dev": "tsx watch --env-file=.env.dev src/server.ts",
     "start": "tsx src/server.ts",

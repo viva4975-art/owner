@@ -126,8 +126,8 @@ Testadresse.
 - **§ 13b bei Nachunternehmern:** Reinigungsleistungen von Subunternehmern an uns (selbst Gebäudereiniger) → wir
   schulden die Umsatzsteuer. Eingangsrechnungen dafür ohne USt erfassen (Kennzeichen „§ 13b“), Buchung über
   BU-Schlüssel – mit Steuerberater abstimmen.
-- **PDF/A-3:** ZUGFeRD-Dateien sind KoSIT-geprüft (XML); die PDF/A-Konformität ist noch nicht mit
-  veraPDF geprüft.
+- **PDF/A-3:** ZUGFeRD-Dateien (Rechnung, Storno, Schlussrechnung, Lastschrift) bestehen veraPDF PDF/A-3b
+  (`npm run check:pdfa`, 04.10.2026) und KoSIT (XML).
 
 ## Entscheidungen / Stand (laufend ergänzen)
 
@@ -156,7 +156,7 @@ Testadresse.
   - E-Rechnung: Bibliothek `@e-invoice-eu/core` (TypeScript, aktiv gepflegt, erzeugt XRechnung UBL/CII und
     ZUGFeRD/Factur-X als PDF/A-3 aus einem Datenmodell). Alternative wäre Mustang (Java) – mehr
     Betriebsaufwand, kein Vorteil für uns. Geprüft wird mit dem KoSIT-Validator 1.6.3 und der
-    XRechnung-Konfiguration 2025-07-10 (XRechnung 3.0.2) – Konfiguration 2026-08-31 nachziehen.
+    XRechnung-Konfiguration 2025-07-10 (XRechnung 3.0.2) – seit 04.10.2026 Konfiguration 2026-08-31 (CEN-Regeln 1.3.16).
   - Ablauf: Vorabprüfung (E-Rechnung mit vorläufiger Nummer gegen KoSIT) → nur wenn gültig Nummer
     vergeben → PDF, XRechnung, ZUGFeRD, Prüfberichte erzeugen, mit SHA-256 write-once archivieren
     (inhaltsadressierte Pfade), Aufbewahrung bis 31.12. des 10. Folgejahres.
@@ -472,3 +472,6 @@ Testadresse.
   im Server), lokal weiter direkt in `auth.users`. `npm run db:migrate:supabase -- --projekt=<ref>` verlangt den
   Projekt-Ref als Bestätigung. Konfiguration prüft zusätzlich: DATABASE_URL/SUPABASE_URL gehören zum Projekt,
   Pooler-Adresse in eu-central-1. **Zugangsdaten fehlen noch in der Umgebung** – danach Migration einspielen.
+- 2026-10-04: KoSIT-Prüfkonfiguration auf 2026-08-31 (XRechnung 3.0.2, CEN-Schematron 1.3.16) umgestellt – alle
+  Beispielrechnungen inkl. Skonto, Lastschrift, Storno, Abschlag, Schlussrechnung gültig (UBL + CII). PDF/A-3b mit
+  veraPDF geprüft und bestanden (`npm run check:pdfa`, Docker-Image verapdf/cli).

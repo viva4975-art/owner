@@ -7,6 +7,7 @@ import {
   OFFER_STATUS,
   type OfferLineRow,
   type OfferRow,
+  type OfferStats,
   type OfferStatus,
 } from '../services/offers.js';
 import { centsToInput, milliToInput } from './forms.js';
@@ -137,12 +138,13 @@ export const OfferTable: FC<{ rows: OfferListRow[]; showCustomer?: boolean }> = 
   </div>
 );
 
-export const OfferList: FC<{ rows: OfferListRow[]; all: OfferListRow[]; active: string; title: string }> = ({
-  rows,
-  all,
-  active,
-  title,
-}) => {
+export const OfferList: FC<{
+  rows: OfferListRow[];
+  all: OfferListRow[];
+  active: string;
+  title: string;
+  stats: OfferStats;
+}> = ({ rows, all, active, title, stats }) => {
   const count = (s: OfferStatus) => all.filter((o) => o.status === s).length;
   const urgent = all.filter(
     (o) => o.status === 'entwurf' && o.days_left !== null && o.days_left >= 0 && o.days_left <= 7,
@@ -158,11 +160,10 @@ export const OfferList: FC<{ rows: OfferListRow[]; all: OfferListRow[]; active: 
       href: '/angebote?status=angenommen',
       count: count('angenommen'),
     },
+    { key: 'abgelehnt', label: 'Abgelehnt', href: '/angebote?status=abgelehnt', count: count('abgelehnt') },
     { key: 'alle', label: 'Alle', href: '/angebote?status=alle', count: all.length },
   ];
   const pipeline = all.filter((o) => o.status === 'versendet').reduce((s, o) => s + o.monthly_net_cents, 0n);
-  const won = all.filter((o) => o.status === 'angenommen').length;
-  const decided = won + count('abgelehnt');
   return (
     <>
       <PageHead title={title} create={{ options: NEW_OPTIONS, selected: 'angebot' }} />
@@ -187,12 +188,59 @@ export const OfferList: FC<{ rows: OfferListRow[]; all: OfferListRow[]; active: 
           <div class="s">monatlich netto ({count('versendet')} Angebote)</div>
         </div>
         <div class="kpi">
-          <div class="l">Zuschlagsquote</div>
-          <div class="v">{decided ? `${Math.round((won / decided) * 100)} %` : '–'}</div>
+          <div class="l">Zuschlagsquote (12 Monate)</div>
+          <div class="v">{stats.rate == null ? '–' : `${stats.rate} %`}</div>
           <div class="s">
-            {won} von {decided} entschiedenen
+            {stats.accepted.count} von {stats.accepted.count + stats.rejected.count} entschiedenen
           </div>
         </div>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <h3 style="margin-top:0">Statistik der letzten 12 Monate</h3>
+        <div class="tbl">
+          <table>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th class="r">Anzahl</th>
+                <th class="r">Summe netto</th>
+                <th class="r">davon monatlich</th>
+                <th style="width:35%"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {(
+                [
+                  ['offen (Entwurf/versendet)', stats.open, '#9aa1ad', '/angebote'],
+                  ['angenommen', stats.accepted, '#3b6b4d', '/angebote?status=angenommen'],
+                  ['abgelehnt', stats.rejected, '#b42318', '/angebote?status=abgelehnt'],
+                ] as const
+              ).map(([label, v, color, href]) => {
+                const total = stats.open.count + stats.accepted.count + stats.rejected.count || 1;
+                return (
+                  <tr>
+                    <td>
+                      <a href={href}>{label}</a>
+                    </td>
+                    <td class="r">{v.count}</td>
+                    <td class="r">{euro(v.net)}</td>
+                    <td class="r">{euro(v.monthly)}</td>
+                    <td>
+                      <div
+                        style={`height:10px;border-radius:3px;background:${color};width:${Math.round((v.count * 100) / total)}%`}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {stats.withdrawn > 0 && (
+          <p class="small mut" style="margin-bottom:0">
+            Zurückgezogen bzw. durch Folgeangebot ersetzt: {stats.withdrawn} (nicht in der Quote).
+          </p>
+        )}
       </div>
       <Tabs tabs={tabs} active={active} />
       <OfferTable rows={rows} />
@@ -208,7 +256,7 @@ export const toOfferEditorLine = (l: OfferLineRow): EditorLine => ({
   price: centsToInput(l.unit_price_cents),
   vat: String(l.vat_rate_bp),
   src: '',
-  rec: l.recurring ? '1' : '0',
+  rec: String((l.recurring ? 1 : 0) + (l.alternative ? 2 : 0)),
 });
 
 export const OfferEditor: FC<{
@@ -216,9 +264,10 @@ export const OfferEditor: FC<{
   o: Partial<OfferRow>;
   lines: EditorLine[];
   customers: Customer[];
+  recent?: { id: string; name: string; customer_no: string }[];
   sites: Site[];
   isNew: boolean;
-}> = ({ id, o, lines, customers, sites, isNew }) => {
+}> = ({ id, o, lines, customers, sites, isNew, recent = [] }) => {
   const prospects = customers.filter((c) => c.status === 'interessent');
   const clients = customers.filter((c) => c.status !== 'interessent');
   return (
@@ -256,6 +305,20 @@ export const OfferEditor: FC<{
             <div class="small mut" style="margin-top:4px">
               Neuer Auftraggeber? <a href="/kunden/neu?interessent=1">Interessent anlegen</a>
             </div>
+            {!o.customer_id && recent.length > 0 && (
+              <div class="small" style="margin-top:8px">
+                Zuletzt bearbeitet:{' '}
+                {recent.map((r) => (
+                  <a
+                    class="badge info"
+                    style="margin:2px 4px 2px 0;text-decoration:none"
+                    href={`/angebote/${id}/bearbeiten?kunde=${r.id}`}
+                  >
+                    {r.name}
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
           <div>
             <label for="objekt">Objekt (falls vorhanden)</label>
@@ -387,9 +450,14 @@ export const OfferDetail: FC<{
   invoices: { id: string; number: string | null; status: string; gross_cents: bigint }[];
   today: string;
   contact: string;
-}> = ({ o, lines, customer, site, sites, files, fileCount, history, invoices, today, contact }) => {
-  const recurring = lines.filter((l) => l.recurring);
-  const once = lines.filter((l) => !l.recurring);
+  related?: {
+    predecessor: { id: string; number: string } | null;
+    successor: { id: string; number: string } | null;
+  };
+}> = ({ o, lines, customer, site, sites, files, fileCount, history, invoices, today, contact, related }) => {
+  const recurring = lines.filter((l) => l.recurring && !l.alternative);
+  const once = lines.filter((l) => !l.recurring && !l.alternative);
+  const alternatives = lines.filter((l) => l.alternative);
   const daysLeft = o.submission_deadline
     ? Math.floor((o.submission_deadline.getTime() - Date.now()) / 86400000)
     : null;
@@ -489,10 +557,10 @@ export const OfferDetail: FC<{
                 </thead>
                 <tbody>
                   {lines.map((l) => (
-                    <tr>
+                    <tr class={l.alternative ? 'alt' : ''}>
                       <td>{l.position}</td>
                       <td>
-                        <b>{l.description}</b>
+                        {l.alternative && <span class="badge warn">Alternative</span>} <b>{l.description}</b>
                         {l.detail && (
                           <div class="small" style="white-space:pre-line">
                             {l.detail}
@@ -503,7 +571,7 @@ export const OfferDetail: FC<{
                       <td class="r">{milliToInput(l.quantity_milli)}</td>
                       <td>{l.unit_code === 'LS' ? 'pauschal' : (UNIT_LABELS[l.unit_code] ?? l.unit_code)}</td>
                       <td class="r">{euro(l.unit_price_cents)}</td>
-                      <td class="r">{euro(l.net_cents)}</td>
+                      <td class="r">{l.alternative ? `(${euro(l.net_cents)})` : euro(l.net_cents)}</td>
                     </tr>
                   ))}
                   {!lines.length && (
@@ -532,6 +600,13 @@ export const OfferDetail: FC<{
                     <span class="hl">{euro(o.gross_cents)}</span>
                   </td>
                 </tr>
+                {alternatives.length > 0 && (
+                  <tr>
+                    <td class="mut small" colspan={2}>
+                      {alternatives.length} Alternativposition(en) – nicht in der Summe
+                    </td>
+                  </tr>
+                )}
                 {o.monthly_net_cents > 0n && (
                   <tr>
                     <td class="mut small">davon monatlich wiederkehrend (netto)</td>
@@ -562,7 +637,22 @@ export const OfferDetail: FC<{
             <a class="btn sec" href={`/angebote/${o.id}/angebot.pdf`} target="_blank">
               <Icon name="pdf" /> PDF anzeigen {o.status === 'entwurf' ? '(Entwurf)' : ''}
             </a>
+            {['entwurf', 'versendet'].includes(o.status) &&
+              !related?.successor &&
+              post('folgeangebot', 'Folgeangebot erstellen (überarbeitete Fassung)')}
             {post('kopieren', 'Kopieren (neues Angebot)')}
+            {related?.predecessor && (
+              <div class="small">
+                Folgeangebot zu{' '}
+                <a href={`/angebote/${related.predecessor.id}`}>Angebot {related.predecessor.number}</a>
+              </div>
+            )}
+            {related?.successor && (
+              <div class="small">
+                Ersetzt durch Folgeangebot{' '}
+                <a href={`/angebote/${related.successor.id}`}>Angebot {related.successor.number}</a>
+              </div>
+            )}
             {o.status === 'entwurf' &&
               post('status', 'Als abgegeben markieren', {
                 hidden: { status: 'versendet' },
@@ -605,7 +695,9 @@ export const OfferDetail: FC<{
               <h3>Leistungen ins Objekt übernehmen</h3>
               <p class="small mut" style="margin-top:0">
                 {recurring.length} monatliche Position(en) werden Monatspauschalen, {once.length} einmalige
-                werden Sonderleistungen im Objekt. Mehrfaches Ausführen legt nichts doppelt an.
+                werden Sonderleistungen im Objekt
+                {alternatives.length ? `; ${alternatives.length} Alternative(n) werden nicht übernommen` : ''}
+                . Mehrfaches Ausführen legt nichts doppelt an.
               </p>
               <div class="grid">
                 <div>
@@ -689,7 +781,8 @@ export const OfferDetail: FC<{
 };
 
 /** Briefansicht: angelehnt an Fortytools und unser PDF (Adresse, grauer Titelbalken, Tabelle, Summen). */
-const LETTER_CSS = `
+const LETTER_CSS = `.letter tr.alt td{color:var(--mut)}
+
 .letter{padding:28px 32px}
 .letter .addr{font-size:14px;line-height:1.5;margin-bottom:22px}
 .letter .band{background:#eef0f3;margin:0 -32px 20px;padding:16px 32px;display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
@@ -713,13 +806,17 @@ function historyText(action: string, details: unknown): string {
     case 'update':
       return 'geändert';
     case 'status':
-      return `Status → ${OFFER_STATUS[d.status as OfferStatus] ?? String(d.status)}`;
+      return `Status → ${OFFER_STATUS[d.status as OfferStatus] ?? String(d.status)}${d.replaced_by ? ' (durch Folgeangebot ersetzt)' : ''}`;
     case 'accept_into_site':
       return `ins Objekt übernommen (${String(d.services)} neue Leistungen)`;
     case 'to_invoice':
       return 'Rechnungsentwurf erstellt';
     case 'copy':
       return 'kopiert';
+    case 'follow_up':
+      return 'Folgeangebot erstellt';
+    case 'to_order':
+      return 'Auftrag erstellt';
     default:
       return action;
   }

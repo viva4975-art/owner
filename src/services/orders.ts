@@ -189,6 +189,7 @@ export async function orderFromOffer(sql: Sql, offerId: string, actor: string): 
       unit_price_cents: bigint;
       vat_rate_bp: number;
       recurring: boolean;
+      alternative: boolean;
     }[]
   >`
     select * from app.offer_lines where offer_id = ${offerId} order by position`;
@@ -204,7 +205,7 @@ export async function orderFromOffer(sql: Sql, offerId: string, actor: string): 
       orderReference: o.tender_reference,
       plannedDate: null,
       lines: lines
-        .filter((l) => !l.recurring)
+        .filter((l) => !l.recurring && !l.alternative)
         .map((l) => ({
           description: l.description,
           detail: l.detail,

@@ -12,6 +12,8 @@ import {
   offerInvoices,
   offerToInvoiceDraft,
   offerContact,
+  offerStats,
+  recentCustomers,
   renderOfferPdf,
   saveOffer,
   setOfferStatus,
@@ -29,7 +31,7 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
   const { sql, env } = deps;
 
   app.get('/angebote', async (c) => {
-    const all = await listOffers(sql);
+    const [all, stats] = await Promise.all([listOffers(sql), offerStats(sql)]);
     const view = c.req.query('ansicht');
     const status = c.req.query('status');
     let rows = [...all];
@@ -49,7 +51,12 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
     } else {
       rows = all.filter((o) => o.status === 'entwurf' || o.status === 'versendet');
     }
-    return page(c, title, 'angebote', <OfferList rows={rows} all={all} active={active} title={title} />);
+    return page(
+      c,
+      title,
+      'angebote',
+      <OfferList rows={rows} all={all} active={active} title={title} stats={stats} />,
+    );
   });
 
   app.get(`/angebote/:id{${UUID}}/bearbeiten`, async (c) => {
@@ -64,7 +71,10 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
     const q = c.req.query();
     if (q.kunde !== undefined) o.customer_id = q.kunde;
     if (q.objekt !== undefined) o.site_id = q.objekt || null;
-    const customers = (await listCustomers(sql)).filter((x) => x.active);
+    const [customers, recent] = await Promise.all([
+      listCustomers(sql).then((l) => l.filter((x) => x.active)),
+      data ? Promise.resolve([]) : recentCustomers(sql, c.get('actor')),
+    ]);
     const sites = o.customer_id ? await listSites(sql, o.customer_id) : [];
     if (o.site_id && !sites.some((s) => s.id === o.site_id)) o.site_id = null;
     return page(
@@ -78,6 +88,7 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
         customers={customers}
         sites={sites}
         isNew={!data}
+        recent={recent}
       />,
     );
   });
@@ -89,8 +100,13 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
     const desc = arr(body, 'desc');
     // „wiederkehrend“ gehört zur gleichen Zeile wie die Beschreibung; leere Zeilen fallen in parseLines raus.
     const keep = desc.map((d, i) => d.trim() !== '' || (arr(body, 'price')[i] ?? '').trim() !== '');
-    const recurring = rec.filter((_, i) => keep[i]).map((v) => v === '1');
-    const lines = parseLines(body).map((l, i) => ({ ...l, recurring: recurring[i] ?? false }));
+    // 0 einmalig, 1 monatlich, 2 Alternative einmalig, 3 Alternative monatlich
+    const kinds = rec.filter((_, i) => keep[i]).map((v) => Number(v) || 0);
+    const lines = parseLines(body).map((l, i) => ({
+      ...l,
+      recurring: ((kinds[i] ?? 0) & 1) === 1,
+      alternative: ((kinds[i] ?? 0) & 2) === 2,
+    }));
     const offerDate = str(body, 'offer_date');
     if (!offerDate) throw new BusinessError('Angebotsdatum fehlt');
     const deadline = str(body, 'submission_deadline');
@@ -133,6 +149,13 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
       offerInvoices(sql, id),
     ]);
     const contact = await offerContact(sql, o.created_by);
+    const [predecessor] = o.predecessor_id
+      ? await sql<
+          { id: string; number: string }[]
+        >`select id, number from app.offers where id = ${o.predecessor_id}`
+      : [];
+    const [successor] = await sql<{ id: string; number: string }[]>`
+      select id, number from app.offers where predecessor_id = ${id}`;
     return page(
       c,
       `Angebot ${o.number}`,
@@ -157,6 +180,7 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
         invoices={invoices}
         today={todayBerlin()}
         contact={contact}
+        related={{ predecessor: predecessor ?? null, successor: successor ?? null }}
       />,
     );
   });
@@ -184,6 +208,13 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
       zurueckgezogen: 'Angebot zurückgezogen.',
     };
     return back(c, `/angebote/${id}`, { ok: msg[status] ?? 'Status geändert.' });
+  });
+
+  app.post(`/angebote/:id{${UUID}}/folgeangebot`, async (c) => {
+    const newId = await copyOffer(sql, c.req.param('id'), c.get('actor'), { followUp: true });
+    return back(c, `/angebote/${newId}/bearbeiten`, {
+      ok: 'Folgeangebot angelegt. Sobald es versendet ist, gilt das vorige Angebot als zurückgezogen.',
+    });
   });
 
   app.post(`/angebote/:id{${UUID}}/kopieren`, async (c) => {

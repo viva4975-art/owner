@@ -42,6 +42,7 @@ export interface OfferRow {
   updated_at: Date;
   decided_at: Date | null;
   version: number;
+  predecessor_id: string | null;
 }
 
 export interface OfferLineRow {
@@ -55,6 +56,8 @@ export interface OfferLineRow {
   net_cents: bigint;
   vat_rate_bp: number;
   recurring: boolean;
+  /** Alternativposition: wird angeboten, zählt aber nicht zur Summe und wird nicht übernommen */
+  alternative: boolean;
 }
 
 export interface OfferInput {
@@ -68,8 +71,9 @@ export interface OfferInput {
   validUntil: string | null;
   introText: string | null;
   closingText: string | null;
-  lines: (DraftLineInput & { recurring: boolean })[];
+  lines: (DraftLineInput & { recurring: boolean; alternative?: boolean })[];
   expectedVersion?: number | null;
+  predecessorId?: string | null;
 }
 
 export async function listOffers(sql: Sql, filter: { status?: OfferStatus[]; customerId?: string } = {}) {
@@ -106,10 +110,12 @@ export async function saveOffer(sql: Sql, id: string, input: OfferInput, actor: 
   if (!input.title.trim())
     throw new BusinessError('Bitte einen Titel angeben (z. B. „Unterhaltsreinigung Grundschule …“)');
   if (!input.lines.length) throw new BusinessError('Bitte mindestens eine Position erfassen');
-  const d = calculateDraft(input.lines);
-  const monthly = input.lines
-    .filter((l) => l.recurring)
-    .reduce((s, l) => s + lineNet(l.quantity, l.unitPrice), 0n);
+  const main = input.lines.filter((l) => !l.alternative);
+  if (!main.length) throw new BusinessError('Mindestens eine Position darf keine Alternative sein');
+  // Positionen (Nummern, Zeilenbeträge) über alle Zeilen, Summen nur ohne Alternativen
+  const all = calculateDraft(input.lines);
+  const d = { ...calculateDraft(main), lines: all.lines };
+  const monthly = main.filter((l) => l.recurring).reduce((s, l) => s + lineNet(l.quantity, l.unitPrice), 0n);
   // Abgabefrist kommt als deutsche Ortszeit 'YYYY-MM-DDTHH:mm' → in der DB nach Europe/Berlin umrechnen
   const deadline = input.submissionDeadline;
   if (deadline !== null && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(deadline))
@@ -145,7 +151,7 @@ export async function saveOffer(sql: Sql, id: string, input: OfferInput, actor: 
     } else {
       const [n] = await tx<{ v: bigint; prefix: string }[]>`
         update app.number_ranges set next_value = next_value + 1 where key = 'offer' returning next_value - 1 as v, prefix`;
-      await tx`insert into app.offers ${tx({ id, number: `${n!.prefix}${n!.v}`, created_by: actor, ...row } as Record<string, unknown>)}`;
+      await tx`insert into app.offers ${tx({ id, number: `${n!.prefix}${n!.v}`, created_by: actor, predecessor_id: input.predecessorId ?? null, ...row } as Record<string, unknown>)}`;
       await tx`update app.offers set submission_deadline = (${deadline}::text)::timestamp at time zone 'Europe/Berlin' where id = ${id}`;
     }
     await tx`delete from app.offer_lines where offer_id = ${id}`;
@@ -161,6 +167,7 @@ export async function saveOffer(sql: Sql, id: string, input: OfferInput, actor: 
         net_cents: l.netAmount,
         vat_rate_bp: l.vatRate,
         recurring: input.lines[i]!.recurring,
+        alternative: input.lines[i]!.alternative ?? false,
       })),
     )}`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id) values (${actor}, ${cur ? 'update' : 'create'}, 'offer', ${id})`;
@@ -189,17 +196,42 @@ export async function setOfferStatus(sql: Sql, id: string, status: OfferStatus, 
     }
     await tx`update app.offers set status = ${status},
                decided_at = ${['angenommen', 'abgelehnt'].includes(status) ? tx`now()` : null} where id = ${id}`;
+    // Folgeangebot versendet → voriges Angebot ist überholt
+    if (status === 'versendet') {
+      const prev = await tx<{ id: string }[]>`
+        update app.offers p set status = 'zurueckgezogen'
+          from app.offers n where n.id = ${id} and p.id = n.predecessor_id and p.status in ('entwurf', 'versendet')
+        returning p.id`;
+      for (const r of prev) {
+        await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+                 values (${actor}, 'status', 'offer', ${r.id}, ${tx.json({ status: 'zurueckgezogen', replaced_by: id })})`;
+      }
+    }
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
              values (${actor}, 'status', 'offer', ${id}, ${tx.json({ status })})`;
   });
 }
 
-/** Kopie als neuer Entwurf (z. B. überarbeitetes Angebot nach Rückfrage). */
-export async function copyOffer(sql: Sql, id: string, actor: string): Promise<string> {
+/**
+ * Kopie als neuer Entwurf. `followUp`: Folgeangebot (überarbeitete Fassung nach Rückfrage) – verweist auf das
+ * vorige Angebot, das als „zurückgezogen“ gilt, sobald das Folgeangebot versendet wird. Je Angebot ein Folgeangebot.
+ */
+export async function copyOffer(
+  sql: Sql,
+  id: string,
+  actor: string,
+  opts: { followUp?: boolean; newId?: string } = {},
+): Promise<string> {
   const data = await getOffer(sql, id);
   if (!data) throw new BusinessError('Angebot nicht gefunden');
   const o = data.offer;
-  const newId = randomUUID();
+  if (opts.followUp) {
+    const [succ] = await sql<{ id: string }[]>`select id from app.offers where predecessor_id = ${id}`;
+    if (succ) return succ.id; // schon angelegt (z. B. doppelt geklickt)
+    if (!['entwurf', 'versendet'].includes(o.status))
+      throw new BusinessError('Folgeangebot nur zu offenen Angeboten (Entwurf oder versendet)');
+  }
+  const newId = opts.newId ?? randomUUID();
   await saveOffer(
     sql,
     newId,
@@ -222,12 +254,22 @@ export async function copyOffer(sql: Sql, id: string, actor: string): Promise<st
         unitPrice: l.unit_price_cents as Cents,
         vatRate: l.vat_rate_bp,
         recurring: l.recurring,
+        alternative: l.alternative,
       })),
+      ...(opts.followUp ? { predecessorId: id, submissionDeadline: null } : {}),
     },
     actor,
-  );
+  ).catch(async (e: unknown) => {
+    // gleichzeitiger zweiter Klick: Eindeutigkeit des Folgeangebots greift
+    if (opts.followUp && (e as { code?: string }).code === '23505') return;
+    throw e;
+  });
+  if (opts.followUp) {
+    const [succ] = await sql<{ id: string }[]>`select id from app.offers where predecessor_id = ${id}`;
+    if (succ && succ.id !== newId) return succ.id;
+  }
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
-            values (${actor}, 'copy', 'offer', ${id}, ${sql.json({ new_offer_id: newId })})`;
+            values (${actor}, ${opts.followUp ? 'follow_up' : 'copy'}, 'offer', ${id}, ${sql.json({ new_offer_id: newId })})`;
   return newId;
 }
 
@@ -251,7 +293,7 @@ export async function acceptIntoSite(
     throw new BusinessError('Objekt gehört nicht zum Kunden des Angebots');
   let n = 0;
   await sql.begin(async (tx) => {
-    for (const l of data.lines) {
+    for (const l of data.lines.filter((x) => !x.alternative)) {
       // deterministische ID: Angebot + Position → zweimal übernehmen legt nichts doppelt an
       const [{ id }] = (await tx`select md5(${offerId} || ':' || ${l.position})::uuid as id`) as unknown as [
         { id: string },
@@ -291,14 +333,16 @@ export async function offerToInvoiceDraft(sql: Sql, offerId: string, actor: stri
       orderReference: data.offer.tender_reference,
       introText: `Gemäß unserem Angebot ${data.offer.number} vom ${formatDateDe(data.offer.offer_date)} berechnen wir:`,
       closingText: null,
-      lines: data.lines.map((l) => ({
-        description: l.description,
-        detail: l.detail,
-        quantity: l.quantity_milli as Quantity,
-        unitCode: l.unit_code,
-        unitPrice: l.unit_price_cents as Cents,
-        vatRate: l.vat_rate_bp,
-      })),
+      lines: data.lines
+        .filter((l) => !l.alternative)
+        .map((l) => ({
+          description: l.description,
+          detail: l.detail,
+          quantity: l.quantity_milli as Quantity,
+          unitCode: l.unit_code,
+          unitPrice: l.unit_price_cents as Cents,
+          vatRate: l.vat_rate_bp,
+        })),
     },
     actor,
   );
@@ -336,16 +380,25 @@ export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8
   const { offer: o, lines } = data;
   const seller = await getSeller(sql);
   const buyer = await buildBuyerSnapshot(sql, o.customer_id, o.site_id);
-  const d = calculateDraft(
-    lines.map((l) => ({
-      description: l.description,
-      detail: [l.detail, l.recurring ? 'monatlich' : 'einmalig'].filter(Boolean).join('\n') || null,
-      quantity: l.quantity_milli as Quantity,
-      unitCode: l.unit_code,
-      unitPrice: l.unit_price_cents as Cents,
-      vatRate: l.vat_rate_bp,
-    })),
-  );
+  const toLine = (l: OfferLineRow) => ({
+    description: l.alternative ? `Alternativ: ${l.description}` : l.description,
+    detail:
+      [
+        l.detail,
+        l.recurring ? 'monatlich' : 'einmalig',
+        l.alternative ? 'Alternativposition – nicht in der Summe enthalten' : null,
+      ]
+        .filter(Boolean)
+        .join('\n') || null,
+    quantity: l.quantity_milli as Quantity,
+    unitCode: l.unit_code,
+    unitPrice: l.unit_price_cents as Cents,
+    vatRate: l.vat_rate_bp,
+  });
+  const d = {
+    ...calculateDraft(lines.filter((l) => !l.alternative).map(toLine)),
+    lines: calculateDraft(lines.map(toLine)).lines,
+  };
   const doc: InvoiceDocument = {
     kind: 'invoice',
     number: o.number,
@@ -397,4 +450,55 @@ export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8
     ...(o.status === 'entwurf' ? { watermark: 'ENTWURF' } : {}),
   });
   return { pdf, filename: `Angebot_${o.number}.pdf` };
+}
+
+export interface OfferStats {
+  open: { count: number; net: bigint; monthly: bigint };
+  accepted: { count: number; net: bigint; monthly: bigint };
+  rejected: { count: number; net: bigint; monthly: bigint };
+  withdrawn: number;
+  /** Zuschlagsquote = angenommen ÷ (angenommen + abgelehnt), in Prozent; null ohne Entscheidungen */
+  rate: number | null;
+}
+
+/** Angebote der letzten 12 Monate (Angebotsdatum) nach Status – wie die Fortytools-Statistik. */
+export async function offerStats(sql: Sql): Promise<OfferStats> {
+  const rows = await sql<{ g: string; count: number; net: bigint; monthly: bigint }[]>`
+    select case when status in ('entwurf', 'versendet') then 'open' when status = 'angenommen' then 'accepted'
+                when status = 'abgelehnt' then 'rejected' else 'withdrawn' end as g,
+           count(*)::int as count, coalesce(sum(net_cents), 0)::bigint as net,
+           coalesce(sum(monthly_net_cents), 0)::bigint as monthly
+      from app.offers
+     where offer_date > (now() at time zone 'Europe/Berlin')::date - interval '12 months'
+     group by 1`;
+  const get = (g: string) => {
+    const r = rows.find((x) => x.g === g);
+    return { count: r?.count ?? 0, net: r?.net ?? 0n, monthly: r?.monthly ?? 0n };
+  };
+  const accepted = get('accepted');
+  const rejected = get('rejected');
+  const decided = accepted.count + rejected.count;
+  return {
+    open: get('open'),
+    accepted,
+    rejected,
+    withdrawn: get('withdrawn').count,
+    rate: decided ? Math.round((accepted.count * 100) / decided) : null,
+  };
+}
+
+/** Zuletzt bearbeitete Kunden des Benutzers (Kunden, Angebote, Rechnungen – laut Protokoll). */
+export async function recentCustomers(sql: Sql, actor: string, limit = 8) {
+  return sql<{ id: string; name: string; customer_no: string }[]>`
+    with t as (
+      select coalesce(case when a.entity = 'customer' then a.entity_id end, o.customer_id, i.customer_id) as customer_id,
+             max(a.at) as at
+        from app.audit_log a
+        left join app.offers o on a.entity = 'offer' and o.id = a.entity_id
+        left join app.invoices i on a.entity = 'invoice' and i.id = a.entity_id
+       where a.actor = ${actor} and a.entity in ('customer', 'offer', 'invoice')
+         and a.at > now() - interval '90 days'
+       group by 1)
+    select c.id, c.name, c.customer_no from t join app.customers c on c.id = t.customer_id
+     where c.active order by t.at desc limit ${limit}`;
 }

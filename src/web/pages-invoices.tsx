@@ -76,13 +76,14 @@ const lineEditorScript = `
   function toMilli(v){v=(v||'').trim().replace(',','.');var m=/^(-)?(\\d+)(?:\\.(\\d{1,3}))?$/.exec(v);if(!m)return null;var q=BigInt(m[2]+(m[3]||'').padEnd(3,'0'));return m[1]?-q:q}
   function round(n,d){var neg=n<0n;if(neg)n=-n;var q=(n*2n+d)/(d*2n);return neg?-q:q}
   function fmt(c){var neg=c<0n;if(neg)c=-c;var e=(c/100n).toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g,'.');return (neg?'-':'')+e+','+(c%100n).toString().padStart(2,'0')+' €'}
-  function recalc(){var net=0n,vat={};tbody.querySelectorAll('tr').forEach(function(tr){var q=toMilli(tr.querySelector('[name=qty]').value||'1'),p=toCents(tr.querySelector('[name=price]').value),r=BigInt(tr.querySelector('[name=vat]').value);var out=tr.querySelector('.ln');if(q===null||p===null){out.textContent='';return}var l=round(q*p,1000n);out.textContent=fmt(l);net+=l;vat[r]=(vat[r]||0n)+l});var v=0n;Object.keys(vat).forEach(function(r){v+=round(vat[r]*BigInt(r),10000n)});document.getElementById('t-net').textContent=fmt(net);document.getElementById('t-vat').textContent=fmt(v);document.getElementById('t-gross').textContent=fmt(net+v)}
+  function recalc(){var net=0n,vat={};tbody.querySelectorAll('tr').forEach(function(tr){var q=toMilli(tr.querySelector('[name=qty]').value||'1'),p=toCents(tr.querySelector('[name=price]').value),r=BigInt(tr.querySelector('[name=vat]').value);var out=tr.querySelector('.ln');if(q===null||p===null){out.textContent='';return}var l=round(q*p,1000n);var rc=tr.querySelector('[name=rec]');if(rc&&(rc.value==='2'||rc.value==='3')){out.textContent='('+fmt(l)+')';return}out.textContent=fmt(l);net+=l;vat[r]=(vat[r]||0n)+l});var v=0n;Object.keys(vat).forEach(function(r){v+=round(vat[r]*BigInt(r),10000n)});document.getElementById('t-net').textContent=fmt(net);document.getElementById('t-vat').textContent=fmt(v);document.getElementById('t-gross').textContent=fmt(net+v)}
   function add(data){var row=tpl.content.firstElementChild.cloneNode(true);if(data){Object.keys(data).forEach(function(k){var el=row.querySelector('[name='+k+']');if(el)el.value=data[k]})}tbody.appendChild(row);recalc();return row}
   document.getElementById('add-line').addEventListener('click',function(){add().querySelector('[name=desc]').focus()});
   var sel=document.getElementById('from-service');
   if(sel)sel.addEventListener('change',function(){if(!sel.value)return;add(JSON.parse(sel.value));sel.value=''});
   tbody.addEventListener('click',function(e){if(e.target.classList.contains('del')){e.target.closest('tr').remove();recalc()}});
   tbody.addEventListener('input',recalc);
+  tbody.addEventListener('change',recalc);
   window.vdLines={set:function(rows){tbody.innerHTML='';rows.forEach(function(r){add(r)});if(!tbody.children.length)add();recalc()}};
   if(!tbody.children.length)add();
   recalc();
@@ -148,13 +149,19 @@ const LineRowInputs: FC<{ l?: EditorLine; recurring?: boolean | undefined }> = (
       </select>
     </td>
     {recurring && (
-      <td style="width:130px">
+      <td style="width:170px">
         <select name="rec" aria-label="Abrechnung">
-          <option value="0" selected={l?.rec !== '1'}>
+          <option value="0" selected={!l?.rec || l.rec === '0'}>
             einmalig
           </option>
           <option value="1" selected={l?.rec === '1'}>
             monatlich
+          </option>
+          <option value="2" selected={l?.rec === '2'}>
+            Alternative einmalig
+          </option>
+          <option value="3" selected={l?.rec === '3'}>
+            Alternative monatlich
           </option>
         </select>
       </td>

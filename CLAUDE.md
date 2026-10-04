@@ -408,3 +408,13 @@ Testadresse.
   - Offen: Schlussrechnungen zählen im Umsatz voll und die Abschläge ebenfalls (doppelt) – mit Steuerberater klären,
     wie es ausgewiesen werden soll (wie DATEV-Hinweisliste).
   - Tests: 183 Unit-/DB-Tests, Browser-Tests 214 Prüfungen (neu `npm run e2e:auswertung`, 16 Prüfungen; Rechte +2).
+- 2026-10-04: Lücke 6 erledigt – Angebote wie Fortytools:
+  - Alternativpositionen (einmalig oder monatlich): im Editor, in der Briefansicht und im PDF als „Alternativ“ mit Betrag
+    in Klammern, nicht in Netto/USt/Gesamt und nicht im Monatsanteil; werden bei Übernahme ins Objekt, Auftrag und
+    Rechnung nicht übernommen. Mindestens eine normale Position Pflicht.
+  - Folgeangebot (`offers.predecessor_id`, je Angebot höchstens eins – DB-Index, doppelter Klick liefert dasselbe): Kopie
+    als Entwurf mit Verweis; sobald das Folgeangebot abgegeben wird, gilt das vorige als zurückgezogen (Protokoll).
+  - Statistik der letzten 12 Monate (offen/angenommen/abgelehnt mit Summen, Zuschlagsquote ohne Zurückgezogene),
+    Reiter „Abgelehnt“. „Zuletzt bearbeitet“ im neuen Angebot (Kunden aus dem eigenen Protokoll der letzten 90 Tage).
+  - Rechnung aus Angebot und Auftragsbestätigung gab es schon (Auftrag aus Angebot → AB-PDF).
+  - Tests: 187 Unit-/DB-Tests, Browser-Tests 226 Prüfungen (neu `npm run e2e:angebot`, 12 Prüfungen).

@@ -475,3 +475,8 @@ Testadresse.
 - 2026-10-04: KoSIT-Prüfkonfiguration auf 2026-08-31 (XRechnung 3.0.2, CEN-Schematron 1.3.16) umgestellt – alle
   Beispielrechnungen inkl. Skonto, Lastschrift, Storno, Abschlag, Schlussrechnung gültig (UBL + CII). PDF/A-3b mit
   veraPDF geprüft und bestanden (`npm run check:pdfa`, Docker-Image verapdf/cli).
+- 2026-10-04: Demo-Daten Phase 6 (Vertretung bei Krankheit, Einsatzgruppen, 3 Sonderdienste mit Termin/erledigt, Angebot mit
+  Alternative + Folgeangebot, abgelehntes Angebot, Mandat + Gläubiger-ID, Kontoauszug mit Zahlung/Miete/unbekannt,
+  Fortytools-Beispielimport). Klick-Demo Version 5 (488 Seiten, 26 PDFs): https://claude.ai/artifact/HpySmrqaJ9wpvpWiabFj4S
+  Stand gesamt: 213 Unit-/DB-Tests (auch gegen das Supabase-Image), 17 Browser-Suiten mit 255 Prüfungen, KoSIT 2026-08-31,
+  PDF/A-3b bestanden.

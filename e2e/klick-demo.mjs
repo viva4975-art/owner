@@ -69,6 +69,7 @@ while (queue.length && Object.keys(pages).length < MAX_PAGES) {
   // je Seitentyp nur einige Beispiele (sonst z. B. jede einzelne Zeiterfassung oder jede Woche)
   const pattern = k
     .replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, ':id')
+    .replace(/\d{4}-\d{2}-\d{2}/g, ':datum')
     .replace(/\?.*/, (q) => (q.includes('typ=') ? q : '?'));
   patternCount[pattern] = (patternCount[pattern] ?? 0) + 1;
   const isDoc = /\.pdf$/.test(k.split('?')[0]) || k.startsWith('/dokumente/');

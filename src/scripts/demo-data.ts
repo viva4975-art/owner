@@ -49,6 +49,12 @@ import {
   signWorkReport,
 } from '../services/orders.js';
 import { createSignDocument, requestsForEmployee, signRequest } from '../services/sign-documents.js';
+import { saveException } from '../services/planning.js';
+import { completeRun, planRun, saveSpecialService } from '../services/special-services.js';
+import { copyOffer, saveOffer, setOfferStatus } from '../services/offers.js';
+import { saveMandate } from '../services/direct-debit.js';
+import { importStatement } from '../services/bank.js';
+import { applyImport } from '../services/fortytools-import.js';
 
 const env = loadEnv();
 if (env.APP_ENV === 'live' || !/demo/.test(new URL(env.DATABASE_URL).pathname)) {
@@ -272,6 +278,7 @@ try {
   await phase3();
   await phase4();
   await phase5();
+  await phase6();
   // Belege (PDF, XRechnung/ZUGFeRD, KoSIT-Prüfbericht) für alle ausgestellten Rechnungen erzeugen
   const issued = await sql<{ id: string }[]>`select id from app.invoices where status = 'issued'`;
   for (const i of issued) await ensureDocuments(deps, i.id);
@@ -997,4 +1004,242 @@ async function phase5() {
   // Abrechnung am Objekt für den laufenden Monat (Entwürfe, Rechnungsdatum = Ausstellungstag)
   await runMonthly(sql, todayBerlin().slice(0, 7), A, { siteIds: [DEMO.siteHq] });
   console.log('Demo Phase 5 angelegt.');
+}
+
+/** Planung (Vertretung), Sonderdienste, Angebote mit Alternativen/Folgeangebot, Bankabgleich, Lastschrift, Import. */
+async function phase6() {
+  const [done] = await sql`select 1 from app.special_services limit 1`;
+  if (done) return;
+  const today = todayBerlin();
+  // --- Planung: Einsatzgruppen, Krankheit nächste Woche mit Vertretung und eine offene Lücke
+  const emps = await sql<
+    { id: string }[]
+  >`select id from app.employees where status = 'aktiv' order by personnel_no`;
+  await sql`update app.employees set planning_group = case when personnel_no::int % 2 = 0 then 'Team Süd' else 'Team West' end,
+                                     planning_notes = case when personnel_no = '1001' then 'kein Führerschein' end`;
+  const next = await plannedShifts(sql, { from: addDays(today, 7), to: addDays(today, 13) });
+  const first = next.find((x) => !x.holiday);
+  if (first && emps.length > 1) {
+    await requestAbsence(sql, {
+      id: '00000000-0000-4000-8000-0000000d6001',
+      employeeId: first.plan.employee_id,
+      kind: 'krank',
+      start: first.date,
+      end: addDays(first.date, 2),
+      halfDay: false,
+      note: 'AU liegt vor',
+      actor: A,
+      approved: true,
+    });
+    const sub = emps.find((e) => e.id !== first.plan.employee_id)!;
+    await saveException(
+      sql,
+      '00000000-0000-4000-8000-0000000d6002',
+      {
+        planId: first.plan.id,
+        date: first.date,
+        kind: 'vertretung',
+        substituteId: sub.id,
+        start: '05:00',
+        end: '06:30',
+        note: 'Vertretung wegen Krankheit',
+        expectedVersion: null,
+      },
+      A,
+    ).catch((e: Error) => console.log('Vertretung übersprungen:', e.message));
+  }
+  // --- Sonderdienste
+  const S = {
+    glas: '00000000-0000-4000-8000-0000000d6101',
+    tg: '00000000-0000-4000-8000-0000000d6102',
+    gr: '00000000-0000-4000-8000-0000000d6103',
+  };
+  const base = { scope: null, active: true, note: null, expectedVersion: null, vatRateBp: 1900 };
+  await saveSpecialService(
+    sql,
+    S.glas,
+    {
+      ...base,
+      siteId: DEMO.siteSchool,
+      kind: 'glas',
+      title: 'Glasreinigung innen und außen inkl. Rahmen',
+      scope: 'ca. 420 m² Glasfläche, Oberlichter mit Hubsteiger',
+      intervalMonths: 6,
+      nextDue: addDays(today, 20),
+      priceCents: 118000n,
+      noticeDays: 7,
+    },
+    A,
+  );
+  await saveSpecialService(
+    sql,
+    S.tg,
+    {
+      ...base,
+      siteId: DEMO.siteHq,
+      kind: 'tiefgarage',
+      title: 'Tiefgaragenreinigung nass',
+      scope: '42 Stellplätze, Kehrsaugmaschine und Hochdruck',
+      intervalMonths: 12,
+      nextDue: addDays(today, -2),
+      priceCents: 89000n,
+      noticeDays: 14,
+    },
+    A,
+  );
+  await saveSpecialService(
+    sql,
+    S.gr,
+    {
+      ...base,
+      siteId: DEMO.siteSchool,
+      kind: 'grundreinigung',
+      title: 'Grundreinigung Turnhalle',
+      scope: 'PU-Belag, Einpflege',
+      intervalMonths: 12,
+      nextDue: today,
+      priceCents: 1450_00n,
+      noticeDays: 0,
+    },
+    A,
+  );
+  await planRun(
+    sql,
+    '00000000-0000-4000-8000-0000000d6111',
+    S.tg,
+    {
+      date: addDays(today, 10),
+      start: '06:00',
+      end: '12:00',
+      employeeIds: emps.slice(0, 2).map((e) => e.id),
+      note: 'Hausverwaltung informiert',
+      expectedVersion: null,
+    },
+    A,
+  );
+  await planRun(
+    sql,
+    '00000000-0000-4000-8000-0000000d6112',
+    S.gr,
+    {
+      date: today,
+      start: '07:00',
+      end: '15:00',
+      employeeIds: emps.slice(1, 3).map((e) => e.id),
+      note: null,
+      expectedVersion: null,
+    },
+    A,
+  );
+  await completeRun(sql, '00000000-0000-4000-8000-0000000d6112', A);
+  // --- Angebote: mit Alternativen, Folgeangebot, abgelehnt
+  const line = (description: string, price: string, recurring: boolean, alternative = false) => ({
+    description,
+    quantity: parseQuantity('1'),
+    unitCode: 'LS',
+    unitPrice: parseEuro(price),
+    vatRate: 1900,
+    recurring,
+    alternative,
+  });
+  const O = '00000000-0000-4000-8000-0000000d6201';
+  await saveOffer(
+    sql,
+    O,
+    {
+      customerId: DEMO.authority,
+      siteId: null,
+      title: 'Unterhaltsreinigung Gymnasium Nord',
+      tenderReference: 'V-2026-118',
+      tenderPlatform: 'Bayerischer Vergabemarktplatz',
+      submissionDeadline: `${addDays(today, 12)}T10:00`,
+      offerDate: today,
+      validUntil: addDays(today, 60),
+      introText: null,
+      closingText: null,
+      lines: [
+        line('Unterhaltsreinigung 5×/Woche lt. LV', '6.480,00', true),
+        line('Unterhaltsreinigung 3×/Woche (Alternative)', '4.120,00', true, true),
+        line('Bauendreinigung vor Leistungsbeginn', '2.300,00', false),
+      ],
+    },
+    A,
+  );
+  await setOfferStatus(sql, O, 'versendet', A);
+  await copyOffer(sql, O, A, { followUp: true, newId: '00000000-0000-4000-8000-0000000d6202' });
+  const R = '00000000-0000-4000-8000-0000000d6203';
+  await saveOffer(
+    sql,
+    R,
+    {
+      customerId: DEMO.company,
+      siteId: null,
+      title: 'Glasreinigung Bürogebäude',
+      tenderReference: null,
+      tenderPlatform: null,
+      submissionDeadline: null,
+      offerDate: addDays(today, -40),
+      validUntil: null,
+      introText: null,
+      closingText: null,
+      lines: [line('Glasreinigung 2×/Jahr', '1.980,00', false)],
+    },
+    A,
+  );
+  await setOfferStatus(sql, R, 'versendet', A);
+  await setOfferStatus(sql, R, 'abgelehnt', A);
+  // --- Lastschrift: Gläubiger-ID (Muster der Bundesbank) + Mandat Musterfirma
+  await sql`update app.company set creditor_id = 'DE98ZZZ09999999999' where creditor_id is null`;
+  await saveMandate(
+    sql,
+    '00000000-0000-4000-8000-0000000d6301',
+    {
+      customerId: DEMO.company,
+      mandateRef: 'VD-29902-001',
+      signedOn: addDays(today, -30),
+      accountHolder: 'DEMO Musterfirma GmbH',
+      iban: 'DE02120300000000202051',
+      bic: null,
+      scheme: 'CORE',
+      active: true,
+      note: 'Original im Ordner Lastschriftmandate',
+      expectedVersion: null,
+    },
+    A,
+  );
+  // --- Kontoauszug: Zahlung auf eine offene Rechnung, Miete, unbekannter Eingang
+  const [open] = await sql<{ number: string; open_cents: bigint }[]>`
+    select number, open_cents from app.open_items where open_cents > 0 order by due_date limit 1`;
+  const seller = await getSeller(sql);
+  const own = seller.bankAccounts[0]!.iban.replace(/\s/g, '');
+  const eur = (c: bigint) => `${c / 100n}.${String(c % 100n).padStart(2, '0')}`;
+  const entry = (amt: string, ind: string, name: string, purpose: string, ref: string) =>
+    `<Ntry><Amt Ccy="EUR">${amt}</Amt><CdtDbtInd>${ind}</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>${addDays(today, -1)}</Dt></BookgDt>` +
+    `<AcctSvcrRef>${ref}</AcctSvcrRef><NtryDtls><TxDtls><RltdPties><${ind === 'CRDT' ? 'Dbtr' : 'Cdtr'}><Nm>${name}</Nm></${ind === 'CRDT' ? 'Dbtr' : 'Cdtr'}></RltdPties>` +
+    `<RmtInf><Ustrd>${purpose}</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>`;
+  const camt = `<?xml version="1.0" encoding="UTF-8"?><Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt>
+<GrpHdr><MsgId>DEMO</MsgId></GrpHdr><Stmt><Id>1</Id><Acct><Id><IBAN>${own}</IBAN></Id></Acct>
+${open ? entry(eur(open.open_cents), 'CRDT', 'Landeshauptstadt Muenchen', `RE ${open.number} Kassenzeichen 4711-0815`, 'DEMO1') : ''}
+${entry('1850.00', 'DBIT', 'Immobilien Sendling GmbH', 'Miete Lager Oktober', 'DEMO2')}
+${entry('250.00', 'CRDT', 'Unbekannt', 'Abschlag Reinigung', 'DEMO3')}
+</Stmt></BkToCstmrStmt></Document>`;
+  await importStatement(deps, {
+    id: '00000000-0000-4000-8000-0000000d6401',
+    filename: 'Kontoauszug_Muenchner_Bank.xml',
+    bytes: new TextEncoder().encode(camt),
+    accountIban: null,
+    actor: A,
+  });
+  // --- Import aus Fortytools (Beispiel)
+  const csv =
+    'Kd-Nr.;Firma;Straße;PLZ;Ort;Rechnungs-E-Mail;Zahlungsziel\r\n29950;DEMO WEG Sendlinger Höfe;Plinganserstr. 10;81369;München;verwaltung@example.org;14\r\n';
+  await applyImport(deps, {
+    id: '00000000-0000-4000-8000-0000000d6501',
+    kind: 'kunden',
+    filename: 'fortytools_kunden.csv',
+    bytes: new TextEncoder().encode(csv),
+    update: false,
+    actor: A,
+  });
+  console.log('Demo Phase 6 angelegt.');
 }

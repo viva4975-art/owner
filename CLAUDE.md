@@ -385,3 +385,14 @@ Testadresse.
     Datei-ID hätte z. B. die Objektleitung Personaldokumente laden können). Jetzt: Zugriff nur, wenn der Benutzer
     mindestens eine Verknüpfung sehen darf (Rolle + eigene Objekte); Test im Rechte-Browser-Test.
   - Tests: 171 Unit-/DB-Tests; Browser-Tests neu `e2e:personal` (11), `e2e:rechte` 24.
+- 2026-10-04: Lücke 4 erledigt – Planung wie Fortytools:
+  - Monatstafel (`/einsatzplanung/monat`): Mitarbeitende × Tage, Filter Einsatzgruppe (`employees.planning_group`),
+    Planungsnotizen sichtbar, Farben geplant/erledigt/abwesend/umgeplant/Ausfall.
+  - Tagesausnahmen (`shift_exceptions`, je Einsatz + Tag eindeutig): Ausfall, Vertretung, umgeplant (andere Zeit und/oder
+    anderer Mitarbeiter). Wiederkehrende Planung bleibt unverändert. Prüfungen: Wochentag/Gültigkeit, Vertretung aktiv
+    und nicht abwesend, keine Überschneidung, nicht mehr änderbar, sobald eine Zeit erfasst ist; Versionszähler, Protokoll.
+  - „Einsätze für abwesende Mitarbeiter“ (`/einsatzplanung/vertretungen`), auch Hinweis im Wochen- und Monatsplan;
+    Vorschläge: Mitarbeitende des Objekts zuerst, belegte nicht wählbar. Kein Ausfall aus Versehen (Pflichtauswahl).
+  - Vertretung sieht den Einsatz in der Handy-App, kann „Soll als Ist“ bestätigen und am fremden Objekt stempeln
+    (nur Vertretungstag −7/+1 Tag); Soll/Plan/Ist und Kalender rechnen mit den Ausnahmen.
+  - Tests: 178 Unit-/DB-Tests, Browser-Tests 196 Prüfungen (neu `npm run e2e:planung`, 9 Prüfungen).

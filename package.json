@@ -28,7 +28,8 @@
     "e2e:app": "node e2e/app.e2e.mjs",
     "e2e:leistungen": "node e2e/leistungen.e2e.mjs",
     "e2e:mahnung": "node e2e/mahnung.e2e.mjs",
-    "e2e:personal": "node e2e/personal.e2e.mjs"
+    "e2e:personal": "node e2e/personal.e2e.mjs",
+    "e2e:planung": "node e2e/planung.e2e.mjs"
   },
   "repository": {
     "type": "git",

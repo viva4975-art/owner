@@ -226,8 +226,15 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       select id, personnel_no, first_name, app_language, status from app.employees where id = ${id}`;
     if (!e || e.status !== 'aktiv') return null;
     const sites = await sql<{ id: string; name: string; site_no: string }[]>`
-      select s.id, s.name, s.site_no from app.employee_sites es join app.sites s on s.id = es.site_id
-       where es.employee_id = ${id} and s.active order by s.name`;
+      select s.id, s.name, s.site_no from app.sites s
+       where s.active
+         and (exists (select 1 from app.employee_sites es where es.employee_id = ${id} and es.site_id = s.id)
+              -- Vertretung heute/morgen: fremdes Objekt vorübergehend auswählbar
+              or exists (select 1 from app.shift_exceptions x join app.shift_plans p on p.id = x.shift_plan_id
+                          where x.substitute_employee_id = ${id} and p.site_id = s.id and x.kind <> 'ausfall'
+                            and x.work_date between (now() at time zone 'Europe/Berlin')::date
+                                                and (now() at time zone 'Europe/Berlin')::date + 1))
+       order by s.name`;
     return {
       id: e.id,
       personnel_no: e.personnel_no,

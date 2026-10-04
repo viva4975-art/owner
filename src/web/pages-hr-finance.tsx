@@ -464,6 +464,15 @@ export const EmployeeForm: FC<{
         placeholder="leer = Lohnstufe"
       />
     </div>
+    <div class="grid" style="margin-top:8px">
+      <Field
+        name="planning_group"
+        label="Einsatzgruppe"
+        value={e.planning_group}
+        placeholder="z. B. Team Süd, Springer"
+      />
+      <Field name="planning_notes" label="Planungsnotizen (für Disponenten)" value={e.planning_notes} />
+    </div>
     <div class="chk" style="margin-top:8px">
       <input
         type="checkbox"

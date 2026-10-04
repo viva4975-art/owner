@@ -140,7 +140,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
       }))
       .sort((a, b) => a.no.localeCompare(b.no));
     const totalMin = shifts.filter((s) => !s.absence).reduce((a, s) => a + s.minutes, 0);
-    const gaps = shifts.filter((s) => s.absence).length;
+    const gaps = shifts.filter((s) => s.absence && !s.holiday).length;
     // ISO-Kalenderwoche: Woche, in der der Donnerstag liegt
     const kw = (() => {
       const thu = new Date(`${addDays(monday, 3)}T00:00:00Z`);
@@ -188,7 +188,14 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
           <span class="mut small">
             {dateDe(monday)} – {dateDe(sunday)} · {hm(totalMin)} Std. geplant
           </span>
-          {gaps > 0 && <span class="badge err">{gaps} Einsätze ohne Vertretung (Urlaub/Krank)</span>}
+          {gaps > 0 && (
+            <a class="badge err" href={`/einsatzplanung/vertretungen?von=${monday}&bis=${sunday}`}>
+              {gaps} Einsätze ohne Vertretung (Urlaub/Krank) – jetzt regeln
+            </a>
+          )}
+          <a class="btn sm sec" href={`/einsatzplanung/monat?monat=${monday.slice(0, 7)}`}>
+            Monatstafel
+          </a>
         </form>
         <div class="tbl">
           <table class="plan">
@@ -232,7 +239,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                         .filter((s) => s.plan.site_id === site.id && s.date === d)
                         .map((s) => (
                           <a
-                            href={`/einsatzplanung/${s.plan.id}`}
+                            href={`/einsatzplanung/${s.plan.id}/tag/${s.date}?zurueck=${encodeURIComponent(`/einsatzplanung?woche=${monday}${siteFilter ? `&objekt=${siteFilter}` : ''}`)}`}
                             class="small"
                             style={`display:block;padding:4px 6px;margin-bottom:4px;border-radius:6px;text-decoration:none;color:var(--ink);border:1px solid ${s.absence ? '#fecdca' : s.entry ? '#bbf7d0' : 'var(--line)'};background:${s.absence ? 'var(--err-50)' : s.entry ? 'var(--ok-50)' : '#fff'}`}
                             title={
@@ -240,7 +247,9 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                                 ? `${ABSENCE_LABEL[s.absence as AbsenceKind]} – Vertretung nötig`
                                 : s.entry
                                   ? 'Zeit erfasst'
-                                  : 'geplant'
+                                  : s.exception
+                                    ? `${s.exception.kind === 'vertretung' ? 'Vertretung für' : 'umgeplant, sonst'} ${s.exception.original}`
+                                    : 'geplant – klicken zum Umplanen'
                             }
                           >
                             <b style={s.absence ? 'text-decoration:line-through' : ''}>
@@ -248,6 +257,12 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                             </b>
                             <br />
                             {s.plan.start_time}–{s.plan.end_time}
+                            {s.exception && (
+                              <span style="color:var(--brand)">
+                                {' '}
+                                · {s.exception.kind === 'vertretung' ? 'Vertr.' : 'umgepl.'}
+                              </span>
+                            )}
                             {s.absence && (
                               <span style="color:var(--err)">
                                 {' '}

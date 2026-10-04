@@ -31,6 +31,8 @@ export interface Employee {
   email_private: string | null;
   wage_level_id: string | null;
   carry_over_leave: boolean;
+  planning_group: string | null;
+  planning_notes: string | null;
   version: number;
 }
 
@@ -146,6 +148,8 @@ export const employeeInput = z
     email_private: z.preprocess(emptyToNull, z.email('Ungültige weitere E-Mail').nullable().default(null)),
     wage_level_id: z.preprocess(emptyToNull, z.uuid().nullable().default(null)),
     carry_over_leave: z.preprocess((v) => v === 'on' || v === 'true' || v === true, z.boolean()),
+    planning_group: optText,
+    planning_notes: optText,
     version: versionField,
     // vertraulich
     birth_place: optText,
@@ -235,6 +239,8 @@ export async function saveEmployee(sql: Sql, id: string, input: EmployeeInput, a
     email_private: input.email_private,
     wage_level_id: input.wage_level_id,
     carry_over_leave: input.carry_over_leave,
+    planning_group: input.planning_group,
+    planning_notes: input.planning_notes,
   };
   const priv = {
     birth_date: input.birth_date,
@@ -528,4 +534,11 @@ export function fillTemplate(body: string, e: Employee, p: Partial<EmployeePriva
     heute: d(todayBerlin()),
   };
   return body.replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k: string) => v[k] ?? m);
+}
+
+export async function planningGroups(sql: Sql) {
+  return (
+    await sql<{ g: string }[]>`select distinct planning_group as g from app.employees
+                                where status = 'aktiv' and planning_group is not null order by 1`
+  ).map((r) => r.g);
 }

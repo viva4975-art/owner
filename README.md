@@ -52,6 +52,7 @@ npm run e2e:app      # Browser-Test: Manifest/Service Worker, Dokument verteilen
 npm run e2e:leistungen # Browser-Test: Leistung (quartalsweise, eigene Rechnung, unfertig) → am Objekt abrechnen → geprüft
 npm run e2e:mahnung   # Browser-Test: Mahnwesen-Stapelverarbeitung (braucht überfällige Rechnungen in der DB)
 npm run e2e:personal # Browser-Test: Lohnstufe, Stammdaten mit Tags/Warnhinweis, Dokument aus Vorlage, Serienbrief, Kalender
+npm run e2e:planung  # Browser-Test: Monatstafel, Einsatz für einen Tag umplanen und zurücksetzen, Vertretungsliste
 ```
 
 ### Klick-Demo bauen (eine HTML-Datei zum Durchklicken, offline)
@@ -87,6 +88,7 @@ Rechnung/Storno/Abschlag/Schluss als XRechnung und ZUGFeRD KoSIT-gültig, Row Le
 | Mahnwesen   | Vorschläge aus überfälligen offenen Posten, 3 Stufen mit Fristen/Gebühren/Texten (einstellbar), Mahnsperre je Kunde, PDF mit GiroCode, Archiv, Versand genau einmal.                                                                                                                                                |
 | Lieferanten | Lieferanten und Nachunternehmer, Ablauf Freistellungsbescheinigung § 48b / Unbedenklichkeit mit Ampel, Nachweise als Dateien.                                                                                                                                                                                       |
 | Inventar    | Artikel mit Bestand und Nachbestellliste, Buchungen (Zugang/Abgang/Inventur) unveränderbar; Geräte mit Prüfterminen (DGUV V3); Schlüsselbuch mit Ausgabe-/Rückgabeprotokoll.                                                                                                                                        |
+| Planung     | Wochenplan, Monatstafel je Mitarbeiter (Filter Einsatzgruppe), je Einsatz und Tag: Ausfall, Vertretung oder Umplanung (Zeit/Mitarbeiter) – die wiederkehrende Planung bleibt; Liste „Einsätze für abwesende Mitarbeiter“ mit Vorschlägen (Objekt-Mitarbeitende zuerst, belegte gesperrt).                           |
 | Kunden      | zusätzlich Status Interessent, Reiter Angebote / Mahnungen / Dokumente.                                                                                                                                                                                                                                             |
 
 ## Anmeldung und Rollen

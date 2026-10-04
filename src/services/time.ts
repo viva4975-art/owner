@@ -179,7 +179,11 @@ async function assertMaySite(sql: Sql | Tx, employeeId: string, siteId: string) 
   const [ok] = await sql`
     select 1 from app.employees e where e.id = ${employeeId} and e.status = 'aktiv'
        and (exists (select 1 from app.employee_sites es where es.employee_id = e.id and es.site_id = ${siteId})
-            or exists (select 1 from app.shift_plans p where p.employee_id = e.id and p.site_id = ${siteId}))`;
+            or exists (select 1 from app.shift_plans p where p.employee_id = e.id and p.site_id = ${siteId})
+            or exists (select 1 from app.shift_exceptions x join app.shift_plans p on p.id = x.shift_plan_id
+                        where x.substitute_employee_id = e.id and p.site_id = ${siteId} and x.kind <> 'ausfall'
+                          and x.work_date between (now() at time zone 'Europe/Berlin')::date - 7
+                                              and (now() at time zone 'Europe/Berlin')::date + 1))`;
   if (!ok)
     throw new BusinessError('Diesem Objekt nicht zugeordnet – bitte Objektleitung anrufen', 'not_assigned');
 }
@@ -365,13 +369,43 @@ export interface PlannedShift {
   absence: string | null;
   holiday: string | undefined;
   entry: TimeEntryRow | undefined;
+  /** Tagesausnahme (Ausfall, Vertretung, umgeplant); bei Vertretung ist plan.employee_* der Vertreter */
+  exception?: {
+    id: string;
+    kind: 'ausfall' | 'vertretung' | 'umgeplant';
+    note: string | null;
+    original: string;
+    version: number;
+  };
+}
+
+interface ShiftException {
+  id: string;
+  shift_plan_id: string;
+  work_date: string;
+  kind: 'ausfall' | 'vertretung' | 'umgeplant';
+  substitute_employee_id: string | null;
+  substitute_name: string | null;
+  substitute_no: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  note: string | null;
+  version: number;
 }
 
 /** Soll-Einsätze für einen Zeitraum (je Tag), mit Abwesenheiten, Feiertagen und zugehörigen Ist-Zeiten. */
 export async function plannedShifts(
   sql: Sql,
-  f: { from: string; to: string; employeeId?: string; siteId?: string },
+  f: { from: string; to: string; employeeId?: string; siteId?: string; includeCancelled?: boolean },
 ): Promise<PlannedShift[]> {
+  // Vertretungen: Einsätze anderer Mitarbeiter, die dieser Mitarbeiter übernimmt
+  const subPlans = f.employeeId
+    ? (
+        await sql<{ id: string }[]>`
+          select distinct shift_plan_id as id from app.shift_exceptions
+           where substitute_employee_id = ${f.employeeId} and work_date between ${f.from} and ${f.to}`
+      ).map((r) => r.id)
+    : [];
   // Soll zählt erst ab dem Tag, an dem der Einsatz geplant wurde, und nicht vor dem Eintritt
   // (sonst würden rückwirkend angelegte Einsätze als „fehlende Zeiten“ erscheinen).
   const plans = await sql<(ShiftPlanRow & { effective_from: string })[]>`
@@ -380,13 +414,33 @@ export async function plannedShifts(
            greatest(p.valid_from, (p.created_at at time zone 'Europe/Berlin')::date, e.entry_date) as effective_from
       from app.shift_plans p join app.employees e on e.id = p.employee_id join app.sites s on s.id = p.site_id
      where p.valid_from <= ${f.to} and (p.valid_until is null or p.valid_until >= ${f.from}) and e.status = 'aktiv'
-       and ${f.employeeId ? sql`p.employee_id = ${f.employeeId}` : sql`true`}
+       and ${
+         f.employeeId
+           ? subPlans.length
+             ? sql`(p.employee_id = ${f.employeeId} or p.id in ${sql(subPlans)})`
+             : sql`p.employee_id = ${f.employeeId}`
+           : sql`true`
+       }
        and ${f.siteId ? sql`p.site_id = ${f.siteId}` : sql`true`}`;
   if (!plans.length) return [];
+  const exceptions = await sql<ShiftException[]>`
+    select x.id, x.shift_plan_id, x.work_date, x.kind::text as kind, x.substitute_employee_id, x.note, x.version,
+           to_char(x.start_time, 'HH24:MI') as start_time, to_char(x.end_time, 'HH24:MI') as end_time,
+           e.last_name || ', ' || e.first_name as substitute_name, e.personnel_no as substitute_no
+      from app.shift_exceptions x left join app.employees e on e.id = x.substitute_employee_id
+     where x.shift_plan_id in ${sql(plans.map((p) => p.id))} and x.work_date between ${f.from} and ${f.to}`;
+  const exOf = (planId: string, d: string) =>
+    exceptions.find((x) => x.shift_plan_id === planId && x.work_date === d);
+  const people = [
+    ...new Set([
+      ...plans.map((p) => p.employee_id),
+      ...exceptions.map((x) => x.substitute_employee_id).filter((x): x is string => !!x),
+    ]),
+  ];
   const absences = await sql<{ employee_id: string; kind: string; start_date: string; end_date: string }[]>`
     select employee_id, kind::text, start_date, end_date from app.absences
      where status = 'genehmigt' and start_date <= ${f.to} and end_date >= ${f.from}
-       and employee_id in ${sql([...new Set(plans.map((p) => p.employee_id))])}`;
+       and employee_id in ${sql(people)}`;
   const entries = await listEntries(sql, {
     from: f.from,
     to: f.to,
@@ -396,8 +450,26 @@ export async function plannedShifts(
   const out: PlannedShift[] = [];
   for (let d = f.from; d <= f.to; d = addDays(d, 1)) {
     const wd = isoWeekday(d);
-    for (const p of plans) {
-      if (p.weekday !== wd || p.effective_from > d || (p.valid_until && p.valid_until < d)) continue;
+    for (const p0 of plans) {
+      if (p0.weekday !== wd || p0.effective_from > d || (p0.valid_until && p0.valid_until < d)) continue;
+      const ex = exOf(p0.id, d);
+      if (ex?.kind === 'ausfall' && !f.includeCancelled) continue;
+      // Vertretung/Umplanung: Einsatz gilt an diesem Tag für den anderen Mitarbeiter bzw. zu anderer Zeit
+      const p: typeof p0 =
+        ex && ex.kind !== 'ausfall'
+          ? {
+              ...p0,
+              ...(ex.substitute_employee_id
+                ? {
+                    employee_id: ex.substitute_employee_id,
+                    employee_name: ex.substitute_name ?? p0.employee_name,
+                    personnel_no: ex.substitute_no ?? p0.personnel_no,
+                  }
+                : {}),
+              ...(ex.start_time ? { start_time: ex.start_time, end_time: ex.end_time! } : {}),
+            }
+          : p0;
+      if (f.employeeId && p.employee_id !== f.employeeId) continue;
       const [sh, sm] = p.start_time.split(':').map(Number) as [number, number];
       const [eh, em] = p.end_time.split(':').map(Number) as [number, number];
       const abs = absences.find(
@@ -406,10 +478,21 @@ export async function plannedShifts(
       out.push({
         plan: p,
         date: d,
-        minutes: eh * 60 + em - (sh * 60 + sm) - p.break_minutes,
+        minutes: ex?.kind === 'ausfall' ? 0 : eh * 60 + em - (sh * 60 + sm) - p.break_minutes,
         absence: abs?.kind ?? null,
         holiday: holidayName(d),
         entry: undefined,
+        ...(ex
+          ? {
+              exception: {
+                id: ex.id,
+                kind: ex.kind,
+                note: ex.note,
+                original: p0.employee_name,
+                version: ex.version,
+              },
+            }
+          : {}),
       });
     }
   }
@@ -459,12 +542,31 @@ export async function confirmPlanned(
     throw new BusinessError('Bestätigen geht nur für die letzten 7 Tage – sonst bitte Nachtrag', 'too_old');
   }
   return withActor(sql, p.actor, null, async (tx) => {
-    const [plan] = await tx<ShiftPlan[]>`
+    const [plan0] = await tx<ShiftPlan[]>`
       select *, to_char(start_time, 'HH24:MI') as start_time, to_char(end_time, 'HH24:MI') as end_time
-        from app.shift_plans where id = ${p.planId} and employee_id = ${p.employeeId}
+        from app.shift_plans where id = ${p.planId}
          and valid_from <= ${p.date} and (valid_until is null or valid_until >= ${p.date})
          and (created_at at time zone 'Europe/Berlin')::date <= ${p.date}`;
-    if (!plan || plan.weekday !== isoWeekday(p.date))
+    const [ex] = await tx<
+      {
+        kind: string;
+        substitute_employee_id: string | null;
+        start_time: string | null;
+        end_time: string | null;
+      }[]
+    >`
+      select kind::text, substitute_employee_id, to_char(start_time, 'HH24:MI') as start_time,
+             to_char(end_time, 'HH24:MI') as end_time
+        from app.shift_exceptions where shift_plan_id = ${p.planId} and work_date = ${p.date}`;
+    const plan =
+      plan0 && ex?.kind !== 'ausfall'
+        ? {
+            ...plan0,
+            employee_id: ex?.substitute_employee_id ?? plan0.employee_id,
+            ...(ex?.start_time ? { start_time: ex.start_time, end_time: ex.end_time! } : {}),
+          }
+        : undefined;
+    if (!plan || plan.weekday !== isoWeekday(p.date) || plan.employee_id !== p.employeeId)
       throw new BusinessError('Kein geplanter Einsatz an diesem Tag', 'no_plan');
     const [{ id }] = (await tx`select md5(${p.planId} || ':' || ${p.date})::uuid as id`) as unknown as [
       { id: string },

@@ -284,6 +284,8 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     label: 'Disposition',
     items: [
       { label: 'Einsatzplanung (Wochenplan)', href: '/einsatzplanung' },
+      { label: 'Planung Monatstafel', href: '/einsatzplanung/monat' },
+      { label: 'Einsätze für abwesende Mitarbeiter', href: '/einsatzplanung/vertretungen' },
       { label: 'Arbeitsscheine (Unterschrift vor Ort)', href: '/arbeitsscheine' },
       { label: 'Qualitätskontrollen', href: '/qualitaet' },
       { label: 'Zählerstände', href: '/zaehler' },

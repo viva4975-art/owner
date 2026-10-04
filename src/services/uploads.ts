@@ -238,3 +238,41 @@ export async function cleanupStaleUploads(sql: Sql, cfg: UploadConfig, maxAgeHou
   }
   return stale.length;
 }
+
+/**
+ * Serverseitig erzeugte Datei (z. B. Brief aus Vorlage) direkt als fertige Datei ablegen: write-once,
+ * SHA-256, mit Verknüpfung. Idempotent über die ID.
+ */
+export async function storeFile(
+  sql: Sql,
+  cfg: UploadConfig,
+  p: { id: string; name: string; type: string; data: Uint8Array; link: LinkTarget; category: string | null },
+  actor: string,
+): Promise<FileRow> {
+  const [exists] = await sql<FileRow[]>`select * from app.files where id = ${p.id}`;
+  if (exists) return exists;
+  const name = safeName(p.name);
+  const now = new Date();
+  const rel = join(
+    String(now.getUTCFullYear()),
+    String(now.getUTCMonth() + 1).padStart(2, '0'),
+    `${p.id}_${name}`,
+  );
+  const target = join(resolve(cfg.dir), rel);
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(`${target}.part`, p.data);
+  await rename(`${target}.part`, target);
+  await chmod(target, 0o444);
+  const sha = createHash('sha256').update(p.data).digest('hex');
+  return sql.begin(async (tx) => {
+    const [f] = await tx<FileRow[]>`
+      insert into app.files (id, original_name, content_type, size_bytes, chunk_size, total_chunks, uploaded_by,
+                             status, sha256, storage_path, completed_at)
+      values (${p.id}, ${name}, ${p.type}, ${p.data.byteLength}, ${CHUNK_SIZE}, 1, ${actor},
+              'complete', ${sha}, ${rel}, now())
+      returning *`;
+    await tx`insert into app.file_links (file_id, entity_type, entity_id, category, linked_by)
+             values (${p.id}, ${p.link.type}, ${p.link.id}, ${p.category}, ${actor}) on conflict do nothing`;
+    return f!;
+  });
+}

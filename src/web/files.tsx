@@ -15,7 +15,9 @@ export const FileArea: FC<{
   title?: string;
   hint?: string;
   maxBytes: number;
-}> = ({ link, files, category, title, hint, maxBytes }) => (
+  /** nur Liste, ohne Upload-Bereich */
+  listOnly?: boolean;
+}> = ({ link, files, category, title, hint, maxBytes, listOnly }) => (
   <div class="filearea">
     {files.length > 0 && (
       <ul class="files" style="margin:0 0 12px">
@@ -48,19 +50,22 @@ export const FileArea: FC<{
         ))}
       </ul>
     )}
-    <div data-uploader data-link-type={link.type} data-link-id={link.id} data-category={category ?? ''}>
-      <div class="drop-zone" tabindex={0} role="button" aria-label={title ?? 'Dateien hochladen'}>
-        <Icon name="upload" size={22} />
-        <div>
-          <b>{title ?? 'Dateien hierher ziehen'}</b> oder <u>auswählen</u>
+    {!listOnly && (
+      <div data-uploader data-link-type={link.type} data-link-id={link.id} data-category={category ?? ''}>
+        <div class="drop-zone" tabindex={0} role="button" aria-label={title ?? 'Dateien hochladen'}>
+          <Icon name="upload" size={22} />
+          <div>
+            <b>{title ?? 'Dateien hierher ziehen'}</b> oder <u>auswählen</u>
+          </div>
+          <div class="small">
+            {hint ??
+              `Auch große ZIP-Dateien bis ${fileSize(maxBytes)} – Upload setzt nach Unterbrechung fort.`}
+          </div>
+          <input type="file" multiple />
         </div>
-        <div class="small">
-          {hint ?? `Auch große ZIP-Dateien bis ${fileSize(maxBytes)} – Upload setzt nach Unterbrechung fort.`}
-        </div>
-        <input type="file" multiple />
+        <ul class="files" />
       </div>
-      <ul class="files" />
-    </div>
+    )}
     <template id="vd-ic-zip" dangerouslySetInnerHTML={{ __html: iconSvg('zip', 18) }} />
     <template id="vd-ic-file" dangerouslySetInnerHTML={{ __html: iconSvg('file', 18) }} />
     <script dangerouslySetInnerHTML={{ __html: UPLOADER_JS }} />

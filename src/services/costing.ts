@@ -55,8 +55,8 @@ export async function siteCosting(
     sql<{ site_id: string; minutes: number; wage_minutes_cents: bigint; missing: number }[]>`
       select t.site_id,
              sum(extract(epoch from (t.end_at - t.start_at)) / 60 - t.break_minutes)::int as minutes,
-             coalesce(sum(((extract(epoch from (t.end_at - t.start_at)) / 60 - t.break_minutes)::bigint) * e.hourly_wage_cents), 0)::bigint as wage_minutes_cents,
-             count(*) filter (where e.hourly_wage_cents is null)::int as missing
+             coalesce(sum(((extract(epoch from (t.end_at - t.start_at)) / 60 - t.break_minutes)::bigint) * app.effective_wage_cents(e)), 0)::bigint as wage_minutes_cents,
+             count(*) filter (where app.effective_wage_cents(e) is null)::int as missing
         from app.time_entries t join app.employees e on e.id = t.employee_id
        where t.status in ('erfasst', 'freigegeben') and t.work_date between ${from} and ${to}
        group by t.site_id`,

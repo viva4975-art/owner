@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Sql } from '../db/client.js';
 import { assertVersion, versionField } from './crm.js';
+import { todayBerlin } from '../domain/invoice/calc.js';
 import { BusinessError } from './errors.js';
 
 const emptyToNull = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? null : v);
@@ -21,6 +22,15 @@ export interface Employee {
   phone: string | null;
   email: string | null;
   languages: string[];
+  annual_leave_days: string;
+  salutation: 'Herr' | 'Frau' | 'divers' | null;
+  tags: string[];
+  warning_note: string | null;
+  info: string | null;
+  mobile: string | null;
+  email_private: string | null;
+  wage_level_id: string | null;
+  carry_over_leave: boolean;
   version: number;
 }
 
@@ -35,8 +45,44 @@ export interface EmployeePrivate {
   health_insurance: string | null;
   iban: string | null;
   residence_permit_until: string | null;
+  birth_place: string | null;
+  birth_country: string | null;
+  marital_status: string | null;
+  residence_permit_info: string | null;
   version: number;
 }
+
+/** Vorschläge wie in Fortytools; freie Tags sind ebenfalls möglich. */
+export const TAG_SUGGESTIONS = [
+  'Minijob',
+  'Teilzeit',
+  'Vollzeit',
+  'Objektleitung',
+  'Springer',
+  'Führerschein',
+];
+export const MARITAL_STATUS = [
+  'ledig',
+  'verheiratet',
+  'eingetragene Lebenspartnerschaft',
+  'geschieden',
+  'verwitwet',
+  'nicht verheiratet/unbekannt',
+];
+const tagList = z.preprocess(
+  (v) =>
+    typeof v === 'string'
+      ? [
+          ...new Set(
+            v
+              .split(/[,;]+/)
+              .map((x) => x.trim())
+              .filter(Boolean),
+          ),
+        ]
+      : (v ?? []),
+  z.array(z.string().max(40)).max(20),
+);
 
 export const EMPLOYMENT_TYPES = {
   vollzeit: 'Vollzeit',
@@ -88,8 +134,24 @@ export const employeeInput = z
           : (v ?? []),
       z.array(z.string()),
     ),
+    annual_leave_days: z.preprocess(
+      (v) => (typeof v === 'string' && v.trim() ? Number(v.replace(',', '.')) : 30),
+      z.number().min(0, 'Urlaubsanspruch 0–60 Tage').max(60, 'Urlaubsanspruch 0–60 Tage'),
+    ),
+    salutation: z.preprocess(emptyToNull, z.enum(['Herr', 'Frau', 'divers']).nullable().default(null)),
+    tags: tagList,
+    warning_note: optText,
+    info: optText,
+    mobile: optText,
+    email_private: z.preprocess(emptyToNull, z.email('Ungültige weitere E-Mail').nullable().default(null)),
+    wage_level_id: z.preprocess(emptyToNull, z.uuid().nullable().default(null)),
+    carry_over_leave: z.preprocess((v) => v === 'on' || v === 'true' || v === true, z.boolean()),
     version: versionField,
     // vertraulich
+    birth_place: optText,
+    birth_country: optText,
+    marital_status: optText,
+    residence_permit_info: optText,
     birth_date: optDate,
     street: optText,
     postal_code: optText,
@@ -119,12 +181,16 @@ export const employeeInput = z
 
 export type EmployeeInput = z.infer<typeof employeeInput>;
 
-export async function listEmployees(sql: Sql, opts: { status?: 'aktiv' | 'ausgetreten'; q?: string } = {}) {
+export async function listEmployees(
+  sql: Sql,
+  opts: { status?: 'aktiv' | 'ausgetreten'; q?: string; tag?: string } = {},
+) {
   return sql<(Employee & { residence_permit_until: string | null; site_count: number })[]>`
     select e.*, p.residence_permit_until,
            (select count(*)::int from app.employee_sites es where es.employee_id = e.id) as site_count
       from app.employees e left join app.employee_private p on p.employee_id = e.id
      where ${opts.status ? sql`e.status = ${opts.status}` : sql`true`}
+       and ${opts.tag ? sql`${opts.tag} = any(e.tags)` : sql`true`}
        and ${opts.q ? sql`(e.last_name || ' ' || e.first_name || ' ' || e.personnel_no) ilike ${'%' + opts.q + '%'}` : sql`true`}
      order by e.last_name, e.first_name`;
 }
@@ -146,8 +212,7 @@ function centsFromWage(v: string | null): bigint | null {
 }
 
 export async function saveEmployee(sql: Sql, id: string, input: EmployeeInput, actor: string) {
-  const status =
-    input.exit_date && input.exit_date <= new Date().toISOString().slice(0, 10) ? 'ausgetreten' : 'aktiv';
+  const status = input.exit_date && input.exit_date <= todayBerlin() ? 'ausgetreten' : 'aktiv';
   const base = {
     personnel_no: input.personnel_no,
     first_name: input.first_name,
@@ -161,6 +226,15 @@ export async function saveEmployee(sql: Sql, id: string, input: EmployeeInput, a
     phone: input.phone,
     email: input.email,
     languages: input.languages,
+    annual_leave_days: input.annual_leave_days,
+    salutation: input.salutation,
+    tags: input.tags,
+    warning_note: input.warning_note,
+    info: input.info,
+    mobile: input.mobile,
+    email_private: input.email_private,
+    wage_level_id: input.wage_level_id,
+    carry_over_leave: input.carry_over_leave,
   };
   const priv = {
     birth_date: input.birth_date,
@@ -173,6 +247,10 @@ export async function saveEmployee(sql: Sql, id: string, input: EmployeeInput, a
     health_insurance: input.health_insurance,
     iban: input.iban ? input.iban.replace(/\s/g, '').toUpperCase() : null,
     residence_permit_until: input.residence_permit_until,
+    birth_place: input.birth_place,
+    birth_country: input.birth_country,
+    marital_status: input.marital_status,
+    residence_permit_info: input.residence_permit_info,
   };
   try {
     await sql.begin(async (tx) => {
@@ -308,4 +386,146 @@ export async function exportEmployeesCsv(sql: Sql): Promise<string> {
       .join(';'),
   );
   return '﻿' + [header.join(';'), ...lines].join('\r\n') + '\r\n';
+}
+
+/** Alle verwendeten Tags (für Filter-Chips). */
+export async function allTags(sql: Sql) {
+  return sql<{ tag: string; n: number }[]>`
+    select t as tag, count(*)::int as n from app.employees, unnest(tags) t
+     where status = 'aktiv' group by t order by t`;
+}
+
+// ---------------------------------------------------------------------------
+// Lohnstufen
+// ---------------------------------------------------------------------------
+
+export interface WageLevel {
+  id: string;
+  name: string;
+  hourly_wage_cents: bigint;
+  valid_from: string | null;
+  note: string | null;
+  active: boolean;
+  version: number;
+}
+
+export async function listWageLevels(sql: Sql, all = false) {
+  return sql<(WageLevel & { employees: number })[]>`
+    select w.*, (select count(*)::int from app.employees e where e.wage_level_id = w.id and e.status = 'aktiv') as employees
+      from app.wage_levels w where ${all ? sql`true` : sql`w.active`} order by w.name`;
+}
+
+export async function saveWageLevel(
+  sql: Sql,
+  id: string,
+  p: {
+    name: string;
+    wageCents: bigint;
+    validFrom: string | null;
+    note: string | null;
+    active: boolean;
+    expectedVersion: number | null;
+  },
+) {
+  if (!p.name.trim()) throw new BusinessError('Bitte Bezeichnung angeben');
+  if (p.wageCents <= 0n) throw new BusinessError('Stundenlohn muss größer 0 sein');
+  const [cur] = await sql<{ version: number }[]>`select version from app.wage_levels where id = ${id}`;
+  assertVersion(cur?.version, p.expectedVersion, 'Die Lohnstufe');
+  try {
+    await sql`
+      insert into app.wage_levels (id, name, hourly_wage_cents, valid_from, note, active)
+      values (${id}, ${p.name.trim()}, ${p.wageCents}, ${p.validFrom}, ${p.note}, ${p.active})
+      on conflict (id) do update set name = excluded.name, hourly_wage_cents = excluded.hourly_wage_cents,
+        valid_from = excluded.valid_from, note = excluded.note, active = excluded.active`;
+  } catch (e) {
+    if ((e as { code?: string }).code === '23505')
+      throw new BusinessError(`„${p.name.trim()}“ gibt es schon`);
+    throw e;
+  }
+}
+
+/** Wirksamer Stundenlohn: individueller Lohn vor Lohnstufe. */
+export async function effectiveWage(sql: Sql, employeeId: string): Promise<bigint | null> {
+  const [r] = await sql<{ c: bigint | null }[]>`
+    select app.effective_wage_cents(e) as c from app.employees e where e.id = ${employeeId}`;
+  return r?.c ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Dokumentvorlagen (Serienbrief, „Neu aus Vorlage“)
+// ---------------------------------------------------------------------------
+
+export const DOC_CATEGORIES = [
+  'Arbeitsvertrag',
+  'Personalunterlagen',
+  'Unterweisung',
+  'Bescheinigung',
+  'Sonstiges',
+];
+
+export interface DocumentTemplate {
+  id: string;
+  title: string;
+  category: string;
+  body: string;
+  active: boolean;
+  version: number;
+}
+
+export async function listTemplates(sql: Sql, all = false) {
+  return sql<DocumentTemplate[]>`
+    select * from app.document_templates where ${all ? sql`true` : sql`active`} order by title`;
+}
+
+export async function saveTemplate(
+  sql: Sql,
+  id: string,
+  p: { title: string; category: string; body: string; active: boolean; expectedVersion: number | null },
+) {
+  if (!p.title.trim() || !p.body.trim()) throw new BusinessError('Bitte Titel und Text angeben');
+  const [cur] = await sql<{ version: number }[]>`select version from app.document_templates where id = ${id}`;
+  assertVersion(cur?.version, p.expectedVersion, 'Die Vorlage');
+  await sql`
+    insert into app.document_templates (id, title, category, body, active)
+    values (${id}, ${p.title.trim()}, ${p.category}, ${p.body}, ${p.active})
+    on conflict (id) do update set title = excluded.title, category = excluded.category, body = excluded.body,
+      active = excluded.active`;
+}
+
+export const TEMPLATE_FIELDS: [string, string][] = [
+  ['anrede_name', 'Herr Max Mustermann'],
+  ['anrede', 'Herr / Frau'],
+  ['vorname', 'Vorname'],
+  ['nachname', 'Nachname'],
+  ['personalnummer', 'Personalnummer'],
+  ['eintritt', 'Eintrittsdatum'],
+  ['beschaeftigung', 'Beschäftigungsart'],
+  ['wochenstunden', 'Wochenstunden'],
+  ['geburtsdatum', 'Geburtsdatum'],
+  ['strasse', 'Straße'],
+  ['plz', 'PLZ'],
+  ['ort', 'Ort'],
+  ['heute', 'heutiges Datum'],
+];
+
+/** Platzhalter füllen. Unbekannte Platzhalter bleiben sichtbar stehen (fällt beim Lesen auf). */
+export function fillTemplate(body: string, e: Employee, p: Partial<EmployeePrivate> | undefined): string {
+  const d = (x: string | null | undefined) => (x ? x.split('-').reverse().join('.') : '');
+  const anrede = e.salutation === 'divers' ? '' : (e.salutation ?? '');
+  const v: Record<string, string> = {
+    anrede_name: [anrede, e.first_name, e.last_name].filter(Boolean).join(' '),
+    anrede,
+    vorname: e.first_name,
+    nachname: e.last_name,
+    personalnummer: e.personnel_no,
+    eintritt: d(e.entry_date),
+    beschaeftigung: EMPLOYMENT_TYPES[e.employment_type],
+    wochenstunden: e.weekly_hours ? String(Number(e.weekly_hours)).replace('.', ',') : '–',
+    geburtsdatum: d(p?.birth_date),
+    strasse: p?.street ?? '',
+    plz: p?.postal_code ?? '',
+    ort: p?.city ?? '',
+    heute: d(todayBerlin()),
+  };
+  return body.replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k: string) => v[k] ?? m);
 }

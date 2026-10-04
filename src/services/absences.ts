@@ -1,4 +1,5 @@
 import type { Sql } from '../db/client.js';
+import { todayBerlin } from '../domain/invoice/calc.js';
 import { workingDays } from '../domain/time/holidays.js';
 import { BusinessError } from './errors.js';
 
@@ -127,7 +128,47 @@ export async function decideAbsence(
 }
 
 /** Urlaubskonto im Kalenderjahr: Anspruch (anteilig bei Ein-/Austritt), genommen, beantragt, Rest. */
-export async function leaveBalance(sql: Sql, employeeId: string, year: number) {
+export interface LeaveBalance {
+  entitlement: number;
+  taken: number;
+  requested: number;
+  rest: number;
+  /** Resturlaub aus dem Vorjahr (nur bei „Resturlaub übertragen“) */
+  carried: number;
+  /** davon zum 31.03. verfallen (nicht bis dahin genommen) */
+  carriedExpired: number;
+}
+
+/**
+ * Urlaubskonto eines Jahres. Resturlaub des Vorjahres wird übertragen und vorrangig bis 31.03. verbraucht; der Rest
+ * verfällt danach (§ 7 Abs. 3 BUrlG). ACHTUNG (BAG 19.02.2019, 9 AZR 541/15): Verfall nur, wenn der Arbeitgeber
+ * rechtzeitig zum Urlaub aufgefordert und auf den Verfall hingewiesen hat – die Anzeige ist nur ein Rechenwert.
+ */
+export async function leaveBalance(sql: Sql, employeeId: string, year: number): Promise<LeaveBalance> {
+  const base = await baseBalance(sql, employeeId, year);
+  const [e] = await sql<{ carry_over_leave: boolean; entry_date: string }[]>`
+    select carry_over_leave, entry_date from app.employees where id = ${employeeId}`;
+  let carried = 0;
+  if (e?.carry_over_leave && e.entry_date < `${year}-01-01`) {
+    const prev = await baseBalance(sql, employeeId, year - 1);
+    carried = Math.max(0, prev.entitlement - prev.taken);
+  }
+  // im 1. Quartal genommener Urlaub verbraucht zuerst den Übertrag
+  const q1 = base.takenQ1;
+  const usedCarry = Math.min(carried, q1);
+  const expired = todayBerlin() > `${year}-03-31` ? carried - usedCarry : 0;
+  const rest = base.entitlement + carried - expired - base.taken - base.requested;
+  return {
+    entitlement: base.entitlement,
+    taken: base.taken,
+    requested: base.requested,
+    rest,
+    carried,
+    carriedExpired: expired,
+  };
+}
+
+async function baseBalance(sql: Sql, employeeId: string, year: number) {
   const [e] = await sql<{ annual_leave_days: string; entry_date: string; exit_date: string | null }[]>`
     select annual_leave_days::text, entry_date, exit_date from app.employees where id = ${employeeId}`;
   if (!e) throw new BusinessError('Mitarbeiter nicht gefunden');
@@ -153,5 +194,12 @@ export async function leaveBalance(sql: Sql, employeeId: string, year: number) {
   const requested = list
     .filter((a) => a.kind === 'urlaub' && a.status === 'beantragt')
     .reduce((s, a) => s + inYear(a), 0);
-  return { entitlement, taken, requested, rest: entitlement - taken - requested };
+  const takenQ1 = list
+    .filter((a) => a.kind === 'urlaub' && a.status === 'genehmigt' && a.start_date <= `${year}-03-31`)
+    .reduce((sum, a) => {
+      const st = a.start_date < yStart ? yStart : a.start_date;
+      const t = a.end_date > `${year}-03-31` ? `${year}-03-31` : a.end_date;
+      return sum + (a.half_day ? 0.5 : workingDays(st, t));
+    }, 0);
+  return { entitlement, taken, requested, takenQ1 };
 }

@@ -333,7 +333,8 @@ describe.skipIf(!available)('Zeiterfassung, Einsatzplanung, Urlaub (Datenbank)',
     await decideAbsence(sql, id, 'genehmigt', 'buero');
     bal = await leaveBalance(sql, emp, 2027);
     expect(bal.taken).toBe(4); // 4.–8.1. ohne Hl. Drei Könige
-    expect(bal.rest).toBe(26);
+    expect(bal.carried).toBe(26); // Resturlaub 2026 (30 − 4) wird übertragen, nutzbar bis 31.03.2027
+    expect(bal.rest).toBe(30 + 26 - 4);
     expect((await listAbsences(sql, { employeeId: emp }))[0]!.days).toBe(8);
     // anteiliger Anspruch bei Eintritt 01.07.
     expect((await leaveBalance(sql, other, 2026)).entitlement).toBe(15);

@@ -5,14 +5,21 @@ import { addNote, listNotes, listTasks, saveTask, setTaskDone, taskInput } from 
 import {
   type Employee,
   employeeInput,
+  allTags,
+  effectiveWage,
   exportEmployeesCsv,
   getEmployee,
   hrReminders,
   listEmployees,
+  listTemplates,
+  listWageLevels,
   saveEmployee,
   setEmployeeSites,
   suggestPersonnelNo,
 } from '../services/employees.js';
+import { sollPlanIst } from '../services/hr-month.js';
+import { todayBerlin } from '../domain/invoice/calc.js';
+import { MonthBox } from './pages-hr.js';
 import { BusinessError } from '../services/errors.js';
 import { listInvoices } from '../services/invoices.js';
 import { listSites } from '../services/masterdata.js';
@@ -250,11 +257,30 @@ export function registerModuleRoutes({ app, deps, page, back, shells }: Ctx) {
   app.get('/personal', async (c) => {
     const status = c.req.query('status') ?? 'aktiv';
     const q = c.req.query('q')?.trim() || null;
-    const rows = await listEmployees(sql, {
-      ...(status === 'aktiv' || status === 'ausgetreten' ? { status } : {}),
-      ...(q ? { q } : {}),
-    });
-    return page(c, 'Mitarbeiter', 'personal', <EmployeeList rows={rows} status={status} q={q} canExport />);
+    const tag = c.req.query('tag')?.trim() || null;
+    const [rows, tags, templates] = await Promise.all([
+      listEmployees(sql, {
+        ...(status === 'aktiv' || status === 'ausgetreten' ? { status } : {}),
+        ...(q ? { q } : {}),
+        ...(tag ? { tag } : {}),
+      }),
+      allTags(sql),
+      listTemplates(sql),
+    ]);
+    return page(
+      c,
+      'Mitarbeiter',
+      'personal',
+      <EmployeeList
+        rows={rows}
+        status={status}
+        q={q}
+        tag={tag}
+        tags={tags}
+        templates={templates}
+        canExport
+      />,
+    );
   });
 
   app.get('/personal/export.csv', async (c) => {
@@ -291,19 +317,44 @@ export function registerModuleRoutes({ app, deps, page, back, shells }: Ctx) {
 
   shells.employee = employeePage as NonNullable<Ctx['shells']['employee']>;
 
+  /** Soll/Plan/Ist: Vormonat, aktueller Monat, Folgemonat (wie Fortytools). */
+  const monthBox = async (employeeId: string) => {
+    const cur = todayBerlin().slice(0, 7);
+    const shift = (n: number) => {
+      const i = Number(cur.slice(0, 4)) * 12 + Number(cur.slice(5, 7)) - 1 + n;
+      return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`;
+    };
+    const rows = await Promise.all([-1, 0, 1].map((n) => sollPlanIst(sql, employeeId, shift(n))));
+    return <MonthBox employeeId={employeeId} rows={rows} current={cur} />;
+  };
+
   app.get(`/personal/:id{${UUID}}`, (c) =>
     employeePage(c, 'uebersicht', async (e) => {
       const data = (await getEmployee(sql, e.id))!;
-      return <EmployeeOverview e={e} priv={data.priv} sites={data.sites} showPrivate />;
+      const [wage, [lvl]] = await Promise.all([
+        effectiveWage(sql, e.id),
+        sql<{ name: string }[]>`select name from app.wage_levels where id = ${e.wage_level_id}`,
+      ]);
+      return (
+        <EmployeeOverview
+          e={e}
+          priv={data.priv}
+          sites={data.sites}
+          showPrivate
+          wage={{ level: lvl?.name ?? null, cents: wage }}
+          month={await monthBox(e.id)}
+        />
+      );
     }),
   );
 
   app.get(`/personal/:id{${UUID}}/bearbeiten`, async (c) => {
     const id = c.req.param('id');
     const data = await getEmployee(sql, id);
-    const sites = await listSites(sql);
+    const [sites, wageLevels] = await Promise.all([listSites(sql), listWageLevels(sql)]);
     const form = (
       <EmployeeForm
+        wageLevels={wageLevels}
         id={id}
         e={data?.employee ?? { personnel_no: await suggestPersonnelNo(sql), employment_type: 'teilzeit' }}
         priv={data?.priv ?? {}}

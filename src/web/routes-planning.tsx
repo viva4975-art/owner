@@ -804,6 +804,17 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
               <div class="v">{String(bal.entitlement).replace('.', ',')}</div>
               <div class="s">Tage (anteilig bei Ein-/Austritt)</div>
             </div>
+            {bal.carried > 0 && (
+              <div class="kpi">
+                <div class="l">Übertrag aus {year - 1}</div>
+                <div class="v">{String(bal.carried).replace('.', ',')}</div>
+                <div class="s">
+                  {bal.carriedExpired > 0
+                    ? `${String(bal.carriedExpired).replace('.', ',')} Tage zum 31.03. verfallen – nur wirksam, wenn rechtzeitig auf den Verfall hingewiesen wurde (BAG 9 AZR 541/15)`
+                    : 'bis 31.03. nehmen, sonst Verfall (nur nach Hinweis an den Mitarbeiter)'}
+                </div>
+              </div>
+            )}
             <div class="kpi">
               <div class="l">genommen / beantragt</div>
               <div class="v">

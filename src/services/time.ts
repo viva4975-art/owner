@@ -711,8 +711,8 @@ export async function monthSummary(sql: Sql, month: string) {
         weekly_hours: string | null;
       }[]
     >`
-      select id, last_name || ', ' || first_name as name, personnel_no, hourly_wage_cents, weekly_hours::text
-        from app.employees where status = 'aktiv' order by last_name, first_name`,
+      select id, last_name || ', ' || first_name as name, personnel_no, app.effective_wage_cents(e) as hourly_wage_cents, weekly_hours::text
+        from app.employees e where status = 'aktiv' order by last_name, first_name`,
   ]);
   return {
     from,

@@ -551,8 +551,8 @@ export async function renderLetterPdf(p: {
     w.rule(w.y);
     w.y += 15.6;
   };
-  header();
-  for (const r of p.rows) {
+  if (p.columns.length) header();
+  for (const r of p.columns.length ? p.rows : []) {
     w.ensure(LH + 16, () => {
       w.y += 15.5;
       header();
@@ -562,8 +562,9 @@ export async function renderLetterPdf(p: {
     w.rule(w.y);
     w.y += 15.6;
   }
-  const last = p.columns[p.columns.length - 1]!.x;
+  const last = p.columns[p.columns.length - 1]?.x ?? RIGHT;
   const labelX = p.columns[p.columns.length - 2]?.x ?? last - 100;
+  if (!p.columns.length) w.y -= 30; // reiner Brief ohne Tabelle
   w.ensure(19.6 * (p.sums.length + 1) + 10);
   w.y += 2;
   for (const [k, v] of p.sums) {

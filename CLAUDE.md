@@ -368,3 +368,20 @@ Testadresse.
   nichts doppelt), optional gleich per E-Mail. Fehler bei einem Kunden brechen den Lauf nicht ab. Regeln werden
   serverseitig geprüft (Bug gefunden: zu frische Rechnungen ließen sich sonst mahnen).
   Tests: 167 Unit-/DB-Tests, neu `npm run e2e:mahnung` (6 Prüfungen).
+- 2026-10-04: Lücke 3 erledigt – Personal wie Fortytools:
+  - Stammdaten: Anrede, Tags (Filter-Chips in der Liste), Warnhinweis (rot in der Übersicht), Information, Mobil,
+    weitere E-Mail, Urlaubsanspruch, Lohnstufe (Personal → Lohnstufen; individueller Stundenlohn geht vor, wirksamer
+    Lohn in Nachkalkulation und Mindestlohn-Prüfung), vertraulich: Geburtsort/-land, Familienstand,
+    Aufenthaltserlaubnis-Info.
+  - Reiter „Dokumente“ je Mitarbeiter mit Kategorien (Arbeitsvertrag, Personalunterlagen, Unterweisung, Bescheinigung,
+    Sonstiges) + „Neu aus Vorlage“ (PDF auf Briefpapier, write-once abgelegt); Personal → Dokumentvorlagen mit
+    Platzhaltern; Serienbrief (ein PDF für die gefilterte Liste) und E-Mail-Verteiler (BCC) in der Liste.
+  - Reiter „Einsatzkalender“ (Monat: Einsätze, erledigt, Ist ohne Einsatz, Feiertage, Abwesenheiten) und Box
+    „Dispo & Zeiterfassung“ Soll/Plan/Ist für Vor-, aktuellen und Folgemonat (Soll = Wochenstunden ÷ 5 × Arbeitstage).
+  - Resturlaub: Übertrag ins Folgejahr (je Mitarbeiter abschaltbar), wird im 1. Quartal zuerst verbraucht, Rest gilt
+    ab 01.04. als verfallen. **Rechtlich: Verfall nur, wenn der Arbeitgeber rechtzeitig zum Urlaub aufgefordert und auf
+    den Verfall hingewiesen hat (BAG 19.02.2019, 9 AZR 541/15)** – Hinweis steht im Urlaubskonto.
+  - **Sicherheitslücke behoben:** Datei-Download `/dateien/…` und Upload-Verknüpfung prüften keine Rechte (mit
+    Datei-ID hätte z. B. die Objektleitung Personaldokumente laden können). Jetzt: Zugriff nur, wenn der Benutzer
+    mindestens eine Verknüpfung sehen darf (Rolle + eigene Objekte); Test im Rechte-Browser-Test.
+  - Tests: 171 Unit-/DB-Tests; Browser-Tests neu `e2e:personal` (11), `e2e:rechte` 24.

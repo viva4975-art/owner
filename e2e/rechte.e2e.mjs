@@ -120,6 +120,17 @@ check(
   'QK-Liste ohne fremde Objekte',
   !(await o.locator('select[name=site_id]').innerText()).includes('Verwaltungsgebäude'),
 );
+// Personaldokument (Admin legt an) darf die Objektleitung nicht laden
+const emps = await a.request.get(B + '/personal');
+const empId = (await emps.text()).match(/href="\/personal\/([0-9a-f-]{36})"/)?.[1];
+await a.goto(B + `/personal/${empId}/dokumente`);
+await a.selectOption('select[name=vorlage]', { index: 0 });
+await a.click('button:has-text("Erstellen und ablegen")');
+await a.waitForLoadState();
+const fileHref = await a.locator('a[href^="/dateien/"]').first().getAttribute('href');
+check('Admin lädt Personaldokument', (await a.request.get(B + fileHref)).ok());
+const denied = await o.request.get(B + fileHref, { maxRedirects: 0 });
+check('Objektleitung: Personaldokument gesperrt (403)', denied.status() === 403, String(denied.status()));
 await o.click('.usr');
 await o.click('button:has-text("Abmelden")');
 await o.waitForLoadState();

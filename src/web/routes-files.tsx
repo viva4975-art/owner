@@ -14,7 +14,9 @@ import {
   uploadStatus,
 } from '../services/uploads.js';
 import { addAttachment } from '../services/workflow.js';
-import { type Ctx, UUID } from './app.js';
+import type { Context } from 'hono';
+import { type AppEnv, type Ctx, UUID } from './app.js';
+import { canAccess } from './permissions.js';
 
 const LINK_TYPES = [
   'offer',
@@ -31,6 +33,37 @@ const LINK_TYPES = [
 ] as const;
 /** Anlagen, die per E-Mail mit der Rechnung rausgehen, dürfen nicht zu groß werden. */
 const INVOICE_ATTACHMENT_MAX = 20 * 1024 * 1024;
+
+/** Seite, deren Recht für eine Verknüpfung gilt (Personalakten nur Personal/Admin usw.). */
+const LINK_PAGE: Record<string, (id: string) => string> = {
+  offer: () => '/angebote',
+  invoice: () => '/rechnungen',
+  customer: (id) => `/kunden/${id}`,
+  site: (id) => `/objekte/${id}`,
+  employee: (id) => `/personal/${id}`,
+  supplier: () => '/lieferanten',
+  incoming_invoice: () => '/rechnungseingang',
+  purchase_order: () => '/bestellungen',
+  order: () => '/auftraege',
+  work_report: () => '/arbeitsscheine',
+  quality_check: () => '/qualitaet',
+};
+
+/** Darf der Benutzer die Verknüpfung sehen? Rolle (Seite) + bei Objektleitung das eigene Objekt. */
+async function linkAllowed(c: Context<AppEnv>, sql: Ctx['deps']['sql'], type: string, id: string) {
+  const user = c.get('user');
+  const page = LINK_PAGE[type];
+  if (!user || !page || !canAccess(user.role, page(id))) return false;
+  const scope = c.get('sites');
+  if (!scope) return true;
+  const [row] = await sql<{ site_id: string | null }[]>`
+    select case ${type}
+             when 'site' then ${id}::uuid
+             when 'work_report' then (select site_id from app.work_reports where id = ${id}::uuid)
+             when 'quality_check' then (select site_id from app.quality_checks where id = ${id}::uuid)
+             else null end as site_id`;
+  return !!row?.site_id && scope.includes(row.site_id);
+}
 
 export function uploadConfig(ctx: Ctx): UploadConfig {
   return { dir: ctx.deps.env.FILES_DIR, maxBytes: ctx.deps.env.UPLOAD_MAX_BYTES };
@@ -78,6 +111,9 @@ export function registerFileRoutes(ctx: Ctx) {
       /^[0-9a-f-]{36}$/.test(b.linkId)
         ? { type: b.linkType as LinkTarget['type'], id: b.linkId }
         : null;
+    if (link && !(await linkAllowed(c, sql, link.type, link.id))) {
+      return c.json({ fehler: 'Keine Berechtigung für diesen Bereich' }, 403);
+    }
     if (
       link?.type === 'invoice' &&
       !['application/pdf', 'image/png', 'image/jpeg'].includes(String(b.type))
@@ -156,6 +192,13 @@ export function registerFileRoutes(ctx: Ctx) {
       FileRow[]
     >`select * from app.files where id = ${c.req.param('id')} and status = 'complete'`;
     if (!f) return c.notFound();
+    // Nur wer mindestens eine Verknüpfung sehen darf (Personalakten nur Personal/Admin, Objektleitung nur eigene
+    // Objekte). Dateien ohne Verknüpfung nur der Hochlader.
+    const links = await sql<{ entity_type: string; entity_id: string }[]>`
+      select entity_type, entity_id from app.file_links where file_id = ${f.id}`;
+    let ok = !links.length && f.uploaded_by === c.get('actor');
+    for (const l of links) if (!ok && (await linkAllowed(c, sql, l.entity_type, l.entity_id))) ok = true;
+    if (!ok) return c.text('Kein Zugriff auf diese Datei', 403);
     const path = filePath(cfg, f);
     const st = await stat(path);
     const inline = /^(application\/pdf|image\/)/.test(f.content_type);

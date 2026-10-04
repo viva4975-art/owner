@@ -266,6 +266,8 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Urlaub & Abwesenheiten', href: '/urlaub' },
       { label: 'Mitarbeiter-Handyansicht', href: '/m' },
       { label: 'Dokumente digital unterschreiben', href: '/personal/dokumente' },
+      { label: 'Dokumentvorlagen / Serienbriefe', href: '/personal/vorlagen' },
+      { label: 'Lohnstufen', href: '/personal/lohnstufen' },
     ],
   },
   {

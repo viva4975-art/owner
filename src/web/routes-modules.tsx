@@ -1,3 +1,4 @@
+import { ReportTabs } from './routes-reports.js';
 import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
 import type { Child } from 'hono/jsx';
@@ -241,7 +242,8 @@ export function registerModuleRoutes({ app, deps, page, back, shells }: Ctx) {
       'Netto-Umsatz',
       'auswertungen',
       <>
-        <PageHead title="Netto-Umsatz je Monat" />
+        <PageHead title="Netto-Umsatz je Monat" crumbs={[['Auswertungen', '/auswertungen']]} />
+        <ReportTabs c={c} active="umsatz" />
         <div class="card">
           <p class="mut small" style="margin-top:0">
             Nach Rechnungsdatum, alle ausgestellten Belege (Stornos mindern den Umsatz).

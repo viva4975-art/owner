@@ -396,3 +396,15 @@ Testadresse.
   - Vertretung sieht den Einsatz in der Handy-App, kann „Soll als Ist“ bestätigen und am fremden Objekt stempeln
     (nur Vertretungstag −7/+1 Tag); Soll/Plan/Ist und Kalender rechnen mit den Ausnahmen.
   - Tests: 178 Unit-/DB-Tests, Browser-Tests 196 Prüfungen (neu `npm run e2e:planung`, 9 Prüfungen).
+- 2026-10-04: Lücke 5 erledigt – Auswertungen (`/auswertungen`, Reiter je Bericht, nach Rolle gefiltert):
+  - Rechnungs-Statistik je Jahr (Rechnungen/Storno je Monat, Kunden nach Umsatz, Ø Zahlungsdauer, offen/überfällig),
+    Umsatz-Vorschau 12 Monate aus den regelmäßigen Leistungen (gleiche Rechnung wie der Abrechnungslauf, mit Zyklus und
+    Gültigkeit), Ø Stundensätze je Objekt (Erlös je Plan-/Ist-Stunde, Ø Stundenlohn), Stundenkontrolle Soll/Plan/Ist
+    (CSV), Urlaubskonten, Krankheitstage je Monat (Hinweis BEM § 167 SGB IX bei > 6 Wochen), Dienste-Liste (CSV, Druck).
+  - Rechte: Stunden/Urlaub/Krankheit nur Admin/Personal; Dienste-Liste alle (Objektleitung nur eigene Objekte); Umsätze
+    nur Büro. CSV-Exporte entschärfen Formeln (Schutz gegen CSV-Injektion in Excel).
+  - Behoben: Nachkalkulation zählte Erlöse aus Sammelrechnungen (Rechnungsgruppen, kein Objekt im Kopf) nicht – jetzt je
+    Rechnungsposition über die Leistung dem Objekt zugeordnet.
+  - Offen: Schlussrechnungen zählen im Umsatz voll und die Abschläge ebenfalls (doppelt) – mit Steuerberater klären,
+    wie es ausgewiesen werden soll (wie DATEV-Hinweisliste).
+  - Tests: 183 Unit-/DB-Tests, Browser-Tests 214 Prüfungen (neu `npm run e2e:auswertung`, 16 Prüfungen; Rechte +2).

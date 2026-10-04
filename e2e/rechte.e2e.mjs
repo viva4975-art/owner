@@ -76,7 +76,7 @@ check('danach Startseite Zeiterfassung', new URL(o.url()).pathname === '/zeiterf
 const menu = await o.locator('nav.menu').innerText();
 check(
   'Menü ohne Rechnungen/Angebote/Lieferanten/Transfer',
-  !/Rechnungen|Angebote|Lieferanten|Transfer|Auswertungen/.test(menu),
+  !/Rechnungen|Angebote|Lieferanten|Transfer/.test(menu), // Auswertungen: nur Dienste-Liste
   menu.replace(/\s+/g, ' '),
 );
 check('keine globale Suche', (await o.locator('form.search').count()) === 0);
@@ -120,6 +120,12 @@ check(
   'QK-Liste ohne fremde Objekte',
   !(await o.locator('select[name=site_id]').innerText()).includes('Verwaltungsgebäude'),
 );
+// Auswertungen: Objektleitung nur Dienste-Liste (eigene Objekte), keine Umsätze/Personalauswertungen
+const rs = await o.request.get(B + '/auswertungen/rechnungen', { maxRedirects: 0 });
+const ru = await o.request.get(B + '/auswertungen/urlaub', { maxRedirects: 0 });
+check('Auswertungen Umsatz/Urlaub gesperrt (403)', rs.status() === 403 && ru.status() === 403);
+const dl = await o.request.get(B + '/auswertungen/dienste.csv?von=2026-01-05&bis=2026-02-28');
+check('Dienste-Liste nur eigene Objekte', dl.ok() && !(await dl.text()).includes('Verwaltungsgebäude'));
 // Personaldokument (Admin legt an) darf die Objektleitung nicht laden
 const emps = await a.request.get(B + '/personal');
 const empId = (await emps.text()).match(/href="\/personal\/([0-9a-f-]{36})"/)?.[1];

@@ -47,10 +47,14 @@ export async function siteCosting(
     sql<{ id: string; site_no: string; name: string; customer_name: string }[]>`
       select s.id, s.site_no, s.name, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id
        where ${siteId ? sql`s.id = ${siteId}` : sql`s.active`} order by s.site_no`,
+    // je Position: Objekt aus der Leistung (Sammelrechnungen der Rechnungsgruppen haben kein Objekt im Kopf)
     sql<{ site_id: string; net: bigint }[]>`
-      select site_id, sum(net_cents)::bigint as net from app.invoices
-       where status = 'issued' and site_id is not null and coalesce(period_start, issue_date) between ${from} and ${to}
-       group by site_id`,
+      select coalesce(ss.site_id, i.site_id) as site_id, sum(l.net_cents)::bigint as net
+        from app.invoices i join app.invoice_lines l on l.invoice_id = i.id
+        left join app.site_services ss on ss.id = l.source_service_id
+       where i.status = 'issued' and coalesce(ss.site_id, i.site_id) is not null
+         and coalesce(i.period_start, i.issue_date) between ${from} and ${to}
+       group by 1`,
     // Lohn je Eintrag: Minuten × Stundenlohn / 60 (Cent-genau, kaufmännisch gerundet je Objekt)
     sql<{ site_id: string; minutes: number; wage_minutes_cents: bigint; missing: number }[]>`
       select t.site_id,

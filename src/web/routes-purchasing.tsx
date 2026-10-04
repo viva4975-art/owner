@@ -1,3 +1,4 @@
+import { ReportTabs } from './routes-reports.js';
 import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
 import type { Child, FC } from 'hono/jsx';
@@ -1395,7 +1396,8 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       'Nachkalkulation',
       'auswertungen',
       <>
-        <PageHead title="Nachkalkulation je Objekt" />
+        <PageHead title="Nachkalkulation je Objekt" crumbs={[['Auswertungen', '/auswertungen']]} />
+        <ReportTabs c={c} active="nachkalkulation" />
         <form method="get" action="/auswertungen/nachkalkulation" class="actions" style="margin-top:0">
           <input
             type="month"

@@ -309,8 +309,16 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     key: 'auswertungen',
     label: 'Auswertungen',
     items: [
+      { label: 'Übersicht Auswertungen', href: '/auswertungen' },
+      { label: 'Rechnungs-Statistik', href: '/auswertungen/rechnungen' },
       { label: 'Netto-Umsatz je Monat', href: '/auswertungen/umsatz' },
+      { label: 'Umsatz-Vorschau', href: '/auswertungen/vorschau' },
       { label: 'Nachkalkulation je Objekt', href: '/auswertungen/nachkalkulation' },
+      { label: 'Ø Stundensätze je Objekt', href: '/auswertungen/stundensaetze' },
+      { label: 'Stundenkontrolle Soll/Ist', href: '/auswertungen/stunden' },
+      { label: 'Urlaubskonten', href: '/auswertungen/urlaub' },
+      { label: 'Krankheitstage', href: '/auswertungen/krankheit' },
+      { label: 'Dienste-Liste', href: '/auswertungen/dienste' },
     ],
   },
 ];

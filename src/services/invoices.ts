@@ -282,7 +282,7 @@ interface RunSite {
   invoice_group_id: string | null;
 }
 
-interface RunService {
+export interface RunService {
   id: string;
   site_id: string;
   kind: 'monthly_flat';
@@ -463,7 +463,7 @@ export async function runMonthly(
   return result;
 }
 
-const toRunService = (s: RunService) => ({
+export const toRunService = (s: RunService) => ({
   id: s.id,
   kind: s.kind,
   description: s.description,

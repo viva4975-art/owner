@@ -50,6 +50,7 @@ npm run e2e:auftrag  # Browser-Test: Auftrag → Arbeitsschein → Unterschrift 
 npm run e2e:objekt   # Browser-Test: Raumbuch → Stundenvorgabe → Qualitätskontrolle mit Unterschrift → Zählerstände
 npm run e2e:app      # Browser-Test: Manifest/Service Worker, Dokument verteilen → am Handy unterschreiben → Nachweis
 npm run e2e:leistungen # Browser-Test: Leistung (quartalsweise, eigene Rechnung, unfertig) → am Objekt abrechnen → geprüft
+npm run e2e:mahnung   # Browser-Test: Mahnwesen-Stapelverarbeitung (braucht überfällige Rechnungen in der DB)
 ```
 
 ### Klick-Demo bauen (eine HTML-Datei zum Durchklicken, offline)

@@ -56,6 +56,7 @@ export interface ProposalItem {
   last_level: number;
   last_dunning_date: string | null;
   next_level: number;
+  dunning_count?: number;
 }
 
 export interface Proposal {
@@ -117,7 +118,8 @@ async function overdueItems(sql: Sql, customerId?: string) {
            c.customer_no, c.name as customer_name, c.dunning_block,
            ((now() at time zone 'Europe/Berlin')::date - o.due_date)::int as overdue_days,
            coalesce(last.level, 0)::int as last_level, last.issue_date as last_dunning_date,
-           0 as next_level
+           0 as next_level,
+           (select count(*)::int from app.dunning_items di2 where di2.invoice_id = o.invoice_id) as dunning_count
       from app.open_items o
       join app.customers c on c.id = o.customer_id
       left join lateral (
@@ -354,4 +356,105 @@ export async function sendDunning(deps: Deps, id: string, actor: string) {
     await sql`update app.dunnings set status = 'erstellt', sent_at = null, sent_to = null where id = ${id}`;
     throw new BusinessError(`Versand fehlgeschlagen: ${(err as Error).message}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Stapelverarbeitung (wie Fortytools): alle überfälligen Rechnungen je Kunde, Auswahl, Mahnungen in einem Lauf
+// ---------------------------------------------------------------------------
+
+export interface BatchItem extends ProposalItem {
+  dunning_count: number;
+  /** wählbar: Stufe erreicht, Mindestabstand eingehalten, keine Sperre, nicht schon letzte Stufe */
+  eligible: boolean;
+  reason: string | null;
+}
+export interface BatchCustomer {
+  customer_id: string;
+  customer_no: string;
+  customer_name: string;
+  dunning_block: boolean;
+  open_cents: bigint;
+  items: BatchItem[];
+}
+
+export async function batchCandidates(sql: Sql): Promise<BatchCustomer[]> {
+  const settings = await getSettings(sql);
+  const today = todayBerlin();
+  const items = await overdueItems(sql);
+  const by = new Map<string, BatchCustomer>();
+  for (const it of items) {
+    const next = Math.min(3, it.last_level + 1);
+    const s = settings.find((x) => x.level === next)!;
+    let reason: string | null = null;
+    if (it.dunning_block) reason = 'Mahnsperre';
+    else if (it.last_level >= 3) reason = 'letzte Stufe erreicht';
+    else if (it.overdue_days < s.min_days_overdue) reason = `${s.title} ab ${s.min_days_overdue} Tagen`;
+    else if (it.last_dunning_date && daysBetween(it.last_dunning_date, today) < MIN_GAP_DAYS)
+      reason = `zuletzt gemahnt am ${formatDateDe(it.last_dunning_date)}`;
+    const c = by.get(it.customer_id) ?? {
+      customer_id: it.customer_id,
+      customer_no: it.customer_no,
+      customer_name: it.customer_name,
+      dunning_block: it.dunning_block,
+      open_cents: 0n,
+      items: [],
+    };
+    c.items.push({
+      ...it,
+      next_level: next,
+      dunning_count: it.dunning_count ?? 0,
+      eligible: !reason,
+      reason,
+    });
+    c.open_cents += it.open_cents;
+    by.set(it.customer_id, c);
+  }
+  return [...by.values()];
+}
+
+export interface BatchResult {
+  created: { id: string; customer: string; number: string; sent: string[] | null }[];
+  failed: { customer: string; error: string }[];
+}
+
+/**
+ * Mahnungen für mehrere Kunden in einem Lauf. Feste IDs je Kunde (aus dem Formular) → doppeltes Absenden legt
+ * nichts doppelt an. Fehler bei einem Kunden brechen den Lauf nicht ab; sie werden gesammelt gemeldet.
+ */
+export async function createDunningBatch(
+  deps: Deps,
+  entries: { id: string; customerId: string; invoiceIds: string[] }[],
+  send: boolean,
+  actor: string,
+): Promise<BatchResult> {
+  const result: BatchResult = { created: [], failed: [] };
+  const candidates = new Map(
+    (await batchCandidates(deps.sql)).flatMap((c) => c.items.map((i) => [i.invoice_id, i] as const)),
+  );
+  for (const e of entries) {
+    if (!e.invoiceIds.length) continue;
+    const [c] = await deps.sql<{ name: string }[]>`select name from app.customers where id = ${e.customerId}`;
+    const name = c?.name ?? e.customerId;
+    try {
+      const [exists] = await deps.sql`select 1 from app.dunnings where id = ${e.id}`;
+      if (!exists) {
+        // serverseitig dieselben Regeln wie in der Auswahl (Stufe erreicht, Mindestabstand, keine Sperre)
+        for (const inv of e.invoiceIds) {
+          const it = candidates.get(inv);
+          if (!it) throw new BusinessError('Rechnung ist nicht (mehr) überfällig oder bereits bezahlt');
+          if (!it.eligible)
+            throw new BusinessError(`Rechnung ${it.number} ist noch nicht mahnbar (${it.reason})`);
+        }
+      }
+      await createDunning(deps, e.id, e.customerId, e.invoiceIds, actor);
+      const [d] = await deps.sql<{ number: string }[]>`select number from app.dunnings where id = ${e.id}`;
+      let sent: string[] | null = null;
+      if (send) sent = (await sendDunning(deps, e.id, actor)).to;
+      result.created.push({ id: e.id, customer: name, number: d!.number, sent });
+    } catch (err) {
+      if (!(err instanceof BusinessError)) throw err;
+      result.failed.push({ customer: name, error: err.message });
+    }
+  }
+  return result;
 }

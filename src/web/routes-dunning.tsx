@@ -4,6 +4,8 @@ import type { Child } from 'hono/jsx';
 import { parseEuro } from '../domain/money/money.js';
 import {
   MIN_GAP_DAYS,
+  batchCandidates,
+  createDunningBatch,
   createDunning,
   getDunning,
   getSettings,
@@ -27,6 +29,7 @@ export function registerDunningRoutes({ app, deps, page, back }: Ctx) {
     const [{ proposals: p }, list] = await Promise.all([proposals(sql), listDunnings(sql)]);
     const tabs: Tab[] = [
       { key: 'vorschlag', label: 'Mahnvorschläge', href: '/mahnungen', count: p.length },
+      { key: 'stapel', label: 'Stapelverarbeitung', href: '/mahnungen/stapel' },
       { key: 'liste', label: 'Erstellte Mahnungen', href: '/mahnungen/liste', count: list.length },
       { key: 'einstellungen', label: 'Mahnstufen & Texte', href: '/mahnungen/einstellungen' },
     ];
@@ -139,6 +142,165 @@ export function registerDunningRoutes({ app, deps, page, back }: Ctx) {
         )}
       </>,
     );
+  });
+
+  // Stapelverarbeitung wie Fortytools: alle überfälligen Rechnungen, Auswahl je Kunde/Rechnung, ein Lauf
+  app.get('/mahnungen/stapel', async (c) => {
+    const [customers, settings] = await Promise.all([batchCandidates(sql), getSettings(sql)]);
+    const title = (l: number) => settings.find((s) => s.level === l)?.title ?? `Stufe ${l}`;
+    const eligibleCount = customers.reduce((a, cu) => a + cu.items.filter((i) => i.eligible).length, 0);
+    return shell(
+      c,
+      'stapel',
+      'Mahnwesen – Stapelverarbeitung',
+      <>
+        <p class="mut" style="margin-top:0">
+          Alle überfälligen Rechnungen je Kunde. Vorausgewählt ist, was die nächste Mahnstufe erreicht hat;
+          grau = noch nicht mahnbar (Grund steht daneben). Je ausgewähltem Kunden entsteht eine Mahnung mit
+          allen markierten Rechnungen.
+        </p>
+        {customers.length === 0 && <div class="empty">Keine überfälligen Rechnungen.</div>}
+        {customers.length > 0 && (
+          <form method="post" action="/mahnungen/stapel" id="batch">
+            <div class="card flush">
+              <div class="tbl">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style="width:36px">
+                        <input type="checkbox" id="all" aria-label="alle auswählen" />
+                      </th>
+                      <th>Empfänger / Rechnung</th>
+                      <th>Rechnungsdatum</th>
+                      <th>Fällig</th>
+                      <th class="r">Überfällig</th>
+                      <th class="r">Bisherige Mahnungen</th>
+                      <th>Nächste Stufe</th>
+                      <th class="r">Offen brutto</th>
+                    </tr>
+                  </thead>
+                  {customers.map((cu) => {
+                    const any = cu.items.some((i) => i.eligible);
+                    return (
+                      <tbody class="grp" data-c={cu.customer_id}>
+                        <tr style="background:var(--bg)">
+                          <td>
+                            {any && (
+                              <input
+                                type="checkbox"
+                                class="cu"
+                                checked
+                                aria-label={`${cu.customer_name} auswählen`}
+                              />
+                            )}
+                            <input type="hidden" name={`id_${cu.customer_id}`} value={randomUUID()} />
+                          </td>
+                          <td colspan={6}>
+                            <b>
+                              {cu.customer_no}{' '}
+                              <a href={`/kunden/${cu.customer_id}/offene-posten`}>{cu.customer_name}</a>
+                            </b>
+                            {cu.dunning_block && (
+                              <>
+                                {' '}
+                                <span class="badge err">Mahnsperre</span>
+                              </>
+                            )}
+                          </td>
+                          <td class="r">
+                            <b>{euro(cu.open_cents)}</b>
+                          </td>
+                        </tr>
+                        {cu.items.map((i) => (
+                          <tr style={i.eligible ? '' : 'opacity:.55'}>
+                            <td>
+                              <input
+                                type="checkbox"
+                                name={`inv_${cu.customer_id}`}
+                                value={i.invoice_id}
+                                checked={i.eligible}
+                                disabled={!i.eligible}
+                                aria-label={`Rechnung ${i.number}`}
+                              />
+                            </td>
+                            <td>
+                              <a href={`/rechnungen/${i.invoice_id}`}>Re {i.number}</a>
+                              {i.reason && <div class="small mut">{i.reason}</div>}
+                            </td>
+                            <td>{dateDe(i.issue_date)}</td>
+                            <td>{dateDe(i.due_date)}</td>
+                            <td class="r" style="color:var(--err);font-weight:600">
+                              {i.overdue_days}
+                            </td>
+                            <td class="r">{i.dunning_count}</td>
+                            <td>
+                              {i.last_level >= 3 ? (
+                                '–'
+                              ) : (
+                                <span class={`badge ${LEVEL_CLASS[i.next_level]}`}>
+                                  {title(i.next_level)}
+                                </span>
+                              )}
+                            </td>
+                            <td class="r">{euro(i.open_cents)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    );
+                  })}
+                </table>
+              </div>
+            </div>
+            <div class="card actions" style="justify-content:flex-end">
+              <label class="chk" style="margin:0 auto 0 0">
+                <input type="checkbox" name="send" value="1" /> gleich per E-Mail an die Rechnungsadressen
+                senden
+              </label>
+              <button class="btn" disabled={eligibleCount === 0}>
+                <Icon name="file" /> Mahnungen erstellen
+              </button>
+            </div>
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `(function(){
+  var f=document.getElementById('batch');
+  function sync(){f.querySelectorAll('tbody.grp').forEach(function(g){var cu=g.querySelector('.cu');if(!cu)return;var b=g.querySelectorAll('input[name^=inv_]:not(:disabled)');var n=0;b.forEach(function(x){if(x.checked)n++});cu.checked=n>0;cu.indeterminate=n>0&&n<b.length;});var a=f.querySelectorAll('input[name^=inv_]:not(:disabled)'),k=0;a.forEach(function(x){if(x.checked)k++});var al=document.getElementById('all');if(al){al.checked=a.length>0&&k===a.length;al.indeterminate=k>0&&k<a.length;}}
+  f.addEventListener('change',function(e){var t=e.target;
+    if(t.id==='all'){f.querySelectorAll('input[name^=inv_]:not(:disabled)').forEach(function(x){x.checked=t.checked});}
+    else if(t.classList.contains('cu')){t.closest('tbody').querySelectorAll('input[name^=inv_]:not(:disabled)').forEach(function(x){x.checked=t.checked});}
+    sync();});
+  sync();
+})();`,
+              }}
+            />
+          </form>
+        )}
+      </>,
+    );
+  });
+
+  app.post('/mahnungen/stapel', async (c) => {
+    const body = await c.req.parseBody({ all: true });
+    const entries = Object.keys(body)
+      .filter((k) => /^inv_[0-9a-f-]{36}$/.test(k))
+      .map((k) => {
+        const customerId = k.slice(4);
+        const id = body[`id_${customerId}`];
+        return {
+          id: typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id) ? id : randomUUID(),
+          customerId,
+          invoiceIds: arr(body, k).filter((x) => /^[0-9a-f-]{36}$/.test(x)),
+        };
+      });
+    if (!entries.length) throw new BusinessError('Bitte mindestens eine Rechnung auswählen');
+    const r = await createDunningBatch(deps, entries, body.send === '1', c.get('actor'));
+    const msg = [
+      `${r.created.length} Mahnung(en) erstellt${body.send === '1' ? ' und versendet' : ''}: ${r.created
+        .map((x) => `${x.number} (${x.customer})`)
+        .join(', ')}`,
+      ...r.failed.map((f) => `Nicht erstellt – ${f.customer}: ${f.error}`),
+    ].join('\n');
+    return back(c, '/mahnungen/liste', r.failed.length && !r.created.length ? { fehler: msg } : { ok: msg });
   });
 
   app.post('/mahnungen', async (c) => {

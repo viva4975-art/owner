@@ -361,3 +361,10 @@ Testadresse.
     Monatslauf mit Rechnungsdatum. Rechnungsdatum in der Zukunft → Ausstellen erst ab dem Tag (DB-Regel bleibt).
   - „Immer unfertig“: Entwurf mit Hinweis, Ausstellen gesperrt bis „Geprüft“.
   - Tests: 166 Unit-/DB-Tests, Browser-Tests 179 Prüfungen (neu `npm run e2e:leistungen`, 12 Prüfungen).
+- 2026-10-04: Lücke 2 erledigt – Mahnwesen-Stapelverarbeitung wie Fortytools (Rechnungen → Mahnwesen → Stapelverarbeitung):
+  alle überfälligen Rechnungen je Kunde (Rechnungsdatum, fällig, Tage überfällig rot, Anzahl bisheriger Mahnungen,
+  nächste Stufe, offen brutto), Auswahl je Kunde/Rechnung/alle; nicht mahnbare grau mit Grund (Stufe noch nicht
+  erreicht, Mindestabstand 10 Tage, Mahnsperre, letzte Stufe). Ein Lauf erstellt je Kunde eine Mahnung (feste IDs →
+  nichts doppelt), optional gleich per E-Mail. Fehler bei einem Kunden brechen den Lauf nicht ab. Regeln werden
+  serverseitig geprüft (Bug gefunden: zu frische Rechnungen ließen sich sonst mahnen).
+  Tests: 167 Unit-/DB-Tests, neu `npm run e2e:mahnung` (6 Prüfungen).

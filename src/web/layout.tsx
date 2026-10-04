@@ -293,7 +293,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Heute: Soll/Ist', href: '/zeiterfassung' },
       { label: 'Monat: Soll/Ist je Mitarbeiter', href: '/zeiterfassung/monat' },
       { label: 'Urlaubskalender', href: '/urlaub/kalender' },
-      { label: 'Glasreinigung / Tiefgarage', href: '/geplant/sonderdienste', soon: true },
+      { label: 'Sonderdienste (Glas, Tiefgarage …)', href: '/sonderdienste' },
     ],
   },
   {

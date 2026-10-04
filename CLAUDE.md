@@ -446,3 +446,12 @@ Testadresse.
   (Mandatsreferenz …, Gläubiger-ID …)“ – ohne Skonto und ohne GiroCode. E-Rechnung: Zahlungsart 59 mit Mandatsreferenz
   (BT-89), Gläubiger-ID (BT-90, schemeID SEPA) und belastetem Konto (BT-91), KoSIT-gültig (UBL + CII). Einzug vor dem
   angekündigten Fälligkeitstag wird abgelehnt. Frist der Vorabankündigung = Zahlungsziel (≥ 14 Tage bzw. laut Mandat).
+- 2026-10-04: Sonderdienste (bisher „bald“: Glasreinigung/Tiefgarage) unter Disposition → Sonderdienste: je Objekt
+  Art (Glas, Tiefgarage, Grundreinigung, Teppich, Sonstiges), Umfang, Intervall in Monaten, nächste Fälligkeit, Festpreis
+  je Durchführung (nur Büro sichtbar), Aushang-Vorlauf (Tiefgarage 14 Tage). Fälligkeitsliste (60 Tage, überfällig rot),
+  je Sonderdienst höchstens ein offener Termin (DB-Index) mit Team; Aushang-PDF („Fahrzeuge entfernen“); verschoben
+  nach Aushang → wieder „geplant“. Erledigt → Arbeitsschein-Entwurf (feste ID) und nächste Fälligkeit = Termin +
+  Intervall (nur vorwärts); Rechnungsentwurf einmal je Termin, unterschriebener Arbeitsschein hängt an. Objektleitung:
+  eigene Objekte, ohne Preise/Rechnung. **Ahmed: Wie waren Glasreinigung/Tiefgarage in der alten App genau aufgebaut
+  (Felder, Intervalle, Preise)? Dann gleiche ich an und übernehme die Daten.**
+  Tests: neu `special-services.db.test.ts`, Browser-Test `npm run e2e:sonderdienst` (8 Prüfungen).

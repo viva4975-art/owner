@@ -22,7 +22,7 @@ const RULES: [RegExp, Role[]][] = [
   // Objekte: Objektleitung nur eigene und ohne Preise/Rechnungen/Bearbeiten
   [/^\/objekte\/[0-9a-f-]{36}\/(leistungen|rechnungen|bearbeiten|regie-abrechnen)/, OFFICE],
   [/^\/arbeitsscheine(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
-  [/^\/(qualitaet|zaehler)(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
+  [/^\/(qualitaet|zaehler|sonderdienste)(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
   [
     /^\/objekte\/[0-9a-f-]{36}(\/(einsaetze|zeiten|qr|notizen|aufgaben|arbeitsscheine|raumbuch|stundenvorgabe|qualitaet|zaehler)([/.]|$)|$)/,
     ['admin', 'buchhaltung', 'objektleitung', 'personal'],

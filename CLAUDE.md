@@ -109,6 +109,9 @@ Testadresse.
 - [ ] Lohnzuschlag für die Nachkalkulation (Vorschlag 45 %) mit Steuerberater/Lohnbüro festlegen
 - [ ] Mahngebühren/Verzugspauschale (40 € § 288 Abs. 5 BGB) mit Steuerberater/Anwalt festlegen
 - [ ] Je Behörde klären: nimmt sie XRechnung per E-Mail an oder nur über ein Portal (ZRE/OZG-RE, Peppol)?
+- [ ] Lastschrift: Gläubiger-Identifikationsnummer (Bundesbank) beantragen/mitteilen; Lastschrift-Vereinbarung mit der Bank
+      (Einreichung pain.008, Limit); erste Datei als Testeinreichung mit der Bank prüfen; Mandatsformular (Muster) freigeben
+- [ ] Je ein echter Kontoauszug (CAMT.053, sonst CSV) von Münchner Bank und Targobank zum Testen des Imports
 
 ## Risiken (rechtlich/steuerlich)
 
@@ -418,3 +421,23 @@ Testadresse.
     Reiter „Abgelehnt“. „Zuletzt bearbeitet“ im neuen Angebot (Kunden aus dem eigenen Protokoll der letzten 90 Tage).
   - Rechnung aus Angebot und Auftragsbestätigung gab es schon (Auftrag aus Angebot → AB-PDF).
   - Tests: 187 Unit-/DB-Tests, Browser-Tests 226 Prüfungen (neu `npm run e2e:angebot`, 12 Prüfungen).
+- 2026-10-04: Lücke 7 erledigt – Transfer:
+  - Kontoumsätze: Auszug als CAMT.053 (XML) oder CSV (Spalten über die Kopfzeile, Windows-1252 erkannt) einlesen; nur
+    eigene Konten, Datei write-once archiviert; Umsatz-ID aus Inhalt → überlappende Auszüge legen nichts doppelt an;
+    Umsatzdaten per Trigger unveränderbar, „zugeordnet“ endgültig (Korrektur über Gegenbuchung der Zahlung).
+  - Abgleich mit Vorschlag, gebucht wird erst nach Bestätigung: Rechnungsnummer im Verwendungszweck + Betrag (voll,
+    mehrere Rechnungen, Teilzahlung), Skonto (nur wenn vereinbart, Frist + 5 Tage Bankweg, Betrag cent-genau → eigene
+    Buchung „Skonto-Abzug“), eindeutiger Betrag ohne Nummer („wahrscheinlich“), Sammelgutschrift Lastschrift,
+    Zahlungslauf (Ausgang), Rücklastschrift (Gegenbuchung, Rechnung wieder offen, Aufgabe „klären“, Bankgebühr vermerkt).
+    Manuell: Betrag/Skonto je Rechnung, Summe muss stimmen. Feste Zahlungs-IDs → doppelt absenden bucht nichts doppelt.
+  - SEPA-Lastschrift: Mandate je Kunde (ein aktives, Referenz/IBAN nach erstem Einzug gesperrt, IBAN-Prüfziffer),
+    Gläubiger-ID mit Prüfziffer, Einzug `LS-JJJJ-NNN` als pain.008.001.08 (CORE/B2B, FRST/RCUR), frühester Einzugstag
+    = nächster TARGET2-Bankarbeitstag, Datei archiviert, jede Rechnung nur einmal im Einzug (außer nach Rücklastschrift).
+    **Risiko:** Vorabankündigung (Pre-Notification) ist Pflicht – auf der Rechnung fehlt der Lastschrift-Hinweis noch
+    (Mandatsreferenz, Gläubiger-ID, Einzugstag). Vor dem ersten echten Einzug ergänzen.
+  - Dokumentenversand: Protokoll aller versendeten Rechnungen und Mahnungen (Empfänger laut Kunde und tatsächlich –
+    im Test nur Testadresse), Filter. Dokumenteneingang: Ablage (Upload, write-once) und Zuordnung zu Kunde, Lieferant,
+    Objekt, Eingangsrechnung oder Personalakte (nur Personal/Admin); nur die Verknüpfung wechselt.
+  - Neue Abhängigkeit `xmlbuilder2` (war schon indirekt über die E-Rechnungs-Bibliothek vorhanden); CAMT mit DTD wird
+    abgelehnt (Schutz gegen XXE).
+  - Tests: 198 Unit-/DB-Tests, Browser-Tests 239 Prüfungen (neu `npm run e2e:transfer`, 12 Prüfungen).

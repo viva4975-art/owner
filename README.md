@@ -55,6 +55,7 @@ npm run e2e:personal # Browser-Test: Lohnstufe, Stammdaten mit Tags/Warnhinweis,
 npm run e2e:planung  # Browser-Test: Monatstafel, Einsatz für einen Tag umplanen und zurücksetzen, Vertretungsliste
 npm run e2e:auswertung # Browser-Test: alle Auswertungen, Reiter, CSV-Exporte
 npm run e2e:angebot  # Browser-Test: Alternativposition, Statistik, zuletzt bearbeitete Kunden, Folgeangebot
+npm run e2e:transfer # Browser-Test: Kontoauszug einlesen/zuordnen, Lastschrift-Einstellungen, Dokumenteneingang, Versand
 ```
 
 ### Klick-Demo bauen (eine HTML-Datei zum Durchklicken, offline)

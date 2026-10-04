@@ -28,6 +28,7 @@ import { registerSignRoutes } from './routes-sign.js';
 import { registerHrRoutes } from './routes-hr.js';
 import { registerPlanningMonthRoutes } from './routes-planning-month.js';
 import { registerReportRoutes } from './routes-reports.js';
+import { registerTransferRoutes } from './routes-transfer.js';
 import { registerPlanningRoutes } from './routes-planning.js';
 import { registerPurchasingRoutes } from './routes-purchasing.js';
 import { registerTimeRoutes } from './routes-time.js';
@@ -271,6 +272,7 @@ export function createApp(deps: Deps) {
   registerHrRoutes(ctx);
   registerPlanningMonthRoutes(ctx);
   registerReportRoutes(ctx);
+  registerTransferRoutes(ctx);
 
   app.notFound((c) =>
     page(

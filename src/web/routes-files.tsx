@@ -15,6 +15,7 @@ import {
 } from '../services/uploads.js';
 import { addAttachment } from '../services/workflow.js';
 import type { Context } from 'hono';
+import { INBOX_ID } from '../services/documents.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { canAccess } from './permissions.js';
 
@@ -30,6 +31,7 @@ const LINK_TYPES = [
   'order',
   'work_report',
   'quality_check',
+  'inbox',
 ] as const;
 /** Anlagen, die per E-Mail mit der Rechnung rausgehen, dürfen nicht zu groß werden. */
 const INVOICE_ATTACHMENT_MAX = 20 * 1024 * 1024;
@@ -47,6 +49,7 @@ const LINK_PAGE: Record<string, (id: string) => string> = {
   order: () => '/auftraege',
   work_report: () => '/arbeitsscheine',
   quality_check: () => '/qualitaet',
+  inbox: () => '/transfer/dokumenteneingang',
 };
 
 /** Darf der Benutzer die Verknüpfung sehen? Rolle (Seite) + bei Objektleitung das eigene Objekt. */
@@ -111,6 +114,7 @@ export function registerFileRoutes(ctx: Ctx) {
       /^[0-9a-f-]{36}$/.test(b.linkId)
         ? { type: b.linkType as LinkTarget['type'], id: b.linkId }
         : null;
+    if (link?.type === 'inbox' && link.id !== INBOX_ID) return c.json({ fehler: 'Eingang ungültig' }, 400);
     if (link && !(await linkAllowed(c, sql, link.type, link.id))) {
       return c.json({ fehler: 'Keine Berechtigung für diesen Bereich' }, 403);
     }

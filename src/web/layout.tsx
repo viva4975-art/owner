@@ -300,6 +300,10 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     key: 'transfer',
     label: 'Transfer',
     items: [
+      { label: 'Kontoumsätze (Bankabgleich)', href: '/transfer/kontoumsaetze' },
+      { label: 'SEPA-Lastschriften', href: '/transfer/lastschriften' },
+      { label: 'Dokumentenversand', href: '/transfer/dokumentenversand' },
+      { label: 'Dokumenteneingang', href: '/transfer/dokumenteneingang' },
       { label: 'Export Lexware Lohn (Stammdaten)', href: '/personal/export.csv' },
       { label: 'DATEV-Export', href: '/datev' },
       { label: 'Import aus Fortytools', href: '/geplant/import', soon: true },

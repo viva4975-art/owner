@@ -327,7 +327,8 @@ describe.skipIf(!available)('Phase 2: Kontakte, Aufgaben, Zahlungen, Personal', 
       await sql`insert into app.profiles (user_id, display_name, role) values (${office}, 'Büro', 'buchhaltung'), (${hr}, 'Personal', 'personal')`;
       const as = (uid: string) =>
         sql.begin(async (tx) => {
-          await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: uid })}, true)`;
+          await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: uid })}, true),
+                         set_config('request.jwt.claim.sub', ${uid}, true)`;
           await tx`set local role authenticated`;
           const [e] = await tx`select count(*)::int as n from app.employees`;
           const [p] = await tx`select count(*)::int as n from app.employee_private`;

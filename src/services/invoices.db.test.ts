@@ -231,7 +231,8 @@ describe.skipIf(!available)('Rechnungen in der Datenbank', () => {
   describe('Row Level Security', () => {
     const asUser = async (userId: string) =>
       sql.begin(async (tx) => {
-        await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: userId })}, true)`;
+        await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: userId })}, true),
+                         set_config('request.jwt.claim.sub', ${userId}, true)`;
         await tx`set local role authenticated`;
         const inv = await tx`select count(*)::int as n from app.invoices`;
         const sites = await tx`select count(*)::int as n from app.sites`;

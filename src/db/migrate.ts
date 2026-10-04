@@ -9,8 +9,12 @@ const ROOT = new URL('../../supabase/', import.meta.url).pathname;
  * Mit `local: true` wird vorher der Supabase-Shim für reines Postgres eingespielt.
  */
 export async function migrate(sql: Sql, opts: { local: boolean }): Promise<string[]> {
+  // Shim nur auf reinem Postgres – im Supabase-Image/-Projekt gibt es auth.uid() schon (und es gehört nicht uns).
   if (opts.local) {
-    await sql.unsafe(await readFile(join(ROOT, 'local/00_supabase_shim.sql'), 'utf8'));
+    const [{ has }] = (await sql`select to_regprocedure('auth.uid()') is not null as has`) as unknown as [
+      { has: boolean },
+    ];
+    if (!has) await sql.unsafe(await readFile(join(ROOT, 'local/00_supabase_shim.sql'), 'utf8'));
   }
   await sql`create table if not exists public.schema_migrations (
     version text primary key, applied_at timestamptz not null default now())`;

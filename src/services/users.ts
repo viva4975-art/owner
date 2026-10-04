@@ -1,3 +1,4 @@
+import { ensureAuthUser } from './auth-users.js';
 import { randomBytes, randomUUID, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import type { Sql } from '../db/client.js';
@@ -102,12 +103,14 @@ export async function createUser(
   const id = p.id ?? randomUUID();
   const h = await hash(p.password);
   let created = false;
+  const [dup0] = await sql`select 1 from app.user_accounts where login = ${login} and id <> ${id}`;
+  if (dup0) throw new BusinessError('Benutzername ist vergeben');
+  await ensureAuthUser(sql, id, p.email);
   await sql.begin(async (tx) => {
     const [dup] = await tx`select 1 from app.user_accounts where login = ${login} and id <> ${id}`;
     if (dup) throw new BusinessError('Benutzername ist vergeben');
     const [exists] = await tx`select 1 from app.user_accounts where id = ${id}`;
     if (exists) return; // gleiches Formular zweimal gesendet
-    await tx`insert into auth.users (id, email) values (${id}, ${p.email}) on conflict (id) do nothing`;
     await tx`insert into app.profiles (user_id, display_name, role, email) values (${id}, ${p.name.trim()}, ${p.role}, ${p.email})
              on conflict (user_id) do update set display_name = excluded.display_name, role = excluded.role, email = excluded.email`;
     await tx`insert into app.user_accounts (id, login, password_hash, must_change_password, created_by)
@@ -216,6 +219,7 @@ export async function ensureBootstrapAdmin(sql: Sql, basicAuth: string) {
   const id = randomUUID();
   const h = await hash(password);
   let created = false;
+  await ensureAuthUser(sql, id, null);
   await sql.begin(async (tx) => {
     await tx`select pg_advisory_xact_lock(hashtext('bootstrap-admin'))`;
     if (await hasActiveAdmin(tx as unknown as Sql)) return;
@@ -224,7 +228,6 @@ export async function ensureBootstrapAdmin(sql: Sql, basicAuth: string) {
       throw new Error(
         `Kein aktiver Admin vorhanden und Benutzername „${login}“ ist belegt – bitte in der Datenbank prüfen`,
       );
-    await tx`insert into auth.users (id, email) values (${id}, null)`;
     await tx`insert into app.profiles (user_id, display_name, role) values (${id}, ${login!.charAt(0).toUpperCase() + login!.slice(1)}, 'admin')`;
     await tx`insert into app.user_accounts (id, login, password_hash, must_change_password, created_by)
              values (${id}, ${login!.toLowerCase()}, ${h}, false, 'system')`;

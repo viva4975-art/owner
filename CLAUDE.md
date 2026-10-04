@@ -91,7 +91,8 @@ Testadresse.
 
 ## Offene Punkte (von Ahmed zu liefern)
 
-- [ ] Neues Supabase-Projekt (Frankfurt) + Zugangsdaten
+- [x] Neues Supabase-Projekt (Frankfurt) angelegt (Ahmed, 04.10.) – [ ] Zugangsdaten als Umgebungsvariablen hinterlegen
+      (Anleitung `docs/LIVE.md`, Variablennamen dort; nie in den Chat)
 - [ ] Fortytools-Export: Kunden, Objekte, Leistungen/Preise, 3–5 Beispielrechnungen inkl. XRechnung
       (auch als PDF – für den Layout-Abgleich „sieht aus wie heute“)
 - [ ] Bestätigen: Nummernkreis von Fortytools fortführen (umgesetzt, Startwert vor Live-Start setzen)
@@ -464,3 +465,10 @@ Testadresse.
   ZUGFeRD. Feste IDs aus Kunden-/Objektnummer, Protokoll `data_imports`. **Sobald die echten Exporte da sind:
   Spaltennamen abgleichen, Probeimport in der Testumgebung, dann Abgleich der Summen (Monatsumsatz je Kunde).**
   Tests: `fortytools-import.db.test.ts`, Browser-Test `npm run e2e:import` (8 Prüfungen).
+- 2026-10-04: Supabase-Umzug vorbereitet (`docs/LIVE.md`): Migrationen und alle DB-Tests laufen gegen das offizielle
+  Supabase-Postgres-Image (`npm run test:supabase`, 213 Tests; `postgres` ohne Superuser, Supabase-`auth.uid()`). Dabei
+  gefunden: RLS-Tests setzten nur `request.jwt.claims` – ältere Supabase-Versionen lesen `request.jwt.claim.sub`; Tests
+  setzen jetzt beides. Konten werden in Supabase über die Auth-Admin-API angelegt (feste ID, idempotent; Service-Key nur
+  im Server), lokal weiter direkt in `auth.users`. `npm run db:migrate:supabase -- --projekt=<ref>` verlangt den
+  Projekt-Ref als Bestätigung. Konfiguration prüft zusätzlich: DATABASE_URL/SUPABASE_URL gehören zum Projekt,
+  Pooler-Adresse in eu-central-1. **Zugangsdaten fehlen noch in der Umgebung** – danach Migration einspielen.

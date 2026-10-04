@@ -79,6 +79,22 @@ const schema = z
       if (env.SUPABASE_REGION !== REQUIRED_SUPABASE_REGION) {
         issue('SUPABASE_REGION', `Supabase muss in ${REQUIRED_SUPABASE_REGION} (Frankfurt) liegen`);
       }
+      const ref = env.SUPABASE_PROJECT_REF?.toLowerCase();
+      const db = env.DATABASE_URL.toLowerCase();
+      if (ref && !db.includes(ref)) {
+        issue('DATABASE_URL', 'DATABASE_URL gehört nicht zum Projekt SUPABASE_PROJECT_REF');
+      }
+      if (ref && env.SUPABASE_URL && !env.SUPABASE_URL.toLowerCase().includes(ref)) {
+        issue('SUPABASE_URL', 'SUPABASE_URL gehört nicht zum Projekt SUPABASE_PROJECT_REF');
+      }
+      // Pooler-Adressen nennen die Region (aws-0-eu-central-1.pooler.supabase.com) → muss Frankfurt sein
+      const pooler = /@aws-\d+-([a-z0-9-]+)\.pooler\.supabase\.com/.exec(db);
+      if (pooler && pooler[1] !== REQUIRED_SUPABASE_REGION) {
+        issue(
+          'DATABASE_URL',
+          `Datenbank liegt in ${pooler[1]}, nicht in Frankfurt (${REQUIRED_SUPABASE_REGION})`,
+        );
+      }
     }
 
     if (env.APP_ENV !== 'dev' && !env.SESSION_SECRET) {

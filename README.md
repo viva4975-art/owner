@@ -118,6 +118,9 @@ Rechnung/Storno/Abschlag/Schluss als XRechnung und ZUGFeRD KoSIT-gültig, Row Le
 
 ## Umgebungen
 
+Umzug auf Supabase Frankfurt: siehe [`docs/LIVE.md`](docs/LIVE.md) (`npm run db:migrate:supabase -- --projekt=<ref>`,
+Prüfung gegen das Supabase-Image: `npm run test:supabase`).
+
 | `APP_ENV` | Datenbank                         | Mailversand                         |
 | --------- | --------------------------------- | ----------------------------------- |
 | `dev`     | nur lokal (localhost)             | nur an `MAIL_TEST_RECIPIENT`        |

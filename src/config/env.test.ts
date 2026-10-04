@@ -63,6 +63,32 @@ describe('loadEnv', () => {
     expect(() => loadEnv(noSecret)).toThrow(/SESSION_SECRET/);
   });
 
+  it('Datenbank und URL müssen zum Projekt gehören, Pooler muss in Frankfurt sein', () => {
+    expect(() =>
+      loadEnv({
+        ...test,
+        DATABASE_URL:
+          'postgres://postgres.zzzzzzzzzzzzzzzz:pw@aws-0-eu-central-1.pooler.supabase.com:5432/postgres',
+      }),
+    ).toThrow(/gehört nicht zum Projekt/);
+    expect(() => loadEnv({ ...test, SUPABASE_URL: 'https://zzzzzzzzzzzzzzzz.supabase.co' })).toThrow(
+      /SUPABASE_URL gehört nicht/,
+    );
+    expect(() =>
+      loadEnv({
+        ...test,
+        DATABASE_URL:
+          'postgres://postgres.abcdefghijklmnop:pw@aws-0-eu-west-1.pooler.supabase.com:5432/postgres',
+      }),
+    ).toThrow(/nicht in Frankfurt/);
+    expect(
+      loadEnv({
+        ...test,
+        DATABASE_URL: 'postgres://postgres:pw@db.abcdefghijklmnop.supabase.co:5432/postgres',
+      }).APP_ENV,
+    ).toBe('test');
+  });
+
   it('verlangt außerhalb von live eine Testadresse für Mails', () => {
     const { MAIL_TEST_RECIPIENT: _omit, ...rest } = test;
     expect(() => loadEnv(rest)).toThrow(/Testadresse/);

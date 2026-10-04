@@ -3,10 +3,15 @@ import { LocalArchiveStore } from './archive/store.js';
 import { loadEnv } from './config/env.js';
 import { createSql } from './db/client.js';
 import { createMailer } from './mail/mailer.js';
+import { configureAuthAdmin } from './services/auth-users.js';
 import { createApp } from './web/app.js';
 
 const env = loadEnv();
 const sql = createSql(env.DATABASE_URL);
+// In Supabase: Konten über die Auth-Admin-API anlegen (Service-Key bleibt auf dem Server)
+if (env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY) {
+  configureAuthAdmin({ url: env.SUPABASE_URL, serviceKey: env.SUPABASE_SERVICE_ROLE_KEY });
+}
 const app = createApp({
   sql,
   env,

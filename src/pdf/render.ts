@@ -10,7 +10,7 @@ import {
   type SellerSnapshot,
 } from '../domain/invoice/types.js';
 import { type Cents, formatEuro } from '../domain/money/money.js';
-import { paymentTermsHuman, percentToXml } from '../einvoice/mapping.js';
+import { directDebitOf, paymentTermsHuman, percentToXml } from '../einvoice/mapping.js';
 
 /*
  * Layout nach Fortytools-Rechnung 1038193 (ausgemessen, Koordinaten in pt von oben):
@@ -474,7 +474,8 @@ export async function renderInvoicePdf(
 
   // ---------------------------------------------------------------- Schluss + GiroCode
   const bank = s.bankAccounts.find((x) => x.primary) ?? s.bankAccounts[0];
-  const withQr = !!bank && (opts.qr ?? (doc.payableTotal > 0n && doc.kind !== 'cancellation'));
+  const withQr =
+    !!bank && !directDebitOf(doc) && (opts.qr ?? (doc.payableTotal > 0n && doc.kind !== 'cancellation'));
   const closing = opts.closing
     ? opts.closing
     : doc.payableTotal > 0n

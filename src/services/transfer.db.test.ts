@@ -181,11 +181,24 @@ describe.skipIf(!available)('Transfer: Kontoumsätze, Lastschrift, Dokumentenein
     const prop = await debitProposal(sql);
     expect(prop.map((p) => p.invoice_id).sort()).toEqual([invB, inv].sort());
     const id = randomUUID();
-    const date = earliestCollectionDate();
+    const earliest = earliestCollectionDate();
+    const due = (await getInvoice(sql, inv))!.invoice.due_date!;
+    const date = due > earliest ? due : earliest;
     await expect(
       createDebitRun(deps, { id, invoiceIds: [inv], collectionDate: date, creditorIban: OWN, actor: 't' }),
     ).rejects.toThrow(/Gläubiger/);
     await sql`update app.company set creditor_id = 'DE98ZZZ09999999999'`;
+    if (earliest < due) {
+      await expect(
+        createDebitRun(deps, {
+          id: randomUUID(),
+          invoiceIds: [inv],
+          collectionDate: earliest,
+          creditorIban: OWN,
+          actor: 't',
+        }),
+      ).rejects.toThrow(/vor Fälligkeit/);
+    }
     await createDebitRun(deps, {
       id,
       invoiceIds: [inv],

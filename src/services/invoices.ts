@@ -637,8 +637,11 @@ export function rowToDocument(
     buyer,
     original,
     prepayments,
+    // Lastschrift: kein Skonto auf der Rechnung (eingezogen wird der volle Betrag zum Fälligkeitstag)
     skonto:
-      cfg && issueDate ? skontoTerms(inv.payable_cents as Cents, cfg.percentBp, cfg.days, issueDate) : null,
+      cfg && issueDate && !buyer.directDebit
+        ? skontoTerms(inv.payable_cents as Cents, cfg.percentBp, cfg.days, issueDate)
+        : null,
   };
 }
 

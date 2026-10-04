@@ -59,6 +59,8 @@ export interface BuyerSnapshot {
     postalCode: string | null;
     city: string | null;
   } | null;
+  /** SEPA-Lastschrift: aktives Mandat beim Ausstellen (eingefroren) → Vorabankündigung auf der Rechnung */
+  directDebit?: { mandateRef: string; iban: string; creditorId: string; scheme: 'CORE' | 'B2B' } | null;
 }
 
 export interface SkontoTerms {

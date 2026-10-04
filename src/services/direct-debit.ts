@@ -264,6 +264,13 @@ export async function createDebitRun(
   if (cands.length !== new Set(p.invoiceIds).size) {
     throw new BusinessError('Mindestens eine Rechnung ist nicht (mehr) einziehbar – bitte neu laden');
   }
+  // Vorabankündigung auf der Rechnung nennt den Fälligkeitstag → nicht früher einziehen
+  const early = cands.filter((c) => c.due_date > p.collectionDate);
+  if (early.length) {
+    throw new BusinessError(
+      `Einzug vor Fälligkeit nicht erlaubt (angekündigt): ${early.map((c) => `${c.number} fällig ${formatDateDe(c.due_date)}`).join(', ')}`,
+    );
+  }
   const year = p.collectionDate.slice(0, 4);
   let number = '';
   await sql

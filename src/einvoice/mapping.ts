@@ -38,6 +38,19 @@ function taxCategory(vatRate: number) {
   } as const;
 }
 
+/** Lastschrift nur für zu zahlende Rechnungen (nicht Storno/Korrektur/Erstattung). */
+export function directDebitOf(doc: InvoiceDocument) {
+  const dd = doc.buyer.directDebit;
+  return dd && doc.payableTotal > 0n && ['invoice', 'partial', 'final'].includes(doc.kind) ? dd : null;
+}
+
+/** DE12 3456 … → DE12 **** **** **** **12 34 (Vorabankündigung ohne volle IBAN auf Papier) */
+export function maskIban(iban: string): string {
+  const s = iban.replace(/\s/g, '');
+  const masked = s.slice(0, 4) + '*'.repeat(Math.max(0, s.length - 8)) + s.slice(-4);
+  return masked.replace(/(.{4})/g, '$1 ').trim();
+}
+
 /** Text der Zahlungsbedingung – identisch für PDF und E-Rechnung. */
 export function paymentTermsHuman(doc: InvoiceDocument): string {
   const eur = (c: Cents) => formatEuro(c);
@@ -46,6 +59,14 @@ export function paymentTermsHuman(doc: InvoiceDocument): string {
   }
   if (doc.kind === 'cancellation')
     return 'Diese Stornorechnung hebt die oben genannte Rechnung vollständig auf.';
+  const dd = directDebitOf(doc);
+  if (dd) {
+    return (
+      `Der Rechnungsbetrag von ${eur(doc.payableTotal)} wird am ${formatDateDe(doc.dueDate)} per SEPA-` +
+      `${dd.scheme === 'B2B' ? 'Firmenlastschrift' : 'Lastschrift'} von Ihrem Konto ${maskIban(dd.iban)} eingezogen ` +
+      `(Mandatsreferenz ${dd.mandateRef}, Gläubiger-ID ${dd.creditorId}). Bitte sorgen Sie für ausreichende Deckung.`
+    );
+  }
   if (doc.skonto) {
     const s = doc.skonto;
     return (
@@ -62,7 +83,7 @@ export function paymentTermsHuman(doc: InvoiceDocument): string {
  */
 export function paymentTermsText(doc: InvoiceDocument): string {
   const human = paymentTermsHuman(doc);
-  if (!doc.skonto) return human;
+  if (!doc.skonto || directDebitOf(doc)) return human;
   const pct = (doc.skonto.percentBp / 100).toFixed(2);
   return `#SKONTO#TAGE=${doc.skonto.days}#PROZENT=${pct}#\n${human}`;
 }
@@ -79,6 +100,7 @@ export function toEInvoice(doc: InvoiceDocument): Invoice {
     throw new Error('USt-ID oder Steuernummer des Rechnungsstellers fehlt');
   if (doc.lines.length === 0) throw new Error('Rechnung ohne Positionen');
 
+  const dd = directDebitOf(doc);
   const notes: string[] = [];
   if (doc.kind !== 'invoice') notes.push(KIND_TITLES[doc.kind]);
   if (doc.introText) notes.push(doc.introText);
@@ -119,7 +141,15 @@ export function toEInvoice(doc: InvoiceDocument): Invoice {
       'cac:Party': {
         'cbc:EndpointID': seller.email,
         'cbc:EndpointID@schemeID': 'EM',
-        ...(buyer.supplierNo ? { 'cac:PartyIdentification': [{ 'cbc:ID': buyer.supplierNo }] } : {}),
+        ...(buyer.supplierNo || dd
+          ? {
+              'cac:PartyIdentification': [
+                ...(buyer.supplierNo ? [{ 'cbc:ID': buyer.supplierNo }] : []),
+                // BT-90 Gläubiger-ID (Lastschrift)
+                ...(dd ? [{ 'cbc:ID': dd.creditorId, 'cbc:ID@schemeID': 'SEPA' as const }] : []),
+              ],
+            }
+          : {}),
         'cac:PostalAddress': {
           'cbc:StreetName': seller.street,
           'cbc:CityName': seller.city,
@@ -196,15 +226,25 @@ export function toEInvoice(doc: InvoiceDocument): Invoice {
         : {}),
     },
     'cac:PaymentMeans': [
-      {
-        'cbc:PaymentMeansCode': '58',
-        'cbc:PaymentID': doc.number,
-        'cac:PayeeFinancialAccount': {
-          'cbc:ID': primaryBank.iban.replace(/\s/g, ''),
-          'cbc:Name': seller.legalName,
-          'cac:FinancialInstitutionBranch': { 'cbc:ID': primaryBank.bic },
-        },
-      },
+      dd
+        ? {
+            // 59 = SEPA-Lastschrift: BT-89 Mandatsreferenz, BT-91 belastetes Konto
+            'cbc:PaymentMeansCode': '59',
+            'cbc:PaymentID': doc.number,
+            'cac:PaymentMandate': {
+              'cbc:ID': dd.mandateRef,
+              'cac:PayerFinancialAccount': { 'cbc:ID': dd.iban },
+            },
+          }
+        : {
+            'cbc:PaymentMeansCode': '58',
+            'cbc:PaymentID': doc.number,
+            'cac:PayeeFinancialAccount': {
+              'cbc:ID': primaryBank.iban.replace(/\s/g, ''),
+              'cbc:Name': seller.legalName,
+              'cac:FinancialInstitutionBranch': { 'cbc:ID': primaryBank.bic },
+            },
+          },
     ],
     'cac:PaymentTerms': { 'cbc:Note': paymentTermsText(doc) },
     'cac:TaxTotal': [

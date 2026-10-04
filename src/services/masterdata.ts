@@ -422,7 +422,15 @@ export async function buildBuyerSnapshot(
   const c = await getCustomer(sql, customerId);
   if (!c) throw new Error('Kunde nicht gefunden');
   const site = siteId ? await getSite(sql, siteId) : undefined;
+  const [dd] = await sql<
+    { mandate_ref: string; iban: string; scheme: 'CORE' | 'B2B'; creditor_id: string | null }[]
+  >`
+    select m.mandate_ref, m.iban, m.scheme, (select creditor_id from app.company where id = 1) as creditor_id
+      from app.sepa_mandates m where m.customer_id = ${customerId} and m.active`;
   return {
+    directDebit: dd?.creditor_id
+      ? { mandateRef: dd.mandate_ref, iban: dd.iban, creditorId: dd.creditor_id, scheme: dd.scheme }
+      : null,
     customerNo: c.customer_no,
     name: c.name,
     name2: c.name2,

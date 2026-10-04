@@ -19,8 +19,25 @@ const withSkonto = (() => {
   return { ...d, skonto: skontoTerms(d.payableTotal, 300, 7, d.issueDate) };
 })();
 
+const withDebit = (() => {
+  const d = sampleDocument();
+  return {
+    ...d,
+    buyer: {
+      ...d.buyer,
+      directDebit: {
+        mandateRef: 'M-29901-1',
+        iban: 'DE02120300000000202051',
+        creditorId: 'DE98ZZZ09999999999',
+        scheme: 'CORE' as const,
+      },
+    },
+  };
+})();
+
 const cases = [
   ['Rechnung', sampleDocument()],
+  ['Rechnung mit SEPA-Lastschrift', withDebit],
   ['Rechnung mit Skonto', withSkonto],
   ['Stornorechnung', sampleCancellation()],
   ['Abschlagsrechnung', sampleDocument({ kind: 'partial', number: '1038303' })],
@@ -55,6 +72,17 @@ describe.skipIf(!available)('E-Rechnung gegen KoSIT', () => {
   it('Skonto steht maschinenlesbar in BT-20 (#SKONTO#)', async () => {
     const xml = await generateXRechnungUbl(withSkonto);
     expect(xml).toMatch(/<cbc:Note>#SKONTO#TAGE=7#PROZENT=3\.00#\n?Zahlbar bis zum/);
+  });
+
+  it('Lastschrift: Vorabankündigung im Text, Code 59 mit Mandat, Gläubiger-ID und Konto', async () => {
+    const xml = await generateXRechnungUbl(withDebit);
+    expect(xml).toContain('<cbc:PaymentMeansCode>59</cbc:PaymentMeansCode>');
+    expect(xml).toMatch(/<cac:PaymentMandate>\s*<cbc:ID>M-29901-1<\/cbc:ID>/);
+    expect(xml).toContain('<cbc:ID schemeID="SEPA">DE98ZZZ09999999999</cbc:ID>');
+    expect(xml).toContain('DE02120300000000202051');
+    expect(xml).toMatch(/per SEPA-Lastschrift von Ihrem Konto DE02 \*{4} \*{4} \*{4} \*\*20 51 eingezogen/);
+    const pdf = await renderInvoicePdf(withDebit);
+    expect((await PDFDocument.load(pdf)).getPageCount()).toBeGreaterThan(0);
   });
 
   it('Storno referenziert das Original und hat Belegart 384', async () => {

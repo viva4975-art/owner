@@ -433,11 +433,16 @@ Testadresse.
   - SEPA-Lastschrift: Mandate je Kunde (ein aktives, Referenz/IBAN nach erstem Einzug gesperrt, IBAN-Prüfziffer),
     Gläubiger-ID mit Prüfziffer, Einzug `LS-JJJJ-NNN` als pain.008.001.08 (CORE/B2B, FRST/RCUR), frühester Einzugstag
     = nächster TARGET2-Bankarbeitstag, Datei archiviert, jede Rechnung nur einmal im Einzug (außer nach Rücklastschrift).
-    **Risiko:** Vorabankündigung (Pre-Notification) ist Pflicht – auf der Rechnung fehlt der Lastschrift-Hinweis noch
-    (Mandatsreferenz, Gläubiger-ID, Einzugstag). Vor dem ersten echten Einzug ergänzen.
+    Vorabankündigung (Pre-Notification): siehe Eintrag „Lastschrift auf der Rechnung“ unten.
   - Dokumentenversand: Protokoll aller versendeten Rechnungen und Mahnungen (Empfänger laut Kunde und tatsächlich –
     im Test nur Testadresse), Filter. Dokumenteneingang: Ablage (Upload, write-once) und Zuordnung zu Kunde, Lieferant,
     Objekt, Eingangsrechnung oder Personalakte (nur Personal/Admin); nur die Verknüpfung wechselt.
   - Neue Abhängigkeit `xmlbuilder2` (war schon indirekt über die E-Rechnungs-Bibliothek vorhanden); CAMT mit DTD wird
     abgelehnt (Schutz gegen XXE).
   - Tests: 198 Unit-/DB-Tests, Browser-Tests 239 Prüfungen (neu `npm run e2e:transfer`, 12 Prüfungen).
+- 2026-10-04: Lastschrift auf der Rechnung (Vorabankündigung): Hat der Kunde beim Ausstellen ein aktives Mandat und ist
+  die Gläubiger-ID hinterlegt, wird das Mandat im Kunden-Schnappschuss eingefroren. Zahlungsbedingung dann: „Der
+  Rechnungsbetrag von … wird am <Fälligkeit> per SEPA-Lastschrift von Ihrem Konto DE02 **** … 20 51 eingezogen
+  (Mandatsreferenz …, Gläubiger-ID …)“ – ohne Skonto und ohne GiroCode. E-Rechnung: Zahlungsart 59 mit Mandatsreferenz
+  (BT-89), Gläubiger-ID (BT-90, schemeID SEPA) und belastetem Konto (BT-91), KoSIT-gültig (UBL + CII). Einzug vor dem
+  angekündigten Fälligkeitstag wird abgelehnt. Frist der Vorabankündigung = Zahlungsziel (≥ 14 Tage bzw. laut Mandat).

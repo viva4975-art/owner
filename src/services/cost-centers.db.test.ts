@@ -6,7 +6,7 @@ import { costCenterReport, getAllocations, saveAllocations, splitEvenly } from '
 import { siteCosting } from './costing.js';
 import { saveIncoming } from './purchasing.js';
 import { DEMO } from './seed.js';
-import { saveSubcontract, setSubcontractStatus } from './subcontractors.js';
+import { saveSubcontract } from './subcontractors.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
 const available = await dbAvailable();

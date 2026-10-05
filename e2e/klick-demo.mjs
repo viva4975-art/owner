@@ -13,7 +13,7 @@ if (!/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(B)) throw new Error('Nur 
 const [USER, PASS] = (process.env.E2E_AUTH ?? 'ahmed:prototyp2026').split(':');
 const OUT = process.env.DEMO_OUT ?? 'var/klick-demo/viva-deluxe-klick-demo.html';
 const MAX_PAGES = Number(process.env.DEMO_MAX_PAGES ?? 400);
-const MAX_PDFS = 60; // als Seitenbilder (je ~100 KB pro Seite)
+const MAX_PDFS = Number(process.env.DEMO_MAX_PDFS ?? 30); // als Seitenbilder (je ~100 KB pro Seite)
 
 const browser = await chromium.launch({
   ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),

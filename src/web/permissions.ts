@@ -11,6 +11,8 @@ const HR: Role[] = ['admin', 'personal'];
 const RULES: [RegExp, Role[]][] = [
   [/^\/(anmelden|abmelden|konto|static|health|m)(\/|$)/, ALL],
   [/^\/benutzer(\/|$)/, ['admin']],
+  [/^\/einstellungen\/firma(\/|$)/, ['admin']],
+  [/^\/einstellungen\/?$/, ['admin', 'buchhaltung', 'personal']],
   [/^\/personal\/export/, HR],
   [/^\/personal(\/|$)/, HR],
   [/^\/zeiterfassung\/(monat|pruefbericht|einstellungen)/, HR],

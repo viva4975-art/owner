@@ -231,6 +231,14 @@ details.pop>.panel .btn{margin-top:12px;width:100%;justify-content:center}
 .list.sites .ol{width:210px;flex:none}
 .person-chip{display:inline-flex;align-items:center;gap:6px;font-weight:550}
 .person-chip .av{width:24px;height:24px;border-radius:50%;background:var(--brand-50);color:var(--brand);font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.gear{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;color:var(--ink-2)}
+.gear:hover{background:var(--head);color:var(--brand)}
+.settings-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+.settings-grid .card{margin:0}
+.settings-grid a.set{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line);color:var(--ink);text-decoration:none}
+.settings-grid a.set:first-of-type{border-top:0}
+.settings-grid a.set:hover b{color:var(--brand)}
+.settings-grid a.set span{color:var(--mut);font-size:12.5px}
 .danger-zone{border-color:#f3d4d4}
 .danger-zone>summary{cursor:pointer;font-weight:600;color:var(--err);list-style:none}
 .danger-zone>summary::-webkit-details-marker{display:none}
@@ -308,7 +316,6 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Einzelrechnung anlegen', href: '/neu?typ=rechnung' },
       { label: 'Offene Posten', href: '/offene-posten', sep: true },
       { label: 'Mahnwesen', href: '/mahnungen' },
-      { label: 'Leistungsarten', href: '/einstellungen/leistungsarten', sep: true },
     ],
   },
   {
@@ -336,8 +343,6 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Urlaub & Abwesenheiten', href: '/urlaub' },
       { label: 'Mitarbeiter-Handyansicht', href: '/m' },
       { label: 'Dokumente digital unterschreiben', href: '/personal/dokumente' },
-      { label: 'Dokumentvorlagen / Serienbriefe', href: '/personal/vorlagen' },
-      { label: 'Lohnstufen', href: '/personal/lohnstufen' },
     ],
   },
   {
@@ -361,7 +366,6 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Arbeitsscheine (Unterschrift vor Ort)', href: '/arbeitsscheine' },
       { label: 'Qualitätskontrollen', href: '/qualitaet' },
       { label: 'Zählerstände', href: '/zaehler' },
-      { label: 'Leistungswerte je Raumart', href: '/raumbuch/leistungswerte' },
       { label: 'Heute: Soll/Ist', href: '/zeiterfassung' },
       { label: 'Monat: Soll/Ist je Mitarbeiter', href: '/zeiterfassung/monat' },
       { label: 'Urlaubskalender', href: '/urlaub/kalender' },
@@ -475,6 +479,11 @@ export const Layout: FC<{
               <span class={`env${env === 'live' ? ' live' : ''}`}>
                 {env === 'live' ? 'LIVE' : env === 'test' ? 'TEST' : 'LOKAL'}
               </span>
+              {user && role && canOpen(role as Role, '/einstellungen') && (
+                <a href="/einstellungen" class="gear" title="Einstellungen" aria-label="Einstellungen">
+                  <Icon name="settings" size={20} />
+                </a>
+              )}
               {user && (
                 <details class="dd">
                   <summary class="usr" style="cursor:pointer">
@@ -484,6 +493,9 @@ export const Layout: FC<{
                   <div class="drop right">
                     <a href="/konto">Mein Konto / Passwort</a>
                     {role === 'admin' && <a href="/benutzer">Benutzer & Rechte</a>}
+                    {role && canOpen(role as Role, '/einstellungen') && (
+                      <a href="/einstellungen">Einstellungen</a>
+                    )}
                     <div class="sep" />
                     <form method="post" action="/abmelden" style="margin:0">
                       <button class="btn ghost" style="width:100%;justify-content:flex-start">

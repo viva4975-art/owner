@@ -545,3 +545,8 @@ Testadresse.
   CSV/Druck. „Als bezahlt festhalten“ (Datum, Zahlart, Skonto gezogen) → DATEV-Zahlungsausgang; von Hand erfasste Zahlung
   zurücknehmbar (Lauf-Zahlungen nicht). Alte Zahlungsläufe bleiben unter /zahlungslauf/<id> abrufbar, /zahlungslauf leitet um.
   Nachunternehmer mit fehlenden Nachweisen sind nicht vorausgewählt.
+- 2026-10-06: Einstellungen zentral (Ahmed: Leistungsarten, Mahnwesen usw. separat in den Einstellungen): Zahnrad oben rechts →
+  /einstellungen mit Firma (neu: Firmendaten & Bankverbindungen bearbeiten, nur Admin), Benutzer, Leistungsarten, Mahnstufen,
+  Briefvorlagen Kunden, Gläubiger-ID, DATEV/Nachkalkulation, Lohnstufen, Dokumentvorlagen, Zeiterfassung/Mindestlohn,
+  Leistungswerte, Arbeitskleidung. Aus den Fachmenüs entfernt: Leistungsarten, Lohnstufen, Dokumentvorlagen, Leistungswerte.
+  Einträge nach Rolle gefiltert; Objektleitung hat keine Einstellungen.

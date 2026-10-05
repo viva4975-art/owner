@@ -1,4 +1,12 @@
+import { randomUUID } from 'node:crypto';
 import type { Child, FC } from 'hono/jsx';
+import {
+  CUSTOMER_STATUS,
+  type CustomerFilter,
+  type CustomerListRow,
+  type CustomerStatus,
+  PAGE_SIZE,
+} from '../services/customer-list.js';
 import type { Customer, Site, SiteService } from '../services/masterdata.js';
 import { centsToInput } from './forms.js';
 import { FORMAT_LABEL, NEW_OPTIONS, PageHead, type Tab, Tabs, euro } from './layout.js';
@@ -28,95 +36,211 @@ export const Field: FC<{
 // Kundenliste (wie Fortytools: Status, Nummer, Kurzname/Adresse, A–Z)
 // ---------------------------------------------------------------------------
 
-type CustomerRow = Customer & { site_count: number; open_cents?: bigint };
+const mapsUrl = (c: Pick<Customer, 'street' | 'postal_code' | 'city'>) =>
+  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${c.street}, ${c.postal_code} ${c.city}`)}`;
 
-export const CustomerList: FC<{ customers: CustomerRow[]; letter: string | null; q: string | null }> = ({
-  customers,
-  letter,
-  q,
-}) => {
+export const CustomerList: FC<{
+  rows: CustomerListRow[];
+  filtered: number;
+  counts: Record<CustomerStatus, number>;
+  total: number;
+  filter: CustomerFilter;
+  page: number;
+  sites: Map<string, { id: string; site_no: string; name: string; active: boolean }[]>;
+  templates: { id: string; title: string }[];
+}> = ({ rows, filtered, counts, total, filter, page, sites, templates }) => {
   const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+  const pages = Math.max(1, Math.ceil(filtered / PAGE_SIZE));
+  const url = (
+    over: Partial<{ status: string | null; buchstabe: string | null; q: string | null; seite: number }>,
+  ) => {
+    const p = new URLSearchParams();
+    const st = 'status' in over ? over.status : filter.status;
+    const l = 'buchstabe' in over ? over.buchstabe : filter.letter;
+    const q = 'q' in over ? over.q : filter.q;
+    if (st) p.set('status', st);
+    if (l) p.set('buchstabe', l);
+    if (q) p.set('q', q);
+    if (over.seite && over.seite > 1) p.set('seite', String(over.seite));
+    const s = p.toString();
+    return `/kunden${s ? `?${s}` : ''}`;
+  };
+  const from = filtered ? (page - 1) * PAGE_SIZE + 1 : 0;
+  const to = Math.min(page * PAGE_SIZE, filtered);
+  const STATUS_BADGE: Record<CustomerStatus, string> = { kunde: 'ok', interessent: 'warn', ehemalig: 'err' };
+  const query = new URLSearchParams(url({}).split('?')[1] ?? '');
   return (
     <>
       <PageHead title="Kunden" create={{ options: NEW_OPTIONS, selected: 'kunde' }} />
+      <div class="chips">
+        <a href={url({ status: null, seite: 1 })} class={filter.status ? '' : 'on'}>
+          Alle<span class="n">{total}</span>
+        </a>
+        {(Object.keys(CUSTOMER_STATUS) as CustomerStatus[]).map((k) => (
+          <a href={url({ status: k, seite: 1 })} class={filter.status === k ? 'on' : ''}>
+            {CUSTOMER_STATUS[k]}
+            <span class="n">{counts[k]}</span>
+          </a>
+        ))}
+      </div>
       <div class="card">
         <form class="actions" method="get" action="/kunden" style="margin-top:0">
+          {filter.status && <input type="hidden" name="status" value={filter.status} />}
+          {filter.letter && <input type="hidden" name="buchstabe" value={filter.letter} />}
           <input
             name="q"
-            value={q ?? ''}
-            placeholder="Kunden filtern (Name, Nummer, Ort)"
-            style="max-width:320px"
+            value={filter.q ?? ''}
+            placeholder="Suchen: Name, Nummer, Ort, Straße"
+            style="max-width:340px"
           />
-          <button class="btn sec sm">Filtern</button>
-          <span class="mut small" style="margin-left:auto">
-            {customers.length} Kunden
+          <button class="btn sec sm">Suchen</button>
+          <span style="margin-left:auto;font-weight:600">
+            {from}–{to}{' '}
+            <span class="mut" style="font-weight:400">
+              von
+            </span>{' '}
+            {filtered}
           </span>
+          <a class="btn sec sm" href={`/kunden/export.csv${query.toString() ? `?${query}` : ''}`}>
+            Herunterladen (CSV)
+          </a>
         </form>
-        <div class="actions" style="gap:4px">
-          <a class={`btn sm ${letter ? 'sec' : ''}`} href="/kunden">
-            ✱
+        <div class="letters">
+          <a href={url({ buchstabe: null, seite: 1 })} class={filter.letter ? '' : 'on'}>
+            Alle
           </a>
           {letters.map((l) => (
-            <a class={`btn sm ${letter === l ? '' : 'sec'}`} href={`/kunden?buchstabe=${l}`}>
+            <a href={url({ buchstabe: l, seite: 1 })} class={filter.letter === l ? 'on' : ''}>
               {l}
             </a>
           ))}
+          <a
+            href={url({ buchstabe: '#', seite: 1 })}
+            class={filter.letter === '#' ? 'on' : ''}
+            title="Ziffern/Sonstige"
+          >
+            #
+          </a>
         </div>
-        <div class="tbl">
-          <table>
-            <thead>
-              <tr>
-                <th>Status</th>
-                <th>#</th>
-                <th>
-                  Kurzname
-                  <div class="mut small">Adresse</div>
-                </th>
-                <th>Format</th>
-                <th class="r">Objekte</th>
-                <th class="r">Offen</th>
-              </tr>
-            </thead>
-            <tbody>
-              {customers.length === 0 && (
-                <tr>
-                  <td colspan={6} class="mut">
-                    Keine Kunden gefunden.
-                  </td>
-                </tr>
-              )}
-              {customers.map((c) => (
-                <tr>
-                  <td>
-                    {!c.active ? (
-                      <span class="badge">inaktiv</span>
-                    ) : c.status === 'interessent' ? (
-                      <span class="badge info">Interessent</span>
-                    ) : (
-                      <span class="badge ok">Kunde</span>
-                    )}
+        <div class="list" style="margin-top:12px">
+          {rows.map((c) => {
+            const ss = sites.get(c.id) ?? [];
+            return (
+              <div class="row">
+                <div class="main">
+                  <a href={`/kunden/${c.id}`}>
+                    <b style="color:var(--ink)">{c.name}</b>
+                  </a>{' '}
+                  <span class="small faint">{c.customer_no}</span>
+                  <div class="small mut">
+                    {c.street}, {c.postal_code} {c.city}
+                  </div>
+                  <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap">
+                    <span class={`badge ${STATUS_BADGE[c.list_status]}`}>
+                      {CUSTOMER_STATUS[c.list_status]}
+                    </span>
+                    {c.is_public_authority && <span class="badge kind">Behörde</span>}
+                    <span class="badge">{FORMAT_LABEL[c.invoice_format]}</span>
                     {c.dunning_block && <span class="badge warn">Mahnsperre</span>}
-                  </td>
-                  <td>{c.customer_no}</td>
-                  <td>
-                    <a href={`/kunden/${c.id}`}>
-                      <b>{c.name}</b>
+                  </div>
+                </div>
+                <div class="side">
+                  {c.open_cents !== 0n && (
+                    <span class="when">
+                      offen <b style="color:var(--ink)">{euro(c.open_cents)}</b>
+                    </span>
+                  )}
+                  <a
+                    class="btn ghost sm"
+                    href={mapsUrl(c)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Auf der Karte zeigen"
+                  >
+                    Karte
+                  </a>
+                  {ss.length > 0 ? (
+                    <details class="pop">
+                      <summary class="btn sec sm">Objekte ({ss.length}) ▾</summary>
+                      <div class="panel" style="padding:6px;max-height:340px;overflow:auto">
+                        {ss.map((x) => (
+                          <a href={`/objekte/${x.id}`} class="menuitem" style={x.active ? '' : 'opacity:.55'}>
+                            {x.name} <span class="small faint">{x.site_no}</span>
+                          </a>
+                        ))}
+                        <a href={`/objekte/neu?kunde=${c.id}`} class="menuitem" style="color:var(--brand)">
+                          + Objekt anlegen
+                        </a>
+                      </div>
+                    </details>
+                  ) : (
+                    <a class="btn ghost sm" href={`/objekte/neu?kunde=${c.id}`}>
+                      + Objekt
                     </a>
-                    <div class="mut small">
-                      {c.street}/{c.postal_code} {c.city}
-                    </div>
-                  </td>
-                  <td>
-                    {FORMAT_LABEL[c.invoice_format]}
-                    {c.is_public_authority && <div class="small mut">Behörde</div>}
-                  </td>
-                  <td class="r">{c.site_count}</td>
-                  <td class="r">{c.open_cents ? euro(c.open_cents) : '–'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {!rows.length && (
+            <div class="row">
+              <div class="main mut">Keine Kunden gefunden.</div>
+            </div>
+          )}
         </div>
+        {pages > 1 && (
+          <div class="pager">
+            {page > 1 && <a href={url({ seite: page - 1 })}>‹ Zurück</a>}
+            {Array.from({ length: pages }, (_, i) => i + 1)
+              .filter((n) => n === 1 || n === pages || Math.abs(n - page) <= 2)
+              .map((n, i, arr) => (
+                <>
+                  {i > 0 && n - arr[i - 1]! > 1 && <span class="gap">…</span>}
+                  <a href={url({ seite: n })} class={n === page ? 'on' : ''}>
+                    {n}
+                  </a>
+                </>
+              ))}
+            {page < pages && <a href={url({ seite: page + 1 })}>Vor ›</a>}
+          </div>
+        )}
+      </div>
+
+      <div class="card">
+        <h3>Serienbrief</h3>
+        <p class="small mut" style="margin-top:0">
+          Ein Brief an alle <b style="color:var(--ink)">{filtered}</b> Kunden der aktuellen Auswahl (Status,
+          Buchstabe, Suche). Sie erhalten ein PDF zum Drucken; jeder Brief wird zusätzlich in der Kundenakte
+          (Reiter „Dateien“, Kategorie Schriftverkehr) abgelegt.
+        </p>
+        <form
+          method="post"
+          action="/kunden/serienbrief"
+          class="actions"
+          style="margin-bottom:0"
+          target="_blank"
+        >
+          <input type="hidden" name="run" value={randomUUID()} />
+          {filter.status && <input type="hidden" name="status" value={filter.status} />}
+          {filter.letter && <input type="hidden" name="buchstabe" value={filter.letter} />}
+          {filter.q && <input type="hidden" name="q" value={filter.q} />}
+          <select name="vorlage" required style="max-width:360px" aria-label="Vorlage">
+            <option value="">– Vorlage wählen –</option>
+            {templates.map((t) => (
+              <option value={t.id}>{t.title}</option>
+            ))}
+          </select>
+          <button
+            class="btn"
+            disabled={!filtered}
+            onclick={`return confirm('Serienbrief an ${filtered} Kunden erstellen?')`}
+          >
+            Jetzt erstellen
+          </button>
+          <a class="btn ghost sm" href="/kunden/vorlagen">
+            Vorlagen bearbeiten
+          </a>
+        </form>
       </div>
     </>
   );

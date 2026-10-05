@@ -214,6 +214,17 @@ details.pop>.panel .btn{margin-top:12px;width:100%;justify-content:center}
 .chips a{padding:6px 12px;border-radius:999px;border:1px solid var(--line-2);background:#fff;color:var(--ink-2);font-size:13px;font-weight:550;text-decoration:none}
 .chips a.on{background:var(--ink);border-color:var(--ink);color:#fff}
 .chips a .n{opacity:.6;margin-left:4px}
+.letters{display:flex;flex-wrap:wrap;gap:2px}
+.letters a{min-width:30px;height:30px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--r-sm);color:var(--ink-2);font-weight:550;font-size:13px;text-decoration:none}
+.letters a:hover{background:var(--head)}
+.letters a.on{background:var(--ink);color:#fff}
+.pager{display:flex;gap:4px;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:18px}
+.pager a{min-width:36px;height:36px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--r-sm);border:1px solid var(--line-2);background:#fff;color:var(--ink-2);font-weight:550;text-decoration:none}
+.pager a:hover{background:var(--head)}
+.pager a.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.pager .gap{color:var(--faint);padding:0 4px}
+.menuitem{display:block;padding:8px 10px;border-radius:var(--r-sm);color:var(--ink);text-decoration:none}
+.menuitem:hover{background:var(--brand-50);color:var(--brand);text-decoration:none}
 .danger-zone{border-color:#f3d4d4}
 .danger-zone>summary{cursor:pointer;font-weight:600;color:var(--err);list-style:none}
 .danger-zone>summary::-webkit-details-marker{display:none}

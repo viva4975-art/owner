@@ -476,24 +476,37 @@ export interface DocumentTemplate {
   body: string;
   active: boolean;
   version: number;
+  audience: 'mitarbeiter' | 'kunde';
 }
 
-export async function listTemplates(sql: Sql, all = false) {
+export async function listTemplates(
+  sql: Sql,
+  all = false,
+  audience: 'mitarbeiter' | 'kunde' = 'mitarbeiter',
+) {
   return sql<DocumentTemplate[]>`
-    select * from app.document_templates where ${all ? sql`true` : sql`active`} order by title`;
+    select * from app.document_templates where ${all ? sql`true` : sql`active`} and audience = ${audience}
+     order by title`;
 }
 
 export async function saveTemplate(
   sql: Sql,
   id: string,
-  p: { title: string; category: string; body: string; active: boolean; expectedVersion: number | null },
+  p: {
+    title: string;
+    category: string;
+    body: string;
+    active: boolean;
+    expectedVersion: number | null;
+    audience?: 'mitarbeiter' | 'kunde';
+  },
 ) {
   if (!p.title.trim() || !p.body.trim()) throw new BusinessError('Bitte Titel und Text angeben');
   const [cur] = await sql<{ version: number }[]>`select version from app.document_templates where id = ${id}`;
   assertVersion(cur?.version, p.expectedVersion, 'Die Vorlage');
   await sql`
-    insert into app.document_templates (id, title, category, body, active)
-    values (${id}, ${p.title.trim()}, ${p.category}, ${p.body}, ${p.active})
+    insert into app.document_templates (id, title, category, body, active, audience)
+    values (${id}, ${p.title.trim()}, ${p.category}, ${p.body}, ${p.active}, ${p.audience ?? 'mitarbeiter'})
     on conflict (id) do update set title = excluded.title, category = excluded.category, body = excluded.body,
       active = excluded.active`;
 }

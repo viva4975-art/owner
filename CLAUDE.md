@@ -518,3 +518,10 @@ Testadresse.
   mit Bordeaux-Markierung statt vollflächig Bordeaux). Status als Punkt-Pillen, Tabellenköpfe dezent. Neue Bausteine:
   Kopfkarte mit großem Status + Fortschrittsbalken, Listen statt Tabellen, Filter-Chips, Upload im kleinen Aufklapp-Fenster,
   „Zusammenarbeit beenden“ eingeklappt. Nachunternehmer-Seiten als erstes umgebaut; weitere Seiten folgen schrittweise.
+- 2026-10-05: Kundenliste wie Fortytools, im neuen Design (Ahmed: Objekte sehen, Serienbrief, Seiten, Anzahl):
+  Status-Chips mit Anzahl (Kunde / Interessent / Ehemaliger Kunde = inaktiv), Suche, A–Z (+ „#“), „1–25 von N“ oben,
+  Seitenzahlen unten (25 je Seite), je Kunde Objekte-Aufklappliste (+ Objekt anlegen), Karte (Google Maps), offener Betrag,
+  CSV-Download der gefilterten Liste. Serienbrief an alle gefilterten Kunden: ein PDF zum Drucken, jeder Brief zusätzlich in
+  der Kundenakte (Dateien, Kategorie Schriftverkehr; feste IDs → nichts doppelt). Briefvorlagen jetzt mit Zielgruppe
+  (Mitarbeiter/Kunde), Kunden → Briefvorlagen; Startvorlagen: neue Adresse ab 01.11.2026, Preisanpassung Tariflohn,
+  Umstellung E-Rechnung.

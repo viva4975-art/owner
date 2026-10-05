@@ -38,6 +38,19 @@ import { listDunnings } from '../services/dunning.js';
 import { listOffers } from '../services/offers.js';
 import { listOpenItems } from '../services/payments.js';
 import { listFiles } from '../services/uploads.js';
+import {
+  CUSTOMER_STATUS,
+  CUSTOMER_TEMPLATE_FIELDS,
+  type CustomerFilter,
+  type CustomerStatus,
+  customerSerialLetter,
+  customersCsv,
+  filteredCustomers,
+  PAGE_SIZE,
+  sitesOf,
+} from '../services/customer-list.js';
+import { listTemplates, saveTemplate } from '../services/employees.js';
+import { uploadConfig } from './routes-files.js';
 import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { FileArea } from './files.js';
 import { arr, str } from './forms.js';
@@ -76,24 +89,181 @@ export async function revenueByMonth(sql: Ctx['deps']['sql'], filter: { customer
      group by m.month order by m.month`;
 }
 
-export function registerMasterdataRoutes({ app, deps, page, back, shells }: Ctx) {
+export function registerMasterdataRoutes(ctx: Ctx) {
+  const { app, deps, page, back, shells } = ctx;
   const { sql } = deps;
 
   // ------------------------------------------------------------------ Kunden
 
+  const customerFilter = (get: (k: string) => string | undefined): CustomerFilter => {
+    const st = get('status');
+    const l = get('buchstabe')?.toUpperCase();
+    return {
+      status: st && st in CUSTOMER_STATUS ? (st as CustomerStatus) : null,
+      letter: l && /^[A-Z#]$/.test(l) ? l : null,
+      q: get('q')?.trim() || null,
+    };
+  };
+
   app.get('/kunden', async (c) => {
-    const letter = c.req.query('buchstabe')?.toUpperCase() ?? null;
-    const q = c.req.query('q')?.trim() || null;
-    const open = await sql<{ customer_id: string; open_cents: bigint }[]>`
-      select customer_id, sum(open_cents)::bigint as open_cents from app.open_items where open_cents <> 0 group by 1`;
-    const openBy = new Map(open.map((o) => [o.customer_id, o.open_cents]));
-    let customers = (await listCustomers(sql)).map((x) => ({ ...x, open_cents: openBy.get(x.id) ?? 0n }));
-    if (letter) customers = customers.filter((x) => x.name.toUpperCase().startsWith(letter));
-    if (q) {
-      const t = q.toLowerCase();
-      customers = customers.filter((x) => `${x.name} ${x.customer_no} ${x.city}`.toLowerCase().includes(t));
+    const filter = customerFilter((k) => c.req.query(k));
+    const { rows, counts, total } = await filteredCustomers(sql, filter);
+    const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+    const pageNo = Math.min(pages, Math.max(1, Number(c.req.query('seite') ?? 1) || 1));
+    const shown = rows.slice((pageNo - 1) * PAGE_SIZE, pageNo * PAGE_SIZE);
+    const [sites, templates] = await Promise.all([
+      sitesOf(
+        sql,
+        shown.map((x) => x.id),
+      ),
+      listTemplates(sql, false, 'kunde'),
+    ]);
+    return page(
+      c,
+      'Kunden',
+      'kunden',
+      <CustomerList
+        rows={shown}
+        filtered={rows.length}
+        counts={counts}
+        total={total}
+        filter={filter}
+        page={pageNo}
+        sites={sites}
+        templates={templates}
+      />,
+    );
+  });
+
+  app.get('/kunden/export.csv', async (c) => {
+    const { rows } = await filteredCustomers(
+      sql,
+      customerFilter((k) => c.req.query(k)),
+    );
+    return new Response(customersCsv(rows), {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="Kunden_${todayBerlin()}.csv"`,
+        'Cache-Control': 'private, no-store',
+      },
+    });
+  });
+
+  app.post('/kunden/serienbrief', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const filter = customerFilter((k) => str(b, k) ?? undefined);
+    const { rows } = await filteredCustomers(sql, filter);
+    try {
+      const pdf = await customerSerialLetter(deps, uploadConfig(ctx), {
+        runId: str(b, 'run') ?? randomUUID(),
+        templateId: str(b, 'vorlage') ?? '',
+        customerIds: rows.map((r) => r.id),
+        actor: c.get('actor'),
+      });
+      return new Response(pdf, {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `inline; filename="Serienbrief_${todayBerlin()}.pdf"`,
+          'Cache-Control': 'private, no-store',
+        },
+      });
+    } catch (e) {
+      if (e instanceof BusinessError) return back(c, '/kunden', { fehler: e.message });
+      throw e;
     }
-    return page(c, 'Kunden', 'kunden', <CustomerList customers={customers} letter={letter} q={q} />);
+  });
+
+  app.get('/kunden/vorlagen', async (c) => {
+    const list = await listTemplates(sql, true, 'kunde');
+    const t = list.find((x) => x.id === c.req.query('bearbeiten')) ?? null;
+    const formId = t?.id ?? randomUUID();
+    return page(
+      c,
+      'Briefvorlagen Kunden',
+      'kunden',
+      <>
+        <PageHead title="Briefvorlagen für Kunden" crumbs={[['Kunden', '/kunden']]} />
+        <div class="cols">
+          <form
+            method="post"
+            action={`/kunden/vorlagen/${formId}`}
+            class="card"
+            data-version={String(t?.version ?? '')}
+          >
+            <h3>{t ? `„${t.title}“ bearbeiten` : 'Neue Vorlage'}</h3>
+            <input type="hidden" name="version" value={String(t?.version ?? '')} />
+            <label for="title">Betreff</label>
+            <input id="title" name="title" value={t?.title ?? ''} required />
+            <label for="body" style="margin-top:12px">
+              Text (Anrede, Gruß und Briefkopf werden automatisch gesetzt; Leerzeile = neuer Absatz)
+            </label>
+            <textarea id="body" name="body" rows={12} required>
+              {t?.body ?? ''}
+            </textarea>
+            <p class="small mut">
+              Platzhalter:{' '}
+              {CUSTOMER_TEMPLATE_FIELDS.map(([k, v]) => (
+                <span title={v} style="margin-right:6px">
+                  <code>{`{{${k}}}`}</code>
+                </span>
+              ))}
+            </p>
+            <div class="chk">
+              <input type="checkbox" id="active" name="active" checked={t ? t.active : true} />
+              <label for="active">aktiv</label>
+            </div>
+            <div class="formfoot">
+              {t && (
+                <a class="btn sec" href="/kunden/vorlagen">
+                  Neue Vorlage
+                </a>
+              )}
+              <button class="btn">Speichern</button>
+            </div>
+          </form>
+          <div class="card">
+            <h3>Vorlagen</h3>
+            <div class="list">
+              {list.map((x) => (
+                <div class="row">
+                  <div class="main">
+                    <a href={`/kunden/vorlagen?bearbeiten=${x.id}`}>
+                      <b style="color:var(--ink)">{x.title}</b>
+                    </a>
+                    {!x.active && <span class="small faint"> · inaktiv</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </>,
+    );
+  });
+
+  app.post(`/kunden/vorlagen/:tid{${UUID}}`, async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const tid = c.req.param('tid');
+    const [cur] = await sql<
+      { audience: string }[]
+    >`select audience from app.document_templates where id = ${tid}`;
+    if (cur && cur.audience !== 'kunde')
+      return back(c, '/kunden/vorlagen', { fehler: 'Keine Kundenvorlage' });
+    try {
+      await saveTemplate(sql, tid, {
+        title: str(b, 'title') ?? '',
+        category: 'Schriftverkehr',
+        body: typeof b.body === 'string' ? b.body : '',
+        active: b.active === 'on',
+        expectedVersion: typeof b.version === 'string' && b.version ? Number(b.version) : null,
+        audience: 'kunde',
+      });
+    } catch (e) {
+      if (e instanceof BusinessError)
+        return back(c, `/kunden/vorlagen?bearbeiten=${tid}`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/kunden/vorlagen?bearbeiten=${tid}`, { ok: 'Vorlage gespeichert.' });
   });
 
   app.get('/kunden/neu', (c) =>

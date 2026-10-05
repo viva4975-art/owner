@@ -239,6 +239,21 @@ details.pop>.panel .btn{margin-top:12px;width:100%;justify-content:center}
 .settings-grid a.set:first-of-type{border-top:0}
 .settings-grid a.set:hover b{color:var(--brand)}
 .settings-grid a.set span{color:var(--mut);font-size:12.5px}
+.op{padding:0;overflow:hidden}
+.op-head{display:flex;align-items:center;gap:12px;padding:14px 22px;background:var(--head);border-bottom:1px solid var(--line)}
+.op-head .no{font-size:18px;font-weight:700}
+.op-head .nm{color:var(--mut);font-size:15px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.op-head .sum{background:#fff7c2;color:var(--ink);font-weight:700;padding:4px 12px;border-radius:var(--r-sm)}
+.op-cols,.op-row{display:grid;grid-template-columns:1fr 130px 130px;gap:8px;padding:6px 22px;align-items:baseline}
+.op-cols{font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);text-align:right;padding-top:8px}
+.op-row .r{text-align:right;font-variant-numeric:tabular-nums}
+.op-item{border-top:1px solid var(--line);padding:6px 0 10px}
+.op-sumline{border-top:1px dashed var(--line);margin:2px 22px 0;padding:6px 0;color:var(--mut)}
+.op-saldo{display:flex;align-items:center;gap:12px;justify-content:flex-end;padding:4px 22px 0}
+.op-saldo>span.small{margin-right:auto}
+.op-saldo .lbl{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+.op input[type=checkbox]{width:20px;height:20px}
+.op-bar{position:sticky;bottom:12px;z-index:5;box-shadow:var(--sh-2)}
 .danger-zone{border-color:#f3d4d4}
 .danger-zone>summary{cursor:pointer;font-weight:600;color:var(--err);list-style:none}
 .danger-zone>summary::-webkit-details-marker{display:none}
@@ -271,6 +286,11 @@ details.pop>.panel .btn{margin-top:12px;width:100%;justify-content:center}
   .list.sites .cust,.list.sites .ol{width:auto;flex:1 1 45%;padding-left:0}
   .kpis{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
   .kpi{padding:12px}.kpi .v{font-size:22px}.kpi .s{display:none}
+  .op-cols,.op-row{grid-template-columns:1fr 92px 92px;padding-left:16px;padding-right:16px}
+  .op-head,.op-saldo{padding-left:16px;padding-right:16px;flex-wrap:wrap}
+  .op-sumline{margin:2px 16px 0}
+  .op-bar{position:static}.hint-desk{display:none}
+  .kpi .v{font-size:19px}
   .hero .acts{margin-left:0}
 }
 `;

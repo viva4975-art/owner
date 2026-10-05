@@ -553,3 +553,7 @@ Testadresse.
 - 2026-10-06: Kunde → Übersicht zeigt „Rechnungsangaben der Objekte“: „x von y Objekten wie Kunde“ und nur die abweichenden
   Objekte mit ihren Unterschieden (Adresse, E-Mail, Format, Leitweg-ID, Zahlungsziel, Skonto). Rechnung (Entwurf/ausgestellt)
   zeigt „Rechnung an“ mit Kennzeichen „vom Objekt“ und Empfänger-E-Mails; Skonto-Vorschau im Entwurf aus den Objektangaben.
+- 2026-10-06: Offene Posten wie Fortytools: je Kunde ein Block (Kd.-Nr., Name, offene Summe gelb, alle auswählen), je Rechnung
+  Soll (Rechnungsbetrag) und Haben (Zahlungen, Skonto-Abzug, Storno/Korrektur mit Datum), Summenzeile, Saldo, Fälligkeit,
+  „x T. überfällig“, „Skonto bis“, Auswahl-Häkchen. Filter Alle/Überfällig, Suche. Kennzahlen offen gesamt/überfällig.
+  „Mahnung erstellen“ für die Auswahl (gleiche Regeln wie Stapelverarbeitung, optional gleich per E-Mail).

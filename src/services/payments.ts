@@ -33,6 +33,106 @@ export async function listOpenItems(sql: Sql, customerId?: string) {
      order by c.name, o.due_date, o.number`;
 }
 
+/** Offene Posten wie Fortytools: je Rechnung Soll (Rechnung) und Haben (Zahlungen, Storno/Korrektur). */
+export interface LedgerEntry {
+  date: string;
+  label: string;
+  cents: bigint; // positiv = Haben (mindert die Forderung)
+  href: string | null;
+}
+export async function openItemLedger(
+  sql: Sql,
+  f: { customerId?: string; q?: string | null; overdueOnly?: boolean } = {},
+) {
+  let items: OpenItem[] = [...(await listOpenItems(sql, f.customerId))];
+  const t = f.q?.trim().toLowerCase();
+  if (t)
+    items = items.filter((i) => `${i.customer_no} ${i.customer_name} ${i.number}`.toLowerCase().includes(t));
+  if (f.overdueOnly) items = items.filter((i) => i.overdue_days > 0);
+  const ids = items.map((i) => i.invoice_id);
+  const [pays, adj] = ids.length
+    ? await Promise.all([
+        sql<
+          {
+            invoice_id: string;
+            paid_on: string;
+            method: string;
+            amount_cents: bigint;
+            reference: string | null;
+          }[]
+        >`
+          select invoice_id, paid_on, method::text, amount_cents, reference from app.payments
+           where invoice_id = any(${ids}::uuid[]) order by paid_on, created_at`,
+        sql<
+          {
+            id: string;
+            original_invoice_id: string;
+            number: string;
+            issue_date: string;
+            kind: string;
+            payable_cents: bigint;
+          }[]
+        >`
+          select id, original_invoice_id, number, issue_date, kind::text, payable_cents from app.invoices
+           where original_invoice_id = any(${ids}::uuid[]) and status = 'issued' order by issue_date`,
+      ])
+    : [[], []];
+  const METHOD: Record<string, string> = {
+    ueberweisung: 'Zahlung',
+    lastschrift: 'Lastschrift',
+    bar: 'Barzahlung',
+    skonto: 'Skonto-Abzug',
+    verrechnung: 'Verrechnung',
+    korrektur: 'Korrekturbuchung',
+  };
+  const byCustomer = new Map<
+    string,
+    {
+      customer_id: string;
+      customer_no: string;
+      customer_name: string;
+      open_cents: bigint;
+      items: (OpenItem & { haben: LedgerEntry[] })[];
+    }
+  >();
+  for (const i of items) {
+    const haben: LedgerEntry[] = [
+      ...adj
+        .filter((a) => a.original_invoice_id === i.invoice_id)
+        .map((a) => ({
+          date: a.issue_date,
+          label: `${a.kind === 'cancellation' ? 'Storno' : 'Rechnungskorrektur'} ${a.number}`,
+          cents: -a.payable_cents,
+          href: `/rechnungen/${a.id}`,
+        })),
+      ...pays
+        .filter((p) => p.invoice_id === i.invoice_id)
+        .map((p) => ({
+          date: p.paid_on,
+          label: `${METHOD[p.method] ?? p.method}${p.reference ? ` (${p.reference})` : ''}`,
+          cents: p.amount_cents,
+          href: null,
+        })),
+    ].sort((a, b) => a.date.localeCompare(b.date));
+    const g = byCustomer.get(i.customer_id) ?? {
+      customer_id: i.customer_id,
+      customer_no: i.customer_no,
+      customer_name: i.customer_name,
+      open_cents: 0n,
+      items: [],
+    };
+    g.open_cents += i.open_cents;
+    g.items.push({ ...i, haben });
+    byCustomer.set(i.customer_id, g);
+  }
+  // größte Forderung zuerst, Rechnungen je Kunde neueste zuerst (wie Fortytools)
+  const groups = [...byCustomer.values()].sort((a, b) =>
+    b.open_cents > a.open_cents ? 1 : b.open_cents < a.open_cents ? -1 : 0,
+  );
+  for (const g of groups) g.items.sort((a, b) => b.number.localeCompare(a.number));
+  return groups;
+}
+
 export interface CustomerBalance {
   customer_id: string;
   customer_no: string;

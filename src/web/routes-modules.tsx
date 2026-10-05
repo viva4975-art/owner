@@ -24,13 +24,13 @@ import { MonthBox } from './pages-hr.js';
 import { BusinessError } from '../services/errors.js';
 import { listInvoices } from '../services/invoices.js';
 import { listSites } from '../services/masterdata.js';
-import { listBalances, listOpenItems } from '../services/payments.js';
+import { listBalances, openItemLedger } from '../services/payments.js';
 import { proposals } from '../services/dunning.js';
 import { listArticles, listDevices, supplierWarnings } from '../services/inventory.js';
 import { listOffers } from '../services/offers.js';
 import { search } from '../services/search.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
-import { NEW_OPTIONS, PageHead } from './layout.js';
+import { NEW_OPTIONS, PageHead, dateDe, euro } from './layout.js';
 import { homeFor } from './permissions.js';
 import {
   Dashboard,
@@ -42,13 +42,7 @@ import {
   TaskBox,
   TaskForm,
 } from './pages-crm.js';
-import {
-  EmployeeForm,
-  EmployeeList,
-  EmployeeOverview,
-  EmployeeShell,
-  OpenItemsTable,
-} from './pages-hr-finance.js';
+import { EmployeeForm, EmployeeList, EmployeeOverview, EmployeeShell } from './pages-hr-finance.js';
 import { RevenueBars } from './pages-masterdata.js';
 import { lastMonth } from './routes-invoices.js';
 import { revenueByMonth } from './routes-masterdata.js';
@@ -216,20 +210,149 @@ export function registerModuleRoutes({ app, deps, page, back, shells }: Ctx) {
   // ------------------------------------------------------------------ Offene Posten
 
   app.get('/offene-posten', async (c) => {
-    const items = await listOpenItems(sql);
+    const q = c.req.query('q') ?? '';
+    const overdueOnly = c.req.query('filter') === 'ueberfaellig';
+    const groups = await openItemLedger(sql, { q, overdueOnly });
+    const all = await openItemLedger(sql);
+    const total = all.reduce((a, g) => a + g.open_cents, 0n);
+    const overdue = all.flatMap((g) => g.items).filter((i) => i.overdue_days > 0);
     return page(
       c,
       'Offene Posten',
       'rechnungen',
       <>
         <PageHead title="Offene Posten" />
-        <div class="card">
-          <p class="mut small" style="margin-top:0">
-            Rechnung abzüglich Storno/Korrektur und gebuchter Zahlungen. Zahlungseingänge bucht man in der
-            jeweiligen Rechnung unter „Zahlungen“.
-          </p>
-          <OpenItemsTable items={items} showCustomer />
+        <div class="kpis">
+          <div class="kpi">
+            <div class="l">offen gesamt</div>
+            <div class="v">{euro(total)}</div>
+            <div class="s">
+              {all.length} Kunden · {all.reduce((a, g) => a + g.items.length, 0)} Rechnungen
+            </div>
+          </div>
+          <a class="kpi" href="/offene-posten?filter=ueberfaellig" style="text-decoration:none">
+            <div class="l">davon überfällig</div>
+            <div class="v" style="color:var(--err)">
+              {euro(overdue.reduce((a, i) => a + i.open_cents, 0n))}
+            </div>
+            <div class="s">{overdue.length} Rechnungen</div>
+          </a>
         </div>
+        <form method="get" class="actions">
+          <div class="chips" style="margin:0">
+            <a
+              href={`/offene-posten${q ? `?q=${encodeURIComponent(q)}` : ''}`}
+              class={overdueOnly ? '' : 'on'}
+            >
+              Alle
+            </a>
+            <a
+              href={`/offene-posten?filter=ueberfaellig${q ? `&q=${encodeURIComponent(q)}` : ''}`}
+              class={overdueOnly ? 'on' : ''}
+            >
+              Überfällig
+            </a>
+          </div>
+          {overdueOnly && <input type="hidden" name="filter" value="ueberfaellig" />}
+          <input name="q" value={q} placeholder="Kunde, Kd.-Nr., Rechnungsnr." style="max-width:280px" />
+          <button class="btn sec sm">Suchen</button>
+        </form>
+        <form method="post" action="/mahnungen/stapel" id="op-form">
+          {groups.map((g) => (
+            <div class="card op">
+              <div class="op-head">
+                <span class="no">{g.customer_no}</span>
+                <a href={`/kunden/${g.customer_id}`} class="nm">
+                  {g.customer_name}
+                </a>
+                <span class="sum">{euro(g.open_cents)}</span>
+                <input
+                  type="checkbox"
+                  aria-label={`alle von ${g.customer_name}`}
+                  onchange={`document.querySelectorAll('input[name=inv_${g.customer_id}]').forEach(function(x){x.checked=this.checked}.bind(this))`}
+                />
+              </div>
+              <div class="op-cols">
+                <span />
+                <span>Soll</span>
+                <span>Haben</span>
+              </div>
+              {g.items.map((i) => {
+                const haben = i.haben.reduce((a, h) => a + h.cents, 0n);
+                return (
+                  <div class="op-item">
+                    <div class="op-row">
+                      <span>
+                        <a href={`/rechnungen/${i.invoice_id}`}>
+                          <b>{i.number}</b>
+                        </a>{' '}
+                        <span class="mut">{dateDe(i.issue_date)}</span>
+                        {i.site_name && <span class="small faint"> · {i.site_name}</span>}
+                      </span>
+                      <span class="r">{euro(i.payable_cents)}</span>
+                      <span />
+                    </div>
+                    {i.haben.map((h) => (
+                      <div class="op-row small">
+                        <span class="mut" style="padding-left:16px">
+                          {dateDe(h.date)} · {h.href ? <a href={h.href}>{h.label}</a> : h.label}
+                        </span>
+                        <span />
+                        <span class="r">{euro(h.cents)}</span>
+                      </div>
+                    ))}
+                    <div class="op-row op-sumline">
+                      <span />
+                      <span class="r">{euro(i.payable_cents)}</span>
+                      <span class="r">{euro(haben)}</span>
+                    </div>
+                    <div class="op-saldo">
+                      <span class="small">
+                        fällig {dateDe(i.due_date)}
+                        {i.overdue_days > 0 && (
+                          <span class="badge err" style="margin-left:6px">
+                            {i.overdue_days} T. überfällig
+                          </span>
+                        )}
+                        {i.skonto_date && i.skonto_date >= todayBerlin() && (
+                          <span class="badge ok" style="margin-left:6px">
+                            Skonto bis {dateDe(i.skonto_date)}
+                          </span>
+                        )}
+                      </span>
+                      <span class="lbl">Saldo</span>
+                      <b>{euro(i.open_cents)}</b>
+                      <input
+                        type="checkbox"
+                        name={`inv_${g.customer_id}`}
+                        value={i.invoice_id}
+                        aria-label={`${i.number} auswählen`}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+          {!groups.length && <div class="card empty">Keine offenen Posten.</div>}
+          {groups.length > 0 && (
+            <div class="card actions op-bar">
+              <span class="small mut">Ausgewählte Rechnungen:</span>
+              <button
+                class="btn"
+                onclick="return confirm('Für die ausgewählten Rechnungen je Kunde eine Mahnung erstellen? (Regeln: Stufe, Mindestabstand, Mahnsperre werden geprüft)')"
+              >
+                Mahnung erstellen
+              </button>
+              <label class="chk" style="margin:0">
+                <input type="checkbox" name="send" value="1" /> gleich per E-Mail senden
+              </label>
+              <span class="small faint hint-desk" style="margin-left:auto">
+                Zahlung buchen: Rechnung öffnen → „Zahlungen“ · Bankabgleich unter Transfer → Kontoumsätze
+              </span>
+            </div>
+          )}
+        </form>
       </>,
     );
   });

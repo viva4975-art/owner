@@ -43,6 +43,7 @@ import { hm } from '../services/time.js';
 import { listFiles } from '../services/uploads.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
+import { criticalSupplierIds } from '../services/subcontractors.js';
 import { arr, centsToInput, milliToInput, str } from './forms.js';
 import { Icon } from './icons.js';
 import { PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
@@ -969,8 +970,9 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
 
   app.get('/zahlungslauf', async (c) => {
     const exec = isDate(c.req.query('ausfuehrung')) ? c.req.query('ausfuehrung')! : addDays(todayBerlin(), 1);
-    const [prop, runs, seller] = await Promise.all([
+    const [prop, crit, runs, seller] = await Promise.all([
       paymentProposal(sql, exec),
+      criticalSupplierIds(sql),
       listPaymentRuns(sql),
       getSeller(sql),
     ]);
@@ -1031,7 +1033,8 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                     </tr>
                   )}
                   {prop.map((p) => {
-                    const due = p.invoice.due_date <= addDays(exec, 7) || p.skonto > 0n;
+                    const blocked = crit.has(p.invoice.supplier_id);
+                    const due = (p.invoice.due_date <= addDays(exec, 7) || p.skonto > 0n) && !blocked;
                     return (
                       <tr>
                         <td>
@@ -1049,6 +1052,12 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                           {!p.invoice.iban && (
                             <div class="small" style="color:var(--err)">
                               IBAN fehlt
+                            </div>
+                          )}
+                          {blocked && (
+                            <div class="small" style="color:var(--err)">
+                              Nachweise fehlen – Zahlung zurückhalten?{' '}
+                              <a href={`/lieferanten/${p.invoice.supplier_id}/nachweise`}>prüfen</a>
                             </div>
                           )}
                         </td>

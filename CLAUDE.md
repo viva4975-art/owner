@@ -496,3 +496,18 @@ Testadresse.
     Lohnabzug bei Nichtrückgabe nur mit ausdrücklicher Vereinbarung im Protokoll, höchstens Zeitwert, nur oberhalb der
     Pfändungsfreigrenze, Mindestlohn bleibt unberührt – Text mit Anwalt/Steuerberater prüfen lassen.
   - Tests: 217 Unit-/DB-Tests, neu `npm run e2e:uebergabe` (17 Prüfungen).
+- 2026-10-05: Nachunternehmer (aus der alten App „Subunternehmer“, verbessert):
+  - Lieferanten → Nachunternehmer: Ampel je Firma (Nachweise fehlen / läuft in 60 Tagen ab / vollständig / inaktiv) mit
+    den 17 Nachweisarten der alten App (Gültigkeit 6/12/36 Monate, HR-Auszug nur bei Registerrechtsformen). Jede Datei
+    eine Version (Archiv write-once, nie löschbar), „gültig bis“ muss vom Nachweis eingetragen werden (kein Vorschlag).
+    Nachforderungstext (E-Mail/Kopieren), Nachweisübersicht als PDF (z. B. für Zoll/Auftraggeber).
+  - Upload-Portal `/np/<link>` mit 6-stelliger PIN (scrypt, 5 Fehlversuche → 15 Min. gesperrt, Sitzung 2 h nur für diesen
+    Link). Uploads zählen erst nach Prüfung im Büro (Reiter „Zu prüfen“: gültig mit Datum / ablehnen mit Grund).
+  - Aufträge an Nachunternehmer (Nummer `BE-JJJJ-NNNN` wie alte App), Auftrags-PDF, Scan des unterschriebenen Auftrags,
+    Preisnachträge ab Monat (append-only), „Erteilen“ gesperrt, solange Pflicht-Nachweise fehlen. Soll/Ist je Monat gegen
+    Eingangsrechnungen (über Auftrag bzw. Nachunternehmer + Objekt + Leistungsmonat).
+  - Kündigung mit Gründen (Aufträge enden zum Datum, Entwürfe storniert), Kündigungsschreiben als PDF, aufhebbar.
+  - Zahlungslauf: Rechnungen von Nachunternehmern mit fehlenden Nachweisen sind nicht vorausgewählt und markiert.
+  - **Rechtlich:** Haftung als Auftraggeber für Mindestlohn (§ 13 MiLoG, § 14 AEntG) und SV-Beiträge (§ 28e Abs. 3a
+    SGB IV) – Zurückhalten der Zahlung schützt nicht vor der Haftung, die Nachweise sind die eigentliche Absicherung.
+  - Tests: 221 Unit-/DB-Tests, neu `npm run e2e:nachunternehmer` (19 Prüfungen).

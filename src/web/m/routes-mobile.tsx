@@ -47,7 +47,7 @@ interface Me {
   sites: { id: string; name: string; site_no: string }[];
 }
 
-const CSS = `
+export const CSS = `
 @font-face{font-family:Inter;font-weight:100 900;font-display:swap;src:url(/static/inter-latin.woff2) format("woff2")}
 :root{--brand:#7D1435;--brand-d:#5c0e27;--brand-50:#faf3f5;--ink:#1b1f24;--mut:#5b6270;--line:#e2e5ea;--bg:#f4f5f7;--ok:#15803d;--ok-50:#ecfdf3;--err:#b42318;--err-50:#fef3f2;--warn:#b45309;--warn-50:#fffbeb}
 *{box-sizing:border-box}

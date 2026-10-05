@@ -33,13 +33,13 @@ export function checkPinRules(pin: string) {
     throw new BusinessError('PIN ist zu einfach (z. B. 1234 oder 0000)');
 }
 
-async function hashPin(pin: string): Promise<string> {
+export async function hashPin(pin: string): Promise<string> {
   const salt = randomBytes(16);
   const h = await scrypt(pin, salt, 32);
   return `scrypt$${salt.toString('hex')}$${h.toString('hex')}`;
 }
 
-async function verifyHash(pin: string, stored: string): Promise<boolean> {
+export async function verifyHash(pin: string, stored: string): Promise<boolean> {
   const [alg, saltHex, hashHex] = stored.split('$');
   if (alg !== 'scrypt' || !saltHex || !hashHex) return false;
   const h = await scrypt(pin, Buffer.from(saltHex, 'hex'), 32);

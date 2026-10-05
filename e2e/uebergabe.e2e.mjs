@@ -47,7 +47,9 @@ async function sign(page, name) {
 }
 async function shirtStock() {
   await p.goto(B + '/arbeitskleidung');
-  const row = p.locator('tr', { hasText: 'T-Shirt grau' }).filter({ has: p.locator('td:nth-child(2):text-is("M")') });
+  const row = p
+    .locator('tr', { hasText: 'T-Shirt grau' })
+    .filter({ has: p.locator('td:nth-child(2):text-is("M")') });
   return Number((await row.locator('td').nth(2).innerText()).trim());
 }
 
@@ -72,7 +74,10 @@ await p.locator('input[name=item_qty]').first().fill('2');
 await p.click('button:has-text("Speichern und zur Unterschrift")');
 await p.waitForLoadState();
 check('Unterschriftsseite', p.url().includes('/unterschrift'), (await flash(p)) + p.url());
-check('Erklärung sichtbar', (await p.locator('body').innerText()).includes('Empfang der aufgeführten Arbeitskleidung'));
+check(
+  'Erklärung sichtbar',
+  (await p.locator('body').innerText()).includes('Empfang der aufgeführten Arbeitskleidung'),
+);
 await p.click('button:has-text("Unterschreiben")');
 check('ohne Zeichnung kein Absenden', await p.locator('#sig-hint').isVisible());
 await p.screenshot({ path: `${out}/u1-unterschrift.png`, fullPage: true });

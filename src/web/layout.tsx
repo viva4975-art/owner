@@ -249,6 +249,9 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     label: 'Lieferanten',
     items: [
       { label: 'Lieferanten & Nachunternehmer', href: '/lieferanten' },
+      { label: 'Nachunternehmer: Nachweise & Fristen', href: '/nachunternehmer' },
+      { label: 'Nachunternehmer: Aufträge', href: '/nachunternehmer/auftraege' },
+      { label: 'Nachunternehmer: Soll/Ist je Monat', href: '/nachunternehmer/monat' },
       { label: 'Bestellungen (BE-JJJJ-NNNN)', href: '/bestellungen' },
       { label: 'Rechnungseingang', href: '/rechnungseingang' },
       { label: 'Zahlungslauf SEPA', href: '/zahlungslauf' },

@@ -1,3 +1,4 @@
+import { LEGAL_FORMS } from '../services/subcontractors.js';
 import { randomUUID } from 'node:crypto';
 import type { FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
@@ -177,6 +178,13 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
             Bearbeiten
           </a>
         </PageHead>
+        {s.kind === 'nachunternehmer' && (
+          <div class="actions" style="margin-top:0">
+            <a class="btn" href={`/lieferanten/${id}/nachweise`}>
+              Nachweise, Aufträge, Portal, Kündigung
+            </a>
+          </div>
+        )}
         {s.kind === 'nachunternehmer' &&
           (!s.exemption_valid_until || (exp(s.exemption_valid_until) ?? 0) < 0) && (
             <div class="flash err">
@@ -303,6 +311,17 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
                 </option>
               </select>
             </div>
+            <div>
+              <label for="legal_form">Rechtsform</label>
+              <select id="legal_form" name="legal_form">
+                <option value="">–</option>
+                {Object.entries(LEGAL_FORMS).map(([k, v]) => (
+                  <option value={k} selected={k === s.legal_form}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
             <Field name="street" label="Straße" value={s.street} />
             <Field name="postal_code" label="PLZ" value={s.postal_code} />
             <Field name="city" label="Ort" value={s.city} />
@@ -320,6 +339,9 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
             />
           </div>
           <h2>Nachunternehmer-Nachweise</h2>
+          <p class="small mut" style="margin-top:0">
+            Werden beim Hochladen/Prüfen der Nachweise (Reiter „Nachweise“) automatisch gesetzt.
+          </p>
           <div class="grid">
             <Field
               name="exemption_valid_until"

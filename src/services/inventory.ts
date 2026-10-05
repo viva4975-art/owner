@@ -76,12 +76,35 @@ export interface Supplier {
   notes: string | null;
   active: boolean;
   version: number;
+  legal_form?: string | null;
 }
 
 export const supplierInput = z.object({
   supplier_no: z.string().trim().min(1, 'Lieferantennummer fehlt'),
   name: z.string().trim().min(1, 'Name fehlt'),
   kind: z.enum(['lieferant', 'nachunternehmer']),
+  legal_form: z.preprocess(
+    emptyToNull,
+    z
+      .enum([
+        'einzelunternehmen',
+        'kleingewerbe',
+        'freiberufler',
+        'gbr',
+        'ek',
+        'ohg',
+        'kg',
+        'gmbh_co_kg',
+        'gmbh',
+        'ug',
+        'ag',
+        'kgaa',
+        'eg',
+        'sonstige',
+      ])
+      .nullable()
+      .default(null),
+  ),
   street: optText,
   postal_code: optText,
   city: optText,

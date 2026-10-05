@@ -32,6 +32,7 @@ import { registerTransferRoutes } from './routes-transfer.js';
 import { registerSpecialRoutes } from './routes-special.js';
 import { registerImportRoutes } from './routes-import.js';
 import { registerHandoverRoutes } from './routes-handovers.js';
+import { registerSubcontractorRoutes } from './routes-subcontractors.js';
 import { registerPlanningRoutes } from './routes-planning.js';
 import { registerPurchasingRoutes } from './routes-purchasing.js';
 import { registerTimeRoutes } from './routes-time.js';
@@ -123,6 +124,7 @@ export function createApp(deps: Deps) {
   const open = (path: string) =>
     path === '/m' ||
     path.startsWith('/m/') ||
+    path.startsWith('/np/') ||
     path === '/anmelden' ||
     path === '/health' ||
     path.startsWith('/static/');
@@ -279,6 +281,7 @@ export function createApp(deps: Deps) {
   registerSpecialRoutes(ctx);
   registerImportRoutes(ctx);
   registerHandoverRoutes(ctx);
+  registerSubcontractorRoutes(ctx);
 
   app.notFound((c) =>
     page(

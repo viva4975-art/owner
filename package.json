@@ -38,7 +38,8 @@
     "e2e:transfer": "node e2e/transfer.e2e.mjs",
     "e2e:sonderdienst": "node e2e/sonderdienst.e2e.mjs",
     "e2e:import": "node e2e/import.e2e.mjs",
-    "e2e:uebergabe": "node e2e/uebergabe.e2e.mjs"
+    "e2e:uebergabe": "node e2e/uebergabe.e2e.mjs",
+    "e2e:nachunternehmer": "node e2e/nachunternehmer.e2e.mjs"
   },
   "repository": {
     "type": "git",

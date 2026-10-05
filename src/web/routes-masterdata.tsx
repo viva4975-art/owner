@@ -31,6 +31,11 @@ import {
   serviceInput,
   setServiceActive,
   siteInput,
+  resolveBilling,
+  saveSiteBilling,
+  siteBillingInput,
+  type Site,
+  type SiteBilling,
   suggestCustomerNo,
   suggestSiteNo,
 } from '../services/masterdata.js';
@@ -67,6 +72,7 @@ import {
   CustomerForm,
   CustomerList,
   SiteList,
+  SiteBillingForm,
   CustomerShell,
   RevenueBars,
   SiteForm,
@@ -815,6 +821,32 @@ export function registerMasterdataRoutes(ctx: Ctx) {
       );
     }),
   );
+
+  app.get(`/objekte/:id{${UUID}}/rechnungsangaben`, (c) =>
+    sitePage(c, 'rechnungsangaben', async (s) => {
+      const [site] = await sql<(Site & SiteBilling)[]>`select * from app.sites where id = ${s.id}`;
+      const customer = (await getCustomer(sql, s.customer_id))!;
+      return <SiteBillingForm site={site!} customer={customer} eff={resolveBilling(customer, site)} />;
+    }),
+  );
+
+  app.post(`/objekte/:id{${UUID}}/rechnungsangaben`, async (c) => {
+    const id = c.req.param('id');
+    const body = await c.req.parseBody();
+    const parsed = siteBillingInput.safeParse(body);
+    if (!parsed.success)
+      return back(c, `/objekte/${id}/rechnungsangaben`, {
+        fehler: parsed.error.issues.map((i) => i.message).join('\n'),
+      });
+    try {
+      await saveSiteBilling(sql, id, parsed.data, c.get('actor'), versionOf(body.version));
+    } catch (e) {
+      if (e instanceof BusinessError)
+        return back(c, `/objekte/${id}/rechnungsangaben`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/objekte/${id}/rechnungsangaben`, { ok: 'Rechnungsangaben gespeichert.' });
+  });
 
   app.get(`/objekte/:id{${UUID}}/bearbeiten`, async (c) => {
     const id = c.req.param('id');

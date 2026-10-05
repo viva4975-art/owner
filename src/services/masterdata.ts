@@ -418,6 +418,191 @@ export async function setServiceActive(sql: Sql, id: string, active: boolean, ac
 // Käufer-Snapshot (wird beim Ausstellen eingefroren)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Rechnungsangaben je Objekt („wie Kunde“ oder abweichend)
+// ---------------------------------------------------------------------------
+
+export interface SiteBilling {
+  billing_mode: 'kunde' | 'eigen';
+  bill_name: string | null;
+  bill_name2: string | null;
+  bill_street: string | null;
+  bill_postal_code: string | null;
+  bill_city: string | null;
+  bill_contact_name: string | null;
+  bill_emails: string[] | null;
+  bill_format: InvoiceFormat | null;
+  bill_leitweg_id: string | null;
+  bill_supplier_no: string | null;
+  bill_payment_terms_days: number | null;
+  bill_skonto_custom: boolean;
+  bill_skonto_percent_bp: number | null;
+  bill_skonto_days: number | null;
+}
+
+export interface EffectiveBilling {
+  source: 'kunde' | 'objekt';
+  name: string;
+  name2: string | null;
+  street: string;
+  postalCode: string;
+  city: string;
+  contactName: string | null;
+  emails: string[];
+  format: InvoiceFormat;
+  leitwegId: string | null;
+  supplierNo: string | null;
+  paymentTermsDays: number;
+  skonto: { percentBp: number; days: number } | null;
+}
+
+/** Gültige Rechnungsangaben: Objekt (wenn „abweichend“) vor Kunde; leere Einzelfelder → Kunde. */
+export function resolveBilling(c: Customer, s: Partial<SiteBilling> | null | undefined): EffectiveBilling {
+  const own = s?.billing_mode === 'eigen';
+  const addr = own && s?.bill_name;
+  const custSkonto =
+    c.skonto_percent_bp && c.skonto_days ? { percentBp: c.skonto_percent_bp, days: c.skonto_days } : null;
+  return {
+    source: own ? 'objekt' : 'kunde',
+    name: addr ? s.bill_name! : c.name,
+    name2: addr ? (s.bill_name2 ?? null) : c.name2,
+    street: addr ? s.bill_street! : c.street,
+    postalCode: addr ? s.bill_postal_code! : c.postal_code,
+    city: addr ? s.bill_city! : c.city,
+    contactName: (own && s?.bill_contact_name) || c.contact_name,
+    emails: own && s?.bill_emails?.length ? s.bill_emails : c.invoice_emails,
+    format: (own && s?.bill_format) || c.invoice_format,
+    leitwegId: (own && s?.bill_leitweg_id) || c.leitweg_id,
+    supplierNo: (own && s?.bill_supplier_no) || c.supplier_no,
+    paymentTermsDays:
+      own && s?.bill_payment_terms_days != null ? s.bill_payment_terms_days : c.payment_terms_days,
+    skonto:
+      own && s?.bill_skonto_custom
+        ? s.bill_skonto_percent_bp && s.bill_skonto_days
+          ? { percentBp: s.bill_skonto_percent_bp, days: s.bill_skonto_days }
+          : null
+        : custSkonto,
+  };
+}
+
+export async function effectiveBilling(sql: Sql, customerId: string, siteId: string | null) {
+  const c = await getCustomer(sql, customerId);
+  if (!c) throw new BusinessError('Kunde nicht gefunden');
+  const [s] = siteId
+    ? await sql<SiteBilling[]>`select * from app.sites where id = ${siteId} and customer_id = ${customerId}`
+    : [];
+  return resolveBilling(c, s);
+}
+
+const emailList = z.preprocess(
+  (v) =>
+    typeof v === 'string'
+      ? v
+          .split(/[\s,;]+/)
+          .map((x) => x.trim())
+          .filter(Boolean)
+      : v,
+  z.array(z.email('Ungültige Rechnungs-E-Mail')),
+);
+
+export const siteBillingInput = z
+  .object({
+    billing_mode: z.enum(['kunde', 'eigen']),
+    bill_name: optText,
+    bill_name2: optText,
+    bill_street: optText,
+    bill_postal_code: z.preprocess(
+      emptyToNull,
+      z
+        .string()
+        .trim()
+        .regex(/^\d{5}$/, 'PLZ muss 5-stellig sein')
+        .nullable(),
+    ),
+    bill_city: optText,
+    bill_contact_name: optText,
+    bill_emails: emailList,
+    bill_format: z.preprocess(emptyToNull, z.enum(['pdf', 'zugferd', 'xrechnung']).nullable()),
+    bill_leitweg_id: optText.refine(
+      (v) => v === null || /^[0-9]{2,12}(-[0-9A-Za-z]{1,30})?-[0-9]{2}$/.test(v),
+      'Leitweg-ID ungültig (Format: Grobadressierung-Feinadressierung-Prüfziffer)',
+    ),
+    bill_supplier_no: optText,
+    bill_payment_terms_days: z.preprocess(
+      (v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : null),
+      z.number().int().min(0).max(365).nullable(),
+    ),
+    bill_skonto_custom: z.preprocess((v) => v === 'on' || v === 'true' || v === true, z.boolean()),
+    bill_skonto_percent_bp: z.preprocess(
+      (v) =>
+        typeof v === 'string' && v.trim() !== '' ? Math.round(Number(v.replace(',', '.')) * 100) : null,
+      z.number().int('Skonto: max. 2 Nachkommastellen').min(1).max(1000, 'Skonto max. 10 %').nullable(),
+    ),
+    bill_skonto_days: z.preprocess(
+      (v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : null),
+      z.number().int().min(1).max(90).nullable(),
+    ),
+  })
+  .refine((b) => !b.bill_name || (!!b.bill_street && !!b.bill_postal_code && !!b.bill_city), {
+    message: 'Abweichende Rechnungsadresse: bitte Name, Straße, PLZ und Ort angeben',
+    path: ['bill_street'],
+  })
+  .refine((b) => (b.bill_skonto_percent_bp === null) === (b.bill_skonto_days === null), {
+    message: 'Skonto: Prozent und Tage bitte zusammen angeben (oder beide leer = kein Skonto)',
+    path: ['bill_skonto_days'],
+  });
+
+/** Rechnungsangaben des Objekts speichern; „wie Kunde“ leert alle abweichenden Felder. */
+export async function saveSiteBilling(
+  sql: Sql,
+  siteId: string,
+  input: z.infer<typeof siteBillingInput>,
+  actor: string,
+  expectedVersion: number | null = null,
+) {
+  const [site] = await sql<(Site & SiteBilling)[]>`select * from app.sites where id = ${siteId}`;
+  if (!site) throw new BusinessError('Objekt nicht gefunden');
+  assertVersion(site.version, expectedVersion, 'Das Objekt');
+  const data: SiteBilling =
+    input.billing_mode === 'kunde'
+      ? {
+          billing_mode: 'kunde',
+          bill_name: null,
+          bill_name2: null,
+          bill_street: null,
+          bill_postal_code: null,
+          bill_city: null,
+          bill_contact_name: null,
+          bill_emails: null,
+          bill_format: null,
+          bill_leitweg_id: null,
+          bill_supplier_no: null,
+          bill_payment_terms_days: null,
+          bill_skonto_custom: false,
+          bill_skonto_percent_bp: null,
+          bill_skonto_days: null,
+        }
+      : {
+          ...input,
+          bill_emails: input.bill_emails.length ? input.bill_emails : null,
+          bill_skonto_percent_bp: input.bill_skonto_custom ? input.bill_skonto_percent_bp : null,
+          bill_skonto_days: input.bill_skonto_custom ? input.bill_skonto_days : null,
+        };
+  const c = await getCustomer(sql, site.customer_id);
+  const eff = resolveBilling(c!, data);
+  if (eff.format === 'xrechnung' && !eff.leitwegId)
+    throw new BusinessError('XRechnung braucht eine Leitweg-ID (beim Objekt oder beim Kunden)');
+  if (eff.format !== 'pdf' && !eff.emails.length && input.billing_mode === 'eigen')
+    throw new BusinessError('Bitte mindestens eine Rechnungs-E-Mail angeben (oder beim Kunden hinterlegen)');
+  if (eff.skonto && eff.skonto.days >= eff.paymentTermsDays)
+    throw new BusinessError('Skontofrist muss kürzer als das Zahlungsziel sein');
+  await sql.begin(async (tx) => {
+    await tx`update app.sites set ${tx(data as unknown as Record<string, unknown>)}, updated_at = now() where id = ${siteId}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'billing', 'site', ${siteId}, ${tx.json({ mode: data.billing_mode })})`;
+  });
+}
+
 export async function buildBuyerSnapshot(
   sql: Sql,
   customerId: string,
@@ -431,22 +616,23 @@ export async function buildBuyerSnapshot(
   >`
     select m.mandate_ref, m.iban, m.scheme, (select creditor_id from app.company where id = 1) as creditor_id
       from app.sepa_mandates m where m.customer_id = ${customerId} and m.active`;
+  const b = resolveBilling(c, site as Partial<SiteBilling> | undefined);
   return {
     directDebit: dd?.creditor_id
       ? { mandateRef: dd.mandate_ref, iban: dd.iban, creditorId: dd.creditor_id, scheme: dd.scheme }
       : null,
     customerNo: c.customer_no,
-    name: c.name,
-    name2: c.name2,
-    street: c.street,
-    postalCode: c.postal_code,
-    city: c.city,
+    name: b.name,
+    name2: b.name2,
+    street: b.street,
+    postalCode: b.postalCode,
+    city: b.city,
     countryCode: c.country_code,
     vatId: c.vat_id,
-    leitwegId: c.leitweg_id,
-    supplierNo: c.supplier_no,
-    email: c.invoice_emails[0] ?? c.contact_email,
-    contactName: c.contact_name,
+    leitwegId: b.leitwegId,
+    supplierNo: b.supplierNo,
+    email: b.emails[0] ?? c.contact_email,
+    contactName: b.contactName,
     site: site
       ? {
           siteNo: site.site_no,

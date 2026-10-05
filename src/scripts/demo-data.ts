@@ -55,6 +55,7 @@ import { copyOffer, saveOffer, setOfferStatus } from '../services/offers.js';
 import { saveMandate } from '../services/direct-debit.js';
 import { importStatement } from '../services/bank.js';
 import { applyImport } from '../services/fortytools-import.js';
+import { saveSiteBilling, siteBillingInput } from '../services/masterdata.js';
 import { bookStock as bookClothing, saveHandover, signHandover } from '../services/handovers.js';
 import {
   addPriceChange,
@@ -289,6 +290,7 @@ try {
   await phase5();
   await phase6();
   await phase7();
+  await phase8();
   // Belege (PDF, XRechnung/ZUGFeRD, KoSIT-Prüfbericht) für alle ausgestellten Rechnungen erzeugen
   const issued = await sql<{ id: string }[]>`select id from app.invoices where status = 'issued'`;
   for (const i of issued) await ensureDocuments(deps, i.id);
@@ -1425,4 +1427,34 @@ async function phase7() {
     actor: 'portal:70002',
   });
   console.log('Demo Phase 7 angelegt.');
+}
+
+/** Abweichende Rechnungsangaben an einem Objekt (Verwaltungsgebäude → eigene Rechnungsstelle). */
+async function phase8() {
+  const [s] = await sql<
+    { billing_mode: string }[]
+  >`select billing_mode from app.sites where id = ${DEMO.siteOffice}`;
+  if (s?.billing_mode === 'eigen') return;
+  await saveSiteBilling(
+    sql,
+    DEMO.siteOffice,
+    siteBillingInput.parse({
+      billing_mode: 'eigen',
+      bill_name: 'DEMO Beispielbehörde – Kommunalreferat Gebäudemanagement',
+      bill_name2: 'Rechnungsstelle Verwaltungsgebäude',
+      bill_street: 'Roßmarkt 3',
+      bill_postal_code: '80331',
+      bill_city: 'München',
+      bill_contact_name: 'Herr Demo-Hausverwaltung',
+      bill_emails: 'rechnung-verwaltung@example.org',
+      bill_format: '',
+      bill_leitweg_id: '',
+      bill_supplier_no: '',
+      bill_payment_terms_days: '21',
+      bill_skonto_percent_bp: '',
+      bill_skonto_days: '',
+    }),
+    A,
+  );
+  console.log('Demo Phase 8 angelegt.');
 }

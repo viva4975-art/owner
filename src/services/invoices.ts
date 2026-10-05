@@ -21,7 +21,7 @@ import type {
   PrepaymentReference,
 } from '../domain/invoice/types.js';
 import type { Cents, Quantity } from '../domain/money/money.js';
-import { buildBuyerSnapshot, getCustomer, getSeller } from './masterdata.js';
+import { buildBuyerSnapshot, effectiveBilling, getCustomer, getSeller } from './masterdata.js';
 
 export { BusinessError } from './errors.js';
 import { BusinessError } from './errors.js';
@@ -208,6 +208,7 @@ async function prepaidFor(tx: Tx, customerId: string, ids: string[]): Promise<Ce
 export async function saveDraft(sql: Sql, id: string, input: DraftInput, actor: string): Promise<string> {
   const customer = await getCustomer(sql, input.customerId);
   if (!customer) throw new BusinessError('Kunde nicht gefunden');
+  const billing = await effectiveBilling(sql, input.customerId, input.siteId);
   if (input.kind === 'final' && !input.prepaymentIds?.length) {
     throw new BusinessError('Schlussrechnung: bitte mindestens eine Abschlagsrechnung auswählen');
   }
@@ -230,8 +231,8 @@ export async function saveDraft(sql: Sql, id: string, input: DraftInput, actor: 
       order_reference: input.orderReference,
       intro_text: input.introText,
       closing_text: input.closingText,
-      invoice_format: customer.invoice_format,
-      buyer_reference: customer.leitweg_id,
+      invoice_format: billing.format,
+      buyer_reference: billing.leitwegId,
     };
     if (existing) {
       await tx`update app.invoices set ${tx(row as Record<string, unknown>)} where id = ${id}`;
@@ -411,14 +412,19 @@ export async function runMonthly(
         const done = new Set(billed.map((b) => b.service_id));
         const todo = u.items.filter((i) => !done.has(i.service.id));
         if (!todo.length) return { created: false };
-        const customer = await getCustomer(tx as unknown as Sql, u.customerId);
+        // Sammelrechnung (Gruppe): Angaben des Kunden; Einzelrechnung: Objekt kann abweichen
+        const billing = await effectiveBilling(
+          tx as unknown as Sql,
+          u.customerId,
+          u.group ? null : (u.site?.id ?? null),
+        );
         const [row] = await tx`
           insert into app.invoices (id, kind, customer_id, site_id, invoice_group_id, period_start, period_end,
                                     invoice_format, buyer_reference, order_reference, intro_text, closing_text,
                                     monthly_run_key, planned_issue_date, review_required)
           values (${id}, 'invoice', ${u.customerId}, ${u.site?.id ?? null}, ${u.group?.id ?? null}, ${start},
-                  ${periodEnd}, ${customer!.invoice_format},
-                  ${u.group?.buyer_reference || customer!.leitweg_id},
+                  ${periodEnd}, ${billing.format},
+                  ${u.group?.buyer_reference || billing.leitwegId},
                   ${u.group ? u.group.order_reference : (u.site?.order_reference ?? null)},
                   ${u.group?.intro_text ?? null}, ${u.group?.closing_text ?? null},
                   ${`${u.key}:${month}`}, ${opts.invoiceDate ?? null},
@@ -655,11 +661,8 @@ export async function loadDocument(
   const { invoice: inv, lines, prepayments, original } = data;
   const seller = inv.seller_snapshot ?? (await getSeller(sql));
   const buyer = inv.buyer_snapshot ?? (await buildBuyerSnapshot(sql, inv.customer_id, inv.site_id));
-  const customer = inv.status === 'draft' ? await getCustomer(sql, inv.customer_id) : undefined;
   const draftSkonto =
-    customer?.skonto_percent_bp && customer.skonto_days
-      ? { percentBp: customer.skonto_percent_bp, days: customer.skonto_days }
-      : null;
+    inv.status === 'draft' ? (await effectiveBilling(sql, inv.customer_id, inv.site_id)).skonto : null;
   return rowToDocument(
     inv,
     lines,

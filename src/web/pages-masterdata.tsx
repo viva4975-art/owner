@@ -7,7 +7,7 @@ import {
   type CustomerStatus,
   PAGE_SIZE,
 } from '../services/customer-list.js';
-import type { Customer, Site, SiteService } from '../services/masterdata.js';
+import type { Customer, EffectiveBilling, Site, SiteBilling, SiteService } from '../services/masterdata.js';
 import { type SiteFilter, type SiteListRow, SITE_PAGE_SIZE } from '../services/site-list.js';
 import { centsToInput } from './forms.js';
 import { FORMAT_LABEL, NEW_OPTIONS, PageHead, type Tab, Tabs, euro, initials } from './layout.js';
@@ -795,6 +795,7 @@ export const SiteShell: FC<{
     { key: 'leistungen', label: 'Leistungen & Preise', href: `${base}/leistungen`, count: counts.services },
     { key: 'notizen', label: 'Notizen', href: `${base}/notizen`, count: counts.notes },
     { key: 'rechnungen', label: 'Rechnungen', href: `${base}/rechnungen`, count: counts.invoices },
+    { key: 'rechnungsangaben', label: 'Rechnungsangaben', href: `${base}/rechnungsangaben` },
   ];
   const more: Tab[] = [
     { key: 'aufgaben', label: 'Aufgaben', href: `${base}/aufgaben`, count: counts.tasks },
@@ -803,7 +804,7 @@ export const SiteShell: FC<{
     { key: 'zeiten', label: 'Erfasste Zeiten', href: `${base}/zeiten` },
     { key: 'qr', label: 'QR-Aushang Zeiterfassung', href: `${base}/qr` },
     { key: 'arbeitsscheine', label: 'Arbeitsscheine', href: `${base}/arbeitsscheine` },
-    { key: 'x-schluessel', label: 'Schlüssel (bald)', href: '/geplant/schluessel' },
+    { key: 'x-schluessel', label: 'Schlüssel', href: '/schluessel' },
     { key: 'raumbuch', label: 'Raumbuch', href: `${base}/raumbuch` },
     { key: 'stundenvorgabe', label: 'Stundenvorgabe', href: `${base}/stundenvorgabe` },
     { key: 'qualitaet', label: 'Qualitätskontrolle', href: `${base}/qualitaet` },
@@ -988,3 +989,210 @@ export const SiteOverview: FC<{
 };
 
 export { centsToInput };
+
+// ---------------------------------------------------------------------------
+// Objekt: Rechnungsangaben („wie Kunde“ oder abweichend)
+// ---------------------------------------------------------------------------
+
+const BILL_JS = `
+(function(){
+  var f=document.getElementById('billing'); if(!f) return;
+  var own=f.querySelector('#bm-eigen'), box=document.getElementById('bill-own'), cust=document.getElementById('bill-cust');
+  function show(){ box.hidden=!own.checked; cust.hidden=own.checked; }
+  function take(){ var d=JSON.parse(f.dataset.customer); Object.keys(d).forEach(function(k){ var el=f.querySelector('[name='+k+']'); if(!el) return; if(el.type==='checkbox') el.checked=!!d[k]; else el.value=d[k]==null?'':d[k]; }); sk(); }
+  function sk(){ var c=f.querySelector('[name=bill_skonto_custom]'); document.getElementById('bill-skonto').hidden=!c.checked; }
+  f.querySelectorAll('[name=billing_mode]').forEach(function(r){ r.addEventListener('change',function(){ show(); if(own.checked && !f.querySelector('[name=bill_name]').value) take(); }); });
+  document.getElementById('bill-take').addEventListener('click',function(){ if(confirm('Felder mit den Rechnungsangaben des Kunden füllen?')) take(); });
+  f.querySelector('[name=bill_skonto_custom]').addEventListener('change',sk);
+  show(); sk();
+})();`;
+
+export const SiteBillingForm: FC<{
+  site: Site & SiteBilling;
+  customer: Customer;
+  eff: EffectiveBilling;
+}> = ({ site, customer: c, eff }) => {
+  const own = site.billing_mode === 'eigen';
+  const custData = {
+    bill_name: c.name,
+    bill_name2: c.name2 ?? '',
+    bill_street: c.street,
+    bill_postal_code: c.postal_code,
+    bill_city: c.city,
+    bill_contact_name: c.contact_name ?? '',
+    bill_emails: c.invoice_emails.join(', '),
+    bill_format: c.invoice_format,
+    bill_leitweg_id: c.leitweg_id ?? '',
+    bill_supplier_no: c.supplier_no ?? '',
+    bill_payment_terms_days: String(c.payment_terms_days),
+    bill_skonto_custom: false,
+    bill_skonto_percent_bp: c.skonto_percent_bp ? String(c.skonto_percent_bp / 100).replace('.', ',') : '',
+    bill_skonto_days: c.skonto_days ? String(c.skonto_days) : '',
+  };
+  const v = (k: keyof SiteBilling) => (own ? ((site[k] as string | number | null) ?? '') : '');
+  return (
+    <div class="cols">
+      <form
+        method="post"
+        action={`/objekte/${site.id}/rechnungsangaben`}
+        class="card"
+        id="billing"
+        data-customer={JSON.stringify(custData)}
+        data-autosave
+        data-version={String(site.version)}
+      >
+        <input type="hidden" name="version" value={String(site.version)} />
+        <h3>Rechnungen für dieses Objekt</h3>
+        <label class="chk" style="margin:0 0 6px">
+          <input type="radio" name="billing_mode" value="kunde" id="bm-kunde" checked={!own} /> wie Kunde
+          <span class="small faint">– alle Angaben vom Kunden {c.name}</span>
+        </label>
+        <label class="chk" style="margin:0">
+          <input type="radio" name="billing_mode" value="eigen" id="bm-eigen" checked={own} /> abweichend für
+          dieses Objekt
+          <span class="small faint">– z. B. andere Rechnungsadresse, andere E-Mail, eigene Leitweg-ID</span>
+        </label>
+
+        <div id="bill-cust" class="hint" style="margin-top:16px" hidden={own}>
+          Es gelten die Rechnungsangaben des Kunden.{' '}
+          <a href={`/kunden/${c.id}/bearbeiten`}>Beim Kunden ändern</a>
+        </div>
+
+        <div id="bill-own" hidden={!own}>
+          <div class="actions" style="margin:16px 0 4px">
+            <button type="button" class="btn sec sm" id="bill-take">
+              Angaben vom Kunden übernehmen
+            </button>
+            <span class="small faint">Leere Felder gelten automatisch wie beim Kunden.</span>
+          </div>
+          <div class="group-title">Rechnungsadresse</div>
+          <div class="grid">
+            <Field name="bill_name" label="Name / Firma" value={v('bill_name')} />
+            <Field name="bill_name2" label="Zusatz (z. B. Abteilung)" value={v('bill_name2')} />
+            <Field name="bill_street" label="Straße" value={v('bill_street')} />
+            <Field name="bill_postal_code" label="PLZ" value={v('bill_postal_code')} />
+            <Field name="bill_city" label="Ort" value={v('bill_city')} />
+            <Field name="bill_contact_name" label="Ansprechpartner" value={v('bill_contact_name')} />
+          </div>
+          <div class="group-title">Versand und E-Rechnung</div>
+          <div class="grid">
+            <div>
+              <label for="bill_emails">Rechnungs-E-Mails (mehrere mit Komma)</label>
+              <input
+                id="bill_emails"
+                name="bill_emails"
+                value={own ? (site.bill_emails ?? []).join(', ') : ''}
+              />
+            </div>
+            <div>
+              <label for="bill_format">Rechnungsformat</label>
+              <select id="bill_format" name="bill_format">
+                <option value="">wie Kunde ({FORMAT_LABEL[c.invoice_format]})</option>
+                {(['pdf', 'zugferd', 'xrechnung'] as const).map((f) => (
+                  <option value={f} selected={own && site.bill_format === f}>
+                    {FORMAT_LABEL[f]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Field name="bill_leitweg_id" label="Leitweg-ID" value={v('bill_leitweg_id')} />
+            <Field
+              name="bill_supplier_no"
+              label="Unsere Lieferantennummer beim Kunden"
+              value={v('bill_supplier_no')}
+            />
+          </div>
+          <div class="group-title">Zahlung</div>
+          <div class="grid">
+            <Field
+              name="bill_payment_terms_days"
+              label={`Zahlungsziel in Tagen (Kunde: ${c.payment_terms_days})`}
+              value={v('bill_payment_terms_days')}
+              type="number"
+            />
+            <div class="chk" style="align-self:end;margin-bottom:10px">
+              <input
+                type="checkbox"
+                id="bill_skonto_custom"
+                name="bill_skonto_custom"
+                checked={own && site.bill_skonto_custom}
+              />
+              <label for="bill_skonto_custom">eigenes Skonto für dieses Objekt</label>
+            </div>
+          </div>
+          <div class="grid" id="bill-skonto" style="margin-top:12px">
+            <Field
+              name="bill_skonto_percent_bp"
+              label="Skonto % (leer = kein Skonto)"
+              value={
+                own && site.bill_skonto_percent_bp
+                  ? String(site.bill_skonto_percent_bp / 100).replace('.', ',')
+                  : ''
+              }
+            />
+            <Field name="bill_skonto_days" label="Skonto-Tage" value={v('bill_skonto_days')} type="number" />
+          </div>
+        </div>
+        <div class="formfoot">
+          <button class="btn">Speichern</button>
+        </div>
+        <script dangerouslySetInnerHTML={{ __html: BILL_JS }} />
+      </form>
+
+      <div class="card">
+        <h3>So geht die Rechnung raus</h3>
+        <p class="small mut" style="margin-top:0">
+          {eff.source === 'objekt' ? 'Abweichende Angaben dieses Objekts' : 'Angaben des Kunden'} (Stand
+          gespeichert)
+        </p>
+        <div style="line-height:1.6">
+          <b>{eff.name}</b>
+          {eff.name2 && <div>{eff.name2}</div>}
+          <div>{eff.street}</div>
+          <div>
+            {eff.postalCode} {eff.city}
+          </div>
+          {eff.contactName && <div class="small mut">z. Hd. {eff.contactName}</div>}
+        </div>
+        <dl class="kv" style="margin-top:14px">
+          <dt>Format</dt>
+          <dd>{FORMAT_LABEL[eff.format]}</dd>
+          <dt>E-Mail an</dt>
+          <dd>
+            {eff.emails.length ? eff.emails.join(', ') : <span style="color:var(--err)">keine Adresse</span>}
+          </dd>
+          {eff.leitwegId && (
+            <>
+              <dt>Leitweg-ID</dt>
+              <dd>{eff.leitwegId}</dd>
+            </>
+          )}
+          {eff.supplierNo && (
+            <>
+              <dt>Lieferanten-Nr.</dt>
+              <dd>{eff.supplierNo}</dd>
+            </>
+          )}
+          <dt>Zahlungsziel</dt>
+          <dd>{eff.paymentTermsDays} Tage</dd>
+          <dt>Skonto</dt>
+          <dd>
+            {eff.skonto
+              ? `${String(eff.skonto.percentBp / 100).replace('.', ',')} % in ${eff.skonto.days} Tagen`
+              : 'kein Skonto'}
+          </dd>
+          {site.order_reference && (
+            <>
+              <dt>Bestellnummer</dt>
+              <dd>{site.order_reference}</dd>
+            </>
+          )}
+        </dl>
+        <p class="small faint">
+          Gilt für neue Rechnungen dieses Objekts. Bereits ausgestellte Rechnungen bleiben unverändert.
+          Sammelrechnungen (Rechnungsgruppen) gehen an die Angaben des Kunden.
+        </p>
+      </div>
+    </div>
+  );
+};

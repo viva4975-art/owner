@@ -530,3 +530,13 @@ Testadresse.
   Objektleitung (auch „ohne“), A–Z und 0–9, Suche, Sortierung (Nummer/Objektname/Kunde/Ort), 25 je Seite, CSV-Export,
   „QR-Codes drucken“ (alle aktiven Objekte der Auswahl, je Seite ein Aushang). Objektleitung jetzt auch im Objekt-Formular
   wählbar. Kundenliste ohne Behörde/Format-Schilder; „Pauschale/Monat“ auch in der Objekttabelle beim Kunden entfernt.
+- 2026-10-05: Rechnungsangaben je Objekt (Ahmed: Rechnungsdetails nicht nur beim Kunden, übernehmen oder eigene):
+  Objekt → Reiter „Rechnungsangaben“: „wie Kunde“ oder „abweichend für dieses Objekt“ (Felder werden mit den Kundendaten
+  vorbelegt, „Angaben vom Kunden übernehmen“). Abweichend möglich: Rechnungsadresse (Name, Zusatz, Straße, PLZ, Ort),
+  Ansprechpartner, Rechnungs-E-Mails, Format, Leitweg-ID, Lieferantennummer, Zahlungsziel, eigenes Skonto (auch „kein
+  Skonto“). Leere Einzelfelder gelten wie beim Kunden. Zentral `resolveBilling()`/`effectiveBilling()`: Entwurf (Format,
+  Leitweg-ID), Monatslauf, Käufer-Schnappschuss (Adresse in PDF/E-Rechnung), Ausstellen (`app.issue_invoice`: Zahlungsziel,
+  Skonto), Versand (Empfänger). Sammelrechnungen (Rechnungsgruppen) nutzen weiter die Kundenangaben. Prüfung: XRechnung nur
+  mit Leitweg-ID, Adresse vollständig, Skontofrist < Zahlungsziel. Mahnungen gehen weiter an die Kundenadresse.
+  Behoben: `hidden` wurde bei Rastern/Flex-Elementen von CSS überschrieben (jetzt `[hidden]{display:none!important}`).
+  Tests: 226 Unit-/DB-Tests, neu `npm run e2e:rechnungsangaben` (10 Prüfungen).

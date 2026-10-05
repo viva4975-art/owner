@@ -10,6 +10,7 @@ import { type ValidationResult, validateWithKosit } from '../einvoice/kosit.js';
 import { type Mailer, resolveRecipients } from '../mail/mailer.js';
 import { renderInvoicePdf } from '../pdf/render.js';
 import { BusinessError, getInvoice, issue, loadDocument } from './invoices.js';
+import { effectiveBilling } from './masterdata.js';
 
 export interface Deps {
   sql: Sql;
@@ -279,10 +280,10 @@ export async function sendInvoice(
   if (!data) throw new BusinessError('Rechnung nicht gefunden');
   if (data.invoice.status !== 'issued')
     throw new BusinessError('Nur ausgestellte Rechnungen können versendet werden');
-  const customer = (
-    await sql<{ invoice_emails: string[]; invoice_format: string }[]>`
-    select invoice_emails, invoice_format::text from app.customers where id = ${data.invoice.customer_id}`
-  )[0]!;
+  // Empfänger: abweichende Rechnungs-E-Mails des Objekts vor denen des Kunden
+  const customer = {
+    invoice_emails: (await effectiveBilling(sql, data.invoice.customer_id, data.invoice.site_id)).emails,
+  };
 
   const docs = await ensureDocuments(deps, id);
   const pick = (kind: DocRow['kind']) => docs.find((d) => d.kind === kind);

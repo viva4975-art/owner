@@ -22,6 +22,7 @@ const CSS = `
   --r:12px;--r-sm:8px;--sh:0 1px 2px rgba(26,20,16,.04),0 1px 3px rgba(26,20,16,.04);--sh-2:0 12px 32px rgba(26,20,16,.12);
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;font:14px/1.55 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-feature-settings:"cv11","ss01";color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased}
 a{color:var(--brand-2);text-decoration:none}a:hover{text-decoration:underline}

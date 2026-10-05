@@ -1,7 +1,7 @@
 import type { Child, FC } from 'hono/jsx';
 import { KIND_TITLES, UNIT_LABELS } from '../domain/invoice/types.js';
 import type { InvoiceRow, LineRow } from '../services/invoices.js';
-import type { Customer, Site, SiteService } from '../services/masterdata.js';
+import type { Customer, EffectiveBilling, Site, SiteService } from '../services/masterdata.js';
 import type { DeliveryRow, PreflightResult } from '../services/workflow.js';
 import { centsToInput, milliToInput } from './forms.js';
 import { FORMAT_LABEL, STATUS_LABEL, dateDe, euro } from './layout.js';
@@ -436,6 +436,8 @@ export const InvoiceDetail: FC<{
   preflight: PreflightResult | null;
   redirectNote: string;
   uploadSlot?: Child;
+  /** gültige Rechnungsangaben (Objekt vor Kunde) */
+  billing: EffectiveBilling;
 }> = ({
   inv,
   lines,
@@ -449,8 +451,20 @@ export const InvoiceDetail: FC<{
   preflight,
   redirectNote,
   uploadSlot,
+  billing,
 }) => {
   const draft = inv.status === 'draft';
+  // ausgestellt: eingefrorener Empfänger; Entwurf: aktuelle Angaben (Objekt vor Kunde)
+  const to = inv.buyer_snapshot
+    ? {
+        name: inv.buyer_snapshot.name,
+        name2: inv.buyer_snapshot.name2,
+        street: inv.buyer_snapshot.street,
+        postalCode: inv.buyer_snapshot.postalCode,
+        city: inv.buyer_snapshot.city,
+        contactName: inv.buyer_snapshot.contactName,
+      }
+    : billing;
   const sent = deliveries.find((d) => d.status === 'sent');
   const failed = deliveries.find((d) => d.status === 'failed');
   const cancelled = derived.find((d) => d.kind === 'cancellation');
@@ -491,9 +505,31 @@ export const InvoiceDetail: FC<{
           <label>Skonto</label>
           {inv.skonto_percent_bp
             ? `${String(inv.skonto_percent_bp / 100).replace('.', ',')} % bis ${dateDe(inv.skonto_date)}`
-            : inv.status === 'draft' && customer.skonto_percent_bp
-              ? `${String(customer.skonto_percent_bp / 100).replace('.', ',')} % in ${customer.skonto_days} Tagen`
+            : inv.status === 'draft' && billing.skonto
+              ? `${String(billing.skonto.percentBp / 100).replace('.', ',')} % in ${billing.skonto.days} Tagen`
               : '–'}
+        </div>
+        <div>
+          <label>
+            Rechnung an{' '}
+            {billing.source === 'objekt' && (
+              <span class="badge kind" style="margin-left:4px">
+                vom Objekt
+              </span>
+            )}
+          </label>
+          <div>{to.name}</div>
+          <div class="small mut">
+            {[
+              to.name2,
+              to.street,
+              `${to.postalCode} ${to.city}`,
+              to.contactName ? `z. Hd. ${to.contactName}` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </div>
+          <div class="small mut">E-Mail: {billing.emails.length ? billing.emails.join(', ') : '–'}</div>
         </div>
         {original && (
           <div>

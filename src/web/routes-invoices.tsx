@@ -17,7 +17,14 @@ import {
   saveDraft,
   setPlannedIssueDate,
 } from '../services/invoices.js';
-import { getCustomer, getSite, listCustomers, listServices, listSites } from '../services/masterdata.js';
+import {
+  effectiveBilling,
+  getCustomer,
+  getSite,
+  listCustomers,
+  listServices,
+  listSites,
+} from '../services/masterdata.js';
 import { bookPayment, listPayments, paymentInput, reversePayment } from '../services/payments.js';
 import {
   addAttachment,
@@ -287,7 +294,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     const data = await getInvoice(sql, id);
     if (!data) return c.notFound();
     const pre = withPreflight && data.invoice.status === 'draft' ? await preflight(deps, id) : null;
-    const [customer, site, docs, deliveries, payments, openRow] = await Promise.all([
+    const [customer, site, docs, deliveries, payments, openRow, billing] = await Promise.all([
       getCustomer(sql, data.invoice.customer_id),
       data.invoice.site_id ? getSite(sql, data.invoice.site_id) : Promise.resolve(undefined),
       listDocuments(sql, id),
@@ -295,6 +302,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
       listPayments(sql, id),
       sql<{ open_cents: bigint; skonto_date: string | null }[]>`
         select open_cents, skonto_date from app.open_items where invoice_id = ${id}`,
+      effectiveBilling(sql, data.invoice.customer_id, data.invoice.site_id),
     ]);
     const redirectNote =
       env.APP_ENV !== 'live' || env.MAIL_TEST_RECIPIENT
@@ -322,6 +330,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
           deliveries={deliveries}
           preflight={pre}
           redirectNote={redirectNote}
+          billing={billing}
           uploadSlot={
             <FileArea
               link={{ type: 'invoice', id }}

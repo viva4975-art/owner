@@ -550,3 +550,6 @@ Testadresse.
   Briefvorlagen Kunden, Gläubiger-ID, DATEV/Nachkalkulation, Lohnstufen, Dokumentvorlagen, Zeiterfassung/Mindestlohn,
   Leistungswerte, Arbeitskleidung. Aus den Fachmenüs entfernt: Leistungsarten, Lohnstufen, Dokumentvorlagen, Leistungswerte.
   Einträge nach Rolle gefiltert; Objektleitung hat keine Einstellungen.
+- 2026-10-06: Kunde → Übersicht zeigt „Rechnungsangaben der Objekte“: „x von y Objekten wie Kunde“ und nur die abweichenden
+  Objekte mit ihren Unterschieden (Adresse, E-Mail, Format, Leitweg-ID, Zahlungsziel, Skonto). Rechnung (Entwurf/ausgestellt)
+  zeigt „Rechnung an“ mit Kennzeichen „vom Objekt“ und Empfänger-E-Mails; Skonto-Vorschau im Entwurf aus den Objektangaben.

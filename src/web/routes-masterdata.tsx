@@ -73,6 +73,7 @@ import {
   CustomerList,
   SiteList,
   SiteBillingForm,
+  BillingDeviations,
   CustomerShell,
   RevenueBars,
   SiteForm,
@@ -316,10 +317,13 @@ export function registerMasterdataRoutes(ctx: Ctx) {
 
   app.get(`/kunden/:id{${UUID}}`, (c) =>
     customerPage(c, 'uebersicht', async (cust) => {
-      const [tasks, items, revenue] = await Promise.all([
+      const [tasks, items, revenue, billingSites] = await Promise.all([
         listTasks(sql, { status: 'open', entity: { type: 'customer', id: cust.id } }),
         listOpenItems(sql, cust.id),
         revenueByMonth(sql, { customerId: cust.id }),
+        sql<
+          (Site & SiteBilling)[]
+        >`select * from app.sites where customer_id = ${cust.id} and active order by site_no`,
       ]);
       return (
         <div class="cols">
@@ -332,6 +336,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
           </div>
           <div>
             <CustomerCard c={cust} />
+            <BillingDeviations c={cust} sites={billingSites} />
           </div>
         </div>
       );

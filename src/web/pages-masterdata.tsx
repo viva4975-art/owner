@@ -7,7 +7,14 @@ import {
   type CustomerStatus,
   PAGE_SIZE,
 } from '../services/customer-list.js';
-import type { Customer, EffectiveBilling, Site, SiteBilling, SiteService } from '../services/masterdata.js';
+import {
+  type Customer,
+  type EffectiveBilling,
+  resolveBilling,
+  type Site,
+  type SiteBilling,
+  type SiteService,
+} from '../services/masterdata.js';
 import { type SiteFilter, type SiteListRow, SITE_PAGE_SIZE } from '../services/site-list.js';
 import { centsToInput } from './forms.js';
 import { FORMAT_LABEL, NEW_OPTIONS, PageHead, type Tab, Tabs, euro, initials } from './layout.js';
@@ -1193,6 +1200,47 @@ export const SiteBillingForm: FC<{
           Sammelrechnungen (Rechnungsgruppen) gehen an die Angaben des Kunden.
         </p>
       </div>
+    </div>
+  );
+};
+
+/** Kunde: nur die Objekte zeigen, deren Rechnungsangaben abweichen (alle anderen = wie Kunde). */
+export const BillingDeviations: FC<{ c: Customer; sites: (Site & SiteBilling)[] }> = ({ c, sites }) => {
+  const own = sites.filter((s) => s.billing_mode === 'eigen');
+  const diffs = (s: Site & SiteBilling) => {
+    const e = resolveBilling(c, s);
+    const d: string[] = [];
+    if (s.bill_name) d.push(`Adresse: ${e.name}, ${e.city}`);
+    if (e.emails.join() !== c.invoice_emails.join()) d.push(`E-Mail: ${e.emails.join(', ')}`);
+    if (e.format !== c.invoice_format) d.push(`Format: ${FORMAT_LABEL[e.format]}`);
+    if (e.leitwegId !== c.leitweg_id) d.push(`Leitweg-ID: ${e.leitwegId ?? '–'}`);
+    if (e.supplierNo !== c.supplier_no) d.push(`Lieferanten-Nr.: ${e.supplierNo ?? '–'}`);
+    if (e.paymentTermsDays !== c.payment_terms_days) d.push(`Zahlungsziel: ${e.paymentTermsDays} Tage`);
+    if (s.bill_skonto_custom)
+      d.push(e.skonto ? `Skonto: ${e.skonto.percentBp / 100} % / ${e.skonto.days} T.` : 'kein Skonto');
+    if (s.bill_contact_name && s.bill_contact_name !== c.contact_name)
+      d.push(`z. Hd. ${s.bill_contact_name}`);
+    return d;
+  };
+  return (
+    <div class="card">
+      <h3>Rechnungsangaben der Objekte</h3>
+      <p class="small mut" style="margin-top:0">
+        {sites.length - own.length} von {sites.length} Objekten wie Kunde
+        {own.length ? ` · ${own.length} abweichend:` : '.'}
+      </p>
+      {own.map((s) => (
+        <div style="padding:10px 0;border-top:1px solid var(--line)">
+          <a href={`/objekte/${s.id}/rechnungsangaben`}>
+            <b>{s.name}</b>
+          </a>{' '}
+          <span class="small faint">{s.site_no}</span>
+          {diffs(s).map((t) => (
+            <div class="small mut">{t}</div>
+          ))}
+          {!diffs(s).length && <div class="small faint">abweichend gewählt, aber alle Felder wie Kunde</div>}
+        </div>
+      ))}
     </div>
   );
 };

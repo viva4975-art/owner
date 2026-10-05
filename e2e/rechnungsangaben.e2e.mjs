@@ -73,7 +73,18 @@ check(
 );
 await p.screenshot({ path: `${out}/ra-abweichend.png`, fullPage: true });
 
+const AUTHORITY = '00000000-0000-4000-8000-000000000001';
+await p.goto(`${B}/kunden/${AUTHORITY}`);
+const dev = await p.locator('.card', { hasText: 'Rechnungsangaben der Objekte' }).innerText();
+check(
+  'Kunde zeigt das abweichende Objekt mit Unterschied',
+  dev.includes('Grundschule') && dev.includes('Schulverwaltung Süd'),
+  dev,
+);
+await p.screenshot({ path: `${out}/ra-kunde.png`, fullPage: true });
+
 console.log('3. Unvollständige Adresse → Fehler');
+await p.goto(url);
 await p.fill('#bill_street', '');
 await p.click('button:has-text("Speichern")');
 await p.waitForLoadState();

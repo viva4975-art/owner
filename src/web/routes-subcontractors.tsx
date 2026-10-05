@@ -12,7 +12,6 @@ import {
   complianceOverview,
   compliancePdf,
   createPortalAccess,
-  DOC_STATE,
   type DocState,
   docTypes,
   documentFile,
@@ -37,7 +36,6 @@ import {
   setSubcontractStatus,
   subcontractPdf,
   type SupplierDocument,
-  suggestValidUntil,
   terminate,
   TERMINATION_REASONS,
   terminationPdf,
@@ -50,14 +48,6 @@ import { CSS as MOBILE_CSS } from './m/routes-mobile.js';
 import { HandoverTable } from './routes-handovers.js';
 import { PageHead, Tabs, dateDe, euro, type Tab } from './layout.js';
 
-const STATE_CLASS: Record<DocState, string> = {
-  fehlt: 'err',
-  abgelaufen: 'err',
-  laeuft_ab: 'warn',
-  gueltig: 'ok',
-  zu_pruefen: 'info',
-};
-const OVERALL_CLASS: Record<Overall, string> = { kritisch: 'err', warnung: 'warn', ok: 'ok', inaktiv: '' };
 const pdfResponse = (pdf: Uint8Array, name: string) =>
   new Response(pdf, {
     headers: {
@@ -94,10 +84,25 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
   const portalUrl = (token: string | null) =>
     token ? `${(env.PUBLIC_URL ?? 'http://127.0.0.1:3000').replace(/\/$/, '')}/np/${token}` : null;
 
+  const short = (l: string[]) =>
+    l.length > 3 ? `${l.slice(0, 3).join(', ')} +${l.length - 3} weitere` : l.join(', ');
   // ------------------------------------------------------------------ Übersicht mit Ampel
   app.get('/nachunternehmer', async (c) => {
-    const rows = await complianceOverview(sql);
-    const n = (o: Overall) => rows.filter((r) => r.overall === o).length;
+    const all = await complianceOverview(sql);
+    const fq = c.req.query('filter');
+    const filter = fq && fq in OVERALL ? (fq as Overall) : null;
+    const rows = filter ? all.filter((r) => r.overall === filter) : all;
+    const n = (o: Overall) => all.filter((r) => r.overall === o).length;
+    const XL: Record<Overall, string> = { kritisch: 'err', warnung: 'warn', ok: 'ok', inaktiv: '' };
+    const chip = (key: Overall | null, label: string, count: number) => (
+      <a
+        href={key ? `/nachunternehmer?filter=${key}` : '/nachunternehmer'}
+        class={filter === key ? 'on' : ''}
+      >
+        {label}
+        <span class="n">{count}</span>
+      </a>
+    );
     return page(
       c,
       'Nachunternehmer',
@@ -105,82 +110,97 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       <>
         <PageHead title="Nachunternehmer">
           <a class="btn" href={`/lieferanten/${randomUUID()}/bearbeiten`} style="margin-left:auto">
-            Nachunternehmer anlegen
+            + Nachunternehmer
           </a>
         </PageHead>
         {tabs('nachweise', await pendingCount())}
         <div class="kpis">
-          <div class="kpi">
+          <a class="kpi" href="/nachunternehmer?filter=kritisch" style="text-decoration:none">
             <div class="l">Nachweise fehlen</div>
             <div class="v" style="color:var(--err)">
               {n('kritisch')}
             </div>
-          </div>
-          <div class="kpi">
+            <div class="s">keine neuen Aufträge, Zahlung prüfen</div>
+          </a>
+          <a class="kpi" href="/nachunternehmer?filter=warnung" style="text-decoration:none">
             <div class="l">läuft in 60 Tagen ab</div>
             <div class="v" style="color:var(--warn)">
               {n('warnung')}
             </div>
-          </div>
-          <div class="kpi">
+            <div class="s">rechtzeitig anfordern</div>
+          </a>
+          <a class="kpi" href="/nachunternehmer?filter=ok" style="text-decoration:none">
             <div class="l">vollständig</div>
             <div class="v" style="color:var(--ok)">
               {n('ok')}
             </div>
-          </div>
+            <div class="s">alle Pflicht-Nachweise gültig</div>
+          </a>
+        </div>
+        <div class="chips">
+          {chip(null, 'Alle', all.length)}
+          {chip('kritisch', 'Nachweise fehlen', n('kritisch'))}
+          {chip('warnung', 'läuft bald ab', n('warnung'))}
+          {chip('ok', 'vollständig', n('ok'))}
+          {chip('inaktiv', 'inaktiv', n('inaktiv'))}
         </div>
         <div class="card">
-          <div class="tbl">
-            <table>
-              <thead>
-                <tr>
-                  <th>Nr.</th>
-                  <th>Nachunternehmer</th>
-                  <th>Status</th>
-                  <th>fehlt / abgelaufen</th>
-                  <th>läuft bald ab</th>
-                  <th>nächster Ablauf</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr style={r.overall === 'inaktiv' ? 'opacity:.55' : ''}>
-                    <td>{r.supplier.supplier_no}</td>
-                    <td>
-                      <a href={`/lieferanten/${r.supplier.id}/nachweise`}>
-                        <b>{r.supplier.name}</b>
-                      </a>
-                      {r.pending > 0 && (
-                        <span class="badge info" style="margin-left:6px">
-                          {r.pending} zu prüfen
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      <span class={`badge ${OVERALL_CLASS[r.overall]}`}>{OVERALL[r.overall]}</span>
-                    </td>
-                    <td class="small">{r.overall === 'inaktiv' ? '' : r.missing.join(', ')}</td>
-                    <td class="small">{r.overall === 'inaktiv' ? '' : r.expiring.join(', ')}</td>
-                    <td>{dateDe(r.nextExpiry)}</td>
-                  </tr>
-                ))}
-                {!rows.length && (
-                  <tr>
-                    <td colspan={6}>
-                      <div class="empty">Noch keine Nachunternehmer.</div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+          <div class="list" style="border-top:0;margin-top:-22px;margin-bottom:-22px">
+            {rows.map((r) => {
+              const pct = r.requiredTotal ? Math.round((r.requiredOk / r.requiredTotal) * 100) : 100;
+              return (
+                <div class="row" style={r.overall === 'inaktiv' ? 'opacity:.55' : ''}>
+                  <span class={`dot ${XL[r.overall]}`} />
+                  <div class="main">
+                    <a href={`/lieferanten/${r.supplier.id}/nachweise`}>
+                      <b style="color:var(--ink)">{r.supplier.name}</b>
+                    </a>{' '}
+                    <span class="small faint">{r.supplier.supplier_no}</span>
+                    {r.pending > 0 && (
+                      <span class="badge info" style="margin-left:8px">
+                        {r.pending} zu prüfen
+                      </span>
+                    )}
+                    {r.overall !== 'inaktiv' && (r.missing.length > 0 || r.expiring.length > 0) && (
+                      <div class="small mut" style="margin-top:2px">
+                        {r.missing.length > 0 && (
+                          <span style="color:var(--err)">
+                            fehlt ({r.missing.length}): {short(r.missing)}
+                          </span>
+                        )}
+                        {r.missing.length > 0 && r.expiring.length > 0 && ' · '}
+                        {r.expiring.length > 0 && (
+                          <span style="color:var(--warn)">läuft ab: {short(r.expiring)}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div class="side">
+                    <div style="width:140px">
+                      <div class="small mut" style="margin-bottom:4px">
+                        {r.requiredOk}/{r.requiredTotal} Pflicht
+                      </div>
+                      <div class={`progress ${pct === 100 ? '' : pct >= 70 ? 'warn' : 'err'}`}>
+                        <i style={`width:${pct}%`} />
+                      </div>
+                    </div>
+                    <span class="when">{r.nextExpiry ? `Ablauf ${dateDe(r.nextExpiry)}` : ''}</span>
+                  </div>
+                </div>
+              );
+            })}
+            {!rows.length && (
+              <div class="row">
+                <div class="main mut">Keine Nachunternehmer in dieser Auswahl.</div>
+              </div>
+            )}
           </div>
-          <p class="small mut">
-            Als Auftraggeber haften wir für Mindestlohn (§ 13 MiLoG, § 14 AEntG) und
-            Sozialversicherungsbeiträge (§ 28e Abs. 3a SGB IV) der Beschäftigten des Nachunternehmers. Bei
-            „Nachweise fehlen“ werden keine neuen Aufträge erteilt; im Zahlungslauf sind die Rechnungen nicht
-            vorausgewählt.
-          </p>
         </div>
+        <p class="small mut">
+          Als Auftraggeber haften wir für Mindestlohn (§ 13 MiLoG, § 14 AEntG) und Sozialversicherungsbeiträge
+          (§ 28e Abs. 3a SGB IV) der Beschäftigten des Nachunternehmers. Bei „Nachweise fehlen“ werden keine
+          neuen Aufträge erteilt; im Zahlungslauf sind die Rechnungen nicht vorausgewählt.
+        </p>
       </>,
     );
   });
@@ -197,253 +217,281 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     ]);
     const history = (t: string) => data.docs.filter((d) => d.doc_type === t);
     const url = portalUrl(s.portal_token);
+    const required = data.rows.filter((r) => r.required);
+    const fine = required.filter((r) => r.state === 'gueltig' || r.state === 'laeuft_ab').length;
+    const pct = required.length ? Math.round((fine / required.length) * 100) : 100;
+    const categories = [...new Set(data.rows.map((r) => r.type.category))];
+    const dotOf = (st: DocState, req: boolean) =>
+      st === 'gueltig' ? 'ok' : st === 'laeuft_ab' ? 'warn' : st === 'zu_pruefen' ? 'info' : req ? 'err' : '';
+    const XL: Record<Overall, string> = { kritisch: 'err', warnung: 'warn', ok: 'ok', inaktiv: 'off' };
     return page(
       c,
       s.name,
       'lieferanten',
       <>
-        <PageHead title={s.name} no={s.supplier_no} crumbs={[['Nachunternehmer', '/nachunternehmer']]}>
-          <a class="btn sec" href={`/lieferanten/${id}`} style="margin-left:auto">
-            Stammdaten
-          </a>
-          <a class="btn sec" href={`/lieferanten/${id}/nachweise.pdf`} target="_blank">
-            Nachweisübersicht (PDF)
-          </a>
-        </PageHead>
-        <p>
-          <span class={`badge ${OVERALL_CLASS[data.overall]}`}>{OVERALL[data.overall]}</span>{' '}
-          <span class="small mut">
-            Rechtsform: {s.legal_form ? LEGAL_FORMS[s.legal_form] : 'nicht angegeben (HR-Auszug optional)'}
-          </span>
-          {s.terminated_on && (
-            <span class="badge err" style="margin-left:6px">
-              gekündigt zum {dateDe(s.terminated_on)}
-            </span>
-          )}
-        </p>
-        <div class="card">
-          <div class="tbl">
-            <table>
-              <thead>
-                <tr>
-                  <th>Nachweis</th>
-                  <th>Status</th>
-                  <th>gültig bis</th>
-                  <th>Datei</th>
-                  <th>Neue Version hochladen</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.rows.map((r) => (
-                  <tr>
-                    <td>
-                      <b>{r.type.label}</b> {r.required ? '' : <span class="small mut">(optional)</span>}
-                      {r.type.hint && <div class="small mut">{r.type.hint}</div>}
-                    </td>
-                    <td>
-                      <span class={`badge ${r.state === 'fehlt' && !r.required ? '' : STATE_CLASS[r.state]}`}>
-                        {DOC_STATE[r.state]}
-                      </span>
-                      {r.pending && r.current && (
-                        <div>
-                          <span class="badge info">neue Version zu prüfen</span>
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      {r.current?.valid_until ? dateDe(r.current.valid_until) : r.current ? 'einmalig' : '–'}
-                      {r.days !== null && r.days >= 0 && r.days <= 60 && (
-                        <div class="small" style="color:var(--warn)">
-                          noch {r.days} Tage
-                        </div>
-                      )}
-                    </td>
-                    <td class="small">
-                      {r.current && (
-                        <a href={`/nachweise/${r.current.id}/datei`} target="_blank">
-                          {r.current.file_name}
-                        </a>
-                      )}
-                      {history(r.type.id).length > 1 && (
-                        <details>
-                          <summary class="mut">{history(r.type.id).length} Versionen</summary>
-                          {history(r.type.id).map((d) => (
-                            <div>
-                              <a href={`/nachweise/${d.id}/datei`} target="_blank">
-                                {dateDe(d.created_at.toISOString().slice(0, 10))}
-                              </a>{' '}
-                              {d.status === 'abgelehnt'
-                                ? `abgelehnt: ${d.reject_reason}`
-                                : d.status === 'zu_pruefen'
-                                  ? 'zu prüfen'
-                                  : `bis ${dateDe(d.valid_until)}`}
-                              {d.source === 'portal' ? ' · Portal' : ''}
-                            </div>
-                          ))}
-                        </details>
-                      )}
-                    </td>
-                    <td>
-                      <form
-                        method="post"
-                        action={`/lieferanten/${id}/nachweise`}
-                        enctype="multipart/form-data"
-                        class="actions"
-                        style="margin:0;flex-wrap:nowrap"
-                      >
-                        <input type="hidden" name="id" value={randomUUID()} />
-                        <input type="hidden" name="doc_type" value={r.type.id} />
-                        <input
-                          type="file"
-                          name="file"
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          required
-                          style="max-width:190px"
-                          aria-label="Datei"
-                        />
-                        {r.type.valid_months > 0 && (
-                          <input
-                            type="date"
-                            name="valid_until"
-                            required
-                            title={`gültig bis (vom Nachweis; üblich ${r.type.valid_months} Monate, z. B. ${dateDe(suggestValidUntil(r.type))})`}
-                            aria-label="gültig bis"
-                            style="max-width:150px"
-                          />
-                        )}
-                        <button class="btn sec sm">Hochladen</button>
-                      </form>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <PageHead title={s.name} no={s.supplier_no} crumbs={[['Nachunternehmer', '/nachunternehmer']]} />
+        <div class="card hero">
+          <span class={`status-xl ${XL[data.overall]}`}>{OVERALL[data.overall]}</span>
+          <div style="flex:1;min-width:220px">
+            <div class="small mut" style="margin-bottom:6px">
+              Pflicht-Nachweise:{' '}
+              <b style="color:var(--ink)">
+                {fine} von {required.length}
+              </b>
+              {data.nextExpiry && <> · nächster Ablauf {dateDe(data.nextExpiry)}</>}
+            </div>
+            <div class={`progress ${pct === 100 ? '' : pct >= 70 ? 'warn' : 'err'}`}>
+              <i style={`width:${pct}%`} />
+            </div>
           </div>
-          <p class="small mut">
-            Alte Versionen bleiben erhalten (nie löschen). „gültig bis“ bitte vom Nachweis übernehmen (kein
-            Vorschlag, damit kein falsches Datum gespeichert wird).
-          </p>
+          <div class="facts">
+            <span>
+              Rechtsform <b>{s.legal_form ? LEGAL_FORMS[s.legal_form] : '–'}</b>
+            </span>
+            {s.contact_name && (
+              <span>
+                Kontakt <b>{s.contact_name}</b>
+              </span>
+            )}
+            {s.terminated_on && (
+              <span style="color:var(--err)">
+                gekündigt zum <b style="color:var(--err)">{dateDe(s.terminated_on)}</b>
+              </span>
+            )}
+          </div>
+          <div class="acts">
+            <a class="btn sec sm" href={`/lieferanten/${id}`}>
+              Stammdaten
+            </a>
+            <a class="btn sec sm" href={`/lieferanten/${id}/nachweise.pdf`} target="_blank">
+              Übersicht als PDF
+            </a>
+          </div>
         </div>
 
         <div class="cols">
           <div class="card">
-            <h3 style="margin-top:0">Nachweise anfordern</h3>
-            <textarea rows={12} readonly style="font-size:13px" id="req">
-              {requestText(s, data.rows, url)}
-            </textarea>
-            <div class="actions">
-              {s.email && (
-                <a
-                  class="btn sec sm"
-                  href={`mailto:${s.email}?subject=${encodeURIComponent('Nachweise für die Zusammenarbeit')}&body=${encodeURIComponent(requestText(s, data.rows, url))}`}
-                >
-                  Als E-Mail öffnen
-                </a>
-              )}
-              <button
-                type="button"
-                class="btn sec sm"
-                onclick="navigator.clipboard.writeText(document.getElementById('req').value)"
-              >
-                Kopieren
-              </button>
-            </div>
-          </div>
-          <div class="card">
-            <h3 style="margin-top:0">Upload-Portal für den Nachunternehmer</h3>
-            <p class="small mut" style="margin-top:0">
-              Der Nachunternehmer lädt Nachweise selbst hoch (Link + PIN). Das Büro prüft jede Datei, erst
-              dann zählt sie.
+            <h3>Nachweise</h3>
+            {categories.map((cat) => (
+              <>
+                <div class="group-title">{cat}</div>
+                <div class="list">
+                  {data.rows
+                    .filter((r) => r.type.category === cat)
+                    .map((r) => (
+                      <div class="row">
+                        <span class={`dot ${dotOf(r.state, r.required)}`} />
+                        <div class="main">
+                          <b>{r.type.label}</b>
+                          {!r.required && <span class="small faint"> · optional</span>}
+                          <div class="small mut">
+                            {r.current ? (
+                              <a href={`/nachweise/${r.current.id}/datei`} target="_blank">
+                                {r.current.file_name}
+                              </a>
+                            ) : (
+                              (r.type.hint ?? '')
+                            )}
+                            {r.pending && (
+                              <>
+                                {' '}
+                                · <span style="color:var(--info)">neue Datei wartet auf Prüfung</span>
+                              </>
+                            )}
+                            {history(r.type.id).length > 1 && <> · {history(r.type.id).length} Versionen</>}
+                          </div>
+                        </div>
+                        <div class="side">
+                          <span class="when">
+                            {r.current?.valid_until
+                              ? r.state === 'abgelaufen'
+                                ? `abgelaufen ${dateDe(r.current.valid_until)}`
+                                : `bis ${dateDe(r.current.valid_until)}`
+                              : r.current
+                                ? 'einmalig'
+                                : r.state === 'zu_pruefen'
+                                  ? 'in Prüfung'
+                                  : r.required
+                                    ? 'fehlt'
+                                    : '–'}
+                            {r.days !== null && r.days >= 0 && r.days <= 60 && (
+                              <div style="color:var(--warn)">noch {r.days} Tage</div>
+                            )}
+                          </span>
+                          <details class="pop">
+                            <summary class="btn sec sm">{r.current ? 'Erneuern' : 'Hochladen'}</summary>
+                            <form
+                              class="panel"
+                              method="post"
+                              action={`/lieferanten/${id}/nachweise`}
+                              enctype="multipart/form-data"
+                            >
+                              <b>{r.type.label}</b>
+                              <input type="hidden" name="id" value={randomUUID()} />
+                              <input type="hidden" name="doc_type" value={r.type.id} />
+                              <label>Datei (PDF, JPG, PNG, max. 10 MB)</label>
+                              <input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" required />
+                              {r.type.valid_months > 0 && (
+                                <>
+                                  <label>gültig bis (steht auf dem Nachweis)</label>
+                                  <input type="date" name="valid_until" required />
+                                  <div class="small faint" style="margin-top:4px">
+                                    üblich {r.type.valid_months} Monate
+                                  </div>
+                                </>
+                              )}
+                              <button class="btn">Speichern</button>
+                            </form>
+                          </details>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </>
+            ))}
+            <p class="small faint" style="margin-bottom:0">
+              Alte Versionen bleiben erhalten und werden nie gelöscht.
             </p>
-            {url ? (
-              <p class="small">
-                Link: <code>{url}</code>
+          </div>
+
+          <div>
+            <div class="card">
+              <h3>Fehlende Nachweise anfordern</h3>
+              <textarea rows={9} readonly style="font-size:12.5px" id="req">
+                {requestText(s, data.rows, url)}
+              </textarea>
+              <div class="actions" style="margin-bottom:0">
+                {s.email && (
+                  <a
+                    class="btn sm"
+                    href={`mailto:${s.email}?subject=${encodeURIComponent('Nachweise für die Zusammenarbeit')}&body=${encodeURIComponent(requestText(s, data.rows, url))}`}
+                  >
+                    Als E-Mail öffnen
+                  </a>
+                )}
+                <button
+                  type="button"
+                  class="btn sec sm"
+                  onclick="navigator.clipboard.writeText(document.getElementById('req').value);this.textContent='Kopiert ✓'"
+                >
+                  Text kopieren
+                </button>
+              </div>
+            </div>
+            <div class="card">
+              <h3>Upload-Portal</h3>
+              <p class="small mut" style="margin-top:0">
+                Der Nachunternehmer lädt selbst hoch (Link + PIN). Jede Datei zählt erst nach Ihrer Prüfung.
               </p>
-            ) : (
-              <p class="small mut">Kein Zugang eingerichtet.</p>
-            )}
-            <div class="actions">
-              <form
-                method="post"
-                action={`/lieferanten/${id}/portal`}
-                style="margin:0"
-                onsubmit="return confirm('Neuen Link und PIN erzeugen? Der alte Zugang gilt dann nicht mehr.')"
-              >
-                <button class="btn sec sm">{url ? 'Neuen Link + PIN erzeugen' : 'Zugang einrichten'}</button>
-              </form>
-              {url && (
-                <form method="post" action={`/lieferanten/${id}/portal/sperren`} style="margin:0">
-                  <button class="btn sec sm">Zugang sperren</button>
-                </form>
+              {url ? (
+                <p class="small" style="word-break:break-all">
+                  <span class="badge ok">aktiv</span> <code>{url}</code>
+                </p>
+              ) : (
+                <p class="small">
+                  <span class="badge">nicht eingerichtet</span>
+                </p>
               )}
+              <div class="actions" style="margin-bottom:0">
+                <form
+                  method="post"
+                  action={`/lieferanten/${id}/portal`}
+                  onsubmit="return confirm('Neuen Link und PIN erzeugen? Der alte Zugang gilt dann nicht mehr.')"
+                >
+                  <button class={`btn ${url ? 'sec ' : ''}sm`}>
+                    {url ? 'Neuen Link + PIN' : 'Zugang einrichten'}
+                  </button>
+                </form>
+                {url && (
+                  <form method="post" action={`/lieferanten/${id}/portal/sperren`}>
+                    <button class="btn ghost sm">Sperren</button>
+                  </form>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
         <div class="card">
-          <h3 style="margin-top:0">Aufträge</h3>
-          <SubcontractTable rows={contracts} />
-          <div class="actions">
-            <a class="btn sec sm" href={`/nachunternehmer/auftraege/${randomUUID()}?nu=${id}`}>
-              Auftrag anlegen
+          <div style="display:flex;align-items:center;gap:12px">
+            <h3 style="margin:0">Aufträge</h3>
+            <a
+              class="btn sec sm"
+              href={`/nachunternehmer/auftraege/${randomUUID()}?nu=${id}`}
+              style="margin-left:auto"
+            >
+              + Auftrag
             </a>
+          </div>
+          <div style="margin-top:14px">
+            <SubcontractTable rows={contracts} />
           </div>
         </div>
         <div class="card">
-          <h3 style="margin-top:0">Übergaben (Schlüssel, Kleidung, Dokumente)</h3>
-          <HandoverTable rows={handovers} />
-          <div class="actions">
-            <a class="btn sec sm" href={`/uebergaben/${randomUUID()}?art=sonstiges&nachunternehmer=${id}`}>
-              Übergabe erfassen
+          <div style="display:flex;align-items:center;gap:12px">
+            <h3 style="margin:0">Übergaben (Schlüssel, Kleidung, Dokumente)</h3>
+            <a
+              class="btn sec sm"
+              href={`/uebergaben/${randomUUID()}?art=sonstiges&nachunternehmer=${id}`}
+              style="margin-left:auto"
+            >
+              + Übergabe
             </a>
           </div>
+          <div style="margin-top:14px">
+            <HandoverTable rows={handovers} />
+          </div>
         </div>
-        <div class="card">
-          <h3 style="margin-top:0">Kündigung</h3>
-          {s.terminated_on ? (
-            <>
-              <p>
-                Gekündigt zum <b>{dateDe(s.terminated_on)}</b>: {s.termination_reason}
-              </p>
-              <div class="actions">
-                <a class="btn sec sm" href={`/lieferanten/${id}/kuendigung.pdf`} target="_blank">
-                  Kündigungsschreiben (PDF)
-                </a>
-                <form method="post" action={`/lieferanten/${id}/kuendigung/aufheben`} style="margin:0">
-                  <button class="btn sec sm" onclick="return confirm('Kündigung aufheben?')">
-                    Kündigung aufheben
-                  </button>
-                </form>
-              </div>
-            </>
-          ) : (
-            <form method="post" action={`/lieferanten/${id}/kuendigung`}>
+
+        {s.terminated_on ? (
+          <div class="card danger-zone">
+            <h3 style="color:var(--err)">Gekündigt zum {dateDe(s.terminated_on)}</h3>
+            <p class="small mut" style="margin-top:0">
+              {s.termination_reason}
+            </p>
+            <div class="actions" style="margin-bottom:0">
+              <a class="btn sec sm" href={`/lieferanten/${id}/kuendigung.pdf`} target="_blank">
+                Kündigungsschreiben (PDF)
+              </a>
+              <form method="post" action={`/lieferanten/${id}/kuendigung/aufheben`}>
+                <button class="btn ghost sm" onclick="return confirm('Kündigung aufheben?')">
+                  Kündigung aufheben
+                </button>
+              </form>
+            </div>
+          </div>
+        ) : (
+          <details class="card danger-zone">
+            <summary>Zusammenarbeit beenden …</summary>
+            <form method="post" action={`/lieferanten/${id}/kuendigung`} style="margin-top:14px">
               <div class="grid">
                 <div>
-                  <label for="kdate">zum</label>
+                  <label for="kdate">Kündigung zum</label>
                   <input id="kdate" type="date" name="date" required />
                 </div>
+                <div>
+                  <label for="knote">Bemerkung</label>
+                  <input id="knote" name="note" />
+                </div>
               </div>
-              <label>Gründe</label>
-              <div class="grid" style="gap:2px 16px">
+              <label style="margin-top:14px">Gründe</label>
+              <div class="chips">
                 {TERMINATION_REASONS.map((r) => (
-                  <label class="chk" style="margin:0">
+                  <label class="chk" style="margin:0 12px 0 0;font-weight:500">
                     <input type="checkbox" name="reason" value={r} /> {r}
                   </label>
                 ))}
               </div>
-              <label for="knote">Bemerkung</label>
-              <input id="knote" name="note" />
               <p class="small mut">
                 Laufende Aufträge enden zum Kündigungsdatum, Entwürfe werden storniert. Kündigungsfristen laut
                 Vertrag beachten.
               </p>
-              <button class="btn sec" onclick="return confirm('Nachunternehmer kündigen?')">
+              <button class="btn danger" onclick="return confirm('Nachunternehmer kündigen?')">
                 Kündigen
               </button>
             </form>
-          )}
-        </div>
+          </details>
+        )}
       </>,
     );
   });

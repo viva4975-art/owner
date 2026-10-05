@@ -511,3 +511,8 @@ Testadresse.
   - **Rechtlich:** Haftung als Auftraggeber für Mindestlohn (§ 13 MiLoG, § 14 AEntG) und SV-Beiträge (§ 28e Abs. 3a
     SGB IV) – Zurückhalten der Zahlung schützt nicht vor der Haftung, die Nachweise sind die eigentliche Absicherung.
   - Tests: 221 Unit-/DB-Tests, neu `npm run e2e:nachunternehmer` (19 Prüfungen).
+- 2026-10-05: Design moderner (Ahmed: „altmodisch, eher wie die alte App, moderner und logischer“): warmes Off-White,
+  dezente Linien, weichere Schatten, größere Radien, schwarze Überschriften; Bordeaux nur noch als Akzent (Menüleiste hell
+  mit Bordeaux-Markierung statt vollflächig Bordeaux). Status als Punkt-Pillen, Tabellenköpfe dezent. Neue Bausteine:
+  Kopfkarte mit großem Status + Fortschrittsbalken, Listen statt Tabellen, Filter-Chips, Upload im kleinen Aufklapp-Fenster,
+  „Zusammenarbeit beenden“ eingeklappt. Nachunternehmer-Seiten als erstes umgebaut; weitere Seiten folgen schrittweise.

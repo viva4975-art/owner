@@ -203,6 +203,9 @@ export async function complianceOverview(sql: Sql) {
         .map((r) => r.type.label),
       expiring: e.rows.filter((r) => r.state === 'laeuft_ab').map((r) => r.type.label),
       pending: e.rows.filter((r) => r.pending).length,
+      requiredTotal: e.rows.filter((r) => r.required).length,
+      requiredOk: e.rows.filter((r) => r.required && (r.state === 'gueltig' || r.state === 'laeuft_ab'))
+        .length,
     };
   });
 }

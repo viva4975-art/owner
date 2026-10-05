@@ -41,7 +41,7 @@ const stamp = Date.now().toString().slice(-6);
 
 console.log('1. Nachunternehmer anlegen');
 await p.goto(B + '/nachunternehmer');
-await p.click('a:has-text("Nachunternehmer anlegen")');
+await p.click('a:has-text("+ Nachunternehmer")');
 await p.waitForLoadState();
 await p.fill('#name', `E2E Reinigung ${stamp} GmbH`);
 await p.selectOption('#kind', 'nachunternehmer');
@@ -54,20 +54,21 @@ await p.waitForLoadState();
 const nuUrl = p.url().split('?')[0];
 check(
   'Ampel „Nachweise fehlen“',
-  (await p.locator('p .badge').first().innerText()).includes('Nachweise fehlen'),
+  (await p.locator('.status-xl').innerText()).includes('Nachweise fehlen'),
 );
 check('HR-Auszug bei GmbH verlangt', (await p.locator('body').innerText()).includes('Handelsregisterauszug'));
 
 console.log('2. Nachweis im Büro hochladen');
-const row = p.locator('tr', { hasText: 'Nachunternehmervertrag' });
+const row = p.locator('.list .row', { hasText: 'Nachunternehmervertrag' });
+await row.locator('summary:has-text("Hochladen")').click();
 await row.locator('input[type=file]').setInputFiles(pdfPath);
 await row.locator('input[type=date]').fill('2029-09-30');
-await row.locator('button:has-text("Hochladen")').click();
+await row.locator('button:has-text("Speichern")').click();
 await p.waitForLoadState();
 check('gespeichert', (await flash(p)).includes('Nachweis gespeichert'), await flash(p));
 check(
   'Vertrag gültig',
-  (await p.locator('tr', { hasText: 'Nachunternehmervertrag' }).innerText()).includes('gültig'),
+  (await p.locator('.list .row', { hasText: 'Nachunternehmervertrag' }).innerText()).includes('bis 30.09.2029'),
 );
 
 console.log('3. Portal');
@@ -112,12 +113,12 @@ check('geprüft', (await flash(p)).includes('Geprüft'), await flash(p));
 await p.goto(nuUrl);
 check(
   'Haftpflicht jetzt gültig',
-  (await p.locator('tr', { hasText: 'Betriebshaftpflicht' }).innerText()).includes('31.08.2027'),
+  (await p.locator('.list .row', { hasText: 'Betriebshaftpflicht' }).innerText()).includes('31.08.2027'),
 );
 await p.screenshot({ path: `${out}/n2-nachweise.png`, fullPage: true });
 
 console.log('5. Auftrag');
-await p.click('a:has-text("Auftrag anlegen")');
+await p.click('a:has-text("+ Auftrag")');
 await p.waitForLoadState();
 await p.selectOption('#site', { index: 1 });
 await p.fill('#price', '1.250,00');
@@ -132,7 +133,11 @@ check('Auftrags-PDF', apdf.ok() && (await apdf.body()).subarray(0, 4).toString()
 
 console.log('6. Übersicht / Zahlungslauf');
 await p.goto(B + '/nachunternehmer');
-check('in der Übersicht', (await p.locator('tr', { hasText: `E2E Reinigung ${stamp}` }).count()) === 1);
+check(
+  'in der Übersicht',
+  (await p.locator('.list .row', { hasText: `E2E Reinigung ${stamp}` }).count()) === 1,
+);
+await p.screenshot({ path: `${out}/n3-uebersicht.png`, fullPage: true });
 check('Zahlungslauf lädt', (await p.goto(B + '/zahlungslauf')).ok());
 check('Soll/Ist lädt', (await p.goto(B + '/nachunternehmer/monat')).ok());
 

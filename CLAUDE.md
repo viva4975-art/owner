@@ -560,3 +560,11 @@ Testadresse.
 - 2026-10-06: Rechnungsarchiv nach Leistungszeitraum (Rechnungen → Reiter „Archiv“): Jahr wählen, je Monat des Leistungsbeginns
   (ohne Zeitraum: Rechnungsdatum) Anzahl, netto/brutto, Belege (PDF, ZUGFeRD, XRechnung, Anlagen) und „ZIP herunterladen“
   (je Rechnung ein Ordner; jede Datei wird gegen ihre SHA-256 geprüft). Neue direkte Abhängigkeit `fflate` (war schon indirekt da).
+- 2026-10-06: Ausschreibungen statt Abgabefristen am Angebot (Ahmed: Angebot mit Frist gibt es noch nicht, weil Preise fehlen):
+  Angebote → Ausschreibungen: Titel, Vergabestelle, Kunde/Interessent, Vergabenummer, Verfahren, Plattform + Link, Abgabefrist,
+  Bieterfragen bis, Ortsbesichtigung (Pflicht?), Bindefrist, Vertragsbeginn/Laufzeit, geschätztes Volumen, Notizen,
+  Vergabeunterlagen (Dateien). Zeiten als Berliner Ortszeit. Status neu → prüfen → teilnehmen → abgegeben → gewonnen/verloren
+  (Grund Pflicht) / nicht teilnehmen (Grund Pflicht) / aufgehoben; Zuschlagsquote 12 Monate. „Nächste Termine“ (3 Wochen) in
+  der Liste und auf der Startseite (14 Tage) statt Angebotsfristen. „Angebot erstellen“ übernimmt Titel, Vergabenummer,
+  Plattform, Frist in einen Angebotsentwurf; nach dem Speichern verknüpft (Status → in Bearbeitung).
+  Tests: neu `tenders.db.test.ts`, `npm run e2e:ausschreibung` (10 Prüfungen).

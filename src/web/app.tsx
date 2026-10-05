@@ -34,6 +34,7 @@ import { registerImportRoutes } from './routes-import.js';
 import { registerHandoverRoutes } from './routes-handovers.js';
 import { registerSubcontractorRoutes } from './routes-subcontractors.js';
 import { registerSettingsRoutes } from './routes-settings.js';
+import { registerTenderRoutes } from './routes-tenders.js';
 import { registerPlanningRoutes } from './routes-planning.js';
 import { registerPurchasingRoutes } from './routes-purchasing.js';
 import { registerTimeRoutes } from './routes-time.js';
@@ -284,6 +285,7 @@ export function createApp(deps: Deps) {
   registerHandoverRoutes(ctx);
   registerSubcontractorRoutes(ctx);
   registerSettingsRoutes(ctx);
+  registerTenderRoutes(ctx);
 
   app.notFound((c) =>
     page(

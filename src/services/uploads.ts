@@ -55,7 +55,8 @@ export type LinkTarget = {
     | 'order'
     | 'work_report'
     | 'quality_check'
-    | 'inbox';
+    | 'inbox'
+    | 'tender';
   id: string;
 };
 

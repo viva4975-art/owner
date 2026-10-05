@@ -25,9 +25,9 @@ import { BusinessError } from '../services/errors.js';
 import { listInvoices } from '../services/invoices.js';
 import { listSites } from '../services/masterdata.js';
 import { listBalances, openItemLedger } from '../services/payments.js';
+import { upcomingEvents } from '../services/tenders.js';
 import { proposals } from '../services/dunning.js';
 import { listArticles, listDevices, supplierWarnings } from '../services/inventory.js';
-import { listOffers } from '../services/offers.js';
 import { search } from '../services/search.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { NEW_OPTIONS, PageHead, dateDe, euro } from './layout.js';
@@ -68,8 +68,7 @@ export function registerModuleRoutes({ app, deps, page, back, shells }: Ctx) {
            and not exists (select 1 from app.invoice_deliveries d where d.invoice_id = i.id and d.status = 'sent')`,
       hrReminders(sql),
     ]);
-    const [offers, reorder, suppliers, devices, dun, unsentDunnings] = await Promise.all([
-      listOffers(sql, { status: ['entwurf'] }),
+    const [reorder, suppliers, devices, dun, unsentDunnings] = await Promise.all([
       listArticles(sql, { reorder: true }),
       supplierWarnings(sql),
       listDevices(sql),
@@ -77,16 +76,15 @@ export function registerModuleRoutes({ app, deps, page, back, shells }: Ctx) {
       sql<{ n: number }[]>`select count(*)::int as n from app.dunnings where status = 'erstellt'`,
     ]);
     const todo: DashboardTodo = {
-      deadlines: offers
-        .filter((o) => o.days_left !== null && o.days_left >= 0 && o.days_left <= 14)
-        .map((o) => ({
-          id: o.id,
-          number: o.number,
-          title: o.title,
-          customer_name: o.customer_name,
-          days_left: o.days_left!,
-        }))
-        .sort((a, b) => a.days_left - b.days_left),
+      deadlines: (await upcomingEvents(sql, 14)).map((e) => ({
+        id: e.tender_id,
+        title: e.title,
+        kind: e.kind,
+        authority: e.authority,
+        at: e.at,
+        days_left: e.days,
+        required: e.required,
+      })),
       reorder,
       suppliers,
       devices: devices.filter((d) => d.active && d.days !== null && d.days <= 30),

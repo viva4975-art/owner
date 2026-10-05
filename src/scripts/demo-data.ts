@@ -56,6 +56,7 @@ import { saveMandate } from '../services/direct-debit.js';
 import { importStatement } from '../services/bank.js';
 import { applyImport } from '../services/fortytools-import.js';
 import { saveSiteBilling, siteBillingInput } from '../services/masterdata.js';
+import { saveTender, setTenderStatus } from '../services/tenders.js';
 import { bookStock as bookClothing, saveHandover, signHandover } from '../services/handovers.js';
 import {
   addPriceChange,
@@ -291,6 +292,7 @@ try {
   await phase6();
   await phase7();
   await phase8();
+  await phase9();
   // Belege (PDF, XRechnung/ZUGFeRD, KoSIT-Prüfbericht) für alle ausgestellten Rechnungen erzeugen
   const issued = await sql<{ id: string }[]>`select id from app.invoices where status = 'issued'`;
   for (const i of issued) await ensureDocuments(deps, i.id);
@@ -1457,4 +1459,86 @@ async function phase8() {
     A,
   );
   console.log('Demo Phase 8 angelegt.');
+}
+
+/** Ausschreibungen mit Terminen (Abgabe, Besichtigung, Bieterfragen) und eine verlorene. */
+async function phase9() {
+  const [done] = await sql`select 1 from app.tenders limit 1`;
+  if (done) return;
+  const today = todayBerlin();
+  const base = {
+    customerId: null,
+    url: 'https://www.vergabe.bayern.de/',
+    location: 'München',
+    services: null,
+    contractStart: `${Number(today.slice(0, 4)) + 1}-01-01`,
+    estimatedCents: null,
+    questionsUntil: null,
+    siteVisit: null,
+    siteVisitRequired: false,
+    bindingUntil: null,
+    responsible: 'Ahmed',
+    notes: null,
+  };
+  await saveTender(
+    sql,
+    '00000000-0000-4000-8000-0000000d9001',
+    {
+      ...base,
+      title: 'DEMO Unterhaltsreinigung Grund- und Mittelschulen Los 3',
+      authority: 'DEMO Landeshauptstadt München, Referat für Bildung',
+      customerId: DEMO.authority,
+      referenceNo: 'DEMO-RBS-2026-117',
+      platform: 'Vergabe.bayern',
+      procedure: 'offenes Verfahren',
+      contractTerm: '2 Jahre + 2 × 1 Jahr',
+      estimatedCents: parseEuro('240.000,00'),
+      deadline: `${addDays(today, 9)}T10:00`,
+      questionsUntil: `${addDays(today, 4)}T12:00`,
+      siteVisit: `${addDays(today, 2)}T09:00`,
+      siteVisitRequired: true,
+      bindingUntil: addDays(today, 100),
+      notes: 'Eignung: Referenzen 3 vergleichbare Objekte, Tariftreueerklärung, Umsatz letzte 3 Jahre.',
+    },
+    A,
+  );
+  await saveTender(
+    sql,
+    '00000000-0000-4000-8000-0000000d9002',
+    {
+      ...base,
+      title: 'DEMO Glasreinigung Verwaltungsgebäude (2× jährlich)',
+      authority: 'DEMO Gemeinde Musterhausen',
+      referenceNo: 'DEMO-GM-2026-08',
+      platform: 'E-Mail / Post',
+      procedure: 'Preisanfrage (privat)',
+      contractTerm: '1 Jahr',
+      deadline: `${addDays(today, 16)}T12:00`,
+    },
+    A,
+  );
+  await saveTender(
+    sql,
+    '00000000-0000-4000-8000-0000000d9003',
+    {
+      ...base,
+      title: 'DEMO Reinigung Feuerwachen Nord',
+      authority: 'DEMO Landeshauptstadt München, Branddirektion',
+      referenceNo: 'DEMO-BD-2026-04',
+      platform: 'DTVP',
+      procedure: 'offenes Verfahren',
+      contractTerm: '3 Jahre',
+      deadline: `${addDays(today, -20)}T10:00`,
+    },
+    A,
+  );
+  await setTenderStatus(sql, '00000000-0000-4000-8000-0000000d9003', 'abgegeben', null, A);
+  await setTenderStatus(
+    sql,
+    '00000000-0000-4000-8000-0000000d9003',
+    'verloren',
+    'Zuschlag an Mitbewerber, ca. 8 % günstiger',
+    A,
+  );
+  console.log('Demo Phase 9 angelegt.');
 }

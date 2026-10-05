@@ -146,12 +146,9 @@ export const OfferList: FC<{
   stats: OfferStats;
 }> = ({ rows, all, active, title, stats }) => {
   const count = (s: OfferStatus) => all.filter((o) => o.status === s).length;
-  const urgent = all.filter(
-    (o) => o.status === 'entwurf' && o.days_left !== null && o.days_left >= 0 && o.days_left <= 7,
-  );
   const tabs: Tab[] = [
     { key: 'offen', label: 'Offen', href: '/angebote', count: count('entwurf') + count('versendet') },
-    { key: 'fristen', label: 'Abgabefristen', href: '/angebote?ansicht=fristen', count: urgent.length },
+    { key: 'fristen', label: 'Ausschreibungen', href: '/ausschreibungen' },
     { key: 'entwurf', label: 'Entwürfe', href: '/angebote?status=entwurf', count: count('entwurf') },
     { key: 'versendet', label: 'Versendet', href: '/angebote?status=versendet', count: count('versendet') },
     {
@@ -174,12 +171,10 @@ export const OfferList: FC<{
           <div class="s">Angebote im Entwurf</div>
         </div>
         <div class="kpi">
-          <div class="l">Fristen ≤ 7 Tage</div>
-          <div class="v" style={urgent.length ? 'color:var(--err)' : ''}>
-            {urgent.length}
-          </div>
+          <div class="l">Ausschreibungen</div>
+          <div class="v">→</div>
           <div class="s">
-            <a href="/angebote?ansicht=fristen">Abgabefristen ansehen →</a>
+            <a href="/ausschreibungen">Abgabefristen, Besichtigungen, Bieterfragen →</a>
           </div>
         </div>
         <div class="kpi">
@@ -267,7 +262,8 @@ export const OfferEditor: FC<{
   recent?: { id: string; name: string; customer_no: string }[];
   sites: Site[];
   isNew: boolean;
-}> = ({ id, o, lines, customers, sites, isNew, recent = [] }) => {
+  tenderId?: string | null;
+}> = ({ id, o, lines, customers, sites, isNew, recent = [], tenderId = null }) => {
   const prospects = customers.filter((c) => c.status === 'interessent');
   const clients = customers.filter((c) => c.status !== 'interessent');
   return (
@@ -280,6 +276,7 @@ export const OfferEditor: FC<{
         ]}
       />
       <form method="get" action={`/angebote/${id}/bearbeiten`} class="card">
+        {tenderId && <input type="hidden" name="ausschreibung" value={tenderId} />}
         <div class="grid">
           <div>
             <label for="kunde">Kunde oder Interessent</label>
@@ -342,6 +339,7 @@ export const OfferEditor: FC<{
           data-version={String(o.version ?? '')}
         >
           <input type="hidden" name="version" value={String(o.version ?? '')} />
+          {tenderId && <input type="hidden" name="tender_id" value={tenderId} />}
           <input type="hidden" name="customer_id" value={o.customer_id} />
           <input type="hidden" name="site_id" value={o.site_id ?? ''} />
           <h2 style="margin-top:0">Ausschreibung</h2>

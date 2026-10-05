@@ -266,7 +266,15 @@ export const TaskForm: FC<{
 // ---------------------------------------------------------------------------
 
 export interface DashboardTodo {
-  deadlines: { id: string; number: string; title: string; customer_name: string; days_left: number }[];
+  deadlines: {
+    id: string;
+    title: string;
+    kind: string;
+    authority: string;
+    at: Date;
+    days_left: number;
+    required: boolean;
+  }[];
   reorder: { id: string; name: string }[];
   suppliers: { id: string; name: string }[];
   devices: { id: string; name: string; next_inspection: string | null }[];
@@ -297,18 +305,34 @@ export const Dashboard: FC<{
           {todo.deadlines.length > 0 && (
             <div class="card">
               <h2 style="margin-top:0">
-                Abgabefristen Angebote <span class="cnt">(14 Tage)</span>
+                Ausschreibungen <span class="cnt">(Termine 14 Tage)</span>
               </h2>
               {todo.deadlines.map((o) => (
                 <div class="person" style="justify-content:space-between">
                   <div>
-                    <a href={`/angebote/${o.id}`}>
-                      <b>{o.number}</b> {o.title}
-                    </a>
-                    <div class="small mut">{o.customer_name}</div>
+                    <b>{o.kind}</b>
+                    {o.kind === 'Ortsbesichtigung' && o.required && (
+                      <span class="small" style="color:var(--err)">
+                        {' '}
+                        (Pflicht)
+                      </span>
+                    )}{' '}
+                    · <a href={`/ausschreibungen/${o.id}`}>{o.title}</a>
+                    <div class="small mut">
+                      {o.authority} ·{' '}
+                      {o.at.toLocaleString('de-DE', {
+                        timeZone: 'Europe/Berlin',
+                        weekday: 'short',
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}{' '}
+                      Uhr
+                    </div>
                   </div>
-                  <span class={`badge ${o.days_left <= 7 ? 'err' : 'warn'}`}>
-                    {o.days_left === 0 ? 'heute' : `noch ${o.days_left} T.`}
+                  <span class={`badge ${o.days_left <= 2 ? 'err' : o.days_left <= 7 ? 'warn' : ''}`}>
+                    {o.days_left === 0 ? 'heute' : o.days_left === 1 ? 'morgen' : `noch ${o.days_left} T.`}
                   </span>
                 </div>
               ))}

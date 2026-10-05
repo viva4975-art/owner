@@ -32,6 +32,7 @@ const LINK_TYPES = [
   'work_report',
   'quality_check',
   'inbox',
+  'tender',
 ] as const;
 /** Anlagen, die per E-Mail mit der Rechnung rausgehen, dürfen nicht zu groß werden. */
 const INVOICE_ATTACHMENT_MAX = 20 * 1024 * 1024;
@@ -50,6 +51,7 @@ const LINK_PAGE: Record<string, (id: string) => string> = {
   work_report: () => '/arbeitsscheine',
   quality_check: () => '/qualitaet',
   inbox: () => '/transfer/dokumenteneingang',
+  tender: () => '/ausschreibungen',
 };
 
 /** Darf der Benutzer die Verknüpfung sehen? Rolle (Seite) + bei Objektleitung das eigene Objekt. */

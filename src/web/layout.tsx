@@ -322,7 +322,8 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     label: 'Angebote',
     items: [
       { label: 'Alle Angebote', href: '/angebote' },
-      { label: 'Abgabefristen', href: '/angebote?ansicht=fristen' },
+      { label: 'Ausschreibungen & Fristen', href: '/ausschreibungen' },
+      { label: 'Ausschreibung erfassen', href: '/ausschreibungen/neu' },
       { label: 'Angebot anlegen', href: '/neu?typ=angebot' },
       { label: 'Aufträge', href: '/auftraege', sep: true },
     ],

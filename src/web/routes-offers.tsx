@@ -1,4 +1,5 @@
 import { todayBerlin } from '../domain/invoice/calc.js';
+import { getTender, linkOffer } from '../services/tenders.js';
 import { BusinessError } from '../services/errors.js';
 import { getCustomer, getSite, listCustomers, listSites } from '../services/masterdata.js';
 import {
@@ -37,7 +38,8 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
     let rows = [...all];
     let active = 'offen';
     let title = 'Angebote';
-    if (view === 'fristen') {
+    if (view === 'fristen') return c.redirect('/ausschreibungen');
+    if (view === 'fristen-alt') {
       active = 'fristen';
       title = 'Abgabefristen';
       rows = all
@@ -71,6 +73,15 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
     const q = c.req.query();
     if (q.kunde !== undefined) o.customer_id = q.kunde;
     if (q.objekt !== undefined) o.site_id = q.objekt || null;
+    // Angebot aus einer Ausschreibung: Titel, Vergabenummer, Plattform und Frist übernehmen
+    const tender = !data && q.ausschreibung ? await getTender(sql, q.ausschreibung) : undefined;
+    if (tender) {
+      o.title = tender.title;
+      o.tender_reference = tender.reference_no;
+      o.tender_platform = tender.platform;
+      o.submission_deadline = tender.deadline_at;
+      if (tender.customer_id) o.customer_id = tender.customer_id;
+    }
     const [customers, recent] = await Promise.all([
       listCustomers(sql).then((l) => l.filter((x) => x.active)),
       data ? Promise.resolve([]) : recentCustomers(sql, c.get('actor')),
@@ -89,6 +100,7 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
         sites={sites}
         isNew={!data}
         recent={recent}
+        tenderId={tender?.id ?? null}
       />,
     );
   });
@@ -131,6 +143,8 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
       },
       c.get('actor'),
     );
+    const tenderId = str(body, 'tender_id');
+    if (tenderId && /^[0-9a-f-]{36}$/.test(tenderId)) await linkOffer(sql, tenderId, id);
     return back(c, `/angebote/${id}`, { ok: 'Angebot gespeichert.' });
   });
 

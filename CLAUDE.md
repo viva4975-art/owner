@@ -540,3 +540,8 @@ Testadresse.
   mit Leitweg-ID, Adresse vollständig, Skontofrist < Zahlungsziel. Mahnungen gehen weiter an die Kundenadresse.
   Behoben: `hidden` wurde bei Rastern/Flex-Elementen von CSS überschrieben (jetzt `[hidden]{display:none!important}`).
   Tests: 226 Unit-/DB-Tests, neu `npm run e2e:rechnungsangaben` (10 Prüfungen).
+- 2026-10-06: SEPA-Zahlungslauf entfernt (Ahmed) → Lieferanten → Zahlungsliste: freigegebene Eingangsrechnungen nach Fälligkeit/
+  Skontofrist, Zahlbetrag mit Skonto zum gewählten Zahlungstag, IBAN + Verwendungszweck zum Kopieren, Summe der Auswahl,
+  CSV/Druck. „Als bezahlt festhalten“ (Datum, Zahlart, Skonto gezogen) → DATEV-Zahlungsausgang; von Hand erfasste Zahlung
+  zurücknehmbar (Lauf-Zahlungen nicht). Alte Zahlungsläufe bleiben unter /zahlungslauf/<id> abrufbar, /zahlungslauf leitet um.
+  Nachunternehmer mit fehlenden Nachweisen sind nicht vorausgewählt.

@@ -467,6 +467,81 @@ export function skontoFor(
 }
 
 // ---------------------------------------------------------------------------
+// Zahlungsliste (statt SEPA-Datei): was ist zu zahlen, Zahlung von Hand festhalten
+// ---------------------------------------------------------------------------
+
+export type PaidMethod = 'ueberweisung' | 'lastschrift' | 'bar' | 'kreditkarte' | 'verrechnung';
+export const PAID_METHOD: Record<PaidMethod, string> = {
+  ueberweisung: 'Überweisung',
+  lastschrift: 'Lastschrift',
+  bar: 'Bar',
+  kreditkarte: 'Kreditkarte',
+  verrechnung: 'Verrechnung',
+};
+
+/** Freigegebene, unbezahlte Eingangsrechnungen; Zahlbetrag mit Skonto, wenn bis `payDate` gezahlt wird. */
+export async function paymentList(sql: Sql, payDate: string) {
+  const list = await listIncoming(sql, { status: ['freigegeben'] });
+  return list
+    .map((i) => {
+      const skonto = skontoFor(i, payDate);
+      return { invoice: i, skonto, amount: i.gross_cents - skonto };
+    })
+    .sort((a, b) =>
+      (a.invoice.skonto_until && a.skonto > 0n ? a.invoice.skonto_until : a.invoice.due_date).localeCompare(
+        b.invoice.skonto_until && b.skonto > 0n ? b.invoice.skonto_until : b.invoice.due_date,
+      ),
+    );
+}
+
+/** Zahlung festhalten (mehrere Rechnungen auf einmal). Skonto nur, wenn bis zum Skontodatum gezahlt. Doppelt = nichts. */
+export async function markPaid(
+  sql: Sql,
+  p: { ids: string[]; date: string; method: PaidMethod; note: string | null; skonto: boolean },
+  actor: string,
+) {
+  if (!p.ids.length) throw new BusinessError('Bitte mindestens eine Rechnung auswählen');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date)) throw new BusinessError('Bitte Zahlungsdatum angeben');
+  if (p.date > todayBerlin()) throw new BusinessError('Zahlungsdatum liegt in der Zukunft');
+  if (!(p.method in PAID_METHOD)) throw new BusinessError('Bitte Zahlart wählen');
+  let n = 0;
+  await sql.begin(async (tx) => {
+    for (const id of p.ids) {
+      const [i] = await tx<
+        IncomingInvoice[]
+      >`select * from app.incoming_invoices where id = ${id} for update`;
+      if (!i) throw new BusinessError('Rechnung nicht gefunden');
+      if (i.status === 'bezahlt') continue;
+      if (i.status !== 'freigegeben')
+        throw new BusinessError(`${i.invoice_no}: erst freigeben, dann bezahlen`);
+      const sk = p.skonto ? skontoFor(i, p.date) : 0n;
+      await tx`update app.incoming_invoices set status = 'bezahlt', paid_at = ${p.date},
+                      paid_amount_cents = ${i.gross_cents - sk}, paid_skonto_cents = ${sk}, paid_method = ${p.method},
+                      paid_note = ${p.note?.trim() || null}, paid_by = ${actor}
+                where id = ${id}`;
+      await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+               values (${actor}, 'paid', 'incoming_invoice', ${id},
+                       ${tx.json({ date: p.date, amount: String(i.gross_cents - sk), skonto: String(sk), method: p.method })})`;
+      n++;
+    }
+  });
+  return n;
+}
+
+/** Versehentlich als bezahlt markiert → zurück auf „freigegeben“ (nur von Hand erfasste Zahlungen). */
+export async function undoPaid(sql: Sql, id: string, actor: string) {
+  const res = await sql`
+    update app.incoming_invoices set status = 'freigegeben', paid_at = null, paid_amount_cents = null,
+           paid_skonto_cents = 0, paid_method = null, paid_note = null, paid_by = null
+     where id = ${id} and status = 'bezahlt'
+       and not exists (select 1 from app.payment_run_items where incoming_invoice_id = ${id})
+    returning id`;
+  if (!res.length)
+    throw new BusinessError('Zahlung kann nicht zurückgenommen werden (nicht bezahlt oder aus Zahlungslauf)');
+  await sql`insert into app.audit_log (actor, action, entity, entity_id) values (${actor}, 'paid_undo', 'incoming_invoice', ${id})`;
+}
+
+// ---------------------------------------------------------------------------
 // SEPA-Zahlungslauf
 // ---------------------------------------------------------------------------
 

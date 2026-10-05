@@ -281,7 +281,12 @@ export async function collectBookings(
       select it.amount_cents, it.skonto_cents, r.execution_date, i.invoice_no, s.supplier_no, s.name, r.number as run
         from app.payment_run_items it join app.payment_runs r on r.id = it.run_id
         join app.incoming_invoices i on i.id = it.incoming_invoice_id join app.suppliers s on s.id = i.supplier_id
-       where r.execution_date between ${f.from} and ${f.to}`;
+       where r.execution_date between ${f.from} and ${f.to}
+      union all
+      select i.paid_amount_cents, i.paid_skonto_cents, i.paid_at, i.invoice_no, s.supplier_no, s.name, 'Zahlungsliste'
+        from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
+       where i.status = 'bezahlt' and i.paid_amount_cents is not null and i.paid_at between ${f.from} and ${f.to}
+         and not exists (select 1 from app.payment_run_items it where it.incoming_invoice_id = i.id)`;
     for (const p of outPay) {
       if (p.skonto_cents > 0n)
         warnings.push(

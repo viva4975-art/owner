@@ -138,7 +138,7 @@ check(
   (await p.locator('.list .row', { hasText: `E2E Reinigung ${stamp}` }).count()) === 1,
 );
 await p.screenshot({ path: `${out}/n3-uebersicht.png`, fullPage: true });
-check('Zahlungslauf lädt', (await p.goto(B + '/zahlungslauf')).ok());
+check('Zahlungsliste lädt', (await p.goto(B + '/zahlungsliste')).ok());
 check('Soll/Ist lädt', (await p.goto(B + '/nachunternehmer/monat')).ok());
 
 await browser.close();

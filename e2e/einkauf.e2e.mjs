@@ -90,26 +90,29 @@ await p.waitForLoadState();
 check('freigegeben', (await flash(p)).includes('Freigegeben'));
 await p.screenshot({ path: `${out}/e2-eingangsrechnung.png`, fullPage: true });
 
-console.log('3. Zahlungslauf');
-await p.goto(B + '/zahlungslauf');
+console.log('3. Zahlungsliste');
+await p.goto(B + '/zahlungsliste');
 const row = p.locator('tr', { hasText: invNo });
 check(
   'Skonto 2 % abgezogen (343,91 − 6,88 = 337,03)',
   (await row.innerText()).includes('337,03'),
   await row.innerText(),
 );
-// nur diese Rechnung zahlen
+check('IBAN zum Kopieren', /DE\d{2} /.test(await row.innerText()));
+// nur diese Rechnung als bezahlt festhalten
 for (const cb of await p.locator('input[name=invoice]').all()) if (await cb.isChecked()) await cb.uncheck();
 await row.locator('input[name=invoice]').check();
-await p.screenshot({ path: `${out}/e3-zahlungslauf.png`, fullPage: true });
-await p.click('button:has-text("Zahlungslauf erstellen")');
+await p.screenshot({ path: `${out}/e3-zahlungsliste.png`, fullPage: true });
+await p.click('button:has-text("Als bezahlt festhalten")');
 await p.waitForLoadState();
-check('Zahlungslauf erstellt', (await flash(p)).includes('Zahlungslauf erstellt'), await flash(p));
-const xml = await (await p.request.get(p.url().split('?')[0] + '/sepa.xml')).text();
+check('als bezahlt festgehalten', (await flash(p)).includes('1 Rechnung(en) als bezahlt'), await flash(p));
 check(
-  'SEPA pain.001.001.09',
-  xml.includes('pain.001.001.09') && xml.includes('<InstdAmt Ccy="EUR">337.03</InstdAmt>'),
+  'unter „Zuletzt bezahlt“ mit Skonto',
+  (
+    await p.locator('.card', { hasText: 'Zuletzt bezahlt' }).locator('tr', { hasText: invNo }).innerText()
+  ).includes('6,88'),
 );
+check('alte Adresse leitet um', (await p.goto(B + '/zahlungslauf')).url().endsWith('/zahlungsliste'));
 
 console.log('4. DATEV und Nachkalkulation');
 await p.goto(B + '/datev');

@@ -321,7 +321,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Nachunternehmer: Soll/Ist je Monat', href: '/nachunternehmer/monat' },
       { label: 'Bestellungen (BE-JJJJ-NNNN)', href: '/bestellungen' },
       { label: 'Rechnungseingang', href: '/rechnungseingang' },
-      { label: 'Zahlungslauf SEPA', href: '/zahlungslauf' },
+      { label: 'Zahlungsliste', href: '/zahlungsliste' },
     ],
   },
   {

@@ -15,7 +15,7 @@ import {
 } from '../services/datev.js';
 import { BusinessError } from '../services/errors.js';
 import { listArticles, listSuppliers } from '../services/inventory.js';
-import { getSeller, listSites } from '../services/masterdata.js';
+import { listSites } from '../services/masterdata.js';
 import {
   type CostCategory,
   type IncomingStatus,
@@ -23,14 +23,16 @@ import {
   COST_CATEGORY,
   INCOMING_STATUS,
   PO_STATUS,
-  createPaymentRun,
   decideIncoming,
   getIncoming,
   getOrder,
   listIncoming,
   listOrders,
-  listPaymentRuns,
-  paymentProposal,
+  paymentList,
+  markPaid,
+  undoPaid,
+  PAID_METHOD,
+  type PaidMethod,
   paymentRunItems,
   paymentRunXml,
   receiveOrder,
@@ -40,6 +42,7 @@ import {
   setOrderStatus,
 } from '../services/purchasing.js';
 import { hm } from '../services/time.js';
+import { toCsv } from '../services/reports.js';
 import { listFiles } from '../services/uploads.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
@@ -597,7 +600,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             <div class="l">Freigegeben, offen</div>
             <div class="v">{euro(open.reduce((s, i) => s + i.gross_cents, 0n))}</div>
             <div class="s">
-              <a href="/zahlungslauf">Zum Zahlungslauf →</a>
+              <a href="/zahlungsliste">Zur Zahlungsliste →</a>
             </div>
           </div>
           <div class="kpi">
@@ -968,156 +971,325 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
 
   // ================================================================== Zahlungslauf
 
-  app.get('/zahlungslauf', async (c) => {
-    const exec = isDate(c.req.query('ausfuehrung')) ? c.req.query('ausfuehrung')! : addDays(todayBerlin(), 1);
-    const [prop, crit, runs, seller] = await Promise.all([
-      paymentProposal(sql, exec),
-      criticalSupplierIds(sql),
-      listPaymentRuns(sql),
-      getSeller(sql),
-    ]);
+  // Alter SEPA-Zahlungslauf → Zahlungsliste (frühere Läufe bleiben unter /zahlungslauf/<id> abrufbar)
+  app.get('/zahlungslauf', (c) => c.redirect('/zahlungsliste'));
+
+  app.get('/zahlungsliste', async (c) => {
     const today = todayBerlin();
+    const pay = isDate(c.req.query('datum')) ? c.req.query('datum')! : today;
+    const [list, crit, recent] = await Promise.all([
+      paymentList(sql, pay),
+      criticalSupplierIds(sql),
+      sql<
+        {
+          id: string;
+          invoice_no: string;
+          supplier_name: string;
+          paid_at: string;
+          paid_amount_cents: bigint;
+          paid_skonto_cents: bigint;
+          paid_method: PaidMethod | null;
+          run: boolean;
+        }[]
+      >`
+        select i.id, i.invoice_no, s.name as supplier_name, i.paid_at, coalesce(i.paid_amount_cents, it.amount_cents) as paid_amount_cents,
+               coalesce(it.skonto_cents, i.paid_skonto_cents) as paid_skonto_cents, i.paid_method, it.run_id is not null as run
+          from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
+          left join app.payment_run_items it on it.incoming_invoice_id = i.id
+         where i.status = 'bezahlt' and i.paid_at >= ${addDays(today, -60)}
+         order by i.paid_at desc, i.invoice_no limit 50`,
+    ]);
+    const sum = list.reduce((a, p) => a + p.amount, 0n);
+    const dueSoon = list.filter((p) => p.invoice.due_date <= addDays(pay, 7) || p.skonto > 0n);
     return page(
       c,
-      'Zahlungslauf',
+      'Zahlungsliste',
       'lieferanten',
       <>
-        <PageHead title="Zahlungslauf (SEPA-Überweisungen)" />
-        <div class="cols">
-          <form method="post" action="/zahlungslauf" class="card">
-            <input type="hidden" name="id" value={randomUUID()} />
-            <div class="grid" style="align-items:end">
-              <div>
-                <label for="ausfuehrung">Ausführungstag</label>
-                <input
-                  id="ausfuehrung"
-                  type="date"
-                  name="execution_date"
-                  value={exec}
-                  min={today}
-                  onchange={`location.href='/zahlungslauf?ausfuehrung='+this.value`}
-                />
-              </div>
-              <div>
-                <label for="iban">von Konto</label>
-                <select id="iban" name="debtor_iban">
-                  {seller.bankAccounts.map((b) => (
-                    <option value={b.iban}>
-                      {b.name} · {b.iban}
-                    </option>
-                  ))}
-                </select>
-              </div>
+        <PageHead title="Zahlungsliste">
+          <a class="btn sec" href={`/zahlungsliste.csv?datum=${pay}`} style="margin-left:auto">
+            CSV
+          </a>
+          <button class="btn sec" type="button" onclick="window.print()">
+            Drucken
+          </button>
+        </PageHead>
+        <div class="kpis">
+          <div class="kpi">
+            <div class="l">offen (freigegeben)</div>
+            <div class="v">{euro(sum)}</div>
+            <div class="s">{list.length} Rechnungen</div>
+          </div>
+          <div class="kpi">
+            <div class="l">fällig in 7 Tagen / mit Skonto</div>
+            <div class="v" style="color:var(--warn)">
+              {euro(dueSoon.reduce((a, p) => a + p.amount, 0n))}
             </div>
-            <div class="tbl" style="margin-top:14px">
-              <table>
-                <thead>
-                  <tr>
-                    <th></th>
-                    <th>Lieferant</th>
-                    <th>Rechnung</th>
-                    <th>fällig</th>
-                    <th class="r">Brutto</th>
-                    <th class="r">Skonto</th>
-                    <th class="r">Zahlbetrag</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {prop.length === 0 && (
+            <div class="s">{dueSoon.length} Rechnungen</div>
+          </div>
+          <div class="kpi">
+            <div class="l">Skonto möglich bei Zahlung am {dateDe(pay)}</div>
+            <div class="v" style="color:var(--ok)">
+              {euro(list.reduce((a, p) => a + p.skonto, 0n))}
+            </div>
+          </div>
+        </div>
+        <form method="post" action="/zahlungsliste" class="card">
+          <div class="actions" style="margin-top:0">
+            <label for="datum" style="margin:0">
+              Zahlung am
+            </label>
+            <input
+              id="datum"
+              type="date"
+              name="datum"
+              value={pay}
+              max={today}
+              style="max-width:170px"
+              onchange="location.href='/zahlungsliste?datum='+this.value"
+            />
+            <span class="small mut">Skonto und Zahlbetrag gelten für diesen Tag.</span>
+            <span style="margin-left:auto;font-weight:600" id="sel-sum"></span>
+          </div>
+          <div class="tbl">
+            <table>
+              <thead>
+                <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      aria-label="alle"
+                      onchange="document.querySelectorAll('input[name=invoice]').forEach(function(x){x.checked=this.checked}.bind(this));window.vdSum()"
+                    />
+                  </th>
+                  <th>Lieferant</th>
+                  <th>Rechnung</th>
+                  <th>fällig</th>
+                  <th>Skonto bis</th>
+                  <th class="r">Brutto</th>
+                  <th class="r">Skonto</th>
+                  <th class="r">Zahlbetrag</th>
+                  <th>IBAN / Verwendungszweck</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((p) => {
+                  const blocked = crit.has(p.invoice.supplier_id);
+                  return (
                     <tr>
-                      <td colspan={7}>
-                        <div class="empty">
-                          Keine freigegebenen Rechnungen. <a href="/rechnungseingang">Zum Rechnungseingang</a>
+                      <td>
+                        <input
+                          type="checkbox"
+                          name="invoice"
+                          value={p.invoice.id}
+                          data-amount={String(p.amount)}
+                          checked={(p.invoice.due_date <= addDays(pay, 7) || p.skonto > 0n) && !blocked}
+                          aria-label="auswählen"
+                          onchange="window.vdSum()"
+                        />
+                      </td>
+                      <td>
+                        {p.invoice.supplier_name}
+                        {blocked && (
+                          <div class="small" style="color:var(--err)">
+                            Nachweise fehlen – Zahlung zurückhalten?{' '}
+                            <a href={`/lieferanten/${p.invoice.supplier_id}/nachweise`}>prüfen</a>
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <a href={`/rechnungseingang/${p.invoice.id}`}>{p.invoice.invoice_no}</a>
+                      </td>
+                      <td style={p.invoice.due_date < today ? 'color:var(--err);font-weight:600' : ''}>
+                        {dateDe(p.invoice.due_date)}
+                      </td>
+                      <td>{p.invoice.skonto_until ? dateDe(p.invoice.skonto_until) : '–'}</td>
+                      <td class="r">{euro(p.invoice.gross_cents)}</td>
+                      <td class="r">{p.skonto > 0n ? `− ${euro(p.skonto)}` : '–'}</td>
+                      <td class="r">
+                        <b>{euro(p.amount)}</b>
+                      </td>
+                      <td class="small">
+                        {p.invoice.iban ? (
+                          <code style="user-select:all">
+                            {p.invoice.iban.replace(/(.{4})/g, '$1 ').trim()}
+                          </code>
+                        ) : (
+                          <span style="color:var(--err)">IBAN fehlt</span>
+                        )}
+                        <div class="mut" style="user-select:all">
+                          Rechnung {p.invoice.invoice_no}
                         </div>
                       </td>
                     </tr>
-                  )}
-                  {prop.map((p) => {
-                    const blocked = crit.has(p.invoice.supplier_id);
-                    const due = (p.invoice.due_date <= addDays(exec, 7) || p.skonto > 0n) && !blocked;
-                    return (
-                      <tr>
-                        <td>
-                          <input
-                            type="checkbox"
-                            name="invoice"
-                            value={p.invoice.id}
-                            checked={due}
-                            disabled={!p.invoice.iban}
-                            aria-label="auswählen"
-                          />
-                        </td>
-                        <td>
-                          {p.invoice.supplier_name}
-                          {!p.invoice.iban && (
-                            <div class="small" style="color:var(--err)">
-                              IBAN fehlt
-                            </div>
-                          )}
-                          {blocked && (
-                            <div class="small" style="color:var(--err)">
-                              Nachweise fehlen – Zahlung zurückhalten?{' '}
-                              <a href={`/lieferanten/${p.invoice.supplier_id}/nachweise`}>prüfen</a>
-                            </div>
-                          )}
-                        </td>
-                        <td>
-                          <a href={`/rechnungseingang/${p.invoice.id}`}>{p.invoice.invoice_no}</a>
-                        </td>
-                        <td style={p.invoice.due_date < today ? 'color:var(--err)' : ''}>
-                          {dateDe(p.invoice.due_date)}
-                        </td>
-                        <td class="r">{euro(p.invoice.gross_cents)}</td>
-                        <td class="r">{p.skonto > 0n ? `− ${euro(p.skonto)}` : '–'}</td>
-                        <td class="r">
-                          <b>{euro(p.amount)}</b>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <p class="small mut">
-              Vorausgewählt: fällig innerhalb von 7 Tagen nach dem Ausführungstag oder mit Skonto. Die
-              SEPA-Datei (pain.001.001.09) im Online-Banking hochladen. Die Rechnungen gelten danach als
-              bezahlt.
-            </p>
-            <div class="formfoot">
-              <button class="btn" disabled={prop.length === 0}>
-                <Icon name="euro" /> Zahlungslauf erstellen
-              </button>
-            </div>
-          </form>
-          <div class="card">
-            <h3>Bisherige Zahlungsläufe</h3>
-            {runs.length === 0 && <div class="small mut">Noch keine.</div>}
-            {runs.map((r) => (
-              <div class="small" style="padding:6px 0;border-bottom:1px solid var(--line)">
-                <a href={`/zahlungslauf/${r.id}`}>
-                  <b>{r.number}</b>
-                </a>{' '}
-                · {dateDe(r.execution_date)} · {r.item_count} Überweisungen · {euro(r.total_cents)}
-              </div>
-            ))}
+                  );
+                })}
+                {!list.length && (
+                  <tr>
+                    <td colspan={9}>
+                      <div class="empty">
+                        Keine freigegebenen Rechnungen offen.{' '}
+                        <a href="/rechnungseingang">Zum Rechnungseingang</a>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div class="formfoot" style="flex-wrap:wrap;justify-content:flex-start;gap:10px">
+            <span style="font-weight:600">Ausgewählte als bezahlt festhalten:</span>
+            <select name="zahlart" aria-label="Zahlart" style="max-width:170px">
+              {(Object.keys(PAID_METHOD) as PaidMethod[]).map((m) => (
+                <option value={m}>{PAID_METHOD[m]}</option>
+              ))}
+            </select>
+            <label class="chk" style="margin:0">
+              <input type="checkbox" name="skonto" value="1" checked /> Skonto gezogen
+            </label>
+            <input name="notiz" placeholder="Notiz (optional)" style="max-width:220px" />
+            <button
+              class="btn"
+              style="margin-left:auto"
+              disabled={!list.length}
+              onclick="return confirm('Ausgewählte Rechnungen als bezahlt festhalten?')"
+            >
+              Als bezahlt festhalten
+            </button>
+          </div>
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `window.vdSum=function(){var t=0,n=0;document.querySelectorAll('input[name=invoice]:checked').forEach(function(x){t+=Number(x.dataset.amount);n++});document.getElementById('sel-sum').textContent=n?('Ausgewählt: '+n+' · '+(t/100).toLocaleString('de-DE',{style:'currency',currency:'EUR'})):'';};window.vdSum();`,
+            }}
+          />
+        </form>
+        <p class="small mut">
+          Bezahlt wird im Online-Banking (IBAN und Verwendungszweck zum Kopieren). Danach hier festhalten –
+          Zahlungen gehen in den DATEV-Export. Skonto mindert die Vorsteuer (§ 17 UStG), Buchung übernimmt der
+          Steuerberater.
+        </p>
+        <div class="card">
+          <h3>Zuletzt bezahlt (60 Tage)</h3>
+          <div class="tbl">
+            <table>
+              <thead>
+                <tr>
+                  <th>bezahlt am</th>
+                  <th>Lieferant</th>
+                  <th>Rechnung</th>
+                  <th class="r">Betrag</th>
+                  <th class="r">Skonto</th>
+                  <th>Zahlart</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {recent.map((r) => (
+                  <tr>
+                    <td>{dateDe(r.paid_at)}</td>
+                    <td>{r.supplier_name}</td>
+                    <td>
+                      <a href={`/rechnungseingang/${r.id}`}>{r.invoice_no}</a>
+                    </td>
+                    <td class="r">{r.paid_amount_cents !== null ? euro(r.paid_amount_cents) : '–'}</td>
+                    <td class="r">{r.paid_skonto_cents ? euro(r.paid_skonto_cents) : '–'}</td>
+                    <td>{r.run ? 'SEPA-Zahlungslauf' : r.paid_method ? PAID_METHOD[r.paid_method] : '–'}</td>
+                    <td class="r">
+                      {!r.run && (
+                        <form method="post" action={`/zahlungsliste/${r.id}/zuruecknehmen`} style="margin:0">
+                          <button
+                            class="btn ghost sm"
+                            onclick="return confirm('Zahlung zurücknehmen? Die Rechnung ist dann wieder offen.')"
+                          >
+                            zurücknehmen
+                          </button>
+                        </form>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {!recent.length && (
+                  <tr>
+                    <td colspan={7} class="mut">
+                      Noch nichts bezahlt.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </>,
     );
   });
 
-  app.post('/zahlungslauf', async (c) => {
+  app.post('/zahlungsliste', async (c) => {
     const b = await c.req.parseBody({ all: true });
-    const id = typeof b.id === 'string' && /^[0-9a-f-]{36}$/.test(b.id) ? b.id : randomUUID();
-    await createPaymentRun(deps, {
-      id,
-      invoiceIds: arr(b, 'invoice'),
-      executionDate: str(b, 'execution_date') ?? '',
-      debtorIban: str(b, 'debtor_iban') ?? '',
-      actor: c.get('actor'),
-    });
-    return back(c, `/zahlungslauf/${id}`, {
-      ok: 'Zahlungslauf erstellt. SEPA-Datei herunterladen und im Online-Banking hochladen.',
+    const date = str(b, 'datum') ?? '';
+    try {
+      const n = await markPaid(
+        sql,
+        {
+          ids: arr(b, 'invoice'),
+          date,
+          method: (str(b, 'zahlart') ?? 'ueberweisung') as PaidMethod,
+          note: str(b, 'notiz'),
+          skonto: str(b, 'skonto') === '1',
+        },
+        c.get('actor'),
+      );
+      return back(c, `/zahlungsliste?datum=${date}`, { ok: `${n} Rechnung(en) als bezahlt festgehalten.` });
+    } catch (e) {
+      if (e instanceof BusinessError) return back(c, `/zahlungsliste?datum=${date}`, { fehler: e.message });
+      throw e;
+    }
+  });
+
+  app.post(`/zahlungsliste/:id{${UUID}}/zuruecknehmen`, async (c) => {
+    try {
+      await undoPaid(sql, c.req.param('id'), c.get('actor'));
+    } catch (e) {
+      if (e instanceof BusinessError) return back(c, '/zahlungsliste', { fehler: e.message });
+      throw e;
+    }
+    return back(c, '/zahlungsliste', { ok: 'Zahlung zurückgenommen.' });
+  });
+
+  app.get('/zahlungsliste.csv', async (c) => {
+    const pay = isDate(c.req.query('datum')) ? c.req.query('datum')! : todayBerlin();
+    const list = await paymentList(sql, pay);
+    const csv = toCsv(
+      [
+        'Lieferant',
+        'Rechnung',
+        'Rechnungsdatum',
+        'fällig',
+        'Skonto bis',
+        'Brutto',
+        'Skonto',
+        'Zahlbetrag',
+        'IBAN',
+        'Verwendungszweck',
+      ],
+      list.map((p) => [
+        p.invoice.supplier_name,
+        p.invoice.invoice_no,
+        p.invoice.invoice_date,
+        p.invoice.due_date,
+        p.invoice.skonto_until ?? '',
+        (Number(p.invoice.gross_cents) / 100).toFixed(2).replace('.', ','),
+        (Number(p.skonto) / 100).toFixed(2).replace('.', ','),
+        (Number(p.amount) / 100).toFixed(2).replace('.', ','),
+        p.invoice.iban ?? '',
+        `Rechnung ${p.invoice.invoice_no}`,
+      ]),
+    );
+    return new Response(csv, {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="Zahlungsliste_${pay}.csv"`,
+        'Cache-Control': 'private, no-store',
+      },
     });
   });
 
@@ -1144,7 +1316,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       `Zahlungslauf ${run.number}`,
       'lieferanten',
       <>
-        <PageHead title={`Zahlungslauf ${run.number}`} crumbs={[['Zahlungslauf', '/zahlungslauf']]} />
+        <PageHead title={`Zahlungslauf ${run.number}`} crumbs={[['Zahlungsliste', '/zahlungsliste']]} />
         <div class="actions" style="margin-top:-8px">
           <a class="btn" href={`/zahlungslauf/${id}/sepa.xml`}>
             <Icon name="download" /> SEPA-Datei (pain.001)

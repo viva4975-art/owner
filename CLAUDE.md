@@ -478,6 +478,8 @@ Testadresse.
 - 2026-10-04: Demo-Daten Phase 6 (Vertretung bei Krankheit, Einsatzgruppen, 3 Sonderdienste mit Termin/erledigt, Angebot mit
   Alternative + Folgeangebot, abgelehntes Angebot, Mandat + Gläubiger-ID, Kontoauszug mit Zahlung/Miete/unbekannt,
   Fortytools-Beispielimport). Klick-Demo Version 5 (488 Seiten, 26 PDFs): https://claude.ai/artifact/HpySmrqaJ9wpvpWiabFj4S
+- 2026-10-05: Demo-Daten Phase 7 (Kleidungsbestand, unterschriebene Kleider-Übergabe, offene Schlüssel-Übergabe, Nachunternehmer
+  mit Nachweisen, Portal-Uploads, erteiltem Auftrag + Preisnachtrag). Klick-Demo Version 6 (522 Seiten, neues Design).
   Stand gesamt: 213 Unit-/DB-Tests (auch gegen das Supabase-Image), 17 Browser-Suiten mit 255 Prüfungen, KoSIT 2026-08-31,
   PDF/A-3b bestanden.
 - 2026-10-05: Übergaben mit Unterschrift (ersetzt Arbeitskleidung/Schlüssel/Übergaben der alten App, „anders, besser“):

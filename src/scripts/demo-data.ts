@@ -55,6 +55,15 @@ import { copyOffer, saveOffer, setOfferStatus } from '../services/offers.js';
 import { saveMandate } from '../services/direct-debit.js';
 import { importStatement } from '../services/bank.js';
 import { applyImport } from '../services/fortytools-import.js';
+import { bookStock as bookClothing, saveHandover, signHandover } from '../services/handovers.js';
+import {
+  addPriceChange,
+  docTypes,
+  reviewDocument,
+  saveSubcontract,
+  setSubcontractStatus,
+  uploadDocument,
+} from '../services/subcontractors.js';
 
 const env = loadEnv();
 if (env.APP_ENV === 'live' || !/demo/.test(new URL(env.DATABASE_URL).pathname)) {
@@ -279,6 +288,7 @@ try {
   await phase4();
   await phase5();
   await phase6();
+  await phase7();
   // Belege (PDF, XRechnung/ZUGFeRD, KoSIT-Prüfbericht) für alle ausgestellten Rechnungen erzeugen
   const issued = await sql<{ id: string }[]>`select id from app.invoices where status = 'issued'`;
   for (const i of issued) await ensureDocuments(deps, i.id);
@@ -1242,4 +1252,177 @@ ${entry('250.00', 'CRDT', 'Unbekannt', 'Abschlag Reinigung', 'DEMO3')}
     actor: A,
   });
   console.log('Demo Phase 6 angelegt.');
+}
+
+/** Übergaben (Kleidung, Schlüssel) und Nachunternehmer mit Nachweisen, Portal-Upload und Auftrag. */
+async function phase7() {
+  const [done] = await sql`select 1 from app.handovers limit 1`;
+  if (done) return;
+  const today = todayBerlin();
+  const SHIRT = '00000000-0000-4000-8000-0000000c7001';
+  const PANTS = '00000000-0000-4000-8000-0000000c7004';
+  const SHOES = '00000000-0000-4000-8000-0000000c7008';
+  for (const [i, [art, size, n]] of (
+    [
+      [SHIRT, 'M', 20],
+      [SHIRT, 'L', 15],
+      [PANTS, '48', 8],
+      [PANTS, 'M', 10],
+      [SHOES, '40', 4],
+      [SHOES, '42', 1],
+    ] as const
+  ).entries()) {
+    await bookClothing(
+      sql,
+      {
+        id: `00000000-0000-4000-8000-0000000d7${String(i).padStart(3, '0')}`,
+        articleId: art,
+        size,
+        delta: n,
+        reason: 'zugang',
+        note: 'Lieferung Demo',
+      },
+      A,
+    );
+  }
+  const emps = await sql<
+    { id: string }[]
+  >`select id from app.employees where status = 'aktiv' order by personnel_no`;
+  const h1 = '00000000-0000-4000-8000-0000000d7101';
+  const base = {
+    direction: 'ausgabe' as const,
+    supplierId: null,
+    recipientName: null,
+    siteId: DEMO.siteSchool,
+    date: addDays(today, -3),
+    title: null,
+    bodyText: null,
+    wageDeduction: false,
+    relatedId: null,
+    note: null,
+    issuerName: 'Objektleitung Demo',
+  };
+  await saveHandover(
+    deps,
+    h1,
+    {
+      ...base,
+      kind: 'kleidung',
+      employeeId: emps[0]!.id,
+      items: [
+        { label: '', article_id: SHIRT, size: 'M', qty: 3 },
+        { label: '', article_id: PANTS, size: '48', qty: 2 },
+        { label: '', article_id: SHOES, size: '40', qty: 1 },
+      ],
+    },
+    A,
+  );
+  await signHandover(deps, h1, { name: 'Elena Popescu', png: signaturePng(4) }, A);
+  // Schlüssel-Übergabe wartet auf Unterschrift
+  await saveHandover(
+    deps,
+    '00000000-0000-4000-8000-0000000d7102',
+    {
+      ...base,
+      kind: 'schluessel',
+      siteId: DEMO.siteOffice,
+      date: today,
+      employeeId: emps[1]!.id,
+      items: [{ label: '', key_id: '00000000-0000-4000-8000-000000000252', qty: 1 }],
+    },
+    A,
+  );
+
+  // Nachunternehmer: fast vollständig, Haftpflicht läuft bald ab, BG-Bescheinigung kommt über das Portal
+  const NU = '00000000-0000-4000-8000-000000000222';
+  await sql`update app.suppliers set legal_form = 'ug' where id = ${NU}`;
+  const pdfDoc = await PDFDocument.create();
+  const pg = pdfDoc.addPage([595, 842]);
+  pg.drawText('DEMO-Nachweis (Beispieldatei)', {
+    x: 60,
+    y: 760,
+    size: 18,
+    font: await pdfDoc.embedFont(StandardFonts.Helvetica),
+  });
+  const pdf = await pdfDoc.save();
+  const types = await docTypes(sql);
+  let n = 0;
+  for (const t of types) {
+    if (t.required === 'nein' || t.id === 'ub_bg') continue;
+    const until =
+      t.valid_months === 0
+        ? null
+        : t.id === 'haftpflicht'
+          ? addDays(today, 35)
+          : addDays(today, 30 * t.valid_months - 20);
+    await uploadDocument(deps, {
+      id: `00000000-0000-4000-8000-0000000d72${String(n++).padStart(2, '0')}`,
+      supplierId: NU,
+      docType: t.id,
+      fileName: `${t.label}.pdf`,
+      data: pdf,
+      validUntil: until,
+      source: 'buero',
+      actor: A,
+    });
+  }
+  await uploadDocument(deps, {
+    id: '00000000-0000-4000-8000-0000000d7290',
+    supplierId: NU,
+    docType: 'ub_bg',
+    fileName: 'BG_BAU_Unbedenklichkeit.pdf',
+    data: pdf,
+    validUntil: addDays(today, 170),
+    source: 'portal',
+    actor: 'portal:70002',
+  });
+  // Zum Erteilen braucht es alle Pflicht-Nachweise → BG kurz prüfen, Auftrag erteilen, danach neue Portal-Datei offen
+  await reviewDocument(
+    sql,
+    '00000000-0000-4000-8000-0000000d7290',
+    { accept: true, validUntil: addDays(today, 170), reason: null },
+    A,
+  );
+  const sc = '00000000-0000-4000-8000-0000000d7301';
+  await saveSubcontract(
+    sql,
+    sc,
+    {
+      supplierId: NU,
+      siteId: DEMO.siteOffice,
+      serviceKind: 'Glasreinigung',
+      frequency: 'quartalsweise',
+      billing: 'pauschale_einsatz',
+      priceCents: 68000n,
+      maxHours: null,
+      validFrom: `${today.slice(0, 4)}-01-01`,
+      validTo: null,
+      description: 'Glasflächen innen und außen inkl. Rahmen, Hubsteiger stellt der Nachunternehmer',
+      note: null,
+    },
+    A,
+  );
+  await setSubcontractStatus(sql, sc, 'erteilt', A);
+  await addPriceChange(
+    sql,
+    {
+      id: '00000000-0000-4000-8000-0000000d7302',
+      subcontractId: sc,
+      month: today.slice(0, 7),
+      priceCents: 71400n,
+      reason: 'Tariflohnerhöhung Gebäudereinigung',
+    },
+    A,
+  );
+  await uploadDocument(deps, {
+    id: '00000000-0000-4000-8000-0000000d7291',
+    supplierId: NU,
+    docType: 'haftpflicht',
+    fileName: 'Versicherungsbestaetigung_neu.pdf',
+    data: pdf,
+    validUntil: addDays(today, 400),
+    source: 'portal',
+    actor: 'portal:70002',
+  });
+  console.log('Demo Phase 7 angelegt.');
 }

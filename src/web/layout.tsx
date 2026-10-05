@@ -277,6 +277,8 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Artikel & Nachbestellung', href: '/artikel' },
       { label: 'Geräte & Prüftermine', href: '/geraete' },
       { label: 'Schlüsselbuch', href: '/schluessel' },
+      { label: 'Übergaben mit Unterschrift', href: '/uebergaben', sep: true },
+      { label: 'Arbeitskleidung: Bestand', href: '/arbeitskleidung' },
     ],
   },
   {

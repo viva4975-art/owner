@@ -207,6 +207,7 @@ export const EmployeeShell: FC<{
     { key: 'aufgaben', label: 'Aufgaben', href: `${base}/aufgaben`, count: tasks },
     { key: 'app', label: 'Handy-Zugang (PIN)', href: `${base}/app-zugang` },
     { key: 'kalender', label: 'Einsatzkalender', href: `${base}/kalender` },
+    { key: 'uebergaben', label: 'Übergaben (Kleidung, Schlüssel …)', href: `${base}/uebergaben` },
   ];
   return (
     <>

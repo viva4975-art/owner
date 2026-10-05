@@ -58,6 +58,7 @@ npm run e2e:angebot  # Browser-Test: Alternativposition, Statistik, zuletzt bear
 npm run e2e:transfer # Browser-Test: Kontoauszug einlesen/zuordnen, Lastschrift-Einstellungen, Dokumenteneingang, Versand
 npm run e2e:sonderdienst # Browser-Test: Sonderdienst anlegen, Termin, Aushang, erledigt → Arbeitsschein, Rechnung
 npm run e2e:import   # Browser-Test: Fortytools-CSV prüfen und übernehmen (Kunden, Objekte), nichts doppelt
+npm run e2e:uebergabe # Browser-Test: Kleidung ausgeben/unterschreiben, Rückgabe, Objektleitung
 ```
 
 ### Klick-Demo bauen (eine HTML-Datei zum Durchklicken, offline)

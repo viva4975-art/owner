@@ -480,3 +480,19 @@ Testadresse.
   Fortytools-Beispielimport). Klick-Demo Version 5 (488 Seiten, 26 PDFs): https://claude.ai/artifact/HpySmrqaJ9wpvpWiabFj4S
   Stand gesamt: 213 Unit-/DB-Tests (auch gegen das Supabase-Image), 17 Browser-Suiten mit 255 Prüfungen, KoSIT 2026-08-31,
   PDF/A-3b bestanden.
+- 2026-10-05: Übergaben mit Unterschrift (ersetzt Arbeitskleidung/Schlüssel/Übergaben der alten App, „anders, besser“):
+  - Inventar → Übergaben: Arbeitskleidung, Schlüssel, Geräte, Dokument/Unterweisung (PDF-Upload oder Text), Sonstiges
+    (Diensthandy, Tankkarte …) an Mitarbeitende oder Nachunternehmer. Nummern `UE-JJJJ-NNNN`. Objektleitung legt für ihre
+    Objekte und deren Mitarbeitende an und lässt am eigenen Handy/Tablet unterschreiben (Canvas).
+  - Gebucht wird erst beim Abschluss (Unterschrift oder „ohne Unterschrift“ mit Grund) in einer Transaktion: Kleider-
+    bestand (`clothing_moves`, append-only) bzw. Schlüsselbuch (Ausgabe/Rückgabe). Doppelt senden bucht nichts doppelt;
+    Schlüssel bereits ausgegeben → Abschluss abgelehnt, nichts gebucht. Danach unveränderbar (Trigger), Protokoll-PDF
+    write-once (bei Dokumenten: Original + Protokoll in einer Datei).
+  - Rückgabe = eigene Übergabe mit Verweis auf die Ausgabe („Rückgabe erfassen“). Mitarbeiter → Reiter „Übergaben“ zeigt,
+    was die Person derzeit hat (Schlüssel, Kleidung, Geräte) – Checkliste beim Austritt.
+  - Arbeitskleidung → Bestand je Artikel/Größe, Zugang/Korrektur/Inventur (Büro/Personal), Mindestbestand. Startartikel
+    und Preise aus der alten App.
+  - **Rechtlich:** PSA (Sicherheitsschuhe, Warnweste) zahlt der Arbeitgeber (§ 3 Abs. 3 ArbSchG) → nie Lohnabzug (gesperrt).
+    Lohnabzug bei Nichtrückgabe nur mit ausdrücklicher Vereinbarung im Protokoll, höchstens Zeitwert, nur oberhalb der
+    Pfändungsfreigrenze, Mindestlohn bleibt unberührt – Text mit Anwalt/Steuerberater prüfen lassen.
+  - Tests: 217 Unit-/DB-Tests, neu `npm run e2e:uebergabe` (17 Prüfungen).

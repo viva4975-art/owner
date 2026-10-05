@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Sql } from '../db/client.js';
+import type { Sql, Tx } from '../db/client.js';
 import { parseEuro, parseQuantity } from '../domain/money/money.js';
 import { assertVersion } from './crm.js';
 import { BusinessError } from './errors.js';
@@ -363,22 +363,33 @@ export async function keyAction(
   note: string | null,
   actor: string,
 ) {
-  await sql.begin(async (tx) => {
-    const [k] = await tx<KeyRow[]>`select * from app.keys where id = ${keyId} for update`;
-    if (!k) throw new BusinessError('Schlüssel nicht gefunden');
-    if (action === 'ausgabe') {
-      if (!employeeId) throw new BusinessError('Bitte Mitarbeiter wählen');
-      if (k.holder_employee_id)
-        throw new BusinessError('Schlüssel ist bereits ausgegeben – zuerst Rückgabe buchen');
-      await tx`update app.keys set holder_employee_id = ${employeeId}, issued_at = ${at} where id = ${keyId}`;
-    } else {
-      if (!k.holder_employee_id) throw new BusinessError('Schlüssel ist nicht ausgegeben');
-      employeeId = k.holder_employee_id;
-      await tx`update app.keys set holder_employee_id = null, issued_at = null where id = ${keyId}`;
-    }
-    await tx`insert into app.key_log (key_id, action, employee_id, at, note, created_by)
-             values (${keyId}, ${action}, ${employeeId}, ${at}, ${note}, ${actor})`;
-  });
+  await sql.begin((tx) => keyActionTx(tx, keyId, action, employeeId, at, note, actor));
+}
+
+/** Wie keyAction, innerhalb einer laufenden Transaktion (z. B. Übergabe mit Unterschrift). */
+export async function keyActionTx(
+  tx: Tx,
+  keyId: string,
+  action: 'ausgabe' | 'rueckgabe' | 'verlust',
+  employeeId: string | null,
+  at: string,
+  note: string | null,
+  actor: string,
+) {
+  const [k] = await tx<KeyRow[]>`select * from app.keys where id = ${keyId} for update`;
+  if (!k) throw new BusinessError('Schlüssel nicht gefunden');
+  if (action === 'ausgabe') {
+    if (!employeeId) throw new BusinessError('Bitte Mitarbeiter wählen');
+    if (k.holder_employee_id)
+      throw new BusinessError(`Schlüssel ${k.key_no} ist bereits ausgegeben – zuerst Rückgabe buchen`);
+    await tx`update app.keys set holder_employee_id = ${employeeId}, issued_at = ${at} where id = ${keyId}`;
+  } else {
+    if (!k.holder_employee_id) throw new BusinessError(`Schlüssel ${k.key_no} ist nicht ausgegeben`);
+    employeeId = k.holder_employee_id;
+    await tx`update app.keys set holder_employee_id = null, issued_at = null where id = ${keyId}`;
+  }
+  await tx`insert into app.key_log (key_id, action, employee_id, at, note, created_by)
+           values (${keyId}, ${action}, ${employeeId}, ${at}, ${note}, ${actor})`;
 }
 
 export async function keyLog(sql: Sql, keyId: string) {

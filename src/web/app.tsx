@@ -31,6 +31,7 @@ import { registerReportRoutes } from './routes-reports.js';
 import { registerTransferRoutes } from './routes-transfer.js';
 import { registerSpecialRoutes } from './routes-special.js';
 import { registerImportRoutes } from './routes-import.js';
+import { registerHandoverRoutes } from './routes-handovers.js';
 import { registerPlanningRoutes } from './routes-planning.js';
 import { registerPurchasingRoutes } from './routes-purchasing.js';
 import { registerTimeRoutes } from './routes-time.js';
@@ -277,6 +278,7 @@ export function createApp(deps: Deps) {
   registerTransferRoutes(ctx);
   registerSpecialRoutes(ctx);
   registerImportRoutes(ctx);
+  registerHandoverRoutes(ctx);
 
   app.notFound((c) =>
     page(

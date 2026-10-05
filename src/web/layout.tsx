@@ -416,6 +416,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Netto-Umsatz je Monat', href: '/auswertungen/umsatz' },
       { label: 'Umsatz-Vorschau', href: '/auswertungen/vorschau' },
       { label: 'Nachkalkulation je Objekt', href: '/auswertungen/nachkalkulation' },
+      { label: 'Kosten je Kostenstelle', href: '/auswertungen/kostenstellen' },
       { label: 'Ø Stundensätze je Objekt', href: '/auswertungen/stundensaetze' },
       { label: 'Stundenkontrolle Soll/Ist', href: '/auswertungen/stunden' },
       { label: 'Urlaubskonten', href: '/auswertungen/urlaub' },

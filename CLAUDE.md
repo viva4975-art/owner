@@ -568,3 +568,12 @@ Testadresse.
   der Liste und auf der Startseite (14 Tage) statt Angebotsfristen. „Angebot erstellen“ übernimmt Titel, Vergabenummer,
   Plattform, Frist in einen Angebotsentwurf; nach dem Speichern verknüpft (Status → in Bearbeitung).
   Tests: neu `tenders.db.test.ts`, `npm run e2e:ausschreibung` (10 Prüfungen).
+- 2026-10-06: Kostenstellen (Ahmed: alles auf Kostenstellen verrechnen, auch Sub-Rechnungen, in die Nachkalkulation):
+  Jedes Objekt ist Kostenstelle; allgemeine Kostenstellen unter Einstellungen (9000 Verwaltung, 9100 Fahrzeuge, 9200 Lager,
+  9300 Werbung, 9400 Personal allgemein). Eingangsrechnung → „Kostenstellen“: Aufteilung auf Objekte/Kostenstellen × Leistungs-
+  monat, Summe muss Cent-genau dem Netto entsprechen; „gleichmäßig auf Monate verteilen“ (z. B. Jahresversicherung, Rest-Cent
+  auf die ersten Monate). Ohne eigene Aufteilung automatisch: Objekt + Leistungsmonat der Rechnung (bleibt beim erneuten
+  Speichern synchron; eigene Aufteilung wird nicht überschrieben). Nachunternehmer-Auftrag am Rechnungseingang setzt das Objekt.
+  Nachkalkulation rechnet mit der Aufteilung; neu Auswertungen → „Kostenstellen“ (je Kostenart, Zeitraum) mit Liste „nicht
+  zugeordnet“. Bestand übernommen (Rechnungen mit Objekt).
+  Tests: 232 Unit-/DB-Tests; alle 22 Browser-Suiten grün.

@@ -69,11 +69,13 @@ export async function siteCosting(
         from app.stock_movements m join app.articles a on a.id = m.article_id
        where m.site_id is not null and m.delta_milli < 0 and (m.created_at at time zone 'Europe/Berlin')::date between ${from} and ${to}
        group by m.site_id`,
+    // Eingangsrechnungen (auch Nachunternehmer) nach Aufteilung auf Kostenstelle = Objekt und Leistungsmonat
     sql<{ site_id: string; category: string; net: bigint }[]>`
-      select site_id, category::text, sum(net_cents)::bigint as net from app.incoming_invoices
-       where site_id is not null and status in ('erfasst', 'freigegeben', 'bezahlt')
-         and coalesce(service_month, date_trunc('month', invoice_date)::date) between ${from} and ${to}
-       group by site_id, category`,
+      select a.site_id, i.category::text as category, sum(a.net_cents)::bigint as net
+        from app.cost_allocations a join app.incoming_invoices i on i.id = a.incoming_invoice_id
+       where a.site_id is not null and i.status in ('erfasst', 'freigegeben', 'bezahlt')
+         and a.month between ${from} and ${to}
+       group by a.site_id, i.category`,
     plannedShifts(sql, { from, to, ...(siteId ? { siteId } : {}) }),
   ]);
   const rows = sites.map((s) => {

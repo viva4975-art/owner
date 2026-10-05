@@ -115,7 +115,13 @@ check('Einstellungen für Objektleitung gesperrt', (await o.goto(B + '/einstellu
 check('kein Zahnrad für Objektleitung', (await o.locator('a.gear').count()) === 0);
 await a.goto(B + '/einstellungen');
 const setText = await a.locator('main').innerText();
-check('Einstellungen: alle Stammlisten', ['Leistungsarten', 'Mahnstufen', 'Lohnstufen', 'Leistungswerte', 'Firmendaten'].every((t) => setText.includes(t)), setText.slice(0, 300));
+check(
+  'Einstellungen: alle Stammlisten',
+  ['Leistungsarten', 'Mahnstufen', 'Lohnstufen', 'Leistungswerte', 'Firmendaten'].every((t) =>
+    setText.includes(t),
+  ),
+  setText.slice(0, 300),
+);
 await a.goto(B + '/einstellungen/firma');
 await a.fill('input[name=phone]', '+49 89 63855496');
 await a.click('button:has-text("Speichern")');

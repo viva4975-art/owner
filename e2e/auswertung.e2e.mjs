@@ -32,13 +32,13 @@ const p = await ctx.newPage();
 console.log('1. Übersicht');
 await p.goto(B + '/auswertungen');
 const cards = await p.locator('a.card').count();
-check('Übersicht mit allen Berichten', cards === 9, String(cards));
+check('Übersicht mit allen Berichten', cards === 10, String(cards));
 
 console.log('2. Berichte über die Reiter');
 const tabs = await p
   .goto(B + '/auswertungen/rechnungen')
   .then(() => p.locator('.tabs a').evaluateAll((as) => as.map((a) => a.getAttribute('href'))));
-check('9 Reiter', tabs.length === 9, String(tabs.length));
+check('10 Reiter', tabs.length === 10, String(tabs.length));
 for (const href of tabs) {
   const r = await p.goto(B + href);
   check(`${href} lädt`, r.ok() && (await p.locator('.tabs a.on').count()) === 1, String(r.status()));

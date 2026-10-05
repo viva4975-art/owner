@@ -52,10 +52,7 @@ await p.waitForLoadState();
 await p.click('a:has-text("Nachweise, Aufträge, Portal")');
 await p.waitForLoadState();
 const nuUrl = p.url().split('?')[0];
-check(
-  'Ampel „Nachweise fehlen“',
-  (await p.locator('.status-xl').innerText()).includes('Nachweise fehlen'),
-);
+check('Ampel „Nachweise fehlen“', (await p.locator('.status-xl').innerText()).includes('Nachweise fehlen'));
 check('HR-Auszug bei GmbH verlangt', (await p.locator('body').innerText()).includes('Handelsregisterauszug'));
 
 console.log('2. Nachweis im Büro hochladen');
@@ -68,7 +65,9 @@ await p.waitForLoadState();
 check('gespeichert', (await flash(p)).includes('Nachweis gespeichert'), await flash(p));
 check(
   'Vertrag gültig',
-  (await p.locator('.list .row', { hasText: 'Nachunternehmervertrag' }).innerText()).includes('bis 30.09.2029'),
+  (await p.locator('.list .row', { hasText: 'Nachunternehmervertrag' }).innerText()).includes(
+    'bis 30.09.2029',
+  ),
 );
 
 console.log('3. Portal');

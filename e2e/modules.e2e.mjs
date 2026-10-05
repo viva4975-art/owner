@@ -143,7 +143,7 @@ check('Monatspauschale im Objekt', (await p.content()).includes('Unterhaltsreini
 // ---------- 4. Weitere Module ----------
 console.log('4. Module');
 for (const [path, name, text] of [
-  ['/', 'm3-start', 'Abgabefristen'],
+  ['/', 'm3-start', 'Offene Posten'],
   ['/angebote', 'm4-angebote', 'Zuschlagsquote'],
   ['/mahnungen', 'm5-mahnwesen', 'Mahnwesen'],
   ['/mahnungen/einstellungen', 'm6-mahnstufen', 'Verzugspauschale'],

@@ -13,6 +13,7 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/benutzer(\/|$)/, ['admin']],
   [/^\/einstellungen\/firma(\/|$)/, ['admin']],
   [/^\/einstellungen\/?$/, ['admin', 'buchhaltung', 'personal']],
+  [/^\/auswertungen\/kostenstellen([/.]|$)/, ['admin', 'buchhaltung']],
   [/^\/personal\/export/, HR],
   [/^\/personal(\/|$)/, HR],
   [/^\/zeiterfassung\/(monat|pruefbericht|einstellungen)/, HR],

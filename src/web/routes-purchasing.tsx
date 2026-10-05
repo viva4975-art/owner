@@ -46,7 +46,14 @@ import { toCsv } from '../services/reports.js';
 import { listFiles } from '../services/uploads.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
-import { criticalSupplierIds } from '../services/subcontractors.js';
+import { criticalSupplierIds, listSubcontracts } from '../services/subcontractors.js';
+import {
+  addMonths,
+  costTargets,
+  getAllocations,
+  saveAllocations,
+  splitEvenly,
+} from '../services/cost-centers.js';
 import { arr, centsToInput, milliToInput, str } from './forms.js';
 import { Icon } from './icons.js';
 import { PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
@@ -692,13 +699,17 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
 
   app.get(`/rechnungseingang/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
-    const [i, suppliers, sites, orders, files] = await Promise.all([
+    const [i, suppliers, sites, orders, files, subcontracts, allocations, targets] = await Promise.all([
       getIncoming(sql, id),
       listSuppliers(sql),
       listSites(sql),
       listOrders(sql, { status: ['bestellt', 'geliefert'] }),
       listFiles(sql, { type: 'incoming_invoice', id }),
+      listSubcontracts(sql).then((l) => l.filter((x) => x.status === 'erteilt' || x.status === 'beendet')),
+      getAllocations(sql, id),
+      costTargets(sql),
     ]);
+    const curSub = (i as { subcontract_id?: string | null } | undefined)?.subcontract_id ?? null;
     const q = c.req.query();
     const editable = !i || i.status === 'erfasst';
     const po = q.bestellung ? orders.find((o) => o.id === q.bestellung) : undefined;
@@ -853,6 +864,17 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                   />
                 </div>
                 <div>
+                  <label for="subcontract_id">Nachunternehmer-Auftrag (setzt Objekt)</label>
+                  <select id="subcontract_id" name="subcontract_id">
+                    <option value="">–</option>
+                    {subcontracts.map((x) => (
+                      <option value={x.id} selected={x.id === curSub}>
+                        {x.number} · {x.supplier_name} · {x.site_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
                   <label for="purchase_order_id">Bestellung</label>
                   <select id="purchase_order_id" name="purchase_order_id">
                     <option value="">–</option>
@@ -919,8 +941,181 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             )}
           </div>
         </div>
+        {i && (
+          <div class="card">
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <h3 style="margin:0">Kostenstellen (Nachkalkulation)</h3>
+              <span
+                class={`badge ${allocations.reduce((a, x) => a + x.net_cents, 0n) === i.net_cents ? 'ok' : 'warn'}`}
+              >
+                zugeordnet {euro(allocations.reduce((a, x) => a + x.net_cents, 0n))} von {euro(i.net_cents)}{' '}
+                netto
+              </span>
+              {allocations.length > 0 && allocations.every((a) => a.auto) && (
+                <span class="small mut">automatisch aus Objekt und Leistungsmonat</span>
+              )}
+            </div>
+            <form method="post" action={`/rechnungseingang/${id}/aufteilung`} style="margin-top:12px">
+              <div class="tbl">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Kostenstelle</th>
+                      <th>Leistungsmonat</th>
+                      <th class="r">Netto €</th>
+                      <th>Notiz</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...allocations, ...Array.from({ length: 3 }, () => null)].map((a) => (
+                      <tr>
+                        <td>
+                          <select name="target" aria-label="Kostenstelle" style="min-width:240px">
+                            <option value="">–</option>
+                            {(['Objekte', 'Allgemein'] as const).map((g) => (
+                              <optgroup label={g}>
+                                {targets
+                                  .filter((t) => t.group === g)
+                                  .map((t) => (
+                                    <option
+                                      value={t.value}
+                                      selected={
+                                        !!a &&
+                                        (t.value === `site:${a.site_id}` ||
+                                          t.value === `cc:${a.cost_center_id}`)
+                                      }
+                                    >
+                                      {t.label}
+                                    </option>
+                                  ))}
+                              </optgroup>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <input
+                            type="month"
+                            name="month"
+                            value={a ? a.month.slice(0, 7) : (i.service_month ?? i.invoice_date).slice(0, 7)}
+                            aria-label="Monat"
+                          />
+                        </td>
+                        <td>
+                          <input
+                            name="net"
+                            inputmode="decimal"
+                            value={a ? centsToInput(a.net_cents) : ''}
+                            aria-label="Netto"
+                            style="max-width:130px;text-align:right"
+                          />
+                        </td>
+                        <td>
+                          <input name="note" value={a?.note ?? ''} aria-label="Notiz" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div class="actions" style="margin-bottom:0">
+                <button class="btn sm">Aufteilung speichern</button>
+                <span class="small mut">
+                  Summe muss dem Nettobetrag entsprechen. Leere Zeilen werden ignoriert.
+                </span>
+              </div>
+            </form>
+            <form
+              method="post"
+              action={`/rechnungseingang/${id}/aufteilung/verteilen`}
+              class="actions"
+              style="border-top:1px solid var(--line);padding-top:12px"
+            >
+              <b class="small">Gleichmäßig auf Monate verteilen</b>
+              <select name="target" required aria-label="Kostenstelle" style="max-width:260px">
+                {targets.map((t) => (
+                  <option value={t.value} selected={t.value === `site:${i.site_id}`}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="month"
+                name="from"
+                required
+                value={(i.service_month ?? i.invoice_date).slice(0, 7)}
+                aria-label="ab Monat"
+                style="max-width:160px"
+              />
+              <input
+                type="number"
+                name="months"
+                min={1}
+                max={36}
+                value="12"
+                aria-label="Anzahl Monate"
+                style="max-width:90px"
+              />
+              <span class="small mut">Monate (z. B. Jahresversicherung)</span>
+              <button class="btn sec sm">Verteilen</button>
+            </form>
+          </div>
+        )}
       </>,
     );
+  });
+
+  app.post(`/rechnungseingang/:id{${UUID}}/aufteilung`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    const t = arr(b, 'target');
+    const m = arr(b, 'month');
+    const n = arr(b, 'net');
+    const notes = arr(b, 'note');
+    try {
+      const rows = t
+        .map((target, k) => ({
+          target,
+          month: m[k] ?? '',
+          netRaw: (n[k] ?? '').trim(),
+          note: notes[k] ?? null,
+        }))
+        .filter((r) => r.target && r.netRaw)
+        .map((r) => ({ target: r.target, month: r.month, net: parseEuro(r.netRaw) as bigint, note: r.note }));
+      await saveAllocations(sql, id, rows, c.get('actor'));
+    } catch (e) {
+      if (e instanceof BusinessError) return back(c, `/rechnungseingang/${id}`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/rechnungseingang/${id}`, { ok: 'Aufteilung gespeichert.' });
+  });
+
+  app.post(`/rechnungseingang/:id{${UUID}}/aufteilung/verteilen`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    try {
+      const i = await getIncoming(sql, id);
+      if (!i) throw new BusinessError('Rechnung nicht gefunden');
+      const months = Math.trunc(Number(b.months ?? 0));
+      const from = String(b.from ?? '');
+      if (!(months >= 1 && months <= 36) || !/^\d{4}-\d{2}$/.test(from))
+        throw new BusinessError('Bitte Startmonat und 1–36 Monate angeben');
+      const parts = splitEvenly(i.net_cents, months);
+      await saveAllocations(
+        sql,
+        id,
+        parts.map((net, k) => ({
+          target: String(b.target ?? ''),
+          month: addMonths(from, k),
+          net,
+          note: `${k + 1}/${months}`,
+        })),
+        c.get('actor'),
+      );
+    } catch (e) {
+      if (e instanceof BusinessError) return back(c, `/rechnungseingang/${id}`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/rechnungseingang/${id}`, { ok: 'Auf Monate verteilt.' });
   });
 
   app.post(`/rechnungseingang/:id{${UUID}}`, async (c) => {
@@ -947,6 +1142,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         reverseCharge: b.reverse_charge === 'on',
         category: cat,
         siteId: one('site_id'),
+        subcontractId: one('subcontract_id'),
         purchaseOrderId: one('purchase_order_id'),
         skontoUntil: one('skonto_until'),
         skontoPercentBp: bp,

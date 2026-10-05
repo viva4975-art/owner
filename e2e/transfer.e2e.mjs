@@ -47,7 +47,7 @@ console.log('1. Kontoauszug einlesen');
 await p.goto(B + '/offene-posten');
 const no = (
   await p
-    .locator('tbody tr td a b')
+    .locator('.op-item .op-row a b')
     .first()
     .innerText()
     .catch(() => '')

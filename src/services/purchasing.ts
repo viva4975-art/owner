@@ -12,6 +12,7 @@ import {
 import { renderLetterPdf } from '../pdf/render.js';
 import { BusinessError } from './errors.js';
 import { getSeller } from './masterdata.js';
+import { syncAutoAllocation } from './cost-centers.js';
 import type { Deps } from './workflow.js';
 
 /*
@@ -366,6 +367,8 @@ export interface IncomingInput {
   category: CostCategory;
   siteId: string | null;
   purchaseOrderId: string | null;
+  /** Nachunternehmer-Auftrag: setzt Objekt automatisch */
+  subcontractId?: string | null;
   skontoUntil: string | null;
   skontoPercentBp: number | null;
   note: string | null;
@@ -396,6 +399,14 @@ export async function saveIncoming(sql: Sql, id: string, input: IncomingInput, a
       d.setUTCDate(d.getUTCDate() + sup.payment_terms_days);
       return d.toISOString().slice(0, 10);
     })();
+  let siteId = input.siteId;
+  if (input.subcontractId) {
+    const [sc] = await sql<{ supplier_id: string; site_id: string }[]>`
+      select supplier_id, site_id from app.subcontracts where id = ${input.subcontractId}`;
+    if (!sc || sc.supplier_id !== input.supplierId)
+      throw new BusinessError('Nachunternehmer-Auftrag gehört nicht zu diesem Lieferanten');
+    siteId = sc.site_id;
+  }
   await sql.begin(async (tx) => {
     const [cur] = await tx<
       { version: number; status: IncomingStatus }[]
@@ -419,7 +430,8 @@ export async function saveIncoming(sql: Sql, id: string, input: IncomingInput, a
       gross_cents: input.net + input.vat,
       reverse_charge: input.reverseCharge,
       category: input.category,
-      site_id: input.siteId,
+      site_id: siteId,
+      subcontract_id: input.subcontractId ?? null,
       purchase_order_id: input.purchaseOrderId,
       skonto_until: input.skontoUntil,
       skonto_percent_bp: input.skontoPercentBp,
@@ -430,6 +442,7 @@ export async function saveIncoming(sql: Sql, id: string, input: IncomingInput, a
     else
       await tx`insert into app.incoming_invoices ${tx({ id, created_by: actor, ...row } as Record<string, unknown>)}`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id) values (${actor}, ${cur ? 'update' : 'create'}, 'incoming_invoice', ${id})`;
+    await syncAutoAllocation(tx, id, actor);
   });
 }
 

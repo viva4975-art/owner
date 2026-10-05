@@ -557,3 +557,6 @@ Testadresse.
   Soll (Rechnungsbetrag) und Haben (Zahlungen, Skonto-Abzug, Storno/Korrektur mit Datum), Summenzeile, Saldo, Fälligkeit,
   „x T. überfällig“, „Skonto bis“, Auswahl-Häkchen. Filter Alle/Überfällig, Suche. Kennzahlen offen gesamt/überfällig.
   „Mahnung erstellen“ für die Auswahl (gleiche Regeln wie Stapelverarbeitung, optional gleich per E-Mail).
+- 2026-10-06: Rechnungsarchiv nach Leistungszeitraum (Rechnungen → Reiter „Archiv“): Jahr wählen, je Monat des Leistungsbeginns
+  (ohne Zeitraum: Rechnungsdatum) Anzahl, netto/brutto, Belege (PDF, ZUGFeRD, XRechnung, Anlagen) und „ZIP herunterladen“
+  (je Rechnung ein Ordner; jede Datei wird gegen ihre SHA-256 geprüft). Neue direkte Abhängigkeit `fflate` (war schon indirekt da).

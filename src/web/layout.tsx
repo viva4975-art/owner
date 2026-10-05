@@ -333,6 +333,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     items: [
       { label: 'Rechnungsentwürfe / Vorfaktura', href: '/rechnungen/entwuerfe' },
       { label: 'Alle Rechnungen', href: '/rechnungen' },
+      { label: 'Archiv (nach Leistungszeitraum)', href: '/rechnungen/archiv' },
       { label: 'Einzelrechnung anlegen', href: '/neu?typ=rechnung' },
       { label: 'Offene Posten', href: '/offene-posten', sep: true },
       { label: 'Mahnwesen', href: '/mahnungen' },

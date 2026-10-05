@@ -36,7 +36,9 @@ import {
 } from '../services/workflow.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { parseLines, str } from './forms.js';
-import { NEW_OPTIONS, PageHead, type Tab, Tabs } from './layout.js';
+import { NEW_OPTIONS, PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
+import { archiveMonthZip, archiveYear } from '../services/invoice-archive.js';
+import { KIND_TITLES } from '../domain/invoice/types.js';
 import { FileArea } from './files.js';
 import { PaymentsSection } from './pages-hr-finance.js';
 import {
@@ -68,6 +70,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
       count: counts.unsent,
     },
     { key: 'op', label: 'Offene Posten', href: '/offene-posten' },
+    { key: 'archiv', label: 'Archiv', href: '/rechnungen/archiv' },
   ];
 
   const counts = async () => {
@@ -78,6 +81,132 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                 and not exists (select 1 from app.invoice_deliveries d where d.invoice_id = i.id and d.status = 'sent')) as unsent`;
     return r!;
   };
+
+  // ------------------------------------------------------------------ Archiv nach Leistungszeitraum
+  const MONTHS = [
+    'Januar',
+    'Februar',
+    'März',
+    'April',
+    'Mai',
+    'Juni',
+    'Juli',
+    'August',
+    'September',
+    'Oktober',
+    'November',
+    'Dezember',
+  ];
+  const DOC_LABEL: Record<string, string> = {
+    pdf: 'PDF',
+    zugferd_pdf: 'ZUGFeRD',
+    xrechnung_xml: 'XRechnung',
+    attachment: 'Anlage',
+  };
+  app.get('/rechnungen/archiv', async (c) => {
+    const year = Number(c.req.query('jahr') ?? todayBerlin().slice(0, 4));
+    const q = c.req.query('q')?.trim() || null;
+    const { months, years } = await archiveYear(sql, year, q);
+    if (!years.includes(year)) years.unshift(year);
+    return page(
+      c,
+      'Rechnungsarchiv',
+      'rechnungen',
+      <>
+        <PageHead title="Rechnungen" create={{ options: NEW_OPTIONS, selected: 'rechnung' }} />
+        <Tabs tabs={invoiceTabs('archiv', await counts())} active="archiv" />
+        <form method="get" class="actions" style="margin-top:0">
+          <div class="chips" style="margin:0">
+            {years.map((y) => (
+              <a href={`/rechnungen/archiv?jahr=${y}`} class={y === year ? 'on' : ''}>
+                {y}
+              </a>
+            ))}
+          </div>
+          <input type="hidden" name="jahr" value={String(year)} />
+          <input name="q" value={q ?? ''} placeholder="Kunde, Objekt, Rechnungsnr." style="max-width:260px" />
+          <button class="btn sec sm">Suchen</button>
+          <span class="small mut" style="margin-left:auto">
+            nach Leistungszeitraum (ohne Zeitraum: Rechnungsdatum) · Belege unveränderbar, 10 Jahre aufbewahrt
+          </span>
+        </form>
+        {months.map((m) => (
+          <details class="card" open={months.length <= 2 || !!q}>
+            <summary style="display:flex;align-items:center;gap:14px;cursor:pointer;list-style:none">
+              <b style="font-size:16px">
+                {MONTHS[Number(m.month.slice(5)) - 1]} {m.month.slice(0, 4)}
+              </b>
+              <span class="badge">
+                {m.rows.length} {m.rows.length === 1 ? 'Beleg' : 'Belege'}
+              </span>
+              <span class="mut small">
+                netto {euro(m.net)} · brutto {euro(m.gross)}
+              </span>
+              <a
+                class="btn sec sm"
+                href={`/rechnungen/archiv/zip/${m.month}`}
+                style="margin-left:auto"
+                onclick="event.stopPropagation()"
+              >
+                ZIP herunterladen
+              </a>
+            </summary>
+            <div class="tbl" style="margin-top:12px">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Nr.</th>
+                    <th>Art</th>
+                    <th>Kunde / Objekt</th>
+                    <th>Leistungszeitraum</th>
+                    <th class="r">Brutto</th>
+                    <th>Belege</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {m.rows.map((r) => (
+                    <tr>
+                      <td>
+                        <a href={`/rechnungen/${r.id}`}>{r.number}</a>
+                        <div class="small faint">{dateDe(r.issue_date)}</div>
+                      </td>
+                      <td class="small">{KIND_TITLES[r.kind as keyof typeof KIND_TITLES] ?? r.kind}</td>
+                      <td>
+                        {r.customer_name}
+                        {r.site_name && <div class="small mut">{r.site_name}</div>}
+                      </td>
+                      <td class="small">
+                        {r.period_start ? `${dateDe(r.period_start)} – ${dateDe(r.period_end)}` : '–'}
+                      </td>
+                      <td class="r">{euro(r.gross_cents)}</td>
+                      <td class="small">
+                        {r.docs.map((d) => (
+                          <a href={`/dokumente/${d.id}`} target="_blank" style="margin-right:8px">
+                            {DOC_LABEL[d.kind] ?? d.kind}
+                          </a>
+                        ))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        ))}
+        {!months.length && <div class="card empty">Keine Rechnungen in {year}.</div>}
+      </>,
+    );
+  });
+
+  app.get('/rechnungen/archiv/zip/:month{[0-9]{4}-[0-9]{2}}', async (c) => {
+    const month = c.req.param('month');
+    const zip = await archiveMonthZip(deps, month);
+    return c.body(zip as Uint8Array<ArrayBuffer>, 200, {
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="Rechnungen_Leistungszeitraum_${month}.zip"`,
+      'Cache-Control': 'private, no-store',
+    });
+  });
 
   app.get('/rechnungen', async (c) => {
     const filter = c.req.query('filter');

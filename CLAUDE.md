@@ -525,3 +525,8 @@ Testadresse.
   der Kundenakte (Dateien, Kategorie Schriftverkehr; feste IDs → nichts doppelt). Briefvorlagen jetzt mit Zielgruppe
   (Mitarbeiter/Kunde), Kunden → Briefvorlagen; Startvorlagen: neue Adresse ab 01.11.2026, Preisanpassung Tariflohn,
   Umstellung E-Rechnung.
+- 2026-10-05: Objektliste wie Fortytools (Ahmed: Kunde mit Nummer statt Pauschale, Filter, Objektleitung zeigen):
+  Nummer · Objekt + Adresse · Kunde + Kundennummer · Objektleitung + Anzahl Mitarbeitende. Filter Aktiv/Inaktiv (mit Anzahl),
+  Objektleitung (auch „ohne“), A–Z und 0–9, Suche, Sortierung (Nummer/Objektname/Kunde/Ort), 25 je Seite, CSV-Export,
+  „QR-Codes drucken“ (alle aktiven Objekte der Auswahl, je Seite ein Aushang). Objektleitung jetzt auch im Objekt-Formular
+  wählbar. Kundenliste ohne Behörde/Format-Schilder; „Pauschale/Monat“ auch in der Objekttabelle beim Kunden entfernt.

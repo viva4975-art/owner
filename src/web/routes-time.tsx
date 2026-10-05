@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
 import type { Child, FC } from 'hono/jsx';
 import QRCode from 'qrcode';
+import { filteredSites, parseSiteFilter } from '../services/site-list.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { parseEuro } from '../domain/money/money.js';
 import { addDays, holidayName } from '../domain/time/holidays.js';
@@ -1051,6 +1052,70 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
   // QR-Aushang am Objekt
   const qrUrl = (c: Context<AppEnv>, token: string) =>
     `${env.PUBLIC_URL ?? new URL(c.req.url).origin}/m/o/${token}`;
+
+  // Sammeldruck: QR-Aushänge aller Objekte der aktuellen Auswahl (je Seite ein Aushang)
+  app.get('/objekte/qr-druck', async (c) => {
+    const { rows } = await filteredSites(
+      sql,
+      c.get('sites'),
+      parseSiteFilter((k) => c.req.query(k)),
+    );
+    const list = rows.filter((s) => s.active).slice(0, 200);
+    const posters = await Promise.all(
+      list.map(async (s) => ({
+        s,
+        url: qrUrl(c, s.clock_token),
+        svg: await QRCode.toString(qrUrl(c, s.clock_token), {
+          type: 'svg',
+          margin: 1,
+          errorCorrectionLevel: 'M',
+        }),
+      })),
+    );
+    return c.html(
+      `<!doctype html>${(
+        <html lang="de">
+          <head>
+            <meta charset="utf-8" />
+            <title>QR-Aushänge</title>
+            <style
+              dangerouslySetInnerHTML={{
+                __html: `body{font-family:Inter,system-ui,sans-serif;margin:0;color:#1a1a1a}
+.p{page-break-after:always;break-after:page;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px}
+.k{font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:#7D1435;font-weight:700}
+h1{font-size:34px;margin:10px 0 4px}.n{color:#666;font-size:16px}
+.q{width:380px;margin:28px auto}.t{font-size:18px;font-weight:600}.l{font-size:13px;color:#555;margin-top:6px}
+.bar{position:fixed;top:0;left:0;right:0;background:#fff;border-bottom:1px solid #ddd;padding:10px 16px;display:flex;gap:12px;align-items:center}
+@media print{.bar{display:none}}`,
+              }}
+            />
+          </head>
+          <body>
+            <div class="bar">
+              <b>{list.length} Aushänge</b>
+              <button onclick="window.print()">Drucken</button>
+              <span style="color:#666;font-size:13px">nur aktive Objekte · je Seite ein Aushang</span>
+            </div>
+            {posters.map(({ s, svg }) => (
+              <div class="p">
+                <div class="k">Zeiterfassung</div>
+                <h1>{s.name}</h1>
+                <div class="n">
+                  Objekt {s.site_no} · {s.customer_name}
+                </div>
+                <div class="q" dangerouslySetInnerHTML={{ __html: svg }} />
+                <div class="t">Arbeit beginnen / beenden: Code mit der Handy-Kamera scannen.</div>
+                <div class="l">
+                  Start work · Începe lucrul · İşe başla · Rozpocznij pracę · Početak rada · Започни работа
+                </div>
+              </div>
+            ))}
+            {!posters.length && <p style="padding:80px 20px">Keine aktiven Objekte in der Auswahl.</p>}
+          </body>
+        </html>
+      ).toString()}`,
+    );
+  });
 
   app.get(`/objekte/:id{${UUID}}/qr`, (c) =>
     shells.site!(c, 'qr', async (s) => {

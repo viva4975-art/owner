@@ -88,7 +88,7 @@ check('Preise des Objekts gesperrt', leist.status() === 403);
 const other = await o.goto(B + `/objekte/${OFFICE_SITE}/einsaetze`);
 check('fremdes Objekt gesperrt', other.status() === 403);
 await o.goto(B + '/objekte');
-const sites = await o.locator('table tbody tr').allInnerTexts();
+const sites = await o.locator('.list.sites .row').allInnerTexts();
 check(
   'Objektliste nur eigenes Objekt',
   sites.length === 1 && sites[0].includes('Grundschule'),

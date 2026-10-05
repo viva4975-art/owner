@@ -21,6 +21,7 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/auswertungen\/?$/, ALL],
   // Objekte: Objektleitung nur eigene und ohne Preise/Rechnungen/Bearbeiten
   [/^\/objekte\/[0-9a-f-]{36}\/(leistungen|rechnungen|bearbeiten|regie-abrechnen)/, OFFICE],
+  [/^\/objekte\/(export\.csv|qr-druck)$/, ['admin', 'buchhaltung', 'objektleitung']],
   [/^\/arbeitsscheine(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
   [/^\/(qualitaet|zaehler|sonderdienste)(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
   [

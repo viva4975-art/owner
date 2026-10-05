@@ -8,8 +8,9 @@ import {
   PAGE_SIZE,
 } from '../services/customer-list.js';
 import type { Customer, Site, SiteService } from '../services/masterdata.js';
+import { type SiteFilter, type SiteListRow, SITE_PAGE_SIZE } from '../services/site-list.js';
 import { centsToInput } from './forms.js';
-import { FORMAT_LABEL, NEW_OPTIONS, PageHead, type Tab, Tabs, euro } from './layout.js';
+import { FORMAT_LABEL, NEW_OPTIONS, PageHead, type Tab, Tabs, euro, initials } from './layout.js';
 
 export const Field: FC<{
   name: string;
@@ -139,8 +140,6 @@ export const CustomerList: FC<{
                     <span class={`badge ${STATUS_BADGE[c.list_status]}`}>
                       {CUSTOMER_STATUS[c.list_status]}
                     </span>
-                    {c.is_public_authority && <span class="badge kind">Behörde</span>}
-                    <span class="badge">{FORMAT_LABEL[c.invoice_format]}</span>
                     {c.dunning_block && <span class="badge warn">Mahnsperre</span>}
                   </div>
                 </div>
@@ -554,13 +553,12 @@ export const SiteTable: FC<{
           <th>Straße</th>
           <th>PLZ</th>
           <th>Stadt</th>
-          <th class="r">Pauschale/Monat</th>
         </tr>
       </thead>
       <tbody>
         {sites.length === 0 && (
           <tr>
-            <td colspan={7} class="mut">
+            <td colspan={6} class="mut">
               Noch keine Objekte.
             </td>
           </tr>
@@ -580,13 +578,202 @@ export const SiteTable: FC<{
             <td>{s.street ?? ''}</td>
             <td>{s.postal_code ?? ''}</td>
             <td>{s.city ?? ''}</td>
-            <td class="r">{s.monthly_net_cents !== undefined ? euro(s.monthly_net_cents) : ''}</td>
           </tr>
         ))}
       </tbody>
     </table>
   </div>
 );
+
+export const SiteList: FC<{
+  rows: SiteListRow[];
+  filtered: number;
+  counts: { aktiv: number; inaktiv: number };
+  total: number;
+  filter: SiteFilter;
+  page: number;
+  managers: { id: string; name: string; sites: number }[];
+  showManagerFilter: boolean;
+}> = ({ rows, filtered, counts, total, filter, page, managers, showManagerFilter }) => {
+  const pages = Math.max(1, Math.ceil(filtered / SITE_PAGE_SIZE));
+  const params = (over: Record<string, string | null>) => {
+    const p = new URLSearchParams();
+    const cur: Record<string, string | null> = {
+      status: filter.status,
+      ol: filter.manager,
+      buchstabe: filter.letter,
+      q: filter.q,
+      sort: filter.sort === 'nummer' ? null : filter.sort,
+      ab: filter.desc ? '1' : null,
+      ...over,
+    };
+    for (const [k, v] of Object.entries(cur)) if (v) p.set(k, v);
+    return p.toString();
+  };
+  const url = (over: Record<string, string | null>) => {
+    const q = params(over);
+    return `/objekte${q ? `?${q}` : ''}`;
+  };
+  const from = filtered ? (page - 1) * SITE_PAGE_SIZE + 1 : 0;
+  const to = Math.min(page * SITE_PAGE_SIZE, filtered);
+  const exportQuery = params({ seite: null });
+  const keys = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', ...'0123456789'];
+  return (
+    <>
+      <PageHead
+        title="Objekte"
+        create={{
+          options: [
+            ['objekt', 'Objekt'],
+            ['kunde', 'Kunde'],
+          ],
+          selected: 'objekt',
+        }}
+      />
+      <div class="chips">
+        <a href={url({ status: null, seite: null })} class={filter.status ? '' : 'on'}>
+          Alle<span class="n">{total}</span>
+        </a>
+        <a href={url({ status: 'aktiv', seite: null })} class={filter.status === 'aktiv' ? 'on' : ''}>
+          Aktiv<span class="n">{counts.aktiv}</span>
+        </a>
+        <a href={url({ status: 'inaktiv', seite: null })} class={filter.status === 'inaktiv' ? 'on' : ''}>
+          Inaktiv<span class="n">{counts.inaktiv}</span>
+        </a>
+      </div>
+      <div class="card">
+        <form class="actions" method="get" action="/objekte" style="margin-top:0">
+          {filter.status && <input type="hidden" name="status" value={filter.status} />}
+          {filter.letter && <input type="hidden" name="buchstabe" value={filter.letter} />}
+          <input
+            name="q"
+            value={filter.q ?? ''}
+            placeholder="Suchen: Objekt, Nummer, Adresse, Kunde"
+            style="max-width:320px"
+          />
+          {showManagerFilter && (
+            <select
+              name="ol"
+              aria-label="Objektleitung"
+              style="max-width:220px"
+              onchange="this.form.submit()"
+            >
+              <option value="">Alle Objektleitungen</option>
+              {managers.map((m) => (
+                <option value={m.id} selected={filter.manager === m.id}>
+                  {m.name} ({m.sites})
+                </option>
+              ))}
+              <option value="ohne" selected={filter.manager === 'ohne'}>
+                ohne Objektleitung
+              </option>
+            </select>
+          )}
+          <select name="sort" aria-label="Sortieren" style="max-width:200px" onchange="this.form.submit()">
+            {(
+              [
+                ['nummer', 'Nummer'],
+                ['name', 'Objektname'],
+                ['kunde', 'Kunde'],
+                ['ort', 'Ort'],
+              ] as const
+            ).map(([k, v]) => (
+              <option value={k} selected={filter.sort === k}>
+                Sortiert nach {v}
+              </option>
+            ))}
+          </select>
+          <button class="btn sec sm">Suchen</button>
+          <span style="margin-left:auto;font-weight:600">
+            {from}–{to}{' '}
+            <span class="mut" style="font-weight:400">
+              von
+            </span>{' '}
+            {filtered}
+          </span>
+          <a class="btn sec sm" href={`/objekte/export.csv${exportQuery ? `?${exportQuery}` : ''}`}>
+            CSV-Export
+          </a>
+          <a
+            class="btn sec sm"
+            href={`/objekte/qr-druck${exportQuery ? `?${exportQuery}` : ''}`}
+            target="_blank"
+          >
+            QR-Codes drucken
+          </a>
+        </form>
+        <div class="letters">
+          <a href={url({ buchstabe: null, seite: null })} class={filter.letter ? '' : 'on'}>
+            Alle
+          </a>
+          {keys.map((l) => (
+            <a href={url({ buchstabe: l, seite: null })} class={filter.letter === l ? 'on' : ''}>
+              {l}
+            </a>
+          ))}
+        </div>
+        <div class="list sites" style="margin-top:12px">
+          {rows.map((s) => (
+            <div class="row" style={s.active ? '' : 'opacity:.6'}>
+              <span class="no">{s.site_no}</span>
+              <div class="main">
+                <a href={`/objekte/${s.id}`}>
+                  <b style="color:var(--ink)">{s.name}</b>
+                </a>
+                {!s.active && (
+                  <span class="badge" style="margin-left:6px">
+                    inaktiv
+                  </span>
+                )}
+                <div class="small mut">
+                  {[s.street, [s.postal_code, s.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')}
+                </div>
+              </div>
+              <div class="cust">
+                <a href={`/kunden/${s.customer_id}`} style="color:var(--ink)">
+                  {s.customer_name}
+                </a>
+                <div class="small faint">Kd.-Nr. {s.customer_no}</div>
+              </div>
+              <div class="ol">
+                {s.manager_name ? (
+                  <span class="person-chip">
+                    <span class="av">{initials(s.manager_name)}</span>
+                    {s.manager_name}
+                  </span>
+                ) : (
+                  <span class="small faint">keine Objektleitung</span>
+                )}
+                <div class="small faint">{s.employees} Mitarbeitende</div>
+              </div>
+            </div>
+          ))}
+          {!rows.length && (
+            <div class="row">
+              <div class="main mut">Keine Objekte gefunden.</div>
+            </div>
+          )}
+        </div>
+        {pages > 1 && (
+          <div class="pager">
+            {page > 1 && <a href={url({ seite: String(page - 1) })}>‹ Zurück</a>}
+            {Array.from({ length: pages }, (_, i) => i + 1)
+              .filter((n) => n === 1 || n === pages || Math.abs(n - page) <= 2)
+              .map((n, i, arr) => (
+                <>
+                  {i > 0 && n - arr[i - 1]! > 1 && <span class="gap">…</span>}
+                  <a href={url({ seite: n > 1 ? String(n) : null })} class={n === page ? 'on' : ''}>
+                    {n}
+                  </a>
+                </>
+              ))}
+            {page < pages && <a href={url({ seite: String(page + 1) })}>Vor ›</a>}
+          </div>
+        )}
+      </div>
+    </>
+  );
+};
 
 export interface SiteCounts {
   services: number;
@@ -642,12 +829,13 @@ export const SiteShell: FC<{
   );
 };
 
-export const SiteForm: FC<{ id: string; s: Partial<Site>; customers: Customer[]; isNew: boolean }> = ({
-  id,
-  s,
-  customers,
-  isNew,
-}) => (
+export const SiteForm: FC<{
+  id: string;
+  s: Partial<Site>;
+  customers: Customer[];
+  isNew: boolean;
+  managers?: { id: string; name: string }[];
+}> = ({ id, s, customers, isNew, managers }) => (
   <form
     method="post"
     action={`/objekte/${id}`}
@@ -668,6 +856,19 @@ export const SiteForm: FC<{ id: string; s: Partial<Site>; customers: Customer[];
         </select>
       </div>
       <Field name="site_no" label="Objektnummer *" value={s.site_no} required />
+      {managers && (
+        <div>
+          <label for="manager_user_id">Objektleitung</label>
+          <select id="manager_user_id" name="manager_user_id">
+            <option value="">– keine –</option>
+            {managers.map((m) => (
+              <option value={m.id} selected={m.id === s.manager_user_id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <Field name="name" label="Bezeichnung *" value={s.name} required />
       <Field name="street" label="Straße" value={s.street} />
       <Field name="postal_code" label="PLZ" value={s.postal_code} />

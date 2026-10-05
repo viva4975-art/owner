@@ -51,6 +51,7 @@ import {
 } from '../services/customer-list.js';
 import { listTemplates, saveTemplate } from '../services/employees.js';
 import { uploadConfig } from './routes-files.js';
+import { filteredSites, managers, parseSiteFilter, sitesCsv, SITE_PAGE_SIZE } from '../services/site-list.js';
 import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { FileArea } from './files.js';
 import { arr, str } from './forms.js';
@@ -65,6 +66,7 @@ import {
   CustomerCard,
   CustomerForm,
   CustomerList,
+  SiteList,
   CustomerShell,
   RevenueBars,
   SiteForm,
@@ -714,31 +716,44 @@ export function registerMasterdataRoutes(ctx: Ctx) {
 
   // ------------------------------------------------------------------ Objekte
 
-  app.get('/objekte', async (c) =>
-    page(
+  const siteFilter = parseSiteFilter;
+
+  app.get('/objekte', async (c) => {
+    const filter = siteFilter((k) => c.req.query(k));
+    const { rows, counts, total } = await filteredSites(sql, c.get('sites'), filter);
+    const pages = Math.max(1, Math.ceil(rows.length / SITE_PAGE_SIZE));
+    const pageNo = Math.min(pages, Math.max(1, Number(c.req.query('seite') ?? 1) || 1));
+    return page(
       c,
       'Objekte',
       'kunden',
-      <>
-        <PageHead
-          title="Objekte"
-          create={{
-            options: [
-              ['objekt', 'Objekt'],
-              ['kunde', 'Kunde'],
-            ],
-            selected: 'objekt',
-          }}
-        />
-        <div class="card">
-          <SiteTable
-            sites={(await listSites(sql)).filter((s) => !c.get('sites') || c.get('sites')!.includes(s.id))}
-            showCustomer
-          />
-        </div>
-      </>,
-    ),
-  );
+      <SiteList
+        rows={rows.slice((pageNo - 1) * SITE_PAGE_SIZE, pageNo * SITE_PAGE_SIZE)}
+        filtered={rows.length}
+        counts={counts}
+        total={total}
+        filter={filter}
+        page={pageNo}
+        managers={await managers(sql)}
+        showManagerFilter={c.get('sites') === null}
+      />,
+    );
+  });
+
+  app.get('/objekte/export.csv', async (c) => {
+    const { rows } = await filteredSites(
+      sql,
+      c.get('sites'),
+      siteFilter((k) => c.req.query(k)),
+    );
+    return new Response(sitesCsv(rows), {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="Objekte_${todayBerlin()}.csv"`,
+        'Cache-Control': 'private, no-store',
+      },
+    });
+  });
 
   app.get('/objekte/neu', (c) => {
     const kunde = c.req.query('kunde');
@@ -812,6 +827,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
         s={s ?? { customer_id: kunde, site_no: (kunde && (await suggestSiteNo(sql, kunde))) || '' }}
         customers={customers}
         isNew={!s}
+        managers={await managers(sql)}
       />
     );
     if (!s) {

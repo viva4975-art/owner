@@ -225,6 +225,11 @@ details.pop>.panel .btn{margin-top:12px;width:100%;justify-content:center}
 .pager .gap{color:var(--faint);padding:0 4px}
 .menuitem{display:block;padding:8px 10px;border-radius:var(--r-sm);color:var(--ink);text-decoration:none}
 .menuitem:hover{background:var(--brand-50);color:var(--brand);text-decoration:none}
+.list.sites .no{width:78px;flex:none;font-weight:600;color:var(--mut);font-variant-numeric:tabular-nums}
+.list.sites .cust{width:260px;flex:none}
+.list.sites .ol{width:210px;flex:none}
+.person-chip{display:inline-flex;align-items:center;gap:6px;font-weight:550}
+.person-chip .av{width:24px;height:24px;border-radius:50%;background:var(--brand-50);color:var(--brand);font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
 .danger-zone{border-color:#f3d4d4}
 .danger-zone>summary{cursor:pointer;font-weight:600;color:var(--err);list-style:none}
 .danger-zone>summary::-webkit-details-marker{display:none}
@@ -253,6 +258,8 @@ details.pop>.panel .btn{margin-top:12px;width:100%;justify-content:center}
   .list .main{flex:1 1 calc(100% - 30px)}
   .list .side{flex:1 1 100%;justify-content:flex-start;padding-left:24px}
   .list .when{text-align:left;min-width:0}
+  .list.sites .no{width:auto}
+  .list.sites .cust,.list.sites .ol{width:auto;flex:1 1 45%;padding-left:0}
   .kpis{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
   .kpi{padding:12px}.kpi .v{font-size:22px}.kpi .s{display:none}
   .hero .acts{margin-left:0}

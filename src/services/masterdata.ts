@@ -182,6 +182,7 @@ export interface Site {
   contract_reference: string | null;
   active: boolean;
   version: number;
+  manager_user_id?: string | null;
 }
 
 export const siteInput = z.object({
@@ -193,6 +194,8 @@ export const siteInput = z.object({
   city: optText,
   order_reference: optText,
   contract_reference: optText,
+  // Objektleitung: nur setzen, wenn das Feld mitgeschickt wird (Import lässt es unverändert)
+  manager_user_id: z.preprocess(emptyToNull, z.uuid('Objektleitung ungültig').nullable()).optional(),
 });
 export type SiteInput = z.infer<typeof siteInput>;
 
@@ -223,8 +226,9 @@ export async function saveSite(
   await sql.begin(async (tx) => {
     const [cur] = await tx<{ version: number }[]>`select version from app.sites where id = ${id} for update`;
     assertVersion(cur?.version, expectedVersion, 'Das Objekt');
-    await tx`insert into app.sites ${tx({ id, ...input })}
-             on conflict (id) do update set ${tx({ ...input, updated_at: new Date() } as Record<string, unknown>)}`;
+    const data = Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined));
+    await tx`insert into app.sites ${tx({ id, ...data })}
+             on conflict (id) do update set ${tx({ ...data, updated_at: new Date() } as Record<string, unknown>)}`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
              values (${actor}, 'save', 'site', ${id}, ${tx.json({ site_no: input.site_no })})`;
   });

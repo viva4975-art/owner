@@ -38,6 +38,7 @@ import { registerSettingsRoutes } from './routes-settings.js';
 import { registerTenderRoutes } from './routes-tenders.js';
 import { registerCostCenterRoutes } from './routes-costcenters.js';
 import { registerPlanningRoutes } from './routes-planning.js';
+import { registerPlanningBoardRoutes } from './routes-planning-board.js';
 import { registerPurchasingRoutes } from './routes-purchasing.js';
 import { registerTimeRoutes } from './routes-time.js';
 
@@ -277,6 +278,7 @@ export function createApp(deps: Deps) {
   registerDunningRoutes(ctx);
   registerInventoryRoutes(ctx);
   registerTimeRoutes(ctx);
+  registerPlanningBoardRoutes(ctx);
   registerPlanningRoutes(ctx);
   registerPurchasingRoutes(ctx);
   registerOrderRoutes(ctx);

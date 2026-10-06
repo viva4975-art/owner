@@ -1,6 +1,6 @@
 import type { Sql, Tx } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
-import { addDays, holidayName, isoWeekday } from '../domain/time/holidays.js';
+import { addDays, holidayName, isoWeekday, mondayOf } from '../domain/time/holidays.js';
 import { BusinessError } from './errors.js';
 
 /*
@@ -267,6 +267,55 @@ export interface ShiftPlan {
   valid_until: string | null;
   note: string | null;
   version: number;
+  recurrence?: Recurrence;
+  every?: number;
+  months?: number[] | null;
+  series_id?: string | null;
+  planning_group?: string | null;
+}
+export type Recurrence = 'einmalig' | 'woechentlich' | 'monatlich';
+export const RECURRENCE: Record<Recurrence, string> = {
+  einmalig: 'Einmalig',
+  woechentlich: 'Wöchentlich',
+  monatlich: 'Monatlich',
+};
+export const MONTHS_SHORT = [
+  '',
+  'Jan',
+  'Feb',
+  'Mär',
+  'Apr',
+  'Mai',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Okt',
+  'Nov',
+  'Dez',
+];
+
+/** Findet der (wiederkehrende) Einsatz an diesem Tag statt? Gültigkeit wird vom Aufrufer geprüft. */
+export function occursOn(
+  p: Pick<ShiftPlan, 'weekday' | 'valid_from' | 'recurrence' | 'every' | 'months'>,
+  d: string,
+): boolean {
+  const rec = p.recurrence ?? 'woechentlich';
+  const every = p.every ?? 1;
+  if (p.months?.length && !p.months.includes(Number(d.slice(5, 7)))) return false;
+  if (rec === 'einmalig') return d === p.valid_from;
+  if (rec === 'monatlich') {
+    if (d.slice(8, 10) !== p.valid_from.slice(8, 10)) return false;
+    const m =
+      (Number(d.slice(0, 4)) - Number(p.valid_from.slice(0, 4))) * 12 +
+      Number(d.slice(5, 7)) -
+      Number(p.valid_from.slice(5, 7));
+    return m >= 0 && m % every === 0;
+  }
+  if (p.weekday !== isoWeekday(d)) return false;
+  if (every === 1) return true;
+  const weeks = Math.round((Date.parse(mondayOf(d)) - Date.parse(mondayOf(p.valid_from))) / (7 * 86_400_000));
+  return weeks >= 0 && weeks % every === 0;
 }
 export type ShiftPlanRow = ShiftPlan & {
   employee_name: string;
@@ -298,7 +347,8 @@ export async function saveShiftPlan(
   sql: Sql,
   id: string,
   input: {
-    employeeId: string;
+    /** null = offen („zu planender Einsatz“) */
+    employeeId: string | null;
     siteId: string;
     weekdays: number[];
     startTime: string;
@@ -307,9 +357,25 @@ export async function saveShiftPlan(
     validFrom: string;
     validUntil: string | null;
     note: string | null;
+    recurrence?: Recurrence;
+    every?: number;
+    months?: number[] | null;
+    seriesId?: string | null;
+    planningGroup?: string | null;
   },
   actor: string,
 ): Promise<string[]> {
+  const recurrence = input.recurrence ?? 'woechentlich';
+  if (!(recurrence in RECURRENCE)) throw new BusinessError('Wiederholung ungültig');
+  const every = input.every ?? 1;
+  if (!Number.isInteger(every) || every < 1 || every > 12) throw new BusinessError('Intervall ungültig');
+  const months = input.months?.length ? [...new Set(input.months)].sort((a, b) => a - b) : null;
+  if (months?.some((m) => !Number.isInteger(m) || m < 1 || m > 12)) throw new BusinessError('Monat ungültig');
+  if (recurrence !== 'woechentlich') {
+    // einmalig / monatlich: Tag ergibt sich aus dem Datum
+    input = { ...input, weekdays: [isoWeekday(input.validFrom)] };
+    if (recurrence === 'einmalig') input = { ...input, validUntil: input.validFrom };
+  }
   if (!HHMM.test(input.startTime) || !HHMM.test(input.endTime))
     throw new BusinessError('Uhrzeit bitte als HH:MM');
   if (input.endTime <= input.startTime)
@@ -320,10 +386,13 @@ export async function saveShiftPlan(
   if (input.validUntil && input.validUntil < input.validFrom) throw new BusinessError('„bis“ liegt vor „ab“');
   const ids: string[] = [];
   await sql.begin(async (tx) => {
-    await assertMaySite(tx, input.employeeId, input.siteId).catch(async () => {
-      // Einplanen ordnet zugleich zu
-      await tx`insert into app.employee_sites (employee_id, site_id) values (${input.employeeId}, ${input.siteId}) on conflict do nothing`;
-    });
+    if (input.employeeId) {
+      const emp = input.employeeId;
+      await assertMaySite(tx, emp, input.siteId).catch(async () => {
+        // Einplanen ordnet zugleich zu
+        await tx`insert into app.employee_sites (employee_id, site_id) values (${emp}, ${input.siteId}) on conflict do nothing`;
+      });
+    }
     for (const [i, wd] of input.weekdays.entries()) {
       // je Wochentag ein Eintrag; feste IDs aus der Formular-ID → Doppelklick legt nichts doppelt an
       const [{ pid }] =
@@ -331,12 +400,16 @@ export async function saveShiftPlan(
           { pid: string },
         ];
       await tx`
-        insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes, valid_from, valid_until, note)
+        insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes, valid_from, valid_until,
+                                     note, recurrence, every, months, series_id, planning_group)
         values (${pid}, ${input.employeeId}, ${input.siteId}, ${wd}, ${input.startTime}, ${input.endTime}, ${input.breakMinutes},
-                ${input.validFrom}, ${input.validUntil}, ${input.note})
+                ${input.validFrom}, ${input.validUntil}, ${input.note}, ${recurrence}, ${every}, ${months},
+                ${input.seriesId ?? id}, ${input.planningGroup?.trim() || null})
         on conflict (id) do update set employee_id = excluded.employee_id, site_id = excluded.site_id, weekday = excluded.weekday,
           start_time = excluded.start_time, end_time = excluded.end_time, break_minutes = excluded.break_minutes,
-          valid_from = excluded.valid_from, valid_until = excluded.valid_until, note = excluded.note, updated_at = now()`;
+          valid_from = excluded.valid_from, valid_until = excluded.valid_until, note = excluded.note,
+          recurrence = excluded.recurrence, every = excluded.every, months = excluded.months,
+          series_id = excluded.series_id, planning_group = excluded.planning_group, updated_at = now()`;
       ids.push(pid);
     }
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
@@ -396,7 +469,15 @@ interface ShiftException {
 /** Soll-Einsätze für einen Zeitraum (je Tag), mit Abwesenheiten, Feiertagen und zugehörigen Ist-Zeiten. */
 export async function plannedShifts(
   sql: Sql,
-  f: { from: string; to: string; employeeId?: string; siteId?: string; includeCancelled?: boolean },
+  f: {
+    from: string;
+    to: string;
+    employeeId?: string;
+    siteId?: string;
+    includeCancelled?: boolean;
+    /** auch Einsätze ohne Mitarbeiter („zu planende Einsätze“) – nur für die Planungstafel */
+    includeOpen?: boolean;
+  },
 ): Promise<PlannedShift[]> {
   // Vertretungen: Einsätze anderer Mitarbeiter, die dieser Mitarbeiter übernimmt
   const subPlans = f.employeeId
@@ -410,10 +491,16 @@ export async function plannedShifts(
   // (sonst würden rückwirkend angelegte Einsätze als „fehlende Zeiten“ erscheinen).
   const plans = await sql<(ShiftPlanRow & { effective_from: string })[]>`
     select p.*, to_char(p.start_time, 'HH24:MI') as start_time, to_char(p.end_time, 'HH24:MI') as end_time,
-           e.last_name || ', ' || e.first_name as employee_name, e.personnel_no, s.name as site_name, s.site_no,
-           greatest(p.valid_from, (p.created_at at time zone 'Europe/Berlin')::date, e.entry_date) as effective_from
-      from app.shift_plans p join app.employees e on e.id = p.employee_id join app.sites s on s.id = p.site_id
-     where p.valid_from <= ${f.to} and (p.valid_until is null or p.valid_until >= ${f.from}) and e.status = 'aktiv'
+           coalesce(e.last_name || ', ' || e.first_name, 'offen') as employee_name, coalesce(e.personnel_no, '') as personnel_no,
+           s.name as site_name, s.site_no,
+           ${
+             f.includeOpen
+               ? sql`p.valid_from`
+               : sql`greatest(p.valid_from, (p.created_at at time zone 'Europe/Berlin')::date, e.entry_date)`
+           } as effective_from
+      from app.shift_plans p left join app.employees e on e.id = p.employee_id join app.sites s on s.id = p.site_id
+     where p.valid_from <= ${f.to} and (p.valid_until is null or p.valid_until >= ${f.from})
+       and ${f.includeOpen ? sql`(p.employee_id is null or e.status = 'aktiv')` : sql`e.status = 'aktiv'`}
        and ${
          f.employeeId
            ? subPlans.length
@@ -433,7 +520,7 @@ export async function plannedShifts(
     exceptions.find((x) => x.shift_plan_id === planId && x.work_date === d);
   const people = [
     ...new Set([
-      ...plans.map((p) => p.employee_id),
+      ...plans.map((p) => p.employee_id).filter((x): x is string => !!x),
       ...exceptions.map((x) => x.substitute_employee_id).filter((x): x is string => !!x),
     ]),
   ];
@@ -449,9 +536,8 @@ export async function plannedShifts(
   });
   const out: PlannedShift[] = [];
   for (let d = f.from; d <= f.to; d = addDays(d, 1)) {
-    const wd = isoWeekday(d);
     for (const p0 of plans) {
-      if (p0.weekday !== wd || p0.effective_from > d || (p0.valid_until && p0.valid_until < d)) continue;
+      if (p0.effective_from > d || (p0.valid_until && p0.valid_until < d) || !occursOn(p0, d)) continue;
       const ex = exOf(p0.id, d);
       if (ex?.kind === 'ausfall' && !f.includeCancelled) continue;
       // Vertretung/Umplanung: Einsatz gilt an diesem Tag für den anderen Mitarbeiter bzw. zu anderer Zeit
@@ -840,4 +926,131 @@ export async function monthSummary(sql: Sql, month: string) {
       };
     }),
   };
+}
+
+// ---------------------------------------------------------------- Terminserien (Planung wie Fortytools)
+
+export interface ShiftSeriesInput {
+  siteId: string;
+  /** null = offen („zu planender Einsatz“); mehrere Mitarbeiter = je Mitarbeiter derselbe Termin */
+  employeeIds: (string | null)[];
+  recurrence: Recurrence;
+  every: number;
+  weekdays: number[];
+  months: number[] | null;
+  startTime: string;
+  endTime: string;
+  breakMinutes: number;
+  validFrom: string;
+  validUntil: string | null;
+  note: string | null;
+  planningGroup: string | null;
+}
+
+export interface ShiftSeries extends ShiftSeriesInput {
+  seriesId: string;
+  plans: { id: string; employee_id: string | null; weekday: number; valid_until: string | null }[];
+}
+
+/** Terminserie laden (alle Einsätze mit derselben Serien-ID; Altdaten: Serie = einzelner Einsatz). */
+export async function getShiftSeries(sql: Sql, idOrSeries: string): Promise<ShiftSeries | undefined> {
+  const rows = await sql<
+    (ShiftPlan & { start: string; end: string })[]
+  >`select p.*, to_char(p.start_time, 'HH24:MI') as start, to_char(p.end_time, 'HH24:MI') as end
+      from app.shift_plans p
+     where p.series_id = (select coalesce(series_id, id) from app.shift_plans where id = ${idOrSeries} or series_id = ${idOrSeries} limit 1)
+     order by p.weekday`;
+  if (!rows.length) return undefined;
+  const today = todayBerlin();
+  // laufende/künftige Teile der Serie bestimmen die Anzeige (beendete bleiben für die Vergangenheit)
+  const live = rows.filter((r) => !r.valid_until || r.valid_until >= today || r.recurrence === 'einmalig');
+  const base = live[0] ?? rows[0]!;
+  const cur = live.length ? live : rows;
+  return {
+    seriesId: base.series_id ?? base.id,
+    siteId: base.site_id,
+    employeeIds: [...new Set(cur.map((r) => r.employee_id))],
+    recurrence: base.recurrence ?? 'woechentlich',
+    every: base.every ?? 1,
+    weekdays: [...new Set(cur.map((r) => r.weekday))].sort(),
+    months: base.months ?? null,
+    startTime: base.start,
+    endTime: base.end,
+    breakMinutes: base.break_minutes,
+    validFrom: base.valid_from,
+    validUntil: base.valid_until,
+    note: base.note,
+    planningGroup: base.planning_group ?? null,
+    plans: rows.map((r) => ({
+      id: r.id,
+      employee_id: r.employee_id,
+      weekday: r.weekday,
+      valid_until: r.valid_until,
+    })),
+  };
+}
+
+/**
+ * Termin oder Terminserie speichern: je Mitarbeiter × Wochentag ein Einsatz (feste IDs aus Serie + Mitarbeiter +
+ * Tag → doppelt absenden legt nichts doppelt an). Beim Ändern bleiben vorhandene Einsätze erhalten (gleiche ID,
+ * Zeiten/Nachweise hängen daran); weggefallene Mitarbeiter/Tage enden gestern (nie genutzte künftige werden entfernt).
+ */
+export async function saveShiftSeries(sql: Sql, seriesId: string, p: ShiftSeriesInput, actor: string) {
+  if (!HHMM.test(p.startTime) || !HHMM.test(p.endTime)) throw new BusinessError('Uhrzeit bitte als HH:MM');
+  if (p.endTime <= p.startTime)
+    throw new BusinessError('Ende muss nach dem Beginn liegen (Nachtschichten bitte als zwei Termine)');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.validFrom)) throw new BusinessError('Bitte das Datum „ab“ angeben');
+  if (!(p.recurrence in RECURRENCE)) throw new BusinessError('Wiederholung ungültig');
+  const weekdays =
+    p.recurrence === 'woechentlich' ? [...new Set(p.weekdays)].sort() : [isoWeekday(p.validFrom)];
+  if (!weekdays.length) throw new BusinessError('Bitte mindestens einen Wochentag wählen');
+  if (weekdays.some((d) => !Number.isInteger(d) || d < 1 || d > 7))
+    throw new BusinessError('Wochentag ungültig');
+  const validUntil = p.recurrence === 'einmalig' ? p.validFrom : p.validUntil;
+  if (validUntil && validUntil < p.validFrom) throw new BusinessError('Enddatum liegt vor dem Beginn');
+  const employees = [...new Set(p.employeeIds.length ? p.employeeIds : [null])];
+  const existing = await getShiftSeries(sql, seriesId);
+  const yesterday = addDays(todayBerlin(), -1);
+  const keep = new Set<string>();
+  await sql.begin(async (tx) => {
+    for (const emp of employees) {
+      if (emp) {
+        await assertMaySite(tx, emp, p.siteId).catch(async () => {
+          await tx`insert into app.employee_sites (employee_id, site_id) values (${emp}, ${p.siteId}) on conflict do nothing`;
+        });
+      }
+      for (const wd of weekdays) {
+        const old = existing?.plans.find(
+          (x) => x.employee_id === emp && (x.weekday === wd || p.recurrence !== 'woechentlich'),
+        );
+        const pid =
+          old?.id ??
+          (
+            await tx<
+              { pid: string }[]
+            >`select md5(${seriesId} || ':' || ${emp ?? 'offen'} || ':' || ${wd})::uuid::text as pid`
+          )[0]!.pid;
+        keep.add(pid);
+        await tx`
+          insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes, valid_from,
+                                       valid_until, note, recurrence, every, months, series_id, planning_group)
+          values (${pid}, ${emp}, ${p.siteId}, ${wd}, ${p.startTime}, ${p.endTime}, ${p.breakMinutes}, ${p.validFrom},
+                  ${validUntil}, ${p.note}, ${p.recurrence}, ${p.every}, ${p.months?.length ? p.months : null},
+                  ${seriesId}, ${p.planningGroup?.trim() || null})
+          on conflict (id) do update set employee_id = excluded.employee_id, site_id = excluded.site_id,
+            weekday = excluded.weekday, start_time = excluded.start_time, end_time = excluded.end_time,
+            break_minutes = excluded.break_minutes, valid_from = excluded.valid_from, valid_until = excluded.valid_until,
+            note = excluded.note, recurrence = excluded.recurrence, every = excluded.every, months = excluded.months,
+            series_id = excluded.series_id, planning_group = excluded.planning_group, updated_at = now()`;
+      }
+    }
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, ${existing ? 'update' : 'create'}, 'shift_series', ${seriesId},
+                     ${tx.json({ recurrence: p.recurrence, weekdays, employees: employees.length })})`;
+  });
+  // weggefallene Teile der Serie beenden (Vergangenheit bleibt erhalten)
+  for (const old of existing?.plans ?? [])
+    if (!keep.has(old.id) && (!old.valid_until || old.valid_until > yesterday))
+      await endShiftPlan(sql, old.id, yesterday, actor);
+  return [...keep];
 }

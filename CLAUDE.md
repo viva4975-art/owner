@@ -768,3 +768,17 @@ Testadresse.
   Nachunternehmer-Aufträge in einer Liste (gleicher Nummernkreis BE-JJJJ-NNNN): Zu erledigen (Entwurf, geliefert ohne
   Rechnung) / Laufend / Abgeschlossen / Alle, Auswahl Lieferant, Suche; „+ Material bestellen“, „+ Nachunternehmer
   beauftragen“. Soll/Ist je Monat entfernt. Reiter „Aufträge“ beim Nachunternehmer heißt „Bestellungen“.
+- 2026-10-06: Runde 6c – Planung wie Fortytools (Screenshots „Planung (KW 41)“, „Termin oder Terminserie planen“):
+  - Tafel `/einsatzplanung`: „Zu planende Einsätze“ (Termine ohne Mitarbeiter, „Nicht zugeordnet“) und „Geplante Einsätze“ je
+    Mitarbeiter, gruppiert nach Einsatzgruppe; Tag / 5 Tage / Woche / Monat, Heute/Diese Woche, ← →, Datum, Einsatzgruppen-
+    Auswahl, Mitarbeiterfilter mit Häkchen und Suche, „auch ohne Einsatz“; Hinweis „x Einsätze für abwesende Mitarbeiter“,
+    „Umplanen“ (→ Vertretungen); heute gelb, Feiertage blau, Abwesenheit schraffiert; Farben offen/geplant/erledigt/umgeplant/
+    abwesend. Monatstafel ist die Monatsansicht (alte Adresse leitet um).
+  - „Termin oder Terminserie planen“: Einsatzort nach Kunden gruppiert, Einmalig / Wöchentlich (alle n Wochen, mehrere Tage) /
+    Monatlich (am selben Tag, alle n Monate), ab, Uhrzeit, Dauer, Enddatum, Pause in h, „In allen / ausgewählten Monaten“,
+    mehrere Mitarbeiter oder „offen“, Einsatzgruppe, Beschreibung. Neue Spalten `shift_plans.recurrence/every/months/series_id/
+    planning_group`, `employee_id` darf leer sein (offen; zählt nicht als Soll, erscheint nicht in der Handy-App).
+  - Serie ändern behält vorhandene Einsätze (gleiche IDs, Zeiten hängen daran); weggefallene Mitarbeiter/Tage enden gestern.
+    Offenen Termin anklicken → Serie zum Besetzen; geplanten Termin anklicken → Tag umplanen/Vertretung/Ausfall (zurück in
+    die Tafel). „Vertriebskondition/Lohnkondition“ und „Weitere Tätigkeit“ aus Fortytools noch nicht übernommen.
+  - Tests: 295 Unit-/DB-Tests (neu `shift-series.db.test.ts`), `e2e:planung` neu (24 Prüfungen), `e2e:zeit` angepasst.

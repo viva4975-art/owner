@@ -60,14 +60,18 @@ check('Mitarbeiter angelegt', !!empId);
 
 await o.goto(B + `/personal/${empId}/einsaetze`);
 await o.click('a:has-text("Einsatz planen")');
-await o.selectOption('#site_id', SITE);
-for (const d of [1, 2, 3, 4, 5, 6, 7]) await o.check(`#wd${d}`);
-await o.fill('#start', '00:05');
-await o.fill('#end', '00:35');
-await o.fill('#valid_from', '2026-01-01');
-await o.click('button:has-text("Speichern")');
+await o.selectOption('select[name=site_id]', SITE);
+check(
+  'Mitarbeiter vorbelegt',
+  (await o.locator('.emp-row select').first().inputValue()) === empId,
+);
+for (const d of [1, 2, 3, 4, 5, 6, 7]) await o.locator(`input[name=weekday][value="${d}"]`).check({ force: true });
+await o.fill('input[name=start]', '00:05');
+await o.fill('input[name=end]', '00:35');
+await o.fill('input[name=valid_from]', '2026-01-01');
+await o.click('button:has-text("Planung erstellen")');
 await o.waitForLoadState();
-check('Einsatz gespeichert', (await flash(o)).includes('Einsatz gespeichert'), await flash(o));
+check('Einsatz gespeichert', (await flash(o)).includes('Planung erstellt'), await flash(o));
 await o.screenshot({ path: `${out}/z1-wochenplan.png`, fullPage: true });
 
 await o.goto(B + `/personal/${empId}/app-zugang`);

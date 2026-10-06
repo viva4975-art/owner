@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
 import type { Child, FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
-import { addDays, holidayName, isoWeekday, mondayOf } from '../domain/time/holidays.js';
+import { addDays, holidayName, isoWeekday } from '../domain/time/holidays.js';
 import {
   type AbsenceKind,
   type AbsenceRow,
@@ -15,7 +15,6 @@ import {
 } from '../services/absences.js';
 import { listEmployees } from '../services/employees.js';
 import { BusinessError } from '../services/errors.js';
-import { listSites } from '../services/masterdata.js';
 import {
   type ShiftPlanRow,
   WEEKDAYS,
@@ -24,11 +23,8 @@ import {
   hm,
   listShiftPlans,
   plannedShifts,
-  saveShiftPlan,
 } from '../services/time.js';
 import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
-import { arr } from './forms.js';
-import { Icon } from './icons.js';
 import {
   CAL_VIEWS,
   type CalView,
@@ -41,11 +37,6 @@ import { PageHead, type Tab, Tabs, dateDe } from './layout.js';
 
 const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const isMonth = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}$/.test(v);
-const short = (name: string) => {
-  const [last, first] = name.split(', ');
-  return `${last}${first ? ` ${first[0]}.` : ''}`;
-};
-
 const ABS_CLASS: Record<AbsenceKind, string> = {
   urlaub: 'info',
   krank: 'err',
@@ -125,349 +116,7 @@ const PlanTable: FC<{ plans: ShiftPlanRow[]; show: 'employee' | 'site' | 'both' 
 export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
   const { sql } = deps;
 
-  // ------------------------------------------------------------------ Einsatzplanung: Wochenplan
-
-  app.get('/einsatzplanung', async (c) => {
-    const monday = mondayOf(isDate(c.req.query('woche')) ? c.req.query('woche')! : todayBerlin());
-    const sunday = addDays(monday, 6);
-    const siteFilter = c.req.query('objekt') || undefined;
-    const scope = c.get('sites');
-    const [allShifts, allSites] = await Promise.all([
-      plannedShifts(sql, { from: monday, to: sunday, ...(siteFilter ? { siteId: siteFilter } : {}) }),
-      listSites(sql),
-    ]);
-    const shifts = scope ? allShifts.filter((s) => scope.includes(s.plan.site_id)) : allShifts;
-    const sites = scope ? allSites.filter((s) => scope.includes(s.id)) : allSites;
-    const days = [...Array(7).keys()].map((i) => addDays(monday, i));
-    const siteIds = [...new Set(shifts.map((s) => s.plan.site_id))];
-    const bySite = siteIds
-      .map((id) => ({
-        id,
-        name: shifts.find((s) => s.plan.site_id === id)!.plan.site_name,
-        no: shifts.find((s) => s.plan.site_id === id)!.plan.site_no,
-      }))
-      .sort((a, b) => a.no.localeCompare(b.no));
-    const totalMin = shifts.filter((s) => !s.absence).reduce((a, s) => a + s.minutes, 0);
-    const gaps = shifts.filter((s) => s.absence && !s.holiday).length;
-    // ISO-Kalenderwoche: Woche, in der der Donnerstag liegt
-    const kw = (() => {
-      const thu = new Date(`${addDays(monday, 3)}T00:00:00Z`);
-      const start = Date.UTC(thu.getUTCFullYear(), 0, 1);
-      return Math.ceil(((thu.getTime() - start) / 86400000 + 1) / 7);
-    })();
-    return page(
-      c,
-      'Einsatzplanung',
-      'disposition',
-      <>
-        <PageHead title="Einsatzplanung" no={`KW ${kw}`}>
-          <a class="btn" href={`/einsatzplanung/${randomUUID()}`} style="margin-left:auto">
-            <Icon name="plus" /> Einsatz planen
-          </a>
-        </PageHead>
-        <form method="get" action="/einsatzplanung" class="actions" style="margin-top:0">
-          <a
-            class="btn sec"
-            href={`/einsatzplanung?woche=${addDays(monday, -7)}${siteFilter ? `&objekt=${siteFilter}` : ''}`}
-          >
-            ← Vorwoche
-          </a>
-          <input
-            type="date"
-            name="woche"
-            value={monday}
-            style="max-width:170px"
-            onchange="this.form.submit()"
-          />
-          <a
-            class="btn sec"
-            href={`/einsatzplanung?woche=${addDays(monday, 7)}${siteFilter ? `&objekt=${siteFilter}` : ''}`}
-          >
-            Nächste Woche →
-          </a>
-          <select name="objekt" onchange="this.form.submit()" style="max-width:300px">
-            <option value="">alle Objekte</option>
-            {sites.map((s) => (
-              <option value={s.id} selected={s.id === siteFilter}>
-                {s.site_no} · {s.name}
-              </option>
-            ))}
-          </select>
-          <span class="mut small">
-            {dateDe(monday)} – {dateDe(sunday)} · {hm(totalMin)} Std. geplant
-          </span>
-          {gaps > 0 && (
-            <a class="badge err" href={`/einsatzplanung/vertretungen?von=${monday}&bis=${sunday}`}>
-              {gaps} Einsätze ohne Vertretung (Urlaub/Krank) – jetzt regeln
-            </a>
-          )}
-          <a class="btn sm sec" href={`/einsatzplanung/monat?monat=${monday.slice(0, 7)}`}>
-            Monatstafel
-          </a>
-        </form>
-        <div class="tbl">
-          <table class="plan">
-            <thead>
-              <tr>
-                <th style="min-width:180px">Objekt</th>
-                {days.map((d) => (
-                  <th style={holidayName(d) || isoWeekday(d) >= 6 ? 'background:#f1f2f5' : ''}>
-                    {WEEKDAYS_SHORT[isoWeekday(d)]} {dateDe(d).slice(0, 6)}
-                    {holidayName(d) && (
-                      <div class="small" style="color:var(--warn);font-weight:500">
-                        {holidayName(d)}
-                      </div>
-                    )}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {bySite.length === 0 && (
-                <tr>
-                  <td colspan={8}>
-                    <div class="empty">
-                      In dieser Woche ist nichts geplant.{' '}
-                      <a href={`/einsatzplanung/${randomUUID()}`}>Ersten Einsatz planen</a>
-                    </div>
-                  </td>
-                </tr>
-              )}
-              {bySite.map((site) => (
-                <tr>
-                  <td>
-                    <a href={`/objekte/${site.id}/einsaetze`}>
-                      <b>{site.name}</b>
-                    </a>
-                    <div class="small mut">{site.no}</div>
-                  </td>
-                  {days.map((d) => (
-                    <td style="min-width:120px">
-                      {shifts
-                        .filter((s) => s.plan.site_id === site.id && s.date === d)
-                        .map((s) => (
-                          <a
-                            href={`/einsatzplanung/${s.plan.id}/tag/${s.date}?zurueck=${encodeURIComponent(`/einsatzplanung?woche=${monday}${siteFilter ? `&objekt=${siteFilter}` : ''}`)}`}
-                            class="small"
-                            style={`display:block;padding:4px 6px;margin-bottom:4px;border-radius:6px;text-decoration:none;color:var(--ink);border:1px solid ${s.absence ? '#fecdca' : s.entry ? '#bbf7d0' : 'var(--line)'};background:${s.absence ? 'var(--err-50)' : s.entry ? 'var(--ok-50)' : '#fff'}`}
-                            title={
-                              s.absence
-                                ? `${ABSENCE_LABEL[s.absence as AbsenceKind]} – Vertretung nötig`
-                                : s.entry
-                                  ? 'Zeit erfasst'
-                                  : s.exception
-                                    ? `${s.exception.kind === 'vertretung' ? 'Vertretung für' : 'umgeplant, sonst'} ${s.exception.original}`
-                                    : 'geplant – klicken zum Umplanen'
-                            }
-                          >
-                            <b style={s.absence ? 'text-decoration:line-through' : ''}>
-                              {short(s.plan.employee_name)}
-                            </b>
-                            <br />
-                            {s.plan.start_time}–{s.plan.end_time}
-                            {s.exception && (
-                              <span style="color:var(--brand)">
-                                {' '}
-                                · {s.exception.kind === 'vertretung' ? 'Vertr.' : 'umgepl.'}
-                              </span>
-                            )}
-                            {s.absence && (
-                              <span style="color:var(--err)">
-                                {' '}
-                                · {ABSENCE_LABEL[s.absence as AbsenceKind]}
-                              </span>
-                            )}
-                          </a>
-                        ))}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p class="small mut">
-          Grün = Zeit erfasst, rot = Mitarbeiter abwesend (Vertretung planen). Feiertage nach bayerischem
-          Recht. Einsätze wiederholen sich wöchentlich ab dem Gültigkeitsdatum.
-        </p>
-      </>,
-    );
-  });
-
-  // Einsatz anlegen/ändern
-  app.get(`/einsatzplanung/:id{${UUID}}`, async (c) => {
-    const id = c.req.param('id');
-    const [[plan], emps, sites] = await Promise.all([
-      sql<ShiftPlanRow[]>`
-        select p.*, to_char(p.start_time, 'HH24:MI') as start_time, to_char(p.end_time, 'HH24:MI') as end_time,
-               e.last_name || ', ' || e.first_name as employee_name, e.personnel_no, s.name as site_name, s.site_no
-          from app.shift_plans p join app.employees e on e.id = p.employee_id join app.sites s on s.id = p.site_id where p.id = ${id}`,
-      listEmployees(sql, { status: 'aktiv' }),
-      listSites(sql).then((l) => l.filter((s) => !c.get('sites') || c.get('sites')!.includes(s.id))),
-    ]);
-    if (plan) assertSite(c, plan.site_id);
-    const q = c.req.query();
-    const v = {
-      employee: plan?.employee_id ?? q.mitarbeiter ?? '',
-      site: plan?.site_id ?? q.objekt ?? '',
-      weekdays: plan ? [plan.weekday] : [1, 2, 3, 4, 5],
-      start: plan?.start_time ?? '',
-      end: plan?.end_time ?? '',
-      brk: plan?.break_minutes ?? 0,
-      from: plan?.valid_from ?? todayBerlin(),
-      until: plan?.valid_until ?? '',
-      note: plan?.note ?? '',
-    };
-    return page(
-      c,
-      plan ? 'Einsatz ändern' : 'Einsatz planen',
-      'disposition',
-      <>
-        <PageHead
-          title={plan ? `Einsatz: ${plan.employee_name}` : 'Einsatz planen'}
-          crumbs={[['Einsatzplanung', '/einsatzplanung']]}
-        />
-        <div class="cols">
-          <form
-            method="post"
-            action={`/einsatzplanung/${id}`}
-            class="card"
-            data-autosave={`/einsatzplanung/${id}`}
-            data-version={String(plan?.version ?? '')}
-          >
-            <div class="grid">
-              <div>
-                <label for="employee_id">Mitarbeiter</label>
-                <select id="employee_id" name="employee_id" required>
-                  <option value="">– bitte wählen –</option>
-                  {emps.map((e) => (
-                    <option value={e.id} selected={e.id === v.employee}>
-                      {e.last_name}, {e.first_name} ({e.personnel_no})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label for="site_id">Objekt</label>
-                <select id="site_id" name="site_id" required>
-                  <option value="">– bitte wählen –</option>
-                  {sites.map((s) => (
-                    <option value={s.id} selected={s.id === v.site}>
-                      {s.site_no} · {s.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <label style="margin-top:14px">{plan ? 'Wochentag' : 'Wochentage (je Tag ein Einsatz)'}</label>
-            <div class="actions" style="margin-top:0">
-              {[1, 2, 3, 4, 5, 6, 7].map((d) => (
-                <span class="chk">
-                  <input
-                    type={plan ? 'radio' : 'checkbox'}
-                    id={`wd${d}`}
-                    name="weekday"
-                    value={String(d)}
-                    checked={v.weekdays.includes(d)}
-                  />
-                  <label for={`wd${d}`}>{WEEKDAYS_SHORT[d]}</label>
-                </span>
-              ))}
-            </div>
-            <div class="grid">
-              <div>
-                <label for="start">Beginn</label>
-                <input id="start" type="time" name="start" value={v.start} required />
-              </div>
-              <div>
-                <label for="end">Ende</label>
-                <input id="end" type="time" name="end" value={v.end} required />
-              </div>
-              <div>
-                <label for="break_minutes">Pause (Min.)</label>
-                <input
-                  id="break_minutes"
-                  type="number"
-                  name="break_minutes"
-                  min="0"
-                  max="180"
-                  value={String(v.brk)}
-                />
-              </div>
-              <div>
-                <label for="valid_from">gültig ab</label>
-                <input id="valid_from" type="date" name="valid_from" value={v.from} required />
-              </div>
-              <div class="chk">
-                <input type="checkbox" id="has-until" data-reveal="#until-box" checked={!!v.until} />
-                <label for="has-until">befristet (sonst unbefristet)</label>
-              </div>
-              <div id="until-box" hidden={!v.until}>
-                <label for="valid_until">gültig bis</label>
-                <input id="valid_until" type="date" name="valid_until" value={v.until} />
-              </div>
-            </div>
-            <div style="margin-top:12px">
-              <label for="note">Notiz (z. B. Revier, Besonderheiten)</label>
-              <input id="note" name="note" value={v.note} />
-            </div>
-            <div class="formfoot">
-              <a class="btn sec" href="/einsatzplanung">
-                Abbrechen
-              </a>
-              <button class="btn">Speichern</button>
-            </div>
-          </form>
-          {plan && (
-            <form method="post" action={`/einsatzplanung/${id}/beenden`} class="card">
-              <h3>Einsatz beenden</h3>
-              <p class="small mut" style="margin-top:0">
-                Der Einsatz bleibt für die Vergangenheit erhalten (Soll/Ist, Nachkalkulation) und endet am
-                gewählten Tag.
-              </p>
-              <label for="last_day">letzter Einsatztag</label>
-              <input id="last_day" type="date" name="last_day" value={todayBerlin()} required />
-              <div class="actions" style="margin-bottom:0">
-                <button class="btn danger">Beenden</button>
-              </div>
-            </form>
-          )}
-        </div>
-      </>,
-    );
-  });
-
-  app.post(`/einsatzplanung/:id{${UUID}}`, async (c) => {
-    const id = c.req.param('id');
-    const b = await c.req.parseBody({ all: true });
-    const one = (k: string) => (typeof b[k] === 'string' ? (b[k] as string).trim() : '');
-    assertSite(c, one('site_id'));
-    const [old] = await sql<{ site_id: string }[]>`select site_id from app.shift_plans where id = ${id}`;
-    if (old) assertSite(c, old.site_id);
-    await saveShiftPlan(
-      sql,
-      id,
-      {
-        employeeId: one('employee_id'),
-        siteId: one('site_id'),
-        weekdays: arr(b, 'weekday').map(Number),
-        startTime: one('start'),
-        endTime: one('end'),
-        breakMinutes: Number(one('break_minutes')) || 0,
-        validFrom: one('valid_from'),
-        validUntil: one('valid_until') || null,
-        note: one('note') || null,
-      },
-      c.get('actor'),
-    );
-    return back(
-      c,
-      `/einsatzplanung?woche=${mondayOf(one('valid_from') > todayBerlin() ? one('valid_from') : todayBerlin())}`,
-      {
-        ok: 'Einsatz gespeichert.',
-      },
-    );
-  });
+  // Tafel und „Termin oder Terminserie planen“: routes-planning-board.tsx
 
   app.post(`/einsatzplanung/:id{${UUID}}/beenden`, async (c) => {
     const b = await c.req.parseBody();
@@ -476,6 +125,15 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
       { site_id: string }[]
     >`select site_id from app.shift_plans where id = ${c.req.param('id')}`;
     assertSite(c, old?.site_id);
+    if (b.serie === '1') {
+      // ganze Terminserie beenden
+      const plans = await sql<{ id: string }[]>`
+        select id from app.shift_plans
+         where series_id = (select coalesce(series_id, id) from app.shift_plans where id = ${c.req.param('id')})
+           and (valid_until is null or valid_until > ${b.last_day})`;
+      for (const p of plans) await endShiftPlan(sql, p.id, b.last_day, c.get('actor'));
+      return back(c, '/einsatzplanung', { ok: 'Terminserie beendet.' });
+    }
     await endShiftPlan(sql, c.req.param('id'), b.last_day, c.get('actor'));
     return back(c, '/einsatzplanung', { ok: 'Einsatz beendet.' });
   });

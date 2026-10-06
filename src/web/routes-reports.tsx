@@ -700,7 +700,7 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
           </button>
           <span class="small mut">
             {rows.length} Dienste · {hm(total)} Std. ·{' '}
-            <a href={`/einsatzplanung/monat?monat=${r.from.slice(0, 7)}`}>als Kalender</a>
+            <a href={`/einsatzplanung?ansicht=monat&datum=${r.from}`}>als Kalender</a>
           </span>
         </form>
         <div class="card">

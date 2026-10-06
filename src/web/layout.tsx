@@ -498,6 +498,66 @@ a.bs-tr:hover{text-decoration:none;background:var(--head)}
 .bs-grey{background:var(--head);color:var(--mut)}
 @media (max-width:820px){.bs-tr{grid-template-columns:1fr 1fr}.bs-th{display:none}}
 
+/* ---- Planungstafel wie Fortytools ---- */
+.seg{display:inline-flex;border:1px solid var(--line-2);border-radius:8px;overflow:hidden;background:#fff;flex-wrap:wrap}
+.seg>a,.seg>label>span{display:inline-block;padding:7px 13px;font-size:13px;font-weight:600;color:var(--ink-2);border-right:1px solid var(--line);cursor:pointer;user-select:none}
+.seg>a:last-child,.seg>label:last-child>span{border-right:0}
+.seg>a:hover{text-decoration:none;background:var(--head)}
+.seg>a.on{background:var(--head);box-shadow:inset 0 -2px 0 var(--brand);color:var(--ink)}
+.seg>label{margin:0;display:inline-flex}.seg>label>input{position:absolute;opacity:0;pointer-events:none}
+.seg>label>input:checked+span{background:#dcefd3;color:#1f4d1a}
+.seg>label>input:focus-visible+span{outline:2px solid var(--brand);outline-offset:-2px}
+.seg.big>label>span{padding:9px 22px;font-size:14px}
+.ma-filter{position:relative}
+.ma-filter>summary{list-style:none;cursor:pointer;border:1px solid var(--line-2);border-radius:8px;padding:7px 12px;font-size:13px;color:var(--mut);background:#fff;min-width:200px}
+.ma-filter>summary::-webkit-details-marker{display:none}
+.ma-filter .pop{position:absolute;z-index:30;top:calc(100% + 4px);left:0;width:330px;background:#fff;border:1px solid var(--line-2);border-radius:10px;box-shadow:var(--sh-2);padding:10px}
+.ma-filter .list{max-height:320px;overflow:auto;margin:8px 0;display:flex;flex-direction:column}
+.ma-filter label{display:flex;gap:8px;align-items:center;font-weight:400;font-size:13px;padding:4px 2px;margin:0}
+.ma-filter .foot{display:flex;justify-content:space-between;align-items:center}
+.pb .page-head h1{font-size:30px}
+.pb-sec{background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:18px;overflow:auto}
+.pb-bar{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#2e3b55;color:#fff;font-size:15px}
+.pb-bar span{font-size:13px;opacity:.85}
+.pb-bar.light{background:var(--head);color:var(--ink);border-bottom:1px solid var(--line)}
+.pb-grid{display:grid;min-width:min-content;padding:10px 14px 14px;border-bottom:1px solid var(--line)}
+.pb-grid:last-child{border-bottom:0}
+.pb-rh{font-weight:700;font-size:14px;padding:8px 6px;background:var(--head);border-radius:6px 0 0 6px;display:flex;align-items:center}
+.pb-dh{background:var(--head);padding:8px 6px;font-size:12px;color:var(--mut);border-left:1px solid #fff;line-height:1.3}
+.pb-dh b{color:var(--ink-2)}
+.pb-dh.today{background:#fff3b8}.pb-dh.hol{background:#cfe3f5}.pb-dh.we{color:var(--faint)}
+.pb-dh .hn{display:block;font-size:11px;color:#1a4f86;font-weight:600}
+.pb-rn{display:flex;flex-direction:column;justify-content:center;padding:6px 8px 6px 2px;font-size:13.5px;border-top:1px solid var(--line);min-height:44px}
+.pb-rn a{color:var(--ink);font-weight:500}
+.pb-c{border-top:1px solid var(--line);border-left:1px solid var(--line);padding:3px;min-height:44px;display:flex;flex-direction:column;gap:3px}
+.pb-c.hol{background:#eef5fb}.pb-c.today{background:#fffbe6}.pb-c.abs{background:repeating-linear-gradient(135deg,#fff,#fff 6px,#fbeaea 6px,#fbeaea 12px)}
+.pb-abs{font-size:11px;color:var(--err);font-weight:600;padding:1px 4px}
+.pb-ev{display:block;border-radius:4px;padding:3px 6px;font-size:12px;line-height:1.3;color:#fff;background:#4f6fb4;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.pb-ev:hover{text-decoration:none;filter:brightness(1.08)}
+.pb-ev .t{display:block;font-weight:700;overflow:hidden;text-overflow:ellipsis}
+.pb-ev .m{display:block;font-size:11px;opacity:.92;overflow:hidden;text-overflow:ellipsis}
+.pb-ev.open{background:#8e959e}.pb-ev.done{background:#2f8a57}.pb-ev.changed{background:#7a4fb4}
+.pb-ev.absent{background:#f6d4d4;color:#7a1f1f;text-decoration:line-through}
+/* ---- Termin oder Terminserie planen ---- */
+.portal h1 .x{color:var(--brand);font-weight:400;margin-right:6px}
+.portal h1 .x:hover{text-decoration:none}
+.tp{background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px 0}
+.tp-row{display:grid;grid-template-columns:56px minmax(0,1fr);gap:8px;padding:16px 22px 16px 10px;border-bottom:1px solid var(--line)}
+.tp-row:last-of-type{border-bottom:0}
+.tp-ic{font-size:22px;color:var(--faint);text-align:center;padding-top:4px}
+.tp-main{display:flex;flex-direction:column;gap:12px;min-width:0}
+.tp-main>select{max-width:640px}
+.tp-line{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.tp-time{display:inline-flex;gap:8px;align-items:center}
+.tp-time input[type=date]{width:150px}.tp-time input[type=time]{width:110px}
+.tp-dur{font-weight:600;color:var(--ink-2);background:var(--head);border:1px solid var(--line-2);border-radius:6px;padding:6px 10px}
+.tp-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
+.emp-row{display:flex;gap:6px;margin-bottom:6px;align-items:center}.emp-row select{flex:1}
+#emp-add{width:100%;justify-content:center}
+.tp-foot{display:flex;justify-content:flex-end;align-items:center;gap:10px;background:#eef1f8;margin:8px 0 -8px;padding:14px 22px;border-radius:0 0 12px 12px}
+.tp-foot .small{margin-right:auto}
+@media (max-width:700px){.tp-row{grid-template-columns:1fr}.tp-ic{display:none}}
+
 `;
 
 export const euro = (c: bigint) => formatEuro(c as Cents);
@@ -573,8 +633,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     key: 'disposition',
     label: 'Disposition',
     items: [
-      { label: 'Einsatzplanung (Wochenplan)', href: '/einsatzplanung' },
-      { label: 'Planung Monatstafel', href: '/einsatzplanung/monat' },
+      { label: 'Planung', href: '/einsatzplanung' },
       { label: 'Einsätze für abwesende Mitarbeiter', href: '/einsatzplanung/vertretungen' },
       { label: 'Arbeitsscheine (Unterschrift vor Ort)', href: '/arbeitsscheine' },
       { label: 'Qualitätskontrollen', href: '/qualitaet' },

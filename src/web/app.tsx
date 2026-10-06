@@ -42,6 +42,7 @@ import { registerProspectRoutes } from './routes-prospects.js';
 import { registerApplicantRoutes } from './routes-applicants.js';
 import { registerGlassRoutes } from './routes-glass.js';
 import { registerGarageRoutes } from './routes-garage.js';
+import { registerDeepCleaningRoutes } from './routes-deep-cleaning.js';
 import { registerEigenComplianceRoutes } from './routes-eigen-compliance.js';
 import { registerCostCenterRoutes } from './routes-costcenters.js';
 import { registerPlanningRoutes } from './routes-planning.js';
@@ -309,6 +310,7 @@ export function createApp(deps: Deps) {
   registerApplicantRoutes(ctx);
   registerGlassRoutes(ctx);
   registerGarageRoutes(ctx);
+  registerDeepCleaningRoutes(ctx);
   registerEigenComplianceRoutes(ctx);
 
   app.notFound((c) =>

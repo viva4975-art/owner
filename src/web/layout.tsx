@@ -497,6 +497,12 @@ summary.gear{list-style:none;cursor:pointer}summary.gear::-webkit-details-marker
 .gp-ev.gp-team_a{border-left-color:var(--brand)}.gp-ev.gp-team_b{border-left-color:#b88c1a}.gp-ev span{color:var(--mut)}
 @media print{.menu,.topbar,header,.tabs,.stat-grid,.toolbar,.page-head .acts,.flash{display:none!important}.gp-cell{min-height:80px}}
 @media (max-width:760px){.gp-cal{grid-template-columns:repeat(7,minmax(44px,1fr));font-size:9px}.gp-ev span{display:none}.gp-ap,.gp-dayrow{grid-template-columns:1fr 1fr}}
+/* Grundreinigung */
+.gr-prog{display:flex;align-items:center;gap:12px;margin-bottom:12px;font-size:13px;font-weight:600;color:var(--mut)}.gr-prog .progress{flex:1;height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.gr-prog .progress div{height:100%;background:var(--brand);transition:width .2s}
+.gr-step h3{margin-top:0}.gr-floor{display:grid;grid-template-columns:1.2fr 1fr 1fr auto;gap:8px;margin-bottom:6px}
+.gr-live{font-size:14px;margin-top:10px}.gr-box{margin-top:12px;padding:12px 14px;border-radius:10px;background:var(--head);font-size:13px;display:flex;flex-direction:column;gap:3px}
+.gr-box:empty{display:none}.gr-big{font-size:15px;margin-top:4px}
 /* Tiefgarage */
 .tg-row{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 10px;margin-top:8px;border-radius:8px;background:var(--head)}
 .tg-row.ok{background:var(--ok-50)}.tg-row.done{background:#f2f2f2;color:var(--mut)}
@@ -842,6 +848,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Urlaubskalender', href: '/urlaub/kalender' },
       { label: 'Glasreinigung', href: '/glasreinigung', sep: true },
       { label: 'Tiefgaragenreinigung', href: '/tiefgarage' },
+      { label: 'Planung Grundreinigung', href: '/grundreinigung' },
       { label: 'Sonderdienste (sonstige)', href: '/sonderdienste' },
     ],
   },

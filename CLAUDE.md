@@ -854,3 +854,12 @@ Testadresse.
   Druckseite, Excel als CSV. Bestätigen legt (bei verknüpftem Objekt) den Arbeitsschein an – Dawonia mit den 13
   Positionen (Stellplätze/Duplex als Menge), Münchner Wohnen eine Position. Keine TG-Daten im Backup.
   `e2e:kasse` jetzt 55 Prüfungen.
+- 2026-10-06: Runde 8g – Planung Grundreinigung wie die alte App (Disposition → Planung Grundreinigung): Jahr, Kacheln
+  Gesamt / Geplant / Übergeben / Ausgeführt (Archiv), Suche, Summen Umsatz VK / an Sub / Deckungsbeitrag, Karten mit Status,
+  Eigenpersonal/Sub, Beläge, VK, Stunden bzw. Preis an Sub („Vorschlag“), DB. Assistent in 5 Schritten (Kunde – Objekt aus
+  der Objektliste füllt Kunde/Adresse; Objekt; Flächen & Preis nach Belägen oder pauschal; Ausführung & Kalkulation mit
+  DB %, Material/Geräte von uns/vom Sub, Vorschlag an Sub, tatsächlicher Preis, bzw. Eigenleistung 40 €/h mit
+  Stundenbudget; Zeitraum, Status, Bemerkung). Rechnung cent-genau (Basispunkte, kaufmännisch gerundet), Sub gewählt +
+  „Geplant“ → „Übergeben“. PDF (Druckseite) und Excel (CSV) jeweils mit/ohne Preise. Noch nicht: Objektleitung-Sicht
+  ohne Preise, Übergabe direkt als Nachunternehmer-Auftrag. Keine Grundreinigungs-Daten im Backup.
+  `e2e:kasse` jetzt 62 Prüfungen (Kasse, Eigen-Compliance, Akquise, Bewerber, Glas, Tiefgarage, Grundreinigung).

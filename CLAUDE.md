@@ -716,3 +716,15 @@ Testadresse.
     Bieterfragen, Link). Im normalen Angebot keine Vergabe-Felder mehr (nur bei Angeboten aus einer Ausschreibung).
   - „Alle Rechnungen“ und „Archiv“ zusammengelegt: Jahr, Suche, gruppiert nach Leistungszeitraum (Standard) oder
     Rechnungsdatum, je Monat Summen, Belege und ZIP (nach Leistungszeitraum). `/rechnungen/archiv` leitet um.
+- 2026-10-06: Runde 4d – Nachunternehmer wie die alte App (Screenshots), Zahlungsliste:
+  - Nachunternehmer mit Reitern: Übersicht (Ampel, Stammdaten, Nachweise je Kategorie, Upload-Portal, Nachforderung,
+    Übergaben, Kündigung), **Stammdokumente / Unbedenklichkeit / Mindestlohn** (je Nachweis Karte mit PFLICHT/OPTIONAL,
+    Status, Datei, „gültig bis“ mit Knopf „+12M/+36M“, „Neue Version hochladen“, frühere Versionen aufklappbar –
+    archiviert, nie gelöscht; Zähler „5/6 + 0/2 optional“), Aufträge, **Ansprechpartner** (mehrere, Hauptkontakt geht in
+    die Stammdaten; `supplier_contacts`, Bestand übernommen), **Dokumente** (Verträge, Schriftverkehr, Rechnungen,
+    Sonstiges, write-once). Nachweis-Fristen und Ansprechpartner nicht mehr im Bearbeiten-Formular.
+  - Abrechnung von Nachunternehmer-Aufträgen zusätzlich **je Tag** (Monatspauschale, je Einsatz, je Stunde, je Tag).
+  - Nummern: Material- und NU-Bestellungen nutzen denselben Zähler `BE-JJJJ-NNNN` → keine doppelten Nummern.
+    Auftragsvorlage der alten App folgt (Ahmed schickt sie).
+  - Zahlungsliste ist ein Reiter im Rechnungseingang (Menü „Rechnungseingang & Zahlungsliste“).
+  - Tests: `e2e:nachunternehmer` 27 Prüfungen (Reiter, +36M, Versionen, Ansprechpartner, je Tag).

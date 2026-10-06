@@ -577,18 +577,24 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
 
   // ================================================================== Rechnungseingang
 
+  /** Reiter des Rechnungseingangs; die Zahlungsliste ist ein Reiter davon (nicht separat). */
+  const incomingTabs = (all: { status: IncomingStatus }[]): Tab[] => [
+    ...(['erfasst', 'freigegeben', 'bezahlt', 'abgelehnt'] as IncomingStatus[]).map((s) => ({
+      key: s,
+      label: INCOMING_STATUS[s][0]!.toUpperCase() + INCOMING_STATUS[s].slice(1),
+      href: `/rechnungseingang?status=${s}`,
+      count: all.filter((i) => i.status === s).length,
+    })),
+    { key: 'alle', label: 'Alle', href: '/rechnungseingang?status=alle', count: all.length },
+    { key: 'zahlung', label: 'Zahlungsliste', href: '/zahlungsliste' },
+  ];
+
   app.get('/rechnungseingang', async (c) => {
     const st = (c.req.query('status') ?? 'erfasst') as IncomingStatus | 'alle';
     const all = await listIncoming(sql);
     const rows = st === 'alle' ? all : all.filter((i) => i.status === st);
     const today = todayBerlin();
-    const tabs: Tab[] = (['erfasst', 'freigegeben', 'bezahlt', 'abgelehnt'] as IncomingStatus[]).map((s) => ({
-      key: s,
-      label: INCOMING_STATUS[s][0]!.toUpperCase() + INCOMING_STATUS[s].slice(1),
-      href: `/rechnungseingang?status=${s}`,
-      count: all.filter((i) => i.status === s).length,
-    }));
-    tabs.push({ key: 'alle', label: 'Alle', href: '/rechnungseingang?status=alle', count: all.length });
+    const tabs = incomingTabs(all);
     const open = all.filter((i) => i.status === 'freigegeben');
     return page(
       c,
@@ -1210,7 +1216,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       'Zahlungsliste',
       'lieferanten',
       <>
-        <PageHead title="Zahlungsliste">
+        <PageHead title="Rechnungseingang" crumbs={[['Rechnungseingang', '/rechnungseingang']]}>
           <a class="btn sec" href={`/zahlungsliste.csv?datum=${pay}`} style="margin-left:auto">
             CSV
           </a>
@@ -1218,6 +1224,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             Drucken
           </button>
         </PageHead>
+        <Tabs tabs={incomingTabs(await listIncoming(sql))} active="zahlung" />
         <div class="kpis">
           <div class="kpi">
             <div class="l">offen (freigegeben)</div>

@@ -485,8 +485,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Nachunternehmer: Aufträge', href: '/nachunternehmer/auftraege' },
       { label: 'Nachunternehmer: Soll/Ist je Monat', href: '/nachunternehmer/monat' },
       { label: 'Bestellungen (BE-JJJJ-NNNN)', href: '/bestellungen' },
-      { label: 'Rechnungseingang', href: '/rechnungseingang' },
-      { label: 'Zahlungsliste', href: '/zahlungsliste' },
+      { label: 'Rechnungseingang & Zahlungsliste', href: '/rechnungseingang' },
     ],
   },
   {

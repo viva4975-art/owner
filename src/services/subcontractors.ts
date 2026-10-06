@@ -428,6 +428,7 @@ export const FREQUENCY: Record<string, string> = {
 export const BILLING: Record<string, string> = {
   pauschale_monat: 'Pauschale je Monat',
   pauschale_einsatz: 'Pauschale je Einsatz',
+  tag: 'je Tag',
   stunde: 'je Stunde',
 };
 export const SC_STATUS: Record<string, string> = {
@@ -645,7 +646,13 @@ export async function subcontractPdf(sql: Sql, id: string) {
   const [site] = await sql<{ street: string; postal_code: string; city: string }[]>`
     select street, postal_code, city from app.sites where id = ${sc.site_id}`;
   const unit =
-    sc.billing === 'stunde' ? 'je Stunde' : sc.billing === 'pauschale_einsatz' ? 'je Einsatz' : 'monatlich';
+    sc.billing === 'stunde'
+      ? 'je Stunde'
+      : sc.billing === 'pauschale_einsatz'
+        ? 'je Einsatz'
+        : sc.billing === 'tag'
+          ? 'je Tag'
+          : 'monatlich';
   return renderLetterPdf({
     title: `Auftrag ${sc.number}`,
     date: sc.issued_at ? sc.issued_at.toISOString().slice(0, 10) : todayBerlin(),
@@ -850,4 +857,69 @@ export async function compliancePdf(sql: Sql, supplierId: string) {
     ],
     signature: null,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Ansprechpartner (mehrere je Lieferant/Nachunternehmer)
+// ---------------------------------------------------------------------------
+
+export interface SupplierContact {
+  id: string;
+  supplier_id: string;
+  name: string;
+  role: string | null;
+  phone: string | null;
+  mobile: string | null;
+  email: string | null;
+  note: string | null;
+  is_primary: boolean;
+  version: number;
+}
+
+export async function listSupplierContacts(sql: Sql, supplierId: string) {
+  return sql<SupplierContact[]>`
+    select * from app.supplier_contacts where supplier_id = ${supplierId} order by is_primary desc, name`;
+}
+
+export async function saveSupplierContact(
+  sql: Sql,
+  id: string,
+  supplierId: string,
+  p: Omit<SupplierContact, 'id' | 'supplier_id' | 'version'> & { expectedVersion: number | null },
+  actor: string,
+) {
+  if (!p.name.trim()) throw new BusinessError('Bitte Namen angeben');
+  if (p.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(p.email)) throw new BusinessError('E-Mail ungültig');
+  await sql.begin(async (tx) => {
+    const [cur] = await tx<{ supplier_id: string; version: number }[]>`
+      select supplier_id, version from app.supplier_contacts where id = ${id} for update`;
+    if (cur && cur.supplier_id !== supplierId)
+      throw new BusinessError('Kontakt gehört zu einem anderen Lieferanten');
+    assertVersion(cur?.version, p.expectedVersion, 'Der Ansprechpartner');
+    const row = {
+      name: p.name.trim(),
+      role: p.role,
+      phone: p.phone,
+      mobile: p.mobile,
+      email: p.email,
+      note: p.note,
+      is_primary: p.is_primary,
+    };
+    if (p.is_primary)
+      await tx`update app.supplier_contacts set is_primary = false where supplier_id = ${supplierId} and id <> ${id}`;
+    await tx`
+      insert into app.supplier_contacts ${tx({ id, supplier_id: supplierId, ...row } as Record<string, unknown>)}
+      on conflict (id) do update set ${tx(row as Record<string, unknown>)}`;
+    // Hauptkontakt auch in den Stammdaten (Anschreiben, Nachforderung, PDF)
+    if (p.is_primary)
+      await tx`update app.suppliers set contact_name = ${row.name}, email = coalesce(${row.email}, email),
+                      phone = coalesce(${row.phone ?? row.mobile}, phone) where id = ${supplierId}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'save', 'supplier_contact', ${id}, ${tx.json({ supplier_id: supplierId, name: row.name })})`;
+  });
+}
+
+export async function deleteSupplierContact(sql: Sql, id: string, actor: string) {
+  await sql`delete from app.supplier_contacts where id = ${id}`;
+  await sql`insert into app.audit_log (actor, action, entity, entity_id) values (${actor}, 'delete', 'supplier_contact', ${id})`;
 }

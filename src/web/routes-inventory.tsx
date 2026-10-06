@@ -168,10 +168,10 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
     const id = c.req.param('id');
     const s = await getSupplier(sql, id);
     if (!s) return c.redirect(`/lieferanten/${id}/bearbeiten`);
+    // Nachunternehmer: Seite mit Reitern (Übersicht, Nachweise, Aufträge, Ansprechpartner, Dokumente)
+    if (s.kind === 'nachunternehmer') return c.redirect(`/lieferanten/${id}/nachweise`);
     const files = await listFiles(sql, { type: 'supplier', id });
     const articles = (await listArticles(sql)).filter((a) => a.supplier_id === id);
-    const today = todayBerlin();
-    const exp = (d: string | null) => (d ? Math.round((Date.parse(d) - Date.parse(today)) / 86400000) : null);
     return page(
       c,
       s.name,
@@ -182,25 +182,6 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
             Bearbeiten
           </a>
         </PageHead>
-        {s.kind === 'nachunternehmer' && (
-          <div class="actions" style="margin-top:0">
-            <a class="btn" href={`/lieferanten/${id}/nachweise`}>
-              Nachweise, Aufträge, Portal, Kündigung
-            </a>
-          </div>
-        )}
-        {s.kind === 'nachunternehmer' &&
-          (!s.exemption_valid_until || (exp(s.exemption_valid_until) ?? 0) < 0) && (
-            <div class="flash err">
-              <Icon name="alert" />
-              <span>
-                Keine gültige Freistellungsbescheinigung (§ 48b EStG): Von Zahlungen für Bauleistungen müssen
-                15 % Bauabzugsteuer einbehalten und ans Finanzamt abgeführt werden. Gebäudereinigung gilt in
-                der Regel nicht als Bauleistung – mit dem Steuerberater klären, welche Leistungen betroffen
-                sind.
-              </span>
-            </div>
-          )}
         <div class="cols">
           <div>
             <div class="card">
@@ -230,7 +211,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
           <div class="card">
             <dl class="kv">
               <dt>Art</dt>
-              <dd>{s.kind === 'nachunternehmer' ? 'Nachunternehmer' : 'Lieferant'}</dd>
+              <dd>Lieferant</dd>
               <dt>Anschrift</dt>
               <dd>
                 {s.street}
@@ -249,18 +230,6 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
               <dd>{s.iban ? `${s.iban.replace(/(.{4})/g, '$1 ').trim()} ${s.bic ?? ''}` : '–'}</dd>
               <dt>Zahlungsziel</dt>
               <dd>{s.payment_terms_days} Tage</dd>
-              {s.kind === 'nachunternehmer' && (
-                <>
-                  <dt>Freistellung § 48b</dt>
-                  <dd>
-                    <Expiry date={s.exemption_valid_until} days={exp(s.exemption_valid_until)} />
-                  </dd>
-                  <dt>Unbedenklichkeit</dt>
-                  <dd>
-                    <Expiry date={s.clearance_valid_until} days={exp(s.clearance_valid_until)} />
-                  </dd>
-                </>
-              )}
               {s.notes && (
                 <>
                   <dt>Notiz</dt>
@@ -329,7 +298,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
             <Field name="street" label="Straße" value={s.street} />
             <Field name="postal_code" label="PLZ" value={s.postal_code} />
             <Field name="city" label="Ort" value={s.city} />
-            <Field name="contact_name" label="Ansprechpartner" value={s.contact_name} />
+            {isNew && <Field name="contact_name" label="Ansprechpartner" value={s.contact_name} />}
             <Field name="email" label="E-Mail" value={s.email} type="email" />
             <Field name="phone" label="Telefon" value={s.phone} />
             <Field name="vat_id" label="USt-ID" value={s.vat_id} />
@@ -342,23 +311,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
               type="number"
             />
           </div>
-          <h2>Nachunternehmer-Nachweise</h2>
-          <p class="small mut" style="margin-top:0">
-            Werden beim Hochladen/Prüfen der Nachweise (Reiter „Nachweise“) automatisch gesetzt.
-          </p>
           <div class="grid">
-            <Field
-              name="exemption_valid_until"
-              label="Freistellungsbescheinigung § 48b gültig bis"
-              value={s.exemption_valid_until}
-              type="date"
-            />
-            <Field
-              name="clearance_valid_until"
-              label="Unbedenklichkeitsbescheinigungen gültig bis"
-              value={s.clearance_valid_until}
-              type="date"
-            />
             <Check name="active" label="Aktiv" checked={s.active !== false} />
           </div>
           <div style="margin-top:12px">
@@ -382,7 +335,9 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
     const id = c.req.param('id');
     const body = await c.req.parseBody();
     await saveSupplier(sql, id, body, versionOf(body.version), c.get('actor'));
-    return back(c, `/lieferanten/${id}`, { ok: 'Gespeichert.' });
+    return back(c, body.kind === 'nachunternehmer' ? `/lieferanten/${id}/nachweise` : `/lieferanten/${id}`, {
+      ok: 'Gespeichert.',
+    });
   });
 
   // ================================================================== Artikel & Nachbestellung

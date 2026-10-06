@@ -147,8 +147,14 @@ export async function saveSupplier(
   expectedVersion: number | null,
   actor: string,
 ) {
-  const data = parse(supplierInput, body);
-  await upsert(sql, 'suppliers', id, data, expectedVersion, 'Der Lieferant', actor);
+  const parsed = parse(supplierInput, body) as Record<string, unknown>;
+  // Felder, die nicht mehr im Formular stehen (Nachweis-Fristen, Ansprechpartner → eigene Reiter), nicht überschreiben
+  const b = (body ?? {}) as Record<string, unknown>;
+  const keep = new Set(
+    ['exemption_valid_until', 'clearance_valid_until', 'contact_name'].filter((k) => !(k in b)),
+  );
+  const data = Object.fromEntries(Object.entries(parsed).filter(([k]) => !keep.has(k)));
+  await upsert(sql, 'suppliers', id, data as never, expectedVersion, 'Der Lieferant', actor);
 }
 
 export const suggestSupplierNo = (sql: Sql) => nextNo(sql, 'suppliers', 'supplier_no', 70001);

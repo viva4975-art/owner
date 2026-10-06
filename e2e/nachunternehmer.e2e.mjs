@@ -49,26 +49,54 @@ await p.selectOption('#legal_form', 'gmbh');
 await p.fill('#iban', 'DE02120300000000202051');
 await p.click('button:has-text("Speichern")');
 await p.waitForLoadState();
-await p.click('a:has-text("Nachweise, Aufträge, Portal")');
-await p.waitForLoadState();
 const nuUrl = p.url().split('?')[0];
+check('nach dem Speichern Übersicht mit Reitern', nuUrl.endsWith('/nachweise'), nuUrl);
+{
+  const tabsText = await p.locator('.tabs').first().innerText();
+  check(
+    'Reiter wie alte App',
+    ['Stammdokumente', 'Unbedenklichkeit', 'Mindestlohn', 'Aufträge', 'Ansprechpartner', 'Dokumente'].every((t) =>
+      tabsText.includes(t),
+    ),
+    tabsText,
+  );
+}
 check('Ampel „Nachweise fehlen“', (await p.locator('.status-xl').innerText()).includes('Nachweise fehlen'));
+await p.goto(nuUrl + '/stammdokumente');
 check('HR-Auszug bei GmbH verlangt', (await p.locator('body').innerText()).includes('Handelsregisterauszug'));
 
-console.log('2. Nachweis im Büro hochladen');
-const row = p.locator('.list .row', { hasText: 'Nachunternehmervertrag' });
-await row.locator('summary:has-text("Hochladen")').click();
+console.log('2. Nachweis im Büro hochladen (Reiter Stammdokumente)');
+const row = p.locator('section.doc-card', { hasText: 'Nachunternehmervertrag' });
 await row.locator('input[type=file]').setInputFiles(pdfPath);
+await row.locator('button:has-text("+36M")').click();
+check(
+  '„+36M“ setzt das Datum',
+  /^\d{4}-\d{2}-\d{2}$/.test(await row.locator('input[type=date]').inputValue()),
+);
 await row.locator('input[type=date]').fill('2029-09-30');
-await row.locator('button:has-text("Speichern")').click();
+await row.locator('button:has-text("Datei hochladen")').click();
 await p.waitForLoadState();
 check('gespeichert', (await flash(p)).includes('Nachweis gespeichert'), await flash(p));
+check('zurück im Reiter', p.url().includes('/nachweise/stammdokumente'), p.url());
 check(
   'Vertrag gültig',
-  (await p.locator('.list .row', { hasText: 'Nachunternehmervertrag' }).innerText()).includes(
-    'bis 30.09.2029',
+  (await p.locator('section.doc-card', { hasText: 'Nachunternehmervertrag' }).innerText()).includes(
+    '30.09.2029',
   ),
 );
+// neue Version → alte archiviert
+const row2 = p.locator('section.doc-card', { hasText: 'Nachunternehmervertrag' });
+await row2.locator('input[type=file]').setInputFiles(pdfPath);
+await row2.locator('input[type=date]').fill('2029-10-31');
+await row2.locator('button:has-text("Neue Version hochladen")').click();
+await p.waitForLoadState();
+check(
+  'frühere Version archiviert',
+  (await p.locator('section.doc-card', { hasText: 'Nachunternehmervertrag' }).innerText()).includes(
+    'Frühere Versionen (1)',
+  ),
+);
+await p.goto(nuUrl);
 
 console.log('3. Portal');
 await p.click('button:has-text("Zugang einrichten")');
@@ -109,17 +137,34 @@ check('Upload in „Zu prüfen“', (await f.count()) === 1);
 await f.locator('button:has-text("Gültig")').click();
 await p.waitForLoadState();
 check('geprüft', (await flash(p)).includes('Geprüft'), await flash(p));
-await p.goto(nuUrl);
+await p.goto(nuUrl + '/stammdokumente');
 check(
   'Haftpflicht jetzt gültig',
-  (await p.locator('.list .row', { hasText: 'Betriebshaftpflicht' }).innerText()).includes('31.08.2027'),
+  (await p.locator('section.doc-card', { hasText: 'Betriebshaftpflicht' }).innerText()).includes(
+    '31.08.2027',
+  ),
 );
 await p.screenshot({ path: `${out}/n2-nachweise.png`, fullPage: true });
 
+console.log('4b. Ansprechpartner');
+await p.goto(nuUrl.replace('/nachweise', '/ansprechpartner'));
+await p.fill('#k_name', 'Denis Beispiel');
+await p.fill('#k_role', 'Geschäftsführer');
+await p.fill('#k_mobile', '0172 1234567');
+await p.check('#k_primary');
+await p.click('button:has-text("Speichern")');
+await p.waitForLoadState();
+check(
+  'Ansprechpartner gespeichert',
+  (await p.locator('tr', { hasText: 'Denis Beispiel' }).innerText()).includes('Hauptkontakt'),
+);
+
 console.log('5. Auftrag');
+await p.goto(nuUrl.replace('/nachweise', '/auftraege'));
 await p.click('a:has-text("+ Auftrag")');
 await p.waitForLoadState();
 await p.selectOption('#site', { index: 1 });
+check('Abrechnung „je Tag“ wählbar', (await p.locator('#billing option[value=tag]').count()) === 1);
 await p.fill('#price', '1.250,00');
 await p.click('button:has-text("Speichern")');
 await p.waitForLoadState();
@@ -138,6 +183,12 @@ check(
 );
 await p.screenshot({ path: `${out}/n3-uebersicht.png`, fullPage: true });
 check('Zahlungsliste lädt', (await p.goto(B + '/zahlungsliste')).ok());
+check(
+  'Zahlungsliste ist Reiter im Rechnungseingang',
+  (await p.locator('.tabs a.on, .tabs a.active', { hasText: 'Zahlungsliste' }).count()) +
+    (await p.locator('.tabs a', { hasText: 'Zahlungsliste' }).count()) >
+    0,
+);
 check('Soll/Ist lädt', (await p.goto(B + '/nachunternehmer/monat')).ok());
 
 await browser.close();

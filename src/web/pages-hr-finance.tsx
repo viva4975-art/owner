@@ -697,7 +697,7 @@ export const PaymentsSection: FC<{
           <div>
             <label for="method">Art</label>
             <select id="method" name="method">
-              {(['ueberweisung', 'lastschrift', 'bar', 'skonto', 'verrechnung'] as const).map((m) => (
+              {(['ueberweisung', 'bar', 'skonto', 'verrechnung'] as const).map((m) => (
                 <option value={m}>{PAYMENT_METHODS[m]}</option>
               ))}
             </select>

@@ -112,6 +112,39 @@ check(
     await p.locator('.card', { hasText: 'Zuletzt bezahlt' }).locator('tr', { hasText: invNo }).innerText()
   ).includes('6,88'),
 );
+// zurücknehmen und stattdessen per SEPA-Datei bezahlen
+await p
+  .locator('.card', { hasText: 'Zuletzt bezahlt' })
+  .locator('tr', { hasText: invNo })
+  .locator('button:has-text("zurücknehmen")')
+  .click();
+await p.waitForLoadState();
+check('Zahlung zurückgenommen', (await flash(p)).includes('zurückgenommen'), await flash(p));
+for (const cb of await p.locator('input[name=invoice]').all()) if (await cb.isChecked()) await cb.uncheck();
+await p.locator('tr', { hasText: invNo }).locator('input[name=invoice]').check();
+await p.click('button:has-text("SEPA-Datei erstellen")');
+await p.waitForLoadState();
+check('SEPA-Datei erstellt', (await flash(p)).includes('SEPA-Datei erstellt'), await flash(p));
+check('Zahlungslauf mit Skonto', (await p.locator('tr', { hasText: invNo }).innerText()).includes('337,03'));
+const xml = await p.request.get(p.url().split('?')[0] + '/sepa.xml');
+const xmlText = await xml.text();
+check(
+  'pain.001 mit Betrag',
+  xml.ok() && xmlText.includes('pain.001.001.09') && xmlText.includes('337.03'),
+  xmlText.slice(0, 200),
+);
+await p.goto(B + '/zahlungsliste');
+check(
+  'unter „Zuletzt bezahlt“ als SEPA, nicht zurücknehmbar',
+  (
+    await p.locator('.card', { hasText: 'Zuletzt bezahlt' }).locator('tr', { hasText: invNo }).innerText()
+  ).includes('SEPA-Zahlungslauf') &&
+    (await p
+      .locator('.card', { hasText: 'Zuletzt bezahlt' })
+      .locator('tr', { hasText: invNo })
+      .locator('button')
+      .count()) === 0,
+);
 check('alte Adresse leitet um', (await p.goto(B + '/zahlungslauf')).url().endsWith('/zahlungsliste'));
 
 console.log('4. DATEV und Nachkalkulation');

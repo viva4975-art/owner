@@ -52,7 +52,6 @@ import { createSignDocument, requestsForEmployee, signRequest } from '../service
 import { saveException } from '../services/planning.js';
 import { completeRun, planRun, saveSpecialService } from '../services/special-services.js';
 import { copyOffer, saveOffer, setOfferStatus } from '../services/offers.js';
-import { saveMandate } from '../services/direct-debit.js';
 import { importStatement } from '../services/bank.js';
 import { applyImport } from '../services/fortytools-import.js';
 import { saveSiteBilling, siteBillingInput } from '../services/masterdata.js';
@@ -1020,7 +1019,7 @@ async function phase5() {
   console.log('Demo Phase 5 angelegt.');
 }
 
-/** Planung (Vertretung), Sonderdienste, Angebote mit Alternativen/Folgeangebot, Bankabgleich, Lastschrift, Import. */
+/** Planung (Vertretung), Sonderdienste, Angebote mit Alternativen/Folgeangebot, Bankabgleich, Import. */
 async function phase6() {
   const [done] = await sql`select 1 from app.special_services limit 1`;
   if (done) return;
@@ -1202,25 +1201,6 @@ async function phase6() {
   );
   await setOfferStatus(sql, R, 'versendet', A);
   await setOfferStatus(sql, R, 'abgelehnt', A);
-  // --- Lastschrift: Gläubiger-ID (Muster der Bundesbank) + Mandat Musterfirma
-  await sql`update app.company set creditor_id = 'DE98ZZZ09999999999' where creditor_id is null`;
-  await saveMandate(
-    sql,
-    '00000000-0000-4000-8000-0000000d6301',
-    {
-      customerId: DEMO.company,
-      mandateRef: 'VD-29902-001',
-      signedOn: addDays(today, -30),
-      accountHolder: 'DEMO Musterfirma GmbH',
-      iban: 'DE02120300000000202051',
-      bic: null,
-      scheme: 'CORE',
-      active: true,
-      note: 'Original im Ordner Lastschriftmandate',
-      expectedVersion: null,
-    },
-    A,
-  );
   // --- Kontoauszug: Zahlung auf eine offene Rechnung, Miete, unbekannter Eingang
   const [open] = await sql<{ number: string; open_cents: bigint }[]>`
     select number, open_cents from app.open_items where open_cents > 0 order by due_date limit 1`;

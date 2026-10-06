@@ -110,8 +110,7 @@ Testadresse.
 - [ ] Lohnzuschlag für die Nachkalkulation (Vorschlag 45 %) mit Steuerberater/Lohnbüro festlegen
 - [ ] Mahngebühren/Verzugspauschale (40 € § 288 Abs. 5 BGB) mit Steuerberater/Anwalt festlegen
 - [ ] Je Behörde klären: nimmt sie XRechnung per E-Mail an oder nur über ein Portal (ZRE/OZG-RE, Peppol)?
-- [ ] Lastschrift: Gläubiger-Identifikationsnummer (Bundesbank) beantragen/mitteilen; Lastschrift-Vereinbarung mit der Bank
-      (Einreichung pain.008, Limit); erste Datei als Testeinreichung mit der Bank prüfen; Mandatsformular (Muster) freigeben
+- [ ] SEPA-Zahlungslauf: erste pain.001-Datei als Testeinreichung bei der Bank hochladen (Format/Limit prüfen)
 - [ ] Je ein echter Kontoauszug (CAMT.053, sonst CSV) von Münchner Bank und Targobank zum Testen des Imports
 
 ## Risiken (rechtlich/steuerlich)
@@ -540,7 +539,7 @@ Testadresse.
   mit Leitweg-ID, Adresse vollständig, Skontofrist < Zahlungsziel. Mahnungen gehen weiter an die Kundenadresse.
   Behoben: `hidden` wurde bei Rastern/Flex-Elementen von CSS überschrieben (jetzt `[hidden]{display:none!important}`).
   Tests: 226 Unit-/DB-Tests, neu `npm run e2e:rechnungsangaben` (10 Prüfungen).
-- 2026-10-06: SEPA-Zahlungslauf entfernt (Ahmed) → Lieferanten → Zahlungsliste: freigegebene Eingangsrechnungen nach Fälligkeit/
+- 2026-10-06: SEPA-Zahlungslauf entfernt (Ahmed) – **Missverständnis, korrigiert, siehe nächster Eintrag** → Lieferanten → Zahlungsliste: freigegebene Eingangsrechnungen nach Fälligkeit/
   Skontofrist, Zahlbetrag mit Skonto zum gewählten Zahlungstag, IBAN + Verwendungszweck zum Kopieren, Summe der Auswahl,
   CSV/Druck. „Als bezahlt festhalten“ (Datum, Zahlart, Skonto gezogen) → DATEV-Zahlungsausgang; von Hand erfasste Zahlung
   zurücknehmbar (Lauf-Zahlungen nicht). Alte Zahlungsläufe bleiben unter /zahlungslauf/<id> abrufbar, /zahlungslauf leitet um.
@@ -577,3 +576,11 @@ Testadresse.
   Nachkalkulation rechnet mit der Aufteilung; neu Auswertungen → „Kostenstellen“ (je Kostenart, Zeitraum) mit Liste „nicht
   zugeordnet“. Bestand übernommen (Rechnungen mit Objekt).
   Tests: 232 Unit-/DB-Tests; alle 22 Browser-Suiten grün.
+- 2026-10-06: Korrektur (Ahmed: „die SEPA-Lastschriften sollen raus, nicht der Zahlungslauf“):
+  - SEPA-Lastschriften (Einzug bei Kunden) entfernt: Menü, Reiter Transfer, Einstellung Gläubiger-ID, Mandate,
+    Einzugsdateien; `/transfer/lastschriften` leitet auf Kontoumsätze. Rechnungen enthalten keinen Lastschrift-Hinweis mehr
+    (immer Überweisung mit Skonto/GiroCode). Tabellen und Altdaten bleiben in der Datenbank (nichts gelöscht), Code in
+    `services/direct-debit.ts` bleibt für einen späteren Wiedereinbau.
+  - SEPA-Zahlungslauf wieder da, als Knopf in der Zahlungsliste: Rechnungen auswählen → Ausführungstag + eigenes Konto →
+    „SEPA-Datei erstellen“ (pain.001.001.09, archiviert, Rechnungen gelten als bezahlt, nicht zurücknehmbar). Liste der
+    SEPA-Dateien mit XML-Download. „Als bezahlt festhalten“ für Einzelüberweisungen bleibt.

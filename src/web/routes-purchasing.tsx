@@ -15,7 +15,7 @@ import {
 } from '../services/datev.js';
 import { BusinessError } from '../services/errors.js';
 import { listArticles, listSuppliers } from '../services/inventory.js';
-import { listSites } from '../services/masterdata.js';
+import { getSeller, listSites } from '../services/masterdata.js';
 import {
   type CostCategory,
   type IncomingStatus,
@@ -33,6 +33,8 @@ import {
   undoPaid,
   PAID_METHOD,
   type PaidMethod,
+  createPaymentRun,
+  listPaymentRuns,
   paymentRunItems,
   paymentRunXml,
   receiveOrder,
@@ -1173,9 +1175,11 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
   app.get('/zahlungsliste', async (c) => {
     const today = todayBerlin();
     const pay = isDate(c.req.query('datum')) ? c.req.query('datum')! : today;
-    const [list, crit, recent] = await Promise.all([
+    const [list, crit, seller, runs, recent] = await Promise.all([
       paymentList(sql, pay),
       criticalSupplierIds(sql),
+      getSeller(sql),
+      listPaymentRuns(sql),
       sql<
         {
           id: string;
@@ -1353,6 +1357,40 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               Als bezahlt festhalten
             </button>
           </div>
+          <div
+            class="formfoot"
+            style="flex-wrap:wrap;justify-content:flex-start;gap:10px;border-top:0;padding-top:0"
+          >
+            <span style="font-weight:600">oder SEPA-Datei für die Bank:</span>
+            <input type="hidden" name="run_id" value={randomUUID()} />
+            <label for="ausfuehrung" class="small" style="margin:0">
+              Ausführung am
+            </label>
+            <input
+              id="ausfuehrung"
+              type="date"
+              name="ausfuehrung"
+              value={today}
+              min={today}
+              style="max-width:170px"
+            />
+            <select name="konto" aria-label="von Konto" style="max-width:260px">
+              {seller.bankAccounts.map((a) => (
+                <option value={a.iban}>
+                  {a.name} · …{a.iban.replace(/\s/g, '').slice(-4)}
+                </option>
+              ))}
+            </select>
+            <button
+              class="btn sec"
+              style="margin-left:auto"
+              formaction="/zahlungsliste/sepa"
+              disabled={!list.length}
+              onclick="return confirm('SEPA-Datei für die ausgewählten Rechnungen erstellen? Die Rechnungen gelten danach als bezahlt.')"
+            >
+              <Icon name="download" /> SEPA-Datei erstellen
+            </button>
+          </div>
           <script
             dangerouslySetInnerHTML={{
               __html: `window.vdSum=function(){var t=0,n=0;document.querySelectorAll('input[name=invoice]:checked').forEach(function(x){t+=Number(x.dataset.amount);n++});document.getElementById('sel-sum').textContent=n?('Ausgewählt: '+n+' · '+(t/100).toLocaleString('de-DE',{style:'currency',currency:'EUR'})):'';};window.vdSum();`,
@@ -1360,10 +1398,37 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
           />
         </form>
         <p class="small mut">
-          Bezahlt wird im Online-Banking (IBAN und Verwendungszweck zum Kopieren). Danach hier festhalten –
-          Zahlungen gehen in den DATEV-Export. Skonto mindert die Vorsteuer (§ 17 UStG), Buchung übernimmt der
-          Steuerberater.
+          Entweder im Online-Banking einzeln überweisen (IBAN und Verwendungszweck zum Kopieren) und hier
+          festhalten, oder eine SEPA-Datei (pain.001) erstellen und im Online-Banking hochladen – die
+          Rechnungen sind dann als bezahlt gebucht. Zahlungen gehen in den DATEV-Export. Skonto mindert die
+          Vorsteuer (§ 17 UStG), Buchung übernimmt der Steuerberater.
         </p>
+        {runs.length > 0 && (
+          <div class="card">
+            <h3>SEPA-Dateien</h3>
+            <div class="list">
+              {runs.slice(0, 10).map((r) => (
+                <div class="row">
+                  <span class="dot ok" />
+                  <div class="main">
+                    <a href={`/zahlungslauf/${r.id}`}>
+                      <b style="color:var(--ink)">{r.number}</b>
+                    </a>
+                    <div class="small mut">
+                      Ausführung {dateDe(r.execution_date)} · {r.item_count} Überweisungen · {r.created_by}
+                    </div>
+                  </div>
+                  <div class="side">
+                    <span class="when">{euro(r.total_cents)}</span>
+                    <a class="btn ghost sm" href={`/zahlungslauf/${r.id}/sepa.xml`}>
+                      XML
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <div class="card">
           <h3>Zuletzt bezahlt (60 Tage)</h3>
           <div class="tbl">
@@ -1439,6 +1504,29 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       if (e instanceof BusinessError) return back(c, `/zahlungsliste?datum=${date}`, { fehler: e.message });
       throw e;
     }
+  });
+
+  app.post('/zahlungsliste/sepa', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const date = str(b, 'ausfuehrung') ?? '';
+    const runId = str(b, 'run_id') ?? '';
+    if (!new RegExp(`^${UUID}$`).test(runId))
+      return back(c, '/zahlungsliste', { fehler: 'Bitte Seite neu laden' });
+    try {
+      await createPaymentRun(deps, {
+        id: runId,
+        invoiceIds: arr(b, 'invoice'),
+        executionDate: date,
+        debtorIban: str(b, 'konto') ?? '',
+        actor: c.get('actor'),
+      });
+    } catch (e) {
+      if (e instanceof BusinessError) return back(c, '/zahlungsliste', { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/zahlungslauf/${runId}`, {
+      ok: 'SEPA-Datei erstellt – jetzt herunterladen und im Online-Banking hochladen.',
+    });
   });
 
   app.post(`/zahlungsliste/:id{${UUID}}/zuruecknehmen`, async (c) => {

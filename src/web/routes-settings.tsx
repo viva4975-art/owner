@@ -29,11 +29,6 @@ const SECTIONS: { title: string; items: [string, string, string][] }[] = [
       ['Leistungsarten', '/einstellungen/leistungsarten', 'Stammliste mit Lohnkostenanteil'],
       ['Mahnstufen & Gebühren', '/mahnungen/einstellungen', 'Stufen, Fristen, Mahngebühren'],
       ['Briefvorlagen für Kunden', '/kunden/vorlagen', 'Serienbriefe, Schriftverkehr'],
-      [
-        'SEPA-Lastschrift: Gläubiger-ID',
-        '/transfer/lastschriften',
-        'für Einzüge und Hinweis auf der Rechnung',
-      ],
     ],
   },
   {

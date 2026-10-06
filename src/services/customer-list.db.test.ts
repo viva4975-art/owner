@@ -32,7 +32,11 @@ describe.skipIf(!available)('Kundenliste und Serienbrief', () => {
     const ex = await filteredCustomers(sql, { status: 'ehemalig', letter: null, q: null });
     expect(ex.rows).toHaveLength(1);
     const first = all.rows[0]!;
-    const byLetter = await filteredCustomers(sql, { status: null, letter: first.name[0]!.toUpperCase(), q: null });
+    const byLetter = await filteredCustomers(sql, {
+      status: null,
+      letter: first.name[0]!.toUpperCase(),
+      q: null,
+    });
     expect(byLetter.rows.map((r) => r.id)).toContain(first.id);
     const byQ = await filteredCustomers(sql, { status: null, letter: null, q: first.customer_no });
     expect(byQ.rows.map((r) => r.id)).toEqual([first.id]);
@@ -43,13 +47,25 @@ describe.skipIf(!available)('Kundenliste und Serienbrief', () => {
   it('Serienbrief: nur Kundenvorlagen, ein PDF, je Kunde in der Akte, doppelt = nichts doppelt', async () => {
     const [t] = await listTemplates(sql, false, 'kunde');
     const [hr] = await listTemplates(sql, false, 'mitarbeiter');
-    const ids = (await filteredCustomers(sql, { status: 'kunde', letter: null, q: null })).rows.map((r) => r.id);
+    const ids = (await filteredCustomers(sql, { status: 'kunde', letter: null, q: null })).rows.map(
+      (r) => r.id,
+    );
     const cfg = { dir: mkdtempSync(join(tmpdir(), 'sb-')), maxBytes: 10_000_000 };
     await expect(
-      customerSerialLetter(deps, cfg, { runId: randomUUID(), templateId: hr!.id, customerIds: ids, actor: 't' }),
+      customerSerialLetter(deps, cfg, {
+        runId: randomUUID(),
+        templateId: hr!.id,
+        customerIds: ids,
+        actor: 't',
+      }),
     ).rejects.toThrow(/Vorlage für Kunden/);
     const run = randomUUID();
-    const pdf = await customerSerialLetter(deps, cfg, { runId: run, templateId: t!.id, customerIds: ids, actor: 't' });
+    const pdf = await customerSerialLetter(deps, cfg, {
+      runId: run,
+      templateId: t!.id,
+      customerIds: ids,
+      actor: 't',
+    });
     expect((await PDFDocument.load(pdf)).getPageCount()).toBeGreaterThanOrEqual(ids.length);
     await customerSerialLetter(deps, cfg, { runId: run, templateId: t!.id, customerIds: ids, actor: 't' });
     const files = await listFiles(sql, { type: 'customer', id: ids[0]! });

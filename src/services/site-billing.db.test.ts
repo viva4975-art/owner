@@ -23,7 +23,13 @@ const draft = (sql: Sql, siteId: string | null) =>
       introText: null,
       closingText: null,
       lines: [
-        { description: 'Unterhaltsreinigung', quantity: parseQuantity('1'), unitCode: 'MON', unitPrice: parseEuro('100,00'), vatRate: 1900 },
+        {
+          description: 'Unterhaltsreinigung',
+          quantity: parseQuantity('1'),
+          unitCode: 'MON',
+          unitPrice: parseEuro('100,00'),
+          vatRate: 1900,
+        },
       ],
     },
     'test',
@@ -58,9 +64,15 @@ describe.skipIf(!available)('Rechnungsangaben je Objekt', () => {
     });
 
   it('wie Kunde: alles vom Kunden', async () => {
-    const [c] = await sql`select name, invoice_emails, payment_terms_days from app.customers where id = ${DEMO.authority}`;
+    const [c] =
+      await sql`select name, invoice_emails, payment_terms_days from app.customers where id = ${DEMO.authority}`;
     const b = await effectiveBilling(sql, DEMO.authority, DEMO.siteSchool);
-    expect(b).toMatchObject({ source: 'kunde', name: c!.name, emails: c!.invoice_emails, paymentTermsDays: c!.payment_terms_days });
+    expect(b).toMatchObject({
+      source: 'kunde',
+      name: c!.name,
+      emails: c!.invoice_emails,
+      paymentTermsDays: c!.payment_terms_days,
+    });
   });
 
   it('abweichend: Adresse, E-Mail, Format, Leitweg-ID, Zahlungsziel, Skonto gehen in Entwurf und Ausstellung', async () => {
@@ -119,11 +131,26 @@ describe.skipIf(!available)('Rechnungsangaben je Objekt', () => {
     await sql`update app.customers set skonto_percent_bp = 300, skonto_days = 7 where id = ${DEMO.authority}`;
     await saveSiteBilling(sql, DEMO.siteSchool, form({ bill_skonto_custom: 'on' }), 't');
     expect((await effectiveBilling(sql, DEMO.authority, DEMO.siteSchool)).skonto).toBeNull();
-    expect((await effectiveBilling(sql, DEMO.authority, DEMO.siteOffice)).skonto).toEqual({ percentBp: 300, days: 7 });
+    expect((await effectiveBilling(sql, DEMO.authority, DEMO.siteOffice)).skonto).toEqual({
+      percentBp: 300,
+      days: 7,
+    });
 
     // zurück auf „wie Kunde“ leert alles
-    await saveSiteBilling(sql, DEMO.siteSchool, form({ billing_mode: 'kunde', bill_name: 'X', bill_street: 'Y', bill_postal_code: '80331', bill_city: 'Z' }), 't');
-    const [s] = await sql`select billing_mode, bill_name, bill_emails from app.sites where id = ${DEMO.siteSchool}`;
+    await saveSiteBilling(
+      sql,
+      DEMO.siteSchool,
+      form({
+        billing_mode: 'kunde',
+        bill_name: 'X',
+        bill_street: 'Y',
+        bill_postal_code: '80331',
+        bill_city: 'Z',
+      }),
+      't',
+    );
+    const [s] =
+      await sql`select billing_mode, bill_name, bill_emails from app.sites where id = ${DEMO.siteSchool}`;
     expect(s).toEqual({ billing_mode: 'kunde', bill_name: null, bill_emails: null });
   });
 });

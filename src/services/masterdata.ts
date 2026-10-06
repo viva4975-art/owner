@@ -49,6 +49,7 @@ export interface Customer {
   vat_id: string | null;
   /** § 13b: Kunde ist selbst Gebäudereiniger → Rechnungen standardmäßig mit Steuerschuldnerschaft des Leistungsempfängers */
   reverse_charge: boolean;
+  is_consumer: boolean;
   is_public_authority: boolean;
   leitweg_id: string | null;
   supplier_no: string | null;
@@ -159,6 +160,7 @@ export const customerInput = z
     status: z.enum(['kunde', 'interessent', 'ehemalig']).optional(),
     dunning_block: optBool,
     reverse_charge: optBool,
+    is_consumer: optBool,
   })
   .refine((c) => !c.reverse_charge || !!c.vat_id, {
     message: '§ 13b: Bitte die USt-IdNr. des Kunden angeben (Pflicht in der E-Rechnung)',

@@ -223,10 +223,41 @@ describe.skipIf(!available)('Angebote, Mahnwesen, Inventar', () => {
       await createDunning(deps, id2, DEMO.company, [inv], 'test');
       const d2 = (await getDunning(sql, id2))!;
       expect(d2.dunning.level).toBe(2);
-      expect(d2.dunning.fee_cents).toBe(500n);
-      expect(d2.dunning.total_cents).toBe(119000n + 500n);
+      // Geschäftskunde: Verzugspauschale 40 €, Mahngebühr wird angerechnet (§ 288 Abs. 5 S. 3 BGB)
+      expect(d2.dunning.late_fee_cents).toBe(4000n);
+      expect(d2.dunning.fee_cents).toBe(0n);
+      expect(d2.dunning.total_cents).toBe(119000n + 4000n);
       const { pdf } = await renderDunningPdf(sql, id2);
       expect(Buffer.from(pdf.slice(0, 5)).toString()).toBe('%PDF-');
+
+      // Stufe 3: Pauschale je Rechnung nur einmal, Mahngebühr weiter angerechnet
+      await sql`update app.dunnings set issue_date = issue_date - 30 where id = ${id2}`;
+      const id3 = randomUUID();
+      await createDunning(deps, id3, DEMO.company, [inv], 'test');
+      const d3 = (await getDunning(sql, id3))!;
+      expect(d3.dunning.level).toBe(3);
+      expect([d3.dunning.late_fee_cents, d3.dunning.fee_cents, d3.dunning.total_cents]).toEqual([
+        0n,
+        0n,
+        119000n,
+      ]);
+    });
+
+    it('Privatkunde: keine Verzugspauschale, Mahngebühr laut Stufe', async () => {
+      await sql`update app.customers set is_consumer = true where id = ${DEMO.company}`;
+      try {
+        const inv = await overdueInvoice('2026-06-04');
+        const id = randomUUID();
+        await createDunning(deps, id, DEMO.company, [inv], 'test');
+        await sql`update app.dunnings set issue_date = issue_date - 30 where id = ${id}`;
+        const id2 = randomUUID();
+        await createDunning(deps, id2, DEMO.company, [inv], 'test');
+        const d = (await getDunning(sql, id2))!;
+        expect(d.dunning.level).toBe(2);
+        expect([d.dunning.late_fee_cents, d.dunning.fee_cents]).toEqual([0n, 500n]);
+      } finally {
+        await sql`update app.customers set is_consumer = false where id = ${DEMO.company}`;
+      }
     });
 
     it('Versand genau einmal und nur an die Testadresse', async () => {

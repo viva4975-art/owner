@@ -530,6 +530,10 @@ export function registerDunningRoutes({ app, deps, page, back }: Ctx) {
           verzugsbegründende Mahnung gar nicht. Bei Geschäftskunden ist alternativ die Verzugspauschale von 40
           € (§ 288 Abs. 5 BGB) möglich, zuzüglich Verzugszinsen von 9 Prozentpunkten über dem Basiszinssatz.
           Höhe bitte mit dem Steuerberater/Anwalt abstimmen.
+          <br />
+          <b>Verzugspauschale:</b> 40 € je Rechnung, nur einmal, nicht bei Privatkunden (Kunde → „Privatkunde
+          (Verbraucher)“). Sie wird auf die Mahngebühren angerechnet (§ 288 Abs. 5 S. 3 BGB) – enthält eine
+          Mahnung die Pauschale (jetzt oder früher), entfällt deren Mahngebühr.
         </div>
         {settings.map((s) => (
           <>
@@ -557,6 +561,17 @@ export function registerDunningRoutes({ app, deps, page, back }: Ctx) {
               <div>
                 <label>Gebühr € (ohne USt)</label>
                 <input name="fee" value={centsToInput(s.fee_cents)} />
+              </div>
+              <div class="chk">
+                <input
+                  type="checkbox"
+                  id={`late_fee_${s.level}`}
+                  name={`late_fee_${s.level}`}
+                  checked={s.late_fee}
+                />
+                <label for={`late_fee_${s.level}`}>
+                  Verzugspauschale 40 € (§ 288 Abs. 5 BGB) ab dieser Stufe
+                </label>
               </div>
             </div>
             <div style="margin-top:10px">
@@ -597,6 +612,7 @@ export function registerDunningRoutes({ app, deps, page, back }: Ctx) {
         min_days_overdue: Math.max(1, Number(days[i]) || 1),
         payment_days: Math.max(1, Number(pay[i]) || 1),
         text: text[i] ?? '',
+        late_fee: body[`late_fee_${l}`] === 'on',
       };
     });
     await saveSettings(sql, rows, c.get('actor'));

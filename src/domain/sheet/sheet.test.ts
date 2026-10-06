@@ -62,6 +62,13 @@ describe('Reinigungsintervall', () => {
   ])('%s → %s', (t, n) => {
     expect(parseInterval(t)).toBe(n);
   });
+  it('„täglich“ nach Wahl Mo–Fr / Mo–Sa / Mo–So, eindeutige Angaben bleiben', () => {
+    expect(parseInterval('täglich', 312)).toBe(312);
+    expect(parseInterval('tgl.', 365)).toBe(365);
+    expect(parseInterval('arbeitstäglich', 365)).toBe(260);
+    expect(parseInterval('Mo–Sa', 260)).toBe(312);
+    expect(parseInterval('Mo – So', 260)).toBe(365);
+  });
 });
 
 describe('Fläche', () => {

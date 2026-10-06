@@ -1773,12 +1773,32 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
           <h3 style="margin-top:16px">Nachkalkulation</h3>
           <div class="grid">
             <div>
-              <label for="labor_overhead">Lohnzuschlag % (AG-Anteile, Urlaub, Krankheit, Feiertage)</label>
+              <label for="overhead_minijob">Lohnzuschlag Minijob %</label>
               <input
-                id="labor_overhead"
-                name="labor_overhead"
-                value={String(s.labor_overhead_bp / 100).replace('.', ',')}
+                id="overhead_minijob"
+                name="overhead_minijob"
+                value={String(s.overhead_minijob_bp / 100).replace('.', ',')}
               />
+            </div>
+            <div>
+              <label for="overhead_parttime">Lohnzuschlag Teilzeit bis 30 Std./Woche %</label>
+              <input
+                id="overhead_parttime"
+                name="overhead_parttime"
+                value={String(s.overhead_parttime_bp / 100).replace('.', ',')}
+              />
+            </div>
+            <div>
+              <label for="overhead_fulltime">Lohnzuschlag über 30 Std./Woche %</label>
+              <input
+                id="overhead_fulltime"
+                name="overhead_fulltime"
+                value={String(s.overhead_fulltime_bp / 100).replace('.', ',')}
+              />
+              <p class="small mut">
+                Zuschlag auf den Stundenlohn für AG-Anteile, Urlaub, Krankheit, Feiertage. Minijob =
+                Beschäftigungsart Minijob; ohne Wochenstunden zählt Vollzeit als über 30 Std.
+              </p>
             </div>
             <div>
               <label for="target_margin">Ziel-Deckungsbeitrag %</label>
@@ -1822,7 +1842,9 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         expense_subcontractor: t('expense_subcontractor'),
         expense_other: t('expense_other'),
         rc_tax_key: t('rc_tax_key'),
-        labor_overhead_bp: pct('labor_overhead'),
+        overhead_minijob_bp: pct('overhead_minijob'),
+        overhead_parttime_bp: pct('overhead_parttime'),
+        overhead_fulltime_bp: pct('overhead_fulltime'),
         target_margin_bp: pct('target_margin'),
       },
       c.get('actor'),
@@ -1858,7 +1880,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
     const month = isMonth(c.req.query('monat'))
       ? c.req.query('monat')!
       : addDays(`${todayBerlin().slice(0, 7)}-01`, -1).slice(0, 7);
-    const { rows, overheadBp, targetBp } = await siteCosting(sql, month);
+    const { rows, overhead, targetBp } = await siteCosting(sql, month);
     const active = rows.filter(
       (r) => r.revenue !== 0n || r.actual_minutes > 0 || r.material + r.subcontractor + r.other !== 0n,
     );
@@ -1883,7 +1905,8 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             onchange="this.form.submit()"
           />
           <span class="small mut">
-            Lohnkosten = Ist-Stunden × Stundenlohn + {pct(overheadBp)} Zuschlag · Ziel-Deckungsbeitrag{' '}
+            Lohnkosten = Ist-Stunden × Stundenlohn + Zuschlag (Minijob {pct(overhead.minijob)}, Teilzeit{' '}
+            {pct(overhead.parttime)}, über 30 Std. {pct(overhead.fulltime)}) · Ziel-Deckungsbeitrag{' '}
             {pct(targetBp)} · <a href="/datev">Werte ändern</a>
           </span>
         </form>

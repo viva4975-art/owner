@@ -467,6 +467,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     const body = await c.req.parseBody();
     // Häkchen: nicht angehakt = nicht mitgeschickt → ausdrücklich „aus“, wenn das Feld im Formular war
     if (body.reverse_charge_shown === '1' && body.reverse_charge === undefined) body.reverse_charge = 'false';
+    if (body.is_consumer_shown === '1' && body.is_consumer === undefined) body.is_consumer = 'false';
     const parsed = customerInput.safeParse(body);
     if (!parsed.success) throw new BusinessError(parsed.error.issues.map((i) => i.message).join('\n'));
     try {

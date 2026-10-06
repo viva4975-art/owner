@@ -527,8 +527,15 @@ export const CustomerForm: FC<{ id: string; c: Partial<Customer>; isNew: boolean
         <input type="hidden" name="reverse_charge_shown" value="1" />
         <input type="checkbox" id="reverse_charge" name="reverse_charge" checked={!!c.reverse_charge} />
         <label for="reverse_charge">
-          § 13b UStG: Kunde ist selbst Gebäudereiniger – Rechnungen ohne Umsatzsteuer (Steuerschuldnerschaft des
-          Leistungsempfängers)
+          § 13b UStG: Kunde ist selbst Gebäudereiniger – Rechnungen ohne Umsatzsteuer (Steuerschuldnerschaft
+          des Leistungsempfängers)
+        </label>
+      </div>
+      <div class="chk">
+        <input type="hidden" name="is_consumer_shown" value="1" />
+        <input type="checkbox" id="is_consumer" name="is_consumer" checked={!!c.is_consumer} />
+        <label for="is_consumer">
+          Privatkunde (Verbraucher) – keine Verzugspauschale; reine PDF-Rechnung auch ab 2027 zulässig
         </label>
       </div>
       <TextBox name="notes" label="Kurzinfo" value={c.notes} />

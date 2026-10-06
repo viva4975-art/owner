@@ -96,7 +96,7 @@ Testadresse.
       (auch als PDF – für den Layout-Abgleich „sieht aus wie heute“)
 - [ ] Bestätigen: Nummernkreis von Fortytools fortführen (umgesetzt, Startwert vor Live-Start setzen)
 - [ ] Lieferantennummern bei Behörden, Leitweg-IDs der Behörden-Kunden (Steuernummer 143/190/63154 vom Briefpapier übernommen)
-- [ ] Absender-Adresse für Rechnungen (z. B. rechnung@viva-deluxe-reinigung.de) + Mail-Zugang (SMTP)
+- [ ] Mail-Zugang (SMTP) für buchhaltung@viva-deluxe-reinigung.de (IONOS Exchange) in `.env.live` eintragen – Absender steht fest
 - [ ] Testadresse für den Prototyp-Versand
 - [x] IONOS VPS (4 vCores/8 GB, Ubuntu 24.04, 217.160.236.117) installiert, läuft unter https://app.viva-deluxe-reinigung.de
 - [ ] AVV mit IONOS; IONOS Cloud Backup (Sicherung außerhalb des Servers); root-Passwort ändern und ersten GitHub-Token
@@ -109,8 +109,10 @@ Testadresse.
 - [ ] Übersetzungen der Handy-Ansicht (ro, tr, pl, hr, bg) von Muttersprachlern im Team gegenlesen lassen
 - [ ] Steuerberater: DATEV Berater-/Mandantennummer, Kontenrahmen (SKR03/04), BU-Schlüssel für § 13b-Eingangsrechnungen,
       Behandlung Schlussrechnung/Abschläge und Skonto; ersten Testexport gemeinsam prüfen
-- [ ] Lohnzuschlag für die Nachkalkulation (Vorschlag 45 %) mit Steuerberater/Lohnbüro festlegen
-- [ ] Mahngebühren/Verzugspauschale (40 € § 288 Abs. 5 BGB) mit Steuerberater/Anwalt festlegen
+- [x] ~~Lohnzuschlag~~ – Ahmed 06.10.: Minijob 32 %, Teilzeit bis 30 Std. 28 %, darüber 26 %
+- [x] ~~Mahngebühren/Verzugspauschale~~ – Ahmed 06.10.: 0/5/10 € + 40 € Pauschale (umgesetzt, Anrechnung beachten)
+- [ ] Rechnungsnummer-Startwert (Ahmed meldet sich), Screenshots Qualitätskontrolle (fehlten in der Anlage)
+- [ ] Qwist (Bankabruf wie Fortytools): API-Zugang/Vertrag bei Qwist anfragen
 - [ ] Je Behörde klären: nimmt sie XRechnung per E-Mail an oder nur über ein Portal (ZRE/OZG-RE, Peppol)?
 - [ ] SEPA-Zahlungslauf: erste pain.001-Datei als Testeinreichung bei der Bank hochladen (Format/Limit prüfen)
 - [ ] Je ein echter Kontoauszug (CAMT.053, sonst CSV) von Münchner Bank und Targobank zum Testen des Imports
@@ -731,3 +733,24 @@ Testadresse.
 - 2026-10-06: Runde 4e – Suche in Auswahllisten: jede Auswahl ab 12 Einträgen (Kunden, Objekte, Mitarbeiter, Lieferanten …)
   bekommt automatisch ein Suchfeld darüber (Nummer oder Name, ohne Umlaut-/Groß-Klein-Unterschied, mehrere Wörter); Enter
   übernimmt den ersten Treffer. Die echte Auswahlliste bleibt (Formulare/Prüfungen unverändert). Alle 23 Browser-Suiten grün.
+- 2026-10-06: Runde 5a – Fortytools-Gesamtimport (Transfer → Import aus Fortytools, oben): die vier Exporte unverändert
+  (Kunden, Objekte, aktive Leistungen, Mitarbeiter), Erkennung an der Kopfzeile, CSV mit Zeilenumbrüchen im Feld.
+  Kunden: je Kontakt eine Zeile → ein Kunde + Kontakte; Name mehrzeilig → Name/Name 2; „7 Tage 3%, 20 Tage netto“ → Skonto
+  3 %/7 Tage, Ziel 20; „SUBUNTERNEHMER“ → Warnhinweis § 13b; Interessenten ohne Nummer bekommen die nächste freie; IBAN
+  (Prüfziffer) → Bankkonto; Format ZUGFeRD. Objekte: Nummer = Kundennummer + 2 Stellen, Kunde über Nummer oder Kurzname.
+  Leistungen: Objekt über Kunde + Objektname (mehrdeutig → erstes, Hinweis), ohne Objekt → Objekt „Allgemein (aus
+  Fortytools)“; Betrag = Einzelpreis; Menge 1 → pauschal, Preis < 2 € → m², sonst Stück; **Unterhaltsreinigung/Spüldienste
+  monatlich, alles andere „je Ausführung“ (Ahmed: je Objekt prüfen)**; Leistungsarten werden angelegt. Mitarbeiter: Tags →
+  Beschäftigungsart (ohne Tag aus Wochenstunden), Austritt in der Vergangenheit → ausgetreten; ohne Eintrittsdatum = Fehler.
+  Feste IDs/external_ref → erneut importieren legt nichts doppelt an; „aktualisieren“ überschreibt, Nummern bleiben, bei
+  Mitarbeitenden nur Fortytools-Felder (Steuer-ID, IBAN, Lohn bleiben). Probelauf mit den echten Exporten in einer
+  Wegwerf-DB: 177 Kunden (4 ohne Adresse = Fehler), 391 Objekte (16 „Allgemein“), 678 Leistungen, 266 Mitarbeiter
+  (4 ohne Eintritt/Personalnr.), 98 Kontakte, 60 Bankkonten; 11 s, zweiter Lauf ohne Dubletten. Echte Dateien nicht im Repo.
+- 2026-10-06: Runde 5b – Nachkalkulation mit Lohnzuschlag je Beschäftigungsart (Einstellungen → DATEV/Nachkalkulation;
+  Minijob = Beschäftigungsart Minijob, sonst Wochenstunden > 30 bzw. Vollzeit ohne Stunden = 26 %, Rest 28 %).
+  Verzugspauschale 40 € (§ 288 Abs. 5 BGB) je Rechnung einmal (DB-Index), ab der Mahnstufe mit Häkchen (Standard ab
+  1. Mahnung), nicht bei „Privatkunde (Verbraucher)“ (neues Kundenfeld). **Rechtlich: Die Pauschale wird auf
+  Rechtsverfolgungskosten angerechnet (§ 288 Abs. 5 S. 3 BGB) → enthält eine Mahnung die Pauschale (jetzt oder früher),
+  entfällt ihre Mahngebühr.** Kontenrahmen SKR03 war schon Standard. Raumbuch-Import: „täglich“/ohne Intervall wählbar
+  Mo–Fr 260 / Mo–Sa 312 / Mo–So 365 („arbeitstäglich“ bleibt 260, „Mo–Sa“/„Mo–So“ eindeutig).
+  Tests: 290 Unit-/DB-Tests; Browser-Test `e2e:import` 13 Prüfungen.

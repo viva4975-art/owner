@@ -41,7 +41,7 @@ import {
 } from '../services/facility.js';
 import { listSites } from '../services/masterdata.js';
 import { stageFile, stagedFile } from '../services/fortytools-import.js';
-import { ROOM_FIELDS, analyzeRooms, applyRooms } from '../services/room-import.js';
+import { DAILY_OPTIONS, ROOM_FIELDS, analyzeRooms, applyRooms, dailyOf } from '../services/room-import.js';
 import { listFiles } from '../services/uploads.js';
 import { type Ctx, UUID, assertSite, inScope } from './app.js';
 import { FileArea } from './files.js';
@@ -236,6 +236,7 @@ export function registerFacilityRoutes({ app, deps, page, back, shells }: Ctx) {
   app.get(`/objekte/:id{${UUID}}/raumbuch/import`, (c) =>
     shells.site!(c, 'raumbuch', async (s) => {
       const sha = c.req.query('datei');
+      const daily = dailyOf(c.req.query('taeglich'));
       const self = `/objekte/${s.id}/raumbuch/import`;
       if (!sha) {
         return (
@@ -248,8 +249,9 @@ export function registerFacilityRoutes({ app, deps, page, back, shells }: Ctx) {
               Excel (.xlsx) oder CSV. Die Spalten werden über die Kopfzeile erkannt (sie darf unter
               Titelzeilen stehen):
               <b> Etage, Raum-Nr., Raum, Raumart, Bodenbelag, Fläche (m²), Intervall</b>. Intervall z. B. „5x
-              wöchentlich“, „täglich“ (= Mo–Fr), „14-tägig“, „1x Monat“ oder eine Zahl (bis 7 = pro Woche,
-              sonst pro Jahr). Ohne Intervall gilt 5× pro Woche. Sie sehen vor dem Übernehmen eine Vorschau.
+              wöchentlich“, „täglich“ (Mo–Fr, Mo–Sa oder Mo–So – wählbar in der Vorschau), „14-tägig“, „1x
+              Monat“ oder eine Zahl (bis 7 = pro Woche, sonst pro Jahr). Ohne Intervall gilt „täglich“. Sie
+              sehen vor dem Übernehmen eine Vorschau.
             </p>
             <form method="post" action={self} enctype="multipart/form-data">
               <div class="grid">
@@ -265,7 +267,7 @@ export function registerFacilityRoutes({ app, deps, page, back, shells }: Ctx) {
           </>
         );
       }
-      const a = await analyzeRooms(sql, s.id, await stagedFile(deps, sha));
+      const a = await analyzeRooms(sql, s.id, await stagedFile(deps, sha), daily);
       const ok = a.rows.filter((r) => !r.errors.length);
       const upd = ok.filter((r) => r.existingId).length;
       return (
@@ -279,6 +281,22 @@ export function registerFacilityRoutes({ app, deps, page, back, shells }: Ctx) {
             {a.columns.map((x) => `${x.header} → ${ROOM_FIELDS[x.field].label}`).join(' · ')}
             {a.ignored.length > 0 && <> · nicht verwendet: {a.ignored.join(', ')}</>}
           </p>
+          <form method="get" action={self} class="small" style="margin:8px 0">
+            <input type="hidden" name="datei" value={sha} />
+            <label for="taeglich" style="display:inline">
+              „täglich“ bzw. ohne Intervall bedeutet:{' '}
+            </label>
+            <select id="taeglich" name="taeglich" onchange="this.form.submit()" style="width:auto">
+              {DAILY_OPTIONS.map(([n, l]) => (
+                <option value={String(n)} selected={n === daily}>
+                  {l}
+                </option>
+              ))}
+            </select>
+            <noscript>
+              <button class="btn sec">Anwenden</button>
+            </noscript>
+          </form>
           {a.newTypes.length > 0 && (
             <div class="flash warn">Neue Raumarten werden angelegt: {a.newTypes.join(', ')}</div>
           )}
@@ -334,6 +352,7 @@ export function registerFacilityRoutes({ app, deps, page, back, shells }: Ctx) {
           </div>
           <form method="post" action={`${self}/uebernehmen`}>
             <input type="hidden" name="datei" value={sha} />
+            <input type="hidden" name="taeglich" value={String(daily)} />
             {upd > 0 && (
               <div class="chk">
                 <input type="checkbox" id="update" name="update" />
@@ -373,7 +392,7 @@ export function registerFacilityRoutes({ app, deps, page, back, shells }: Ctx) {
     assertSite(c, siteId);
     const b = await c.req.parseBody({ all: true });
     const sha = str(b, 'datei') ?? '';
-    const a = await analyzeRooms(sql, siteId, await stagedFile(deps, sha));
+    const a = await analyzeRooms(sql, siteId, await stagedFile(deps, sha), dailyOf(str(b, 'taeglich')));
     const r = await applyRooms(sql, siteId, sha, a, { update: b.update === 'on' }, c.get('actor'));
     return back(c, `/objekte/${siteId}/raumbuch`, {
       ok: `Raumbuch importiert: ${r.created} neu, ${r.updated} aktualisiert, ${r.skipped} übersprungen.`,

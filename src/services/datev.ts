@@ -27,6 +27,9 @@ export interface AccountingSettings {
   expense_other: string;
   rc_tax_key: string;
   labor_overhead_bp: number;
+  overhead_minijob_bp: number;
+  overhead_parttime_bp: number;
+  overhead_fulltime_bp: number;
   target_margin_bp: number;
 }
 
@@ -51,7 +54,8 @@ export async function saveAccountingSettings(sql: Sql, s: Omit<AccountingSetting
     revenue_19 = ${acct(s.revenue_19, 'Erlöse 19 %')}, revenue_7 = ${acct(s.revenue_7, 'Erlöse 7 %')},
     bank_account = ${acct(s.bank_account, 'Bank')}, expense_material = ${acct(s.expense_material, 'Material')},
     expense_subcontractor = ${acct(s.expense_subcontractor, 'Fremdleistungen')}, expense_other = ${acct(s.expense_other, 'Sonstige Kosten')},
-    rc_tax_key = ${s.rc_tax_key}, labor_overhead_bp = ${s.labor_overhead_bp}, target_margin_bp = ${s.target_margin_bp}`;
+    rc_tax_key = ${s.rc_tax_key}, overhead_minijob_bp = ${s.overhead_minijob_bp}, overhead_parttime_bp = ${s.overhead_parttime_bp},
+    overhead_fulltime_bp = ${s.overhead_fulltime_bp}, target_margin_bp = ${s.target_margin_bp}`;
   await sql`insert into app.audit_log (actor, action, entity) values (${actor}, 'save', 'accounting_settings')`;
 }
 

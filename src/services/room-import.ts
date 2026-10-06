@@ -72,8 +72,17 @@ export const ROOM_FIELDS: Record<RoomField, { label: string; aliases: string[] }
   notes: { label: 'Hinweise', aliases: ['hinweis', 'hinweise', 'bemerkung', 'bemerkungen', 'notiz'] },
 };
 
+/** Was „täglich“ bedeutet: Mo–Fr 260, Mo–Sa 312, Mo–So 365 Reinigungen im Jahr (beim Import wählbar). */
+export const DAILY_OPTIONS = [
+  [260, 'Mo–Fr (260 × im Jahr)'],
+  [312, 'Mo–Sa (312 × im Jahr)'],
+  [365, 'Mo–So (365 × im Jahr)'],
+] as const;
+export const dailyOf = (v: unknown): number =>
+  DAILY_OPTIONS.some(([n]) => String(n) === String(v)) ? Number(v) : 260;
+
 /** Reinigungsintervall aus Text → Reinigungen pro Jahr. */
-export function parseInterval(raw: string): number | null {
+export function parseInterval(raw: string, daily = 260): number | null {
   const t = raw.toLowerCase().replace(/\s+/g, ' ').trim();
   if (!t) return null;
   const numMatch = /(\d+(?:[.,]\d+)?)/.exec(t);
@@ -88,8 +97,10 @@ export function parseInterval(raw: string): number | null {
     )
   )
     return 26;
-  if (/mo\s*-\s*so|7\s*x?\s*(\/|pro|je|die)?\s*w/.test(t)) return 365;
-  if (/(arbeits|werk)?t(ae|ä)glich|^tgl/.test(t)) return 260;
+  if (/mo\s*[-–]\s*so|7\s*x?\s*(\/|pro|je|die)?\s*w/.test(t)) return 365;
+  if (/mo\s*[-–]\s*sa|6\s*x?\s*(\/|pro|je|die)?\s*w/.test(t)) return 312;
+  if (/arbeitst(ae|ä)glich/.test(t)) return 260;
+  if (/t(ae|ä)glich|^tgl/.test(t)) return daily;
   if (/halbj/.test(t)) return 2 * (n ?? 1);
   if (/quartal|vierteljaehr|vierteljähr/.test(t)) return 4 * (n ?? 1);
   if (/woch|wtl|wö|\/ ?w\b|x ?w\b/.test(t)) return Math.round((n ?? 1) * 52);
@@ -145,7 +156,12 @@ export function areaOf(v: string, kind: 'xlsx' | 'csv'): bigint | null {
   return c > 0n ? c : null;
 }
 
-export async function analyzeRooms(sql: Sql, siteId: string, bytes: Uint8Array): Promise<RoomImportAnalysis> {
+export async function analyzeRooms(
+  sql: Sql,
+  siteId: string,
+  bytes: Uint8Array,
+  daily = 260,
+): Promise<RoomImportAnalysis> {
   let rows: string[][];
   let kind: 'xlsx' | 'csv';
   try {
@@ -216,9 +232,9 @@ export async function analyzeRooms(sql: Sql, siteId: string, bytes: Uint8Array):
     const areaCenti = areaOf(areaRaw, kind);
     if (areaCenti == null) errors.push(areaRaw ? `Fläche „${areaRaw}“ ungültig` : 'Fläche fehlt');
     const intervalText = get('interval');
-    let visits = parseInterval(intervalText);
+    let visits = parseInterval(intervalText, daily);
     const intervalDefaulted = !intervalText;
-    if (!intervalText) visits = 260;
+    if (!intervalText) visits = daily;
     else if (visits == null || visits < 1 || visits > 1000) {
       errors.push(`Intervall „${intervalText}“ nicht erkannt`);
       visits = null;

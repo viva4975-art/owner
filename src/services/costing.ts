@@ -6,7 +6,8 @@ import { plannedShifts } from './time.js';
 /*
  * Nachkalkulation je Objekt und Monat:
  *   Erlös (netto, ausgestellte Rechnungen inkl. Storno/Korrektur; Leistungszeitraum, sonst Rechnungsdatum)
- * − Lohnkosten (Ist-Stunden × Stundenlohn × (1 + Zuschlag für AG-Anteile, Urlaub, Krankheit, Feiertage))
+ * − Lohnkosten (Ist-Stunden × Stundenlohn × (1 + Zuschlag für AG-Anteile, Urlaub, Krankheit, Feiertage));
+ *   Zuschlag je Beschäftigungsart: Minijob, Teilzeit bis 30 Std./Woche, darüber (Einstellungen → DATEV)
  * − Material (Lagerabgänge an das Objekt × EK + Eingangsrechnungen „Material“ mit Objekt)
  * − Nachunternehmer und sonstige Eingangsrechnungen mit Objekt (Leistungsmonat)
  * = Deckungsbeitrag. Gemeinkosten (Büro, Fahrzeuge ohne Objekt) sind nicht enthalten.
@@ -29,6 +30,12 @@ export interface SiteCosting {
   margin_bp: number | null; // Marge in Basispunkten vom Erlös
 }
 
+export interface OverheadRates {
+  minijob: number;
+  parttime: number;
+  fulltime: number;
+}
+
 export function monthRange(month: string) {
   const from = `${month}-01`;
   const to = addDays(`${addDays(from, 32).slice(0, 7)}-01`, -1);
@@ -39,10 +46,9 @@ export async function siteCosting(
   sql: Sql,
   month: string,
   siteId?: string,
-): Promise<{ rows: SiteCosting[]; overheadBp: number; targetBp: number }> {
+): Promise<{ rows: SiteCosting[]; overhead: OverheadRates; targetBp: number }> {
   const { from, to } = monthRange(month);
   const settings = await getAccountingSettings(sql);
-  const factor = BigInt(10000 + settings.labor_overhead_bp);
   const [sites, revenue, labor, stock, incoming, shifts] = await Promise.all([
     sql<{ id: string; site_no: string; name: string; customer_name: string }[]>`
       select s.id, s.site_no, s.name, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id
@@ -59,7 +65,11 @@ export async function siteCosting(
     sql<{ site_id: string; minutes: number; wage_minutes_cents: bigint; missing: number }[]>`
       select t.site_id,
              sum(extract(epoch from (t.end_at - t.start_at)) / 60 - t.break_minutes)::int as minutes,
-             coalesce(sum(((extract(epoch from (t.end_at - t.start_at)) / 60 - t.break_minutes)::bigint) * app.effective_wage_cents(e)), 0)::bigint as wage_minutes_cents,
+             coalesce(sum(((extract(epoch from (t.end_at - t.start_at)) / 60 - t.break_minutes)::bigint) * app.effective_wage_cents(e)
+                          * (10000 + case when e.employment_type = 'minijob' then ${settings.overhead_minijob_bp}::int
+                                          when coalesce(e.weekly_hours, case when e.employment_type = 'vollzeit' then 40 else 0 end) > 30
+                                            then ${settings.overhead_fulltime_bp}::int
+                                          else ${settings.overhead_parttime_bp}::int end)), 0)::bigint as wage_minutes_cents,
              count(*) filter (where app.effective_wage_cents(e) is null)::int as missing
         from app.time_entries t join app.employees e on e.id = t.employee_id
        where t.status in ('erfasst', 'freigegeben') and t.work_date between ${from} and ${to}
@@ -81,8 +91,8 @@ export async function siteCosting(
   const rows = sites.map((s) => {
     const rev = revenue.find((r) => r.site_id === s.id)?.net ?? 0n;
     const l = labor.find((r) => r.site_id === s.id);
-    // Cent je Minute → / 60; Zuschlag in Basispunkten
-    const laborCents = l ? (l.wage_minutes_cents * factor + 300000n) / 600000n : 0n;
+    // Cent je Minute × (10000 + Zuschlag in Basispunkten) → / 60 / 10000, kaufmännisch gerundet
+    const laborCents = l ? (l.wage_minutes_cents + 300000n) / 600000n : 0n;
     const inc = incoming.filter((r) => r.site_id === s.id);
     const material =
       (stock.find((r) => r.site_id === s.id)?.cost ?? 0n) +
@@ -111,5 +121,13 @@ export async function siteCosting(
       margin_bp: rev !== 0n ? Number((margin * 10000n) / rev) : null,
     };
   });
-  return { rows, overheadBp: settings.labor_overhead_bp, targetBp: settings.target_margin_bp };
+  return {
+    rows,
+    overhead: {
+      minijob: settings.overhead_minijob_bp,
+      parttime: settings.overhead_parttime_bp,
+      fulltime: settings.overhead_fulltime_bp,
+    },
+    targetBp: settings.target_margin_bp,
+  };
 }

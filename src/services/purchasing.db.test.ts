@@ -325,7 +325,7 @@ describe.skipIf(!available)('Einkauf, Zahlungslauf, DATEV, Nachkalkulation (Date
     await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, hourly_wage_cents)
               values (${emp}, '3001', 'Kalk', 'Test', '2026-01-01', 1500)`;
     await sql`insert into app.employee_sites (employee_id, site_id) values (${emp}, ${DEMO.siteSchool})`;
-    // 10 Stunden à 15,00 € → 150,00 € × 1,45 = 217,50 €
+    // 10 Stunden à 15,00 € → 150,00 € × 1,28 (Teilzeit) = 192,00 €
     await officeSave(sql, {
       id: randomUUID(),
       employeeId: emp,
@@ -368,9 +368,9 @@ describe.skipIf(!available)('Einkauf, Zahlungslauf, DATEV, Nachkalkulation (Date
     const r = rows[0]!;
     expect(r.revenue).toBe(150000n);
     expect(r.actual_minutes).toBe(600);
-    expect(r.labor).toBe(21750n);
+    expect(r.labor).toBe(19200n);
     expect(r.material).toBe(10000n); // Eingangsrechnung Material 100,00 netto
     expect(r.subcontractor).toBe(80000n); // § 13b-Rechnung Nachunternehmer am selben Objekt
-    expect(r.margin).toBe(150000n - 21750n - 10000n - 80000n);
+    expect(r.margin).toBe(150000n - 19200n - 10000n - 80000n);
   });
 });

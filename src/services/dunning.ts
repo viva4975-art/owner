@@ -15,8 +15,11 @@ import type { Deps } from './workflow.js';
  *   eine Mahnung ist dafür nicht nötig, macht den Verzug aber eindeutig.
  * - Mahngebühren sind Schadensersatz → OHNE Umsatzsteuer. Gerichte erkennen meist nur tatsächliche Kosten
  *   (Porto/Material, ca. 1–3 €) an; die erste, verzugsbegründende Mahnung ist nicht ersatzfähig.
- * - Alternativ Verzugspauschale 40 € (§ 288 Abs. 5 BGB) + Verzugszinsen 9 %-Punkte über Basiszinssatz
- *   (§ 288 Abs. 2 BGB). Der Basiszinssatz ändert sich halbjährlich → nicht fest einprogrammiert.
+ * - Verzugspauschale 40 € (§ 288 Abs. 5 BGB): je Rechnung einmal, nur wenn der Kunde kein Verbraucher ist, ab der
+ *   Stufe mit `late_fee`. Sie wird auf Rechtsverfolgungskosten angerechnet (§ 288 Abs. 5 S. 3 BGB) → sobald für eine
+ *   Rechnung der Mahnung die Pauschale verlangt wird/wurde, entfällt die Mahngebühr dieser Mahnung.
+ * - Verzugszinsen 9 %-Punkte über Basiszinssatz (§ 288 Abs. 2 BGB): Basiszinssatz ändert sich halbjährlich → nicht
+ *   fest einprogrammiert.
  */
 
 export interface DunningSetting {
@@ -26,7 +29,11 @@ export interface DunningSetting {
   min_days_overdue: number;
   payment_days: number;
   text: string;
+  late_fee: boolean;
 }
+
+/** Verzugspauschale § 288 Abs. 5 BGB je Rechnung (Cent). */
+export const LATE_FEE_CENTS = 4000n;
 
 export interface DunningRow {
   id: string;
@@ -36,6 +43,7 @@ export interface DunningRow {
   issue_date: string;
   pay_until: string;
   fee_cents: bigint;
+  late_fee_cents: bigint;
   total_cents: bigint;
   status: 'erstellt' | 'versendet';
   pdf_sha256: string | null;
@@ -84,6 +92,7 @@ export async function saveSettings(
     min_days_overdue: number;
     payment_days: number;
     text: string;
+    late_fee?: boolean;
   }[],
   actor: string,
 ) {
@@ -99,6 +108,8 @@ export async function saveSettings(
       await tx`update app.dunning_settings set title = ${r.title.trim()}, fee_cents = ${r.fee_cents},
                  min_days_overdue = ${r.min_days_overdue}, payment_days = ${r.payment_days}, text = ${r.text.trim()}
                where level = ${r.level}`;
+      if (r.late_fee !== undefined)
+        await tx`update app.dunning_settings set late_fee = ${r.late_fee} where level = ${r.level}`;
     }
     await tx`insert into app.audit_log (actor, action, entity) values (${actor}, 'save', 'dunning_settings')`;
   });
@@ -112,10 +123,14 @@ async function overdueItems(sql: Sql, customerId?: string) {
       customer_no: string;
       customer_name: string;
       dunning_block: boolean;
+      is_consumer: boolean;
+      late_fee_charged: boolean;
     })[]
   >`
     select o.invoice_id, o.number, o.issue_date, o.due_date, o.open_cents, o.customer_id,
-           c.customer_no, c.name as customer_name, c.dunning_block,
+           c.customer_no, c.name as customer_name, c.dunning_block, c.is_consumer,
+           exists (select 1 from app.dunning_items lf where lf.invoice_id = o.invoice_id and lf.late_fee_cents > 0)
+             as late_fee_charged,
            ((now() at time zone 'Europe/Berlin')::date - o.due_date)::int as overdue_days,
            coalesce(last.level, 0)::int as last_level, last.issue_date as last_dunning_date,
            0 as next_level,
@@ -206,19 +221,28 @@ export async function createDunning(
   const level = Math.min(3, Math.max(...items.map((i) => i.last_level + 1)));
   const s = settings.find((x) => x.level === level)!;
   const open = items.reduce((a, i) => a + i.open_cents, 0n);
+  const lateFeeOn = s.late_fee && !items[0]!.is_consumer;
+  const lateFees = new Map(
+    items.map((i) => [i.invoice_id, lateFeeOn && !i.late_fee_charged ? LATE_FEE_CENTS : 0n]),
+  );
+  const lateFee = [...lateFees.values()].reduce((a, v) => a + v, 0n);
+  // Anrechnung (§ 288 Abs. 5 S. 3 BGB): mit Pauschale keine zusätzliche Mahngebühr
+  const fee = lateFee > 0n || items.some((i) => i.late_fee_charged) ? 0n : s.fee_cents;
   await sql.begin(async (tx) => {
     const [n] = await tx<{ v: bigint; prefix: string }[]>`
       update app.number_ranges set next_value = next_value + 1 where key = 'dunning' returning next_value - 1 as v, prefix`;
     await tx`
-      insert into app.dunnings (id, number, customer_id, level, issue_date, pay_until, fee_cents, total_cents, created_by)
+      insert into app.dunnings (id, number, customer_id, level, issue_date, pay_until, fee_cents, late_fee_cents,
+                                total_cents, created_by)
       values (${id}, ${`${n!.prefix}${today.slice(0, 4)}-${String(n!.v).padStart(4, '0')}`}, ${customerId}, ${level}, ${today},
-              (${today}::date + ${s.payment_days}::int), ${s.fee_cents}, ${open + s.fee_cents}, ${actor})`;
+              (${today}::date + ${s.payment_days}::int), ${fee}, ${lateFee}, ${open + fee + lateFee}, ${actor})`;
     await tx`insert into app.dunning_items ${tx(
       items.map((i) => ({
         dunning_id: id,
         invoice_id: i.invoice_id,
         open_cents: i.open_cents,
         days_overdue: i.overdue_days,
+        late_fee_cents: lateFees.get(i.invoice_id)!,
       })),
     )}`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
@@ -273,6 +297,10 @@ export async function renderDunningPdf(sql: Sql, id: string): Promise<{ pdf: Uin
   const open = items.reduce((a, i) => a + i.open_cents, 0n);
   const sums: [string, string][] = [['Offener Rechnungsbetrag', eur(open)]];
   if (d.fee_cents > 0n) sums.push(['Mahngebühr (nicht umsatzsteuerbar)', eur(d.fee_cents)]);
+  if (d.late_fee_cents > 0n) {
+    const n = Number(d.late_fee_cents / LATE_FEE_CENTS);
+    sums.push([`Verzugspauschale${n > 1 ? ` ${n} × ${eur(LATE_FEE_CENTS)}` : ''}`, eur(d.late_fee_cents)]);
+  }
   const pdf = await renderLetterPdf({
     title: d.title,
     date: d.issue_date,
@@ -303,6 +331,11 @@ export async function renderDunningPdf(sql: Sql, id: string): Promise<{ pdf: Uin
     total: ['Zu zahlen', eur(d.total_cents)],
     paragraphs: [
       `Bitte überweisen Sie den Betrag von ${eur(d.total_cents)} bis spätestens ${formatDateDe(d.pay_until)} unter Angabe der Rechnungsnummer(n) auf unser Konto.`,
+      ...(d.late_fee_cents > 0n
+        ? [
+            'Die Verzugspauschale von 40,00 € je Rechnung berechnen wir nach § 288 Abs. 5 BGB; sie ist nicht umsatzsteuerbar.',
+          ]
+        : []),
       'Haben Sie in den letzten Tagen bereits gezahlt, betrachten Sie dieses Schreiben bitte als gegenstandslos. Bei Fragen zu den Rechnungen erreichen Sie uns jederzeit.',
       'Mit freundlichen Grüßen\nViva-Deluxe Gebäudereinigung GmbH',
     ],

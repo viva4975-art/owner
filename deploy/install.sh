@@ -50,7 +50,12 @@ if [ -f "$ENVF" ]; then
 else
   say "4/6 Zugangsdaten eingeben (bleiben nur auf diesem Server)"
   DOMAIN=$(ask "Adresse der App, z. B. app.viva-deluxe-reinigung.de")
-  ADMIN=$(ask "Benutzername für dich (erster Admin), z. B. ahmed")
+  while :; do
+    ADMIN=$(ask "Benutzername für dich (erster Admin, klein, ohne Leerzeichen), z. B. ahmed")
+    ADMIN=$(printf '%s' "$ADMIN" | tr '[:upper:]' '[:lower:]')
+    printf '%s' "$ADMIN" | grep -Eq '^[a-z0-9._@-]{3,64}$' && break
+    echo "Bitte nur Kleinbuchstaben, Ziffern, . _ - @ (3–64 Zeichen), z. B. ahmed oder a.chomontek."
+  done
   while :; do
     PW=$(ask_secret "Startpasswort für $ADMIN (mind. 8 Zeichen)")
     [ ${#PW} -ge 8 ] && break; echo "Zu kurz."
@@ -96,10 +101,10 @@ docker compose --env-file .env.live up -d --build
 
 say "6/6 Warten, bis die App läuft"
 for _ in $(seq 1 60); do
-  [ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q app)" 2>/dev/null)" = healthy ] && break
+  [ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose --env-file .env.live ps -q app)" 2>/dev/null)" = healthy ] && break
   sleep 5
 done
-if [ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q app)")" = healthy ]; then
+if [ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose --env-file .env.live ps -q app)")" = healthy ]; then
   DOMAIN=$(grep '^APP_DOMAIN=' .env.live | cut -d= -f2)
   say "Fertig: https://$DOMAIN  (Anmeldung mit deinem Admin, danach Passwort ändern)"
 else

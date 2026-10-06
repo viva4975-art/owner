@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Sql } from '../db/client.js';
 import { assertVersion } from './crm.js';
 import { BusinessError } from './errors.js';
@@ -125,6 +126,39 @@ export interface TenderInput {
 const LOCAL = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** Feste ID der Aufgabe „Abgabefrist“ einer Ausschreibung. */
+export function tenderTaskId(id: string): string {
+  const h = createHash('md5').update(`tender-task:${id}`).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+
+/**
+ * Aufgabe „Abgabefrist“ mitführen: offen, solange die Ausschreibung vorbereitet wird und eine Frist hat (Fälligkeit =
+ * Abgabetag); erledigt, sobald abgegeben/entschieden oder ohne Frist.
+ */
+async function syncTenderTask(tx: Sql, id: string, actor: string) {
+  const taskId = tenderTaskId(id);
+  const [t] = await tx<
+    { title: string; authority: string; status: TenderStatus; due: string | null; at: string | null }[]
+  >`
+    select title, authority, status, (deadline_at at time zone 'Europe/Berlin')::date::text as due,
+           to_char(deadline_at at time zone 'Europe/Berlin', 'DD.MM.YYYY HH24:MI') as at
+      from app.tenders where id = ${id}`;
+  if (!t) return;
+  const open = !!t.due && ['neu', 'pruefen', 'bearbeitung'].includes(t.status);
+  if (open) {
+    await tx`
+      insert into app.tasks (id, title, description, due_date, status, entity_type, entity_id, created_by)
+      values (${taskId}, ${`Abgabefrist Ausschreibung: ${t.title}`}, ${`${t.authority} – Abgabe bis ${t.at} Uhr`},
+              ${t.due}, 'open', 'tender', ${id}, ${actor})
+      on conflict (id) do update set title = excluded.title, description = excluded.description,
+                                     due_date = excluded.due_date, status = 'open', done_at = null, done_by = null`;
+  } else {
+    await tx`update app.tasks set status = 'done', done_at = now(), done_by = ${actor}
+              where id = ${taskId} and status = 'open'`;
+  }
+}
+
 export async function saveTender(sql: Sql, id: string, p: TenderInput, actor: string) {
   if (!p.title.trim()) throw new BusinessError('Bitte Titel angeben');
   if (!p.authority.trim()) throw new BusinessError('Bitte Vergabestelle / Auftraggeber angeben');
@@ -170,6 +204,7 @@ export async function saveTender(sql: Sql, id: string, p: TenderInput, actor: st
                     site_visit_at = ${berlin(p.siteVisit)} where id = ${id}`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id)
              values (${actor}, ${cur ? 'update' : 'create'}, 'tender', ${id})`;
+    await syncTenderTask(tx as unknown as Sql, id, actor);
   });
 }
 
@@ -192,6 +227,7 @@ export async function setTenderStatus(
      where id = ${id}`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
             values (${actor}, 'status', 'tender', ${id}, ${sql.json({ status, note: note ?? null })})`;
+  await syncTenderTask(sql, id, actor);
 }
 
 /** Angebot zur Ausschreibung starten: braucht einen Kunden/Interessenten; vorhandenes Angebot wird wiederverwendet. */

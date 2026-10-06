@@ -455,17 +455,8 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Aufgaben', href: '/aufgaben' },
     ],
   },
-  {
-    key: 'angebote',
-    label: 'Angebote',
-    items: [
-      { label: 'Alle Angebote', href: '/angebote' },
-      { label: 'Ausschreibungen & Fristen', href: '/ausschreibungen' },
-      { label: 'Ausschreibung erfassen', href: '/ausschreibungen/neu' },
-      { label: 'Angebot anlegen', href: '/neu?typ=angebot' },
-      { label: 'Aufträge', href: '/auftraege', sep: true },
-    ],
-  },
+  // ein Menüpunkt: Übersicht mit „Angebot anlegen“ (dort auch Ausschreibung vormerken); Fristen auf der Startseite
+  { key: 'angebote', label: 'Angebote', href: '/angebote' },
   {
     key: 'rechnungen',
     label: 'Rechnungen',
@@ -473,7 +464,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Rechnungsentwürfe / Vorfaktura', href: '/rechnungen/entwuerfe' },
       { label: 'Alle Rechnungen', href: '/rechnungen' },
       { label: 'Archiv (nach Leistungszeitraum)', href: '/rechnungen/archiv' },
-      { label: 'Einzelrechnung anlegen', href: '/neu?typ=rechnung' },
+      { label: 'Aufträge', href: '/auftraege' },
       { label: 'Offene Posten', href: '/offene-posten', sep: true },
       { label: 'Mahnwesen', href: '/mahnungen' },
     ],
@@ -495,7 +486,6 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     label: 'Personal',
     items: [
       { label: 'Mitarbeiter', href: '/personal' },
-      { label: 'Mitarbeiter anlegen', href: '/neu?typ=mitarbeiter' },
       { label: 'Zeiterfassung', href: '/zeiterfassung', sep: true },
       { label: 'Nachträge freigeben', href: '/zeiterfassung/freigaben' },
       { label: 'Prüfbericht Zoll (§ 17 MiLoG)', href: '/zeiterfassung/pruefbericht' },

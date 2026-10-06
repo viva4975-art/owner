@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -28,6 +28,8 @@ describe.skipIf(!available)('Große Uploads', () => {
   });
   afterAll(async () => {
     await sql?.end();
+    // Testdateien (bis 240 MB je Lauf) wieder entfernen
+    if (cfg?.dir) await rm(cfg.dir, { recursive: true, force: true });
   });
 
   const chunksOf = (data: Buffer) =>

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Sql } from '../db/client.js';
 import { BusinessError } from './errors.js';
 
-export type EntityType = 'customer' | 'site' | 'employee' | 'invoice';
+export type EntityType = 'customer' | 'site' | 'employee' | 'invoice' | 'tender';
 
 const emptyToNull = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? null : v);
 const optText = z.preprocess(emptyToNull, z.string().trim().nullable().default(null));
@@ -223,6 +223,8 @@ const ENTITY_LABEL = (sql: Sql) => sql`
     when 'site' then (select s.site_no || ' ' || s.name from app.sites s where s.id = t.entity_id)
     when 'employee' then (select e.last_name || ', ' || e.first_name from app.employees e where e.id = t.entity_id)
     when 'invoice' then (select coalesce(i.number, 'Entwurf') from app.invoices i where i.id = t.entity_id)
+    when 'tender' then (select 'Ausschreibung ' || coalesce(x.reference_no || ' ', '') || x.authority
+                          from app.tenders x where x.id = t.entity_id)
   end`;
 
 export async function listTasks(

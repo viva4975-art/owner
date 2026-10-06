@@ -9,7 +9,7 @@ import {
 } from '../services/employees.js';
 import { type OpenItem, PAYMENT_METHODS, type PaymentRow } from '../services/payments.js';
 import { centsToInput } from './forms.js';
-import { NEW_OPTIONS, PageHead, type Tab, Tabs, dateDe, euro, initials } from './layout.js';
+import { PageHead, type Tab, Tabs, dateDe, euro, initials } from './layout.js';
 import { Field } from './pages-masterdata.js';
 
 // ---------------------------------------------------------------------------
@@ -41,7 +41,11 @@ export const EmployeeList: FC<{
   const qs = new URLSearchParams({ status, ...(q ? { q } : {}), ...(tag ? { tag } : {}) }).toString();
   return (
     <>
-      <PageHead title="Mitarbeiter" create={{ options: NEW_OPTIONS, selected: 'mitarbeiter' }} />
+      <PageHead title="Mitarbeiter">
+        <a class="btn" href="/neu?typ=mitarbeiter">
+          + Mitarbeiter anlegen
+        </a>
+      </PageHead>
       <div class="cols" style="grid-template-columns:minmax(0,4fr) minmax(0,1.3fr)">
         <div class="card">
           {tags.length > 0 && (

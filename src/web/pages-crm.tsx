@@ -166,7 +166,15 @@ export const TaskBox: FC<{ tasks: Task[]; title?: string; doneLink?: string }> =
                 <td style={t.status === 'done' ? 'text-decoration:line-through;color:var(--mut)' : ''}>
                   <b>{t.title}</b>
                   {t.description && <div class="small">{t.description}</div>}
-                  {t.entity_label && <div class="small mut">{t.entity_label}</div>}
+                  {t.entity_label && (
+                    <div class="small mut">
+                      {t.entity_type === 'tender' ? (
+                        <a href={`/ausschreibungen/${t.entity_id}`}>{t.entity_label}</a>
+                      ) : (
+                        t.entity_label
+                      )}
+                    </div>
+                  )}
                 </td>
                 <td class="r small">
                   {t.due_date ? (

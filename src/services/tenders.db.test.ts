@@ -13,6 +13,7 @@ import {
   offerTarget,
   saveTender,
   setTenderStatus,
+  tenderTaskId,
   type TenderInput,
   upcomingEvents,
 } from './tenders.js';
@@ -61,6 +62,10 @@ describe.skipIf(!available)('Ausschreibungen', () => {
       /https/,
     );
     await saveTender(sql, id, input(), 't');
+    // Abgabefrist erscheint als Aufgabe (Fälligkeit = Abgabetag)
+    const [task] =
+      await sql`select status, due_date::text as due, entity_type::text as et from app.tasks where id = ${tenderTaskId(id)}`;
+    expect(task).toEqual({ status: 'open', due: addDays(today, 5), et: 'tender' });
     const t = (await getTender(sql, id))!;
     expect(
       t.deadline_at!.toLocaleString('de-DE', {
@@ -116,6 +121,8 @@ describe.skipIf(!available)('Ausschreibungen', () => {
     await expect(setTenderStatus(sql, id, 'verloren', null, 't')).rejects.toThrow(/Grund/);
     await setTenderStatus(sql, id, 'abgegeben', null, 't');
     expect((await getTender(sql, id))!.submitted_at).not.toBeNull();
+    const [done] = await sql`select status from app.tasks where id = ${tenderTaskId(id)}`;
+    expect(done!.status).toBe('done');
     expect((await upcomingEvents(sql, 14)).some((e) => e.tender_id === id)).toBe(false); // abgegeben → keine Erinnerung mehr
     await setTenderStatus(sql, id, 'gewonnen', 'Zuschlag 03.11.', 't');
     expect((await listTenders(sql, { view: 'abgeschlossen' })).map((x) => x.id)).toContain(id);

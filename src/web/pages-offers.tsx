@@ -12,7 +12,7 @@ import {
 } from '../services/offers.js';
 import { centsToInput, milliToInput } from './forms.js';
 import { Icon } from './icons.js';
-import { NEW_OPTIONS, PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
+import { PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
 import { type EditorLine, LineEditor } from './pages-invoices.js';
 
 export type OfferListRow = OfferRow & {
@@ -163,7 +163,11 @@ export const OfferList: FC<{
   const pipeline = all.filter((o) => o.status === 'versendet').reduce((s, o) => s + o.monthly_net_cents, 0n);
   return (
     <>
-      <PageHead title={title} create={{ options: NEW_OPTIONS, selected: 'angebot' }} />
+      <PageHead title={title}>
+        <a class="btn" href="/angebote/neu">
+          + Angebot anlegen
+        </a>
+      </PageHead>
       <div class="kpis">
         <div class="kpi">
           <div class="l">In Arbeit</div>

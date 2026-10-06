@@ -115,10 +115,8 @@ export const CLIENT_JS = String.raw`
         var data = JSON.parse(raw);
         if (Date.now() - data.t > MAX_AGE) { ss.removeItem(key); }
         else if (data.v === (form.getAttribute('data-version') || '')) {
+          // still wiederherstellen (Ahmed: kein Hinweisbalken); nur bei Konflikten mit neuerem Stand fragen
           apply(form, data);
-          banner(form, 'Ihre nicht gespeicherten Eingaben wurden wiederhergestellt.', [
-            { label: 'Verwerfen', run: function () { ss.removeItem(key); location.reload(); } },
-          ]);
         } else {
           banner(form, 'Es gibt nicht gespeicherte Eingaben zu einem älteren Stand dieses Datensatzes (in einem anderen Tab oder von jemand anderem geändert).', [
             { label: 'Meine Eingaben übernehmen', cls: '', run: function () { apply(form, data); } },

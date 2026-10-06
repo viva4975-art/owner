@@ -754,3 +754,9 @@ Testadresse.
   entfällt ihre Mahngebühr.** Kontenrahmen SKR03 war schon Standard. Raumbuch-Import: „täglich“/ohne Intervall wählbar
   Mo–Fr 260 / Mo–Sa 312 / Mo–So 365 („arbeitstäglich“ bleibt 260, „Mo–Sa“/„Mo–So“ eindeutig).
   Tests: 290 Unit-/DB-Tests; Browser-Test `e2e:import` 13 Prüfungen.
+- 2026-10-06: Runde 6a (Ahmed, 7 Punkte + Fortytools-Screenshots Planung): Menü „Angebote“ ist ein einzelner Punkt
+  (Übersicht mit „+ Angebot anlegen“, dort auch Ausschreibung vormerken; Reiter „Ausschreibungen“ bleibt in der Liste).
+  Ausschreibung mit Abgabefrist = automatische Aufgabe (feste ID, Fälligkeit = Abgabetag, Link zur Ausschreibung; erledigt
+  bei Abgabe/Entscheidung, Bestand übernommen). „Aufträge“ jetzt unter Rechnungen. „Einzelrechnung anlegen“ und
+  „Mitarbeiter anlegen“ aus dem Menü (Knopf auf der Mitarbeiterliste). Eingaben werden still wiederhergestellt (kein gelber
+  Balken mehr; nur bei Konflikt mit neuerem Stand wird gefragt). Unit-Test räumt seine 240-MB-Testdateien wieder weg.

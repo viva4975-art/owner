@@ -76,7 +76,7 @@ check('Vor-Taste funktioniert', a.url() === B + '/');
 console.log('2. Editor später erneut öffnen');
 await a.goto(B + '/kunden');
 await a.goto(editorUrl);
-check('Hinweis „wiederhergestellt“', (await a.locator('.restore').count()) === 1);
+check('still wiederhergestellt, ohne Hinweisbalken', (await a.locator('.restore').count()) === 0);
 check('Positionen wiederhergestellt', (await a.locator('#lines tbody tr').count()) === 2);
 await a.screenshot({ path: `${out}/1-wiederhergestellt.png`, fullPage: true });
 await a.click('text=Entwurf speichern');

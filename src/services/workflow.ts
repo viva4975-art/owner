@@ -7,7 +7,7 @@ import { type InvoiceDocument, KIND_TITLES } from '../domain/invoice/types.js';
 import { formatEuro } from '../domain/money/money.js';
 import { generateCii, generateXRechnungUbl, generateZugferd } from '../einvoice/generate.js';
 import { type ValidationResult, validateWithKosit } from '../einvoice/kosit.js';
-import { type Mailer, resolveRecipients } from '../mail/mailer.js';
+import { MAILER_MISSING, type Mailer, resolveRecipients } from '../mail/mailer.js';
 import { renderInvoicePdf } from '../pdf/render.js';
 import { BusinessError, getInvoice, issue, loadDocument } from './invoices.js';
 import { effectiveBilling } from './masterdata.js';
@@ -286,6 +286,7 @@ export async function sendInvoice(
   };
 
   const docs = await ensureDocuments(deps, id);
+  if (deps.mailer.configured === false) throw new BusinessError(MAILER_MISSING);
   const pick = (kind: DocRow['kind']) => docs.find((d) => d.kind === kind);
   const format = data.invoice.invoice_format;
   const selected: DocRow[] = [];

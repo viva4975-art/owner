@@ -1,0 +1,14 @@
+# HTTPS-Zertifikat holt Caddy selbst, sobald die Domain auf diesen Server zeigt.
+{$APP_DOMAIN} {
+	encode gzip
+	# große Uploads (Ausschreibungsunterlagen) erlauben
+	request_body {
+		max_size 6GB
+	}
+	reverse_proxy app:3000 {
+		transport http {
+			read_timeout 10m
+			write_timeout 10m
+		}
+	}
+}

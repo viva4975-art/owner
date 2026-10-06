@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { resolveRecipients } from './mailer.js';
+import type { Env } from '../config/env.js';
+import { MAILER_MISSING, createMailer, resolveRecipients } from './mailer.js';
 
 describe('resolveRecipients', () => {
   const intended = ['a@behoerde.de', 'b@behoerde.de'];
@@ -25,5 +26,22 @@ describe('resolveRecipients', () => {
       actual: intended,
       redirected: false,
     });
+  });
+});
+
+describe('createMailer ohne SMTP', () => {
+  it('App startet, Versand wird mit Hinweis abgelehnt', async () => {
+    const m = createMailer({ SMTP_PORT: 587, SMTP_SECURE: false } as Env);
+    expect(m.configured).toBe(false);
+    await expect(
+      m.send({
+        from: 'a@b.de',
+        to: ['c@d.de'],
+        subject: 's',
+        text: 't',
+        attachments: [],
+        messageId: '<x@y>',
+      }),
+    ).rejects.toThrow(MAILER_MISSING);
   });
 });

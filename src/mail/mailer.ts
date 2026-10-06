@@ -13,11 +13,19 @@ export interface OutgoingMail {
 
 export interface Mailer {
   send(mail: OutgoingMail): Promise<{ messageId: string }>;
+  /** false = kein SMTP-Zugang hinterlegt; Versand wird vorab abgelehnt (App startet trotzdem). */
+  configured?: boolean;
 }
+
+export const MAILER_MISSING =
+  'Mailversand ist noch nicht eingerichtet (SMTP-Zugang fehlt) – bitte PDF herunterladen und selbst senden.';
 
 export function createMailer(env: Env): Mailer {
   if (!env.SMTP_HOST) {
-    throw new Error('SMTP_HOST fehlt – kein Mailversand möglich');
+    return {
+      configured: false,
+      send: () => Promise.reject(new Error(MAILER_MISSING)),
+    };
   }
   const transport = nodemailer.createTransport({
     host: env.SMTP_HOST,

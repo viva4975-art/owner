@@ -23,6 +23,7 @@ const app = createApp({
 const hostname = process.env.HOST ?? '127.0.0.1';
 serve({ fetch: app.fetch, port: env.PORT, hostname }, (info) => {
   console.log(`Viva-Deluxe App (${env.APP_ENV}) läuft auf http://${hostname}:${info.port}`);
+  if (!env.SMTP_HOST) console.log('Hinweis: kein SMTP-Zugang – Mailversand ist abgeschaltet.');
   if (env.MAIL_TEST_RECIPIENT) console.log(`Mailversand nur an Testadresse: ${env.MAIL_TEST_RECIPIENT}`);
 });
 

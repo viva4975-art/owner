@@ -99,6 +99,7 @@ Testadresse.
 - [ ] Lieferantennummern bei Behörden, Leitweg-IDs der Behörden-Kunden (Steuernummer 143/190/63154 vom Briefpapier übernommen)
 - [ ] Absender-Adresse für Rechnungen (z. B. rechnung@viva-deluxe-reinigung.de) + Mail-Zugang (SMTP)
 - [ ] Testadresse für den Prototyp-Versand
+- [ ] IONOS VPS bestellen, DNS `app` → Server-IP, Installation nach `docs/IONOS.md`; AVV mit IONOS und Supabase
 - [ ] Lexware-Lohnprogramm (genaue Bezeichnung, Importformat)
 - [ ] Fortytools: eine Rechnungsgruppe von innen zeigen (dort stecken vermutlich die Preise je Objekt)
 - [ ] Briefpapier ab 01.11.2026 (neue Adresse) als Datei vom Grafiker, 300 dpi
@@ -584,3 +585,14 @@ Testadresse.
   - SEPA-Zahlungslauf wieder da, als Knopf in der Zahlungsliste: Rechnungen auswählen → Ausführungstag + eigenes Konto →
     „SEPA-Datei erstellen“ (pain.001.001.09, archiviert, Rechnungen gelten als bezahlt, nicht zurücknehmbar). Liste der
     SEPA-Dateien mit XML-Download. „Als bezahlt festhalten“ für Einzelüberweisungen bleibt.
+- 2026-10-06: Testbetrieb auf eigenem Server (Ahmed: „live stellen und testen“, IONOS):
+  - Nicht IONOS-Webhosting, sondern IONOS VPS (Ubuntu, ≥ 4 GB RAM, Deutschland). `Dockerfile` ohne apt (Temurin-JRE +
+    Node aus dem offiziellen Image, KoSIT im Build geladen), `deploy/docker-compose.yml` mit Caddy (HTTPS automatisch),
+    `deploy/install.sh` (Docker, Firewall, Zugangsdaten interaktiv nur auf dem Server, `.env.live` Rechte 600, Werte in
+    einfachen Anführungszeichen, DB-Passwort URL-kodiert), `deploy/update.sh` (optional alle 10 Min. automatisch per cron).
+    Anleitung `docs/IONOS.md`. Render-Vorlage verworfen.
+  - Container hier geprüft (Build mit lokalem Cache, da GitHub/Debian in der Sandbox gesperrt): KoSIT, Migration, App,
+    Browser-Tests e2e/einkauf/auftrag gegen den Container grün. Noch nicht gegen das echte Supabase-Projekt gelaufen.
+  - Behoben: Ohne SMTP-Zugang startete die App nicht. Jetzt startet sie; Versand von Rechnungen/Mahnungen wird vorab mit
+    Hinweis abgelehnt (kein Versandeintrag, kein „unklar“-Status).
+

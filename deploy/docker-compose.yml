@@ -1,0 +1,36 @@
+# Betrieb auf einem eigenen Server (z. B. IONOS VPS): App + Caddy (HTTPS automatisch über Let's Encrypt).
+# Start: docker compose -f deploy/docker-compose.yml --env-file deploy/.env.live up -d --build
+services:
+  app:
+    build: ..
+    env_file: .env.live
+    init: true
+    restart: unless-stopped
+    volumes:
+      - daten:/data
+    expose:
+      - '3000'
+    healthcheck:
+      test: ['CMD', 'curl', '-fs', 'http://127.0.0.1:3000/anmelden']
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+volumes:
+  daten:
+  caddy_data:
+  caddy_config:

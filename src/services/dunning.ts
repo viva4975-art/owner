@@ -1,7 +1,7 @@
 import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import { type Cents, formatEuro } from '../domain/money/money.js';
-import { resolveRecipients } from '../mail/mailer.js';
+import { MAILER_MISSING, resolveRecipients } from '../mail/mailer.js';
 import { renderLetterPdf } from '../pdf/render.js';
 import { BusinessError } from './errors.js';
 import { buildBuyerSnapshot, getSeller } from './masterdata.js';
@@ -319,6 +319,7 @@ export async function sendDunning(deps: Deps, id: string, actor: string) {
   const d = data.dunning;
   if (d.status === 'versendet') return { alreadySent: true, to: d.sent_to ?? [] };
   if (!d.pdf_path) throw new BusinessError('PDF fehlt noch – bitte Seite neu laden');
+  if (deps.mailer.configured === false) throw new BusinessError(MAILER_MISSING);
   const [c] = await sql<
     { invoice_emails: string[]; name: string }[]
   >`select invoice_emails, name from app.customers where id = ${d.customer_id}`;

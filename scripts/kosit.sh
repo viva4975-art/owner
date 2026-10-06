@@ -18,7 +18,12 @@ if [ ! -f "config-$CONFIG_RELEASE/scenarios.xml" ]; then
   # Ab 2026 heißen Tags „v<Datum>“ und die Datei „xrechnung-<Version>-validator-configuration-<Datum>.zip“
   curl -fsSL -o config.zip \
     "https://github.com/itplr-kosit/validator-configuration-xrechnung/releases/download/v$CONFIG_RELEASE/xrechnung-${XRECHNUNG_VERSION}-validator-configuration-$CONFIG_RELEASE.zip"
-  unzip -oq config.zip -d "config-$CONFIG_RELEASE" && rm config.zip
+  if command -v unzip >/dev/null; then
+    unzip -oq config.zip -d "config-$CONFIG_RELEASE"
+  else # z. B. im Docker-Build mit JDK: jar kann ZIP entpacken
+    mkdir -p "config-$CONFIG_RELEASE" && (cd "config-$CONFIG_RELEASE" && jar xf ../config.zip)
+  fi
+  rm config.zip
 fi
 if [ "${1:-}" = "--download-only" ]; then exit 0; fi
 exec java -jar "validator-$VALIDATOR_VERSION-standalone.jar" \

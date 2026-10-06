@@ -48,13 +48,8 @@ weitere Benutzer unter „Benutzer & Rechte“ anlegen.
 einspielen (Ziel = `SUPABASE_PROJECT_REF`), App auf Port 3000. Dateien und Archiv unter `/data` → dauerhaftes Laufwerk
 einhängen (ohne Laufwerk gehen Uploads/PDFs bei jedem Neustart verloren).
 
-Render (Frankfurt): Dashboard → New → Blueprint → dieses Repo → `render.yaml`. Danach die Variablen mit „sync: false“
-im Dashboard eintragen (Supabase-Werte aus Schritt 1, `APP_BASIC_AUTH`, `MAIL_TEST_RECIPIENT`, `PUBLIC_URL` = die
-Render-Adresse). `SESSION_SECRET` erzeugt Render selbst. Ohne SMTP-Zugang werden keine Mails verschickt.
-Jeder Push auf den Branch spielt automatisch neu ein.
-
-Hinweis Datenschutz: Render ist ein US-Anbieter (Rechenzentrum Frankfurt) → Auftragsverarbeitungsvertrag (DPA) im
-Render-Konto abschließen. Alternative mit deutschem Anbieter: Hetzner-Server mit Docker (mehr Einrichtung).
+Eigener Server (IONOS VPS, Deutschland): Schritt-für-Schritt in `docs/IONOS.md` – `deploy/install.sh` richtet Docker,
+Firewall, HTTPS (Caddy) und die Zugangsdaten ein, `deploy/update.sh` spielt neue Versionen ein (optional automatisch).
 
 ## 4. Vor dem Echtbetrieb (Checkliste)
 

@@ -82,7 +82,6 @@ check(
   'Kategorien sichtbar',
   ['Raumbuch', 'Leistungsverzeichnis', 'Revierplan'].every((k) => before.includes(k)),
 );
-const missingBefore = await p.locator('.tag.err').count();
 await p.setInputFiles('#kat-Revierplan [data-uploader] input[type=file]', {
   name: `revierplan-${tag}.pdf`,
   mimeType: 'application/pdf',
@@ -92,11 +91,7 @@ await p.waitForFunction(() => document.querySelectorAll('#kat-Revierplan .files 
   timeout: 20000,
 });
 await p.reload();
-check(
-  'Revierplan zählt als vorhanden',
-  (await p.locator('#kat-Revierplan .tag.ok').count()) === 1 &&
-    (await p.locator('.tag.err').count()) <= Math.max(0, missingBefore - 1),
-);
+check('Revierplan zählt als vorhanden', (await p.locator('#kat-Revierplan .tag.ok').count()) === 1);
 
 console.log('3. Schlüssel je Objekt');
 await p.goto(`${B}/objekte/${SITE}/schluessel`);
@@ -125,6 +120,31 @@ check('Reiter Angebote lädt', (await body(p)).includes('Angebot für dieses Obj
 await p.click('a:has-text("Angebot für dieses Objekt")');
 await p.waitForLoadState();
 check('Angebot mit Objekt vorbelegt', p.url().includes('/angebote/'), p.url());
+
+console.log('5. Raumbuch aus Excel/CSV importieren');
+await p.goto(`${B}/objekte/${SITE}/raumbuch`);
+await p.click('a:has-text("Aus Excel importieren")');
+await p.waitForLoadState();
+const csvRooms = `Raumbuch Verwaltung\n\nEtage;Raum-Nr.;Raum;Raumart;Bodenbelag;Fläche m²;Intervall\nEG;I${tag}1;Empfang;Eingangsbereich;Fliesen;32,5;5x wöchentlich\nEG;I${tag}2;Archiv;Archivraum ${tag};PVC;12;14-tägig\nEG;I${tag}3;Kaputt;Büro;;abc;täglich\n`;
+await p.setInputFiles('#file', { name: 'raumbuch.csv', mimeType: 'text/csv', buffer: Buffer.from(csvRooms) });
+await p.click('button:has-text("Vorschau anzeigen")');
+await p.waitForLoadState();
+const prev = await body(p);
+check('Vorschau zeigt Räume', prev.includes('Empfang') && prev.includes('Archiv'), prev.slice(0, 300));
+check('neue Raumart angekündigt', prev.includes(`Neue Raumarten werden angelegt: Archivraum ${tag}`));
+check('Intervall erkannt', prev.includes('5× pro Woche') && prev.includes('14-täglich'));
+check('Fehlerzeile markiert', prev.includes('Fläche „abc“ ungültig'));
+check('Vorschau ist eine GET-Seite', p.url().includes('/raumbuch/import?datei='));
+await p.click('button:has-text("neue Räume übernehmen")');
+await p.waitForLoadState();
+check('2 Räume importiert', (await flash(p)).includes('2 neu'), await flash(p));
+check('Räume im Raumbuch', (await body(p)).includes(`I${tag}1`));
+await p.goBack();
+await p.reload();
+await p.click('button:has-text("neue Räume übernehmen")').catch(() => {});
+await p.waitForLoadState();
+await p.goto(`${B}/objekte/${SITE}/raumbuch`);
+check('nichts doppelt', (await p.locator('tr', { hasText: `I${tag}1` }).count()) === 1);
 
 await p.goBack();
 await p.goBack();

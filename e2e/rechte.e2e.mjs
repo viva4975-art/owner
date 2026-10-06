@@ -102,22 +102,22 @@ await o.goto(B + `/objekte/${SCHOOL}/stundenvorgabe`);
 const svText = await o.locator('body').innerText();
 check(
   'Stundenvorgabe ohne Erlöse',
-  svText.includes('Vorgabe laut Raumbuch') && !svText.includes('Monatspauschale'),
+  svText.includes('Stundenvorgabe') && !svText.includes('Monatspauschale'),
 );
 await o.goto(B + `/objekte/${SCHOOL}/qualitaet`);
 check(
   'Qualitätskontrolle eigenes Objekt',
   (await o.locator('button:has-text("Qualitätskontrolle starten")').count()) === 1,
 );
-const lw = await o.request.get(B + '/raumbuch/leistungswerte', { maxRedirects: 0 });
-check('Leistungswerte nur Büro (403)', lw.status() === 403, String(lw.status()));
+const lw = await o.request.get(B + '/raumbuch/raumarten', { maxRedirects: 0 });
+check('Raumarten nur Büro (403)', lw.status() === 403, String(lw.status()));
 check('Einstellungen für Objektleitung gesperrt', (await o.goto(B + '/einstellungen')).status() === 403);
 check('kein Zahnrad für Objektleitung', (await o.locator('a.gear').count()) === 0);
 await a.goto(B + '/einstellungen');
 const setText = await a.locator('main').innerText();
 check(
   'Einstellungen: alle Stammlisten',
-  ['Leistungsarten', 'Mahnstufen', 'Lohnstufen', 'Leistungswerte', 'Firmendaten'].every((t) =>
+  ['Leistungsarten', 'Mahnstufen', 'Lohnstufen', 'Raumarten', 'Firmendaten'].every((t) =>
     setText.includes(t),
   ),
   setText.slice(0, 300),

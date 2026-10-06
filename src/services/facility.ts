@@ -74,20 +74,23 @@ export async function listRoomTypes(sql: Sql, all = false) {
 export async function saveRoomType(
   sql: Sql,
   id: string,
-  p: { name: string; performance: number; active: boolean; expectedVersion: number | null },
+  p: { name: string; active: boolean; expectedVersion: number | null },
 ) {
   if (!p.name.trim()) throw new BusinessError('Bitte Bezeichnung angeben');
-  if (!Number.isInteger(p.performance) || p.performance < 1 || p.performance > 5000) {
-    throw new BusinessError('Leistungswert bitte als ganze Zahl in m²/h (1–5000)');
-  }
   const [cur] = await sql<{ version: number }[]>`select version from app.room_types where id = ${id}`;
   assertVersion(cur?.version, p.expectedVersion, 'Die Raumart');
-  await sql`
-    insert into app.room_types (id, name, performance_m2_per_h, sort_order, active)
-    values (${id}, ${p.name.trim()}, ${p.performance},
-            (select coalesce(max(sort_order), 0) + 10 from app.room_types), ${p.active})
-    on conflict (id) do update set name = excluded.name, performance_m2_per_h = excluded.performance_m2_per_h,
-                                   active = excluded.active`;
+  try {
+    // Leistungswert (m²/h) wird nicht mehr gepflegt – Spalte bleibt mit Standardwert für Altdaten
+    await sql`
+      insert into app.room_types (id, name, performance_m2_per_h, sort_order, active)
+      values (${id}, ${p.name.trim()}, 200,
+              (select coalesce(max(sort_order), 0) + 10 from app.room_types), ${p.active})
+      on conflict (id) do update set name = excluded.name, active = excluded.active`;
+  } catch (e) {
+    if ((e as { code?: string }).code === '23505')
+      throw new BusinessError(`Raumart „${p.name.trim()}“ gibt es schon`);
+    throw e;
+  }
 }
 
 export async function listRooms(sql: Sql, siteId: string, includeInactive = false) {
@@ -112,7 +115,6 @@ export interface RoomInput {
   floorCovering: string | null;
   areaCenti: bigint;
   visitsPerYear: number;
-  performanceOverride: number | null;
   notes: string | null;
   active: boolean;
   expectedVersion: number | null;
@@ -123,9 +125,6 @@ export async function saveRoom(sql: Sql, id: string, p: RoomInput) {
   if (p.areaCenti <= 0n) throw new BusinessError('Fläche muss größer 0 sein');
   if (!Number.isInteger(p.visitsPerYear) || p.visitsPerYear < 1 || p.visitsPerYear > 1000) {
     throw new BusinessError('Reinigungsintervall ungültig');
-  }
-  if (p.performanceOverride != null && (p.performanceOverride < 1 || p.performanceOverride > 5000)) {
-    throw new BusinessError('Leistungswert bitte in m²/h (1–5000)');
   }
   const cur = await getRoom(sql, id);
   if (cur && cur.site_id !== p.siteId) throw new BusinessError('Raum gehört zu einem anderen Objekt');
@@ -139,7 +138,6 @@ export async function saveRoom(sql: Sql, id: string, p: RoomInput) {
     floor_covering: p.floorCovering,
     area_centi: p.areaCenti,
     visits_per_year: p.visitsPerYear,
-    performance_override: p.performanceOverride,
     notes: p.notes,
     active: p.active,
   };
@@ -148,18 +146,88 @@ export async function saveRoom(sql: Sql, id: string, p: RoomInput) {
     on conflict (id) do update set ${sql(row as Record<string, unknown>)}`;
 }
 
-/** Minuten pro Jahr für einen Raum (exakt als Bruch gerechnet, Rückgabe als Zahl). */
-export function roomMinutesPerYear(r: { area_centi: bigint; visits_per_year: number; performance: number }) {
-  // m²/100 ÷ (m²/h) × 60 min × Besuche
-  return (Number(r.area_centi) * 60 * r.visits_per_year) / (100 * r.performance);
+export type HourTargetMode = 'woche' | 'monat' | 'jahr';
+export const WEEKDAYS_SHORT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+/** Stundenvorgabe von Hand: je Wochentag (Mo–So), je Monat oder je Jahr (Minuten). */
+export interface SiteHourTarget {
+  site_id: string;
+  mode: HourTargetMode;
+  day_minutes: number[];
+  month_minutes: number | null;
+  year_minutes: number | null;
+  note: string | null;
+  version: number;
+  updated_by: string;
+  updated_at: Date;
+}
+
+export async function getSiteHourTarget(sql: Sql, siteId: string) {
+  const [t] = await sql<SiteHourTarget[]>`select * from app.site_hour_targets where site_id = ${siteId}`;
+  return t;
+}
+
+/** Vorgabe in Stunden je Woche/Monat/Jahr umrechnen (Woche = Jahr ÷ 52, Monat = Jahr ÷ 12). */
+export function hoursOf(t: Pick<SiteHourTarget, 'mode' | 'day_minutes' | 'month_minutes' | 'year_minutes'>) {
+  const perYear =
+    t.mode === 'woche'
+      ? (t.day_minutes.reduce((a, b) => a + b, 0) * 52) / 60
+      : t.mode === 'monat'
+        ? ((t.month_minutes ?? 0) * 12) / 60
+        : (t.year_minutes ?? 0) / 60;
+  return { perYear, perMonth: perYear / 12, perWeek: perYear / 52 };
+}
+
+export interface HourTargetInput {
+  mode: HourTargetMode;
+  dayMinutes: number[];
+  monthMinutes: number | null;
+  yearMinutes: number | null;
+  note: string | null;
+  expectedVersion: number | null;
+}
+
+export async function saveSiteHourTarget(sql: Sql, siteId: string, p: HourTargetInput, actor: string) {
+  if (!['woche', 'monat', 'jahr'].includes(p.mode)) throw new BusinessError('Bitte Art der Vorgabe wählen');
+  const days = p.mode === 'woche' ? p.dayMinutes : [0, 0, 0, 0, 0, 0, 0];
+  if (days.length !== 7 || days.some((m) => !Number.isInteger(m) || m < 0 || m > 1440))
+    throw new BusinessError('Stunden je Wochentag: 0:00 bis 24:00');
+  const month = p.mode === 'monat' ? p.monthMinutes : null;
+  const year = p.mode === 'jahr' ? p.yearMinutes : null;
+  if (p.mode === 'monat' && (month == null || month < 0 || month > 744 * 60))
+    throw new BusinessError('Stunden je Monat bitte angeben (0–744)');
+  if (p.mode === 'jahr' && (year == null || year < 0 || year > 8784 * 60))
+    throw new BusinessError('Stunden je Jahr bitte angeben (0–8784)');
+  await sql.begin(async (tx) => {
+    const [cur] = await tx<{ version: number }[]>`
+      select version from app.site_hour_targets where site_id = ${siteId} for update`;
+    assertVersion(cur?.version, p.expectedVersion, 'Die Stundenvorgabe');
+    const row = {
+      mode: p.mode,
+      day_minutes: days,
+      month_minutes: month,
+      year_minutes: year,
+      note: p.note,
+      updated_by: actor,
+      updated_at: new Date(),
+    };
+    await tx`
+      insert into app.site_hour_targets ${tx({ site_id: siteId, ...row } as Record<string, unknown>)}
+      on conflict (site_id) do update set ${tx(row as Record<string, unknown>)}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'hour_target', 'site', ${siteId}, ${tx.json(row as never)})`;
+  });
 }
 
 export interface HourTarget {
-  rooms: (RoomRow & { minutesPerVisit: number; minutesPerYear: number })[];
-  areaCenti: bigint;
+  /** Vorgabe von Hand (undefined = noch keine) */
+  target: SiteHourTarget | undefined;
   hoursPerWeek: number;
   hoursPerMonth: number;
   hoursPerYear: number;
+  /** Fläche der aktiven Räume (m² × 100) */
+  areaCenti: bigint;
+  rooms: number;
   /** aktuell im Einsatzplan hinterlegte Stunden pro Woche (netto) */
   plannedPerWeek: number;
   /** monatliche Pauschalen (netto, Cent) – nur fürs Büro anzeigen */
@@ -169,34 +237,36 @@ export interface HourTarget {
 }
 
 export async function hourTarget(sql: Sql, siteId: string): Promise<HourTarget> {
-  const rooms = (await listRooms(sql, siteId)).map((r) => ({
-    ...r,
-    minutesPerVisit: (Number(r.area_centi) * 60) / (100 * r.performance),
-    minutesPerYear: roomMinutesPerYear(r),
-  }));
-  const perYear = rooms.reduce((s, r) => s + r.minutesPerYear, 0) / 60;
   const today = todayBerlin();
-  const [plan] = await sql<{ minutes: number }[]>`
-    select coalesce(sum(extract(epoch from (end_time - start_time)) / 60 - break_minutes), 0)::float8 as minutes
-      from app.shift_plans
-     where site_id = ${siteId} and valid_from <= ${today} and (valid_until is null or valid_until >= ${today})`;
-  const [flat] = await sql<{ cents: bigint }[]>`
-    select coalesce(sum(round(quantity_milli * unit_price_cents / 1000.0)), 0)::bigint as cents
-      from app.site_services
-     where site_id = ${siteId} and kind = 'monthly_flat' and active
-       and valid_from <= ${today} and (valid_to is null or valid_to >= ${today})`;
-  const [sh] = await sql<{ milli: bigint }[]>`
-    select coalesce(sum(hours_target_milli), 0)::bigint as milli from app.site_services
-     where site_id = ${siteId} and active and valid_from <= ${today} and (valid_to is null or valid_to >= ${today})`;
+  const [target, [area], [plan], [flat], [sh]] = await Promise.all([
+    getSiteHourTarget(sql, siteId),
+    sql<{ area: bigint; n: number }[]>`
+      select coalesce(sum(area_centi), 0)::bigint as area, count(*)::int as n from app.rooms
+       where site_id = ${siteId} and active`,
+    sql<{ minutes: number }[]>`
+      select coalesce(sum(extract(epoch from (end_time - start_time)) / 60 - break_minutes), 0)::float8 as minutes
+        from app.shift_plans
+       where site_id = ${siteId} and valid_from <= ${today} and (valid_until is null or valid_until >= ${today})`,
+    sql<{ cents: bigint }[]>`
+      select coalesce(sum(round(quantity_milli * unit_price_cents / 1000.0)), 0)::bigint as cents
+        from app.site_services
+       where site_id = ${siteId} and kind = 'monthly_flat' and active
+         and valid_from <= ${today} and (valid_to is null or valid_to >= ${today})`,
+    sql<{ milli: bigint }[]>`
+      select coalesce(sum(hours_target_milli), 0)::bigint as milli from app.site_services
+       where site_id = ${siteId} and active and valid_from <= ${today} and (valid_to is null or valid_to >= ${today})`,
+  ]);
+  const h = target ? hoursOf(target) : { perYear: 0, perMonth: 0, perWeek: 0 };
   return {
-    servicesHoursPerMonth: Number(sh?.milli ?? 0n) / 1000,
-    rooms,
-    areaCenti: rooms.reduce((s, r) => s + r.area_centi, 0n),
-    hoursPerYear: perYear,
-    hoursPerMonth: perYear / 12,
-    hoursPerWeek: perYear / 52,
+    target,
+    hoursPerWeek: h.perWeek,
+    hoursPerMonth: h.perMonth,
+    hoursPerYear: h.perYear,
+    areaCenti: area?.area ?? 0n,
+    rooms: area?.n ?? 0,
     plannedPerWeek: (plan?.minutes ?? 0) / 60,
     monthlyFlatCents: flat?.cents ?? 0n,
+    servicesHoursPerMonth: Number(sh?.milli ?? 0n) / 1000,
   };
 }
 

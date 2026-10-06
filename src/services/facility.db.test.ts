@@ -8,6 +8,8 @@ import {
   createQualityCheck,
   getQualityCheck,
   hourTarget,
+  listRooms,
+  saveSiteHourTarget,
   qcScore,
   qualityCheckPdf,
   readingsWithConsumption,
@@ -15,6 +17,8 @@ import {
   saveQualityCheck,
   saveRoom,
 } from './facility.js';
+import { sampleXlsx } from '../domain/sheet/sample-xlsx.js';
+import { analyzeRooms, applyRooms } from './room-import.js';
 import { DEMO } from './seed.js';
 import { type FakeMailer, dbAvailable, freshDatabase, testDeps } from './testing.js';
 import type { Deps } from './workflow.js';
@@ -57,43 +61,106 @@ describe.skipIf(!available)('Raumbuch, Qualitätskontrolle, Zähler', () => {
     floorCovering: 'Linoleum',
     areaCenti: 4000n, // 40 m²
     visitsPerYear: 260,
-    performanceOverride: null,
     notes: null,
     active: true,
     expectedVersion: null,
     ...over,
   });
 
-  it('Stundenvorgabe aus Fläche, Leistungswert und Intervall', async () => {
+  it('Stundenvorgabe von Hand: je Wochentag, Monat oder Jahr; Fläche aus dem Raumbuch', async () => {
     await saveRoom(sql, randomUUID(), room());
     await saveRoom(
       sql,
       randomUUID(),
       room({ roomNo: '0.02', name: 'WC Damen', roomTypeId: WC, areaCenti: 1600n }),
     );
-    // 40 m² / 200 m²/h = 12 min; 16 m² / 80 m²/h = 12 min; je 260× → 24 min × 260 = 104 h/Jahr
-    const t = await hourTarget(sql, DEMO.siteSchool);
-    expect(t.rooms.map((r) => r.minutesPerVisit)).toEqual([12, 12]);
-    expect(t.hoursPerYear).toBeCloseTo(104, 10);
-    expect(t.hoursPerWeek).toBeCloseTo(2, 10);
-    expect(t.areaCenti).toBe(5600n);
-    // Abweichender Leistungswert
-    const id = randomUUID();
+    const flur = randomUUID();
     await saveRoom(
       sql,
-      id,
-      room({
-        roomNo: '1.01',
-        name: 'Flur OG',
-        floor: 'OG',
-        performanceOverride: 400,
-        areaCenti: 8000n,
-        visitsPerYear: 52,
-      }),
+      flur,
+      room({ roomNo: '1.01', name: 'Flur OG', floor: 'OG', areaCenti: 8000n, visitsPerYear: 52 }),
     );
-    const t2 = await hourTarget(sql, DEMO.siteSchool);
-    expect(t2.rooms.find((r) => r.id === id)!.minutesPerVisit).toBe(12);
-    await expect(saveRoom(sql, id, room({ expectedVersion: 99 }))).rejects.toThrow(/zwischenzeitlich/);
+    await expect(saveRoom(sql, flur, room({ expectedVersion: 99 }))).rejects.toThrow(/zwischenzeitlich/);
+    let t = await hourTarget(sql, DEMO.siteSchool);
+    expect(t.target).toBeUndefined();
+    expect(t.areaCenti).toBe(13600n);
+    expect(t.rooms).toBe(3);
+    const base = { dayMinutes: [0, 0, 0, 0, 0, 0, 0], monthMinutes: null, yearMinutes: null, note: null };
+    // Mo–Fr je 2 h = 10 h/Woche = 520 h/Jahr
+    await saveSiteHourTarget(
+      sql,
+      DEMO.siteSchool,
+      { ...base, mode: 'woche', dayMinutes: [120, 120, 120, 120, 120, 0, 0], expectedVersion: null },
+      'test',
+    );
+    t = await hourTarget(sql, DEMO.siteSchool);
+    expect(t.hoursPerWeek).toBeCloseTo(10, 10);
+    expect(t.hoursPerYear).toBeCloseTo(520, 10);
+    expect(t.hoursPerMonth).toBeCloseTo(520 / 12, 10);
+    // Monat: 43:20 h → Jahr 520 h
+    await saveSiteHourTarget(
+      sql,
+      DEMO.siteSchool,
+      { ...base, mode: 'monat', monthMinutes: 2600, expectedVersion: t.target!.version },
+      'test',
+    );
+    t = await hourTarget(sql, DEMO.siteSchool);
+    expect(t.hoursPerYear).toBeCloseTo(520, 10);
+    expect(t.target!.day_minutes).toEqual([0, 0, 0, 0, 0, 0, 0]);
+    await expect(
+      saveSiteHourTarget(
+        sql,
+        DEMO.siteSchool,
+        { ...base, mode: 'jahr', yearMinutes: 600, expectedVersion: 1 },
+        'x',
+      ),
+    ).rejects.toThrow(/zwischenzeitlich/);
+    await expect(
+      saveSiteHourTarget(sql, DEMO.siteSchool, { ...base, mode: 'monat', expectedVersion: null }, 'x'),
+    ).rejects.toThrow(/je Monat/);
+    await expect(
+      saveSiteHourTarget(
+        sql,
+        DEMO.siteSchool,
+        { ...base, mode: 'woche', dayMinutes: [1500, 0, 0, 0, 0, 0, 0], expectedVersion: null },
+        'x',
+      ),
+    ).rejects.toThrow(/Wochentag/);
+  });
+
+  it('Raumbuch-Import aus Excel: Vorschau, neue Raumart, doppelt absenden legt nichts doppelt an, Aktualisieren', async () => {
+    const xlsx = sampleXlsx();
+    const a = await analyzeRooms(sql, DEMO.siteOffice, xlsx);
+    expect(a.headerLine).toBe(2);
+    expect(a.rows.map((r) => [r.roomNo, r.name, r.typeName, r.areaCenti, r.visits, r.errors])).toEqual([
+      ['1.01', 'Sekretariat', 'Büro', 2450n, 260, []],
+      ['1.02', 'WC & Dusche', 'Sonstiges', 800n, 260, []],
+    ]);
+    expect(a.newTypes).toEqual(['Sonstiges']);
+    const r1 = await applyRooms(sql, DEMO.siteOffice, 'f'.repeat(64), a, { update: false }, 'test');
+    expect(r1).toEqual({ created: 2, updated: 0, skipped: 0 });
+    const again = await applyRooms(sql, DEMO.siteOffice, 'f'.repeat(64), a, { update: false }, 'test');
+    expect(again.created).toBe(0);
+    expect(await listRooms(sql, DEMO.siteOffice)).toHaveLength(2);
+    // zweite Datei: Räume erkannt als vorhanden, nur mit „überschreiben“ geändert
+    const b = await analyzeRooms(
+      sql,
+      DEMO.siteOffice,
+      Buffer.from(
+        'Etage;Raum-Nr.;Raum;Fläche;Intervall\nEG;1.01;Sekretariat;30;2x Woche\nEG;1.03;Lager;x;\n',
+      ),
+    );
+    expect(b.rows[0]!.existingId).not.toBeNull();
+    expect(b.rows[1]!.errors).toEqual(['Fläche „x“ ungültig']);
+    expect(await applyRooms(sql, DEMO.siteOffice, 'e'.repeat(64), b, { update: false }, 'test')).toEqual({
+      created: 0,
+      updated: 0,
+      skipped: 2,
+    });
+    await applyRooms(sql, DEMO.siteOffice, 'e'.repeat(64), b, { update: true }, 'test');
+    const sek = (await listRooms(sql, DEMO.siteOffice)).find((r) => r.room_no === '1.01')!;
+    expect([sek.area_centi, sek.visits_per_year]).toEqual([3000n, 104]);
+    await expect(analyzeRooms(sql, DEMO.siteOffice, Buffer.from('a;b\n1;2\n'))).rejects.toThrow(/Kopfzeile/);
   });
 
   it('Qualitätskontrolle: Bereiche aus Raumbuch, Mängel → Aufgaben (einmal), danach unveränderbar', async () => {

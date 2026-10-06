@@ -45,7 +45,7 @@ await p.click('a:has-text("+ Raum")');
 await p.fill('#floor', 'EG');
 await p.fill('#room_no', `E${tag}`);
 await p.fill('#name', 'Büro Leitung');
-await p.selectOption('#room_type_id', { label: 'Büro (200 m²/h)' });
+await p.selectOption('#room_type_id', { label: 'Büro' });
 await p.fill('#area', '40');
 await p.selectOption('#visits', '260');
 await p.click('button:has-text("Speichern und nächster Raum")');
@@ -54,7 +54,7 @@ check('nächster Raum: leeres Formular', (await p.inputValue('#name')) === '', a
 await p.fill('#floor', 'EG');
 await p.fill('#room_no', `W${tag}`);
 await p.fill('#name', 'WC Herren');
-await p.selectOption('#room_type_id', { label: 'Sanitär / WC (80 m²/h)' });
+await p.selectOption('#room_type_id', { label: 'Sanitär / WC' });
 await p.fill('#area', '16');
 await p.click('button:has-text("Speichern")>>nth=-1');
 await p.waitForLoadState();
@@ -62,7 +62,7 @@ check(
   'zwei Räume im Raumbuch',
   (await p.locator('tbody tr').count()) >= Math.max(before, 0) + 2 - (before === 1 ? 1 : 0),
 );
-check('12 min je Reinigung', (await body(p)).includes('0:12 h'));
+check('keine Leistungswerte mehr', !(await body(p)).includes('m²/h'));
 await p.screenshot({ path: `${out}/o1-raumbuch.png`, fullPage: true });
 const csv = await p.request.get(B + `/objekte/${SITE}/raumbuch.csv`);
 check('CSV-Export', csv.ok() && (await csv.text()).includes('WC Herren'));
@@ -76,8 +76,27 @@ check('ungültige Fläche abgelehnt', (await flash(p)).includes('Fläche'), awai
 
 console.log('2. Stundenvorgabe');
 await p.goto(B + `/objekte/${SITE}/stundenvorgabe`);
+await p.check('input[name=mode][value=woche]');
+for (let i = 0; i < 5; i++) await p.fill(`#day${i}`, '2:30');
+check('Wochensumme live', (await p.locator('#hv-sum').innerText()) === '12:30');
+await p.click('button:has-text("Stundenvorgabe speichern")');
+await p.waitForLoadState();
+check('Vorgabe gespeichert', (await flash(p)).includes('gespeichert'), await flash(p));
 const sv = await body(p);
-check('Vorgabe Std./Woche angezeigt', /Std\.\/Woche/.test(sv));
+check('Vorgabe 12,5 Std./Woche', sv.includes('12,5 Std./Woche'), sv.slice(0, 400));
+await p.check('input[name=mode][value=monat]');
+check(
+  'Monat-Feld sichtbar, Wochentage versteckt',
+  (await p.isVisible('#month_hours')) && !(await p.isVisible('#day0')),
+);
+await p.fill('#month_hours', '54,17');
+await p.click('button:has-text("Stundenvorgabe speichern")');
+await p.waitForLoadState();
+check(
+  'Monatsvorgabe gespeichert',
+  (await body(p)).includes('54,2 Std./Monat'),
+  (await body(p)).slice(0, 400),
+);
 check('Vergleich Einsatzplan', sv.includes('Einsatzplan aktuell'));
 check('Erlös je Stunde (Büro)', sv.includes('Erlös je Vorgabe-Std.'));
 await p.screenshot({ path: `${out}/o2-stundenvorgabe.png`, fullPage: true });

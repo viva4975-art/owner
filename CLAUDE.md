@@ -661,3 +661,15 @@ Testadresse.
     „Objekt: Name (Nr.), Adresse“.
   - Behoben: Bei mehreren Upload-Feldern auf einer Seite funktionierte nur das erste.
   - Tests: neu `npm run e2e:objektseiten` (18 Prüfungen), Notiz-Test in `phase2.db.test.ts`.
+- 2026-10-06: Runde 3c, Teil 2 – Raumbuch und Stundenvorgabe:
+  - Leistungswerte (m²/h) entfernt: Raumbuch zeigt Etage, Raum-Nr., Raum, Raumart, Bodenbelag, Fläche, Intervall (+ Summe).
+    Einstellungen → „Raumarten“ (nur Name/aktiv) statt „Leistungswerte“; alte Adresse leitet um.
+  - Raumbuch aus Excel (.xlsx, erstes Blatt) oder CSV importieren: Kopfzeile wird gesucht (auch unter Titelzeilen),
+    Spalten über Namen erkannt, Intervall aus Text („5x wöchentlich“, „täglich“ = Mo–Fr, „14-tägig“, „1x Monat“, Zahl bis
+    7 = pro Woche), Fläche exakt (kein Gleitkomma). Vorschau als GET-Seite (Datei write-once), Fehlerzeilen werden
+    übersprungen, unbekannte Raumarten angelegt, vorhandene Räume (Etage + Nr.) nur mit „überschreiben“. Feste IDs →
+    doppelt absenden legt nichts doppelt an. Eigener xlsx-Leser (fflate + Textsuche, DOCTYPE abgelehnt).
+  - Stundenvorgabe von Hand (`site_hour_targets`): je Wochentag Mo–So, je Monat oder je Jahr (2:30 oder 2,5); Umrechnung
+    Woche = Jahr ÷ 52, Monat = Jahr ÷ 12; Vergleich mit Einsatzplan, fürs Büro Erlös je Stunde.
+  - Tests: `sheet.test.ts` (xlsx/CSV/Intervall/Fläche), Import- und Stundenvorgabe-Test in `facility.db.test.ts`,
+    `e2e:objektseiten` 26 Prüfungen, `e2e:objekt` angepasst.

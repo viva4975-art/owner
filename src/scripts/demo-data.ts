@@ -688,7 +688,6 @@ async function phase4() {
       floorCovering: cov,
       areaCenti: parseEuro(area),
       visitsPerYear: visits,
-      performanceOverride: null,
       notes: null,
       active: true,
       expectedVersion: null,

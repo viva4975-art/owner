@@ -52,7 +52,7 @@ const SECTIONS: { title: string; items: [string, string, string][] }[] = [
   {
     title: 'Disposition & Inventar',
     items: [
-      ['Leistungswerte je Raumart', '/raumbuch/leistungswerte', 'm²/h für die Stundenvorgabe'],
+      ['Raumarten', '/raumbuch/raumarten', 'Auswahlliste fürs Raumbuch'],
       ['Arbeitskleidung: Artikel & Größen', '/arbeitskleidung', 'Preise, PSA, Mindestbestand'],
     ],
   },

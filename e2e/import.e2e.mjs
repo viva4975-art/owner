@@ -45,7 +45,7 @@ const upload = async (art, name, buffer) => {
   await p.goto(B + '/transfer/import');
   await p.selectOption('#art', art);
   await p.setInputFiles('#datei', { name, mimeType: 'text/csv', buffer });
-  await p.click('button:has-text("Prüfen")');
+  await p.click('form[action="/transfer/import"] button');
   await p.waitForLoadState();
 };
 
@@ -84,6 +84,40 @@ await upload(
 await p.click('button:has-text("neue übernehmen")');
 await p.waitForLoadState();
 check('Objekt übernommen, Fehlerzeile gezählt', /1 neu.*1 mit Fehlern/.test(await flash(p)), await flash(p));
+
+console.log('5. Gesamtimport (Fortytools-Exporte unverändert, zwei Dateien auf einmal)');
+const kd = `7${n}`;
+const ftKunden = Buffer.from(
+  [
+    '"{one: ""Kundenstatus"", other: ""Kundenstatus""}";"Kundennummer";"Kurzname";"Name";"Straße";"PLZ";"Ort";"Zusatz";"Telefon";"Fax";"Mobilnummer";"E-Mail";"Homepage";"{one: ""Zahlungsbedingung"", other: ""Zahlungsbedingungen""}";"IBAN";"Kontoinhaber";"BIC";"Kurzinfo";"Einsatzort-Notizen"',
+    `"Kunde";"${kd}";"E2E FT ${n}";"E2E Gesamt ${n}\nAbteilung";"Weg 1";"80331";"München";"";"";"";"";"";"";"7 Tage 3%, 20 Tage netto";"";"";"";"";""`,
+  ].join('\r\n'),
+);
+const ftLeist = Buffer.from(
+  [
+    'Kundennummer;Kundenname;Straße;PLZ;Ort;Zusatz;Objektname;Auftragsnummer;Link zum Auftrag;Leistungsart;Titel;Beschreibung;Menge;Betrag;Anfangsdatum;Enddatum',
+    `${kd};E2E;Weg 1;80331;München;;;;https://ft.example/contracts/e2e${n};Unterhaltsreinigung;E2E Pauschale;;1,0;500,0;01.01.2026;`,
+  ].join('\r\n'),
+);
+await p.goto(B + '/transfer/import');
+await p.setInputFiles('#ftdateien', [
+  { name: 'Kunden_utf-8.csv', mimeType: 'text/csv', buffer: ftKunden },
+  { name: 'active_services.csv', mimeType: 'text/csv', buffer: ftLeist },
+]);
+await p.click('form[action="/transfer/import/fortytools"] button');
+await p.waitForLoadState();
+const gb = await p.locator('body').innerText();
+check('Dateien erkannt', gb.includes('Kunden ← Kunden_utf-8.csv') && gb.includes('Leistungen ← active_services.csv'), gb.slice(0, 300));
+check('Hinweis: ohne Objekt → Allgemein', gb.includes('Hinweise (1)'));
+await p.screenshot({ path: `${out}/i5-gesamt.png`, fullPage: true });
+p.once('dialog', (d) => d.accept());
+await p.click('button:has-text("Übernehmen")');
+await p.waitForLoadState();
+check('3 neu (Kunde, Objekt, Leistung)', (await flash(p)).includes('Gesamtimport: 3 neu'), await flash(p));
+await p.goto(B + `/suche?q=E2E Gesamt ${n}`);
+check('Kunde mit Name aus erster Zeile', (await p.locator('body').innerText()).includes(`E2E Gesamt ${n}`));
+await p.goto(B + '/transfer/import');
+check('im Protokoll als Gesamtimport', (await p.locator('body').innerText()).includes('Gesamtimport'));
 
 console.log(`\n${ok} bestanden, ${fail} fehlgeschlagen`);
 await browser.close();

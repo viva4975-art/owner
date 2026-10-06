@@ -9,6 +9,16 @@ import {
   stageFile,
 } from '../services/fortytools-import.js';
 import { BusinessError } from '../services/errors.js';
+import {
+  applyPlan,
+  buildPlan,
+  detectTable,
+  FT_FILE,
+  type FtFile,
+  planCounts,
+  stagedFtFile,
+  stageFtFile,
+} from '../services/fortytools-export-import.js';
 import type { Ctx } from './app.js';
 import { PageHead } from './layout.js';
 
@@ -26,7 +36,26 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
       'transfer',
       <>
         <PageHead title="Import aus Fortytools" crumbs={[['Transfer', '/transfer/kontoumsaetze']]} />
+        <form method="post" action="/transfer/import/fortytools" enctype="multipart/form-data" class="card">
+          <h3 style="margin-top:0">Gesamtimport: Fortytools-Exporte unverändert</h3>
+          <p class="small mut" style="margin-top:0">
+            Die Exporte aus Fortytools so wie sie sind (Kunden, Objekte, aktive Leistungen, Mitarbeiter) –
+            alle auf einmal oder einzeln. Die Dateien werden an der Kopfzeile erkannt. Interessenten ohne
+            Kundennummer bekommen eine neue Nummer, Objekte die Nummer Kundennummer + zweistellig. Erst
+            Vorschau, gespeichert wird erst nach „Übernehmen“. Erneut importieren legt nichts doppelt an.
+          </p>
+          <div class="grid">
+            <div>
+              <label for="ftdateien">CSV-Dateien</label>
+              <input id="ftdateien" type="file" name="dateien" accept=".csv,.txt" multiple required />
+            </div>
+          </div>
+          <div class="actions" style="margin-bottom:0">
+            <button class="btn">Prüfen (Vorschau)</button>
+          </div>
+        </form>
         <form method="post" action="/transfer/import" enctype="multipart/form-data" class="card">
+          <h3 style="margin-top:0">Einzelne Liste (eigene Spalten)</h3>
           <p class="small mut" style="margin-top:0">
             CSV-Export aus Fortytools (oder Excel „Speichern unter → CSV“). Spalten werden über die Kopfzeile
             erkannt. Reihenfolge: <b>1. Kunden → 2. Objekte → 3. Leistungen</b>. Erst kommt eine Vorschau mit
@@ -97,7 +126,7 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
                           timeStyle: 'short',
                         })}
                       </td>
-                      <td>{IMPORT_KIND[i.kind]}</td>
+                      <td>{IMPORT_KIND[i.kind] ?? 'Gesamtimport'}</td>
                       <td>{i.filename}</td>
                       <td class="r">{i.row_count}</td>
                       <td class="r">{i.created_count}</td>
@@ -230,6 +259,186 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
         </form>
       </>,
     );
+  });
+
+  app.post('/transfer/import/fortytools', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const files = (Array.isArray(b.dateien) ? b.dateien : [b.dateien]).filter(
+      (f): f is File => f instanceof File && f.size > 0,
+    );
+    if (!files.length) throw new BusinessError('Bitte mindestens eine CSV-Datei wählen');
+    const staged = [];
+    for (const f of files) {
+      const s = await stageFtFile(deps, new Uint8Array(await f.arrayBuffer()));
+      staged.push(`${s.sha}:${encodeURIComponent(f.name.slice(0, 80))}`);
+    }
+    return c.redirect(`/transfer/import/fortytools?f=${staged.join(',')}`, 303);
+  });
+
+  const ftFiles = (v: string | undefined) =>
+    (v ?? '')
+      .split(',')
+      .filter(Boolean)
+      .slice(0, 8)
+      .map((x) => {
+        const [sha = '', name = ''] = x.split(':');
+        return { sha, name: decodeURIComponent(name) || 'export.csv' };
+      });
+
+  app.get('/transfer/import/fortytools', async (c) => {
+    const files = ftFiles(c.req.query('f'));
+    if (!files.length) return c.redirect('/transfer/import', 303);
+    const tables = await Promise.all(files.map(async (f) => detectTable(await stagedFtFile(deps, f.sha))));
+    const plan = await buildPlan(sql, tables);
+    const n = planCounts(plan);
+    const errors = plan.issues.filter((i) => i.level === 'fehler');
+    const hints = plan.issues.filter((i) => i.level === 'hinweis');
+    const total = (Object.keys(FT_FILE) as FtFile[]).reduce((s, k) => s + n[k].neu + n[k].vorhanden, 0);
+    const lists: [FtFile, { label: string; status: string }[]][] = [
+      ['kunden', plan.customers],
+      ['objekte', plan.sites],
+      ['leistungen', plan.services],
+      ['mitarbeiter', plan.employees],
+    ];
+    return page(
+      c,
+      'Import prüfen',
+      'transfer',
+      <>
+        <PageHead
+          title="Gesamtimport prüfen"
+          crumbs={[
+            ['Transfer', '/transfer/kontoumsaetze'],
+            ['Import aus Fortytools', '/transfer/import'],
+          ]}
+        />
+        <div class="card">
+          <p class="small" style="margin:0">
+            Erkannt:{' '}
+            {tables.map((t, i) => (
+              <span class="badge ok" style="margin:2px">
+                {FT_FILE[t.kind]} ← {files[i]!.name} ({t.rows.length} Zeilen)
+              </span>
+            ))}
+          </p>
+        </div>
+        <div class="tbl card">
+          <table>
+            <thead>
+              <tr>
+                <th></th>
+                <th class="r">neu</th>
+                <th class="r">schon vorhanden</th>
+                <th class="r">mit Fehlern (nicht übernommen)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(Object.keys(FT_FILE) as FtFile[])
+                .filter((k) => plan.files.includes(k) || n[k].neu + n[k].vorhanden + n[k].fehler > 0)
+                .map((k) => (
+                  <tr>
+                    <td>{FT_FILE[k]}</td>
+                    <td class="r">{n[k].neu}</td>
+                    <td class="r">{n[k].vorhanden}</td>
+                    <td class="r" style={n[k].fehler ? 'color:var(--err)' : ''}>
+                      {n[k].fehler}
+                    </td>
+                  </tr>
+                ))}
+              <tr>
+                <td class="mut">dazu Kontakte / Bankkonten</td>
+                <td class="r mut" colspan={3}>
+                  {n.kontakte} / {n.bankkonten}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        {errors.length > 0 && (
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--err)">
+              Fehler ({errors.length}) – diese Zeilen werden nicht übernommen
+            </h3>
+            <ul class="small">
+              {errors.map((i) => (
+                <li>
+                  <b>{FT_FILE[i.area]}</b> {i.ref}: {i.text}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {hints.length > 0 && (
+          <details class="card">
+            <summary>
+              <b>Hinweise ({hints.length})</b> – werden übernommen, bitte danach prüfen
+            </summary>
+            <ul class="small">
+              {hints.slice(0, 1000).map((i) => (
+                <li>
+                  <b>{FT_FILE[i.area]}</b> {i.ref}: {i.text}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+        {lists
+          .filter(([, l]) => l.length)
+          .map(([k, l]) => (
+            <details class="card">
+              <summary>
+                <b>{FT_FILE[k]}</b> – alle {l.length} anzeigen
+              </summary>
+              <ul class="small" style="columns:2">
+                {l.map((x) => (
+                  <li>
+                    <span
+                      class={`badge ${x.status === 'neu' ? 'ok' : x.status === 'fehler' ? 'err' : 'info'}`}
+                    >
+                      {x.status}
+                    </span>{' '}
+                    {x.label}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ))}
+        <form method="post" action="/transfer/import/fortytools/uebernehmen" class="card">
+          <input type="hidden" name="id" value={randomUUID()} />
+          <input type="hidden" name="f" value={c.req.query('f') ?? ''} />
+          <p class="small mut" style="margin-top:0">
+            Leistungsarten werden angelegt, falls sie fehlen. Abrechnung: Unterhaltsreinigung und Spüldienste
+            monatlich, alles andere „je Ausführung“ (bitte je Objekt prüfen). Steuersatz 19 %.
+          </p>
+          <label>
+            <input type="checkbox" name="update" /> vorhandene Datensätze mit den Werten aus den Dateien
+            überschreiben (Nummern bleiben; bei Mitarbeitenden nur die Felder aus Fortytools)
+          </label>
+          <div class="formfoot">
+            <a class="btn sec" href="/transfer/import">
+              Andere Dateien
+            </a>
+            <button class="btn" disabled={!total} onclick="return confirm('Import jetzt übernehmen?')">
+              Übernehmen
+            </button>
+          </div>
+        </form>
+      </>,
+    );
+  });
+
+  app.post('/transfer/import/fortytools/uebernehmen', async (c) => {
+    const b = await c.req.parseBody();
+    const id = typeof b.id === 'string' && /^[0-9a-f-]{36}$/.test(b.id) ? b.id : randomUUID();
+    const r = await applyPlan(deps, {
+      id,
+      files: ftFiles(typeof b.f === 'string' ? b.f : ''),
+      update: b.update === 'on',
+      actor: c.get('actor'),
+    });
+    return back(c, '/transfer/import', {
+      ok: `Gesamtimport: ${r.created} neu, ${r.updated} aktualisiert, ${r.skipped} übersprungen, ${r.errors.length} mit Fehlern.`,
+    });
   });
 
   app.post('/transfer/import/uebernehmen', async (c) => {

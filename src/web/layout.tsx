@@ -497,6 +497,9 @@ summary.gear{list-style:none;cursor:pointer}summary.gear::-webkit-details-marker
 .gp-ev.gp-team_a{border-left-color:var(--brand)}.gp-ev.gp-team_b{border-left-color:#b88c1a}.gp-ev span{color:var(--mut)}
 @media print{.menu,.topbar,header,.tabs,.stat-grid,.toolbar,.page-head .acts,.flash{display:none!important}.gp-cell{min-height:80px}}
 @media (max-width:760px){.gp-cal{grid-template-columns:repeat(7,minmax(44px,1fr));font-size:9px}.gp-ev span{display:none}.gp-ap,.gp-dayrow{grid-template-columns:1fr 1fr}}
+/* Tiefgarage */
+.tg-row{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 10px;margin-top:8px;border-radius:8px;background:var(--head)}
+.tg-row.ok{background:var(--ok-50)}.tg-row.done{background:#f2f2f2;color:var(--mut)}
 /* Bewerber */
 .bw-count{display:flex;flex-direction:column;align-items:flex-end;text-align:right}.bw-count span{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--mut)}
 .bw-count b{font-size:24px}.bw-chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
@@ -838,6 +841,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Monat: Soll/Ist je Mitarbeiter', href: '/zeiterfassung/monat' },
       { label: 'Urlaubskalender', href: '/urlaub/kalender' },
       { label: 'Glasreinigung', href: '/glasreinigung', sep: true },
+      { label: 'Tiefgaragenreinigung', href: '/tiefgarage' },
       { label: 'Sonderdienste (sonstige)', href: '/sonderdienste' },
     ],
   },

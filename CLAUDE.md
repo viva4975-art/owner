@@ -843,3 +843,14 @@ Testadresse.
   **Schulferien Bayern liegen nur bis Sommer 2027 vor** (`src/domain/time/school-holidays.ts`, jährlich ergänzen).
   Import: 21 Kunden (aus dem Kundennamen am Objekt, Kundentabelle fehlt im Backup), 94 Objekte, 49 Termine, Teamnamen.
   Die bisherigen „Sonderdienste“ bleiben für sonstige Arbeiten. `e2e:kasse` jetzt 48 Prüfungen.
+- 2026-10-06: Runde 8f – Tiefgaragenreinigung wie die alte App (Disposition → Tiefgaragenreinigung): Kunde Alle /
+  Münchner Wohnen / Dawonia, Kacheln Termine / Offen / Abgeschlossen / Bestätigt, Suche (Objekt, Ort, WE-Nr., TOB).
+  Objekte mit m², WE-Nr., Stellplätzen fest/Duplex, Dauer („4 Std.“, „1 Tag“, „1/2 Tag“), TOB + Vertretung, aktiv,
+  „dieses Jahr pausiert“, Besitzgesellschaft, Verknüpfung mit einem Objekt (Kostenstelle) für Arbeitsscheine. Termine
+  (mehrtägig), Leistungsart Nassreinigung/Kehren/Grundreinigung/Sonstige, „⏰ in N Tg.“, bestätigen / ✓ fertig / ↩.
+  Auto-Termin-Planer wie alt (Mo–Fr nach Dauer packen, Tagesbeginn, Std./Tag, Feiertage, Sperrzeitraum, nur neue,
+  Reihenfolge PLZ → Name, Vorschau → übernehmen, feste IDs). Aushang-PDF (Text wie alt inkl. Haftungsausschluss), alle
+  Aushänge in einem PDF, Aushang-Mail und Erinnerung (an TOB, CC Vertretung), Terminliste und Vorarbeiter-Liste als
+  Druckseite, Excel als CSV. Bestätigen legt (bei verknüpftem Objekt) den Arbeitsschein an – Dawonia mit den 13
+  Positionen (Stellplätze/Duplex als Menge), Münchner Wohnen eine Position. Keine TG-Daten im Backup.
+  `e2e:kasse` jetzt 55 Prüfungen.

@@ -272,6 +272,39 @@ check('Offene Planung', (await p.locator('.stat-card').count()) >= 3);
 await p.goto(`${B}/glasreinigung/autoplan`);
 check('Auto-Plan Schritt 1', (await p.locator('h1').innerText()).includes('Schritt 1'));
 
+console.log('10. Tiefgarage');
+await p.goto(`${B}/tiefgarage`);
+await p.click('a:has-text("+ Neues Objekt")');
+await p.selectOption('#customer', 'Dawonia');
+await p.fill('#name', `E2E TG ${stamp}`);
+await p.fill('#postal_code', '81375');
+await p.fill('#city', 'München');
+await p.fill('#spaces_fixed', '30');
+await p.fill('#duration', '4 Std.');
+await p.selectOption('#site', { index: 1 });
+await p.click('form.card button:has-text("Anlegen")');
+await p.waitForLoadState();
+check('TG-Objekt angelegt', (await p.locator('.lc', { hasText: `E2E TG ${stamp}` }).count()) === 1);
+await p.goto(`${B}/tiefgarage/autoplan?los=1&kunde=Dawonia&kind=Grundreinigung&nur_neue=ja`);
+check('Auto-Planer Vorschau', (await p.locator('tbody tr', { hasText: `E2E TG ${stamp}` }).count()) === 1);
+await p.click('button:has-text("Termine übernehmen")');
+await p.waitForLoadState();
+check('Termine übernommen', (await flash(p)).includes('Termine angelegt'), await flash(p));
+const tgCard = p.locator('.lc', { hasText: `E2E TG ${stamp}` });
+check('Termin am Objekt', (await tgCard.locator('.tg-row').count()) === 1);
+await tgCard.locator('button:has-text("bestätigen")').click();
+await p.waitForLoadState();
+check('Bestätigen legt Arbeitsschein an', (await flash(p)).includes('Arbeitsschein'), await flash(p));
+const notice = await p.request.get(
+  `${B}/tiefgarage/aushaenge.pdf?objekt=${await tgCard
+    .locator('a:has-text("Objekt bearbeiten")')
+    .getAttribute('href')
+    .then((h) => h.split('/').pop())}`,
+);
+check('Aushang-PDF', notice.headers()['content-type'] === 'application/pdf');
+const tgcsv = await p.request.get(`${B}/tiefgarage/export.csv?ansicht=alle`);
+check('Excel/CSV', (await tgcsv.text()).includes(`E2E TG ${stamp}`));
+
 await browser.close();
 console.log(`\ne2e:kasse: ${ok} bestanden, ${fail} fehlgeschlagen`);
 process.exit(fail ? 1 : 0);

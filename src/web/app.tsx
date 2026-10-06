@@ -41,6 +41,7 @@ import { registerLegacyRoutes } from './routes-legacy.js';
 import { registerProspectRoutes } from './routes-prospects.js';
 import { registerApplicantRoutes } from './routes-applicants.js';
 import { registerGlassRoutes } from './routes-glass.js';
+import { registerGarageRoutes } from './routes-garage.js';
 import { registerEigenComplianceRoutes } from './routes-eigen-compliance.js';
 import { registerCostCenterRoutes } from './routes-costcenters.js';
 import { registerPlanningRoutes } from './routes-planning.js';
@@ -307,6 +308,7 @@ export function createApp(deps: Deps) {
   registerProspectRoutes(ctx);
   registerApplicantRoutes(ctx);
   registerGlassRoutes(ctx);
+  registerGarageRoutes(ctx);
   registerEigenComplianceRoutes(ctx);
 
   app.notFound((c) =>

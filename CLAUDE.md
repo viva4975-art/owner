@@ -98,8 +98,9 @@ Testadresse.
 - [ ] Lieferantennummern bei Behörden, Leitweg-IDs der Behörden-Kunden (Steuernummer 143/190/63154 vom Briefpapier übernommen)
 - [ ] Absender-Adresse für Rechnungen (z. B. rechnung@viva-deluxe-reinigung.de) + Mail-Zugang (SMTP)
 - [ ] Testadresse für den Prototyp-Versand
-- [ ] IONOS VPS bestellen (8 GB, Ubuntu, ohne Apps/Plesk), DNS `app` → Server-IP, Installation nach `docs/IONOS.md`;
-      AVV mit IONOS; IONOS Cloud Backup (Sicherung außerhalb des Servers)
+- [x] IONOS VPS (4 vCores/8 GB, Ubuntu 24.04, 217.160.236.117) installiert, läuft unter https://app.viva-deluxe-reinigung.de
+- [ ] AVV mit IONOS; IONOS Cloud Backup (Sicherung außerhalb des Servers); root-Passwort ändern und ersten GitHub-Token
+      löschen (beide standen im Chat); SMTP-Zugang nachtragen (`.env.live`)
 - [ ] Lexware-Lohnprogramm (genaue Bezeichnung, Importformat)
 - [ ] Fortytools: eine Rechnungsgruppe von innen zeigen (dort stecken vermutlich die Preise je Objekt)
 - [ ] Briefpapier ab 01.11.2026 (neue Adresse) als Datei vom Grafiker, 300 dpi
@@ -607,3 +608,9 @@ Testadresse.
   - Geprüft: kompletter Verbund (Postgres + App + KoSIT) hier gestartet, leere DB → Migration + Firmenstamm, Anmeldung mit
     Sonderzeichen-Passwort, Browser-Tests e2e/einkauf/auftrag/module/import grün; Rechte-Test braucht HTTPS (sichere
     Cookies außerhalb dev) – auf dem Server über Caddy gegeben.
+- 2026-10-06: **Testbetrieb läuft** auf https://app.viva-deluxe-reinigung.de (IONOS VPS, automatische Updates alle 10 Min.,
+  Sicherung 02:30). Bei der Installation gefunden und behoben: Repo mit umask 077 geklont → App durfte Dateien nicht lesen
+  (Dockerfile macht Quellcode lesbar); Benutzername mit Leerzeichen verletzte DB-Regel (wird jetzt zu `name.nachname`,
+  Fehlstart wird erneut versucht). Neu: `src/scripts/reset-password.ts` (Einmal-Passwort auf dem Server). Admin-Login:
+  `ahmed.chomontek`. Ahmed testet jetzt mit eigenen Daten und schickt Änderungen.
+

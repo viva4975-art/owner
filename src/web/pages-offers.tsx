@@ -342,10 +342,54 @@ export const OfferEditor: FC<{
           {tenderId && <input type="hidden" name="tender_id" value={tenderId} />}
           <input type="hidden" name="customer_id" value={o.customer_id} />
           <input type="hidden" name="site_id" value={o.site_id ?? ''} />
-          <h2 style="margin-top:0">Ausschreibung</h2>
+          {(tenderId || o.tender_reference || o.tender_platform || o.submission_deadline) && (
+            <>
+              <h2 style="margin-top:0">Ausschreibung</h2>
+              <p class="help" style="margin-top:0">
+                Fristen und Unterlagen verwalten Sie unter Angebote → Ausschreibungen.
+              </p>
+              <div class="grid">
+                <div>
+                  <label for="tender_reference">Vergabenummer</label>
+                  <input
+                    id="tender_reference"
+                    name="tender_reference"
+                    value={o.tender_reference ?? ''}
+                    placeholder="z. B. 2026-V-0815"
+                  />
+                </div>
+                <div>
+                  <label for="tender_platform">Vergabeplattform</label>
+                  <input
+                    id="tender_platform"
+                    name="tender_platform"
+                    list="platforms"
+                    value={o.tender_platform ?? ''}
+                  />
+                  <datalist id="platforms">
+                    <option value="Bayerischer Vergabemarktplatz" />
+                    <option value="Vergabeplattform Landeshauptstadt München" />
+                    <option value="DTVP Deutsches Vergabeportal" />
+                    <option value="e-Vergabe Bund" />
+                    <option value="Direktanfrage" />
+                  </datalist>
+                </div>
+                <div>
+                  <label for="submission_deadline">Abgabefrist (Datum, Uhrzeit)</label>
+                  <input
+                    id="submission_deadline"
+                    type="datetime-local"
+                    name="submission_deadline"
+                    value={deadlineInput(o.submission_deadline ?? null)}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+          <h2>Angebot</h2>
           <div class="grid">
             <div style="grid-column:1/-1">
-              <label for="title">Titel</label>
+              <label for="title">Titel / Betreff *</label>
               <input
                 id="title"
                 name="title"
@@ -354,43 +398,7 @@ export const OfferEditor: FC<{
                 required
               />
             </div>
-            <div>
-              <label for="tender_reference">Vergabenummer</label>
-              <input
-                id="tender_reference"
-                name="tender_reference"
-                value={o.tender_reference ?? ''}
-                placeholder="z. B. 2026-V-0815"
-              />
-            </div>
-            <div>
-              <label for="tender_platform">Vergabeplattform</label>
-              <input
-                id="tender_platform"
-                name="tender_platform"
-                list="platforms"
-                value={o.tender_platform ?? ''}
-              />
-              <datalist id="platforms">
-                <option value="Bayerischer Vergabemarktplatz" />
-                <option value="Vergabeplattform Landeshauptstadt München" />
-                <option value="DTVP Deutsches Vergabeportal" />
-                <option value="e-Vergabe Bund" />
-                <option value="Direktanfrage" />
-              </datalist>
-            </div>
-            <div>
-              <label for="submission_deadline">Abgabefrist (Datum, Uhrzeit)</label>
-              <input
-                id="submission_deadline"
-                type="datetime-local"
-                name="submission_deadline"
-                value={deadlineInput(o.submission_deadline ?? null)}
-              />
-            </div>
-          </div>
-          <h2>Angebot</h2>
-          <div class="grid">
+
             <div>
               <label for="offer_date">Angebotsdatum</label>
               <input id="offer_date" type="date" name="offer_date" value={o.offer_date ?? ''} required />

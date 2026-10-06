@@ -710,3 +710,9 @@ Testadresse.
     (unfertig, § 13b); Auswahl → Rechnungsdatum setzen / markierte ausstellen (je Rechnung KoSIT, Fehler halten die
     anderen nicht auf, Meldung je Kunde/Objekt) / markierte löschen (Ausführungen werden wieder frei).
   - Tests: 281 Unit-/DB-Tests (neu `executions.db.test.ts`), neu `npm run e2e:vorfaktura` (12 Prüfungen).
+- 2026-10-06: Runde 4c:
+  - Angebot anlegen wie Fortytools (`/angebote/neu`): „Kunde suchen“ (Nummer oder Name), rechts „zuletzt bearbeitete
+    Kunden“, Auswahl **Angebot schreiben** oder **Ausschreibung vormerken** (→ Ausschreibung mit Kunde vorbelegt: Frist,
+    Bieterfragen, Link). Im normalen Angebot keine Vergabe-Felder mehr (nur bei Angeboten aus einer Ausschreibung).
+  - „Alle Rechnungen“ und „Archiv“ zusammengelegt: Jahr, Suche, gruppiert nach Leistungszeitraum (Standard) oder
+    Rechnungsdatum, je Monat Summen, Belege und ZIP (nach Leistungszeitraum). `/rechnungen/archiv` leitet um.

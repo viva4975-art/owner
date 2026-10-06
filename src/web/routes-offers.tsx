@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { getTender, linkOffer } from '../services/tenders.js';
 import { BusinessError } from '../services/errors.js';
@@ -25,6 +26,7 @@ import { type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
 import { arr, parseLines, str } from './forms.js';
 import { OfferDetail, OfferEditor, OfferList, toOfferEditorLine } from './pages-offers.js';
+import { PageHead } from './layout.js';
 
 const versionOf = (v: unknown) => (typeof v === 'string' && v !== '' ? Number(v) : null);
 
@@ -58,6 +60,97 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
       title,
       'angebote',
       <OfferList rows={rows} all={all} active={active} title={title} stats={stats} />,
+    );
+  });
+
+  // Angebot anlegen wie Fortytools: Kunde suchen (Nummer oder Name), zuletzt bearbeitete Kunden, dann wählen:
+  // Angebot schreiben oder Ausschreibung vormerken (Fristen, Link).
+  app.get('/angebote/neu', async (c) => {
+    const [customers, recent] = await Promise.all([
+      listCustomers(sql).then((l) => l.filter((x) => x.active)),
+      recentCustomers(sql, c.get('actor'), 12),
+    ]);
+    return page(
+      c,
+      'Angebot anlegen',
+      'angebote',
+      <>
+        <PageHead title="Angebot anlegen" crumbs={[['Angebote', '/angebote']]} />
+        <div class="cols" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)">
+          <form method="get" action="/angebote/anlegen" class="card">
+            <h3 style="margin-top:0">Kunde auswählen</h3>
+            <div class="grid">
+              <div>
+                <label for="kunde_suche">Kunde suchen</label>
+                <input
+                  id="kunde_suche"
+                  name="kunde_suche"
+                  list="kunden-liste"
+                  autocomplete="off"
+                  required
+                  autofocus
+                  placeholder="Kundennummer oder Name"
+                />
+                <datalist id="kunden-liste">
+                  {customers.map((x) => (
+                    <option value={`${x.customer_no} · ${x.name}`} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <label>Was möchten Sie anlegen?</label>
+                <div>
+                  <label class="chk" style="display:flex;gap:6px;align-items:center;font-weight:normal">
+                    <input type="radio" name="art" value="angebot" checked /> Angebot schreiben
+                  </label>
+                  <label class="chk" style="display:flex;gap:6px;align-items:center;font-weight:normal">
+                    <input type="radio" name="art" value="ausschreibung" /> Ausschreibung vormerken
+                    (Abgabefrist, Bieterfragen, Link zur Plattform)
+                  </label>
+                </div>
+              </div>
+            </div>
+            <p class="help">
+              Sie können Kunden per Kundennummer oder über den Namen auswählen. Neuer Auftraggeber?{' '}
+              <a href="/kunden/neu?interessent=1">Interessent anlegen</a>
+            </p>
+            <div class="actions">
+              <button class="btn">Anlegen</button>
+            </div>
+          </form>
+          <section class="card" style="background:var(--bg)">
+            <h3 style="margin-top:0">Einen der zuletzt bearbeiteten Kunden auswählen</h3>
+            {recent.length === 0 && <p class="mut small">Noch keine.</p>}
+            {recent.map((r) => (
+              <div style="margin:3px 0">
+                <a href={`/angebote/anlegen?kunde=${r.id}`}>{r.name}</a>{' '}
+                <span class="small faint">{r.customer_no}</span>
+              </div>
+            ))}
+          </section>
+        </div>
+      </>,
+    );
+  });
+
+  app.get('/angebote/anlegen', async (c) => {
+    const q = c.req.query();
+    const art = q.art === 'ausschreibung' ? 'ausschreibung' : 'angebot';
+    let customerId = q.kunde && /^[0-9a-f-]{36}$/.test(q.kunde) ? q.kunde : null;
+    if (!customerId && q.kunde_suche) {
+      const term = q.kunde_suche.split(' · ')[0]!.trim();
+      const [hit] = await sql<{ id: string }[]>`
+        select id from app.customers
+         where active and (customer_no = ${term} or name ilike ${q.kunde_suche.trim()} or name ilike ${`%${term}%`})
+         order by (customer_no = ${term}) desc, name limit 2`;
+      customerId = hit?.id ?? null;
+    }
+    if (!customerId)
+      return back(c, '/angebote/neu', { fehler: 'Kunde nicht gefunden – bitte aus der Liste wählen.' });
+    return c.redirect(
+      art === 'ausschreibung'
+        ? `/ausschreibungen/${randomUUID()}?kunde=${customerId}`
+        : `/angebote/${randomUUID()}/bearbeiten?kunde=${customerId}`,
     );
   });
 

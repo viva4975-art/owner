@@ -25,17 +25,22 @@ export interface ArchiveRow {
   docs: { id: string; kind: string; filename: string }[];
 }
 
-export async function archiveYear(sql: Sql, year: number, q: string | null = null) {
+export async function archiveYear(
+  sql: Sql,
+  year: number,
+  q: string | null = null,
+  by: 'leistung' | 'datum' = 'leistung',
+) {
   if (!Number.isInteger(year) || year < 2000 || year > 2100) throw new BusinessError('Jahr ungültig');
   const rows = await sql<ArchiveRow[]>`
     select i.id, i.number, i.kind::text, i.issue_date, i.period_start, i.period_end, c.name as customer_name,
            c.customer_no, s.name as site_name, i.net_cents, i.gross_cents,
-           to_char(coalesce(i.period_start, i.issue_date), 'YYYY-MM') as month,
+           to_char(${by === 'datum' ? sql`i.issue_date` : sql`coalesce(i.period_start, i.issue_date)`}, 'YYYY-MM') as month,
            coalesce((select json_agg(json_build_object('id', d.id, 'kind', d.kind, 'filename', d.filename) order by d.kind)
                        from app.invoice_documents d where d.invoice_id = i.id and d.kind <> 'validation_report'), '[]') as docs
       from app.invoices i join app.customers c on c.id = i.customer_id left join app.sites s on s.id = i.site_id
      where i.status = 'issued'
-       and extract(year from coalesce(i.period_start, i.issue_date)) = ${year}
+       and extract(year from ${by === 'datum' ? sql`i.issue_date` : sql`coalesce(i.period_start, i.issue_date)`}) = ${year}
        and (${q}::text is null or c.name ilike ${'%' + (q ?? '') + '%'} or i.number ilike ${'%' + (q ?? '') + '%'}
             or coalesce(s.name, '') ilike ${'%' + (q ?? '') + '%'})
      order by month desc, i.number desc`;

@@ -303,7 +303,7 @@ export function registerTenderRoutes({ app, deps, page, back }: Ctx) {
                 <select id="customer" name="customer_id">
                   <option value="">– noch keiner –</option>
                   {customers.map((x) => (
-                    <option value={x.id} selected={x.id === t?.customer_id}>
+                    <option value={x.id} selected={x.id === (t?.customer_id ?? c.req.query('kunde'))}>
                       {x.name} ({x.customer_no}){x.status === 'interessent' ? ' – Interessent' : ''}
                     </option>
                   ))}

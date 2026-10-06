@@ -126,7 +126,10 @@ export function registerModuleRoutes(ctx: Ctx) {
       case 'rechnung':
         return c.redirect(`/rechnungen/${randomUUID()}/bearbeiten${qs({ kunde, objekt })}`);
       case 'angebot':
-        return c.redirect(`/angebote/${randomUUID()}/bearbeiten${qs({ kunde, objekt })}`);
+        // ohne Kunde: erst Kunde suchen (wie Fortytools), dann Angebot oder Ausschreibung
+        return c.redirect(
+          kunde ? `/angebote/${randomUUID()}/bearbeiten${qs({ kunde, objekt })}` : '/angebote/neu',
+        );
       case 'kunde':
         return c.redirect(`/kunden/${randomUUID()}/bearbeiten`);
       case 'interessent':

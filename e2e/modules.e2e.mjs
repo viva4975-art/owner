@@ -65,13 +65,11 @@ p.on('dialog', (d) => d.accept());
 
 // ---------- 1. Angebot anlegen ----------
 console.log('1. Angebot anlegen');
-await p.goto(B + '/neu?typ=angebot');
-await p.selectOption('#kunde', { label: '29901 · DEMO Beispielbehörde Referat für Bildung' });
+await p.goto(B + '/angebote/neu');
+await p.fill('#kunde_suche', '29901 · DEMO Beispielbehörde Referat für Bildung');
+await p.click('button:has-text("Anlegen")');
 await p.waitForSelector('#title');
 await p.fill('#title', 'E2E Unterhaltsreinigung Gymnasium');
-await p.fill('#tender_reference', 'E2E-2026-001');
-await p.fill('#tender_platform', 'Bayerischer Vergabemarktplatz');
-await p.fill('#submission_deadline', '2026-10-09T10:00');
 const r0 = p.locator('#lines tbody tr').first();
 await r0.locator('[name=desc]').fill('Unterhaltsreinigung lt. LV');
 await r0.locator('[name=price]').fill('7.450,00');

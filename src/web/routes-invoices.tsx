@@ -72,7 +72,6 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
       count: counts.unsent,
     },
     { key: 'op', label: 'Offene Posten', href: '/offene-posten' },
-    { key: 'archiv', label: 'Archiv', href: '/rechnungen/archiv' },
   ];
 
   const counts = async () => {
@@ -105,35 +104,57 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     xrechnung_xml: 'XRechnung',
     attachment: 'Anlage',
   };
-  app.get('/rechnungen/archiv', async (c) => {
+  // „Archiv“ ist in „Alle Rechnungen“ aufgegangen
+  app.get('/rechnungen/archiv', (c) => {
+    const u = new URL(c.req.url);
+    return c.redirect(`/rechnungen${u.search}`, 301);
+  });
+
+  const allInvoices = async (c: Context<AppEnv>) => {
     const year = Number(c.req.query('jahr') ?? todayBerlin().slice(0, 4));
     const q = c.req.query('q')?.trim() || null;
-    const { months, years } = await archiveYear(sql, year, q);
+    const by = c.req.query('nach') === 'datum' ? 'datum' : 'leistung';
+    const { months, years } = await archiveYear(sql, year, q, by);
+    const [range] = await sql<{ prefix: string; next_value: bigint }[]>`
+      select prefix, next_value from app.number_ranges where key = 'invoice'`;
+    const qs = (over: Record<string, string>) =>
+      `/rechnungen?${new URLSearchParams({ jahr: String(year), ...(by === 'datum' ? { nach: 'datum' } : {}), ...(q ? { q } : {}), ...over }).toString()}`;
     if (!years.includes(year)) years.unshift(year);
     return page(
       c,
       'Rechnungsarchiv',
       'rechnungen',
       <>
-        <PageHead title="Rechnungen" create={{ options: NEW_OPTIONS, selected: 'rechnung' }} />
-        <Tabs tabs={invoiceTabs('archiv', await counts())} active="archiv" />
-        <form method="get" class="actions" style="margin-top:0">
+        <PageHead title="Rechnungen" create={{ options: NEW_OPTIONS, selected: 'rechnung' }}>
+          <span class="mut">Nächste Nr.: {range ? `${range.prefix}${range.next_value}` : '–'}</span>
+        </PageHead>
+        <Tabs tabs={invoiceTabs('alle', await counts())} active="alle" />
+        <form method="get" action="/rechnungen" class="actions" style="margin-top:0">
           <div class="chips" style="margin:0">
             {years.map((y) => (
-              <a href={`/rechnungen/archiv?jahr=${y}`} class={y === year ? 'on' : ''}>
+              <a href={qs({ jahr: String(y) })} class={y === year ? 'on' : ''}>
                 {y}
               </a>
             ))}
           </div>
+          <div class="chips" style="margin:0">
+            <a href={qs({ nach: 'leistung' })} class={by === 'leistung' ? 'on' : ''}>
+              nach Leistungszeitraum
+            </a>
+            <a href={qs({ nach: 'datum' })} class={by === 'datum' ? 'on' : ''}>
+              nach Rechnungsdatum
+            </a>
+          </div>
           <input type="hidden" name="jahr" value={String(year)} />
+          {by === 'datum' && <input type="hidden" name="nach" value="datum" />}
           <input name="q" value={q ?? ''} placeholder="Kunde, Objekt, Rechnungsnr." style="max-width:260px" />
           <button class="btn sec sm">Suchen</button>
           <span class="small mut" style="margin-left:auto">
-            nach Leistungszeitraum (ohne Zeitraum: Rechnungsdatum) · Belege unveränderbar, 10 Jahre aufbewahrt
+            Belege unveränderbar, 10 Jahre aufbewahrt
           </span>
         </form>
-        {months.map((m) => (
-          <details class="card" open={months.length <= 2 || !!q}>
+        {months.map((m, i) => (
+          <details class="card" open={i === 0 || months.length <= 2 || !!q}>
             <summary style="display:flex;align-items:center;gap:14px;cursor:pointer;list-style:none">
               <b style="font-size:16px">
                 {MONTHS[Number(m.month.slice(5)) - 1]} {m.month.slice(0, 4)}
@@ -144,14 +165,16 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
               <span class="mut small">
                 netto {euro(m.net)} · brutto {euro(m.gross)}
               </span>
-              <a
-                class="btn sec sm"
-                href={`/rechnungen/archiv/zip/${m.month}`}
-                style="margin-left:auto"
-                onclick="event.stopPropagation()"
-              >
-                ZIP herunterladen
-              </a>
+              {by === 'leistung' && (
+                <a
+                  class="btn sec sm"
+                  href={`/rechnungen/archiv/zip/${m.month}`}
+                  style="margin-left:auto"
+                  onclick="event.stopPropagation()"
+                >
+                  ZIP herunterladen
+                </a>
+              )}
             </summary>
             <div class="tbl" style="margin-top:12px">
               <table>
@@ -198,7 +221,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         {!months.length && <div class="card empty">Keine Rechnungen in {year}.</div>}
       </>,
     );
-  });
+  };
 
   app.get('/rechnungen/archiv/zip/:month{[0-9]{4}-[0-9]{2}}', async (c) => {
     const month = c.req.param('month');
@@ -212,6 +235,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
 
   app.get('/rechnungen', async (c) => {
     const filter = c.req.query('filter');
+    if (filter !== 'unversendet') return allInvoices(c);
     const [range] = await sql<{ prefix: string; next_value: bigint }[]>`
       select prefix, next_value from app.number_ranges where key = 'invoice'`;
     let rows = [...(await listInvoices(sql, { status: 'issued' }))];

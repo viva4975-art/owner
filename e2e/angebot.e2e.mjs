@@ -29,6 +29,7 @@ const check = (name, cond, extra = '') => {
   }
 };
 const flash = async (p) => (await p.locator('.flash').allInnerTexts()).join(' | ');
+const body = async (p) => p.locator('body').innerText();
 const p = await ctx.newPage();
 p.on('dialog', (d) => d.accept());
 
@@ -41,15 +42,13 @@ check(
 
 console.log('2. Neues Angebot mit Alternativposition');
 await p.goto(B + '/neu?typ=angebot');
-const recent = p.locator('a.badge', { hasText: 'DEMO' });
-if ((await recent.count()) > 0) {
-  await recent.first().click();
-  await p.waitForSelector('#title');
-  check('„zuletzt bearbeitet“ wählt den Kunden', (await p.locator('#kunde').inputValue()) !== '');
-} else {
-  await p.selectOption('#kunde', { label: '29901 · DEMO Beispielbehörde Referat für Bildung' });
-  await p.waitForSelector('#title');
-}
+check('erst Kunde auswählen (wie Fortytools)', p.url().endsWith('/angebote/neu'), p.url());
+check('zuletzt bearbeitete Kunden rechts', (await body(p)).includes('zuletzt bearbeiteten Kunden'));
+await p.fill('#kunde_suche', '29901');
+await p.click('button:has-text("Anlegen")');
+await p.waitForSelector('#title');
+check('Kunde per Nummer gefunden', (await p.locator('#kunde').inputValue()) !== '');
+check('normales Angebot ohne Vergabe-Felder', (await p.locator('#tender_reference').count()) === 0);
 await p.fill('#title', 'E2E Alternativen');
 const r0 = p.locator('#lines tbody tr').first();
 await r0.locator('[name=desc]').fill('Unterhaltsreinigung 5×/Woche');
@@ -76,6 +75,22 @@ check('Alternative markiert', (await p.locator('tr.alt').count()) === 1);
 await p.screenshot({ path: `${out}/an1-alternative.png`, fullPage: true });
 const pdf = await p.request.get(url + '/angebot.pdf');
 check('PDF', pdf.ok() && (await pdf.body()).subarray(0, 4).toString() === '%PDF');
+
+console.log('2b. Ausschreibung vormerken über „Angebot anlegen“');
+{
+  const q = await ctx.newPage();
+  await q.goto(B + '/angebote/neu');
+  await q.fill('#kunde_suche', '29901');
+  await q.check('input[name=art][value=ausschreibung]');
+  await q.click('button:has-text("Anlegen")');
+  await q.waitForLoadState();
+  check(
+    'führt zur Ausschreibung mit Kunde',
+    /\/ausschreibungen\//.test(q.url()) && (await q.locator('#customer').inputValue()) !== '',
+    q.url(),
+  );
+  await q.close();
+}
 
 console.log('3. Folgeangebot');
 await p.click('button:has-text("Als abgegeben markieren")');

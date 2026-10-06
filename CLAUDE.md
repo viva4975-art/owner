@@ -801,4 +801,11 @@ Testadresse.
   Kassenbuchungen, 312 Belege, 154 Karten-Belege, 6 Anfangsbestände – Bestände gehen lückenlos ineinander über.
   **Im Backup fehlen:** Stellenanzeigen, Tiefgaragen-Objekte/-Termine, Grundreinigungs-Planung, Glas-Kunden (gp_kunden).
   Tests: 301 Unit-/DB-Tests, neu `npm run e2e:kasse` (14 Prüfungen).
-
+- 2026-10-06: Runde 8b – Eigen-Compliance wie die alte App (Verwaltung → Eigen-Compliance): 25 Nachweise in 5 Gruppen
+  (Pflicht-Kennzeichen, Standard-Gültigkeit), Kacheln Kritisch/Läuft ab/Gültig als Filter, Suche; Hochladen → direkt
+  „Datum & Gültigkeit“ (ausgestellt am + 3/6/12/24/36 Monate/5 Jahre/kein Ablauf/manuell, Vorschau „gültig bis“);
+  Mehrfach-Nachweise Krankenkassen (+ AOK) und Geschäftsführer (schlechtester Status zählt); „Ersetzen“ schiebt die alte
+  Datei ins Archiv (nie löschbar, DB-Trigger); „als geprüft markieren“. Prüfung: 16 Punkte Ja/Nein/N/A + Bemerkung,
+  „Prüfung abschließen“ nur wenn alles beantwortet (Stand unveränderlich festgehalten). Report-PDF für Zoll/Auftraggeber
+  und Vorlagen (Mindestlohn-Selbsterklärung, Tarif-Compliance, Eigenauskunft) auf Briefpapier. Import aus dem Backup:
+  27 Dateien inkl. Archiv. `e2e:kasse` jetzt 22 Prüfungen.

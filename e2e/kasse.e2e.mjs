@@ -52,7 +52,10 @@ await p.setInputFiles('#datei', pdf);
 await p.click('button:has-text("Buchen")');
 await p.waitForLoadState();
 const row = p.locator('.kb-row', { hasText: `E2E Putzmittel ${stamp}` });
-check('Ausgabe mit Beleg in der Liste', (await row.count()) === 1 && (await row.innerText()).includes('Beleg-Foto'));
+check(
+  'Ausgabe mit Beleg in der Liste',
+  (await row.count()) === 1 && (await row.innerText()).includes('Beleg-Foto'),
+);
 check('Tagessaldo sichtbar', (await p.locator('.kb-day-s').first().innerText()).includes('Saldo Tagesende'));
 await p.screenshot({ path: `${out}/kasse.png`, fullPage: true });
 
@@ -88,7 +91,10 @@ await p.fill('#k-notiz', `E2E Tanken ${stamp}`);
 await p.setInputFiles('#k-datei', pdf);
 await p.click('#kb-form button:has-text("Speichern")');
 await p.waitForLoadState();
-check('Karten-Beleg archiviert', (await p.locator('.kb-card', { hasText: `E2E Tanken ${stamp}` }).count()) === 1);
+check(
+  'Karten-Beleg archiviert',
+  (await p.locator('.kb-card', { hasText: `E2E Tanken ${stamp}` }).count()) === 1,
+);
 const zip = await p.request.get(`${B}/kassenbuch/kartenbelege.zip`);
 check('ZIP-Export', zip.headers()['content-type'] === 'application/zip');
 await p.goto(`${B}/kassenbuch/auswertung`);
@@ -97,6 +103,47 @@ check('Auswertung mit Monat', (await p.locator('tbody tr').count()) >= 1);
 console.log('5. Import-Seite alte App');
 await p.goto(`${B}/transfer/altdaten`);
 check('Import-Seite mit Upload', (await p.locator('[data-uploader]').count()) === 1);
+
+console.log('6. Eigen-Compliance');
+await p.goto(`${B}/eigen-compliance`);
+check('Nachweise in 5 Gruppen', (await p.locator('details.ec-group').count()) === 5);
+const row1 = p.locator('.ec-doc', { hasText: 'Gewerbezentralregisterauszug' }).first();
+await row1.locator('input[type=file]').setInputFiles(pdf);
+await p.waitForURL(/\/eigen-compliance\/version\//);
+check('nach Upload Datum & Gültigkeit', (await p.locator('h1').innerText()).includes('Gültigkeit'));
+await p.selectOption('#guelt', 'manuell');
+check('manuell zeigt Datumsfeld', await p.locator('#bis').isVisible());
+await p.fill('#bis', '2099-12-31');
+await p.click('button:has-text("Übernehmen")');
+await p.waitForLoadState();
+check(
+  'gültig bis gespeichert',
+  (await p.locator('.ec-doc', { hasText: 'Gewerbezentralregisterauszug' }).first().innerText()).includes(
+    '31.12.2099',
+  ),
+);
+await p
+  .locator('.ec-multi', { hasText: 'Krankenkasse' })
+  .locator('input[name=name]:not([type=hidden])')
+  .fill(`E2E Kasse ${stamp}`);
+await p
+  .locator('.ec-multi', { hasText: 'Krankenkasse' })
+  .locator('button:has-text("+ Krankenkasse")')
+  .click();
+await p.waitForLoadState();
+check(
+  'Krankenkasse hinzugefügt',
+  (await p.locator('.ec-doc.sub', { hasText: `E2E Kasse ${stamp}` }).count()) === 1,
+);
+await p.goto(`${B}/eigen-compliance/pruefung`);
+await p.locator('.ec-chk').first().locator('label.chk-ja').click();
+await p.click('button:has-text("Speichern")');
+await p.waitForLoadState();
+check('Prüfung gespeichert', await p.locator('.ec-chk').first().locator('input[value=ja]').isChecked());
+const rep = await p.request.get(`${B}/eigen-compliance/report.pdf`);
+check('Report-PDF', rep.headers()['content-type'] === 'application/pdf');
+const vor = await p.request.get(`${B}/eigen-compliance/vorlage/milog.pdf`);
+check('Vorlage MiLoG', vor.headers()['content-type'] === 'application/pdf');
 
 await browser.close();
 console.log(`\ne2e:kasse: ${ok} bestanden, ${fail} fehlgeschlagen`);

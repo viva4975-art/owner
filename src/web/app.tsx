@@ -38,6 +38,7 @@ import { registerSettingsRoutes } from './routes-settings.js';
 import { registerTenderRoutes } from './routes-tenders.js';
 import { registerCashbookRoutes } from './routes-cashbook.js';
 import { registerLegacyRoutes } from './routes-legacy.js';
+import { registerEigenComplianceRoutes } from './routes-eigen-compliance.js';
 import { registerCostCenterRoutes } from './routes-costcenters.js';
 import { registerPlanningRoutes } from './routes-planning.js';
 import { registerPlanningBoardRoutes } from './routes-planning-board.js';
@@ -300,6 +301,7 @@ export function createApp(deps: Deps) {
   registerCostCenterRoutes(ctx);
   registerCashbookRoutes(ctx);
   registerLegacyRoutes(ctx);
+  registerEigenComplianceRoutes(ctx);
 
   app.notFound((c) =>
     page(

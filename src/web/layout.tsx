@@ -461,6 +461,26 @@ h2.form-section:first-of-type{margin-top:4px}
 .due-banner .ico{flex:none;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;background:var(--err)}
 .due-banner.warn .ico{background:var(--warn)}
 .due-banner.ok{background:#eef7ea;border-color:#cfe6c4;border-left-color:var(--ok)}.due-banner.ok .ico{background:var(--ok)}
+/* Eigen-Compliance */
+.eyebrow.ec-err{color:var(--err)}.eyebrow.ec-warn{color:var(--warn)}.eyebrow.ec-ok{color:var(--ok)}
+.ec-group{background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:12px;padding:4px 16px}
+.ec-group>summary{display:flex;align-items:center;gap:10px;padding:10px 0;cursor:pointer;font-weight:700}
+.ec-cat{flex:1}.ec-dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}.ec-dot.err{background:var(--err)}.ec-dot.warn{background:var(--warn)}
+.ec-doc{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.ec-doc.sub{padding-left:14px;border-left:2px solid var(--line);border-top:0}
+.ec-name{font-weight:600}.ec-pflicht{margin-left:8px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--brand);border:1px solid currentColor;border-radius:4px;padding:1px 5px}
+.ec-meta{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--mut);margin-top:2px}
+.ec-valid.err{color:var(--err)}.ec-valid.warn{color:var(--warn)}
+.ec-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.ec-up,.inline-form{display:inline;margin:0}.ec-up label{margin:0;cursor:pointer}
+.linkbtn{background:none;border:0;padding:0;color:var(--brand);font:inherit;cursor:pointer}
+.ec-arch{font-size:12px;color:var(--mut);margin-top:4px}.ec-arch summary{cursor:pointer;color:var(--brand)}
+.ec-add{display:flex;gap:6px;flex-wrap:wrap;padding:6px 0 10px 14px}.ec-add input{max-width:220px;padding:5px 9px}
+.ec-checks{display:flex;flex-direction:column;gap:8px}
+.ec-chk{display:grid;grid-template-columns:1fr auto 260px;gap:12px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+.ec-chk .chk-nein>input:checked+span{background:#fde2e2;color:#8a1c1c}.ec-chk .chk-na>input:checked+span{background:#ececec;color:#444}
+.ec-rc{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line)}.ec-warn{color:var(--warn)}
+@media (max-width:760px){.ec-doc{grid-template-columns:1fr auto}.ec-acts{grid-column:1/-1;justify-content:flex-start}.ec-chk{grid-template-columns:1fr}}
 /* Kassenbuch */
 .kb-list{display:flex;flex-direction:column;gap:6px}
 .kb-day{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin:14px 2px 2px;font-size:13px}
@@ -759,6 +779,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     items: [
       { label: 'Kassenbuch', href: '/kassenbuch' },
       { label: 'Karten-Belege', href: '/kassenbuch/kartenbelege' },
+      { label: 'Eigen-Compliance', href: '/eigen-compliance', sep: true },
     ],
   },
   {

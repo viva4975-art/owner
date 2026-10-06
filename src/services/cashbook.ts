@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
-import type { BuyerSnapshot } from '../domain/invoice/types.js';
+import type { BuyerSnapshot, SellerSnapshot } from '../domain/invoice/types.js';
 import { type Cents, formatEuro } from '../domain/money/money.js';
 import { renderLetterPdf } from '../pdf/render.js';
 import { BusinessError } from './errors.js';
@@ -380,6 +380,25 @@ export async function overview(sql: Sql) {
 
 // ------------------------------------------------------------------ Export
 
+/** Empfängerblock für interne Dokumente (eigene Firma als Adressat). */
+export function internalBuyer(seller: SellerSnapshot, label: string): BuyerSnapshot {
+  return {
+    customerNo: '',
+    name: seller.legalName,
+    name2: label,
+    street: seller.street,
+    postalCode: seller.postalCode,
+    city: seller.city,
+    countryCode: 'DE',
+    vatId: null,
+    leitwegId: null,
+    supplierNo: null,
+    email: null,
+    contactName: null,
+    site: null,
+  };
+}
+
 export function monthCsv(v: MonthView): string {
   const n = (c: bigint) => (Number(c) / 100).toFixed(2).replace('.', ',');
   const q = (s: string | null) => {
@@ -416,21 +435,7 @@ export function monthCsv(v: MonthView): string {
 export async function monthPdf(sql: Sql, month: string) {
   const v = await monthView(sql, month);
   const seller = await getSeller(sql);
-  const buyer: BuyerSnapshot = {
-    customerNo: '',
-    name: seller.legalName,
-    name2: 'Kassenbuch',
-    street: seller.street,
-    postalCode: seller.postalCode,
-    city: seller.city,
-    countryCode: 'DE',
-    vatId: null,
-    leitwegId: null,
-    supplierNo: null,
-    email: null,
-    contactName: null,
-    site: null,
-  };
+  const buyer = internalBuyer(seller, 'Kassenbuch');
   const live = v.rows.filter((r) => !r.cancelled_at);
   return renderLetterPdf({
     title: `Kassenbuch ${monthLabel(month)}`,

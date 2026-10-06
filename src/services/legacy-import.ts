@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { unzipSync } from 'fflate';
 import type { Sql } from '../db/client.js';
 import { BusinessError } from './errors.js';
+import { importLegacyEc } from './eigen-compliance.js';
 import { uuidOf } from './fortytools-export-import.js';
 import { type UploadConfig, filePath } from './uploads.js';
 import type { Deps } from './workflow.js';
@@ -294,6 +295,45 @@ async function applyKasse(deps: Deps, b: Backup, actor: string): Promise<string[
   return out;
 }
 
+// ------------------------------------------------------------------ Eigen-Compliance
+
+async function analyzeEc(sql: Sql, b: Backup): Promise<Section> {
+  const row = b.data.eigen_compliance?.[0];
+  const docs = (row?.documents ?? {}) as Record<string, Record<string, unknown>>;
+  let files = 0;
+  for (const d of Object.values(docs)) {
+    if (!d || typeof d !== 'object') continue;
+    const items = (Array.isArray(d.items) ? d.items : Array.isArray(d.kassen) ? d.kassen : [d]) as Record<
+      string,
+      unknown
+    >[];
+    for (const it of items)
+      files += (it.file_path ? 1 : 0) + (Array.isArray(it.archiv) ? it.archiv.length : 0);
+  }
+  const [{ n }] =
+    (await sql`select count(*)::int as n from app.ec_versions where legacy_id like 'ec:%'`) as unknown as [
+      { n: number },
+    ];
+  return {
+    key: 'eigen',
+    label: 'Eigen-Compliance (Nachweise mit Archiv, Checkliste)',
+    total: files,
+    neu: Math.max(0, files - n),
+    vorhanden: Math.min(n, files),
+    notes: [`${Object.keys(docs).length} Nachweisarten mit Dateien`],
+    ready: !!row,
+  };
+}
+
+async function applyEc(deps: Deps, b: Backup, actor: string): Promise<string[]> {
+  const row = b.data.eigen_compliance?.[0];
+  if (!row) return [];
+  const r = await importLegacyEc(deps, row, b.file, actor);
+  return [
+    `Eigen-Compliance: ${r.n} Dateien übernommen${r.missing ? `, ${r.missing} fehlen im Backup` : ''}.`,
+  ];
+}
+
 // ------------------------------------------------------------------ Registry
 
 export type LegacyModule = {
@@ -313,6 +353,13 @@ const MODULES: LegacyModule[] = [
     folders: ['kassenbelege'],
     analyze: analyzeKasse,
     apply: applyKasse,
+  },
+  {
+    key: 'eigen',
+    tables: ['eigen_compliance'],
+    folders: ['eigencompliance'],
+    analyze: analyzeEc,
+    apply: applyEc,
   },
 ];
 

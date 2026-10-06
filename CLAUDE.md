@@ -813,3 +813,10 @@ Testadresse.
   Benutzer & Gruppen, Grundeinstellungen, Vorgaben & Einstellungen, Dokumenteneinstellungen, Disposition-Einstellungen,
   Import & Export (je Eintrag eine Beschreibung), rechts Inhaltsverzeichnis. Zahnrad = Menü „Einstellungen für die Firma“,
   „Einstellungen für <Benutzer>“, Abmelden.
+- 2026-10-06: Runde 8c – Akquise wie die alte App (Kunden → Akquise): Kacheln In Pipeline / Heute-überfällig / Gewonnen,
+  Suche, „Pipeline · Funnel“ (Erstkontakt → Leichtes → Starkes Interesse → Gewonnen, Conversion = gewonnen/entschieden),
+  Status-Pillen, Karten mit Wiedervorlage (überfällig rot, heute gelb) und „Zuletzt: …“, sortiert nach Wiedervorlage.
+  Detail: Formular wie alt + „Aktivität“ (Anruf raus/rein, E-Mail, Termin, Angebot, Notiz) mit optionalem neuem Status und
+  neuer Wiedervorlage; feste ID je Formular. Besser als alt: Datum Europa/Berlin statt UTC, Wiedervorlagen erscheinen auf
+  der Startseite (in der alten App wegen falschem Feldnamen nie). Import: 642 Einträge, 529 Aktivitäten
+  („kalt“/leer → Erstkontakt wie in der alten App). `e2e:kasse` jetzt 28 Prüfungen.

@@ -474,6 +474,25 @@ h2.form-section:first-of-type{margin-top:4px}
 .set-toc a{font-size:14px;color:var(--ink-2);padding:3px 0}
 summary.gear{list-style:none;cursor:pointer}summary.gear::-webkit-details-marker{display:none}
 @media (max-width:860px){.set-wrap{grid-template-columns:1fr}.set-toc{display:none}}
+/* Akquise */
+.ak-funnel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px}
+.ak-funnel-h{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px;margin-bottom:12px}
+.ak-funnel-h>span:first-child{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
+.ak-stages{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.ak-stage-w{display:flex;flex-direction:column;align-items:center;gap:2px}
+.ak-stage{width:100%;display:flex;flex-direction:column;align-items:center;padding:10px 6px;border-radius:10px;border:1px solid var(--line-2);background:var(--head);color:var(--ink)}
+.ak-stage:hover{text-decoration:none;filter:brightness(.97)}
+.ak-stage b{font-size:24px;line-height:1.1}.ak-stage span{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;text-align:center}
+.ak-stage.info{background:#e6f0fb;border-color:#bcd3f2;color:#1a56cc}.ak-stage.warn{background:var(--warn-50);border-color:#f3dfae;color:var(--warn)}
+.ak-stage.ok{background:var(--ok-50);border-color:#bfe3cd;color:var(--ok)}
+.ak-arrow{color:var(--faint);font-size:12px}
+.ak-funnel-f{display:flex;gap:18px;margin-top:10px;padding-top:8px;border-top:1px dashed var(--line-2);font-size:13px}
+.pill.pill-err{border-color:var(--err);color:var(--err)}
+.list-cards{display:flex;flex-direction:column;gap:10px}
+.ak-over{color:var(--err);font-weight:600}.ak-today{color:var(--warn);font-weight:600}
+.ak-types{display:grid;grid-template-columns:repeat(3,1fr);margin-bottom:6px}.ak-types>label>span{display:block;text-align:center}
+.ak-acts{list-style:none;padding:0;margin:0}.ak-acts li{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+@media (max-width:640px){.ak-types{grid-template-columns:repeat(2,1fr)}.ak-stage b{font-size:20px}}
 /* Eigen-Compliance */
 .eyebrow.ec-err{color:var(--err)}.eyebrow.ec-warn{color:var(--warn)}.eyebrow.ec-ok{color:var(--ok)}
 .ec-group{background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:12px;padding:4px 16px}
@@ -722,6 +741,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Kundenliste', href: '/kunden' },
       { label: 'Objekte', href: '/objekte' },
       { label: 'Aufgaben', href: '/aufgaben' },
+      { label: 'Akquise', href: '/akquise', sep: true },
     ],
   },
   // ein Menüpunkt: Übersicht mit „Angebot anlegen“ (dort auch Ausschreibung vormerken); Fristen auf der Startseite

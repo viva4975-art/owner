@@ -267,6 +267,10 @@ export interface DashboardTodo {
     required: boolean;
   }[];
   reorder: { id: string; name: string }[];
+  followups: {
+    due: { id: string; company: string; followup_on: string }[];
+    week: { id: string; company: string; followup_on: string }[];
+  };
   suppliers: { id: string; name: string }[];
   devices: { id: string; name: string; next_inspection: string | null }[];
   proposals: number;
@@ -327,6 +331,43 @@ export const Dashboard: FC<{
                   </span>
                 </div>
               ))}
+            </div>
+          )}
+          {todo.followups.due.length + todo.followups.week.length > 0 && (
+            <div class="card">
+              <h2 style="margin-top:0">
+                Akquise <span class="cnt">(Wiedervorlagen)</span>
+              </h2>
+              {todo.followups.due.length > 0 && (
+                <p style="margin:0 0 6px">
+                  <a href="/akquise?filter=due">
+                    <b>
+                      {todo.followups.due.length} Wiedervorlage{todo.followups.due.length === 1 ? '' : 'n'}{' '}
+                      heute fällig
+                    </b>
+                  </a>
+                  <span class="small mut">
+                    {' '}
+                    ·{' '}
+                    {todo.followups.due
+                      .slice(0, 3)
+                      .map((f) => f.company)
+                      .join(', ')}
+                    {todo.followups.due.length > 3 ? ` +${todo.followups.due.length - 3}` : ''}
+                  </span>
+                </p>
+              )}
+              {todo.followups.week.length > 0 && (
+                <p class="small" style="margin:0">
+                  {todo.followups.week.length} diese Woche:{' '}
+                  {todo.followups.week.slice(0, 4).map((f, i) => (
+                    <>
+                      {i > 0 && ', '}
+                      <a href={`/akquise/${f.id}`}>{f.company}</a> · {dateDe(f.followup_on)}
+                    </>
+                  ))}
+                </p>
+              )}
             </div>
           )}
           <div class="card">

@@ -5,6 +5,7 @@ import type { Sql } from '../db/client.js';
 import { BusinessError } from './errors.js';
 import { importLegacyEc } from './eigen-compliance.js';
 import { uuidOf } from './fortytools-export-import.js';
+import { importLegacyProspects } from './prospects.js';
 import { type UploadConfig, filePath } from './uploads.js';
 import type { Deps } from './workflow.js';
 
@@ -334,6 +335,37 @@ async function applyEc(deps: Deps, b: Backup, actor: string): Promise<string[]> 
   ];
 }
 
+// ------------------------------------------------------------------ Akquise
+
+async function analyzeAkq(sql: Sql, b: Backup): Promise<Section> {
+  const rows = b.data.akquise ?? [];
+  const have = new Set(
+    (await sql<{ legacy_id: string }[]>`select legacy_id from app.prospects where legacy_id is not null`).map(
+      (r) => r.legacy_id,
+    ),
+  );
+  const vorhanden = rows.filter((r) => have.has(`akq:${String(r.id)}`)).length;
+  const acts = rows.reduce((a, r) => a + (Array.isArray(r.activities) ? r.activities.length : 0), 0);
+  const kalt = rows.filter((r) => r.status === 'kalt' || !r.status).length;
+  return {
+    key: 'akquise',
+    label: 'Akquise (Pipeline mit Aktivitäten)',
+    total: rows.length,
+    neu: rows.length - vorhanden,
+    vorhanden,
+    notes: [
+      `${acts} Aktivitäten`,
+      ...(kalt ? [`${kalt} Einträge mit Status „kalt“/leer → „Erstkontakt“ (wie in der alten App)`] : []),
+    ],
+    ready: rows.length > 0,
+  };
+}
+
+async function applyAkq(deps: Deps, b: Backup, actor: string): Promise<string[]> {
+  const r = await importLegacyProspects(deps.sql, b.data.akquise ?? [], actor);
+  return [`Akquise: ${r.n} Einträge, ${r.acts} Aktivitäten übernommen.`];
+}
+
 // ------------------------------------------------------------------ Registry
 
 export type LegacyModule = {
@@ -361,6 +393,7 @@ const MODULES: LegacyModule[] = [
     analyze: analyzeEc,
     apply: applyEc,
   },
+  { key: 'akquise', tables: ['akquise'], folders: [], analyze: analyzeAkq, apply: applyAkq },
 ];
 
 /** Weitere Module melden sich hier an (Eigen-Compliance, Akquise, Bewerber, Glasreinigung …). */

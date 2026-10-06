@@ -145,6 +145,28 @@ check('Report-PDF', rep.headers()['content-type'] === 'application/pdf');
 const vor = await p.request.get(`${B}/eigen-compliance/vorlage/milog.pdf`);
 check('Vorlage MiLoG', vor.headers()['content-type'] === 'application/pdf');
 
+console.log('7. Akquise');
+await p.goto(`${B}/akquise`);
+await p.click('a:has-text("+ Neue Akquise")');
+await p.fill('#firma', `E2E Akquise ${stamp}`);
+await p.fill('#ort', 'München');
+await p.fill('#wv', new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' }));
+await p.click('form.card button:has-text("Speichern")');
+await p.waitForLoadState();
+check('Akquise angelegt', (await flash(p)).includes('Gespeichert'), await flash(p));
+await p.locator('label:has-text("Termin")').click();
+await p.selectOption('#ns', 'interesse_stark');
+await p.fill('#notiz', 'Ortstermin vereinbart');
+await p.locator('form:has(#notiz) button:has-text("Speichern")').click();
+await p.waitForLoadState();
+check('Aktivität erfasst', (await p.locator('.ak-acts li').count()) === 1);
+check('Status geändert', (await p.locator('.sub .badge').innerText()).includes('Starkes Interesse'));
+await p.goto(`${B}/akquise?filter=due&q=${stamp}`);
+check('in „Heute / überfällig“', (await p.locator('.lc', { hasText: `E2E Akquise ${stamp}` }).count()) === 1);
+check('Funnel sichtbar', (await p.locator('.ak-stage').count()) === 4);
+await p.goto(`${B}/`);
+check('Wiedervorlage auf der Startseite', (await p.locator('body').innerText()).includes('heute fällig'));
+
 await browser.close();
 console.log(`\ne2e:kasse: ${ok} bestanden, ${fail} fehlgeschlagen`);
 process.exit(fail ? 1 : 0);

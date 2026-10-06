@@ -1,3 +1,5 @@
+import { followups } from '../services/prospects.js';
+import { canAccess } from './permissions.js';
 import { ReportTabs } from './routes-reports.js';
 import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
@@ -86,6 +88,7 @@ export function registerModuleRoutes(ctx: Ctx) {
         required: e.required,
       })),
       reorder,
+      followups: canAccess(c.get('user').role, '/akquise') ? await followups(sql) : { due: [], week: [] },
       suppliers,
       devices: devices.filter((d) => d.active && d.days !== null && d.days <= 30),
       proposals: dun.proposals.length,

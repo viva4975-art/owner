@@ -16,6 +16,9 @@ import {
   listEmployees,
   listTemplates,
   listWageLevels,
+  employmentHistory,
+  exitEmployee,
+  reenterEmployee,
   saveEmployee,
   suggestPersonnelNo,
 } from '../services/employees.js';
@@ -559,6 +562,78 @@ export function registerModuleRoutes(ctx: Ctx) {
               </div>
             )}
           </div>
+          <div class="card">
+            <h2 style="margin-top:0">Beschäftigungszeiten</h2>
+            <div class="tbl">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Eintritt</th>
+                    <th>Austritt</th>
+                    <th>Grund</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(await employmentHistory(sql, e.id)).map((p) => (
+                    <tr>
+                      <td>{dateDe(p.entry_date)}</td>
+                      <td>{p.exit_date ? dateDe(p.exit_date) : <span class="badge ok">laufend</span>}</td>
+                      <td class="small">{p.exit_reason ?? ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {e.exit_date ? (
+              <form method="post" action={`/personal/${e.id}/wiedereintritt`} class="actions">
+                <label for="re" style="margin:0">
+                  Wiedereintritt am
+                </label>
+                <input id="re" type="date" name="date" required style="max-width:180px" />
+                <button class="btn sm">Wiedereintritt erfassen</button>
+              </form>
+            ) : (
+              <details>
+                <summary class="btn sm sec" style="margin-top:10px">
+                  Austritt erfassen
+                </summary>
+                <form
+                  method="post"
+                  action={`/personal/${e.id}/austritt`}
+                  class="grid"
+                  style="margin-top:10px"
+                >
+                  <div>
+                    <label for="ex">Letzter Arbeitstag (Austritt)</label>
+                    <input id="ex" type="date" name="date" required />
+                  </div>
+                  <div>
+                    <label for="rs">Grund</label>
+                    <select id="rs" name="reason">
+                      {[
+                        'Kündigung durch Arbeitnehmer',
+                        'Kündigung durch Arbeitgeber',
+                        'Aufhebungsvertrag',
+                        'Befristung ausgelaufen',
+                        'Rente',
+                        'Sonstiges',
+                      ].map((r) => (
+                        <option value={r}>{r}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <p class="small mut">
+                    Kündigung und Aufhebungsvertrag nur schriftlich mit Originalunterschrift (§ 623 BGB) –
+                    Kopie unter Dokumente ablegen. Schlüssel, Kleidung und Geräte unter „Übergaben“
+                    zurücknehmen.
+                  </p>
+                  <div class="actions">
+                    <button class="btn sm">Austritt speichern</button>
+                  </div>
+                </form>
+              </details>
+            )}
+          </div>
           <EmployeeOverview
             e={e}
             priv={data.priv}
@@ -596,13 +671,36 @@ export function registerModuleRoutes(ctx: Ctx) {
         </>,
       );
     }
-    return employeePage(c, 'bearbeiten', () => form);
+    // Bearbeiten wie Fortytools: eigene Seite ohne Reiter, nur Kopf mit Brotkrumen
+    const name = `${data.employee.first_name} ${data.employee.last_name}`;
+    return page(
+      c,
+      `${name} – Stammdaten`,
+      'personal',
+      <>
+        <PageHead
+          title={`${data.employee.last_name}, ${data.employee.first_name}`}
+          no={data.employee.personnel_no}
+          crumbs={[
+            ['Mitarbeiter', '/personal'],
+            [name, `/personal/${id}`],
+          ]}
+        />
+        <div class="card form-card">{form}</div>
+      </>,
+    );
   });
 
   app.post(`/personal/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
     const body = await c.req.parseBody({ all: true });
-    const flat = Object.fromEntries(Object.entries(body).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]));
+    // Tags und Sprachen kommen als Auswahl (mehrere Werte) – zu einer Liste zusammenfassen
+    const flat = Object.fromEntries(
+      Object.entries(body).map(([k, v]) => [
+        k,
+        Array.isArray(v) ? (k === 'tags' || k === 'languages' ? v.map(String).join(',') : v[0]) : v,
+      ]),
+    );
     const parsed = employeeInput.safeParse(flat);
     if (!parsed.success) throw new BusinessError(parsed.error.issues.map((i) => i.message).join('\n'));
     // Pflicht im Formular (Ahmed 06.10.): Beschäftigungsart, Vergütung, Wochenstunden bei Teilzeit/Minijob
@@ -615,6 +713,25 @@ export function registerModuleRoutes(ctx: Ctx) {
     await saveEmployee(sql, id, parsed.data, c.get('actor'));
     // Objekt-Zuordnung nicht mehr im Stammdatenformular (Ahmed 06.10.) – entsteht über Planung/Einsätze
     return back(c, `/personal/${id}`, { ok: 'Mitarbeiter gespeichert.' });
+  });
+
+  app.post(`/personal/:id{${UUID}}/austritt`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    await exitEmployee(sql, id, {
+      date: String(b.date ?? ''),
+      reason: typeof b.reason === 'string' ? b.reason : null,
+    });
+    return back(c, `/personal/${id}`, { ok: 'Austritt gespeichert.' });
+  });
+
+  app.post(`/personal/:id{${UUID}}/wiedereintritt`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    await reenterEmployee(sql, id, { date: String(b.date ?? ''), actor: c.get('actor') });
+    return back(c, `/personal/${id}`, {
+      ok: 'Wiedereintritt gespeichert – frühere Beschäftigungszeit bleibt festgehalten.',
+    });
   });
 
   registerNoteRoutes(ctx, '/personal', 'employee', employeePage);

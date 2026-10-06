@@ -2,6 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { requestAbsence } from './absences.js';
+import {
+  employeeInput,
+  employmentHistory,
+  exitEmployee,
+  getEmployee,
+  reenterEmployee,
+  saveEmployee,
+} from './employees.js';
 import { payrollCsv, getPayrollSettings, payrollMonth } from './payroll.js';
 import { createQualityCheck } from './facility.js';
 import {
@@ -160,5 +168,48 @@ describe.skipIf(!available)('Runde 11: Lohnarten und Urlaubsanspruch (Datenbank)
         actor: 'qm',
       }),
     ).rejects.toThrow(/ungültig/);
+  });
+
+  it('Mitarbeiter: Beschäftigungsart als Tag, App-Sprache, Arbeitserlaubnis, Austritt und Wiedereintritt', async () => {
+    const id = randomUUID();
+    await saveEmployee(
+      sql,
+      id,
+      employeeInput.parse({
+        personnel_no: '4100',
+        first_name: 'Ion',
+        last_name: 'Wieder',
+        employment_type: 'minijob',
+        entry_date: '2024-01-01',
+        weekly_hours: '10',
+        tags: 'Teilzeit,Glas',
+        languages: 'Arabisch,Rumänisch,Deutsch',
+        pay_model: 'individuell',
+        hourly_wage: '15,00',
+        work_permit_until: '2027-03-31',
+      }),
+      'test',
+    );
+    let d = (await getEmployee(sql, id))!;
+    expect(d.employee.tags).toEqual(['Minijob', 'Glas']);
+    expect((d.employee as unknown as { app_language: string }).app_language).toBe('ro');
+    expect(d.priv!.work_permit_until).toBe('2027-03-31');
+    await exitEmployee(sql, id, { date: '2025-06-30', reason: 'Kündigung durch Arbeitnehmer' });
+    d = (await getEmployee(sql, id))!;
+    expect(d.employee.status).toBe('ausgetreten');
+    await expect(reenterEmployee(sql, id, { date: '2025-06-01', actor: 't' })).rejects.toThrow(
+      /nach dem letzten Austritt/,
+    );
+    await reenterEmployee(sql, id, { date: '2026-02-01', actor: 't' });
+    d = (await getEmployee(sql, id))!;
+    expect([d.employee.status, d.employee.entry_date, d.employee.exit_date]).toEqual([
+      'aktiv',
+      '2026-02-01',
+      null,
+    ]);
+    expect(await employmentHistory(sql, id)).toEqual([
+      { entry_date: '2024-01-01', exit_date: '2025-06-30', exit_reason: 'Kündigung durch Arbeitnehmer' },
+      { entry_date: '2026-02-01', exit_date: null, exit_reason: null },
+    ]);
   });
 });

@@ -3,6 +3,7 @@ import { monthBounds, todayBerlin } from '../domain/invoice/calc.js';
 import { parseEuro } from '../domain/money/money.js';
 import {
   DOC_CATEGORIES,
+  DOC_CHECKLIST,
   TEMPLATE_FIELDS,
   listEmployees,
   listTemplates,
@@ -50,9 +51,39 @@ export function registerHrRoutes(ctx: Ctx) {
           ['Weitere', files.filter((f) => f.category && !DOC_CATEGORIES.includes(f.category))] as const,
         ])
         .filter(([, list]) => list.length);
+      const handovers = await sql<{ kind: string; n: number }[]>`
+        select kind, count(*)::int as n from app.handovers
+         where employee_id = ${e.id} and status in ('unterschrieben', 'ohne_unterschrift') group by kind`;
+      const hoCount = (k: string) => handovers.find((h) => h.kind === k)?.n ?? 0;
+      const has = (name: string) =>
+        files.some((f) => f.category === name) ||
+        (name === 'Arbeitskleidung' && hoCount('kleidung') > 0) ||
+        (name === 'Schlüssel' && hoCount('schluessel') > 0);
       return (
         <div class="cols">
           <div>
+            <div class="card">
+              <h3 style="margin-top:0">Personalakte – Checkliste</h3>
+              <div class="doc-check">
+                {DOC_CHECKLIST.map((d) => (
+                  <a
+                    href={`/personal/${e.id}/dokumente?kategorie=${encodeURIComponent(d.name)}#hochladen`}
+                    class={`dc ${has(d.name) ? 'ok' : d.required ? 'missing' : 'open'}`}
+                  >
+                    <span class="dc-i">{has(d.name) ? '✓' : d.required ? '!' : '–'}</span>
+                    <span>
+                      <b>{d.name}</b>{' '}
+                      {d.required ? (
+                        <span class="badge err">Pflicht</span>
+                      ) : (
+                        <span class="badge">optional</span>
+                      )}
+                      <div class="small mut">{has(d.name) ? 'vorhanden' : d.hint}</div>
+                    </span>
+                  </a>
+                ))}
+              </div>
+            </div>
             <div class="card">
               <h3>Dokumente ({files.length})</h3>
               {groups.length === 0 && <div class="empty">Noch keine Dokumente.</div>}
@@ -63,7 +94,7 @@ export function registerHrRoutes(ctx: Ctx) {
                 </>
               ))}
             </div>
-            <div class="card">
+            <div class="card" id="hochladen">
               <form method="get" action={`/personal/${e.id}/dokumente`} class="actions" style="margin-top:0">
                 <label for="kategorie" class="small" style="margin:0">
                   Hochladen als

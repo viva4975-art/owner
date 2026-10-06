@@ -320,5 +320,34 @@ export const CLIENT_JS = String.raw`
       var s = document.getElementById('q'); if (s) { e.preventDefault(); s.focus(); }
     }
   });
+  // Tags/Sprachen als Buttons („Chips“) wie Fortytools: Enter oder Auswahl fügt hinzu, × entfernt
+  Array.prototype.forEach.call(document.querySelectorAll('[data-chips]'), function (box) {
+    var name = box.getAttribute('data-chips'), inp = box.querySelector('input:not([type=hidden])');
+    var strict = box.hasAttribute('data-strict'), list = inp && inp.list;
+    function has(v) { return Array.prototype.some.call(box.querySelectorAll('input[type=hidden]'), function (h) { return h.value.toLowerCase() === v.toLowerCase(); }); }
+    function add(v) {
+      v = (v || '').trim().replace(/[,;]+$/, ''); if (!v || has(v)) { inp.value = ''; return; }
+      if (strict && list && !Array.prototype.some.call(list.options, function (o) { return o.value === v; })) return;
+      var c = document.createElement('span'); c.className = 'chip'; c.textContent = v;
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = '×'; b.setAttribute('aria-label', v + ' entfernen');
+      var h = document.createElement('input'); h.type = 'hidden'; h.name = name; h.value = v;
+      c.appendChild(b); c.appendChild(h); box.insertBefore(c, inp); inp.value = '';
+      box.closest('form') && box.closest('form').dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    if (!inp) return;
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add(inp.value); }
+      else if (e.key === 'Backspace' && !inp.value) { var l = box.querySelectorAll('.chip:not(.fixed)'); if (l.length) l[l.length - 1].remove(); }
+    });
+    inp.addEventListener('change', function () { add(inp.value); });
+    inp.addEventListener('blur', function () { if (!strict) add(inp.value); });
+    box.addEventListener('click', function (e) {
+      if (e.target.tagName === 'BUTTON' && e.target.parentNode.classList.contains('chip')) e.target.parentNode.remove();
+      else if (e.target === box) inp.focus();
+    });
+  });
+  // Beschäftigungsart-Chip folgt der Auswahl
+  var emp = document.getElementById('employment_type'), ec = document.querySelector('[data-emp-chip]');
+  if (emp && ec) emp.addEventListener('change', function () { ec.textContent = emp.options[emp.selectedIndex].text; });
 })();
 `;

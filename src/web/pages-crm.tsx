@@ -347,7 +347,7 @@ export const Dashboard: FC<{
   hr: {
     birthdays: { id: string; name: string; birth_date: string; age: number }[];
     jubilees: { id: string; name: string; entry_date: string; years: number }[];
-    permits: { id: string; name: string; residence_permit_until: string }[];
+    permits: { id: string; name: string; residence_permit_until: string; kind?: string }[];
   };
   month: string;
   todo: DashboardTodo;
@@ -361,8 +361,8 @@ export const Dashboard: FC<{
       tone: p.residence_permit_until < kpi.today ? 'err' : 'warn',
       text: (
         <>
-          Aufenthaltserlaubnis <b>{p.name}</b> {p.residence_permit_until < kpi.today ? 'abgelaufen' : 'bis'}{' '}
-          {dateDe(p.residence_permit_until)}
+          {p.kind ?? 'Aufenthaltserlaubnis'} <b>{p.name}</b>{' '}
+          {p.residence_permit_until < kpi.today ? 'abgelaufen' : 'bis'} {dateDe(p.residence_permit_until)}
         </>
       ),
       href: `/personal/${p.id}`,

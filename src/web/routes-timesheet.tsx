@@ -518,11 +518,10 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
         </div>
         <p class="small mut" style="max-width:900px">
           Stunden in Std.:Min. Zuschläge nach Rahmentarifvertrag Gebäudereinigung (§ 10): Nacht{' '}
-          {st.night_from}–{st.night_to} {st.night_bp / 100} %, Sonntag {st.sunday_bp / 100} % (regelmäßig am
-          selben Arbeitsplatz {st.sunday_regular_bp / 100} %), Feiertag {st.holiday_bp / 100} %, hohe
-          Feiertage (Neujahr, Ostersonntag, Pfingstsonntag, 1. Mai, 25./26.12.) {st.high_holiday_bp / 100} % –
-          je Stunde nur der höchste. Nur erfasste/freigegebene Zeiten; Urlaub/Krank aus den Abwesenheiten
-          (Stunden je Einsatz).
+          {st.night_from}–{st.night_to} {st.night_bp / 100} %, Sonntag {st.sunday_bp / 100} %, Feiertag{' '}
+          {st.holiday_bp / 100} %, hohe Feiertage (Neujahr, Ostersonntag, Pfingstsonntag, 1. Mai, 25./26.12.){' '}
+          {st.high_holiday_bp / 100} % – je Stunde nur der höchste. Nur erfasste/freigegebene Zeiten;
+          Urlaub/Krank aus den Abwesenheiten (Stunden je Einsatz).
         </p>
         <div class="tbl">
           <table>
@@ -618,6 +617,7 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
           style="max-width:820px"
         >
           <input type="hidden" name="version" value={String(st.version)} />
+          <input type="hidden" name="sunday_regular_bp" value={String(st.sunday_regular_bp / 100)} />
           <h3 style="margin-top:0">Zuschläge (Rahmentarifvertrag Gebäudereinigung § 10)</h3>
           <div class="grid">
             <div>
@@ -632,11 +632,6 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
               [
                 ['night_bp', 'Nachtzuschlag %', st.night_bp],
                 ['sunday_bp', 'Sonntagszuschlag %', st.sunday_bp],
-                [
-                  'sunday_regular_bp',
-                  'Sonn-/Feiertag regelmäßig am selben Arbeitsplatz %',
-                  st.sunday_regular_bp,
-                ],
                 ['holiday_bp', 'Feiertagszuschlag %', st.holiday_bp],
                 [
                   'high_holiday_bp',
@@ -652,8 +647,8 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
             ))}
           </div>
           <p class="small mut">
-            Voreinstellung Viva-Deluxe: Nacht 30 %, Sonntag und Feiertag 80 % (auch regelmäßig am selben
-            Arbeitsplatz), hohe Feiertage 200 % (RTV vom 31.10.2019: Nacht 25 %, Sonntag 100 %, Feiertag 150
+            Voreinstellung Viva-Deluxe: Nacht 30 %, Sonntag und Feiertag 80 %, hohe Feiertage 200 % – gilt
+            automatisch für alle Mitarbeitenden (RTV vom 31.10.2019: Nacht 25 %, Sonntag 100 %, Feiertag 150
             %, regelmäßig 75 % – Tarifbindung prüfen). Bei mehreren Zuschlägen zählt nur der höchste.
             Steuerfrei nach § 3b EStG sind Zuschläge nur bis 25 % (Nacht), 50 % (Sonntag), 125 % (Feiertag)
             bzw. 150 % (hohe Feiertage) und auf höchstens 50 € Grundlohn je Stunde – den Rest versteuert das

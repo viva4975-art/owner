@@ -1,4 +1,5 @@
 import type { Child, FC } from 'hono/jsx';
+import { HEALTH_INSURERS, LANGUAGES } from '../domain/hr/lists.js';
 import {
   EMPLOYMENT_TYPES,
   type Employee,
@@ -216,7 +217,6 @@ export const EmployeeShell: FC<{
   const base = `/personal/${e.id}`;
   const tabs: Tab[] = [
     { key: 'uebersicht', label: 'Übersicht', href: base },
-    { key: 'bearbeiten', label: 'Stammdaten', href: `${base}/bearbeiten` },
     { key: 'notizen', label: 'Notizen', href: `${base}/notizen`, count: notes },
     { key: 'dokumente', label: 'Dokumente', href: `${base}/dokumente` },
     { key: 'zeiten', label: 'Zeiten', href: `${base}/zeiten` },
@@ -271,7 +271,10 @@ export const EmployeeOverview: FC<{
             </b>
             <div class="small mut">Personalnummer {e.personnel_no}</div>
           </div>
-          <span class={`badge ${e.status === 'aktiv' ? 'ok' : ''}`} style="margin-left:auto">
+          <a class="btn sm sec" href={`/personal/${e.id}/bearbeiten`} style="margin-left:auto">
+            Bearbeiten
+          </a>
+          <span class={`badge ${e.status === 'aktiv' ? 'ok' : ''}`}>
             {e.status === 'aktiv' ? 'Mitarbeiter' : 'ausgetreten'}
           </span>
         </div>
@@ -366,10 +369,15 @@ export const EmployeeOverview: FC<{
               <dd>{priv.marital_status ?? '–'}</dd>
               <dt>Staatsangehörigkeit</dt>
               <dd>{priv.nationality ?? '–'}</dd>
-              <dt>Aufenthaltserlaubnis bis</dt>
+              <dt>Aufenthaltstitel bis</dt>
               <dd>
                 {dateDe(priv.residence_permit_until)}
                 {priv.residence_permit_info && <div class="small mut">{priv.residence_permit_info}</div>}
+              </dd>
+              <dt>Arbeitserlaubnis bis</dt>
+              <dd>
+                {dateDe(priv.work_permit_until)}
+                {priv.work_permit_info && <div class="small mut">{priv.work_permit_info}</div>}
               </dd>
               <dt>Krankenkasse</dt>
               <dd>{priv.health_insurance ?? '–'}</dd>
@@ -420,26 +428,56 @@ export const EmployeeForm: FC<{
       <Field name="email" label="E-Mail" type="email" value={e.email} />
       <Field name="email_private" label="Weitere E-Mail" type="email" value={e.email_private} />
       <div>
-        <label for="tags">Tags (mit Komma trennen)</label>
-        <input
-          id="tags"
-          name="tags"
-          value={(e.tags ?? []).join(', ')}
-          list="tag-list"
-          placeholder="Teilzeit, Objektleitung"
-        />
+        <label for="tag-in">Tags</label>
+        <div class="chipin" data-chips="tags">
+          <span class="chip fixed" data-emp-chip title="Beschäftigungsart – wird automatisch gesetzt">
+            {e.employment_type ? EMPLOYMENT_TYPES[e.employment_type] : 'Beschäftigungsart'}
+          </span>
+          {(e.tags ?? [])
+            .filter((t) => !(Object.values(EMPLOYMENT_TYPES) as string[]).includes(t))
+            .map((t) => (
+              <span class="chip">
+                {t}
+                <button type="button" aria-label={`${t} entfernen`}>
+                  ×
+                </button>
+                <input type="hidden" name="tags" value={t} />
+              </span>
+            ))}
+          <input id="tag-in" list="tag-list" placeholder="Tag eingeben, Enter" autocomplete="off" />
+        </div>
         <datalist id="tag-list">
-          {TAG_SUGGESTIONS.map((t) => (
-            <option value={t} />
+          {TAG_SUGGESTIONS.filter((t) => !(Object.values(EMPLOYMENT_TYPES) as string[]).includes(t)).map(
+            (t) => (
+              <option value={t} />
+            ),
+          )}
+        </datalist>
+        <small class="mut">
+          Schlagwörter, um Mitarbeitende nach beliebigen Kriterien zu ordnen. Die Beschäftigungsart wird
+          automatisch als Tag übernommen.
+        </small>
+      </div>
+      <div>
+        <label for="lang-in">Sprachen (die erste, die die App kann, wird App-Sprache)</label>
+        <div class="chipin" data-chips="languages" data-strict>
+          {(e.languages ?? []).map((t) => (
+            <span class="chip">
+              {t}
+              <button type="button" aria-label={`${t} entfernen`}>
+                ×
+              </button>
+              <input type="hidden" name="languages" value={t} />
+            </span>
+          ))}
+          <input id="lang-in" list="lang-list" placeholder="Sprache wählen" autocomplete="off" />
+        </div>
+        <datalist id="lang-list">
+          {LANGUAGES.map((l) => (
+            <option value={l.name}>{l.app ? 'auch App-Sprache' : ''}</option>
           ))}
         </datalist>
       </div>
-      <Field
-        name="languages"
-        label="Sprachen (für die App)"
-        value={(e.languages ?? []).join(', ')}
-        placeholder="z. B. Deutsch, Rumänisch"
-      />
     </div>
     <label for="warning_note">Warnhinweis (besonders hervorgehoben)</label>
     <input
@@ -469,7 +507,7 @@ export const EmployeeForm: FC<{
         </select>
       </div>
       <Field name="entry_date" label="Eintritt *" type="date" value={e.entry_date} required />
-      <Field name="exit_date" label="Austritt" type="date" value={e.exit_date} />
+      <input type="hidden" name="exit_date" value={e.exit_date ?? ''} />
       <Field
         name="weekly_hours"
         label="Stunden/Woche"
@@ -538,26 +576,8 @@ export const EmployeeForm: FC<{
         __html: `(function(){var box=document.currentScript.previousElementSibling.previousElementSibling;var f=box.closest('form');function upd(){var v=(f.querySelector('input[name=pay_model]:checked')||{}).value;f.querySelectorAll('[data-pay-for]').forEach(function(d){var on=d.getAttribute('data-pay-for')===v;d.hidden=!on;d.querySelectorAll('input,select').forEach(function(x){x.disabled=!on})})}box.addEventListener('change',upd);upd()})();`,
       }}
     />
-    <div class="grid" style="margin-top:8px">
-      <Field
-        name="planning_group"
-        label="Einsatzgruppe"
-        value={e.planning_group}
-        placeholder="z. B. Team Süd, Springer"
-      />
-      <Field name="planning_notes" label="Planungsnotizen (für Disponenten)" value={e.planning_notes} />
-    </div>
-    <div class="chk" style="margin-top:8px">
-      <input
-        type="checkbox"
-        id="regular_sunday_work"
-        name="regular_sunday_work"
-        checked={e.regular_sunday_work ?? false}
-      />
-      <label for="regular_sunday_work">
-        Sonn-/Feiertagsarbeit regelmäßig am selben Arbeitsplatz (Zuschlag 75 % statt 100–200 %, RTV § 10 g)
-      </label>
-    </div>
+    <input type="hidden" name="planning_group" value={e.planning_group ?? ''} />
+    <input type="hidden" name="planning_notes" value={e.planning_notes ?? ''} />
     <div class="chk" style="margin-top:8px">
       <input
         type="checkbox"
@@ -591,20 +611,52 @@ export const EmployeeForm: FC<{
       <Field name="nationality" label="Staatsangehörigkeit" value={priv.nationality} />
       <Field
         name="residence_permit_until"
-        label="Aufenthaltserlaubnis bis"
+        label="Aufenthaltstitel gültig bis"
         type="date"
         value={priv.residence_permit_until}
       />
       <Field
         name="residence_permit_info"
-        label="Aufenthaltserlaubnis Info"
+        label="Aufenthaltstitel Info"
         value={priv.residence_permit_info}
-        placeholder="z. B. Nummer oder Hinweise"
+        placeholder="z. B. Art, Nummer"
+      />
+      <Field
+        name="work_permit_until"
+        label="Arbeitserlaubnis gültig bis"
+        type="date"
+        value={priv.work_permit_until}
+      />
+      <Field
+        name="work_permit_info"
+        label="Arbeitserlaubnis Info"
+        value={priv.work_permit_info}
+        placeholder="z. B. Auflagen, Beschränkung auf Arbeitgeber"
       />
       <Field name="tax_id" label="Steuer-ID (11 Ziffern)" value={priv.tax_id} />
       <Field name="social_security_no" label="SV-Nummer" value={priv.social_security_no} />
-      <Field name="health_insurance" label="Krankenkasse" value={priv.health_insurance} />
+      <div>
+        <label for="health_insurance">Krankenkasse</label>
+        <select id="health_insurance" name="health_insurance">
+          <option value="">– bitte wählen –</option>
+          {priv.health_insurance && !HEALTH_INSURERS.includes(priv.health_insurance) && (
+            <option value={priv.health_insurance} selected>
+              {priv.health_insurance}
+            </option>
+          )}
+          {HEALTH_INSURERS.map((k) => (
+            <option value={k} selected={priv.health_insurance === k}>
+              {k}
+            </option>
+          ))}
+        </select>
+      </div>
       <Field name="iban" label="IBAN" value={priv.iban} />
+    </div>
+    <div class="flash warn" style="margin-top:12px">
+      <b>Bitte auf die Fristen achten:</b> Ohne gültigen Aufenthaltstitel bzw. Arbeitserlaubnis darf nicht
+      beschäftigt werden (§ 4a AufenthG; Bußgeld bis 500.000 € nach § 404 SGB III). Eine Kopie gehört in die
+      Personalakte (§ 4a Abs. 5 AufenthG). Die Startseite warnt 60 Tage vor Ablauf.
     </div>
     <div class="actions">
       <button class="btn">Speichern</button>

@@ -950,3 +950,22 @@ Testadresse.
   6 = 0 %; Ja 100 %, Nein 0 %), Raum ≥ 75 % = i. O., sonst Mangel mit den schwachen Gegenständen (→ Bericht/Abschluss wie
   bisher, Nachbesserungsaufgaben). Bewertungen nach Abschluss unveränderbar (Trigger). Tabellen `qm_items`,
   `room_type_qm_items`, `quality_check_ratings`.
+- 2026-10-06: Runde 13 – Mitarbeiter wie Fortytools (Ahmed, 12 Punkte):
+  - Beschäftigungsart wird automatisch als erster Tag gesetzt (Minijob/Teilzeit/Vollzeit …); Tags und Sprachen als
+    Schaltflächen-Chips (Enter/Komma fügt hinzu, × entfernt; Sprachen nur aus der Liste). App-Sprache folgt der ersten
+    Sprache mit App-Übersetzung (`src/domain/hr/lists.ts`, 23 Sprachen).
+  - Stammdaten bearbeiten als eigene Seite (Knopf „Bearbeiten“ in der Übersicht), nicht mehr als Reiter.
+  - Häkchen „regelmäßige Sonn-/Feiertagsarbeit“ entfernt: Zuschläge gelten automatisch für alle laut Lohnarten-
+    Einstellungen (Sonntag/Feiertag 80 %, hohe Feiertage 200 %, Nacht 30 %). **Tarifhinweis bleibt: RTV sieht 100 %/150 %
+    vor – bei Tarifbindung/Allgemeinverbindlichkeit Unterschreitung nicht zulässig, mit Steuerberater/Anwalt klären.**
+  - Austritt (Datum + Grund, Hinweis Schriftform § 623 BGB) und Wiedereintritt; Beschäftigungszeiten append-only
+    (`employee_employments`), Personalnummer bleibt.
+  - Dokumente: Checkliste Personalakte – Arbeitsvertrag Pflicht, Unterweisung/Arbeitskleidung/Schlüssel optional
+    (Kleidung/Schlüssel zählen auch über unterschriebene Übergaben). Neue Kategorien inkl. Aufenthalts-/Arbeitserlaubnis.
+  - Aufenthaltstitel und Arbeitserlaubnis getrennt (gültig bis + Info), Warnhinweis § 4a AufenthG / § 404 SGB III
+    (Bußgeld bis 500.000 €); Startseite warnt für beide 60 Tage vorher.
+  - Krankenkasse als Auswahl (gesetzliche Kassen + PKV + Sonstige). Einsatzgruppe aus dem Formular entfernt (Feld bleibt).
+  - Hintergrund am PC wie die App: dezenter Bordeaux-Verlauf (nicht vollflächig), Karten weiß.
+  - iOS: keine installierbare Datei ohne Mac/Xcode + Apple-Developer-Konto (99 €/Jahr, TestFlight). Bis dahin `/m` per
+    Safari → Teilen → „Zum Home-Bildschirm“.
+  - Tests: 339 Unit-/DB-Tests, alle Browser-Suiten grün.

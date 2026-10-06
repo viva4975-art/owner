@@ -143,7 +143,10 @@ await a.fill('#hourly_wage', '15,00');
 await a.fill('#birth_date', '1990-10-12');
 await a.fill('#residence_permit_until', '2026-11-15');
 await a.fill('#iban', 'DE89 3704 0044 0532 0130 00');
-await a.fill('#languages', 'Rumänisch, Deutsch');
+await a.fill('#lang-in', 'Rumänisch');
+await a.press('#lang-in', 'Enter');
+await a.fill('#lang-in', 'Deutsch');
+await a.press('#lang-in', 'Enter');
 // in Tab B derweil an der Rechnung arbeiten
 await b.click('a:has-text("Bearbeiten")');
 await b.locator('#lines tbody tr').first().locator('[name=price]').fill('33,00');

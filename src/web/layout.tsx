@@ -922,6 +922,24 @@ a.dash-more{color:var(--brand)}
 .pay-opt input{margin-top:3px;width:auto;height:auto}
 .pay-opt b{display:block;font-size:14px}.pay-opt small{display:block;color:var(--mut);font-size:12.5px;font-weight:400;margin-top:2px}
 @media (max-width:760px){.pay-pick{grid-template-columns:1fr}}
+/* Runde 13: Hintergrund wie die Handy-App (heller Bordeaux-Schimmer), Karten weiß */
+body.shell{background:#f6f0f2;background-image:radial-gradient(70% 45% at 100% 0%,rgba(236,211,220,.75) 0,rgba(236,211,220,0) 70%),radial-gradient(55% 40% at 15% 35%,rgba(243,225,231,.7) 0,rgba(243,225,231,0) 70%),linear-gradient(180deg,#f8f1f4 0%,#f7f4f5 60%);background-attachment:fixed}
+.shell .mainc{background:transparent}
+.form-card h3{font-size:22px;margin:22px 0 10px;color:var(--ink)}
+.form-card h3:first-of-type{margin-top:4px}
+/* Runde 13: Checkliste Personalakte */
+.doc-check{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.doc-check .dc{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:8px;color:var(--ink);text-decoration:none;background:#fff}
+.doc-check .dc:hover{border-color:var(--line-2);text-decoration:none}
+.doc-check .dc-i{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;flex:none;background:var(--head);color:var(--mut)}
+.doc-check .ok .dc-i{background:#e7f6ec;color:var(--ok)}.doc-check .missing{border-color:#f2b8b5;background:#fff6f5}.doc-check .missing .dc-i{background:var(--err);color:#fff}
+/* Runde 13: Chips (Tags/Sprachen) wie Fortytools */
+.chipin{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:44px;padding:5px 8px;border:1px solid var(--line-2);border-radius:8px;background:#fff;cursor:text}
+.chipin:focus-within{border-color:var(--brand);box-shadow:0 0 0 3px rgba(125,20,53,.1)}
+.chipin input{border:0!important;box-shadow:none!important;flex:1;min-width:120px;height:30px;padding:0 4px;background:transparent}
+.chip{display:inline-flex;align-items:center;gap:4px;background:var(--brand-50);border:1px solid var(--brand-100);color:var(--brand-d);border-radius:6px;padding:3px 4px 3px 9px;font-size:14px;font-weight:550}
+.chip button{border:0;background:none;color:var(--brand);font-size:16px;line-height:1;cursor:pointer;padding:0 4px}
+.chip.fixed{background:var(--brand);border-color:var(--brand);color:#fff;padding-right:9px}
 /* Runde 11: Akzente überall Bordeaux (aktive Reiter, Häkchen, Startseiten-OP) */
 .tabs a.on{color:var(--brand)!important;border-color:var(--brand)!important}
 input[type=checkbox],input[type=radio]{accent-color:var(--brand)}

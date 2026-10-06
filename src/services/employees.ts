@@ -3,6 +3,7 @@ import type { Sql } from '../db/client.js';
 import { assertVersion, versionField } from './crm.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { BusinessError } from './errors.js';
+import { appLanguageOf } from '../domain/hr/lists.js';
 
 const emptyToNull = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? null : v);
 const optText = z.preprocess(emptyToNull, z.string().trim().nullable().default(null));
@@ -56,6 +57,8 @@ export interface EmployeePrivate {
   birth_country: string | null;
   marital_status: string | null;
   residence_permit_info: string | null;
+  work_permit_until: string | null;
+  work_permit_info: string | null;
   version: number;
 }
 
@@ -90,6 +93,8 @@ const tagList = z.preprocess(
       : (v ?? []),
   z.array(z.string().max(40)).max(20),
 );
+
+const EMPLOYMENT_TAGS = new Set(['vollzeit', 'teilzeit', 'minijob', 'werkstudent', 'aushilfe']);
 
 export const EMPLOYMENT_TYPES = {
   vollzeit: 'Vollzeit',
@@ -196,6 +201,8 @@ export const employeeInput = z
       z.string().refine(validIban, 'IBAN ist ungültig (Prüfziffer)').nullable().default(null),
     ),
     residence_permit_until: optDate,
+    work_permit_until: optDate,
+    work_permit_info: optText,
     private_version: versionField,
   })
   .refine((e) => !e.exit_date || e.exit_date >= e.entry_date, {
@@ -275,14 +282,19 @@ export async function saveEmployee(sql: Sql, id: string, input: EmployeeInput, a
     languages: input.languages,
     annual_leave_days: input.annual_leave_days,
     salutation: input.salutation,
-    tags: input.tags,
+    // Beschäftigungsart immer als erster Tag (wie Fortytools), andere Beschäftigungsart-Tags fallen weg
+    tags: [
+      EMPLOYMENT_TYPES[input.employment_type],
+      ...input.tags.filter((t) => !EMPLOYMENT_TAGS.has(t.trim().toLowerCase())),
+    ],
     warning_note: input.warning_note,
     info: input.info,
     mobile: input.mobile,
     email_private: input.email_private,
     wage_level_id: input.pay_model && input.pay_model !== 'tarif' ? null : input.wage_level_id,
     carry_over_leave: input.carry_over_leave,
-    regular_sunday_work: input.regular_sunday_work,
+    regular_sunday_work: false,
+    app_language: appLanguageOf(input.languages),
     planning_group: input.planning_group,
     planning_notes: input.planning_notes,
   };
@@ -301,6 +313,8 @@ export async function saveEmployee(sql: Sql, id: string, input: EmployeeInput, a
     birth_country: input.birth_country,
     marital_status: input.marital_status,
     residence_permit_info: input.residence_permit_info,
+    work_permit_until: input.work_permit_until,
+    work_permit_info: input.work_permit_info,
   };
   try {
     await sql.begin(async (tx) => {
@@ -366,12 +380,17 @@ export async function hrReminders(sql: Sql) {
        and (make_date(extract(year from current_date)::int, extract(month from entry_date)::int,
                       least(extract(day from entry_date)::int, 28)) - current_date) between 0 and 14
      order by extract(month from entry_date), extract(day from entry_date)`;
-  const permits = await sql<{ id: string; name: string; residence_permit_until: string }[]>`
-    select e.id, e.first_name || ' ' || e.last_name as name, p.residence_permit_until
-      from app.employees e join app.employee_private p on p.employee_id = e.id
-     where e.status = 'aktiv' and p.residence_permit_until is not null
-       and p.residence_permit_until <= current_date + 60
-     order by p.residence_permit_until`;
+  // Aufenthaltstitel und Arbeitserlaubnis getrennt, je 60 Tage vor Ablauf
+  const permits = await sql<{ id: string; name: string; residence_permit_until: string; kind: string }[]>`
+    select * from (
+      select e.id, e.first_name || ' ' || e.last_name as name, p.residence_permit_until::text, 'Aufenthaltstitel' as kind
+        from app.employees e join app.employee_private p on p.employee_id = e.id
+       where e.status = 'aktiv' and p.residence_permit_until is not null and p.residence_permit_until <= current_date + 60
+      union all
+      select e.id, e.first_name || ' ' || e.last_name, p.work_permit_until::text, 'Arbeitserlaubnis'
+        from app.employees e join app.employee_private p on p.employee_id = e.id
+       where e.status = 'aktiv' and p.work_permit_until is not null and p.work_permit_until <= current_date + 60) x
+     order by residence_permit_until`;
   return { birthdays, jubilees, permits };
 }
 
@@ -507,10 +526,21 @@ export async function effectiveWage(sql: Sql, employeeId: string): Promise<bigin
 
 export const DOC_CATEGORIES = [
   'Arbeitsvertrag',
-  'Personalunterlagen',
   'Unterweisung',
+  'Arbeitskleidung',
+  'Schlüssel',
+  'Aufenthalts-/Arbeitserlaubnis',
+  'Personalunterlagen',
   'Bescheinigung',
   'Sonstiges',
+];
+
+/** Checkliste der Personalakte: Arbeitsvertrag Pflicht, die übrigen empfohlen (wie Pflichtdokumente am Objekt). */
+export const DOC_CHECKLIST: { name: string; required: boolean; hint: string }[] = [
+  { name: 'Arbeitsvertrag', required: true, hint: 'unterschriebener Vertrag (Nachweisgesetz)' },
+  { name: 'Unterweisung', required: false, hint: 'Arbeitsschutz/Gefahrstoffe (§ 12 ArbSchG), jährlich' },
+  { name: 'Arbeitskleidung', required: false, hint: 'Ausgabeprotokoll (auch über „Übergaben“)' },
+  { name: 'Schlüssel', required: false, hint: 'Schlüsselquittung (auch über „Übergaben“)' },
 ];
 
 export interface DocumentTemplate {
@@ -598,4 +628,55 @@ export async function planningGroups(sql: Sql) {
     await sql<{ g: string }[]>`select distinct planning_group as g from app.employees
                                 where status = 'aktiv' and planning_group is not null order by 1`
   ).map((r) => r.g);
+}
+
+// ---------------------------------------------------------------- Austritt und Wiedereintritt
+
+export interface EmploymentPeriod {
+  entry_date: string;
+  exit_date: string | null;
+  exit_reason: string | null;
+}
+
+export async function employmentHistory(sql: Sql, employeeId: string): Promise<EmploymentPeriod[]> {
+  const past = await sql<EmploymentPeriod[]>`
+    select entry_date::text, exit_date::text, exit_reason from app.employee_employments
+     where employee_id = ${employeeId} order by entry_date`;
+  const [cur] = await sql<EmploymentPeriod[]>`
+    select entry_date::text, exit_date::text, exit_reason from app.employees where id = ${employeeId}`;
+  return cur ? [...past, cur] : past;
+}
+
+/** Austritt erfassen: Datum + Grund; ab dem Tag nach dem Austritt gilt der Mitarbeiter als ausgetreten. */
+export async function exitEmployee(sql: Sql, id: string, p: { date: string; reason: string | null }) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date)) throw new BusinessError('Austrittsdatum fehlt');
+  const [e] = await sql<
+    { entry_date: string }[]
+  >`select entry_date::text from app.employees where id = ${id}`;
+  if (!e) throw new BusinessError('Mitarbeiter nicht gefunden');
+  if (p.date < e.entry_date) throw new BusinessError('Austritt liegt vor dem Eintritt');
+  await sql`update app.employees set exit_date = ${p.date}, exit_reason = ${p.reason?.trim() || null},
+              status = case when ${p.date}::date <= (now() at time zone 'Europe/Berlin')::date then 'ausgetreten'::app.employee_status else 'aktiv'::app.employee_status end
+             where id = ${id}`;
+}
+
+/**
+ * Wiedereintritt: Die bisherige Beschäftigungszeit (Eintritt–Austritt) wird unveränderbar festgehalten, dann gelten
+ * neues Eintrittsdatum, kein Austritt, Status aktiv. Personalnummer, Unterlagen und Zeiten bleiben erhalten.
+ */
+export async function reenterEmployee(sql: Sql, id: string, p: { date: string; actor: string }) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date)) throw new BusinessError('Datum des Wiedereintritts fehlt');
+  await sql.begin(async (tx) => {
+    const [e] = await tx<{ entry_date: string; exit_date: string | null; exit_reason: string | null }[]>`
+      select entry_date::text, exit_date::text, exit_reason from app.employees where id = ${id} for update`;
+    if (!e) throw new BusinessError('Mitarbeiter nicht gefunden');
+    if (!e.exit_date) throw new BusinessError('Der Mitarbeiter ist nicht ausgetreten');
+    if (p.date <= e.exit_date)
+      throw new BusinessError('Wiedereintritt muss nach dem letzten Austritt liegen');
+    await tx`insert into app.employee_employments (id, employee_id, entry_date, exit_date, exit_reason, recorded_by)
+             values (md5(${`emp-period:${id}:${e.entry_date}`})::uuid, ${id}, ${e.entry_date}, ${e.exit_date},
+                     ${e.exit_reason}, ${p.actor}) on conflict do nothing`;
+    await tx`update app.employees set entry_date = ${p.date}, exit_date = null, exit_reason = null, status = 'aktiv'
+              where id = ${id}`;
+  });
 }

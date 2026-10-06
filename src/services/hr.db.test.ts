@@ -94,6 +94,7 @@ describe.skipIf(!available)('Personal wie Fortytools', () => {
       last_name: 'Berg',
       salutation: 'Frau',
       tags: 'Minijob',
+      employment_type: 'minijob',
       hourly_wage: '15,00',
       carry_over_leave: '',
     });

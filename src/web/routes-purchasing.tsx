@@ -802,8 +802,12 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                     required
                   />
                 </div>
-                <div>
-                  <label for="due_date">fällig am (leer = Zahlungsziel)</label>
+                <div class="chk">
+                  <input type="checkbox" id="own-due" data-reveal="#due-box" checked={!!i?.due_date} />
+                  <label for="own-due">Abweichendes Fälligkeitsdatum (sonst laut Zahlungsziel)</label>
+                </div>
+                <div id="due-box" hidden={!i?.due_date}>
+                  <label for="due_date">fällig am</label>
                   <input id="due_date" type="date" name="due_date" value={i?.due_date ?? ''} />
                 </div>
                 <div>

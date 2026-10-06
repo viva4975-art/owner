@@ -458,12 +458,23 @@ export const EmployeeForm: FC<{
           ))}
         </select>
       </div>
-      <Field
-        name="hourly_wage"
-        label="Stundenlohn individuell (€)"
-        value={e.hourly_wage_cents != null ? centsToInput(e.hourly_wage_cents) : ''}
-        placeholder="leer = Lohnstufe"
-      />
+      <div class="chk">
+        <input
+          type="checkbox"
+          id="own-wage"
+          data-reveal="#own-wage-box"
+          checked={e.hourly_wage_cents != null}
+        />
+        <label for="own-wage">Individueller Stundenlohn (sonst laut Lohnstufe)</label>
+      </div>
+      <div id="own-wage-box" hidden={e.hourly_wage_cents == null}>
+        <label for="hourly_wage">Stundenlohn individuell (€)</label>
+        <input
+          id="hourly_wage"
+          name="hourly_wage"
+          value={e.hourly_wage_cents != null ? centsToInput(e.hourly_wage_cents) : ''}
+        />
+      </div>
     </div>
     <div class="grid" style="margin-top:8px">
       <Field

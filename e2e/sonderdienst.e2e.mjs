@@ -44,6 +44,7 @@ await p.fill('#title', `E2E Tiefgarage ${stamp}`);
 await p.fill('#interval', '12');
 await p.fill('#due', today);
 await p.fill('#notice', '14');
+await p.check('#has-price');
 await p.fill('#price', '890,00');
 await p.click('button:has-text("Speichern")');
 await p.waitForLoadState();

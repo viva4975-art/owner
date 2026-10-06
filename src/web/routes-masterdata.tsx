@@ -13,7 +13,7 @@ import {
 import { BusinessError } from '../services/errors.js';
 import { listUsers } from '../services/users.js';
 import { monthBounds, todayBerlin } from '../domain/invoice/calc.js';
-import { billingPreview, listInvoices, runMonthly } from '../services/invoices.js';
+import { billingPreview, runMonthly } from '../services/invoices.js';
 import {
   groupBillingInput,
   listInvoiceGroups,
@@ -50,6 +50,8 @@ import {
   customerRevenue,
   customerRevenueYears,
   deleteCustomerBankAccount,
+  entityInvoices,
+  invoiceMonths,
   listCustomerBankAccounts,
   type RevenueMode,
   saveCustomerBankAccount,
@@ -57,6 +59,7 @@ import {
 import {
   BankPanel,
   CustomerLedger,
+  EntityInvoices,
   CustomerSide,
   MapPanel,
   OpenOffers,
@@ -84,7 +87,6 @@ import { FORMAT_LABEL, PageHead, dateDe, euro } from './layout.js';
 import { OfferTable } from './pages-offers.js';
 import { ContactsPanel, NotesPanel, TaskBox, TaskForm } from './pages-crm.js';
 import { OpenItemsTable } from './pages-hr-finance.js';
-import { InvoiceTable } from './pages-invoices.js';
 import { ServiceForm, ServicesPanel } from './pages-services.js';
 import {
   type CustomerCounts,
@@ -554,12 +556,12 @@ export function registerMasterdataRoutes(ctx: Ctx) {
   app.get(`/kunden/:id{${UUID}}/rechnungen`, (c) =>
     customerPage(c, 'rechnungen', async (cust) => (
       <>
-        <div class="actions" style="margin-top:0">
-          <a class="btn sm" href={`/neu?typ=rechnung&kunde=${cust.id}`}>
-            + Rechnung für diesen Kunden
-          </a>
-        </div>
-        <InvoiceTable rows={(await listInvoices(sql)).filter((i) => i.customer_id === cust.id)} />
+        <EntityInvoices
+          rows={await entityInvoices(sql, { customerId: cust.id })}
+          months={await invoiceMonths(sql, { customerId: cust.id })}
+          showSite
+          newHref={`/neu?typ=rechnung&kunde=${cust.id}`}
+        />
       </>
     )),
   );
@@ -657,36 +659,41 @@ export function registerMasterdataRoutes(ctx: Ctx) {
               </div>
               <div class="section-title">Rechnung an</div>
               <div class="grid">
+                <div class="chk">
+                  <input type="checkbox" id="g-own-addr" data-reveal="#g-addr" checked={!!g?.bill_name} />
+                  <label for="g-own-addr">
+                    Abweichende Rechnungsadresse (sonst {cust.name}, {cust.street}, {cust.postal_code}{' '}
+                    {cust.city})
+                  </label>
+                </div>
+              </div>
+              <div class="grid" id="g-addr" hidden={!g?.bill_name}>
                 <div>
-                  <label for="g-bname">Name (leer = {cust.name})</label>
-                  <input id="g-bname" name="bill_name" value={g?.bill_name ?? ''} placeholder={cust.name} />
+                  <label for="g-bname">Name *</label>
+                  <input id="g-bname" name="bill_name" value={g?.bill_name ?? cust.name} />
                 </div>
                 <div>
                   <label for="g-bname2">Zusatz / Abteilung</label>
-                  <input id="g-bname2" name="bill_name2" value={g?.bill_name2 ?? ''} />
-                </div>
-                <div>
-                  <label for="g-street">Straße</label>
                   <input
-                    id="g-street"
-                    name="bill_street"
-                    value={g?.bill_street ?? ''}
-                    placeholder={cust.street}
+                    id="g-bname2"
+                    name="bill_name2"
+                    value={g?.bill_name ? (g.bill_name2 ?? '') : (cust.name2 ?? '')}
                   />
                 </div>
                 <div>
-                  <label for="g-plz">PLZ</label>
-                  <input
-                    id="g-plz"
-                    name="bill_postal_code"
-                    value={g?.bill_postal_code ?? ''}
-                    placeholder={cust.postal_code}
-                  />
+                  <label for="g-street">Straße *</label>
+                  <input id="g-street" name="bill_street" value={g?.bill_street ?? cust.street} />
                 </div>
                 <div>
-                  <label for="g-city">Ort</label>
-                  <input id="g-city" name="bill_city" value={g?.bill_city ?? ''} placeholder={cust.city} />
+                  <label for="g-plz">PLZ *</label>
+                  <input id="g-plz" name="bill_postal_code" value={g?.bill_postal_code ?? cust.postal_code} />
                 </div>
+                <div>
+                  <label for="g-city">Ort *</label>
+                  <input id="g-city" name="bill_city" value={g?.bill_city ?? cust.city} />
+                </div>
+              </div>
+              <div class="grid" style="margin-top:10px">
                 <div>
                   <label for="g-contact">Ansprechpartner</label>
                   <input
@@ -702,6 +709,21 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                     name="bill_emails"
                     value={(g?.bill_emails ?? tpl?.bill_emails ?? []).join(', ')}
                   />
+                </div>
+                <div class="chk">
+                  <input
+                    type="checkbox"
+                    id="g-own-dun"
+                    data-reveal="#g-dun"
+                    checked={!!g?.dunning_emails?.length}
+                  />
+                  <label for="g-own-dun">Mahnungen an andere E-Mail-Adresse(n) senden</label>
+                </div>
+              </div>
+              <div class="grid" id="g-dun" hidden={!g?.dunning_emails?.length} style="margin-top:10px">
+                <div>
+                  <label for="g-dunning">E-Mails für Mahnungen</label>
+                  <input id="g-dunning" name="dunning_emails" value={(g?.dunning_emails ?? []).join(', ')} />
                 </div>
               </div>
               <div class="section-title">Rechnungseinstellungen</div>
@@ -745,8 +767,24 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                     value={String((g ?? tpl)?.bill_payment_terms_days ?? cust.payment_terms_days ?? 30)}
                   />
                 </div>
+                <div class="chk">
+                  <input
+                    type="checkbox"
+                    id="g-own-sk"
+                    data-reveal="#g-sk"
+                    checked={!!(g ?? tpl)?.bill_skonto_percent_bp}
+                  />
+                  <label for="g-own-sk">Skonto gewähren</label>
+                </div>
+              </div>
+              <div
+                class="grid"
+                id="g-sk"
+                hidden={!(g ?? tpl)?.bill_skonto_percent_bp}
+                style="margin-top:10px"
+              >
                 <div>
-                  <label for="g-sk-pct">Skonto % (leer = kein Skonto)</label>
+                  <label for="g-sk-pct">Skonto %</label>
                   <input
                     id="g-sk-pct"
                     name="bill_skonto_percent_bp"
@@ -796,18 +834,37 @@ export function registerMasterdataRoutes(ctx: Ctx) {
               </div>
               <div class="section-title">Texte auf der Rechnung</div>
               <div class="grid">
+                <div class="chk">
+                  <input
+                    type="checkbox"
+                    id="g-own-text"
+                    data-reveal="#g-texts"
+                    checked={!!(g?.intro_text || g?.closing_text)}
+                  />
+                  <label for="g-own-text">Eigener Kopf- und Fußtext (sonst Standardtexte)</label>
+                </div>
+              </div>
+              <div
+                class="grid"
+                id="g-texts"
+                hidden={!(g?.intro_text || g?.closing_text)}
+                style="margin-top:10px"
+              >
                 <div>
-                  <label for="g-intro">Kopftext (leer = Standard)</label>
+                  <label for="g-intro">Kopftext</label>
                   <textarea id="g-intro" name="intro_text" rows={3}>
-                    {g?.intro_text ?? ''}
+                    {g?.intro_text ??
+                      'Sehr geehrte Damen und Herren,\nwir berechnen unsere Leistungen wie folgt:'}
                   </textarea>
                 </div>
                 <div>
-                  <label for="g-closing">Fußtext (leer = Standard)</label>
+                  <label for="g-closing">Fußtext</label>
                   <textarea id="g-closing" name="closing_text" rows={3}>
                     {g?.closing_text ?? ''}
                   </textarea>
                 </div>
+              </div>
+              <div class="grid" style="margin-top:10px">
                 <div>
                   <label for="g-note">Notiz (intern)</label>
                   <input id="g-note" name="note" value={g?.note ?? ''} />
@@ -1415,12 +1472,12 @@ export function registerMasterdataRoutes(ctx: Ctx) {
   app.get(`/objekte/:id{${UUID}}/rechnungen`, (c) =>
     sitePage(c, 'rechnungen', async (s) => (
       <>
-        <div class="actions" style="margin-top:0">
-          <a class="btn sm" href={`/neu?typ=rechnung&kunde=${s.customer_id}&objekt=${s.id}`}>
-            + Rechnung für dieses Objekt
-          </a>
-        </div>
-        <InvoiceTable rows={(await listInvoices(sql)).filter((i) => i.site_id === s.id)} />
+        <EntityInvoices
+          rows={await entityInvoices(sql, { siteId: s.id })}
+          months={await invoiceMonths(sql, { siteId: s.id })}
+          showSite={false}
+          newHref={`/neu?typ=rechnung&kunde=${s.customer_id}&objekt=${s.id}`}
+        />
       </>
     )),
   );

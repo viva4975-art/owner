@@ -642,3 +642,11 @@ Testadresse.
     Inhaltsbereich, eckige Kästen/Schilder (3 px) ohne Schatten, Tabellenköpfe normal geschrieben.
   - Tests: 240 Unit-/DB-Tests, alle 22 Browser-Suiten grün.
 
+- 2026-10-06: Runde 3b (Ahmed):
+  - „Leer = übernommen“ überall durch Häkchen ersetzt, das die Felder aufklappt (`data-reveal`): Rechnungsgruppe (eigene
+    Adresse, Mahnungs-E-Mails, Skonto, eigene Texte), individueller Stundenlohn, befristeter Einsatz, abweichendes
+    Fälligkeitsdatum, Festpreis Sonderdienst. Zugeklappte Felder werden nicht gesendet.
+  - Eigene E-Mail-Adressen für Mahnungen je Rechnungsgruppe (`invoice_groups.dunning_emails`), sonst Rechnungs-E-Mails.
+  - Reiter „Rechnungen“ bei Kunde und Objekt wie Fortytools: Monatsübersicht netto/brutto (6 Monate), Liste mit Datum,
+    Rechnung + PDF, Empfänger, Objekt (bzw. „ohne Objekt“ bei Sammelrechnungen), Positionen, Netto, Brutto, Status
+    offen/bezahlt/storniert.

@@ -79,6 +79,13 @@ export const CLIENT_JS = String.raw`
       if (el.type === 'checkbox' || el.type === 'radio') el.checked = v === '1';
       else el.value = v;
     });
+    // aufgeklappte „abweichend“-Bereiche wiederherstellen (danach Werte darin erneut setzen)
+    var revealed = Array.prototype.filter.call(form.querySelectorAll('input[data-reveal]'), function (cb) { return cb.checked; });
+    revealed.forEach(function (cb) { cb.dispatchEvent(new Event('change')); });
+    if (revealed.length) fieldsOf(form).forEach(function (el) {
+      var v = byKey[el.name + '#1'];
+      if (v !== undefined && el.type !== 'checkbox' && el.type !== 'radio' && !el.value) el.value = v;
+    });
     if (data.lines && window.vdLines && form.querySelector('[data-lines]')) window.vdLines.set(data.lines);
     form.dispatchEvent(new Event('input', { bubbles: true }));
   }
@@ -127,6 +134,18 @@ export const CLIENT_JS = String.raw`
   }
   // Alle Eingabeformulare sichern (nicht nur markierte): POST-Formulare mit mindestens einem Eingabefeld,
   // außer Anmeldung/Passwort und ausdrücklich ausgenommene (data-no-autosave).
+  // ---- „abweichend“-Häkchen: Felder erst zeigen, wenn angehakt; versteckte Felder werden nicht gesendet ----
+  Array.prototype.forEach.call(document.querySelectorAll('input[type=checkbox][data-reveal]'), function (cb) {
+    var target = document.querySelector(cb.getAttribute('data-reveal'));
+    if (!target) return;
+    function sync() {
+      target.hidden = !cb.checked;
+      Array.prototype.forEach.call(target.querySelectorAll('input,select,textarea'), function (el) { el.disabled = !cb.checked; });
+    }
+    cb.addEventListener('change', function () { sync(); if (cb.checked) { var f = target.querySelector('input,select,textarea'); if (f) f.focus(); } });
+    sync();
+  });
+
   Array.prototype.forEach.call(document.querySelectorAll('form'), function (f) {
     if (f.hasAttribute('data-no-autosave')) return;
     if (!f.hasAttribute('data-autosave')) {

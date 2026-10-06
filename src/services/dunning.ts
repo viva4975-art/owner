@@ -328,9 +328,16 @@ export async function sendDunning(deps: Deps, id: string, actor: string) {
     select distinct i.site_id, i.invoice_group_id from app.dunning_items di join app.invoices i on i.id = di.invoice_id
      where di.dunning_id = ${id}`;
   const fromGroups = new Set<string>();
-  for (const i of invs)
-    for (const e of (await effectiveBilling(sql, d.customer_id, i.site_id, i.invoice_group_id)).emails)
-      fromGroups.add(e);
+  for (const i of invs) {
+    // eigene Mahn-E-Mails der Rechnungsgruppe vor den Rechnungs-E-Mails
+    const [g] = await sql<{ dunning_emails: string[] | null }[]>`
+      select g.dunning_emails from app.invoice_groups g
+       where g.id = coalesce(${i.invoice_group_id}::uuid, (select invoice_group_id from app.sites where id = ${i.site_id}))`;
+    const list = g?.dunning_emails?.length
+      ? g.dunning_emails
+      : (await effectiveBilling(sql, d.customer_id, i.site_id, i.invoice_group_id)).emails;
+    for (const e of list) fromGroups.add(e);
+  }
   c!.invoice_emails = fromGroups.size ? [...fromGroups] : c!.invoice_emails;
   const { actual, redirected } = resolveRecipients(env, c!.invoice_emails);
   const [claimed] =

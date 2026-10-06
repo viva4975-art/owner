@@ -66,7 +66,7 @@ console.log('2. Übernehmen');
 await p.click('button:has-text("neue übernehmen")');
 await p.waitForLoadState();
 check('2 neu übernommen', (await flash(p)).includes('2 neu'), await flash(p));
-await p.goto(B + `/suche?q=E2E+Import+Kunde`);
+await p.goto(B + `/suche?q=E${n}2`);
 check('Kunden sind da', (await p.locator('body').innerText()).includes('E2E Import Kunde B'));
 
 console.log('3. Erneut = nichts doppelt');

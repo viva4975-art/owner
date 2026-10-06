@@ -245,14 +245,22 @@ export function registerSpecialRoutes({ app, deps, page, back }: Ctx) {
               </div>
               {showPrice && (
                 <>
-                  <div>
+                  <div class="chk">
+                    <input
+                      type="checkbox"
+                      id="has-price"
+                      data-reveal="#price-box"
+                      checked={s.price_cents != null}
+                    />
+                    <label for="has-price">Festpreis je Durchführung</label>
+                  </div>
+                  <div id="price-box" hidden={s.price_cents == null}>
                     <label for="price">Festpreis je Durchführung (netto)</label>
                     <input
                       id="price"
                       name="price"
                       inputmode="decimal"
                       value={s.price_cents != null ? centsToInput(s.price_cents) : ''}
-                      placeholder="leer = kein Festpreis"
                     />
                   </div>
                   <div>

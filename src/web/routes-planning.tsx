@@ -390,8 +390,12 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                 <label for="valid_from">gültig ab</label>
                 <input id="valid_from" type="date" name="valid_from" value={v.from} required />
               </div>
-              <div>
-                <label for="valid_until">bis (leer = unbefristet)</label>
+              <div class="chk">
+                <input type="checkbox" id="has-until" data-reveal="#until-box" checked={!!v.until} />
+                <label for="has-until">befristet (sonst unbefristet)</label>
+              </div>
+              <div id="until-box" hidden={!v.until}>
+                <label for="valid_until">gültig bis</label>
                 <input id="valid_until" type="date" name="valid_until" value={v.until} />
               </div>
             </div>

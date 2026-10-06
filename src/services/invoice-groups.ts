@@ -12,6 +12,7 @@ import type { GroupBilling } from './masterdata.js';
 export interface InvoiceGroup extends GroupBilling {
   customer_id: string;
   order_reference: string | null;
+  dunning_emails: string[] | null;
   note: string | null;
   intro_text: string | null;
   closing_text: string | null;
@@ -69,6 +70,16 @@ export const groupBillingInput = z
               .filter(Boolean)
           : (v ?? []),
       z.array(z.email('Ungültige Rechnungs-E-Mail')),
+    ),
+    dunning_emails: z.preprocess(
+      (v) =>
+        typeof v === 'string'
+          ? v
+              .split(/[\s,;]+/)
+              .map((x) => x.trim())
+              .filter(Boolean)
+          : (v ?? []),
+      z.array(z.email('Ungültige E-Mail für Mahnungen')).transform((a) => (a.length ? a : null)),
     ),
     bill_format: z.enum(['pdf', 'zugferd', 'xrechnung']),
     buyer_reference: opt.refine(

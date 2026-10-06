@@ -1,5 +1,5 @@
 import type { FC } from 'hono/jsx';
-import type { CustomerBankAccount, RevenueMode } from '../services/customer-overview.js';
+import type { CustomerBankAccount, EntityInvoiceRow, RevenueMode } from '../services/customer-overview.js';
 import type { InvoiceGroupRow } from '../services/invoice-groups.js';
 import { type Customer, customerStatusOf } from '../services/masterdata.js';
 import type { LedgerEntry, OpenItem } from '../services/payments.js';
@@ -410,3 +410,136 @@ export const BankPanel: FC<{ customerId: string; accounts: CustomerBankAccount[]
     </details>
   </section>
 );
+
+/** Rechnungen eines Kunden/Objekts wie Fortytools: Monatsübersicht netto/brutto, Liste mit Objekt und Status. */
+export const EntityInvoices: FC<{
+  rows: EntityInvoiceRow[];
+  months: { month: string; net_cents: bigint; gross_cents: bigint }[];
+  showSite: boolean;
+  newHref: string;
+}> = ({ rows, months, showSite, newHref }) => {
+  const sumNet = months.reduce((a, m) => a + m.net_cents, 0n);
+  const sumGross = months.reduce((a, m) => a + m.gross_cents, 0n);
+  const status = (r: EntityInvoiceRow) =>
+    r.status === 'draft'
+      ? ['draft', 'Entwurf']
+      : r.cancelled
+        ? ['err', 'storniert']
+        : r.kind === 'cancellation' || r.kind === 'correction'
+          ? ['info', r.kind === 'cancellation' ? 'Storno' : 'Korrektur']
+          : r.open_cents == null || r.open_cents <= 0n
+            ? ['ok', 'Bezahlt']
+            : r.open_cents < r.gross_cents
+              ? ['warn', 'Teilbezahlt']
+              : ['warn', 'Offen'];
+  return (
+    <>
+      <div class="actions" style="margin-top:0">
+        <a class="btn sm" href={newHref}>
+          + Rechnung
+        </a>
+      </div>
+      <div class="tbl" style="margin-bottom:20px">
+        <table>
+          <thead>
+            <tr>
+              <th />
+              {months.map((m) => (
+                <th class="r">{monthLabel(m.month).replace(/ (\d\d)$/, ' 20$1')}</th>
+              ))}
+              <th class="r">Summe</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <b>Netto</b>
+              </td>
+              {months.map((m) => (
+                <td class="r">{euro(m.net_cents)}</td>
+              ))}
+              <td class="r">
+                <b>{euro(sumNet)}</b>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <b>Brutto</b>
+              </td>
+              {months.map((m) => (
+                <td class="r">{euro(m.gross_cents)}</td>
+              ))}
+              <td class="r">
+                <b>{euro(sumGross)}</b>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tbl">
+        <table>
+          <thead>
+            <tr>
+              <th>Datum</th>
+              <th>Rechnung</th>
+              <th>Empfänger</th>
+              {showSite && <th>Objekt</th>}
+              <th class="r">Pos</th>
+              <th class="r">Netto</th>
+              <th class="r">Brutto</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const [cls, label] = status(r);
+              return (
+                <tr>
+                  <td>{r.issue_date ? dateDe(r.issue_date) : <span class="mut">–</span>}</td>
+                  <td>
+                    <a href={`/rechnungen/${r.id}`}>
+                      <b>{r.number ?? 'Entwurf'}</b>
+                    </a>
+                    {r.status === 'issued' && (
+                      <a class="pdf" href={`/rechnungen/${r.id}/pdf`} title="PDF">
+                        PDF
+                      </a>
+                    )}
+                  </td>
+                  <td>
+                    {r.recipient}
+                    {r.first_line && <div class="small mut">{r.first_line}</div>}
+                  </td>
+                  {showSite && (
+                    <td>
+                      {r.site_id ? (
+                        <a href={`/objekte/${r.site_id}`}>{r.site_name}</a>
+                      ) : r.group_name ? (
+                        <span>Sammelrechnung {r.group_name}</span>
+                      ) : (
+                        <span class="mut">ohne Objekt</span>
+                      )}
+                    </td>
+                  )}
+                  <td class="r">{r.positions}</td>
+                  <td class="r mut">{euro(r.net_cents)}</td>
+                  <td class="r">{euro(r.gross_cents)}</td>
+                  <td>
+                    <span class={`tag ${cls}`}>{label}</span>
+                  </td>
+                </tr>
+              );
+            })}
+            {!rows.length && (
+              <tr>
+                <td colspan={showSite ? 8 : 7} class="mut">
+                  Noch keine Rechnungen.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+};

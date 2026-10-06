@@ -673,3 +673,16 @@ Testadresse.
     Woche = Jahr ÷ 52, Monat = Jahr ÷ 12; Vergleich mit Einsatzplan, fürs Büro Erlös je Stunde.
   - Tests: `sheet.test.ts` (xlsx/CSV/Intervall/Fläche), Import- und Stundenvorgabe-Test in `facility.db.test.ts`,
     `e2e:objektseiten` 26 Prüfungen, `e2e:objekt` angepasst.
+- 2026-10-06: Runde 3c, Teil 3 – Einsätze und Erfasste Zeiten am Objekt (nach Ahmeds Screenshots):
+  - Objekt → Einsätze: Kalender mit Ansichten Tag / 5 Tage / Woche (Standard) / Monat, blättern + „Heute“, Farben geplant /
+    erledigt (Zeit erfasst) / Vertretung–umgeplant / abwesend / Feiertag / Ausfall. „Wiederkehrende Einsätze“ = bisherige
+    Liste. Darunter „Zusammenfassung“ (Jahr und Monat: geplante Stunden + Termine, ohne Feiertage/Ausfälle) und
+    „Nächste Einsätze“ (höchstens 15).
+  - Objekt → Erfasste Zeiten: Monat oder freier Zeitraum, Ansicht Übersicht (je Mitarbeiter Einsätze, Dauer, Geplant,
+    Differenz, Gesamtsumme; offene Nachträge markiert) oder Details (je Zeit Beginn/Ende/Pause/Dauer/Geplant/Status).
+    Geplant zählt höchstens bis heute. Monatsübersicht 12 Monate mit „Zeiterfassung bestätigt“ (Büro, nicht
+    Objektleitung): Bestätigen gesperrt bei laufender Stempelung/offenem Nachtrag und für künftige Monate; spätere
+    Änderungen werden rot angezeigt („seit Bestätigung geändert“). Tabelle `site_time_confirmations` nur anhängen.
+  - Tests: 273 Unit-/DB-Tests (neu `site-times.db.test.ts`), `e2e:objektseiten` 40 Prüfungen.
+  - Offen aus Runde 3: Qualitätskontrolle mit Bildern + Auditanalyse (wartet auf Ahmeds Screenshots), Arbeitsschein-
+    Varianten (pauschal / Regiestunden, Namen/Beschreibung optional, Vorgabe je Kunde).

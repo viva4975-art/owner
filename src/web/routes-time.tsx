@@ -1,3 +1,11 @@
+import { MonthOverview, TimesDetails, TimesOverview, monthName } from './pages-site-calendar.js';
+import {
+  confirmSiteMonth,
+  monthRange,
+  plannedFor,
+  siteMonthOverview,
+  siteTimes,
+} from '../services/site-times.js';
 import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
 import type { Child, FC } from 'hono/jsx';
@@ -1033,21 +1041,98 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
 
   app.get(`/objekte/:id{${UUID}}/zeiten`, (c) =>
     shells.site!(c, 'zeiten', async (s) => {
-      const from = isDate(c.req.query('von')) ? c.req.query('von')! : addDays(todayBerlin(), -30);
-      const rows = await listEntries(sql, { siteId: s.id, from });
+      const today = todayBerlin();
+      const qm = c.req.query('monat');
+      const month = qm && /^\d{4}-(0[1-9]|1[0-2])$/.test(qm) ? qm : today.slice(0, 7);
+      const custom = isDate(c.req.query('von')) && isDate(c.req.query('bis'));
+      const { from, to } = custom
+        ? { from: c.req.query('von')!, to: c.req.query('bis')! }
+        : monthRange(month);
+      const details = c.req.query('ansicht') === 'details';
+      const base = `/objekte/${s.id}/zeiten`;
+      const [t, months] = await Promise.all([
+        // Geplant nur bis heute, sonst zählt der Rest des laufenden Monats als Fehlzeit
+        siteTimes(sql, s.id, from, to < today ? to : today),
+        siteMonthOverview(sql, s.id, today.slice(0, 7), 12, today),
+      ]);
+      const qs = (over: Record<string, string>) =>
+        `${base}?${new URLSearchParams({
+          ...(custom ? { von: from, bis: to } : { monat: month }),
+          ...(details ? { ansicht: 'details' } : {}),
+          ...over,
+        }).toString()}`;
+      const canConfirm = c.get('user').role !== 'objektleitung';
       return (
         <>
-          <div class="actions" style="margin-top:0">
-            <a class="btn sm" href={`/zeiterfassung/${randomUUID()}?objekt=${s.id}`}>
-              + Zeit erfassen
-            </a>
-            <span class="mut small">ab {dateDe(from)}</span>
+          <div class="calbar" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:12px">
+            <form method="get" action={base} style="display:flex;gap:8px;align-items:end;margin:0">
+              <div>
+                <label for="monat" class="small">
+                  Monat
+                </label>
+                <input type="month" id="monat" name="monat" value={custom ? '' : month} />
+              </div>
+              {details && <input type="hidden" name="ansicht" value="details" />}
+              <button class="btn sm sec">Anzeigen</button>
+            </form>
+            <form method="get" action={base} style="display:flex;gap:8px;align-items:end;margin:0">
+              <div>
+                <label for="von" class="small">
+                  oder von
+                </label>
+                <input type="date" id="von" name="von" value={custom ? from : ''} />
+              </div>
+              <div>
+                <label for="bis" class="small">
+                  bis
+                </label>
+                <input type="date" id="bis" name="bis" value={custom ? to : ''} />
+              </div>
+              {details && <input type="hidden" name="ansicht" value="details" />}
+              <button class="btn sm sec">Zeitraum</button>
+            </form>
+            <span style="margin-left:auto" class="seg-links">
+              <a class={`btn sm ${details ? 'sec' : ''}`} href={qs({ ansicht: 'uebersicht' })}>
+                Übersicht
+              </a>{' '}
+              <a class={`btn sm ${details ? '' : 'sec'}`} href={qs({ ansicht: 'details' })}>
+                Details
+              </a>{' '}
+              <a class="btn sm sec" href={`/zeiterfassung/${randomUUID()}?objekt=${s.id}`}>
+                + Zeit erfassen
+              </a>
+            </span>
           </div>
-          <EntryTable rows={rows} show="employee" />
+          <p class="small mut" style="margin-top:0">
+            {custom ? `${dateDe(from)} – ${dateDe(to)}` : monthName(month)}: Dauer = erfasste und freigegebene
+            Zeiten (netto, ohne Pausen), Geplant = Einsatzplan ohne Feiertage, höchstens bis heute.
+            {t.total.pending > 0 && <b> {t.total.pending} Nachtrag/Nachträge warten auf Freigabe.</b>}
+          </p>
+          {details ? (
+            <TimesDetails entries={t.entries.map((e) => ({ ...e, planned: plannedFor(t.shifts, e) }))} />
+          ) : (
+            <TimesOverview sums={t.sums} total={t.total} />
+          )}
+          <MonthOverview rows={months} base={base} canConfirm={canConfirm} current={custom ? '' : month} />
         </>
       );
     }),
   );
+
+  app.post(`/objekte/:id{${UUID}}/zeiten/bestaetigen`, async (c) => {
+    const siteId = c.req.param('id');
+    assertSite(c, siteId);
+    if (c.get('user').role === 'objektleitung') throw new BusinessError('Zeiterfassung bestätigt das Büro');
+    const b = await c.req.parseBody();
+    const month = String(b.monat ?? '');
+    const yes = b.bestaetigt === '1';
+    await confirmSiteMonth(sql, siteId, month, yes, c.get('actor'), todayBerlin());
+    return back(c, `/objekte/${siteId}/zeiten?monat=${month}`, {
+      ok: yes
+        ? `Zeiterfassung ${monthName(month)} bestätigt.`
+        : `Bestätigung ${monthName(month)} zurückgenommen.`,
+    });
+  });
 
   // QR-Aushang am Objekt
   const qrUrl = (c: Context<AppEnv>, token: string) =>

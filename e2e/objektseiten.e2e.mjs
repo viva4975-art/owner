@@ -146,6 +146,70 @@ await p.waitForLoadState();
 await p.goto(`${B}/objekte/${SITE}/raumbuch`);
 check('nichts doppelt', (await p.locator('tr', { hasText: `I${tag}1` }).count()) === 1);
 
+console.log('6. Einsätze als Kalender');
+await p.goto(`${B}/objekte/${SITE}/einsaetze`);
+check('Standard: Wochenansicht', (await p.locator('.calbar .seg a.on').first().innerText()) === 'Woche');
+check('7 Tagesspalten', (await p.locator('.cal .dh').count()) === 7);
+check(
+  'Zusammenfassung + nächste Einsätze',
+  (await body(p)).includes('Zusammenfassung') && (await body(p)).includes('Nächste Einsätze'),
+);
+check(
+  'höchstens 15 nächste Einsätze',
+  (await p.locator('section:has(h3:has-text("Nächste Einsätze")) tbody tr').count()) <= 15,
+);
+for (const [v, n] of [
+  ['Monat', 7],
+  ['5 Tage', 5],
+  ['Tag', 1],
+]) {
+  await p.click(`.calbar .seg a:has-text("${v}")`);
+  await p.waitForLoadState();
+  check(
+    `Ansicht ${v}`,
+    (await p.locator('.cal .dh').count()) === n,
+    String(await p.locator('.cal .dh').count()),
+  );
+}
+await p.click('.calbar a[aria-label=vor]');
+await p.waitForLoadState();
+check('Blättern', p.url().includes('ansicht=tag&datum='));
+await p.click('.calbar .seg a:has-text("Wiederkehrende Einsätze")');
+await p.waitForLoadState();
+check(
+  'Liste der wiederkehrenden Einsätze',
+  !(await body(p)).includes('Fehler 500') && (await p.locator('.cal').count()) === 0,
+);
+
+console.log('7. Erfasste Zeiten');
+await p.goto(`${B}/objekte/${SITE}/zeiten`);
+const zt = await body(p);
+check(
+  'Übersicht mit Dauer/Geplant/Gesamtsumme',
+  ['Dauer', 'Geplant', 'Gesamtsumme', 'Monatsübersicht'].every((x) => zt.includes(x)),
+);
+await p.click('a:has-text("Details")');
+await p.waitForLoadState();
+check('Details-Ansicht', p.url().includes('ansicht=details') && (await body(p)).includes('Beginn'));
+await p.fill('#von', '2026-09-01');
+await p.fill('#bis', '2026-09-30');
+await p.click('button:has-text("Zeitraum")');
+await p.waitForLoadState();
+check('freier Zeitraum', (await body(p)).includes('01.09.2026 – 30.09.2026'));
+await p.goto(`${B}/objekte/${SITE}/zeiten?monat=2026-09`);
+const sepRow = p.locator('tr', { hasText: 'September 2026' });
+if ((await sepRow.locator('button:has-text("zurücknehmen")').count()) > 0) {
+  await sepRow.locator('button:has-text("zurücknehmen")').click();
+  await p.waitForLoadState();
+}
+await p.locator('tr', { hasText: 'September 2026' }).locator('button:has-text("bestätigen")').click();
+await p.waitForLoadState();
+check('Monat bestätigt', (await flash(p)).includes('bestätigt'), await flash(p));
+check(
+  'Haken sichtbar',
+  (await p.locator('tr', { hasText: 'September 2026' }).innerText()).includes('✓ bestätigt'),
+);
+
 await p.goBack();
 await p.goBack();
 await p.goForward();

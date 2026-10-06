@@ -29,6 +29,14 @@ import {
 import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { arr } from './forms.js';
 import { Icon } from './icons.js';
+import {
+  CAL_VIEWS,
+  type CalView,
+  CalSummary,
+  NextShifts,
+  SiteCalendar,
+  calRange,
+} from './pages-site-calendar.js';
 import { PageHead, type Tab, Tabs, dateDe } from './layout.js';
 
 const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
@@ -486,19 +494,54 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
   );
 
   app.get(`/objekte/:id{${UUID}}/einsaetze`, (c) =>
-    shells.site!(c, 'einsaetze', async (s) => (
-      <>
-        <div class="actions" style="margin-top:0">
-          <a class="btn sm" href={`/einsatzplanung/${randomUUID()}?objekt=${s.id}`}>
-            + Einsatz planen
-          </a>
-          <a class="btn sm sec" href={`/einsatzplanung?objekt=${s.id}`}>
-            Wochenplan
-          </a>
-        </div>
-        <PlanTable plans={await listShiftPlans(sql, { siteId: s.id })} show="employee" />
-      </>
-    )),
+    shells.site!(c, 'einsaetze', async (s) => {
+      const today = todayBerlin();
+      const q = c.req.query('ansicht');
+      const view: CalView = CAL_VIEWS.some(([k]) => k === q) ? (q as CalView) : 'woche';
+      const datum = c.req.query('datum');
+      const date = datum && /^\d{4}-\d{2}-\d{2}$/.test(datum) ? datum : today;
+      const base = `/objekte/${s.id}/einsaetze`;
+      const year = date.slice(0, 4);
+      const [shifts, yearShifts, upcoming] = await Promise.all([
+        view === 'liste'
+          ? Promise.resolve([])
+          : plannedShifts(sql, { siteId: s.id, ...calRange(view, date), includeCancelled: true }),
+        plannedShifts(sql, { siteId: s.id, from: `${year}-01-01`, to: `${year}-12-31` }),
+        plannedShifts(sql, { siteId: s.id, from: today, to: addDays(today, 60) }),
+      ]);
+      const now = new Date().toLocaleTimeString('de-DE', {
+        timeZone: 'Europe/Berlin',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      const next = upcoming
+        .filter((x) => !x.holiday && (x.date > today || x.plan.end_time > now))
+        .slice(0, 15);
+      return (
+        <>
+          <div class="actions" style="margin-top:0">
+            <a class="btn sm" href={`/einsatzplanung/${randomUUID()}?objekt=${s.id}`}>
+              + Einsatz planen
+            </a>
+            <a class="btn sm sec" href={`/einsatzplanung/vertretungen`}>
+              Einsätze für abwesende Mitarbeiter
+            </a>
+          </div>
+          {view === 'liste' ? (
+            <>
+              <SiteCalendar base={base} view={view} date={date} today={today} shifts={[]} />
+              <PlanTable plans={await listShiftPlans(sql, { siteId: s.id })} show="employee" />
+            </>
+          ) : (
+            <SiteCalendar base={base} view={view} date={date} today={today} shifts={shifts} />
+          )}
+          <div class="cal-side">
+            <CalSummary year={year} month={date.slice(0, 7)} yearShifts={yearShifts} />
+            <NextShifts shifts={next} />
+          </div>
+        </>
+      );
+    }),
   );
 
   // ------------------------------------------------------------------ Urlaub & Abwesenheiten

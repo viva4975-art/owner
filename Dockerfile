@@ -20,6 +20,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts && npm cache clean --force
 COPY --from=kosit /opt/kosit /opt/kosit
 COPY . .
+# Quellcode für den App-Benutzer lesbar machen (auch wenn das Repo mit strenger umask geklont wurde)
+RUN find /app -path /app/node_modules -prune -o -exec chmod a+rX {} +
 ENV HOST=0.0.0.0 PORT=3000 \
     ARCHIVE_DIR=/data/archive FILES_DIR=/data/files \
     KOSIT_DIR=/opt/kosit KOSIT_VALIDATOR_URL=http://127.0.0.1:8081

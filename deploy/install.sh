@@ -36,8 +36,7 @@ ufw --force enable >/dev/null
 say "3/6 Programm von GitHub holen"
 if [ ! -d "$DIR/.git" ]; then
   GH_TOKEN="${GH_TOKEN:-$(ask_secret "GitHub-Zugangsschlüssel (Token, nur Lesen)")}"
-  umask 077
-  printf 'https://x-access-token:%s@github.com\n' "$GH_TOKEN" > /root/.git-credentials
+  (umask 077; printf 'https://x-access-token:%s@github.com\n' "$GH_TOKEN" > /root/.git-credentials)
   git config --global credential.helper store
   git clone -q --branch "$BRANCH" "https://github.com/$REPO.git" "$DIR"
 else

@@ -211,11 +211,26 @@ export async function authenticate(sql: Sql, login: string, password: string): P
   return (await getUser(sql, a.id))!;
 }
 
+/** Benutzername aus APP_BASIC_AUTH: klein, Leerzeichen → Punkt, nur erlaubte Zeichen („Ahmed Chomontek“ → „ahmed.chomontek“). */
+export function bootstrapLogin(raw: string): string {
+  const login = raw
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '.')
+    .replace(/[^a-z0-9._@-]/g, '');
+  if (!/^[a-z0-9._@-]{3,64}$/.test(login))
+    throw new Error(`APP_BASIC_AUTH: Benutzername „${raw}“ ungültig (3–64 Zeichen, z. B. ahmed)`);
+  return login;
+}
+
 /** Erster Start: Admin aus APP_BASIC_AUTH anlegen (Passwort danach unter „Mein Konto“ ändern). */
 export async function ensureBootstrapAdmin(sql: Sql, basicAuth: string) {
   if (await hasActiveAdmin(sql)) return false;
-  const [login, ...pw] = basicAuth.split(':');
+  const [rawLogin, ...pw] = basicAuth.split(':');
   const password = pw.join(':');
+  const login = bootstrapLogin(rawLogin ?? '');
+  const raw = (rawLogin ?? '').trim();
+  const displayName = raw.charAt(0).toUpperCase() + raw.slice(1);
   const id = randomUUID();
   const h = await hash(password);
   let created = false;
@@ -223,14 +238,14 @@ export async function ensureBootstrapAdmin(sql: Sql, basicAuth: string) {
   await sql.begin(async (tx) => {
     await tx`select pg_advisory_xact_lock(hashtext('bootstrap-admin'))`;
     if (await hasActiveAdmin(tx as unknown as Sql)) return;
-    const [taken] = await tx`select 1 from app.user_accounts where login = ${login!.toLowerCase()}`;
+    const [taken] = await tx`select 1 from app.user_accounts where login = ${login}`;
     if (taken)
       throw new Error(
         `Kein aktiver Admin vorhanden und Benutzername „${login}“ ist belegt – bitte in der Datenbank prüfen`,
       );
-    await tx`insert into app.profiles (user_id, display_name, role) values (${id}, ${login!.charAt(0).toUpperCase() + login!.slice(1)}, 'admin')`;
+    await tx`insert into app.profiles (user_id, display_name, role) values (${id}, ${displayName}, 'admin')`;
     await tx`insert into app.user_accounts (id, login, password_hash, must_change_password, created_by)
-             values (${id}, ${login!.toLowerCase()}, ${h}, false, 'system')`;
+             values (${id}, ${login}, ${h}, false, 'system')`;
     created = true;
   });
   return created;

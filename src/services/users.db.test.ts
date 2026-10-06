@@ -9,6 +9,7 @@ import {
   changePassword,
   checkPassword,
   createUser,
+  bootstrapLogin,
   ensureBootstrapAdmin,
   getUser,
   listUsers,
@@ -62,6 +63,8 @@ describe.skipIf(!available)('Benutzerkonten (Datenbank)', () => {
   });
 
   it('erster Start legt Admin aus APP_BASIC_AUTH an (nur einmal)', async () => {
+    expect(bootstrapLogin('Ahmed Chomontek')).toBe('ahmed.chomontek');
+    expect(() => bootstrapLogin(' ')).toThrow(/ungültig/);
     expect(await ensureBootstrapAdmin(sql, 'ahmed:geheim12345')).toBe(true);
     expect(await ensureBootstrapAdmin(sql, 'ahmed:geheim12345')).toBe(false);
     const u = await authenticate(sql, 'Ahmed', 'geheim12345');

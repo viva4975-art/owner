@@ -134,7 +134,11 @@ export function createApp(deps: Deps) {
   app.use(async (c, next) => {
     const path = c.req.path;
     if (open(path)) return next();
-    boot ??= ensureBootstrapAdmin(sql, env.APP_BASIC_AUTH);
+    // Fehlschlag nicht dauerhaft merken – beim nächsten Aufruf erneut versuchen
+    boot ??= ensureBootstrapAdmin(sql, env.APP_BASIC_AUTH).catch((e: unknown) => {
+      boot = null;
+      throw e;
+    });
     await boot;
     let user: User | undefined;
     const sid = verifySession(secret, getCookie(c, OFFICE_COOKIE));

@@ -19,8 +19,10 @@ const app = createApp({
   mailer: createMailer(env),
 });
 
-serve({ fetch: app.fetch, port: env.PORT, hostname: '127.0.0.1' }, (info) => {
-  console.log(`Viva-Deluxe App (${env.APP_ENV}) läuft auf http://127.0.0.1:${info.port}`);
+// Im Container (HOST=0.0.0.0) von außen erreichbar, sonst nur lokal
+const hostname = process.env.HOST ?? '127.0.0.1';
+serve({ fetch: app.fetch, port: env.PORT, hostname }, (info) => {
+  console.log(`Viva-Deluxe App (${env.APP_ENV}) läuft auf http://${hostname}:${info.port}`);
   if (env.MAIL_TEST_RECIPIENT) console.log(`Mailversand nur an Testadresse: ${env.MAIL_TEST_RECIPIENT}`);
 });
 

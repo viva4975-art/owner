@@ -1,0 +1,8 @@
+node_modules
+var
+.kosit
+.env*
+.git
+mobile-app
+e2e
+docs/briefing-original.pdf

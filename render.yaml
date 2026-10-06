@@ -1,0 +1,37 @@
+# Render-Blueprint: Testbetrieb der App in Frankfurt (Docker, dauerhaftes Laufwerk für Dateien/Archiv).
+# Geheimnisse (sync: false) werden im Render-Dashboard eingetragen – nie hier.
+services:
+  - type: web
+    name: viva-deluxe-app
+    runtime: docker
+    region: frankfurt
+    plan: standard # Node + Java (KoSIT) brauchen ~1 GB RAM
+    branch: claude/new-session-t3lg2s
+    healthCheckPath: /anmelden
+    disk:
+      name: daten
+      mountPath: /data
+      sizeGB: 10
+    envVars:
+      - key: APP_ENV
+        value: test
+      - key: SUPABASE_REGION
+        value: eu-central-1
+      - key: SUPABASE_PROJECT_REF
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: APP_BASIC_AUTH
+        sync: false
+      - key: MAIL_TEST_RECIPIENT
+        sync: false
+      - key: PUBLIC_URL
+        sync: false

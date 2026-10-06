@@ -2,7 +2,16 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { parseEuro, parseQuantity } from '../domain/money/money.js';
-import { addNote, listNotes, listTasks, saveContact, saveTask, setTaskDone } from './crm.js';
+import {
+  addNote,
+  getNote,
+  listNotes,
+  saveNote,
+  listTasks,
+  saveContact,
+  saveTask,
+  setTaskDone,
+} from './crm.js';
 import { employeeInput, exportEmployeesCsv, getEmployee, saveEmployee, validIban } from './employees.js';
 import { createCancellation, issue, saveDraft } from './invoices.js';
 import { customerInput, getCustomer, saveCustomer } from './masterdata.js';
@@ -131,6 +140,39 @@ describe.skipIf(!available)('Phase 2: Kontakte, Aufgaben, Zahlungen, Personal', 
       await addNote(sql, id, 'site', DEMO.siteHq, 'Schlüssel beim Hausmeister', 'test');
       await addNote(sql, id, 'site', DEMO.siteHq, 'Schlüssel beim Hausmeister', 'test');
       expect(await listNotes(sql, 'site', DEMO.siteHq)).toHaveLength(1);
+    });
+
+    it('Notiz mit Titel ändern: Erfasser bleibt, Änderung vermerkt, alter Stand wird abgelehnt', async () => {
+      const id = randomUUID();
+      const input = { date: '2026-10-01', title: 'Begehung', body: '', expectedVersion: null };
+      await saveNote(sql, id, 'site', DEMO.siteHq, input, 'anna');
+      await saveNote(sql, id, 'site', DEMO.siteHq, input, 'anna'); // doppelt abgeschickt
+      const n = (await getNote(sql, id))!;
+      expect(n.version).toBe(2);
+      await saveNote(
+        sql,
+        id,
+        'site',
+        DEMO.siteHq,
+        { ...input, body: 'Treppenhaus', expectedVersion: n.version },
+        'ben',
+      );
+      const m = (await getNote(sql, id))!;
+      expect(m).toMatchObject({
+        author: 'anna',
+        updated_by: 'ben',
+        body: 'Treppenhaus',
+        note_date: '2026-10-01',
+      });
+      await expect(
+        saveNote(sql, id, 'site', DEMO.siteHq, { ...input, expectedVersion: n.version }, 'anna'),
+      ).rejects.toThrow(/zwischenzeitlich/);
+      await expect(saveNote(sql, id, 'customer', DEMO.authority, input, 'x')).rejects.toThrow(
+        /anderen Datensatz/,
+      );
+      await expect(
+        saveNote(sql, randomUUID(), 'site', DEMO.siteHq, { ...input, title: ' ', body: ' ' }, 'x'),
+      ).rejects.toThrow(/Titel oder Details/);
     });
 
     it('Aufgabe anlegen, erledigen, Fälligkeitsfilter', async () => {

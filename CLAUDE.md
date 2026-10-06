@@ -650,3 +650,14 @@ Testadresse.
   - Reiter „Rechnungen“ bei Kunde und Objekt wie Fortytools: Monatsübersicht netto/brutto (6 Monate), Liste mit Datum,
     Rechnung + PDF, Empfänger, Objekt (bzw. „ohne Objekt“ bei Sammelrechnungen), Positionen, Netto, Brutto, Status
     offen/bezahlt/storniert.
+- 2026-10-06: Runde 3c, Teil 1 – Objektseiten:
+  - Notizen wie Fortytools (Kunde, Objekt, Mitarbeiter): Liste mit Datum, Erfasser, Titel/Details, Anhänge, „+ Aufgabe
+    hinzufügen“ (Aufgabe mit Titel vorbelegt). Notiz änderbar (Versionszähler, Erfasser bleibt, „geändert von“), Anhänge je
+    Notiz (Recht wie die Notizen des Datensatzes). Spalten `notes.title/note_date/version`.
+  - Objekt → Dokumente: Pflichtkategorien Raumbuch, Leistungsverzeichnis, Revierplan (fehlt = rot), dazu Vertrag/Sonstiges.
+  - Objekt → Schlüssel: eigene Seite mit Liste, Ausgabe/Rückgabe direkt in der Zeile, „Schlüssel erfassen“ (Nummer
+    `S-<Objektnr.>-NN` vorgeschlagen). Protokoll weiter im Schlüsselbuch.
+  - Objekt → Angebote: Angebote des Objekts, „+ Angebot für dieses Objekt“; im Angebots-PDF steht über der Anrede fett
+    „Objekt: Name (Nr.), Adresse“.
+  - Behoben: Bei mehreren Upload-Feldern auf einer Seite funktionierte nur das erste.
+  - Tests: neu `npm run e2e:objektseiten` (18 Prüfungen), Notiz-Test in `phase2.db.test.ts`.

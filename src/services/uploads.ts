@@ -56,7 +56,8 @@ export type LinkTarget = {
     | 'work_report'
     | 'quality_check'
     | 'inbox'
-    | 'tender';
+    | 'tender'
+    | 'note';
   id: string;
 };
 

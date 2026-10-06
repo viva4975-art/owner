@@ -2,11 +2,9 @@ import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
 import type { Child } from 'hono/jsx';
 import {
-  addNote,
   contactInput,
   deleteContact,
   listContacts,
-  listNotes,
   listTasks,
   saveContact,
 } from '../services/crm.js';
@@ -85,7 +83,8 @@ import { FileArea } from './files.js';
 import { arr, str } from './forms.js';
 import { FORMAT_LABEL, PageHead, dateDe, euro } from './layout.js';
 import { OfferTable } from './pages-offers.js';
-import { ContactsPanel, NotesPanel, TaskBox, TaskForm } from './pages-crm.js';
+import { ContactsPanel, TaskBox, TaskForm } from './pages-crm.js';
+import { registerNoteRoutes } from './routes-notes.js';
 import { OpenItemsTable } from './pages-hr-finance.js';
 import { ServiceForm, ServicesPanel } from './pages-services.js';
 import {
@@ -504,24 +503,6 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     return back(c, `/kunden/${c.req.param('id')}/kontakte`, { ok: 'Kontakt gelöscht.' });
   });
 
-  const notesRoutes = (base: string, type: 'customer' | 'site', shell: typeof customerPage) => {
-    app.get(`${base}/:id{${UUID}}/notizen`, (c) =>
-      shell(c, 'notizen', async (e: { id: string }) => (
-        <NotesPanel
-          action={`${base}/${e.id}/notizen`}
-          notes={await listNotes(sql, type, e.id)}
-          newId={randomUUID()}
-        />
-      )),
-    );
-    app.post(`${base}/:id{${UUID}}/notizen`, async (c) => {
-      const body = await c.req.parseBody();
-      const noteId = typeof body.id === 'string' && /^[0-9a-f-]{36}$/.test(body.id) ? body.id : randomUUID();
-      await addNote(sql, noteId, type, c.req.param('id'), String(body.body ?? ''), c.get('actor'));
-      return back(c, `${base}/${c.req.param('id')}/notizen`, { ok: 'Notiz gespeichert.' });
-    });
-  };
-
   const tasksRoute = (
     base: string,
     type: 'customer' | 'site',
@@ -543,6 +524,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
               entity={{ type, id: e.id, label: label(e as never) }}
               back={`${base}/${e.id}/aufgaben`}
               users={await listUsers(sql)}
+              title={c.req.query('titel')}
             />
           </>
         );
@@ -550,7 +532,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     );
   };
 
-  notesRoutes('/kunden', 'customer', customerPage);
+  registerNoteRoutes(ctx, '/kunden', 'customer', customerPage);
   tasksRoute('/kunden', 'customer', customerPage, (e: Customer) => e.name);
 
   app.get(`/kunden/:id{${UUID}}/rechnungen`, (c) =>
@@ -1466,7 +1448,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     return back(c, `/objekte/${String(body.site_id)}/leistungen`, { ok: 'Leistung aktualisiert.' });
   });
 
-  notesRoutes('/objekte', 'site', sitePage as unknown as typeof customerPage);
+  registerNoteRoutes(ctx, '/objekte', 'site', sitePage);
   tasksRoute('/objekte', 'site', sitePage as unknown as typeof customerPage, (s: { name: string }) => s.name);
 
   app.get(`/objekte/:id{${UUID}}/rechnungen`, (c) =>

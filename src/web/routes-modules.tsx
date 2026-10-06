@@ -2,7 +2,7 @@ import { ReportTabs } from './routes-reports.js';
 import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
 import type { Child } from 'hono/jsx';
-import { addNote, listNotes, listTasks, saveTask, setTaskDone, taskInput } from '../services/crm.js';
+import { listTasks, saveTask, setTaskDone, taskInput } from '../services/crm.js';
 import {
   type Employee,
   employeeInput,
@@ -36,7 +36,6 @@ import { homeFor } from './permissions.js';
 import {
   Dashboard,
   type DashboardTodo,
-  NotesPanel,
   PlannedPage,
   PLANNED,
   SearchResults,
@@ -46,11 +45,13 @@ import {
 import { EmployeeForm, EmployeeList, EmployeeOverview, EmployeeShell } from './pages-hr-finance.js';
 import { RevenueBars } from './pages-masterdata.js';
 import { lastMonth } from './routes-invoices.js';
+import { registerNoteRoutes } from './routes-notes.js';
 import { revenueByMonth } from './routes-masterdata.js';
 
 const uuidOr = (v: unknown) => (typeof v === 'string' && /^[0-9a-f-]{36}$/.test(v) ? v : randomUUID());
 
-export function registerModuleRoutes({ app, deps, page, back, shells }: Ctx) {
+export function registerModuleRoutes(ctx: Ctx) {
+  const { app, deps, page, back, shells } = ctx;
   const { sql } = deps;
 
   // ------------------------------------------------------------------ Übersicht
@@ -513,28 +514,7 @@ export function registerModuleRoutes({ app, deps, page, back, shells }: Ctx) {
     return back(c, `/personal/${id}`, { ok: 'Mitarbeiter gespeichert.' });
   });
 
-  app.get(`/personal/:id{${UUID}}/notizen`, (c) =>
-    employeePage(c, 'notizen', async (e) => (
-      <NotesPanel
-        action={`/personal/${e.id}/notizen`}
-        notes={await listNotes(sql, 'employee', e.id)}
-        newId={randomUUID()}
-      />
-    )),
-  );
-
-  app.post(`/personal/:id{${UUID}}/notizen`, async (c) => {
-    const body = await c.req.parseBody();
-    await addNote(
-      sql,
-      uuidOr(body.id),
-      'employee',
-      c.req.param('id'),
-      String(body.body ?? ''),
-      c.get('actor'),
-    );
-    return back(c, `/personal/${c.req.param('id')}/notizen`, { ok: 'Notiz gespeichert.' });
-  });
+  registerNoteRoutes(ctx, '/personal', 'employee', employeePage);
 
   app.get(`/personal/:id{${UUID}}/aufgaben`, (c) =>
     employeePage(c, 'aufgaben', async (e) => (
@@ -545,6 +525,7 @@ export function registerModuleRoutes({ app, deps, page, back, shells }: Ctx) {
           entity={{ type: 'employee', id: e.id, label: `${e.first_name} ${e.last_name}` }}
           back={`/personal/${e.id}/aufgaben`}
           users={await listUsers(sql)}
+          title={c.req.query('titel')}
         />
       </>
     )),

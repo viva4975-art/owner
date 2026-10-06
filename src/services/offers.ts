@@ -76,7 +76,10 @@ export interface OfferInput {
   predecessorId?: string | null;
 }
 
-export async function listOffers(sql: Sql, filter: { status?: OfferStatus[]; customerId?: string } = {}) {
+export async function listOffers(
+  sql: Sql,
+  filter: { status?: OfferStatus[]; customerId?: string; siteId?: string } = {},
+) {
   return sql<
     (OfferRow & {
       customer_name: string;
@@ -93,6 +96,7 @@ export async function listOffers(sql: Sql, filter: { status?: OfferStatus[]; cus
       from app.offers o join app.customers c on c.id = o.customer_id
      where ${filter.status?.length ? sql`o.status in ${sql(filter.status)}` : sql`true`}
        and ${filter.customerId ? sql`o.customer_id = ${filter.customerId}` : sql`true`}
+       and ${filter.siteId ? sql`o.site_id = ${filter.siteId}` : sql`true`}
      order by (o.status = 'entwurf') desc, o.submission_deadline nulls last, o.number desc`;
 }
 
@@ -434,8 +438,31 @@ export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8
     o.monthly_net_cents > 0n
       ? ` Davon monatlich wiederkehrend: ${(Number(o.monthly_net_cents) / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })} netto.`
       : '';
+  const [site] = o.site_id
+    ? await sql<
+        {
+          name: string;
+          site_no: string;
+          street: string | null;
+          postal_code: string | null;
+          city: string | null;
+        }[]
+      >`
+        select name, site_no, street, postal_code, city from app.sites where id = ${o.site_id}`
+    : [];
   const pdf = await renderInvoicePdf(doc, {
     title: `Angebot ${o.number}`,
+    ...(site
+      ? {
+          subject: `Objekt: ${site.name} (${site.site_no})${[
+            site.street,
+            [site.postal_code, site.city].filter(Boolean).join(' '),
+          ]
+            .filter(Boolean)
+            .map((x) => `, ${x}`)
+            .join('')}`,
+        }
+      : {}),
     info,
     terms:
       (o.valid_until

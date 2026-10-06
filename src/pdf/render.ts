@@ -324,6 +324,8 @@ export async function renderInvoicePdf(
     watermark?: string;
     /** Für Angebote u. Ä.: eigener Titel statt „Rechnung“ */
     title?: string;
+    /** Fette Betreffzeile über der Anrede (z. B. „Objekt: …“ im Angebot) */
+    subject?: string;
     /** Infoblock rechts im Titelbalken (ersetzt den Rechnungs-Infoblock) */
     info?: [string, string][];
     /** Text unter den Summen (ersetzt die Zahlungsbedingung) */
@@ -372,6 +374,13 @@ export async function renderInvoicePdf(
   w.address(s, b);
 
   // ---------------------------------------------------------------- Anrede & Einleitung
+  if (opts.subject) {
+    for (const l of wrap(opts.subject, bold, BODY, RIGHT - LEFT)) {
+      w.text(l, LEFT, w.y, BODY, { bold: true });
+      w.y += LH;
+    }
+    w.y += 10;
+  }
   w.text('Sehr geehrte Damen und Herren,', LEFT, w.y);
   w.y += 24;
   if (doc.original) {

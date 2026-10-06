@@ -99,17 +99,79 @@ export async function deleteContact(sql: Sql, id: string) {
 
 export interface Note {
   id: string;
+  entity_type: EntityType;
+  entity_id: string;
+  note_date: string;
+  title: string | null;
   body: string;
   author: string;
   created_at: Date;
+  updated_by: string | null;
+  updated_at: Date | null;
+  version: number;
+  /** Anzahl Anhänge */
+  files: number;
 }
 
 export async function listNotes(sql: Sql, type: EntityType, entityId: string) {
-  return sql<Note[]>`select id, body, author, created_at from app.notes
-                      where entity_type = ${type} and entity_id = ${entityId} order by created_at desc`;
+  return sql<Note[]>`
+    select n.id, n.entity_type, n.entity_id, n.note_date::text as note_date, n.title, n.body, n.author, n.created_at,
+           n.updated_by, n.updated_at, n.version,
+           (select count(*)::int from app.file_links l where l.entity_type = 'note' and l.entity_id = n.id) as files
+      from app.notes n
+     where n.entity_type = ${type} and n.entity_id = ${entityId}
+     order by n.note_date desc, n.created_at desc`;
 }
 
-/** `id` vom Formular → doppeltes Absenden legt keine zweite Notiz an. */
+export async function getNote(sql: Sql, id: string) {
+  const [n] = await sql<Note[]>`
+    select n.id, n.entity_type, n.entity_id, n.note_date::text as note_date, n.title, n.body, n.author, n.created_at,
+           n.updated_by, n.updated_at, n.version,
+           (select count(*)::int from app.file_links l where l.entity_type = 'note' and l.entity_id = n.id) as files
+      from app.notes n where n.id = ${id}`;
+  return n;
+}
+
+export interface NoteInput {
+  date: string;
+  title: string | null;
+  body: string;
+  expectedVersion: number | null;
+}
+
+/**
+ * Notiz anlegen oder ändern. `id` vom Formular → doppeltes Absenden legt keine zweite Notiz an.
+ * Der Erfasser bleibt beim Ändern erhalten, die Änderung wird mit Benutzer und Zeit festgehalten.
+ */
+export async function saveNote(
+  sql: Sql,
+  id: string,
+  type: EntityType,
+  entityId: string,
+  p: NoteInput,
+  actor: string,
+) {
+  const title = p.title?.trim() || null;
+  const body = p.body.trim();
+  if (!title && !body) throw new BusinessError('Bitte Titel oder Details angeben');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date)) throw new BusinessError('Datum ungültig');
+  await sql.begin(async (tx) => {
+    const [cur] = await tx<{ entity_type: string; entity_id: string; version: number }[]>`
+      select entity_type, entity_id, version from app.notes where id = ${id} for update`;
+    if (cur && (cur.entity_type !== type || cur.entity_id !== entityId))
+      throw new BusinessError('Notiz gehört zu einem anderen Datensatz');
+    assertVersion(cur?.version, p.expectedVersion, 'Die Notiz');
+    if (cur) {
+      await tx`update app.notes set note_date = ${p.date}, title = ${title}, body = ${body},
+                 updated_by = ${actor}, updated_at = now() where id = ${id}`;
+    } else {
+      await tx`insert into app.notes (id, entity_type, entity_id, note_date, title, body, author)
+               values (${id}, ${type}, ${entityId}, ${p.date}, ${title}, ${body}, ${actor})`;
+    }
+  });
+}
+
+/** Kurzform (ältere Aufrufer, Demo-Daten): Notiz mit heutigem Datum ohne Titel. */
 export async function addNote(
   sql: Sql,
   id: string,

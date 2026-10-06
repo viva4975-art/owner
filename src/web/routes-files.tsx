@@ -33,6 +33,7 @@ const LINK_TYPES = [
   'quality_check',
   'inbox',
   'tender',
+  'note',
 ] as const;
 /** Anlagen, die per E-Mail mit der Rechnung rausgehen, dürfen nicht zu groß werden. */
 const INVOICE_ATTACHMENT_MAX = 20 * 1024 * 1024;
@@ -55,7 +56,18 @@ const LINK_PAGE: Record<string, (id: string) => string> = {
 };
 
 /** Darf der Benutzer die Verknüpfung sehen? Rolle (Seite) + bei Objektleitung das eigene Objekt. */
-async function linkAllowed(c: Context<AppEnv>, sql: Ctx['deps']['sql'], type: string, id: string) {
+async function linkAllowed(
+  c: Context<AppEnv>,
+  sql: Ctx["deps"]["sql"],
+  type: string,
+  id: string,
+): Promise<boolean> {
+  if (type === 'note') {
+    // Anhang einer Notiz: Recht wie die Notizen des Kunden/Objekts/Mitarbeiters
+    const [n] = await sql<{ entity_type: string; entity_id: string }[]>`
+      select entity_type::text, entity_id from app.notes where id = ${id}::uuid`;
+    return !!n && n.entity_type !== 'note' && linkAllowed(c, sql, n.entity_type, n.entity_id);
+  }
   const user = c.get('user');
   const page = LINK_PAGE[type];
   if (!user || !page || !canAccess(user.role, page(id))) return false;

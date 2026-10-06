@@ -29,6 +29,7 @@ export const UPLOADER_JS = String.raw`
   }
 
   function setup(box) {
+    if (box.dataset.ready) return; box.dataset.ready = '1';
     var input = box.querySelector('input[type=file]');
     var zone = box.querySelector('.drop-zone');
     var list = box.querySelector('.files');
@@ -132,6 +133,9 @@ export const UPLOADER_JS = String.raw`
       }
     }
   }
-  Array.prototype.forEach.call(document.querySelectorAll('[data-uploader]'), setup);
+  function setupAll() { Array.prototype.forEach.call(document.querySelectorAll('[data-uploader]'), setup); }
+  setupAll();
+  // weitere Upload-Bereiche weiter unten auf der Seite (Skript läuft schon beim ersten Bereich)
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupAll);
 })();
 `;

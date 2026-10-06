@@ -61,6 +61,10 @@ const Check = ({ name, label, checked }: { name: string; label: string; checked:
   </div>
 );
 
+/** Rücksprung auf die Schlüssel-Seite eines Objekts (nur diese Adresse wird akzeptiert). */
+const siteBack = (v: unknown) =>
+  typeof v === 'string' && /^\/objekte\/[0-9a-f-]{36}\/schluessel$/.test(v) ? v : null;
+
 export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
   const { sql, env } = deps;
 
@@ -1037,7 +1041,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
     if (cur) assertSite(c, cur.site_id);
     assertSite(c, String(body.site_id ?? ''));
     await saveKey(sql, id, body, versionOf(body.version), c.get('actor'));
-    return back(c, `/schluessel/${id}`, { ok: 'Schlüssel gespeichert.' });
+    return back(c, siteBack(body.back) ?? `/schluessel/${id}`, { ok: 'Schlüssel gespeichert.' });
   });
 
   app.post(`/schluessel/:id{${UUID}}/buchen`, async (c) => {
@@ -1056,6 +1060,6 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
       typeof b.note === 'string' && b.note.trim() ? b.note.trim() : null,
       c.get('actor'),
     );
-    return back(c, `/schluessel/${id}`, { ok: 'Gebucht.' });
+    return back(c, siteBack(b.back) ?? `/schluessel/${id}`, { ok: 'Gebucht.' });
   });
 }

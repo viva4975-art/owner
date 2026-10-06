@@ -1,5 +1,5 @@
 import type { FC } from 'hono/jsx';
-import type { Contact, Note, Task } from '../services/crm.js';
+import type { Contact, Task } from '../services/crm.js';
 import type { CustomerBalance } from '../services/payments.js';
 import type { SearchHit } from '../services/search.js';
 import { Field } from './pages-masterdata.js';
@@ -132,42 +132,6 @@ export const ContactsPanel: FC<{
 // Notizen
 // ---------------------------------------------------------------------------
 
-export const NotesPanel: FC<{ action: string; notes: Note[]; newId: string }> = ({
-  action,
-  notes,
-  newId,
-}) => (
-  <>
-    <form method="post" action={action} data-autosave={`${action}#neu`}>
-      <input type="hidden" name="id" value={newId} />
-      <label for="body">Neue Notiz</label>
-      <textarea
-        id="body"
-        name="body"
-        required
-        placeholder="z. B. Telefonat mit Hausverwaltung: Schlüsselübergabe am …"
-      />
-      <div class="actions">
-        <button class="btn">Notiz speichern</button>
-      </div>
-    </form>
-    {notes.length === 0 && <div class="empty">Noch keine Notizen.</div>}
-    {notes.map((n) => (
-      <div class="card" style="margin-bottom:10px">
-        <div class="mut small">
-          {n.created_at.toLocaleString('de-DE', {
-            timeZone: 'Europe/Berlin',
-            dateStyle: 'medium',
-            timeStyle: 'short',
-          })}{' '}
-          · {n.author}
-        </div>
-        <div style="white-space:pre-wrap">{n.body}</div>
-      </div>
-    ))}
-  </>
-);
-
 // ---------------------------------------------------------------------------
 // Aufgaben
 // ---------------------------------------------------------------------------
@@ -234,7 +198,9 @@ export const TaskForm: FC<{
   entity?: { type: string; id: string; label: string } | null;
   back: string;
   users?: { name: string; role: string; active: boolean }[];
-}> = ({ newId, entity, back, users }) => (
+  /** Vorbelegung, z. B. aus einer Notiz („+ Aufgabe hinzufügen“) */
+  title?: string | undefined;
+}> = ({ newId, entity, back, users, title }) => (
   <form method="post" action="/aufgaben" class="card" data-autosave={`/aufgaben#${entity?.id ?? 'neu'}`}>
     <h3>Neue Aufgabe{entity ? ` für ${entity.label}` : ''}</h3>
     <input type="hidden" name="id" value={newId} />
@@ -246,7 +212,7 @@ export const TaskForm: FC<{
       </>
     )}
     <div class="grid">
-      <Field name="title" label="Was ist zu tun? *" required />
+      <Field name="title" label="Was ist zu tun? *" required value={title} />
       <Field name="due_date" label="Fällig am" type="date" />
       {users ? (
         <div>

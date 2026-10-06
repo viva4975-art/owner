@@ -1,0 +1,136 @@
+// Browser-Test Objektseiten (Runde 3c): Notizen mit Anhang und Aufgabe, Dokumente mit Pflichtkategorien,
+// Schlüssel je Objekt, Angebote am Objekt. Legt Testdaten an → nur gegen lokale Instanz.
+import { mkdirSync } from 'node:fs';
+import { chromium } from 'playwright-core';
+
+const B = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:3000';
+if (!/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(B)) throw new Error('E2E nur gegen lokale Instanz');
+const [USER, PASS] = (process.env.E2E_AUTH ?? 'ahmed:prototyp2026').split(':');
+const out = process.env.E2E_SCREENSHOTS ?? 'var/e2e';
+mkdirSync(out, { recursive: true });
+const SITE = '00000000-0000-4000-8000-000000000012'; // zweites Demo-Objekt
+
+const browser = await chromium.launch({
+  ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
+});
+const auth = { Authorization: `Basic ${Buffer.from(`${USER}:${PASS}`).toString('base64')}` };
+const ctx = await browser.newContext({
+  extraHTTPHeaders: auth,
+  viewport: { width: 1280, height: 900 },
+  locale: 'de-DE',
+});
+let ok = 0,
+  fail = 0;
+const check = (name, cond, extra = '') => {
+  if (cond) {
+    ok++;
+    console.log('  ✓', name);
+  } else {
+    fail++;
+    console.log('  ✗', name, extra);
+  }
+};
+const flash = async (p) => (await p.locator('.flash').allInnerTexts()).join(' | ');
+const body = async (p) => p.locator('body').innerText();
+const p = await ctx.newPage();
+p.on('dialog', (d) => d.accept());
+const tag = Date.now().toString().slice(-5);
+
+const pdfBytes = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n');
+const uploaded = async (n = 1) => {
+  await p.waitForFunction((n) => document.querySelectorAll('[data-uploader] .files li.done').length >= n, n, {
+    timeout: 20000,
+  });
+};
+
+console.log('1. Notiz anlegen, ändern, Anhang, Aufgabe');
+await p.goto(`${B}/objekte/${SITE}/notizen`);
+await p.click('a:has-text("Notiz anlegen")');
+await p.waitForLoadState();
+check('Neue Notiz: Datum vorbelegt', /^\d{4}-\d{2}-\d{2}$/.test(await p.inputValue('#note_date')));
+check('Erfasser angezeigt', (await body(p)).includes('Erfasser'));
+await p.fill('#title', `Begehung ${tag}`);
+await p.fill('#body', 'Hausmeister wünscht Reinigung der Treppenhäuser freitags.');
+await p.click('button:has-text("Notiz anlegen")');
+await p.waitForLoadState();
+check('Notiz angelegt', (await flash(p)).includes('angelegt'), await flash(p));
+const noteUrl = p.url();
+await p.setInputFiles('[data-uploader] input[type=file]', {
+  name: 'protokoll.pdf',
+  mimeType: 'application/pdf',
+  buffer: pdfBytes,
+});
+await uploaded();
+check('Anhang hochgeladen', true);
+await p.goto(noteUrl);
+await p.fill('#title', `Begehung ${tag} (geändert)`);
+await p.click('button:has-text("Speichern")');
+await p.waitForLoadState();
+check('Notiz geändert', (await flash(p)).includes('gespeichert'), await flash(p));
+await p.goto(`${B}/objekte/${SITE}/notizen`);
+const row = p.locator('tr', { hasText: `Begehung ${tag} (geändert)` });
+check('Liste zeigt Titel', (await row.count()) === 1);
+check('Liste zeigt Anhang', (await row.innerText()).includes('📎 1'), await row.innerText());
+await row.locator('a:has-text("+ Aufgabe hinzufügen")').click();
+await p.waitForLoadState();
+check('Aufgabe mit Titel vorbelegt', (await p.inputValue('#title')).includes(`Begehung ${tag}`));
+
+console.log('2. Dokumente mit Pflichtkategorien');
+await p.goto(`${B}/objekte/${SITE}/dokumente`);
+const before = await body(p);
+check(
+  'Kategorien sichtbar',
+  ['Raumbuch', 'Leistungsverzeichnis', 'Revierplan'].every((k) => before.includes(k)),
+);
+const missingBefore = await p.locator('.tag.err').count();
+await p.setInputFiles('#kat-Revierplan [data-uploader] input[type=file]', {
+  name: `revierplan-${tag}.pdf`,
+  mimeType: 'application/pdf',
+  buffer: pdfBytes,
+});
+await p.waitForFunction(() => document.querySelectorAll('#kat-Revierplan .files li.done').length >= 1, null, {
+  timeout: 20000,
+});
+await p.reload();
+check(
+  'Revierplan zählt als vorhanden',
+  (await p.locator('#kat-Revierplan .tag.ok').count()) === 1 &&
+    (await p.locator('.tag.err').count()) <= Math.max(0, missingBefore - 1),
+);
+
+console.log('3. Schlüssel je Objekt');
+await p.goto(`${B}/objekte/${SITE}/schluessel`);
+check('Eigene Seite (kein Umleiten)', p.url().endsWith('/schluessel') && p.url().includes('/objekte/'));
+await p.fill('#key_no', `S-E2E-${tag}`);
+await p.fill('#description', 'Haupteingang');
+await p.click('button:has-text("Schlüssel speichern")');
+await p.waitForLoadState();
+check('zurück auf der Objektseite', p.url().includes(`/objekte/${SITE}/schluessel`), p.url());
+const krow = p.locator('tr', { hasText: `S-E2E-${tag}` });
+check('Schlüssel in der Liste', (await krow.count()) === 1);
+await krow.locator('select[name=employee_id]').selectOption({ index: 1 });
+await krow.locator('button:has-text("Ausgeben")').click();
+await p.waitForLoadState();
+check('ausgegeben', (await p.locator('tr', { hasText: `S-E2E-${tag}` }).innerText()).includes('seit'));
+await p
+  .locator('tr', { hasText: `S-E2E-${tag}` })
+  .locator('button:has-text("Rückgabe")')
+  .click();
+await p.waitForLoadState();
+check('zurückgegeben', (await p.locator('tr', { hasText: `S-E2E-${tag}` }).innerText()).includes('im Büro'));
+
+console.log('4. Angebote am Objekt');
+await p.goto(`${B}/objekte/${SITE}/angebote`);
+check('Reiter Angebote lädt', (await body(p)).includes('Angebot für dieses Objekt'));
+await p.click('a:has-text("Angebot für dieses Objekt")');
+await p.waitForLoadState();
+check('Angebot mit Objekt vorbelegt', p.url().includes('/angebote/'), p.url());
+
+await p.goBack();
+await p.goBack();
+await p.goForward();
+check('Zurück/Vor ohne Fehler', !(await body(p)).includes('Fehler 500'));
+
+console.log(`\n${ok} bestanden, ${fail} fehlgeschlagen`);
+await browser.close();
+process.exit(fail ? 1 : 0);

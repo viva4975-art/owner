@@ -205,33 +205,36 @@ export function score(a: Pick<Applicant, keyof Criteria>, s: Criteria) {
   const hit: string[] = [];
   const miss: string[] = [];
   const low = (v: string | null) => (v ?? '').trim().toLowerCase();
+  const add = (n: number, label: string) => {
+    pts += n;
+    hit.push(label);
+  };
   if (s.city) {
-    if (low(a.city).includes(low(s.city))) ((pts += 25), hit.push('Ort'));
+    if (low(a.city).includes(low(s.city))) add(25, 'Ort');
     else miss.push('Ort');
   }
   if (s.postal_code) {
-    if (a.postal_code && a.postal_code.startsWith(s.postal_code.slice(0, 2)))
-      ((pts += 15), hit.push('PLZ-Bereich'));
+    if (a.postal_code && a.postal_code.startsWith(s.postal_code.slice(0, 2))) add(15, 'PLZ-Bereich');
     else miss.push('PLZ');
   }
   if (s.language) {
-    if (low(a.language).includes(low(s.language))) ((pts += 15), hit.push('Sprache'));
+    if (low(a.language).includes(low(s.language))) add(15, 'Sprache');
     else miss.push('Sprache');
   }
   if (s.hours && a.hours) {
     const d = Math.abs(a.hours - s.hours);
-    if (d < 5) ((pts += 20), hit.push('Stunden ✓'));
-    else if (d < 10) ((pts += 10), hit.push('Stunden ~'));
+    if (d < 5) add(20, 'Stunden ✓');
+    else if (d < 10) add(10, 'Stunden ~');
     else miss.push('Stunden');
   } else if (s.hours) miss.push('Stunden');
   if (s.job_type) {
-    if (a.job_type === s.job_type) ((pts += 15), hit.push('Art'));
+    if (a.job_type === s.job_type) add(15, 'Art');
     else miss.push('Art');
   }
   if (s.time_of_day) {
     // „flexibel“ passt zu jeder Zeit (in der alten App nie ein Treffer)
     if (a.time_of_day === s.time_of_day || a.time_of_day === 'flexibel' || s.time_of_day === 'flexibel')
-      ((pts += 10), hit.push('Zeit'));
+      add(10, 'Zeit');
   }
   return { score: pts, percent: pts, hit, miss };
 }

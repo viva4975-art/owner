@@ -820,3 +820,14 @@ Testadresse.
   neuer Wiedervorlage; feste ID je Formular. Besser als alt: Datum Europa/Berlin statt UTC, Wiedervorlagen erscheinen auf
   der Startseite (in der alten App wegen falschem Feldnamen nie). Import: 642 Einträge, 529 Aktivitäten
   („kalt“/leer → Erstkontakt wie in der alten App). `e2e:kasse` jetzt 28 Prüfungen.
+- 2026-10-06: Runde 8d – Bewerber & Stellen wie die alte App (Personal → Bewerber & Stellen, nur Admin/Personal): Reiter
+  Offene Stellen / Bewerber-Pool / Manuelles Matching. Stellen mit 6 Vorlagen (Reinigungskraft, Glasreiniger, Hausmeister,
+  Büro, Vorarbeiter, Fahrer), 26 Objektarten, Arbeitstage je Wochentag (fest/flexibel, „Mo–Fr: 06:00–10:00“), Karte mit
+  „Passende Bewerber“ (ab 50 %), „als besetzt markieren“. Plakat A4 in 9 Sprachen (Übersetzungen aus der alten App,
+  `src/i18n/job-poster.json`) als Druckseite → „Als PDF speichern“; WhatsApp-Nummer unter Firmendaten (sonst Telefon).
+  Matching-Gewichte wie alt (Ort 25, PLZ 15, Sprache 15, Stunden 20/10, Art 15, Zeit 10). **Behoben gegenüber alt:**
+  gleiches Vokabular für Art/Arbeitszeit bei Bewerbern und Stellen (alt passten z. B. „Büro“/„Bürokraft“ und
+  „morgens“/„morgen“ nie – Treffer waren bei 75 % gedeckelt), „flexibel“ passt zu jeder Zeit. **DSGVO:** Unterlagen liegen
+  in der Datenbank (nicht im write-once-Archiv) und werden mit dem Bewerber wirklich gelöscht; abgelehnte Bewerber
+  erscheinen nach 6 Monaten als „bitte löschen“ (AGG-Frist). Import: 42 Bewerber (Unterlagen und Stellen nicht im Backup).
+  `e2e:kasse` jetzt 37 Prüfungen.

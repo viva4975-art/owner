@@ -263,17 +263,7 @@ export function registerSpecialRoutes({ app, deps, page, back }: Ctx) {
                       value={s.price_cents != null ? centsToInput(s.price_cents) : ''}
                     />
                   </div>
-                  <div>
-                    <label for="vat">USt</label>
-                    <select id="vat" name="vat_rate_bp">
-                      <option value="1900" selected={s.vat_rate_bp !== 700}>
-                        19 %
-                      </option>
-                      <option value="700" selected={s.vat_rate_bp === 700}>
-                        7 %
-                      </option>
-                    </select>
-                  </div>
+                  <input type="hidden" name="vat_rate_bp" value="1900" />
                 </>
               )}
             </div>

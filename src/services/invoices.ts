@@ -33,6 +33,7 @@ export interface InvoiceRow {
   status: 'draft' | 'issued';
   number: string | null;
   customer_id: string;
+  reverse_charge: boolean;
   site_id: string | null;
   invoice_group_id: string | null;
   planned_issue_date: string | null;
@@ -156,11 +157,30 @@ export interface DraftInput {
   closingText: string | null;
   lines: DraftLineInput[];
   prepaymentIds?: string[];
+  /** § 13b – Steuerschuldnerschaft des Leistungsempfängers (alle Positionen 0 %); ohne Angabe: bisheriger Stand bzw. Kunde */
+  reverseCharge?: boolean;
   /** Version, die das Formular geladen hat (Schutz vor Überschreiben aus anderem Tab). */
   expectedVersion?: number | null;
 }
 
-async function writeLines(tx: Tx, invoiceId: string, inputs: DraftLineInput[], prepaid: Cents) {
+/**
+ * Positionen schreiben. `reverseCharge` (§ 13b): true → alle Positionen 0 %, false → 0-%-Positionen werden 19 %,
+ * undefined → Steuersätze wie übergeben (Storno/Korrektur übernehmen das Original).
+ */
+async function writeLines(
+  tx: Tx,
+  invoiceId: string,
+  raw: DraftLineInput[],
+  prepaid: Cents,
+  reverseCharge?: boolean,
+) {
+  const inputs =
+    reverseCharge === undefined
+      ? raw
+      : raw.map((l) => ({
+          ...l,
+          vatRate: (reverseCharge ? 0 : l.vatRate === 0 ? 1900 : l.vatRate) as DraftLineInput['vatRate'],
+        }));
   const d = calculateDraft(inputs, prepaid);
   await tx`delete from app.invoice_lines where invoice_id = ${invoiceId}`;
   if (d.lines.length) {
@@ -209,14 +229,23 @@ export async function saveDraft(sql: Sql, id: string, input: DraftInput, actor: 
   const customer = await getCustomer(sql, input.customerId);
   if (!customer) throw new BusinessError('Kunde nicht gefunden');
   const billing = await effectiveBilling(sql, input.customerId, input.siteId);
+  // Leistungszeitraum: nur „von“ = ein Tag (Pflicht beim Ausstellen, siehe issueInvoice)
+  if (input.periodStart && !input.periodEnd) input = { ...input, periodEnd: input.periodStart };
+  if (input.periodStart && input.periodEnd && input.periodEnd < input.periodStart)
+    throw new BusinessError('Leistungszeitraum: „bis“ liegt vor „von“');
   if (input.kind === 'final' && !input.prepaymentIds?.length) {
     throw new BusinessError('Schlussrechnung: bitte mindestens eine Abschlagsrechnung auswählen');
   }
   await sql.begin(async (tx) => {
     const [existing] = await tx<
-      { status: string; kind: string; version: number }[]
-    >`select status, kind, version from app.invoices where id = ${id} for update`;
+      { status: string; kind: string; version: number; reverse_charge: boolean }[]
+    >`select status, kind, version, reverse_charge from app.invoices where id = ${id} for update`;
     assertVersion(existing?.version, input.expectedVersion, 'Der Rechnungsentwurf');
+    const reverseCharge = input.reverseCharge ?? existing?.reverse_charge ?? customer.reverse_charge;
+    if (reverseCharge && !customer.vat_id)
+      throw new BusinessError(
+        '§ 13b: Bitte zuerst die USt-IdNr. des Kunden eintragen (Pflicht in der E-Rechnung bei Steuerschuldnerschaft des Leistungsempfängers).',
+      );
     if (existing && existing.status !== 'draft')
       throw new BusinessError('Ausgestellte Rechnungen sind unveränderbar');
     if (existing && !['invoice', 'partial', 'final'].includes(existing.kind)) {
@@ -233,6 +262,7 @@ export async function saveDraft(sql: Sql, id: string, input: DraftInput, actor: 
       closing_text: input.closingText,
       invoice_format: billing.format,
       buyer_reference: billing.leitwegId,
+      reverse_charge: reverseCharge,
     };
     if (existing) {
       await tx`update app.invoices set ${tx(row as Record<string, unknown>)} where id = ${id}`;
@@ -244,7 +274,7 @@ export async function saveDraft(sql: Sql, id: string, input: DraftInput, actor: 
     for (const pid of ids) {
       await tx`insert into app.invoice_prepayments (final_invoice_id, partial_invoice_id) values (${id}, ${pid})`;
     }
-    await writeLines(tx, id, input.lines, await prepaidFor(tx, input.customerId, ids));
+    await writeLines(tx, id, input.lines, await prepaidFor(tx, input.customerId, ids), reverseCharge);
     await audit(tx, actor, existing ? 'update_draft' : 'create_draft', id, { kind: input.kind });
   });
   return id;
@@ -431,17 +461,20 @@ export async function runMonthly(
           u.site?.id ?? null,
           u.group?.id ?? null,
         );
+        const [cust] = await tx<{ reverse_charge: boolean }[]>`
+          select reverse_charge from app.customers where id = ${u.customerId}`;
+        const rc = !!cust?.reverse_charge;
         const [row] = await tx`
           insert into app.invoices (id, kind, customer_id, site_id, invoice_group_id, period_start, period_end,
                                     invoice_format, buyer_reference, order_reference, intro_text, closing_text,
-                                    monthly_run_key, planned_issue_date, review_required)
+                                    monthly_run_key, planned_issue_date, review_required, reverse_charge)
           values (${id}, 'invoice', ${u.customerId}, ${u.site?.id ?? null}, ${u.group?.id ?? null}, ${start},
                   ${periodEnd}, ${billing.format},
                   ${billing.leitwegId},
                   ${u.group?.order_reference || (u.site?.order_reference ?? null)},
                   ${u.group?.intro_text ?? null}, ${u.group?.closing_text ?? null},
                   ${`${u.key}:${month}`}, ${opts.invoiceDate ?? null},
-                  ${todo.some((i) => i.service.always_unfinished)})
+                  ${todo.some((i) => i.service.always_unfinished)}, ${rc})
           on conflict (monthly_run_key) do nothing
           returning id`;
         if (!row) return { created: false };
@@ -454,6 +487,7 @@ export async function runMonthly(
           id,
           todo.map((i) => i.line),
           0n as Cents,
+          rc,
         );
         await audit(tx, actor, 'monthly_run', id, {
           month,
@@ -559,6 +593,7 @@ export async function createCancellation(sql: Sql, originalId: string, actor: st
     await tx`insert into app.invoices ${tx({
       id,
       kind: 'cancellation',
+      reverse_charge: orig.reverse_charge,
       customer_id: orig.customer_id,
       site_id: orig.site_id,
       invoice_group_id: orig.invoice_group_id,
@@ -593,6 +628,7 @@ export async function createCorrection(
     await tx`insert into app.invoices ${tx({
       id,
       kind: 'correction',
+      reverse_charge: orig.reverse_charge,
       customer_id: orig.customer_id,
       site_id: orig.site_id,
       invoice_group_id: orig.invoice_group_id,
@@ -604,7 +640,7 @@ export async function createCorrection(
       order_reference: orig.order_reference,
       intro_text: introText ?? `Korrektur zur Rechnung ${orig.number}:`,
     } as Record<string, unknown>)}`;
-    await writeLines(tx, id, lines, 0n as Cents);
+    await writeLines(tx, id, lines, 0n as Cents, orig.reverse_charge);
     await audit(tx, actor, 'create_correction', id, { original: orig.number });
     return id;
   });

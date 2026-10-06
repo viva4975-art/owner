@@ -75,8 +75,18 @@ export interface ServiceForRun {
   cycle?: BillingCycle;
 }
 
-export type BillingCycle = 'monatlich' | 'zweimonatlich' | 'quartalsweise' | 'halbjaehrlich' | 'jaehrlich';
-export const CYCLE_MONTHS: Record<BillingCycle, number> = {
+export type BillingCycle =
+  | 'monatlich'
+  | 'zweimonatlich'
+  | 'quartalsweise'
+  | 'halbjaehrlich'
+  | 'jaehrlich'
+  | 'einmalig'
+  | 'je_ausfuehrung';
+/** Regelmäßige Zyklen (Monatslauf); „einmalig“ und „je Ausführung“ werden über „Leistungen verrichten“ abgerechnet. */
+export type PeriodicCycle = Exclude<BillingCycle, 'einmalig' | 'je_ausfuehrung'>;
+export const isPeriodic = (c: BillingCycle): c is PeriodicCycle => c !== 'einmalig' && c !== 'je_ausfuehrung';
+export const CYCLE_MONTHS: Record<PeriodicCycle, number> = {
   monatlich: 1,
   zweimonatlich: 2,
   quartalsweise: 3,
@@ -89,6 +99,8 @@ export const CYCLE_LABEL: Record<BillingCycle, string> = {
   quartalsweise: 'quartalsweise',
   halbjaehrlich: 'halbjährlich',
   jaehrlich: 'jährlich',
+  einmalig: 'einmalig',
+  je_ausfuehrung: 'je Ausführung',
 };
 
 const monthIndex = (m: string) => Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7)) - 1;
@@ -104,6 +116,7 @@ export function billingPeriod(
   validFrom: string,
   month: string,
 ): { start: string; end: string } | null {
+  if (!isPeriodic(cycle)) return null;
   const n = CYCLE_MONTHS[cycle];
   const diff = monthIndex(month) - monthIndex(validFrom.slice(0, 7));
   if (diff < 0 || diff % n !== 0) return null;

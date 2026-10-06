@@ -137,16 +137,8 @@ const LineRowInputs: FC<{ l?: EditorLine; recurring?: boolean | undefined }> = (
     </td>
     <td style="width:130px">
       <input name="price" value={l?.price ?? ''} placeholder="0,00" class="right" />
-    </td>
-    <td style="width:90px">
-      <select name="vat">
-        <option value="1900" selected={l?.vat !== '700'}>
-          19 %
-        </option>
-        <option value="700" selected={l?.vat === '700'}>
-          7 %
-        </option>
-      </select>
+      {/* Steuersatz immer 19 %; § 13b (0 %) wird für den ganzen Beleg per Häkchen gesetzt */}
+      <input type="hidden" name="vat" value="1900" />
     </td>
     {recurring && (
       <td style="width:170px">
@@ -189,7 +181,6 @@ export const LineEditor: FC<{
             <th class="r">Menge</th>
             <th>Einheit</th>
             <th class="r">Einzelpreis €</th>
-            <th>USt</th>
             {recurring && <th>Abrechnung</th>}
             <th class="r">Gesamt</th>
             <th></th>
@@ -336,11 +327,17 @@ export const InvoiceEditor: FC<{
         <input type="hidden" name="kind" value={inv.kind ?? 'invoice'} />
         <div class="grid">
           <div>
-            <label for="period_start">Leistungszeitraum von</label>
-            <input id="period_start" type="date" name="period_start" value={inv.period_start ?? ''} />
+            <label for="period_start">Leistungszeitraum von *</label>
+            <input
+              id="period_start"
+              type="date"
+              name="period_start"
+              value={inv.period_start ?? ''}
+              required
+            />
           </div>
           <div>
-            <label for="period_end">bis</label>
+            <label for="period_end">bis (leer = ein Tag)</label>
             <input id="period_end" type="date" name="period_end" value={inv.period_end ?? ''} />
           </div>
           <div>
@@ -375,6 +372,20 @@ export const InvoiceEditor: FC<{
           </div>
         )}
         <LineEditor lines={lines} services={services} />
+        <div class="chk" style="margin-top:10px">
+          <input type="hidden" name="reverse_charge_shown" value="1" />
+          <input
+            type="checkbox"
+            id="reverse_charge"
+            name="reverse_charge"
+            checked={
+              inv.reverse_charge ?? customers.find((c) => c.id === inv.customer_id)?.reverse_charge ?? false
+            }
+          />
+          <label for="reverse_charge">
+            § 13b UStG – Steuerschuldnerschaft des Leistungsempfängers (alle Positionen 0 %, sonst 19 %)
+          </label>
+        </div>
         <div style="margin:12px 0">
           <label for="closing_text">Schlusstext</label>
           <textarea id="closing_text" name="closing_text">

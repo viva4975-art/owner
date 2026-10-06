@@ -523,6 +523,14 @@ export const CustomerForm: FC<{ id: string; c: Partial<Customer>; isNew: boolean
     <h2 class="form-section">Zusatzinformationen</h2>
     <div class="grid">
       <Field name="vat_id" label="USt-IdNr." value={c.vat_id} />
+      <div class="chk">
+        <input type="hidden" name="reverse_charge_shown" value="1" />
+        <input type="checkbox" id="reverse_charge" name="reverse_charge" checked={!!c.reverse_charge} />
+        <label for="reverse_charge">
+          § 13b UStG: Kunde ist selbst Gebäudereiniger – Rechnungen ohne Umsatzsteuer (Steuerschuldnerschaft des
+          Leistungsempfängers)
+        </label>
+      </div>
       <TextBox name="notes" label="Kurzinfo" value={c.notes} />
       <TextBox
         name="billing_hint"

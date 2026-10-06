@@ -36,6 +36,6 @@ describe('Formular-Helfer', () => {
     expect(() => parseLines({ desc: ['A'], qty: ['1'], price: ['-1'], vat: ['1900'] })).toThrow(
       /nicht negativ/,
     );
-    expect(() => parseLines({ desc: ['A'], qty: ['1'], price: ['1'], vat: ['0'] })).toThrow(/Steuersatz/);
+    expect(() => parseLines({ desc: ['A'], qty: ['1'], price: ['1'], vat: ['500'] })).toThrow(/Steuersatz/);
   });
 });

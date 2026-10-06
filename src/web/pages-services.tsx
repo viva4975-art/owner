@@ -88,7 +88,7 @@ export const ServicesPanel: FC<{
                   <br />
                   {sv.valid_to ? dateDe(sv.valid_to) : 'unbefristet'}
                 </td>
-                <td class="small">{sv.kind === 'monthly_flat' ? CYCLE_LABEL[sv.billing_cycle] : '–'}</td>
+                <td class="small">{CYCLE_LABEL[sv.billing_cycle]}</td>
                 <td class="r">{milliToInput(sv.quantity_milli)}</td>
                 <td>{UNIT_LABELS[sv.unit_code] ?? sv.unit_code}</td>
                 <td class="r">{euro(sv.unit_price_cents)}</td>
@@ -186,7 +186,8 @@ export const ServiceForm: FC<{
   types: ServiceType[];
   groups: InvoiceGroupRow[];
   today: string;
-}> = ({ siteId, id, sv, types, groups, today }) => {
+  siteNo?: string;
+}> = ({ siteId, id, sv, types, groups, today, siteNo }) => {
   const tgt = sv?.separate_invoice ? 'separat' : (sv?.invoice_group_id ?? 'objekt');
   return (
     <form
@@ -220,7 +221,7 @@ export const ServiceForm: FC<{
       <h3>Details</h3>
       <div class="grid">
         <div style="grid-column:span 2">
-          <label for="description">Titel / Text auf der Rechnung *</label>
+          <label for="description">Leistung (Titel auf der Rechnung) *</label>
           <input
             id="description"
             name="description"
@@ -231,7 +232,11 @@ export const ServiceForm: FC<{
         </div>
         <div>
           <label for="service_type_id">Leistungsart</label>
-          <select id="service_type_id" name="service_type_id">
+          <select
+            id="service_type_id"
+            name="service_type_id"
+            onchange="var d=document.getElementById('description');if(d&&!d.value.trim()&&this.value)d.value=this.options[this.selectedIndex].text"
+          >
             <option value="">– keine –</option>
             {types.map((t) => (
               <option value={t.id} selected={t.id === sv?.service_type_id}>
@@ -251,22 +256,17 @@ export const ServiceForm: FC<{
         </div>
         <div>
           <label for="cost_center">Kostenstelle</label>
-          <input id="cost_center" name="cost_center" value={sv?.cost_center ?? ''} placeholder="keine" />
+          <input
+            id="cost_center"
+            name="cost_center"
+            value={sv?.cost_center ?? siteNo ?? ''}
+            placeholder={siteNo ?? ''}
+          />
         </div>
       </div>
 
       <h3>Abrechnung</h3>
       <div class="grid">
-        <div>
-          <label for="kind">Art</label>
-          <select id="kind" name="kind">
-            {Object.entries(SERVICE_KIND_LABEL).map(([k, v]) => (
-              <option value={k} selected={k === (sv?.kind ?? 'monthly_flat')}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </div>
         <div>
           <label for="invoice_target">Rechnungsgruppe</label>
           <select id="invoice_target" name="invoice_target">
@@ -286,7 +286,7 @@ export const ServiceForm: FC<{
           </select>
         </div>
         <div>
-          <label for="billing_cycle">Abrechnungszyklus</label>
+          <label for="billing_cycle">Abrechnungszyklus (Einheit Stunde = je Ausführung)</label>
           <select id="billing_cycle" name="billing_cycle">
             {CYCLES.map(([k, v]) => (
               <option value={k} selected={k === (sv?.billing_cycle ?? 'monatlich')}>
@@ -310,7 +310,7 @@ export const ServiceForm: FC<{
           <input id="quantity" name="quantity" value={sv ? milliToInput(sv.quantity_milli) : '1'} required />
         </div>
         <div>
-          <label for="unit_price">Betrag je Zeitraum (netto, €) *</label>
+          <label for="unit_price">Preis (netto, €, zzgl. 19 % USt) *</label>
           <input
             id="unit_price"
             name="unit_price"
@@ -318,17 +318,6 @@ export const ServiceForm: FC<{
             placeholder="3.257,05"
             required
           />
-        </div>
-        <div>
-          <label for="vat_rate_bp">USt</label>
-          <select id="vat_rate_bp" name="vat_rate_bp">
-            <option value="1900" selected={(sv?.vat_rate_bp ?? 1900) === 1900}>
-              19 %
-            </option>
-            <option value="700" selected={sv?.vat_rate_bp === 700}>
-              7 %
-            </option>
-          </select>
         </div>
         <div>
           <label for="labor_share">Lohnkostenanteil (%)</label>
@@ -355,15 +344,6 @@ export const ServiceForm: FC<{
 
       <h3>Ausführung</h3>
       <div class="grid">
-        <div>
-          <label for="hours_target">Stundenvorgabe (Std. je Monat)</label>
-          <input
-            id="hours_target"
-            name="hours_target"
-            value={sv?.hours_target_milli != null ? milliToInput(sv.hours_target_milli) : ''}
-            placeholder="124,00"
-          />
-        </div>
         <div style="grid-column:span 2">
           <label for="execution_notes">Ausführungshinweise (erscheinen auf dem Arbeitsschein)</label>
           <textarea id="execution_notes" name="execution_notes" rows={3}>

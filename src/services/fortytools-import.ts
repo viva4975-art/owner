@@ -183,6 +183,9 @@ const CYCLES: Record<string, string> = {
   halbjaehrlich: 'halbjaehrlich',
   jaehrlich: 'jaehrlich',
   jahr: 'jaehrlich',
+  einmalig: 'einmalig',
+  jeausfuehrung: 'je_ausfuehrung',
+  proausfuehrung: 'je_ausfuehrung',
 };
 const UNITS: Record<string, string> = {
   '': 'LS',
@@ -389,7 +392,8 @@ function build(kind: ImportKind, d: Record<string, string>, parentId: string) {
     valid_to: to,
     note: d.note ?? '',
     service_type_id: '',
-    billing_cycle: cycle ?? 'monatlich',
+    // Sonderleistung/Regie ohne Zyklusangabe = je Ausführung
+    billing_cycle: !d.cycle && kindV && kindV !== 'monthly_flat' ? 'je_ausfuehrung' : (cycle ?? 'monatlich'),
     hours_target: '',
     execution_notes: '',
     cost_center: '',

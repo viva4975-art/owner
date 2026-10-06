@@ -47,6 +47,8 @@ export interface Customer {
   city: string;
   country_code: string;
   vat_id: string | null;
+  /** § 13b: Kunde ist selbst Gebäudereiniger → Rechnungen standardmäßig mit Steuerschuldnerschaft des Leistungsempfängers */
+  reverse_charge: boolean;
   is_public_authority: boolean;
   leitweg_id: string | null;
   supplier_no: string | null;
@@ -156,6 +158,11 @@ export const customerInput = z
     // kunde (grün) · interessent (gelb) · ehemalig (rot = inaktiv)
     status: z.enum(['kunde', 'interessent', 'ehemalig']).optional(),
     dunning_block: optBool,
+    reverse_charge: optBool,
+  })
+  .refine((c) => !c.reverse_charge || !!c.vat_id, {
+    message: '§ 13b: Bitte die USt-IdNr. des Kunden angeben (Pflicht in der E-Rechnung)',
+    path: ['vat_id'],
   })
   .refine((c) => c.invoice_format !== 'xrechnung' || !!c.leitweg_id, {
     message: 'XRechnung braucht eine Leitweg-ID',
@@ -411,7 +418,8 @@ const optPercentBp = z.preprocess(
 );
 
 export const serviceInput = z.object({
-  kind: z.enum(['monthly_flat', 'special', 'hourly']),
+  // Art wird aus Zyklus/Einheit abgeleitet (siehe serviceKindOf); Angabe nur noch für Altaufrufer
+  kind: z.enum(['monthly_flat', 'special', 'hourly']).optional(),
   description: z.string().trim().min(1, 'Beschreibung fehlt'),
   unit_code: z.string().trim().min(1),
   quantity: z.string().transform((v, ctx) => {
@@ -432,13 +440,22 @@ export const serviceInput = z.object({
       return z.NEVER;
     }
   }),
-  vat_rate_bp: z.coerce.number().int().min(1, 'Steuersatz 0 % ist im Prototyp nicht freigegeben').max(10000),
+  // immer 19 %; § 13b (0 %) wird je Kunde/Rechnung gesetzt
+  vat_rate_bp: z.coerce.number().int().min(1).max(10000).default(1900),
   valid_from: z.iso.date(),
   valid_to: z.preprocess(emptyToNull, z.iso.date().nullable().default(null)),
   note: optText,
   service_type_id: z.preprocess(emptyToNull, z.uuid().nullable().default(null)),
   billing_cycle: z
-    .enum(['monatlich', 'zweimonatlich', 'quartalsweise', 'halbjaehrlich', 'jaehrlich'])
+    .enum([
+      'monatlich',
+      'zweimonatlich',
+      'quartalsweise',
+      'halbjaehrlich',
+      'jaehrlich',
+      'einmalig',
+      'je_ausfuehrung',
+    ])
     .default('monatlich'),
   hours_target: optMilli,
   execution_notes: optText,
@@ -452,6 +469,15 @@ export const serviceInput = z.object({
     z.number().int().nullable(),
   ),
 });
+
+/**
+ * Art der Leistung aus Einheit und Zyklus: Stunden (HUR) = Regiestundensatz, regelmäßiger Zyklus = Pauschale im
+ * Monatslauf, „einmalig“/„je Ausführung“ = Sonderleistung (Abrechnung über „Leistungen verrichten“).
+ */
+export function serviceKindOf(unitCode: string, cycle: BillingCycle): 'monthly_flat' | 'special' | 'hourly' {
+  if (unitCode === 'HUR') return 'hourly';
+  return cycle === 'einmalig' || cycle === 'je_ausfuehrung' ? 'special' : 'monthly_flat';
+}
 
 export type SiteServiceRow = SiteService & {
   type_name: string | null;
@@ -482,9 +508,12 @@ export async function saveService(
   input: z.infer<typeof serviceInput>,
   actor: string,
 ) {
+  const [site] = await sql<{ site_no: string }[]>`select site_no from app.sites where id = ${siteId}`;
+  // Stunden sind nie Monatspauschale → bei Einheit Stunde immer „je Ausführung“
+  const cycle = input.unit_code === 'HUR' ? 'je_ausfuehrung' : input.billing_cycle;
   const row = {
     site_id: siteId,
-    kind: input.kind,
+    kind: serviceKindOf(input.unit_code, cycle),
     description: input.description,
     unit_code: input.unit_code,
     quantity_milli: input.quantity,
@@ -494,10 +523,11 @@ export async function saveService(
     valid_to: input.valid_to,
     note: input.note,
     service_type_id: input.service_type_id,
-    billing_cycle: input.billing_cycle,
-    hours_target_milli: input.hours_target,
+    billing_cycle: cycle,
+    ...(input.hours_target != null ? { hours_target_milli: input.hours_target } : {}),
     execution_notes: input.execution_notes,
-    cost_center: input.cost_center,
+    // Kostenstelle = Objektnummer, wenn nichts anderes eingetragen ist
+    cost_center: input.cost_center ?? site?.site_no ?? null,
     labor_share_bp: input.labor_share,
     always_unfinished: input.always_unfinished,
     separate_invoice: input.invoice_target === 'separat',

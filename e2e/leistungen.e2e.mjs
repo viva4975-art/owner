@@ -49,14 +49,19 @@ check(
 console.log('2. Leistung anlegen');
 await p.goto(B + `/objekte/${SITE}/leistungen/${randomUUID()}`);
 await p.fill('#valid_from', `${month}-01`);
-await p.fill('#description', `Glasreinigung E2E ${tag}`);
 await p.selectOption('#service_type_id', { label: 'Glasreinigung' });
+check('Leistungsart füllt den Titel', (await p.inputValue('#description')) === 'Glasreinigung');
+check('Kostenstelle = Objektnummer', /^\d+$/.test(await p.inputValue('#cost_center')));
+check(
+  'kein Steuersatz, keine Stundenvorgabe, keine Art',
+  (await p.locator('#vat_rate_bp, #hours_target, #kind').count()) === 0,
+);
+await p.fill('#description', `Glasreinigung E2E ${tag}`);
 await p.fill('#note', 'innen und außen');
 await p.selectOption('#invoice_target', 'separat');
 await p.selectOption('#billing_cycle', 'quartalsweise');
 await p.fill('#unit_price', '1.200,00');
 await p.check('#always_unfinished');
-await p.fill('#hours_target', '6');
 await p.fill('#execution_notes', 'Leiter im Hausmeisterraum, Schlüssel 12');
 await p.click('button:has-text("Leistung anlegen")');
 await p.waitForLoadState();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { renderInvoicePdf } from '../pdf/render.js';
-import { sampleCancellation, sampleDocument, sampleFinal } from './fixtures.js';
+import { LINES, sampleCancellation, sampleDocument, sampleFinal } from './fixtures.js';
 import { generateCii, generateXRechnungUbl, generateZugferd } from './generate.js';
 import { validateWithKosit } from './kosit.js';
 import { PDFDocument } from '@cantoo/pdf-lib';
@@ -35,7 +35,18 @@ const withDebit = (() => {
   };
 })();
 
+// § 13b: Kunde ist selbst Gebäudereiniger → alle Positionen 0 %, Kategorie AE, USt-IdNr. des Kunden
+const reverseCharge = (() => {
+  const base = sampleDocument();
+  const d = sampleDocument(
+    { buyer: { ...base.buyer, vatId: 'DE123456789', leitwegId: null }, buyerReference: null },
+    LINES.map((l) => ({ ...l, vatRate: 0 as typeof l.vatRate })),
+  );
+  return d;
+})();
+
 const cases = [
+  ['Rechnung § 13b (Reverse Charge)', reverseCharge],
   ['Rechnung', sampleDocument()],
   ['Rechnung mit SEPA-Lastschrift', withDebit],
   ['Rechnung mit Skonto', withSkonto],
@@ -83,6 +94,17 @@ describe.skipIf(!available)('E-Rechnung gegen KoSIT', () => {
     expect(xml).toMatch(/per SEPA-Lastschrift von Ihrem Konto DE02 \*{4} \*{4} \*{4} \*\*20 51 eingezogen/);
     const pdf = await renderInvoicePdf(withDebit);
     expect((await PDFDocument.load(pdf)).getPageCount()).toBeGreaterThan(0);
+  });
+
+  it('§ 13b: AE mit Befreiungsgrund, Hinweis im Text, keine Mischung, USt-IdNr. Pflicht', async () => {
+    const xml = await generateXRechnungUbl(reverseCharge);
+    expect(xml).toContain('<cbc:TaxExemptionReasonCode>VATEX-EU-AE</cbc:TaxExemptionReasonCode>');
+    expect(xml).toContain('Steuerschuldnerschaft des Leistungsempfängers (§ 13b UStG)');
+    expect(reverseCharge.vatTotal).toBe(0n);
+    const mixed = { ...reverseCharge, lines: [...reverseCharge.lines, sampleDocument().lines[0]!] };
+    await expect(generateXRechnungUbl(mixed)).rejects.toThrow(/mischen/);
+    const noVat = { ...reverseCharge, buyer: { ...reverseCharge.buyer, vatId: null } };
+    await expect(generateXRechnungUbl(noVat)).rejects.toThrow(/USt-IdNr/);
   });
 
   it('Storno referenziert das Original und hat Belegart 384', async () => {

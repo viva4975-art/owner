@@ -10,7 +10,13 @@ import {
   type SellerSnapshot,
 } from '../domain/invoice/types.js';
 import { type Cents, formatEuro } from '../domain/money/money.js';
-import { directDebitOf, paymentTermsHuman, percentToXml } from '../einvoice/mapping.js';
+import {
+  REVERSE_CHARGE_NOTE,
+  directDebitOf,
+  isReverseCharge,
+  paymentTermsHuman,
+  percentToXml,
+} from '../einvoice/mapping.js';
 
 /*
  * Layout nach Fortytools-Rechnung 1038193 (ausgemessen, Koordinaten in pt von oben):
@@ -438,8 +444,13 @@ export async function renderInvoicePdf(
 
   // ---------------------------------------------------------------- Summen
   const sumRows: [string, string][] = [['Gesamt netto', eur(doc.netTotal)]];
+  const rc = isReverseCharge(doc);
   for (const v of doc.vatBreakdown) {
     const rate = percentToXml(v.vatRate).replace('.', ',');
+    if (rc) {
+      sumRows.push(['Umsatzsteuer (§ 13b UStG)', eur(v.taxAmount)]);
+      continue;
+    }
     sumRows.push([
       multiRate ? `zzgl. MwSt (${rate}%) auf ${eur(v.taxableAmount)}` : `zzgl. MwSt (${rate}%)`,
       eur(v.taxAmount),
@@ -475,6 +486,17 @@ export async function renderInvoicePdf(
 
   // ---------------------------------------------------------------- Zahlungsbedingung
   w.y += 7.4;
+  if (rc) {
+    // Pflichthinweis § 14a Abs. 5 UStG, fett und vor der Zahlungsbedingung
+    w.ensure(LH * 2);
+    w.text(REVERSE_CHARGE_NOTE, LEFT, w.y, BODY, { bold: true });
+    w.y += LH;
+    if (doc.buyer.vatId) {
+      w.text(`USt-IdNr. des Leistungsempfängers: ${doc.buyer.vatId}`, LEFT, w.y, BODY);
+      w.y += LH;
+    }
+    w.y += 4;
+  }
   w.paragraph(opts.terms ?? paymentTermsHuman(doc));
   if (doc.closingText) {
     w.y += 4;

@@ -159,7 +159,7 @@ describe.skipIf(!available)('Import aus Fortytools (CSV)', () => {
         kind: 'hourly',
         unit_code: 'HUR',
         unit_price_cents: 2980n,
-        billing_cycle: 'monatlich',
+        billing_cycle: 'je_ausfuehrung',
         note: null,
       },
       {

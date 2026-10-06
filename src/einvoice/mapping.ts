@@ -26,16 +26,41 @@ export function percentToXml(bp: number): string {
   return frac ? `${int}.${frac}` : String(int);
 }
 
+/** § 13b UStG: Pflichthinweis (§ 14a Abs. 5 UStG) – identisch in PDF und E-Rechnung. */
+export const REVERSE_CHARGE_NOTE = 'Steuerschuldnerschaft des Leistungsempfängers (§ 13b UStG)';
+
+/** 0 % gibt es bei uns nur als § 13b (Reverse Charge, Kategorie AE); sonst Normalsatz S. */
 function taxCategory(vatRate: number) {
-  if (vatRate <= 0) {
-    // Steuerbefreiung / Reverse Charge (§ 13b UStG) braucht Kategorie E/AE + Begründung – noch nicht umgesetzt.
-    throw new Error('Steuersatz 0 % (z. B. § 13b Reverse Charge) ist im Prototyp noch nicht freigegeben');
-  }
+  if (vatRate <= 0)
+    return { 'cbc:ID': 'AE', 'cbc:Percent': '0', 'cac:TaxScheme': { 'cbc:ID': 'VAT' } } as const;
   return {
     'cbc:ID': 'S',
     'cbc:Percent': percentToXml(vatRate),
     'cac:TaxScheme': { 'cbc:ID': 'VAT' },
   } as const;
+}
+
+/** Steuerkategorie in der Steueraufschlüsselung: bei AE mit Befreiungsgrund (BR-AE-10). */
+function breakdownCategory(vatRate: number) {
+  if (vatRate > 0) return taxCategory(vatRate);
+  return {
+    'cbc:ID': 'AE',
+    'cbc:Percent': '0',
+    'cbc:TaxExemptionReasonCode': 'VATEX-EU-AE',
+    'cbc:TaxExemptionReason': REVERSE_CHARGE_NOTE,
+    'cac:TaxScheme': { 'cbc:ID': 'VAT' },
+  } as const;
+}
+
+/** § 13b gilt für die ganze Rechnung: keine Mischung aus 0 % und Normalsatz, USt-IdNr. des Kunden Pflicht. */
+export function isReverseCharge(doc: Pick<InvoiceDocument, 'lines'>): boolean {
+  return doc.lines.length > 0 && doc.lines.every((l) => l.vatRate <= 0);
+}
+function checkReverseCharge(doc: InvoiceDocument) {
+  const zero = doc.lines.filter((l) => l.vatRate <= 0).length;
+  if (zero && zero !== doc.lines.length)
+    throw new Error('§ 13b gilt für die ganze Rechnung – Positionen mit 0 % und 19 % nicht mischen');
+  if (zero && !doc.buyer.vatId) throw new Error('§ 13b: USt-IdNr. des Kunden fehlt');
 }
 
 /** Lastschrift nur für zu zahlende Rechnungen (nicht Storno/Korrektur/Erstattung). */
@@ -99,12 +124,14 @@ export function toEInvoice(doc: InvoiceDocument): Invoice {
   if (!seller.vatId && !seller.taxNumber)
     throw new Error('USt-ID oder Steuernummer des Rechnungsstellers fehlt');
   if (doc.lines.length === 0) throw new Error('Rechnung ohne Positionen');
+  checkReverseCharge(doc);
 
   const dd = directDebitOf(doc);
   const notes: string[] = [];
   if (doc.kind !== 'invoice') notes.push(KIND_TITLES[doc.kind]);
   if (doc.introText) notes.push(doc.introText);
   if (doc.closingText) notes.push(doc.closingText);
+  if (isReverseCharge(doc)) notes.push(REVERSE_CHARGE_NOTE);
   if (doc.prepayments.length) {
     notes.push(
       'Verrechnete Abschlagsrechnungen: ' +
@@ -256,7 +283,7 @@ export function toEInvoice(doc: InvoiceDocument): Invoice {
           'cbc:TaxableAmount@currencyID': CUR,
           'cbc:TaxAmount': amt(v.taxAmount),
           'cbc:TaxAmount@currencyID': CUR,
-          'cac:TaxCategory': taxCategory(v.vatRate),
+          'cac:TaxCategory': breakdownCategory(v.vatRate),
         })),
       },
     ],

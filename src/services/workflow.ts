@@ -69,6 +69,11 @@ export async function issueInvoice(deps: Deps, id: string, actor: string) {
         'Rechnung ist als „unfertig“ markiert (Leistung mit „immer unfertig“). Bitte Positionen prüfen und „Geprüft“ setzen.',
       );
     }
+    if (!data.invoice.period_start) {
+      throw new BusinessError(
+        'Bitte den Leistungszeitraum eintragen (Entwurf bearbeiten) – Pflicht für Archiv und Buchhaltung.',
+      );
+    }
     if (data.invoice.planned_issue_date && data.invoice.planned_issue_date > todayBerlin()) {
       throw new BusinessError(
         `Rechnungsdatum ${data.invoice.planned_issue_date.split('-').reverse().join('.')} liegt in der Zukunft – Ausstellen ist erst ab diesem Tag möglich (oder Rechnungsdatum ändern).`,

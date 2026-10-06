@@ -686,3 +686,16 @@ Testadresse.
   - Tests: 273 Unit-/DB-Tests (neu `site-times.db.test.ts`), `e2e:objektseiten` 40 Prüfungen.
   - Offen aus Runde 3: Qualitätskontrolle mit Bildern + Auditanalyse (wartet auf Ahmeds Screenshots), Arbeitsschein-
     Varianten (pauschal / Regiestunden, Namen/Beschreibung optional, Vorgabe je Kunde).
+- 2026-10-06: Runde 4a (Ahmed):
+  - **Steuersatz:** keine Auswahl mehr in Leistungen, Rechnungs-/Auftragspositionen und Sonderdiensten – immer 19 %.
+    **§ 13b UStG** als Häkchen: am Kunden („Kunde ist selbst Gebäudereiniger“, USt-IdNr. Pflicht) als Vorgabe, am
+    Rechnungsentwurf abwählbar/anwählbar → alle Positionen 0 %, keine Mischung. E-Rechnung Kategorie AE mit
+    `VATEX-EU-AE` und Begründung (KoSIT-gültig UBL + CII), PDF mit fettem Pflichthinweis „Steuerschuldnerschaft des
+    Leistungsempfängers (§ 13b UStG)“ und USt-IdNr. des Kunden. Storno/Korrektur übernehmen das Kennzeichen.
+    **Mit Steuerberater bestätigen** (offener Punkt bleibt).
+  - Leistung: Kostenstelle mit Objektnummer vorbelegt (Bestand nachgetragen), Leistungsart füllt den leeren Titel,
+    Art/Steuersatz/Stundenvorgabe aus dem Formular entfernt (Stundenvorgabe jetzt am Objekt). Neue Zyklen „einmalig“ und
+    „je Ausführung“; Art wird abgeleitet (Einheit Stunde = Regie, regelmäßiger Zyklus = Pauschale im Monatslauf, sonst
+    Sonderleistung). Bestehende Sonderleistungen/Regie → „je Ausführung“.
+  - Leistungszeitraum: im Rechnungsentwurf Pflicht (nur „von“ = ein Tag), Ausstellen ohne Zeitraum gesperrt.
+  - Tests: 279 Unit-/DB-Tests (neu § 13b-KoSIT, § 13b-Ablauf, Ausstellen ohne Zeitraum).

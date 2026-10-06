@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
-import { createCancellation, getInvoice, runMonthly } from './invoices.js';
+import { randomUUID } from 'node:crypto';
+import { parseEuro, parseQuantity } from '../domain/money/money.js';
+import { createCancellation, getInvoice, runMonthly, saveDraft } from './invoices.js';
 import { DEMO } from './seed.js';
 import { type FakeMailer, dbAvailable, freshDatabase, kositAvailable, testDeps } from './testing.js';
 import {
@@ -129,10 +131,110 @@ describe.skipIf(!available)('Ablauf: Monatslauf → Ausstellen → Archiv → Ve
     expect(deps.mailer.sent.at(-1)!.subject).toMatch(/Stornorechnung/);
   });
 
+  it('§ 13b: Kunde als Gebäudereiniger → Entwurf mit 0 %, gültige E-Rechnung (AE), Hinweis im PDF-Text', async () => {
+    await sql`update app.customers set reverse_charge = true, vat_id = 'DE123456789' where id = ${DEMO.company}`;
+    const id = randomUUID();
+    await saveDraft(
+      sql,
+      id,
+      {
+        customerId: DEMO.company,
+        siteId: null,
+        kind: 'invoice',
+        periodStart: '2026-09-15',
+        periodEnd: null,
+        orderReference: null,
+        introText: null,
+        closingText: null,
+        lines: [
+          {
+            description: 'Grundreinigung',
+            quantity: parseQuantity('1'),
+            unitCode: 'LS',
+            unitPrice: parseEuro('500,00'),
+            vatRate: 1900,
+          },
+        ],
+      },
+      'test',
+    );
+    const draft = (await getInvoice(sql, id))!;
+    expect(draft.invoice.reverse_charge).toBe(true);
+    expect(draft.invoice.period_end).toBe('2026-09-15'); // nur „von“ = ein Tag
+    expect(draft.lines.map((l) => l.vat_rate_bp)).toEqual([0]);
+    expect(draft.invoice.gross_cents).toBe(50000n);
+    const docs = await issueInvoice(deps, id, 'test');
+    expect(docs.find((d) => d.kind === 'xrechnung_xml')!.valid).toBe(true);
+    expect(docs.find((d) => d.kind === 'zugferd_pdf')!.valid).toBe(true);
+    const xml = new TextDecoder().decode(
+      await deps.archive.get(docs.find((d) => d.kind === 'xrechnung_xml')!.storage_path),
+    );
+    expect(xml).toContain('<cbc:ID>AE</cbc:ID>');
+    // Häkchen im Entwurf abwählbar → wieder 19 %
+    const id2 = randomUUID();
+    await saveDraft(
+      sql,
+      id2,
+      {
+        customerId: DEMO.company,
+        siteId: null,
+        kind: 'invoice',
+        periodStart: '2026-09-15',
+        periodEnd: '2026-09-16',
+        orderReference: null,
+        introText: null,
+        closingText: null,
+        reverseCharge: false,
+        lines: [
+          {
+            description: 'X',
+            quantity: parseQuantity('1'),
+            unitCode: 'LS',
+            unitPrice: parseEuro('100,00'),
+            vatRate: 0,
+          },
+        ],
+      },
+      'test',
+    );
+    expect((await getInvoice(sql, id2))!.lines.map((l) => l.vat_rate_bp)).toEqual([1900]);
+    await sql`update app.customers set reverse_charge = false where id = ${DEMO.company}`;
+  });
+
+  it('ohne Leistungszeitraum kein Ausstellen', async () => {
+    const id = randomUUID();
+    await saveDraft(
+      sql,
+      id,
+      {
+        customerId: DEMO.company,
+        siteId: null,
+        kind: 'invoice',
+        periodStart: null,
+        periodEnd: null,
+        orderReference: null,
+        introText: null,
+        closingText: null,
+        lines: [
+          {
+            description: 'X',
+            quantity: parseQuantity('1'),
+            unitCode: 'LS',
+            unitPrice: parseEuro('100,00'),
+            vatRate: 1900,
+          },
+        ],
+      },
+      'test',
+    );
+    await expect(issueInvoice(deps, id, 'test')).rejects.toThrow(/Leistungszeitraum/);
+  });
+
   it('ungültige E-Rechnung wird nicht ausgestellt (keine Nummer verbraucht)', async () => {
-    // Steuersatz 0 % ist ohne Befreiungsgrund nicht abbildbar → Vorabprüfung schlägt fehl.
+    // 0 % (§ 13b) ohne USt-IdNr. des Kunden ist nicht abbildbar → Vorabprüfung schlägt fehl.
     const [row] = await sql<{ id: string }[]>`
-      insert into app.invoices (customer_id, site_id, invoice_format) values (${DEMO.authority}, ${DEMO.siteSchool}, 'xrechnung') returning id`;
+      insert into app.invoices (customer_id, site_id, invoice_format, period_start, period_end)
+      values (${DEMO.authority}, ${DEMO.siteSchool}, 'xrechnung', '2026-09-01', '2026-09-30') returning id`;
     const id = row!.id;
     await sql`insert into app.invoice_lines (invoice_id, position, description, quantity_milli, unit_price_cents, net_cents, vat_rate_bp)
               values (${id}, 1, 'Test', 1000, 1000, 1000, 0)`;

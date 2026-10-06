@@ -67,8 +67,8 @@ export function parseLines(body: Body, opts: { allowNegative?: boolean } = {}): 
     if (quantity < 0n && !opts.allowNegative) {
       throw new BusinessError(`Position ${n}: negative Mengen nur in Rechnungskorrekturen`);
     }
-    const vatRate = Number(vat[i] ?? '1900');
-    if (![1900, 700].includes(vatRate)) throw new BusinessError(`Position ${n}: Steuersatz nicht erlaubt`);
+    const vatRate = Number(vat[i] || '1900');
+    if (![1900, 700, 0].includes(vatRate)) throw new BusinessError(`Position ${n}: Steuersatz nicht erlaubt`);
     out.push({
       description,
       detail: (detail[i] ?? '').trim() || null,

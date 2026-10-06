@@ -410,6 +410,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         prepaymentIds: (Array.isArray(prepayments) ? prepayments : prepayments ? [prepayments] : []).map(
           String,
         ),
+        ...(str(body, 'reverse_charge_shown') ? { reverseCharge: str(body, 'reverse_charge') === 'on' } : {}),
         expectedVersion: str(body, 'version') ? Number(str(body, 'version')) : null,
       },
       c.get('actor'),

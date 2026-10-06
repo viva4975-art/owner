@@ -863,3 +863,10 @@ Testadresse.
   „Geplant“ → „Übergeben“. PDF (Druckseite) und Excel (CSV) jeweils mit/ohne Preise. Noch nicht: Objektleitung-Sicht
   ohne Preise, Übergabe direkt als Nachunternehmer-Auftrag. Keine Grundreinigungs-Daten im Backup.
   `e2e:kasse` jetzt 62 Prüfungen (Kasse, Eigen-Compliance, Akquise, Bewerber, Glas, Tiefgarage, Grundreinigung).
+- 2026-10-06: Import aus der alten App ergänzt („füg alles schon ein“): Nachunternehmer (Kreditor-Nr. = Lieferantennummer,
+  vorhandene mit gleicher Nummer werden nicht doppelt angelegt; Ansprechpartner; 112 Nachweis-Dateien als geprüfte
+  Versionen mit Ablaufdatum; 230 Auftragsscheine/Scans der alten Aufträge als Dokumente „Verträge“ – die alten Aufträge
+  hängen an Objekt-Texten, daher keine neuen Aufträge), Schriftverkehr (10 Briefe → Dokumenteneingang), Arbeitskleidung
+  (Bestand als Inventur, Ausgabe-Protokolle an die Personalakte über die Personalnummer, sonst Dokumenteneingang).
+  Probelauf mit dem kompletten Backup: alle Bereiche in < 10 s, zweiter Lauf legt nichts doppelt an. Nur das Protokoll
+  der alten App (audit_log) wird nicht übernommen. 320 Unit-/DB-Tests.

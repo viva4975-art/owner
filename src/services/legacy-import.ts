@@ -8,6 +8,12 @@ import { uuidOf } from './fortytools-export-import.js';
 import { importLegacyProspects } from './prospects.js';
 import { importLegacyApplicants } from './applicants.js';
 import { importLegacyGlass } from './glass.js';
+import { INBOX_ID } from './documents.js';
+import {
+  importLegacyClothing,
+  importLegacyLetters,
+  importLegacySubcontractors,
+} from './legacy-subcontractors.js';
 import { type UploadConfig, filePath } from './uploads.js';
 import type { Deps } from './workflow.js';
 
@@ -436,6 +442,94 @@ async function applyGlass(deps: Deps, b: Backup, actor: string): Promise<string[
   return [`Glasreinigung: ${r.customers} Kunden, ${r.objects} Objekte, ${r.apps} Termine übernommen.`];
 }
 
+// ------------------------------------------------------------------ Nachunternehmer
+
+async function analyzeSubs(sql: Sql, b: Backup): Promise<Section> {
+  const rows = b.data.subunternehmer ?? [];
+  const have = new Set(
+    (
+      await sql<{ legacy_id: string }[]>`select legacy_id from app.suppliers where legacy_id like 'sub:%'`
+    ).map((r) => r.legacy_id),
+  );
+  const vorhanden = rows.filter((r) => have.has(`sub:${String(r.id)}`)).length;
+  const docs = rows.reduce(
+    (a, r) =>
+      a +
+      Object.values((r.documents ?? {}) as Record<string, Record<string, unknown>>).reduce(
+        (x, d) => x + (d?.file_path ? 1 : 0) + (Array.isArray(d?.history) ? d.history.length : 0),
+        0,
+      ),
+    0,
+  );
+  const orders = b.data.sub_einsaetze ?? [];
+  return {
+    key: 'nachunternehmer',
+    label: 'Nachunternehmer (Firmen, Nachweise, Auftragsscheine)',
+    total: rows.length,
+    neu: rows.length - vorhanden,
+    vorhanden,
+    notes: [
+      `${docs} Nachweis-Dateien, ${orders.length} alte Aufträge (Auftragsschein + Scan werden als Dokumente „Verträge“ abgelegt)`,
+      'Vorhandene Nachunternehmer mit gleicher Kreditor-Nr. werden nicht doppelt angelegt.',
+    ],
+    ready: rows.length > 0,
+  };
+}
+
+async function applySubs(deps: Deps, b: Backup, actor: string): Promise<string[]> {
+  const r = await importLegacySubcontractors(
+    deps,
+    { dir: deps.env.FILES_DIR, maxBytes: deps.env.UPLOAD_MAX_BYTES },
+    { subs: b.data.subunternehmer ?? [], orders: b.data.sub_einsaetze ?? [] },
+    b.file,
+    actor,
+  );
+  return [
+    `Nachunternehmer: ${r.subs} angelegt, ${r.docs} Nachweise, ${r.orderFiles} Auftragsdokumente${r.missing ? `, ${r.missing} Dateien fehlen` : ''}.`,
+  ];
+}
+
+// ------------------------------------------------------------------ Schriftverkehr, Arbeitskleidung
+
+async function analyzeMisc(_sql: Sql, b: Backup): Promise<Section> {
+  const sv = b.data.schriftverkehr ?? [];
+  const st = b.data.kleidung_bestand ?? [];
+  const is = b.data.kleidung_ausgabe ?? [];
+  return {
+    key: 'sonstiges',
+    label: 'Schriftverkehr und Arbeitskleidung',
+    total: sv.length + st.length + is.length,
+    neu: sv.length + st.length + is.length,
+    vorhanden: 0,
+    notes: [
+      `${sv.length} Briefe (PDF) → Dokumenteneingang`,
+      `${st.length} Bestandszeilen → Inventur Arbeitskleidung`,
+      `${is.length} Ausgabe-Protokolle → Personalakte (Zuordnung über Personalnummer)`,
+    ],
+    ready: sv.length + st.length + is.length > 0,
+  };
+}
+
+async function applyMisc(deps: Deps, b: Backup, actor: string): Promise<string[]> {
+  const cfg = { dir: deps.env.FILES_DIR, maxBytes: deps.env.UPLOAD_MAX_BYTES };
+  const letters = await importLegacyLetters(deps, cfg, b.data.schriftverkehr ?? [], b.file, INBOX_ID, actor);
+  const cl = await importLegacyClothing(
+    deps,
+    cfg,
+    {
+      stock: b.data.kleidung_bestand ?? [],
+      issues: b.data.kleidung_ausgabe ?? [],
+      prices: b.data.kleidung_preise ?? [],
+    },
+    b.file,
+    INBOX_ID,
+    actor,
+  );
+  return [
+    `Schriftverkehr: ${letters} Briefe im Dokumenteneingang. Arbeitskleidung: ${cl.moves} Bestandsbuchungen, ${cl.protocols} Protokolle abgelegt${cl.unmatched.length ? ` (${cl.unmatched.length} ohne Personalnummer-Treffer → Dokumenteneingang)` : ''}.`,
+  ];
+}
+
 // ------------------------------------------------------------------ Registry
 
 export type LegacyModule = {
@@ -465,6 +559,20 @@ const MODULES: LegacyModule[] = [
   },
   { key: 'akquise', tables: ['akquise'], folders: [], analyze: analyzeAkq, apply: applyAkq },
   { key: 'bewerber', tables: ['bewerber'], folders: [], analyze: analyzeBew, apply: applyBew },
+  {
+    key: 'nachunternehmer',
+    tables: ['subunternehmer', 'sub_einsaetze'],
+    folders: ['subdocs'],
+    analyze: analyzeSubs,
+    apply: applySubs,
+  },
+  {
+    key: 'sonstiges',
+    tables: ['schriftverkehr', 'kleidung_bestand', 'kleidung_ausgabe', 'kleidung_preise'],
+    folders: ['schriftverkehr', 'arbeitskleidung'],
+    analyze: analyzeMisc,
+    apply: applyMisc,
+  },
   {
     key: 'glas',
     tables: ['gp_objekte', 'gp_termine', 'gp_kunden', 'gp_ansprechpartner', 'gp_settings'],

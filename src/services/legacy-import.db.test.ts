@@ -44,6 +44,25 @@ const backup = () =>
       { id: 'k1', datum: '2026-05-04', betrag: 869.76, beleg_path: 'karten/k1.pdf', notiz: 'Tanken' },
     ]),
     'data/audit_log.json': enc([{ id: 1 }]),
+    'data/subunternehmer.json': enc([
+      {
+        id: 's1',
+        firma: 'Test Reinigung',
+        kreditor_nr: '70099',
+        kuerzel: 'TR',
+        status: 'aktiv',
+        rechtsform: 'gmbh',
+        ansprechpartner_liste: [{ name: 'Frau Sub', telefon: '089 1', email: 'sub@example.org' }],
+        documents: { milog: { file_path: 's1/milog.pdf', file_name: 'milog.pdf', expires: '2027-01-31' } },
+      },
+    ]),
+    'data/sub_einsaetze.json': enc([
+      { id: 'e1', sub_id: 's1', auftragsnummer: '2026-TR-001', objekt: 'Schule', pdf_path: 's1/auftrag.pdf' },
+    ]),
+    'data/kleidung_bestand.json': enc([{ id: 'k1', artikel: 'Poloshirt', groesse: 'L', bestand: 7 }]),
+    'data/kleidung_preise.json': enc([{ artikel: 'Poloshirt', preis: 12.5 }]),
+    'files/subdocs/s1/milog.pdf': new TextEncoder().encode('%PDF-1.4 milog'),
+    'files/subdocs/s1/auftrag.pdf': new TextEncoder().encode('%PDF-1.4 auftrag'),
     'files/kassenbelege/kasse/a1.pdf': new TextEncoder().encode('%PDF-1.4 a1'),
     'files/kassenbelege/karten/k1.pdf': new TextEncoder().encode('%PDF-1.4 k1'),
   });
@@ -88,6 +107,22 @@ describe.skipIf(!available)('Import aus der alten App', () => {
     expect((await sql`select count(*)::int as n from app.cash_entries`)[0]!.n).toBe(2);
     expect((await sql`select count(*)::int as n from app.card_receipts`)[0]!.n).toBe(1);
     expect((await analyzeBackup(sql, backup())).sections[0]).toMatchObject({ neu: 0, vorhanden: 3 });
+  });
+
+  it('übernimmt Nachunternehmer mit Nachweisen und Arbeitskleidung idempotent', async () => {
+    const out = await applyBackup(deps, backup(), ['nachunternehmer', 'sonstiges'], 'test');
+    expect(out[0]).toMatch(/1 angelegt, 1 Nachweise, 1 Auftragsdokumente/);
+    await applyBackup(deps, backup(), ['nachunternehmer', 'sonstiges'], 'test');
+    const [sup] = await sql<{ id: string; kind: string; supplier_no: string }[]>`
+      select id, kind, supplier_no from app.suppliers where legacy_id = 'sub:s1'`;
+    expect(sup).toMatchObject({ kind: 'nachunternehmer', supplier_no: '70099' });
+    const docs = await sql<{ doc_type: string; valid_until: string; status: string }[]>`
+      select doc_type, valid_until::text, status from app.supplier_documents where supplier_id = ${sup!.id}`;
+    expect(docs).toEqual([{ doc_type: 'milog', valid_until: '2027-01-31', status: 'gueltig' }]);
+    const [{ qty }] = (await sql`
+      select sum(m.delta)::int as qty from app.clothing_moves m join app.clothing_articles a on a.id = m.article_id
+       where a.name = 'Poloshirt' and m.size = 'L'`) as unknown as [{ qty: number }];
+    expect(qty).toBe(7);
   });
 
   it('lehnt Nicht-ZIP ab', async () => {

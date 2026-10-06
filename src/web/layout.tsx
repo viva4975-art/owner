@@ -23,6 +23,8 @@ const CSS = `
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
+.sel-wrap{display:flex;flex-direction:column;gap:4px;min-width:0}.sel-wrap>select{width:100%}
+.sel-search{font-size:13px!important;padding:5px 9px!important;background:var(--panel)!important;border-style:dashed!important}.sel-search.none{border-color:var(--err)!important}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;font:14px/1.55 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-feature-settings:"cv11","ss01";color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased}
 a{color:var(--brand-2);text-decoration:none}a:hover{text-decoration:underline}

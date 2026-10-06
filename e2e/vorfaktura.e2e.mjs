@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 // Browser-Test Vorfaktura (Runde 4b): Leistungen je Ausführung am Objekt verrichten → vorgemerkt → unter Rechnungen →
 // Entwürfe je Kunde auswählen → Entwürfe erstellen → Rechnungsdatum setzen → mehrere ausstellen. Nur lokal.
 import { mkdirSync } from 'node:fs';
@@ -103,6 +104,22 @@ check(
   'zurückgenommen',
   (await flash(p)).includes('zurückgenommen') &&
     (await p.locator('form[action^="/ausfuehrungen/"]').count()) === before - 1,
+);
+
+console.log('5. Suche in langen Auswahllisten');
+await p.goto(`${B}/rechnungen/${crypto.randomUUID()}/bearbeiten`);
+const search = p.locator('.sel-wrap:has(#kunde) .sel-search');
+check('Suchfeld über der Kundenliste', (await search.count()) === 1);
+const nBefore = await p.locator('#kunde option').count();
+await search.fill('29901');
+const nAfter = await p.locator('#kunde option').count();
+check('Liste gefiltert', nAfter < nBefore && nAfter >= 2, `${nBefore} → ${nAfter}`);
+await search.press('Enter');
+await p.waitForLoadState();
+check(
+  'Enter übernimmt den Treffer',
+  /kunde=/.test(p.url()) || (await p.locator('#kunde').inputValue()) !== '',
+  p.url(),
 );
 
 console.log(`\n${ok} bestanden, ${fail} fehlgeschlagen`);

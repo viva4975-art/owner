@@ -9,6 +9,9 @@
  *    meldungen werden nach dem Anzeigen aus der URL entfernt, damit „Zurück“ sie nicht erneut zeigt.
  * 3. Menüs: Dropdowns (details) schließen sich gegenseitig, Klick daneben / Esc schließt.
  * 4. Taste „/“ springt in die Suche (wie Fortytools).
+ * 5. Lange Auswahllisten (ab 12 Einträgen, z. B. Kunden, Objekte, Mitarbeiter) bekommen ein Suchfeld: Tippen filtert
+ *    die Liste (Nummer oder Name, ohne Umlaut-/Groß-Klein-Unterschied), Enter übernimmt den ersten Treffer.
+ *    Die Liste selbst bleibt die echte Auswahl (Formulare, Prüfungen und Tests unverändert).
  */
 export const CLIENT_JS = String.raw`
 (function () {
@@ -175,6 +178,65 @@ export const CLIENT_JS = String.raw`
   // Beim Zurückkommen aus dem bfcache Formulare wieder freigeben
   window.addEventListener('pageshow', function (e) {
     if (e.persisted) Array.prototype.forEach.call(document.forms, function (f) { f.dataset.sent = ''; });
+  });
+
+  // ---- Suche in langen Auswahllisten ----
+  function norm(x) {
+    return String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ß/g, 'ss');
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('select'), function (sel) {
+    if (sel.multiple || sel.hasAttribute('data-nosearch') || sel.closest('[data-nosearch]') || sel.closest('template')) return;
+    if (sel.options.length < 12 || sel.dataset.searchReady) return;
+    sel.dataset.searchReady = '1';
+    var items = Array.prototype.map.call(sel.querySelectorAll('option'), function (o) {
+      return { o: o, parent: o.parentNode, text: norm(o.textContent + ' ' + o.value) };
+    });
+    var wrap = document.createElement('div');
+    wrap.className = 'sel-wrap';
+    sel.parentNode.insertBefore(wrap, sel);
+    var input = document.createElement('input');
+    input.type = 'search';
+    input.className = 'sel-search';
+    input.placeholder = 'Suchen (Nummer oder Name) …';
+    input.autocomplete = 'off';
+    input.setAttribute('aria-label', 'Liste durchsuchen');
+    if (sel.disabled) input.disabled = true;
+    wrap.appendChild(input);
+    wrap.appendChild(sel);
+    var first = null;
+    function filter() {
+      var words = norm(input.value).split(/\s+/).filter(Boolean);
+      var cur = sel.value;
+      first = null;
+      items.forEach(function (it) { if (it.o.parentNode) it.o.parentNode.removeChild(it.o); });
+      items.forEach(function (it) {
+        var hit = words.every(function (w) { return it.text.indexOf(w) >= 0; });
+        // leere Auswahl („– bitte wählen –“) und die aktuelle Auswahl bleiben immer drin
+        if (hit || it.o.value === '' || it.o.value === cur) it.parent.appendChild(it.o);
+        if (hit && words.length && it.o.value !== '' && !first) first = it.o;
+      });
+      sel.value = cur;
+      Array.prototype.forEach.call(sel.querySelectorAll('optgroup'), function (g) { g.hidden = !g.children.length; });
+      input.classList.toggle('none', !!words.length && !first);
+    }
+    input.addEventListener('input', filter);
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (first && sel.value !== first.value) {
+          sel.value = first.value;
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          sel.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        sel.focus();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        sel.focus();
+      } else if (e.key === 'Escape') {
+        input.value = '';
+        filter();
+      }
+    });
   });
 
   // ---- Dropdown-Menüs ----

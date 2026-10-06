@@ -728,3 +728,6 @@ Testadresse.
     Auftragsvorlage der alten App folgt (Ahmed schickt sie).
   - Zahlungsliste ist ein Reiter im Rechnungseingang (Menü „Rechnungseingang & Zahlungsliste“).
   - Tests: `e2e:nachunternehmer` 27 Prüfungen (Reiter, +36M, Versionen, Ansprechpartner, je Tag).
+- 2026-10-06: Runde 4e – Suche in Auswahllisten: jede Auswahl ab 12 Einträgen (Kunden, Objekte, Mitarbeiter, Lieferanten …)
+  bekommt automatisch ein Suchfeld darüber (Nummer oder Name, ohne Umlaut-/Groß-Klein-Unterschied, mehrere Wörter); Enter
+  übernimmt den ersten Treffer. Die echte Auswahlliste bleibt (Formulare/Prüfungen unverändert). Alle 23 Browser-Suiten grün.

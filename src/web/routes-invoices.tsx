@@ -35,7 +35,9 @@ import {
   sendInvoice,
 } from '../services/workflow.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
-import { parseLines, str } from './forms.js';
+import { arr, parseLines, str } from './forms.js';
+import { DraftsBox, OpenExecutionsBox } from './pages-drafts.js';
+import { draftsFromExecutions, listOpenExecutions } from '../services/executions.js';
 import { NEW_OPTIONS, PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
 import { archiveMonthZip, archiveYear } from '../services/invoice-archive.js';
 import { KIND_TITLES } from '../domain/invoice/types.js';
@@ -253,11 +255,8 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         </PageHead>
         <Tabs tabs={invoiceTabs('entwuerfe', await counts())} active="entwuerfe" />
         <div class="tabbody">
-          <InvoiceTable rows={drafts} />
-          <p class="mut small">
-            Entwürfe lassen sich bearbeiten, bis sie ausgestellt sind. Beim Ausstellen wird die E-Rechnung
-            gegen KoSIT geprüft und die nächste Nummer vergeben.
-          </p>
+          <OpenExecutionsBox rows={await listOpenExecutions(sql)} today={todayBerlin()} />
+          <DraftsBox rows={drafts} today={todayBerlin()} />
         </div>
         <div class="cols">
           <form method="post" action="/monatslauf" class="card">
@@ -327,6 +326,68 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         </div>
       </>,
     );
+  });
+
+  // Entwürfe aus vorgemerkten Ausführungen (Auswahl je Kunde/Objekt oder alle)
+  app.post('/rechnungen/entwuerfe/aus-ausfuehrungen', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const ids = arr(b, 'exec');
+    const created = await draftsFromExecutions(sql, ids, str(b, 'invoice_date'), c.get('actor'));
+    const backTo = str(b, 'back');
+    const target =
+      backTo && /^\/objekte\/[0-9a-f-]{36}\/leistungen$/.test(backTo) ? backTo : '/rechnungen/entwuerfe';
+    if (created.length === 1 && target !== '/rechnungen/entwuerfe')
+      return back(c, `/rechnungen/${created[0]}`, { ok: 'Rechnungsentwurf erstellt.' });
+    return back(c, target, {
+      ok: created.length
+        ? `${created.length} Rechnungsentwurf/-entwürfe erstellt.`
+        : 'Nichts erstellt – die Ausführungen stehen schon auf einem Entwurf.',
+    });
+  });
+
+  // Mehrere Entwürfe: Rechnungsdatum setzen, ausstellen oder löschen
+  app.post('/rechnungen/entwuerfe/auswahl', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const ids = arr(b, 'inv');
+    if (!ids.length) throw new BusinessError('Bitte mindestens einen Entwurf ankreuzen');
+    const action = str(b, 'aktion');
+    const actor = c.get('actor');
+    if (action === 'datum') {
+      const d = str(b, 'invoice_date');
+      for (const id of ids) await setPlannedIssueDate(sql, id, d, actor);
+      return back(c, '/rechnungen/entwuerfe', {
+        ok: `Rechnungsdatum ${d ? d.split('-').reverse().join('.') : '(Tag des Ausstellens)'} für ${ids.length} Entwurf/Entwürfe gesetzt.`,
+      });
+    }
+    if (action === 'loeschen') {
+      for (const id of ids) await deleteDraft(sql, id, actor);
+      return back(c, '/rechnungen/entwuerfe', { ok: `${ids.length} Entwurf/Entwürfe gelöscht.` });
+    }
+    if (action === 'ausstellen') {
+      const d = str(b, 'invoice_date');
+      if (d) for (const id of ids) await setPlannedIssueDate(sql, id, d, actor);
+      const ok: string[] = [];
+      const errors: string[] = [];
+      for (const id of ids) {
+        try {
+          await issueInvoice(deps, id, actor);
+          const inv = (await getInvoice(sql, id))!.invoice;
+          ok.push(inv.number ?? id);
+        } catch (e) {
+          if (!(e instanceof BusinessError)) throw e;
+          const [who] = await sql<{ label: string }[]>`
+            select c.name || coalesce(' / ' || s.name, '') as label from app.invoices i
+              join app.customers c on c.id = i.customer_id left join app.sites s on s.id = i.site_id
+             where i.id = ${id}`;
+          errors.push(`${who?.label ?? id}: ${e.message.split('\n')[0]}`);
+        }
+      }
+      return back(c, '/rechnungen/entwuerfe', {
+        ...(ok.length ? { ok: `${ok.length} Rechnung(en) ausgestellt: ${ok.join(', ')}` } : {}),
+        ...(errors.length ? { fehler: `Nicht ausgestellt:\n${errors.join('\n')}` } : {}),
+      });
+    }
+    throw new BusinessError('Unbekannte Aktion');
   });
 
   app.post('/monatslauf', async (c) => {

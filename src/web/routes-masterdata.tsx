@@ -1,13 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
 import type { Child } from 'hono/jsx';
-import {
-  contactInput,
-  deleteContact,
-  listContacts,
-  listTasks,
-  saveContact,
-} from '../services/crm.js';
+import { contactInput, deleteContact, listContacts, listTasks, saveContact } from '../services/crm.js';
 import { BusinessError } from '../services/errors.js';
 import { listUsers } from '../services/users.js';
 import { monthBounds, todayBerlin } from '../domain/invoice/calc.js';
@@ -80,6 +74,7 @@ import { uploadConfig } from './routes-files.js';
 import { filteredSites, managers, parseSiteFilter, sitesCsv, SITE_PAGE_SIZE } from '../services/site-list.js';
 import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { FileArea } from './files.js';
+import { parseQuantity } from '../domain/money/money.js';
 import { arr, str } from './forms.js';
 import { FORMAT_LABEL, PageHead, dateDe, euro } from './layout.js';
 import { OfferTable } from './pages-offers.js';
@@ -87,6 +82,13 @@ import { ContactsPanel, TaskBox, TaskForm } from './pages-crm.js';
 import { registerNoteRoutes } from './routes-notes.js';
 import { OpenItemsTable } from './pages-hr-finance.js';
 import { ServiceForm, ServicesPanel } from './pages-services.js';
+import { ExecutePanel } from './pages-drafts.js';
+import {
+  deleteExecution,
+  executableServices,
+  executeServices,
+  listOpenExecutions,
+} from '../services/executions.js';
 import {
   type CustomerCounts,
   CustomerForm,
@@ -1294,19 +1296,75 @@ export function registerMasterdataRoutes(ctx: Ctx) {
         >`select g.name from app.sites x join app.invoice_groups g on g.id = x.invoice_group_id
                                 where x.id = ${s.id} and g.active`,
       ]);
+      const [execServices, openExec] = await Promise.all([
+        executableServices(sql, s.id),
+        listOpenExecutions(sql, { siteId: s.id }),
+      ]);
       return (
-        <ServicesPanel
-          siteId={s.id}
-          services={services}
-          newServiceId={randomUUID()}
-          siteGroup={grp?.name ?? null}
-          month={month}
-          invoiceDate={invoiceDate}
-          preview={preview}
-        />
+        <>
+          <ServicesPanel
+            siteId={s.id}
+            services={services}
+            newServiceId={randomUUID()}
+            siteGroup={grp?.name ?? null}
+            month={month}
+            invoiceDate={invoiceDate}
+            preview={preview}
+          />
+          <ExecutePanel
+            siteId={s.id}
+            services={execServices}
+            open={openExec}
+            token={randomUUID()}
+            today={todayBerlin()}
+          />
+        </>
       );
     }),
   );
+
+  // Leistungen „je Ausführung“ / „einmalig“ verrichten → vorgemerkt
+  app.post(`/objekte/:id{${UUID}}/verrichten`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    const ids = arr(b, 'service');
+    const items = ids.map((sid) => {
+      const q = str(b, `qty_${sid}`);
+      let quantity: bigint | null = null;
+      if (q) {
+        try {
+          quantity = parseQuantity(q);
+        } catch {
+          throw new BusinessError(`Menge „${q}“ ist ungültig`);
+        }
+      }
+      return { serviceId: sid, quantity };
+    });
+    const n = await executeServices(
+      sql,
+      {
+        siteId: id,
+        token: str(b, 'token') ?? randomUUID(),
+        dateFrom: str(b, 'date_from') ?? '',
+        dateTo: str(b, 'date_to'),
+        items,
+      },
+      c.get('actor'),
+    );
+    return back(c, `/objekte/${id}/leistungen`, {
+      ok: `${n} Leistung(en) verrichtet und vorgemerkt – Rechnungsentwurf unten oder unter Rechnungen → Entwürfe.`,
+    });
+  });
+
+  app.post(`/ausfuehrungen/:id{${UUID}}/loeschen`, async (c) => {
+    const b = await c.req.parseBody();
+    await deleteExecution(sql, c.req.param('id'), c.get('actor'));
+    const target =
+      typeof b.back === 'string' && /^\/objekte\/[0-9a-f-]{36}\/leistungen$/.test(b.back)
+        ? b.back
+        : '/rechnungen/entwuerfe';
+    return back(c, target, { ok: 'Vorgemerkte Ausführung zurückgenommen.' });
+  });
 
   app.get(`/objekte/:id{${UUID}}/leistungen/:sid{${UUID}}`, (c) =>
     sitePage(c, 'leistungen', async (s) => {

@@ -699,3 +699,14 @@ Testadresse.
     Sonderleistung). Bestehende Sonderleistungen/Regie → „je Ausführung“.
   - Leistungszeitraum: im Rechnungsentwurf Pflicht (nur „von“ = ein Tag), Ausstellen ohne Zeitraum gesperrt.
   - Tests: 279 Unit-/DB-Tests (neu § 13b-KoSIT, § 13b-Ablauf, Ausstellen ohne Zeitraum).
+- 2026-10-06: Runde 4b – Leistungen verrichten und Vorfaktura (Ahmed, Fortytools-Bild „Markierte Leistung(en) verrichten“):
+  - Objekt → Leistungen & Preise → „Leistungen verrichten“: Leistungen „je Ausführung“/„einmalig“ (auch Regie) ankreuzen,
+    Menge je Zeile, Datum von (bis leer = ein Tag) → vorgemerkte Ausführung (`service_executions`, Preis eingefroren,
+    feste ID je Formular → doppelt absenden legt nichts doppelt an; Datum muss in der Gültigkeit liegen; „einmalig“ nur
+    einmal). Liste „Vorgemerkt“ mit „zurücknehmen“ und „Rechnungsentwurf daraus erstellen“.
+  - Rechnungen → Entwürfe neu: „Vorgemerkte Leistungen“ je Kunde (Häkchen je Zeile, je Kunde, alle) → „Entwürfe
+    erstellen“ mit Rechnungsdatum (je Objekt bzw. Rechnungsgruppe ein Entwurf wie der Monatslauf; Leistungszeitraum aus
+    den Ausführungen). „Rechnungsentwürfe“ je Kunde mit Summen, Leistungszeitraum (fehlt = rot), Rechnungsdatum, Hinweisen
+    (unfertig, § 13b); Auswahl → Rechnungsdatum setzen / markierte ausstellen (je Rechnung KoSIT, Fehler halten die
+    anderen nicht auf, Meldung je Kunde/Objekt) / markierte löschen (Ausführungen werden wieder frei).
+  - Tests: 281 Unit-/DB-Tests (neu `executions.db.test.ts`), neu `npm run e2e:vorfaktura` (12 Prüfungen).

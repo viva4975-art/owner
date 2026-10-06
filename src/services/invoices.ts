@@ -106,12 +106,13 @@ export async function listInvoices(sql: Sql, filter: { status?: 'draft' | 'issue
   return sql<
     (InvoiceRow & {
       customer_name: string;
+      customer_no: string;
       site_name: string | null;
       original_number: string | null;
       delivery_status: string | null;
     })[]
   >`
-    select i.*, c.name as customer_name, coalesce(s.name, 'Rechnungsgruppe ' || g.name) as site_name,
+    select i.*, c.name as customer_name, c.customer_no, coalesce(s.name, 'Rechnungsgruppe ' || g.name) as site_name,
            o.number as original_number,
            (select d.status::text from app.invoice_deliveries d where d.invoice_id = i.id order by d.created_at desc limit 1) as delivery_status
       from app.invoices i
@@ -167,7 +168,7 @@ export interface DraftInput {
  * Positionen schreiben. `reverseCharge` (§ 13b): true → alle Positionen 0 %, false → 0-%-Positionen werden 19 %,
  * undefined → Steuersätze wie übergeben (Storno/Korrektur übernehmen das Original).
  */
-async function writeLines(
+export async function writeLines(
   tx: Tx,
   invoiceId: string,
   raw: DraftLineInput[],

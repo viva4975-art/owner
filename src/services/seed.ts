@@ -62,6 +62,9 @@ export async function seedDemo(sql: Sql) {
       ('00000000-0000-4000-8000-000000000106', ${DEMO.siteHq}, 'monthly_flat', 'Unterhaltsreinigung', 'LS', 1000, 139900, 1900, '2026-01-01', 1, null),
       ('00000000-0000-4000-8000-000000000107', ${DEMO.siteHq}, 'hourly', 'Regiestunden', 'HUR', 1000, 3150, 1900, '2026-01-01', 2, null)
     on conflict (id) do nothing`;
+  // Sonderleistung und Regie werden je Ausführung abgerechnet
+  await sql`update app.site_services set billing_cycle = 'je_ausfuehrung'
+             where kind in ('special', 'hourly') and billing_cycle = 'monatlich'`;
 }
 
 const D = (n: number) => `00000000-0000-4000-8000-0000000002${String(n).padStart(2, '0')}`;

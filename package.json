@@ -29,6 +29,7 @@
     "e2e:auftrag": "node e2e/auftrag.e2e.mjs",
     "e2e:objekt": "node e2e/objekt.e2e.mjs",
     "e2e:objektseiten": "node e2e/objektseiten.e2e.mjs",
+    "e2e:vorfaktura": "node e2e/vorfaktura.e2e.mjs",
     "e2e:app": "node e2e/app.e2e.mjs",
     "e2e:leistungen": "node e2e/leistungen.e2e.mjs",
     "e2e:mahnung": "node e2e/mahnung.e2e.mjs",

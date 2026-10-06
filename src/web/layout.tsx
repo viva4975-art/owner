@@ -460,6 +460,27 @@ h2.form-section:first-of-type{margin-top:4px}
 .due-banner.warn{background:var(--warn-50);border-color:#f3dfae;border-left-color:var(--warn)}
 .due-banner .ico{flex:none;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;background:var(--err)}
 .due-banner.warn .ico{background:var(--warn)}
+.due-banner.ok{background:#eef7ea;border-color:#cfe6c4;border-left-color:var(--ok)}.due-banner.ok .ico{background:var(--ok)}
+/* Kassenbuch */
+.kb-list{display:flex;flex-direction:column;gap:6px}
+.kb-day{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin:14px 2px 2px;font-size:13px}
+.kb-day-t{font-weight:700;color:var(--ink)}.kb-day-s{display:flex;gap:14px;color:var(--mut)}
+.kb-pos{color:var(--ok)}.kb-neg{color:var(--err)}
+.kb-row{display:grid;grid-template-columns:74px 1fr auto;gap:14px;align-items:center;background:#fff;border:1px solid var(--line);border-left:3px solid var(--err);border-radius:10px;padding:10px 14px;color:var(--ink)}
+.kb-row:hover{text-decoration:none;border-color:var(--line-2)}
+.kb-row:has(.kb-amt .kb-pos){border-left-color:var(--ok)}
+.kb-row.storno{opacity:.55}.kb-row.storno .kb-desc{text-decoration:line-through}
+.kb-date{display:flex;flex-direction:column;font-size:13px}.kb-date span{font-size:11px;color:var(--faint)}
+.kb-desc{font-weight:600}.kb-meta{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin-top:2px}
+.kb-has{color:var(--brand)}
+.kb-amt{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}.kb-saldo{font-size:12px;font-weight:500;color:var(--mut)}
+.kb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
+.kb-card{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;color:var(--ink)}
+.kb-card:hover{text-decoration:none;border-color:var(--line-2)}
+.kb-thumb{height:150px;background:var(--head);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--mut)}
+.kb-thumb img{width:100%;height:100%;object-fit:cover}
+.kb-info{padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+@media (max-width:640px){.kb-row{grid-template-columns:56px 1fr}.kb-amt{grid-column:2;text-align:left}}
 .due-banner .lines{display:flex;flex-direction:column;font-size:13px;color:var(--ink-2);margin-top:2px}
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:18px}
 .stat-card{display:flex;flex-direction:column;gap:2px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;color:var(--ink);transition:border-color .15s,box-shadow .15s}
@@ -733,6 +754,14 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     ],
   },
   {
+    key: 'verwaltung',
+    label: 'Verwaltung',
+    items: [
+      { label: 'Kassenbuch', href: '/kassenbuch' },
+      { label: 'Karten-Belege', href: '/kassenbuch/kartenbelege' },
+    ],
+  },
+  {
     key: 'transfer',
     label: 'Transfer',
     items: [
@@ -742,6 +771,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Export Lexware Lohn (Stammdaten)', href: '/personal/export.csv' },
       { label: 'DATEV-Export', href: '/datev' },
       { label: 'Import aus Fortytools (CSV)', href: '/transfer/import' },
+      { label: 'Import aus der alten App (Backup)', href: '/transfer/altdaten' },
     ],
   },
   {

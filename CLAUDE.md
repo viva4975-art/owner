@@ -787,3 +787,18 @@ Testadresse.
   Kopfzeile mit Logo-Karte und Suchpille, weißes Menü mit unterstrichenem aktiven Punkt, Pillen-Schilder, Reiter als
   Unterstreichung, Knöpfe/Felder mit 8–10 px Radius und goldenem Fokus. Neuer CSS-Block am Ende von `layout.tsx` (der
   klassische Block bleibt als Grundlage darunter, wird überschrieben).
+- 2026-10-06: Runde 7b: Auswahlfelder wie Fortytools – ab 8 Einträgen ins Feld klicken und tippen filtert, Objekte unter dem
+  Kunden gruppiert, Tastatur (↑↓ Enter Esc); echte Auswahlliste bleibt (Formulare unverändert).
+- 2026-10-06: Runde 8a – Kassenbuch wie die alte App (Verwaltung → Kassenbuch): Reiter Kasse / Karten-Belege / Auswertung,
+  Monat wählen, Kacheln Anfangsbestand (festlegen, sonst Übertrag Vormonat) / Einnahmen / Ausgaben / Endbestand, Liste je Tag
+  mit „Saldo Tagesende“, Suche, Typ-Filter, PDF/CSV, Buchung mit Beleg-Foto/PDF (write-once). Karten-Belege als Kacheln mit
+  Vorschau und ZIP-Export (zählen nicht im Bestand). **Anders als die alte App (GoBD § 146 AO):** fortlaufende Kassen-
+  Belegnummer, nie löschen (Storno mit Grund, bleibt sichtbar), Änderungen mit altem/neuem Stand im Protokoll, keine
+  Buchung in der Zukunft, Bestand nie negativ, Monatsabschluss mit Kassensturz (gezählt = Buchbestand) sperrt den Monat.
+- 2026-10-06: Import aus der alten App (Transfer → Import aus der alten App): Backup-ZIP (oder alle Teile backup-teil-aa …)
+  in der App hochladen (fortsetzbar), prüfen (je Bereich neu/schon übernommen, Tabellen im Backup), übernehmen. Idempotent
+  über `legacy_id`, Dateien write-once, Beträge über Text in Cent (kein Gleitkomma). Probelauf mit Ahmeds Backup: 334
+  Kassenbuchungen, 312 Belege, 154 Karten-Belege, 6 Anfangsbestände – Bestände gehen lückenlos ineinander über.
+  **Im Backup fehlen:** Stellenanzeigen, Tiefgaragen-Objekte/-Termine, Grundreinigungs-Planung, Glas-Kunden (gp_kunden).
+  Tests: 301 Unit-/DB-Tests, neu `npm run e2e:kasse` (14 Prüfungen).
+

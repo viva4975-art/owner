@@ -57,7 +57,8 @@ export type LinkTarget = {
     | 'quality_check'
     | 'inbox'
     | 'tender'
-    | 'note';
+    | 'note'
+    | 'legacy_import';
   id: string;
 };
 

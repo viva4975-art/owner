@@ -626,4 +626,19 @@ Testadresse.
   - Kunde: Mahnsperre und „öffentlicher Auftraggeber“ aus dem Formular entfernt (Felder bleiben in der DB); Status
     Kunde (grün) / Interessent (gelb) / ehemaliger Kunde (rot = inaktiv) im Formular, in der Liste und in der Kundenkarte.
   - Tests: 238 Unit-/DB-Tests, alle 22 Browser-Suiten grün (`e2e:rechnungsangaben` neu für Gruppen + Formular).
+- 2026-10-06: Rückmeldungen Teil 2 (Ahmed, Screenshots Fortytools):
+  - Kunde: Hauptansprechpartner aus dem Formular (→ Reiter Kontakte); Abschnitte „Basisdaten“ und „Zusatzinformationen“:
+    USt-IdNr., Kurzinfo, Hinweise zur Rechnungsstellung (erscheinen beim Rechnungsentwurf), Einsatzort-Notizen (erscheinen in
+    der Handy-App bei Einsätzen/QR-Seite), Warnhinweis (rot im Kundenkopf und beim Rechnungsentwurf). Nicht mitgeschickte
+    Felder werden beim Speichern nicht überschrieben (Import/Altdaten bleiben).
+  - Bearbeiten-Seiten (Kunde, Objekt) ohne Reiterleiste, nur Kopf mit Brotkrumen.
+  - Zwei Tabs: Eingaben aller Eingabeformulare (POST) werden je Tab im sessionStorage gesichert (Schlüssel = Seitenadresse +
+    Formularnummer, auch „Neu“-Formulare), nach Speichern verworfen; Browser-Test mit zwei Tabs (25 Prüfungen).
+  - Kundenübersicht wie Fortytools: Aufgaben, Offene Posten (Rechnung, Datum, Tage bis fällig, Soll/Skonto/Haben/Saldo, Auswahl
+    → „Mahnung erstellen“), offene Angebote, Netto-Umsatz (Säulen mit Achse + Monatstabelle mit Summe, nach Rechnungsdatum oder
+    Leistungszeitraum, ab Jahr); rechts Kundenkarte (Adresse, Karte-Link, Rechnungs-E-Mails, Kunde seit, Status), Karte (lädt
+    Google Maps erst auf Klick – Datenschutz), Bankkonten (IBAN-Prüfziffer), Rechnungsgruppen.
+  - Design „klassisch“ statt „KI-Look“: Systemschrift, dunkle Bordeaux-Kopfzeile, weiße Menüleiste, Karteireiter mit weißem
+    Inhaltsbereich, eckige Kästen/Schilder (3 px) ohne Schatten, Tabellenköpfe normal geschrieben.
+  - Tests: 240 Unit-/DB-Tests, alle 22 Browser-Suiten grün.
 

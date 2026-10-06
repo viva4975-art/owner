@@ -39,6 +39,7 @@ export interface LedgerEntry {
   label: string;
   cents: bigint; // positiv = Haben (mindert die Forderung)
   href: string | null;
+  skonto?: boolean; // Skonto-Abzug (eigene Spalte in der Kundenübersicht)
 }
 export async function openItemLedger(
   sql: Sql,
@@ -112,6 +113,7 @@ export async function openItemLedger(
           label: `${METHOD[p.method] ?? p.method}${p.reference ? ` (${p.reference})` : ''}`,
           cents: p.amount_cents,
           href: null,
+          skonto: p.method === 'skonto',
         })),
     ].sort((a, b) => a.date.localeCompare(b.date));
     const g = byCustomer.get(i.customer_id) ?? {

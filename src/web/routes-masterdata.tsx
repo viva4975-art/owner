@@ -44,7 +44,23 @@ import {
 } from '../services/masterdata.js';
 import { listDunnings } from '../services/dunning.js';
 import { listOffers } from '../services/offers.js';
-import { listOpenItems } from '../services/payments.js';
+import { listOpenItems, openItemLedger } from '../services/payments.js';
+import {
+  customerRevenue,
+  customerRevenueYears,
+  deleteCustomerBankAccount,
+  listCustomerBankAccounts,
+  type RevenueMode,
+  saveCustomerBankAccount,
+} from '../services/customer-overview.js';
+import {
+  BankPanel,
+  CustomerLedger,
+  CustomerSide,
+  MapPanel,
+  OpenOffers,
+  RevenuePanel,
+} from './pages-customer.js';
 import { listFiles } from '../services/uploads.js';
 import {
   CUSTOMER_STATUS,
@@ -71,13 +87,11 @@ import { InvoiceTable } from './pages-invoices.js';
 import { ServiceForm, ServicesPanel } from './pages-services.js';
 import {
   type CustomerCounts,
-  CustomerCard,
   CustomerForm,
   CustomerList,
   SiteList,
   GroupSummary,
   CustomerShell,
-  RevenueBars,
   SiteForm,
   SiteOverview,
   SiteShell,
@@ -319,29 +333,64 @@ export function registerMasterdataRoutes(ctx: Ctx) {
 
   app.get(`/kunden/:id{${UUID}}`, (c) =>
     customerPage(c, 'uebersicht', async (cust) => {
-      const [tasks, items, revenue, groups] = await Promise.all([
+      const years = await customerRevenueYears(sql, cust.id);
+      const mode: RevenueMode = c.req.query('umsatz') === 'leistung' ? 'leistung' : 'rechnung';
+      const qYear = Number(c.req.query('ab'));
+      const fromYear = years.includes(qYear) ? qYear : (years.at(-2) ?? years.at(-1)!);
+      const [tasks, ledger, offers, revenue, groups, banks] = await Promise.all([
         listTasks(sql, { status: 'open', entity: { type: 'customer', id: cust.id } }),
-        listOpenItems(sql, cust.id),
-        revenueByMonth(sql, { customerId: cust.id }),
+        openItemLedger(sql, { customerId: cust.id }),
+        listOffers(sql, { customerId: cust.id, status: ['entwurf', 'versendet'] }),
+        customerRevenue(sql, cust.id, mode, fromYear),
         listInvoiceGroups(sql, cust.id),
+        listCustomerBankAccounts(sql, cust.id),
       ]);
       return (
-        <div class="cols">
-          <div>
+        <div class="cust-overview">
+          <div class="main-col">
             <TaskBox tasks={tasks} doneLink={`/kunden/${cust.id}/aufgaben?status=done`} />
-            <h2>Offene Posten</h2>
-            <OpenItemsTable items={items} />
-            <h2>Netto-Umsatz</h2>
-            <RevenueBars rows={revenue} />
+            <CustomerLedger customerId={cust.id} items={ledger[0]?.items ?? []} today={todayBerlin()} />
+            <OpenOffers customerId={cust.id} offers={offers} />
+            <RevenuePanel rows={revenue} mode={mode} fromYear={fromYear} years={years} />
           </div>
-          <div>
-            <CustomerCard c={cust} />
+          <aside class="side-col">
+            <CustomerSide c={cust} groups={groups} />
+            <MapPanel c={cust} />
+            <BankPanel customerId={cust.id} accounts={banks} newId={randomUUID()} />
             <GroupSummary customerId={cust.id} groups={groups} />
-          </div>
+          </aside>
         </div>
       );
     }),
   );
+
+  app.post(`/kunden/:id{${UUID}}/bankkonten/:bid{${UUID}}`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    try {
+      await saveCustomerBankAccount(
+        sql,
+        id,
+        {
+          id: c.req.param('bid'),
+          holder: str(b, 'holder') ?? '',
+          iban: str(b, 'iban') ?? '',
+          bic: str(b, 'bic'),
+        },
+        c.get('actor'),
+      );
+    } catch (e) {
+      if (e instanceof BusinessError) return back(c, `/kunden/${id}`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/kunden/${id}`, { ok: 'Bankkonto gespeichert.' });
+  });
+
+  app.post(`/kunden/:id{${UUID}}/bankkonten/:bid{${UUID}}/loeschen`, async (c) => {
+    const id = c.req.param('id');
+    await deleteCustomerBankAccount(sql, id, c.req.param('bid'), c.get('actor'));
+    return back(c, `/kunden/${id}`, { ok: 'Bankkonto entfernt.' });
+  });
 
   app.get(`/kunden/:id{${UUID}}/bearbeiten`, async (c) => {
     const id = c.req.param('id');

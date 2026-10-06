@@ -604,6 +604,14 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
 
   // ------------------------------------------------------------------ Archiv
 
+  /** PDF einer Rechnung (z. B. aus den Offenen Posten): archiviertes PDF, bei Entwürfen die Vorschau. */
+  app.get(`/rechnungen/:id{${UUID}}/pdf`, async (c) => {
+    const id = c.req.param('id');
+    const [doc] = await sql<{ id: string }[]>`
+      select id from app.invoice_documents where invoice_id = ${id} and kind = 'pdf' order by created_at desc limit 1`;
+    return c.redirect(doc ? `/dokumente/${doc.id}` : `/rechnungen/${id}/vorschau.pdf`);
+  });
+
   app.get(`/dokumente/:id{${UUID}}`, async (c) => {
     const [doc] = await sql<
       { storage_path: string; sha256: string; filename: string; content_type: string }[]

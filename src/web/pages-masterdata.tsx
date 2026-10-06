@@ -384,7 +384,7 @@ export const GroupSummary: FC<{ customerId: string; groups: InvoiceGroupRow[] }>
     </div>
     <div class="list" style="margin-bottom:-22px">
       {groups
-        .filter((g) => g.active)
+        .filter((g) => g.active && g.site_ids.length)
         .map((g) => (
           <div class="row">
             <div class="main">

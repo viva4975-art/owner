@@ -7,7 +7,7 @@ import { Icon } from './icons.js';
 import { canAccess, canOpen } from './permissions.js';
 
 /*
- * Erscheinungsbild „Unternehmenssoftware“: Schrift Inter (lokal), ruhige Grautöne, Bordeaux nur als Akzent
+ * Erscheinungsbild „Unternehmenssoftware“ (Grundlage, überlagert vom klassischen Stil am Ende), Bordeaux als Akzent
  * (Navigation, Hauptaktion, aktive Zustände), klare Hierarchie, Tabellen mit tabellarischen Ziffern.
  * Aufbau weiterhin wie Fortytools (Hauptmenü mit Untermenüs, „Neu anlegen“, Reiter).
  */
@@ -307,6 +307,114 @@ details.pop>.panel .btn{margin-top:12px;width:100%;justify-content:center}
   .kpi .v{font-size:19px}
   .hero .acts{margin-left:0}
 }
+/* ===================================================================================================
+   Klassisches Erscheinungsbild (Ahmed 06.10.2026: „modern wie Fortytools, soll nicht nach KI aussehen“):
+   Systemschrift, dunkle Bordeaux-Kopfzeile, weiße Menüleiste, Karteireiter, eckigere Kästen ohne Schatten,
+   Tabellenköpfe normal geschrieben, kantige Schilder statt runder Pillen.
+   =================================================================================================== */
+:root{--r:4px;--r-sm:3px;--bg:#e9ecf0;--line:#dde1e6;--line-2:#c8ced6;--head:#f3f4f6;--panel:#fff;
+  --ink:#1f2933;--ink-2:#323f4b;--mut:#5f6b7a;--faint:#8a96a3;--sh:none;--sh-2:0 6px 18px rgba(16,24,40,.16)}
+body{font:14px/1.5 "Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;font-feature-settings:normal;-webkit-font-smoothing:auto;background:var(--bg)}
+.top{background:#5c0e27;border-bottom:0}
+.top .in{height:56px}
+.top .logo{background:#fff;padding:4px 8px;border-radius:3px}
+.top .logo img{height:30px}
+.search input{background:#fff;border-color:#fff;border-radius:3px;height:34px}
+.search kbd{font-family:inherit}
+.usr,.top .right a{color:#fff}
+.usr .av{background:#fff;color:#5c0e27}
+.gear{color:#fff;border-radius:3px}.gear:hover{background:rgba(255,255,255,.12);color:#fff}
+.env{border-radius:3px;background:#fff3c4;border-color:#fff3c4;color:#6b4e00}
+nav.menu{background:#fff;backdrop-filter:none;-webkit-backdrop-filter:none;border-bottom:1px solid var(--line-2)}
+nav.menu .in{padding:0 16px;gap:0}
+nav.menu .item>summary,nav.menu a.item{border-radius:0;height:44px;color:var(--brand);font-weight:500;padding:0 14px}
+nav.menu .item>summary .ic{opacity:.7}
+nav.menu .item>summary:hover,nav.menu a.item:hover,nav.menu details[open]>summary{background:#f3f4f6;color:var(--brand-d)}
+nav.menu .item.on>summary,nav.menu a.item.on{background:#e9ecf0;color:var(--ink)}
+details.dd>.drop{border-radius:3px;margin-top:0;padding:4px 0}
+.drop a{border-radius:0;padding:7px 14px;font-weight:400}
+.drop a:hover{background:#f3f4f6;color:var(--brand)}
+.drop .soon{border-radius:3px}
+main{padding-top:28px}
+h1{font-size:30px;font-weight:600;letter-spacing:0;color:#22303f}
+h1 .no{font-weight:400;font-size:.72em}
+h2{font-size:20px;font-weight:600;color:#22303f}
+h3{font-size:15px;font-weight:600}
+.card{border-radius:3px;box-shadow:none;border-color:var(--line)}
+.formfoot{border-radius:0 0 3px 3px}
+.btn{border-radius:3px;font-weight:500;height:34px}
+.btn.sm{height:28px}
+.btn.sec{box-shadow:none}
+.badge{border-radius:3px;font-weight:600;padding:1px 7px}
+.badge.draft::before,.badge.warn::before,.badge.issued::before,.badge.ok::before,.badge.sent::before,.badge.info::before,.badge.failed::before,.badge.err::before{display:none}
+.badge.draft,.badge.warn,.badge.issued,.badge.ok,.badge.sent,.badge.info,.badge.failed,.badge.err{padding-left:7px}
+.chips a{border-radius:3px}
+.chips a.on{background:#5c0e27;border-color:#5c0e27}
+.kpi{border-radius:3px}
+.kpi .v{font-weight:600;letter-spacing:0}
+input,select,textarea{border-radius:3px;height:36px}
+input:focus,select:focus,textarea:focus{box-shadow:0 0 0 2px var(--brand-100)}
+th{text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink-2);background:#f3f4f6;font-weight:600}
+.tbl{border-radius:3px;box-shadow:none}
+tbody tr:hover td{background:#f8f9fb}
+.empty{border-radius:3px;border-style:solid;background:#f3f4f6;text-align:left}
+.list .row:hover{background:#f8f9fb}
+.flash{border-radius:3px}
+/* Karteireiter wie Fortytools */
+.tabs{gap:2px;border-bottom:1px solid var(--line-2);margin-bottom:0}
+.tabs a,.tabs summary{border:1px solid transparent;border-bottom:0;border-radius:3px 3px 0 0;color:var(--brand);font-weight:500;padding:9px 16px;margin-bottom:-1px}
+.tabs a:hover,.tabs summary:hover{color:var(--brand-d);background:rgba(255,255,255,.55)}
+.tabs a.on{background:#fff;border-color:var(--line-2);border-bottom:1px solid #fff;color:var(--ink)}
+.tabs .cnt{border-radius:3px;background:#eef0f3}
+.tabbody{background:#fff;border:1px solid var(--line-2);border-top:0;border-radius:0 0 3px 3px;padding:20px}
+.tabbody>.card:last-child{margin-bottom:0}
+/* Formular-Abschnitte */
+h2.form-section{font-size:17px;margin:26px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+h2.form-section:first-of-type{margin-top:4px}
+/* Kundenübersicht */
+.cust-overview{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px;align-items:start}
+.cust-overview .main-col>*{margin-bottom:26px}
+.panel-title{font-size:22px;font-weight:600;margin:0 0 10px;color:#22303f}
+.panel-title .cnt{font-size:14px;font-weight:400;color:var(--faint)}
+.empty-line{background:#f3f4f6;border:1px solid var(--line);border-radius:3px;padding:12px 16px;color:var(--ink-2)}
+.side-col>.panel{background:#fff;border:1px solid var(--line-2);border-radius:3px;margin-bottom:16px}
+.side-col .panel-head{margin:0;padding:10px 14px;font-size:16px;background:#f3f4f6;border-bottom:1px solid var(--line);font-weight:600}
+.side-col .panel>:not(.panel-head){margin-left:14px;margin-right:14px}
+.side-col .panel>:last-child{margin-bottom:14px}
+.side-card{padding:14px}
+.side-card .side-actions{float:right}
+.side-card .addr{line-height:1.45;margin-bottom:8px}
+.side-card .pin{font-size:12px;margin-left:4px}
+.tag{display:inline-block;padding:1px 7px;border-radius:3px;font-size:12px;font-weight:600;color:#fff;background:#8a96a3}
+.tag.ok{background:#2f8a3e}.tag.warn{background:#c98a00}.tag.err{background:#b03030}
+.map{margin-top:12px;display:grid;gap:6px;justify-items:start}
+.map iframe{width:100%;height:240px;border:0;display:block}
+.map:has(iframe){margin:0!important}
+.bank{position:relative;padding:10px 0;border-bottom:1px solid var(--line);margin-top:6px}
+.bank .bank-del{position:absolute;right:0;top:8px;margin:0}
+.bank-add{margin-top:12px}
+.bank-add>summary{list-style:none;cursor:pointer}.bank-add>summary::-webkit-details-marker{display:none}
+.bank-add form{margin-top:10px}
+.linkbtn{background:none;border:0;padding:0;color:var(--brand-2);font:inherit;cursor:pointer}
+.linkbtn:hover{text-decoration:underline}
+.panel-foot{text-align:right;margin-top:8px}
+.ledger table{background:#fff}
+.ledger th.r .total{background:#fff3b0;padding:3px 8px;border-radius:3px;color:var(--ink)}
+.ledger tbody.ledger-item td{border-bottom:0;padding-top:6px;padding-bottom:4px}
+.ledger tbody.ledger-item tr.sub td{font-size:13px;padding-top:2px;padding-bottom:2px}
+.ledger tbody.ledger-item tr.sum td{border-top:1px solid var(--line);border-bottom:1px solid var(--line-2);padding-bottom:10px}
+.ledger .pdf{font-size:11px;font-weight:600;margin-left:8px;color:var(--mut);border:1px solid var(--line-2);border-radius:3px;padding:0 4px}
+.ledger td.neg{color:var(--err);font-weight:600}.ledger td.pos{color:var(--ok)}
+.revenue{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:20px;align-items:start}
+.revchart{width:100%;height:auto;display:block}
+.revchart .grid-line{stroke:#e3e6ea;stroke-width:1}
+.revchart .axis{font-size:11px;fill:#5f6b7a}
+.revchart .bar{fill:#c98a9e;stroke:#7D1435;stroke-width:1.2}
+.revtable td,.revtable th{padding:6px 10px}
+.revtable tr.sum td{background:#f3f4f6}
+@media (max-width:1000px){.cust-overview,.revenue{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:700px){.tabbody{padding:12px}.tabs a,.tabs summary{padding:8px 10px}}
+
 `;
 
 export const euro = (c: bigint) => formatEuro(c as Cents);

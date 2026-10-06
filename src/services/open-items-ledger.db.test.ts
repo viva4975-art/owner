@@ -60,7 +60,9 @@ describe.skipIf(!available)('Offene Posten (Soll/Haben je Kunde)', () => {
     expect(g!.open_cents).toBe(6900n + 23800n);
     const ia = g!.items.find((i) => i.invoice_id === a)!;
     expect(ia).toMatchObject({ payable_cents: 11900n, open_cents: 6900n });
-    expect(ia.haben).toEqual([{ date: '2026-09-20', label: 'Zahlung (Teil)', cents: 5000n, href: null }]);
+    expect(ia.haben).toEqual([
+      { date: '2026-09-20', label: 'Zahlung (Teil)', cents: 5000n, href: null, skonto: false },
+    ]);
     expect(g!.items.find((i) => i.invoice_id === b)!.haben).toEqual([]);
     expect((await openItemLedger(sql, { q: 'gibt es nicht' })).length).toBe(0);
   });

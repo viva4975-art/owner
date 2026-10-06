@@ -7,6 +7,7 @@ import { importLegacyEc } from './eigen-compliance.js';
 import { uuidOf } from './fortytools-export-import.js';
 import { importLegacyProspects } from './prospects.js';
 import { importLegacyApplicants } from './applicants.js';
+import { importLegacyGlass } from './glass.js';
 import { type UploadConfig, filePath } from './uploads.js';
 import type { Deps } from './workflow.js';
 
@@ -398,6 +399,43 @@ async function applyBew(deps: Deps, b: Backup, actor: string): Promise<string[]>
   return [`Bewerber: ${n} übernommen.`];
 }
 
+// ------------------------------------------------------------------ Glasreinigung
+
+async function analyzeGlass(sql: Sql, b: Backup): Promise<Section> {
+  const o = b.data.gp_objekte ?? [];
+  const tm = b.data.gp_termine ?? [];
+  const [{ n }] =
+    (await sql`select count(*)::int as n from app.glass_objects where legacy_id like 'gpo:%'`) as unknown as [
+      { n: number },
+    ];
+  const kunden = new Set(o.map((x) => String(x.kunde_id ?? x.kunde ?? ''))).size;
+  return {
+    key: 'glas',
+    label: 'Glasreinigung (Objekte, Termine)',
+    total: o.length + tm.length,
+    neu: Math.max(0, o.length - n) + (n ? 0 : tm.length),
+    vorhanden: Math.min(n, o.length),
+    notes: [
+      `${o.length} Objekte, ${tm.length} Termine, ${kunden} Kunden (aus dem Kundennamen am Objekt – Kundentabelle fehlt im Backup)`,
+    ],
+    ready: o.length > 0,
+  };
+}
+
+async function applyGlass(deps: Deps, b: Backup, actor: string): Promise<string[]> {
+  const r = await importLegacyGlass(
+    deps.sql,
+    { objekte: b.data.gp_objekte ?? [], termine: b.data.gp_termine ?? [], kunden: b.data.gp_kunden ?? [] },
+    actor,
+  );
+  const teams = (b.data.gp_settings ?? []) as { id?: unknown; value?: unknown }[];
+  const ta = teams.find((x) => x.id === 'team_a_name')?.value;
+  const tb = teams.find((x) => x.id === 'team_b_name')?.value;
+  if (typeof ta === 'string' && typeof tb === 'string')
+    await deps.sql`update app.glass_settings set team_a_name = ${ta}, team_b_name = ${tb} where id = 1`;
+  return [`Glasreinigung: ${r.customers} Kunden, ${r.objects} Objekte, ${r.apps} Termine übernommen.`];
+}
+
 // ------------------------------------------------------------------ Registry
 
 export type LegacyModule = {
@@ -427,6 +465,13 @@ const MODULES: LegacyModule[] = [
   },
   { key: 'akquise', tables: ['akquise'], folders: [], analyze: analyzeAkq, apply: applyAkq },
   { key: 'bewerber', tables: ['bewerber'], folders: [], analyze: analyzeBew, apply: applyBew },
+  {
+    key: 'glas',
+    tables: ['gp_objekte', 'gp_termine', 'gp_kunden', 'gp_ansprechpartner', 'gp_settings'],
+    folders: [],
+    analyze: analyzeGlass,
+    apply: applyGlass,
+  },
 ];
 
 /** Weitere Module melden sich hier an (Eigen-Compliance, Akquise, Bewerber, Glasreinigung …). */

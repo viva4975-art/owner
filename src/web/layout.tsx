@@ -474,6 +474,29 @@ h2.form-section:first-of-type{margin-top:4px}
 .set-toc a{font-size:14px;color:var(--ink-2);padding:3px 0}
 summary.gear{list-style:none;cursor:pointer}summary.gear::-webkit-details-marker{display:none}
 @media (max-width:860px){.set-wrap{grid-template-columns:1fr}.set-toc{display:none}}
+/* Glasreinigung */
+.badge.gp-team_a{background:#f4e3e7;color:var(--brand)}.badge.gp-team_b{background:#fbf3dc;color:#8b6914}
+.gp-card .lc-head{align-items:flex-start}.gp-date{display:flex;flex-direction:column;align-items:flex-end;min-width:64px}.gp-date b{font-size:18px}.gp-date span{font-size:11px;color:var(--mut)}
+.gp-note{margin-top:8px;padding:6px 10px;background:var(--warn-50);border-radius:8px;font-size:13px}
+.gp-acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.gp-acts .small{margin-right:auto}
+.gp-dayrow{display:grid;grid-template-columns:170px 120px 120px auto;gap:8px;margin-bottom:6px;align-items:center}
+.gp-ap{display:grid;grid-template-columns:1.2fr 1fr 1fr 1.2fr;gap:8px;margin-bottom:6px}
+.gp-wish{display:flex;flex-direction:column;gap:6px}.gp-months{display:flex;flex-wrap:wrap;gap:4px}
+.gp-months label{margin:0}.gp-months input{position:absolute;opacity:0}.gp-months span{display:inline-block;padding:4px 8px;border:1px solid var(--line-2);border-radius:6px;font-size:12px;cursor:pointer}
+.gp-months input:checked+span{background:var(--brand);border-color:var(--brand);color:#fff}
+.gp-unit{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.gp-pick{display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--line);margin:0}
+.gp-calbar .gp-month{min-width:150px;text-align:center}
+.gp-cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.gp-wd{background:var(--head);font-size:12px;font-weight:700;padding:6px;text-align:center}
+.gp-cell{background:#fff;min-height:96px;padding:4px 5px;display:flex;flex-direction:column;gap:2px;font-size:11px}
+.gp-cell.out{opacity:.45}.gp-cell.we{background:#faf8f5}.gp-cell.fer{background:#fdf6e3}.gp-cell.today{background:#eaf2fd}.gp-cell.hol{background:#fdecec}
+.gp-dn{font-weight:700;color:var(--ink);font-size:12px}.gp-f{display:inline-block;margin-left:4px;font-size:9px;background:#b88c1a;color:#fff;border-radius:3px;padding:0 3px}
+.gp-hol{font-size:10px;color:var(--err)}
+.gp-ev{display:block;border-left:3px solid var(--faint);padding:1px 4px;background:var(--head);border-radius:3px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gp-ev.gp-team_a{border-left-color:var(--brand)}.gp-ev.gp-team_b{border-left-color:#b88c1a}.gp-ev span{color:var(--mut)}
+@media print{.menu,.topbar,header,.tabs,.stat-grid,.toolbar,.page-head .acts,.flash{display:none!important}.gp-cell{min-height:80px}}
+@media (max-width:760px){.gp-cal{grid-template-columns:repeat(7,minmax(44px,1fr));font-size:9px}.gp-ev span{display:none}.gp-ap,.gp-dayrow{grid-template-columns:1fr 1fr}}
 /* Bewerber */
 .bw-count{display:flex;flex-direction:column;align-items:flex-end;text-align:right}.bw-count span{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--mut)}
 .bw-count b{font-size:24px}.bw-chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
@@ -814,7 +837,8 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Heute: Soll/Ist', href: '/zeiterfassung' },
       { label: 'Monat: Soll/Ist je Mitarbeiter', href: '/zeiterfassung/monat' },
       { label: 'Urlaubskalender', href: '/urlaub/kalender' },
-      { label: 'Sonderdienste (Glas, Tiefgarage …)', href: '/sonderdienste' },
+      { label: 'Glasreinigung', href: '/glasreinigung', sep: true },
+      { label: 'Sonderdienste (sonstige)', href: '/sonderdienste' },
     ],
   },
   {

@@ -221,6 +221,57 @@ check(
   (await p.locator('.lc', { hasText: `E2E Bewerber ${stamp}` }).count()) === 1,
 );
 
+console.log('9. Glasreinigung');
+await p.goto(`${B}/glasreinigung/kunden`);
+await p.click('a:has-text("+ Neuer Kunde")');
+await p.fill('#name', `E2E Glaskunde ${stamp}`);
+await p.locator('input[name=ap_name]').first().fill('Frau Verwaltung');
+await p.click('form.card button:has-text("Speichern")');
+await p.waitForLoadState();
+check('Glas-Kunde angelegt', (await p.locator('.lc', { hasText: `E2E Glaskunde ${stamp}` }).count()) === 1);
+await p.goto(`${B}/glasreinigung/objekte`);
+await p.click('a:has-text("+ Neues Objekt")');
+await p.selectOption('#kunde', { label: `E2E Glaskunde ${stamp}` });
+await p.fill('#name', `E2E Glasobjekt ${stamp}`);
+await p.fill('#adr', 'Würmtalstr. 10, 81375 München');
+await p.selectOption('#freq', '2');
+await p.locator('.gp-wish > div').nth(0).locator('label:has-text("Apr")').click();
+await p.locator('.gp-wish > div').nth(1).locator('label:has-text("Okt")').click();
+await p.selectOption('#team', 'team_a');
+await p.fill('#std', '6');
+await p.click('form.card button:has-text("Speichern")');
+await p.waitForLoadState();
+const objCard = p.locator('.lc', { hasText: `E2E Glasobjekt ${stamp}` });
+check('Objekt mit Bezirk aus PLZ', (await objCard.innerText()).includes('M-West'));
+await objCard.locator('a:has-text("+ Termin")').click();
+await p.waitForLoadState();
+check('Termin-Vorschlag aus Stunden', (await p.locator('input[name=bis]').first().inputValue()) === '14:00');
+await p.click('#gp-add-day');
+check('Tag hinzufügen', (await p.locator('.gp-dayrow').count()) >= 2);
+await p.locator('[data-del-day]').last().click();
+await p.selectOption('#turnus', '2x');
+await p.click('#gp-termin button:has-text("Speichern")');
+await p.waitForLoadState();
+check('Termin gespeichert', (await flash(p)).includes('gespeichert'), await flash(p));
+const tcard = p.locator('.gp-card', { hasText: `E2E Glasobjekt ${stamp}` }).first();
+await tcard.locator('button:has-text("Erledigt")').click();
+await p.waitForLoadState();
+check('Erledigt legt Folgetermin an', (await flash(p)).includes('Folgetermin'), await flash(p));
+await p.goto(`${B}/glasreinigung/kalender`);
+check(
+  'Kalender mit Termin',
+  (await p.locator('.gp-ev', { hasText: `E2E Glasobjekt ${stamp}` }).count()) >= 0 &&
+    (await p.locator('.gp-cell').count()) >= 28,
+);
+const jp = await p.request.get(`${B}/glasreinigung/jahresplaner?jahr=${new Date().getFullYear()}`);
+check('Jahresplaner', (await jp.text()).includes('Terminübersicht'));
+const csvG = await p.request.get(`${B}/glasreinigung/termine.csv?status=alle`);
+check('CSV-Export', (await csvG.text()).includes(`E2E Glasobjekt ${stamp}`));
+await p.goto(`${B}/glasreinigung/planung`);
+check('Offene Planung', (await p.locator('.stat-card').count()) >= 3);
+await p.goto(`${B}/glasreinigung/autoplan`);
+check('Auto-Plan Schritt 1', (await p.locator('h1').innerText()).includes('Schritt 1'));
+
 await browser.close();
 console.log(`\ne2e:kasse: ${ok} bestanden, ${fail} fehlgeschlagen`);
 process.exit(fail ? 1 : 0);

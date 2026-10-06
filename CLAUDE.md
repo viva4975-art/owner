@@ -831,3 +831,15 @@ Testadresse.
   in der Datenbank (nicht im write-once-Archiv) und werden mit dem Bewerber wirklich gelöscht; abgelehnte Bewerber
   erscheinen nach 6 Monaten als „bitte löschen“ (AGG-Frist). Import: 42 Bewerber (Unterlagen und Stellen nicht im Backup).
   `e2e:kasse` jetzt 37 Prüfungen.
+- 2026-10-06: Runde 8e – Glasreinigung-Planer wie die alte App (Disposition → Glasreinigung): Reiter Termine / Kalender /
+  Offene Planung / Kunden / Objekte, Kacheln Überfällig / Heute / Diese Woche / Objekte. Objekte mit Kunde, Bezirk aus PLZ,
+  Hausmeister, Frequenz (1/2/3/4/6/12× jährlich), Teilbereiche mit eigenem Turnus, Wunschmonate je Termin, Ferien-
+  Präferenz, Anforderungen (Führungszeugnis, Hebebühne), Team A/B (Namen einstellbar), Gesamtstunden. Termine auch
+  mehrtägig (Block-Reinigung), Bestätigung, „Erledigt“ legt den Folgetermin nach Turnus an (genau einmal, DB-Index).
+  Kalender (Feiertage, Schulferien Bayern, Teamfarben, Klick auf Tag = neuer Termin), Monat drucken, Jahresplaner (A4 quer +
+  Terminübersicht) als Druckseite, CSV wie alt. Offene Planung je Jahr (Ist/Soll je Objekt und Teilbereich, Restaufwand).
+  Auto-Planung mit dem Punktesystem der alten App (Wunschmonate, Mo–Fr, Di–Do bevorzugt, Ferienpräferenz, Brückentage,
+  Wochenlast, max. 8 h je Tag, kurze Wege per PLZ, 120 Tage Abstand), Vorschau → übernehmen (feste IDs, nichts doppelt).
+  **Schulferien Bayern liegen nur bis Sommer 2027 vor** (`src/domain/time/school-holidays.ts`, jährlich ergänzen).
+  Import: 21 Kunden (aus dem Kundennamen am Objekt, Kundentabelle fehlt im Backup), 94 Objekte, 49 Termine, Teamnamen.
+  Die bisherigen „Sonderdienste“ bleiben für sonstige Arbeiten. `e2e:kasse` jetzt 48 Prüfungen.

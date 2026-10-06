@@ -7,7 +7,15 @@ import { saveContact } from './crm.js';
 import { saveCustomerBankAccount } from './customer-overview.js';
 import { employeeInput, saveEmployee, validIban } from './employees.js';
 import { BusinessError } from './errors.js';
-import { customerInput, saveCustomer, saveService, saveSite, serviceInput, siteInput } from './masterdata.js';
+import {
+  customerInput,
+  saveCustomer,
+  saveService,
+  saveSite,
+  serviceInput,
+  siteInput,
+  standardGroupId,
+} from './masterdata.js';
 import type { Deps } from './workflow.js';
 
 /*
@@ -862,6 +870,17 @@ export async function applyPlan(
       const input = customerInput.parse(c.input);
       await saveCustomer(sql, c.id, input, p.actor);
       await sql`update app.customers set external_ref = ${c.key} where id = ${c.id} and external_ref is null`;
+      if (c.status === 'vorhanden') {
+        // Rechnungsangaben stehen in der Gruppe „Standard“ – beim Überschreiben mitziehen (z. B. Kunden aus dem alten
+        // Einzel-Import mit Zahlungsziel 30 Tage ohne Skonto)
+        await sql`update app.invoice_groups
+                     set bill_payment_terms_days = coalesce(${input.payment_terms_days ?? null}, bill_payment_terms_days),
+                         bill_skonto_percent_bp = ${input.skonto_percent_bp ?? null},
+                         bill_skonto_days = ${input.skonto_days ?? null},
+                         bill_emails = case when ${input.invoice_emails?.length ?? 0} > 0
+                                            then ${input.invoice_emails ?? []}::text[] else bill_emails end
+                   where id = ${standardGroupId(c.id)}`;
+      }
     });
     if (c.status === 'fehler') continue;
     // Kontakte und Bankkonten: feste IDs, vorhandene bleiben unverändert (außer „aktualisieren“)

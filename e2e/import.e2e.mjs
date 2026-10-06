@@ -42,7 +42,8 @@ const kunden = Buffer.from(
 );
 
 const upload = async (art, name, buffer) => {
-  await p.goto(B + '/transfer/import');
+  await p.goto(B + '/transfer/import#einzeln');
+  await p.locator('#einzeln summary').click();
   await p.selectOption('#art', art);
   await p.setInputFiles('#datei', { name, mimeType: 'text/csv', buffer });
   await p.click('form[action="/transfer/import"] button');

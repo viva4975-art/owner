@@ -141,7 +141,8 @@ describe.skipIf(!available)('Fortytools-Gesamtimport', () => {
     expect(b!.postal_code).toBe('01067');
     expect(b!.warning).toMatch(/§ 13b/);
     // Interessent ohne Nummer bekommt die nächste freie Nummer
-    const [c] = await sql`select customer_no, status, active from app.customers where name = 'Interessent C AG'`;
+    const [c] =
+      await sql`select customer_no, status, active from app.customers where name = 'Interessent C AG'`;
     expect(c).toMatchObject({ customer_no: '30003', status: 'interessent', active: true });
     const sites = await sql<{ site_no: string; name: string }[]>`
       select site_no, name from app.sites where site_no like '300%' order by site_no`;
@@ -208,11 +209,20 @@ describe.skipIf(!available)('Fortytools-Gesamtimport', () => {
     const [e] = await sql<{ id: string }[]>`select id from app.employees where personnel_no = '8001'`;
     await sql`update app.employee_private set tax_id = '12345678901' where employee_id = ${e!.id}`;
     await sql`update app.customers set name = 'geändert' where customer_no = '30001'`;
+    // wie nach dem alten Einzel-Import: Gruppe „Standard“ mit 30 Tagen ohne Skonto
+    await sql`update app.invoice_groups g set bill_payment_terms_days = 30, bill_skonto_percent_bp = null,
+                     bill_skonto_days = null
+                from app.customers c where c.id = g.customer_id and c.customer_no = '30001' and g.name = 'Standard'`;
     const r = await applyPlan(deps, { id: randomUUID(), files: await files(), update: true, actor: 't' });
     expect(r.created).toBe(0);
     expect(r.updated).toBe(15);
     const [k] = await sql`select name from app.customers where customer_no = '30001'`;
     expect(k!.name).toBe('Stadt Musterhausen');
+    const [g] = await sql`
+      select g.bill_payment_terms_days, g.bill_skonto_percent_bp, g.bill_skonto_days
+        from app.invoice_groups g join app.customers c on c.id = g.customer_id
+       where c.customer_no = '30001' and g.name = 'Standard'`;
+    expect(g).toEqual({ bill_payment_terms_days: 20, bill_skonto_percent_bp: 300, bill_skonto_days: 7 });
     const [p] = await sql`select tax_id from app.employee_private where employee_id = ${e!.id}`;
     expect(p!.tax_id).toBe('12345678901');
     const [c] = await sql`select customer_no from app.customers where name = 'Interessent C AG'`;

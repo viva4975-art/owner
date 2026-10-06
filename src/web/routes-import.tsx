@@ -54,51 +54,56 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
             <button class="btn">Prüfen (Vorschau)</button>
           </div>
         </form>
-        <form method="post" action="/transfer/import" enctype="multipart/form-data" class="card">
-          <h3 style="margin-top:0">Einzelne Liste (eigene Spalten)</h3>
-          <p class="small mut" style="margin-top:0">
-            CSV-Export aus Fortytools (oder Excel „Speichern unter → CSV“). Spalten werden über die Kopfzeile
-            erkannt. Reihenfolge: <b>1. Kunden → 2. Objekte → 3. Leistungen</b>. Erst kommt eine Vorschau mit
-            allen Fehlern – gespeichert wird erst nach „Übernehmen“. Zweimal importieren legt nichts doppelt
-            an.
-          </p>
-          <div class="grid">
-            <div>
-              <label for="art">Was wird importiert?</label>
-              <select id="art" name="art">
-                {(Object.keys(IMPORT_KIND) as ImportKind[]).map((k) => (
-                  <option value={k}>{IMPORT_KIND[k]}</option>
-                ))}
-              </select>
+        <details class="card" id="einzeln">
+          <summary>
+            <b>Nur für eigene Tabellen:</b> einzelne Liste mit eigenen Spalten (nicht für die
+            Fortytools-Exporte)
+          </summary>
+          <form method="post" action="/transfer/import" enctype="multipart/form-data" style="margin-top:12px">
+            <p class="small mut" style="margin-top:0">
+              CSV-Export aus Fortytools (oder Excel „Speichern unter → CSV“). Spalten werden über die
+              Kopfzeile erkannt. Reihenfolge: <b>1. Kunden → 2. Objekte → 3. Leistungen</b>. Erst kommt eine
+              Vorschau mit allen Fehlern – gespeichert wird erst nach „Übernehmen“. Zweimal importieren legt
+              nichts doppelt an.
+            </p>
+            <div class="grid">
+              <div>
+                <label for="art">Was wird importiert?</label>
+                <select id="art" name="art">
+                  {(Object.keys(IMPORT_KIND) as ImportKind[]).map((k) => (
+                    <option value={k}>{IMPORT_KIND[k]}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label for="datei">CSV-Datei</label>
+                <input id="datei" type="file" name="datei" accept=".csv,.txt" required />
+              </div>
             </div>
-            <div>
-              <label for="datei">CSV-Datei</label>
-              <input id="datei" type="file" name="datei" accept=".csv,.txt" required />
+            <div class="actions" style="margin-bottom:0">
+              <button class="btn">Prüfen (Vorschau)</button>
             </div>
+          </form>
+          <div class="card">
+            <h3 style="margin-top:0">Erkannte Spalten</h3>
+            <ul class="small">
+              <li>
+                <b>Kunden:</b> Kundennummer*, Name/Firma*, Straße*, PLZ*, Ort*, Name 2, USt-ID, Leitweg-ID,
+                Lieferantennummer, Rechnungs-E-Mail, Rechnungsformat, Zahlungsziel, Skonto, Skontotage,
+                Ansprechpartner, Telefon
+              </li>
+              <li>
+                <b>Objekte:</b> Objektnummer*, Kundennummer*, Bezeichnung*, Straße, PLZ, Ort, Bestellnummer,
+                Vertragsnummer
+              </li>
+              <li>
+                <b>Leistungen:</b> Objektnummer*, Leistung*, Preis*, Menge, Einheit, USt, Beginn, Ende, Zyklus
+                (monatlich, quartalsweise …), Art (Pauschale, Sonderleistung, Regie), Zusatztext
+              </li>
+            </ul>
+            <p class="small mut">* Pflicht. Ohne Rechnungsformat: mit Leitweg-ID XRechnung, sonst ZUGFeRD.</p>
           </div>
-          <div class="actions" style="margin-bottom:0">
-            <button class="btn">Prüfen (Vorschau)</button>
-          </div>
-        </form>
-        <div class="card">
-          <h3 style="margin-top:0">Erkannte Spalten</h3>
-          <ul class="small">
-            <li>
-              <b>Kunden:</b> Kundennummer*, Name/Firma*, Straße*, PLZ*, Ort*, Name 2, USt-ID, Leitweg-ID,
-              Lieferantennummer, Rechnungs-E-Mail, Rechnungsformat, Zahlungsziel, Skonto, Skontotage,
-              Ansprechpartner, Telefon
-            </li>
-            <li>
-              <b>Objekte:</b> Objektnummer*, Kundennummer*, Bezeichnung*, Straße, PLZ, Ort, Bestellnummer,
-              Vertragsnummer
-            </li>
-            <li>
-              <b>Leistungen:</b> Objektnummer*, Leistung*, Preis*, Menge, Einheit, USt, Beginn, Ende, Zyklus
-              (monatlich, quartalsweise …), Art (Pauschale, Sonderleistung, Regie), Zusatztext
-            </li>
-          </ul>
-          <p class="small mut">* Pflicht. Ohne Rechnungsformat: mit Leitweg-ID XRechnung, sonst ZUGFeRD.</p>
-        </div>
+        </details>
         {imports.length > 0 && (
           <div class="card">
             <h3 style="margin-top:0">Bisherige Importe</h3>
@@ -412,7 +417,9 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
           </p>
           <label>
             <input type="checkbox" name="update" /> vorhandene Datensätze mit den Werten aus den Dateien
-            überschreiben (Nummern bleiben; bei Mitarbeitenden nur die Felder aus Fortytools)
+            überschreiben (Nummern bleiben; bei Kunden auch Zahlungsziel/Skonto/E-Mail der Rechnungsgruppe
+            „Standard“; bei Mitarbeitenden nur die Felder aus Fortytools) – empfohlen, wenn schon Kunden über
+            die einzelne Liste importiert wurden
           </label>
           <div class="formfoot">
             <a class="btn sec" href="/transfer/import">

@@ -184,6 +184,38 @@ await p
 await p.waitForLoadState();
 check('Ticket erledigt', !(await body(p)).includes(`Ticket ${tag}`));
 
+// ---------- 9. QM: Einstellungen + Audit Raum für Raum ----------
+console.log('9. QM-Audit');
+await p.goto(B + '/einstellungen/qualitaet');
+await p
+  .locator('table')
+  .first()
+  .locator('tbody tr')
+  .last()
+  .locator('input[name=name]')
+  .fill(`Lichtschalter ${tag}`);
+await p.locator('table').first().locator('tbody tr').last().locator('button').click();
+await p.waitForLoadState();
+check('Kontrollgegenstand angelegt', (await flash(p)).includes('gespeichert'), await flash(p));
+await p.click('button:has-text("Zuordnung speichern")');
+await p.waitForLoadState();
+check('Zuordnung gespeichert', (await flash(p)).includes('Zuordnung gespeichert'));
+await p.goto(B + '/qm/objekt/00000000-0000-4000-8000-000000000012');
+await p.click('summary.fab');
+await Promise.all([p.waitForNavigation(), p.click('button:has-text("Audit starten")')]);
+check('Audit: Raumliste', (await p.locator('a.qm-room').count()) > 0);
+await p.locator('a.qm-room').first().click();
+await p.waitForLoadState();
+await p.locator('.scale input[value="2"]').first().check({ force: true });
+check('Gesamtnote live', (await p.textContent('#gnote')) === '80 %');
+await p.click('button:has-text("Speichern")');
+await p.waitForLoadState();
+check(
+  'Raum gespeichert, weiter zum nächsten Raum',
+  (await flash(p)).includes('80 %') && p.url().includes('/raum/'),
+  await flash(p),
+);
+
 console.log(`\n${ok} bestanden, ${fail} fehlgeschlagen`);
 await browser.close();
 process.exit(fail ? 1 : 0);

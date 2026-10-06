@@ -41,5 +41,7 @@ describe('Zuschläge RTV Gebäudereinigung', () => {
   it('Betrag cent-genau', () => {
     // 90 Min. × 15,00 € × 25 % = 5,625 € → 5,63 €
     expect(surchargeCents(90, 1500n, 2500)).toBe(563n);
+    // 90 Min. × 15,00 € × 30 % = 6,75 €
+    expect(surchargeCents(90, 1500n, 3000)).toBe(675n);
   });
 });

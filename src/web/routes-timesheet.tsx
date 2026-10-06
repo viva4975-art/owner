@@ -652,8 +652,9 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
             ))}
           </div>
           <p class="small mut">
-            Voreinstellung Viva-Deluxe: Sonntag und Feiertag 80 %, hohe Feiertage 200 % (RTV vom 31.10.2019
-            sieht 100 % bzw. 150 % vor – Tarifbindung prüfen). Bei mehreren Zuschlägen zählt nur der höchste.
+            Voreinstellung Viva-Deluxe: Nacht 30 %, Sonntag und Feiertag 80 % (auch regelmäßig am selben
+            Arbeitsplatz), hohe Feiertage 200 % (RTV vom 31.10.2019: Nacht 25 %, Sonntag 100 %, Feiertag 150
+            %, regelmäßig 75 % – Tarifbindung prüfen). Bei mehreren Zuschlägen zählt nur der höchste.
             Steuerfrei nach § 3b EStG sind Zuschläge nur bis 25 % (Nacht), 50 % (Sonntag), 125 % (Feiertag)
             bzw. 150 % (hohe Feiertage) und auf höchstens 50 € Grundlohn je Stunde – den Rest versteuert das
             Lohnprogramm.

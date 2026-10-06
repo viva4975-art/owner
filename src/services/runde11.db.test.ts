@@ -3,7 +3,17 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { requestAbsence } from './absences.js';
 import { payrollCsv, getPayrollSettings, payrollMonth } from './payroll.js';
-import { createTicket, listTickets, qmSites, setTicketStatus } from './qm.js';
+import { createQualityCheck } from './facility.js';
+import {
+  auditRooms,
+  auditScore,
+  createTicket,
+  itemsForRoomType,
+  listTickets,
+  qmSites,
+  saveRoomRatings,
+  setTicketStatus,
+} from './qm.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
@@ -37,14 +47,14 @@ describe.skipIf(!available)('Runde 11: Lohnarten und Urlaubsanspruch (Datenbank)
     expect(r!.minutes.nacht).toBe(240);
     expect(r!.minutes.sonntag).toBe(240);
     expect(r!.minutes.feiertag).toBe(120);
-    expect(r!.surchargeCents.nacht).toBe(1500n); // 4 × 15 € × 25 %
+    expect(r!.surchargeCents.nacht).toBe(1800n); // 4 × 15 € × 30 %
     expect(r!.surchargeCents.sonntag).toBe(4800n); // 4 × 15 € × 80 %
     expect(r!.surchargeCents.feiertag).toBe(2400n); // 2 × 15 € × 80 %
     await sql`update app.employees set regular_sunday_work = true where id = ${emp}`;
     const [r2] = await payrollMonth(sql, '2026-10', emp);
-    expect(r2!.surchargeCents.sonntag).toBe(4500n); // 75 %
+    expect(r2!.surchargeCents.sonntag).toBe(4800n); // 80 %
     const csv = payrollCsv([r2!], await getPayrollSettings(sql), '2026-10');
-    expect(csv).toContain('2026-10;4001;Lohn, Nina;;Zuschlag Sonntagsarbeit;4,00;75;15,00;45,00');
+    expect(csv).toContain('2026-10;4001;Lohn, Nina;;Zuschlag Sonntagsarbeit;4,00;80;15,00;48,00');
   });
 
   it('Urlaub ohne ausreichenden Anspruch wird abgelehnt', async () => {
@@ -108,5 +118,47 @@ describe.skipIf(!available)('Runde 11: Lohnarten und Urlaubsanspruch (Datenbank)
     await expect(createTicket(sql, randomUUID(), { ...p, title: ' ' }, 'qm')).rejects.toThrow(
       /worum es geht/,
     );
+  });
+
+  it('Audit Raum für Raum: Noten, Ja/Nein, Überspringen, Ergebnis, Kontrollzeile', async () => {
+    const room = randomUUID();
+    await sql`insert into app.rooms (id, site_id, name, floor, room_no, room_type_id, floor_covering, area_centi, visits_per_year)
+              values (${room}, ${DEMO.siteSchool}, 'Flur', 'UG', 'A 0.01', '00000000-0000-4000-8000-0000000a0001', 'Parkett', 1200, 260)`;
+    const items = await itemsForRoomType(sql, '00000000-0000-4000-8000-0000000a0001');
+    expect(items.map((i) => i.name)).toContain('Fensterbänke');
+    const qc = randomUUID();
+    await createQualityCheck(
+      sql,
+      qc,
+      { siteId: DEMO.siteSchool, checkDate: '2026-10-06', inspector: 'QM', attendee: null },
+      'qm',
+    );
+    const by = (n: string) => items.find((i) => i.name === n)!.id;
+    await saveRoomRatings(sql, {
+      checkId: qc,
+      roomId: room,
+      ratings: [
+        { itemId: by('Gesamteindruck'), value: 2, skipped: false, note: 'gut', photoIds: [] },
+        { itemId: by('Boden'), value: 1, skipped: false, note: null, photoIds: [] },
+        { itemId: by('Abfallbehälter geleert'), value: 6, skipped: false, note: 'voll', photoIds: [] },
+        { itemId: by('Türen'), value: null, skipped: true, note: null, photoIds: [] },
+      ],
+      actor: 'qm',
+    });
+    expect(await auditScore(sql, qc)).toBe(60); // (80 + 100 + 0) / 3
+    const [r] = (await auditRooms(sql, qc, DEMO.siteSchool)).filter((x) => x.id === room);
+    expect([r!.rated, r!.score]).toEqual([4, 60]);
+    const [line] =
+      await sql`select rating::text, defects from app.quality_check_items where check_id = ${qc} and room_id = ${room}`;
+    expect(line!.rating).toBe('mangel');
+    expect(line!.defects).toEqual(['Abfallbehälter geleert']);
+    await expect(
+      saveRoomRatings(sql, {
+        checkId: qc,
+        roomId: room,
+        ratings: [{ itemId: by('Boden'), value: 9, skipped: false, note: null, photoIds: [] }],
+        actor: 'qm',
+      }),
+    ).rejects.toThrow(/ungültig/);
   });
 });

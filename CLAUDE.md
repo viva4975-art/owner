@@ -940,3 +940,13 @@ Testadresse.
   Objekt (`site_tickets`, Nummer T-JJJJ-NNNN, Raum optional, Priorität, offen → in Arbeit → erledigt, feste ID). Menü
   Disposition → „QM-App (Audit, Handy)“. **Als Nächstes:** Audit-Ablauf (Raum für Raum), Fotos, Lernportal – nach Ahmeds
   Bildern.
+- 2026-10-06: QM-App Schritt 2 + Zuschläge (Ahmed): Nachtzuschlag 30 %, regelmäßige Sonn-/Feiertagsarbeit 80 % (RTV: 25 %/75 %).
+  Einstellungen → **Qualitätsmanagement** (am PC): Kontrollgegenstände (Skala Schulnote 1–6 oder Ja/Nein, Reihenfolge, aktiv,
+  neue anlegen) und Matrix „was wird je Nutzungsart geprüft“ (Nutzungsart = Raumart des Raumbuchs; vorbelegt: Grund-
+  gegenstände für alle, dazu Büro/Klassenzimmer, Sanitär, Flur, Küche). Raumbuch weiter am PC je Objekt. Audit am Handy wie
+  Fortytools: „Audit starten“ → Raumliste mit Suche (Etage | Nr. | Belag | m², Ergebnis je Raum) → Raum: je Gegenstand
+  Skala (links 6 … rechts 1) bzw. Ja/Nein, „Überspringen“, Begründung, bis 5 Fotos (write-once, an der Kontrolle), oben
+  Gesamtnote live, „+ Ticket“ mit Raum vorbelegt; „Speichern & nächster Raum“. Ergebnis = Ø der Räume (Note 1 = 100 %,
+  6 = 0 %; Ja 100 %, Nein 0 %), Raum ≥ 75 % = i. O., sonst Mangel mit den schwachen Gegenständen (→ Bericht/Abschluss wie
+  bisher, Nachbesserungsaufgaben). Bewertungen nach Abschluss unveränderbar (Trigger). Tabellen `qm_items`,
+  `room_type_qm_items`, `quality_check_ratings`.

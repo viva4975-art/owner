@@ -440,8 +440,14 @@ export async function closeQualityCheck(
   const data = await getQualityCheck(sql, id);
   if (!data) throw new BusinessError('Qualitätskontrolle nicht gefunden');
   if (data.check.status !== 'entwurf') return;
-  const { checked, defects, score } = qcScore(data.items);
+  const { checked, defects, score: okScore } = qcScore(data.items);
   if (!checked) throw new BusinessError('Bitte mindestens einen Bereich bewerten');
+  // Audit mit Noten je Kontrollgegenstand (QM-App): Ergebnis = Durchschnitt der Räume
+  const [live] = await sql<{ score: number | null }[]>`
+    select round(avg(room_score))::int as score from (
+      select avg((6 - value) * 20.0) as room_score from app.quality_check_ratings
+       where check_id = ${id} and not skipped and value is not null group by room_id) x`;
+  const score = live?.score ?? okScore;
   let sig: { path: string; sha256: string; name: string } | null = null;
   if (p.signature) {
     if (!p.signature.name.trim()) throw new BusinessError('Bitte Namen des Unterzeichners angeben');

@@ -6,8 +6,20 @@ import { BusinessError } from '../services/errors.js';
 import {
   type QmSite,
   TICKET_PRIO,
+  QM_KIND,
   TICKET_STATUS,
+  auditRooms,
+  auditScore,
+  itemsForRoomType,
+  ratingPercent,
+  roomMeta,
+  roomRatings,
+  saveRoomRatings,
   createTicket,
+  listQmItems,
+  roomTypeItems,
+  saveQmItem,
+  saveRoomTypeItems,
   listTickets,
   qmAudits,
   qmSites,
@@ -15,7 +27,9 @@ import {
 } from '../services/qm.js';
 import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { str } from './forms.js';
-import { dateDe } from './layout.js';
+import { storeFile } from '../services/uploads.js';
+import { createQualityCheck } from '../services/facility.js';
+import { PageHead, dateDe } from './layout.js';
 import { CSS as MCSS, Ic } from './m/routes-mobile.js';
 
 /*
@@ -70,6 +84,34 @@ const QM_CSS = `
 .qm-ticket .s{font-size:17px;font-weight:650;margin-top:4px}
 .qm-ticket form{display:flex;gap:8px;margin-top:10px}.qm-ticket form button{flex:1;min-height:44px;font-size:15px}
 .prio-hoch{color:#b42318;font-weight:700}
+.qm-room{display:flex;align-items:center;gap:12px;padding:16px 4px;border-bottom:1px solid #eadfe3;text-decoration:none;color:inherit}
+.qm-room .t{font-size:18px;font-weight:650}.qm-room .a{font-size:14.5px;color:var(--mut);margin-top:3px}
+.qm-room .r{margin-left:auto;display:flex;align-items:center;gap:10px;color:#7D1435}.qm-room .r svg{width:22px;height:22px}
+.qm-room .pc{font-size:15px;font-weight:700}
+.qm-item{background:rgba(255,255,255,.85);border-radius:20px;padding:16px 18px;box-shadow:0 1px 2px rgba(80,20,40,.05),0 8px 24px rgba(80,20,40,.06)}
+.qm-item .hd{display:flex;align-items:center;gap:10px}.qm-item .hd b{font-size:19px;flex:1}
+.qm-item .skip{display:inline-flex;align-items:center;gap:6px;color:#7D1435;font-size:15px;margin:8px 0 2px}
+.qm-item .skip input{width:18px;height:18px;accent-color:#7D1435}
+.scale{display:flex;justify-content:space-between;align-items:center;position:relative;margin:22px 8px 14px}
+.scale::before{content:"";position:absolute;left:10px;right:10px;top:50%;height:3px;background:#ead6dd;border-radius:3px}
+.scale label{position:relative;margin:0;display:flex;align-items:center;justify-content:center;width:44px;height:44px;cursor:pointer}
+.scale input{position:absolute;opacity:0}
+.scale span{width:16px;height:16px;border-radius:50%;background:#ddd0d5;display:flex;align-items:center;justify-content:center;font-weight:750;color:#fff;font-size:20px;transition:all .12s}
+.scale input:checked+span{width:52px;height:52px;background:linear-gradient(135deg,#b34a6a,#7D1435)}
+.scale input:checked+span::after{content:attr(data-v)}
+.yn{display:flex;justify-content:center;gap:40px;margin:16px 0 8px}
+.yn label{margin:0;cursor:pointer}.yn input{position:absolute;opacity:0}
+.yn span{display:flex;align-items:center;justify-content:center;width:72px;height:72px;border-radius:50%;border:2px solid #d7c3cb;font-size:17px;font-weight:600;color:#7D1435}
+.yn .no span{border-color:#e6a3b4;color:#b42318}
+.yn input:checked+span{background:#7D1435;border-color:#7D1435;color:#fff}.yn .no input:checked+span{background:#b42318;border-color:#b42318}
+.qm-item.skipped .scale,.qm-item.skipped .yn{opacity:.3;pointer-events:none}
+.qm-item textarea{margin-top:6px;font-size:16px;border-radius:12px}
+.qm-photos{display:flex;align-items:center;gap:14px;margin-top:10px}
+.qm-photos label{margin:0;width:84px;height:84px;border-radius:14px;border:1px dashed #d7c3cb;display:flex;align-items:center;justify-content:center;color:#7D1435;cursor:pointer;flex:none}
+.qm-photos label svg{width:34px;height:34px}.qm-photos input{display:none}.qm-photos small{color:var(--mut);font-size:13.5px}
+#qmf{display:flex;flex-direction:column;gap:16px}
+.qm-note{display:flex;justify-content:space-between;align-items:center;padding:4px 4px 0}.qm-note b{font-size:30px;color:#7D1435}
+
 `;
 
 const QmLayout: FC<{
@@ -135,7 +177,7 @@ const Fab: FC<{ siteId?: string }> = ({ siteId }) => (
       <div class="grip" />
       <h3>Was möchten Sie als nächstes erledigen?</h3>
       {siteId ? (
-        <form method="post" action="/qualitaet/neu" style="margin:0">
+        <form method="post" action="/qm/audit/neu" style="margin:0">
           <input type="hidden" name="id" value={randomUUID()} />
           <input type="hidden" name="site_id" value={siteId} />
           <button>
@@ -173,7 +215,7 @@ const scoreCls = (p: number | null) => (p == null ? '' : p >= 90 ? 'hi' : p >= 7
 const dayMonth = (d: string) =>
   new Date(`${d}T12:00:00Z`).toLocaleDateString('de-DE', { timeZone: 'UTC', day: 'numeric', month: 'short' });
 
-export function registerQmRoutes({ app, deps, back }: Ctx) {
+export function registerQmRoutes({ app, deps, back, page }: Ctx) {
   const { sql } = deps;
   const render = (c: Context<AppEnv>, title: string, body: Child) =>
     c.html(
@@ -242,7 +284,7 @@ export function registerQmRoutes({ app, deps, back }: Ctx) {
               <h2>Heute</h2>
             </div>
             {audits.map((a) => (
-              <a class="qm-audit" href={`/qualitaet/${a.id}`}>
+              <a class="qm-audit" href={a.status === 'entwurf' ? `/qm/audit/${a.id}` : `/qualitaet/${a.id}`}>
                 <div>
                   <b>{a.site_name}</b>
                   <div class="m">
@@ -290,7 +332,7 @@ export function registerQmRoutes({ app, deps, back }: Ctx) {
             </summary>
             {list.map((s) =>
               start ? (
-                <form method="post" action="/qualitaet/neu" style="margin:0">
+                <form method="post" action="/qm/audit/neu" style="margin:0">
                   <input type="hidden" name="id" value={randomUUID()} />
                   <input type="hidden" name="site_id" value={s.id} />
                   <button
@@ -374,7 +416,7 @@ export function registerQmRoutes({ app, deps, back }: Ctx) {
         </div>
         {audits.length === 0 && <div class="qm-empty">Noch keine Audits für dieses Objekt.</div>}
         {audits.map((a) => (
-          <a class="qm-audit" href={`/qualitaet/${a.id}`}>
+          <a class="qm-audit" href={a.status === 'entwurf' ? `/qm/audit/${a.id}` : `/qualitaet/${a.id}`}>
             <div>
               <b>{dayMonth(a.check_date)}</b>
               <div class="m">
@@ -389,6 +431,301 @@ export function registerQmRoutes({ app, deps, back }: Ctx) {
         <Fab siteId={id} />
       </>,
     );
+  });
+
+  // ------------------------------------------------------------ Audit Raum für Raum
+  app.post('/qm/audit/neu', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const id = str(b, 'id') ?? '';
+    const siteId = str(b, 'site_id') ?? '';
+    if (!/^[0-9a-f-]{36}$/.test(id) || !/^[0-9a-f-]{36}$/.test(siteId))
+      throw new BusinessError('Bitte Objekt wählen');
+    assertSite(c, siteId);
+    const u = c.get('user');
+    await createQualityCheck(
+      sql,
+      id,
+      { siteId, checkDate: todayBerlin(), inspector: u.name || u.login, attendee: null },
+      c.get('actor'),
+    );
+    return c.redirect(`/qm/audit/${id}`, 303);
+  });
+
+  const loadAudit = async (c: Context<AppEnv>, id: string) => {
+    const [qc] = await sql<
+      {
+        id: string;
+        site_id: string;
+        status: string;
+        check_date: string;
+        number: string;
+        site_name: string;
+        site_no: string;
+      }[]
+    >`
+      select q.id, q.site_id, q.status::text, q.check_date::text, q.number, s.name as site_name, s.site_no
+        from app.quality_checks q join app.sites s on s.id = q.site_id where q.id = ${id}`;
+    if (qc) assertSite(c, qc.site_id);
+    return qc;
+  };
+
+  app.get(`/qm/audit/:id{${UUID}}`, async (c) => {
+    const qc = await loadAudit(c, c.req.param('id'));
+    if (!qc) return c.notFound();
+    const q = c.req.query('q') ?? '';
+    const rooms = await auditRooms(sql, qc.id, qc.site_id, q);
+    const score = await auditScore(sql, qc.id);
+    const done = rooms.filter((r) => r.rated > 0).length;
+    return render(
+      c,
+      qc.site_name,
+      <>
+        <div class="qm-top">
+          <a href={`/qm/objekt/${qc.site_id}`} aria-label="zurück">
+            <Ic n="back" />
+          </a>
+          <h1>
+            {qc.site_no} - {qc.site_name}
+          </h1>
+          <span style="width:36px" />
+        </div>
+        <div class="qm-note">
+          <span class="mut">
+            {qc.number} · {done} von {rooms.length} Räumen
+          </span>
+          <b>{score != null ? `${score} %` : '–'}</b>
+        </div>
+        <form method="get" class="qm-search">
+          <Ic n="search" />
+          <input name="q" value={q} placeholder="z. B. Name, Raum, Stockwerk …" aria-label="Suche" />
+        </form>
+        <div class="qm-sec">
+          <h2>Räume</h2>
+        </div>
+        {rooms.length === 0 && (
+          <div class="qm-empty">
+            Kein Raumbuch für dieses Objekt. Bitte am PC unter Objekt → Raumbuch die Räume anlegen.
+          </div>
+        )}
+        <div>
+          {rooms.map((r) => (
+            <a class="qm-room" href={`/qm/audit/${qc.id}/raum/${r.id}`}>
+              <div>
+                <div class="t">{r.name}</div>
+                <div class="a">{roomMeta(r)}</div>
+              </div>
+              <span class="r">
+                {r.score != null && (
+                  <span class={`pc qm-score ${r.score >= 90 ? 'hi' : r.score >= 75 ? 'mid' : 'lo'}`}>
+                    {r.score} %
+                  </span>
+                )}
+                <Ic n="arrow" />
+              </span>
+            </a>
+          ))}
+        </div>
+        {qc.status === 'entwurf' && done > 0 && (
+          <a class="big go" href={`/qualitaet/${qc.id}/abschliessen`}>
+            Audit abschließen
+          </a>
+        )}
+      </>,
+    );
+  });
+
+  app.get(`/qm/audit/:id{${UUID}}/raum/:room{${UUID}}`, async (c) => {
+    const qc = await loadAudit(c, c.req.param('id'));
+    if (!qc) return c.notFound();
+    const [room] = (await auditRooms(sql, qc.id, qc.site_id)).filter((r) => r.id === c.req.param('room'));
+    if (!room) return c.notFound();
+    const [items, existing] = await Promise.all([
+      itemsForRoomType(sql, room.room_type_id),
+      roomRatings(sql, qc.id, room.id),
+    ]);
+    const val = new Map(existing.map((e) => [e.item_id, e]));
+    const locked = qc.status !== 'entwurf';
+    return render(
+      c,
+      room.name,
+      <>
+        <div class="qm-top">
+          <a href={`/qm/audit/${qc.id}`} aria-label="zurück">
+            <Ic n="back" />
+          </a>
+          <h1>
+            {room.name}
+            <div class="small mut" style="font-weight:400">
+              {roomMeta(room)}
+            </div>
+          </h1>
+          <a
+            href={`/qm/tickets/neu?objekt=${qc.site_id}&raum=${room.id}`}
+            style="width:auto;color:#7D1435;font-size:15px"
+          >
+            + Ticket
+          </a>
+        </div>
+        <div class="qm-note">
+          <span>Gesamtnote</span>
+          <b id="gnote">{room.score != null ? `${room.score} %` : '0 %'}</b>
+        </div>
+        <form
+          method="post"
+          action={`/qm/audit/${qc.id}/raum/${room.id}`}
+          enctype="multipart/form-data"
+          id="qmf"
+        >
+          {items.map((it) => {
+            const e = val.get(it.id);
+            return (
+              <div class={`qm-item${e?.skipped ? ' skipped' : ''}`} data-item>
+                <div class="hd">
+                  <b>{it.name}</b>
+                  {e && !e.skipped && e.value != null && (
+                    <span class="mut">
+                      {it.kind === 'janein' ? (e.value === 1 ? 'Ja' : 'Nein') : e.value}
+                    </span>
+                  )}
+                </div>
+                <label class="skip">
+                  <input
+                    type="checkbox"
+                    name={`s_${it.id}`}
+                    value="1"
+                    checked={!!e?.skipped}
+                    disabled={locked}
+                  />{' '}
+                  Überspringen
+                </label>
+                {it.kind === 'janein' ? (
+                  <div class="yn">
+                    <label class="no">
+                      <input
+                        type="radio"
+                        name={`v_${it.id}`}
+                        value="6"
+                        checked={e?.value === 6}
+                        disabled={locked}
+                      />
+                      <span>Nein</span>
+                    </label>
+                    <label>
+                      <input
+                        type="radio"
+                        name={`v_${it.id}`}
+                        value="1"
+                        checked={e?.value === 1}
+                        disabled={locked}
+                      />
+                      <span>Ja</span>
+                    </label>
+                  </div>
+                ) : (
+                  <div class="scale" title="links 6 (ungenügend) … rechts 1 (sehr gut)">
+                    {[6, 5, 4, 3, 2, 1].map((v) => (
+                      <label>
+                        <input
+                          type="radio"
+                          name={`v_${it.id}`}
+                          value={String(v)}
+                          checked={e?.value === v}
+                          disabled={locked}
+                        />
+                        <span data-v={String(v)} />
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <textarea
+                  name={`n_${it.id}`}
+                  rows={3}
+                  placeholder="Bitte geben Sie einen Grund für Ihre Bewertung an. Dies kann jedes Feedback sein, positiv oder negativ."
+                  disabled={locked}
+                >
+                  {e?.note ?? ''}
+                </textarea>
+                <div class="qm-photos">
+                  {!locked && (
+                    <label>
+                      <Ic n="plus" />
+                      <input type="file" name={`f_${it.id}`} accept="image/*" multiple />
+                    </label>
+                  )}
+                  <small>
+                    {e?.photo_ids.length ? `${e.photo_ids.length} Foto(s) gespeichert · ` : ''}Laden Sie bis
+                    zu 5 Fotos hoch
+                  </small>
+                </div>
+              </div>
+            );
+          })}
+          {!locked && <button class="big go">Speichern &amp; nächster Raum</button>}
+        </form>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var f=document.getElementById('qmf');if(!f)return;
+function upd(){var s=0,n=0;f.querySelectorAll('[data-item]').forEach(function(d){var sk=d.querySelector('input[type=checkbox]');d.classList.toggle('skipped',sk&&sk.checked);if(sk&&sk.checked)return;var r=d.querySelector('input[type=radio]:checked');if(r){s+=(6-Number(r.value))*20;n++}});document.getElementById('gnote').textContent=(n?Math.round(s/n):0)+' %'}
+f.addEventListener('change',upd);
+f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('change',function(){if(i.files.length>5){alert('Bitte höchstens 5 Fotos');i.value=''}var sm=i.closest('.qm-photos').querySelector('small');if(i.files.length)sm.textContent=i.files.length+' Foto(s) ausgewählt'})});})();`,
+          }}
+        />
+      </>,
+    );
+  });
+
+  app.post(`/qm/audit/:id{${UUID}}/raum/:room{${UUID}}`, async (c) => {
+    const qc = await loadAudit(c, c.req.param('id'));
+    if (!qc) return c.notFound();
+    const roomId = c.req.param('room');
+    const rooms = await auditRooms(sql, qc.id, qc.site_id);
+    const room = rooms.find((r) => r.id === roomId);
+    if (!room) return c.notFound();
+    const items = await itemsForRoomType(sql, room.room_type_id);
+    const b = await c.req.parseBody({ all: true });
+    const cfg = { dir: deps.env.FILES_DIR, maxBytes: deps.env.UPLOAD_MAX_BYTES };
+    const ratings = [];
+    for (const it of items) {
+      const skipped = str(b, `s_${it.id}`) === '1';
+      const raw = str(b, `v_${it.id}`);
+      const value = raw && /^[1-6]$/.test(raw) ? Number(raw) : null;
+      const note = str(b, `n_${it.id}`);
+      if (!skipped && value == null && !note) continue; // nicht bewertet
+      if (!skipped && value == null) throw new BusinessError(`${it.name}: bitte bewerten oder überspringen`);
+      const files = ([] as unknown[])
+        .concat(b[`f_${it.id}`] ?? [])
+        .filter((f): f is File => f instanceof File && f.size > 0);
+      if (files.length > 5) throw new BusinessError(`${it.name}: höchstens 5 Fotos`);
+      const photoIds: string[] = [];
+      for (const f of files) {
+        if (!/^image\//.test(f.type)) throw new BusinessError('Nur Fotos (Bilder) hochladen');
+        const fid = randomUUID();
+        await storeFile(
+          sql,
+          cfg,
+          {
+            id: fid,
+            name: f.name || 'foto.jpg',
+            type: f.type,
+            data: new Uint8Array(await f.arrayBuffer()),
+            link: { type: 'quality_check', id: qc.id },
+            category: `Audit ${room.name} – ${it.name}`.slice(0, 120),
+          },
+          c.get('actor'),
+        );
+        photoIds.push(fid);
+      }
+      ratings.push({ itemId: it.id, value, skipped, note, photoIds });
+    }
+    await saveRoomRatings(sql, { checkId: qc.id, roomId, ratings, actor: c.get('actor') });
+    // nächster noch nicht bewerteter Raum
+    const idx = rooms.findIndex((r) => r.id === roomId);
+    const next = [...rooms.slice(idx + 1), ...rooms.slice(0, idx)].find((r) => r.rated === 0);
+    const pct = ratings.filter((r) => !r.skipped && r.value).map((r) => ratingPercent(r.value!));
+    const msg = pct.length
+      ? `${room.name}: ${Math.round(pct.reduce((a, x) => a + x, 0) / pct.length)} %`
+      : 'Gespeichert.';
+    return back(c, next ? `/qm/audit/${qc.id}/raum/${next.id}` : `/qm/audit/${qc.id}`, { ok: msg });
   });
 
   // ------------------------------------------------------------ Tickets
@@ -475,6 +812,7 @@ export function registerQmRoutes({ app, deps, back }: Ctx) {
 
   app.get('/qm/tickets/neu', async (c) => {
     const siteId = c.req.query('objekt') ?? '';
+    const roomPre = c.req.query('raum') ?? '';
     const sites = await qmSites(sql, c.get('sites'));
     const rooms = /^[0-9a-f-]{36}$/.test(siteId)
       ? await sql<{ id: string; label: string }[]>`
@@ -514,7 +852,9 @@ export function registerQmRoutes({ app, deps, back }: Ctx) {
                 <select id="room" name="room_id">
                   <option value="">– ganzes Objekt –</option>
                   {rooms.map((r) => (
-                    <option value={r.id}>{r.label}</option>
+                    <option value={r.id} selected={r.id === roomPre}>
+                      {r.label}
+                    </option>
                   ))}
                 </select>
               </>
@@ -573,5 +913,160 @@ export function registerQmRoutes({ app, deps, back }: Ctx) {
     return back(c, ref ? new URL(ref).pathname + new URL(ref).search : '/qm/tickets', {
       ok: 'Ticket aktualisiert.',
     });
+  });
+
+  // ------------------------------------------------------------ Einstellungen (am PC)
+  app.get('/einstellungen/qualitaet', async (c) => {
+    const [items, m] = await Promise.all([listQmItems(sql), roomTypeItems(sql)]);
+    const active = items.filter((i) => i.active);
+    return page(
+      c,
+      'Qualitätsmanagement',
+      'einstellungen',
+      <>
+        <PageHead title="Qualitätsmanagement" crumbs={[['Einstellungen', '/einstellungen']]} />
+        <p class="mut" style="max-width:900px">
+          Kontrollgegenstände werden im Audit je Raum bewertet – welche, hängt von der Nutzungsart des Raums
+          (Raumbuch) ab. Skala: Schulnote 1 (sehr gut) bis 6 (ungenügend) = 100 % bis 0 %; Ja/Nein: Ja = 100
+          %, Nein = 0 %. Nutzungsarten selbst pflegen Sie unter{' '}
+          <a href="/raumbuch/raumarten">Raumarten / Nutzungsarten</a>, das Raumbuch je Objekt unter Objekt →
+          Raumbuch.
+        </p>
+        <h2>Kontrollgegenstände</h2>
+        <div class="tbl" style="max-width:820px">
+          <table>
+            <thead>
+              <tr>
+                <th>Bezeichnung</th>
+                <th>Bewertung</th>
+                <th class="r">Reihenfolge</th>
+                <th>aktiv</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...items, null].map((it) => {
+                const id = it?.id ?? randomUUID();
+                const f = `qi-${id.slice(0, 8)}`;
+                return (
+                  <tr>
+                    <td>
+                      <form id={f} method="post" action={`/einstellungen/qualitaet/gegenstand/${id}`} />
+                      <input
+                        form={f}
+                        name="name"
+                        value={it?.name ?? ''}
+                        placeholder="neuer Kontrollgegenstand, z. B. Lichtschalter"
+                        aria-label="Bezeichnung"
+                      />
+                    </td>
+                    <td style="width:190px">
+                      <select form={f} name="kind" aria-label="Bewertung" data-nosearch>
+                        {Object.entries(QM_KIND).map(([k, v]) => (
+                          <option value={k} selected={(it?.kind ?? 'note') === k}>
+                            {v}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td style="width:110px">
+                      <input
+                        form={f}
+                        name="sort_order"
+                        class="right"
+                        value={it ? String(it.sort_order) : ''}
+                        aria-label="Reihenfolge"
+                      />
+                    </td>
+                    <td style="width:60px">
+                      <input
+                        type="checkbox"
+                        form={f}
+                        name="active"
+                        checked={it ? it.active : true}
+                        aria-label="aktiv"
+                      />
+                    </td>
+                    <td style="width:110px">
+                      <button class="btn sm sec" form={f}>
+                        {it ? 'Speichern' : 'Anlegen'}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <h2 style="margin-top:28px">Was wird je Nutzungsart geprüft?</h2>
+        <form method="post" action="/einstellungen/qualitaet/zuordnung" class="card">
+          <div class="tbl" style="overflow-x:auto">
+            <table class="qm-matrix">
+              <thead>
+                <tr>
+                  <th>Nutzungsart</th>
+                  {active.map((i) => (
+                    <th class="c" title={QM_KIND[i.kind]}>
+                      {i.name}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {m.types
+                  .filter((t) => t.active)
+                  .map((t) => (
+                    <tr>
+                      <td>
+                        <b>{t.name}</b>
+                        <div class="small mut">{t.rooms} Räume</div>
+                      </td>
+                      {active.map((i) => (
+                        <td class="c">
+                          <input
+                            type="checkbox"
+                            name="pair"
+                            value={`${t.id}:${i.id}`}
+                            checked={m.links.has(`${t.id}:${i.id}`)}
+                            aria-label={`${t.name}: ${i.name}`}
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+          <div class="formfoot">
+            <button class="btn">Zuordnung speichern</button>
+          </div>
+        </form>
+        <style
+          dangerouslySetInnerHTML={{
+            __html:
+              '.qm-matrix th.c,.qm-matrix td.c{text-align:center;min-width:86px}.qm-matrix th.c{font-size:12px;line-height:1.25;vertical-align:bottom}',
+          }}
+        />
+      </>,
+    );
+  });
+
+  app.post(`/einstellungen/qualitaet/gegenstand/:id{${UUID}}`, async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const so = str(b, 'sort_order');
+    await saveQmItem(sql, c.req.param('id'), {
+      name: str(b, 'name') ?? '',
+      kind: str(b, 'kind') ?? 'note',
+      active: b.active === 'on',
+      sortOrder: so && /^\d{1,5}$/.test(so) ? Number(so) : null,
+    });
+    return back(c, '/einstellungen/qualitaet', { ok: 'Kontrollgegenstand gespeichert.' });
+  });
+
+  app.post('/einstellungen/qualitaet/zuordnung', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const v = b.pair;
+    await saveRoomTypeItems(sql, (Array.isArray(v) ? v : v ? [v] : []).map(String));
+    return back(c, '/einstellungen/qualitaet', { ok: 'Zuordnung gespeichert.' });
   });
 }

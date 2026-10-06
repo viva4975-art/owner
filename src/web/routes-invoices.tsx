@@ -22,6 +22,7 @@ import {
   getCustomer,
   getSite,
   listCustomers,
+  listServiceTypes,
   listServices,
   listSites,
 } from '../services/masterdata.js';
@@ -467,6 +468,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         services={services}
         partials={partials as never}
         selectedPartials={(data?.prepayments ?? []).map((p) => p.partial_invoice_id)}
+        types={await listServiceTypes(sql)}
       />,
     );
   });
@@ -635,7 +637,12 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
       c,
       'Rechnungskorrektur',
       'rechnungen',
-      <CorrectionEditor id={data.invoice.id} original={data.invoice} newId={randomUUID()} />,
+      <CorrectionEditor
+        id={data.invoice.id}
+        original={data.invoice}
+        newId={randomUUID()}
+        types={await listServiceTypes(sql)}
+      />,
     );
   });
 

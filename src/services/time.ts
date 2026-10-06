@@ -39,6 +39,10 @@ export interface TimeEntry {
   start_at: Date;
   end_at: Date | null;
   break_minutes: number;
+  /** Beginn der Pause (Ende = Beginn + break_minutes) */
+  break_start_at: Date | null;
+  /** true = automatisch gesetzt, vom Mitarbeiter nicht geändert */
+  break_auto: boolean;
   source: TimeSource;
   status: TimeStatus;
   via_qr: boolean;
@@ -99,6 +103,35 @@ export function suggestedBreak(grossMinutes: number): number {
   if (grossMinutes > 9 * 60) return 45;
   if (grossMinutes > 6 * 60) return 30;
   return 0;
+}
+
+/** Pause beginnt automatisch nach 4 Std. Arbeit (Pflicht spätestens nach 6 Std., § 4 ArbZG). */
+export const BREAK_AFTER_MINUTES = 240;
+
+/** Automatische Pause: gesetzliche Mindestdauer, Beginn nach 4 Std. */
+export function autoBreak(startAt: Date, grossMinutes: number): { minutes: number; start: Date | null } {
+  const minutes = suggestedBreak(grossMinutes);
+  return minutes
+    ? { minutes, start: new Date(startAt.getTime() + BREAK_AFTER_MINUTES * 60000) }
+    : { minutes: 0, start: null };
+}
+
+/** Pausenbeginn nach 4 Std., höchstens so spät, dass die Pause vor dem Ende liegt. */
+export function placeBreak(start: Date, end: Date, minutes: number): Date | null {
+  if (!minutes) return null;
+  const latest = end.getTime() - minutes * 60000;
+  return new Date(Math.max(start.getTime(), Math.min(start.getTime() + BREAK_AFTER_MINUTES * 60000, latest)));
+}
+
+/** Lage der Pause für Anzeige/Stundenzettel (gespeichert oder – bei alten Einträgen – nach 4 Std.). */
+export function breakRange(
+  e: Pick<TimeEntry, 'start_at' | 'end_at' | 'break_minutes'> & { break_start_at?: Date | null },
+) {
+  if (!e.break_minutes) return null;
+  const from =
+    e.break_start_at ??
+    placeBreak(e.start_at, e.end_at ?? new Date(e.start_at.getTime() + 24 * 3600e3), e.break_minutes)!;
+  return { from, to: new Date(from.getTime() + e.break_minutes * 60000) };
 }
 
 const entrySelect = (sql: Sql | Tx) => sql`
@@ -230,25 +263,91 @@ export async function clockIn(
 
 export async function clockOut(
   sql: Sql,
-  p: { employeeId: string; breakMinutes: number; actor: string; note?: string | null },
+  p: {
+    employeeId: string;
+    /** null = automatische Pause (bzw. die vorher in der App geänderte Pause) */
+    breakMinutes: number | null;
+    actor: string;
+    note?: string | null;
+  },
 ) {
-  if (!Number.isInteger(p.breakMinutes) || p.breakMinutes < 0 || p.breakMinutes > 240) {
+  if (
+    p.breakMinutes !== null &&
+    (!Number.isInteger(p.breakMinutes) || p.breakMinutes < 0 || p.breakMinutes > 240)
+  ) {
     throw new BusinessError('Pause ungültig', 'bad_break');
   }
   return withActor(sql, p.actor, null, async (tx) => {
-    const [run] = await tx<{ id: string; start_at: Date }[]>`
-      select id, start_at from app.time_entries where employee_id = ${p.employeeId} and status = 'laeuft' for update`;
+    const [run] = await tx<
+      {
+        id: string;
+        start_at: Date;
+        break_minutes: number;
+        break_start_at: Date | null;
+        break_auto: boolean;
+      }[]
+    >`
+      select id, start_at, break_minutes, break_start_at, break_auto from app.time_entries
+       where employee_id = ${p.employeeId} and status = 'laeuft' for update`;
     if (!run) return null; // schon ausgestempelt (z. B. zweimal getippt)
     const minutes = Math.floor((Date.now() - run.start_at.getTime()) / 60000);
     if (minutes > 16 * 60) {
       throw new BusinessError('Stempelung läuft seit über 16 Stunden – bitte im Büro melden', 'too_long');
     }
-    if (p.breakMinutes >= Math.max(1, minutes))
+    let brk: { minutes: number; start: Date | null; auto: boolean };
+    if (p.breakMinutes !== null) {
+      brk = {
+        minutes: p.breakMinutes,
+        start: p.breakMinutes ? autoBreak(run.start_at, 24 * 60).start : null,
+        auto: false,
+      };
+    } else if (run.break_start_at && !run.break_auto) {
+      // vom Mitarbeiter in der App geändert („später Pause“) → so übernehmen
+      brk = { minutes: run.break_minutes, start: run.break_start_at, auto: false };
+    } else {
+      // nicht geändert → gesetzliche Pause automatisch, Beginn nach 4 Std.
+      const a = autoBreak(run.start_at, minutes);
+      brk = { ...a, auto: true };
+    }
+    // Pause, die nach dem Ende läge, wird ans Ende gelegt (z. B. früher gegangen)
+    if (brk.start && brk.minutes) {
+      const latest = run.start_at.getTime() + Math.max(0, minutes - brk.minutes) * 60000;
+      if (brk.start.getTime() > latest) brk.start = new Date(latest);
+    }
+    if (brk.minutes && brk.minutes >= Math.max(1, minutes))
       throw new BusinessError('Pause ist länger als die Arbeitszeit', 'bad_break');
     await tx`update app.time_entries
                 set end_at = greatest(date_trunc('minute', now()), start_at + interval '1 minute'),
-                    break_minutes = ${p.breakMinutes}, status = 'erfasst', note = coalesce(${p.note ?? null}, note)
+                    break_minutes = ${brk.minutes}, break_start_at = ${brk.minutes ? brk.start : null},
+                    break_auto = ${brk.auto}, status = 'erfasst', note = coalesce(${p.note ?? null}, note)
               where id = ${run.id}`;
+    return run.id;
+  });
+}
+
+/** Mitarbeiter verschiebt/ändert die Pause der laufenden Stempelung („ich mache später Pause“). */
+export async function setRunningBreak(
+  sql: Sql,
+  p: { employeeId: string; start: string; minutes: number; actor: string },
+) {
+  if (!HHMM.test(p.start)) throw new BusinessError('Uhrzeit bitte als HH:MM', 'bad_time');
+  if (!Number.isInteger(p.minutes) || p.minutes < 0 || p.minutes > 240)
+    throw new BusinessError('Pause ungültig', 'bad_break');
+  return withActor(sql, p.actor, 'Pause in der App geändert', async (tx) => {
+    const [run] = await tx<{ id: string; work_date: string; start_at: Date }[]>`
+      select id, work_date::text, start_at from app.time_entries
+       where employee_id = ${p.employeeId} and status = 'laeuft' for update`;
+    if (!run) throw new BusinessError('Nicht eingestempelt', 'not_running');
+    const [{ at }] = (await tx`
+      select ((${run.work_date}::date + ${p.start}::time) at time zone 'Europe/Berlin') as at`) as unknown as [
+      { at: Date },
+    ];
+    // Pause über Mitternacht bzw. vor Arbeitsbeginn → am Folgetag bzw. ungültig
+    const start = at < run.start_at ? new Date(at.getTime() + 864e5) : at;
+    if (start.getTime() - run.start_at.getTime() > 16 * 3600e3)
+      throw new BusinessError('Pausenbeginn liegt nicht in der Arbeitszeit', 'bad_break');
+    await tx`update app.time_entries set break_minutes = ${p.minutes},
+               break_start_at = ${p.minutes ? start : null}, break_auto = false where id = ${run.id}`;
     return run.id;
   });
 }
@@ -669,10 +768,15 @@ export async function confirmPlanned(
     const end = tx`((${p.date}::date + ${plan.end_time}::time) at time zone 'Europe/Berlin')`;
     const [{ s, e }] = (await tx`select ${start} as s, ${end} as e`) as unknown as [{ s: Date; e: Date }];
     await assertNoOverlap(tx, p.employeeId, s.toISOString(), e.toISOString(), null);
+    // Pause wie geplant, mindestens die gesetzliche (§ 4 ArbZG), Lage nach 4 Std.
+    const gross = Math.round((e.getTime() - s.getTime()) / 60000);
+    const brk = Math.max(plan.break_minutes, suggestedBreak(gross));
+    const brkStart = placeBreak(s, e, brk);
     await tx`
-      insert into app.time_entries (id, employee_id, site_id, work_date, start_at, end_at, break_minutes, source, status, shift_plan_id, created_by)
-      values (${id}, ${p.employeeId}, ${plan.site_id}, ${p.date}, ${s}, ${e}, ${plan.break_minutes}, 'soll_bestaetigt', 'erfasst',
-              ${plan.id}, ${p.actor})`;
+      insert into app.time_entries (id, employee_id, site_id, work_date, start_at, end_at, break_minutes, break_start_at,
+                                    break_auto, source, status, shift_plan_id, created_by)
+      values (${id}, ${p.employeeId}, ${plan.site_id}, ${p.date}, ${s}, ${e}, ${brk}, ${brkStart}, true,
+              'soll_bestaetigt', 'erfasst', ${plan.id}, ${p.actor})`;
     return id;
   });
 }

@@ -41,7 +41,11 @@ const stamp = Date.now().toString().slice(-6);
 
 console.log('1. Nachunternehmer anlegen');
 await p.goto(B + '/nachunternehmer');
-check('alte Adresse leitet auf die gemeinsame Liste', p.url().includes('/lieferanten?art=nachunternehmer'), p.url());
+check(
+  'alte Adresse leitet auf die gemeinsame Liste',
+  p.url().includes('/lieferanten?art=nachunternehmer'),
+  p.url(),
+);
 await p.click('a:has-text("+ Neu anlegen")');
 await p.waitForLoadState();
 await p.fill('#name', `E2E Reinigung ${stamp} GmbH`);
@@ -56,9 +60,14 @@ check('nach dem Speichern Übersicht mit Reitern', nuUrl.endsWith('/nachweise'),
   const tabsText = await p.locator('.tabs').first().innerText();
   check(
     'Reiter wie alte App',
-    ['Stammdokumente', 'Unbedenklichkeit', 'Mindestlohn', 'Bestellungen', 'Ansprechpartner', 'Dokumente'].every((t) =>
-      tabsText.includes(t),
-    ),
+    [
+      'Stammdokumente',
+      'Unbedenklichkeit',
+      'Mindestlohn',
+      'Bestellungen',
+      'Ansprechpartner',
+      'Dokumente',
+    ].every((t) => tabsText.includes(t)),
     tabsText,
   );
 }

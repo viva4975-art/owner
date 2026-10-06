@@ -30,6 +30,11 @@ export interface Employee {
   mobile: string | null;
   email_private: string | null;
   wage_level_id: string | null;
+  /** Vergütung: Tariflohn (Lohngruppe), individueller Stundenlohn oder Festgehalt */
+  pay_model: 'tarif' | 'individuell' | 'festgehalt' | null;
+  monthly_salary_cents: bigint | null;
+  /** RTV § 10 g: Sonn-/Feiertagsarbeit regelmäßig am selben Arbeitsplatz → 75 % */
+  regular_sunday_work: boolean;
   carry_over_leave: boolean;
   planning_group: string | null;
   planning_notes: string | null;
@@ -110,7 +115,9 @@ export const employeeInput = z
     personnel_no: z.string().trim().min(1, 'Personalnummer fehlt'),
     first_name: z.string().trim().min(1, 'Vorname fehlt'),
     last_name: z.string().trim().min(1, 'Nachname fehlt'),
-    employment_type: z.enum(['vollzeit', 'teilzeit', 'minijob', 'werkstudent', 'aushilfe']),
+    employment_type: z.enum(['vollzeit', 'teilzeit', 'minijob', 'werkstudent', 'aushilfe'], {
+      error: 'Bitte die Beschäftigungsart wählen (Vollzeit, Teilzeit, Minijob …)',
+    }),
     entry_date: z.iso.date('Eintrittsdatum fehlt'),
     exit_date: optDate,
     weekly_hours: z.preprocess(
@@ -147,7 +154,20 @@ export const employeeInput = z
     mobile: optText,
     email_private: z.preprocess(emptyToNull, z.email('Ungültige weitere E-Mail').nullable().default(null)),
     wage_level_id: z.preprocess(emptyToNull, z.uuid().nullable().default(null)),
+    pay_model: z.preprocess(
+      emptyToNull,
+      z.enum(['tarif', 'individuell', 'festgehalt']).nullable().default(null),
+    ),
+    monthly_salary: z.preprocess(
+      (v) => (typeof v === 'string' && v.trim() ? v.trim().replace(/\./g, '') : null),
+      z
+        .string()
+        .regex(/^\d{1,6}(,\d{1,2})?$/, 'Festgehalt z. B. 2.450,00')
+        .nullable()
+        .default(null),
+    ),
     carry_over_leave: z.preprocess((v) => v === 'on' || v === 'true' || v === true, z.boolean()),
+    regular_sunday_work: z.preprocess((v) => v === 'on' || v === 'true' || v === true, z.boolean()),
     planning_group: optText,
     planning_notes: optText,
     version: versionField,
@@ -181,6 +201,22 @@ export const employeeInput = z
   .refine((e) => !e.exit_date || e.exit_date >= e.entry_date, {
     message: 'Austritt liegt vor dem Eintritt',
     path: ['exit_date'],
+  })
+  .refine((e) => e.pay_model !== 'tarif' || e.wage_level_id, {
+    message: 'Bitte den Tariflohn (Lohngruppe) wählen',
+    path: ['wage_level_id'],
+  })
+  .refine((e) => e.pay_model !== 'individuell' || e.hourly_wage, {
+    message: 'Bitte den individuellen Stundenlohn eintragen',
+    path: ['hourly_wage'],
+  })
+  .refine((e) => e.pay_model !== 'festgehalt' || e.monthly_salary, {
+    message: 'Bitte das Festgehalt (brutto/Monat) eintragen',
+    path: ['monthly_salary'],
+  })
+  .refine((e) => e.pay_model !== 'festgehalt' || (e.weekly_hours ?? 0) > 0, {
+    message: 'Bei Festgehalt bitte die Wochenstunden angeben (für Mindestlohn-Prüfung und Nachkalkulation)',
+    path: ['weekly_hours'],
   });
 
 export type EmployeeInput = z.infer<typeof employeeInput>;
@@ -211,7 +247,10 @@ export async function getEmployee(sql: Sql, id: string) {
 
 function centsFromWage(v: string | null): bigint | null {
   if (!v) return null;
-  const [eur, ct = ''] = v.replace(',', '.').split('.');
+  const [eur, ct = ''] = v
+    .replace(/\.(?=\d{3}(\D|$))/g, '')
+    .replace(',', '.')
+    .split('.');
   return BigInt(eur!) * 100n + BigInt(ct.padEnd(2, '0'));
 }
 
@@ -226,7 +265,11 @@ export async function saveEmployee(sql: Sql, id: string, input: EmployeeInput, a
     exit_date: input.exit_date,
     status,
     weekly_hours: input.weekly_hours,
-    hourly_wage_cents: centsFromWage(input.hourly_wage),
+    // Vergütung: nur das Feld der gewählten Art bleibt gesetzt
+    hourly_wage_cents:
+      input.pay_model && input.pay_model !== 'individuell' ? null : centsFromWage(input.hourly_wage),
+    pay_model: input.pay_model,
+    monthly_salary_cents: input.pay_model === 'festgehalt' ? centsFromWage(input.monthly_salary) : null,
     phone: input.phone,
     email: input.email,
     languages: input.languages,
@@ -237,8 +280,9 @@ export async function saveEmployee(sql: Sql, id: string, input: EmployeeInput, a
     info: input.info,
     mobile: input.mobile,
     email_private: input.email_private,
-    wage_level_id: input.wage_level_id,
+    wage_level_id: input.pay_model && input.pay_model !== 'tarif' ? null : input.wage_level_id,
     carry_over_leave: input.carry_over_leave,
+    regular_sunday_work: input.regular_sunday_work,
     planning_group: input.planning_group,
     planning_notes: input.planning_notes,
   };

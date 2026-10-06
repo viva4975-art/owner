@@ -71,9 +71,14 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
         'Zahlungserinnerung und Mahnstufen, Fristen, Mahngebühren und Verzugspauschale.',
       ],
       [
-        'Lohnstufen',
+        'Tariflöhne',
         '/personal/lohnstufen',
-        'Stundenlöhne je Lohnstufe (individueller Stundenlohn geht vor).',
+        'Tariflohn je Lohngruppe (z. B. Tariflohn 1 = 15,00 €, Tariflohn 6 Glasreiniger = 18,40 €); bei jedem Mitarbeiter auswählbar.',
+      ],
+      [
+        'Zuschläge & Lohnarten',
+        '/zeiterfassung/lohnarten/einstellungen',
+        'Nacht-, Sonntags- und Feiertagszuschläge (RTV Gebäudereinigung) und Lohnart-Nummern für den Lohnexport.',
       ],
       [
         'Zeiterfassung & Mindestlohn',

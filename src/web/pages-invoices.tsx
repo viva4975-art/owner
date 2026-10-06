@@ -82,7 +82,10 @@ const lineEditorScript = `
   var sel=document.getElementById('from-service');
   if(sel)sel.addEventListener('change',function(){if(!sel.value)return;add(JSON.parse(sel.value));sel.value=''});
   tbody.addEventListener('click',function(e){if(e.target.classList.contains('del')){e.target.closest('tr').remove();recalc()}});
-  tbody.addEventListener('input',recalc);
+  function grow(t){t.style.height='auto';t.style.height=(t.scrollHeight+2)+'px'}
+  tbody.querySelectorAll('textarea').forEach(grow);
+  tbody.addEventListener('input',function(e){if(e.target.tagName==='TEXTAREA')grow(e.target);recalc()});
+  tbody.addEventListener('change',function(e){var t=e.target;if(t.name!=='stype'||!t.value)return;var d=t.closest('tr').querySelector('[name=desc]');if(d&&!d.value.trim())d.value=t.options[t.selectedIndex].text});
   tbody.addEventListener('change',recalc);
   window.vdLines={set:function(rows){tbody.innerHTML='';rows.forEach(function(r){add(r)});if(!tbody.children.length)add();recalc()}};
   if(!tbody.children.length)add();
@@ -99,6 +102,13 @@ export interface EditorLine {
   src: string;
   /** nur Angebote: '1' = monatlich wiederkehrend */
   rec?: string;
+  /** Leistungsart (nur Rechnungen) */
+  stype?: string;
+}
+
+export interface ServiceTypeOption {
+  id: string;
+  name: string;
 }
 
 export const toEditorLine = (l: LineRow): EditorLine => ({
@@ -109,18 +119,35 @@ export const toEditorLine = (l: LineRow): EditorLine => ({
   price: centsToInput(l.unit_price_cents),
   vat: String(l.vat_rate_bp),
   src: l.source_service_id ?? '',
+  stype: l.service_type_id ?? '',
 });
 
-const LineRowInputs: FC<{ l?: EditorLine; recurring?: boolean | undefined }> = ({ l, recurring }) => (
+const LineRowInputs: FC<{
+  l?: EditorLine;
+  recurring?: boolean | undefined;
+  types?: ServiceTypeOption[] | undefined;
+}> = ({ l, recurring, types }) => (
   <tr>
     <td style="min-width:260px">
+      {types && (
+        <select name="stype" class="ln-type" aria-label="Leistungsart" data-nosearch>
+          <option value="">– Leistungsart –</option>
+          {types.map((t) => (
+            <option value={t.id} selected={t.id === l?.stype}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      )}
       <input name="desc" value={l?.desc ?? ''} placeholder="Leistung" />
-      <input
+      <textarea
         name="detail"
-        value={l?.detail ?? ''}
-        placeholder="Zusatz (optional)"
-        style="margin-top:4px;font-size:13px"
-      />
+        rows={2}
+        placeholder="Beschreibung (optional, Zeilenumbruch mit Enter)"
+        class="ln-detail"
+      >
+        {l?.detail ?? ''}
+      </textarea>
       <input type="hidden" name="src" value={l?.src ?? ''} />
     </td>
     <td style="width:90px">
@@ -171,7 +198,9 @@ export const LineEditor: FC<{
   lines: EditorLine[];
   services?: SiteService[];
   recurring?: boolean | undefined;
-}> = ({ lines, services, recurring }) => (
+  /** Leistungsarten zur Auswahl je Position (Rechnungen) */
+  types?: ServiceTypeOption[] | undefined;
+}> = ({ lines, services, recurring, types }) => (
   <>
     <div class="tbl">
       <table id="lines" class="lines" data-lines>
@@ -188,13 +217,13 @@ export const LineEditor: FC<{
         </thead>
         <tbody>
           {lines.map((l) => (
-            <LineRowInputs l={l} recurring={recurring} />
+            <LineRowInputs l={l} recurring={recurring} types={types} />
           ))}
         </tbody>
       </table>
     </div>
     <template id="line-tpl">
-      <LineRowInputs recurring={recurring} />
+      <LineRowInputs recurring={recurring} types={types} />
     </template>
     <div class="actions">
       <button type="button" class="btn sm sec" id="add-line">
@@ -214,6 +243,7 @@ export const LineEditor: FC<{
                   price: centsToInput(s.unit_price_cents),
                   vat: String(s.vat_rate_bp),
                   src: s.id,
+                  stype: s.service_type_id ?? '',
                 })}
               >
                 {s.description} – {euro(s.unit_price_cents)}
@@ -273,7 +303,8 @@ export const InvoiceEditor: FC<{
   services: SiteService[];
   partials: (InvoiceRow & { customer_name: string })[];
   selectedPartials: string[];
-}> = ({ id, inv, lines, customers, sites, services, partials, selectedPartials }) => (
+  types: ServiceTypeOption[];
+}> = ({ id, inv, lines, customers, sites, services, partials, selectedPartials, types }) => (
   <>
     <h1>{inv.status ? 'Entwurf bearbeiten' : 'Neue Rechnung'}</h1>
     <CustomerNotice c={customers.find((c) => c.id === inv.customer_id)} />
@@ -371,7 +402,7 @@ export const InvoiceEditor: FC<{
             ))}
           </div>
         )}
-        <LineEditor lines={lines} services={services} />
+        <LineEditor lines={lines} services={services} types={types} />
         <div class="chk" style="margin-top:10px">
           <input type="hidden" name="reverse_charge_shown" value="1" />
           <input
@@ -403,11 +434,12 @@ export const InvoiceEditor: FC<{
   </>
 );
 
-export const CorrectionEditor: FC<{ id: string; original: InvoiceRow; newId: string }> = ({
-  id,
-  original,
-  newId,
-}) => (
+export const CorrectionEditor: FC<{
+  id: string;
+  original: InvoiceRow;
+  newId: string;
+  types?: ServiceTypeOption[];
+}> = ({ id, original, newId, types }) => (
   <>
     <h1>Rechnungskorrektur zu {original.number}</h1>
     <div class="hint" style="margin-bottom:16px">
@@ -426,6 +458,7 @@ export const CorrectionEditor: FC<{ id: string; original: InvoiceRow; newId: str
       </div>
       <LineEditor
         lines={[{ desc: '', detail: '', qty: '-1', unit: 'C62', price: '', vat: '1900', src: '' }]}
+        types={types}
       />
       <div class="actions">
         <button class="btn">Korrekturentwurf anlegen</button>
@@ -693,6 +726,11 @@ export const InvoiceDetail: FC<{
               <tr>
                 <td>{l.position}</td>
                 <td>
+                  {l.service_type_name && (
+                    <span class="badge" style="margin-right:6px">
+                      {l.service_type_name}
+                    </span>
+                  )}
                   {l.description}
                   {l.detail && (
                     <div class="small mut" style="white-space:pre-line">

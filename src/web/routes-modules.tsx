@@ -94,6 +94,36 @@ export function registerModuleRoutes(ctx: Ctx) {
       proposals: dun.proposals.length,
       unsentDunnings: unsentDunnings[0]!.n,
     };
+    const today = todayBerlin();
+    const mStart = `${today.slice(0, 7)}-01`;
+    const pd = new Date(`${mStart}T00:00:00Z`);
+    pd.setUTCMonth(pd.getUTCMonth() - 1);
+    const pStart = pd.toISOString().slice(0, 10);
+    const [rev] = await sql<{ cur: bigint; prev: bigint }[]>`
+      select coalesce(sum(net_cents) filter (where issue_date >= ${mStart}::date), 0)::bigint as cur,
+             coalesce(sum(net_cents) filter (where issue_date >= ${pStart}::date and issue_date < ${mStart}::date
+               and extract(day from issue_date) <= extract(day from ${today}::date)), 0)::bigint as prev
+        from app.invoices where status = 'issued' and issue_date >= ${pStart}::date`;
+    const MONTHS = [
+      'Januar',
+      'Februar',
+      'März',
+      'April',
+      'Mai',
+      'Juni',
+      'Juli',
+      'August',
+      'September',
+      'Oktober',
+      'November',
+      'Dezember',
+    ];
+    const kpi = {
+      monthNet: rev!.cur,
+      prevNet: rev!.prev,
+      monthLabel: MONTHS[Number(today.slice(5, 7)) - 1]!,
+      today,
+    };
     return page(
       c,
       'Übersicht',
@@ -107,6 +137,7 @@ export function registerModuleRoutes(ctx: Ctx) {
         hr={hr}
         month={lastMonth()}
         todo={todo}
+        kpi={kpi}
       />,
     );
   });
@@ -485,7 +516,7 @@ export function registerModuleRoutes(ctx: Ctx) {
       <EmployeeForm
         wageLevels={wageLevels}
         id={id}
-        e={data?.employee ?? { personnel_no: await suggestPersonnelNo(sql), employment_type: 'teilzeit' }}
+        e={data?.employee ?? { personnel_no: await suggestPersonnelNo(sql) }}
         priv={data?.priv ?? {}}
         isNew={!data}
       />
@@ -510,6 +541,13 @@ export function registerModuleRoutes(ctx: Ctx) {
     const flat = Object.fromEntries(Object.entries(body).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]));
     const parsed = employeeInput.safeParse(flat);
     if (!parsed.success) throw new BusinessError(parsed.error.issues.map((i) => i.message).join('\n'));
+    // Pflicht im Formular (Ahmed 06.10.): Beschäftigungsart, Vergütung, Wochenstunden bei Teilzeit/Minijob
+    if (!parsed.data.pay_model)
+      throw new BusinessError(
+        'Bitte die Vergütung wählen: Tariflohn, individueller Stundenlohn oder Festgehalt.',
+      );
+    if (['teilzeit', 'minijob'].includes(parsed.data.employment_type) && !parsed.data.weekly_hours)
+      throw new BusinessError('Bitte die Wochenstunden angeben (Teilzeit/Minijob).');
     await saveEmployee(sql, id, parsed.data, c.get('actor'));
     // Objekt-Zuordnung nicht mehr im Stammdatenformular (Ahmed 06.10.) – entsteht über Planung/Einsätze
     return back(c, `/personal/${id}`, { ok: 'Mitarbeiter gespeichert.' });

@@ -124,7 +124,10 @@ check(
   /kunde=/.test(p.url()) || (await p.locator('#kunde').inputValue()) !== '',
   p.url(),
 );
-check('Knopf zeigt den gewählten Kunden', /29901/.test(await p.locator('.cbx:has(#kunde) .cbx-btn').innerText()));
+check(
+  'Knopf zeigt den gewählten Kunden',
+  /29901/.test(await p.locator('.cbx:has(#kunde) .cbx-btn').innerText()),
+);
 
 console.log(`\n${ok} bestanden, ${fail} fehlgeschlagen`);
 await browser.close();

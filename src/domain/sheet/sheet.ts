@@ -24,7 +24,10 @@ export function readSheet(bytes: Uint8Array): Sheet {
 
 function readCsv(bytes: Uint8Array): Sheet {
   const utf = new TextDecoder('utf-8').decode(bytes);
-  const text = (utf.includes('\uFFFD') ? new TextDecoder('windows-1252').decode(bytes) : utf).replace(/^\uFEFF/, '');
+  const text = (utf.includes('\uFFFD') ? new TextDecoder('windows-1252').decode(bytes) : utf).replace(
+    /^\uFEFF/,
+    '',
+  );
   const lines = text.split(/\r?\n/).filter((l) => l.trim() !== '');
   if (!lines.length) throw new SheetError('Datei ist leer');
   const first = lines.slice(0, 10).join('\n');

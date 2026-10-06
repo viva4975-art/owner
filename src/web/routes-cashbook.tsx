@@ -546,7 +546,10 @@ export function registerCashbookRoutes({ app, deps, page, back }: Ctx) {
       });
     if (ext !== 'pdf') return c.notFound();
     return new Response(await monthPdf(sql, m), {
-      headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="Kassenbuch_${m}.pdf"` },
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="Kassenbuch_${m}.pdf"`,
+      },
     });
   });
 

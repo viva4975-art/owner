@@ -75,6 +75,8 @@ export interface LineRow {
   net_cents: bigint;
   vat_rate_bp: number;
   source_service_id: string | null;
+  service_type_id: string | null;
+  service_type_name?: string | null;
 }
 
 export const toDraftInput = (l: LineRow): DraftLineInput => ({
@@ -85,6 +87,7 @@ export const toDraftInput = (l: LineRow): DraftLineInput => ({
   unitPrice: l.unit_price_cents as Cents,
   vatRate: l.vat_rate_bp,
   sourceServiceId: l.source_service_id,
+  serviceTypeId: l.service_type_id,
 });
 
 async function audit(
@@ -127,9 +130,10 @@ export async function listInvoices(sql: Sql, filter: { status?: 'draft' | 'issue
 export async function getInvoice(sql: Sql | Tx, id: string) {
   const [inv] = await sql<InvoiceRow[]>`select * from app.invoices where id = ${id}`;
   if (!inv) return undefined;
-  const lines = await sql<
-    LineRow[]
-  >`select * from app.invoice_lines where invoice_id = ${id} order by position`;
+  const lines = await sql<LineRow[]>`
+    select l.*, t.name as service_type_name from app.invoice_lines l
+      left join app.service_types t on t.id = l.service_type_id
+     where l.invoice_id = ${id} order by l.position`;
   const prepayments = await sql<(InvoiceRow & { partial_invoice_id: string })[]>`
     select p.partial_invoice_id, i.* from app.invoice_prepayments p
       join app.invoices i on i.id = p.partial_invoice_id
@@ -197,8 +201,13 @@ export async function writeLines(
         net_cents: l.netAmount,
         vat_rate_bp: l.vatRate,
         source_service_id: l.sourceServiceId ?? null,
+        service_type_id: l.serviceTypeId ?? null,
       })),
     )}`;
+    // ohne Auswahl: Leistungsart der Objekt-Leistung übernehmen
+    await tx`update app.invoice_lines l set service_type_id = s.service_type_id from app.site_services s
+              where l.invoice_id = ${invoiceId} and l.service_type_id is null and s.id = l.source_service_id
+                and s.service_type_id is not null`;
   }
   await tx`update app.invoices set net_cents = ${d.net}, vat_cents = ${d.vat}, gross_cents = ${d.gross},
              prepaid_cents = ${d.prepaid}, payable_cents = ${d.payable} where id = ${invoiceId}`;

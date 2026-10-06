@@ -339,6 +339,8 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
   // ------------------------------------------------------------------ Termin oder Terminserie planen
   app.get(`/einsatzplanung/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
+    // Rücksprung (z. B. vom Mitarbeiter oder Objekt aus geplant → dorthin zurück)
+    const ret = safeReturn(c.req.query('zurueck'));
     const series = await getShiftSeries(sql, id);
     if (series) assertSite(c, series.siteId);
     const scope = c.get('sites');
@@ -400,10 +402,10 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
         <div class="page-head">
           <div>
             <div class="eyebrow">
-              <a href="/einsatzplanung">Planung</a>
+              <a href={ret}>{ret === '/einsatzplanung' ? 'Planung' : 'zurück'}</a>
             </div>
             <h1>
-              <a href="/einsatzplanung" class="x" aria-label="schließen">
+              <a href={ret} class="x" aria-label="schließen">
                 ✕
               </a>{' '}
               {series ? 'Terminserie ändern' : 'Termin oder Terminserie planen'}
@@ -411,6 +413,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
           </div>
         </div>
         <form method="post" action={`/einsatzplanung/${id}`} class="tp" data-autosave>
+          <input type="hidden" name="zurueck" value={ret} />
           <div class="tp-row">
             <span class="tp-ic" title="Einsatzort">
               ⌖
@@ -599,7 +602,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
                 Änderungen gelten für die ganze Serie. Einzelne Tage: in der Planung auf den Termin klicken.
               </span>
             )}
-            <a class="btn sec" href="/einsatzplanung">
+            <a class="btn sec" href={ret}>
               Abbrechen
             </a>
             <button class="btn">{series ? 'Speichern' : 'Planung erstellen'}</button>
@@ -618,6 +621,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
               Serie.
             </p>
             <input type="hidden" name="serie" value="1" />
+            <input type="hidden" name="zurueck" value={ret} />
             <label for="last_day">letzter Einsatztag</label>
             <input
               id="last_day"
@@ -672,10 +676,18 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
       },
       c.get('actor'),
     );
-    return back(c, `/einsatzplanung?datum=${one('valid_from')}`, {
+    const ret = safeReturn(one('zurueck'));
+    return back(c, ret !== '/einsatzplanung' ? ret : `/einsatzplanung?datum=${one('valid_from')}`, {
       ok: old ? 'Terminserie gespeichert.' : 'Planung erstellt.',
     });
   });
+}
+
+/** nur eigene, relative Adressen als Rücksprung (kein offener Redirect) */
+export function safeReturn(v: unknown): string {
+  return typeof v === 'string' && /^\/[a-z0-9]/i.test(v) && !v.startsWith('//') && v.length < 300
+    ? v
+    : '/einsatzplanung';
 }
 
 const FILTER_JS = `

@@ -876,3 +876,52 @@ Testadresse.
   zur Schublade (☰). Damit entfällt die zweite, umbrechende Menüzeile; auch die Reiter bleiben einzeilig. Gestaltung:
   eine Akzentfarbe (Bordeaux) sparsam, Linien statt Schatten, Radius 6–8 px, keine Verläufe, Inter, Zahlen tabellarisch.
   Wirkt global über das gemeinsame Stylesheet (alle Seiten). Menü-Eintrag „Archiv“ entfernt (steckt in „Alle Rechnungen“).
+- 2026-10-06: Runde 10 (Ahmed, 11 Punkte):
+  - Rechnung: **Leistungsart je Position** (Auswahl aus Einstellungen → Leistungsarten, füllt leere „Leistung“; aus dem
+    Leistungskatalog/Monatslauf automatisch übernommen; `invoice_lines.service_type_id`, Storno/Korrektur übernehmen sie).
+    Beschreibung je Position mehrzeilig (Textfeld, wächst mit; Zeilenumbrüche in PDF und E-Rechnung).
+  - Design: Seitenleiste in Bordeaux (Verlauf #821538 → #6c1130) statt Schwarz, helles Logo `assets/web/logo-hell.png`
+    (aus dem Original erzeugt: `node scripts/logo-light.mjs`), aktive Filter/Pillen/Seitenzahlen Bordeaux statt Schwarz.
+  - Startseite neu: Begrüßung mit Datum, Schnellknöpfe, 4 Kennzahlen (Offene Posten + Verzug, Umsatz netto des Monats vs.
+    Vormonat bis heute, Rechnungsentwürfe, nicht versendet), kurze Listen (Aufgaben direkt abhakbar, Termine/Wiedervorlagen,
+    Entwürfe + Monatslauf, Offene Posten nach Verzug, Hinweise, Geburtstage) mit „+ x weitere“ (vorher bis 50.000 px lang).
+  - Mitarbeiter: Beschäftigungsart ohne Vorauswahl = Pflicht, Wochenstunden Pflicht bei Teilzeit/Minijob, **Vergütung Pflicht**:
+    Tariflohn (Lohngruppe) / individueller Stundenlohn / Festgehalt (brutto/Monat; Stundensatz für Nachkalkulation und
+    Mindestlohn-Prüfung = Gehalt × 3 ÷ 13 ÷ Wochenstunden, Wochenstunden dann Pflicht). Liste markiert „Vergütung fehlt“.
+    Tariflöhne (bisher „Lohnstufen“) unter Einstellungen pflegbar; angelegt: Tariflohn 1 = 15,00 €, Tariflohn 4 = 16,66 €,
+    Tariflohn 6 Glasreiniger = 18,40 € (Ahmed). Bestand: individueller Lohn → „individuell“, Lohnstufe → „Tarif“.
+  - Einsatz vom Mitarbeiter/Objekt aus planen → Schließen/Speichern/Beenden führt dorthin zurück (`zurueck=`, nur eigene Pfade).
+  - **Automatische Pause (§ 4 ArbZG):** Ausstempeln ohne Änderung → 30 Min. ab 6 Std., 45 Min. ab 9 Std., Beginn nach 4 Std.
+    (`break_start_at`, `break_auto`); in der App „Pause ändern“ (ab/Dauer) → wird genau so übernommen. „Soll als Ist“ nimmt
+    mindestens die gesetzliche Pause. Erinnerung als Browser-Benachrichtigung 5 Min. vor Pausenbeginn, solange die App offen
+    ist. **Offen:** echte Push-Nachricht bei geschlossener App braucht Firebase/APNs (Konten fehlen noch).
+  - **Urlaub/Krank auf Einsätze:** genehmigte Abwesenheit → Stunden je geplantem Einsatz (`absence_hours`, halber Tag = Hälfte,
+    ohne Plan Wochenstunden ÷ 5); Urlaub/Krank/Sonstiges bezahlt, unbezahlt frei und Kind krank unbezahlt (Kinderkrankengeld
+    § 45 SGB V – bei Fortzahlung nach § 616 BGB je Tag auf „bezahlt“ stellen). Büro: „Stunden je Einsatz“ ändern, Tag ergänzen;
+    Storno entfernt die Stunden.
+  - **Stundenzettel** (Personal → Stundenzettel, Mitarbeiter-Reiter „Stundenzettel“): je Tag Objekt, Soll von–bis, Beginn, Ende,
+    Pause von–bis, Arbeitszeit, Abwesenheit; Summen Soll/gearbeitet/Pausen/Urlaub/Krank/unbezahlt/bezahlt/Differenz; Druck
+    (A4 quer, einzeln oder alle) mit Unterschriftsfeldern und § 17 MiLoG-Hinweis. Mitarbeitende unterschreiben ab dem letzten
+    Monatstag in der App (Häkchen + Finger-Unterschrift; nicht bei laufender Stempelung/offenem Nachtrag). Unterschrift (PNG
+    write-once) + Prüfsumme + Inhalt werden festgehalten (`timesheet_signatures`, nur anhängen); spätere Änderung → „geändert,
+    neu unterschreiben“. Rechtlich: Unterschrift ist nach § 17 MiLoG nicht vorgeschrieben, dient als Nachweis.
+  - Tests: 328 Unit-/DB-Tests (neu `runde10.db.test.ts`), 25 Browser-Suiten grün (neu `npm run e2e:runde10`, 21 Prüfungen).
+- 2026-10-06: Runde 11 (Ahmed):
+  - Startseite: Kennzahl-Kacheln entfernt, Offene Posten wieder vollständig als Tabelle (alle Kunden, Verzug, Summe), dazu
+    „Noch nicht versendet“ (Rechnungen, Storno/Korrektur, Mahnungen).
+  - **Lohnarten** (Personal → Lohnarten, `/zeiterfassung/lohnarten`, CSV-Export für das Lohnprogramm, Format vorläufig):
+    je Mitarbeiter/Monat Normalstunden, Urlaub, Krank, sonstige bezahlte Abwesenheit, unbezahlt (Info) und Zuschlagsstunden
+    mit Betrag. Zuschläge nach **RTV Gebäudereinigung vom 31.10.2019 § 10** (allgemeinverbindlich): Nacht 22–6 Uhr 25 %,
+    Sonntag und Feiertag 80 % (Ahmed 06.10., RTV: 100 % bzw. 150 %), regelmäßig am selben Arbeitsplatz 75 % (Häkchen),
+    Neujahr/Ostersonntag/Pfingstsonntag/1. Mai/25.+26.12. 200 %; je Minute nur der höchste; Pause zählt nicht; Berliner
+    Ortszeit inkl. Zeitumstellung; Beträge cent-genau. Sätze, Nachtzeit und Lohnart-Nummern unter Einstellungen → Zuschläge &
+    Lohnarten. **Hinweis:** steuerfrei nach § 3b EStG nur bis 25 %/50 %/125 %/150 % und 50 € Grundlohn/Std. – Rest macht das
+    Lohnprogramm. Mehrarbeits- und Nacht-über-Regelarbeitszeit-Zuschläge (25 %/100 %) noch nicht automatisch.
+  - Urlaub ohne ausreichenden Anspruch wird abgelehnt (beim Antrag am Handy, bei Büro-Erfassung und beim Genehmigen; Rest =
+    Anspruch + Übertrag − genommen − beantragt, je Jahr).
+  - Handy-App neu im Stil der Fortytools-App, in Bordeaux: heller Bordeaux-Verlauf, Logo ohne weißen Kasten
+    (`assets/web/logo-transparent.png`), große Begrüßung, runde Schnellknöpfe (QR, Nachtragen, Urlaub/Krank, Dokumente),
+    „Heute“ mit Einsätze erledigt / gearbeitet / Pause + Fortschrittsbalken, Einsatz-Karten, Stempel-Knopf unten rechts,
+    Navigation unten (Übersicht, Kalender, Zeiten, Urlaub). Neu: Kalender (`/m/kalender`, 2 Monate, Punkte an Einsatztagen,
+    Monatswerte, Tag antippen). „Arbeit beenden“ dunkles Bordeaux statt Schwarz.
+  - Tests: 336 Unit-/DB-Tests (neu `surcharges.test.ts`, `runde11.db.test.ts`), alle 25 Browser-Suiten grün (`e2e:runde10` 25).

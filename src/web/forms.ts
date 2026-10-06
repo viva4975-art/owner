@@ -42,6 +42,7 @@ export function parseLines(body: Body, opts: { allowNegative?: boolean } = {}): 
   const price = arr(body, 'price');
   const vat = arr(body, 'vat');
   const src = arr(body, 'src');
+  const stype = arr(body, 'stype');
   const out: DraftLineInput[] = [];
   desc.forEach((d, i) => {
     const description = d.trim();
@@ -77,6 +78,7 @@ export function parseLines(body: Body, opts: { allowNegative?: boolean } = {}): 
       unitPrice,
       vatRate,
       sourceServiceId: (src[i] ?? '').trim() || null,
+      serviceTypeId: /^[0-9a-f-]{36}$/i.test(stype[i] ?? '') ? stype[i]! : null,
     });
   });
   return out;

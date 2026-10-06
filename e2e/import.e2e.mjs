@@ -108,7 +108,11 @@ await p.setInputFiles('#ftdateien', [
 await p.click('form[action="/transfer/import/fortytools"] button');
 await p.waitForLoadState();
 const gb = await p.locator('body').innerText();
-check('Dateien erkannt', gb.includes('Kunden ← Kunden_utf-8.csv') && gb.includes('Leistungen ← active_services.csv'), gb.slice(0, 300));
+check(
+  'Dateien erkannt',
+  gb.includes('Kunden ← Kunden_utf-8.csv') && gb.includes('Leistungen ← active_services.csv'),
+  gb.slice(0, 300),
+);
 check('Hinweis: ohne Objekt → Allgemein', gb.includes('Hinweise (1)'));
 await p.screenshot({ path: `${out}/i5-gesamt.png`, fullPage: true });
 p.once('dialog', (d) => d.accept());

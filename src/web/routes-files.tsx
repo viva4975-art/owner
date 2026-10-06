@@ -61,7 +61,7 @@ const LINK_PAGE: Record<string, (id: string) => string> = {
 /** Darf der Benutzer die Verknüpfung sehen? Rolle (Seite) + bei Objektleitung das eigene Objekt. */
 async function linkAllowed(
   c: Context<AppEnv>,
-  sql: Ctx["deps"]["sql"],
+  sql: Ctx['deps']['sql'],
   type: string,
   id: string,
 ): Promise<boolean> {

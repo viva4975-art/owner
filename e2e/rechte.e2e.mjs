@@ -100,10 +100,7 @@ await o.goto(B + '/einsatzplanung');
 check('Wochenplan ohne fremde Objekte', !(await o.content()).includes('Verwaltungsgebäude'));
 await o.goto(B + `/objekte/${SCHOOL}/stundenvorgabe`);
 const svText = await o.locator('body').innerText();
-check(
-  'Stundenvorgabe ohne Erlöse',
-  svText.includes('Stundenvorgabe') && !svText.includes('Monatspauschale'),
-);
+check('Stundenvorgabe ohne Erlöse', svText.includes('Stundenvorgabe') && !svText.includes('Monatspauschale'));
 await o.goto(B + `/objekte/${SCHOOL}/qualitaet`);
 check(
   'Qualitätskontrolle eigenes Objekt',
@@ -117,7 +114,7 @@ await a.goto(B + '/einstellungen');
 const setText = await a.locator('main').innerText();
 check(
   'Einstellungen: alle Stammlisten',
-  ['Leistungsarten', 'Mahnstufen', 'Lohnstufen', 'Raumarten', 'Firmendaten'].every((t) =>
+  ['Leistungsarten', 'Mahnstufen', 'Tariflöhne', 'Raumarten', 'Firmendaten'].every((t) =>
     setText.includes(t),
   ),
   setText.slice(0, 300),

@@ -122,6 +122,22 @@ export const EmployeeList: FC<{
                       </td>
                       <td>
                         {EMPLOYMENT_TYPES[e.employment_type]}
+                        {e.status === 'aktiv' && !e.pay_model && (
+                          <span
+                            class="badge warn"
+                            style="margin-left:6px"
+                            title="Tariflohn, Stundenlohn oder Festgehalt festlegen"
+                          >
+                            Vergütung fehlt
+                          </span>
+                        )}
+                        {e.status === 'aktiv' &&
+                          ['teilzeit', 'minijob'].includes(e.employment_type) &&
+                          !e.weekly_hours && (
+                            <span class="badge warn" style="margin-left:6px">
+                              Std./Woche fehlt
+                            </span>
+                          )}
                         {e.tags.length > 0 && (
                           <div>
                             <TagChips tags={e.tags} />
@@ -204,6 +220,7 @@ export const EmployeeShell: FC<{
     { key: 'notizen', label: 'Notizen', href: `${base}/notizen`, count: notes },
     { key: 'dokumente', label: 'Dokumente', href: `${base}/dokumente` },
     { key: 'zeiten', label: 'Zeiten', href: `${base}/zeiten` },
+    { key: 'stundenzettel', label: 'Stundenzettel', href: `${base}/stundenzettel` },
     { key: 'einsaetze', label: 'Einsätze', href: `${base}/einsaetze` },
     { key: 'abwesenheiten', label: 'Urlaub & Krank', href: `${base}/abwesenheiten` },
   ];
@@ -275,12 +292,23 @@ export const EmployeeOverview: FC<{
           <dd>{String(Number(e.annual_leave_days)).replace('.', ',')} Tage/Jahr</dd>
           {wage && (
             <>
-              <dt>Lohn</dt>
+              <dt>Vergütung</dt>
               <dd>
-                {wage.cents != null ? `${euro(wage.cents)}/Std.` : '–'}
-                {wage.level && (
-                  <span class="small mut"> ({e.hourly_wage_cents != null ? 'individuell' : wage.level})</span>
+                {e.pay_model === 'festgehalt' ? (
+                  <>
+                    Festgehalt {euro(e.monthly_salary_cents ?? 0n)}/Monat
+                    {wage.cents != null && <span class="small mut"> (≈ {euro(wage.cents)}/Std.)</span>}
+                  </>
+                ) : (
+                  <>
+                    {wage.cents != null ? `${euro(wage.cents)}/Std.` : '–'}
+                    <span class="small mut">
+                      {' '}
+                      ({e.pay_model === 'individuell' ? 'individuell' : (wage.level ?? 'Tarif')})
+                    </span>
+                  </>
                 )}
+                {!e.pay_model && <span class="badge warn">bitte festlegen</span>}
               </dd>
             </>
           )}
@@ -429,9 +457,12 @@ export const EmployeeForm: FC<{
       <Field name="personnel_no" label="Personalnummer *" value={e.personnel_no} required />
       <div>
         <label for="employment_type">Beschäftigungsart *</label>
-        <select id="employment_type" name="employment_type">
+        <select id="employment_type" name="employment_type" required>
+          <option value="" disabled selected={!e.employment_type}>
+            – bitte wählen –
+          </option>
           {Object.entries(EMPLOYMENT_TYPES).map(([k, v]) => (
-            <option value={k} selected={(e.employment_type ?? 'teilzeit') === k}>
+            <option value={k} selected={e.employment_type === k}>
               {v}
             </option>
           ))}
@@ -449,35 +480,64 @@ export const EmployeeForm: FC<{
         label="Urlaubsanspruch (Tage/Jahr)"
         value={e.annual_leave_days != null ? String(Number(e.annual_leave_days)).replace('.', ',') : '30'}
       />
-      <div>
-        <label for="wage_level_id">Lohnstufe</label>
-        <select id="wage_level_id" name="wage_level_id">
-          <option value="">Keine Lohnstufe</option>
+    </div>
+    <h3 style="margin-top:20px">Vergütung *</h3>
+    <div class="pay-pick" data-pay>
+      {(
+        [
+          ['tarif', 'Tariflohn', 'Lohngruppe laut Tarif, Betrag unter Einstellungen → Tariflöhne'],
+          ['individuell', 'Individueller Stundenlohn', 'abweichender Stundenlohn für diese Person'],
+          ['festgehalt', 'Festgehalt', 'fester Monatslohn brutto (z. B. Büro, Objektleitung)'],
+        ] as const
+      ).map(([k, l, d]) => (
+        <label class="pay-opt">
+          <input type="radio" name="pay_model" value={k} required checked={e.pay_model === k} />
+          <span>
+            <b>{l}</b>
+            <small>{d}</small>
+          </span>
+        </label>
+      ))}
+    </div>
+    <div class="grid">
+      <div data-pay-for="tarif" hidden={e.pay_model !== 'tarif'}>
+        <label for="wage_level_id">Tariflohn *</label>
+        <select id="wage_level_id" name="wage_level_id" data-nosearch>
+          <option value="">– Lohngruppe wählen –</option>
           {wageLevels.map((w) => (
             <option value={w.id} selected={w.id === e.wage_level_id}>
-              {w.name} ({euro(w.hourly_wage_cents)})
+              {w.name} ({euro(w.hourly_wage_cents)}/Std.)
             </option>
           ))}
         </select>
       </div>
-      <div class="chk">
-        <input
-          type="checkbox"
-          id="own-wage"
-          data-reveal="#own-wage-box"
-          checked={e.hourly_wage_cents != null}
-        />
-        <label for="own-wage">Individueller Stundenlohn (sonst laut Lohnstufe)</label>
-      </div>
-      <div id="own-wage-box" hidden={e.hourly_wage_cents == null}>
-        <label for="hourly_wage">Stundenlohn individuell (€)</label>
+      <div data-pay-for="individuell" hidden={e.pay_model !== 'individuell'}>
+        <label for="hourly_wage">Stundenlohn (€) *</label>
         <input
           id="hourly_wage"
           name="hourly_wage"
+          placeholder="z. B. 16,50"
           value={e.hourly_wage_cents != null ? centsToInput(e.hourly_wage_cents) : ''}
         />
       </div>
+      <div data-pay-for="festgehalt" hidden={e.pay_model !== 'festgehalt'}>
+        <label for="monthly_salary">Festgehalt brutto/Monat (€) *</label>
+        <input
+          id="monthly_salary"
+          name="monthly_salary"
+          placeholder="z. B. 2.800,00"
+          value={e.monthly_salary_cents != null ? centsToInput(e.monthly_salary_cents) : ''}
+        />
+        <small class="mut">
+          Stundensatz für Nachkalkulation/Mindestlohn = Gehalt × 3 ÷ 13 ÷ Wochenstunden
+        </small>
+      </div>
     </div>
+    <script
+      dangerouslySetInnerHTML={{
+        __html: `(function(){var box=document.currentScript.previousElementSibling.previousElementSibling;var f=box.closest('form');function upd(){var v=(f.querySelector('input[name=pay_model]:checked')||{}).value;f.querySelectorAll('[data-pay-for]').forEach(function(d){var on=d.getAttribute('data-pay-for')===v;d.hidden=!on;d.querySelectorAll('input,select').forEach(function(x){x.disabled=!on})})}box.addEventListener('change',upd);upd()})();`,
+      }}
+    />
     <div class="grid" style="margin-top:8px">
       <Field
         name="planning_group"
@@ -486,6 +546,17 @@ export const EmployeeForm: FC<{
         placeholder="z. B. Team Süd, Springer"
       />
       <Field name="planning_notes" label="Planungsnotizen (für Disponenten)" value={e.planning_notes} />
+    </div>
+    <div class="chk" style="margin-top:8px">
+      <input
+        type="checkbox"
+        id="regular_sunday_work"
+        name="regular_sunday_work"
+        checked={e.regular_sunday_work ?? false}
+      />
+      <label for="regular_sunday_work">
+        Sonn-/Feiertagsarbeit regelmäßig am selben Arbeitsplatz (Zuschlag 75 % statt 100–200 %, RTV § 10 g)
+      </label>
     </div>
     <div class="chk" style="margin-top:8px">
       <input

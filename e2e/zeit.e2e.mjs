@@ -53,6 +53,9 @@ const stamp = Date.now().toString().slice(-5);
 await o.fill('#first_name', 'Mara');
 await o.fill('#last_name', `Test${stamp}`);
 await o.fill('#entry_date', '2026-01-01');
+await o.selectOption('#employment_type', 'vollzeit');
+await o.check('input[name=pay_model][value=individuell]');
+await o.fill('#hourly_wage', '15,00');
 await o.click('button:has-text("Speichern")');
 await o.waitForLoadState();
 const empId = o.url().match(/personal\/([0-9a-f-]{36})/)[1];
@@ -61,11 +64,9 @@ check('Mitarbeiter angelegt', !!empId);
 await o.goto(B + `/personal/${empId}/einsaetze`);
 await o.click('a:has-text("Einsatz planen")');
 await o.selectOption('select[name=site_id]', SITE);
-check(
-  'Mitarbeiter vorbelegt',
-  (await o.locator('.emp-row select').first().inputValue()) === empId,
-);
-for (const d of [1, 2, 3, 4, 5, 6, 7]) await o.locator(`input[name=weekday][value="${d}"]`).check({ force: true });
+check('Mitarbeiter vorbelegt', (await o.locator('.emp-row select').first().inputValue()) === empId);
+for (const d of [1, 2, 3, 4, 5, 6, 7])
+  await o.locator(`input[name=weekday][value="${d}"]`).check({ force: true });
 await o.fill('input[name=start]', '00:05');
 await o.fill('input[name=end]', '00:35');
 await o.fill('input[name=valid_from]', '2026-01-01');
@@ -136,13 +137,16 @@ check(
   'am Objekt: Beenden statt Beginnen',
   (await m.locator('button:has-text("Arbeit beenden")').count()) === 1,
 );
-await m.fill('#break', '0');
+check(
+  'Pause automatisch angezeigt (nach 4 Std.)',
+  (await m.locator('.brk').innerText()).includes('Pause automatisch'),
+);
 await nav(m, 'button:has-text("Arbeit beenden")');
 check('ausgestempelt', (await flash(m)).includes('Ausgestempelt'), await flash(m));
 
 // ---------- 4. Nachtrag + Urlaub ----------
 console.log('4. Nachtrag und Urlaub');
-await m.click('a:has-text("Zeit nachtragen")');
+await m.click('.quick a[href="/m/nachtrag"]');
 const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
 await m.fill('#date', yesterday);
 await m.fill('#from', '17:00');
@@ -150,7 +154,7 @@ await m.fill('#to', '19:30');
 await m.fill('#reason', 'Handy-Akku leer');
 await nav(m, 'button:has-text("Absenden")');
 check('Nachtrag gesendet', (await flash(m)).includes('Gesendet'), await flash(m));
-await m.click('a:has-text("Urlaub / Krank melden")');
+await m.click('.quick a[href="/m/abwesenheit"]');
 await m.fill('#from', '2026-12-21');
 await m.fill('#to', '2026-12-23');
 await nav(m, 'button:has-text("Absenden")');

@@ -187,14 +187,15 @@ export function registerHrRoutes(ctx: Ctx) {
     const levels = await listWageLevels(sql, true);
     return page(
       c,
-      'Lohnstufen',
+      'Tariflöhne',
       'personal',
       <>
-        <PageHead title="Lohnstufen" crumbs={[['Mitarbeiter', '/personal']]} />
+        <PageHead title="Tariflöhne" crumbs={[['Einstellungen', '/einstellungen']]} />
         <p class="mut" style="max-width:820px">
-          Stundenlohn je Lohnstufe (z. B. Tarif Gebäudereinigung Lohngruppe 1). Gilt für alle Mitarbeitenden
-          der Stufe, außer bei individuellem Stundenlohn. Verwendet in Nachkalkulation und
-          Mindestlohn-Prüfung.
+          Stundenlohn je Lohngruppe (Tarifvertrag Gebäudereinigung). Bei jedem Mitarbeiter wird unter
+          „Vergütung“ ein Tariflohn, ein individueller Stundenlohn oder ein Festgehalt gewählt. Eine Änderung
+          hier gilt sofort für alle Mitarbeitenden der Lohngruppe (Nachkalkulation, Mindestlohn-Prüfung) – bei
+          Tariferhöhung „gültig ab“ eintragen.
         </p>
         <div class="tbl" style="max-width:900px">
           <table>
@@ -221,7 +222,7 @@ export function registerHrRoutes(ctx: Ctx) {
                         form={f}
                         name="name"
                         value={w?.name ?? ''}
-                        placeholder="neue Lohnstufe"
+                        placeholder="neue Lohngruppe, z. B. Tariflohn 2"
                         aria-label="Bezeichnung"
                       />
                     </td>
@@ -297,7 +298,7 @@ export function registerHrRoutes(ctx: Ctx) {
       active: b.active === 'on',
       expectedVersion: typeof b.version === 'string' && b.version ? Number(b.version) : null,
     });
-    return back(c, '/personal/lohnstufen', { ok: 'Lohnstufe gespeichert.' });
+    return back(c, '/personal/lohnstufen', { ok: 'Tariflohn gespeichert.' });
   });
 
   // ------------------------------------------------------------ Dokumentvorlagen

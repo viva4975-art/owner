@@ -10,6 +10,8 @@ export interface DraftLineInput {
   unitPrice: Cents;
   vatRate: VatRate;
   sourceServiceId?: string | null;
+  /** Leistungsart (Stammliste) */
+  serviceTypeId?: string | null;
 }
 
 export interface DraftLine extends DraftLineInput {

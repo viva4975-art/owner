@@ -1,7 +1,9 @@
 import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
-import { workingDays } from '../domain/time/holidays.js';
+import { addDays, workingDays } from '../domain/time/holidays.js';
 import { BusinessError } from './errors.js';
+import { uuidOf } from './fortytools-export-import.js';
+import { plannedShifts } from './time.js';
 
 export type AbsenceKind = 'urlaub' | 'krank' | 'kind_krank' | 'unbezahlt' | 'sonstiges';
 export type AbsenceStatus = 'beantragt' | 'genehmigt' | 'abgelehnt' | 'storniert';
@@ -36,6 +38,140 @@ export interface Absence {
   version: number;
 }
 export type AbsenceRow = Absence & { employee_name: string; personnel_no: string; days: number };
+
+/** Bezahlt nach Art (änderbar je Tag): Urlaub, Krank, Sonstiges bezahlt; unbezahlt frei und Kind krank nicht
+ *  (Kinderkrankengeld zahlt die Krankenkasse, § 45 SGB V – außer der Vertrag sieht Fortzahlung nach § 616 BGB vor). */
+export const ABSENCE_PAID: Record<AbsenceKind, boolean> = {
+  urlaub: true,
+  krank: true,
+  kind_krank: false,
+  unbezahlt: false,
+  sonstiges: true,
+};
+
+export interface AbsenceHour {
+  id: string;
+  absence_id: string;
+  employee_id: string;
+  work_date: string;
+  shift_plan_id: string | null;
+  site_id: string | null;
+  site_name: string | null;
+  plan_from: string | null;
+  plan_to: string | null;
+  minutes: number;
+  paid: boolean;
+  manual: boolean;
+  version: number;
+}
+
+/**
+ * Genehmigte Abwesenheit auf die geplanten Einsätze übertragen: je Einsatz die geplanten Stunden
+ * (halber Tag = Hälfte), bezahlt laut Art. Ohne Einsatzplan: Wochenstunden ÷ 5 je Arbeitstag.
+ * Von Hand geänderte Zeilen bleiben; storniert/abgelehnt → Stunden entfallen.
+ */
+export async function applyAbsenceHours(sql: Sql, absenceId: string) {
+  const [a] = await sql<(Absence & { weekly_hours: string | null })[]>`
+    select a.*, a.start_date::text, a.end_date::text, e.weekly_hours::text
+      from app.absences a join app.employees e on e.id = a.employee_id where a.id = ${absenceId}`;
+  if (!a) return 0;
+  if (a.status !== 'genehmigt') {
+    await sql`delete from app.absence_hours where absence_id = ${absenceId}`;
+    return 0;
+  }
+  const paid = ABSENCE_PAID[a.kind];
+  const shifts = (
+    await plannedShifts(sql, { from: a.start_date, to: a.end_date, employeeId: a.employee_id })
+  ).filter((s) => !s.holiday && s.minutes > 0);
+  const rows: Record<string, unknown>[] = [];
+  const half = (m: number) => (a.half_day ? Math.round(m / 2) : m);
+  if (shifts.length) {
+    for (const s of shifts)
+      rows.push({
+        id: uuidOf(`abs-h:${a.id}:${s.date}:${s.plan.id}`),
+        absence_id: a.id,
+        employee_id: a.employee_id,
+        work_date: s.date,
+        shift_plan_id: s.plan.id,
+        site_id: s.plan.site_id,
+        minutes: half(s.minutes),
+        paid,
+      });
+  } else if (Number(a.weekly_hours) > 0) {
+    const perDay = Math.round((Number(a.weekly_hours) * 60) / 5);
+    for (let d = a.start_date; d <= a.end_date; d = addDays(d, 1)) {
+      if (workingDays(d, d) === 0) continue;
+      rows.push({
+        id: uuidOf(`abs-h:${a.id}:${d}:-`),
+        absence_id: a.id,
+        employee_id: a.employee_id,
+        work_date: d,
+        shift_plan_id: null,
+        site_id: null,
+        minutes: half(perDay),
+        paid,
+      });
+    }
+  }
+  if (rows.length) await sql`insert into app.absence_hours ${sql(rows as never)} on conflict do nothing`;
+  return rows.length;
+}
+
+export async function listAbsenceHours(
+  sql: Sql,
+  f: { absenceId?: string; employeeId?: string; from?: string; to?: string },
+) {
+  return sql<AbsenceHour[]>`
+    select h.*, h.work_date::text, s.name as site_name,
+           to_char(p.start_time, 'HH24:MI') as plan_from, to_char(p.end_time, 'HH24:MI') as plan_to
+      from app.absence_hours h
+      join app.absences a on a.id = h.absence_id and a.status = 'genehmigt'
+      left join app.sites s on s.id = h.site_id
+      left join app.shift_plans p on p.id = h.shift_plan_id
+     where ${f.absenceId ? sql`h.absence_id = ${f.absenceId}` : sql`true`}
+       and ${f.employeeId ? sql`h.employee_id = ${f.employeeId}` : sql`true`}
+       and ${f.from ? sql`h.work_date >= ${f.from}` : sql`true`}
+       and ${f.to ? sql`h.work_date <= ${f.to}` : sql`true`}
+     order by h.work_date, p.start_time nulls last`;
+}
+
+/** Büro: Stunden je Tag/Einsatz ändern (z. B. abweichende Stunden, bezahlt/unbezahlt). */
+export async function saveAbsenceHours(
+  sql: Sql,
+  absenceId: string,
+  rows: { id: string; minutes: number; paid: boolean }[],
+  actor: string,
+) {
+  for (const r of rows)
+    if (!Number.isInteger(r.minutes) || r.minutes < 0 || r.minutes > 960)
+      throw new BusinessError('Stunden je Tag zwischen 0 und 16');
+  await sql.begin(async (tx) => {
+    for (const r of rows)
+      await tx`update app.absence_hours set minutes = ${r.minutes}, paid = ${r.paid}, manual = true
+                where id = ${r.id} and absence_id = ${absenceId}
+                  and (minutes <> ${r.minutes} or paid <> ${r.paid})`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'stunden', 'absence', ${absenceId}, ${tx.json({ rows: rows.length })})`;
+  });
+}
+
+/** Büro: einen Tag ohne Einsatz von Hand ergänzen (z. B. Urlaub an einem Tag ohne Plan). */
+export async function addAbsenceDay(
+  sql: Sql,
+  absenceId: string,
+  p: { date: string; minutes: number; paid: boolean },
+) {
+  const [a] = await sql<
+    Absence[]
+  >`select *, start_date::text, end_date::text from app.absences where id = ${absenceId}`;
+  if (!a || a.status !== 'genehmigt') throw new BusinessError('Abwesenheit nicht genehmigt');
+  if (p.date < a.start_date || p.date > a.end_date) throw new BusinessError('Tag liegt nicht im Zeitraum');
+  if (!Number.isInteger(p.minutes) || p.minutes <= 0 || p.minutes > 960)
+    throw new BusinessError('Stunden zwischen 0 und 16');
+  await sql`insert into app.absence_hours (id, absence_id, employee_id, work_date, minutes, paid, manual)
+            values (${uuidOf(`abs-h:${a.id}:${p.date}:-`)}, ${a.id}, ${a.employee_id}, ${p.date}, ${p.minutes}, ${p.paid}, true)
+            on conflict do nothing`;
+}
 
 /** Tage (Mo–Fr ohne Feiertage Bayern); halber Tag = 0,5. */
 export const absenceDays = (a: Pick<Absence, 'start_date' | 'end_date' | 'half_day'>) =>
@@ -86,6 +222,10 @@ export async function requestAbsence(
   ) {
     throw new BusinessError('Im Zeitraum liegen keine Arbeitstage', 'no_workdays');
   }
+  if (p.kind === 'urlaub') {
+    const [dup] = await sql`select 1 from app.absences where id = ${p.id}`;
+    if (!dup) await assertLeaveLeft(sql, p.employeeId, p.start, p.end, p.halfDay, false);
+  }
   await sql.begin(async (tx) => {
     const [exists] = await tx`select 1 from app.absences where id = ${p.id}`;
     if (exists) return;
@@ -102,6 +242,7 @@ export async function requestAbsence(
       values (${p.id}, ${p.employeeId}, ${p.kind}, ${p.start}, ${p.end}, ${p.halfDay}, ${p.approved ? 'genehmigt' : 'beantragt'},
               ${p.note}, ${p.actor}, ${p.approved ? p.actor : null}, ${p.approved ? tx`now()` : null})`;
   });
+  if (p.approved) await applyAbsenceHours(sql, p.id);
 }
 
 export async function decideAbsence(
@@ -119,12 +260,44 @@ export async function decideAbsence(
     storniert: [],
   };
   if (a.status === status) return;
+  // Genehmigen nur mit ausreichendem Urlaubsanspruch (der Antrag ist im Rest schon als „beantragt“ abgezogen)
+  if (status === 'genehmigt' && a.kind === 'urlaub')
+    await assertLeaveLeft(sql, a.employee_id, a.start_date, a.end_date, a.half_day, true);
   if (!allowed[a.status].includes(status))
     throw new BusinessError(
       `„${ABSENCE_STATUS_LABEL[a.status]}“ kann nicht zu „${ABSENCE_STATUS_LABEL[status]}“ werden`,
     );
   await sql`update app.absences set status = ${status}, decided_by = ${actor}, decided_at = now() where id = ${id} and status = ${a.status}`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details) values (${actor}, 'status', 'absence', ${id}, ${sql.json({ status })})`;
+  await applyAbsenceHours(sql, id);
+}
+
+/**
+ * Urlaub nur mit Anspruch: je betroffenem Jahr Rest (Anspruch + Übertrag − genommen − beantragt) ≥ beantragte Tage.
+ * `included` = der Antrag ist im Rest schon als „beantragt“ enthalten (beim Genehmigen).
+ */
+export async function assertLeaveLeft(
+  sql: Sql,
+  employeeId: string,
+  start: string,
+  end: string,
+  halfDay: boolean,
+  included: boolean,
+) {
+  for (let y = Number(start.slice(0, 4)); y <= Number(end.slice(0, 4)); y++) {
+    const s = start > `${y}-01-01` ? start : `${y}-01-01`;
+    const t = end < `${y}-12-31` ? end : `${y}-12-31`;
+    const days = halfDay ? 0.5 : workingDays(s, t);
+    if (!days) continue;
+    const bal = await leaveBalance(sql, employeeId, y);
+    const left = bal.rest + (included ? days : 0);
+    if (left < days)
+      throw new BusinessError(
+        `Kein ausreichender Urlaubsanspruch ${y}: Rest ${String(left).replace('.', ',')} Tage, beantragt ${String(days).replace('.', ',')} Tage`,
+        'no_leave',
+        { rest: String(left).replace('.', ','), days: String(days).replace('.', ',') },
+      );
+  }
 }
 
 /** Urlaubskonto im Kalenderjahr: Anspruch (anteilig bei Ein-/Austritt), genommen, beantragt, Rest. */

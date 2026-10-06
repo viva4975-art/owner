@@ -49,6 +49,7 @@ import { registerPlanningRoutes } from './routes-planning.js';
 import { registerPlanningBoardRoutes } from './routes-planning-board.js';
 import { registerPurchasingRoutes } from './routes-purchasing.js';
 import { registerTimeRoutes } from './routes-time.js';
+import { registerTimesheetRoutes } from './routes-timesheet.js';
 
 export const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 
@@ -285,6 +286,7 @@ export function createApp(deps: Deps) {
   registerOfferRoutes(ctx);
   registerDunningRoutes(ctx);
   registerInventoryRoutes(ctx);
+  registerTimesheetRoutes(ctx);
   registerTimeRoutes(ctx);
   registerPlanningBoardRoutes(ctx);
   registerPlanningRoutes(ctx);

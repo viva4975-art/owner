@@ -165,7 +165,10 @@ await p.goto(`${B}/akquise?filter=due&q=${stamp}`);
 check('in „Heute / überfällig“', (await p.locator('.lc', { hasText: `E2E Akquise ${stamp}` }).count()) === 1);
 check('Funnel sichtbar', (await p.locator('.ak-stage').count()) === 4);
 await p.goto(`${B}/`);
-check('Wiedervorlage auf der Startseite', (await p.locator('body').innerText()).includes('heute fällig'));
+check(
+  'Wiedervorlage auf der Startseite',
+  (await p.locator('body').innerText()).includes('Wiedervorlage: E2E Akquise'),
+);
 
 console.log('8. Bewerber & Stellen');
 await p.goto(`${B}/bewerber`);

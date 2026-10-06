@@ -257,7 +257,9 @@ export const contactInputSchema = contactInput;
  * Wer kann für Aufgaben zuständig sein: aktive Benutzer (Büro/Objektleitung) und Mitarbeitende mit Tag
  * „Objektleitung“, „Büro“ oder „Verwaltung“ – keine Reinigungskräfte.
  */
-export async function assigneeOptions(sql: Sql): Promise<{ name: string; group: 'Büro' | 'Objektleitung' }[]> {
+export async function assigneeOptions(
+  sql: Sql,
+): Promise<{ name: string; group: 'Büro' | 'Objektleitung' }[]> {
   const rows = await sql<{ name: string; grp: 'Büro' | 'Objektleitung' }[]>`
     select p.display_name as name, case when p.role = 'objektleitung' then 'Objektleitung' else 'Büro' end as grp
       from app.user_accounts a join app.profiles p on p.user_id = a.id where a.active

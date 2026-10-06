@@ -180,10 +180,11 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         net: o.net_cents,
         per: '',
         // geliefert, aber noch keine Eingangsrechnung erfasst → bleibt „zu erledigen“
-        phase:
-          o.status === 'geliefert' && !invoiced.has(o.id) ? ('erledigen' as const) : PO_PHASE[o.status],
+        phase: o.status === 'geliefert' && !invoiced.has(o.id) ? ('erledigen' as const) : PO_PHASE[o.status],
         status:
-          o.status === 'geliefert' && !invoiced.has(o.id) ? 'geliefert · Rechnung fehlt' : PO_STATUS[o.status],
+          o.status === 'geliefert' && !invoiced.has(o.id)
+            ? 'geliefert · Rechnung fehlt'
+            : PO_STATUS[o.status],
         tone: o.status === 'geliefert' && !invoiced.has(o.id) ? 'warn' : PO_TONE[o.status],
       })),
       ...subcontracts.map((sc) => ({

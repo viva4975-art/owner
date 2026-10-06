@@ -1,3 +1,4 @@
+import { safeReturn } from './routes-planning-board.js';
 import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
 import type { Child, FC } from 'hono/jsx';
@@ -52,7 +53,11 @@ const ABS_CODE: Record<AbsenceKind, string> = {
   sonstiges: 'S',
 };
 
-const PlanTable: FC<{ plans: ShiftPlanRow[]; show: 'employee' | 'site' | 'both' }> = ({ plans, show }) => (
+const PlanTable: FC<{ plans: ShiftPlanRow[]; show: 'employee' | 'site' | 'both'; ret?: string }> = ({
+  plans,
+  show,
+  ret,
+}) => (
   <div class="tbl">
     <table>
       <thead>
@@ -101,7 +106,10 @@ const PlanTable: FC<{ plans: ShiftPlanRow[]; show: 'employee' | 'site' | 'both' 
                 {p.valid_until && ` bis ${dateDe(p.valid_until)}`}
               </td>
               <td>
-                <a class="btn sm sec" href={`/einsatzplanung/${p.id}`}>
+                <a
+                  class="btn sm sec"
+                  href={`/einsatzplanung/${p.id}${ret ? `?zurueck=${encodeURIComponent(ret)}` : ''}`}
+                >
                   Ändern
                 </a>
               </td>
@@ -132,21 +140,28 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
          where series_id = (select coalesce(series_id, id) from app.shift_plans where id = ${c.req.param('id')})
            and (valid_until is null or valid_until > ${b.last_day})`;
       for (const p of plans) await endShiftPlan(sql, p.id, b.last_day, c.get('actor'));
-      return back(c, '/einsatzplanung', { ok: 'Terminserie beendet.' });
+      return back(c, safeReturn(b.zurueck), { ok: 'Terminserie beendet.' });
     }
     await endShiftPlan(sql, c.req.param('id'), b.last_day, c.get('actor'));
-    return back(c, '/einsatzplanung', { ok: 'Einsatz beendet.' });
+    return back(c, safeReturn(b.zurueck), { ok: 'Einsatz beendet.' });
   });
 
   app.get(`/personal/:id{${UUID}}/einsaetze`, (c) =>
     shells.employee!(c, 'einsaetze', async (e) => (
       <>
         <div class="actions" style="margin-top:0">
-          <a class="btn sm" href={`/einsatzplanung/${randomUUID()}?mitarbeiter=${e.id}`}>
+          <a
+            class="btn sm"
+            href={`/einsatzplanung/${randomUUID()}?mitarbeiter=${e.id}&zurueck=${encodeURIComponent(`/personal/${e.id}/einsaetze`)}`}
+          >
             + Einsatz planen
           </a>
         </div>
-        <PlanTable plans={await listShiftPlans(sql, { employeeId: e.id })} show="site" />
+        <PlanTable
+          plans={await listShiftPlans(sql, { employeeId: e.id })}
+          show="site"
+          ret={`/personal/${e.id}/einsaetze`}
+        />
       </>
     )),
   );
@@ -178,7 +193,10 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
       return (
         <>
           <div class="actions" style="margin-top:0">
-            <a class="btn sm" href={`/einsatzplanung/${randomUUID()}?objekt=${s.id}`}>
+            <a
+              class="btn sm"
+              href={`/einsatzplanung/${randomUUID()}?objekt=${s.id}&zurueck=${encodeURIComponent(`/objekte/${s.id}/einsaetze`)}`}
+            >
               + Einsatz planen
             </a>
             <a class="btn sm sec" href={`/einsatzplanung/vertretungen`}>
@@ -188,7 +206,11 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
           {view === 'liste' ? (
             <>
               <SiteCalendar base={base} view={view} date={date} today={today} shifts={[]} />
-              <PlanTable plans={await listShiftPlans(sql, { siteId: s.id })} show="employee" />
+              <PlanTable
+                plans={await listShiftPlans(sql, { siteId: s.id })}
+                show="employee"
+                ret={`/objekte/${s.id}/einsaetze`}
+              />
             </>
           ) : (
             <SiteCalendar base={base} view={view} date={date} today={today} shifts={shifts} />
@@ -250,7 +272,10 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
         <label for="note">Notiz (z. B. AU liegt vor)</label>
         <input id="note" name="note" />
       </div>
-      <p class="small mut">Vom Büro erfasste Abwesenheiten gelten sofort als genehmigt.</p>
+      <p class="small mut">
+        Vom Büro erfasste Abwesenheiten gelten sofort als genehmigt und automatisch für die geplanten Einsätze
+        (geplante Stunden; unbezahlt frei = unbezahlt). Abweichende Stunden danach unter „Stunden je Einsatz“.
+      </p>
       <div class="formfoot">
         <button class="btn">Erfassen</button>
       </div>
@@ -305,6 +330,13 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                 >
                   {ABSENCE_STATUS_LABEL[a.status]}
                 </span>
+                {a.status === 'genehmigt' && (
+                  <div>
+                    <a class="small" href={`/urlaub/${a.id}/stunden`}>
+                      Stunden je Einsatz
+                    </a>
+                  </div>
+                )}
               </td>
               <td class="small">{a.note ?? ''}</td>
               {decide && (

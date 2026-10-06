@@ -809,3 +809,7 @@ Testadresse.
   „Prüfung abschließen“ nur wenn alles beantwortet (Stand unveränderlich festgehalten). Report-PDF für Zoll/Auftraggeber
   und Vorlagen (Mindestlohn-Selbsterklärung, Tarif-Compliance, Eigenauskunft) auf Briefpapier. Import aus dem Backup:
   27 Dateien inkl. Archiv. `e2e:kasse` jetzt 22 Prüfungen.
+- 2026-10-06: Runde 7c – Einstellungen wie Fortytools: „Einstellungen für <Firma>“ mit Gruppen Meine Daten, Mandantendaten,
+  Benutzer & Gruppen, Grundeinstellungen, Vorgaben & Einstellungen, Dokumenteneinstellungen, Disposition-Einstellungen,
+  Import & Export (je Eintrag eine Beschreibung), rechts Inhaltsverzeichnis. Zahnrad = Menü „Einstellungen für die Firma“,
+  „Einstellungen für <Benutzer>“, Abmelden.

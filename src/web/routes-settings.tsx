@@ -11,49 +11,121 @@ import { canOpen } from './permissions.js';
  * Die einzelnen Seiten bleiben, wo sie sind; hier nur der Einstieg, gefiltert nach Rolle.
  */
 
-const SECTIONS: { title: string; items: [string, string, string][] }[] = [
+/** Aufbau wie Fortytools: Gruppen mit Beschreibung je Eintrag, rechts Inhaltsverzeichnis. */
+const SECTIONS: { id: string; title: string; items: [string, string, string][] }[] = [
   {
-    title: 'Firma',
+    id: 'meine-daten',
+    title: 'Meine Daten',
+    items: [['Mein Konto & Passwort', '/konto', 'Eigenes Passwort ändern, Anmeldedaten.']],
+  },
+  {
+    id: 'mandantendaten',
+    title: 'Mandantendaten',
     items: [
       [
         'Firmendaten & Bankverbindungen',
         '/einstellungen/firma',
-        'Adresse, Steuernummer, Register, Konten auf Rechnungen',
+        'Anschrift, Steuernummer, USt-ID, Handelsregister, Kontakt und Bankkonten – erscheinen auf Rechnungen, Mahnungen und in der E-Rechnung.',
       ],
-      ['Benutzer & Rechte', '/benutzer', 'Zugänge, Rollen, Objekte der Objektleitung'],
     ],
   },
   {
-    title: 'Rechnungen & Mahnwesen',
+    id: 'benutzer',
+    title: 'Benutzer & Gruppen',
     items: [
-      ['Leistungsarten', '/einstellungen/leistungsarten', 'Stammliste mit Lohnkostenanteil'],
-      ['Mahnstufen & Gebühren', '/mahnungen/einstellungen', 'Stufen, Fristen, Mahngebühren'],
-      ['Briefvorlagen für Kunden', '/kunden/vorlagen', 'Serienbriefe, Schriftverkehr'],
+      [
+        'Benutzer & Rechte',
+        '/benutzer',
+        'Zugänge anlegen und sperren, Rollen (Admin, Buchhaltung, Personal, Objektleitung), Objekte der Objektleitung.',
+      ],
     ],
   },
   {
-    title: 'Buchhaltung & Kalkulation',
+    id: 'grundeinstellungen',
+    title: 'Grundeinstellungen',
     items: [
       [
         'DATEV-Konten & Nachkalkulation',
         '/datev',
-        'Berater-/Mandantennr., Konten, Lohnzuschlag, Ziel-Deckungsbeitrag',
+        'Berater-/Mandantennummer, Kontenrahmen, Erlös- und Aufwandskonten, Lohnzuschläge je Beschäftigungsart, Ziel-Deckungsbeitrag.',
+      ],
+      [
+        'Kostenstellen',
+        '/einstellungen/kostenstellen',
+        'Allgemeine Kostenstellen (Verwaltung, Fahrzeuge, Lager …) neben den Objekten.',
       ],
     ],
   },
   {
-    title: 'Personal',
+    id: 'vorgaben',
+    title: 'Vorgaben & Einstellungen',
     items: [
-      ['Lohnstufen', '/personal/lohnstufen', 'Stundenlöhne je Stufe'],
-      ['Dokumentvorlagen Mitarbeiter', '/personal/vorlagen', 'Bescheinigungen, Serienbriefe'],
-      ['Zeiterfassung & Mindestlohn', '/zeiterfassung/einstellungen', 'Branchen-Mindestlohn, Prüfungen'],
+      [
+        'Leistungsarten',
+        '/einstellungen/leistungsarten',
+        'Stammliste der Leistungen am Objekt mit Lohnkostenanteil-Vorgabe.',
+      ],
+      [
+        'Mahnstufen & Gebühren',
+        '/mahnungen/einstellungen',
+        'Zahlungserinnerung und Mahnstufen, Fristen, Mahngebühren und Verzugspauschale.',
+      ],
+      [
+        'Lohnstufen',
+        '/personal/lohnstufen',
+        'Stundenlöhne je Lohnstufe (individueller Stundenlohn geht vor).',
+      ],
+      [
+        'Zeiterfassung & Mindestlohn',
+        '/zeiterfassung/einstellungen',
+        'Branchen-Mindestlohn, Prüfungen nach MiLoG/ArbZG, Regeln für Nachträge.',
+      ],
     ],
   },
   {
-    title: 'Disposition & Inventar',
+    id: 'dokumente',
+    title: 'Dokumenteneinstellungen',
     items: [
-      ['Raumarten', '/raumbuch/raumarten', 'Auswahlliste fürs Raumbuch'],
-      ['Arbeitskleidung: Artikel & Größen', '/arbeitskleidung', 'Preise, PSA, Mindestbestand'],
+      [
+        'Briefvorlagen für Kunden',
+        '/kunden/vorlagen',
+        'Vorlagen für Serienbriefe und Schriftverkehr an Kunden.',
+      ],
+      [
+        'Dokumentvorlagen Mitarbeiter',
+        '/personal/vorlagen',
+        'Bescheinigungen, Unterweisungen und Serienbriefe mit Platzhaltern.',
+      ],
+    ],
+  },
+  {
+    id: 'disposition',
+    title: 'Disposition-Einstellungen',
+    items: [
+      ['Raumarten', '/raumbuch/raumarten', 'Auswahlliste für das Raumbuch der Objekte.'],
+      [
+        'Arbeitskleidung: Artikel & Größen',
+        '/arbeitskleidung',
+        'Artikel, Preise, PSA-Kennzeichen und Mindestbestand.',
+      ],
+    ],
+  },
+  {
+    id: 'import-export',
+    title: 'Import & Export',
+    items: [
+      [
+        'Import aus Fortytools',
+        '/transfer/import',
+        'Kunden, Objekte, Leistungen und Mitarbeiter aus den Fortytools-Exporten übernehmen.',
+      ],
+      [
+        'Import aus der alten App',
+        '/transfer/altdaten',
+        'Backup der alten App hochladen: Kassenbuch, Eigen-Compliance und weitere Bereiche übernehmen.',
+      ],
+      ['DATEV-Export', '/datev', 'Buchungsstapel für den Steuerberater.'],
+      ['Export Lexware Lohn', '/personal/export.csv', 'Mitarbeiter-Stammdaten als CSV für Lexware Lohn.'],
     ],
   },
 ];
@@ -92,39 +164,39 @@ const ibanOk = (iban: string) => {
 export function registerSettingsRoutes({ app, deps, page, back }: Ctx) {
   const { sql } = deps;
 
-  app.get('/einstellungen', (c) => {
+  app.get('/einstellungen', async (c) => {
     const role = c.get('user').role as Role;
     const sections = SECTIONS.map((s) => ({
       ...s,
       items: s.items.filter(([, href]) => canOpen(role, href)),
     })).filter((s) => s.items.length);
+    const [co] = await sql<{ legal_name: string }[]>`select legal_name from app.company where id = 1`;
     return page(
       c,
       'Einstellungen',
       '',
       <>
-        <PageHead title="Einstellungen" />
-        <p class="mut" style="margin-top:-8px;max-width:760px">
-          Stammlisten und Vorgaben, die selten geändert werden. Änderungen gelten für neue Vorgänge;
-          ausgestellte Rechnungen und abgeschlossene Belege bleiben unverändert.
-        </p>
-        <div class="settings-grid">
-          {sections.map((s) => (
-            <div class="card">
-              <h3>{s.title}</h3>
-              {s.items.map(([label, href, hint]) => (
-                <a class="set" href={href}>
-                  <div>
+        <PageHead title={`Einstellungen für ${co?.legal_name ?? 'die Firma'}`} />
+        <div class="set-wrap">
+          <div class="set-main">
+            {sections.map((s) => (
+              <section id={s.id} class="set-sec">
+                <h2>{s.title}</h2>
+                {s.items.map(([label, href, hint]) => (
+                  <a class="set-item" href={href}>
                     <b>{label}</b>
-                    <div>
-                      <span>{hint}</span>
-                    </div>
-                  </div>
-                  <span>›</span>
-                </a>
-              ))}
-            </div>
-          ))}
+                    <span>{hint}</span>
+                  </a>
+                ))}
+              </section>
+            ))}
+          </div>
+          <aside class="set-toc" aria-label="Inhalt">
+            <div class="set-toc-t">Inhalt</div>
+            {sections.map((s) => (
+              <a href={`#${s.id}`}>{s.title}</a>
+            ))}
+          </aside>
         </div>
       </>,
     );

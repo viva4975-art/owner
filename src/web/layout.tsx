@@ -461,6 +461,19 @@ h2.form-section:first-of-type{margin-top:4px}
 .due-banner .ico{flex:none;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;background:var(--err)}
 .due-banner.warn .ico{background:var(--warn)}
 .due-banner.ok{background:#eef7ea;border-color:#cfe6c4;border-left-color:var(--ok)}.due-banner.ok .ico{background:var(--ok)}
+/* Einstellungen wie Fortytools */
+.set-wrap{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:28px;align-items:start}
+.set-sec{background:#fff;border:1px solid var(--line);border-radius:12px;padding:6px 20px 10px;margin-bottom:16px;scroll-margin-top:16px}
+.set-sec h2{font-size:16px;margin:12px 0 4px}
+.set-item{display:flex;flex-direction:column;gap:2px;padding:11px 0;border-top:1px solid var(--line);color:var(--ink)}
+.set-sec h2+.set-item{border-top:0}
+.set-item b{color:var(--brand);font-weight:600}.set-item span{font-size:13px;color:var(--mut)}
+.set-item:hover{text-decoration:none}.set-item:hover b{text-decoration:underline}
+.set-toc{position:sticky;top:16px;display:flex;flex-direction:column;gap:2px;border-left:2px solid var(--line);padding-left:14px}
+.set-toc-t{font-size:12px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
+.set-toc a{font-size:14px;color:var(--ink-2);padding:3px 0}
+summary.gear{list-style:none;cursor:pointer}summary.gear::-webkit-details-marker{display:none}
+@media (max-width:860px){.set-wrap{grid-template-columns:1fr}.set-toc{display:none}}
 /* Eigen-Compliance */
 .eyebrow.ec-err{color:var(--err)}.eyebrow.ec-warn{color:var(--warn)}.eyebrow.ec-ok{color:var(--ok)}
 .ec-group{background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:12px;padding:4px 16px}
@@ -890,10 +903,24 @@ export const Layout: FC<{
               <span class={`env${env === 'live' ? ' live' : ''}`}>
                 {env === 'live' ? 'LIVE' : env === 'test' ? 'TEST' : 'LOKAL'}
               </span>
-              {user && role && canOpen(role as Role, '/einstellungen') && (
-                <a href="/einstellungen" class="gear" title="Einstellungen" aria-label="Einstellungen">
-                  <Icon name="settings" size={20} />
-                </a>
+              {user && (
+                <details class="dd">
+                  <summary class="gear" title="Einstellungen" aria-label="Einstellungen">
+                    <Icon name="settings" size={20} />
+                  </summary>
+                  <div class="drop right">
+                    {role && canOpen(role as Role, '/einstellungen') && (
+                      <a href="/einstellungen">Einstellungen für die Firma</a>
+                    )}
+                    <a href="/konto">Einstellungen für {user}</a>
+                    <div class="sep" />
+                    <form method="post" action="/abmelden" style="margin:0">
+                      <button class="btn ghost" style="width:100%;justify-content:flex-start">
+                        Abmelden
+                      </button>
+                    </form>
+                  </div>
+                </details>
               )}
               {user && (
                 <details class="dd">

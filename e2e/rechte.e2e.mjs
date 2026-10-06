@@ -154,7 +154,7 @@ check('Admin lädt Personaldokument', (await a.request.get(B + fileHref)).ok());
 const denied = await o.request.get(B + fileHref, { maxRedirects: 0 });
 check('Objektleitung: Personaldokument gesperrt (403)', denied.status() === 403, String(denied.status()));
 await o.click('.usr');
-await o.click('button:has-text("Abmelden")');
+await o.click('details:has(.usr) button:has-text("Abmelden")');
 await o.waitForLoadState();
 check('abgemeldet', o.url().includes('/anmelden'));
 

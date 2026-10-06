@@ -495,15 +495,79 @@ export function registerModuleRoutes(ctx: Ctx) {
         effectiveWage(sql, e.id),
         sql<{ name: string }[]>`select name from app.wage_levels where id = ${e.wage_level_id}`,
       ]);
+      // Aktuelle Einsätze wie Fortytools (laufende und künftige Planung)
+      const plans = await sql<
+        {
+          site_id: string;
+          site_name: string;
+          site_no: string;
+          wd: number[];
+          times: string;
+          from: string;
+          until: string | null;
+        }[]
+      >`
+        select p.site_id, s.name as site_name, s.site_no, array_agg(distinct p.weekday order by p.weekday) as wd,
+               string_agg(distinct to_char(p.start_time, 'HH24:MI') || '–' || to_char(p.end_time, 'HH24:MI'), ', ') as times,
+               min(p.valid_from)::text as from, max(p.valid_until)::text as until
+          from app.shift_plans p join app.sites s on s.id = p.site_id
+         where p.employee_id = ${e.id} and (p.valid_until is null or p.valid_until >= ${todayBerlin()})
+         group by p.site_id, s.name, s.site_no order by s.site_no`;
+      const WD = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
       return (
-        <EmployeeOverview
-          e={e}
-          priv={data.priv}
-          sites={data.sites}
-          showPrivate
-          wage={{ level: lvl?.name ?? null, cents: wage }}
-          month={await monthBox(e.id)}
-        />
+        <>
+          <div class="card">
+            <div class="actions" style="margin:0 0 8px;justify-content:space-between">
+              <h2 style="margin:0">Aktuelle Einsätze</h2>
+              <a
+                class="btn sm"
+                href={`/einsatzplanung/${randomUUID()}?mitarbeiter=${e.id}&zurueck=${encodeURIComponent(`/personal/${e.id}`)}`}
+              >
+                + Einsatz planen
+              </a>
+            </div>
+            {plans.length === 0 ? (
+              <div class="empty">Keine aktuellen Einsätze geplant.</div>
+            ) : (
+              <div class="tbl">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Objekt</th>
+                      <th>Tage / Zeit</th>
+                      <th>Einsatzbeginn</th>
+                      <th>Einsatzende</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {plans.map((p) => (
+                      <tr>
+                        <td>
+                          <a href={`/objekte/${p.site_id}/einsaetze`}>{p.site_name}</a>
+                          <div class="small mut">{p.site_no}</div>
+                        </td>
+                        <td>
+                          {p.wd.map((d) => WD[d]).join(', ')}
+                          <div class="small mut">{p.times}</div>
+                        </td>
+                        <td>{dateDe(p.from)}</td>
+                        <td>{p.until ? dateDe(p.until) : '–'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+          <EmployeeOverview
+            e={e}
+            priv={data.priv}
+            sites={data.sites}
+            showPrivate
+            wage={{ level: lvl?.name ?? null, cents: wage }}
+            month={await monthBox(e.id)}
+          />
+        </>
       );
     }),
   );

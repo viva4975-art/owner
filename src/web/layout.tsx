@@ -958,6 +958,25 @@ tbody tr:hover td{background:#fbfaf8}
   main{padding:16px 16px 64px}
 }
 @media print{.appside,.top,.scrim{display:none!important}.shell .mainc{margin-left:0}}
+/* Runde 12: Handy/Tablet größer und ruhiger (Vergleich Fortytools) – Reiter umbrechen statt wegscrollen */
+@media (max-width:1024px){
+  body{font-size:16px}
+  .page-head h1,main h1{font-size:30px;line-height:1.15;letter-spacing:-.01em}
+  .page-head h1 .no,main h1 .no{font-size:22px}
+  .tabs{flex-wrap:wrap;overflow:visible;row-gap:2px}
+  .tabs a,.tabs summary{font-size:15.5px;padding:10px 12px}
+  .tbl table,table{font-size:15px}
+  .card{padding:16px}
+  dl dt,dl dd{font-size:15.5px}
+  .btn{min-height:42px;font-size:15px}
+  input,select,textarea{font-size:16px}
+}
+@media (max-width:640px){
+  .pagehead .newform{flex-wrap:wrap;gap:8px}
+  .pagehead .newform select{flex:1;min-width:0}
+  .page-head h1,main h1{font-size:28px}
+  main{padding:14px 12px 64px}
+}
 
 `;
 

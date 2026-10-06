@@ -128,6 +128,9 @@ main{padding-bottom:calc(110px + env(safe-area-inset-bottom,0px))}
 .shift .w{font-size:15px;color:var(--mut);display:flex;justify-content:space-between}
 .shift .s{font-size:19px;font-weight:650;margin-top:4px}
 .shift.done .w b{color:#15803d}
+.shift.open{border:2px solid #f0c8d4}
+.shift .confirm{margin-top:10px;padding-top:10px;border-top:1px solid #f0e4e8}
+.shift .confirm .chk label{font-size:15px}
 .fab{position:fixed;right:20px;bottom:calc(92px + env(safe-area-inset-bottom,0px));width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#9b2a45,#7D1435);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 24px rgba(125,20,53,.35);z-index:20;text-decoration:none}
 .fab svg{width:30px;height:30px}
 .tabbar{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.96);border-top:1px solid #eadfe3;display:grid;grid-template-columns:repeat(4,1fr);padding:8px 6px calc(8px + env(safe-area-inset-bottom,0px));z-index:15;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
@@ -475,6 +478,29 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
 
   // ---------------------------------------------------------------- Startseite
 
+  /** „Soll als Ist“: Zeit des geplanten Einsatzes bestätigen (Häkchen Pflicht), direkt in der Einsatz-Karte. */
+  const ConfirmBox: FC<{
+    lang: Lang;
+    s: { plan: { id: string; start_time: string; end_time: string; site_name: string }; date: string };
+  }> = ({ lang, s }) => (
+    <form method="post" action="/m/bestaetigen" class="confirm" data-net>
+      <input type="hidden" name="plan_id" value={s.plan.id} />
+      <input type="hidden" name="date" value={s.date} />
+      <div class="chk">
+        <input type="checkbox" id={`c-${s.plan.id}-${s.date}`} name="confirm" value="1" required />
+        <label for={`c-${s.plan.id}-${s.date}`}>
+          {t(lang, 'confirm_text', {
+            day: dayLabel(lang, s.date),
+            from: s.plan.start_time,
+            to: s.plan.end_time,
+            site: s.plan.site_name,
+          })}
+        </label>
+      </div>
+      <button class="big go">✓ {t(lang, 'confirm_btn')}</button>
+    </form>
+  );
+
   const Times: FC<{ lang: Lang; rows: Awaited<ReturnType<typeof listEntries>> }> = ({ lang, rows }) => (
     <div class="card">
       <h2>{t(lang, 'my_times')}</h2>
@@ -622,9 +648,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     });
     const todays = shifts.filter((s) => s.date === today && !s.absence);
     const notes = await siteNotes(todays.map((s) => s.plan.site_id));
-    const toConfirm = shifts.filter(
-      (s) => !s.entry && !s.absence && (s.date < today || s.plan.end_time <= nowHm),
-    );
+    const pastToConfirm = shifts.filter((s) => !s.entry && !s.absence && s.date < today);
     const presetSite = todays.find((s) => !s.entry)?.plan.site_id;
     const doneToday = todays.filter((s) => s.entry).length;
     const todayTimes = times.filter((e) => e.work_date === today && e.status !== 'abgelehnt');
@@ -685,6 +709,24 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
             ✍ {t(lang, 'docs_open', { n: openDocs.length })}
           </a>
         )}
+        {pastToConfirm.length > 0 && (
+          <>
+            <div class="today">
+              <h2>{t(lang, 'confirm_open')}</h2>
+            </div>
+            {pastToConfirm.map((s) => (
+              <div class="shift open">
+                <div class="w">
+                  <span>
+                    {dayLabel(lang, s.date)} · {s.plan.start_time}–{s.plan.end_time}
+                  </span>
+                </div>
+                <div class="s">{s.plan.site_name}</div>
+                <ConfirmBox lang={lang} s={s} />
+              </div>
+            ))}
+          </>
+        )}
         <div class="today">
           <h2>{t(lang, 'today_short')}</h2>
           <div class="stats">
@@ -716,6 +758,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
             </div>
             <div class="s">{s.plan.site_name}</div>
             {notes.get(s.plan.site_id) && <div class="note">{notes.get(s.plan.site_id)}</div>}
+            {!s.entry && s.plan.end_time <= nowHm && <ConfirmBox lang={lang} s={s} />}
           </div>
         ))}
         <div id="clock" />
@@ -729,25 +772,6 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
           }}
           running={running}
         />
-        {toConfirm.map((s) => (
-          <form method="post" action="/m/bestaetigen" class="card warn" data-net>
-            <h2>{t(lang, 'confirm_open')}</h2>
-            <input type="hidden" name="plan_id" value={s.plan.id} />
-            <input type="hidden" name="date" value={s.date} />
-            <div class="chk">
-              <input type="checkbox" id={`c-${s.plan.id}-${s.date}`} name="confirm" value="1" required />
-              <label for={`c-${s.plan.id}-${s.date}`}>
-                {t(lang, 'confirm_text', {
-                  day: dayLabel(lang, s.date),
-                  from: s.plan.start_time,
-                  to: s.plan.end_time,
-                  site: s.plan.site_name,
-                })}
-              </label>
-            </div>
-            <button class="big sec">{t(lang, 'confirm_btn')}</button>
-          </form>
-        ))}
         <a class="fab" href="#clock" aria-label={t(lang, 'clock_now')}>
           <Ic n="watch" />
         </a>
@@ -888,6 +912,11 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       }),
     );
     const daySel = shifts.filter((x) => x.date === sel);
+    const nowHm = new Date().toLocaleTimeString('de-DE', {
+      timeZone: 'Europe/Berlin',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
     return render(
       c,
       lang,
@@ -970,6 +999,12 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
               ) : null}
             </div>
             <div class="s">{s2.plan.site_name}</div>
+            {!s2.entry &&
+              !s2.absence &&
+              sel >= addDays(today, -7) &&
+              (sel < today || (sel === today && s2.plan.end_time <= nowHm)) && (
+                <ConfirmBox lang={lang} s={s2} />
+              )}
           </div>
         ))}
       </>,

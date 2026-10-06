@@ -925,3 +925,10 @@ Testadresse.
     Navigation unten (Übersicht, Kalender, Zeiten, Urlaub). Neu: Kalender (`/m/kalender`, 2 Monate, Punkte an Einsatztagen,
     Monatswerte, Tag antippen). „Arbeit beenden“ dunkles Bordeaux statt Schwarz.
   - Tests: 336 Unit-/DB-Tests (neu `surcharges.test.ts`, `runde11.db.test.ts`), alle 25 Browser-Suiten grün (`e2e:runde10` 25).
+- 2026-10-06: Runde 12 (Ahmed, Vergleich mit Fortytools am Handy): Büro-Oberfläche auf Handy/Tablet größer (Schrift 16 px,
+  Titel 28–30 px, größere Knöpfe/Felder), Reiter brechen um statt seitlich zu scrollen, „Neu anlegen“ bricht um.
+  Mitarbeiter-Übersicht oben „Aktuelle Einsätze“ (Objekt, Tage/Zeit, Einsatzbeginn/-ende, + Einsatz planen) wie Fortytools.
+  Zuschläge Sonntag/Feiertag 80 %, hohe Feiertage 200 % (Ahmed; RTV sieht 100 %/150 % vor – Tarifbindung prüfen).
+  Handy-App: Zeit bestätigen („so gearbeitet“) direkt in der Einsatz-Karte – heute nach Schichtende, frühere Tage (7 Tage)
+  oben unter „Noch zu bestätigen“, auch im Kalender beim gewählten Tag. **Offen:** Qualitätsmanagement/Audit wie Fortytools –
+  Ahmed schickt die Bilder Schritt für Schritt.

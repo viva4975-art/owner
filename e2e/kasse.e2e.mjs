@@ -167,6 +167,60 @@ check('Funnel sichtbar', (await p.locator('.ak-stage').count()) === 4);
 await p.goto(`${B}/`);
 check('Wiedervorlage auf der Startseite', (await p.locator('body').innerText()).includes('heute fällig'));
 
+console.log('8. Bewerber & Stellen');
+await p.goto(`${B}/bewerber`);
+await p.click('a:has-text("+ Neue Stelle")');
+await p.selectOption('#vorlage', 'glasreiniger');
+check(
+  'Vorlage füllt Felder',
+  (await p.inputValue('#titel')) === 'Glasreiniger' && (await p.inputValue('#stunden')) === '40',
+);
+await p.fill('#titel', `E2E Reinigungskraft ${stamp}`);
+await p.selectOption('#art', 'Reinigungskraft');
+await p.fill('#stunden', '20');
+await p.selectOption('#zeit', 'morgens');
+await p.fill('#plz', '81375');
+await p.click('button[data-days="Mo,Di,Mi,Do,Fr"]');
+await p.click('#stelle-form button:has-text("Speichern")');
+await p.waitForLoadState();
+check('Stelle gespeichert', (await flash(p)).includes('gespeichert'), await flash(p));
+check('Arbeitstage zusammengefasst', (await p.locator('body').innerText()).includes('Mo–Fr: 06:00–10:00'));
+const stelleUrl = p.url();
+const plakat = await p.request.get(`${stelleUrl}/plakat`);
+const ph = await plakat.text();
+check('Plakat 9 Sprachen', ph.includes('Einsatzort') && ph.includes('Location') && ph.includes('WHATSAPP'));
+await p.goto(`${B}/bewerber/pool`);
+await p.click('a:has-text("+ Neuer Bewerber")');
+await p.fill('#name', `E2E Bewerber ${stamp}`);
+await p.fill('#plz', '81379');
+await p.fill('#ort', 'München');
+await p.fill('#stunden', '22');
+await p.selectOption('#zeit', 'morgens');
+await p.click('form.card button:has-text("Speichern")');
+await p.waitForLoadState();
+check('Bewerber gespeichert', (await flash(p)).includes('Gespeichert'), await flash(p));
+check(
+  'passende Stelle beim Bewerber',
+  (await p.locator('.bw-match', { hasText: `E2E Reinigungskraft ${stamp}` }).count()) === 1,
+);
+await p
+  .locator('input[name=datei]')
+  .setInputFiles({ name: 'lebenslauf.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') });
+await p.waitForSelector('.bw-doc', { timeout: 10000 }).catch(() => {});
+check('Unterlage hochgeladen', (await p.locator('.bw-doc').count()) === 1);
+await p.goto(stelleUrl);
+check(
+  'Bewerber bei der Stelle',
+  (await p.locator('.bw-match', { hasText: `E2E Bewerber ${stamp}` }).count()) === 1,
+);
+await p.goto(
+  `${B}/bewerber/matching?los=1&ort=München&plz=81375&stunden=20&sprache=Deutsch&art=Reinigungskraft&zeit=morgens`,
+);
+check(
+  'Manuelles Matching findet Bewerber',
+  (await p.locator('.lc', { hasText: `E2E Bewerber ${stamp}` }).count()) === 1,
+);
+
 await browser.close();
 console.log(`\ne2e:kasse: ${ok} bestanden, ${fail} fehlgeschlagen`);
 process.exit(fail ? 1 : 0);

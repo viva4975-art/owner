@@ -150,6 +150,7 @@ const companyInput = z.object({
   fax: z.string().trim().nullable(),
   email: z.email('E-Mail ungültig'),
   website: z.string().trim().nullable(),
+  job_whatsapp: z.string().trim().nullable(),
 });
 
 const ibanOk = (iban: string) => {
@@ -242,6 +243,7 @@ export function registerSettingsRoutes({ app, deps, page, back }: Ctx) {
             {field('fax', 'Fax')}
             {field('email', 'E-Mail', true)}
             {field('website', 'Website')}
+            {field('job_whatsapp', 'WhatsApp-Nummer für Stellenaushänge')}
           </div>
           <div class="group-title">Bankverbindungen (erste = Hauptkonto, steht im GiroCode)</div>
           {accts.map((a, i) => (
@@ -290,6 +292,7 @@ export function registerSettingsRoutes({ app, deps, page, back }: Ctx) {
       fax: opt('fax'),
       email: opt('email') ?? '',
       website: opt('website'),
+      job_whatsapp: opt('job_whatsapp'),
     });
     if (!parsed.success)
       return back(c, '/einstellungen/firma', {

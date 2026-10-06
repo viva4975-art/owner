@@ -474,6 +474,16 @@ h2.form-section:first-of-type{margin-top:4px}
 .set-toc a{font-size:14px;color:var(--ink-2);padding:3px 0}
 summary.gear{list-style:none;cursor:pointer}summary.gear::-webkit-details-marker{display:none}
 @media (max-width:860px){.set-wrap{grid-template-columns:1fr}.set-toc{display:none}}
+/* Bewerber */
+.bw-count{display:flex;flex-direction:column;align-items:flex-end;text-align:right}.bw-count span{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--mut)}
+.bw-count b{font-size:24px}.bw-chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.bw-kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:12px}
+.bw-match{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line);color:var(--ink)}
+.bw-match:hover{text-decoration:none;background:var(--head)}
+.bw-doc{display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}.bw-doc a{flex:1}
+.bw-days{display:flex;flex-direction:column;gap:6px}.bw-day{display:grid;grid-template-columns:70px 220px 120px 120px;gap:8px;align-items:center}
+.bw-day .chk{margin:0}.badge.gold{background:#fbf3dc;color:#8b6914}.badge.brand{background:var(--brand);color:#fff}
+@media (max-width:640px){.bw-day{grid-template-columns:60px 1fr;}.bw-day input[type=time]{grid-column:2}}
 /* Akquise */
 .ak-funnel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px}
 .ak-funnel-h{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px;margin-bottom:12px}
@@ -772,6 +782,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     label: 'Personal',
     items: [
       { label: 'Mitarbeiter', href: '/personal' },
+      { label: 'Bewerber & Stellen', href: '/bewerber' },
       { label: 'Zeiterfassung', href: '/zeiterfassung', sep: true },
       { label: 'Nachträge freigeben', href: '/zeiterfassung/freigaben' },
       { label: 'Prüfbericht Zoll (§ 17 MiLoG)', href: '/zeiterfassung/pruefbericht' },

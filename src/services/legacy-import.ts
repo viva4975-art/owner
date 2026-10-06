@@ -6,6 +6,7 @@ import { BusinessError } from './errors.js';
 import { importLegacyEc } from './eigen-compliance.js';
 import { uuidOf } from './fortytools-export-import.js';
 import { importLegacyProspects } from './prospects.js';
+import { importLegacyApplicants } from './applicants.js';
 import { type UploadConfig, filePath } from './uploads.js';
 import type { Deps } from './workflow.js';
 
@@ -366,6 +367,37 @@ async function applyAkq(deps: Deps, b: Backup, actor: string): Promise<string[]>
   return [`Akquise: ${r.n} Einträge, ${r.acts} Aktivitäten übernommen.`];
 }
 
+// ------------------------------------------------------------------ Bewerber
+
+async function analyzeBew(sql: Sql, b: Backup): Promise<Section> {
+  const rows = b.data.bewerber ?? [];
+  const have = new Set(
+    (
+      await sql<{ legacy_id: string }[]>`select legacy_id from app.applicants where legacy_id is not null`
+    ).map((r) => r.legacy_id),
+  );
+  const vorhanden = rows.filter((r) => have.has(`bew:${String(r.id)}`)).length;
+  const docs = rows.reduce((a, r) => a + (Array.isArray(r.documents) ? r.documents.length : 0), 0);
+  return {
+    key: 'bewerber',
+    label: 'Bewerber-Pool',
+    total: rows.length,
+    neu: rows.length - vorhanden,
+    vorhanden,
+    notes: [
+      'Art/Arbeitszeit werden auf das gemeinsame Vokabular umgestellt (abweichende Angaben stehen in den Notizen).',
+      ...(docs ? [`${docs} Unterlagen sind nicht im Backup – bitte bei Bedarf neu hochladen.`] : []),
+      ...(b.data.stellen ? [] : ['Stellenanzeigen sind nicht im Backup.']),
+    ],
+    ready: rows.length > 0,
+  };
+}
+
+async function applyBew(deps: Deps, b: Backup, actor: string): Promise<string[]> {
+  const n = await importLegacyApplicants(deps.sql, b.data.bewerber ?? [], actor);
+  return [`Bewerber: ${n} übernommen.`];
+}
+
 // ------------------------------------------------------------------ Registry
 
 export type LegacyModule = {
@@ -394,6 +426,7 @@ const MODULES: LegacyModule[] = [
     apply: applyEc,
   },
   { key: 'akquise', tables: ['akquise'], folders: [], analyze: analyzeAkq, apply: applyAkq },
+  { key: 'bewerber', tables: ['bewerber'], folders: [], analyze: analyzeBew, apply: applyBew },
 ];
 
 /** Weitere Module melden sich hier an (Eigen-Compliance, Akquise, Bewerber, Glasreinigung …). */

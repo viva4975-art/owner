@@ -172,12 +172,13 @@ await p.goto(B + '/zaehler?faellig=1');
 check('Übersicht fällige Ablesungen', !(await body(p)).includes('Fehler 500'));
 
 console.log('5. Rechnungsgruppe (Kunde)');
-await p.goto(B + '/kunden/00000000-0000-4000-8000-000000000001/rechnungsgruppen');
+await p.goto(B + '/kunden/00000000-0000-4000-8000-000000000001/rechnungsgruppen?neu=1');
 await p.fill('#g-name', `E2E-Gruppe ${tag}`);
 await p.fill('#g-order', 'SR-E2E');
 await p.click('button:has-text("Rechnungsgruppe anlegen")');
 await p.waitForLoadState();
 check('Rechnungsgruppe gespeichert', (await body(p)).includes(`E2E-Gruppe ${tag}`), await flash(p));
+await p.goto(B + '/kunden/00000000-0000-4000-8000-000000000001/rechnungsgruppen?neu=1');
 await p.fill('#g-name', `E2E-Gruppe ${tag}`);
 await p.click('button:has-text("Rechnungsgruppe anlegen")');
 await p.waitForLoadState();

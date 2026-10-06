@@ -3,7 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { parseEuro, parseQuantity } from '../domain/money/money.js';
 import { getInvoice, issue, saveDraft } from './invoices.js';
-import { effectiveBilling, saveSiteBilling, siteBillingInput } from './masterdata.js';
+import { groupBillingInput, saveInvoiceGroup, setSiteInvoiceGroup } from './invoice-groups.js';
+import { effectiveBilling, saveCustomer, saveSite, standardGroupId } from './masterdata.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
@@ -35,7 +36,7 @@ const draft = (sql: Sql, siteId: string | null) =>
     'test',
   );
 
-describe.skipIf(!available)('Rechnungsangaben je Objekt', () => {
+describe.skipIf(!available)('Rechnungsgruppen = Rechnungseinstellungen je Objekt', () => {
   let sql: Sql;
   beforeAll(async () => {
     sql = await freshDatabase();
@@ -44,9 +45,8 @@ describe.skipIf(!available)('Rechnungsangaben je Objekt', () => {
     await sql?.end();
   });
 
-  const form = (over: Record<string, string>) =>
-    siteBillingInput.parse({
-      billing_mode: 'eigen',
+  const billing = (over: Record<string, string>) =>
+    groupBillingInput.parse({
       bill_name: '',
       bill_name2: '',
       bill_street: '',
@@ -54,54 +54,58 @@ describe.skipIf(!available)('Rechnungsangaben je Objekt', () => {
       bill_city: '',
       bill_contact_name: '',
       bill_emails: '',
-      bill_format: '',
-      bill_leitweg_id: '',
+      bill_format: 'zugferd',
+      buyer_reference: '',
       bill_supplier_no: '',
-      bill_payment_terms_days: '',
+      bill_payment_terms_days: '30',
       bill_skonto_percent_bp: '',
       bill_skonto_days: '',
       ...over,
     });
-
-  it('wie Kunde: alles vom Kunden', async () => {
-    const [c] =
-      await sql`select name, invoice_emails, payment_terms_days from app.customers where id = ${DEMO.authority}`;
-    const b = await effectiveBilling(sql, DEMO.authority, DEMO.siteSchool);
-    expect(b).toMatchObject({
-      source: 'kunde',
-      name: c!.name,
-      emails: c!.invoice_emails,
-      paymentTermsDays: c!.payment_terms_days,
-    });
-  });
-
-  it('abweichend: Adresse, E-Mail, Format, Leitweg-ID, Zahlungsziel, Skonto gehen in Entwurf und Ausstellung', async () => {
-    await expect(
-      saveSiteBilling(sql, DEMO.siteSchool, form({ bill_format: 'xrechnung', bill_leitweg_id: '' }), 't'),
-    ).resolves.toBeUndefined(); // Leitweg-ID kommt vom Kunden (Behörde)
-    expect(() => form({ bill_name: 'Schulamt' })).toThrow(/Rechnungsadresse/);
-    await saveSiteBilling(
+  const group = (id: string, over: Record<string, string>, combine = false) =>
+    saveInvoiceGroup(
       sql,
-      DEMO.siteSchool,
-      form({
-        bill_name: 'Referat für Bildung – Schulverwaltung Süd',
-        bill_street: 'Bayerstr. 28',
-        bill_postal_code: '80335',
-        bill_city: 'München',
-        bill_contact_name: 'Frau Schmidt',
-        bill_emails: 'schule-sued@muenchen.example, kopie@muenchen.example',
-        bill_format: 'zugferd',
-        bill_leitweg_id: '09162000-SUED-12',
-        bill_payment_terms_days: '45',
-        bill_skonto_custom: 'on',
-        bill_skonto_percent_bp: '2',
-        bill_skonto_days: '10',
-      }),
+      id,
+      {
+        customerId: DEMO.authority,
+        name: `Gruppe ${id.slice(0, 6)}`,
+        combine,
+        billing: billing(over),
+        orderReference: null,
+        note: null,
+        active: true,
+        siteIds: null,
+        expectedVersion: null,
+      },
       't',
     );
+
+  it('Prüfungen der Gruppe', () => {
+    expect(() => billing({ bill_name: 'Schulamt' })).toThrow(/Rechnungsadresse/);
+    expect(() => billing({ bill_format: 'xrechnung' })).toThrow(/Leitweg-ID/);
+    expect(() => billing({ bill_skonto_percent_bp: '2' })).toThrow(/zusammen/);
+    expect(() => billing({ bill_skonto_percent_bp: '2', bill_skonto_days: '30' })).toThrow(/kürzer/);
+  });
+
+  it('Gruppe liefert Adresse, E-Mail, Format, Leitweg-ID, Zahlungsziel, Skonto für Entwurf und Ausstellung', async () => {
+    const gid = randomUUID();
+    await group(gid, {
+      bill_name: 'Referat für Bildung – Schulverwaltung Süd',
+      bill_street: 'Bayerstr. 28',
+      bill_postal_code: '80335',
+      bill_city: 'München',
+      bill_contact_name: 'Frau Schmidt',
+      bill_emails: 'schule-sued@muenchen.example, kopie@muenchen.example',
+      bill_format: 'zugferd',
+      buyer_reference: '09162000-SUED-12',
+      bill_payment_terms_days: '45',
+      bill_skonto_percent_bp: '2',
+      bill_skonto_days: '10',
+    });
+    await setSiteInvoiceGroup(sql, DEMO.siteSchool, gid, 't');
     const b = await effectiveBilling(sql, DEMO.authority, DEMO.siteSchool);
     expect(b).toMatchObject({
-      source: 'objekt',
+      source: 'gruppe',
       name: 'Referat für Bildung – Schulverwaltung Süd',
       emails: ['schule-sued@muenchen.example', 'kopie@muenchen.example'],
       format: 'zugferd',
@@ -109,8 +113,6 @@ describe.skipIf(!available)('Rechnungsangaben je Objekt', () => {
       paymentTermsDays: 45,
       skonto: { percentBp: 200, days: 10 },
     });
-    // anderes Objekt desselben Kunden bleibt beim Kunden
-    expect((await effectiveBilling(sql, DEMO.authority, DEMO.siteOffice)).source).toBe('kunde');
 
     const id = await draft(sql, DEMO.siteSchool);
     const d = (await getInvoice(sql, id))!.invoice;
@@ -126,31 +128,89 @@ describe.skipIf(!available)('Rechnungsangaben je Objekt', () => {
       contactName: 'Frau Schmidt',
       leitwegId: '09162000-SUED-12',
     });
+  });
 
-    // eigenes Skonto „leer“ = kein Skonto, obwohl der Kunde Skonto hat
+  it('eine Gruppe für mehrere Objekte; leere Adresse = Kundenadresse; kein Skonto in der Gruppe = kein Skonto', async () => {
+    const gid = randomUUID();
     await sql`update app.customers set skonto_percent_bp = 300, skonto_days = 7 where id = ${DEMO.authority}`;
-    await saveSiteBilling(sql, DEMO.siteSchool, form({ bill_skonto_custom: 'on' }), 't');
-    expect((await effectiveBilling(sql, DEMO.authority, DEMO.siteSchool)).skonto).toBeNull();
-    expect((await effectiveBilling(sql, DEMO.authority, DEMO.siteOffice)).skonto).toEqual({
-      percentBp: 300,
-      days: 7,
-    });
+    await group(gid, { bill_emails: 'rechnung@stadt.example', bill_payment_terms_days: '20' });
+    await setSiteInvoiceGroup(sql, DEMO.siteSchool, gid, 't');
+    await setSiteInvoiceGroup(sql, DEMO.siteOffice, gid, 't');
+    const [c] = await sql`select name, street from app.customers where id = ${DEMO.authority}`;
+    for (const site of [DEMO.siteSchool, DEMO.siteOffice]) {
+      const b = await effectiveBilling(sql, DEMO.authority, site);
+      expect(b).toMatchObject({ name: c!.name, street: c!.street, emails: ['rechnung@stadt.example'] });
+      expect(b.paymentTermsDays).toBe(20);
+      expect(b.skonto).toBeNull();
+    }
+  });
 
-    // zurück auf „wie Kunde“ leert alles
-    await saveSiteBilling(
+  it('neuer Kunde bekommt Gruppe „Standard“, neue Objekte landen darin; fremde Gruppe abgelehnt', async () => {
+    const cid = randomUUID();
+    await saveCustomer(
       sql,
-      DEMO.siteSchool,
-      form({
-        billing_mode: 'kunde',
-        bill_name: 'X',
-        bill_street: 'Y',
-        bill_postal_code: '80331',
-        bill_city: 'Z',
-      }),
+      cid,
+      {
+        customer_no: '29990',
+        name: 'Neukunde GmbH',
+        name2: null,
+        street: 'Weg 1',
+        postal_code: '80331',
+        city: 'München',
+        vat_id: null,
+        contact_name: null,
+        contact_email: null,
+        contact_phone: null,
+        notes: null,
+        status: 'interessent',
+      },
       't',
     );
-    const [s] =
-      await sql`select billing_mode, bill_name, bill_emails from app.sites where id = ${DEMO.siteSchool}`;
-    expect(s).toEqual({ billing_mode: 'kunde', bill_name: null, bill_emails: null });
+    const [g] =
+      await sql`select name, bill_format, combine from app.invoice_groups where id = ${standardGroupId(cid)}`;
+    expect(g).toEqual({ name: 'Standard', bill_format: 'zugferd', combine: false });
+    const sid = randomUUID();
+    await saveSite(
+      sql,
+      sid,
+      {
+        customer_id: cid,
+        site_no: '2999001',
+        name: 'Büro',
+        street: null,
+        postal_code: null,
+        city: null,
+        order_reference: null,
+        contract_reference: null,
+      },
+      't',
+    );
+    const [s] = await sql`select invoice_group_id from app.sites where id = ${sid}`;
+    expect(s!.invoice_group_id).toBe(standardGroupId(cid));
+    await expect(setSiteInvoiceGroup(sql, sid, standardGroupId(DEMO.authority), 't')).rejects.toThrow(
+      /nicht zu diesem Kunden/,
+    );
+    // Status „ehemalig“ = inaktiv
+    await saveCustomer(
+      sql,
+      cid,
+      {
+        customer_no: '29990',
+        name: 'Neukunde GmbH',
+        name2: null,
+        street: 'Weg 1',
+        postal_code: '80331',
+        city: 'München',
+        vat_id: null,
+        contact_name: null,
+        contact_email: null,
+        contact_phone: null,
+        notes: null,
+        status: 'ehemalig',
+      },
+      't',
+    );
+    const [cu] = await sql`select active, status from app.customers where id = ${cid}`;
+    expect(cu).toEqual({ active: false, status: 'kunde' });
   });
 });

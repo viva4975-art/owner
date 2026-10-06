@@ -306,6 +306,7 @@ interface RunGroup {
   id: string;
   name: string;
   active: boolean;
+  combine: boolean;
   buyer_reference: string | null;
   order_reference: string | null;
   intro_text: string | null;
@@ -346,7 +347,7 @@ export async function runMonthly(
     (
       await sql<
         RunGroup[]
-      >`select id, name, active, buyer_reference, order_reference, intro_text, closing_text
+      >`select id, name, active, combine, buyer_reference, order_reference, intro_text, closing_text
                             from app.invoice_groups`
     ).map((g) => [g.id, g]),
   );
@@ -358,7 +359,8 @@ export async function runMonthly(
     label: string;
     customerId: string;
     site: RunSite | null; // Rechnung je Objekt bzw. eigene Rechnung
-    group: RunGroup | null;
+    group: RunGroup | null; // Rechnungseinstellungen
+    combined: boolean; // Sammelrechnung der Gruppe
     items: { site: RunSite; service: RunService; line: DraftLineInput }[];
   }
   const units = new Map<string, Unit>();
@@ -374,21 +376,31 @@ export async function runMonthly(
       const [line] = monthlyRunLines([toRunService(sv)], month, siteForRun(site));
       if (!line) continue;
       any = true;
-      const gid = sv.separate_invoice ? null : (sv.invoice_group_id ?? site.invoice_group_id);
+      // Rechnungseinstellungen: Gruppe der Leistung (abweichend) → Gruppe des Objekts
+      const gid = sv.invoice_group_id ?? site.invoice_group_id;
       const group = gid ? groups.get(gid) : undefined;
       const useGroup = group?.active ? group : null;
-      const key = sv.separate_invoice ? `service:${sv.id}` : useGroup ? `group:${useGroup.id}` : site.id;
+      // Sammelrechnung nur bei Gruppen mit „combine“; sonst je Objekt (und je abweichender Gruppe) eine Rechnung
+      const combined = !sv.separate_invoice && !!useGroup?.combine;
+      const key = sv.separate_invoice
+        ? `service:${sv.id}`
+        : combined
+          ? `group:${useGroup!.id}`
+          : useGroup && useGroup.id !== site.invoice_group_id
+            ? `${site.id}|${useGroup.id}`
+            : site.id;
       const label = sv.separate_invoice
         ? `${site.name} – ${sv.description}`
-        : useGroup
-          ? `${useGroup.name} (Rechnungsgruppe)`
+        : combined
+          ? `${useGroup!.name} (Sammelrechnung)`
           : site.name;
       const u = units.get(key) ?? {
         key,
         label,
         customerId: site.customer_id,
-        site: useGroup ? null : site,
+        site: combined ? null : site,
         group: useGroup,
+        combined,
         items: [],
       };
       u.items.push({ site, service: sv, line });
@@ -412,11 +424,12 @@ export async function runMonthly(
         const done = new Set(billed.map((b) => b.service_id));
         const todo = u.items.filter((i) => !done.has(i.service.id));
         if (!todo.length) return { created: false };
-        // Sammelrechnung (Gruppe): Angaben des Kunden; Einzelrechnung: Objekt kann abweichen
+        // Rechnungsangaben aus der Gruppe (bei Sammelrechnung ohne Objekt)
         const billing = await effectiveBilling(
           tx as unknown as Sql,
           u.customerId,
-          u.group ? null : (u.site?.id ?? null),
+          u.site?.id ?? null,
+          u.group?.id ?? null,
         );
         const [row] = await tx`
           insert into app.invoices (id, kind, customer_id, site_id, invoice_group_id, period_start, period_end,
@@ -424,8 +437,8 @@ export async function runMonthly(
                                     monthly_run_key, planned_issue_date, review_required)
           values (${id}, 'invoice', ${u.customerId}, ${u.site?.id ?? null}, ${u.group?.id ?? null}, ${start},
                   ${periodEnd}, ${billing.format},
-                  ${u.group?.buyer_reference || billing.leitwegId},
-                  ${u.group ? u.group.order_reference : (u.site?.order_reference ?? null)},
+                  ${billing.leitwegId},
+                  ${u.group?.order_reference || (u.site?.order_reference ?? null)},
                   ${u.group?.intro_text ?? null}, ${u.group?.closing_text ?? null},
                   ${`${u.key}:${month}`}, ${opts.invoiceDate ?? null},
                   ${todo.some((i) => i.service.always_unfinished)})
@@ -444,7 +457,7 @@ export async function runMonthly(
         );
         await audit(tx, actor, 'monthly_run', id, {
           month,
-          ...(u.group ? { invoice_group_id: u.group.id } : {}),
+          ...(u.group ? { invoice_group_id: u.group.id, combined: u.combined } : {}),
           site_ids: [...new Set(todo.map((i) => i.site.id))],
           service_ids: todo.map((i) => i.service.id),
         });
@@ -660,9 +673,12 @@ export async function loadDocument(
   if (!data) throw new BusinessError('Rechnung nicht gefunden');
   const { invoice: inv, lines, prepayments, original } = data;
   const seller = inv.seller_snapshot ?? (await getSeller(sql));
-  const buyer = inv.buyer_snapshot ?? (await buildBuyerSnapshot(sql, inv.customer_id, inv.site_id));
+  const buyer =
+    inv.buyer_snapshot ?? (await buildBuyerSnapshot(sql, inv.customer_id, inv.site_id, inv.invoice_group_id));
   const draftSkonto =
-    inv.status === 'draft' ? (await effectiveBilling(sql, inv.customer_id, inv.site_id)).skonto : null;
+    inv.status === 'draft'
+      ? (await effectiveBilling(sql, inv.customer_id, inv.site_id, inv.invoice_group_id)).skonto
+      : null;
   return rowToDocument(
     inv,
     lines,
@@ -701,7 +717,12 @@ export async function issue(sql: Sql, id: string, actor: string, date?: string):
     );
   }
   const seller = await getSeller(sql);
-  const buyer = await buildBuyerSnapshot(sql, data.invoice.customer_id, data.invoice.site_id);
+  const buyer = await buildBuyerSnapshot(
+    sql,
+    data.invoice.customer_id,
+    data.invoice.site_id,
+    data.invoice.invoice_group_id,
+  );
   const [row] = await sql<{ number: string }[]>`
     select app.issue_invoice(${id}, ${issueDate}, ${sql.json(seller as never)}, ${sql.json(buyer as never)}, null) as number`;
   await audit(sql, actor, 'issued_by', id, { number: row!.number });

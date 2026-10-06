@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
-import { listInvoiceGroups, saveInvoiceGroup } from './invoice-groups.js';
+import { listInvoiceGroups, saveInvoiceGroup, groupBillingInput } from './invoice-groups.js';
 import { createCancellation, deleteDraft, getInvoice, runMonthly } from './invoices.js';
 import { DEMO } from './seed.js';
 import { type FakeMailer, dbAvailable, freshDatabase, testDeps } from './testing.js';
@@ -24,7 +24,13 @@ describe.skipIf(!available)('Rechnungsgruppen im Monatslauf', () => {
   const input = (over: Partial<Parameters<typeof saveInvoiceGroup>[2]> = {}) => ({
     customerId: DEMO.authority,
     name: 'Referat Bildung – Sammelrechnung',
-    buyerReference: '04011000-99999-11',
+    combine: true,
+    billing: groupBillingInput.parse({
+      bill_format: 'xrechnung',
+      buyer_reference: '04011000-99999-11',
+      bill_emails: 'rechnung@example.org',
+      bill_payment_terms_days: '30',
+    }),
     orderReference: 'SR-2026',
     note: null,
     active: true,
@@ -53,9 +59,9 @@ describe.skipIf(!available)('Rechnungsgruppen im Monatslauf', () => {
     const run = await runMonthly(sql, '2026-09', 't');
     expect(run.created.map((c) => c.siteName).sort()).toEqual([
       'Firmenzentrale Planegg',
-      'Referat Bildung – Sammelrechnung (Rechnungsgruppe)',
+      'Referat Bildung – Sammelrechnung (Sammelrechnung)',
     ]);
-    const gid = run.created.find((c) => c.siteName.includes('Rechnungsgruppe'))!.invoiceId;
+    const gid = run.created.find((c) => c.siteName.includes('(Sammelrechnung)'))!.invoiceId;
     const { invoice, lines } = (await getInvoice(sql, gid))!;
     expect(invoice.site_id).toBeNull();
     expect(invoice.invoice_group_id).toBe(group);

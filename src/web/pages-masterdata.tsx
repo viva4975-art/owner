@@ -7,15 +7,9 @@ import {
   type CustomerStatus,
   PAGE_SIZE,
 } from '../services/customer-list.js';
-import {
-  type Customer,
-  type EffectiveBilling,
-  resolveBilling,
-  type Site,
-  type SiteBilling,
-  type SiteService,
-} from '../services/masterdata.js';
+import { type Customer, type Site, type SiteService, customerStatusOf } from '../services/masterdata.js';
 import { type SiteFilter, type SiteListRow, SITE_PAGE_SIZE } from '../services/site-list.js';
+import type { InvoiceGroupRow } from '../services/invoice-groups.js';
 import { centsToInput } from './forms.js';
 import { FORMAT_LABEL, NEW_OPTIONS, PageHead, type Tab, Tabs, euro, initials } from './layout.js';
 
@@ -86,6 +80,7 @@ export const CustomerList: FC<{
         </a>
         {(Object.keys(CUSTOMER_STATUS) as CustomerStatus[]).map((k) => (
           <a href={url({ status: k, seite: 1 })} class={filter.status === k ? 'on' : ''}>
+            <span class={`dot ${STATUS_BADGE[k]}`} style="margin-right:6px" />
             {CUSTOMER_STATUS[k]}
             <span class="n">{counts[k]}</span>
           </a>
@@ -315,57 +310,95 @@ export const CustomerShell: FC<{ c: Customer; counts: CustomerCounts; active: st
   );
 };
 
-export const CustomerCard: FC<{ c: Customer }> = ({ c }) => (
+const STATUS_CLASS = { kunde: 'ok', interessent: 'warn', ehemalig: 'err' } as const;
+
+export const CustomerCard: FC<{ c: Customer }> = ({ c }) => {
+  const st = customerStatusOf(c);
+  return (
+    <div class="card">
+      <div class="actions" style="margin-top:0">
+        <h3 style="margin:0">
+          {c.name}
+          {c.name2 && <div class="mut small">{c.name2}</div>}
+        </h3>
+        <a class="btn sm sec" href={`/kunden/${c.id}/bearbeiten`} style="margin-left:auto">
+          Bearbeiten
+        </a>
+      </div>
+      <div>
+        {c.street}
+        <br />
+        {c.postal_code} {c.city}
+      </div>
+      <dl class="kv" style="margin-top:12px">
+        {c.contact_name && (
+          <>
+            <dt>Ansprechpartner</dt>
+            <dd>{c.contact_name}</dd>
+          </>
+        )}
+        {c.contact_email && (
+          <>
+            <dt>E-Mail</dt>
+            <dd>
+              <a href={`mailto:${c.contact_email}`}>{c.contact_email}</a>
+            </dd>
+          </>
+        )}
+        {c.contact_phone && (
+          <>
+            <dt>Telefon</dt>
+            <dd>{c.contact_phone}</dd>
+          </>
+        )}
+        {c.vat_id && (
+          <>
+            <dt>USt-IdNr.</dt>
+            <dd>{c.vat_id}</dd>
+          </>
+        )}
+      </dl>
+      <div class="actions" style="margin-bottom:0">
+        <span class={`badge ${STATUS_CLASS[st]}`}>{CUSTOMER_STATUS[st]}</span>
+      </div>
+    </div>
+  );
+};
+
+/** Übersicht beim Kunden: Rechnungsgruppen mit ihren Objekten. */
+export const GroupSummary: FC<{ customerId: string; groups: InvoiceGroupRow[] }> = ({
+  customerId,
+  groups,
+}) => (
   <div class="card">
     <div class="actions" style="margin-top:0">
-      <h3 style="margin:0">
-        {c.name}
-        {c.name2 && <div class="mut small">{c.name2}</div>}
-      </h3>
-      <a class="btn sm sec" href={`/kunden/${c.id}/bearbeiten`} style="margin-left:auto">
-        Bearbeiten
+      <h3 style="margin:0">Rechnungsgruppen</h3>
+      <a class="btn sm sec" href={`/kunden/${customerId}/rechnungsgruppen`} style="margin-left:auto">
+        Verwalten
       </a>
     </div>
-    <div>
-      {c.street}
-      <br />
-      {c.postal_code} {c.city}
-    </div>
-    <dl class="kv" style="margin-top:12px">
-      <dt>Rechnungsformat</dt>
-      <dd>{FORMAT_LABEL[c.invoice_format]}</dd>
-      {c.leitweg_id && (
-        <>
-          <dt>Leitweg-ID</dt>
-          <dd>{c.leitweg_id}</dd>
-        </>
-      )}
-      <dt>Zahlungsziel</dt>
-      <dd>
-        {c.payment_terms_days} Tage
-        {c.skonto_percent_bp &&
-          `, ${String(c.skonto_percent_bp / 100).replace('.', ',')} % Skonto in ${c.skonto_days} Tagen`}
-      </dd>
-      <dt>Rechnungs-E-Mail</dt>
-      <dd>
-        {c.invoice_emails.length
-          ? c.invoice_emails.map((e) => (
-              <div>
-                <a href={`mailto:${e}`}>{e}</a>
+    <div class="list" style="margin-bottom:-22px">
+      {groups
+        .filter((g) => g.active)
+        .map((g) => (
+          <div class="row">
+            <div class="main">
+              <a href={`/kunden/${customerId}/rechnungsgruppen?bearbeiten=${g.id}`}>
+                <b style="color:var(--ink)">{g.name}</b>
+              </a>
+              {g.combine && (
+                <span class="badge info" style="margin-left:6px">
+                  Sammelrechnung
+                </span>
+              )}
+              <div class="small mut">
+                {FORMAT_LABEL[g.bill_format]}
+                {g.buyer_reference ? ` · ${g.buyer_reference}` : ''} · {g.site_ids.length} Objekt
+                {g.site_ids.length === 1 ? '' : 'e'}
               </div>
-            ))
-          : '–'}
-      </dd>
-      {c.supplier_no && (
-        <>
-          <dt>Lieferanten-Nr.</dt>
-          <dd>{c.supplier_no}</dd>
-        </>
-      )}
-    </dl>
-    <div class="actions" style="margin-bottom:0">
-      {c.active ? <span class="badge ok">Kunde</span> : <span class="badge">inaktiv</span>}
-      {c.is_public_authority && <span class="badge tag">Öffentlicher Auftraggeber</span>}
+            </div>
+          </div>
+        ))}
     </div>
   </div>
 );
@@ -443,81 +476,23 @@ export const CustomerForm: FC<{ id: string; c: Partial<Customer>; isNew: boolean
       <Field name="city" label="Ort *" value={c.city} required />
       <Field name="vat_id" label="USt-IdNr. des Kunden" value={c.vat_id} />
     </div>
-    <h2>Rechnungsstellung</h2>
+    <h2>Status</h2>
     <div class="grid">
       <div>
-        <label for="invoice_format">Rechnungsformat *</label>
-        <select id="invoice_format" name="invoice_format">
-          {(['pdf', 'zugferd', 'xrechnung'] as const).map((f) => (
-            <option value={f} selected={c.invoice_format === f}>
-              {FORMAT_LABEL[f]}
+        <label for="status">Status</label>
+        <select id="status" name="status">
+          {(['kunde', 'interessent', 'ehemalig'] as const).map((st) => (
+            <option value={st} selected={(isNew ? 'kunde' : customerStatusOf(c as Customer)) === st}>
+              {CUSTOMER_STATUS[st]}
             </option>
           ))}
         </select>
       </div>
-      <Field
-        name="leitweg_id"
-        label="Leitweg-ID (Behörden)"
-        value={c.leitweg_id}
-        placeholder="z. B. 09162000-12345-67"
-      />
-      <Field name="supplier_no" label="Unsere Lieferantennummer" value={c.supplier_no} />
-      <Field
-        name="payment_terms_days"
-        label="Zahlungsziel (Tage) *"
-        type="number"
-        value={c.payment_terms_days ?? 30}
-        required
-      />
-      <div>
-        <label for="skonto_percent">Skonto % (leer = kein Skonto)</label>
-        <input
-          id="skonto_percent"
-          name="skonto_percent_bp"
-          placeholder="z. B. 3"
-          value={c.skonto_percent_bp ? String(c.skonto_percent_bp / 100).replace('.', ',') : ''}
-        />
-      </div>
-      <Field
-        name="skonto_days"
-        label="Skonto innerhalb (Tage)"
-        type="number"
-        value={c.skonto_days}
-        placeholder="z. B. 7"
-      />
-      <div style="grid-column:1/-1">
-        <label for="invoice_emails">Rechnungs-E-Mails (mehrere mit Komma)</label>
-        <input id="invoice_emails" name="invoice_emails" value={(c.invoice_emails ?? []).join(', ')} />
-      </div>
-      <div class="chk">
-        <input
-          type="checkbox"
-          id="is_public_authority"
-          name="is_public_authority"
-          checked={!!c.is_public_authority}
-        />
-        <label for="is_public_authority" style="margin:0">
-          Öffentlicher Auftraggeber
-        </label>
-      </div>
-      <div class="chk">
-        <input type="checkbox" id="dunning_block" name="dunning_block" checked={!!c.dunning_block} />
-        <label for="dunning_block" style="margin:0">
-          Mahnsperre (keine Mahnvorschläge)
-        </label>
-      </div>
-      <div>
-        <label for="status">Status</label>
-        <select id="status" name="status">
-          <option value="kunde" selected={c.status !== 'interessent'}>
-            Kunde
-          </option>
-          <option value="interessent" selected={c.status === 'interessent'}>
-            Interessent (nur Angebote)
-          </option>
-        </select>
-      </div>
     </div>
+    <p class="mut small">
+      Rechnungseinstellungen (Rechnungsadresse, E-Mails, Format, Leitweg-ID, Zahlungsziel, Skonto) pflegen Sie
+      im Reiter „Rechnungsgruppen“ – je Objekt wählbar.
+    </p>
     <h2>Hauptansprechpartner</h2>
     <p class="mut small" style="margin-top:-6px">
       Weitere Ansprechpartner im Reiter „Kontakte“.
@@ -996,251 +971,3 @@ export const SiteOverview: FC<{
 };
 
 export { centsToInput };
-
-// ---------------------------------------------------------------------------
-// Objekt: Rechnungsangaben („wie Kunde“ oder abweichend)
-// ---------------------------------------------------------------------------
-
-const BILL_JS = `
-(function(){
-  var f=document.getElementById('billing'); if(!f) return;
-  var own=f.querySelector('#bm-eigen'), box=document.getElementById('bill-own'), cust=document.getElementById('bill-cust');
-  function show(){ box.hidden=!own.checked; cust.hidden=own.checked; }
-  function take(){ var d=JSON.parse(f.dataset.customer); Object.keys(d).forEach(function(k){ var el=f.querySelector('[name='+k+']'); if(!el) return; if(el.type==='checkbox') el.checked=!!d[k]; else el.value=d[k]==null?'':d[k]; }); sk(); }
-  function sk(){ var c=f.querySelector('[name=bill_skonto_custom]'); document.getElementById('bill-skonto').hidden=!c.checked; }
-  f.querySelectorAll('[name=billing_mode]').forEach(function(r){ r.addEventListener('change',function(){ show(); if(own.checked && !f.querySelector('[name=bill_name]').value) take(); }); });
-  document.getElementById('bill-take').addEventListener('click',function(){ if(confirm('Felder mit den Rechnungsangaben des Kunden füllen?')) take(); });
-  f.querySelector('[name=bill_skonto_custom]').addEventListener('change',sk);
-  show(); sk();
-})();`;
-
-export const SiteBillingForm: FC<{
-  site: Site & SiteBilling;
-  customer: Customer;
-  eff: EffectiveBilling;
-}> = ({ site, customer: c, eff }) => {
-  const own = site.billing_mode === 'eigen';
-  const custData = {
-    bill_name: c.name,
-    bill_name2: c.name2 ?? '',
-    bill_street: c.street,
-    bill_postal_code: c.postal_code,
-    bill_city: c.city,
-    bill_contact_name: c.contact_name ?? '',
-    bill_emails: c.invoice_emails.join(', '),
-    bill_format: c.invoice_format,
-    bill_leitweg_id: c.leitweg_id ?? '',
-    bill_supplier_no: c.supplier_no ?? '',
-    bill_payment_terms_days: String(c.payment_terms_days),
-    bill_skonto_custom: false,
-    bill_skonto_percent_bp: c.skonto_percent_bp ? String(c.skonto_percent_bp / 100).replace('.', ',') : '',
-    bill_skonto_days: c.skonto_days ? String(c.skonto_days) : '',
-  };
-  const v = (k: keyof SiteBilling) => (own ? ((site[k] as string | number | null) ?? '') : '');
-  return (
-    <div class="cols">
-      <form
-        method="post"
-        action={`/objekte/${site.id}/rechnungsangaben`}
-        class="card"
-        id="billing"
-        data-customer={JSON.stringify(custData)}
-        data-autosave
-        data-version={String(site.version)}
-      >
-        <input type="hidden" name="version" value={String(site.version)} />
-        <h3>Rechnungen für dieses Objekt</h3>
-        <label class="chk" style="margin:0 0 6px">
-          <input type="radio" name="billing_mode" value="kunde" id="bm-kunde" checked={!own} /> wie Kunde
-          <span class="small faint">– alle Angaben vom Kunden {c.name}</span>
-        </label>
-        <label class="chk" style="margin:0">
-          <input type="radio" name="billing_mode" value="eigen" id="bm-eigen" checked={own} /> abweichend für
-          dieses Objekt
-          <span class="small faint">– z. B. andere Rechnungsadresse, andere E-Mail, eigene Leitweg-ID</span>
-        </label>
-
-        <div id="bill-cust" class="hint" style="margin-top:16px" hidden={own}>
-          Es gelten die Rechnungsangaben des Kunden.{' '}
-          <a href={`/kunden/${c.id}/bearbeiten`}>Beim Kunden ändern</a>
-        </div>
-
-        <div id="bill-own" hidden={!own}>
-          <div class="actions" style="margin:16px 0 4px">
-            <button type="button" class="btn sec sm" id="bill-take">
-              Angaben vom Kunden übernehmen
-            </button>
-            <span class="small faint">Leere Felder gelten automatisch wie beim Kunden.</span>
-          </div>
-          <div class="group-title">Rechnungsadresse</div>
-          <div class="grid">
-            <Field name="bill_name" label="Name / Firma" value={v('bill_name')} />
-            <Field name="bill_name2" label="Zusatz (z. B. Abteilung)" value={v('bill_name2')} />
-            <Field name="bill_street" label="Straße" value={v('bill_street')} />
-            <Field name="bill_postal_code" label="PLZ" value={v('bill_postal_code')} />
-            <Field name="bill_city" label="Ort" value={v('bill_city')} />
-            <Field name="bill_contact_name" label="Ansprechpartner" value={v('bill_contact_name')} />
-          </div>
-          <div class="group-title">Versand und E-Rechnung</div>
-          <div class="grid">
-            <div>
-              <label for="bill_emails">Rechnungs-E-Mails (mehrere mit Komma)</label>
-              <input
-                id="bill_emails"
-                name="bill_emails"
-                value={own ? (site.bill_emails ?? []).join(', ') : ''}
-              />
-            </div>
-            <div>
-              <label for="bill_format">Rechnungsformat</label>
-              <select id="bill_format" name="bill_format">
-                <option value="">wie Kunde ({FORMAT_LABEL[c.invoice_format]})</option>
-                {(['pdf', 'zugferd', 'xrechnung'] as const).map((f) => (
-                  <option value={f} selected={own && site.bill_format === f}>
-                    {FORMAT_LABEL[f]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <Field name="bill_leitweg_id" label="Leitweg-ID" value={v('bill_leitweg_id')} />
-            <Field
-              name="bill_supplier_no"
-              label="Unsere Lieferantennummer beim Kunden"
-              value={v('bill_supplier_no')}
-            />
-          </div>
-          <div class="group-title">Zahlung</div>
-          <div class="grid">
-            <Field
-              name="bill_payment_terms_days"
-              label={`Zahlungsziel in Tagen (Kunde: ${c.payment_terms_days})`}
-              value={v('bill_payment_terms_days')}
-              type="number"
-            />
-            <div class="chk" style="align-self:end;margin-bottom:10px">
-              <input
-                type="checkbox"
-                id="bill_skonto_custom"
-                name="bill_skonto_custom"
-                checked={own && site.bill_skonto_custom}
-              />
-              <label for="bill_skonto_custom">eigenes Skonto für dieses Objekt</label>
-            </div>
-          </div>
-          <div class="grid" id="bill-skonto" style="margin-top:12px">
-            <Field
-              name="bill_skonto_percent_bp"
-              label="Skonto % (leer = kein Skonto)"
-              value={
-                own && site.bill_skonto_percent_bp
-                  ? String(site.bill_skonto_percent_bp / 100).replace('.', ',')
-                  : ''
-              }
-            />
-            <Field name="bill_skonto_days" label="Skonto-Tage" value={v('bill_skonto_days')} type="number" />
-          </div>
-        </div>
-        <div class="formfoot">
-          <button class="btn">Speichern</button>
-        </div>
-        <script dangerouslySetInnerHTML={{ __html: BILL_JS }} />
-      </form>
-
-      <div class="card">
-        <h3>So geht die Rechnung raus</h3>
-        <p class="small mut" style="margin-top:0">
-          {eff.source === 'objekt' ? 'Abweichende Angaben dieses Objekts' : 'Angaben des Kunden'} (Stand
-          gespeichert)
-        </p>
-        <div style="line-height:1.6">
-          <b>{eff.name}</b>
-          {eff.name2 && <div>{eff.name2}</div>}
-          <div>{eff.street}</div>
-          <div>
-            {eff.postalCode} {eff.city}
-          </div>
-          {eff.contactName && <div class="small mut">z. Hd. {eff.contactName}</div>}
-        </div>
-        <dl class="kv" style="margin-top:14px">
-          <dt>Format</dt>
-          <dd>{FORMAT_LABEL[eff.format]}</dd>
-          <dt>E-Mail an</dt>
-          <dd>
-            {eff.emails.length ? eff.emails.join(', ') : <span style="color:var(--err)">keine Adresse</span>}
-          </dd>
-          {eff.leitwegId && (
-            <>
-              <dt>Leitweg-ID</dt>
-              <dd>{eff.leitwegId}</dd>
-            </>
-          )}
-          {eff.supplierNo && (
-            <>
-              <dt>Lieferanten-Nr.</dt>
-              <dd>{eff.supplierNo}</dd>
-            </>
-          )}
-          <dt>Zahlungsziel</dt>
-          <dd>{eff.paymentTermsDays} Tage</dd>
-          <dt>Skonto</dt>
-          <dd>
-            {eff.skonto
-              ? `${String(eff.skonto.percentBp / 100).replace('.', ',')} % in ${eff.skonto.days} Tagen`
-              : 'kein Skonto'}
-          </dd>
-          {site.order_reference && (
-            <>
-              <dt>Bestellnummer</dt>
-              <dd>{site.order_reference}</dd>
-            </>
-          )}
-        </dl>
-        <p class="small faint">
-          Gilt für neue Rechnungen dieses Objekts. Bereits ausgestellte Rechnungen bleiben unverändert.
-          Sammelrechnungen (Rechnungsgruppen) gehen an die Angaben des Kunden.
-        </p>
-      </div>
-    </div>
-  );
-};
-
-/** Kunde: nur die Objekte zeigen, deren Rechnungsangaben abweichen (alle anderen = wie Kunde). */
-export const BillingDeviations: FC<{ c: Customer; sites: (Site & SiteBilling)[] }> = ({ c, sites }) => {
-  const own = sites.filter((s) => s.billing_mode === 'eigen');
-  const diffs = (s: Site & SiteBilling) => {
-    const e = resolveBilling(c, s);
-    const d: string[] = [];
-    if (s.bill_name) d.push(`Adresse: ${e.name}, ${e.city}`);
-    if (e.emails.join() !== c.invoice_emails.join()) d.push(`E-Mail: ${e.emails.join(', ')}`);
-    if (e.format !== c.invoice_format) d.push(`Format: ${FORMAT_LABEL[e.format]}`);
-    if (e.leitwegId !== c.leitweg_id) d.push(`Leitweg-ID: ${e.leitwegId ?? '–'}`);
-    if (e.supplierNo !== c.supplier_no) d.push(`Lieferanten-Nr.: ${e.supplierNo ?? '–'}`);
-    if (e.paymentTermsDays !== c.payment_terms_days) d.push(`Zahlungsziel: ${e.paymentTermsDays} Tage`);
-    if (s.bill_skonto_custom)
-      d.push(e.skonto ? `Skonto: ${e.skonto.percentBp / 100} % / ${e.skonto.days} T.` : 'kein Skonto');
-    if (s.bill_contact_name && s.bill_contact_name !== c.contact_name)
-      d.push(`z. Hd. ${s.bill_contact_name}`);
-    return d;
-  };
-  return (
-    <div class="card">
-      <h3>Rechnungsangaben der Objekte</h3>
-      <p class="small mut" style="margin-top:0">
-        {sites.length - own.length} von {sites.length} Objekten wie Kunde
-        {own.length ? ` · ${own.length} abweichend:` : '.'}
-      </p>
-      {own.map((s) => (
-        <div style="padding:10px 0;border-top:1px solid var(--line)">
-          <a href={`/objekte/${s.id}/rechnungsangaben`}>
-            <b>{s.name}</b>
-          </a>{' '}
-          <span class="small faint">{s.site_no}</span>
-          {diffs(s).map((t) => (
-            <div class="small mut">{t}</div>
-          ))}
-          {!diffs(s).length && <div class="small faint">abweichend gewählt, aber alle Felder wie Kunde</div>}
-        </div>
-      ))}
-    </div>
-  );
-};

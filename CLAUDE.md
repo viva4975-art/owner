@@ -613,4 +613,17 @@ Testadresse.
   (Dockerfile macht Quellcode lesbar); Benutzername mit Leerzeichen verletzte DB-Regel (wird jetzt zu `name.nachname`,
   Fehlstart wird erneut versucht). Neu: `src/scripts/reset-password.ts` (Einmal-Passwort auf dem Server). Admin-Login:
   `ahmed.chomontek`. Ahmed testet jetzt mit eigenen Daten und schickt Änderungen.
+- 2026-10-06: Erste Rückmeldungen aus dem Testbetrieb (Ahmed):
+  - **Formulare wie Fortytools:** ein Feld pro Zeile untereinander, Beschriftung links (CSS `form .grid`, global für alle
+    Formulare; auf dem Handy Beschriftung über dem Feld).
+  - **Rechnungseinstellungen nur noch in Rechnungsgruppen** (nicht am Kunden): Gruppe = Rechnungsadresse (leer = Kunde),
+    Ansprechpartner, Rechnungs-E-Mails, Format, Leitweg-ID, Lieferantennr., Bestellnr., Zahlungsziel, Skonto, Kopf-/Fußtext,
+    Schalter „Sammelrechnung“ (alle Objekte der Gruppe auf einer Rechnung, sonst je Objekt). Jedes Objekt wählt eine Gruppe
+    (Reiter „Rechnungsangaben“), neue Kunden bekommen Gruppe „Standard“, neue Objekte landen dort. Reihenfolge der Angaben:
+    (alt) abweichend am Objekt → Gruppe → Kunde. Ausstellen (`app.issue_invoice`), Monatslauf, Käufer-Schnappschuss,
+    Versand und Mahnungs-Empfänger nutzen die Gruppe. Migration: bestehende Gruppen = Sammelrechnung mit Kundenangaben,
+    Objekte mit abweichenden Angaben → eigene Gruppe, übrige → „Standard“.
+  - Kunde: Mahnsperre und „öffentlicher Auftraggeber“ aus dem Formular entfernt (Felder bleiben in der DB); Status
+    Kunde (grün) / Interessent (gelb) / ehemaliger Kunde (rot = inaktiv) im Formular, in der Liste und in der Kundenkarte.
+  - Tests: 238 Unit-/DB-Tests, alle 22 Browser-Suiten grün (`e2e:rechnungsangaben` neu für Gruppen + Formular).
 

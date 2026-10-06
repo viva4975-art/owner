@@ -1,5 +1,6 @@
-// Browser-Test Rechnungsangaben je Objekt: „wie Kunde“ → „abweichend“ (Kundendaten übernommen), ändern, speichern,
-// Vorschau „So geht die Rechnung raus“, Fehler bei unvollständiger Adresse, zurück auf „wie Kunde“. Nur lokal.
+// Browser-Test Rechnungsgruppen = Rechnungseinstellungen: Gruppe beim Kunden anlegen (Adresse, E-Mail, Zahlungsziel),
+// Fehler bei unvollständiger Adresse, am Objekt wählen, Vorschau „So geht die Rechnung raus“, Kundenformular ohne
+// Rechnungsfelder und mit Status (Kunde/Interessent/Ehemalig). Nur lokal.
 import { mkdirSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 
@@ -34,73 +35,73 @@ const p = await ctx.newPage();
 p.on('dialog', (d) => d.accept());
 const url = `${B}/objekte/${SCHOOL}/rechnungsangaben`;
 
-console.log('1. Abweichend wählen → Kundendaten werden übernommen');
-await p.goto(url);
-await p.check('#bm-kunde');
-await p.click('button:has-text("Speichern")');
-await p.waitForLoadState();
-check(
-  'Ausgangslage wie Kunde',
-  (await p.locator('.card', { hasText: 'So geht die Rechnung raus' }).innerText()).includes(
-    'Angaben des Kunden',
-  ),
-);
-check('Felder verborgen', await p.locator('#bill-own').isHidden());
-await p.check('#bm-eigen');
-check('Felder sichtbar', await p.locator('#bill-own').isVisible());
-const name = await p.inputValue('#bill_name');
-check('Kundenname übernommen', name.length > 3, name);
-check('Skonto-Felder erst mit Häkchen', await p.locator('#bill-skonto').isHidden());
-await p.check('#bill_skonto_custom');
-check('Skonto-Felder sichtbar', await p.locator('#bill-skonto').isVisible());
-await p.uncheck('#bill_skonto_custom');
+const AUTHORITY = '00000000-0000-4000-8000-000000000001';
+const tag = Date.now().toString().slice(-6);
 
-console.log('2. Ändern und speichern');
-await p.fill('#bill_name', 'Schulverwaltung Süd');
-await p.fill('#bill_street', 'Bayerstr. 28');
-await p.fill('#bill_postal_code', '80335');
-await p.fill('#bill_city', 'München');
-await p.fill('#bill_emails', 'sued@schule.example');
-await p.fill('#bill_payment_terms_days', '45');
+console.log('1. Rechnungsgruppe beim Kunden anlegen');
+await p.goto(`${B}/kunden/${AUTHORITY}/rechnungsgruppen?neu=1`);
+await p.fill('#g-name', `Schulen Süd ${tag}`);
+await p.fill('#g-bname', 'Schulverwaltung Süd');
+await p.fill('#g-street', '');
+await p.fill('#g-plz', '80335');
+await p.fill('#g-city', 'München');
+await p.click('button:has-text("Rechnungsgruppe anlegen")');
+await p.waitForLoadState();
+check('unvollständige Adresse abgelehnt', (await flash(p)).includes('Rechnungsadresse'), await flash(p));
+await p.goto(`${B}/kunden/${AUTHORITY}/rechnungsgruppen?neu=1`);
+await p.fill('#g-name', `Schulen Süd ${tag}`);
+await p.fill('#g-bname', 'Schulverwaltung Süd');
+await p.fill('#g-street', 'Bayerstr. 28');
+await p.fill('#g-plz', '80335');
+await p.fill('#g-city', 'München');
+await p.fill('#g-emails', 'sued@schule.example');
+await p.selectOption('#g-format', 'zugferd');
+await p.fill('#g-terms', '45');
+await p.click('button:has-text("Rechnungsgruppe anlegen")');
+await p.waitForLoadState();
+check('Gruppe gespeichert', (await flash(p)).includes('gespeichert'), await flash(p));
+check('in der Liste', (await p.locator('.list').first().innerText()).includes(`Schulen Süd ${tag}`));
+
+console.log('2. Am Objekt wählen');
+await p.goto(url);
+await p
+  .locator('label.row', { hasText: `Schulen Süd ${tag}` })
+  .locator('input[type=radio]')
+  .check();
 await p.click('button:has-text("Speichern")');
 await p.waitForLoadState();
 check('gespeichert', (await flash(p)).includes('gespeichert'), await flash(p));
 const prev = await p.locator('.card', { hasText: 'So geht die Rechnung raus' }).innerText();
 check(
-  'Vorschau zeigt Objekt-Angaben',
+  'Vorschau zeigt Angaben der Gruppe',
   prev.includes('Schulverwaltung Süd') && prev.includes('sued@schule.example') && prev.includes('45 Tage'),
   prev,
 );
-await p.screenshot({ path: `${out}/ra-abweichend.png`, fullPage: true });
-
-const AUTHORITY = '00000000-0000-4000-8000-000000000001';
+await p.screenshot({ path: `${out}/ra-objekt.png`, fullPage: true });
 await p.goto(`${B}/kunden/${AUTHORITY}`);
-const dev = await p.locator('.card', { hasText: 'Rechnungsangaben der Objekte' }).innerText();
-check(
-  'Kunde zeigt das abweichende Objekt mit Unterschied',
-  dev.includes('Grundschule') && dev.includes('Schulverwaltung Süd'),
-  dev,
-);
-await p.screenshot({ path: `${out}/ra-kunde.png`, fullPage: true });
+const sum = await p.locator('.card', { hasText: 'Rechnungsgruppen' }).innerText();
+check('Übersicht beim Kunden zeigt die Gruppe', sum.includes(`Schulen Süd ${tag}`), sum);
 
-console.log('3. Unvollständige Adresse → Fehler');
-await p.goto(url);
-await p.fill('#bill_street', '');
-await p.click('button:has-text("Speichern")');
-await p.waitForLoadState();
-check('Fehlermeldung', (await flash(p)).includes('Rechnungsadresse'), await flash(p));
-
-console.log('4. Zurück auf „wie Kunde“');
-await p.goto(url);
-await p.check('#bm-kunde');
-await p.click('button:has-text("Speichern")');
-await p.waitForLoadState();
+console.log('3. Kundenformular: keine Rechnungsfelder, Status dreistufig');
+await p.goto(`${B}/kunden/${AUTHORITY}/bearbeiten`);
+check('kein Rechnungsformat am Kunden', (await p.locator('#invoice_format').count()) === 0);
+check('keine Mahnsperre', (await p.locator('#dunning_block').count()) === 0);
+check('kein öffentlicher Auftraggeber', (await p.locator('#is_public_authority').count()) === 0);
+const opts = await p.locator('#status option').allInnerTexts();
+check('Status Kunde/Interessent/Ehemaliger', opts.length === 3, opts.join(','));
+await p.goto(`${B}/kunden`);
 check(
-  'wieder wie Kunde',
-  (await p.locator('.card', { hasText: 'So geht die Rechnung raus' }).innerText()).includes(
-    'Angaben des Kunden',
-  ),
+  'farbige Status-Chips',
+  (await p.locator('.chips .dot.ok, .chips .dot.warn, .chips .dot.err').count()) === 3,
 );
+
+console.log('4. Felder untereinander');
+await p.goto(`${B}/kunden/${AUTHORITY}/bearbeiten`);
+const y1 = (await p.locator('#name').boundingBox()).y;
+const y2 = (await p.locator('#street').boundingBox()).y;
+const x1 = (await p.locator('#name').boundingBox()).x;
+const x2 = (await p.locator('#street').boundingBox()).x;
+check('Felder stehen untereinander', y2 > y1 && Math.abs(x1 - x2) < 2, `${x1}/${y1} ${x2}/${y2}`);
 
 await browser.close();
 console.log(`\n${ok} bestanden, ${fail} fehlgeschlagen`);

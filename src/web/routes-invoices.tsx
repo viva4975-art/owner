@@ -431,7 +431,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
       listPayments(sql, id),
       sql<{ open_cents: bigint; skonto_date: string | null }[]>`
         select open_cents, skonto_date from app.open_items where invoice_id = ${id}`,
-      effectiveBilling(sql, data.invoice.customer_id, data.invoice.site_id),
+      effectiveBilling(sql, data.invoice.customer_id, data.invoice.site_id, data.invoice.invoice_group_id),
     ]);
     const redirectNote =
       env.APP_ENV !== 'live' || env.MAIL_TEST_RECIPIENT

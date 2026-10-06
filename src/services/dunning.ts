@@ -4,7 +4,7 @@ import { type Cents, formatEuro } from '../domain/money/money.js';
 import { MAILER_MISSING, resolveRecipients } from '../mail/mailer.js';
 import { renderLetterPdf } from '../pdf/render.js';
 import { BusinessError } from './errors.js';
-import { buildBuyerSnapshot, getSeller } from './masterdata.js';
+import { buildBuyerSnapshot, effectiveBilling, getSeller } from './masterdata.js';
 import type { Deps } from './workflow.js';
 
 /*
@@ -323,6 +323,15 @@ export async function sendDunning(deps: Deps, id: string, actor: string) {
   const [c] = await sql<
     { invoice_emails: string[]; name: string }[]
   >`select invoice_emails, name from app.customers where id = ${d.customer_id}`;
+  // Empfänger: Rechnungs-E-Mails der Rechnungsgruppen der gemahnten Rechnungen (sonst die des Kunden)
+  const invs = await sql<{ site_id: string | null; invoice_group_id: string | null }[]>`
+    select distinct i.site_id, i.invoice_group_id from app.dunning_items di join app.invoices i on i.id = di.invoice_id
+     where di.dunning_id = ${id}`;
+  const fromGroups = new Set<string>();
+  for (const i of invs)
+    for (const e of (await effectiveBilling(sql, d.customer_id, i.site_id, i.invoice_group_id)).emails)
+      fromGroups.add(e);
+  c!.invoice_emails = fromGroups.size ? [...fromGroups] : c!.invoice_emails;
   const { actual, redirected } = resolveRecipients(env, c!.invoice_emails);
   const [claimed] =
     await sql`update app.dunnings set status = 'versendet', sent_at = now(), sent_to = ${actual}

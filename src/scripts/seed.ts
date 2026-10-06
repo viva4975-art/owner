@@ -1,5 +1,6 @@
 import { loadEnv } from '../config/env.js';
 import { createSql } from '../db/client.js';
+import { ensureSiteGroups } from '../services/masterdata.js';
 import { seedCompany, seedDemo, seedDemoModules } from '../services/seed.js';
 
 const env = loadEnv();
@@ -9,6 +10,7 @@ try {
     if (env.APP_ENV === 'live') throw new Error('Demo-Daten niemals im Live-Betrieb');
     await seedDemo(sql);
     await seedDemoModules(sql);
+    await ensureSiteGroups(sql);
     console.log('Firmenstamm und Demo-Daten angelegt.');
   } else {
     await seedCompany(sql);

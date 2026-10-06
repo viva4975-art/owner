@@ -282,7 +282,14 @@ export async function sendInvoice(
     throw new BusinessError('Nur ausgestellte Rechnungen können versendet werden');
   // Empfänger: abweichende Rechnungs-E-Mails des Objekts vor denen des Kunden
   const customer = {
-    invoice_emails: (await effectiveBilling(sql, data.invoice.customer_id, data.invoice.site_id)).emails,
+    invoice_emails: (
+      await effectiveBilling(
+        sql,
+        data.invoice.customer_id,
+        data.invoice.site_id,
+        data.invoice.invoice_group_id,
+      )
+    ).emails,
   };
 
   const docs = await ensureDocuments(deps, id);

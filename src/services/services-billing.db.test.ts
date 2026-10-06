@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
-import { saveInvoiceGroup } from './invoice-groups.js';
+import { saveInvoiceGroup, groupBillingInput } from './invoice-groups.js';
 import { getInvoice, markReviewed, runMonthly } from './invoices.js';
 import { saveService, serviceInput } from './masterdata.js';
 import { DEMO } from './seed.js';
@@ -75,7 +75,8 @@ describe.skipIf(!available)('Leistungen wie Fortytools im Abrechnungslauf', () =
       {
         customerId: DEMO.authority,
         name: 'Glas alle Schulen',
-        buyerReference: null,
+        combine: true,
+        billing: groupBillingInput.parse({ bill_format: 'zugferd', bill_payment_terms_days: '30' }),
         orderReference: 'GL-1',
         note: null,
         introText: 'Hiermit berechnen wir die Glasreinigung:',
@@ -97,7 +98,7 @@ describe.skipIf(!available)('Leistungen wie Fortytools im Abrechnungslauf', () =
     });
     const names = r.created.map((c) => c.siteName).sort();
     expect(names).toEqual([
-      'Glas alle Schulen (Rechnungsgruppe)',
+      'Glas alle Schulen (Sammelrechnung)',
       'Grundschule Musterweg',
       'Grundschule Musterweg – Sonderreinigung Aula',
     ]);
@@ -106,7 +107,7 @@ describe.skipIf(!available)('Leistungen wie Fortytools im Abrechnungslauf', () =
       'Unterhaltsreinigung',
       'Sanitärreinigung täglich',
     ]);
-    const g = (await getInvoice(sql, byName['Glas alle Schulen (Rechnungsgruppe)']!))!.invoice;
+    const g = (await getInvoice(sql, byName['Glas alle Schulen (Sammelrechnung)']!))!.invoice;
     expect(g.intro_text).toBe('Hiermit berechnen wir die Glasreinigung:');
     expect(g.order_reference).toBe('GL-1');
     expect(g.planned_issue_date).toBe('2026-09-30');

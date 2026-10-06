@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import type { Sql } from '../db/client.js';
+import type { Sql, Tx } from '../db/client.js';
 import { assertVersion } from './crm.js';
 import type { BillingCycle } from '../domain/invoice/calc.js';
 import { BusinessError } from './errors.js';
@@ -67,6 +68,16 @@ export interface Customer {
 const emptyToNull = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? null : v);
 const optText = z.preprocess(emptyToNull, z.string().trim().nullable().default(null));
 
+const optBool = z.preprocess(
+  (v) => (v === undefined ? undefined : v === 'on' || v === 'true' || v === true),
+  z.boolean().optional(),
+);
+
+/**
+ * Kunde. Rechnungsangaben (Format, Leitweg-ID, E-Mails, Zahlungsziel, Skonto) werden seit 06.10.2026 in den
+ * Rechnungsgruppen gepflegt – hier optional (Import, Startwerte der Gruppe „Standard“). Nicht mitgeschickte Felder
+ * bleiben beim Ändern unverändert.
+ */
 export const customerInput = z
   .object({
     customer_no: z.string().trim().min(1, 'Kundennummer fehlt'),
@@ -79,58 +90,77 @@ export const customerInput = z
       .regex(/^\d{5}$/, 'PLZ muss 5-stellig sein'),
     city: z.string().trim().min(1, 'Ort fehlt'),
     vat_id: optText,
-    is_public_authority: z.preprocess((v) => v === 'on' || v === 'true' || v === true, z.boolean()),
-    leitweg_id: optText.refine(
-      (v) => v === null || /^[0-9]{2,12}(-[0-9A-Za-z]{1,30})?-[0-9]{2}$/.test(v),
-      'Leitweg-ID ungültig (Format: Grobadressierung-Feinadressierung-Prüfziffer)',
-    ),
-    supplier_no: optText,
-    invoice_emails: z.preprocess(
-      (v) =>
-        typeof v === 'string'
-          ? v
-              .split(/[\s,;]+/)
-              .map((s) => s.trim())
-              .filter(Boolean)
-          : v,
-      z.array(z.email('Ungültige Rechnungs-E-Mail')),
-    ),
-    invoice_format: z.enum(['pdf', 'zugferd', 'xrechnung']),
-    payment_terms_days: z.coerce.number().int().min(0).max(365),
+    is_public_authority: optBool,
+    leitweg_id: optText
+      .refine(
+        (v) => v === null || /^[0-9]{2,12}(-[0-9A-Za-z]{1,30})?-[0-9]{2}$/.test(v),
+        'Leitweg-ID ungültig (Format: Grobadressierung-Feinadressierung-Prüfziffer)',
+      )
+      .optional(),
+    supplier_no: optText.optional(),
+    invoice_emails: z
+      .preprocess(
+        (v) =>
+          typeof v === 'string'
+            ? v
+                .split(/[\s,;]+/)
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : v,
+        z.array(z.email('Ungültige Rechnungs-E-Mail')),
+      )
+      .optional(),
+    invoice_format: z.enum(['pdf', 'zugferd', 'xrechnung']).optional(),
+    payment_terms_days: z.coerce.number().int().min(0).max(365).optional(),
     // Skonto in Prozent ("3" oder "2,5") → Basispunkte; leer = kein Skonto
-    skonto_percent_bp: z.preprocess(
-      (v) =>
-        typeof v === 'string' && v.trim() !== '' ? Math.round(Number(v.replace(',', '.')) * 100) : null,
-      z
-        .number()
-        .int('Skonto: max. 2 Nachkommastellen')
-        .min(1, 'Skonto muss größer 0 sein')
-        .max(1000, 'Skonto max. 10 %')
-        .nullable(),
-    ),
-    skonto_days: z.preprocess(
-      (v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : null),
-      z.number().int().min(1).max(90).nullable(),
-    ),
+    skonto_percent_bp: z
+      .preprocess(
+        (v) =>
+          typeof v === 'string' && v.trim() !== ''
+            ? Math.round(Number(v.replace(',', '.')) * 100)
+            : v === undefined
+              ? undefined
+              : null,
+        z
+          .number()
+          .int('Skonto: max. 2 Nachkommastellen')
+          .min(1, 'Skonto muss größer 0 sein')
+          .max(1000, 'Skonto max. 10 %')
+          .nullable(),
+      )
+      .optional(),
+    skonto_days: z
+      .preprocess(
+        (v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v === undefined ? undefined : null),
+        z.number().int().min(1).max(90).nullable(),
+      )
+      .optional(),
     contact_name: optText,
     contact_email: z.preprocess(emptyToNull, z.email('Ungültige Kontakt-E-Mail').nullable().default(null)),
     contact_phone: optText,
     notes: optText,
-    status: z.enum(['kunde', 'interessent']).default('kunde'),
-    dunning_block: z.preprocess((v) => v === 'on' || v === 'true' || v === true, z.boolean()),
+    // kunde (grün) · interessent (gelb) · ehemalig (rot = inaktiv)
+    status: z.enum(['kunde', 'interessent', 'ehemalig']).optional(),
+    dunning_block: optBool,
   })
   .refine((c) => c.invoice_format !== 'xrechnung' || !!c.leitweg_id, {
     message: 'XRechnung braucht eine Leitweg-ID',
     path: ['leitweg_id'],
   })
-  .refine((c) => (c.skonto_percent_bp === null) === (c.skonto_days === null), {
-    message: 'Skonto: Prozent und Tage bitte zusammen angeben (oder beide leer)',
-    path: ['skonto_days'],
-  })
-  .refine((c) => c.skonto_days === null || c.skonto_days < c.payment_terms_days, {
-    message: 'Skontofrist muss kürzer als das Zahlungsziel sein',
-    path: ['skonto_days'],
-  });
+  .refine(
+    (c) =>
+      c.skonto_percent_bp === undefined ||
+      c.skonto_days === undefined ||
+      (c.skonto_percent_bp === null) === (c.skonto_days === null),
+    { message: 'Skonto: Prozent und Tage bitte zusammen angeben (oder beide leer)', path: ['skonto_days'] },
+  )
+  .refine(
+    (c) => !c.skonto_days || c.payment_terms_days === undefined || c.skonto_days < c.payment_terms_days,
+    {
+      message: 'Skontofrist muss kürzer als das Zahlungsziel sein',
+      path: ['skonto_days'],
+    },
+  );
 
 export type CustomerInput = z.infer<typeof customerInput>;
 
@@ -145,7 +175,21 @@ export async function getCustomer(sql: Sql, id: string): Promise<Customer | unde
   return c;
 }
 
-/** Anlegen/Ändern mit fester ID → idempotent bei Wiederholung. */
+export const customerStatusOf = (
+  c: Pick<Customer, 'active' | 'status'>,
+): 'kunde' | 'interessent' | 'ehemalig' =>
+  !c.active ? 'ehemalig' : c.status === 'interessent' ? 'interessent' : 'kunde';
+
+/** Feste ID der Rechnungsgruppe „Standard“ eines Kunden (wie in der Migration). */
+export function standardGroupId(customerId: string): string {
+  const h = createHash('md5').update(`standard-group:${customerId}`).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+
+/**
+ * Anlegen/Ändern mit fester ID → idempotent bei Wiederholung. Beim Anlegen entsteht die Rechnungsgruppe „Standard“
+ * (Rechnungsangaben aus den Startwerten), der neue Objekte zugeordnet werden.
+ */
 export async function saveCustomer(
   sql: Sql,
   id: string,
@@ -153,14 +197,33 @@ export async function saveCustomer(
   actor: string,
   expectedVersion: number | null = null,
 ): Promise<void> {
+  const { status, ...rest } = input;
+  const data: Record<string, unknown> = Object.fromEntries(
+    Object.entries(rest).filter(([, v]) => v !== undefined),
+  );
+  if (status) {
+    data.status = status === 'interessent' ? 'interessent' : 'kunde';
+    data.active = status !== 'ehemalig';
+  }
   await sql.begin(async (tx) => {
     const [cur] = await tx<
       { version: number }[]
     >`select version from app.customers where id = ${id} for update`;
     assertVersion(cur?.version, expectedVersion, 'Der Kunde');
-    await tx`
-      insert into app.customers ${tx({ id, ...input, invoice_emails: input.invoice_emails })}
-      on conflict (id) do update set ${tx({ ...input, invoice_emails: input.invoice_emails, updated_at: new Date() } as Record<string, unknown>)}`;
+    if (cur) {
+      await tx`update app.customers set ${tx({ ...data, updated_at: new Date() })} where id = ${id}`;
+    } else {
+      await tx`insert into app.customers ${tx({ id, ...data })}`;
+      const [c] = await tx<Customer[]>`select * from app.customers where id = ${id}`;
+      await tx`
+        insert into app.invoice_groups (id, customer_id, name, combine, bill_emails, bill_format, buyer_reference,
+                                        bill_supplier_no, bill_payment_terms_days, bill_skonto_percent_bp,
+                                        bill_skonto_days, bill_contact_name)
+        values (${standardGroupId(id)}, ${id}, 'Standard', false, ${c!.invoice_emails}, ${c!.invoice_format},
+                ${c!.leitweg_id}, ${c!.supplier_no}, ${c!.payment_terms_days}, ${c!.skonto_percent_bp},
+                ${c!.skonto_days}, ${c!.contact_name})
+        on conflict (id) do nothing`;
+    }
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
              values (${actor}, 'save', 'customer', ${id}, ${tx.json({ customer_no: input.customer_no })})`;
   });
@@ -196,6 +259,8 @@ export const siteInput = z.object({
   contract_reference: optText,
   // Objektleitung: nur setzen, wenn das Feld mitgeschickt wird (Import lässt es unverändert)
   manager_user_id: z.preprocess(emptyToNull, z.uuid('Objektleitung ungültig').nullable()).optional(),
+  // Rechnungsgruppe (Rechnungseinstellungen); neu angelegte Objekte ohne Angabe → Gruppe „Standard“ des Kunden
+  invoice_group_id: z.preprocess(emptyToNull, z.uuid('Rechnungsgruppe ungültig').nullable()).optional(),
 });
 export type SiteInput = z.infer<typeof siteInput>;
 
@@ -226,12 +291,48 @@ export async function saveSite(
   await sql.begin(async (tx) => {
     const [cur] = await tx<{ version: number }[]>`select version from app.sites where id = ${id} for update`;
     assertVersion(cur?.version, expectedVersion, 'Das Objekt');
-    const data = Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined));
+    const data: Record<string, unknown> = Object.fromEntries(
+      Object.entries(input).filter(([, v]) => v !== undefined),
+    );
+    if (!cur && !data.invoice_group_id) data.invoice_group_id = await defaultGroupId(tx, input.customer_id);
     await tx`insert into app.sites ${tx({ id, ...data })}
              on conflict (id) do update set ${tx({ ...data, updated_at: new Date() } as Record<string, unknown>)}`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
              values (${actor}, 'save', 'site', ${id}, ${tx.json({ site_no: input.site_no })})`;
   });
+}
+
+/** Gruppe „Standard“ des Kunden (wird bei Bedarf angelegt), sonst erste aktive Gruppe. */
+async function defaultGroupId(tx: Tx, customerId: string): Promise<string> {
+  const [g] = await tx<{ id: string }[]>`
+    select id from app.invoice_groups where customer_id = ${customerId} and active
+     order by (id = ${standardGroupId(customerId)}) desc, (name = 'Standard') desc, name limit 1`;
+  if (g) return g.id;
+  const [c] = await tx<Customer[]>`select * from app.customers where id = ${customerId}`;
+  if (!c) throw new BusinessError('Kunde nicht gefunden');
+  const id = standardGroupId(customerId);
+  await tx`
+    insert into app.invoice_groups (id, customer_id, name, combine, bill_emails, bill_format, buyer_reference,
+                                    bill_supplier_no, bill_payment_terms_days, bill_skonto_percent_bp, bill_skonto_days,
+                                    bill_contact_name)
+    values (${id}, ${customerId}, ${(await tx`select 1 from app.invoice_groups where customer_id = ${customerId} and name = 'Standard'`).length ? 'Standard (je Objekt)' : 'Standard'},
+            false, ${c.invoice_emails}, ${c.invoice_format}, ${c.leitweg_id}, ${c.supplier_no}, ${c.payment_terms_days},
+            ${c.skonto_percent_bp}, ${c.skonto_days}, ${c.contact_name})
+    on conflict (id) do update set active = true`;
+  return id;
+}
+
+/** Objekte ohne Rechnungsgruppe der Gruppe „Standard“ ihres Kunden zuordnen (z. B. nach Seed/Altdaten). */
+export async function ensureSiteGroups(sql: Sql): Promise<number> {
+  const open = await sql<{ id: string; customer_id: string }[]>`
+    select id, customer_id from app.sites where invoice_group_id is null`;
+  for (const st of open) {
+    await sql.begin(async (tx) => {
+      const gid = await defaultGroupId(tx, st.customer_id);
+      await tx`update app.sites set invoice_group_id = ${gid} where id = ${st.id} and invoice_group_id is null`;
+    });
+  }
+  return open.length;
 }
 
 export interface SiteService {
@@ -441,7 +542,8 @@ export interface SiteBilling {
 }
 
 export interface EffectiveBilling {
-  source: 'kunde' | 'objekt';
+  source: 'kunde' | 'gruppe' | 'objekt';
+  groupName: string | null;
   name: string;
   name2: string | null;
   street: string;
@@ -456,162 +558,127 @@ export interface EffectiveBilling {
   skonto: { percentBp: number; days: number } | null;
 }
 
-/** Gültige Rechnungsangaben: Objekt (wenn „abweichend“) vor Kunde; leere Einzelfelder → Kunde. */
-export function resolveBilling(c: Customer, s: Partial<SiteBilling> | null | undefined): EffectiveBilling {
+/** Rechnungseinstellungen einer Rechnungsgruppe (Teil von InvoiceGroup). */
+export interface GroupBilling {
+  id: string;
+  name: string;
+  combine: boolean;
+  bill_name: string | null;
+  bill_name2: string | null;
+  bill_street: string | null;
+  bill_postal_code: string | null;
+  bill_city: string | null;
+  bill_contact_name: string | null;
+  bill_emails: string[];
+  bill_format: InvoiceFormat;
+  buyer_reference: string | null;
+  bill_supplier_no: string | null;
+  bill_payment_terms_days: number | null;
+  bill_skonto_percent_bp: number | null;
+  bill_skonto_days: number | null;
+}
+
+/**
+ * Gültige Rechnungsangaben. Reihenfolge: (alt) abweichende Angaben direkt am Objekt → Rechnungsgruppe → Kunde.
+ * Bei der Gruppe sind Format, E-Mails und Skonto verbindlich; leere Adresse/Leitweg-ID/Zahlungsziel → Kunde.
+ */
+export function resolveBilling(
+  c: Customer,
+  s: Partial<SiteBilling> | null | undefined,
+  g?: GroupBilling | null,
+): EffectiveBilling {
   const own = s?.billing_mode === 'eigen';
-  const addr = own && s?.bill_name;
   const custSkonto =
     c.skonto_percent_bp && c.skonto_days ? { percentBp: c.skonto_percent_bp, days: c.skonto_days } : null;
+  // Basis: Gruppe (falls vorhanden), sonst Kunde
+  const base = g
+    ? {
+        name: g.bill_name ?? c.name,
+        name2: g.bill_name ? g.bill_name2 : c.name2,
+        street: g.bill_name ? g.bill_street! : c.street,
+        postalCode: g.bill_name ? g.bill_postal_code! : c.postal_code,
+        city: g.bill_name ? g.bill_city! : c.city,
+        contactName: g.bill_contact_name ?? c.contact_name,
+        emails: g.bill_emails,
+        format: g.bill_format,
+        leitwegId: g.buyer_reference ?? c.leitweg_id,
+        supplierNo: g.bill_supplier_no ?? c.supplier_no,
+        paymentTermsDays: g.bill_payment_terms_days ?? c.payment_terms_days,
+        skonto:
+          g.bill_skonto_percent_bp && g.bill_skonto_days
+            ? { percentBp: g.bill_skonto_percent_bp, days: g.bill_skonto_days }
+            : null,
+      }
+    : {
+        name: c.name,
+        name2: c.name2,
+        street: c.street,
+        postalCode: c.postal_code,
+        city: c.city,
+        contactName: c.contact_name,
+        emails: c.invoice_emails,
+        format: c.invoice_format,
+        leitwegId: c.leitweg_id,
+        supplierNo: c.supplier_no,
+        paymentTermsDays: c.payment_terms_days,
+        skonto: custSkonto,
+      };
+  if (!own) return { source: g ? 'gruppe' : 'kunde', groupName: g?.name ?? null, ...base };
+  const addr = !!s?.bill_name;
   return {
-    source: own ? 'objekt' : 'kunde',
-    name: addr ? s.bill_name! : c.name,
-    name2: addr ? (s.bill_name2 ?? null) : c.name2,
-    street: addr ? s.bill_street! : c.street,
-    postalCode: addr ? s.bill_postal_code! : c.postal_code,
-    city: addr ? s.bill_city! : c.city,
-    contactName: (own && s?.bill_contact_name) || c.contact_name,
-    emails: own && s?.bill_emails?.length ? s.bill_emails : c.invoice_emails,
-    format: (own && s?.bill_format) || c.invoice_format,
-    leitwegId: (own && s?.bill_leitweg_id) || c.leitweg_id,
-    supplierNo: (own && s?.bill_supplier_no) || c.supplier_no,
-    paymentTermsDays:
-      own && s?.bill_payment_terms_days != null ? s.bill_payment_terms_days : c.payment_terms_days,
-    skonto:
-      own && s?.bill_skonto_custom
-        ? s.bill_skonto_percent_bp && s.bill_skonto_days
-          ? { percentBp: s.bill_skonto_percent_bp, days: s.bill_skonto_days }
-          : null
-        : custSkonto,
+    source: 'objekt',
+    groupName: g?.name ?? null,
+    name: addr ? s.bill_name! : base.name,
+    name2: addr ? (s.bill_name2 ?? null) : base.name2,
+    street: addr ? s.bill_street! : base.street,
+    postalCode: addr ? s.bill_postal_code! : base.postalCode,
+    city: addr ? s.bill_city! : base.city,
+    contactName: s?.bill_contact_name || base.contactName,
+    emails: s?.bill_emails?.length ? s.bill_emails : base.emails,
+    format: s?.bill_format || base.format,
+    leitwegId: s?.bill_leitweg_id || base.leitwegId,
+    supplierNo: s?.bill_supplier_no || base.supplierNo,
+    paymentTermsDays: s?.bill_payment_terms_days != null ? s.bill_payment_terms_days : base.paymentTermsDays,
+    skonto: s?.bill_skonto_custom
+      ? s.bill_skonto_percent_bp && s.bill_skonto_days
+        ? { percentBp: s.bill_skonto_percent_bp, days: s.bill_skonto_days }
+        : null
+      : base.skonto,
   };
 }
 
-export async function effectiveBilling(sql: Sql, customerId: string, siteId: string | null) {
+/** Rechnungsangaben für Kunde + Objekt; Gruppe = angegebene (z. B. der Rechnung), sonst die des Objekts. */
+export async function effectiveBilling(
+  sql: Sql,
+  customerId: string,
+  siteId: string | null,
+  groupId?: string | null,
+) {
   const c = await getCustomer(sql, customerId);
   if (!c) throw new BusinessError('Kunde nicht gefunden');
   const [s] = siteId
-    ? await sql<SiteBilling[]>`select * from app.sites where id = ${siteId} and customer_id = ${customerId}`
+    ? await sql<(SiteBilling & { invoice_group_id: string | null })[]>`
+        select * from app.sites where id = ${siteId} and customer_id = ${customerId}`
     : [];
-  return resolveBilling(c, s);
-}
-
-const emailList = z.preprocess(
-  (v) =>
-    typeof v === 'string'
-      ? v
-          .split(/[\s,;]+/)
-          .map((x) => x.trim())
-          .filter(Boolean)
-      : v,
-  z.array(z.email('Ungültige Rechnungs-E-Mail')),
-);
-
-export const siteBillingInput = z
-  .object({
-    billing_mode: z.enum(['kunde', 'eigen']),
-    bill_name: optText,
-    bill_name2: optText,
-    bill_street: optText,
-    bill_postal_code: z.preprocess(
-      emptyToNull,
-      z
-        .string()
-        .trim()
-        .regex(/^\d{5}$/, 'PLZ muss 5-stellig sein')
-        .nullable(),
-    ),
-    bill_city: optText,
-    bill_contact_name: optText,
-    bill_emails: emailList,
-    bill_format: z.preprocess(emptyToNull, z.enum(['pdf', 'zugferd', 'xrechnung']).nullable()),
-    bill_leitweg_id: optText.refine(
-      (v) => v === null || /^[0-9]{2,12}(-[0-9A-Za-z]{1,30})?-[0-9]{2}$/.test(v),
-      'Leitweg-ID ungültig (Format: Grobadressierung-Feinadressierung-Prüfziffer)',
-    ),
-    bill_supplier_no: optText,
-    bill_payment_terms_days: z.preprocess(
-      (v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : null),
-      z.number().int().min(0).max(365).nullable(),
-    ),
-    bill_skonto_custom: z.preprocess((v) => v === 'on' || v === 'true' || v === true, z.boolean()),
-    bill_skonto_percent_bp: z.preprocess(
-      (v) =>
-        typeof v === 'string' && v.trim() !== '' ? Math.round(Number(v.replace(',', '.')) * 100) : null,
-      z.number().int('Skonto: max. 2 Nachkommastellen').min(1).max(1000, 'Skonto max. 10 %').nullable(),
-    ),
-    bill_skonto_days: z.preprocess(
-      (v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : null),
-      z.number().int().min(1).max(90).nullable(),
-    ),
-  })
-  .refine((b) => !b.bill_name || (!!b.bill_street && !!b.bill_postal_code && !!b.bill_city), {
-    message: 'Abweichende Rechnungsadresse: bitte Name, Straße, PLZ und Ort angeben',
-    path: ['bill_street'],
-  })
-  .refine((b) => (b.bill_skonto_percent_bp === null) === (b.bill_skonto_days === null), {
-    message: 'Skonto: Prozent und Tage bitte zusammen angeben (oder beide leer = kein Skonto)',
-    path: ['bill_skonto_days'],
-  });
-
-/** Rechnungsangaben des Objekts speichern; „wie Kunde“ leert alle abweichenden Felder. */
-export async function saveSiteBilling(
-  sql: Sql,
-  siteId: string,
-  input: z.infer<typeof siteBillingInput>,
-  actor: string,
-  expectedVersion: number | null = null,
-) {
-  const [site] = await sql<(Site & SiteBilling)[]>`select * from app.sites where id = ${siteId}`;
-  if (!site) throw new BusinessError('Objekt nicht gefunden');
-  assertVersion(site.version, expectedVersion, 'Das Objekt');
-  const data: SiteBilling =
-    input.billing_mode === 'kunde'
-      ? {
-          billing_mode: 'kunde',
-          bill_name: null,
-          bill_name2: null,
-          bill_street: null,
-          bill_postal_code: null,
-          bill_city: null,
-          bill_contact_name: null,
-          bill_emails: null,
-          bill_format: null,
-          bill_leitweg_id: null,
-          bill_supplier_no: null,
-          bill_payment_terms_days: null,
-          bill_skonto_custom: false,
-          bill_skonto_percent_bp: null,
-          bill_skonto_days: null,
-        }
-      : {
-          ...input,
-          bill_emails: input.bill_emails.length ? input.bill_emails : null,
-          bill_skonto_percent_bp: input.bill_skonto_custom ? input.bill_skonto_percent_bp : null,
-          bill_skonto_days: input.bill_skonto_custom ? input.bill_skonto_days : null,
-        };
-  const c = await getCustomer(sql, site.customer_id);
-  const eff = resolveBilling(c!, data);
-  if (eff.format === 'xrechnung' && !eff.leitwegId)
-    throw new BusinessError('XRechnung braucht eine Leitweg-ID (beim Objekt oder beim Kunden)');
-  if (eff.format !== 'pdf' && !eff.emails.length && input.billing_mode === 'eigen')
-    throw new BusinessError('Bitte mindestens eine Rechnungs-E-Mail angeben (oder beim Kunden hinterlegen)');
-  if (eff.skonto && eff.skonto.days >= eff.paymentTermsDays)
-    throw new BusinessError('Skontofrist muss kürzer als das Zahlungsziel sein');
-  await sql.begin(async (tx) => {
-    await tx`update app.sites set ${tx(data as unknown as Record<string, unknown>)}, updated_at = now() where id = ${siteId}`;
-    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
-             values (${actor}, 'billing', 'site', ${siteId}, ${tx.json({ mode: data.billing_mode })})`;
-  });
+  const gid = groupId ?? s?.invoice_group_id ?? null;
+  const [g] = gid
+    ? await sql<
+        GroupBilling[]
+      >`select * from app.invoice_groups where id = ${gid} and customer_id = ${customerId}`
+    : [];
+  return resolveBilling(c, s, g ?? null);
 }
 
 export async function buildBuyerSnapshot(
   sql: Sql,
   customerId: string,
   siteId: string | null,
+  groupId?: string | null,
 ): Promise<BuyerSnapshot> {
   const c = await getCustomer(sql, customerId);
   if (!c) throw new Error('Kunde nicht gefunden');
+  const b = await effectiveBilling(sql, customerId, siteId, groupId);
   const site = siteId ? await getSite(sql, siteId) : undefined;
-  const b = resolveBilling(c, site as Partial<SiteBilling> | undefined);
   return {
     // SEPA-Lastschrift entfernt (06.10.2026): keine Vorabankündigung mehr auf der Rechnung
     directDebit: null,

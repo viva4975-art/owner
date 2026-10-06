@@ -41,7 +41,7 @@ import {
   saveQualityCheck,
   saveRoom,
 } from '../services/facility.js';
-import { saveInvoiceGroup } from '../services/invoice-groups.js';
+import { groupBillingInput, saveInvoiceGroup, setSiteInvoiceGroup } from '../services/invoice-groups.js';
 import {
   closeWithoutSignature,
   saveOrder as saveCustomerOrder,
@@ -54,7 +54,7 @@ import { completeRun, planRun, saveSpecialService } from '../services/special-se
 import { copyOffer, saveOffer, setOfferStatus } from '../services/offers.js';
 import { importStatement } from '../services/bank.js';
 import { applyImport } from '../services/fortytools-import.js';
-import { saveSiteBilling, siteBillingInput } from '../services/masterdata.js';
+import { ensureSiteGroups } from '../services/masterdata.js';
 import { saveTender, setTenderStatus } from '../services/tenders.js';
 import { bookStock as bookClothing, saveHandover, signHandover } from '../services/handovers.js';
 import {
@@ -292,6 +292,7 @@ try {
   await phase7();
   await phase8();
   await phase9();
+  await ensureSiteGroups(sql);
   // Belege (PDF, XRechnung/ZUGFeRD, KoSIT-Prüfbericht) für alle ausgestellten Rechnungen erzeugen
   const issued = await sql<{ id: string }[]>`select id from app.invoices where status = 'issued'`;
   for (const i of issued) await ensureDocuments(deps, i.id);
@@ -892,7 +893,13 @@ async function phase4() {
     {
       customerId: DEMO.authority,
       name: 'Referat für Bildung – Sammelrechnung',
-      buyerReference: null,
+      combine: true,
+      billing: groupBillingInput.parse({
+        bill_emails: 'rechnung-bildung@example.org',
+        bill_format: 'xrechnung',
+        buyer_reference: '09162000-DEMO-90',
+        bill_payment_terms_days: '30',
+      }),
       orderReference: 'SR-2026-RfB',
       note: 'Ab November alle Schulen auf einer Rechnung',
       active: true,
@@ -1411,33 +1418,38 @@ async function phase7() {
   console.log('Demo Phase 7 angelegt.');
 }
 
-/** Abweichende Rechnungsangaben an einem Objekt (Verwaltungsgebäude → eigene Rechnungsstelle). */
+/** Eigene Rechnungsgruppe für das Verwaltungsgebäude (andere Rechnungsstelle, eigene Rechnung). */
 async function phase8() {
-  const [s] = await sql<
-    { billing_mode: string }[]
-  >`select billing_mode from app.sites where id = ${DEMO.siteOffice}`;
-  if (s?.billing_mode === 'eigen') return;
-  await saveSiteBilling(
+  const gid = '00000000-0000-4000-8000-0000000f0008';
+  const [done] = await sql`select 1 from app.invoice_groups where id = ${gid}`;
+  if (done) return;
+  await saveInvoiceGroup(
     sql,
-    DEMO.siteOffice,
-    siteBillingInput.parse({
-      billing_mode: 'eigen',
-      bill_name: 'DEMO Beispielbehörde – Kommunalreferat Gebäudemanagement',
-      bill_name2: 'Rechnungsstelle Verwaltungsgebäude',
-      bill_street: 'Roßmarkt 3',
-      bill_postal_code: '80331',
-      bill_city: 'München',
-      bill_contact_name: 'Herr Demo-Hausverwaltung',
-      bill_emails: 'rechnung-verwaltung@example.org',
-      bill_format: '',
-      bill_leitweg_id: '',
-      bill_supplier_no: '',
-      bill_payment_terms_days: '21',
-      bill_skonto_percent_bp: '',
-      bill_skonto_days: '',
-    }),
+    gid,
+    {
+      customerId: DEMO.authority,
+      name: 'Kommunalreferat – Verwaltungsgebäude',
+      combine: false,
+      billing: groupBillingInput.parse({
+        bill_name: 'DEMO Beispielbehörde – Kommunalreferat Gebäudemanagement',
+        bill_name2: 'Rechnungsstelle Verwaltungsgebäude',
+        bill_street: 'Roßmarkt 3',
+        bill_postal_code: '80331',
+        bill_city: 'München',
+        bill_contact_name: 'Herr Demo-Hausverwaltung',
+        bill_emails: 'rechnung-verwaltung@example.org',
+        bill_format: 'zugferd',
+        bill_payment_terms_days: '21',
+      }),
+      orderReference: null,
+      note: null,
+      active: true,
+      siteIds: null,
+      expectedVersion: null,
+    },
     A,
   );
+  await setSiteInvoiceGroup(sql, DEMO.siteOffice, gid, A);
   console.log('Demo Phase 8 angelegt.');
 }
 

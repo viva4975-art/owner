@@ -78,6 +78,18 @@ h2 .cnt,h3 .cnt{font-weight:500;color:var(--faint)}
 .cols{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:16px;align-items:start}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px 16px}
 .cols>*,.grid>*{min-width:0}
+/* Formulare wie Fortytools: ein Feld pro Zeile untereinander, Beschriftung links (Ahmed 06.10.2026) */
+form .grid{grid-template-columns:minmax(0,1fr);gap:10px;max-width:820px}
+form .grid>div:not(.chk){display:grid;grid-template-columns:220px minmax(0,1fr);gap:4px 16px;align-items:center}
+form .grid>div:not(.chk)>label{margin:0}
+form .grid>div:not(.chk)>:not(label){grid-column:2}
+form .grid>div:not(.chk)>textarea{min-height:76px}
+form .grid>.chk{padding-left:236px}
+form .grid>[style*="grid-column"]{grid-column:auto!important}
+.pop form .grid>div:not(.chk),form.inline .grid>div:not(.chk){grid-template-columns:minmax(0,1fr)}
+.pop form .grid>div:not(.chk)>:not(label),form.inline .grid>div:not(.chk)>:not(label){grid-column:1}
+.pop form .grid>.chk,form.inline .grid>.chk{padding-left:0}
+@media (max-width:700px){form .grid>div:not(.chk){grid-template-columns:minmax(0,1fr)}form .grid>div:not(.chk)>:not(label){grid-column:1}form .grid>.chk{padding-left:0}}
 .section-title{font-size:12px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:24px 0 10px}
 /* ---- Reiter ---- */
 .tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--line);margin-bottom:20px}
@@ -199,8 +211,8 @@ input::placeholder,textarea::placeholder{color:var(--faint)}
 .list>.row{display:flex;gap:14px;align-items:center;padding:14px 22px;border-bottom:1px solid var(--line)}
 .list>.row:last-child{border-bottom:0}
 .list>.row:hover{background:#fcfbfa}
-.list .dot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--line-2)}
-.list .dot.ok{background:var(--ok)}.list .dot.warn{background:#d39b24}.list .dot.err{background:var(--err)}.list .dot.info{background:var(--info)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex:none;background:var(--line-2);vertical-align:middle}
+.dot.ok{background:var(--ok)}.dot.warn{background:#d39b24}.dot.err{background:var(--err)}.dot.info{background:var(--info)}
 .list .main{flex:1;min-width:0}.list .main b{font-weight:600}
 .list .side{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
 .list .when{font-size:12.5px;color:var(--mut);min-width:110px;text-align:right}

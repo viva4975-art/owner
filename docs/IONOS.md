@@ -8,7 +8,7 @@ Linux-Server). Alle Passwörter und Schlüssel werden nur auf dem Server eingege
 
 ## Teil A – Vorbereiten (ca. 20 Min., am PC einfacher)
 
-1. **VPS bestellen** (IONOS → Server & Cloud → VPS): Linux **Ubuntu 24.04**, mind. **4 GB RAM**, 2 Kerne, 80 GB,
+1. **VPS bestellen** (IONOS → Server & Cloud → VPS): Linux **Ubuntu 24.04 oder 26.04**, mind. **4 GB RAM** (8 GB ideal), 2 Kerne, 80 GB, **ohne** vorinstallierte Apps (Open WebUI), **ohne** Plesk, kein SSL-Zertifikat kaufen (kommt kostenlos automatisch),
    Rechenzentrum **Deutschland**. Im Cloud Panel stehen danach **IP-Adresse** und **root-Passwort** (notieren).
    Unter Netzwerk → Firewall-Richtlinien die Ports **22, 80, 443** freigeben.
 2. **Adresse einrichten** (IONOS → Domains & SSL → viva-deluxe-reinigung.de → DNS): neuer Eintrag **A**, Hostname

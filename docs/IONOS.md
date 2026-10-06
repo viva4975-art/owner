@@ -26,7 +26,7 @@ Linux-Server). Alle Passwörter und Schlüssel werden nur auf dem Server eingege
 2. Diese drei Zeilen einzeln einfügen (Rechtsklick = Einfügen); bei „Token:“ den GitHub-Schlüssel einfügen:
 
    ```bash
-   read -rsp "Token: " GH_TOKEN; export GH_TOKEN; echo
+   printf "Token: "; read -rs GH_TOKEN; export GH_TOKEN; echo
    curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -o install.sh https://raw.githubusercontent.com/viva4975-art/owner/claude/new-session-t3lg2s/deploy/install.sh
    bash install.sh
    ```

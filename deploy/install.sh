@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Erstinstallation auf einem frischen Ubuntu-Server (24.04 oder neuer), als root:
-#   read -rsp "Token: " GH_TOKEN; export GH_TOKEN; echo
+#   printf "Token: "; read -rs GH_TOKEN; export GH_TOKEN; echo
 #   curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -o install.sh \
 #     https://raw.githubusercontent.com/viva4975-art/owner/claude/new-session-t3lg2s/deploy/install.sh
 #   bash install.sh

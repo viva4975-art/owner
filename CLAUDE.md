@@ -932,3 +932,11 @@ Testadresse.
   Handy-App: Zeit bestätigen („so gearbeitet“) direkt in der Einsatz-Karte – heute nach Schichtende, frühere Tage (7 Tage)
   oben unter „Noch zu bestätigen“, auch im Kalender beim gewählten Tag. **Offen:** Qualitätsmanagement/Audit wie Fortytools –
   Ahmed schickt die Bilder Schritt für Schritt.
+- 2026-10-06: QM-App Schritt 1 (Ahmed, Fortytools-Audit-App, weitere Bilder folgen): Handy-Ansicht `/qm` für Büro und
+  Objektleitung (nur eigene Objekte) im Bordeaux-Stil der Mitarbeiter-App: Übersicht (Begrüßung, Kalender/Suche/Tickets/Alle
+  Audits, heutige Audits mit Räumen und Ergebnis %, „+“ → „Was möchten Sie als nächstes erledigen?“ Audit starten / Ticket
+  erstellen), Einsatzorte nach Kunde aufklappbar mit Suche, Objekt-Details (Raumbuch (n), Tickets (n), vergangene Audits:
+  Datum, „x von y Räumen“, %). Audit = bestehende Qualitätskontrolle (Bewertung vorerst über /qualitaet/…). Neu: Tickets je
+  Objekt (`site_tickets`, Nummer T-JJJJ-NNNN, Raum optional, Priorität, offen → in Arbeit → erledigt, feste ID). Menü
+  Disposition → „QM-App (Audit, Handy)“. **Als Nächstes:** Audit-Ablauf (Raum für Raum), Fotos, Lernportal – nach Ahmeds
+  Bildern.

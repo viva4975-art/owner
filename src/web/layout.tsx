@@ -1060,6 +1060,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Vertretungen', href: '/einsatzplanung/vertretungen' },
       { label: 'Arbeitsscheine', href: '/arbeitsscheine' },
       { label: 'Qualitätskontrollen', href: '/qualitaet' },
+      { label: 'QM-App (Audit, Handy)', href: '/qm' },
       { label: 'Zählerstände', href: '/zaehler' },
       { label: 'Heute: Soll/Ist', href: '/zeiterfassung' },
       { label: 'Soll/Ist je Monat', href: '/zeiterfassung/monat' },

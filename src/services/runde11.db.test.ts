@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { requestAbsence } from './absences.js';
 import { payrollCsv, getPayrollSettings, payrollMonth } from './payroll.js';
+import { createTicket, listTickets, qmSites, setTicketStatus } from './qm.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
@@ -83,5 +84,29 @@ describe.skipIf(!available)('Runde 11: Lohnarten und Urlaubsanspruch (Datenbank)
       actor: 'buero',
       approved: true,
     });
+  });
+
+  it('QM-App: Tickets je Objekt, Nummern, doppelt senden, erledigt, Sichtbereich', async () => {
+    const id = randomUUID();
+    const p = {
+      siteId: DEMO.siteSchool,
+      roomId: null,
+      title: 'Seife fehlt WC',
+      description: null,
+      priority: 'hoch',
+    };
+    await createTicket(sql, id, p, 'qm');
+    await createTicket(sql, id, p, 'qm'); // doppelt gesendet
+    let open = await listTickets(sql, { siteIds: null, siteId: DEMO.siteSchool });
+    expect(open).toHaveLength(1);
+    expect(open[0]!.number).toMatch(/^T-\d{4}-0001$/);
+    expect((await qmSites(sql, [DEMO.siteSchool]))[0]!.open_tickets).toBe(1);
+    expect(await listTickets(sql, { siteIds: [] })).toHaveLength(0);
+    await setTicketStatus(sql, id, 'erledigt', 'qm');
+    open = await listTickets(sql, { siteIds: null, siteId: DEMO.siteSchool });
+    expect(open).toHaveLength(0);
+    await expect(createTicket(sql, randomUUID(), { ...p, title: ' ' }, 'qm')).rejects.toThrow(
+      /worum es geht/,
+    );
   });
 });

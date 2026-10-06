@@ -30,7 +30,7 @@ const RULES: [RegExp, Role[]][] = [
   ],
   [/^\/objekte\/(export\.csv|qr-druck)$/, ['admin', 'buchhaltung', 'objektleitung']],
   [/^\/arbeitsscheine(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
-  [/^\/(qualitaet|zaehler|sonderdienste)(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
+  [/^\/(qualitaet|zaehler|sonderdienste|qm)(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
   [
     /^\/objekte\/[0-9a-f-]{36}(\/(einsaetze|zeiten|qr|notizen|aufgaben|arbeitsscheine|raumbuch|stundenvorgabe|qualitaet|zaehler|dokumente|schluessel)([/.]|$)|$)/,
     ['admin', 'buchhaltung', 'objektleitung', 'personal'],

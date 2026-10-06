@@ -39,7 +39,10 @@ console.log('1. Startseite');
 await p.goto(B + '/');
 const h = await p.evaluate(() => document.body.scrollHeight);
 check('Startseite kompakt (< 4000 px)', h < 4000, String(h));
-check('keine Kennzahl-Kacheln, Offene Posten als Tabelle', (await p.locator('.dash-kpis').count()) === 0 && (await p.locator('.op-table, .dash-empty').count()) > 0);
+check(
+  'keine Kennzahl-Kacheln, Offene Posten als Tabelle',
+  (await p.locator('.dash-kpis').count()) === 0 && (await p.locator('.op-table, .dash-empty').count()) > 0,
+);
 const sideBg = await p.evaluate(
   () => globalThis.getComputedStyle(document.querySelector('.appside')).backgroundImage,
 );
@@ -147,11 +150,39 @@ check('Lohnarten-Seite', (await body(p)).includes('Zuschl. Nachtarbeit'));
 const csv = await p.request.get(B + '/zeiterfassung/lohnarten.csv');
 check('CSV-Export', csv.status() === 200 && (await csv.text()).includes('Personalnummer;Name;Lohnart-Nr.'));
 await p.goto(B + '/zeiterfassung/lohnarten/einstellungen');
-check('Zuschläge voreingestellt (RTV)', (await p.inputValue('#sunday_bp')) === '80' && (await p.inputValue('#high_holiday_bp')) === '200');
+check(
+  'Zuschläge voreingestellt (RTV)',
+  (await p.inputValue('#sunday_bp')) === '80' && (await p.inputValue('#high_holiday_bp')) === '200',
+);
 await p.fill('#ln-normal', '1000');
 await p.click('button:has-text("Speichern")');
 await p.waitForLoadState();
 check('Lohnart-Nummer gespeichert', (await p.inputValue('#ln-normal')) === '1000', await flash(p));
+
+// ---------- 8. QM-App ----------
+console.log('8. QM-App');
+await p.goto(B + '/qm');
+check('QM-Übersicht', (await body(p)).includes('Guten'));
+await p.goto(B + '/qm/objekte');
+check('Einsatzorte nach Kunde', (await p.locator('details.qm-cust').count()) > 0);
+await p.locator('details.qm-cust').first().locator('summary').click();
+await p.locator('a.qm-site').first().click();
+await p.waitForLoadState();
+check('Objekt Details', (await body(p)).includes('Vergangene Audits'));
+await p.click('a:has-text("Tickets (")');
+await p.waitForLoadState();
+await p.click('a.fab');
+await p.waitForLoadState();
+await p.fill('#title', `Ticket ${tag}`);
+await p.click('button:has-text("Ticket speichern")');
+await p.waitForLoadState();
+check('Ticket angelegt', (await body(p)).includes(`Ticket ${tag}`), await flash(p));
+await p
+  .locator('.qm-ticket', { hasText: `Ticket ${tag}` })
+  .locator('button:has-text("erledigt")')
+  .click();
+await p.waitForLoadState();
+check('Ticket erledigt', !(await body(p)).includes(`Ticket ${tag}`));
 
 console.log(`\n${ok} bestanden, ${fail} fehlgeschlagen`);
 await browser.close();

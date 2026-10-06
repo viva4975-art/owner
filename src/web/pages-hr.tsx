@@ -33,7 +33,9 @@ export const MonthBox: FC<{
             return (
               <tr style={r.month === current ? 'font-weight:600' : ''}>
                 <td>
-                  <a href={`/personal/${employeeId}/kalender?monat=${r.month}`}>{monthLabelDe(r.month)}</a>
+                  <a href={`/personal/${employeeId}/kalender?monat=${r.month}`} style="white-space:nowrap">
+                    {monthLabelDe(r.month).replace(/^(\S{3})\S{2,}/, '$1.')}
+                  </a>
                 </td>
                 <td class="r">{hhmm(r.soll)}</td>
                 <td class="r" style={planOff ? 'background:#fde2e2' : ''}>

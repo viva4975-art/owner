@@ -118,9 +118,14 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
         'Was im Audit bewertet wird: Note 1 bis 6, Gut/Mittel/Schlecht, Ja/Nein oder Punkte 1 bis 5.',
       ],
       [
-        'Arbeitskleidung: Artikel & Größen',
+        'Arbeitskleidung: Bestand, Artikel & Größen',
         '/arbeitskleidung',
-        'Artikel, Preise, PSA-Kennzeichen und Mindestbestand.',
+        'Bestand je Artikel und Größe (Zugang, Inventur), Preise, PSA-Kennzeichen und Mindestbestand.',
+      ],
+      [
+        'Gegenstände für Übergaben',
+        '/einstellungen/uebergabe-gegenstaende',
+        'Auswahlliste für Übergaben: Diensthandy, Tankkarte, Transponder …',
       ],
     ],
   },

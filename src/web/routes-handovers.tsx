@@ -28,6 +28,7 @@ import {
   stock,
   WAGE_DEDUCTION_TEXT,
 } from '../services/handovers.js';
+import { listHandoverObjects } from '../services/vehicles.js';
 import { type AppEnv, assertSite, type Ctx, UUID } from './app.js';
 import { arr, centsToInput, str } from './forms.js';
 import { PageHead, dateDe, euro } from './layout.js';
@@ -40,14 +41,31 @@ const STATUS_CLASS: Record<HandoverStatus, string> = {
   storniert: 'err',
 };
 const KINDS = Object.keys(HANDOVER_KIND) as HandoverKind[];
+/** Neu anlegbar: Schlüssel laufen über das Schlüsselbuch (Objekt → Schlüssel), nicht über Übergaben. */
+const NEW_KINDS = KINDS.filter((k) => k !== 'schluessel');
 const berlin = (d: Date) =>
   d.toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'short' });
 
 // Größen-Auswahl folgt dem gewählten Artikel (Datalist je Artikel)
 const SIZE_JS = `
 document.querySelectorAll('select[name=item_article]').forEach(function(s){
-  function upd(){var i=s.closest('tr').querySelector('input[name=item_size]'); if(i) i.setAttribute('list','sizes-'+s.value);}
-  s.addEventListener('change',upd); upd();
+  s.addEventListener('change',function(){
+    var z=s.closest('tr').querySelector('select[name=item_size]'); if(!z) return;
+    var o=s.options[s.selectedIndex], sizes=(o&&o.getAttribute('data-sizes')||'').split('|').filter(Boolean), cur=z.value;
+    z.innerHTML='<option value="">–</option>';
+    sizes.forEach(function(v){var x=document.createElement('option');x.value=v;x.textContent=v;if(v===cur)x.selected=true;z.appendChild(x)});
+  });
+});`;
+// „anderer Gegenstand …“ / „andere Person …“ blendet das Eingabefeld ein
+const OTHER_JS = `
+document.querySelectorAll('select[data-other-row]').forEach(function(s){
+  var i=s.closest('td').querySelector('input[name=item_label]');
+  function upd(){ if(!i) return; var o=s.value==='__andere'; i.hidden=!o; if(!o) i.value=''; else i.focus(); }
+  s.addEventListener('change',upd);
+});
+document.querySelectorAll('select[data-other]').forEach(function(s){
+  var box=document.getElementById(s.getAttribute('data-other'));
+  s.addEventListener('change',function(){ if(box){ box.hidden = s.value!=='__andere'; } });
 });`;
 
 export const HandoverTable: FC<{ rows: HandoverRow[]; showSite?: boolean }> = ({ rows, showSite = true }) => (
@@ -146,20 +164,21 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
       'Übergaben',
       'inventar',
       <>
-        <PageHead title="Übergaben mit Unterschrift">
-          {stockRole(role) && (
-            <a class="btn sec" href="/arbeitskleidung" style="margin-left:auto">
-              Arbeitskleidung: Bestand
-            </a>
-          )}
-        </PageHead>
+        <PageHead title="Übergaben mit Unterschrift" />
         <p class="mut" style="max-width:900px;margin-top:0">
-          Arbeitskleidung, Schlüssel, Geräte, Dokumente/Unterweisungen an Mitarbeitende oder Nachunternehmer
-          übergeben und direkt am Handy/Tablet unterschreiben lassen. Erst mit der Unterschrift werden Bestand
-          und Schlüsselbuch gebucht; danach ist das Protokoll unveränderbar.
+          Arbeitskleidung, Geräte, Dokumente/Unterweisungen und sonstige Gegenstände (Diensthandy, Tankkarte
+          …) an Mitarbeitende oder Nachunternehmer übergeben und direkt am Handy/Tablet unterschreiben lassen.
+          Erst mit der Unterschrift wird der Bestand gebucht; danach ist das Protokoll unveränderbar.
+          Schlüssel gibt es im <a href="/schluessel">Schlüsselbuch</a> bzw. am Objekt unter „Schlüssel“.
+          {stockRole(role) && (
+            <>
+              {' '}
+              Kleidungsbestand und Artikel: <a href="/arbeitskleidung">Einstellungen → Arbeitskleidung</a>.
+            </>
+          )}
         </p>
         <div class="actions" style="margin-top:0">
-          {KINDS.map((k) => (
+          {NEW_KINDS.map((k) => (
             <a class="btn sm" href={`/uebergaben/${randomUUID()}?art=${k}`}>
               + {HANDOVER_KIND[k]}
             </a>
@@ -219,14 +238,28 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
     const employeeId = c.req.query('mitarbeiter') ?? h?.employee_id ?? rel?.employee_id ?? '';
     const supplierId = c.req.query('nachunternehmer') ?? h?.supplier_id ?? rel?.supplier_id ?? '';
     const items: HandoverItem[] = h?.kind === kind ? h.items : rel?.kind === kind ? rel.items : [];
+    // Empfänger: eigener Mitarbeiter oder Nachunternehmer (dann Person aus dessen Ansprechpartnern)
+    const to: 'ma' | 'nu' =
+      c.req.query('an') === 'nu' || (c.req.query('an') !== 'ma' && supplierId) ? 'nu' : 'ma';
 
-    const [emps, sites, suppliers, articles] = await Promise.all([
+    const [emps, sites, suppliers, articles, objects, vehicles, contacts] = await Promise.all([
       employeesFor(c),
       sitesFor(c),
       sql<{ id: string; supplier_no: string; name: string }[]>`
         select id, supplier_no, name from app.suppliers where kind = 'nachunternehmer' and active order by name`,
       listArticles(sql),
+      listHandoverObjects(sql),
+      sql<{ plate: string; label: string }[]>`
+        select plate, trim(plate || ' ' || coalesce(make, '') || ' ' || coalesce(model, '')) as label
+          from app.vehicles where active order by plate`,
+      to === 'nu' && supplierId
+        ? sql<{ name: string; role: string | null }[]>`
+            select name, role from app.supplier_contacts where supplier_id = ${supplierId}
+             order by is_primary desc, name`
+        : Promise.resolve([] as { name: string; role: string | null }[]),
     ]);
+    const objectNames = [...objects.map((o) => o.name), ...vehicles.map((v) => `Fahrzeug ${v.label}`)];
+    const recipientPerson = h && !h.employee_id ? h.recipient_name.replace(/ \([^)]*\)$/, '') : '';
     const keys =
       kind === 'schluessel' && siteId
         ? await sql<{ id: string; key_no: string; description: string; holder: string | null }[]>`
@@ -262,7 +295,7 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
             Art
           </label>
           <select id="sel-art" name="art" onchange="this.form.submit()" style="max-width:220px">
-            {KINDS.map((k) => (
+            {(kind === 'schluessel' ? KINDS : NEW_KINDS).map((k) => (
               <option value={k} selected={k === kind}>
                 {HANDOVER_KIND[k]}
               </option>
@@ -287,7 +320,35 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
               </option>
             ))}
           </select>
-          {employeeId && <input type="hidden" name="mitarbeiter" value={employeeId} />}
+          <label class="small" for="sel-an" style="margin:0">
+            an
+          </label>
+          <select id="sel-an" name="an" onchange="this.form.submit()" style="max-width:200px" data-nosearch>
+            <option value="ma" selected={to === 'ma'}>
+              eigenen Mitarbeiter
+            </option>
+            {kind !== 'schluessel' && (
+              <option value="nu" selected={to === 'nu'}>
+                Nachunternehmer
+              </option>
+            )}
+          </select>
+          {to === 'nu' && (
+            <select
+              name="nachunternehmer"
+              onchange="this.form.submit()"
+              aria-label="Nachunternehmer"
+              style="max-width:300px"
+            >
+              <option value="">– Nachunternehmer wählen –</option>
+              {suppliers.map((x) => (
+                <option value={x.id} selected={x.id === supplierId}>
+                  {x.name} ({x.supplier_no})
+                </option>
+              ))}
+            </select>
+          )}
+          {employeeId && to === 'ma' && <input type="hidden" name="mitarbeiter" value={employeeId} />}
           <noscript>
             <button class="btn sec sm">Übernehmen</button>
           </noscript>
@@ -313,43 +374,61 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
             </p>
           )}
           <div class="grid">
-            <div>
-              <label for="employee">Mitarbeiter/in</label>
-              <select id="employee" name="employee_id">
-                <option value="">–</option>
-                {emps.map((e) => (
-                  <option value={e.id} selected={e.id === employeeId}>
-                    {e.last_name}, {e.first_name} ({e.personnel_no})
-                  </option>
-                ))}
-              </select>
-            </div>
-            {kind !== 'schluessel' && (
+            {to === 'ma' ? (
               <div>
-                <label for="supplier">oder Nachunternehmer</label>
-                <select id="supplier" name="supplier_id">
-                  <option value="">–</option>
-                  {suppliers.map((s) => (
-                    <option value={s.id} selected={s.id === supplierId}>
-                      {s.name} ({s.supplier_no})
+                <label for="employee">Mitarbeiter/in *</label>
+                <select id="employee" name="employee_id" required>
+                  <option value="">– bitte wählen –</option>
+                  {emps.map((e) => (
+                    <option value={e.id} selected={e.id === employeeId}>
+                      {e.last_name}, {e.first_name} ({e.personnel_no})
                     </option>
                   ))}
                 </select>
               </div>
+            ) : (
+              <>
+                <input type="hidden" name="supplier_id" value={supplierId} />
+                <div>
+                  <label for="recipient">Person beim Nachunternehmer *</label>
+                  {!supplierId ? (
+                    <p class="mut" style="margin:0">
+                      Bitte oben zuerst den Nachunternehmer wählen.
+                    </p>
+                  ) : (
+                    <select id="recipient" name="recipient_name" data-other="recipient-other">
+                      <option value="">– bitte wählen –</option>
+                      {contacts.map((p) => (
+                        <option value={p.name} selected={p.name === recipientPerson}>
+                          {p.name}
+                          {p.role ? ` (${p.role})` : ''}
+                        </option>
+                      ))}
+                      <option
+                        value="__andere"
+                        selected={!!recipientPerson && !contacts.some((p) => p.name === recipientPerson)}
+                      >
+                        andere Person …
+                      </option>
+                    </select>
+                  )}
+                </div>
+                {supplierId && (
+                  <div
+                    id="recipient-other"
+                    hidden={!recipientPerson || contacts.some((p) => p.name === recipientPerson)}
+                  >
+                    <label for="recipient-o">Name der Person</label>
+                    <input
+                      id="recipient-o"
+                      name="recipient_other"
+                      value={contacts.some((p) => p.name === recipientPerson) ? '' : recipientPerson}
+                      placeholder="z. B. Vorarbeiter des Nachunternehmers"
+                    />
+                  </div>
+                )}
+              </>
             )}
-            <div>
-              <label for="recipient">
-                {kind === 'sonstiges'
-                  ? 'Name Empfänger (falls nicht oben)'
-                  : 'Name der Person (bei Nachunternehmer)'}
-              </label>
-              <input
-                id="recipient"
-                name="recipient_name"
-                value={h && !h.employee_id ? h.recipient_name : ''}
-                placeholder="z. B. Vorarbeiter des Nachunternehmers"
-              />
-            </div>
             <div>
               <label for="date">Datum</label>
               <input
@@ -370,22 +449,12 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
                 placeholder="wird sonst automatisch gesetzt"
               />
             </div>
-            <div>
-              <label for="issuer">Übergeben durch</label>
-              <input id="issuer" name="issuer_name" value={h?.issuer_name ?? user.name} />
-            </div>
           </div>
+          <input type="hidden" name="issuer_name" value={h?.issuer_name ?? user.name} />
 
           {kind === 'kleidung' && (
             <>
               <h3>Arbeitskleidung</h3>
-              {articles.map((a) => (
-                <datalist id={`sizes-${a.id}`}>
-                  {a.sizes.map((s) => (
-                    <option value={s} />
-                  ))}
-                </datalist>
-              ))}
               <div class="tbl">
                 <table>
                   <thead>
@@ -402,7 +471,11 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
                           <select name="item_article" aria-label="Artikel">
                             <option value="">–</option>
                             {articles.map((a) => (
-                              <option value={a.id} selected={a.id === it?.article_id}>
+                              <option
+                                value={a.id}
+                                selected={a.id === it?.article_id}
+                                data-sizes={a.sizes.join('|')}
+                              >
                                 {a.name}
                                 {a.is_ppe ? ' (PSA)' : ''}
                                 {showPrice && ` · ${euro(a.unit_price_cents)}`}
@@ -411,12 +484,19 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
                           </select>
                         </td>
                         <td>
-                          <input
-                            name="item_size"
-                            value={it?.size ?? ''}
-                            aria-label="Größe"
-                            style="max-width:120px"
-                          />
+                          <select name="item_size" aria-label="Größe" style="max-width:140px" data-nosearch>
+                            <option value="">–</option>
+                            {[
+                              ...new Set([
+                                ...(articles.find((a) => a.id === it?.article_id)?.sizes ?? []),
+                                ...(it?.size ? [it.size] : []),
+                              ]),
+                            ].map((z) => (
+                              <option value={z} selected={z === it?.size}>
+                                {z}
+                              </option>
+                            ))}
+                          </select>
                         </td>
                         <td>
                           <input
@@ -515,11 +595,41 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
                     {freeRows.map((it: HandoverItem | null) => (
                       <tr>
                         <td>
+                          <select name="item_pick" aria-label="Gegenstand" data-other-row>
+                            <option value="">–</option>
+                            <optgroup label="Gegenstände">
+                              {objects.map((o) => (
+                                <option value={o.name} selected={it?.label === o.name}>
+                                  {o.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                            {vehicles.length > 0 && (
+                              <optgroup label="Fahrzeuge">
+                                {vehicles.map((v) => (
+                                  <option
+                                    value={`Fahrzeug ${v.label}`}
+                                    selected={it?.label === `Fahrzeug ${v.label}`}
+                                  >
+                                    {v.label}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                            <option
+                              value="__andere"
+                              selected={!!it?.label && !objectNames.includes(it.label)}
+                            >
+                              anderer Gegenstand …
+                            </option>
+                          </select>
                           <input
                             name="item_label"
-                            value={it?.label ?? ''}
-                            aria-label="Gegenstand"
-                            placeholder="z. B. Diensthandy, Tankkarte"
+                            value={it?.label && !objectNames.includes(it.label) ? it.label : ''}
+                            aria-label="anderer Gegenstand"
+                            placeholder="Bezeichnung"
+                            hidden={!(it?.label && !objectNames.includes(it.label))}
+                            style="margin-top:6px"
                           />
                         </td>
                         <td>
@@ -572,6 +682,7 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
           <label for="note">Bemerkung (z. B. Zustand)</label>
           <input id="note" name="note" value={h?.note ?? ''} />
           <p class="small mut">Erklärung über der Unterschrift: „{declaration(kind, direction)}“</p>
+          <script dangerouslySetInnerHTML={{ __html: OTHER_JS }} />
           <div class="formfoot">
             <a class="btn sec" href="/uebergaben">
               Zurück
@@ -753,12 +864,14 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
           art && items.push({ label: '', article_id: art, size: s[i] ?? '', qty: Number(q[i] ?? 1) }),
       );
     } else if (kind === 'sonstiges') {
+      const pick = arr(b, 'item_pick');
       const l = arr(b, 'item_label');
       const s = arr(b, 'item_size');
       const q = arr(b, 'item_qty');
-      l.forEach(
-        (label, i) => label.trim() && items.push({ label, size: s[i] ?? '', qty: Number(q[i] ?? 1) }),
-      );
+      pick.forEach((p, i) => {
+        const label = (p === '__andere' ? (l[i] ?? '') : p).trim();
+        if (label) items.push({ label, size: s[i] ?? '', qty: Number(q[i] ?? 1) });
+      });
     } else if (kind === 'schluessel') {
       for (const k of arr(b, 'item_key')) items.push({ label: '', key_id: k, qty: 1 });
     } else if (kind === 'geraet') {
@@ -779,7 +892,8 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
           direction: str(b, 'direction') === 'rueckgabe' ? 'rueckgabe' : 'ausgabe',
           employeeId,
           supplierId: kind === 'schluessel' ? null : str(b, 'supplier_id'),
-          recipientName: str(b, 'recipient_name'),
+          recipientName:
+            str(b, 'recipient_name') === '__andere' ? str(b, 'recipient_other') : str(b, 'recipient_name'),
           siteId,
           date: str(b, 'handover_date') ?? '',
           title: str(b, 'title'),
@@ -797,6 +911,8 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
     } catch (e) {
       if (e instanceof BusinessError) {
         const q = new URLSearchParams({ art: kind });
+        if (str(b, 'supplier_id')) q.set('nachunternehmer', str(b, 'supplier_id')!);
+        else if (employeeId) q.set('mitarbeiter', employeeId);
         if (siteId) q.set('objekt', siteId);
         if (str(b, 'related_id')) q.set('zu', str(b, 'related_id')!);
         return back(c, `/uebergaben/${id}?${q}`, { fehler: e.message });
@@ -1000,9 +1116,9 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
     return page(
       c,
       'Arbeitskleidung',
-      'inventar',
+      'einstellungen',
       <>
-        <PageHead title="Arbeitskleidung: Bestand" crumbs={[['Übergaben', '/uebergaben']]}>
+        <PageHead title="Arbeitskleidung: Bestand" crumbs={[['Einstellungen', '/einstellungen']]}>
           <a class="btn sec" href={`/arbeitskleidung/artikel/${randomUUID()}`} style="margin-left:auto">
             Artikel anlegen
           </a>
@@ -1114,7 +1230,7 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
     return page(
       c,
       a?.name ?? 'Neuer Artikel',
-      'inventar',
+      'einstellungen',
       <>
         <PageHead title={a?.name ?? 'Neuer Artikel'} crumbs={[['Arbeitskleidung', '/arbeitskleidung']]} />
         <form

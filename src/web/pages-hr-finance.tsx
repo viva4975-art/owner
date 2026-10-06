@@ -254,31 +254,40 @@ export const EmployeeOverview: FC<{
   showPrivate: boolean;
   wage?: { level: string | null; cents: bigint | null };
   month?: Child;
-}> = ({ e, priv, sites, showPrivate, wage, month }) => (
+  /** direkt unter dem Kopf (z. B. Aktuelle Einsätze) */
+  afterHead?: Child;
+  /** ganz unten (z. B. Beschäftigungszeiten) */
+  footer?: Child;
+}> = ({ e, priv, sites, showPrivate, wage, month, afterHead, footer }) => (
   <>
     {e.warning_note && (
       <div class="flash err" style="white-space:pre-line">
         <b>Warnhinweis:</b> {e.warning_note}
       </div>
     )}
+    <div class="card person-head">
+      <span class="avatar">{initials(`${e.first_name} ${e.last_name}`)}</span>
+      <div class="ph-n">
+        <b>
+          {e.first_name} {e.last_name}
+        </b>
+        <div class="small mut">
+          Personalnr. {e.personnel_no} · {EMPLOYMENT_TYPES[e.employment_type]}
+          {e.weekly_hours ? ` · ${String(Number(e.weekly_hours)).replace('.', ',')} Std./Woche` : ''}
+        </div>
+        <span class={`badge ${e.status === 'aktiv' ? 'ok' : 'bad'}`}>
+          {e.status === 'aktiv' ? 'aktiv' : 'ausgetreten'}
+        </span>
+      </div>
+      <a class="btn sec ph-edit" href={`/personal/${e.id}/bearbeiten`}>
+        Stammdaten bearbeiten
+      </a>
+    </div>
+    {afterHead}
     <div class="cols">
       <div class="card">
-        <div class="person">
-          <span class="avatar">{initials(`${e.first_name} ${e.last_name}`)}</span>
-          <div>
-            <b>
-              {e.first_name} {e.last_name}
-            </b>
-            <div class="small mut">Personalnummer {e.personnel_no}</div>
-          </div>
-          <a class="btn sm sec" href={`/personal/${e.id}/bearbeiten`} style="margin-left:auto">
-            Bearbeiten
-          </a>
-          <span class={`badge ${e.status === 'aktiv' ? 'ok' : ''}`}>
-            {e.status === 'aktiv' ? 'Mitarbeiter' : 'ausgetreten'}
-          </span>
-        </div>
-        <dl class="kv" style="margin-top:10px">
+        <h3>Stammdaten</h3>
+        <dl class="kv">
           <dt>Beschäftigung</dt>
           <dd>{EMPLOYMENT_TYPES[e.employment_type]}</dd>
           <dt>Eintritt</dt>
@@ -390,6 +399,7 @@ export const EmployeeOverview: FC<{
         {month}
       </div>
     </div>
+    {footer}
   </>
 );
 

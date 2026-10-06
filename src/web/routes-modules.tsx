@@ -517,7 +517,7 @@ export function registerModuleRoutes(ctx: Ctx) {
          where p.employee_id = ${e.id} and (p.valid_until is null or p.valid_until >= ${todayBerlin()})
          group by p.site_id, s.name, s.site_no order by s.site_no`;
       const WD = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-      return (
+      const einsaetze = (
         <>
           <div class="card">
             <div class="actions" style="margin:0 0 8px;justify-content:space-between">
@@ -532,7 +532,7 @@ export function registerModuleRoutes(ctx: Ctx) {
             {plans.length === 0 ? (
               <div class="empty">Keine aktuellen Einsätze geplant.</div>
             ) : (
-              <div class="tbl">
+              <div class="tbl stack-m">
                 <table>
                   <thead>
                     <tr>
@@ -553,8 +553,8 @@ export function registerModuleRoutes(ctx: Ctx) {
                           {p.wd.map((d) => WD[d]).join(', ')}
                           <div class="small mut">{p.times}</div>
                         </td>
-                        <td>{dateDe(p.from)}</td>
-                        <td>{p.until ? dateDe(p.until) : '–'}</td>
+                        <td data-l="Beginn">{dateDe(p.from)}</td>
+                        <td data-l="Ende">{p.until ? dateDe(p.until) : '–'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -562,6 +562,10 @@ export function registerModuleRoutes(ctx: Ctx) {
               </div>
             )}
           </div>
+        </>
+      );
+      const beschaeftigung = (
+        <>
           <div class="card">
             <h2 style="margin-top:0">Beschäftigungszeiten</h2>
             <div class="tbl">
@@ -634,6 +638,10 @@ export function registerModuleRoutes(ctx: Ctx) {
               </details>
             )}
           </div>
+        </>
+      );
+      return (
+        <>
           <EmployeeOverview
             e={e}
             priv={data.priv}
@@ -641,6 +649,8 @@ export function registerModuleRoutes(ctx: Ctx) {
             showPrivate
             wage={{ level: lvl?.name ?? null, cents: wage }}
             month={await monthBox(e.id)}
+            afterHead={einsaetze}
+            footer={beschaeftigung}
           />
         </>
       );

@@ -1000,6 +1000,27 @@ tbody tr:hover td{background:#fbfaf8}
 @media (max-width:640px){.hide-m{display:none!important}.only-m{display:inline}.tbl.card td,.tbl.card th{padding-left:10px;padding-right:8px}}
 td.acts,th.acts{width:1%;white-space:nowrap;padding-left:4px!important;padding-right:10px!important}
 td .btn.icon{min-height:34px;width:34px;height:34px;padding:0;justify-content:center;display:inline-flex;align-items:center}
+/* Helle Bordeaux-Flächen an einzelnen Stellen (wie das Hellblau bei Fortytools): Formularfuß, Tabellenköpfe, Hinweise */
+.formfoot{background:#f7ebf0!important;border-top:1px solid #eedbe3!important}
+.tbl thead th,table thead th{background:#faf2f5}
+.note-tint,.empty{background:#fbf4f7}
+/* Mitarbeiter-Kopf */
+.person-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.person-head .avatar{width:52px;height:52px;font-size:18px;flex:none}
+.person-head .ph-n{flex:1;min-width:180px}
+.person-head .ph-n b{font-size:18px;display:block}
+.person-head .ph-n .badge{margin-top:6px}
+@media (max-width:640px){
+  .person-head .ph-edit{width:100%;justify-content:center}
+  /* Tabellen als Karten */
+  .tbl.stack-m thead{display:none}
+  .tbl.stack-m table,.tbl.stack-m tbody,.tbl.stack-m tr,.tbl.stack-m td{display:block;width:100%}
+  .tbl.stack-m tr{padding:10px 0;border-bottom:1px solid var(--line)}
+  .tbl.stack-m td{border:0!important;padding:2px 12px!important}
+  .tbl.stack-m td[data-l]::before{content:attr(data-l) ": ";color:var(--mut);font-size:13px}
+  .cols{grid-template-columns:1fr!important}
+  dl.kv{grid-template-columns:minmax(110px,40%) 1fr}
+}
 /* Menüs oben rechts: Text dunkel (sonst weiß auf weiß) */
 .top .right .drop{display:flex;flex-direction:column;align-items:stretch}
 .top .right .drop a,.top .right .drop button{color:var(--ink);text-align:left;white-space:normal}
@@ -1076,8 +1097,8 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Artikel', href: '/artikel' },
       { label: 'Geräte', href: '/geraete' },
       { label: 'Schlüsselbuch', href: '/schluessel' },
+      { label: 'Fahrzeuge', href: '/fahrzeuge' },
       { label: 'Übergaben', href: '/uebergaben', sep: true },
-      { label: 'Arbeitskleidung', href: '/arbeitskleidung' },
     ],
   },
   {

@@ -69,7 +69,9 @@ await p.waitForLoadState();
 await p.selectOption('#employee', { index: 1 });
 const empName = (await p.locator('#employee option:checked').innerText()).trim();
 await p.locator('select[name=item_article]').first().selectOption(SHIRT);
-await p.locator('input[name=item_size]').first().fill('M');
+await p.locator('select[name=item_size]').first().selectOption('M');
+check('kein Feld „Übergeben durch“', (await p.locator('#issuer').count()) === 0);
+check('Art ohne Schlüssel (Schlüsselbuch)', !(await p.locator('#sel-art').innerText()).includes('Schlüssel'));
 await p.locator('input[name=item_qty]').first().fill('2');
 await p.click('button:has-text("Speichern und zur Unterschrift")');
 await p.waitForLoadState();
@@ -141,7 +143,9 @@ await o.waitForLoadState();
 await o.selectOption('#sel-site', SCHOOL);
 await o.waitForLoadState();
 await o.selectOption('#employee', { index: 1 });
-await o.locator('input[name=item_label]').first().fill('Diensthandy Samsung');
+await o.locator('select[name=item_pick]').first().selectOption('Diensthandy');
+await o.locator('select[name=item_pick]').nth(1).selectOption('__andere');
+await o.locator('input[name=item_label]').nth(1).fill('Powerbank');
 await o.click('button:has-text("Speichern und zur Unterschrift")');
 await o.waitForLoadState();
 check('Objektleitung: Unterschriftsseite', o.url().includes('/unterschrift'), await flash(o));
@@ -150,6 +154,38 @@ check('Objektleitung: unterschrieben', (await flash(o)).includes('Unterschrieben
 await o.goto(B + '/uebergaben');
 check('Liste nur eigenes Objekt', !(await o.locator('body').innerText()).includes(hUrl.split('/').pop()));
 await o.screenshot({ path: `${out}/u3-objektleitung.png`, fullPage: true });
+
+console.log('6. Fahrzeuge');
+await p.goto(B + '/fahrzeuge');
+await p.click('a:has-text("+ Fahrzeug anlegen")');
+await p.waitForLoadState();
+const plate = `M-VD ${Date.now().toString().slice(-4)}`;
+await p.fill('#plate', plate);
+await p.fill('#make', 'VW');
+await p.fill('#model', 'Caddy');
+await p.fill('#vin', 'WVWZZZ1KZ6W00001I');
+await p.click('button:has-text("Speichern")');
+await p.waitForLoadState();
+check('FIN mit I abgelehnt', (await flash(p)).includes('17 Zeichen'), await flash(p));
+await p.fill('#vin', 'WVWZZZ1KZ6W000011');
+await p.fill('#ez', '2021-03-15');
+await p.click('button:has-text("Speichern")');
+await p.waitForLoadState();
+check('Fahrzeug gespeichert', (await flash(p)).includes('Fahrzeug gespeichert'), await flash(p));
+check('Fahrzeugschein-Upload sichtbar', (await p.locator('.filearea').count()) >= 1);
+await p.goto(B + '/fahrzeuge');
+const row = await p.locator('tr', { hasText: plate }).innerText();
+check('Liste: Fahrzeugschein fehlt', row.includes('Fahrzeugschein fehlt') && row.includes('Caddy'), row);
+await p.goto(B + '/uebergaben');
+await p.click('a:has-text("+ Sonstiges")');
+await p.waitForLoadState();
+check(
+  'Fahrzeug als Gegenstand wählbar',
+  (await p.locator('select[name=item_pick]').first().innerHTML()).includes(plate),
+);
+await p.selectOption('#sel-an', 'nu');
+await p.waitForLoadState();
+check('Nachunternehmer: Auswahl statt Mitarbeiter', (await p.locator('#employee').count()) === 0);
 
 await browser.close();
 console.log(`\n${ok} bestanden, ${fail} fehlgeschlagen`);

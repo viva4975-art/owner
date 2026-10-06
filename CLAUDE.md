@@ -980,3 +980,19 @@ Testadresse.
   - Bewertungsmodi: Note 1 bis 6, **Gut/Mittel/Schlecht** (100/50/0 %), Ja/Nein, **Punkte 1 bis 5** (5 = 100 %,
     Gesamteindruck wie Fortytools). Je Bewertung wird der Prozentwert gespeichert (`quality_check_ratings.percent`).
   - Tests: 340 Unit-/DB-Tests, `e2e:runde10` 37 Prüfungen.
+- 2026-10-06: Runde 15 (Ahmed, 8 Punkte; Punkt 9 kam leer an):
+  - Mitarbeiter-Übersicht fürs Handy neu geordnet: Kopfkarte (Name, Personalnr., Beschäftigung, Status, „Stammdaten
+    bearbeiten“), dann Aktuelle Einsätze (am Handy als Karten), Stammdaten, Objekte, Dispo (Monate kurz), Beschäftigungs-
+    zeiten unten. Hilfsklassen `.stack-m` (Tabelle → Karten am Handy), `.hide-m`/`.only-m`.
+  - Helle Bordeaux-Flächen an einzelnen Stellen wie das Hellblau bei Fortytools: Formularfuß, Tabellenköpfe, Leer-Hinweise.
+  - Übergaben: Empfänger „eigener Mitarbeiter“ oder „Nachunternehmer“ – bei Nachunternehmer Person aus dessen
+    Ansprechpartnern (oder „andere Person …“). „Übergeben durch“ entfällt (= angemeldeter Benutzer). Gegenstand bei
+    „Sonstiges“ als Auswahl (Einstellungen → Gegenstände für Übergaben, plus Fahrzeuge; „anderer Gegenstand …“ blendet
+    ein Feld ein), Kleidergröße als Auswahl je Artikel. **Schlüssel nicht mehr über Übergaben** (Schlüsselbuch bzw.
+    Objekt → Schlüssel); alte Schlüssel-Übergaben bleiben lesbar.
+  - Arbeitskleidung (Bestand, Artikel, Größen) liegt unter Einstellungen, nicht mehr im Inventar-Menü.
+  - Inventar → **Fahrzeuge**: Kennzeichen, Marke, Modell, FIN (17 Zeichen, ohne I/O/Q geprüft), Erstzulassung,
+    Kraftstoff, Eigentum/Leasing/Miete mit Geber und Ende, Versicherung, nächste HU (Monat) und Inspektion (Warnung
+    30 Tage, überfällig rot), Kilometerstand, Fahrer/in, Tankkarte; Fahrzeugschein und weitere Unterlagen als Dateien
+    (write-once). Liste mit Kennzeichen-Schild und „Fahrzeugschein fehlt“. Tabelle `app.vehicles`, `app.handover_objects`.
+  - Tests: 342 Unit-/DB-Tests (neu `vehicles.db.test.ts`), `e2e:uebergabe` 25 Prüfungen.

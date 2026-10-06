@@ -58,6 +58,7 @@ export type LinkTarget = {
     | 'inbox'
     | 'tender'
     | 'note'
+    | 'vehicle'
     | 'legacy_import';
   id: string;
 };

@@ -36,6 +36,7 @@ const LINK_TYPES = [
   'tender',
   'note',
   'legacy_import',
+  'vehicle',
 ] as const;
 /** Anlagen, die per E-Mail mit der Rechnung rausgehen, dürfen nicht zu groß werden. */
 const INVOICE_ATTACHMENT_MAX = 20 * 1024 * 1024;
@@ -56,6 +57,7 @@ const LINK_PAGE: Record<string, (id: string) => string> = {
   inbox: () => '/transfer/dokumenteneingang',
   tender: () => '/ausschreibungen',
   legacy_import: () => '/transfer/altdaten',
+  vehicle: () => '/fahrzeuge',
 };
 
 /** Darf der Benutzer die Verknüpfung sehen? Rolle (Seite) + bei Objektleitung das eigene Objekt. */

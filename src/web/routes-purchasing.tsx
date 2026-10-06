@@ -272,7 +272,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               nur Nachunternehmer
             </option>
           </select>
-          <select name="lieferant" onchange="this.form.submit()" style="width:auto;max-width:260px" data-nosearch>
+          <select name="lieferant" onchange="this.form.submit()" style="width:auto;max-width:260px">
             <option value="">Alle Lieferanten / Nachunternehmer</option>
             {suppliers.map((x) => (
               <option value={x.id} selected={x.id === supplierId}>

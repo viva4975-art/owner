@@ -141,7 +141,6 @@ await a.fill('#birth_date', '1990-10-12');
 await a.fill('#residence_permit_until', '2026-11-15');
 await a.fill('#iban', 'DE89 3704 0044 0532 0130 00');
 await a.fill('#languages', 'Rumänisch, Deutsch');
-await a.check('input[name=sites] >> nth=0');
 // in Tab B derweil an der Rechnung arbeiten
 await b.click('a:has-text("Bearbeiten")');
 await b.locator('#lines tbody tr').first().locator('[name=price]').fill('33,00');

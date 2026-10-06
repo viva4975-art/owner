@@ -9,7 +9,7 @@
  *    meldungen werden nach dem Anzeigen aus der URL entfernt, damit „Zurück“ sie nicht erneut zeigt.
  * 3. Menüs: Dropdowns (details) schließen sich gegenseitig, Klick daneben / Esc schließt.
  * 4. Taste „/“ springt in die Suche (wie Fortytools).
- * 5. Lange Auswahllisten (ab 12 Einträgen, z. B. Kunden, Objekte, Mitarbeiter) bekommen ein Suchfeld: Tippen filtert
+ * 5. Auswahllisten ab 8 Einträgen (Kunden, Objekte, Mitarbeiter …) werden zum Feld zum Reintippen (wie Fortytools): Tippen filtert
  *    die Liste (Nummer oder Name, ohne Umlaut-/Groß-Klein-Unterschied), Enter übernimmt den ersten Treffer.
  *    Die Liste selbst bleibt die echte Auswahl (Formulare, Prüfungen und Tests unverändert).
  */
@@ -178,64 +178,130 @@ export const CLIENT_JS = String.raw`
     if (e.persisted) Array.prototype.forEach.call(document.forms, function (f) { f.dataset.sent = ''; });
   });
 
-  // ---- Suche in langen Auswahllisten ----
+  // ---- Auswahlfelder zum Reintippen (wie Fortytools): ins Feld klicken, tippen, Liste filtert sich ----
+  // Das echte <select> bleibt im Formular (Absenden, Pflichtfeld-Prüfung, Tests); darüber liegt ein Knopf mit Liste.
   function norm(x) {
-    return String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ß/g, 'ss');
+    return String(x || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ß/g, 'ss');
   }
-  Array.prototype.forEach.call(document.querySelectorAll('select'), function (sel) {
-    if (sel.multiple || sel.hasAttribute('data-nosearch') || sel.closest('[data-nosearch]') || sel.closest('template')) return;
-    if (sel.options.length < 12 || sel.dataset.searchReady) return;
-    sel.dataset.searchReady = '1';
-    var items = Array.prototype.map.call(sel.querySelectorAll('option'), function (o) {
-      return { o: o, parent: o.parentNode, text: norm(o.textContent + ' ' + o.value) };
-    });
+  var openBox = null;
+  function closeOpen() { if (openBox) { openBox.close(); openBox = null; } }
+  document.addEventListener('mousedown', function (e) { if (openBox && !openBox.wrap.contains(e.target)) closeOpen(); });
+  function combo(sel) {
+    if (sel.multiple || sel.dataset.combo === 'done' || sel.hasAttribute('data-nosearch') || sel.closest('[data-nosearch]') || sel.closest('template')) return;
+    if (sel.options.length < 8 && !sel.hasAttribute('data-combo')) return;
+    sel.dataset.combo = 'done';
     var wrap = document.createElement('div');
-    wrap.className = 'sel-wrap';
+    wrap.className = 'cbx';
+    if (sel.style.width) wrap.style.width = sel.style.width;
+    if (sel.style.maxWidth) wrap.style.maxWidth = sel.style.maxWidth;
     sel.parentNode.insertBefore(wrap, sel);
-    var input = document.createElement('input');
-    input.type = 'search';
-    input.className = 'sel-search';
-    input.placeholder = 'Suchen (Nummer oder Name) …';
-    input.autocomplete = 'off';
-    input.setAttribute('aria-label', 'Liste durchsuchen');
-    if (sel.disabled) input.disabled = true;
-    wrap.appendChild(input);
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cbx-btn';
+    btn.setAttribute('aria-haspopup', 'listbox');
+    if (sel.id) { var lab = document.querySelector('label[for="' + sel.id + '"]'); if (lab) btn.setAttribute('aria-label', lab.textContent.trim()); }
+    wrap.appendChild(btn);
     wrap.appendChild(sel);
-    var first = null;
-    function filter() {
-      var words = norm(input.value).split(/\s+/).filter(Boolean);
-      var cur = sel.value;
-      first = null;
-      items.forEach(function (it) { if (it.o.parentNode) it.o.parentNode.removeChild(it.o); });
-      items.forEach(function (it) {
-        var hit = words.every(function (w) { return it.text.indexOf(w) >= 0; });
-        // leere Auswahl („– bitte wählen –“) und die aktuelle Auswahl bleiben immer drin
-        if (hit || it.o.value === '' || it.o.value === cur) it.parent.appendChild(it.o);
-        if (hit && words.length && it.o.value !== '' && !first) first = it.o;
-      });
-      sel.value = cur;
-      Array.prototype.forEach.call(sel.querySelectorAll('optgroup'), function (g) { g.hidden = !g.children.length; });
-      input.classList.toggle('none', !!words.length && !first);
+    sel.classList.add('cbx-native');
+    sel.tabIndex = -1;
+    var pop = null, input, list, rows = [], active = -1;
+    function label() {
+      var o = sel.options[sel.selectedIndex];
+      btn.textContent = o ? o.textContent.trim() : '';
+      btn.classList.toggle('ph', !o || o.value === '');
+      btn.disabled = sel.disabled;
     }
-    input.addEventListener('input', filter);
-    input.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        if (first && sel.value !== first.value) {
-          sel.value = first.value;
-          sel.dispatchEvent(new Event('change', { bubbles: true }));
-          sel.dispatchEvent(new Event('input', { bubbles: true }));
+    function build() {
+      pop = document.createElement('div');
+      pop.className = 'cbx-pop';
+      input = document.createElement('input');
+      input.type = 'search'; input.autocomplete = 'off'; input.className = 'cbx-q';
+      input.placeholder = 'Suchen …';
+      list = document.createElement('div');
+      list.className = 'cbx-list'; list.setAttribute('role', 'listbox');
+      pop.appendChild(input); pop.appendChild(list);
+      wrap.appendChild(pop);
+      input.addEventListener('input', render);
+      input.addEventListener('keydown', key);
+      list.addEventListener('mousedown', function (e) {
+        var r = e.target.closest('.cbx-opt'); if (!r) return;
+        e.preventDefault(); pick(rows[Number(r.dataset.i)].o);
+      });
+    }
+    function render() {
+      var words = norm(input.value).split(/\s+/).filter(Boolean);
+      list.innerHTML = ''; rows = []; active = -1;
+      var lastGroup = null;
+      Array.prototype.forEach.call(sel.options, function (o) {
+        var g = o.parentNode.tagName === 'OPTGROUP' ? o.parentNode : null;
+        var text = norm(o.textContent + ' ' + (g ? g.label : '') + ' ' + o.value);
+        if (words.length && (o.value === '' || !words.every(function (w) { return text.indexOf(w) >= 0; }))) return;
+        if (g && g !== lastGroup) {
+          var h = document.createElement('div'); h.className = 'cbx-grp'; h.textContent = g.label; list.appendChild(h);
         }
-        sel.focus();
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        sel.focus();
-      } else if (e.key === 'Escape') {
-        input.value = '';
-        filter();
+        lastGroup = g;
+        var d = document.createElement('div');
+        d.className = 'cbx-opt' + (g ? ' in' : '') + (o.value === sel.value ? ' sel' : '') + (o.disabled ? ' dis' : '');
+        d.setAttribute('role', 'option');
+        d.dataset.i = String(rows.length);
+        d.textContent = o.textContent.replace(/^\s*↳\s*/, '').trim();
+        list.appendChild(d);
+        rows.push({ o: o, el: d });
+        if (o.value === sel.value && active < 0) active = rows.length - 1;
+      });
+      if (words.length) active = rows.findIndex(function (r) { return !r.o.disabled; });
+      if (!rows.length) { var n = document.createElement('div'); n.className = 'cbx-none'; n.textContent = 'Keine Treffer'; list.appendChild(n); }
+      mark();
+    }
+    function mark() {
+      rows.forEach(function (r, i) { r.el.classList.toggle('act', i === active); });
+      if (rows[active]) rows[active].el.scrollIntoView({ block: 'nearest' });
+    }
+    function key(e) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(rows.length - 1, active + 1); mark(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); mark(); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (rows[active]) pick(rows[active].o); }
+      else if (e.key === 'Escape') { e.preventDefault(); close(); btn.focus(); }
+      else if (e.key === 'Tab') { close(); }
+    }
+    function pick(o) {
+      if (o.disabled) return;
+      var changed = sel.value !== o.value;
+      sel.value = o.value;
+      label(); close(); btn.focus();
+      if (changed) {
+        sel.dispatchEvent(new Event('input', { bubbles: true }));
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
       }
+    }
+    function open(initial) {
+      if (sel.disabled) return;
+      closeOpen();
+      if (!pop) build();
+      pop.hidden = false; wrap.classList.add('open');
+      input.value = initial || '';
+      render(); input.focus();
+      openBox = { wrap: wrap, close: close };
+    }
+    function close() { if (pop) pop.hidden = true; wrap.classList.remove('open'); if (openBox && openBox.wrap === wrap) openBox = null; }
+    btn.addEventListener('click', function () { if (pop && !pop.hidden) close(); else open(''); });
+    btn.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(''); }
+      else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); open(e.key); }
     });
-  });
+    sel.addEventListener('change', label);
+    sel.addEventListener('invalid', function () { wrap.classList.add('bad'); });
+    sel._cbLabel = label;
+    label();
+  }
+  function comboAll(root) { Array.prototype.forEach.call((root || document).querySelectorAll('select'), combo); }
+  comboAll();
+  // nur Anzeige auffrischen (z. B. Zurück-Taste) – kein change-Ereignis, sonst lösen onchange-Formulare neu aus
+  window.addEventListener('pageshow', function () { Array.prototype.forEach.call(document.querySelectorAll('select.cbx-native'), function (s) { if (s._cbLabel) s._cbLabel(); }); });
+  // nachträglich eingefügte Auswahlfelder (z. B. „Weiteren Mitarbeiter hinzufügen“)
+  new MutationObserver(function (ms) {
+    ms.forEach(function (m) { m.addedNodes.forEach(function (n) { if (n.nodeType === 1) { if (n.tagName === 'SELECT') combo(n); else comboAll(n); } }); });
+  }).observe(document.body, { childList: true, subtree: true });
 
   // ---- Dropdown-Menüs ----
   var menus = document.querySelectorAll('details.dd');

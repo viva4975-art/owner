@@ -106,21 +106,25 @@ check(
     (await p.locator('form[action^="/ausfuehrungen/"]').count()) === before - 1,
 );
 
-console.log('5. Suche in langen Auswahllisten');
+console.log('5. Auswahlfeld zum Reintippen (wie Fortytools)');
 await p.goto(`${B}/rechnungen/${crypto.randomUUID()}/bearbeiten`);
-const search = p.locator('.sel-wrap:has(#kunde) .sel-search');
-check('Suchfeld über der Kundenliste', (await search.count()) === 1);
-const nBefore = await p.locator('#kunde option').count();
-await search.fill('29901');
-const nAfter = await p.locator('#kunde option').count();
-check('Liste gefiltert', nAfter < nBefore && nAfter >= 2, `${nBefore} → ${nAfter}`);
-await search.press('Enter');
+const kbox = p.locator('.cbx:has(#kunde)');
+check('Kundenauswahl als Feld zum Reintippen', (await kbox.locator('.cbx-btn').count()) === 1);
+await kbox.locator('.cbx-btn').click();
+const q = kbox.locator('.cbx-q');
+check('Klick öffnet Liste mit Suchfeld', await q.isVisible());
+const nBefore = await kbox.locator('.cbx-opt').count();
+await q.fill('29901');
+const nAfter = await kbox.locator('.cbx-opt').count();
+check('Liste gefiltert', nAfter < nBefore && nAfter >= 1, `${nBefore} → ${nAfter}`);
+await q.press('Enter');
 await p.waitForLoadState();
 check(
   'Enter übernimmt den Treffer',
   /kunde=/.test(p.url()) || (await p.locator('#kunde').inputValue()) !== '',
   p.url(),
 );
+check('Knopf zeigt den gewählten Kunden', /29901/.test(await p.locator('.cbx:has(#kunde) .cbx-btn').innerText()));
 
 console.log(`\n${ok} bestanden, ${fail} fehlgeschlagen`);
 await browser.close();

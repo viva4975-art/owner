@@ -23,8 +23,25 @@ const CSS = `
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-.sel-wrap{display:flex;flex-direction:column;gap:4px;min-width:0}.sel-wrap>select{width:100%}
-.sel-search{font-size:13px!important;padding:5px 9px!important;background:var(--panel)!important;border-style:dashed!important}.sel-search.none{border-color:var(--err)!important}
+.cbx{position:relative;min-width:0;width:100%}
+.cbx-native{position:absolute!important;inset:0;width:100%!important;height:100%!important;opacity:0;pointer-events:none}
+.cbx-btn{all:unset;box-sizing:border-box;display:flex;align-items:center;width:100%;min-height:40px;padding:0 34px 0 12px;border:1px solid var(--line-2);border-radius:10px;background:#fff;color:var(--ink);font:inherit;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative}
+.cbx-btn::after{content:"";position:absolute;right:13px;top:50%;width:7px;height:7px;border-right:1.5px solid var(--mut);border-bottom:1.5px solid var(--mut);transform:translateY(-70%) rotate(45deg)}
+.cbx-btn.ph{color:var(--faint)}
+.cbx-btn:focus-visible,.cbx.open .cbx-btn{border-color:#b89d6e;box-shadow:0 0 0 3px rgba(184,157,110,.22)}
+.cbx-btn:disabled{background:var(--head);cursor:not-allowed;color:var(--mut)}
+.cbx.bad .cbx-btn{border-color:var(--err)}
+.cbx-pop{position:absolute;z-index:60;left:0;right:0;top:calc(100% + 4px);min-width:260px;background:#fff;border:1px solid var(--line-2);border-radius:12px;box-shadow:0 14px 36px rgba(26,20,16,.16);padding:8px}
+.cbx-q{width:100%;height:36px!important;margin-bottom:6px}
+.cbx-list{max-height:320px;overflow:auto}
+.cbx-grp{padding:8px 10px 4px;font-size:12px;font-weight:700;color:var(--mut)}
+.cbx-opt{padding:8px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cbx-opt.in{padding-left:28px;position:relative}
+.cbx-opt.in::before{content:"↳";position:absolute;left:12px;color:var(--faint)}
+.cbx-opt.act{background:var(--brand-50)}
+.cbx-opt.sel{font-weight:650;color:var(--brand)}
+.cbx-opt.dis{color:var(--faint);cursor:default}
+.cbx-none{padding:10px;color:var(--mut)}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;font:14px/1.55 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-feature-settings:"cv11","ss01";color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased}
 a{color:var(--brand-2);text-decoration:none}a:hover{text-decoration:underline}

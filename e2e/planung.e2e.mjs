@@ -127,8 +127,7 @@ const moved = p.locator(`.pb-ev.changed[title*="E2E Serie ${stamp}"]`, { hasText
 check('Termin zeigt neue Zeit (lila = umgeplant)', (await moved.count()) >= 1);
 await moved.first().click();
 await p.waitForLoadState();
-await p.click('button:has-text("Wie geplant")');
-await p.waitForLoadState();
+await Promise.all([p.waitForURL(/\/einsatzplanung\?/), p.click('button:has-text("Umplanung entfernen")')]);
 check('zurückgesetzt', /Wieder wie geplant/.test(await flash(p)), (await flash(p)) + ' ' + p.url());
 await p.goto(week);
 

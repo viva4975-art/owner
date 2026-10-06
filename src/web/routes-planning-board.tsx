@@ -382,7 +382,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
     };
     const customers = [...new Map(mySites.map((s) => [s.customer_id, s])).values()];
     const empSelect = (sel: string | null) => (
-      <select name="employee_id" data-nosearch>
+      <select name="employee_id">
         <option value="">offen</option>
         {emps.map((e) => (
           <option value={e.id} selected={e.id === sel}>

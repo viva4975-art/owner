@@ -202,6 +202,10 @@ export async function complianceOverview(sql: Sql) {
         .filter((r) => r.required && r.state !== 'gueltig' && r.state !== 'laeuft_ab')
         .map((r) => r.type.label),
       expiring: e.rows.filter((r) => r.state === 'laeuft_ab').map((r) => r.type.label),
+      // für den Fristen-Hinweis: abgelaufene und bald ablaufende Nachweise mit Resttagen
+      due: e.rows
+        .filter((r) => r.required && (r.state === 'abgelaufen' || r.state === 'laeuft_ab') && r.days != null)
+        .map((r) => ({ label: r.type.label, days: r.days!, until: r.current?.valid_until ?? null })),
       pending: e.rows.filter((r) => r.pending).length,
       requiredTotal: e.rows.filter((r) => r.required).length,
       requiredOk: e.rows.filter((r) => r.required && (r.state === 'gueltig' || r.state === 'laeuft_ab'))

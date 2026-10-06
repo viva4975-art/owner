@@ -41,7 +41,8 @@ const stamp = Date.now().toString().slice(-6);
 
 console.log('1. Nachunternehmer anlegen');
 await p.goto(B + '/nachunternehmer');
-await p.click('a:has-text("+ Nachunternehmer")');
+check('alte Adresse leitet auf die gemeinsame Liste', p.url().includes('/lieferanten?art=nachunternehmer'), p.url());
+await p.click('a:has-text("+ Neu anlegen")');
 await p.waitForLoadState();
 await p.fill('#name', `E2E Reinigung ${stamp} GmbH`);
 await p.selectOption('#kind', 'nachunternehmer');
@@ -55,7 +56,7 @@ check('nach dem Speichern Übersicht mit Reitern', nuUrl.endsWith('/nachweise'),
   const tabsText = await p.locator('.tabs').first().innerText();
   check(
     'Reiter wie alte App',
-    ['Stammdokumente', 'Unbedenklichkeit', 'Mindestlohn', 'Aufträge', 'Ansprechpartner', 'Dokumente'].every((t) =>
+    ['Stammdokumente', 'Unbedenklichkeit', 'Mindestlohn', 'Bestellungen', 'Ansprechpartner', 'Dokumente'].every((t) =>
       tabsText.includes(t),
     ),
     tabsText,
@@ -176,10 +177,16 @@ const apdf = await p.request.get(p.url().split('?')[0] + '/auftrag.pdf');
 check('Auftrags-PDF', apdf.ok() && (await apdf.body()).subarray(0, 4).toString() === '%PDF');
 
 console.log('6. Übersicht / Zahlungslauf');
-await p.goto(B + '/nachunternehmer');
+await p.goto(B + '/lieferanten');
+{
+  const card = p.locator('.lc', { hasText: `E2E Reinigung ${stamp}` });
+  check('als Karte in „Lieferanten & Nachunternehmer“', (await card.count()) === 1);
+  check('Karte zeigt Compliance', /compliance/i.test(await card.innerText()));
+}
+await p.goto(B + '/bestellungen?ansicht=alle&art=nu');
 check(
-  'in der Übersicht',
-  (await p.locator('.list .row', { hasText: `E2E Reinigung ${stamp}` }).count()) === 1,
+  'NU-Bestellung in der gemeinsamen Bestellliste',
+  (await p.locator('.bs-tr', { hasText: `E2E Reinigung ${stamp}` }).count()) >= 1,
 );
 await p.screenshot({ path: `${out}/n3-uebersicht.png`, fullPage: true });
 check('Zahlungsliste lädt', (await p.goto(B + '/zahlungsliste')).ok());
@@ -189,7 +196,8 @@ check(
     (await p.locator('.tabs a', { hasText: 'Zahlungsliste' }).count()) >
     0,
 );
-check('Soll/Ist lädt', (await p.goto(B + '/nachunternehmer/monat')).ok());
+await p.goto(B + '/nachunternehmer/monat');
+check('Soll/Ist entfällt (Weiterleitung)', p.url().includes('/bestellungen'), p.url());
 
 await browser.close();
 console.log(`\n${ok} bestanden, ${fail} fehlgeschlagen`);

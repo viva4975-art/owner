@@ -48,7 +48,7 @@ import { toCsv } from '../services/reports.js';
 import { listFiles } from '../services/uploads.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
-import { criticalSupplierIds, listSubcontracts } from '../services/subcontractors.js';
+import { criticalSupplierIds, listSubcontracts, SC_STATUS } from '../services/subcontractors.js';
 import {
   addMonths,
   costTargets,
@@ -99,80 +99,236 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
 
   // ================================================================== Bestellungen
 
+  // Bestellungen = Material-Bestellungen und Aufträge an Nachunternehmer in einer Liste (gleicher Nummernkreis
+  // BE-JJJJ-NNNN), Aufbau wie im alten Portal: Filter-Pillen, Nachunternehmer-Auswahl, Suche, Tabelle.
   app.get('/bestellungen', async (c) => {
-    const st = c.req.query('status') as PoStatus | undefined;
-    const all = await listOrders(sql);
-    const rows =
-      st && st in PO_STATUS
-        ? all.filter((o) => o.status === st)
-        : all.filter((o) => o.status !== 'storniert');
-    const tabs: Tab[] = [
-      {
-        key: '',
-        label: 'Offen',
-        href: '/bestellungen',
-        count: all.filter((o) => ['entwurf', 'bestellt'].includes(o.status)).length,
-      },
-      ...(['entwurf', 'bestellt', 'geliefert', 'storniert'] as PoStatus[]).map((s) => ({
-        key: s,
-        label: PO_STATUS[s][0]!.toUpperCase() + PO_STATUS[s].slice(1),
-        href: `/bestellungen?status=${s}`,
-        count: all.filter((o) => o.status === s).length,
+    const q = c.req.query();
+    const art = q.art === 'material' || q.art === 'nu' ? q.art : '';
+    const view = ['erledigen', 'laufend', 'abgeschlossen', 'alle'].includes(q.ansicht ?? '')
+      ? q.ansicht!
+      : 'erledigen';
+    const supplierId = q.lieferant && /^[0-9a-f-]{36}$/.test(q.lieferant) ? q.lieferant : '';
+    const search = (q.q ?? '').trim().toLowerCase();
+    const [orders, subcontracts, suppliers, billed] = await Promise.all([
+      listOrders(sql),
+      listSubcontracts(sql),
+      sql<{ id: string; name: string; supplier_no: string }[]>`
+        select id, name, supplier_no from app.suppliers where active order by name`,
+      sql<{ id: string }[]>`
+        select distinct purchase_order_id as id from app.incoming_invoices where purchase_order_id is not null`,
+    ]);
+    const invoiced = new Set(billed.map((b) => b.id));
+    type Row = {
+      id: string;
+      href: string;
+      number: string;
+      kind: 'material' | 'nu';
+      supplierId: string;
+      supplier: string;
+      what: string;
+      from: string | null;
+      to: string | null;
+      ongoing: boolean;
+      net: bigint;
+      per: string;
+      phase: 'erledigen' | 'laufend' | 'abgeschlossen' | 'storniert';
+      status: string;
+      tone: string;
+    };
+    const PO_PHASE: Record<PoStatus, Row['phase']> = {
+      entwurf: 'erledigen',
+      bestellt: 'laufend',
+      geliefert: 'abgeschlossen',
+      storniert: 'storniert',
+    };
+    const SC_PHASE: Record<string, Row['phase']> = {
+      entwurf: 'erledigen',
+      erteilt: 'laufend',
+      beendet: 'abgeschlossen',
+      storniert: 'storniert',
+    };
+    const SC_TONE: Record<string, string> = {
+      entwurf: 'warn',
+      erteilt: 'ok',
+      beendet: 'grey',
+      storniert: 'grey',
+    };
+    const PO_TONE: Record<PoStatus, string> = {
+      entwurf: 'warn',
+      bestellt: 'info',
+      geliefert: 'ok',
+      storniert: 'grey',
+    };
+    const PER: Record<string, string> = {
+      pauschale_monat: '/ Monat',
+      pauschale_einsatz: '/ Einsatz',
+      tag: '/ Tag',
+      stunde: '/ Std.',
+    };
+    const all: Row[] = [
+      ...orders.map((o) => ({
+        id: o.id,
+        href: `/bestellungen/${o.id}`,
+        number: o.number,
+        kind: 'material' as const,
+        supplierId: o.supplier_id,
+        supplier: o.supplier_name,
+        what: `${o.site_name ?? 'Lager'} · Material (${o.lines} Pos.)`,
+        from: o.order_date,
+        to: o.delivery_date,
+        ongoing: false,
+        net: o.net_cents,
+        per: '',
+        // geliefert, aber noch keine Eingangsrechnung erfasst → bleibt „zu erledigen“
+        phase:
+          o.status === 'geliefert' && !invoiced.has(o.id) ? ('erledigen' as const) : PO_PHASE[o.status],
+        status:
+          o.status === 'geliefert' && !invoiced.has(o.id) ? 'geliefert · Rechnung fehlt' : PO_STATUS[o.status],
+        tone: o.status === 'geliefert' && !invoiced.has(o.id) ? 'warn' : PO_TONE[o.status],
       })),
+      ...subcontracts.map((sc) => ({
+        id: sc.id,
+        href: `/nachunternehmer/auftraege/${sc.id}`,
+        number: sc.number,
+        kind: 'nu' as const,
+        supplierId: sc.supplier_id,
+        supplier: sc.supplier_name,
+        what: `${sc.site_no} ${sc.site_name} · ${sc.service_kind}`,
+        from: sc.valid_from,
+        to: sc.valid_to,
+        ongoing: !sc.valid_to && sc.frequency !== 'einmalig',
+        net: sc.current_price_cents,
+        per: PER[sc.billing] ?? '',
+        phase: SC_PHASE[sc.status] ?? 'laufend',
+        status: SC_STATUS[sc.status] ?? sc.status,
+        tone: SC_TONE[sc.status] ?? '',
+      })),
+    ].sort((x, y) => y.number.localeCompare(x.number, 'de', { numeric: true }));
+    const base = all
+      .filter((r) => !art || r.kind === art)
+      .filter((r) => !supplierId || r.supplierId === supplierId)
+      .filter((r) => !search || [r.number, r.supplier, r.what].some((v) => v.toLowerCase().includes(search)));
+    const count = (v: string) => (v === 'alle' ? base.length : base.filter((r) => r.phase === v).length);
+    const rows = view === 'alle' ? base : base.filter((r) => r.phase === view);
+    const link = (over: Record<string, string | null>) => {
+      const p = new URLSearchParams();
+      const cur: Record<string, string | null> = {
+        ansicht: view === 'erledigen' ? null : view,
+        art: art || null,
+        lieferant: supplierId || null,
+        q: search || null,
+        ...over,
+      };
+      for (const [k, v] of Object.entries(cur)) if (v) p.set(k, v);
+      const str = p.toString();
+      return `/bestellungen${str ? `?${str}` : ''}`;
+    };
+    const VIEWS: [string, string][] = [
+      ['erledigen', 'Zu erledigen'],
+      ['laufend', 'Laufend'],
+      ['abgeschlossen', 'Abgeschlossen'],
+      ['alle', 'Alle'],
     ];
     return page(
       c,
       'Bestellungen',
       'lieferanten',
-      <>
-        <PageHead title="Bestellungen">
-          <a class="btn" href={`/bestellungen/${randomUUID()}/bearbeiten`} style="margin-left:auto">
-            <Icon name="plus" /> Bestellung anlegen
-          </a>
-        </PageHead>
-        <Tabs tabs={tabs} active={st ?? ''} />
-        <div class="tbl">
-          <table>
-            <thead>
-              <tr>
-                <th>Nr.</th>
-                <th>Lieferant</th>
-                <th>Lieferung an</th>
-                <th>Datum</th>
-                <th class="r">Netto</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && (
-                <tr>
-                  <td colspan={6}>
-                    <div class="empty">Keine Bestellungen.</div>
-                  </td>
-                </tr>
-              )}
-              {rows.map((o) => (
-                <tr>
-                  <td>
-                    <a href={`/bestellungen/${o.id}`}>
-                      <b>{o.number}</b>
-                    </a>
-                  </td>
-                  <td>
-                    <a href={`/lieferanten/${o.supplier_id}`}>{o.supplier_name}</a>
-                  </td>
-                  <td>{o.site_name ?? 'Lager'}</td>
-                  <td>{dateDe(o.order_date)}</td>
-                  <td class="r">{euro(o.net_cents)}</td>
-                  <td>
-                    <span class={`badge ${PO_CLASS[o.status]}`}>{PO_STATUS[o.status]}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div class="portal">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">Einkauf</div>
+            <h1>Bestellungen</h1>
+            <div class="sub">
+              Material und Aufträge an Nachunternehmer an einer Stelle · Nummern BE-JJJJ-NNNN fortlaufend
+            </div>
+          </div>
+          <div class="acts">
+            <a class="btn sec" href={`/bestellungen/${randomUUID()}/bearbeiten`}>
+              + Material bestellen
+            </a>
+            <a class="btn" href={`/nachunternehmer/auftraege/${randomUUID()}`}>
+              + Nachunternehmer beauftragen
+            </a>
+          </div>
         </div>
-      </>,
+        <form class="toolbar" method="get" action="/bestellungen">
+          <div class="pills">
+            {VIEWS.map(([k, l]) => (
+              <a
+                class={`pill${view === k ? ' on' : ''}`}
+                href={link({ ansicht: k === 'erledigen' ? null : k })}
+              >
+                {l} <span>{count(k)}</span>
+              </a>
+            ))}
+          </div>
+          {view !== 'erledigen' && <input type="hidden" name="ansicht" value={view} />}
+          <select name="art" onchange="this.form.submit()" style="width:auto">
+            <option value="">Material + Nachunternehmer</option>
+            <option value="material" selected={art === 'material'}>
+              nur Material
+            </option>
+            <option value="nu" selected={art === 'nu'}>
+              nur Nachunternehmer
+            </option>
+          </select>
+          <select name="lieferant" onchange="this.form.submit()" style="width:auto;max-width:260px" data-nosearch>
+            <option value="">Alle Lieferanten / Nachunternehmer</option>
+            {suppliers.map((x) => (
+              <option value={x.id} selected={x.id === supplierId}>
+                {x.name} ({x.supplier_no})
+              </option>
+            ))}
+          </select>
+          <input
+            class="search-input"
+            type="search"
+            name="q"
+            value={search}
+            placeholder="Bestellnummer, Objekt …"
+          />
+          {supplierId && (
+            <a class="btn sec sm" href={`/lieferanten/${supplierId}`}>
+              Stammdaten &amp; Nachweise
+            </a>
+          )}
+        </form>
+        <div class="bs-table">
+          <div class="bs-tr bs-th">
+            <span>Bestellnr.</span>
+            <span>Lieferant · Objekt</span>
+            <span>Zeitraum</span>
+            <span class="r">Betrag netto</span>
+            <span>Status</span>
+          </div>
+          {rows.map((r) => (
+            <a class="bs-tr" href={r.href}>
+              <span class="bs-nr">{r.number}</span>
+              <span>
+                <b>{r.supplier}</b>
+                <span class="bs-sub">
+                  {r.kind === 'nu' ? 'Nachunternehmer · ' : ''}
+                  {r.what}
+                </span>
+              </span>
+              <span class="small">
+                {r.kind === 'material'
+                  ? `${dateDe(r.from)}${r.to ? ` · Lieferung ${dateDe(r.to)}` : ''}`
+                  : r.ongoing
+                    ? `ab ${dateDe(r.from)} · fortlaufend`
+                    : `${dateDe(r.from)} – ${dateDe(r.to ?? r.from)}`}
+              </span>
+              <span class="r">
+                {euro(r.net)} <span class="small mut">{r.per}</span>
+              </span>
+              <span>
+                <span class={`bs-pill bs-${r.tone || 'grey'}`}>{r.status}</span>
+              </span>
+            </a>
+          ))}
+          {!rows.length && <div class="bs-tr empty">Keine Bestellungen in dieser Ansicht.</div>}
+        </div>
+      </div>,
     );
   });
 

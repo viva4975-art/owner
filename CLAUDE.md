@@ -760,3 +760,11 @@ Testadresse.
   bei Abgabe/Entscheidung, Bestand übernommen). „Aufträge“ jetzt unter Rechnungen. „Einzelrechnung anlegen“ und
   „Mitarbeiter anlegen“ aus dem Menü (Knopf auf der Mitarbeiterliste). Eingaben werden still wiederhergestellt (kein gelber
   Balken mehr; nur bei Konflikt mit neuerem Stand wird gefragt). Unit-Test räumt seine 240-MB-Testdateien wieder weg.
+- 2026-10-06: Runde 6b – Lieferanten & Nachunternehmer im Stil des alten Portals: eine Liste für beide (Karten mit Nummer,
+  Ampel-Schild, Ort/Telefon/offene Bestellungen; bei Nachunternehmern Compliance-Balken, „Fehlt: …“, „Läuft ab: …“),
+  Kennzahl-Kacheln als Filter (Aktiv/Kritisch/Warnung/Vollständig), Fristen-Hinweis (abgelaufen oder in 14 Tagen),
+  Suche, Pillen Alle/Nachunternehmer/Lieferanten, Schalter „Inaktive einbeziehen“, Hinweis auf Portal-Uploads zum Prüfen.
+  Eigene Seite „Nachweise & Fristen“ entfällt (/nachunternehmer leitet um). Bestellungen = Material-Bestellungen und
+  Nachunternehmer-Aufträge in einer Liste (gleicher Nummernkreis BE-JJJJ-NNNN): Zu erledigen (Entwurf, geliefert ohne
+  Rechnung) / Laufend / Abgeschlossen / Alle, Auswahl Lieferant, Suche; „+ Material bestellen“, „+ Nachunternehmer
+  beauftragen“. Soll/Ist je Monat entfernt. Reiter „Aufträge“ beim Nachunternehmer heißt „Bestellungen“.

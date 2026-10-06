@@ -431,6 +431,73 @@ h2.form-section:first-of-type{margin-top:4px}
 .main-col>*{margin-bottom:26px}
 @media (max-width:1000px){.entity-layout{grid-template-columns:minmax(0,1fr)}}
 
+/* ---- Portal-Stil (wie das alte Portal: Lieferanten, Bestellungen) ---- */
+.portal .page-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin:6px 0 20px}
+.portal .page-head h1{font-size:26px;font-weight:750;letter-spacing:-.025em;margin:0;color:var(--ink)}
+.portal .eyebrow{font-size:12px;font-weight:600;color:var(--brand);margin-bottom:4px}
+.portal .page-head .sub{color:var(--mut);font-size:13px;margin-top:2px}
+.portal .page-head .acts{display:flex;gap:8px;flex-wrap:wrap}
+.due-banner{display:flex;gap:14px;align-items:flex-start;padding:14px 16px;border-radius:12px;border:1px solid;border-left-width:4px;margin-bottom:18px;color:var(--ink)}
+.due-banner:hover{text-decoration:none;filter:brightness(.98)}
+.due-banner.err{background:var(--err-50);border-color:#f1c4c4;border-left-color:var(--err)}
+.due-banner.warn{background:var(--warn-50);border-color:#f3dfae;border-left-color:var(--warn)}
+.due-banner .ico{flex:none;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;background:var(--err)}
+.due-banner.warn .ico{background:var(--warn)}
+.due-banner .lines{display:flex;flex-direction:column;font-size:13px;color:var(--ink-2);margin-top:2px}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:18px}
+.stat-card{display:flex;flex-direction:column;gap:2px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;color:var(--ink);transition:border-color .15s,box-shadow .15s}
+.stat-card:hover{text-decoration:none;border-color:var(--line-2);box-shadow:0 4px 6px -1px rgba(0,0,0,.06)}
+.stat-card .stat-lbl{font-size:12px;font-weight:600;color:var(--mut)}
+.stat-card .stat-num{font-size:28px;font-weight:750;letter-spacing:-.02em;line-height:1.15}
+.stat-card .stat-hint{font-size:12px;color:var(--faint)}
+.stat-card.tone-ok .stat-num{color:var(--ok)}.stat-card.tone-err .stat-num{color:var(--err)}
+.stat-card.tone-warn .stat-num{color:var(--warn)}.stat-card.tone-brand .stat-num{color:var(--brand)}
+.stat-card.on{box-shadow:0 0 0 2px var(--brand) inset;border-color:var(--brand)}
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:16px}
+.toolbar .search-input{flex:1;min-width:200px;padding:9px 13px;border:1px solid var(--line-2);border-radius:8px;font-size:14px}
+.toolbar .pills{display:flex;gap:6px;flex-wrap:wrap}
+.pill{border:1px solid var(--line-2);background:#fff;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600;color:var(--ink-2)}
+.pill span{color:var(--faint);font-weight:500;margin-left:3px}
+.pill:hover{text-decoration:none;border-color:var(--ink-2)}
+.pill.on{background:var(--ink);border-color:var(--ink);color:#fff}.pill.on span{color:#cfd3d8}
+.toggle{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--mut)}
+.toggle:hover{text-decoration:none;color:var(--ink)}
+.toggle .sw{width:30px;height:17px;border-radius:999px;background:var(--line-2);position:relative;transition:background .15s}
+.toggle .sw::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;transition:left .15s}
+.toggle .sw.on{background:var(--brand)}.toggle .sw.on::after{left:15px}
+.list-cards{display:grid;gap:12px;margin-bottom:16px}
+.lc{display:block;background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 20px;color:var(--ink);transition:border-color .15s,box-shadow .15s}
+.lc:hover{text-decoration:none;border-color:var(--line-2);box-shadow:0 4px 6px -1px rgba(0,0,0,.06)}
+.lc.lc-inactive{background:var(--bg);color:var(--mut)}
+.lc.empty{color:var(--mut);text-align:center}
+.lc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.lc-right{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.lc-name{font-weight:600;font-size:15px;letter-spacing:-.005em}
+.lc-sub{font-size:13px;color:var(--mut);margin-top:2px}
+.nu-tag{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--brand);background:var(--brand-50);padding:2px 7px;border-radius:4px;margin-right:8px;vertical-align:1px}
+.lc-details{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:13px;color:var(--mut);margin-top:8px}
+.lc-details span+span::before{content:"·";margin-right:16px;margin-left:-10px;color:var(--faint)}
+.lc-foot{margin-top:12px;padding-top:10px;border-top:1px dashed var(--line-2)}
+.compl-head{display:flex;justify-content:space-between;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);margin-bottom:5px}
+.compl-head b{color:var(--ink)}
+.lc .progress{height:6px}
+.lc-miss{font-size:12.5px;color:var(--err);margin-top:6px}
+.lc-exp{font-size:12.5px;color:var(--warn);margin-top:3px}
+.badge.muted{background:var(--head);color:var(--mut);border:1px solid var(--line)}
+.bs-table{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:16px}
+.bs-tr{display:grid;grid-template-columns:130px minmax(0,1fr) 200px 150px 190px;gap:14px;align-items:center;padding:11px 16px;border-top:1px solid var(--line);font-size:13px;color:var(--ink)}
+a.bs-tr:hover{text-decoration:none;background:var(--head)}
+.bs-th{border-top:0;background:var(--head);font-size:12px;font-weight:700;color:var(--mut)}
+.bs-tr .r{text-align:right}
+.bs-tr.empty{display:block;color:var(--mut);text-align:center}
+.bs-nr{font-weight:700;color:var(--brand);font-variant-numeric:tabular-nums;white-space:nowrap}
+.bs-sub{display:block;font-size:12px;color:var(--mut)}
+.bs-pill{font-size:11px;font-weight:650;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.bs-ok{background:var(--ok-50);color:var(--ok)}.bs-info{background:var(--info-50);color:var(--info)}
+.bs-warn{background:var(--warn-50);color:var(--warn)}.bs-err{background:var(--err-50);color:var(--err)}
+.bs-grey{background:var(--head);color:var(--mut)}
+@media (max-width:820px){.bs-tr{grid-template-columns:1fr 1fr}.bs-th{display:none}}
+
 `;
 
 export const euro = (c: bigint) => formatEuro(c as Cents);
@@ -474,10 +541,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     label: 'Lieferanten',
     items: [
       { label: 'Lieferanten & Nachunternehmer', href: '/lieferanten' },
-      { label: 'Nachunternehmer: Nachweise & Fristen', href: '/nachunternehmer' },
-      { label: 'Nachunternehmer: Aufträge', href: '/nachunternehmer/auftraege' },
-      { label: 'Nachunternehmer: Soll/Ist je Monat', href: '/nachunternehmer/monat' },
-      { label: 'Bestellungen (BE-JJJJ-NNNN)', href: '/bestellungen' },
+      { label: 'Bestellungen', href: '/bestellungen' },
       { label: 'Rechnungseingang & Zahlungsliste', href: '/rechnungseingang' },
     ],
   },

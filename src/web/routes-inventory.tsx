@@ -33,7 +33,7 @@ import { type Ctx, UUID, assertSite, inScope } from './app.js';
 import { FileArea } from './files.js';
 import { centsToInput, milliToInput } from './forms.js';
 import { Icon } from './icons.js';
-import { PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
+import { PageHead, Tabs, dateDe, euro } from './layout.js';
 import { Field } from './pages-masterdata.js';
 
 const versionOf = (v: unknown) => (typeof v === 'string' && v !== '' ? Number(v) : null);
@@ -70,100 +70,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
 
   // ================================================================== Lieferanten & Nachunternehmer
 
-  app.get('/lieferanten', async (c) => {
-    const kind = c.req.query('art');
-    const all = await listSuppliers(sql);
-    let rows = [...all];
-    if (kind === 'lieferant' || kind === 'nachunternehmer') rows = rows.filter((r) => r.kind === kind);
-    const tabs: Tab[] = [
-      { key: '', label: 'Alle', href: '/lieferanten', count: all.length },
-      {
-        key: 'lieferant',
-        label: 'Lieferanten',
-        href: '/lieferanten?art=lieferant',
-        count: all.filter((r) => r.kind === 'lieferant').length,
-      },
-      {
-        key: 'nachunternehmer',
-        label: 'Nachunternehmer',
-        href: '/lieferanten?art=nachunternehmer',
-        count: all.filter((r) => r.kind === 'nachunternehmer').length,
-      },
-    ];
-    return page(
-      c,
-      'Lieferanten',
-      'lieferanten',
-      <>
-        <PageHead title="Lieferanten & Nachunternehmer">
-          <a class="btn" href={`/lieferanten/${randomUUID()}/bearbeiten`} style="margin-left:auto">
-            <Icon name="plus" /> Neu anlegen
-          </a>
-        </PageHead>
-        <Tabs tabs={tabs} active={kind ?? ''} />
-        <div class="tbl">
-          <table>
-            <thead>
-              <tr>
-                <th>Nr.</th>
-                <th>Name</th>
-                <th>Art</th>
-                <th>Kontakt</th>
-                <th>Freistellung § 48b</th>
-                <th>Unbedenklichkeit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && (
-                <tr>
-                  <td colspan={6}>
-                    <div class="empty">Noch keine Einträge.</div>
-                  </td>
-                </tr>
-              )}
-              {rows.map((s) => (
-                <tr style={s.active ? '' : 'opacity:.55'}>
-                  <td>{s.supplier_no}</td>
-                  <td>
-                    <a href={`/lieferanten/${s.id}`}>
-                      <b>{s.name}</b>
-                    </a>
-                    <div class="small mut">{[s.postal_code, s.city].filter(Boolean).join(' ')}</div>
-                  </td>
-                  <td>
-                    {s.kind === 'nachunternehmer' ? (
-                      <span class="badge kind">Nachunternehmer</span>
-                    ) : (
-                      <span class="badge">Lieferant</span>
-                    )}
-                  </td>
-                  <td class="small">
-                    {s.contact_name}
-                    {s.phone && <div>{s.phone}</div>}
-                  </td>
-                  <td>
-                    {s.kind === 'nachunternehmer' ? (
-                      <Expiry date={s.exemption_valid_until} days={s.exemption_days} />
-                    ) : (
-                      '–'
-                    )}
-                  </td>
-                  <td>
-                    {s.kind === 'nachunternehmer' ? (
-                      <Expiry date={s.clearance_valid_until} days={s.clearance_days} />
-                    ) : (
-                      '–'
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </>,
-    );
-  });
-
+  // Liste „Lieferanten & Nachunternehmer“: routes-subcontractors.tsx (Karten wie im alten Portal)
   app.get(`/lieferanten/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
     const s = await getSupplier(sql, id);

@@ -107,11 +107,15 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
     id: 'disposition',
     title: 'Disposition-Einstellungen',
     items: [
-      ['Raumarten / Nutzungsarten', '/raumbuch/raumarten', 'Auswahlliste für das Raumbuch der Objekte.'],
       [
-        'Qualitätsmanagement',
-        '/einstellungen/qualitaet',
-        'Kontrollgegenstände (Skala oder Ja/Nein) und welche je Nutzungsart im Audit geprüft werden.',
+        'Nutzungsarten (Raumarten)',
+        '/einstellungen/nutzungsarten',
+        'Raumarten für das Raumbuch und welche Kontrollgegenstände je Nutzungsart im Audit geprüft werden.',
+      ],
+      [
+        'Kontrollgegenstände',
+        '/einstellungen/kontrollgegenstaende',
+        'Was im Audit bewertet wird: Note 1 bis 6, Gut/Mittel/Schlecht, Ja/Nein oder Punkte 1 bis 5.',
       ],
       [
         'Arbeitskleidung: Artikel & Größen',

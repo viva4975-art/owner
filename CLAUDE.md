@@ -969,3 +969,14 @@ Testadresse.
   - iOS: keine installierbare Datei ohne Mac/Xcode + Apple-Developer-Konto (99 €/Jahr, TestFlight). Bis dahin `/m` per
     Safari → Teilen → „Zum Home-Bildschirm“.
   - Tests: 339 Unit-/DB-Tests, alle Browser-Suiten grün.
+- 2026-10-06: Runde 14 (Ahmed, Fortytools-Screenshots QM-Einstellungen):
+  - Behoben: Zahnrad-/Benutzermenü am Handy zeigte keinen Text (weiße Schrift auf weißem Grund) und lag quer – jetzt
+    dunkle Schrift, untereinander, volle Breite.
+  - Einstellungen → **Kontrollgegenstände** und **Nutzungsarten** wie Fortytools (eigene Seiten mit Reitern, ersetzen die
+    Matrix `/einstellungen/qualitaet` und die Raumarten-Liste, alte Adressen leiten um): Liste Name/Bewertungsmodus bzw.
+    Name/Anzahl Kontrollgegenstände/Räume/Objekte mit Bearbeiten/Löschen, Formular „… anlegen“ darunter; Nutzungsart mit
+    Liste von Kontrollgegenständen („Kontrollgegenstand hinzufügen“, mindestens einer). Löschen nur, wenn nicht verwendet
+    (Gegenstand in Audits bzw. Nutzungsart im Raumbuch) – sonst deaktivieren; Bewertungsmodus nach erster Bewertung fest.
+  - Bewertungsmodi: Note 1 bis 6, **Gut/Mittel/Schlecht** (100/50/0 %), Ja/Nein, **Punkte 1 bis 5** (5 = 100 %,
+    Gesamteindruck wie Fortytools). Je Bewertung wird der Prozentwert gespeichert (`quality_check_ratings.percent`).
+  - Tests: 340 Unit-/DB-Tests, `e2e:runde10` 37 Prüfungen.

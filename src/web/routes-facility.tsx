@@ -175,7 +175,7 @@ export function registerFacilityRoutes({ app, deps, page, back, shells }: Ctx) {
               <Icon name="download" /> CSV
             </a>
             {office && (
-              <a class="btn sm ghost" href="/raumbuch/raumarten">
+              <a class="btn sm ghost" href="/einstellungen/nutzungsarten">
                 Raumarten
               </a>
             )}
@@ -576,67 +576,8 @@ export function registerFacilityRoutes({ app, deps, page, back, shells }: Ctx) {
   });
 
   // Raumarten (Stammliste, Einstellungen)
-  app.get('/raumbuch/leistungswerte', (c) => c.redirect('/raumbuch/raumarten', 301));
-  app.get('/raumbuch/raumarten', async (c) => {
-    const types = await listRoomTypes(sql, true);
-    return page(
-      c,
-      'Raumarten',
-      'disposition',
-      <>
-        <PageHead title="Raumarten" crumbs={[['Einstellungen', '/einstellungen']]} />
-        <p class="mut" style="max-width:780px">
-          Auswahlliste für das Raumbuch. Beim Excel-Import werden unbekannte Raumarten automatisch angelegt.
-        </p>
-        <div class="tbl" style="max-width:640px">
-          <table>
-            <thead>
-              <tr>
-                <th>Raumart</th>
-                <th>aktiv</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...types, null].map((t) => {
-                const id = t?.id ?? randomUUID();
-                const f = `rt-${id.slice(0, 8)}`;
-                return (
-                  <tr>
-                    <td>
-                      <form id={f} method="post" action={`/raumbuch/raumarten/${id}`}></form>
-                      <input type="hidden" form={f} name="version" value={String(t?.version ?? '')} />
-                      <input
-                        form={f}
-                        name="name"
-                        value={t?.name ?? ''}
-                        placeholder="neue Raumart"
-                        aria-label="Raumart"
-                      />
-                    </td>
-                    <td style="width:70px">
-                      <input
-                        type="checkbox"
-                        form={f}
-                        name="active"
-                        checked={t ? t.active : true}
-                        aria-label="aktiv"
-                      />
-                    </td>
-                    <td style="width:110px">
-                      <button class="btn sm sec" form={f}>
-                        {t ? 'Speichern' : 'Anlegen'}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </>,
-    );
-  });
+  app.get('/raumbuch/leistungswerte', (c) => c.redirect('/einstellungen/nutzungsarten', 301));
+  app.get('/raumbuch/raumarten', (c) => c.redirect('/einstellungen/nutzungsarten', 301));
 
   app.post(`/raumbuch/raumarten/:id{${UUID}}`, async (c) => {
     const b = await c.req.parseBody({ all: true });
@@ -645,7 +586,7 @@ export function registerFacilityRoutes({ app, deps, page, back, shells }: Ctx) {
       active: b.active === 'on',
       expectedVersion: versionOf(b.version),
     });
-    return back(c, '/raumbuch/raumarten', { ok: 'Raumart gespeichert.' });
+    return back(c, '/einstellungen/nutzungsarten', { ok: 'Raumart gespeichert.' });
   });
 
   // ================================================================== Stundenvorgabe (von Hand)

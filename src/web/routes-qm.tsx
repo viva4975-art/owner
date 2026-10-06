@@ -12,14 +12,22 @@ import {
   auditScore,
   itemsForRoomType,
   ratingPercent,
+  QM_SCALE,
+  scaleLabel,
   roomMeta,
   roomRatings,
   saveRoomRatings,
   createTicket,
   listQmItems,
-  roomTypeItems,
   saveQmItem,
-  saveRoomTypeItems,
+  type QmItem,
+  type UsageType,
+  deleteQmItem,
+  deleteUsageType,
+  listUsageTypes,
+  qmItemUsed,
+  saveUsageType,
+  usageTypeItemIds,
   listTickets,
   qmAudits,
   qmSites,
@@ -30,6 +38,7 @@ import { str } from './forms.js';
 import { storeFile } from '../services/uploads.js';
 import { createQualityCheck } from '../services/facility.js';
 import { PageHead, dateDe } from './layout.js';
+import { Icon } from './icons.js';
 import { CSS as MCSS, Ic } from './m/routes-mobile.js';
 
 /*
@@ -99,9 +108,9 @@ const QM_CSS = `
 .scale span{width:16px;height:16px;border-radius:50%;background:#ddd0d5;display:flex;align-items:center;justify-content:center;font-weight:750;color:#fff;font-size:20px;transition:all .12s}
 .scale input:checked+span{width:52px;height:52px;background:linear-gradient(135deg,#b34a6a,#7D1435)}
 .scale input:checked+span::after{content:attr(data-v)}
-.yn{display:flex;justify-content:center;gap:40px;margin:16px 0 8px}
+.yn{display:flex;justify-content:center;gap:22px;margin:16px 0 8px}
 .yn label{margin:0;cursor:pointer}.yn input{position:absolute;opacity:0}
-.yn span{display:flex;align-items:center;justify-content:center;width:72px;height:72px;border-radius:50%;border:2px solid #d7c3cb;font-size:17px;font-weight:600;color:#7D1435}
+.yn span{display:flex;align-items:center;justify-content:center;width:80px;height:80px;border-radius:50%;border:2px solid #d7c3cb;font-size:15px;font-weight:600;color:#7D1435}
 .yn .no span{border-color:#e6a3b4;color:#b42318}
 .yn input:checked+span{background:#7D1435;border-color:#7D1435;color:#fff}.yn .no input:checked+span{background:#b42318;border-color:#b42318}
 .qm-item.skipped .scale,.qm-item.skipped .yn{opacity:.3;pointer-events:none}
@@ -583,9 +592,7 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
                 <div class="hd">
                   <b>{it.name}</b>
                   {e && !e.skipped && e.value != null && (
-                    <span class="mut">
-                      {it.kind === 'janein' ? (e.value === 1 ? 'Ja' : 'Nein') : e.value}
-                    </span>
+                    <span class="mut">{scaleLabel(it.kind, e.value)}</span>
                   )}
                 </div>
                 <label class="skip">
@@ -598,41 +605,42 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
                   />{' '}
                   Überspringen
                 </label>
-                {it.kind === 'janein' ? (
-                  <div class="yn">
-                    <label class="no">
-                      <input
-                        type="radio"
-                        name={`v_${it.id}`}
-                        value="6"
-                        checked={e?.value === 6}
-                        disabled={locked}
-                      />
-                      <span>Nein</span>
-                    </label>
-                    <label>
-                      <input
-                        type="radio"
-                        name={`v_${it.id}`}
-                        value="1"
-                        checked={e?.value === 1}
-                        disabled={locked}
-                      />
-                      <span>Ja</span>
-                    </label>
-                  </div>
-                ) : (
-                  <div class="scale" title="links 6 (ungenügend) … rechts 1 (sehr gut)">
-                    {[6, 5, 4, 3, 2, 1].map((v) => (
+                {it.kind === 'note' || it.kind === 'punkte' ? (
+                  <div
+                    class="scale"
+                    title={
+                      it.kind === 'note'
+                        ? 'links 6 (ungenügend) … rechts 1 (sehr gut)'
+                        : 'links 1 (schlecht) … rechts 5 (sehr gut)'
+                    }
+                  >
+                    {QM_SCALE[it.kind].map((o) => (
                       <label>
                         <input
                           type="radio"
                           name={`v_${it.id}`}
-                          value={String(v)}
-                          checked={e?.value === v}
+                          value={String(o.v)}
+                          data-pct={String(o.pct)}
+                          checked={e?.value === o.v}
                           disabled={locked}
                         />
-                        <span data-v={String(v)} />
+                        <span data-v={o.label} />
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <div class="yn">
+                    {QM_SCALE[it.kind].map((o) => (
+                      <label class={o.pct === 0 ? 'no' : ''}>
+                        <input
+                          type="radio"
+                          name={`v_${it.id}`}
+                          value={String(o.v)}
+                          data-pct={String(o.pct)}
+                          checked={e?.value === o.v}
+                          disabled={locked}
+                        />
+                        <span>{o.label}</span>
                       </label>
                     ))}
                   </div>
@@ -665,7 +673,7 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){var f=document.getElementById('qmf');if(!f)return;
-function upd(){var s=0,n=0;f.querySelectorAll('[data-item]').forEach(function(d){var sk=d.querySelector('input[type=checkbox]');d.classList.toggle('skipped',sk&&sk.checked);if(sk&&sk.checked)return;var r=d.querySelector('input[type=radio]:checked');if(r){s+=(6-Number(r.value))*20;n++}});document.getElementById('gnote').textContent=(n?Math.round(s/n):0)+' %'}
+function upd(){var s=0,n=0;f.querySelectorAll('[data-item]').forEach(function(d){var sk=d.querySelector('input[type=checkbox]');d.classList.toggle('skipped',sk&&sk.checked);if(sk&&sk.checked)return;var r=d.querySelector('input[type=radio]:checked');if(r){s+=Number(r.getAttribute('data-pct'));n++}});document.getElementById('gnote').textContent=(n?Math.round(s/n):0)+' %'}
 f.addEventListener('change',upd);
 f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('change',function(){if(i.files.length>5){alert('Bitte höchstens 5 Fotos');i.value=''}var sm=i.closest('.qm-photos').querySelector('small');if(i.files.length)sm.textContent=i.files.length+' Foto(s) ausgewählt'})});})();`,
           }}
@@ -688,7 +696,7 @@ f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('c
     for (const it of items) {
       const skipped = str(b, `s_${it.id}`) === '1';
       const raw = str(b, `v_${it.id}`);
-      const value = raw && /^[1-6]$/.test(raw) ? Number(raw) : null;
+      const value = raw && QM_SCALE[it.kind].some((o) => String(o.v) === raw) ? Number(raw) : null;
       const note = str(b, `n_${it.id}`);
       if (!skipped && value == null && !note) continue; // nicht bewertet
       if (!skipped && value == null) throw new BusinessError(`${it.name}: bitte bewerten oder überspringen`);
@@ -721,7 +729,10 @@ f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('c
     // nächster noch nicht bewerteter Raum
     const idx = rooms.findIndex((r) => r.id === roomId);
     const next = [...rooms.slice(idx + 1), ...rooms.slice(0, idx)].find((r) => r.rated === 0);
-    const pct = ratings.filter((r) => !r.skipped && r.value).map((r) => ratingPercent(r.value!));
+    const kindOf = new Map(items.map((i) => [i.id, i.kind]));
+    const pct = ratings
+      .filter((r) => !r.skipped && r.value)
+      .map((r) => ratingPercent(r.value!, kindOf.get(r.itemId)));
     const msg = pct.length
       ? `${room.name}: ${Math.round(pct.reduce((a, x) => a + x, 0) / pct.length)} %`
       : 'Gespeichert.';
@@ -915,143 +926,178 @@ f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('c
     });
   });
 
-  // ------------------------------------------------------------ Einstellungen (am PC)
-  app.get('/einstellungen/qualitaet', async (c) => {
-    const [items, m] = await Promise.all([listQmItems(sql), roomTypeItems(sql)]);
-    const active = items.filter((i) => i.active);
+  // ------------------------------------------------------------ Einstellungen (am PC) – wie Fortytools
+  const versionOf = (v: unknown) => (typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : null);
+  const KG = '/einstellungen/kontrollgegenstaende';
+  const NA = '/einstellungen/nutzungsarten';
+  app.get('/einstellungen/qualitaet', (c) => c.redirect(KG, 301));
+
+  const QmTabs: FC<{ on: 'kg' | 'na' }> = ({ on }) => (
+    <nav class="tabs" style="margin-bottom:14px">
+      <a href={KG} class={on === 'kg' ? 'on' : ''}>
+        Kontrollgegenstände
+      </a>
+      <a href={NA} class={on === 'na' ? 'on' : ''}>
+        Nutzungsarten
+      </a>
+    </nav>
+  );
+
+  const ItemForm: FC<{ it: QmItem | null; used: boolean }> = ({ it, used }) => (
+    <form
+      method="post"
+      action={`${KG}/${it?.id ?? randomUUID()}`}
+      class="card form-card"
+      style="max-width:720px"
+    >
+      <h3>{it ? 'Kontrollgegenstand bearbeiten' : 'Kontrollgegenstand anlegen'}</h3>
+      <div class="grid">
+        <label for="kg-name">Name *</label>
+        <input id="kg-name" name="name" required value={it?.name ?? ''} placeholder="z. B. Lichtschalter" />
+        <label for="kg-kind">Bewertungsmodus *</label>
+        <select id="kg-kind" name="kind" data-nosearch disabled={used}>
+          {Object.entries(QM_KIND).map(([k, v]) => (
+            <option value={k} selected={(it?.kind ?? 'note') === k}>
+              {v}
+            </option>
+          ))}
+        </select>
+        {used && <input type="hidden" name="kind" value={it!.kind} />}
+        {it && (
+          <>
+            <label for="kg-so">Reihenfolge</label>
+            <input id="kg-so" name="sort_order" value={String(it.sort_order)} inputmode="numeric" />
+            <label for="kg-act">aktiv</label>
+            <input id="kg-act" type="checkbox" name="active" checked={it.active} style="width:auto" />
+          </>
+        )}
+      </div>
+      {used && (
+        <p class="small mut">
+          Bereits in Audits bewertet – der Bewertungsmodus bleibt deshalb fest (sonst stimmen alte Ergebnisse
+          nicht mehr).
+        </p>
+      )}
+      {!it && <input type="hidden" name="active" value="on" />}
+      <div class="formfoot">
+        {it && (
+          <a class="btn ghost" href={KG}>
+            Abbrechen
+          </a>
+        )}
+        <button class="btn">{it ? 'Speichern' : 'Kontrollgegenstand hinzufügen'}</button>
+      </div>
+    </form>
+  );
+
+  app.get(KG, async (c) => {
+    const items = await listQmItems(sql);
+    const used = new Set(
+      (await sql<{ item_id: string }[]>`select distinct item_id from app.quality_check_ratings`).map(
+        (r) => r.item_id,
+      ),
+    );
     return page(
       c,
-      'Qualitätsmanagement',
+      'Kontrollgegenstände',
       'einstellungen',
       <>
-        <PageHead title="Qualitätsmanagement" crumbs={[['Einstellungen', '/einstellungen']]} />
-        <p class="mut" style="max-width:900px">
-          Kontrollgegenstände werden im Audit je Raum bewertet – welche, hängt von der Nutzungsart des Raums
-          (Raumbuch) ab. Skala: Schulnote 1 (sehr gut) bis 6 (ungenügend) = 100 % bis 0 %; Ja/Nein: Ja = 100
-          %, Nein = 0 %. Nutzungsarten selbst pflegen Sie unter{' '}
-          <a href="/raumbuch/raumarten">Raumarten / Nutzungsarten</a>, das Raumbuch je Objekt unter Objekt →
-          Raumbuch.
+        <PageHead title="Kontrollgegenstände" crumbs={[['Einstellungen', '/einstellungen']]}>
+          <a class="btn" href="#anlegen">
+            Kontrollgegenstand anlegen
+          </a>
+        </PageHead>
+        <QmTabs on="kg" />
+        <p class="mut" style="max-width:860px">
+          Was im Audit je Raum bewertet wird. Welche Gegenstände in einem Raum geprüft werden, legen Sie unter{' '}
+          <a href={NA}>Nutzungsarten</a> fest. Prozent im Ergebnis: Note 1 = 100 % … 6 = 0 %; Gut 100 %,
+          Mittel 50 %, Schlecht 0 %; Ja 100 %, Nein 0 %; Punkte 5 = 100 % … 1 = 0 %.
         </p>
-        <h2>Kontrollgegenstände</h2>
-        <div class="tbl" style="max-width:820px">
+        <div class="tbl card" style="max-width:860px;padding:0">
           <table>
             <thead>
               <tr>
-                <th>Bezeichnung</th>
-                <th>Bewertung</th>
-                <th class="r">Reihenfolge</th>
-                <th>aktiv</th>
-                <th></th>
+                <th>Name</th>
+                <th>Bewertungsmodus</th>
+                <th class="acts"></th>
               </tr>
             </thead>
             <tbody>
-              {[...items, null].map((it) => {
-                const id = it?.id ?? randomUUID();
-                const f = `qi-${id.slice(0, 8)}`;
-                return (
-                  <tr>
-                    <td>
-                      <form id={f} method="post" action={`/einstellungen/qualitaet/gegenstand/${id}`} />
-                      <input
-                        form={f}
-                        name="name"
-                        value={it?.name ?? ''}
-                        placeholder="neuer Kontrollgegenstand, z. B. Lichtschalter"
-                        aria-label="Bezeichnung"
-                      />
-                    </td>
-                    <td style="width:190px">
-                      <select form={f} name="kind" aria-label="Bewertung" data-nosearch>
-                        {Object.entries(QM_KIND).map(([k, v]) => (
-                          <option value={k} selected={(it?.kind ?? 'note') === k}>
-                            {v}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td style="width:110px">
-                      <input
-                        form={f}
-                        name="sort_order"
-                        class="right"
-                        value={it ? String(it.sort_order) : ''}
-                        aria-label="Reihenfolge"
-                      />
-                    </td>
-                    <td style="width:60px">
-                      <input
-                        type="checkbox"
-                        form={f}
-                        name="active"
-                        checked={it ? it.active : true}
-                        aria-label="aktiv"
-                      />
-                    </td>
-                    <td style="width:110px">
-                      <button class="btn sm sec" form={f}>
-                        {it ? 'Speichern' : 'Anlegen'}
+              {items.map((it) => (
+                <tr class={it.active ? '' : 'mut'}>
+                  <td>
+                    {it.name}
+                    {!it.active && (
+                      <span class="badge" style="margin-left:6px">
+                        inaktiv
+                      </span>
+                    )}
+                  </td>
+                  <td>{QM_KIND[it.kind]}</td>
+                  <td class="r acts">
+                    <a
+                      class="btn sm sec icon"
+                      href={`${KG}/${it.id}`}
+                      title="bearbeiten"
+                      aria-label="bearbeiten"
+                    >
+                      <Icon name="pencil" size={15} />
+                    </a>{' '}
+                    {used.has(it.id) ? (
+                      <button
+                        class="btn sm sec icon"
+                        disabled
+                        title="in Audits verwendet – nur deaktivieren möglich"
+                        aria-label="löschen nicht möglich"
+                      >
+                        <Icon name="trash" size={15} />
                       </button>
-                    </td>
-                  </tr>
-                );
-              })}
+                    ) : (
+                      <form
+                        method="post"
+                        action={`${KG}/${it.id}/loeschen`}
+                        style="display:inline"
+                        data-confirm={`„${it.name}“ löschen?`}
+                      >
+                        <button class="btn sm sec icon" title="löschen" aria-label="löschen">
+                          <Icon name="trash" size={15} />
+                        </button>
+                      </form>
+                    )}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
-        <h2 style="margin-top:28px">Was wird je Nutzungsart geprüft?</h2>
-        <form method="post" action="/einstellungen/qualitaet/zuordnung" class="card">
-          <div class="tbl" style="overflow-x:auto">
-            <table class="qm-matrix">
-              <thead>
-                <tr>
-                  <th>Nutzungsart</th>
-                  {active.map((i) => (
-                    <th class="c" title={QM_KIND[i.kind]}>
-                      {i.name}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {m.types
-                  .filter((t) => t.active)
-                  .map((t) => (
-                    <tr>
-                      <td>
-                        <b>{t.name}</b>
-                        <div class="small mut">{t.rooms} Räume</div>
-                      </td>
-                      {active.map((i) => (
-                        <td class="c">
-                          <input
-                            type="checkbox"
-                            name="pair"
-                            value={`${t.id}:${i.id}`}
-                            checked={m.links.has(`${t.id}:${i.id}`)}
-                            aria-label={`${t.name}: ${i.name}`}
-                          />
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-          <div class="formfoot">
-            <button class="btn">Zuordnung speichern</button>
-          </div>
-        </form>
-        <style
-          dangerouslySetInnerHTML={{
-            __html:
-              '.qm-matrix th.c,.qm-matrix td.c{text-align:center;min-width:86px}.qm-matrix th.c{font-size:12px;line-height:1.25;vertical-align:bottom}',
-          }}
-        />
+        <div id="anlegen" style="margin-top:22px">
+          <ItemForm it={null} used={false} />
+        </div>
       </>,
     );
   });
 
-  app.post(`/einstellungen/qualitaet/gegenstand/:id{${UUID}}`, async (c) => {
+  app.get(`${KG}/:id{${UUID}}`, async (c) => {
+    const it = (await listQmItems(sql)).find((i) => i.id === c.req.param('id'));
+    if (!it) return c.notFound();
+    return page(
+      c,
+      it.name,
+      'einstellungen',
+      <>
+        <PageHead
+          title={it.name}
+          crumbs={[
+            ['Einstellungen', '/einstellungen'],
+            ['Kontrollgegenstände', KG],
+          ]}
+        />
+        <ItemForm it={it} used={await qmItemUsed(sql, it.id)} />
+      </>,
+    );
+  });
+
+  app.post(`${KG}/:id{${UUID}}`, async (c) => {
     const b = await c.req.parseBody({ all: true });
     const so = str(b, 'sort_order');
     await saveQmItem(sql, c.req.param('id'), {
@@ -1060,13 +1106,212 @@ f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('c
       active: b.active === 'on',
       sortOrder: so && /^\d{1,5}$/.test(so) ? Number(so) : null,
     });
-    return back(c, '/einstellungen/qualitaet', { ok: 'Kontrollgegenstand gespeichert.' });
+    return back(c, KG, { ok: 'Kontrollgegenstand gespeichert.' });
   });
 
-  app.post('/einstellungen/qualitaet/zuordnung', async (c) => {
+  app.post(`${KG}/:id{${UUID}}/loeschen`, async (c) => {
+    await deleteQmItem(sql, c.req.param('id'));
+    return back(c, KG, { ok: 'Kontrollgegenstand gelöscht.' });
+  });
+
+  // Nutzungsarten (= Raumarten im Raumbuch) mit ihren Kontrollgegenständen
+  const UsageForm: FC<{ t: UsageType | null; items: QmItem[]; sel: string[] }> = ({ t, items, sel }) => {
+    const opts = items.filter((i) => i.active || sel.includes(i.id));
+    const Row: FC<{ v: string }> = ({ v }) => (
+      <div class="kg-row" style="display:flex;gap:8px;margin-bottom:8px">
+        <select name="item" data-nosearch style="flex:1" aria-label="Kontrollgegenstand">
+          {opts.map((i) => (
+            <option value={i.id} selected={i.id === v}>
+              {i.name}
+            </option>
+          ))}
+        </select>
+        <button type="button" class="btn sec icon" data-kg-del title="entfernen" aria-label="entfernen">
+          <Icon name="trash" size={16} />
+        </button>
+      </div>
+    );
+    return (
+      <form
+        method="post"
+        action={`${NA}/${t?.id ?? randomUUID()}`}
+        class="card form-card"
+        style="max-width:720px"
+      >
+        <h3>{t ? 'Nutzungsart bearbeiten' : 'Nutzungsart anlegen'}</h3>
+        <input type="hidden" name="version" value={t ? String(t.version) : ''} />
+        <div class="grid">
+          <label for="na-name">Name *</label>
+          <input
+            id="na-name"
+            name="name"
+            required
+            value={t?.name ?? ''}
+            placeholder="z. B. Besprechungsraum"
+          />
+          {t && (
+            <>
+              <label for="na-act">aktiv</label>
+              <input id="na-act" type="checkbox" name="active" checked={t.active} style="width:auto" />
+            </>
+          )}
+        </div>
+        {!t && <input type="hidden" name="active" value="on" />}
+        <h4 style="margin:18px 0 8px">Kontrollgegenstände *</h4>
+        <div data-kg-list>
+          {(sel.length ? sel : [opts[0]?.id ?? '']).map((v) => (
+            <Row v={v} />
+          ))}
+        </div>
+        <button type="button" class="btn sec" data-kg-add>
+          Kontrollgegenstand hinzufügen
+        </button>
+        <div class="formfoot">
+          {t && (
+            <a class="btn ghost" href={NA}>
+              Abbrechen
+            </a>
+          )}
+          <button class="btn">{t ? 'Speichern' : 'Nutzungsart hinzufügen'}</button>
+        </div>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(f){var l=f.querySelector('[data-kg-list]');f.querySelector('[data-kg-add]').addEventListener('click',function(){var r=l.querySelector('.kg-row');var n=r.cloneNode(true);var s=n.querySelector('select');var used={};l.querySelectorAll('select').forEach(function(x){used[x.value]=1});for(var i=0;i<s.options.length;i++){if(!used[s.options[i].value]){s.selectedIndex=i;break}}l.appendChild(n);s.focus()});l.addEventListener('click',function(e){var b=e.target.closest('[data-kg-del]');if(!b)return;if(l.querySelectorAll('.kg-row').length>1)b.closest('.kg-row').remove()})})(document.currentScript.closest('form'));`,
+          }}
+        />
+      </form>
+    );
+  };
+
+  app.get(NA, async (c) => {
+    const [types, items] = await Promise.all([listUsageTypes(sql), listQmItems(sql)]);
+    return page(
+      c,
+      'Nutzungsarten',
+      'einstellungen',
+      <>
+        <PageHead title="Nutzungsarten" crumbs={[['Einstellungen', '/einstellungen']]}>
+          <a class="btn" href="#anlegen">
+            Nutzungsart anlegen
+          </a>
+        </PageHead>
+        <QmTabs on="na" />
+        <p class="mut" style="max-width:860px">
+          Nutzungsart = Raumart im Raumbuch der Objekte (Klassenzimmer, Sanitäranlagen, Flur …). Je
+          Nutzungsart legen Sie fest, welche Kontrollgegenstände im Audit geprüft werden.
+        </p>
+        <div class="tbl card" style="max-width:860px;padding:0">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th class="r">
+                  <span class="hide-m">Kontrollgegenstände</span>
+                  <span class="only-m">Gegenst.</span>
+                </th>
+                <th class="r">
+                  <span class="hide-m">Anzahl Räume</span>
+                  <span class="only-m">Räume</span>
+                </th>
+                <th class="r hide-m">Objekte</th>
+                <th class="acts"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {types.map((t) => (
+                <tr class={t.active ? '' : 'mut'}>
+                  <td>
+                    {t.name}
+                    {!t.active && (
+                      <span class="badge" style="margin-left:6px">
+                        inaktiv
+                      </span>
+                    )}
+                  </td>
+                  <td class="r">{t.items || <span class="mut">alle</span>}</td>
+                  <td class="r">{t.rooms}</td>
+                  <td class="r hide-m">{t.sites}</td>
+                  <td class="r acts">
+                    <a
+                      class="btn sm sec icon"
+                      href={`${NA}/${t.id}`}
+                      title="bearbeiten"
+                      aria-label="bearbeiten"
+                    >
+                      <Icon name="pencil" size={15} />
+                    </a>{' '}
+                    {t.rooms ? (
+                      <button
+                        class="btn sm sec icon"
+                        disabled
+                        title="im Raumbuch verwendet – nur deaktivieren möglich"
+                        aria-label="löschen nicht möglich"
+                      >
+                        <Icon name="trash" size={15} />
+                      </button>
+                    ) : (
+                      <form
+                        method="post"
+                        action={`${NA}/${t.id}/loeschen`}
+                        style="display:inline"
+                        data-confirm={`Nutzungsart „${t.name}“ löschen?`}
+                      >
+                        <button class="btn sm sec icon" title="löschen" aria-label="löschen">
+                          <Icon name="trash" size={15} />
+                        </button>
+                      </form>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p class="small mut">
+          „alle“ = keine Auswahl getroffen, im Audit werden dann alle aktiven Gegenstände geprüft.
+        </p>
+        <div id="anlegen" style="margin-top:22px">
+          <UsageForm t={null} items={items} sel={[]} />
+        </div>
+      </>,
+    );
+  });
+
+  app.get(`${NA}/:id{${UUID}}`, async (c) => {
+    const t = (await listUsageTypes(sql)).find((x) => x.id === c.req.param('id'));
+    if (!t) return c.notFound();
+    const [items, sel] = await Promise.all([listQmItems(sql), usageTypeItemIds(sql, t.id)]);
+    return page(
+      c,
+      t.name,
+      'einstellungen',
+      <>
+        <PageHead
+          title={t.name}
+          crumbs={[
+            ['Einstellungen', '/einstellungen'],
+            ['Nutzungsarten', NA],
+          ]}
+        />
+        <UsageForm t={t} items={items} sel={sel} />
+      </>,
+    );
+  });
+
+  app.post(`${NA}/:id{${UUID}}`, async (c) => {
     const b = await c.req.parseBody({ all: true });
-    const v = b.pair;
-    await saveRoomTypeItems(sql, (Array.isArray(v) ? v : v ? [v] : []).map(String));
-    return back(c, '/einstellungen/qualitaet', { ok: 'Zuordnung gespeichert.' });
+    const v = b.item;
+    await saveUsageType(sql, c.req.param('id'), {
+      name: str(b, 'name') ?? '',
+      active: b.active === 'on',
+      itemIds: (Array.isArray(v) ? v : v ? [v] : []).map(String),
+      expectedVersion: versionOf(b.version),
+    });
+    return back(c, NA, { ok: 'Nutzungsart gespeichert.' });
+  });
+
+  app.post(`${NA}/:id{${UUID}}/loeschen`, async (c) => {
+    await deleteUsageType(sql, c.req.param('id'));
+    return back(c, NA, { ok: 'Nutzungsart gelöscht.' });
   });
 }

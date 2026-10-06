@@ -995,6 +995,16 @@ tbody tr:hover td{background:#fbfaf8}
   .page-head h1,main h1{font-size:28px}
   main{padding:14px 12px 64px}
 }
+/* Symbol-Knöpfe in Tabellen (bearbeiten/löschen) kompakt, auch am Handy */
+.only-m{display:none}
+@media (max-width:640px){.hide-m{display:none!important}.only-m{display:inline}.tbl.card td,.tbl.card th{padding-left:10px;padding-right:8px}}
+td.acts,th.acts{width:1%;white-space:nowrap;padding-left:4px!important;padding-right:10px!important}
+td .btn.icon{min-height:34px;width:34px;height:34px;padding:0;justify-content:center;display:inline-flex;align-items:center}
+/* Menüs oben rechts: Text dunkel (sonst weiß auf weiß) */
+.top .right .drop{display:flex;flex-direction:column;align-items:stretch}
+.top .right .drop a,.top .right .drop button{color:var(--ink);text-align:left;white-space:normal}
+.top .right .drop a:hover{color:var(--brand)}
+@media (max-width:640px){details.dd>.drop.right{position:fixed;left:12px;right:12px;top:58px;min-width:0}}
 
 `;
 

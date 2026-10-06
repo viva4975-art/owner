@@ -137,16 +137,36 @@ export async function setTicketStatus(sql: Sql, id: string, status: string, acto
 export interface QmItem {
   id: string;
   name: string;
-  kind: 'note' | 'janein';
+  kind: 'note' | 'janein' | 'gms' | 'punkte';
   active: boolean;
   sort_order: number;
   version: number;
 }
 
 export const QM_KIND: Record<QmItem['kind'], string> = {
-  note: 'Skala (Note 1–6)',
-  janein: 'Ja / Nein',
+  note: 'Note 1 bis 6',
+  gms: 'Gut/Mittel/Schlecht',
+  janein: 'Ja/Nein',
+  punkte: 'Punkte 1 bis 5',
 };
+
+/** Auswahl je Bewertungsmodus, von schlecht (links) nach gut (rechts): gespeicherter Wert, Beschriftung, Prozent. */
+export const QM_SCALE: Record<QmItem['kind'], { v: number; label: string; pct: number }[]> = {
+  note: [6, 5, 4, 3, 2, 1].map((v) => ({ v, label: String(v), pct: (6 - v) * 20 })),
+  gms: [
+    { v: 3, label: 'Schlecht', pct: 0 },
+    { v: 2, label: 'Mittel', pct: 50 },
+    { v: 1, label: 'Gut', pct: 100 },
+  ],
+  janein: [
+    { v: 6, label: 'Nein', pct: 0 },
+    { v: 1, label: 'Ja', pct: 100 },
+  ],
+  punkte: [1, 2, 3, 4, 5].map((v) => ({ v, label: String(v), pct: (v - 1) * 25 })),
+};
+
+export const scaleLabel = (kind: QmItem['kind'], v: number) =>
+  QM_SCALE[kind].find((o) => o.v === v)?.label ?? String(v);
 
 export async function listQmItems(sql: Sql, all = true) {
   return sql<
@@ -164,12 +184,15 @@ export async function saveQmItem(
   if (!(p.kind in QM_KIND)) throw new BusinessError('Bewertungsart ungültig');
   const [dup] = await sql`select 1 from app.qm_items where lower(name) = lower(${name}) and id <> ${id}`;
   if (dup) throw new BusinessError(`„${name}“ gibt es schon`);
+  const [cur] = await sql<{ kind: string }[]>`select kind from app.qm_items where id = ${id}`;
+  if (cur && cur.kind !== p.kind && (await qmItemUsed(sql, id)))
+    throw new BusinessError('Bewertungsmodus nicht änderbar – der Gegenstand wurde schon in Audits bewertet');
   await sql`
     insert into app.qm_items (id, name, kind, active, sort_order)
     values (${id}, ${name}, ${p.kind}, ${p.active},
             ${p.sortOrder ?? sql`(select coalesce(max(sort_order), 0) + 10 from app.qm_items)`})
     on conflict (id) do update set name = excluded.name, kind = excluded.kind, active = excluded.active,
-      sort_order = excluded.sort_order`;
+      sort_order = ${p.sortOrder ?? sql`app.qm_items.sort_order`}`;
 }
 
 export async function roomTypeItems(sql: Sql) {
@@ -178,6 +201,81 @@ export async function roomTypeItems(sql: Sql) {
       from app.room_types t order by t.active desc, t.sort_order, t.name`;
   const links = await sql<{ room_type_id: string; item_id: string }[]>`select * from app.room_type_qm_items`;
   return { types, links: new Set(links.map((l) => `${l.room_type_id}:${l.item_id}`)) };
+}
+
+/** Wird der Kontrollgegenstand schon in Audits verwendet? (dann nicht löschen, Modus nicht ändern) */
+export async function qmItemUsed(sql: Sql, id: string) {
+  const [r] = await sql`select 1 from app.quality_check_ratings where item_id = ${id} limit 1`;
+  return !!r;
+}
+
+export async function deleteQmItem(sql: Sql, id: string) {
+  if (await qmItemUsed(sql, id))
+    throw new BusinessError('Wird in Audits verwendet – nicht löschbar. Bitte stattdessen deaktivieren.');
+  await sql`delete from app.qm_items where id = ${id}`;
+}
+
+export interface UsageType {
+  id: string;
+  name: string;
+  active: boolean;
+  version: number;
+  items: number;
+  rooms: number;
+  sites: number;
+}
+
+/** Nutzungsarten (= Raumarten des Raumbuchs) mit Anzahl Kontrollgegenstände, Räume und Objekte. */
+export async function listUsageTypes(sql: Sql) {
+  return sql<UsageType[]>`
+    select t.id, t.name, t.active, t.version,
+           (select count(*)::int from app.room_type_qm_items l join app.qm_items i on i.id = l.item_id and i.active
+             where l.room_type_id = t.id) as items,
+           (select count(*)::int from app.rooms r where r.room_type_id = t.id and r.active) as rooms,
+           (select count(distinct r.site_id)::int from app.rooms r where r.room_type_id = t.id and r.active) as sites
+      from app.room_types t order by t.active desc, t.sort_order, t.name`;
+}
+
+export async function usageTypeItemIds(sql: Sql, id: string) {
+  const r = await sql<{ item_id: string }[]>`
+    select l.item_id from app.room_type_qm_items l join app.qm_items i on i.id = l.item_id
+     where l.room_type_id = ${id} order by i.sort_order, i.name`;
+  return r.map((x) => x.item_id);
+}
+
+/** Nutzungsart anlegen/ändern mit ihren Kontrollgegenständen (mindestens einer, wie Fortytools). */
+export async function saveUsageType(
+  sql: Sql,
+  id: string,
+  p: { name: string; active: boolean; itemIds: string[]; expectedVersion: number | null },
+) {
+  const name = p.name.trim();
+  if (!name) throw new BusinessError('Bitte einen Namen angeben');
+  const ids = [...new Set(p.itemIds.filter((x) => /^[0-9a-f-]{36}$/.test(x)))];
+  if (!ids.length) throw new BusinessError('Bitte mindestens einen Kontrollgegenstand wählen');
+  const [cur] = await sql<{ version: number }[]>`select version from app.room_types where id = ${id}`;
+  if (cur && p.expectedVersion != null && cur.version !== p.expectedVersion)
+    throw new BusinessError('Die Nutzungsart wurde zwischenzeitlich geändert – bitte neu laden');
+  const [dup] = await sql`select 1 from app.room_types where lower(name) = lower(${name}) and id <> ${id}`;
+  if (dup) throw new BusinessError(`Nutzungsart „${name}“ gibt es schon`);
+  await sql.begin(async (tx) => {
+    await tx`
+      insert into app.room_types (id, name, performance_m2_per_h, sort_order, active)
+      values (${id}, ${name}, 200, (select coalesce(max(sort_order), 0) + 10 from app.room_types), ${p.active})
+      on conflict (id) do update set name = excluded.name, active = excluded.active`;
+    await tx`delete from app.room_type_qm_items where room_type_id = ${id}`;
+    await tx`insert into app.room_type_qm_items ${tx(ids.map((item_id) => ({ room_type_id: id, item_id })))}
+             on conflict do nothing`;
+  });
+}
+
+export async function deleteUsageType(sql: Sql, id: string) {
+  const [r] = await sql`select 1 from app.rooms where room_type_id = ${id} limit 1`;
+  if (r)
+    throw new BusinessError(
+      'Im Raumbuch gibt es Räume mit dieser Nutzungsart – nicht löschbar, bitte deaktivieren.',
+    );
+  await sql`delete from app.room_types where id = ${id}`;
 }
 
 /** Zuordnung komplett ersetzen (Matrix aus dem Formular: „Nutzungsart:Gegenstand“). */
@@ -195,7 +293,8 @@ export async function saveRoomTypeItems(sql: Sql, pairs: string[]) {
 // ---------------------------------------------------------------- Audit Raum für Raum
 
 /** Prozent je Bewertung: Note 1 = 100 % … 6 = 0 %; Ja/Nein: Ja (1) = 100 %, Nein (6) = 0 %. */
-export const ratingPercent = (v: number) => Math.round(((6 - v) * 100) / 5);
+export const ratingPercent = (v: number, kind: QmItem['kind'] = 'note') =>
+  QM_SCALE[kind].find((o) => o.v === v)?.pct ?? Math.round(((6 - v) * 100) / 5);
 
 export interface AuditRoom {
   id: string;
@@ -243,12 +342,12 @@ export async function auditRooms(sql: Sql, checkId: string, siteId: string, q = 
   const [{ all }] = (await sql`select count(*)::int as all from app.qm_items where active`) as unknown as [
     { all: number },
   ];
-  const ratings = await sql<{ room_id: string; value: number | null; skipped: boolean }[]>`
-    select room_id, value, skipped from app.quality_check_ratings where check_id = ${checkId}`;
+  const ratings = await sql<{ room_id: string; percent: number | null; skipped: boolean }[]>`
+    select room_id, percent, skipped from app.quality_check_ratings where check_id = ${checkId}`;
   const cnt = new Map(counts.map((c) => [c.room_type_id, c.n]));
   return rooms.map((r) => {
     const rs = ratings.filter((x) => x.room_id === r.id);
-    const vals = rs.filter((x) => !x.skipped && x.value != null).map((x) => ratingPercent(x.value!));
+    const vals = rs.filter((x) => !x.skipped && x.percent != null).map((x) => x.percent!);
     return {
       ...r,
       items: cnt.get(r.room_type_id) ?? all,
@@ -292,29 +391,33 @@ export async function saveRoomRatings(
   const [room] = await sql<{ name: string }[]>`
     select name from app.rooms where id = ${p.roomId} and site_id = ${qc.site_id}`;
   if (!room) throw new BusinessError('Raum gehört nicht zu diesem Objekt');
-  for (const r of p.ratings)
-    if (!r.skipped && (r.value == null || r.value < 1 || r.value > 6))
-      throw new BusinessError('Bewertung ungültig');
   const items = new Map((await listQmItems(sql)).map((i) => [i.id, i]));
+  for (const r of p.ratings) {
+    const it = items.get(r.itemId);
+    if (it && !r.skipped && (r.value == null || !QM_SCALE[it.kind].some((o) => o.v === r.value)))
+      throw new BusinessError(`Bewertung für „${it.name}“ ungültig`);
+  }
+  const pctOf = (r: { itemId: string; value: number | null; skipped: boolean }) =>
+    r.skipped || r.value == null ? null : ratingPercent(r.value, items.get(r.itemId)!.kind);
   await sql.begin(async (tx) => {
     for (const r of p.ratings) {
       if (!items.has(r.itemId)) continue;
       await tx`
-        insert into app.quality_check_ratings (id, check_id, room_id, item_id, value, skipped, note, photo_ids, rated_by)
+        insert into app.quality_check_ratings (id, check_id, room_id, item_id, value, percent, skipped, note,
+                                               photo_ids, rated_by)
         values (md5(${`qcr:${p.checkId}:${p.roomId}:${r.itemId}`})::uuid, ${p.checkId}, ${p.roomId}, ${r.itemId},
-                ${r.skipped ? null : r.value}, ${r.skipped}, ${r.note}, ${r.photoIds}, ${p.actor})
-        on conflict (check_id, room_id, item_id) do update set value = excluded.value, skipped = excluded.skipped,
+                ${r.skipped ? null : r.value}, ${pctOf(r)}, ${r.skipped}, ${r.note}, ${r.photoIds}, ${p.actor})
+        on conflict (check_id, room_id, item_id) do update set value = excluded.value, percent = excluded.percent,
+          skipped = excluded.skipped,
           note = excluded.note,
           photo_ids = (select array(select distinct unnest(app.quality_check_ratings.photo_ids || excluded.photo_ids))),
           rated_by = excluded.rated_by, rated_at = now()`;
     }
-    const rated = p.ratings.filter((r) => !r.skipped && r.value != null);
+    const rated = p.ratings.filter((r) => items.has(r.itemId) && pctOf(r) != null);
     if (!rated.length) return;
-    const pct = rated.map((r) => ratingPercent(r.value!));
+    const pct = rated.map((r) => pctOf(r)!);
     const score = Math.round(pct.reduce((a, b) => a + b, 0) / pct.length);
-    const weak = rated
-      .filter((r) => ratingPercent(r.value!) < 50)
-      .map((r) => items.get(r.itemId)?.name ?? '');
+    const weak = rated.filter((r) => pctOf(r)! < 50).map((r) => items.get(r.itemId)?.name ?? '');
     const notes = p.ratings.filter((r) => r.note).map((r) => `${items.get(r.itemId)?.name}: ${r.note}`);
     await tx`
       update app.quality_check_items set rating = ${score >= 75 ? 'ok' : 'mangel'},
@@ -328,7 +431,7 @@ export async function saveRoomRatings(
 export async function auditScore(sql: Sql, checkId: string) {
   const [r] = await sql<{ score: number | null }[]>`
     select round(avg(room_score))::int as score from (
-      select avg((6 - value) * 20.0) as room_score from app.quality_check_ratings
-       where check_id = ${checkId} and not skipped and value is not null group by room_id) x`;
+      select avg(percent) as room_score from app.quality_check_ratings
+       where check_id = ${checkId} and not skipped and percent is not null group by room_id) x`;
   return r?.score ?? null;
 }

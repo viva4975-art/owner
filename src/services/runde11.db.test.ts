@@ -21,6 +21,12 @@ import {
   qmSites,
   saveRoomRatings,
   setTicketStatus,
+  deleteQmItem,
+  deleteUsageType,
+  listQmItems,
+  saveQmItem,
+  saveUsageType,
+  usageTypeItemIds,
 } from './qm.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
@@ -146,16 +152,16 @@ describe.skipIf(!available)('Runde 11: Lohnarten und Urlaubsanspruch (Datenbank)
       checkId: qc,
       roomId: room,
       ratings: [
-        { itemId: by('Gesamteindruck'), value: 2, skipped: false, note: 'gut', photoIds: [] },
+        { itemId: by('Gesamteindruck'), value: 4, skipped: false, note: 'gut', photoIds: [] }, // Punkte 4 von 5 = 75 %
         { itemId: by('Boden'), value: 1, skipped: false, note: null, photoIds: [] },
         { itemId: by('Abfallbehälter geleert'), value: 6, skipped: false, note: 'voll', photoIds: [] },
         { itemId: by('Türen'), value: null, skipped: true, note: null, photoIds: [] },
       ],
       actor: 'qm',
     });
-    expect(await auditScore(sql, qc)).toBe(60); // (80 + 100 + 0) / 3
+    expect(await auditScore(sql, qc)).toBe(58); // (75 + 100 + 0) / 3
     const [r] = (await auditRooms(sql, qc, DEMO.siteSchool)).filter((x) => x.id === room);
-    expect([r!.rated, r!.score]).toEqual([4, 60]);
+    expect([r!.rated, r!.score]).toEqual([4, 58]);
     const [line] =
       await sql`select rating::text, defects from app.quality_check_items where check_id = ${qc} and room_id = ${room}`;
     expect(line!.rating).toBe('mangel');
@@ -168,6 +174,66 @@ describe.skipIf(!available)('Runde 11: Lohnarten und Urlaubsanspruch (Datenbank)
         actor: 'qm',
       }),
     ).rejects.toThrow(/ungültig/);
+  });
+
+  it('QM-Einstellungen: Gut/Mittel/Schlecht, Nutzungsart mit Gegenständen, Löschschutz', async () => {
+    const item = randomUUID();
+    await saveQmItem(sql, item, { name: 'Lichtschalter T', kind: 'gms', active: true, sortOrder: null });
+    const type = randomUUID();
+    await expect(
+      saveUsageType(sql, type, { name: 'Besprechung T', active: true, itemIds: [], expectedVersion: null }),
+    ).rejects.toThrow(/mindestens einen/);
+    await saveUsageType(sql, type, {
+      name: 'Besprechung T',
+      active: true,
+      itemIds: [item, '00000000-0000-4000-8000-0000000f0002', item],
+      expectedVersion: null,
+    });
+    expect(await usageTypeItemIds(sql, type)).toHaveLength(2);
+    const room = randomUUID();
+    await sql`insert into app.rooms (id, site_id, name, room_type_id, area_centi, visits_per_year)
+              values (${room}, ${DEMO.siteSchool}, 'Raum T', ${type}, 2000, 52)`;
+    await expect(deleteUsageType(sql, type)).rejects.toThrow(/nicht löschbar/);
+    const qc = randomUUID();
+    await createQualityCheck(
+      sql,
+      qc,
+      { siteId: DEMO.siteSchool, checkDate: '2026-10-06', inspector: 'QM', attendee: null },
+      'qm',
+    );
+    await expect(
+      saveRoomRatings(sql, {
+        checkId: qc,
+        roomId: room,
+        ratings: [{ itemId: item, value: 5, skipped: false, note: null, photoIds: [] }],
+        actor: 'qm',
+      }),
+    ).rejects.toThrow(/ungültig/);
+    await saveRoomRatings(sql, {
+      checkId: qc,
+      roomId: room,
+      ratings: [
+        { itemId: item, value: 2, skipped: false, note: null, photoIds: [] }, // Mittel = 50 %
+        {
+          itemId: '00000000-0000-4000-8000-0000000f0002',
+          value: 1,
+          skipped: false,
+          note: null,
+          photoIds: [],
+        },
+      ],
+      actor: 'qm',
+    });
+    const [r] = (await auditRooms(sql, qc, DEMO.siteSchool)).filter((x) => x.id === room);
+    expect(r!.score).toBe(75);
+    await expect(deleteQmItem(sql, item)).rejects.toThrow(/nicht löschbar/);
+    await expect(
+      saveQmItem(sql, item, { name: 'Lichtschalter T', kind: 'note', active: true, sortOrder: null }),
+    ).rejects.toThrow(/nicht änderbar/);
+    const spare = randomUUID();
+    await saveQmItem(sql, spare, { name: 'Spare T', kind: 'punkte', active: true, sortOrder: null });
+    await deleteQmItem(sql, spare);
+    expect((await listQmItems(sql)).some((i) => i.id === spare)).toBe(false);
   });
 
   it('Mitarbeiter: Beschäftigungsart als Tag, App-Sprache, Arbeitserlaubnis, Austritt und Wiedereintritt', async () => {

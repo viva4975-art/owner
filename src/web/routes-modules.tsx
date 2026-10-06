@@ -15,16 +15,14 @@ import {
   listTemplates,
   listWageLevels,
   saveEmployee,
-  setEmployeeSites,
   suggestPersonnelNo,
 } from '../services/employees.js';
 import { sollPlanIst } from '../services/hr-month.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { MonthBox } from './pages-hr.js';
 import { BusinessError } from '../services/errors.js';
-import { listUsers } from '../services/users.js';
+import { assigneeOptions } from '../services/crm.js';
 import { listInvoices } from '../services/invoices.js';
-import { listSites } from '../services/masterdata.js';
 import { listBalances, openItemLedger } from '../services/payments.js';
 import { upcomingEvents } from '../services/tenders.js';
 import { proposals } from '../services/dunning.js';
@@ -187,7 +185,7 @@ export function registerModuleRoutes(ctx: Ctx) {
             />
             {status === 'done' && <a href="/aufgaben">← offene Aufgaben</a>}
           </div>
-          <TaskForm newId={randomUUID()} back="/aufgaben" users={await listUsers(sql)} />
+          <TaskForm newId={randomUUID()} back="/aufgaben" users={await assigneeOptions(sql)} />
         </div>
       </>,
     );
@@ -479,7 +477,7 @@ export function registerModuleRoutes(ctx: Ctx) {
   app.get(`/personal/:id{${UUID}}/bearbeiten`, async (c) => {
     const id = c.req.param('id');
     const data = await getEmployee(sql, id);
-    const [sites, wageLevels] = await Promise.all([listSites(sql), listWageLevels(sql)]);
+    const wageLevels = await listWageLevels(sql);
     const form = (
       <EmployeeForm
         wageLevels={wageLevels}
@@ -487,8 +485,6 @@ export function registerModuleRoutes(ctx: Ctx) {
         e={data?.employee ?? { personnel_no: await suggestPersonnelNo(sql), employment_type: 'teilzeit' }}
         priv={data?.priv ?? {}}
         isNew={!data}
-        sites={sites.filter((s) => s.active)}
-        selectedSites={(data?.sites ?? []).map((s) => s.id)}
       />
     );
     if (!data) {
@@ -512,8 +508,7 @@ export function registerModuleRoutes(ctx: Ctx) {
     const parsed = employeeInput.safeParse(flat);
     if (!parsed.success) throw new BusinessError(parsed.error.issues.map((i) => i.message).join('\n'));
     await saveEmployee(sql, id, parsed.data, c.get('actor'));
-    const sites = body.sites;
-    await setEmployeeSites(sql, id, (Array.isArray(sites) ? sites : sites ? [sites] : []).map(String));
+    // Objekt-Zuordnung nicht mehr im Stammdatenformular (Ahmed 06.10.) – entsteht über Planung/Einsätze
     return back(c, `/personal/${id}`, { ok: 'Mitarbeiter gespeichert.' });
   });
 
@@ -527,7 +522,7 @@ export function registerModuleRoutes(ctx: Ctx) {
           newId={randomUUID()}
           entity={{ type: 'employee', id: e.id, label: `${e.first_name} ${e.last_name}` }}
           back={`/personal/${e.id}/aufgaben`}
-          users={await listUsers(sql)}
+          users={await assigneeOptions(sql)}
           title={c.req.query('titel')}
         />
       </>

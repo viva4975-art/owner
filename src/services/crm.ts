@@ -252,3 +252,24 @@ export async function setTaskDone(sql: Sql, id: string, done: boolean, actor: st
 }
 
 export const contactInputSchema = contactInput;
+
+/**
+ * Wer kann für Aufgaben zuständig sein: aktive Benutzer (Büro/Objektleitung) und Mitarbeitende mit Tag
+ * „Objektleitung“, „Büro“ oder „Verwaltung“ – keine Reinigungskräfte.
+ */
+export async function assigneeOptions(sql: Sql): Promise<{ name: string; group: 'Büro' | 'Objektleitung' }[]> {
+  const rows = await sql<{ name: string; grp: 'Büro' | 'Objektleitung' }[]>`
+    select p.display_name as name, case when p.role = 'objektleitung' then 'Objektleitung' else 'Büro' end as grp
+      from app.user_accounts a join app.profiles p on p.user_id = a.id where a.active
+    union
+    select e.first_name || ' ' || e.last_name,
+           case when exists (select 1 from unnest(e.tags) t where lower(t) like 'objektleit%') then 'Objektleitung' else 'Büro' end
+      from app.employees e
+     where e.status = 'aktiv'
+       and exists (select 1 from unnest(e.tags) t where lower(t) similar to '(objektleit|büro|buero|verwaltung)%')`;
+  const seen = new Set<string>();
+  return rows
+    .filter((r) => !seen.has(r.name.toLowerCase()) && seen.add(r.name.toLowerCase()))
+    .map((r) => ({ name: r.name, group: r.grp }))
+    .sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name, 'de'));
+}

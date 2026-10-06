@@ -362,10 +362,8 @@ export const EmployeeForm: FC<{
   e: Partial<Employee>;
   priv: Partial<EmployeePrivate>;
   isNew: boolean;
-  sites: { id: string; site_no: string; name: string; customer_name: string }[];
-  selectedSites: string[];
   wageLevels?: WageLevel[];
-}> = ({ id, e, priv, isNew, sites, selectedSites, wageLevels = [] }) => (
+}> = ({ id, e, priv, isNew, wageLevels = [] }) => (
   <form
     method="post"
     action={`/personal/${id}`}
@@ -536,23 +534,6 @@ export const EmployeeForm: FC<{
       <Field name="social_security_no" label="SV-Nummer" value={priv.social_security_no} />
       <Field name="health_insurance" label="Krankenkasse" value={priv.health_insurance} />
       <Field name="iban" label="IBAN" value={priv.iban} />
-    </div>
-    <h3 style="margin-top:20px">Objekte</h3>
-    <div class="grid">
-      {sites.map((s) => (
-        <div class="chk">
-          <input
-            type="checkbox"
-            id={`site-${s.id}`}
-            name="sites"
-            value={s.id}
-            checked={selectedSites.includes(s.id)}
-          />
-          <label for={`site-${s.id}`} style="margin:0">
-            {s.site_no} · {s.name} <span class="mut small">({s.customer_name})</span>
-          </label>
-        </div>
-      ))}
     </div>
     <div class="actions">
       <button class="btn">Speichern</button>

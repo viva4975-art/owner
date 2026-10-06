@@ -205,7 +205,7 @@ export const TaskForm: FC<{
   newId: string;
   entity?: { type: string; id: string; label: string } | null;
   back: string;
-  users?: { name: string; role: string; active: boolean }[];
+  users?: { name: string; group: 'Büro' | 'Objektleitung' }[];
   /** Vorbelegung, z. B. aus einer Notiz („+ Aufgabe hinzufügen“) */
   title?: string | undefined;
 }> = ({ newId, entity, back, users, title }) => (
@@ -227,20 +227,15 @@ export const TaskForm: FC<{
           <label for="assignee">Zuständig</label>
           <select id="assignee" name="assignee">
             <option value="">– niemand Bestimmtes –</option>
-            <optgroup label="Objektleitung">
-              {users
-                .filter((u) => u.active && u.role === 'objektleitung')
-                .map((u) => (
-                  <option value={u.name}>{u.name}</option>
-                ))}
-            </optgroup>
-            <optgroup label="Büro">
-              {users
-                .filter((u) => u.active && u.role !== 'objektleitung')
-                .map((u) => (
-                  <option value={u.name}>{u.name}</option>
-                ))}
-            </optgroup>
+            {(['Büro', 'Objektleitung'] as const).map((g) => (
+              <optgroup label={g}>
+                {users
+                  .filter((u) => u.group === g)
+                  .map((u) => (
+                    <option value={u.name}>{u.name}</option>
+                  ))}
+              </optgroup>
+            ))}
           </select>
         </div>
       ) : (

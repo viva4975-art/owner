@@ -71,7 +71,7 @@ export async function sitesOf(sql: Sql, customerIds: string[]) {
     { id: string; customer_id: string; site_no: string; name: string; active: boolean }[]
   >`
     select id, customer_id, site_no, name, active from app.sites
-     where customer_id = any(${customerIds}::uuid[]) order by active desc, name`;
+     where customer_id = any(${customerIds}::uuid[]) order by active desc, length(site_no), site_no`;
   const m = new Map<string, { id: string; site_no: string; name: string; active: boolean }[]>();
   for (const r of rows) m.set(r.customer_id, [...(m.get(r.customer_id) ?? []), r]);
   return m;

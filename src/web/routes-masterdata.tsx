@@ -3,7 +3,7 @@ import type { Context } from 'hono';
 import type { Child } from 'hono/jsx';
 import { contactInput, deleteContact, listContacts, listTasks, saveContact } from '../services/crm.js';
 import { BusinessError } from '../services/errors.js';
-import { listUsers } from '../services/users.js';
+import { assigneeOptions } from '../services/crm.js';
 import { monthBounds, todayBerlin } from '../domain/invoice/calc.js';
 import { billingPreview, runMonthly } from '../services/invoices.js';
 import {
@@ -528,7 +528,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
               newId={randomUUID()}
               entity={{ type, id: e.id, label: label(e as never) }}
               back={`${base}/${e.id}/aufgaben`}
-              users={await listUsers(sql)}
+              users={await assigneeOptions(sql)}
               title={c.req.query('titel')}
             />
           </>

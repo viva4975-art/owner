@@ -295,7 +295,7 @@ export async function listSites(sql: Sql, customerId?: string) {
                       where ss.site_id = s.id and ss.active and ss.kind = 'monthly_flat'), 0) as monthly_net_cents
       from app.sites s join app.customers c on c.id = s.customer_id
      where ${customerId ? sql`s.customer_id = ${customerId}` : sql`true`}
-     order by s.site_no`;
+     order by length(s.site_no), s.site_no`;
 }
 
 export async function getSite(sql: Sql, id: string) {

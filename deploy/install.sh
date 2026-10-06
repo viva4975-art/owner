@@ -4,7 +4,9 @@
 #   curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -o install.sh \
 #     https://raw.githubusercontent.com/viva4975-art/owner/claude/new-session-t3lg2s/deploy/install.sh
 #   bash install.sh
-# Fragt alle Zugangsdaten ab und schreibt sie NUR auf diesen Server (/opt/viva/deploy/.env.live, Rechte 600).
+# Alles auf diesem Server: Datenbank (Postgres), App, KoSIT, HTTPS, tägliche Sicherung.
+# Fragt die Zugangsdaten ab und schreibt sie NUR auf diesen Server (/opt/viva/deploy/.env.live, Rechte 600).
+# Das Datenbank-Passwort wird zufällig erzeugt.
 set -euo pipefail
 REPO="viva4975-art/owner"
 BRANCH="${BRANCH:-claude/new-session-t3lg2s}"
@@ -19,12 +21,11 @@ kv() {
   case "$2" in *"'"*) echo "Das Zeichen ' ist in $1 nicht erlaubt – bitte anderes Passwort wählen." >&2; exit 1 ;; esac
   printf "%s='%s'\n" "$1" "$2"
 }
-urlenc() { python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"; }
 
 say "1/6 System aktualisieren und Docker installieren"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q && apt-get upgrade -yq
-apt-get install -yq git curl ufw openssl python3 unattended-upgrades
+apt-get install -yq git curl ufw openssl unattended-upgrades
 command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh
 systemctl enable --now docker
 
@@ -49,13 +50,6 @@ if [ -f "$ENVF" ]; then
 else
   say "4/6 Zugangsdaten eingeben (bleiben nur auf diesem Server)"
   DOMAIN=$(ask "Adresse der App, z. B. app.viva-deluxe-reinigung.de")
-  REF=$(ask "Supabase Project ID / Reference ID (Settings → General)")
-  ANON=$(ask "Supabase anon public key (Settings → API Keys)")
-  SERVICE=$(ask_secret "Supabase service_role key (Settings → API Keys)")
-  echo "Supabase → Connect → Session pooler: die Adresse kopieren (mit [YOUR-PASSWORD] darin)"
-  DBURL=$(ask "Session-pooler-Adresse")
-  DBPW=$(ask_secret "Datenbank-Passwort (das beim Anlegen des Projekts vergeben wurde)")
-  DBURL="${DBURL/\[YOUR-PASSWORD\]/$(urlenc "$DBPW")}"
   ADMIN=$(ask "Benutzername für dich (erster Admin), z. B. ahmed")
   while :; do
     PW=$(ask_secret "Startpasswort für $ADMIN (mind. 8 Zeichen)")
@@ -68,12 +62,10 @@ else
     kv APP_ENV "test"
     kv APP_DOMAIN "$DOMAIN"
     kv PUBLIC_URL "https://$DOMAIN"
-    kv SUPABASE_PROJECT_REF "$REF"
-    kv SUPABASE_URL "https://$REF.supabase.co"
-    kv SUPABASE_REGION "eu-central-1"
-    kv SUPABASE_ANON_KEY "$ANON"
-    kv SUPABASE_SERVICE_ROLE_KEY "$SERVICE"
-    kv DATABASE_URL "$DBURL"
+    DBPW="$(openssl rand -hex 24)"
+    kv DB_HOSTING "eigen"
+    kv DB_PASSWORD "$DBPW"
+    kv DATABASE_URL "postgres://postgres:$DBPW@db:5432/viva"
     kv SESSION_SECRET "$(openssl rand -hex 32)"
     kv APP_BASIC_AUTH "$ADMIN:$PW"
     kv MAIL_TEST_RECIPIENT "$TESTMAIL"
@@ -87,6 +79,9 @@ else
   } > "$ENVF.neu"
   chmod 600 "$ENVF.neu" && mv "$ENVF.neu" "$ENVF"
 fi
+
+# tägliche Sicherung 02:30 (Datenbank + Dateien, 14 Tage)
+echo '30 2 * * * root /opt/viva/deploy/backup.sh >> /var/log/viva-backup.log 2>&1' > /etc/cron.d/viva-backup
 
 if [ ! -f /etc/cron.d/viva-update ]; then
   AUTO=$(ask "Neue Versionen automatisch einspielen (alle 10 Minuten prüfen)? j/n")

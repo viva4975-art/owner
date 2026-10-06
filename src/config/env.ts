@@ -16,6 +16,8 @@ const schema = z
     PORT: z.coerce.number().int().positive().default(3000),
     /** Direkte Postgres-Verbindung des Servers (Supabase: Session-Pooler, Port 5432). */
     DATABASE_URL: z.string().min(1),
+    /** supabase = Datenbank bei Supabase (Frankfurt); eigen = Postgres auf dem eigenen Server (z. B. IONOS, Docker). */
+    DB_HOSTING: z.enum(['supabase', 'eigen']).default('supabase'),
     SUPABASE_URL: z.url().optional(),
     SUPABASE_PROJECT_REF: z.string().min(1).optional(),
     SUPABASE_REGION: z.string().optional(),
@@ -63,9 +65,14 @@ const schema = z
       }
     }
 
-    if (env.APP_ENV === 'dev') {
+    if (env.APP_ENV === 'dev' || env.DB_HOSTING === 'eigen') {
       if (!/@(localhost|127\.0\.0\.1|\[::1\]|db|postgres)(:\d+)?\//.test(env.DATABASE_URL)) {
-        issue('DATABASE_URL', 'Im dev-Betrieb nur lokale Datenbank erlaubt');
+        issue(
+          'DATABASE_URL',
+          env.APP_ENV === 'dev'
+            ? 'Im dev-Betrieb nur lokale Datenbank erlaubt'
+            : 'Mit DB_HOSTING=eigen nur die Datenbank auf diesem Server (db/localhost) erlaubt',
+        );
       }
     } else {
       for (const key of [
@@ -110,6 +117,11 @@ const schema = z
   });
 
 export type Env = z.infer<typeof schema>;
+
+/** Datenbank liegt auf dem eigenen Server/Rechner (reines Postgres mit Supabase-Shim) statt bei Supabase. */
+export function isSelfHostedDb(env: Pick<Env, 'APP_ENV' | 'DB_HOSTING'>): boolean {
+  return env.APP_ENV === 'dev' || env.DB_HOSTING === 'eigen';
+}
 
 export function loadEnv(source: Record<string, string | undefined> = process.env): Env {
   const result = schema.safeParse(source);

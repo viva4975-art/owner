@@ -1,7 +1,7 @@
 # Testbetrieb auf einem IONOS-Server – Anleitung
 
-Ergebnis: Die App läuft unter `https://app.viva-deluxe-reinigung.de` (Testbetrieb). Daten liegen in Supabase Frankfurt,
-Dateien auf dem Server. Alle Mails gehen nur an die Testadresse. Fortytools und die alte App bleiben unberührt.
+Ergebnis: Die App läuft unter `https://app.viva-deluxe-reinigung.de` (Testbetrieb). **Alles auf einem IONOS-Server:**
+Datenbank, Dateien, Rechnungsprüfung (KoSIT), HTTPS, tägliche Sicherung. Kein Supabase nötig. Alle Mails gehen nur an die Testadresse. Fortytools und die alte App bleiben unberührt.
 
 **Wichtig:** Nicht das normale IONOS-Webhosting – das kann keine App mit Server. Es braucht einen **VPS** (eigener
 Linux-Server). Alle Passwörter und Schlüssel werden nur auf dem Server eingegeben – nie in den Chat.
@@ -13,15 +13,10 @@ Linux-Server). Alle Passwörter und Schlüssel werden nur auf dem Server eingege
    Unter Netzwerk → Firewall-Richtlinien die Ports **22, 80, 443** freigeben.
 2. **Adresse einrichten** (IONOS → Domains & SSL → viva-deluxe-reinigung.de → DNS): neuer Eintrag **A**, Hostname
    `app`, Zeigt auf = IP des VPS. Wirksam meist nach wenigen Minuten (bis 1 Std.).
-3. **Supabase-Werte bereitlegen** (supabase.com → Projekt in Frankfurt):
-   - Project Settings → General → **Project ID**
-   - Project Settings → API Keys → **anon public** und **service_role** (geheim)
-   - oben **Connect** → **Session pooler** → Adresse kopieren (enthält `[YOUR-PASSWORD]`)
-   - **Datenbank-Passwort** (beim Anlegen vergeben; vergessen → Project Settings → Database → Reset password)
-4. **GitHub-Schlüssel** (github.com → Profilbild → Settings → Developer settings → Personal access tokens →
+3. **GitHub-Schlüssel** (github.com → Profilbild → Settings → Developer settings → Personal access tokens →
    Fine-grained tokens → Generate): Repository access „Only select repositories“ → `viva4975-art/owner`;
    Permissions → Repository → **Contents: Read-only**; Ablauf 1 Jahr. Schlüssel kopieren.
-5. **Testadresse** für Mails (z. B. deine eigene). Optional Mailzugang (IONOS-Postfach: `smtp.ionos.de`, Port 587,
+4. **Testadresse** für Mails (z. B. deine eigene). Optional Mailzugang (IONOS-Postfach: `smtp.ionos.de`, Port 587,
    Benutzer = Mailadresse). Ohne Mailzugang läuft alles außer Versand.
 
 ## Teil B – Installieren (ca. 15 Min.)
@@ -36,7 +31,7 @@ Linux-Server). Alle Passwörter und Schlüssel werden nur auf dem Server eingege
    bash install.sh
    ```
 
-3. Das Skript fragt nacheinander: Adresse der App, Supabase-Werte, dein Benutzername + Startpasswort, Testadresse,
+3. Das Skript fragt nacheinander: Adresse der App, dein Benutzername + Startpasswort, Testadresse,
    Mailzugang (leer = aus), automatische Updates (`j`). Danach baut es die App (5–10 Min.) und meldet
    „Fertig: https://app.viva-deluxe-reinigung.de“.
 4. Adresse öffnen, anmelden, **Passwort ändern**, unter Einstellungen → Firma die Daten prüfen, unter
@@ -48,6 +43,12 @@ Linux-Server). Alle Passwörter und Schlüssel werden nur auf dem Server eingege
   von 10 Minuten selbst ein (Seite neu laden). Von Hand: `bash /opt/viva/deploy/update.sh`.
 - **Wenn etwas hakt:** `cd /opt/viva/deploy && docker compose logs --tail 50 app` – Ausgabe als Foto/Text schicken
   (prüfen, dass kein Passwort darin steht).
+- **Sicherung:** jede Nacht um 2:30 Datenbank + Dateien nach `/opt/viva-sicherung` (14 Tage). Von Hand:
+  `bash /opt/viva/deploy/backup.sh`. Diese Sicherung liegt auf demselben Server – deshalb **IONOS Cloud Backup**
+  dazubuchen (sichert außerhalb des Servers), spätestens vor dem Echtbetrieb.
+- **Wiederherstellen (Datenbank):**
+  `cd /opt/viva/deploy && docker compose --env-file .env.live exec -T db pg_restore -U postgres -d viva --clean < /opt/viva-sicherung/datenbank_<Datum>.dump`
+  – nur nach Rücksprache, überschreibt den aktuellen Stand.
 - **Zugangsdaten ändern:** `nano /opt/viva/deploy/.env.live`, danach `bash /opt/viva/deploy/update.sh`.
 
 ## Was im Testbetrieb gilt
@@ -56,7 +57,7 @@ Linux-Server). Alle Passwörter und Schlüssel werden nur auf dem Server eingege
   dem Echtbetrieb entfernt und der Nummernkreis auf den Fortytools-Stand gesetzt – bis dahin schreibt Fortytools die
   echten Rechnungen. Vor dem Entfernen wird gefragt.
 - Hochgeladene Dateien und Rechnungs-PDFs liegen auf dem Server (Laufwerk `daten`) – **noch kein revisionssicheres
-  Archiv** (GoBD, 10 Jahre, Object Lock) und keine Sicherung. Für den Test ok; vor dem Echtbetrieb: IONOS-Backup bzw.
-  S3-Speicher mit Object Lock, Supabase Point-in-Time-Recovery.
-- **Datenschutz:** Echte Personaldaten → Auftragsverarbeitungsvertrag mit IONOS (Kundencenter → Datenschutz) und mit
-  Supabase (Dashboard → Organization → Legal/DPA) abschließen.
+  Archiv** (GoBD, 10 Jahre, Object Lock). Für den Test ok; vor dem Echtbetrieb: IONOS-Backup bzw.
+  S3-Speicher mit Object Lock (z. B. IONOS S3 Object Storage) für das Rechnungsarchiv.
+- **Datenschutz:** Echte Personaldaten → Auftragsverarbeitungsvertrag mit IONOS abschließen (Kundencenter →
+  Datenschutz). Nur ein Anbieter, Rechenzentrum Deutschland.

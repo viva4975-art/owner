@@ -1,4 +1,10 @@
-# Umzug auf Supabase (Frankfurt) – Schritt für Schritt
+# Betrieb – Varianten
+
+**Entscheidung 06.10.2026 (Ahmed): alles auf einem IONOS-Server** (Datenbank im Docker-Verbund, `DB_HOSTING=eigen`) –
+Anleitung `docs/IONOS.md`. Die Supabase-Variante unten bleibt technisch möglich (`DB_HOSTING=supabase`), wird aber
+derzeit nicht genutzt.
+
+# Variante Supabase (Frankfurt) – Schritt für Schritt
 
 Gilt für das **neue** Projekt in Frankfurt (`eu-central-1`). Das alte Projekt `essogronliskkfhocxst` lehnt die App
 hart ab (Konfiguration startet nicht).

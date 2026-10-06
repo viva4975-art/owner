@@ -91,15 +91,15 @@ Testadresse.
 
 ## Offene Punkte (von Ahmed zu liefern)
 
-- [x] Neues Supabase-Projekt (Frankfurt) angelegt (Ahmed, 04.10.) – [ ] Zugangsdaten als Umgebungsvariablen hinterlegen
-      (Anleitung `docs/LIVE.md`, Variablennamen dort; nie in den Chat)
+- [x] ~~Supabase-Projekt Frankfurt~~ – seit 06.10. nicht mehr nötig (alles auf IONOS); Projekt kann später gelöscht werden (vorher fragen)
 - [ ] Fortytools-Export: Kunden, Objekte, Leistungen/Preise, 3–5 Beispielrechnungen inkl. XRechnung
       (auch als PDF – für den Layout-Abgleich „sieht aus wie heute“)
 - [ ] Bestätigen: Nummernkreis von Fortytools fortführen (umgesetzt, Startwert vor Live-Start setzen)
 - [ ] Lieferantennummern bei Behörden, Leitweg-IDs der Behörden-Kunden (Steuernummer 143/190/63154 vom Briefpapier übernommen)
 - [ ] Absender-Adresse für Rechnungen (z. B. rechnung@viva-deluxe-reinigung.de) + Mail-Zugang (SMTP)
 - [ ] Testadresse für den Prototyp-Versand
-- [ ] IONOS VPS bestellen, DNS `app` → Server-IP, Installation nach `docs/IONOS.md`; AVV mit IONOS und Supabase
+- [ ] IONOS VPS bestellen (8 GB, Ubuntu, ohne Apps/Plesk), DNS `app` → Server-IP, Installation nach `docs/IONOS.md`;
+      AVV mit IONOS; IONOS Cloud Backup (Sicherung außerhalb des Servers)
 - [ ] Lexware-Lohnprogramm (genaue Bezeichnung, Importformat)
 - [ ] Fortytools: eine Rechnungsgruppe von innen zeigen (dort stecken vermutlich die Preise je Objekt)
 - [ ] Briefpapier ab 01.11.2026 (neue Adresse) als Datei vom Grafiker, 300 dpi
@@ -595,4 +595,15 @@ Testadresse.
     Browser-Tests e2e/einkauf/auftrag gegen den Container grün. Noch nicht gegen das echte Supabase-Projekt gelaufen.
   - Behoben: Ohne SMTP-Zugang startete die App nicht. Jetzt startet sie; Versand von Rechnungen/Mahnungen wird vorab mit
     Hinweis abgelehnt (kein Versandeintrag, kein „unklar“-Status).
-
+- 2026-10-06: **Alles auf IONOS statt Supabase** (Ahmed: „alles in einem, günstiger“) – ersetzt die Entscheidung
+  „Supabase bleibt“:
+  - Postgres 16 im Docker-Verbund auf dem VPS (nur internes Netz), `DB_HOSTING=eigen`: Migrationen mit Supabase-Shim
+    (`auth.uid()`, Rollen) wie lokal, RLS bleibt, Konten in `app.user_accounts`/`auth.users` lokal. Konfiguration lehnt mit
+    `eigen` jede Datenbank außerhalb des Servers ab. Supabase-Variante bleibt im Code (`DB_HOSTING=supabase`).
+  - Firmenstamm wird beim Start angelegt, falls leer (Fund: frische Datenbank hatte keine Firmendaten → keine Rechnungen).
+  - Sicherung `deploy/backup.sh` täglich 02:30 (pg_dump + Dateien, 14 Tage) nach `/opt/viva-sicherung`; Wiederherstellung
+    geprüft. **Risiko:** Sicherung liegt auf demselben Server → IONOS Cloud Backup dazubuchen; GoBD-Archiv mit Object Lock
+    (z. B. IONOS S3) vor dem Echtbetrieb.
+  - Geprüft: kompletter Verbund (Postgres + App + KoSIT) hier gestartet, leere DB → Migration + Firmenstamm, Anmeldung mit
+    Sonderzeichen-Passwort, Browser-Tests e2e/einkauf/auftrag/module/import grün; Rechte-Test braucht HTTPS (sichere
+    Cookies außerhalb dev) – auf dem Server über Caddy gegeben.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadEnv } from './env.js';
+import { isSelfHostedDb, loadEnv } from './env.js';
 
 const test = {
   APP_ENV: 'test',
@@ -22,7 +22,30 @@ const dev = {
   APP_BASIC_AUTH: 'ahmed:geheim1234',
 };
 
+const eigen = {
+  APP_ENV: 'test',
+  DB_HOSTING: 'eigen',
+  DATABASE_URL: 'postgres://postgres:pw@db:5432/viva',
+  MAIL_TEST_RECIPIENT: 'test@example.com',
+  APP_BASIC_AUTH: 'ahmed:geheim1234',
+  SESSION_SECRET: 'x'.repeat(40),
+};
+
 describe('loadEnv', () => {
+  it('eigener Server (DB_HOSTING=eigen) ohne Supabase', () => {
+    const env = loadEnv(eigen);
+    expect(isSelfHostedDb(env)).toBe(true);
+    expect(isSelfHostedDb(loadEnv(test))).toBe(false);
+  });
+
+  it('eigener Server nur mit Datenbank auf dem Server', () => {
+    expect(() => loadEnv({ ...eigen, DATABASE_URL: test.DATABASE_URL })).toThrow(/auf diesem Server/);
+  });
+
+  it('eigener Server braucht SESSION_SECRET', () => {
+    expect(() => loadEnv({ ...eigen, SESSION_SECRET: undefined })).toThrow(/SESSION_SECRET/);
+  });
+
   it('akzeptiert eine gültige Test-Konfiguration', () => {
     expect(loadEnv(test).APP_ENV).toBe('test');
   });

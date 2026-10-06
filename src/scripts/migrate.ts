@@ -1,4 +1,4 @@
-import { loadEnv } from '../config/env.js';
+import { isSelfHostedDb, loadEnv } from '../config/env.js';
 import { createSql } from '../db/client.js';
 import { migrate } from '../db/migrate.js';
 
@@ -6,11 +6,16 @@ import { migrate } from '../db/migrate.js';
  * Migrationen einspielen.
  *   lokal:     npm run db:migrate
  *   Supabase:  npm run db:migrate:supabase -- --projekt=<projekt-ref>
+ *   Eigener Server (DB_HOSTING=eigen): ohne Bestätigung, Datenbank ist nur dort erreichbar
  * Für Supabase muss der Projekt-Ref zur Sicherheit zusätzlich auf der Kommandozeile stehen und mit
  * SUPABASE_PROJECT_REF übereinstimmen (Schutz gegen das falsche Projekt; das alte Projekt lehnt loadEnv ohnehin ab).
  */
 const env = loadEnv();
-if (env.APP_ENV !== 'dev') {
+const selfHosted = isSelfHostedDb(env);
+if (selfHosted && env.APP_ENV !== 'dev') {
+  console.log(`Ziel: eigene Datenbank auf diesem Server, Umgebung ${env.APP_ENV}`);
+}
+if (!selfHosted) {
   const arg = process.argv.find((a) => a.startsWith('--projekt='))?.slice('--projekt='.length);
   if (!arg || arg !== env.SUPABASE_PROJECT_REF) {
     console.error(
@@ -24,7 +29,7 @@ if (env.APP_ENV !== 'dev') {
 }
 const sql = createSql(env.DATABASE_URL);
 try {
-  const done = await migrate(sql, { local: env.APP_ENV === 'dev' });
+  const done = await migrate(sql, { local: selfHosted });
   console.log(done.length ? `Eingespielt: ${done.join(', ')}` : 'Datenbank ist aktuell.');
 } finally {
   await sql.end();

@@ -13,4 +13,6 @@ if [ -n "${SUPABASE_PROJECT_REF:-}" ]; then
 else
   npx tsx src/scripts/migrate.ts
 fi
+# Firmenstamm (Viva-Deluxe GmbH, Bankverbindungen) beim ersten Start anlegen – vorhandene Daten bleiben unverändert
+npx tsx src/scripts/seed.ts
 exec npx tsx src/server.ts

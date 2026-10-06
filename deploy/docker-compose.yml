@@ -1,11 +1,30 @@
-# Betrieb auf einem eigenen Server (z. B. IONOS VPS): App + Caddy (HTTPS automatisch über Let's Encrypt).
+# Betrieb auf einem eigenen Server (IONOS VPS): Datenbank (Postgres) + App + Caddy (HTTPS über Let's Encrypt).
+# Die Datenbank ist nur im internen Docker-Netz erreichbar, nicht von außen.
 # Start: docker compose -f deploy/docker-compose.yml --env-file deploy/.env.live up -d --build
+name: viva
 services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: viva
+    volumes:
+      - datenbank:/var/lib/postgresql/data
+    shm_size: 256mb
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'postgres', '-d', 'viva']
+      interval: 10s
+      timeout: 5s
+      retries: 10
   app:
     build: ..
     env_file: .env.live
     init: true
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
       - daten:/data
     expose:
@@ -31,6 +50,7 @@ services:
     depends_on:
       - app
 volumes:
+  datenbank:
   daten:
   caddy_data:
   caddy_config:

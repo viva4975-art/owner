@@ -558,6 +558,77 @@ a.bs-tr:hover{text-decoration:none;background:var(--head)}
 .tp-foot .small{margin-right:auto}
 @media (max-width:700px){.tp-row{grid-template-columns:1fr}.tp-ic{display:none}}
 
+/* ===================================================================================================
+   Modernes Erscheinungsbild (Ahmed 06.10.2026, Runde 6: „moderner“, Vorbild: altes Viva-Portal):
+   Inter, warmes Off-White, weiße Karten mit feiner Linie und weichem Schatten, Radius 10–14 px,
+   Bordeaux nur für Kopfzeile, Hauptknöpfe und Markierungen; Pillen-Schilder, Reiter als Unterstreichung.
+   Ersetzt das „klassische“ Erscheinungsbild weiter oben (bleibt als Grundlage stehen).
+   =================================================================================================== */
+:root{--r:12px;--r-sm:8px;--bg:#f6f5f2;--line:#e9e6e1;--line-2:#d8d3cc;--head:#f7f6f3;--panel:#fff;
+  --ink:#1a1a1a;--ink-2:#2f2c28;--mut:#6b6862;--faint:#9a9690;
+  --sh:0 1px 2px rgba(26,20,16,.04),0 1px 3px rgba(26,20,16,.05);--sh-2:0 14px 36px rgba(26,20,16,.14)}
+body{font:14px/1.55 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-feature-settings:"cv11","ss01";-webkit-font-smoothing:antialiased;background:var(--bg);color:var(--ink)}
+/* Kopf: Bordeaux mit Logo-Karte, Suche als helle Pille */
+.top{background:linear-gradient(180deg,#6a1430,#5a0f28);border-bottom:0}
+.top .in{height:60px}
+.top .logo{background:#fff;padding:5px 10px;border-radius:10px;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.search input{height:38px;border-radius:999px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.96)}
+.search input:focus{background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.25)}
+.search kbd{border-radius:6px}
+.gear{border-radius:10px}
+.env{border-radius:999px}
+/* Menü: weiß, aktiver Punkt unterstrichen */
+nav.menu{background:rgba(255,255,255,.95);backdrop-filter:saturate(1.4) blur(8px);-webkit-backdrop-filter:saturate(1.4) blur(8px);border-bottom:1px solid var(--line);box-shadow:0 1px 0 rgba(0,0,0,.02)}
+nav.menu .in{padding:0 16px;gap:2px}
+nav.menu .item>summary,nav.menu a.item{height:48px;border-radius:0;color:var(--ink-2);font-weight:550;padding:0 14px;border-bottom:2px solid transparent}
+nav.menu .item>summary:hover,nav.menu a.item:hover,nav.menu details[open]>summary{background:transparent;color:var(--brand)}
+nav.menu .item.on>summary,nav.menu a.item.on{background:transparent;color:var(--brand);border-bottom-color:var(--brand)}
+details.dd>.drop{border-radius:12px;padding:6px;border:1px solid var(--line);box-shadow:var(--sh-2)}
+.drop a{border-radius:8px;padding:8px 12px}
+.drop a:hover{background:var(--brand-50);color:var(--brand)}
+main{padding-top:28px}
+h1{font-size:28px;font-weight:750;letter-spacing:-.025em;color:var(--ink)}
+h1 .no{font-weight:500;color:var(--faint)}
+h2{font-size:19px;font-weight:700;letter-spacing:-.01em;color:var(--ink)}
+h3{font-size:15px;font-weight:650}
+.crumbs{font-size:12.5px;font-weight:600}
+.crumbs a{color:var(--brand)}
+/* Flächen */
+.card,.tbl,.kpi,.side-col>.panel{border-radius:14px;border:1px solid var(--line);box-shadow:var(--sh);background:#fff}
+.card:hover{box-shadow:var(--sh)}
+.formfoot{border-radius:0 0 14px 14px;background:var(--head)}
+.kpi .v{font-weight:750;letter-spacing:-.02em}
+.empty,.empty-line{border-radius:12px;border:1px dashed var(--line-2);background:#fff;color:var(--mut)}
+.flash{border-radius:12px}
+/* Knöpfe & Felder */
+.btn{border-radius:10px;height:38px;font-weight:600;box-shadow:0 1px 2px rgba(125,20,53,.2)}
+.btn:hover{background:var(--brand-d);border-color:var(--brand-d)}
+.btn.sm{height:30px;border-radius:8px}
+.btn.sec{background:#fff;color:var(--ink-2);border-color:var(--line-2);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.btn.sec:hover{background:var(--head);border-color:var(--ink-2);color:var(--ink)}
+input,select,textarea{border-radius:10px;height:40px;border-color:var(--line-2)}
+textarea{height:auto}
+input:focus,select:focus,textarea:focus{border-color:#b89d6e;box-shadow:0 0 0 3px rgba(184,157,110,.22);outline:none}
+/* Tabellen */
+th{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:650;color:var(--mut);background:var(--head)}
+tbody tr:hover td{background:#faf9f7}
+/* Schilder als Pillen */
+.badge{border-radius:999px;padding:2px 10px;font-weight:600}
+.tag{border-radius:999px;padding:1px 9px}
+.chips a{border-radius:999px}
+.chips a.on{background:var(--ink);border-color:var(--ink)}
+.tabs .cnt{border-radius:999px}
+/* Reiter: Unterstreichung, Inhalt in weißer Karte */
+.tabs{gap:4px;border-bottom:1px solid var(--line)}
+.tabs a,.tabs summary{border:0;border-bottom:2px solid transparent;border-radius:0;color:var(--mut);font-weight:600;padding:10px 14px;margin-bottom:-1px;background:transparent}
+.tabs a:hover,.tabs summary:hover{color:var(--ink);background:transparent}
+.tabs a.on{background:transparent;border:0;border-bottom:2px solid var(--brand);color:var(--ink)}
+.tabbody{border:1px solid var(--line);border-top:0;border-radius:0 0 14px 14px;box-shadow:var(--sh)}
+.side-col .panel-head{background:var(--head);border-radius:14px 14px 0 0}
+.panel-title{font-weight:700;letter-spacing:-.01em}
+.pagehead{margin-bottom:18px}
+.side-card,.info-col,.side-col{overflow-wrap:anywhere}
+
 `;
 
 export const euro = (c: bigint) => formatEuro(c as Cents);

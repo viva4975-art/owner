@@ -782,3 +782,8 @@ Testadresse.
     Offenen Termin anklicken → Serie zum Besetzen; geplanten Termin anklicken → Tag umplanen/Vertretung/Ausfall (zurück in
     die Tafel). „Vertriebskondition/Lohnkondition“ und „Weitere Tätigkeit“ aus Fortytools noch nicht übernommen.
   - Tests: 295 Unit-/DB-Tests (neu `shift-series.db.test.ts`), `e2e:planung` neu (24 Prüfungen), `e2e:zeit` angepasst.
+- 2026-10-06: Runde 6d – Design moderner (Ahmed: „muss moderner wirken“), Formensprache des alten Viva-Portals für die ganze
+  App: Schrift Inter, warmes Off-White, weiße Karten mit feiner Linie und weichem Schatten (Radius 12–14 px), Bordeaux-
+  Kopfzeile mit Logo-Karte und Suchpille, weißes Menü mit unterstrichenem aktiven Punkt, Pillen-Schilder, Reiter als
+  Unterstreichung, Knöpfe/Felder mit 8–10 px Radius und goldenem Fokus. Neuer CSS-Block am Ende von `layout.tsx` (der
+  klassische Block bleibt als Grundlage darunter, wird überschrieben).

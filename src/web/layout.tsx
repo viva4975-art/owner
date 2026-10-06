@@ -415,6 +415,20 @@ h2.form-section:first-of-type{margin-top:4px}
 @media (max-width:1000px){.cust-overview,.revenue{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:700px){.tabbody{padding:12px}.tabs a,.tabs summary{padding:8px 10px}}
 
+/* Kunde/Objekt: Infospalte links, Reiter rechts (auf jeder Unterseite sichtbar) */
+.entity-layout{display:grid;grid-template-columns:290px minmax(0,1fr);gap:20px;align-items:start}
+.info-col>.panel{background:#fff;border:1px solid var(--line-2);border-radius:3px;margin-bottom:14px}
+.info-col .panel-head{margin:0;padding:9px 14px;font-size:15px;background:#f3f4f6;border-bottom:1px solid var(--line);font-weight:600}
+.info-col .panel>:not(.panel-head):not(.side-actions){margin-left:14px;margin-right:14px}
+.info-col .panel>:last-child{margin-bottom:12px}
+.info-col .side-card{padding:12px 0}
+.info-col .side-card>*{margin-left:14px;margin-right:14px}
+.info-col .side-actions{float:right;margin-right:12px}
+.info-col .kv{grid-template-columns:auto 1fr;gap:4px 10px;margin-top:8px}
+.content-col{min-width:0}
+.main-col>*{margin-bottom:26px}
+@media (max-width:1000px){.entity-layout{grid-template-columns:minmax(0,1fr)}}
+
 `;
 
 export const euro = (c: bigint) => formatEuro(c as Cents);

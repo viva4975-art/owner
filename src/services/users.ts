@@ -31,6 +31,7 @@ export interface User {
   login: string;
   name: string;
   email: string | null;
+  phone: string | null;
   role: Role;
   active: boolean;
   must_change_password: boolean;
@@ -61,7 +62,7 @@ async function verify(pw: string, stored: string) {
 }
 
 const userSelect = (sql: Sql) => sql`
-  select a.id, a.login, p.display_name as name, p.email, p.role::text as role, a.active, a.must_change_password,
+  select a.id, a.login, p.display_name as name, p.email, p.phone, p.role::text as role, a.active, a.must_change_password,
          a.locked_until, a.last_login_at, a.version
     from app.user_accounts a join app.profiles p on p.user_id = a.id`;
 
@@ -136,6 +137,7 @@ export async function updateUser(
   p: {
     name: string;
     email: string | null;
+    phone?: string | null;
     role: Role;
     active: boolean;
     siteIds: string[];
@@ -157,6 +159,7 @@ export async function updateUser(
       if (n === 0) throw new BusinessError('Mindestens ein aktiver Admin muss bleiben');
     }
     await tx`update app.profiles set display_name = ${p.name.trim()}, role = ${p.role}, email = ${p.email} where user_id = ${id}`;
+    if (p.phone !== undefined) await tx`update app.profiles set phone = ${p.phone} where user_id = ${id}`;
     await tx`update app.user_accounts set active = ${p.active} where id = ${id}`;
     // Objekt-Zuordnung (nur Objektleitung)
     await tx`update app.sites set manager_user_id = null where manager_user_id = ${id}

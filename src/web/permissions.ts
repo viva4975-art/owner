@@ -23,12 +23,15 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/auswertungen\/dienste([/.]|$)/, ALL],
   [/^\/auswertungen\/?$/, ALL],
   // Objekte: Objektleitung nur eigene und ohne Preise/Rechnungen/Bearbeiten
-  [/^\/objekte\/[0-9a-f-]{36}\/(leistungen|rechnungen|rechnungsangaben|bearbeiten|regie-abrechnen)/, OFFICE],
+  [
+    /^\/objekte\/[0-9a-f-]{36}\/(leistungen|rechnungen|rechnungsangaben|bearbeiten|regie-abrechnen|angebote)/,
+    OFFICE,
+  ],
   [/^\/objekte\/(export\.csv|qr-druck)$/, ['admin', 'buchhaltung', 'objektleitung']],
   [/^\/arbeitsscheine(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
   [/^\/(qualitaet|zaehler|sonderdienste)(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
   [
-    /^\/objekte\/[0-9a-f-]{36}(\/(einsaetze|zeiten|qr|notizen|aufgaben|arbeitsscheine|raumbuch|stundenvorgabe|qualitaet|zaehler)([/.]|$)|$)/,
+    /^\/objekte\/[0-9a-f-]{36}(\/(einsaetze|zeiten|qr|notizen|aufgaben|arbeitsscheine|raumbuch|stundenvorgabe|qualitaet|zaehler|dokumente|schluessel)([/.]|$)|$)/,
     ['admin', 'buchhaltung', 'objektleitung', 'personal'],
   ],
   [/^\/objekte\/?$/, ['admin', 'buchhaltung', 'objektleitung']],

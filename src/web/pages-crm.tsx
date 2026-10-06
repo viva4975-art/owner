@@ -233,7 +233,8 @@ export const TaskForm: FC<{
   newId: string;
   entity?: { type: string; id: string; label: string } | null;
   back: string;
-}> = ({ newId, entity, back }) => (
+  users?: { name: string; role: string; active: boolean }[];
+}> = ({ newId, entity, back, users }) => (
   <form method="post" action="/aufgaben" class="card" data-autosave={`/aufgaben#${entity?.id ?? 'neu'}`}>
     <h3>Neue Aufgabe{entity ? ` für ${entity.label}` : ''}</h3>
     <input type="hidden" name="id" value={newId} />
@@ -245,15 +246,36 @@ export const TaskForm: FC<{
       </>
     )}
     <div class="grid">
-      <div style="grid-column:span 2">
-        <Field name="title" label="Was ist zu tun? *" required />
-      </div>
+      <Field name="title" label="Was ist zu tun? *" required />
       <Field name="due_date" label="Fällig am" type="date" />
-      <Field name="assignee" label="Zuständig" />
-    </div>
-    <div style="margin-top:10px">
-      <label for="description">Beschreibung</label>
-      <textarea id="description" name="description" />
+      {users ? (
+        <div>
+          <label for="assignee">Zuständig</label>
+          <select id="assignee" name="assignee">
+            <option value="">– niemand Bestimmtes –</option>
+            <optgroup label="Objektleitung">
+              {users
+                .filter((u) => u.active && u.role === 'objektleitung')
+                .map((u) => (
+                  <option value={u.name}>{u.name}</option>
+                ))}
+            </optgroup>
+            <optgroup label="Büro">
+              {users
+                .filter((u) => u.active && u.role !== 'objektleitung')
+                .map((u) => (
+                  <option value={u.name}>{u.name}</option>
+                ))}
+            </optgroup>
+          </select>
+        </div>
+      ) : (
+        <Field name="assignee" label="Zuständig" />
+      )}
+      <div>
+        <label for="description">Beschreibung</label>
+        <textarea id="description" name="description" />
+      </div>
     </div>
     <div class="actions">
       <button class="btn">Aufgabe anlegen</button>

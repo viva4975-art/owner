@@ -11,6 +11,7 @@ import {
   saveContact,
 } from '../services/crm.js';
 import { BusinessError } from '../services/errors.js';
+import { listUsers } from '../services/users.js';
 import { monthBounds, todayBerlin } from '../domain/invoice/calc.js';
 import { billingPreview, listInvoices, runMonthly } from '../services/invoices.js';
 import {
@@ -317,51 +318,71 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     c: Context<AppEnv>,
     active: string,
     body: (cust: Customer) => Promise<Child> | Child,
+    aside?: (cust: Customer) => Promise<Child> | Child,
   ) => {
     const id = c.req.param('id')!;
     const cust = await getCustomer(sql, id);
     if (!cust) return c.redirect(`/kunden/${id}/bearbeiten`);
+    const [content, extra, groups, counts] = await Promise.all([
+      body(cust),
+      aside ? aside(cust) : null,
+      listInvoiceGroups(sql, id),
+      customerCounts(id),
+    ]);
     return page(
       c,
       cust.name,
       'kunden',
-      <CustomerShell c={cust} counts={await customerCounts(id)} active={active}>
-        {await body(cust)}
+      <CustomerShell
+        c={cust}
+        counts={counts}
+        active={active}
+        side={<CustomerSide c={cust} groups={groups} />}
+        aside={extra}
+      >
+        {content}
       </CustomerShell>,
     );
   };
 
   app.get(`/kunden/:id{${UUID}}`, (c) =>
-    customerPage(c, 'uebersicht', async (cust) => {
-      const years = await customerRevenueYears(sql, cust.id);
-      const mode: RevenueMode = c.req.query('umsatz') === 'leistung' ? 'leistung' : 'rechnung';
-      const qYear = Number(c.req.query('ab'));
-      const fromYear = years.includes(qYear) ? qYear : (years.at(-2) ?? years.at(-1)!);
-      const [tasks, ledger, offers, revenue, groups, banks] = await Promise.all([
-        listTasks(sql, { status: 'open', entity: { type: 'customer', id: cust.id } }),
-        openItemLedger(sql, { customerId: cust.id }),
-        listOffers(sql, { customerId: cust.id, status: ['entwurf', 'versendet'] }),
-        customerRevenue(sql, cust.id, mode, fromYear),
-        listInvoiceGroups(sql, cust.id),
-        listCustomerBankAccounts(sql, cust.id),
-      ]);
-      return (
-        <div class="cust-overview">
+    customerPage(
+      c,
+      'uebersicht',
+      async (cust) => {
+        const years = await customerRevenueYears(sql, cust.id);
+        const mode: RevenueMode = c.req.query('umsatz') === 'leistung' ? 'leistung' : 'rechnung';
+        const qYear = Number(c.req.query('ab'));
+        const fromYear = years.includes(qYear) ? qYear : (years.at(-2) ?? years.at(-1)!);
+        const [tasks, ledger, offers, revenue] = await Promise.all([
+          listTasks(sql, { status: 'open', entity: { type: 'customer', id: cust.id } }),
+          openItemLedger(sql, { customerId: cust.id }),
+          listOffers(sql, { customerId: cust.id, status: ['entwurf', 'versendet'] }),
+          customerRevenue(sql, cust.id, mode, fromYear),
+        ]);
+        return (
           <div class="main-col">
             <TaskBox tasks={tasks} doneLink={`/kunden/${cust.id}/aufgaben?status=done`} />
             <CustomerLedger customerId={cust.id} items={ledger[0]?.items ?? []} today={todayBerlin()} />
             <OpenOffers customerId={cust.id} offers={offers} />
             <RevenuePanel rows={revenue} mode={mode} fromYear={fromYear} years={years} />
           </div>
-          <aside class="side-col">
-            <CustomerSide c={cust} groups={groups} />
+        );
+      },
+      async (cust) => {
+        const [groups, banks] = await Promise.all([
+          listInvoiceGroups(sql, cust.id),
+          listCustomerBankAccounts(sql, cust.id),
+        ]);
+        return (
+          <>
             <MapPanel c={cust} />
             <BankPanel customerId={cust.id} accounts={banks} newId={randomUUID()} />
             <GroupSummary customerId={cust.id} groups={groups} />
-          </aside>
-        </div>
-      );
-    }),
+          </>
+        );
+      },
+    ),
   );
 
   app.post(`/kunden/:id{${UUID}}/bankkonten/:bid{${UUID}}`, async (c) => {
@@ -519,6 +540,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
               newId={randomUUID()}
               entity={{ type, id: e.id, label: label(e as never) }}
               back={`${base}/${e.id}/aufgaben`}
+              users={await listUsers(sql)}
             />
           </>
         );
@@ -987,12 +1009,29 @@ export function registerMasterdataRoutes(ctx: Ctx) {
              (select count(*)::int from app.invoices where site_id = ${id} and status = 'issued') as invoices,
              (select count(*)::int from app.employee_sites where site_id = ${id}) as employees,
              (select count(*)::int from app.tasks where entity_type = 'site' and entity_id = ${id} and status = 'open') as tasks`;
+    const [[manager], [cl], customer] = await Promise.all([
+      sql<{ name: string; phone: string | null; email: string | null }[]>`
+        select p.display_name as name, p.phone, p.email from app.sites s join app.profiles p on p.user_id = s.manager_user_id
+         where s.id = ${id}`,
+      // Reinigungskräfte: aktive Mitarbeitende am Objekt ohne Kennzeichen „Objektleitung“
+      sql<{ n: number }[]>`
+        select count(*)::int as n from app.employee_sites es join app.employees e on e.id = es.employee_id
+         where es.site_id = ${id} and e.status = 'aktiv' and not ('Objektleitung' = any(e.tags))`,
+      getCustomer(sql, s.customer_id),
+    ]);
+    const content = await body(s);
     return page(
       c,
       s.name,
       'kunden',
-      <SiteShell s={s} counts={counts!} active={active}>
-        {await body(s)}
+      <SiteShell
+        s={s}
+        counts={counts!}
+        active={active}
+        role={c.get('user').role}
+        info={{ manager: manager ?? null, cleaners: cl!.n, customer: customer! }}
+      >
+        {content}
       </SiteShell>,
     );
   };
@@ -1001,18 +1040,17 @@ export function registerMasterdataRoutes(ctx: Ctx) {
 
   app.get(`/objekte/:id{${UUID}}`, (c) =>
     sitePage(c, 'uebersicht', async (s) => {
-      const [customer, services, employees, tasks] = await Promise.all([
-        getCustomer(sql, s.customer_id),
+      const [services, employees, tasks] = await Promise.all([
         listServices(sql, s.id),
-        sql<{ id: string; name: string }[]>`
-          select e.id, e.last_name || ', ' || e.first_name as name from app.employee_sites es
-            join app.employees e on e.id = es.employee_id where es.site_id = ${s.id} and e.status = 'aktiv' order by 2`,
+        sql<{ id: string; name: string; phone: string | null }[]>`
+          select e.id, e.last_name || ', ' || e.first_name as name, coalesce(e.mobile, e.phone) as phone
+            from app.employee_sites es join app.employees e on e.id = es.employee_id
+           where es.site_id = ${s.id} and e.status = 'aktiv' and not ('Objektleitung' = any(e.tags)) order by 2`,
         listTasks(sql, { status: 'open', entity: { type: 'site', id: s.id } }),
       ]);
       return (
         <SiteOverview
           s={s}
-          customer={customer!}
           services={services}
           employees={employees}
           tasksSlot={<TaskBox tasks={tasks} doneLink={`/objekte/${s.id}/aufgaben?status=done`} />}

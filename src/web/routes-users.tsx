@@ -309,6 +309,10 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
                 <input id="email" name="email" type="email" value={u?.email ?? ''} />
               </div>
               <div>
+                <label for="phone">Telefon (wird bei Objekten angezeigt)</label>
+                <input id="phone" name="phone" type="tel" value={u?.phone ?? ''} />
+              </div>
+              <div>
                 <label for="role">Rolle</label>
                 <select id="role" name="role">
                   {(Object.keys(ROLE_LABEL) as Role[]).map((r) => (
@@ -406,6 +410,7 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
         {
           name: one('name'),
           email: one('email') || null,
+          phone: one('phone') || null,
           role,
           active: true,
           siteIds: arr(b, 'site'),
@@ -421,6 +426,7 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
       {
         name: one('name'),
         email: one('email') || null,
+        phone: one('phone') || null,
         role,
         active: b.active === 'on',
         siteIds: arr(b, 'site'),

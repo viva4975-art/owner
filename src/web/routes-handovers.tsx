@@ -197,6 +197,8 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
 
   // ------------------------------------------------------------------ Anlegen / Bearbeiten / Ansicht
   app.get(`/uebergaben/:id{${UUID}}`, async (c) => {
+    // Objektleitung sieht keine Preise/Werte
+    const showPrice = c.get('user').role !== 'objektleitung';
     const id = c.req.param('id');
     const h = await load(c, id);
     if (h && h.status !== 'entwurf') return detail(c, h);
@@ -402,7 +404,8 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
                             {articles.map((a) => (
                               <option value={a.id} selected={a.id === it?.article_id}>
                                 {a.name}
-                                {a.is_ppe ? ' (PSA)' : ''} · {euro(a.unit_price_cents)}
+                                {a.is_ppe ? ' (PSA)' : ''}
+                                {showPrice && ` · ${euro(a.unit_price_cents)}`}
                               </option>
                             ))}
                           </select>
@@ -615,7 +618,11 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
   });
 
   function detail(c: Context<AppEnv>, h: HandoverRow) {
-    const total = h.items.reduce((s, i) => s + BigInt(i.unit_price_cents ?? 0) * BigInt(i.qty), 0n);
+    // Objektleitung sieht keine Preise/Werte
+    const showPrice = c.get('user').role !== 'objektleitung';
+    const total = showPrice
+      ? h.items.reduce((s, i) => s + BigInt(i.unit_price_cents ?? 0) * BigInt(i.qty), 0n)
+      : 0n;
     const canReturn =
       h.direction === 'ausgabe' && ['kleidung', 'schluessel', 'geraet', 'sonstiges'].includes(h.kind);
     return page(
@@ -692,7 +699,9 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
                       <td>{i.size ?? ''}</td>
                       <td class="r">{i.qty}</td>
                       {total > 0n && (
-                        <td class="r">{euro(BigInt(i.unit_price_cents ?? 0) * BigInt(i.qty))}</td>
+                        <td class="r">
+                          {showPrice ? euro(BigInt(i.unit_price_cents ?? 0) * BigInt(i.qty)) : ''}
+                        </td>
                       )}
                     </tr>
                   ))}

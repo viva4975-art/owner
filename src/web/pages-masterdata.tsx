@@ -11,6 +11,8 @@ import { type Customer, type Site, type SiteService, customerStatusOf } from '..
 import { type SiteFilter, type SiteListRow, SITE_PAGE_SIZE } from '../services/site-list.js';
 import type { InvoiceGroupRow } from '../services/invoice-groups.js';
 import { centsToInput } from './forms.js';
+import { canAccess } from './permissions.js';
+import type { Role } from '../services/users.js';
 import { FORMAT_LABEL, NEW_OPTIONS, PageHead, type Tab, Tabs, euro, initials } from './layout.js';
 
 export const Field: FC<{
@@ -263,12 +265,14 @@ export interface CustomerCounts {
   files: number;
 }
 
-export const CustomerShell: FC<{ c: Customer; counts: CustomerCounts; active: string; children?: Child }> = ({
-  c,
-  counts,
-  active,
-  children,
-}) => {
+export const CustomerShell: FC<{
+  c: Customer;
+  counts: CustomerCounts;
+  active: string;
+  side?: Child;
+  aside?: Child;
+  children?: Child;
+}> = ({ c, counts, active, side, aside, children }) => {
   const base = `/kunden/${c.id}`;
   const tabs: Tab[] = [
     { key: 'uebersicht', label: 'Übersicht', href: base },
@@ -281,7 +285,6 @@ export const CustomerShell: FC<{ c: Customer; counts: CustomerCounts; active: st
     { key: 'aufgaben', label: 'Aufgaben', href: `${base}/aufgaben`, count: counts.tasks },
     { key: 'op', label: 'Offene Posten', href: `${base}/offene-posten`, count: counts.openItems },
     { key: 'rechnungsgruppen', label: 'Rechnungsgruppen', href: `${base}/rechnungsgruppen` },
-    { key: 'bearbeiten', label: 'Stammdaten bearbeiten', href: `${base}/bearbeiten` },
     { key: 'angebote', label: 'Angebote', href: `${base}/angebote`, count: counts.offers },
     { key: 'mahnungen', label: 'Mahnungen', href: `${base}/mahnungen`, count: counts.dunnings },
     { key: 'dokumente', label: 'Dokumente', href: `${base}/dokumente`, count: counts.files },
@@ -309,8 +312,16 @@ export const CustomerShell: FC<{ c: Customer; counts: CustomerCounts; active: st
           <b>Warnhinweis:</b> {c.warning}
         </div>
       )}
-      <Tabs tabs={tabs} more={more} active={active} />
-      <div class="tabbody">{children}</div>
+      <div class="entity-layout">
+        <aside class="info-col">
+          {side}
+          {aside}
+        </aside>
+        <div class="content-col">
+          <Tabs tabs={tabs} more={more} active={active} />
+          <div class="tabbody">{children}</div>
+        </div>
+      </div>
     </>
   );
 };
@@ -793,33 +804,63 @@ export interface SiteCounts {
   tasks: number;
 }
 
+export interface SiteInfo {
+  manager: { name: string; phone: string | null; email: string | null } | null;
+  cleaners: number;
+  customer: Pick<
+    Customer,
+    'id' | 'customer_no' | 'name' | 'name2' | 'street' | 'postal_code' | 'city' | 'active' | 'status'
+  >;
+}
+
+/** Objektseite: links Infospalte (Objekt, Objektleitung, Kunde), rechts Reiter. Reiter nach Rolle gefiltert. */
 export const SiteShell: FC<{
   s: Site & { customer_name: string };
   counts: SiteCounts;
   active: string;
+  info: SiteInfo;
+  role: Role;
+  aside?: Child;
   children?: Child;
-}> = ({ s, counts, active, children }) => {
+}> = ({ s, counts, active, info, role, aside, children }) => {
   const base = `/objekte/${s.id}`;
-  const tabs: Tab[] = [
-    { key: 'uebersicht', label: 'Übersicht', href: base },
-    { key: 'leistungen', label: 'Leistungen & Preise', href: `${base}/leistungen`, count: counts.services },
-    { key: 'notizen', label: 'Notizen', href: `${base}/notizen`, count: counts.notes },
-    { key: 'rechnungen', label: 'Rechnungen', href: `${base}/rechnungen`, count: counts.invoices },
-    { key: 'rechnungsangaben', label: 'Rechnungsangaben', href: `${base}/rechnungsangaben` },
-  ];
-  const more: Tab[] = [
+  const all: (Tab & { main?: boolean })[] = [
+    { key: 'uebersicht', label: 'Übersicht', href: base, main: true },
+    { key: 'notizen', label: 'Notizen', href: `${base}/notizen`, count: counts.notes, main: true },
+    {
+      key: 'rechnungen',
+      label: 'Rechnungen',
+      href: `${base}/rechnungen`,
+      count: counts.invoices,
+      main: true,
+    },
+    {
+      key: 'leistungen',
+      label: 'Leistungen & Preise',
+      href: `${base}/leistungen`,
+      count: counts.services,
+      main: true,
+    },
+    { key: 'einsaetze', label: 'Einsätze', href: `${base}/einsaetze`, main: true },
+    { key: 'zeiten', label: 'Erfasste Zeiten', href: `${base}/zeiten`, main: true },
     { key: 'aufgaben', label: 'Aufgaben', href: `${base}/aufgaben`, count: counts.tasks },
-    { key: 'bearbeiten', label: 'Objekt bearbeiten', href: `${base}/bearbeiten` },
-    { key: 'einsaetze', label: 'Einsatzplan', href: `${base}/einsaetze` },
-    { key: 'zeiten', label: 'Erfasste Zeiten', href: `${base}/zeiten` },
-    { key: 'qr', label: 'QR-Aushang Zeiterfassung', href: `${base}/qr` },
+    { key: 'angebote', label: 'Angebote', href: `${base}/angebote` },
     { key: 'arbeitsscheine', label: 'Arbeitsscheine', href: `${base}/arbeitsscheine` },
-    { key: 'x-schluessel', label: 'Schlüssel', href: '/schluessel' },
+    { key: 'dokumente', label: 'Dokumente', href: `${base}/dokumente` },
+    { key: 'schluessel', label: 'Schlüssel', href: `${base}/schluessel` },
     { key: 'raumbuch', label: 'Raumbuch', href: `${base}/raumbuch` },
     { key: 'stundenvorgabe', label: 'Stundenvorgabe', href: `${base}/stundenvorgabe` },
     { key: 'qualitaet', label: 'Qualitätskontrolle', href: `${base}/qualitaet` },
-    { key: 'zaehler', label: 'Zähler', href: `${base}/zaehler` },
+    { key: 'qr', label: 'QR-Aushang Zeiterfassung', href: `${base}/qr` },
+    { key: 'rechnungsangaben', label: 'Rechnungsangaben', href: `${base}/rechnungsangaben` },
   ];
+  const allowed = all.filter((t) => canAccess(role, t.href));
+  // Objektleitung: keine Übersicht (enthält Preise) → Einsätze als erster Reiter
+  const visible = role === 'objektleitung' ? allowed.filter((t) => t.key !== 'uebersicht') : allowed;
+  const tabs = visible.filter((t) => t.main);
+  const more = visible.filter((t) => !t.main);
+  const c = info.customer;
+  const st = customerStatusOf(c as Customer);
   return (
     <>
       <PageHead
@@ -829,13 +870,79 @@ export const SiteShell: FC<{
           options: [
             ['aufgabe', 'Aufgabe'],
             ['rechnung', 'Rechnung'],
+            ['angebot', 'Angebot'],
           ],
           suffix: 'für dieses Objekt',
           context: { objekt: s.id, kunde: s.customer_id },
         }}
       />
-      <Tabs tabs={tabs} more={more} active={active} />
-      <div class="tabbody">{children}</div>
+      <div class="entity-layout">
+        <aside class="info-col">
+          <section class="panel side-card">
+            {canAccess(role, `${base}/bearbeiten`) && (
+              <div class="side-actions">
+                <a class="btn sec sm" href={`${base}/bearbeiten`}>
+                  Bearbeiten
+                </a>
+              </div>
+            )}
+            <div class="addr">
+              <b>{s.name}</b>
+              {s.street && <div>{s.street}</div>}
+              {(s.postal_code || s.city) && (
+                <div>
+                  {s.postal_code} {s.city}
+                </div>
+              )}
+            </div>
+            <dl class="kv small">
+              <dt>Objektleitung</dt>
+              <dd>
+                {info.manager ? (
+                  <>
+                    {info.manager.name}
+                    {info.manager.phone && (
+                      <div>
+                        <a href={`tel:${info.manager.phone.replace(/\s/g, '')}`}>{info.manager.phone}</a>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <span class="mut">keine</span>
+                )}
+              </dd>
+              <dt>Reinigungskräfte</dt>
+              <dd>{info.cleaners} aktiv</dd>
+            </dl>
+          </section>
+          <section class="panel">
+            <h3 class="panel-head">Kunde / Verwaltung</h3>
+            <div style="margin-top:10px">
+              <span class="mut">{c.customer_no}</span>{' '}
+              <span class={`tag ${st === 'kunde' ? 'ok' : st === 'interessent' ? 'warn' : 'err'}`}>
+                {CUSTOMER_STATUS[st]}
+              </span>
+            </div>
+            <div style="margin-top:4px">
+              {canAccess(role, `/kunden/${c.id}`) ? (
+                <a href={`/kunden/${c.id}`}>{c.name}</a>
+              ) : (
+                <b>{c.name}</b>
+              )}
+              {c.name2 && <div class="small">{c.name2}</div>}
+              <div>{c.street}</div>
+              <div>
+                {c.postal_code} {c.city}
+              </div>
+            </div>
+          </section>
+          {aside}
+        </aside>
+        <div class="content-col">
+          <Tabs tabs={tabs} more={more} active={active} />
+          <div class="tabbody">{children}</div>
+        </div>
+      </div>
     </>
   );
 };
@@ -901,30 +1008,26 @@ export const SiteForm: FC<{
 
 export const SiteOverview: FC<{
   s: Site & { customer_name: string };
-  customer: Customer;
   services: SiteService[];
-  employees: { id: string; name: string }[];
+  employees: { id: string; name: string; phone: string | null }[];
   tasksSlot: Child;
-}> = ({ s, customer, services, employees, tasksSlot }) => {
+  docsSlot?: Child;
+}> = ({ s, services, employees, tasksSlot, docsSlot }) => {
   const kinds = [...new Set(services.filter((x) => x.active).map((x) => x.description))];
   return (
-    <div class="cols">
-      <div>
-        {tasksSlot}
-        <h2>Aktive Leistungen</h2>
+    <div class="main-col">
+      {tasksSlot}
+      {docsSlot}
+      <section>
+        <h2 class="panel-title">Aktive Leistungen</h2>
         {kinds.length ? (
           <div class="tbl">
             <table>
-              <thead>
-                <tr>
-                  <th>Leistungsart</th>
-                </tr>
-              </thead>
               <tbody>
                 {kinds.map((k) => (
                   <tr>
                     <td>
-                      <b>{k}</b>
+                      <a href={`/objekte/${s.id}/leistungen`}>{k}</a>
                     </td>
                   </tr>
                 ))}
@@ -932,68 +1035,32 @@ export const SiteOverview: FC<{
             </table>
           </div>
         ) : (
-          <div class="empty">Keine aktiven Leistungen.</div>
+          <div class="empty-line">Keine aktiven Leistungen.</div>
         )}
-        <h2>Mitarbeiter am Objekt</h2>
+      </section>
+      <section>
+        <h2 class="panel-title">
+          Reinigungskräfte <span class="cnt">({employees.length})</span>
+        </h2>
         {employees.length ? (
-          employees.map((e) => (
-            <div>
-              <a href={`/personal/${e.id}`}>{e.name}</a>
-            </div>
-          ))
+          <div class="tbl">
+            <table>
+              <tbody>
+                {employees.map((e) => (
+                  <tr>
+                    <td>
+                      <a href={`/personal/${e.id}`}>{e.name}</a>
+                    </td>
+                    <td>{e.phone ?? ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
-          <div class="empty">Noch keine Mitarbeiter zugeordnet (Zuordnung beim Mitarbeiter).</div>
+          <div class="empty-line">Noch keine Reinigungskräfte zugeordnet (Zuordnung beim Mitarbeiter).</div>
         )}
-      </div>
-      <div>
-        <div class="card">
-          <div class="actions" style="margin-top:0">
-            <h3 style="margin:0">{s.name}</h3>
-            <a class="btn sm sec" href={`/objekte/${s.id}/bearbeiten`} style="margin-left:auto">
-              Bearbeiten
-            </a>
-          </div>
-          {s.street && <div>{s.street}</div>}
-          <div>
-            {s.postal_code} {s.city}
-          </div>
-          {(s.order_reference || s.contract_reference) && (
-            <dl class="kv" style="margin-top:10px">
-              {s.order_reference && (
-                <>
-                  <dt>Bestell-Nr.</dt>
-                  <dd>{s.order_reference}</dd>
-                </>
-              )}
-              {s.contract_reference && (
-                <>
-                  <dt>Vertrag</dt>
-                  <dd>{s.contract_reference}</dd>
-                </>
-              )}
-            </dl>
-          )}
-        </div>
-        <div class="card">
-          <h3>Kunde / Verwaltung</h3>
-          <div class="mut">
-            {customer.customer_no} <span class="badge ok">Kunde</span>
-          </div>
-          <a href={`/kunden/${customer.id}`}>
-            <b>{customer.name}</b>
-          </a>
-          <div>{customer.street}</div>
-          <div>
-            {customer.postal_code} {customer.city}
-          </div>
-          {customer.contact_name && (
-            <>
-              <h3 style="margin-top:12px">Ansprechpartner</h3>
-              <div>{customer.contact_name}</div>
-            </>
-          )}
-        </div>
-      </div>
+      </section>
     </div>
   );
 };

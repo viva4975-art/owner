@@ -22,6 +22,7 @@ import { sollPlanIst } from '../services/hr-month.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { MonthBox } from './pages-hr.js';
 import { BusinessError } from '../services/errors.js';
+import { listUsers } from '../services/users.js';
 import { listInvoices } from '../services/invoices.js';
 import { listSites } from '../services/masterdata.js';
 import { listBalances, openItemLedger } from '../services/payments.js';
@@ -182,7 +183,7 @@ export function registerModuleRoutes({ app, deps, page, back, shells }: Ctx) {
             />
             {status === 'done' && <a href="/aufgaben">← offene Aufgaben</a>}
           </div>
-          <TaskForm newId={randomUUID()} back="/aufgaben" />
+          <TaskForm newId={randomUUID()} back="/aufgaben" users={await listUsers(sql)} />
         </div>
       </>,
     );
@@ -543,6 +544,7 @@ export function registerModuleRoutes({ app, deps, page, back, shells }: Ctx) {
           newId={randomUUID()}
           entity={{ type: 'employee', id: e.id, label: `${e.first_name} ${e.last_name}` }}
           back={`/personal/${e.id}/aufgaben`}
+          users={await listUsers(sql)}
         />
       </>
     )),

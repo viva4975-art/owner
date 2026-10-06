@@ -870,3 +870,9 @@ Testadresse.
   (Bestand als Inventur, Ausgabe-Protokolle an die Personalakte über die Personalnummer, sonst Dokumenteneingang).
   Probelauf mit dem kompletten Backup: alle Bereiche in < 10 s, zweiter Lauf legt nichts doppelt an. Nur das Protokoll
   der alten App (audit_log) wird nicht übernommen. 320 Unit-/DB-Tests.
+- 2026-10-06: Runde 9 – Design auf allen Seiten neu (Ahmed: „modern, schön, nicht wie mit KI“, Vorbilder Planday, Blink,
+  zvoove): App-Rahmen mit dunkler, ruhiger Seitenleiste links (Symbole, aufklappbare Bereiche, aktive Seite markiert,
+  kurze Bezeichnungen), schlanke weiße Kopfzeile mit Suche, Zahnrad und Benutzer; auf Tablet/Handy wird die Seitenleiste
+  zur Schublade (☰). Damit entfällt die zweite, umbrechende Menüzeile; auch die Reiter bleiben einzeilig. Gestaltung:
+  eine Akzentfarbe (Bordeaux) sparsam, Linien statt Schatten, Radius 6–8 px, keine Verläufe, Inter, Zahlen tabellarisch.
+  Wirkt global über das gemeinsame Stylesheet (alle Seiten). Menü-Eintrag „Archiv“ entfernt (steckt in „Alle Rechnungen“).

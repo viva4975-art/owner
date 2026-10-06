@@ -761,6 +761,141 @@ tbody tr:hover td{background:#faf9f7}
 .pagehead{margin-bottom:18px}
 .side-card,.info-col,.side-col{overflow-wrap:anywhere}
 
+/* ===================================================================================================
+   Runde 9 (Ahmed 06.10.2026: „Design auf jeder Seite neu, modern, schön, nicht wie mit KI“; Vorbilder Planday,
+   Blink, zvoove): App-Rahmen mit dunkler Seitenleiste links, schlanke weiße Kopfzeile, ruhige Flächen.
+   Regeln: eine Akzentfarbe (Bordeaux) sparsam, Linien statt Schatten, Radius 6–8 px, keine Verläufe,
+   klare Typografie (Inter), Zahlen tabellarisch, Tabellen statt Kachel-Flut.
+   =================================================================================================== */
+:root{--bg:#f4f3f1;--panel:#fff;--line:#e6e3df;--line-2:#d6d1cb;--head:#f8f7f5;
+  --ink:#1c1a19;--ink-2:#36322f;--mut:#6f6a64;--faint:#a19b94;
+  --brand:#7D1435;--brand-2:#8B2332;--brand-d:#5f0f28;--brand-50:#f8eef1;--brand-100:#f0dbe2;
+  --side:#1f1b1c;--side-2:#2a2526;--side-ink:#d9d4d0;--side-mut:#8f8782;
+  --r:8px;--r-sm:6px;--sh:none;--sh-2:0 10px 28px rgba(20,16,14,.14)}
+body{background:var(--bg);font-feature-settings:"cv11","ss01","tnum" 0}
+body.shell{display:block}
+.burger-cb{position:absolute;opacity:0;pointer-events:none}
+/* Seitenleiste */
+.appside{position:fixed;inset:0 auto 0 0;width:248px;background:var(--side);color:var(--side-ink);display:flex;flex-direction:column;z-index:40;overflow:hidden}
+.side-logo{display:flex;align-items:center;height:64px;padding:0 18px;border-bottom:1px solid rgba(255,255,255,.06)}
+.side-logo img{height:30px;width:auto;background:#fff;padding:4px 8px;border-radius:6px;box-sizing:content-box}
+.appside nav.menu{position:static;background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;border:0;box-shadow:none;flex:1;overflow-y:auto;padding:10px 10px 16px;display:flex;flex-direction:column;gap:1px}
+.appside nav.menu a.item,.appside nav.menu .grp>summary{display:flex;align-items:center;gap:11px;height:38px;padding:0 10px;border:0;border-radius:6px;color:var(--side-ink);font-weight:500;font-size:14px;cursor:pointer;list-style:none;text-decoration:none;white-space:nowrap}
+.appside nav.menu .grp>summary::-webkit-details-marker{display:none}
+.appside nav.menu .grp>summary .ic:last-child{margin-left:auto;opacity:.45;transition:transform .15s}
+.appside nav.menu .grp[open]>summary .ic:last-child{transform:rotate(180deg)}
+.appside nav.menu a.item .ic,.appside nav.menu .grp>summary .ic:first-child{opacity:.7}
+.appside nav.menu a.item:hover,.appside nav.menu .grp>summary:hover{background:var(--side-2);color:#fff;text-decoration:none}
+.appside nav.menu a.item.on,.appside nav.menu .grp.on>summary{color:#fff;background:var(--side-2)}
+.appside nav.menu a.item.on{box-shadow:inset 3px 0 0 #d0476f}
+.appside nav.menu a.item.on .ic,.appside nav.menu .grp.on>summary .ic:first-child{opacity:1;color:#f19bb4}
+.appside nav.menu .sub{display:flex;flex-direction:column;padding:2px 0 6px 39px}
+.appside nav.menu .sub a{display:block;padding:6px 10px;border-radius:6px;color:var(--side-mut);font-size:13.5px;line-height:1.3;text-decoration:none}
+.appside nav.menu .sub a:hover{color:#fff;background:var(--side-2)}
+.appside nav.menu .sub a.on{color:#fff;background:var(--side-2);box-shadow:inset 3px 0 0 #d0476f}
+.appside nav.menu .sub a.gap{margin-top:6px}
+.appside nav.menu .soon{margin-left:6px;font-size:10px;color:var(--side-mut)}
+.side-foot{padding:12px 18px;border-top:1px solid rgba(255,255,255,.06)}
+.side-foot .env{background:transparent;border:1px solid rgba(255,255,255,.18);color:var(--side-mut);font-size:11px;font-weight:600;padding:2px 9px;border-radius:999px}
+.side-foot .env.live{border-color:#3d8a5c;color:#7fd3a0}
+.appside nav.menu>*{flex:none}
+.pb-bar{background:var(--side)}.pb-bar.light{background:var(--head)}
+/* Inhalt rechts daneben */
+.shell .mainc{margin-left:248px;min-height:100vh;display:flex;flex-direction:column}
+.bare .mainc{min-height:100vh}
+/* Kopfzeile: weiß, schlank */
+.top{position:sticky;top:0;z-index:30;background:#fff;border-bottom:1px solid var(--line);box-shadow:none}
+.top .in{max-width:none;height:56px;padding:0 24px;gap:16px}
+.bare .top{background:#fff}
+.top .logo{background:transparent;box-shadow:none;padding:0}
+.top .logo img{height:32px}
+.burgerbtn{display:none;align-items:center;justify-content:center;width:38px;height:38px;border-radius:6px;color:var(--ink-2);cursor:pointer}
+.burgerbtn:hover{background:var(--head)}
+.search{max-width:520px;flex:1}
+.search input{height:36px;border-radius:6px;border:1px solid var(--line);background:var(--head);color:var(--ink)}
+.search input::placeholder{color:var(--faint)}
+.search input:focus{background:#fff;border-color:var(--line-2);box-shadow:0 0 0 3px rgba(125,20,53,.08)}
+.search .ic{color:var(--faint)}
+.search kbd{background:#fff;border:1px solid var(--line);color:var(--faint);border-radius:4px}
+.top .right{gap:6px}
+.gear{color:var(--mut);border-radius:6px;width:36px;height:36px}
+.gear:hover{background:var(--head);color:var(--ink)}
+.usr{display:flex;align-items:center;gap:8px;padding:4px 8px 4px 4px;border-radius:6px;color:var(--ink-2);font-weight:550}
+.usr:hover{background:var(--head)}
+.usr .av{width:30px;height:30px;border-radius:50%;background:var(--brand);color:#fff;font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.env{border-radius:999px}
+details.dd>.drop{border-radius:8px;border:1px solid var(--line);box-shadow:var(--sh-2);padding:4px}
+.drop a{border-radius:6px;padding:7px 10px}
+.drop a:hover{background:var(--head);color:var(--ink)}
+/* Seite */
+main{max-width:1440px;width:100%;margin:0 auto;padding:24px 28px 72px;flex:1}
+h1{font-size:24px;font-weight:700;letter-spacing:-.02em}
+h2{font-size:17px;font-weight:650}
+h3{font-size:14.5px;font-weight:650}
+.pagehead{margin-bottom:16px}
+.portal .page-head{margin:0 0 18px}
+.portal .page-head h1{font-size:24px;font-weight:700;letter-spacing:-.02em}
+.portal .eyebrow{font-size:12px;font-weight:600;color:var(--mut);text-transform:none;letter-spacing:0}
+.portal .eyebrow a{color:var(--mut)}.portal .eyebrow a:hover{color:var(--brand)}
+.portal .page-head .sub{color:var(--mut);font-size:13px}
+.crumbs{font-size:12.5px;font-weight:500;color:var(--mut)}.crumbs a{color:var(--mut)}.crumbs a:hover{color:var(--brand)}
+/* Flächen: Linie statt Schatten, kleinere Radien */
+.card,.tbl,.kpi,.side-col>.panel,.lc,.toolbar,.stat-card,.ec-group,.ak-funnel,.set-sec,.tp,.pb-sec,.kb-card,.kb-row{border-radius:8px;box-shadow:none;border-color:var(--line)}
+.card:hover,.lc:hover,.stat-card:hover{box-shadow:none}
+.lc:hover,.kb-row:hover,.kb-card:hover{border-color:var(--line-2);background:#fffefd}
+.formfoot{border-radius:0 0 8px 8px}
+.empty,.empty-line{border-radius:8px}
+.flash{border-radius:8px}
+.tabbody{border-radius:0 0 8px 8px;box-shadow:none}
+/* Kennzahlen: kompakter, ruhiger */
+.stat-grid{gap:12px;margin-bottom:16px}
+.stat-card{padding:14px 16px;gap:4px}
+.stat-card .stat-num{font-size:22px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.stat-card .stat-lbl{font-size:12px;font-weight:550;color:var(--mut)}
+.stat-card.on{box-shadow:none;border-color:var(--brand);background:var(--brand-50)}
+.toolbar{padding:10px 12px;gap:8px}
+.toolbar .search-input{height:36px;border-radius:6px}
+/* Knöpfe & Felder */
+.btn{height:36px;border-radius:6px;font-weight:600;box-shadow:none;padding:0 14px}
+.btn.sm{height:30px;border-radius:6px;padding:0 10px;font-size:13px}
+.btn.sec{box-shadow:none;border-color:var(--line-2)}
+.btn.sec:hover{border-color:var(--mut);background:var(--head)}
+.btn.danger{border-radius:6px}
+input,select,textarea{border-radius:6px;height:38px}
+textarea{height:auto}
+.cbx-btn{border-radius:6px;min-height:38px}
+input:focus,select:focus,textarea:focus,.cbx-btn:focus-visible,.cbx.open .cbx-btn{border-color:var(--brand);box-shadow:0 0 0 3px rgba(125,20,53,.10)}
+/* Schilder: dezent, eckiger */
+.badge,.pill,.bs-pill{border-radius:4px}
+.badge{padding:2px 8px;font-size:11.5px;font-weight:600}
+.pill{padding:5px 11px;border-radius:6px}
+.pill.on{background:var(--ink);border-color:var(--ink)}
+/* Tabellen */
+th{font-size:12px;font-weight:600;color:var(--mut);background:var(--head);text-transform:none}
+td{font-variant-numeric:tabular-nums}
+tbody tr:hover td{background:#fbfaf8}
+/* Reiter */
+.tabs{border-bottom:1px solid var(--line);margin-bottom:16px}
+.tabs a,.tabs summary{padding:9px 12px;font-weight:550}
+.tabs a.on{border-bottom:2px solid var(--brand);color:var(--ink);font-weight:650}
+.tabs{flex-wrap:nowrap;gap:0}
+.tabs a,.tabs summary{padding:9px 10px;font-size:13.5px;white-space:nowrap}
+.tabs .cnt{font-size:11px;padding:0 6px;margin-left:4px}
+@media (max-width:1024px){.tabs{overflow-x:auto;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}}
+/* Handy: Seitenleiste als Schublade */
+.scrim{display:none}
+@media (max-width:1024px){
+  .appside{transform:translateX(-100%);transition:transform .2s ease;box-shadow:none}
+  .shell .mainc{margin-left:0}
+  .burgerbtn{display:inline-flex}
+  .burger-cb:checked~.appside{transform:none;box-shadow:var(--sh-2)}
+  .burger-cb:checked~.scrim{display:block;position:fixed;inset:0;background:rgba(20,16,14,.35);z-index:35}
+  .top .in{padding:0 12px}
+  .usr-n{display:none}
+  main{padding:16px 16px 64px}
+}
+@media print{.appside,.top,.scrim{display:none!important}.shell .mainc{margin-left:0}}
+
 `;
 
 export const euro = (c: bigint) => formatEuro(c as Cents);
@@ -792,9 +927,8 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     key: 'rechnungen',
     label: 'Rechnungen',
     items: [
-      { label: 'Rechnungsentwürfe / Vorfaktura', href: '/rechnungen/entwuerfe' },
+      { label: 'Entwürfe / Vorfaktura', href: '/rechnungen/entwuerfe' },
       { label: 'Alle Rechnungen', href: '/rechnungen' },
-      { label: 'Archiv (nach Leistungszeitraum)', href: '/rechnungen/archiv' },
       { label: 'Aufträge', href: '/auftraege' },
       { label: 'Offene Posten', href: '/offene-posten', sep: true },
       { label: 'Mahnwesen', href: '/mahnungen' },
@@ -804,9 +938,9 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     key: 'lieferanten',
     label: 'Lieferanten',
     items: [
-      { label: 'Lieferanten & Nachunternehmer', href: '/lieferanten' },
+      { label: 'Lieferanten & NU', href: '/lieferanten' },
       { label: 'Bestellungen', href: '/bestellungen' },
-      { label: 'Rechnungseingang & Zahlungsliste', href: '/rechnungseingang' },
+      { label: 'Rechnungseingang', href: '/rechnungseingang' },
     ],
   },
   {
@@ -817,21 +951,21 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Bewerber & Stellen', href: '/bewerber' },
       { label: 'Zeiterfassung', href: '/zeiterfassung', sep: true },
       { label: 'Nachträge freigeben', href: '/zeiterfassung/freigaben' },
-      { label: 'Prüfbericht Zoll (§ 17 MiLoG)', href: '/zeiterfassung/pruefbericht' },
+      { label: 'Prüfbericht Zoll', href: '/zeiterfassung/pruefbericht' },
       { label: 'Urlaub & Abwesenheiten', href: '/urlaub' },
-      { label: 'Mitarbeiter-Handyansicht', href: '/m' },
-      { label: 'Dokumente digital unterschreiben', href: '/personal/dokumente' },
+      { label: 'Handy-Ansicht', href: '/m' },
+      { label: 'Dokumente unterschreiben', href: '/personal/dokumente' },
     ],
   },
   {
     key: 'inventar',
     label: 'Inventar',
     items: [
-      { label: 'Artikel & Nachbestellung', href: '/artikel' },
-      { label: 'Geräte & Prüftermine', href: '/geraete' },
+      { label: 'Artikel', href: '/artikel' },
+      { label: 'Geräte', href: '/geraete' },
       { label: 'Schlüsselbuch', href: '/schluessel' },
-      { label: 'Übergaben mit Unterschrift', href: '/uebergaben', sep: true },
-      { label: 'Arbeitskleidung: Bestand', href: '/arbeitskleidung' },
+      { label: 'Übergaben', href: '/uebergaben', sep: true },
+      { label: 'Arbeitskleidung', href: '/arbeitskleidung' },
     ],
   },
   {
@@ -839,17 +973,17 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     label: 'Disposition',
     items: [
       { label: 'Planung', href: '/einsatzplanung' },
-      { label: 'Einsätze für abwesende Mitarbeiter', href: '/einsatzplanung/vertretungen' },
-      { label: 'Arbeitsscheine (Unterschrift vor Ort)', href: '/arbeitsscheine' },
+      { label: 'Vertretungen', href: '/einsatzplanung/vertretungen' },
+      { label: 'Arbeitsscheine', href: '/arbeitsscheine' },
       { label: 'Qualitätskontrollen', href: '/qualitaet' },
       { label: 'Zählerstände', href: '/zaehler' },
       { label: 'Heute: Soll/Ist', href: '/zeiterfassung' },
-      { label: 'Monat: Soll/Ist je Mitarbeiter', href: '/zeiterfassung/monat' },
+      { label: 'Soll/Ist je Monat', href: '/zeiterfassung/monat' },
       { label: 'Urlaubskalender', href: '/urlaub/kalender' },
       { label: 'Glasreinigung', href: '/glasreinigung', sep: true },
       { label: 'Tiefgaragenreinigung', href: '/tiefgarage' },
       { label: 'Planung Grundreinigung', href: '/grundreinigung' },
-      { label: 'Sonderdienste (sonstige)', href: '/sonderdienste' },
+      { label: 'Sonderdienste', href: '/sonderdienste' },
     ],
   },
   {
@@ -865,13 +999,13 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     key: 'transfer',
     label: 'Transfer',
     items: [
-      { label: 'Kontoumsätze (Bankabgleich)', href: '/transfer/kontoumsaetze' },
+      { label: 'Kontoumsätze', href: '/transfer/kontoumsaetze' },
       { label: 'Dokumentenversand', href: '/transfer/dokumentenversand' },
       { label: 'Dokumenteneingang', href: '/transfer/dokumenteneingang' },
-      { label: 'Export Lexware Lohn (Stammdaten)', href: '/personal/export.csv' },
+      { label: 'Export Lexware Lohn', href: '/personal/export.csv' },
       { label: 'DATEV-Export', href: '/datev' },
-      { label: 'Import aus Fortytools (CSV)', href: '/transfer/import' },
-      { label: 'Import aus der alten App (Backup)', href: '/transfer/altdaten' },
+      { label: 'Import Fortytools', href: '/transfer/import' },
+      { label: 'Import alte App', href: '/transfer/altdaten' },
     ],
   },
   {
@@ -882,9 +1016,9 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Rechnungs-Statistik', href: '/auswertungen/rechnungen' },
       { label: 'Netto-Umsatz je Monat', href: '/auswertungen/umsatz' },
       { label: 'Umsatz-Vorschau', href: '/auswertungen/vorschau' },
-      { label: 'Nachkalkulation je Objekt', href: '/auswertungen/nachkalkulation' },
-      { label: 'Kosten je Kostenstelle', href: '/auswertungen/kostenstellen' },
-      { label: 'Ø Stundensätze je Objekt', href: '/auswertungen/stundensaetze' },
+      { label: 'Nachkalkulation', href: '/auswertungen/nachkalkulation' },
+      { label: 'Kostenstellen', href: '/auswertungen/kostenstellen' },
+      { label: 'Ø Stundensätze', href: '/auswertungen/stundensaetze' },
       { label: 'Stundenkontrolle Soll/Ist', href: '/auswertungen/stunden' },
       { label: 'Urlaubskonten', href: '/auswertungen/urlaub' },
       { label: 'Krankheitstage', href: '/auswertungen/krankheit' },
@@ -892,6 +1026,21 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     ],
   },
 ];
+
+/** Symbole der Seitenleiste je Hauptbereich */
+const MENU_ICON: Record<string, string> = {
+  home: 'home',
+  kunden: 'user',
+  angebote: 'file',
+  rechnungen: 'euro',
+  lieferanten: 'clip',
+  personal: 'user',
+  inventar: 'zip',
+  disposition: 'calendar',
+  verwaltung: 'shield',
+  transfer: 'upload',
+  auswertungen: 'clock',
+};
 
 export function initials(name: string): string {
   return name
@@ -944,123 +1093,144 @@ export const Layout: FC<{
         />
         <style dangerouslySetInnerHTML={{ __html: CSS }} />
       </head>
-      <body>
-        <header class="top">
-          <div class="in">
-            <a class="logo" href="/" aria-label="Viva-Deluxe – Übersicht">
+      <body class={bare ? 'bare' : 'shell'}>
+        <input type="checkbox" id="burger" class="burger-cb" aria-hidden="true" />
+        {!bare && (
+          <aside class="appside" aria-label="Navigation">
+            <a class="side-logo" href="/" aria-label="Viva-Deluxe – Übersicht">
               <img src="/static/logo.png" alt="Viva-Deluxe GmbH" width="179" height="36" />
             </a>
-            {search ? (
-              <form class="search" action="/suche" method="get" role="search">
-                <Icon name="search" />
-                <input
-                  id="q"
-                  name="q"
-                  placeholder="Kunden, Objekte, Rechnungen, Angebote, Mitarbeiter suchen…"
-                  minlength={3}
-                  aria-label="Suchen"
-                />
-                <kbd>/</kbd>
-              </form>
-            ) : (
-              <span style="flex:1" />
-            )}
-            <div class="right">
-              <span class={`env${env === 'live' ? ' live' : ''}`}>
-                {env === 'live' ? 'LIVE' : env === 'test' ? 'TEST' : 'LOKAL'}
-              </span>
-              {user && (
-                <details class="dd">
-                  <summary class="gear" title="Einstellungen" aria-label="Einstellungen">
-                    <Icon name="settings" size={20} />
-                  </summary>
-                  <div class="drop right">
-                    {role && canOpen(role as Role, '/einstellungen') && (
-                      <a href="/einstellungen">Einstellungen für die Firma</a>
-                    )}
-                    <a href="/konto">Einstellungen für {user}</a>
-                    <div class="sep" />
-                    <form method="post" action="/abmelden" style="margin:0">
-                      <button class="btn ghost" style="width:100%;justify-content:flex-start">
-                        Abmelden
-                      </button>
-                    </form>
-                  </div>
-                </details>
-              )}
-              {user && (
-                <details class="dd">
-                  <summary class="usr" style="cursor:pointer">
-                    <span class="av">{initials(user)}</span>
-                    <span>{user}</span>
-                  </summary>
-                  <div class="drop right">
-                    <a href="/konto">Mein Konto / Passwort</a>
-                    {role === 'admin' && <a href="/benutzer">Benutzer & Rechte</a>}
-                    {role && canOpen(role as Role, '/einstellungen') && (
-                      <a href="/einstellungen">Einstellungen</a>
-                    )}
-                    <div class="sep" />
-                    <form method="post" action="/abmelden" style="margin:0">
-                      <button class="btn ghost" style="width:100%;justify-content:flex-start">
-                        Abmelden
-                      </button>
-                    </form>
-                  </div>
-                </details>
-              )}
-            </div>
-          </div>
-        </header>
-        {!bare && (
-          <nav class="menu" aria-label="Hauptmenü">
-            <input type="checkbox" id="burger" />
-            <label for="burger" class="burgerbtn">
-              <Icon name="menu" /> Menü
-            </label>
-            <div class="in">
+            <nav class="menu" aria-label="Hauptmenü">
               {menu.map((m) =>
                 m.href ? (
                   <a class={`item${nav === m.key ? ' on' : ''}`} href={m.href}>
-                    {m.label}
+                    <Icon name={MENU_ICON[m.key] ?? 'file'} size={18} />
+                    <span>{m.label}</span>
                   </a>
                 ) : (
-                  <details class={`dd item${nav === m.key ? ' on' : ''}`}>
+                  <details class={`grp item${nav === m.key ? ' on' : ''}`} open={nav === m.key}>
                     <summary>
-                      {m.label} <Icon name="chevron" size={14} />
+                      <Icon name={MENU_ICON[m.key] ?? 'file'} size={18} />
+                      <span>{m.label}</span>
+                      <Icon name="chevron" size={14} />
                     </summary>
-                    <div class="drop">
+                    <div class="sub">
                       {(m.items ?? []).map((i) => (
-                        <>
-                          {i.sep && <div class="sep" />}
-                          <a href={i.href}>
-                            {i.label}
-                            {i.soon && <span class="soon">bald</span>}
-                          </a>
-                        </>
+                        <a href={i.href} class={i.sep ? 'gap' : ''}>
+                          {i.label}
+                          {i.soon && <span class="soon">bald</span>}
+                        </a>
                       ))}
                     </div>
                   </details>
                 ),
               )}
+            </nav>
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `(function(){var p=location.pathname,best=null,len=0;document.querySelectorAll('.appside .sub a[href]').forEach(function(a){var h=a.getAttribute('href').split('?')[0];if((p===h||p.indexOf(h+'/')===0)&&h.length>len){best=a;len=h.length}});if(best){best.classList.add('on');var d=best.closest('details');if(d)d.open=true}})();`,
+              }}
+            />
+            <div class="side-foot">
+              <span class={`env${env === 'live' ? ' live' : ''}`}>
+                {env === 'live' ? 'Live' : env === 'test' ? 'Testbetrieb' : 'Lokal'}
+              </span>
             </div>
-          </nav>
+          </aside>
         )}
-        <main>
-          {flash?.ok && (
-            <div class="flash ok" role="status">
-              <Icon name="check" />
-              <span>{flash.ok}</span>
+        {!bare && <label for="burger" class="scrim" aria-hidden="true" />}
+        <div class="mainc">
+          <header class="top">
+            <div class="in">
+              {bare ? (
+                <a class="logo" href="/" aria-label="Viva-Deluxe – Übersicht">
+                  <img src="/static/logo.png" alt="Viva-Deluxe GmbH" width="179" height="36" />
+                </a>
+              ) : (
+                <label for="burger" class="burgerbtn" aria-label="Menü">
+                  <Icon name="menu" />
+                </label>
+              )}
+              {search ? (
+                <form class="search" action="/suche" method="get" role="search">
+                  <Icon name="search" />
+                  <input
+                    id="q"
+                    name="q"
+                    placeholder="Suchen: Kunden, Objekte, Rechnungen, Mitarbeiter …"
+                    minlength={3}
+                    aria-label="Suchen"
+                  />
+                  <kbd>/</kbd>
+                </form>
+              ) : (
+                <span style="flex:1" />
+              )}
+              <div class="right">
+                {bare && (
+                  <span class={`env${env === 'live' ? ' live' : ''}`}>
+                    {env === 'live' ? 'LIVE' : env === 'test' ? 'TEST' : 'LOKAL'}
+                  </span>
+                )}
+                {user && (
+                  <details class="dd">
+                    <summary class="gear" title="Einstellungen" aria-label="Einstellungen">
+                      <Icon name="settings" size={20} />
+                    </summary>
+                    <div class="drop right">
+                      {role && canOpen(role as Role, '/einstellungen') && (
+                        <a href="/einstellungen">Einstellungen für die Firma</a>
+                      )}
+                      <a href="/konto">Einstellungen für {user}</a>
+                      <div class="sep" />
+                      <form method="post" action="/abmelden" style="margin:0">
+                        <button class="btn ghost" style="width:100%;justify-content:flex-start">
+                          Abmelden
+                        </button>
+                      </form>
+                    </div>
+                  </details>
+                )}
+                {user && (
+                  <details class="dd">
+                    <summary class="usr" style="cursor:pointer">
+                      <span class="av">{initials(user)}</span>
+                      <span class="usr-n">{user}</span>
+                    </summary>
+                    <div class="drop right">
+                      <a href="/konto">Mein Konto / Passwort</a>
+                      {role === 'admin' && <a href="/benutzer">Benutzer & Rechte</a>}
+                      {role && canOpen(role as Role, '/einstellungen') && (
+                        <a href="/einstellungen">Einstellungen</a>
+                      )}
+                      <div class="sep" />
+                      <form method="post" action="/abmelden" style="margin:0">
+                        <button class="btn ghost" style="width:100%;justify-content:flex-start">
+                          Abmelden
+                        </button>
+                      </form>
+                    </div>
+                  </details>
+                )}
+              </div>
             </div>
-          )}
-          {flash?.err && (
-            <div class="flash err" role="alert">
-              <Icon name="alert" />
-              <span>{flash.err}</span>
-            </div>
-          )}
-          {children}
-        </main>
+          </header>
+          <main>
+            {flash?.ok && (
+              <div class="flash ok" role="status">
+                <Icon name="check" />
+                <span>{flash.ok}</span>
+              </div>
+            )}
+            {flash?.err && (
+              <div class="flash err" role="alert">
+                <Icon name="alert" />
+                <span>{flash.err}</span>
+              </div>
+            )}
+            {children}
+          </main>
+        </div>
         <script dangerouslySetInnerHTML={{ __html: CLIENT_JS }} />
       </body>
     </html>

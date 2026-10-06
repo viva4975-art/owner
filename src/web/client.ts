@@ -1,7 +1,7 @@
 /**
  * Kleines Browser-Skript (ohne Framework). Aufgaben:
  *
- * 1. Eingaben nie verlieren: Formulare mit `data-autosave` werden bei jeder Eingabe im
+ * 1. Eingaben nie verlieren: alle Eingabeformulare (POST) werden bei jeder Eingabe im
  *    sessionStorage des Tabs gesichert und beim erneuten Öffnen / Zurück-Navigieren wiederhergestellt.
  *    sessionStorage gehört genau einem Tab → zwei Tabs stören sich nicht.
  *    Gespeichert wird zusammen mit der Datensatz-Version; nach erfolgreichem Speichern wird verworfen.
@@ -36,7 +36,13 @@ export const CLIENT_JS = String.raw`
     }
   }
 
-  function keyOf(form) { return PREFIX + (form.getAttribute('data-autosave') || form.getAttribute('action') || location.pathname); }
+  // Schlüssel: data-autosave, sonst Seitenadresse + Nummer des Formulars (Neu-Formulare haben zufällige IDs in action)
+  function keyOf(form) {
+    var k = form.getAttribute('data-autosave');
+    if (k) return PREFIX + k;
+    var i = Array.prototype.indexOf.call(document.forms, form);
+    return PREFIX + location.pathname + location.search + ':' + i;
+  }
   function fieldsOf(form) {
     return Array.prototype.filter.call(form.elements, function (el) {
       if (!el.name || el.disabled || el.closest('[data-lines]') || el.closest('template')) return false;
@@ -119,7 +125,21 @@ export const CLIENT_JS = String.raw`
     // vor dem Verlassen der Seite (auch bei Zurück über bfcache) noch einmal sichern
     window.addEventListener('pagehide', save);
   }
-  Array.prototype.forEach.call(document.querySelectorAll('form[data-autosave]'), setupForm);
+  // Alle Eingabeformulare sichern (nicht nur markierte): POST-Formulare mit mindestens einem Eingabefeld,
+  // außer Anmeldung/Passwort und ausdrücklich ausgenommene (data-no-autosave).
+  Array.prototype.forEach.call(document.querySelectorAll('form'), function (f) {
+    if (f.hasAttribute('data-no-autosave')) return;
+    if (!f.hasAttribute('data-autosave')) {
+      if ((f.getAttribute('method') || 'get').toLowerCase() !== 'post') return;
+      if (f.querySelector('input[type=password]')) return;
+      var editable = fieldsOf(f).filter(function (el) {
+        var t = (el.type || '').toLowerCase();
+        return el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || ['text', 'email', 'number', 'date', 'time', 'tel', 'url', 'month', 'datetime-local', ''].indexOf(t) >= 0;
+      });
+      if (!editable.length) return;
+    }
+    setupForm(f);
+  });
 
   // ---- Doppelklick-Schutz: Formular nur einmal absenden ----
   // Bubble-Phase: läuft nach den Prüfungen des Formulars (z. B. confirm(), Unterschrift fehlt) –

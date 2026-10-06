@@ -59,6 +59,11 @@ export interface Customer {
   contact_email: string | null;
   contact_phone: string | null;
   notes: string | null;
+  billing_hint: string | null;
+  site_notes: string | null;
+  warning: string | null;
+  customer_since: string | null;
+  created_at: Date;
   active: boolean;
   status: 'kunde' | 'interessent';
   dunning_block: boolean;
@@ -67,6 +72,11 @@ export interface Customer {
 
 const emptyToNull = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? null : v);
 const optText = z.preprocess(emptyToNull, z.string().trim().nullable().default(null));
+/** Wie optText, aber nicht mitgeschickt (undefined) bleibt undefined → Feld wird beim Ändern nicht überschrieben. */
+const keepText = z.preprocess(
+  (v) => (v === undefined ? undefined : emptyToNull(v)),
+  z.string().trim().nullable().optional(),
+);
 
 const optBool = z.preprocess(
   (v) => (v === undefined ? undefined : v === 'on' || v === 'true' || v === true),
@@ -91,13 +101,11 @@ export const customerInput = z
     city: z.string().trim().min(1, 'Ort fehlt'),
     vat_id: optText,
     is_public_authority: optBool,
-    leitweg_id: optText
-      .refine(
-        (v) => v === null || /^[0-9]{2,12}(-[0-9A-Za-z]{1,30})?-[0-9]{2}$/.test(v),
-        'Leitweg-ID ungültig (Format: Grobadressierung-Feinadressierung-Prüfziffer)',
-      )
-      .optional(),
-    supplier_no: optText.optional(),
+    leitweg_id: keepText.refine(
+      (v) => v == null || /^[0-9]{2,12}(-[0-9A-Za-z]{1,30})?-[0-9]{2}$/.test(v),
+      'Leitweg-ID ungültig (Format: Grobadressierung-Feinadressierung-Prüfziffer)',
+    ),
+    supplier_no: keepText,
     invoice_emails: z
       .preprocess(
         (v) =>
@@ -135,10 +143,16 @@ export const customerInput = z
         z.number().int().min(1).max(90).nullable(),
       )
       .optional(),
-    contact_name: optText,
-    contact_email: z.preprocess(emptyToNull, z.email('Ungültige Kontakt-E-Mail').nullable().default(null)),
-    contact_phone: optText,
-    notes: optText,
+    contact_name: keepText,
+    contact_email: z.preprocess(
+      (v) => (v === undefined ? undefined : emptyToNull(v)),
+      z.email('Ungültige Kontakt-E-Mail').nullable().optional(),
+    ),
+    contact_phone: keepText,
+    notes: keepText, // Kurzinfo
+    billing_hint: keepText,
+    site_notes: keepText,
+    warning: keepText,
     // kunde (grün) · interessent (gelb) · ehemalig (rot = inaktiv)
     status: z.enum(['kunde', 'interessent', 'ehemalig']).optional(),
     dunning_block: optBool,

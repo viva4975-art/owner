@@ -81,6 +81,7 @@ input:focus,select:focus,textarea:focus{outline:3px solid #f3d6df;border-color:v
 .row:last-child{border-bottom:0}
 .row .r{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 .mut{color:var(--mut)}.small{font-size:14px}
+.note{font-size:14px;background:#fff8e6;border-left:3px solid #d39b24;padding:6px 10px;margin-top:6px;white-space:pre-line;border-radius:4px}
 .pill{display:inline-block;font-size:13px;font-weight:600;border-radius:999px;padding:1px 9px;background:#eef0f3;color:var(--mut)}
 .pill.ok{background:var(--ok-50);color:var(--ok)}.pill.warn{background:var(--warn-50);color:var(--warn)}.pill.err{background:var(--err-50);color:var(--err)}
 .links{display:grid;gap:10px}
@@ -466,6 +467,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       minute: '2-digit',
     });
     const todays = shifts.filter((s) => s.date === today && !s.absence);
+    const notes = await siteNotes(todays.map((s) => s.plan.site_id));
     const toConfirm = shifts.filter(
       (s) => !s.entry && !s.absence && (s.date < today || s.plan.end_time <= nowHm),
     );
@@ -508,6 +510,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
               <div>
                 {s.plan.start_time}–{s.plan.end_time}
                 <div class="small mut">{s.plan.site_name}</div>
+                {notes.get(s.plan.site_id) && <div class="note">{notes.get(s.plan.site_id)}</div>}
               </div>
               <div class="r">
                 {s.entry ? <span class="pill ok">{t(lang, `st_${s.entry.status}`)}</span> : ''}
@@ -577,6 +580,16 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
   };
 
   // QR-Code am Objekt
+  /** Einsatzort-Notizen des Kunden je Objekt (Kunde → Zusatzinformationen). */
+  const siteNotes = async (ids: string[]) => {
+    const rows = ids.length
+      ? await sql<{ id: string; site_notes: string | null }[]>`
+          select s.id, c.site_notes from app.sites s join app.customers c on c.id = s.customer_id
+           where s.id in ${sql([...new Set(ids)])}`
+      : [];
+    return new Map(rows.filter((r) => r.site_notes).map((r) => [r.id, r.site_notes!] as const));
+  };
+
   app.get('/m/o/:token{[0-9a-f]{32}}', async (c) => {
     const { me, res } = await requireMe(c);
     if (!me) return res!;
@@ -592,6 +605,9 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       me,
       <>
         <h1>{site.name}</h1>
+        {(await siteNotes([site.id])).get(site.id) && (
+          <div class="card note">{(await siteNotes([site.id])).get(site.id)}</div>
+        )}
         <ClockCard lang={lang} me={me} running={running} siteId={site.id} viaQr />
         <a class="big sec" href="/m">
           {t(lang, 'back')}

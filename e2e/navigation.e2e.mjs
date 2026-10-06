@@ -109,8 +109,8 @@ const b = await ctx.newPage();
 b.on('dialog', (d) => d.accept());
 await a.goto(newCustomerUrl + '/bearbeiten');
 await b.goto(newCustomerUrl + '/bearbeiten');
-await a.fill('#contact_name', 'Frau A aus Tab 1');
-await b.fill('#contact_name', 'Herr B aus Tab 2');
+await a.fill('#notes', 'Frau A aus Tab 1');
+await b.fill('#notes', 'Herr B aus Tab 2');
 await b.click('button:has-text("Speichern")');
 await b.waitForLoadState();
 check('Tab 2 speichert', (await flash(b)).includes('Kunde gespeichert'));
@@ -127,7 +127,7 @@ check(
   (await a.locator('.restore button:has-text("Meine Eingaben übernehmen")').count()) === 1,
 );
 await a.click('.restore button:has-text("Meine Eingaben übernehmen")');
-check('Tab 1: eigene Eingabe zurück im Feld', (await a.inputValue('#contact_name')) === 'Frau A aus Tab 1');
+check('Tab 1: eigene Eingabe zurück im Feld', (await a.inputValue('#notes')) === 'Frau A aus Tab 1');
 
 // ---------- 5. Zwei Tabs, verschiedene Arbeit gleichzeitig ----------
 console.log('5. Zwei Tabs, verschiedene Arbeit');
@@ -151,6 +151,28 @@ await a.click('button:has-text("Speichern")');
 await a.waitForLoadState();
 check('Tab A: Mitarbeiter gespeichert', (await flash(a)).includes('Mitarbeiter gespeichert'), await flash(a));
 check('Tab A: Eingaben nicht vermischt', (await a.locator('h1').innerText()).includes('Elena Popescu'));
+
+// ---------- 6. Zwei Tabs: Kunde in Tab A halb ausgefüllt, Tab B arbeitet woanders, Tab A neu geladen ----------
+console.log('6. Ungespeicherte Eingaben überleben Arbeit im anderen Tab (jedes Formular)');
+const AUTH = '00000000-0000-4000-8000-000000000001';
+await a.goto(`${B}/kunden/${AUTH}/rechnungsgruppen?neu=1`);
+await a.fill('#g-name', 'Halb ausgefüllt Tab A');
+await a.fill('#g-emails', 'tab-a@example.org');
+await a.waitForTimeout(400);
+await b.goto(`${B}/kunden/${AUTH}/bearbeiten`);
+await b.fill('#notes', 'Tab B speichert etwas anderes');
+await b.click('button:has-text("Speichern")');
+await b.waitForLoadState();
+check('Tab B gespeichert', (await flash(b)).includes('Kunde gespeichert'), await flash(b));
+check('Tab A: Eingabe noch da', (await a.inputValue('#g-name')) === 'Halb ausgefüllt Tab A');
+await a.reload();
+check(
+  'Tab A nach Neuladen wiederhergestellt',
+  (await a.inputValue('#g-name')) === 'Halb ausgefüllt Tab A' &&
+    (await a.inputValue('#g-emails')) === 'tab-a@example.org',
+  await a.inputValue('#g-name'),
+);
+check('Tab B sieht Tab-A-Eingaben nicht', !(await b.content()).includes('Halb ausgefüllt Tab A'));
 
 console.log(`\n${ok} ok, ${fail} fehlgeschlagen`);
 await browser.close();

@@ -371,7 +371,22 @@ export function registerMasterdataRoutes(ctx: Ctx) {
         </>,
       );
     }
-    return customerPage(c, 'bearbeiten', () => form);
+    // Bearbeiten ohne die Kunden-Reiter (nur Kopf mit Zurück zum Kunden)
+    return page(
+      c,
+      `${cust.name} bearbeiten`,
+      'kunden',
+      <>
+        <PageHead
+          title={`${cust.name} bearbeiten`}
+          crumbs={[
+            ['Kunden', '/kunden'],
+            [cust.name, `/kunden/${cust.id}`],
+          ]}
+        />
+        <div class="card">{form}</div>
+      </>,
+    );
   });
 
   app.post(`/kunden/:id{${UUID}}`, async (c) => {
@@ -1102,7 +1117,22 @@ export function registerMasterdataRoutes(ctx: Ctx) {
         </>,
       );
     }
-    return sitePage(c, 'bearbeiten', () => form);
+    // Bearbeiten ohne die Objekt-Reiter
+    return page(
+      c,
+      `${s.name} bearbeiten`,
+      'kunden',
+      <>
+        <PageHead
+          title={`${s.name} bearbeiten`}
+          crumbs={[
+            ['Objekte', '/objekte'],
+            [s.name, `/objekte/${s.id}`],
+          ]}
+        />
+        <div class="card">{form}</div>
+      </>,
+    );
   });
 
   app.post(`/objekte/:id{${UUID}}`, async (c) => {

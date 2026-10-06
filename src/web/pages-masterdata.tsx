@@ -304,6 +304,11 @@ export const CustomerShell: FC<{ c: Customer; counts: CustomerCounts; active: st
           context: { kunde: c.id },
         }}
       />
+      {c.warning && (
+        <div class="flash err" style="white-space:pre-line">
+          <b>Warnhinweis:</b> {c.warning}
+        </div>
+      )}
       <Tabs tabs={tabs} more={more} active={active} />
       <div class="tabbody">{children}</div>
     </>
@@ -459,6 +464,21 @@ export const RevenueBars: FC<{ rows: { month: string; net_cents: bigint }[] }> =
 // Kunde bearbeiten
 // ---------------------------------------------------------------------------
 
+const TextBox: FC<{ name: string; label: string; value: string | null | undefined; hint?: string }> = ({
+  name,
+  label,
+  value,
+  hint,
+}) => (
+  <div>
+    <label for={name}>{label}</label>
+    <textarea id={name} name={name} rows={2}>
+      {value ?? ''}
+    </textarea>
+    {hint && <div class="help">{hint}</div>}
+  </div>
+);
+
 export const CustomerForm: FC<{ id: string; c: Partial<Customer>; isNew: boolean }> = ({ id, c, isNew }) => (
   <form
     method="post"
@@ -467,6 +487,7 @@ export const CustomerForm: FC<{ id: string; c: Partial<Customer>; isNew: boolean
     data-version={String(c.version ?? '')}
   >
     <input type="hidden" name="version" value={String(c.version ?? '')} />
+    <h2 class="form-section">Basisdaten</h2>
     <div class="grid">
       <Field name="customer_no" label="Kundennummer *" value={c.customer_no} required />
       <Field name="name" label="Name *" value={c.name} required />
@@ -474,45 +495,52 @@ export const CustomerForm: FC<{ id: string; c: Partial<Customer>; isNew: boolean
       <Field name="street" label="Straße *" value={c.street} required />
       <Field name="postal_code" label="PLZ *" value={c.postal_code} required />
       <Field name="city" label="Ort *" value={c.city} required />
-      <Field name="vat_id" label="USt-IdNr. des Kunden" value={c.vat_id} />
-    </div>
-    <h2>Status</h2>
-    <div class="grid">
       <div>
         <label for="status">Status</label>
         <select id="status" name="status">
           {(['kunde', 'interessent', 'ehemalig'] as const).map((st) => (
-            <option value={st} selected={(isNew ? 'kunde' : customerStatusOf(c as Customer)) === st}>
+            <option
+              value={st}
+              selected={(isNew ? (c.status ?? 'kunde') : customerStatusOf(c as Customer)) === st}
+            >
               {CUSTOMER_STATUS[st]}
             </option>
           ))}
         </select>
       </div>
     </div>
-    <p class="mut small">
-      Rechnungseinstellungen (Rechnungsadresse, E-Mails, Format, Leitweg-ID, Zahlungsziel, Skonto) pflegen Sie
-      im Reiter „Rechnungsgruppen“ – je Objekt wählbar.
-    </p>
-    <h2>Hauptansprechpartner</h2>
-    <p class="mut small" style="margin-top:-6px">
-      Weitere Ansprechpartner im Reiter „Kontakte“.
-    </p>
+    <h2 class="form-section">Zusatzinformationen</h2>
     <div class="grid">
-      <Field name="contact_name" label="Name" value={c.contact_name} />
-      <Field name="contact_email" label="E-Mail" value={c.contact_email} />
-      <Field name="contact_phone" label="Telefon" value={c.contact_phone} />
+      <Field name="vat_id" label="USt-IdNr." value={c.vat_id} />
+      <TextBox name="notes" label="Kurzinfo" value={c.notes} />
+      <TextBox
+        name="billing_hint"
+        label="Hinweise zur Rechnungsstellung"
+        value={c.billing_hint}
+        hint="Wird bei der Rechnungsstellung angezeigt"
+      />
+      <TextBox
+        name="site_notes"
+        label="Einsatzort-Notizen"
+        value={c.site_notes}
+        hint="Diese Notizen werden in der Zeiterfassungs-App für Mitarbeitende angezeigt"
+      />
+      <TextBox
+        name="warning"
+        label="Warnhinweis"
+        value={c.warning}
+        hint="Besonders hervorgehobene Info zu diesem Kunden"
+      />
     </div>
-    <div style="margin-top:12px">
-      <label for="notes">Interne Bemerkung</label>
-      <textarea id="notes" name="notes">
-        {c.notes ?? ''}
-      </textarea>
-    </div>
-    <div class="actions">
-      <button class="btn">Speichern</button>
+    <p class="help" style="margin-top:14px">
+      Rechnungseinstellungen (Rechnungsadresse, E-Mails, Format, Leitweg-ID, Zahlungsziel, Skonto) pflegen Sie
+      im Reiter „Rechnungsgruppen“, Ansprechpartner im Reiter „Kontakte“.
+    </p>
+    <div class="formfoot">
       <a class="btn sec" href={isNew ? '/kunden' : `/kunden/${id}`}>
         Abbrechen
       </a>
+      <button class="btn">Speichern</button>
     </div>
   </form>
 );

@@ -254,6 +254,25 @@ export const LineEditor: FC<{
   </>
 );
 
+/** Warnhinweis und Hinweise zur Rechnungsstellung des Kunden (beim Erstellen/Prüfen von Rechnungen). */
+export const CustomerNotice: FC<{
+  c: Pick<Customer, 'warning' | 'billing_hint'> | null | undefined;
+}> = ({ c }) =>
+  c && (c.warning || c.billing_hint) ? (
+    <>
+      {c.warning && (
+        <div class="flash err" style="white-space:pre-line">
+          <b>Warnhinweis:</b> {c.warning}
+        </div>
+      )}
+      {c.billing_hint && (
+        <div class="flash warn" style="white-space:pre-line">
+          <b>Hinweis zur Rechnungsstellung:</b> {c.billing_hint}
+        </div>
+      )}
+    </>
+  ) : null;
+
 export const InvoiceEditor: FC<{
   id: string;
   inv: Partial<InvoiceRow>;
@@ -266,6 +285,7 @@ export const InvoiceEditor: FC<{
 }> = ({ id, inv, lines, customers, sites, services, partials, selectedPartials }) => (
   <>
     <h1>{inv.status ? 'Entwurf bearbeiten' : 'Neue Rechnung'}</h1>
+    <CustomerNotice c={customers.find((c) => c.id === inv.customer_id)} />
     <form method="get" action={`/rechnungen/${id}/bearbeiten`} class="card">
       <div class="grid">
         <div>
@@ -477,6 +497,7 @@ export const InvoiceDetail: FC<{
         <StatusBadge inv={{ status: inv.status, delivery_status: deliveries.at(-1)?.status ?? null }} />
         {cancelled && <span class="badge err">storniert</span>}
       </div>
+      {inv.status === 'draft' && <CustomerNotice c={customer} />}
       <div class="grid card">
         <div>
           <label>Kunde</label>

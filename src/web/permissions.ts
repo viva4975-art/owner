@@ -15,6 +15,7 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/einstellungen\/?$/, ['admin', 'buchhaltung', 'personal']],
   [/^\/einstellungen\/word-vorlagen(\/|$)/, ['admin', 'buchhaltung', 'personal']],
   [/^\/word-vorlagen\/(erzeugen|ausfuellen)$/, ALL],
+  [/^\/transfer\/import\/dubletten$/, ['admin']],
   [/^\/vorlagen\/?$/, ['admin', 'buchhaltung', 'personal']],
   [/^\/auswertungen\/kostenstellen([/.]|$)/, ['admin', 'buchhaltung']],
   [/^\/personal\/export/, HR],

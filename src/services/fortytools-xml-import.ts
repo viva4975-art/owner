@@ -192,9 +192,13 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
   const cByRef = new Map(dbCust.filter((c) => c.external_ref).map((c) => [c.external_ref!, c]));
   const cByNo = new Map(dbCust.map((c) => [c.customer_no, c]));
   const cByName = new Map(dbCust.map((c) => [norm(c.name), c]));
+  // neue Nummern (Interessenten ohne Nummer) hinter allen vorhandenen UND allen Nummern der Datei – sonst kollidiert
+  // eine vergebene Nummer mit einem Kunden, der erst später in der Datei kommt
   let nextNo = Math.max(
     19999,
-    ...dbCust.map((c) => Number(c.customer_no)).filter((n) => Number.isFinite(n) && n < 1e6),
+    ...[...dbCust.map((c) => c.customer_no), ...(by.get('customers') ?? []).map((c) => get(c, 'number'))]
+      .map(Number)
+      .filter((n) => Number.isInteger(n) && n > 0 && n < 1e6),
   );
   const cc = (res.counts.Kunden = blank());
   for (const c of by.get('customers') ?? []) {
@@ -277,7 +281,8 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
       continue;
     }
     // neu
-    const customerNo = no && !cByNo.has(no) ? no : String(++nextNo);
+    let customerNo = no && !cByNo.has(no) ? no : String(++nextNo);
+    while (!no && cByNo.has(customerNo)) customerNo = String(++nextNo);
     if (!data.street || !/^\d{5}$/.test(data.postal_code) || !data.city)
       issue('Kunden', `${customerNo} ${name}: Adresse unvollständig – bitte nachtragen`);
     const id = uuidOf(`ftx-customer:${ftId}`);

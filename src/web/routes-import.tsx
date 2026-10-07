@@ -1,3 +1,4 @@
+import { importDuplicates } from '../services/import-duplicates.js';
 import { randomUUID } from 'node:crypto';
 import { createHash } from 'node:crypto';
 import { type FtxResult, importFtx, parseFtx } from '../services/fortytools-xml-import.js';
@@ -30,6 +31,125 @@ const kindOf = (v: unknown): ImportKind =>
 export function registerImportRoutes({ app, deps, page, back }: Ctx) {
   const { sql } = deps;
 
+  // ------------------------------------------------------------ Dubletten aus den Importen zusammenführen
+  app.get('/transfer/import/dubletten', async (c) => {
+    const r = await importDuplicates(sql, { apply: false, actor: c.get('actor') });
+    const same = await sql<{ customer: string; name: string; n: number; sites: string }[]>`
+      select c.customer_no || ' ' || c.name as customer, s.name, count(*)::int as n,
+             string_agg(s.site_no, ', ' order by s.site_no) as sites
+        from app.sites s join app.customers c on c.id = s.customer_id
+       where s.active and exists (select 1 from app.site_services v where v.site_id = s.id and v.active
+                                    and v.billing_cycle not in ('je_ausfuehrung', 'einmalig'))
+       group by c.customer_no, c.name, s.name having count(*) > 1 order by 1, 2`;
+    const kunden = r.pairs.filter((p) => p.kind === 'Kunde');
+    const objekte = r.pairs.filter((p) => p.kind === 'Objekt');
+    return page(
+      c,
+      'Doppelte Kunden/Objekte',
+      'transfer',
+      <>
+        <PageHead
+          title="Doppelte Kunden und Objekte"
+          crumbs={[['Import aus Fortytools', '/transfer/import']]}
+        />
+        <p class="mut" style="max-width:960px;margin-top:-6px">
+          Entstehen, wenn erst die XML-Exporte und danach die CSV-Exporte importiert werden (bis 07.10. legte
+          der CSV-Import dann alles ein zweites Mal an – Leistungen und Monatsbeträge doppelt). Behalten wird
+          der Datensatz aus dem XML-Import (Fortytools-Nummer, Rechnungsarchiv); alles vom doppelten Datensatz
+          (Leistungen, Kontakte, Einsätze …) wird umgehängt, danach wird die Dublette gelöscht. Aus Rechnungen
+          abgeleitete Monatspauschalen werden abgeschaltet, wenn das Objekt echte Leistungen aus dem
+          CSV-Export hat.
+        </p>
+        {r.pairs.length === 0 ? (
+          <div class="card empty">Keine Import-Dubletten gefunden.</div>
+        ) : (
+          <form
+            method="post"
+            action="/transfer/import/dubletten"
+            class="card"
+            onsubmit={`return confirm(${JSON.stringify(`${kunden.length} Kunden und ${objekte.length} Objekte zusammenführen? Das lässt sich nicht rückgängig machen (Protokoll bleibt).`)})`}
+          >
+            <h3 style="margin-top:0">
+              {kunden.length} Kunden, {objekte.length} Objekte doppelt
+            </h3>
+            <div class="tbl">
+              <table class="stack-m">
+                <thead>
+                  <tr>
+                    <th>Art</th>
+                    <th>Kunde</th>
+                    <th>bleibt</th>
+                    <th>wird zusammengeführt</th>
+                    <th class="r">Leistungen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {r.pairs.map((p) => (
+                    <tr>
+                      <td data-l="Art">{p.kind}</td>
+                      <td data-l="Kunde" class="small">
+                        {p.customer}
+                      </td>
+                      <td data-l="bleibt">{p.keepLabel}</td>
+                      <td data-l="wird zusammengeführt" class="mut">
+                        {p.dupLabel}
+                      </td>
+                      <td class="r" data-l="Leistungen">
+                        {p.kind === 'Objekt' ? p.services : ''}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div class="actions">
+              <button class="btn">Jetzt zusammenführen</button>
+            </div>
+          </form>
+        )}
+        {same.length > 0 && (
+          <div class="card">
+            <h3 style="margin-top:0">Zur Kontrolle: gleicher Objektname mehrfach beim Kunden</h3>
+            <p class="small mut" style="margin-top:0">
+              Diese Objekte heißen schon in Fortytools gleich. Der CSV-Export der Leistungen nennt nur den
+              Objektnamen – bitte kurz prüfen, ob jede Monatspauschale am richtigen Objekt hängt (Objekt →
+              Leistungen & Preise).
+            </p>
+            <div class="tbl">
+              <table class="stack-m">
+                <thead>
+                  <tr>
+                    <th>Kunde</th>
+                    <th>Objektname</th>
+                    <th>Objekte</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {same.map((x) => (
+                    <tr>
+                      <td data-l="Kunde">{x.customer}</td>
+                      <td data-l="Objektname">{x.name}</td>
+                      <td data-l="Objekte" class="small">
+                        {x.n}× ({x.sites})
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </>,
+    );
+  });
+
+  app.post('/transfer/import/dubletten', async (c) => {
+    const r = await importDuplicates(sql, { apply: true, actor: c.get('actor') });
+    return back(c, '/transfer/import/dubletten', {
+      ok: `${r.merged} Dubletten zusammengeführt${r.deactivated.length ? `, ${r.deactivated.length} deaktiviert (hängen an Belegen)` : ''}, ${r.derivedOff} abgeleitete Monatspauschalen abgeschaltet.`,
+    });
+  });
+
   app.get('/transfer/import', async (c) => {
     const imports = await listImports(sql);
     return page(
@@ -37,7 +157,11 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
       'Import aus Fortytools',
       'transfer',
       <>
-        <PageHead title="Import aus Fortytools" crumbs={[['Transfer', '/transfer/kontoumsaetze']]} />
+        <PageHead title="Import aus Fortytools" crumbs={[['Transfer', '/transfer/kontoumsaetze']]}>
+          <a class="btn sec" href="/transfer/import/dubletten">
+            Doppelte Kunden/Objekte prüfen
+          </a>
+        </PageHead>
         <form
           method="post"
           action="/transfer/import/fortytools-xml"

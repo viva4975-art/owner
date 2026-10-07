@@ -236,15 +236,34 @@ export async function buildPlan(sql: Sql, tables: Table[]): Promise<Plan> {
   };
 
   // Bestand
-  const dbCustomers = await sql<{ id: string; customer_no: string; external_ref: string | null }[]>`
-    select id, customer_no, external_ref from app.customers`;
+  const dbCustomers = await sql<
+    { id: string; customer_no: string; external_ref: string | null; name: string }[]
+  >`select id, customer_no, external_ref, name from app.customers order by customer_no`;
+  // Interessenten ohne Nummer: über den Namen erkennen (z. B. schon aus dem XML-Import mit vergebener Nummer)
+  const custByName = new Map<string, (typeof dbCustomers)[number]>();
+  for (const x of dbCustomers) if (!custByName.has(norm(x.name))) custByName.set(norm(x.name), x);
   const custByNo = new Map(dbCustomers.map((c) => [c.customer_no, c]));
   const custByRef = new Map(dbCustomers.filter((c) => c.external_ref).map((c) => [c.external_ref!, c]));
   const dbSites = await sql<
-    { id: string; site_no: string; external_ref: string | null; customer_id: string }[]
+    {
+      id: string;
+      site_no: string;
+      external_ref: string | null;
+      customer_id: string;
+      name: string;
+      street: string | null;
+    }[]
   >`
-    select id, site_no, external_ref, customer_id from app.sites`;
+    select id, site_no, external_ref, customer_id, name, street from app.sites order by site_no`;
   const siteByRef = new Map(dbSites.filter((s) => s.external_ref).map((s) => [s.external_ref!, s]));
+  // Objekte aus dem XML-Import (oder von Hand) haben eine andere Kennung – über Kunde + Name erkennen, sonst entstehen
+  // Dubletten (Fund 07.10.: erst XML, dann CSV → jedes Objekt doppelt, Leistungen doppelt)
+  const siteByName = new Map<string, (typeof dbSites)[number][]>();
+  for (const s of dbSites) {
+    const k = `${s.customer_id}|${norm(s.name)}`;
+    siteByName.set(k, [...(siteByName.get(k) ?? []), s]);
+  }
+  const takenSites = new Set<string>();
   const usedSiteNos = new Set(dbSites.map((s) => s.site_no));
   const dbServiceIds = new Set(
     (await sql<{ id: string }[]>`select id from app.site_services`).map((r) => r.id),
@@ -299,7 +318,15 @@ export async function buildPlan(sql: Sql, tables: Table[]): Promise<Plan> {
       const key = no ? `ft:k:${no}` : `ft:kurz:${short}`;
       let p = no ? planByNo.get(no) : planByShort.get(short);
       if (!p) {
-        const existing = (no ? custByNo.get(no) : undefined) ?? custByRef.get(key);
+        const firstLine =
+          cell(r, c.name)
+            .split(/\r?\n/)
+            .map((x) => x.trim())
+            .find(Boolean) ?? short;
+        const existing =
+          (no ? custByNo.get(no) : undefined) ??
+          custByRef.get(key) ??
+          (no ? undefined : (custByName.get(norm(firstLine)) ?? custByName.get(norm(short))));
         const customerNo = existing?.customer_no ?? (no || String(++nextNo));
         const [name = '', ...rest] = cell(r, c.name)
           .split(/\r?\n/)
@@ -440,8 +467,17 @@ export async function buildPlan(sql: Sql, tables: Table[]): Promise<Plan> {
     name: string,
     addr: { street: string; postal_code: string; city: string },
     ref: string,
+    plainName = name,
   ) => {
-    const existing = siteByRef.get(ref);
+    let existing = siteByRef.get(ref);
+    if (!existing) {
+      // gleicher Name beim Kunden: zuerst mit gleicher Straße, sonst das erste noch nicht zugeordnete
+      const free = (siteByName.get(`${cust.id}|${norm(plainName)}`) ?? []).filter(
+        (x) => !takenSites.has(x.id),
+      );
+      existing = free.find((x) => norm(x.street ?? '') === norm(addr.street)) ?? free[0];
+    }
+    if (existing) takenSites.add(existing.id);
     const siteNo = existing?.site_no ?? nextSiteNo(cust.no);
     const input = { customer_id: cust.id, site_no: siteNo, name, ...addr };
     const parsed = siteInput.safeParse(input);
@@ -509,6 +545,7 @@ export async function buildPlan(sql: Sql, tables: Table[]): Promise<Plan> {
         [name, cell(r, c.extra)].filter(Boolean).join(' – '),
         { street, postal_code: /^\d{4}$/.test(plz) ? `0${plz}` : plz, city: cell(r, c.city) },
         ref,
+        name,
       );
       (s as PSite & { matchName: string }).matchName = norm(name);
       if (/inaktiv/i.test(cell(r, c.status))) s.input.active = false;
@@ -911,6 +948,7 @@ export async function applyPlan(
       await sql`update app.sites set external_ref = ${s.key} where id = ${s.id} and external_ref is null`;
       if (active === false) await sql`update app.sites set active = false where id = ${s.id}`;
     });
+  const monthlySites = new Set<string>();
   for (const s of plan.services)
     await run(s.label, s.status, async () => {
       const [cur] = await sql<
@@ -918,7 +956,22 @@ export async function applyPlan(
       >`select version from app.site_services where id = ${s.id}`;
       const input = serviceInput.parse({ ...s.input, service_type_id: typeId.get(s.typeName) ?? '' });
       await saveService(sql, s.id, s.siteId, { ...input, version: cur?.version ?? null }, p.actor);
+      if (input.billing_cycle !== 'je_ausfuehrung' && input.billing_cycle !== 'einmalig')
+        monthlySites.add(s.siteId);
     });
+  // Der XML-Import legt Monatspauschalen aus der letzten Rechnung an, wenn ein Objekt noch keine Leistung hat. Kommen die
+  // echten Leistungen danach aus dem CSV-Export, sind die abgeleiteten Pauschalen doppelt → abschalten (bleiben sichtbar).
+  if (monthlySites.size) {
+    const derived = await sql<{ id: string; ref: string }[]>`
+      select id, external_ref as ref from app.sites where id in ${sql([...monthlySites])} and external_ref like 'ftx:f:%'`;
+    for (const d of derived) {
+      const ids = Array.from({ length: 40 }, (_, k) => uuidOf(`ftx-service:${d.ref.slice(6)}:${k}`));
+      await sql`update app.site_services set active = false, valid_to = coalesce(valid_to, greatest(valid_from, current_date - 1)),
+                       note = coalesce(note || ' · ', '') || 'abgelöst durch Leistungen aus dem Fortytools-CSV-Export',
+                       updated_at = now(), version = version + 1
+                 where site_id = ${d.id} and id in ${sql(ids)} and active`;
+    }
+  }
   for (const e of plan.employees)
     await run(e.label, e.status, async () => {
       if (e.status === 'vorhanden') {

@@ -1127,3 +1127,15 @@ Testadresse.
   „Fortytools“, Link zur Archiv-Ansicht, „PDF in Fortytools“), nach Leistungszeitraum oder Rechnungsdatum, Jahre aus beiden
   Quellen, Suche; Zähler „Alle Rechnungen (n + m aus Fortytools)“. ZIP nur für eigene Belege. Vorher nur bei Kunde/Objekt/
   Offenen Posten sichtbar (Ahmed: „trotz Import keine Rechnungen“).
+- 2026-10-07: Fortytools-Rechnungen in „Alle Rechnungen“ (Jahr, Suche, Zähler „n + m aus Fortytools“, Link aufs Archiv).
+  **Fund Dubletten (Ahmed: Baubüro doppelt, Beträge falsch):** Wurde erst der XML-, dann der CSV-Import eingespielt, legte
+  der CSV-Import jedes Objekt und viele Kunden ein zweites Mal an (Abgleich nur über Fortytools-ID/Nummer) – Leistungen
+  doppelt, Monatssumme in der Probe 596 T€ statt 337 T€. Behoben: CSV-Import gleicht Kunden über Name/Kurzname und Objekte
+  über Kunde + Name (+ Straße) ab und schaltet die aus Rechnungen abgeleiteten Monatspauschalen ab, sobald echte Leistungen
+  da sind. Außerdem: XML-Import in eine leere DB scheiterte an doppelten Kundennummern (neue Nummern kollidierten mit
+  späteren aus der Datei). **Bestandsdaten bereinigen:** Transfer → Import aus Fortytools → „Doppelte Kunden/Objekte
+  prüfen“ (nur Admin): Vorschau, dann „Jetzt zusammenführen“ – behält den XML-Datensatz, hängt alles um, löscht die
+  Dublette (sonst deaktiviert „(Dublette)“), Protokoll `merge_duplicates`. Probe: 445 Dubletten → 193 Kunden, 397 Objekte,
+  341.776 € monatlich. **Rest:** Fortytools hat selbst gleichnamige Objekte beim selben Kunden (z. B. 20017 „Treppenhaus“
+  3×) – Leistungen dort nicht eindeutig zuzuordnen, Kontrollliste auf derselben Seite, Ahmed prüft von Hand.
+  Tests: 358 Unit-/DB-Tests (neu `import-duplicates.db.test.ts`).

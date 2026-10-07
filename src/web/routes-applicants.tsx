@@ -232,7 +232,8 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
               <h3>Stellenausschreibung als Plakat</h3>
               <p class="small mut">
                 A4-Plakat mit den wichtigsten Eckdaten in 9 Sprachen (DE · EN · TR · AR · RU · PL · RO · HU ·
-                EL) und WhatsApp-Nummer prominent. Ideal für Aushänge. Im Druckdialog „Als PDF speichern“
+                EL) und Handy-/WhatsApp-Nummer prominent. Ideal für Aushänge. Auf der Plakatseite „Als JPG
+                herunterladen“ (z. B. für WhatsApp/Social Media) oder im Druckdialog „Als PDF speichern“
                 wählen.
               </p>
               <a class="btn" href={`/bewerber/stellen/${p.id}/plakat`} target="_blank">
@@ -580,7 +581,7 @@ f.querySelectorAll('input[name=tag]').forEach(function(c){c.checked=s.indexOf(c.
 .ft{background:#7D1435;color:#fff;padding:22px 40px 26px;text-align:center}.ft .k{font-size:13px;letter-spacing:.12em;opacity:.85}
 .ft .ph{font-size:50px;font-weight:800;line-height:1.1;margin:6px 0}.ft .em{font-size:16px}.ft .ct{font-size:10.5px;opacity:.85;margin-top:8px;line-height:1.4}
 @media print{body{background:#fff}.bar{display:none}.sheet{margin:0}}
-</style></head><body><div class="bar"><button onclick="print()">Drucken / als PDF speichern</button></div><div class="sheet">
+</style></head><body><div class="bar"><button onclick="print()">Drucken / als PDF speichern</button> <button id="jpg" type="button">Als JPG herunterladen</button></div><div class="sheet" id="sheet">
 <div class="hd"><div class="co">${esc(co?.legal_name ?? '')} · ${esc(co?.city ?? '')}</div><h1>${esc(p.title)}</h1>${p.job_type && p.job_type !== p.title ? `<span class="art">${esc(p.job_type)}</span>` : ''}</div>
 <div class="body">
 ${
@@ -609,7 +610,23 @@ ${timeKey ? cell(multi('workTime'), T.de?.[timeKey] ?? TIMES[p.time_of_day!] ?? 
         .filter(Boolean)
         .join(' · '),
     )}</div></div>
-</div></body></html>`;
+</div>
+<script src="/static/vendor/html2canvas.min.js"></script>
+<script>
+document.getElementById('jpg').addEventListener('click', async function () {
+  var b = this; b.disabled = true; b.textContent = 'Wird erstellt …';
+  try {
+    var el = document.getElementById('sheet');
+    // ca. 150 dpi (A4 = 1240 × 1754 px)
+    var canvas = await html2canvas(el, { scale: 1240 / el.offsetWidth, backgroundColor: '#ffffff', useCORS: false });
+    var a = document.createElement('a');
+    a.href = canvas.toDataURL('image/jpeg', 0.92);
+    a.download = ${JSON.stringify(`Stellenplakat-${p.title}`.replace(/[^\p{L}\p{N}-]+/gu, '-') + '.jpg')};
+    document.body.appendChild(a); a.click(); a.remove();
+  } catch (e) { alert('JPG konnte nicht erstellt werden: ' + e); }
+  b.disabled = false; b.textContent = 'Als JPG herunterladen';
+});
+</script></body></html>`;
     return c.html(html);
   });
 

@@ -1027,3 +1027,7 @@ Testadresse.
 - 2026-10-07: Seite **Zählerstände entfernt** (Ahmed): Menüpunkt, Objekt-Reiter „Zähler“ und Seiten weg, alte Adressen leiten
   auf Objektliste bzw. Objekt um. Danach auf Ahmeds Ja („hatte nichts drin“) auch Tabellen `meters`/`meter_readings`
   (Migration `20261107000002`), Service-Funktionen, Test und Demo-Daten entfernt.
+- 2026-10-07: Stellenplakat (Bewerber & Stellen): Knopf „Als JPG herunterladen“ (A4, 1240 × 1753 px, im Browser über
+  html2canvas – lokal aus `node_modules` unter `/static/vendor/`, kein fremdes CDN). Nummer auf dem Plakat jetzt Handy
+  0176 63050802 statt Festnetz (Migration `20261107000003`, Einstellungen → Firmendaten „Handy-/WhatsApp-Nummer für
+  Stellenplakate“). `e2e:kasse` 63 Prüfungen.

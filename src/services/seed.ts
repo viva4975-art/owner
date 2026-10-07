@@ -4,7 +4,8 @@ import type { Sql } from '../db/client.js';
 export async function seedCompany(sql: Sql) {
   await sql`
     insert into app.company (id, legal_name, street, postal_code, city, vat_id, tax_number, register_court,
-                             register_number, managing_director, phone, fax, email, website, bank_accounts)
+                             register_number, managing_director, phone, fax, email, website, bank_accounts,
+                             job_whatsapp)
     values (1, 'Viva-Deluxe Gebäudereinigung GmbH', 'Würmtalstr. 10', '81375', 'München', 'DE341586171',
             '143/190/63154', 'Amtsgericht München', 'HRB 262 567', 'Ahmed Chomontek', '+49 89 63855496',
             '+49 89 99753096',
@@ -17,7 +18,7 @@ export async function seedCompany(sql: Sql) {
                 primary: true,
               },
               { name: 'Targobank', iban: 'DE66 7019 0000 0003 1914 27', bic: 'CMCIDEDDXXX' },
-            ])})
+            ])}, '0176 63050802')
     on conflict (id) do nothing`;
 }
 

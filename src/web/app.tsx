@@ -126,6 +126,17 @@ export function createApp(deps: Deps) {
     serveStatic({ root: STATIC_ROOT, rewriteRequestPath: (p) => p.replace(/^\/static/, '') }),
   );
 
+  // html2canvas (Plakat als JPG) aus node_modules, ohne fremdes CDN.
+  const H2C = fileURLToPath(
+    new URL('../../node_modules/html2canvas/dist/html2canvas.min.js', import.meta.url),
+  );
+  app.get('/static/vendor/html2canvas.min.js', async (c) => {
+    const { readFile } = await import('node:fs/promises');
+    c.header('Content-Type', 'text/javascript; charset=utf-8');
+    c.header('Cache-Control', 'public, max-age=604800');
+    return c.body(await readFile(H2C));
+  });
+
   // Referer nur innerhalb der App (nötig, um nach einem Eingabefehler ins Formular zurückzukehren).
   app.use(secureHeaders({ referrerPolicy: 'same-origin' }));
   app.use(csrf());

@@ -16,6 +16,7 @@ const ctx = await browser.newContext({
   extraHTTPHeaders: { Authorization: `Basic ${Buffer.from(`${USER}:${PASS}`).toString('base64')}` },
   viewport: { width: 1280, height: 900 },
   locale: 'de-DE',
+  acceptDownloads: true,
 });
 let ok = 0,
   fail = 0;
@@ -192,6 +193,18 @@ const stelleUrl = p.url();
 const plakat = await p.request.get(`${stelleUrl}/plakat`);
 const ph = await plakat.text();
 check('Plakat 9 Sprachen', ph.includes('Einsatzort') && ph.includes('Location') && ph.includes('WHATSAPP'));
+{
+  const pp = await ctx.newPage();
+  await pp.goto(`${stelleUrl}/plakat`);
+  const [dl] = await Promise.all([pp.waitForEvent('download'), pp.click('#jpg')]);
+  const buf = await (await import('node:fs/promises')).readFile(await dl.path());
+  check(
+    'Plakat als JPG',
+    dl.suggestedFilename().endsWith('.jpg') && buf[0] === 0xff && buf[1] === 0xd8,
+    dl.suggestedFilename(),
+  );
+  await pp.close();
+}
 await p.goto(`${B}/bewerber/pool`);
 await p.click('a:has-text("+ Neuer Bewerber")');
 await p.fill('#name', `E2E Bewerber ${stamp}`);

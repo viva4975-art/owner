@@ -262,7 +262,7 @@ export function registerSettingsRoutes({ app, deps, page, back }: Ctx) {
             {field('fax', 'Fax')}
             {field('email', 'E-Mail', true)}
             {field('website', 'Website')}
-            {field('job_whatsapp', 'WhatsApp-Nummer für Stellenaushänge')}
+            {field('job_whatsapp', 'Handy-/WhatsApp-Nummer für Stellenplakate')}
           </div>
           <div class="group-title">Bankverbindungen (erste = Hauptkonto, steht im GiroCode)</div>
           {accts.map((a, i) => (

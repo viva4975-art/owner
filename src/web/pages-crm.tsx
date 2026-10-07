@@ -6,6 +6,7 @@ import { Field } from './pages-masterdata.js';
 import { PageHead, dateDe, euro, initials } from './layout.js';
 import { InvoiceTable } from './pages-invoices.js';
 import { ABSENCE_LABEL, type AbsentNow } from '../services/absences.js';
+import { hourBerlin } from '../domain/invoice/calc.js';
 
 /** „Abwesend“: heute, nächste 7 Tage und 8–14 Tage (Urlaub zwei Wochen vorher sichtbar), mit Art inkl. „krank“. */
 export const AbsentCard: FC<{ absent: AbsentNow[]; today: string; href?: string | undefined }> = ({
@@ -417,9 +418,7 @@ const longDate = (iso: string) => {
   return `${WEEKDAY_DE[d.getUTCDay()]}, ${d.getUTCDate()}. ${MONTH_DE[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 };
 const greeting = () => {
-  const h = Number(
-    new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', hour12: false }),
-  );
+  const h = hourBerlin();
   return h < 11 ? 'Guten Morgen' : h < 18 ? 'Guten Tag' : 'Guten Abend';
 };
 
@@ -467,6 +466,8 @@ export const Dashboard: FC<{
   kpi: DashboardKpi;
   absent?: AbsentNow[];
   signOverdue?: { id: string; title: string; open: number }[];
+  /** Anzahl Mitarbeitende mit fehlenden Pflichtunterlagen (null = Rolle sieht es nicht) */
+  missingDocs?: number;
   absentHref?: string | undefined;
   layout?: DashItem[] | undefined;
   showAkquise?: boolean;
@@ -484,12 +485,26 @@ export const Dashboard: FC<{
   kpi,
   absent = [],
   signOverdue = [],
+  missingDocs = 0,
   absentHref,
 }) => {
   const total = balances.reduce((s, b) => s + b.open_cents, 0n);
   const overdue = balances.filter((b) => b.max_overdue_days > 0);
   const overdueTasks = tasks.filter((t) => t.due_date && t.due_date < kpi.today).length;
   const hints: { tone: string; text: Child; href: string }[] = [
+    ...(missingDocs
+      ? [
+          {
+            tone: 'err',
+            text: (
+              <>
+                Fehlende Pflichtunterlagen bei <b>{missingDocs}</b> Mitarbeitenden
+              </>
+            ),
+            href: '/personal/unterlagen',
+          },
+        ]
+      : []),
     ...hr.permits.map((p) => ({
       tone: p.residence_permit_until < kpi.today ? 'err' : 'warn',
       text: (

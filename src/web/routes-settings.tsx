@@ -106,6 +106,11 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
         '/einstellungen/word-vorlagen',
         'Arbeitsverträge, Nutzungsüberlassungen, Protokolle als Word-Datei mit Platzhaltern (wie Fortytools) – ZIP hochladen, beim Mitarbeiter/Kunden/Objekt ausfüllen.',
       ],
+      [
+        'Vorlagen ausfüllen (Word)',
+        '/vorlagen',
+        'Person, Kunde oder Objekt wählen und eine Word-Vorlage ausfüllen (zuletzt erstellte Dokumente).',
+      ],
     ],
   },
   {

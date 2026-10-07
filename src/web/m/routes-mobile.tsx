@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { Child, FC } from 'hono/jsx';
-import { todayBerlin } from '../../domain/invoice/calc.js';
+import { hourBerlin, todayBerlin } from '../../domain/invoice/calc.js';
 import { addDays } from '../../domain/time/holidays.js';
 import {
   type AbsenceKind,
@@ -672,9 +672,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     const todayTimes = times.filter((e) => e.work_date === today && e.status !== 'abgelehnt');
     const workedToday = todayTimes.reduce((a, e) => a + (e.end_at ? netMinutes(e) : e.gross_minutes), 0);
     const breakToday = todayTimes.reduce((a, e) => a + (e.end_at ? e.break_minutes : 0), 0);
-    const hour = Number(
-      new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', hour12: false }),
-    );
+    const hour = hourBerlin();
     const greetKey = hour < 11 ? 'greet_morning' : hour < 18 ? 'greet_day' : 'greet_evening';
     return render(
       c,

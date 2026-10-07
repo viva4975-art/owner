@@ -159,7 +159,7 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
     const scope = c.get('sites');
     return (
       await sql<{ id: string; site_no: string; name: string; customer_name: string }[]>`
-        select s.id, s.site_no, s.name, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`
+        select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`
     ).filter((s) => !scope || scope.includes(s.id));
   }
   async function load(c: Context<AppEnv>, id: string) {

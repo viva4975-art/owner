@@ -250,7 +250,7 @@ export async function getEmployee(sql: Sql, id: string) {
   if (!e) return undefined;
   const [p] = await sql<EmployeePrivate[]>`select * from app.employee_private where employee_id = ${id}`;
   const sites = await sql<{ id: string; site_no: string; name: string }[]>`
-    select s.id, s.site_no, s.name from app.employee_sites es join app.sites s on s.id = es.site_id
+    select s.id, s.site_no, s.name, s.street, s.city from app.employee_sites es join app.sites s on s.id = es.site_id
      where es.employee_id = ${id} order by s.site_no`;
   return { employee: e, priv: p, sites };
 }

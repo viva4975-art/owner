@@ -42,7 +42,7 @@ const tabs = await p
       .locator('.appside .sub a[href^="/auswertungen/"]')
       .evaluateAll((as) => as.map((a) => a.getAttribute('href'))),
   );
-check('10 Berichte im Menü', tabs.length === 10, String(tabs.length));
+check('Berichte im Menü (reduziert)', tabs.length >= 5 && tabs.length <= 9, String(tabs.length));
 check('keine Reiterzeile', (await p.locator('.tabs a').count()) === 0);
 for (const href of tabs) {
   const r = await p.goto(B + href);

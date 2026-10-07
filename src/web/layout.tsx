@@ -1050,9 +1050,22 @@ td .btn.icon{min-height:34px;width:34px;height:34px;padding:0;justify-content:ce
 @media (max-width:640px){details.dd>.drop.right{position:fixed;left:12px;right:12px;top:58px;min-width:0}}
 
 /* Übersicht: Firmenlogo oben wie Fortytools */
-.dash-hero{flex-wrap:wrap}
-.dash-brand{flex-basis:100%;margin-bottom:6px}
-.dash-brand img{display:block;width:280px;max-width:70vw;height:auto}
+.dash-hero{flex-wrap:wrap;align-items:center;background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 22px;gap:18px 28px}
+.dash-brand{padding-right:26px;border-right:1px solid var(--line)}
+.dash-brand img{display:block;width:300px;max-width:62vw;height:auto}
+.dash-hero>div:nth-child(2){flex:1;min-width:220px}
+@media (max-width:760px){.dash-brand{border-right:0;padding-right:0;flex-basis:100%}}
+/* Datei-Auswahl (Ahmed 07.10.: Standard-Knopf „sieht billig aus“) – als Ablagefläche */
+input[type=file]{display:block;width:100%;max-width:520px;box-sizing:border-box;padding:12px 14px;border:1.5px dashed #d9c3cb;border-radius:10px;background:var(--brand-50);color:var(--mut);font-size:14px;cursor:pointer;transition:border-color .15s,background .15s}
+input[type=file]:hover,input[type=file]:focus{border-color:var(--brand);background:#fff;outline:none}
+input[type=file]::file-selector-button{border:0;background:var(--brand);color:#fff;padding:8px 16px;border-radius:7px;margin-right:14px;font:600 13.5px/1.2 inherit;cursor:pointer}
+input[type=file]::file-selector-button:hover{background:var(--brand-2)}
+/* sortierbare Spalten */
+th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+th.sortable:hover{color:var(--brand)}
+th.sortable::after{content:'↕';opacity:.25;margin-left:4px;font-size:11px}
+th.sortable.asc::after{content:'▲';opacity:.9}
+th.sortable.desc::after{content:'▼';opacity:.9}
 /* Statistiken */
 .stat-filter{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end}
 .stat-filter>div{display:flex;flex-direction:column;min-width:150px}
@@ -1104,11 +1117,9 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     items: [
       { label: 'Entwürfe / Vorfaktura', href: '/rechnungen/entwuerfe' },
       { label: 'Alle Rechnungen', href: '/rechnungen' },
-      { label: 'Aufträge', href: '/auftraege' },
       { label: 'Offene Posten', href: '/offene-posten', sep: true },
       { label: 'Mahnwesen', href: '/mahnungen' },
       { label: 'Statistiken', href: '/auswertungen/statistik', sep: true },
-      { label: 'Rechnungs-Statistik', href: '/auswertungen/rechnungen' },
     ],
   },
   {
@@ -1127,15 +1138,10 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Mitarbeiter', href: '/personal' },
       { label: 'Bewerber & Stellen', href: '/bewerber' },
       { label: 'Fehlende Unterlagen', href: '/personal/unterlagen' },
-      { label: 'Vorlagen (Word)', href: '/vorlagen' },
       { label: 'Unterweisungen & Unterschriften', href: '/personal/dokumente' },
-      { label: 'Urlaub & Abwesenheiten', href: '/urlaub' },
-      { label: 'Zeiterfassung heute', href: '/zeiterfassung', sep: true },
-      { label: 'Nachträge freigeben', href: '/zeiterfassung/freigaben' },
-      { label: 'Alle Zeiten', href: '/zeiterfassung/liste' },
+      { label: 'Zeiterfassung', href: '/zeiterfassung', sep: true },
       { label: 'Soll/Ist je Monat', href: '/zeiterfassung/monat' },
-      { label: 'Stundenzettel & Lohnarten', href: '/zeiterfassung/stundenzettel' },
-      { label: 'Prüfbericht Zoll', href: '/zeiterfassung/pruefbericht' },
+      { label: 'Stundenliste & Lohnarten', href: '/zeiterfassung/stundenzettel' },
       { label: 'Handy-Ansicht Mitarbeiter', href: '/m' },
     ],
   },
@@ -1154,8 +1160,8 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     label: 'Disposition',
     items: [
       { label: 'Planung', href: '/einsatzplanung' },
+      { label: 'Urlaub & Abwesenheiten', href: '/urlaub' },
       { label: 'Arbeitsscheine', href: '/arbeitsscheine' },
-      { label: 'Qualitätskontrollen', href: '/qualitaet' },
       { label: 'Glasreinigung', href: '/glasreinigung', sep: true },
       { label: 'Tiefgaragenreinigung', href: '/tiefgarage' },
       { label: 'Grundreinigung', href: '/grundreinigung' },
@@ -1186,14 +1192,11 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     key: 'auswertungen',
     label: 'Auswertungen',
     items: [
-      { label: 'Übersicht Auswertungen', href: '/auswertungen' },
       { label: 'Statistiken', href: '/auswertungen/statistik' },
-      { label: 'Rechnungs-Statistik', href: '/auswertungen/rechnungen' },
       { label: 'Umsatz-Vorschau', href: '/auswertungen/vorschau' },
       { label: 'Nachkalkulation', href: '/auswertungen/nachkalkulation' },
       { label: 'Kostenstellen', href: '/auswertungen/kostenstellen' },
       { label: 'Ø Stundensätze', href: '/auswertungen/stundensaetze' },
-      { label: 'Stundenkontrolle Soll/Ist', href: '/auswertungen/stunden' },
       { label: 'Urlaubskonten', href: '/auswertungen/urlaub' },
       { label: 'Krankheitstage', href: '/auswertungen/krankheit' },
       { label: 'Dienste-Liste', href: '/auswertungen/dienste' },

@@ -350,12 +350,14 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
           id: string;
           site_no: string;
           name: string;
+          street: string | null;
+          city: string | null;
           customer_id: string;
           customer_no: string;
           customer_name: string;
         }[]
       >`
-        select s.id, s.site_no, s.name, c.id as customer_id, c.customer_no, c.name as customer_name
+        select s.id, s.site_no, s.name, s.street, s.city, c.id as customer_id, c.customer_no, c.name as customer_name
           from app.sites s join app.customers c on c.id = s.customer_id
          where s.active or s.id = ${series?.siteId ?? null}
          order by c.name, s.site_no`,
@@ -428,6 +430,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
                       .map((s) => (
                         <option value={s.id} selected={s.id === v.siteId}>
                           ↳ {s.name} ({s.site_no})
+                          {s.street ? ` – ${s.street}${s.city ? `, ${s.city}` : ''}` : ''}
                         </option>
                       ))}
                   </optgroup>

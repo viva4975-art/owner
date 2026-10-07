@@ -849,7 +849,7 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
       dutyList(sql, { from: r.from, to: r.to, ...(r.siteId ? { siteId: r.siteId } : {}), scope }),
       sql<
         { id: string; site_no: string; name: string; customer_name: string }[]
-      >`select s.id, s.site_no, s.name, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`,
+      >`select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`,
     ]);
     const visibleSites = scope ? sites.filter((s) => scope.includes(s.id)) : sites;
     const days = [...new Set(rows.map((s) => s.date))];

@@ -119,7 +119,8 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     const st = get('status');
     const l = get('buchstabe')?.toUpperCase();
     return {
-      status: st && st in CUSTOMER_STATUS ? (st as CustomerStatus) : null,
+      // ohne Auswahl: aktive Kunden (Ahmed 07.10.); „Alle“ = status=alle
+      status: st === undefined || st === '' ? 'kunde' : st in CUSTOMER_STATUS ? (st as CustomerStatus) : null,
       letter: l && /^[A-Z#]$/.test(l) ? l : null,
       q: get('q')?.trim() || null,
     };
@@ -1059,7 +1060,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
              (select count(*)::int from app.tasks where entity_type = 'site' and entity_id = ${id} and status = 'open') as tasks`;
     const [[manager], [cl], customer] = await Promise.all([
       sql<{ name: string; phone: string | null; email: string | null }[]>`
-        select p.display_name as name, p.phone, p.email from app.sites s join app.profiles p on p.user_id = s.manager_user_id
+        select p.name, p.phone, p.email from app.sites s join app.manager_contacts p on p.user_id = s.manager_user_id
          where s.id = ${id}`,
       // Reinigungskräfte: aktive Mitarbeitende am Objekt ohne Kennzeichen „Objektleitung“
       sql<{ n: number }[]>`

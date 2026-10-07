@@ -394,9 +394,9 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
     return page(
       c,
       'Vorlagen',
-      'personal',
+      '',
       <>
-        <PageHead title="Vorlagen">
+        <PageHead title="Vorlagen ausfüllen (Word)" crumbs={[['Einstellungen', '/einstellungen']]}>
           {canAccess(role, '/einstellungen/word-vorlagen') && (
             <a class="btn sec" href="/einstellungen/word-vorlagen">
               Vorlagen verwalten / hochladen

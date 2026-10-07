@@ -253,7 +253,7 @@ ${sheetTableHtml(s)}${sigHtml}
       payrollMonth(sql, month),
       sql<{ employee_id: string; site_id: string }[]>`select employee_id, site_id from app.employee_sites`,
       sql<{ id: string; site_no: string; name: string; customer_name: string }[]>`
-        select s.id, s.site_no, s.name, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`,
+        select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`,
     ]);
     const lq = q.toLowerCase();
     const emps = all.filter(
@@ -284,6 +284,17 @@ ${sheetTableHtml(s)}${sigHtml}
         return { e, s, sg, state, p: payOf.get(e.id) };
       })
       .filter((x) => x.s.rows.length > 0 && (sig === 'alle' || x.state === sig));
+    // Sortierung aus der Tabelle (Klick auf Spaltenkopf) gilt auch für Druck/PDF/CSV (Ahmed 07.10.)
+    const sortBy = (c.req.query('sort') ?? '').toLowerCase();
+    const dir = c.req.query('dir') === 'desc' ? -1 : 1;
+    if (/pers/.test(sortBy))
+      rows.sort((a, b) => dir * a.e.personnel_no.localeCompare(b.e.personnel_no, 'de', { numeric: true }));
+    else if (/mitarbeiter|name/.test(sortBy) || dir === -1)
+      rows.sort(
+        (a, b) =>
+          dir *
+          `${a.e.last_name} ${a.e.first_name}`.localeCompare(`${b.e.last_name} ${b.e.first_name}`, 'de'),
+      );
     const all2 = rows;
     const chosen = picked.size ? rows.filter((x) => picked.has(x.e.id)) : rows;
     const qs = (o: Record<string, string> = {}) => {
@@ -422,6 +433,7 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
           <a
             class="btn sm sec"
             href={`/zeiterfassung/stundenzettel/uebersicht.pdf?${d.qs()}`}
+            data-export
             target="_blank"
           >
             PDF Übersicht
@@ -429,6 +441,7 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
           <a
             class="btn sm sec"
             href={`/zeiterfassung/stundenzettel/druck?${d.qs()}`}
+            data-export
             target="_blank"
             rel="noopener"
           >
@@ -439,10 +452,10 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
               Auswahl drucken
             </button>
           )}
-          <a class="btn sm sec" href={`/zeiterfassung/stundenzettel.csv?${d.qs()}`}>
+          <a class="btn sm sec" href={`/zeiterfassung/stundenzettel.csv?${d.qs()}`} data-export>
             CSV Übersicht
           </a>
-          <a class="btn sm" href={`/zeiterfassung/lohnarten.csv?${d.qs()}`}>
+          <a class="btn sm" href={`/zeiterfassung/lohnarten.csv?${d.qs()}`} data-export>
             CSV Lohnprogramm
           </a>
         </div>
@@ -463,6 +476,7 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                   <th style="width:28px">
                     <input type="checkbox" aria-label="alle auswählen" data-pick-all />
                   </th>
+                  <th>Pers.-Nr.</th>
                   <th>Mitarbeiter</th>
                   <th class="r">Soll</th>
                   <th class="r">Gearbeitet</th>
@@ -476,6 +490,7 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                 </tr>
               ) : (
                 <tr>
+                  <th>Pers.-Nr.</th>
                   <th>Mitarbeiter</th>
                   {WAGE_TYPES.map((k) => (
                     <th class="r">{WAGE_TYPE_LABEL[k].replace('Zuschlag ', 'Zuschl. ')}</th>
@@ -499,6 +514,7 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                       />
                     </td>
                   )}
+                  <td class="num">{e.personnel_no}</td>
                   <td>
                     <a
                       href={`/personal/${e.id}/stundenzettel?monat=${month}${d.onlySite ? `&objekt=${encodeURIComponent(d.siteName)}` : ''}`}
@@ -506,7 +522,7 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                       {e.last_name}, {e.first_name}
                     </a>
                     <div class="small mut">
-                      {e.personnel_no} · {EMPLOYMENT_TYPES[e.employment_type]}
+                      {EMPLOYMENT_TYPES[e.employment_type]}
                       {p && !p.wage_cents && <span class="badge warn"> Lohn fehlt</span>}
                       {(s.open.running > 0 || s.open.pending > 0) && (
                         <span class="badge warn"> offene Zeiten</span>

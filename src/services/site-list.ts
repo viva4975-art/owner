@@ -32,6 +32,8 @@ export interface SiteListRow {
   customer_no: string;
   manager_user_id: string | null;
   manager_name: string | null;
+  manager_phone: string | null;
+  manager_email: string | null;
   employees: number;
 }
 
@@ -53,12 +55,13 @@ export function parseSiteFilter(get: (k: string) => string | undefined): SiteFil
 export async function filteredSites(sql: Sql, scope: string[] | null, f: SiteFilter) {
   const all = await sql<SiteListRow[]>`
     select s.id, s.site_no, s.name, s.street, s.postal_code, s.city, s.active, s.clock_token, s.customer_id,
-           c.name as customer_name, c.customer_no, s.manager_user_id, p.display_name as manager_name,
+           c.name as customer_name, c.customer_no, s.manager_user_id, p.name as manager_name,
+           p.phone as manager_phone, p.email as manager_email,
            (select count(*)::int from app.employee_sites es join app.employees e on e.id = es.employee_id
              where es.site_id = s.id and e.status = 'aktiv') as employees
       from app.sites s
       join app.customers c on c.id = s.customer_id
-      left join app.profiles p on p.user_id = s.manager_user_id
+      left join app.manager_contacts p on p.user_id = s.manager_user_id
      where (${scope === null} or s.id = any(${scope ?? []}::uuid[]))`;
   const counts = { aktiv: all.filter((s) => s.active).length, inaktiv: all.filter((s) => !s.active).length };
   const t = f.q?.trim().toLowerCase() ?? '';

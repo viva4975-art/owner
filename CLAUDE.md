@@ -1186,3 +1186,21 @@ Testadresse.
     `20261110000003` korrigiert.
   - Einsätze/Planung: **nicht im Fortytools-XML-Export** (staff_members/facilities enthalten keine Planungen).
   - Tests: 360 Unit-/DB-Tests (neu `runde22.db.test.ts`).
+- 2026-10-07: Runde 23, Teil A (Ahmed, 30 Punkte – schnelle Punkte zuerst):
+  - Begrüßung „Guten Morgen/Tag/Abend“ war immer „Abend“ (Stunde wurde als „18 Uhr“ gelesen → NaN) – jetzt `hourBerlin()`
+    (Büro, Handy-App, QM-App), Test.
+  - Kundenliste zeigt standardmäßig nur aktive Kunden („alle“ wählbar). Logo auf der Übersicht als Karte wie Fortytools.
+  - Objektleitung überall mit Telefon und E-Mail (View `app.manager_contacts`: Profil, sonst Mitarbeiter gleichen Namens).
+  - Objekt-Auswahl (Einsatz planen u. a.) zeigt zusätzlich Straße + Ort (gleichnamige Objekte unterscheidbar).
+  - Alle Tabellen per Klick auf den Spaltenkopf auf-/absteigend sortierbar (gemerkt je Tab); Exporte der Stundenliste
+    übernehmen die Sortierung; Spalte Pers.-Nr.
+  - Menü: „Aufträge“ entfernt (Daten bleiben), Prüfbericht Zoll gelöscht (alte Adressen → Stundenliste), Qualitäts-
+    kontrollen nur noch am Objekt/QM-App, Auswertungen ohne Doppel (Übersicht, Stundenkontrolle Soll/Ist raus),
+    Vorlagen (Word) unter Einstellungen, Urlaub & Abwesenheiten unter Disposition (mit Personalnummer).
+  - Zeiterfassung: „Zeiterfassung heute“ und „Nachträge freigeben“ als Seiten entfallen – eine Seite „Zeiterfassung“ mit
+    „Ein Tag“ / „Zeitraum“, Schnellwahl Heute/Gestern/7 Tage/Monat, Nachträge aufklappbar direkt darin.
+  - Übersicht erinnert an fehlende Pflichtunterlagen (Link). Datei-Upload-Felder als ruhige Ablagefläche gestaltet.
+  - Tests: 361 Unit-/DB-Tests, Browser-Suiten grün.
+  - Neu nachgeschoben (Ahmed): Leistungsbeschreibung mehrzeilig; Objektleiter-/Büro-App umfangreicher (Schlüssel,
+    Unterweisungen, Personalbogen mehrsprachig, Objektordner, Einsätze, Zeiten, NU-Auftrag mit Freigabe im Büro);
+    nur noch „Statistiken“ unter Auswertungen mit farbigen Diagrammen.

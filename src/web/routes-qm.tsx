@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { SiteOptions } from './site-options.js';
 import type { Context } from 'hono';
 import type { Child, FC } from 'hono/jsx';
-import { todayBerlin } from '../domain/invoice/calc.js';
+import { hourBerlin, todayBerlin } from '../domain/invoice/calc.js';
 import { BusinessError } from '../services/errors.js';
 import {
   type QmSite,
@@ -245,9 +245,7 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
     const u = c.get('user');
     const today = todayBerlin();
     const audits = await qmAudits(sql, { siteIds: c.get('sites'), date: today });
-    const hour = Number(
-      new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', hour12: false }),
-    );
+    const hour = hourBerlin();
     const first = (u.name || u.login).split(/[ .]/)[0]!;
     return render(
       c,

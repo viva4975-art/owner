@@ -249,3 +249,11 @@ export function percentDe(bp: number): string {
     .replace(/0+$/, '');
   return frac ? `${int},${frac}` : String(int);
 }
+
+/** Aktuelle Stunde in Berlin (0–23). Fund 07.10.: toLocaleString liefert „08 Uhr“ → Number() = NaN → immer „Guten Abend“. */
+export function hourBerlin(now: Date = new Date()): number {
+  const h = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', hour: 'numeric', hourCycle: 'h23' })
+    .formatToParts(now)
+    .find((p) => p.type === 'hour')?.value;
+  return Number(h ?? 0);
+}

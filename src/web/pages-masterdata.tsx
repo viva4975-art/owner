@@ -62,7 +62,7 @@ export const CustomerList: FC<{
     const st = 'status' in over ? over.status : filter.status;
     const l = 'buchstabe' in over ? over.buchstabe : filter.letter;
     const q = 'q' in over ? over.q : filter.q;
-    if (st) p.set('status', st);
+    p.set('status', st ?? 'alle');
     if (l) p.set('buchstabe', l);
     if (q) p.set('q', q);
     if (over.seite && over.seite > 1) p.set('seite', String(over.seite));
@@ -90,7 +90,7 @@ export const CustomerList: FC<{
       </div>
       <div class="card">
         <form class="actions" method="get" action="/kunden" style="margin-top:0">
-          {filter.status && <input type="hidden" name="status" value={filter.status} />}
+          <input type="hidden" name="status" value={filter.status ?? 'alle'} />
           {filter.letter && <input type="hidden" name="buchstabe" value={filter.letter} />}
           <input
             name="q"
@@ -232,7 +232,7 @@ export const CustomerList: FC<{
           target="_blank"
         >
           <input type="hidden" name="run" value={randomUUID()} />
-          {filter.status && <input type="hidden" name="status" value={filter.status} />}
+          <input type="hidden" name="status" value={filter.status ?? 'alle'} />
           {filter.letter && <input type="hidden" name="buchstabe" value={filter.letter} />}
           {filter.q && <input type="hidden" name="q" value={filter.q} />}
           <select name="vorlage" required style="max-width:360px" aria-label="Vorlage">
@@ -635,7 +635,7 @@ export const SiteList: FC<{
       </div>
       <div class="card">
         <form class="actions" method="get" action="/objekte" style="margin-top:0">
-          {filter.status && <input type="hidden" name="status" value={filter.status} />}
+          <input type="hidden" name="status" value={filter.status ?? 'alle'} />
           {filter.letter && <input type="hidden" name="buchstabe" value={filter.letter} />}
           <input
             name="q"
@@ -732,10 +732,13 @@ export const SiteList: FC<{
               </div>
               <div class="ol">
                 {s.manager_name ? (
-                  <span class="person-chip">
-                    <span class="av">{initials(s.manager_name)}</span>
-                    {s.manager_name}
-                  </span>
+                  <>
+                    <span class="person-chip">
+                      <span class="av">{initials(s.manager_name)}</span>
+                      {s.manager_name}
+                    </span>
+                    <ManagerContact phone={s.manager_phone} email={s.manager_email} />
+                  </>
                 ) : (
                   <span class="small faint">keine Objektleitung</span>
                 )}
@@ -1041,3 +1044,18 @@ export const SiteOverview: FC<{
 };
 
 export { centsToInput };
+
+/** Telefon und E-Mail der Objektleitung (klickbar) – überall neben dem Namen. */
+export const ManagerContact: FC<{ phone: string | null | undefined; email: string | null | undefined }> = ({
+  phone,
+  email,
+}) =>
+  phone || email ? (
+    <div class="small" style="margin-top:2px">
+      {phone && <a href={`tel:${phone.replace(/[^\d+]/g, '')}`}>{phone}</a>}
+      {phone && email && ' · '}
+      {email && <a href={`mailto:${email}`}>{email}</a>}
+    </div>
+  ) : (
+    <div class="small faint">Kontakt fehlt (Einstellungen → Benutzer)</div>
+  );

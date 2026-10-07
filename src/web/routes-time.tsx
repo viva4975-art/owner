@@ -20,7 +20,6 @@ import { listEmployees } from '../services/employees.js';
 import { BusinessError } from '../services/errors.js';
 import { listSites } from '../services/masterdata.js';
 import {
-  type ReportRow,
   type TimeEntryRow,
   SOURCE_LABEL,
   STATUS_LABEL,
@@ -40,8 +39,6 @@ import {
   saveTimeSettings,
   warningsFor,
   WEEKDAYS_SHORT,
-  zollCsv,
-  zollReport,
 } from '../services/time.js';
 import { type AppEnv, type Ctx, UUID, assertSite, inScope } from './app.js';
 import { centsToInput } from './forms.js';
@@ -186,7 +183,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
             {cnt!.running} jetzt im Einsatz
           </span>
           {cnt!.requests > 0 && canAccess(c.get('user').role, '/zeiterfassung/freigaben') && (
-            <a class="badge warn" href="/zeiterfassung/freigaben">
+            <a class="badge warn" href="/zeiterfassung#nachtraege">
               {cnt!.requests} Nachträge freigeben
             </a>
           )}
@@ -203,6 +200,37 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
   };
 
   // ------------------------------------------------------------------ Tagesübersicht
+
+  // Ansicht wählen (ein Tag / Zeitraum) und offene Nachträge – oben auf beiden Zeiterfassungs-Seiten (Ahmed 07.10.)
+  const viewHead = async (c: Context<AppEnv>, mode: 'tag' | 'liste', day: string) => {
+    const [requests, running] = (
+      await Promise.all([
+        listEntries(sql, { status: ['beantragt'] }),
+        listEntries(sql, { status: ['laeuft'] }),
+      ])
+    ).map((l) => inScope(c, l)) as [TimeEntryRow[], TimeEntryRow[]];
+    const stale = running.filter((e) => e.gross_minutes > 12 * 60);
+    return (
+      <>
+        <div class="chips" style="margin:0 0 12px">
+          <a href={`/zeiterfassung?datum=${day}`} class={mode === 'tag' ? 'on' : ''}>
+            Ein Tag
+          </a>
+          <a href="/zeiterfassung/liste" class={mode === 'liste' ? 'on' : ''}>
+            Zeitraum / alle Zeiten
+          </a>
+        </div>
+        {(requests.length > 0 || stale.length > 0) && (
+          <details class="card" id="nachtraege" open>
+            <summary>
+              <b>Nachträge freigeben ({requests.length})</b>
+            </summary>
+            <RequestsList requests={requests} stale={stale} />
+          </details>
+        )}
+      </>
+    );
+  };
 
   app.get('/zeiterfassung', async (c) => {
     const day = isDate(c.req.query('datum')) ? c.req.query('datum')! : todayBerlin();
@@ -229,11 +257,13 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
       .reduce((a, e) => a + netMinutes(e), 0);
     const hol = holidayName(day);
     const absent = await absentBetween(sql, day, addDays(day, 14), scope);
+    const head = await viewHead(c, 'tag', day);
     return shell(
       c,
       'tag',
       'Zeiterfassung',
       <>
+        {head}
         <AbsentCard
           absent={absent}
           today={day}
@@ -398,61 +428,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
           Nachträge der Mitarbeitenden (vergessen zu stempeln). Freigegebene Zeiten zählen für Lohn,
           Nachkalkulation und Prüfbericht.
         </p>
-        {requests.length === 0 && <div class="empty">Keine offenen Nachträge.</div>}
-        {requests.map((e) => (
-          <div class="card">
-            <div class="actions" style="margin-top:0">
-              <b>{e.employee_name}</b>
-              <span class="mut">
-                {weekdayDe(e.work_date)} {dateDe(e.work_date)} · {e.site_name}
-              </span>
-              <span style="margin-left:auto" class="sum">
-                {clock(e.start_at)}–{clock(e.end_at)} · Pause {e.break_minutes} Min. · {hm(netMinutes(e))}{' '}
-                Std.
-              </span>
-            </div>
-            <div class="small">
-              Grund: <b>{e.note}</b> · beantragt{' '}
-              {e.recorded_at.toLocaleString('de-DE', {
-                timeZone: 'Europe/Berlin',
-                dateStyle: 'short',
-                timeStyle: 'short',
-              })}
-            </div>
-            <Warnings e={e} />
-            <div class="actions" style="margin-bottom:0">
-              <form method="post" action={`/zeiterfassung/${e.id}/entscheiden`}>
-                <input type="hidden" name="ok" value="1" />
-                <button class="btn">
-                  <Icon name="check" /> Freigeben
-                </button>
-              </form>
-              <form
-                method="post"
-                action={`/zeiterfassung/${e.id}/entscheiden`}
-                class="actions"
-                style="margin:0"
-              >
-                <input name="reason" placeholder="Grund der Ablehnung" required style="max-width:260px" />
-                <button class="btn danger">Ablehnen</button>
-              </form>
-              <a class="btn ghost" href={`/zeiterfassung/${e.id}`}>
-                Ändern …
-              </a>
-            </div>
-          </div>
-        ))}
-        {stale.length > 0 && (
-          <div class="warnbox">
-            <h3>Seit über 12 Stunden eingestempelt</h3>
-            {stale.map((e) => (
-              <div>
-                <a href={`/zeiterfassung/${e.id}`}>{e.employee_name}</a> – seit {dateDe(e.work_date)}{' '}
-                {clock(e.start_at)} ({e.site_name})
-              </div>
-            ))}
-          </div>
-        )}
+        <RequestsList requests={requests} stale={stale} />
       </>,
     );
   });
@@ -463,7 +439,9 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
     const ok = b.ok === '1';
     assertSite(c, (await getEntry(sql, id))?.site_id);
     await decideCorrection(sql, id, ok, c.get('actor'), typeof b.reason === 'string' ? b.reason : null);
-    return back(c, '/zeiterfassung/freigaben', { ok: ok ? 'Freigegeben.' : 'Abgelehnt.' });
+    const ret =
+      typeof b.zurueck === 'string' && b.zurueck.startsWith('/zeiterfassung') ? b.zurueck : '/zeiterfassung';
+    return back(c, ret, { ok: ok ? 'Freigegeben.' : 'Abgelehnt.' });
   });
 
   // ------------------------------------------------------------------ Liste
@@ -484,11 +462,13 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
     ]);
     const rows = inScope(c, allRows);
     const sites = allSites.filter((s) => !c.get('sites') || c.get('sites')!.includes(s.id));
+    const head = await viewHead(c, 'liste', to);
     return shell(
       c,
       'liste',
-      'Alle Zeiten',
+      'Zeiterfassung',
       <>
+        {head}
         <form method="get" action="/zeiterfassung/liste" class="card grid" style="align-items:end">
           <div>
             <label for="von">von</label>
@@ -518,6 +498,24 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
           </div>
           <div>
             <button class="btn">Anzeigen</button>
+          </div>
+          <div class="actions" style="grid-column:1/-1;margin:0">
+            <span class="small mut">Schnell:</span>
+            {(
+              [
+                ['Heute', todayBerlin(), todayBerlin()],
+                ['Gestern', addDays(todayBerlin(), -1), addDays(todayBerlin(), -1)],
+                ['Letzte 7 Tage', addDays(todayBerlin(), -6), todayBerlin()],
+                ['Dieser Monat', `${todayBerlin().slice(0, 7)}-01`, todayBerlin()],
+              ] as const
+            ).map(([l, a, z]) => (
+              <a
+                class={`btn sm ${from === a && to === z ? '' : 'sec'}`}
+                href={`/zeiterfassung/liste?von=${a}&bis=${z}${q.mitarbeiter ? `&mitarbeiter=${q.mitarbeiter}` : ''}${q.objekt ? `&objekt=${q.objekt}` : ''}`}
+              >
+                {l}
+              </a>
+            ))}
           </div>
         </form>
         <EntryTable rows={rows} />
@@ -796,145 +794,9 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
     );
   });
 
-  // ------------------------------------------------------------------ Prüfbericht Zoll
-
-  const reportRange = (c: Context<AppEnv>) => {
-    const q = c.req.query();
-    const m = todayBerlin().slice(0, 7);
-    const from = isDate(q.von) ? q.von : `${m}-01`;
-    const to = isDate(q.bis) ? q.bis : todayBerlin();
-    return { from, to, employeeId: q.mitarbeiter || undefined };
-  };
-
-  app.get('/zeiterfassung/pruefbericht', async (c) => {
-    const r = reportRange(c);
-    const [{ rows, open }, emps] = await Promise.all([
-      zollReport(sql, { from: r.from, to: r.to, ...(r.employeeId ? { employeeId: r.employeeId } : {}) }),
-      listEmployees(sql),
-    ]);
-    const qs = new URLSearchParams({
-      von: r.from,
-      bis: r.to,
-      ...(r.employeeId ? { mitarbeiter: r.employeeId } : {}),
-    }).toString();
-    const byEmp = new Map<string, ReportRow[]>();
-    for (const x of rows) byEmp.set(x.employee_id, [...(byEmp.get(x.employee_id) ?? []), x] as typeof rows);
-    return shell(
-      c,
-      'zoll',
-      'Prüfbericht Zoll',
-      <>
-        <div class="hint" style="margin-bottom:14px">
-          Aufzeichnungspflicht nach § 17 MiLoG (Gebäudereinigung): Beginn, Ende und Dauer der täglichen
-          Arbeitszeit, spätestens bis zum Ablauf des 7. Folgetags aufgezeichnet, mindestens 2 Jahre
-          aufzubewahren und auf Verlangen der Finanzkontrolle Schwarzarbeit vorzulegen. Die Liste enthält auch
-          den Aufzeichnungszeitpunkt jedes Eintrags.
-        </div>
-        <form method="get" action="/zeiterfassung/pruefbericht" class="card grid" style="align-items:end">
-          <div>
-            <label for="von">von</label>
-            <input id="von" type="date" name="von" value={r.from} />
-          </div>
-          <div>
-            <label for="bis">bis</label>
-            <input id="bis" type="date" name="bis" value={r.to} />
-          </div>
-          <div>
-            <label for="mitarbeiter">Mitarbeiter</label>
-            <select id="mitarbeiter" name="mitarbeiter">
-              <option value="">alle</option>
-              {emps.map((e) => (
-                <option value={e.id} selected={e.id === r.employeeId}>
-                  {e.last_name}, {e.first_name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div class="actions" style="margin:0">
-            <button class="btn">Anzeigen</button>
-            <a class="btn sec" href={`/zeiterfassung/pruefbericht.csv?${qs}`}>
-              <Icon name="download" /> CSV (Excel)
-            </a>
-          </div>
-        </form>
-        {open > 0 && (
-          <div class="warnbox">
-            {open} Einträge im Zeitraum sind noch offen (läuft oder Nachtrag nicht freigegeben) und fehlen in
-            dieser Liste. <a href="/zeiterfassung/freigaben">Zu den Freigaben</a>
-          </div>
-        )}
-        {rows.length === 0 && <div class="empty">Keine Zeiten im Zeitraum.</div>}
-        {[...byEmp.values()].map((list) => (
-          <div class="card flush" style="margin-bottom:16px">
-            <div style="padding:14px 16px 6px">
-              <b>{list[0]!.employee_name}</b> <span class="mut">Personalnummer {list[0]!.personnel_no}</span>
-              <span style="float:right" class="sum">
-                Summe {hm(list.reduce((s, x) => s + x.net_minutes, 0))} Std.
-              </span>
-            </div>
-            <div class="tbl">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Datum</th>
-                    <th>Objekt</th>
-                    <th>Beginn</th>
-                    <th>Ende</th>
-                    <th class="r">Pause</th>
-                    <th class="r">Dauer</th>
-                    <th>Aufgezeichnet</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {list.map((x) => (
-                    <tr>
-                      <td>
-                        {weekdayDe(x.work_date)} {dateDe(x.work_date)}
-                      </td>
-                      <td>{x.site_name}</td>
-                      <td>{clock(x.start_at)}</td>
-                      <td>{clock(x.end_at)}</td>
-                      <td class="r">{x.break_minutes}</td>
-                      <td class="r">{hm(x.net_minutes)}</td>
-                      <td class="small">
-                        {x.recorded_at.toLocaleString('de-DE', {
-                          timeZone: 'Europe/Berlin',
-                          dateStyle: 'short',
-                          timeStyle: 'short',
-                        })}
-                        {x.late && (
-                          <>
-                            {' '}
-                            <span class="badge err">nach 7 Tagen</span>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ))}
-      </>,
-    );
-  });
-
-  app.get('/zeiterfassung/pruefbericht.csv', async (c) => {
-    const r = reportRange(c);
-    const { rows } = await zollReport(sql, {
-      from: r.from,
-      to: r.to,
-      ...(r.employeeId ? { employeeId: r.employeeId } : {}),
-    });
-    return c.body(zollCsv(rows), 200, {
-      'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="arbeitszeiten-${r.from}-bis-${r.to}.csv"`,
-      'Cache-Control': 'no-store',
-    });
-  });
-
-  // ------------------------------------------------------------------ Einstellungen
+  // Prüfbericht Zoll entfernt (Ahmed 07.10.) – die Stundenliste je Mitarbeiter enthält Beginn, Ende, Dauer (§ 17 MiLoG)
+  app.get('/zeiterfassung/pruefbericht', (c) => c.redirect('/zeiterfassung/stundenzettel', 301));
+  app.get('/zeiterfassung/pruefbericht.csv', (c) => c.redirect('/zeiterfassung/stundenzettel', 301));
 
   app.get('/zeiterfassung/einstellungen', async (c) => {
     const s = await getTimeSettings(sql);
@@ -995,8 +857,8 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
             <a class="btn sm" href={`/zeiterfassung/${randomUUID()}?mitarbeiter=${e.id}`}>
               + Zeit erfassen
             </a>
-            <a class="btn sm sec" href={`/zeiterfassung/pruefbericht?mitarbeiter=${e.id}`}>
-              Prüfbericht
+            <a class="btn sm sec" href={`/personal/${e.id}/stundenzettel`}>
+              Stundenliste
             </a>
             <span class="mut small">ab {dateDe(from)}</span>
           </div>
@@ -1305,3 +1167,58 @@ h1{font-size:34px;margin:10px 0 4px}.n{color:#666;font-size:16px}
     return back(c, `/objekte/${id}/qr`, { ok: 'Neuer QR-Code erzeugt. Bitte neu ausdrucken und aufhängen.' });
   });
 }
+
+/** Nachträge zur Freigabe (auch direkt auf der Zeiterfassungs-Seite) */
+const RequestsList = ({ requests, stale }: { requests: TimeEntryRow[]; stale: TimeEntryRow[] }) => (
+  <>
+    {requests.length === 0 && <div class="empty">Keine offenen Nachträge.</div>}
+    {requests.map((e) => (
+      <div class="card">
+        <div class="actions" style="margin-top:0">
+          <b>{e.employee_name}</b>
+          <span class="mut">
+            {weekdayDe(e.work_date)} {dateDe(e.work_date)} · {e.site_name}
+          </span>
+          <span style="margin-left:auto" class="sum">
+            {clock(e.start_at)}–{clock(e.end_at)} · Pause {e.break_minutes} Min. · {hm(netMinutes(e))} Std.
+          </span>
+        </div>
+        <div class="small">
+          Grund: <b>{e.note}</b> · beantragt{' '}
+          {e.recorded_at.toLocaleString('de-DE', {
+            timeZone: 'Europe/Berlin',
+            dateStyle: 'short',
+            timeStyle: 'short',
+          })}
+        </div>
+        <Warnings e={e} />
+        <div class="actions" style="margin-bottom:0">
+          <form method="post" action={`/zeiterfassung/${e.id}/entscheiden`}>
+            <input type="hidden" name="ok" value="1" />
+            <button class="btn">
+              <Icon name="check" /> Freigeben
+            </button>
+          </form>
+          <form method="post" action={`/zeiterfassung/${e.id}/entscheiden`} class="actions" style="margin:0">
+            <input name="reason" placeholder="Grund der Ablehnung" required style="max-width:260px" />
+            <button class="btn danger">Ablehnen</button>
+          </form>
+          <a class="btn ghost" href={`/zeiterfassung/${e.id}`}>
+            Ändern …
+          </a>
+        </div>
+      </div>
+    ))}
+    {stale.length > 0 && (
+      <div class="warnbox">
+        <h3>Seit über 12 Stunden eingestempelt</h3>
+        {stale.map((e) => (
+          <div>
+            <a href={`/zeiterfassung/${e.id}`}>{e.employee_name}</a> – seit {dateDe(e.work_date)}{' '}
+            {clock(e.start_at)} ({e.site_name})
+          </div>
+        ))}
+      </div>
+    )}
+  </>
+);

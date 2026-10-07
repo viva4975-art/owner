@@ -349,6 +349,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
             <tr style={['abgelehnt', 'storniert'].includes(a.status) ? 'opacity:.55' : ''}>
               {showEmployee && (
                 <td>
+                  <span class="mut small">{a.personnel_no}</span>{' '}
                   <a href={`/personal/${a.employee_id}/abwesenheiten`}>{a.employee_name}</a>
                 </td>
               )}
@@ -431,7 +432,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     return page(
       c,
       'Urlaub & Abwesenheiten',
-      'personal',
+      'disposition',
       <>
         <PageHead title="Urlaub & Abwesenheiten" />
         <Tabs tabs={tabs} active={active} />
@@ -613,6 +614,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                 return (
                   <tr>
                     <td style="white-space:nowrap">
+                      <span class="mut small">{e.personnel_no}</span>{' '}
                       <a href={`/personal/${e.id}/abwesenheiten`}>
                         {e.last_name}, {e.first_name}
                       </a>

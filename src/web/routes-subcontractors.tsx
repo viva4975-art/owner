@@ -1215,7 +1215,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         select id, supplier_no, name from app.suppliers where kind = 'nachunternehmer' and (active or id = ${sc?.supplier_id ?? null}) order by name`,
       sql<
         { id: string; site_no: string; name: string; customer_name: string }[]
-      >`select s.id, s.site_no, s.name, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`,
+      >`select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`,
     ]);
     const draft = !sc || sc.status === 'entwurf';
     return page(

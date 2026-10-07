@@ -325,7 +325,7 @@ export function registerGarageRoutes({ app, deps, page, back }: Ctx) {
     const id = c.req.param('id');
     const o = await getTgObject(sql, id);
     const sites = await sql<{ id: string; site_no: string; name: string; customer_name: string }[]>`
-      select s.id, s.site_no, s.name, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by length(s.site_no), s.site_no`;
+      select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by length(s.site_no), s.site_no`;
     const f = (k: keyof TgObject, label: string, extra: Record<string, string> = {}) => (
       <div>
         <label for={k}>{label}</label>

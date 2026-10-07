@@ -190,14 +190,12 @@ await o.goto(B + `/zeiterfassung?datum=${today}`);
 check('Tagesübersicht zeigt Mitarbeiter', (await o.content()).includes(`Test${stamp}`));
 await o.screenshot({ path: `${out}/z10-tagesuebersicht.png`, fullPage: true });
 
-await o.goto(B + `/zeiterfassung/pruefbericht?mitarbeiter=${empId}&von=${yesterday}&bis=${today}`);
+// Prüfbericht Zoll entfällt – die Stundenliste je Mitarbeiter enthält Beginn/Ende/Dauer
+await o.goto(B + `/personal/${empId}/stundenzettel?monat=${yesterday.slice(0, 7)}`);
 const rep = await o.content();
-check('Prüfbericht enthält Nachtrag 17:00–19:30', rep.includes('17:00') && rep.includes('19:30'));
-await o.screenshot({ path: `${out}/z11-pruefbericht.png`, fullPage: true });
-const csv = await o.request.get(
-  B + `/zeiterfassung/pruefbericht.csv?mitarbeiter=${empId}&von=${yesterday}&bis=${today}`,
-);
-check('CSV-Export', (await csv.text()).includes('Personalnummer;Name;Datum'));
+check('Stundenliste enthält Nachtrag 17:00–19:30', rep.includes('17:00') && rep.includes('19:30'));
+await o.screenshot({ path: `${out}/z11-stundenliste.png`, fullPage: true });
+check('Prüfbericht leitet um', (await o.request.get(B + '/zeiterfassung/pruefbericht', { maxRedirects: 0 })).status() === 301);
 
 // Korrektur mit Pflicht-Begründung + Protokoll
 await o.goto(B + `/personal/${empId}/zeiten`);

@@ -9,6 +9,7 @@
  *    meldungen werden nach dem Anzeigen aus der URL entfernt, damit „Zurück“ sie nicht erneut zeigt.
  * 3. Menüs: Dropdowns (details) schließen sich gegenseitig, Klick daneben / Esc schließt.
  * 4. Taste „/“ springt in die Suche (wie Fortytools).
+ * 6. Tabellen: Klick auf die Spaltenüberschrift sortiert auf/ab (Zahl, Betrag, Datum, Text).
  * 5. Auswahllisten ab 8 Einträgen (Kunden, Objekte, Mitarbeiter …) werden zum Feld zum Reintippen (wie Fortytools): Tippen filtert
  *    die Liste (Nummer oder Name, ohne Umlaut-/Groß-Klein-Unterschied), Enter übernimmt den ersten Treffer.
  *    Die Liste selbst bleibt die echte Auswahl (Formulare, Prüfungen und Tests unverändert).
@@ -303,6 +304,60 @@ export const CLIENT_JS = String.raw`
   new MutationObserver(function (ms) {
     ms.forEach(function (m) { m.addedNodes.forEach(function (n) { if (n.nodeType === 1) { if (n.tagName === 'SELECT') combo(n); else comboAll(n); } }); });
   }).observe(document.body, { childList: true, subtree: true });
+
+  // ---- Tabellen sortieren: Klick auf die Spaltenüberschrift (auf/ab), wie Fortytools (Ahmed 07.10.) ----
+  // Gilt für alle Listen mit Kopfzeile; Summenzeilen bleiben unten. Exporte (Links mit data-export) bekommen die
+  // Sortierung mit (?sort=<Spalte>&dir=asc|desc). Zahlen, Beträge (1.234,56 €), Datum (TT.MM.JJJJ) und Zeiten richtig.
+  function sortKey(td) {
+    var t = (td ? td.innerText || td.textContent || '' : '').trim();
+    var d = /^(\d{2})\.(\d{2})\.(\d{4})/.exec(t);
+    if (d) return [0, Number(d[3] + d[2] + d[1])];
+    var h = /^(\d{1,2}):(\d{2})(?!\d)/.exec(t);
+    if (h && t.length <= 13) return [0, Number(h[1]) * 60 + Number(h[2])];
+    var n = t.replace(/[€%\s\u00a0]/g, '').replace(/^(T\.|Std\.)/, '');
+    if (/^[-−]?[\d.]*\d(,\d+)?$/.test(n)) return [0, Number(n.replace(/−/, '-').replace(/\./g, '').replace(',', '.'))];
+    return [1, t.toLowerCase()];
+  }
+  function cmp(a, b) {
+    if (a[0] !== b[0]) return a[0] - b[0];
+    return a[0] === 0 ? a[1] - b[1] : String(a[1]).localeCompare(String(b[1]), 'de', { numeric: true });
+  }
+  function sortable(table, ti) {
+    if (table.hasAttribute('data-nosort') || !table.tHead || !table.tBodies.length || table.tBodies.length > 1) return;
+    var body = table.tBodies[0];
+    if (body.rows.length < 2) return;
+    var head = table.tHead.rows[table.tHead.rows.length - 1];
+    if (Array.prototype.some.call(head.cells, function (c) { return c.colSpan > 1; })) return;
+    var cols = head.cells.length;
+    // nur gleichförmige Tabellen (keine Gruppenzeilen mit colspan)
+    var grouped = Array.prototype.some.call(body.rows, function (r) { return r.cells.length !== cols && !/^\s*(Summe|Gesamt)/i.test(r.textContent); });
+    if (grouped) return;
+    var key = 'vd-sort:' + location.pathname + ':' + ti;
+    function apply(i, dir) {
+      var rows = Array.prototype.slice.call(body.rows);
+      var fixed = rows.filter(function (r) { return r.cells.length !== cols || /^\s*(Summe|Gesamt)/i.test(r.cells[0] ? r.cells[0].textContent : '') || r.classList.contains('nosort'); });
+      var data = rows.filter(function (r) { return fixed.indexOf(r) < 0; });
+      data.sort(function (a, b) { return cmp(sortKey(a.cells[i]), sortKey(b.cells[i])) * dir; });
+      data.concat(fixed).forEach(function (r) { body.appendChild(r); });
+      Array.prototype.forEach.call(head.cells, function (c, j) { c.classList.remove('asc', 'desc'); if (j === i) c.classList.add(dir > 0 ? 'asc' : 'desc'); });
+      var label = (head.cells[i].textContent || '').trim();
+      Array.prototype.forEach.call(document.querySelectorAll('a[data-export]'), function (a) {
+        var u = new URL(a.href, location.href); u.searchParams.set('sort', label); u.searchParams.set('dir', dir > 0 ? 'asc' : 'desc'); a.href = u.pathname + u.search;
+      });
+    }
+    Array.prototype.forEach.call(head.cells, function (th, i) {
+      if (!th.textContent.trim() || th.querySelector('input,button,select')) return;
+      th.classList.add('sortable');
+      th.title = 'Sortieren';
+      th.addEventListener('click', function () {
+        var dir = th.classList.contains('asc') ? -1 : 1;
+        apply(i, dir);
+        try { ss && ss.setItem(key, JSON.stringify([i, dir])); } catch (e) {}
+      });
+    });
+    try { var saved = ss && JSON.parse(ss.getItem(key) || 'null'); if (saved && saved[0] < cols) apply(saved[0], saved[1]); } catch (e) {}
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('table'), sortable);
 
   // ---- Dropdown-Menüs ----
   var menus = document.querySelectorAll('details.dd');

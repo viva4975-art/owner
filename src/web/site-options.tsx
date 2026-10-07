@@ -6,7 +6,15 @@ export interface SiteOpt {
   site_no: string;
   name: string;
   customer_name?: string | null | undefined;
+  street?: string | null | undefined;
+  city?: string | null | undefined;
 }
+
+/** „Nr. · Objekt – Straße, Ort“ (Adresse, weil viele Objekte gleich heißen – Ahmed 07.10.) */
+export const siteLabel = (s: SiteOpt) => {
+  const addr = [s.street?.trim(), s.city?.trim()].filter(Boolean).join(', ');
+  return `${s.site_no} · ${s.name}${addr && !s.name.includes(s.street?.trim() ?? '\u0000') ? ` – ${addr}` : ''}`;
+};
 
 /**
  * <option>s je Kunde in einer <optgroup> („Kunde“), Text „Nr. · Objekt“. Die Such-Auswahl (client.ts) zeigt den Kunden
@@ -22,7 +30,7 @@ export const SiteOptions: FC<{ sites: SiteOpt[]; selected?: string | null | unde
       <>
         {sites.map((s) => (
           <option value={s.id} selected={!!selected && s.id === selected}>
-            {s.site_no} · {s.name}
+            {siteLabel(s)}
           </option>
         ))}
       </>
@@ -41,7 +49,7 @@ export const SiteOptions: FC<{ sites: SiteOpt[]; selected?: string | null | unde
           <optgroup label={k} data-cust="1">
             {list.map((s) => (
               <option value={s.id} selected={!!selected && s.id === selected}>
-                {s.site_no} · {s.name}
+                {siteLabel(s)}
               </option>
             ))}
           </optgroup>

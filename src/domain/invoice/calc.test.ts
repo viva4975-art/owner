@@ -11,6 +11,7 @@ import {
   addDays,
   skontoTerms,
   todayBerlin,
+  hourBerlin,
 } from './calc.js';
 
 const pauschale = {
@@ -169,5 +170,13 @@ describe('Skonto', () => {
   it('Datum über Monats- und Jahresgrenze', () => {
     expect(addDays('2026-12-28', 7)).toBe('2027-01-04');
     expect(addDays('2028-02-25', 4)).toBe('2028-02-29');
+  });
+});
+
+describe('hourBerlin (Begrüßung)', () => {
+  it('liefert die Stunde in Berlin als Zahl (Sommer- und Winterzeit)', () => {
+    expect(hourBerlin(new Date('2026-10-07T05:30:00Z'))).toBe(7);
+    expect(hourBerlin(new Date('2026-12-07T05:30:00Z'))).toBe(6);
+    expect(hourBerlin(new Date('2026-10-07T22:30:00Z'))).toBe(0);
   });
 });

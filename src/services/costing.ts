@@ -51,7 +51,7 @@ export async function siteCosting(
   const settings = await getAccountingSettings(sql);
   const [sites, revenue, labor, stock, incoming, shifts] = await Promise.all([
     sql<{ id: string; site_no: string; name: string; customer_name: string }[]>`
-      select s.id, s.site_no, s.name, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id
+      select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id
        where ${siteId ? sql`s.id = ${siteId}` : sql`s.active`} order by s.site_no`,
     // je Position: Objekt aus der Leistung (Sammelrechnungen der Rechnungsgruppen haben kein Objekt im Kopf)
     sql<{ site_id: string; net: bigint }[]>`

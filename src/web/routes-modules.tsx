@@ -1,3 +1,4 @@
+import { missingDocs } from '../services/hr-required-docs.js';
 import { hoursHistory } from '../services/employee-hours.js';
 import { absentBetween } from '../services/absences.js';
 import { OpenLegacyCard } from './routes-legacy-invoices.js';
@@ -156,6 +157,11 @@ export function registerModuleRoutes(ctx: Ctx) {
         absent={absent}
         absentHref={canAccess(role, '/urlaub/kalender') ? '/urlaub/kalender' : undefined}
         signOverdue={signOverdue}
+        missingDocs={
+          canAccess(role, '/personal/unterlagen')
+            ? (await missingDocs(sql, { siteIds: c.get('sites') })).length
+            : 0
+        }
         user={c.get('actor').charAt(0).toUpperCase() + c.get('actor').slice(1)}
         tasks={tasks}
         drafts={drafts}

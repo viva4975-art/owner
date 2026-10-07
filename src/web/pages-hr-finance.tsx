@@ -18,7 +18,11 @@ import { Field } from './pages-masterdata.js';
 // Personal
 // ---------------------------------------------------------------------------
 
-type EmployeeRow = Employee & { residence_permit_until: string | null; site_count: number };
+type EmployeeRow = Employee & {
+  residence_permit_until: string | null;
+  site_count: number;
+  has_shift?: boolean;
+};
 
 export const TagChips: FC<{ tags: string[] }> = ({ tags }) => (
   <>
@@ -38,9 +42,17 @@ export const EmployeeList: FC<{
   tag?: string | null;
   tags?: { tag: string; n: number }[];
   templates?: { id: string; title: string }[];
-}> = ({ rows, status, q, canExport, tag = null, tags = [], templates = [] }) => {
+  /** Filter „ohne Einsatz“ aktiv / Anzahl aktiver Mitarbeitender ohne laufenden Einsatz */
+  ohne?: boolean;
+  noShift?: number;
+}> = ({ rows, status, q, canExport, tag = null, tags = [], templates = [], ohne = false, noShift = 0 }) => {
   const mails = rows.map((e) => e.email).filter((x): x is string => !!x);
-  const qs = new URLSearchParams({ status, ...(q ? { q } : {}), ...(tag ? { tag } : {}) }).toString();
+  const qs = new URLSearchParams({
+    status,
+    ...(q ? { q } : {}),
+    ...(tag ? { tag } : {}),
+    ...(ohne ? { einsatz: 'ohne' } : {}),
+  }).toString();
   return (
     <>
       <PageHead title="Mitarbeiter">
@@ -53,6 +65,21 @@ export const EmployeeList: FC<{
       </PageHead>
       <div class="cols" style="grid-template-columns:minmax(0,4fr) minmax(0,1.3fr)">
         <div class="card">
+          {(noShift > 0 || ohne) && (
+            <div class="flash warn" style="margin:0 0 10px">
+              {ohne ? (
+                <>
+                  Gefiltert: <b>ohne laufenden Einsatz</b> ({rows.length}).{' '}
+                  <a href={`/personal?status=${status}`}>Filter aufheben</a>
+                </>
+              ) : (
+                <>
+                  <b>{noShift}</b> aktive Mitarbeitende ohne laufenden Einsatz –{' '}
+                  <a href="/personal?status=aktiv&einsatz=ohne">anzeigen</a>
+                </>
+              )}
+            </div>
+          )}
           {tags.length > 0 && (
             <div class="actions" style="margin-top:0;gap:6px">
               <a class={`badge ${!tag ? 'info' : 'tag'}`} href={`/personal?status=${status}`}>
@@ -82,6 +109,7 @@ export const EmployeeList: FC<{
             </select>
             <input name="q" value={q ?? ''} placeholder="Name oder Personalnummer" style="max-width:280px" />
             {tag && <input type="hidden" name="tag" value={tag} />}
+            {ohne && <input type="hidden" name="einsatz" value="ohne" />}
             <button class="btn sec sm">Filtern</button>
             {canExport && (
               <a class="btn sm" href="/personal/export.csv" style="margin-left:auto">
@@ -124,6 +152,16 @@ export const EmployeeList: FC<{
                           </b>
                         </a>
                         {e.status === 'ausgetreten' && <span class="badge"> ausgetreten</span>}
+                        {e.status === 'aktiv' && e.has_shift === false && (
+                          <a
+                            class="badge warn"
+                            style="margin-left:6px"
+                            href={`/personal/${e.id}/einsaetze`}
+                            title="Kein laufender Einsatz geplant"
+                          >
+                            kein Einsatz
+                          </a>
+                        )}
                       </td>
                       <td>
                         {EMPLOYMENT_TYPES[e.employment_type]}

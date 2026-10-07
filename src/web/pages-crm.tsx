@@ -468,6 +468,8 @@ export const Dashboard: FC<{
   signOverdue?: { id: string; title: string; open: number }[];
   /** Anzahl Mitarbeitende mit fehlenden Pflichtunterlagen (null = Rolle sieht es nicht) */
   missingDocs?: number;
+  /** aktive Mitarbeitende ohne laufenden Einsatz (+ Ziel des Hinweises) */
+  noShift?: { n: number; href: string };
   /** Anfragen aus der App der Objektleitung: NU-Aufträge zur Freigabe, neue Personalbögen */
   appRequests?: { nu: number; bogen: number };
   absentHref?: string | undefined;
@@ -488,6 +490,7 @@ export const Dashboard: FC<{
   absent = [],
   signOverdue = [],
   missingDocs = 0,
+  noShift = { n: 0, href: '' },
   appRequests = { nu: 0, bogen: 0 },
   absentHref,
 }) => {
@@ -531,6 +534,19 @@ export const Dashboard: FC<{
               </>
             ),
             href: '/personal/unterlagen',
+          },
+        ]
+      : []),
+    ...(noShift.n
+      ? [
+          {
+            tone: 'warn',
+            text: (
+              <>
+                <b>{noShift.n}</b> aktive Mitarbeitende ohne laufenden Einsatz
+              </>
+            ),
+            href: noShift.href,
           },
         ]
       : []),

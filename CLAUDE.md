@@ -1371,3 +1371,9 @@ Testadresse.
   Datei zieht bereits angelegte abgeleitete Einsätze auf das erste Vorkommen vor (nichts doppelt). Probe mit dem echten
   Export: 660 Einsätze vorgezogen, 2.311 von 2.366 Einsatztagen im September mit Zeit („Zeit bestätigt“), Rest = Tage
   ohne erfasste Zeit. **Auf dem Server: Zeiten.csv noch einmal importieren (Häkchen „Einsätze ableiten“).**
+- 2026-10-07: **Mitarbeitende ohne Einsatz** (Ahmed): aktive Mitarbeitende ohne laufenden/künftigen Einsatz bekommen in der
+  Mitarbeiterliste das Schild „kein Einsatz“ (Link zur Einsatzliste), oben den Hinweis „n aktive Mitarbeitende ohne
+  laufenden Einsatz – anzeigen“ (Filter `?einsatz=ohne`), auf der Startseite einen Hinweis (Objektleitung: nur
+  Mitarbeitende ihrer Objekte → Planung) und in der Mitarbeiter-Übersicht statt „Keine Einsätze“ einen gelben Hinweis.
+  Objekt „Allgemein (aus Fortytools)“ (Buchungen nur auf Kundenebene, z. B. Epox Entsorgungs GmbH) darf umbenannt werden:
+  Zeiten-, CSV- und Nachunternehmer-Import erkennen es über die feste ID wieder (kein zweites „Allgemein“). 375 Tests.

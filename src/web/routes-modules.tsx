@@ -19,6 +19,7 @@ import {
   getEmployee,
   hrReminders,
   listEmployees,
+  countWithoutShift,
   listTemplates,
   listWageLevels,
   employmentHistory,
@@ -163,6 +164,16 @@ export function registerModuleRoutes(ctx: Ctx) {
           canAccess(role, '/personal/unterlagen')
             ? (await missingDocs(sql, { siteIds: c.get('sites') })).length
             : 0
+        }
+        noShift={
+          canAccess(role, '/einsatzplanung')
+            ? {
+                n: await countWithoutShift(sql, c.get('sites')),
+                href: canAccess(role, '/personal')
+                  ? '/personal?status=aktiv&einsatz=ohne'
+                  : '/einsatzplanung',
+              }
+            : { n: 0, href: '' }
         }
         appRequests={{
           nu: canAccess(role, '/lieferanten')
@@ -688,14 +699,17 @@ export function registerModuleRoutes(ctx: Ctx) {
     const status = c.req.query('status') ?? 'aktiv';
     const q = c.req.query('q')?.trim() || null;
     const tag = c.req.query('tag')?.trim() || null;
-    const [rows, tags, templates] = await Promise.all([
+    const ohne = c.req.query('einsatz') === 'ohne';
+    const [rows, tags, templates, noShift] = await Promise.all([
       listEmployees(sql, {
         ...(status === 'aktiv' || status === 'ausgetreten' ? { status } : {}),
         ...(q ? { q } : {}),
         ...(tag ? { tag } : {}),
+        ...(ohne ? { withoutShift: true } : {}),
       }),
       allTags(sql),
       listTemplates(sql),
+      countWithoutShift(sql),
     ]);
     return page(
       c,
@@ -706,6 +720,8 @@ export function registerModuleRoutes(ctx: Ctx) {
         status={status}
         q={q}
         tag={tag}
+        ohne={ohne}
+        noShift={noShift}
         tags={tags}
         templates={templates}
         canExport
@@ -797,7 +813,15 @@ export function registerModuleRoutes(ctx: Ctx) {
               </a>
             </div>
             {plans.length === 0 ? (
-              <div class="empty">Keine aktuellen Einsätze geplant.</div>
+              e.status === 'aktiv' ? (
+                <div class="flash warn" style="margin:0">
+                  <b>Kein Einsatz geplant.</b> Ohne Einsatz gibt es kein Soll, keinen Einsatzkalender und in
+                  der Handy-App keine Einsätze zum Stempeln – bitte einen Einsatz planen (Büro: Objekt „Büro“
+                  unter „Viva-Deluxe intern“).
+                </div>
+              ) : (
+                <div class="empty">Keine aktuellen Einsätze geplant.</div>
+              )
             ) : (
               <div class="tbl stack-m">
                 <table>

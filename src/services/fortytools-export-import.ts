@@ -469,7 +469,8 @@ export async function buildPlan(sql: Sql, tables: Table[]): Promise<Plan> {
     ref: string,
     plainName = name,
   ) => {
-    let existing = siteByRef.get(ref);
+    // auch über die feste ID (z. B. Objekt „Allgemein“, im Büro umbenannt)
+    let existing = siteByRef.get(ref) ?? dbSites.find((x) => x.id === uuidOf(`ft-site:${ref}`));
     if (!existing) {
       // gleicher Name beim Kunden: zuerst mit gleicher Straße, sonst das erste noch nicht zugeordnete
       const free = (siteByName.get(`${cust.id}|${norm(plainName)}`) ?? []).filter(

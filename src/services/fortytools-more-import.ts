@@ -284,7 +284,10 @@ export async function planTimes(sql: Sql, t: MoreTable, opts: { exclude: string[
     const k = custBy.get(custNo);
     if (!k) return null;
     const own = sites.filter((x) => x.customer_no === custNo);
-    const gen = own.find((x) => norm(x.name) === norm('Allgemein (aus Fortytools)'));
+    // feste ID zuerst: das Objekt darf im Büro umbenannt werden (z. B. in den Kundennamen)
+    const genId = uuidOf(`ft-site:ft:o:${custNo}|allgemein`);
+    const gen =
+      own.find((x) => x.id === genId) ?? own.find((x) => norm(x.name) === norm('Allgemein (aus Fortytools)'));
     if (gen) return gen;
     let ns = newSites.get(custNo);
     if (!ns) {
@@ -519,7 +522,10 @@ export async function ensureGeneralSite(sql: Sql, customerNo: string, actor: str
   >`select id, street, postal_code, city from app.customers where customer_no = ${customerNo}`;
   if (!k) return null;
   const [gen] = await sql<{ id: string }[]>`
-    select id from app.sites where customer_id = ${k.id} and name = 'Allgemein (aus Fortytools)' limit 1`;
+    select id from app.sites
+     where customer_id = ${k.id}
+       and (id = ${uuidOf(`ft-site:ft:o:${customerNo}|allgemein`)} or name = 'Allgemein (aus Fortytools)')
+     order by (id = ${uuidOf(`ft-site:ft:o:${customerNo}|allgemein`)}) desc limit 1`;
   if (gen) return gen.id;
   const nos = new Set(
     (

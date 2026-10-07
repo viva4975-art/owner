@@ -233,16 +233,41 @@ export type EmployeeInput = z.infer<typeof employeeInput>;
 
 export async function listEmployees(
   sql: Sql,
-  opts: { status?: 'aktiv' | 'ausgetreten'; q?: string; tag?: string } = {},
+  opts: { status?: 'aktiv' | 'ausgetreten'; q?: string; tag?: string; withoutShift?: boolean } = {},
 ) {
-  return sql<(Employee & { residence_permit_until: string | null; site_count: number })[]>`
+  return sql<
+    (Employee & { residence_permit_until: string | null; site_count: number; has_shift: boolean })[]
+  >`
     select e.*, p.residence_permit_until,
-           (select count(*)::int from app.employee_sites es where es.employee_id = e.id) as site_count
+           (select count(*)::int from app.employee_sites es where es.employee_id = e.id) as site_count,
+           ${hasShift(sql)} as has_shift
       from app.employees e left join app.employee_private p on p.employee_id = e.id
      where ${opts.status ? sql`e.status = ${opts.status}` : sql`true`}
+       and ${opts.withoutShift ? sql`not ${hasShift(sql)}` : sql`true`}
        and ${opts.tag ? sql`${opts.tag} = any(e.tags)` : sql`true`}
        and ${opts.q ? sql`(e.last_name || ' ' || e.first_name || ' ' || e.personnel_no) ilike ${'%' + opts.q + '%'}` : sql`true`}
      order by e.last_name, e.first_name`;
+}
+
+/** Mitarbeiter (Alias e) hat einen laufenden oder künftigen Einsatz (wiederkehrend oder einmalig). */
+const hasShift = (sql: Sql) => sql`exists (
+  select 1 from app.shift_plans sp
+   where sp.employee_id = e.id and (sp.valid_until is null or sp.valid_until >= ${todayBerlin()}))`;
+
+/**
+ * Aktive Mitarbeitende ohne laufenden Einsatz (Hinweis Startseite). Objektleitung: nur Mitarbeitende ihrer Objekte.
+ */
+export async function countWithoutShift(sql: Sql, siteIds: string[] | null = null): Promise<number> {
+  if (siteIds && siteIds.length === 0) return 0;
+  const [r] = await sql<{ n: number }[]>`
+    select count(*)::int as n from app.employees e
+     where e.status = 'aktiv' and not ${hasShift(sql)}
+       and ${
+         siteIds
+           ? sql`exists (select 1 from app.employee_sites es where es.employee_id = e.id and es.site_id in ${sql(siteIds)})`
+           : sql`true`
+       }`;
+  return r!.n;
 }
 
 export async function getEmployee(sql: Sql, id: string) {

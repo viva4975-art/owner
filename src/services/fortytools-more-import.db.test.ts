@@ -8,6 +8,7 @@ import {
   planArticles,
   planTimes,
 } from './fortytools-more-import.js';
+import { countWithoutShift, listEmployees } from './employees.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 import { plannedShifts } from './time.js';
 
@@ -108,5 +109,30 @@ describe.skipIf(!available)('Runde 23: Artikel und Zeiten aus Fortytools (Datenb
       ['2026-09-07', true],
       ['2026-09-14', true],
     ]);
+  });
+
+  it('„Allgemein“ im Büro umbenannt → erneuter Import erkennt es (nichts doppelt)', async () => {
+    await sql`update app.sites set name = 'Stadt Test' where name = 'Allgemein (aus Fortytools)'`;
+    const t = detectMore(
+      enc(
+        'Mitarbeiter;Mitarbeiternummer;Einsatzort;Kundennummer;Arbeitszeit;Dauer Pause;Dauer Gesamt;Menge;Start;Ende;Datum;Details;Einsatzbeschreibung;Lohnart;Lohnfaktor;Summe;Servicebericht\n' +
+          'X;1020;Stadt Test;29001;;00:00;;;22:00;01:00;15.09.2026;;;;;;\n',
+      ),
+    );
+    const p = await planTimes(sql, t, { exclude: [] });
+    expect(p.newSites).toHaveLength(0);
+    expect(await applyTimes(sql, t, { exclude: [], shifts: false, actor: 't' })).toMatchObject({
+      created: 0,
+    });
+    expect(
+      (await sql`select 1 from app.sites where customer_id = '00000000-0000-4000-8000-0000000000c1'`).length,
+    ).toBe(2);
+  });
+
+  it('Mitarbeitende ohne laufenden Einsatz', async () => {
+    expect(await countWithoutShift(sql)).toBe(1);
+    const rows = await listEmployees(sql, { status: 'aktiv', withoutShift: true });
+    expect(rows.map((r) => r.personnel_no)).toEqual(['1013']);
+    expect(await countWithoutShift(sql, ['00000000-0000-4000-8000-0000000000a1'])).toBe(0);
   });
 });

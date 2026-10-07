@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
+import { type FtxResult, importFtx, parseFtx } from '../services/fortytools-xml-import.js';
 import {
   analyze,
   applyImport,
@@ -36,8 +38,30 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
       'transfer',
       <>
         <PageHead title="Import aus Fortytools" crumbs={[['Transfer', '/transfer/kontoumsaetze']]} />
+        <form
+          method="post"
+          action="/transfer/import/fortytools-xml"
+          enctype="multipart/form-data"
+          class="card"
+        >
+          <h3 style="margin-top:0">Fortytools-Datensicherung (XML) – empfohlen</h3>
+          <p class="small mut" style="margin-top:0">
+            Die XML-Exporte <b>customers, facilities, staff_members, offers, invoices</b> (alle auf einmal).
+            Übernimmt Kunden, Objekte mit den echten Fortytools-Objektnummern, Mitarbeiter (Wochenstunden,
+            Urlaub, Krankenkasse, Sprache), Angebote mit Positionen und alle Rechnungen als unveränderbares
+            Archiv; offene Fortytools-Rechnungen erscheinen unter Offene Posten. Objekte ohne regelmäßige
+            Leistung bekommen die Monatspauschale aus ihrer letzten Monatsrechnung (gültig ab dem Folgemonat –
+            kein doppeltes Abrechnen). Rechnungs- und Angebotsnummern der App werden über die höchste
+            Fortytools-Nummer gehoben. Vorhandene Daten werden nur ergänzt, nicht überschrieben; erneut
+            importieren legt nichts doppelt an. Erst Vorschau.
+          </p>
+          <input type="file" name="dateien" accept=".xml" multiple required aria-label="XML-Dateien" />
+          <div class="actions" style="margin-bottom:0">
+            <button class="btn">Prüfen (Vorschau)</button>
+          </div>
+        </form>
         <form method="post" action="/transfer/import/fortytools" enctype="multipart/form-data" class="card">
-          <h3 style="margin-top:0">Gesamtimport: Fortytools-Exporte unverändert</h3>
+          <h3 style="margin-top:0">Gesamtimport: Fortytools-Exporte unverändert (CSV)</h3>
           <p class="small mut" style="margin-top:0">
             Die Exporte aus Fortytools so wie sie sind (Kunden, Objekte, aktive Leistungen, Mitarbeiter) –
             alle auf einmal oder einzeln. Die Dateien werden an der Kopfzeile erkannt. Interessenten ohne
@@ -445,6 +469,142 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
     });
     return back(c, '/transfer/import', {
       ok: `Gesamtimport: ${r.created} neu, ${r.updated} aktualisiert, ${r.skipped} übersprungen, ${r.errors.length} mit Fehlern.`,
+    });
+  });
+
+  // ------------------------------------------------------------------ Fortytools-XML
+  const xmlPath = (sha: string) => `importe/${sha.slice(0, 2)}/${sha}.xml`;
+  app.post('/transfer/import/fortytools-xml', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const files = (Array.isArray(b.dateien) ? b.dateien : [b.dateien]).filter(
+      (f): f is File => f instanceof File && f.size > 0,
+    );
+    if (!files.length) throw new BusinessError('Bitte die XML-Dateien wählen');
+    const staged = [];
+    for (const f of files) {
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      if (bytes.length > 60 * 1024 * 1024) throw new BusinessError(`${f.name}: zu groß (höchstens 60 MB)`);
+      parseFtx(bytes); // erkennt die Art, sonst Fehlermeldung
+      const sha = createHash('sha256').update(bytes).digest('hex');
+      await deps.archive.put(xmlPath(sha), bytes);
+      staged.push(sha);
+    }
+    return c.redirect(`/transfer/import/fortytools-xml?f=${staged.join(',')}`, 303);
+  });
+  const xmlFiles = async (v: string) => {
+    const shas = v
+      .split(',')
+      .filter((x) => /^[0-9a-f]{64}$/.test(x))
+      .slice(0, 10);
+    return Promise.all(
+      shas.map(async (sha) => {
+        try {
+          return { name: sha, data: await deps.archive.get(xmlPath(sha)) };
+        } catch {
+          throw new BusinessError('Datei nicht mehr vorhanden – bitte erneut hochladen');
+        }
+      }),
+    );
+  };
+  const FtxView = ({ r }: { r: FtxResult }) => (
+    <>
+      <div class="card">
+        <h3 style="margin-top:0">Dateien</h3>
+        <p class="small" style="margin:0">
+          {r.files.map((f) => `${f.label}: ${f.rows}`).join(' · ')}
+        </p>
+      </div>
+      <div class="tbl">
+        <table>
+          <thead>
+            <tr>
+              <th>Bereich</th>
+              <th class="r">neu</th>
+              <th class="r">ergänzt</th>
+              <th class="r">unverändert</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(r.counts).map(([k, v]) => (
+              <tr>
+                <td>{k}</td>
+                <td class="r">{v.neu}</td>
+                <td class="r">{v.ergaenzt}</td>
+                <td class="r">{v.unveraendert}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {(r.counters.invoiceNext || r.counters.offerNext) && (
+        <div class="flash warn">
+          Nächste Rechnungsnummer der App: <b>{r.counters.invoiceNext ?? '–'}</b>, nächste Angebotsnummer:{' '}
+          <b>{r.counters.offerNext ?? '–'}</b> (über der höchsten Fortytools-Nummer). Ab der Umstellung bitte
+          in Fortytools <b>keine Rechnungen mehr</b> schreiben – sonst doppelte Nummern.
+        </div>
+      )}
+      {r.numberClashes.length > 0 && (
+        <div class="flash err">
+          Diese Rechnungsnummern gibt es in Fortytools und in der App: {r.numberClashes.join(', ')} – bitte
+          sofort klären (Rechnungsnummern müssen einmalig sein, § 14 Abs. 4 Nr. 4 UStG).
+        </div>
+      )}
+      {r.issues.length > 0 && (
+        <details class="card" open>
+          <summary>
+            <b>Hinweise ({r.issues.length})</b>
+          </summary>
+          <ul class="small">
+            {r.issues.map((i) => (
+              <li>
+                {i.area}: {i.text}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </>
+  );
+  app.get('/transfer/import/fortytools-xml', async (c) => {
+    const f = c.req.query('f') ?? '';
+    const files = await xmlFiles(f);
+    if (!files.length) return c.redirect('/transfer/import', 303);
+    const r = await importFtx(sql, files, { actor: c.get('actor'), dryRun: true });
+    return page(
+      c,
+      'Fortytools-XML – Vorschau',
+      'transfer',
+      <>
+        <PageHead title="Fortytools-Datensicherung – Vorschau" crumbs={[['Import', '/transfer/import']]} />
+        <p class="mut" style="margin-top:-6px">
+          Noch nichts gespeichert. So würde der Import laufen:
+        </p>
+        <FtxView r={r} />
+        <form method="post" action="/transfer/import/fortytools-xml/uebernehmen" class="card">
+          <input type="hidden" name="f" value={f} />
+          <p class="small mut" style="margin-top:0">
+            Angebotsstatus aus Fortytools: 1 = angenommen, 2 = abgelehnt, 3 = durch Folgeangebot ersetzt, 4 =
+            offen, 5 = Entwurf (aus den Daten abgeleitet – bitte stichprobenartig prüfen).
+          </p>
+          <div class="formfoot">
+            <a class="btn sec" href="/transfer/import">
+              Andere Dateien
+            </a>
+            <button class="btn" onclick="return confirm('Fortytools-Daten jetzt übernehmen?')">
+              Übernehmen
+            </button>
+          </div>
+        </form>
+      </>,
+    );
+  });
+  app.post('/transfer/import/fortytools-xml/uebernehmen', async (c) => {
+    const b = await c.req.parseBody();
+    const files = await xmlFiles(String(b.f ?? ''));
+    const r = await importFtx(sql, files, { actor: c.get('actor'), dryRun: false });
+    const sum = (k: 'neu' | 'ergaenzt') => Object.values(r.counts).reduce((a, x) => a + x[k], 0);
+    return back(c, '/transfer/import', {
+      ok: `Fortytools-XML übernommen: ${sum('neu')} neu, ${sum('ergaenzt')} ergänzt. Nächste Rechnungsnummer ${r.counters.invoiceNext ?? '–'}.${r.numberClashes.length ? ` ACHTUNG doppelte Rechnungsnummern: ${r.numberClashes.join(', ')}` : ''}`,
     });
   });
 

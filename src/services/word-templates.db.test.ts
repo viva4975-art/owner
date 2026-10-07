@@ -78,4 +78,47 @@ describe.skipIf(!available)('Word-Vorlagen (Datenbank)', () => {
       ),
     ).rejects.toThrow(/für Kunde/);
   });
+
+  it('Neue Fassung ersetzt die alte; Daten auf der Ausfüll-Seite wählbar; Word-Datumsfeld wird fest', async () => {
+    const cfg = { dir, maxBytes: 10_000_000 };
+    const body =
+      '<w:p><w:r><w:t>Gilt ab ${Vertrag.Beginn}, neu ${Neu.Wochenstunden} Std., München, den ${Dokument.Unterschriftsdatum}</w:t></w:r></w:p>' +
+      '<w:p><w:r><w:t xml:space="preserve">Datum: </w:t></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> DATE \\@ "dd.MM.yyyy" </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>13.08.2026</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>';
+    const v3 = zipSync({
+      '[Content_Types].xml': strToU8('<Types/>'),
+      'word/document.xml': strToU8(`<w:document><w:body>${body}</w:body></w:document>`),
+    });
+    const r = await importWordTemplates(
+      sql,
+      cfg,
+      [{ name: 'VD-AV-2026-V3_Arbeitsvertrag-Reinigungskraft.docx', data: v3 }],
+      't',
+    );
+    expect(r.created).toEqual(['Arbeitsvertrag Reinigungskraft']);
+    expect(r.replaced).toEqual(['Arbeitsvertrag Reinigungskraft']);
+    const active = await listWordTemplates(sql, 'mitarbeiter');
+    expect(active.map((t) => t.code)).toEqual(['VD-AV-2026-V3']);
+    const { file } = await generateFromWordTemplate(
+      sql,
+      cfg,
+      {
+        templateId: active[0]!.id,
+        target: { type: 'employee', id: emp },
+        fileId: randomUUID(),
+        actorName: 'Ahmed',
+        overrides: {
+          'Vertrag.Beginn': '2026-11-01',
+          'Neu.Wochenstunden': '30',
+          'Dokument.Unterschriftsdatum': '2026-10-20',
+          'Dokument.Datum': '2026-10-19',
+        },
+      },
+      't',
+    );
+    const out = strFromU8(unzipSync(await readFile(filePath(cfg, file as FileRow)))['word/document.xml']!);
+    expect(out).toContain('Gilt ab 01.11.2026, neu 30 Std., München, den 20.10.2026');
+    expect(out).toContain('19.10.2026');
+    expect(out).not.toContain('fldChar');
+    expect(out).not.toContain('13.08.2026');
+  });
 });

@@ -228,7 +228,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
       .filter((e) => e.end_at && ['erfasst', 'freigegeben'].includes(e.status))
       .reduce((a, e) => a + netMinutes(e), 0);
     const hol = holidayName(day);
-    const absent = await absentBetween(sql, day, addDays(day, 7), scope);
+    const absent = await absentBetween(sql, day, addDays(day, 14), scope);
     return shell(
       c,
       'tag',

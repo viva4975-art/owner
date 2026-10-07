@@ -34,6 +34,8 @@ import { registerImportRoutes } from './routes-import.js';
 import { registerHandoverRoutes } from './routes-handovers.js';
 import { registerVehicleRoutes } from './routes-vehicles.js';
 import { registerWordTemplateRoutes } from './routes-word-templates.js';
+import { registerLegacyInvoiceRoutes } from './routes-legacy-invoices.js';
+import { registerHrRequiredRoutes } from './routes-hr-required.js';
 import { registerSubcontractorRoutes } from './routes-subcontractors.js';
 import { registerSettingsRoutes } from './routes-settings.js';
 import { registerTenderRoutes } from './routes-tenders.js';
@@ -317,6 +319,8 @@ export function createApp(deps: Deps) {
   registerHandoverRoutes(ctx);
   registerVehicleRoutes(ctx);
   registerWordTemplateRoutes(ctx);
+  registerLegacyInvoiceRoutes(ctx);
+  registerHrRequiredRoutes(ctx);
   registerSubcontractorRoutes(ctx);
   registerSettingsRoutes(ctx);
   registerTenderRoutes(ctx);

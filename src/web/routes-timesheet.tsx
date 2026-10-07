@@ -21,6 +21,7 @@ import {
   monthRange,
   signaturesOfMonth,
   timesheet,
+  sheetForSite,
 } from '../services/timesheet.js';
 import {
   SURCHARGES,
@@ -114,13 +115,20 @@ export function registerTimesheetRoutes({ app, deps, page, back, shells }: Ctx) 
     return co;
   };
 
-  const sheetSection = async (s: Timesheet) => {
+  const sheetSection = async (s: Timesheet & { onlySite?: string }) => {
     const co = await company();
-    const sig = await latestSignature(sql, s.employee.id, s.month);
-    return `<div class="sheet"><div class="hd"><div><h1>Stundenzettel ${esc(monthLabel(s.month))}</h1>
+    const sig = s.onlySite ? undefined : await latestSignature(sql, s.employee.id, s.month);
+    const sigHtml = s.onlySite
+      ? `<div class="legal">Auszug nur mit den Zeiten im Objekt „${esc(s.onlySite)}“. Der vollständige Stundenzettel des Monats (mit Unterschrift) liegt in der Personalakte.</div>`
+      : signatureBlock(
+          s,
+          sig,
+          sig ? `/personal/${s.employee.id}/stundenzettel/unterschrift/${sig.id}.png` : null,
+        );
+    return `<div class="sheet"><div class="hd"><div><h1>Stundenzettel ${esc(monthLabel(s.month))}${s.onlySite ? ` – Objekt ${esc(s.onlySite)}` : ''}</h1>
 <div class="m"><b>${esc(s.employee.name)}</b> · Personalnr. ${esc(s.employee.personnel_no)}${s.employee.weekly_hours ? ` · ${String(Number(s.employee.weekly_hours)).replace('.', ',')} Std./Woche` : ''}<br>Zeitraum ${dateDe(s.from)} – ${dateDe(s.to)}</div></div>
 <div class="m r"><img src="/static/logo-transparent.png" alt="Viva-Deluxe" class="logo"><br><b>${esc(co?.name)}</b> · ${esc(co?.street)} · ${esc(co?.postal_code)} ${esc(co?.city)}</div></div>
-${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/stundenzettel/unterschrift/${sig.id}.png` : null)}
+${sheetTableHtml(s)}${sigHtml}
 <div class="legal">Aufzeichnung nach § 17 MiLoG (Beginn, Ende und Dauer der täglichen Arbeitszeit; Aufbewahrung mindestens 2 Jahre). Pausen nach § 4 ArbZG. Erstellt am ${dateDe(todayBerlin())}.</div></div>`;
   };
 
@@ -131,22 +139,45 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
   app.get(`/personal/:id{${UUID}}/stundenzettel`, (c) =>
     shells.employee!(c, 'stundenzettel', async (e) => {
       const month = monthOf(c.req.query('monat'));
-      const s = await timesheet(sql, e.id, month);
+      const full = await timesheet(sql, e.id, month);
+      const siteNames = [...new Set(full.rows.map((r) => r.site).filter((x): x is string => !!x))].sort();
+      const only = c.req.query('objekt') ?? '';
+      const s = only && siteNames.includes(only) ? sheetForSite(full, only) : full;
       const sig = await latestSignature(sql, e.id, month);
       const base = `/personal/${e.id}/stundenzettel`;
+      const oq = only ? `&objekt=${encodeURIComponent(only)}` : '';
       return (
         <>
           <div class="actions" style="margin-top:0">
-            <a class="btn sm sec" href={`${base}?monat=${shiftMonth(month, -1)}`}>
+            <a class="btn sm sec" href={`${base}?monat=${shiftMonth(month, -1)}${oq}`}>
               ←
             </a>
             <b style="min-width:150px;text-align:center">{monthLabel(month)}</b>
-            <a class="btn sm sec" href={`${base}?monat=${shiftMonth(month, 1)}`}>
+            <a class="btn sm sec" href={`${base}?monat=${shiftMonth(month, 1)}${oq}`}>
               →
             </a>
+            {siteNames.length > 1 && (
+              <form method="get" style="display:inline">
+                <input type="hidden" name="monat" value={month} />
+                <select
+                  name="objekt"
+                  onchange="this.form.submit()"
+                  aria-label="Objekt"
+                  data-nosearch
+                  style="max-width:260px"
+                >
+                  <option value="">alle Objekte ({siteNames.length})</option>
+                  {siteNames.map((n) => (
+                    <option value={n} selected={n === only}>
+                      nur {n}
+                    </option>
+                  ))}
+                </select>
+              </form>
+            )}
             <span style="flex:1" />
             {sig ? (
-              sig.sheet_hash === s.hash ? (
+              sig.sheet_hash === full.hash ? (
                 <span class="badge ok">
                   ✓ unterschrieben am {dateDe(sig.signed_at.toISOString().slice(0, 10))}
                 </span>
@@ -156,8 +187,8 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
             ) : (
               <span class="badge warn">noch nicht unterschrieben</span>
             )}
-            <a class="btn sm" href={`${base}/druck?monat=${month}`} target="_blank" rel="noopener">
-              Drucken / PDF
+            <a class="btn sm" href={`${base}/druck?monat=${month}${oq}`} target="_blank" rel="noopener">
+              {only ? 'Auszug drucken / PDF' : 'Drucken / PDF'}
             </a>
           </div>
           {(s.open.running > 0 || s.open.pending > 0) && (
@@ -183,7 +214,9 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
 
   app.get(`/personal/:id{${UUID}}/stundenzettel/druck`, async (c) => {
     const month = monthOf(c.req.query('monat'));
-    const s = await timesheet(sql, c.req.param('id'), month);
+    const full = await timesheet(sql, c.req.param('id'), month);
+    const only = c.req.query('objekt') ?? '';
+    const s = only && full.rows.some((r) => r.site === only) ? sheetForSite(full, only) : full;
     return c.html(
       printHtml(`Stundenzettel ${s.employee.name} ${monthLabel(month)}`, [await sheetSection(s)]),
     );
@@ -209,6 +242,10 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
     const site = c.req.query('objekt') ?? '';
     const sig = (c.req.query('unterschrift') ?? 'alle') as SigState;
     const view = c.req.query('ansicht') === 'lohnarten' ? 'lohnarten' : 'stunden';
+    // „nur Zeiten dieses Objekts“: Stundenzettel als Auszug je Objekt (z. B. Nachweis für den Kunden)
+    const onlySite = !!site && c.req.query('nur') === '1';
+    // Auswahl einzelner Personen (Häkchen in der Liste) für Druck/Export
+    const picked = new Set(c.req.queries('p') ?? []);
     const { from, to } = monthRange(month);
     const [all, sigs, pay, siteLinks, sites] = await Promise.all([
       listEmployees(sql),
@@ -227,25 +264,34 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
         (!art || e.employment_type === art) &&
         (!site || siteLinks.some((l) => l.employee_id === e.id && l.site_id === site)),
     );
-    const sheets = await Promise.all(emps.map((e) => timesheet(sql, e.id, month)));
+    const siteName = sites.find((x) => x.id === site)?.name ?? '';
+    const sheets = await Promise.all(
+      emps.map(async (e) => {
+        const full = await timesheet(sql, e.id, month);
+        return { full, s: onlySite ? sheetForSite(full, siteName) : full };
+      }),
+    );
     const payOf = new Map(pay.map((p) => [p.employee_id, p]));
     const rows = emps
       .map((e, i) => {
-        const s = sheets[i]!;
+        const { s, full } = sheets[i]!;
         const sg = sigs.get(e.id);
         const state: Exclude<SigState, 'alle'> = sg
-          ? sg.sheet_hash === s.hash
+          ? sg.sheet_hash === full.hash
             ? 'unterschrieben'
             : 'geaendert'
           : 'offen';
         return { e, s, sg, state, p: payOf.get(e.id) };
       })
       .filter((x) => x.s.rows.length > 0 && (sig === 'alle' || x.state === sig));
+    const all2 = rows;
+    const chosen = picked.size ? rows.filter((x) => picked.has(x.e.id)) : rows;
     const qs = (o: Record<string, string> = {}) => {
       const p = new URLSearchParams({ monat: month });
       if (q) p.set('q', q);
       if (art) p.set('art', art);
       if (site) p.set('objekt', site);
+      if (onlySite) p.set('nur', '1');
       if (sig !== 'alle') p.set('unterschrift', sig);
       if (view !== 'stunden') p.set('ansicht', view);
       for (const [k, v] of Object.entries(o)) {
@@ -254,7 +300,7 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
       }
       return p.toString();
     };
-    return { month, q, art, site, sig, view, rows, sites, qs };
+    return { month, q, art, site, sig, view, rows: all2, chosen, onlySite, siteName, sites, qs };
   };
   const surchargeMin = (p: { minutes: Record<string, number> } | undefined) =>
     p ? SURCHARGES.reduce((a, k) => a + p.minutes[k]!, 0) : 0;
@@ -273,6 +319,12 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
       'personal',
       <>
         <PageHead title={`Stundenzettel & Lohnarten ${monthLabel(month)}`} />
+        {d.onlySite && (
+          <div class="flash">
+            Auszug: nur Zeiten im Objekt <b>{d.siteName}</b> – je Person ein Blatt, ohne Unterschrift (die
+            gilt für den ganzen Monat). CSV fürs Lohnprogramm rechnet weiter mit allen Zeiten.
+          </div>
+        )}
         <form method="get" class="actions" style="margin-top:0">
           <a class="btn sm sec" href={`?${d.qs({ monat: shiftMonth(month, -1) })}`}>
             ←
@@ -326,9 +378,34 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
               </option>
             ))}
           </select>
+          {d.site && (
+            <label class="small" style="margin:0;display:flex;gap:6px;align-items:center">
+              <input
+                type="checkbox"
+                name="nur"
+                value="1"
+                checked={d.onlySite}
+                onchange="this.form.submit()"
+              />
+              nur Zeiten dieses Objekts
+            </label>
+          )}
           {d.view !== 'stunden' && <input type="hidden" name="ansicht" value={d.view} />}
           <button class="btn sm sec">Filtern</button>
         </form>
+        {/* Auswahl einzelner Personen: Häkchen in der Tabelle gehören zu diesem Formular */}
+        <form id="pick" method="get" action="/zeiterfassung/stundenzettel/druck" target="_blank">
+          {[...new URLSearchParams(d.qs()).entries()].map(([k, v]) => (
+            <input type="hidden" name={k} value={v} />
+          ))}
+        </form>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `document.addEventListener('change',function(ev){var t=ev.target;if(!t.matches||!(t.matches('[data-pick]')||t.matches('[data-pick-all]')))return;
+var bs=document.querySelectorAll('[data-pick]');if(t.matches('[data-pick-all]'))bs.forEach(function(b){b.checked=t.checked});
+var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector('[data-pick-btn]');if(btn){btn.disabled=!n;btn.textContent='Auswahl drucken'+(n?' ('+n+')':'')}});`,
+          }}
+        />
         <div class="actions">
           <div class="chips" style="margin:0">
             <a href={`?${d.qs({ ansicht: '' })}`} class={d.view === 'stunden' ? 'on' : ''}>
@@ -355,8 +432,13 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
             target="_blank"
             rel="noopener"
           >
-            Stundenzettel drucken / PDF
+            Alle {rows.length} drucken / PDF
           </a>
+          {d.view === 'stunden' && (
+            <button class="btn sm sec" form="pick" data-pick-btn disabled>
+              Auswahl drucken
+            </button>
+          )}
           <a class="btn sm sec" href={`/zeiterfassung/stundenzettel.csv?${d.qs()}`}>
             CSV Übersicht
           </a>
@@ -378,6 +460,9 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
             <thead>
               {d.view === 'stunden' ? (
                 <tr>
+                  <th style="width:28px">
+                    <input type="checkbox" aria-label="alle auswählen" data-pick-all />
+                  </th>
                   <th>Mitarbeiter</th>
                   <th class="r">Soll</th>
                   <th class="r">Gearbeitet</th>
@@ -402,8 +487,22 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
             <tbody>
               {rows.map(({ e, s, sg, state, p }) => (
                 <tr>
+                  {d.view === 'stunden' && (
+                    <td>
+                      <input
+                        type="checkbox"
+                        name="p"
+                        value={e.id}
+                        form="pick"
+                        aria-label="auswählen"
+                        data-pick
+                      />
+                    </td>
+                  )}
                   <td>
-                    <a href={`/personal/${e.id}/stundenzettel?monat=${month}`}>
+                    <a
+                      href={`/personal/${e.id}/stundenzettel?monat=${month}${d.onlySite ? `&objekt=${encodeURIComponent(d.siteName)}` : ''}`}
+                    >
                       {e.last_name}, {e.first_name}
                     </a>
                     <div class="small mut">
@@ -439,7 +538,7 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
                       <td>
                         <a
                           class="btn sm sec"
-                          href={`/personal/${e.id}/stundenzettel/druck?monat=${month}`}
+                          href={`/personal/${e.id}/stundenzettel/druck?monat=${month}${d.onlySite ? `&objekt=${encodeURIComponent(d.siteName)}` : ''}`}
                           target="_blank"
                           rel="noopener"
                         >
@@ -469,6 +568,7 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
               <tfoot>
                 {d.view === 'stunden' ? (
                   <tr>
+                    <td></td>
                     <td>
                       <b>Summe</b>
                     </td>
@@ -511,7 +611,7 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
   app.get('/zeiterfassung/stundenzettel/druck', async (c) => {
     const d = await listData(c);
     const sections: string[] = [];
-    for (const x of d.rows) sections.push(await sheetSection(x.s));
+    for (const x of d.chosen) sections.push(await sheetSection(x.s));
     return c.html(printHtml(`Stundenzettel ${monthLabel(d.month)}`, sections));
   });
 

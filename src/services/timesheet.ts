@@ -93,6 +93,47 @@ export const MONTH_NAMES = [
 export const monthLabel = (month: string) =>
   `${MONTH_NAMES[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`;
 
+/** Summen eines Stundenzettels (auch für Auszüge je Objekt). */
+export function sumRows(rows: SheetRow[]): SheetTotals {
+  const t: SheetTotals = {
+    plan: 0,
+    work: 0,
+    breaks: 0,
+    vacation: 0,
+    sick: 0,
+    otherPaid: 0,
+    unpaid: 0,
+    paid: 0,
+    diff: 0,
+  };
+  for (const r of rows) {
+    t.plan += r.planMinutes;
+    // nur erfasste/freigegebene Zeiten zählen; Nachträge in Prüfung nicht
+    if (r.status === 'erfasst' || r.status === 'freigegeben') {
+      t.work += r.workMinutes;
+      t.breaks += r.breakMinutes;
+    }
+    if (r.absence && r.absenceMinutes) {
+      if (!r.absencePaid) t.unpaid += r.absenceMinutes;
+      else if (r.absence === 'urlaub') t.vacation += r.absenceMinutes;
+      else if (r.absence === 'krank' || r.absence === 'kind_krank') t.sick += r.absenceMinutes;
+      else t.otherPaid += r.absenceMinutes;
+    }
+  }
+  t.paid = t.work + t.vacation + t.sick + t.otherPaid;
+  t.diff = t.paid - t.plan;
+  return t;
+}
+
+/**
+ * Auszug eines Stundenzettels nur für ein Objekt (z. B. als Nachweis für den Kunden). Ohne Unterschrift – die
+ * Unterschrift des Mitarbeiters gilt für den ganzen Monat.
+ */
+export function sheetForSite(s: Timesheet, siteName: string): Timesheet & { onlySite: string } {
+  const rows = s.rows.filter((r) => r.site === siteName);
+  return { ...s, rows, totals: sumRows(rows), onlySite: siteName };
+}
+
 export async function timesheet(sql: Sql, employeeId: string, month: string): Promise<Timesheet> {
   const { from, to } = monthRange(month);
   const [e] = await sql<Timesheet['employee'][]>`
@@ -173,33 +214,7 @@ export async function timesheet(sql: Sql, employeeId: string, month: string): Pr
       a.date.localeCompare(b.date) ||
       (a.start ?? a.planFrom ?? '99').localeCompare(b.start ?? b.planFrom ?? '99'),
   );
-  const t: SheetTotals = {
-    plan: 0,
-    work: 0,
-    breaks: 0,
-    vacation: 0,
-    sick: 0,
-    otherPaid: 0,
-    unpaid: 0,
-    paid: 0,
-    diff: 0,
-  };
-  for (const r of rows) {
-    t.plan += r.planMinutes;
-    // nur erfasste/freigegebene Zeiten zählen; Nachträge in Prüfung nicht
-    if (r.status === 'erfasst' || r.status === 'freigegeben') {
-      t.work += r.workMinutes;
-      t.breaks += r.breakMinutes;
-    }
-    if (r.absence && r.absenceMinutes) {
-      if (!r.absencePaid) t.unpaid += r.absenceMinutes;
-      else if (r.absence === 'urlaub') t.vacation += r.absenceMinutes;
-      else if (r.absence === 'krank' || r.absence === 'kind_krank') t.sick += r.absenceMinutes;
-      else t.otherPaid += r.absenceMinutes;
-    }
-  }
-  t.paid = t.work + t.vacation + t.sick + t.otherPaid;
-  t.diff = t.paid - t.plan;
+  const t = sumRows(rows);
   const open = {
     running: entries.filter((x) => x.status === 'laeuft').length,
     pending: entries.filter((x) => x.status === 'beantragt').length,

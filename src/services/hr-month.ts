@@ -1,6 +1,7 @@
 import type { Sql } from '../db/client.js';
 import { monthBounds } from '../domain/invoice/calc.js';
-import { addDays, holidayName, workingDays } from '../domain/time/holidays.js';
+import { addDays, holidayName } from '../domain/time/holidays.js';
+import { sollMinutes } from './employee-hours.js';
 import { BusinessError } from './errors.js';
 import { listAbsences } from './absences.js';
 import { listEntries, netMinutes, plannedShifts } from './time.js';
@@ -19,8 +20,8 @@ export async function sollPlanIst(sql: Sql, employeeId: string, month: string) {
   const { start, end } = monthBounds(month);
   const from = e.entry_date > start ? e.entry_date : start;
   const to = e.exit_date && e.exit_date < end ? e.exit_date : end;
-  const days = from > to ? 0 : workingDays(from, to);
-  const soll = e.weekly_hours ? Math.round((Number(e.weekly_hours) * 60 * days) / 5) : null;
+  // Wochenstunden je Abschnitt (Verlauf „gültig ab“), z. B. ab dem 15. mehr Stunden
+  const soll = from > to ? (e.weekly_hours ? 0 : null) : await sollMinutes(sql, employeeId, from, to);
   const shifts = await plannedShifts(sql, { from: start, to: end, employeeId });
   const plan = shifts.filter((s) => !s.holiday && !s.absence).reduce((a, s) => a + s.minutes, 0);
   const entries = await listEntries(sql, { from: start, to: end, employeeId });

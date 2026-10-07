@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { LegacyInvoiceList, legacyInvoices } from './routes-legacy-invoices.js';
 import { listWordTemplates } from '../services/word-templates.js';
 import { WordTemplateBox } from './routes-word-templates.js';
 import type { Context } from 'hono';
@@ -551,6 +552,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
           showSite
           newHref={`/neu?typ=rechnung&kunde=${cust.id}`}
         />
+        <LegacyInvoiceList rows={await legacyInvoices(sql, { customerId: cust.id })} />
       </>
     )),
   );
@@ -1530,6 +1532,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
           showSite={false}
           newHref={`/neu?typ=rechnung&kunde=${s.customer_id}&objekt=${s.id}`}
         />
+        <LegacyInvoiceList rows={await legacyInvoices(sql, { siteId: s.id })} showSite={false} />
       </>
     )),
   );

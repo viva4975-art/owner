@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { Sql } from '../db/client.js';
 import { assertVersion, versionField } from './crm.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
+import { recordHoursChange } from './employee-hours.js';
 import { BusinessError } from './errors.js';
 import { appLanguageOf } from '../domain/hr/lists.js';
 
@@ -129,6 +130,8 @@ export const employeeInput = z
       (v) => (typeof v === 'string' && v.trim() ? Number(v.replace(',', '.')) : null),
       z.number().min(0).max(60).nullable(),
     ),
+    /** ab wann geänderte Wochenstunden gelten (leer = heute) */
+    hours_valid_from: optDate,
     hourly_wage: z.preprocess(
       (v) => (typeof v === 'string' && v.trim() ? v.trim() : null),
       z
@@ -319,14 +322,21 @@ export async function saveEmployee(sql: Sql, id: string, input: EmployeeInput, a
   try {
     await sql.begin(async (tx) => {
       const [cur] = await tx<
-        { version: number }[]
-      >`select version from app.employees where id = ${id} for update`;
+        { version: number; weekly_hours: string | null }[]
+      >`select version, weekly_hours::text from app.employees where id = ${id} for update`;
       assertVersion(cur?.version, input.version, 'Der Mitarbeiter');
+      // Wochenstunden mit Verlauf: Änderung gilt ab „gültig ab“ (Zukunft → bis dahin bleibt der alte Wert)
+      const oldHours = cur?.weekly_hours != null ? Number(cur.weekly_hours) : null;
+      const hoursChanged = cur ? oldHours !== input.weekly_hours : true;
+      const validFrom = cur ? (input.hours_valid_from ?? todayBerlin()) : input.entry_date;
+      const row =
+        cur && hoursChanged && validFrom > todayBerlin() ? { ...base, weekly_hours: oldHours } : base;
       if (cur) {
-        await tx`update app.employees set ${tx({ ...base, updated_at: new Date() } as Record<string, unknown>)} where id = ${id}`;
+        await tx`update app.employees set ${tx({ ...row, updated_at: new Date() } as Record<string, unknown>)} where id = ${id}`;
       } else {
-        await tx`insert into app.employees ${tx({ id, ...base } as Record<string, unknown>)}`;
+        await tx`insert into app.employees ${tx({ id, ...row } as Record<string, unknown>)}`;
       }
+      if (hoursChanged) await recordHoursChange(tx, id, input.weekly_hours, validFrom, actor);
       const [curP] = await tx<
         { version: number }[]
       >`select version from app.employee_private where employee_id = ${id} for update`;
@@ -544,9 +554,9 @@ export const DOC_CATEGORIES = [
 /** Checkliste der Personalakte: Arbeitsvertrag Pflicht, die übrigen empfohlen (wie Pflichtdokumente am Objekt). */
 export const DOC_CHECKLIST: { name: string; required: boolean; hint: string }[] = [
   { name: 'Arbeitsvertrag', required: true, hint: 'unterschriebener Vertrag (Nachweisgesetz)' },
-  { name: 'Unterweisung', required: false, hint: 'Arbeitsschutz/Gefahrstoffe (§ 12 ArbSchG), jährlich' },
-  { name: 'Arbeitskleidung', required: false, hint: 'Ausgabeprotokoll (auch über „Übergaben“)' },
-  { name: 'Schlüssel', required: false, hint: 'Schlüsselquittung (auch über „Übergaben“)' },
+  { name: 'Unterweisung', required: true, hint: 'Arbeitsschutz/Gefahrstoffe (§ 12 ArbSchG), jährlich' },
+  { name: 'Arbeitskleidung', required: true, hint: 'Ausgabeprotokoll (auch über „Übergaben“)' },
+  { name: 'Schlüssel', required: true, hint: 'Schlüsselquittung (auch über „Übergaben“)' },
 ];
 
 export interface DocumentTemplate {

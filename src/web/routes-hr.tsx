@@ -17,7 +17,7 @@ import { BusinessError } from '../services/errors.js';
 import { createFromTemplate, serialLetter } from '../services/hr-docs.js';
 import { employeeCalendar } from '../services/hr-month.js';
 import { requestsForEmployee } from '../services/sign-documents.js';
-import { listFiles } from '../services/uploads.js';
+import { archiveLink, listFiles } from '../services/uploads.js';
 import { type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
 import { centsToInput, str } from './forms.js';
@@ -47,19 +47,32 @@ export function registerHrRoutes(ctx: Ctx) {
         requestsForEmployee(sql, e.id),
         listWordTemplates(sql, 'mitarbeiter'),
       ]);
-      const groups = DOC_CATEGORIES.map(
-        (k) => [k, files.filter((f) => (f.category ?? 'Sonstiges') === k)] as const,
-      )
-        .concat([
-          ['Weitere', files.filter((f) => f.category && !DOC_CATEGORIES.includes(f.category))] as const,
-        ])
-        .filter(([, list]) => list.length);
+      // vorne nur aktuelle Unterlagen, ältere Fassungen im Archiv je Kategorie (abrufbar, nie gelöscht)
+      const current = files.filter((f) => !f.archived_at);
+      const catOf = (f: (typeof files)[number]) =>
+        f.category && DOC_CATEGORIES.includes(f.category) ? f.category : f.category ? 'Weitere' : 'Sonstiges';
+      const groups = [...DOC_CATEGORIES, 'Weitere']
+        .map((k) => ({
+          k,
+          now: current.filter((f) => catOf(f) === k),
+          old: files
+            .filter((f) => f.archived_at && catOf(f) === k)
+            .sort((a, b) => +b.archived_at! - +a.archived_at!),
+        }))
+        .filter((g) => g.now.length || g.old.length);
+      const archForm = (fileId: string, aktion: 'archivieren' | 'zurueck', label: string) => (
+        <form method="post" action={`/personal/${e.id}/dokumente/archiv`} style="display:inline">
+          <input type="hidden" name="file_id" value={fileId} />
+          <input type="hidden" name="aktion" value={aktion} />
+          <button class="btn sm sec">{label}</button>
+        </form>
+      );
       const handovers = await sql<{ kind: string; n: number }[]>`
         select kind, count(*)::int as n from app.handovers
          where employee_id = ${e.id} and status in ('unterschrieben', 'ohne_unterschrift') group by kind`;
       const hoCount = (k: string) => handovers.find((h) => h.kind === k)?.n ?? 0;
       const has = (name: string) =>
-        files.some((f) => f.category === name) ||
+        current.some((f) => f.category === name) ||
         (name === 'Arbeitskleidung' && hoCount('kleidung') > 0) ||
         (name === 'Schlüssel' && hoCount('schluessel') > 0);
       return (
@@ -88,12 +101,67 @@ export function registerHrRoutes(ctx: Ctx) {
               </div>
             </div>
             <div class="card">
-              <h3>Dokumente ({files.length})</h3>
+              <h3>Dokumente ({current.length})</h3>
+              <p class="small mut" style="margin-top:-4px">
+                Vorne stehen die aktuellen Unterlagen. Ändert sich etwas (z. B. neuer Vertrag, neuer
+                Aufenthaltstitel): neue Fassung hochladen und die alte „ins Archiv“ legen – sie bleibt
+                unverändert abrufbar.
+              </p>
               {groups.length === 0 && <div class="empty">Noch keine Dokumente.</div>}
-              {groups.map(([k, list]) => (
+              {groups.map(({ k, now, old }) => (
                 <>
-                  <h4 style="margin:12px 0 4px">{k}</h4>
-                  <FileArea link={{ type: 'employee', id: e.id }} files={list} maxBytes={0} listOnly />
+                  <h4 style="margin:14px 0 4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    {k}
+                    {now.length > 1 && (
+                      <form
+                        method="post"
+                        action={`/personal/${e.id}/dokumente/archiv`}
+                        style="display:inline"
+                      >
+                        <input type="hidden" name="kategorie" value={k} />
+                        <input type="hidden" name="aktion" value="aeltere" />
+                        <button
+                          class="btn sm sec"
+                          onclick={`return confirm(${JSON.stringify(`Alle bis auf die neueste Datei in „${k}“ ins Archiv legen?`)})`}
+                        >
+                          ältere ins Archiv ({now.length - 1})
+                        </button>
+                      </form>
+                    )}
+                  </h4>
+                  {now.length > 0 ? (
+                    <FileArea
+                      link={{ type: 'employee', id: e.id }}
+                      files={now}
+                      maxBytes={0}
+                      listOnly
+                      action={(f) => archForm(f.id, 'archivieren', 'ins Archiv')}
+                    />
+                  ) : (
+                    <div class="small mut">Keine aktuelle Fassung – nur Archiv.</div>
+                  )}
+                  {old.length > 0 && (
+                    <details class="doc-archive">
+                      <summary class="small">Archiv ({old.length})</summary>
+                      <FileArea
+                        link={{ type: 'employee', id: e.id }}
+                        files={old}
+                        maxBytes={0}
+                        listOnly
+                        action={(f) => (
+                          <>
+                            <span class="small mut" style="white-space:nowrap">
+                              archiviert{' '}
+                              {(f as (typeof old)[number]).archived_at!.toLocaleDateString('de-DE', {
+                                timeZone: 'Europe/Berlin',
+                              })}
+                            </span>
+                            {archForm(f.id, 'zurueck', 'zurückholen')}
+                          </>
+                        )}
+                      />
+                    </details>
+                  )}
                 </>
               ))}
             </div>
@@ -160,6 +228,41 @@ export function registerHrRoutes(ctx: Ctx) {
       );
     }),
   );
+
+  app.post(`/personal/:id{${UUID}}/dokumente/archiv`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    const link = { type: 'employee', id } as const;
+    const aktion = str(b, 'aktion');
+    const actor = c.get('actor');
+    if (aktion === 'aeltere') {
+      const k = str(b, 'kategorie') ?? '';
+      const files = (await listFiles(sql, link)).filter((f) => !f.archived_at);
+      const inCat = files.filter((f) =>
+        k === 'Weitere'
+          ? f.category && !DOC_CATEGORIES.includes(f.category)
+          : k === 'Sonstiges'
+            ? (f.category ?? 'Sonstiges') === 'Sonstiges'
+            : f.category === k,
+      );
+      // listFiles ist nach Fertigstellung absteigend sortiert → die erste ist die neueste
+      for (const f of inCat.slice(1)) await archiveLink(sql, link, f.id, true, actor);
+      return back(c, `/personal/${id}/dokumente`, {
+        ok: `${Math.max(inCat.length - 1, 0)} ältere Datei(en) in „${k}“ ins Archiv gelegt.`,
+      });
+    }
+    const fileId = str(b, 'file_id') ?? '';
+    if (!/^[0-9a-f-]{36}$/.test(fileId) || (aktion !== 'archivieren' && aktion !== 'zurueck'))
+      throw new BusinessError('Ungültige Anfrage');
+    const done = await archiveLink(sql, link, fileId, aktion === 'archivieren', actor);
+    return back(c, `/personal/${id}/dokumente`, {
+      ok: done
+        ? aktion === 'archivieren'
+          ? 'Ins Archiv gelegt – weiter abrufbar unter „Archiv“.'
+          : 'Aus dem Archiv zurückgeholt.'
+        : 'Keine Änderung.',
+    });
+  });
 
   app.post(`/personal/:id{${UUID}}/dokumente/vorlage`, async (c) => {
     const id = c.req.param('id');

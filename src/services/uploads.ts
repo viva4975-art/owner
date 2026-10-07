@@ -222,8 +222,8 @@ export async function completeUpload(sql: Sql, cfg: UploadConfig, id: string): P
 }
 
 export async function listFiles(sql: Sql, link: LinkTarget) {
-  return sql<(FileRow & { category: string | null })[]>`
-    select f.*, l.category from app.file_links l join app.files f on f.id = l.file_id
+  return sql<(FileRow & { category: string | null; archived_at: Date | null; archived_by: string | null })[]>`
+    select f.*, l.category, l.archived_at, l.archived_by from app.file_links l join app.files f on f.id = l.file_id
      where l.entity_type = ${link.type} and l.entity_id = ${link.id} and f.status = 'complete'
      order by f.completed_at desc`;
 }
@@ -243,6 +243,31 @@ export async function cleanupStaleUploads(sql: Sql, cfg: UploadConfig, maxAgeHou
     await sql`delete from app.files where id = ${s.id} and status = 'uploading'`;
   }
   return stale.length;
+}
+
+/**
+ * Personalakte u. ä.: ältere Fassung ins Archiv legen bzw. zurückholen. Die Datei bleibt unverändert (write-once)
+ * und abrufbar, nur die Verknüpfung wird gekennzeichnet.
+ */
+export async function archiveLink(
+  sql: Sql,
+  link: LinkTarget,
+  fileId: string,
+  archive: boolean,
+  actor: string,
+) {
+  const r = archive
+    ? await sql`update app.file_links set archived_at = now(), archived_by = ${actor}
+                 where file_id = ${fileId} and entity_type = ${link.type} and entity_id = ${link.id}
+                   and archived_at is null returning file_id`
+    : await sql`update app.file_links set archived_at = null, archived_by = null
+                 where file_id = ${fileId} and entity_type = ${link.type} and entity_id = ${link.id}
+                   and archived_at is not null returning file_id`;
+  if (r.length)
+    await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+              values (${actor}, ${archive ? 'file_archive' : 'file_unarchive'}, 'file_links', ${fileId},
+                      ${sql.json({ type: link.type, id: link.id })})`;
+  return r.length > 0;
 }
 
 /**

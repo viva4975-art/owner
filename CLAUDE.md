@@ -116,6 +116,9 @@ Testadresse.
 - [ ] Je Behörde klären: nimmt sie XRechnung per E-Mail an oder nur über ein Portal (ZRE/OZG-RE, Peppol)?
 - [ ] SEPA-Zahlungslauf: erste pain.001-Datei als Testeinreichung bei der Bank hochladen (Format/Limit prüfen)
 - [ ] Je ein echter Kontoauszug (CAMT.053, sonst CSV) von Münchner Bank und Targobank zum Testen des Imports
+- [ ] Fortytools-XML-Exporte auf dem Live-Server einspielen (Transfer → Import aus Fortytools); Angebotsstatus-Zuordnung
+      bestätigen; danach in Fortytools keine Rechnungen/Angebote mehr schreiben (Nummernkreise)
+- [ ] Korrigierte Word-Vorlagen (ZIP „Viva-Deluxe_Vorlagen-Platzhalter“) unter Einstellungen → Word-Vorlagen hochladen
 
 ## Risiken (rechtlich/steuerlich)
 
@@ -1069,3 +1072,43 @@ Testadresse.
     der Anleitung (Arbeitsvertrag, Vertragsänderung, Beendigung, Nutzungsüberlassung …). Kündigung/Aufhebung/Befristung:
     nur ausdrucken und auf Papier unterschreiben (Schriftform). **Auf dem Live-Server die ZIP einmal hochladen.**
   - Tests: neu `runde18.db.test.ts`, `expected-invoices.db.test.ts`, `word-templates(.db).test.ts`.
+- 2026-10-07: Runde 19 (Ahmed, 10 Punkte):
+  - **Fehlende Pflichtunterlagen** (Personal → Fehlende Unterlagen, `/personal/unterlagen`): Arbeitsvertrag, Unterweisung,
+    Arbeitskleidung, Schlüssel jetzt Pflicht (Kleidung/Schlüssel zählen auch über Übergaben), dazu Aufenthaltstitel/
+    Arbeitserlaubnis außerhalb EU/EWR/CH (nicht abgelaufen) und fehlende Staatsangehörigkeit. Sortiert nach Objektleitung
+    (wer an mehreren Objekten arbeitet, steht bei jeder), Filter Objektleitung/„fehlt“, Export CSV und PDF.
+  - **Startseite selbst bauen** (Knopf „Übersicht anpassen“, `/startseite/anpassen`, je Benutzer in `app.user_prefs`):
+    Karten ein-/ausblenden, Spalte, Reihenfolge, zurücksetzen. „Wiedervorlagen Akquise“ ist eine eigene Karte;
+    Ausschreibungs-Termine stehen bei den Aufgaben (nicht mehr bei den Wiedervorlagen). „Abwesend“ zeigt Heute /
+    Nächste 7 Tage / In 8–14 Tagen.
+  - **Fortytools-XML-Import** (Transfer → Import aus Fortytools, Karte „XML-Exporte“): customers, facilities,
+    staff_members, offers, invoices. Probelauf (Vorschau) → übernehmen; Abgleich mit dem CSV-Import über Fortytools-ID,
+    Nummer, Name – nichts doppelt, vorhandene Felder werden nur ergänzt. Mitarbeitende: Wochenstunden, Urlaubstage,
+    Sprache, Anschrift, Krankenkasse (IK). Angebote mit Positionen und Folgeangebot. Rechnungen als **Archiv
+    „Rechnung (Fortytools)“** (`app.legacy_invoices`, unveränderbar, nur „bezahlt“ setzbar) beim Kunden, Objekt, in der
+    Suche und in den Offenen Posten. Monatspauschalen für Objekte ohne Leistung aus der letzten vollen Monatsrechnung
+    (gültig ab Folgemonat). Probelauf mit den echten Exporten (Wegwerf-DB): 181 Kunden, 376 Objekte, 266 Mitarbeitende
+    (3 ohne Eintritt übersprungen), 408 Angebote, 3.200 Rechnungen, 171 Monatspauschalen, ~4 s; zweiter Lauf ändert nichts.
+    **Nummernkreise werden angehoben (nie gesenkt): Rechnung ab 1038308 (höchste Fortytools-Nr. 1038307), Angebot ab 3897.
+    Nach dem Umstieg in Fortytools keine Rechnungen mehr schreiben – sonst doppelte Nummern.** Angebotsstatus aus
+    Fortytools ist abgeleitet (1 angenommen, 2 abgelehnt, 3 zurückgezogen, 4 versendet, 5 Entwurf) – **Ahmed bestätigen**.
+    Dokumente/Anhänge sind nicht im XML-Export.
+  - **Stundenzettel je Person** filterbar: Häkchen je Person → „Auswahl drucken“ (je Person ein Blatt), Objekt-Filter mit
+    „nur Zeiten dieses Objekts“ = Auszug je Objekt (ohne Unterschrift, z. B. Nachweis für den Kunden); beim Mitarbeiter
+    Auswahl „nur <Objekt>“. Lohnprogramm-CSV rechnet weiter mit allen Zeiten.
+  - **Personalakte mit Archiv:** je Datei „ins Archiv“ / „zurückholen“, je Kategorie „ältere ins Archiv“ (neueste bleibt
+    vorne), Archiv aufklappbar je Kategorie. Datei bleibt write-once, nur die Verknüpfung wird gekennzeichnet
+    (`file_links.archived_at/by`, Protokoll). Pflichtunterlagen zählen nur aktuelle Dateien.
+  - **Wochenstunden mit Verlauf** (`app.employee_hours`, nur anhängen): im Formular „Stunden gültig ab“ (leer = heute),
+    Verlauf in den Stammdaten („geplant“ für Zukunft). Zukünftige Werte übernimmt der Server am Stichtag (Start + stündlich).
+    Soll (Dispo, Kalender) rechnet je Abschnitt.
+  - **Word-Vorlagen:** „Aus Word-Vorlage erstellen“ → Seite „Angaben prüfen“ mit allen Platzhaltern der Vorlage,
+    vorbelegt, Datumsfelder als Datumsauswahl (Dokument.Datum/Unterschriftsdatum/Frist, Vertrag.Datum/Beginn/Ende …,
+    Neu.Wochenstunden/Stundenlohn …), Stammdaten eingeklappt. Eigene Seite **Personal → Vorlagen (Word)** (`/vorlagen`):
+    Person/Kunde/Objekt wählen → Vorlage ausfüllen, „zuletzt erstellt“. Beträge ohne „€“ (Vorlagen schreiben EUR dahinter).
+    **Fund: Fast alle Vorlagen hatten Word-Datumsfelder (DATE) – die zeigen beim Öffnen immer das heutige Datum.** Beim
+    Erzeugen werden sie jetzt auf das Dokumentdatum festgeschrieben. Ahmeds Vorlagen korrigiert (V3: Leerstellen →
+    Platzhalter, „München, den ${Mitarbeiter.Eintrittsdatum}“ → Unterschriftsdatum, Stundenlohn statt Gehalt im
+    Arbeitsvertrag, Vorarbeiter-ZV ohne festes 01.09.2026/16,66 €/Lohngruppe 4). Neue Fassung (gleicher Code, höhere
+    „-Vn“) deaktiviert die alte beim Hochladen. **Ahmed: korrigierte ZIP unter Einstellungen → Word-Vorlagen hochladen.**
+  - Tests: 355 Unit-/DB-Tests (neu `runde19.db.test.ts`, erweitert `word-templates.db.test.ts`).

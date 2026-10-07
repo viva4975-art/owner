@@ -1,4 +1,5 @@
 import type { Child, FC } from 'hono/jsx';
+import { todayBerlin } from '../domain/invoice/calc.js';
 import { HEALTH_INSURERS, LANGUAGES } from '../domain/hr/lists.js';
 import {
   EMPLOYMENT_TYPES,
@@ -262,7 +263,9 @@ export const EmployeeOverview: FC<{
   /** ganz unten (z. B. Beschäftigungszeiten) */
   footer?: Child;
   employment?: Child;
-}> = ({ e, priv, sites, showPrivate, wage, month, afterHead, footer, employment }) => (
+  /** Verlauf der Wochenstunden (neueste zuerst) */
+  hours?: { valid_from: string; weekly_hours: string | null; recorded_by: string }[];
+}> = ({ e, priv, sites, showPrivate, wage, month, afterHead, footer, employment, hours = [] }) => (
   <>
     {e.warning_note && (
       <div class="flash err" style="white-space:pre-line">
@@ -314,7 +317,29 @@ export const EmployeeOverview: FC<{
             </>
           )}
           <dt>Std./Woche</dt>
-          <dd>{e.weekly_hours ? String(Number(e.weekly_hours)).replace('.', ',') : '–'}</dd>
+          <dd>
+            {e.weekly_hours ? String(Number(e.weekly_hours)).replace('.', ',') : '–'}
+            {hours.length > 1 && (
+              <details class="hours-hist">
+                <summary class="small">Verlauf ({hours.length})</summary>
+                <div class="small" style="margin-top:4px">
+                  {hours.map((h) => (
+                    <div style="padding:2px 0" class={h.valid_from > todayBerlin() ? 'mut' : ''}>
+                      ab {dateDe(h.valid_from)}:{' '}
+                      <b>
+                        {h.weekly_hours != null ? String(Number(h.weekly_hours)).replace('.', ',') : '–'} Std.
+                      </b>
+                      <span class="mut">
+                        {' '}
+                        · {h.valid_from > todayBerlin() ? 'geplant · ' : ''}
+                        {h.recorded_by}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </dd>
           <dt>Urlaubsanspruch</dt>
           <dd>{String(Number(e.annual_leave_days)).replace('.', ',')} Tage/Jahr</dd>
           {wage && (
@@ -538,6 +563,16 @@ export const EmployeeForm: FC<{
         label="Stunden/Woche"
         value={e.weekly_hours ? String(Number(e.weekly_hours)).replace('.', ',') : ''}
       />
+      {!isNew && (
+        <div>
+          <label for="hours_valid_from">Stunden gültig ab</label>
+          <input id="hours_valid_from" name="hours_valid_from" type="date" />
+          <div class="small mut">
+            Nur bei geänderten Stunden: ab wann sie gelten (leer = heute). Der alte Wert bleibt im Verlauf
+            sichtbar.
+          </div>
+        </div>
+      )}
       <Field
         name="annual_leave_days"
         label="Urlaubsanspruch (Tage/Jahr)"

@@ -108,6 +108,8 @@ h2 .cnt,h3 .cnt{font-weight:500;color:var(--faint)}
 .card>h2:first-child,.card>h3:first-child,.card>div>h2:first-child{margin-top:0}
 .card.flush{padding:0}.card.flush>.tbl{border:0;border-radius:var(--r);margin:0}
 .cols{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:16px;align-items:start}
+.tpl-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}.tpl-row:last-child{border-bottom:0}
+@media (max-width:700px){.tpl-row{grid-template-columns:1fr}}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px 16px}
 .cols>*,.grid>*{min-width:0}
 /* Formulare wie Fortytools: ein Feld pro Zeile untereinander, Beschriftung links (Ahmed 06.10.2026) */
@@ -230,7 +232,9 @@ input::placeholder,textarea::placeholder{color:var(--faint)}
 .files .bar>i{display:block;height:100%;width:0;background:var(--brand);transition:width .2s}
 .files li.done .bar>i{background:var(--ok)}
 .files li.error .bar>i{background:var(--err)}
-.files .act{display:flex;gap:4px}
+.files .act{display:flex;gap:4px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
+.files li>div{min-width:0}
+@media (max-width:1400px){.cols .files li{grid-template-columns:auto 1fr}.cols .files .act{grid-column:2;justify-content:flex-start}}
 /* ---- Moderne Bausteine: Kopfkarte, Fortschritt, Listen ---- */
 .hero{display:flex;flex-wrap:wrap;gap:16px 28px;align-items:center}
 .hero .facts{display:flex;flex-wrap:wrap;gap:6px 24px;color:var(--mut);font-size:13px}
@@ -1093,6 +1097,8 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     items: [
       { label: 'Mitarbeiter', href: '/personal' },
       { label: 'Bewerber & Stellen', href: '/bewerber' },
+      { label: 'Fehlende Unterlagen', href: '/personal/unterlagen' },
+      { label: 'Vorlagen (Word)', href: '/vorlagen' },
       { label: 'Unterweisungen & Unterschriften', href: '/personal/dokumente' },
       { label: 'Urlaub & Abwesenheiten', href: '/urlaub' },
       { label: 'Zeiterfassung heute', href: '/zeiterfassung', sep: true },

@@ -7,14 +7,21 @@ import { PageHead, dateDe, euro, initials } from './layout.js';
 import { InvoiceTable } from './pages-invoices.js';
 import { ABSENCE_LABEL, type AbsentNow } from '../services/absences.js';
 
-/** „Abwesend“: heute und in den nächsten 7 Tagen (Urlaub eine Woche vorher), mit Art inkl. „krank“. */
+/** „Abwesend“: heute, nächste 7 Tage und 8–14 Tage (Urlaub zwei Wochen vorher sichtbar), mit Art inkl. „krank“. */
 export const AbsentCard: FC<{ absent: AbsentNow[]; today: string; href?: string | undefined }> = ({
   absent,
   today,
   href,
 }) => {
+  const plus = (d: number) => {
+    const x = new Date(`${today}T12:00:00Z`);
+    x.setUTCDate(x.getUTCDate() + d);
+    return x.toISOString().slice(0, 10);
+  };
+  const d7 = plus(7);
   const now = absent.filter((a) => a.start_date <= today);
-  const soon = absent.filter((a) => a.start_date > today);
+  const week = absent.filter((a) => a.start_date > today && a.start_date <= d7);
+  const later = absent.filter((a) => a.start_date > d7);
   const Row = ({ a }: { a: AbsentNow }) => (
     <li>
       <span class="avatar">{initials(a.name)}</span>
@@ -32,6 +39,25 @@ export const AbsentCard: FC<{ absent: AbsentNow[]; today: string; href?: string 
       {a.start_date > today && <span class="dl-r">ab {dateDe(a.start_date).slice(0, 6)}</span>}
     </li>
   );
+  const Group = ({ title, list, empty }: { title: string; list: AbsentNow[]; empty?: string }) =>
+    list.length === 0 && !empty ? null : (
+      <>
+        <div class="dl-sub" style="margin:10px 0 6px;font-weight:600">
+          {title}
+          {list.length ? ` (${list.length})` : ''}
+        </div>
+        {list.length === 0 ? (
+          <div class="dash-empty">{empty}</div>
+        ) : (
+          <ul class="dash-list">
+            {list.slice(0, 8).map((a) => (
+              <Row a={a} />
+            ))}
+          </ul>
+        )}
+        {list.length > 8 && <div class="dash-more">+ {list.length - 8} weitere</div>}
+      </>
+    );
   return (
     <section class="card dash-card">
       {href ? (
@@ -39,32 +65,9 @@ export const AbsentCard: FC<{ absent: AbsentNow[]; today: string; href?: string 
       ) : (
         <DashHead title="Abwesend" count={absent.length} />
       )}
-      <div class="dl-sub" style="margin:-4px 0 6px">
-        Heute{now.length ? ` (${now.length})` : ''}
-      </div>
-      {now.length === 0 ? (
-        <div class="dash-empty">Heute ist niemand abwesend.</div>
-      ) : (
-        <ul class="dash-list">
-          {now.slice(0, 8).map((a) => (
-            <Row a={a} />
-          ))}
-        </ul>
-      )}
-      {now.length > 8 && <div class="dash-more">+ {now.length - 8} weitere</div>}
-      {soon.length > 0 && (
-        <>
-          <div class="dl-sub" style="margin:10px 0 6px">
-            Nächste 7 Tage ({soon.length})
-          </div>
-          <ul class="dash-list">
-            {soon.slice(0, 8).map((a) => (
-              <Row a={a} />
-            ))}
-          </ul>
-          {soon.length > 8 && <div class="dash-more">+ {soon.length - 8} weitere</div>}
-        </>
-      )}
+      <Group title="Heute" list={now} empty="Heute ist niemand abwesend." />
+      <Group title="Nächste 7 Tage" list={week} />
+      <Group title="In 8–14 Tagen" list={later} />
     </section>
   );
 };
@@ -340,6 +343,52 @@ export interface DashboardTodo {
   unsentDunnings: number;
 }
 
+/** Karten der Startseite (Reihenfolge/Spalte/Ausblenden je Benutzer, „Übersicht anpassen“). */
+export type DashCardKey =
+  | 'aufgaben'
+  | 'akquise'
+  | 'entwuerfe'
+  | 'offeneposten'
+  | 'unversendet'
+  | 'abwesend'
+  | 'hinweise'
+  | 'geburtstage';
+export const DASH_CARDS: Record<DashCardKey, string> = {
+  aufgaben: 'Aufgaben (inkl. Ausschreibungs-Termine)',
+  akquise: 'Wiedervorlagen Akquise',
+  entwuerfe: 'Rechnungsentwürfe & Monatslauf',
+  offeneposten: 'Offene Posten',
+  unversendet: 'Noch nicht versendet',
+  abwesend: 'Abwesend (heute, 7 und 14 Tage)',
+  hinweise: 'Hinweise (Fristen, Unterschriften, Prüfungen)',
+  geburtstage: 'Geburtstage & Jubiläen',
+};
+export interface DashItem {
+  key: DashCardKey;
+  col: 1 | 2;
+  hidden: boolean;
+}
+export const DEFAULT_DASH: DashItem[] = [
+  { key: 'aufgaben', col: 1, hidden: false },
+  { key: 'akquise', col: 1, hidden: false },
+  { key: 'entwuerfe', col: 1, hidden: false },
+  { key: 'offeneposten', col: 2, hidden: false },
+  { key: 'unversendet', col: 2, hidden: false },
+  { key: 'abwesend', col: 2, hidden: false },
+  { key: 'hinweise', col: 2, hidden: false },
+  { key: 'geburtstage', col: 2, hidden: false },
+];
+/** Gespeichertes Layout prüfen und um neue Karten ergänzen. */
+export function normalizeDash(raw: unknown): DashItem[] {
+  const list = Array.isArray(raw) ? raw : [];
+  const out: DashItem[] = [];
+  for (const x of list as Partial<DashItem>[])
+    if (x && x.key && x.key in DASH_CARDS && !out.some((o) => o.key === x.key))
+      out.push({ key: x.key, col: x.col === 2 ? 2 : 1, hidden: !!x.hidden });
+  for (const d of DEFAULT_DASH) if (!out.some((o) => o.key === d.key)) out.push(d);
+  return out;
+}
+
 export interface DashboardKpi {
   monthNet: bigint;
   prevNet: bigint;
@@ -418,7 +467,11 @@ export const Dashboard: FC<{
   absent?: AbsentNow[];
   signOverdue?: { id: string; title: string; open: number }[];
   absentHref?: string | undefined;
+  layout?: DashItem[] | undefined;
+  showAkquise?: boolean;
 }> = ({
+  layout,
+  showAkquise = true,
   user,
   tasks,
   drafts,
@@ -513,269 +566,312 @@ export const Dashboard: FC<{
           <a class="btn sec" href="/neu?typ=aufgabe">
             + Aufgabe
           </a>
+          <a class="btn ghost sm" href="/startseite/anpassen" title="Karten ein-/ausblenden und anordnen">
+            Übersicht anpassen
+          </a>
         </div>
       </div>
 
-      <div class="dash-grid">
-        <div class="dash-col">
-          <section class="card dash-card">
-            <DashHead
-              title="Aufgaben – nächste 7 Tage"
-              count={tasks.length}
-              href="/aufgaben"
-              more="Alle Aufgaben"
-            />
-            {overdueTasks > 0 && (
-              <div class="dash-alert">
-                {overdueTasks} Aufgabe{overdueTasks === 1 ? '' : 'n'} überfällig
-              </div>
-            )}
-            {tasks.length === 0 ? (
-              <div class="dash-empty">Keine offenen Aufgaben – alles erledigt.</div>
-            ) : (
-              <ul class="dash-list">
-                {tasks.slice(0, 7).map((t) => (
-                  <li>
-                    <form method="post" action={`/aufgaben/${t.id}/erledigt`} class="dl-check">
-                      <input type="hidden" name="done" value="1" />
-                      <input type="hidden" name="back" value="/" />
-                      <button
-                        class={`chk-btn ${t.due_date && t.due_date < kpi.today ? 'err' : t.due_date === kpi.today ? 'warn' : ''}`}
-                        title="Als erledigt markieren"
-                      >
-                        ✓
-                      </button>
-                    </form>
-                    <div class="dl-main">
-                      <a href={taskHref(t)}>{t.title}</a>
-                      <div class="dl-sub">
-                        {[t.entity_label, t.assignee].filter(Boolean).join(' · ') || 'ohne Zuordnung'}
-                      </div>
-                    </div>
-                    <span class="dl-r">
-                      {t.due_date ? (t.due_date === kpi.today ? 'heute' : dateDe(t.due_date)) : ''}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {tasks.length > 7 && (
-              <a class="dash-more" href="/aufgaben">
-                + {tasks.length - 7} weitere
-              </a>
-            )}
-          </section>
-
-          {(todo.deadlines.length > 0 || todo.followups.due.length + todo.followups.week.length > 0) && (
+      {(() => {
+        const cards: Record<DashCardKey, Child> = {
+          aufgaben: (
             <section class="card dash-card">
-              <DashHead title="Termine & Wiedervorlagen" />
-              <ul class="dash-list">
-                {todo.deadlines.slice(0, 5).map((o) => (
-                  <li>
-                    <span class={`dot ${o.days_left <= 2 ? 'err' : o.days_left <= 7 ? 'warn' : ''}`} />
-                    <div class="dl-main">
-                      <a href={`/ausschreibungen/${o.id}`}>
-                        {o.kind}
-                        {o.kind === 'Ortsbesichtigung' && o.required ? ' (Pflicht)' : ''}: {o.title}
-                      </a>
-                      <div class="dl-sub">
-                        {o.authority} ·{' '}
-                        {o.at.toLocaleString('de-DE', {
-                          timeZone: 'Europe/Berlin',
-                          weekday: 'short',
-                          day: '2-digit',
-                          month: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}{' '}
-                        Uhr
+              <DashHead
+                title="Aufgaben – nächste 7 Tage"
+                count={tasks.length}
+                href="/aufgaben"
+                more="Alle Aufgaben"
+              />
+              {overdueTasks > 0 && (
+                <div class="dash-alert">
+                  {overdueTasks} Aufgabe{overdueTasks === 1 ? '' : 'n'} überfällig
+                </div>
+              )}
+              {tasks.length === 0 ? (
+                <div class="dash-empty">Keine offenen Aufgaben – alles erledigt.</div>
+              ) : (
+                <ul class="dash-list">
+                  {tasks.slice(0, 7).map((t) => (
+                    <li>
+                      <form method="post" action={`/aufgaben/${t.id}/erledigt`} class="dl-check">
+                        <input type="hidden" name="done" value="1" />
+                        <input type="hidden" name="back" value="/" />
+                        <button
+                          class={`chk-btn ${t.due_date && t.due_date < kpi.today ? 'err' : t.due_date === kpi.today ? 'warn' : ''}`}
+                          title="Als erledigt markieren"
+                        >
+                          ✓
+                        </button>
+                      </form>
+                      <div class="dl-main">
+                        <a href={taskHref(t)}>{t.title}</a>
+                        <div class="dl-sub">
+                          {[t.entity_label, t.assignee].filter(Boolean).join(' · ') || 'ohne Zuordnung'}
+                        </div>
                       </div>
-                    </div>
-                    <span class="dl-r">
-                      {o.days_left === 0 ? 'heute' : o.days_left === 1 ? 'morgen' : `in ${o.days_left} T.`}
-                    </span>
-                  </li>
-                ))}
-                {todo.followups.due.slice(0, 4).map((f) => (
-                  <li>
-                    <span class="dot warn" />
-                    <div class="dl-main">
-                      <a href={`/akquise/${f.id}`}>Wiedervorlage: {f.company}</a>
-                      <div class="dl-sub">Akquise</div>
-                    </div>
-                    <span class="dl-r">{f.followup_on < kpi.today ? 'überfällig' : 'heute'}</span>
-                  </li>
-                ))}
-                {todo.followups.week.slice(0, 3).map((f) => (
-                  <li>
-                    <span class="dot" />
-                    <div class="dl-main">
-                      <a href={`/akquise/${f.id}`}>Wiedervorlage: {f.company}</a>
-                      <div class="dl-sub">Akquise</div>
-                    </div>
-                    <span class="dl-r">{dateDe(f.followup_on)}</span>
-                  </li>
-                ))}
-              </ul>
+                      <span class="dl-r">
+                        {t.due_date ? (t.due_date === kpi.today ? 'heute' : dateDe(t.due_date)) : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {todo.deadlines.length > 0 && (
+                <>
+                  <div class="dl-sub" style="margin:10px 0 4px">
+                    Ausschreibungen – Termine (14 Tage)
+                  </div>
+                  <ul class="dash-list">
+                    {todo.deadlines.slice(0, 5).map((o) => (
+                      <li>
+                        <span class={`dot ${o.days_left <= 2 ? 'err' : o.days_left <= 7 ? 'warn' : ''}`} />
+                        <div class="dl-main">
+                          <a href={`/ausschreibungen/${o.id}`}>
+                            {o.kind}
+                            {o.kind === 'Ortsbesichtigung' && o.required ? ' (Pflicht)' : ''}: {o.title}
+                          </a>
+                          <div class="dl-sub">
+                            {o.authority} ·{' '}
+                            {o.at.toLocaleString('de-DE', {
+                              timeZone: 'Europe/Berlin',
+                              weekday: 'short',
+                              day: '2-digit',
+                              month: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}{' '}
+                            Uhr
+                          </div>
+                        </div>
+                        <span class="dl-r">
+                          {o.days_left === 0
+                            ? 'heute'
+                            : o.days_left === 1
+                              ? 'morgen'
+                              : `in ${o.days_left} T.`}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {tasks.length > 7 && (
+                <a class="dash-more" href="/aufgaben">
+                  + {tasks.length - 7} weitere
+                </a>
+              )}
+            </section>
+          ),
+          akquise: (
+            <section class="card dash-card">
+              <DashHead
+                title="Wiedervorlagen Akquise"
+                count={todo.followups.due.length + todo.followups.week.length}
+                href="/akquise"
+                more="Akquise"
+              />
+              {todo.followups.due.length + todo.followups.week.length === 0 ? (
+                <div class="dash-empty">Keine Wiedervorlagen in den nächsten 7 Tagen.</div>
+              ) : (
+                <ul class="dash-list">
+                  {todo.followups.due.slice(0, 4).map((f) => (
+                    <li>
+                      <span class="dot warn" />
+                      <div class="dl-main">
+                        <a href={`/akquise/${f.id}`}>Wiedervorlage: {f.company}</a>
+                        <div class="dl-sub">Akquise</div>
+                      </div>
+                      <span class="dl-r">{f.followup_on < kpi.today ? 'überfällig' : 'heute'}</span>
+                    </li>
+                  ))}
+                  {todo.followups.week.slice(0, 3).map((f) => (
+                    <li>
+                      <span class="dot" />
+                      <div class="dl-main">
+                        <a href={`/akquise/${f.id}`}>Wiedervorlage: {f.company}</a>
+                        <div class="dl-sub">Akquise</div>
+                      </div>
+                      <span class="dl-r">{dateDe(f.followup_on)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
               {todo.followups.due.length > 4 && (
                 <a class="dash-more" href="/akquise?filter=due">
                   + {todo.followups.due.length - 4} weitere Wiedervorlagen fällig
                 </a>
               )}
             </section>
-          )}
-
-          <section class="card dash-card">
-            <DashHead
-              title="Rechnungsentwürfe"
-              count={drafts.length}
-              href="/rechnungen/entwuerfe"
-              more="Vorfaktura"
-            />
-            {drafts.length === 0 ? (
-              <div class="dash-empty">Keine offenen Entwürfe.</div>
-            ) : (
-              <ul class="dash-list">
-                {drafts.slice(0, 5).map((d) => (
-                  <li>
-                    <span class="dot" />
-                    <div class="dl-main">
-                      <a href={`/rechnungen/${d.id}`}>{d.customer_name}</a>
-                      <div class="dl-sub">
-                        {d.period_start ? `Leistung ab ${dateDe(d.period_start)}` : 'ohne Leistungszeitraum'}
-                      </div>
-                    </div>
-                    <span class="dl-r num">{euro(d.gross_cents)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <form method="post" action="/monatslauf" class="dash-run">
-              <span>Monatslauf</span>
-              <input type="month" name="month" value={month} required aria-label="Abrechnungsmonat" />
-              <button class="btn sm">Entwürfe erstellen</button>
-            </form>
-          </section>
-        </div>
-
-        <div class="dash-col">
-          <section class="card dash-card">
-            <DashHead title="Offene Posten" href="/offene-posten" more="Details" />
-            {balances.length === 0 ? (
-              <div class="dash-empty">Keine offenen Posten.</div>
-            ) : (
-              <table class="op-table">
-                <thead>
-                  <tr>
-                    <th>Kunde</th>
-                    <th class="r" title="Tage über Fälligkeit">
-                      Verzug
-                    </th>
-                    <th class="r">{euro(total)}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...balances]
-                    .sort(
-                      (a, b) =>
-                        b.max_overdue_days - a.max_overdue_days || Number(b.open_cents - a.open_cents),
-                    )
-                    .map((b) => (
-                      <tr>
-                        <td>
-                          <span class="mut">{b.customer_no}</span>{' '}
-                          <a href={`/kunden/${b.customer_id}/offene-posten`}>{b.customer_name}</a>
-                        </td>
-                        <td
-                          class={`r ${b.max_overdue_days > 30 ? 'bad' : b.max_overdue_days > 0 ? 'warn' : 'good'}`}
-                        >
-                          {b.max_overdue_days > 0 ? `${b.max_overdue_days} T.` : '–'}
-                        </td>
-                        <td class="r num">{euro(b.open_cents)}</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            )}
-            {overdue.length > 0 && (
-              <div class="dash-more">
-                {overdue.length} Kunde{overdue.length === 1 ? '' : 'n'} im Verzug
-              </div>
-            )}
-            {todo.proposals > 0 && (
-              <a class="dash-more" href="/mahnungen">
-                {todo.proposals} Mahnvorschläge ansehen →
-              </a>
-            )}
-          </section>
-
-          <section class="card dash-card">
-            <DashHead title="Noch nicht versendet" />
-            <ul class="dash-list">
-              <li>
-                <span class={`dot ${unsent.invoices ? 'warn' : 'ok'}`} />
-                <div class="dl-main">
-                  <a href="/rechnungen?filter=unversendet">Rechnungen</a>
-                </div>
-                <span class="dl-r num">{unsent.invoices}</span>
-              </li>
-              <li>
-                <span class={`dot ${unsent.corrections ? 'warn' : 'ok'}`} />
-                <div class="dl-main">
-                  <a href="/rechnungen?filter=unversendet">Stornos &amp; Rechnungskorrekturen</a>
-                </div>
-                <span class="dl-r num">{unsent.corrections}</span>
-              </li>
-              <li>
-                <span class={`dot ${todo.unsentDunnings ? 'warn' : 'ok'}`} />
-                <div class="dl-main">
-                  <a href="/mahnungen/liste">Mahnungen</a>
-                </div>
-                <span class="dl-r num">{todo.unsentDunnings}</span>
-              </li>
-            </ul>
-          </section>
-
-          <AbsentCard absent={absent} today={kpi.today} href={absentHref} />
-
-          {hints.length > 0 && (
+          ),
+          entwuerfe: (
             <section class="card dash-card">
-              <DashHead title="Hinweise" count={hints.length} />
-              <ul class="dash-list">
-                {hints.slice(0, 6).map((h) => (
-                  <li>
-                    <span class={`dot ${h.tone}`} />
-                    <div class="dl-main">
-                      <a href={h.href}>{h.text}</a>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-              {hints.length > 6 && <div class="dash-more">+ {hints.length - 6} weitere Hinweise</div>}
+              <DashHead
+                title="Rechnungsentwürfe"
+                count={drafts.length}
+                href="/rechnungen/entwuerfe"
+                more="Vorfaktura"
+              />
+              {drafts.length === 0 ? (
+                <div class="dash-empty">Keine offenen Entwürfe.</div>
+              ) : (
+                <ul class="dash-list">
+                  {drafts.slice(0, 5).map((d) => (
+                    <li>
+                      <span class="dot" />
+                      <div class="dl-main">
+                        <a href={`/rechnungen/${d.id}`}>{d.customer_name}</a>
+                        <div class="dl-sub">
+                          {d.period_start
+                            ? `Leistung ab ${dateDe(d.period_start)}`
+                            : 'ohne Leistungszeitraum'}
+                        </div>
+                      </div>
+                      <span class="dl-r num">{euro(d.gross_cents)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <form method="post" action="/monatslauf" class="dash-run">
+                <span>Monatslauf</span>
+                <input type="month" name="month" value={month} required aria-label="Abrechnungsmonat" />
+                <button class="btn sm">Entwürfe erstellen</button>
+              </form>
             </section>
-          )}
-
-          <section class="card dash-card">
-            <DashHead title="Geburtstage & Jubiläen" count={people.length || undefined} />
-            {people.length === 0 ? (
-              <div class="dash-empty">In den nächsten 14 Tagen keine.</div>
-            ) : (
+          ),
+          offeneposten: (
+            <section class="card dash-card">
+              <DashHead title="Offene Posten" href="/offene-posten" more="Details" />
+              {balances.length === 0 ? (
+                <div class="dash-empty">Keine offenen Posten.</div>
+              ) : (
+                <table class="op-table">
+                  <thead>
+                    <tr>
+                      <th>Kunde</th>
+                      <th class="r" title="Tage über Fälligkeit">
+                        Verzug
+                      </th>
+                      <th class="r">{euro(total)}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...balances]
+                      .sort(
+                        (a, b) =>
+                          b.max_overdue_days - a.max_overdue_days || Number(b.open_cents - a.open_cents),
+                      )
+                      .map((b) => (
+                        <tr>
+                          <td>
+                            <span class="mut">{b.customer_no}</span>{' '}
+                            <a href={`/kunden/${b.customer_id}/offene-posten`}>{b.customer_name}</a>
+                          </td>
+                          <td
+                            class={`r ${b.max_overdue_days > 30 ? 'bad' : b.max_overdue_days > 0 ? 'warn' : 'good'}`}
+                          >
+                            {b.max_overdue_days > 0 ? `${b.max_overdue_days} T.` : '–'}
+                          </td>
+                          <td class="r num">{euro(b.open_cents)}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              )}
+              {overdue.length > 0 && (
+                <div class="dash-more">
+                  {overdue.length} Kunde{overdue.length === 1 ? '' : 'n'} im Verzug
+                </div>
+              )}
+              {todo.proposals > 0 && (
+                <a class="dash-more" href="/mahnungen">
+                  {todo.proposals} Mahnvorschläge ansehen →
+                </a>
+              )}
+            </section>
+          ),
+          unversendet: (
+            <section class="card dash-card">
+              <DashHead title="Noch nicht versendet" />
               <ul class="dash-list">
-                {people.slice(0, 5).map((p) => (
-                  <li>
-                    <span class="avatar">{initials(p.name)}</span>
-                    <div class="dl-main">
-                      <a href={`/personal/${p.id}`}>{p.name}</a>
-                      <div class="dl-sub">{p.sub}</div>
-                    </div>
-                  </li>
-                ))}
+                <li>
+                  <span class={`dot ${unsent.invoices ? 'warn' : 'ok'}`} />
+                  <div class="dl-main">
+                    <a href="/rechnungen?filter=unversendet">Rechnungen</a>
+                  </div>
+                  <span class="dl-r num">{unsent.invoices}</span>
+                </li>
+                <li>
+                  <span class={`dot ${unsent.corrections ? 'warn' : 'ok'}`} />
+                  <div class="dl-main">
+                    <a href="/rechnungen?filter=unversendet">Stornos &amp; Rechnungskorrekturen</a>
+                  </div>
+                  <span class="dl-r num">{unsent.corrections}</span>
+                </li>
+                <li>
+                  <span class={`dot ${todo.unsentDunnings ? 'warn' : 'ok'}`} />
+                  <div class="dl-main">
+                    <a href="/mahnungen/liste">Mahnungen</a>
+                  </div>
+                  <span class="dl-r num">{todo.unsentDunnings}</span>
+                </li>
               </ul>
-            )}
-            {people.length > 5 && <div class="dash-more">+ {people.length - 5} weitere</div>}
-          </section>
-        </div>
-      </div>
+            </section>
+          ),
+          abwesend: <AbsentCard absent={absent} today={kpi.today} href={absentHref} />,
+          hinweise: (
+            <>
+              {hints.length > 0 && (
+                <section class="card dash-card">
+                  <DashHead title="Hinweise" count={hints.length} />
+                  <ul class="dash-list">
+                    {hints.slice(0, 6).map((h) => (
+                      <li>
+                        <span class={`dot ${h.tone}`} />
+                        <div class="dl-main">
+                          <a href={h.href}>{h.text}</a>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  {hints.length > 6 && <div class="dash-more">+ {hints.length - 6} weitere Hinweise</div>}
+                </section>
+              )}
+            </>
+          ),
+          geburtstage: (
+            <section class="card dash-card">
+              <DashHead title="Geburtstage & Jubiläen" count={people.length || undefined} />
+              {people.length === 0 ? (
+                <div class="dash-empty">In den nächsten 14 Tagen keine.</div>
+              ) : (
+                <ul class="dash-list">
+                  {people.slice(0, 5).map((p) => (
+                    <li>
+                      <span class="avatar">{initials(p.name)}</span>
+                      <div class="dl-main">
+                        <a href={`/personal/${p.id}`}>{p.name}</a>
+                        <div class="dl-sub">{p.sub}</div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {people.length > 5 && <div class="dash-more">+ {people.length - 5} weitere</div>}
+            </section>
+          ),
+        };
+        const lay = layout ?? DEFAULT_DASH;
+        const col = (n: 1 | 2) =>
+          lay
+            .filter((x) => x.col === n && !x.hidden && (x.key !== 'akquise' || showAkquise))
+            .map((x) => cards[x.key]);
+        return (
+          <div class="dash-grid">
+            <div class="dash-col">{col(1)}</div>
+            <div class="dash-col">{col(2)}</div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

@@ -1,4 +1,7 @@
+import { hoursHistory } from '../services/employee-hours.js';
 import { absentBetween } from '../services/absences.js';
+import { OpenLegacyCard } from './routes-legacy-invoices.js';
+import { openLegacyInvoices } from '../services/fortytools-xml-import.js';
 import { followups } from '../services/prospects.js';
 import { canAccess } from './permissions.js';
 import { randomUUID } from 'node:crypto';
@@ -38,7 +41,10 @@ import { type AppEnv, type Ctx, UUID } from './app.js';
 import { NEW_OPTIONS, PageHead, dateDe, euro } from './layout.js';
 import { homeFor } from './permissions.js';
 import {
+  DASH_CARDS,
+  type DashCardKey,
   Dashboard,
+  normalizeDash,
   type DashboardTodo,
   PlannedPage,
   PLANNED,
@@ -129,7 +135,7 @@ export function registerModuleRoutes(ctx: Ctx) {
       today,
     };
     const [absent, signOverdue] = await Promise.all([
-      absentBetween(sql, todayBerlin(), addDays(todayBerlin(), 7), null),
+      absentBetween(sql, todayBerlin(), addDays(todayBerlin(), 14), null),
       sql<{ id: string; title: string; open: number }[]>`
         select d.id, d.title, count(*)::int as open from app.sign_documents d
           join app.sign_requests r on r.document_id = d.id and r.status = 'offen'
@@ -141,6 +147,14 @@ export function registerModuleRoutes(ctx: Ctx) {
       'Übersicht',
       'home',
       <Dashboard
+        layout={normalizeDash(
+          (
+            await sql<
+              { dashboard: unknown }[]
+            >`select dashboard from app.user_prefs where user_id = ${c.get('user').id}`
+          )[0]?.dashboard,
+        )}
+        showAkquise={canAccess(role, '/akquise')}
         absent={absent}
         absentHref={canAccess(role, '/urlaub/kalender') ? '/urlaub/kalender' : undefined}
         signOverdue={signOverdue}
@@ -247,6 +261,103 @@ export function registerModuleRoutes(ctx: Ctx) {
     const res = await searchFor(c, c.req.query('q') ?? '', 5, null);
     c.header('Cache-Control', 'private, no-store');
     return c.json(res);
+  });
+
+  // ------------------------------------------------------------------ Startseite anpassen (je Benutzer)
+  app.get('/startseite/anpassen', async (c) => {
+    const [p] = await sql<
+      { dashboard: unknown }[]
+    >`select dashboard from app.user_prefs where user_id = ${c.get('user').id}`;
+    const lay = normalizeDash(p?.dashboard);
+    return page(
+      c,
+      'Übersicht anpassen',
+      'home',
+      <>
+        <PageHead title="Übersicht anpassen" crumbs={[['Übersicht', '/']]} />
+        <form method="post" action="/startseite/anpassen" class="card" style="max-width:760px">
+          <p class="small mut" style="margin-top:0">
+            Welche Karten sollen auf Ihrer Startseite stehen, in welcher Spalte und in welcher Reihenfolge?
+            Gilt nur für Ihren Benutzer.
+          </p>
+          <div class="tbl">
+            <table>
+              <thead>
+                <tr>
+                  <th>anzeigen</th>
+                  <th>Karte</th>
+                  <th>Spalte</th>
+                  <th>Reihenfolge</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lay.map((x, i) => (
+                  <tr>
+                    <td>
+                      <input
+                        type="checkbox"
+                        name={`show_${x.key}`}
+                        checked={!x.hidden}
+                        aria-label="anzeigen"
+                      />
+                    </td>
+                    <td>{DASH_CARDS[x.key]}</td>
+                    <td>
+                      <select name={`col_${x.key}`} data-nosearch aria-label="Spalte">
+                        <option value="1" selected={x.col === 1}>
+                          links
+                        </option>
+                        <option value="2" selected={x.col === 2}>
+                          rechts
+                        </option>
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        name={`ord_${x.key}`}
+                        type="number"
+                        min="1"
+                        max="20"
+                        value={String(i + 1)}
+                        style="max-width:80px"
+                        aria-label="Reihenfolge"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div class="formfoot">
+            <button class="btn sec" name="reset" value="1">
+              Standard wiederherstellen
+            </button>
+            <button class="btn">Speichern</button>
+          </div>
+        </form>
+      </>,
+    );
+  });
+
+  app.post('/startseite/anpassen', async (c) => {
+    const b = await c.req.parseBody();
+    const uid = c.get('user').id;
+    if (b.reset === '1') {
+      await sql`delete from app.user_prefs where user_id = ${uid}`;
+      return back(c, '/', { ok: 'Startseite auf Standard zurückgesetzt.' });
+    }
+    const lay = (Object.keys(DASH_CARDS) as DashCardKey[])
+      .map((key) => ({
+        key,
+        col: b[`col_${key}`] === '2' ? (2 as const) : (1 as const),
+        hidden: b[`show_${key}`] !== 'on',
+        ord: Number(b[`ord_${key}`]) || 99,
+      }))
+      .sort((a, z) => a.ord - z.ord)
+      .map(({ ord: _o, ...x }) => x);
+    await sql`insert into app.user_prefs (user_id, dashboard) values (${uid}, ${sql.json(lay as never)})
+              on conflict (user_id) do update set dashboard = excluded.dashboard, updated_at = now()`;
+    return back(c, '/', { ok: 'Startseite gespeichert.' });
   });
 
   // ------------------------------------------------------------------ Geplante Bereiche
@@ -444,6 +555,7 @@ export function registerModuleRoutes(ctx: Ctx) {
             </div>
           )}
         </form>
+        <OpenLegacyCard rows={await openLegacyInvoices(sql)} />
       </>,
     );
   });
@@ -712,6 +824,7 @@ export function registerModuleRoutes(ctx: Ctx) {
             month={await monthBox(e.id)}
             afterHead={einsaetze}
             employment={beschaeftigung}
+            hours={await hoursHistory(sql, e.id)}
           />
         </>
       );

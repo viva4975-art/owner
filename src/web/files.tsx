@@ -1,4 +1,4 @@
-import type { FC } from 'hono/jsx';
+import type { Child, FC } from 'hono/jsx';
 import type { FileRow, LinkTarget } from '../services/uploads.js';
 import { Icon, iconSvg } from './icons.js';
 import { fileSize } from './layout.js';
@@ -17,7 +17,9 @@ export const FileArea: FC<{
   maxBytes: number;
   /** nur Liste, ohne Upload-Bereich */
   listOnly?: boolean;
-}> = ({ link, files, category, title, hint, maxBytes, listOnly }) => (
+  /** zusätzliche Aktion je Datei (z. B. „ins Archiv“) */
+  action?: (f: FileRow) => Child;
+}> = ({ link, files, category, title, hint, maxBytes, listOnly, action }) => (
   <div class="filearea">
     {files.length > 0 && (
       <ul class="files" style="margin:0 0 12px">
@@ -45,6 +47,7 @@ export const FileArea: FC<{
               <a class="btn sm sec" href={`/dateien/${f.id}`}>
                 <Icon name="download" size={14} /> Laden
               </a>
+              {action?.(f)}
             </div>
           </li>
         ))}

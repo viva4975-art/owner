@@ -44,12 +44,17 @@ export const PLACEHOLDERS: Record<string, string[]> = {
     'Ort',
     'Personalnummer',
     'Geburtsdatum',
+    'Staatsangehörigkeit',
     'Eintrittsdatum',
     'Austrittsdatum',
     'Wochenstunden',
-    'Gehalt',
     'Stundenlohn',
+    'Monatsgehalt',
+    'Gehalt',
+    'Lohngruppe',
+    'Urlaubstage',
     'Beschäftigungsart',
+    'Objekte',
     'Einsatzgebiet',
     'Telefon',
     'E-Mail',
@@ -68,8 +73,28 @@ export const PLACEHOLDERS: Record<string, string[]> = {
   ],
   Objekt: ['Name', 'Nummer', 'Straße', 'PLZ', 'Ort'],
   Firma: ['Name', 'Straße', 'PLZ', 'Ort', 'Telefon', 'E-Mail', 'Geschäftsführer'],
-  Dokument: ['Datum', 'Nummer', 'Signatur'],
+  Dokument: ['Datum', 'Erstelldatum', 'Unterschriftsdatum', 'Frist', 'Ort', 'Nummer', 'Signatur'],
+  Vertrag: ['Datum', 'Beginn', 'Ende', 'Befristung bisher', 'Freistellung ab', 'Rückgabe bis'],
+  Neu: ['Wochenstunden', 'Stundenlohn', 'Monatsgehalt', 'Lohngruppe', 'Einsatzort', 'Tätigkeit'],
 };
+
+/** Beschreibung der Datums-/Vertragsplatzhalter (Ausfüll-Seite, Einstellungen). */
+export const PLACEHOLDER_HINT: Record<string, string> = {
+  'Dokument.Datum': 'Datum des Schreibens (Briefkopf) – Standard heute',
+  'Dokument.Erstelldatum': 'Erstelldatum – Standard heute',
+  'Dokument.Unterschriftsdatum': '„München, den …“ über der Unterschrift – Standard heute',
+  'Dokument.Frist': 'Frist für die Rücksendung – Standard heute + 14 Tage',
+  'Vertrag.Datum': 'Datum des bestehenden Arbeitsvertrags – Standard Eintrittsdatum',
+  'Vertrag.Beginn': 'gilt ab / Beginn – Standard 1. des Folgemonats',
+  'Vertrag.Ende': 'Ende / befristet bis / Kündigung zum',
+  'Neu.Wochenstunden': 'neue Wochenstunden',
+  'Neu.Stundenlohn': 'neuer Stundenlohn (ohne €)',
+  'Neu.Monatsgehalt': 'neues Bruttogehalt (ohne €)',
+};
+
+/** Platzhalter mit Datum (Ausfüll-Seite zeigt eine Datumsauswahl). */
+export const isDateKey = (k: string) =>
+  /(datum|beginn|ende|frist|bisher| ab| bis| am)$/i.test(k) && !/^Neu\./.test(k);
 
 const xmlEsc = (s: string) =>
   s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -141,13 +166,36 @@ export function fillXml(xml: string, value: (key: string) => string | null, miss
 const PART = /^word\/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$/;
 
 /** Ausgefüllte .docx; `missing` = Platzhalter ohne Wert (werden als Linie ausgegeben). */
-export function fillDocx(bytes: Uint8Array, value: (key: string) => string | null) {
+/**
+ * Word-Datumsfelder (DATE, PRINTDATE …) zeigen beim Öffnen immer das heutige Datum – ein Vertrag hätte nächste Woche
+ * ein anderes Datum. Deshalb werden sie beim Erzeugen durch das feste Dokumentdatum ersetzt.
+ */
+export function freezeDateFields(xml: string, date: string): string {
+  const run = (m: string) => {
+    const rPr = (/<w:rPr>[\s\S]*?<\/w:rPr>/.exec(m) ?? [''])[0];
+    return `<w:r>${rPr}<w:t xml:space="preserve">${xmlEsc(date)}</w:t></w:r>`;
+  };
+  return xml
+    .replace(
+      /<w:r>(?:(?!<\/w:r>)[\s\S])*?<w:fldChar w:fldCharType="begin"\/><\/w:r>((?:(?!fldCharType="end")[\s\S])*?)<w:r>(?:(?!<\/w:r>)[\s\S])*?<w:fldChar w:fldCharType="end"\/><\/w:r>/g,
+      (m, inner: string) =>
+        /<w:instrText[^>]*>\s*(DATE|CREATEDATE|PRINTDATE|SAVEDATE|TIME)\b/.test(inner) ? run(m) : m,
+    )
+    .replace(
+      /<w:fldSimple [^>]*w:instr="\s*(?:DATE|CREATEDATE|PRINTDATE|SAVEDATE|TIME)\b[^"]*"[^>]*>[\s\S]*?<\/w:fldSimple>/g,
+      run,
+    );
+}
+
+export function fillDocx(bytes: Uint8Array, value: (key: string) => string | null, docDate?: string) {
   const files = unzipSync(bytes);
   if (!files['word/document.xml']) throw new BusinessError('Keine Word-Datei (.docx)');
   const missing = new Set<string>();
   for (const name of Object.keys(files)) {
     if (!PART.test(name)) continue;
-    files[name] = strToU8(fillXml(strFromU8(files[name]!), value, missing));
+    let xml = strFromU8(files[name]!);
+    if (docDate) xml = freezeDateFields(xml, docDate);
+    files[name] = strToU8(fillXml(xml, value, missing));
   }
   return { data: zipSync(files, { level: 6 }), missing: [...missing] };
 }
@@ -238,6 +286,8 @@ export interface ImportResult {
   created: string[];
   existing: string[];
   skipped: string[];
+  /** ältere Fassungen (gleicher Code ohne „-Vn“), die durch die neue ersetzt und deaktiviert wurden */
+  replaced: string[];
 }
 
 /** .docx einzeln oder ZIP (Ordnerstruktur wie die Fortytools-Vorlagen) übernehmen. Gleiche Datei = nichts doppelt. */
@@ -265,7 +315,7 @@ export async function importWordTemplates(
         `${u.name}: bitte .docx oder .zip hochladen (alte .doc-Dateien vorher in Word als .docx speichern)`,
       );
   }
-  const res: ImportResult = { created: [], existing: [], skipped: [] };
+  const res: ImportResult = { created: [], existing: [], skipped: [], replaced: [] };
   for (const d of docs) {
     const file = d.path.split('/').pop()!;
     if (/ANLEITUNG/i.test(file)) {
@@ -305,6 +355,15 @@ export async function importWordTemplates(
               values (${id}, ${code}, ${name}, ${audience}, ${categoryFor(code, name, audience)}, ${f.id}, ${sha},
                       ${ph}, ${actor}) on conflict (sha256) do nothing`;
     res.created.push(name);
+    // neue Fassung (z. B. VD-AV-2026-V3 statt -V2): ältere Fassung bleibt gespeichert, wird aber deaktiviert
+    if (code) {
+      const old = await sql<{ name: string }[]>`
+        update app.word_templates set active = false
+         where id <> ${id} and active and audience = ${audience}
+           and regexp_replace(code, '-V[0-9]+$', '') = ${code.replace(/-V\d+$/, '')}
+        returning name`;
+      res.replaced.push(...old.map((o) => o.name));
+    }
   }
   return res;
 }
@@ -330,8 +389,9 @@ export async function updateWordTemplate(
 // ------------------------------------------------------------------ Ausfüllen
 
 const de = (d: string | null | undefined) => (d ? `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}` : '');
-const euroDe = (c: bigint | number) =>
-  (Number(c) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+/** Betrag ohne Währungszeichen – die Vorlagen schreiben „EUR“ bzw. „€“ selbst dahinter. */
+const numDe = (c: bigint | number) =>
+  (Number(c) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 async function companyValues(sql: Sql) {
   const [co] = await sql<
@@ -384,18 +444,23 @@ async function employeeValues(sql: Sql, id: string): Promise<Record<string, stri
       birth_date: string | null;
       monthly_salary_cents: bigint | null;
       wage_cents: bigint | null;
+      wage_level: string | null;
+      annual_leave_days: string | null;
+      nationality: string | null;
     }[]
   >`
     select e.salutation, e.first_name, e.last_name, e.personnel_no, e.entry_date::text, e.exit_date::text,
            e.weekly_hours::text, e.employment_type, e.phone, e.mobile, e.email,
-           p.street, p.postal_code, p.city, p.birth_date::text, e.monthly_salary_cents,
+           p.street, p.postal_code, p.city, p.birth_date::text, e.monthly_salary_cents, p.nationality,
+           e.annual_leave_days::text,
+           (select w.name from app.wage_levels w where w.id = e.wage_level_id and e.pay_model is distinct from 'individuell') as wage_level,
            coalesce(e.hourly_wage_cents, (select w.hourly_wage_cents from app.wage_levels w where w.id = e.wage_level_id)) as wage_cents
       from app.employees e left join app.employee_private p on p.employee_id = e.id where e.id = ${id}`;
   if (!e) throw new BusinessError('Mitarbeiter nicht gefunden');
   const sites = await sql<{ name: string }[]>`
     select s.name from app.employee_sites es join app.sites s on s.id = es.site_id where es.employee_id = ${id} order by s.name`;
   const hours = e.weekly_hours ? String(Number(e.weekly_hours)).replace('.', ',') : '';
-  const wage = e.wage_cents != null ? `${euroDe(e.wage_cents)} brutto je Stunde` : '';
+  const wage = e.wage_cents != null ? numDe(e.wage_cents) : '';
   return {
     'Mitarbeiter.Anrede': e.salutation ?? '',
     'Mitarbeiter.Vorname': e.first_name,
@@ -407,11 +472,18 @@ async function employeeValues(sql: Sql, id: string): Promise<Record<string, stri
     'Mitarbeiter.Geburtsdatum': de(e.birth_date),
     'Mitarbeiter.Eintrittsdatum': de(e.entry_date),
     'Mitarbeiter.Austrittsdatum': de(e.exit_date),
+    'Mitarbeiter.Staatsangehörigkeit': e.nationality ?? '',
     'Mitarbeiter.Wochenstunden': hours,
-    'Mitarbeiter.Gehalt':
-      e.monthly_salary_cents != null ? `${euroDe(e.monthly_salary_cents)} brutto monatlich` : wage,
-    'Mitarbeiter.Stundenlohn': e.wage_cents != null ? euroDe(e.wage_cents) : '',
+    // Beträge ohne „€“ (die Vorlage schreibt „EUR“ dahinter); Gehalt = Monatsgehalt, sonst Stundenlohn
+    'Mitarbeiter.Gehalt': e.monthly_salary_cents != null ? numDe(e.monthly_salary_cents) : wage,
+    'Mitarbeiter.Monatsgehalt': e.monthly_salary_cents != null ? numDe(e.monthly_salary_cents) : '',
+    'Mitarbeiter.Stundenlohn': wage,
+    'Mitarbeiter.Lohngruppe': e.wage_level ?? '',
+    'Mitarbeiter.Urlaubstage': e.annual_leave_days
+      ? String(Number(e.annual_leave_days)).replace('.', ',')
+      : '',
     'Mitarbeiter.Beschäftigungsart': EMPLOYMENT[e.employment_type] ?? e.employment_type,
+    'Mitarbeiter.Objekte': sites.map((s) => s.name).join(', '),
     'Mitarbeiter.Einsatzgebiet': sites.map((s) => s.name).join(', '),
     'Mitarbeiter.Telefon': e.mobile ?? e.phone ?? '',
     'Mitarbeiter.E-Mail': e.email ?? '',
@@ -475,54 +547,119 @@ async function siteValues(sql: Sql, id: string): Promise<{ v: Record<string, str
 
 export type WordTarget = { type: 'employee' | 'customer' | 'site'; id: string };
 
-/**
- * Vorlage ausfüllen und in der Akte ablegen (write-once). Dateiname nach dem Schema der Anleitung: Typ_JJJJ-MM-TT.
- * `fileId` vom Formular → doppelt absenden legt nichts doppelt an.
- */
-export async function generateFromWordTemplate(
-  sql: Sql,
-  cfg: UploadConfig,
-  p: { templateId: string; target: WordTarget; fileId: string; actorName: string },
-  actor: string,
-): Promise<{ file: FileRow; missing: string[] }> {
+async function loadTemplate(sql: Sql, templateId: string, target: WordTarget) {
   const [t] = await sql<(WordTemplate & { storage_path: string })[]>`
-    select t.*, f.storage_path from app.word_templates t join app.files f on f.id = t.file_id where t.id = ${p.templateId}`;
+    select t.*, f.storage_path from app.word_templates t join app.files f on f.id = t.file_id where t.id = ${templateId}`;
   if (!t) throw new BusinessError('Vorlage nicht gefunden');
   const want: Record<WordTarget['type'], Audience[]> = {
     employee: ['mitarbeiter'],
     customer: ['kunde'],
     site: ['objekt', 'kunde'],
   };
-  if (!want[p.target.type].includes(t.audience))
+  if (!want[target.type].includes(t.audience))
     throw new BusinessError(
       `Diese Vorlage ist für ${AUDIENCE_LABEL[t.audience]}, nicht für diesen Datensatz`,
     );
-  const [exists] = await sql<FileRow[]>`select * from app.files where id = ${p.fileId}`;
-  if (exists) return { file: exists, missing: [] };
+  return t;
+}
+
+const isoAdd = (iso: string, days: number) => {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+const firstOfNextMonth = (iso: string) => {
+  const d = new Date(`${iso.slice(0, 7)}-01T12:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() + 1);
+  return d.toISOString().slice(0, 10);
+};
+
+/**
+ * Vorbelegung aller Platzhalter (Ausfüll-Seite): Werte aus Firma, Mitarbeiter/Kunde/Objekt und sinnvolle Daten
+ * (heute, 1. des Folgemonats …). Datumswerte als TT.MM.JJJJ.
+ */
+export async function templateValues(
+  sql: Sql,
+  target: WordTarget,
+  p: { actorName: string; fileId: string },
+): Promise<{ values: Record<string, string>; suffix: string }> {
   const today = todayBerlin();
   let values: Record<string, string> = {
     ...(await companyValues(sql)),
     'Dokument.Datum': de(today),
+    'Dokument.Erstelldatum': de(today),
+    'Dokument.Unterschriftsdatum': de(today),
+    'Dokument.Frist': de(isoAdd(today, 14)),
+    'Dokument.Ort': 'München',
     'Dokument.Signatur': p.actorName,
     'Dokument.Nummer': p.fileId.slice(0, 8).toUpperCase(),
+    'Vertrag.Beginn': de(firstOfNextMonth(today)),
   };
   let suffix: string;
-  if (p.target.type === 'employee') {
-    const v = await employeeValues(sql, p.target.id);
-    values = { ...values, ...v };
+  if (target.type === 'employee') {
+    const v = await employeeValues(sql, target.id);
+    values = { ...values, ...v, 'Vertrag.Datum': v['Mitarbeiter.Eintrittsdatum'] ?? '' };
+    if (v['Mitarbeiter.Austrittsdatum']) values['Vertrag.Ende'] = v['Mitarbeiter.Austrittsdatum'];
     suffix = v['Mitarbeiter.Nachname'] ?? '';
-  } else if (p.target.type === 'customer') {
-    values = { ...values, ...(await customerValues(sql, p.target.id)) };
+  } else if (target.type === 'customer') {
+    values = { ...values, ...(await customerValues(sql, target.id)) };
     suffix = values['Kunde.Nummer'] ?? '';
   } else {
-    const s = await siteValues(sql, p.target.id);
+    const s = await siteValues(sql, target.id);
     values = { ...values, ...(await customerValues(sql, s.customerId)), ...s.v };
     suffix = values['Objekt.Nummer'] ?? '';
   }
+  return { values, suffix };
+}
+
+/** Eingabe der Ausfüll-Seite übernehmen: Datum aus <input type=date> (JJJJ-MM-TT) → TT.MM.JJJJ. */
+export function normalizeOverride(key: string, v: string): string {
+  const t = v.trim().slice(0, 500);
+  return isDateKey(key) && /^\d{4}-\d{2}-\d{2}$/.test(t) ? de(t) : t;
+}
+
+/** TT.MM.JJJJ → JJJJ-MM-TT (für die Datumsauswahl). */
+export const isoOfDe = (v: string) => {
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(v);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+};
+
+export async function getTemplateFor(sql: Sql, templateId: string, target: WordTarget) {
+  return loadTemplate(sql, templateId, target);
+}
+
+/**
+ * Vorlage ausfüllen und in der Akte ablegen (write-once). Dateiname nach dem Schema der Anleitung: Typ_JJJJ-MM-TT.
+ * `fileId` vom Formular → doppelt absenden legt nichts doppelt an. `overrides` = Werte der Ausfüll-Seite.
+ */
+export async function generateFromWordTemplate(
+  sql: Sql,
+  cfg: UploadConfig,
+  p: {
+    templateId: string;
+    target: WordTarget;
+    fileId: string;
+    actorName: string;
+    overrides?: Record<string, string>;
+  },
+  actor: string,
+): Promise<{ file: FileRow; missing: string[] }> {
+  const t = await loadTemplate(sql, p.templateId, p.target);
+  const [exists] = await sql<FileRow[]>`select * from app.files where id = ${p.fileId}`;
+  if (exists) return { file: exists, missing: [] };
+  const today = todayBerlin();
+  const base = await templateValues(sql, p.target, p);
+  const values: Record<string, string> = { ...base.values };
+  for (const [k, v] of Object.entries(p.overrides ?? {})) values[k] = normalizeOverride(k, v);
   const bytes = await readFile(filePath(cfg, { storage_path: t.storage_path } as FileRow));
-  // leere Werte wie fehlende: Linie zum Ausfüllen von Hand
-  const { data, missing } = fillDocx(bytes, (k) => (values[k] ? values[k]! : null));
+  // leere Werte wie fehlende: Linie zum Ausfüllen von Hand; Word-Datumsfelder werden fest
+  const { data, missing } = fillDocx(
+    bytes,
+    (k) => (values[k] ? values[k]! : null),
+    values['Dokument.Datum'] || de(today),
+  );
   const typ = t.name.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
+  const suffix = base.suffix;
   const name = `${typ}_${today}${suffix ? `_${suffix.replace(/[^\p{L}\p{N}]+/gu, '-')}` : ''}.docx`;
   const file = await storeFile(
     sql,
@@ -531,6 +668,7 @@ export async function generateFromWordTemplate(
     actor,
   );
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
-            values (${actor}, 'word_template', ${p.target.type}, ${p.target.id}, ${sql.json({ template: t.name, file: file.id })})`;
+            values (${actor}, 'word_template', ${p.target.type}, ${p.target.id},
+                    ${sql.json({ template: t.name, template_id: t.id, file: file.id })})`;
   return { file, missing };
 }

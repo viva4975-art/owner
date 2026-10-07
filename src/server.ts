@@ -4,6 +4,7 @@ import { loadEnv } from './config/env.js';
 import { createSql } from './db/client.js';
 import { createMailer } from './mail/mailer.js';
 import { configureAuthAdmin } from './services/auth-users.js';
+import { applyDueHours } from './services/employee-hours.js';
 import { createApp } from './web/app.js';
 
 const env = loadEnv();
@@ -26,6 +27,11 @@ serve({ fetch: app.fetch, port: env.PORT, hostname }, (info) => {
   if (!env.SMTP_HOST) console.log('Hinweis: kein SMTP-Zugang – Mailversand ist abgeschaltet.');
   if (env.MAIL_TEST_RECIPIENT) console.log(`Mailversand nur an Testadresse: ${env.MAIL_TEST_RECIPIENT}`);
 });
+
+// Wochenstunden mit „gültig ab“ in der Zukunft: am Stichtag übernehmen (beim Start und stündlich)
+const dueHours = () => applyDueHours(sql).catch((e) => console.error('Wochenstunden übernehmen:', e));
+void dueHours();
+setInterval(dueHours, 60 * 60 * 1000).unref();
 
 const shutdown = async () => {
   await sql.end({ timeout: 5 });

@@ -1,3 +1,4 @@
+import { EmployeePlanList, type PlanRowLite, type SiteLite } from './pages-employee-calendar.js';
 import { safeReturn } from './routes-planning-board.js';
 import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
@@ -184,23 +185,45 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
   });
 
   app.get(`/personal/:id{${UUID}}/einsaetze`, (c) =>
-    shells.employee!(c, 'einsaetze', async (e) => (
-      <>
-        <div class="actions" style="margin-top:0">
-          <a
-            class="btn sm"
-            href={`/einsatzplanung/${randomUUID()}?mitarbeiter=${e.id}&zurueck=${encodeURIComponent(`/personal/${e.id}/einsaetze`)}`}
-          >
-            + Einsatz planen
-          </a>
-        </div>
-        <PlanTable
-          plans={await listShiftPlans(sql, { employeeId: e.id })}
-          show="site"
-          ret={`/personal/${e.id}/einsaetze`}
-        />
-      </>
-    )),
+    shells.employee!(c, 'einsaetze', async (e) => {
+      const today = todayBerlin();
+      const ret = `/personal/${e.id}/einsaetze`;
+      const [plans, last7] = await Promise.all([
+        listShiftPlans(sql, { employeeId: e.id }),
+        plannedShifts(sql, { from: addDays(today, -7), to: addDays(today, -1), employeeId: e.id }),
+      ]);
+      const siteIds = [...new Set(plans.map((p) => p.site_id))];
+      const sites = siteIds.length
+        ? await sql<SiteLite[]>`
+            select s.id, c.name as customer_name, s.street, s.postal_code, s.city
+              from app.sites s join app.customers c on c.id = s.customer_id where s.id in ${sql(siteIds)}`
+        : [];
+      const recent = new Map<string, { total: number; done: number }>();
+      for (const s of last7) {
+        if (s.absence || s.holiday || s.exception?.kind === 'ausfall') continue;
+        const r = recent.get(s.plan.site_id) ?? { total: 0, done: 0 };
+        r.total++;
+        if (s.entry && s.entry.status !== 'abgelehnt') r.done++;
+        recent.set(s.plan.site_id, r);
+      }
+      return (
+        <>
+          <EmployeePlanList
+            employeeId={e.id}
+            plans={plans as unknown as PlanRowLite[]}
+            sites={sites}
+            recent={recent}
+            today={today}
+            ret={ret}
+            canEdit={['admin', 'personal', 'objektleitung'].includes(c.get('user').role)}
+          />
+          <details style="margin-top:10px">
+            <summary class="small mut">Einzelne Einträge (Ändern, Beenden, Löschen)</summary>
+            <PlanTable plans={plans} show="site" ret={ret} />
+          </details>
+        </>
+      );
+    }),
   );
 
   app.get(`/objekte/:id{${UUID}}/einsaetze`, (c) =>

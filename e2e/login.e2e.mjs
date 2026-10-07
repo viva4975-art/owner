@@ -136,6 +136,13 @@ await pc.fill('#reason', 'Ende korrigiert');
 await Promise.all([pc.waitForNavigation(), pc.click('button:has-text("Änderung speichern")')]);
 check('Änderung mit Grund gespeichert', (await pc.content()).includes('12:30'));
 
+console.log('4b. Einsatzkalender beim Mitarbeiter');
+await admin.goto(B + `/personal/${lead.id}/kalender?ansicht=woche&datum=${day}&pc=1`);
+check('Ansichten Tag/5 Tage/Woche/Monat', (await admin.locator('.ec-bar .seg a').count()) >= 7);
+check('nachgetragene Zeit mit Uhr-Symbol', (await admin.locator('.ev.extra svg').count()) >= 1);
+await admin.goto(B + `/personal/${worker.id}/einsaetze?pc=1`);
+check('Einsatzliste mit Übersicht', (await admin.locator('.ec-sum .pill').count()) >= 1);
+
 console.log('5. In der App bleiben: Büro-Seiten im App-Rahmen, Urlaub/Krank für andere');
 await admin.goto(B + '/qm');
 await admin.goto(B + '/objekte');

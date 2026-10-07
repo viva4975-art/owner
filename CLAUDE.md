@@ -1352,3 +1352,15 @@ Testadresse.
     Leiste unten Übersicht/Team/Zeiten/Objekte. Qualität (`/qm/qualitaet`): heutige Audits, Audit starten, Tickets, alle
     Audits, Arbeitsscheine, Leiste unten Audits/Audit starten/Tickets. Ohne verknüpften Mitarbeiter direkt Verwaltung.
   - Tests: `e2e:login` 30 Prüfungen, alle Suiten grün.
+- 2026-10-07: **Einsatzkalender und Einsatzliste beim Mitarbeiter wie Fortytools** (Ahmed, Screenshots):
+  - Kalender (`/personal/:id/kalender`, `pages-employee-calendar.tsx`): Tag / 5 Tage / Woche / Monat (Standard), ← Heute/
+    Dieser Monat →, „+ Einsatz planen“; Kennzahlen geplant / gearbeitet / „bestätigt x von y Einsätzen“ / „n ohne erfasste
+    Zeit“. Je Einsatz ein Balken mit Objekt und Uhrzeit: geplant (hell), **Zeit bestätigt (Bordeaux + Uhr-Symbol)**, läuft
+    (blau), Nachtrag offen (gelb), keine Zeit erfasst (rot gestrichelt, nur Vergangenheit), abwesend/Ausfall
+    (durchgestrichen), ohne Einsatz gearbeitet (grün mit Uhr). Heute gelb, Feiertage blau mit Namen, Abwesenheitstage
+    schraffiert mit Art. Monat höchstens 3 Einsätze je Tag + „x weitere“. Antippen → Detailfenster (geplant, erfasst, Pause,
+    Arbeitszeit, Quelle, Serie) mit Zeit erfassen/ändern, Umplanen/Vertretung, Terminserie, Objekt. Alte Links `?monat=` gehen.
+  - Einsatzliste (`/personal/:id/einsaetze`): je Objekt eine Karte (Kunde, Adresse, „letzte 7 Tage: x von y bestätigt“),
+    gleiche Zeiten mit allen Wochentagen in einer Zeile (Mo–So-Kästchen), Std. je Einsatz, Turnus/gültig ab–bis, „Ändern“;
+    oben Anzahl Objekte und ≈ Std. pro Woche; beendete Einsätze eingeklappt; die bisherige Einzelliste (Beenden/Löschen)
+    eingeklappt darunter. `e2e:login` 33 Prüfungen, alle Suiten grün.

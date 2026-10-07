@@ -1108,7 +1108,6 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Planung', href: '/einsatzplanung' },
       { label: 'Arbeitsscheine', href: '/arbeitsscheine' },
       { label: 'Qualitätskontrollen', href: '/qualitaet' },
-      { label: 'Zählerstände', href: '/zaehler' },
       { label: 'Glasreinigung', href: '/glasreinigung', sep: true },
       { label: 'Tiefgaragenreinigung', href: '/tiefgarage' },
       { label: 'Grundreinigung', href: '/grundreinigung' },

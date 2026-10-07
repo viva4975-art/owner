@@ -124,10 +124,10 @@ await a.fill('input[name=phone]', '+49 89 63855496');
 await a.click('button:has-text("Speichern")');
 await a.waitForLoadState();
 check('Firmendaten speichern', (await a.locator('.flash').innerText()).includes('Firmendaten gespeichert'));
-const fq = await o.request.get(B + '/objekte/00000000-0000-4000-8000-000000000012/zaehler', {
+const fq = await o.request.get(B + '/objekte/00000000-0000-4000-8000-000000000012/raumbuch', {
   maxRedirects: 0,
 });
-check('Zähler fremdes Objekt gesperrt', fq.status() === 403, String(fq.status()));
+check('Raumbuch fremdes Objekt gesperrt', fq.status() === 403, String(fq.status()));
 await o.goto(B + '/qualitaet');
 check(
   'QK-Liste ohne fremde Objekte',

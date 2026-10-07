@@ -1,5 +1,5 @@
 // Browser-Test Objektbetreuung: Raumbuch → Stundenvorgabe → Qualitätskontrolle mit Mangel und Unterschrift →
-// Nachbesserungs-Aufgabe → Zählerstände. Legt Testdaten an → nur gegen lokale Instanz.
+// Nachbesserungs-Aufgabe. Legt Testdaten an → nur gegen lokale Instanz.
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { chromium } from 'playwright-core';
@@ -150,45 +150,10 @@ check(
 await p.goto(B + '/qualitaet');
 check('Übersicht Qualitätskontrollen', (await body(p)).includes('in Ordnung') || /\d+ %/.test(await body(p)));
 
-console.log('4. Zählerstände');
-await p.goto(B + `/objekte/${SITE}/zaehler`);
-await p.selectOption('#kind', 'wasser');
-await p.fill('#meter_no', `WZ-${tag}`);
-await p.fill('#location', 'Keller');
-await p.click('button:has-text("Zähler anlegen")');
-await p.waitForLoadState();
-check('Zähler angelegt', (await body(p)).includes(`WZ-${tag}`), await flash(p));
-const row = p.locator('tr', { hasText: `WZ-${tag}` });
-await row.locator('input[name=read_on]').fill('2026-09-01');
-await row.locator('input[name=value]').fill('1234,5');
-await row.locator('button:has-text("Erfassen")').click();
-await p.waitForLoadState();
-check('Ablesung erfasst', (await body(p)).includes('1234,5 m³'), await flash(p));
-await p
-  .locator('tr', { hasText: `WZ-${tag}` })
-  .locator('input[name=value]')
-  .fill('1000');
-await p
-  .locator('tr', { hasText: `WZ-${tag}` })
-  .locator('button:has-text("Erfassen")')
-  .click();
-await p.waitForLoadState();
-check('kleinerer Stand abgelehnt', (await flash(p)).includes('kleiner'), await flash(p));
-await p
-  .locator('tr', { hasText: `WZ-${tag}` })
-  .locator('input[name=value]')
-  .fill('1300');
-await p
-  .locator('tr', { hasText: `WZ-${tag}` })
-  .locator('button:has-text("Erfassen")')
-  .click();
-await p.waitForLoadState();
-await p.click(`a:has-text("WZ-${tag}")`);
-const mt = await body(p);
-check('Verbrauch berechnet', mt.includes('65,5 m³'), mt.slice(0, 400));
-await p.screenshot({ path: `${out}/o4-zaehler.png`, fullPage: true });
-await p.goto(B + '/zaehler?faellig=1');
-check('Übersicht fällige Ablesungen', !(await body(p)).includes('Fehler 500'));
+console.log('4. Zählerstände entfernt');
+const zr = await p.request.get(B + '/zaehler', { maxRedirects: 0 });
+check('Seite Zählerstände entfernt (Umleitung)', zr.status() === 301);
+check('kein Menüpunkt Zählerstände', !(await p.locator('.appside').innerText()).includes('Zähler'));
 
 console.log('5. Rechnungsgruppe (Kunde)');
 await p.goto(B + '/kunden/00000000-0000-4000-8000-000000000001/rechnungsgruppen?neu=1');

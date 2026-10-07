@@ -1,39 +1,30 @@
 import { randomUUID } from 'node:crypto';
 import type { FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
-import { parseEuro, parseQuantity } from '../domain/money/money.js';
+import { parseEuro } from '../domain/money/money.js';
 import { BusinessError } from '../services/errors.js';
 import {
   DEFECT_CATEGORIES,
   FREQUENCIES,
-  METER_KIND,
-  METER_UNIT,
-  type MeterKind,
-  type MeterRow,
   type QcRating,
   QC_FAIR,
   QC_GOOD,
   QC_RATING,
   type QualityCheckRow,
-  addReading,
   closeQualityCheck,
   createQualityCheck,
   frequencyLabel,
-  getMeter,
   getQualityCheck,
   getRoom,
   type HourTargetMode,
   WEEKDAYS_SHORT,
   hourTarget,
-  listMeters,
   listQualityChecks,
   listRoomTypes,
   listRooms,
   qcHistory,
   qcScore,
   qualityCheckPdf,
-  readingsWithConsumption,
-  saveMeter,
   saveQualityCheck,
   saveRoom,
   saveRoomType,
@@ -45,7 +36,7 @@ import { DAILY_OPTIONS, ROOM_FIELDS, analyzeRooms, applyRooms, dailyOf } from '.
 import { listFiles } from '../services/uploads.js';
 import { type Ctx, UUID, assertSite, inScope } from './app.js';
 import { FileArea } from './files.js';
-import { arr, centsToInput, milliToInput, str } from './forms.js';
+import { arr, centsToInput, str } from './forms.js';
 import { Icon } from './icons.js';
 import { PageHead, dateDe, euro } from './layout.js';
 import { canAccess } from './permissions.js';
@@ -1217,321 +1208,7 @@ f.addEventListener('change',show);f.addEventListener('input',sum);show();})();`,
     });
   });
 
-  // ================================================================== Zählerstände
-
-  const ReadingForm: FC<{ meterId: string; back: string }> = ({ meterId, back: to }) => (
-    <form
-      method="post"
-      action={`/zaehler/${meterId}/ablesung`}
-      class="actions"
-      style="margin:0;gap:6px;flex-wrap:nowrap"
-    >
-      <input type="hidden" name="id" value={randomUUID()} />
-      <input type="hidden" name="back" value={to} />
-      <input
-        type="date"
-        name="read_on"
-        value={todayBerlin()}
-        max={todayBerlin()}
-        aria-label="Datum"
-        style="width:150px"
-      />
-      <input
-        name="value"
-        inputmode="decimal"
-        placeholder="Stand"
-        aria-label="Zählerstand"
-        required
-        style="width:120px"
-      />
-      <label class="chk small" style="margin:0" title="Neuer Zähler: Startwert">
-        <input type="checkbox" name="replacement" /> Tausch
-      </label>
-      <button class="btn sm">Erfassen</button>
-    </form>
-  );
-
-  const MeterTable: FC<{ rows: MeterRow[]; site?: boolean; backTo: string }> = ({ rows, site, backTo }) => (
-    <div class="tbl">
-      <table>
-        <thead>
-          <tr>
-            {site && <th>Objekt</th>}
-            <th>Zähler</th>
-            <th>Ort</th>
-            <th class="right">Letzter Stand</th>
-            <th>abgelesen</th>
-            <th>Neue Ablesung</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((m) => {
-            const age = m.last_read_on
-              ? Math.round((Date.parse(todayBerlin()) - Date.parse(m.last_read_on)) / 86_400_000)
-              : null;
-            return (
-              <tr class={m.active ? '' : 'mut'}>
-                {site && (
-                  <td>
-                    <a href={`/objekte/${m.site_id}/zaehler`}>{m.site_name}</a>
-                  </td>
-                )}
-                <td>
-                  <a href={`/zaehler/${m.id}`}>
-                    {METER_KIND[m.kind]} {m.meter_no}
-                  </a>
-                </td>
-                <td>{m.location}</td>
-                <td class="right">
-                  {m.last_value_milli != null ? `${milliToInput(m.last_value_milli)} ${m.unit}` : '–'}
-                </td>
-                <td>
-                  {m.last_read_on ? dateDe(m.last_read_on) : '–'}
-                  {age != null && age > 35 && <span class="badge warn"> {age} Tage</span>}
-                </td>
-                <td>{m.active && <ReadingForm meterId={m.id} back={backTo} />}</td>
-              </tr>
-            );
-          })}
-          {!rows.length && (
-            <tr>
-              <td colspan={6} class="mut">
-                Noch keine Zähler erfasst.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-
-  app.get(`/objekte/:id{${UUID}}/zaehler`, (c) =>
-    shells.site!(c, 'zaehler', async (s) => {
-      const rows = await listMeters(sql, { siteId: s.id });
-      return (
-        <>
-          <MeterTable rows={rows} backTo={`/objekte/${s.id}/zaehler`} />
-          <form method="post" action={`/zaehler/${randomUUID()}`} class="card" style="max-width:860px">
-            <h3 style="margin-top:0">Zähler hinzufügen</h3>
-            <input type="hidden" name="site_id" value={s.id} />
-            <div class="grid">
-              <div>
-                <label for="kind">Art</label>
-                <select id="kind" name="kind">
-                  {Object.entries(METER_KIND).map(([k, v]) => (
-                    <option value={k}>{v}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label for="meter_no">Zählernummer</label>
-                <input id="meter_no" name="meter_no" required />
-              </div>
-              <div>
-                <label for="location">Ort</label>
-                <input id="location" name="location" placeholder="z. B. Keller, Hausanschlussraum" />
-              </div>
-              <div>
-                <label for="unit">Einheit</label>
-                <input id="unit" name="unit" placeholder="automatisch (kWh / m³)" />
-              </div>
-            </div>
-            <div class="formfoot">
-              <button class="btn">Zähler anlegen</button>
-            </div>
-          </form>
-        </>
-      );
-    }),
-  );
-
-  app.get('/zaehler', async (c) => {
-    const sites = c.get('sites');
-    const rows = await listMeters(sql, sites ? { siteIds: sites } : {});
-    const due = c.req.query('faellig') === '1';
-    const today = Date.parse(todayBerlin());
-    const shown = due
-      ? rows.filter(
-          (m) => m.active && (!m.last_read_on || today - Date.parse(m.last_read_on) > 35 * 86_400_000),
-        )
-      : rows;
-    return page(
-      c,
-      'Zählerstände',
-      'disposition',
-      <>
-        <PageHead title="Zählerstände" />
-        <div class="actions" style="margin-top:-8px">
-          <a class={`btn sm ${due ? 'sec' : ''}`} href="/zaehler">
-            Alle ({rows.length})
-          </a>
-          <a class={`btn sm ${due ? '' : 'sec'}`} href="/zaehler?faellig=1">
-            Ablesung fällig (älter als 35 Tage)
-          </a>
-        </div>
-        <MeterTable rows={shown} site backTo={due ? '/zaehler?faellig=1' : '/zaehler'} />
-        <p class="small mut">
-          Zähler legen Sie im Objekt unter „Zähler“ an. Ablesungen sind unveränderbar; Korrektur über eine
-          neue Ablesung.
-        </p>
-      </>,
-    );
-  });
-
-  app.get(`/zaehler/:id{${UUID}}`, async (c) => {
-    const id = c.req.param('id');
-    const m = await getMeter(sql, id);
-    if (!m) return c.notFound();
-    assertSite(c, m.site_id);
-    const [readings, [site]] = await Promise.all([
-      readingsWithConsumption(sql, id),
-      sql<{ name: string }[]>`select name from app.sites where id = ${m.site_id}`,
-    ]);
-    return page(
-      c,
-      `Zähler ${m.meter_no}`,
-      'disposition',
-      <>
-        <PageHead
-          title={`${METER_KIND[m.kind]}zähler ${m.meter_no}`}
-          no={site?.name ?? ''}
-          crumbs={[
-            ['Zählerstände', '/zaehler'],
-            [site?.name ?? 'Objekt', `/objekte/${m.site_id}/zaehler`],
-          ]}
-        />
-        <div class="cols">
-          <div>
-            <div class="card">
-              <h3 style="margin-top:0">Neue Ablesung</h3>
-              <ReadingForm meterId={id} back={`/zaehler/${id}`} />
-            </div>
-            <div class="tbl">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Datum</th>
-                    <th class="right">Stand</th>
-                    <th class="right">Verbrauch</th>
-                    <th class="right">pro Tag</th>
-                    <th>Hinweis</th>
-                    <th>erfasst</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {readings.map((r) => (
-                    <tr>
-                      <td>{dateDe(r.read_on)}</td>
-                      <td class="right">
-                        {milliToInput(r.value_milli)} {m.unit}
-                      </td>
-                      <td class="right">
-                        {r.consumption_milli != null ? `${milliToInput(r.consumption_milli)} ${m.unit}` : '–'}
-                      </td>
-                      <td class="right">
-                        {r.consumption_milli != null && r.days
-                          ? num(Number(r.consumption_milli) / 1000 / r.days, 2)
-                          : '–'}
-                      </td>
-                      <td>
-                        {r.is_replacement && <span class="badge tag">Zählertausch</span>} {r.note}
-                      </td>
-                      <td class="small mut">
-                        {r.recorded_by},{' '}
-                        {r.recorded_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}
-                      </td>
-                    </tr>
-                  ))}
-                  {!readings.length && (
-                    <tr>
-                      <td colspan={6} class="mut">
-                        Noch keine Ablesung.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <form method="post" action={`/zaehler/${id}`} class="card" data-version={String(m.version)}>
-            <h3 style="margin-top:0">Stammdaten</h3>
-            <input type="hidden" name="version" value={String(m.version)} />
-            <input type="hidden" name="site_id" value={m.site_id} />
-            <label for="kind">Art</label>
-            <select id="kind" name="kind">
-              {Object.entries(METER_KIND).map(([k, v]) => (
-                <option value={k} selected={k === m.kind}>
-                  {v}
-                </option>
-              ))}
-            </select>
-            <label for="meter_no">Zählernummer</label>
-            <input id="meter_no" name="meter_no" value={m.meter_no} required />
-            <label for="location">Ort</label>
-            <input id="location" name="location" value={m.location ?? ''} />
-            <label for="unit">Einheit</label>
-            <input id="unit" name="unit" value={m.unit} />
-            <div class="chk" style="margin-top:10px">
-              <input type="checkbox" id="active" name="active" checked={m.active} />
-              <label for="active">aktiv</label>
-            </div>
-            <div class="formfoot">
-              <button class="btn sec">Speichern</button>
-            </div>
-          </form>
-        </div>
-      </>,
-    );
-  });
-
-  app.post(`/zaehler/:id{${UUID}}`, async (c) => {
-    const id = c.req.param('id');
-    const b = await c.req.parseBody({ all: true });
-    const siteId = str(b, 'site_id') ?? '';
-    assertSite(c, siteId);
-    const cur = await getMeter(sql, id);
-    if (cur) assertSite(c, cur.site_id);
-    const kind = (str(b, 'kind') ?? 'sonstiges') as MeterKind;
-    await saveMeter(sql, id, {
-      siteId,
-      kind,
-      meterNo: str(b, 'meter_no') ?? '',
-      location: str(b, 'location'),
-      unit: str(b, 'unit') ?? METER_UNIT[kind] ?? null,
-      active: cur ? b.active === 'on' : true,
-      expectedVersion: versionOf(b.version),
-    });
-    return cur
-      ? back(c, `/zaehler/${id}`, { ok: 'Zähler gespeichert.' })
-      : back(c, `/objekte/${siteId}/zaehler`, { ok: 'Zähler angelegt.' });
-  });
-
-  app.post(`/zaehler/:id{${UUID}}/ablesung`, async (c) => {
-    const meterId = c.req.param('id');
-    const m = await getMeter(sql, meterId);
-    if (!m) return c.notFound();
-    assertSite(c, m.site_id);
-    const b = await c.req.parseBody({ all: true });
-    const to = str(b, 'back') ?? `/zaehler/${meterId}`;
-    const safeBack = /^\/(zaehler|objekte)[/?\w=-]*$/.test(to) ? to : `/zaehler/${meterId}`;
-    let value: bigint;
-    try {
-      value = parseQuantity(str(b, 'value') ?? '');
-    } catch {
-      throw new BusinessError('Zählerstand bitte als Zahl, z. B. 12345,6');
-    }
-    await addReading(
-      sql,
-      str(b, 'id') ?? randomUUID(),
-      {
-        meterId,
-        readOn: str(b, 'read_on') ?? todayBerlin(),
-        valueMilli: value,
-        isReplacement: b.replacement === 'on',
-        note: str(b, 'note'),
-      },
-      c.get('actor'),
-    );
-    return back(c, safeBack, { ok: `Zählerstand ${m.meter_no} erfasst.` });
-  });
+  // Zählerstände: Seite entfernt (Ahmed 07.10.2026). Alte Adressen führen zum Objekt bzw. zur Objektliste.
+  app.get('/zaehler', (c) => c.redirect('/objekte', 301));
+  app.get(`/objekte/:id{${UUID}}/zaehler`, (c) => c.redirect(`/objekte/${c.req.param('id')}`, 301));
 }

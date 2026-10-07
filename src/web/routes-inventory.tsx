@@ -287,6 +287,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
                 <th class="r">Bestand</th>
                 <th class="r">Mindestbestand</th>
                 <th class="r">EK-Preis</th>
+                <th class="r">VK-Preis</th>
               </tr>
             </thead>
             <tbody>
@@ -321,6 +322,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
                     {milliToInput(a.min_stock_milli)} {a.unit}
                   </td>
                   <td class="r">{a.purchase_price_cents !== null ? euro(a.purchase_price_cents) : '–'}</td>
+                  <td class="r">{a.sales_price_cents !== null ? euro(a.sales_price_cents) : '–'}</td>
                 </tr>
               ))}
             </tbody>
@@ -523,6 +525,17 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
               label="Einkaufspreis € (netto)"
               value={a?.purchase_price_cents != null ? centsToInput(a.purchase_price_cents) : ''}
             />
+            <Field
+              name="sales_price"
+              label="Verkaufspreis € (netto, für Rechnungen)"
+              value={a?.sales_price_cents != null ? centsToInput(a.sales_price_cents) : ''}
+            />
+            <div>
+              <label for="description">Beschreibung</label>
+              <textarea id="description" name="description" rows={2}>
+                {a?.description ?? ''}
+              </textarea>
+            </div>
             <Check name="active" label="Aktiv" checked={a?.active !== false} />
           </div>
           {!a && <p class="small mut">Anfangsbestand nach dem Speichern über „Bestand buchen“ erfassen.</p>}

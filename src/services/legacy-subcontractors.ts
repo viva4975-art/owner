@@ -1,13 +1,17 @@
 import { createHash } from 'node:crypto';
 import { uuidOf } from './fortytools-export-import.js';
+import { ensureGeneralSite } from './fortytools-more-import.js';
 import { type UploadConfig, storeFile } from './uploads.js';
 import type { Deps } from './workflow.js';
 
 /*
  * Nachunternehmer aus der alten App übernehmen: Firmen (Kreditor-Nr. = Lieferantennummer), Ansprechpartner,
  * Nachweise (gleiche Nachweisarten, jede Datei eine Version, als „gültig“ mit dem Ablaufdatum der alten App) und die
- * Auftragsscheine/Scans der alten Aufträge als Dokumente „Verträge“ am Nachunternehmer. Die alten Aufträge selbst
- * hängen an Objekt-Texten statt an Objekten und werden deshalb nicht als Aufträge angelegt.
+ * Auftragsscheine/Scans der alten Aufträge als Dokumente „Verträge“ am Nachunternehmer.
+ * Runde 23 (Ahmed: „übernimm alles daraus“): die alten Aufträge werden zusätzlich als Nachunternehmer-Aufträge
+ * angelegt. Objekt über die Kostenstelle (Objektnummer, auch 8-stellig wie 20200001 → 2020001), Objektnummern im
+ * Objekttext, Adresse/Objektname; sonst Objekt „Allgemein (aus Fortytools)“ des Kunden (Kundennummer in der
+ * Kostenstelle). Ohne jeden Treffer bleibt nur das Dokument (Hinweis in der Rückmeldung).
  */
 
 const LEGAL = new Set([
@@ -164,7 +168,135 @@ export async function importLegacySubcontractors(
       orderFiles++;
     }
   }
-  return { subs, docs, orderFiles, missing };
+  const orders = await importLegacyOrders(sql, data.orders, idOf, actor);
+  return { subs, docs, orderFiles, missing, ...orders };
+}
+
+const normT = (x: string | null) =>
+  (x ?? '')
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]/g, '');
+
+const FREQ: Record<string, string> = {
+  einmalig: 'einmalig',
+  monatlich: 'monatlich',
+  laufend: 'monatlich',
+  jaehrlich1: 'jaehrlich',
+  jaehrlich2: 'halbjaehrlich',
+  jaehrlich3: 'quartalsweise',
+  jaehrlich4: 'quartalsweise',
+};
+const STATUS: Record<string, string> = {
+  abgeschlossen: 'beendet',
+  offen: 'erteilt',
+  aktiv: 'erteilt',
+  storniert: 'storniert',
+};
+
+/** Euro-Betrag aus JSON-Zahl exakt in Cent (über Text, kein Gleitkomma-Fehler). */
+const centsOfNum = (v: unknown): bigint | null => {
+  if (v == null || v === '') return null;
+  const m = /^(-?)(\d+)(?:\.(\d{1,2})\d*)?$/.exec(String(v));
+  if (!m) return null;
+  return BigInt(m[2]!) * 100n + BigInt((m[3] ?? '0').padEnd(2, '0'));
+};
+
+export async function importLegacyOrders(
+  sql: Deps['sql'],
+  orders: Record<string, unknown>[],
+  idOf: Map<string, string>,
+  actor: string,
+) {
+  const sites = await sql<{ id: string; site_no: string; name: string; street: string | null }[]>`
+    select id, site_no, name, street from app.sites`;
+  const byNo = new Map(sites.map((x) => [x.site_no, x.id]));
+  let created = 0;
+  let general = 0;
+  const unmatched: string[] = [];
+  for (const o of orders) {
+    const supplierId = idOf.get(String(o.sub_id));
+    const number = s(o.auftragsnummer);
+    if (!supplierId || !number) continue;
+    const id = uuidOf(`suborder-row:${String(o.id)}`);
+    const [done] = await sql`select 1 from app.subcontracts where id = ${id} or number = ${number}`;
+    if (done) continue;
+    const ks = s(o.kostenstelle) ?? '';
+    const text = `${ks} ${s(o.objekt) ?? ''}`;
+    let siteId: string | null = null;
+    for (const tok of text.match(/\d{5,8}/g) ?? []) {
+      const t = tok.length === 8 && tok[5] === '0' && !byNo.has(tok) ? tok.slice(0, 5) + tok.slice(6) : tok;
+      if (byNo.has(t)) {
+        siteId = byNo.get(t)!;
+        break;
+      }
+    }
+    if (!siteId) {
+      const a = normT(s(o.adresse));
+      const ob = normT(s(o.objekt));
+      const hs = sites.filter(
+        (x) => a && normT(x.street) && (a.includes(normT(x.street)) || normT(x.street).includes(a)),
+      );
+      if (hs.length === 1) siteId = hs[0]!.id;
+      else {
+        const hn = sites.filter((x) => ob && normT(x.name) === ob);
+        if (hn.length === 1) siteId = hn[0]!.id;
+      }
+    }
+    if (!siteId) {
+      const cust = (ks.match(/\b\d{5}\b/) ?? [])[0];
+      if (cust) {
+        siteId = await ensureGeneralSite(sql, cust, actor);
+        if (siteId) general++;
+      }
+    }
+    if (!siteId) {
+      unmatched.push(number);
+      continue;
+    }
+    const freq = FREQ[String(o.auftragstyp)] ?? 'einmalig';
+    const abr = String(o.abrechnungsart ?? '');
+    const total = centsOfNum(o.netto_betrag) ?? 0n;
+    const note = s(o.notiz);
+    // Stundensatz aus „18 Regiestunden x 25,00 €“, sonst Pauschale
+    const rate = /x\s*(\d+(?:[.,]\d{1,2})?)\s*€/i.exec(note ?? '');
+    let billing =
+      abr === 'pro_std'
+        ? 'stunde'
+        : abr === 'taeglich'
+          ? 'tag'
+          : abr === 'monatlich' || (abr === 'pauschale' && freq === 'monatlich')
+            ? 'pauschale_monat'
+            : 'pauschale_einsatz';
+    let price = total;
+    if (billing === 'stunde') {
+      if (rate) price = centsOfNum(rate[1]!.replace(',', '.')) ?? total;
+      else billing = 'pauschale_einsatz';
+    }
+    const from = iso(o.zeitraum_von) ?? iso(o.erteilt_am) ?? iso(o.created_at) ?? '2026-01-01';
+    let to = iso(o.zeitraum_bis);
+    const status = STATUS[String(o.status)] ?? 'erteilt';
+    if (!to && status === 'beendet') to = iso(o.updated_at);
+    if (to && to < from) to = from;
+    const meta = (o.objekt_meta ?? {}) as Record<string, unknown>;
+    const maxH = typeof meta._max_stunden === 'number' ? meta._max_stunden : null;
+    await sql`
+      insert into app.subcontracts (id, number, supplier_id, site_id, service_kind, frequency, billing, price_cents,
+                                    max_hours_month, valid_from, valid_to, description, note, status, issued_at,
+                                    created_by, created_at)
+      values (${id}, ${number}, ${supplierId}, ${siteId}, ${s(o.leistungsart) ?? 'Sonstiges'}, ${freq}, ${billing},
+              ${price}, ${maxH}, ${from}, ${to},
+              ${[s(o.objekt), s(o.adresse)].filter(Boolean).join('\n') || null},
+              ${[note, ks ? `Kostenstelle (alte App): ${ks}` : null, 'aus der alten App übernommen'].filter(Boolean).join('\n')},
+              ${status}, ${status === 'entwurf' ? null : iso(o.erteilt_am) ? new Date(`${iso(o.erteilt_am)}T12:00:00Z`) : null},
+              ${actor}, ${o.created_at ? new Date(String(o.created_at)) : new Date()})
+      on conflict do nothing`;
+    created++;
+  }
+  return { orders: created, ordersGeneral: general, ordersUnmatched: unmatched };
 }
 
 // ------------------------------------------------------------------ Schriftverkehr und Arbeitskleidung

@@ -1219,3 +1219,20 @@ Testadresse.
     Glas-Jahresplaner-Druck, Stellenplakat, QR-Aushänge.
   - Voller Name statt Benutzername (Begrüßung, Kopfzeile, QM-App; gespeicherte Namen = Benutzername werden umgestellt).
   - Leistungsbeschreibung am Objekt mehrzeilig (Zeilenumbrüche gehen auf die Rechnung).
+- 2026-10-07: Runde 23, Teil F – Importe:
+  - Transfer → Import aus Fortytools → Karte **„Artikel und erfasste Zeiten (CSV)“** (`fortytools-more-import.ts`):
+    Artikel (items.csv) mit EK/VK cent-genau, Beschreibung; negativer Fortytools-Bestand → 0 mit Hinweis „Inventur“
+    (Bestand bei uns nie negativ), Bestand nur beim ersten Import als Buchung „Übernahme aus Fortytools“. Artikel haben
+    jetzt Verkaufspreis + Beschreibung (für „+ Artikel“ in Rechnungen).
+  - Zeiten (Zeiten.csv): je Zeile freigegebene Zeit (Quelle Büro, „aus Fortytools“ + Servicebericht-Link), Mitarbeiter über
+    Personalnummer, Objekt über Kundennummer + Objektname; Buchungen nur auf Kundenebene → Objekt „Allgemein (aus
+    Fortytools)“ (wird angelegt). Personalnummern ausschließbar (Vorgabe **1013 – Ahmed: Dilmans Zeiten nicht übernehmen**).
+    Überschneidungen werden übersprungen, über Mitternacht korrekt. Daraus **wöchentliche Einsätze** (Mitarbeiter +
+    Objekt + Wochentag + Beginn mindestens 2× im Export, Dauer/Pause = Median), gültig ab dem Tag nach der letzten Zeit.
+    Probelauf echte Daten (Wegwerf-DB): 2.459 Zeiten (21 von 1013 ausgeschlossen, 4 mit 0 Minuten), 660 Einsätze,
+    63 Artikel; zweiter Lauf legt nichts doppelt an.
+  - **Nachunternehmer-Aufträge aus der alten App** werden jetzt als echte Aufträge angelegt (Import aus der alten App →
+    Nachunternehmer): Objekt über Kostenstelle (auch 8-stellig 20200001 → 2020001), Objektnummer im Text, Adresse/Name,
+    sonst „Allgemein (aus Fortytools)“ des Kunden; Turnus/Abrechnung/Status übernommen (Stundensatz aus „x 25,00 €“),
+    alte Nummer bleibt. Probelauf: 122 von 122 Aufträgen (13 auf „Allgemein“). **Auf dem Server: Backup erneut einspielen
+    (Bereich Nachunternehmer) – vorhandene Firmen/Nachweise bleiben, nur die Aufträge kommen dazu.**

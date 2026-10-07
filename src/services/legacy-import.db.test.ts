@@ -111,7 +111,7 @@ describe.skipIf(!available)('Import aus der alten App', () => {
 
   it('übernimmt Nachunternehmer mit Nachweisen und Arbeitskleidung idempotent', async () => {
     const out = await applyBackup(deps, backup(), ['nachunternehmer', 'sonstiges'], 'test');
-    expect(out[0]).toMatch(/1 angelegt, 1 Nachweise, 1 Auftragsdokumente/);
+    expect(out[0]).toMatch(/1 angelegt, 1 Nachweise, 0 Aufträge .*ohne Objekt nicht übernommen: 2026-TR-001.*1 Auftragsdokumente/);
     await applyBackup(deps, backup(), ['nachunternehmer', 'sonstiges'], 'test');
     const [sup] = await sql<{ id: string; kind: string; supplier_no: string }[]>`
       select id, kind, supplier_no from app.suppliers where legacy_id = 'sub:s1'`;

@@ -469,7 +469,7 @@ async function analyzeSubs(sql: Sql, b: Backup): Promise<Section> {
     neu: rows.length - vorhanden,
     vorhanden,
     notes: [
-      `${docs} Nachweis-Dateien, ${orders.length} alte Aufträge (Auftragsschein + Scan werden als Dokumente „Verträge“ abgelegt)`,
+      `${docs} Nachweis-Dateien, ${orders.length} alte Aufträge → Nachunternehmer-Aufträge (Objekt über Kostenstelle/Adresse; Auftragsschein + Scan als Dokumente „Verträge“)`,
       'Vorhandene Nachunternehmer mit gleicher Kreditor-Nr. werden nicht doppelt angelegt.',
     ],
     ready: rows.length > 0,
@@ -485,7 +485,7 @@ async function applySubs(deps: Deps, b: Backup, actor: string): Promise<string[]
     actor,
   );
   return [
-    `Nachunternehmer: ${r.subs} angelegt, ${r.docs} Nachweise, ${r.orderFiles} Auftragsdokumente${r.missing ? `, ${r.missing} Dateien fehlen` : ''}.`,
+    `Nachunternehmer: ${r.subs} angelegt, ${r.docs} Nachweise, ${r.orders} Aufträge (${r.ordersGeneral} auf Objekt „Allgemein“${r.ordersUnmatched.length ? `, ohne Objekt nicht übernommen: ${r.ordersUnmatched.join(', ')}` : ''}), ${r.orderFiles} Auftragsdokumente${r.missing ? `, ${r.missing} Dateien fehlen` : ''}.`,
   ];
 }
 

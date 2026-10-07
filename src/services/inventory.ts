@@ -184,6 +184,8 @@ export interface Article {
   min_stock_milli: bigint;
   supplier_id: string | null;
   purchase_price_cents: bigint | null;
+  sales_price_cents: bigint | null;
+  description: string | null;
   active: boolean;
   version: number;
 }
@@ -211,11 +213,13 @@ export async function saveArticle(
   if (!s('article_no') || !s('name')) throw new BusinessError('Artikelnummer und Bezeichnung angeben');
   let min: bigint;
   let price: bigint | null = null;
+  let sales: bigint | null = null;
   try {
     min = parseQuantity(s('min_stock') || '0');
     if (s('purchase_price')) price = parseEuro(s('purchase_price'));
+    if (s('sales_price')) sales = parseEuro(s('sales_price'));
   } catch {
-    throw new BusinessError('Mindestbestand oder Einkaufspreis ungültig');
+    throw new BusinessError('Mindestbestand, Einkaufs- oder Verkaufspreis ungültig');
   }
   await upsert(
     sql,
@@ -228,6 +232,8 @@ export async function saveArticle(
       min_stock_milli: min,
       supplier_id: s('supplier_id') || null,
       purchase_price_cents: price,
+      ...(body.sales_price !== undefined ? { sales_price_cents: sales } : {}),
+      ...(body.description !== undefined ? { description: s('description') || null } : {}),
       active: body.active === 'on' || body.active === 'true',
     },
     expectedVersion,

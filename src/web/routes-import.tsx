@@ -23,8 +23,16 @@ import {
   stagedFtFile,
   stageFtFile,
 } from '../services/fortytools-export-import.js';
+import {
+  applyArticles,
+  applyTimes,
+  planArticles,
+  planTimes,
+  stageMore,
+  stagedMore,
+} from '../services/fortytools-more-import.js';
 import type { Ctx } from './app.js';
-import { PageHead, euro } from './layout.js';
+import { PageHead, dateDe, euro } from './layout.js';
 
 const kindOf = (v: unknown): ImportKind =>
   typeof v === 'string' && v in IMPORT_KIND ? (v as ImportKind) : 'kunden';
@@ -340,6 +348,25 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
             importieren legt nichts doppelt an. Erst Vorschau.
           </p>
           <input type="file" name="dateien" accept=".xml" multiple required aria-label="XML-Dateien" />
+          <div class="actions" style="margin-bottom:0">
+            <button class="btn">Prüfen (Vorschau)</button>
+          </div>
+        </form>
+        <form
+          method="post"
+          action="/transfer/import/fortytools-weitere"
+          enctype="multipart/form-data"
+          class="card"
+        >
+          <h3 style="margin-top:0">Artikel und erfasste Zeiten aus Fortytools (CSV)</h3>
+          <p class="small mut" style="margin-top:0">
+            <b>Artikel</b> (items.csv: Nummer, Name, Einkaufs-/Verkaufspreis, Bestand) und <b>Zeiten</b>{' '}
+            (Zeiten.csv: Mitarbeiter, Einsatzort, Beginn/Ende/Pause). Zeiten werden als freigegebene Zeiten
+            übernommen; daraus werden wöchentliche Einsätze abgeleitet (gleicher Mitarbeiter, Objekt,
+            Wochentag, Beginn mindestens zweimal). Einzelne Personalnummern lassen sich ausschließen. Erst
+            Vorschau, erneut importieren legt nichts doppelt an.
+          </p>
+          <input type="file" name="dateien" accept=".csv,.txt" multiple required aria-label="CSV-Dateien" />
           <div class="actions" style="margin-bottom:0">
             <button class="btn">Prüfen (Vorschau)</button>
           </div>
@@ -758,6 +785,229 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
 
   // ------------------------------------------------------------------ Fortytools-XML
   const xmlPath = (sha: string) => `importe/${sha.slice(0, 2)}/${sha}.xml`;
+  // ------------------------------------------------------------ Artikel + Zeiten aus Fortytools (Runde 23)
+  app.post('/transfer/import/fortytools-weitere', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const files = (Array.isArray(b.dateien) ? b.dateien : [b.dateien]).filter(
+      (f): f is File => f instanceof File && f.size > 0,
+    );
+    if (!files.length) throw new BusinessError('Bitte mindestens eine CSV-Datei wählen');
+    const shas: string[] = [];
+    for (const f of files.slice(0, 4))
+      shas.push((await stageMore(deps, new Uint8Array(await f.arrayBuffer()))).sha);
+    return c.redirect(`/transfer/import/fortytools-weitere?f=${shas.join(',')}&ohne=1013`, 303);
+  });
+
+  app.get('/transfer/import/fortytools-weitere', async (c) => {
+    const shas = (c.req.query('f') ?? '')
+      .split(',')
+      .filter((x) => /^[0-9a-f]{64}$/.test(x))
+      .slice(0, 4);
+    if (!shas.length) return c.redirect('/transfer/import', 303);
+    const ohne = (c.req.query('ohne') ?? '').replace(/[^0-9, ]/g, '');
+    const exclude = ohne.split(/[ ,]+/).filter(Boolean);
+    const tables = await Promise.all(shas.map((s) => stagedMore(deps, s)));
+    const parts = await Promise.all(
+      tables.map(async (t) =>
+        t.kind === 'artikel'
+          ? { kind: 'artikel' as const, a: await planArticles(sql, t) }
+          : { kind: 'zeiten' as const, z: await planTimes(sql, t, { exclude }) },
+      ),
+    );
+    const grouped = (issues: { text: string; level: string; ref: string }[]) => {
+      const m = new Map<string, { level: string; n: number; refs: string[] }>();
+      for (const i of issues) {
+        const g = m.get(i.text) ?? { level: i.level, n: 0, refs: [] };
+        g.n++;
+        if (g.refs.length < 4) g.refs.push(i.ref);
+        m.set(i.text, g);
+      }
+      return [...m.entries()].sort((a, b) => b[1].n - a[1].n);
+    };
+    const WD = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+    return page(
+      c,
+      'Artikel und Zeiten prüfen',
+      'transfer',
+      <>
+        <PageHead
+          title="Artikel und Zeiten aus Fortytools prüfen"
+          crumbs={[
+            ['Transfer', '/transfer/kontoumsaetze'],
+            ['Import aus Fortytools', '/transfer/import'],
+          ]}
+        />
+        <form method="post" action="/transfer/import/fortytools-weitere/uebernehmen">
+          <input type="hidden" name="f" value={shas.join(',')} />
+          {parts.map((p) =>
+            p.kind === 'artikel' ? (
+              <div class="card">
+                <h3 style="margin-top:0">
+                  Artikel: {p.a.rows.filter((r) => r.status === 'neu').length} neu,{' '}
+                  {p.a.rows.filter((r) => r.status === 'vorhanden').length} vorhanden
+                </h3>
+                {grouped(p.a.issues).map(([text, g]) => (
+                  <div class={`small ${g.level === 'fehler' ? 'err' : 'mut'}`}>
+                    {g.n}× {text} <span class="mut">({g.refs.join('; ')})</span>
+                  </div>
+                ))}
+                <div class="tbl" style="max-height:420px;overflow:auto;margin-top:8px">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Nr.</th>
+                        <th>Bezeichnung</th>
+                        <th class="r">EK</th>
+                        <th class="r">VK</th>
+                        <th class="r">Bestand</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {p.a.rows.map((r) => (
+                        <tr>
+                          <td>{r.article_no}</td>
+                          <td>{r.name}</td>
+                          <td class="r num">{r.purchase_cents == null ? '–' : euro(r.purchase_cents)}</td>
+                          <td class="r num">{r.sales_cents == null ? '–' : euro(r.sales_cents)}</td>
+                          <td class="r num">{(Number(r.stock_milli) / 1000).toLocaleString('de-DE')}</td>
+                          <td>
+                            <span class={`badge ${r.status === 'neu' ? 'ok' : ''}`}>{r.status}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <label class="small" style="display:flex;gap:6px;align-items:center;margin-top:8px">
+                  <input type="checkbox" name="artikel_aktualisieren" value="1" /> vorhandene Artikel
+                  aktualisieren (Name, Preise, Beschreibung – Bestand wird nur beim ersten Import gesetzt)
+                </label>
+              </div>
+            ) : (
+              <div class="card">
+                <h3 style="margin-top:0">
+                  Zeiten: {p.z.rows.filter((r) => !r.exists).length} neu
+                  {p.z.rows.some((r) => r.exists) &&
+                    `, ${p.z.rows.filter((r) => r.exists).length} schon übernommen`}
+                  {p.z.excluded > 0 && ` · ${p.z.excluded} ausgeschlossen`}
+                </h3>
+                <div class="actions" style="margin-top:0">
+                  <label for="ohne" style="margin:0">
+                    Personalnummern nicht übernehmen
+                  </label>
+                  <input
+                    id="ohne"
+                    name="ohne"
+                    value={ohne}
+                    style="max-width:200px"
+                    form="ohne-form"
+                    placeholder="z. B. 1013, 1020"
+                  />
+                  <button class="btn sm sec" form="ohne-form">
+                    Vorschau neu
+                  </button>
+                  <input type="hidden" name="ohne" value={ohne} />
+                </div>
+                {grouped(p.z.issues).map(([text, g]) => (
+                  <div class={`small ${g.level === 'fehler' ? 'err' : 'mut'}`}>
+                    {g.n}× {text} <span class="mut">({g.refs.join('; ')})</span>
+                  </div>
+                ))}
+                {p.z.newSites.length > 0 && (
+                  <p class="small">
+                    Neue Objekte „Allgemein (aus Fortytools)“ für Buchungen ohne Objekt:{' '}
+                    {p.z.newSites.map((s) => s.site_no).join(', ')}
+                  </p>
+                )}
+                <label class="small" style="display:flex;gap:6px;align-items:center;margin-top:8px">
+                  <input type="checkbox" name="einsaetze" value="1" checked /> wiederkehrende Einsätze
+                  ableiten ({p.z.shifts.filter((s) => !s.exists).length} neu, gültig ab{' '}
+                  {dateDe(p.z.validFrom)})
+                </label>
+                <details style="margin-top:6px">
+                  <summary class="small">Abgeleitete Einsätze ansehen</summary>
+                  <div class="tbl" style="max-height:420px;overflow:auto">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Mitarbeiter</th>
+                          <th>Objekt</th>
+                          <th>Tag</th>
+                          <th>Zeit</th>
+                          <th class="r">Pause</th>
+                          <th class="r">im Export</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {p.z.shifts.map((s) => (
+                          <tr>
+                            <td>{s.employee}</td>
+                            <td>{s.site}</td>
+                            <td>{WD[s.weekday]}</td>
+                            <td>
+                              {s.start}–{s.end}
+                            </td>
+                            <td class="r">{s.break_minutes} min</td>
+                            <td class="r">{s.count}×</td>
+                            <td class="small mut">{s.exists ? 'Einsatz vorhanden' : ''}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              </div>
+            ),
+          )}
+          <div class="actions">
+            <button class="btn" onclick="return confirm('Jetzt übernehmen?')">
+              Übernehmen
+            </button>
+            <a class="btn sec" href="/transfer/import">
+              Abbrechen
+            </a>
+          </div>
+        </form>
+        <form id="ohne-form" method="get" action="/transfer/import/fortytools-weitere">
+          <input type="hidden" name="f" value={shas.join(',')} />
+        </form>
+      </>,
+    );
+  });
+
+  app.post('/transfer/import/fortytools-weitere/uebernehmen', async (c) => {
+    const b = await c.req.parseBody();
+    const shas = String(b.f ?? '')
+      .split(',')
+      .filter((x) => /^[0-9a-f]{64}$/.test(x))
+      .slice(0, 4);
+    const exclude = String(b.ohne ?? '')
+      .replace(/[^0-9, ]/g, '')
+      .split(/[ ,]+/)
+      .filter(Boolean);
+    const msgs: string[] = [];
+    for (const sha of shas) {
+      const t = await stagedMore(deps, sha);
+      if (t.kind === 'artikel') {
+        const r = await applyArticles(sql, t, {
+          update: b.artikel_aktualisieren === '1',
+          actor: c.get('actor'),
+        });
+        msgs.push(`Artikel: ${r.created} neu, ${r.updated} aktualisiert, ${r.booked} Bestände gesetzt`);
+      } else {
+        const r = await applyTimes(sql, t, { exclude, shifts: b.einsaetze === '1', actor: c.get('actor') });
+        msgs.push(
+          `Zeiten: ${r.created} übernommen${r.skipped ? `, ${r.skipped} wegen Überschneidung übersprungen` : ''}, ${r.shiftsCreated} Einsätze angelegt`,
+        );
+      }
+    }
+    await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+              values (${c.get('actor')}, 'import', 'fortytools_weitere', null, ${sql.json({ shas, msgs })})`;
+    return back(c, '/transfer/import', { ok: msgs.join(' · ') });
+  });
+
   app.post('/transfer/import/fortytools-xml', async (c) => {
     const b = await c.req.parseBody({ all: true });
     const files = (Array.isArray(b.dateien) ? b.dateien : [b.dateien]).filter(

@@ -23,6 +23,7 @@ import {
   type ShiftPlanRow,
   WEEKDAYS,
   WEEKDAYS_SHORT,
+  deleteShiftPlans,
   endShiftPlan,
   hm,
   listShiftPlans,
@@ -115,7 +116,16 @@ const PlanTable: FC<{ plans: ShiftPlanRow[]; show: 'employee' | 'site' | 'both';
                   href={`/einsatzplanung/${p.id}${ret ? `?zurueck=${encodeURIComponent(ret)}` : ''}`}
                 >
                   Ändern
-                </a>
+                </a>{' '}
+                <form
+                  method="post"
+                  action={`/einsatzplanung/${p.id}/loeschen`}
+                  style="display:inline"
+                  onsubmit="return confirm('Einsatz löschen? Geht nur, solange noch keine Zeit dazu erfasst ist.')"
+                >
+                  {ret && <input type="hidden" name="zurueck" value={ret} />}
+                  <button class="btn sm sec">Löschen</button>
+                </form>
               </td>
             </tr>
           );
@@ -148,6 +158,29 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     }
     await endShiftPlan(sql, c.req.param('id'), b.last_day, c.get('actor'));
     return back(c, safeReturn(b.zurueck), { ok: 'Einsatz beendet.' });
+  });
+
+  // Einsatz bzw. ganze Terminserie löschen (nur ohne erfasste Zeiten, sonst „beenden“)
+  app.post(`/einsatzplanung/:id{${UUID}}/loeschen`, async (c) => {
+    const b = await c.req.parseBody();
+    const id = c.req.param('id');
+    const [old] = await sql<
+      { site_id: string; series_id: string | null }[]
+    >`select site_id, series_id from app.shift_plans where id = ${id}`;
+    if (!old) return back(c, safeReturn(b.zurueck), { ok: 'Einsatz war schon gelöscht.' });
+    assertSite(c, old.site_id);
+    const ids =
+      b.serie === '1'
+        ? (
+            await sql<{ id: string; site_id: string }[]>`
+              select id, site_id from app.shift_plans where coalesce(series_id, id) = ${old.series_id ?? id}`
+          ).map((p) => {
+            assertSite(c, p.site_id);
+            return p.id;
+          })
+        : [id];
+    const n = await deleteShiftPlans(sql, ids, c.get('actor'));
+    return back(c, safeReturn(b.zurueck), { ok: n > 1 ? `${n} Einsätze gelöscht.` : 'Einsatz gelöscht.' });
   });
 
   app.get(`/personal/:id{${UUID}}/einsaetze`, (c) =>

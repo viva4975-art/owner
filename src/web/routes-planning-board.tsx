@@ -636,6 +636,27 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
             </div>
           </form>
         )}
+        {series && (
+          <form
+            method="post"
+            action={`/einsatzplanung/${series.plans[0]!.id}/loeschen`}
+            class="card"
+            style="margin-top:16px"
+            onsubmit="return confirm('Ganze Serie löschen? Alle Termine dieser Serie verschwinden aus der Planung.')"
+          >
+            <h3 style="margin-top:0">Serie löschen</h3>
+            <p class="small mut" style="margin-top:0">
+              Für falsch angelegte Einsätze: entfernt die Serie ganz (alle Mitarbeiter, alle Tage). Geht nur,
+              solange noch keine Zeit dazu erfasst ist – sonst oben „beenden“. Einen einzelnen Tag streichen:
+              in der Planung auf den Termin klicken → Ausfall.
+            </p>
+            <input type="hidden" name="serie" value="1" />
+            <input type="hidden" name="zurueck" value={ret} />
+            <div class="actions" style="margin-bottom:0">
+              <button class="btn danger">Serie löschen</button>
+            </div>
+          </form>
+        )}
         <script dangerouslySetInnerHTML={{ __html: FORM_JS }} />
       </div>,
     );

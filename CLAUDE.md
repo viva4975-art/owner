@@ -1112,3 +1112,14 @@ Testadresse.
     Arbeitsvertrag, Vorarbeiter-ZV ohne festes 01.09.2026/16,66 €/Lohngruppe 4). Neue Fassung (gleicher Code, höhere
     „-Vn“) deaktiviert die alte beim Hochladen. **Ahmed: korrigierte ZIP unter Einstellungen → Word-Vorlagen hochladen.**
   - Tests: 355 Unit-/DB-Tests (neu `runde19.db.test.ts`, erweitert `word-templates.db.test.ts`).
+- 2026-10-07: Runde 20 (Ahmed):
+  - **Einsatz löschen** (Einsatzliste beim Mitarbeiter/Objekt: Knopf „Löschen“; Terminserie: Kasten „Serie löschen“):
+    entfernt den Einsatz ganz (Tagesausnahmen mit, Abwesenheitsstunden verlieren nur die Verknüpfung, alter Stand im
+    Protokoll). Nur solange keine Zeit dazu erfasst ist (verknüpft oder gleicher Mitarbeiter/Objekt/Wochentag im
+    Gültigkeitszeitraum) – sonst Hinweis „beenden“ (§ 17 MiLoG, Soll/Ist-Nachweis bleibt).
+  - **Tiefgaragen aus Fortytools:** 117 Objekte „TG …“/„Tiefgarage …“ (Dawonia 65, Münchner Wohnen 44, Zeus Property
+    Management 8) werden beim XML-Import zusätzlich in Disposition → Tiefgaragenreinigung angelegt (verknüpft mit dem
+    Objekt = Kostenstelle, Objektnummer, Adresse; nichts doppelt). Kunde „Zeus Property Management“ als dritter Filter.
+    **In Fortytools fehlen m², WE-Nr., Stellplätze, Dauer, TOB** – in der alten App waren keine TG-Daten im Backup →
+    Ahmed: Liste (Excel) mit diesen Angaben schicken oder in der App je Objekt nachtragen.
+  - Tests: 357 Unit-/DB-Tests (neu `runde20.db.test.ts`).

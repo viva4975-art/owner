@@ -404,6 +404,66 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
     if (s.external_ref?.startsWith('ftx:f:') && !siteMap.has(s.external_ref.slice(6)))
       siteMap.set(s.external_ref.slice(6), { id: s.id, customerId: s.customer_id });
 
+  // ------------------------------------------------------------------ Tiefgaragen
+  // In Fortytools sind Tiefgaragen normale Objekte („TG 245“, „Tiefgarage …“). Zusätzlich in die Tiefgaragenplanung
+  // übernehmen (verknüpft mit dem Objekt = Kostenstelle). m², WE-Nr., Stellplätze, TOB gibt es in Fortytools nicht.
+  const tc = (res.counts.Tiefgaragen = blank());
+  const custName = new Map(
+    (await tx<{ id: string; name: string }[]>`select id, name from app.customers`).map((c) => [c.id, c.name]),
+  );
+  const dbTg = await tx<{ id: string; name: string; city: string | null; legacy_id: string | null }[]>`
+    select id, name, city, legacy_id from app.tg_objects`;
+  for (const f of by.get('facilities') ?? []) {
+    const name = get(f, 'address/name');
+    if (!/^(TG\b|Tiefgarage)/i.test(name)) continue;
+    const ftId = get(f, 'address/addressable-id');
+    const site = siteMap.get(ftId);
+    if (!site) continue;
+    const cn = custName.get(site.customerId) ?? '';
+    const customer = /dawonia/i.test(cn)
+      ? 'Dawonia'
+      : /münchner wohnen|gewofag|gwg/i.test(cn)
+        ? 'Münchner Wohnen GmbH'
+        : /zeus/i.test(cn)
+          ? 'Zeus Property Management'
+          : cn.trim() || 'Münchner Wohnen GmbH';
+    const zip = get(f, 'address/zip');
+    const city = get(f, 'address/city') || null;
+    const legacy = `ftx:f:${ftId}`;
+    const hit =
+      dbTg.find((t) => t.legacy_id === legacy) ??
+      dbTg.find(
+        (t) => !t.legacy_id && norm(t.name) === norm(name) && norm(t.city ?? '') === norm(city ?? ''),
+      );
+    if (hit) {
+      const r = await tx`
+        update app.tg_objects set legacy_id = ${legacy}, site_id = coalesce(site_id, ${site.id}),
+               object_no = coalesce(nullif(object_no, ''), ${get(f, 'number') || null}),
+               address = coalesce(nullif(address, ''), ${get(f, 'address/street') || null}),
+               postal_code = coalesce(nullif(postal_code, ''), ${/^\d{4}$/.test(zip) ? `0${zip}` : zip || null}),
+               city = coalesce(nullif(city, ''), ${city})
+         where id = ${hit.id} and (legacy_id is distinct from ${legacy} or site_id is null
+                                   or coalesce(object_no, '') = '' and ${get(f, 'number')} <> ''
+                                   or coalesce(address, '') = '' and ${get(f, 'address/street')} <> '')
+        returning id`;
+      if (r.length) tc.ergaenzt++;
+      else tc.unveraendert++;
+      continue;
+    }
+    await tx`insert into app.tg_objects ${tx({
+      id: uuidOf(`ftx-tg:${ftId}`),
+      customer,
+      name,
+      address: get(f, 'address/street') || null,
+      postal_code: /^\d{4}$/.test(zip) ? `0${zip}` : zip || null,
+      city,
+      object_no: get(f, 'number') || null,
+      site_id: site.id,
+      legacy_id: legacy,
+    } as Record<string, unknown>)}`;
+    tc.neu++;
+  }
+
   // ------------------------------------------------------------------ Mitarbeiter
   const ec = (res.counts.Mitarbeiter = blank());
   for (const m of by.get('staff-members') ?? []) {

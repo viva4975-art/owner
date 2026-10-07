@@ -534,6 +534,39 @@ export async function endShiftPlan(sql: Sql, id: string, lastDay: string, actor:
   await sql`insert into app.audit_log (actor, action, entity, entity_id) values (${actor}, 'end', 'shift_plan', ${id})`;
 }
 
+/**
+ * Einsatz (wiederkehrende Planung) ganz löschen – nur solange noch keine Zeit dazu erfasst ist (§ 17 MiLoG: erfasste
+ * Zeiten bleiben unverändert). Tagesausnahmen und daraus berechnete Abwesenheitsstunden werden mit entfernt
+ * (Abwesenheitsstunden des Tages zählen danach nach Wochenstunden). Der alte Stand steht im Protokoll.
+ */
+export async function deleteShiftPlans(sql: Sql, ids: string[], actor: string) {
+  if (!ids.length) return 0;
+  return sql.begin(async (tx) => {
+    // verknüpfte Zeiten oder Zeiten desselben Mitarbeiters am selben Objekt im Gültigkeitszeitraum (Soll/Ist-Nachweis)
+    const [used] = await tx<{ n: number }[]>`
+      select count(*)::int as n from app.time_entries te
+       where te.status <> 'abgelehnt'
+         and (te.shift_plan_id in ${tx(ids)}
+              or exists (select 1 from app.shift_plans p
+                          where p.id in ${tx(ids)} and p.employee_id = te.employee_id and p.site_id = te.site_id
+                            and extract(isodow from te.work_date) = p.weekday
+                            and te.work_date between p.valid_from and coalesce(p.valid_until, 'infinity'::date)))`;
+    if (used!.n > 0)
+      throw new BusinessError(
+        `Zu diesem Einsatz sind schon ${used!.n} Zeit(en) erfasst – löschen geht nicht mehr (Nachweis nach § 17 MiLoG). ` +
+          'Bitte stattdessen „beenden“: vergangene Tage bleiben, künftige entfallen.',
+      );
+    const old = await tx`select * from app.shift_plans where id in ${tx(ids)} for update`;
+    await tx`delete from app.shift_exceptions where shift_plan_id in ${tx(ids)}`;
+    await tx`update app.absence_hours set shift_plan_id = null where shift_plan_id in ${tx(ids)}`;
+    await tx`delete from app.shift_plans where id in ${tx(ids)}`;
+    for (const o of old)
+      await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+               values (${actor}, 'delete', 'shift_plan', ${o.id as string}, ${tx.json(o as never)})`;
+    return old.length;
+  });
+}
+
 export interface PlannedShift {
   plan: ShiftPlanRow;
   date: string;

@@ -15,7 +15,7 @@ import { saveWorkReport } from './orders.js';
  * (Objekte nach Dauer auf Mo–Fr packen), Aushänge, Arbeitsscheine mit der Dawonia-Positionsliste.
  */
 
-export const TG_CUSTOMERS = ['Münchner Wohnen GmbH', 'Dawonia'];
+export const TG_CUSTOMERS = ['Münchner Wohnen GmbH', 'Dawonia', 'Zeus Property Management'];
 export const TG_KINDS = ['Nassreinigung', 'Kehren', 'Grundreinigung', 'Sonstige'];
 
 export interface TgObject {

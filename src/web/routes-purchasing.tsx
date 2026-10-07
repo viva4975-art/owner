@@ -327,8 +327,11 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         net: sc.current_price_cents,
         per: PER[sc.billing] ?? '',
         phase: SC_PHASE[sc.status] ?? 'laufend',
-        status: SC_STATUS[sc.status] ?? sc.status,
-        tone: SC_TONE[sc.status] ?? '',
+        status:
+          sc.requested_by && sc.status === 'entwurf'
+            ? 'angefragt (Objektleitung) · Freigabe nötig'
+            : (SC_STATUS[sc.status] ?? sc.status),
+        tone: sc.requested_by && sc.status === 'entwurf' ? 'warn' : (SC_TONE[sc.status] ?? ''),
       })),
     ].sort((x, y) => y.number.localeCompare(x.number, 'de', { numeric: true }));
     const base = all

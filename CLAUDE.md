@@ -1284,3 +1284,16 @@ Testadresse.
     **Fehlende Angaben fragt die Seite ab** (Bereichsleitung, Ersthelfer, Ansprechpartner, Putzraum, Zugang,
     Reinigungsmittel, Besonderheiten → `sites.folder_info`) bzw. verlinkt Objektleitung/Telefon, Raumbuch, Einsätze,
     Leistungen. Probe mit dem echten Paket: 32 Dateien, Lücken gefüllt. **Auf dem Server: Paket einmal hochladen.**
+- 2026-10-07: Runde 23, Teil H – App für Objektleitung/Büro (`/qm`, Rechte wie bisher: Objektleitung nur eigene Objekte):
+  - Startseite mit weiteren Kacheln (Zeiten, Personalbogen, NU-Auftrag, Arbeitsscheine); Objekt-Details mit Einsätzen,
+    Zeiten, Schlüsseln, Übergabe/Unterweisung, Objektordner, Arbeitsschein, Personalbogen, NU-Auftrag.
+  - **Personalbogen zum Selbstausfüllen** (`/qm/personalbogen`, de/en/ro/tr/pl/hr/bg, deutsche Bezeichnung klein darunter):
+    neue Mitarbeitende füllen am Handy der Objektleitung aus → `app.personnel_forms` (vertraulich: lesen per RLS nur
+    Admin/Personal, die Objektleitung kann nur absenden). Büro: Personal → Personalbögen → „Als Mitarbeiter anlegen“
+    (Formular vorbelegt) oder verwerfen; Hinweis auf der Startseite. **Übersetzungen von Muttersprachlern gegenlesen lassen.**
+  - **NU-Auftrag anfragen** (`/qm/nu-auftrag`): Objektleitung legt einen Entwurf an (`subcontracts.requested_by/request_note`),
+    Büro sieht ihn unter Bestellungen als „angefragt (Objektleitung) · Freigabe nötig“ (+ Hinweis Startseite, Banner im
+    Auftrag), ergänzt Preis/Nachweise und erteilt. Erteilen bleibt Büro-Recht.
+  - Leistungsbeschreibung mehrzeilig; nur noch eine Statistik (Auswertungen) mit farbigen Diagrammen; volle Namen statt
+    Benutzernamen (Teil C).
+  - Tests: 371 Unit-/DB-Tests (neu `runde23-olapp.db.test.ts`), e2e/rechte/runde10 grün.

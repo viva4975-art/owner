@@ -164,6 +164,25 @@ export function registerModuleRoutes(ctx: Ctx) {
             ? (await missingDocs(sql, { siteIds: c.get('sites') })).length
             : 0
         }
+        appRequests={{
+          nu: canAccess(role, '/lieferanten')
+            ? Number(
+                (
+                  await sql<{ n: number }[]>`
+                    select count(*)::int as n from app.subcontracts where status = 'entwurf' and requested_by is not null`
+                )[0]!.n,
+              )
+            : 0,
+          bogen: canAccess(role, '/personal/personalboegen')
+            ? Number(
+                (
+                  await sql<
+                    { n: number }[]
+                  >`select count(*)::int as n from app.personnel_forms where status = 'neu'`
+                )[0]!.n,
+              )
+            : 0,
+        }}
         user={fullName(c.get('user'))}
         tasks={tasks}
         drafts={drafts}
@@ -919,12 +938,64 @@ export function registerModuleRoutes(ctx: Ctx) {
     const id = c.req.param('id');
     const data = await getEmployee(sql, id);
     const wageLevels = await listWageLevels(sql);
+    // Personalbogen aus der App (Objektleitung) → neues Stammdatenformular vorausfüllen
+    const bogenId = c.req.query('bogen');
+    const [bogen] =
+      !data && bogenId && /^[0-9a-f-]{36}$/.test(bogenId)
+        ? await sql<
+            { data: Record<string, string> }[]
+          >`select data from app.personnel_forms where id = ${bogenId}`
+        : [];
+    const bd = bogen?.data ?? {};
     const form = (
       <EmployeeForm
         wageLevels={wageLevels}
         id={id}
-        e={data?.employee ?? { personnel_no: await suggestPersonnelNo(sql) }}
-        priv={data?.priv ?? {}}
+        e={
+          data?.employee ?? {
+            personnel_no: await suggestPersonnelNo(sql),
+            ...(bogen
+              ? {
+                  first_name: bd.first_name ?? '',
+                  last_name: bd.last_name ?? '',
+                  salutation: (bd.salutation as 'Herr' | 'Frau' | 'divers' | undefined) ?? null,
+                  mobile: bd.mobile ?? null,
+                  email_private: bd.email_private ?? null,
+                  languages: bd.languages
+                    ? bd.languages
+                        .split(/[,;/]+/)
+                        .map((x) => x.trim())
+                        .filter(Boolean)
+                    : [],
+                  info:
+                    [bd.emergency_contact ? `Notfallkontakt: ${bd.emergency_contact}` : '', bd.notes ?? '']
+                      .filter(Boolean)
+                      .join('\n') || null,
+                }
+              : {}),
+          }
+        }
+        priv={
+          data?.priv ??
+          (bogen
+            ? {
+                birth_date: bd.birth_date ?? null,
+                birth_place: bd.birth_place ?? null,
+                birth_country: bd.birth_country ?? null,
+                nationality: bd.nationality ?? null,
+                marital_status: bd.marital_status ?? null,
+                street: bd.street ?? null,
+                postal_code: bd.postal_code ?? null,
+                city: bd.city ?? null,
+                iban: bd.iban ?? null,
+                tax_id: bd.tax_id ?? null,
+                social_security_no: bd.social_security_no ?? null,
+                health_insurance: bd.health_insurance ?? null,
+                residence_permit_until: bd.residence_permit_until ?? null,
+                work_permit_until: bd.work_permit_until ?? null,
+              }
+            : {})
+        }
         isNew={!data}
       />
     );
@@ -935,6 +1006,13 @@ export function registerModuleRoutes(ctx: Ctx) {
         'personal',
         <>
           <PageHead title="Neuer Mitarbeiter" />
+          {bogen && (
+            <div class="flash ok">
+              Aus dem Personalbogen vorausgefüllt – bitte Beschäftigungsart, Vergütung und Eintritt ergänzen.
+              Danach den Bogen unter <a href="/personal/personalboegen">Personalbögen</a> als erledigt
+              markieren.
+            </div>
+          )}
           <div class="card">{form}</div>
         </>,
       );

@@ -468,6 +468,8 @@ export const Dashboard: FC<{
   signOverdue?: { id: string; title: string; open: number }[];
   /** Anzahl Mitarbeitende mit fehlenden Pflichtunterlagen (null = Rolle sieht es nicht) */
   missingDocs?: number;
+  /** Anfragen aus der App der Objektleitung: NU-Aufträge zur Freigabe, neue Personalbögen */
+  appRequests?: { nu: number; bogen: number };
   absentHref?: string | undefined;
   layout?: DashItem[] | undefined;
   showAkquise?: boolean;
@@ -486,12 +488,39 @@ export const Dashboard: FC<{
   absent = [],
   signOverdue = [],
   missingDocs = 0,
+  appRequests = { nu: 0, bogen: 0 },
   absentHref,
 }) => {
   const total = balances.reduce((s, b) => s + b.open_cents, 0n);
   const overdue = balances.filter((b) => b.max_overdue_days > 0);
   const overdueTasks = tasks.filter((t) => t.due_date && t.due_date < kpi.today).length;
   const hints: { tone: string; text: Child; href: string }[] = [
+    ...(appRequests.nu
+      ? [
+          {
+            tone: 'warn',
+            text: (
+              <>
+                <b>{appRequests.nu}</b> Nachunternehmer-Auftrag/-Aufträge von der Objektleitung zur Freigabe
+              </>
+            ),
+            href: '/bestellungen',
+          },
+        ]
+      : []),
+    ...(appRequests.bogen
+      ? [
+          {
+            tone: 'warn',
+            text: (
+              <>
+                <b>{appRequests.bogen}</b> neue(r) Personalbogen aus der App
+              </>
+            ),
+            href: '/personal/personalboegen',
+          },
+        ]
+      : []),
     ...(missingDocs
       ? [
           {

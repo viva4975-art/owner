@@ -54,6 +54,7 @@ import { HandoverTable } from './routes-handovers.js';
 import { PageHead, Tabs, dateDe, euro, type Tab } from './layout.js';
 import { FileArea } from './files.js';
 import { listFiles } from '../services/uploads.js';
+import { fullName } from '../services/users.js';
 
 const pdfResponse = (pdf: Uint8Array, name: string) =>
   new Response(pdf, {
@@ -1228,6 +1229,13 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
           no={sc ? SC_STATUS[sc.status] : null}
           crumbs={[['Bestellungen', '/bestellungen?art=nu']]}
         />
+        {sc?.requested_by && sc.status === 'entwurf' ? (
+          <div class="flash warn">
+            Angefragt von der Objektleitung ({fullName({ login: sc.requested_by })}) über die App – bitte
+            prüfen, Preis ergänzen und erteilen.
+            {sc.request_note ? <div style="white-space:pre-line">{sc.request_note}</div> : null}
+          </div>
+        ) : null}
         <form
           method="post"
           action={`/nachunternehmer/auftraege/${id}`}

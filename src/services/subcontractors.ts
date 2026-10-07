@@ -468,6 +468,8 @@ export type SubcontractRow = Subcontract & {
   site_name: string;
   site_no: string;
   current_price_cents: bigint;
+  requested_by: string | null;
+  request_note: string | null;
 };
 
 const SC_SELECT = (sql: Sql, month: string) => sql`

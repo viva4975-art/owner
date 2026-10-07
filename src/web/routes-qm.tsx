@@ -51,6 +51,8 @@ import { CSS as MCSS, Ic } from './m/routes-mobile.js';
  */
 
 const QM_CSS = `
+.qm-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:12px 0}.qm-grid a{display:flex;align-items:center;gap:10px;padding:14px;border-radius:14px;background:#fff;border:1px solid #efe3e7;color:#3b0a1c;font-weight:600;text-decoration:none}.qm-grid a svg{width:22px;height:22px;color:#7d1435;flex:none}
+.quick{flex-wrap:wrap;row-gap:14px}
 .qm-top{display:flex;align-items:center;gap:10px;padding:4px 0 6px}
 .qm-top h1{flex:1;text-align:center;font-size:19px;margin:0;color:#2a1420}
 .qm-top a{width:36px;height:36px;display:flex;align-items:center;justify-content:center;color:#2a1420}
@@ -125,7 +127,7 @@ const QM_CSS = `
 
 `;
 
-const QmLayout: FC<{
+export const QmLayout: FC<{
   path: string;
   title: string;
   flash: { ok?: string; err?: string };
@@ -281,6 +283,30 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
             </span>
             Alle Audits
           </a>
+          <a href="/zeiterfassung">
+            <span class="qi">
+              <Ic n="clock" />
+            </span>
+            Zeiten
+          </a>
+          <a href="/qm/personalbogen">
+            <span class="qi">
+              <Ic n="doc" />
+            </span>
+            Personalbogen
+          </a>
+          <a href="/qm/nu-auftrag">
+            <span class="qi">
+              <Ic n="building" />
+            </span>
+            NU-Auftrag
+          </a>
+          <a href="/arbeitsscheine">
+            <span class="qi">
+              <Ic n="times" />
+            </span>
+            Arbeitsscheine
+          </a>
         </div>
         {audits.length === 0 ? (
           <div class="qm-empty">
@@ -419,6 +445,25 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
           <a href={`/qm/tickets?objekt=${id}`}>
             <Ic n="ticket" /> Tickets ({s.open_tickets})
           </a>
+        </div>
+        <div class="qm-grid">
+          {(
+            [
+              [`/objekte/${id}/einsaetze`, 'cal', 'Einsätze'],
+              [`/objekte/${id}/zeiten`, 'clock', 'Zeiten'],
+              [`/objekte/${id}/schluessel`, 'list', 'Schlüssel'],
+              [`/objekte/${id}/uebergaben`, 'doc', 'Übergabe / Unterweisung'],
+              [`/objekte/${id}/objektordner`, 'building', 'Objektordner'],
+              [`/arbeitsscheine/${randomUUID()}?objekt=${id}`, 'times', 'Arbeitsschein'],
+              [`/qm/personalbogen?objekt=${id}`, 'doc', 'Personalbogen'],
+              [`/qm/nu-auftrag?objekt=${id}`, 'building', 'NU-Auftrag anfragen'],
+            ] as const
+          ).map(([href, ic, label]) => (
+            <a href={href}>
+              <Ic n={ic} />
+              <span>{label}</span>
+            </a>
+          ))}
         </div>
         <div class="qm-sec">
           <h2>Vergangene Audits</h2>

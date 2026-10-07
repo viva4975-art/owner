@@ -95,6 +95,8 @@ await p.screenshot({ path: `${out}/pl1-tafel.png`, fullPage: true });
 
 console.log('3. Offenen Termin besetzen');
 await openBlocks.first().click();
+check('Detailfenster wie Fortytools', await p.locator('#ev-dlg[open]').isVisible());
+await p.click('#ev-dlg a:has-text("Mitarbeiter einplanen")');
 await p.waitForLoadState();
 check('Serie öffnet sich zum Ändern', (await p.locator('h1').innerText()).includes('Terminserie ändern'));
 check('Wochentage übernommen', (await p.locator('input[name=weekday]:checked').count()) === 2);
@@ -114,6 +116,8 @@ check(
 console.log('4. Einen Tag umplanen');
 const week = p.url();
 await p.locator('.pb-sec').nth(1).locator(`.pb-ev[title*="E2E Serie ${stamp}"]`).first().click();
+check('Detailfenster mit „Vertretung einplanen“', (await p.locator('#ev-dlg a:has-text("Vertretung einplanen")').count()) === 1);
+await p.click('#ev-dlg a:has-text("Umplanen / Ausfall")');
 await p.waitForLoadState();
 check('Tagesseite „Einsatz umplanen“', (await p.locator('h1').innerText()).includes('umplanen'));
 await p.selectOption('select[name=kind]', 'umgeplant');
@@ -126,6 +130,7 @@ check('zurück in der Tafel', p.url().includes('/einsatzplanung'), p.url());
 const moved = p.locator(`.pb-ev.changed[title*="E2E Serie ${stamp}"]`, { hasText: '04:00–05:00' });
 check('Termin zeigt neue Zeit (lila = umgeplant)', (await moved.count()) >= 1);
 await moved.first().click();
+await p.click('#ev-dlg a:has-text("Umplanen / Ausfall")');
 await p.waitForLoadState();
 await Promise.all([p.waitForURL(/\/einsatzplanung\?/), p.click('button:has-text("Umplanung entfernen")')]);
 check('zurückgesetzt', /Wieder wie geplant/.test(await flash(p)), (await flash(p)) + ' ' + p.url());

@@ -687,12 +687,26 @@ a.bs-tr:hover{text-decoration:none;background:var(--head)}
 .pb-c{border-top:1px solid var(--line);border-left:1px solid var(--line);padding:3px;min-height:44px;display:flex;flex-direction:column;gap:3px}
 .pb-c.hol{background:#eef5fb}.pb-c.today{background:#fffbe6}.pb-c.abs{background:repeating-linear-gradient(135deg,#fff,#fff 6px,#fbeaea 6px,#fbeaea 12px)}
 .pb-abs{font-size:11px;color:var(--err);font-weight:600;padding:1px 4px}
-.pb-ev{display:block;border-radius:4px;padding:3px 6px;font-size:12px;line-height:1.3;color:#fff;background:#4f6fb4;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.pb-ev{display:block;border-radius:4px;padding:3px 6px;font-size:12px;line-height:1.3;color:#fff;background:#4f6fb4;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0}
 .pb-ev:hover{text-decoration:none;filter:brightness(1.08)}
 .pb-ev .t{display:block;font-weight:700;overflow:hidden;text-overflow:ellipsis}
 .pb-ev .m{display:block;font-size:11px;opacity:.92;overflow:hidden;text-overflow:ellipsis}
 .pb-ev.open{background:#8e959e}.pb-ev.done{background:#2f8a57}.pb-ev.changed{background:#7a4fb4}
 .pb-ev.absent{background:#f6d4d4;color:#7a1f1f;text-decoration:line-through}
+.pb-ev .m.a{opacity:.8}
+.pb-ev.full,.pb-ev.full .t,.pb-ev.full .m{white-space:normal;overflow-wrap:anywhere}
+.pb-sec.drag{cursor:grabbing;user-select:none}
+.pb-rh,.pb-rn{position:sticky;left:0;z-index:2;background:#fff}.pb-rh{background:var(--head)}
+.ev-dlg{border:0;border-radius:14px;padding:0;width:min(520px,94vw);box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.ev-dlg::backdrop{background:rgba(20,10,15,.35)}
+.ev-dlg .hd{display:flex;justify-content:space-between;gap:10px;padding:16px 18px;color:#fff;background:#4f6fb4}
+.ev-dlg .hd.open{background:#8e959e}.ev-dlg .hd.done{background:#2f8a57}.ev-dlg .hd.changed{background:#7a4fb4}.ev-dlg .hd.absent{background:#b3261e}
+.ev-dlg .hd h3{margin:2px 0;font-size:18px;color:#fff}.ev-dlg .hd .small{opacity:.9}
+.ev-dlg .x{background:none;border:0;color:#fff;font-size:24px;cursor:pointer;line-height:1}
+.ev-dlg .bd{padding:10px 18px}
+.ev-dlg .r{display:grid;grid-template-columns:120px 1fr;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+.ev-dlg .r span{color:var(--mut)}.ev-dlg .r b{font-weight:500;white-space:pre-line}
+.ev-dlg .ft{display:flex;flex-wrap:wrap;gap:8px;padding:12px 18px 16px}
 /* ---- Termin oder Terminserie planen ---- */
 .portal h1 .x{color:var(--brand);font-weight:400;margin-right:6px}
 .portal h1 .x:hover{text-decoration:none}

@@ -152,7 +152,14 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
             <label for="kind">Was passiert an diesem Tag?</label>
             <select id="kind" name="kind">
               {(Object.keys(EXCEPTION_LABEL) as ExceptionKind[]).map((k) => (
-                <option value={k} selected={k === (ex?.kind ?? (s.absence ? 'vertretung' : 'umgeplant'))}>
+                <option
+                  value={k}
+                  selected={
+                    k ===
+                    (ex?.kind ??
+                      (s.absence || c.req.query('art') === 'vertretung' ? 'vertretung' : 'umgeplant'))
+                  }
+                >
                   {EXCEPTION_LABEL[k]}
                 </option>
               ))}

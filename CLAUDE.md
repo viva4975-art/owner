@@ -1259,3 +1259,14 @@ Testadresse.
     Netto/Brutto/Fällig, Status-Schild (bezahlt / offen / überfällig mit Betrag / storniert) und Versandstatus.
   - Nicht gebaut: Lieferschein (Fortytools) – bei Bedarf als PDF ohne Preise nachrüsten.
   - Tests: 367 Unit-/DB-Tests (neu `runde23-invoice.db.test.ts` mit KoSIT, `runde23-op.db.test.ts`), Browser-Suiten grün.
+- 2026-10-07: Runde 23, Teil G1 – Planung und Arbeitsschein:
+  - **Planung:** Klick auf einen Einsatz öffnet ein Detailfenster wie Fortytools (Objekt, Kunde, Adresse mit Karte,
+    Mitarbeiter mit Telefon, Zeit/Dauer/Pause, Serie, Objektleitung, Beschreibung) mit **„Vertretung einplanen“**
+    (Tagesseite mit Vertretung vorgewählt), „Umplanen / Ausfall“, „Serie bearbeiten“; offene Termine „Mitarbeiter
+    einplanen“. Kacheln zeigen in Woche/Tag Objekt, Zeit, Dauer und Straße (Text bricht um, Woche passt ohne Scrollen),
+    Monat breiter und **mit gedrückter Maustaste seitlich ziehbar**, Namensspalte bleibt stehen.
+  - **Arbeitsschein wie die alte App:** Leistungen aus dem Leistungskatalog des Objekts wählen (Preis wird eingefroren,
+    `work_report_lines.service_id/unit_price_cents`) oder frei; **Regiestunden je Person** (Name, Stunden; angehakte
+    Mitarbeiter werden übernommen, Stunden aus Beginn/Ende vorgeschlagen). **„Speichern und PDF erstellen“** schließt
+    ohne Unterschrift ab (Unterschrift optional), danach **„Rechnung erstellen“** direkt am Schein: Leistungen mit
+    Katalogpreis, Regie mit Regiestundensatz des Objekts und Namen, Leistungsdatum je Position, Schein-PDF als Anlage.

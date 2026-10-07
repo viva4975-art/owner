@@ -315,6 +315,11 @@ export interface WorkReportLine {
   description: string;
   quantity_milli: bigint;
   unit_code: string;
+  /** Leistung aus dem Katalog des Objekts (Preis eingefroren) */
+  service_id: string | null;
+  /** Regiestunden: Name der Person */
+  person: string | null;
+  unit_price_cents: bigint | null;
 }
 export type WorkReportRow = WorkReport & {
   customer_name: string;
@@ -365,7 +370,13 @@ export interface WorkReportInput {
   description: string | null;
   materials: string | null;
   remarks: string | null;
-  lines: { description: string; quantity: Quantity; unitCode: string }[];
+  lines: {
+    description: string;
+    quantity: Quantity;
+    unitCode: string;
+    serviceId?: string | null;
+    person?: string | null;
+  }[];
   expectedVersion: number | null;
 }
 
@@ -414,14 +425,30 @@ export async function saveWorkReport(sql: Sql, id: string, input: WorkReportInpu
     }
     await tx`delete from app.work_report_lines where work_report_id = ${id}`;
     if (input.lines.length) {
+      // Leistung aus dem Katalog: nur Leistungen dieses Objekts, Preis/Einheit wird eingefroren
+      const svcIds = [...new Set(input.lines.map((l) => l.serviceId).filter((x): x is string => !!x))];
+      const svcs = svcIds.length
+        ? await tx<{ id: string; description: string; unit_code: string; unit_price_cents: bigint }[]>`
+            select id, description, unit_code, unit_price_cents from app.site_services
+             where site_id = ${input.siteId} and id in ${tx(svcIds)}`
+        : [];
+      const byId = new Map(svcs.map((x) => [x.id, x]));
       await tx`insert into app.work_report_lines ${tx(
-        input.lines.map((l, i) => ({
-          work_report_id: id,
-          position: i + 1,
-          description: l.description,
-          quantity_milli: l.quantity,
-          unit_code: l.unitCode,
-        })),
+        input.lines.map((l, i) => {
+          const sv = l.serviceId ? byId.get(l.serviceId) : undefined;
+          if (l.serviceId && !sv)
+            throw new BusinessError(`Position ${i + 1}: Leistung gehört nicht zu diesem Objekt`);
+          return {
+            work_report_id: id,
+            position: i + 1,
+            description: l.description || sv?.description || '',
+            quantity_milli: l.quantity,
+            unit_code: sv && !l.person ? sv.unit_code : l.unitCode,
+            service_id: sv?.id ?? null,
+            person: l.person?.trim() || null,
+            unit_price_cents: sv ? sv.unit_price_cents : null,
+          };
+        }),
       )}`;
     }
     await tx`insert into app.audit_log (actor, action, entity, entity_id) values (${actor}, ${cur ? 'update' : 'create'}, 'work_report', ${id})`;
@@ -467,7 +494,7 @@ export async function signWorkReport(
 }
 
 export async function closeWithoutSignature(deps: Deps, id: string, reason: string, actor: string) {
-  if (!reason.trim()) throw new BusinessError('Bitte Grund angeben (z. B. „kein Ansprechpartner vor Ort“)');
+  if (!reason.trim()) reason = 'PDF erstellt (ohne Kundenunterschrift)';
   const res = await deps.sql`
     update app.work_reports set status = 'ohne_unterschrift', no_signature_reason = ${reason.trim()}
      where id = ${id} and status = 'entwurf' returning id`;
@@ -517,13 +544,13 @@ export async function renderWorkReportPdf(deps: Deps, id: string): Promise<Uint8
       .join('\n'),
     columns: [
       { label: 'Pos', x: 62.3, align: 'left' },
-      { label: 'Leistung', x: 90, align: 'left' },
+      { label: 'Leistung / Regiestunden', x: 90, align: 'left' },
       { label: 'Menge', x: 470 },
       { label: 'Einheit', x: 538.8 },
     ],
     rows: lines.map((l) => [
       String(l.position),
-      l.description.slice(0, 60),
+      (l.person ? `${l.description} – ${l.person}` : l.description).slice(0, 64),
       qty(l.quantity_milli),
       UNIT[l.unit_code] ?? l.unit_code,
     ]),
@@ -535,7 +562,7 @@ export async function renderWorkReportPdf(deps: Deps, id: string): Promise<Uint8
       ),
       ...(w.materials ? [`Material: ${w.materials}`] : []),
       ...(w.remarks ? [`Bemerkungen des Kunden: ${w.remarks}`] : []),
-      ...(w.status === 'ohne_unterschrift'
+      ...(w.status === 'ohne_unterschrift' && !w.no_signature_reason?.startsWith('PDF erstellt')
         ? [`Ohne Unterschrift abgeschlossen: ${w.no_signature_reason}`]
         : []),
     ],
@@ -674,12 +701,17 @@ export async function reportsToInvoice(
     >`select * from app.work_report_lines where work_report_id = ${r.id} order by position`;
     for (const l of rl) {
       lines.push({
-        description: l.description,
+        description: l.person ? `${l.description} – ${l.person}` : l.description,
         detail: `Arbeitsschein ${r.number} vom ${formatDateDe(r.work_date)}`,
         quantity: l.quantity_milli as Quantity,
         unitCode: l.unit_code,
-        unitPrice: (l.unit_code === 'HUR' && rate ? rate.unit_price_cents : 0n) as Cents,
+        // Leistung aus dem Katalog: eingefrorener Preis; Stunden: Regiestundensatz des Objekts
+        unitPrice: (l.unit_price_cents ??
+          (l.unit_code === 'HUR' && rate ? rate.unit_price_cents : 0n)) as Cents,
         vatRate: rate?.vat_rate_bp ?? 1900,
+        sourceServiceId: null,
+        periodStart: r.work_date,
+        periodEnd: r.work_date,
       });
     }
   }

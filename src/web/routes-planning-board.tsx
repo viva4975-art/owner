@@ -41,41 +41,102 @@ const kwOf = (d: string) => {
   return Math.ceil(((thu.getTime() - start) / 86400000 + 1) / 7);
 };
 
-const Block: FC<{ s: PlannedShift; city: string | null; compact: boolean; back: string }> = ({
-  s,
-  city,
-  compact,
-  back,
-}) => {
+interface SiteInfo {
+  id: string;
+  street: string | null;
+  postal_code: string | null;
+  city: string | null;
+  customer_name: string;
+  manager: string | null;
+  manager_phone: string | null;
+}
+
+const Block: FC<{
+  s: PlannedShift;
+  site: SiteInfo | undefined;
+  compact: boolean;
+  back: string;
+  phone?: string | null | undefined;
+}> = ({ s, site, compact, back, phone }) => {
   const open = !s.plan.employee_id;
   const cls = open ? 'open' : s.absence ? 'absent' : s.entry ? 'done' : s.exception ? 'changed' : 'planned';
-  const href = open
-    ? `/einsatzplanung/${s.plan.id}`
-    : `/einsatzplanung/${s.plan.id}/tag/${s.date}?zurueck=${encodeURIComponent(back)}`;
-  const title = [
-    `${s.plan.site_name} (${s.plan.site_no})`,
-    `${s.plan.start_time}–${s.plan.end_time}`,
-    s.plan.note,
-    s.absence ? `${ABSENCE_LABEL[s.absence as AbsenceKind]} – Vertretung nötig` : '',
-    s.exception
-      ? s.exception.kind === 'vertretung'
-        ? `Vertretung für ${s.exception.original}`
-        : 'umgeplant'
-      : '',
-    s.entry ? 'Zeit erfasst' : '',
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  const dayHref = `/einsatzplanung/${s.plan.id}/tag/${s.date}?zurueck=${encodeURIComponent(back)}`;
+  const href = open ? `/einsatzplanung/${s.plan.id}` : dayHref;
+  const status = open
+    ? 'offen – noch niemand eingeplant'
+    : s.absence
+      ? `${ABSENCE_LABEL[s.absence as AbsenceKind]} – Vertretung nötig`
+      : s.exception
+        ? s.exception.kind === 'vertretung'
+          ? `Vertretung für ${s.exception.original}`
+          : s.exception.kind === 'ausfall'
+            ? 'Ausfall'
+            : 'umgeplant'
+        : s.entry
+          ? 'erledigt (Zeit erfasst)'
+          : 'geplant';
+  const addr = site
+    ? [site.street, [site.postal_code, site.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+    : '';
+  const data = {
+    site: `${s.plan.site_name} (${s.plan.site_no})`,
+    siteHref: `/objekte/${s.plan.site_id}`,
+    customer: site?.customer_name ?? '',
+    addr,
+    maps: addr ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}` : '',
+    emp: open ? '' : `${s.plan.employee_name} (${s.plan.personnel_no})`,
+    empHref: open ? '' : `/personal/${s.plan.employee_id}`,
+    phone: phone ?? '',
+    date: `${WEEKDAYS_SHORT[isoWeekday(s.date)]} ${dateDe(s.date)}`,
+    time: `${s.plan.start_time}–${s.plan.end_time}`,
+    dur: `${hm(s.minutes)} Std.${s.plan.break_minutes ? ` (Pause ${s.plan.break_minutes} Min.)` : ''}`,
+    series:
+      s.plan.recurrence === 'einmalig'
+        ? 'einmaliger Termin'
+        : `${s.plan.recurrence === 'monatlich' ? 'monatlich' : `jede${(s.plan.every ?? 1) > 1 ? `n ${s.plan.every}.` : ''} ${WEEKDAYS_SHORT[s.plan.weekday]}`} seit ${dateDe(s.plan.valid_from)}${s.plan.valid_until ? ` bis ${dateDe(s.plan.valid_until)}` : ''}`,
+    note: s.plan.note ?? '',
+    manager: site?.manager ? `${site.manager}${site.manager_phone ? ` · ${site.manager_phone}` : ''}` : '',
+    status,
+    cls,
+    day: dayHref,
+    serie: `/einsatzplanung/${s.plan.id}?zurueck=${encodeURIComponent(back)}`,
+    open,
+  };
   return (
-    <a class={`pb-ev ${cls}`} href={href} title={title}>
-      <span class="t">{compact ? s.plan.site_name.slice(0, 14) : s.plan.site_name}</span>
+    <a
+      class={`pb-ev ${cls}`}
+      href={href}
+      data-ev={JSON.stringify(data)}
+      title={`${data.site} · ${data.time} · ${status}${s.plan.note ? ` · ${s.plan.note}` : ''}`}
+    >
+      <span class="t">{s.plan.site_name}</span>
       <span class="m">
-        {compact ? s.plan.start_time : `${s.plan.start_time}–${s.plan.end_time} · ${hm(s.minutes)}h`}
-        {!compact && city && <> · {city}</>}
+        {s.plan.start_time}
+        {compact ? '' : `–${s.plan.end_time} · ${hm(s.minutes)}h`}
       </span>
+      {!compact && (site?.city || site?.street) && <span class="m a">{site.street ?? site.city}</span>}
+      {!compact && open && s.plan.note && <span class="m a">{s.plan.note}</span>}
     </a>
   );
 };
+
+const EV_DIALOG_JS = `(function(){
+var d=document.getElementById('ev-dlg');if(!d)return;
+function esc(t){return String(t||'').replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function row(l,v,h){if(!v)return '';return '<div class="r"><span>'+l+'</span><b>'+(h?'<a href="'+esc(h)+'">'+esc(v)+'</a>':esc(v))+'</b></div>'}
+document.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('a.pb-ev[data-ev]');if(!a||e.ctrlKey||e.metaKey||e.shiftKey)return;e.preventDefault();
+var x=JSON.parse(a.getAttribute('data-ev'));
+var h='<div class="hd '+esc(x.cls)+'"><div><div class="small">'+esc(x.date)+' · '+esc(x.time)+'</div><h3>'+esc(x.site)+'</h3><div class="small">'+esc(x.status)+'</div></div><button type="button" class="x" aria-label="schließen">×</button></div><div class="bd">'
++row('Kunde',x.customer)+row('Adresse',x.addr,x.maps)+row('Mitarbeiter',x.emp,x.empHref)+row('Telefon',x.phone,x.phone?'tel:'+x.phone:'')+row('Dauer',x.dur)+row('Termin',x.series)+row('Objektleitung',x.manager)+row('Beschreibung',x.note)
++'</div><div class="ft">'+(x.open?'<a class="btn" href="'+esc(x.serie)+'">Mitarbeiter einplanen</a>':'<a class="btn" href="'+esc(x.day)+'&art=vertretung">Vertretung einplanen</a><a class="btn sec" href="'+esc(x.day)+'">Umplanen / Ausfall</a><a class="btn sec" href="'+esc(x.serie)+'">Serie bearbeiten</a>')+'<a class="btn ghost" href="'+esc(x.siteHref)+'">Objekt</a></div>';
+d.innerHTML=h;d.showModal();});
+d.addEventListener('click',function(e){if(e.target===d||e.target.classList.contains('x'))d.close()});
+// Monat: mit gedrückter Maustaste nach links/rechts ziehen
+document.querySelectorAll('.pb-sec').forEach(function(el){var down=false,sx=0,sl=0,moved=false;
+el.addEventListener('mousedown',function(e){if(e.button!==0||e.target.closest('a,button,input,select'))return;down=true;moved=false;sx=e.pageX;sl=el.scrollLeft;el.classList.add('drag')});
+window.addEventListener('mouseup',function(){down=false;el.classList.remove('drag')});
+el.addEventListener('mousemove',function(e){if(!down)return;var dx=e.pageX-sx;if(Math.abs(dx)>3)moved=true;el.scrollLeft=sl-dx});});
+})();`;
 
 export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
   const { sql } = deps;
@@ -98,13 +159,25 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
     const [allShifts, emps, sites, absences] = await Promise.all([
       plannedShifts(sql, { from: r.from, to: r.to, includeOpen: true }),
       listEmployees(sql, { status: 'aktiv' }),
-      sql<{ id: string; city: string | null }[]>`select id, city from app.sites`,
+      sql<SiteInfo[]>`
+        select s.id, s.street, s.postal_code, s.city, c.name as customer_name, m.name as manager,
+               m.phone as manager_phone
+          from app.sites s join app.customers c on c.id = s.customer_id
+          left join app.manager_contacts m on m.user_id = s.manager_user_id`,
       sql<{ employee_id: string; kind: AbsenceKind; start_date: string; end_date: string }[]>`
         select employee_id, kind, start_date, end_date from app.absences
          where status = 'genehmigt' and start_date <= ${r.to} and end_date >= ${r.from}`,
     ]);
     const shifts = scope ? allShifts.filter((s) => scope.includes(s.plan.site_id)) : allShifts;
-    const cityOf = new Map(sites.map((s) => [s.id, s.city]));
+    const siteOf = new Map(sites.map((s) => [s.id, s]));
+    const phoneOf = new Map(
+      emps.map((e) => [
+        e.id,
+        (e as { mobile?: string | null; phone?: string | null }).mobile ??
+          (e as { phone?: string | null }).phone ??
+          null,
+      ]),
+    );
     const days: string[] = [];
     for (let d = r.from; d <= r.to; d = addDays(d, 1)) days.push(d);
     const open = shifts.filter((s) => !s.plan.employee_id);
@@ -154,7 +227,8 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
         {holidayName(d) && <span class="hn">{holidayName(d)}</span>}
       </div>
     );
-    const cols = `grid-template-columns:${compact ? '150px' : '190px'} repeat(${days.length},minmax(${compact ? 38 : 120}px,1fr))`;
+    // Woche/5 Tage passen ohne Scrollen auf den Bildschirm, Monat ist breiter (mit der Maus ziehen)
+    const cols = `grid-template-columns:${compact ? '170px' : '170px'} repeat(${days.length},minmax(${compact ? 92 : view === 'tag' ? 260 : 0}px,1fr))`;
     return page(
       c,
       'Planung',
@@ -257,7 +331,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
                 {open
                   .filter((s) => s.date === d)
                   .map((s) => (
-                    <Block s={s} city={cityOf.get(s.plan.site_id) ?? null} compact={compact} back={backUrl} />
+                    <Block s={s} site={siteOf.get(s.plan.site_id)} compact={compact} back={backUrl} />
                   ))}
               </div>
             ))}
@@ -306,9 +380,10 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
                                 .map((s) => (
                                   <Block
                                     s={s}
-                                    city={cityOf.get(s.plan.site_id) ?? null}
+                                    site={siteOf.get(s.plan.site_id)}
                                     compact={compact}
                                     back={backUrl}
+                                    phone={phoneOf.get(e.id)}
                                   />
                                 ))}
                             </div>
@@ -328,10 +403,13 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
         </section>
         <p class="small mut">
           Grau = noch niemand eingeplant · Blau = geplant · Grün = Zeit erfasst · Lila = Vertretung/umgeplant
-          · Rot = Mitarbeiter abwesend. Feiertage (Bayern) farbig. Klick auf einen Termin: umplanen,
-          Vertretung oder Ausfall für diesen Tag; offene Termine öffnen die Serie zum Besetzen.
+          · Rot = Mitarbeiter abwesend. Feiertage (Bayern) farbig. Klick auf einen Termin zeigt alle Angaben
+          mit „Vertretung einplanen“, „Umplanen / Ausfall“ und „Serie bearbeiten“. Monatsansicht: mit
+          gedrückter Maustaste nach links/rechts ziehen.
         </p>
+        <dialog id="ev-dlg" class="ev-dlg" />
         <script dangerouslySetInnerHTML={{ __html: FILTER_JS }} />
+        <script dangerouslySetInnerHTML={{ __html: EV_DIALOG_JS }} />
       </div>,
     );
   });

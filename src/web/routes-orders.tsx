@@ -75,14 +75,20 @@ export const SIGN_JS = `
 // Positionen im Arbeitsschein: Zeile hinzufügen / entfernen
 const WR_LINES_JS = `
 (function(){
-  var tb=document.querySelector('#wr-lines tbody'), tpl=document.getElementById('wr-line-tpl');
-  function wire(tr){tr.querySelector('.del').addEventListener('click',function(){tr.remove()});}
-  Array.prototype.forEach.call(tb.querySelectorAll('tr'),wire);
-  document.getElementById('wr-add').addEventListener('click',function(){var tr=tpl.content.firstElementChild.cloneNode(true);tb.appendChild(tr);wire(tr);tr.querySelector('input').focus();});
+  function setup(tbId,tplId,addId){var tb=document.querySelector('#'+tbId+' tbody'),tpl=document.getElementById(tplId);if(!tb||!tpl)return null;
+    function wire(tr){var d=tr.querySelector('.del');if(d)d.addEventListener('click',function(){tr.remove()});var sv=tr.querySelector('[name=line_svc]');if(sv)sv.addEventListener('change',function(){var o=sv.options[sv.selectedIndex];var di=tr.querySelector('[name=line_desc]');if(sv.value&&di&&!di.value.trim())di.value=o.dataset.desc||'';var u=tr.querySelector('[name=line_unit]');if(sv.value&&u&&o.dataset.unit)u.value=o.dataset.unit;})}
+    Array.prototype.forEach.call(tb.querySelectorAll('tr'),wire);
+    document.getElementById(addId).addEventListener('click',function(){var tr=tpl.content.firstElementChild.cloneNode(true);tb.appendChild(tr);wire(tr);var f=tr.querySelector('input,select');if(f)f.focus();});
+    return tb;}
+  setup('wr-lines','wr-line-tpl','wr-add');
+  var rt=setup('wr-regie','wr-regie-tpl','wr-regie-add');
+  // Regie: Stunden aus Beginn/Ende vorschlagen (je Person)
   var s=document.getElementById('start'), e=document.getElementById('end');
-  function hours(){var n=document.querySelectorAll('input[name=employee]:checked').length||1; if(!s.value||!e.value)return; var a=s.value.split(':'),b=e.value.split(':'); var h=((+b[0]*60+ +b[1])-(+a[0]*60+ +a[1]))/60*n; if(h<=0)return; var q=tb.querySelector('tr [name=line_unit] option[value=HUR]:checked'); if(q){var inp=q.closest('tr').querySelector('[name=line_qty]'); if(!inp.dataset.touched) inp.value=(Math.round(h*100)/100).toString().replace('.',',');}}
-  [s,e].forEach(function(x){x&&x.addEventListener('change',hours)}); document.querySelectorAll('input[name=employee]').forEach(function(x){x.addEventListener('change',hours)});
-  tb.addEventListener('input',function(ev){if(ev.target.name==='line_qty')ev.target.dataset.touched='1'});
+  function hours(){if(!rt||!s.value||!e.value)return;var a=s.value.split(':'),b=e.value.split(':');var h=((+b[0]*60+ +b[1])-(+a[0]*60+ +a[1]))/60;if(h<=0)return;rt.querySelectorAll('[name=line_qty]').forEach(function(inp){if(!inp.dataset.touched&&!inp.value)inp.value=(Math.round(h*100)/100).toString().replace('.',',')})}
+  [s,e].forEach(function(x){x&&x.addEventListener('change',hours)});
+  document.addEventListener('input',function(ev){if(ev.target.name==='line_qty')ev.target.dataset.touched='1'});
+  // Mitarbeiter angehakt → Regie-Zeile mit Namen anlegen
+  document.querySelectorAll('input[name=employee]').forEach(function(x){x.addEventListener('change',function(){if(!x.checked||!rt)return;var n=x.dataset.name;var have=Array.prototype.some.call(rt.querySelectorAll('[name=line_person]'),function(p){return p.value===n});if(have)return;var empty=Array.prototype.find.call(rt.querySelectorAll('[name=line_person]'),function(p){return !p.value});if(!empty){document.getElementById('wr-regie-add').click();empty=rt.querySelector('tr:last-child [name=line_person]')}empty.value=n;hours()})});
 })();`;
 
 export const WorkReportTable: FC<{ rows: WorkReportRow[]; select?: boolean }> = ({ rows, select }) => (
@@ -614,8 +620,14 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
           </PageHead>
           <div class="actions" style="margin-top:-8px">
             <a class="btn" href={`/arbeitsscheine/${id}/arbeitsschein.pdf`} target="_blank">
-              <Icon name="pdf" /> PDF mit Unterschrift
+              <Icon name="pdf" /> PDF
             </a>
+            {!w.invoice_id && !w.order_id && canAccess(c.get('user').role, '/rechnungen') && (
+              <form method="post" action={`/objekte/${w.site_id}/regie-abrechnen`}>
+                <input type="hidden" name="report" value={id} />
+                <button class="btn sec">Rechnung erstellen</button>
+              </form>
+            )}
             {w.invoice_id && canAccess(c.get('user').role, '/rechnungen') && (
               <a class="btn sec" href={`/rechnungen/${w.invoice_id}`}>
                 Zur Rechnung
@@ -641,6 +653,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                     <div>
                       {milliToInput(l.quantity_milli)} {UNIT_LABELS[l.unit_code] ?? l.unit_code}{' '}
                       {l.description}
+                      {l.person && ` – ${l.person}`}
                     </div>
                   ))}
                 </dd>
@@ -683,29 +696,75 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
       );
     }
 
-    const lines = data?.lines.length
-      ? data.lines.map((l) => ({
-          desc: l.description,
-          qty: milliToInput(l.quantity_milli),
-          unit: l.unit_code,
-        }))
-      : [{ desc: 'Regiestunden', qty: '', unit: 'HUR' }];
-    const Row: FC<{ l?: { desc: string; qty: string; unit: string } }> = ({ l }) => (
+    const services = siteId
+      ? await sql<{ id: string; description: string; unit_code: string; unit_price_cents: bigint }[]>`
+          select id, description, unit_code, unit_price_cents from app.site_services
+           where site_id = ${siteId} and active order by sort_order, description`
+      : [];
+    const showPrices = canAccess(c.get('user').role, '/rechnungen');
+    type L = { desc: string; qty: string; unit: string; svc: string; person: string };
+    const all: L[] = (data?.lines ?? []).map((l) => ({
+      desc: l.description,
+      qty: milliToInput(l.quantity_milli),
+      unit: l.unit_code,
+      svc: l.service_id ?? '',
+      person: l.person ?? '',
+    }));
+    const leistungen = all.filter((l) => !l.person);
+    const regie = all.filter((l) => l.person);
+    if (!data) leistungen.push({ desc: '', qty: '1', unit: 'LS', svc: '', person: '' });
+    if (!regie.length) regie.push({ desc: 'Regiestunden', qty: '', unit: 'HUR', svc: '', person: '' });
+    const Row: FC<{ l?: L }> = ({ l }) => (
       <tr>
         <td>
-          <input name="line_desc" value={l?.desc ?? ''} placeholder="Leistung" />
+          <select name="line_svc" aria-label="Leistung aus dem Katalog" data-nosearch>
+            <option value="">– freie Leistung –</option>
+            {services.map((x) => (
+              <option
+                value={x.id}
+                selected={x.id === l?.svc}
+                data-desc={x.description}
+                data-unit={x.unit_code}
+              >
+                {x.description}
+                {showPrices ? ` – ${euro(x.unit_price_cents)}` : ''}
+              </option>
+            ))}
+          </select>
+          <input name="line_desc" value={l?.desc ?? ''} placeholder="Leistung / Beschreibung" />
+          <input type="hidden" name="line_person" value="" />
+          <input type="hidden" name="line_kind" value="l" />
         </td>
         <td style="width:110px">
-          <input name="line_qty" value={l?.qty ?? ''} class="right" inputmode="decimal" />
+          <input name="line_qty" value={l?.qty ?? '1'} class="right" inputmode="decimal" />
         </td>
         <td style="width:120px">
           <select name="line_unit">
             {WR_UNITS.map(([k, v]) => (
-              <option value={k} selected={k === (l?.unit ?? 'HUR')}>
+              <option value={k} selected={k === (l?.unit ?? 'LS')}>
                 {v}
               </option>
             ))}
           </select>
+        </td>
+        <td style="width:40px">
+          <button type="button" class="btn sm sec del" title="entfernen">
+            ×
+          </button>
+        </td>
+      </tr>
+    );
+    const RegieRow: FC<{ l?: L }> = ({ l }) => (
+      <tr>
+        <td>
+          <input type="hidden" name="line_svc" value="" />
+          <input type="hidden" name="line_desc" value={l?.desc || 'Regiestunden'} />
+          <input type="hidden" name="line_unit" value="HUR" />
+          <input type="hidden" name="line_kind" value="r" />
+          <input name="line_person" value={l?.person ?? ''} placeholder="Name" list="wr-names" />
+        </td>
+        <td style="width:110px">
+          <input name="line_qty" value={l?.qty ?? ''} class="right" inputmode="decimal" placeholder="Std." />
         </td>
         <td style="width:40px">
           <button type="button" class="btn sm sec del" title="entfernen">
@@ -790,6 +849,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                           id={`e-${e.id}`}
                           name="employee"
                           value={e.id}
+                          data-name={e.name.split(', ').reverse().join(' ')}
                           checked={w?.employee_ids.includes(e.id) ?? false}
                         />
                         <label for={`e-${e.id}`}>{e.name}</label>
@@ -813,14 +873,14 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                 <table id="wr-lines" class="lines">
                   <thead>
                     <tr>
-                      <th>Leistung</th>
+                      <th>Leistung (aus dem Objekt oder frei)</th>
                       <th class="r">Menge</th>
                       <th>Einheit</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {lines.map((l) => (
+                    {leistungen.map((l) => (
                       <Row l={l} />
                     ))}
                   </tbody>
@@ -831,9 +891,42 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
               </template>
               <div class="actions">
                 <button type="button" class="btn sm sec" id="wr-add">
-                  + Position
+                  + Leistung
                 </button>
-                <span class="small mut">Stunden werden aus Beginn/Ende × Mitarbeitern vorgeschlagen.</span>
+              </div>
+              <h3 style="margin-top:14px">Regiestunden je Person</h3>
+              <datalist id="wr-names">
+                {emps.map((e) => (
+                  <option value={e.name.split(', ').reverse().join(' ')} />
+                ))}
+              </datalist>
+              <div class="tbl">
+                <table id="wr-regie" class="lines">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th class="r">Stunden</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {regie.map((l) => (
+                      <RegieRow l={l} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <template id="wr-regie-tpl">
+                <RegieRow />
+              </template>
+              <div class="actions">
+                <button type="button" class="btn sm sec" id="wr-regie-add">
+                  + Person
+                </button>
+                <span class="small mut">
+                  Angehakte Mitarbeiter werden als Zeile übernommen, Stunden aus Beginn/Ende vorgeschlagen.
+                  Abgerechnet mit dem Regiestundensatz des Objekts.
+                </span>
               </div>
               <div class="grid">
                 <div>
@@ -849,8 +942,13 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                 <button class="btn sec" name="next" value="stay">
                   Speichern
                 </button>
-                <button class="btn" name="next" value="sign">
-                  Speichern und unterschreiben lassen
+                <button
+                  class="btn"
+                  name="next"
+                  value="pdf"
+                  onclick="return confirm('Arbeitsschein abschließen und PDF erstellen? Danach ist er unveränderbar.')"
+                >
+                  Speichern und PDF erstellen
                 </button>
               </div>
               <script dangerouslySetInnerHTML={{ __html: WR_LINES_JS }} />
@@ -860,23 +958,18 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                 <>
                   <div class="card">
                     <h3>Abschließen</h3>
+                    <p class="small mut" style="margin-top:0">
+                      „Speichern und PDF erstellen“ schließt den Arbeitsschein ab (ohne Unterschrift).
+                      Unterschrift des Kunden ist optional.
+                    </p>
                     <div class="actions" style="margin-top:0">
-                      <a class="btn" href={`/arbeitsscheine/${id}/unterschrift`}>
-                        Kunde unterschreibt jetzt
-                      </a>
                       <a class="btn sec" href={`/arbeitsscheine/${id}/arbeitsschein.pdf`} target="_blank">
                         PDF-Vorschau
                       </a>
+                      <a class="btn ghost" href={`/arbeitsscheine/${id}/unterschrift`}>
+                        Kunde unterschreibt (optional)
+                      </a>
                     </div>
-                    <form method="post" action={`/arbeitsscheine/${id}/ohne-unterschrift`} class="actions">
-                      <input
-                        name="reason"
-                        placeholder="Grund, z. B. kein Ansprechpartner vor Ort"
-                        required
-                        style="flex:1;min-width:200px"
-                      />
-                      <button class="btn ghost">Ohne Unterschrift abschließen</button>
-                    </form>
                   </div>
                   <div class="card">
                     <h3>Fotos</h3>
@@ -907,21 +1000,30 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
     const desc = arr(b, 'line_desc');
     const qty = arr(b, 'line_qty');
     const unit = arr(b, 'line_unit');
+    const svc = arr(b, 'line_svc');
+    const person = arr(b, 'line_person');
+    const kind = arr(b, 'line_kind');
     const lines = desc
       .map((d, i) => ({ d: d.trim(), i }))
-      .filter((x) => x.d && (qty[x.i] ?? '').trim())
+      // leere Zeilen weglassen; Regie-Zeilen nur mit Namen
+      .filter(
+        (x) =>
+          (x.d || svc[x.i]) && (qty[x.i] ?? '').trim() && !(kind[x.i] === 'r' && !(person[x.i] ?? '').trim()),
+      )
       .map(({ d, i }) => {
         let quantity;
         try {
           quantity = parseQuantity(qty[i] ?? '');
         } catch {
-          throw new BusinessError(`Menge bei „${d}“ ungültig`);
+          throw new BusinessError(`Menge bei „${d || 'Leistung'}“ ungültig`);
         }
-        if (quantity <= 0n) throw new BusinessError(`Menge bei „${d}“ muss größer 0 sein`);
+        if (quantity <= 0n) throw new BusinessError(`Menge bei „${d || 'Leistung'}“ muss größer 0 sein`);
         return {
           description: d,
           quantity,
           unitCode: WR_UNITS.some(([k]) => k === unit[i]) ? unit[i]! : 'HUR',
+          serviceId: /^[0-9a-f-]{36}$/.test(svc[i] ?? '') ? svc[i]! : null,
+          person: (person[i] ?? '').trim() || null,
         };
       });
     await saveWorkReport(
@@ -943,6 +1045,10 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
       c.get('actor'),
     );
     if (str(b, 'next') === 'sign') return c.redirect(`/arbeitsscheine/${id}/unterschrift`, 303);
+    if (str(b, 'next') === 'pdf') {
+      await closeWithoutSignature(deps, id, '', c.get('actor'));
+      return back(c, `/arbeitsscheine/${id}`, { ok: 'Arbeitsschein abgeschlossen, PDF erstellt.' });
+    }
     return back(c, `/arbeitsscheine/${id}`, { ok: 'Arbeitsschein gespeichert.' });
   });
 

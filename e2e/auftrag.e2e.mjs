@@ -68,18 +68,22 @@ check('Auftragsbestätigung PDF', ab.ok() && (await ab.body()).subarray(0, 5).to
 console.log('2. Arbeitsschein vor Ort');
 await p.click(`a.btn[href*="?auftrag=${orderId}"]`);
 await p.waitForLoadState();
+await p.fill('#wr-regie [name=line_person]', 'Max Muster');
 await p.fill('#start', '07:00');
 await p.fill('#end', '10:30');
 await p.locator('#start').dispatchEvent('change');
 await p.locator('#end').dispatchEvent('change');
 check(
-  'Stunden aus Beginn/Ende vorbelegt',
-  (await p.locator('[name=line_qty]').first().inputValue()) === '3,5',
-  await p.locator('[name=line_qty]').first().inputValue(),
+  'Regiestunden je Person aus Beginn/Ende vorbelegt',
+  (await p.locator('#wr-regie [name=line_qty]').first().inputValue()) === '3,5',
+  await p.locator('#wr-regie [name=line_qty]').first().inputValue(),
 );
+check('Leistung aus dem Objekt wählbar', (await p.locator('#wr-lines [name=line_svc] option').count()) >= 1);
 await p.fill('#description', 'Turnhalle grundgereinigt, Boden neu beschichtet');
 await p.fill('#remarks', 'Keine Mängel');
-await p.click('button:has-text("Speichern und unterschreiben lassen")');
+await p.click('button:has-text("Speichern")>>nth=0');
+await p.waitForLoadState();
+await p.click('a:has-text("Kunde unterschreibt (optional)")');
 await p.waitForLoadState();
 check('Unterschriftsseite geöffnet', p.url().endsWith('/unterschrift'), p.url());
 const wrId = p.url().match(/arbeitsscheine\/([0-9a-f-]{36})/)?.[1];
@@ -128,17 +132,17 @@ check('Auftrag abgerechnet', (await p.locator('.badge').first().innerText()).inc
 console.log('4. Regiearbeiten ohne Auftrag');
 const r2 = randomUUID();
 await p.goto(B + `/arbeitsscheine/${r2}?objekt=${SITE}`);
-await p.locator('[name=line_qty]').first().fill('2,5');
+await p.fill('#wr-regie [name=line_person]', 'Erika Beispiel');
+await p.fill('#wr-regie [name=line_qty]', '2,5');
 await p.fill('#description', 'Wasserschaden Keller aufgenommen');
-await p.click('button:has-text("Speichern")>>nth=0');
-await p.waitForLoadState();
-await p.fill('[name=reason]', 'Hausmeister nicht erreichbar');
-await p.click('button:has-text("Ohne Unterschrift abschließen")');
+await p.click('button:has-text("Speichern und PDF erstellen")');
 await p.waitForLoadState();
 check(
-  'ohne Unterschrift abgeschlossen',
-  (await p.locator('body').innerText()).includes('Hausmeister nicht erreichbar'),
+  'abgeschlossen mit PDF (ohne Unterschrift)',
+  (await flash(p)).includes('PDF erstellt') && (await p.locator('body').innerText()).includes('Erika Beispiel'),
+  await flash(p),
 );
+check('Knopf „Rechnung erstellen“ am Schein', (await p.locator('button:has-text("Rechnung erstellen")').count()) === 1);
 await p.goto(B + `/objekte/${SITE}/arbeitsscheine`);
 const box = p.locator(`input[name=report][value="${r2}"]`);
 check('in Regie-Abrechnung auswählbar', (await box.count()) === 1);
@@ -150,6 +154,7 @@ await p.click('button:has-text("Regiearbeiten abrechnen")');
 await p.waitForLoadState();
 check('Regierechnung als Entwurf', /\/rechnungen\/[0-9a-f-]{36}/.test(p.url()), p.url());
 check('Positionstext mit Arbeitsschein', (await p.locator('body').innerText()).includes('Arbeitsschein AS-'));
+check('Regie mit Namen auf der Rechnung', (await p.locator('body').innerText()).includes('Erika Beispiel'));
 
 console.log('5. Zurück/Vor');
 await p.goBack();

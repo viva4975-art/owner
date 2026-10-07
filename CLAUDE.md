@@ -1399,3 +1399,5 @@ Testadresse.
     Uhrzeit je Einsatz, Tag antippen = Tagesansicht.
   - Objektliste: „Kunde“ kleiner mit Beschriftung, „Objektleitung“ beschriftet. Kundenliste: graues Schild „n Objekte“
     entfernt (doppelt zum Knopf „Objekte (n)“).
+- 2026-10-07: Objektliste zählte alle zugeordneten Mitarbeitenden, die Objektseite nur „Reinigungskräfte“ (ohne Kennzeichen
+  „Objektleitung“) → 5 vs. 4. Jetzt beide gleich: „n Reinigungskräfte“ ohne Mitarbeitende mit Tag „Objektleitung“.

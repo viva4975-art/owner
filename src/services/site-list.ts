@@ -58,7 +58,7 @@ export async function filteredSites(sql: Sql, scope: string[] | null, f: SiteFil
            c.name as customer_name, c.customer_no, s.manager_user_id, p.name as manager_name,
            p.phone as manager_phone, p.email as manager_email,
            (select count(*)::int from app.employee_sites es join app.employees e on e.id = es.employee_id
-             where es.site_id = s.id and e.status = 'aktiv') as employees
+             where es.site_id = s.id and e.status = 'aktiv' and not ('Objektleitung' = any(e.tags))) as employees
       from app.sites s
       join app.customers c on c.id = s.customer_id
       left join app.manager_contacts p on p.user_id = s.manager_user_id

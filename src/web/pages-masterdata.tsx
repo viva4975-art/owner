@@ -765,7 +765,9 @@ export const SiteList: FC<{
                 ) : (
                   <span class="small faint">keine Objektleitung</span>
                 )}
-                <div class="small faint">{s.employees} Mitarbeitende</div>
+                <div class="small faint">
+                  {s.employees} {s.employees === 1 ? 'Reinigungskraft' : 'Reinigungskräfte'}
+                </div>
               </div>
             </div>
           ))}

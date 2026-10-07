@@ -359,6 +359,19 @@ export const CLIENT_JS = String.raw`
   }
   Array.prototype.forEach.call(document.querySelectorAll('table'), sortable);
 
+  // ---- Listen filtern: <input data-filter-list="CSS-Selektor"> blendet nicht passende Einträge aus ----
+  document.querySelectorAll('[data-filter-list]').forEach(function (inp) {
+    if (inp.dataset.filterWired) return;
+    inp.dataset.filterWired = '1';
+    var sel = inp.getAttribute('data-filter-list');
+    inp.addEventListener('input', function () {
+      var t = inp.value.toLowerCase().trim();
+      document.querySelectorAll(sel).forEach(function (l) {
+        l.hidden = !!t && l.textContent.toLowerCase().indexOf(t) < 0;
+      });
+    });
+  });
+
   // ---- Dropdown-Menüs ----
   var menus = document.querySelectorAll('details.dd');
   Array.prototype.forEach.call(menus, function (d) {

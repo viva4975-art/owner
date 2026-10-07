@@ -1270,3 +1270,17 @@ Testadresse.
     Mitarbeiter werden übernommen, Stunden aus Beginn/Ende vorgeschlagen). **„Speichern und PDF erstellen“** schließt
     ohne Unterschrift ab (Unterschrift optional), danach **„Rechnung erstellen“** direkt am Schein: Leistungen mit
     Katalogpreis, Regie mit Regiestundensatz des Objekts und Namen, Leistungsdatum je Position, Schein-PDF als Anlage.
+- 2026-10-07: Runde 23, Teil G2 – Unterweisungen und Objektordner:
+  - **Unterweisungen & Unterschriften:** statt eigenem PDF auch **eigene Word-Vorlage** wählen (Einstellungen →
+    Word-Vorlagen, Mitarbeiter-Vorlagen; „Unterweisung/Belehrung“ zuerst). Der Text wird mit den Firmendaten
+    ausgefüllt und als PDF auf dem Briefpapier verteilt (Formatierung vereinfacht – aufwendige Vorlagen besser als PDF).
+    **Mitarbeitersuche** über der Empfängerliste (Name oder Personalnummer). Listenfilter `data-filter-list` jetzt global.
+  - **Objektordner je Objekt** (Objekt → Reiter „Objektordner“, auch Objektleitung): Ahmeds Paket
+    „Objektordner-Komplettpaket“ einmal unter **Einstellungen → Objektordner-Vorlagen** hochladen (write-once im
+    Archiv). „Objektordner herunterladen (ZIP)“ füllt in allen Word-Dateien die Lücken (Inhaltsverzeichnis-Kopf,
+    Notruf, Kontaktkarten, Notfall-/Meldeplan …: Objekt, Kunde, Objektleitung + Tel, Bereichsleitung + Tel,
+    Ansprechpartner Kunde, Ersthelfer, Angelegt am) und legt PDFs aus der App dazu: Objektstammblatt,
+    Leistungsverzeichnis (ohne Preise), Reinigungsplan aus dem Raumbuch, Revierplan aus den Einsätzen.
+    **Fehlende Angaben fragt die Seite ab** (Bereichsleitung, Ersthelfer, Ansprechpartner, Putzraum, Zugang,
+    Reinigungsmittel, Besonderheiten → `sites.folder_info`) bzw. verlinkt Objektleitung/Telefon, Raumbuch, Einsätze,
+    Leistungen. Probe mit dem echten Paket: 32 Dateien, Lücken gefüllt. **Auf dem Server: Paket einmal hochladen.**

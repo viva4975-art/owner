@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { listEmployees } from '../services/employees.js';
+import { wordTemplatePdf } from '../services/word-templates.js';
 import { BusinessError } from '../services/errors.js';
 import {
   FORBIDDEN_HINT,
@@ -39,7 +40,13 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
   const { sql } = deps;
 
   app.get('/personal/dokumente', async (c) => {
-    const [docs, emps] = await Promise.all([listSignDocuments(sql), listEmployees(sql, { status: 'aktiv' })]);
+    const [docs, emps, tpls] = await Promise.all([
+      listSignDocuments(sql),
+      listEmployees(sql, { status: 'aktiv' }),
+      sql<{ id: string; name: string; code: string | null; category: string }[]>`
+        select id, name, code, category from app.word_templates where active and audience = 'mitarbeiter'
+         order by (category ilike '%unterweis%' or name ilike '%unterweis%' or name ilike '%belehr%') desc, name`,
+    ]);
     return page(
       c,
       'Dokumente unterschreiben',
@@ -102,6 +109,28 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
         >
           <h3 style="margin-top:0">Unterweisung / Dokument freigeben</h3>
           <div class="grid">
+            <div style="grid-column:1/-1">
+              <label for="word_template">Eigene Vorlage (Einstellungen → Word-Vorlagen)</label>
+              <select
+                id="word_template"
+                name="word_template"
+                onchange="var t=document.getElementById('title');if(this.value&&!t.value)t.value=this.options[this.selectedIndex].dataset.name;document.getElementById('file').required=!this.value"
+              >
+                <option value="">– keine, PDF hochladen –</option>
+                {tpls.map((t) => (
+                  <option value={t.id} data-name={t.name}>
+                    {t.name}
+                    {t.code ? ` (${t.code})` : ''} · {t.category}
+                  </option>
+                ))}
+              </select>
+              {!tpls.length && (
+                <div class="small mut">
+                  Noch keine Mitarbeiter-Vorlagen hochgeladen – unter Einstellungen → Word-Vorlagen die ZIP
+                  hochladen.
+                </div>
+              )}
+            </div>
             <div>
               <label for="title">Titel</label>
               <input id="title" name="title" required placeholder="z. B. Unterweisung Arbeitsschutz 2026" />
@@ -119,7 +148,7 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
               <input id="due_date" name="due_date" type="date" />
             </div>
             <div>
-              <label for="file">PDF (max. 20 MB)</label>
+              <label for="file">oder eigenes PDF (max. 20 MB)</label>
               <input id="file" name="file" type="file" accept="application/pdf,.pdf" required />
             </div>
           </div>
@@ -138,7 +167,13 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
             />
             <label for="all">alle aktiven Mitarbeitenden ({emps.length})</label>
           </div>
-          <div class="grid" style="gap:4px 16px;max-height:260px;overflow:auto">
+          <input
+            type="search"
+            placeholder="Mitarbeiter suchen (Name oder Personalnummer)"
+            data-filter-list=".sign-emps label"
+            style="max-width:360px;margin-bottom:6px"
+          />
+          <div class="grid sign-emps" style="gap:4px 16px;max-height:300px;overflow:auto">
             {emps.map((e) => (
               <label class="chk" style="margin:0">
                 <input type="checkbox" name="employee" value={e.id} />
@@ -163,7 +198,21 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
     const id = c.req.param('id');
     const b = await c.req.parseBody({ all: true });
     const file = Array.isArray(b.file) ? b.file[0] : b.file;
-    if (!(file instanceof File) || !file.size) throw new BusinessError('Bitte PDF auswählen');
+    const tplId = str(b, 'word_template');
+    let pdf: Uint8Array;
+    let fileName: string;
+    if (file instanceof File && file.size) {
+      pdf = new Uint8Array(await file.arrayBuffer());
+      fileName = file.name || 'dokument.pdf';
+    } else if (tplId && /^[0-9a-f-]{36}$/.test(tplId)) {
+      const t = await wordTemplatePdf(
+        sql,
+        { dir: deps.env.FILES_DIR, maxBytes: deps.env.UPLOAD_MAX_BYTES },
+        tplId,
+      );
+      pdf = t.pdf;
+      fileName = `${t.title.replace(/[^\p{L}\p{N}]+/gu, '-')}.pdf`;
+    } else throw new BusinessError('Bitte eigene Vorlage wählen oder PDF hochladen');
     await createSignDocument(
       deps,
       id,
@@ -172,8 +221,8 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
         category: (str(b, 'category') ?? '') as SignCategory,
         description: str(b, 'description'),
         dueDate: str(b, 'due_date'),
-        fileName: file.name || 'dokument.pdf',
-        pdf: new Uint8Array(await file.arrayBuffer()),
+        fileName,
+        pdf,
         employeeIds: arr(b, 'employee').filter((x) => /^[0-9a-f-]{36}$/.test(x)),
       },
       c.get('actor'),

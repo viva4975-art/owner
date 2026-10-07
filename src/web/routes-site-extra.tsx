@@ -5,7 +5,15 @@ import { todayBerlin } from '../domain/invoice/calc.js';
 import { listKeys } from '../services/inventory.js';
 import { listOffers } from '../services/offers.js';
 import { listFiles } from '../services/uploads.js';
-import { type Ctx, UUID } from './app.js';
+import { type Ctx, UUID, assertSite } from './app.js';
+import {
+  FOLDER_QUESTIONS,
+  type FolderInfo,
+  buildFolderZip,
+  folderFacts,
+  packageInfo,
+  saveFolderInfo,
+} from '../services/site-folder.js';
 import { FileArea } from './files.js';
 import { Icon } from './icons.js';
 import { dateDe } from './layout.js';
@@ -29,8 +37,120 @@ export const SITE_DOC_CATEGORIES: { name: string; required: boolean; hint: strin
 ];
 
 /** Objekt-Reiter Angebote, Dokumente und Schlüssel. */
-export function registerSiteExtraRoutes({ app, deps, shells }: Ctx) {
+export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
   const { sql, env } = deps;
+
+  // ------------------------------------------------------------------ Objektordner
+  app.get(`/objekte/:id{${UUID}}/objektordner`, (c) =>
+    shells.site!(c, 'objektordner', async (s) => {
+      const f = await folderFacts(sql, s.id);
+      const pkg = await packageInfo(sql);
+      const asks = f.missing.filter((m) => m.key);
+      const links = f.missing.filter((m) => !m.key);
+      return (
+        <>
+          <div class="card">
+            <div class="actions" style="margin-top:0;justify-content:space-between">
+              <div>
+                <h3 style="margin:0">Objektordner für {s.name}</h3>
+                <div class="small mut">
+                  Alle Vorlagen aus dem Objektordner-Paket, mit den Objektdaten ausgefüllt, dazu
+                  Objektstammblatt, Leistungsverzeichnis (ohne Preise), Reinigungsplan aus dem Raumbuch und
+                  Revierplan aus den Einsätzen.
+                </div>
+              </div>
+              <a class="btn" href={`/objekte/${s.id}/objektordner.zip`}>
+                <Icon name="download" /> Objektordner herunterladen (ZIP)
+              </a>
+            </div>
+            {!pkg && (
+              <div class="flash warn" style="margin-bottom:0">
+                Das Vorlagenpaket (ZIP „Objektordner-Komplettpaket“) ist noch nicht hochgeladen – unter{' '}
+                <a href="/einstellungen/objektordner">Einstellungen → Objektordner-Vorlagen</a>. Bis dahin
+                enthält der Ordner nur die PDFs aus der App.
+              </div>
+            )}
+          </div>
+          {f.missing.length > 0 ? (
+            <div class="flash warn">
+              <b>Es fehlen noch {f.missing.length} Angaben</b> – sonst bleiben im Ordner Lücken (Linie zum
+              Ausfüllen von Hand).
+              {links.length > 0 && (
+                <ul style="margin:6px 0 0 18px">
+                  {links.map((m) => (
+                    <li>{m.href ? <a href={m.href}>{m.label}</a> : m.label}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : (
+            <div class="flash ok">Alle Angaben für den Objektordner sind vorhanden.</div>
+          )}
+          <form method="post" action={`/objekte/${s.id}/objektordner`} class="card">
+            <h3 style="margin-top:0">Angaben für den Objektordner</h3>
+            {asks.length > 0 && (
+              <p class="small" style="margin-top:0;color:var(--err)">
+                Bitte ausfüllen: {asks.map((m) => m.label).join(', ')}
+              </p>
+            )}
+            <div class="grid">
+              {FOLDER_QUESTIONS.map((q) => (
+                <div>
+                  <label for={`fi-${q.key}`}>
+                    {q.label}
+                    {q.required && !f.info[q.key] && asks.some((m) => m.key === q.key) ? ' *' : ''}
+                  </label>
+                  <input
+                    id={`fi-${q.key}`}
+                    name={q.key}
+                    value={f.info[q.key] ?? ''}
+                    placeholder={
+                      q.key === 'ansprechpartner' && f.contact
+                        ? `aus Kontakten: ${f.contact.name}`
+                        : q.key === 'ansprechpartner_tel' && f.contact?.phone
+                          ? `aus Kontakten: ${f.contact.phone}`
+                          : q.hint
+                    }
+                    style={asks.some((m) => m.key === q.key) ? 'border-color:var(--err)' : ''}
+                  />
+                </div>
+              ))}
+            </div>
+            <div class="formfoot">
+              <button class="btn">Speichern</button>
+            </div>
+          </form>
+          <div class="card small">
+            <b>Bereits aus der App übernommen:</b> Objekt, Adresse, Kunde, Objektleitung
+            {f.manager
+              ? ` (${f.manager.name}${f.manager.phone ? `, ${f.manager.phone}` : ''})`
+              : ' – fehlt'}, {f.rooms} Räume, {f.services} Leistungen, {f.plans} Einsätze, {f.keys} Schlüssel.
+          </div>
+        </>
+      );
+    }),
+  );
+
+  app.post(`/objekte/:id{${UUID}}/objektordner`, async (c) => {
+    const id = c.req.param('id');
+    assertSite(c, id);
+    const b = await c.req.parseBody();
+    const info: FolderInfo = {};
+    for (const q of FOLDER_QUESTIONS) if (typeof b[q.key] === 'string') info[q.key] = b[q.key] as string;
+    await saveFolderInfo(sql, id, info, c.get('actor'));
+    return back(c, `/objekte/${id}/objektordner`, { ok: 'Angaben gespeichert.' });
+  });
+
+  app.get(`/objekte/:id{${UUID}}/objektordner.zip`, async (c) => {
+    const id = c.req.param('id');
+    assertSite(c, id);
+    const r = await buildFolderZip(deps, id);
+    return c.body(r.zip as Uint8Array<ArrayBuffer>, 200, {
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(r.name)}`,
+      'Cache-Control': 'private, no-store',
+    });
+  });
 
   // ------------------------------------------------------------------ Angebote
   app.get(`/objekte/:id{${UUID}}/angebote`, (c) =>

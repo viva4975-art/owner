@@ -1,6 +1,6 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { categoryFor, fillDocx, fillXml, nameFromFile, placeholdersOf } from './word-templates.js';
+import { categoryFor, docxText, fillDocx, fillXml, nameFromFile, placeholdersOf } from './word-templates.js';
 
 const para = (...runs: string[]) =>
   `<w:p><w:pPr/>${runs.map((r, i) => `<w:r><w:rPr>${i === 0 ? '<w:b/>' : ''}</w:rPr><w:t>${r}</w:t></w:r>`).join('')}</w:p>`;
@@ -52,5 +52,21 @@ describe('Word-Vorlagen: Platzhalter', () => {
     expect(categoryFor('VD-ZV-Vorarbeiter-2026-V1', 'Vorarbeiter', 'mitarbeiter')).toBe('Vertragsänderung');
     expect(categoryFor('VD-NU-TK-2026-V2', 'Tankkarte', 'mitarbeiter')).toBe('Nutzungsüberlassung');
     expect(categoryFor('VD-AVMJ-2026-V2', 'Arbeitsvertrag Minijob', 'mitarbeiter')).toBe('Arbeitsvertrag');
+  });
+});
+
+describe('docxText (Unterweisung aus Word-Vorlage als PDF)', () => {
+  it('liest Absätze und Tabellenzellen, Sonderzeichen entschlüsselt', () => {
+    const docx = zipSync({
+      'word/document.xml': strToU8(
+        '<w:document><w:body><w:p><w:r><w:t>Unterweisung &amp; Belehrung</w:t></w:r></w:p>' +
+          '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Gefahr</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Maßnahme</w:t></w:r></w:p></w:tc></w:tr></w:tbl>' +
+          '<w:p></w:p><w:p><w:r><w:t xml:space="preserve">Ende </w:t></w:r></w:p></w:body></w:document>',
+      ),
+    });
+    const t = docxText(docx);
+    expect(t[0]).toBe('Unterweisung & Belehrung');
+    expect(t.join('|')).toContain('Gefahr');
+    expect(t.at(-1)).toBe('Ende');
   });
 });

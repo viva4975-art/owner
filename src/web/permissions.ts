@@ -14,6 +14,7 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/einstellungen\/firma(\/|$)/, ['admin']],
   [/^\/einstellungen\/?$/, ['admin', 'buchhaltung', 'personal']],
   [/^\/einstellungen\/word-vorlagen(\/|$)/, ['admin', 'buchhaltung', 'personal']],
+  [/^\/einstellungen\/objektordner(\/|$)/, ['admin', 'buchhaltung', 'personal']],
   [/^\/word-vorlagen\/(erzeugen|ausfuellen)$/, ALL],
   [/^\/transfer\/import\/(dubletten|abgleich)$/, ['admin']],
   [/^\/vorlagen\/?$/, ['admin', 'buchhaltung', 'personal']],
@@ -36,7 +37,7 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/arbeitsscheine(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
   [/^\/(qualitaet|zaehler|qm)(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
   [
-    /^\/objekte\/[0-9a-f-]{36}(\/(einsaetze|zeiten|qr|notizen|aufgaben|arbeitsscheine|raumbuch|stundenvorgabe|qualitaet|zaehler|dokumente|schluessel|uebergaben)([/.]|$)|$)/,
+    /^\/objekte\/[0-9a-f-]{36}(\/(einsaetze|zeiten|qr|notizen|aufgaben|arbeitsscheine|raumbuch|stundenvorgabe|qualitaet|zaehler|dokumente|schluessel|uebergaben|objektordner)([/.]|$)|$)/,
     ['admin', 'buchhaltung', 'objektleitung', 'personal'],
   ],
   [/^\/objekte\/?$/, ['admin', 'buchhaltung', 'objektleitung']],

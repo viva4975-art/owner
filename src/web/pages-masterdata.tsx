@@ -824,6 +824,7 @@ export const SiteShell: FC<{
     { key: 'angebote', label: 'Angebote', href: `${base}/angebote` },
     { key: 'arbeitsscheine', label: 'Arbeitsscheine', href: `${base}/arbeitsscheine` },
     { key: 'dokumente', label: 'Dokumente', href: `${base}/dokumente` },
+    { key: 'objektordner', label: 'Objektordner', href: `${base}/objektordner` },
     { key: 'schluessel', label: 'Schlüssel', href: `${base}/schluessel` },
     { key: 'uebergaben', label: 'Übergaben (Kleidung, Geräte …)', href: `${base}/uebergaben` },
     { key: 'raumbuch', label: 'Raumbuch', href: `${base}/raumbuch` },

@@ -1,3 +1,4 @@
+import { packageInfo, savePackage } from '../services/site-folder.js';
 import { z } from 'zod';
 import { BusinessError } from '../services/errors.js';
 import type { Role } from '../services/users.js';
@@ -111,6 +112,11 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
         '/vorlagen',
         'Person, Kunde oder Objekt wählen und eine Word-Vorlage ausfüllen (zuletzt erstellte Dokumente).',
       ],
+      [
+        'Objektordner-Vorlagen',
+        '/einstellungen/objektordner',
+        'Paket „Objektordner-Komplettpaket“ (ZIP) – wird je Objekt automatisch mit den Objektdaten ausgefüllt.',
+      ],
     ],
   },
   {
@@ -192,6 +198,54 @@ const ibanOk = (iban: string) => {
 };
 
 export function registerSettingsRoutes({ app, deps, page, back }: Ctx) {
+  app.get('/einstellungen/objektordner', async (c) => {
+    const p = await packageInfo(deps.sql);
+    return page(
+      c,
+      'Objektordner-Vorlagen',
+      '',
+      <>
+        <PageHead title="Objektordner-Vorlagen" crumbs={[['Einstellungen', '/einstellungen']]} />
+        <form
+          method="post"
+          action="/einstellungen/objektordner"
+          enctype="multipart/form-data"
+          class="card"
+          style="max-width:760px"
+        >
+          <p style="margin-top:0">
+            {p ? (
+              <>
+                Aktuell: <b>{p.file_name}</b> (hochgeladen {p.uploaded_at.toLocaleDateString('de-DE')} von{' '}
+                {p.uploaded_by})
+              </>
+            ) : (
+              'Noch kein Paket hochgeladen.'
+            )}
+          </p>
+          <p class="small mut">
+            ZIP mit den Ordnern 01_Aushang-Putzraum … 06_Nachweise-im-Objekt und dem Inhaltsverzeichnis. In
+            den Word-Dateien werden Lücken wie „Objektleitung: ____“ und Tabellenfelder neben „Objekt“,
+            „Kunde“, „Objektleitung“, „Bereichsleitung“, „Ansprechpartner Kunde“, „Ersthelfer im Objekt“,
+            „Tel“ je Objekt ausgefüllt. Neue Fassung hochladen ersetzt die alte (die alte bleibt im Archiv).
+          </p>
+          <input type="file" name="datei" accept=".zip" required aria-label="ZIP-Datei" />
+          <div class="formfoot">
+            <button class="btn">Hochladen</button>
+          </div>
+        </form>
+      </>,
+    );
+  });
+
+  app.post('/einstellungen/objektordner', async (c) => {
+    const b = await c.req.parseBody();
+    const f = b.datei;
+    if (!(f instanceof File) || !f.size) throw new BusinessError('Bitte ZIP-Datei wählen');
+    const n = await savePackage(deps, new Uint8Array(await f.arrayBuffer()), f.name, c.get('actor'));
+    return back(c, '/einstellungen/objektordner', { ok: `Paket gespeichert (${n} Dateien).` });
+  });
+
   const { sql } = deps;
 
   app.get('/einstellungen', async (c) => {

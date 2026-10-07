@@ -672,3 +672,83 @@ export async function generateFromWordTemplate(
                     ${sql.json({ template: t.name, template_id: t.id, file: file.id })})`;
   return { file, missing };
 }
+
+/** Text der Word-Datei (Absätze; Tabellenzellen durch „ · “ getrennt) – für PDFs ohne Word-Programm. */
+export function docxText(bytes: Uint8Array): string[] {
+  const files = unzipSync(bytes);
+  const xml = files['word/document.xml'];
+  if (!xml) throw new BusinessError('Keine Word-Datei (.docx)');
+  const s = strFromU8(xml)
+    .replace(/<w:tab\/>/g, '\t')
+    .replace(/<w:br[^>]*\/>/g, '\n')
+    .replace(/<\/w:tc>/g, ' · ')
+    .replace(/<\/w:p>/g, '\u0001');
+  return xmlUnesc(s.replace(/<[^>]+>/g, ''))
+    .split('\u0001')
+    .map((p) =>
+      p
+        .replace(/( · )+$/g, '')
+        .replace(/[ \t]+/g, ' ')
+        .trim(),
+    )
+    .filter(Boolean);
+}
+
+/**
+ * Unterweisung/Dokument aus einer eigenen Word-Vorlage als PDF auf dem Briefpapier (Ahmed: „unsere Vorlagen“):
+ * Firmen- und Dokumentangaben werden ausgefüllt, Mitarbeiter-Platzhalter bleiben als Linie (ein PDF für alle;
+ * Name, Zeitpunkt und Unterschrift stehen auf dem Nachweisblatt je Person). Formatierungen aus Word (Tabellen,
+ * Bilder) werden vereinfacht – bei aufwendigen Vorlagen besser als PDF hochladen.
+ */
+export async function wordTemplatePdf(
+  sql: Sql,
+  cfg: UploadConfig,
+  templateId: string,
+): Promise<{ title: string; pdf: Uint8Array; category: string }> {
+  const [t] = await sql<(WordTemplate & { storage_path: string })[]>`
+    select t.*, f.storage_path from app.word_templates t join app.files f on f.id = t.file_id
+     where t.id = ${templateId} and t.audience = 'mitarbeiter'`;
+  if (!t) throw new BusinessError('Vorlage nicht gefunden (nur Mitarbeiter-Vorlagen)');
+  const today = todayBerlin();
+  const values: Record<string, string> = {
+    ...(await companyValues(sql)),
+    'Dokument.Datum': de(today),
+    'Dokument.Erstelldatum': de(today),
+    'Dokument.Ort': 'München',
+  };
+  const bytes = await readFile(filePath(cfg, { storage_path: t.storage_path } as FileRow));
+  const { data } = fillDocx(bytes, (k) => values[k] ?? null, de(today));
+  const paras = docxText(data);
+  const { renderLetterPdf } = await import('../pdf/render.js');
+  const { getSeller } = await import('./masterdata.js');
+  const seller = await getSeller(sql);
+  const pdf = await renderLetterPdf({
+    title: t.name,
+    date: today,
+    info: [['Datum', de(today)]],
+    seller,
+    buyer: {
+      customerNo: '',
+      name: 'An alle Mitarbeitenden',
+      name2: null,
+      street: '',
+      postalCode: '',
+      city: '',
+      countryCode: 'DE',
+      vatId: null,
+      leitwegId: null,
+      supplierNo: null,
+      email: null,
+      contactName: null,
+      site: null,
+    },
+    greeting: null,
+    intro: paras[0] ?? '',
+    columns: [],
+    rows: [],
+    sums: [],
+    total: null,
+    paragraphs: paras.slice(1),
+  });
+  return { title: t.name, pdf, category: t.category };
+}

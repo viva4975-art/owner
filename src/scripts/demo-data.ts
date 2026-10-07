@@ -33,11 +33,9 @@ import { createUser, updateUser } from '../services/users.js';
 import { deflateSync } from 'node:zlib';
 import { PDFDocument, StandardFonts } from '@cantoo/pdf-lib';
 import {
-  addReading,
   closeQualityCheck,
   createQualityCheck,
   getQualityCheck,
-  saveMeter,
   saveQualityCheck,
   saveRoom,
 } from '../services/facility.js';
@@ -650,7 +648,7 @@ function signaturePng(seed: number): Uint8Array {
   );
 }
 
-/** Aufträge/Arbeitsscheine, Raumbuch, Qualitätskontrolle, Zähler, Rechnungsgruppe, Dokumente. */
+/** Aufträge/Arbeitsscheine, Raumbuch, Qualitätskontrolle, Rechnungsgruppe, Dokumente. */
 async function phase4() {
   const [done] = await sql`select 1 from app.rooms limit 1`;
   if (done) return;
@@ -732,60 +730,6 @@ async function phase4() {
         A,
       );
   }
-
-  // Zähler mit monatlichen Ablesungen
-  const meters: [string, 'strom' | 'wasser' | 'waerme', string, string, number, number][] = [
-    ['00000000-0000-4000-8000-0000000d0001', 'strom', '1ESY1160455102', 'Hausanschlussraum UG', 48210, 2900],
-    ['00000000-0000-4000-8000-0000000d0002', 'wasser', 'WZ-77421', 'Keller', 1832, 46],
-    ['00000000-0000-4000-8000-0000000d0003', 'waerme', 'WMZ-0815', 'Heizungsraum', 15500, 1800],
-  ];
-  for (const [id, kind, no, loc, start, step] of meters) {
-    await saveMeter(sql, id, {
-      siteId: DEMO.siteSchool,
-      kind,
-      meterNo: no,
-      location: loc,
-      unit: null,
-      active: true,
-      expectedVersion: null,
-    });
-    for (let m = 0; m < 6; m++) {
-      const d = `2026-${String(4 + m).padStart(2, '0')}-01`;
-      await addReading(
-        sql,
-        randomUUID(),
-        {
-          meterId: id,
-          readOn: d,
-          valueMilli: BigInt(Math.round((start + step * m * (1 + (m % 3) * 0.08)) * 1000)),
-          isReplacement: false,
-          note: null,
-        },
-        A,
-      );
-    }
-  }
-  await saveMeter(sql, '00000000-0000-4000-8000-0000000d0004', {
-    siteId: DEMO.siteOffice,
-    kind: 'strom',
-    meterNo: '1EBZ0100771',
-    location: 'Keller',
-    unit: null,
-    active: true,
-    expectedVersion: null,
-  });
-  await addReading(
-    sql,
-    randomUUID(),
-    {
-      meterId: '00000000-0000-4000-8000-0000000d0004',
-      readOn: '2026-07-01',
-      valueMilli: 22100000n,
-      isReplacement: false,
-      note: null,
-    },
-    A,
-  );
 
   // Auftrag mit unterschriebenem Arbeitsschein, Regiearbeit ohne Unterschrift
   const order = '00000000-0000-4000-8000-0000000e0001';

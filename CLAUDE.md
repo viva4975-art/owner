@@ -1025,5 +1025,5 @@ Testadresse.
   (`special_services`, `special_service_runs`, Migration `20261107000001`); Rechnungen/Arbeitsscheine daraus bleiben,
   archivierte Aushang-PDFs bleiben write-once im Archiv. 338 Unit-/DB-Tests.
 - 2026-10-07: Seite **Zählerstände entfernt** (Ahmed): Menüpunkt, Objekt-Reiter „Zähler“ und Seiten weg, alte Adressen leiten
-  auf Objektliste bzw. Objekt um. Tabellen und bisher erfasste Ablesungen bleiben vorerst in der Datenbank (Löschen nur
-  nach Ahmeds Ja); Service-Funktionen in `facility.ts` bleiben dafür bestehen.
+  auf Objektliste bzw. Objekt um. Danach auf Ahmeds Ja („hatte nichts drin“) auch Tabellen `meters`/`meter_readings`
+  (Migration `20261107000002`), Service-Funktionen, Test und Demo-Daten entfernt.

@@ -3,7 +3,6 @@ import QRCode from 'qrcode';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import {
-  addReading,
   closeQualityCheck,
   createQualityCheck,
   getQualityCheck,
@@ -12,8 +11,6 @@ import {
   saveSiteHourTarget,
   qcScore,
   qualityCheckPdf,
-  readingsWithConsumption,
-  saveMeter,
   saveQualityCheck,
   saveRoom,
 } from './facility.js';
@@ -41,7 +38,7 @@ describe('Prozent ohne Fließkomma-Überraschungen', () => {
   });
 });
 
-describe.skipIf(!available)('Raumbuch, Qualitätskontrolle, Zähler', () => {
+describe.skipIf(!available)('Raumbuch, Qualitätskontrolle', () => {
   let sql: Sql;
   let deps: Deps & { mailer: FakeMailer };
   beforeAll(async () => {
@@ -240,85 +237,5 @@ describe.skipIf(!available)('Raumbuch, Qualitätskontrolle, Zähler', () => {
     await expect(
       sql`update app.quality_check_items set rating = 'ok' where check_id = ${id}`,
     ).rejects.toThrow(/unveränderbar/);
-  });
-
-  it('Zählerstände: nur anhängen, nicht rückwärts (außer Zählertausch), Verbrauch je Zeitraum', async () => {
-    const m = randomUUID();
-    await saveMeter(sql, m, {
-      siteId: DEMO.siteSchool,
-      kind: 'strom',
-      meterNo: '1ESY1160012345',
-      location: 'Keller',
-      unit: null,
-      active: true,
-      expectedVersion: null,
-    });
-    await expect(
-      saveMeter(sql, randomUUID(), {
-        siteId: DEMO.siteSchool,
-        kind: 'strom',
-        meterNo: '1ESY1160012345',
-        location: null,
-        unit: null,
-        active: true,
-        expectedVersion: null,
-      }),
-    ).rejects.toThrow(/gibt es/);
-    const r1 = randomUUID();
-    await addReading(
-      sql,
-      r1,
-      { meterId: m, readOn: '2026-08-31', valueMilli: 1_000_000n, isReplacement: false, note: null },
-      't',
-    );
-    await addReading(
-      sql,
-      r1,
-      { meterId: m, readOn: '2026-08-31', valueMilli: 1_000_000n, isReplacement: false, note: null },
-      't',
-    );
-    await addReading(
-      sql,
-      randomUUID(),
-      { meterId: m, readOn: '2026-09-30', valueMilli: 1_450_500n, isReplacement: false, note: null },
-      't',
-    );
-    await expect(
-      addReading(
-        sql,
-        randomUUID(),
-        { meterId: m, readOn: '2026-10-01', valueMilli: 1_400_000n, isReplacement: false, note: null },
-        't',
-      ),
-    ).rejects.toThrow(/kleiner als die vorige/);
-    await expect(
-      addReading(
-        sql,
-        randomUUID(),
-        { meterId: m, readOn: '2026-09-15', valueMilli: 1_500_000n, isReplacement: false, note: null },
-        't',
-      ),
-    ).rejects.toThrow(/größer als eine spätere/);
-    await addReading(
-      sql,
-      randomUUID(),
-      { meterId: m, readOn: '2026-10-01', valueMilli: 0n, isReplacement: true, note: 'Tausch' },
-      't',
-    );
-    await expect(
-      addReading(
-        sql,
-        randomUUID(),
-        { meterId: m, readOn: '2099-01-01', valueMilli: 5n, isReplacement: false, note: null },
-        't',
-      ),
-    ).rejects.toThrow(/Zukunft/);
-    const rows = await readingsWithConsumption(sql, m);
-    expect(rows.map((r) => [r.read_on, r.consumption_milli, r.days])).toEqual([
-      ['2026-10-01', null, null],
-      ['2026-09-30', 450_500n, 30],
-      ['2026-08-31', null, null],
-    ]);
-    await expect(sql`delete from app.meter_readings where meter_id = ${m}`).rejects.toThrow();
   });
 });

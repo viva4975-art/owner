@@ -526,12 +526,18 @@ export async function effectiveWage(sql: Sql, employeeId: string): Promise<bigin
 
 export const DOC_CATEGORIES = [
   'Arbeitsvertrag',
+  'Vertragsänderung',
   'Unterweisung',
   'Arbeitskleidung',
   'Schlüssel',
   'Aufenthalts-/Arbeitserlaubnis',
   'Personalunterlagen',
   'Bescheinigung',
+  'Nutzungsüberlassung',
+  'Führerscheinkontrolle',
+  'Einwilligung',
+  'Abmahnung',
+  'Beendigung',
   'Sonstiges',
 ];
 

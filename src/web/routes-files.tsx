@@ -58,6 +58,7 @@ const LINK_PAGE: Record<string, (id: string) => string> = {
   tender: () => '/ausschreibungen',
   legacy_import: () => '/transfer/altdaten',
   vehicle: () => '/fahrzeuge',
+  word_template: () => '/einstellungen/word-vorlagen',
 };
 
 /** Darf der Benutzer die Verknüpfung sehen? Rolle (Seite) + bei Objektleitung das eigene Objekt. */

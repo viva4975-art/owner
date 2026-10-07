@@ -1031,3 +1031,41 @@ Testadresse.
   html2canvas – lokal aus `node_modules` unter `/static/vendor/`, kein fremdes CDN). Nummer auf dem Plakat jetzt Handy
   0176 63050802 statt Festnetz (Migration `20261107000003`, Einstellungen → Firmendaten „Handy-/WhatsApp-Nummer für
   Stellenplakate“). `e2e:kasse` 63 Prüfungen.
+- 2026-10-07: Runde 18 (Ahmed, 19 Punkte):
+  - Bewerber/Stellen: Stunden mit Komma (32,5; Spalte numeric). Menü „Lieferanten & Nachunternehmer“ (Seitenleiste
+    bricht um). Akquise-Filter mit Abstand. Angebote: Reiter „Ausschreibungen“ mit Anzahl offener. Entwürfe: „Markierte
+    löschen (n)“ deutlich sichtbar (gab es schon).
+  - Mitarbeiter: Beschäftigungszeiten/Austritt/Wiedereintritt als Knopf in den Stammdaten; **Austritt zurücknehmen**
+    (falsch erfasst; Protokoll).
+  - **Objektleitung mehreren Objekten zuordnen:** Einstellungen → Benutzer → Person: Objekte nach Kunde gruppiert, Suche,
+    „alle angezeigten markieren“, je Kunde alle, „bisher: …“. Knopf „Objektleitungen zuordnen“ in der Objektliste.
+  - **Objekt-Auswahl zeigt überall den Kunden** (gemeinsamer Baustein `site-options.tsx`: je Kunde gruppiert, im
+    geschlossenen Feld „Objekt – Kunde“).
+  - **Interner Bereich:** Kunde „Viva-Deluxe intern“ (`INTERN`, `customers.is_internal`) mit Objekt „Büro“ (`INT-BUERO`)
+    = eigene Kostenstelle und Einsatzort für Büromitarbeitende (Planung, Zeiterfassung). Keine Rechnungen, nicht im
+    Monatslauf. Weitere interne Bereiche (Lager …) als Objekte dieses Kunden anlegen.
+  - **Handy-PIN = Geburtsdatum TTMMJJ**, solange keine eigene PIN gesetzt ist (wird beim ersten Versuch als PIN
+    hinterlegt → Fehlversuche/Sperre gelten). **Risiko:** Kollegen kennen Personalnummer und Geburtstag – eigene PIN
+    empfohlen (Hinweis unter Mitarbeiter → Handy-Zugang).
+  - **Erfasste Zeiten entfernen:** mit Begründung; Status „abgelehnt / entfernt“, zählt nirgends mehr, bleibt mit altem
+    Stand im Protokoll (§ 17 MiLoG – nicht spurlos löschen).
+  - **Abwesenheiten ändern/löschen** (Büro/Personal): Art, Zeitraum, halber Tag; Stunden je Einsatz neu berechnet;
+    Urlaubsanspruch geprüft; Löschen mit Protokoll (`audit_log`).
+  - Stundenzettel-Druck und Listen-PDFs mit Logo.
+  - **Globale Suche wie Fortytools:** Vorschau unter dem Suchfeld (je Bereich 5, „… und einige weitere“, Fundstelle
+    markiert, Tastatur), Ergebnisseite gruppiert mit Anzahl; durchsucht Kunden (inkl. Adresse, Leitweg-ID, E-Mails),
+    Objekte, Mitarbeiter, Kontakte, Rechnungen inkl. Positionstexte, aktive Leistungen, Angebote inkl. Positionen,
+    Aufträge, Arbeitsscheine, Ausschreibungen, Lieferanten, NU-Aufträge, Bestellungen, Eingangsrechnungen, Dokumente
+    (Dateinamen), Notizen, Aufgaben, Akquise, Bewerber, Fahrzeuge, Artikel. Mehrere Wörter = alle. Rechte je Rolle,
+    Objektleitung nur eigene Objekte.
+  - **Rechnungseingang → „Rechnung erwartet“:** je laufendem NU-Auftrag (erteilt/beendet) und abgelaufenem Zeitraum
+    (monatlich bzw. Turnus, Rückblick 12 Monate) bis eine Eingangsrechnung ihn abdeckt oder „keine Rechnung“ (Grund)
+    vermerkt ist. **Eine Rechnung für mehrere Aufträge/Objekte/Monate** (`incoming_invoice_subcontracts`, z. B. Glas):
+    Zeilen Auftrag/Zeitraum/Betrag; Beträge (Summe = netto) verteilen die Kosten automatisch je Objekt. Bestand übernommen.
+  - **Word-Vorlagen** (Einstellungen → Word-Vorlagen): Ahmeds Fortytools-Vorlagen (ZIP, 40 Dateien) hochladen; Platzhalter
+    `${Mitarbeiter.*}`, `${Kunde.*}`, `${Objekt.*}`, `${Firma.*}`, `${Dokument.*}` werden ausgefüllt (auch über Word-Läufe
+    zerteilt, Formatierung bleibt), leere Werte = Linie. „Aus Word-Vorlage erstellen“ bei Mitarbeiter (Dokumente), Kunde
+    (Dokumente), Objekt (Dokumente) → .docx write-once in der Akte, Name `Typ_JJJJ-MM-TT_Name.docx`, Ablage-Kategorie aus
+    der Anleitung (Arbeitsvertrag, Vertragsänderung, Beendigung, Nutzungsüberlassung …). Kündigung/Aufhebung/Befristung:
+    nur ausdrucken und auf Papier unterschreiben (Schriftform). **Auf dem Live-Server die ZIP einmal hochladen.**
+  - Tests: neu `runde18.db.test.ts`, `expected-invoices.db.test.ts`, `word-templates(.db).test.ts`.

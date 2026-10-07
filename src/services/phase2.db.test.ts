@@ -131,8 +131,12 @@ describe.skipIf(!available)('Phase 2: Kontakte, Aufgaben, Zahlungen, Personal', 
       await expect(saveContact(sql, id, DEMO.company, { ...input, version: 1 })).rejects.toThrow(
         /zwischenzeitlich/,
       );
-      const hits = await search(sql, 'Beispiel');
+      const res = await search(sql, 'Beispiel');
+      const hits = res.groups.flatMap((g) => g.hits);
       expect(hits.some((h) => h.type === 'Kontakt' && h.label === 'Eva Beispiel')).toBe(true);
+      // mehrere Wörter: alle müssen vorkommen, Textausschnitt mit Fundstelle
+      const two = (await search(sql, 'Eva Einkauf')).groups.flatMap((g) => g.hits);
+      expect(two.find((h) => h.type === 'Kontakt')?.snippet).toMatch(/Eva/);
     });
 
     it('Notiz doppelt abgeschickt = eine Notiz', async () => {

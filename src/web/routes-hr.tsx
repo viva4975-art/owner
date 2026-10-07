@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { listWordTemplates } from '../services/word-templates.js';
+import { WordTemplateBox } from './routes-word-templates.js';
 import { monthBounds, todayBerlin } from '../domain/invoice/calc.js';
 import { parseEuro } from '../domain/money/money.js';
 import {
@@ -39,10 +41,11 @@ export function registerHrRoutes(ctx: Ctx) {
     shells.employee!(c, 'dokumente', async (e) => {
       const kat = c.req.query('kategorie');
       const category = kat && DOC_CATEGORIES.includes(kat) ? kat : 'Personalunterlagen';
-      const [files, templates, signs] = await Promise.all([
+      const [files, templates, signs, wordTemplates] = await Promise.all([
         listFiles(sql, { type: 'employee', id: e.id }),
         listTemplates(sql),
         requestsForEmployee(sql, e.id),
+        listWordTemplates(sql, 'mitarbeiter'),
       ]);
       const groups = DOC_CATEGORIES.map(
         (k) => [k, files.filter((f) => (f.category ?? 'Sonstiges') === k)] as const,
@@ -136,6 +139,7 @@ export function registerHrRoutes(ctx: Ctx) {
                 </a>
               </div>
             </form>
+            <WordTemplateBox templates={wordTemplates} target={{ type: 'employee', id: e.id }} />
             <div class="card">
               <h3>Zur Unterschrift (App)</h3>
               {signs.length === 0 && <div class="small mut">Keine Dokumente zur digitalen Unterschrift.</div>}

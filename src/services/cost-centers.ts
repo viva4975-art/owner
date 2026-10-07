@@ -154,6 +154,25 @@ export async function syncAutoAllocation(tx: Tx, invoiceId: string, actor: strin
     await tx`select 1 from app.cost_allocations where incoming_invoice_id = ${invoiceId} and not auto limit 1`;
   if (own.length) return;
   await tx`delete from app.cost_allocations where incoming_invoice_id = ${invoiceId} and auto`;
+  // Mehrere Nachunternehmer-Aufträge mit Beträgen (Summe = netto): je Objekt und Zeitraum zuordnen
+  const links = await tx<{ site_id: string; month: string; net_cents: bigint | null }[]>`
+    select sc.site_id, l.period_month::text as month, l.net_cents
+      from app.incoming_invoice_subcontracts l join app.subcontracts sc on sc.id = l.subcontract_id
+     where l.incoming_invoice_id = ${invoiceId}`;
+  const [inv] = await tx<
+    { net_cents: bigint }[]
+  >`select net_cents from app.incoming_invoices where id = ${invoiceId}`;
+  if (
+    links.length > 1 &&
+    inv &&
+    links.every((l) => l.net_cents != null && l.site_id) &&
+    links.reduce((a, l) => a + BigInt(l.net_cents!), 0n) === BigInt(inv.net_cents)
+  ) {
+    for (const l of links.filter((x) => BigInt(x.net_cents!) !== 0n))
+      await tx`insert into app.cost_allocations (id, incoming_invoice_id, site_id, month, net_cents, auto, created_by)
+               values (gen_random_uuid(), ${invoiceId}, ${l.site_id}, ${l.month}, ${l.net_cents}, true, ${actor})`;
+    return;
+  }
   await tx`
     insert into app.cost_allocations (id, incoming_invoice_id, site_id, month, net_cents, auto, created_by)
     select gen_random_uuid(), i.id, i.site_id, coalesce(i.service_month, date_trunc('month', i.invoice_date)::date),

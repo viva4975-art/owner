@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { listWordTemplates } from '../services/word-templates.js';
+import { WordTemplateBox } from './routes-word-templates.js';
 import type { Context } from 'hono';
 import type { Child } from 'hono/jsx';
 import { contactInput, deleteContact, listContacts, listTasks, saveContact } from '../services/crm.js';
@@ -973,15 +975,21 @@ export function registerMasterdataRoutes(ctx: Ctx) {
 
   app.get(`/kunden/:id{${UUID}}/dokumente`, (c) =>
     customerPage(c, 'dokumente', async (cust) => (
-      <div class="card">
-        <h3>Verträge, Leistungsverzeichnisse, Schriftverkehr</h3>
-        <FileArea
-          link={{ type: 'customer', id: cust.id }}
-          files={await listFiles(sql, { type: 'customer', id: cust.id })}
-          category="Kundendokument"
-          maxBytes={deps.env.UPLOAD_MAX_BYTES}
+      <>
+        <div class="card">
+          <h3>Verträge, Leistungsverzeichnisse, Schriftverkehr</h3>
+          <FileArea
+            link={{ type: 'customer', id: cust.id }}
+            files={await listFiles(sql, { type: 'customer', id: cust.id })}
+            category="Kundendokument"
+            maxBytes={deps.env.UPLOAD_MAX_BYTES}
+          />
+        </div>
+        <WordTemplateBox
+          templates={await listWordTemplates(sql, 'kunde')}
+          target={{ type: 'customer', id: cust.id }}
         />
-      </div>
+      </>
     )),
   );
 

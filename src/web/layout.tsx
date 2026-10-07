@@ -57,6 +57,19 @@ a{color:var(--brand-2);text-decoration:none}a:hover{text-decoration:underline}
 .search input{height:38px;padding:0 12px 0 36px;border:1px solid var(--line-2);border-radius:var(--r);background:var(--head)}
 .search input:focus{background:#fff}
 .search kbd{position:absolute;right:10px;font:600 11px Inter,sans-serif;color:var(--faint);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px;background:#fff}
+.sdrop{position:absolute;top:calc(100% + 6px);left:0;right:0;min-width:min(720px,92vw);max-height:72vh;overflow:auto;background:#fff;border:1px solid var(--line-2);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.14);z-index:60;padding:6px 0;text-align:left}
+.sdrop .sd-grp{border-bottom:1px solid var(--line);padding:4px 0}
+.sdrop a{display:flex;gap:12px;padding:6px 14px;color:var(--ink);text-decoration:none;font-size:13.5px;line-height:1.35}
+.sdrop a:hover,.sdrop a.act{background:var(--head,#f6f3f3)}
+.sdrop .sd-type{flex:0 0 112px;text-align:right;font-size:11px;font-weight:600;color:var(--brand,#7D1435);padding-top:2px}
+.sdrop .sd-main{flex:1;min-width:0}.sdrop .sd-sub{color:var(--mut);font-size:12.5px}
+.sdrop .sd-snip{display:block;color:var(--faint);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sdrop mark,.search-hit mark{background:#fff1a8;color:inherit;padding:0 1px;border-radius:2px}
+.sdrop .sd-more{padding:2px 14px 6px 138px;font-size:12.5px;color:var(--brand,#7D1435)}
+.sdrop .sd-all{justify-content:center;font-weight:600;color:var(--brand,#7D1435);padding:8px}
+.sdrop .sd-none{padding:10px 14px;color:var(--mut)}
+.search-hit{padding:7px 0;border-bottom:1px solid var(--line)}.search-hit:last-child{border-bottom:0}
+@media (max-width:700px){.sdrop{position:fixed;left:8px;right:8px;top:58px;min-width:0}.sdrop .sd-type{flex-basis:72px}.sdrop .sd-more{padding-left:98px}}
 .top .right{display:flex;align-items:center;gap:14px;margin-left:auto}
 .env{font-size:11px;font-weight:700;letter-spacing:.06em;padding:3px 8px;border-radius:999px;background:var(--warn-50);color:var(--warn);border:1px solid #fde68a}
 .env.live{background:var(--ok-50);color:var(--ok);border-color:#bbf7d0}
@@ -782,7 +795,7 @@ body.shell{display:block}
 .side-logo{display:flex;align-items:center;height:64px;padding:0 18px;border-bottom:1px solid rgba(255,255,255,.06)}
 .side-logo img{height:34px;width:auto;display:block}
 .appside nav.menu{position:static;background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;border:0;box-shadow:none;flex:1;overflow-y:auto;padding:10px 10px 16px;display:flex;flex-direction:column;gap:1px}
-.appside nav.menu a.item,.appside nav.menu .grp>summary{display:flex;align-items:center;gap:11px;height:38px;padding:0 10px;border:0;border-radius:6px;color:var(--side-ink);font-weight:500;font-size:14px;cursor:pointer;list-style:none;text-decoration:none;white-space:nowrap}
+.appside nav.menu a.item,.appside nav.menu .grp>summary{display:flex;align-items:center;gap:11px;min-height:38px;padding:4px 10px;line-height:1.2;border:0;border-radius:6px;color:var(--side-ink);font-weight:500;font-size:14px;cursor:pointer;list-style:none;text-decoration:none;white-space:normal}
 .appside nav.menu .grp>summary::-webkit-details-marker{display:none}
 .appside nav.menu .grp>summary .ic:last-child{margin-left:auto;opacity:.45;transition:transform .15s}
 .appside nav.menu .grp[open]>summary .ic:last-child{transform:rotate(180deg)}
@@ -1283,8 +1296,8 @@ export const Layout: FC<{
                   <input
                     id="q"
                     name="q"
-                    placeholder="Suchen: Kunden, Objekte, Rechnungen, Mitarbeiter …"
-                    minlength={3}
+                    placeholder="Suchen: Kunden, Objekte, Rechnungen, Mitarbeiter, Dokumente …"
+                    minlength={2}
                     aria-label="Suchen"
                   />
                   <kbd>/</kbd>

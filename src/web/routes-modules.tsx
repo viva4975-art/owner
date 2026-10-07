@@ -33,7 +33,7 @@ import { listBalances, openItemLedger } from '../services/payments.js';
 import { upcomingEvents } from '../services/tenders.js';
 import { proposals } from '../services/dunning.js';
 import { listArticles, listDevices, supplierWarnings } from '../services/inventory.js';
-import { search } from '../services/search.js';
+import { SEARCH_TYPES, type SearchType, search } from '../services/search.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { NEW_OPTIONS, PageHead, dateDe, euro } from './layout.js';
 import { homeFor } from './permissions.js';
@@ -201,11 +201,52 @@ export function registerModuleRoutes(ctx: Ctx) {
 
   // ------------------------------------------------------------------ Suche
 
+  /** Suche mit Rechten: nur Treffer, deren Seite die Rolle öffnen darf; Objektleitung nur eigene Objekte. */
+  const searchFor = async (c: Context<AppEnv>, q: string, limit: number, type: SearchType | null) => {
+    const role = c.get('user')?.role;
+    const res = await search(sql, q, {
+      limit,
+      siteScope: c.get('sites') ?? null,
+      ...(type ? { types: [type] } : {}),
+    });
+    const DOC_GUARD: Record<string, string> = {
+      customer: '/kunden/x',
+      site: '/objekte/x',
+      employee: '/personal/x/dokumente',
+      supplier: '/lieferanten/x',
+      offer: '/angebote/x',
+      incoming_invoice: '/rechnungseingang/x',
+      note: '/kunden/x',
+    };
+    for (const g of res.groups) {
+      g.hits = g.hits.filter((h) => {
+        if (!role) return false;
+        const guard =
+          h.type === 'Dokument'
+            ? (DOC_GUARD[(h as { etype?: string }).etype ?? ''] ?? '/transfer/dokumente')
+            : h.href;
+        return canAccess(role, guard.split('?')[0]!.split('#')[0]!);
+      });
+    }
+    res.groups = res.groups.filter((g) => g.hits.length > 0);
+    return res;
+  };
+
   app.get('/suche', async (c) => {
     const q = c.req.query('q') ?? '';
-    const hits = await search(sql, q);
-    if (hits.length === 1) return c.redirect(hits[0]!.href);
-    return page(c, 'Suche', '', <SearchResults q={q} hits={hits} />);
+    const t = c.req.query('typ');
+    const type = t && (SEARCH_TYPES as readonly string[]).includes(t) ? (t as SearchType) : null;
+    const res = await searchFor(c, q, type ? 300 : 25, type);
+    const all = res.groups.flatMap((g) => g.hits);
+    if (all.length === 1 && !res.groups[0]!.more) return c.redirect(all[0]!.href);
+    return page(c, 'Suche', '', <SearchResults result={res} type={type} />);
+  });
+
+  // Vorschau unter dem Suchfeld (wie Fortytools): je Bereich 5 Treffer, „… und einige weitere“
+  app.get('/suche.json', async (c) => {
+    const res = await searchFor(c, c.req.query('q') ?? '', 5, null);
+    c.header('Cache-Control', 'private, no-store');
+    return c.json(res);
   });
 
   // ------------------------------------------------------------------ Geplante Bereiche

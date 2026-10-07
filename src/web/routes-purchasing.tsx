@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { SiteOptions } from './site-options.js';
+import { type ExpectedRow, expectedInvoices, linksOf, skipExpected } from '../services/expected-invoices.js';
 import type { Context } from 'hono';
 import type { Child, FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
@@ -93,6 +94,131 @@ const PO_LINES_JS = `
   Array.prototype.forEach.call(tb.querySelectorAll('tr'),wire);
   document.getElementById('po-add').addEventListener('click',function(){var tr=tpl.content.firstElementChild.cloneNode(true);tb.appendChild(tr);wire(tr);});
 })();`;
+
+const MONTHS_DE = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+const periodLabel = (r: ExpectedRow) => {
+  const a = `${MONTHS_DE[Number(r.period.slice(5, 7)) - 1]} ${r.period.slice(0, 4)}`;
+  if (r.months <= 1) return a;
+  const e = r.periodEnd.slice(0, 7);
+  return `${a} – ${MONTHS_DE[Number(e.slice(5, 7)) - 1]} ${e.slice(0, 4)}`;
+};
+const BILLING_DE: Record<string, string> = {
+  pauschale_monat: 'Monatspauschale',
+  pauschale_einsatz: 'je Einsatz',
+  stunde: 'je Stunde',
+  tag: 'je Tag',
+};
+
+/** Rechnungseingang → „Rechnung erwartet“: je Nachunternehmer die fehlenden Rechnungen laufender Aufträge. */
+const ExpectedList: FC<{ rows: ExpectedRow[] }> = ({ rows }) => {
+  if (!rows.length)
+    return (
+      <div class="empty">
+        Alles da – für alle laufenden Nachunternehmer-Aufträge liegt je abgelaufenem Zeitraum eine Rechnung
+        vor.
+      </div>
+    );
+  const bySup = new Map<string, ExpectedRow[]>();
+  for (const r of rows) {
+    if (!bySup.has(r.supplier_id)) bySup.set(r.supplier_id, []);
+    bySup.get(r.supplier_id)!.push(r);
+  }
+  const param = (r: ExpectedRow) =>
+    `erwartet=${encodeURIComponent(`${r.subcontract_id}:${r.period}${r.expectedNet != null ? `:${r.expectedNet}` : ''}`)}`;
+  return (
+    <>
+      <p class="small mut" style="margin-top:0">
+        Je laufendem Nachunternehmer-Auftrag wird je abgelaufenem Abrechnungszeitraum eine Rechnung erwartet.
+        Sie verschwindet, sobald eine Eingangsrechnung den Auftrag und Zeitraum abdeckt – eine Rechnung darf
+        mehrere Aufträge/Objekte abdecken (z. B. Glasreinigung). Rückblick 12 Monate.
+      </p>
+      {[...bySup.values()].map((list) => {
+        const s0 = list[0]!;
+        return (
+          <div class="card" style="margin-bottom:14px">
+            <div class="actions" style="margin:0 0 8px">
+              <h3 style="margin:0">
+                <a href={`/lieferanten/${s0.supplier_id}`}>{s0.supplier_name}</a>{' '}
+                <span class="badge warn">{list.length} erwartet</span>
+              </h3>
+              {list.length > 1 && (
+                <a
+                  class="btn sm"
+                  style="margin-left:auto"
+                  href={`/rechnungseingang/${randomUUID()}?lieferant=${s0.supplier_id}&${list.map(param).join('&')}`}
+                >
+                  Eine Rechnung für alle {list.length} erfassen
+                </a>
+              )}
+            </div>
+            <div class="tbl">
+              <table class="stack-m">
+                <thead>
+                  <tr>
+                    <th>Auftrag</th>
+                    <th>Objekt</th>
+                    <th>Zeitraum</th>
+                    <th class="r">erwartet netto</th>
+                    <th>seit</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {list.map((r) => (
+                    <tr>
+                      <td data-l="Auftrag">
+                        <a href={`/nachunternehmer/auftraege/${r.subcontract_id}`}>{r.number}</a>
+                        <div class="small mut">{BILLING_DE[r.billing] ?? r.billing}</div>
+                      </td>
+                      <td data-l="Objekt">
+                        {r.site_name ? `${r.site_name} (${r.site_no})` : '–'}
+                        {r.customer_name && <div class="small mut">{r.customer_name}</div>}
+                      </td>
+                      <td data-l="Zeitraum">{periodLabel(r)}</td>
+                      <td class="r" data-l="erwartet">
+                        {r.expectedNet != null ? euro(r.expectedNet) : <span class="mut">nach Aufwand</span>}
+                      </td>
+                      <td data-l="seit" style={r.daysOverdue > 30 ? 'color:var(--err)' : ''}>
+                        {r.daysOverdue} Tg.
+                      </td>
+                      <td class="acts">
+                        <a
+                          class="btn sm sec"
+                          href={`/rechnungseingang/${randomUUID()}?lieferant=${r.supplier_id}&${param(r)}`}
+                        >
+                          Rechnung erfassen
+                        </a>
+                        <details style="display:inline-block">
+                          <summary class="btn sm ghost">keine Rechnung …</summary>
+                          <form
+                            method="post"
+                            action="/rechnungseingang/erwartet/keine"
+                            class="actions"
+                            style="margin-top:6px"
+                          >
+                            <input type="hidden" name="auftrag" value={r.subcontract_id} />
+                            <input type="hidden" name="monat" value={r.period} />
+                            <input
+                              name="grund"
+                              required
+                              placeholder="Grund, z. B. Ausfall/Urlaub"
+                              style="max-width:220px"
+                            />
+                            <button class="btn sm">Vermerken</button>
+                          </form>
+                        </details>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+};
 
 export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
   const { sql, env } = deps;
@@ -731,7 +857,13 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
   // ================================================================== Rechnungseingang
 
   /** Reiter des Rechnungseingangs; die Zahlungsliste ist ein Reiter davon (nicht separat). */
-  const incomingTabs = (all: { status: IncomingStatus }[]): Tab[] => [
+  const incomingTabs = (all: { status: IncomingStatus }[], expected?: number): Tab[] => [
+    {
+      key: 'erwartet',
+      label: 'Rechnung erwartet',
+      href: '/rechnungseingang?status=erwartet',
+      ...(expected !== undefined ? { count: expected } : {}),
+    },
     ...(['erfasst', 'freigegeben', 'bezahlt', 'abgelehnt'] as IncomingStatus[]).map((s) => ({
       key: s,
       label: INCOMING_STATUS[s][0]!.toUpperCase() + INCOMING_STATUS[s].slice(1),
@@ -743,11 +875,11 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
   ];
 
   app.get('/rechnungseingang', async (c) => {
-    const st = (c.req.query('status') ?? 'erfasst') as IncomingStatus | 'alle';
-    const all = await listIncoming(sql);
+    const st = (c.req.query('status') ?? 'erfasst') as IncomingStatus | 'alle' | 'erwartet';
+    const [all, expected] = await Promise.all([listIncoming(sql), expectedInvoices(sql)]);
     const rows = st === 'alle' ? all : all.filter((i) => i.status === st);
     const today = todayBerlin();
-    const tabs = incomingTabs(all);
+    const tabs = incomingTabs(all, expected.length);
     const open = all.filter((i) => i.status === 'freigegeben');
     return page(
       c,
@@ -789,73 +921,91 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
           </div>
         </div>
         <Tabs tabs={tabs} active={st} />
-        <div class="tbl">
-          <table>
-            <thead>
-              <tr>
-                <th>Lieferant</th>
-                <th>Rechnungs-Nr.</th>
-                <th>Datum</th>
-                <th>fällig</th>
-                <th>Art / Objekt</th>
-                <th class="r">Brutto</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && (
+        {st === 'erwartet' ? (
+          <ExpectedList rows={expected} />
+        ) : (
+          <div class="tbl">
+            <table>
+              <thead>
                 <tr>
-                  <td colspan={7}>
-                    <div class="empty">Keine Rechnungen.</div>
-                  </td>
+                  <th>Lieferant</th>
+                  <th>Rechnungs-Nr.</th>
+                  <th>Datum</th>
+                  <th>fällig</th>
+                  <th>Art / Objekt</th>
+                  <th class="r">Brutto</th>
+                  <th>Status</th>
                 </tr>
-              )}
-              {rows.map((i) => (
-                <tr>
-                  <td>
-                    <a href={`/lieferanten/${i.supplier_id}`}>{i.supplier_name}</a>
-                  </td>
-                  <td>
-                    <a href={`/rechnungseingang/${i.id}`}>
-                      <b>{i.invoice_no}</b>
-                    </a>
-                    {i.file_count > 0 && (
-                      <span class="mut">
-                        {' '}
-                        <Icon name="clip" size={12} />
-                      </span>
-                    )}
-                    {i.reverse_charge && (
-                      <>
-                        {' '}
-                        <span class="badge tag">§ 13b</span>
-                      </>
-                    )}
-                  </td>
-                  <td>{dateDe(i.invoice_date)}</td>
-                  <td style={i.status !== 'bezahlt' && i.due_date < today ? 'color:var(--err)' : ''}>
-                    {dateDe(i.due_date)}
-                    {i.skonto_until && i.status === 'freigegeben' && i.skonto_until >= today && (
-                      <div class="small" style="color:var(--warn)">
-                        Skonto bis {dateDe(i.skonto_until)}
-                      </div>
-                    )}
-                  </td>
-                  <td class="small">
-                    {COST_CATEGORY[i.category]}
-                    {i.site_name && <div class="mut">{i.site_name}</div>}
-                  </td>
-                  <td class="r">{euro(i.gross_cents)}</td>
-                  <td>
-                    <span class={`badge ${IN_CLASS[i.status]}`}>{INCOMING_STATUS[i.status]}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {rows.length === 0 && (
+                  <tr>
+                    <td colspan={7}>
+                      <div class="empty">Keine Rechnungen.</div>
+                    </td>
+                  </tr>
+                )}
+                {rows.map((i) => (
+                  <tr>
+                    <td>
+                      <a href={`/lieferanten/${i.supplier_id}`}>{i.supplier_name}</a>
+                    </td>
+                    <td>
+                      <a href={`/rechnungseingang/${i.id}`}>
+                        <b>{i.invoice_no}</b>
+                      </a>
+                      {i.file_count > 0 && (
+                        <span class="mut">
+                          {' '}
+                          <Icon name="clip" size={12} />
+                        </span>
+                      )}
+                      {i.reverse_charge && (
+                        <>
+                          {' '}
+                          <span class="badge tag">§ 13b</span>
+                        </>
+                      )}
+                    </td>
+                    <td>{dateDe(i.invoice_date)}</td>
+                    <td style={i.status !== 'bezahlt' && i.due_date < today ? 'color:var(--err)' : ''}>
+                      {dateDe(i.due_date)}
+                      {i.skonto_until && i.status === 'freigegeben' && i.skonto_until >= today && (
+                        <div class="small" style="color:var(--warn)">
+                          Skonto bis {dateDe(i.skonto_until)}
+                        </div>
+                      )}
+                    </td>
+                    <td class="small">
+                      {COST_CATEGORY[i.category]}
+                      {i.site_name && <div class="mut">{i.site_name}</div>}
+                    </td>
+                    <td class="r">{euro(i.gross_cents)}</td>
+                    <td>
+                      <span class={`badge ${IN_CLASS[i.status]}`}>{INCOMING_STATUS[i.status]}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </>,
     );
+  });
+
+  app.post('/rechnungseingang/erwartet/keine', async (c) => {
+    const b = await c.req.parseBody();
+    await skipExpected(
+      sql,
+      String(b.auftrag ?? ''),
+      String(b.monat ?? ''),
+      String(b.grund ?? ''),
+      c.get('actor'),
+    );
+    return back(c, '/rechnungseingang?status=erwartet', {
+      ok: 'Vermerkt: für diesen Zeitraum kommt keine Rechnung.',
+    });
   });
 
   app.get(`/rechnungseingang/:id{${UUID}}`, async (c) => {
@@ -870,15 +1020,43 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       getAllocations(sql, id),
       costTargets(sql),
     ]);
-    const curSub = (i as { subcontract_id?: string | null } | undefined)?.subcontract_id ?? null;
     const q = c.req.query();
+    // Zuordnung zu NU-Aufträgen: gespeicherte Zeilen oder aus „Rechnung erwartet“ (?erwartet=<auftrag>:<JJJJ-MM>:<cent>)
+    const linkRows = i
+      ? (await linksOf(sql, id)).map((l) => ({
+          sc: l.subcontract_id,
+          m: l.m,
+          net: l.net_cents != null ? centsToInput(l.net_cents) : '',
+        }))
+      : (c.req
+          .queries('erwartet')
+          ?.map((x) => x.split(':'))
+          .filter((p) => /^[0-9a-f-]{36}$/.test(p[0] ?? '') && isMonth(p[1]))
+          .map((p) => ({
+            sc: p[0]!,
+            m: p[1]!,
+            net: p[2] && /^\d+$/.test(p[2]) ? centsToInput(BigInt(p[2])) : '',
+          })) ?? []);
+    const preNet =
+      !i && linkRows.length && linkRows.every((r) => r.net)
+        ? linkRows.reduce(
+            (a, r) => a + BigInt(Math.round(Number(r.net.replace(/\./g, '').replace(',', '.')) * 100)),
+            0n,
+          )
+        : null;
     const editable = !i || i.status === 'erfasst';
     const po = q.bestellung ? orders.find((o) => o.id === q.bestellung) : undefined;
     const v = {
       supplier: i?.supplier_id ?? q.lieferant ?? '',
       site: i?.site_id ?? po?.site_id ?? '',
       po: i?.purchase_order_id ?? po?.id ?? '',
-      net: i ? centsToInput(i.net_cents) : po ? centsToInput(po.net_cents) : '',
+      net: i
+        ? centsToInput(i.net_cents)
+        : po
+          ? centsToInput(po.net_cents)
+          : preNet != null
+            ? centsToInput(preNet)
+            : '',
       vat: i ? centsToInput(i.vat_cents) : '',
     };
     const dis = !editable;
@@ -1024,16 +1202,75 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                     value={i?.service_month?.slice(0, 7) ?? ''}
                   />
                 </div>
-                <div>
-                  <label for="subcontract_id">Nachunternehmer-Auftrag (setzt Objekt)</label>
-                  <select id="subcontract_id" name="subcontract_id">
-                    <option value="">–</option>
-                    {subcontracts.map((x) => (
-                      <option value={x.id} selected={x.id === curSub}>
-                        {x.number} · {x.supplier_name} · {x.site_name}
-                      </option>
-                    ))}
-                  </select>
+                <div class="full nu-links" style="grid-column:1/-1">
+                  <label>
+                    Nachunternehmer-Aufträge (setzt Objekt; mehrere Zeilen = eine Rechnung für mehrere
+                    Objekte/Monate)
+                  </label>
+                  <table class="tbl-in" style="width:100%">
+                    <thead>
+                      <tr>
+                        <th style="text-align:left">Auftrag</th>
+                        <th style="text-align:left;width:150px">Zeitraum ab</th>
+                        <th style="text-align:right;width:130px">netto (optional)</th>
+                      </tr>
+                    </thead>
+                    <tbody data-nu-rows>
+                      {[...linkRows, { sc: '', m: '', net: '' }].map((r) => (
+                        <tr>
+                          <td>
+                            <select
+                              name="link_sc"
+                              disabled={dis}
+                              aria-label="Nachunternehmer-Auftrag"
+                              data-nosearch
+                            >
+                              <option value="">–</option>
+                              {subcontracts.map((x) => (
+                                <option value={x.id} selected={x.id === r.sc}>
+                                  {x.number} · {x.supplier_name} · {x.site_name ?? 'ohne Objekt'}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <input
+                              type="month"
+                              name="link_month"
+                              value={r.m}
+                              disabled={dis}
+                              aria-label="Zeitraum ab"
+                            />
+                          </td>
+                          <td>
+                            <input
+                              name="link_net"
+                              value={r.net}
+                              disabled={dis}
+                              inputmode="decimal"
+                              placeholder="0,00"
+                              style="text-align:right"
+                              aria-label="Anteil netto"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {!dis && (
+                    <button type="button" class="btn sm sec" data-nu-add style="margin-top:6px">
+                      + weitere Zeile
+                    </button>
+                  )}
+                  <p class="small mut" style="margin:4px 0 0">
+                    Damit verschwindet die Rechnung aus „Rechnung erwartet“. Beträge je Zeile (Summe = netto)
+                    verteilen die Kosten automatisch auf die Objekte (Kostenstellen).
+                  </p>
+                  <script
+                    dangerouslySetInnerHTML={{
+                      __html: `(function(){var b=document.querySelector('[data-nu-add]');if(!b)return;b.addEventListener('click',function(){var t=document.querySelector('[data-nu-rows]');var r=t.lastElementChild.cloneNode(true);r.querySelectorAll('input').forEach(function(i){i.value=''});r.querySelector('select').value='';t.appendChild(r);});})();`,
+                    }}
+                  />
                 </div>
                 <div>
                   <label for="purchase_order_id">Bestellung</label>
@@ -1281,7 +1518,25 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
 
   app.post(`/rechnungseingang/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
-    const b = await c.req.parseBody();
+    const b = await c.req.parseBody({ all: true });
+    const many = (k: string) =>
+      (Array.isArray(b[k]) ? (b[k] as unknown[]) : b[k] == null ? [] : [b[k]]).map((x) =>
+        typeof x === 'string' ? x.trim() : '',
+      );
+    const scs = many('link_sc');
+    const months = many('link_month');
+    const nets = many('link_net');
+    const links = scs
+      .map((sc, k) => ({ sc, m: months[k] ?? '', n: nets[k] ?? '' }))
+      .filter((r) => r.sc)
+      .map((r) => {
+        if (!isMonth(r.m)) throw new BusinessError('Bitte je Auftragszeile den Zeitraum (Monat) angeben');
+        return {
+          subcontractId: r.sc,
+          month: r.m,
+          net: r.n ? (money(r.n, 'Betrag je Auftrag') as bigint) : null,
+        };
+      });
     const one = (k: string) =>
       typeof b[k] === 'string' && (b[k] as string).trim() !== '' ? (b[k] as string).trim() : null;
     const sk = one('skonto_percent');
@@ -1303,7 +1558,8 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         reverseCharge: b.reverse_charge === 'on',
         category: cat,
         siteId: one('site_id'),
-        subcontractId: one('subcontract_id'),
+        subcontractId: null,
+        links,
         purchaseOrderId: one('purchase_order_id'),
         skontoUntil: one('skonto_until'),
         skontoPercentBp: bp,

@@ -59,6 +59,7 @@ export type LinkTarget = {
     | 'tender'
     | 'note'
     | 'vehicle'
+    | 'word_template'
     | 'legacy_import';
   id: string;
 };

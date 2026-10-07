@@ -33,6 +33,7 @@ import { registerTransferRoutes } from './routes-transfer.js';
 import { registerImportRoutes } from './routes-import.js';
 import { registerHandoverRoutes } from './routes-handovers.js';
 import { registerVehicleRoutes } from './routes-vehicles.js';
+import { registerWordTemplateRoutes } from './routes-word-templates.js';
 import { registerSubcontractorRoutes } from './routes-subcontractors.js';
 import { registerSettingsRoutes } from './routes-settings.js';
 import { registerTenderRoutes } from './routes-tenders.js';
@@ -315,6 +316,7 @@ export function createApp(deps: Deps) {
   registerImportRoutes(ctx);
   registerHandoverRoutes(ctx);
   registerVehicleRoutes(ctx);
+  registerWordTemplateRoutes(ctx);
   registerSubcontractorRoutes(ctx);
   registerSettingsRoutes(ctx);
   registerTenderRoutes(ctx);

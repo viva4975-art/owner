@@ -347,6 +347,58 @@ export const CLIENT_JS = String.raw`
       else if (e.target === box) inp.focus();
     });
   });
+  // Globale Suche: Vorschau unter dem Suchfeld (wie Fortytools), je Bereich bis 5 Treffer
+  (function () {
+    var q = document.getElementById('q'); if (!q) return;
+    var form = q.closest('form'); var drop = document.createElement('div'); drop.className = 'sdrop'; drop.hidden = true;
+    form.appendChild(drop); q.setAttribute('autocomplete', 'off');
+    var timer = null, seq = 0, links = [], act = -1;
+    function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+    function mark(t, words) {
+      var low = String(t).toLowerCase(), out = '', i = 0;
+      while (i < t.length) {
+        var best = -1, len = 0;
+        words.forEach(function (w) { var p = low.indexOf(w, i); if (p >= 0 && (best < 0 || p < best)) { best = p; len = w.length; } });
+        if (best < 0) { out += esc(t.slice(i)); break; }
+        out += esc(t.slice(i, best)) + '<mark>' + esc(t.slice(best, best + len)) + '</mark>'; i = best + len;
+      }
+      return out;
+    }
+    function render(res) {
+      var words = res.q.toLowerCase().split(' ').filter(Boolean);
+      if (!res.groups.length) { drop.innerHTML = '<div class="sd-none">Nichts gefunden</div>'; drop.hidden = false; links = []; return; }
+      var h = '';
+      res.groups.forEach(function (g) {
+        h += '<div class="sd-grp">';
+        g.hits.forEach(function (x, i) {
+          h += '<a class="sd-row" href="' + esc(x.href) + '"><span class="sd-type">' + (i === 0 ? esc(g.type) : '') + '</span>' +
+            '<span class="sd-main"><b>' + mark(x.label, words) + '</b>' + (x.sub ? ' <span class="sd-sub">' + esc(x.sub) + '</span>' : '') +
+            '<span class="sd-snip">' + mark(x.snippet, words) + '</span></span></a>';
+        });
+        if (g.more) h += '<a class="sd-more" href="/suche?q=' + encodeURIComponent(res.q) + '&typ=' + encodeURIComponent(g.type) + '">… und einige weitere</a>';
+        h += '</div>';
+      });
+      h += '<a class="sd-all" href="/suche?q=' + encodeURIComponent(res.q) + '">Alle Ergebnisse anzeigen (Enter)</a>';
+      drop.innerHTML = h; drop.hidden = false; links = [].slice.call(drop.querySelectorAll('a')); act = -1;
+    }
+    function run() {
+      var v = q.value.trim(); if (v.length < 2) { drop.hidden = true; return; }
+      var my = ++seq;
+      fetch('/suche.json?q=' + encodeURIComponent(v), { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (res) { if (res && my === seq && document.activeElement === q) render(res); }).catch(function () {});
+    }
+    q.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(run, 180); });
+    q.addEventListener('focus', function () { if (q.value.trim().length >= 2) run(); });
+    q.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { drop.hidden = true; return; }
+      if (drop.hidden || !links.length) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault(); act = e.key === 'ArrowDown' ? Math.min(links.length - 1, act + 1) : Math.max(-1, act - 1);
+        links.forEach(function (l, i) { l.classList.toggle('act', i === act); }); if (links[act]) links[act].scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter' && act >= 0) { e.preventDefault(); location.href = links[act].href; }
+    });
+    document.addEventListener('click', function (e) { if (!form.contains(e.target)) drop.hidden = true; });
+  })();
   // Beschäftigungsart-Chip folgt der Auswahl
   var emp = document.getElementById('employment_type'), ec = document.querySelector('[data-emp-chip]');
   if (emp && ec) emp.addEventListener('change', function () { ec.textContent = emp.options[emp.selectedIndex].text; });

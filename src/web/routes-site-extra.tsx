@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { listWordTemplates } from '../services/word-templates.js';
+import { WordTemplateBox } from './routes-word-templates.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { listKeys } from '../services/inventory.js';
 import { listOffers } from '../services/offers.js';
@@ -108,6 +110,13 @@ export function registerSiteExtraRoutes({ app, deps, shells }: Ctx) {
           <p class="small mut">
             Dateien werden unveränderbar abgelegt (Prüfsumme SHA-256). Neue Fassung = neue Datei.
           </p>
+          <WordTemplateBox
+            templates={[
+              ...(await listWordTemplates(sql, 'objekt')),
+              ...(c.get('sites') ? [] : await listWordTemplates(sql, 'kunde')),
+            ]}
+            target={{ type: 'site', id: s.id }}
+          />
         </>
       );
     }),

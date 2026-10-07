@@ -101,6 +101,11 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
         '/personal/vorlagen',
         'Bescheinigungen, Unterweisungen und Serienbriefe mit Platzhaltern.',
       ],
+      [
+        'Word-Vorlagen',
+        '/einstellungen/word-vorlagen',
+        'Arbeitsverträge, Nutzungsüberlassungen, Protokolle als Word-Datei mit Platzhaltern (wie Fortytools) – ZIP hochladen, beim Mitarbeiter/Kunden/Objekt ausfüllen.',
+      ],
     ],
   },
   {

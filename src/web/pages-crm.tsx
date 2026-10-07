@@ -1,7 +1,7 @@
 import type { Child, FC } from 'hono/jsx';
 import type { Contact, Task } from '../services/crm.js';
 import type { CustomerBalance } from '../services/payments.js';
-import type { SearchHit } from '../services/search.js';
+import type { SearchResult } from '../services/search.js';
 import { Field } from './pages-masterdata.js';
 import { PageHead, dateDe, euro, initials } from './layout.js';
 import { InvoiceTable } from './pages-invoices.js';
@@ -784,41 +784,86 @@ export const Dashboard: FC<{
 // Suche
 // ---------------------------------------------------------------------------
 
-export const SearchResults: FC<{ q: string; hits: SearchHit[] }> = ({ q, hits }) => (
-  <>
-    <PageHead title={`Suche: „${q}“`} />
-    {q.trim().length < 3 && <div class="empty">Bitte mindestens 3 Zeichen eingeben.</div>}
-    {q.trim().length >= 3 && hits.length === 0 && <div class="empty">Nichts gefunden.</div>}
-    {hits.length > 0 && (
-      <div class="tbl">
-        <table>
-          <thead>
-            <tr>
-              <th>Art</th>
-              <th>Treffer</th>
-              <th>Zusatz</th>
-            </tr>
-          </thead>
-          <tbody>
-            {hits.map((h) => (
-              <tr>
-                <td>
-                  <span class="badge tag">{h.type}</span>
-                </td>
-                <td>
-                  <a href={h.href}>
-                    <b>{h.label}</b>
-                  </a>
-                </td>
-                <td class="mut">{h.sub ?? ''}</td>
-              </tr>
+/** Fundstellen im Text fett (alle Suchwörter, ohne Groß-/Kleinschreibung). */
+export const Mark: FC<{ text: string; q: string }> = ({ text, q }) => {
+  const words = q
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w.length > 0)
+    .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (!words.length) return <>{text}</>;
+  const parts = text.split(new RegExp(`(${words.join('|')})`, 'gi'));
+  return <>{parts.map((p, i) => (i % 2 === 1 ? <mark>{p}</mark> : p))}</>;
+};
+
+export const SearchResults: FC<{ result: SearchResult; type: string | null }> = ({ result, type }) => {
+  const total = result.groups.reduce((n, g) => n + g.hits.length, 0);
+  const q = result.q;
+  return (
+    <>
+      <PageHead
+        title={`Suche: „${q}“`}
+        crumbs={type ? [['alle Bereiche', `/suche?q=${encodeURIComponent(q)}`]] : []}
+      />
+      <form class="actions" action="/suche" method="get" style="margin-top:0">
+        <input name="q" value={q} style="max-width:420px" aria-label="Suchbegriff" autofocus />
+        {type && <input type="hidden" name="typ" value={type} />}
+        <button class="btn">Suchen</button>
+        <span class="small mut">
+          Mehrere Wörter = alle müssen vorkommen. Durchsucht auch Rechnungs- und Angebotstexte, Leistungen,
+          Notizen und Dateinamen.
+        </span>
+      </form>
+      {q.length < 2 && <div class="empty">Bitte mindestens 2 Zeichen eingeben.</div>}
+      {q.length >= 2 && total === 0 && <div class="empty">Nichts gefunden.</div>}
+      {result.groups.length > 1 && (
+        <div class="pills" style="margin:4px 0 14px">
+          {result.groups.map((g) => (
+            <a class="pill" href={`#g-${g.type}`}>
+              {g.type}{' '}
+              <span>
+                {g.hits.length}
+                {g.more ? '+' : ''}
+              </span>
+            </a>
+          ))}
+        </div>
+      )}
+      {result.groups.map((g) => (
+        <div class="card search-grp" id={`g-${g.type}`}>
+          <h3 style="margin-top:0">
+            {g.type}{' '}
+            <span class="mut small" style="font-weight:400">
+              ({g.hits.length}
+              {g.more ? '+' : ''})
+            </span>
+          </h3>
+          <div class="search-hits">
+            {g.hits.map((h) => (
+              <div class="search-hit">
+                <a href={h.href}>
+                  <b>
+                    <Mark text={h.label} q={q} />
+                  </b>
+                </a>
+                {h.sub && <span class="small"> {h.sub}</span>}
+                <div class="small mut">
+                  <Mark text={h.snippet} q={q} />
+                </div>
+              </div>
             ))}
-          </tbody>
-        </table>
-      </div>
-    )}
-  </>
-);
+          </div>
+          {g.more && !type && (
+            <a class="small" href={`/suche?q=${encodeURIComponent(q)}&typ=${encodeURIComponent(g.type)}`}>
+              … alle Treffer bei „{g.type}“ anzeigen
+            </a>
+          )}
+          {g.more && type && <div class="small mut">Es gibt noch mehr Treffer – bitte genauer suchen.</div>}
+        </div>
+      ))}
+    </>
+  );
+};
 
 // ---------------------------------------------------------------------------
 // Geplante Bereiche

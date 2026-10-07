@@ -10,6 +10,7 @@ import {
   toXmlDecimal,
 } from '../domain/money/money.js';
 import { renderLetterPdf } from '../pdf/render.js';
+import { type SubcontractLink, replaceLinks } from './expected-invoices.js';
 import { BusinessError } from './errors.js';
 import { getSeller } from './masterdata.js';
 import { syncAutoAllocation } from './cost-centers.js';
@@ -369,6 +370,8 @@ export interface IncomingInput {
   purchaseOrderId: string | null;
   /** Nachunternehmer-Auftrag: setzt Objekt automatisch */
   subcontractId?: string | null;
+  /** Mehrere Aufträge/Zeiträume (z. B. Glasreinigung mehrerer Objekte); ersetzt subcontractId */
+  links?: SubcontractLink[] | undefined;
   skontoUntil: string | null;
   skontoPercentBp: number | null;
   note: string | null;
@@ -400,12 +403,29 @@ export async function saveIncoming(sql: Sql, id: string, input: IncomingInput, a
       return d.toISOString().slice(0, 10);
     })();
   let siteId = input.siteId;
-  if (input.subcontractId) {
+  const month = input.serviceMonth ?? input.invoiceDate.slice(0, 7);
+  const links: SubcontractLink[] =
+    input.links && input.links.length
+      ? input.links
+      : input.subcontractId
+        ? [{ subcontractId: input.subcontractId, month, net: input.net }]
+        : [];
+  const firstSc = links.length ? links[0]!.subcontractId : null;
+  if (firstSc) {
     const [sc] = await sql<{ supplier_id: string; site_id: string }[]>`
-      select supplier_id, site_id from app.subcontracts where id = ${input.subcontractId}`;
+      select supplier_id, site_id from app.subcontracts where id = ${firstSc}`;
     if (!sc || sc.supplier_id !== input.supplierId)
       throw new BusinessError('Nachunternehmer-Auftrag gehört nicht zu diesem Lieferanten');
-    siteId = sc.site_id;
+    // ein Auftrag (bzw. alle Zeilen desselben Auftrags) → Objekt daraus; mehrere Objekte → Kostenstellen je Zeile
+    if (links.every((l) => l.subcontractId === firstSc)) siteId = sc.site_id;
+  }
+  const withNet = links.filter((l) => l.net != null);
+  if (links.length > 1 && withNet.length === links.length) {
+    const sum = withNet.reduce((a, l) => a + l.net!, 0n);
+    if (sum !== input.net)
+      throw new BusinessError(
+        `Die Beträge je Auftrag ergeben ${(Number(sum) / 100).toFixed(2).replace('.', ',')} €, die Rechnung hat netto ${(Number(input.net) / 100).toFixed(2).replace('.', ',')} € – bitte angleichen oder die Beträge je Auftrag leer lassen`,
+      );
   }
   await sql.begin(async (tx) => {
     const [cur] = await tx<
@@ -431,7 +451,7 @@ export async function saveIncoming(sql: Sql, id: string, input: IncomingInput, a
       reverse_charge: input.reverseCharge,
       category: input.category,
       site_id: siteId,
-      subcontract_id: input.subcontractId ?? null,
+      subcontract_id: firstSc,
       purchase_order_id: input.purchaseOrderId,
       skonto_until: input.skontoUntil,
       skonto_percent_bp: input.skontoPercentBp,
@@ -442,6 +462,8 @@ export async function saveIncoming(sql: Sql, id: string, input: IncomingInput, a
     else
       await tx`insert into app.incoming_invoices ${tx({ id, created_by: actor, ...row } as Record<string, unknown>)}`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id) values (${actor}, ${cur ? 'update' : 'create'}, 'incoming_invoice', ${id})`;
+    if (input.links !== undefined || input.subcontractId !== undefined)
+      await replaceLinks(tx, id, input.supplierId, links, actor);
     await syncAutoAllocation(tx, id, actor);
   });
 }

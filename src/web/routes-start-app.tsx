@@ -1,7 +1,7 @@
 import { getCookie } from 'hono/cookie';
 import { verifySession } from '../services/employee-auth.js';
 import { OFFICE_COOKIE, type Ctx, officeSecret } from './app.js';
-import { CSS as MCSS, Ic } from './m/routes-mobile.js';
+import { CSS as MCSS } from './m/routes-mobile.js';
 
 /**
  * Gemeinsame App (App Store / Google Play / Home-Bildschirm): Startbildschirm mit Auswahl
@@ -24,7 +24,11 @@ export function registerStartAppRoutes({ app, deps }: Ctx) {
 .choice svg{width:30px;height:30px;color:#7d1435;flex:none}
 .choice b{display:block;font-size:19px}
 .choice small{color:#8a7a80;font-size:14px}
-.foot{text-align:center;color:#8a7a80;font-size:13px;margin-top:8px}`;
+.foot{text-align:center;color:#8a7a80;font-size:13px;margin-top:8px}
+.login{display:flex;flex-direction:column;gap:8px;padding:20px}
+.login label{font-weight:600}
+.login input{font:inherit;font-size:18px;padding:14px;border:1px solid #e3d6db;border-radius:12px}
+.login button{margin-top:10px}`;
     return c.html(
       '<!doctype html>' +
         String(
@@ -45,29 +49,67 @@ export function registerStartAppRoutes({ app, deps }: Ctx) {
             <body>
               <main class="start">
                 <img src="/static/logo-transparent.png" alt="Viva-Deluxe" width="220" height="44" />
-                <h1>Willkommen</h1>
-                <a class="choice" href="/m">
-                  <Ic n="clock" />
-                  <span>
-                    <b>Mitarbeiter</b>
-                    <small>Einsätze, Zeiten, Urlaub, Dokumente · Anmeldung mit Personalnummer und PIN</small>
-                  </span>
-                </a>
-                <a class="choice" href="/qm">
-                  <Ic n="building" />
-                  <span>
-                    <b>Objektleitung &amp; Büro</b>
-                    <small>
-                      Objekte, Audits, Mitarbeiter, Dokumente · Anmeldung mit Benutzername und Passwort
-                    </small>
-                  </span>
-                </a>
+                <h1>Anmelden</h1>
+                {c.req.query('fehler') && (
+                  <div class="flash err" role="alert">
+                    {c.req.query('fehler')}
+                  </div>
+                )}
+                <form method="post" action="/app/anmelden" class="card login">
+                  <label for="k">Personalnummer oder Benutzername</label>
+                  <input
+                    id="k"
+                    name="kennung"
+                    value={c.req.query('k') ?? ''}
+                    autocomplete="username"
+                    autocapitalize="none"
+                    required
+                  />
+                  <label for="p">PIN oder Passwort</label>
+                  <input id="p" name="geheim" type="password" autocomplete="current-password" required />
+                  <button class="big go">Anmelden</button>
+                </form>
+                <p class="foot">
+                  Mitarbeiter: Personalnummer und PIN (am Anfang Ihr Geburtsdatum TTMMJJ).
+                  <br />
+                  Objektleitung &amp; Büro: Benutzername und Passwort.
+                </p>
                 <div class="foot">Viva-Deluxe Gebäudereinigung GmbH</div>
               </main>
             </body>
           </html>,
         ),
     );
+  });
+
+  /**
+   * Eine Anmeldung für alle: nur Ziffern = Personalnummer + PIN (Mitarbeiter-Ansicht), sonst Benutzername + Passwort
+   * (Objektleitung & Büro). Geprüft wird von den bestehenden Anmeldungen (/m/anmelden, /anmelden) – gleiche Sperren.
+   */
+  app.post('/app/anmelden', async (c) => {
+    const b = await c.req.parseBody();
+    const kennung = String(b.kennung ?? '').trim();
+    const geheim = String(b.geheim ?? '');
+    const employee = /^\d+$/.test(kennung);
+    const body = new URLSearchParams(
+      employee
+        ? { personnel_no: kennung, pin: geheim, next: '/m' }
+        : { login: kennung.toLowerCase(), password: geheim, next: '/qm' },
+    );
+    const headers = new Headers({ 'Content-Type': 'application/x-www-form-urlencoded' });
+    for (const h of ['origin', 'cookie', 'user-agent', 'x-forwarded-for', 'x-forwarded-proto', 'host'])
+      if (c.req.header(h)) headers.set(h, c.req.header(h)!);
+    const res = await app.request(new URL(employee ? '/m/anmelden' : '/anmelden', c.req.url), {
+      method: 'POST',
+      headers,
+      body,
+    });
+    const loc = res.headers.get('location') ?? '';
+    const err = /[?&]fehler=([^&]*)/.exec(loc);
+    if (err) {
+      return c.redirect(`/app?wahl=1&fehler=${err[1]}&k=${encodeURIComponent(kennung)}`, 303);
+    }
+    return res;
   });
 
   app.get('/app/manifest.webmanifest', (c) =>

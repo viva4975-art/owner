@@ -262,9 +262,10 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
         <div class="quick">
           {(
             [
+              ['/m', 'clock', 'Meine Zeiterfassung'],
               ['/qm/objekte', 'building', 'Objekte'],
               ['/einsatzplanung', 'cal', 'Planung'],
-              ['/zeiterfassung', 'clock', 'Zeiten'],
+              ['/zeiterfassung', 'clock', 'Zeiten (Team)'],
               ['/personal', 'list', 'Mitarbeiter'],
               ['/personal/dokumente', 'doc', 'Dokumente'],
               ['/urlaub', 'sun', 'Urlaub'],

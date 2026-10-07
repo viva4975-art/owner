@@ -34,7 +34,8 @@ import {
   BREAK_AFTER_MINUTES,
   setRunningBreak,
 } from '../../services/time.js';
-import type { AppEnv, Ctx } from '../app.js';
+import { type AppEnv, type Ctx, OFFICE_COOKIE, officeSecret } from '../app.js';
+import { getUser, linkedEmployee } from '../../services/users.js';
 import { SIGN_JS } from '../routes-orders.js';
 import { latestSignature, monthToSign, signTimesheet, timesheet } from '../../services/timesheet.js';
 import { type Lang, LANGS, LOCALE, isLang, t } from './i18n.js';
@@ -48,6 +49,8 @@ interface Me {
   first_name: string;
   lang: Lang;
   sites: { id: string; name: string; site_no: string }[];
+  /** über die Büro-Anmeldung (Objektleitung/Büro stempeln selbst) – kein eigenes Abmelden in /m */
+  office?: boolean;
 }
 
 export const CSS = `
@@ -269,10 +272,14 @@ const MLayout: FC<{
         </a>
         <span class="sp" />
         <a href={`/m/sprache`}>{lang.toUpperCase()}</a>
-        {me && (
-          <form method="post" action="/m/abmelden" style="margin:0">
-            <button>{t(lang, 'logout')}</button>
-          </form>
+        {me?.office ? (
+          <a href="/qm">Büro</a>
+        ) : (
+          me && (
+            <form method="post" action="/m/abmelden" style="margin:0">
+              <button>{t(lang, 'logout')}</button>
+            </form>
+          )
         )}
       </header>
       <main>
@@ -328,7 +335,17 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
   };
 
   const loadMe = async (c: Context<AppEnv>): Promise<Me | null> => {
-    const id = verifySession(secret, getCookie(c, COOKIE));
+    let id = verifySession(secret, getCookie(c, COOKIE));
+    let office = false;
+    if (!id) {
+      // Büro-/Objektleitungs-Anmeldung mit verknüpftem Mitarbeiter → eigene Zeiterfassung ohne PIN
+      const uid = verifySession(officeSecret(env), getCookie(c, OFFICE_COOKIE));
+      const u = uid ? await getUser(sql, uid) : undefined;
+      if (u?.active) {
+        id = await linkedEmployee(sql, u.id);
+        office = !!id;
+      }
+    }
     if (!id) return null;
     const [e] = await sql<
       { id: string; personnel_no: string; first_name: string; app_language: string; status: string }[]
@@ -351,6 +368,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       first_name: e.first_name,
       lang: isLang(e.app_language) ? e.app_language : 'de',
       sites,
+      office,
     };
   };
 

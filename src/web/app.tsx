@@ -182,6 +182,7 @@ export function createApp(deps: Deps) {
     path.startsWith('/np/') ||
     path === '/anmelden' ||
     path === '/app' ||
+    path === '/app/anmelden' ||
     path === '/app/manifest.webmanifest' ||
     path === '/health' ||
     path.startsWith('/static/');

@@ -277,3 +277,33 @@ export function fullName(u: { name?: string | null; login: string }): string {
     .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
     .join(' ');
 }
+
+/**
+ * Mitarbeiter-Datensatz zum Benutzerkonto (eigene Zeiterfassung für Büro/Objektleitung): fest verknüpft
+ * (Einstellungen → Benutzer) oder – solange nichts verknüpft ist – genau ein aktiver Mitarbeiter mit gleichem Namen.
+ */
+export async function linkedEmployee(sql: Sql, userId: string): Promise<string | null> {
+  const [r] = await sql<{ id: string | null }[]>`
+    select coalesce(p.employee_id,
+                    (select min(e.id::text)::uuid from app.employees e
+                      where e.status = 'aktiv'
+                        and lower(e.first_name || ' ' || e.last_name) = lower(p.display_name)
+                     having count(*) = 1)) as id
+      from app.profiles p where p.user_id = ${userId}`;
+  return r?.id ?? null;
+}
+
+/** Benutzer ↔ Mitarbeiter verknüpfen (jeder Mitarbeiter höchstens einem Benutzer). */
+export async function saveEmployeeLink(sql: Sql, userId: string, employeeId: string | null, actor: string) {
+  const [cur] = await sql<{ employee_id: string | null }[]>`
+    select employee_id from app.profiles where user_id = ${userId}`;
+  if ((cur?.employee_id ?? null) === employeeId) return;
+  if (employeeId) {
+    const [other] = await sql<{ display_name: string }[]>`
+      select display_name from app.profiles where employee_id = ${employeeId} and user_id <> ${userId}`;
+    if (other) throw new BusinessError(`Dieser Mitarbeiter ist schon mit ${other.display_name} verknüpft.`);
+  }
+  await sql`update app.profiles set employee_id = ${employeeId} where user_id = ${userId}`;
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${actor}, 'employee_link', 'user', ${userId}, ${sql.json({ employee_id: employeeId })})`;
+}

@@ -16,6 +16,8 @@ import {
   oneTimePassword,
   resetPassword,
   updateUser,
+  linkedEmployee,
+  saveEmployeeLink,
 } from '../services/users.js';
 import { type AppEnv, type Ctx, OFFICE_COOKIE, UUID, officeSecret } from './app.js';
 import { arr } from './forms.js';
@@ -259,7 +261,15 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
   });
 
   const userPage = async (c: Context<AppEnv>, id: string, pw: string | null, note: string | null = null) => {
-    const [u, sites] = await Promise.all([getUser(sql, id), listSites(sql)]);
+    const [u, sites, emps, link] = await Promise.all([
+      getUser(sql, id),
+      listSites(sql),
+      sql<{ id: string; personnel_no: string; name: string }[]>`
+        select id, personnel_no, last_name || ', ' || first_name as name from app.employees
+         where status = 'aktiv' order by last_name, first_name`,
+      sql<{ employee_id: string | null }[]>`select employee_id from app.profiles where user_id = ${id}`,
+    ]);
+    const linked = link[0]?.employee_id ?? (u ? await linkedEmployee(sql, id) : null);
     const mine = u
       ? sites
           .filter((s) => (s as { manager_user_id?: string | null }).manager_user_id === id)
@@ -333,6 +343,20 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
                     </option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label for="emp">Mitarbeiter (eigene Zeiterfassung)</label>
+                <select id="emp" name="employee_id">
+                  <option value="">– keine eigene Zeiterfassung –</option>
+                  {emps.map((e) => (
+                    <option value={e.id} selected={e.id === linked}>
+                      {e.personnel_no} · {e.name}
+                    </option>
+                  ))}
+                </select>
+                <div class="small mut">
+                  Mit der Büro-Anmeldung stempelt die Person selbst („Meine Zeiterfassung“) – ohne PIN.
+                </div>
               </div>
               {u && (
                 <div class="chk" style="align-self:end;height:38px">
@@ -486,6 +510,7 @@ cnt();})();`,
         },
         c.get('actor'),
       );
+      await saveEmployeeLink(sql, id, one('employee_id') || null, c.get('actor'));
       return userPage(c, id, tmp, 'Benutzer angelegt.');
     }
     await updateUser(
@@ -502,6 +527,7 @@ cnt();})();`,
       },
       c.get('actor'),
     );
+    await saveEmployeeLink(sql, id, one('employee_id') || null, c.get('actor'));
     return back(c, `/benutzer/${id}`, { ok: 'Gespeichert.' });
   });
 

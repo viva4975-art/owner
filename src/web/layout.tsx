@@ -1184,7 +1184,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Zeiterfassung', href: '/zeiterfassung', sep: true },
       { label: 'Soll/Ist je Monat', href: '/zeiterfassung/monat' },
       { label: 'Stundenliste & Lohnarten', href: '/zeiterfassung/stundenzettel' },
-      { label: 'Handy-Ansicht Mitarbeiter', href: '/m' },
+      { label: 'Meine Zeiterfassung', href: '/m' },
     ],
   },
   {
@@ -1392,6 +1392,11 @@ export const Layout: FC<{
                   </span>
                 )}
                 {user && (
+                  <a class="btn sm sec" href="/m" title="Eigene Arbeitszeit stempeln">
+                    <Icon name="clock" size={16} /> <span class="hide-m">Meine Zeiterfassung</span>
+                  </a>
+                )}
+                {user && (
                   <details class="dd">
                     <summary class="gear" title="Einstellungen" aria-label="Einstellungen">
                       <Icon name="settings" size={20} />
@@ -1418,6 +1423,7 @@ export const Layout: FC<{
                     </summary>
                     <div class="drop right">
                       <a href="/konto">Mein Konto / Passwort</a>
+                      <a href="/m">Meine Zeiterfassung (stempeln)</a>
                       {role === 'admin' && <a href="/benutzer">Benutzer & Rechte</a>}
                       {role && canOpen(role as Role, '/einstellungen') && (
                         <a href="/einstellungen">Einstellungen</a>

@@ -1310,3 +1310,15 @@ Testadresse.
   Arbeitsscheine, Personalbogen, NU-Auftrag, Posteingang, Büro-Ansicht; Objekt-Details zusätzlich Dokumente, Notizen,
   Leistungen & Preise (nur Büro), „am PC öffnen“. Link „Objektleitung & Büro: hier anmelden“ auf der Mitarbeiter-Anmeldung.
   **Store-Veröffentlichung wartet auf:** D-U-N-S-Nummer, Google-Play- und Apple-Developer-Konto (GmbH), Firebase (Push).
+- 2026-10-07: **Eine Anmeldung für alle** (Ahmed: „automatisch über den Zugang erkennen“): `/app` hat nur noch ein
+  Formular „Personalnummer oder Benutzername“ + „PIN oder Passwort“. Nur Ziffern → Personalnummer + PIN →
+  Mitarbeiter-Ansicht `/m`; sonst Benutzername + Passwort → Objektleitung & Büro `/qm`. Geprüft wird über die
+  bestehenden Anmeldungen (`/m/anmelden`, `/anmelden`, gleiche Sperren nach 5 Fehlversuchen); Fehler → zurück zu `/app`
+  mit Meldung, Kennung bleibt stehen. Benutzernamen enthalten nie nur Ziffern (Regel `[a-z0-9._@-]`, Personalnummern
+  sind Ziffern) – die Weiche ist eindeutig, solange kein Benutzername nur aus Ziffern besteht.
+- 2026-10-07: **Objektleitung und Büro stempeln selbst** (Ahmed): Benutzer ↔ Mitarbeiter verknüpft
+  (`app.profiles.employee_id`, Einstellungen → Benutzer → „Mitarbeiter (eigene Zeiterfassung)“; ohne Verknüpfung gilt
+  genau ein aktiver Mitarbeiter mit gleichem Namen). Mit der Büro-Anmeldung öffnet `/m` die eigene Zeiterfassung ohne
+  PIN (Stempeln, Zeiten, Urlaub, Dokumente, Stundenliste unterschreiben); oben „Büro“ statt „Abmelden“. Am PC Knopf
+  „Meine Zeiterfassung“ in der Kopfzeile (und im Benutzermenü), in der App Kachel „Meine Zeiterfassung“ (Team-Zeiten
+  heißen „Zeiten (Team)“). Tests: neu `npm run e2e:login` (13 Prüfungen), 373 Unit-/DB-Tests.

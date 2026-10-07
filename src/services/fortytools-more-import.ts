@@ -501,6 +501,9 @@ export async function applyTimes(
                created_at = least(created_at, (${s.valid_from}::date)::timestamp at time zone 'Europe/Berlin')
          where id = ${s.id} and note = 'aus Fortytools-Zeiten abgeleitet' and valid_from > ${s.valid_from}`;
       shiftsUpdated += fixed.count;
+      // Zuordnung Mitarbeiter ↔ Objekt (Liste „Mitarbeitende“, Stempeln nur an zugeordneten Objekten)
+      await sql`insert into app.employee_sites (employee_id, site_id)
+                values (${s.employee_id}, ${s.site_id}) on conflict do nothing`;
       if (s.exists) continue;
       const r = await sql`
         insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes,

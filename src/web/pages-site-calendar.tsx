@@ -106,25 +106,32 @@ const CAL_CSS = `.calbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
 .sh.sub{border-color:var(--warn);background:var(--warn-50)}.sh.hol{border-color:var(--faint);background:var(--bg)}
 .sh.cx{border-color:var(--faint);background:var(--bg);text-decoration:line-through;color:var(--mut)}
 .sh .t{font-weight:600}.sh .s{color:var(--mut);font-size:11.5px}
+a.sh{display:block;color:inherit;text-decoration:none;cursor:pointer}a.sh:hover{filter:brightness(.96);box-shadow:0 0 0 1px rgba(0,0,0,.08)}
+.cal.wk{grid-template-rows:auto auto;grid-auto-flow:column}.cal.wk .wkd{display:contents}.cal.wk .dc{min-height:160px}
 .cal-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin:8px 0 0}
 .cal-legend .sh{display:inline-block;margin:0;padding:0 8px}
 .cal-side{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:18px;margin-top:18px}
-@media (max-width:900px){.cal-side{grid-template-columns:1fr}.cal.wk{grid-template-columns:1fr!important}}`;
+@media (max-width:900px){.cal-side{grid-template-columns:1fr}
+  .cal.wk{display:block}.cal.wk .wkd{display:block}.cal.wk .dc{min-height:0;border-right:0}
+  .cal .dc{padding:4px;min-height:84px}.cal .dc .sh{padding:2px 4px;font-size:11.5px}
+}
+@media (max-width:640px){.cal:not(.wk) .dc .sh .nm{display:none}.cal:not(.wk) .dc .sh{text-align:center;border-left-width:0;border-top-width:3px;border-top-style:solid}}`;
 
-const Chip: FC<{ s: PlannedShift; compact?: boolean }> = ({ s, compact }) => {
+const Chip: FC<{ s: PlannedShift; compact?: boolean; back: string }> = ({ s, compact, back }) => {
   const st = shiftState(s);
   return (
-    <div
+    <a
       class={`sh ${st.cls}`}
-      title={`${s.plan.start_time}–${s.plan.end_time} ${s.plan.employee_name} · ${st.label}`}
+      href={`/einsatzplanung/${s.plan.id}/tag/${s.date}?zurueck=${encodeURIComponent(back)}`}
+      title={`${s.plan.start_time}–${s.plan.end_time} ${s.plan.employee_name} · ${st.label} – antippen: Umplanen, Vertretung, Ausfall`}
     >
       <span class="t">
         {s.plan.start_time}
         {!compact && `–${s.plan.end_time}`}
       </span>{' '}
-      {s.plan.employee_name}
+      <span class="nm">{s.plan.employee_name}</span>
       {!compact && <div class="s">{st.label}</div>}
-    </div>
+    </a>
   );
 };
 
@@ -147,6 +154,7 @@ export const SiteCalendar: FC<{
         ? `${WD[isoWeekday(date) - 1]}, ${dateDe(date)}`
         : `${dateDe(r.from)} – ${dateDe(r.to)}`;
   const month = date.slice(0, 7);
+  const back = url(view, date);
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: CAL_CSS }} />
@@ -188,7 +196,7 @@ export const SiteCalendar: FC<{
                   </a>
                 </div>
                 {list.slice(0, 4).map((s) => (
-                  <Chip s={s} compact />
+                  <Chip s={s} compact back={back} />
                 ))}
                 {list.length > 4 && (
                   <a class="small" href={url('tag', d)}>
@@ -201,21 +209,21 @@ export const SiteCalendar: FC<{
         </div>
       ) : (
         <div class="cal wk" style={`grid-template-columns:repeat(${days.length},minmax(0,1fr))`}>
-          {days.map((d) => (
-            <div class={`dh${d === today ? ' today' : ''}`}>
-              <a href={url('tag', d)} style="color:inherit">
-                {WD[isoWeekday(d) - 1]} {dateDe(d).slice(0, 6)}
-              </a>
-            </div>
-          ))}
           {days.map((d) => {
             const list = on(d);
             return (
-              <div class={`dc${d === today ? ' today' : ''}`} style="min-height:160px">
-                {list.map((s) => (
-                  <Chip s={s} />
-                ))}
-                {!list.length && <span class="faint">–</span>}
+              <div class="wkd">
+                <div class={`dh${d === today ? ' today' : ''}`}>
+                  <a href={url('tag', d)} style="color:inherit">
+                    {WD[isoWeekday(d) - 1]} {dateDe(d).slice(0, 6)}
+                  </a>
+                </div>
+                <div class={`dc${d === today ? ' today' : ''}`}>
+                  {list.map((s) => (
+                    <Chip s={s} back={back} />
+                  ))}
+                  {!list.length && <span class="faint">–</span>}
+                </div>
               </div>
             );
           })}

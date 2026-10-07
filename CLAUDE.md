@@ -1389,3 +1389,13 @@ Testadresse.
     Schild; am Handy Buchstabenleiste wischbar, QR-Druck/Objektleitungen-Zuordnen nur am PC.
   - Startseite am Handy: Karten liefen rechts über den Rand (Raster ohne `minmax(0,…)`) → behoben; Offene Posten am Handy
     je Kunde voller Name, darunter Tage/Offen/Überfällig/Summe. Gelbe Hinweiskästen brechen am Handy sauber um.
+- 2026-10-07: Rückmeldung Handy/Objekte (Ahmed):
+  - **Fund:** „Mitarbeitende“ in der Objektliste zählte nur die Zuordnung Mitarbeiter ↔ Objekt – der Zeiten-Import hat
+    sie bei abgeleiteten Einsätzen nicht gesetzt (normale Planung schon). Folge auch: Stempeln am Objekt nur bei
+    Zuordnung. Behoben im Import; Migration `20261111000010` ergänzt die Zuordnung für alle laufenden/künftigen Einsätze
+    (nur hinzufügen, nichts löschen).
+  - Einsatzkalender am Objekt: jeder Einsatz anklickbar (→ Tag umplanen / Vertretung / Ausfall, zurück zum Kalender);
+    Wochenansicht am Handy je Tag mit den Einsätzen darunter (vorher alle Tage oben, Einsätze unten); Monat am Handy nur
+    Uhrzeit je Einsatz, Tag antippen = Tagesansicht.
+  - Objektliste: „Kunde“ kleiner mit Beschriftung, „Objektleitung“ beschriftet. Kundenliste: graues Schild „n Objekte“
+    entfernt (doppelt zum Knopf „Objekte (n)“).

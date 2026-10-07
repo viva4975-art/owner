@@ -1119,6 +1119,8 @@ th.sortable.asc,th.sortable.desc{color:var(--brand);text-decoration:underline;te
 .ent-open{background:#fff4e5;color:#7a4b00;border-radius:999px;padding:3px 10px;font-size:13.5px;white-space:nowrap}
 .ent-open b{color:#5c3700}
 .list.sites .no{font-variant-numeric:tabular-nums;color:var(--mut);font-weight:600}
+.list.sites .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint,#9ca3af);font-weight:600;margin-bottom:1px}
+.list.sites .cust{font-size:13.5px;color:#4b5563}.list.sites .cust a{color:#374151}
 @media (max-width:640px){
   .letters{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
   .letters a{flex:0 0 auto}

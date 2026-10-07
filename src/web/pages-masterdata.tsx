@@ -165,12 +165,7 @@ export const CustomerList: FC<{
                     <span class={`badge ${STATUS_BADGE[c.list_status]}`}>
                       {CUSTOMER_STATUS[c.list_status]}
                     </span>
-                    {ss.length > 0 && (
-                      <span class="badge tag">
-                        {ss.filter((x) => x.active).length} Objekt
-                        {ss.filter((x) => x.active).length === 1 ? '' : 'e'}
-                      </span>
-                    )}
+
                     {c.dunning_block && <span class="badge warn">Mahnsperre</span>}
                   </div>
                 </div>
@@ -753,12 +748,12 @@ export const SiteList: FC<{
                 )}
               </div>
               <div class="cust">
-                <a href={`/kunden/${s.customer_id}`} style="color:var(--ink)">
-                  {s.customer_name}
-                </a>
-                <div class="small faint">Kd.-Nr. {s.customer_no}</div>
+                <div class="lbl">Kunde</div>
+                <a href={`/kunden/${s.customer_id}`}>{s.customer_name}</a>
+                <span class="small faint"> · {s.customer_no}</span>
               </div>
               <div class="ol">
+                <div class="lbl">Objektleitung</div>
                 {s.manager_name ? (
                   <>
                     <span class="person-chip">

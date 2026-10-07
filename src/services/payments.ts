@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { Sql } from '../db/client.js';
-import { parseEuro } from '../domain/money/money.js';
+import { type Cents, parseEuro } from '../domain/money/money.js';
 import { BusinessError } from './errors.js';
 
 export interface OpenItem {
@@ -45,12 +46,45 @@ export async function openItemLedger(
   sql: Sql,
   f: { customerId?: string; q?: string | null; overdueOnly?: boolean } = {},
 ) {
-  let items: OpenItem[] = [...(await listOpenItems(sql, f.customerId))];
+  let items: (OpenItem & { legacy?: boolean })[] = [
+    ...(await listOpenItems(sql, f.customerId)),
+    ...(await listLegacyOpenItems(sql, f.customerId)),
+  ];
   const t = f.q?.trim().toLowerCase();
   if (t)
     items = items.filter((i) => `${i.customer_no} ${i.customer_name} ${i.number}`.toLowerCase().includes(t));
   if (f.overdueOnly) items = items.filter((i) => i.overdue_days > 0);
-  const ids = items.map((i) => i.invoice_id);
+  const ids = items.filter((i) => !i.legacy).map((i) => i.invoice_id);
+  const lids = items.filter((i) => i.legacy).map((i) => i.invoice_id);
+  const [lpays, ladj] = lids.length
+    ? await Promise.all([
+        sql<
+          {
+            invoice_id: string;
+            paid_on: string;
+            method: string;
+            amount_cents: bigint;
+            reference: string | null;
+          }[]
+        >`
+          select invoice_id, paid_on::text, method, amount_cents, reference from app.legacy_payments
+           where invoice_id = any(${lids}::uuid[]) order by paid_on, created_at`,
+        // Korrekturen derselben Fortytools-Gruppe (negativ, noch offen) mindern die erste offene Rechnung
+        sql<{ for_id: string; id: string; number: string; issue_date: string; gross_cents: bigint }[]>`
+          select o.invoice_id as for_id, k.id, k.number, k.issue_date::text, k.gross_cents
+            from app.legacy_open_items o join app.legacy_invoices l on l.id = o.invoice_id
+            join app.legacy_invoices k on k.ft_root_id = l.ft_root_id and not k.paid and k.gross_cents < 0
+                 and k.customer_id is not distinct from l.customer_id
+           where o.invoice_id = any(${lids}::uuid[]) and l.id = (
+             select p.id from app.legacy_invoices p where p.ft_root_id = l.ft_root_id and not p.paid
+                and p.gross_cents > 0 order by p.number limit 1)`,
+      ])
+    : [[], []];
+  const [lpart] = lids.length
+    ? await sql<{ m: Record<string, string> | null }[]>`
+        select jsonb_object_agg(id, paid_part_cents::text) as m from app.legacy_invoices
+         where id = any(${lids}::uuid[]) and paid_part_cents > 0`
+    : [{ m: null }];
   const [pays, adj] = ids.length
     ? await Promise.all([
         sql<
@@ -93,10 +127,46 @@ export async function openItemLedger(
       customer_no: string;
       customer_name: string;
       open_cents: bigint;
-      items: (OpenItem & { haben: LedgerEntry[] })[];
+      items: (OpenItem & { legacy?: boolean; haben: LedgerEntry[] })[];
     }
   >();
   for (const i of items) {
+    if (i.legacy) {
+      const own = lpays.filter((p) => p.invoice_id === i.invoice_id);
+      const booked = own.reduce((a, p) => a + p.amount_cents, 0n);
+      const part = BigInt(lpart?.m?.[i.invoice_id] ?? '0');
+      const haben: LedgerEntry[] = [
+        ...ladj
+          .filter((a) => a.for_id === i.invoice_id)
+          .map((a) => ({
+            date: a.issue_date,
+            label: `Korrektur ${a.number} (Fortytools)`,
+            cents: -a.gross_cents,
+            href: `/rechnungen/fortytools/${a.id}`,
+          })),
+        ...own.map((p) => ({
+          date: p.paid_on,
+          label: `${p.method === 'skonto' ? 'Skonto-Abzug' : 'Zahlung'}${p.reference ? ` (${p.reference})` : ''}`,
+          cents: p.amount_cents,
+          href: null,
+          skonto: p.method === 'skonto',
+        })),
+        ...(part > booked
+          ? [{ date: i.issue_date, label: 'Teilzahlung (früher erfasst)', cents: part - booked, href: null }]
+          : []),
+      ].sort((a, b) => a.date.localeCompare(b.date));
+      const g = byCustomer.get(i.customer_id) ?? {
+        customer_id: i.customer_id,
+        customer_no: i.customer_no,
+        customer_name: i.customer_name,
+        open_cents: 0n,
+        items: [],
+      };
+      g.open_cents += i.open_cents;
+      g.items.push({ ...i, haben });
+      byCustomer.set(i.customer_id, g);
+      continue;
+    }
     const haben: LedgerEntry[] = [
       ...adj
         .filter((a) => a.original_invoice_id === i.invoice_id)
@@ -262,4 +332,105 @@ export async function reversePayment(sql: Sql, paymentId: string, actor: string,
              values (${p.invoice_id}, ${-p.amount_cents}, (now() at time zone 'Europe/Berlin')::date, 'korrektur',
                      ${p.reference}, ${note}, ${p.id}, ${actor})`;
   });
+}
+
+/** Offene Fortytools-Rechnungen im Format der offenen Posten (Storno/Korrektur der Gruppe verrechnet). */
+export async function listLegacyOpenItems(sql: Sql, customerId?: string) {
+  const rows = await sql<(OpenItem & { legacy: boolean })[]>`
+    select o.invoice_id, o.number, 'invoice' as kind, o.customer_id, c.customer_no, c.name as customer_name,
+           null::text as site_name, o.issue_date::text, coalesce(o.due_date, o.issue_date)::text as due_date,
+           null::text as skonto_date, o.gross_cents as payable_cents, 0::bigint as adjustments_cents,
+           (o.gross_cents - o.open_cents)::bigint as paid_cents, o.open_cents,
+           greatest(0, (now() at time zone 'Europe/Berlin')::date - coalesce(o.due_date, o.issue_date))::int
+             as overdue_days, true as legacy
+      from app.legacy_open_items o join app.customers c on c.id = o.customer_id
+     where o.open_cents <> 0 and ${customerId ? sql`o.customer_id = ${customerId}` : sql`true`}`;
+  return rows;
+}
+
+/**
+ * Zahlung auf einen offenen Posten wie in Fortytools: Betrag eingeben, Rest bleibt offen (Teilzahlung) oder wird als
+ * Skonto ausgebucht. Gilt für eigene Rechnungen und für Rechnungen aus Fortytools. Feste IDs aus `batchId` → doppelt
+ * absenden bucht nichts doppelt.
+ */
+export async function settleOpenItem(
+  sql: Sql,
+  p: {
+    batchId: string;
+    invoiceId: string;
+    legacy: boolean;
+    amount: bigint;
+    date: string;
+    rest: 'offen' | 'skonto';
+    reference: string | null;
+    actor: string;
+  },
+) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date)) throw new BusinessError('Zahlungsdatum fehlt');
+  if (p.amount < 0n) throw new BusinessError('Betrag darf nicht negativ sein');
+  const pid = (k: string) => idFrom(`${p.batchId}:${p.invoiceId}:${k}`);
+  if (!p.legacy) {
+    const [o] = await sql<{ open_cents: bigint }[]>`
+      select open_cents from app.open_items where invoice_id = ${p.invoiceId}`;
+    if (!o) throw new BusinessError('Rechnung ist nicht (mehr) offen');
+    const [done] =
+      await sql`select 1 from app.payments where id = ${pid('zahlung')} or id = ${pid('skonto')}`;
+    if (done) return { paid: 0n, skonto: 0n };
+    if (p.amount > o.open_cents)
+      throw new BusinessError('Betrag ist höher als der offene Posten – Überzahlung bitte klären');
+    if (p.amount > 0n)
+      await bookPayment(
+        sql,
+        pid('zahlung'),
+        p.invoiceId,
+        { amount: p.amount as Cents, paid_on: p.date, method: 'ueberweisung', reference: p.reference },
+        p.actor,
+      );
+    const rest = o.open_cents - p.amount;
+    if (p.rest === 'skonto' && rest > 0n)
+      await bookPayment(
+        sql,
+        pid('skonto'),
+        p.invoiceId,
+        { amount: rest as Cents, paid_on: p.date, method: 'skonto', reference: 'Rest als Skonto' },
+        p.actor,
+      );
+    return { paid: p.amount, skonto: p.rest === 'skonto' ? rest : 0n };
+  }
+  return sql.begin(async (tx) => {
+    await tx`select 1 from app.legacy_invoices where id = ${p.invoiceId} for update`;
+    const [done] =
+      await tx`select 1 from app.legacy_payments where id = ${pid('zahlung')} or id = ${pid('skonto')}`;
+    if (done) return { paid: 0n, skonto: 0n };
+    const [o] = await tx<{ open_cents: bigint }[]>`
+      select open_cents from app.legacy_open_items where invoice_id = ${p.invoiceId}`;
+    if (!o) throw new BusinessError('Rechnung ist nicht (mehr) offen');
+    if (p.amount > o.open_cents) throw new BusinessError('Betrag ist höher als der offene Betrag');
+    const rest = o.open_cents - p.amount;
+    if (p.amount > 0n)
+      await tx`insert into app.legacy_payments (id, invoice_id, amount_cents, paid_on, method, reference, created_by)
+               values (${pid('zahlung')}, ${p.invoiceId}, ${p.amount}, ${p.date}, 'zahlung', ${p.reference}, ${p.actor})`;
+    if (p.rest === 'skonto' && rest > 0n)
+      await tx`insert into app.legacy_payments (id, invoice_id, amount_cents, paid_on, method, reference, created_by)
+               values (${pid('skonto')}, ${p.invoiceId}, ${rest}, ${p.date}, 'skonto', 'Rest als Skonto', ${p.actor})`;
+    if (rest === 0n || p.rest === 'skonto')
+      await tx`update app.legacy_invoices set paid = true, paid_at = ${p.date}, paid_marked_by = ${p.actor},
+                      paid_part_cents = paid_part_cents + ${p.amount}
+                where id = ${p.invoiceId}`;
+    else
+      await tx`update app.legacy_invoices set paid_part_cents = paid_part_cents + ${p.amount} where id = ${p.invoiceId}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${p.actor}, 'payment', 'legacy_invoice', ${p.invoiceId},
+                     ${tx.json({ amount_cents: String(p.amount), rest: p.rest, rest_cents: String(rest) })})`;
+    return { paid: p.amount, skonto: p.rest === 'skonto' ? rest : 0n };
+  });
+}
+
+/** Feste UUID aus einem Schlüssel (v4-Format). */
+function idFrom(key: string) {
+  const h = createHash('md5').update(key).digest('hex').split('');
+  h[12] = '4';
+  h[16] = '89ab'[parseInt(h[16]!, 16) & 3]!;
+  const x = h.join('');
+  return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
 }

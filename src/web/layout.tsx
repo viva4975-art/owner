@@ -302,6 +302,8 @@ details.pop>.panel .btn{margin-top:12px;width:100%;justify-content:center}
 .op-item{border-top:1px solid var(--line);padding:6px 0 10px}
 .op-sumline{border-top:1px dashed var(--line);margin:2px 22px 0;padding:6px 0;color:var(--mut)}
 .op-saldo{display:flex;align-items:center;gap:12px;justify-content:flex-end;padding:4px 22px 0}
+.op-pay{display:flex;align-items:center;gap:8px;justify-content:flex-end;padding:6px 22px 0;flex-wrap:wrap}.op-pay input{max-width:120px;text-align:right}.op-pay select{max-width:170px}
+.op-paybar{flex-wrap:wrap;gap:8px 12px;align-items:center}
 .op-saldo>span.small{margin-right:auto}
 .op-saldo .lbl{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
 .op input[type=checkbox]{width:20px;height:20px}

@@ -1236,3 +1236,10 @@ Testadresse.
     sonst „Allgemein (aus Fortytools)“ des Kunden; Turnus/Abrechnung/Status übernommen (Stundensatz aus „x 25,00 €“),
     alte Nummer bleibt. Probelauf: 122 von 122 Aufträgen (13 auf „Allgemein“). **Auf dem Server: Backup erneut einspielen
     (Bereich Nachunternehmer) – vorhandene Firmen/Nachweise bleiben, nur die Aufträge kommen dazu.**
+- 2026-10-07: Runde 23, Teil D – Offene Posten wie Fortytools: Seite enthält jetzt auch die offenen **Fortytools-
+  Rechnungen** (Schild „Fortytools“, Korrekturen derselben Gruppe im Haben). Je Rechnung Betrag eintragen („voll“ füllt
+  den offenen Betrag) und wählen „Rest bleibt offen“ (Teilzahlung) oder „Rest als Skonto“; Zahlungsdatum und
+  Verwendungszweck oben; „Zahlungen buchen“ bucht alle ausgefüllten Zeilen (feste IDs je Formular → nichts doppelt).
+  Fortytools-Zahlungen in `app.legacy_payments` (nur anhängen; Zahlung/Skonto je Zeile), „als bezahlt“ an der
+  Fortytools-Rechnung schreibt ebenfalls eine Zeile. **Hinweis Skonto:** Abzug mindert die Umsatzsteuer (§ 17 UStG) –
+  Korrektur macht der Steuerberater (DATEV-Export enthält „Skonto-Abzug“).

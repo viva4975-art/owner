@@ -32,9 +32,10 @@ import { sollPlanIst } from '../services/hr-month.js';
 import { addDays, todayBerlin } from '../domain/invoice/calc.js';
 import { MonthBox } from './pages-hr.js';
 import { BusinessError } from '../services/errors.js';
+import { parseEuro } from '../domain/money/money.js';
 import { assigneeOptions } from '../services/crm.js';
 import { listInvoices } from '../services/invoices.js';
-import { listBalances, openItemLedger } from '../services/payments.js';
+import { listBalances, openItemLedger, settleOpenItem } from '../services/payments.js';
 import { upcomingEvents } from '../services/tenders.js';
 import { proposals } from '../services/dunning.js';
 import { listArticles, listDevices, supplierWarnings } from '../services/inventory.js';
@@ -416,6 +417,53 @@ export function registerModuleRoutes(ctx: Ctx) {
 
   // ------------------------------------------------------------------ Offene Posten
 
+  app.post('/offene-posten/zahlungen', async (c) => {
+    const b = await c.req.parseBody();
+    const batch = typeof b.batch === 'string' && /^[0-9a-f-]{36}$/.test(b.batch) ? b.batch : randomUUID();
+    const date = String(b.datum ?? '');
+    const reference = typeof b.referenz === 'string' && b.referenz.trim() ? b.referenz.trim() : null;
+    let n = 0;
+    let paid = 0n;
+    let skonto = 0n;
+    const errors: string[] = [];
+    for (const k of Object.keys(b)) {
+      const m = /^pay_([0-9a-f-]{36})$/.exec(k);
+      if (!m) continue;
+      const raw = String(b[k] ?? '').trim();
+      const rest = b[`rest_${m[1]}`] === 'skonto' ? 'skonto' : 'offen';
+      if (!raw && rest !== 'skonto') continue;
+      let amount: bigint;
+      try {
+        amount = raw ? parseEuro(raw) : 0n;
+      } catch {
+        errors.push(`Betrag „${raw}“ ungültig`);
+        continue;
+      }
+      try {
+        const r = await settleOpenItem(sql, {
+          batchId: batch,
+          invoiceId: m[1]!,
+          legacy: b[`lg_${m[1]}`] === '1',
+          amount,
+          date,
+          rest,
+          reference,
+          actor: c.get('actor'),
+        });
+        n++;
+        paid += r.paid;
+        skonto += r.skonto;
+      } catch (e) {
+        if (!(e instanceof BusinessError)) throw e;
+        errors.push(e.message);
+      }
+    }
+    if (!n && !errors.length)
+      throw new BusinessError('Bitte bei mindestens einer Rechnung einen Betrag eintragen');
+    const msg = `${n} Rechnung(en): ${euro(paid)} Zahlung${skonto ? `, ${euro(skonto)} als Skonto ausgebucht` : ''}`;
+    return back(c, '/offene-posten', errors.length ? { fehler: [msg, ...errors].join('\n') } : { ok: msg });
+  });
+
   app.get('/offene-posten', async (c) => {
     const q = c.req.query('q') ?? '';
     const overdueOnly = c.req.query('filter') === 'ueberfaellig';
@@ -464,7 +512,19 @@ export function registerModuleRoutes(ctx: Ctx) {
           <input name="q" value={q} placeholder="Kunde, Kd.-Nr., Rechnungsnr." style="max-width:280px" />
           <button class="btn sec sm">Suchen</button>
         </form>
-        <form method="post" action="/mahnungen/stapel" id="op-form">
+        <form method="post" action="/offene-posten/zahlungen" id="op-form">
+          <input type="hidden" name="batch" value={randomUUID()} />
+          <div class="card actions op-paybar" style="margin-top:0">
+            <b>Zahlungseingang erfassen</b>
+            <span class="small mut">
+              Betrag je Rechnung eintragen – Rest bleibt offen (Teilzahlung) oder wird als Skonto ausgebucht.
+            </span>
+            <label for="op-date" style="margin:0 0 0 auto">
+              Zahlungsdatum
+            </label>
+            <input id="op-date" type="date" name="datum" value={todayBerlin()} style="max-width:170px" />
+            <input name="referenz" placeholder="Verwendungszweck (optional)" style="max-width:220px" />
+          </div>
           {groups.map((g) => (
             <div class="card op">
               <div class="op-head">
@@ -490,9 +550,16 @@ export function registerModuleRoutes(ctx: Ctx) {
                   <div class="op-item">
                     <div class="op-row">
                       <span>
-                        <a href={`/rechnungen/${i.invoice_id}`}>
+                        <a
+                          href={
+                            i.legacy
+                              ? `/rechnungen/fortytools/${i.invoice_id}`
+                              : `/rechnungen/${i.invoice_id}`
+                          }
+                        >
                           <b>{i.number}</b>
                         </a>{' '}
+                        {i.legacy && <span class="badge">Fortytools</span>}{' '}
                         <span class="mut">{dateDe(i.issue_date)}</span>
                         {i.site_name && <span class="small faint"> · {i.site_name}</span>}
                       </span>
@@ -512,6 +579,28 @@ export function registerModuleRoutes(ctx: Ctx) {
                       <span />
                       <span class="r">{euro(i.payable_cents)}</span>
                       <span class="r">{euro(haben)}</span>
+                    </div>
+                    <div class="op-pay">
+                      <span class="small mut">Zahlung</span>
+                      <input
+                        name={`pay_${i.invoice_id}`}
+                        inputmode="decimal"
+                        placeholder="0,00"
+                        aria-label={`Zahlbetrag ${i.number}`}
+                      />
+                      <button
+                        type="button"
+                        class="btn sm ghost"
+                        data-fill={(Number(i.open_cents) / 100).toFixed(2).replace('.', ',')}
+                        onclick="this.previousElementSibling.value=this.dataset.fill"
+                      >
+                        voll
+                      </button>
+                      <select name={`rest_${i.invoice_id}`} aria-label={`Rest ${i.number}`}>
+                        <option value="offen">Rest bleibt offen</option>
+                        <option value="skonto">Rest als Skonto</option>
+                      </select>
+                      {i.legacy && <input type="hidden" name={`lg_${i.invoice_id}`} value="1" />}
                     </div>
                     <div class="op-saldo">
                       <span class="small">
@@ -544,9 +633,13 @@ export function registerModuleRoutes(ctx: Ctx) {
           {!groups.length && <div class="card empty">Keine offenen Posten.</div>}
           {groups.length > 0 && (
             <div class="card actions op-bar">
-              <span class="small mut">Ausgewählte Rechnungen:</span>
+              <button class="btn">Zahlungen buchen</button>
+              <span class="small mut" style="margin-left:12px">
+                Ausgewählte Rechnungen:
+              </span>
               <button
-                class="btn"
+                class="btn sec"
+                formaction="/mahnungen/stapel"
                 onclick="return confirm('Für die ausgewählten Rechnungen je Kunde eine Mahnung erstellen? (Regeln: Stufe, Mindestabstand, Mahnsperre werden geprüft)')"
               >
                 Mahnung erstellen
@@ -555,7 +648,7 @@ export function registerModuleRoutes(ctx: Ctx) {
                 <input type="checkbox" name="send" value="1" /> gleich per E-Mail senden
               </label>
               <span class="small faint hint-desk" style="margin-left:auto">
-                Zahlung buchen: Rechnung öffnen → „Zahlungen“ · Bankabgleich unter Transfer → Kontoumsätze
+                Bankabgleich mit Vorschlägen: Transfer → Kontoumsätze
               </span>
             </div>
           )}

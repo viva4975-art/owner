@@ -1,4 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import { create } from 'xmlbuilder2';
+import { settleOpenItem } from './payments.js';
 import type { Sql, Tx } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import type { BuyerSnapshot, InvoiceDocument } from '../domain/invoice/types.js';
@@ -1045,13 +1047,16 @@ export async function markLegacyPaid(
   if (!o) throw new BusinessError('Rechnung ist nicht (mehr) offen');
   const amount = amountCents ?? o.open_cents;
   if (amount <= 0n) throw new BusinessError('Betrag muss größer als 0 sein');
-  if (amount > o.open_cents) throw new BusinessError('Betrag ist höher als der offene Betrag');
-  if (amount === o.open_cents)
-    await sql`update app.legacy_invoices set paid = true, paid_at = ${date}, paid_marked_by = ${actor} where id = ${id} and not paid`;
-  else
-    await sql`update app.legacy_invoices set paid_part_cents = paid_part_cents + ${amount} where id = ${id} and not paid`;
-  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
-            values (${actor}, 'paid', 'legacy_invoice', ${id}, ${sql.json({ date, amount_cents: String(amount) })})`;
+  await settleOpenItem(sql, {
+    batchId: randomUUID(),
+    invoiceId: id,
+    legacy: true,
+    amount,
+    date,
+    rest: 'offen',
+    reference: null,
+    actor,
+  });
 }
 
 /**

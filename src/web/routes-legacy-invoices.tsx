@@ -1,6 +1,7 @@
 import type { FC } from 'hono/jsx';
 import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
+import { parseEuro } from '../domain/money/money.js';
 import {
   markLegacyPaid,
   openLegacyInvoices,
@@ -106,12 +107,12 @@ export const OpenLegacyCard: FC<{ rows: Awaited<ReturnType<typeof openLegacyInvo
   rows.length === 0 ? null : (
     <div class="card" style="margin-top:16px">
       <h3 style="margin-top:0">
-        Offene Rechnungen aus Fortytools ({rows.length} · {euro(rows.reduce((a, r) => a + r.gross_cents, 0n))}
-        )
+        Offene Rechnungen vor der Umstellung ({rows.length} ·{' '}
+        {euro(rows.reduce((a, r) => a + r.gross_cents, 0n))})
       </h3>
       <p class="small mut" style="margin-top:0">
-        Stand des Fortytools-Exports. Zahlungseingang hier festhalten (Mahnungen dafür bis zur Umstellung in
-        Fortytools).
+        Stand des Fortytools-Exports (Teilzahlungen stehen nicht im Export – hier nachtragen). Zahlung
+        festhalten: voller Betrag = bezahlt, weniger = Teilzahlung.
       </p>
       <div class="tbl">
         <table class="stack-m">
@@ -163,7 +164,15 @@ export const OpenLegacyCard: FC<{ rows: Awaited<ReturnType<typeof openLegacyInvo
                       style="max-width:150px"
                       aria-label="bezahlt am"
                     />
-                    <button class="btn sm sec">bezahlt</button>
+                    <input
+                      name="betrag"
+                      inputmode="decimal"
+                      value={(Number(r.gross_cents) / 100).toFixed(2).replace('.', ',')}
+                      style="max-width:110px"
+                      aria-label="Betrag (weniger = Teilzahlung)"
+                      title="Betrag – weniger als offen = Teilzahlung"
+                    />
+                    <button class="btn sm sec">Zahlung</button>
                   </form>
                 </td>
               </tr>
@@ -309,8 +318,8 @@ export function registerLegacyInvoiceRoutes({ app, deps, page, back }: Ctx) {
           </table>
         </div>
         <p class="small mut">
-          In Fortytools ausgestellt; das PDF wird aus den übernommenen Rechnungsdaten erzeugt (als Kopie
-          gekennzeichnet). Nicht änderbar.
+          In Fortytools ausgestellt; das PDF wird aus den übernommenen Rechnungsdaten erzeugt. Nicht änderbar
+          – bitte nicht erneut als Rechnung an den Kunden senden (doppelte Rechnung, § 14c UStG).
         </p>
       </>,
     );
@@ -327,7 +336,14 @@ export function registerLegacyInvoiceRoutes({ app, deps, page, back }: Ctx) {
 
   app.post(`/rechnungen/fortytools/:id{${UUID}}/bezahlt`, async (c) => {
     const b = await c.req.parseBody();
-    await markLegacyPaid(sql, c.req.param('id'), String(b.datum ?? ''), c.get('actor'));
-    return back(c, '/offene-posten', { ok: 'Als bezahlt festgehalten.' });
+    const betrag = String(b.betrag ?? '').trim();
+    let cents: bigint | undefined;
+    try {
+      cents = betrag ? parseEuro(betrag) : undefined;
+    } catch {
+      return back(c, '/offene-posten', { fehler: `Betrag „${betrag}“ ist ungültig` });
+    }
+    await markLegacyPaid(sql, c.req.param('id'), String(b.datum ?? ''), c.get('actor'), cents);
+    return back(c, '/offene-posten', { ok: 'Zahlung festgehalten.' });
   });
 }

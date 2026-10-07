@@ -127,6 +127,14 @@ async function overdueItems(sql: Sql, customerId?: string) {
       late_fee_charged: boolean;
     })[]
   >`
+    with o as (
+      select invoice_id, number, issue_date, due_date, open_cents, customer_id from app.open_items
+       where open_cents > 0 and kind in ('invoice', 'partial', 'final')
+      union all
+      -- Rechnungen aus Fortytools (bis zur Umstellung dort geschrieben) – Storno/Korrektur verrechnet
+      select invoice_id, number, issue_date, due_date, open_cents, customer_id from app.legacy_open_items
+       where open_cents > 0 and customer_id is not null and due_date is not null
+    )
     select o.invoice_id, o.number, o.issue_date, o.due_date, o.open_cents, o.customer_id,
            c.customer_no, c.name as customer_name, c.dunning_block, c.is_consumer,
            exists (select 1 from app.dunning_items lf where lf.invoice_id = o.invoice_id and lf.late_fee_cents > 0)
@@ -135,14 +143,13 @@ async function overdueItems(sql: Sql, customerId?: string) {
            coalesce(last.level, 0)::int as last_level, last.issue_date as last_dunning_date,
            0 as next_level,
            (select count(*)::int from app.dunning_items di2 where di2.invoice_id = o.invoice_id) as dunning_count
-      from app.open_items o
+      from o
       join app.customers c on c.id = o.customer_id
       left join lateral (
         select d.level, d.issue_date from app.dunning_items di join app.dunnings d on d.id = di.dunning_id
          where di.invoice_id = o.invoice_id order by d.level desc, d.issue_date desc limit 1
       ) last on true
-     where o.open_cents > 0 and o.kind in ('invoice', 'partial', 'final')
-       and o.due_date < (now() at time zone 'Europe/Berlin')::date
+     where o.due_date < (now() at time zone 'Europe/Berlin')::date
        and ${customerId ? sql`o.customer_id = ${customerId}` : sql`true`}
      order by c.name, o.due_date`;
 }
@@ -281,7 +288,9 @@ export async function getDunning(sql: Sql, id: string) {
     }[]
   >`
     select di.invoice_id, i.number, i.issue_date, i.due_date, di.open_cents, di.days_overdue
-      from app.dunning_items di join app.invoices i on i.id = di.invoice_id
+      from app.dunning_items di
+      join (select id, number, issue_date, due_date from app.invoices
+            union all select id, number, issue_date, due_date from app.legacy_invoices) i on i.id = di.invoice_id
      where di.dunning_id = ${id} order by i.due_date`;
   return { dunning: d, items };
 }

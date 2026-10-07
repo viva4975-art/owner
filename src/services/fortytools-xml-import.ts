@@ -31,7 +31,15 @@ export const FTX_LABEL: Record<FtxKind, string> = {
 
 type Node = Record<string, unknown>;
 const arr = (v: unknown): Node[] => (v == null ? [] : Array.isArray(v) ? (v as Node[]) : [v as Node]);
-const txt = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+// xmlbuilder2 lässt Entitäten im Objekt stehen (Fund 07.10.: „Rußbach GmbH &amp; Co.KG“) → hier auflösen
+const ENT: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+const unescapeXml = (s: string) =>
+  s.replace(/&(amp|lt|gt|quot|apos|#\d+|#x[0-9a-f]+);/gi, (m, e: string) =>
+    e[0] === '#'
+      ? String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : Number(e.slice(1)))
+      : (ENT[e.toLowerCase()] ?? m),
+  );
+const txt = (v: unknown): string => (typeof v === 'string' ? unescapeXml(v).trim() : '');
 const get = (n: Node | undefined, path: string): string => {
   let cur: unknown = n;
   for (const k of path.split('/')) cur = cur && typeof cur === 'object' ? (cur as Node)[k] : undefined;
@@ -807,7 +815,13 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
   );
   const monthly = new Map<string, { month: string; lines: Node[] }>(); // Objekt → letzte Monatsrechnung
   const fix: { id: string; site: string | null; ref: string | null }[] = [];
-  const head: { no: string; h: string | null; f: string | null }[] = [];
+  const head: {
+    no: string;
+    h: string | null;
+    f: string | null;
+    root: string | null;
+    paidAt: string | null;
+  }[] = [];
   for (const iv of invoices) {
     const no = get(iv, 'number');
     if (!no) continue; // Entwürfe in Fortytools
@@ -837,7 +851,14 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
       positions.forEach((p, i) =>
         fix.push({ id: uuidOf(`ftx-invoice-line:${no}:${i}`), site: lineSite(p), ref: lineRef(p) }),
       );
-      head.push({ no, h: get(iv, 'header-text') || null, f: get(iv, 'footer-text') || null });
+      head.push({
+        no,
+        h: get(iv, 'header-text') || null,
+        f: get(iv, 'footer-text') || null,
+        root: get(iv, 'open-items-root-id') || null,
+        paidAt:
+          get(iv, 'payment-status') === 'paid' ? get(iv, 'paid-at').slice(0, 10) || get(iv, 'date') : null,
+      });
       ic.unveraendert++;
       continue;
     }
@@ -862,6 +883,7 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
       payment_terms: get(iv, 'payment-practice/name') || null,
       header_text: get(iv, 'header-text') || null,
       footer_text: get(iv, 'footer-text') || null,
+      ft_root_id: get(iv, 'open-items-root-id') || null,
     });
     positions.forEach((p, i) => {
       lineRows.push({
@@ -888,6 +910,7 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
   for (let i = 0; i < lineRows.length; i += 500)
     await tx`insert into app.legacy_invoice_lines ${tx(lineRows.slice(i, i + 500))} on conflict do nothing`;
   let moved = 0;
+  let paidNow = 0;
   for (let i = 0; i < fix.length; i += 1000) {
     const part = fix.slice(i, i + 1000);
     const [cnt] = await tx<{ n: number }[]>`
@@ -905,10 +928,25 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
   for (let i = 0; i < head.length; i += 1000) {
     const part = head.slice(i, i + 1000);
     await tx`
-      update app.legacy_invoices l set header_text = coalesce(l.header_text, x.h), footer_text = coalesce(l.footer_text, x.f)
-        from unnest(${part.map((x) => x.no)}::text[], ${part.map((x) => x.h)}::text[], ${part.map((x) => x.f)}::text[]) as x(no, h, f)
-       where l.number = x.no and (l.header_text is null and x.h is not null or l.footer_text is null and x.f is not null)`;
+      update app.legacy_invoices l set header_text = coalesce(l.header_text, x.h), footer_text = coalesce(l.footer_text, x.f),
+             ft_root_id = coalesce(x.root, l.ft_root_id)
+        from unnest(${part.map((x) => x.no)}::text[], ${part.map((x) => x.h)}::text[], ${part.map((x) => x.f)}::text[],
+                    ${part.map((x) => x.root)}::text[]) as x(no, h, f, root)
+       where l.number = x.no and (l.header_text is null and x.h is not null or l.footer_text is null and x.f is not null
+                                  or l.ft_root_id is distinct from coalesce(x.root, l.ft_root_id))`;
+    // in Fortytools inzwischen bezahlt → hier auch (neuerer Export); „bezahlt“ wird nie zurückgenommen
+    const nowPaid = await tx`
+      update app.legacy_invoices l set paid = true, paid_at = x.paid_at::date, paid_marked_by = 'Fortytools-Import'
+        from unnest(${part.filter((x) => x.paidAt).map((x) => x.no)}::text[],
+                    ${part.filter((x) => x.paidAt).map((x) => x.paidAt)}::text[]) as x(no, paid_at)
+       where l.number = x.no and not l.paid returning l.id`;
+    paidNow += nowPaid.length;
   }
+  if (paidNow)
+    issue(
+      'Rechnungen',
+      `${paidNow} Rechnungen inzwischen in Fortytools bezahlt – hier als bezahlt übernommen`,
+    );
   // Storno/Korrektur: Bezug über die Fortytools-ID des Originals lässt sich nicht auflösen → Kennzeichen „negativ“
   if (res.numberClashes.length)
     issue(
@@ -970,7 +1008,7 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
            values (${actor}, 'import', 'fortytools_xml', ${tx.json({ counts: res.counts, files: res.files } as never)})`;
 }
 
-/** Offene Fortytools-Rechnungen (für die Übersicht „Offene Posten“). */
+/** Offene Fortytools-Rechnungen (für die Übersicht „Offene Posten“), Storno/Korrektur mit der Rechnung verrechnet. */
 export async function openLegacyInvoices(sql: Sql) {
   return sql<
     {
@@ -984,23 +1022,42 @@ export async function openLegacyInvoices(sql: Sql) {
       customer_no: string | null;
     }[]
   >`
-    select l.id, l.number, l.issue_date::text, l.due_date::text, l.gross_cents, l.customer_id, c.name as customer_name,
-           coalesce(c.customer_no, l.customer_no) as customer_no
-      from app.legacy_invoices l left join app.customers c on c.id = l.customer_id
-     where not l.paid order by l.due_date nulls last, l.number`;
+    select o.invoice_id as id, o.number, o.issue_date::text, o.due_date::text, o.open_cents as gross_cents, o.customer_id,
+           c.name as customer_name, coalesce(c.customer_no, l.customer_no) as customer_no
+      from app.legacy_open_items o join app.legacy_invoices l on l.id = o.invoice_id
+      left join app.customers c on c.id = o.customer_id
+     where o.open_cents <> 0
+     order by o.due_date nulls last, o.number`;
 }
 
-export async function markLegacyPaid(sql: Sql, id: string, date: string, actor: string) {
+/** Zahlung zu einer Fortytools-Rechnung festhalten: voller offener Betrag → bezahlt, sonst Teilzahlung. */
+export async function markLegacyPaid(
+  sql: Sql,
+  id: string,
+  date: string,
+  actor: string,
+  amountCents?: bigint,
+) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new BusinessError('Datum fehlt');
-  await sql`update app.legacy_invoices set paid = true, paid_at = ${date}, paid_marked_by = ${actor} where id = ${id} and not paid`;
+  const [o] = await sql<
+    { open_cents: bigint }[]
+  >`select open_cents from app.legacy_open_items where invoice_id = ${id}`;
+  if (!o) throw new BusinessError('Rechnung ist nicht (mehr) offen');
+  const amount = amountCents ?? o.open_cents;
+  if (amount <= 0n) throw new BusinessError('Betrag muss größer als 0 sein');
+  if (amount > o.open_cents) throw new BusinessError('Betrag ist höher als der offene Betrag');
+  if (amount === o.open_cents)
+    await sql`update app.legacy_invoices set paid = true, paid_at = ${date}, paid_marked_by = ${actor} where id = ${id} and not paid`;
+  else
+    await sql`update app.legacy_invoices set paid_part_cents = paid_part_cents + ${amount} where id = ${id} and not paid`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
-            values (${actor}, 'paid', 'legacy_invoice', ${id}, ${sql.json({ date })})`;
+            values (${actor}, 'paid', 'legacy_invoice', ${id}, ${sql.json({ date, amount_cents: String(amount) })})`;
 }
 
 /**
  * PDF einer Fortytools-Rechnung auf unserem Briefpapier (gleiches Layout wie eigene Rechnungen), erzeugt aus den
- * importierten Rechnungsdaten. Das Original liegt in Fortytools – die Datei ist als Kopie gekennzeichnet (nicht erneut
- * als Rechnung versenden: zweite Rechnung über dieselbe Leistung → Steuer nach § 14c UStG).
+ * importierten Rechnungsdaten (Ahmed 07.10.: ohne Kopie-Vermerk). Das Original liegt in Fortytools – nicht erneut als
+ * Rechnung versenden: zweite Rechnung über dieselbe Leistung → Steuer nach § 14c UStG.
  */
 export async function renderLegacyInvoicePdf(sql: Sql, id: string) {
   const [inv] = await sql<
@@ -1129,7 +1186,6 @@ export async function renderLegacyInvoicePdf(sql: Sql, id: string) {
   };
   const pdf = await renderInvoicePdf(doc, {
     title: `${negative ? 'Rechnungskorrektur' : 'Rechnung'} ${inv.number}`,
-    subject: 'Kopie – aus den Rechnungsdaten in Fortytools erzeugt (Original in Fortytools)',
     terms: inv.payment_terms ? `Zahlungsbedingung: ${inv.payment_terms}` : '',
     ...(inv.footer_text ? { closing: inv.footer_text } : {}),
     qr: false,

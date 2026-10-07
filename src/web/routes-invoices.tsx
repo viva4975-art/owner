@@ -592,7 +592,15 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     );
   };
 
-  app.get(`/rechnungen/:id{${UUID}}`, (c) => detail(c, c.req.param('id'), c.req.query('pruefen') === '1'));
+  // Rechnungen aus Fortytools haben eine eigene Ansicht (Links aus Mahnwesen/Offenen Posten führen dorthin)
+  const legacyId = async (id: string) =>
+    !(await sql`select 1 from app.invoices where id = ${id}`).length &&
+    (await sql`select 1 from app.legacy_invoices where id = ${id}`).length > 0;
+  app.get(`/rechnungen/:id{${UUID}}`, async (c) =>
+    (await legacyId(c.req.param('id')))
+      ? c.redirect(`/rechnungen/fortytools/${c.req.param('id')}`)
+      : detail(c, c.req.param('id'), c.req.query('pruefen') === '1'),
+  );
   // alte Form (POST) bleibt erreichbar, leitet aber auf die GET-Variante um
   app.post(`/rechnungen/:id{${UUID}}/pruefen`, (c) =>
     c.redirect(`/rechnungen/${c.req.param('id')}?pruefen=1`, 303),
@@ -719,6 +727,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
   /** PDF einer Rechnung (z. B. aus den Offenen Posten): archiviertes PDF, bei Entwürfen die Vorschau. */
   app.get(`/rechnungen/:id{${UUID}}/pdf`, async (c) => {
     const id = c.req.param('id');
+    if (await legacyId(id)) return c.redirect(`/rechnungen/fortytools/${id}/pdf`);
     const [doc] = await sql<{ id: string }[]>`
       select id from app.invoice_documents where invoice_id = ${id} and kind = 'pdf' order by created_at desc limit 1`;
     return c.redirect(doc ? `/dokumente/${doc.id}` : `/rechnungen/${id}/vorschau.pdf`);

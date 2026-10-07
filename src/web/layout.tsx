@@ -964,6 +964,11 @@ input[type=checkbox],input[type=radio]{accent-color:var(--brand)}
 .op-table th{font-size:12px;color:var(--mut);font-weight:600;text-align:left;padding:6px 4px;border-bottom:1px solid var(--line)}
 .op-table th.r{text-align:right}.op-table thead th:last-child{color:var(--brand);font-size:13px}
 .op-table td{padding:7px 4px;border-bottom:1px solid var(--line)}.op-table .r{text-align:right;white-space:nowrap}
+.op-table .ok{color:#2f7d3a;font-weight:600}
+.op-table{table-layout:auto}.op-table td:first-child{max-width:0;min-width:9em;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.op-table td:not(:first-child),.op-table th{white-space:nowrap}.op-table tr.op-tot th{border-bottom:0;padding:8px 4px}
+.pill-ok,.pill-bad,.pill-sum{display:inline-block;padding:3px 8px;border-radius:5px;font-weight:700;font-size:13px;white-space:nowrap}
+.pill-ok{background:#3f9b4a;color:#fff}.pill-bad{background:#c9343a;color:#fff}.pill-sum{background:#fff59a;color:#1a1a1a}
 .op-table .num{font-weight:600;font-variant-numeric:tabular-nums}.op-table .bad{color:var(--err);font-weight:600}.op-table .warn{color:#b45309}.op-table .good{color:var(--mut)}
 /* Runde 10: Bordeaux statt Schwarz für aktive Filter/Pillen/Seitenzahlen */
 .chips a.on,.pill.on,.pager a.on,.letters a.on{background:var(--brand);border-color:var(--brand);color:#fff}
@@ -1102,6 +1107,8 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Aufträge', href: '/auftraege' },
       { label: 'Offene Posten', href: '/offene-posten', sep: true },
       { label: 'Mahnwesen', href: '/mahnungen' },
+      { label: 'Statistiken', href: '/auswertungen/statistik', sep: true },
+      { label: 'Rechnungs-Statistik', href: '/auswertungen/rechnungen' },
     ],
   },
   {

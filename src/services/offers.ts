@@ -472,8 +472,8 @@ export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8
       ' Es gelten unsere Allgemeinen Geschäftsbedingungen.',
     closing: o.closing_text ?? OFFER_CLOSING_DEFAULT,
     qr: false,
-    // Angebot wie Fortytools: Pauschalen mit Einheit „pauschal“
-    units: { LS: 'pauschal', MON: 'Monat' },
+    // Angebot wie Fortytools: Pauschalen mit Einheit „psch.“ (ausgeschrieben überlappte es lange Preise)
+    units: { LS: 'psch.', MON: 'Monat' },
     ...(o.status === 'entwurf' ? { watermark: 'ENTWURF' } : {}),
   });
   return { pdf, filename: `Angebot_${o.number}.pdf` };

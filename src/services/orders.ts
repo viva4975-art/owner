@@ -477,7 +477,7 @@ export async function closeWithoutSignature(deps: Deps, id: string, reason: stri
   await archiveWorkReportPdf(deps, id);
 }
 
-const UNIT: Record<string, string> = { HUR: 'Std.', C62: 'Stk.', LS: 'pauschal', MTK: 'm²', DAY: 'Tag' };
+const UNIT: Record<string, string> = { HUR: 'Std.', C62: 'Stk.', LS: 'psch.', MTK: 'm²', DAY: 'Tag' };
 const qty = (m: bigint) => (Number(m) / 1000).toLocaleString('de-DE', { maximumFractionDigits: 3 });
 
 /** Ausführungshinweise der am Tag gültigen Leistungen des Objekts (für Arbeitsschein und Mitarbeitende). */

@@ -1165,3 +1165,24 @@ Testadresse.
   - Tests: 359 Unit-/DB-Tests (neu `runde21.db.test.ts`).
   - **Auf dem Server:** 1) XML-Exporte noch einmal importieren (repariert Objekte + Zuordnung der Rechnungen), 2) Abgleich
     öffnen, abweichende prüfen und übernehmen, 3) Liste „gleicher Objektname“ unter Dubletten kontrollieren.
+- 2026-10-07: Runde 22 (Ahmed: Offene Posten wie Fortytools, Beträge, Rechnungs-Statistik, Kopie-Text, „pauschal“ im PDF,
+  Mahnwesen leer, Einsätze übernehmen?):
+  - **Offene Posten (Startseite) wie Fortytools:** Spalten Tage (bis zur nächsten Fälligkeit, negativ = überfällig) /
+    Offen / Überfällig / Summe mit Summen-Schildern grün/rot/gelb, alphabetisch, Karte standardmäßig breit links.
+    Fortytools-Rechnungen: Storno/Korrektur wird über die Fortytools-Gruppe (`open-items-root-id` → `ft_root_id`) mit der
+    Rechnung verrechnet; Korrektur zu einer bezahlten Rechnung ist kein offener Posten (Kochel −351,81). View
+    `app.legacy_open_items`. Mit dem Export: 25 Kunden; Abweichung zum Fortytools-Bildschirm nur bei 3 Kunden (ARGE
+    121,20, Münchner Wohnen 140,97, MW Immobilien 4 687,04 €) = **Teilzahlungen, die nicht im XML-Export stehen** →
+    neu: Zahlung je Fortytools-Rechnung mit Betrag (weniger als offen = Teilzahlung, `paid_part_cents`). Erneuter
+    XML-Import übernimmt „in Fortytools inzwischen bezahlt“ (nie zurück).
+  - **Mahnwesen** enthält überfällige Fortytools-Rechnungen (Vorschläge, Stapel, Mahnung/PDF; `dunning_items` ohne FK,
+    Prüf-Trigger auf eine der beiden Tabellen). **Achtung:** Mahnstufen aus Fortytools sind nicht im Export – bereits dort
+    gemahnte Rechnungen beginnen hier wieder bei der Zahlungserinnerung.
+  - Rechnungs-Statistik zählt Fortytools-Rechnungen mit; Rechnungen-Menü: „Statistiken“ und „Rechnungs-Statistik“.
+  - PDF Fortytools-Rechnung ohne „Kopie“-Vermerk (Ahmed). **Risiko § 14c UStG bleibt: nicht als Rechnung erneut versenden.**
+  - PDF-Einheit: „pauschal“ überlappte lange Einzelpreise → „psch.“; Einheit wird generell nie mehr in den Preis
+    geschrieben (kürzen/verkleinern). Doppelte Anrede bei übernommenen Fortytools-Texten entfernt.
+  - **Fund:** XML-Import hat Entitäten nicht aufgelöst („Rußbach GmbH &amp; Co.KG“) → behoben, Bestand per Migration
+    `20261110000003` korrigiert.
+  - Einsätze/Planung: **nicht im Fortytools-XML-Export** (staff_members/facilities enthalten keine Planungen).
+  - Tests: 360 Unit-/DB-Tests (neu `runde22.db.test.ts`).

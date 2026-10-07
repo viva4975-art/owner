@@ -369,10 +369,11 @@ export interface DashItem {
   hidden: boolean;
 }
 export const DEFAULT_DASH: DashItem[] = [
+  // Offene Posten breit links wie Fortytools (Spalten Tage/Offen/Überfällig/Summe brauchen Platz)
+  { key: 'offeneposten', col: 1, hidden: false },
   { key: 'aufgaben', col: 1, hidden: false },
   { key: 'akquise', col: 1, hidden: false },
-  { key: 'entwuerfe', col: 1, hidden: false },
-  { key: 'offeneposten', col: 2, hidden: false },
+  { key: 'entwuerfe', col: 2, hidden: false },
   { key: 'unversendet', col: 2, hidden: false },
   { key: 'abwesend', col: 2, hidden: false },
   { key: 'hinweise', col: 2, hidden: false },
@@ -756,30 +757,46 @@ export const Dashboard: FC<{
                   <thead>
                     <tr>
                       <th>Kunde</th>
-                      <th class="r" title="Tage über Fälligkeit">
-                        Verzug
+                      <th class="r" title="Tage bis zur nächsten Fälligkeit (negativ = überfällig)">
+                        Tage
                       </th>
-                      <th class="r">{euro(total)}</th>
+                      <th class="r">Offen</th>
+                      <th class="r">Überfällig</th>
+                      <th class="r">Summe</th>
+                    </tr>
+                    <tr class="op-tot">
+                      <th></th>
+                      <th></th>
+                      <th class="r">
+                        <span class="pill-ok">{euro(balances.reduce((s, b) => s + b.due_cents, 0n))}</span>
+                      </th>
+                      <th class="r">
+                        <span class="pill-bad">
+                          {euro(balances.reduce((s, b) => s + b.overdue_cents, 0n))}
+                        </span>
+                      </th>
+                      <th class="r">
+                        <span class="pill-sum">{euro(total)}</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {[...balances]
-                      .sort(
-                        (a, b) =>
-                          b.max_overdue_days - a.max_overdue_days || Number(b.open_cents - a.open_cents),
-                      )
+                      .sort((a, b) => a.customer_name.localeCompare(b.customer_name, 'de'))
                       .map((b) => (
                         <tr>
-                          <td>
+                          <td title={b.customer_name}>
                             <span class="mut">{b.customer_no}</span>{' '}
-                            <a href={`/kunden/${b.customer_id}/offene-posten`}>{b.customer_name}</a>
+                            <a href={`/kunden/${b.customer_id}/offene-posten`}>
+                              {b.customer_name.split('\n')[0]}
+                            </a>
                           </td>
-                          <td
-                            class={`r ${b.max_overdue_days > 30 ? 'bad' : b.max_overdue_days > 0 ? 'warn' : 'good'}`}
-                          >
-                            {b.max_overdue_days > 0 ? `${b.max_overdue_days} T.` : '–'}
+                          <td class={`r ${b.days < 0 ? 'bad' : 'ok'}`}>{b.days}</td>
+                          <td class="r num">{b.due_cents ? euro(b.due_cents) : ''}</td>
+                          <td class="r num">{b.overdue_cents ? euro(b.overdue_cents) : ''}</td>
+                          <td class="r num">
+                            <b>{euro(b.open_cents)}</b>
                           </td>
-                          <td class="r num">{euro(b.open_cents)}</td>
                         </tr>
                       ))}
                   </tbody>

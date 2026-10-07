@@ -153,6 +153,15 @@ class Doc {
     });
   }
 
+  /** Einheit zwischen Menge und Einzelpreis: nie in den Preis schreiben (Fund: „pauschal“ überlappte lange Preise). */
+  unit(s: string, x: number, price: string, priceRight: number, yTop: number) {
+    const room = priceRight - this.regular.widthOfTextAtSize(price, BODY) - 4 - x;
+    let u = s;
+    if (this.regular.widthOfTextAtSize(u, BODY) > room && /^pauschal$/i.test(u)) u = 'psch.';
+    const w = this.regular.widthOfTextAtSize(u, BODY);
+    this.text(u, x, yTop, w > room && room > 0 ? Math.max(6, (BODY * room) / w) : BODY);
+  }
+
   right(s: string, xRight: number, yTop: number, size = BODY, opts: { bold?: boolean; color?: Color } = {}) {
     const font = opts.bold ? this.bold : this.regular;
     this.text(s, xRight - font.widthOfTextAtSize(s, size), yTop, size, opts);
@@ -396,7 +405,9 @@ export async function renderInvoicePdf(
         : `hiermit korrigieren wir unsere Rechnung ${doc.original.number} vom ${formatDateDe(doc.original.issueDate)} wie folgt:`,
     );
   } else {
-    w.paragraph(doc.introText ?? 'wir danken für Ihren Auftrag und berechnen unsere Leistungen wie folgt:');
+    // aus Fortytools übernommene Texte beginnen selbst mit der Anrede → nicht doppelt
+    const intro = doc.introText?.replace(/^\s*Sehr geehrte Damen und Herren,?\s*/i, '').trim();
+    w.paragraph(intro || 'wir danken für Ihren Auftrag und berechnen unsere Leistungen wie folgt:');
   }
   w.y += 37.4;
 
@@ -429,7 +440,13 @@ export async function renderInvoicePdf(
     w.right(String(l.position), 72.8, top);
     textLines.forEach((t, i) => w.text(t, COL.text, top + i * LH));
     w.right(quantityPdf(l.quantity), COL.qty, top);
-    w.text(opts.units?.[l.unitCode] ?? PDF_UNITS[l.unitCode] ?? l.unitCode, COL.unit, top);
+    w.unit(
+      opts.units?.[l.unitCode] ?? PDF_UNITS[l.unitCode] ?? l.unitCode,
+      COL.unit,
+      eur(l.unitPrice),
+      COL.price,
+      top,
+    );
     w.right(eur(l.unitPrice), COL.price, top);
     w.right(eur(l.netAmount), COL.total, top);
     if (multiRate) {

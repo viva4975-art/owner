@@ -30,23 +30,31 @@ export interface InvoiceMonthStat {
 
 /** Ausgestellte Belege je Monat eines Jahres, Kunden nach Umsatz, Zahlungsverhalten. */
 export async function invoiceStatistics(sql: Sql, year: number) {
+  // eigene Rechnungen und das Rechnungsarchiv aus Fortytools zusammen (negative Fortytools-Belege = Storno/Korrektur)
+  const all = sql`
+    select i.id, i.kind::text as kind, i.customer_id, i.issue_date, i.net_cents from app.invoices i where i.status = 'issued'
+    union all
+    select l.id, case when l.net_cents < 0 then 'correction' else 'invoice' end, l.customer_id, l.issue_date, l.net_cents
+      from app.legacy_invoices l`;
   const months = await sql<InvoiceMonthStat[]>`
-    with m as (select to_char(make_date(${year}::int, g, 1), 'YYYY-MM') as month from generate_series(1, 12) g)
+    with m as (select to_char(make_date(${year}::int, g, 1), 'YYYY-MM') as month from generate_series(1, 12) g),
+         a as (${all})
     select m.month,
            count(i.id) filter (where i.kind in ('invoice', 'partial', 'final'))::int as invoices,
            coalesce(sum(i.net_cents) filter (where i.kind in ('invoice', 'partial', 'final')), 0)::bigint as invoice_net,
            count(i.id) filter (where i.kind in ('cancellation', 'correction'))::int as reversals,
            coalesce(sum(i.net_cents) filter (where i.kind in ('cancellation', 'correction')), 0)::bigint as reversal_net,
            coalesce(sum(i.net_cents), 0)::bigint as net
-      from m left join app.invoices i on i.status = 'issued' and to_char(i.issue_date, 'YYYY-MM') = m.month
+      from m left join a i on to_char(i.issue_date, 'YYYY-MM') = m.month
      group by m.month order by m.month`;
   const customers = await sql<
     { id: string; name: string; customer_no: string; count: number; net: bigint }[]
   >`
+    with a as (${all})
     select c.id, c.name, c.customer_no, count(*) filter (where i.kind in ('invoice', 'partial', 'final'))::int as count,
            sum(i.net_cents)::bigint as net
-      from app.invoices i join app.customers c on c.id = i.customer_id
-     where i.status = 'issued' and extract(year from i.issue_date) = ${year}
+      from a i join app.customers c on c.id = i.customer_id
+     where extract(year from i.issue_date) = ${year}
      group by c.id order by net desc, c.name limit 15`;
   // Zahlungsdauer: vollständig bezahlte Rechnungen des Jahres, Tage vom Rechnungsdatum bis zur letzten Zahlung
   const [pay] = await sql<
@@ -56,13 +64,21 @@ export async function invoiceStatistics(sql: Sql, year: number) {
          paid as (
            select o.invoice_id, o.due_date, max(p.paid_on) as last_paid, min(o.issue_date) as issue_date
              from o join app.payments p on p.invoice_id = o.invoice_id
-            where o.open_cents = 0 group by o.invoice_id, o.due_date)
+            where o.open_cents = 0 group by o.invoice_id, o.due_date
+           union all
+           select l.id, l.due_date, l.paid_at, l.issue_date from app.legacy_invoices l
+            where l.paid and l.paid_at is not null and l.gross_cents > 0 and extract(year from l.issue_date) = ${year}),
+         op as (
+           select open_cents, due_date from o where open_cents > 0
+           union all
+           select open_cents, due_date from app.legacy_open_items
+            where open_cents > 0 and extract(year from issue_date) = ${year})
     select (select count(*) from paid)::int as paid,
            (select round(avg(last_paid - issue_date)) from paid)::int as avg_days,
            (select count(*) from paid where last_paid > due_date)::int as late,
-           (select coalesce(sum(open_cents), 0) from o where open_cents > 0)::bigint as open_cents,
-           (select coalesce(sum(open_cents), 0) from o where open_cents > 0
-               and due_date < (now() at time zone 'Europe/Berlin')::date)::bigint as overdue_cents`;
+           (select coalesce(sum(open_cents), 0) from op)::bigint as open_cents,
+           (select coalesce(sum(open_cents), 0) from op
+             where due_date < (now() at time zone 'Europe/Berlin')::date)::bigint as overdue_cents`;
   const total = months.reduce((a, m) => a + m.net, 0n);
   return { months, customers, payment: pay!, total };
 }

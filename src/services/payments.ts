@@ -141,23 +141,31 @@ export interface CustomerBalance {
   customer_name: string;
   items: number;
   open_cents: bigint;
+  /** noch nicht fällig */
+  due_cents: bigint;
+  overdue_cents: bigint;
   max_overdue_days: number;
+  /** Tage bis zur nächsten Fälligkeit (negativ = so viele Tage überfällig), wie Fortytools */
+  days: number;
 }
 
-/** Wie Fortytools „Offene Posten“ auf der Startseite: Summe je Kunde, Anzahl, ältester Verzug.
- *  Enthält die noch offenen Rechnungen aus Fortytools (bis zur Umstellung dort geschrieben). */
+/** Wie Fortytools „Offene Posten“ auf der Startseite: je Kunde offen / überfällig / Summe, Tage bis fällig.
+ *  Enthält die offenen Rechnungen aus Fortytools (Storno/Korrektur mit der Rechnung verrechnet). */
 export async function listBalances(sql: Sql) {
   return sql<CustomerBalance[]>`
     with o as (
       select customer_id, open_cents, due_date from app.open_items where open_cents <> 0
       union all
-      select customer_id, gross_cents, due_date from app.legacy_invoices
-       where not paid and customer_id is not null and gross_cents <> 0
-    )
+      select customer_id, open_cents, due_date from app.legacy_open_items
+       where customer_id is not null and open_cents <> 0
+    ), t as (select (now() at time zone 'Europe/Berlin')::date as today)
     select c.id as customer_id, c.customer_no, c.name as customer_name, count(*)::int as items,
            sum(o.open_cents)::bigint as open_cents,
-           coalesce(max(greatest(0, (now() at time zone 'Europe/Berlin')::date - o.due_date)), 0)::int as max_overdue_days
-      from o join app.customers c on c.id = o.customer_id
+           coalesce(sum(o.open_cents) filter (where o.due_date >= t.today), 0)::bigint as due_cents,
+           coalesce(sum(o.open_cents) filter (where o.due_date < t.today), 0)::bigint as overdue_cents,
+           coalesce(max(greatest(0, t.today - o.due_date)), 0)::int as max_overdue_days,
+           coalesce(min(o.due_date - t.today), 0)::int as days
+      from o cross join t join app.customers c on c.id = o.customer_id
      group by c.id having sum(o.open_cents) <> 0 order by c.name`;
 }
 

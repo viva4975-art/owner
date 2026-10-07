@@ -1377,3 +1377,15 @@ Testadresse.
   Mitarbeitende ihrer Objekte → Planung), oben in der Planung (gelber Balken) und in der Mitarbeiter-Übersicht.
   Objekt „Allgemein (aus Fortytools)“ (Buchungen nur auf Kundenebene, z. B. Epox Entsorgungs GmbH) darf umbenannt werden:
   Zeiten-, CSV- und Nachunternehmer-Import erkennen es über die feste ID wieder (kein zweites „Allgemein“). 375 Tests.
+- 2026-10-07: **Handy + Listen schöner** (Ahmed, Fortytools-Screenshots):
+  - Sortier-Pfeile in allen Tabellen entfernt (auf dem iPhone als Emoji-Kästchen); Sortieren per Klick bleibt, die
+    sortierte Spalte ist Bordeaux unterstrichen.
+  - **Mitarbeiterliste als Karten wie Fortytools:** Initialen-Kreis, Name + Personalnr., Tags/Beschäftigung, Hinweise
+    (kein Einsatz, Vergütung fehlt), Warnhinweis, Adresse mit Kartenlink, Telefon (antippen = anrufen), E-Mail, Objekte,
+    Geburtsdatum + Alter, Betriebszugehörigkeit + Wochenstunden, Staatsangehörigkeit, Aufenthaltstitel/Arbeitserlaubnis
+    (gelb ≤ 60 Tage, rot abgelaufen). 25 je Seite, „1–25 von N“, Sortierung Name/Personalnr./Eintritt. **Steuer-ID und
+    SV-Nummer bewusst nicht in der Liste** (Datensparsamkeit, DSGVO) – stehen in der Personalakte.
+  - Kunden-/Objektliste: Initialen-Kreis, Name in Bordeaux, Adresse mit Ortssymbol, Anzahl Objekte, offener Betrag als
+    Schild; am Handy Buchstabenleiste wischbar, QR-Druck/Objektleitungen-Zuordnen nur am PC.
+  - Startseite am Handy: Karten liefen rechts über den Rand (Raster ohne `minmax(0,…)`) → behoben; Offene Posten am Handy
+    je Kunde voller Name, darunter Tage/Offen/Überfällig/Summe. Gelbe Hinweiskästen brechen am Handy sauber um.

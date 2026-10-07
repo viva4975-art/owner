@@ -11,6 +11,7 @@ import { type Customer, type Site, type SiteService, customerStatusOf } from '..
 import { type SiteFilter, type SiteListRow, SITE_PAGE_SIZE } from '../services/site-list.js';
 import type { InvoiceGroupRow } from '../services/invoice-groups.js';
 import { centsToInput } from './forms.js';
+import { Icon } from './icons.js';
 import { canAccess } from './permissions.js';
 import type { Role } from '../services/users.js';
 import { FORMAT_LABEL, NEW_OPTIONS, PageHead, type Tab, Tabs, euro, initials } from './layout.js';
@@ -131,34 +132,52 @@ export const CustomerList: FC<{
           {rows.map((c) => {
             const ss = sites.get(c.id) ?? [];
             return (
-              <div class="row">
+              <div class="row ent-row">
+                <a class="ent-av" href={`/kunden/${c.id}`} aria-hidden="true">
+                  {initials(c.name.replace(/\b(GmbH|AG|KG|e\.?V\.?|mbH|&|Co\.?)\b/g, ''))}
+                </a>
                 <div class="main">
-                  <a href={`/kunden/${c.id}`}>
-                    <b style="color:var(--ink)">{c.name}</b>
-                  </a>{' '}
-                  <span class="small faint">{c.customer_no}</span>
-                  {c.is_internal && (
-                    <span
-                      class="badge info"
-                      title="Interner Bereich: Einsatzort und Kostenstelle, keine Rechnungen"
-                    >
-                      intern
-                    </span>
-                  )}
-                  <div class="small mut">
-                    {c.street}, {c.postal_code} {c.city}
+                  <div class="ent-head">
+                    <a class="ent-name" href={`/kunden/${c.id}`}>
+                      {c.name}
+                    </a>
+                    <span class="ent-no">{c.customer_no}</span>
+                    {c.is_internal && (
+                      <span
+                        class="badge info"
+                        title="Interner Bereich: Einsatzort und Kostenstelle, keine Rechnungen"
+                      >
+                        intern
+                      </span>
+                    )}
                   </div>
-                  <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap">
+                  {(c.street || c.city) && (
+                    <div class="ent-line">
+                      <Icon name="pin" size={14} />
+                      <span>
+                        {[c.street, [c.postal_code, c.city].filter(Boolean).join(' ')]
+                          .filter(Boolean)
+                          .join(', ')}
+                      </span>
+                    </div>
+                  )}
+                  <div class="ent-tags">
                     <span class={`badge ${STATUS_BADGE[c.list_status]}`}>
                       {CUSTOMER_STATUS[c.list_status]}
                     </span>
+                    {ss.length > 0 && (
+                      <span class="badge tag">
+                        {ss.filter((x) => x.active).length} Objekt
+                        {ss.filter((x) => x.active).length === 1 ? '' : 'e'}
+                      </span>
+                    )}
                     {c.dunning_block && <span class="badge warn">Mahnsperre</span>}
                   </div>
                 </div>
                 <div class="side">
                   {c.open_cents !== 0n && (
-                    <span class="when">
-                      offen <b style="color:var(--ink)">{euro(c.open_cents)}</b>
+                    <span class="ent-open">
+                      offen <b>{euro(c.open_cents)}</b>
                     </span>
                   )}
                   <a
@@ -687,13 +706,17 @@ export const SiteList: FC<{
             CSV-Export
           </a>
           <a
-            class="btn sec sm"
+            class="btn sec sm hide-m"
             href={`/objekte/qr-druck${exportQuery ? `?${exportQuery}` : ''}`}
             target="_blank"
           >
             QR-Codes drucken
           </a>
-          <a class="btn sec sm" href="/benutzer" title="Objektleitung je Benutzer mehreren Objekten zuordnen">
+          <a
+            class="btn sec sm hide-m"
+            href="/benutzer"
+            title="Objektleitung je Benutzer mehreren Objekten zuordnen"
+          >
             Objektleitungen zuordnen
           </a>
         </form>
@@ -712,17 +735,22 @@ export const SiteList: FC<{
             <div class="row" style={s.active ? '' : 'opacity:.6'}>
               <span class="no">{s.site_no}</span>
               <div class="main">
-                <a href={`/objekte/${s.id}`}>
-                  <b style="color:var(--ink)">{s.name}</b>
-                </a>
-                {!s.active && (
-                  <span class="badge" style="margin-left:6px">
-                    inaktiv
-                  </span>
-                )}
-                <div class="small mut">
-                  {[s.street, [s.postal_code, s.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')}
+                <div class="ent-head">
+                  <a class="ent-name" href={`/objekte/${s.id}`}>
+                    {s.name}
+                  </a>
+                  {!s.active && <span class="badge">inaktiv</span>}
                 </div>
+                {(s.street || s.city) && (
+                  <div class="ent-line">
+                    <Icon name="pin" size={14} />
+                    <span>
+                      {[s.street, [s.postal_code, s.city].filter(Boolean).join(' ')]
+                        .filter(Boolean)
+                        .join(', ')}
+                    </span>
+                  </div>
+                )}
               </div>
               <div class="cust">
                 <a href={`/kunden/${s.customer_id}`} style="color:var(--ink)">

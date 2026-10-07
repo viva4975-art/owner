@@ -851,10 +851,16 @@ export const Dashboard: FC<{
                               {b.customer_name.split('\n')[0]}
                             </a>
                           </td>
-                          <td class={`r ${b.days < 0 ? 'bad' : 'ok'}`}>{b.days}</td>
-                          <td class="r num">{b.due_cents ? euro(b.due_cents) : ''}</td>
-                          <td class="r num">{b.overdue_cents ? euro(b.overdue_cents) : ''}</td>
-                          <td class="r num">
+                          <td class={`r ${b.days < 0 ? 'bad' : 'ok'}`} data-l="Tage">
+                            {b.days}
+                          </td>
+                          <td class="r num" data-l="Offen">
+                            {b.due_cents ? euro(b.due_cents) : '–'}
+                          </td>
+                          <td class="r num" data-l="Überfällig">
+                            {b.overdue_cents ? euro(b.overdue_cents) : '–'}
+                          </td>
+                          <td class="r num" data-l="Summe">
                             <b>{euro(b.open_cents)}</b>
                           </td>
                         </tr>

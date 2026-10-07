@@ -75,7 +75,7 @@ console.log('3. Tag-Filter');
 await p.goto(B + `/personal?status=aktiv&tag=${tag}`);
 check(
   'Filter zeigt genau den Mitarbeiter',
-  (await p.locator('tbody tr').count()) === 1 && (await body(p)).includes(`Abas${tag}`),
+  (await p.locator('.emp-card').count()) === 1 && (await body(p)).includes(`Abas${tag}`),
 );
 
 console.log('4. Dokument aus Vorlage');

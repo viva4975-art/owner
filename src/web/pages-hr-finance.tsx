@@ -11,6 +11,7 @@ import {
 } from '../services/employees.js';
 import { type OpenItem, PAYMENT_METHODS, type PaymentRow } from '../services/payments.js';
 import { centsToInput } from './forms.js';
+import { Icon } from './icons.js';
 import { PageHead, type Tab, Tabs, dateDe, euro, initials } from './layout.js';
 import { Field } from './pages-masterdata.js';
 
@@ -22,6 +23,13 @@ type EmployeeRow = Employee & {
   residence_permit_until: string | null;
   site_count: number;
   has_shift?: boolean;
+  work_permit_until?: string | null;
+  street?: string | null;
+  postal_code?: string | null;
+  city?: string | null;
+  birth_date?: string | null;
+  nationality?: string | null;
+  site_names?: string[] | null;
 };
 
 export const TagChips: FC<{ tags: string[] }> = ({ tags }) => (
@@ -34,6 +42,119 @@ export const TagChips: FC<{ tags: string[] }> = ({ tags }) => (
   </>
 );
 
+const PER_PAGE = 25;
+
+/** Alter bzw. Jahre seit einem Datum (JJJJ-MM-TT), Stichtag heute (Berlin). */
+function yearsSince(d: string): number {
+  const t = todayBerlin();
+  let y = Number(t.slice(0, 4)) - Number(d.slice(0, 4));
+  if (t.slice(5) < d.slice(5, 10)) y--;
+  return Math.max(0, y);
+}
+
+/** Mitarbeiter-Karte in der Liste (wie Fortytools: Foto/Initialen, Name, Tags, Kontakt, Eckdaten). */
+const EmployeeCard: FC<{ e: EmployeeRow }> = ({ e }) => {
+  const soon = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
+  const today = todayBerlin();
+  const permit = (label: string, d: string | null | undefined) =>
+    d ? (
+      <div class={d < today ? 'err' : d <= soon ? 'warn' : ''}>
+        {label} bis {dateDe(d)}
+        {d < today ? ' – abgelaufen' : ''}
+      </div>
+    ) : null;
+  const addr = [e.street, [e.postal_code, e.city].filter(Boolean).join(' ')].filter(Boolean).join(' | ');
+  const phone = e.mobile || e.phone;
+  const sites = e.site_names ?? [];
+  return (
+    <article class={`emp-card${e.status === 'ausgetreten' ? ' out' : ''}`}>
+      <a class="emp-av" href={`/personal/${e.id}`} aria-hidden="true">
+        {initials(`${e.first_name} ${e.last_name}`)}
+      </a>
+      <div class="emp-body">
+        <div class="emp-head">
+          <a class="emp-name" href={`/personal/${e.id}`}>
+            {e.last_name}, {e.first_name}
+          </a>
+          <span class="emp-no">{e.personnel_no}</span>
+        </div>
+        <div class="emp-tags">
+          {(e.tags.length ? e.tags : [EMPLOYMENT_TYPES[e.employment_type]]).map((t) => (
+            <span class="badge tag">{t}</span>
+          ))}
+          {e.status === 'ausgetreten' && (
+            <span class="badge">ausgetreten{e.exit_date ? ` ${dateDe(e.exit_date)}` : ''}</span>
+          )}
+          {e.status === 'aktiv' && e.has_shift === false && (
+            <a class="badge warn" href={`/personal/${e.id}/einsaetze`}>
+              kein Einsatz
+            </a>
+          )}
+          {e.status === 'aktiv' && !e.pay_model && <span class="badge warn">Vergütung fehlt</span>}
+          {e.status === 'aktiv' && ['teilzeit', 'minijob'].includes(e.employment_type) && !e.weekly_hours && (
+            <span class="badge warn">Std./Woche fehlt</span>
+          )}
+        </div>
+        {e.warning_note && <div class="emp-warn">{e.warning_note}</div>}
+        <ul class="emp-contact">
+          {addr && (
+            <li>
+              <Icon name="home" size={15} />
+              <span>
+                {addr}{' '}
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr.replace(' | ', ', '))}`}
+                  target="_blank"
+                  rel="noopener"
+                  title="Karte"
+                >
+                  <Icon name="pin" size={15} />
+                </a>
+              </span>
+            </li>
+          )}
+          {phone && (
+            <li>
+              <Icon name="phone" size={15} />
+              <a href={`tel:${phone.replace(/[^\d+]/g, '')}`}>{phone}</a>
+            </li>
+          )}
+          {e.email && (
+            <li>
+              <Icon name="mail" size={15} />
+              <a href={`mailto:${e.email}`}>{e.email}</a>
+            </li>
+          )}
+          {sites.length > 0 && (
+            <li>
+              <Icon name="building" size={15} />
+              <span>
+                {sites.slice(0, 3).join(', ')}
+                {sites.length > 3 ? ` und ${sites.length - 3} weitere` : ''}
+              </span>
+            </li>
+          )}
+        </ul>
+        <div class="emp-meta">
+          {e.birth_date && (
+            <div>
+              Geboren: {dateDe(e.birth_date)} ({yearsSince(e.birth_date)} Jahre)
+            </div>
+          )}
+          <div>
+            Betriebszugehörigkeit: seit {dateDe(e.entry_date)}
+            {yearsSince(e.entry_date) > 0 ? ` (${yearsSince(e.entry_date)} J.)` : ''}
+            {e.weekly_hours ? ` · ${String(Number(e.weekly_hours)).replace('.', ',')} Wochenstunden` : ''}
+          </div>
+          {e.nationality && <div>Staatsangehörigkeit: {e.nationality}</div>}
+          {permit('Aufenthaltstitel', e.residence_permit_until)}
+          {permit('Arbeitserlaubnis', e.work_permit_until)}
+        </div>
+      </div>
+    </article>
+  );
+};
+
 export const EmployeeList: FC<{
   rows: EmployeeRow[];
   status: string;
@@ -45,7 +166,33 @@ export const EmployeeList: FC<{
   /** Filter „ohne Einsatz“ aktiv / Anzahl aktiver Mitarbeitender ohne laufenden Einsatz */
   ohne?: boolean;
   noShift?: number;
-}> = ({ rows, status, q, canExport, tag = null, tags = [], templates = [], ohne = false, noShift = 0 }) => {
+  page?: number;
+  sort?: string;
+}> = ({
+  rows,
+  status,
+  q,
+  canExport,
+  tag = null,
+  tags = [],
+  templates = [],
+  ohne = false,
+  noShift = 0,
+  page: wanted = 1,
+  sort = 'name',
+}) => {
+  const sorted = [...rows].sort((a, b) =>
+    sort === 'nr'
+      ? a.personnel_no.localeCompare(b.personnel_no, 'de', { numeric: true })
+      : sort === 'eintritt'
+        ? b.entry_date.localeCompare(a.entry_date)
+        : `${a.last_name} ${a.first_name}`.localeCompare(`${b.last_name} ${b.first_name}`, 'de'),
+  );
+  const total = sorted.length;
+  const pages = Math.max(1, Math.ceil(total / PER_PAGE));
+  const page = Math.min(Math.max(1, wanted), pages);
+  const from = (page - 1) * PER_PAGE;
+  const shown = sorted.slice(from, from + PER_PAGE);
   const mails = rows.map((e) => e.email).filter((x): x is string => !!x);
   const qs = new URLSearchParams({
     status,
@@ -67,17 +214,19 @@ export const EmployeeList: FC<{
         <div class="card">
           {(noShift > 0 || ohne) && (
             <div class="flash warn" style="margin:0 0 10px">
-              {ohne ? (
-                <>
-                  Gefiltert: <b>ohne laufenden Einsatz</b> ({rows.length}).{' '}
-                  <a href={`/personal?status=${status}`}>Filter aufheben</a>
-                </>
-              ) : (
-                <>
-                  <b>{noShift}</b> aktive Mitarbeitende ohne laufenden Einsatz –{' '}
-                  <a href="/personal?status=aktiv&einsatz=ohne">anzeigen</a>
-                </>
-              )}
+              <span>
+                {ohne ? (
+                  <>
+                    Gefiltert: <b>ohne laufenden Einsatz</b> ({rows.length}).{' '}
+                    <a href={`/personal?status=${status}`}>Filter aufheben</a>
+                  </>
+                ) : (
+                  <>
+                    <b>{noShift}</b> aktive Mitarbeitende ohne laufenden Einsatz –{' '}
+                    <a href="/personal?status=aktiv&einsatz=ohne">anzeigen</a>
+                  </>
+                )}
+              </span>
             </div>
           )}
           {tags.length > 0 && (
@@ -117,90 +266,50 @@ export const EmployeeList: FC<{
               </a>
             )}
           </form>
-          <div class="tbl">
-            <table>
-              <thead>
-                <tr>
-                  <th>Pers.-Nr.</th>
-                  <th>Name</th>
-                  <th>Beschäftigung</th>
-                  <th>Eintritt</th>
-                  <th class="r">Std./Woche</th>
-                  <th class="r">Objekte</th>
-                  <th>Aufenthaltserlaubnis</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.length === 0 && (
-                  <tr>
-                    <td colspan={7} class="mut">
-                      Keine Mitarbeiter.
-                    </td>
-                  </tr>
-                )}
-                {rows.map((e) => {
-                  const soon =
-                    e.residence_permit_until &&
-                    e.residence_permit_until <= new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
-                  return (
-                    <tr>
-                      <td>{e.personnel_no}</td>
-                      <td>
-                        <a href={`/personal/${e.id}`}>
-                          <b>
-                            {e.last_name}, {e.first_name}
-                          </b>
-                        </a>
-                        {e.status === 'ausgetreten' && <span class="badge"> ausgetreten</span>}
-                        {e.status === 'aktiv' && e.has_shift === false && (
-                          <a
-                            class="badge warn"
-                            style="margin-left:6px"
-                            href={`/personal/${e.id}/einsaetze`}
-                            title="Kein laufender Einsatz geplant"
-                          >
-                            kein Einsatz
-                          </a>
-                        )}
-                      </td>
-                      <td>
-                        {EMPLOYMENT_TYPES[e.employment_type]}
-                        {e.status === 'aktiv' && !e.pay_model && (
-                          <span
-                            class="badge warn"
-                            style="margin-left:6px"
-                            title="Tariflohn, Stundenlohn oder Festgehalt festlegen"
-                          >
-                            Vergütung fehlt
-                          </span>
-                        )}
-                        {e.status === 'aktiv' &&
-                          ['teilzeit', 'minijob'].includes(e.employment_type) &&
-                          !e.weekly_hours && (
-                            <span class="badge warn" style="margin-left:6px">
-                              Std./Woche fehlt
-                            </span>
-                          )}
-                        {e.tags.length > 0 && (
-                          <div>
-                            <TagChips tags={e.tags} />
-                          </div>
-                        )}
-                      </td>
-                      <td>{dateDe(e.entry_date)}</td>
-                      <td class="r">
-                        {e.weekly_hours ? String(Number(e.weekly_hours)).replace('.', ',') : '–'}
-                      </td>
-                      <td class="r">{e.site_count}</td>
-                      <td style={soon ? 'color:var(--err);font-weight:700' : ''}>
-                        {e.residence_permit_until ? dateDe(e.residence_permit_until) : '–'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div class="emp-pager">
+            <span>
+              <b>
+                {total ? from + 1 : 0}–{Math.min(from + PER_PAGE, total)}
+              </b>{' '}
+              von <b>{total}</b>
+            </span>
+            <form method="get" action="/personal" class="emp-sort">
+              {[...new URLSearchParams(qs)]
+                .filter(([k]) => k !== 'sortierung' && k !== 'seite')
+                .map(([k, v]) => (
+                  <input type="hidden" name={k} value={v} />
+                ))}
+              <select name="sortierung" aria-label="Sortierung" onchange="this.form.submit()">
+                {[
+                  ['name', 'Name A–Z'],
+                  ['nr', 'Personalnummer'],
+                  ['eintritt', 'Eintritt (neueste zuerst)'],
+                ].map(([v, l]) => (
+                  <option value={v} selected={sort === v}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </form>
           </div>
+          {total === 0 && <div class="empty">Keine Mitarbeiter.</div>}
+          <div class="emp-cards">
+            {shown.map((e) => (
+              <EmployeeCard e={e} />
+            ))}
+          </div>
+          {pages > 1 && (
+            <nav class="emp-pages" aria-label="Seiten">
+              {Array.from({ length: pages }, (_, i) => i + 1).map((n) => (
+                <a
+                  class={n === page ? 'on' : ''}
+                  href={`/personal?${new URLSearchParams({ ...Object.fromEntries(new URLSearchParams(qs)), sortierung: sort, seite: String(n) })}`}
+                >
+                  {n}
+                </a>
+              ))}
+            </nav>
+          )}
         </div>
         <div>
           <div class="card">

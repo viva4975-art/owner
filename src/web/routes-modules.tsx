@@ -722,6 +722,8 @@ export function registerModuleRoutes(ctx: Ctx) {
         tag={tag}
         ohne={ohne}
         noShift={noShift}
+        page={Number(c.req.query('seite')) || 1}
+        sort={c.req.query('sortierung') ?? 'name'}
         tags={tags}
         templates={templates}
         canExport
@@ -815,9 +817,11 @@ export function registerModuleRoutes(ctx: Ctx) {
             {plans.length === 0 ? (
               e.status === 'aktiv' ? (
                 <div class="flash warn" style="margin:0">
-                  <b>Kein Einsatz geplant.</b> Ohne Einsatz gibt es kein Soll, keinen Einsatzkalender und in
-                  der Handy-App keine Einsätze zum Stempeln – bitte einen Einsatz planen (Büro: Objekt „Büro“
-                  unter „Viva-Deluxe intern“).
+                  <span>
+                    <b>Kein Einsatz geplant.</b> Ohne Einsatz gibt es kein Soll, keinen Einsatzkalender und in
+                    der Handy-App keine Einsätze zum Stempeln – bitte einen Einsatz planen (Büro: Objekt
+                    „Büro“ unter „Viva-Deluxe intern“).
+                  </span>
                 </div>
               ) : (
                 <div class="empty">Keine aktuellen Einsätze geplant.</div>

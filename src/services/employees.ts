@@ -236,10 +236,24 @@ export async function listEmployees(
   opts: { status?: 'aktiv' | 'ausgetreten'; q?: string; tag?: string; withoutShift?: boolean } = {},
 ) {
   return sql<
-    (Employee & { residence_permit_until: string | null; site_count: number; has_shift: boolean })[]
+    (Employee & {
+      residence_permit_until: string | null;
+      work_permit_until: string | null;
+      site_count: number;
+      has_shift: boolean;
+      street: string | null;
+      postal_code: string | null;
+      city: string | null;
+      birth_date: string | null;
+      nationality: string | null;
+      site_names: string[] | null;
+    })[]
   >`
-    select e.*, p.residence_permit_until,
+    select e.*, p.residence_permit_until, p.work_permit_until::text, p.street, p.postal_code, p.city,
+           p.birth_date::text, p.nationality,
            (select count(*)::int from app.employee_sites es where es.employee_id = e.id) as site_count,
+           (select array_agg(s.name order by s.name) from app.employee_sites es join app.sites s on s.id = es.site_id
+             where es.employee_id = e.id) as site_names,
            ${hasShift(sql)} as has_shift
       from app.employees e left join app.employee_private p on p.employee_id = e.id
      where ${opts.status ? sql`e.status = ${opts.status}` : sql`true`}

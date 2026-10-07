@@ -260,12 +260,14 @@ export function matches(list: Applicant[], c: Criteria, min = 50) {
 
 export async function listApplicants(sql: Sql): Promise<Applicant[]> {
   return sql<Applicant[]>`
-    select a.*, (select count(*)::int from app.applicant_documents d where d.applicant_id = a.id) as doc_count
+    select a.*, a.hours::float8 as hours, (select count(*)::int from app.applicant_documents d where d.applicant_id = a.id) as doc_count
       from app.applicants a order by a.created_at desc`;
 }
 
 export async function getApplicant(sql: Sql, id: string) {
-  const [a] = await sql<Applicant[]>`select *, 0 as doc_count from app.applicants where id = ${id}`;
+  const [a] = await sql<
+    Applicant[]
+  >`select *, hours::float8 as hours, 0 as doc_count from app.applicants where id = ${id}`;
   if (!a) return undefined;
   const docs = await sql<
     { id: string; name: string; size_bytes: number; uploaded_at: Date; uploaded_by: string }[]
@@ -302,7 +304,7 @@ export async function saveApplicant(sql: Sql, id: string, p: ApplicantInput, act
   if (p.jobType && !JOB_TYPES.includes(p.jobType)) throw new BusinessError('Art ungültig');
   if (p.timeOfDay && !(p.timeOfDay in TIMES)) throw new BusinessError('Arbeitszeit ungültig');
   if (p.experience && !(p.experience in EXPERIENCE)) throw new BusinessError('Erfahrung ungültig');
-  if (p.hours != null && (!Number.isInteger(p.hours) || p.hours < 1 || p.hours > 80))
+  if (p.hours != null && (!Number.isFinite(p.hours) || p.hours < 1 || p.hours > 80))
     throw new BusinessError('Stunden 1–80');
   const row = {
     name: p.name.trim(),
@@ -385,11 +387,13 @@ export async function deletionDue(sql: Sql) {
 // ------------------------------------------------------------------ Stellen
 
 export async function listPostings(sql: Sql): Promise<Posting[]> {
-  return sql<Posting[]>`select * from app.job_postings order by status, created_at desc`;
+  return sql<
+    Posting[]
+  >`select *, hours::float8 as hours from app.job_postings order by status, created_at desc`;
 }
 
 export async function getPosting(sql: Sql, id: string) {
-  const [p] = await sql<Posting[]>`select * from app.job_postings where id = ${id}`;
+  const [p] = await sql<Posting[]>`select *, hours::float8 as hours from app.job_postings where id = ${id}`;
   return p;
 }
 
@@ -530,7 +534,7 @@ export async function importLegacyApplicants(sql: Sql, rows: Record<string, unkn
       status = 'In Prüfung';
     }
     const plz = s(r.plz);
-    const hours = Number(r.stunden);
+    const hours = Number(String(r.stunden ?? '').replace(',', '.'));
     const fs = r.fuehrerschein;
     const res = await sql`insert into app.applicants ${sql({
       id: uuidOf(legacyId),
@@ -541,7 +545,7 @@ export async function importLegacyApplicants(sql: Sql, rows: Record<string, unkn
       city: s(r.ort),
       language: lang,
       job_type: type,
-      hours: Number.isInteger(hours) && hours >= 1 && hours <= 80 ? hours : null,
+      hours: Number.isFinite(hours) && hours >= 1 && hours <= 80 ? hours : null,
       time_of_day: s(r.zeit) ? (LEGACY_TIME[s(r.zeit)!] ?? null) : null,
       experience: exp,
       available: s(r.verfuegbar),

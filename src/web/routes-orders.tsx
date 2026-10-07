@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { SiteOptions } from './site-options.js';
 import type { Child, FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { UNIT_LABELS } from '../domain/invoice/types.js';
@@ -278,11 +279,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
               <label for="objekt">Objekt</label>
               <select id="objekt" name="objekt" onchange="this.form.submit()" disabled={!customerId}>
                 <option value="">–</option>
-                {sites.map((s) => (
-                  <option value={s.id} selected={s.id === siteId}>
-                    {s.site_no} · {s.name}
-                  </option>
-                ))}
+                <SiteOptions sites={sites} selected={siteId} />
               </select>
             </div>
           </div>
@@ -734,11 +731,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
             <label for="objekt">Objekt</label>
             <select id="objekt" name="objekt" onchange="this.form.submit()" required>
               <option value="">– bitte wählen –</option>
-              {sites.map((s) => (
-                <option value={s.id}>
-                  {s.site_no} · {s.name}
-                </option>
-              ))}
+              <SiteOptions sites={sites} />
             </select>
           </form>
         ) : (

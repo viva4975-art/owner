@@ -1,4 +1,5 @@
 import type { Child, FC } from 'hono/jsx';
+import { SiteOptions } from './site-options.js';
 import type { Customer, Site } from '../services/masterdata.js';
 import { UNIT_LABELS } from '../domain/invoice/types.js';
 import {
@@ -144,11 +145,12 @@ export const OfferList: FC<{
   active: string;
   title: string;
   stats: OfferStats;
-}> = ({ rows, all, active, title, stats }) => {
+  tenders?: number;
+}> = ({ rows, all, active, title, stats, tenders }) => {
   const count = (s: OfferStatus) => all.filter((o) => o.status === s).length;
   const tabs: Tab[] = [
     { key: 'offen', label: 'Offen', href: '/angebote', count: count('entwurf') + count('versendet') },
-    { key: 'fristen', label: 'Ausschreibungen', href: '/ausschreibungen' },
+    { key: 'fristen', label: 'Ausschreibungen', href: '/ausschreibungen', count: tenders ?? 0 },
     { key: 'entwurf', label: 'Entwürfe', href: '/angebote?status=entwurf', count: count('entwurf') },
     { key: 'versendet', label: 'Versendet', href: '/angebote?status=versendet', count: count('versendet') },
     {
@@ -176,7 +178,7 @@ export const OfferList: FC<{
         </div>
         <div class="kpi">
           <div class="l">Ausschreibungen</div>
-          <div class="v">→</div>
+          <div class="v">{tenders ?? 0}</div>
           <div class="s">
             <a href="/ausschreibungen">Abgabefristen, Besichtigungen, Bieterfragen →</a>
           </div>
@@ -325,11 +327,7 @@ export const OfferEditor: FC<{
             <label for="objekt">Objekt (falls vorhanden)</label>
             <select id="objekt" name="objekt" onchange="this.form.submit()" disabled={!o.customer_id}>
               <option value="">– neues / noch kein Objekt –</option>
-              {sites.map((s) => (
-                <option value={s.id} selected={s.id === o.site_id}>
-                  {s.site_no} · {s.name}
-                </option>
-              ))}
+              <SiteOptions sites={sites} selected={o.site_id} />
             </select>
           </div>
         </div>
@@ -714,11 +712,7 @@ export const OfferDetail: FC<{
                   <label for="site_id">Objekt</label>
                   <select id="site_id" name="site_id" required>
                     {sites.length === 0 && <option value="">– erst Objekt anlegen –</option>}
-                    {sites.map((s) => (
-                      <option value={s.id} selected={s.id === o.site_id}>
-                        {s.site_no} · {s.name}
-                      </option>
-                    ))}
+                    <SiteOptions sites={sites} selected={o.site_id} />
                   </select>
                   <div class="small" style="margin-top:4px">
                     <a href={`/neu?typ=objekt&kunde=${o.customer_id}`}>+ Neues Objekt anlegen</a>

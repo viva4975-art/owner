@@ -50,6 +50,8 @@ export interface Customer {
   /** § 13b: Kunde ist selbst Gebäudereiniger → Rechnungen standardmäßig mit Steuerschuldnerschaft des Leistungsempfängers */
   reverse_charge: boolean;
   is_consumer: boolean;
+  /** Interner Bereich (Büro …): Einsatzort/Kostenstelle, keine Rechnungen */
+  is_internal: boolean;
   is_public_authority: boolean;
   leitweg_id: string | null;
   supplier_no: string | null;

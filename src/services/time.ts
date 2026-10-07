@@ -22,7 +22,7 @@ export const STATUS_LABEL: Record<TimeStatus, string> = {
   erfasst: 'erfasst',
   beantragt: 'Nachtrag – Freigabe offen',
   freigegeben: 'freigegeben',
-  abgelehnt: 'abgelehnt',
+  abgelehnt: 'abgelehnt / entfernt',
 };
 export const SOURCE_LABEL: Record<TimeSource, string> = {
   stempel: 'Stempeluhr',
@@ -842,6 +842,25 @@ export async function decideCorrection(
     if (e.status !== 'beantragt') return;
     await tx`update app.time_entries set status = ${approve ? 'freigegeben' : 'abgelehnt'}, decided_by = ${actor}, decided_at = now()
               where id = ${id}`;
+  });
+}
+
+/**
+ * Büro entfernt eine falsche Zeit: Sie zählt nirgends mehr (Status „abgelehnt / entfernt“), bleibt aber mit altem
+ * Stand, Begründung und Akteur im Protokoll (§ 17 MiLoG – Aufzeichnungen dürfen nicht spurlos verschwinden).
+ */
+export async function officeRemove(sql: Sql, id: string, reason: string, actor: string) {
+  if (!reason.trim())
+    throw new BusinessError('Bitte begründen, warum die Zeit entfernt wird (wird protokolliert)');
+  await withActor(sql, actor, `entfernt: ${reason.trim()}`, async (tx) => {
+    const [e] = await tx<
+      { status: TimeStatus }[]
+    >`select status from app.time_entries where id = ${id} for update`;
+    if (!e) throw new BusinessError('Eintrag nicht gefunden');
+    if (e.status === 'abgelehnt') return;
+    await tx`update app.time_entries set status = 'abgelehnt', end_at = coalesce(end_at, start_at + interval '1 minute'),
+               decided_by = ${actor}, decided_at = now()
+             where id = ${id}`;
   });
 }
 

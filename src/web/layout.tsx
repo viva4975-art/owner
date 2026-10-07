@@ -589,7 +589,7 @@ summary.gear{list-style:none;cursor:pointer}summary.gear::-webkit-details-marker
 .stat-card.on{box-shadow:0 0 0 2px var(--brand) inset;border-color:var(--brand)}
 .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:16px}
 .toolbar .search-input{flex:1;min-width:200px;padding:9px 13px;border:1px solid var(--line-2);border-radius:8px;font-size:14px}
-.toolbar .pills{display:flex;gap:6px;flex-wrap:wrap}
+.pills{display:flex;gap:6px;flex-wrap:wrap}
 .pill{border:1px solid var(--line-2);background:#fff;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600;color:var(--ink-2)}
 .pill span{color:var(--faint);font-weight:500;margin-left:3px}
 .pill:hover{text-decoration:none;border-color:var(--ink-2)}
@@ -1067,9 +1067,9 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
   },
   {
     key: 'lieferanten',
-    label: 'Lieferanten',
+    label: 'Lieferanten & Nachunternehmer',
     items: [
-      { label: 'Lieferanten & NU', href: '/lieferanten' },
+      { label: 'Lieferanten & Nachunternehmer', href: '/lieferanten' },
       { label: 'Bestellungen', href: '/bestellungen' },
       { label: 'Rechnungseingang', href: '/rechnungseingang' },
     ],

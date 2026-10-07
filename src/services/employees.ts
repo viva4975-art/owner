@@ -660,6 +660,16 @@ export async function exitEmployee(sql: Sql, id: string, p: { date: string; reas
              where id = ${id}`;
 }
 
+/** Austritt zurücknehmen (falsch erfasst): Austrittsdatum und Grund weg, Status aktiv. Änderung steht im Protokoll. */
+export async function revokeExit(sql: Sql, id: string) {
+  const [e] = await sql<
+    { exit_date: string | null }[]
+  >`select exit_date::text from app.employees where id = ${id}`;
+  if (!e) throw new BusinessError('Mitarbeiter nicht gefunden');
+  if (!e.exit_date) throw new BusinessError('Es ist kein Austritt erfasst');
+  await sql`update app.employees set exit_date = null, exit_reason = null, status = 'aktiv' where id = ${id}`;
+}
+
 /**
  * Wiedereintritt: Die bisherige Beschäftigungszeit (Eintritt–Austritt) wird unveränderbar festgehalten, dann gelten
  * neues Eintrittsdatum, kein Austritt, Status aktiv. Personalnummer, Unterlagen und Zeiten bleiben erhalten.

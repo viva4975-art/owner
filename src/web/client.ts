@@ -207,7 +207,8 @@ export const CLIENT_JS = String.raw`
     var pop = null, input, list, rows = [], active = -1;
     function label() {
       var o = sel.options[sel.selectedIndex];
-      btn.textContent = o ? o.textContent.trim() : '';
+      var g = o && o.parentNode && o.parentNode.tagName === 'OPTGROUP' && o.parentNode.hasAttribute('data-cust') ? o.parentNode : null;
+      btn.textContent = o ? o.textContent.trim() + (g ? ' – ' + g.label : '') : '';
       btn.classList.toggle('ph', !o || o.value === '');
       btn.disabled = sel.disabled;
     }

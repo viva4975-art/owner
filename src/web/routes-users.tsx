@@ -265,6 +265,18 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
           .filter((s) => (s as { manager_user_id?: string | null }).manager_user_id === id)
           .map((s) => s.id)
       : [];
+    const managerName = new Map(
+      (
+        await sql<{ user_id: string; display_name: string }[]>`select user_id, display_name from app.profiles`
+      ).map((p) => [p.user_id, p.display_name]),
+    );
+    const byCust = new Map<string, (typeof sites)[number][]>();
+    for (const s of sites.filter((x) => x.active !== false || mine.includes(x.id))) {
+      const k = s.customer_name;
+      if (!byCust.has(k)) byCust.set(k, []);
+      byCust.get(k)!.push(s);
+    }
+    const groups = [...byCust.entries()].sort((a, b) => a[0].localeCompare(b[0], 'de'));
     const res = await page(
       c,
       u ? u.name : 'Neuer Benutzer',
@@ -330,21 +342,77 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
               )}
             </div>
             <h3 style="margin-top:16px">Objekte (nur für Objektleitung)</h3>
-            <div style="max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 12px">
-              {sites.map((s) => (
-                <div class="chk" style="padding:3px 0">
-                  <input
-                    type="checkbox"
-                    id={`s-${s.id}`}
-                    name="site"
-                    value={s.id}
-                    checked={mine.includes(s.id)}
-                  />
-                  <label for={`s-${s.id}`}>
-                    {s.site_no} · {s.name}
-                  </label>
-                </div>
-              ))}
+            <p class="small mut" style="margin-top:0">
+              Häkchen setzen = diese Person ist Objektleitung des Objekts (sieht nur diese Objekte). Ein
+              Objekt hat genau eine Objektleitung – wer bisher zuständig war, steht dahinter.
+            </p>
+            <div class="site-pick" data-site-pick>
+              <div class="actions" style="margin:0 0 8px;align-items:center">
+                <input
+                  type="search"
+                  placeholder="Objekt, Nummer oder Kunde suchen …"
+                  data-site-q
+                  style="max-width:320px"
+                  aria-label="Objekte filtern"
+                />
+                <button type="button" class="btn sm sec" data-site-all="1">
+                  Alle angezeigten markieren
+                </button>
+                <button type="button" class="btn sm ghost" data-site-all="0">
+                  Alle angezeigten entfernen
+                </button>
+                <span class="small mut">
+                  <b data-site-n>{mine.length}</b> ausgewählt
+                </span>
+              </div>
+              <div style="max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:var(--r-sm);padding:6px 12px">
+                {groups.map(([cust, list]) => (
+                  <div class="site-grp" style="padding:6px 0;border-bottom:1px solid var(--line)">
+                    <div class="chk" style="font-weight:600">
+                      <input type="checkbox" data-grp aria-label={`Alle Objekte von ${cust}`} />
+                      <span>{cust}</span>
+                    </div>
+                    {list.map((s) => (
+                      <div
+                        class="chk site-row"
+                        style="padding:2px 0 2px 26px"
+                        data-text={`${s.site_no} ${s.name} ${cust} ${s.city ?? ''}`.toLowerCase()}
+                      >
+                        <input
+                          type="checkbox"
+                          id={`s-${s.id}`}
+                          name="site"
+                          value={s.id}
+                          checked={mine.includes(s.id)}
+                        />
+                        <label for={`s-${s.id}`}>
+                          {s.site_no} · {s.name}
+                          {s.manager_user_id && s.manager_user_id !== id && (
+                            <span class="small mut">
+                              {' '}
+                              (bisher: {managerName.get(s.manager_user_id) ?? '–'})
+                            </span>
+                          )}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+              <script
+                dangerouslySetInnerHTML={{
+                  __html: `(function(){var r=document.querySelector('[data-site-pick]');if(!r)return;
+var q=r.querySelector('[data-site-q]'),n=r.querySelector('[data-site-n]');
+function cnt(){n.textContent=r.querySelectorAll('input[name=site]:checked').length;
+r.querySelectorAll('.site-grp').forEach(function(g){var b=g.querySelectorAll('input[name=site]'),c=g.querySelectorAll('input[name=site]:checked');var h=g.querySelector('[data-grp]');h.checked=b.length>0&&c.length===b.length;h.indeterminate=c.length>0&&c.length<b.length;});}
+function norm(x){return x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
+q.addEventListener('input',function(){var t=norm(q.value).split(/\\s+/).filter(Boolean);
+r.querySelectorAll('.site-grp').forEach(function(g){var any=false;g.querySelectorAll('.site-row').forEach(function(row){var ok=t.every(function(w){return norm(row.dataset.text).indexOf(w)>=0});row.hidden=!ok;if(ok)any=true;});g.hidden=!any;});});
+r.addEventListener('change',function(e){var t=e.target;if(t.hasAttribute('data-grp')){t.closest('.site-grp').querySelectorAll('.site-row:not([hidden]) input[name=site]').forEach(function(b){b.checked=t.checked});}cnt();});
+r.querySelectorAll('[data-site-all]').forEach(function(btn){btn.addEventListener('click',function(){var v=btn.dataset.siteAll==='1';r.querySelectorAll('.site-grp:not([hidden]) .site-row:not([hidden]) input[name=site]').forEach(function(b){b.checked=v});cnt();});});
+cnt();})();`,
+                }}
+              />
             </div>
             {!u && <p class="small mut">Nach dem Anlegen wird ein Einmal-Passwort angezeigt.</p>}
             <div class="formfoot">

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { SiteOptions } from './site-options.js';
 import type { Context } from 'hono';
 import type { Child, FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
@@ -846,11 +847,7 @@ f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('c
           <label for="obj">Objekt</label>
           <select id="obj" name="objekt" onchange="this.form.submit()" required>
             <option value="">– Objekt wählen –</option>
-            {sites.map((s) => (
-              <option value={s.id} selected={s.id === siteId}>
-                {s.site_no} - {s.name}
-              </option>
-            ))}
+            <SiteOptions sites={sites} selected={siteId} />
           </select>
         </form>
         {siteId && (

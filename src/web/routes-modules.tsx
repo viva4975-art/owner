@@ -19,6 +19,7 @@ import {
   employmentHistory,
   exitEmployee,
   reenterEmployee,
+  revokeExit,
   saveEmployee,
   suggestPersonnelNo,
 } from '../services/employees.js';
@@ -576,8 +577,7 @@ export function registerModuleRoutes(ctx: Ctx) {
       );
       const beschaeftigung = (
         <>
-          <div class="card">
-            <h2 style="margin-top:0">Beschäftigungszeiten</h2>
+          <div>
             <div class="tbl">
               <table>
                 <thead>
@@ -599,13 +599,23 @@ export function registerModuleRoutes(ctx: Ctx) {
               </table>
             </div>
             {e.exit_date ? (
-              <form method="post" action={`/personal/${e.id}/wiedereintritt`} class="actions">
-                <label for="re" style="margin:0">
-                  Wiedereintritt am
-                </label>
-                <input id="re" type="date" name="date" required style="max-width:180px" />
-                <button class="btn sm">Wiedereintritt erfassen</button>
-              </form>
+              <>
+                <form method="post" action={`/personal/${e.id}/wiedereintritt`} class="actions">
+                  <label for="re" style="margin:0">
+                    Wiedereintritt am
+                  </label>
+                  <input id="re" type="date" name="date" required style="max-width:180px" />
+                  <button class="btn sm">Wiedereintritt erfassen</button>
+                </form>
+                <form
+                  method="post"
+                  action={`/personal/${e.id}/austritt-zuruecknehmen`}
+                  class="actions"
+                  onsubmit="return confirm('Austritt zurücknehmen? Der Mitarbeiter ist danach wieder aktiv (ohne Austrittsdatum).')"
+                >
+                  <button class="btn sm sec">Austritt zurücknehmen (falsch erfasst)</button>
+                </form>
+              </>
             ) : (
               <details>
                 <summary class="btn sm sec" style="margin-top:10px">
@@ -660,7 +670,7 @@ export function registerModuleRoutes(ctx: Ctx) {
             wage={{ level: lvl?.name ?? null, cents: wage }}
             month={await monthBox(e.id)}
             afterHead={einsaetze}
-            footer={beschaeftigung}
+            employment={beschaeftigung}
           />
         </>
       );
@@ -743,6 +753,12 @@ export function registerModuleRoutes(ctx: Ctx) {
       reason: typeof b.reason === 'string' ? b.reason : null,
     });
     return back(c, `/personal/${id}`, { ok: 'Austritt gespeichert.' });
+  });
+
+  app.post(`/personal/:id{${UUID}}/austritt-zuruecknehmen`, async (c) => {
+    const id = c.req.param('id');
+    await revokeExit(sql, id);
+    return back(c, `/personal/${id}`, { ok: 'Austritt zurückgenommen – der Mitarbeiter ist wieder aktiv.' });
   });
 
   app.post(`/personal/:id{${UUID}}/wiedereintritt`, async (c) => {

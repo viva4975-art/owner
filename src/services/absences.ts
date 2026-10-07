@@ -245,6 +245,88 @@ export async function requestAbsence(
   if (p.approved) await applyAbsenceHours(sql, p.id);
 }
 
+export async function getAbsence(sql: Sql, id: string) {
+  const [a] = await sql<(Absence & { employee_name: string })[]>`
+    select a.*, a.start_date::text, a.end_date::text, e.last_name || ', ' || e.first_name as employee_name
+      from app.absences a join app.employees e on e.id = a.employee_id where a.id = ${id}`;
+  return a;
+}
+
+/**
+ * Büro ändert eine Abwesenheit (Art, Zeitraum, halber Tag, Notiz). Stunden je Einsatz werden neu berechnet
+ * (von Hand geänderte Stunden gehen dabei verloren). Altstand steht im Protokoll.
+ */
+export async function updateAbsence(
+  sql: Sql,
+  id: string,
+  p: {
+    kind: AbsenceKind;
+    start: string;
+    end: string;
+    halfDay: boolean;
+    note: string | null;
+    expectedVersion: number | null;
+  },
+  actor: string,
+) {
+  const a = await getAbsence(sql, id);
+  if (!a) throw new BusinessError('Abwesenheit nicht gefunden');
+  if (!['beantragt', 'genehmigt'].includes(a.status))
+    throw new BusinessError('Abgelehnte oder stornierte Abwesenheiten können nicht geändert werden');
+  if (p.expectedVersion !== null && p.expectedVersion !== a.version)
+    throw new BusinessError('Die Abwesenheit wurde zwischenzeitlich geändert – bitte neu laden.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.start) || !/^\d{4}-\d{2}-\d{2}$/.test(p.end))
+    throw new BusinessError('Datum ungültig');
+  if (p.end < p.start) throw new BusinessError('„bis“ liegt vor „von“');
+  if (p.halfDay && p.start !== p.end) throw new BusinessError('Halber Tag nur für einen einzelnen Tag');
+  if (!(p.kind in ABSENCE_LABEL)) throw new BusinessError('Art ungültig');
+  if (p.kind === 'urlaub') {
+    // Rest + bisherige Tage dieser Abwesenheit (sie sind im Rest schon abgezogen, falls Urlaub)
+    for (let y = Number(p.start.slice(0, 4)); y <= Number(p.end.slice(0, 4)); y++) {
+      const clip = (s: string, e: string) =>
+        [s > `${y}-01-01` ? s : `${y}-01-01`, e < `${y}-12-31` ? e : `${y}-12-31`] as const;
+      const [ns, ne] = clip(p.start, p.end);
+      const need = p.halfDay ? 0.5 : workingDays(ns, ne);
+      if (!need) continue;
+      const [os, oe] = clip(a.start_date, a.end_date);
+      const old = a.kind === 'urlaub' && os <= oe ? (a.half_day ? 0.5 : workingDays(os, oe)) : 0;
+      const bal = await leaveBalance(sql, a.employee_id, y);
+      if (bal.rest + old < need)
+        throw new BusinessError(
+          `Kein ausreichender Urlaubsanspruch ${y}: Rest ${String(bal.rest + old).replace('.', ',')} Tage, benötigt ${String(need).replace('.', ',')} Tage`,
+        );
+    }
+  }
+  await sql.begin(async (tx) => {
+    await tx`select pg_advisory_xact_lock(hashtext(${'abs:' + a.employee_id}))`;
+    const [overlap] = await tx`
+      select 1 from app.absences
+       where employee_id = ${a.employee_id} and id <> ${id} and status in ('beantragt', 'genehmigt')
+         and start_date <= ${p.end} and end_date >= ${p.start}`;
+    if (overlap) throw new BusinessError('Für diesen Zeitraum gibt es schon eine andere Abwesenheit');
+    await tx`update app.absences set kind = ${p.kind}, start_date = ${p.start}, end_date = ${p.end},
+               half_day = ${p.halfDay}, note = ${p.note} where id = ${id}`;
+    await tx`delete from app.absence_hours where absence_id = ${id}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'update', 'absence', ${id},
+                     ${tx.json({ vorher: { kind: a.kind, start: a.start_date, end: a.end_date, half_day: a.half_day, note: a.note } })})`;
+  });
+  await applyAbsenceHours(sql, id);
+}
+
+/** Büro löscht eine falsch erfasste Abwesenheit ganz (samt Stunden je Einsatz). Inhalt steht im Protokoll. */
+export async function deleteAbsence(sql: Sql, id: string, actor: string) {
+  const a = await getAbsence(sql, id);
+  if (!a) return;
+  await sql.begin(async (tx) => {
+    await tx`delete from app.absence_hours where absence_id = ${id}`;
+    await tx`delete from app.absences where id = ${id}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'delete', 'absence', ${id},
+                     ${tx.json({ employee_id: a.employee_id, kind: a.kind, start: a.start_date, end: a.end_date, half_day: a.half_day, status: a.status, note: a.note })})`;
+  });
+}
+
 export async function decideAbsence(
   sql: Sql,
   id: string,

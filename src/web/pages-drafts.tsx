@@ -388,13 +388,13 @@ export const DraftsBox: FC<{ rows: DraftRow[]; today: string }> = ({ rows, today
             Markierte ausstellen (<span data-count>0</span>)
           </button>
           <button
-            class="btn ghost"
+            class="btn danger"
             name="aktion"
             value="loeschen"
             data-needs-selection
             onclick="return confirm('Markierte Entwürfe löschen? Vorgemerkte Leistungen werden wieder frei.')"
           >
-            Markierte löschen
+            Markierte löschen (<span data-count>0</span>)
           </button>
         </div>
         <p class="small mut">

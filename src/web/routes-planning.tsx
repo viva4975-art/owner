@@ -10,6 +10,9 @@ import {
   ABSENCE_LABEL,
   ABSENCE_STATUS_LABEL,
   decideAbsence,
+  deleteAbsence,
+  getAbsence,
+  updateAbsence,
   leaveBalance,
   listAbsences,
   requestAbsence,
@@ -354,6 +357,16 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                           <button class="btn sm danger">Ablehnen</button>
                         </form>
                       </>
+                    )}
+                    {['beantragt', 'genehmigt'].includes(a.status) && (
+                      <a class="btn sm sec" href={`/urlaub/${a.id}/bearbeiten`}>
+                        Ändern
+                      </a>
+                    )}
+                    {['abgelehnt', 'storniert'].includes(a.status) && (
+                      <a class="btn sm ghost" href={`/urlaub/${a.id}/bearbeiten`}>
+                        Löschen …
+                      </a>
                     )}
                     {a.status === 'genehmigt' && a.end_date >= todayBerlin() && (
                       <form
@@ -711,6 +724,113 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
   };
 
   app.post('/urlaub', (c) => createAbsence(c, () => '/urlaub/kalender'));
+
+  app.get(`/urlaub/:id{${UUID}}/bearbeiten`, async (c) => {
+    const a = await getAbsence(sql, c.req.param('id'));
+    if (!a) return c.notFound();
+    const editable = ['beantragt', 'genehmigt'].includes(a.status);
+    const ret = c.req.query('zurueck')
+      ? safeReturn(c.req.query('zurueck'))
+      : `/personal/${a.employee_id}/abwesenheiten`;
+    return urlaubShell(
+      c,
+      'alle',
+      <div class="cols">
+        <form method="post" action={`/urlaub/${a.id}/bearbeiten`} class="card">
+          <h3 style="margin-top:0">
+            Abwesenheit ändern · <a href={`/personal/${a.employee_id}/abwesenheiten`}>{a.employee_name}</a>
+          </h3>
+          <p class="small mut" style="margin-top:-6px">
+            Status: {ABSENCE_STATUS_LABEL[a.status]}
+            {a.status === 'genehmigt' &&
+              ' – Stunden je Einsatz werden nach dem Speichern neu berechnet (von Hand geänderte Stunden gehen verloren).'}
+          </p>
+          <input type="hidden" name="version" value={String(a.version)} />
+          <input type="hidden" name="zurueck" value={ret} />
+          <div class="grid">
+            <div>
+              <label for="kind">Art</label>
+              <select id="kind" name="kind" disabled={!editable}>
+                {(Object.keys(ABSENCE_LABEL) as AbsenceKind[]).map((k) => (
+                  <option value={k} selected={k === a.kind}>
+                    {ABSENCE_LABEL[k]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label for="start">von</label>
+              <input id="start" type="date" name="start" value={a.start_date} required disabled={!editable} />
+            </div>
+            <div>
+              <label for="end">bis</label>
+              <input id="end" type="date" name="end" value={a.end_date} required disabled={!editable} />
+            </div>
+            <div class="chk">
+              <input
+                type="checkbox"
+                id="half_day"
+                name="half_day"
+                value="1"
+                checked={a.half_day}
+                disabled={!editable}
+              />
+              <label for="half_day">halber Tag</label>
+            </div>
+            <div>
+              <label for="note">Notiz</label>
+              <input id="note" name="note" value={a.note ?? ''} disabled={!editable} />
+            </div>
+          </div>
+          <div class="formfoot">
+            <a class="btn sec" href={ret}>
+              Abbrechen
+            </a>
+            {editable && <button class="btn">Speichern</button>}
+          </div>
+        </form>
+        <form
+          method="post"
+          action={`/urlaub/${a.id}/loeschen`}
+          class="card"
+          onsubmit="return confirm('Abwesenheit endgültig löschen? Sie verschwindet aus Kalender, Urlaubskonto und Stundenzetteln (bleibt nur im Protokoll).')"
+        >
+          <input type="hidden" name="zurueck" value={ret} />
+          <h3 style="margin-top:0">Löschen</h3>
+          <p class="small mut" style="margin-top:0">
+            Für falsch erfasste Einträge. Genommener Urlaub, der nur verschoben wird: lieber oben ändern. Ist
+            der Urlaub abgesagt, reicht „Stornieren“ (bleibt sichtbar).
+          </p>
+          <button class="btn danger">Abwesenheit löschen</button>
+        </form>
+      </div>,
+    );
+  });
+
+  app.post(`/urlaub/:id{${UUID}}/bearbeiten`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    await updateAbsence(
+      sql,
+      id,
+      {
+        kind: String(b.kind) as AbsenceKind,
+        start: String(b.start ?? ''),
+        end: String(b.end ?? ''),
+        halfDay: b.half_day === '1',
+        note: typeof b.note === 'string' && b.note.trim() ? b.note.trim() : null,
+        expectedVersion: typeof b.version === 'string' && b.version ? Number(b.version) : null,
+      },
+      c.get('actor'),
+    );
+    return back(c, b.zurueck ? safeReturn(b.zurueck) : '/urlaub/alle', { ok: 'Abwesenheit geändert.' });
+  });
+
+  app.post(`/urlaub/:id{${UUID}}/loeschen`, async (c) => {
+    const b = await c.req.parseBody();
+    await deleteAbsence(sql, c.req.param('id'), c.get('actor'));
+    return back(c, b.zurueck ? safeReturn(b.zurueck) : '/urlaub/alle', { ok: 'Abwesenheit gelöscht.' });
+  });
 
   app.post(`/urlaub/:id{${UUID}}/status`, async (c) => {
     const b = await c.req.parseBody();

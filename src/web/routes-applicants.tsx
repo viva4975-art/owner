@@ -74,6 +74,10 @@ const pairs = (a: string[]): [string, string][] => a.map((x) => [x, x]);
 const objLabel = (k: string | null) => OBJECT_TYPES.find(([v]) => v === k)?.[1] ?? k ?? '';
 const pct = (n: number) => (n >= 75 ? 'ok' : n >= 50 ? 'warn' : '');
 const num = (s: string | null) => (s && /^\d+$/.test(s) ? Number(s) : null);
+/** Stunden mit Komma oder Punkt (32,5) */
+const hrs = (s: string | null) =>
+  s && /^\d{1,2}([.,]\d{1,2})?$/.test(s.trim()) ? Number(s.trim().replace(',', '.')) : null;
+const hDe = (h: number | null | undefined) => (h ? String(h).replace('.', ',') : '');
 
 /** Bewerber + Stellenanzeigen wie die alte App. */
 export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
@@ -93,7 +97,7 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
               <span class="lc-name">{p.title}</span>
               <div class="lc-details">
                 {p.city && <span>{p.city}</span>}
-                {p.hours && <span>{p.hours}h/Woche</span>}
+                {p.hours && <span>{hDe(p.hours)}h/Woche</span>}
                 {p.wage_cents != null && <span>{euro(p.wage_cents)}/h</span>}
                 <span>ab {p.start_on ? dateDe(p.start_on) : 'sofort'}</span>
                 {p.website && p.status === 'aktiv' && <span class="badge brand">Website</span>}
@@ -208,7 +212,7 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
                   [p.street, [p.postal_code, p.city].filter(Boolean).join(' ')].filter(Boolean).join(', '),
                 )}
                 {kv('Objektart', objLabel(p.object_type))}
-                {kv('Stunden', p.hours ? `${p.hours} h / Woche` : null)}
+                {kv('Stunden', p.hours ? `${hDe(p.hours)} h / Woche` : null)}
                 {kv('Lohn', p.wage_cents != null ? `${euro(p.wage_cents)} / h brutto` : null)}
                 {kv('Arbeitszeit', p.time_of_day ? TIMES[p.time_of_day] : null)}
                 {kv('Beginn', p.start_on ? `ab ${dateDe(p.start_on)}` : 'sofort')}
@@ -268,7 +272,7 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
                   <div>
                     <b>{x.a.name}</b>
                     <div class="small mut">
-                      {[x.a.job_type, x.a.hours ? `${x.a.hours} h` : null, x.a.city]
+                      {[x.a.job_type, x.a.hours ? `${hDe(x.a.hours)} h` : null, x.a.city]
                         .filter(Boolean)
                         .join(' · ')}
                     </div>
@@ -354,14 +358,7 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
             </div>
             <div>
               <label for="stunden">Stunden / Woche</label>
-              <input
-                id="stunden"
-                name="stunden"
-                type="number"
-                min="1"
-                max="60"
-                value={String(p?.hours ?? 20)}
-              />
+              <input id="stunden" name="stunden" inputmode="decimal" value={hDe(p?.hours ?? 20)} />
             </div>
             <div>
               <label for="lohn">Stundenlohn (EUR brutto)</label>
@@ -511,7 +508,7 @@ f.querySelectorAll('input[name=tag]').forEach(function(c){c.checked=s.indexOf(c.
         title: str(b, 'titel') ?? '',
         jobType: str(b, 'art'),
         objectType: str(b, 'objektart'),
-        hours: num(str(b, 'stunden')),
+        hours: hrs(str(b, 'stunden')),
         wageCents: wage,
         timeOfDay: str(b, 'zeit'),
         city: str(b, 'ort'),
@@ -598,7 +595,7 @@ ${
 ${wd ? `<div class="band"><div class="lab">Arbeitstage / Working days / Çalışma günleri / Dni pracy</div><div class="big" style="font-size:22px">${esc(wd)}</div></div>` : ''}
 <div class="grid">
 ${cell(multi('location'), [p.street, [p.postal_code, p.city].filter(Boolean).join(' ')].filter(Boolean).join(', ') || '—')}
-${p.hours ? cell(multi('hours'), `${p.hours} h / Woche`) : ''}
+${p.hours ? cell(multi('hours'), `${hDe(p.hours)} h / Woche`) : ''}
 ${p.wage_cents != null ? cell(multi('salary'), euro(p.wage_cents)) : ''}
 ${timeKey ? cell(multi('workTime'), T.de?.[timeKey] ?? TIMES[p.time_of_day!] ?? '') : ''}
 <div class="pc full"><div class="pv">${p.start_on ? `ab ${dateDe(p.start_on)}` : 'Ab sofort'}</div><div class="pl">${esc(multi('startDate'))}</div></div>
@@ -723,7 +720,7 @@ document.getElementById('jpg').addEventListener('click', async function () {
                     <span>{[a.postal_code, a.city].filter(Boolean).join(' ')}</span>
                   )}
                   {a.phone && <span>{a.phone}</span>}
-                  {a.hours && <span>{a.hours} Std</span>}
+                  {a.hours && <span>{hDe(a.hours)} Std</span>}
                   {a.language && <span>{a.language}</span>}
                   {a.job_type && <span>{a.job_type}</span>}
                   {a.doc_count > 0 && <span>{a.doc_count} Dokument(e)</span>}
@@ -794,7 +791,7 @@ document.getElementById('jpg').addEventListener('click', async function () {
               <h3>Position</h3>
               <div class="bw-kv">
                 {kv('Art', a.job_type)}
-                {kv('Stunden/Woche', a.hours ? String(a.hours) : null)}
+                {kv('Stunden/Woche', a.hours ? hDe(a.hours) : null)}
                 {kv('Arbeitszeit', a.time_of_day ? TIMES[a.time_of_day] : null)}
                 {kv('Erfahrung', a.experience ? EXPERIENCE[a.experience] : null)}
                 {kv('Verfügbar ab', a.available)}
@@ -864,7 +861,7 @@ document.getElementById('jpg').addEventListener('click', async function () {
                   <div>
                     <b>{x.p.title}</b>
                     <div class="small mut">
-                      {[x.p.city, x.p.hours ? `${x.p.hours} h` : null].filter(Boolean).join(' · ')}
+                      {[x.p.city, x.p.hours ? `${hDe(x.p.hours)} h` : null].filter(Boolean).join(' · ')}
                     </div>
                   </div>
                   <span class={`badge ${pct(x.percent)}`}>{x.percent}%</span>
@@ -930,14 +927,7 @@ document.getElementById('jpg').addEventListener('click', async function () {
             </div>
             <div>
               <label for="stunden">Stunden/Woche</label>
-              <input
-                id="stunden"
-                name="stunden"
-                type="number"
-                min="1"
-                max="80"
-                value={a?.hours ? String(a.hours) : ''}
-              />
+              <input id="stunden" name="stunden" inputmode="decimal" value={hDe(a?.hours)} />
             </div>
             <div>
               <label for="zeit">Arbeitszeit</label>
@@ -994,7 +984,7 @@ document.getElementById('jpg').addEventListener('click', async function () {
         city: str(b, 'ort'),
         language: str(b, 'sprache'),
         jobType: str(b, 'art'),
-        hours: num(str(b, 'stunden')),
+        hours: hrs(str(b, 'stunden')),
         timeOfDay: str(b, 'zeit'),
         experience: str(b, 'erfahrung'),
         available: str(b, 'verfuegbar'),
@@ -1059,7 +1049,7 @@ document.getElementById('jpg').addEventListener('click', async function () {
     const crit: Criteria = {
       city: q('ort'),
       postal_code: q('plz'),
-      hours: num(q('stunden')) ?? (run ? null : 20),
+      hours: hrs(q('stunden')) ?? (run ? null : 20),
       language: q('sprache') ?? 'Deutsch',
       job_type: q('art') ?? 'Reinigungskraft',
       time_of_day: q('zeit') ?? 'abends',
@@ -1097,7 +1087,7 @@ document.getElementById('jpg').addEventListener('click', async function () {
             </div>
             <div>
               <label for="m-std">Stunden/Woche</label>
-              <input id="m-std" name="stunden" type="number" value={crit.hours ? String(crit.hours) : ''} />
+              <input id="m-std" name="stunden" inputmode="decimal" value={hDe(crit.hours)} />
             </div>
             <div>
               <label for="m-spr">Sprache</label>
@@ -1140,7 +1130,7 @@ document.getElementById('jpg').addEventListener('click', async function () {
                         </span>
                         <div class="lc-details">
                           {x.a.city && <span>{x.a.city}</span>}
-                          {x.a.hours && <span>{x.a.hours} h</span>}
+                          {x.a.hours && <span>{hDe(x.a.hours)} h</span>}
                           {x.a.job_type && <span>{x.a.job_type}</span>}
                         </div>
                         <div class="bw-chips" style="margin-top:6px">

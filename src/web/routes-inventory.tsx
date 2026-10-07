@@ -1,4 +1,5 @@
 import { LEGAL_FORMS } from '../services/subcontractors.js';
+import { SiteOptions } from './site-options.js';
 import { randomUUID } from 'node:crypto';
 import type { FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
@@ -427,11 +428,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
                 <label for="site_id">Objekt (bei Ausgabe)</label>
                 <select id="site_id" name="site_id">
                   <option value="">–</option>
-                  {sites.map((s) => (
-                    <option value={s.id}>
-                      {s.site_no} · {s.name}
-                    </option>
-                  ))}
+                  <SiteOptions sites={sites} />
                 </select>
               </div>
               <div>
@@ -652,11 +649,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
               <label for="site_id">Standort</label>
               <select id="site_id" name="site_id">
                 <option value="">Lager / Büro</option>
-                {sites.map((s) => (
-                  <option value={s.id} selected={s.id === d?.site_id}>
-                    {s.site_no} · {s.name}
-                  </option>
-                ))}
+                <SiteOptions sites={sites} selected={d?.site_id} />
               </select>
             </div>
             <Field name="purchase_date" label="Anschaffung" value={d?.purchase_date} type="date" />
@@ -803,11 +796,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
                 <label for="site_id">Objekt</label>
                 <select id="site_id" name="site_id" required>
                   <option value="">– bitte wählen –</option>
-                  {sites.map((s) => (
-                    <option value={s.id} selected={s.id === k?.site_id}>
-                      {s.site_no} · {s.name}
-                    </option>
-                  ))}
+                  <SiteOptions sites={sites} selected={k?.site_id} />
                 </select>
               </div>
               <Field

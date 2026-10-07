@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { SiteOptions } from './site-options.js';
 import type { Context } from 'hono';
 import type { FC } from 'hono/jsx';
 import { getCookie, setCookie } from 'hono/cookie';
@@ -1213,8 +1214,8 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       sql<{ id: string; supplier_no: string; name: string }[]>`
         select id, supplier_no, name from app.suppliers where kind = 'nachunternehmer' and (active or id = ${sc?.supplier_id ?? null}) order by name`,
       sql<
-        { id: string; site_no: string; name: string }[]
-      >`select id, site_no, name from app.sites where active order by name`,
+        { id: string; site_no: string; name: string; customer_name: string }[]
+      >`select s.id, s.site_no, s.name, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`,
     ]);
     const draft = !sc || sc.status === 'entwurf';
     return page(
@@ -1252,11 +1253,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 <label for="site">Objekt</label>
                 <select id="site" name="site_id" required>
                   <option value="">– bitte wählen –</option>
-                  {sites.map((s) => (
-                    <option value={s.id} selected={s.id === (sc?.site_id ?? c.req.query('objekt'))}>
-                      {s.site_no} · {s.name}
-                    </option>
-                  ))}
+                  <SiteOptions sites={sites} selected={sc?.site_id ?? c.req.query('objekt')} />
                 </select>
               </div>
               <div>

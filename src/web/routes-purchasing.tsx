@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { SiteOptions } from './site-options.js';
 import type { Context } from 'hono';
 import type { Child, FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
@@ -446,11 +447,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               <label for="site_id">Lieferung an</label>
               <select id="site_id" name="site_id">
                 <option value="">Lager / Büro</option>
-                {sites.map((s) => (
-                  <option value={s.id} selected={s.id === o?.site_id}>
-                    {s.site_no} · {s.name}
-                  </option>
-                ))}
+                <SiteOptions sites={sites} selected={o?.site_id} />
               </select>
             </div>
             <div>
@@ -1015,11 +1012,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                   <label for="site_id">Objekt (für Nachkalkulation)</label>
                   <select id="site_id" name="site_id">
                     <option value="">– kein Objekt (Gemeinkosten) –</option>
-                    {sites.map((s) => (
-                      <option value={s.id} selected={s.id === v.site}>
-                        {s.site_no} · {s.name}
-                      </option>
-                    ))}
+                    <SiteOptions sites={sites} selected={v.site} />
                   </select>
                 </div>
                 <div>

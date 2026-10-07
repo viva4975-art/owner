@@ -1,4 +1,5 @@
 import { MonthOverview, TimesDetails, TimesOverview, monthName } from './pages-site-calendar.js';
+import { SiteOptions } from './site-options.js';
 import {
   confirmSiteMonth,
   monthRange,
@@ -34,6 +35,7 @@ import {
   monthSummary,
   netMinutes,
   officeSave,
+  officeRemove,
   plannedShifts,
   saveTimeSettings,
   warningsFor,
@@ -511,11 +513,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
             <label for="objekt">Objekt</label>
             <select id="objekt" name="objekt">
               <option value="">alle</option>
-              {sites.map((s) => (
-                <option value={s.id} selected={s.id === q.objekt}>
-                  {s.site_no} · {s.name}
-                </option>
-              ))}
+              <SiteOptions sites={sites} selected={q.objekt} />
             </select>
           </div>
           <div>
@@ -593,11 +591,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
               <label for="site_id">Objekt</label>
               <select id="site_id" name="site_id" required>
                 <option value="">– bitte wählen –</option>
-                {sites.map((s) => (
-                  <option value={s.id} selected={s.id === v.site}>
-                    {s.site_no} · {s.name}
-                  </option>
-                ))}
+                <SiteOptions sites={sites} selected={v.site} />
               </select>
             </div>
             <div>
@@ -627,8 +621,8 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
             />
           </div>
           <p class="small mut">
-            Ende vor Beginn = über Mitternacht. Zeiten werden nie gelöscht; falsche Einträge bitte korrigieren
-            oder ablehnen.
+            Ende vor Beginn = über Mitternacht. Falsche Einträge korrigieren oder unten „Zeit entfernen“ – sie
+            zählen dann nirgends mehr, bleiben aber im Protokoll (§ 17 MiLoG).
           </p>
           <div class="formfoot">
             <a class="btn sec" href="/zeiterfassung">
@@ -638,6 +632,26 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
           </div>
         </form>
         <div class="card">
+          {e && e.status !== 'abgelehnt' && (
+            <form
+              method="post"
+              action={`/zeiterfassung/${id}/entfernen`}
+              style="margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line)"
+              onsubmit="return confirm('Diese Zeit entfernen? Sie zählt danach nicht mehr (Stundenzettel, Lohn, Soll/Ist), bleibt aber im Protokoll.')"
+            >
+              <h3 style="margin-top:0">Zeit entfernen</h3>
+              <label for="rm-reason">Begründung (Pflicht)</label>
+              <input
+                id="rm-reason"
+                name="reason"
+                required
+                placeholder="z. B. doppelt gestempelt / falscher Mitarbeiter"
+              />
+              <div class="actions">
+                <button class="btn danger sm">Zeit entfernen</button>
+              </div>
+            </form>
+          )}
           <h3>Änderungsprotokoll</h3>
           {log.length === 0 && <div class="mut small">Noch keine Einträge.</div>}
           {log.map((l) => (
@@ -687,6 +701,20 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
       actor: c.get('actor'),
     });
     return back(c, `/zeiterfassung/${id}`, { ok: 'Zeit gespeichert und protokolliert.' });
+  });
+
+  app.post(`/zeiterfassung/:id{${UUID}}/entfernen`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    const cur = await getEntry(sql, id);
+    if (!cur) return c.notFound();
+    assertSite(c, cur.site_id);
+    await officeRemove(sql, id, String(b.reason ?? ''), c.get('actor'));
+    const back2 =
+      typeof b.zurueck === 'string' && b.zurueck.startsWith('/') && !b.zurueck.startsWith('//')
+        ? b.zurueck
+        : `/zeiterfassung/${id}`;
+    return back(c, back2, { ok: 'Zeit entfernt – zählt nicht mehr, steht im Protokoll.' });
   });
 
   // ------------------------------------------------------------------ Monat Soll/Ist
@@ -990,10 +1018,15 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
               verschlüsselt gespeichert und kann nicht angezeigt werden – bei „vergessen“ einfach neu setzen.
               Nach 5 Fehlversuchen ist der Zugang 15 Minuten gesperrt; neu setzen entsperrt sofort.
             </p>
+            <p class="small" style="background:var(--warn-50,#fffaeb);padding:8px 10px;border-radius:6px">
+              <b>Ohne eigene PIN:</b> Geburtsdatum als <b>TTMMJJ</b> (z. B. 15.03.1985 → 150385), sobald es in
+              den Stammdaten steht. Hinweis: Kollegen kennen oft Personalnummer und Geburtstag – wer sicher
+              gehen will, setzt hier eine eigene PIN.
+            </p>
             <p>
               Status:{' '}
               {!pin ? (
-                <span class="badge">kein Zugang</span>
+                <span class="badge">keine eigene PIN – Geburtsdatum TTMMJJ</span>
               ) : pin.locked ? (
                 <span class="badge err">gesperrt</span>
               ) : (

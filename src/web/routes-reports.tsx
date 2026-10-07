@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { SiteOptions } from './site-options.js';
 import type { Child } from 'hono/jsx';
 import { monthLabelDe, todayBerlin } from '../domain/invoice/calc.js';
 import { addDays, isoWeekday } from '../domain/time/holidays.js';
@@ -667,8 +668,8 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
     const [rows, sites] = await Promise.all([
       dutyList(sql, { from: r.from, to: r.to, ...(r.siteId ? { siteId: r.siteId } : {}), scope }),
       sql<
-        { id: string; site_no: string; name: string }[]
-      >`select id, site_no, name from app.sites where active order by name`,
+        { id: string; site_no: string; name: string; customer_name: string }[]
+      >`select s.id, s.site_no, s.name, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`,
     ]);
     const visibleSites = scope ? sites.filter((s) => scope.includes(s.id)) : sites;
     const days = [...new Set(rows.map((s) => s.date))];
@@ -684,11 +685,7 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
           <input type="date" name="bis" value={r.to} style="max-width:170px" aria-label="bis" />
           <select name="objekt" style="max-width:240px" aria-label="Objekt">
             <option value="">Alle Objekte</option>
-            {visibleSites.map((s) => (
-              <option value={s.id} selected={s.id === r.siteId}>
-                {s.name} ({s.site_no})
-              </option>
-            ))}
+            <SiteOptions sites={visibleSites} selected={r.siteId} />
           </select>
           <button class="btn sm sec">Anzeigen</button>
           <a class="btn sm sec" href={`/auswertungen/dienste.csv?${qs}`}>

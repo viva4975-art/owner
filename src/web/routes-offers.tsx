@@ -55,11 +55,13 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
     } else {
       rows = all.filter((o) => o.status === 'entwurf' || o.status === 'versendet');
     }
+    const [t] = await sql<{ n: number }[]>`
+      select count(*)::int as n from app.tenders where status in ('neu', 'pruefen', 'bearbeitung', 'abgegeben')`;
     return page(
       c,
       title,
       'angebote',
-      <OfferList rows={rows} all={all} active={active} title={title} stats={stats} />,
+      <OfferList rows={rows} all={all} active={active} title={title} stats={stats} tenders={t?.n ?? 0} />,
     );
   });
 

@@ -137,6 +137,14 @@ export const CustomerList: FC<{
                     <b style="color:var(--ink)">{c.name}</b>
                   </a>{' '}
                   <span class="small faint">{c.customer_no}</span>
+                  {c.is_internal && (
+                    <span
+                      class="badge info"
+                      title="Interner Bereich: Einsatzort und Kostenstelle, keine Rechnungen"
+                    >
+                      intern
+                    </span>
+                  )}
                   <div class="small mut">
                     {c.street}, {c.postal_code} {c.city}
                   </div>
@@ -736,6 +744,9 @@ export const SiteList: FC<{
             target="_blank"
           >
             QR-Codes drucken
+          </a>
+          <a class="btn sec sm" href="/benutzer" title="Objektleitung je Benutzer mehreren Objekten zuordnen">
+            Objektleitungen zuordnen
           </a>
         </form>
         <div class="letters">

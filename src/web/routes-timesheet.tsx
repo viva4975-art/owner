@@ -1,4 +1,5 @@
 import { todayBerlin } from '../domain/invoice/calc.js';
+import { SiteOptions } from './site-options.js';
 import {
   ABSENCE_LABEL,
   type AbsenceKind,
@@ -98,7 +99,7 @@ function signatureBlock(s: Timesheet, sig: SheetSignature | undefined, imgUrl: s
 const PRINT_CSS = `@page{size:A4 landscape;margin:10mm}*{box-sizing:border-box}body{font-family:Inter,system-ui,Arial,sans-serif;color:#1c1917;margin:0}
 .sheet{page-break-after:always;padding:0}.sheet:last-child{page-break-after:auto}
 .hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #7D1435;padding-bottom:6px;margin-bottom:8px}
-.hd h1{margin:0;font-size:17px;color:#7D1435}.hd .m{font-size:11.5px;color:#57534e;line-height:1.45}.hd .r{text-align:right}
+.hd h1{margin:0;font-size:17px;color:#7D1435}.hd .logo{height:34px;margin-bottom:3px}.hd .m{font-size:11.5px;color:#57534e;line-height:1.45}.hd .r{text-align:right}
 .sig-row{display:flex;gap:40px;margin-top:22px}.sig{flex:1}.sig-box{height:54px;border-bottom:1px solid #444;display:flex;align-items:flex-end}.sig-box img{max-height:52px}
 .sig-l{font-size:11px;color:#57534e;margin-top:3px}.legal{font-size:10px;color:#78716c;margin-top:10px}
 .bar{text-align:center;padding:10px;background:#f4f3f1}.bar button{font:inherit;padding:8px 18px;border-radius:8px;border:0;background:#7D1435;color:#fff;cursor:pointer}
@@ -118,7 +119,7 @@ export function registerTimesheetRoutes({ app, deps, page, back, shells }: Ctx) 
     const sig = await latestSignature(sql, s.employee.id, s.month);
     return `<div class="sheet"><div class="hd"><div><h1>Stundenzettel ${esc(monthLabel(s.month))}</h1>
 <div class="m"><b>${esc(s.employee.name)}</b> · Personalnr. ${esc(s.employee.personnel_no)}${s.employee.weekly_hours ? ` · ${String(Number(s.employee.weekly_hours)).replace('.', ',')} Std./Woche` : ''}<br>Zeitraum ${dateDe(s.from)} – ${dateDe(s.to)}</div></div>
-<div class="m r"><b>${esc(co?.name)}</b><br>${esc(co?.street)}<br>${esc(co?.postal_code)} ${esc(co?.city)}</div></div>
+<div class="m r"><img src="/static/logo-transparent.png" alt="Viva-Deluxe" class="logo"><br><b>${esc(co?.name)}</b> · ${esc(co?.street)} · ${esc(co?.postal_code)} ${esc(co?.city)}</div></div>
 ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/stundenzettel/unterschrift/${sig.id}.png` : null)}
 <div class="legal">Aufzeichnung nach § 17 MiLoG (Beginn, Ende und Dauer der täglichen Arbeitszeit; Aufbewahrung mindestens 2 Jahre). Pausen nach § 4 ArbZG. Erstellt am ${dateDe(todayBerlin())}.</div></div>`;
   };
@@ -214,8 +215,8 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
       signaturesOfMonth(sql, month),
       payrollMonth(sql, month),
       sql<{ employee_id: string; site_id: string }[]>`select employee_id, site_id from app.employee_sites`,
-      sql<{ id: string; site_no: string; name: string }[]>`
-        select id, site_no, name from app.sites where active order by name`,
+      sql<{ id: string; site_no: string; name: string; customer_name: string }[]>`
+        select s.id, s.site_no, s.name, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`,
     ]);
     const lq = q.toLowerCase();
     const emps = all.filter(
@@ -303,11 +304,7 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
           </select>
           <select name="objekt" onchange="this.form.submit()" aria-label="Objekt" style="max-width:240px">
             <option value="">Alle Objekte</option>
-            {d.sites.map((x) => (
-              <option value={x.id} selected={x.id === d.site}>
-                {x.site_no} · {x.name}
-              </option>
-            ))}
+            <SiteOptions sites={d.sites} selected={d.site} />
           </select>
           <select
             name="unterschrift"

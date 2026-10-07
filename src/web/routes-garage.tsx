@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { SiteOptions } from './site-options.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { isoWeekday } from '../domain/time/holidays.js';
 import {
@@ -323,8 +324,8 @@ export function registerGarageRoutes({ app, deps, page, back }: Ctx) {
   app.get(`/tiefgarage/objekt/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
     const o = await getTgObject(sql, id);
-    const sites = await sql<{ id: string; site_no: string; name: string }[]>`
-      select id, site_no, name from app.sites where active order by length(site_no), site_no`;
+    const sites = await sql<{ id: string; site_no: string; name: string; customer_name: string }[]>`
+      select s.id, s.site_no, s.name, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by length(s.site_no), s.site_no`;
     const f = (k: keyof TgObject, label: string, extra: Record<string, string> = {}) => (
       <div>
         <label for={k}>{label}</label>
@@ -376,11 +377,7 @@ export function registerGarageRoutes({ app, deps, page, back }: Ctx) {
               <label for="site">Objekt für Arbeitsschein (Kostenstelle)</label>
               <select id="site" name="site_id">
                 <option value="">— nicht verknüpft —</option>
-                {sites.map((s) => (
-                  <option value={s.id} selected={o?.site_id === s.id}>
-                    {s.site_no} {s.name}
-                  </option>
-                ))}
+                <SiteOptions sites={sites} selected={o?.site_id} />
               </select>
             </div>
             <div>

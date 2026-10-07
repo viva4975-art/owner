@@ -1,4 +1,5 @@
 import type { Child, FC } from 'hono/jsx';
+import { SiteOptions } from './site-options.js';
 import { KIND_TITLES, UNIT_LABELS } from '../domain/invoice/types.js';
 import type { InvoiceRow, LineRow } from '../services/invoices.js';
 import type { Customer, EffectiveBilling, Site, SiteService } from '../services/masterdata.js';
@@ -325,11 +326,7 @@ export const InvoiceEditor: FC<{
           <label for="objekt">Objekt</label>
           <select id="objekt" name="objekt" onchange="this.form.submit()">
             <option value="">– ohne Objekt –</option>
-            {sites.map((s) => (
-              <option value={s.id} selected={s.id === inv.site_id}>
-                {s.site_no} · {s.name}
-              </option>
-            ))}
+            <SiteOptions sites={sites} selected={inv.site_id} />
           </select>
         </div>
         <div>

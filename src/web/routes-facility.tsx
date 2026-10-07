@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { SiteOptions } from './site-options.js';
 import type { FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { parseEuro } from '../domain/money/money.js';
@@ -840,11 +841,7 @@ f.addEventListener('change',show);f.addEventListener('input',sum);show();})();`,
           <input type="hidden" name="id" value={randomUUID()} />
           <select name="site_id" required aria-label="Objekt" style="flex:1;min-width:220px">
             <option value="">Objekt wählen …</option>
-            {siteList.map((s) => (
-              <option value={s.id}>
-                {s.name} ({s.site_no})
-              </option>
-            ))}
+            <SiteOptions sites={siteList} />
           </select>
           <button class="btn">+ Kontrolle starten</button>
         </form>

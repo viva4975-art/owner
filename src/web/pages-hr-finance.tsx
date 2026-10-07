@@ -261,7 +261,8 @@ export const EmployeeOverview: FC<{
   afterHead?: Child;
   /** ganz unten (z. B. Beschäftigungszeiten) */
   footer?: Child;
-}> = ({ e, priv, sites, showPrivate, wage, month, afterHead, footer }) => (
+  employment?: Child;
+}> = ({ e, priv, sites, showPrivate, wage, month, afterHead, footer, employment }) => (
   <>
     {e.warning_note && (
       <div class="flash err" style="white-space:pre-line">
@@ -299,6 +300,17 @@ export const EmployeeOverview: FC<{
             <>
               <dt>Austritt</dt>
               <dd>{dateDe(e.exit_date)}</dd>
+            </>
+          )}
+          {employment && (
+            <>
+              <dt></dt>
+              <dd>
+                <details id="beschaeftigung" class="emp-periods">
+                  <summary class="btn sm sec">Beschäftigungszeiten / Austritt</summary>
+                  <div style="margin-top:10px">{employment}</div>
+                </details>
+              </dd>
             </>
           )}
           <dt>Std./Woche</dt>

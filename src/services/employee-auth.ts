@@ -46,6 +46,12 @@ export async function verifyHash(pin: string, stored: string): Promise<boolean> 
   return timingSafeEqual(h, Buffer.from(hashHex, 'hex'));
 }
 
+/** Standard-PIN aus dem Geburtsdatum: TTMMJJ (15.03.1985 → 150385). */
+export function birthPin(isoDate: string): string {
+  const [y, m, d] = isoDate.slice(0, 10).split('-');
+  return `${d}${m}${y!.slice(2)}`;
+}
+
 /** Büro setzt/ändert die PIN (z. B. beim Einstellen oder wenn vergessen). Entsperrt zugleich. */
 export async function setPin(sql: Sql, employeeId: string, pin: string, actor: string) {
   checkPinRules(pin);
@@ -79,11 +85,26 @@ export async function login(
       pin_hash: string | null;
       failed_attempts: number | null;
       locked_until: Date | null;
+      birth_date: string | null;
     }[]
   >`
-    select e.id, e.status, e.app_language, e.first_name, p.pin_hash, p.failed_attempts, p.locked_until
+    select e.id, e.status, e.app_language, e.first_name, p.pin_hash, p.failed_attempts, p.locked_until,
+           ep.birth_date::text
       from app.employees e left join app.employee_pins p on p.employee_id = e.id
+      left join app.employee_private ep on ep.employee_id = e.id
      where e.personnel_no = ${personnelNo.trim()}`;
+  // Ohne eigene PIN gilt das Geburtsdatum TTMMJJ (Ahmed 07.10.). Wird beim ersten Versuch als PIN hinterlegt –
+  // damit greifen Fehlversuchszähler und Sperre wie bei einer gesetzten PIN.
+  if (e && !e.pin_hash && e.birth_date && e.status === 'aktiv') {
+    const pinFromBirth = birthPin(e.birth_date);
+    const hash = await hashPin(pinFromBirth);
+    await sql`
+      insert into app.employee_pins (employee_id, pin_hash, set_by) values (${e.id}, ${hash}, 'Geburtsdatum (automatisch)')
+      on conflict (employee_id) do nothing`;
+    const [p] = await sql<{ pin_hash: string; failed_attempts: number; locked_until: Date | null }[]>`
+      select pin_hash, failed_attempts, locked_until from app.employee_pins where employee_id = ${e.id}`;
+    if (p) Object.assign(e, p);
+  }
   if (!e || !e.pin_hash || e.status !== 'aktiv') {
     await scrypt(pin, Buffer.alloc(16), 32); // gleiche Antwortzeit
     throw generic;

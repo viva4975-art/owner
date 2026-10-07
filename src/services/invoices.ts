@@ -238,6 +238,10 @@ async function prepaidFor(tx: Tx, customerId: string, ids: string[]): Promise<Ce
 export async function saveDraft(sql: Sql, id: string, input: DraftInput, actor: string): Promise<string> {
   const customer = await getCustomer(sql, input.customerId);
   if (!customer) throw new BusinessError('Kunde nicht gefunden');
+  if (customer.is_internal)
+    throw new BusinessError(
+      'Interner Bereich (Viva-Deluxe intern): dafür werden keine Rechnungen geschrieben',
+    );
   const billing = await effectiveBilling(sql, input.customerId, input.siteId);
   // Leistungszeitraum: nur „von“ = ein Tag (Pflicht beim Ausstellen, siehe issueInvoice)
   if (input.periodStart && !input.periodEnd) input = { ...input, periodEnd: input.periodStart };
@@ -381,7 +385,7 @@ export async function runMonthly(
     select s.id, s.name, s.site_no, s.street, s.postal_code, s.city, s.customer_id, s.order_reference,
            c.active as customer_active, s.invoice_group_id
       from app.sites s join app.customers c on c.id = s.customer_id
-     where s.active and ${opts.siteIds ? (opts.siteIds.length ? sql`s.id in ${sql(opts.siteIds)}` : sql`false`) : sql`true`}
+     where s.active and not c.is_internal and ${opts.siteIds ? (opts.siteIds.length ? sql`s.id in ${sql(opts.siteIds)}` : sql`false`) : sql`true`}
      order by s.site_no`;
   const groups = new Map(
     (

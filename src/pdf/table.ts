@@ -1,6 +1,12 @@
 import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, type PDFFont, type PDFPage, rgb } from '@cantoo/pdf-lib';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { pdfFonts } from './render.js';
+
+const LOGO = fileURLToPath(new URL('../../assets/web/logo-transparent.png', import.meta.url));
+let logoBytes: Promise<Buffer | null> | null = null;
+const logo = () => (logoBytes ??= readFile(LOGO).catch(() => null));
 
 /*
  * Einfache Listen-PDF (A4 quer oder hoch) für Auswertungen: Titel, Untertitel, Tabelle mit Kopfzeile auf jeder
@@ -43,6 +49,8 @@ export async function renderTablePdf(p: {
   const f = await pdfFonts();
   const regular = await pdf.embedFont(f.regular, { subset: false });
   const bold = await pdf.embedFont(f.bold, { subset: false });
+  const logoPng = await logo();
+  const logoImg = logoPng ? await pdf.embedPng(logoPng) : null;
   pdf.setTitle(p.title);
   pdf.setCreator('Viva-Deluxe Betriebs-App');
   pdf.setLanguage('de-DE');
@@ -102,6 +110,12 @@ export async function renderTablePdf(p: {
     page = pdf.addPage([W, H]);
     pages.push(page);
     y = H - M;
+    if (logoImg) {
+      // Logo oben rechts (420 × 96 px → 120 pt breit)
+      const w = 120;
+      const h = (logoImg.height / logoImg.width) * w;
+      page.drawImage(logoImg, { x: W - M - w, y: y - h + 4, width: w, height: h });
+    }
     page.drawText('Viva-Deluxe Gebäudereinigung GmbH', { x: M, y: y - 8, size: 8, font: bold, color: BRAND });
     y -= 26;
     page.drawText(p.title, { x: M, y, size: 14, font: bold, color: INK });

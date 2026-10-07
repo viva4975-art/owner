@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { SiteOptions } from './site-options.js';
 import type { Context } from 'hono';
 import type { FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
@@ -157,8 +158,8 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
   async function sitesFor(c: Context<AppEnv>) {
     const scope = c.get('sites');
     return (
-      await sql<{ id: string; site_no: string; name: string }[]>`
-        select id, site_no, name from app.sites where active order by name`
+      await sql<{ id: string; site_no: string; name: string; customer_name: string }[]>`
+        select s.id, s.site_no, s.name, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`
     ).filter((s) => !scope || scope.includes(s.id));
   }
   async function load(c: Context<AppEnv>, id: string) {
@@ -296,11 +297,7 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
           </label>
           <select id="sel-site" name="objekt" onchange="this.form.submit()" style="max-width:300px">
             <option value="">{c.get('sites') ? '– bitte wählen –' : '– ohne Objekt –'}</option>
-            {sites.map((s) => (
-              <option value={s.id} selected={s.id === siteId}>
-                {s.site_no} · {s.name}
-              </option>
-            ))}
+            <SiteOptions sites={sites} selected={siteId} />
           </select>
           <label class="small" for="sel-an" style="margin:0">
             an

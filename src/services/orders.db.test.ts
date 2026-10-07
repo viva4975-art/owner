@@ -142,8 +142,13 @@ describe.skipIf(!available)('Aufträge und Arbeitsscheine', () => {
       'test',
     );
     await signWorkReport(deps, a, { name: 'Frau Huber', png }, 'test');
-    await expect(closeWithoutSignature(deps, b, ' ', 'test')).rejects.toThrow(/Grund/);
+    // Runde 23: „PDF erstellen“ schließt ohne Grund ab (Vermerk wird gesetzt), zweiter Aufruf ändert nichts
+    await closeWithoutSignature(deps, b, ' ', 'test');
     await closeWithoutSignature(deps, b, 'Kein Ansprechpartner vor Ort', 'test');
+    const [cb] = await sql<
+      { no_signature_reason: string }[]
+    >`select no_signature_reason from app.work_reports where id = ${b}`;
+    expect(cb!.no_signature_reason).toMatch(/PDF erstellt/);
     const inv = await reportsToInvoice(deps, DEMO.siteSchool, [a, b], 'buero');
     const lines = await sql<
       { description: string; quantity_milli: bigint; unit_price_cents: bigint; detail: string }[]

@@ -3,7 +3,7 @@ import type { FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { addDays, holidayName, isoWeekday, mondayOf } from '../domain/time/holidays.js';
 import { ABSENCE_LABEL, type AbsenceKind } from '../services/absences.js';
-import { listEmployees } from '../services/employees.js';
+import { countWithoutShift, listEmployees } from '../services/employees.js';
 import { BusinessError } from '../services/errors.js';
 import {
   getShiftSeries,
@@ -17,6 +17,7 @@ import {
   WEEKDAYS_SHORT,
 } from '../services/time.js';
 import { type Ctx, UUID, assertSite } from './app.js';
+import { canAccess } from './permissions.js';
 import { arr } from './forms.js';
 import { calRange, type CalView } from './pages-site-calendar.js';
 import { dateDe } from './layout.js';
@@ -181,6 +182,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
     const days: string[] = [];
     for (let d = r.from; d <= r.to; d = addDays(d, 1)) days.push(d);
     const open = shifts.filter((s) => !s.plan.employee_id);
+    const noShift = await countWithoutShift(sql, scope);
     const absentShifts = shifts.filter(
       (s) => s.plan.employee_id && s.absence && !s.holiday && s.date >= today,
     );
@@ -306,6 +308,22 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
             <span class={`sw${q.alle === '1' ? ' on' : ''}`} /> auch ohne Einsatz
           </a>
         </form>
+        {noShift > 0 && (
+          <a
+            class="due-banner warn"
+            href={
+              canAccess(c.get('user').role, '/personal')
+                ? '/personal?status=aktiv&einsatz=ohne'
+                : self({ alle: '1' })
+            }
+          >
+            <span class="ico">!</span>
+            <span>
+              <b>{noShift} aktive Mitarbeitende ohne laufenden Einsatz</b>{' '}
+              <span class="small">Anzeigen und Einsatz planen →</span>
+            </span>
+          </a>
+        )}
         {absentShifts.length > 0 && (
           <a class="due-banner warn" href={`/einsatzplanung/vertretungen?von=${r.from}&bis=${r.to}`}>
             <span class="ico">!</span>

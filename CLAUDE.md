@@ -1374,6 +1374,6 @@ Testadresse.
 - 2026-10-07: **Mitarbeitende ohne Einsatz** (Ahmed): aktive Mitarbeitende ohne laufenden/künftigen Einsatz bekommen in der
   Mitarbeiterliste das Schild „kein Einsatz“ (Link zur Einsatzliste), oben den Hinweis „n aktive Mitarbeitende ohne
   laufenden Einsatz – anzeigen“ (Filter `?einsatz=ohne`), auf der Startseite einen Hinweis (Objektleitung: nur
-  Mitarbeitende ihrer Objekte → Planung) und in der Mitarbeiter-Übersicht statt „Keine Einsätze“ einen gelben Hinweis.
+  Mitarbeitende ihrer Objekte → Planung), oben in der Planung (gelber Balken) und in der Mitarbeiter-Übersicht.
   Objekt „Allgemein (aus Fortytools)“ (Buchungen nur auf Kundenebene, z. B. Epox Entsorgungs GmbH) darf umbenannt werden:
   Zeiten-, CSV- und Nachunternehmer-Import erkennen es über die feste ID wieder (kein zweites „Allgemein“). 375 Tests.

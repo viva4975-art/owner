@@ -23,6 +23,8 @@ export interface ArchiveRow {
   gross_cents: bigint;
   month: string; // JJJJ-MM des Leistungszeitraums
   docs: { id: string; kind: string; filename: string }[];
+  /** Rechnung aus Fortytools (Archiv, nur lesen; PDF liegt in Fortytools) */
+  legacy?: boolean;
 }
 
 export async function archiveYear(
@@ -44,6 +46,28 @@ export async function archiveYear(
        and (${q}::text is null or c.name ilike ${'%' + (q ?? '') + '%'} or i.number ilike ${'%' + (q ?? '') + '%'}
             or coalesce(s.name, '') ilike ${'%' + (q ?? '') + '%'})
      order by month desc, i.number desc`;
+  // Rechnungen aus Fortytools (Import) gehören in dieselbe Liste
+  const legacy = await sql<ArchiveRow[]>`
+    with l as (
+      select l.*, c.name as cname, c.customer_no as cno,
+             (select min(x.period_start) from app.legacy_invoice_lines x where x.invoice_id = l.id) as ps,
+             (select max(x.period_end) from app.legacy_invoice_lines x where x.invoice_id = l.id) as pe,
+             (select string_agg(distinct s.name, ', ') from app.legacy_invoice_lines x join app.sites s on s.id = x.site_id
+               where x.invoice_id = l.id) as sites
+        from app.legacy_invoices l left join app.customers c on c.id = l.customer_id)
+    select id, number, 'fortytools' as kind, issue_date, ps as period_start, pe as period_end,
+           coalesce(cname, 'Kunde ' || coalesce(customer_no, '?')) as customer_name, coalesce(cno, customer_no, '') as customer_no,
+           sites as site_name, net_cents, gross_cents,
+           to_char(${by === 'datum' ? sql`issue_date` : sql`coalesce(ps, issue_date)`}, 'YYYY-MM') as month,
+           '[]'::json as docs, true as legacy
+      from l
+     where extract(year from ${by === 'datum' ? sql`issue_date` : sql`coalesce(ps, issue_date)`}) = ${year}
+       and (${q}::text is null or coalesce(cname, '') ilike ${'%' + (q ?? '') + '%'} or number ilike ${'%' + (q ?? '') + '%'}
+            or coalesce(sites, '') ilike ${'%' + (q ?? '') + '%'})`;
+  rows.push(...legacy);
+  rows.sort(
+    (a, b) => b.month.localeCompare(a.month) || b.number.localeCompare(a.number, 'de', { numeric: true }),
+  );
   const months = new Map<string, { month: string; rows: ArchiveRow[]; net: bigint; gross: bigint }>();
   for (const r of rows) {
     const m = months.get(r.month) ?? { month: r.month, rows: [], net: 0n, gross: 0n };
@@ -53,8 +77,14 @@ export async function archiveYear(
     months.set(r.month, m);
   }
   const years = await sql<{ y: number }[]>`
-    select distinct extract(year from coalesce(period_start, issue_date))::int as y
-      from app.invoices where status = 'issued' order by y desc`;
+    select y from (
+      select extract(year from coalesce(period_start, issue_date))::int as y from app.invoices where status = 'issued'
+      union
+      select extract(year from coalesce((select min(x.period_start) from app.legacy_invoice_lines x where x.invoice_id = l.id),
+                                        l.issue_date))::int from app.legacy_invoices l
+      union
+      select extract(year from issue_date)::int from app.legacy_invoices) t
+     order by y desc`;
   return { months: [...months.values()], years: years.map((y) => y.y) };
 }
 

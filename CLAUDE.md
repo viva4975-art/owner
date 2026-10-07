@@ -1123,3 +1123,7 @@ Testadresse.
     **In Fortytools fehlen m², WE-Nr., Stellplätze, Dauer, TOB** – in der alten App waren keine TG-Daten im Backup →
     Ahmed: Liste (Excel) mit diesen Angaben schicken oder in der App je Objekt nachtragen.
   - Tests: 357 Unit-/DB-Tests (neu `runde20.db.test.ts`).
+- 2026-10-07: Fortytools-Rechnungen (Import) erscheinen jetzt auch unter Rechnungen → **Alle Rechnungen** (Schild
+  „Fortytools“, Link zur Archiv-Ansicht, „PDF in Fortytools“), nach Leistungszeitraum oder Rechnungsdatum, Jahre aus beiden
+  Quellen, Suche; Zähler „Alle Rechnungen (n + m aus Fortytools)“. ZIP nur für eigene Belege. Vorher nur bei Kunde/Objekt/
+  Offenen Posten sichtbar (Ahmed: „trotz Import keine Rechnungen“).

@@ -69,11 +69,12 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     counts,
   }: {
     active: string;
-    counts: { drafts: number; all: number; unsent: number };
+    counts: { drafts: number; all: number; unsent: number; legacy: number };
   }) => (
     <div class="chips" style="margin:0 0 10px">
       <a href="/rechnungen" class={active === 'alle' ? 'on' : ''}>
-        Alle Rechnungen ({counts.all})
+        Alle Rechnungen ({counts.all}
+        {counts.legacy ? ` + ${counts.legacy} aus Fortytools` : ''})
       </a>
       <a href="/rechnungen?filter=unversendet" class={active === 'unversendet' ? 'on' : ''}>
         Nicht versendet ({counts.unsent})
@@ -82,8 +83,9 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
   );
 
   const counts = async () => {
-    const [r] = await sql<{ drafts: number; all: number; unsent: number }[]>`
+    const [r] = await sql<{ drafts: number; all: number; unsent: number; legacy: number }[]>`
       select (select count(*)::int from app.invoices where status = 'draft') as drafts,
+             (select count(*)::int from app.legacy_invoices) as legacy,
              (select count(*)::int from app.invoices where status = 'issued') as all,
              (select count(*)::int from app.invoices i where status = 'issued'
                 and not exists (select 1 from app.invoice_deliveries d where d.invoice_id = i.id and d.status = 'sent')) as unsent`;
@@ -172,7 +174,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
               <span class="mut small">
                 netto {euro(m.net)} · brutto {euro(m.gross)}
               </span>
-              {by === 'leistung' && (
+              {by === 'leistung' && m.rows.some((r) => !r.legacy) && (
                 <a
                   class="btn sec sm"
                   href={`/rechnungen/archiv/zip/${m.month}`}
@@ -199,10 +201,18 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                   {m.rows.map((r) => (
                     <tr>
                       <td>
-                        <a href={`/rechnungen/${r.id}`}>{r.number}</a>
+                        <a href={r.legacy ? `/rechnungen/fortytools/${r.id}` : `/rechnungen/${r.id}`}>
+                          {r.number}
+                        </a>
                         <div class="small faint">{dateDe(r.issue_date)}</div>
                       </td>
-                      <td class="small">{KIND_TITLES[r.kind as keyof typeof KIND_TITLES] ?? r.kind}</td>
+                      <td class="small">
+                        {r.legacy ? (
+                          <span class="badge">Fortytools</span>
+                        ) : (
+                          (KIND_TITLES[r.kind as keyof typeof KIND_TITLES] ?? r.kind)
+                        )}
+                      </td>
                       <td>
                         {r.customer_name}
                         {r.site_name && <div class="small mut">{r.site_name}</div>}
@@ -212,6 +222,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                       </td>
                       <td class="r">{euro(r.gross_cents)}</td>
                       <td class="small">
+                        {r.legacy && <span class="mut">PDF in Fortytools</span>}
                         {r.docs.map((d) => (
                           <a href={`/dokumente/${d.id}`} target="_blank" style="margin-right:8px">
                             {DOC_LABEL[d.kind] ?? d.kind}

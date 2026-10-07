@@ -4,6 +4,7 @@ import { formatDateDe } from '../domain/invoice/calc.js';
 import { CLIENT_JS } from './client.js';
 import type { Role } from '../services/users.js';
 import { Icon } from './icons.js';
+import { Ic } from './m/icons.js';
 import { canAccess, canOpen } from './permissions.js';
 
 /*
@@ -11,7 +12,17 @@ import { canAccess, canOpen } from './permissions.js';
  * (Navigation, Hauptaktion, aktive Zustände), klare Hierarchie, Tabellen mit tabellarischen Ziffern.
  * Aufbau weiterhin wie Fortytools (Hauptmenü mit Untermenüs, „Neu anlegen“, Reiter).
  */
-const CSS = `
+/** Leiste unten in der App – auch in den QM-Seiten genutzt. */
+export const APP_TAB_CSS = `
+.apptabs{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:#fff;border-top:1px solid #efe3e7;padding-bottom:env(safe-area-inset-bottom)}
+.apptabs a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 2px 10px;font-size:12px;color:#5b4650;text-decoration:none}
+.apptabs a i{display:flex;width:44px;height:28px;align-items:center;justify-content:center;border-radius:14px}
+.apptabs a svg{width:22px;height:22px}
+.apptabs a.on{color:#7d1435;font-weight:600}
+.apptabs a.on i{background:#f6dfe7}
+`;
+
+const CSS = `${APP_TAB_CSS}
 @font-face{font-family:Inter;font-style:normal;font-weight:100 900;font-display:swap;src:url(/static/inter-latin.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
 @font-face{font-family:Inter;font-style:normal;font-weight:100 900;font-display:swap;src:url(/static/inter-latin-ext.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
 :root{
@@ -1127,6 +1138,20 @@ table.share td{vertical-align:top}
 .sharebar span{display:block;height:4px;background:var(--brand);border-radius:2px}
 .num{font-variant-numeric:tabular-nums;white-space:nowrap}
 .share-more{display:none}.share-all .share-more{display:table-row}
+/* ---------- App-Rahmen (aus der App geöffnet): kein PC-Menü, Zurück + Titel oben, Leiste unten ---------- */
+body.appmode{background:linear-gradient(180deg,#f8edf1 0,#faf6f7 240px,#faf6f7 100%);font-size:16px;padding-bottom:84px}
+.appmode .apphead{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;padding:10px 12px;padding-top:max(10px,env(safe-area-inset-top));background:rgba(248,237,241,.94);backdrop-filter:blur(8px);border-bottom:1px solid #efe3e7}
+.appmode .apphead b{flex:1;text-align:center;font-size:17px;color:#2a1420;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.appmode .ah-btn{width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:12px;color:#7d1435}
+.appmode .ah-btn svg{width:24px;height:24px}
+.appmode main{max-width:760px;margin:0 auto;padding:14px 14px 24px}
+.appmode .card{border-radius:16px}
+.appmode .crumbs,.appmode .print-logo{display:none}
+.appmode .pagehead h1,.appmode h1{font-size:22px}
+.appmode .actions{flex-wrap:wrap}
+.appmode input,.appmode select,.appmode textarea{font-size:16px}
+.appmode .btn{min-height:44px}
+@media print{.apptabs,.apphead{display:none}}
 `;
 
 export const euro = (c: bigint) => formatEuro(c as Cents);
@@ -1278,9 +1303,11 @@ export const Layout: FC<{
   role?: Role;
   /** ohne Menü/Suche (Anmeldeseite) */
   bare?: boolean;
+  /** aus der App geöffnet: App-Rahmen (Zurück, Titel, Leiste unten) statt PC-Menü */
+  app?: boolean;
   flash?: { ok?: string | undefined; err?: string | undefined };
   children?: Child;
-}> = ({ title, nav, env, user, role, bare, flash, children }) => {
+}> = ({ title, nav, env, user, role, bare, app, flash, children }) => {
   const menu = role
     ? MENU.map((m) => ({
         ...m,
@@ -1312,139 +1339,23 @@ export const Layout: FC<{
         />
         <style dangerouslySetInnerHTML={{ __html: CSS }} />
       </head>
-      <body class={bare ? 'bare' : 'shell'}>
-        <input type="checkbox" id="burger" class="burger-cb" aria-hidden="true" />
-        {!bare && (
-          <aside class="appside" aria-label="Navigation">
-            <a class="side-logo" href="/" aria-label="Viva-Deluxe – Übersicht">
-              <img src="/static/logo-hell.png" alt="Viva-Deluxe GmbH" width="149" height="34" />
+      {app ? (
+        <body class="appmode">
+          <header class="apphead">
+            <a
+              href="/qm"
+              class="ah-btn"
+              aria-label="Zurück"
+              onclick="if(history.length>1){history.back();return false}"
+            >
+              <Ic n="back" />
             </a>
-            <nav class="menu" aria-label="Hauptmenü">
-              {menu.map((m) =>
-                m.href ? (
-                  <a class={`item${nav === m.key ? ' on' : ''}`} href={m.href}>
-                    <Icon name={MENU_ICON[m.key] ?? 'file'} size={18} />
-                    <span>{m.label}</span>
-                  </a>
-                ) : (
-                  <details class={`grp item${nav === m.key ? ' on' : ''}`} open={nav === m.key}>
-                    <summary>
-                      <Icon name={MENU_ICON[m.key] ?? 'file'} size={18} />
-                      <span>{m.label}</span>
-                      <Icon name="chevron" size={14} />
-                    </summary>
-                    <div class="sub">
-                      {(m.items ?? []).map((i) => (
-                        <a href={i.href} class={i.sep ? 'gap' : ''}>
-                          {i.label}
-                          {i.soon && <span class="soon">bald</span>}
-                        </a>
-                      ))}
-                    </div>
-                  </details>
-                ),
-              )}
-            </nav>
-            <script
-              dangerouslySetInnerHTML={{
-                __html: `(function(){var p=location.pathname,best=null,len=0;document.querySelectorAll('.appside .sub a[href]').forEach(function(a){var h=a.getAttribute('href').split('?')[0];if((p===h||p.indexOf(h+'/')===0)&&h.length>len){best=a;len=h.length}});if(best){best.classList.add('on');var d=best.closest('details');if(d)d.open=true}})();`,
-              }}
-            />
-            <div class="side-foot">
-              <span class={`env${env === 'live' ? ' live' : ''}`}>
-                {env === 'live' ? 'Live' : env === 'test' ? 'Testbetrieb' : 'Lokal'}
-              </span>
-            </div>
-          </aside>
-        )}
-        {!bare && <label for="burger" class="scrim" aria-hidden="true" />}
-        <div class="mainc">
-          <header class="top">
-            <div class="in">
-              {bare ? (
-                <a class="logo" href="/" aria-label="Viva-Deluxe – Übersicht">
-                  <img src="/static/logo.png" alt="Viva-Deluxe GmbH" width="179" height="36" />
-                </a>
-              ) : (
-                <label for="burger" class="burgerbtn" aria-label="Menü">
-                  <Icon name="menu" />
-                </label>
-              )}
-              {search ? (
-                <form class="search" action="/suche" method="get" role="search">
-                  <Icon name="search" />
-                  <input
-                    id="q"
-                    name="q"
-                    placeholder="Suchen: Kunden, Objekte, Rechnungen, Mitarbeiter, Dokumente …"
-                    minlength={2}
-                    aria-label="Suchen"
-                  />
-                  <kbd>/</kbd>
-                </form>
-              ) : (
-                <span style="flex:1" />
-              )}
-              <div class="right">
-                {bare && (
-                  <span class={`env${env === 'live' ? ' live' : ''}`}>
-                    {env === 'live' ? 'LIVE' : env === 'test' ? 'TEST' : 'LOKAL'}
-                  </span>
-                )}
-                {user && (
-                  <a class="btn sm sec" href="/m" title="Eigene Arbeitszeit stempeln">
-                    <Icon name="clock" size={16} /> <span class="hide-m">Meine Zeiterfassung</span>
-                  </a>
-                )}
-                {user && (
-                  <details class="dd">
-                    <summary class="gear" title="Einstellungen" aria-label="Einstellungen">
-                      <Icon name="settings" size={20} />
-                    </summary>
-                    <div class="drop right">
-                      {role && canOpen(role as Role, '/einstellungen') && (
-                        <a href="/einstellungen">Einstellungen für die Firma</a>
-                      )}
-                      <a href="/konto">Einstellungen für {user}</a>
-                      <div class="sep" />
-                      <form method="post" action="/abmelden" style="margin:0">
-                        <button class="btn ghost" style="width:100%;justify-content:flex-start">
-                          Abmelden
-                        </button>
-                      </form>
-                    </div>
-                  </details>
-                )}
-                {user && (
-                  <details class="dd">
-                    <summary class="usr" style="cursor:pointer">
-                      <span class="av">{initials(user)}</span>
-                      <span class="usr-n">{user}</span>
-                    </summary>
-                    <div class="drop right">
-                      <a href="/konto">Mein Konto / Passwort</a>
-                      <a href="/m">Meine Zeiterfassung (stempeln)</a>
-                      {role === 'admin' && <a href="/benutzer">Benutzer & Rechte</a>}
-                      {role && canOpen(role as Role, '/einstellungen') && (
-                        <a href="/einstellungen">Einstellungen</a>
-                      )}
-                      <div class="sep" />
-                      <form method="post" action="/abmelden" style="margin:0">
-                        <button class="btn ghost" style="width:100%;justify-content:flex-start">
-                          Abmelden
-                        </button>
-                      </form>
-                    </div>
-                  </details>
-                )}
-              </div>
-            </div>
+            <b>{title}</b>
+            <a href="/qm" class="ah-btn" aria-label="Übersicht">
+              <Ic n="home" />
+            </a>
           </header>
           <main>
-            <div class="print-logo">
-              <img src="/static/logo-transparent.png" alt="Viva-Deluxe" />
-              <span>Viva-Deluxe Gebäudereinigung GmbH</span>
-            </div>
             {flash?.ok && (
               <div class="flash ok" role="status">
                 <Icon name="check" />
@@ -1459,12 +1370,186 @@ export const Layout: FC<{
             )}
             {children}
           </main>
-        </div>
-        <script dangerouslySetInnerHTML={{ __html: CLIENT_JS }} />
-      </body>
+          <AppTabbar />
+          <script dangerouslySetInnerHTML={{ __html: CLIENT_JS }} />
+        </body>
+      ) : (
+        <body class={bare ? 'bare' : 'shell'}>
+          <input type="checkbox" id="burger" class="burger-cb" aria-hidden="true" />
+          {!bare && (
+            <aside class="appside" aria-label="Navigation">
+              <a class="side-logo" href="/" aria-label="Viva-Deluxe – Übersicht">
+                <img src="/static/logo-hell.png" alt="Viva-Deluxe GmbH" width="149" height="34" />
+              </a>
+              <nav class="menu" aria-label="Hauptmenü">
+                {menu.map((m) =>
+                  m.href ? (
+                    <a class={`item${nav === m.key ? ' on' : ''}`} href={m.href}>
+                      <Icon name={MENU_ICON[m.key] ?? 'file'} size={18} />
+                      <span>{m.label}</span>
+                    </a>
+                  ) : (
+                    <details class={`grp item${nav === m.key ? ' on' : ''}`} open={nav === m.key}>
+                      <summary>
+                        <Icon name={MENU_ICON[m.key] ?? 'file'} size={18} />
+                        <span>{m.label}</span>
+                        <Icon name="chevron" size={14} />
+                      </summary>
+                      <div class="sub">
+                        {(m.items ?? []).map((i) => (
+                          <a href={i.href} class={i.sep ? 'gap' : ''}>
+                            {i.label}
+                            {i.soon && <span class="soon">bald</span>}
+                          </a>
+                        ))}
+                      </div>
+                    </details>
+                  ),
+                )}
+              </nav>
+              <script
+                dangerouslySetInnerHTML={{
+                  __html: `(function(){var p=location.pathname,best=null,len=0;document.querySelectorAll('.appside .sub a[href]').forEach(function(a){var h=a.getAttribute('href').split('?')[0];if((p===h||p.indexOf(h+'/')===0)&&h.length>len){best=a;len=h.length}});if(best){best.classList.add('on');var d=best.closest('details');if(d)d.open=true}})();`,
+                }}
+              />
+              <div class="side-foot">
+                <span class={`env${env === 'live' ? ' live' : ''}`}>
+                  {env === 'live' ? 'Live' : env === 'test' ? 'Testbetrieb' : 'Lokal'}
+                </span>
+              </div>
+            </aside>
+          )}
+          {!bare && <label for="burger" class="scrim" aria-hidden="true" />}
+          <div class="mainc">
+            <header class="top">
+              <div class="in">
+                {bare ? (
+                  <a class="logo" href="/" aria-label="Viva-Deluxe – Übersicht">
+                    <img src="/static/logo.png" alt="Viva-Deluxe GmbH" width="179" height="36" />
+                  </a>
+                ) : (
+                  <label for="burger" class="burgerbtn" aria-label="Menü">
+                    <Icon name="menu" />
+                  </label>
+                )}
+                {search ? (
+                  <form class="search" action="/suche" method="get" role="search">
+                    <Icon name="search" />
+                    <input
+                      id="q"
+                      name="q"
+                      placeholder="Suchen: Kunden, Objekte, Rechnungen, Mitarbeiter, Dokumente …"
+                      minlength={2}
+                      aria-label="Suchen"
+                    />
+                    <kbd>/</kbd>
+                  </form>
+                ) : (
+                  <span style="flex:1" />
+                )}
+                <div class="right">
+                  {bare && (
+                    <span class={`env${env === 'live' ? ' live' : ''}`}>
+                      {env === 'live' ? 'LIVE' : env === 'test' ? 'TEST' : 'LOKAL'}
+                    </span>
+                  )}
+                  {user && (
+                    <a class="btn sm sec" href="/m" title="Eigene Arbeitszeit stempeln">
+                      <Icon name="clock" size={16} /> <span class="hide-m">Meine Zeiterfassung</span>
+                    </a>
+                  )}
+                  {user && (
+                    <details class="dd">
+                      <summary class="gear" title="Einstellungen" aria-label="Einstellungen">
+                        <Icon name="settings" size={20} />
+                      </summary>
+                      <div class="drop right">
+                        {role && canOpen(role as Role, '/einstellungen') && (
+                          <a href="/einstellungen">Einstellungen für die Firma</a>
+                        )}
+                        <a href="/konto">Einstellungen für {user}</a>
+                        <div class="sep" />
+                        <form method="post" action="/abmelden" style="margin:0">
+                          <button class="btn ghost" style="width:100%;justify-content:flex-start">
+                            Abmelden
+                          </button>
+                        </form>
+                      </div>
+                    </details>
+                  )}
+                  {user && (
+                    <details class="dd">
+                      <summary class="usr" style="cursor:pointer">
+                        <span class="av">{initials(user)}</span>
+                        <span class="usr-n">{user}</span>
+                      </summary>
+                      <div class="drop right">
+                        <a href="/konto">Mein Konto / Passwort</a>
+                        <a href="/m">Meine Zeiterfassung (stempeln)</a>
+                        {role === 'admin' && <a href="/benutzer">Benutzer & Rechte</a>}
+                        {role && canOpen(role as Role, '/einstellungen') && (
+                          <a href="/einstellungen">Einstellungen</a>
+                        )}
+                        <div class="sep" />
+                        <form method="post" action="/abmelden" style="margin:0">
+                          <button class="btn ghost" style="width:100%;justify-content:flex-start">
+                            Abmelden
+                          </button>
+                        </form>
+                      </div>
+                    </details>
+                  )}
+                </div>
+              </div>
+            </header>
+            <main>
+              <div class="print-logo">
+                <img src="/static/logo-transparent.png" alt="Viva-Deluxe" />
+                <span>Viva-Deluxe Gebäudereinigung GmbH</span>
+              </div>
+              {flash?.ok && (
+                <div class="flash ok" role="status">
+                  <Icon name="check" />
+                  <span>{flash.ok}</span>
+                </div>
+              )}
+              {flash?.err && (
+                <div class="flash err" role="alert">
+                  <Icon name="alert" />
+                  <span>{flash.err}</span>
+                </div>
+              )}
+              {children}
+            </main>
+          </div>
+          <script dangerouslySetInnerHTML={{ __html: CLIENT_JS }} />
+        </body>
+      )}
     </html>
   );
 };
+
+/** Leiste unten in der App (Objektleitung & Büro) – gleich in QM-Seiten und App-Rahmen. */
+export const APP_TABS = [
+  ['/qm', 'home', 'Übersicht'],
+  ['/qm/objekte', 'building', 'Objekte'],
+  ['/qm/team', 'users', 'Team'],
+  ['/qm/zeiten', 'clock', 'Zeiten'],
+  ['/m', 'watch', 'Ich'],
+] as const;
+
+export const AppTabbar: FC<{ path?: string }> = ({ path = '' }) => (
+  <nav class="apptabs">
+    {APP_TABS.map(([href, ic, label]) => (
+      <a href={href} class={(href === '/qm' ? path === '/qm' : path.startsWith(href)) ? 'on' : ''}>
+        <i>
+          <Ic n={ic} />
+        </i>
+        {label}
+      </a>
+    ))}
+  </nav>
+);
 
 /** Seitentitel + „Neu anlegen: [Auswahl] Los“ wie Fortytools. */
 export const PageHead: FC<{

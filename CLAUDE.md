@@ -1322,3 +1322,15 @@ Testadresse.
   PIN (Stempeln, Zeiten, Urlaub, Dokumente, Stundenliste unterschreiben); oben „Büro“ statt „Abmelden“. Am PC Knopf
   „Meine Zeiterfassung“ in der Kopfzeile (und im Benutzermenü), in der App Kachel „Meine Zeiterfassung“ (Team-Zeiten
   heißen „Zeiten (Team)“). Tests: neu `npm run e2e:login` (13 Prüfungen), 373 Unit-/DB-Tests.
+- 2026-10-07: **In der App bleiben** (Ahmed: „komme wieder auf die Seite vom PC“):
+  - **App-Rahmen:** Wer die App (`/qm`, `/app`) öffnet, bekommt das Cookie `vd_app=1` – danach erscheint jede Büro-Seite
+    (Objekt, Schlüssel, Übergaben mit Unterschrift, Arbeitsschein, Dokumente, Formulare …) im App-Design: oben Zurück +
+    Titel + Übersicht, unten die Leiste Übersicht / Objekte / Team / Zeiten / Ich, ohne PC-Menü (`Layout` mit `app`).
+    Kachel „PC-Ansicht“ bzw. `?pc=1` schaltet zurück. Symbole der Handy-Ansichten jetzt in `src/web/m/icons.tsx`.
+  - **Eigene App-Seiten** (`routes-qm-team.tsx`): **Team** (Suche, Status heute „im Einsatz“/„abwesend“, je Person
+    Anrufen, WhatsApp, Einsätze, Abwesenheiten, Objekte; Personal/Admin zusätzlich Dokumente, Übergaben, Stammdaten),
+    **Urlaub / Krankheit für andere eintragen** (Admin/Personal sofort genehmigt; Objektleitung: Krankheit sofort, Urlaub
+    und Sonstiges als Antrag ans Büro; Urlaubsanspruch und Überschneidung wie im Büro geprüft; Buchhaltung sieht keine
+    Art der Abwesenheit), **Zeiten heute** (jeder geplante Einsatz mit erledigt / seit … / nicht gestempelt / abwesend,
+    „ohne Einsatz gestempelt“, Nachträge direkt freigeben oder mit Grund ablehnen). Objektleitung nur eigene Objekte.
+  - Tests: `npm run e2e:login` jetzt 23 Prüfungen; 373 Unit-/DB-Tests, Browser-Suiten grün.

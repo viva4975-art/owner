@@ -102,6 +102,33 @@ console.log('4. Büro am PC: Knopf „Meine Zeiterfassung“');
 await admin.goto(B + '/');
 check('Knopf in der Kopfzeile', (await admin.locator('div.right > a[href="/m"]').count()) >= 1);
 
+console.log('5. In der App bleiben: Büro-Seiten im App-Rahmen, Urlaub/Krank für andere');
+await admin.goto(B + '/qm');
+await admin.goto(B + '/objekte');
+check('Büro-Seite aus der App im App-Rahmen', (await admin.locator('header.apphead').count()) === 1);
+check('kein PC-Menü im App-Rahmen', (await admin.locator('aside.appside').count()) === 0);
+check('Leiste unten', (await admin.locator('nav.apptabs').count()) === 1);
+await admin.goto(B + `/qm/team/${worker.id}`);
+check('Team: Mitarbeiterin sichtbar', (await admin.content()).includes(`Login${stamp}`));
+await admin.goto(B + `/qm/abwesenheit/neu?ma=${worker.id}`);
+await admin.check('input[name=kind][value=krank]');
+await Promise.all([admin.waitForNavigation(), admin.click('button:has-text("Eintragen")')]);
+check('Krank für andere eingetragen', (await admin.content()).includes('Krank eingetragen'), admin.url());
+check(
+  'Abwesenheit beim Mitarbeiter',
+  (await admin.locator('.tm-card:has-text("Abwesenheiten")').innerText()).includes('genehmigt'),
+);
+check('Zeiten heute erreichbar', (await admin.goto(B + '/qm/zeiten')).status() === 200);
+await admin.goto(B + '/?pc=1');
+check('„PC-Ansicht“ schaltet zurück', (await admin.locator('aside.appside').count()) === 1);
+await admin.goto(B + '/objekte');
+check('bleibt in der PC-Ansicht', (await admin.locator('header.apphead').count()) === 0);
+await ol.goto(B + `/qm/team/${worker.id}`);
+check(
+  'Objektleitung sieht fremde Mitarbeitende nicht',
+  (await ol.content()).includes('nicht in Ihren Objekten'),
+);
+
 await browser.close();
 console.log(`\n${ok} ok, ${fail} fehlgeschlagen`);
 process.exit(fail ? 1 : 0);

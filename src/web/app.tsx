@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono, type Context } from 'hono';
-import { getCookie } from 'hono/cookie';
+import { getCookie, setCookie } from 'hono/cookie';
 import { csrf } from 'hono/csrf';
 import { HTTPException } from 'hono/http-exception';
 import type { Child } from 'hono/jsx';
@@ -63,6 +63,7 @@ import { registerTimesheetRoutes } from './routes-timesheet.js';
 import { registerQmRoutes } from './routes-qm.js';
 import { sortCsv } from './csv-sort.js';
 import { registerStartAppRoutes } from './routes-start-app.js';
+import { registerQmTeamRoutes } from './routes-qm-team.js';
 import { registerOlAppRoutes } from './routes-ol-app.js';
 
 export const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
@@ -81,6 +82,7 @@ export function inScope<T extends { site_id?: string | null }>(c: Context<AppEnv
   return sites ? rows.filter((r) => !!r.site_id && sites.includes(r.site_id)) : rows;
 }
 export const OFFICE_COOKIE = 'vd_s';
+export const APP_COOKIE = 'vd_app';
 export const officeSecret = (env: Deps['env']) =>
   createHash('sha256')
     .update(`office:${env.SESSION_SECRET ?? `dev-session:${env.APP_BASIC_AUTH}`}`)
@@ -256,6 +258,16 @@ export function createApp(deps: Deps) {
     }
   });
 
+  // App-Rahmen: Wer die App (/qm) öffnet, sieht danach jede Büro-Seite im App-Design; „?pc=1“ schaltet zurück.
+  app.use(async (c, next) => {
+    const p = c.req.path;
+    const opts = { path: '/', sameSite: 'Lax' as const, secure: env.APP_ENV !== 'dev', maxAge: 365 * 86400 };
+    if (c.req.query('pc') === '1') setCookie(c, APP_COOKIE, '0', opts);
+    else if (c.req.method === 'GET' && (p === '/qm' || p.startsWith('/qm/') || p === '/app'))
+      setCookie(c, APP_COOKIE, '1', opts);
+    await next();
+  });
+
   function page(c: Context<AppEnv>, title: string, nav: string, body: Child, status: 200 | 403 | 404 = 200) {
     const u = c.get('user') as User | undefined;
     return c.html(
@@ -266,6 +278,7 @@ export function createApp(deps: Deps) {
             nav={nav}
             env={env.APP_ENV}
             {...(u ? { user: fullName(u), role: u.role } : {})}
+            app={c.req.query('pc') !== '1' && getCookie(c, APP_COOKIE) === '1'}
             flash={{ ok: c.req.query('ok'), err: c.req.query('fehler') }}
           >
             {body}
@@ -333,6 +346,7 @@ export function createApp(deps: Deps) {
   registerTimesheetRoutes(ctx);
   registerOlAppRoutes(ctx);
   registerStartAppRoutes(ctx);
+  registerQmTeamRoutes(ctx);
   registerQmRoutes(ctx);
   registerTimeRoutes(ctx);
   registerPlanningBoardRoutes(ctx);

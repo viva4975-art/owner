@@ -40,7 +40,7 @@ import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { str } from './forms.js';
 import { storeFile } from '../services/uploads.js';
 import { createQualityCheck } from '../services/facility.js';
-import { PageHead, dateDe } from './layout.js';
+import { APP_TAB_CSS, AppTabbar, PageHead, dateDe } from './layout.js';
 import { Icon } from './icons.js';
 import { CSS as MCSS, Ic } from './m/routes-mobile.js';
 
@@ -141,7 +141,7 @@ export const QmLayout: FC<{
       <meta name="theme-color" content="#f8edf1" />
       <title>{`${title} · Qualität · Viva-Deluxe`}</title>
       <link rel="icon" type="image/png" href="/static/favicon.png" />
-      <style dangerouslySetInnerHTML={{ __html: MCSS + QM_CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: MCSS + QM_CSS + APP_TAB_CSS }} />
     </head>
     <body>
       <main>
@@ -157,26 +157,7 @@ export const QmLayout: FC<{
         )}
         {children}
       </main>
-      <nav class="tabbar">
-        {(
-          [
-            ['/qm', 'home', 'Übersicht'],
-            ['/qm/objekte', 'building', 'Objekte'],
-            ['/qm/tickets', 'ticket', 'Tickets'],
-            ['/', 'monitor', 'Büro'],
-          ] as const
-        ).map(([href, ic, label]) => (
-          <a
-            href={href}
-            class={href === '/' ? '' : (href === '/qm' ? path === '/qm' : path.startsWith(href)) ? 'on' : ''}
-          >
-            <i>
-              <Ic n={ic} />
-            </i>
-            {label}
-          </a>
-        ))}
-      </nav>
+      <AppTabbar path={path} />
     </body>
   </html>
 );
@@ -276,7 +257,7 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
               ['/qm/personalbogen', 'doc', 'Personalbogen'],
               ['/qm/nu-auftrag', 'building', 'NU-Auftrag'],
               ['/transfer/dokumenteneingang', 'doc', 'Posteingang'],
-              ['/', 'monitor', 'Büro-Ansicht'],
+              ['/?pc=1', 'monitor', 'PC-Ansicht'],
             ] as const
           )
             .filter(([href]) => canAccess(u.role, href))

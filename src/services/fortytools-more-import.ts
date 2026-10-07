@@ -244,6 +244,8 @@ export interface ShiftPlanRow {
   end: string;
   break_minutes: number;
   count: number;
+  /** gültig ab dem ersten Vorkommen im Export – so hängen die importierten Zeiten als „bestätigt“ am Einsatz */
+  valid_from: string;
   exists: boolean;
 }
 
@@ -391,9 +393,12 @@ export async function planTimes(sql: Sql, t: MoreTable, opts: { exclude: string[
     select employee_id, site_id, weekday from app.shift_plans
      where employee_id is not null and (valid_until is null or valid_until >= ${validFrom ?? '2000-01-01'})`;
   const planKey = new Set(existingPlans.map((p) => `${p.employee_id}|${p.site_id}|${p.weekday}`));
+  // Wiederkehrend = mindestens zweimal; umfasst der Export weniger als zwei Wochen, reicht einmal.
+  const first = rows.reduce((m, x) => (!m || x.date < m ? x.date : m), '');
+  const minCount = first && last && addDays(first, 14) > last ? 1 : 2;
   const shifts: ShiftPlanRow[] = [];
   for (const [k, xs] of groups) {
-    if (xs.length < 2) continue;
+    if (xs.length < minCount) continue;
     const [empId, siteId, wd] = k.split('|');
     const durs = xs
       .map((x) => {
@@ -418,6 +423,7 @@ export async function planTimes(sql: Sql, t: MoreTable, opts: { exclude: string[
       end: hhmm(start + dur),
       break_minutes: Math.min(180, pauses[Math.floor(pauses.length / 2)]!),
       count: xs.length,
+      valid_from: xs.reduce((m, x) => (x.date < m ? x.date : m), xs[0]!.date),
       exists: planKey.has(`${empId}|${siteId}|${wd}`),
     });
   }
@@ -481,19 +487,29 @@ export async function applyTimes(
     }
   }
   let shiftsCreated = 0;
+  let shiftsUpdated = 0;
   if (opts.shifts && plan.validFrom) {
     for (const s of plan.shifts) {
+      // Früher abgeleitete Einsätze galten erst ab dem Tag nach der letzten Zeit → auf das erste Vorkommen
+      // vorziehen (nur unsere eigenen, unveränderten Ableitungen), damit die Zeiten daran hängen.
+      const fixed = await sql`
+        update app.shift_plans
+           set valid_from = ${s.valid_from},
+               created_at = least(created_at, (${s.valid_from}::date)::timestamp at time zone 'Europe/Berlin')
+         where id = ${s.id} and note = 'aus Fortytools-Zeiten abgeleitet' and valid_from > ${s.valid_from}`;
+      shiftsUpdated += fixed.count;
       if (s.exists) continue;
       const r = await sql`
         insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes,
-                                     valid_from, note, series_id)
+                                     valid_from, note, series_id, created_at)
         values (${s.id}, ${s.employee_id}, ${s.site_id}, ${s.weekday}, ${s.start}, ${s.end}, ${s.break_minutes},
-                ${plan.validFrom}, 'aus Fortytools-Zeiten abgeleitet', ${s.id})
+                ${s.valid_from}, 'aus Fortytools-Zeiten abgeleitet', ${s.id},
+                (${s.valid_from}::date)::timestamp at time zone 'Europe/Berlin')
         on conflict (id) do nothing`;
       shiftsCreated += r.count;
     }
   }
-  return { created, skipped, overlaps, shiftsCreated, excluded: plan.excluded };
+  return { created, skipped, overlaps, shiftsCreated, shiftsUpdated, excluded: plan.excluded };
 }
 
 /** Objekt „Allgemein (aus Fortytools)“ eines Kunden holen oder anlegen (für Buchungen ohne Objekt). */

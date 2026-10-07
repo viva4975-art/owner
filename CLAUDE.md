@@ -1364,3 +1364,10 @@ Testadresse.
     gleiche Zeiten mit allen Wochentagen in einer Zeile (Mo–So-Kästchen), Std. je Einsatz, Turnus/gültig ab–bis, „Ändern“;
     oben Anzahl Objekte und ≈ Std. pro Woche; beendete Einsätze eingeklappt; die bisherige Einzelliste (Beenden/Löschen)
     eingeklappt darunter. `e2e:login` 33 Prüfungen, alle Suiten grün.
+- 2026-10-07: **Fund Zeiten-Import (Ahmed: „Stunden drin, aber keine Einsätze“):** Die abgeleiteten Einsätze galten erst
+  ab dem Tag nach der letzten Zeit bzw. ab dem Anlagetag (Soll zählt erst ab Anlage) – im importierten Zeitraum waren
+  sie daher unsichtbar, die Zeiten hingen an keinem Einsatz. Jetzt: gültig ab dem **ersten Vorkommen** im Export
+  (Anlagezeitpunkt wird mitgesetzt), bei Exporten unter 14 Tagen reicht ein Vorkommen. Ein erneuter Import derselben
+  Datei zieht bereits angelegte abgeleitete Einsätze auf das erste Vorkommen vor (nichts doppelt). Probe mit dem echten
+  Export: 660 Einsätze vorgezogen, 2.311 von 2.366 Einsatztagen im September mit Zeit („Zeit bestätigt“), Rest = Tage
+  ohne erfasste Zeit. **Auf dem Server: Zeiten.csv noch einmal importieren (Häkchen „Einsätze ableiten“).**

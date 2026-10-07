@@ -922,8 +922,8 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
                 )}
                 <label class="small" style="display:flex;gap:6px;align-items:center;margin-top:8px">
                   <input type="checkbox" name="einsaetze" value="1" checked /> wiederkehrende Einsätze
-                  ableiten ({p.z.shifts.filter((s) => !s.exists).length} neu, gültig ab{' '}
-                  {dateDe(p.z.validFrom)})
+                  ableiten ({p.z.shifts.filter((s) => !s.exists).length} neu, je gültig ab dem ersten
+                  Vorkommen im Export – die importierten Zeiten erscheinen dann als „Zeit bestätigt“)
                 </label>
                 <details style="margin-top:6px">
                   <summary class="small">Abgeleitete Einsätze ansehen</summary>
@@ -937,6 +937,7 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
                           <th>Zeit</th>
                           <th class="r">Pause</th>
                           <th class="r">im Export</th>
+                          <th>gültig ab</th>
                           <th></th>
                         </tr>
                       </thead>
@@ -951,6 +952,7 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
                             </td>
                             <td class="r">{s.break_minutes} min</td>
                             <td class="r">{s.count}×</td>
+                            <td>{dateDe(s.valid_from)}</td>
                             <td class="small mut">{s.exists ? 'Einsatz vorhanden' : ''}</td>
                           </tr>
                         ))}
@@ -999,7 +1001,7 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
       } else {
         const r = await applyTimes(sql, t, { exclude, shifts: b.einsaetze === '1', actor: c.get('actor') });
         msgs.push(
-          `Zeiten: ${r.created} übernommen${r.skipped ? `, ${r.skipped} wegen Überschneidung übersprungen` : ''}, ${r.shiftsCreated} Einsätze angelegt`,
+          `Zeiten: ${r.created} übernommen${r.skipped ? `, ${r.skipped} wegen Überschneidung übersprungen` : ''}, ${r.shiftsCreated} Einsätze angelegt${r.shiftsUpdated ? `, ${r.shiftsUpdated} Einsätze auf das erste Vorkommen vorgezogen` : ''}`,
         );
       }
     }

@@ -9,6 +9,7 @@ import {
   planTimes,
 } from './fortytools-more-import.js';
 import { dbAvailable, freshDatabase } from './testing.js';
+import { plannedShifts } from './time.js';
 
 const available = await dbAvailable();
 const enc = (s: string) => new TextEncoder().encode(`\uFEFF${s}`);
@@ -94,11 +95,18 @@ describe.skipIf(!available)('Runde 23: Artikel und Zeiten aus Fortytools (Datenb
     expect(await applyTimes(sql, t, { exclude: ['1013'], shifts: true, actor: 't' })).toMatchObject({
       created: 0,
       shiftsCreated: 0,
+      shiftsUpdated: 0,
     });
     const [night] = await sql<{ h: number }[]>`
       select extract(epoch from end_at - start_at)/3600 as h from app.time_entries where work_date = '2026-09-15'`;
     expect(Number(night!.h)).toBe(3);
     const [plan] = await sql<{ valid_from: string }[]>`select valid_from::text from app.shift_plans`;
-    expect(plan!.valid_from).toBe('2026-09-16');
+    expect(plan!.valid_from).toBe('2026-09-07');
+    // Einsatz gilt ab dem ersten Vorkommen → die importierten Zeiten hängen am Einsatz („Zeit bestätigt“)
+    const planned = await plannedShifts(sql, { from: '2026-09-07', to: '2026-09-14' });
+    expect(planned.map((x) => [x.date, !!x.entry])).toEqual([
+      ['2026-09-07', true],
+      ['2026-09-14', true],
+    ]);
   });
 });

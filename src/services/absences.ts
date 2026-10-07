@@ -388,19 +388,23 @@ export interface AbsentNow {
 }
 
 /**
- * Wer ist heute (bzw. am Tag) abwesend (genehmigt)? Mit den Objekten der Person; `siteIds` begrenzt auf
- * Mitarbeitende dieser Objekte (Objektleitung). Krankheitsart wird bewusst nicht unterschieden angezeigt
- * (Datenschutz: nur „abwesend“ für Objektleitung, Art nur fürs Büro – entscheidet die Oberfläche).
+ * Abwesend im Zeitraum (genehmigt) – für „heute abwesend“ und „demnächst“ (z. B. Urlaub eine Woche vorher). Mit den
+ * Objekten der Person; `siteIds` begrenzt auf Mitarbeitende dieser Objekte (Objektleitung: nur eigene Leute).
+ * Art wird angezeigt (auch „krank“ – Vorgesetzte dürfen die Arbeitsunfähigkeit kennen, die Diagnose wird nie erfasst).
  */
-export async function absentOn(sql: Sql, day: string, siteIds: string[] | null) {
+export async function absentBetween(sql: Sql, from: string, to: string, siteIds: string[] | null) {
   return sql<AbsentNow[]>`
     select a.employee_id, e.first_name || ' ' || e.last_name as name, a.kind, a.start_date::text,
            a.end_date::text, a.half_day,
            coalesce((select array_agg(s.name order by s.name) from app.employee_sites es
                        join app.sites s on s.id = es.site_id where es.employee_id = e.id), '{}') as sites
       from app.absences a join app.employees e on e.id = a.employee_id
-     where a.status = 'genehmigt' and a.start_date <= ${day} and a.end_date >= ${day}
+     where a.status = 'genehmigt' and a.start_date <= ${to} and a.end_date >= ${from}
        and (${siteIds === null} or exists (select 1 from app.employee_sites es
                                            where es.employee_id = e.id and es.site_id = any(${siteIds ?? []}::uuid[])))
-     order by a.end_date, e.last_name`;
+     order by a.start_date, e.last_name`;
 }
+
+/** Wer ist am Tag abwesend (genehmigt)? */
+export const absentOn = (sql: Sql, day: string, siteIds: string[] | null) =>
+  absentBetween(sql, day, day, siteIds);

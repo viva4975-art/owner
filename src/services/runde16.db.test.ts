@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
-import { absentOn, requestAbsence } from './absences.js';
+import { absentBetween, absentOn, requestAbsence } from './absences.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
@@ -50,5 +50,10 @@ describe.skipIf(!available)('Runde 16: Heute abwesend (Datenbank)', () => {
     expect(await absentOn(sql, '2026-11-05', null)).toEqual([]);
     expect((await absentOn(sql, '2026-11-03', [DEMO.siteSchool])).length).toBe(1);
     expect(await absentOn(sql, '2026-11-03', [randomUUID()])).toEqual([]);
+    // eine Woche vorher: Abwesenheit ab 02.11. erscheint ab 26.10. unter „nächste 7 Tage“
+    expect((await absentBetween(sql, '2026-10-26', '2026-11-02', null)).map((x) => x.kind)).toEqual([
+      'krank',
+    ]);
+    expect(await absentBetween(sql, '2026-10-25', '2026-11-01', null)).toEqual([]);
   });
 });

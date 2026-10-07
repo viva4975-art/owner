@@ -7,42 +7,67 @@ import { PageHead, dateDe, euro, initials } from './layout.js';
 import { InvoiceTable } from './pages-invoices.js';
 import { ABSENCE_LABEL, type AbsentNow } from '../services/absences.js';
 
-/** „Heute abwesend“: Büro sieht die Art, Objektleitung nur „abwesend“ (Krankheit = Gesundheitsdaten). */
-export const AbsentCard: FC<{ absent: AbsentNow[]; showKind: boolean; href?: string | undefined }> = ({
+/** „Abwesend“: heute und in den nächsten 7 Tagen (Urlaub eine Woche vorher), mit Art inkl. „krank“. */
+export const AbsentCard: FC<{ absent: AbsentNow[]; today: string; href?: string | undefined }> = ({
   absent,
-  showKind,
+  today,
   href,
-}) => (
-  <section class="card dash-card">
-    {href ? (
-      <DashHead title="Heute abwesend" count={absent.length} href={href} more="Urlaubskalender" />
-    ) : (
-      <DashHead title="Heute abwesend" count={absent.length} />
-    )}
-    {absent.length === 0 ? (
-      <div class="dash-empty">Heute ist niemand abwesend.</div>
-    ) : (
-      <ul class="dash-list">
-        {absent.slice(0, 8).map((a) => (
-          <li>
-            <span class="avatar">{initials(a.name)}</span>
-            <div class="dl-main">
-              {href ? <a href={`/personal/${a.employee_id}/abwesenheiten`}>{a.name}</a> : a.name}
-              <div class="dl-sub">
-                {showKind ? ABSENCE_LABEL[a.kind] : 'abwesend'}
-                {a.half_day ? ' (halber Tag)' : ''} · bis {dateDe(a.end_date)}
-                {a.sites.length
-                  ? ` · ${a.sites.slice(0, 2).join(', ')}${a.sites.length > 2 ? ' …' : ''}`
-                  : ''}
-              </div>
-            </div>
-          </li>
-        ))}
-      </ul>
-    )}
-    {absent.length > 8 && <div class="dash-more">+ {absent.length - 8} weitere</div>}
-  </section>
-);
+}) => {
+  const now = absent.filter((a) => a.start_date <= today);
+  const soon = absent.filter((a) => a.start_date > today);
+  const Row = ({ a }: { a: AbsentNow }) => (
+    <li>
+      <span class="avatar">{initials(a.name)}</span>
+      <div class="dl-main">
+        {href ? <a href={`/personal/${a.employee_id}/abwesenheiten`}>{a.name}</a> : a.name}
+        <div class="dl-sub">
+          {ABSENCE_LABEL[a.kind]}
+          {a.half_day ? ' (halber Tag)' : ''} ·{' '}
+          {a.start_date > today
+            ? `${dateDe(a.start_date)} – ${dateDe(a.end_date)}`
+            : `bis ${dateDe(a.end_date)}`}
+          {a.sites.length ? ` · ${a.sites.slice(0, 2).join(', ')}${a.sites.length > 2 ? ' …' : ''}` : ''}
+        </div>
+      </div>
+      {a.start_date > today && <span class="dl-r">ab {dateDe(a.start_date).slice(0, 6)}</span>}
+    </li>
+  );
+  return (
+    <section class="card dash-card">
+      {href ? (
+        <DashHead title="Abwesend" count={absent.length} href={href} more="Urlaubskalender" />
+      ) : (
+        <DashHead title="Abwesend" count={absent.length} />
+      )}
+      <div class="dl-sub" style="margin:-4px 0 6px">
+        Heute{now.length ? ` (${now.length})` : ''}
+      </div>
+      {now.length === 0 ? (
+        <div class="dash-empty">Heute ist niemand abwesend.</div>
+      ) : (
+        <ul class="dash-list">
+          {now.slice(0, 8).map((a) => (
+            <Row a={a} />
+          ))}
+        </ul>
+      )}
+      {now.length > 8 && <div class="dash-more">+ {now.length - 8} weitere</div>}
+      {soon.length > 0 && (
+        <>
+          <div class="dl-sub" style="margin:10px 0 6px">
+            Nächste 7 Tage ({soon.length})
+          </div>
+          <ul class="dash-list">
+            {soon.slice(0, 8).map((a) => (
+              <Row a={a} />
+            ))}
+          </ul>
+          {soon.length > 8 && <div class="dash-more">+ {soon.length - 8} weitere</div>}
+        </>
+      )}
+    </section>
+  );
+};
 
 // ---------------------------------------------------------------------------
 // Kontakte
@@ -711,7 +736,7 @@ export const Dashboard: FC<{
             </ul>
           </section>
 
-          <AbsentCard absent={absent} showKind href={absentHref} />
+          <AbsentCard absent={absent} today={kpi.today} href={absentHref} />
 
           {hints.length > 0 && (
             <section class="card dash-card">
@@ -880,11 +905,7 @@ export const PLANNED: Record<string, { title: string; phase: string; text: strin
     phase: 'Phase 2',
     text: 'Geplante gegen erfasste Stunden je Objekt und Monat.',
   },
-  sonderdienste: {
-    title: 'Glasreinigung / Tiefgarage',
-    phase: 'Phase 3',
-    text: 'Übernahme der Spezialmodule aus der alten App.',
-  },
+
   datev: {
     title: 'DATEV-Export',
     phase: 'Phase 3',

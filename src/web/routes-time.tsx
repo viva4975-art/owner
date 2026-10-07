@@ -47,7 +47,7 @@ import { canAccess } from './permissions.js';
 import { Icon } from './icons.js';
 import { PageHead, dateDe, euro } from './layout.js';
 import { AbsentCard } from './pages-crm.js';
-import { absentOn } from '../services/absences.js';
+import { absentBetween } from '../services/absences.js';
 
 const versionOf = (v: unknown) => (typeof v === 'string' && v !== '' ? Number(v) : null);
 const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
@@ -226,7 +226,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
       .filter((e) => e.end_at && ['erfasst', 'freigegeben'].includes(e.status))
       .reduce((a, e) => a + netMinutes(e), 0);
     const hol = holidayName(day);
-    const absent = await absentOn(sql, day, scope);
+    const absent = await absentBetween(sql, day, addDays(day, 7), scope);
     return shell(
       c,
       'tag',
@@ -234,7 +234,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
       <>
         <AbsentCard
           absent={absent}
-          showKind={c.get('user').role !== 'objektleitung'}
+          today={day}
           href={canAccess(c.get('user').role, '/urlaub/kalender') ? '/urlaub/kalender' : undefined}
         />
         <form method="get" action="/zeiterfassung" class="actions" style="margin-top:0">

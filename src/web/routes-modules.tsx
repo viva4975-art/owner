@@ -1,4 +1,4 @@
-import { absentOn } from '../services/absences.js';
+import { absentBetween } from '../services/absences.js';
 import { followups } from '../services/prospects.js';
 import { canAccess } from './permissions.js';
 import { randomUUID } from 'node:crypto';
@@ -23,7 +23,7 @@ import {
   suggestPersonnelNo,
 } from '../services/employees.js';
 import { sollPlanIst } from '../services/hr-month.js';
-import { todayBerlin } from '../domain/invoice/calc.js';
+import { addDays, todayBerlin } from '../domain/invoice/calc.js';
 import { MonthBox } from './pages-hr.js';
 import { BusinessError } from '../services/errors.js';
 import { assigneeOptions } from '../services/crm.js';
@@ -128,7 +128,7 @@ export function registerModuleRoutes(ctx: Ctx) {
       today,
     };
     const [absent, signOverdue] = await Promise.all([
-      absentOn(sql, todayBerlin(), null),
+      absentBetween(sql, todayBerlin(), addDays(todayBerlin(), 7), null),
       sql<{ id: string; title: string; open: number }[]>`
         select d.id, d.title, count(*)::int as open from app.sign_documents d
           join app.sign_requests r on r.document_id = d.id and r.status = 'offen'

@@ -50,7 +50,6 @@ import {
 } from '../services/orders.js';
 import { createSignDocument, requestsForEmployee, signRequest } from '../services/sign-documents.js';
 import { saveException } from '../services/planning.js';
-import { completeRun, planRun, saveSpecialService } from '../services/special-services.js';
 import { copyOffer, saveOffer, setOfferStatus } from '../services/offers.js';
 import { importStatement } from '../services/bank.js';
 import { applyImport } from '../services/fortytools-import.js';
@@ -1025,9 +1024,9 @@ async function phase5() {
   console.log('Demo Phase 5 angelegt.');
 }
 
-/** Planung (Vertretung), Sonderdienste, Angebote mit Alternativen/Folgeangebot, Bankabgleich, Import. */
+/** Planung (Vertretung), Angebote mit Alternativen/Folgeangebot, Bankabgleich, Import. */
 async function phase6() {
-  const [done] = await sql`select 1 from app.special_services limit 1`;
+  const [done] = await sql`select 1 from app.offers where id = '00000000-0000-4000-8000-0000000d6201'`;
   if (done) return;
   const today = todayBerlin();
   // --- Planung: Einsatzgruppen, Krankheit nächste Woche mit Vertretung und eine offene Lücke
@@ -1067,90 +1066,6 @@ async function phase6() {
       A,
     ).catch((e: Error) => console.log('Vertretung übersprungen:', e.message));
   }
-  // --- Sonderdienste
-  const S = {
-    glas: '00000000-0000-4000-8000-0000000d6101',
-    tg: '00000000-0000-4000-8000-0000000d6102',
-    gr: '00000000-0000-4000-8000-0000000d6103',
-  };
-  const base = { scope: null, active: true, note: null, expectedVersion: null, vatRateBp: 1900 };
-  await saveSpecialService(
-    sql,
-    S.glas,
-    {
-      ...base,
-      siteId: DEMO.siteSchool,
-      kind: 'glas',
-      title: 'Glasreinigung innen und außen inkl. Rahmen',
-      scope: 'ca. 420 m² Glasfläche, Oberlichter mit Hubsteiger',
-      intervalMonths: 6,
-      nextDue: addDays(today, 20),
-      priceCents: 118000n,
-      noticeDays: 7,
-    },
-    A,
-  );
-  await saveSpecialService(
-    sql,
-    S.tg,
-    {
-      ...base,
-      siteId: DEMO.siteHq,
-      kind: 'tiefgarage',
-      title: 'Tiefgaragenreinigung nass',
-      scope: '42 Stellplätze, Kehrsaugmaschine und Hochdruck',
-      intervalMonths: 12,
-      nextDue: addDays(today, -2),
-      priceCents: 89000n,
-      noticeDays: 14,
-    },
-    A,
-  );
-  await saveSpecialService(
-    sql,
-    S.gr,
-    {
-      ...base,
-      siteId: DEMO.siteSchool,
-      kind: 'grundreinigung',
-      title: 'Grundreinigung Turnhalle',
-      scope: 'PU-Belag, Einpflege',
-      intervalMonths: 12,
-      nextDue: today,
-      priceCents: 1450_00n,
-      noticeDays: 0,
-    },
-    A,
-  );
-  await planRun(
-    sql,
-    '00000000-0000-4000-8000-0000000d6111',
-    S.tg,
-    {
-      date: addDays(today, 10),
-      start: '06:00',
-      end: '12:00',
-      employeeIds: emps.slice(0, 2).map((e) => e.id),
-      note: 'Hausverwaltung informiert',
-      expectedVersion: null,
-    },
-    A,
-  );
-  await planRun(
-    sql,
-    '00000000-0000-4000-8000-0000000d6112',
-    S.gr,
-    {
-      date: today,
-      start: '07:00',
-      end: '15:00',
-      employeeIds: emps.slice(1, 3).map((e) => e.id),
-      note: null,
-      expectedVersion: null,
-    },
-    A,
-  );
-  await completeRun(sql, '00000000-0000-4000-8000-0000000d6112', A);
   // --- Angebote: mit Alternativen, Folgeangebot, abgelehnt
   const line = (description: string, price: string, recurring: boolean, alternative = false) => ({
     description,

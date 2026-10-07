@@ -1019,3 +1019,8 @@ Testadresse.
   - Lokale Entwicklung: nach Container-Neustart war die Dev-DB älter als das Archiv → neue DB `viva_dev16` mit eigenem
     Archiv-Ordner (`.env.dev`, nicht im Repo); nichts gelöscht.
   - Tests: 343 Unit-/DB-Tests (neu `runde16.db.test.ts`), alle 25 Browser-Suiten grün.
+- 2026-10-07: Runde 17 (Ahmed): Karte „Abwesend“ (Startseite, Zeiterfassung) zeigt „Heute“ und „Nächste 7 Tage“ (Urlaub eine
+  Woche vorher), jetzt auch für die Objektleitung mit Art inkl. „krank“ – nur Mitarbeitende ihrer Objekte, keine Diagnose
+  (wird nie erfasst). **Sonderdienste gelöscht** (Ahmed: „ja lösch“): Modul, Seiten, Test, Demo-Daten und Tabellen
+  (`special_services`, `special_service_runs`, Migration `20261107000001`); Rechnungen/Arbeitsscheine daraus bleiben,
+  archivierte Aushang-PDFs bleiben write-once im Archiv. 338 Unit-/DB-Tests.

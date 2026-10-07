@@ -119,6 +119,17 @@ check(
   (await admin.locator('.tm-card:has-text("Abwesenheiten")').innerText()).includes('genehmigt'),
 );
 check('Zeiten heute erreichbar', (await admin.goto(B + '/qm/zeiten')).status() === 200);
+const d20 = new Date(Date.now() + 20 * 864e5).toISOString().slice(0, 10);
+await phone.goto(B + '/m/abwesenheit');
+await phone.selectOption('#kind', 'sonstiges');
+await phone.fill('#from', d20);
+await phone.fill('#to', d20);
+await Promise.all([phone.waitForNavigation(), phone.click('form[action="/m/abwesenheit"] button')]);
+await admin.goto(B + '/qm/team');
+const req = admin.locator(`form.tm-li:has-text("Login${stamp}")`);
+check('Antrag aus der Mitarbeiter-App erscheint im Team', (await req.count()) === 1);
+await Promise.all([admin.waitForNavigation(), req.locator('button:has-text("Genehmigen")').click()]);
+check('in der App genehmigt', (await admin.content()).includes('Genehmigt.'));
 await admin.goto(B + '/?pc=1');
 check('„PC-Ansicht“ schaltet zurück', (await admin.locator('aside.appside').count()) === 1);
 await admin.goto(B + '/objekte');

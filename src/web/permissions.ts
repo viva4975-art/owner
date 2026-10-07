@@ -22,10 +22,13 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/personal\/export/, HR],
   [/^\/bewerber(\/|$)/, HR],
   [/^\/personal(\/|$)/, HR],
-  [/^\/zeiterfassung\/(monat|pruefbericht|einstellungen|stundenzettel|lohnarten)/, HR],
+  [/^\/zeiterfassung\/(stundenzettel|lohnarten)/, ['admin', 'personal', 'buchhaltung']],
+  [/^\/zeiterfassung\/(monat|pruefbericht|einstellungen)/, HR],
   [/^\/(zeiterfassung|einsatzplanung)(\/|$)/, ['admin', 'personal', 'objektleitung']],
-  [/^\/urlaub(\/|$)/, HR],
-  [/^\/auswertungen\/(stunden|urlaub|krankheit)([/.]|$)/, HR],
+  // Buchhaltung braucht Urlaub/Krank für den Lohn (Ahmed 07.10.)
+  [/^\/urlaub(\/|$)/, ['admin', 'personal', 'buchhaltung']],
+  [/^\/auswertungen\/(urlaub|krankheit)([/.]|$)/, ['admin', 'personal', 'buchhaltung']],
+  [/^\/auswertungen\/stunden([/.]|$)/, HR],
   [/^\/auswertungen\/dienste([/.]|$)/, ALL],
   [/^\/auswertungen\/?$/, ALL],
   // Objekte: Objektleitung nur eigene und ohne Preise/Rechnungen/Bearbeiten

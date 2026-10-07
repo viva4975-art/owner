@@ -1334,3 +1334,9 @@ Testadresse.
     Art der Abwesenheit), **Zeiten heute** (jeder geplante Einsatz mit erledigt / seit … / nicht gestempelt / abwesend,
     „ohne Einsatz gestempelt“, Nachträge direkt freigeben oder mit Grund ablehnen). Objektleitung nur eigene Objekte.
   - Tests: `npm run e2e:login` jetzt 23 Prüfungen; 373 Unit-/DB-Tests, Browser-Suiten grün.
+- 2026-10-07: Rechte Abwesenheiten (Ahmed): **Objektleitung genehmigt Urlaub selbst** – in der App eingetragene Abwesenheiten
+  sind sofort genehmigt; Anträge aus der Mitarbeiter-App (eigene Leute) stehen unter Team → „Anträge zum Genehmigen“
+  (genehmigen/ablehnen, Urlaubsanspruch wird geprüft). **Buchhaltung sieht Urlaub/Krank (Lohn):** Art der Abwesenheit
+  überall sichtbar, Zugriff auf Urlaub & Abwesenheiten, Stundenliste & Lohnarten, Auswertungen Urlaub/Krankheit.
+  Datenschutz: Krankheit = Gesundheitsdatum (Art. 9 DSGVO) – nur „krank“, nie Diagnose; Zugriff auf Lohn-Zwecke beschränkt
+  (im Verzeichnis der Verarbeitungstätigkeiten so festhalten). `e2e:login` 25 Prüfungen.

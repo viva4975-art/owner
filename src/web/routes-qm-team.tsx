@@ -7,6 +7,7 @@ import {
   ABSENCE_LABEL,
   ABSENCE_STATUS_LABEL,
   type AbsenceKind,
+  decideAbsence,
   requestAbsence,
 } from '../services/absences.js';
 import { BusinessError } from '../services/errors.js';
@@ -100,8 +101,8 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
     </div>
   );
   const role = (c: Context<AppEnv>) => c.get('user').role;
-  /** Gesundheitsdaten (Art der Abwesenheit) nur Personal, Admin und die zuständige Objektleitung */
-  const seesKind = (c: Context<AppEnv>) => role(c) !== 'buchhaltung';
+  /** Art der Abwesenheit (Urlaub/Krank) sehen alle Büro-Rollen – Buchhaltung braucht sie für den Lohn (Ahmed). */
+  const seesKind = (_c: Context<AppEnv>) => true;
   const mayEnterAbsence = (c: Context<AppEnv>) => ['admin', 'personal', 'objektleitung'].includes(role(c));
 
   const team = async (c: Context<AppEnv>, q = '', id?: string) => {
@@ -136,6 +137,29 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
     return m;
   };
 
+  /** Offene Urlaubs-/Abwesenheitsanträge (aus der Mitarbeiter-App) der eigenen Leute */
+  const openRequests = async (c: Context<AppEnv>) => {
+    const ids = (await team(c)).map((m) => m.id);
+    if (!ids.length) return [];
+    return sql<
+      {
+        id: string;
+        employee_id: string;
+        name: string;
+        kind: string;
+        start_date: string;
+        end_date: string;
+        half_day: boolean;
+        note: string | null;
+      }[]
+    >`
+      select a.id, a.employee_id, e.last_name || ', ' || e.first_name as name, a.kind::text, a.start_date::text,
+             a.end_date::text, a.half_day, a.note
+        from app.absences a join app.employees e on e.id = a.employee_id
+       where a.status = 'beantragt' and a.employee_id in ${sql(ids)}
+       order by a.start_date`;
+  };
+
   const Status = ({ m, kind }: { m: TeamRow; kind: boolean }) =>
     m.absence ? (
       <span class="tm-pill warn">
@@ -150,6 +174,7 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
     const q = c.req.query('q') ?? '';
     const list = await team(c, q);
     const kind = seesKind(c);
+    const requests = mayEnterAbsence(c) ? await openRequests(c) : [];
     return render(
       c,
       'Team',
@@ -163,6 +188,38 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
             <a href="/qm/abwesenheit/neu">
               <Ic n="sun" /> Urlaub / Krankheit eintragen
             </a>
+          </div>
+        )}
+        {requests.length > 0 && (
+          <div class="tm-card">
+            <h2>Anträge zum Genehmigen ({requests.length})</h2>
+            {requests.map((a) => (
+              <form
+                method="post"
+                action={`/qm/abwesenheit/${a.id}/entscheiden`}
+                class="tm-li"
+                style="display:block"
+              >
+                <div style="display:flex;justify-content:space-between;gap:8px">
+                  <b>{a.name}</b>
+                  <small>{ABSENCE_LABEL[a.kind as AbsenceKind]}</small>
+                </div>
+                <small>
+                  {dateDe(a.start_date)}
+                  {a.end_date !== a.start_date ? ` – ${dateDe(a.end_date)}` : ''}
+                  {a.half_day ? ' (½ Tag)' : ''}
+                  {a.note ? ` · „${a.note}“` : ''}
+                </small>
+                <div class="tm-btns">
+                  <button name="status" value="genehmigt" class="yes">
+                    Genehmigen
+                  </button>
+                  <button name="status" value="abgelehnt" onclick="return confirm('Antrag ablehnen?')">
+                    Ablehnen
+                  </button>
+                </div>
+              </form>
+            ))}
           </div>
         )}
         {list.length === 0 && <div class="qm-empty">Keine Mitarbeitenden gefunden.</div>}
@@ -314,7 +371,6 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
     const list = await team(c);
     const pre = c.req.query('ma') ?? '';
     const today = todayBerlin();
-    const ol = role(c) === 'objektleitung';
     return render(
       c,
       'Urlaub / Krank eintragen',
@@ -348,11 +404,6 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
           </label>
           <label for="note">Notiz (ohne Diagnose)</label>
           <textarea id="note" name="note" rows={2} />
-          {ol && (
-            <p class="small mut" style="margin:0">
-              Krankheit wird sofort eingetragen. Urlaub und sonstige Abwesenheiten gehen als Antrag ans Büro.
-            </p>
-          )}
           <button class="btn-big">Eintragen</button>
         </form>
       </>,
@@ -368,8 +419,8 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
     if (!(kind in ABSENCE_LABEL)) throw new BusinessError('Bitte Art wählen');
     const start = str(b, 'start') ?? '';
     const end = str(b, 'end') ?? start;
-    // Krankheit trägt die Objektleitung direkt ein; Urlaub & Co. genehmigt das Büro (Personal/Admin direkt)
-    const approved = role(c) !== 'objektleitung' || kind === 'krank' || kind === 'kind_krank';
+    // Objektleitung, Personal und Admin tragen direkt genehmigt ein (Ahmed: Objektleitung genehmigt Urlaub selbst)
+    const approved = true;
     await requestAbsence(sql, {
       id,
       employeeId: m.id,
@@ -387,6 +438,20 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
           ? `${ABSENCE_LABEL[kind]} eingetragen.`
           : `${ABSENCE_LABEL[kind]} beantragt – das Büro genehmigt.`,
       )}`,
+      303,
+    );
+  });
+
+  app.post(`/qm/abwesenheit/:id{${UUID}}/entscheiden`, async (c) => {
+    if (!mayEnterAbsence(c)) throw new BusinessError('Keine Berechtigung');
+    const b = (await c.req.parseBody()) as Record<string, string>;
+    const status = b.status === 'genehmigt' ? 'genehmigt' : 'abgelehnt';
+    const id = c.req.param('id');
+    const mine = (await openRequests(c)).find((a) => a.id === id);
+    if (!mine) return c.redirect('/qm/team?ok=Bereits%20entschieden.', 303);
+    await decideAbsence(sql, id, status, c.get('actor'));
+    return c.redirect(
+      `/qm/team?ok=${encodeURIComponent(status === 'genehmigt' ? 'Genehmigt.' : 'Abgelehnt.')}`,
       303,
     );
   });

@@ -63,6 +63,7 @@ import { registerTimesheetRoutes } from './routes-timesheet.js';
 import { registerQmRoutes } from './routes-qm.js';
 import { sortCsv } from './csv-sort.js';
 import { registerStartAppRoutes } from './routes-start-app.js';
+import { registerMyTimeRoutes } from './routes-my-time.js';
 import { registerQmTeamRoutes } from './routes-qm-team.js';
 import { registerOlAppRoutes } from './routes-ol-app.js';
 
@@ -346,6 +347,7 @@ export function createApp(deps: Deps) {
   registerTimesheetRoutes(ctx);
   registerOlAppRoutes(ctx);
   registerStartAppRoutes(ctx);
+  registerMyTimeRoutes(ctx);
   registerQmTeamRoutes(ctx);
   registerQmRoutes(ctx);
   registerTimeRoutes(ctx);

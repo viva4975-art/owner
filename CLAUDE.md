@@ -1340,3 +1340,15 @@ Testadresse.
   überall sichtbar, Zugriff auf Urlaub & Abwesenheiten, Stundenliste & Lohnarten, Auswertungen Urlaub/Krankheit.
   Datenschutz: Krankheit = Gesundheitsdatum (Art. 9 DSGVO) – nur „krank“, nie Diagnose; Zugriff auf Lohn-Zwecke beschränkt
   (im Verzeichnis der Verarbeitungstätigkeiten so festhalten). `e2e:login` 25 Prüfungen.
+- 2026-10-07: Ahmed: „Meine Zeiterfassung soll nicht so aussehen“ / App aufgeräumter:
+  - **Am PC: Personal → „Meine Zeiten“** (`/zeiterfassung/meine`, Knopf oben rechts, für alle Büro-Rollen mit verknüpftem
+    Mitarbeiter): Monat blättern, Summe Stunden/Tage, Liste der eigenen Zeiten, **nachtragen und ändern** (Änderung nur mit
+    Grund; gespeichert wie eine Büro-Korrektur `officeSave`, alter/neuer Stand im Protokoll, Überschneidungen und Pause
+    geprüft). Nur der eigene Mitarbeiter-Datensatz. **Hinweis:** Wer seine eigene Zeit ändert, gibt sie sich selbst frei –
+    das Protokoll zeigt es; bei Prüfungen (Zoll) muss die Änderung begründet sein.
+  - **App (Objektleitung/Büro):** nach der Anmeldung zuerst die **eigene Zeit** (Mitarbeiter-Ansicht `/m`) – oben Umschalter
+    **Meine Zeit · Qualität · Verwaltung**. Verwaltung (`/qm`): Kennzahlen heute (im Einsatz, nicht gestempelt, abwesend,
+    Anträge, Nachträge) und Bereiche „Team & Zeiten“, „Objekte & Dokumente“, „Formulare“ mit Kacheln + Kurzbeschreibung,
+    Leiste unten Übersicht/Team/Zeiten/Objekte. Qualität (`/qm/qualitaet`): heutige Audits, Audit starten, Tickets, alle
+    Audits, Arbeitsscheine, Leiste unten Audits/Audit starten/Tickets. Ohne verknüpften Mitarbeiter direkt Verwaltung.
+  - Tests: `e2e:login` 30 Prüfungen, alle Suiten grün.

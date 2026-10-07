@@ -40,6 +40,7 @@ import { SIGN_JS } from '../routes-orders.js';
 import { latestSignature, monthToSign, signTimesheet, timesheet } from '../../services/timesheet.js';
 import { type Lang, LANGS, LOCALE, isLang, t } from './i18n.js';
 import { Ic } from './icons.js';
+import { APP_TAB_CSS, AppSwitch } from '../layout.js';
 export { Ic } from './icons.js';
 
 const COOKIE = 'vd_m';
@@ -230,7 +231,7 @@ const MLayout: FC<{
       <meta name="apple-mobile-web-app-capable" content="yes" />
       <meta name="mobile-web-app-capable" content="yes" />
       <meta name="apple-mobile-web-app-title" content="Viva-Deluxe" />
-      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: me?.office ? CSS + APP_TAB_CSS : CSS }} />
     </head>
     <body>
       <header>
@@ -250,6 +251,7 @@ const MLayout: FC<{
         )}
       </header>
       <main>
+        {me?.office && <AppSwitch active="zeit" />}
         {flash.ok && (
           <div class="flash ok" role="status">
             {flash.ok}

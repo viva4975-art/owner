@@ -14,6 +14,7 @@ import { canAccess, canOpen } from './permissions.js';
  */
 /** Leiste unten in der App – auch in den QM-Seiten genutzt. */
 export const APP_TAB_CSS = `
+.appswitch{display:flex;gap:4px;padding:4px;margin:4px 0 14px;background:#f1e3e8;border-radius:14px}.appswitch a{flex:1;text-align:center;padding:10px 4px;border-radius:11px;font-weight:600;font-size:14px;color:#6b4a57;text-decoration:none}.appswitch a.on{background:#fff;color:#7d1435;box-shadow:0 1px 4px rgba(125,20,53,.12)}
 .apptabs{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:#fff;border-top:1px solid #efe3e7;padding-bottom:env(safe-area-inset-bottom)}
 .apptabs a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 2px 10px;font-size:12px;color:#5b4650;text-decoration:none}
 .apptabs a i{display:flex;width:44px;height:28px;align-items:center;justify-content:center;border-radius:14px}
@@ -23,6 +24,8 @@ export const APP_TAB_CSS = `
 `;
 
 const CSS = `${APP_TAB_CSS}
+.top .right a.mytime{color:#7d1435;background:#fff;border:1px solid #e6d3da;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.top .right a.mytime svg{color:#7d1435}
 @font-face{font-family:Inter;font-style:normal;font-weight:100 900;font-display:swap;src:url(/static/inter-latin.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
 @font-face{font-family:Inter;font-style:normal;font-weight:100 900;font-display:swap;src:url(/static/inter-latin-ext.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
 :root{
@@ -1207,9 +1210,9 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Fehlende Unterlagen', href: '/personal/unterlagen' },
       { label: 'Unterweisungen & Unterschriften', href: '/personal/dokumente' },
       { label: 'Zeiterfassung', href: '/zeiterfassung', sep: true },
+      { label: 'Meine Zeiten', href: '/zeiterfassung/meine' },
       { label: 'Soll/Ist je Monat', href: '/zeiterfassung/monat' },
       { label: 'Stundenliste & Lohnarten', href: '/zeiterfassung/stundenzettel' },
-      { label: 'Meine Zeiterfassung', href: '/m' },
     ],
   },
   {
@@ -1454,8 +1457,12 @@ export const Layout: FC<{
                     </span>
                   )}
                   {user && (
-                    <a class="btn sm sec" href="/m" title="Eigene Arbeitszeit stempeln">
-                      <Icon name="clock" size={16} /> <span class="hide-m">Meine Zeiterfassung</span>
+                    <a
+                      class="btn sm sec mytime"
+                      href="/zeiterfassung/meine"
+                      title="Eigene Arbeitszeit ansehen und ändern"
+                    >
+                      <Icon name="clock" size={16} /> <span class="hide-m">Meine Zeiten</span>
                     </a>
                   )}
                   {user && (
@@ -1485,7 +1492,7 @@ export const Layout: FC<{
                       </summary>
                       <div class="drop right">
                         <a href="/konto">Mein Konto / Passwort</a>
-                        <a href="/m">Meine Zeiterfassung (stempeln)</a>
+                        <a href="/zeiterfassung/meine">Meine Zeiten</a>
                         {role === 'admin' && <a href="/benutzer">Benutzer & Rechte</a>}
                         {role && canOpen(role as Role, '/einstellungen') && (
                           <a href="/einstellungen">Einstellungen</a>
@@ -1529,22 +1536,54 @@ export const Layout: FC<{
   );
 };
 
-/** Leiste unten in der App (Objektleitung & Büro) – gleich in QM-Seiten und App-Rahmen. */
-export const APP_TABS = [
-  ['/qm', 'home', 'Übersicht'],
-  ['/qm/objekte', 'building', 'Objekte'],
-  ['/qm/team', 'users', 'Team'],
-  ['/qm/zeiten', 'clock', 'Zeiten'],
-  ['/m', 'watch', 'Ich'],
-] as const;
+/** Bereiche der App für Objektleitung & Büro: oben umschalten, unten die Leiste des Bereichs. */
+export type AppMode = 'zeit' | 'qualitaet' | 'verwaltung';
+
+const APP_TABS: Record<'qualitaet' | 'verwaltung', (readonly [string, string, string])[]> = {
+  verwaltung: [
+    ['/qm', 'home', 'Übersicht'],
+    ['/qm/team', 'users', 'Team'],
+    ['/qm/zeiten', 'clock', 'Zeiten'],
+    ['/qm/objekte', 'building', 'Objekte'],
+  ],
+  qualitaet: [
+    ['/qm/qualitaet', 'list', 'Audits'],
+    ['/qm/objekte?start=1', 'building', 'Audit starten'],
+    ['/qm/tickets', 'ticket', 'Tickets'],
+  ],
+};
+
+export const appModeOf = (path: string): 'qualitaet' | 'verwaltung' =>
+  /^\/(qm\/(qualitaet|audit|tickets)|qualitaet)/.test(path) ? 'qualitaet' : 'verwaltung';
 
 export const AppTabbar: FC<{ path?: string }> = ({ path = '' }) => (
   <nav class="apptabs">
-    {APP_TABS.map(([href, ic, label]) => (
-      <a href={href} class={(href === '/qm' ? path === '/qm' : path.startsWith(href)) ? 'on' : ''}>
-        <i>
-          <Ic n={ic} />
-        </i>
+    {APP_TABS[appModeOf(path)].map(([href, ic, label]) => {
+      const h = href.split('?')[0]!;
+      const on = h === '/qm' ? path === '/qm' : path.startsWith(h) && !href.includes('?');
+      return (
+        <a href={href} class={on ? 'on' : ''}>
+          <i>
+            <Ic n={ic} />
+          </i>
+          {label}
+        </a>
+      );
+    })}
+  </nav>
+);
+
+/** Umschalter oben: Meine Zeit · Qualität · Verwaltung */
+export const AppSwitch: FC<{ active: AppMode }> = ({ active }) => (
+  <nav class="appswitch" aria-label="Bereich">
+    {(
+      [
+        ['zeit', '/m', 'Meine Zeit'],
+        ['qualitaet', '/qm/qualitaet', 'Qualität'],
+        ['verwaltung', '/qm', 'Verwaltung'],
+      ] as const
+    ).map(([k, href, label]) => (
+      <a href={href} class={k === active ? 'on' : ''}>
         {label}
       </a>
     ))}

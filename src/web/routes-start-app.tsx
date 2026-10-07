@@ -1,5 +1,6 @@
 import { getCookie } from 'hono/cookie';
 import { verifySession } from '../services/employee-auth.js';
+import { linkedEmployee } from '../services/users.js';
 import { OFFICE_COOKIE, type Ctx, officeSecret } from './app.js';
 import { CSS as MCSS } from './m/routes-mobile.js';
 
@@ -11,9 +12,11 @@ import { CSS as MCSS } from './m/routes-mobile.js';
 export function registerStartAppRoutes({ app, deps }: Ctx) {
   const secret = officeSecret(deps.env);
 
-  app.get('/app', (c) => {
+  app.get('/app', async (c) => {
     if (c.req.query('wahl') !== '1') {
-      if (verifySession(secret, getCookie(c, OFFICE_COOKIE))) return c.redirect('/qm', 302);
+      const uid = verifySession(secret, getCookie(c, OFFICE_COOKIE));
+      // Objektleitung/Büro: zuerst die eigene Zeit (wie Mitarbeitende), oben umschalten auf Qualität/Verwaltung
+      if (uid) return c.redirect((await linkedEmployee(deps.sql, uid)) ? '/m' : '/qm', 302);
       if (getCookie(c, 'vd_m')) return c.redirect('/m', 302);
     }
     const css = `${MCSS}
@@ -94,7 +97,7 @@ export function registerStartAppRoutes({ app, deps }: Ctx) {
     const body = new URLSearchParams(
       employee
         ? { personnel_no: kennung, pin: geheim, next: '/m' }
-        : { login: kennung.toLowerCase(), password: geheim, next: '/qm' },
+        : { login: kennung.toLowerCase(), password: geheim, next: '/app' },
     );
     const headers = new Headers({ 'Content-Type': 'application/x-www-form-urlencoded' });
     for (const h of ['origin', 'cookie', 'user-agent', 'x-forwarded-for', 'x-forwarded-proto', 'host'])

@@ -91,16 +91,50 @@ await ol.fill('#next', 'OlPasswort2026');
 await ol.fill('#next2', 'OlPasswort2026');
 await Promise.all([ol.waitForNavigation(), ol.click('button:has-text("Passwort speichern")')]);
 await ol.goto(B + '/app');
-check('erneut öffnen → Objektleitung & Büro', new URL(ol.url()).pathname === '/qm', ol.url());
-check('Kachel „Meine Zeiterfassung“', (await ol.locator('a[href="/m"]').count()) > 0);
+check('erneut öffnen → zuerst die eigene Zeit', new URL(ol.url()).pathname === '/m', ol.url());
+check('Umschalter Meine Zeit / Qualität / Verwaltung', (await ol.locator('nav.appswitch a').count()) === 3);
+await ol.click('nav.appswitch a:has-text("Verwaltung")');
+await ol.waitForLoadState();
+check(
+  'Verwaltung mit Bereichen',
+  (await ol.locator('.vw-sec').count()) >= 2 && (await ol.locator('.vw-stats .vs').count()) === 5,
+);
+await ol.click('nav.appswitch a:has-text("Qualität")');
+await ol.waitForLoadState();
+check('Qualität', new URL(ol.url()).pathname === '/qm/qualitaet');
 await ol.goto(B + '/m');
 const m = await ol.content();
 check('eigene Zeiterfassung ohne PIN (Name)', m.includes('Oskar') && !m.includes('id="pin"'));
 check('Link zurück ins Büro statt Abmelden', (await ol.locator('header a[href="/qm"]').count()) === 1);
 
-console.log('4. Büro am PC: Knopf „Meine Zeiterfassung“');
-await admin.goto(B + '/');
-check('Knopf in der Kopfzeile', (await admin.locator('div.right > a[href="/m"]').count()) >= 1);
+console.log('4. Büro am PC: Meine Zeiten unter Zeiterfassung, von Hand ändern');
+const pc = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
+await pc.goto(B + '/anmelden');
+await pc.fill('#login', login);
+await pc.fill('#password', 'OlPasswort2026');
+await Promise.all([pc.waitForNavigation(), pc.click('button:has-text("Anmelden")')]);
+check(
+  'Knopf „Meine Zeiten“ in der Kopfzeile',
+  (await pc.locator('.in > .right > a[href="/zeiterfassung/meine"]').count()) === 1,
+);
+await pc.goto(B + '/zeiterfassung/meine');
+check('Meine Zeiten im PC-Design', (await pc.locator('aside.appside').count()) === 1, pc.url());
+const day = new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10);
+await pc.fill('#date', day);
+await pc.fill('#start', '08:00');
+await pc.fill('#end', '12:00');
+await Promise.all([pc.waitForNavigation(), pc.click('button:has-text("Zeit speichern")')]);
+check(
+  'Zeit nachgetragen',
+  (await pc.content()).includes('Zeit gespeichert'),
+  await pc.locator('.flash').allInnerTexts(),
+);
+await pc.goto(B + `/zeiterfassung/meine?monat=${day.slice(0, 7)}`);
+await Promise.all([pc.waitForNavigation(), pc.click('a:has-text("ändern")')]);
+await pc.fill('#end', '12:30');
+await pc.fill('#reason', 'Ende korrigiert');
+await Promise.all([pc.waitForNavigation(), pc.click('button:has-text("Änderung speichern")')]);
+check('Änderung mit Grund gespeichert', (await pc.content()).includes('12:30'));
 
 console.log('5. In der App bleiben: Büro-Seiten im App-Rahmen, Urlaub/Krank für andere');
 await admin.goto(B + '/qm');

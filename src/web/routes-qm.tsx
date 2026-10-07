@@ -1,5 +1,6 @@
 import { fullName } from '../services/users.js';
 import { canAccess } from './permissions.js';
+import { clock, plannedShifts } from '../services/time.js';
 import { randomUUID } from 'node:crypto';
 import { SiteOptions } from './site-options.js';
 import type { Context } from 'hono';
@@ -40,7 +41,7 @@ import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { str } from './forms.js';
 import { storeFile } from '../services/uploads.js';
 import { createQualityCheck } from '../services/facility.js';
-import { APP_TAB_CSS, AppTabbar, PageHead, dateDe } from './layout.js';
+import { APP_TAB_CSS, AppSwitch, AppTabbar, PageHead, dateDe } from './layout.js';
 import { Icon } from './icons.js';
 import { CSS as MCSS, Ic } from './m/routes-mobile.js';
 
@@ -52,6 +53,19 @@ import { CSS as MCSS, Ic } from './m/routes-mobile.js';
  */
 
 const QM_CSS = `
+.vw-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:6px 0 18px}
+.vw-stats .vs{display:flex;flex-direction:column;align-items:center;gap:2px;padding:12px 4px;border-radius:14px;background:#fff;border:1px solid #efe3e7;text-decoration:none;color:#5b4650;font-size:11.5px;text-align:center}
+.vw-stats .vs b{font-size:22px;line-height:1}
+.vw-stats .run b{color:#1f4f99}.vw-stats .bad b{color:#c0262d}.vw-stats .warn b{color:#a86a00}.vw-stats .brd b{color:#7d1435}
+.vw-stats .zero{opacity:.55}
+.vw-sec{margin:0 0 18px}.vw-sec h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:#8a6a76;margin:0 0 8px 2px}
+.vw-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.vw-grid a{display:flex;gap:10px;align-items:flex-start;padding:14px;border-radius:16px;background:#fff;border:1px solid #efe3e7;text-decoration:none;color:#2a1420;box-shadow:0 1px 3px rgba(125,20,53,.05)}
+.vw-grid .vi{width:38px;height:38px;flex:none;border-radius:12px;background:#f6dfe7;color:#7d1435;display:flex;align-items:center;justify-content:center}
+.vw-grid .vi svg{width:20px;height:20px}
+.vw-grid b{display:block;font-size:15px;overflow-wrap:anywhere}.vw-grid small{display:block;color:#8a7a80;font-size:12px;line-height:1.3;margin-top:2px}
+.vw-pc{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;margin:8px 0 20px;color:#7d1435;font-weight:600;text-decoration:none}.vw-pc svg{width:18px;height:18px}
+@media (max-width:360px){.vw-stats{grid-template-columns:repeat(3,1fr)}}
 .qm-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:12px 0}.qm-grid a{display:flex;align-items:center;gap:10px;padding:14px;border-radius:14px;background:#fff;border:1px solid #efe3e7;color:#3b0a1c;font-weight:600;text-decoration:none}.qm-grid a svg{width:22px;height:22px;color:#7d1435;flex:none}
 .quick{flex-wrap:wrap;row-gap:14px}
 .qm-top{display:flex;align-items:center;gap:10px;padding:4px 0 6px}
@@ -229,13 +243,135 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
   app.get('/qm', async (c) => {
     const u = c.get('user');
     const today = todayBerlin();
+    const scope = c.get('sites');
+    const noSites = scope !== null && scope.length === 0;
+    const siteCond = scope === null ? sql`true` : noSites ? sql`false` : sql`site_id in ${sql(scope)}`;
+    const empCond =
+      scope === null
+        ? sql`true`
+        : noSites
+          ? sql`false`
+          : sql`(exists (select 1 from app.employee_sites es where es.employee_id = a.employee_id and es.site_id in ${sql(scope)})
+                 or exists (select 1 from app.shift_plans p where p.employee_id = a.employee_id and p.site_id in ${sql(scope)}
+                             and (p.valid_until is null or p.valid_until >= ${today})))`;
+    const [[n], shifts] = await Promise.all([
+      sql<{ running: number; corrections: number; absent: number; requests: number }[]>`
+        select (select count(*)::int from app.time_entries where end_at is null and status <> 'abgelehnt' and ${siteCond}) as running,
+               (select count(*)::int from app.time_entries where status = 'beantragt' and ${siteCond}) as corrections,
+               (select count(distinct a.employee_id)::int from app.absences a where a.status = 'genehmigt'
+                   and ${today}::date between a.start_date and a.end_date and ${empCond}) as absent,
+               (select count(*)::int from app.absences a where a.status = 'beantragt' and ${empCond}) as requests`,
+      plannedShifts(sql, { from: today, to: today }),
+    ]);
+    const now = clock(new Date());
+    const missing = shifts.filter(
+      (s) =>
+        (scope === null || scope.includes(s.plan.site_id)) &&
+        !s.absence &&
+        !s.entry &&
+        s.exception?.kind !== 'ausfall' &&
+        s.plan.start_time <= now,
+    ).length;
+    const hour = hourBerlin();
+    const first = fullName(u).split(' ')[0]!;
+    const can = (href: string) => canAccess(u.role, href.split('?')[0]!);
+    const Section = ({
+      title,
+      items,
+    }: {
+      title: string;
+      items: (readonly [string, string, string, string])[];
+    }) => {
+      const list = items.filter(([href]) => can(href));
+      if (!list.length) return null;
+      return (
+        <section class="vw-sec">
+          <h2>{title}</h2>
+          <div class="vw-grid">
+            {list.map(([href, ic, label, sub]) => (
+              <a href={href}>
+                <span class="vi">
+                  <Ic n={ic} />
+                </span>
+                <span>
+                  <b>{label}</b>
+                  <small>{sub}</small>
+                </span>
+              </a>
+            ))}
+          </div>
+        </section>
+      );
+    };
+    return render(
+      c,
+      'Verwaltung',
+      <>
+        <AppSwitch active="verwaltung" />
+        <div class="hello">
+          {hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend'}
+          <b>{first.charAt(0).toUpperCase() + first.slice(1)}!</b>
+        </div>
+        <div class="vw-stats">
+          {(
+            [
+              ['/qm/zeiten', 'run', n!.running, 'im Einsatz'],
+              ['/qm/zeiten', 'bad', missing, 'nicht gestempelt'],
+              ['/qm/team', 'warn', n!.absent, 'abwesend'],
+              ['/qm/team', 'brd', n!.requests, 'Anträge'],
+              ['/qm/zeiten', 'brd', n!.corrections, 'Nachträge'],
+            ] as const
+          ).map(([href, cls, v, label]) => (
+            <a href={href} class={`vs ${cls}${v ? '' : ' zero'}`}>
+              <b>{v}</b>
+              <span>{label}</span>
+            </a>
+          ))}
+        </div>
+        <Section
+          title="Team & Zeiten"
+          items={[
+            ['/qm/team', 'users', 'Team', 'Kontakt, Einsätze, Abwesenheiten'],
+            ['/qm/zeiten', 'clock', 'Zeiten heute', 'Wer ist da, Nachträge freigeben'],
+            ['/qm/abwesenheit/neu', 'sun', 'Urlaub / Krank', 'für Mitarbeitende eintragen'],
+            ['/einsatzplanung', 'cal', 'Planung', 'Einsätze, Vertretung'],
+          ]}
+        />
+        <Section
+          title="Objekte & Dokumente"
+          items={[
+            ['/qm/objekte', 'building', 'Objekte', 'Schlüssel, Ordner, Raumbuch'],
+            ['/personal/dokumente', 'doc', 'Unterweisungen', 'verteilen, Unterschriften'],
+            ['/transfer/dokumenteneingang', 'doc', 'Posteingang', 'Dokumente zuordnen'],
+            ['/kunden', 'home', 'Kunden', 'Kontakte, Objekte'],
+          ]}
+        />
+        <Section
+          title="Formulare"
+          items={[
+            ['/qm/personalbogen', 'doc', 'Personalbogen', 'neue Mitarbeitende, 7 Sprachen'],
+            ['/qm/nu-auftrag', 'building', 'NU-Auftrag', 'beim Büro anfragen'],
+            ['/arbeitsscheine', 'times', 'Arbeitsschein', 'erstellen, unterschreiben'],
+          ]}
+        />
+        <a class="vw-pc" href="/?pc=1">
+          <Ic n="monitor" /> Zur PC-Ansicht wechseln
+        </a>
+      </>,
+    );
+  });
+
+  app.get('/qm/qualitaet', async (c) => {
+    const u = c.get('user');
+    const today = todayBerlin();
     const audits = await qmAudits(sql, { siteIds: c.get('sites'), date: today });
     const hour = hourBerlin();
     const first = fullName(u).split(' ')[0]!;
     return render(
       c,
-      'Übersicht',
+      'Qualität',
       <>
+        <AppSwitch active="qualitaet" />
         <div class="hello">
           {hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend'}
           <b>{first.charAt(0).toUpperCase() + first.slice(1)}!</b>
@@ -243,24 +379,13 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
         <div class="quick">
           {(
             [
-              ['/m', 'clock', 'Meine Zeiterfassung'],
-              ['/qm/objekte', 'building', 'Objekte'],
-              ['/einsatzplanung', 'cal', 'Planung'],
-              ['/zeiterfassung', 'clock', 'Zeiten (Team)'],
-              ['/personal', 'list', 'Mitarbeiter'],
-              ['/personal/dokumente', 'doc', 'Dokumente'],
-              ['/urlaub', 'sun', 'Urlaub'],
-              ['/kunden', 'home', 'Kunden'],
+              ['/qm/objekte?start=1', 'plus', 'Audit starten'],
               ['/qm/tickets', 'ticket', 'Tickets'],
               ['/qualitaet', 'list', 'Alle Audits'],
               ['/arbeitsscheine', 'times', 'Arbeitsscheine'],
-              ['/qm/personalbogen', 'doc', 'Personalbogen'],
-              ['/qm/nu-auftrag', 'building', 'NU-Auftrag'],
-              ['/transfer/dokumenteneingang', 'doc', 'Posteingang'],
-              ['/?pc=1', 'monitor', 'PC-Ansicht'],
             ] as const
           )
-            .filter(([href]) => canAccess(u.role, href))
+            .filter(([href]) => canAccess(u.role, href.split('?')[0]!))
             .map(([href, ic, label]) => (
               <a href={href}>
                 <span class="qi">

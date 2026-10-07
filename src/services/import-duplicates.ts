@@ -85,10 +85,10 @@ async function findPairs(sql: Sql | Tx): Promise<DupPair[]> {
     const free = [...keep];
     for (const d of dups) {
       if (!free.length) break;
-      const i = Math.max(
-        0,
-        free.findIndex((k) => norm(k.street ?? '') === norm(d.street ?? '')),
-      );
+      // nur gleiche Adresse zusammenführen (Fund: „Treppenhaus“ Baaderstr. wurde sonst in Stollbergstr. gelegt)
+      let i = free.findIndex((k) => norm(k.street ?? '') === norm(d.street ?? ''));
+      if (i < 0 && free.length === 1 && dups.length === 1 && (!free[0]!.street || !d.street)) i = 0;
+      if (i < 0) continue;
       const k = free.splice(i, 1)[0]!;
       pairs.push({
         kind: 'Objekt',

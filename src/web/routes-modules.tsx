@@ -53,10 +53,8 @@ import {
   TaskForm,
 } from './pages-crm.js';
 import { EmployeeForm, EmployeeList, EmployeeOverview, EmployeeShell } from './pages-hr-finance.js';
-import { RevenueBars } from './pages-masterdata.js';
 import { lastMonth } from './routes-invoices.js';
 import { registerNoteRoutes } from './routes-notes.js';
-import { revenueByMonth } from './routes-masterdata.js';
 
 const uuidOr = (v: unknown) => (typeof v === 'string' && /^[0-9a-f-]{36}$/.test(v) ? v : randomUUID());
 
@@ -562,22 +560,8 @@ export function registerModuleRoutes(ctx: Ctx) {
 
   // ------------------------------------------------------------------ Auswertungen
 
-  app.get('/auswertungen/umsatz', async (c) =>
-    page(
-      c,
-      'Netto-Umsatz',
-      'auswertungen',
-      <>
-        <PageHead title="Netto-Umsatz je Monat" crumbs={[['Auswertungen', '/auswertungen']]} />
-        <div class="card">
-          <p class="mut small" style="margin-top:0">
-            Nach Rechnungsdatum, alle ausgestellten Belege (Stornos mindern den Umsatz).
-          </p>
-          <RevenueBars rows={await revenueByMonth(sql)} />
-        </div>
-      </>,
-    ),
-  );
+  // Netto-Umsatz je Monat steckt jetzt in den Statistiken
+  app.get('/auswertungen/umsatz', (c) => c.redirect('/auswertungen/statistik?grundlage=rechnung', 301));
 
   // ------------------------------------------------------------------ Personal
 

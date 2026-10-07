@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { LegacyInvoiceList, legacyInvoices } from './routes-legacy-invoices.js';
+import { LegacyInvoiceList, OpenLegacyCard, legacyInvoices } from './routes-legacy-invoices.js';
+import { openLegacyInvoices } from '../services/fortytools-xml-import.js';
 import { listWordTemplates } from '../services/word-templates.js';
 import { WordTemplateBox } from './routes-word-templates.js';
 import type { Context } from 'hono';
@@ -108,19 +109,6 @@ import {
 const versionOf = (v: unknown) => (typeof v === 'string' && v !== '' ? Number(v) : null);
 
 /** Netto-Umsatz je Monat der letzten 16 Monate (ausgestellte Belege inkl. Storno). */
-export async function revenueByMonth(sql: Ctx['deps']['sql'], filter: { customerId?: string } = {}) {
-  return sql<{ month: string; net_cents: bigint }[]>`
-    with months as (
-      select to_char(d, 'YYYY-MM') as month
-        from generate_series(date_trunc('month', current_date) - interval '15 months', date_trunc('month', current_date), interval '1 month') d
-    )
-    select m.month, coalesce(sum(i.net_cents), 0)::bigint as net_cents
-      from months m
-      left join app.invoices i on i.status = 'issued' and to_char(i.issue_date, 'YYYY-MM') = m.month
-                              and ${filter.customerId ? sql`i.customer_id = ${filter.customerId}` : sql`true`}
-     group by m.month order by m.month`;
-}
-
 export function registerMasterdataRoutes(ctx: Ctx) {
   const { app, deps, page, back, shells } = ctx;
   const { sql } = deps;
@@ -311,7 +299,8 @@ export function registerMasterdataRoutes(ctx: Ctx) {
              (select count(*)::int from app.invoices where customer_id = ${id} and status = 'issued') as invoices,
              (select count(*)::int from app.sites where customer_id = ${id}) as sites,
              (select count(*)::int from app.tasks where entity_type = 'customer' and entity_id = ${id} and status = 'open') as tasks,
-             (select count(*)::int from app.open_items where customer_id = ${id} and open_cents <> 0) as "openItems",
+             (select count(*)::int from app.open_items where customer_id = ${id} and open_cents <> 0)
+             + (select count(*)::int from app.legacy_invoices where customer_id = ${id} and not paid) as "openItems",
              (select count(*)::int from app.offers where customer_id = ${id}) as offers,
              (select count(*)::int from app.dunnings where customer_id = ${id}) as dunnings,
              (select count(*)::int from app.file_links l join app.files f on f.id = l.file_id
@@ -916,7 +905,12 @@ export function registerMasterdataRoutes(ctx: Ctx) {
   });
 
   app.get(`/kunden/:id{${UUID}}/offene-posten`, (c) =>
-    customerPage(c, 'op', async (cust) => <OpenItemsTable items={await listOpenItems(sql, cust.id)} />),
+    customerPage(c, 'op', async (cust) => (
+      <>
+        <OpenItemsTable items={await listOpenItems(sql, cust.id)} />
+        <OpenLegacyCard rows={(await openLegacyInvoices(sql)).filter((r) => r.customer_id === cust.id)} />
+      </>
+    )),
   );
 
   app.get(`/kunden/:id{${UUID}}/angebote`, (c) =>

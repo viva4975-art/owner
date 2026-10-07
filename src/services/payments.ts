@@ -144,15 +144,21 @@ export interface CustomerBalance {
   max_overdue_days: number;
 }
 
-/** Wie Fortytools „Offene Posten“ auf der Startseite: Summe je Kunde, Anzahl, ältester Verzug. */
+/** Wie Fortytools „Offene Posten“ auf der Startseite: Summe je Kunde, Anzahl, ältester Verzug.
+ *  Enthält die noch offenen Rechnungen aus Fortytools (bis zur Umstellung dort geschrieben). */
 export async function listBalances(sql: Sql) {
   return sql<CustomerBalance[]>`
+    with o as (
+      select customer_id, open_cents, due_date from app.open_items where open_cents <> 0
+      union all
+      select customer_id, gross_cents, due_date from app.legacy_invoices
+       where not paid and customer_id is not null and gross_cents <> 0
+    )
     select c.id as customer_id, c.customer_no, c.name as customer_name, count(*)::int as items,
            sum(o.open_cents)::bigint as open_cents,
-           max(greatest(0, (now() at time zone 'Europe/Berlin')::date - o.due_date))::int as max_overdue_days
-      from app.open_items o join app.customers c on c.id = o.customer_id
-     where o.open_cents <> 0
-     group by c.id order by c.name`;
+           coalesce(max(greatest(0, (now() at time zone 'Europe/Berlin')::date - o.due_date)), 0)::int as max_overdue_days
+      from o join app.customers c on c.id = o.customer_id
+     group by c.id having sum(o.open_cents) <> 0 order by c.name`;
 }
 
 export interface PaymentRow {

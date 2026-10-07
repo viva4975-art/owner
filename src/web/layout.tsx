@@ -1044,6 +1044,28 @@ td .btn.icon{min-height:34px;width:34px;height:34px;padding:0;justify-content:ce
 .top .right .drop a:hover{color:var(--brand)}
 @media (max-width:640px){details.dd>.drop.right{position:fixed;left:12px;right:12px;top:58px;min-width:0}}
 
+/* Übersicht: Firmenlogo oben wie Fortytools */
+.dash-hero{flex-wrap:wrap}
+.dash-brand{flex-basis:100%;margin-bottom:6px}
+.dash-brand img{display:block;width:280px;max-width:70vw;height:auto}
+/* Statistiken */
+.stat-filter{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end}
+.stat-filter>div{display:flex;flex-direction:column;min-width:150px}
+.stat-filter>div:nth-child(3){min-width:240px;flex:1}
+.stat-cols{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
+@media (max-width:900px){.stat-cols{grid-template-columns:1fr}}
+.stat-bars{width:100%;height:auto;display:block}
+.stat-bars .grid{stroke:var(--line);stroke-width:1}
+.stat-bars .ax{font-size:11px;fill:var(--mut)}
+.stat-bars .fill{fill:var(--brand)}
+.stat-bars .hit{fill:transparent}
+.stat-bars .bar:hover .fill{fill:var(--brand-2)}
+.stat-bars .bar:hover .hit{fill:var(--brand-50)}
+table.share td{vertical-align:top}
+.sharebar{height:4px;background:var(--brand-50);border-radius:2px;margin-top:4px}
+.sharebar span{display:block;height:4px;background:var(--brand);border-radius:2px}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.share-more{display:none}.share-all .share-more{display:table-row}
 `;
 
 export const euro = (c: bigint) => formatEuro(c as Cents);
@@ -1158,8 +1180,8 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     label: 'Auswertungen',
     items: [
       { label: 'Übersicht Auswertungen', href: '/auswertungen' },
+      { label: 'Statistiken', href: '/auswertungen/statistik' },
       { label: 'Rechnungs-Statistik', href: '/auswertungen/rechnungen' },
-      { label: 'Netto-Umsatz je Monat', href: '/auswertungen/umsatz' },
       { label: 'Umsatz-Vorschau', href: '/auswertungen/vorschau' },
       { label: 'Nachkalkulation', href: '/auswertungen/nachkalkulation' },
       { label: 'Kostenstellen', href: '/auswertungen/kostenstellen' },

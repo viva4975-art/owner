@@ -17,6 +17,7 @@ import {
   toCsv,
 } from '../services/reports.js';
 import { hm, WEEKDAYS_SHORT } from '../services/time.js';
+import { type StatBasis, type StatGroup, revenueStats } from '../services/statistics.js';
 import type { AppEnv, Ctx } from './app.js';
 import { PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
 import { canOpen } from './permissions.js';
@@ -40,16 +41,16 @@ const csvResponse = (c: Context<AppEnv>, name: string, body: string) =>
 
 export const REPORTS: (Tab & { text: string })[] = [
   {
+    key: 'statistik',
+    label: 'Statistiken',
+    href: '/auswertungen/statistik',
+    text: 'Umsatz je Monat/Quartal/Jahr, pro Kunde und nach Leistungsart (wie Fortytools)',
+  },
+  {
     key: 'rechnungen',
     label: 'Rechnungs-Statistik',
     href: '/auswertungen/rechnungen',
     text: 'Belege je Monat, Kunden nach Umsatz, Zahlungsdauer',
-  },
-  {
-    key: 'umsatz',
-    label: 'Netto-Umsatz',
-    href: '/auswertungen/umsatz',
-    text: 'Netto-Umsatz der letzten 16 Monate',
   },
   {
     key: 'vorschau',
@@ -142,6 +143,185 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
         </div>
       </>,
     );
+  });
+
+  // ------------------------------------------------------------------ Statistiken (wie Fortytools)
+  app.get('/auswertungen/statistik', async (c) => {
+    const q = (k: string) => c.req.query(k);
+    const today = todayBerlin();
+    const d0 = new Date(`${today.slice(0, 7)}-01T12:00:00Z`);
+    d0.setUTCMonth(d0.getUTCMonth() - 11);
+    const d1 = new Date(`${today.slice(0, 7)}-01T12:00:00Z`);
+    d1.setUTCMonth(d1.getUTCMonth() + 1, 0);
+    const from = isDate(q('von')) ? q('von')! : d0.toISOString().slice(0, 10);
+    let to = isDate(q('bis')) ? q('bis')! : d1.toISOString().slice(0, 10);
+    if (to < from) to = from;
+    const basis: StatBasis = q('grundlage') === 'rechnung' ? 'rechnung' : 'leistung';
+    const group: StatGroup =
+      q('gruppe') === 'quartal' ? 'quartal' : q('gruppe') === 'jahr' ? 'jahr' : 'monat';
+    const customerId = /^[0-9a-f-]{36}$/.test(q('kunde') ?? '') ? q('kunde')! : null;
+    const [st, customers] = await Promise.all([
+      revenueStats(sql, { from, to, basis, group, customerId }),
+      sql<{ id: string; customer_no: string; name: string }[]>`
+        select id, customer_no, name from app.customers where not is_internal order by name`,
+    ]);
+    const label = (k: string) =>
+      group === 'monat'
+        ? `${['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'][Number(k.slice(5, 7)) - 1]} ${k.slice(2, 4)}`
+        : group === 'quartal'
+          ? `${k.slice(5)} ${k.slice(0, 4)}`
+          : k;
+    const pct = (v: bigint, of: bigint) =>
+      of === 0n
+        ? '–'
+        : `${(Number((v * 10000n) / of) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2 })} %`;
+    const qs = new URLSearchParams({
+      von: from,
+      bis: to,
+      grundlage: basis,
+      gruppe: group,
+      ...(customerId ? { kunde: customerId } : {}),
+    });
+    return shell(
+      c,
+      'statistik',
+      'Statistiken',
+      <>
+        <form method="get" action="/auswertungen/statistik" class="card stat-filter">
+          <div>
+            <label for="von">von</label>
+            <input type="date" id="von" name="von" value={from} />
+          </div>
+          <div>
+            <label for="bis">bis</label>
+            <input type="date" id="bis" name="bis" value={to} />
+          </div>
+          <div>
+            <label for="kunde">Kunde</label>
+            <select id="kunde" name="kunde">
+              <option value="">Alle Kunden</option>
+              {customers.map((k) => (
+                <option value={k.id} selected={k.id === customerId}>
+                  {k.name} ({k.customer_no})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label for="gruppe">Gruppieren</label>
+            <select id="gruppe" name="gruppe">
+              <option value="monat" selected={group === 'monat'}>
+                Monat
+              </option>
+              <option value="quartal" selected={group === 'quartal'}>
+                Quartal
+              </option>
+              <option value="jahr" selected={group === 'jahr'}>
+                Jahr
+              </option>
+            </select>
+          </div>
+          <div>
+            <label for="grundlage">Grundlage</label>
+            <select id="grundlage" name="grundlage">
+              <option value="leistung" selected={basis === 'leistung'}>
+                Leistungszeitraum
+              </option>
+              <option value="rechnung" selected={basis === 'rechnung'}>
+                Rechnungsdatum
+              </option>
+            </select>
+          </div>
+          <div style="align-self:end">
+            <button class="btn">Aktualisieren</button>
+          </div>
+        </form>
+        <div class="card">
+          <h3 style="margin-top:0">Umsatz</h3>
+          <div class="stat-cols">
+            <StatBars rows={st.periods.map((p) => ({ label: label(p.key), cents: p.cents }))} />
+            <div class="tbl">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{group === 'monat' ? 'Monat' : group === 'quartal' ? 'Quartal' : 'Jahr'}</th>
+                    <th class="r">Betrag</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {st.periods.map((p) => (
+                    <tr>
+                      <td>{label(p.key)}</td>
+                      <td class="r num">{euro(p.cents)}</td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td>
+                      <b>Summe</b>
+                    </td>
+                    <td class="r num">
+                      <b>{euro(st.total)}</b>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p class="small mut" style="margin-bottom:0">
+            Netto, alle ausgestellten Rechnungen (auch aus Fortytools), Stornos und Korrekturen abgezogen.
+            {basis === 'leistung'
+              ? ' Nach Leistungszeitraum: Beträge über mehrere Monate werden tageweise verteilt.'
+              : ' Nach Rechnungsdatum.'}{' '}
+            <a href={`/auswertungen/statistik.csv?${qs}`}>CSV herunterladen</a>
+          </p>
+        </div>
+        <div class="cols">
+          <ShareCard
+            title="Umsatz pro Kunde"
+            rows={st.customers.map((k) => ({
+              label: k.name,
+              href: k.id ? `/kunden/${k.id}` : null,
+              cents: k.cents,
+            }))}
+            total={st.shareTotal}
+            pct={pct}
+          />
+          <ShareCard
+            title="Umsatz nach Leistungsart"
+            rows={st.types.map((t) => ({ label: t.name, href: null, cents: t.cents }))}
+            total={st.shareTotal}
+            pct={pct}
+          />
+        </div>
+        <p class="small mut">
+          „Pro Kunde“ und „nach Leistungsart“ rechnen nach Rechnungsdatum (wie Fortytools).
+        </p>
+      </>,
+    );
+  });
+
+  app.get('/auswertungen/statistik.csv', async (c) => {
+    const q = (k: string) => c.req.query(k);
+    const today = todayBerlin();
+    const from = isDate(q('von')) ? q('von')! : `${today.slice(0, 4)}-01-01`;
+    const to = isDate(q('bis')) && q('bis')! >= from ? q('bis')! : today;
+    const basis: StatBasis = q('grundlage') === 'rechnung' ? 'rechnung' : 'leistung';
+    const group: StatGroup =
+      q('gruppe') === 'quartal' ? 'quartal' : q('gruppe') === 'jahr' ? 'jahr' : 'monat';
+    const customerId = /^[0-9a-f-]{36}$/.test(q('kunde') ?? '') ? q('kunde')! : null;
+    const st = await revenueStats(sql, { from, to, basis, group, customerId });
+    const e = (v: bigint) => (Number(v) / 100).toFixed(2).replace('.', ',');
+    const lines: string[][] = [
+      ...st.periods.map((p) => [p.key, e(p.cents)]),
+      ['Summe', e(st.total)],
+      [],
+      ['Kunde', 'Netto (nach Rechnungsdatum)'],
+      ...st.customers.map((k) => [k.name, e(k.cents)]),
+      [],
+      ['Leistungsart', 'Netto (nach Rechnungsdatum)'],
+      ...st.types.map((t) => [t.name, e(t.cents)]),
+    ];
+    return csvResponse(c, `statistik_${from}_${to}.csv`, toCsv(['Zeitraum', 'Netto'], lines));
   });
 
   // ------------------------------------------------------------------ Rechnungs-Statistik
@@ -815,3 +995,110 @@ const YearNav = ({ base, year }: { base: string; year: number }) => (
     )}
   </div>
 );
+
+/** Säulen (eine Reihe, Bordeaux), Achse mit runden Werten, Hover zeigt den Betrag. */
+const StatBars = ({ rows }: { rows: { label: string; cents: bigint }[] }) => {
+  const W = 760;
+  const H = 300;
+  const L = 78;
+  const B = 56;
+  const max = rows.reduce((m, r) => (r.cents > m ? r.cents : m), 0n);
+  const maxE = Math.max(1, Number(max) / 100);
+  const step = (() => {
+    const raw = maxE / 4;
+    const p = 10 ** Math.floor(Math.log10(raw));
+    return ([1, 2, 2.5, 5, 10].find((m) => m * p >= raw) ?? 10) * p;
+  })();
+  const top = Math.ceil(maxE / step) * step;
+  const y = (e: number) => H - B - ((H - B - 10) * Math.max(0, e)) / top;
+  const bw = (W - L - 10) / Math.max(1, rows.length);
+  const fmt = (e: number) => `${e.toLocaleString('de-DE', { maximumFractionDigits: 0 })} €`;
+  const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step);
+  return (
+    <svg class="stat-bars" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Umsatz je Zeitraum">
+      {ticks.map((t) => (
+        <g>
+          <line x1={L} x2={W - 6} y1={y(t)} y2={y(t)} class="grid" />
+          <text x={L - 8} y={y(t) + 4} text-anchor="end" class="ax">
+            {fmt(t)}
+          </text>
+        </g>
+      ))}
+      {rows.map((r, i) => {
+        const e = Number(r.cents) / 100;
+        const x = L + i * bw + bw * 0.15;
+        const h = Math.max(0, y(0) - y(e));
+        return (
+          <g class="bar">
+            <rect x={L + i * bw} y={10} width={bw} height={H - B - 10} class="hit" />
+            {h > 0 && <rect x={x} y={y(0) - h} width={bw * 0.7} height={h} rx={3} class="fill" />}
+            <title>{`${r.label}: ${euro(r.cents)}`}</title>
+            <text
+              x={x + bw * 0.35}
+              y={H - B + 16}
+              text-anchor="end"
+              transform={`rotate(-30 ${x + bw * 0.35} ${H - B + 16})`}
+              class="ax"
+            >
+              {r.label}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+};
+
+/** Anteile als Liste mit Balken (statt Torte – bei 40 Kunden lesbarer). */
+const ShareCard = ({
+  title,
+  rows,
+  total,
+  pct,
+}: {
+  title: string;
+  rows: { label: string; href: string | null; cents: bigint }[];
+  total: bigint;
+  pct: (v: bigint, of: bigint) => string;
+}) => {
+  const max = rows.reduce((m, r) => (r.cents > m ? r.cents : m), 1n);
+  return (
+    <div class="card">
+      <h3 style="margin-top:0">{title}</h3>
+      <div class="tbl">
+        <table class="share">
+          <tbody>
+            {rows.map((r, i) => (
+              <tr class={i >= 20 ? 'share-more' : ''}>
+                <td>
+                  {r.href ? <a href={r.href}>{r.label}</a> : r.label}
+                  <div class="sharebar">
+                    <span
+                      style={`width:${r.cents > 0n ? Math.max(0.5, Number((r.cents * 1000n) / max) / 10) : 0}%`}
+                    />
+                  </div>
+                </td>
+                <td class="r num small mut">{pct(r.cents, total)}</td>
+                <td class="r num">{euro(r.cents)}</td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr>
+                <td class="mut">Kein Umsatz im Zeitraum.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {rows.length > 20 && (
+        <button
+          type="button"
+          class="btn ghost sm"
+          onclick="this.closest('.card').classList.add('share-all');this.remove()"
+        >
+          alle {rows.length} anzeigen
+        </button>
+      )}
+    </div>
+  );
+};

@@ -2,6 +2,7 @@ import { importDuplicates } from '../services/import-duplicates.js';
 import { randomUUID } from 'node:crypto';
 import { createHash } from 'node:crypto';
 import { type FtxResult, importFtx, parseFtx } from '../services/fortytools-xml-import.js';
+import { type ReconRow, applyReconcile, reconcileRows } from '../services/ft-reconcile.js';
 import {
   analyze,
   applyImport,
@@ -23,7 +24,7 @@ import {
   stageFtFile,
 } from '../services/fortytools-export-import.js';
 import type { Ctx } from './app.js';
-import { PageHead } from './layout.js';
+import { PageHead, euro } from './layout.js';
 
 const kindOf = (v: unknown): ImportKind =>
   typeof v === 'string' && v in IMPORT_KIND ? (v as ImportKind) : 'kunden';
@@ -112,8 +113,8 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
             <h3 style="margin-top:0">Zur Kontrolle: gleicher Objektname mehrfach beim Kunden</h3>
             <p class="small mut" style="margin-top:0">
               Diese Objekte heißen schon in Fortytools gleich. Der CSV-Export der Leistungen nennt nur den
-              Objektnamen – bitte kurz prüfen, ob jede Monatspauschale am richtigen Objekt hängt (Objekt →
-              Leistungen & Preise).
+              Objektnamen – ob jede Monatspauschale am richtigen Objekt hängt, zeigt der{' '}
+              <a href="/transfer/import/abgleich">Abgleich mit den Fortytools-Rechnungen</a>.
             </p>
             <div class="tbl">
               <table class="stack-m">
@@ -150,6 +151,162 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
     });
   });
 
+  // ------------------------------------------------------------------ Abgleich Leistungen ↔ Fortytools-Rechnungen
+  app.get('/transfer/import/abgleich', async (c) => {
+    const alle = c.req.query('alle') === '1';
+    const rows = await reconcileRows(sql);
+    const show = rows.filter((r) => alle || r.status === 'abweichend' || r.status === 'nur_fortytools');
+    const count = (st: ReconRow['status']) => rows.filter((r) => r.status === st).length;
+    const LABEL: Record<ReconRow['status'], [string, string]> = {
+      gleich: ['stimmt', 'ok'],
+      abweichend: ['abweichend', 'err'],
+      nur_fortytools: ['fehlt in der App', 'warn'],
+      nur_app: ['nicht in Fortytools-Rechnungen', 'info'],
+      alt: ['in Fortytools zuletzt älter', 'info'],
+    };
+    const ym = (m: string | null) => (m ? `${m.slice(5)}/${m.slice(0, 4)}` : '–');
+    return page(
+      c,
+      'Abgleich mit Fortytools',
+      'transfer',
+      <>
+        <PageHead
+          title="Abgleich Leistungen ↔ Fortytools-Rechnungen"
+          crumbs={[['Import aus Fortytools', '/transfer/import']]}
+        />
+        <p class="mut" style="max-width:960px;margin-top:-6px">
+          Je Objekt: monatliche Leistungen in der App gegen die letzte Monatsrechnung aus Fortytools (alle
+          Positionen über einen ganzen Kalendermonat, Stornos verrechnet). „Übernehmen“ beendet die
+          monatlichen Leistungen des Objekts zum Ende dieses Monats und legt die Positionen der
+          Fortytools-Rechnung ab dem Folgemonat an. Leistungen „je Ausführung“/„einmalig“ bleiben unverändert.
+          Vorher bitte die XML-Exporte noch einmal importieren – dabei werden gleichnamige Objekte (z. B.
+          „Treppenhaus“) richtig zugeordnet.
+        </p>
+        <div class="chips" style="margin-bottom:12px">
+          <a class={`chip${alle ? '' : ' on'}`} href="/transfer/import/abgleich">
+            Abweichend / fehlt ({count('abweichend') + count('nur_fortytools')})
+          </a>
+          <a class={`chip${alle ? ' on' : ''}`} href="/transfer/import/abgleich?alle=1">
+            Alle Objekte ({rows.length})
+          </a>
+          <span class="small mut" style="align-self:center">
+            stimmt: {count('gleich')} · nicht in Fortytools-Rechnungen: {count('nur_app')} · zuletzt älter:{' '}
+            {count('alt')}
+          </span>
+        </div>
+        {show.length === 0 ? (
+          <div class="card empty">
+            Alle monatlichen Leistungen stimmen mit den Fortytools-Rechnungen überein.
+          </div>
+        ) : (
+          <form
+            method="post"
+            action="/transfer/import/abgleich"
+            class="card"
+            onsubmit="return confirm('Monatliche Leistungen der markierten Objekte aus der Fortytools-Rechnung übernehmen? Bisherige monatliche Leistungen werden beendet (bleiben sichtbar).')"
+          >
+            <div class="tbl">
+              <table class="stack-m">
+                <thead>
+                  <tr>
+                    <th style="width:28px">
+                      <input
+                        type="checkbox"
+                        aria-label="alle"
+                        onclick="this.closest('table').querySelectorAll('input[name=site]:not(:disabled)').forEach(x=>x.checked=this.checked)"
+                      />
+                    </th>
+                    <th>Kunde / Objekt</th>
+                    <th>Monat</th>
+                    <th class="r">Fortytools</th>
+                    <th class="r">App</th>
+                    <th class="r">Differenz</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {show.map((r) => {
+                    const can = r.status === 'abweichend' || r.status === 'nur_fortytools';
+                    return (
+                      <tr>
+                        <td>
+                          <input
+                            type="checkbox"
+                            name="site"
+                            value={r.site_id}
+                            disabled={!can}
+                            aria-label={r.site_name}
+                          />
+                        </td>
+                        <td data-l="Objekt">
+                          <a href={`/objekte/${r.site_id}/leistungen`}>
+                            {r.site_name} ({r.site_no})
+                          </a>
+                          <div class="small mut">
+                            {r.customer_no} {r.customer_name}
+                            {r.street ? ` · ${r.street}` : ''}
+                          </div>
+                          <details class="small">
+                            <summary>Positionen</summary>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px">
+                              <div>
+                                <b>Fortytools {ym(r.ft_month)}</b>
+                                {r.ft_lines.map((l) => (
+                                  <div>
+                                    {l.title.split('\n')[0]} – {euro(l.net_cents)}
+                                  </div>
+                                ))}
+                                {r.ft_lines.length === 0 && <div class="mut">–</div>}
+                              </div>
+                              <div>
+                                <b>App (monatlich)</b>
+                                {r.app_lines.map((l) => (
+                                  <div>
+                                    {l.description} – {euro(l.amount_cents)}
+                                  </div>
+                                ))}
+                                {r.app_lines.length === 0 && <div class="mut">–</div>}
+                              </div>
+                            </div>
+                          </details>
+                        </td>
+                        <td data-l="Monat">{ym(r.ft_month)}</td>
+                        <td class="r" data-l="Fortytools">
+                          {r.ft_month ? euro(r.ft_cents) : '–'}
+                        </td>
+                        <td class="r" data-l="App">
+                          {euro(r.app_cents)}
+                        </td>
+                        <td class="r" data-l="Differenz">
+                          {r.ft_month ? euro(r.app_cents - r.ft_cents) : '–'}
+                        </td>
+                        <td data-l="Status">
+                          <span class={`badge ${LABEL[r.status][1]}`}>{LABEL[r.status][0]}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div class="actions">
+              <button class="btn">Markierte aus Fortytools-Rechnung übernehmen</button>
+            </div>
+          </form>
+        )}
+      </>,
+    );
+  });
+
+  app.post('/transfer/import/abgleich', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const ids = ([] as unknown[]).concat(b.site ?? []).map(String);
+    const r = await applyReconcile(sql, ids, c.get('actor'));
+    return back(c, '/transfer/import/abgleich', {
+      ok: `${r.sites} Objekte abgeglichen: ${r.ended} Leistungen beendet, ${r.created} aus Fortytools übernommen.`,
+    });
+  });
+
   app.get('/transfer/import', async (c) => {
     const imports = await listImports(sql);
     return page(
@@ -160,6 +317,9 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
         <PageHead title="Import aus Fortytools" crumbs={[['Transfer', '/transfer/kontoumsaetze']]}>
           <a class="btn sec" href="/transfer/import/dubletten">
             Doppelte Kunden/Objekte prüfen
+          </a>
+          <a class="btn sec" href="/transfer/import/abgleich">
+            Abgleich mit Fortytools-Rechnungen
           </a>
         </PageHead>
         <form

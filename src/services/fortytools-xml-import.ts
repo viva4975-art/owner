@@ -1,6 +1,10 @@
 import { create } from 'xmlbuilder2';
 import type { Sql, Tx } from '../db/client.js';
-import { todayBerlin } from '../domain/invoice/calc.js';
+import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
+import type { BuyerSnapshot, InvoiceDocument } from '../domain/invoice/types.js';
+import type { Cents, Quantity, VatRate } from '../domain/money/money.js';
+import { renderInvoicePdf } from '../pdf/render.js';
+import { buildBuyerSnapshot, getSeller } from './masterdata.js';
 import { BusinessError } from './errors.js';
 import { parsePaymentTerms, uuidOf } from './fortytools-export-import.js';
 
@@ -334,12 +338,104 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
   // ------------------------------------------------------------------ Objekte
   const siteMap = new Map<string, { id: string; customerId: string }>();
   const dbSites = await tx<
-    { id: string; site_no: string; name: string; customer_id: string; external_ref: string | null }[]
-  >`select id, site_no, name, customer_id, external_ref from app.sites`;
+    {
+      id: string;
+      site_no: string;
+      name: string;
+      street: string | null;
+      customer_id: string;
+      external_ref: string | null;
+    }[]
+  >`select id, site_no, name, street, customer_id, external_ref from app.sites`;
   const sByRef = new Map(dbSites.filter((s) => s.external_ref).map((s) => [s.external_ref!, s]));
   const usedNo = new Set(dbSites.map((s) => s.site_no));
   const sc = (res.counts.Objekte = blank());
-  for (const f of by.get('facilities') ?? []) {
+  // Zuordnung Fortytools-Objekt → Objekt der App. Fund 07.10.: gleichnamige Objekte eines Kunden („Treppenhaus“ an drei
+  // Adressen) wurden über den Namen alle auf dasselbe Objekt gelegt. Deshalb: jedes Objekt höchstens einmal vergeben,
+  // Name UND Straße müssen passen; die Fortytools-ID zählt nur, wenn die Straße dazu passt (alte Fehlzuordnung).
+  const facilities = by.get('facilities') ?? [];
+  const sameStreet = (a: string | null, b: string) => !a || !b || norm(a) === norm(b);
+  const claimed = new Set<string>();
+  const match = new Map<string, (typeof dbSites)[number]>();
+  for (const f of facilities) {
+    const ftId = get(f, 'address/addressable-id');
+    const s = sByRef.get(`ftx:f:${ftId}`);
+    if (s && !claimed.has(s.id) && sameStreet(s.street, get(f, 'address/street'))) {
+      match.set(ftId, s);
+      claimed.add(s.id);
+    }
+  }
+  for (const f of facilities) {
+    const ftId = get(f, 'address/addressable-id');
+    if (match.has(ftId)) continue;
+    const customerId = custMap.get(get(f, 'customer-id'));
+    if (!customerId) continue;
+    const no = get(f, 'number');
+    const name = get(f, 'address/name') || `Objekt ${no}`;
+    const street = get(f, 'address/street');
+    const free = dbSites.filter(
+      (s) => !claimed.has(s.id) && s.customer_id === customerId && norm(s.name) === norm(name),
+    );
+    const sameAddr = free.filter((s) => s.street && street && norm(s.street) === norm(street));
+    const hit =
+      sameAddr.find((s) => s.site_no === no) ??
+      sameAddr[0] ??
+      // ohne Straße nur, wenn der Name beim Kunden eindeutig ist
+      (free.length === 1 &&
+      facilities.filter(
+        (g) => get(g, 'customer-id') === get(f, 'customer-id') && norm(get(g, 'address/name')) === norm(name),
+      ).length === 1 &&
+      sameStreet(free[0]!.street, street)
+        ? free[0]
+        : undefined);
+    if (hit) {
+      match.set(ftId, hit);
+      claimed.add(hit.id);
+    }
+  }
+  // Nummern: wer seine Fortytools-Nummer bekommt, gibt die bisherige frei (zweistufig wegen Tausch)
+  const wantNo = new Map<string, string>();
+  for (const f of facilities) {
+    const hit = match.get(get(f, 'address/addressable-id'));
+    const no = get(f, 'number');
+    if (hit && no && hit.site_no !== no && (hit.external_ref ?? '').match(/^ftx?:/)) wantNo.set(hit.id, no);
+  }
+  const holder = new Map(dbSites.map((s) => [s.site_no, s.id]));
+  for (let changed = true; changed;) {
+    changed = false;
+    const taken = new Set<string>();
+    for (const [id, no] of wantNo) {
+      const h = holder.get(no);
+      // Nummer gehört einem Objekt, das sie behält, oder ist schon vergeben
+      if ((h && h !== id && !wantNo.has(h)) || taken.has(no)) {
+        wantNo.delete(id);
+        changed = true;
+      } else taken.add(no);
+    }
+  }
+  // Fortytools-ID an einem falschen Objekt (alte Fehlzuordnung) freigeben
+  const matchedIds = new Set([...match.values()].map((m) => m.id));
+  const inFile = new Set(facilities.map((f) => get(f, 'address/addressable-id')));
+  for (const s of dbSites) {
+    const ref = s.external_ref?.startsWith('ftx:f:') ? s.external_ref.slice(6) : null;
+    if (!ref || !inFile.has(ref) || match.get(ref)?.id === s.id) continue;
+    if (matchedIds.has(s.id)) await tx`update app.sites set external_ref = null where id = ${s.id}`;
+    else {
+      await tx`update app.sites set external_ref = ${`ftx-frei:${ref}`} where id = ${s.id}`;
+      issue(
+        'Objekte',
+        `${s.site_no} ${s.name}: war falsch dem Fortytools-Objekt ${ref} zugeordnet – Zuordnung gelöst`,
+      );
+    }
+  }
+  for (const id of wantNo.keys())
+    await tx`update app.sites set site_no = site_no || '~' || left(id::text, 8) where id = ${id}`;
+  for (const [id, no] of wantNo) {
+    const s = dbSites.find((x) => x.id === id)!;
+    usedNo.delete(s.site_no);
+    usedNo.add(no);
+  }
+  for (const f of facilities) {
     const ftId = get(f, 'address/addressable-id');
     const custFt = get(f, 'customer-id');
     const customerId = custMap.get(custFt);
@@ -352,29 +448,31 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
       );
       continue;
     }
-    const hit =
-      sByRef.get(`ftx:f:${ftId}`) ??
-      dbSites.find((s) => s.site_no === no) ??
-      dbSites.find((s) => s.customer_id === customerId && norm(s.name) === norm(name));
+    const hit = match.get(ftId);
     const zip = get(f, 'address/zip');
     if (hit) {
       siteMap.set(ftId, { id: hit.id, customerId: hit.customer_id });
-      // Objektnummer aus Fortytools übernehmen, wenn das Objekt aus einem früheren Import stammt
-      const takeNo =
-        no && hit.site_no !== no && !usedNo.has(no) && (hit.external_ref ?? '').startsWith('ft:');
-      if (takeNo) {
-        usedNo.delete(hit.site_no);
-        usedNo.add(no);
-      }
+      const newNo = wantNo.get(hit.id);
+      // Objekt trägt den Namen eines anderen Fortytools-Objekts desselben Kunden (alte Fehlzuordnung) → richtigen Namen
+      const rename =
+        norm(hit.name) !== norm(name) &&
+        facilities.some(
+          (g) =>
+            get(g, 'customer-id') === custFt &&
+            get(g, 'address/addressable-id') !== ftId &&
+            norm(get(g, 'address/name')) === norm(hit.name),
+        );
       const r = await tx`
         update app.sites set
-          site_no = ${takeNo ? no : hit.site_no},
+          site_no = case when site_no like '%~%' then ${newNo ?? hit.site_no} else site_no end,
+          name = ${rename ? name : hit.name},
           street = coalesce(nullif(street, ''), ${get(f, 'address/street') || null}),
           postal_code = coalesce(nullif(postal_code, ''), ${/^\d{4}$/.test(zip) ? `0${zip}` : zip || null}),
           city = coalesce(nullif(city, ''), ${get(f, 'address/city') || null}),
-          external_ref = case when external_ref is null or external_ref like 'ft:%' then ${`ftx:f:${ftId}`} else external_ref end,
+          external_ref = case when external_ref is null or external_ref like 'ft:%' or external_ref like 'ftx:f:%'
+                              then ${`ftx:f:${ftId}`} else external_ref end,
           updated_at = now()
-        where id = ${hit.id} and (site_no <> ${takeNo ? no : hit.site_no} or external_ref is distinct from ${`ftx:f:${ftId}`}
+        where id = ${hit.id} and (site_no like '%~%' or ${rename} or external_ref is distinct from ${`ftx:f:${ftId}`}
                                   or coalesce(street, '') = '' and ${get(f, 'address/street')} <> ''
                                   or coalesce(city, '') = '' and ${get(f, 'address/city')} <> '')
         returning id`;
@@ -388,7 +486,9 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
       siteNo = `${no || ftId}-FT`;
     }
     usedNo.add(siteNo);
-    const id = uuidOf(`ftx-site:${ftId}`);
+    const id = dbSites.some((s) => s.id === uuidOf(`ftx-site:${ftId}`))
+      ? uuidOf(`ftx-site:${ftId}:neu`)
+      : uuidOf(`ftx-site:${ftId}`);
     const [g] = await tx<{ id: string }[]>`
       select id from app.invoice_groups where customer_id = ${customerId} and active order by (name = 'Standard') desc limit 1`;
     await tx`insert into app.sites ${tx({
@@ -442,12 +542,12 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
       );
     if (hit) {
       const r = await tx`
-        update app.tg_objects set legacy_id = ${legacy}, site_id = coalesce(site_id, ${site.id}),
+        update app.tg_objects set legacy_id = ${legacy}, site_id = ${site.id},
                object_no = coalesce(nullif(object_no, ''), ${get(f, 'number') || null}),
                address = coalesce(nullif(address, ''), ${get(f, 'address/street') || null}),
                postal_code = coalesce(nullif(postal_code, ''), ${/^\d{4}$/.test(zip) ? `0${zip}` : zip || null}),
                city = coalesce(nullif(city, ''), ${city})
-         where id = ${hit.id} and (legacy_id is distinct from ${legacy} or site_id is null
+         where id = ${hit.id} and (legacy_id is distinct from ${legacy} or site_id is distinct from ${site.id}
                                    or coalesce(object_no, '') = '' and ${get(f, 'number')} <> ''
                                    or coalesce(address, '') = '' and ${get(f, 'address/street')} <> '')
         returning id`;
@@ -706,6 +806,8 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
     (await tx<{ number: string }[]>`select number from app.legacy_invoices`).map((r) => r.number),
   );
   const monthly = new Map<string, { month: string; lines: Node[] }>(); // Objekt → letzte Monatsrechnung
+  const fix: { id: string; site: string | null; ref: string | null }[] = [];
+  const head: { no: string; h: string | null; f: string | null }[] = [];
   for (const iv of invoices) {
     const no = get(iv, 'number');
     if (!no) continue; // Entwürfe in Fortytools
@@ -726,7 +828,16 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
         if (!cur || cur.month < s.slice(0, 7)) monthly.set(fid, { month: s.slice(0, 7), lines: [p] });
         else if (cur.month === s.slice(0, 7)) cur.lines.push(p);
       }
+    const lineSite = (p: Node) =>
+      get(p, 'invoiceable-type') === 'Facility' ? (siteMap.get(get(p, 'invoiceable-id'))?.id ?? null) : null;
+    const lineRef = (p: Node) =>
+      get(p, 'invoiceable-type') === 'Facility' ? get(p, 'invoiceable-id') || null : null;
     if (existing.has(no)) {
+      // schon im Archiv: nur die Objekt-Zuordnung (und Kopf-/Fußtext) nachziehen
+      positions.forEach((p, i) =>
+        fix.push({ id: uuidOf(`ftx-invoice-line:${no}:${i}`), site: lineSite(p), ref: lineRef(p) }),
+      );
+      head.push({ no, h: get(iv, 'header-text') || null, f: get(iv, 'footer-text') || null });
       ic.unveraendert++;
       continue;
     }
@@ -749,6 +860,8 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
       parent_number: null,
       customer_reference: get(iv, 'customer-reference') || null,
       payment_terms: get(iv, 'payment-practice/name') || null,
+      header_text: get(iv, 'header-text') || null,
+      footer_text: get(iv, 'footer-text') || null,
     });
     positions.forEach((p, i) => {
       lineRows.push({
@@ -764,10 +877,8 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
         service_type: get(p, 'service-type/name') || null,
         period_start: get(p, 'service-period-start') || null,
         period_end: get(p, 'service-period-end') || null,
-        site_id:
-          get(p, 'invoiceable-type') === 'Facility'
-            ? (siteMap.get(get(p, 'invoiceable-id'))?.id ?? null)
-            : null,
+        site_id: lineSite(p),
+        facility_ref: lineRef(p),
       });
     });
     ic.neu++;
@@ -776,6 +887,28 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
     await tx`insert into app.legacy_invoices ${tx(invRows.slice(i, i + 500))} on conflict do nothing`;
   for (let i = 0; i < lineRows.length; i += 500)
     await tx`insert into app.legacy_invoice_lines ${tx(lineRows.slice(i, i + 500))} on conflict do nothing`;
+  let moved = 0;
+  for (let i = 0; i < fix.length; i += 1000) {
+    const part = fix.slice(i, i + 1000);
+    const [cnt] = await tx<{ n: number }[]>`
+      select count(*)::int as n from app.legacy_invoice_lines l
+        join unnest(${part.map((x) => x.id)}::uuid[], ${part.map((x) => x.site)}::text[]) as x(id, site) on x.id = l.id
+       where l.site_id is distinct from x.site::uuid`;
+    moved += cnt?.n ?? 0;
+    await tx`
+      update app.legacy_invoice_lines l set site_id = x.site::uuid, facility_ref = coalesce(l.facility_ref, x.ref)
+        from unnest(${part.map((x) => x.id)}::uuid[], ${part.map((x) => x.site)}::text[], ${part.map((x) => x.ref)}::text[])
+             as x(id, site, ref)
+       where l.id = x.id and (l.site_id is distinct from x.site::uuid or l.facility_ref is null and x.ref is not null)`;
+  }
+  if (moved) issue('Rechnungen', `${moved} Rechnungspositionen dem richtigen Objekt zugeordnet`);
+  for (let i = 0; i < head.length; i += 1000) {
+    const part = head.slice(i, i + 1000);
+    await tx`
+      update app.legacy_invoices l set header_text = coalesce(l.header_text, x.h), footer_text = coalesce(l.footer_text, x.f)
+        from unnest(${part.map((x) => x.no)}::text[], ${part.map((x) => x.h)}::text[], ${part.map((x) => x.f)}::text[]) as x(no, h, f)
+       where l.number = x.no and (l.header_text is null and x.h is not null or l.footer_text is null and x.f is not null)`;
+  }
   // Storno/Korrektur: Bezug über die Fortytools-ID des Originals lässt sich nicht auflösen → Kennzeichen „negativ“
   if (res.numberClashes.length)
     issue(
@@ -862,4 +995,144 @@ export async function markLegacyPaid(sql: Sql, id: string, date: string, actor: 
   await sql`update app.legacy_invoices set paid = true, paid_at = ${date}, paid_marked_by = ${actor} where id = ${id} and not paid`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
             values (${actor}, 'paid', 'legacy_invoice', ${id}, ${sql.json({ date })})`;
+}
+
+/**
+ * PDF einer Fortytools-Rechnung auf unserem Briefpapier (gleiches Layout wie eigene Rechnungen), erzeugt aus den
+ * importierten Rechnungsdaten. Das Original liegt in Fortytools – die Datei ist als Kopie gekennzeichnet (nicht erneut
+ * als Rechnung versenden: zweite Rechnung über dieselbe Leistung → Steuer nach § 14c UStG).
+ */
+export async function renderLegacyInvoicePdf(sql: Sql, id: string) {
+  const [inv] = await sql<
+    {
+      number: string;
+      issue_date: string;
+      due_date: string | null;
+      customer_id: string | null;
+      customer_no: string | null;
+      net_cents: bigint;
+      gross_cents: bigint;
+      payment_terms: string | null;
+      customer_reference: string | null;
+      header_text: string | null;
+      footer_text: string | null;
+    }[]
+  >`select number, issue_date::text, due_date::text, customer_id, customer_no, net_cents, gross_cents, payment_terms,
+           customer_reference, header_text, footer_text
+      from app.legacy_invoices where id = ${id}`;
+  if (!inv) throw new BusinessError('Rechnung nicht gefunden');
+  const lines = await sql<
+    {
+      position: number;
+      title: string | null;
+      details: string | null;
+      quantity_milli: bigint;
+      unit: string | null;
+      unit_price_cents: bigint;
+      net_cents: bigint;
+      service_type: string | null;
+      period_start: string | null;
+      period_end: string | null;
+      site_name: string | null;
+      site_no: string | null;
+      street: string | null;
+      postal_code: string | null;
+      city: string | null;
+    }[]
+  >`select x.position, x.title, x.details, x.quantity_milli, x.unit, x.unit_price_cents, x.net_cents, x.service_type,
+           x.period_start::text, x.period_end::text, s.name as site_name, s.site_no, s.street, s.postal_code, s.city
+      from app.legacy_invoice_lines x left join app.sites s on s.id = x.site_id
+     where x.invoice_id = ${id} order by x.position`;
+  const seller = await getSeller(sql);
+  const buyer: BuyerSnapshot = inv.customer_id
+    ? await buildBuyerSnapshot(sql, inv.customer_id, null)
+    : {
+        customerNo: inv.customer_no ?? '',
+        name: `Kunde ${inv.customer_no ?? ''}`,
+        name2: null,
+        street: '',
+        postalCode: '',
+        city: '',
+        countryCode: 'DE',
+        vatId: null,
+        leitwegId: null,
+        supplierNo: null,
+        email: null,
+        contactName: null,
+        site: null,
+      };
+  const vat = inv.gross_cents - inv.net_cents;
+  const rate =
+    inv.net_cents === 0n || vat === 0n
+      ? 0
+      : [1900, 700].reduce((best, r) =>
+          Math.abs(Number((vat * 10000n) / inv.net_cents) - r) <
+          Math.abs(Number((vat * 10000n) / inv.net_cents) - best)
+            ? r
+            : best,
+        );
+  const UNIT: Record<string, string> = {
+    pauschal: 'LS',
+    psch: 'LS',
+    'std.': 'HUR',
+    'stk.': 'C62',
+    'tg.': 'DAY',
+    qm: 'MTK',
+  };
+  const negative = inv.net_cents < 0n;
+  const doc: InvoiceDocument = {
+    kind: negative ? 'correction' : 'invoice',
+    number: inv.number,
+    issueDate: inv.issue_date,
+    dueDate: inv.due_date ?? inv.issue_date,
+    periodStart: null,
+    periodEnd: null,
+    buyerReference: inv.customer_reference,
+    orderReference: null,
+    introText: inv.header_text?.replace(/^Sehr geehrte Damen und Herren,\s*/i, '') || null,
+    closingText: null,
+    lines: lines.map((l) => ({
+      position: l.position,
+      description: (l.title || l.service_type || 'Leistung').split('\n')[0]!,
+      detail:
+        [
+          (l.title ?? '').split('\n').slice(1).join('\n') || null,
+          l.details,
+          l.site_name
+            ? `Objekt: ${l.site_name} (${l.site_no})${l.street ? `\n${l.street}, ${[l.postal_code, l.city].filter(Boolean).join(' ')}` : ''}`
+            : null,
+          l.period_start
+            ? `${formatDateDe(l.period_start)}${l.period_end && l.period_end !== l.period_start ? ` bis ${formatDateDe(l.period_end)}` : ''}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join('\n') || null,
+      quantity: l.quantity_milli as Quantity,
+      unitCode: UNIT[(l.unit ?? '').toLowerCase()] ?? 'C62',
+      unitPrice: l.unit_price_cents as Cents,
+      netAmount: l.net_cents as Cents,
+      vatRate: rate as VatRate,
+    })),
+    netTotal: inv.net_cents as Cents,
+    vatTotal: vat as Cents,
+    grossTotal: inv.gross_cents as Cents,
+    prepaidTotal: 0n as Cents,
+    payableTotal: inv.gross_cents as Cents,
+    vatBreakdown: [
+      { vatRate: rate as VatRate, taxableAmount: inv.net_cents as Cents, taxAmount: vat as Cents },
+    ],
+    seller,
+    buyer,
+    original: null,
+    prepayments: [],
+    skonto: null,
+  };
+  const pdf = await renderInvoicePdf(doc, {
+    title: `${negative ? 'Rechnungskorrektur' : 'Rechnung'} ${inv.number}`,
+    subject: 'Kopie – aus den Rechnungsdaten in Fortytools erzeugt (Original in Fortytools)',
+    terms: inv.payment_terms ? `Zahlungsbedingung: ${inv.payment_terms}` : '',
+    ...(inv.footer_text ? { closing: inv.footer_text } : {}),
+    qr: false,
+  });
+  return { pdf, filename: `Rechnung_${inv.number}.pdf` };
 }

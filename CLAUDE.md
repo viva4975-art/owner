@@ -1139,3 +1139,29 @@ Testadresse.
   341.776 € monatlich. **Rest:** Fortytools hat selbst gleichnamige Objekte beim selben Kunden (z. B. 20017 „Treppenhaus“
   3×) – Leistungen dort nicht eindeutig zuzuordnen, Kontrollliste auf derselben Seite, Ahmed prüft von Hand.
   Tests: 358 Unit-/DB-Tests (neu `import-duplicates.db.test.ts`).
+- 2026-10-07: Runde 21 (Ahmed: Statistik wie Fortytools, Beträge falsch, Baubüro/Treppenhaus doppelt, Rechnungen als PDF,
+  Offene Posten leer, Logo):
+  - **Fund 1 (XML-Import):** Fortytools-Objekte wurden über Nummer oder Namen zugeordnet – bei gleichnamigen Objekten eines
+    Kunden („Treppenhaus“ Stollbergstr./Baaderstr./Arcisstr.) landeten alle auf demselben Objekt, ebenso deren
+    Rechnungspositionen. Jetzt: jedes Objekt höchstens einmal, Name UND Straße müssen passen, Fortytools-ID zählt nur bei
+    passender Straße; falsche Zuordnung wird gelöst, Nummern/Namen werden korrigiert. Erneuter XML-Import ordnet auch die
+    bereits importierten Rechnungspositionen neu zu (Spalte `legacy_invoice_lines.facility_ref`, nur Zuordnung änderbar –
+    Migration `20261110000001`). **Fund 2 (Zusammenführen):** gleichnamige Objekte mit anderer Straße wurden zusammengelegt
+    → nur noch bei gleicher Adresse.
+  - **Transfer → Import aus Fortytools → „Abgleich mit Fortytools-Rechnungen“** (nur Admin): je Objekt monatliche Leistungen
+    der App gegen die letzte volle Monatsrechnung aus Fortytools (stimmt / abweichend / fehlt / nur App / zuletzt älter),
+    Positionen zum Aufklappen; „übernehmen“ beendet die monatlichen Leistungen zum Ende dieses Monats und legt die
+    Fortytools-Positionen ab dem Folgemonat an (feste IDs, Protokoll). Probe mit den echten Exporten: 13 abweichend → danach
+    103 stimmen, 8 nur App, 15 zuletzt älter (prüfen, ob beendet).
+  - **Auswertungen → Statistiken** wie Fortytools: Zeitraum, Kunde, Monat/Quartal/Jahr, Leistungszeitraum/Rechnungsdatum,
+    Säulen + Tabelle, Umsatz pro Kunde und nach Leistungsart (Anteil), CSV. Eigene + Fortytools-Rechnungen ohne Unterschied.
+    Leistungszeitraum: Position tageweise auf die Monate verteilt, je Monat auf Cent gerundet; Kunden/Leistungsarten nach
+    Rechnungsdatum – **am echten Export geprüft: alle Monate 11/2025–10/2026 und Summe 3.965.480,18 € centgenau wie
+    Fortytools.** „Netto-Umsatz je Monat“ entfällt (leitet um), Kundenübersicht-Umsatz rechnet genauso.
+  - Fortytools-Rechnungen: „Alle Rechnungen (n)“ ohne Zusatz, Art Rechnung/Storno-Korrektur, **PDF** auf unserem Briefpapier
+    aus den Rechnungsdaten, gekennzeichnet „Kopie – Original in Fortytools“ (**nicht erneut als Rechnung versenden – § 14c UStG**).
+    Offene Fortytools-Rechnungen zählen in den Offenen Posten der Startseite und beim Kunden.
+  - Übersicht: Firmenlogo oben wie Fortytools.
+  - Tests: 359 Unit-/DB-Tests (neu `runde21.db.test.ts`).
+  - **Auf dem Server:** 1) XML-Exporte noch einmal importieren (repariert Objekte + Zuordnung der Rechnungen), 2) Abgleich
+    öffnen, abweichende prüfen und übernehmen, 3) Liste „gleicher Objektname“ unter Dubletten kontrollieren.

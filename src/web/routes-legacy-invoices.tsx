@@ -1,7 +1,11 @@
 import type { FC } from 'hono/jsx';
 import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
-import { markLegacyPaid, openLegacyInvoices } from '../services/fortytools-xml-import.js';
+import {
+  markLegacyPaid,
+  openLegacyInvoices,
+  renderLegacyInvoicePdf,
+} from '../services/fortytools-xml-import.js';
 import { type Ctx, UUID } from './app.js';
 import { PageHead, dateDe, euro } from './layout.js';
 
@@ -42,8 +46,10 @@ export const LegacyInvoiceList: FC<{ rows: LegacyRow[]; showSite?: boolean }> = 
   rows.length === 0 ? null : (
     <details class="card" style="margin-top:14px">
       <summary>
-        <b>Rechnungen aus Fortytools ({rows.length})</b>{' '}
-        <span class="small mut">– Archiv, nur lesen · offen: {rows.filter((r) => !r.paid).length}</span>
+        <b>Frühere Rechnungen ({rows.length})</b>{' '}
+        <span class="small mut">
+          – bis zur Umstellung in Fortytools geschrieben · offen: {rows.filter((r) => !r.paid).length}
+        </span>
       </summary>
       <div class="tbl" style="margin-top:10px">
         <table class="stack-m">
@@ -62,7 +68,10 @@ export const LegacyInvoiceList: FC<{ rows: LegacyRow[]; showSite?: boolean }> = 
               <tr>
                 <td data-l="Datum">{dateDe(r.issue_date)}</td>
                 <td data-l="Nr.">
-                  <a href={`/rechnungen/fortytools/${r.id}`}>{r.number}</a>
+                  <a href={`/rechnungen/fortytools/${r.id}`}>{r.number}</a>{' '}
+                  <a class="small" href={`/rechnungen/fortytools/${r.id}/pdf`} target="_blank">
+                    PDF
+                  </a>
                 </td>
                 {showSite && (
                   <td data-l="Objekt" class="small">
@@ -91,7 +100,9 @@ export const LegacyInvoiceList: FC<{ rows: LegacyRow[]; showSite?: boolean }> = 
   );
 
 /** Offene Posten: offene Fortytools-Rechnungen mit „bezahlt am“ */
-export const OpenLegacyCard: FC<{ rows: Awaited<ReturnType<typeof openLegacyInvoices>> }> = ({ rows }) =>
+export const OpenLegacyCard: FC<{ rows: Awaited<ReturnType<typeof openLegacyInvoices>>[number][] }> = ({
+  rows,
+}) =>
   rows.length === 0 ? null : (
     <div class="card" style="margin-top:16px">
       <h3 style="margin-top:0">
@@ -204,7 +215,9 @@ export function registerLegacyInvoiceRoutes({ app, deps, page, back }: Ctx) {
       'rechnungen',
       <>
         <PageHead title={`Rechnung ${inv.number}`} crumbs={[['Rechnungen', '/rechnungen']]}>
-          <span class="badge info">aus Fortytools – Archiv</span>
+          <a class="btn" href={`/rechnungen/fortytools/${id}/pdf`} target="_blank">
+            PDF öffnen
+          </a>
         </PageHead>
         <div class="card">
           <dl class="kv">
@@ -295,9 +308,21 @@ export function registerLegacyInvoiceRoutes({ app, deps, page, back }: Ctx) {
             </tbody>
           </table>
         </div>
-        <p class="small mut">Das Original-PDF liegt in Fortytools. Diese Rechnung ist nicht änderbar.</p>
+        <p class="small mut">
+          In Fortytools ausgestellt; das PDF wird aus den übernommenen Rechnungsdaten erzeugt (als Kopie
+          gekennzeichnet). Nicht änderbar.
+        </p>
       </>,
     );
+  });
+
+  app.get(`/rechnungen/fortytools/:id{${UUID}}/pdf`, async (c) => {
+    const { pdf, filename } = await renderLegacyInvoicePdf(sql, c.req.param('id'));
+    return c.body(pdf as unknown as ArrayBuffer, 200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${filename}"`,
+      'Cache-Control': 'no-store',
+    });
   });
 
   app.post(`/rechnungen/fortytools/:id{${UUID}}/bezahlt`, async (c) => {

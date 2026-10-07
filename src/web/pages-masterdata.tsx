@@ -427,58 +427,6 @@ export const GroupSummary: FC<{ customerId: string; groups: InvoiceGroupRow[] }>
   </div>
 );
 
-export const RevenueBars: FC<{ rows: { month: string; net_cents: bigint }[] }> = ({ rows }) => {
-  const max = rows.reduce((m, r) => (r.net_cents > m ? r.net_cents : m), 1n);
-  const total = rows.reduce((s, r) => s + r.net_cents, 0n);
-  const label = (m: string) => {
-    const [y, mo] = m.split('-');
-    return `${['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'][Number(mo) - 1]} ${y!.slice(2)}`;
-  };
-  return (
-    <>
-      <div class="bars" role="img" aria-label="Netto-Umsatz je Monat">
-        {rows.map((r) => (
-          <div
-            style={`height:${Math.max(1, Number((r.net_cents * 100n) / max))}%`}
-            title={`${label(r.month)}: ${euro(r.net_cents)}`}
-          />
-        ))}
-      </div>
-      <div class="barlabels">
-        {rows.map((r, i) => (
-          <span>{(rows.length - 1 - i) % 3 === 0 ? label(r.month) : ''}</span>
-        ))}
-      </div>
-      <div class="tbl" style="margin-top:12px">
-        <table>
-          <thead>
-            <tr>
-              <th>Monat</th>
-              <th class="r">Netto</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr>
-                <td>{label(r.month)}</td>
-                <td class="r">{euro(r.net_cents)}</td>
-              </tr>
-            ))}
-            <tr>
-              <td>
-                <b>Summe</b>
-              </td>
-              <td class="r">
-                <b>{euro(total)}</b>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </>
-  );
-};
-
 // ---------------------------------------------------------------------------
 // Kunde bearbeiten
 // ---------------------------------------------------------------------------

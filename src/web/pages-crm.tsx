@@ -547,6 +547,14 @@ export const Dashboard: FC<{
   return (
     <div class="dash">
       <div class="dash-hero">
+        <div class="dash-brand">
+          <img
+            src="/static/logo-transparent.png"
+            alt="Viva-Deluxe Gebäudereinigung GmbH"
+            width="280"
+            height="64"
+          />
+        </div>
         <div>
           <div class="dash-date">{longDate(kpi.today)}</div>
           <h1>

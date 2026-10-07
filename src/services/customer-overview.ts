@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { Sql } from '../db/client.js';
 import { validIban } from './employees.js';
 import { BusinessError } from './errors.js';
+import { todayBerlin } from '../domain/invoice/calc.js';
+import { revenueStats } from './statistics.js';
 
 /*
  * Kundenübersicht wie Fortytools: Netto-Umsatz je Monat (nach Rechnungsdatum oder Leistungszeitraum, ab Jahr)
@@ -10,26 +12,30 @@ import { BusinessError } from './errors.js';
 
 export type RevenueMode = 'rechnung' | 'leistung';
 
-/** Netto-Umsatz je Monat ab Januar `fromYear` bis zum aktuellen Monat (ausgestellte Belege inkl. Storno/Korrektur). */
+/** Netto-Umsatz je Monat ab Januar `fromYear` bis zum aktuellen Monat (inkl. Fortytools-Rechnungen, Storno/Korrektur;
+ *  Leistungszeitraum tageweise verteilt wie in den Statistiken). */
 export async function customerRevenue(sql: Sql, customerId: string, mode: RevenueMode, fromYear: number) {
-  return sql<{ month: string; net_cents: bigint }[]>`
-    with months as (
-      select to_char(d, 'YYYY-MM') as month
-        from generate_series(make_date(${fromYear}::int, 1, 1), date_trunc('month', current_date), interval '1 month') d
-    )
-    select m.month, coalesce(sum(i.net_cents), 0)::bigint as net_cents
-      from months m
-      left join app.invoices i
-        on i.status = 'issued' and i.customer_id = ${customerId}
-       and to_char(${mode === 'leistung' ? sql`coalesce(i.period_start, i.issue_date)` : sql`i.issue_date`}, 'YYYY-MM') = m.month
-     group by m.month order by m.month`;
+  const today = todayBerlin();
+  const end = new Date(`${today.slice(0, 7)}-01T12:00:00Z`);
+  end.setUTCMonth(end.getUTCMonth() + 1, 0);
+  const st = await revenueStats(sql, {
+    from: `${fromYear}-01-01`,
+    to: end.toISOString().slice(0, 10),
+    basis: mode,
+    group: 'monat',
+    customerId,
+  });
+  return st.periods.map((p) => ({ month: p.key, net_cents: p.cents }));
 }
 
 /** Jahre mit Rechnungen (für die Auswahl „ab Jahr“). */
 export async function customerRevenueYears(sql: Sql, customerId: string): Promise<number[]> {
   const rows = await sql<{ y: number }[]>`
     select distinct extract(year from issue_date)::int as y from app.invoices
-     where customer_id = ${customerId} and status = 'issued' order by y`;
+     where customer_id = ${customerId} and status = 'issued'
+    union
+    select distinct extract(year from issue_date)::int from app.legacy_invoices where customer_id = ${customerId}
+    order by 1`;
   const cur = new Date().getFullYear();
   const ys = new Set([...rows.map((r) => r.y), cur]);
   return [...ys].sort((a, b) => a - b);

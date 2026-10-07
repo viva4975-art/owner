@@ -73,8 +73,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
   }) => (
     <div class="chips" style="margin:0 0 10px">
       <a href="/rechnungen" class={active === 'alle' ? 'on' : ''}>
-        Alle Rechnungen ({counts.all}
-        {counts.legacy ? ` + ${counts.legacy} aus Fortytools` : ''})
+        Alle Rechnungen ({counts.all + counts.legacy})
       </a>
       <a href="/rechnungen?filter=unversendet" class={active === 'unversendet' ? 'on' : ''}>
         Nicht versendet ({counts.unsent})
@@ -207,11 +206,11 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                         <div class="small faint">{dateDe(r.issue_date)}</div>
                       </td>
                       <td class="small">
-                        {r.legacy ? (
-                          <span class="badge">Fortytools</span>
-                        ) : (
-                          (KIND_TITLES[r.kind as keyof typeof KIND_TITLES] ?? r.kind)
-                        )}
+                        {r.legacy
+                          ? r.gross_cents < 0n
+                            ? 'Storno/Korrektur'
+                            : 'Rechnung'
+                          : (KIND_TITLES[r.kind as keyof typeof KIND_TITLES] ?? r.kind)}
                       </td>
                       <td>
                         {r.customer_name}
@@ -222,7 +221,11 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                       </td>
                       <td class="r">{euro(r.gross_cents)}</td>
                       <td class="small">
-                        {r.legacy && <span class="mut">PDF in Fortytools</span>}
+                        {r.legacy && (
+                          <a href={`/rechnungen/fortytools/${r.id}/pdf`} target="_blank">
+                            PDF
+                          </a>
+                        )}
                         {r.docs.map((d) => (
                           <a href={`/dokumente/${d.id}`} target="_blank" style="margin-right:8px">
                             {DOC_LABEL[d.kind] ?? d.kind}

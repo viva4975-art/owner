@@ -1,4 +1,5 @@
 import { fullName } from '../services/users.js';
+import { canAccess } from './permissions.js';
 import { randomUUID } from 'node:crypto';
 import { SiteOptions } from './site-options.js';
 import type { Context } from 'hono';
@@ -259,54 +260,33 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
           <b>{first.charAt(0).toUpperCase() + first.slice(1)}!</b>
         </div>
         <div class="quick">
-          <a href="/einsatzplanung">
-            <span class="qi">
-              <Ic n="cal" />
-            </span>
-            Kalender
-          </a>
-          <a href="/qm/objekte">
-            <span class="qi">
-              <Ic n="search" />
-            </span>
-            Suche
-          </a>
-          <a href="/qm/tickets">
-            <span class="qi">
-              <Ic n="ticket" />
-            </span>
-            Tickets
-          </a>
-          <a href="/qualitaet">
-            <span class="qi">
-              <Ic n="list" />
-            </span>
-            Alle Audits
-          </a>
-          <a href="/zeiterfassung">
-            <span class="qi">
-              <Ic n="clock" />
-            </span>
-            Zeiten
-          </a>
-          <a href="/qm/personalbogen">
-            <span class="qi">
-              <Ic n="doc" />
-            </span>
-            Personalbogen
-          </a>
-          <a href="/qm/nu-auftrag">
-            <span class="qi">
-              <Ic n="building" />
-            </span>
-            NU-Auftrag
-          </a>
-          <a href="/arbeitsscheine">
-            <span class="qi">
-              <Ic n="times" />
-            </span>
-            Arbeitsscheine
-          </a>
+          {(
+            [
+              ['/qm/objekte', 'building', 'Objekte'],
+              ['/einsatzplanung', 'cal', 'Planung'],
+              ['/zeiterfassung', 'clock', 'Zeiten'],
+              ['/personal', 'list', 'Mitarbeiter'],
+              ['/personal/dokumente', 'doc', 'Dokumente'],
+              ['/urlaub', 'sun', 'Urlaub'],
+              ['/kunden', 'home', 'Kunden'],
+              ['/qm/tickets', 'ticket', 'Tickets'],
+              ['/qualitaet', 'list', 'Alle Audits'],
+              ['/arbeitsscheine', 'times', 'Arbeitsscheine'],
+              ['/qm/personalbogen', 'doc', 'Personalbogen'],
+              ['/qm/nu-auftrag', 'building', 'NU-Auftrag'],
+              ['/transfer/dokumenteneingang', 'doc', 'Posteingang'],
+              ['/', 'monitor', 'Büro-Ansicht'],
+            ] as const
+          )
+            .filter(([href]) => canAccess(u.role, href))
+            .map(([href, ic, label]) => (
+              <a href={href}>
+                <span class="qi">
+                  <Ic n={ic} />
+                </span>
+                {label}
+              </a>
+            ))}
         </div>
         {audits.length === 0 ? (
           <div class="qm-empty">
@@ -450,6 +430,10 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
           {(
             [
               [`/objekte/${id}/einsaetze`, 'cal', 'Einsätze'],
+              [`/objekte/${id}/dokumente`, 'doc', 'Dokumente'],
+              [`/objekte/${id}/notizen`, 'list', 'Notizen'],
+              [`/objekte/${id}/leistungen`, 'times', 'Leistungen & Preise'],
+              [`/objekte/${id}`, 'monitor', 'Objekt am PC öffnen'],
               [`/objekte/${id}/zeiten`, 'clock', 'Zeiten'],
               [`/objekte/${id}/schluessel`, 'list', 'Schlüssel'],
               [`/objekte/${id}/uebergaben`, 'doc', 'Übergabe / Unterweisung'],
@@ -458,12 +442,14 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
               [`/qm/personalbogen?objekt=${id}`, 'doc', 'Personalbogen'],
               [`/qm/nu-auftrag?objekt=${id}`, 'building', 'NU-Auftrag anfragen'],
             ] as const
-          ).map(([href, ic, label]) => (
-            <a href={href}>
-              <Ic n={ic} />
-              <span>{label}</span>
-            </a>
-          ))}
+          )
+            .filter(([href]) => canAccess(c.get('user').role, href.split('?')[0]!))
+            .map(([href, ic, label]) => (
+              <a href={href}>
+                <Ic n={ic} />
+                <span>{label}</span>
+              </a>
+            ))}
         </div>
         <div class="qm-sec">
           <h2>Vergangene Audits</h2>

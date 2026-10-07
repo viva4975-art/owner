@@ -1301,3 +1301,12 @@ Testadresse.
   **alle CSV-Exporte** übernehmen jetzt die Bildschirm-Sortierung (Browser hängt `sort`/`dir` an jeden CSV-Link, eine
   Middleware sortiert die fertige CSV nach der gleichnamigen Spalte um, `src/web/csv-sort.ts`; Summenzeilen bleiben unten,
   DATEV/Windows-1252 bleibt unberührt). PDF-Exporte der Stundenliste wie gehabt.
+- 2026-10-07: **Eine gemeinsame App** (Ahmed) für App Store/Google Play: Startbildschirm `/app` (ohne Anmeldung) mit
+  „Mitarbeiter“ (→ `/m`, Personalnummer + PIN) und „Objektleitung & Büro“ (→ `/qm`, Benutzer + Passwort); wer angemeldet
+  ist, landet direkt im Bereich (`/app?wahl=1` zeigt immer die Auswahl). Eigenes Manifest `/app/manifest.webmanifest`
+  (Scope `/`), Capacitor lädt `/app`. Fund (Ahmed: „als Admin keine Dokumente, Objekte“): online war die Mitarbeiter-
+  Ansicht `/m` offen – die zeigt nur eigene Einsätze/Dokumente. `/qm` jetzt für alle Büro-Rollen (auch Personal) mit
+  Kacheln je Rolle: Objekte, Planung, Zeiten, Mitarbeiter, Dokumente (Unterweisungen), Urlaub, Kunden, Tickets, Audits,
+  Arbeitsscheine, Personalbogen, NU-Auftrag, Posteingang, Büro-Ansicht; Objekt-Details zusätzlich Dokumente, Notizen,
+  Leistungen & Preise (nur Büro), „am PC öffnen“. Link „Objektleitung & Büro: hier anmelden“ auf der Mitarbeiter-Anmeldung.
+  **Store-Veröffentlichung wartet auf:** D-U-N-S-Nummer, Google-Play- und Apple-Developer-Konto (GmbH), Firebase (Push).

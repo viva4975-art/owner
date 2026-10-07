@@ -62,6 +62,7 @@ import { registerTimeRoutes } from './routes-time.js';
 import { registerTimesheetRoutes } from './routes-timesheet.js';
 import { registerQmRoutes } from './routes-qm.js';
 import { sortCsv } from './csv-sort.js';
+import { registerStartAppRoutes } from './routes-start-app.js';
 import { registerOlAppRoutes } from './routes-ol-app.js';
 
 export const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
@@ -180,6 +181,8 @@ export function createApp(deps: Deps) {
     path.startsWith('/m/') ||
     path.startsWith('/np/') ||
     path === '/anmelden' ||
+    path === '/app' ||
+    path === '/app/manifest.webmanifest' ||
     path === '/health' ||
     path.startsWith('/static/');
   app.use(async (c, next) => {
@@ -328,6 +331,7 @@ export function createApp(deps: Deps) {
   registerInventoryRoutes(ctx);
   registerTimesheetRoutes(ctx);
   registerOlAppRoutes(ctx);
+  registerStartAppRoutes(ctx);
   registerQmRoutes(ctx);
   registerTimeRoutes(ctx);
   registerPlanningBoardRoutes(ctx);

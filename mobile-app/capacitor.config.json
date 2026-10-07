@@ -3,13 +3,19 @@
   "appName": "Viva-Deluxe",
   "webDir": "www",
   "server": {
-    "url": "https://app.viva-deluxe-reinigung.de/m",
+    "url": "https://app.viva-deluxe-reinigung.de/app",
     "allowNavigation": ["app.viva-deluxe-reinigung.de"],
     "errorPath": "offline.html"
   },
-  "ios": { "contentInset": "always" },
-  "android": { "allowMixedContent": false },
+  "ios": {
+    "contentInset": "always"
+  },
+  "android": {
+    "allowMixedContent": false
+  },
   "plugins": {
-    "PushNotifications": { "presentationOptions": ["badge", "sound", "alert"] }
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    }
   }
 }

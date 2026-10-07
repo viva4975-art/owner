@@ -420,6 +420,11 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         <button class="big go">{t(lang, 'login')}</button>
       </form>
       <LangPicker lang={lang} next={next} />
+      <p style="text-align:center;margin-top:18px">
+        <a href="/qm" style="color:#7d1435;font-weight:600">
+          Objektleitung &amp; Büro: hier anmelden
+        </a>
+      </p>
     </>
   );
 

@@ -1,6 +1,8 @@
-# Mitarbeiter-App (App Store / Google Play)
+# Viva-Deluxe-App (App Store / Google Play)
 
-Native Hülle mit [Capacitor](https://capacitorjs.com) um die Mitarbeiter-Ansicht `/m`. Die App lädt die Seiten
+Eine gemeinsame App (Entscheidung Ahmed 07.10.): Startbildschirm `/app` mit Auswahl **Mitarbeiter** (`/m`,
+Personalnummer + PIN) oder **Objektleitung & Büro** (`/qm`, Benutzername + Passwort; Kacheln je Rolle).
+Native Hülle mit [Capacitor](https://capacitorjs.com) um `/app`. Die App lädt die Seiten
 vom Live-Server (`server.url` in `capacitor.config.json`) – neue Funktionen sind damit sofort in der App, ohne
 neues Store-Update. Nativ dazu kommen:
 

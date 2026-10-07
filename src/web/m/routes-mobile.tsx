@@ -650,6 +650,9 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       requestsForEmployee(sql, me.id),
     ]);
     const openDocs = docs.filter((d) => d.status === 'offen');
+    // Neue Unterweisung/Dokument: beim Öffnen der App direkt zum Lesen und Unterschreiben (bis „Später“ für heute)
+    if (openDocs.length && getCookie(c, 'm_doc_later') !== today)
+      return c.redirect(`/m/dokumente/${openDocs[0]!.id}?zuerst=1`);
     // Stundenzettel zum Unterschreiben (am Monatsende bzw. Vormonat), nur wenn Zeiten da und nicht unterschrieben
     const signMonth = monthToSign(today);
     const sheet = await timesheet(sql, me.id, signMonth);
@@ -1486,6 +1489,11 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       lang,
       me,
       <>
+        {c.req.query('zuerst') === '1' && d.status === 'offen' && (
+          <div class="card" style="border-left:4px solid #7D1435">
+            <b>{t(lang, 'doc_first')}</b>
+          </div>
+        )}
         <h1>{d.title}</h1>
         {d.description && (
           <p class="mut" style="margin:0">
@@ -1519,12 +1527,31 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
             </div>
           </form>
         )}
-        <a class="big sec" href="/m/dokumente">
-          {t(lang, 'back')}
-        </a>
+        {c.req.query('zuerst') === '1' && d.status === 'offen' ? (
+          <form method="post" action="/m/dokumente/spaeter" style="margin:0">
+            <button class="big sec">{t(lang, 'doc_later')}</button>
+          </form>
+        ) : (
+          <a class="big sec" href="/m/dokumente">
+            {t(lang, 'back')}
+          </a>
+        )}
         {d.status === 'offen' && <script dangerouslySetInnerHTML={{ __html: SIGN_JS }} />}
       </>,
     );
+  });
+
+  // „Später erinnern“: heute nicht mehr automatisch öffnen (morgen wieder)
+  app.post('/m/dokumente/spaeter', async (c) => {
+    const { me, res } = await requireMe(c);
+    if (!me) return res!;
+    setCookie(c, 'm_doc_later', todayBerlin(), {
+      path: '/m',
+      httpOnly: true,
+      sameSite: 'Lax',
+      maxAge: 60 * 60 * 24,
+    });
+    return c.redirect('/m');
   });
 
   app.get('/m/dokumente/:id{[0-9a-f-]{36}}/dokument.pdf', async (c) => {
@@ -1557,7 +1584,9 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         ip: c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
         userAgent: c.req.header('user-agent') ?? null,
       });
-      return back(c, `/m/dokumente/${id}`, { ok: t(lang, 'msg_signed') });
+      // weitere offene Dokumente gleich anschließen
+      const next = (await requestsForEmployee(sql, me.id)).find((r) => r.status === 'offen');
+      return back(c, next ? `/m/dokumente/${next.id}?zuerst=1` : '/m', { ok: t(lang, 'msg_signed') });
     });
   });
 }

@@ -39,7 +39,7 @@ import { type AppEnv, type Ctx, UUID } from './app.js';
 import { arr, parseLines, str } from './forms.js';
 import { DraftsBox, OpenExecutionsBox } from './pages-drafts.js';
 import { draftsFromExecutions, listOpenExecutions } from '../services/executions.js';
-import { NEW_OPTIONS, PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
+import { NEW_OPTIONS, PageHead, dateDe, euro } from './layout.js';
 import { archiveMonthZip, archiveYear } from '../services/invoice-archive.js';
 import { KIND_TITLES } from '../domain/invoice/types.js';
 import { FileArea } from './files.js';
@@ -63,17 +63,23 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
 
   // ------------------------------------------------------------------ Listen
 
-  const invoiceTabs = (_active: string, counts: { drafts: number; all: number; unsent: number }): Tab[] => [
-    { key: 'entwuerfe', label: 'Entwürfe / Vorfaktura', href: '/rechnungen/entwuerfe', count: counts.drafts },
-    { key: 'alle', label: 'Alle Rechnungen', href: '/rechnungen', count: counts.all },
-    {
-      key: 'unversendet',
-      label: 'Nicht versendet',
-      href: '/rechnungen?filter=unversendet',
-      count: counts.unsent,
-    },
-    { key: 'op', label: 'Offene Posten', href: '/offene-posten' },
-  ];
+  /** „Alle / Nicht versendet“ als Filter (Entwürfe und Offene Posten stehen links im Menü). */
+  const InvoiceFilterChips = ({
+    active,
+    counts,
+  }: {
+    active: string;
+    counts: { drafts: number; all: number; unsent: number };
+  }) => (
+    <div class="chips" style="margin:0 0 10px">
+      <a href="/rechnungen" class={active === 'alle' ? 'on' : ''}>
+        Alle Rechnungen ({counts.all})
+      </a>
+      <a href="/rechnungen?filter=unversendet" class={active === 'unversendet' ? 'on' : ''}>
+        Nicht versendet ({counts.unsent})
+      </a>
+    </div>
+  );
 
   const counts = async () => {
     const [r] = await sql<{ drafts: number; all: number; unsent: number }[]>`
@@ -129,7 +135,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         <PageHead title="Rechnungen" create={{ options: NEW_OPTIONS, selected: 'rechnung' }}>
           <span class="mut">Nächste Nr.: {range ? `${range.prefix}${range.next_value}` : '–'}</span>
         </PageHead>
-        <Tabs tabs={invoiceTabs('alle', await counts())} active="alle" />
+        <InvoiceFilterChips active="alle" counts={await counts()} />
         <form method="get" action="/rechnungen" class="actions" style="margin-top:0">
           <div class="chips" style="margin:0">
             {years.map((y) => (
@@ -250,7 +256,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         <PageHead title="Rechnungen" create={{ options: NEW_OPTIONS, selected: 'rechnung' }}>
           <span class="mut">Nächste Nr.: {range ? `${range.prefix}${range.next_value}` : '–'}</span>
         </PageHead>
-        <Tabs tabs={invoiceTabs(active, await counts())} active={active} />
+        <InvoiceFilterChips active={active} counts={await counts()} />
         <div class="tabbody">
           <InvoiceTable rows={rows} />
         </div>
@@ -278,7 +284,6 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         >
           <span class="mut">Nächste Nr.: {range ? `${range.prefix}${range.next_value}` : '–'}</span>
         </PageHead>
-        <Tabs tabs={invoiceTabs('entwuerfe', await counts())} active="entwuerfe" />
         <div class="tabbody">
           <OpenExecutionsBox rows={await listOpenExecutions(sql)} today={todayBerlin()} />
           <DraftsBox rows={drafts} today={todayBerlin()} />

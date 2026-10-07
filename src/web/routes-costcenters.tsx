@@ -6,7 +6,6 @@ import { COST_CATEGORY, type CostCategory } from '../services/purchasing.js';
 import { type Ctx, UUID } from './app.js';
 import { str } from './forms.js';
 import { PageHead, dateDe, euro } from './layout.js';
-import { ReportTabs } from './routes-reports.js';
 
 /** Kostenstellen: Auswertung (Eingangsrechnungen je Kostenstelle) und Pflege der allgemeinen Kostenstellen. */
 export function registerCostCenterRoutes({ app, deps, page, back }: Ctx) {
@@ -26,7 +25,6 @@ export function registerCostCenterRoutes({ app, deps, page, back }: Ctx) {
       'auswertungen',
       <>
         <PageHead title="Kosten je Kostenstelle" crumbs={[['Auswertungen', '/auswertungen']]} />
-        <ReportTabs c={c} active="kostenstellen" />
         <form method="get" class="actions" style="margin-top:0">
           <label class="small" style="margin:0">
             von

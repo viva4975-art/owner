@@ -45,7 +45,13 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
       'Dokumente unterschreiben',
       'personal',
       <>
-        <PageHead title="Dokumente digital unterschreiben" />
+        <PageHead title="Unterweisungen & Unterschriften" crumbs={[['Personal', '/personal']]} />
+        <p class="mut" style="max-width:900px;margin-top:0">
+          Unterweisung oder Dokument (PDF) an alle oder ausgewählte Mitarbeitende freigeben. Beim nächsten
+          Öffnen der Handy-App erscheint es sofort zum Lesen und Unterschreiben; mit „Später erinnern“ kommt
+          es am nächsten Tag wieder, bis unterschrieben ist. Nach Ablauf der Frist steht es als Hinweis auf
+          der Startseite.
+        </p>
         <div class="flash err" style="max-width:900px">
           <b>Nicht digital:</b> {FORBIDDEN_HINT}
         </div>
@@ -92,8 +98,9 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
           enctype="multipart/form-data"
           class="card"
           style="max-width:900px"
+          id="neu"
         >
-          <h3 style="margin-top:0">Neues Dokument verteilen</h3>
+          <h3 style="margin-top:0">Unterweisung / Dokument freigeben</h3>
           <div class="grid">
             <div>
               <label for="title">Titel</label>
@@ -145,7 +152,7 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
             im Archiv.
           </p>
           <div class="formfoot">
-            <button class="btn">Verteilen</button>
+            <button class="btn">Freigeben</button>
           </div>
         </form>
       </>,

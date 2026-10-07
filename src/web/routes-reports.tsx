@@ -109,7 +109,7 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
   const { sql } = deps;
 
   const shell = (c: Context<AppEnv>, active: string, title: string, body: Child, actions?: Child) => {
-    const role = c.get('user').role;
+    void active; // Auswertungen stehen links im Menü (keine doppelte Reiterzeile)
     return page(
       c,
       title,
@@ -118,7 +118,6 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
         <PageHead title={title} crumbs={[['Auswertungen', '/auswertungen']]}>
           {actions}
         </PageHead>
-        <Tabs tabs={REPORTS.filter((r) => canOpen(role, r.href))} active={active} />
         {body}
       </>,
     );

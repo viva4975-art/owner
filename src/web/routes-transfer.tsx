@@ -31,7 +31,7 @@ import { listOpenItems } from '../services/payments.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
 import { arr, str } from './forms.js';
-import { PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
+import { PageHead, dateDe, euro } from './layout.js';
 import { canAccess } from './permissions.js';
 
 const TX_STATUS: Record<string, string> = {
@@ -47,18 +47,13 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
   const { sql, env } = deps;
 
   const shell = (c: Context<AppEnv>, active: string, title: string, body: Child) => {
-    const tabs: Tab[] = [
-      { key: 'konto', label: 'Kontoumsätze', href: '/transfer/kontoumsaetze' },
-      { key: 'versand', label: 'Dokumentenversand', href: '/transfer/dokumentenversand' },
-      { key: 'eingang', label: 'Dokumenteneingang', href: '/transfer/dokumenteneingang' },
-    ];
+    void active; // Bereiche stehen links im Menü (keine doppelte Reiterzeile)
     return page(
       c,
       title,
       'transfer',
       <>
         <PageHead title={title} crumbs={[['Transfer', '/transfer/kontoumsaetze']]} />
-        <Tabs tabs={tabs} active={active} />
         {body}
       </>,
     );

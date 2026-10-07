@@ -996,3 +996,26 @@ Testadresse.
     30 Tage, überfällig rot), Kilometerstand, Fahrer/in, Tankkarte; Fahrzeugschein und weitere Unterlagen als Dateien
     (write-once). Liste mit Kennzeichen-Schild und „Fahrzeugschein fehlt“. Tabelle `app.vehicles`, `app.handover_objects`.
   - Tests: 342 Unit-/DB-Tests (neu `vehicles.db.test.ts`), `e2e:uebergabe` 25 Prüfungen.
+- 2026-10-07: Runde 16 (Ahmed, 6 Punkte; Punkt 7 kam leer an):
+  - **Übergaben ohne eigene Seite** (Menüpunkt weg, `/uebergaben` leitet um): anlegen beim Mitarbeiter (Reiter „Übergaben“),
+    beim Nachunternehmer (Übersicht) und am Objekt (neuer Reiter „Übergaben“, auch für die Objektleitung). Je Entwurf
+    „Unterschreiben lassen“ (Handy/Tablet), „PDF drucken“ und „Auf Papier unterschrieben“ (bucht und schließt ab).
+    Zurück/Brotkrumen führen zum Mitarbeiter/Nachunternehmer/Objekt.
+  - **Unterweisungen & Unterschriften** (Personal, Knopf „Unterweisung an alle freigeben“ in der Mitarbeiterliste): Beim
+    Öffnen der Handy-App erscheint ein offenes Dokument sofort zum Lesen und Unterschreiben; „Später erinnern“ nur für heute
+    (Cookie), danach wieder; nach dem Unterschreiben gleich das nächste. Überfällige Unterschriften als Hinweis auf der
+    Startseite. **Echte Push-Nachricht bei geschlossener App braucht weiterhin Firebase/APNs.**
+  - **Menü und Reiter entdoppelt:** Zeiterfassung, Transfer, Auswertungen, Rechnungen ohne Reiterzeile (Bereiche links im
+    Menü; Rechnungen: Filter „Alle / Nicht versendet“). Kassenbuch und Urlaub behalten ihre Reiter, dafür nur ein Menüpunkt.
+    Disposition: Planung, Arbeitsscheine, Qualitätskontrollen (Knopf zur QM-App), Zählerstände, Glas, Tiefgarage,
+    Grundreinigung. Raus aus dem Menü: Sonderdienste (Daten bleiben), Vertretungen (über die Planung), Soll/Ist-Doppel,
+    Urlaubskalender (unter Urlaub), Karten-Belege (Reiter im Kassenbuch).
+  - **Urlaubskalender:** Filter Art/Suche/nur mit Abwesenheit/nur genehmigte, Tage U/K je Monat, Export **PDF** (A4 quer,
+    farbig) und **CSV**. **Heute abwesend** auf der Startseite und in der Zeiterfassung (Objektleitung nur Mitarbeitende
+    ihrer Objekte und ohne Art – Krankheit = Gesundheitsdaten).
+  - **Stundenzettel & Lohnarten** zu einer Seite: Monat, Suche, Beschäftigungsart, Objekt, Unterschrift-Status; Ansicht
+    Stunden oder Lohnarten & Zuschläge; Export PDF-Übersicht, Stundenzettel drucken/PDF, CSV-Übersicht, CSV fürs
+    Lohnprogramm (alle mit Filter). `/zeiterfassung/lohnarten` leitet um. Neuer Listen-PDF-Baustein `src/pdf/table.ts`.
+  - Lokale Entwicklung: nach Container-Neustart war die Dev-DB älter als das Archiv → neue DB `viva_dev16` mit eigenem
+    Archiv-Ordner (`.env.dev`, nicht im Repo); nichts gelöscht.
+  - Tests: 343 Unit-/DB-Tests (neu `runde16.db.test.ts`), alle 25 Browser-Suiten grün.

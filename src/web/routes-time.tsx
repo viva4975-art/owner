@@ -45,7 +45,9 @@ import { type AppEnv, type Ctx, UUID, assertSite, inScope } from './app.js';
 import { centsToInput } from './forms.js';
 import { canAccess } from './permissions.js';
 import { Icon } from './icons.js';
-import { PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
+import { PageHead, dateDe, euro } from './layout.js';
+import { AbsentCard } from './pages-crm.js';
+import { absentOn } from '../services/absences.js';
 
 const versionOf = (v: unknown) => (typeof v === 'string' && v !== '' ? Number(v) : null);
 const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
@@ -171,14 +173,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
         select count(*) filter (where status = 'laeuft')::int as running, count(*) filter (where status = 'beantragt')::int as requests
           from app.time_entries where ${scope ? sql`site_id in ${sql(scope.length ? scope : ['00000000-0000-0000-0000-000000000000'])}` : sql`true`}`,
     ]);
-    const tabs: Tab[] = [
-      { key: 'tag', label: 'Tagesübersicht', href: '/zeiterfassung' },
-      { key: 'freigaben', label: 'Freigaben', href: '/zeiterfassung/freigaben', count: cnt!.requests },
-      { key: 'liste', label: 'Alle Zeiten', href: '/zeiterfassung/liste' },
-      { key: 'monat', label: 'Monat Soll/Ist', href: '/zeiterfassung/monat' },
-      { key: 'zoll', label: 'Prüfbericht Zoll', href: '/zeiterfassung/pruefbericht' },
-      { key: 'einstellungen', label: 'Einstellungen', href: '/zeiterfassung/einstellungen' },
-    ].filter((t) => canAccess(c.get('user').role, t.href));
+    void active; // Bereiche stehen links im Menü (keine doppelte Reiterzeile)
     return page(
       c,
       title,
@@ -188,6 +183,11 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
           <span class="badge info" style="margin-left:4px">
             {cnt!.running} jetzt im Einsatz
           </span>
+          {cnt!.requests > 0 && canAccess(c.get('user').role, '/zeiterfassung/freigaben') && (
+            <a class="badge warn" href="/zeiterfassung/freigaben">
+              {cnt!.requests} Nachträge freigeben
+            </a>
+          )}
           <a class="btn sec" href="/m" target="_blank" style="margin-left:auto">
             <Icon name="user" /> Mitarbeiter-Ansicht
           </a>
@@ -195,7 +195,6 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
             <Icon name="plus" /> Zeit erfassen
           </a>
         </PageHead>
-        <Tabs tabs={tabs} active={active} />
         {body}
       </>,
     );
@@ -227,11 +226,17 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
       .filter((e) => e.end_at && ['erfasst', 'freigegeben'].includes(e.status))
       .reduce((a, e) => a + netMinutes(e), 0);
     const hol = holidayName(day);
+    const absent = await absentOn(sql, day, scope);
     return shell(
       c,
       'tag',
       'Zeiterfassung',
       <>
+        <AbsentCard
+          absent={absent}
+          showKind={c.get('user').role !== 'objektleitung'}
+          href={canAccess(c.get('user').role, '/urlaub/kalender') ? '/urlaub/kalender' : undefined}
+        />
         <form method="get" action="/zeiterfassung" class="actions" style="margin-top:0">
           <a class="btn sec" href={`/zeiterfassung?datum=${addDays(day, -1)}`}>
             ←

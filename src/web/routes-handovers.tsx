@@ -32,6 +32,7 @@ import { listHandoverObjects } from '../services/vehicles.js';
 import { type AppEnv, assertSite, type Ctx, UUID } from './app.js';
 import { arr, centsToInput, str } from './forms.js';
 import { PageHead, dateDe, euro } from './layout.js';
+import { canAccess } from './permissions.js';
 import { SIGN_JS } from './routes-orders.js';
 
 const STATUS_CLASS: Record<HandoverStatus, string> = {
@@ -80,6 +81,7 @@ export const HandoverTable: FC<{ rows: HandoverRow[]; showSite?: boolean }> = ({
           {showSite && <th>Objekt</th>}
           <th>Inhalt</th>
           <th>Status</th>
+          <th class="acts"></th>
         </tr>
       </thead>
       <tbody>
@@ -109,11 +111,27 @@ export const HandoverTable: FC<{ rows: HandoverRow[]; showSite?: boolean }> = ({
             <td>
               <span class={`badge ${STATUS_CLASS[h.status]}`}>{HANDOVER_STATUS[h.status]}</span>
             </td>
+            <td class="acts">
+              {h.status === 'entwurf' ? (
+                <>
+                  <a class="btn sm" href={`/uebergaben/${h.id}/unterschrift`}>
+                    Unterschreiben lassen
+                  </a>{' '}
+                  <a class="btn sm sec" href={`/uebergaben/${h.id}/protokoll.pdf`} target="_blank">
+                    PDF drucken
+                  </a>
+                </>
+              ) : (
+                <a class="btn sm sec" href={`/uebergaben/${h.id}/protokoll.pdf`} target="_blank">
+                  Protokoll
+                </a>
+              )}
+            </td>
           </tr>
         ))}
         {!rows.length && (
           <tr>
-            <td colspan={7}>
+            <td colspan={8}>
               <div class="empty">Keine Übergaben.</div>
             </td>
           </tr>
@@ -125,7 +143,6 @@ export const HandoverTable: FC<{ rows: HandoverRow[]; showSite?: boolean }> = ({
 
 export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
   const { sql } = deps;
-  const stockRole = (role: string) => ['admin', 'buchhaltung', 'personal'].includes(role);
 
   /** Mitarbeitende zur Auswahl: Objektleitung nur die ihrer Objekte. */
   async function employeesFor(c: Context<AppEnv>) {
@@ -150,69 +167,25 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
     return h;
   }
 
-  // ------------------------------------------------------------------ Liste
-  app.get('/uebergaben', async (c) => {
-    const kq = c.req.query('art');
-    const kind = kq && kq in HANDOVER_KIND ? (kq as HandoverKind) : null;
-    const sq = c.req.query('status');
-    const status = sq && sq in HANDOVER_STATUS ? (sq as HandoverStatus) : null;
-    const q = c.req.query('q') ?? '';
-    const rows = await listHandovers(sql, { scope: c.get('sites'), kind, status, q });
+  /** Wohin „zurück“? Übergaben haben keine eigene Seite mehr: Mitarbeiter, Nachunternehmer oder Objekt. */
+  function homeOf(
+    c: Context<AppEnv>,
+    h: { employee_id?: string | null; supplier_id?: string | null; site_id?: string | null },
+  ): [string, string] {
     const role = c.get('user').role;
-    return page(
-      c,
-      'Übergaben',
-      'inventar',
-      <>
-        <PageHead title="Übergaben mit Unterschrift" />
-        <p class="mut" style="max-width:900px;margin-top:0">
-          Arbeitskleidung, Geräte, Dokumente/Unterweisungen und sonstige Gegenstände (Diensthandy, Tankkarte
-          …) an Mitarbeitende oder Nachunternehmer übergeben und direkt am Handy/Tablet unterschreiben lassen.
-          Erst mit der Unterschrift wird der Bestand gebucht; danach ist das Protokoll unveränderbar.
-          Schlüssel gibt es im <a href="/schluessel">Schlüsselbuch</a> bzw. am Objekt unter „Schlüssel“.
-          {stockRole(role) && (
-            <>
-              {' '}
-              Kleidungsbestand und Artikel: <a href="/arbeitskleidung">Einstellungen → Arbeitskleidung</a>.
-            </>
-          )}
-        </p>
-        <div class="actions" style="margin-top:0">
-          {NEW_KINDS.map((k) => (
-            <a class="btn sm" href={`/uebergaben/${randomUUID()}?art=${k}`}>
-              + {HANDOVER_KIND[k]}
-            </a>
-          ))}
-        </div>
-        <form method="get" class="actions">
-          <select name="art" onchange="this.form.submit()" aria-label="Art" style="max-width:220px">
-            <option value="">Alle Arten</option>
-            {KINDS.map((k) => (
-              <option value={k} selected={k === kind}>
-                {HANDOVER_KIND[k]}
-              </option>
-            ))}
-          </select>
-          <select name="status" onchange="this.form.submit()" aria-label="Status" style="max-width:220px">
-            <option value="">Alle Status</option>
-            {(Object.keys(HANDOVER_STATUS) as HandoverStatus[])
-              .filter((s) => s !== 'storniert')
-              .map((s) => (
-                <option value={s} selected={s === status}>
-                  {HANDOVER_STATUS[s]}
-                </option>
-              ))}
-          </select>
-          <input name="q" value={q} placeholder="Name, Nr., Titel" style="max-width:240px" />
-          <button class="btn sec sm">Suchen</button>
-          <span class="small mut">{rows.length} Einträge</span>
-        </form>
-        <div class="card">
-          <HandoverTable rows={rows} />
-        </div>
-      </>,
-    );
-  });
+    if (h.employee_id && canAccess(role, `/personal/${h.employee_id}/uebergaben`))
+      return ['Mitarbeiter', `/personal/${h.employee_id}/uebergaben`];
+    if (h.supplier_id && canAccess(role, `/lieferanten/${h.supplier_id}`))
+      return ['Nachunternehmer', `/lieferanten/${h.supplier_id}`];
+    if (h.site_id) return ['Objekt', `/objekte/${h.site_id}/uebergaben`];
+    return role === 'objektleitung' ? ['Objekte', '/objekte'] : ['Personal', '/personal'];
+  }
+
+  // ------------------------------------------------------------------ Liste
+  // Keine eigene Übergaben-Seite mehr: Übergaben stehen beim Mitarbeiter, Nachunternehmer und Objekt.
+  app.get('/uebergaben', (c) =>
+    c.redirect(c.get('user').role === 'objektleitung' ? '/objekte' : '/personal'),
+  );
 
   // ------------------------------------------------------------------ Anlegen / Bearbeiten / Ansicht
   app.get(`/uebergaben/:id{${UUID}}`, async (c) => {
@@ -288,7 +261,16 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
       title,
       'inventar',
       <>
-        <PageHead title={title} crumbs={[['Übergaben', '/uebergaben']]} />
+        <PageHead
+          title={title}
+          crumbs={[
+            homeOf(c, {
+              employee_id: to === 'ma' ? employeeId : null,
+              supplier_id: to === 'nu' ? supplierId : null,
+              site_id: siteId,
+            }),
+          ]}
+        />
         <form method="get" class="actions card" style="margin-top:0">
           {rel && <input type="hidden" name="zu" value={rel.id} />}
           <label class="small" for="sel-art" style="margin:0">
@@ -684,7 +666,16 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
           <p class="small mut">Erklärung über der Unterschrift: „{declaration(kind, direction)}“</p>
           <script dangerouslySetInnerHTML={{ __html: OTHER_JS }} />
           <div class="formfoot">
-            <a class="btn sec" href="/uebergaben">
+            <a
+              class="btn sec"
+              href={
+                homeOf(c, {
+                  employee_id: to === 'ma' ? employeeId : null,
+                  supplier_id: to === 'nu' ? supplierId : null,
+                  site_id: siteId,
+                })[1]
+              }
+            >
               Zurück
             </a>
             <button class="btn">Speichern und zur Unterschrift</button>
@@ -696,8 +687,21 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
               Jetzt unterschreiben lassen
             </a>
             <a class="btn sec" href={`/uebergaben/${id}/protokoll.pdf`} target="_blank">
-              Vorschau PDF
+              PDF drucken
             </a>
+            <form method="post" action={`/uebergaben/${id}/ohne-unterschrift`} style="margin:0">
+              <input
+                type="hidden"
+                name="reason"
+                value="Ausdruck auf Papier unterschrieben (Original in der Personalakte)"
+              />
+              <button
+                class="btn sec sm"
+                onclick="return confirm('Ausdruck wurde auf Papier unterschrieben? Dann wird jetzt gebucht und abgeschlossen.')"
+              >
+                Auf Papier unterschrieben
+              </button>
+            </form>
             <form
               method="post"
               action={`/uebergaben/${id}/ohne-unterschrift`}
@@ -741,7 +745,7 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
       h.number,
       'inventar',
       <>
-        <PageHead title={`${h.title}`} no={h.number} crumbs={[['Übergaben', '/uebergaben']]} />
+        <PageHead title={`${h.title}`} no={h.number} crumbs={[homeOf(c, h)]} />
         <div class="card">
           <p style="margin-top:0">
             <span class={`badge ${STATUS_CLASS[h.status]}`}>{HANDOVER_STATUS[h.status]}</span>{' '}
@@ -926,9 +930,10 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
 
   app.post(`/uebergaben/:id{${UUID}}/loeschen`, async (c) => {
     const id = c.req.param('id');
-    if (!(await load(c, id))) return c.notFound();
+    const h = await load(c, id);
+    if (!h) return c.notFound();
     await deleteDraft(sql, id, c.get('actor'));
-    return back(c, '/uebergaben', { ok: 'Entwurf gelöscht.' });
+    return back(c, homeOf(c, h)[1], { ok: 'Entwurf gelöscht.' });
   });
 
   // ------------------------------------------------------------------ Unterschrift vor Ort
@@ -1068,8 +1073,8 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
       return (
         <>
           <div class="actions" style="margin-top:0">
-            {KINDS.map((k) => (
-              <a class="btn sm" href={`/uebergaben/${randomUUID()}?art=${k}&mitarbeiter=${e.id}`}>
+            {NEW_KINDS.map((k) => (
+              <a class="btn sm" href={`/uebergaben/${randomUUID()}?art=${k}&an=ma&mitarbeiter=${e.id}`}>
                 + {HANDOVER_KIND[k]}
               </a>
             ))}
@@ -1104,6 +1109,31 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
           </div>
           <div class="card">
             <HandoverTable rows={rows} />
+          </div>
+        </>
+      );
+    }),
+  );
+
+  // Objekt → Übergaben (Objektleitung: Kleidung, Geräte, Dokumente an Mitarbeitende des Objekts)
+  app.get(`/objekte/:id{${UUID}}/uebergaben`, (c) =>
+    shells.site!(c, 'uebergaben', async (st) => {
+      const rows = await listHandovers(sql, { scope: [st.id], kind: null, status: null, q: '' });
+      return (
+        <>
+          <div class="actions" style="margin-top:0">
+            {NEW_KINDS.map((k) => (
+              <a class="btn sm" href={`/uebergaben/${randomUUID()}?art=${k}&an=ma&objekt=${st.id}`}>
+                + {HANDOVER_KIND[k]}
+              </a>
+            ))}
+          </div>
+          <p class="small mut" style="max-width:860px">
+            Übergabe anlegen, dann direkt am Handy/Tablet unterschreiben lassen – oder als PDF drucken und auf
+            Papier unterschreiben lassen.
+          </p>
+          <div class="card">
+            <HandoverTable rows={rows} showSite={false} />
           </div>
         </>
       );

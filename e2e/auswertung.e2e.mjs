@@ -34,14 +34,23 @@ await p.goto(B + '/auswertungen');
 const cards = await p.locator('a.card').count();
 check('Übersicht mit allen Berichten', cards === 10, String(cards));
 
-console.log('2. Berichte über die Reiter');
+console.log('2. Berichte über das Menü links (keine doppelte Reiterzeile)');
 const tabs = await p
   .goto(B + '/auswertungen/rechnungen')
-  .then(() => p.locator('.tabs a').evaluateAll((as) => as.map((a) => a.getAttribute('href'))));
-check('10 Reiter', tabs.length === 10, String(tabs.length));
+  .then(() =>
+    p
+      .locator('.appside .sub a[href^="/auswertungen/"]')
+      .evaluateAll((as) => as.map((a) => a.getAttribute('href'))),
+  );
+check('10 Berichte im Menü', tabs.length === 10, String(tabs.length));
+check('keine Reiterzeile', (await p.locator('.tabs a').count()) === 0);
 for (const href of tabs) {
   const r = await p.goto(B + href);
-  check(`${href} lädt`, r.ok() && (await p.locator('.tabs a.on').count()) === 1, String(r.status()));
+  check(
+    `${href} lädt, Menüpunkt markiert`,
+    r.ok() && (await p.locator(`.appside .sub a.on[href="${href}"]`).count()) === 1,
+    String(r.status()),
+  );
 }
 await p.goto(B + '/auswertungen/rechnungen');
 await p.click('a:has-text("←")');

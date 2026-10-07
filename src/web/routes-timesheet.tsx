@@ -7,7 +7,8 @@ import {
   saveAbsenceHours,
 } from '../services/absences.js';
 import { BusinessError } from '../services/errors.js';
-import { listEmployees } from '../services/employees.js';
+import { EMPLOYMENT_TYPES, listEmployees } from '../services/employees.js';
+import { renderTablePdf } from '../pdf/table.js';
 import { hm } from '../services/time.js';
 import {
   ABSENCE_SHORT,
@@ -29,7 +30,8 @@ import {
   payrollMonth,
   savePayrollSettings,
 } from '../services/payroll.js';
-import type { Ctx } from './app.js';
+import type { Context } from 'hono';
+import type { AppEnv, Ctx } from './app.js';
 import { arr, str } from './forms.js';
 import { PageHead, dateDe, euro } from './layout.js';
 
@@ -197,116 +199,312 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
     });
   });
 
-  // ------------------------------------------------------------ alle Mitarbeitenden eines Monats
-  app.get('/zeiterfassung/stundenzettel', async (c) => {
+  // ------------------------------------------------------------ Stundenzettel & Lohnarten (eine Seite)
+  type SigState = 'alle' | 'unterschrieben' | 'offen' | 'geaendert';
+  const listData = async (c: Context<AppEnv>) => {
     const month = monthOf(c.req.query('monat'));
+    const q = (c.req.query('q') ?? '').trim();
+    const art = c.req.query('art') ?? '';
+    const site = c.req.query('objekt') ?? '';
+    const sig = (c.req.query('unterschrift') ?? 'alle') as SigState;
+    const view = c.req.query('ansicht') === 'lohnarten' ? 'lohnarten' : 'stunden';
     const { from, to } = monthRange(month);
-    const emps = (await listEmployees(sql)).filter(
-      (e) => e.entry_date <= to && (!e.exit_date || e.exit_date >= from),
+    const [all, sigs, pay, siteLinks, sites] = await Promise.all([
+      listEmployees(sql),
+      signaturesOfMonth(sql, month),
+      payrollMonth(sql, month),
+      sql<{ employee_id: string; site_id: string }[]>`select employee_id, site_id from app.employee_sites`,
+      sql<{ id: string; site_no: string; name: string }[]>`
+        select id, site_no, name from app.sites where active order by name`,
+    ]);
+    const lq = q.toLowerCase();
+    const emps = all.filter(
+      (e) =>
+        e.entry_date <= to &&
+        (!e.exit_date || e.exit_date >= from) &&
+        (!lq || `${e.last_name} ${e.first_name} ${e.personnel_no}`.toLowerCase().includes(lq)) &&
+        (!art || e.employment_type === art) &&
+        (!site || siteLinks.some((l) => l.employee_id === e.id && l.site_id === site)),
     );
-    const sigs = await signaturesOfMonth(sql, month);
     const sheets = await Promise.all(emps.map((e) => timesheet(sql, e.id, month)));
-    const rows = emps.map((e, i) => ({ e, s: sheets[i]! })).filter((x) => x.s.rows.length > 0);
-    const signed = rows.filter((x) => sigs.get(x.e.id)?.sheet_hash === x.s.hash).length;
+    const payOf = new Map(pay.map((p) => [p.employee_id, p]));
+    const rows = emps
+      .map((e, i) => {
+        const s = sheets[i]!;
+        const sg = sigs.get(e.id);
+        const state: Exclude<SigState, 'alle'> = sg
+          ? sg.sheet_hash === s.hash
+            ? 'unterschrieben'
+            : 'geaendert'
+          : 'offen';
+        return { e, s, sg, state, p: payOf.get(e.id) };
+      })
+      .filter((x) => x.s.rows.length > 0 && (sig === 'alle' || x.state === sig));
+    const qs = (o: Record<string, string> = {}) => {
+      const p = new URLSearchParams({ monat: month });
+      if (q) p.set('q', q);
+      if (art) p.set('art', art);
+      if (site) p.set('objekt', site);
+      if (sig !== 'alle') p.set('unterschrift', sig);
+      if (view !== 'stunden') p.set('ansicht', view);
+      for (const [k, v] of Object.entries(o)) {
+        if (v) p.set(k, v);
+        else p.delete(k);
+      }
+      return p.toString();
+    };
+    return { month, q, art, site, sig, view, rows, sites, qs };
+  };
+  const surchargeMin = (p: { minutes: Record<string, number> } | undefined) =>
+    p ? SURCHARGES.reduce((a, k) => a + p.minutes[k]!, 0) : 0;
+  const surchargeEur = (p: { surchargeCents: Record<string, bigint> } | undefined) =>
+    p ? SURCHARGES.reduce((a, k) => a + p.surchargeCents[k]!, 0n) : 0n;
+
+  app.get('/zeiterfassung/stundenzettel', async (c) => {
+    const d = await listData(c);
+    const { month, rows } = d;
+    const st = await getPayrollSettings(sql);
+    const signed = rows.filter((x) => x.state === 'unterschrieben').length;
+    const tot = (f: (x: (typeof rows)[number]) => number) => rows.reduce((a, x) => a + f(x), 0);
     return page(
       c,
-      'Stundenzettel',
+      'Stundenzettel & Lohnarten',
       'personal',
       <>
-        <PageHead
-          title={`Stundenzettel ${monthLabel(month)}`}
-          crumbs={[['Zeiterfassung', '/zeiterfassung']]}
-        />
-        <div class="actions" style="margin-top:0">
-          <a class="btn sm sec" href={`?monat=${shiftMonth(month, -1)}`}>
-            ← {monthLabel(shiftMonth(month, -1))}
+        <PageHead title={`Stundenzettel & Lohnarten ${monthLabel(month)}`} />
+        <form method="get" class="actions" style="margin-top:0">
+          <a class="btn sm sec" href={`?${d.qs({ monat: shiftMonth(month, -1) })}`}>
+            ←
           </a>
-          <a class="btn sm sec" href={`?monat=${shiftMonth(month, 1)}`}>
-            {monthLabel(shiftMonth(month, 1))} →
+          <input
+            type="month"
+            name="monat"
+            value={month}
+            onchange="this.form.submit()"
+            style="max-width:170px"
+          />
+          <a class="btn sm sec" href={`?${d.qs({ monat: shiftMonth(month, 1) })}`}>
+            →
           </a>
-          <span style="flex:1" />
-          <span class="mut">
-            {signed} von {rows.length} unterschrieben
+          <input name="q" value={d.q} placeholder="Name oder Pers.-Nr." style="max-width:190px" />
+          <select
+            name="art"
+            onchange="this.form.submit()"
+            aria-label="Beschäftigungsart"
+            data-nosearch
+            style="max-width:220px"
+          >
+            <option value="">Alle Beschäftigungsarten</option>
+            {Object.entries(EMPLOYMENT_TYPES).map(([k, v]) => (
+              <option value={k} selected={k === d.art}>
+                {v}
+              </option>
+            ))}
+          </select>
+          <select name="objekt" onchange="this.form.submit()" aria-label="Objekt" style="max-width:240px">
+            <option value="">Alle Objekte</option>
+            {d.sites.map((x) => (
+              <option value={x.id} selected={x.id === d.site}>
+                {x.site_no} · {x.name}
+              </option>
+            ))}
+          </select>
+          <select
+            name="unterschrift"
+            onchange="this.form.submit()"
+            aria-label="Unterschrift"
+            data-nosearch
+            style="max-width:240px"
+          >
+            {(
+              [
+                ['alle', 'Unterschrift: alle'],
+                ['unterschrieben', 'unterschrieben'],
+                ['offen', 'noch offen'],
+                ['geaendert', 'geändert (neu unterschreiben)'],
+              ] as const
+            ).map(([k, v]) => (
+              <option value={k} selected={k === d.sig}>
+                {v}
+              </option>
+            ))}
+          </select>
+          {d.view !== 'stunden' && <input type="hidden" name="ansicht" value={d.view} />}
+          <button class="btn sm sec">Filtern</button>
+        </form>
+        <div class="actions">
+          <div class="chips" style="margin:0">
+            <a href={`?${d.qs({ ansicht: '' })}`} class={d.view === 'stunden' ? 'on' : ''}>
+              Stunden
+            </a>
+            <a href={`?${d.qs({ ansicht: 'lohnarten' })}`} class={d.view === 'lohnarten' ? 'on' : ''}>
+              Lohnarten &amp; Zuschläge
+            </a>
+          </div>
+          <span class="mut small">
+            {rows.length} Mitarbeitende · {signed} von {rows.length} unterschrieben
           </span>
+          <span style="flex:1" />
           <a
-            class="btn sm"
-            href={`/zeiterfassung/stundenzettel/druck?monat=${month}`}
+            class="btn sm sec"
+            href={`/zeiterfassung/stundenzettel/uebersicht.pdf?${d.qs()}`}
+            target="_blank"
+          >
+            PDF Übersicht
+          </a>
+          <a
+            class="btn sm sec"
+            href={`/zeiterfassung/stundenzettel/druck?${d.qs()}`}
             target="_blank"
             rel="noopener"
           >
-            Alle drucken / PDF
+            Stundenzettel drucken / PDF
+          </a>
+          <a class="btn sm sec" href={`/zeiterfassung/stundenzettel.csv?${d.qs()}`}>
+            CSV Übersicht
+          </a>
+          <a class="btn sm" href={`/zeiterfassung/lohnarten.csv?${d.qs()}`}>
+            CSV Lohnprogramm
           </a>
         </div>
+        {d.view === 'lohnarten' && (
+          <p class="small mut" style="max-width:960px">
+            Zuschläge nach Rahmentarifvertrag Gebäudereinigung (§ 10) laut{' '}
+            <a href="/zeiterfassung/lohnarten/einstellungen">Einstellungen</a>: Nacht {st.night_from}–
+            {st.night_to} {st.night_bp / 100} %, Sonntag {st.sunday_bp / 100} %, Feiertag{' '}
+            {st.holiday_bp / 100} %, hohe Feiertage {st.high_holiday_bp / 100} % – je Stunde nur der höchste.
+            Nur erfasste/freigegebene Zeiten.
+          </p>
+        )}
         <div class="tbl">
           <table>
             <thead>
-              <tr>
-                <th>Mitarbeiter</th>
-                <th class="r">Soll</th>
-                <th class="r">Gearbeitet</th>
-                <th class="r">Urlaub</th>
-                <th class="r">Krank</th>
-                <th class="r">Unbezahlt</th>
-                <th class="r">Bezahlt</th>
-                <th>Unterschrift</th>
-                <th></th>
-              </tr>
+              {d.view === 'stunden' ? (
+                <tr>
+                  <th>Mitarbeiter</th>
+                  <th class="r">Soll</th>
+                  <th class="r">Gearbeitet</th>
+                  <th class="r">Urlaub</th>
+                  <th class="r">Krank</th>
+                  <th class="r">Unbezahlt</th>
+                  <th class="r">Bezahlt</th>
+                  <th class="r">Zuschl.-Std.</th>
+                  <th>Unterschrift</th>
+                  <th></th>
+                </tr>
+              ) : (
+                <tr>
+                  <th>Mitarbeiter</th>
+                  {WAGE_TYPES.map((k) => (
+                    <th class="r">{WAGE_TYPE_LABEL[k].replace('Zuschlag ', 'Zuschl. ')}</th>
+                  ))}
+                  <th class="r">Zuschläge €</th>
+                </tr>
+              )}
             </thead>
             <tbody>
-              {rows.map(({ e, s }) => {
-                const sg = sigs.get(e.id);
-                return (
-                  <tr>
-                    <td>
-                      <a href={`/personal/${e.id}/stundenzettel?monat=${month}`}>
-                        {e.last_name}, {e.first_name}
-                      </a>
-                      <div class="small mut">{e.personnel_no}</div>
-                    </td>
-                    <td class="r">{hm(s.totals.plan)}</td>
-                    <td class="r">
-                      <b>{hm(s.totals.work)}</b>
-                    </td>
-                    <td class="r">{h(s.totals.vacation)}</td>
-                    <td class="r">{h(s.totals.sick)}</td>
-                    <td class="r">{h(s.totals.unpaid)}</td>
-                    <td class="r">
-                      <b>{hm(s.totals.paid)}</b>
-                    </td>
-                    <td>
-                      {sg ? (
-                        sg.sheet_hash === s.hash ? (
-                          <span class="badge ok">✓ {dateDe(sg.signed_at.toISOString().slice(0, 10))}</span>
-                        ) : (
-                          <span class="badge err">geändert</span>
-                        )
-                      ) : s.open.running || s.open.pending ? (
-                        <span class="badge warn">offene Zeiten</span>
-                      ) : (
-                        <span class="badge">offen</span>
+              {rows.map(({ e, s, sg, state, p }) => (
+                <tr>
+                  <td>
+                    <a href={`/personal/${e.id}/stundenzettel?monat=${month}`}>
+                      {e.last_name}, {e.first_name}
+                    </a>
+                    <div class="small mut">
+                      {e.personnel_no} · {EMPLOYMENT_TYPES[e.employment_type]}
+                      {p && !p.wage_cents && <span class="badge warn"> Lohn fehlt</span>}
+                      {(s.open.running > 0 || s.open.pending > 0) && (
+                        <span class="badge warn"> offene Zeiten</span>
                       )}
-                    </td>
-                    <td>
-                      <a
-                        class="btn sm sec"
-                        href={`/personal/${e.id}/stundenzettel/druck?monat=${month}`}
-                        target="_blank"
-                        rel="noopener"
-                      >
-                        Drucken
-                      </a>
-                    </td>
-                  </tr>
-                );
-              })}
+                    </div>
+                  </td>
+                  {d.view === 'stunden' ? (
+                    <>
+                      <td class="r">{hm(s.totals.plan)}</td>
+                      <td class="r">
+                        <b>{hm(s.totals.work)}</b>
+                      </td>
+                      <td class="r">{h(s.totals.vacation)}</td>
+                      <td class="r">{h(s.totals.sick)}</td>
+                      <td class="r">{h(s.totals.unpaid)}</td>
+                      <td class="r">
+                        <b>{hm(s.totals.paid)}</b>
+                      </td>
+                      <td class="r">{h(surchargeMin(p))}</td>
+                      <td>
+                        {state === 'unterschrieben' ? (
+                          <span class="badge ok">✓ {dateDe(sg!.signed_at.toISOString().slice(0, 10))}</span>
+                        ) : state === 'geaendert' ? (
+                          <span class="badge err">geändert</span>
+                        ) : (
+                          <span class="badge">offen</span>
+                        )}
+                      </td>
+                      <td>
+                        <a
+                          class="btn sm sec"
+                          href={`/personal/${e.id}/stundenzettel/druck?monat=${month}`}
+                          target="_blank"
+                          rel="noopener"
+                        >
+                          Drucken
+                        </a>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      {WAGE_TYPES.map((k) => (
+                        <td class="r">{h(p?.minutes[k] ?? 0)}</td>
+                      ))}
+                      <td class="r">{euro(surchargeEur(p))}</td>
+                    </>
+                  )}
+                </tr>
+              ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colspan={9} class="mut">
-                    Keine Zeiten in diesem Monat.
+                  <td colspan={12} class="mut">
+                    Keine Zeiten für diesen Filter.
                   </td>
                 </tr>
               )}
             </tbody>
+            {rows.length > 0 && (
+              <tfoot>
+                {d.view === 'stunden' ? (
+                  <tr>
+                    <td>
+                      <b>Summe</b>
+                    </td>
+                    <td class="r">{hm(tot((x) => x.s.totals.plan))}</td>
+                    <td class="r">
+                      <b>{hm(tot((x) => x.s.totals.work))}</b>
+                    </td>
+                    <td class="r">{h(tot((x) => x.s.totals.vacation))}</td>
+                    <td class="r">{h(tot((x) => x.s.totals.sick))}</td>
+                    <td class="r">{h(tot((x) => x.s.totals.unpaid))}</td>
+                    <td class="r">
+                      <b>{hm(tot((x) => x.s.totals.paid))}</b>
+                    </td>
+                    <td class="r">{h(tot((x) => surchargeMin(x.p)))}</td>
+                    <td colspan={2}></td>
+                  </tr>
+                ) : (
+                  <tr>
+                    <td>
+                      <b>Summe</b>
+                    </td>
+                    {WAGE_TYPES.map((k) => (
+                      <td class="r">
+                        <b>{h(tot((x) => x.p?.minutes[k] ?? 0))}</b>
+                      </td>
+                    ))}
+                    <td class="r">
+                      <b>{euro(rows.reduce((a, x) => a + surchargeEur(x.p), 0n))}</b>
+                    </td>
+                  </tr>
+                )}
+              </tfoot>
+            )}
           </table>
         </div>
       </>,
@@ -314,17 +512,95 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
   });
 
   app.get('/zeiterfassung/stundenzettel/druck', async (c) => {
-    const month = monthOf(c.req.query('monat'));
-    const { from, to } = monthRange(month);
-    const emps = (await listEmployees(sql)).filter(
-      (e) => e.entry_date <= to && (!e.exit_date || e.exit_date >= from),
-    );
+    const d = await listData(c);
     const sections: string[] = [];
-    for (const e of emps) {
-      const s = await timesheet(sql, e.id, month);
-      if (s.rows.length) sections.push(await sheetSection(s));
-    }
-    return c.html(printHtml(`Stundenzettel ${monthLabel(month)}`, sections));
+    for (const x of d.rows) sections.push(await sheetSection(x.s));
+    return c.html(printHtml(`Stundenzettel ${monthLabel(d.month)}`, sections));
+  });
+
+  const overviewCols = () => [
+    'Personalnummer',
+    'Name',
+    'Beschäftigung',
+    'Soll',
+    'Gearbeitet',
+    'Urlaub',
+    'Krank',
+    'Sonstige bezahlt',
+    'Unbezahlt',
+    'Bezahlt',
+    ...SURCHARGES.map((k) => WAGE_TYPE_LABEL[k]),
+    'Zuschläge €',
+    'Unterschrift',
+  ];
+  const overviewRow = (x: Awaited<ReturnType<typeof listData>>['rows'][number]) => [
+    x.e.personnel_no,
+    `${x.e.last_name}, ${x.e.first_name}`,
+    EMPLOYMENT_TYPES[x.e.employment_type],
+    hm(x.s.totals.plan),
+    hm(x.s.totals.work),
+    h(x.s.totals.vacation),
+    h(x.s.totals.sick),
+    h(x.s.totals.otherPaid),
+    h(x.s.totals.unpaid),
+    hm(x.s.totals.paid),
+    ...SURCHARGES.map((k) => h(x.p?.minutes[k] ?? 0)),
+    euro(surchargeEur(x.p)),
+    x.state === 'unterschrieben' ? 'ja' : x.state === 'geaendert' ? 'geändert' : 'offen',
+  ];
+
+  app.get('/zeiterfassung/stundenzettel.csv', async (c) => {
+    const d = await listData(c);
+    const safe = (v: string) => (/^[=+\-@]/.test(v) ? `'${v}` : v).replace(/;/g, ',');
+    const lines = [overviewCols().join(';'), ...d.rows.map((x) => overviewRow(x).map(safe).join(';'))];
+    return new Response(`\uFEFF${lines.join('\r\n')}\r\n`, {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="stundenzettel-${d.month}.csv"`,
+      },
+    });
+  });
+
+  app.get('/zeiterfassung/stundenzettel/uebersicht.pdf', async (c) => {
+    const d = await listData(c);
+    const cols = overviewCols();
+    const widths = [48, 120, 58, 40, 46, 40, 40, 44, 44, 44, 44, 44, 44, 44, 52, 52];
+    const tsum = (f: (x: (typeof d.rows)[number]) => number) => d.rows.reduce((a, x) => a + f(x), 0);
+    const pdf = await renderTablePdf({
+      title: `Stundenzettel & Lohnarten ${monthLabel(d.month)}`,
+      subtitle: `${d.rows.length} Mitarbeitende · Stunden in Std.:Min.`,
+      columns: cols.map((label, i) => ({
+        label: label.replace('Zuschlag ', 'Zuschl. ').replace('Sonstige bezahlt', 'Sonst. bez.'),
+        width: widths[i] ?? 44,
+        align: i >= 3 && i < cols.length - 1 ? ('right' as const) : ('left' as const),
+      })),
+      rows: d.rows.map((x) => overviewRow(x)),
+      totals: [
+        '',
+        'Summe',
+        '',
+        hm(tsum((x) => x.s.totals.plan)),
+        hm(tsum((x) => x.s.totals.work)),
+        h(tsum((x) => x.s.totals.vacation)),
+        h(tsum((x) => x.s.totals.sick)),
+        h(tsum((x) => x.s.totals.otherPaid)),
+        h(tsum((x) => x.s.totals.unpaid)),
+        hm(tsum((x) => x.s.totals.paid)),
+        ...SURCHARGES.map((k) => h(tsum((x) => x.p?.minutes[k] ?? 0))),
+        euro(d.rows.reduce((a, x) => a + surchargeEur(x.p), 0n)),
+        '',
+      ],
+      fontSize: 7,
+      footnote:
+        'Aufzeichnung nach § 17 MiLoG. Zuschläge nach RTV Gebäudereinigung laut Einstellungen; nur erfasste/freigegebene Zeiten. Vertraulich – Personaldaten.',
+    });
+    return new Response(pdf, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="stundenzettel-${d.month}.pdf"`,
+        'Cache-Control': 'private, no-store',
+      },
+    });
   });
 
   // ------------------------------------------------------------ Abwesenheit: Stunden je Tag/Einsatz
@@ -490,109 +766,19 @@ ${sheetTableHtml(s)}${signatureBlock(s, sig, sig ? `/personal/${s.employee.id}/s
   });
 
   // ------------------------------------------------------------ Lohnarten (für die Lohnabrechnung)
-  app.get('/zeiterfassung/lohnarten', async (c) => {
-    const month = monthOf(c.req.query('monat'));
-    const [rows, st] = await Promise.all([payrollMonth(sql, month), getPayrollSettings(sql)]);
-    const cols = WAGE_TYPES;
-    const sum = (k: (typeof cols)[number]) => rows.reduce((a, r) => a + r.minutes[k], 0);
-    return page(
-      c,
-      'Lohnarten',
-      'personal',
-      <>
-        <PageHead title={`Lohnarten ${monthLabel(month)}`} crumbs={[['Zeiterfassung', '/zeiterfassung']]} />
-        <div class="actions" style="margin-top:0">
-          <a class="btn sm sec" href={`?monat=${shiftMonth(month, -1)}`}>
-            ← {monthLabel(shiftMonth(month, -1))}
-          </a>
-          <a class="btn sm sec" href={`?monat=${shiftMonth(month, 1)}`}>
-            {monthLabel(shiftMonth(month, 1))} →
-          </a>
-          <span style="flex:1" />
-          <a class="btn sm sec" href="/zeiterfassung/lohnarten/einstellungen">
-            Zuschläge &amp; Lohnart-Nummern
-          </a>
-          <a class="btn sm" href={`/zeiterfassung/lohnarten.csv?monat=${month}`}>
-            Export für Lohnprogramm (CSV)
-          </a>
-        </div>
-        <p class="small mut" style="max-width:900px">
-          Stunden in Std.:Min. Zuschläge nach Rahmentarifvertrag Gebäudereinigung (§ 10): Nacht{' '}
-          {st.night_from}–{st.night_to} {st.night_bp / 100} %, Sonntag {st.sunday_bp / 100} %, Feiertag{' '}
-          {st.holiday_bp / 100} %, hohe Feiertage (Neujahr, Ostersonntag, Pfingstsonntag, 1. Mai, 25./26.12.){' '}
-          {st.high_holiday_bp / 100} % – je Stunde nur der höchste. Nur erfasste/freigegebene Zeiten;
-          Urlaub/Krank aus den Abwesenheiten (Stunden je Einsatz).
-        </p>
-        <div class="tbl">
-          <table>
-            <thead>
-              <tr>
-                <th>Mitarbeiter</th>
-                {cols.map((k) => (
-                  <th class="r">{WAGE_TYPE_LABEL[k].replace('Zuschlag ', 'Zuschl. ')}</th>
-                ))}
-                <th class="r">Zuschläge €</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr>
-                  <td>
-                    <a href={`/personal/${r.employee_id}/stundenzettel?monat=${month}`}>{r.name}</a>
-                    <div class="small mut">
-                      {r.personnel_no}
-                      {r.wage_cents ? ` · ${euro(r.wage_cents)}/Std.` : ''}
-                      {!r.wage_cents && <span class="badge warn"> Lohn fehlt</span>}
-                      {r.pending > 0 && <span class="badge warn"> {r.pending} offen</span>}
-                    </div>
-                  </td>
-                  {cols.map((k) => (
-                    <td class="r">{h(r.minutes[k])}</td>
-                  ))}
-                  <td class="r">{euro(SURCHARGES.reduce((a, k) => a + r.surchargeCents[k], 0n))}</td>
-                </tr>
-              ))}
-              {rows.length === 0 && (
-                <tr>
-                  <td colspan={cols.length + 2} class="mut">
-                    Keine Zeiten in diesem Monat.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-            {rows.length > 0 && (
-              <tfoot>
-                <tr>
-                  <td>
-                    <b>Summe</b>
-                  </td>
-                  {cols.map((k) => (
-                    <td class="r">
-                      <b>{h(sum(k))}</b>
-                    </td>
-                  ))}
-                  <td class="r">
-                    <b>
-                      {euro(
-                        rows.reduce(
-                          (a, r) => a + SURCHARGES.reduce((x, k) => x + r.surchargeCents[k], 0n),
-                          0n,
-                        ),
-                      )}
-                    </b>
-                  </td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
-      </>,
+  app.get('/zeiterfassung/lohnarten', (c) => {
+    const m = c.req.query('monat');
+    return c.redirect(
+      `/zeiterfassung/stundenzettel?ansicht=lohnarten${m ? `&monat=${encodeURIComponent(m)}` : ''}`,
+      301,
     );
   });
 
   app.get('/zeiterfassung/lohnarten.csv', async (c) => {
-    const month = monthOf(c.req.query('monat'));
-    const [rows, st] = await Promise.all([payrollMonth(sql, month), getPayrollSettings(sql)]);
+    const d = await listData(c);
+    const month = d.month;
+    const st = await getPayrollSettings(sql);
+    const rows = d.rows.map((x) => x.p).filter((p): p is NonNullable<typeof p> => !!p);
     return new Response(payrollCsv(rows, st, month), {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',

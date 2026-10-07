@@ -73,7 +73,7 @@ check('Hinweis Schriftform sichtbar', (await o.locator('body').innerText()).incl
 await o.fill('#title', 'Kündigung Test');
 await o.setInputFiles('#file', { name: 'k.pdf', mimeType: 'application/pdf', buffer: pdfBytes });
 await o.check(`input[name=employee][value="${empId}"]`);
-await o.click('button:has-text("Verteilen")');
+await o.click('button:has-text("Freigeben")');
 await o.waitForLoadState();
 check('Kündigung abgelehnt', (await flash(o)).includes('Schriftform'), await flash(o));
 
@@ -82,7 +82,7 @@ await o.fill('#title', `Unterweisung ${stamp}`);
 await o.selectOption('#category', 'unterweisung');
 await o.setInputFiles('#file', { name: 'unterweisung.pdf', mimeType: 'application/pdf', buffer: pdfBytes });
 await o.check(`input[name=employee][value="${empId}"]`);
-await o.click('button:has-text("Verteilen")');
+await o.click('button:has-text("Freigeben")');
 await o.waitForLoadState();
 check('Dokument verteilt', (await flash(o)).includes('verteilt'), await flash(o));
 const docUrl = o.url().split('?')[0];
@@ -94,8 +94,19 @@ await m.goto(B + '/m');
 await m.fill('#pn', pno);
 await m.fill('#pin', '5173');
 await nav(m, 'button:has-text("Anmelden")');
+check(
+  'App öffnet neues Dokument direkt',
+  m.url().includes('/m/dokumente/') &&
+    (await m.locator('body').innerText()).includes('Neues Dokument für Sie'),
+  m.url(),
+);
+await nav(m, 'button:has-text("Später erinnern")');
 const home = await m.locator('body').innerText();
-check('Startseite: Dokument zu unterschreiben', home.includes('Zu unterschreiben: 1'), home.slice(0, 300));
+check(
+  '„Später“: Startseite, Dokument bleibt offen',
+  home.includes('Zu unterschreiben: 1'),
+  home.slice(0, 300),
+);
 await m.click('a:has-text("Zu unterschreiben")');
 await m.click(`a:has-text("Unterweisung ${stamp}")`);
 await m.waitForLoadState();
@@ -119,8 +130,11 @@ for (let i = 1; i <= 24; i++)
   await m.mouse.move(box.x + 30 + i * 11, box.y + 120 + Math.sin(i / 2) * 35, { steps: 2 });
 await m.mouse.up();
 await m.screenshot({ path: `${out}/app1-unterschrift.png` });
+const docPage = m.url().split('?')[0];
 await nav(m, 'button:has-text("Unterschreiben")');
-check('unterschrieben', (await m.locator('body').innerText()).includes('Unterschrieben am'), await flash(m));
+check('unterschrieben', (await flash(m)).includes('unterschrieben'), await flash(m));
+await m.goto(docPage);
+check('Dokument: unterschrieben am', (await m.locator('body').innerText()).includes('Unterschrieben am'));
 await m.screenshot({ path: `${out}/app2-unterschrieben.png` });
 // fremde Anforderung nicht sichtbar
 const foreign = await m.request.get(B + '/m/dokumente/00000000-0000-4000-8000-000000000999/dokument.pdf');

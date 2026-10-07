@@ -32,7 +32,7 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/arbeitsscheine(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
   [/^\/(qualitaet|zaehler|sonderdienste|qm)(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
   [
-    /^\/objekte\/[0-9a-f-]{36}(\/(einsaetze|zeiten|qr|notizen|aufgaben|arbeitsscheine|raumbuch|stundenvorgabe|qualitaet|zaehler|dokumente|schluessel)([/.]|$)|$)/,
+    /^\/objekte\/[0-9a-f-]{36}(\/(einsaetze|zeiten|qr|notizen|aufgaben|arbeitsscheine|raumbuch|stundenvorgabe|qualitaet|zaehler|dokumente|schluessel|uebergaben)([/.]|$)|$)/,
     ['admin', 'buchhaltung', 'objektleitung', 'personal'],
   ],
   [/^\/objekte\/?$/, ['admin', 'buchhaltung', 'objektleitung']],

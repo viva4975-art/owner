@@ -43,6 +43,9 @@ export const EmployeeList: FC<{
   return (
     <>
       <PageHead title="Mitarbeiter">
+        <a class="btn sec" href="/personal/dokumente#neu">
+          Unterweisung an alle freigeben
+        </a>
         <a class="btn" href="/neu?typ=mitarbeiter">
           + Mitarbeiter anlegen
         </a>
@@ -228,7 +231,7 @@ export const EmployeeShell: FC<{
     { key: 'aufgaben', label: 'Aufgaben', href: `${base}/aufgaben`, count: tasks },
     { key: 'app', label: 'Handy-Zugang (PIN)', href: `${base}/app-zugang` },
     { key: 'kalender', label: 'Einsatzkalender', href: `${base}/kalender` },
-    { key: 'uebergaben', label: 'Übergaben (Kleidung, Schlüssel …)', href: `${base}/uebergaben` },
+    { key: 'uebergaben', label: 'Übergaben (Kleidung, Geräte …)', href: `${base}/uebergaben` },
   ];
   return (
     <>

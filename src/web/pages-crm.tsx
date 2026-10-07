@@ -5,6 +5,44 @@ import type { SearchHit } from '../services/search.js';
 import { Field } from './pages-masterdata.js';
 import { PageHead, dateDe, euro, initials } from './layout.js';
 import { InvoiceTable } from './pages-invoices.js';
+import { ABSENCE_LABEL, type AbsentNow } from '../services/absences.js';
+
+/** „Heute abwesend“: Büro sieht die Art, Objektleitung nur „abwesend“ (Krankheit = Gesundheitsdaten). */
+export const AbsentCard: FC<{ absent: AbsentNow[]; showKind: boolean; href?: string | undefined }> = ({
+  absent,
+  showKind,
+  href,
+}) => (
+  <section class="card dash-card">
+    {href ? (
+      <DashHead title="Heute abwesend" count={absent.length} href={href} more="Urlaubskalender" />
+    ) : (
+      <DashHead title="Heute abwesend" count={absent.length} />
+    )}
+    {absent.length === 0 ? (
+      <div class="dash-empty">Heute ist niemand abwesend.</div>
+    ) : (
+      <ul class="dash-list">
+        {absent.slice(0, 8).map((a) => (
+          <li>
+            <span class="avatar">{initials(a.name)}</span>
+            <div class="dl-main">
+              {href ? <a href={`/personal/${a.employee_id}/abwesenheiten`}>{a.name}</a> : a.name}
+              <div class="dl-sub">
+                {showKind ? ABSENCE_LABEL[a.kind] : 'abwesend'}
+                {a.half_day ? ' (halber Tag)' : ''} · bis {dateDe(a.end_date)}
+                {a.sites.length
+                  ? ` · ${a.sites.slice(0, 2).join(', ')}${a.sites.length > 2 ? ' …' : ''}`
+                  : ''}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    )}
+    {absent.length > 8 && <div class="dash-more">+ {absent.length - 8} weitere</div>}
+  </section>
+);
 
 // ---------------------------------------------------------------------------
 // Kontakte
@@ -352,7 +390,23 @@ export const Dashboard: FC<{
   month: string;
   todo: DashboardTodo;
   kpi: DashboardKpi;
-}> = ({ user, tasks, drafts, balances, unsent, hr, month, todo, kpi }) => {
+  absent?: AbsentNow[];
+  signOverdue?: { id: string; title: string; open: number }[];
+  absentHref?: string | undefined;
+}> = ({
+  user,
+  tasks,
+  drafts,
+  balances,
+  unsent,
+  hr,
+  month,
+  todo,
+  kpi,
+  absent = [],
+  signOverdue = [],
+  absentHref,
+}) => {
   const total = balances.reduce((s, b) => s + b.open_cents, 0n);
   const overdue = balances.filter((b) => b.max_overdue_days > 0);
   const overdueTasks = tasks.filter((t) => t.due_date && t.due_date < kpi.today).length;
@@ -366,6 +420,15 @@ export const Dashboard: FC<{
         </>
       ),
       href: `/personal/${p.id}`,
+    })),
+    ...signOverdue.map((d) => ({
+      tone: 'err',
+      text: (
+        <>
+          Unterschrift überfällig: <b>{d.title}</b> – {d.open} offen
+        </>
+      ),
+      href: `/personal/dokumente/${d.id}`,
     })),
     ...todo.suppliers.map((x) => ({
       tone: 'warn',
@@ -647,6 +710,8 @@ export const Dashboard: FC<{
               </li>
             </ul>
           </section>
+
+          <AbsentCard absent={absent} showKind href={absentHref} />
 
           {hints.length > 0 && (
             <section class="card dash-card">

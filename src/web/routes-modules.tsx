@@ -1,6 +1,6 @@
+import { absentOn } from '../services/absences.js';
 import { followups } from '../services/prospects.js';
 import { canAccess } from './permissions.js';
-import { ReportTabs } from './routes-reports.js';
 import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
 import type { Child } from 'hono/jsx';
@@ -127,11 +127,22 @@ export function registerModuleRoutes(ctx: Ctx) {
       monthLabel: MONTHS[Number(today.slice(5, 7)) - 1]!,
       today,
     };
+    const [absent, signOverdue] = await Promise.all([
+      absentOn(sql, todayBerlin(), null),
+      sql<{ id: string; title: string; open: number }[]>`
+        select d.id, d.title, count(*)::int as open from app.sign_documents d
+          join app.sign_requests r on r.document_id = d.id and r.status = 'offen'
+         where d.due_date is not null and d.due_date < ${todayBerlin()}
+         group by d.id, d.title order by d.title`,
+    ]);
     return page(
       c,
       'Übersicht',
       'home',
       <Dashboard
+        absent={absent}
+        absentHref={canAccess(role, '/urlaub/kalender') ? '/urlaub/kalender' : undefined}
+        signOverdue={signOverdue}
         user={c.get('actor').charAt(0).toUpperCase() + c.get('actor').slice(1)}
         tasks={tasks}
         drafts={drafts}
@@ -404,7 +415,6 @@ export function registerModuleRoutes(ctx: Ctx) {
       'auswertungen',
       <>
         <PageHead title="Netto-Umsatz je Monat" crumbs={[['Auswertungen', '/auswertungen']]} />
-        <ReportTabs c={c} active="umsatz" />
         <div class="card">
           <p class="mut small" style="margin-top:0">
             Nach Rechnungsdatum, alle ausgestellten Belege (Stornos mindern den Umsatz).

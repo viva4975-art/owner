@@ -35,6 +35,7 @@ import {
   calRange,
 } from './pages-site-calendar.js';
 import { PageHead, type Tab, Tabs, dateDe } from './layout.js';
+import { renderTablePdf } from '../pdf/table.js';
 
 const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const isMonth = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}$/.test(v);
@@ -420,88 +421,273 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     );
   });
 
-  app.get('/urlaub/kalender', async (c) => {
+  /** Urlaubskalender-Daten (Monat, Filter Art/Suche/nur mit Abwesenheit) – auch für PDF/CSV. */
+  const calendarData = async (c: Context<AppEnv>) => {
     const month = isMonth(c.req.query('monat')) ? c.req.query('monat')! : todayBerlin().slice(0, 7);
+    const kind = (c.req.query('art') ?? '') as AbsenceKind | '';
+    const q = (c.req.query('q') ?? '').trim().toLowerCase();
+    const onlyAbsent = c.req.query('nur') === '1';
+    const withRequested = c.req.query('beantragt') !== '0';
     const from = `${month}-01`;
     const to = addDays(`${addDays(from, 32).slice(0, 7)}-01`, -1);
-    const [emps, abs] = await Promise.all([
+    const [allEmps, allAbs] = await Promise.all([
       listEmployees(sql, { status: 'aktiv' }),
-      listAbsences(sql, { from, to, status: ['beantragt', 'genehmigt'] }),
+      listAbsences(sql, { from, to, status: withRequested ? ['beantragt', 'genehmigt'] : ['genehmigt'] }),
     ]);
+    const abs = allAbs.filter((a) => !kind || a.kind === kind);
+    const emps = allEmps.filter(
+      (e) =>
+        (!q || `${e.last_name} ${e.first_name} ${e.personnel_no}`.toLowerCase().includes(q)) &&
+        (!onlyAbsent || abs.some((a) => a.employee_id === e.id)),
+    );
     const days: string[] = [];
     for (let d = from; d <= to; d = addDays(d, 1)) days.push(d);
+    const cell = (empId: string, d: string) =>
+      abs.find((x) => x.employee_id === empId && x.start_date <= d && x.end_date >= d);
+    const off = (d: string) => isoWeekday(d) >= 6 || !!holidayName(d);
+    // Tage je Mitarbeiter (nur Arbeitstage)
+    const totals = (empId: string) => {
+      const t: Partial<Record<AbsenceKind, number>> = {};
+      for (const d of days) {
+        const a = cell(empId, d);
+        if (a && !off(d)) t[a.kind] = (t[a.kind] ?? 0) + (a.half_day ? 0.5 : 1);
+      }
+      return t;
+    };
+    const label = new Date(`${from}T12:00:00Z`).toLocaleDateString('de-DE', {
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC',
+    });
+    return { month, kind, q, onlyAbsent, withRequested, from, to, emps, abs, days, cell, off, totals, label };
+  };
+  const qsOf = (d: Awaited<ReturnType<typeof calendarData>>, monat = d.month) => {
+    const p = new URLSearchParams({ monat });
+    if (d.kind) p.set('art', d.kind);
+    if (d.q) p.set('q', d.q);
+    if (d.onlyAbsent) p.set('nur', '1');
+    if (!d.withRequested) p.set('beantragt', '0');
+    return p.toString();
+  };
+  const fmtDays = (n: number | undefined) => (n ? String(n).replace('.', ',') : '');
+
+  app.get('/urlaub/kalender', async (c) => {
+    const d = await calendarData(c);
+    const { from, to, emps, days, cell, off, totals } = d;
     const prev = addDays(from, -1).slice(0, 7);
     const next = addDays(to, 1).slice(0, 7);
     return urlaubShell(
       c,
       'kalender',
       <>
-        <div class="actions" style="margin-top:0">
-          <a class="btn sec" href={`/urlaub/kalender?monat=${prev}`}>
+        <form method="get" class="actions" style="margin-top:0">
+          <a class="btn sec" href={`/urlaub/kalender?${qsOf(d, prev)}`}>
             ←
           </a>
-          <b>
-            {new Date(`${from}T12:00:00Z`).toLocaleDateString('de-DE', {
-              month: 'long',
-              year: 'numeric',
-              timeZone: 'UTC',
-            })}
-          </b>
-          <a class="btn sec" href={`/urlaub/kalender?monat=${next}`}>
+          <b style="min-width:120px;text-align:center">{d.label}</b>
+          <a class="btn sec" href={`/urlaub/kalender?${qsOf(d, next)}`}>
             →
           </a>
-          <span class="small mut">
-            U Urlaub · K krank · KK Kind krank · UB unbezahlt · S sonstiges · heller = beantragt
+          <input type="hidden" name="monat" value={d.month} />
+          <select
+            name="art"
+            onchange="this.form.submit()"
+            aria-label="Art"
+            style="max-width:180px"
+            data-nosearch
+          >
+            <option value="">Alle Arten</option>
+            {(Object.keys(ABSENCE_LABEL) as AbsenceKind[]).map((k) => (
+              <option value={k} selected={k === d.kind}>
+                {ABSENCE_LABEL[k]}
+              </option>
+            ))}
+          </select>
+          <input name="q" value={d.q} placeholder="Name oder Pers.-Nr." style="max-width:200px" />
+          <label class="chk" style="margin:0">
+            <input
+              type="checkbox"
+              name="nur"
+              value="1"
+              checked={d.onlyAbsent}
+              onchange="this.form.submit()"
+            />
+            nur mit Abwesenheit
+          </label>
+          <label class="chk" style="margin:0">
+            <input
+              type="checkbox"
+              name="beantragt"
+              value="0"
+              checked={!d.withRequested}
+              onchange="this.form.submit()"
+            />
+            nur genehmigte
+          </label>
+          <button class="btn sec sm">Filtern</button>
+          <span style="margin-left:auto;display:flex;gap:6px">
+            <a class="btn sec sm" href={`/urlaub/kalender.pdf?${qsOf(d)}`} target="_blank">
+              PDF
+            </a>
+            <a class="btn sec sm" href={`/urlaub/kalender.csv?${qsOf(d)}`}>
+              CSV (Excel)
+            </a>
           </span>
-        </div>
+        </form>
+        <p class="small mut" style="margin:0 0 8px">
+          U Urlaub · K krank · KK Kind krank · UB unbezahlt · S sonstiges · heller = beantragt · Tage =
+          Arbeitstage ohne Wochenende/Feiertag
+        </p>
         <div class="tbl">
           <table style="font-size:12px">
             <thead>
               <tr>
                 <th>Mitarbeiter</th>
-                {days.map((d) => (
+                {days.map((x) => (
                   <th
-                    style={`padding:6px 3px;text-align:center;${isoWeekday(d) >= 6 || holidayName(d) ? 'background:#eceef2' : ''}`}
-                    title={holidayName(d) ?? ''}
+                    style={`padding:6px 3px;text-align:center;${off(x) ? 'background:#eceef2' : ''}`}
+                    title={holidayName(x) ?? ''}
                   >
-                    {WEEKDAYS_SHORT[isoWeekday(d)]?.[0]}
+                    {WEEKDAYS_SHORT[isoWeekday(x)]?.[0]}
                     <br />
-                    {d.slice(8)}
+                    {x.slice(8)}
                   </th>
                 ))}
+                <th class="r" title="Urlaubstage im Monat">
+                  U
+                </th>
+                <th class="r" title="Krankheitstage im Monat">
+                  K
+                </th>
               </tr>
             </thead>
             <tbody>
-              {emps.map((e) => (
+              {emps.map((e) => {
+                const t = totals(e.id);
+                return (
+                  <tr>
+                    <td style="white-space:nowrap">
+                      <a href={`/personal/${e.id}/abwesenheiten`}>
+                        {e.last_name}, {e.first_name}
+                      </a>
+                    </td>
+                    {days.map((x) => {
+                      const a = cell(e.id, x);
+                      const o = off(x);
+                      return (
+                        <td
+                          style={`padding:6px 3px;text-align:center;${o ? 'background:#f4f5f7;' : ''}${
+                            a && !o
+                              ? `background:${a.kind === 'urlaub' ? 'var(--info-50)' : 'var(--err-50)'};color:${a.kind === 'urlaub' ? 'var(--info)' : 'var(--err)'};font-weight:650;${a.status === 'beantragt' ? 'opacity:.55' : ''}`
+                              : ''
+                          }`}
+                          title={a ? `${ABSENCE_LABEL[a.kind]} (${ABSENCE_STATUS_LABEL[a.status]})` : ''}
+                        >
+                          {a && !o ? ABS_CODE[a.kind] : ''}
+                        </td>
+                      );
+                    })}
+                    <td class="r">{fmtDays(t.urlaub)}</td>
+                    <td class="r">{fmtDays((t.krank ?? 0) + (t.kind_krank ?? 0) || undefined)}</td>
+                  </tr>
+                );
+              })}
+              {!emps.length && (
                 <tr>
-                  <td style="white-space:nowrap">
-                    <a href={`/personal/${e.id}/abwesenheiten`}>
-                      {e.last_name}, {e.first_name}
-                    </a>
+                  <td colspan={days.length + 3}>
+                    <div class="empty">Keine Mitarbeitenden für diesen Filter.</div>
                   </td>
-                  {days.map((d) => {
-                    const a = abs.find((x) => x.employee_id === e.id && x.start_date <= d && x.end_date >= d);
-                    const off = isoWeekday(d) >= 6 || !!holidayName(d);
-                    return (
-                      <td
-                        style={`padding:6px 3px;text-align:center;${off ? 'background:#f4f5f7;' : ''}${
-                          a && !off
-                            ? `background:${a.kind === 'urlaub' ? 'var(--info-50)' : 'var(--err-50)'};color:${a.kind === 'urlaub' ? 'var(--info)' : 'var(--err)'};font-weight:650;${a.status === 'beantragt' ? 'opacity:.55' : ''}`
-                            : ''
-                        }`}
-                        title={a ? `${ABSENCE_LABEL[a.kind]} (${ABSENCE_STATUS_LABEL[a.status]})` : ''}
-                      >
-                        {a && !off ? ABS_CODE[a.kind] : ''}
-                      </td>
-                    );
-                  })}
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
       </>,
     );
+  });
+
+  app.get('/urlaub/kalender.csv', async (c) => {
+    const d = await calendarData(c);
+    const safe = (v: string) => (/^[=+\-@]/.test(v) ? `'${v}` : v).replace(/;/g, ',');
+    const head = ['Personalnummer', 'Name', ...d.days.map((x) => `${x.slice(8)}.${x.slice(5, 7)}.`)];
+    head.push(...(Object.keys(ABSENCE_LABEL) as AbsenceKind[]).map((k) => `${ABSENCE_LABEL[k]} (Tage)`));
+    const lines = [head.join(';')];
+    for (const e of d.emps) {
+      const t = d.totals(e.id);
+      lines.push(
+        [
+          safe(e.personnel_no),
+          safe(`${e.last_name}, ${e.first_name}`),
+          ...d.days.map((x) => {
+            const a = d.cell(e.id, x);
+            return a && !d.off(x) ? `${ABS_CODE[a.kind]}${a.status === 'beantragt' ? '?' : ''}` : '';
+          }),
+          ...(Object.keys(ABSENCE_LABEL) as AbsenceKind[]).map((k) => fmtDays(t[k])),
+        ].join(';'),
+      );
+    }
+    return new Response(`\uFEFF${lines.join('\r\n')}\r\n`, {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="urlaubskalender-${d.month}.csv"`,
+      },
+    });
+  });
+
+  app.get('/urlaub/kalender.pdf', async (c) => {
+    const d = await calendarData(c);
+    const COLOR: Record<string, [number, number, number]> = {
+      urlaub: [0.86, 0.92, 0.99],
+      krank: [0.99, 0.88, 0.88],
+      kind_krank: [0.99, 0.88, 0.88],
+      unbezahlt: [0.93, 0.93, 0.93],
+      sonstiges: [0.99, 0.95, 0.85],
+    };
+    const pdf = await renderTablePdf({
+      title: `Urlaubskalender ${d.label}`,
+      subtitle: [
+        d.kind ? ABSENCE_LABEL[d.kind] : 'alle Arten',
+        d.withRequested ? 'genehmigt und beantragt (?)' : 'nur genehmigt',
+        d.q ? `Suche „${d.q}“` : '',
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      columns: [
+        { label: 'Mitarbeiter', width: 120 },
+        ...d.days.map((x) => ({
+          label: x.slice(8),
+          width: 19,
+          align: 'center' as const,
+        })),
+        { label: 'U', width: 22, align: 'right' as const },
+        { label: 'K', width: 22, align: 'right' as const },
+      ],
+      rows: d.emps.map((e) => {
+        const t = d.totals(e.id);
+        return [
+          `${e.last_name}, ${e.first_name}`,
+          ...d.days.map((x) => {
+            const a = d.cell(e.id, x);
+            if (d.off(x)) return { text: '', fill: [0.94, 0.94, 0.95] as [number, number, number] };
+            return a
+              ? { text: `${ABS_CODE[a.kind]}${a.status === 'beantragt' ? '?' : ''}`, fill: COLOR[a.kind]! }
+              : '';
+          }),
+          fmtDays(t.urlaub),
+          fmtDays((t.krank ?? 0) + (t.kind_krank ?? 0) || undefined),
+        ];
+      }),
+      fontSize: 6.5,
+      footnote:
+        'U Urlaub · K krank · KK Kind krank · UB unbezahlt · S sonstiges · ? = beantragt · grau = Wochenende/Feiertag (Bayern). Vertraulich – Personaldaten.',
+    });
+    return new Response(pdf, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="urlaubskalender-${d.month}.pdf"`,
+        'Cache-Control': 'private, no-store',
+      },
+    });
   });
 
   const createAbsence = async (c: Context<AppEnv>, redirect: (employeeId: string) => string) => {

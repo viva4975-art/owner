@@ -568,7 +568,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
 
         <div class="card">
           <div style="display:flex;align-items:center;gap:12px">
-            <h3 style="margin:0">Übergaben (Schlüssel, Kleidung, Dokumente)</h3>
+            <h3 style="margin:0">Übergaben (Kleidung, Geräte, Dokumente)</h3>
             <a
               class="btn sec sm"
               href={`/uebergaben/${randomUUID()}?art=sonstiges&nachunternehmer=${id}`}

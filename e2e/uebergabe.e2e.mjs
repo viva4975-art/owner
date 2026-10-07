@@ -62,11 +62,15 @@ await p.click('button:has-text("Buchen")');
 await p.waitForLoadState();
 check('Zugang gebucht', (await shirtStock()) === before + 5);
 
-console.log('2. Kleidung ausgeben und unterschreiben');
-await p.goto(B + '/uebergaben');
+console.log('2. Kleidung ausgeben und unterschreiben (beim Mitarbeiter)');
+const listRes = await p.request.get(B + '/uebergaben', { maxRedirects: 0 });
+check('keine eigene Übergaben-Seite mehr (Umleitung)', listRes.status() === 302);
+const firstEmp = (await (await p.request.get(B + '/personal')).text()).match(
+  /href="\/personal\/([0-9a-f-]{36})"/,
+)[1];
+await p.goto(B + `/personal/${firstEmp}/uebergaben`);
 await p.click('a:has-text("+ Arbeitskleidung")');
 await p.waitForLoadState();
-await p.selectOption('#employee', { index: 1 });
 const empName = (await p.locator('#employee option:checked').innerText()).trim();
 await p.locator('select[name=item_article]').first().selectOption(SHIRT);
 await p.locator('select[name=item_size]').first().selectOption('M');
@@ -98,7 +102,7 @@ await p.locator('input[name=item_qty]').first().fill('1');
 await p.click('button:has-text("Speichern und zur Unterschrift")');
 await p.waitForLoadState();
 await p.goto(p.url().replace('/unterschrift', '').split('?')[0]);
-await p.fill('input[name=reason]', 'Mitarbeiter nicht vor Ort');
+await p.fill('input[name=reason]:not([type=hidden])', 'Mitarbeiter nicht vor Ort');
 await p.click('button:has-text("Ohne Unterschrift abschließen")');
 await p.waitForLoadState();
 check('Rückgabe abgeschlossen', (await flash(p)).includes('Ohne Unterschrift'), await flash(p));
@@ -137,10 +141,9 @@ await o.click('button:has-text("Passwort speichern")');
 await o.waitForLoadState();
 check('Bestand gesperrt', (await o.goto(B + '/arbeitskleidung')).status() === 403);
 check('Übergabe ohne Objekt (Büro) gesperrt', (await o.goto(hUrl)).status() === 403);
-await o.goto(B + '/uebergaben');
+await o.goto(B + `/objekte/${SCHOOL}/uebergaben`);
+check('Objekt-Reiter Übergaben für Objektleitung', (await o.locator('h1').innerText()).includes('Objekt'));
 await o.click('a:has-text("+ Sonstiges")');
-await o.waitForLoadState();
-await o.selectOption('#sel-site', SCHOOL);
 await o.waitForLoadState();
 await o.selectOption('#employee', { index: 1 });
 await o.locator('select[name=item_pick]').first().selectOption('Diensthandy');
@@ -151,8 +154,13 @@ await o.waitForLoadState();
 check('Objektleitung: Unterschriftsseite', o.url().includes('/unterschrift'), await flash(o));
 await sign(o, 'Mitarbeiter Test');
 check('Objektleitung: unterschrieben', (await flash(o)).includes('Unterschrieben'), await flash(o));
-await o.goto(B + '/uebergaben');
-check('Liste nur eigenes Objekt', !(await o.locator('body').innerText()).includes(hUrl.split('/').pop()));
+await o.goto(B + `/objekte/${SCHOOL}/uebergaben`);
+const olist = await o.locator('body').innerText();
+check(
+  'Objekt-Liste zeigt unterschriebene Übergabe',
+  /unterschrieben/i.test(olist) && !olist.includes(hUrl.split('/').pop()),
+  olist.slice(0, 300),
+);
 await o.screenshot({ path: `${out}/u3-objektleitung.png`, fullPage: true });
 
 console.log('6. Fahrzeuge');
@@ -176,7 +184,7 @@ check('Fahrzeugschein-Upload sichtbar', (await p.locator('.filearea').count()) >
 await p.goto(B + '/fahrzeuge');
 const row = await p.locator('tr', { hasText: plate }).innerText();
 check('Liste: Fahrzeugschein fehlt', row.includes('Fahrzeugschein fehlt') && row.includes('Caddy'), row);
-await p.goto(B + '/uebergaben');
+await p.goto(B + `/personal/${firstEmp}/uebergaben`);
 await p.click('a:has-text("+ Sonstiges")');
 await p.waitForLoadState();
 check(

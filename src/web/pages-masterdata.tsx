@@ -863,6 +863,7 @@ export const SiteShell: FC<{
     { key: 'arbeitsscheine', label: 'Arbeitsscheine', href: `${base}/arbeitsscheine` },
     { key: 'dokumente', label: 'Dokumente', href: `${base}/dokumente` },
     { key: 'schluessel', label: 'Schlüssel', href: `${base}/schluessel` },
+    { key: 'uebergaben', label: 'Übergaben (Kleidung, Geräte …)', href: `${base}/uebergaben` },
     { key: 'raumbuch', label: 'Raumbuch', href: `${base}/raumbuch` },
     { key: 'stundenvorgabe', label: 'Stundenvorgabe', href: `${base}/stundenvorgabe` },
     { key: 'qualitaet', label: 'Qualitätskontrolle', href: `${base}/qualitaet` },

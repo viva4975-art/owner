@@ -840,7 +840,11 @@ f.addEventListener('change',show);f.addEventListener('input',sum);show();})();`,
       'Qualitätskontrollen',
       'disposition',
       <>
-        <PageHead title="Qualitätskontrollen" />
+        <PageHead title="Qualitätskontrollen">
+          <a class="btn sec" href="/qm" target="_blank" style="margin-left:auto">
+            QM-App (Audit am Handy) öffnen
+          </a>
+        </PageHead>
         <form method="post" action="/qualitaet/neu" class="card actions" style="max-width:780px">
           <input type="hidden" name="id" value={randomUUID()} />
           <select name="site_id" required aria-label="Objekt" style="flex:1;min-width:220px">

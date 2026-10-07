@@ -266,3 +266,14 @@ export async function managedSites(sql: Sql, user: Pick<User, 'id' | 'role'>): P
   const rows = await sql<{ id: string }[]>`select id from app.sites where manager_user_id = ${user.id}`;
   return rows.map((r) => r.id);
 }
+
+/** Anzeigename: voller Name statt Benutzername (aus „ahmed.chomontek“ wird „Ahmed Chomontek“). */
+export function fullName(u: { name?: string | null; login: string }): string {
+  const n = (u.name ?? '').trim();
+  if (n && n.toLowerCase() !== u.login.toLowerCase()) return n;
+  return (n || u.login)
+    .split(/[._\s-]+/)
+    .filter(Boolean)
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join(' ');
+}

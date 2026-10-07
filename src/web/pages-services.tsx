@@ -81,7 +81,11 @@ export const ServicesPanel: FC<{
                       .filter(Boolean)
                       .join(' · ')}
                   </div>
-                  {sv.note && <div class="small">{sv.note}</div>}
+                  {sv.note && (
+                    <div class="small" style="white-space:pre-line">
+                      {sv.note}
+                    </div>
+                  )}
                 </td>
                 <td class="small">
                   {dateDe(sv.valid_from)}
@@ -247,12 +251,14 @@ export const ServiceForm: FC<{
         </div>
         <div style="grid-column:1/-1">
           <label for="note">Beschreibung (Zusatztext auf der Rechnung)</label>
-          <input
+          <textarea
             id="note"
             name="note"
-            value={sv?.note ?? ''}
-            placeholder="z. B. 3.099,86 € + 5,07% Tariflohnerhöhung ab 01.01.2026"
-          />
+            rows={3}
+            placeholder="z. B. 3.099,86 € + 5,07% Tariflohnerhöhung ab 01.01.2026 (Enter = neue Zeile)"
+          >
+            {sv?.note ?? ''}
+          </textarea>
         </div>
         <div>
           <label for="cost_center">Kostenstelle</label>

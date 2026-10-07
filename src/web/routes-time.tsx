@@ -635,7 +635,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
               method="post"
               action={`/zeiterfassung/${id}/entfernen`}
               style="margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line)"
-              onsubmit="return confirm('Diese Zeit entfernen? Sie zählt danach nicht mehr (Stundenzettel, Lohn, Soll/Ist), bleibt aber im Protokoll.')"
+              onsubmit="return confirm('Diese Zeit entfernen? Sie zählt danach nicht mehr (Stundenliste, Lohn, Soll/Ist), bleibt aber im Protokoll.')"
             >
               <h3 style="margin-top:0">Zeit entfernen</h3>
               <label for="rm-reason">Begründung (Pflicht)</label>
@@ -1083,6 +1083,11 @@ h1{font-size:34px;margin:10px 0 4px}.n{color:#666;font-size:16px}
             </div>
             {posters.map(({ s, svg }) => (
               <div class="p">
+                <img
+                  src="/static/logo-transparent.png"
+                  alt="Viva-Deluxe"
+                  style="height:56px;margin-bottom:18px"
+                />
                 <div class="k">Zeiterfassung</div>
                 <h1>{s.name}</h1>
                 <div class="n">

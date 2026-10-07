@@ -1,3 +1,4 @@
+import { fullName } from '../services/users.js';
 import { missingDocs } from '../services/hr-required-docs.js';
 import { hoursHistory } from '../services/employee-hours.js';
 import { absentBetween } from '../services/absences.js';
@@ -162,7 +163,7 @@ export function registerModuleRoutes(ctx: Ctx) {
             ? (await missingDocs(sql, { siteIds: c.get('sites') })).length
             : 0
         }
-        user={c.get('actor').charAt(0).toUpperCase() + c.get('actor').slice(1)}
+        user={fullName(c.get('user'))}
         tasks={tasks}
         drafts={drafts}
         balances={balances}

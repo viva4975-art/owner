@@ -9,7 +9,14 @@ import { secureHeaders } from 'hono/secure-headers';
 import { createHash } from 'node:crypto';
 import { verifySession } from '../services/employee-auth.js';
 import { BusinessError } from '../services/errors.js';
-import { type User, authenticate, ensureBootstrapAdmin, getUser, managedSites } from '../services/users.js';
+import {
+  type User,
+  authenticate,
+  ensureBootstrapAdmin,
+  fullName,
+  getUser,
+  managedSites,
+} from '../services/users.js';
 import type { Deps } from '../services/workflow.js';
 import { Layout } from './layout.js';
 import { canAccess, homeFor } from './permissions.js';
@@ -236,7 +243,7 @@ export function createApp(deps: Deps) {
             title={title}
             nav={nav}
             env={env.APP_ENV}
-            {...(u ? { user: u.name, role: u.role } : {})}
+            {...(u ? { user: fullName(u), role: u.role } : {})}
             flash={{ ok: c.req.query('ok'), err: c.req.query('fehler') }}
           >
             {body}

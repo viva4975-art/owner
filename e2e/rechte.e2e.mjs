@@ -134,7 +134,7 @@ check(
   !(await o.locator('select[name=site_id]').innerText()).includes('Verwaltungsgebäude'),
 );
 // Auswertungen: Objektleitung nur Dienste-Liste (eigene Objekte), keine Umsätze/Personalauswertungen
-const rs = await o.request.get(B + '/auswertungen/rechnungen', { maxRedirects: 0 });
+const rs = await o.request.get(B + '/auswertungen/statistik', { maxRedirects: 0 });
 const ru = await o.request.get(B + '/auswertungen/urlaub', { maxRedirects: 0 });
 check('Auswertungen Umsatz/Urlaub gesperrt (403)', rs.status() === 403 && ru.status() === 403);
 const dl = await o.request.get(B + '/auswertungen/dienste.csv?von=2026-01-05&bis=2026-02-28');

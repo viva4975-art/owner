@@ -746,7 +746,7 @@ ${p.note ? `<div class="b"><b>Bemerkung:</b> ${esc(p.note)}</div>` : ''}</div>`;
 @page{size:A4;margin:14mm}body{font-family:Inter,system-ui,Arial,sans-serif;font-size:11px;color:#1c1917}h1{color:#7D1435;font-size:18px}
 .it{border-bottom:1px solid #ddd;padding:8px 0;page-break-inside:avoid}.h{display:flex;justify-content:space-between;font-size:12px}.m{color:#666;margin-top:2px}ul{margin:4px 0 2px 16px;padding:0}
 .b{background:#f7f2f3;padding:4px 6px;margin-top:4px}.sum{margin-top:12px;font-weight:700}.bar{text-align:center;margin-bottom:10px}.bar button{font:inherit;padding:8px 18px;border-radius:8px;border:0;background:#7D1435;color:#fff}
-@media print{.bar{display:none}}</style></head><body><div class="bar"><button onclick="print()">Drucken / als PDF speichern</button></div><h1>${esc(title)}</h1>${items}
+@media print{.bar{display:none}}</style></head><body><div class="bar"><button onclick="print()">Drucken / als PDF speichern</button></div><img src="/static/logo-transparent.png" alt="Viva-Deluxe" style="height:40px;display:block;margin-bottom:6px"><h1>${esc(title)}</h1>${items}
 <div class="sum">Summe (${list.length})${prices ? `: VK ${euro(tv)} · an Sub ${euro(ts)} · DB ${euro(td)}` : ''}</div></body></html>`);
   });
 }

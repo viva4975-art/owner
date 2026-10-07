@@ -579,7 +579,7 @@ f.querySelectorAll('input[name=tag]').forEach(function(c){c.checked=s.indexOf(c.
 .ft .ph{font-size:50px;font-weight:800;line-height:1.1;margin:6px 0}.ft .em{font-size:16px}.ft .ct{font-size:10.5px;opacity:.85;margin-top:8px;line-height:1.4}
 @media print{body{background:#fff}.bar{display:none}.sheet{margin:0}}
 </style></head><body><div class="bar"><button onclick="print()">Drucken / als PDF speichern</button> <button id="jpg" type="button">Als JPG herunterladen</button></div><div class="sheet" id="sheet">
-<div class="hd"><div class="co">${esc(co?.legal_name ?? '')} · ${esc(co?.city ?? '')}</div><h1>${esc(p.title)}</h1>${p.job_type && p.job_type !== p.title ? `<span class="art">${esc(p.job_type)}</span>` : ''}</div>
+<div class="hd"><img src="/static/logo-hell.png" alt="Viva-Deluxe" style="height:44px;display:block;margin-bottom:12px"><div class="co">${esc(co?.legal_name ?? '')} · ${esc(co?.city ?? '')}</div><h1>${esc(p.title)}</h1>${p.job_type && p.job_type !== p.title ? `<span class="art">${esc(p.job_type)}</span>` : ''}</div>
 <div class="body">
 ${
   ot

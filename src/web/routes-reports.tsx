@@ -9,7 +9,6 @@ import {
   dutyList,
   hourlyRates,
   hoursControl,
-  invoiceStatistics,
   leaveAccounts,
   nextMonth,
   revenueForecast,
@@ -17,7 +16,7 @@ import {
   toCsv,
 } from '../services/reports.js';
 import { hm, WEEKDAYS_SHORT } from '../services/time.js';
-import { type StatBasis, type StatGroup, revenueStats } from '../services/statistics.js';
+import { type StatBasis, type StatGroup, revenueStats, statKpis } from '../services/statistics.js';
 import type { AppEnv, Ctx } from './app.js';
 import { PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
 import { canOpen } from './permissions.js';
@@ -45,12 +44,6 @@ export const REPORTS: (Tab & { text: string })[] = [
     label: 'Statistiken',
     href: '/auswertungen/statistik',
     text: 'Umsatz je Monat/Quartal/Jahr, pro Kunde und nach Leistungsart (wie Fortytools)',
-  },
-  {
-    key: 'rechnungen',
-    label: 'Rechnungs-Statistik',
-    href: '/auswertungen/rechnungen',
-    text: 'Belege je Monat, Kunden nach Umsatz, Zahlungsdauer',
   },
   {
     key: 'vorschau',
@@ -145,7 +138,7 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
     );
   });
 
-  // ------------------------------------------------------------------ Statistiken (wie Fortytools)
+  // ------------------------------------------------------------------ Statistiken (wie Fortytools, eine Seite)
   app.get('/auswertungen/statistik', async (c) => {
     const q = (k: string) => c.req.query(k);
     const today = todayBerlin();
@@ -153,21 +146,31 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
     d0.setUTCMonth(d0.getUTCMonth() - 11);
     const d1 = new Date(`${today.slice(0, 7)}-01T12:00:00Z`);
     d1.setUTCMonth(d1.getUTCMonth() + 1, 0);
-    const from = isDate(q('von')) ? q('von')! : d0.toISOString().slice(0, 10);
+    const preset = q('zeitraum');
+    const y = Number(today.slice(0, 4));
+    let from = isDate(q('von')) ? q('von')! : d0.toISOString().slice(0, 10);
     let to = isDate(q('bis')) ? q('bis')! : d1.toISOString().slice(0, 10);
+    if (preset === 'jahr') [from, to] = [`${y}-01-01`, `${y}-12-31`];
+    if (preset === 'vorjahr') [from, to] = [`${y - 1}-01-01`, `${y - 1}-12-31`];
     if (to < from) to = from;
     const basis: StatBasis = q('grundlage') === 'rechnung' ? 'rechnung' : 'leistung';
     const group: StatGroup =
       q('gruppe') === 'quartal' ? 'quartal' : q('gruppe') === 'jahr' ? 'jahr' : 'monat';
     const customerId = /^[0-9a-f-]{36}$/.test(q('kunde') ?? '') ? q('kunde')! : null;
-    const [st, customers] = await Promise.all([
+    const shiftY = (d: string) => `${Number(d.slice(0, 4)) - 1}${d.slice(4)}`.replace('-02-29', '-02-28');
+    const [st, prev, kpi, customers] = await Promise.all([
       revenueStats(sql, { from, to, basis, group, customerId }),
+      revenueStats(sql, { from: shiftY(from), to: shiftY(to), basis, group, customerId }),
+      statKpis(sql, { from, to, customerId }),
       sql<{ id: string; customer_no: string; name: string }[]>`
         select id, customer_no, name from app.customers where not is_internal order by name`,
     ]);
+    const prevBy = new Map(
+      prev.periods.map((p) => [`${Number(p.key.slice(0, 4)) + 1}${p.key.slice(4)}`, p.cents]),
+    );
     const label = (k: string) =>
       group === 'monat'
-        ? `${['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'][Number(k.slice(5, 7)) - 1]} ${k.slice(2, 4)}`
+        ? `${MON[Number(k.slice(5, 7)) - 1]} ${k.slice(2, 4)}`
         : group === 'quartal'
           ? `${k.slice(5)} ${k.slice(0, 4)}`
           : k;
@@ -175,6 +178,11 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
       of === 0n
         ? '–'
         : `${(Number((v * 10000n) / of) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2 })} %`;
+    const delta = (now: bigint, before: bigint | undefined) => {
+      if (!before || before <= 0n) return null;
+      return Number(((now - before) * 1000n) / before) / 10;
+    };
+    const totalDelta = delta(st.total, prev.total);
     const qs = new URLSearchParams({
       von: from,
       bis: to,
@@ -182,6 +190,13 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
       gruppe: group,
       ...(customerId ? { kunde: customerId } : {}),
     });
+    const presetHref = (p: string) => {
+      const u = new URLSearchParams(qs);
+      u.delete('von');
+      u.delete('bis');
+      if (p) u.set('zeitraum', p);
+      return `/auswertungen/statistik?${u}`;
+    };
     return shell(
       c,
       'statistik',
@@ -235,37 +250,112 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
           <div style="align-self:end">
             <button class="btn">Aktualisieren</button>
           </div>
+          <div class="stat-presets">
+            <a href={presetHref('')}>Letzte 12 Monate</a>
+            <a href={presetHref('jahr')}>{y}</a>
+            <a href={presetHref('vorjahr')}>{y - 1}</a>
+          </div>
         </form>
+
+        <div class="stat-kpis">
+          <div class="skpi c1">
+            <div class="l">Umsatz netto</div>
+            <div class="v">{euro(st.total)}</div>
+            <div class="s">
+              {totalDelta == null ? (
+                'Vorjahr: –'
+              ) : (
+                <span class={totalDelta >= 0 ? 'up' : 'down'}>
+                  {totalDelta >= 0 ? '▲' : '▼'} {Math.abs(totalDelta).toLocaleString('de-DE')} % zum Vorjahr
+                </span>
+              )}
+            </div>
+          </div>
+          <div class="skpi c2">
+            <div class="l">Rechnungen</div>
+            <div class="v">{kpi.invoices.toLocaleString('de-DE')}</div>
+            <div class="s">
+              {kpi.reversals} Storno/Korrektur · {kpi.customers} Kunden
+            </div>
+          </div>
+          <div class="skpi c3">
+            <div class="l">Ø Rechnungsbetrag</div>
+            <div class="v">{euro(kpi.avg_invoice_cents)}</div>
+            <div class="s">netto je Rechnung</div>
+          </div>
+          <div class="skpi c4">
+            <div class="l">Ø Zahlungsdauer</div>
+            <div class="v">{kpi.avg_days == null ? '–' : `${kpi.avg_days} Tage`}</div>
+            <div class="s">
+              {kpi.paid} bezahlt, davon {kpi.late} nach Fälligkeit
+            </div>
+          </div>
+          <div class="skpi c5">
+            <div class="l">Offen heute</div>
+            <div class="v">{euro(kpi.open_cents)}</div>
+            <div class="s">
+              davon überfällig <b>{euro(kpi.overdue_cents)}</b>
+            </div>
+          </div>
+        </div>
+
         <div class="card">
-          <h3 style="margin-top:0">Umsatz</h3>
-          <div class="stat-cols">
-            <StatBars rows={st.periods.map((p) => ({ label: label(p.key), cents: p.cents }))} />
-            <div class="tbl">
-              <table>
-                <thead>
-                  <tr>
-                    <th>{group === 'monat' ? 'Monat' : group === 'quartal' ? 'Quartal' : 'Jahr'}</th>
-                    <th class="r">Betrag</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {st.periods.map((p) => (
+          <div class="stat-head">
+            <h3 style="margin:0">
+              Umsatz je {group === 'monat' ? 'Monat' : group === 'quartal' ? 'Quartal' : 'Jahr'}
+            </h3>
+            <span class="legend">
+              <i class="lg-now" /> Zeitraum <i class="lg-prev" /> Vorjahr
+            </span>
+          </div>
+          <StatBars
+            rows={st.periods.map((p) => ({
+              label: label(p.key),
+              cents: p.cents,
+              prev: prevBy.get(p.key) ?? 0n,
+            }))}
+          />
+          <div class="tbl" style="margin-top:10px">
+            <table>
+              <thead>
+                <tr>
+                  <th>{group === 'monat' ? 'Monat' : group === 'quartal' ? 'Quartal' : 'Jahr'}</th>
+                  <th class="r">Netto</th>
+                  <th class="r">Vorjahr</th>
+                  <th class="r">Veränderung</th>
+                </tr>
+              </thead>
+              <tbody>
+                {st.periods.map((p) => {
+                  const pv = prevBy.get(p.key);
+                  const dv = delta(p.cents, pv);
+                  return (
                     <tr>
                       <td>{label(p.key)}</td>
                       <td class="r num">{euro(p.cents)}</td>
+                      <td class="r num mut">{pv ? euro(pv) : '–'}</td>
+                      <td class={`r num ${dv == null ? 'mut' : dv >= 0 ? 'up' : 'down'}`}>
+                        {dv == null ? '–' : `${dv >= 0 ? '+' : ''}${dv.toLocaleString('de-DE')} %`}
+                      </td>
                     </tr>
-                  ))}
-                  <tr>
-                    <td>
-                      <b>Summe</b>
-                    </td>
-                    <td class="r num">
-                      <b>{euro(st.total)}</b>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+                  );
+                })}
+                <tr>
+                  <td>
+                    <b>Summe</b>
+                  </td>
+                  <td class="r num">
+                    <b>{euro(st.total)}</b>
+                  </td>
+                  <td class="r num mut">{euro(prev.total)}</td>
+                  <td class={`r num ${totalDelta == null ? 'mut' : totalDelta >= 0 ? 'up' : 'down'}`}>
+                    {totalDelta == null
+                      ? '–'
+                      : `${totalDelta >= 0 ? '+' : ''}${totalDelta.toLocaleString('de-DE')} %`}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
           <p class="small mut" style="margin-bottom:0">
             Netto, alle ausgestellten Rechnungen (auch aus Fortytools), Stornos und Korrekturen abgezogen.
@@ -294,7 +384,9 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
           />
         </div>
         <p class="small mut">
-          „Pro Kunde“ und „nach Leistungsart“ rechnen nach Rechnungsdatum (wie Fortytools).
+          „Pro Kunde“ und „nach Leistungsart“ rechnen nach Rechnungsdatum (wie Fortytools). Kennzahlen
+          „Rechnungen“ und „Zahlungsdauer“ nach Rechnungsdatum im Zeitraum; „Offen heute“ ist der aktuelle
+          Stand.
         </p>
       </>,
     );
@@ -324,113 +416,8 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
     return csvResponse(c, `statistik_${from}_${to}.csv`, toCsv(['Zeitraum', 'Netto'], lines));
   });
 
-  // ------------------------------------------------------------------ Rechnungs-Statistik
-  app.get('/auswertungen/rechnungen', async (c) => {
-    const year = yearOf(c.req.query('jahr'));
-    const s = await invoiceStatistics(sql, year);
-    const max = s.months.reduce((m, r) => (r.net > m ? r.net : m), 1n);
-    return shell(
-      c,
-      'rechnungen',
-      `Rechnungs-Statistik ${year}`,
-      <>
-        <YearNav base="/auswertungen/rechnungen" year={year} />
-        <div class="kpis">
-          <div class="kpi">
-            <div class="l">Netto-Umsatz {year}</div>
-            <div class="v">{euro(s.total)}</div>
-          </div>
-          <div class="kpi">
-            <div class="l">Rechnungen</div>
-            <div class="v">{s.months.reduce((a, m) => a + m.invoices, 0)}</div>
-          </div>
-          <div class="kpi">
-            <div class="l">Ø Zahlungsdauer</div>
-            <div class="v">{s.payment.avg_days == null ? '–' : `${s.payment.avg_days} Tage`}</div>
-          </div>
-          <div class="kpi">
-            <div class="l">offen / davon überfällig</div>
-            <div class="v">
-              {euro(s.payment.open_cents)} / {euro(s.payment.overdue_cents)}
-            </div>
-          </div>
-        </div>
-        <div class="cols">
-          <div class="card">
-            <h3>Je Monat (nach Rechnungsdatum)</h3>
-            <div class="tbl">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Monat</th>
-                    <th class="r">Rechnungen</th>
-                    <th class="r">Netto</th>
-                    <th class="r">Storno/Korr.</th>
-                    <th class="r">Netto gesamt</th>
-                    <th style="width:30%"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {s.months.map((m) => (
-                    <tr>
-                      <td>{monShort(m.month)}</td>
-                      <td class="r">{m.invoices}</td>
-                      <td class="r">{euro(m.invoice_net)}</td>
-                      <td class="r">{m.reversals ? `${m.reversals} · ${euro(m.reversal_net)}` : '–'}</td>
-                      <td class="r">
-                        <b>{euro(m.net)}</b>
-                      </td>
-                      <td>
-                        <div
-                          style={`height:10px;border-radius:3px;background:var(--brand);width:${m.net > 0n ? Math.max(1, Number((m.net * 100n) / max)) : 0}%`}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div class="card">
-            <h3>Kunden nach Umsatz</h3>
-            <div class="tbl">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Kunde</th>
-                    <th class="r">Rechn.</th>
-                    <th class="r">Netto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {s.customers.map((k) => (
-                    <tr>
-                      <td>
-                        <a href={`/kunden/${k.id}`}>{k.name}</a>{' '}
-                        <span class="small mut">{k.customer_no}</span>
-                      </td>
-                      <td class="r">{k.count}</td>
-                      <td class="r">{euro(k.net)}</td>
-                    </tr>
-                  ))}
-                  {s.customers.length === 0 && (
-                    <tr>
-                      <td colspan={3} class="mut">
-                        Keine Rechnungen in {year}.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <p class="small mut">
-              Bezahlte Rechnungen {year}: {s.payment.paid}, davon nach Fälligkeit bezahlt: {s.payment.late}.
-            </p>
-          </div>
-        </div>
-      </>,
-    );
-  });
+  // Rechnungs-Statistik ist in den Statistiken aufgegangen (Ahmed: nur eine Statistik)
+  app.get('/auswertungen/rechnungen', (c) => c.redirect('/auswertungen/statistik', 301));
 
   // ------------------------------------------------------------------ Umsatz-Vorschau
   app.get('/auswertungen/vorschau', async (c) => {
@@ -996,13 +983,30 @@ const YearNav = ({ base, year }: { base: string; year: number }) => (
   </div>
 );
 
-/** Säulen (eine Reihe, Bordeaux), Achse mit runden Werten, Hover zeigt den Betrag. */
-const StatBars = ({ rows }: { rows: { label: string; cents: bigint }[] }) => {
-  const W = 760;
-  const H = 300;
+/** Farben für Anteile (Bordeaux zuerst, dann gut unterscheidbare ruhige Töne). */
+const PALETTE = [
+  '#7d1435',
+  '#c2185b',
+  '#e07a5f',
+  '#f2b134',
+  '#81b29a',
+  '#3d5a80',
+  '#98c1d9',
+  '#6d597a',
+  '#b56576',
+  '#a3a380',
+];
+
+/** Säulen: Zeitraum (Bordeaux-Verlauf) + Vorjahr (hell), Achse mit runden Werten, Werte über den Säulen. */
+const StatBars = ({ rows }: { rows: { label: string; cents: bigint; prev?: bigint }[] }) => {
+  const W = 960;
+  const H = 320;
   const L = 78;
   const B = 56;
-  const max = rows.reduce((m, r) => (r.cents > m ? r.cents : m), 0n);
+  const max = rows.reduce((m, r) => {
+    const v = r.cents > (r.prev ?? 0n) ? r.cents : (r.prev ?? 0n);
+    return v > m ? v : m;
+  }, 0n);
   const maxE = Math.max(1, Number(max) / 100);
   const step = (() => {
     const raw = maxE / 4;
@@ -1010,12 +1014,26 @@ const StatBars = ({ rows }: { rows: { label: string; cents: bigint }[] }) => {
     return ([1, 2, 2.5, 5, 10].find((m) => m * p >= raw) ?? 10) * p;
   })();
   const top = Math.ceil(maxE / step) * step;
-  const y = (e: number) => H - B - ((H - B - 10) * Math.max(0, e)) / top;
+  const y = (e: number) => H - B - ((H - B - 22) * Math.max(0, e)) / top;
   const bw = (W - L - 10) / Math.max(1, rows.length);
   const fmt = (e: number) => `${e.toLocaleString('de-DE', { maximumFractionDigits: 0 })} €`;
+  const short = (e: number) =>
+    e >= 1e6
+      ? `${(e / 1e6).toLocaleString('de-DE', { maximumFractionDigits: 1 })} Mio`
+      : e >= 1000
+        ? `${Math.round(e / 1000).toLocaleString('de-DE')} T`
+        : Math.round(e).toLocaleString('de-DE');
   const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step);
+  const hasPrev = rows.some((r) => (r.prev ?? 0n) > 0n);
+  const showVal = rows.length <= 16;
   return (
     <svg class="stat-bars" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Umsatz je Zeitraum">
+      <defs>
+        <linearGradient id="sbg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#a3214a" />
+          <stop offset="1" stop-color="#6c1130" />
+        </linearGradient>
+      </defs>
       {ticks.map((t) => (
         <g>
           <line x1={L} x2={W - 6} y1={y(t)} y2={y(t)} class="grid" />
@@ -1026,18 +1044,32 @@ const StatBars = ({ rows }: { rows: { label: string; cents: bigint }[] }) => {
       ))}
       {rows.map((r, i) => {
         const e = Number(r.cents) / 100;
-        const x = L + i * bw + bw * 0.15;
+        const pe = Number(r.prev ?? 0n) / 100;
+        const gw = bw * 0.74;
+        const x0 = L + i * bw + (bw - gw) / 2;
+        const w1 = hasPrev ? gw * 0.58 : gw;
+        const w0 = gw - w1 - (hasPrev ? 2 : 0);
         const h = Math.max(0, y(0) - y(e));
+        const hp = Math.max(0, y(0) - y(pe));
+        const cx = x0 + gw / 2;
         return (
           <g class="bar">
             <rect x={L + i * bw} y={10} width={bw} height={H - B - 10} class="hit" />
-            {h > 0 && <rect x={x} y={y(0) - h} width={bw * 0.7} height={h} rx={3} class="fill" />}
-            <title>{`${r.label}: ${euro(r.cents)}`}</title>
+            {hasPrev && hp > 0 && <rect x={x0} y={y(0) - hp} width={w0} height={hp} rx={2} class="prev" />}
+            {h > 0 && (
+              <rect x={x0 + (hasPrev ? w0 + 2 : 0)} y={y(0) - h} width={w1} height={h} rx={3} class="fill" />
+            )}
+            {showVal && e > 0 && (
+              <text x={x0 + (hasPrev ? w0 + 2 : 0) + w1 / 2} y={y(e) - 5} text-anchor="middle" class="val">
+                {short(e)}
+              </text>
+            )}
+            <title>{`${r.label}: ${euro(r.cents)}${hasPrev ? ` · Vorjahr ${euro(r.prev ?? 0n)}` : ''}`}</title>
             <text
-              x={x + bw * 0.35}
+              x={cx}
               y={H - B + 16}
               text-anchor="end"
-              transform={`rotate(-30 ${x + bw * 0.35} ${H - B + 16})`}
+              transform={`rotate(-30 ${cx} ${H - B + 16})`}
               class="ax"
             >
               {r.label}
@@ -1049,7 +1081,66 @@ const StatBars = ({ rows }: { rows: { label: string; cents: bigint }[] }) => {
   );
 };
 
-/** Anteile als Liste mit Balken (statt Torte – bei 40 Kunden lesbarer). */
+/** Ringdiagramm: die größten 8 Anteile farbig, Rest „Sonstige“ grau. */
+const Donut = ({ rows, total }: { rows: { label: string; cents: bigint }[]; total: bigint }) => {
+  const pos = rows.filter((r) => r.cents > 0n);
+  const sum = total > 0n ? total : pos.reduce((a, r) => a + r.cents, 0n);
+  if (sum <= 0n) return null;
+  const head = pos.slice(0, 8);
+  const rest = pos.slice(8).reduce((a, r) => a + r.cents, 0n);
+  const parts = [...head.map((r, i) => ({ ...r, color: PALETTE[i]! }))];
+  if (rest > 0n) parts.push({ label: 'Sonstige', cents: rest, color: '#d6d3d1' });
+  const R = 70;
+  const C = 2 * Math.PI * R;
+  let off = 0;
+  return (
+    <div class="donut">
+      <svg viewBox="0 0 180 180" width="170" height="170" role="img" aria-label="Anteile">
+        <circle cx="90" cy="90" r={R} fill="none" stroke="#f1eeec" stroke-width="26" />
+        {parts.map((p) => {
+          const len = (Number(p.cents) / Number(sum)) * C;
+          const el = (
+            <circle
+              cx="90"
+              cy="90"
+              r={R}
+              fill="none"
+              stroke={p.color}
+              stroke-width="26"
+              stroke-dasharray={`${Math.max(0, len - 1)} ${C}`}
+              stroke-dashoffset={-off}
+              transform="rotate(-90 90 90)"
+            >
+              <title>{`${p.label}: ${euro(p.cents)}`}</title>
+            </circle>
+          );
+          off += len;
+          return el;
+        })}
+        <text x="90" y="86" text-anchor="middle" class="dn-l">
+          gesamt
+        </text>
+        <text x="90" y="104" text-anchor="middle" class="dn-v">
+          {Math.round(Number(sum) / 100000).toLocaleString('de-DE')} T€
+        </text>
+      </svg>
+      <ul class="dn-legend">
+        {parts.map((p) => (
+          <li>
+            <i style={`background:${p.color}`} />
+            <span>{p.label}</span>
+            <b>
+              {((Number(p.cents) / Number(sum)) * 100).toLocaleString('de-DE', { maximumFractionDigits: 1 })}{' '}
+              %
+            </b>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
+/** Anteile: Ringdiagramm + Liste mit farbigen Balken (bei 40 Kunden lesbarer als nur Torte). */
 const ShareCard = ({
   title,
   rows,
@@ -1065,6 +1156,7 @@ const ShareCard = ({
   return (
     <div class="card">
       <h3 style="margin-top:0">{title}</h3>
+      <Donut rows={rows} total={total} />
       <div class="tbl">
         <table class="share">
           <tbody>
@@ -1074,7 +1166,7 @@ const ShareCard = ({
                   {r.href ? <a href={r.href}>{r.label}</a> : r.label}
                   <div class="sharebar">
                     <span
-                      style={`width:${r.cents > 0n ? Math.max(0.5, Number((r.cents * 1000n) / max) / 10) : 0}%`}
+                      style={`background:${i < 8 ? PALETTE[i] : '#b8b2ae'};width:${r.cents > 0n ? Math.max(0.5, Number((r.cents * 1000n) / max) / 10) : 0}%`}
                     />
                   </div>
                 </td>

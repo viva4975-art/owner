@@ -997,7 +997,8 @@ tbody tr:hover td{background:#fbfaf8}
   .usr-n{display:none}
   main{padding:16px 16px 64px}
 }
-@media print{.appside,.top,.scrim{display:none!important}.shell .mainc{margin-left:0}}
+@media print{.appside,.top,.scrim{display:none!important}.shell .mainc{margin-left:0}.print-logo{display:flex!important}}
+.print-logo{display:none;justify-content:space-between;align-items:center;border-bottom:2px solid #7D1435;padding-bottom:6px;margin-bottom:10px;font-size:11px;color:#57534e}.print-logo img{height:38px}
 /* Runde 12: Handy/Tablet größer und ruhiger (Vergleich Fortytools) – Reiter umbrechen statt wegscrollen */
 @media (max-width:1024px){
   body{font-size:16px}
@@ -1075,7 +1076,31 @@ th.sortable.desc::after{content:'▼';opacity:.9}
 .stat-bars{width:100%;height:auto;display:block}
 .stat-bars .grid{stroke:var(--line);stroke-width:1}
 .stat-bars .ax{font-size:11px;fill:var(--mut)}
-.stat-bars .fill{fill:var(--brand)}
+.stat-bars .fill{fill:url(#sbg)}
+.stat-bars .prev{fill:#e8c9d3}
+.stat-bars .val{font-size:11px;font-weight:600;fill:#5b0f28}
+.stat-filter>.stat-presets{display:flex;flex-direction:row;gap:6px;flex-basis:100%;min-width:0}
+.stat-presets a{display:inline-block;padding:4px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;font-size:13px;text-decoration:none;color:var(--ink)}
+.stat-presets a:hover{border-color:var(--brand);color:var(--brand)}
+.stat-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.legend{font-size:12.5px;color:var(--mut);display:flex;align-items:center;gap:6px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-left:8px}
+.lg-now{background:linear-gradient(#a3214a,#6c1130)}.lg-prev{background:#e8c9d3}
+.stat-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:14px 0}
+.skpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;border-top:4px solid var(--brand)}
+.skpi .l{font-size:12.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.03em}
+.skpi .v{font-size:24px;font-weight:700;margin:4px 0 2px;font-variant-numeric:tabular-nums}
+.skpi .s{font-size:12.5px;color:var(--mut)}
+.skpi.c1{border-top-color:#7d1435;background:linear-gradient(180deg,#fbf3f5,#fff 60%)}
+.skpi.c2{border-top-color:#3d5a80}.skpi.c3{border-top-color:#81b29a}.skpi.c4{border-top-color:#f2b134}
+.skpi.c5{border-top-color:#e07a5f}
+.up{color:#2e7d4f}.down{color:#b3261e}
+.donut{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.donut .dn-l{font-size:11px;fill:var(--mut)}.donut .dn-v{font-size:16px;font-weight:700;fill:var(--ink)}
+.dn-legend{list-style:none;margin:0;padding:0;flex:1;min-width:180px;font-size:13px}
+.dn-legend li{display:flex;align-items:center;gap:8px;padding:2px 0}
+.dn-legend i{width:10px;height:10px;border-radius:50%;flex:none}
+.dn-legend span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .stat-bars .hit{fill:transparent}
 .stat-bars .bar:hover .fill{fill:var(--brand-2)}
 .stat-bars .bar:hover .hit{fill:var(--brand-50)}
@@ -1119,7 +1144,6 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Alle Rechnungen', href: '/rechnungen' },
       { label: 'Offene Posten', href: '/offene-posten', sep: true },
       { label: 'Mahnwesen', href: '/mahnungen' },
-      { label: 'Statistiken', href: '/auswertungen/statistik', sep: true },
     ],
   },
   {
@@ -1393,6 +1417,10 @@ export const Layout: FC<{
             </div>
           </header>
           <main>
+            <div class="print-logo">
+              <img src="/static/logo-transparent.png" alt="Viva-Deluxe" />
+              <span>Viva-Deluxe Gebäudereinigung GmbH</span>
+            </div>
             {flash?.ok && (
               <div class="flash ok" role="status">
                 <Icon name="check" />

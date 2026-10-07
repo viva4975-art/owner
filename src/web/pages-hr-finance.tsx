@@ -224,7 +224,7 @@ export const EmployeeShell: FC<{
     { key: 'notizen', label: 'Notizen', href: `${base}/notizen`, count: notes },
     { key: 'dokumente', label: 'Dokumente', href: `${base}/dokumente` },
     { key: 'zeiten', label: 'Zeiten', href: `${base}/zeiten` },
-    { key: 'stundenzettel', label: 'Stundenzettel', href: `${base}/stundenzettel` },
+    { key: 'stundenzettel', label: 'Stundenliste', href: `${base}/stundenzettel` },
     { key: 'einsaetze', label: 'Einsätze', href: `${base}/einsaetze` },
     { key: 'abwesenheiten', label: 'Urlaub & Krank', href: `${base}/abwesenheiten` },
   ];

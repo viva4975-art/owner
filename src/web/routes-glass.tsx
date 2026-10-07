@@ -689,7 +689,7 @@ box.addEventListener('click',function(e){var b=e.target.closest('[data-del-day]'
 .e{display:block;font-size:6.2px;overflow:hidden;text-overflow:ellipsis}.t-team_a{color:#6b1a21;font-weight:700}.t-team_b{color:#b88c1a;font-weight:700}.t-none{color:#444}
 .lg{font-size:9px;color:#555;margin:6px 4px}.pg{page-break-before:always}.ls{width:100%;border-collapse:collapse;font-size:9px}.ls th,.ls td{border-bottom:1px solid #ddd;padding:3px;text-align:left}
 @media print{.bar{display:none}}</style></head><body><div class="bar"><button onclick="print()">Drucken / als PDF speichern</button></div>
-<div class="hd"><div><b>${esc('Viva-Deluxe Gebäudereinigung GmbH')}</b><div class="k">Glasreinigung</div></div><div style="text-align:right"><h1>${y}</h1><div class="k">${esc(kname ?? 'Jahresplaner')}</div></div></div>
+<div class="hd"><div><img src="/static/logo-transparent.png" alt="Viva-Deluxe" style="height:40px;display:block;margin-bottom:6px"><b>${esc('Viva-Deluxe Gebäudereinigung GmbH')}</b><div class="k">Glasreinigung</div></div><div style="text-align:right"><h1>${y}</h1><div class="k">${esc(kname ?? 'Jahresplaner')}</div></div></div>
 ${grid}<div class="lg">Rosa = Sonn-/Feiertag · Grau = Samstag · blauer Rand = Schulferien Bayern · <span class="t-team_a">${esc(teams.team_a)}</span> · <span class="t-team_b">${esc(teams.team_b)}</span> · Alle Angaben ohne Gewähr</div>
 <div class="pg"><h2>Terminübersicht ${y}${kname ? ` · ${esc(kname)}` : ''}</h2><table class="ls"><thead><tr><th>Datum</th><th>Uhrzeit</th><th>Objekt</th><th>Kunde</th><th>Adresse</th><th>Ansprechpartner</th></tr></thead><tbody>${listRows}</tbody></table></div>
 </body></html>`);

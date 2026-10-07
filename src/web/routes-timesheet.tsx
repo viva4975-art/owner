@@ -83,10 +83,13 @@ export function sheetTableHtml(s: Timesheet): string {
 }
 
 export const SHEET_CSS = `
-.ts{width:100%;border-collapse:collapse;font-size:12.5px}.ts th,.ts td{border-bottom:1px solid #e6e3df;padding:5px 6px;text-align:left;vertical-align:top}
-.ts th{background:#f8f7f5;font-weight:600;font-size:11.5px;color:#57534e}.ts .r{text-align:right;font-variant-numeric:tabular-nums}
-.ts-hol td{background:#eef4fb}.ts-sub{font-size:11px;color:#78716c}.ts-warn{color:#b45309;font-weight:600;font-size:11.5px}.ts-empty{text-align:center;color:#78716c;padding:18px}
-.ts-sum{margin-top:12px;border-collapse:collapse;font-size:12.5px;min-width:60%}.ts-sum td{padding:4px 10px;border-bottom:1px solid #eee}.ts-sum .r{text-align:right;font-variant-numeric:tabular-nums}`;
+.ts{width:100%;border-collapse:collapse;font-size:12.5px;color:#1c1917}.ts th,.ts td{border:1px solid #cfc9c4;padding:5px 7px;text-align:left;vertical-align:top}
+.ts th{background:#f3e8eb;font-weight:700;font-size:11.5px;color:#4a0d22}.ts .r{text-align:right;font-variant-numeric:tabular-nums}
+.ts tbody tr:nth-child(even) td{background:#faf8f7}.ts-hol td{background:#e8f0fa!important}.ts-sub{font-size:11px;color:#57534e}
+.ts-warn{color:#b45309;font-weight:600;font-size:11.5px}.ts-empty{text-align:center;color:#57534e;padding:18px}
+.ts-sum{margin-top:12px;border-collapse:collapse;font-size:12.5px;min-width:60%;border:1.5px solid #7D1435}.ts-sum td{padding:5px 10px;border:1px solid #cfc9c4}
+.ts-sum .r{text-align:right;font-variant-numeric:tabular-nums}
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact}`;
 
 function signatureBlock(s: Timesheet, sig: SheetSignature | undefined, imgUrl: string | null) {
   const signedText = sig
@@ -100,7 +103,7 @@ function signatureBlock(s: Timesheet, sig: SheetSignature | undefined, imgUrl: s
 const PRINT_CSS = `@page{size:A4 landscape;margin:10mm}*{box-sizing:border-box}body{font-family:Inter,system-ui,Arial,sans-serif;color:#1c1917;margin:0}
 .sheet{page-break-after:always;padding:0}.sheet:last-child{page-break-after:auto}
 .hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #7D1435;padding-bottom:6px;margin-bottom:8px}
-.hd h1{margin:0;font-size:17px;color:#7D1435}.hd .logo{height:34px;margin-bottom:3px}.hd .m{font-size:11.5px;color:#57534e;line-height:1.45}.hd .r{text-align:right}
+.hd h1{margin:0 0 3px;font-size:19px;color:#7D1435}.hd .logo{height:42px;margin-bottom:4px}.hd .m{font-size:12px;color:#292524;line-height:1.5}.hd .r{text-align:right}
 .sig-row{display:flex;gap:40px;margin-top:22px}.sig{flex:1}.sig-box{height:54px;border-bottom:1px solid #444;display:flex;align-items:flex-end}.sig-box img{max-height:52px}
 .sig-l{font-size:11px;color:#57534e;margin-top:3px}.legal{font-size:10px;color:#78716c;margin-top:10px}
 .bar{text-align:center;padding:10px;background:#f4f3f1}.bar button{font:inherit;padding:8px 18px;border-radius:8px;border:0;background:#7D1435;color:#fff;cursor:pointer}
@@ -119,13 +122,13 @@ export function registerTimesheetRoutes({ app, deps, page, back, shells }: Ctx) 
     const co = await company();
     const sig = s.onlySite ? undefined : await latestSignature(sql, s.employee.id, s.month);
     const sigHtml = s.onlySite
-      ? `<div class="legal">Auszug nur mit den Zeiten im Objekt „${esc(s.onlySite)}“. Der vollständige Stundenzettel des Monats (mit Unterschrift) liegt in der Personalakte.</div>`
+      ? `<div class="legal">Auszug nur mit den Zeiten im Objekt „${esc(s.onlySite)}“. Der vollständige Stundenliste des Monats (mit Unterschrift) liegt in der Personalakte.</div>`
       : signatureBlock(
           s,
           sig,
           sig ? `/personal/${s.employee.id}/stundenzettel/unterschrift/${sig.id}.png` : null,
         );
-    return `<div class="sheet"><div class="hd"><div><h1>Stundenzettel ${esc(monthLabel(s.month))}${s.onlySite ? ` – Objekt ${esc(s.onlySite)}` : ''}</h1>
+    return `<div class="sheet"><div class="hd"><div><h1>Stundenliste ${esc(monthLabel(s.month))}${s.onlySite ? ` – Objekt ${esc(s.onlySite)}` : ''}</h1>
 <div class="m"><b>${esc(s.employee.name)}</b> · Personalnr. ${esc(s.employee.personnel_no)}${s.employee.weekly_hours ? ` · ${String(Number(s.employee.weekly_hours)).replace('.', ',')} Std./Woche` : ''}<br>Zeitraum ${dateDe(s.from)} – ${dateDe(s.to)}</div></div>
 <div class="m r"><img src="/static/logo-transparent.png" alt="Viva-Deluxe" class="logo"><br><b>${esc(co?.name)}</b> · ${esc(co?.street)} · ${esc(co?.postal_code)} ${esc(co?.city)}</div></div>
 ${sheetTableHtml(s)}${sigHtml}
@@ -203,7 +206,7 @@ ${sheetTableHtml(s)}${sigHtml}
             <div dangerouslySetInnerHTML={{ __html: sheetTableHtml(s) }} />
           </div>
           <p class="small mut">
-            Der Mitarbeiter unterschreibt den Stundenzettel am Monatsende in der Handy-App. Ändert sich danach
+            Der Mitarbeiter unterschreibt die Stundenliste am Monatsende in der Handy-App. Ändert sich danach
             eine Zeit, wird das hier angezeigt und er kann neu unterschreiben (alle Unterschriften bleiben
             gespeichert).
           </p>
@@ -217,9 +220,7 @@ ${sheetTableHtml(s)}${sigHtml}
     const full = await timesheet(sql, c.req.param('id'), month);
     const only = c.req.query('objekt') ?? '';
     const s = only && full.rows.some((r) => r.site === only) ? sheetForSite(full, only) : full;
-    return c.html(
-      printHtml(`Stundenzettel ${s.employee.name} ${monthLabel(month)}`, [await sheetSection(s)]),
-    );
+    return c.html(printHtml(`Stundenliste ${s.employee.name} ${monthLabel(month)}`, [await sheetSection(s)]));
   });
 
   app.get(`/personal/:id{${UUID}}/stundenzettel/unterschrift/:sid{${UUID}}.png`, async (c) => {
@@ -326,10 +327,10 @@ ${sheetTableHtml(s)}${sigHtml}
     const tot = (f: (x: (typeof rows)[number]) => number) => rows.reduce((a, x) => a + f(x), 0);
     return page(
       c,
-      'Stundenzettel & Lohnarten',
+      'Stundenliste & Lohnarten',
       'personal',
       <>
-        <PageHead title={`Stundenzettel & Lohnarten ${monthLabel(month)}`} />
+        <PageHead title={`Stundenliste & Lohnarten ${monthLabel(month)}`} />
         {d.onlySite && (
           <div class="flash">
             Auszug: nur Zeiten im Objekt <b>{d.siteName}</b> – je Person ein Blatt, ohne Unterschrift (die
@@ -420,44 +421,60 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
         <div class="actions">
           <div class="chips" style="margin:0">
             <a href={`?${d.qs({ ansicht: '' })}`} class={d.view === 'stunden' ? 'on' : ''}>
-              Stunden
+              Stundenliste (Ablage, Zoll)
             </a>
             <a href={`?${d.qs({ ansicht: 'lohnarten' })}`} class={d.view === 'lohnarten' ? 'on' : ''}>
-              Lohnarten &amp; Zuschläge
+              Lohnarten (Lohnabrechnung)
             </a>
           </div>
           <span class="mut small">
             {rows.length} Mitarbeitende · {signed} von {rows.length} unterschrieben
           </span>
           <span style="flex:1" />
-          <a
-            class="btn sm sec"
-            href={`/zeiterfassung/stundenzettel/uebersicht.pdf?${d.qs()}`}
-            data-export
-            target="_blank"
-          >
-            PDF Übersicht
-          </a>
-          <a
-            class="btn sm sec"
-            href={`/zeiterfassung/stundenzettel/druck?${d.qs()}`}
-            data-export
-            target="_blank"
-            rel="noopener"
-          >
-            Alle {rows.length} drucken / PDF
-          </a>
-          {d.view === 'stunden' && (
-            <button class="btn sm sec" form="pick" data-pick-btn disabled>
-              Auswahl drucken
-            </button>
+          {d.view === 'stunden' ? (
+            <>
+              <a
+                class="btn sm sec"
+                href={`/zeiterfassung/stundenzettel/uebersicht.pdf?${d.qs()}`}
+                data-export
+                target="_blank"
+              >
+                PDF Übersicht
+              </a>
+              <a
+                class="btn sm"
+                href={`/zeiterfassung/stundenzettel/druck?${d.qs()}`}
+                data-export
+                target="_blank"
+                rel="noopener"
+              >
+                Stundenlisten drucken ({rows.length})
+              </a>
+              <button class="btn sm sec" form="pick" data-pick-btn disabled>
+                Auswahl drucken
+              </button>
+              <a class="btn sm sec" href={`/zeiterfassung/stundenzettel.csv?${d.qs()}`} data-export>
+                CSV
+              </a>
+            </>
+          ) : (
+            <>
+              <a
+                class="btn sm sec"
+                href={`/zeiterfassung/stundenzettel/uebersicht.pdf?${d.qs()}`}
+                data-export
+                target="_blank"
+              >
+                PDF Lohnarten
+              </a>
+              <a class="btn sm sec" href={`/zeiterfassung/stundenzettel.csv?${d.qs()}`} data-export>
+                CSV Übersicht
+              </a>
+              <a class="btn sm" href={`/zeiterfassung/lohnarten.csv?${d.qs()}`} data-export>
+                CSV Lohnprogramm
+              </a>
+            </>
           )}
-          <a class="btn sm sec" href={`/zeiterfassung/stundenzettel.csv?${d.qs()}`} data-export>
-            CSV Übersicht
-          </a>
-          <a class="btn sm" href={`/zeiterfassung/lohnarten.csv?${d.qs()}`} data-export>
-            CSV Lohnprogramm
-          </a>
         </div>
         {d.view === 'lohnarten' && (
           <p class="small mut" style="max-width:960px">
@@ -628,89 +645,140 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
     const d = await listData(c);
     const sections: string[] = [];
     for (const x of d.chosen) sections.push(await sheetSection(x.s));
-    return c.html(printHtml(`Stundenzettel ${monthLabel(d.month)}`, sections));
+    return c.html(printHtml(`Stundenlisten ${monthLabel(d.month)}`, sections));
   });
 
-  const overviewCols = () => [
-    'Personalnummer',
-    'Name',
-    'Beschäftigung',
-    'Soll',
-    'Gearbeitet',
-    'Urlaub',
-    'Krank',
-    'Sonstige bezahlt',
-    'Unbezahlt',
-    'Bezahlt',
-    ...SURCHARGES.map((k) => WAGE_TYPE_LABEL[k]),
-    'Zuschläge €',
-    'Unterschrift',
-  ];
-  const overviewRow = (x: Awaited<ReturnType<typeof listData>>['rows'][number]) => [
-    x.e.personnel_no,
-    `${x.e.last_name}, ${x.e.first_name}`,
-    EMPLOYMENT_TYPES[x.e.employment_type],
-    hm(x.s.totals.plan),
-    hm(x.s.totals.work),
-    h(x.s.totals.vacation),
-    h(x.s.totals.sick),
-    h(x.s.totals.otherPaid),
-    h(x.s.totals.unpaid),
-    hm(x.s.totals.paid),
-    ...SURCHARGES.map((k) => h(x.p?.minutes[k] ?? 0)),
-    euro(surchargeEur(x.p)),
-    x.state === 'unterschrieben' ? 'ja' : x.state === 'geaendert' ? 'geändert' : 'offen',
-  ];
+  // Stundenliste (Ablage, Zoll): Stunden je Person. Lohnarten (Lohnabrechnung): Stunden je Lohnart + Zuschläge.
+  type Row = Awaited<ReturnType<typeof listData>>['rows'][number];
+  const overviewCols = (view: string) =>
+    view === 'lohnarten'
+      ? [
+          'Personalnummer',
+          'Name',
+          'Beschäftigung',
+          'Normalstunden',
+          'Urlaub',
+          'Krank',
+          'Sonstige bezahlt',
+          'Unbezahlt',
+          'Bezahlt gesamt',
+          ...SURCHARGES.map((k) => WAGE_TYPE_LABEL[k]),
+          'Zuschläge €',
+        ]
+      : [
+          'Personalnummer',
+          'Name',
+          'Beschäftigung',
+          'Soll',
+          'Gearbeitet',
+          'Pausen',
+          'Urlaub',
+          'Krank',
+          'Unbezahlt',
+          'Bezahlt',
+          'Differenz',
+          'Unterschrift',
+        ];
+  const overviewRow = (x: Row, view: string) =>
+    view === 'lohnarten'
+      ? [
+          x.e.personnel_no,
+          `${x.e.last_name}, ${x.e.first_name}`,
+          EMPLOYMENT_TYPES[x.e.employment_type],
+          hm(x.s.totals.work),
+          h(x.s.totals.vacation),
+          h(x.s.totals.sick),
+          h(x.s.totals.otherPaid),
+          h(x.s.totals.unpaid),
+          hm(x.s.totals.paid),
+          ...SURCHARGES.map((k) => h(x.p?.minutes[k] ?? 0)),
+          euro(surchargeEur(x.p)),
+        ]
+      : [
+          x.e.personnel_no,
+          `${x.e.last_name}, ${x.e.first_name}`,
+          EMPLOYMENT_TYPES[x.e.employment_type],
+          hm(x.s.totals.plan),
+          hm(x.s.totals.work),
+          hm(x.s.totals.breaks),
+          h(x.s.totals.vacation),
+          h(x.s.totals.sick),
+          h(x.s.totals.unpaid),
+          hm(x.s.totals.paid),
+          `${x.s.totals.diff > 0 ? '+' : ''}${hm(x.s.totals.diff)}`,
+          x.state === 'unterschrieben' ? 'ja' : x.state === 'geaendert' ? 'geändert' : 'offen',
+        ];
 
   app.get('/zeiterfassung/stundenzettel.csv', async (c) => {
     const d = await listData(c);
     const safe = (v: string) => (/^[=+\-@]/.test(v) ? `'${v}` : v).replace(/;/g, ',');
-    const lines = [overviewCols().join(';'), ...d.rows.map((x) => overviewRow(x).map(safe).join(';'))];
+    const lines = [
+      overviewCols(d.view).join(';'),
+      ...d.rows.map((x) => overviewRow(x, d.view).map(safe).join(';')),
+    ];
     return new Response(`\uFEFF${lines.join('\r\n')}\r\n`, {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="stundenzettel-${d.month}.csv"`,
+        'Content-Disposition': `attachment; filename="${d.view === 'lohnarten' ? 'lohnarten' : 'stundenliste'}-${d.month}.csv"`,
       },
     });
   });
 
   app.get('/zeiterfassung/stundenzettel/uebersicht.pdf', async (c) => {
     const d = await listData(c);
-    const cols = overviewCols();
-    const widths = [48, 120, 58, 40, 46, 40, 40, 44, 44, 44, 44, 44, 44, 44, 52, 52];
-    const tsum = (f: (x: (typeof d.rows)[number]) => number) => d.rows.reduce((a, x) => a + f(x), 0);
+    const lohn = d.view === 'lohnarten';
+    const cols = overviewCols(d.view);
+    const widths = lohn
+      ? [50, 130, 62, 50, 42, 42, 46, 46, 50, 44, 44, 44, 44, 56]
+      : [54, 150, 70, 56, 62, 52, 50, 50, 56, 56, 56, 60];
+    const tsum = (f: (x: Row) => number) => d.rows.reduce((a, x) => a + f(x), 0);
+    const totals = lohn
+      ? [
+          '',
+          'Summe',
+          '',
+          hm(tsum((x) => x.s.totals.work)),
+          h(tsum((x) => x.s.totals.vacation)),
+          h(tsum((x) => x.s.totals.sick)),
+          h(tsum((x) => x.s.totals.otherPaid)),
+          h(tsum((x) => x.s.totals.unpaid)),
+          hm(tsum((x) => x.s.totals.paid)),
+          ...SURCHARGES.map((k) => h(tsum((x) => x.p?.minutes[k] ?? 0))),
+          euro(d.rows.reduce((a, x) => a + surchargeEur(x.p), 0n)),
+        ]
+      : [
+          '',
+          'Summe',
+          '',
+          hm(tsum((x) => x.s.totals.plan)),
+          hm(tsum((x) => x.s.totals.work)),
+          hm(tsum((x) => x.s.totals.breaks)),
+          h(tsum((x) => x.s.totals.vacation)),
+          h(tsum((x) => x.s.totals.sick)),
+          h(tsum((x) => x.s.totals.unpaid)),
+          hm(tsum((x) => x.s.totals.paid)),
+          '',
+          '',
+        ];
     const pdf = await renderTablePdf({
-      title: `Stundenzettel & Lohnarten ${monthLabel(d.month)}`,
-      subtitle: `${d.rows.length} Mitarbeitende · Stunden in Std.:Min.`,
+      title: `${lohn ? 'Lohnarten' : 'Stundenliste'} ${monthLabel(d.month)}`,
+      subtitle: `${d.rows.length} Mitarbeitende · Stunden in Std.:Min.${lohn ? ' · für die Lohnabrechnung' : ''}`,
       columns: cols.map((label, i) => ({
         label: label.replace('Zuschlag ', 'Zuschl. ').replace('Sonstige bezahlt', 'Sonst. bez.'),
         width: widths[i] ?? 44,
-        align: i >= 3 && i < cols.length - 1 ? ('right' as const) : ('left' as const),
+        align: i >= 3 && (lohn || i < cols.length - 1) ? ('right' as const) : ('left' as const),
       })),
-      rows: d.rows.map((x) => overviewRow(x)),
-      totals: [
-        '',
-        'Summe',
-        '',
-        hm(tsum((x) => x.s.totals.plan)),
-        hm(tsum((x) => x.s.totals.work)),
-        h(tsum((x) => x.s.totals.vacation)),
-        h(tsum((x) => x.s.totals.sick)),
-        h(tsum((x) => x.s.totals.otherPaid)),
-        h(tsum((x) => x.s.totals.unpaid)),
-        hm(tsum((x) => x.s.totals.paid)),
-        ...SURCHARGES.map((k) => h(tsum((x) => x.p?.minutes[k] ?? 0))),
-        euro(d.rows.reduce((a, x) => a + surchargeEur(x.p), 0n)),
-        '',
-      ],
-      fontSize: 7,
-      footnote:
-        'Aufzeichnung nach § 17 MiLoG. Zuschläge nach RTV Gebäudereinigung laut Einstellungen; nur erfasste/freigegebene Zeiten. Vertraulich – Personaldaten.',
+      rows: d.rows.map((x) => overviewRow(x, d.view)),
+      totals,
+      fontSize: lohn ? 7.5 : 8.5,
+      footnote: lohn
+        ? 'Lohnarten für die Lohnabrechnung. Zuschläge nach RTV Gebäudereinigung laut Einstellungen; nur erfasste/freigegebene Zeiten. Vertraulich – Personaldaten.'
+        : 'Stundenliste nach § 17 MiLoG (Beginn, Ende, Dauer – Einzelnachweis je Person unter „Stundenlisten drucken“). Vertraulich – Personaldaten.',
     });
     return new Response(pdf, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="stundenzettel-${d.month}.pdf"`,
+        'Content-Disposition': `inline; filename="${lohn ? 'lohnarten' : 'stundenliste'}-${d.month}.pdf"`,
         'Cache-Control': 'private, no-store',
       },
     });

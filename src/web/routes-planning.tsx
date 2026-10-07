@@ -828,7 +828,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
           method="post"
           action={`/urlaub/${a.id}/loeschen`}
           class="card"
-          onsubmit="return confirm('Abwesenheit endgültig löschen? Sie verschwindet aus Kalender, Urlaubskonto und Stundenzetteln (bleibt nur im Protokoll).')"
+          onsubmit="return confirm('Abwesenheit endgültig löschen? Sie verschwindet aus Kalender, Urlaubskonto und Stundenlisten (bleibt nur im Protokoll).')"
         >
           <input type="hidden" name="zurueck" value={ret} />
           <h3 style="margin-top:0">Löschen</h3>

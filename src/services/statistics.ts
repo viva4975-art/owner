@@ -118,3 +118,60 @@ export async function revenueStats(sql: Sql, f: StatFilter): Promise<Stats> {
       .sort(desc),
   };
 }
+
+export interface StatKpis {
+  invoices: number;
+  reversals: number;
+  customers: number;
+  avg_invoice_cents: bigint;
+  paid: number;
+  late: number;
+  avg_days: number | null;
+  open_cents: bigint;
+  overdue_cents: bigint;
+}
+
+/** Kennzahlen zum Zeitraum (nach Rechnungsdatum), eigene + Fortytools-Rechnungen; offen/überfällig = heutiger Stand. */
+export async function statKpis(
+  sql: Sql,
+  f: { from: string; to: string; customerId: string | null },
+): Promise<StatKpis> {
+  const cust = f.customerId;
+  const [k] = await sql<StatKpis[]>`
+    with a as (
+      select i.id, i.kind::text as kind, i.customer_id, i.issue_date, i.net_cents from app.invoices i
+       where i.status = 'issued'
+      union all
+      select l.id, case when l.net_cents < 0 then 'correction' else 'invoice' end, l.customer_id, l.issue_date,
+             l.net_cents from app.legacy_invoices l),
+    r as (select * from a where issue_date between ${f.from} and ${f.to}
+            and (${cust}::uuid is null or customer_id = ${cust}::uuid)),
+    paid as (
+      select o.invoice_id, o.due_date, max(p.paid_on) as last_paid, min(o.issue_date) as issue_date
+        from app.open_items o join app.payments p on p.invoice_id = o.invoice_id
+       where o.open_cents = 0 and o.issue_date between ${f.from} and ${f.to}
+         and (${cust}::uuid is null or o.customer_id = ${cust}::uuid)
+       group by o.invoice_id, o.due_date
+      union all
+      select l.id, l.due_date, l.paid_at, l.issue_date from app.legacy_invoices l
+       where l.paid and l.paid_at is not null and l.gross_cents > 0 and l.issue_date between ${f.from} and ${f.to}
+         and (${cust}::uuid is null or l.customer_id = ${cust}::uuid)),
+    op as (
+      select open_cents, due_date from app.open_items where open_cents > 0
+         and (${cust}::uuid is null or customer_id = ${cust}::uuid)
+      union all
+      select open_cents, due_date from app.legacy_open_items where open_cents > 0
+         and (${cust}::uuid is null or customer_id = ${cust}::uuid))
+    select (select count(*) from r where kind in ('invoice', 'partial', 'final'))::int as invoices,
+           (select count(*) from r where kind in ('cancellation', 'correction'))::int as reversals,
+           (select count(distinct customer_id) from r)::int as customers,
+           coalesce((select round(avg(net_cents)) from r where kind in ('invoice', 'partial', 'final')), 0)::bigint
+             as avg_invoice_cents,
+           (select count(*) from paid)::int as paid,
+           (select count(*) from paid where last_paid > due_date)::int as late,
+           (select round(avg(last_paid - issue_date)) from paid)::int as avg_days,
+           (select coalesce(sum(open_cents), 0) from op)::bigint as open_cents,
+           (select coalesce(sum(open_cents), 0) from op
+             where due_date < (now() at time zone 'Europe/Berlin')::date)::bigint as overdue_cents`;
+  return k!;
+}

@@ -1,3 +1,4 @@
+import { fullName } from '../services/users.js';
 import { randomUUID } from 'node:crypto';
 import { SiteOptions } from './site-options.js';
 import type { Context } from 'hono';
@@ -246,7 +247,7 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
     const today = todayBerlin();
     const audits = await qmAudits(sql, { siteIds: c.get('sites'), date: today });
     const hour = hourBerlin();
-    const first = (u.name || u.login).split(/[ .]/)[0]!;
+    const first = fullName(u).split(' ')[0]!;
     return render(
       c,
       'Übersicht',

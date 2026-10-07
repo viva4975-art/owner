@@ -1204,3 +1204,18 @@ Testadresse.
   - Neu nachgeschoben (Ahmed): Leistungsbeschreibung mehrzeilig; Objektleiter-/Büro-App umfangreicher (Schlüssel,
     Unterweisungen, Personalbogen mehrsprachig, Objektordner, Einsätze, Zeiten, NU-Auftrag mit Freigabe im Büro);
     nur noch „Statistiken“ unter Auswertungen mit farbigen Diagrammen.
+- 2026-10-07: Runde 23, Teil C:
+  - **Eine Statistik** (Auswertungen → Statistiken; Rechnungs-Statistik aufgegangen, alte Adresse leitet um, nicht mehr
+    unter Rechnungen): Kennzahlen-Kacheln in Farbe (Umsatz mit Vorjahresvergleich, Rechnungen/Storno/Kunden,
+    Ø Rechnungsbetrag, Ø Zahlungsdauer, offen/überfällig), Säulen Zeitraum vs. Vorjahr mit Werten, Tabelle mit
+    Veränderung %, Ringdiagramme + farbige Balken je Kunde und Leistungsart, Schnellwahl 12 Monate / Jahr / Vorjahr.
+  - Mahnwesen mit den echten Fortytools-Exporten geprüft (Wegwerf-DB): 9 Mahnvorschläge, 41 überfällige Rechnungen –
+    auf dem Server nach dem Update XML-Exporte erneut einspielen, dann erscheinen sie.
+  - „Stundenzettel“ heißt jetzt **Stundenliste** (Büro, Druck, PDF, Handy-App). Getrennt: Ansicht „Stundenliste
+    (Ablage, Zoll)“ – Soll/Gearbeitet/Pausen/Differenz/Unterschrift, Einzelblätter je Person – und „Lohnarten
+    (Lohnabrechnung)“ – Normalstunden, Urlaub, Krank, sonstige bezahlt, unbezahlt, Zuschläge; je eigenes PDF/CSV.
+    Druck kräftiger (dunkle Linien, Zebra, Farben werden mitgedruckt), Logo größer.
+  - Logo auf allen Druckansichten: jede App-Seite beim Drucken (Kopf mit Logo), Tiefgarage-, Grundreinigungs-,
+    Glas-Jahresplaner-Druck, Stellenplakat, QR-Aushänge.
+  - Voller Name statt Benutzername (Begrüßung, Kopfzeile, QM-App; gespeicherte Namen = Benutzername werden umgestellt).
+  - Leistungsbeschreibung am Objekt mehrzeilig (Zeilenumbrüche gehen auf die Rechnung).

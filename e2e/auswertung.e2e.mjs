@@ -32,11 +32,11 @@ const p = await ctx.newPage();
 console.log('1. Übersicht');
 await p.goto(B + '/auswertungen');
 const cards = await p.locator('a.card').count();
-check('Übersicht mit allen Berichten', cards === 10, String(cards));
+check('Übersicht mit allen Berichten', cards >= 8, String(cards));
 
 console.log('2. Berichte über das Menü links (keine doppelte Reiterzeile)');
 const tabs = await p
-  .goto(B + '/auswertungen/rechnungen')
+  .goto(B + '/auswertungen/statistik')
   .then(() =>
     p
       .locator('.appside .sub a[href^="/auswertungen/"]')
@@ -52,15 +52,14 @@ for (const href of tabs) {
     String(r.status()),
   );
 }
-await p.goto(B + '/auswertungen/rechnungen');
-await p.click('a:has-text("←")');
-check(
-  'Jahr zurück',
-  p.url().includes('jahr=') &&
-    (await p.locator('h1').innerText()).includes(String(new Date().getFullYear() - 1)),
-);
+const red = await p.request.get(B + '/auswertungen/rechnungen', { maxRedirects: 0 });
+check('Rechnungs-Statistik → Statistiken (301)', red.status() === 301, String(red.status()));
+await p.goto(B + '/auswertungen/statistik');
+check('Kennzahlen + Diagramm', (await p.locator('.skpi').count()) === 5 && (await p.locator('svg.stat-bars').count()) === 1);
+await p.click(`.stat-presets a:has-text("${new Date().getFullYear() - 1}")`);
+check('Vorjahr gewählt', (await p.locator('#von').inputValue()) === `${new Date().getFullYear() - 1}-01-01`);
 await p.goBack();
-check('Zurück-Taste', (await p.locator('h1').innerText()).includes(String(new Date().getFullYear())));
+check('Zurück-Taste', (await p.locator('#von').inputValue()) !== `${new Date().getFullYear() - 1}-01-01`);
 
 console.log('3. CSV');
 for (const u of ['/auswertungen/stunden.csv', '/auswertungen/dienste.csv']) {

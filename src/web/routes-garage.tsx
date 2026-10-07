@@ -842,7 +842,7 @@ box.addEventListener('click',function(e){var b=e.target.closest('[data-del-day]'
 @page{size:A4 ${vor ? 'portrait' : 'landscape'};margin:12mm}body{font-family:Inter,system-ui,Arial,sans-serif;font-size:11px;color:#1c1917}
 h1{color:#7D1435;font-size:20px}table{width:100%;border-collapse:collapse}th{background:#7D1435;color:#fff;text-align:left;padding:5px}td{border-bottom:1px solid #ddd;padding:5px;vertical-align:top}
 .bar{text-align:center;margin-bottom:10px}.bar button{font:inherit;padding:8px 18px;border-radius:8px;border:0;background:#7D1435;color:#fff}@media print{.bar{display:none}}</style></head><body>
-<div class="bar"><button onclick="print()">Drucken / als PDF speichern</button></div><h1>${vor ? 'Einsatzliste Vorarbeiter' : 'Terminliste Tiefgaragenreinigung'}</h1>
+<div class="bar"><button onclick="print()">Drucken / als PDF speichern</button></div><img src="/static/logo-transparent.png" alt="Viva-Deluxe" style="height:40px;display:block;margin-bottom:6px"><h1>${vor ? 'Einsatzliste Vorarbeiter' : 'Terminliste Tiefgaragenreinigung'}</h1>
 <table><thead><tr>${vor ? '<th>Datum</th><th>Objekt</th><th>Uhrzeit</th><th>Leistung</th><th>Objektbetreuer</th><th>erledigt</th>' : '<th>Datum</th><th>Objekt</th><th>Liegenschaft</th><th>Größe</th><th>Uhrzeit</th><th>Objektbetreuer</th>'}</tr></thead><tbody>${rows}</tbody></table></body></html>`);
   });
 }

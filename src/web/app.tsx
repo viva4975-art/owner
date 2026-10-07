@@ -61,6 +61,7 @@ import { registerPurchasingRoutes } from './routes-purchasing.js';
 import { registerTimeRoutes } from './routes-time.js';
 import { registerTimesheetRoutes } from './routes-timesheet.js';
 import { registerQmRoutes } from './routes-qm.js';
+import { sortCsv } from './csv-sort.js';
 import { registerOlAppRoutes } from './routes-ol-app.js';
 
 export const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
@@ -151,6 +152,22 @@ export function createApp(deps: Deps) {
   // Referer nur innerhalb der App (nötig, um nach einem Eingabefehler ins Formular zurückzukehren).
   app.use(secureHeaders({ referrerPolicy: 'same-origin' }));
   app.use(csrf());
+
+  // CSV-Exporte in der Sortierung der Bildschirm-Tabelle (?sort=<Spalte>&dir=asc|desc, siehe client.ts).
+  app.use(async (c, next) => {
+    await next();
+    const label = c.req.query('sort');
+    const type = c.res.headers.get('content-type') ?? '';
+    if (!label || c.req.method !== 'GET' || c.res.status !== 200 || !/text\/csv/i.test(type)) return;
+    if (/charset=(windows-1252|iso-8859)/i.test(type)) return; // DATEV o. ä.: festes Format, nicht umsortieren
+    const text = await c.res.text();
+    const headers = new Headers(c.res.headers);
+    headers.delete('content-length');
+    c.res = new Response(sortCsv(text, label, c.req.query('dir') === 'desc' ? 'desc' : 'asc'), {
+      status: 200,
+      headers,
+    });
+  });
 
   // Büro-Anmeldung: Sitzungs-Cookie (Formular /anmelden). Basic Auth mit denselben Zugangsdaten nur für
   // automatische Tests/Werkzeuge. Mitarbeiter-Ansicht /m hat eine eigene PIN-Anmeldung.

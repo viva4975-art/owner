@@ -1297,3 +1297,7 @@ Testadresse.
   - Leistungsbeschreibung mehrzeilig; nur noch eine Statistik (Auswertungen) mit farbigen Diagrammen; volle Namen statt
     Benutzernamen (Teil C).
   - Tests: 371 Unit-/DB-Tests (neu `runde23-olapp.db.test.ts`), e2e/rechte/runde10 grün.
+- 2026-10-07: Runde 23, Teil B – Sortierung überall: jede Liste ist per Klick auf die Spaltenüberschrift sortierbar (Teil A);
+  **alle CSV-Exporte** übernehmen jetzt die Bildschirm-Sortierung (Browser hängt `sort`/`dir` an jeden CSV-Link, eine
+  Middleware sortiert die fertige CSV nach der gleichnamigen Spalte um, `src/web/csv-sort.ts`; Summenzeilen bleiben unten,
+  DATEV/Windows-1252 bleibt unberührt). PDF-Exporte der Stundenliste wie gehabt.

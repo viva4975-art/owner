@@ -306,7 +306,7 @@ export const CLIENT_JS = String.raw`
   }).observe(document.body, { childList: true, subtree: true });
 
   // ---- Tabellen sortieren: Klick auf die Spaltenüberschrift (auf/ab), wie Fortytools (Ahmed 07.10.) ----
-  // Gilt für alle Listen mit Kopfzeile; Summenzeilen bleiben unten. Exporte (Links mit data-export) bekommen die
+  // Gilt für alle Listen mit Kopfzeile; Summenzeilen bleiben unten. Exporte (Links mit data-export und alle CSV-Links) bekommen die
   // Sortierung mit (?sort=<Spalte>&dir=asc|desc). Zahlen, Beträge (1.234,56 €), Datum (TT.MM.JJJJ) und Zeiten richtig.
   function sortKey(td) {
     var t = (td ? td.innerText || td.textContent || '' : '').trim();
@@ -341,7 +341,7 @@ export const CLIENT_JS = String.raw`
       data.concat(fixed).forEach(function (r) { body.appendChild(r); });
       Array.prototype.forEach.call(head.cells, function (c, j) { c.classList.remove('asc', 'desc'); if (j === i) c.classList.add(dir > 0 ? 'asc' : 'desc'); });
       var label = (head.cells[i].textContent || '').trim();
-      Array.prototype.forEach.call(document.querySelectorAll('a[data-export]'), function (a) {
+      Array.prototype.forEach.call(document.querySelectorAll('a[data-export], a[href*=".csv"]'), function (a) {
         var u = new URL(a.href, location.href); u.searchParams.set('sort', label); u.searchParams.set('dir', dir > 0 ? 'asc' : 'desc'); a.href = u.pathname + u.search;
       });
     }

@@ -25,6 +25,12 @@ export interface ArchiveRow {
   docs: { id: string; kind: string; filename: string }[];
   /** Rechnung aus Fortytools (Archiv, nur lesen; PDF liegt in Fortytools) */
   legacy?: boolean;
+  due_date: string | null;
+  /** offener Betrag heute (null = nicht offen/bezahlt) */
+  open_cents: bigint | null;
+  /** letzter Versandstatus (eigene Rechnungen) */
+  delivery: string | null;
+  cancelled: boolean;
 }
 
 export async function archiveYear(
@@ -36,7 +42,12 @@ export async function archiveYear(
   if (!Number.isInteger(year) || year < 2000 || year > 2100) throw new BusinessError('Jahr ungültig');
   const rows = await sql<ArchiveRow[]>`
     select i.id, i.number, i.kind::text, i.issue_date, i.period_start, i.period_end, c.name as customer_name,
-           c.customer_no, s.name as site_name, i.net_cents, i.gross_cents,
+           c.customer_no, s.name as site_name, i.net_cents, i.gross_cents, i.due_date,
+           (select o.open_cents from app.open_items o where o.invoice_id = i.id and o.open_cents <> 0) as open_cents,
+           (select d.status::text from app.invoice_deliveries d where d.invoice_id = i.id
+             order by d.created_at desc limit 1) as delivery,
+           exists (select 1 from app.invoices x where x.original_invoice_id = i.id and x.kind = 'cancellation'
+                     and x.status = 'issued') as cancelled,
            to_char(${by === 'datum' ? sql`i.issue_date` : sql`coalesce(i.period_start, i.issue_date)`}, 'YYYY-MM') as month,
            coalesce((select json_agg(json_build_object('id', d.id, 'kind', d.kind, 'filename', d.filename) order by d.kind)
                        from app.invoice_documents d where d.invoice_id = i.id and d.kind <> 'validation_report'), '[]') as docs
@@ -57,7 +68,9 @@ export async function archiveYear(
         from app.legacy_invoices l left join app.customers c on c.id = l.customer_id)
     select id, number, 'fortytools' as kind, issue_date, ps as period_start, pe as period_end,
            coalesce(cname, 'Kunde ' || coalesce(customer_no, '?')) as customer_name, coalesce(cno, customer_no, '') as customer_no,
-           sites as site_name, net_cents, gross_cents,
+           sites as site_name, net_cents, gross_cents, due_date,
+           (select o.open_cents from app.legacy_open_items o where o.invoice_id = l.id) as open_cents,
+           null::text as delivery, false as cancelled,
            to_char(${by === 'datum' ? sql`issue_date` : sql`coalesce(ps, issue_date)`}, 'YYYY-MM') as month,
            '[]'::json as docs, true as legacy
       from l

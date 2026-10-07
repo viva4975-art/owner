@@ -12,6 +12,9 @@ export interface DraftLineInput {
   sourceServiceId?: string | null;
   /** Leistungsart (Stammliste) */
   serviceTypeId?: string | null;
+  /** Leistungszeitraum der Position (BT-134/135), z. B. je Bestellung bei Einzelrechnungen */
+  periodStart?: string | null;
+  periodEnd?: string | null;
 }
 
 export interface DraftLine extends DraftLineInput {

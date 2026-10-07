@@ -6,6 +6,7 @@ import { renderInvoicePdf } from '../pdf/render.js';
 import { BusinessError } from '../services/errors.js';
 import {
   type InvoiceRow,
+  copyInvoice,
   createCancellation,
   createCorrection,
   deleteDraft,
@@ -13,11 +14,13 @@ import {
   listInvoices,
   loadDocument,
   markReviewed,
+  parseBillAddress,
   runMonthly,
   saveDraft,
   setPlannedIssueDate,
 } from '../services/invoices.js';
 import {
+  buildBuyerSnapshot,
   effectiveBilling,
   getCustomer,
   getSite,
@@ -33,6 +36,7 @@ import {
   listDeliveries,
   listDocuments,
   preflight,
+  reviseInvoiceAddress,
   sendInvoice,
 } from '../services/workflow.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
@@ -45,6 +49,7 @@ import { KIND_TITLES } from '../domain/invoice/types.js';
 import { FileArea } from './files.js';
 import { PaymentsSection } from './pages-hr-finance.js';
 import {
+  type ArticleOption,
   CorrectionEditor,
   InvoiceDetail,
   InvoiceEditor,
@@ -161,6 +166,46 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
             Belege unveränderbar, 10 Jahre aufbewahrt
           </span>
         </form>
+        {(() => {
+          const all = months.flatMap((m) => m.rows);
+          const today = todayBerlin();
+          const net = all.reduce((a, r) => a + r.net_cents, 0n);
+          const open = all.reduce((a, r) => a + (r.open_cents ?? 0n), 0n);
+          const overdue = all
+            .filter((r) => r.open_cents && r.due_date && r.due_date < today)
+            .reduce((a, r) => a + (r.open_cents ?? 0n), 0n);
+          const unsent = all.filter((r) => !r.legacy && r.delivery !== 'sent').length;
+          return (
+            <div class="stat-kpis">
+              <div class="skpi c1">
+                <div class="l">Netto {year}</div>
+                <div class="v">{euro(net)}</div>
+                <div class="s">{all.length} Belege</div>
+              </div>
+              <a class="skpi c5" href="/offene-posten" style="text-decoration:none;color:inherit">
+                <div class="l">davon offen</div>
+                <div class="v">{euro(open)}</div>
+                <div class="s">
+                  überfällig <b style="color:var(--err)">{euro(overdue)}</b>
+                </div>
+              </a>
+              <a
+                class="skpi c2"
+                href="/rechnungen?filter=unversendet"
+                style="text-decoration:none;color:inherit"
+              >
+                <div class="l">nicht versendet</div>
+                <div class="v">{unsent}</div>
+                <div class="s">eigene Rechnungen</div>
+              </a>
+              <a class="skpi c3" href="/auswertungen/statistik" style="text-decoration:none;color:inherit">
+                <div class="l">Statistik</div>
+                <div class="v">→</div>
+                <div class="s">Diagramme, Kunden, Leistungsarten</div>
+              </a>
+            </div>
+          );
+        })()}
         {months.map((m, i) => (
           <details class="card" open={i === 0 || months.length <= 2 || !!q}>
             <summary style="display:flex;align-items:center;gap:14px;cursor:pointer;list-style:none">
@@ -192,7 +237,10 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                     <th>Art</th>
                     <th>Kunde / Objekt</th>
                     <th>Leistungszeitraum</th>
+                    <th class="r">Netto</th>
                     <th class="r">Brutto</th>
+                    <th>Fällig</th>
+                    <th>Status</th>
                     <th>Belege</th>
                   </tr>
                 </thead>
@@ -219,7 +267,40 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                       <td class="small">
                         {r.period_start ? `${dateDe(r.period_start)} – ${dateDe(r.period_end)}` : '–'}
                       </td>
-                      <td class="r">{euro(r.gross_cents)}</td>
+                      <td class="r num">{euro(r.net_cents)}</td>
+                      <td class="r num">
+                        <b>{euro(r.gross_cents)}</b>
+                      </td>
+                      <td class="small">{r.due_date ? dateDe(r.due_date) : '–'}</td>
+                      <td class="small">
+                        {r.cancelled ? (
+                          <span class="badge err">storniert</span>
+                        ) : r.gross_cents <= 0n ? (
+                          <span class="badge">verrechnet</span>
+                        ) : r.open_cents ? (
+                          r.due_date && r.due_date < todayBerlin() ? (
+                            <span class="badge err">überfällig · {euro(r.open_cents)}</span>
+                          ) : (
+                            <span class="badge warn">offen · {euro(r.open_cents)}</span>
+                          )
+                        ) : (
+                          <span class="badge ok">bezahlt</span>
+                        )}
+                        {!r.legacy && (
+                          <div class="faint" style="margin-top:2px">
+                            {r.delivery === 'sent'
+                              ? '✉ versendet'
+                              : r.delivery === 'failed'
+                                ? '✉ Fehler'
+                                : '✉ nicht versendet'}
+                          </div>
+                        )}
+                        {r.legacy && (
+                          <div class="faint" style="margin-top:2px">
+                            Fortytools
+                          </div>
+                        )}
+                      </td>
                       <td class="small">
                         {r.legacy && (
                           <a href={`/rechnungen/fortytools/${r.id}/pdf`} target="_blank">
@@ -488,6 +569,28 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         partials={partials as never}
         selectedPartials={(data?.prepayments ?? []).map((p) => p.partial_invoice_id)}
         types={await listServiceTypes(sql)}
+        articles={await sql<ArticleOption[]>`
+          select id, article_no, name, description, sales_price_cents from app.articles
+           where active order by name`}
+        defaultAddress={
+          inv.customer_id
+            ? await buildBuyerSnapshot(
+                sql,
+                inv.customer_id,
+                inv.site_id ?? null,
+                inv.invoice_group_id ?? null,
+              )
+                .then((b) => ({
+                  name: b.name,
+                  name2: b.name2,
+                  contactName: b.contactName,
+                  street: b.street,
+                  postalCode: b.postalCode,
+                  city: b.city,
+                }))
+                .catch(() => undefined)
+            : undefined
+        }
       />,
     );
   });
@@ -497,9 +600,10 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     const body = await c.req.parseBody({ all: true });
     const kind = (str(body, 'kind') ?? 'invoice') as 'invoice' | 'partial' | 'final';
     if (!['invoice', 'partial', 'final'].includes(kind)) throw new BusinessError('Ungültige Rechnungsart');
-    const lines = parseLines(body);
+    const lines = parseLines(body, { allowNegative: kind === 'invoice' });
     if (!lines.length) throw new BusinessError('Bitte mindestens eine Position erfassen');
     const prepayments = body.prepayments;
+    const ptd = str(body, 'payment_terms_days');
     await saveDraft(
       sql,
       id,
@@ -518,10 +622,45 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         ),
         ...(str(body, 'reverse_charge_shown') ? { reverseCharge: str(body, 'reverse_charge') === 'on' } : {}),
         expectedVersion: str(body, 'version') ? Number(str(body, 'version')) : null,
+        ...(str(body, 'bill_shown')
+          ? {
+              billAddress:
+                str(body, 'bill_custom') === 'on' ? parseBillAddress(body as Record<string, unknown>) : null,
+              customerReference: str(body, 'customer_reference'),
+              paymentTermsDays: ptd && /^\d{1,3}$/.test(ptd) ? Number(ptd) : null,
+              noSkonto: str(body, 'no_skonto') === 'on',
+            }
+          : {}),
       },
       c.get('actor'),
     );
     return back(c, `/rechnungen/${id}`, { ok: 'Entwurf gespeichert.' });
+  });
+
+  app.post(`/rechnungen/:id{${UUID}}/kopieren`, async (c) => {
+    const body = await c.req.parseBody();
+    const newId =
+      typeof body.new_id === 'string' && /^[0-9a-f-]{36}$/.test(body.new_id) ? body.new_id : randomUUID();
+    await copyInvoice(sql, c.req.param('id'), newId, c.get('actor'));
+    return back(c, `/rechnungen/${newId}/bearbeiten`, { ok: 'Kopie als Entwurf angelegt – bitte prüfen.' });
+  });
+
+  app.post(`/rechnungen/:id{${UUID}}/adresse`, async (c) => {
+    const id = c.req.param('id');
+    const body = await c.req.parseBody();
+    const revId =
+      typeof body.rev_id === 'string' && /^[0-9a-f-]{36}$/.test(body.rev_id) ? body.rev_id : randomUUID();
+    await reviseInvoiceAddress(
+      deps,
+      id,
+      parseBillAddress(body as Record<string, unknown>),
+      String(body.reason ?? ''),
+      c.get('actor'),
+      revId,
+    );
+    return back(c, `/rechnungen/${id}`, {
+      ok: 'Berichtigte Fassung erstellt (KoSIT geprüft, Original bleibt im Archiv). Jetzt erneut senden, falls nötig.',
+    });
   });
 
   // ------------------------------------------------------------------ Detail
@@ -567,6 +706,10 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
           preflight={pre}
           redirectNote={redirectNote}
           billing={billing}
+          newId={randomUUID()}
+          revisions={await sql`
+            select id, revision, reason, created_by, created_at, buyer_snapshot from app.invoice_revisions
+             where invoice_id = ${id} order by revision`.then((r) => r as never)}
           uploadSlot={
             <FileArea
               link={{ type: 'invoice', id }}

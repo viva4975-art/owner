@@ -12,6 +12,9 @@ export interface InvoiceLine {
   unitPrice: Cents;
   netAmount: Cents;
   vatRate: VatRate;
+  /** Leistungszeitraum der Position (BT-134/135) */
+  periodStart?: string | null;
+  periodEnd?: string | null;
 }
 
 export interface BankAccount {
@@ -92,6 +95,8 @@ export interface InvoiceDocument {
   periodEnd: string | null;
   buyerReference: string | null;
   orderReference: string | null;
+  /** Kundenreferenz (z. B. Bestell-/Auftragsnummer des Kunden), auf dem PDF „Ihre Referenz“ */
+  customerReference?: string | null;
   introText: string | null;
   closingText: string | null;
   lines: InvoiceLine[];
@@ -140,4 +145,5 @@ export const UNIT_LABELS: Record<string, string> = {
   // MON bleibt für bestehende Daten lesbar; neue Pauschalen nutzen LS (wie Fortytools: Einheit leer).
   DAY: 'Tag',
   E48: 'Leistung',
+  MTR: 'lfm',
 };

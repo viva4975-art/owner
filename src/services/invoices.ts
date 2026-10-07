@@ -59,9 +59,53 @@ export interface InvoiceRow {
   skonto_percent_bp: number | null;
   skonto_days: number | null;
   skonto_date: string | null;
+  bill_address: BillAddress | null;
+  customer_reference: string | null;
+  payment_terms_days: number | null;
+  no_skonto: boolean;
   version: number;
   created_at: Date;
   issued_at: Date | null;
+}
+
+/** Abweichende Rechnungsadresse je Rechnung (Fortytools „Rechnung bearbeiten“). */
+export interface BillAddress {
+  name: string;
+  name2: string | null;
+  contactName: string | null;
+  street: string;
+  postalCode: string;
+  city: string;
+}
+
+/** Anschrift im Käufer-Schnappschuss ersetzen (Kundennummer, USt-IdNr., Leitweg-ID bleiben). */
+export function applyBillAddress(buyer: BuyerSnapshot, a: BillAddress | null | undefined): BuyerSnapshot {
+  if (!a) return buyer;
+  return {
+    ...buyer,
+    name: a.name,
+    name2: a.name2,
+    contactName: a.contactName,
+    street: a.street,
+    postalCode: a.postalCode,
+    city: a.city,
+  };
+}
+
+export function parseBillAddress(v: Record<string, unknown>): BillAddress {
+  const t = (k: string) => (typeof v[k] === 'string' ? (v[k] as string).trim() : '');
+  const a = {
+    name: t('bill_name'),
+    name2: t('bill_name2') || null,
+    contactName: t('bill_contact') || null,
+    street: t('bill_street'),
+    postalCode: t('bill_postal_code'),
+    city: t('bill_city'),
+  };
+  if (!a.name || !a.street || !a.postalCode || !a.city)
+    throw new BusinessError('Rechnungsadresse: Name, Straße, PLZ und Ort angeben');
+  if (!/^\d{5}$/.test(a.postalCode)) throw new BusinessError('Rechnungsadresse: PLZ fünfstellig');
+  return a;
 }
 
 export interface LineRow {
@@ -77,6 +121,8 @@ export interface LineRow {
   source_service_id: string | null;
   service_type_id: string | null;
   service_type_name?: string | null;
+  period_start: string | null;
+  period_end: string | null;
 }
 
 export const toDraftInput = (l: LineRow): DraftLineInput => ({
@@ -88,6 +134,8 @@ export const toDraftInput = (l: LineRow): DraftLineInput => ({
   vatRate: l.vat_rate_bp,
   sourceServiceId: l.source_service_id,
   serviceTypeId: l.service_type_id,
+  periodStart: l.period_start ?? null,
+  periodEnd: l.period_end ?? null,
 });
 
 async function audit(
@@ -166,6 +214,11 @@ export interface DraftInput {
   reverseCharge?: boolean;
   /** Version, die das Formular geladen hat (Schutz vor Überschreiben aus anderem Tab). */
   expectedVersion?: number | null;
+  /** Einzelrechnung: abweichende Anschrift, Kundenreferenz, Zahlungsziel/kein Skonto (undefined = unverändert) */
+  billAddress?: BillAddress | null;
+  customerReference?: string | null;
+  paymentTermsDays?: number | null;
+  noSkonto?: boolean;
 }
 
 /**
@@ -202,6 +255,8 @@ export async function writeLines(
         vat_rate_bp: l.vatRate,
         source_service_id: l.sourceServiceId ?? null,
         service_type_id: l.serviceTypeId ?? null,
+        period_start: l.periodStart ?? null,
+        period_end: l.periodStart ? (l.periodEnd ?? l.periodStart) : null,
       })),
     )}`;
     // ohne Auswahl: Leistungsart der Objekt-Leistung übernehmen
@@ -247,6 +302,17 @@ export async function saveDraft(sql: Sql, id: string, input: DraftInput, actor: 
   if (input.periodStart && !input.periodEnd) input = { ...input, periodEnd: input.periodStart };
   if (input.periodStart && input.periodEnd && input.periodEnd < input.periodStart)
     throw new BusinessError('Leistungszeitraum: „bis“ liegt vor „von“');
+  for (const [i, l] of input.lines.entries()) {
+    if (l.periodStart && l.periodEnd && l.periodEnd < l.periodStart)
+      throw new BusinessError(`Position ${i + 1}: Leistungszeitraum „bis“ liegt vor „von“`);
+  }
+  if (input.lines.some((l) => l.quantity < 0n)) {
+    const net = input.lines.reduce((a, l) => a + (l.quantity * l.unitPrice) / 1000n, 0n);
+    if (net <= 0n)
+      throw new BusinessError(
+        'Mit Minus-Positionen muss die Rechnung insgesamt positiv bleiben – sonst Rechnungskorrektur/Storno verwenden',
+      );
+  }
   if (input.kind === 'final' && !input.prepaymentIds?.length) {
     throw new BusinessError('Schlussrechnung: bitte mindestens eine Abschlagsrechnung auswählen');
   }
@@ -277,6 +343,12 @@ export async function saveDraft(sql: Sql, id: string, input: DraftInput, actor: 
       invoice_format: billing.format,
       buyer_reference: billing.leitwegId,
       reverse_charge: reverseCharge,
+      ...(input.billAddress !== undefined
+        ? { bill_address: input.billAddress ? tx.json(input.billAddress as never) : null }
+        : {}),
+      ...(input.customerReference !== undefined ? { customer_reference: input.customerReference } : {}),
+      ...(input.paymentTermsDays !== undefined ? { payment_terms_days: input.paymentTermsDays } : {}),
+      ...(input.noSkonto !== undefined ? { no_skonto: input.noSkonto } : {}),
     };
     if (existing) {
       await tx`update app.invoices set ${tx(row as Record<string, unknown>)} where id = ${id}`;
@@ -693,6 +765,7 @@ export function rowToDocument(
     periodEnd: inv.period_end,
     buyerReference: inv.buyer_reference,
     orderReference: inv.order_reference,
+    customerReference: inv.customer_reference ?? null,
     introText: inv.intro_text,
     closingText: inv.closing_text,
     lines: d.lines,
@@ -723,10 +796,21 @@ export async function loadDocument(
   if (!data) throw new BusinessError('Rechnung nicht gefunden');
   const { invoice: inv, lines, prepayments, original } = data;
   const seller = inv.seller_snapshot ?? (await getSeller(sql));
+  const [rev] =
+    inv.status === 'issued'
+      ? await sql<{ buyer_snapshot: BuyerSnapshot }[]>`
+          select buyer_snapshot from app.invoice_revisions where invoice_id = ${id}
+           order by revision desc limit 1`
+      : [];
   const buyer =
-    inv.buyer_snapshot ?? (await buildBuyerSnapshot(sql, inv.customer_id, inv.site_id, inv.invoice_group_id));
+    rev?.buyer_snapshot ??
+    inv.buyer_snapshot ??
+    applyBillAddress(
+      await buildBuyerSnapshot(sql, inv.customer_id, inv.site_id, inv.invoice_group_id),
+      inv.bill_address,
+    );
   const draftSkonto =
-    inv.status === 'draft'
+    inv.status === 'draft' && !inv.no_skonto
       ? (await effectiveBilling(sql, inv.customer_id, inv.site_id, inv.invoice_group_id)).skonto
       : null;
   return rowToDocument(
@@ -767,11 +851,14 @@ export async function issue(sql: Sql, id: string, actor: string, date?: string):
     );
   }
   const seller = await getSeller(sql);
-  const buyer = await buildBuyerSnapshot(
-    sql,
-    data.invoice.customer_id,
-    data.invoice.site_id,
-    data.invoice.invoice_group_id,
+  const buyer = applyBillAddress(
+    await buildBuyerSnapshot(
+      sql,
+      data.invoice.customer_id,
+      data.invoice.site_id,
+      data.invoice.invoice_group_id,
+    ),
+    data.invoice.bill_address,
   );
   const [row] = await sql<{ number: string }[]>`
     select app.issue_invoice(${id}, ${issueDate}, ${sql.json(seller as never)}, ${sql.json(buyer as never)}, null) as number`;
@@ -791,4 +878,42 @@ export async function setPlannedIssueDate(sql: Sql, id: string, date: string | n
   const res =
     await sql`update app.invoices set planned_issue_date = ${date} where id = ${id} and status = 'draft' returning id`;
   if (res.length) await audit(sql, actor, 'planned_issue_date', id, { date });
+}
+
+/**
+ * Rechnung kopieren (Fortytools „Kopieren“): neuer Entwurf mit Kunde, Objekt, Texten, abweichender Anschrift,
+ * Referenzen und Positionen – ohne Verknüpfung zu Objekt-Leistungen (keine Doppelabrechnung im Monatslauf).
+ * Feste neue ID vom Aufrufer → doppelt klicken legt nur einen Entwurf an.
+ */
+export async function copyInvoice(sql: Sql, sourceId: string, newId: string, actor: string) {
+  const [exists] = await sql`select 1 from app.invoices where id = ${newId}`;
+  if (exists) return newId;
+  const data = await getInvoice(sql, sourceId);
+  if (!data) throw new BusinessError('Rechnung nicht gefunden');
+  const s = data.invoice;
+  if (!['invoice', 'partial'].includes(s.kind))
+    throw new BusinessError('Kopieren nur für Rechnungen und Abschlagsrechnungen');
+  await saveDraft(
+    sql,
+    newId,
+    {
+      customerId: s.customer_id,
+      siteId: s.site_id,
+      kind: s.kind as 'invoice' | 'partial',
+      periodStart: s.period_start,
+      periodEnd: s.period_end,
+      orderReference: s.order_reference,
+      introText: s.intro_text,
+      closingText: s.closing_text,
+      lines: data.lines.map((l) => ({ ...toDraftInput(l), sourceServiceId: null })),
+      reverseCharge: s.reverse_charge,
+      billAddress: s.bill_address,
+      customerReference: s.customer_reference,
+      paymentTermsDays: s.payment_terms_days,
+      noSkonto: s.no_skonto,
+    },
+    actor,
+  );
+  await audit(sql, actor, 'copy', newId, { from: sourceId, number: s.number });
+  return newId;
 }

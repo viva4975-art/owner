@@ -43,6 +43,9 @@ export function parseLines(body: Body, opts: { allowNegative?: boolean } = {}): 
   const vat = arr(body, 'vat');
   const src = arr(body, 'src');
   const stype = arr(body, 'stype');
+  const lps = arr(body, 'lps');
+  const lpe = arr(body, 'lpe');
+  const isoD = (v: string | undefined) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
   const out: DraftLineInput[] = [];
   desc.forEach((d, i) => {
     const description = d.trim();
@@ -66,7 +69,7 @@ export function parseLines(body: Body, opts: { allowNegative?: boolean } = {}): 
       throw new BusinessError(`Position ${n}: Einzelpreis darf nicht negativ sein – Menge negativ angeben`);
     if (quantity === 0n) throw new BusinessError(`Position ${n}: Menge darf nicht 0 sein`);
     if (quantity < 0n && !opts.allowNegative) {
-      throw new BusinessError(`Position ${n}: negative Mengen nur in Rechnungskorrekturen`);
+      throw new BusinessError(`Position ${n}: negative Mengen sind hier nicht erlaubt`);
     }
     const vatRate = Number(vat[i] || '1900');
     if (![1900, 700, 0].includes(vatRate)) throw new BusinessError(`Position ${n}: Steuersatz nicht erlaubt`);
@@ -79,6 +82,7 @@ export function parseLines(body: Body, opts: { allowNegative?: boolean } = {}): 
       vatRate,
       sourceServiceId: (src[i] ?? '').trim() || null,
       serviceTypeId: /^[0-9a-f-]{36}$/i.test(stype[i] ?? '') ? stype[i]! : null,
+      ...(isoD(lps[i]) ? { periodStart: isoD(lps[i]), periodEnd: isoD(lpe[i]) ?? isoD(lps[i]) } : {}),
     });
   });
   return out;

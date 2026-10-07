@@ -9,7 +9,7 @@ const ctx = await b.newContext({
 });
 const p = await ctx.newPage();
 const out = process.argv[2];
-for (const [n, u] of (process.argv[3] || '').split(',').map((x) => x.split('='))) {
+for (const [n, u] of (process.argv[3] || '').split(',').map((x) => { const i = x.indexOf('='); return [x.slice(0, i), x.slice(i + 1)]; })) {
   const r = await p.goto(B + u);
   await p.screenshot({ path: `${out}/${n}.png`, fullPage: true });
   console.log(n, r.status());

@@ -1243,3 +1243,19 @@ Testadresse.
   Fortytools-Zahlungen in `app.legacy_payments` (nur anhängen; Zahlung/Skonto je Zeile), „als bezahlt“ an der
   Fortytools-Rechnung schreibt ebenfalls eine Zeile. **Hinweis Skonto:** Abzug mindert die Umsatzsteuer (§ 17 UStG) –
   Korrektur macht der Steuerberater (DATEV-Export enthält „Skonto-Abzug“).
+- 2026-10-07: Runde 23, Teil E – Einzelrechnungen wie Fortytools (Münchner Wohnen, bis 600 Bestellungen/Jahr):
+  - Rechnungsentwurf: **Rechnungsadresse nur für diese Rechnung** (Häkchen, vorbelegt mit Gruppe/Kunde), Referenz-/
+    Bestellnummer, **Kundenreferenz** („Ihre Referenz“ im PDF; in der E-Rechnung BT-10, falls keine Leitweg-ID, sonst als
+    Hinweis), **Zahlungsbedingung je Rechnung** (sofort … 60 Tage) und „ohne Skonto“ (in `app.issue_invoice`),
+    **Leistungszeitraum je Position** (PDF „Leistung: …“, E-Rechnung BT-134/135, KoSIT-gültig), **Minus-Positionen**
+    (Menge negativ, Rechnung muss insgesamt positiv bleiben), **„+ Artikel hinzufügen“** (VK aus Artikeln), Einheit „lfm“.
+  - Ausgestellte Rechnung: **Kopieren** (neuer Entwurf ohne Verknüpfung zu Objekt-Leistungen) und **„Adresse ändern“** =
+    berichtigte Fassung: neue Anschrift + Grund, E-Rechnung vorher gegen KoSIT geprüft, neue Belege (PDF, XRechnung,
+    ZUGFeRD) **zusätzlich** archiviert (`invoice_documents.revision`, `app.invoice_revisions` nur anhängen), Original
+    unverändert; Versand der berichtigten Fassung genau einmal je Fassung. **Rechtlich:** Berichtigung durch den
+    Aussteller (§ 31 Abs. 5 UStDV) nur für Anschrift/Schreibweise desselben Empfängers – anderer Empfänger = Storno +
+    neue Rechnung (steht so in der App).
+  - **Alle Rechnungen** schöner: Kennzahlen (Netto Jahr, offen/überfällig, nicht versendet, Link Statistik), Spalten
+    Netto/Brutto/Fällig, Status-Schild (bezahlt / offen / überfällig mit Betrag / storniert) und Versandstatus.
+  - Nicht gebaut: Lieferschein (Fortytools) – bei Bedarf als PDF ohne Preise nachrüsten.
+  - Tests: 367 Unit-/DB-Tests (neu `runde23-invoice.db.test.ts` mit KoSIT, `runde23-op.db.test.ts`), Browser-Suiten grün.

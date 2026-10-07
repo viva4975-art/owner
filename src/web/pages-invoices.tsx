@@ -82,6 +82,8 @@ const lineEditorScript = `
   document.getElementById('add-line').addEventListener('click',function(){add().querySelector('[name=desc]').focus()});
   var sel=document.getElementById('from-service');
   if(sel)sel.addEventListener('change',function(){if(!sel.value)return;add(JSON.parse(sel.value));sel.value=''});
+  var asel=document.getElementById('from-article');
+  if(asel)asel.addEventListener('change',function(){if(!asel.value)return;var r=add(JSON.parse(asel.value));asel.value='';var t=r.querySelector('textarea');if(t)grow(t)});
   tbody.addEventListener('click',function(e){if(e.target.classList.contains('del')){e.target.closest('tr').remove();recalc()}});
   function grow(t){t.style.height='auto';t.style.height=(t.scrollHeight+2)+'px'}
   tbody.querySelectorAll('textarea').forEach(grow);
@@ -105,6 +107,17 @@ export interface EditorLine {
   rec?: string;
   /** Leistungsart (nur Rechnungen) */
   stype?: string;
+  /** Leistungszeitraum der Position (nur Rechnungen) */
+  lps?: string;
+  lpe?: string;
+}
+
+export interface ArticleOption {
+  id: string;
+  article_no: string;
+  name: string;
+  description: string | null;
+  sales_price_cents: bigint | null;
 }
 
 export interface ServiceTypeOption {
@@ -121,6 +134,8 @@ export const toEditorLine = (l: LineRow): EditorLine => ({
   vat: String(l.vat_rate_bp),
   src: l.source_service_id ?? '',
   stype: l.service_type_id ?? '',
+  lps: l.period_start ?? '',
+  lpe: l.period_end && l.period_end !== l.period_start ? l.period_end : '',
 });
 
 const LineRowInputs: FC<{
@@ -149,6 +164,14 @@ const LineRowInputs: FC<{
       >
         {l?.detail ?? ''}
       </textarea>
+      {types && (
+        <div class="ln-period">
+          <span class="small mut">Leistung am/von</span>
+          <input type="date" name="lps" value={l?.lps ?? ''} aria-label="Leistungszeitraum von" />
+          <span class="small mut">bis</span>
+          <input type="date" name="lpe" value={l?.lpe ?? ''} aria-label="Leistungszeitraum bis" />
+        </div>
+      )}
       <input type="hidden" name="src" value={l?.src ?? ''} />
     </td>
     <td style="width:90px">
@@ -201,7 +224,9 @@ export const LineEditor: FC<{
   recurring?: boolean | undefined;
   /** Leistungsarten zur Auswahl je Position (Rechnungen) */
   types?: ServiceTypeOption[] | undefined;
-}> = ({ lines, services, recurring, types }) => (
+  /** Artikel mit Verkaufspreis („+ Artikel hinzufügen“) */
+  articles?: ArticleOption[] | undefined;
+}> = ({ lines, services, recurring, types, articles }) => (
   <>
     <div class="tbl">
       <table id="lines" class="lines" data-lines>
@@ -250,6 +275,26 @@ export const LineEditor: FC<{
                 {s.description} – {euro(s.unit_price_cents)}
               </option>
             ))}
+        </select>
+      )}
+      {articles && articles.length > 0 && (
+        <select id="from-article" style="max-width:320px" aria-label="Artikel hinzufügen">
+          <option value="">+ Artikel hinzufügen …</option>
+          {articles.map((a) => (
+            <option
+              value={JSON.stringify({
+                desc: a.name,
+                detail: a.description ?? '',
+                qty: '1',
+                unit: 'C62',
+                price: a.sales_price_cents != null ? centsToInput(a.sales_price_cents) : '',
+                vat: '1900',
+              })}
+            >
+              {a.article_no} · {a.name}
+              {a.sales_price_cents != null ? ` – ${euro(a.sales_price_cents)}` : ''}
+            </option>
+          ))}
         </select>
       )}
     </div>
@@ -305,7 +350,31 @@ export const InvoiceEditor: FC<{
   partials: (InvoiceRow & { customer_name: string })[];
   selectedPartials: string[];
   types: ServiceTypeOption[];
-}> = ({ id, inv, lines, customers, sites, services, partials, selectedPartials, types }) => (
+  articles?: ArticleOption[];
+  /** Anschrift laut Rechnungsgruppe/Kunde (Vorbelegung „Adresse ändern“) */
+  defaultAddress?:
+    | {
+        name: string;
+        name2: string | null;
+        contactName: string | null;
+        street: string;
+        postalCode: string;
+        city: string;
+      }
+    | undefined;
+}> = ({
+  id,
+  inv,
+  lines,
+  customers,
+  sites,
+  services,
+  partials,
+  selectedPartials,
+  types,
+  articles,
+  defaultAddress,
+}) => (
   <>
     <h1>{inv.status ? 'Entwurf bearbeiten' : 'Neue Rechnung'}</h1>
     <CustomerNotice c={customers.find((c) => c.id === inv.customer_id)} />
@@ -369,9 +438,68 @@ export const InvoiceEditor: FC<{
             <input id="period_end" type="date" name="period_end" value={inv.period_end ?? ''} />
           </div>
           <div>
-            <label for="order_reference">Bestellnummer des Kunden</label>
-            <input id="order_reference" name="order_reference" value={inv.order_reference ?? ''} />
+            <label for="order_reference">Referenznummer / Bestellnummer</label>
+            <input
+              id="order_reference"
+              name="order_reference"
+              value={inv.order_reference ?? ''}
+              placeholder="z. B. Bestellung 4500123456"
+            />
           </div>
+          <div>
+            <label for="customer_reference">Kundenreferenz</label>
+            <input
+              id="customer_reference"
+              name="customer_reference"
+              value={inv.customer_reference ?? ''}
+              placeholder="z. B. Ansprechpartner/Kostenstelle des Kunden"
+            />
+          </div>
+          <div>
+            <label for="payment_terms_days">Zahlungsbedingung</label>
+            <select id="payment_terms_days" name="payment_terms_days">
+              <option value="">wie Rechnungsgruppe/Kunde</option>
+              {[0, 7, 10, 14, 21, 30, 45, 60].map((d) => (
+                <option value={String(d)} selected={inv.payment_terms_days === d}>
+                  {d === 0 ? 'sofort ohne Abzug' : `${d} Tage netto`}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div class="chk" style="align-self:end">
+            <input type="checkbox" id="no_skonto" name="no_skonto" checked={inv.no_skonto ?? false} />
+            <label for="no_skonto">ohne Skonto</label>
+          </div>
+        </div>
+        <input type="hidden" name="bill_shown" value="1" />
+        <div class="chk" style="margin-top:12px">
+          <input
+            type="checkbox"
+            id="bill_custom"
+            name="bill_custom"
+            data-reveal="bill-fields"
+            checked={!!inv.bill_address}
+          />
+          <label for="bill_custom">
+            Rechnungsadresse nur für diese Rechnung ändern (z. B. andere Abteilung oder Hausverwaltung)
+          </label>
+        </div>
+        <div class="grid" id="bill-fields" hidden={!inv.bill_address} style="margin-top:6px">
+          {(
+            [
+              ['bill_name', 'Name / Firma *', 'name'],
+              ['bill_name2', 'Zusatz', 'name2'],
+              ['bill_contact', 'Ansprechpartner', 'contactName'],
+              ['bill_street', 'Straße *', 'street'],
+              ['bill_postal_code', 'PLZ *', 'postalCode'],
+              ['bill_city', 'Ort *', 'city'],
+            ] as const
+          ).map(([n, label, k]) => (
+            <div>
+              <label for={n}>{label}</label>
+              <input id={n} name={n} value={(inv.bill_address?.[k] ?? defaultAddress?.[k] ?? '') as string} />
+            </div>
+          ))}
         </div>
         <div style="margin:12px 0">
           <label for="intro_text">Einleitungstext</label>
@@ -399,7 +527,12 @@ export const InvoiceEditor: FC<{
             ))}
           </div>
         )}
-        <LineEditor lines={lines} services={services} types={types} />
+        <LineEditor lines={lines} services={services} types={types} articles={articles} />
+        <p class="small mut" style="margin-top:4px">
+          Minus-Positionen (z. B. Abzug, Nachlass): Menge negativ eintragen, z. B. −1. Die Rechnung muss
+          insgesamt positiv bleiben. Leistungszeitraum je Position (z. B. je Bestellung) erscheint auf der
+          Rechnung und in der E-Rechnung.
+        </p>
         <div class="chk" style="margin-top:10px">
           <input type="hidden" name="reverse_charge_shown" value="1" />
           <input
@@ -499,6 +632,16 @@ export const InvoiceDetail: FC<{
   uploadSlot?: Child;
   /** gültige Rechnungsangaben (Objekt vor Kunde) */
   billing: EffectiveBilling;
+  /** berichtigte Fassungen (Anschrift), neueste zuletzt */
+  revisions?: {
+    id: string;
+    revision: number;
+    reason: string;
+    created_by: string;
+    created_at: Date;
+    buyer_snapshot: InvoiceRow['buyer_snapshot'];
+  }[];
+  newId?: string;
 }> = ({
   inv,
   lines,
@@ -513,21 +656,31 @@ export const InvoiceDetail: FC<{
   redirectNote,
   uploadSlot,
   billing,
+  revisions = [],
+  newId,
 }) => {
   const draft = inv.status === 'draft';
-  // ausgestellt: eingefrorener Empfänger; Entwurf: aktuelle Angaben (Objekt vor Kunde)
-  const to = inv.buyer_snapshot
+  const latestRev = revisions.at(-1);
+  const snap = latestRev?.buyer_snapshot ?? inv.buyer_snapshot;
+  // ausgestellt: eingefrorener (ggf. berichtigter) Empfänger; Entwurf: eigene Anschrift oder Rechnungsgruppe/Kunde
+  const to = snap
     ? {
-        name: inv.buyer_snapshot.name,
-        name2: inv.buyer_snapshot.name2,
-        street: inv.buyer_snapshot.street,
-        postalCode: inv.buyer_snapshot.postalCode,
-        city: inv.buyer_snapshot.city,
-        contactName: inv.buyer_snapshot.contactName,
+        name: snap.name,
+        name2: snap.name2,
+        street: snap.street,
+        postalCode: snap.postalCode,
+        city: snap.city,
+        contactName: snap.contactName,
       }
-    : billing;
-  const sent = deliveries.find((d) => d.status === 'sent');
-  const failed = deliveries.find((d) => d.status === 'failed');
+    : inv.bill_address
+      ? { ...billing, ...inv.bill_address }
+      : billing;
+  const revKey = latestRev ? `berichtigt-${latestRev.revision}` : null;
+  const forLatest = deliveries.filter((d) =>
+    revKey ? d.idempotency_key.endsWith(revKey) : !d.idempotency_key.includes('berichtigt-'),
+  );
+  const sent = forLatest.find((d) => d.status === 'sent');
+  const failed = forLatest.find((d) => d.status === 'failed');
   const cancelled = derived.find((d) => d.kind === 'cancellation');
   return (
     <>
@@ -684,8 +837,68 @@ export const InvoiceDetail: FC<{
               onsubmit={`return confirm('Rechnung jetzt per E-Mail versenden?${redirectNote ? '\\n\\n' + redirectNote : ''}')`}
             >
               {failed && <input type="hidden" name="retry" value="1" />}
-              <button class="btn">{failed ? 'Erneut versenden' : 'Per E-Mail versenden'}</button>
+              <button class="btn">
+                {failed
+                  ? 'Erneut versenden'
+                  : latestRev
+                    ? 'Berichtigte Fassung per E-Mail senden'
+                    : 'Per E-Mail versenden'}
+              </button>
             </form>
+          )}
+          {['invoice', 'partial'].includes(inv.kind) && newId && (
+            <form method="post" action={`/rechnungen/${inv.id}/kopieren`}>
+              <input type="hidden" name="new_id" value={newId} />
+              <button class="btn sec">Kopieren</button>
+            </form>
+          )}
+          {inv.kind !== 'cancellation' && (
+            <details class="inline-details">
+              <summary class="btn sec">Adresse ändern</summary>
+              <form
+                method="post"
+                action={`/rechnungen/${inv.id}/adresse`}
+                class="card"
+                style="margin-top:8px;max-width:640px"
+              >
+                <input type="hidden" name="rev_id" value={newId ?? ''} />
+                <p class="small" style="margin-top:0">
+                  Berichtigt nur die <b>Anschrift desselben Rechnungsempfängers</b> (z. B. Abteilung, Straße,
+                  Schreibweise). Die ursprüngliche Rechnung bleibt unverändert im Archiv; die berichtigte
+                  Fassung (PDF und E-Rechnung, vorher KoSIT-geprüft) wird zusätzlich archiviert. Anderer
+                  Empfänger = Storno und neue Rechnung.
+                </p>
+                <div class="grid">
+                  {(
+                    [
+                      ['bill_name', 'Name / Firma *', snap?.name],
+                      ['bill_name2', 'Zusatz', snap?.name2],
+                      ['bill_contact', 'Ansprechpartner', snap?.contactName],
+                      ['bill_street', 'Straße *', snap?.street],
+                      ['bill_postal_code', 'PLZ *', snap?.postalCode],
+                      ['bill_city', 'Ort *', snap?.city],
+                    ] as const
+                  ).map(([n, label, v]) => (
+                    <div>
+                      <label for={`r-${n}`}>{label}</label>
+                      <input id={`r-${n}`} name={n} value={v ?? ''} />
+                    </div>
+                  ))}
+                  <div style="grid-column:1/-1">
+                    <label for="r-reason">Grund der Berichtigung *</label>
+                    <input
+                      id="r-reason"
+                      name="reason"
+                      required
+                      placeholder="z. B. Rechnungsanschrift laut Kunde geändert"
+                    />
+                  </div>
+                </div>
+                <div class="formfoot">
+                  <button class="btn">Berichtigte Fassung erstellen</button>
+                </div>
+              </form>
+            </details>
           )}
           {inv.kind !== 'cancellation' && !cancelled && (
             <>
@@ -704,6 +917,18 @@ export const InvoiceDetail: FC<{
         </div>
       )}
 
+      {revisions.length > 0 && (
+        <div class="card small">
+          <b>Berichtigte Fassungen (Anschrift):</b>
+          {revisions.map((r) => (
+            <div>
+              Fassung {r.revision} vom{' '}
+              {r.created_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })} ({r.created_by}):{' '}
+              {r.reason}
+            </div>
+          ))}
+        </div>
+      )}
       <h2>Positionen</h2>
       <div class="tbl">
         <table>

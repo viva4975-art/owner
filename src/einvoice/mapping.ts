@@ -129,6 +129,9 @@ export function toEInvoice(doc: InvoiceDocument): Invoice {
   const dd = directDebitOf(doc);
   const notes: string[] = [];
   if (doc.kind !== 'invoice') notes.push(KIND_TITLES[doc.kind]);
+  // Kundenreferenz zusätzlich als Hinweis, wenn BT-10 schon die Leitweg-ID trägt
+  if (doc.customerReference && (doc.buyerReference ?? buyer.leitwegId))
+    notes.push(`Ihre Referenz: ${doc.customerReference}`);
   if (doc.introText) notes.push(doc.introText);
   if (doc.closingText) notes.push(doc.closingText);
   if (isReverseCharge(doc)) notes.push(REVERSE_CHARGE_NOTE);
@@ -158,7 +161,7 @@ export function toEInvoice(doc: InvoiceDocument): Invoice {
     ...(notes.length ? { 'cbc:Note': notes } : {}),
     'cbc:DocumentCurrencyCode': CUR,
     // BT-10 ist in XRechnung Pflicht: Leitweg-ID, sonst Kundennummer.
-    'cbc:BuyerReference': doc.buyerReference ?? buyer.leitwegId ?? buyer.customerNo,
+    'cbc:BuyerReference': doc.buyerReference ?? buyer.leitwegId ?? doc.customerReference ?? buyer.customerNo,
     ...(doc.periodStart && doc.periodEnd
       ? { 'cac:InvoicePeriod': { 'cbc:StartDate': doc.periodStart, 'cbc:EndDate': doc.periodEnd } }
       : {}),
@@ -306,6 +309,9 @@ export function toEInvoice(doc: InvoiceDocument): Invoice {
       'cbc:InvoicedQuantity@unitCode': l.unitCode as 'C62',
       'cbc:LineExtensionAmount': amt(l.netAmount),
       'cbc:LineExtensionAmount@currencyID': CUR,
+      ...(l.periodStart
+        ? { 'cac:InvoicePeriod': { 'cbc:StartDate': l.periodStart, 'cbc:EndDate': l.periodEnd ?? l.periodStart } }
+        : {}),
       'cac:Item': {
         ...(l.detail ? { 'cbc:Description': l.detail } : {}),
         'cbc:Name': l.description,

@@ -383,6 +383,7 @@ export async function renderInvoicePdf(
     if (b.leitwegId) info.push(['Leitweg-ID', b.leitwegId]);
     if (b.supplierNo) info.push(['Lieferanten-Nr.', b.supplierNo]);
     if (doc.orderReference) info.push(['Bestellnummer', doc.orderReference]);
+    if (doc.customerReference) info.push(['Ihre Referenz', doc.customerReference]);
   }
   w.firstPage(info);
 
@@ -430,6 +431,12 @@ export async function renderInvoicePdf(
     const textLines = [
       ...wrap(l.description, regular, BODY, TEXT_WIDTH),
       ...(l.detail ? wrap(l.detail, regular, BODY, TEXT_WIDTH) : []),
+      // Leistungszeitraum je Position (Einzelrechnungen), wenn nicht schon im Text
+      ...(l.periodStart && !(l.detail ?? '').includes(formatDateDe(l.periodStart))
+        ? [
+            `Leistung: ${formatDateDe(l.periodStart)}${l.periodEnd && l.periodEnd !== l.periodStart ? ` bis ${formatDateDe(l.periodEnd)}` : ''}`,
+          ]
+        : []),
     ];
     const h = (textLines.length + (multiRate ? 1 : 0)) * LH;
     w.ensure(h + 16, () => {

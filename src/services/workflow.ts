@@ -9,7 +9,14 @@ import { generateCii, generateXRechnungUbl, generateZugferd } from '../einvoice/
 import { type ValidationResult, validateWithKosit } from '../einvoice/kosit.js';
 import { MAILER_MISSING, type Mailer, resolveRecipients } from '../mail/mailer.js';
 import { renderInvoicePdf } from '../pdf/render.js';
-import { BusinessError, getInvoice, issue, loadDocument } from './invoices.js';
+import {
+  type BillAddress,
+  BusinessError,
+  applyBillAddress,
+  getInvoice,
+  issue,
+  loadDocument,
+} from './invoices.js';
 import { effectiveBilling } from './masterdata.js';
 
 export interface Deps {
@@ -101,6 +108,7 @@ interface DocRow {
   size_bytes: bigint;
   valid: boolean | null;
   retain_until: string;
+  revision: number;
   created_at: Date;
 }
 
@@ -121,15 +129,21 @@ export async function ensureDocuments(deps: Deps, id: string): Promise<DocRow[]>
     const [inv] = await tx<{ status: string; number: string; issue_date: string }[]>`
       select status, number, issue_date from app.invoices where id = ${id}`;
     if (!inv || inv.status !== 'issued') throw new BusinessError('Belege nur für ausgestellte Rechnungen');
+    // Fassung: 0 = Original, 1.. = berichtigte Anschrift (Original bleibt unverändert archiviert)
+    const [rv] = await tx<{ r: number }[]>`
+      select coalesce(max(revision), 0)::int as r from app.invoice_revisions where invoice_id = ${id}`;
+    const rev = rv?.r ?? 0;
     const have = new Set(
       (
-        await tx<{ kind: string }[]>`select kind::text from app.invoice_documents where invoice_id = ${id}`
+        await tx<{ kind: string }[]>`select kind::text from app.invoice_documents
+                                      where invoice_id = ${id} and revision = ${rev}`
       ).map((r) => r.kind),
     );
     if (['pdf', 'xrechnung_xml', 'zugferd_pdf', 'validation_report'].every((k) => have.has(k))) return;
 
     const doc = await loadDocument(sql, id);
-    const base = `invoices/${inv.issue_date.slice(0, 4)}/${inv.number}`;
+    const base = `invoices/${inv.issue_date.slice(0, 4)}/${inv.number}${rev ? `/berichtigt-${rev}` : ''}`;
+    const nm = rev ? `${inv.number}_berichtigt-${rev}` : inv.number;
     const until = retainUntil(inv.issue_date);
     const store = async (
       kind: DocRow['kind'],
@@ -142,13 +156,13 @@ export async function ensureDocuments(deps: Deps, id: string): Promise<DocRow[]>
       // überschreibt aber nie etwas (Archiv ist write-once).
       const path = `${base}/${hashOf(bytes).slice(0, 12)}_${filename}`;
       const { sha256, size } = await archive.put(path, bytes);
-      await tx`insert into app.invoice_documents (invoice_id, kind, filename, content_type, storage_path, sha256, size_bytes, valid, retain_until)
-               values (${id}, ${kind}, ${filename}, ${contentType}, ${path}, ${sha256}, ${size}, ${valid}, ${until})
+      await tx`insert into app.invoice_documents (invoice_id, kind, filename, content_type, storage_path, sha256, size_bytes, valid, retain_until, revision)
+               values (${id}, ${kind}, ${filename}, ${contentType}, ${path}, ${sha256}, ${size}, ${valid}, ${until}, ${rev})
                on conflict (storage_path) do nothing`;
     };
 
     const pdf = await renderInvoicePdf(doc);
-    if (!have.has('pdf')) await store('pdf', `${inv.number}.pdf`, 'application/pdf', pdf);
+    if (!have.has('pdf')) await store('pdf', `${nm}.pdf`, 'application/pdf', pdf);
 
     const ublXml = await generateXRechnungUbl(doc);
     const ciiXml = await generateCii(doc);
@@ -159,27 +173,27 @@ export async function ensureDocuments(deps: Deps, id: string): Promise<DocRow[]>
     if (!have.has('xrechnung_xml')) {
       await store(
         'xrechnung_xml',
-        `${inv.number}_xrechnung.xml`,
+        `${nm}_xrechnung.xml`,
         'application/xml',
         Buffer.from(ublXml, 'utf8'),
         ubl.valid,
       );
     }
     if (!have.has('zugferd_pdf')) {
-      const zugferd = await generateZugferd(doc, pdf, `${inv.number}.pdf`);
-      await store('zugferd_pdf', `${inv.number}_zugferd.pdf`, 'application/pdf', zugferd, cii.valid);
+      const zugferd = await generateZugferd(doc, pdf, `${nm}.pdf`);
+      await store('zugferd_pdf', `${nm}_zugferd.pdf`, 'application/pdf', zugferd, cii.valid);
     }
     if (!have.has('validation_report')) {
       await store(
         'validation_report',
-        `${inv.number}_pruefbericht_ubl.xml`,
+        `${nm}_pruefbericht_ubl.xml`,
         'application/xml',
         Buffer.from(ubl.reportXml, 'utf8'),
         ubl.valid,
       );
       await store(
         'validation_report',
-        `${inv.number}_pruefbericht_cii.xml`,
+        `${nm}_pruefbericht_cii.xml`,
         'application/xml',
         Buffer.from(cii.reportXml, 'utf8'),
         cii.valid,
@@ -299,7 +313,8 @@ export async function sendInvoice(
 
   const docs = await ensureDocuments(deps, id);
   if (deps.mailer.configured === false) throw new BusinessError(MAILER_MISSING);
-  const pick = (kind: DocRow['kind']) => docs.find((d) => d.kind === kind);
+  const latest = docs.reduce((m, d) => (d.kind !== 'attachment' && d.revision > m ? d.revision : m), 0);
+  const pick = (kind: DocRow['kind']) => docs.find((d) => d.kind === kind && d.revision === latest);
   const format = data.invoice.invoice_format;
   const selected: DocRow[] = [];
   if (format === 'pdf') selected.push(pick('pdf')!);
@@ -314,8 +329,9 @@ export async function sendInvoice(
 
   const { actual, redirected } = resolveRecipients(env, customer.invoice_emails);
   const doc = await loadDocument(sql, id);
-  const subject = `${redirected ? '[TEST] ' : ''}${KIND_TITLES[doc.kind]} ${doc.number} – ${doc.seller.legalName}`;
-  const key = `${id}:initial`;
+  const subject = `${redirected ? '[TEST] ' : ''}${latest ? 'Berichtigte Fassung: ' : ''}${KIND_TITLES[doc.kind]} ${doc.number} – ${doc.seller.legalName}`;
+  // berichtigte Fassung: eigener Versand (genau einmal je Fassung)
+  const key = latest ? `${id}:berichtigt-${latest}` : `${id}:initial`;
   const files = selected.map((d) => ({ filename: d.filename, sha256: d.sha256, size: Number(d.size_bytes) }));
 
   await sql`insert into app.invoice_deliveries (invoice_id, idempotency_key, intended_recipients, actual_recipients, subject, files)
@@ -370,4 +386,44 @@ export async function sendInvoice(
     await sql`update app.invoice_deliveries set status = 'failed', error = ${(err as Error).message} where id = ${claimed.id}`;
     throw new BusinessError(`Versand fehlgeschlagen: ${(err as Error).message}`);
   }
+}
+
+/**
+ * Anschrift einer ausgestellten Rechnung berichtigen (Fortytools „Adresse ändern“). Rechtlich: Berichtigung durch den
+ * Rechnungsaussteller (§ 31 Abs. 5 UStDV) – nur Anschrift/Schreibweise desselben Empfängers. Ein anderer
+ * Rechnungsempfänger ist keine Berichtigung → Storno und neue Rechnung. Die Originalbelege bleiben unverändert im
+ * Archiv; die berichtigte Fassung (PDF, XRechnung, ZUGFeRD) wird vorher gegen KoSIT geprüft und zusätzlich archiviert.
+ */
+export async function reviseInvoiceAddress(
+  deps: Deps,
+  id: string,
+  address: BillAddress,
+  reason: string,
+  actor: string,
+  revId: string,
+) {
+  const { sql } = deps;
+  if (!reason.trim()) throw new BusinessError('Bitte den Grund der Berichtigung angeben');
+  const [done] = await sql`select 1 from app.invoice_revisions where id = ${revId}`;
+  if (done) return;
+  const data = await getInvoice(sql, id);
+  if (!data || data.invoice.status !== 'issued')
+    throw new BusinessError(
+      'Anschrift berichtigen nur bei ausgestellten Rechnungen – im Entwurf direkt ändern',
+    );
+  const current = await loadDocument(sql, id);
+  const buyer = applyBillAddress(current.buyer, address);
+  const check = await validateBoth({ ...current, buyer }, deps.env);
+  if (!check.valid)
+    throw new BusinessError('Berichtigte E-Rechnung besteht die KoSIT-Prüfung nicht – nichts geändert');
+  await sql.begin(async (tx) => {
+    await tx`select pg_advisory_xact_lock(hashtext(${'docs:' + id}))`;
+    const [r] = await tx<{ n: number }[]>`
+      select coalesce(max(revision), 0)::int + 1 as n from app.invoice_revisions where invoice_id = ${id}`;
+    await tx`insert into app.invoice_revisions (id, invoice_id, revision, buyer_snapshot, reason, created_by)
+             values (${revId}, ${id}, ${r!.n}, ${tx.json(buyer as never)}, ${reason.trim()}, ${actor})`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'address_revision', 'invoice', ${id}, ${tx.json({ revision: r!.n, reason: reason.trim() })})`;
+  });
+  await ensureDocuments(deps, id);
 }

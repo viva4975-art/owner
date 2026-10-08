@@ -353,6 +353,7 @@ export type DashCardKey =
   | 'unversendet'
   | 'abwesend'
   | 'hinweise'
+  | 'ampel'
   | 'geburtstage';
 export const DASH_CARDS: Record<DashCardKey, string> = {
   aufgaben: 'Aufgaben (inkl. Ausschreibungs-Termine)',
@@ -362,6 +363,7 @@ export const DASH_CARDS: Record<DashCardKey, string> = {
   unversendet: 'Noch nicht versendet',
   abwesend: 'Abwesend (heute, 7 und 14 Tage)',
   hinweise: 'Hinweise (Fristen, Unterschriften, Prüfungen)',
+  ampel: 'Nachkalkulation Vormonat (Ampel je Objekt)',
   geburtstage: 'Geburtstage & Jubiläen',
 };
 export interface DashItem {
@@ -378,6 +380,7 @@ export const DEFAULT_DASH: DashItem[] = [
   { key: 'unversendet', col: 2, hidden: false },
   { key: 'abwesend', col: 2, hidden: false },
   { key: 'hinweise', col: 2, hidden: false },
+  { key: 'ampel', col: 2, hidden: false },
   { key: 'geburtstage', col: 2, hidden: false },
 ];
 /** Gespeichertes Layout prüfen und um neue Karten ergänzen. */
@@ -470,6 +473,22 @@ export const Dashboard: FC<{
   missingDocs?: number;
   /** aktive Mitarbeitende ohne laufenden Einsatz (+ Ziel des Hinweises) */
   noShift?: { n: number; href: string };
+  reminders?: { n: number; red: number };
+  /** Nachkalkulation Vormonat: Ampel je Objekt */
+  ampel?: {
+    month: string;
+    targetBp: number;
+    green: number;
+    yellow: number;
+    red: number;
+    worst: {
+      site_id: string;
+      site_no: string;
+      site_name: string;
+      margin: bigint;
+      margin_bp: number | null;
+    }[];
+  } | null;
   /** Anfragen aus der App der Objektleitung: NU-Aufträge zur Freigabe, neue Personalbögen */
   appRequests?: { nu: number; bogen: number };
   absentHref?: string | undefined;
@@ -491,6 +510,8 @@ export const Dashboard: FC<{
   signOverdue = [],
   missingDocs = 0,
   noShift = { n: 0, href: '' },
+  reminders = { n: 0, red: 0 },
+  ampel = null,
   appRequests = { nu: 0, bogen: 0 },
   absentHref,
 }) => {
@@ -498,6 +519,20 @@ export const Dashboard: FC<{
   const overdue = balances.filter((b) => b.max_overdue_days > 0);
   const overdueTasks = tasks.filter((t) => t.due_date && t.due_date < kpi.today).length;
   const hints: { tone: string; text: Child; href: string }[] = [
+    ...(reminders.n
+      ? [
+          {
+            tone: reminders.red ? 'err' : 'warn',
+            text: (
+              <>
+                <b>{reminders.n}</b> Erinnerungen{reminders.red ? `, davon ${reminders.red} dringend` : ''} –
+                alle Fristen ansehen
+              </>
+            ),
+            href: '/erinnerungen',
+          },
+        ]
+      : []),
     ...(appRequests.nu
       ? [
           {
@@ -929,6 +964,45 @@ export const Dashboard: FC<{
               )}
             </>
           ),
+          ampel: ampel ? (
+            <section class="card dash-card">
+              <DashHead title={`Nachkalkulation ${ampel.month.slice(5)}/${ampel.month.slice(0, 4)}`} />
+              <div style="display:flex;gap:8px;margin:4px 0 10px">
+                <a class="badge ok" href={`/auswertungen/nachkalkulation?monat=${ampel.month}`}>
+                  {ampel.green} ≥ Ziel
+                </a>
+                <a class="badge warn" href={`/auswertungen/nachkalkulation?monat=${ampel.month}`}>
+                  {ampel.yellow} unter Ziel
+                </a>
+                <a class="badge err" href={`/auswertungen/nachkalkulation?monat=${ampel.month}`}>
+                  {ampel.red} Verlust
+                </a>
+              </div>
+              {ampel.worst.length > 0 ? (
+                <ul class="dash-list">
+                  {ampel.worst.map((w) => (
+                    <li>
+                      <span class={`badge ${w.margin < 0n ? 'err' : 'warn'}`}>
+                        {w.margin_bp == null ? '–' : `${(w.margin_bp / 100).toFixed(0)} %`}
+                      </span>
+                      <div class="dl-main">
+                        <a href={`/objekte/${w.site_id}`}>
+                          {w.site_no} · {w.site_name}
+                        </a>
+                        <div class="dl-sub">Deckungsbeitrag {euro(w.margin)}</div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div class="dash-empty">
+                  {ampel.green
+                    ? 'Alle Objekte mit Erlös erreichen das Ziel.'
+                    : 'Im Monat keine Objekte mit Erlös.'}
+                </div>
+              )}
+            </section>
+          ) : null,
           geburtstage: (
             <section class="card dash-card">
               <DashHead title="Geburtstage & Jubiläen" count={people.length || undefined} />

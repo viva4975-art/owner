@@ -1437,3 +1437,11 @@ Testadresse.
   `invoice_groups.delivery_channel/portal_name`, `invoice_deliveries.channel/portal_reference/recorded_by`.
   **Einstellungen → Nummernkreise** (nur Admin): alle Kreise mit höchster vergebener (inkl. Fortytools-Rechnungen) und
   nächster Nummer, nur **anheben** (nie senken, nie ≤ vergebene Nummer; Protokoll). Tests: `portal-ranges.db.test.ts`.
+- 2026-10-08: **Erinnerungen** (`/erinnerungen`, Hinweis oben auf der Startseite): Aufenthaltstitel/Arbeitserlaubnis
+  (60 Tage), NU-Nachweise, HU/Inspektion (30 Tage), Ausschreibungs-Termine (7 Tage), Eigen-Compliance, fällige Aufgaben,
+  Skonto im Rechnungseingang (3 Tage), Einsätze von gestern ohne Zeit; rot/gelb sortiert. **Tägliche Sammel-Mail**
+  (Einstellungen → Erinnerungen per E-Mail: an/aus, Empfänger, ab Uhrzeit), Server prüft alle 15 Min., höchstens einmal je
+  Tag (Datum wird vor dem Versand gesetzt), ohne Fristen/ohne SMTP keine Mail, im Test nur an die Testadresse.
+  Push aufs Handy folgt mit Firebase. **Ampel Nachkalkulation** als Startseiten-Karte (Vormonat: ≥ Ziel / unter Ziel /
+  Verlust, schlechteste 5 Objekte). Behoben: Stunde aus Intl („05 Uhr“) → NaN, jetzt `hourBerlin()`.
+  Tests: `reminders.db.test.ts`.

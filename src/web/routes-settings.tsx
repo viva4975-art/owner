@@ -30,6 +30,11 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
         'Anschrift, Steuernummer, USt-ID, Handelsregister, Kontakt und Bankkonten – erscheinen auf Rechnungen, Mahnungen und in der E-Rechnung.',
       ],
       [
+        'Erinnerungen per E-Mail',
+        '/einstellungen/erinnerungen',
+        'Tägliche Sammel-Mail mit allen Fristen (Aufenthaltstitel, NU-Nachweise, HU, Ausschreibungen, Aufgaben, Skonto, fehlende Zeiten).',
+      ],
+      [
         'Nummernkreise',
         '/einstellungen/nummernkreise',
         'Nächste Rechnungs-, Angebots- und Mahnungsnummer anzeigen und vor dem Umstieg anheben (nie senken).',

@@ -1,3 +1,5 @@
+import { siteCosting } from '../services/costing.js';
+import { collectReminders } from '../services/reminders.js';
 import { fullName } from '../services/users.js';
 import { missingDocs } from '../services/hr-required-docs.js';
 import { hoursHistory } from '../services/employee-hours.js';
@@ -160,6 +162,25 @@ export function registerModuleRoutes(ctx: Ctx) {
         absent={absent}
         absentHref={canAccess(role, '/urlaub/kalender') ? '/urlaub/kalender' : undefined}
         signOverdue={signOverdue}
+        ampel={await (async () => {
+          const m = lastMonth();
+          const { rows, targetBp } = await siteCosting(sql, m);
+          const withRev = rows.filter((r) => r.revenue !== 0n);
+          const red = withRev.filter((r) => r.margin < 0n);
+          const yellow = withRev.filter((r) => r.margin >= 0n && (r.margin_bp ?? 0) < targetBp);
+          return {
+            month: m,
+            targetBp,
+            green: withRev.length - red.length - yellow.length,
+            yellow: yellow.length,
+            red: red.length,
+            worst: [...red, ...yellow].sort((a, b) => (a.margin_bp ?? 0) - (b.margin_bp ?? 0)).slice(0, 5),
+          };
+        })()}
+        reminders={await collectReminders(sql).then((l) => ({
+          n: l.length,
+          red: l.filter((r) => r.level === 'rot').length,
+        }))}
         missingDocs={
           canAccess(role, '/personal/unterlagen')
             ? (await missingDocs(sql, { siteIds: c.get('sites') })).length

@@ -5,6 +5,7 @@ import { createSql } from './db/client.js';
 import { createMailer } from './mail/mailer.js';
 import { configureAuthAdmin } from './services/auth-users.js';
 import { applyDueHours } from './services/employee-hours.js';
+import { sendDailyReminders } from './services/reminders.js';
 import { createApp } from './web/app.js';
 
 const env = loadEnv();
@@ -32,6 +33,16 @@ serve({ fetch: app.fetch, port: env.PORT, hostname }, (info) => {
 const dueHours = () => applyDueHours(sql).catch((e) => console.error('Wochenstunden übernehmen:', e));
 void dueHours();
 setInterval(dueHours, 60 * 60 * 1000).unref();
+
+// Erinnerungen: tägliche Sammel-Mail (höchstens einmal je Tag, ab der eingestellten Uhrzeit)
+const reminders = () =>
+  sendDailyReminders({
+    sql,
+    env,
+    archive: new LocalArchiveStore(env.ARCHIVE_DIR),
+    mailer: createMailer(env),
+  }).catch((e) => console.error('Erinnerungen:', e));
+setInterval(reminders, 15 * 60 * 1000).unref();
 
 const shutdown = async () => {
   await sql.end({ timeout: 5 });

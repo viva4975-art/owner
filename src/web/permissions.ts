@@ -13,6 +13,8 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/benutzer(\/|$)/, ['admin']],
   [/^\/einstellungen\/firma(\/|$)/, ['admin']],
   [/^\/einstellungen\/nummernkreise(\/|$)/, ['admin']],
+  [/^\/einstellungen\/erinnerungen(\/|$)/, ['admin', 'buchhaltung']],
+  [/^\/erinnerungen(\/|$)/, ['admin', 'buchhaltung']],
   [/^\/einstellungen\/?$/, ['admin', 'buchhaltung', 'personal']],
   [/^\/einstellungen\/word-vorlagen(\/|$)/, ['admin', 'buchhaltung', 'personal']],
   [/^\/einstellungen\/objektordner(\/|$)/, ['admin', 'buchhaltung', 'personal']],

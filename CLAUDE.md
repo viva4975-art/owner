@@ -1643,3 +1643,9 @@ Testadresse.
   Ansprechpartner, Gültig bis) und Auftragsbestätigungen. Rechnungsentwurf: Einleitungstext mit Standardtext vorbelegt,
   Kasten „Text auf der Rechnung“ (Einleitung, Schlusssatz) in der Entwurfsansicht. Standardtexte als Konstanten
   `INVOICE_INTRO_DEFAULT`/`INVOICE_CLOSING_PAY` in `src/pdf/render.ts`.
+- 2026-10-08: Rechnungskopf (Ahmed): Angaben unter dem Balken in **einer Zeile**, Spaltenbreite nach Inhalt, Leistungsort
+  bekommt den Rest und bricht um (Leitweg-ID bricht notfalls am Bindestrich), Schrift wird bei vielen Angaben bis 7 pt kleiner,
+  Zeitraum kurz „01.09.–30.09.2026“. „Lieferanten-Nr.“ heißt „Unsere Lieferantennr.“ (unsere Nummer beim Kunden).
+  **Strich unter der Absenderzeile** in allen Briefen auf Briefpapier (Rechnung, Angebot, AB, Mahnung, Briefe).
+  Server-Fehler „unterminated quoted value“ in `.env.live` Zeile 18 (MAIL_FROM ohne schließendes Hochkomma): Anleitungen
+  empfehlen jetzt `MAIL_FROM='buchhaltung@viva-deluxe-reinigung.de'` (ohne Name/spitze Klammern).

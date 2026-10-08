@@ -34,7 +34,7 @@ SMTP_PORT='587'
 SMTP_SECURE='false'
 SMTP_USER='buchhaltung@viva-deluxe-reinigung.de'
 SMTP_PASS='&lt;Passwort des Postfachs&gt;'
-MAIL_FROM='Viva-Deluxe Buchhaltung &lt;buchhaltung@viva-deluxe-reinigung.de&gt;'
+MAIL_FROM='buchhaltung@viva-deluxe-reinigung.de'
 MAIL_TEST_RECIPIENT='&lt;Ihre Testadresse&gt;'</pre>Speichern, dann <code>bash /opt/viva/deploy/update.sh</code>. Im Testbetrieb gehen alle Mails nur an die Testadresse.</div></div></div>
 <div class="item"><div class="box"></div><div><span class="t">Cloud Backup: 100 GB gebucht, 0 belegt</span><span class="who a">Ahmed</span>
 <div class="d">Das heißt: Es ist noch <b>nichts eingerichtet</b> – das Paket ist nur gebucht. So geht es:<br>1) IONOS-Kundenbereich → Server &amp; Cloud → <b>Backup</b> → „Backup-Konsole öffnen“ (Acronis).<br>2) Dort „Gerät hinzufügen“ → <b>Linux</b>. Die Konsole zeigt einen Befehl (Download + Registrierung mit Token). Diesen Befehl auf dem Server als root ausführen (<code>ssh root@217.160.236.117</code>).<br>3) Nach 1–2 Minuten erscheint der Server als Gerät. <b>Sicherungsplan</b> anlegen: Dateien/Ordner <code>/opt/viva-sicherung</code> und <code>/opt/viva</code> (oder ganzer Server), täglich 03:30 (nach unserer Datenbank-Sicherung um 02:30), Aufbewahrung 30 Tage.<br>4) Ersten Lauf von Hand starten, danach eine Datei probeweise zurückholen.<br>Prüfen: <code>systemctl list-units | grep -i acronis</code> zeigt den laufenden Agenten.</div></div></div>

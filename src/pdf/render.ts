@@ -166,6 +166,8 @@ export function splitLineDetail(detail: string | null | undefined): {
 
 const periodText = (a: string | null | undefined, b: string | null | undefined) =>
   a ? `${formatDateDe(a)}${b && b !== a ? ` bis ${formatDateDe(b)}` : ''}` : null;
+/** „01.09.2026 bis 30.09.2026“ → „01.09.–30.09.2026“ (nur für den Kopf) */
+const shortPeriod = (t: string) => t.replace(/^(\d{2}\.\d{2}\.)(\d{4}) bis (\d{2}\.\d{2}\.)\2$/, '$1–$3$2');
 
 class Doc {
   pages: PDFPage[] = [];
@@ -347,7 +349,15 @@ class Doc {
 
   /** Absenderzeile + Anschriftfeld (Fortytools: 141,7 / 157,4 pt). */
   address(s: SellerSnapshot, b: BuyerSnapshot) {
-    this.text(`${s.legalName} | ${s.street} | ${s.postalCode} ${s.city}`, LEFT, 148, 7);
+    const sender = `${s.legalName} | ${s.street} | ${s.postalCode} ${s.city}`;
+    this.text(sender, LEFT, 148, 7);
+    // Strich unter der Absenderzeile (wie im Fensterbriefumschlag üblich)
+    this.page.drawLine({
+      start: { x: LEFT, y: PAGE_H - 150.8 },
+      end: { x: LEFT + this.regular.widthOfTextAtSize(sender, 7), y: PAGE_H - 150.8 },
+      thickness: 0.5,
+      color: INK,
+    });
     const addr = [
       b.name,
       b.name2,
@@ -428,7 +438,7 @@ export async function renderInvoicePdf(
   ];
   if (!opts.info) {
     if (b.leitwegId) info.push(['Leitweg-ID', b.leitwegId]);
-    if (b.supplierNo) info.push(['Lieferanten-Nr.', b.supplierNo]);
+    if (b.supplierNo) info.push(['Unsere Lieferantennr.', b.supplierNo]);
     if (doc.orderReference) info.push(['Bestellnummer', doc.orderReference]);
     if (doc.customerReference) info.push(['Ihre Referenz', doc.customerReference]);
   }
@@ -476,31 +486,70 @@ export async function renderInvoicePdf(
     });
   } else if (grouped)
     facts.push({ label: 'Leistungsort', lines: [`${keys.length} Objekte (siehe Positionen)`] });
-  if (headPeriod && sitePlaces) facts.push({ label: 'Leistungszeitraum', lines: [headPeriod] });
+  if (headPeriod && sitePlaces) facts.push({ label: 'Leistungszeitraum', lines: [shortPeriod(headPeriod)] });
   for (const [k, v] of info.slice(2)) facts.push({ label: k, lines: [v] });
   w.firstPage(info.slice(0, 2));
   w.address(s, b);
 
   if (facts.length) {
-    const COLS = 3;
+    // eine Zeile (Ahmed 08.10.): Spaltenbreite nach Inhalt, der Leistungsort bekommt den Rest und bricht um
     const gap = 14;
-    const colW = (RIGHT - LEFT - gap * (COLS - 1)) / COLS;
-    let y = w.y - 16;
-    for (let r = 0; r < facts.length; r += COLS) {
-      const row = facts.slice(r, r + COLS);
-      let rowH = 0;
-      row.forEach((f, i) => {
-        const x = LEFT + i * (colW + gap);
-        w.text(f.label.toUpperCase(), x, y, 6.5, { color: GREY });
-        const head = wrap(f.lines[0]!, f.bold ? bold : regular, BODY, colW);
-        const ls = [...head, ...f.lines.slice(1).flatMap((t) => wrap(t, regular, BODY, colW))].slice(0, 3);
-        ls.forEach((t, k) => w.text(t, x, y + 12 + k * 11.5, BODY, { bold: !!f.bold && k < head.length }));
-        rowH = Math.max(rowH, 12 + ls.length * 11.5);
-      });
-      y += rowH + 8;
+    const avail = RIGHT - LEFT - gap * (facts.length - 1);
+    const LABEL = 6.2;
+    const lw = (t: string) => regular.widthOfTextAtSize(t.toUpperCase(), LABEL);
+    const plan = (size: number) => {
+      const nat = facts.map((f) =>
+        Math.max(lw(f.label), ...f.lines.map((t) => (f.bold ? bold : regular).widthOfTextAtSize(t, size))),
+      );
+      const fixed = facts.reduce((a, f, i) => a + (f.bold ? 0 : nat[i]!), 0);
+      const placeW = Math.min(nat[facts.findIndex((f) => f.bold)] ?? 0, avail - fixed);
+      return { nat, fixed, placeW };
+    };
+    let size = BODY;
+    let p = plan(size);
+    const hasPlace = facts.some((f) => f.bold);
+    while (size > 7 && (p.fixed + (hasPlace ? 120 : 0) > avail || (!hasPlace && p.fixed > avail))) {
+      size -= 0.5;
+      p = plan(size);
     }
-    w.rule(y - 4, LEFT, RIGHT);
-    w.y = y + 22;
+    // Rest gleichmäßig verteilen, damit die Zeile die volle Breite nutzt
+    const used = p.fixed + (hasPlace ? Math.max(120, p.placeW) : 0);
+    const extra = Math.max(0, avail - used) / facts.length;
+    const widths = facts.map((f, i) =>
+      f.bold ? Math.max(120, p.placeW) + extra : Math.max(lw(f.label), p.nat[i]!) + extra,
+    );
+    // zu breit trotz kleinster Schrift → anteilig kürzen (Werte brechen um)
+    const total = widths.reduce((a, b) => a + b, 0);
+    if (total > avail) widths.forEach((wd, i) => (widths[i] = (wd * avail) / total));
+    const lh = size + 2.5;
+    const y = w.y - 16;
+    let x = LEFT;
+    let rowH = 0;
+    const wrapHard = (t: string, font: PDFFont, colW: number) =>
+      wrap(t, font, size, colW).flatMap((l) => {
+        if (font.widthOfTextAtSize(l, size) <= colW) return [l];
+        const out: string[] = [];
+        let cur = '';
+        for (const part of l.split(/(?<=-)/)) {
+          if (cur && font.widthOfTextAtSize(cur + part, size) > colW) {
+            out.push(cur);
+            cur = part;
+          } else cur += part;
+        }
+        return cur ? [...out, cur] : out;
+      });
+    facts.forEach((f, i) => {
+      const colW = widths[i]!;
+      for (const [k, l] of wrap(f.label.toUpperCase(), regular, LABEL, colW).entries())
+        w.text(l, x, y + k * 7.5, LABEL, { color: GREY });
+      const head = wrapHard(f.lines[0]!, f.bold ? bold : regular, colW);
+      const ls = [...head, ...f.lines.slice(1).flatMap((t) => wrapHard(t, regular, colW))].slice(0, 4);
+      ls.forEach((t, k) => w.text(t, x, y + 12 + k * lh, size, { bold: !!f.bold && k < head.length }));
+      rowH = Math.max(rowH, 12 + ls.length * lh);
+      x += colW + gap;
+    });
+    w.rule(y + rowH + 4, LEFT, RIGHT);
+    w.y = y + rowH + 30;
   }
 
   // ---------------------------------------------------------------- Anrede & Einleitung

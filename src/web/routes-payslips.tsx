@@ -27,9 +27,9 @@ export function registerPayslipRoutes(ctx: Ctx) {
     return page(
       c,
       'Lohnabrechnungen',
-      'personal',
+      'transfer',
       <>
-        <PageHead title="Lohnabrechnungen" crumbs={[['Personal', '/personal']]} />
+        <PageHead title="Lohnabrechnungen einlesen" crumbs={[['Transfer', '/transfer/kontoumsaetze']]} />
         <form method="post" action="/personal/lohnabrechnungen" enctype="multipart/form-data" class="card">
           <input type="hidden" name="id" value={randomUUID()} />
           <div class="grid">

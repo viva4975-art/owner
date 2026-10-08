@@ -1553,3 +1553,18 @@ Testadresse.
   - **Objekt → Einsätze:** Klick auf einen Termin öffnet dasselbe Detailfenster mit „Serie bearbeiten“ (Standard), „Nur diesen
     Tag umplanen / Vertretung / Ausfall“, Mitarbeiter, Löschen.
   - Tests: 412 Unit-/DB-Tests (neu `runde26.db.test.ts`), e2e zeit/login/planung/runde10/objektseiten/rechte grün.
+- 2026-10-08: Runde 26, Paket C – Finanzen (Ahmed, Punkte 11–14, 26):
+  - **Entwürfe:** Filter „Abrechnungsmonat“, „PDF aller Entwürfe“ (Monat, max. 300) und „PDF der Markierten“ – ein
+    zusammengefügtes PDF zum Prüfen vor dem Ausstellen.
+  - **Mahnwesen:** „Vorschau als PDF (Entwurf)“ in der Stapelverarbeitung und in den Offenen Posten: alle markierten
+    Mahnungen mit Wasserzeichen ENTWURF, gleiche Stufen/Gebühren/Pauschale wie beim Erstellen, nichts wird gespeichert.
+  - **Offene Posten neu (einfacher):** je Kunde eine aufklappbare Zeile (offen, überfällig, max. Tage), darin kompakte
+    Tabelle (Rechnung, Datum, Fällig/Skonto, Tage, Betrag, bezahlt/verrechnet, offen, Zahlung erfassen aufklappbar);
+    unten fest stehende Leiste: Zahlungen buchen / Mahnung als Vorschau / Mahnung erstellen.
+  - **Preisanpassung:** zusätzlich „übrige Kosten erhöhen um %“ (Bezeichnung frei, z. B. Material- und Sachkosten):
+    neuer Preis = alt + alt × Lohnanteil × Lohnerhöhung + alt × (100 % − Lohnanteil) × Sachkostenerhöhung (einmal
+    kaufmännisch auf Cent gerundet). Fehlt der Lohnanteil, kann ein **angenommener Anteil** für den Lauf gesetzt werden
+    (gelb „angen.“ in der Vorschau, im Lauf festgehalten `price_adjustment_items.labor_assumed`); dauerhaft nachtragen
+    weiter unter „Lohnkostenanteil fehlt“ (jetzt unten). Formular oben, Vorschau direkt darunter. Anschreiben nennt
+    Lohn- und Sachkostenerhöhung getrennt. Migration `20261113000004`.
+  - Lohnabrechnungen einlesen: jetzt unter **Transfer** (Adresse unverändert `/personal/lohnabrechnungen`).

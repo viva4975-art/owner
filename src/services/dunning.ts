@@ -1,3 +1,4 @@
+import { PDFDocument } from '@cantoo/pdf-lib';
 import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import { type Cents, formatEuro } from '../domain/money/money.js';
@@ -297,10 +298,21 @@ export async function getDunning(sql: Sql, id: string) {
 
 const eur = (c: bigint) => formatEuro(c as Cents);
 
-export async function renderDunningPdf(sql: Sql, id: string): Promise<{ pdf: Uint8Array; filename: string }> {
-  const data = await getDunning(sql, id);
-  if (!data) throw new BusinessError('Mahnung nicht gefunden');
-  const { dunning: d, items } = data;
+interface DunningLetter {
+  customer_id: string;
+  title: string;
+  text: string;
+  number: string;
+  issue_date: string;
+  pay_until: string;
+  fee_cents: bigint;
+  late_fee_cents: bigint;
+  total_cents: bigint;
+  items: { number: string; issue_date: string; due_date: string; days_overdue: number; open_cents: bigint }[];
+}
+
+async function renderDunningLetter(sql: Sql, d: DunningLetter, watermark?: string) {
+  const items = d.items;
   const seller = await getSeller(sql);
   const buyer = await buildBuyerSnapshot(sql, d.customer_id, null);
   const open = items.reduce((a, i) => a + i.open_cents, 0n);
@@ -310,7 +322,7 @@ export async function renderDunningPdf(sql: Sql, id: string): Promise<{ pdf: Uin
     const n = Number(d.late_fee_cents / LATE_FEE_CENTS);
     sums.push([`Verzugspauschale${n > 1 ? ` ${n} × ${eur(LATE_FEE_CENTS)}` : ''}`, eur(d.late_fee_cents)]);
   }
-  const pdf = await renderLetterPdf({
+  return renderLetterPdf({
     title: d.title,
     date: d.issue_date,
     info: [
@@ -348,9 +360,70 @@ export async function renderDunningPdf(sql: Sql, id: string): Promise<{ pdf: Uin
       'Haben Sie in den letzten Tagen bereits gezahlt, betrachten Sie dieses Schreiben bitte als gegenstandslos. Bei Fragen zu den Rechnungen erreichen Sie uns jederzeit.',
       'Mit freundlichen Grüßen\nViva-Deluxe Gebäudereinigung GmbH',
     ],
-    girocode: { amount: d.total_cents, reference: `${d.number} ${items.map((i) => i.number).join(' ')}` },
+    girocode: watermark
+      ? null
+      : { amount: d.total_cents, reference: `${d.number} ${items.map((i) => i.number).join(' ')}` },
+    ...(watermark ? { watermark } : {}),
   });
+}
+
+export async function renderDunningPdf(sql: Sql, id: string): Promise<{ pdf: Uint8Array; filename: string }> {
+  const data = await getDunning(sql, id);
+  if (!data) throw new BusinessError('Mahnung nicht gefunden');
+  const { dunning: d, items } = data;
+  const pdf = await renderDunningLetter(sql, { ...d, items });
   return { pdf, filename: `${d.title.replace(/[^\wäöüÄÖÜß.-]+/g, '_')}_${d.number}.pdf` };
+}
+
+/**
+ * Vorschau (Ahmed 08.10.): Mahnungen, wie sie entstehen würden – gleiche Stufe, Gebühren und Pauschale wie beim
+ * Erstellen, aber ohne Nummer, ohne Speichern, mit Wasserzeichen „ENTWURF“. Ein PDF für alle Kunden der Auswahl.
+ */
+export async function previewDunnings(
+  sql: Sql,
+  entries: { customerId: string; invoiceIds: string[] }[],
+): Promise<Uint8Array> {
+  const settings = await getSettings(sql);
+  const today = todayBerlin();
+  const out = await PDFDocument.create();
+  for (const e of entries) {
+    const items = (await overdueItems(sql, e.customerId)).filter((i) => e.invoiceIds.includes(i.invoice_id));
+    if (!items.length) continue;
+    const level = Math.min(3, Math.max(...items.map((i) => i.last_level + 1)));
+    const st = settings.find((x) => x.level === level)!;
+    const open = items.reduce((a, i) => a + i.open_cents, 0n);
+    const lateFeeOn = st.late_fee && !items[0]!.is_consumer;
+    const lateFee = items.reduce((a, i) => a + (lateFeeOn && !i.late_fee_charged ? LATE_FEE_CENTS : 0n), 0n);
+    const fee = lateFee > 0n || items.some((i) => i.late_fee_charged) ? 0n : st.fee_cents;
+    const pay = new Date(`${today}T12:00:00Z`);
+    pay.setUTCDate(pay.getUTCDate() + st.payment_days);
+    const bytes = await renderDunningLetter(
+      sql,
+      {
+        customer_id: e.customerId,
+        title: st.title,
+        text: st.text,
+        number: 'ENTWURF',
+        issue_date: today,
+        pay_until: pay.toISOString().slice(0, 10),
+        fee_cents: fee,
+        late_fee_cents: lateFee,
+        total_cents: open + fee + lateFee,
+        items: items.map((i) => ({
+          number: i.number,
+          issue_date: i.issue_date,
+          due_date: i.due_date,
+          days_overdue: i.overdue_days,
+          open_cents: i.open_cents,
+        })),
+      },
+      'ENTWURF',
+    );
+    const src = await PDFDocument.load(bytes);
+    for (const pg of await out.copyPages(src, src.getPageIndices())) out.addPage(pg);
+  }
+  if (!out.getPageCount()) throw new BusinessError('Keine mahnbaren Rechnungen in der Auswahl');
+  return out.save();
 }
 
 /** Versand genau einmal: Übernahme per bedingtem Update vor dem SMTP-Versand. */

@@ -23,6 +23,9 @@ describe('Preisanpassung – Rechnung', () => {
     expect(adjustedPrice(309986n, 8000, 500)).toBe(322385n); // 3.099,86 € + 4 % = 3.223,85 € (123,9944 → 123,99)
     expect(adjustedPrice(100n, 5000, 100)).toBe(101n); // 0,5 Cent → aufgerundet
     expect(adjustedPrice(100000n, 0, 500)).toBe(100000n);
+    // 1.000 € mit 80 % Lohn: Lohn +5 % → +40 €, übrige 20 % × 3 % → +6 € = 1.046 €
+    expect(adjustedPrice(100000n, 8000, 500, 300)).toBe(104600n);
+    expect(adjustedPrice(100000n, 10000, 0, 300)).toBe(100000n); // reine Lohnleistung: Sachkosten wirken nicht
     expect(
       adjustedNote(
         'Zeile 1\n3.000,00 € + 3,00 % Tariflohnerhöhung ab 01.01.2026',
@@ -70,6 +73,15 @@ describe.skipIf(!available)('Preisanpassung (Datenbank)', () => {
     expect(by.get(monthly)!.blocked).toBeNull();
     expect(by.get(quarterly)!.blocked).toMatch(/Abrechnungszeitraum/); // Feb–Apr, Mai–Jul … → Januar mittendrin
     expect(by.get(noShare)!.blocked).toMatch(/Lohnkostenanteil fehlt/);
+    const assumed = await adjustmentCandidates(sql, {
+      from: '2027-01-01',
+      raiseBp: 500,
+      otherBp: 200,
+      defaultLaborBp: 8000,
+    });
+    const ns = assumed.find((r) => r.id === noShare)!;
+    expect([ns.blocked, ns.labor_assumed, ns.used_labor_bp]).toEqual([null, true, 8000]);
+    expect(ns.new_price_cents).toBe(52200n); // 500 € + 20 € Lohn + 2 € Sachkosten
     await expect(adjustmentCandidates(sql, { from: '2027-01-15', raiseBp: 500 })).rejects.toThrow(
       /Monatserster/,
     );

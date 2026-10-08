@@ -68,7 +68,7 @@ await p.fill('#execution_notes', 'Leiter im Hausmeisterraum, Schlüssel 12');
 await p.click('button:has-text("Leistung anlegen")');
 await p.waitForLoadState();
 check('gespeichert', (await flash(p)).includes('Leistung gespeichert'), await flash(p));
-const row = p.locator('tr', { hasText: `Glasreinigung E2E ${tag}` }).first();
+const row = p.locator('a.svc-row', { hasText: `Glasreinigung E2E ${tag}` }).first();
 check(
   'in der Liste mit Zyklus und eigener Rechnung',
   (await row.innerText()).includes('quartalsweise') && (await row.innerText()).includes('eigene Rechnung'),

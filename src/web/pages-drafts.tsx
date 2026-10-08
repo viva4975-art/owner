@@ -378,6 +378,9 @@ export const DraftsBox: FC<{ rows: DraftRow[]; today: string }> = ({ rows, today
           <button class="btn sec" name="aktion" value="datum" data-needs-selection>
             Datum setzen
           </button>
+          <button class="btn sec" name="aktion" value="pdf" data-needs-selection formtarget="_blank">
+            PDF der Markierten (<span data-count>0</span>)
+          </button>
           <button
             class="btn"
             name="aktion"

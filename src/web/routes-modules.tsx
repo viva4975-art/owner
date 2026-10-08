@@ -565,144 +565,188 @@ export function registerModuleRoutes(ctx: Ctx) {
         </form>
         <form method="post" action="/offene-posten/zahlungen" id="op-form">
           <input type="hidden" name="batch" value={randomUUID()} />
-          <div class="card actions op-paybar" style="margin-top:0">
-            <b>Zahlungseingang erfassen</b>
-            <span class="small mut">
-              Betrag je Rechnung eintragen – Rest bleibt offen (Teilzahlung) oder wird als Skonto ausgebucht.
-            </span>
-            <label for="op-date" style="margin:0 0 0 auto">
-              Zahlungsdatum
-            </label>
-            <input id="op-date" type="date" name="datum" value={todayBerlin()} style="max-width:170px" />
-            <input name="referenz" placeholder="Verwendungszweck (optional)" style="max-width:220px" />
-          </div>
-          {groups.map((g) => (
-            <div class="card op">
-              <div class="op-head">
-                <span class="no">{g.customer_no}</span>
-                <a href={`/kunden/${g.customer_id}`} class="nm">
-                  {g.customer_name}
-                </a>
-                <span class="sum">{euro(g.open_cents)}</span>
-                <input
-                  type="checkbox"
-                  aria-label={`alle von ${g.customer_name}`}
-                  onchange={`document.querySelectorAll('input[name=inv_${g.customer_id}]').forEach(function(x){x.checked=this.checked}.bind(this))`}
-                />
-              </div>
-              <div class="op-cols">
-                <span />
-                <span>Soll</span>
-                <span>Haben</span>
-              </div>
-              {g.items.map((i) => {
-                const haben = i.haben.reduce((a, h) => a + h.cents, 0n);
-                return (
-                  <div class="op-item">
-                    <div class="op-row">
-                      <span>
-                        <a
-                          href={
-                            i.legacy
-                              ? `/rechnungen/fortytools/${i.invoice_id}`
-                              : `/rechnungen/${i.invoice_id}`
-                          }
-                        >
-                          <b>{i.number}</b>
-                        </a>{' '}
-                        
-                        <span class="mut">{dateDe(i.issue_date)}</span>
-                        {i.site_name && <span class="small faint"> · {i.site_name}</span>}
-                      </span>
-                      <span class="r">{euro(i.payable_cents)}</span>
-                      <span />
-                    </div>
-                    {i.haben.map((h) => (
-                      <div class="op-row small">
-                        <span class="mut" style="padding-left:16px">
-                          {dateDe(h.date)} · {h.href ? <a href={h.href}>{h.label}</a> : h.label}
-                        </span>
-                        <span />
-                        <span class="r">{euro(h.cents)}</span>
-                      </div>
-                    ))}
-                    <div class="op-row op-sumline">
-                      <span />
-                      <span class="r">{euro(i.payable_cents)}</span>
-                      <span class="r">{euro(haben)}</span>
-                    </div>
-                    <div class="op-pay">
-                      <span class="small mut">Zahlung</span>
-                      <input
-                        name={`pay_${i.invoice_id}`}
-                        inputmode="decimal"
-                        placeholder="0,00"
-                        aria-label={`Zahlbetrag ${i.number}`}
-                      />
-                      <button
-                        type="button"
-                        class="btn sm ghost"
-                        data-fill={(Number(i.open_cents) / 100).toFixed(2).replace('.', ',')}
-                        onclick="this.previousElementSibling.value=this.dataset.fill"
-                      >
-                        voll
-                      </button>
-                      <select name={`rest_${i.invoice_id}`} aria-label={`Rest ${i.number}`}>
-                        <option value="offen">Rest bleibt offen</option>
-                        <option value="skonto">Rest als Skonto</option>
-                      </select>
-                      {i.legacy && <input type="hidden" name={`lg_${i.invoice_id}`} value="1" />}
-                    </div>
-                    <div class="op-saldo">
-                      <span class="small">
-                        fällig {dateDe(i.due_date)}
-                        {i.overdue_days > 0 && (
-                          <span class="badge err" style="margin-left:6px">
-                            {i.overdue_days} T. überfällig
-                          </span>
-                        )}
-                        {i.skonto_date && i.skonto_date >= todayBerlin() && (
-                          <span class="badge ok" style="margin-left:6px">
-                            Skonto bis {dateDe(i.skonto_date)}
-                          </span>
-                        )}
-                      </span>
-                      <span class="lbl">Saldo</span>
-                      <b>{euro(i.open_cents)}</b>
-                      <input
-                        type="checkbox"
-                        name={`inv_${g.customer_id}`}
-                        value={i.invoice_id}
-                        aria-label={`${i.number} auswählen`}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
           {!groups.length && <div class="card empty">Keine offenen Posten.</div>}
+          <div class="op2">
+            {groups.map((g) => {
+              const od = g.items.filter((i) => i.overdue_days > 0);
+              const maxDays = Math.max(0, ...g.items.map((i) => i.overdue_days));
+              return (
+                <details class="op2-g" open={groups.length <= 3 || !!q}>
+                  <summary>
+                    <input
+                      type="checkbox"
+                      aria-label={`alle von ${g.customer_name}`}
+                      onclick={`event.stopPropagation();document.querySelectorAll('input[name=inv_${g.customer_id}]').forEach(function(x){x.checked=this.checked}.bind(this))`}
+                    />
+                    <span class="no">{g.customer_no}</span>
+                    <span class="nm">{g.customer_name}</span>
+                    <span class="cnt">{g.items.length} Rechn.</span>
+                    {od.length > 0 ? (
+                      <span class="od">
+                        überfällig {euro(od.reduce((a2, i) => a2 + i.open_cents, 0n))} · bis {maxDays} T.
+                      </span>
+                    ) : (
+                      <span class="ok2">nicht überfällig</span>
+                    )}
+                    <span class="sum">{euro(g.open_cents)}</span>
+                  </summary>
+                  <div class="tbl">
+                    <table class="op2-t stack-m">
+                      <thead>
+                        <tr>
+                          <th style="width:28px" />
+                          <th>Rechnung</th>
+                          <th>Datum</th>
+                          <th>Fällig</th>
+                          <th class="r">Tage</th>
+                          <th class="r">Betrag</th>
+                          <th class="r">bezahlt / verrechnet</th>
+                          <th class="r">Offen</th>
+                          <th>Zahlung</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {g.items.map((i) => {
+                          const haben = i.haben.reduce((a2, h) => a2 + h.cents, 0n);
+                          return (
+                            <tr>
+                              <td>
+                                <input
+                                  type="checkbox"
+                                  name={`inv_${g.customer_id}`}
+                                  value={i.invoice_id}
+                                  aria-label={`${i.number} auswählen`}
+                                />
+                              </td>
+                              <td data-l="Rechnung">
+                                <a
+                                  href={
+                                    i.legacy
+                                      ? `/rechnungen/fortytools/${i.invoice_id}`
+                                      : `/rechnungen/${i.invoice_id}`
+                                  }
+                                >
+                                  <b>{i.number}</b>
+                                </a>
+                                {i.site_name && <div class="small faint">{i.site_name}</div>}
+                                {i.haben.map((h) => (
+                                  <div class="small mut">
+                                    {dateDe(h.date)} · {h.href ? <a href={h.href}>{h.label}</a> : h.label}:{' '}
+                                    {euro(h.cents)}
+                                  </div>
+                                ))}
+                              </td>
+                              <td data-l="Datum">{dateDe(i.issue_date)}</td>
+                              <td data-l="Fällig">
+                                {dateDe(i.due_date)}
+                                {i.skonto_date && i.skonto_date >= todayBerlin() && (
+                                  <div class="small" style="color:var(--ok)">
+                                    Skonto bis {dateDe(i.skonto_date)}
+                                  </div>
+                                )}
+                              </td>
+                              <td class="r" data-l="Tage">
+                                {i.overdue_days > 0 ? (
+                                  <span class="badge err">{i.overdue_days}</span>
+                                ) : (
+                                  <span class="mut">{i.overdue_days}</span>
+                                )}
+                              </td>
+                              <td class="r" data-l="Betrag">
+                                {euro(i.payable_cents)}
+                              </td>
+                              <td class="r" data-l="bezahlt">
+                                {haben > 0n ? euro(haben) : '–'}
+                              </td>
+                              <td class="r" data-l="Offen">
+                                <b>{euro(i.open_cents)}</b>
+                              </td>
+                              <td data-l="Zahlung">
+                                <details class="op2-p">
+                                  <summary class="btn sm sec">Zahlung</summary>
+                                  <div class="op2-pf">
+                                    <input
+                                      name={`pay_${i.invoice_id}`}
+                                      inputmode="decimal"
+                                      placeholder="0,00"
+                                      aria-label={`Zahlbetrag ${i.number}`}
+                                    />
+                                    <button
+                                      type="button"
+                                      class="btn sm ghost"
+                                      data-fill={(Number(i.open_cents) / 100).toFixed(2).replace('.', ',')}
+                                      onclick="this.previousElementSibling.value=this.dataset.fill"
+                                    >
+                                      voll
+                                    </button>
+                                    <select name={`rest_${i.invoice_id}`} aria-label={`Rest ${i.number}`}>
+                                      <option value="offen">Rest bleibt offen</option>
+                                      <option value="skonto">Rest als Skonto</option>
+                                    </select>
+                                    {i.legacy && (
+                                      <input type="hidden" name={`lg_${i.invoice_id}`} value="1" />
+                                    )}
+                                  </div>
+                                </details>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              );
+            })}
+          </div>
           {groups.length > 0 && (
-            <div class="card actions op-bar">
-              <button class="btn">Zahlungen buchen</button>
-              <span class="small mut" style="margin-left:12px">
-                Ausgewählte Rechnungen:
-              </span>
-              <button
-                class="btn sec"
-                formaction="/mahnungen/stapel"
-                onclick="return confirm('Für die ausgewählten Rechnungen je Kunde eine Mahnung erstellen? (Regeln: Stufe, Mindestabstand, Mahnsperre werden geprüft)')"
-              >
-                Mahnung erstellen
-              </button>
-              <label class="chk" style="margin:0">
-                <input type="checkbox" name="send" value="1" /> gleich per E-Mail senden
-              </label>
-              <span class="small faint hint-desk" style="margin-left:auto">
-                Bankabgleich mit Vorschlägen: Transfer → Kontoumsätze
-              </span>
+            <div class="op2-bar">
+              <div class="part">
+                <b>Zahlungen</b>
+                <label for="op-date" class="small">
+                  Datum
+                </label>
+                <input id="op-date" type="date" name="datum" value={todayBerlin()} style="max-width:160px" />
+                <input name="referenz" placeholder="Verwendungszweck (optional)" style="max-width:200px" />
+                <button class="btn">Eingetragene Zahlungen buchen</button>
+              </div>
+              <div class="part">
+                <b>Markierte</b>
+                <button class="btn sec" formaction="/mahnungen/stapel/vorschau" formtarget="_blank">
+                  Mahnung als Vorschau (PDF)
+                </button>
+                <button
+                  class="btn sec"
+                  formaction="/mahnungen/stapel"
+                  onclick="return confirm('Für die markierten Rechnungen je Kunde eine Mahnung erstellen? (Stufe, Mindestabstand und Mahnsperre werden geprüft)')"
+                >
+                  Mahnung erstellen
+                </button>
+                <label class="chk" style="margin:0">
+                  <input type="checkbox" name="send" value="1" /> gleich per E-Mail
+                </label>
+              </div>
             </div>
           )}
+          <style
+            dangerouslySetInnerHTML={{
+              __html: `.op2-g{background:#fff;border:1px solid var(--line);border-radius:8px;margin:0 0 8px}
+.op2-g>summary{display:flex;align-items:center;gap:12px;padding:11px 14px;cursor:pointer;list-style:none;flex-wrap:wrap}
+.op2-g>summary::-webkit-details-marker{display:none}
+.op2-g>summary .no{color:var(--mut);font-variant-numeric:tabular-nums;width:52px}
+.op2-g>summary .nm{font-weight:600;flex:1;min-width:180px}
+.op2-g>summary .cnt{color:var(--mut);font-size:13px}
+.op2-g>summary .od{color:#b42318;font-size:13px;font-weight:600}
+.op2-g>summary .ok2{color:var(--mut);font-size:13px}
+.op2-g>summary .sum{font-weight:700;min-width:120px;text-align:right;font-variant-numeric:tabular-nums}
+.op2-g[open]>summary{border-bottom:1px solid var(--line);background:#f8f9fa}
+.op2-t td,.op2-t th{padding:7px 10px}.op2-t td{vertical-align:top}
+.op2-p>summary{list-style:none;display:inline-flex}.op2-p>summary::-webkit-details-marker{display:none}
+.op2-pf{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.op2-pf input{width:110px}
+.op2-bar{position:sticky;bottom:0;z-index:5;background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 14px;display:flex;gap:18px;flex-wrap:wrap;box-shadow:0 -4px 14px rgba(0,0,0,.06)}
+.op2-bar .part{display:flex;gap:8px;align-items:center;flex-wrap:wrap}`,
+            }}
+          />
         </form>
         <OpenLegacyCard rows={await openLegacyInvoices(sql)} />
       </>,

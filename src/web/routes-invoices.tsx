@@ -1,3 +1,4 @@
+import { PDFDocument } from '@cantoo/pdf-lib';
 import { renderLetterPdf } from '../pdf/render.js';
 import { formatDateDe } from '../domain/invoice/calc.js';
 import { getSeller } from '../services/masterdata.js';
@@ -363,12 +364,17 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
   app.get('/rechnungen/entwuerfe', async (c) => {
     const [range] = await sql<{ prefix: string; next_value: bigint }[]>`
       select prefix, next_value from app.number_ranges where key = 'invoice'`;
-    const [drafts, monthly] = await Promise.all([
+    const monat = /^\d{4}-\d{2}$/.test(c.req.query('monat') ?? '') ? c.req.query('monat')! : '';
+    const [allDrafts, monthly] = await Promise.all([
       listInvoices(sql, { status: 'draft' }),
       sql<{ month: string; net: bigint; gross: bigint }[]>`
         select to_char(period_start, 'YYYY-MM') as month, sum(net_cents)::bigint as net, sum(gross_cents)::bigint as gross
           from app.invoices where status = 'draft' and period_start is not null group by 1 order by 1 desc`,
     ]);
+    const drafts = monat ? allDrafts.filter((i) => (i.period_start ?? '').slice(0, 7) === monat) : allDrafts;
+    const months = [...new Set(allDrafts.map((i) => (i.period_start ?? '').slice(0, 7)).filter(Boolean))]
+      .sort()
+      .reverse();
     return page(
       c,
       'Rechnungsentwürfe',
@@ -382,6 +388,29 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         </PageHead>
         <div class="tabbody">
           <OpenExecutionsBox rows={await listOpenExecutions(sql)} today={todayBerlin()} />
+          <form method="get" action="/rechnungen/entwuerfe" class="actions" style="margin:0 0 8px">
+            <label for="dm" style="margin:0">
+              Abrechnungsmonat
+            </label>
+            <select id="dm" name="monat" data-nosearch onchange="this.form.submit()" style="max-width:220px">
+              <option value="">alle Monate ({allDrafts.length})</option>
+              {months.map((m) => (
+                <option value={m} selected={m === monat}>
+                  {m.split('-').reverse().join('/')} (
+                  {allDrafts.filter((i) => (i.period_start ?? '').startsWith(m)).length})
+                </option>
+              ))}
+            </select>
+            {drafts.length > 0 && (
+              <a
+                class="btn sec sm"
+                href={`/rechnungen/entwuerfe.pdf${monat ? `?monat=${monat}` : ''}`}
+                target="_blank"
+              >
+                PDF aller {monat ? 'Entwürfe dieses Monats' : 'Entwürfe'} ({drafts.length})
+              </a>
+            )}
+          </form>
           <DraftsBox rows={drafts} today={todayBerlin()} />
         </div>
         <div class="cols">
@@ -478,6 +507,13 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     if (!ids.length) throw new BusinessError('Bitte mindestens einen Entwurf ankreuzen');
     const action = str(b, 'aktion');
     const actor = c.get('actor');
+    if (action === 'pdf') {
+      if (ids.length > 300) throw new BusinessError('Höchstens 300 Entwürfe auf einmal');
+      return c.body((await draftsPdf(ids)) as Uint8Array<ArrayBuffer>, 200, {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': 'inline; filename="Entwuerfe_Auswahl.pdf"',
+      });
+    }
     if (action === 'datum') {
       const d = str(b, 'invoice_date');
       for (const id of ids) await setPlannedIssueDate(sql, id, d, actor);
@@ -751,6 +787,31 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
   app.post(`/rechnungen/:id{${UUID}}/pruefen`, (c) =>
     c.redirect(`/rechnungen/${c.req.param('id')}?pruefen=1`, 303),
   );
+
+  // Sammel-PDF aller (bzw. der markierten) Entwürfe zur Durchsicht vor dem Ausstellen (Ahmed 08.10.)
+  const draftsPdf = async (ids: string[]) => {
+    const today = todayBerlin();
+    const out = await PDFDocument.create();
+    for (const id of ids) {
+      const doc = await loadDocument(sql, id, { number: 'ENTWURF', issueDate: today, dueDate: today });
+      const src = await PDFDocument.load(await renderInvoicePdf(doc, { watermark: 'ENTWURF' }));
+      for (const pg of await out.copyPages(src, src.getPageIndices())) out.addPage(pg);
+    }
+    return out.save();
+  };
+  app.get('/rechnungen/entwuerfe.pdf', async (c) => {
+    const m = /^\d{4}-\d{2}$/.test(c.req.query('monat') ?? '') ? c.req.query('monat')! : null;
+    const ids = (await listInvoices(sql, { status: 'draft' }))
+      .filter((i) => !m || (i.period_start ?? '').slice(0, 7) === m)
+      .map((i) => i.id);
+    if (!ids.length) throw new BusinessError('Keine Entwürfe');
+    if (ids.length > 300)
+      throw new BusinessError('Zu viele Entwürfe auf einmal (höchstens 300) – bitte Monat wählen');
+    return c.body((await draftsPdf(ids)) as Uint8Array<ArrayBuffer>, 200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="Entwuerfe_${m ?? 'alle'}.pdf"`,
+    });
+  });
 
   app.get(`/rechnungen/:id{${UUID}}/vorschau.pdf`, async (c) => {
     const id = c.req.param('id');

@@ -13,6 +13,7 @@ import {
   proposals,
   saveSettings,
   sendDunning,
+  previewDunnings,
 } from '../services/dunning.js';
 import { BusinessError } from '../services/errors.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
@@ -256,6 +257,14 @@ export function registerDunningRoutes({ app, deps, page, back }: Ctx) {
                 <input type="checkbox" name="send" value="1" /> gleich per E-Mail an die Rechnungsadressen
                 senden
               </label>
+              <button
+                class="btn sec"
+                disabled={eligibleCount === 0}
+                formaction="/mahnungen/stapel/vorschau"
+                formtarget="_blank"
+              >
+                Vorschau als PDF (Entwurf)
+              </button>
               <button class="btn" disabled={eligibleCount === 0}>
                 <Icon name="file" /> Mahnungen erstellen
               </button>
@@ -277,6 +286,23 @@ export function registerDunningRoutes({ app, deps, page, back }: Ctx) {
         )}
       </>,
     );
+  });
+
+  // Vorschau aller markierten Mahnungen als ein PDF (nichts wird angelegt)
+  app.post('/mahnungen/stapel/vorschau', async (c) => {
+    const body = await c.req.parseBody({ all: true });
+    const entries = Object.keys(body)
+      .filter((k) => /^inv_[0-9a-f-]{36}$/.test(k))
+      .map((k) => ({
+        customerId: k.slice(4),
+        invoiceIds: arr(body, k).filter((x) => /^[0-9a-f-]{36}$/.test(x)),
+      }));
+    if (!entries.length) throw new BusinessError('Bitte mindestens eine Rechnung auswählen');
+    const pdf = await previewDunnings(sql, entries);
+    return c.body(pdf as Uint8Array<ArrayBuffer>, 200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'inline; filename="Mahnungen_Entwurf.pdf"',
+    });
   });
 
   app.post('/mahnungen/stapel', async (c) => {

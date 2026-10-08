@@ -31,9 +31,12 @@ const fmtEuro = (c: bigint) => {
   return `${neg ? '-' : ''}${s} €`;
 };
 
-/** alt + alt × Anteil × Erhöhung (Basispunkte), half-up weg von 0. */
-export function adjustedPrice(price: bigint, laborBp: number, raiseBp: number): bigint {
-  const num = price * BigInt(laborBp) * BigInt(raiseBp);
+/**
+ * alt + alt × Lohnanteil × Lohnerhöhung + alt × (1 − Lohnanteil) × Sachkostenerhöhung (alles Basispunkte),
+ * einmal am Ende half-up weg von 0 gerundet.
+ */
+export function adjustedPrice(price: bigint, laborBp: number, raiseBp: number, otherBp = 0): bigint {
+  const num = price * (BigInt(laborBp) * BigInt(raiseBp) + BigInt(10000 - laborBp) * BigInt(otherBp));
   const den = 100_000_000n;
   const abs = num < 0n ? -num : num;
   let inc = abs / den;
@@ -41,8 +44,9 @@ export function adjustedPrice(price: bigint, laborBp: number, raiseBp: number): 
   return price + (num < 0n ? -inc : inc);
 }
 
-/** wirksame Preiserhöhung in Basispunkten (Anteil × Erhöhung), z. B. 80 % × 5 % = 4,00 % */
-export const effectiveBp = (laborBp: number, raiseBp: number) => Math.round((laborBp * raiseBp) / 10000);
+/** wirksame Preiserhöhung in Basispunkten, z. B. 80 % × 5 % = 4,00 %; mit Sachkosten 20 % × 3 % = +0,60 % */
+export const effectiveBp = (laborBp: number, raiseBp: number, otherBp = 0) =>
+  Math.round((laborBp * raiseBp + (10000 - laborBp) * otherBp) / 10000);
 
 export interface AdjRow {
   id: string;
@@ -61,6 +65,9 @@ export interface AdjRow {
   valid_from: string;
   valid_to: string | null;
   note: string | null;
+  /** verwendeter Lohnanteil (hinterlegt oder angenommen) */
+  used_labor_bp: number | null;
+  labor_assumed: boolean;
   /** berechnet */
   new_price_cents: bigint | null;
   /** Grund, warum nicht anpassbar */
@@ -70,6 +77,10 @@ export interface AdjRow {
 export interface AdjFilter {
   from: string;
   raiseBp: number;
+  /** Erhöhung der übrigen Kosten (Material, Sachkosten …) in Basispunkten */
+  otherBp?: number;
+  /** angenommener Lohnanteil für Leistungen ohne hinterlegten Anteil (null = nicht anpassbar) */
+  defaultLaborBp?: number | null;
   customerId?: string | null;
   serviceTypeId?: string | null;
 }
@@ -83,7 +94,7 @@ export function checkFrom(from: string) {
 /** Leistungen, die am Stichtag laufen und vorher begonnen haben (Kandidaten der Anpassung). */
 export async function adjustmentCandidates(sql: Sql, f: AdjFilter): Promise<AdjRow[]> {
   checkFrom(f.from);
-  const rows = await sql<Omit<AdjRow, 'new_price_cents' | 'blocked'>[]>`
+  const rows = await sql<Omit<AdjRow, 'new_price_cents' | 'blocked' | 'used_labor_bp' | 'labor_assumed'>[]>`
     select ss.id, ss.site_id, s.site_no, s.name as site_name, c.id as customer_id, c.customer_no,
            c.name as customer_name, ss.description, t.name as type_name, ss.billing_cycle, ss.quantity_milli,
            ss.unit_price_cents, ss.labor_share_bp, ss.valid_from::text, ss.valid_to::text, ss.note
@@ -98,9 +109,11 @@ export async function adjustmentCandidates(sql: Sql, f: AdjFilter): Promise<AdjR
        and not exists (select 1 from app.price_adjustment_items i where i.new_service_id = ss.id
                          and ss.valid_from = ${f.from})
      order by c.name, s.site_no, ss.sort_order, ss.description`;
+  const def = f.defaultLaborBp ?? null;
   return rows.map((r) => {
+    const used = r.labor_share_bp ?? def;
     let blocked: string | null = null;
-    if (r.labor_share_bp == null) blocked = 'Lohnkostenanteil fehlt';
+    if (used == null) blocked = 'Lohnkostenanteil fehlt';
     else if (r.valid_from >= f.from) blocked = 'beginnt erst am/nach dem Stichtag – Preis direkt ändern';
     else if (r.unit_price_cents <= 0n) blocked = 'kein Preis';
     else if (isPeriodic(r.billing_cycle)) {
@@ -111,40 +124,81 @@ export async function adjustmentCandidates(sql: Sql, f: AdjFilter): Promise<AdjR
     return {
       ...r,
       blocked,
+      used_labor_bp: used,
+      labor_assumed: r.labor_share_bp == null && used != null,
       new_price_cents:
-        r.labor_share_bp != null ? adjustedPrice(r.unit_price_cents, r.labor_share_bp, f.raiseBp) : null,
+        used != null ? adjustedPrice(r.unit_price_cents, used, f.raiseBp, f.otherBp ?? 0) : null,
     };
   });
 }
 
 /** Zusatztext wie Fortytools: „3.099,86 € + 4,00 % Tariflohnerhöhung ab 01.01.2027“ (alte Zeile wird ersetzt). */
-export function adjustedNote(note: string | null, oldPrice: bigint, effBp: number, from: string) {
-  const lines = (note ?? '').split('\n').filter((l) => l.trim() && !/Tariflohnerhöhung ab/i.test(l));
-  lines.push(`${fmtEuro(oldPrice)} + ${fmtPct(effBp)} Tariflohnerhöhung ab ${formatDateDe(from)}`);
+export function adjustedNote(
+  note: string | null,
+  oldPrice: bigint,
+  effBp: number,
+  from: string,
+  withOther = false,
+) {
+  const lines = (note ?? '')
+    .split('\n')
+    .filter((l) => l.trim() && !/(Tariflohnerhöhung|Preisanpassung) ab/i.test(l));
+  lines.push(
+    `${fmtEuro(oldPrice)} + ${fmtPct(effBp)} ${withOther ? 'Preisanpassung' : 'Tariflohnerhöhung'} ab ${formatDateDe(from)}`,
+  );
   return lines.join('\n');
 }
 
 export async function applyPriceAdjustment(
   sql: Sql,
-  p: { runId: string; from: string; raiseBp: number; serviceIds: string[]; noteText: boolean; actor: string },
+  p: {
+    runId: string;
+    from: string;
+    raiseBp: number;
+    otherBp?: number;
+    otherLabel?: string | null;
+    defaultLaborBp?: number | null;
+    serviceIds: string[];
+    noteText: boolean;
+    actor: string;
+  },
 ): Promise<{ changed: number; skipped: string[] }> {
   checkFrom(p.from);
-  if (!(p.raiseBp >= 1 && p.raiseBp <= 5000)) throw new BusinessError('Lohnerhöhung bitte in % (0,01–50)');
+  const otherBp = p.otherBp ?? 0;
+  const def = p.defaultLaborBp ?? null;
+  if (!(p.raiseBp >= 0 && p.raiseBp <= 5000)) throw new BusinessError('Lohnerhöhung bitte in % (0–50)');
+  if (!(otherBp >= 0 && otherBp <= 5000)) throw new BusinessError('Sachkostenerhöhung bitte in % (0–50)');
+  if (p.raiseBp === 0 && otherBp === 0) throw new BusinessError('Bitte eine Erhöhung angeben');
+  if (def != null && !(def >= 0 && def <= 10000))
+    throw new BusinessError('Angenommener Lohnanteil bitte in % (0–100)');
   if (!p.serviceIds.length) throw new BusinessError('Keine Leistung ausgewählt');
   const skipped: string[] = [];
   let changed = 0;
   await sql.begin(async (tx) => {
-    await tx`insert into app.price_adjustments (id, effective_from, raise_bp, created_by)
-             values (${p.runId}, ${p.from}, ${p.raiseBp}, ${p.actor}) on conflict (id) do nothing`;
-    const [run] = await tx<{ effective_from: string; raise_bp: number }[]>`
-      select effective_from::text, raise_bp from app.price_adjustments where id = ${p.runId}`;
-    if (run!.effective_from !== p.from || run!.raise_bp !== p.raiseBp)
+    await tx`insert into app.price_adjustments (id, effective_from, raise_bp, other_raise_bp, other_label,
+                                                default_labor_bp, created_by)
+             values (${p.runId}, ${p.from}, ${p.raiseBp}, ${otherBp}, ${p.otherLabel || null}, ${def}, ${p.actor})
+             on conflict (id) do nothing`;
+    const [run] = await tx<
+      { effective_from: string; raise_bp: number; other_raise_bp: number; default_labor_bp: number | null }[]
+    >`select effective_from::text, raise_bp, other_raise_bp, default_labor_bp
+        from app.price_adjustments where id = ${p.runId}`;
+    if (
+      run!.effective_from !== p.from ||
+      run!.raise_bp !== p.raiseBp ||
+      run!.other_raise_bp !== otherBp ||
+      run!.default_labor_bp !== def
+    )
       throw new BusinessError('Dieser Lauf wurde schon mit anderen Werten gespeichert – Seite neu laden');
     const cand = new Map(
-      (await adjustmentCandidates(tx as unknown as Sql, { from: p.from, raiseBp: p.raiseBp })).map((r) => [
-        r.id,
-        r,
-      ]),
+      (
+        await adjustmentCandidates(tx as unknown as Sql, {
+          from: p.from,
+          raiseBp: p.raiseBp,
+          otherBp,
+          defaultLaborBp: def,
+        })
+      ).map((r) => [r.id, r]),
     );
     for (const sid of p.serviceIds) {
       const newId = uuidOf(`preisanpassung:${sid}:${p.from}`);
@@ -155,12 +209,12 @@ export async function applyPriceAdjustment(
         skipped.push(`${sid}: nicht (mehr) anpassbar`);
         continue;
       }
-      if (r.blocked || r.new_price_cents == null || r.labor_share_bp == null) {
+      if (r.blocked || r.new_price_cents == null || r.used_labor_bp == null) {
         skipped.push(`${r.site_no} · ${r.description}: ${r.blocked}`);
         continue;
       }
-      const eff = effectiveBp(r.labor_share_bp, p.raiseBp);
-      const note = p.noteText ? adjustedNote(r.note, r.unit_price_cents, eff, p.from) : r.note;
+      const eff = effectiveBp(r.used_labor_bp, p.raiseBp, otherBp);
+      const note = p.noteText ? adjustedNote(r.note, r.unit_price_cents, eff, p.from, otherBp > 0) : r.note;
       await tx`update app.site_services set valid_to = ${addDays(p.from, -1)}, updated_at = now() where id = ${sid}`;
       await tx`
         insert into app.site_services
@@ -170,12 +224,12 @@ export async function applyPriceAdjustment(
             'created_at', now(), 'updated_at', now()))).*
           from app.site_services s where s.id = ${sid}`;
       await tx`insert into app.price_adjustment_items (adjustment_id, old_service_id, new_service_id, customer_id,
-                 labor_share_bp, old_price_cents, new_price_cents)
-               values (${p.runId}, ${sid}, ${newId}, ${r.customer_id}, ${r.labor_share_bp}, ${r.unit_price_cents},
-                       ${r.new_price_cents})`;
+                 labor_share_bp, old_price_cents, new_price_cents, labor_assumed)
+               values (${p.runId}, ${sid}, ${newId}, ${r.customer_id}, ${r.used_labor_bp}, ${r.unit_price_cents},
+                       ${r.new_price_cents}, ${r.labor_assumed})`;
       await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
                values (${p.actor}, 'price_adjustment', 'site_service', ${sid},
-                       ${tx.json({ new: newId, from: p.from, old: String(r.unit_price_cents), neu: String(r.new_price_cents), raise_bp: p.raiseBp, labor_bp: r.labor_share_bp })})`;
+                       ${tx.json({ new: newId, from: p.from, old: String(r.unit_price_cents), neu: String(r.new_price_cents), raise_bp: p.raiseBp, other_bp: otherBp, labor_bp: r.used_labor_bp, assumed: r.labor_assumed })})`;
       changed++;
     }
   });
@@ -188,6 +242,9 @@ export async function listAdjustments(sql: Sql) {
       id: string;
       effective_from: string;
       raise_bp: number;
+      other_raise_bp: number;
+      other_label: string | null;
+      default_labor_bp: number | null;
       created_by: string;
       created_at: Date;
       items: number;
@@ -196,7 +253,8 @@ export async function listAdjustments(sql: Sql) {
       new_sum: bigint;
     }[]
   >`
-    select a.id, a.effective_from::text, a.raise_bp, a.created_by, a.created_at,
+    select a.id, a.effective_from::text, a.raise_bp, a.other_raise_bp, a.other_label, a.default_labor_bp,
+           a.created_by, a.created_at,
            count(i.*)::int as items, count(distinct i.customer_id)::int as customers,
            coalesce(sum(i.old_price_cents), 0)::bigint as old_sum, coalesce(sum(i.new_price_cents), 0)::bigint as new_sum
       from app.price_adjustments a left join app.price_adjustment_items i on i.adjustment_id = a.id
@@ -236,9 +294,12 @@ export async function renderAdjustmentLetter(
   runId: string,
   customerId: string,
 ): Promise<Uint8Array> {
-  const [run] = await sql<{ effective_from: string; raise_bp: number }[]>`
-    select effective_from::text, raise_bp from app.price_adjustments where id = ${runId}`;
+  const [run] = await sql<
+    { effective_from: string; raise_bp: number; other_raise_bp: number; other_label: string | null }[]
+  >`
+    select effective_from::text, raise_bp, other_raise_bp, other_label from app.price_adjustments where id = ${runId}`;
   if (!run) throw new BusinessError('Preisanpassung nicht gefunden');
+  const otherName = run.other_label?.trim() || 'Material- und Sachkosten';
   const items = await adjustmentItems(sql, runId, customerId);
   if (!items.length) throw new BusinessError('Für diesen Kunden gibt es in diesem Lauf keine Anpassung');
   const oldSum = items.reduce((a, i) => a + i.old_price_cents, 0n);
@@ -255,8 +316,15 @@ export async function renderAdjustmentLetter(
     seller: await getSeller(sql),
     buyer: await buildBuyerSnapshot(sql, customerId, null),
     intro:
-      `durch die Erhöhung des allgemeinverbindlichen Tariflohns im Gebäudereiniger-Handwerk um ${fmtPct(run.raise_bp)} ` +
-      `steigen unsere Lohnkosten. Entsprechend dem Lohnkostenanteil der jeweiligen Leistung passen wir die Preise ` +
+      (run.raise_bp > 0
+        ? `durch die Erhöhung des allgemeinverbindlichen Tariflohns im Gebäudereiniger-Handwerk um ${fmtPct(run.raise_bp)} ` +
+          `steigen unsere Lohnkosten` +
+          (run.other_raise_bp > 0
+            ? `, zudem sind die ${otherName} um ${fmtPct(run.other_raise_bp)} gestiegen. `
+            : '. ') +
+          `Entsprechend dem Lohnkostenanteil der jeweiligen Leistung passen wir die Preise `
+        : `durch gestiegene ${otherName} (${fmtPct(run.other_raise_bp)}) passen wir die Preise entsprechend dem ` +
+          `Kostenanteil der jeweiligen Leistung `) +
       `ab dem ${from} wie folgt an (Beträge netto zzgl. gesetzlicher Umsatzsteuer):`,
     columns: [
       { label: 'Objekt / Leistung', x: 62.3, align: 'left' },
@@ -276,7 +344,9 @@ export async function renderAdjustmentLetter(
     ],
     total: ['Veränderung', fmtEuro(newSum - oldSum)],
     paragraphs: [
-      'Die Anpassung betrifft ausschließlich den Lohnanteil; Material- und sonstige Kosten bleiben unverändert. ' +
+      (run.other_raise_bp > 0
+        ? `Lohnanteil und übrige Kosten (${otherName}) wurden getrennt angepasst. `
+        : 'Die Anpassung betrifft ausschließlich den Lohnanteil; Material- und sonstige Kosten bleiben unverändert. ') +
         'Gerne erläutern wir Ihnen die Berechnung im Einzelnen.',
       'Wir bedanken uns für die vertrauensvolle Zusammenarbeit.',
       'Mit freundlichen Grüßen',

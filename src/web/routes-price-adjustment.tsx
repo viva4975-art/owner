@@ -42,25 +42,36 @@ export function registerPriceAdjustmentRoutes(ctx: Ctx) {
     const q = c.req.query();
     const month = /^\d{4}-\d{2}$/.test(q.ab ?? '') ? q.ab! : nextMonthFirst().slice(0, 7);
     const from = `${month}-01`;
-    const raiseBp = pctToBp(q.erhoehung);
+    const raiseBp = pctToBp(q.erhoehung) ?? 0;
+    const otherBp = pctToBp(q.sachkosten) ?? 0;
+    const defaultLaborBp = pctToBp(q.annahme);
+    const valid =
+      raiseBp >= 0 &&
+      raiseBp <= 5000 &&
+      otherBp >= 0 &&
+      otherBp <= 5000 &&
+      raiseBp + otherBp > 0 &&
+      (defaultLaborBp == null || (defaultLaborBp >= 0 && defaultLaborBp <= 10000));
     const [missing, customers, types, runs] = await Promise.all([
       servicesWithoutLaborShare(sql),
       listCustomers(sql),
       listServiceTypes(sql),
       listAdjustments(sql),
     ]);
-    const rows =
-      raiseBp && raiseBp > 0 && raiseBp <= 5000
-        ? await adjustmentCandidates(sql, {
-            from,
-            raiseBp,
-            customerId: q.kunde || null,
-            serviceTypeId: q.art || null,
-          })
-        : null;
+    const rows = valid
+      ? await adjustmentCandidates(sql, {
+          from,
+          raiseBp,
+          otherBp,
+          defaultLaborBp,
+          customerId: q.kunde || null,
+          serviceTypeId: q.art || null,
+        })
+      : null;
     const ok = rows?.filter((r) => !r.blocked) ?? [];
     const oldSum = ok.reduce((a, r) => a + r.unit_price_cents, 0n);
     const newSum = ok.reduce((a, r) => a + (r.new_price_cents ?? 0n), 0n);
+    const assumed = ok.filter((r) => r.labor_assumed).length;
     const byCustomer = new Map<string, NonNullable<typeof rows>>();
     for (const r of rows ?? []) byCustomer.set(r.customer_id, [...(byCustomer.get(r.customer_id) ?? []), r]);
     return page(
@@ -68,20 +79,237 @@ export function registerPriceAdjustmentRoutes(ctx: Ctx) {
       'Preisanpassung',
       'rechnungen',
       <>
-        <PageHead title="Preisanpassung (Tariflohn)" crumbs={[['Rechnungen', '/rechnungen']]} />
+        <PageHead title="Preisanpassung" crumbs={[['Rechnungen', '/rechnungen']]} />
         <div class="flash warn">
           <span>
-            Neuer Preis je Leistung = bisheriger Preis + Preis × <b>Lohnkostenanteil</b> × Lohnerhöhung. Eine
-            Preiserhöhung ist nur wirksam, wenn der Vertrag eine Preisgleit-/Lohngleitklausel enthält oder der
-            Kunde zustimmt – bei öffentlichen Auftraggebern nach den Vertragsbedingungen (meist Antrag mit
-            Nachweis).
+            Eine Preiserhöhung ist nur wirksam, wenn der Vertrag eine Preisgleit-/Lohngleitklausel enthält
+            oder der Kunde zustimmt – bei öffentlichen Auftraggebern nach den Vertragsbedingungen (meist
+            Antrag mit Nachweis).
           </span>
         </div>
+        <form method="get" class="card">
+          <h3 style="margin-top:0">1. Erhöhung eingeben</h3>
+          <p class="small mut" style="margin-top:0">
+            Neuer Preis = bisher + bisher × Lohnanteil × Lohnerhöhung + bisher × (100 % − Lohnanteil) ×
+            Erhöhung der übrigen Kosten. Die Vorschau erscheint direkt darunter.
+          </p>
+          <div class="grid">
+            <div>
+              <label for="ab">gültig ab (Monat)</label>
+              <input id="ab" type="month" name="ab" value={month} required />
+            </div>
+            <div>
+              <label for="erhoehung">Tariflohnerhöhung in %</label>
+              <input
+                id="erhoehung"
+                name="erhoehung"
+                value={q.erhoehung ?? ''}
+                placeholder="z. B. 3,5 (leer = 0)"
+                inputmode="decimal"
+              />
+            </div>
+            <div>
+              <label for="sachkosten">Übrige Kosten erhöhen um %</label>
+              <input
+                id="sachkosten"
+                name="sachkosten"
+                value={q.sachkosten ?? ''}
+                placeholder="z. B. 2 (leer = 0)"
+                inputmode="decimal"
+              />
+            </div>
+            <div>
+              <label for="bezeichnung">Bezeichnung übrige Kosten</label>
+              <input
+                id="bezeichnung"
+                name="bezeichnung"
+                value={q.bezeichnung ?? ''}
+                placeholder="Material- und Sachkosten"
+                maxlength={80}
+              />
+            </div>
+            <div>
+              <label for="annahme">Lohnanteil annehmen, wo er fehlt (%)</label>
+              <input
+                id="annahme"
+                name="annahme"
+                value={q.annahme ?? ''}
+                placeholder={missing.length ? `z. B. 80 – fehlt bei ${missing.length}` : 'nicht nötig'}
+                inputmode="decimal"
+              />
+            </div>
+            <div>
+              <label for="kunde">Kunde</label>
+              <select id="kunde" name="kunde">
+                <option value="">alle Kunden</option>
+                {customers
+                  .filter((x) => x.active)
+                  .map((x) => (
+                    <option value={x.id} selected={x.id === q.kunde}>
+                      {x.customer_no} · {x.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div>
+              <label for="art">Leistungsart</label>
+              <select id="art" name="art">
+                <option value="">alle</option>
+                {types.map((t) => (
+                  <option value={t.id} selected={t.id === q.art}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div class="actions form-foot">
+            <button class="btn">Vorschau berechnen</button>
+            {q.erhoehung !== undefined && !valid && (
+              <span class="small" style="color:var(--err)">
+                Bitte Lohn- und/oder Sachkostenerhöhung (0–50 %) und ggf. Lohnanteil (0–100 %) prüfen.
+              </span>
+            )}
+          </div>
+        </form>
+        {rows && (
+          <form method="post" action="/preisanpassung" class="card">
+            <input type="hidden" name="run" value={randomUUID()} />
+            <input type="hidden" name="ab" value={from} />
+            <input type="hidden" name="erhoehung" value={String(raiseBp)} />
+            <input type="hidden" name="sachkosten" value={String(otherBp)} />
+            <input
+              type="hidden"
+              name="annahme"
+              value={defaultLaborBp == null ? '' : String(defaultLaborBp)}
+            />
+            <input type="hidden" name="bezeichnung" value={q.bezeichnung ?? ''} />
+            <h3 style="margin-top:0">
+              2. Vorschau ab {dateDe(from)} · Lohn +{formatPercent(raiseBp)}
+              {otherBp > 0 && ` · ${q.bezeichnung?.trim() || 'übrige Kosten'} +${formatPercent(otherBp)}`}
+            </h3>
+            {assumed > 0 && (
+              <div class="flash warn">
+                <span>
+                  Bei {assumed} Leistungen ist kein Lohnanteil hinterlegt – gerechnet mit angenommenen{' '}
+                  {formatPercent(defaultLaborBp!)} (gelb markiert). Besser unten unter „Lohnkostenanteil
+                  fehlt“ dauerhaft nachtragen.
+                </span>
+              </div>
+            )}
+            <p class="small mut" style="margin-top:0">
+              {ok.length} Leistungen anpassbar · Summe je Zeitraum {euro(oldSum)} → <b>{euro(newSum)}</b> (
+              {newSum >= oldSum ? '+' : ''}
+              {euro(newSum - oldSum)})
+              {rows.length > ok.length && ` · ${rows.length - ok.length} nicht anpassbar (grau)`}
+            </p>
+            <div class="actions" style="margin-top:0">
+              <label class="chk" style="margin:0">
+                <input
+                  type="checkbox"
+                  checked
+                  onchange="document.querySelectorAll('input[name=leistung]:not(:disabled)').forEach(function(i){i.checked=this.checked}.bind(this))"
+                />{' '}
+                alle
+              </label>
+            </div>
+            {[...byCustomer.values()].map((list) => (
+              <div class="tbl" style="margin-bottom:14px">
+                <table>
+                  <thead>
+                    <tr>
+                      <th colspan={7}>
+                        {list[0]!.customer_no} · {list[0]!.customer_name}
+                      </th>
+                    </tr>
+                    <tr>
+                      <th></th>
+                      <th>Objekt / Leistung</th>
+                      <th>Zyklus</th>
+                      <th class="r">Lohnanteil</th>
+                      <th class="r">bisher</th>
+                      <th class="r">neu</th>
+                      <th class="r">+</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {list.map((r) => (
+                      <tr style={r.blocked ? 'opacity:.55' : ''}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            name="leistung"
+                            value={r.id}
+                            checked={!r.blocked}
+                            disabled={!!r.blocked}
+                            aria-label="anpassen"
+                          />
+                        </td>
+                        <td>
+                          <span class="small mut">
+                            {r.site_no} · {r.site_name}
+                          </span>
+                          <div>{r.description}</div>
+                          {r.blocked && (
+                            <div class="small" style="color:var(--err)">
+                              {r.blocked}
+                            </div>
+                          )}
+                        </td>
+                        <td class="small">{CYCLE_LABEL[r.billing_cycle]}</td>
+                        <td class="r">
+                          {r.used_labor_bp != null ? (
+                            <span class={r.labor_assumed ? 'badge gold' : ''}>
+                              {formatPercent(r.used_labor_bp)}
+                              {r.labor_assumed && ' angen.'}
+                            </span>
+                          ) : (
+                            '–'
+                          )}
+                          {r.used_labor_bp != null && (
+                            <div class="small mut">
+                              = +{formatPercent(effectiveBp(r.used_labor_bp, raiseBp, otherBp))}
+                            </div>
+                          )}
+                        </td>
+                        <td class="r">{euro(r.unit_price_cents)}</td>
+                        <td class="r">
+                          <b>{r.new_price_cents != null ? euro(r.new_price_cents) : '–'}</b>
+                        </td>
+                        <td class="r small">
+                          {r.new_price_cents != null ? euro(r.new_price_cents - r.unit_price_cents) : ''}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+            {rows.length === 0 && <div class="empty">Keine laufenden Leistungen für diese Auswahl.</div>}
+            <label class="chk">
+              <input type="checkbox" name="zusatztext" checked /> Hinweis in den Zusatztext der Leistung (wie
+              Fortytools: „3.099,86 € + 4,00 % Tariflohnerhöhung ab {dateDe(from)}“)
+            </label>
+            <div class="actions form-foot">
+              <button
+                class="btn"
+                disabled={ok.length === 0}
+                onclick={`return confirm('Preise der markierten Leistungen ab ${dateDe(from)} ändern?')`}
+              >
+                <Icon name="check" /> Markierte Preise ab {dateDe(from)} übernehmen
+              </button>
+              <span class="small mut">
+                Die bisherige Leistung endet am Vortag, die neue gilt ab dem Stichtag – frühere Rechnungen
+                bleiben unverändert.
+              </span>
+            </div>
+          </form>
+        )}
         {missing.length > 0 && (
-          <details class="card" open={!rows}>
+          <details class="card">
             <summary>
               <b>Lohnkostenanteil fehlt</b> <span class="badge err">{missing.length} Leistungen</span>{' '}
-              <span class="small mut">– ohne Anteil kann der Preis nicht angepasst werden</span>
+              <span class="small mut">– dauerhaft nachtragen (oder oben einen Anteil annehmen)</span>
             </summary>
             <form method="post" action="/preisanpassung/lohnanteil" style="margin-top:10px">
               <div class="actions" style="margin-top:0">
@@ -149,162 +377,6 @@ export function registerPriceAdjustmentRoutes(ctx: Ctx) {
             </form>
           </details>
         )}
-        <form method="get" class="card">
-          <h3 style="margin-top:0">Vorschau berechnen</h3>
-          <div class="grid">
-            <div>
-              <label for="ab">gültig ab (Monat)</label>
-              <input id="ab" type="month" name="ab" value={month} required />
-            </div>
-            <div>
-              <label for="erhoehung">Tariflohnerhöhung in %</label>
-              <input
-                id="erhoehung"
-                name="erhoehung"
-                value={q.erhoehung ?? ''}
-                placeholder="z. B. 3,5"
-                inputmode="decimal"
-                required
-              />
-            </div>
-            <div>
-              <label for="kunde">Kunde</label>
-              <select id="kunde" name="kunde">
-                <option value="">alle Kunden</option>
-                {customers
-                  .filter((x) => x.active)
-                  .map((x) => (
-                    <option value={x.id} selected={x.id === q.kunde}>
-                      {x.customer_no} · {x.name}
-                    </option>
-                  ))}
-              </select>
-            </div>
-            <div>
-              <label for="art">Leistungsart</label>
-              <select id="art" name="art">
-                <option value="">alle</option>
-                {types.map((t) => (
-                  <option value={t.id} selected={t.id === q.art}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div class="actions form-foot">
-            <button class="btn">Vorschau</button>
-          </div>
-        </form>
-        {rows && (
-          <form method="post" action="/preisanpassung" class="card">
-            <input type="hidden" name="run" value={randomUUID()} />
-            <input type="hidden" name="ab" value={from} />
-            <input type="hidden" name="erhoehung" value={String(raiseBp)} />
-            <h3 style="margin-top:0">
-              Vorschau ab {dateDe(from)} · Lohnerhöhung {formatPercent(raiseBp!)}
-            </h3>
-            <p class="small mut" style="margin-top:0">
-              {ok.length} Leistungen anpassbar · Summe je Zeitraum {euro(oldSum)} → <b>{euro(newSum)}</b> (
-              {newSum >= oldSum ? '+' : ''}
-              {euro(newSum - oldSum)})
-              {rows.length > ok.length && ` · ${rows.length - ok.length} nicht anpassbar (grau)`}
-            </p>
-            <div class="actions" style="margin-top:0">
-              <label class="chk" style="margin:0">
-                <input
-                  type="checkbox"
-                  checked
-                  onchange="document.querySelectorAll('input[name=leistung]:not(:disabled)').forEach(function(i){i.checked=this.checked}.bind(this))"
-                />{' '}
-                alle
-              </label>
-            </div>
-            {[...byCustomer.values()].map((list) => (
-              <div class="tbl" style="margin-bottom:14px">
-                <table>
-                  <thead>
-                    <tr>
-                      <th colspan={7}>
-                        {list[0]!.customer_no} · {list[0]!.customer_name}
-                      </th>
-                    </tr>
-                    <tr>
-                      <th></th>
-                      <th>Objekt / Leistung</th>
-                      <th>Zyklus</th>
-                      <th class="r">Lohnanteil</th>
-                      <th class="r">bisher</th>
-                      <th class="r">neu</th>
-                      <th class="r">+</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {list.map((r) => (
-                      <tr style={r.blocked ? 'opacity:.55' : ''}>
-                        <td>
-                          <input
-                            type="checkbox"
-                            name="leistung"
-                            value={r.id}
-                            checked={!r.blocked}
-                            disabled={!!r.blocked}
-                            aria-label="anpassen"
-                          />
-                        </td>
-                        <td>
-                          <span class="small mut">
-                            {r.site_no} · {r.site_name}
-                          </span>
-                          <div>{r.description}</div>
-                          {r.blocked && (
-                            <div class="small" style="color:var(--err)">
-                              {r.blocked}
-                            </div>
-                          )}
-                        </td>
-                        <td class="small">{CYCLE_LABEL[r.billing_cycle]}</td>
-                        <td class="r">
-                          {r.labor_share_bp != null ? formatPercent(r.labor_share_bp) : '–'}
-                          {r.labor_share_bp != null && (
-                            <div class="small mut">
-                              = {formatPercent(effectiveBp(r.labor_share_bp, raiseBp!))}
-                            </div>
-                          )}
-                        </td>
-                        <td class="r">{euro(r.unit_price_cents)}</td>
-                        <td class="r">
-                          <b>{r.new_price_cents != null ? euro(r.new_price_cents) : '–'}</b>
-                        </td>
-                        <td class="r small">
-                          {r.new_price_cents != null ? euro(r.new_price_cents - r.unit_price_cents) : ''}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ))}
-            {rows.length === 0 && <div class="empty">Keine laufenden Leistungen für diese Auswahl.</div>}
-            <label class="chk">
-              <input type="checkbox" name="zusatztext" checked /> Hinweis in den Zusatztext der Leistung (wie
-              Fortytools: „3.099,86 € + 4,00 % Tariflohnerhöhung ab {dateDe(from)}“)
-            </label>
-            <div class="actions form-foot">
-              <button
-                class="btn"
-                disabled={ok.length === 0}
-                onclick={`return confirm('Preise der markierten Leistungen ab ${dateDe(from)} ändern?')`}
-              >
-                <Icon name="check" /> Markierte Preise ab {dateDe(from)} übernehmen
-              </button>
-              <span class="small mut">
-                Die bisherige Leistung endet am Vortag, die neue gilt ab dem Stichtag – frühere Rechnungen
-                bleiben unverändert.
-              </span>
-            </div>
-          </form>
-        )}
         {runs.length > 0 && (
           <div class="card">
             <h3 style="margin-top:0">Durchgeführte Anpassungen</h3>
@@ -325,7 +397,17 @@ export function registerPriceAdjustmentRoutes(ctx: Ctx) {
                   {runs.map((r) => (
                     <tr>
                       <td>{dateDe(r.effective_from)}</td>
-                      <td>{formatPercent(r.raise_bp)}</td>
+                      <td>
+                        Lohn {formatPercent(r.raise_bp)}
+                        {r.other_raise_bp > 0 && (
+                          <div class="small mut">
+                            {r.other_label || 'übrige Kosten'} {formatPercent(r.other_raise_bp)}
+                          </div>
+                        )}
+                        {r.default_labor_bp != null && (
+                          <div class="small mut">angen. Lohnanteil {formatPercent(r.default_labor_bp)}</div>
+                        )}
+                      </td>
                       <td class="r">{r.items}</td>
                       <td class="r">{r.customers}</td>
                       <td class="r">
@@ -381,12 +463,17 @@ export function registerPriceAdjustmentRoutes(ctx: Ctx) {
     const b = await c.req.parseBody({ all: true });
     const run = str(b, 'run');
     const from = str(b, 'ab') ?? '';
-    const raiseBp = Number(str(b, 'erhoehung'));
+    const raiseBp = Number(str(b, 'erhoehung') ?? 0);
+    const otherBp = Number(str(b, 'sachkosten') ?? 0);
+    const ann = str(b, 'annahme');
     if (!run || !/^[0-9a-f-]{36}$/.test(run)) throw new BusinessError('Formular ungültig – Seite neu laden');
     const r = await applyPriceAdjustment(sql, {
       runId: run,
       from,
       raiseBp,
+      otherBp,
+      otherLabel: str(b, 'bezeichnung'),
+      defaultLaborBp: ann ? Number(ann) : null,
       serviceIds: arr(b, 'leistung').filter((x) => /^[0-9a-f-]{36}$/.test(x)),
       noteText: str(b, 'zusatztext') != null,
       actor: c.get('actor'),

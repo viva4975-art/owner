@@ -1,9 +1,10 @@
-import { PDFDocument, type PDFFont, type PDFPage, rgb } from '@cantoo/pdf-lib';
+import { PDFDocument, type PDFFont, type PDFImage, type PDFPage, rgb } from '@cantoo/pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import type { Quantity } from '../domain/money/money.js';
 import { addDays, holidayName, isoWeekday } from '../domain/time/holidays.js';
+import { letterhead } from '../pdf/form-doc.js';
 import { pdfFonts } from '../pdf/render.js';
 import { BusinessError } from './errors.js';
 import { uuidOf } from './fortytools-export-import.js';
@@ -385,52 +386,75 @@ const WD = ['', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Sams
 async function drawNotice(
   pdf: PDFDocument,
   fonts: { regular: PDFFont; bold: PDFFont },
+  bg: PDFImage,
   o: TgObject,
   days: Day[],
   footer: string,
 ) {
+  // Auf dem Briefpapier (Logo oben, Firmenangaben unten) – Inhalt zwischen y = 714 und 150
   const page: PDFPage = pdf.addPage([595.28, 841.89]);
   const W = 595.28;
-  const wine = rgb(0.545, 0.137, 0.196);
-  const grey = rgb(0.4, 0.4, 0.4);
-  const center = (text: string, y: number, size: number, f = fonts.regular, color = rgb(0, 0, 0)) =>
+  page.drawImage(bg, { x: 0, y: 0, width: W, height: 841.89 });
+  const wine = rgb(0.49, 0.078, 0.208);
+  const ink = rgb(0.11, 0.11, 0.13);
+  const grey = rgb(0.4, 0.4, 0.43);
+  const center = (text: string, y: number, size: number, f = fonts.regular, color = ink) =>
     page.drawText(text, { x: (W - f.widthOfTextAtSize(text, size)) / 2, y, size, font: f, color });
-  center('ANKÜNDIGUNG', 760, 30, fonts.bold, wine);
-  center('Tiefgaragenreinigung', 725, 22, fonts.bold);
-  page.drawLine({ start: { x: 120, y: 708 }, end: { x: W - 120, y: 708 }, thickness: 1.5, color: wine });
-  center(o.name, 680, 17, fonts.bold);
-  center([o.postal_code, o.city].filter(Boolean).join(' '), 660, 13, fonts.regular, grey);
-  center(days.length > 1 ? 'Reinigungstermine:' : 'Reinigungstermin:', 620, 14);
-  let y = 590;
-  for (const d of days) {
-    center(`${WD[isoWeekday(d.date)]}, ${formatDateDe(d.date)}`, y, 20, fonts.bold, wine);
-    center(`von ${d.from}–${d.to} Uhr`, y - 24, 15);
-    y -= 60;
+  const fit = (t: string, max: number, size: number, f: PDFFont) => {
+    let sz = size;
+    while (sz > 10 && f.widthOfTextAtSize(t, sz) > max) sz -= 0.5;
+    return sz;
+  };
+  // Titelband
+  page.drawRectangle({ x: 56, y: 650, width: W - 112, height: 58, color: wine });
+  center('ANKÜNDIGUNG', 684, 13, fonts.bold, rgb(1, 1, 1));
+  center('Reinigung der Tiefgarage', 662, 20, fonts.bold, rgb(1, 1, 1));
+  const name = o.name;
+  center(name, 618, fit(name, W - 140, 18, fonts.bold), fonts.bold);
+  center(
+    [o.address, [o.postal_code, o.city].filter(Boolean).join(' ')].filter(Boolean).join(', '),
+    600,
+    11.5,
+    fonts.regular,
+    grey,
+  );
+  // Termine als Karten
+  center(days.length > 1 ? 'Reinigungstermine' : 'Reinigungstermin', 566, 11, fonts.bold, grey);
+  let y = 552;
+  const shown = days.slice(0, 4);
+  for (const d of shown) {
+    page.drawRectangle({
+      x: 130,
+      y: y - 48,
+      width: W - 260,
+      height: 44,
+      color: rgb(0.98, 0.95, 0.96),
+      borderColor: rgb(0.86, 0.75, 0.79),
+      borderWidth: 0.8,
+    });
+    center(`${WD[isoWeekday(d.date)]}, ${formatDateDe(d.date)}`, y - 22, 17, fonts.bold, wine);
+    center(`${d.from} – ${d.to} Uhr`, y - 39, 11.5);
+    y -= 54;
   }
-  const boxY = Math.min(y - 20, 420) - 110;
-  page.drawRectangle({
-    x: 70,
-    y: boxY,
-    width: W - 140,
-    height: 110,
-    color: rgb(0.99, 0.93, 0.94),
-    borderColor: wine,
-    borderWidth: 1.2,
-  });
+  if (days.length > shown.length) {
+    center(`sowie weitere Termine (${days.length - shown.length})`, y - 10, 10, fonts.regular, grey);
+    y -= 20;
+  }
+  // Bitte
+  const boxH = 74;
+  const boxY = Math.min(y - 16, 360) - boxH;
+  page.drawRectangle({ x: 56, y: boxY, width: W - 112, height: boxH, color: rgb(1, 0.97, 0.88) });
+  page.drawRectangle({ x: 56, y: boxY, width: 5, height: boxH, color: rgb(0.8, 0.55, 0.05) });
+  center('Bitte entfernen Sie Ihr Fahrzeug im genannten Zeitraum', boxY + 46, 13.5, fonts.bold);
+  center('aus der Tiefgarage. Nicht entfernte Fahrzeuge verhindern', boxY + 28, 12);
+  center('die Reinigung der Stellplätze.', boxY + 12, 12);
   [
-    'Bitte entfernen Sie Ihr Fahrzeug im',
-    'genannten Zeitraum aus der Tiefgarage.',
-    'Nicht entfernte Fahrzeuge können nicht',
-    'im Umfeld gereinigt werden.',
-  ].forEach((l, i) => center(l, boxY + 80 - i * 20, 14, fonts.bold));
-  [
-    'Haftungsausschluss: Für Schäden an Fahrzeugen, die trotz Ankündigung nicht',
-    'rechtzeitig aus der Tiefgarage entfernt wurden, sowie für daraus entstehende',
-    'Folgeschäden übernehmen wir keine Haftung. Das Befahren und Betreten der',
-    'Tiefgarage während der Reinigungsarbeiten erfolgt auf eigene Gefahr.',
-  ].forEach((l, i) => center(l, boxY - 30 - i * 13, 9, fonts.regular, grey));
-  center('Vielen Dank für Ihr Verständnis.', 120, 15, fonts.bold);
-  center(footer, 90, 11);
+    'Haftungsausschluss: Für Schäden an Fahrzeugen, die trotz Ankündigung nicht rechtzeitig aus der',
+    'Tiefgarage entfernt wurden, sowie für daraus entstehende Folgeschäden übernehmen wir keine Haftung.',
+    'Das Befahren und Betreten der Tiefgarage während der Reinigungsarbeiten erfolgt auf eigene Gefahr.',
+  ].forEach((l, i) => center(l, boxY - 22 - i * 11.5, 8.3, fonts.regular, grey));
+  center('Vielen Dank für Ihr Verständnis.', 196, 13, fonts.bold);
+  center(footer, 178, 10, fonts.regular, grey);
 }
 
 export async function noticesPdf(sql: Sql, objectIds: string[]): Promise<Uint8Array> {
@@ -442,6 +466,7 @@ export async function noticesPdf(sql: Sql, objectIds: string[]): Promise<Uint8Ar
     regular: await pdf.embedFont(f.regular, { subset: false }),
     bold: await pdf.embedFont(f.bold, { subset: false }),
   };
+  const bg = await pdf.embedJpg(await letterhead());
   const today = todayBerlin();
   const apps = await listTgAppointments(sql);
   const footer = [seller.legalName, seller.phone ? `Tel. ${seller.phone}` : null].filter(Boolean).join(' · ');
@@ -452,7 +477,7 @@ export async function noticesPdf(sql: Sql, objectIds: string[]): Promise<Uint8Ar
       .filter((a) => a.object_id === id && !a.done && a.last_day >= today)
       .flatMap((a) => a.days.filter((d) => d.date >= today));
     if (!days.length) continue;
-    await drawNotice(pdf, fonts, o, days, footer);
+    await drawNotice(pdf, fonts, bg, o, days, footer);
   }
   if (!pdf.getPageCount()) throw new BusinessError('Keine kommenden Termine für einen Aushang');
   return pdf.save();

@@ -657,7 +657,7 @@ export async function statement(sql: Sql, p: { iban: string; from: string; to: s
       from app.bank_transactions
      where account_iban = ${iban} and booking_date between ${p.from} and ${p.to}
        and ${q ? sql`(coalesce(counterparty_name, '') || ' ' || purpose || ' ' || coalesce(note, '') || ' ' || (amount_cents / 100.0)::text) ilike ${`%${q}%`}` : sql`true`}
-     order by booking_date desc, amount_cents desc limit 2000`;
+     order by booking_date desc, value_date desc nulls last, created_at desc, id limit 2000`;
   const sums = await sql<{ inc: bigint; out: bigint }[]>`
     select coalesce(sum(amount_cents) filter (where amount_cents > 0), 0)::bigint as inc,
            coalesce(sum(amount_cents) filter (where amount_cents < 0), 0)::bigint as out

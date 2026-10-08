@@ -70,7 +70,12 @@ check('Notiz geändert', (await flash(p)).includes('gespeichert'), await flash(p
 await p.goto(`${B}/objekte/${SITE}/notizen`);
 const row = p.locator('tr', { hasText: `Begehung ${tag} (geändert)` });
 check('Liste zeigt Titel', (await row.count()) === 1);
-check('Liste zeigt Anhang', (await row.innerText()).includes('📎 1'), await row.innerText());
+check(
+  'Liste zeigt Anhang',
+  (await row.locator('[title="Anhänge"]').count()) === 1 &&
+    (await row.locator('[title="Anhänge"]').innerText()).trim() === '1',
+  await row.innerText(),
+);
 await row.locator('a:has-text("+ Aufgabe hinzufügen")').click();
 await p.waitForLoadState();
 check('Aufgabe mit Titel vorbelegt', (await p.inputValue('#title')).includes(`Begehung ${tag}`));

@@ -7,6 +7,7 @@ import {
   createSignDocument,
   deleteSignDocument,
   getSignDocument,
+  purgeSignDocument,
   requestsForEmployee,
   signRequest,
   signedPdf,
@@ -125,6 +126,20 @@ describe.skipIf(!available)('Dokumente digital unterschreiben', () => {
     expect(g.doc.archived_at).not.toBeNull();
     expect(g.requests.map((x) => x.status).sort()).toEqual(['unterschrieben', 'zurueckgezogen']);
     await expect(sql`delete from app.sign_documents where id = ${mit}`).rejects.toThrow();
-    await expect(sql`update app.sign_documents set title = 'x' where id = ${mit}`).rejects.toThrow(/unveränderbar/);
+    await expect(sql`update app.sign_documents set title = 'x' where id = ${mit}`).rejects.toThrow(
+      /unveränderbar/,
+    );
+  });
+
+  it('Admin: endgültig löschen auch mit Unterschriften (Test), Stand im Protokoll', async () => {
+    const id = randomUUID();
+    await createSignDocument(deps, id, doc({ title: 'Unterweisung Test' }), 't');
+    const r = (await getSignDocument(sql, id))!.requests.find((x) => x.employee_id === anna)!;
+    await signRequest(deps, r.id, anna, { png, confirmed: true, ip: null, userAgent: null });
+    await purgeSignDocument(sql, id, 'admin');
+    expect(await getSignDocument(sql, id)).toBeUndefined();
+    const [log] = await sql<{ details: { requests: unknown[] } }[]>`
+      select details from app.audit_log where action = 'purge' and entity = 'sign_document' and entity_id = ${id}`;
+    expect(log!.details.requests).toHaveLength(2);
   });
 });

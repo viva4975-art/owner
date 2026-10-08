@@ -187,6 +187,25 @@ export async function deleteSignDocument(
   });
 }
 
+/**
+ * Endgültig löschen, auch mit Unterschriften (nur Admin, z. B. Testläufe). Der vollständige Stand (Dokument und alle
+ * Anforderungen samt Unterschrifts-Prüfsummen) steht danach im audit_log; die Dateien bleiben im Archiv.
+ * Echte Unterweisungen nicht löschen – die Unterschrift ist der Nachweis nach § 12 ArbSchG.
+ */
+export async function purgeSignDocument(sql: Sql, id: string, actor: string) {
+  await sql.begin(async (tx) => {
+    const [d] = await tx<SignDocument[]>`select * from app.sign_documents where id = ${id} for update`;
+    if (!d) throw new BusinessError('Dokument nicht gefunden');
+    const reqs = await tx`select * from app.sign_requests where document_id = ${id}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'purge', 'sign_document', ${id}, ${tx.json(JSON.parse(JSON.stringify({ document: d, requests: reqs }, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))))})`;
+    await tx`select set_config('app.purge', 'force', true)`;
+    await tx`delete from app.sign_requests where document_id = ${id}`;
+    await tx`delete from app.sign_documents where id = ${id}`;
+    await tx`select set_config('app.purge', 'off', true)`;
+  });
+}
+
 /** beendete Unterweisung wieder aktiv (Anforderungen bleiben zurückgezogen – neu zuweisen über „Empfänger“) */
 export async function reopenSignDocument(sql: Sql, id: string, actor: string) {
   await sql`update app.sign_documents set archived_at = null, archived_by = null where id = ${id}`;

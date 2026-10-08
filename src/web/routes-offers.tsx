@@ -15,6 +15,9 @@ import {
   offerToInvoiceDraft,
   offerContact,
   offerStats,
+  OFFER_PERIODS,
+  type OfferPeriod,
+  offerPeriodRange,
   recentCustomers,
   renderOfferPdf,
   saveOffer,
@@ -34,7 +37,12 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
   const { sql, env } = deps;
 
   app.get('/angebote', async (c) => {
-    const [all, stats] = await Promise.all([listOffers(sql), offerStats(sql)]);
+    const zr = (c.req.query('zeitraum') ?? '12m') as OfferPeriod;
+    const period: OfferPeriod = zr in OFFER_PERIODS ? zr : '12m';
+    const [all, stats] = await Promise.all([
+      listOffers(sql),
+      offerStats(sql, offerPeriodRange(period, todayBerlin())),
+    ]);
     const view = c.req.query('ansicht');
     const status = c.req.query('status');
     let rows = [...all];
@@ -61,7 +69,15 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
       c,
       title,
       'angebote',
-      <OfferList rows={rows} all={all} active={active} title={title} stats={stats} tenders={t?.n ?? 0} />,
+      <OfferList
+        rows={rows}
+        all={all}
+        active={active}
+        title={title}
+        stats={stats}
+        tenders={t?.n ?? 0}
+        period={period}
+      />,
     );
   });
 

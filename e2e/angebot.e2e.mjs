@@ -37,7 +37,7 @@ console.log('1. Liste mit Statistik');
 await p.goto(B + '/angebote');
 check(
   'Statistik 12 Monate',
-  (await p.locator('body').innerText()).includes('Statistik der letzten 12 Monate'),
+  (await p.locator('body').innerText()).includes('Statistik: Letzte 12 Monate'),
 );
 
 console.log('2. Neues Angebot mit Alternativposition');

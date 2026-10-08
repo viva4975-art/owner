@@ -1,3 +1,4 @@
+import { Icon } from './icons.js';
 import { randomUUID } from 'node:crypto';
 import { SiteOptions } from './site-options.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
@@ -108,7 +109,7 @@ export function registerGarageRoutes({ app, deps, page, back }: Ctx) {
               class="btn sec"
               href={`/tiefgarage/autoplan${kunde ? `?kunde=${encodeURIComponent(kunde)}` : ''}`}
             >
-              ⚙ Auto-Planen
+              <Icon name="wand" size={14} /> Auto-Planen
             </a>
             <a class="btn" href={`/tiefgarage/objekt/${randomUUID()}`}>
               + Neues Objekt
@@ -194,7 +195,9 @@ export function registerGarageRoutes({ app, deps, page, back }: Ctx) {
             </div>
           </details>
           <details class="pop">
-            <summary class="btn sm sec">⏸ Objekte pausieren</summary>
+            <summary class="btn sm sec">
+              <Icon name="pause" size={14} /> Objekte pausieren
+            </summary>
             <div class="panel">
               <form method="post" action="/tiefgarage/pausieren">
                 <input type="hidden" name="kunde" value={kunde} />
@@ -254,7 +257,9 @@ export function registerGarageRoutes({ app, deps, page, back }: Ctx) {
                         <span class={`badge ${a.kind === 'Kehren' ? 'gold' : 'info'}`}>{a.kind}</span>
                         {a.done && <span class="badge"> abgeschlossen</span>}
                         {!a.done && days >= 0 && days <= 14 && (
-                          <span class="badge warn">⏰ in {days} Tg.</span>
+                          <span class="badge warn">
+                            <Icon name="clock" size={12} /> in {days} Tg.
+                          </span>
                         )}
                         {a.note && <span class="small mut"> · {a.note}</span>}
                       </span>
@@ -268,7 +273,7 @@ export function registerGarageRoutes({ app, deps, page, back }: Ctx) {
                         )}
                         {a.work_report_id ? (
                           <a class="btn sm sec" href={`/arbeitsscheine/${a.work_report_id}`}>
-                            📄 AS
+                            <Icon name="pdf" size={13} /> AS
                           </a>
                         ) : (
                           <form method="post" action={`/tiefgarage/termin/${a.id}/as`} class="inline-form">
@@ -280,7 +285,15 @@ export function registerGarageRoutes({ app, deps, page, back }: Ctx) {
                         <form method="post" action={`/tiefgarage/termin/${a.id}/flag`} class="inline-form">
                           <input type="hidden" name="flag" value="done" />
                           <input type="hidden" name="wert" value={a.done ? '' : '1'} />
-                          <button class="btn sm sec">{a.done ? '↩' : '✓ fertig'}</button>
+                          <button class="btn sm sec">
+                            {a.done ? (
+                              <Icon name="undo" size={14} />
+                            ) : (
+                              <>
+                                <Icon name="check" size={14} /> fertig
+                              </>
+                            )}
+                          </button>
                         </form>
                         {!a.done && (
                           <a class="btn sm sec" href={`/tiefgarage/termin/${a.id}`} title="bearbeiten">

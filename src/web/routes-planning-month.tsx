@@ -96,7 +96,7 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
                         {cands.map((e) => (
                           <option value={e.id} disabled={!!e.busy}>
                             {e.name}
-                            {e.on_site ? ' ★' : ''}
+                            {e.on_site ? ' ·Objekt' : ''}
                             {e.busy ? ` – belegt ${e.busy}` : ''}
                           </option>
                         ))}
@@ -110,7 +110,7 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
           </table>
         </div>
         <p class="small mut">
-          ★ = dem Objekt zugeordnet. Belegte Mitarbeitende (Überschneidung) sind nicht wählbar.
+          „·Objekt“ = dem Objekt zugeordnet. Belegte Mitarbeitende (Überschneidung) sind nicht wählbar.
         </p>
       </>,
     );
@@ -174,7 +174,7 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
                   selected={ex?.kind !== 'ausfall' && ex !== undefined && s.plan.employee_id === e.id}
                 >
                   {e.name}
-                  {e.on_site ? ' ★' : ''}
+                  {e.on_site ? ' ·Objekt' : ''}
                   {e.busy ? ` – belegt ${e.busy}` : ''}
                 </option>
               ))}

@@ -8,7 +8,7 @@ import { listEntries, netMinutes, plannedShifts } from './time.js';
 
 /*
  * Soll / Plan / Ist je Mitarbeiter und Monat (wie Fortytools „Dispo & Zeiterfassung“):
- *   Soll = Wochenstunden ÷ 5 × Arbeitstage (Mo–Fr ohne Feiertage Bayern) im Beschäftigungszeitraum des Monats
+ *   Soll = Wochenstunden × 4,33 je Monat (anteilig) im Beschäftigungszeitraum des Monats
  *   Plan = geplante Einsätze (ohne Feiertage und genehmigte Abwesenheiten)
  *   Ist  = erfasste Zeiten netto (ohne abgelehnte)
  * Alles in Minuten.

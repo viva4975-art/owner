@@ -9,7 +9,7 @@ import {
 import { addDays } from '../domain/time/holidays.js';
 import { listAbsenceHours } from './absences.js';
 import { BusinessError } from './errors.js';
-import { breakRange, listEntries } from './time.js';
+import { breakRange, listEntries, plannedShifts } from './time.js';
 import { monthRange } from './timesheet.js';
 
 /*
@@ -121,13 +121,45 @@ export interface PayrollRow {
   /** Mehrarbeitszuschlag in Cent (Stunden über der Wochenschwelle × Lohn × Satz) */
   overtimeCents: bigint;
   pending: number;
+  /** davon geplante (noch nicht gearbeitete) Minuten ab dem Stichtag – nur bei Vorab-Abrechnung */
+  forecastMinutes: number;
+}
+
+/** Ortszeit Berlin (JJJJ-MM-TT, HH:MM) → Zeitpunkt; Sommer-/Winterzeit über Intl ermittelt. */
+function berlinAt(date: string, hhmm: string): Date {
+  const guess = new Date(`${date}T${hhmm}:00Z`);
+  const off = (d: Date) => {
+    const p = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Europe/Berlin',
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).formatToParts(d);
+    const g = (t: string) => Number(p.find((x) => x.type === t)!.value);
+    return Date.UTC(g('year'), g('month') - 1, g('day'), g('hour') % 24, g('minute')) - d.getTime();
+  };
+  return new Date(guess.getTime() - off(new Date(guess.getTime() - off(guess))));
 }
 
 const zero = (): Record<WageType, number> =>
   Object.fromEntries(WAGE_TYPES.map((k) => [k, 0])) as Record<WageType, number>;
 
-export async function payrollMonth(sql: Sql, month: string, employeeId?: string): Promise<PayrollRow[]> {
+/**
+ * Lohnarten eines Monats. Mit `cutoff` (Vorab-Abrechnung, Ahmed 09.10.: „Löhne müssen früher gedruckt werden“):
+ * erfasste Zeiten bis einschließlich Stichtag, danach die geplanten Einsätze bis Monatsende (ohne Abwesenheit,
+ * Ausfall, Feiertag). Abwesenheiten zählen für den ganzen Monat. Mehrarbeit nur aus erfassten Zeiten.
+ */
+export async function payrollMonth(
+  sql: Sql,
+  month: string,
+  employeeId?: string,
+  opts: { cutoff?: string | null } = {},
+): Promise<PayrollRow[]> {
   const { from, to } = monthRange(month);
+  const cutoff = opts.cutoff && opts.cutoff >= from && opts.cutoff < to ? opts.cutoff : null;
   const settings = await getPayrollSettings(sql);
   const rates = ratesOf(settings);
   const emps = await sql<
@@ -153,6 +185,29 @@ export async function payrollMonth(sql: Sql, month: string, employeeId?: string)
       select id, kind::text from app.absences where start_date <= ${to} and end_date >= ${from}`,
   ]);
   const kindOf = new Map(kinds.map((k) => [k.id, k.kind]));
+  // Vorab: geplante Einsätze nach dem Stichtag als Zeiten (Beginn/Ende in Berliner Zeit)
+  const forecast: { employee_id: string; start_at: Date; end_at: Date; break_minutes: number }[] = [];
+  if (cutoff) {
+    const shifts = await plannedShifts(sql, {
+      from: addDays(cutoff, 1),
+      to,
+      ...(employeeId ? { employeeId } : {}),
+    });
+    for (const sh of shifts) {
+      // bei Vertretung/Umplanung enthält plan bereits Vertreter und geänderte Zeit
+      const emp = sh.plan.employee_id;
+      if (!emp || sh.absence || sh.holiday || sh.exception?.kind === 'ausfall') continue;
+      const st = sh.plan.start_time;
+      const en = sh.plan.end_time;
+      const endDate = en <= st ? addDays(sh.date, 1) : sh.date;
+      forecast.push({
+        employee_id: emp,
+        start_at: berlinAt(sh.date, st),
+        end_at: berlinAt(endDate, en),
+        break_minutes: sh.plan.break_minutes ?? 0,
+      });
+    }
+  }
   // Mehrarbeit je Kalenderwoche (Mo–So): Wochen am Monatsrand vollständig laden, Minuten über der Schwelle dem Tag
   // zuordnen, an dem sie anfallen – gezählt wird nur, was im Monat liegt.
   const overtime = new Map<string, number>();
@@ -187,8 +242,21 @@ export async function payrollMonth(sql: Sql, month: string, employeeId?: string)
   for (const e of emps) {
     const m = zero();
     let pending = 0;
+    let fc = 0;
+    for (const f of forecast) {
+      if (f.employee_id !== e.id) continue;
+      const net = Math.max(
+        0,
+        Math.round((f.end_at.getTime() - f.start_at.getTime()) / 60000) - f.break_minutes,
+      );
+      m.normal += net;
+      fc += net;
+      const sm = surchargeMinutes(f.start_at, f.end_at, null, null, rates, e.regular_sunday_work);
+      for (const k of SURCHARGES) m[k] += sm[k];
+    }
     for (const t of entries) {
       if (t.employee_id !== e.id) continue;
+      if (cutoff && t.work_date > cutoff) continue;
       if (t.status === 'beantragt' || t.status === 'laeuft') pending++;
       if ((t.status !== 'erfasst' && t.status !== 'freigegeben') || !t.end_at) continue;
       m.normal += Math.max(0, t.gross_minutes - t.break_minutes);
@@ -230,6 +298,7 @@ export async function payrollMonth(sql: Sql, month: string, employeeId?: string)
         bp,
         overtimeCents: e.wage_cents ? surchargeCents(m.mehrarbeit, e.wage_cents, settings.overtime_bp) : 0n,
         pending,
+        forecastMinutes: fc,
       });
   }
   return rows;
@@ -239,7 +308,12 @@ const dec = (minutes: number) => (minutes / 60).toFixed(2).replace('.', ',');
 const eur = (c: bigint) => `${c / 100n},${String(c % 100n).padStart(2, '0')}`;
 
 /** CSV für den Lohnimport: je Mitarbeiter und Lohnart eine Zeile (Format vorläufig, an Lexware anpassen). */
-export function payrollCsv(rows: PayrollRow[], s: PayrollSettings, month: string): string {
+export function payrollCsv(
+  rows: PayrollRow[],
+  s: PayrollSettings,
+  month: string,
+  corrections?: { month: string; rows: PayrollCorrection[] },
+): string {
   const safe = (v: string) => (/^[=+\-@]/.test(v) ? `'${v}` : v).replace(/;/g, ',');
   const out = ['﻿Monat;Personalnummer;Name;Lohnart-Nr.;Lohnart;Stunden;Satz %;Stundenlohn;Betrag Zuschlag'];
   for (const r of rows)
@@ -265,5 +339,80 @@ export function payrollCsv(rows: PayrollRow[], s: PayrollSettings, month: string
         ].join(';'),
       );
     }
+  // Korrektur Vormonat (Vorab-Abrechnung): Differenz in Stunden, Beträge rechnet das Lohnprogramm
+  for (const r of corrections?.rows ?? [])
+    for (const k of WAGE_TYPES) {
+      const v = r.minutes[k];
+      if (!v) continue;
+      out.push(
+        [
+          `${corrections!.month} Korrektur`,
+          safe(r.personnel_no),
+          safe(r.name),
+          safe(s.wage_type_numbers[k] ?? ''),
+          WAGE_TYPE_LABEL[k],
+          dec(v),
+          '',
+          '',
+          '',
+        ].join(';'),
+      );
+    }
   return `${out.join('\r\n')}\r\n`;
+}
+
+/** Vorab-Export festhalten (Grundlage für die Korrektur im Folgemonat). */
+export async function recordPayrollExport(
+  sql: Sql,
+  month: string,
+  cutoff: string | null,
+  rows: PayrollRow[],
+  actor: string,
+) {
+  const data = rows.map((r) => ({ employee_id: r.employee_id, minutes: r.minutes }));
+  await sql`insert into app.payroll_exports (id, month, cutoff, rows, created_by)
+            values (gen_random_uuid(), ${month}, ${cutoff}, ${sql.json(data as never)}, ${actor})`;
+}
+
+export interface PayrollCorrection {
+  employee_id: string;
+  personnel_no: string;
+  name: string;
+  /** tatsächlich − vorab exportiert, je Lohnart (Minuten, auch negativ) */
+  minutes: Partial<Record<WageType, number>>;
+}
+
+/**
+ * Korrektur Vormonat: Wurde der Monat vorab (mit Stichtag) exportiert, Differenz zwischen dem jetzt tatsächlichen Monat
+ * und dem zuletzt exportierten Vorab-Stand. Leer, wenn es keinen Vorab-Export gab.
+ */
+export async function payrollCorrections(
+  sql: Sql,
+  month: string,
+): Promise<{ cutoff: string | null; rows: PayrollCorrection[] }> {
+  const [ex] = await sql<
+    { cutoff: string | null; rows: { employee_id: string; minutes: Record<WageType, number> }[] }[]
+  >`
+    select cutoff::text, rows from app.payroll_exports where month = ${month} order by created_at desc limit 1`;
+  if (!ex?.cutoff) return { cutoff: null, rows: [] };
+  const actual = await payrollMonth(sql, month);
+  const before = new Map(ex.rows.map((r) => [r.employee_id, r.minutes]));
+  const ids = new Set([...actual.map((r) => r.employee_id), ...before.keys()]);
+  const names = await sql<{ id: string; personnel_no: string; name: string }[]>`
+    select id, personnel_no, last_name || ', ' || first_name as name from app.employees where id = any(${[...ids]}::uuid[])`;
+  const out: PayrollCorrection[] = [];
+  for (const id of ids) {
+    const now = actual.find((r) => r.employee_id === id)?.minutes;
+    const was = before.get(id);
+    const diff: Partial<Record<WageType, number>> = {};
+    for (const k of WAGE_TYPES) {
+      const d = (now?.[k] ?? 0) - (was?.[k] ?? 0);
+      if (d) diff[k] = d;
+    }
+    const n = names.find((x) => x.id === id);
+    if (Object.keys(diff).length && n)
+      out.push({ employee_id: id, personnel_no: n.personnel_no, name: n.name, minutes: diff });
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  return { cutoff: ex.cutoff, rows: out };
 }

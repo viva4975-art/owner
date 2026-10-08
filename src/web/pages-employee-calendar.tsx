@@ -1,3 +1,4 @@
+import { Icon } from './icons.js';
 import { randomUUID } from 'node:crypto';
 import type { Child, FC } from 'hono/jsx';
 import { addDays, isoWeekday } from '../domain/time/holidays.js';
@@ -126,6 +127,7 @@ function row(l,v){return v?'<div class="r"><span>'+l+'</span><b>'+esc(v)+'</b></
 document.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('a[data-ev]');if(!a||e.ctrlKey||e.metaKey)return;e.preventDefault();
 var x=JSON.parse(a.getAttribute('data-ev'));var b='';(x.links||[]).forEach(function(l,i){b+='<a class="btn'+(i?' sec':'')+'" href="'+esc(l[1])+'">'+esc(l[0])+'</a>'});
 if(x.ok)b='<form method="post" action="'+esc(x.ok)+'" style="margin:0"><input type="hidden" name="mitarbeiter" value="'+esc(x.emp)+'"><input type="hidden" name="von" value="'+esc(x.day)+'"><input type="hidden" name="bis" value="'+esc(x.day)+'"><input type="hidden" name="zurueck" value="'+esc(x.back)+'"><button class="btn">So gearbeitet – bestätigen</button></form>'+b;
+if(x.delTime)b+='<form method="post" action="/zeiterfassung/loeschen" style="margin:0" onsubmit="return confirm(\\'Diese erfasste Zeit löschen?\\')"><input type="hidden" name="ids" value="'+esc(x.delTime)+'"><input type="hidden" name="zurueck" value="'+esc(x.back)+'"><button class="btn sec danger">Zeit löschen</button></form>';
 if(x.del)b+='<form method="post" action="'+esc(x.del)+'" style="margin:0" onsubmit="return confirm(\\'Diesen Einsatz (die ganze Serie dieses Wochentags) löschen? Erfasste Zeiten bleiben erhalten.\\')"><input type="hidden" name="zurueck" value="'+esc(x.back)+'"><button class="btn sec danger">Einsatz löschen</button></form>';
 d.innerHTML='<div class="hd"><div><div class="small mut">'+esc(x.date)+'</div><h3>'+esc(x.site)+'</h3><div class="small">'+esc(x.addr)+'</div><div class="small"><b>'+esc(x.status)+'</b></div></div><button type="button" class="x" aria-label="schließen">×</button></div><div class="bd">'+row('Geplant',x.plan)+row('Pause geplant',x.brk)+row('Erfasst',x.ist)+row('Pause',x.istBrk)+row('Arbeitszeit',x.net)+row('Quelle',x.src)+row('Termin',x.series)+'</div><div class="ft">'+b+'</div>';d.showModal()});
 d.addEventListener('click',function(e){if(e.target===d||e.target.classList.contains('x'))d.close()});
@@ -165,6 +167,8 @@ export const EmployeeCalendarView: FC<{
   head?: Child;
   /** eigene Zeiten (Meine Zeiten): Links führen zum eigenen Formular, kein Planen/Löschen */
   self?: boolean;
+  /** erfasste Zeiten direkt löschen (Papierkorb wie Fortytools; Admin/Personal) */
+  canDeleteTime?: boolean;
 }> = ({
   employeeId,
   view,
@@ -181,6 +185,7 @@ export const EmployeeCalendarView: FC<{
   confirmAction,
   head,
   self = false,
+  canDeleteTime = false,
 }) => {
   const calView = view === 'liste' ? 'monat' : view;
   const r = calRange(calView, date);
@@ -269,6 +274,7 @@ export const EmployeeCalendarView: FC<{
       links: linksFor(s),
       back,
       ...(canEdit && !self ? { del: `/einsatzplanung/${s.plan.id}/loeschen` } : {}),
+      ...(canDeleteTime && e ? { delTime: e.id } : {}),
       ...(confirmAction && !e && !s.absence && s.exception?.kind !== 'ausfall' && s.date <= today
         ? { ok: confirmAction, emp: employeeId, day: s.date }
         : {}),
@@ -447,12 +453,13 @@ export const EmployeeCalendarView: FC<{
               <th class="r">Pause</th>
               <th class="r">Dauer</th>
               <th>Status</th>
+              {canDeleteTime && <th />}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colspan={7} class="mut">
+                <td colspan={8} class="mut">
                   Keine Einsätze oder Zeiten in diesem Zeitraum.
                 </td>
               </tr>
@@ -497,6 +504,24 @@ export const EmployeeCalendarView: FC<{
                       </span>
                     )}
                   </td>
+                  {canDeleteTime && (
+                    <td>
+                      {e && (
+                        <form
+                          method="post"
+                          action="/zeiterfassung/loeschen"
+                          style="margin:0"
+                          onsubmit="return confirm('Diese erfasste Zeit löschen?')"
+                        >
+                          <input type="hidden" name="ids" value={e.id} />
+                          <input type="hidden" name="zurueck" value={back} />
+                          <button class="ic-btn" title="Zeit löschen" aria-label="Zeit löschen">
+                            <Icon name="trash" size={15} />
+                          </button>
+                        </form>
+                      )}
+                    </td>
+                  )}
                 </tr>
               );
             })}

@@ -10,6 +10,7 @@ import {
   addRecipients,
   createSignDocument,
   deleteSignDocument,
+  purgeSignDocument,
   getSignDocument,
   listSignDocuments,
   originalPdf,
@@ -43,6 +44,7 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
   const { sql } = deps;
 
   app.get('/personal/dokumente', async (c) => {
+    const admin = c.get('user').role === 'admin';
     const archiv = c.req.query('ansicht') === 'archiv';
     const [docs, emps, tpls] = await Promise.all([
       listSignDocuments(sql),
@@ -126,6 +128,18 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
                       }
                     >
                       <button class="btn sec sm danger">{d.signed > 0 ? 'Beenden' : 'Löschen'}</button>
+                    </form>
+                  )}
+                  {d.signed > 0 && admin && (
+                    <form
+                      method="post"
+                      action={`/personal/dokumente/${d.id}/endgueltig`}
+                      style="margin:0"
+                      onsubmit="return confirm('Endgültig löschen – auch mit den Unterschriften? Nur für Tests! Echte Unterweisungen sind der Nachweis nach § 12 ArbSchG und sollten nur beendet werden.')"
+                    >
+                      <button class="ic-btn" title="Endgültig löschen (Test)" aria-label="Endgültig löschen">
+                        <Icon name="trash" size={15} />
+                      </button>
                     </form>
                   )}
                 </div>
@@ -380,6 +394,12 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
           ? 'Unterweisung gelöscht.'
           : 'Unterweisung beendet – offene Anforderungen zurückgezogen, unterschriebene Nachweise bleiben (Reiter „Beendet“).',
     });
+  });
+
+  app.post(`/personal/dokumente/:id{${UUID}}/endgueltig`, async (c) => {
+    if (c.get('user').role !== 'admin') throw new BusinessError('Endgültig löschen darf nur ein Admin');
+    await purgeSignDocument(sql, c.req.param('id'), c.get('actor'));
+    return back(c, '/personal/dokumente', { ok: 'Unterweisung mit allen Unterschriften gelöscht.' });
   });
 
   app.post(`/personal/dokumente/:id{${UUID}}/wieder`, async (c) => {

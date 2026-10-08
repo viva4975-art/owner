@@ -799,6 +799,8 @@ tbody tr:hover td{background:#faf9f7}
 /* Schilder als Pillen */
 .badge{border-radius:999px;padding:2px 10px;font-weight:600}
 .tag{border-radius:999px;padding:1px 9px}
+.tag,.badge.tag{background:#f1f2f5;color:#3f4652;border:1px solid #e2e4e9;font-weight:550}
+.tag.ok{background:#eaf5ec;color:#1f6b2c;border-color:#cfe6d4}.tag.warn{background:#fff6e0;color:#8a5a00;border-color:#f0dfb0}.tag.err{background:#fdecec;color:#9b1c1c;border-color:#f3cccc}
 .chips a{border-radius:999px}
 .chips a.on{background:var(--ink);border-color:var(--ink)}
 .tabs .cnt{border-radius:999px}
@@ -1144,7 +1146,9 @@ th.sortable.asc,th.sortable.desc{color:var(--brand);text-decoration:underline;te
 .emp-name{font-size:19px;font-weight:650;color:var(--brand);text-decoration:none;line-height:1.25}
 .emp-no{color:var(--mut,#6b7280);font-size:15px}
 .emp-tags{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0 8px}
-.emp-tags .badge{text-transform:uppercase;letter-spacing:.02em;font-size:11.5px}
+.emp-tags .badge{font-size:12px}
+.ic-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid #e3e3e8;border-radius:7px;background:#fff;color:#5b5f6a;cursor:pointer;padding:0}.ic-btn:hover{color:#b42318;border-color:#b42318}
+.emp-map{font-size:12.5px;color:var(--mut,#6b7280);margin-left:4px;white-space:nowrap}.emp-map:hover{color:var(--brand)}
 .emp-warn{background:#fdecec;color:#8a1c1c;border-radius:6px;padding:4px 8px;font-size:13px;margin-bottom:6px}
 .emp-contact{list-style:none;margin:0 0 6px;padding:0;display:grid;gap:4px;font-size:14.5px}
 .emp-contact li{display:flex;gap:8px;align-items:flex-start;min-width:0}

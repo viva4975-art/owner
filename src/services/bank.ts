@@ -140,7 +140,7 @@ export async function listTransactions(
   const [rows, [cnt]] = await Promise.all([
     sql<BankTx[]>`
       select * from app.bank_transactions where ${where}
-       order by booking_date desc, amount_cents desc limit ${f.limit ?? 500} offset ${f.offset ?? 0}`,
+       order by booking_date desc, value_date desc nulls last, created_at desc, id limit ${f.limit ?? 500} offset ${f.offset ?? 0}`,
     sql<{ n: number }[]>`select count(*)::int as n from app.bank_transactions where ${where}`,
   ]);
   return Object.assign(rows, { total: cnt!.n });

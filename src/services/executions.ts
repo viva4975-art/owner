@@ -92,11 +92,6 @@ export async function executeServices(sql: Sql, p: ExecuteInput, actor: string):
           `„${sv.description}“ gilt vom ${formatDateDe(sv.valid_from)}${sv.valid_to ? ` bis ${formatDateDe(sv.valid_to)}` : ''} – Datum außerhalb`,
         );
       const id = uuidOf(`exec:${p.token}:${it.serviceId}`);
-      if (sv.billing_cycle === 'einmalig') {
-        const [prev] = await tx<{ id: string }[]>`
-          select id from app.service_executions where service_id = ${it.serviceId} and id <> ${id}`;
-        if (prev) throw new BusinessError(`„${sv.description}“ ist einmalig und wurde schon verrichtet`);
-      }
       const qty = it.quantity ?? sv.quantity_milli;
       if (qty <= 0n) throw new BusinessError(`„${sv.description}“: Menge muss größer 0 sein`);
       const res = await tx`

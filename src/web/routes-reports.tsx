@@ -1059,9 +1059,8 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
             </table>
           </div>
           <p class="small mut" style="margin-bottom:0">
-            Soll = Wochenstunden ÷ 5 × Arbeitstage (ohne Feiertage Bayern); Plan = Einsätze ohne
-            Feiertage/Abwesenheit, mit Vertretungen; Ist = erfasste Zeiten netto. Gelb: Plan weicht über 1
-            Std. vom Soll ab.
+            Soll = Wochenstunden × 4,33 je Monat (anteilig); Plan = Einsätze ohne Feiertage/Abwesenheit, mit
+            Vertretungen; Ist = erfasste Zeiten netto. Gelb: Plan weicht über 1 Std. vom Soll ab.
           </p>
         </div>
       </>,

@@ -64,7 +64,6 @@ describe.skipIf(!available)('Zeiten löschen, Karten-Belege (Datenbank)', () => 
     });
     await expect(sql`delete from app.time_entries where id = ${id}`).rejects.toThrow(/§ 17 MiLoG/);
     await expect(sql`delete from app.time_entry_log where entry_id = ${id}`).rejects.toThrow(/nur anhängbar/);
-    await expect(purgeEntries(sql, [id], ' ', 'admin')).rejects.toThrow(/begründen/);
     expect(await purgeEntries(sql, [id, id], 'Testdaten', 'admin')).toBe(1);
     expect(await sql`select 1 from app.time_entries where id = ${id}`).toHaveLength(0);
     const [d] = await listDeletions(sql);

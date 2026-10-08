@@ -1,3 +1,4 @@
+import { addMonths } from '../services/cost-centers.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { SiteOptions } from './site-options.js';
 import {
@@ -28,7 +29,9 @@ import {
   WAGE_TYPES,
   WAGE_TYPE_LABEL,
   getPayrollSettings,
+  payrollCorrections,
   payrollCsv,
+  recordPayrollExport,
   payrollMonth,
   savePayrollSettings,
 } from '../services/payroll.js';
@@ -248,10 +251,13 @@ ${sheetTableHtml(s)}${sigHtml}
     // Auswahl einzelner Personen (Häkchen in der Liste) für Druck/Export
     const picked = new Set(c.req.queries('p') ?? []);
     const { from, to } = monthRange(month);
+    // Vorab-Abrechnung: Ist bis Stichtag, danach Plan bis Monatsende (Ahmed 09.10.)
+    const st0 = c.req.query('stichtag') ?? '';
+    const cutoff = /^\d{4}-\d{2}-\d{2}$/.test(st0) && st0 >= from && st0 < to ? st0 : null;
     const [all, sigs, pay, siteLinks, sites] = await Promise.all([
       listEmployees(sql),
       signaturesOfMonth(sql, month),
-      payrollMonth(sql, month),
+      payrollMonth(sql, month, undefined, { cutoff }),
       sql<{ employee_id: string; site_id: string }[]>`select employee_id, site_id from app.employee_sites`,
       sql<{ id: string; site_no: string; name: string; customer_name: string }[]>`
         select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`,
@@ -306,13 +312,14 @@ ${sheetTableHtml(s)}${sigHtml}
       if (onlySite) p.set('nur', '1');
       if (sig !== 'alle') p.set('unterschrift', sig);
       if (view !== 'stunden') p.set('ansicht', view);
+      if (cutoff) p.set('stichtag', cutoff);
       for (const [k, v] of Object.entries(o)) {
         if (v) p.set(k, v);
         else p.delete(k);
       }
       return p.toString();
     };
-    return { month, q, art, site, sig, view, rows: all2, chosen, onlySite, siteName, sites, qs };
+    return { month, q, art, site, sig, view, rows: all2, chosen, onlySite, siteName, sites, qs, cutoff };
   };
   const surchargeMin = (p: { minutes: Record<string, number> } | undefined) =>
     p ? SURCHARGES.reduce((a, k) => a + p.minutes[k]!, 0) : 0;
@@ -326,6 +333,11 @@ ${sheetTableHtml(s)}${sigHtml}
     const d = await listData(c);
     const { month, rows } = d;
     const st = await getPayrollSettings(sql);
+    const corrPrev = addMonths(month, -1);
+    const corr = {
+      month: corrPrev,
+      ...(d.view === 'lohnarten' ? await payrollCorrections(sql, corrPrev) : { cutoff: null, rows: [] }),
+    };
     const signed = rows.filter((x) => x.state === 'unterschrieben').length;
     const tot = (f: (x: (typeof rows)[number]) => number) => rows.reduce((a, x) => a + f(x), 0);
     return page(
@@ -479,6 +491,63 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
             </>
           )}
         </div>
+        {d.view === 'lohnarten' && (
+          <form method="get" class="card" style="max-width:960px;padding:12px 16px">
+            {[...new URLSearchParams(d.qs({ stichtag: '' })).entries()].map(([k, v]) => (
+              <input type="hidden" name={k} value={v} />
+            ))}
+            <b>Vorab-Abrechnung</b> (Löhne vor Monatsende): erfasste Zeiten bis{' '}
+            <input
+              type="date"
+              name="stichtag"
+              value={d.cutoff ?? ''}
+              style="width:auto;display:inline-block"
+            />{' '}
+            danach die geplanten Einsätze bis Monatsende. <button class="btn sm sec">Anwenden</button>
+            {d.cutoff && (
+              <a class="btn sm sec" href={`/zeiterfassung/stundenzettel?${d.qs({ stichtag: '' })}`}>
+                ohne Stichtag
+              </a>
+            )}
+            <div class="small mut" style="margin-top:6px">
+              Jeder „CSV Lohnprogramm“-Export wird festgehalten. Im Folgemonat enthält die CSV automatisch die
+              Zeilen „Korrektur“ mit der Differenz zwischen Vorab-Stand und tatsächlichem Monat (Stunden, auch
+              minus).
+            </div>
+            {corr.rows.length > 0 && (
+              <details style="margin-top:8px">
+                <summary>
+                  <b>
+                    Korrektur{' '}
+                    {d.month === corr.month
+                      ? ''
+                      : `Vormonat ${corr.month.slice(5)}/${corr.month.slice(0, 4)}`}
+                    : {corr.rows.length} Mitarbeitende
+                  </b>{' '}
+                  (Vorab-Stichtag {dateDe(corr.cutoff!)})
+                </summary>
+                <table style="margin-top:6px">
+                  <tbody>
+                    {corr.rows.map((r) => (
+                      <tr>
+                        <td>{r.personnel_no}</td>
+                        <td>{r.name}</td>
+                        <td>
+                          {Object.entries(r.minutes)
+                            .map(
+                              ([k, v]) =>
+                                `${WAGE_TYPE_LABEL[k as keyof typeof WAGE_TYPE_LABEL]} ${v! > 0 ? '+' : ''}${(v! / 60).toFixed(2).replace('.', ',')} Std.`,
+                            )
+                            .join(' · ')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </details>
+            )}
+          </form>
+        )}
         {d.view === 'lohnarten' && (
           <p class="small mut" style="max-width:960px">
             Zuschläge nach Rahmentarifvertrag Gebäudereinigung (§ 10) laut{' '}
@@ -963,12 +1032,19 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
     const month = d.month;
     const st = await getPayrollSettings(sql);
     const rows = d.rows.map((x) => x.p).filter((p): p is NonNullable<typeof p> => !!p);
-    return new Response(payrollCsv(rows, st, month), {
-      headers: {
-        'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="lohnarten-${month}.csv"`,
+    const prev = addMonths(month, -1);
+    const corr = await payrollCorrections(sql, prev);
+    // jeder Lohnprogramm-Export wird festgehalten → Grundlage für die Korrektur im Folgemonat
+    await recordPayrollExport(sql, month, d.cutoff, rows, c.get('actor'));
+    return new Response(
+      payrollCsv(rows, st, month, corr.rows.length ? { month: prev, rows: corr.rows } : undefined),
+      {
+        headers: {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': `attachment; filename="lohnarten-${month}.csv"`,
+        },
       },
-    });
+    );
   });
 
   app.get('/zeiterfassung/lohnarten/einstellungen', async (c) => {

@@ -92,8 +92,9 @@ describe.skipIf(!available)('Raumbuch, Qualitätskontrolle', () => {
     );
     t = await hourTarget(sql, DEMO.siteSchool);
     expect(t.hoursPerWeek).toBeCloseTo(10, 10);
-    expect(t.hoursPerYear).toBeCloseTo(520, 10);
-    expect(t.hoursPerMonth).toBeCloseTo(520 / 12, 10);
+    // Monat = Woche × 4,33 (Ahmed 09.10.), Jahr = Monat × 12
+    expect(t.hoursPerMonth).toBeCloseTo(43.3, 10);
+    expect(t.hoursPerYear).toBeCloseTo(519.6, 10);
     // Monat: 43:20 h → Jahr 520 h
     await saveSiteHourTarget(
       sql,

@@ -330,6 +330,7 @@ export function registerHrRoutes(ctx: Ctx) {
           today={todayBerlin()}
           holiday={holidayName}
           canEdit={['admin', 'personal', 'objektleitung'].includes(role)}
+          canDeleteTime={['admin', 'personal'].includes(role)}
           confirmAction="/zeiterfassung/plan-als-ist"
           {...d}
         />

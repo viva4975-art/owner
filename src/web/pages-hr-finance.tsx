@@ -63,7 +63,7 @@ const EmployeeCard: FC<{ e: EmployeeRow }> = ({ e }) => {
         {d < today ? ' – abgelaufen' : ''}
       </div>
     ) : null;
-  const addr = [e.street, [e.postal_code, e.city].filter(Boolean).join(' ')].filter(Boolean).join(' | ');
+  const addr = [e.street, [e.postal_code, e.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
   const phone = e.mobile || e.phone;
   const sites = e.site_names ?? [];
   return (
@@ -103,12 +103,12 @@ const EmployeeCard: FC<{ e: EmployeeRow }> = ({ e }) => {
               <span>
                 {addr}{' '}
                 <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr.replace(' | ', ', '))}`}
+                  class="emp-map"
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`}
                   target="_blank"
                   rel="noopener"
-                  title="Karte"
                 >
-                  <Icon name="pin" size={15} />
+                  Karte
                 </a>
               </span>
             </li>

@@ -748,60 +748,33 @@ export async function subcontractPdf(sql: Sql, id: string) {
     },
     { k: 'Bestelldatum:', v: formatDateDe(date) },
   ]);
-  d.text('Leistungsbeschreibung:', FORM_X.L, d.y + 4, { size: 9.5, bold: true });
-  d.y += 14;
-  d.muted(
-    sc.description || prices.length
-      ? 'siehe Leistungsbeschreibung auf der folgenden Seite'
-      : 'keine gesonderte Beschreibung',
-  );
-  d.y += 10;
-  d.noteBox(
-    'Wichtige Auftragsbedingungen',
-    [
-      'Ausführung im Namen der Viva-Deluxe GmbH · keine Eigenwerbung · kein direkter Kundenkontakt',
-      'Arbeitskleidung neutral in Hellgrau ohne Logos oder die vom Auftraggeber gestellte Kleidung',
-      'Termin- und fachgerechte Ausführung · Mängel und Verzögerungen unverzüglich melden',
-      'MiLoG, AEntG, SOKA und Tarifvertrag Gebäudereinigung einhalten, Nachweise auf Anforderung',
-    ],
-    [
-      'Es gelten die vollständigen Auftragsbedingungen auf den Folgeseiten sowie der Rahmenvertrag.',
-      'Mit der Unterschrift bestätigt der Auftragnehmer deren Erhalt und Anerkennung.',
-    ],
-  );
-  d.signatures('Ort, Datum', 'Unterschrift Auftragnehmer / Stempel', { leftText: `München, den ${dateDe}` });
-  // Seite 2: Leistungsbeschreibung
+  // Kompakt auf höchstens 2 Seiten (Ahmed 09.10.): Seite 1 Auftrag + Leistungsbeschreibung,
+  // dann Auftragsbedingungen zweispaltig und EINE Unterschrift für Bestellung und Bedingungen.
   if (sc.description || prices.length) {
-    d.newPage();
-    d.heading('Leistungsbeschreibung', 14);
-    d.muted(`Bestellschein ${sc.number}  ·  ${sc.service_kind}`);
-    d.y += 4;
-    if (sc.description) d.para(sc.description, { size: 9.5 });
+    d.text('Leistungsbeschreibung', FORM_X.L, d.y + 4, { size: 9.5, bold: true });
+    d.y += 12;
+    if (sc.description) d.para(sc.description, { size: 8.8 });
     for (const p of prices)
       d.para(
         `Preisnachtrag ab ${formatDateDe(p.valid_from_month).slice(3)}: ${formatEuro(p.price_cents as Cents)} / ${unit} (${p.reason})`,
+        { size: 8.5 },
       );
+    d.y += 4;
   }
-  // Auftragsbedingungen
-  d.newPage();
-  d.heading('Auftragsbedingungen für Nachunternehmer', 14);
-  d.para(
-    `Diese Bedingungen sind Bestandteil der Bestellung ${sc.number} und gelten ergänzend zum Rahmenvertrag. Mit Annahme des Auftrags werden sie anerkannt.`,
-    { size: 8.5, color: FORM_COLORS.MUT },
-  );
+  d.ensure(120);
+  d.heading('Auftragsbedingungen für Nachunternehmer', 10.5);
+  d.para(`Bestandteil der Bestellung ${sc.number}, ergänzend zum Rahmenvertrag.`, {
+    size: 7.6,
+    color: FORM_COLORS.MUT,
+  });
+  d.columns(NU_CONDITIONS);
+  d.ensure(80);
   d.y += 4;
-  for (const sec of NU_CONDITIONS) {
-    d.ensure(40);
-    d.heading(sec.title, 10);
-    for (const p of sec.paragraphs) d.para(p, { size: 8.3, indent: 14 });
-    d.y += 2;
-  }
-  d.newPage();
-  d.heading('Bestätigung der Auftragsbedingungen', 11);
   d.para(
-    `Der Auftragnehmer bestätigt, die vorstehenden Auftragsbedingungen erhalten, gelesen und als verbindlichen Bestandteil der Bestellung ${sc.number} anerkannt zu haben.`,
+    `Der Auftragnehmer nimmt die Bestellung ${sc.number} an und erkennt die vorstehenden Auftragsbedingungen als verbindlichen Bestandteil an.`,
+    { size: 8.5, bold: true },
   );
-  d.signatures('Ort, Datum', 'Unterschrift Auftragnehmer / Stempel');
+  d.signatures('Ort, Datum', 'Unterschrift Auftragnehmer / Stempel', { leftText: `München, den ${dateDe}` });
   return d.save();
 }
 

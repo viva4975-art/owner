@@ -9,6 +9,8 @@ import {
   type OfferLineRow,
   type OfferRow,
   type OfferStats,
+  OFFER_PERIODS,
+  type OfferPeriod,
   type OfferStatus,
 } from '../services/offers.js';
 import { centsToInput, milliToInput } from './forms.js';
@@ -145,8 +147,10 @@ export const OfferList: FC<{
   active: string;
   title: string;
   stats: OfferStats;
+  period?: OfferPeriod;
   tenders?: number;
-}> = ({ rows, all, active, title, stats, tenders }) => {
+}> = ({ rows, all, active, title, stats, tenders, period = '12m' }) => {
+  const plabel = OFFER_PERIODS[period];
   const count = (s: OfferStatus) => all.filter((o) => o.status === s).length;
   const tabs: Tab[] = [
     { key: 'offen', label: 'Offen', href: '/angebote', count: count('entwurf') + count('versendet') },
@@ -189,7 +193,7 @@ export const OfferList: FC<{
           <div class="s">monatlich netto ({count('versendet')} Angebote)</div>
         </div>
         <div class="kpi">
-          <div class="l">Zuschlagsquote (12 Monate)</div>
+          <div class="l">Zuschlagsquote ({plabel})</div>
           <div class="v">{stats.rate == null ? '–' : `${stats.rate} %`}</div>
           <div class="s">
             {stats.accepted.count} von {stats.accepted.count + stats.rejected.count} entschiedenen
@@ -197,7 +201,18 @@ export const OfferList: FC<{
         </div>
       </div>
       <div class="card" style="margin-bottom:16px">
-        <h3 style="margin-top:0">Statistik der letzten 12 Monate</h3>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+          <h3 style="margin:0">Statistik: {plabel}</h3>
+          <span style="flex:1" />
+          {(Object.keys(OFFER_PERIODS) as OfferPeriod[]).map((k) => (
+            <a class={`chip ${k === period ? 'on' : ''}`} href={`/angebote?zeitraum=${k}`}>
+              {OFFER_PERIODS[k]}
+            </a>
+          ))}
+        </div>
+        <p class="small mut" style="margin-top:0">
+          Angenommen/abgelehnt nach dem Tag der Entscheidung, offene nach Angebotsdatum.
+        </p>
         <div class="tbl">
           <table>
             <thead>

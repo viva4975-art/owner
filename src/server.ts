@@ -6,6 +6,7 @@ import { createMailer } from './mail/mailer.js';
 import { configureAuthAdmin } from './services/auth-users.js';
 import { autoFetch } from './services/bank-feed.js';
 import { applyDueHours } from './services/employee-hours.js';
+import { autoConfirmPlanned } from './services/time.js';
 import { sendDailyReminders } from './services/reminders.js';
 import { createApp } from './web/app.js';
 
@@ -34,6 +35,14 @@ serve({ fetch: app.fetch, port: env.PORT, hostname }, (info) => {
 const dueHours = () => applyDueHours(sql).catch((e) => console.error('Wochenstunden übernehmen:', e));
 void dueHours();
 setInterval(dueHours, 60 * 60 * 1000).unref();
+
+// „Soll als Ist nach N Tagen“ (Zeiterfassung → Einstellungen): stündlich prüfen
+const autoIst = () =>
+  autoConfirmPlanned(sql)
+    .then((n) => n && console.log(`Plan als Ist automatisch: ${n} Zeit(en)`))
+    .catch((e) => console.error('Plan als Ist automatisch:', e));
+setTimeout(autoIst, 60_000).unref();
+setInterval(autoIst, 60 * 60 * 1000).unref();
 
 // Erinnerungen: tägliche Sammel-Mail (höchstens einmal je Tag, ab der eingestellten Uhrzeit)
 const reminders = () =>

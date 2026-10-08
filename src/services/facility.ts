@@ -1,3 +1,4 @@
+import { WEEKS_PER_MONTH } from '../domain/time/soll.js';
 import { randomUUID } from 'node:crypto';
 import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
@@ -167,15 +168,15 @@ export async function getSiteHourTarget(sql: Sql, siteId: string) {
   return t;
 }
 
-/** Vorgabe in Stunden je Woche/Monat/Jahr umrechnen (Woche = Jahr ÷ 52, Monat = Jahr ÷ 12). */
+/** Vorgabe in Stunden je Woche/Monat/Jahr umrechnen (Monat = Woche × 4,33 wie in der Planung, Jahr = Monat × 12). */
 export function hoursOf(t: Pick<SiteHourTarget, 'mode' | 'day_minutes' | 'month_minutes' | 'year_minutes'>) {
-  const perYear =
+  const perMonth =
     t.mode === 'woche'
-      ? (t.day_minutes.reduce((a, b) => a + b, 0) * 52) / 60
+      ? (t.day_minutes.reduce((a, b) => a + b, 0) / 60) * WEEKS_PER_MONTH
       : t.mode === 'monat'
-        ? ((t.month_minutes ?? 0) * 12) / 60
-        : (t.year_minutes ?? 0) / 60;
-  return { perYear, perMonth: perYear / 12, perWeek: perYear / 52 };
+        ? (t.month_minutes ?? 0) / 60
+        : (t.year_minutes ?? 0) / 60 / 12;
+  return { perYear: perMonth * 12, perMonth, perWeek: perMonth / WEEKS_PER_MONTH };
 }
 
 export interface HourTargetInput {

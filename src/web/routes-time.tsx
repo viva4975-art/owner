@@ -331,6 +331,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
           today={todayBerlin()}
           holiday={holidayName}
           canEdit
+          canDeleteTime={['admin', 'personal'].includes(c.get('user').role)}
           base="/zeiterfassung/mitarbeiter"
           keep={`mitarbeiter=${sel.id}`}
           confirmAction="/zeiterfassung/plan-als-ist"
@@ -627,7 +628,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
     );
     const sites = allSites.filter((s) => !c.get('sites') || c.get('sites')!.includes(s.id));
     const head = await viewHead(c, 'liste', to);
-    const admin = c.get('user').role === 'admin';
+    const admin = ['admin', 'personal'].includes(c.get('user').role);
     const deletions = admin ? await listDeletions(sql, 50) : [];
     const self = c.req.url.replace(/^https?:\/\/[^/]+/, '');
     return shell(
@@ -707,19 +708,14 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
             onsubmit="var n=document.querySelectorAll('input[name=ids][form=purge]:checked').length;if(!n){alert('Bitte zuerst Zeiten markieren.');return false}return confirm(n+' Zeit(en) endgültig löschen? Das kann nicht rückgängig gemacht werden.')"
           >
             <input type="hidden" name="zurueck" value={self} />
-            <b>Markierte Zeiten endgültig löschen</b> <span class="small mut">(nur Admin)</span>
+            <b>Markierte Zeiten endgültig löschen</b> <span class="small mut">(Admin, Personal)</span>
             <p class="small mut" style="margin:4px 0 8px">
               Nur für Testdaten und falsch übernommene Zeiten. Echte Arbeitszeiten bitte korrigieren oder
               „entfernen“ – sie müssen 2 Jahre aufbewahrt werden (§ 17 MiLoG). Gelöschte Zeiten stehen mit
               vollem Stand im Löschprotokoll.
             </p>
             <div class="actions" style="margin:0">
-              <input
-                name="reason"
-                required
-                placeholder="Grund, z. B. Testdaten / Import falsch"
-                style="max-width:360px"
-              />
+              <input name="reason" placeholder="Grund (freiwillig)" style="max-width:360px" />
               <button class="btn danger sm">Markierte löschen</button>
             </div>
           </form>
@@ -777,8 +773,8 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
   });
 
   app.post('/zeiterfassung/loeschen', async (c) => {
-    if (c.get('user').role !== 'admin')
-      throw new BusinessError('Zeiten endgültig löschen darf nur ein Admin');
+    if (!['admin', 'personal'].includes(c.get('user').role))
+      throw new BusinessError('Zeiten löschen dürfen nur Admin und Personal');
     const b = await c.req.parseBody({ all: true });
     const ids = ([] as unknown[]).concat(b.ids ?? []).map(String);
     const n = await purgeEntries(sql, ids, String(b.reason ?? ''), c.get('actor'));
@@ -786,7 +782,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
       typeof b.zurueck === 'string' && b.zurueck.startsWith('/') && !b.zurueck.startsWith('//')
         ? b.zurueck
         : '/zeiterfassung/liste';
-    return back(c, z, { ok: `${n} Zeit(en) endgültig gelöscht – stehen im Löschprotokoll.` });
+    return back(c, z, { ok: n === 1 ? 'Zeit gelöscht.' : `${n} Zeiten gelöscht.` });
   });
 
   // ------------------------------------------------------------------ Einzelner Eintrag (ansehen, korrigieren, neu)
@@ -896,20 +892,20 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
           </div>
         </form>
         <div class="card">
-          {e && c.get('user').role === 'admin' && (
+          {e && ['admin', 'personal'].includes(c.get('user').role) && (
             <form
               method="post"
               action="/zeiterfassung/loeschen"
               style="margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line)"
               onsubmit="return confirm('Diese Zeit endgültig löschen? Das kann nicht rückgängig gemacht werden.')"
             >
-              <h3 style="margin-top:0">Endgültig löschen (Admin)</h3>
+              <h3 style="margin-top:0">Zeit löschen</h3>
               <p class="small mut" style="margin-top:0">
                 Nur für Testdaten oder falsch übernommene Zeiten. Der Stand bleibt im Löschprotokoll.
               </p>
               <input type="hidden" name="ids" value={id} />
               <input type="hidden" name="zurueck" value="/zeiterfassung/liste" />
-              <input name="reason" required placeholder="z. B. Testdaten" aria-label="Grund" />
+              <input name="reason" placeholder="Grund (freiwillig)" aria-label="Grund" />
               <div class="actions">
                 <button class="btn danger sm">Endgültig löschen</button>
               </div>
@@ -1085,6 +1081,8 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
 
   app.get('/zeiterfassung/einstellungen', async (c) => {
     const s = await getTimeSettings(sql);
+    const [autoCfg] = await sql<{ days: number | null; since: string | null }[]>`
+      select auto_confirm_days as days, auto_confirm_since::text as since from app.time_settings`;
     const geo = await geoCheckEnabled(sql);
     const [withGeo] = await sql<{ n: number; all: number }[]>`
       select count(*) filter (where geo_lat is not null)::int as n, count(*)::int as all from app.sites where active`;
@@ -1120,6 +1118,38 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
             <button class="btn">Speichern</button>
           </div>
         </form>
+        <form
+          method="post"
+          action="/zeiterfassung/einstellungen/plan-als-ist"
+          class="card"
+          style="max-width:720px"
+        >
+          <h3 style="margin-top:0">Soll als Ist automatisch</h3>
+          <label for="auto_days">
+            Einsätze ohne erfasste Zeit nach … Tagen mit den Plan-Zeiten übernehmen
+          </label>
+          <select id="auto_days" name="days" style="max-width:220px">
+            <option value="">aus</option>
+            {[1, 2, 3, 5, 7].map((n) => (
+              <option value={String(n)} selected={autoCfg?.days === n}>
+                nach {n} {n === 1 ? 'Tag' : 'Tagen'}
+              </option>
+            ))}
+          </select>
+          <p class="small mut">
+            Nicht bei Abwesenheit, Ausfall, Feiertag oder Überschneidung. Im Protokoll steht „automatisch“;
+            die Zeit lässt sich wie jede andere ändern oder löschen.
+            {autoCfg?.since ? ` Gilt für Einsätze ab ${dateDe(autoCfg.since)}.` : ''}
+          </p>
+          <p class="small" style="color:var(--warn)">
+            <b>§ 17 MiLoG:</b> Aufgezeichnet werden muss die tatsächliche Arbeitszeit. Wer anders gearbeitet
+            hat (später gekommen, früher gegangen), muss innerhalb der Frist korrigiert werden – sonst ist die
+            Aufzeichnung falsch (Bußgeld bis 30.000 €).
+          </p>
+          <div class="formfoot">
+            <button class="btn">Speichern</button>
+          </div>
+        </form>
         <form method="post" action="/zeiterfassung/einstellungen" class="card" style="max-width:720px">
           <div class="grid">
             <div>
@@ -1143,6 +1173,21 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
         </form>
       </>,
     );
+  });
+
+  app.post('/zeiterfassung/einstellungen/plan-als-ist', async (c) => {
+    const b = await c.req.parseBody();
+    const d = Number(b.days);
+    const days = Number.isInteger(d) && d >= 1 && d <= 14 ? d : null;
+    // beim Einschalten ab heute (kein rückwirkendes Auffüllen), beim Ändern der Tage Stichtag behalten
+    await sql`update app.time_settings set auto_confirm_days = ${days},
+                     auto_confirm_since = case when ${days}::int is null then null
+                       else coalesce(auto_confirm_since, (now() at time zone 'Europe/Berlin')::date) end`;
+    await sql`insert into app.audit_log (actor, action, entity, details)
+              values (${c.get('actor')}, 'save', 'time_settings', ${sql.json({ auto_confirm_days: days })})`;
+    return back(c, '/zeiterfassung/einstellungen', {
+      ok: days ? `Soll als Ist nach ${days} Tag(en) eingeschaltet.` : 'Soll als Ist automatisch aus.',
+    });
   });
 
   app.post('/zeiterfassung/einstellungen/standort', async (c) => {
@@ -1188,6 +1233,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
           today={todayBerlin()}
           holiday={holidayName}
           canEdit
+          canDeleteTime={['admin', 'personal'].includes(c.get('user').role)}
           base={`/personal/${e.id}/zeiten`}
           confirmAction="/zeiterfassung/plan-als-ist"
           {...d}

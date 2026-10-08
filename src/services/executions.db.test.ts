@@ -79,7 +79,7 @@ describe.skipIf(!available)('Leistungen verrichten → Rechnungsentwürfe', () =
     expect(await listOpenExecutions(sql, { siteId: DEMO.siteSchool })).toHaveLength(1);
   });
 
-  it('einmalige Leistung nur einmal verrichtbar', async () => {
+  it('einmalige Leistung mehrfach verrichtbar (je Datum)', async () => {
     await sql`update app.site_services set billing_cycle = 'einmalig' where id = ${GLAS}`;
     await executeServices(
       sql,
@@ -92,18 +92,17 @@ describe.skipIf(!available)('Leistungen verrichten → Rechnungsentwürfe', () =
       },
       'test',
     ).catch(() => undefined);
-    await expect(
-      executeServices(
-        sql,
-        {
-          siteId: DEMO.siteSchool,
-          token: randomUUID(),
-          dateFrom: '2026-09-13',
-          dateTo: null,
-          items: [{ serviceId: GLAS, quantity: null }],
-        },
-        'test',
-      ),
-    ).rejects.toThrow(/einmalig/);
+    const n = await executeServices(
+      sql,
+      {
+        siteId: DEMO.siteSchool,
+        token: randomUUID(),
+        dateFrom: '2026-09-13',
+        dateTo: null,
+        items: [{ serviceId: GLAS, quantity: null }],
+      },
+      'test',
+    );
+    expect(n).toBe(1);
   });
 });

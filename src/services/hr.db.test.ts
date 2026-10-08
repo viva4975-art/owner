@@ -145,7 +145,7 @@ describe.skipIf(!available)('Personal wie Fortytools', () => {
     await sql`update app.shift_plans set created_at = '2025-01-01' where employee_id = ${amar}`;
     const r = await sollPlanIst(sql, amar, '2025-09');
     const days = workingDays('2025-09-01', '2025-09-30');
-    expect(r.soll).toBe(6 * 60 * days); // 30 Std./Woche = 6 Std. je Arbeitstag
+    expect(r.soll).toBe(Math.round(30 * 60 * 4.33)); // 30 Std./Woche × 4,33 Wochen
     expect(r.plan).toBe(6 * 60 * days);
     expect(r.ist).toBe(0);
   });

@@ -28,6 +28,11 @@ const SECTION = rgb(0.973, 0.925, 0.937);
 const RULE = rgb(0.86, 0.86, 0.86);
 
 let letterheadBytes: Uint8Array | null = null;
+/** Briefpapier (A4, JPG) – z. B. für Aushänge, die nicht über FormDoc laufen */
+export async function letterhead(): Promise<Uint8Array> {
+  letterheadBytes ??= await readFile(new URL('briefpapier/viva-deluxe-a4.jpg', ASSETS));
+  return letterheadBytes;
+}
 
 export interface FormCol {
   label: string;
@@ -273,6 +278,71 @@ export class FormDoc {
       this.y += size + 3.6;
     }
     this.y += 3;
+  }
+
+  /**
+   * Abschnitte zweispaltig fließen lassen (Auftragsbedingungen kompakt, Ahmed 09.10.: „max. 2 Seiten“).
+   * Füllt erst die linke, dann die rechte Spalte, danach neue Seite.
+   */
+  columns(blocks: { title: string; paragraphs: string[] }[], size = 7.4) {
+    const gap = 16;
+    const cw = (R - L - gap) / 2;
+    const lh = size + 2.4;
+    // erst alle Zeilen bilden, dann seitenweise auf zwei Spalten verteilen (letzte Seite ausgeglichen)
+    const lines: { t: string; title?: boolean; gapAfter?: number }[] = [];
+    for (const b of blocks) {
+      for (const l of this.wrap(b.title, cw, size + 0.6, true)) lines.push({ t: l, title: true });
+      b.paragraphs.forEach((p, i) => {
+        const w = this.wrap(p, cw, size);
+        w.forEach((l, j) =>
+          lines.push({ t: l, gapAfter: j === w.length - 1 ? (i === b.paragraphs.length - 1 ? 4 : 1.5) : 0 }),
+        );
+      });
+    }
+    const height = (ls: typeof lines) => ls.reduce((a, l) => a + lh + (l.gapAfter ?? 0), 0);
+    let i = 0;
+    while (i < lines.length) {
+      const avail = BOTTOM - this.y;
+      const rest = lines.slice(i);
+      // passt der Rest in zwei Spalten? → in der Mitte (nach Höhe) teilen, sonst linke Spalte voll füllen
+      let cut = i;
+      if (height(rest) <= avail * 2 - lh * 2) {
+        const half = height(rest) / 2;
+        let h = 0;
+        while (cut < lines.length && h + lh <= half + lh / 2) h += lh + (lines[cut++]!.gapAfter ?? 0);
+        // Überschrift nicht allein unten stehen lassen
+        while (cut > i && lines[cut - 1]!.title) cut--;
+      } else {
+        let h = 0;
+        while (cut < lines.length && h + lh <= avail) h += lh + (lines[cut++]!.gapAfter ?? 0);
+        while (cut > i + 1 && lines[cut - 1]!.title) cut--;
+      }
+      const draw = (from: number, to: number, x: number) => {
+        let y = this.y;
+        for (let k = from; k < to; k++) {
+          const l = lines[k]!;
+          if (y + lh > BOTTOM) return { y, k };
+          this.text(l.t, x, y + size, l.title ? { size: size + 0.6, bold: true, color: BORDEAUX } : { size });
+          y += lh + (l.gapAfter ?? 0);
+        }
+        return { y, k: to };
+      };
+      const left = draw(i, cut, L);
+      let end = left.k;
+      let rightY = this.y;
+      if (end < lines.length) {
+        // rechte Spalte: bis zum Seitenende bzw. bis zum Ende
+        const r = draw(end, lines.length, L + cw + gap);
+        end = r.k;
+        rightY = r.y;
+      }
+      i = end;
+      if (i < lines.length) {
+        this.newPage();
+        continue;
+      }
+      this.y = Math.max(left.y, rightY);
+    }
   }
 
   muted(t: string) {

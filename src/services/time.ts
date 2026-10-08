@@ -867,7 +867,15 @@ export async function confirmPlanned(
  */
 export async function officeConfirmPlanned(
   sql: Sql,
-  p: { employeeId: string; from: string; to: string; actor: string; siteScope?: string[] | null },
+  p: {
+    employeeId: string;
+    from: string;
+    to: string;
+    actor: string;
+    siteScope?: string[] | null;
+    /** Protokollgrund, Standard „Plan als Ist (Büro)“ */
+    reason?: string;
+  },
 ): Promise<{ created: number; skipped: string[] }> {
   const today = todayBerlin();
   const to = p.to < today ? p.to : today;
@@ -880,7 +888,7 @@ export async function officeConfirmPlanned(
     if (sh.entry || sh.absence || sh.holiday || sh.exception?.kind === 'ausfall') continue;
     if (sh.plan.employee_id !== p.employeeId) continue;
     if (p.siteScope && !p.siteScope.includes(sh.plan.site_id)) continue;
-    const r = await withActor(sql, p.actor, 'Plan als Ist (Büro)', async (tx) => {
+    const r = await withActor(sql, p.actor, p.reason ?? 'Plan als Ist (Büro)', async (tx) => {
       const [{ id }] = (await tx`select md5(${sh.plan.id} || ':' || ${sh.date})::uuid as id`) as unknown as [
         { id: string },
       ];
@@ -912,6 +920,44 @@ export async function officeConfirmPlanned(
       skipped.push(`${sh.date.split('-').reverse().join('.')} ${sh.plan.site_name} (überschneidet sich)`);
   }
   return { created, skipped };
+}
+
+/**
+ * „Soll als Ist nach N Tagen“ (Ahmed 09.10.): vergangene Einsätze ohne erfasste Zeit werden N Tage nach dem
+ * Einsatztag mit den Plan-Zeiten übernommen – nicht bei Abwesenheit, Ausfall, Feiertag oder Überschneidung.
+ * Nur Einsätze ab dem Tag des Einschaltens, höchstens 14 Tage zurück. Läuft stündlich im Server.
+ */
+export async function autoConfirmPlanned(sql: Sql, today = todayBerlin()) {
+  const [cfg] = await sql<{ days: number | null; since: string | null }[]>`
+    select auto_confirm_days as days, auto_confirm_since::text as since from app.time_settings`;
+  if (!cfg?.days) return 0;
+  const to = addDays(today, -cfg.days);
+  let from = addDays(today, -14);
+  if (cfg.since && cfg.since > from) from = cfg.since;
+  if (from > to) return 0;
+  const shifts = await plannedShifts(sql, { from, to });
+  const emps = [
+    ...new Set(
+      shifts
+        .filter(
+          (s) =>
+            !s.entry && !s.absence && !s.holiday && s.exception?.kind !== 'ausfall' && s.plan.employee_id,
+        )
+        .map((s) => s.plan.employee_id!),
+    ),
+  ];
+  let n = 0;
+  for (const employeeId of emps) {
+    const r = await officeConfirmPlanned(sql, {
+      employeeId,
+      from,
+      to,
+      actor: 'automatisch',
+      reason: `Plan als Ist automatisch (keine Zeit nach ${cfg.days} Tagen)`,
+    });
+    n += r.created;
+  }
+  return n;
 }
 
 function toRange(date: string, start: string, end: string) {
@@ -998,12 +1044,13 @@ export async function officeRemove(sql: Sql, id: string, reason: string, actor: 
 }
 
 /**
- * Endgültig löschen (nur Admin): für Test-Zeiten und falsch übernommene Importe. Zeile und Änderungsprotokoll
+ * Endgültig löschen (Admin/Personal): für Test-Zeiten und falsch übernommene Importe. Zeile und Änderungsprotokoll
  * wandern vollständig ins Löschprotokoll (`time_entry_deletions`, nur anhängen). Echte Arbeitszeiten nicht löschen,
  * sondern korrigieren oder entfernen (§ 17 MiLoG: 2 Jahre aufbewahren).
  */
 export async function purgeEntries(sql: Sql, ids: string[], reason: string, actor: string) {
-  if (!reason.trim()) throw new BusinessError('Bitte begründen, warum gelöscht wird (z. B. „Testdaten“)');
+  // Grund freiwillig (Ahmed 09.10.: „löschen ohne Doku wie Fortytools“) – der Stand landet trotzdem im Löschprotokoll
+  reason = reason.trim() || 'gelöscht (ohne Angabe)';
   const uniq = [...new Set(ids)].filter((x) => /^[0-9a-f-]{36}$/i.test(x));
   if (!uniq.length) throw new BusinessError('Keine Zeiten ausgewählt');
   let n = 0;

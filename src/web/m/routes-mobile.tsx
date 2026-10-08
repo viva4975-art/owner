@@ -1,3 +1,4 @@
+import { Icon } from '../icons.js';
 import { listPayslips } from '../../services/payslips.js';
 import { payslipFile } from '../routes-payslips.js';
 import { createHash, randomUUID } from 'node:crypto';
@@ -623,7 +624,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
                 hidden
                 data-text={t(lang, 'remind_text', { from: clock(from), min: String(min) })}
               >
-                🔔 {t(lang, 'remind_on')}
+                <Icon name="bell" size={16} /> {t(lang, 'remind_on')}
               </button>
             </div>
           );
@@ -736,12 +737,12 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         </div>
         {sheetOpen && (
           <a class="big go" href={`/m/stundenzettel?monat=${signMonth}`} style="font-size:18px">
-            ✍ {t(lang, 'sheet_sign_open', { month: monthName(lang, signMonth) })}
+            <Icon name="sign" size={16} /> {t(lang, 'sheet_sign_open', { month: monthName(lang, signMonth) })}
           </a>
         )}
         {openDocs.length > 0 && (
           <a class="big go" href="/m/dokumente" style="font-size:18px">
-            ✍ {t(lang, 'docs_open', { n: openDocs.length })}
+            <Icon name="sign" size={16} /> {t(lang, 'docs_open', { n: openDocs.length })}
           </a>
         )}
         {pastToConfirm.length > 0 && (
@@ -1504,7 +1505,13 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
                 )}
               </div>
               <div class="r">
-                {d.status === 'offen' ? <span class="pill warn">✍</span> : <span class="pill ok">✓</span>}
+                {d.status === 'offen' ? (
+                  <span class="pill warn">
+                    <Icon name="sign" size={13} />
+                  </span>
+                ) : (
+                  <span class="pill ok">✓</span>
+                )}
               </div>
             </a>
           ))}
@@ -1558,7 +1565,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
           </p>
         )}
         <a class="big sec" href={`/m/dokumente/${d.id}/dokument.pdf`} target="_blank" rel="noopener">
-          📄 {t(lang, 'doc_open_pdf')}
+          <Icon name="pdf" size={16} /> {t(lang, 'doc_open_pdf')}
         </a>
         {d.status === 'unterschrieben' ? (
           <div class="card run">

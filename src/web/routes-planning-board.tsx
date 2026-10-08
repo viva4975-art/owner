@@ -1,3 +1,4 @@
+import { Icon } from './icons.js';
 import { randomUUID } from 'node:crypto';
 import type { FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
@@ -514,7 +515,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
           <input type="hidden" name="zurueck" value={ret} />
           <div class="tp-row">
             <span class="tp-ic" title="Einsatzort">
-              ⌖
+              <Icon name="pin" size={16} />
             </span>
             <div class="tp-main">
               <select name="site_id" required aria-label="Einsatzort">
@@ -536,7 +537,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
           </div>
           <div class="tp-row">
             <span class="tp-ic" title="Termin">
-              ▦
+              <Icon name="calendar" size={16} />
             </span>
             <div class="tp-main">
               <div class="tp-line">
@@ -638,7 +639,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
           </div>
           <div class="tp-row">
             <span class="tp-ic" title="Mitarbeiter">
-              ☺
+              <Icon name="user" size={16} />
             </span>
             <div class="tp-main tp-cols">
               <div>
@@ -687,7 +688,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
           </div>
           <div class="tp-row">
             <span class="tp-ic" title="Hinweise">
-              ⓘ
+              <Icon name="pencil" size={16} />
             </span>
             <div class="tp-main">
               <textarea name="note" rows={3} placeholder="Einsatzbeschreibung und Hinweise">
@@ -745,9 +746,9 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
           >
             <h3 style="margin-top:0">Serie löschen</h3>
             <p class="small mut" style="margin-top:0">
-              Für falsch angelegte Einsätze: entfernt die Serie ganz (alle Mitarbeiter, alle Tage). Schon erfasste
-              Zeiten bleiben erhalten (sie stehen dann „ohne Einsatz“). Einen einzelnen Tag streichen: in der
-              Planung auf den Termin klicken → Ausfall.
+              Für falsch angelegte Einsätze: entfernt die Serie ganz (alle Mitarbeiter, alle Tage). Schon
+              erfasste Zeiten bleiben erhalten (sie stehen dann „ohne Einsatz“). Einen einzelnen Tag
+              streichen: in der Planung auf den Termin klicken → Ausfall.
             </p>
             <input type="hidden" name="serie" value="1" />
             <input type="hidden" name="zurueck" value={ret} />

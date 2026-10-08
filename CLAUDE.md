@@ -1761,3 +1761,30 @@ Testadresse.
   - **XRechnung ohne Leitweg-ID:** Rechnungsgruppe/Kunde mit Format XRechnung braucht Leitweg-ID **oder** Rechnungs-E-Mail
     (bzw. Portal). Ohne Leitweg-ID: Empfängeradresse BT-49 = E-Mail, Käuferreferenz BT-10 = Kundennummer – KoSIT-gültig
     (Test). Behörden brauchen weiter ihre Leitweg-ID.
+- 2026-10-09: Runde 30 (Ahmed, 11 Punkte):
+  - Kontoumsätze: neueste oben, innerhalb eines Tages stabil (Valuta, Abrufzeit) – Liste „Zuordnen“ und Kontoauszug.
+  - **Einmalige Leistungen mehrfach verrichten** (je Ausführung mit eigenem Datum; Sperre „schon verrichtet“ entfällt).
+  - Angebote: Statistik mit Zeitraum **Dieser Monat / Letzter Monat / Quartal / Jahr / 12 Monate**; angenommen/abgelehnt
+    nach Tag der Entscheidung (`decided_at`), offene nach Angebotsdatum.
+  - Symbole: farbige Emojis (🗑 ⚠ 📄 📎 ⏰ ⚙ ✍ 🔔 ☺ …) durch einheitliche Strich-Symbole (`Icon`) ersetzt; PDF-Knopf in den
+    Entwürfen als Symbol; Mitarbeiter-Tags als ruhige helle Schilder (keine grauen Großbuchstaben-Klötze), Adresse mit
+    „Karte“-Link; rechte Spalte der Entwürfe lief über den Rand.
+  - **4,33 Wochen je Monat** (Ahmed): Soll = Wochenstunden × 4,33 je Monat, angebrochene Monate anteilig nach
+    Kalendertagen (`src/domain/time/soll.ts`) – Dispo, Kalender, Arbeitszeitkonto, Stundenvorgabe (Monat = Woche × 4,33).
+    Abwesenheitsstunden je Tag bleiben Wochenstunden ÷ 5.
+  - **Erfasste Zeit löschen ohne Begründung** (Admin/Personal): Papierkorb im Kalender-Detail und in der Liste, Grund
+    freiwillig; Stand weiter im Löschprotokoll. **Rechtlich:** echte Arbeitszeiten 2 Jahre aufbewahren (§ 17 MiLoG).
+  - **NU-Bestellschein auf 2 Seiten**: Seite 1 Auftrag + Leistungsbeschreibung, Bedingungen zweispaltig (ausgeglichen),
+    eine Unterschrift für Bestellung + Bedingungen (`FormDoc.columns`).
+  - **Unterweisungen endgültig löschen** auch mit Unterschriften (nur Admin, für Tests; Papierkorb neben „Beenden“).
+    Stand vorher ins audit_log, PDFs bleiben im Archiv. Migration `20261115000001`.
+  - **Soll als Ist automatisch nach 2 Tagen** (Zeiterfassung → Einstellungen, 1/2/3/5/7 Tage oder aus): Einsätze ohne
+    Zeit werden stündlich mit Plan-Zeiten übernommen (nicht bei Abwesenheit/Ausfall/Feiertag/Überschneidung), Akteur
+    „automatisch“, nur Einsätze ab dem Einschalttag (09.10.2026, kein Auffüllen alter Monate). Migration
+    `20261115000002`. **§ 17 MiLoG:** abweichende tatsächliche Zeiten müssen korrigiert werden.
+  - **Vorab-Lohnabrechnung** (Stundenliste & Lohnarten → Lohnarten, „Vorab-Abrechnung“): Ist bis Stichtag + geplante
+    Einsätze bis Monatsende (mit Zuschlägen). Jeder „CSV Lohnprogramm“-Export wird festgehalten (`payroll_exports`, nur
+    anhängen, Migration `20261115000003`); im Folgemonat enthält die CSV Zeilen „<Monat> Korrektur“ mit der
+    Stunden-Differenz (auch minus), auf der Seite aufklappbar.
+  - **Tiefgaragen-Aushang** auf dem Briefpapier mit Logo: Bordeaux-Titelband, Termine als Karten, gelber Hinweiskasten,
+    Haftungsausschluss.

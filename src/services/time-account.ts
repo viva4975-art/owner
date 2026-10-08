@@ -1,12 +1,13 @@
+import { sollMinutesFor } from '../domain/time/soll.js';
 import type { Sql } from '../db/client.js';
 import { monthBounds, todayBerlin } from '../domain/invoice/calc.js';
-import { addDays, workingDays } from '../domain/time/holidays.js';
+import { addDays } from '../domain/time/holidays.js';
 import { BusinessError } from './errors.js';
 import { payrollMonth } from './payroll.js';
 
 /*
  * Arbeitszeitkonto (Ahmed 08.10.: „ja Arbeitszeitkonto gute Idee“). Je Mitarbeiter und Monat:
- *   Soll = Wochenstunden ÷ 5 × Arbeitstage (Mo–Fr ohne Feiertage Bayern, mit Stunden-Verlauf, im Beschäftigungszeitraum)
+ *   Soll = Wochenstunden × 4,33 je Monat (anteilig) (Mo–Fr ohne Feiertage Bayern, mit Stunden-Verlauf, im Beschäftigungszeitraum)
  *   Ist  = gearbeitet (erfasst/freigegeben, ohne Pause) + bezahlte Abwesenheit (Urlaub, Krank, Sonstige)
  *   Saldo Monat = Ist − Soll; Kontostand = Summe der Salden ab Startmonat + Buchungen (Startsaldo, Auszahlung …).
  * Rechtlich (§ 2 Abs. 2 MiLoG): Plusstunden höchstens 50 % der vereinbarten Monatsarbeitszeit und binnen 12 Monaten
@@ -77,7 +78,7 @@ async function sollAll(sql: Sql, month: string): Promise<Map<string, number | nu
       e.id,
       segs.every((s) => s.hours == null)
         ? null
-        : segs.reduce((a, s) => a + Math.round(((s.hours ?? 0) * 60 * workingDays(s.from, s.to)) / 5), 0),
+        : segs.reduce((a, s) => a + sollMinutesFor(s.hours ?? 0, s.from, s.to), 0),
     );
   }
   return out;

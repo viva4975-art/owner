@@ -1,3 +1,4 @@
+import { Icon } from './icons.js';
 import { randomUUID } from 'node:crypto';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { parseEuro } from '../domain/money/money.js';
@@ -294,7 +295,7 @@ export function registerDeepCleaningRoutes({ app, deps, page, back }: Ctx) {
                   <form method="post" action={`/grundreinigung/${p.id}/status`} class="inline-form">
                     {p.status === 'Ausgeführt' ? (
                       <button class="btn sm sec" name="status" value="Übergeben">
-                        ↩ Reaktivieren
+                        <Icon name="undo" size={14} /> Reaktivieren
                       </button>
                     ) : (
                       <button
@@ -312,7 +313,7 @@ export function registerDeepCleaningRoutes({ app, deps, page, back }: Ctx) {
                   </a>
                   <form method="post" action={`/grundreinigung/${p.id}/loeschen`} class="inline-form">
                     <button class="btn sm danger" data-confirm="Planung löschen?" title="löschen">
-                      🗑
+                      <Icon name="trash" size={14} />
                     </button>
                   </form>
                 </div>
@@ -382,7 +383,7 @@ export function registerDeepCleaningRoutes({ app, deps, page, back }: Ctx) {
     const step = (n: number, icon: string, title: string, body: unknown) => (
       <section class="gr-step" data-step={String(n)}>
         <h3>
-          {icon} {title}
+          <Icon name={icon} size={18} /> {title}
         </h3>
         {body as never}
       </section>
@@ -416,7 +417,7 @@ export function registerDeepCleaningRoutes({ app, deps, page, back }: Ctx) {
           </div>
           {step(
             1,
-            '🏢',
+            'building',
             'Kunde',
             <>
               <label for="site">Objekt aus Objektliste wählen (füllt Kunde &amp; Objekt automatisch)</label>
@@ -452,7 +453,7 @@ export function registerDeepCleaningRoutes({ app, deps, page, back }: Ctx) {
           )}
           {step(
             2,
-            '📍',
+            'pin',
             'Objekt',
             <>
               <label for="objekt">Objekt / Adresse</label>
@@ -463,7 +464,7 @@ export function registerDeepCleaningRoutes({ app, deps, page, back }: Ctx) {
           )}
           {step(
             3,
-            '📐',
+            'ruler',
             'Flächen & Preis',
             <>
               <label>Kalkulation</label>
@@ -519,7 +520,7 @@ export function registerDeepCleaningRoutes({ app, deps, page, back }: Ctx) {
           )}
           {step(
             4,
-            '🧮',
+            'calc',
             'Ausführung & Kalkulation',
             <>
               <label>Ausführung durch</label>
@@ -608,7 +609,7 @@ export function registerDeepCleaningRoutes({ app, deps, page, back }: Ctx) {
           )}
           {step(
             5,
-            '📅',
+            'calendar',
             'Zeitraum & Status',
             <div class="grid">
               <div>
@@ -672,7 +673,7 @@ var vk=0;if(mode==='pauschal')vk=num(f.p_vk.value);else box.querySelectorAll('.g
 document.getElementById('gr-vk').textContent=eur(vk);var dbp=num(f.db.value),db=vk*dbp/100,mat=vk*num(f.mat.value)/100,ger=vk*num(f.ger.value)/100;
 var om=f.mat_von.value==='uns'?mat:0,og=f.ger_von.value==='uns'?ger:0,vor=Math.max(0,vk-db-om-og),sp=num(f.sub_preis.value),real=sp>0?sp:vor,rdb=vk-real-om-og,h='';
 if(ex==='sub'){h='<div>Verkaufspreis <b>'+eur(vk)+'</b></div><div>− Deckungsbeitrag ('+dbp+'%) '+eur(db)+'</div><div>Material ('+(om?'von uns, −':'vom Sub, ')+f.mat.value+'%) '+eur(mat)+'</div><div>Geräte ('+(og?'von uns, −':'vom Sub, ')+f.ger.value+'%) '+eur(ger)+'</div><div class="gr-big">Vorschlag an Sub: <b>'+eur(vor)+'</b></div>'+(sp>0?'<div>Tatsächlich an Sub '+eur(sp)+' → tatsächlicher Deckungsbeitrag <b class="'+(rdb>=0?'kb-pos':'kb-neg')+'">'+eur(rdb)+'</b></div>':'');}
-else{var std=vk/40,mx=num(f.max_std.value);h='<div>Verkaufspreis <b>'+eur(vk)+'</b></div><div>Stundensatz 40,00 €</div><div class="gr-big">Gesamtstunden: <b>'+std.toLocaleString('de-DE',{maximumFractionDigits:1})+' h</b></div>'+(mx>0?(std>mx?'<div class="kb-neg">⚠ '+(std-mx).toLocaleString('de-DE',{maximumFractionDigits:1})+' h über dem Budget</div>':'<div class="kb-pos">✓ Im Stundenbudget ('+(mx-std).toLocaleString('de-DE',{maximumFractionDigits:1})+' h Reserve)</div>'):'');}
+else{var std=vk/40,mx=num(f.max_std.value);h='<div>Verkaufspreis <b>'+eur(vk)+'</b></div><div>Stundensatz 40,00 €</div><div class="gr-big">Gesamtstunden: <b>'+std.toLocaleString('de-DE',{maximumFractionDigits:1})+' h</b></div>'+(mx>0?(std>mx?'<div class="kb-neg">'+(std-mx).toLocaleString('de-DE',{maximumFractionDigits:1})+' h über dem Budget</div>':'<div class="kb-pos">✓ Im Stundenbudget ('+(mx-std).toLocaleString('de-DE',{maximumFractionDigits:1})+' h Reserve)</div>'):'');}
 document.getElementById('gr-box').innerHTML=h}
 f.addEventListener('input',calc);f.addEventListener('change',calc);calc();show();})();`,
           }}

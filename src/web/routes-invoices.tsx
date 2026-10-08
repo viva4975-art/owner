@@ -299,10 +299,10 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                         {!r.legacy && (
                           <div class="faint" style="margin-top:2px">
                             {r.delivery === 'sent'
-                              ? '✉ versendet'
+                              ? 'versendet'
                               : r.delivery === 'failed'
-                                ? '✉ Fehler'
-                                : '✉ nicht versendet'}
+                                ? 'Versand-Fehler'
+                                : 'nicht versendet'}
                           </div>
                         )}
                       </td>

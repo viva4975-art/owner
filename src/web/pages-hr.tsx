@@ -51,8 +51,8 @@ export const MonthBox: FC<{
       </table>
     </div>
     <p class="small mut" style="margin-bottom:0">
-      Soll = Wochenstunden ÷ 5 × Arbeitstage (ohne Feiertage). Rot: Plan weicht über 1 Std. ab bzw. Ist liegt
-      unter Soll.
+      Soll = Wochenstunden × 4,33 je Monat (anteilig). Rot: Plan weicht über 1 Std. ab bzw. Ist liegt unter
+      Soll.
     </p>
   </div>
 );

@@ -63,7 +63,13 @@ export const NotesList: FC<{ base: string; notes: Note[] }> = ({ base, notes }) 
                 )}
               </td>
               <td>
-                {n.files > 0 ? <span title="Anhänge">📎 {n.files}</span> : <span class="faint">–</span>}
+                {n.files > 0 ? (
+                  <span title="Anhänge" class="ic-t">
+                    <Icon name="clip" size={13} /> {n.files}
+                  </span>
+                ) : (
+                  <span class="faint">–</span>
+                )}
               </td>
               <td class="right">
                 <a

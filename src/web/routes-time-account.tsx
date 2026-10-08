@@ -69,8 +69,8 @@ export function registerTimeAccountRoutes({ app, deps, page, back }: Ctx) {
         </form>
         <div class="flash warn">
           <span>
-            Ist = gearbeitet + bezahlte Abwesenheit (Urlaub, Krank, Sonstige); Soll = Wochenstunden ÷ 5 ×
-            Arbeitstage.
+            Ist = gearbeitet + bezahlte Abwesenheit (Urlaub, Krank, Sonstige); Soll = Wochenstunden × 4,33 je
+            Monat (anteilig).
             <b> § 2 Abs. 2 MiLoG:</b> Plusstunden höchstens 50 % der vereinbarten Monatsarbeitszeit und
             innerhalb von 12 Monaten ausgleichen (Freizeit oder Auszahlung).
             {warn ? ` ${warn} Mitarbeitende liegen darüber (rot).` : ''}

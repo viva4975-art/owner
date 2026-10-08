@@ -742,8 +742,8 @@ export function registerFacilityRoutes({ app, deps, page, back, shells }: Ctx) {
               )}
             </div>
             <p class="small mut">
-              Eingabe als Stunden:Minuten (2:30) oder Dezimal (2,5). Umrechnung: Woche = Jahr ÷ 52, Monat =
-              Jahr ÷ 12. Einsatzplan: heute gültige wiederkehrende Einsätze abzüglich Pausen.
+              Eingabe als Stunden:Minuten (2:30) oder Dezimal (2,5). Umrechnung: Monat = Woche × 4,33, Jahr =
+              Monat × 12. Einsatzplan: heute gültige wiederkehrende Einsätze abzüglich Pausen.
             </p>
           </form>
           <script

@@ -1,3 +1,4 @@
+import { Icon } from './icons.js';
 import type { FC } from 'hono/jsx';
 import { formatDateDe } from '../domain/invoice/calc.js';
 import { UNIT_LABELS } from '../domain/invoice/types.js';
@@ -64,18 +65,11 @@ export const ExecutePanel: FC<{
           </thead>
           <tbody>
             {services.map((s) => {
-              const done = s.billing_cycle === 'einmalig' && !!s.done_at;
+              // einmalige Leistungen dürfen öfter verrichtet werden (Ahmed) – jede Ausführung mit eigenem Datum
               return (
-                <tr style={done ? 'opacity:.55' : ''}>
+                <tr>
                   <td>
-                    <input
-                      type="checkbox"
-                      name="service"
-                      value={s.id}
-                      data-row
-                      disabled={done}
-                      aria-label={s.description}
-                    />
+                    <input type="checkbox" name="service" value={s.id} data-row aria-label={s.description} />
                   </td>
                   <td>
                     <b>{s.description}</b>
@@ -92,19 +86,13 @@ export const ExecutePanel: FC<{
                       class="right"
                       value={milliToInput(s.quantity_milli)}
                       aria-label="Menge"
-                      disabled={done}
                     />
                   </td>
                   <td>{UNIT_LABELS[s.unit_code] ?? s.unit_code}</td>
                   <td class="r">{euro(s.unit_price_cents)}</td>
                   <td class="small">
-                    {done ? (
-                      <span class="tag">verrichtet am {dateDe(s.done_at)}</span>
-                    ) : s.open_count > 0 ? (
-                      <span class="tag warn">{s.open_count} vorgemerkt</span>
-                    ) : (
-                      ''
-                    )}
+                    {s.open_count > 0 && <span class="tag warn">{s.open_count} vorgemerkt</span>}{' '}
+                    {s.done_at && <span class="small mut">zuletzt {dateDe(s.done_at)}</span>}
                   </td>
                 </tr>
               );
@@ -304,7 +292,7 @@ export const OpenExecutionsBox: FC<{ rows: OpenExecution[]; today: string }> = (
 );
 
 export const DRAFTS_CSS = `
-.dr-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
+.dr-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
 @media(max-width:1100px){.dr-grid{grid-template-columns:minmax(0,1fr)}}
 .dr-list{width:100%;border-collapse:collapse}
 .dr-list th{font-size:12px;font-weight:600;color:#667;text-align:left;padding:8px 8px;border-bottom:1px solid #e3e3e6;background:#f6f6f8}
@@ -320,9 +308,9 @@ export const DRAFTS_CSS = `
 .dr-list .dr-obj span{color:#888}
 .dr-sum td{background:#fafafa;font-size:12px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.02em}
 .dr-pill{background:#fff3b0;padding:2px 8px;border-radius:4px;font-weight:700;color:#222;text-transform:none;letter-spacing:0;font-size:13px}
-.dr-ic{display:inline-flex;width:28px;height:28px;align-items:center;justify-content:center;border:1px solid #ddd;border-radius:6px;background:#fff;color:#7D1435;cursor:pointer;font-size:13px;text-decoration:none}
-.dr-ic:hover{border-color:#7D1435}
-.dr-warn{color:#c77700;font-size:15px}
+.dr-ic{display:inline-flex;width:30px;height:30px;align-items:center;justify-content:center;border:1px solid #e3e3e8;border-radius:7px;background:#fff;color:#5b5f6a;cursor:pointer;text-decoration:none;padding:0}
+.dr-ic:hover{border-color:#7D1435;color:#7D1435}
+.dr-warn{color:#c77700;display:inline-flex;vertical-align:middle}
 .dr-foot{display:flex;flex-wrap:wrap;gap:8px;align-items:end;padding:12px 8px;background:#f6f6f8;border-top:1px solid #e3e3e6}
 .dr-side h3{margin-top:0}
 .ex-month{border-bottom:1px solid #e3e3e3;padding:6px 0}
@@ -342,10 +330,10 @@ export const DRAFTS_CSS = `
 .ex-site-h{display:flex;gap:6px;align-items:baseline;font-size:13px;font-weight:600}
 .ex-line{display:flex;gap:6px;align-items:baseline;font-size:12.5px;margin:3px 0;cursor:pointer;font-weight:400}
 .ex-desc{flex:1;min-width:0}
-.dr-side-f{display:grid;grid-template-columns:auto 1fr;gap:6px 8px;align-items:center;margin-top:10px}
+.dr-side-f{display:grid;grid-template-columns:1fr;gap:6px 8px;align-items:center;margin-top:10px}
 .dr-side-f .btn{grid-column:1/-1}
 .dr-side-f input{min-width:0;width:100%}
-.dr-side .dr-list td{white-space:nowrap}
+.dr-side{min-width:0}.dr-side .dr-list td{white-space:nowrap;font-size:13px;padding-left:4px;padding-right:4px}.dr-side .mpick{width:100%}.dr-side .mpick select.mpick-s{flex:1}
 `;
 
 export const DraftsBox: FC<{ rows: DraftRow[]; today: string; info: Map<string, DraftListInfo> }> = ({
@@ -402,7 +390,7 @@ export const DraftsBox: FC<{ rows: DraftRow[]; today: string; info: Map<string, 
                             class="dr-warn"
                             title={i.review_required ? 'unfertig – bitte prüfen' : 'Leistungszeitraum fehlt'}
                           >
-                            ⚠
+                            <Icon name="alert" size={15} />
                           </span>
                         ) : null}
                         <input
@@ -466,7 +454,7 @@ export const DraftsBox: FC<{ rows: DraftRow[]; today: string; info: Map<string, 
                           target="_blank"
                           title="PDF-Vorschau"
                         >
-                          PDF
+                          <Icon name="pdf" size={15} />
                         </a>
                       </td>
                       <td class="r">{x?.pos ?? ''}</td>
@@ -479,7 +467,7 @@ export const DraftsBox: FC<{ rows: DraftRow[]; today: string; info: Map<string, 
                           title="Entwurf löschen"
                           onclick="return confirm('Diesen Entwurf löschen? Vorgemerkte Leistungen werden wieder frei.')"
                         >
-                          🗑
+                          <Icon name="trash" size={15} />
                         </button>
                       </td>
                     </tr>

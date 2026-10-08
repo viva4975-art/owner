@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { Sql, Tx } from '../db/client.js';
-import { type DraftLineInput, calculateDraft, formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
+import {
+  type DraftLineInput,
+  addDays,
+  calculateDraft,
+  formatDateDe,
+  todayBerlin,
+} from '../domain/invoice/calc.js';
 import type { InvoiceDocument } from '../domain/invoice/types.js';
 import { type Cents, type Quantity, lineNet } from '../domain/money/money.js';
 import { renderInvoicePdf } from '../pdf/render.js';
@@ -488,15 +494,54 @@ export interface OfferStats {
   rate: number | null;
 }
 
-/** Angebote der letzten 12 Monate (Angebotsdatum) nach Status – wie die Fortytools-Statistik. */
-export async function offerStats(sql: Sql): Promise<OfferStats> {
+/** Zeiträume der Angebots-Statistik (Ahmed: „Annahmen diesen Monat“). */
+export const OFFER_PERIODS = {
+  monat: 'Dieser Monat',
+  vormonat: 'Letzter Monat',
+  quartal: 'Dieses Quartal',
+  jahr: 'Dieses Jahr',
+  '12m': 'Letzte 12 Monate',
+} as const;
+export type OfferPeriod = keyof typeof OFFER_PERIODS;
+
+export function offerPeriodRange(p: OfferPeriod, today: string): { from: string; to: string } {
+  const [y, m] = today.split('-').map(Number) as [number, number];
+  const first = (yy: number, mm: number) => {
+    const d = new Date(Date.UTC(yy, mm - 1, 1));
+    return d.toISOString().slice(0, 10);
+  };
+  switch (p) {
+    case 'monat':
+      return { from: first(y, m), to: today };
+    case 'vormonat':
+      return { from: first(y, m - 1), to: addDays(first(y, m), -1) };
+    case 'quartal':
+      return { from: first(y, Math.floor((m - 1) / 3) * 3 + 1), to: today };
+    case 'jahr':
+      return { from: `${y}-01-01`, to: today };
+    default:
+      return { from: first(y, m - 11), to: today };
+  }
+}
+
+/**
+ * Angebots-Statistik eines Zeitraums – wie Fortytools. Offene nach Angebotsdatum, angenommene/abgelehnte nach dem
+ * Tag der Entscheidung („diesen Monat angenommen“), ohne Entscheidungstag nach Angebotsdatum.
+ */
+export async function offerStats(
+  sql: Sql,
+  range: { from: string; to: string } = offerPeriodRange('12m', todayBerlin()),
+): Promise<OfferStats> {
   const rows = await sql<{ g: string; count: number; net: bigint; monthly: bigint }[]>`
-    select case when status in ('entwurf', 'versendet') then 'open' when status = 'angenommen' then 'accepted'
-                when status = 'abgelehnt' then 'rejected' else 'withdrawn' end as g,
-           count(*)::int as count, coalesce(sum(net_cents), 0)::bigint as net,
+    select g, count(*)::int as count, coalesce(sum(net_cents), 0)::bigint as net,
            coalesce(sum(monthly_net_cents), 0)::bigint as monthly
-      from app.offers
-     where offer_date > (now() at time zone 'Europe/Berlin')::date - interval '12 months'
+      from (select case when status in ('entwurf', 'versendet') then 'open' when status = 'angenommen' then 'accepted'
+                        when status = 'abgelehnt' then 'rejected' else 'withdrawn' end as g,
+                   case when status in ('angenommen', 'abgelehnt')
+                        then coalesce((decided_at at time zone 'Europe/Berlin')::date, offer_date) else offer_date end as d,
+                   net_cents, monthly_net_cents
+              from app.offers) x
+     where d between ${range.from}::date and ${range.to}::date
      group by 1`;
   const get = (g: string) => {
     const r = rows.find((x) => x.g === g);

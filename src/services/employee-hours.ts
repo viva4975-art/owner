@@ -1,6 +1,7 @@
+import { sollMinutesFor } from '../domain/time/soll.js';
 import type { Sql, Tx } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
-import { addDays, workingDays } from '../domain/time/holidays.js';
+import { addDays } from '../domain/time/holidays.js';
 import { BusinessError } from './errors.js';
 
 /*
@@ -50,12 +51,12 @@ export async function hoursPeriods(sql: Sql, employeeId: string, from: string, t
   return out;
 }
 
-/** Soll-Minuten = je Abschnitt Wochenstunden ÷ 5 × Arbeitstage. null, wenn nirgends Stunden hinterlegt sind. */
+/** Soll-Minuten = je Abschnitt Wochenstunden × 4,33 je Monat (anteilig). null, wenn nirgends Stunden hinterlegt sind. */
 export async function sollMinutes(sql: Sql, employeeId: string, from: string, to: string) {
   if (from > to) return 0;
   const segs = await hoursPeriods(sql, employeeId, from, to);
   if (segs.every((s) => s.hours == null)) return null;
-  return segs.reduce((a, s) => a + Math.round(((s.hours ?? 0) * 60 * workingDays(s.from, s.to)) / 5), 0);
+  return segs.reduce((a, s) => a + sollMinutesFor(s.hours ?? 0, s.from, s.to), 0);
 }
 
 /**

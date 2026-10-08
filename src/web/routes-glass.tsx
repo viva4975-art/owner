@@ -526,13 +526,13 @@ box.addEventListener('click',function(e){var b=e.target.closest('[data-del-day]'
         {await head(c, 'kalender', '')}
         <form class="toolbar gp-calbar" method="get" action="/glasreinigung/kalender">
           <a class="btn sec" href={`/glasreinigung/kalender${qs(prev)}`} aria-label="zurück">
-            ◀
+            ←
           </a>
           <b class="gp-month">
             {MONTHS_LONG[mo - 1]} {y}
           </b>
           <a class="btn sec" href={`/glasreinigung/kalender${qs(next)}`} aria-label="vor">
-            ▶
+            →
           </a>
           <input type="hidden" name="monat" value={m} />
           <select name="kunde" onchange="this.form.submit()" aria-label="Kunde" style="max-width:220px">

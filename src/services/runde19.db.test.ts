@@ -56,9 +56,9 @@ describe.skipIf(!available)('Runde 19 (Datenbank)', () => {
   it('Wochenstunden mit „gültig ab“: Verlauf, Soll je Abschnitt, Zukunft erst am Stichtag', async () => {
     // ab 15.09.2026: 30 Std. → September 2026: 1.–14. mit 20, 15.–30. mit 30 Std.
     await recordHoursChange(sql, emp, 30, '2026-09-15', 'test');
-    // September 2026: Arbeitstage 1.–14. = 10, 15.–30. = 12
+    // Soll = Wochenstunden × 4,33 anteilig nach Kalendertagen: 1.–14. (14/30) mit 20, 15.–30. (16/30) mit 30 Std.
     expect(await sollMinutes(sql, emp, '2026-09-01', '2026-09-30')).toBe(
-      Math.round((20 * 60 * 10) / 5) + Math.round((30 * 60 * 12) / 5),
+      Math.round((20 * 60 * 4.33 * 14) / 30) + Math.round((30 * 60 * 4.33 * 16) / 30),
     );
     // Eintrag weit in der Zukunft ändert den heutigen Wert nicht
     await recordHoursChange(sql, emp, 35, '2099-01-01', 'test');

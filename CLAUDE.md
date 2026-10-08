@@ -1607,3 +1607,8 @@ Testadresse.
   sie nie. Nachtrag `20261113000008` (`add column if not exists`). Einziger solcher Fall (alle Migrationen gegen ihren
   ersten Commit geprüft). **Schutz:** `supabase/migration-checksums.json` + Test `migration-checksums.test.ts` – geänderte
   alte Migration = Test rot; neue Migration → `node scripts/migrations-lock.mjs`.
+- 2026-10-08: **Rechnungsgruppen übersichtlicher** (Ahmed: „schlecht gelöst“): Übersicht als Karten je Gruppe (Rechnung an,
+  Format/Versand, E-Mail – fehlt rot, Leitweg-ID, Zahlung/Skonto, Bestellnr., Objekte eingeklappt), Bearbeiten ohne die
+  Liste darüber („← alle Gruppen“), im Formular nur „n Objekte“ + „Weitere Objekte in diese Gruppe holen“ (eingeklappt, Suche)
+  statt 66 ausgegrauter Häkchen. Neu **„Objekte den Gruppen zuordnen“**: Tabelle aller Objekte mit Gruppen-Auswahl je
+  Zeile, Suche, einmal speichern (`setSiteInvoiceGroup`, Protokoll). `e2e:rechnungsangaben` 13 Prüfungen.

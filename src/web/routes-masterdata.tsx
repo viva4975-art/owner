@@ -597,48 +597,163 @@ export function registerMasterdataRoutes(ctx: Ctx) {
       const editId = c.req.query('bearbeiten');
       const isNew = c.req.query('neu') === '1';
       const g = groups.find((x) => x.id === editId) ?? null;
-      const showForm = !!g || isNew || !groups.length;
+      const zuordnung = c.req.query('ansicht') === 'zuordnung' && groups.length > 0;
+      const showForm = !zuordnung && (!!g || isNew || !groups.length);
       // Vorlage für eine neue Gruppe: Einstellungen der ersten Gruppe übernehmen (Format, Zahlungsziel, Skonto …)
       const tpl = g ?? groups.find((x) => x.active) ?? null;
       const formId = g?.id ?? randomUUID();
       const groupOf = new Map(groups.flatMap((x) => x.site_ids.map((sid) => [sid, x] as const)));
       return (
         <>
-          <p class="mut" style="max-width:820px;margin-top:0">
-            Eine Rechnungsgruppe enthält alle Rechnungseinstellungen (Rechnungsadresse, E-Mails, Format,
-            Leitweg-ID, Zahlungsziel, Skonto). Jedes Objekt wählt eine Gruppe – so legen Sie die Einstellungen
-            einmal an und verwenden sie für mehrere Objekte. Mit „Sammelrechnung“ kommen alle Objekte der
-            Gruppe auf eine Rechnung.
-          </p>
-          <div class="list" style="max-width:820px">
-            {groups.map((x) => (
-              <div class="row" style={x.active ? '' : 'opacity:.55'}>
-                <span class={`dot ${x.active ? 'ok' : ''}`} />
-                <div class="main">
-                  <a href={`/kunden/${cust.id}/rechnungsgruppen?bearbeiten=${x.id}`}>
-                    <b style="color:var(--ink)">{x.name}</b>
+          {!showForm && !zuordnung && (
+            <>
+              <div class="actions" style="margin-top:0">
+                <a class="btn" href={`/kunden/${cust.id}/rechnungsgruppen?neu=1`}>
+                  + Rechnungsgruppe anlegen
+                </a>
+                {groups.length > 1 && sites.length > 0 && (
+                  <a class="btn sec" href={`/kunden/${cust.id}/rechnungsgruppen?ansicht=zuordnung`}>
+                    Objekte den Gruppen zuordnen
                   </a>
-                  <div class="small mut">
-                    {FORMAT_LABEL[x.bill_format]}
-                    {x.buyer_reference ? ` · Leitweg-ID ${x.buyer_reference}` : ''}
-                    {x.bill_emails.length ? ` · ${x.bill_emails.join(', ')}` : ' · keine Rechnungs-E-Mail'}
-                    {x.bill_name ? ` · an ${x.bill_name}, ${x.bill_city}` : ''}
-                  </div>
-                  <div class="small faint">{x.site_names.join(', ') || 'noch keine Objekte'}</div>
-                </div>
-                <div class="side">
-                  {x.combine && <span class="badge info">Sammelrechnung</span>}
-                  {!x.active && <span class="badge">inaktiv</span>}
-                </div>
+                )}
+                <span class="small mut" style="flex-basis:100%">
+                  Eine Rechnungsgruppe = Rechnungseinstellungen (Adresse, E-Mails, Format, Leitweg-ID,
+                  Zahlungsziel, Skonto). Jedes Objekt gehört zu genau einer Gruppe. „Sammelrechnung“ = alle
+                  Objekte der Gruppe auf einer Rechnung, sonst eine Rechnung je Objekt.
+                </span>
               </div>
-            ))}
-          </div>
-          {!showForm && (
-            <div class="actions">
-              <a class="btn" href={`/kunden/${cust.id}/rechnungsgruppen?neu=1`}>
-                + Rechnungsgruppe anlegen
-              </a>
-            </div>
+              {groups.map((x) => (
+                <div class="card rg-card" style={x.active ? '' : 'opacity:.6'}>
+                  <div class="rg-head">
+                    <b>{x.name}</b>
+                    {x.combine ? (
+                      <span class="badge info">Sammelrechnung</span>
+                    ) : (
+                      <span class="badge muted">je Objekt eine Rechnung</span>
+                    )}
+                    {!x.active && <span class="badge">inaktiv</span>}
+                    <a class="btn sm sec" href={`/kunden/${cust.id}/rechnungsgruppen?bearbeiten=${x.id}`}>
+                      Bearbeiten
+                    </a>
+                  </div>
+                  <dl class="rg-facts">
+                    <dt>Rechnung an</dt>
+                    <dd>
+                      {x.bill_name
+                        ? `${x.bill_name}, ${x.bill_street ?? ''}, ${x.bill_postal_code ?? ''} ${x.bill_city ?? ''}`
+                        : 'Kundenadresse'}
+                    </dd>
+                    <dt>Format / Versand</dt>
+                    <dd>
+                      {FORMAT_LABEL[x.bill_format]}
+                      {x.delivery_channel === 'portal' ? ` · Portal ${x.portal_name ?? ''}` : ' · E-Mail'}
+                    </dd>
+                    <dt>E-Mail</dt>
+                    <dd>
+                      {x.bill_emails.length ? (
+                        x.bill_emails.join(', ')
+                      ) : (
+                        <span style="color:var(--err)">keine Rechnungs-E-Mail</span>
+                      )}
+                    </dd>
+                    {x.buyer_reference && (
+                      <>
+                        <dt>Leitweg-ID</dt>
+                        <dd>{x.buyer_reference}</dd>
+                      </>
+                    )}
+                    <dt>Zahlung</dt>
+                    <dd>
+                      {x.bill_payment_terms_days != null ? `${x.bill_payment_terms_days} Tage` : 'wie Kunde'}
+                      {x.bill_skonto_percent_bp
+                        ? ` · ${String(x.bill_skonto_percent_bp / 100).replace('.', ',')} % Skonto in ${x.bill_skonto_days} Tagen`
+                        : ''}
+                    </dd>
+                    {x.order_reference && (
+                      <>
+                        <dt>Bestellnr.</dt>
+                        <dd>{x.order_reference}</dd>
+                      </>
+                    )}
+                  </dl>
+                  {x.site_names.length ? (
+                    <details class="rg-sites">
+                      <summary>
+                        {x.site_names.length} {x.site_names.length === 1 ? 'Objekt' : 'Objekte'}
+                      </summary>
+                      <div class="small">{x.site_names.join(' · ')}</div>
+                    </details>
+                  ) : (
+                    <div class="small mut">noch keine Objekte</div>
+                  )}
+                </div>
+              ))}
+              <style
+                dangerouslySetInnerHTML={{
+                  __html:
+                    '.rg-card{max-width:900px;padding:14px 18px;margin-bottom:10px}' +
+                    '.rg-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}.rg-head b{font-size:16px}.rg-head .btn{margin-left:auto}' +
+                    '.rg-facts{display:grid;grid-template-columns:130px 1fr;gap:3px 12px;margin:0 0 8px;font-size:13.5px}.rg-facts dt{color:var(--mut)}.rg-facts dd{margin:0}' +
+                    '.rg-sites summary{cursor:pointer;font-size:13px;color:var(--brand)}.rg-sites div{margin-top:6px;color:var(--mut)}' +
+                    '@media(max-width:600px){.rg-facts{grid-template-columns:1fr}}',
+                }}
+              />
+            </>
+          )}
+          {zuordnung && (
+            <form method="post" action={`/kunden/${cust.id}/rechnungsgruppen-zuordnung`} class="card">
+              <h3 style="margin-top:0">Objekte den Rechnungsgruppen zuordnen</h3>
+              <p class="small mut" style="margin-top:0">
+                Je Objekt die Gruppe wählen und einmal speichern. Gilt für künftige Rechnungen; bereits
+                erstellte Entwürfe bleiben, wie sie sind.
+              </p>
+              <input
+                type="search"
+                placeholder="Objekt suchen (Name oder Nummer)"
+                data-filter-list=".rg-map tbody tr"
+                style="max-width:360px;margin-bottom:8px"
+              />
+              <div class="tbl">
+                <table class="rg-map">
+                  <thead>
+                    <tr>
+                      <th>Nr.</th>
+                      <th>Objekt</th>
+                      <th>Rechnungsgruppe</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sites.map((st) => (
+                      <tr>
+                        <td class="small">{st.site_no}</td>
+                        <td>
+                          {st.name}
+                          {!st.active && <span class="small mut"> (inaktiv)</span>}
+                        </td>
+                        <td>
+                          <select name={`g_${st.id}`} data-nosearch style="max-width:320px">
+                            {groups
+                              .filter((x) => x.active || x.id === groupOf.get(st.id)?.id)
+                              .map((x) => (
+                                <option value={x.id} selected={groupOf.get(st.id)?.id === x.id}>
+                                  {x.name}
+                                  {x.combine ? ' (Sammelrechnung)' : ''}
+                                </option>
+                              ))}
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div class="actions form-foot">
+                <button class="btn">Zuordnung speichern</button>
+                <a class="btn sec" href={`/kunden/${cust.id}/rechnungsgruppen`}>
+                  Abbrechen
+                </a>
+              </div>
+            </form>
           )}
           {showForm && (
             <form
@@ -650,6 +765,15 @@ export function registerMasterdataRoutes(ctx: Ctx) {
             >
               <h3 style="margin-top:0">
                 {g ? `Rechnungsgruppe „${g.name}“ bearbeiten` : 'Neue Rechnungsgruppe'}
+                {groups.length > 0 && (
+                  <a
+                    class="small"
+                    href={`/kunden/${cust.id}/rechnungsgruppen`}
+                    style="font-weight:400;margin-left:10px"
+                  >
+                    ← alle Gruppen
+                  </a>
+                )}
               </h3>
               <input type="hidden" name="version" value={String(g?.version ?? '')} />
               <div class="grid">
@@ -843,30 +967,69 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                 </div>
               </div>
               <div class="section-title">Objekte in dieser Gruppe</div>
-              <div class="grid">
-                {sites.map((st) => {
-                  const other = groupOf.get(st.id);
-                  const member = !!g && other?.id === g.id;
-                  return (
-                    <div class="chk">
-                      <input
-                        type="checkbox"
-                        id={`g-site-${st.id}`}
-                        name="site"
-                        value={st.id}
-                        checked={member}
-                        disabled={member}
-                      />
-                      {member && <input type="hidden" name="site" value={st.id} />}
-                      <label for={`g-site-${st.id}`}>
-                        {st.name} <span class="mut small">{st.site_no}</span>
-                        {other && !member && <span class="badge tag">jetzt: {other.name}</span>}
-                      </label>
-                    </div>
-                  );
-                })}
-                {!sites.length && <p class="mut small">Noch keine Objekte.</p>}
-              </div>
+              {(() => {
+                const members = sites.filter((st) => !!g && groupOf.get(st.id)?.id === g.id);
+                const others = sites.filter((st) => !(g && groupOf.get(st.id)?.id === g.id));
+                return (
+                  <>
+                    {members.map((st) => (
+                      <input type="hidden" name="site" value={st.id} />
+                    ))}
+                    <p class="small" style="margin:0 0 6px">
+                      {members.length ? (
+                        <>
+                          <b>{members.length}</b> {members.length === 1 ? 'Objekt' : 'Objekte'}:{' '}
+                          <span class="mut">
+                            {members
+                              .slice(0, 8)
+                              .map((st) => st.name)
+                              .join(', ')}
+                            {members.length > 8 ? ` und ${members.length - 8} weitere` : ''}
+                          </span>
+                        </>
+                      ) : (
+                        <span class="mut">noch keine Objekte</span>
+                      )}
+                      {groups.length > 1 && (
+                        <>
+                          {' '}
+                          ·{' '}
+                          <a href={`/kunden/${cust.id}/rechnungsgruppen?ansicht=zuordnung`}>
+                            Zuordnung ändern
+                          </a>
+                        </>
+                      )}
+                    </p>
+                    {others.length > 0 && (
+                      <details open={!g && others.length <= 12}>
+                        <summary class="small" style="cursor:pointer;color:var(--brand)">
+                          Weitere Objekte in diese Gruppe holen ({others.length})
+                        </summary>
+                        <input
+                          type="search"
+                          placeholder="Objekt suchen"
+                          data-filter-list=".rg-pick label"
+                          style="max-width:320px;margin:8px 0"
+                        />
+                        <div
+                          class="rg-pick"
+                          style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:2px 14px;max-height:320px;overflow:auto"
+                        >
+                          {others.map((st) => (
+                            <label class="chk" style="margin:0">
+                              <input type="checkbox" name="site" value={st.id} />
+                              {st.name} <span class="mut small">{st.site_no}</span>
+                              {groupOf.get(st.id) && (
+                                <span class="small mut"> · jetzt {groupOf.get(st.id)!.name}</span>
+                              )}
+                            </label>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </>
+                );
+              })()}
               <div class="section-title">Texte auf der Rechnung</div>
               <div class="grid">
                 <div class="chk">
@@ -921,6 +1084,28 @@ export function registerMasterdataRoutes(ctx: Ctx) {
       );
     }),
   );
+
+  app.post(`/kunden/:id{${UUID}}/rechnungsgruppen-zuordnung`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    const current = new Map(
+      (
+        await sql<{ id: string; invoice_group_id: string | null }[]>`
+          select id, invoice_group_id from app.sites where customer_id = ${id}`
+      ).map((r) => [r.id, r.invoice_group_id]),
+    );
+    let n = 0;
+    for (const [k, v] of Object.entries(b)) {
+      const m = /^g_([0-9a-f-]{36})$/.exec(k);
+      if (!m || typeof v !== 'string' || !/^[0-9a-f-]{36}$/.test(v)) continue;
+      if (!current.has(m[1]!) || current.get(m[1]!) === v) continue;
+      await setSiteInvoiceGroup(sql, m[1]!, v, c.get('actor'));
+      n++;
+    }
+    return back(c, `/kunden/${id}/rechnungsgruppen`, {
+      ok: n ? `${n} ${n === 1 ? 'Objekt' : 'Objekte'} neu zugeordnet.` : 'Keine Änderung.',
+    });
+  });
 
   app.post(`/kunden/:id{${UUID}}/rechnungsgruppen/:gid{${UUID}}`, async (c) => {
     const id = c.req.param('id');

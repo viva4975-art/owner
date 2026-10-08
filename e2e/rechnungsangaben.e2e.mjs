@@ -64,7 +64,14 @@ await p.fill('#g-dunning', 'mahnung@schule.example');
 await p.click('button:has-text("Rechnungsgruppe anlegen")');
 await p.waitForLoadState();
 check('Gruppe gespeichert', (await flash(p)).includes('gespeichert'), await flash(p));
-check('in der Liste', (await p.locator('.list').first().innerText()).includes(`Schulen Süd ${tag}`));
+check('in der Liste', (await p.locator('main').innerText()).includes(`Schulen Süd ${tag}`));
+await p.goto(`${B}/kunden/${AUTHORITY}/rechnungsgruppen?ansicht=zuordnung`);
+const sel = p.locator('table.rg-map select').first();
+const newOpt = await sel.locator('option', { hasText: `Schulen Süd ${tag}` }).getAttribute('value');
+await sel.selectOption(newOpt);
+await p.click('button:has-text("Zuordnung speichern")');
+await p.waitForLoadState();
+check('Zuordnung je Objekt gespeichert', (await flash(p)).includes('neu zugeordnet'), await flash(p));
 
 console.log('2. Am Objekt wählen');
 await p.goto(url);

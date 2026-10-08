@@ -18,8 +18,13 @@ describe('Migrationen unverändert', () => {
     const missing = files.filter((f) => !lock[f]);
     expect(missing, 'neue Migration: node scripts/migrations-lock.mjs ausführen').toEqual([]);
     const changed = files.filter(
-      (f) => createHash('sha256').update(readFileSync(new URL(f, dir))).digest('hex') !== lock[f],
+      (f) =>
+        createHash('sha256')
+          .update(readFileSync(new URL(f, dir)))
+          .digest('hex') !== lock[f],
     );
-    expect(changed, 'bereits festgeschriebene Migration geändert – stattdessen neue Datei anlegen').toEqual([]);
+    expect(changed, 'bereits festgeschriebene Migration geändert – stattdessen neue Datei anlegen').toEqual(
+      [],
+    );
   });
 });

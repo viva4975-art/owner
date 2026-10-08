@@ -33,6 +33,8 @@ import {
   runningEntry,
   BREAK_AFTER_MINUTES,
   setRunningBreak,
+  geoCheckEnabled,
+  type GeoInput,
 } from '../../services/time.js';
 import { type AppEnv, type Ctx, OFFICE_COOKIE, officeSecret } from '../app.js';
 import { getUser, linkedEmployee } from '../../services/users.js';
@@ -161,7 +163,17 @@ main{padding-bottom:calc(110px + env(safe-area-inset-bottom,0px))}
 const JS = `
 (function(){
   document.addEventListener('submit',function(e){
-    var f=e.target; if(!f.hasAttribute('data-net'))return; e.preventDefault();
+    var f=e.target;
+    // Standort nur im Moment des Stempelns (Einstellung); ohne Erlaubnis/Signal wird trotzdem gestempelt
+    if(f.hasAttribute('data-geo')&&!f.dataset.geodone&&navigator.geolocation){
+      e.preventDefault(); f.dataset.geodone='1';
+      var put=function(n,v){var i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;f.appendChild(i);};
+      var go=function(){if(f.requestSubmit)f.requestSubmit();else f.submit();};
+      navigator.geolocation.getCurrentPosition(function(p){put('geo_lat',p.coords.latitude);put('geo_lng',p.coords.longitude);put('geo_acc',p.coords.accuracy);go();},
+        function(){put('geo_err','1');go();},{enableHighAccuracy:true,timeout:8000,maximumAge:60000});
+      return;
+    }
+    if(!f.hasAttribute('data-net'))return; e.preventDefault();
     var b=f.querySelector('button[type=submit],button:not([type])'); if(b){if(b.disabled)return; b.disabled=true;}
     var ctrl=new AbortController(); var tm=setTimeout(function(){ctrl.abort()},20000);
     fetch(f.action,{method:'POST',body:new URLSearchParams(new FormData(f)),credentials:'same-origin',signal:ctrl.signal,headers:{'Content-Type':'application/x-www-form-urlencoded'}})
@@ -290,6 +302,17 @@ const MLayout: FC<{
     </body>
   </html>
 );
+
+/** Standort aus dem Stempel-Formular: nicht abgefragt → undefined, verweigert/kein Signal → null. */
+const geoOf = (b: Record<string, unknown>): GeoInput => {
+  if (b.geo_err === '1') return null;
+  const lat = Number(b.geo_lat);
+  const lng = Number(b.geo_lng);
+  const acc = Number(b.geo_acc);
+  if (typeof b.geo_lat !== 'string' || !Number.isFinite(lat) || !Number.isFinite(lng)) return undefined;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { lat, lng, acc: Number.isFinite(acc) && acc >= 0 ? acc : 9999 };
+};
 
 export function registerMobileRoutes({ app, deps, back }: Ctx) {
   const { sql, env } = deps;
@@ -539,7 +562,9 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     running: Awaited<ReturnType<typeof runningEntry>>;
     siteId?: string;
     viaQr?: boolean;
-  }> = ({ lang, me, running, siteId, viaQr }) =>
+    /** Standort beim Stempeln abfragen (Einstellung Zeiterfassung) */
+    geo?: boolean;
+  }> = ({ lang, me, running, siteId, viaQr, geo }) =>
     running ? (
       <div class="card run">
         <div>{t(lang, 'running', { time: clock(running.start_at) })}</div>
@@ -601,14 +626,14 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
             </div>
           );
         })()}
-        <form method="post" action="/m/aus" data-net>
+        <form method="post" action="/m/aus" data-net data-geo={geo ? '1' : undefined}>
           <div style="height:12px" />
           <button class="big stop">{t(lang, 'clock_out')}</button>
         </form>
         <script dangerouslySetInnerHTML={{ __html: REMIND_JS }} />
       </div>
     ) : (
-      <form method="post" action="/m/ein" class="card" data-net>
+      <form method="post" action="/m/ein" class="card" data-net data-geo={geo ? '1' : undefined}>
         <input type="hidden" name="id" value={randomUUID()} />
         <input type="hidden" name="qr" value={viaQr ? '1' : ''} />
         {siteId ? (
@@ -771,6 +796,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         ))}
         <div id="clock" />
         <ClockCard
+          geo={await geoCheckEnabled(sql)}
           lang={lang}
           me={{
             ...me,
@@ -841,7 +867,14 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         {(await siteNotes([site.id])).get(site.id) && (
           <div class="card note">{(await siteNotes([site.id])).get(site.id)}</div>
         )}
-        <ClockCard lang={lang} me={me} running={running} siteId={site.id} viaQr />
+        <ClockCard
+          lang={lang}
+          me={me}
+          running={running}
+          siteId={site.id}
+          viaQr
+          geo={await geoCheckEnabled(sql)}
+        />
         <a class="big sec" href="/m">
           {t(lang, 'back')}
         </a>
@@ -864,6 +897,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         siteId: String(b.site_id ?? ''),
         viaQr: b.qr === '1',
         actor: `m:${me.personnel_no}`,
+        geo: geoOf(b),
       });
       const e = await runningEntry(sql, me.id);
       return back(c, '/m', { ok: t(lang, 'msg_in', { time: clock(e?.start_at ?? new Date()) }) });
@@ -884,6 +918,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
             ? Number(b.break_minutes) || 0
             : null,
         actor: `m:${me.personnel_no}`,
+        geo: geoOf(b),
       });
       const today = await listEntries(sql, {
         employeeId: me.id,

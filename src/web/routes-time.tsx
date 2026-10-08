@@ -39,7 +39,9 @@ import {
   saveTimeSettings,
   warningsFor,
   WEEKDAYS_SHORT,
+  geoCheckEnabled,
 } from '../services/time.js';
+import { GEO_LABEL, parseCoordinates } from '../domain/time/geo.js';
 import { type AppEnv, type Ctx, UUID, assertSite, inScope } from './app.js';
 import { centsToInput } from './forms.js';
 import { canAccess } from './permissions.js';
@@ -132,6 +134,7 @@ export const EntryTable: FC<{ rows: TimeEntryRow[]; show?: 'employee' | 'site' |
               <td class="small">
                 {SOURCE_LABEL[e.source]}
                 {e.via_qr && ' · QR'}
+                <GeoBadge e={e} />
               </td>
               <td>
                 <StatusPill e={e} />
@@ -160,6 +163,40 @@ export const EntryTable: FC<{ rows: TimeEntryRow[]; show?: 'employee' | 'site' |
       </table>
     </div>
   );
+};
+
+/** Standort beim Stempeln: nur auffällige Fälle hervorheben (nicht am Objekt / ungenau / kein Standort). */
+const GeoBadge = ({
+  e,
+}: {
+  e: {
+    start_geo?: string | null;
+    start_geo_m?: number | null;
+    end_geo?: string | null;
+    end_geo_m?: number | null;
+  };
+}) => {
+  const part = (g: string | null | undefined, m: number | null | undefined, what: string) => {
+    if (!g || g === 'objekt_ohne_standort') return null;
+    const km = m != null ? (m >= 1000 ? `${(m / 1000).toFixed(1).replace('.', ',')} km` : `${m} m`) : '';
+    return (
+      <span
+        class={`badge ${g === 'am_objekt' ? 'ok' : g === 'entfernt' ? 'err' : 'warn'}`}
+        title={`${what}: ${GEO_LABEL[g as keyof typeof GEO_LABEL]}`}
+      >
+        {what} {g === 'am_objekt' ? '✓' : GEO_LABEL[g as keyof typeof GEO_LABEL]}
+        {g === 'entfernt' && km ? ` (${km})` : ''}
+      </span>
+    );
+  };
+  const a = part(e.start_geo, e.start_geo_m, 'Ein');
+  const b = part(e.end_geo, e.end_geo_m, 'Aus');
+  return a || b ? (
+    <div style="display:flex;gap:4px;margin-top:2px;flex-wrap:wrap">
+      {a}
+      {b}
+    </div>
+  ) : null;
 };
 
 export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
@@ -800,32 +837,75 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
 
   app.get('/zeiterfassung/einstellungen', async (c) => {
     const s = await getTimeSettings(sql);
+    const geo = await geoCheckEnabled(sql);
+    const [withGeo] = await sql<{ n: number; all: number }[]>`
+      select count(*) filter (where geo_lat is not null)::int as n, count(*)::int as all from app.sites where active`;
     return shell(
       c,
       'einstellungen',
       'Einstellungen Zeiterfassung',
-      <form method="post" action="/zeiterfassung/einstellungen" class="card" style="max-width:720px">
-        <div class="grid">
-          <div>
-            <label for="min_wage">Mindest-Stundenlohn für die Prüfung (€)</label>
-            <input id="min_wage" name="min_wage" value={centsToInput(s.min_wage_cents)} required />
+      <>
+        <form
+          method="post"
+          action="/zeiterfassung/einstellungen/standort"
+          class="card"
+          style="max-width:720px"
+        >
+          <h3 style="margin-top:0">Stempeln mit Standort</h3>
+          <div class="chk">
+            <input type="checkbox" id="geo" name="geo" checked={geo} />
+            <label for="geo">Beim Ein- und Ausstempeln den Standort prüfen</label>
           </div>
-        </div>
-        <div style="margin-top:12px">
-          <label for="note">Notiz</label>
-          <textarea id="note" name="note">
-            {s.min_wage_note ?? ''}
-          </textarea>
-        </div>
-        <p class="small mut">
-          Für die Gebäudereinigung gilt der allgemeinverbindliche Branchen-Mindestlohn (Lohngruppe 1), der
-          über dem gesetzlichen Mindestlohn liegt. Bitte den aktuellen Wert aus dem Tarifvertrag eintragen.
-        </p>
-        <div class="formfoot">
-          <button class="btn">Speichern</button>
-        </div>
-      </form>,
+          <p class="small mut">
+            Das Handy fragt nur im Moment des Stempelns nach dem Standort. Gespeichert wird nur, ob die Person
+            am Objekt war (Entfernung in Metern, Genauigkeit) – keine Koordinaten, kein Bewegungsprofil.
+            Stempeln wird nie verweigert; „nicht am Objekt“ erscheint in der Zeiterfassung zur Klärung.
+            Standort je Objekt: Objekt → Bearbeiten (Google-Maps-Link einfügen) oder in der App vor Ort
+            „Standort hier speichern“. Derzeit {withGeo!.n} von {withGeo!.all} aktiven Objekten mit Standort.
+          </p>
+          <p class="small" style="color:var(--warn)">
+            <b>Datenschutz:</b> Mitarbeitende vorher schriftlich informieren (Art. 13 DSGVO, Zweck: Nachweis
+            der Anwesenheit am Einsatzort); gibt es einen Betriebsrat, ist er zu beteiligen (§ 87 Abs. 1 Nr. 6
+            BetrVG). Ins Verzeichnis der Verarbeitungstätigkeiten aufnehmen.
+          </p>
+          <div class="formfoot">
+            <button class="btn">Speichern</button>
+          </div>
+        </form>
+        <form method="post" action="/zeiterfassung/einstellungen" class="card" style="max-width:720px">
+          <div class="grid">
+            <div>
+              <label for="min_wage">Mindest-Stundenlohn für die Prüfung (€)</label>
+              <input id="min_wage" name="min_wage" value={centsToInput(s.min_wage_cents)} required />
+            </div>
+          </div>
+          <div style="margin-top:12px">
+            <label for="note">Notiz</label>
+            <textarea id="note" name="note">
+              {s.min_wage_note ?? ''}
+            </textarea>
+          </div>
+          <p class="small mut">
+            Für die Gebäudereinigung gilt der allgemeinverbindliche Branchen-Mindestlohn (Lohngruppe 1), der
+            über dem gesetzlichen Mindestlohn liegt. Bitte den aktuellen Wert aus dem Tarifvertrag eintragen.
+          </p>
+          <div class="formfoot">
+            <button class="btn">Speichern</button>
+          </div>
+        </form>
+      </>,
     );
+  });
+
+  app.post('/zeiterfassung/einstellungen/standort', async (c) => {
+    const b = await c.req.parseBody();
+    const on = b.geo === 'on';
+    await sql`update app.time_settings set geo_check = ${on}`;
+    await sql`insert into app.audit_log (actor, action, entity, details)
+              values (${c.get('actor')}, 'save', 'time_settings', ${sql.json({ geo_check: on })})`;
+    return back(c, '/zeiterfassung/einstellungen', {
+      ok: on ? 'Standortprüfung eingeschaltet.' : 'Standortprüfung aus.',
+    });
   });
 
   app.post('/zeiterfassung/einstellungen', async (c) => {
@@ -1151,6 +1231,48 @@ h1{font-size:34px;margin:10px 0 4px}.n{color:#666;font-size:16px}
               </form>
             </div>
             <div class="card">
+              <h3>Standort für das Stempeln</h3>
+              {(() => {
+                const g = s as unknown as {
+                  geo_lat: string | null;
+                  geo_lng: string | null;
+                  geo_radius_m: number;
+                };
+                return (
+                  <form method="post" action={`/objekte/${s.id}/standort`} data-no-autosave>
+                    <p class="small" style="margin-top:0">
+                      {g.geo_lat
+                        ? `Hinterlegt: ${g.geo_lat}, ${g.geo_lng} (Umkreis ${g.geo_radius_m} m).`
+                        : 'Noch kein Standort hinterlegt.'}{' '}
+                      Wird nur genutzt, wenn unter Zeiterfassung → Einstellungen „Stempeln mit Standort“
+                      eingeschaltet ist.
+                    </p>
+                    <label for="geo_input">Google-Maps-Link oder Koordinaten („48.137, 11.575“)</label>
+                    <input id="geo_input" name="geo" value={g.geo_lat ? `${g.geo_lat}, ${g.geo_lng}` : ''} />
+                    <label for="geo_radius">Umkreis in Metern</label>
+                    <input
+                      id="geo_radius"
+                      name="radius"
+                      type="number"
+                      min={50}
+                      max={5000}
+                      value={String(g.geo_radius_m ?? 250)}
+                    />
+                    <div class="actions">
+                      <button class="btn sec sm">Standort speichern</button>
+                      <button
+                        type="button"
+                        class="btn sec sm"
+                        onclick="var b=this,f=b.form;b.disabled=true;navigator.geolocation.getCurrentPosition(function(p){f.geo.value=p.coords.latitude.toFixed(6)+', '+p.coords.longitude.toFixed(6);b.disabled=false;},function(){alert('Standort nicht verfügbar');b.disabled=false;},{enableHighAccuracy:true,timeout:10000})"
+                      >
+                        Mein aktueller Standort (vor Ort)
+                      </button>
+                    </div>
+                  </form>
+                );
+              })()}
+            </div>
+            <div class="card">
               <h3>Aktuell eingeplant</h3>
               {plans.length === 0 && <div class="mut small">Noch niemand eingeplant.</div>}
               {plans.map((p) => (
@@ -1164,6 +1286,24 @@ h1{font-size:34px;margin:10px 0 4px}.n{color:#666;font-size:16px}
       );
     }),
   );
+
+  app.post(`/objekte/:id{${UUID}}/standort`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    const raw = typeof b.geo === 'string' ? b.geo.trim() : '';
+    const radius = Math.round(Number(b.radius ?? 250));
+    if (!(radius >= 50 && radius <= 5000)) throw new BusinessError('Umkreis bitte zwischen 50 und 5000 m');
+    const pos = raw ? parseCoordinates(raw) : null;
+    if (raw && !pos)
+      throw new BusinessError(
+        'Koordinaten nicht erkannt – Google-Maps-Link (mit @48.1…,11.5…) oder „48.137, 11.575“',
+      );
+    await sql`update app.sites set geo_lat = ${pos?.lat ?? null}, geo_lng = ${pos?.lng ?? null}, geo_radius_m = ${radius},
+                     updated_at = now() where id = ${id}`;
+    await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+              values (${c.get('actor')}, 'site_geo', 'site', ${id}, ${sql.json({ lat: pos?.lat ?? null, lng: pos?.lng ?? null, radius })})`;
+    return back(c, `/objekte/${id}/qr`, { ok: pos ? 'Standort gespeichert.' : 'Standort entfernt.' });
+  });
 
   app.post(`/objekte/:id{${UUID}}/qr/neu`, async (c) => {
     const id = c.req.param('id');

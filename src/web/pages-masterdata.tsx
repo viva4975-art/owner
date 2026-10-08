@@ -855,7 +855,7 @@ export const SiteShell: FC<{
     { key: 'raumbuch', label: 'Raumbuch', href: `${base}/raumbuch` },
     { key: 'stundenvorgabe', label: 'Stundenvorgabe', href: `${base}/stundenvorgabe` },
     { key: 'qualitaet', label: 'Qualitätskontrolle', href: `${base}/qualitaet` },
-    { key: 'qr', label: 'QR-Aushang Zeiterfassung', href: `${base}/qr` },
+    { key: 'qr', label: 'QR-Aushang & Standort', href: `${base}/qr` },
     { key: 'rechnungsangaben', label: 'Rechnungsangaben', href: `${base}/rechnungsangaben` },
   ];
   const allowed = all.filter((t) => canAccess(role, t.href));

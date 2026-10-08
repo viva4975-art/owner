@@ -1457,3 +1457,11 @@ Testadresse.
   Startsaldo/Auszahlung/Freizeitausgleich/Korrektur mit Begründung, nur anhängen (`time_account_bookings`). CSV-Export.
   **Rechtlich § 2 Abs. 2 MiLoG:** Plusstunden höchstens 50 % der Monats-Sollzeit, Ausgleich binnen 12 Monaten – Zeilen
   darüber rot. Tests: `time-account.db.test.ts`.
+- 2026-10-08: **Stempeln mit Standort** (Zeiterfassung → Einstellungen „Stempeln mit Standort“, Standard aus): Handy fragt
+  nur beim Ein-/Ausstempeln nach dem Standort; gespeichert werden nur Bewertung (am Objekt / nicht am Objekt / ungenau /
+  kein Standort), Entfernung und Genauigkeit – **keine Koordinaten, kein Bewegungsprofil**. Bewertung zugunsten der
+  Mitarbeitenden (Entfernung − Genauigkeit ≤ Umkreis), Genauigkeit > 1 km = ungenau. Stempeln wird nie verweigert; im Büro
+  erscheinen Schilder „Ein/Aus nicht am Objekt (1,2 km)“. Standort je Objekt unter Objekt → „QR-Aushang & Standort“
+  (Google-Maps-Link, Koordinaten oder „Mein aktueller Standort“ vor Ort), Umkreis 50–5000 m (Standard 250 m).
+  **Datenschutz:** Mitarbeitende vorher informieren (Art. 13 DSGVO), Betriebsrat beteiligen falls vorhanden (§ 87 Abs. 1
+  Nr. 6 BetrVG), Verzeichnis der Verarbeitungstätigkeiten. Tests: `geo.test.ts`, `geo-stamp.db.test.ts`.

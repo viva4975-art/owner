@@ -1,3 +1,4 @@
+import { type GeoStatus, judgePosition } from '../domain/time/geo.js';
 import type { Sql, Tx } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { addDays, holidayName, isoWeekday, mondayOf } from '../domain/time/holidays.js';
@@ -46,6 +47,13 @@ export interface TimeEntry {
   source: TimeSource;
   status: TimeStatus;
   via_qr: boolean;
+  /** Standort beim Ein-/Ausstempeln (nur Bewertung + Entfernung, keine Koordinaten) */
+  start_geo?: GeoStatus | null;
+  start_geo_m?: number | null;
+  start_geo_acc_m?: number | null;
+  end_geo?: GeoStatus | null;
+  end_geo_m?: number | null;
+  end_geo_acc_m?: number | null;
   shift_plan_id: string | null;
   note: string | null;
   recorded_at: Date;
@@ -230,9 +238,49 @@ export async function runningEntry(sql: Sql, employeeId: string) {
   return e;
 }
 
+/** Position beim Stempeln: undefined = nicht geprüft, null = Gerät lieferte keinen Standort */
+export type GeoInput = { lat: number; lng: number; acc: number } | null | undefined;
+
+/**
+ * Standort bewerten (nur wenn unter Zeiterfassung → Einstellungen eingeschaltet) und nur Ergebnis + Entfernung speichern.
+ * Stempeln wird nie verweigert – das Büro sieht „nicht am Objekt“ und klärt es.
+ */
+async function recordGeo(
+  tx: Sql | Tx,
+  entryId: string,
+  siteId: string,
+  which: 'start' | 'end',
+  geo: GeoInput,
+) {
+  if (geo === undefined) return;
+  const [cfg] = await tx<{ geo_check: boolean }[]>`select geo_check from app.time_settings`;
+  if (!cfg?.geo_check) return;
+  const [site] = await tx<{ lat: string | null; lng: string | null; radius: number }[]>`
+    select geo_lat::text as lat, geo_lng::text as lng, geo_radius_m as radius from app.sites where id = ${siteId}`;
+  const j = judgePosition(
+    {
+      lat: site?.lat != null ? Number(site.lat) : null,
+      lng: site?.lng != null ? Number(site.lng) : null,
+      radius: site?.radius ?? 250,
+    },
+    geo,
+  );
+  if (which === 'start')
+    await tx`update app.time_entries set start_geo = ${j.status}, start_geo_m = ${j.distance}, start_geo_acc_m = ${j.accuracy}
+              where id = ${entryId}`;
+  else
+    await tx`update app.time_entries set end_geo = ${j.status}, end_geo_m = ${j.distance}, end_geo_acc_m = ${j.accuracy}
+              where id = ${entryId}`;
+}
+
+export async function geoCheckEnabled(sql: Sql) {
+  const [cfg] = await sql<{ geo_check: boolean }[]>`select geo_check from app.time_settings`;
+  return !!cfg?.geo_check;
+}
+
 export async function clockIn(
   sql: Sql,
-  p: { id: string; employeeId: string; siteId: string; viaQr: boolean; actor: string },
+  p: { id: string; employeeId: string; siteId: string; viaQr: boolean; actor: string; geo?: GeoInput },
 ) {
   return withActor(sql, p.actor, null, async (tx) => {
     const [exists] = await tx`select 1 from app.time_entries where id = ${p.id}`;
@@ -257,6 +305,7 @@ export async function clockIn(
       insert into app.time_entries (id, employee_id, site_id, work_date, start_at, source, status, via_qr, created_by)
       values (${p.id}, ${p.employeeId}, ${p.siteId}, (now() at time zone 'Europe/Berlin')::date, date_trunc('minute', now()),
               'stempel', 'laeuft', ${p.viaQr}, ${p.actor})`;
+    await recordGeo(tx, p.id, p.siteId, 'start', p.geo);
     return p.id;
   });
 }
@@ -269,6 +318,7 @@ export async function clockOut(
     breakMinutes: number | null;
     actor: string;
     note?: string | null;
+    geo?: GeoInput;
   },
 ) {
   if (
@@ -281,13 +331,14 @@ export async function clockOut(
     const [run] = await tx<
       {
         id: string;
+        site_id: string;
         start_at: Date;
         break_minutes: number;
         break_start_at: Date | null;
         break_auto: boolean;
       }[]
     >`
-      select id, start_at, break_minutes, break_start_at, break_auto from app.time_entries
+      select id, site_id, start_at, break_minutes, break_start_at, break_auto from app.time_entries
        where employee_id = ${p.employeeId} and status = 'laeuft' for update`;
     if (!run) return null; // schon ausgestempelt (z. B. zweimal getippt)
     const minutes = Math.floor((Date.now() - run.start_at.getTime()) / 60000);
@@ -321,6 +372,7 @@ export async function clockOut(
                     break_minutes = ${brk.minutes}, break_start_at = ${brk.minutes ? brk.start : null},
                     break_auto = ${brk.auto}, status = 'erfasst', note = coalesce(${p.note ?? null}, note)
               where id = ${run.id}`;
+    await recordGeo(tx, run.id, run.site_id, 'end', p.geo);
     return run.id;
   });
 }

@@ -2,7 +2,7 @@ import type { FC } from 'hono/jsx';
 import { formatDateDe } from '../domain/invoice/calc.js';
 import { UNIT_LABELS } from '../domain/invoice/types.js';
 import type { ExecutableService, OpenExecution } from '../services/executions.js';
-import type { InvoiceRow } from '../services/invoices.js';
+import type { DraftListInfo, InvoiceRow } from '../services/invoices.js';
 import { milliToInput } from './forms.js';
 import { dateDe, euro } from './layout.js';
 
@@ -197,218 +197,295 @@ const byCustomer = <T extends { customer_id: string }>(rows: T[]) => {
   return [...m.values()];
 };
 
+/** Rechts: vorgemerkte Einzelleistungen je Kunde → Objekt mit Betrag (kompakt, aufklappbar). */
 export const OpenExecutionsBox: FC<{ rows: OpenExecution[]; today: string }> = ({ rows }) => (
-  <section class="card" data-select-scope>
-    <h3>
-      Vorgemerkte Leistungen <span class="cnt">({rows.length})</span>
-    </h3>
+  <section class="card dr-side" data-select-scope>
+    <h3>Aus Einzelleistungen erstellen</h3>
     {rows.length === 0 ? (
-      <p class="mut small">
+      <p class="mut small" style="margin:0">
         Nichts vorgemerkt. Leistungen „je Ausführung“ verrichten Sie am Objekt (Reiter „Leistungen &amp;
         Preise“).
       </p>
     ) : (
       <form method="post" action="/rechnungen/entwuerfe/aus-ausfuehrungen">
-        <div class="tbl">
-          <table>
-            <thead>
-              <tr>
-                <th style="width:30px">
-                  <input type="checkbox" data-all aria-label="alle" />
-                </th>
-                <th>Objekt</th>
-                <th>Leistung</th>
-                <th>Datum</th>
-                <th class="r">Menge</th>
-                <th class="r">Netto</th>
-              </tr>
-            </thead>
-            {byCustomer(rows).map((list) => {
-              const c = list[0]!;
-              return (
-                <tbody>
-                  <tr class="group-row">
-                    <td>
-                      <input
-                        type="checkbox"
-                        data-group={c.customer_id}
-                        aria-label={`alle von ${c.customer_name}`}
-                      />
-                    </td>
-                    <td colspan={4}>
-                      <b>{c.customer_name}</b> <span class="small mut">{c.customer_no}</span>
-                    </td>
-                    <td class="r">
-                      <b>
-                        {euro(list.reduce((a, e) => a + amount(e.quantity_milli, e.unit_price_cents), 0n))}
-                      </b>
-                    </td>
-                  </tr>
-                  {list.map((e) => (
-                    <tr>
-                      <td>
+        {byCustomer(rows).map((list) => {
+          const c = list[0]!;
+          const sites = new Map<string, OpenExecution[]>();
+          for (const e of list) sites.set(e.site_id, [...(sites.get(e.site_id) ?? []), e]);
+          const sum = (l: OpenExecution[]) =>
+            l.reduce((a, e) => a + amount(e.quantity_milli, e.unit_price_cents), 0n);
+          return (
+            <details class="ex-cust">
+              <summary>
+                <input
+                  type="checkbox"
+                  data-group={c.customer_id}
+                  aria-label={`alle von ${c.customer_name}`}
+                />
+                <span class="ex-name">
+                  {c.customer_name} <span class="faint">({list.length})</span>
+                </span>
+                <b class="num">{euro(sum(list))}</b>
+              </summary>
+              {[...sites.values()].map((sl) => {
+                const s0 = sl[0]!;
+                return (
+                  <div class="ex-site">
+                    <div class="ex-site-h">
+                      <a href={`/objekte/${s0.site_id}/leistungen`}>{s0.site_name}</a>{' '}
+                      <span class="faint small">{s0.site_no}</span>
+                      <span class="num small">{euro(sum(sl))}</span>
+                    </div>
+                    {sl.map((e) => (
+                      <label class="ex-line">
                         <input type="checkbox" name="exec" value={e.id} data-row data-g={c.customer_id} />
-                      </td>
-                      <td>
-                        <a href={`/objekte/${e.site_id}/leistungen`}>{e.site_name}</a>{' '}
-                        <span class="small faint">{e.site_no}</span>
-                      </td>
-                      <td>{e.description}</td>
-                      <td class="small">{range(e.date_from, e.date_to)}</td>
-                      <td class="r">
-                        {milliToInput(e.quantity_milli)} {UNIT_LABELS[e.unit_code] ?? e.unit_code}
-                      </td>
-                      <td class="r">{euro(amount(e.quantity_milli, e.unit_price_cents))}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              );
-            })}
-          </table>
-        </div>
-        <div class="actions" style="align-items:end">
-          <div>
-            <label for="ex_date">Rechnungsdatum (leer = Tag des Ausstellens)</label>
-            <input id="ex_date" type="date" name="invoice_date" />
-          </div>
+                        <span class="ex-desc">
+                          {e.description}
+                          <span class="faint"> · {range(e.date_from, e.date_to)}</span>
+                        </span>
+                        <span class="num">{euro(amount(e.quantity_milli, e.unit_price_cents))}</span>
+                      </label>
+                    ))}
+                  </div>
+                );
+              })}
+            </details>
+          );
+        })}
+        <div class="dr-side-f">
+          <label for="ex_date">Rechnungsdatum</label>
+          <input id="ex_date" type="date" name="invoice_date" title="leer = Tag des Ausstellens" />
           <button class="btn" data-needs-selection>
             Entwürfe erstellen (<span data-count>0</span>)
           </button>
-          <span class="small mut">Je Objekt bzw. Rechnungsgruppe ein Entwurf (wie der Monatslauf).</span>
         </div>
-      </form>
-    )}
-    <script dangerouslySetInnerHTML={{ __html: SELECT_JS }} />
-  </section>
-);
-
-export const DraftsBox: FC<{ rows: DraftRow[]; today: string }> = ({ rows, today }) => (
-  <section class="card" data-select-scope>
-    <h3>
-      Rechnungsentwürfe <span class="cnt">({rows.length})</span>
-    </h3>
-    {rows.length === 0 ? (
-      <p class="mut small">Keine Entwürfe.</p>
-    ) : (
-      <form method="post" action="/rechnungen/entwuerfe/auswahl">
-        <div class="tbl">
-          <table>
-            <thead>
-              <tr>
-                <th style="width:30px">
-                  <input type="checkbox" data-all aria-label="alle" />
-                </th>
-                <th>Objekt</th>
-                <th>Leistungszeitraum</th>
-                <th>Rechnungsdatum</th>
-                <th class="r">Netto</th>
-                <th class="r">Brutto</th>
-                <th>Hinweis</th>
-              </tr>
-            </thead>
-            {byCustomer(rows).map((list) => {
-              const c = list[0]!;
-              return (
-                <tbody>
-                  <tr class="group-row">
-                    <td>
-                      <input
-                        type="checkbox"
-                        data-group={c.customer_id}
-                        aria-label={`alle von ${c.customer_name}`}
-                      />
-                    </td>
-                    <td colspan={3}>
-                      <a href={`/kunden/${c.customer_id}`}>
-                        <b>{c.customer_name}</b>
-                      </a>{' '}
-                      <span class="small mut">{c.customer_no}</span>
-                    </td>
-                    <td class="r">
-                      <b>{euro(list.reduce((a, i) => a + i.net_cents, 0n))}</b>
-                    </td>
-                    <td class="r">
-                      <b>{euro(list.reduce((a, i) => a + i.gross_cents, 0n))}</b>
-                    </td>
-                    <td />
-                  </tr>
-                  {list.map((i) => (
-                    <tr>
-                      <td>
-                        <input type="checkbox" name="inv" value={i.id} data-row data-g={c.customer_id} />
-                      </td>
-                      <td>
-                        <a href={`/rechnungen/${i.id}`}>{i.site_name ?? 'ohne Objekt'}</a>{' '}
-                        <a class="small" href={`/rechnungen/${i.id}/bearbeiten`} title="Entwurf bearbeiten">
-                          ✎ bearbeiten
-                        </a>
-                      </td>
-                      <td class="small">
-                        {i.period_start ? (
-                          range(i.period_start, i.period_end ?? i.period_start)
-                        ) : (
-                          <span class="tag err">fehlt</span>
-                        )}
-                      </td>
-                      <td class="small">
-                        {i.planned_issue_date ? (
-                          dateDe(i.planned_issue_date)
-                        ) : (
-                          <span class="faint">beim Ausstellen</span>
-                        )}
-                      </td>
-                      <td class="r">{euro(i.net_cents)}</td>
-                      <td class="r">{euro(i.gross_cents)}</td>
-                      <td class="small">
-                        {i.review_required && <span class="tag warn">unfertig – prüfen</span>}{' '}
-                        {i.reverse_charge && <span class="tag">§ 13b</span>}{' '}
-                        {i.planned_issue_date && i.planned_issue_date > today && (
-                          <span class="tag">ab {dateDe(i.planned_issue_date)}</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              );
-            })}
-          </table>
-        </div>
-        <div class="actions" style="align-items:end;flex-wrap:wrap">
-          <div>
-            <label for="dr_date">Rechnungsdatum für die Auswahl</label>
-            <input id="dr_date" type="date" name="invoice_date" />
-          </div>
-          <button class="btn sec" name="aktion" value="datum" data-needs-selection>
-            Datum setzen
-          </button>
-          <button class="btn sec" name="aktion" value="pdf" data-needs-selection formtarget="_blank">
-            PDF der Markierten (<span data-count>0</span>)
-          </button>
-          <button
-            class="btn"
-            name="aktion"
-            value="ausstellen"
-            data-needs-selection
-            onclick="return confirm('Markierte Entwürfe jetzt ausstellen? Danach sind sie unveränderbar.')"
-          >
-            Markierte ausstellen (<span data-count>0</span>)
-          </button>
-          <button
-            class="btn danger"
-            name="aktion"
-            value="loeschen"
-            data-needs-selection
-            onclick="return confirm('Markierte Entwürfe löschen? Vorgemerkte Leistungen werden wieder frei.')"
-          >
-            Markierte löschen (<span data-count>0</span>)
-          </button>
-        </div>
-        <p class="small mut">
-          Ausstellen: E-Rechnung wird je Rechnung gegen KoSIT geprüft und die nächste Nummer vergeben. Fehler
-          bei einer Rechnung halten die anderen nicht auf.
+        <p class="small faint" style="margin:6px 0 0">
+          Je Objekt bzw. Rechnungsgruppe ein Entwurf.
         </p>
       </form>
     )}
     <script dangerouslySetInnerHTML={{ __html: SELECT_JS }} />
   </section>
 );
+
+export const DRAFTS_CSS = `
+.dr-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
+@media(max-width:1100px){.dr-grid{grid-template-columns:minmax(0,1fr)}}
+.dr-list{width:100%;border-collapse:collapse}
+.dr-list th{font-size:12px;font-weight:600;color:#667;text-align:left;padding:8px 8px;border-bottom:1px solid #e3e3e6;background:#f6f6f8}
+.dr-list td{padding:8px 8px;border-bottom:1px solid #eee;vertical-align:top}
+.dr-list tr:hover td{background:#fbfafb}
+.dr-list .r{text-align:right;white-space:nowrap}
+.dr-list .dr-date b{display:block;font-weight:600}
+.dr-list .dr-rcp a{font-weight:600;color:#7D1435;text-decoration:none}
+.dr-list .dr-rcp a:hover{text-decoration:underline}
+.dr-list .dr-sub{font-size:12px;color:#777;margin-top:2px}
+.dr-list .dr-obj{font-size:12px;color:#444;margin-top:2px;line-height:1.35}
+.dr-list .dr-chk{white-space:nowrap}
+.dr-list .dr-obj span{color:#888}
+.dr-sum td{background:#fafafa;font-size:12px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.02em}
+.dr-pill{background:#fff3b0;padding:2px 8px;border-radius:4px;font-weight:700;color:#222;text-transform:none;letter-spacing:0;font-size:13px}
+.dr-ic{display:inline-flex;width:28px;height:28px;align-items:center;justify-content:center;border:1px solid #ddd;border-radius:6px;background:#fff;color:#7D1435;cursor:pointer;font-size:13px;text-decoration:none}
+.dr-ic:hover{border-color:#7D1435}
+.dr-warn{color:#c77700;font-size:15px}
+.dr-foot{display:flex;flex-wrap:wrap;gap:8px;align-items:end;padding:12px 8px;background:#f6f6f8;border-top:1px solid #e3e3e6}
+.dr-side h3{margin-top:0}
+.ex-cust{border-bottom:1px solid #eee;padding:6px 0}
+.ex-cust summary{display:flex;gap:8px;align-items:center;cursor:pointer;list-style:none}
+.ex-cust summary::-webkit-details-marker{display:none}
+.ex-cust summary:before{content:'▸';color:#999;width:10px}
+.ex-cust[open] summary:before{content:'▾'}
+.ex-name{flex:1;min-width:0}
+.num{margin-left:auto;white-space:nowrap;font-variant-numeric:tabular-nums}
+.ex-site{margin:6px 0 4px 18px;padding-left:8px;border-left:2px solid #f0dbe2}
+.ex-site-h{display:flex;gap:6px;align-items:baseline;font-size:13px;font-weight:600}
+.ex-line{display:flex;gap:6px;align-items:baseline;font-size:12.5px;margin:3px 0;cursor:pointer;font-weight:400}
+.ex-desc{flex:1;min-width:0}
+.dr-side-f{display:grid;grid-template-columns:auto 1fr;gap:6px 8px;align-items:center;margin-top:10px}
+.dr-side-f .btn{grid-column:1/-1}
+.dr-side-f input{min-width:0;width:100%}
+.dr-side .dr-list td{white-space:nowrap}
+`;
+
+export const DraftsBox: FC<{ rows: DraftRow[]; today: string; info: Map<string, DraftListInfo> }> = ({
+  rows,
+  today,
+  info,
+}) => {
+  const net = rows.reduce((a, i) => a + i.net_cents, 0n);
+  const gross = rows.reduce((a, i) => a + i.gross_cents, 0n);
+  return (
+    <section class="card" data-select-scope style="padding:0;overflow:hidden">
+      {rows.length === 0 ? (
+        <p class="mut small" style="padding:14px">
+          Keine Entwürfe.
+        </p>
+      ) : (
+        <form method="post" action="/rechnungen/entwuerfe/auswahl">
+          <div class="tbl" style="margin:0;border:0">
+            <table class="dr-list">
+              <thead>
+                <tr>
+                  <th style="width:28px" />
+                  <th style="width:110px">Datum</th>
+                  <th>Empfänger · Objekt</th>
+                  <th style="width:36px" />
+                  <th class="r" style="width:40px">
+                    Pos
+                  </th>
+                  <th class="r">Netto</th>
+                  <th class="r">Brutto</th>
+                  <th style="width:36px" />
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="dr-sum">
+                  <td />
+                  <td colspan={4}>Rechnungsentwürfe ({rows.length})</td>
+                  <td class="r">
+                    <span class="dr-pill">{euro(net)}</span>
+                  </td>
+                  <td class="r">
+                    <span class="dr-pill">{euro(gross)}</span>
+                  </td>
+                  <td />
+                </tr>
+                {rows.map((i) => {
+                  const x = info.get(i.id);
+                  const warn = i.review_required || !i.period_start;
+                  return (
+                    <tr>
+                      <td class="dr-chk">
+                        {warn ? (
+                          <span
+                            class="dr-warn"
+                            title={i.review_required ? 'unfertig – bitte prüfen' : 'Leistungszeitraum fehlt'}
+                          >
+                            ⚠
+                          </span>
+                        ) : null}
+                        <input
+                          type="checkbox"
+                          name="inv"
+                          value={i.id}
+                          data-row
+                          data-g="x"
+                          aria-label="auswählen"
+                        />
+                      </td>
+                      <td class="dr-date">
+                        <b>{i.planned_issue_date ? dateDe(i.planned_issue_date) : dateDe(today)}</b>
+                        <span class="small faint">
+                          {i.kind === 'invoice'
+                            ? 'Re'
+                            : i.kind === 'partial'
+                              ? 'Abschlag'
+                              : i.kind === 'final'
+                                ? 'Schluss'
+                                : 'Re'}
+                          {i.planned_issue_date && i.planned_issue_date > today ? ' · geplant' : ''}
+                        </span>
+                      </td>
+                      <td class="dr-rcp">
+                        <a href={`/rechnungen/${i.id}`}>{x?.recipient ?? i.customer_name}</a>{' '}
+                        <span class="small faint">{i.customer_no}</span>
+                        {i.reverse_charge && (
+                          <span class="tag" style="margin-left:6px">
+                            § 13b
+                          </span>
+                        )}
+                        {x?.recipient && x.recipient !== i.customer_name && (
+                          <div class="dr-sub">{i.customer_name}</div>
+                        )}
+                        {(x?.places ?? []).slice(0, 3).map((p) => (
+                          <div class="dr-obj">
+                            {p.name}{' '}
+                            <span>
+                              ({p.site_no}){p.address ? ` · ${p.address}` : ''}
+                            </span>
+                          </div>
+                        ))}
+                        {(x?.places.length ?? 0) > 3 && (
+                          <div class="dr-obj">
+                            <span>+ {x!.places.length - 3} weitere Objekte</span>
+                          </div>
+                        )}
+                        <div class="dr-obj">
+                          {i.period_start ? (
+                            <span>Leistung {range(i.period_start, i.period_end ?? i.period_start)}</span>
+                          ) : (
+                            <span class="tag err">Leistungszeitraum fehlt</span>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <a
+                          class="dr-ic"
+                          href={`/rechnungen/${i.id}/vorschau.pdf`}
+                          target="_blank"
+                          title="PDF-Vorschau"
+                        >
+                          PDF
+                        </a>
+                      </td>
+                      <td class="r">{x?.pos ?? ''}</td>
+                      <td class="r">{euro(i.net_cents)}</td>
+                      <td class="r">{euro(i.gross_cents)}</td>
+                      <td>
+                        <button
+                          class="dr-ic"
+                          formaction={`/rechnungen/${i.id}/loeschen`}
+                          title="Entwurf löschen"
+                          onclick="return confirm('Diesen Entwurf löschen? Vorgemerkte Leistungen werden wieder frei.')"
+                        >
+                          🗑
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div class="dr-foot">
+            <label class="small" style="display:flex;gap:6px;align-items:center;margin:0 8px 0 0">
+              <input type="checkbox" data-all /> Alle auswählen
+            </label>
+            <input
+              type="date"
+              name="invoice_date"
+              aria-label="Rechnungsdatum"
+              title="Rechnungsdatum für die Auswahl"
+              style="max-width:160px"
+            />
+            <button class="btn sec sm" name="aktion" value="datum" data-needs-selection>
+              Datum setzen
+            </button>
+            <button class="btn sec sm" name="aktion" value="pdf" data-needs-selection formtarget="_blank">
+              Vorschau (<span data-count>0</span>)
+            </button>
+            <button
+              class="btn sm"
+              name="aktion"
+              value="ausstellen"
+              data-needs-selection
+              onclick="return confirm('Markierte Entwürfe jetzt ausstellen? Danach sind sie unveränderbar.')"
+            >
+              Ausgewählte fertigstellen (<span data-count>0</span>)
+            </button>
+            <button
+              class="btn danger sm"
+              name="aktion"
+              value="loeschen"
+              data-needs-selection
+              onclick="return confirm('Markierte Entwürfe löschen? Vorgemerkte Leistungen werden wieder frei.')"
+            >
+              Löschen (<span data-count>0</span>)
+            </button>
+          </div>
+        </form>
+      )}
+      <script dangerouslySetInnerHTML={{ __html: SELECT_JS }} />
+    </section>
+  );
+};

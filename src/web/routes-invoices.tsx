@@ -16,7 +16,8 @@ import {
   deleteDraft,
   getInvoice,
   listInvoices,
-  loadDocument,
+  draftListInfo,
+  loadDraftPreview,
   markReviewed,
   parseBillAddress,
   runMonthly,
@@ -48,7 +49,8 @@ import {
 } from '../services/workflow.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { arr, parseLines, str } from './forms.js';
-import { DraftsBox, OpenExecutionsBox } from './pages-drafts.js';
+import { DRAFTS_CSS, DraftsBox, OpenExecutionsBox } from './pages-drafts.js';
+import { DraftLetter } from './pages-invoice-letter.js';
 import { draftsFromExecutions, listOpenExecutions } from '../services/executions.js';
 import { NEW_OPTIONS, PageHead, dateDe, euro } from './layout.js';
 import { archiveMonthZip, archiveYear } from '../services/invoice-archive.js';
@@ -58,6 +60,7 @@ import { PaymentsSection } from './pages-hr-finance.js';
 import {
   type ArticleOption,
   CorrectionEditor,
+  CustomerNotice,
   InvoiceDetail,
   InvoiceEditor,
   InvoiceTable,
@@ -386,98 +389,91 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         >
           <span class="mut">Nächste Nr.: {range ? `${range.prefix}${range.next_value}` : '–'}</span>
         </PageHead>
-        <div class="tabbody">
-          <OpenExecutionsBox rows={await listOpenExecutions(sql)} today={todayBerlin()} />
-          <form method="get" action="/rechnungen/entwuerfe" class="actions" style="margin:0 0 8px">
-            <label for="dm" style="margin:0">
-              Abrechnungsmonat
-            </label>
-            <select id="dm" name="monat" data-nosearch onchange="this.form.submit()" style="max-width:220px">
-              <option value="">alle Monate ({allDrafts.length})</option>
-              {months.map((m) => (
-                <option value={m} selected={m === monat}>
-                  {m.split('-').reverse().join('/')} (
-                  {allDrafts.filter((i) => (i.period_start ?? '').startsWith(m)).length})
-                </option>
-              ))}
-            </select>
-            {drafts.length > 0 && (
-              <a
-                class="btn sec sm"
-                href={`/rechnungen/entwuerfe.pdf${monat ? `?monat=${monat}` : ''}`}
-                target="_blank"
+        <style dangerouslySetInnerHTML={{ __html: DRAFTS_CSS }} />
+        <div class="dr-grid">
+          <div>
+            <form method="get" action="/rechnungen/entwuerfe" class="actions" style="margin:0 0 8px">
+              <label for="dm" style="margin:0">
+                Abrechnungsmonat
+              </label>
+              <select
+                id="dm"
+                name="monat"
+                data-nosearch
+                onchange="this.form.submit()"
+                style="max-width:220px"
               >
-                PDF aller {monat ? 'Entwürfe dieses Monats' : 'Entwürfe'} ({drafts.length})
-              </a>
-            )}
-          </form>
-          <DraftsBox rows={drafts} today={todayBerlin()} />
-        </div>
-        <div class="cols">
-          <form method="post" action="/monatslauf" class="card">
-            <h3>Aus Objektleistungen erstellen (Monatslauf)</h3>
-            <p class="mut small" style="margin-top:0">
-              Alle fälligen regelmäßigen Leistungen (monatlich, quartalsweise, jährlich …): je Objekt ein
-              Entwurf, Rechnungsgruppen als Sammelrechnung, Leistungen mit „eigener Rechnung“ einzeln.
-              Mehrfaches Ausführen erzeugt keine Dubletten.
-            </p>
-            <label for="month">Abrechnungsmonat</label>
-            <div class="actions" style="margin-top:4px">
-              <input
-                id="month"
-                type="month"
-                name="month"
-                value={lastMonth()}
-                style="max-width:200px"
-                required
-              />
-              <input
-                type="date"
-                name="invoice_date"
-                aria-label="Rechnungsdatum"
-                title="Rechnungsdatum (leer = Tag des Ausstellens)"
-                style="max-width:180px"
-              />
-              <button class="btn">Entwürfe erstellen</button>
-            </div>
-          </form>
-          <div class="card">
-            <h3>Entwürfe je Monat</h3>
-            {monthly.length === 0 ? (
-              <div class="empty">Keine Entwürfe mit Leistungszeitraum.</div>
-            ) : (
-              <div class="tbl">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Monat</th>
-                      <th class="r">Netto</th>
-                      <th class="r">Brutto</th>
-                    </tr>
-                  </thead>
+                <option value="">alle Monate ({allDrafts.length})</option>
+                {months.map((m) => (
+                  <option value={m} selected={m === monat}>
+                    {m.split('-').reverse().join('/')} (
+                    {allDrafts.filter((i) => (i.period_start ?? '').startsWith(m)).length})
+                  </option>
+                ))}
+              </select>
+              {drafts.length > 0 && (
+                <a
+                  class="btn sec sm"
+                  href={`/rechnungen/entwuerfe.pdf${monat ? `?monat=${monat}` : ''}`}
+                  target="_blank"
+                >
+                  PDF aller {monat ? 'Entwürfe dieses Monats' : 'Entwürfe'} ({drafts.length})
+                </a>
+              )}
+            </form>
+            <DraftsBox
+              rows={drafts}
+              today={todayBerlin()}
+              info={await draftListInfo(
+                sql,
+                drafts.map((d) => d.id),
+              )}
+            />
+          </div>
+          <aside>
+            <div class="card dr-side">
+              <h3>Entwürfe je Monat</h3>
+              {monthly.length === 0 ? (
+                <p class="mut small" style="margin:0">
+                  Keine Entwürfe mit Leistungszeitraum.
+                </p>
+              ) : (
+                <table class="dr-list">
                   <tbody>
                     {monthly.map((m) => (
                       <tr>
-                        <td>{m.month.split('-').reverse().join('/')}</td>
-                        <td class="r">
-                          {(Number(m.net) / 100).toLocaleString('de-DE', {
-                            style: 'currency',
-                            currency: 'EUR',
-                          })}
+                        <td>
+                          <a href={`/rechnungen/entwuerfe?monat=${m.month}`}>
+                            {new Date(`${m.month}-15`).toLocaleDateString('de-DE', {
+                              month: 'long',
+                              year: 'numeric',
+                            })}
+                          </a>
                         </td>
-                        <td class="r">
-                          {(Number(m.gross) / 100).toLocaleString('de-DE', {
-                            style: 'currency',
-                            currency: 'EUR',
-                          })}
-                        </td>
+                        <td class="r">{euro(m.net)}</td>
+                        <td class="r faint">{euro(m.gross)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              )}
+            </div>
+            <OpenExecutionsBox rows={await listOpenExecutions(sql)} today={todayBerlin()} />
+            <form method="post" action="/monatslauf" class="card dr-side">
+              <h3>Aus Objektleistungen erstellen</h3>
+              <p class="mut small" style="margin-top:0">
+                Monatslauf: alle fälligen regelmäßigen Leistungen, je Objekt bzw. Rechnungsgruppe ein Entwurf.
+                Mehrfach ausführen erzeugt keine Dubletten.
+              </p>
+              <div class="dr-side-f">
+                <label for="month">Abrechnungsmonat</label>
+                <input id="month" type="month" name="month" value={lastMonth()} required />
+                <label for="mr_date">Rechnungsdatum</label>
+                <input id="mr_date" type="date" name="invoice_date" title="leer = Tag des Ausstellens" />
+                <button class="btn">Entwürfe erstellen</button>
               </div>
-            )}
-          </div>
+            </form>
+          </aside>
         </div>
       </>,
     );
@@ -728,6 +724,33 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
       inv.skonto_percent_bp && inv.payable_cents > 0n
         ? (inv.payable_cents * BigInt(inv.skonto_percent_bp) + 5000n) / 10000n
         : null;
+    if (inv.status === 'draft' && ['invoice', 'partial', 'final'].includes(inv.kind)) {
+      return page(
+        c,
+        'Entwurf',
+        'rechnungen',
+        <DraftLetter
+          inv={inv}
+          doc={await loadDraftPreview(sql, id)}
+          billing={billing}
+          portal={channel.channel === 'portal' ? (channel.portal ?? '') : null}
+          newId={randomUUID()}
+          preflight={pre}
+          attachments={docs.filter((d) => d.kind === 'attachment')}
+          notice={<CustomerNotice c={customer!} />}
+          uploadSlot={
+            <FileArea
+              link={{ type: 'invoice', id }}
+              files={[]}
+              category="Anlage zur Rechnung"
+              title="Anlagen hierher ziehen"
+              hint="Leistungsnachweise, Stundenzettel, Arbeitsscheine – PDF, PNG oder JPG bis 20 MB."
+              maxBytes={20 * 1024 * 1024}
+            />
+          }
+        />,
+      );
+    }
     return page(
       c,
       inv.number ?? 'Entwurf',
@@ -792,10 +815,9 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
 
   // Sammel-PDF aller (bzw. der markierten) Entwürfe zur Durchsicht vor dem Ausstellen (Ahmed 08.10.)
   const draftsPdf = async (ids: string[]) => {
-    const today = todayBerlin();
     const out = await PDFDocument.create();
     for (const id of ids) {
-      const doc = await loadDocument(sql, id, { number: 'ENTWURF', issueDate: today, dueDate: today });
+      const doc = await loadDraftPreview(sql, id);
       const src = await PDFDocument.load(await renderInvoicePdf(doc, { watermark: 'ENTWURF' }));
       for (const pg of await out.copyPages(src, src.getPageIndices())) out.addPage(pg);
     }
@@ -817,8 +839,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
 
   app.get(`/rechnungen/:id{${UUID}}/vorschau.pdf`, async (c) => {
     const id = c.req.param('id');
-    const today = todayBerlin();
-    const doc = await loadDocument(sql, id, { number: 'ENTWURF', issueDate: today, dueDate: today });
+    const doc = await loadDraftPreview(sql, id);
     const pdf = await renderInvoicePdf(doc, { watermark: 'ENTWURF' });
     return c.body(pdf as Uint8Array<ArrayBuffer>, 200, {
       'Content-Type': 'application/pdf',

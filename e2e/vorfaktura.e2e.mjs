@@ -59,10 +59,12 @@ check('Zurück/Vor ohne doppelte Buchung', !(await body(p)).includes('Fehler 500
 
 console.log('2. Entwürfe aus Vorgemerktem');
 await p.goto(`${B}/rechnungen/entwuerfe`);
-const box = p.locator('section:has(h3:has-text("Vorgemerkte Leistungen"))');
+const box = p.locator('section:has(h3:has-text("Aus Einzelleistungen erstellen"))');
 check('Vorgemerkte Leistungen sichtbar', (await box.locator('input[name=exec]').count()) >= 2);
 // Kunde komplett auswählen
-await box.locator('tr.group-row', { hasText: 'Referat' }).first().locator('input[data-group]').check();
+const cust = box.locator('details.ex-cust', { hasText: 'Referat' }).first();
+check('Einzelleistungen je Objekt mit Betrag', /Grundschule[\s\S]*€/.test((await cust.textContent()) ?? ''));
+await cust.locator('input[data-group]').check();
 const n = Number(await box.locator('[data-count]').first().innerText());
 check('Kunde auswählen markiert seine Zeilen', n >= 2, String(n));
 await box.locator('button:has-text("Entwürfe erstellen")').click();
@@ -70,19 +72,20 @@ await p.waitForLoadState();
 check('Entwurf erstellt', /Rechnungsentwurf/.test(await flash(p)), await flash(p));
 check(
   'vorgemerkt jetzt leer (für den Kunden)',
-  (await box.locator('tr', { hasText: 'Grundschule' }).count()) === 0,
+  (await box.locator('.ex-site', { hasText: 'Grundschule' }).count()) === 0,
 );
 
 console.log('3. Entwürfe auswählen, Datum setzen, ausstellen');
-const drafts = p.locator('section:has(h3:has-text("Rechnungsentwürfe"))');
+const drafts = p.locator('section:has(table.dr-list)').first();
 const row = drafts.locator('tr', { hasText: 'Grundschule' }).first();
 await row.locator('input[name=inv]').check();
-await p.fill('#dr_date', today);
+await drafts.locator('input[name=invoice_date]').fill(today);
+check('Entwurf zeigt Objekt in der Liste', /Grundschule/.test(await row.innerText()));
 await drafts.locator('button:has-text("Datum setzen")').click();
 await p.waitForLoadState();
 check('Datum gesetzt', (await flash(p)).includes('Rechnungsdatum'), await flash(p));
 await drafts.locator('tr', { hasText: 'Grundschule' }).first().locator('input[name=inv]').check();
-await drafts.locator('button:has-text("Markierte ausstellen")').click();
+await drafts.locator('button:has-text("Ausgewählte fertigstellen")').click();
 await p.waitForLoadState();
 const f = await flash(p);
 check('ausgestellt (oder klarer Grund)', /ausgestellt|Nicht ausgestellt/.test(f), f);

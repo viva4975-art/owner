@@ -922,3 +922,59 @@ export async function copyInvoice(sql: Sql, sourceId: string, newId: string, act
   await audit(sql, actor, 'copy', newId, { from: sourceId, number: s.number });
   return newId;
 }
+
+/** Zusatzangaben für die Entwurfsliste: Anzahl Positionen, Rechnungsempfänger und Objekte (auch bei Sammelrechnungen). */
+export interface DraftListInfo {
+  pos: number;
+  recipient: string;
+  places: { site_id: string; name: string; site_no: string; address: string }[];
+}
+export async function draftListInfo(sql: Sql, ids: string[]): Promise<Map<string, DraftListInfo>> {
+  const out = new Map<string, DraftListInfo>();
+  if (!ids.length) return out;
+  const head = await sql<{ id: string; pos: number; recipient: string }[]>`
+    select i.id, (select count(*)::int from app.invoice_lines l where l.invoice_id = i.id) as pos,
+           coalesce(nullif(i.bill_address->>'name', ''), nullif(g.bill_name, ''), c.name) as recipient
+      from app.invoices i
+      join app.customers c on c.id = i.customer_id
+      left join app.invoice_groups g on g.id = i.invoice_group_id
+     where i.id = any(${ids}::uuid[])`;
+  for (const h of head) out.set(h.id, { pos: h.pos, recipient: h.recipient, places: [] });
+  const places = await sql<
+    { invoice_id: string; site_id: string; name: string; site_no: string; address: string }[]
+  >`
+    select distinct on (x.invoice_id, s.id) x.invoice_id, s.id as site_id, s.name, s.site_no,
+           concat_ws(', ', nullif(s.street, ''), nullif(concat_ws(' ', s.postal_code, s.city), '')) as address
+      from (
+        select i.id as invoice_id, i.site_id from app.invoices i where i.id = any(${ids}::uuid[]) and i.site_id is not null
+        union all
+        select l.invoice_id, ss.site_id from app.invoice_lines l
+          join app.site_services ss on ss.id = l.source_service_id
+         where l.invoice_id = any(${ids}::uuid[])
+      ) x
+      join app.sites s on s.id = x.site_id
+     order by x.invoice_id, s.id`;
+  for (const p of places) out.get(p.invoice_id)?.places.push(p);
+  return out;
+}
+
+/** Entwurf als Dokument für Vorschau/Briefansicht: Rechnungsdatum = geplantes oder heute, Fälligkeit = + Zahlungsziel. */
+export async function loadDraftPreview(sql: Sql, id: string) {
+  const data = await getInvoice(sql, id);
+  if (!data) throw new BusinessError('Rechnung nicht gefunden');
+  const inv = data.invoice;
+  const issueDate = inv.planned_issue_date ?? todayBerlin();
+  const days =
+    inv.payment_terms_days ??
+    (await effectiveBilling(sql, inv.customer_id, inv.site_id, inv.invoice_group_id)).paymentTermsDays;
+  return loadDocument(sql, id, {
+    number: 'ENTWURF',
+    issueDate,
+    dueDate: addDaysIso(issueDate, days),
+  });
+}
+const addDaysIso = (iso: string, n: number) => {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};

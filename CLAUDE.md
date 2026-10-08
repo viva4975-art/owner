@@ -1654,3 +1654,19 @@ Testadresse.
   `src/einvoice/errors.ts`: Meldung nennt das Feld auf Deutsch („Land der Rechnungsanschrift“, „Einheit einer Position
   (Position 2)“, „Fälligkeitsdatum“ …). Bereinigung vor dem Erzeugen: Ländercode („Deutschland“/„de“/leer → DE) und
   Einheiten als Text („Std.“, „m²“, „psch.“, leer → Code). Ursache auf dem Server noch offen – Ahmed schickt die neue Meldung.
+- 2026-10-08: Runde 28 (Ahmed, Fortytools-Screenshots):
+  - **Entwurfsliste wie Fortytools:** links kompakte Liste (Datum/Typ, Empfänger als Link + Kundennr., darunter Objekt(e) mit
+    Adresse und Leistungszeitraum, PDF, Pos, Netto, Brutto, Löschen je Zeile), Summenzeile gelb, unten Alle auswählen /
+    Datum setzen / Vorschau / Ausgewählte fertigstellen / Löschen. Rechts: Entwürfe je Monat (Link = Filter), **Aus
+    Einzelleistungen erstellen** je Kunde aufklappbar → je Objekt mit Betrag → Einzelleistungen mit Datum und Betrag,
+    Monatslauf. `draftListInfo()` (Positionen, Empfänger aus eigener Anschrift/Gruppe/Kunde, Objekte auch bei Sammelrechnung).
+  - **Entwurf als Brief** (`pages-invoice-letter.tsx`): Blatt mit Absender (unterstrichen), Anschrift, grauem Balken
+    „Rechnung (Entwurf)“, Leistungsort/Zeitraum/Leitweg-ID/Bestellnr., Anrede + Text, Positionen (je Objekt gruppiert wie im PDF),
+    Summen, Zahlungsbedingung, Schlusssatz; rechts Knöpfe Bearbeiten / Fertigstellen / PDF-Vorschau / KoSIT / Kopieren /
+    Lieferschein / Löschen, Rechnungsdatum, Anhänge, Versand. Storno-/Korrektur-Entwürfe und ausgestellte Rechnungen wie bisher.
+  - **Fund:** PDF-Vorschau eines Entwurfs setzte die Fälligkeit = heute („ohne Abzug bis heute“). Jetzt `loadDraftPreview()`:
+    Rechnungsdatum (geplant oder heute) + Zahlungsziel (Rechnung, sonst Gruppe/Objekt/Kunde).
+  - App-Paketname für Google Play/App Store: **`de.vivadeluxe.app`** (eine App für Mitarbeitende und Büro; vorher
+    `de.vivadeluxe.mitarbeiter`, noch nie hochgeladen). Nach dem ersten Upload nicht mehr änderbar.
+  - Qwist: Server-Einträge `QWIST_CLIENT_ID/SECRET` werden von der App noch nicht gelesen (kein Abruf gebaut, keine
+    öffentliche API-Doku gefunden) – Ahmed fragt bei Qwist die Partner-/API-Dokumentation an.

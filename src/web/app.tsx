@@ -1,3 +1,4 @@
+import { registerPriceAdjustmentRoutes } from './routes-price-adjustment.js';
 import { fileURLToPath } from 'node:url';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono, type Context } from 'hono';
@@ -372,6 +373,7 @@ export function createApp(deps: Deps) {
   registerSettingsRoutes(ctx);
   registerTenderRoutes(ctx);
   registerCostCenterRoutes(ctx);
+  registerPriceAdjustmentRoutes(ctx);
   registerCashbookRoutes(ctx);
   registerLegacyRoutes(ctx);
   registerProspectRoutes(ctx);

@@ -1419,3 +1419,14 @@ Testadresse.
   telefonisch bestätigen)**. Freigabe „sachlich und rechnerisch richtig“ wie bisher.
   Fund nebenbei: Kontoauszug-Import (CAMT) löste „&amp;“ in Namen nicht auf – gemeinsamer Helfer `src/domain/xml.ts`.
   Noch nicht: automatischer Abruf aus dem Postfach buchhaltung@ (IMAP) – sinnvoll, sobald der Mail-Zugang steht.
+- 2026-10-08: **Lohnkostenanteil Pflicht + Preisanpassung** (Ahmed: „nicht bei jedem gleich wegen dem Lohnkostenanteil“):
+  Leistungsformular verlangt den Lohnkostenanteil (vorbelegt aus der Leistungsart; leer → Vorgabe der Leistungsart, sonst
+  Fehler; Importe bleiben ohne). Rechnungen → **Preisanpassung**: „Lohnkostenanteil fehlt“ (gesammelt nachtragen, nur leere
+  Felder), Vorschau ab Monatsersten + Tariflohnerhöhung % (Filter Kunde/Leistungsart): neuer Preis = alt + alt × Anteil ×
+  Erhöhung (half-up auf Cent). Gesperrt: Anteil fehlt, Beginn ab Stichtag, Stichtag mitten im Abrechnungszeitraum
+  (quartalsweise usw.). Übernahme: alte Leistung endet am Vortag, Kopie mit neuem Preis ab Stichtag (feste ID je Leistung +
+  Stichtag), optional Zusatztext wie Fortytools „3.099,86 € + 4,00 % Tariflohnerhöhung ab 01.01.2027“. Läufe/Positionen
+  nur anhängen (`price_adjustments`, `price_adjustment_items`). **Anschreiben** je Kunde (PDF auf Briefpapier mit
+  bisher/neu, auch in der Kundenakte „Schriftverkehr“). **Rechtlich:** Erhöhung nur mit Preisgleitklausel im Vertrag oder
+  Zustimmung des Kunden; bei öffentlichen Auftraggebern nach Vertragsbedingungen (steht als Hinweis auf der Seite).
+  Tests: `price-adjustment.db.test.ts`, `e2e:leistungen` 16 Prüfungen.

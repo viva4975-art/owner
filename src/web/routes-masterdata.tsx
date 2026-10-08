@@ -1505,6 +1505,16 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     const id = c.req.param('id');
     const parsed = serviceInput.safeParse(await c.req.parseBody());
     if (!parsed.success) throw new BusinessError(parsed.error.issues.map((i) => i.message).join('\n'));
+    if (parsed.data.labor_share == null) {
+      // Pflichtfeld (Ahmed 08.10.): leer → Vorgabe der Leistungsart, sonst Fehler
+      const [t] = parsed.data.service_type_id
+        ? await sql<{ labor_share_bp: number | null }[]>`
+            select labor_share_bp from app.service_types where id = ${parsed.data.service_type_id}`
+        : [];
+      if (t?.labor_share_bp == null)
+        throw new BusinessError('Lohnkostenanteil fehlt – bitte in % eintragen (z. B. 80)');
+      parsed.data.labor_share = t.labor_share_bp;
+    }
     await saveService(sql, c.req.param('sid'), id, parsed.data, c.get('actor'));
     return back(c, `/objekte/${id}/leistungen`, { ok: 'Leistung gespeichert.' });
   });

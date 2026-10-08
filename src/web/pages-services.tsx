@@ -239,11 +239,15 @@ export const ServiceForm: FC<{
           <select
             id="service_type_id"
             name="service_type_id"
-            onchange="var d=document.getElementById('description');if(d&&!d.value.trim()&&this.value)d.value=this.options[this.selectedIndex].text"
+            onchange="var d=document.getElementById('description');if(d&&!d.value.trim()&&this.value)d.value=this.options[this.selectedIndex].text;var l=document.getElementById('labor_share'),o=this.options[this.selectedIndex];if(l&&!l.value.trim()&&o.dataset.labor)l.value=o.dataset.labor"
           >
             <option value="">– keine –</option>
             {types.map((t) => (
-              <option value={t.id} selected={t.id === sv?.service_type_id}>
+              <option
+                value={t.id}
+                selected={t.id === sv?.service_type_id}
+                data-labor={t.labor_share_bp != null ? String(t.labor_share_bp / 100).replace('.', ',') : ''}
+              >
                 {t.name}
               </option>
             ))}
@@ -326,13 +330,18 @@ export const ServiceForm: FC<{
           />
         </div>
         <div>
-          <label for="labor_share">Lohnkostenanteil (%)</label>
+          <label for="labor_share">Lohnkostenanteil (%) *</label>
           <input
             id="labor_share"
             name="labor_share"
             value={sv?.labor_share_bp != null ? String(sv.labor_share_bp / 100).replace('.', ',') : ''}
-            placeholder="wie Leistungsart"
+            placeholder="z. B. 80"
+            inputmode="decimal"
+            required
           />
+          <div class="small mut">
+            Anteil der Lohnkosten am Preis – Grundlage für Preisanpassungen bei Tariflohnerhöhungen.
+          </div>
         </div>
       </div>
       <div class="chk" style="margin-top:10px">

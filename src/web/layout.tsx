@@ -1252,6 +1252,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Alle Rechnungen', href: '/rechnungen' },
       { label: 'Offene Posten', href: '/offene-posten', sep: true },
       { label: 'Mahnwesen', href: '/mahnungen' },
+      { label: 'Preisanpassung', href: '/preisanpassung' },
     ],
   },
   {

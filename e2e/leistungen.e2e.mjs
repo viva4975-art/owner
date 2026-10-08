@@ -61,6 +61,8 @@ await p.fill('#note', 'innen und außen');
 await p.selectOption('#invoice_target', 'separat');
 await p.selectOption('#billing_cycle', 'quartalsweise');
 await p.fill('#unit_price', '1.200,00');
+check('Lohnkostenanteil ist Pflicht', (await p.getAttribute('#labor_share', 'required')) !== null);
+await p.fill('#labor_share', '60');
 await p.check('#always_unfinished');
 await p.fill('#execution_notes', 'Leiter im Hausmeisterraum, Schlüssel 12');
 await p.click('button:has-text("Leistung anlegen")');

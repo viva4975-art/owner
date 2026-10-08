@@ -1602,3 +1602,8 @@ Testadresse.
     1,30 Mio. wie Vorjahr. Schätzung, kein Auftragsbestand.
   - Google-Play-Entwicklerkonto angelegt (Ahmed). Anleitung „Zugangsdaten auf dem Server eintragen“
     (`docs/anleitung-server-eintragen.html/.pdf`: KVM-Konsole/ssh, `nano /opt/viva/deploy/.env.live`, `update.sh`).
+- 2026-10-08: **Fund Server-Fehler „column dunning_emails does not exist“** (Rechnungsgruppe speichern): Die Spalte war in
+  Runde 3b an die schon eingespielte Migration `20261029000001` angehängt worden – Server, die sie vorher hatten, bekamen
+  sie nie. Nachtrag `20261113000008` (`add column if not exists`). Einziger solcher Fall (alle Migrationen gegen ihren
+  ersten Commit geprüft). **Schutz:** `supabase/migration-checksums.json` + Test `migration-checksums.test.ts` – geänderte
+  alte Migration = Test rot; neue Migration → `node scripts/migrations-lock.mjs`.

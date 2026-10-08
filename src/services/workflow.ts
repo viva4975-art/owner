@@ -9,6 +9,7 @@ import { generateCii, generateXRechnungUbl, generateZugferd } from '../einvoice/
 import { type ValidationResult, validateWithKosit } from '../einvoice/kosit.js';
 import { MAILER_MISSING, type Mailer, resolveRecipients } from '../mail/mailer.js';
 import { renderInvoicePdf } from '../pdf/render.js';
+import { describeEInvoiceError } from '../einvoice/errors.js';
 import {
   type BillAddress,
   BusinessError,
@@ -62,7 +63,7 @@ export async function preflight(deps: Deps, id: string): Promise<PreflightResult
     return await validateBoth(doc, deps.env);
   } catch (err) {
     if (err instanceof Error && /KoSIT/.test(err.message)) throw new BusinessError(err.message);
-    throw new BusinessError(`E-Rechnung kann nicht erzeugt werden: ${(err as Error).message}`);
+    throw new BusinessError(`E-Rechnung kann nicht erzeugt werden. ${describeEInvoiceError(err)}`);
   }
 }
 

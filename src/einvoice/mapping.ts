@@ -1,4 +1,5 @@
 import type { Invoice } from '@e-invoice-eu/core';
+import { countryCodeOf, unitCodeOf } from './errors.js';
 import { type Cents, formatEuro, toXmlDecimal } from '../domain/money/money.js';
 import { formatDateDe, percentDe } from '../domain/invoice/calc.js';
 import { type InvoiceDocument, KIND_TITLES, KIND_TYPE_CODES } from '../domain/invoice/types.js';
@@ -184,7 +185,7 @@ export function toEInvoice(doc: InvoiceDocument): Invoice {
           'cbc:StreetName': seller.street,
           'cbc:CityName': seller.city,
           'cbc:PostalZone': seller.postalCode,
-          'cac:Country': { 'cbc:IdentificationCode': seller.countryCode as 'DE' },
+          'cac:Country': { 'cbc:IdentificationCode': countryCodeOf(seller.countryCode) as 'DE' },
         },
         'cac:PartyTaxScheme': [
           ...(seller.vatId ? [{ 'cbc:CompanyID': seller.vatId, 'cac:TaxScheme': { 'cbc:ID': 'VAT' } }] : []),
@@ -217,7 +218,7 @@ export function toEInvoice(doc: InvoiceDocument): Invoice {
           ...(buyer.name2 ? { 'cbc:AdditionalStreetName': buyer.name2 } : {}),
           'cbc:CityName': buyer.city,
           'cbc:PostalZone': buyer.postalCode,
-          'cac:Country': { 'cbc:IdentificationCode': buyer.countryCode as 'DE' },
+          'cac:Country': { 'cbc:IdentificationCode': countryCodeOf(buyer.countryCode) as 'DE' },
         },
         ...(buyer.vatId
           ? { 'cac:PartyTaxScheme': { 'cbc:CompanyID': buyer.vatId, 'cac:TaxScheme': { 'cbc:ID': 'VAT' } } }
@@ -306,11 +307,16 @@ export function toEInvoice(doc: InvoiceDocument): Invoice {
     'cac:InvoiceLine': doc.lines.map((l) => ({
       'cbc:ID': String(l.position),
       'cbc:InvoicedQuantity': quantityToXml(l.quantity),
-      'cbc:InvoicedQuantity@unitCode': l.unitCode as 'C62',
+      'cbc:InvoicedQuantity@unitCode': unitCodeOf(l.unitCode) as 'C62',
       'cbc:LineExtensionAmount': amt(l.netAmount),
       'cbc:LineExtensionAmount@currencyID': CUR,
       ...(l.periodStart
-        ? { 'cac:InvoicePeriod': { 'cbc:StartDate': l.periodStart, 'cbc:EndDate': l.periodEnd ?? l.periodStart } }
+        ? {
+            'cac:InvoicePeriod': {
+              'cbc:StartDate': l.periodStart,
+              'cbc:EndDate': l.periodEnd ?? l.periodStart,
+            },
+          }
         : {}),
       'cac:Item': {
         ...(l.detail ? { 'cbc:Description': l.detail } : {}),

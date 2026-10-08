@@ -1649,3 +1649,8 @@ Testadresse.
   **Strich unter der Absenderzeile** in allen Briefen auf Briefpapier (Rechnung, Angebot, AB, Mahnung, Briefe).
   Server-Fehler „unterminated quoted value“ in `.env.live` Zeile 18 (MAIL_FROM ohne schließendes Hochkomma): Anleitungen
   empfehlen jetzt `MAIL_FROM='buchhaltung@viva-deluxe-reinigung.de'` (ohne Name/spitze Klammern).
+- 2026-10-08: **Fund Server: „E-Rechnung kann nicht erzeugt werden: validation failed“** (auch bei PDF-Kunden – die E-Rechnung
+  wird immer für Archiv/ZUGFeRD erzeugt und vor dem Ausstellen geprüft). Die Bibliothek nannte das Feld nicht. Jetzt
+  `src/einvoice/errors.ts`: Meldung nennt das Feld auf Deutsch („Land der Rechnungsanschrift“, „Einheit einer Position
+  (Position 2)“, „Fälligkeitsdatum“ …). Bereinigung vor dem Erzeugen: Ländercode („Deutschland“/„de“/leer → DE) und
+  Einheiten als Text („Std.“, „m²“, „psch.“, leer → Code). Ursache auf dem Server noch offen – Ahmed schickt die neue Meldung.

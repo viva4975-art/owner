@@ -248,6 +248,9 @@ export interface DeliveryRow {
   attempts: number;
   created_at: Date;
   sent_at: Date | null;
+  channel?: 'email' | 'portal';
+  portal_reference?: string | null;
+  recorded_by?: string | null;
 }
 
 export async function listDeliveries(sql: Sql, invoiceId: string) {
@@ -283,6 +286,58 @@ function mailText(doc: InvoiceDocument, redirectedFrom: string[] | null): string
   return lines.join('\n');
 }
 
+/** Versandweg der Rechnung aus ihrer Rechnungsgruppe (bzw. der Gruppe des Objekts). */
+export async function deliveryChannel(
+  sql: Sql,
+  invoiceId: string,
+): Promise<{ channel: 'email' | 'portal'; portal: string | null }> {
+  const [r] = await sql<{ delivery_channel: 'email' | 'portal' | null; portal_name: string | null }[]>`
+    select g.delivery_channel, g.portal_name
+      from app.invoices i
+      left join app.sites s on s.id = i.site_id
+      left join app.invoice_groups g on g.id = coalesce(i.invoice_group_id, s.invoice_group_id)
+     where i.id = ${invoiceId}`;
+  return { channel: r?.delivery_channel ?? 'email', portal: r?.portal_name ?? null };
+}
+
+/**
+ * Portal-Versand (z. B. Patentamt): Die E-Rechnung wurde von Hand im Portal des Kunden hochgeladen. Vermerk im
+ * Versandprotokoll genau einmal je Fassung (Kanal „portal“, Zeitpunkt, Benutzer, Upload-Referenz). Nur mit gültiger
+ * (KoSIT-geprüfter) E-Rechnung.
+ */
+export async function recordPortalUpload(
+  deps: Deps,
+  id: string,
+  p: { reference: string | null; actor: string },
+) {
+  const { sql } = deps;
+  const data = await getInvoice(sql, id);
+  if (!data) throw new BusinessError('Rechnung nicht gefunden');
+  if (data.invoice.status !== 'issued') throw new BusinessError('Nur ausgestellte Rechnungen');
+  const docs = await ensureDocuments(deps, id);
+  const latest = docs.reduce((m, d) => (d.kind !== 'attachment' && d.revision > m ? d.revision : m), 0);
+  const kind = data.invoice.invoice_format === 'zugferd' ? 'zugferd_pdf' : 'xrechnung_xml';
+  const file = docs.find((d) => d.kind === kind && d.revision === latest);
+  if (!file || file.valid !== true)
+    throw new BusinessError('E-Rechnung hat die KoSIT-Prüfung nicht bestanden – nicht hochladen');
+  const { portal } = await deliveryChannel(sql, id);
+  const target = portal ?? 'Portal des Kunden';
+  const doc = await loadDocument(sql, id);
+  const key = latest ? `${id}:portal-berichtigt-${latest}` : `${id}:portal`;
+  const files = [{ filename: file.filename, sha256: file.sha256, size: Number(file.size_bytes) }];
+  const [row] = await sql<DeliveryRow[]>`
+    insert into app.invoice_deliveries (invoice_id, idempotency_key, status, intended_recipients, actual_recipients,
+                                        subject, files, attempts, sent_at, channel, portal_reference, recorded_by)
+    values (${id}, ${key}, 'sent', ${[target]}, ${[target]},
+            ${`Portal-Upload: ${KIND_TITLES[doc.kind]} ${doc.number}`}, ${sql.json(files)}, 1, now(), 'portal',
+            ${p.reference}, ${p.actor})
+    on conflict (idempotency_key) do nothing returning *`;
+  if (!row) return { alreadySent: true };
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${p.actor}, 'portal_upload', 'invoice', ${id}, ${sql.json({ portal: target, reference: p.reference, file: file.filename })})`;
+  return { alreadySent: false };
+}
+
 /**
  * Versand genau einmal: Ein Versandeintrag je Rechnung (idempotency_key). Der Eintrag wird VOR dem
  * SMTP-Versand auf "pending" gesetzt und nur von genau einem Aufrufer übernommen. Bleibt er nach
@@ -311,6 +366,11 @@ export async function sendInvoice(
     ).emails,
   };
 
+  const channel = await deliveryChannel(sql, id);
+  if (channel.channel === 'portal')
+    throw new BusinessError(
+      `Dieser Kunde erhält Rechnungen über ${channel.portal ?? 'sein Portal'} – E-Rechnung herunterladen, dort hochladen und hier „Im Portal hochgeladen“ vermerken.`,
+    );
   const docs = await ensureDocuments(deps, id);
   if (deps.mailer.configured === false) throw new BusinessError(MAILER_MISSING);
   const latest = docs.reduce((m, d) => (d.kind !== 'attachment' && d.revision > m ? d.revision : m), 0);

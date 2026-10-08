@@ -633,6 +633,8 @@ export const InvoiceDetail: FC<{
   /** gültige Rechnungsangaben (Objekt vor Kunde) */
   billing: EffectiveBilling;
   /** berichtigte Fassungen (Anschrift), neueste zuletzt */
+  /** Versand über das Portal des Kunden (Name), sonst E-Mail */
+  portal?: string | null;
   revisions?: {
     id: string;
     revision: number;
@@ -658,6 +660,7 @@ export const InvoiceDetail: FC<{
   billing,
   revisions = [],
   newId,
+  portal,
 }) => {
   const draft = inv.status === 'draft';
   const latestRev = revisions.at(-1);
@@ -830,7 +833,21 @@ export const InvoiceDetail: FC<{
 
       {!draft && (
         <div class="actions">
-          {!sent && (
+          {!sent && portal != null && (
+            <form method="post" action={`/rechnungen/${inv.id}/portal`} class="actions" style="margin:0">
+              <span class="small">
+                Versand über <b>{portal || 'Portal des Kunden'}</b>: E-Rechnung unten unter „Belege“
+                herunterladen und im Portal hochladen, dann vermerken.
+              </span>
+              <input
+                name="reference"
+                placeholder="Upload-Nr. / Referenz (optional)"
+                style="max-width:220px"
+              />
+              <button class="btn">Im Portal hochgeladen</button>
+            </form>
+          )}
+          {!sent && portal == null && (
             <form
               method="post"
               action={`/rechnungen/${inv.id}/versenden`}
@@ -1095,7 +1112,16 @@ export const InvoiceDetail: FC<{
                     </div>
                   )}
                 </td>
-                <td>{d.actual_recipients.join(', ')}</td>
+                <td>
+                  {d.channel === 'portal' && <span class="badge tag">Portal</span>}{' '}
+                  {d.actual_recipients.join(', ')}
+                  {d.channel === 'portal' && (
+                    <div class="small mut">
+                      hochgeladen von {d.recorded_by}
+                      {d.portal_reference ? ` · Ref. ${d.portal_reference}` : ''}
+                    </div>
+                  )}
+                </td>
                 <td class="small mut">{d.intended_recipients.join(', ') || '–'}</td>
                 <td class="small">
                   {d.files.map((f) => f.filename.replace(/^[0-9a-f]{12}_/, '')).join(', ')}

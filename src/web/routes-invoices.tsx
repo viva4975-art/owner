@@ -38,6 +38,8 @@ import {
   preflight,
   reviseInvoiceAddress,
   sendInvoice,
+  deliveryChannel,
+  recordPortalUpload,
 } from '../services/workflow.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { arr, parseLines, str } from './forms.js';
@@ -679,6 +681,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         select open_cents, skonto_date from app.open_items where invoice_id = ${id}`,
       effectiveBilling(sql, data.invoice.customer_id, data.invoice.site_id, data.invoice.invoice_group_id),
     ]);
+    const channel = await deliveryChannel(sql, id);
     const redirectNote =
       env.APP_ENV !== 'live' || env.MAIL_TEST_RECIPIENT
         ? `TESTBETRIEB: Die Mail geht nur an ${env.MAIL_TEST_RECIPIENT}.`
@@ -706,6 +709,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
           preflight={pre}
           redirectNote={redirectNote}
           billing={billing}
+          portal={channel.channel === 'portal' ? (channel.portal ?? '') : null}
           newId={randomUUID()}
           revisions={await sql`
             select id, revision, reason, created_by, created_at, buyer_snapshot from app.invoice_revisions
@@ -780,6 +784,19 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     const b = await c.req.parseBody();
     await setPlannedIssueDate(sql, id, typeof b.date === 'string' && b.date ? b.date : null, c.get('actor'));
     return back(c, `/rechnungen/${id}`, { ok: 'Rechnungsdatum gespeichert.' });
+  });
+
+  app.post(`/rechnungen/:id{${UUID}}/portal`, async (c) => {
+    const id = c.req.param('id');
+    const body = await c.req.parseBody();
+    const ref =
+      typeof body.reference === 'string' && body.reference.trim()
+        ? body.reference.trim().slice(0, 200)
+        : null;
+    const res = await recordPortalUpload(deps, id, { reference: ref, actor: c.get('actor') });
+    return back(c, `/rechnungen/${id}`, {
+      ok: res.alreadySent ? 'Upload war schon vermerkt.' : 'Als im Portal hochgeladen vermerkt.',
+    });
   });
 
   app.post(`/rechnungen/:id{${UUID}}/versenden`, async (c) => {

@@ -729,6 +729,30 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                   />
                 </div>
                 <div>
+                  <label for="g-channel">Versandweg</label>
+                  <select
+                    id="g-channel"
+                    name="delivery_channel"
+                    onchange="document.getElementById('g-portal-box').hidden=this.value!=='portal'"
+                  >
+                    <option value="email" selected={g?.delivery_channel !== 'portal'}>
+                      E-Mail an die Rechnungs-E-Mails
+                    </option>
+                    <option value="portal" selected={g?.delivery_channel === 'portal'}>
+                      Portal des Kunden (wir laden hoch)
+                    </option>
+                  </select>
+                </div>
+                <div id="g-portal-box" hidden={g?.delivery_channel !== 'portal'}>
+                  <label for="g-portal">Name / Adresse des Portals</label>
+                  <input
+                    id="g-portal"
+                    name="portal_name"
+                    value={g?.portal_name ?? ''}
+                    placeholder="z. B. E-Rechnungsportal des Bundes (ZRE)"
+                  />
+                </div>
+                <div>
                   <label for="g-supplier">Unsere Lieferantennummer</label>
                   <input id="g-supplier" name="bill_supplier_no" value={(g ?? tpl)?.bill_supplier_no ?? ''} />
                 </div>

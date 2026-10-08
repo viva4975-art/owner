@@ -1,4 +1,5 @@
 import { packageInfo, savePackage } from '../services/site-folder.js';
+import { listRanges, raiseRange, rangeLabel } from '../services/number-ranges.js';
 import { z } from 'zod';
 import { BusinessError } from '../services/errors.js';
 import type { Role } from '../services/users.js';
@@ -27,6 +28,11 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
         'Firmendaten & Bankverbindungen',
         '/einstellungen/firma',
         'Anschrift, Steuernummer, USt-ID, Handelsregister, Kontakt und Bankkonten – erscheinen auf Rechnungen, Mahnungen und in der E-Rechnung.',
+      ],
+      [
+        'Nummernkreise',
+        '/einstellungen/nummernkreise',
+        'Nächste Rechnungs-, Angebots- und Mahnungsnummer anzeigen und vor dem Umstieg anheben (nie senken).',
       ],
     ],
   },
@@ -284,6 +290,87 @@ export function registerSettingsRoutes({ app, deps, page, back }: Ctx) {
         </div>
       </>,
     );
+  });
+
+  app.get('/einstellungen/nummernkreise', async (c) => {
+    const rows = await listRanges(sql);
+    return page(
+      c,
+      'Nummernkreise',
+      'einstellungen',
+      <>
+        <PageHead title="Nummernkreise" crumbs={[['Einstellungen', '/einstellungen']]} />
+        <div class="flash warn">
+          <span>
+            Jede Rechnungsnummer darf nur einmal vergeben werden (§ 14 Abs. 4 Nr. 4 UStG). Nummernkreise
+            lassen sich deshalb nur <b>anheben</b>. Vor dem Umstieg: in Fortytools die „nächste Nummer“
+            ablesen, hier eintragen – danach in Fortytools keine Rechnungen oder Angebote mehr schreiben.
+          </span>
+        </div>
+        <div class="card">
+          <div class="tbl">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nummernkreis</th>
+                  <th>Präfix</th>
+                  <th class="r">höchste vergebene</th>
+                  <th class="r">nächste Nummer</th>
+                  <th>anheben auf</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr>
+                    <td>
+                      {rangeLabel(r.key)}
+                      <div class="small faint">{r.key}</div>
+                    </td>
+                    <td>{r.prefix || '–'}</td>
+                    <td class="r">{r.used_max != null ? String(r.used_max) : '–'}</td>
+                    <td class="r">
+                      <b>
+                        {r.prefix}
+                        {String(r.next_value)}
+                      </b>
+                    </td>
+                    <td>
+                      <form
+                        method="post"
+                        action="/einstellungen/nummernkreise"
+                        class="actions"
+                        style="margin:0;flex-wrap:nowrap"
+                        onsubmit="return confirm('Nummernkreis anheben? Das lässt sich nicht rückgängig machen.')"
+                      >
+                        <input type="hidden" name="key" value={r.key} />
+                        <input
+                          name="next"
+                          inputmode="numeric"
+                          pattern="[0-9]+"
+                          style="max-width:140px"
+                          placeholder={String(r.next_value + 1n)}
+                          aria-label="neue nächste Nummer"
+                        />
+                        <button class="btn sec sm">Anheben</button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </>,
+    );
+  });
+
+  app.post('/einstellungen/nummernkreise', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const key = str(b, 'key') ?? '';
+    const next = str(b, 'next') ?? '';
+    if (!/^\d{1,15}$/.test(next)) throw new BusinessError('Bitte eine ganze Zahl eintragen');
+    await raiseRange(sql, key, BigInt(next), c.get('actor'));
+    return back(c, '/einstellungen/nummernkreise', { ok: `Nächste Nummer ist jetzt ${next}.` });
   });
 
   app.get('/einstellungen/firma', async (c) => {

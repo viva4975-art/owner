@@ -12,6 +12,7 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/(anmelden|abmelden|konto|static|health|m)(\/|$)/, ALL],
   [/^\/benutzer(\/|$)/, ['admin']],
   [/^\/einstellungen\/firma(\/|$)/, ['admin']],
+  [/^\/einstellungen\/nummernkreise(\/|$)/, ['admin']],
   [/^\/einstellungen\/?$/, ['admin', 'buchhaltung', 'personal']],
   [/^\/einstellungen\/word-vorlagen(\/|$)/, ['admin', 'buchhaltung', 'personal']],
   [/^\/einstellungen\/objektordner(\/|$)/, ['admin', 'buchhaltung', 'personal']],

@@ -1430,3 +1430,10 @@ Testadresse.
   bisher/neu, auch in der Kundenakte „Schriftverkehr“). **Rechtlich:** Erhöhung nur mit Preisgleitklausel im Vertrag oder
   Zustimmung des Kunden; bei öffentlichen Auftraggebern nach Vertragsbedingungen (steht als Hinweis auf der Seite).
   Tests: `price-adjustment.db.test.ts`, `e2e:leistungen` 16 Prüfungen.
+- 2026-10-08: **Portal-Versand** (Ahmed: nur Patentamt lädt über sein Portal): Rechnungsgruppe → „Versandweg“ E-Mail oder
+  **Portal des Kunden** (+ Name des Portals; nur mit E-Rechnung). Bei Portal kein Mailversand (gesperrt mit Hinweis); an
+  der Rechnung „Im Portal hochgeladen“ (+ Upload-Referenz) → Versandprotokoll Kanal „portal“ mit Zeitpunkt, Benutzer,
+  E-Rechnungsdatei (nur KoSIT-gültig), genau einmal je Fassung; zählt als versendet. Spalten
+  `invoice_groups.delivery_channel/portal_name`, `invoice_deliveries.channel/portal_reference/recorded_by`.
+  **Einstellungen → Nummernkreise** (nur Admin): alle Kreise mit höchster vergebener (inkl. Fortytools-Rechnungen) und
+  nächster Nummer, nur **anheben** (nie senken, nie ≤ vergebene Nummer; Protokoll). Tests: `portal-ranges.db.test.ts`.

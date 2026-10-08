@@ -240,7 +240,7 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
     const warning = [
       get(c, 'warning-info'),
       terms.subcontractor
-        ? 'Fortytools: Zahlungsbedingung „SUBUNTERNEHMER“ – § 13b (Reverse Charge) prüfen, USt-IdNr. eintragen'
+        ? 'Zahlungsbedingung „SUBUNTERNEHMER“ – § 13b (Reverse Charge) prüfen, USt-IdNr. eintragen'
         : '',
     ]
       .filter(Boolean)

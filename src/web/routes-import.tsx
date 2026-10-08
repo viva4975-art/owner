@@ -939,7 +939,7 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
                 ))}
                 {p.z.newSites.length > 0 && (
                   <p class="small">
-                    Neue Objekte „Allgemein (aus Fortytools)“ für Buchungen ohne Objekt:{' '}
+                    Neue Objekte „Allgemein“ für Buchungen ohne Objekt:{' '}
                     {p.z.newSites.map((s) => s.site_no).join(', ')}
                   </p>
                 )}

@@ -159,8 +159,7 @@ export async function importDuplicates(
       if (!real) continue;
       const off = await tx`
         update app.site_services set active = false, valid_to = coalesce(valid_to, greatest(valid_from, current_date - 1)),
-               note = coalesce(note || ' · ', '') || 'abgelöst durch Leistungen aus dem Fortytools-CSV-Export',
-               updated_at = now(), version = version + 1
+                              updated_at = now(), version = version + 1
          where site_id = ${s.id} and id in ${tx(derived)} and active returning id`;
       res.derivedOff += off.length;
     }

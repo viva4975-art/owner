@@ -331,7 +331,13 @@ export interface IncomingInvoice {
     periodStart: string | null;
     periodEnd: string | null;
     paymentReference: string | null;
-    lines: { name: string; quantityMilli: string; unitCode: string | null; netCents: string; vatRateBp: number | null }[];
+    lines: {
+      name: string;
+      quantityMilli: string;
+      unitCode: string | null;
+      netCents: string;
+      vatRateBp: number | null;
+    }[];
     vat: { category: string; rateBp: number; baseCents: string; taxCents: string }[];
     warnings: string[];
   } | null;

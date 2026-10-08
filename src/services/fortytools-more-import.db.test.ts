@@ -112,7 +112,7 @@ describe.skipIf(!available)('Runde 23: Artikel und Zeiten aus Fortytools (Datenb
   });
 
   it('„Allgemein“ im Büro umbenannt → erneuter Import erkennt es (nichts doppelt)', async () => {
-    await sql`update app.sites set name = 'Stadt Test' where name = 'Allgemein (aus Fortytools)'`;
+    await sql`update app.sites set name = 'Stadt Test' where name = 'Allgemein'`;
     const t = detectMore(
       enc(
         'Mitarbeiter;Mitarbeiternummer;Einsatzort;Kundennummer;Arbeitszeit;Dauer Pause;Dauer Gesamt;Menge;Start;Ende;Datum;Details;Einsatzbeschreibung;Lohnart;Lohnfaktor;Summe;Servicebericht\n' +

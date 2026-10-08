@@ -25,7 +25,7 @@ import { EMP_VIEWS, EmployeeCalendarView } from './pages-employee-calendar.js';
 import { calRange } from './pages-site-calendar.js';
 import { listEntries, plannedShifts } from '../services/time.js';
 import { holidayName } from '../domain/time/holidays.js';
-import { uploadConfig } from './routes-files.js';
+import { uploadConfig, zipHref } from './routes-files.js';
 
 /** Personal wie Fortytools: Dokumente je Mitarbeiter, Vorlagen/Serienbrief, Lohnstufen, Einsatzkalender. */
 export function registerHrRoutes(ctx: Ctx) {
@@ -73,155 +73,179 @@ export function registerHrRoutes(ctx: Ctx) {
         (name === 'Arbeitskleidung' && hoCount('kleidung') > 0) ||
         (name === 'Schlüssel' && hoCount('schluessel') > 0);
       return (
-        <div class="cols">
-          <div>
-            <div class="card">
-              <h3 style="margin-top:0">Personalakte – Checkliste</h3>
-              <div class="doc-check">
-                {DOC_CHECKLIST.map((d) => (
-                  <a
-                    href={`/personal/${e.id}/dokumente?kategorie=${encodeURIComponent(d.name)}#hochladen`}
-                    class={`dc ${has(d.name) ? 'ok' : d.required ? 'missing' : 'open'}`}
-                  >
-                    <span class="dc-i">{has(d.name) ? '✓' : d.required ? '!' : '–'}</span>
-                    <span>
-                      <b>{d.name}</b>{' '}
-                      {d.required ? (
-                        <span class="badge err">Pflicht</span>
-                      ) : (
-                        <span class="badge">optional</span>
-                      )}
-                      <div class="small mut">{has(d.name) ? 'vorhanden' : d.hint}</div>
-                    </span>
-                  </a>
-                ))}
+        <>
+          <div class="actions" style="margin-top:0">
+            {files.length > 0 && (
+              <a class="btn sm sec" href={zipHref('employee', e.id, `Personalakte_${e.personnel_no}`)}>
+                Alle als ZIP herunterladen
+              </a>
+            )}
+            <a class="btn sm sec" href={`/brief?an=mitarbeiter&id=${e.id}`}>
+              Freien Brief schreiben
+            </a>
+          </div>
+          <div class="cols">
+            <div>
+              <div class="card">
+                <h3 style="margin-top:0">Personalakte – Checkliste</h3>
+                <div class="doc-check">
+                  {DOC_CHECKLIST.map((d) => (
+                    <a
+                      href={`/personal/${e.id}/dokumente?kategorie=${encodeURIComponent(d.name)}#hochladen`}
+                      class={`dc ${has(d.name) ? 'ok' : d.required ? 'missing' : 'open'}`}
+                    >
+                      <span class="dc-i">{has(d.name) ? '✓' : d.required ? '!' : '–'}</span>
+                      <span>
+                        <b>{d.name}</b>{' '}
+                        {d.required ? (
+                          <span class="badge err">Pflicht</span>
+                        ) : (
+                          <span class="badge">optional</span>
+                        )}
+                        <div class="small mut">{has(d.name) ? 'vorhanden' : d.hint}</div>
+                      </span>
+                    </a>
+                  ))}
+                </div>
               </div>
-            </div>
-            <div class="card">
-              <h3>Dokumente ({current.length})</h3>
-              <p class="small mut" style="margin-top:-4px">
-                Vorne stehen die aktuellen Unterlagen. Ändert sich etwas (z. B. neuer Vertrag, neuer
-                Aufenthaltstitel): neue Fassung hochladen und die alte „ins Archiv“ legen – sie bleibt
-                unverändert abrufbar.
-              </p>
-              {groups.length === 0 && <div class="empty">Noch keine Dokumente.</div>}
-              {groups.map(({ k, now, old }) => (
-                <>
-                  <h4 style="margin:14px 0 4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                    {k}
-                    {now.length > 1 && (
-                      <form
-                        method="post"
-                        action={`/personal/${e.id}/dokumente/archiv`}
-                        style="display:inline"
-                      >
-                        <input type="hidden" name="kategorie" value={k} />
-                        <input type="hidden" name="aktion" value="aeltere" />
-                        <button
-                          class="btn sm sec"
-                          onclick={`return confirm(${JSON.stringify(`Alle bis auf die neueste Datei in „${k}“ ins Archiv legen?`)})`}
+              <div class="card">
+                <h3>Dokumente ({current.length})</h3>
+                <p class="small mut" style="margin-top:-4px">
+                  Vorne stehen die aktuellen Unterlagen. Ändert sich etwas (z. B. neuer Vertrag, neuer
+                  Aufenthaltstitel): neue Fassung hochladen und die alte „ins Archiv“ legen – sie bleibt
+                  unverändert abrufbar.
+                </p>
+                {groups.length === 0 && <div class="empty">Noch keine Dokumente.</div>}
+                {groups.map(({ k, now, old }) => (
+                  <>
+                    <h4 style="margin:14px 0 4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                      {k}
+                      {now.length > 1 && (
+                        <form
+                          method="post"
+                          action={`/personal/${e.id}/dokumente/archiv`}
+                          style="display:inline"
                         >
-                          ältere ins Archiv ({now.length - 1})
-                        </button>
-                      </form>
-                    )}
-                  </h4>
-                  {now.length > 0 ? (
-                    <FileArea
-                      link={{ type: 'employee', id: e.id }}
-                      files={now}
-                      maxBytes={0}
-                      listOnly
-                      action={(f) => archForm(f.id, 'archivieren', 'ins Archiv')}
-                    />
-                  ) : (
-                    <div class="small mut">Keine aktuelle Fassung – nur Archiv.</div>
-                  )}
-                  {old.length > 0 && (
-                    <details class="doc-archive">
-                      <summary class="small">Archiv ({old.length})</summary>
+                          <input type="hidden" name="kategorie" value={k} />
+                          <input type="hidden" name="aktion" value="aeltere" />
+                          <button
+                            class="btn sm sec"
+                            onclick={`return confirm(${JSON.stringify(`Alle bis auf die neueste Datei in „${k}“ ins Archiv legen?`)})`}
+                          >
+                            ältere ins Archiv ({now.length - 1})
+                          </button>
+                        </form>
+                      )}
+                    </h4>
+                    {now.length > 0 ? (
                       <FileArea
                         link={{ type: 'employee', id: e.id }}
-                        files={old}
+                        files={now}
                         maxBytes={0}
                         listOnly
-                        action={(f) => (
-                          <>
-                            <span class="small mut" style="white-space:nowrap">
-                              archiviert{' '}
-                              {(f as (typeof old)[number]).archived_at!.toLocaleDateString('de-DE', {
-                                timeZone: 'Europe/Berlin',
-                              })}
-                            </span>
-                            {archForm(f.id, 'zurueck', 'zurückholen')}
-                          </>
-                        )}
+                        action={(f) => archForm(f.id, 'archivieren', 'ins Archiv')}
                       />
-                    </details>
-                  )}
-                </>
-              ))}
+                    ) : (
+                      <div class="small mut">Keine aktuelle Fassung – nur Archiv.</div>
+                    )}
+                    {old.length > 0 && (
+                      <details class="doc-archive">
+                        <summary class="small">Archiv ({old.length})</summary>
+                        <FileArea
+                          link={{ type: 'employee', id: e.id }}
+                          files={old}
+                          maxBytes={0}
+                          listOnly
+                          action={(f) => (
+                            <>
+                              <span class="small mut" style="white-space:nowrap">
+                                archiviert{' '}
+                                {(f as (typeof old)[number]).archived_at!.toLocaleDateString('de-DE', {
+                                  timeZone: 'Europe/Berlin',
+                                })}
+                              </span>
+                              {archForm(f.id, 'zurueck', 'zurückholen')}
+                            </>
+                          )}
+                        />
+                      </details>
+                    )}
+                  </>
+                ))}
+              </div>
+              <div class="card" id="hochladen">
+                <form
+                  method="get"
+                  action={`/personal/${e.id}/dokumente`}
+                  class="actions"
+                  style="margin-top:0"
+                >
+                  <label for="kategorie" class="small" style="margin:0">
+                    Hochladen als
+                  </label>
+                  <select
+                    id="kategorie"
+                    name="kategorie"
+                    onchange="this.form.submit()"
+                    style="max-width:240px"
+                  >
+                    {DOC_CATEGORIES.map((k) => (
+                      <option value={k} selected={k === category}>
+                        {k}
+                      </option>
+                    ))}
+                  </select>
+                </form>
+                <FileArea
+                  link={{ type: 'employee', id: e.id }}
+                  files={[]}
+                  category={category}
+                  title={`${category} hierher ziehen`}
+                  maxBytes={env.UPLOAD_MAX_BYTES}
+                />
+              </div>
             </div>
-            <div class="card" id="hochladen">
-              <form method="get" action={`/personal/${e.id}/dokumente`} class="actions" style="margin-top:0">
-                <label for="kategorie" class="small" style="margin:0">
-                  Hochladen als
-                </label>
-                <select id="kategorie" name="kategorie" onchange="this.form.submit()" style="max-width:240px">
-                  {DOC_CATEGORIES.map((k) => (
-                    <option value={k} selected={k === category}>
-                      {k}
+            <div>
+              <form method="post" action={`/personal/${e.id}/dokumente/vorlage`} class="card">
+                <h3>Neu aus Vorlage</h3>
+                <input type="hidden" name="file_id" value={randomUUID()} />
+                <select name="vorlage" required aria-label="Vorlage">
+                  {templates.map((t) => (
+                    <option value={t.id}>
+                      {t.title} ({t.category})
                     </option>
                   ))}
                 </select>
-              </form>
-              <FileArea
-                link={{ type: 'employee', id: e.id }}
-                files={[]}
-                category={category}
-                title={`${category} hierher ziehen`}
-                maxBytes={env.UPLOAD_MAX_BYTES}
-              />
-            </div>
-          </div>
-          <div>
-            <form method="post" action={`/personal/${e.id}/dokumente/vorlage`} class="card">
-              <h3>Neu aus Vorlage</h3>
-              <input type="hidden" name="file_id" value={randomUUID()} />
-              <select name="vorlage" required aria-label="Vorlage">
-                {templates.map((t) => (
-                  <option value={t.id}>
-                    {t.title} ({t.category})
-                  </option>
-                ))}
-              </select>
-              <div class="actions" style="margin-bottom:0">
-                <button class="btn sm" disabled={!templates.length}>
-                  Erstellen und ablegen
-                </button>
-                <a class="small" href="/personal/vorlagen">
-                  Vorlagen bearbeiten
-                </a>
-              </div>
-            </form>
-            <WordTemplateBox templates={wordTemplates} target={{ type: 'employee', id: e.id }} />
-            <div class="card">
-              <h3>Zur Unterschrift (App)</h3>
-              {signs.length === 0 && <div class="small mut">Keine Dokumente zur digitalen Unterschrift.</div>}
-              {signs.map((r) => (
-                <div class="small" style="padding:3px 0">
-                  <a href={`/personal/dokumente/${r.document_id}`}>{r.title}</a> –{' '}
-                  {r.status === 'unterschrieben'
-                    ? `unterschrieben ${r.signed_at!.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}`
-                    : 'offen'}
+                <div class="actions" style="margin-bottom:0">
+                  <button class="btn sm" disabled={!templates.length}>
+                    Erstellen und ablegen
+                  </button>
+                  <a class="small" href="/personal/vorlagen">
+                    Vorlagen bearbeiten
+                  </a>
                 </div>
-              ))}
-              <div class="small" style="margin-top:6px">
-                <a href="/personal/dokumente">Dokument zur Unterschrift verteilen →</a>
+              </form>
+              <WordTemplateBox templates={wordTemplates} target={{ type: 'employee', id: e.id }} />
+              <div class="card">
+                <h3>Zur Unterschrift (App)</h3>
+                {signs.length === 0 && (
+                  <div class="small mut">Keine Dokumente zur digitalen Unterschrift.</div>
+                )}
+                {signs.map((r) => (
+                  <div class="small" style="padding:3px 0">
+                    <a href={`/personal/dokumente/${r.document_id}`}>{r.title}</a> –{' '}
+                    {r.status === 'unterschrieben'
+                      ? `unterschrieben ${r.signed_at!.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}`
+                      : 'offen'}
+                  </div>
+                ))}
+                <div class="small" style="margin-top:6px">
+                  <a href="/personal/dokumente">Dokument zur Unterschrift verteilen →</a>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </>
       );
     }),
   );

@@ -588,6 +588,7 @@ export const DOC_CATEGORIES = [
   'Abmahnung',
   'Beendigung',
   'Lohnabrechnung',
+  'Entwurf (aus Vorlage)',
   'Sonstiges',
 ];
 
@@ -597,7 +598,14 @@ export const DOC_CHECKLIST: { name: string; required: boolean; hint: string }[] 
   { name: 'Unterweisung', required: true, hint: 'Arbeitsschutz/Gefahrstoffe (§ 12 ArbSchG), jährlich' },
   { name: 'Arbeitskleidung', required: true, hint: 'Ausgabeprotokoll (auch über „Übergaben“)' },
   { name: 'Schlüssel', required: true, hint: 'Schlüsselquittung (auch über „Übergaben“)' },
+  {
+    name: 'Personalunterlagen',
+    required: true,
+    hint: 'Personalbogen, Ausweis, SV-Ausweis, Steuer-ID-Nachweis',
+  },
 ];
+/** Aus Word-Vorlagen erzeugte Dokumente sind Entwürfe – zählen erst als Scan der unterschriebenen Fassung. */
+export const DRAFT_CATEGORY = 'Entwurf (aus Vorlage)';
 
 export interface DocumentTemplate {
   id: string;

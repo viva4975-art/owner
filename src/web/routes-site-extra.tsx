@@ -15,6 +15,7 @@ import {
   saveFolderInfo,
 } from '../services/site-folder.js';
 import { FileArea } from './files.js';
+import { zipHref } from './routes-files.js';
 import { Icon } from './icons.js';
 import { dateDe } from './layout.js';
 import { OfferTable } from './pages-offers.js';
@@ -180,6 +181,16 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
       const other = files.filter((f) => !f.category || !known.has(f.category));
       return (
         <>
+          <div class="actions" style="margin-top:0">
+            {files.length > 0 && (
+              <a class="btn sm sec" href={zipHref('site', s.id, `Objekt_${s.site_no}`)}>
+                Alle als ZIP herunterladen
+              </a>
+            )}
+            <a class="btn sm sec" href={`/brief?an=objekt&id=${s.id}`}>
+              Freien Brief schreiben
+            </a>
+          </div>
           {missing.length > 0 ? (
             <div class="flash warn">
               Pflichtdokumente fehlen: <b>{missing.map((m) => m.name).join(', ')}</b>

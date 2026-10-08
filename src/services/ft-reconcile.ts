@@ -148,7 +148,6 @@ export async function applyReconcile(sql: Sql, siteIds: string[], actor: string)
       const m = r.ft_month!;
       const off = await tx`
         update app.site_services set active = false, valid_to = greatest(valid_from, ${lastDayOf(m)}::date),
-               note = coalesce(note || ' · ', '') || ${`ersetzt durch Abgleich mit Fortytools-Rechnung ${m}`},
                updated_at = now(), version = version + 1
          where site_id = ${r.site_id} and active and billing_cycle = 'monatlich' returning id`;
       ended += off.length;

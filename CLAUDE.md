@@ -1507,3 +1507,29 @@ Testadresse.
   - **Fund Lohnabrechnungen:** Die aufgeteilten PDFs bekamen einen Zeitstempel – dieselbe Sammel-PDF eine Sekunde später
     erneut hochgeladen hätte jede Abrechnung doppelt abgelegt. Jetzt ID aus Quelldatei + Seiten, feste Zeitstempel.
   - Tests: 411 Unit-/DB-Tests (neu `runde25.db.test.ts`), `e2e:kasse` 68, `e2e:zeit` 26, `e2e:rechte` 30 Prüfungen.
+- 2026-10-08: Runde 26, Paket A (Ahmed, 33 Punkte; Pakete B–E folgen):
+  - **„Fortytools“ ausgeblendet** (Kunde, Objekt, Rechnungen, Stundenliste, Offene Posten): Schild/Zusätze „(Fortytools)“
+    entfernt, Migration `20261113000001` bereinigt Importtexte (Objekt „Allgemein (aus Fortytools)“ → „Allgemein“,
+    Warnhinweis „Fortytools: Zahlungsbedingung …“, Notiz „Import aus Fortytools“, Leistungs-Notizen „Fortytools-Auftrag
+    …“/„abgelöst durch …“, Zeiten-Notiz „aus Fortytools · …“, Einsatz-Notiz). Importe schreiben diese Texte nicht mehr;
+    das „Allgemein“-Objekt wird über die feste ID bzw. beide Namen wiedererkannt. Import-Seiten selbst heißen weiter so.
+  - **Leistungen am Objekt übersichtlicher:** Zeilen statt breiter Tabelle (Titel + Leistungsart, Zyklus/Zeitraum,
+    Menge × Preis, Gesamt), Gruppen „Regelmäßige Leistungen“ / „Je Ausführung / einmalig“ / „Beendete“ (eingeklappt),
+    Summe „regelmäßig je Monat“. Link „Leistungsarten“ entfernt (nur noch Einstellungen).
+  - **Weniger Rot:** Hintergrund neutral grau, Tabellenköpfe/Formularfuß/Hinweisflächen grau statt rosa; Bordeaux nur
+    Seitenleiste, Knöpfe, aktive Reiter. App (/m, /qm) unverändert.
+  - **Rechnung ohne Rechnungs-E-Mail:** Kein „Per E-Mail versenden“ (Server lehnt auch ab), stattdessen „Als versendet
+    markieren“ (Post / persönlich übergeben / Fax / sonstiges + Bemerkung) → Versandprotokoll Kanal „manuell“, genau
+    einmal je Fassung (Migration `20261113000002`).
+  - **Dokumente:** „Alle als ZIP herunterladen“ bei Kunde, Objekt, Mitarbeiter (Ordner je Kategorie, Archiv-Unterordner,
+    gleiche Rechte wie Einzeldateien, max. 800 MB). Kunden-Dokumente unterteilt (Vertrag, Leistungsverzeichnis, Angebot &
+    Ausschreibung, Schriftverkehr, Protokolle & Abnahmen, Rechnungen & Belege, Sonstiges; alte Ablage unter „Weitere“).
+  - **Freier Brief** oben auf den Dokumenten-Reitern von Kunde, Objekt (an die Rechnungsanschrift des Objekts, abgelegt
+    beim Objekt, Objektleitung nur eigene Objekte) und Mitarbeiter; Briefpapier wie Rechnungen. **Briefpapier ab
+    01.11.2026 (neue Adresse) fehlt noch.**
+  - **Word-Vorlage ≠ unterschrieben:** Beim Mitarbeiter erzeugte Word-Dokumente landen in „Entwurf (aus Vorlage)“ und
+    haken die Pflichtunterlage nicht mehr ab (Bestand per Migration `20261113000003` umgehängt).
+  - **Fehlende Unterlagen:** zusätzlich Pflicht „Personalunterlagen“ und fehlende Stammdaten (Steuer-ID, SV-Nummer, IBAN,
+    Krankenkasse, Geburtsdatum, Anschrift).
+  - Ahmed 08.10.: **D-U-N-S 343512805.** Qwist-Zugangsdaten wurden im Chat geschickt → **nicht verwendet, bitte bei Qwist
+    neu erzeugen** und nur auf dem Server in `.env.live` eintragen (`QWIST_CLIENT_ID`, `QWIST_CLIENT_SECRET`).

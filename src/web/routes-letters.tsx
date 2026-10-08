@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { BusinessError } from '../services/errors.js';
 import { type LetterTarget, letterRecipient, writeLetter } from '../services/letters.js';
-import type { Ctx } from './app.js';
+import { type Ctx, assertSite } from './app.js';
 import { str } from './forms.js';
 import { PageHead } from './layout.js';
 import { canAccess } from './permissions.js';
@@ -10,11 +10,13 @@ import { uploadConfig } from './routes-files.js';
 
 const BACK: Record<LetterTarget, (id: string) => string> = {
   kunde: (id) => `/kunden/${id}/dokumente`,
+  objekt: (id) => `/objekte/${id}/dokumente`,
   lieferant: (id) => `/lieferanten/${id}/dokumente`,
   mitarbeiter: (id) => `/personal/${id}/dokumente`,
 };
 const GATE: Record<LetterTarget, string> = {
   kunde: '/kunden',
+  objekt: '/objekte',
   lieferant: '/lieferanten',
   mitarbeiter: '/personal/x',
 };
@@ -24,7 +26,7 @@ export function registerLetterRoutes(ctx: Ctx) {
   const { app, deps, page } = ctx;
   const { sql } = deps;
   const target = (v: string | undefined | null): LetterTarget => {
-    if (v === 'kunde' || v === 'lieferant' || v === 'mitarbeiter') return v;
+    if (v === 'kunde' || v === 'objekt' || v === 'lieferant' || v === 'mitarbeiter') return v;
     throw new BusinessError('Empfänger ungültig');
   };
 
@@ -32,6 +34,7 @@ export function registerLetterRoutes(ctx: Ctx) {
     const t = target(c.req.query('an'));
     const id = c.req.query('id') ?? '';
     if (!canAccess(c.get('user').role, GATE[t])) throw new BusinessError('Keine Berechtigung');
+    if (t === 'objekt') assertSite(c, id);
     const r = await letterRecipient(sql, t, id);
     const b = r.buyer;
     return page(
@@ -94,6 +97,7 @@ export function registerLetterRoutes(ctx: Ctx) {
     const b = await c.req.parseBody({ all: true });
     const t = target(str(b, 'an'));
     if (!canAccess(c.get('user').role, GATE[t])) throw new BusinessError('Keine Berechtigung');
+    if (t === 'objekt') assertSite(c, str(b, 'id') ?? '');
     const formId = str(b, 'form') ?? randomUUID();
     const { pdf } = await writeLetter(sql, uploadConfig(ctx), {
       formId,

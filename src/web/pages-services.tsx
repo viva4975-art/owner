@@ -4,7 +4,7 @@ import { UNIT_LABELS } from '../domain/invoice/types.js';
 import type { InvoiceGroupRow } from '../services/invoice-groups.js';
 import type { ServiceType, SiteService, SiteServiceRow } from '../services/masterdata.js';
 import { centsToInput, milliToInput } from './forms.js';
-import { SERVICE_KIND_LABEL, dateDe, euro } from './layout.js';
+import { dateDe, euro } from './layout.js';
 
 /*
  * Leistungen am Objekt wie die Fortytools-„Aufträge“: Liste aktiver Leistungen, Bearbeiten je Leistung
@@ -13,6 +13,62 @@ import { SERVICE_KIND_LABEL, dateDe, euro } from './layout.js';
 
 const target = (sv: SiteServiceRow) =>
   sv.separate_invoice ? 'eigene Rechnung' : sv.group_name ? `Gruppe: ${sv.group_name}` : 'wie Objekt';
+
+const lineTotal = (sv: SiteServiceRow) => (sv.quantity_milli * sv.unit_price_cents + 500n) / 1000n;
+
+/** Leistungen als ruhige Zeilen (Ahmed 08.10.: „übersichtlicher“): Titel + Art, Zeitraum/Zyklus, Menge × Preis, Gesamt. */
+const ServiceGroup: FC<{ title: string; rows: SiteServiceRow[]; siteId: string }> = ({
+  title,
+  rows,
+  siteId,
+}) =>
+  rows.length === 0 ? null : (
+    <div class="svc-group">
+      {title && (
+        <div class="svc-head">
+          {title} <span class="mut">({rows.length})</span>
+        </div>
+      )}
+      {rows.map((sv) => {
+        const lines = (sv.note ?? '').split('\n').filter((x) => x.trim());
+        return (
+          <a class="svc-row" href={`/objekte/${siteId}/leistungen/${sv.id}`}>
+            <div class="svc-main">
+              <b>{sv.description}</b>
+              <div class="small mut">
+                {[
+                  sv.type_name,
+                  sv.always_unfinished ? 'immer unfertig' : null,
+                  target(sv) === 'wie Objekt' ? null : target(sv),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </div>
+              {lines.length > 0 && (
+                <div class="svc-note small" title={sv.note ?? ''}>
+                  {lines.slice(0, 2).join(' · ')}
+                  {lines.length > 2 && <span class="mut"> … (+{lines.length - 2} Zeilen)</span>}
+                </div>
+              )}
+            </div>
+            <div class="svc-when small">
+              <div>{CYCLE_LABEL[sv.billing_cycle]}</div>
+              <div class="mut">
+                ab {dateDe(sv.valid_from)}
+                {sv.valid_to ? ` bis ${dateDe(sv.valid_to)}` : ''}
+              </div>
+              {sv.last_billed_month && <div class="mut">zuletzt {monthLabelDe(sv.last_billed_month)}</div>}
+            </div>
+            <div class="svc-qty small">
+              {milliToInput(sv.quantity_milli)} {UNIT_LABELS[sv.unit_code] ?? sv.unit_code} ×{' '}
+              {euro(sv.unit_price_cents)}
+            </div>
+            <div class="svc-total">{euro(lineTotal(sv))}</div>
+          </a>
+        );
+      })}
+    </div>
+  );
 
 export const ServicesPanel: FC<{
   siteId: string;
@@ -32,80 +88,34 @@ export const ServicesPanel: FC<{
   const inactive = services.filter((s) => !s.active);
   const open = preview.filter((p) => !p.billedInvoice);
   const hours = active.reduce((a, s) => a + (s.hours_target_milli ?? 0n), 0n);
+  const isRun = (s: SiteServiceRow) => s.billing_cycle === 'je_ausfuehrung' || s.billing_cycle === 'einmalig';
+  const regular = active.filter((s) => !isRun(s));
+  const perRun = active.filter(isRun);
+  const monthly = regular
+    .filter((s) => s.billing_cycle === 'monatlich')
+    .reduce((a, s) => a + lineTotal(s), 0n);
   return (
     <>
       <div class="actions" style="margin-top:0">
         <a class="btn sm" href={`/objekte/${siteId}/leistungen/${newServiceId}`}>
           + Leistung anlegen
         </a>
-        <a class="btn sm ghost" href="/einstellungen/leistungsarten">
-          Leistungsarten
-        </a>
         {siteGroup && <span class="small mut">Rechnungsgruppe des Objekts: {siteGroup}</span>}
+        {monthly > 0n && (
+          <span class="svc-sum">
+            regelmäßig je Monat: <b>{euro(monthly)}</b> netto
+          </span>
+        )}
       </div>
-      <div class="tbl">
-        <table>
-          <thead>
-            <tr>
-              <th>Leistung</th>
-              <th>Beginn – Ende</th>
-              <th>Zyklus</th>
-              <th class="r">Menge</th>
-              <th>Einheit</th>
-              <th class="r">Preis</th>
-              <th class="r">Gesamt</th>
-              <th>Rechnung</th>
-              <th>zuletzt</th>
-            </tr>
-          </thead>
-          <tbody>
-            {active.length === 0 && (
-              <tr>
-                <td colspan={9} class="mut">
-                  Noch keine aktiven Leistungen.
-                </td>
-              </tr>
-            )}
-            {[...active, ...inactive].map((sv) => (
-              <tr style={sv.active ? '' : 'opacity:.5'}>
-                <td>
-                  <a href={`/objekte/${siteId}/leistungen/${sv.id}`}>
-                    <b>{sv.description}</b>
-                  </a>
-                  <div class="small mut">
-                    {[
-                      sv.type_name,
-                      SERVICE_KIND_LABEL[sv.kind],
-                      sv.always_unfinished ? 'immer unfertig' : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </div>
-                  {sv.note && (
-                    <div class="small" style="white-space:pre-line">
-                      {sv.note}
-                    </div>
-                  )}
-                </td>
-                <td class="small">
-                  {dateDe(sv.valid_from)}
-                  <br />
-                  {sv.valid_to ? dateDe(sv.valid_to) : 'unbefristet'}
-                </td>
-                <td class="small">{CYCLE_LABEL[sv.billing_cycle]}</td>
-                <td class="r">{milliToInput(sv.quantity_milli)}</td>
-                <td>{UNIT_LABELS[sv.unit_code] ?? sv.unit_code}</td>
-                <td class="r">{euro(sv.unit_price_cents)}</td>
-                <td class="r">
-                  <b>{euro((sv.quantity_milli * sv.unit_price_cents + 500n) / 1000n)}</b>
-                </td>
-                <td class="small">{target(sv)}</td>
-                <td class="small">{sv.last_billed_month ? monthLabelDe(sv.last_billed_month) : '–'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {active.length === 0 && <div class="empty">Noch keine aktiven Leistungen.</div>}
+      <ServiceGroup title="Regelmäßige Leistungen" rows={regular} siteId={siteId} />
+      <ServiceGroup title="Je Ausführung / einmalig" rows={perRun} siteId={siteId} />
+      {inactive.length > 0 && (
+        <details class="svc-old">
+          <summary>Beendete Leistungen ({inactive.length})</summary>
+          <ServiceGroup title="" rows={inactive} siteId={siteId} />
+        </details>
+      )}
       {hours > 0n && (
         <p class="small mut">Stundenvorgabe laut Leistungen: {milliToInput(hours)} Std. je Monat</p>
       )}

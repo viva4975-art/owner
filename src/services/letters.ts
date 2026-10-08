@@ -14,8 +14,8 @@ import { storeFile, type UploadConfig } from './uploads.js';
  * (§ 623 BGB, Schriftform) – elektronisch versenden reicht nicht.
  */
 
-export type LetterTarget = 'kunde' | 'lieferant' | 'mitarbeiter';
-const LINK = { kunde: 'customer', lieferant: 'supplier', mitarbeiter: 'employee' } as const;
+export type LetterTarget = 'kunde' | 'objekt' | 'lieferant' | 'mitarbeiter';
+const LINK = { kunde: 'customer', objekt: 'site', lieferant: 'supplier', mitarbeiter: 'employee' } as const;
 
 export async function letterRecipient(
   sql: Sql,
@@ -25,6 +25,14 @@ export async function letterRecipient(
   if (target === 'kunde') {
     const buyer = await buildBuyerSnapshot(sql, id, null);
     return { buyer, label: buyer.name, ref: ['Kundennr.', buyer.customerNo] };
+  }
+  if (target === 'objekt') {
+    // Brief zum Objekt geht an den Kunden (Rechnungsanschrift des Objekts), abgelegt beim Objekt
+    const [s] = await sql<{ customer_id: string; site_no: string; name: string }[]>`
+      select customer_id, site_no, name from app.sites where id = ${id}`;
+    if (!s) throw new BusinessError('Objekt nicht gefunden');
+    const buyer = await buildBuyerSnapshot(sql, s.customer_id, id);
+    return { buyer, label: `${buyer.name} (Objekt ${s.name})`, ref: ['Objekt', `${s.name} (${s.site_no})`] };
   }
   const base = {
     countryCode: 'DE',

@@ -343,7 +343,7 @@ function build(kind: ImportKind, d: Record<string, string>, parentId: string) {
       contact_name: d.contact_name ?? '',
       contact_email: '',
       contact_phone: d.contact_phone ?? '',
-      notes: 'Import aus Fortytools',
+      notes: null,
       status: 'kunde',
       dunning_block: '',
     });

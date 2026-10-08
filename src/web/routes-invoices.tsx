@@ -43,6 +43,7 @@ import {
   sendInvoice,
   deliveryChannel,
   recordPortalUpload,
+  recordManualDelivery,
 } from '../services/workflow.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { arr, parseLines, str } from './forms.js';
@@ -298,11 +299,6 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                               : r.delivery === 'failed'
                                 ? '✉ Fehler'
                                 : '✉ nicht versendet'}
-                          </div>
-                        )}
-                        {r.legacy && (
-                          <div class="faint" style="margin-top:2px">
-                            Fortytools
                           </div>
                         )}
                       </td>
@@ -799,6 +795,19 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     const res = await recordPortalUpload(deps, id, { reference: ref, actor: c.get('actor') });
     return back(c, `/rechnungen/${id}`, {
       ok: res.alreadySent ? 'Upload war schon vermerkt.' : 'Als im Portal hochgeladen vermerkt.',
+    });
+  });
+
+  app.post(`/rechnungen/:id{${UUID}}/versandt`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    const r = await recordManualDelivery(deps, id, {
+      way: String(b.way ?? ''),
+      note: typeof b.note === 'string' ? b.note : null,
+      actor: c.get('actor'),
+    });
+    return back(c, `/rechnungen/${id}`, {
+      ok: r.alreadySent ? 'War schon als versendet vermerkt.' : 'Als versendet vermerkt.',
     });
   });
 

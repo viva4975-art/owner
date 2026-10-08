@@ -11,7 +11,7 @@ export const SEARCH_TYPES = [
   'Mitarbeiter',
   'Kontakt',
   'Rechnung',
-  'Rechnung (Fortytools)',
+  'Rechnung (früher)',
   'Aktive Leistung',
   'Angebot',
   'Auftrag',

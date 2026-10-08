@@ -287,7 +287,8 @@ export async function planTimes(sql: Sql, t: MoreTable, opts: { exclude: string[
     // feste ID zuerst: das Objekt darf im Büro umbenannt werden (z. B. in den Kundennamen)
     const genId = uuidOf(`ft-site:ft:o:${custNo}|allgemein`);
     const gen =
-      own.find((x) => x.id === genId) ?? own.find((x) => norm(x.name) === norm('Allgemein (aus Fortytools)'));
+      own.find((x) => x.id === genId) ??
+      own.find((x) => ['allgemein', norm('Allgemein (aus Fortytools)')].includes(norm(x.name)));
     if (gen) return gen;
     let ns = newSites.get(custNo);
     if (!ns) {
@@ -299,7 +300,7 @@ export async function planTimes(sql: Sql, t: MoreTable, opts: { exclude: string[
         id: uuidOf(`ft-site:ft:o:${custNo}|allgemein`),
         customer_id: k.id,
         site_no: no,
-        name: 'Allgemein (aus Fortytools)',
+        name: 'Allgemein',
         street: k.street,
         postal_code: k.postal_code,
         city: k.city,
@@ -340,8 +341,7 @@ export async function planTimes(sql: Sql, t: MoreTable, opts: { exclude: string[
     if (!site && /viva-deluxe/i.test(place) && internal) site = internal;
     if (!site && custBy.has(custNo)) {
       site = generalSite(custNo);
-      if (site)
-        issues.push({ ref, level: 'hinweis', text: `ohne Objekt → Objekt „Allgemein (aus Fortytools)“` });
+      if (site) issues.push({ ref, level: 'hinweis', text: `ohne Objekt → Objekt „Allgemein“ des Kunden` });
     }
     if (!site) {
       issues.push({ ref, level: 'fehler', text: `Objekt „${place}“ (Kunde ${custNo}) nicht gefunden` });
@@ -380,7 +380,7 @@ export async function planTimes(sql: Sql, t: MoreTable, opts: { exclude: string[
       end: r.Ende!,
       end_next_day: next,
       break_minutes: Math.min(240, Math.max(0, pause)),
-      note: ['aus Fortytools', desc, link].filter(Boolean).join(' · ').slice(0, 900),
+      note: [desc, link].filter(Boolean).join(' · ').slice(0, 900),
       exists: existingIds.has(id),
     });
   }
@@ -499,7 +499,7 @@ export async function applyTimes(
         update app.shift_plans
            set valid_from = ${s.valid_from},
                created_at = least(created_at, (${s.valid_from}::date)::timestamp at time zone 'Europe/Berlin')
-         where id = ${s.id} and note = 'aus Fortytools-Zeiten abgeleitet' and valid_from > ${s.valid_from}`;
+         where id = ${s.id} and note in ('aus Fortytools-Zeiten abgeleitet', 'aus erfassten Zeiten abgeleitet') and valid_from > ${s.valid_from}`;
       shiftsUpdated += fixed.count;
       // Zuordnung Mitarbeiter ↔ Objekt (Liste „Mitarbeitende“, Stempeln nur an zugeordneten Objekten)
       await sql`insert into app.employee_sites (employee_id, site_id)
@@ -509,7 +509,7 @@ export async function applyTimes(
         insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes,
                                      valid_from, note, series_id, created_at)
         values (${s.id}, ${s.employee_id}, ${s.site_id}, ${s.weekday}, ${s.start}, ${s.end}, ${s.break_minutes},
-                ${s.valid_from}, 'aus Fortytools-Zeiten abgeleitet', ${s.id},
+                ${s.valid_from}, 'aus erfassten Zeiten abgeleitet', ${s.id},
                 (${s.valid_from}::date)::timestamp at time zone 'Europe/Berlin')
         on conflict (id) do nothing`;
       shiftsCreated += r.count;
@@ -527,7 +527,7 @@ export async function ensureGeneralSite(sql: Sql, customerNo: string, actor: str
   const [gen] = await sql<{ id: string }[]>`
     select id from app.sites
      where customer_id = ${k.id}
-       and (id = ${uuidOf(`ft-site:ft:o:${customerNo}|allgemein`)} or name = 'Allgemein (aus Fortytools)')
+       and (id = ${uuidOf(`ft-site:ft:o:${customerNo}|allgemein`)} or name in ('Allgemein', 'Allgemein (aus Fortytools)'))
      order by (id = ${uuidOf(`ft-site:ft:o:${customerNo}|allgemein`)}) desc limit 1`;
   if (gen) return gen.id;
   const nos = new Set(
@@ -544,7 +544,7 @@ export async function ensureGeneralSite(sql: Sql, customerNo: string, actor: str
     {
       customer_id: k.id,
       site_no: `${customerNo}${String(n).padStart(2, '0')}`,
-      name: 'Allgemein (aus Fortytools)',
+      name: 'Allgemein',
       street: k.street,
       postal_code: k.postal_code,
       city: k.city,

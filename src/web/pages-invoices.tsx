@@ -3,7 +3,7 @@ import { SiteOptions } from './site-options.js';
 import { KIND_TITLES, UNIT_LABELS } from '../domain/invoice/types.js';
 import type { InvoiceRow, LineRow } from '../services/invoices.js';
 import type { Customer, EffectiveBilling, Site, SiteService } from '../services/masterdata.js';
-import type { DeliveryRow, PreflightResult } from '../services/workflow.js';
+import { type DeliveryRow, MANUAL_WAYS, type PreflightResult } from '../services/workflow.js';
 import { centsToInput, milliToInput } from './forms.js';
 import { FORMAT_LABEL, STATUS_LABEL, dateDe, euro } from './layout.js';
 
@@ -847,7 +847,47 @@ export const InvoiceDetail: FC<{
               <button class="btn">Im Portal hochgeladen</button>
             </form>
           )}
+          {!sent && portal == null && billing.emails.length === 0 && (
+            <span class="badge warn">keine Rechnungs-E-Mail hinterlegt</span>
+          )}
           {!sent && portal == null && (
+            <details class="inline-details" open={billing.emails.length === 0}>
+              <summary class={`btn ${billing.emails.length ? 'sec' : ''}`}>Als versendet markieren</summary>
+              <form
+                method="post"
+                action={`/rechnungen/${inv.id}/versandt`}
+                class="card"
+                style="margin-top:8px;max-width:520px"
+              >
+                <p class="small" style="margin-top:0">
+                  Für Rechnungen, die nicht per E-Mail rausgehen (z. B. per Post). Wird im Versandprotokoll
+                  festgehalten.
+                </p>
+                <div class="grid">
+                  <div>
+                    <label for="way">Versandweg</label>
+                    <select id="way" name="way" data-nosearch>
+                      {MANUAL_WAYS.map((w) => (
+                        <option value={w}>{w}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label for="way_note">Bemerkung</label>
+                    <input
+                      id="way_note"
+                      name="note"
+                      placeholder="z. B. Einschreiben, an Hausmeister übergeben"
+                    />
+                  </div>
+                </div>
+                <div class="actions" style="margin-bottom:0">
+                  <button class="btn">Als versendet markieren</button>
+                </div>
+              </form>
+            </details>
+          )}
+          {!sent && portal == null && billing.emails.length > 0 && (
             <form
               method="post"
               action={`/rechnungen/${inv.id}/versenden`}

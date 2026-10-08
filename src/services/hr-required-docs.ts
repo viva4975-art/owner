@@ -7,7 +7,13 @@ import { todayBerlin } from '../domain/invoice/calc.js';
  * abgelaufen). Kleidung und Schlüssel zählen auch über unterschriebene Übergaben. Ohne Staatsangehörigkeit lässt sich
  * die Aufenthaltspflicht nicht prüfen → eigener Punkt „Staatsangehörigkeit fehlt“.
  */
-export const REQUIRED_DOCS = ['Arbeitsvertrag', 'Unterweisung', 'Arbeitskleidung', 'Schlüssel'] as const;
+export const REQUIRED_DOCS = [
+  'Arbeitsvertrag',
+  'Unterweisung',
+  'Arbeitskleidung',
+  'Schlüssel',
+  'Personalunterlagen',
+] as const;
 
 const EU_EWR_CH = [
   'deutsch',
@@ -68,6 +74,7 @@ export async function missingDocs(sql: Sql, opts: { siteIds?: string[] | null } 
       personnel_no: string;
       name: string;
       nationality: string | null;
+      data_missing: string[] | null;
       residence_permit_until: string | null;
       work_permit_until: string | null;
       cats: string[] | null;
@@ -79,6 +86,14 @@ export async function missingDocs(sql: Sql, opts: { siteIds?: string[] | null } 
   >`
     select e.id, e.personnel_no, e.last_name || ', ' || e.first_name as name, p.nationality,
            p.residence_permit_until::text, p.work_permit_until::text,
+           array_remove(array[
+             case when coalesce(p.tax_id, '') = '' then 'Steuer-ID' end,
+             case when coalesce(p.social_security_no, '') = '' then 'SV-Nummer' end,
+             case when coalesce(p.iban, '') = '' then 'IBAN' end,
+             case when coalesce(p.health_insurance, '') = '' then 'Krankenkasse' end,
+             case when p.birth_date is null then 'Geburtsdatum' end,
+             case when coalesce(p.street, '') = '' or coalesce(p.city, '') = '' then 'Anschrift' end
+           ], null) as data_missing,
            (select array_agg(distinct l.category) from app.file_links l join app.files f on f.id = l.file_id
              where l.entity_type = 'employee' and l.entity_id = e.id and f.status = 'complete' and l.archived_at is null) as cats,
            (select array_agg(distinct h.kind) from app.handovers h
@@ -105,6 +120,7 @@ export async function missingDocs(sql: Sql, opts: { siteIds?: string[] | null } 
         (d === 'Schlüssel' && ho.has('schluessel'));
       if (!ok) missing.push(d);
     }
+    if (r.data_missing?.length) missing.push(`Stammdaten: ${r.data_missing.join(', ')}`);
     const nat = r.nationality ?? '';
     if (!nat.trim()) missing.push('Staatsangehörigkeit');
     else if (!freeMovement(nat)) {

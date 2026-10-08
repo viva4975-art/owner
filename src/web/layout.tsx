@@ -1217,6 +1217,26 @@ body.appmode{background:linear-gradient(180deg,#f8edf1 0,#faf6f7 240px,#faf6f7 1
 .appmode input,.appmode select,.appmode textarea{font-size:16px}
 .appmode .btn{min-height:44px}
 @media print{.apptabs,.apphead{display:none}}
+/* ---------- Runde 26 (Ahmed 08.10.: „zu viel Rot“): neutraler Hintergrund und graue Tabellenköpfe wie Fortytools,
+   Bordeaux nur für Seitenleiste, Knöpfe, aktive Reiter und Hervorhebungen. Die App (/m, /qm) bleibt wie sie ist. ---------- */
+body.shell:not(.appmode){background:#eef0f3;background-image:none}
+.tbl thead th,table thead th{background:#f3f4f6}
+.formfoot{background:#f5f6f8!important;border-top:1px solid #e3e6ea!important}
+.note-tint,.empty{background:#f7f8fa}
+/* Leistungen am Objekt als Zeilen */
+.svc-sum{margin-left:auto;font-size:14px;color:var(--ink)}
+.svc-group{background:#fff;border:1px solid var(--line);border-radius:10px;margin:12px 0;overflow:hidden}
+.svc-head{padding:9px 14px;background:#f3f4f6;font-weight:600;font-size:13px;border-bottom:1px solid var(--line)}
+a.svc-row{display:grid;grid-template-columns:minmax(0,1fr) 140px 170px 100px;gap:14px;align-items:start;padding:12px 14px;border-top:1px solid var(--line);color:inherit;text-decoration:none}
+.svc-head+a.svc-row,.svc-group>a.svc-row:first-child{border-top:0}
+a.svc-row:hover{background:#fafafb}
+a.svc-row b{color:var(--brand)}
+.svc-note{margin-top:4px;color:#4b5563;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.svc-qty{text-align:right;color:#4b5563;padding-top:2px}
+.svc-total{text-align:right;font-weight:700;font-size:15px}
+.svc-old{margin-top:8px}.svc-old summary{cursor:pointer;color:var(--mut);font-size:14px;padding:6px 0}
+.svc-old .svc-group{opacity:.7}
+@media (max-width:760px){a.svc-row{grid-template-columns:1fr auto}.svc-when{grid-column:1}.svc-qty{grid-column:1;text-align:left}.svc-total{grid-row:1;grid-column:2}.svc-note{white-space:normal}}
 `;
 
 export const euro = (c: bigint) => formatEuro(c as Cents);

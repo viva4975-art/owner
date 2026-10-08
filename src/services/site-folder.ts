@@ -97,9 +97,7 @@ export async function folderFacts(sql: Sql, siteId: string): Promise<FolderFacts
     : [];
   const [contact] = await sql<{ name: string; phone: string | null }[]>`
     select trim(coalesce(first_name, '') || ' ' || coalesce(last_name, '')) as name, coalesce(mobile, phone) as phone
-      from app.contacts where customer_id = ${s.customer_id} order by created_at limit 1`.catch(
-    () => [],
-  );
+      from app.contacts where customer_id = ${s.customer_id} order by created_at limit 1`.catch(() => []);
   const [n] = await sql<{ rooms: number; services: number; plans: number; keys: number }[]>`
     select (select count(*) from app.rooms where site_id = ${siteId} and active)::int as rooms,
            (select count(*) from app.site_services where site_id = ${siteId} and active)::int as services,

@@ -339,6 +339,41 @@ export async function recordPortalUpload(
 }
 
 /**
+ * Versand ohne E-Mail festhalten (Ahmed 08.10.): Post, persönlich übergeben, Fax … Zählt als versendet,
+ * genau einmal je Fassung; Protokoll mit Weg, Bemerkung und Benutzer.
+ */
+export const MANUAL_WAYS = ['Post', 'persönlich übergeben', 'Fax', 'sonstiges'] as const;
+export async function recordManualDelivery(
+  deps: Deps,
+  id: string,
+  p: { way: string; note: string | null; actor: string },
+) {
+  const { sql } = deps;
+  if (!(MANUAL_WAYS as readonly string[]).includes(p.way)) throw new BusinessError('Versandweg wählen');
+  const data = await getInvoice(sql, id);
+  if (!data) throw new BusinessError('Rechnung nicht gefunden');
+  if (data.invoice.status !== 'issued') throw new BusinessError('Nur ausgestellte Rechnungen');
+  const docs = await ensureDocuments(deps, id);
+  const latest = docs.reduce((m, d) => (d.kind !== 'attachment' && d.revision > m ? d.revision : m), 0);
+  const pdf = docs.find((d) => d.kind === 'pdf' && d.revision === latest);
+  const doc = await loadDocument(sql, id);
+  const key = latest ? `${id}:manuell-berichtigt-${latest}` : `${id}:manuell`;
+  const files = pdf ? [{ filename: pdf.filename, sha256: pdf.sha256, size: Number(pdf.size_bytes) }] : [];
+  const label = [p.way, p.note?.trim()].filter(Boolean).join(' – ');
+  const [row] = await sql<DeliveryRow[]>`
+    insert into app.invoice_deliveries (invoice_id, idempotency_key, status, intended_recipients, actual_recipients,
+                                        subject, files, attempts, sent_at, channel, portal_reference, recorded_by)
+    values (${id}, ${key}, 'sent', ${[label]}, ${[label]},
+            ${`${p.way}: ${KIND_TITLES[doc.kind]} ${doc.number}`}, ${sql.json(files)}, 1, now(), 'manuell',
+            ${p.note?.trim() || null}, ${p.actor})
+    on conflict (idempotency_key) do nothing returning *`;
+  if (!row) return { alreadySent: true };
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${p.actor}, 'manual_delivery', 'invoice', ${id}, ${sql.json({ way: p.way, note: p.note })})`;
+  return { alreadySent: false };
+}
+
+/**
  * Versand genau einmal: Ein Versandeintrag je Rechnung (idempotency_key). Der Eintrag wird VOR dem
  * SMTP-Versand auf "pending" gesetzt und nur von genau einem Aufrufer übernommen. Bleibt er nach
  * einem Abbruch "pending", ist der Status unklar → kein automatischer zweiter Versand.
@@ -370,6 +405,10 @@ export async function sendInvoice(
   if (channel.channel === 'portal')
     throw new BusinessError(
       `Dieser Kunde erhält Rechnungen über ${channel.portal ?? 'sein Portal'} – E-Rechnung herunterladen, dort hochladen und hier „Im Portal hochgeladen“ vermerken.`,
+    );
+  if (!customer.invoice_emails.length)
+    throw new BusinessError(
+      'Für diese Rechnung ist keine Rechnungs-E-Mail hinterlegt – bitte in der Rechnungsgruppe eintragen oder „Als versendet markieren“ (z. B. per Post).',
     );
   const docs = await ensureDocuments(deps, id);
   if (deps.mailer.configured === false) throw new BusinessError(MAILER_MISSING);

@@ -60,14 +60,6 @@ export const WordTemplateBox: FC<{ templates: WordTemplate[]; target: WordTarget
         </p>
         <div class="actions" style="margin-bottom:0">
           <button class="btn sm">Weiter: Angaben prüfen</button>
-          {target.type !== 'site' && (
-            <a
-              class="btn sec sm"
-              href={`/brief?an=${target.type === 'employee' ? 'mitarbeiter' : 'kunde'}&id=${target.id}`}
-            >
-              Freien Brief schreiben
-            </a>
-          )}
           <a class="small" href="/einstellungen/word-vorlagen">
             Vorlagen verwalten
           </a>

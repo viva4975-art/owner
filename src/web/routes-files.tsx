@@ -1,5 +1,6 @@
 import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
+import { zipSync } from 'fflate';
 import { Readable } from 'node:stream';
 import { BusinessError } from '../services/errors.js';
 import {
@@ -19,6 +20,12 @@ import { INBOX_ID } from '../services/documents.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { canAccess } from './permissions.js';
 import { LEGACY_IMPORT_ID } from '../services/legacy-import.js';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** Knopf „Alle als ZIP“ für die Dokumenten-Reiter. */
+export const zipHref = (type: string, id: string, name: string) =>
+  `/dateien/zip?typ=${type}&id=${id}&name=${encodeURIComponent(name)}`;
 
 const LINK_TYPES = [
   'offer',
@@ -213,6 +220,34 @@ export function registerFileRoutes(ctx: Ctx) {
   });
 
   // Download als Datenstrom (auch mehrere GB ohne Arbeitsspeicher-Last)
+  // Alle Dokumente eines Datensatzes als ZIP (Ahmed 08.10.), Ordner je Kategorie; gleiche Rechte wie Einzeldateien
+  app.get('/dateien/zip', async (c) => {
+    const type = c.req.query('typ') ?? '';
+    const id = c.req.query('id') ?? '';
+    if (!(LINK_TYPES as readonly string[]).includes(type) || !UUID_RE.test(id)) return c.notFound();
+    if (!(await linkAllowed(c, sql, type, id))) return c.text('Kein Zugriff', 403);
+    const rows = await sql<(FileRow & { category: string | null; archived_at: Date | null })[]>`
+      select f.*, l.category, l.archived_at from app.file_links l join app.files f on f.id = l.file_id
+       where l.entity_type = ${type} and l.entity_id = ${id} and f.status = 'complete' order by f.completed_at`;
+    const files: Record<string, Uint8Array> = {};
+    let total = 0;
+    for (const f of rows) {
+      total += Number(f.size_bytes ?? 0);
+      if (total > 800 * 1024 * 1024) throw new BusinessError('Zu groß für eine ZIP-Datei (über 800 MB)');
+      const dir = `${(f.category ?? 'Sonstiges').replace(/[\\/:*?"<>|]/g, '_')}${f.archived_at ? '/Archiv' : ''}`;
+      let name = `${dir}/${f.original_name.replace(/[\\/:*?"<>|]/g, '_')}`;
+      for (let i = 2; files[name]; i++) name = `${dir}/${i}_${f.original_name.replace(/[\\/:*?"<>|]/g, '_')}`;
+      files[name] = new Uint8Array(await readFile(filePath(cfg, f)));
+    }
+    const label = (c.req.query('name') ?? 'Dokumente').replace(/[^\w.-]+/g, '_').slice(0, 60);
+    return new Response(zipSync(files, { level: 0 }), {
+      headers: {
+        'Content-Type': 'application/zip',
+        'Content-Disposition': `attachment; filename="${label}.zip"`,
+      },
+    });
+  });
+
   app.get(`/dateien/:id{${UUID}}`, async (c) => {
     const [f] = await sql<
       FileRow[]

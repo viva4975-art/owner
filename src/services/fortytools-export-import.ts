@@ -361,7 +361,7 @@ export async function buildPlan(sql: Sql, tables: Table[]): Promise<Plan> {
           notes,
           site_notes: cell(r, c.siteNotes),
           warning: terms.subcontractor
-            ? 'Fortytools: Zahlungsbedingung „SUBUNTERNEHMER“ – § 13b (Reverse Charge) prüfen, USt-IdNr. eintragen'
+            ? 'Zahlungsbedingung „SUBUNTERNEHMER“ – § 13b (Reverse Charge) prüfen, USt-IdNr. eintragen'
             : '',
           status: statusOf(cell(r, c.status)),
         };
@@ -633,7 +633,7 @@ export async function buildPlan(sql: Sql, tables: Table[]): Promise<Plan> {
           const plz = cell(r, c.plz);
           site = addSite(
             cust,
-            'Allgemein (aus Fortytools)',
+            'Allgemein',
             {
               street: oneLine(cell(r, c.street)),
               postal_code: /^\d{4}$/.test(plz) ? `0${plz}` : plz,
@@ -668,7 +668,6 @@ export async function buildPlan(sql: Sql, tables: Table[]): Promise<Plan> {
         errs.push((e as Error).message);
       }
       typeNames.set(norm(typeName), typeName);
-      const orderNo = cell(r, c.orderNo);
       const input = {
         description,
         unit_code: unit,
@@ -677,7 +676,7 @@ export async function buildPlan(sql: Sql, tables: Table[]): Promise<Plan> {
         vat_rate_bp: '1900',
         valid_from: from,
         valid_to: to,
-        note: [cell(r, c.desc), orderNo && `Fortytools-Auftrag ${orderNo}`].filter(Boolean).join('\n'),
+        note: cell(r, c.desc) || null,
         service_type_id: '',
         billing_cycle: monthly ? 'monatlich' : 'je_ausfuehrung',
         hours_target: '',
@@ -968,8 +967,7 @@ export async function applyPlan(
     for (const d of derived) {
       const ids = Array.from({ length: 40 }, (_, k) => uuidOf(`ftx-service:${d.ref.slice(6)}:${k}`));
       await sql`update app.site_services set active = false, valid_to = coalesce(valid_to, greatest(valid_from, current_date - 1)),
-                       note = coalesce(note || ' · ', '') || 'abgelöst durch Leistungen aus dem Fortytools-CSV-Export',
-                       updated_at = now(), version = version + 1
+                                              updated_at = now(), version = version + 1
                  where site_id = ${d.id} and id in ${sql(ids)} and active`;
     }
   }

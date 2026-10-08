@@ -75,7 +75,7 @@ import {
   sitesOf,
 } from '../services/customer-list.js';
 import { listTemplates, saveTemplate } from '../services/employees.js';
-import { uploadConfig } from './routes-files.js';
+import { uploadConfig, zipHref } from './routes-files.js';
 import { filteredSites, managers, parseSiteFilter, sitesCsv, SITE_PAGE_SIZE } from '../services/site-list.js';
 import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { FileArea } from './files.js';
@@ -1024,18 +1024,73 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     }),
   );
 
+  const CUSTOMER_DOC_CATEGORIES = [
+    { name: 'Vertrag', hint: 'Reinigungsvertrag, Rahmenvertrag, Nachträge, Kündigung' },
+    { name: 'Leistungsverzeichnis', hint: 'LV, Reinigungsplan, Raumbuch des Kunden' },
+    { name: 'Angebot & Ausschreibung', hint: 'Vergabeunterlagen, eigene Angebote, Zuschlag' },
+    { name: 'Schriftverkehr', hint: 'Briefe und E-Mails an/vom Kunden' },
+    { name: 'Protokolle & Abnahmen', hint: 'Begehungen, Abnahmen, Reklamationen, Qualitätsberichte' },
+    { name: 'Rechnungen & Belege', hint: 'Bestellungen, Leistungsnachweise, Zahlungsbelege' },
+    { name: 'Sonstiges', hint: 'Alles andere' },
+  ];
+
   app.get(`/kunden/:id{${UUID}}/dokumente`, (c) =>
     customerPage(c, 'dokumente', async (cust) => (
       <>
-        <div class="card">
-          <h3>Verträge, Leistungsverzeichnisse, Schriftverkehr</h3>
-          <FileArea
-            link={{ type: 'customer', id: cust.id }}
-            files={await listFiles(sql, { type: 'customer', id: cust.id })}
-            category="Kundendokument"
-            maxBytes={deps.env.UPLOAD_MAX_BYTES}
-          />
-        </div>
+        {await (async () => {
+          // Unterteilung wie am Objekt (Ahmed 08.10.); alte Ablage „Kundendokument“ steht unter „Weitere Dateien“
+          const files = await listFiles(sql, { type: 'customer', id: cust.id });
+          const known = new Set(CUSTOMER_DOC_CATEGORIES.map((k) => k.name));
+          const other = files.filter((f) => !f.category || !known.has(f.category));
+          return (
+            <>
+              <div class="actions" style="margin-top:0">
+                <span class="mut small">{files.length} Dateien</span>
+                {files.length > 0 && (
+                  <a class="btn sm sec" href={zipHref('customer', cust.id, `Dokumente_${cust.customer_no}`)}>
+                    Alle als ZIP herunterladen
+                  </a>
+                )}
+                <a class="btn sm sec" href={`/brief?an=kunde&id=${cust.id}`}>
+                  Freien Brief schreiben
+                </a>
+              </div>
+              {CUSTOMER_DOC_CATEGORIES.map((k) => {
+                const list = files.filter((f) => f.category === k.name);
+                return (
+                  <details class="doc-cat card" open={list.length > 0}>
+                    <summary>
+                      <b>{k.name}</b> <span class="mut small">({list.length})</span>
+                    </summary>
+                    <p class="small mut" style="margin:6px 0">
+                      {k.hint}
+                    </p>
+                    <FileArea
+                      link={{ type: 'customer', id: cust.id }}
+                      files={list}
+                      category={k.name}
+                      title={`${k.name} hochladen`}
+                      maxBytes={deps.env.UPLOAD_MAX_BYTES}
+                    />
+                  </details>
+                );
+              })}
+              {other.length > 0 && (
+                <details class="doc-cat card" open>
+                  <summary>
+                    <b>Weitere Dateien</b> <span class="mut small">({other.length})</span>
+                  </summary>
+                  <FileArea
+                    link={{ type: 'customer', id: cust.id }}
+                    files={other}
+                    maxBytes={deps.env.UPLOAD_MAX_BYTES}
+                    listOnly
+                  />
+                </details>
+              )}
+            </>
+          );
+        })()}
         <WordTemplateBox
           templates={await listWordTemplates(sql, 'kunde')}
           target={{ type: 'customer', id: cust.id }}

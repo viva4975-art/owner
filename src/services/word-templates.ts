@@ -664,7 +664,15 @@ export async function generateFromWordTemplate(
   const file = await storeFile(
     sql,
     cfg,
-    { id: p.fileId, name, type: DOCX, data, link: p.target, category: t.category },
+    {
+      id: p.fileId,
+      name,
+      type: DOCX,
+      data,
+      link: p.target,
+      // beim Mitarbeiter als Entwurf ablegen: zählt erst der Scan der unterschriebenen Fassung (Ahmed 08.10.)
+      category: p.target.type === 'employee' ? 'Entwurf (aus Vorlage)' : t.category,
+    },
     actor,
   );
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)

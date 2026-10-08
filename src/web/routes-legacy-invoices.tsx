@@ -48,9 +48,7 @@ export const LegacyInvoiceList: FC<{ rows: LegacyRow[]; showSite?: boolean }> = 
     <details class="card" style="margin-top:14px">
       <summary>
         <b>Frühere Rechnungen ({rows.length})</b>{' '}
-        <span class="small mut">
-          – bis zur Umstellung in Fortytools geschrieben · offen: {rows.filter((r) => !r.paid).length}
-        </span>
+        <span class="small mut">– offen: {rows.filter((r) => !r.paid).length}</span>
       </summary>
       <div class="tbl" style="margin-top:10px">
         <table class="stack-m">
@@ -111,8 +109,7 @@ export const OpenLegacyCard: FC<{ rows: Awaited<ReturnType<typeof openLegacyInvo
         {euro(rows.reduce((a, r) => a + r.gross_cents, 0n))})
       </h3>
       <p class="small mut" style="margin-top:0">
-        Stand des Fortytools-Exports (Teilzahlungen stehen nicht im Export – hier nachtragen). Zahlung
-        festhalten: voller Betrag = bezahlt, weniger = Teilzahlung.
+        Zahlung festhalten: voller Betrag = bezahlt, weniger = Teilzahlung.
       </p>
       <div class="tbl">
         <table class="stack-m">
@@ -220,7 +217,7 @@ export function registerLegacyInvoiceRoutes({ app, deps, page, back }: Ctx) {
        where x.invoice_id = ${id} order by x.position`;
     return page(
       c,
-      `Rechnung ${inv.number} (Fortytools)`,
+      `Rechnung ${inv.number}`,
       'rechnungen',
       <>
         <PageHead title={`Rechnung ${inv.number}`} crumbs={[['Rechnungen', '/rechnungen']]}>
@@ -318,8 +315,8 @@ export function registerLegacyInvoiceRoutes({ app, deps, page, back }: Ctx) {
           </table>
         </div>
         <p class="small mut">
-          In Fortytools ausgestellt; das PDF wird aus den übernommenen Rechnungsdaten erzeugt. Nicht änderbar
-          – bitte nicht erneut als Rechnung an den Kunden senden (doppelte Rechnung, § 14c UStG).
+          Vor der Umstellung ausgestellt; das PDF wird aus den übernommenen Rechnungsdaten erzeugt. Nicht
+          änderbar – bitte nicht erneut als Rechnung an den Kunden senden (doppelte Rechnung, § 14c UStG).
         </p>
       </>,
     );

@@ -610,7 +610,7 @@ export function registerModuleRoutes(ctx: Ctx) {
                         >
                           <b>{i.number}</b>
                         </a>{' '}
-                        {i.legacy && <span class="badge">Fortytools</span>}{' '}
+                        
                         <span class="mut">{dateDe(i.issue_date)}</span>
                         {i.site_name && <span class="small faint"> · {i.site_name}</span>}
                       </span>

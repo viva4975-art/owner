@@ -66,7 +66,7 @@ describe.skipIf(!available)('Word-Vorlagen (Datenbank)', () => {
     expect(out).toContain('und Rosa Vorlage, Hauptstr. 1, geb. __________, ab 01.02.2025');
     const [link] =
       await sql`select category from app.file_links where file_id = ${fileId} and entity_type = 'employee'`;
-    expect(link?.category).toBe('Arbeitsvertrag');
+    expect(link?.category).toBe('Entwurf (aus Vorlage)'); // zählt erst als Scan der unterschriebenen Fassung
     // Kundenvorlage passt nicht zum Mitarbeiter
     const [kd] = await listWordTemplates(sql, 'kunde');
     await expect(

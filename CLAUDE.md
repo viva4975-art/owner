@@ -1823,3 +1823,8 @@ Testadresse.
   Vermerk „elektronisch unterschrieben von … am … um …“, PDF + Unterschrift-PNG write-once, als unterschriebener Auftrag
   hinterlegt, genau einmal (`signSubcontract`). Scan-Upload bleibt eingeklappt für Papier. Einfache elektronische
   Signatur = Beweismittel für die Annahme, keine Schriftform. Datei-Feld-Stil global repariert (Knopf war abgeschnitten).
+- 2026-10-09: **Datei-Felder überall neu** (Ahmed: „Choose File“-Knopf hässlich): jedes Datei-Feld wird im Browser zu einem
+  deutschen Ablagefeld (Upload-Symbol, „Datei auswählen – oder hierher ziehen · PDF, ZIP“, nach Auswahl Dateiname + Größe,
+  × zum Entfernen). Das echte Feld liegt unsichtbar darüber → Formulare, Pflichtfeld-Prüfung, Ziehen & Ablegen bleiben
+  (`filePick` in `client.ts`, CSS `.fpick`). Ausgenommen: versteckte Felder, Felder in eigenen Knöpfen (label) und die
+  großen Upload-Zonen.

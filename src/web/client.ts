@@ -337,6 +337,41 @@ export const CLIENT_JS = String.raw`
   }
   function monthAll(root) { Array.prototype.forEach.call((root || document).querySelectorAll('input[type=month]'), monthPick); }
   monthAll();
+  // Datei-Felder (Ahmed 09.10.: „Choose File“-Knopf überall anders): eigenes Ablagefeld auf Deutsch mit Symbol,
+  // Dateiname(n) und Ziehen & Ablegen. Das echte Feld liegt unsichtbar darüber (Formulare, Pflichtfeld-Prüfung bleiben).
+  function filePick(inp) {
+    if (inp.dataset.fp || inp.hidden || inp.closest('.drop-zone,[data-uploader],label') || getComputedStyle(inp).display === 'none') return;
+    inp.dataset.fp = '1';
+    var box = document.createElement('label');
+    box.className = 'fpick';
+    var multi = inp.multiple;
+    var acc = (inp.getAttribute('accept') || '').split(',').map(function (x) { return x.trim().replace(/^\./, '').toUpperCase(); })
+      .filter(function (x) { return x && x.indexOf('/') < 0; });
+    var accTxt = acc.length ? acc.slice(0, 5).join(', ') : '';
+    box.innerHTML = '<span class="fp-ic"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></span>' +
+      '<span class="fp-t"><b>' + (multi ? 'Dateien auswählen' : 'Datei auswählen') + '</b><span class="fp-s">oder hierher ziehen' + (accTxt ? ' · ' + accTxt : '') + '</span></span>' +
+      '<span class="fp-x" hidden title="Auswahl entfernen">×</span>';
+    inp.parentNode.insertBefore(box, inp);
+    box.appendChild(inp);
+    var t = box.querySelector('.fp-t b'), sub = box.querySelector('.fp-s'), x = box.querySelector('.fp-x');
+    var empty = t.textContent, emptySub = sub.textContent;
+    function show() {
+      var f = inp.files || [];
+      if (!f.length) { t.textContent = empty; sub.textContent = emptySub; box.classList.remove('has'); x.hidden = true; return; }
+      t.textContent = f.length === 1 ? f[0].name : f.length + ' Dateien';
+      var kb = 0; for (var i = 0; i < f.length; i++) kb += f[i].size / 1024;
+      sub.textContent = (kb > 1024 ? (kb / 1024).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(kb)) + ' KB') + ' · zum Ändern antippen';
+      box.classList.add('has'); x.hidden = false;
+    }
+    inp.addEventListener('change', show);
+    x.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); inp.value = ''; show(); });
+    ['dragenter', 'dragover'].forEach(function (ev) { box.addEventListener(ev, function () { box.classList.add('over'); }); });
+    ['dragleave', 'drop'].forEach(function (ev) { box.addEventListener(ev, function () { box.classList.remove('over'); }); });
+    show();
+  }
+  function fileAll(root) { Array.prototype.forEach.call((root || document).querySelectorAll('input[type=file]'), filePick); }
+  fileAll();
+  window.addEventListener('pageshow', function () { Array.prototype.forEach.call(document.querySelectorAll('input[data-fp]'), function (i) { i.dispatchEvent(new Event('change')); }); });
   window.addEventListener('pageshow', function () { Array.prototype.forEach.call(document.querySelectorAll('input[data-mp=done]'), function (i) { if (i._mpSync) i._mpSync(); }); });
   setTimeout(function () { Array.prototype.forEach.call(document.querySelectorAll('input[data-mp=done]'), function (i) { if (i._mpSync) i._mpSync(); }); }, 0);
   comboAll();

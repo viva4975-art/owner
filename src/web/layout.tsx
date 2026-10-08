@@ -1106,6 +1106,17 @@ input[type=file]{display:block;height:auto!important;min-height:52px;line-height
 input[type=file]:hover,input[type=file]:focus{border-color:var(--brand);background:#fff;outline:none}
 input[type=file]::file-selector-button{border:0;background:var(--brand);color:#fff;padding:8px 16px;border-radius:7px;margin-right:14px;font:600 13.5px/1.2 inherit;cursor:pointer}
 input[type=file]::file-selector-button:hover{background:var(--brand-2)}
+.fpick{position:relative;display:flex;align-items:center;gap:12px;width:100%;max-width:520px;box-sizing:border-box;padding:10px 14px;border:1.5px dashed var(--line-2);border-radius:10px;background:#fff;color:var(--ink);cursor:pointer;transition:border-color .15s,background .15s;margin:0;font-weight:400}
+.fpick:hover,.fpick.over,.fpick:focus-within{border-color:var(--brand);background:var(--brand-50)}
+.fpick .fp-ic{flex:none;display:grid;place-items:center;width:38px;height:38px;border-radius:9px;background:var(--brand-50);color:var(--brand)}
+.fpick.has .fp-ic{background:var(--brand);color:#fff}
+.fpick .fp-t{display:flex;flex-direction:column;min-width:0;line-height:1.3}
+.fpick .fp-t b{font-weight:600;font-size:14px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fpick .fp-s{font-size:12px;color:var(--mut)}
+.fpick .fp-x{margin-left:auto;position:relative;z-index:2;font-size:20px;line-height:1;color:var(--mut);padding:2px 6px;border-radius:6px}
+.fpick .fp-x:hover{background:var(--head);color:var(--ink)}
+.fpick input[type=file]{position:absolute;inset:0;width:100%;height:100%!important;min-height:0;opacity:0;cursor:pointer;padding:0;margin:0;border:0;max-width:none}
+.actions .fpick{width:auto;flex:1 1 260px}
 /* sortierbare Spalten */
 th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
 th.sortable:hover{color:var(--brand)}

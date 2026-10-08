@@ -280,6 +280,20 @@ export const EmployeeCalendarView: FC<{
         : {}),
     });
   };
+  const dataOfExtra = (e: TimeEntryRow) =>
+    JSON.stringify({
+      site: e.site_name,
+      addr: siteAddr[e.site_id] ?? '',
+      date: `${WD[isoWeekday(e.work_date) - 1]} ${dateDe(e.work_date)}`,
+      status: 'ohne Einsatz gearbeitet',
+      ist: `${clock(e.start_at)}–${e.end_at ? clock(e.end_at) : 'läuft'}`,
+      istBrk: `${e.break_minutes} Min.`,
+      net: e.end_at ? `${hm(netMinutes(e))} Std.` : '',
+      src: SRC[e.source] ?? e.source,
+      links: entryHref(e) !== '#' ? [['Zeit ansehen / ändern', entryHref(e)]] : [],
+      back,
+      ...(canDeleteTime ? { delTime: e.id } : {}),
+    });
   const entryHref = (e: TimeEntryRow) =>
     self ? `/zeiterfassung/meine?id=${e.id}#form` : canEdit ? `/zeiterfassung/${e.id}` : '#';
   const Clock = () => <span style="display:contents" dangerouslySetInnerHTML={{ __html: CLOCK_SVG }} />;
@@ -335,7 +349,7 @@ export const EmployeeCalendarView: FC<{
           </a>
         )}
         {ex.map((e) => (
-          <a class="ev extra" href={entryHref(e)} title="ohne Einsatz gearbeitet">
+          <a class="ev extra" href={entryHref(e)} data-ev={dataOfExtra(e)} title="ohne Einsatz gearbeitet">
             <span class="t">{e.site_name}</span>
             <Clock />
           </a>
@@ -420,6 +434,7 @@ export const EmployeeCalendarView: FC<{
                     <a
                       class="blk ev extra"
                       href={entryHref(e)}
+                      data-ev={dataOfExtra(e)}
                       style={`top:${(a / 60) * PX}px;height:${Math.max(22, ((Math.max(b, a + 15) - a) / 60) * PX - 2)}px`}
                     >
                       <b>{e.site_name}</b>

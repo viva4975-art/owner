@@ -3,7 +3,7 @@ import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import type { BuyerSnapshot, SellerSnapshot } from '../domain/invoice/types.js';
 import { type Cents, formatEuro } from '../domain/money/money.js';
-import { renderLetterPdf } from '../pdf/render.js';
+import { FormDoc } from '../pdf/form-doc.js';
 import { BusinessError } from './errors.js';
 import { getSeller } from './masterdata.js';
 import type { Deps } from './workflow.js';
@@ -439,55 +439,107 @@ export function monthCsv(v: MonthView): string {
 export async function monthPdf(sql: Sql, month: string) {
   const v = await monthView(sql, month);
   const seller = await getSeller(sql);
-  const buyer = internalBuyer(seller, 'Kassenbuch');
+  const today = todayBerlin();
   const live = v.rows.filter((r) => !r.cancelled_at);
-  return renderLetterPdf({
+  const cancelled = v.rows.filter((r) => r.cancelled_at);
+  const doc = await FormDoc.create({
     title: `Kassenbuch ${monthLabel(month)}`,
-    date: todayBerlin(),
-    info: [
-      ['Monat', monthLabel(month)],
-      ['Stand', formatDateDe(todayBerlin())],
-      ['Abschluss', v.closed ? formatDateDe(v.closed.closed_at.toISOString().slice(0, 10)) : 'offen'],
-    ],
-    seller,
-    buyer,
-    greeting: null,
-    intro: `Anfangsbestand ${monthLabel(month)}: ${eur(v.opening)}`,
-    columns: [
-      { label: 'Nr.', x: 62.3, align: 'left' },
-      { label: 'Datum', x: 95, align: 'left' },
-      { label: 'Beschreibung', x: 150, align: 'left' },
-      { label: 'Einnahme', x: 400 },
-      { label: 'Ausgabe', x: 470 },
-      { label: 'Saldo', x: 538.8 },
-    ],
-    rows: live.map((r) => [
-      String(r.entry_no),
-      formatDateDe(r.entry_date).slice(0, 6),
-      r.description.length > 34 ? `${r.description.slice(0, 33)}…` : r.description,
-      r.kind === 'einnahme' ? eur(r.amount_cents) : '',
-      r.kind === 'ausgabe' ? eur(r.amount_cents) : '',
-      eur(r.saldo ?? 0n),
-    ]),
-    sums: [
-      ['Anfangsbestand', eur(v.opening)],
-      ['Summe Einnahmen', `+ ${eur(v.income)}`],
-      ['Summe Ausgaben', `− ${eur(v.expense)}`],
-    ],
-    total: ['Endbestand', eur(v.closing)],
-    paragraphs: [
-      ...(v.rows.some((r) => r.cancelled_at)
-        ? [
-            `Stornierte Buchungen (nicht im Bestand): ${v.rows
-              .filter((r) => r.cancelled_at)
-              .map((r) => `Nr. ${r.entry_no}`)
-              .join(', ')}`,
-          ]
-        : []),
-      'Ort, Datum ______________________        Unterschrift Geschäftsführer ______________________',
-    ],
+    sideRef: `VD-KB Kassenbuch ${monthLabel(month)}`,
+    date: today,
+    author: seller.legalName,
   });
+  doc.title('Kassenbuch', monthLabel(month));
+  doc.infoGrid(
+    [
+      ['Firma', seller.legalName],
+      ['Kasse', 'Hauptkasse (Bargeld)'],
+      ['Zeitraum', `${formatDateDe(`${month}-01`)} – ${formatDateDe(lastOfMonth(month))}`],
+      ['Buchungen', `${v.incomeCount} Einnahmen · ${v.expenseCount} Ausgaben`],
+      ['Belegnummern', live.length ? `${live[0]!.entry_no} – ${live[live.length - 1]!.entry_no}` : '–'],
+      [
+        'Monatsabschluss',
+        v.closed ? `${formatDateDe(v.closed.closed_at.toISOString().slice(0, 10))}` : 'noch offen',
+      ],
+    ],
+    3,
+  );
+  doc.tiles([
+    {
+      label: 'ANFANGSBESTAND',
+      value: eur(v.opening),
+      sub: v.openingManual ? 'festgelegt' : 'Übertrag Vormonat',
+    },
+    { label: 'EINNAHMEN', value: `+ ${eur(v.income)}`, sub: `${v.incomeCount} Buchungen` },
+    { label: 'AUSGABEN', value: `− ${eur(v.expense)}`, sub: `${v.expenseCount} Buchungen` },
+    { label: 'ENDBESTAND', value: eur(v.closing), accent: true },
+  ]);
+  doc.section('Buchungen');
+  const byDay = new Map<string, typeof live>();
+  for (const r of live) byDay.set(r.entry_date, [...(byDay.get(r.entry_date) ?? []), r]);
+  const rows: Parameters<FormDoc['table']>[1] = [];
+  rows.push({ sum: ['', '', 'Anfangsbestand', '', '', eur(v.opening)] });
+  for (const [day, list] of byDay) {
+    rows.push({ group: `${WEEKDAY_LONG[new Date(`${day}T12:00:00Z`).getUTCDay()]}, ${formatDateDe(day)}` });
+    for (const r of list) {
+      const extra = [
+        r.receipt_ref ? `Beleg ${r.receipt_ref}` : '',
+        r.category ?? '',
+        r.receipt_path ? 'Beleg archiviert' : 'ohne Beleg-Datei',
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      rows.push([
+        String(r.entry_no),
+        formatDateDe(r.entry_date).slice(0, 6),
+        `${r.description}\n${extra}`,
+        r.kind === 'einnahme' ? eur(r.amount_cents) : '',
+        r.kind === 'ausgabe' ? eur(r.amount_cents) : '',
+        eur(r.saldo ?? 0n),
+      ]);
+    }
+  }
+  if (!live.length) rows.push(['', '', 'Keine Buchungen in diesem Monat.', '', '', '']);
+  rows.push({ sum: ['', '', 'Summen', eur(v.income), eur(v.expense), ''] });
+  rows.push({ sum: ['', '', 'Endbestand', '', '', eur(v.closing)], strong: true });
+  doc.table(
+    [
+      { label: 'NR.', width: 38 },
+      { label: 'DATUM', width: 46 },
+      { label: 'BESCHREIBUNG', width: 214 },
+      { label: 'EINNAHME', width: 70, align: 'right' },
+      { label: 'AUSGABE', width: 70, align: 'right' },
+      { label: 'SALDO', width: 60, align: 'right' },
+    ],
+    rows,
+  );
+  if (v.closed) {
+    const diff = v.closed.counted_cents != null ? v.closed.counted_cents - v.closing : null;
+    doc.noteBox('Monatsabschluss / Kassensturz', [
+      `Abgeschlossen am ${formatDateDe(v.closed.closed_at.toISOString().slice(0, 10))} von ${v.closed.closed_by}.`,
+      v.closed.counted_cents != null
+        ? `Gezählter Bestand ${eur(v.closed.counted_cents)} · Buchbestand ${eur(v.closing)} · Differenz ${eur(diff ?? 0n)}`
+        : `Buchbestand ${eur(v.closing)} (kein Zählergebnis erfasst).`,
+    ]);
+  }
+  if (cancelled.length)
+    doc.noteBox(
+      'Stornierte Buchungen (nicht im Bestand, bleiben nachvollziehbar)',
+      cancelled.map(
+        (r) =>
+          `Nr. ${r.entry_no} · ${formatDateDe(r.entry_date)} · ${r.description} · ${eur(r.amount_cents)}${r.cancel_reason ? ` – Grund: ${r.cancel_reason}` : ''}`,
+      ),
+    );
+  doc.muted(
+    'Kassenbuch nach § 146 AO: fortlaufende Belegnummern, Buchungen werden nicht gelöscht (Storno mit Grund), Änderungen stehen im Protokoll. Erstellt mit der Viva-Deluxe Betriebs-App am ' +
+      `${formatDateDe(today)}.`,
+  );
+  doc.signatures('Ort, Datum · Kassenführer/in', 'Geschäftsführer');
+  return doc.save();
 }
+
+const WEEKDAY_LONG = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+const lastOfMonth = (m: string) =>
+  new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0)).toISOString().slice(0, 10);
 
 // ------------------------------------------------------------------ Karten-Belege (Archiv, nicht im Kassenbestand)
 

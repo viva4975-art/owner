@@ -196,7 +196,10 @@ export const OfferList: FC<{
           <div class="l">Zuschlagsquote ({plabel})</div>
           <div class="v">{stats.rate == null ? '–' : `${stats.rate} %`}</div>
           <div class="s">
-            {stats.accepted.count} von {stats.accepted.count + stats.rejected.count} entschiedenen
+            nach Anzahl ({stats.accepted.count} von {stats.accepted.count + stats.rejected.count}) ·{' '}
+            <b>
+              nach Umsatz {stats.rateValue == null ? '–' : `${String(stats.rateValue).replace('.', ',')} %`}
+            </b>
           </div>
         </div>
       </div>

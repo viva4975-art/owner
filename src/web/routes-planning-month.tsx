@@ -31,6 +31,20 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
       : addDays(today, 27);
     const list = await uncoveredShifts(sql, from, to, c.get('sites'));
     const rows = await Promise.all(list.map(async (s) => ({ s, cands: await substituteCandidates(sql, s) })));
+    const orders = await sql<
+      {
+        id: string;
+        number: string;
+        supplier_name: string;
+        site_id: string;
+        site_name: string;
+        service_kind: string;
+      }[]
+    >`
+      select sc.id, sc.number, sp.name as supplier_name, sc.site_id, s.name as site_name, sc.service_kind
+        from app.subcontracts sc join app.suppliers sp on sp.id = sc.supplier_id join app.sites s on s.id = sc.site_id
+       where sc.status = 'erteilt' and sc.valid_from <= ${to} and (sc.valid_to is null or sc.valid_to >= ${from})
+       order by sp.name, sc.number`;
     return page(
       c,
       'Vertretungen',
@@ -92,14 +106,32 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
                       )}
                       <select name="sub" aria-label="Vertretung" style="min-width:220px" required>
                         <option value="">– Vertretung wählen –</option>
+                        <option value="nicht_notwendig">Nicht notwendig (wird nicht benötigt)</option>
                         <option value="ausfall">Ausfall (findet nicht statt)</option>
-                        {cands.map((e) => (
-                          <option value={e.id} disabled={!!e.busy}>
-                            {e.name}
-                            {e.on_site ? ' ·Objekt' : ''}
-                            {e.busy ? ` – belegt ${e.busy}` : ''}
-                          </option>
-                        ))}
+                        <optgroup label="Vertretung (Mitarbeiter)">
+                          {cands.map((e) => (
+                            <option value={e.id} disabled={!!e.busy}>
+                              {e.name}
+                              {e.on_site ? ' ·Objekt' : ''}
+                              {e.busy ? ` – belegt ${e.busy}` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                        {orders.length > 0 && (
+                          <optgroup label="Nachunternehmer-Bestellung">
+                            {[...orders]
+                              .sort(
+                                (a, b) =>
+                                  Number(b.site_id === s.plan.site_id) - Number(a.site_id === s.plan.site_id),
+                              )
+                              .map((o) => (
+                                <option value={`nu:${o.id}`}>
+                                  {o.number} · {o.supplier_name}
+                                  {o.site_id === s.plan.site_id ? ' ·Objekt' : ` (${o.site_name})`}
+                                </option>
+                              ))}
+                          </optgroup>
+                        )}
                       </select>
                       <button class="btn sm">Übernehmen</button>
                     </form>
@@ -110,7 +142,9 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
           </table>
         </div>
         <p class="small mut">
-          „·Objekt“ = dem Objekt zugeordnet. Belegte Mitarbeitende (Überschneidung) sind nicht wählbar.
+          „·Objekt“ = dem Objekt zugeordnet. Belegte Mitarbeitende (Überschneidung) sind nicht wählbar. „Nicht
+          notwendig“ und „Nachunternehmer“ zählen wie ein Ausfall nicht als eigener Einsatz; die Bestellung
+          wird am Tag vermerkt (<a href="/bestellungen?art=nu">Bestellungen</a>).
         </p>
       </>,
     );
@@ -239,7 +273,16 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
     assertSite(c, s.plan.site_id);
     const b = await c.req.parseBody({ all: true });
     const subRaw = str(b, 'sub');
-    const sub = subRaw === 'ausfall' ? null : subRaw;
+    const nuId = subRaw?.startsWith('nu:') ? subRaw.slice(3) : null;
+    if (nuId && !/^[0-9a-f-]{36}$/.test(nuId)) throw new BusinessError('Bestellung ungültig');
+    let note = str(b, 'note');
+    if (subRaw === 'nicht_notwendig') note = note ?? 'nicht notwendig';
+    if (nuId) {
+      const [o] = await sql<{ number: string; name: string }[]>`
+        select sc.number, sp.name from app.subcontracts sc join app.suppliers sp on sp.id = sc.supplier_id where sc.id = ${nuId}`;
+      note = note ?? (o ? `Nachunternehmer: ${o.name} (${o.number})` : null);
+    }
+    const sub = subRaw === 'ausfall' || subRaw === 'nicht_notwendig' || nuId ? null : subRaw;
     const kindRaw = str(b, 'kind');
     if (!kindRaw && !subRaw) throw new BusinessError('Bitte Vertretung oder „Ausfall“ wählen');
     const kind: ExceptionKind =
@@ -255,14 +298,20 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
         substituteId: sub,
         start: str(b, 'start'),
         end: str(b, 'end'),
-        note: str(b, 'note'),
+        note,
+        subcontractId: nuId,
         expectedVersion: typeof b.version === 'string' && b.version ? Number(b.version) : null,
       },
       c.get('actor'),
     );
     const to = str(b, 'back');
     return back(c, to && /^\/einsatzplanung[\w/?=&.-]*$/.test(to) ? to : `/einsatzplanung?datum=${date}`, {
-      ok: `${EXCEPTION_LABEL[kind]} gespeichert.`,
+      ok:
+        subRaw === 'nicht_notwendig'
+          ? 'Als „nicht notwendig“ vermerkt.'
+          : nuId
+            ? 'Nachunternehmer eingetragen.'
+            : `${EXCEPTION_LABEL[kind]} gespeichert.`,
     });
   });
 

@@ -732,9 +732,47 @@ export const SiteList: FC<{
             </a>
           ))}
         </div>
+        {showManagerFilter && rows.length > 0 && (
+          <form
+            id="sitebulk"
+            method="post"
+            action="/objekte/status"
+            class="actions"
+            style="margin:12px 0 0;gap:8px"
+            onsubmit="var n=document.querySelectorAll('input[name=ids][form=sitebulk]:checked').length;if(!n){alert('Bitte zuerst Objekte markieren.');return false}return true"
+          >
+            <input type="hidden" name="zurueck" value={url({})} />
+            <label class="chk" style="margin:0">
+              <input
+                type="checkbox"
+                onclick="document.querySelectorAll('input[name=ids][form=sitebulk]').forEach(function(x){x.checked=this.checked}.bind(this))"
+              />{' '}
+              alle auf dieser Seite
+            </label>
+            <button class="btn sec sm" name="aktion" value="inaktiv">
+              Markierte inaktiv setzen
+            </button>
+            <button class="btn sec sm" name="aktion" value="aktiv">
+              Markierte aktiv setzen
+            </button>
+            <span class="small mut">
+              Inaktive Objekte: kein Monatslauf, keine Planung/Stempeln mehr; Daten bleiben erhalten.
+            </span>
+          </form>
+        )}
         <div class="list sites" style="margin-top:12px">
           {rows.map((s) => (
             <div class="row" style={s.active ? '' : 'opacity:.6'}>
+              {showManagerFilter && (
+                <input
+                  type="checkbox"
+                  name="ids"
+                  value={s.id}
+                  form="sitebulk"
+                  aria-label={`${s.name} markieren`}
+                  style="width:auto;margin:4px 4px 0 0"
+                />
+              )}
               <span class="no">{s.site_no}</span>
               <div class="main">
                 <div class="ent-head">

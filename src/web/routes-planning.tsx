@@ -324,7 +324,14 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
               />
             </>
           ) : (
-            <SiteCalendar base={base} view={view} date={date} today={today} shifts={shifts} />
+            <SiteCalendar
+              base={base}
+              view={view}
+              date={date}
+              today={today}
+              shifts={shifts}
+              canDeleteTime={['admin', 'personal'].includes(c.get('user').role)}
+            />
           )}
           <div class="cal-side">
             <CalSummary year={year} month={date.slice(0, 7)} yearShifts={yearShifts} />

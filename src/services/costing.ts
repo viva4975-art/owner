@@ -42,17 +42,43 @@ export function monthRange(month: string) {
   return { from, to };
 }
 
+/** Allgemeine Kostenstelle (Büro, Fahrzeuge …) – nur Kosten, kein Erlös/Lohn je Objekt. */
+export interface GeneralCost {
+  cost_center_id: string;
+  number: string;
+  name: string;
+  material: bigint;
+  subcontractor: bigint;
+  other: bigint;
+  total: bigint;
+}
+
+/**
+ * Nachkalkulation und Kostenstellen in einem (Ahmed 09.10.: „stimmen nicht überein, mach daraus eins“):
+ * Zeitraum = ein Monat oder von–bis (JJJJ-MM). Erlös aus eigenen UND übernommenen Fortytools-Rechnungen (je Position
+ * dem Objekt zugeordnet); Objekte auch inaktiv, sobald im Zeitraum Erlös, Zeiten oder Kosten anfallen; dazu die
+ * allgemeinen Kostenstellen.
+ */
 export async function siteCosting(
   sql: Sql,
-  month: string,
+  period: string | { from: string; to: string },
   siteId?: string,
-): Promise<{ rows: SiteCosting[]; overhead: OverheadRates; targetBp: number }> {
-  const { from, to } = monthRange(month);
+): Promise<{ rows: SiteCosting[]; general: GeneralCost[]; overhead: OverheadRates; targetBp: number }> {
+  const pf = typeof period === 'string' ? period : period.from;
+  const pt = typeof period === 'string' ? period : period.to;
+  const from = monthRange(pf).from;
+  const to = monthRange(pt).to;
   const settings = await getAccountingSettings(sql);
-  const [sites, revenue, labor, stock, incoming, shifts] = await Promise.all([
+  const [sites, revenue, legacyRevenue, labor, stock, incoming, shifts, general] = await Promise.all([
     sql<{ id: string; site_no: string; name: string; customer_name: string }[]>`
       select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id
-       where ${siteId ? sql`s.id = ${siteId}` : sql`s.active`} order by s.site_no`,
+       where ${
+         siteId
+           ? sql`s.id = ${siteId}`
+           : sql`(s.active or exists (select 1 from app.cost_allocations a where a.site_id = s.id and a.month between ${from} and ${to})
+                  or exists (select 1 from app.time_entries t where t.site_id = s.id and t.work_date between ${from} and ${to}))`
+       }
+       order by s.site_no`,
     // je Position: Objekt aus der Leistung (Sammelrechnungen der Rechnungsgruppen haben kein Objekt im Kopf)
     sql<{ site_id: string; net: bigint }[]>`
       select coalesce(ss.site_id, i.site_id) as site_id, sum(l.net_cents)::bigint as net
@@ -60,6 +86,12 @@ export async function siteCosting(
         left join app.site_services ss on ss.id = l.source_service_id
        where i.status = 'issued' and coalesce(ss.site_id, i.site_id) is not null
          and coalesce(i.period_start, i.issue_date) between ${from} and ${to}
+       group by 1`,
+    // übernommene Fortytools-Rechnungen: Position mit Objekt, Leistungszeitraum sonst Rechnungsdatum
+    sql<{ site_id: string; net: bigint }[]>`
+      select l.site_id, sum(l.net_cents)::bigint as net
+        from app.legacy_invoice_lines l join app.legacy_invoices i on i.id = l.invoice_id
+       where l.site_id is not null and coalesce(l.period_start, i.issue_date) between ${from} and ${to}
        group by 1`,
     // Lohn je Eintrag: Minuten × Stundenlohn / 60 (Cent-genau, kaufmännisch gerundet je Objekt)
     sql<{ site_id: string; minutes: number; wage_minutes_cents: bigint; missing: number }[]>`
@@ -87,9 +119,20 @@ export async function siteCosting(
          and a.month between ${from} and ${to}
        group by a.site_id, i.category`,
     plannedShifts(sql, { from, to, ...(siteId ? { siteId } : {}) }),
+    siteId
+      ? Promise.resolve([])
+      : sql<{ id: string; number: string; name: string; category: string; net: bigint }[]>`
+          select cc.id, cc.number, cc.name, i.category::text as category, sum(a.net_cents)::bigint as net
+            from app.cost_allocations a join app.cost_centers cc on cc.id = a.cost_center_id
+            join app.incoming_invoices i on i.id = a.incoming_invoice_id
+           where a.cost_center_id is not null and i.status in ('erfasst', 'freigegeben', 'bezahlt')
+             and a.month between ${from} and ${to}
+           group by 1, 2, 3, 4 order by cc.number`,
   ]);
   const rows = sites.map((s) => {
-    const rev = revenue.find((r) => r.site_id === s.id)?.net ?? 0n;
+    const rev =
+      (revenue.find((r) => r.site_id === s.id)?.net ?? 0n) +
+      (legacyRevenue.find((r) => r.site_id === s.id)?.net ?? 0n);
     const l = labor.find((r) => r.site_id === s.id);
     // Cent je Minute × (10000 + Zuschlag in Basispunkten) → / 60 / 10000, kaufmännisch gerundet
     const laborCents = l ? (l.wage_minutes_cents + 300000n) / 600000n : 0n;
@@ -121,8 +164,26 @@ export async function siteCosting(
       margin_bp: rev !== 0n ? Number((margin * 10000n) / rev) : null,
     };
   });
+  const gmap = new Map<string, GeneralCost>();
+  for (const g of general) {
+    const e = gmap.get(g.id) ?? {
+      cost_center_id: g.id,
+      number: g.number,
+      name: g.name,
+      material: 0n,
+      subcontractor: 0n,
+      other: 0n,
+      total: 0n,
+    };
+    if (g.category === 'material') e.material += g.net;
+    else if (g.category === 'nachunternehmer') e.subcontractor += g.net;
+    else e.other += g.net;
+    e.total += g.net;
+    gmap.set(g.id, e);
+  }
   return {
     rows,
+    general: [...gmap.values()],
     overhead: {
       minijob: settings.overhead_minijob_bp,
       parttime: settings.overhead_parttime_bp,

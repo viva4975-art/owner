@@ -1,6 +1,13 @@
+import { costCenterReport } from '../services/cost-centers.js';
 import { randomUUID } from 'node:crypto';
 import { SiteOptions } from './site-options.js';
-import { type ExpectedRow, expectedInvoices, linksOf, skipExpected } from '../services/expected-invoices.js';
+import {
+  billingTracking,
+  type ExpectedRow,
+  expectedInvoices,
+  linksOf,
+  skipExpected,
+} from '../services/expected-invoices.js';
 import type { Context } from 'hono';
 import type { Child, FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
@@ -246,6 +253,50 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         select distinct purchase_order_id as id from app.incoming_invoices where purchase_order_id is not null`,
     ]);
     const invoiced = new Set(billed.map((b) => b.id));
+    const tracking = await billingTracking(
+      sql,
+      subcontracts.map((x) => x.id),
+      { limit: 13 },
+    );
+    const MON = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
+    const billCell = (r: { kind: 'material' | 'nu'; id: string; phase: string }) => {
+      if (r.kind === 'material') {
+        if (r.phase === 'storniert') return null;
+        return invoiced.has(r.id) ? (
+          <span class="bs-pill bs-ok">Rechnung erfasst</span>
+        ) : (
+          <span class="small mut">noch keine Rechnung</span>
+        );
+      }
+      const ps = tracking.get(r.id) ?? [];
+      if (!ps.length) return <span class="small mut">–</span>;
+      const cur = ps[0]!;
+      const open = ps.filter((p) => p.state === 'offen').length;
+      const label =
+        cur.state === 'abgerechnet'
+          ? `${MON(cur.start)} abgerechnet`
+          : cur.state === 'keine'
+            ? `${MON(cur.start)} keine Rechnung`
+            : cur.state === 'laufend'
+              ? `${MON(cur.start)} läuft`
+              : `${MON(cur.start)} fehlt`;
+      const tone =
+        cur.state === 'abgerechnet' || cur.state === 'keine'
+          ? 'ok'
+          : cur.state === 'laufend'
+            ? 'info'
+            : 'warn';
+      return (
+        <span>
+          <span class={`bs-pill bs-${tone}`}>{label}</span>
+          {open > (cur.state === 'offen' ? 1 : 0) ? (
+            <span class="bs-sub" style="color:var(--bad)">
+              {open} Zeitr. ohne Rechnung
+            </span>
+          ) : null}
+        </span>
+      );
+    };
     type Row = {
       id: string;
       href: string;
@@ -432,6 +483,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             <span>Zeitraum</span>
             <span class="r">Betrag netto</span>
             <span>Status</span>
+            <span>Abrechnung</span>
           </div>
           {rows.map((r) => (
             <a class="bs-tr" href={r.href}>
@@ -456,6 +508,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               <span>
                 <span class={`bs-pill bs-${r.tone || 'grey'}`}>{r.status}</span>
               </span>
+              <span>{billCell(r)}</span>
             </a>
           ))}
           {!rows.length && <div class="bs-tr empty">Keine Bestellungen in dieser Ansicht.</div>}
@@ -925,8 +978,8 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             <input type="file" name="datei" accept=".xml,.pdf" required aria-label="E-Rechnung" />
             <button class="btn">Einlesen und prüfen</button>
             <span class="small mut">
-              Lieferant, Rechnungsnummer, Datum, Fälligkeit, Beträge, § 13b und Skonto werden übernommen. Die Datei
-              wird unverändert archiviert.
+              Lieferant, Rechnungsnummer, Datum, Fälligkeit, Beträge, § 13b und Skonto werden übernommen. Die
+              Datei wird unverändert archiviert.
             </span>
           </form>
           {pendingE.length > 0 && (
@@ -935,7 +988,8 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                 <li>
                   <a href={`/rechnungseingang/e-rechnung/${f.id}`}>{f.original_name}</a>{' '}
                   <span class="mut">
-                    · {dateDe(f.created_at.toISOString().slice(0, 10))} · {f.uploaded_by} – noch nicht übernommen
+                    · {dateDe(f.created_at.toISOString().slice(0, 10))} · {f.uploaded_by} – noch nicht
+                    übernommen
                   </span>
                 </li>
               ))}
@@ -2360,49 +2414,59 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
   // ================================================================== Nachkalkulation
 
   app.get('/auswertungen/nachkalkulation', async (c) => {
-    const month = isMonth(c.req.query('monat'))
-      ? c.req.query('monat')!
-      : addDays(`${todayBerlin().slice(0, 7)}-01`, -1).slice(0, 7);
-    const { rows, overhead, targetBp } = await siteCosting(sql, month);
+    const last = addDays(`${todayBerlin().slice(0, 7)}-01`, -1).slice(0, 7);
+    const qm = c.req.query('monat');
+    const von = isMonth(c.req.query('von')) ? c.req.query('von')! : isMonth(qm) ? qm! : last;
+    const bisQ = isMonth(c.req.query('bis')) ? c.req.query('bis')! : von;
+    const bis = bisQ < von ? von : bisQ;
+    const [{ rows, general, overhead, targetBp }, report] = await Promise.all([
+      siteCosting(sql, { from: von, to: bis }),
+      costCenterReport(sql, von, bis),
+    ]);
     const active = rows.filter(
       (r) => r.revenue !== 0n || r.actual_minutes > 0 || r.material + r.subcontractor + r.other !== 0n,
     );
     const sum = (f: (r: (typeof rows)[number]) => bigint) => active.reduce((a, r) => a + f(r), 0n);
     const totalRev = sum((r) => r.revenue);
+    const generalTotal = general.reduce((a, g) => a + g.total, 0n);
     const totalMargin = sum((r) => r.margin);
+    const result = totalMargin - generalTotal;
     const pct = (bp: number | null) =>
       bp === null ? '–' : `${(bp / 100).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
+    const months = (() => {
+      const [a, b] = [von, bis].map((x) => Number(x.slice(0, 4)) * 12 + Number(x.slice(5, 7)));
+      return b! - a! + 1;
+    })();
     return page(
       c,
-      'Nachkalkulation',
+      'Nachkalkulation & Kostenstellen',
       'auswertungen',
       <>
-        <PageHead title="Nachkalkulation je Objekt" crumbs={[['Auswertungen', '/auswertungen']]} />
+        <PageHead title="Nachkalkulation & Kostenstellen" crumbs={[['Auswertungen', '/auswertungen']]} />
         <form method="get" action="/auswertungen/nachkalkulation" class="actions" style="margin-top:0">
-          <input
-            type="month"
-            name="monat"
-            value={month}
-            style="max-width:200px"
-            onchange="this.form.submit()"
-          />
+          <label class="small" style="margin:0">
+            von
+          </label>
+          <input type="month" name="von" value={von} style="max-width:200px" />
+          <label class="small" style="margin:0">
+            bis
+          </label>
+          <input type="month" name="bis" value={bis} style="max-width:200px" />
+          <button class="btn sec sm">Anzeigen</button>
           <span class="small mut">
-            Lohnkosten = Ist-Stunden × Stundenlohn + Zuschlag (Minijob {pct(overhead.minijob)}, Teilzeit{' '}
-            {pct(overhead.parttime)}, über 30 Std. {pct(overhead.fulltime)}) · Ziel-Deckungsbeitrag{' '}
-            {pct(targetBp)} · <a href="/datev">Werte ändern</a>
+            Lohn = Ist-Stunden × Stundenlohn + Zuschlag (Minijob {pct(overhead.minijob)}, Teilzeit{' '}
+            {pct(overhead.parttime)}, über 30 Std. {pct(overhead.fulltime)}) · Ziel {pct(targetBp)} ·{' '}
+            <a href="/datev">Werte ändern</a>
           </span>
         </form>
         <div class="kpis">
           <div class="kpi">
             <div class="l">Erlös netto</div>
             <div class="v">{euro(totalRev)}</div>
+            <div class="s">{months > 1 ? `${months} Monate` : 'ein Monat'}</div>
           </div>
           <div class="kpi">
-            <div class="l">Kosten gesamt</div>
-            <div class="v">{euro(totalRev - totalMargin)}</div>
-          </div>
-          <div class="kpi">
-            <div class="l">Deckungsbeitrag</div>
+            <div class="l">Deckungsbeitrag Objekte</div>
             <div class="v" style={totalMargin < 0n ? 'color:var(--err)' : ''}>
               {euro(totalMargin)}
             </div>
@@ -2411,17 +2475,23 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             </div>
           </div>
           <div class="kpi">
-            <div class="l">Objekte unter Ziel</div>
-            <div class="v" style="color:var(--err)">
-              {active.filter((r) => r.margin_bp !== null && r.margin_bp < targetBp).length}
+            <div class="l">Allgemeine Kostenstellen</div>
+            <div class="v">{euro(generalTotal)}</div>
+            <div class="s">Büro, Fahrzeuge, Lager …</div>
+          </div>
+          <div class="kpi">
+            <div class="l">Ergebnis</div>
+            <div class="v" style={result < 0n ? 'color:var(--err)' : ''}>
+              {euro(result)}
             </div>
+            <div class="s">Deckungsbeitrag − allgemeine Kosten</div>
           </div>
         </div>
         <div class="tbl">
           <table>
             <thead>
               <tr>
-                <th>Objekt</th>
+                <th>Kostenstelle / Objekt</th>
                 <th class="r">Erlös</th>
                 <th class="r">Std. Soll / Ist</th>
                 <th class="r">Lohn</th>
@@ -2434,18 +2504,25 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               </tr>
             </thead>
             <tbody>
-              {active.length === 0 && (
+              {active.length === 0 && general.length === 0 && (
                 <tr>
                   <td colspan={10}>
-                    <div class="empty">Für diesen Monat gibt es keine Erlöse, Zeiten oder Kosten.</div>
+                    <div class="empty">Im Zeitraum gibt es keine Erlöse, Zeiten oder Kosten.</div>
                   </td>
                 </tr>
               )}
               {active.map((r) => (
                 <tr>
                   <td>
-                    <a href={`/objekte/${r.site_id}`}>{r.site_name}</a>
+                    <a href={`/objekte/${r.site_id}`}>
+                      {r.site_no} · {r.site_name}
+                    </a>
                     <div class="small mut">{r.customer_name}</div>
+                    {r.revenue === 0n && r.material + r.subcontractor + r.other + r.labor > 0n && (
+                      <div class="small" style="color:var(--warn)">
+                        Kosten ohne Erlös
+                      </div>
+                    )}
                   </td>
                   <td class="r">{euro(r.revenue)}</td>
                   <td class="r">
@@ -2475,13 +2552,101 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                   </td>
                 </tr>
               ))}
+              {general.length > 0 && (
+                <tr>
+                  <td colspan={10} class="small mut" style="background:var(--head)">
+                    <b>Allgemeine Kostenstellen</b> (ohne Erlös)
+                  </td>
+                </tr>
+              )}
+              {general.map((g) => (
+                <tr>
+                  <td>
+                    <b>
+                      {g.number} · {g.name}
+                    </b>
+                  </td>
+                  <td class="r">–</td>
+                  <td class="r">–</td>
+                  <td class="r">–</td>
+                  <td class="r">{euro(g.material)}</td>
+                  <td class="r">{euro(g.subcontractor)}</td>
+                  <td class="r">{euro(g.other)}</td>
+                  <td class="r" style="color:var(--err)">
+                    <b>{euro(-g.total)}</b>
+                  </td>
+                  <td class="r" />
+                  <td class="r" />
+                </tr>
+              ))}
+              {(active.length > 0 || general.length > 0) && (
+                <tr>
+                  <td>
+                    <b>Gesamt</b>
+                  </td>
+                  <td class="r">
+                    <b>{euro(totalRev)}</b>
+                  </td>
+                  <td class="r" />
+                  <td class="r">
+                    <b>{euro(sum((r) => r.labor))}</b>
+                  </td>
+                  <td class="r">
+                    <b>{euro(sum((r) => r.material) + general.reduce((a, g) => a + g.material, 0n))}</b>
+                  </td>
+                  <td class="r">
+                    <b>
+                      {euro(sum((r) => r.subcontractor) + general.reduce((a, g) => a + g.subcontractor, 0n))}
+                    </b>
+                  </td>
+                  <td class="r">
+                    <b>{euro(sum((r) => r.other) + general.reduce((a, g) => a + g.other, 0n))}</b>
+                  </td>
+                  <td class="r" style={result < 0n ? 'color:var(--err)' : ''}>
+                    <b>{euro(result)}</b>
+                  </td>
+                  <td class="r" />
+                  <td class="r" />
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
+        <div class="card">
+          <h3>
+            Eingangsrechnungen nicht (vollständig) zugeordnet{' '}
+            <span class="cnt">({report.unallocated.length})</span>
+          </h3>
+          {!report.unallocated.length ? (
+            <p class="mut small">Alles einer Kostenstelle zugeordnet.</p>
+          ) : (
+            <div class="list">
+              {report.unallocated.map((u) => (
+                <div class="row">
+                  <span class="dot warn" />
+                  <div class="main">
+                    <a href={`/rechnungseingang/${u.id}`}>
+                      <b style="color:var(--ink)">
+                        {u.supplier_name} · {u.invoice_no}
+                      </b>
+                    </a>
+                    <div class="small mut">{dateDe(u.invoice_date)}</div>
+                  </div>
+                  <div class="side">
+                    <span class="when">
+                      {euro(u.allocated)} von {euro(u.net_cents)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <p class="small mut">
-          Erlös: ausgestellte Rechnungen des Objekts (Leistungszeitraum, sonst Rechnungsdatum), inkl.
-          Storno/Korrektur. Material: Lagerabgänge an das Objekt zum EK + Eingangsrechnungen „Material“ mit
-          Objekt. Gemeinkosten (Büro, Fahrzeuge ohne Objekt) sind nicht enthalten.
+          Erlös: ausgestellte und übernommene (Fortytools-)Rechnungen je Position dem Objekt zugeordnet,
+          Leistungszeitraum sonst Rechnungsdatum, inkl. Storno/Korrektur. Kosten: Eingangsrechnungen (auch
+          Nachunternehmer) nach ihrer Kostenstellen-Aufteilung und Leistungsmonat, Material zusätzlich
+          Lagerabgänge zum EK. Objekte erscheinen auch inaktiv, sobald im Zeitraum etwas anfällt.
         </p>
       </>,
     );

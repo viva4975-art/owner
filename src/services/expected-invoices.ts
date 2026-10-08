@@ -208,3 +208,81 @@ export async function linksOf(sql: Sql, invoiceId: string) {
       left join app.sites s on s.id = sc.site_id
      where l.incoming_invoice_id = ${invoiceId} order by sc.number, l.period_month`;
 }
+
+export type BillingState = 'abgerechnet' | 'keine' | 'offen' | 'laufend';
+export interface BillingPeriod {
+  start: string;
+  end: string;
+  state: BillingState;
+  invoices: { id: string; invoice_no: string; net: bigint | null }[];
+  skipReason: string | null;
+}
+
+/**
+ * Rechnungsverfolgung je Bestellung: alle Zeiträume bis einschließlich des laufenden (im Oktober also auch
+ * Oktober), höchstens `limit` neueste, mit Status abgerechnet / keine Rechnung / offen (abgelaufen, ohne Rechnung) /
+ * laufend (Zeitraum noch nicht vorbei, noch keine Rechnung).
+ */
+export async function billingTracking(
+  sql: Sql,
+  ids: string[],
+  opts: { today?: string; limit?: number } = {},
+): Promise<Map<string, BillingPeriod[]>> {
+  const today = opts.today ?? todayBerlin();
+  const out = new Map<string, BillingPeriod[]>();
+  if (!ids.length) return out;
+  const [orders, covered, skipped] = await Promise.all([
+    sql<{ id: string; frequency: string; valid_from: string; valid_to: string | null; status: string }[]>`
+      select id, frequency, valid_from::text, valid_to::text, status from app.subcontracts where id in ${sql(ids)}`,
+    sql<{ subcontract_id: string; m: string; id: string; invoice_no: string; net_cents: bigint | null }[]>`
+      select l.subcontract_id, to_char(l.period_month, 'YYYY-MM') as m, i.id, i.invoice_no, l.net_cents
+        from app.incoming_invoice_subcontracts l join app.incoming_invoices i on i.id = l.incoming_invoice_id
+       where l.subcontract_id in ${sql(ids)} order by i.invoice_date`,
+    sql<{ subcontract_id: string; m: string; reason: string }[]>`
+      select subcontract_id, to_char(period_month, 'YYYY-MM') as m, reason from app.subcontract_expected_skips
+       where subcontract_id in ${sql(ids)}`,
+  ]);
+  const inv = new Map<string, BillingPeriod['invoices']>();
+  for (const r of covered) {
+    const k = `${r.subcontract_id}|${r.m}`;
+    const list = inv.get(k) ?? [];
+    list.push({ id: r.id, invoice_no: r.invoice_no, net: r.net_cents });
+    inv.set(k, list);
+  }
+  const skip = new Map(skipped.map((s) => [`${s.subcontract_id}|${s.m}`, s.reason]));
+  for (const o of orders) {
+    if (o.status !== 'erteilt' && o.status !== 'beendet') {
+      out.set(o.id, []);
+      continue;
+    }
+    const step = STEP[o.frequency] ?? 1;
+    const periods: { start: string; end: string }[] = [];
+    if (step === 0) {
+      const end = lastDay((o.valid_to ?? o.valid_from).slice(0, 7));
+      if (o.valid_from <= today) periods.push({ start: o.valid_from.slice(0, 7), end });
+    } else {
+      for (let m = o.valid_from.slice(0, 7), i = 0; i < 600; m = monthAdd(m, step), i++) {
+        if (o.valid_to && `${m}-01` > o.valid_to) break;
+        if (`${m}-01` > today) break;
+        let end = lastDay(monthAdd(m, step - 1));
+        if (o.valid_to && end > o.valid_to) end = o.valid_to;
+        periods.push({ start: m, end });
+      }
+    }
+    const list = periods.slice(-(opts.limit ?? 13)).map((p): BillingPeriod => {
+      const k = `${o.id}|${p.start}`;
+      const invoices = inv.get(k) ?? [];
+      const reason = skip.get(k) ?? null;
+      const state: BillingState = invoices.length
+        ? 'abgerechnet'
+        : reason
+          ? 'keine'
+          : p.end < today
+            ? 'offen'
+            : 'laufend';
+      return { ...p, state, invoices, skipReason: reason };
+    });
+    out.set(o.id, list.reverse());
+  }
+  return out;
+}

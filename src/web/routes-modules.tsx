@@ -517,6 +517,26 @@ export function registerModuleRoutes(ctx: Ctx) {
     return back(c, '/offene-posten', errors.length ? { fehler: [msg, ...errors].join('\n') } : { ok: msg });
   });
 
+  // Ein Klick: offenen Betrag einer Rechnung als bezahlt buchen (Ahmed 09.10.: „einfach abhaken“)
+  app.post('/offene-posten/bezahlt', async (c) => {
+    const b = await c.req.parseBody();
+    const [id, cents, lg] = String(b.voll ?? '').split('|');
+    if (!id || !/^[0-9a-f-]{36}$/.test(id) || !/^\d+$/.test(cents ?? ''))
+      throw new BusinessError('Rechnung nicht erkannt');
+    const r = await settleOpenItem(sql, {
+      batchId: typeof b.batch === 'string' && /^[0-9a-f-]{36}$/.test(b.batch) ? b.batch : randomUUID(),
+      invoiceId: id,
+      legacy: lg === '1',
+      amount: BigInt(cents!),
+      date: String(b.datum ?? '') || todayBerlin(),
+      rest: 'offen',
+      reference:
+        typeof b.referenz === 'string' && b.referenz.trim() ? b.referenz.trim() : 'als bezahlt abgehakt',
+      actor: c.get('actor'),
+    });
+    return back(c, '/offene-posten', { ok: `${euro(r.paid)} als bezahlt gebucht.` });
+  });
+
   app.get('/offene-posten', async (c) => {
     const q = c.req.query('q') ?? '';
     const overdueOnly = c.req.query('filter') === 'ueberfaellig';
@@ -664,6 +684,16 @@ export function registerModuleRoutes(ctx: Ctx) {
                                 <b>{euro(i.open_cents)}</b>
                               </td>
                               <td data-l="Zahlung">
+                                <button
+                                  class="btn sm sec op2-ok"
+                                  formaction="/offene-posten/bezahlt"
+                                  name="voll"
+                                  value={`${i.invoice_id}|${i.open_cents}|${i.legacy ? 1 : 0}`}
+                                  title="Offenen Betrag als bezahlt buchen (Datum oben)"
+                                  onclick={`return confirm('${i.number}: ${euro(i.open_cents)} als bezahlt buchen?')`}
+                                >
+                                  ✓ bezahlt
+                                </button>{' '}
                                 <details class="op2-p">
                                   <summary class="btn sm sec">Zahlung</summary>
                                   <div class="op2-pf">

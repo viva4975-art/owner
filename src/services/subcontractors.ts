@@ -423,6 +423,29 @@ export const SERVICE_KINDS = [
   'Winterdienst',
   'Sonstiges',
 ];
+/** Standard-Kurzbeschreibung je Leistung (wie in der alten App) – wird im Formular vorgeschlagen, bleibt änderbar. */
+export const SERVICE_DESCRIPTIONS: Record<string, string> = {
+  Unterhaltsreinigung:
+    'Unterhaltsreinigung gemäß Leistungsverzeichnis des Objekts: Böden kehren/feucht wischen, Sanitärräume reinigen und desinfizieren, Papierkörbe leeren, Oberflächen in Griffhöhe abstauben, Verbrauchsmaterial auffüllen.',
+  Treppenhausreinigung:
+    'Treppenhausreinigung: Treppen, Podeste und Flure kehren und feucht wischen, Handläufe und Geländer abwischen, Eingangsbereich und Briefkastenanlage reinigen, Glas der Eingangstüren beidseitig.',
+  Glasreinigung:
+    'Glasreinigung: Fenster- und Glasflächen beidseitig inkl. Rahmen und Falze, Fensterbänke innen/außen; Arbeiten mit Leiter/Hebebühne nach Absprache, Abdeckung empfindlicher Bereiche.',
+  Fassadenreinigung:
+    'Fassadenreinigung der vereinbarten Flächen mit geeignetem Verfahren und Mittel, Sicherung des Arbeitsbereichs, Schutz angrenzender Bauteile und Pflanzen.',
+  Grundreinigung:
+    'Grundreinigung der vereinbarten Bodenflächen: Altpflege entfernen, maschinell reinigen, neutralisieren und – soweit beauftragt – neu einpflegen bzw. beschichten; Möbel rücken und zurückstellen.',
+  Bauschlussreinigung:
+    'Bauschlussreinigung: Grob- und Feinreinigung nach Bauende, Entfernen von Baustaub, Farb-/Mörtelresten und Aufklebern, Reinigung von Böden, Fenstern, Türen, Sanitär und Einbauten – bezugsfertig.',
+  'Industrie-/Sonderreinigung':
+    'Industrie-/Sonderreinigung der vereinbarten Bereiche und Anlagen nach Vorgabe des Objekts; Arbeitsschutz und Betriebsanweisungen des Kunden sind einzuhalten.',
+  Teppichreinigung:
+    'Teppichreinigung der vereinbarten Flächen im Sprühextraktionsverfahren, Fleckenbehandlung vorab, Trocknungszeit beachten; Möbel rücken und zurückstellen.',
+  Winterdienst:
+    'Winterdienst: Räumen und Streuen der vereinbarten Flächen gemäß Räum- und Streupflicht der Gemeinde und Räumplan des Objekts, Dokumentation jedes Einsatzes (Datum, Uhrzeit, Streumittel).',
+  Sonstiges: '',
+};
+
 export const FREQUENCY: Record<string, string> = {
   einmalig: 'einmalig',
   woechentlich: 'wöchentlich',

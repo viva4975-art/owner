@@ -1,126 +1,20 @@
 import { randomUUID } from 'node:crypto';
-import { todayBerlin } from '../domain/invoice/calc.js';
-import { addMonths, costCenterReport, listCostCenters, saveCostCenter } from '../services/cost-centers.js';
+import { listCostCenters, saveCostCenter } from '../services/cost-centers.js';
 import { BusinessError } from '../services/errors.js';
-import { COST_CATEGORY, type CostCategory } from '../services/purchasing.js';
 import { type Ctx, UUID } from './app.js';
 import { str } from './forms.js';
-import { PageHead, dateDe, euro } from './layout.js';
+import { PageHead } from './layout.js';
 
 /** Kostenstellen: Auswertung (Eingangsrechnungen je Kostenstelle) und Pflege der allgemeinen Kostenstellen. */
 export function registerCostCenterRoutes({ app, deps, page, back }: Ctx) {
   const { sql } = deps;
 
-  app.get('/auswertungen/kostenstellen', async (c) => {
-    const cur = todayBerlin().slice(0, 7);
-    const from = /^\d{4}-\d{2}$/.test(c.req.query('von') ?? '') ? c.req.query('von')! : addMonths(cur, -2);
-    const to = /^\d{4}-\d{2}$/.test(c.req.query('bis') ?? '') ? c.req.query('bis')! : cur;
-    const { rows, unallocated } = await costCenterReport(sql, from, to);
-    const cats = Object.keys(COST_CATEGORY) as CostCategory[];
-    const used = cats.filter((k) => rows.some((r) => r.byCat[k]));
-    const total = rows.reduce((a, r) => a + r.total, 0n);
-    return page(
-      c,
-      'Kostenstellen',
-      'auswertungen',
-      <>
-        <PageHead title="Kosten je Kostenstelle" crumbs={[['Auswertungen', '/auswertungen']]} />
-        <form method="get" class="actions" style="margin-top:0">
-          <label class="small" style="margin:0">
-            von
-          </label>
-          <input type="month" name="von" value={from} style="max-width:170px" />
-          <label class="small" style="margin:0">
-            bis
-          </label>
-          <input type="month" name="bis" value={to} style="max-width:170px" />
-          <button class="btn sec sm">Anzeigen</button>
-          <span class="small mut" style="margin-left:auto">
-            Eingangsrechnungen netto nach Leistungsmonat (auch Nachunternehmer). Lohn je Objekt siehe{' '}
-            <a href="/auswertungen/nachkalkulation">Nachkalkulation</a>.
-          </span>
-        </form>
-        <div class="card">
-          <div class="tbl">
-            <table>
-              <thead>
-                <tr>
-                  <th>Kostenstelle</th>
-                  {used.map((k) => (
-                    <th class="r">{COST_CATEGORY[k]}</th>
-                  ))}
-                  <th class="r">Summe</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr>
-                    <td>
-                      {r.site_id ? <a href={`/objekte/${r.site_id}`}>{r.label}</a> : <b>{r.label}</b>}
-                      <div class="small faint">{r.kind === 'objekt' ? 'Objekt' : 'allgemein'}</div>
-                    </td>
-                    {used.map((k) => (
-                      <td class="r">{r.byCat[k] ? euro(r.byCat[k]!) : '–'}</td>
-                    ))}
-                    <td class="r">
-                      <b>{euro(r.total)}</b>
-                    </td>
-                  </tr>
-                ))}
-                {!rows.length && (
-                  <tr>
-                    <td colspan={used.length + 2} class="mut">
-                      Keine zugeordneten Kosten im Zeitraum.
-                    </td>
-                  </tr>
-                )}
-                {rows.length > 0 && (
-                  <tr>
-                    <td>
-                      <b>Gesamt</b>
-                    </td>
-                    {used.map((k) => (
-                      <td class="r">
-                        <b>{euro(rows.reduce((a, r) => a + (r.byCat[k] ?? 0n), 0n))}</b>
-                      </td>
-                    ))}
-                    <td class="r">
-                      <b>{euro(total)}</b>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div class="card">
-          <h3>
-            Nicht (vollständig) zugeordnet <span class="cnt">({unallocated.length})</span>
-          </h3>
-          {!unallocated.length && <p class="mut small">Alles zugeordnet.</p>}
-          <div class="list">
-            {unallocated.map((u) => (
-              <div class="row">
-                <span class="dot warn" />
-                <div class="main">
-                  <a href={`/rechnungseingang/${u.id}`}>
-                    <b style="color:var(--ink)">
-                      {u.supplier_name} · {u.invoice_no}
-                    </b>
-                  </a>
-                  <div class="small mut">{dateDe(u.invoice_date)}</div>
-                </div>
-                <div class="side">
-                  <span class="when">
-                    {euro(u.allocated)} von {euro(u.net_cents)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </>,
-    );
+  // Kostenstellen-Auswertung ist in der Nachkalkulation aufgegangen (Ahmed 09.10.)
+  app.get('/auswertungen/kostenstellen', (c) => {
+    const q = new URLSearchParams();
+    if (c.req.query('von')) q.set('von', c.req.query('von')!);
+    if (c.req.query('bis')) q.set('bis', c.req.query('bis')!);
+    return c.redirect(`/auswertungen/nachkalkulation${q.size ? `?${q}` : ''}`, 301);
   });
 
   app.get('/einstellungen/kostenstellen', async (c) => {

@@ -655,7 +655,7 @@ summary.gear{list-style:none;cursor:pointer}summary.gear::-webkit-details-marker
 .lc-exp{font-size:12.5px;color:var(--warn);margin-top:3px}
 .badge.muted{background:var(--head);color:var(--mut);border:1px solid var(--line)}
 .bs-table{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:16px}
-.bs-tr{display:grid;grid-template-columns:130px minmax(0,1fr) 200px 150px 190px;gap:14px;align-items:center;padding:11px 16px;border-top:1px solid var(--line);font-size:13px;color:var(--ink)}
+.bs-tr{display:grid;grid-template-columns:120px minmax(0,1fr) 170px 130px 170px 170px;gap:14px;align-items:center;padding:11px 16px;border-top:1px solid var(--line);font-size:13px;color:var(--ink)}
 a.bs-tr:hover{text-decoration:none;background:var(--head)}
 .bs-th{border-top:0;background:var(--head);font-size:12px;font-weight:700;color:var(--mut)}
 .bs-tr .r{text-align:right}
@@ -1361,8 +1361,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Statistiken', href: '/auswertungen/statistik' },
       { label: 'Ausgaben', href: '/auswertungen/ausgaben' },
       { label: 'Umsatz-Vorschau', href: '/auswertungen/vorschau' },
-      { label: 'Nachkalkulation', href: '/auswertungen/nachkalkulation' },
-      { label: 'Kostenstellen', href: '/auswertungen/kostenstellen' },
+      { label: 'Nachkalkulation & Kostenstellen', href: '/auswertungen/nachkalkulation' },
       { label: 'Ø Stundensätze', href: '/auswertungen/stundensaetze' },
       { label: 'Urlaubskonten', href: '/auswertungen/urlaub' },
       { label: 'Krankheitstage', href: '/auswertungen/krankheit' },

@@ -1788,3 +1788,29 @@ Testadresse.
     Stunden-Differenz (auch minus), auf der Seite aufklappbar.
   - **Tiefgaragen-Aushang** auf dem Briefpapier mit Logo: Bordeaux-Titelband, Termine als Karten, gelber Hinweiskasten,
     Haftungsausschluss.
+- 2026-10-09: Runde 31 (Ahmed, 9 Punkte):
+  - **Nachkalkulation & Kostenstellen sind eine Seite** (Auswertungen → Nachkalkulation & Kostenstellen; `/auswertungen/
+    kostenstellen` leitet um). Fund: Die Nachkalkulation zählte nur aktive Objekte, nur einen Monat und nur eigene
+    Rechnungen (Erlös aus Fortytools-Rechnungen fehlte → überall 0 €), allgemeine Kostenstellen fehlten; die Kostenstellen-
+    Auswertung rechnete anders. Jetzt: Zeitraum von–bis, Erlös aus eigenen + übernommenen Rechnungen (je Position dem
+    Objekt zugeordnet, Leistungszeitraum), jedes Objekt mit Erlös, Zeiten oder Kosten im Zeitraum (auch inaktive – z. B.
+    Nachunternehmer ohne Erlös, Hinweis „Kosten ohne Erlös“), darunter die allgemeinen Kostenstellen, Ergebnis gesamt und
+    Liste „Eingangsrechnungen nicht (vollständig) zugeordnet“.
+  - **Objekte mehrere auf einmal aktiv/inaktiv** (Objektliste: Häkchen je Zeile, „alle auf dieser Seite“, Protokoll).
+  - **Angebote: Zuschlagsquote zusätzlich nach Umsatz** (angenommener ÷ entschiedener Wert; Monatspauschalen × 12).
+  - **Offene Posten: „✓ bezahlt“ je Rechnung** (voller offener Betrag, Datum oben, auch Fortytools-Rechnungen). Normalfall
+    bleibt die Zuordnung der Kontoumsätze – Abhaken nur für Bar-/Sonderfälle, sonst doppelte Zahlung.
+  - **NU-Bestellung: Standard-Leistungsbeschreibung** je Leistung (wie alte App; wird beim Wechsel eingesetzt, solange
+    nichts Eigenes drinsteht; `SERVICE_DESCRIPTIONS`).
+  - **Rechnungsverfolgung je NU-Bestellung:** Bestellungen-Liste Spalte „Abrechnung“ (laufender Zeitraum, z. B. „10/2026
+    läuft“, „09/2026 fehlt“, Anzahl Zeiträume ohne Rechnung); in der Bestellung Tabelle je Zeitraum (bis 24) mit
+    abgerechnet (Link zur Eingangsrechnung, Betrag) / keine Rechnung (Grund) / fehlt / läuft noch, „Rechnung erfassen“,
+    „keine Rechnung …“ (`billingTracking`).
+  - **Zeit löschen im Kalender** auch bei Zeiten ohne Einsatz (grüne Balken) und im Objekt-Kalender (Admin/Personal).
+  - **Einsätze für abwesende Mitarbeiter:** „Nicht notwendig“ und **Nachunternehmer-Bestellung** (erteilte Bestellungen,
+    die des Objekts zuerst) wählbar → Tag gilt als Ausfall mit Vermerk, Bestellung an `shift_exceptions.subcontract_id`
+    (Migration `20261116000001`).
+  - **Kassenbuch-PDF neu** (Formular-Stil statt Rechnungsvorlage): Kasten Firma/Kasse/Zeitraum/Belegnummern/Abschluss,
+    Kacheln Anfangsbestand/Einnahmen/Ausgaben/Endbestand, Buchungen je Tag mit Beleg-Nr./Kategorie/„Beleg archiviert“,
+    Summen, Kassensturz mit Differenz, stornierte Buchungen mit Grund, Hinweis § 146 AO, Unterschriften Kassenführer/GF.
+  - Tests: neu `runde31.db.test.ts`, Rechnungsverfolgung in `expected-invoices.db.test.ts`.

@@ -37,6 +37,7 @@ import {
   revokeTermination,
   saveSubcontract,
   SC_STATUS,
+  SERVICE_DESCRIPTIONS,
   SERVICE_KINDS,
   setSubcontractStatus,
   subcontractPdf,
@@ -54,6 +55,7 @@ import { HandoverTable } from './routes-handovers.js';
 import { PageHead, Tabs, dateDe, euro, type Tab } from './layout.js';
 import { FileArea } from './files.js';
 import { listFiles } from '../services/uploads.js';
+import { billingTracking, skipExpected } from '../services/expected-invoices.js';
 import { fullName } from '../services/users.js';
 
 const pdfResponse = (pdf: Uint8Array, name: string) =>
@@ -1224,6 +1226,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       >`select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`,
     ]);
     const draft = !sc || sc.status === 'entwurf';
+    const tracking = sc ? ((await billingTracking(sql, [id], { limit: 24 })).get(id) ?? []) : [];
     return page(
       c,
       sc ? `Bestellung ${sc.number}` : 'Neue Bestellung',
@@ -1330,9 +1333,18 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
               </div>
             </div>
             <label for="desc">Leistungsumfang</label>
-            <textarea id="desc" name="description" rows={3}>
-              {sc?.description ?? ''}
+            <textarea id="desc" name="description" rows={4}>
+              {sc?.description ?? (sc ? '' : (SERVICE_DESCRIPTIONS[SERVICE_KINDS[0]!] ?? ''))}
             </textarea>
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `(function(){var D=${JSON.stringify(SERVICE_DESCRIPTIONS).replace(/</g, '\\u003c')};var k=document.getElementById('kind'),d=document.getElementById('desc');if(!k||!d)return;var last=D[k.value]||'';k.addEventListener('change',function(){var n=D[k.value]||'';if(!d.value.trim()||d.value.trim()===last.trim())d.value=n;last=n;});})();`,
+              }}
+            />
+            <div class="small mut">
+              Beim Wechsel der Leistung wird die Standard-Beschreibung eingesetzt, solange nichts Eigenes
+              eingetragen ist.
+            </div>
           </fieldset>
           <div class="grid">
             <div>
@@ -1434,8 +1446,108 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
             )}
           </div>
         )}
+        {sc && tracking.length > 0 && (
+          <div class="card">
+            <h3 style="margin-top:0">Rechnungsverfolgung</h3>
+            <p class="small mut" style="margin-top:-6px">
+              Je Abrechnungszeitraum bis heute (laufender Zeitraum oben): ist die Rechnung des
+              Nachunternehmers da? Zuordnung im Rechnungseingang („Aufträge / Zeiträume“).
+            </p>
+            <div class="tablewrap">
+              <table class="stack-m">
+                <thead>
+                  <tr>
+                    <th>Zeitraum</th>
+                    <th>Status</th>
+                    <th>Eingangsrechnung</th>
+                    <th class="r">netto</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tracking.map((p) => (
+                    <tr>
+                      <td data-l="Zeitraum">
+                        {p.start.slice(5, 7)}/{p.start.slice(0, 4)}
+                        {p.end.slice(0, 7) !== p.start ? (
+                          <span class="small mut"> – {dateDe(p.end)}</span>
+                        ) : null}
+                      </td>
+                      <td data-l="Status">
+                        {p.state === 'abgerechnet' ? (
+                          <span class="badge ok">abgerechnet</span>
+                        ) : p.state === 'keine' ? (
+                          <span class="badge" title={p.skipReason ?? ''}>
+                            keine Rechnung · {p.skipReason}
+                          </span>
+                        ) : p.state === 'laufend' ? (
+                          <span class="badge info">läuft noch</span>
+                        ) : (
+                          <span class="badge warn">Rechnung fehlt</span>
+                        )}
+                      </td>
+                      <td data-l="Rechnung">
+                        {p.invoices.map((i, k) => (
+                          <>
+                            {k ? ', ' : ''}
+                            <a href={`/rechnungseingang/${i.id}`}>{i.invoice_no}</a>
+                          </>
+                        ))}
+                      </td>
+                      <td class="r" data-l="netto">
+                        {p.invoices.some((i) => i.net != null)
+                          ? euro(p.invoices.reduce((a, i) => a + (i.net ?? 0n), 0n))
+                          : ''}
+                      </td>
+                      <td>
+                        {p.state === 'offen' || p.state === 'laufend' ? (
+                          <span class="actions" style="margin:0;flex-wrap:nowrap">
+                            <a
+                              class="btn sm sec"
+                              href={`/rechnungseingang/${randomUUID()}?lieferant=${sc.supplier_id}&erwartet=${encodeURIComponent(`${id}:${p.start}`)}`}
+                            >
+                              Rechnung erfassen
+                            </a>
+                            <details style="display:inline-block">
+                              <summary class="btn sm ghost">keine Rechnung …</summary>
+                              <form
+                                method="post"
+                                action={`/nachunternehmer/auftraege/${id}/keine-rechnung`}
+                                class="actions"
+                                style="margin-top:6px"
+                              >
+                                <input type="hidden" name="monat" value={p.start} />
+                                <input name="grund" required placeholder="Grund" style="max-width:200px" />
+                                <button class="btn sm">Vermerken</button>
+                              </form>
+                            </details>
+                          </span>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </>,
     );
+  });
+
+  app.post(`/nachunternehmer/auftraege/:id{${UUID}}/keine-rechnung`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    try {
+      await skipExpected(sql, id, String(b.monat ?? ''), String(b.grund ?? ''), c.get('actor'));
+    } catch (e) {
+      if (e instanceof BusinessError)
+        return back(c, `/nachunternehmer/auftraege/${id}`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/nachunternehmer/auftraege/${id}`, {
+      ok: 'Vermerkt: für diesen Zeitraum kommt keine Rechnung.',
+    });
   });
 
   app.post(`/nachunternehmer/auftraege/:id{${UUID}}`, async (c) => {

@@ -29,6 +29,8 @@ export interface ExceptionInput {
   end: string | null;
   note: string | null;
   expectedVersion: number | null;
+  /** nur bei Ausfall: Tag wird von dieser Nachunternehmer-Bestellung abgedeckt */
+  subcontractId?: string | null;
 }
 
 export async function saveException(sql: Sql, id: string, p: ExceptionInput, actor: string) {
@@ -57,6 +59,12 @@ export async function saveException(sql: Sql, id: string, p: ExceptionInput, act
     throw new BusinessError('Uhrzeit bitte als HH:MM, Ende nach Beginn');
   }
   if (p.kind === 'vertretung' && !p.substituteId) throw new BusinessError('Bitte Vertretung auswählen');
+  if (p.subcontractId) {
+    const [o] = await sql<
+      { status: string }[]
+    >`select status from app.subcontracts where id = ${p.subcontractId}`;
+    if (!o || o.status !== 'erteilt') throw new BusinessError('Nachunternehmer-Bestellung ist nicht erteilt');
+  }
   if (p.kind === 'umgeplant' && !p.substituteId && !p.start)
     throw new BusinessError('Bitte neue Zeit oder Mitarbeiter angeben');
   const sub = p.kind === 'ausfall' ? null : p.substituteId === plan.employee_id ? null : p.substituteId;
@@ -96,6 +104,7 @@ export async function saveException(sql: Sql, id: string, p: ExceptionInput, act
       start_time: p.kind === 'ausfall' ? null : p.start,
       end_time: p.kind === 'ausfall' ? null : p.end,
       note: p.note,
+      subcontract_id: p.kind === 'ausfall' ? (p.subcontractId ?? null) : null,
     };
     if (cur) {
       await tx`update app.shift_exceptions set ${tx(row as Record<string, unknown>)} where id = ${cur.id}`;

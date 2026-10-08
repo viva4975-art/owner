@@ -66,16 +66,10 @@ export const REPORTS: (Tab & { text: string })[] = [
     text: 'Erwarteter Umsatz aus den regelmäßigen Leistungen',
   },
   {
-    key: 'kostenstellen',
-    label: 'Kostenstellen',
-    href: '/auswertungen/kostenstellen',
-    text: 'Eingangsrechnungen (auch Nachunternehmer) je Kostenstelle und Kostenart',
-  },
-  {
     key: 'nachkalkulation',
-    label: 'Nachkalkulation',
+    label: 'Nachkalkulation & Kostenstellen',
     href: '/auswertungen/nachkalkulation',
-    text: 'Deckungsbeitrag je Objekt und Monat',
+    text: 'Erlös, Lohn, Material, Nachunternehmer und Deckungsbeitrag je Objekt und Kostenstelle',
   },
   {
     key: 'stundensaetze',

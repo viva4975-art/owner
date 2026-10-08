@@ -1311,6 +1311,29 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     );
   });
 
+  // mehrere Objekte auf einmal aktiv/inaktiv setzen (Ahmed 09.10.)
+  app.post('/objekte/status', async (c) => {
+    if (c.get('sites') !== null) throw new BusinessError('Nur das Büro kann Objekte aktiv/inaktiv setzen');
+    const b = await c.req.parseBody({ all: true });
+    const ids = ([] as unknown[])
+      .concat(b.ids ?? [])
+      .map(String)
+      .filter((x) => /^[0-9a-f-]{36}$/i.test(x));
+    const active = b.aktion === 'aktiv';
+    const z =
+      typeof b.zurueck === 'string' && b.zurueck.startsWith('/') && !b.zurueck.startsWith('//')
+        ? b.zurueck
+        : '/objekte';
+    if (!ids.length) return back(c, z, { fehler: 'Keine Objekte markiert' });
+    const r = await sql`update app.sites set active = ${active}, version = version + 1
+                         where id = any(${ids}::uuid[]) and active <> ${active}`;
+    await sql`insert into app.audit_log (actor, action, entity, details)
+              values (${c.get('actor')}, ${active ? 'activate' : 'deactivate'}, 'site', ${sql.json({ ids })})`;
+    return back(c, z, {
+      ok: `${r.count} Objekt(e) ${active ? 'aktiv' : 'inaktiv'} gesetzt.`,
+    });
+  });
+
   app.get('/objekte/export.csv', async (c) => {
     const { rows } = await filteredSites(
       sql,

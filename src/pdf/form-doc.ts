@@ -403,6 +403,27 @@ export class FormDoc {
     this.y += 8;
   }
 
+  /** Kennzahl-Kacheln nebeneinander (z. B. Kassenbuch: Anfangsbestand, Einnahmen, Ausgaben, Endbestand) */
+  tiles(items: { label: string; value: string; sub?: string; accent?: boolean }[]) {
+    const gap = 8;
+    const h = 46;
+    const w = (R - L - gap * (items.length - 1)) / items.length;
+    this.ensure(h + 12);
+    items.forEach((t, i) => {
+      const x = L + i * (w + gap);
+      this.rect(x, this.y, w, h, t.accent ? BORDEAUX : BOX, t.accent ? BORDEAUX : BOX_LINE);
+      const c = t.accent ? rgb(1, 1, 1) : GREY;
+      this.text(t.label, x + 10, this.y + 14, { size: 7, bold: true, color: c });
+      this.text(this.fit(t.value, w - 20, 13), x + 10, this.y + 32, {
+        size: 13,
+        bold: true,
+        color: t.accent ? rgb(1, 1, 1) : INK,
+      });
+      if (t.sub) this.text(this.fit(t.sub, w - 20, 6.5), x + 10, this.y + 41, { size: 6.5, color: c });
+    });
+    this.y += h + 14;
+  }
+
   /** Hinweiskasten mit Titel (Auftragsbedingungen kurz) */
   noteBox(title: string, lines: string[], boldLines: string[] = []) {
     const size = 8;

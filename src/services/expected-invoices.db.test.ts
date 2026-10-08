@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import type { Cents } from '../domain/money/money.js';
-import { expectedInvoices, periodsOf, skipExpected } from './expected-invoices.js';
+import { billingTracking, expectedInvoices, periodsOf, skipExpected } from './expected-invoices.js';
 import { saveIncoming } from './purchasing.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
@@ -98,6 +98,19 @@ describe.skipIf(!available)('Rechnung erwartet (Datenbank)', () => {
 
     await skipExpected(sql, scA, '2026-09', 'Objekt geschlossen', 't');
     expect(await expectedInvoices(sql, { today })).toEqual([]);
+
+    // Rechnungsverfolgung je Bestellung: laufender Zeitraum (Oktober) wird mit angezeigt
+    const tr = await billingTracking(sql, [scA, scB], { today });
+    expect(tr.get(scA)!.map((p) => `${p.start}:${p.state}`)).toEqual([
+      '2026-10:laufend',
+      '2026-09:keine',
+      '2026-08:abgerechnet',
+    ]);
+    expect(tr.get(scA)![2]!.invoices.map((i) => i.invoice_no)).toEqual(['R-77']);
+    expect(tr.get(scB)!.map((p) => `${p.start}:${p.state}`)).toEqual([
+      '2026-10:laufend',
+      '2026-07:abgerechnet',
+    ]);
 
     // Summe der Zeilen muss zum Netto passen
     await expect(

@@ -78,7 +78,7 @@ export function calRange(view: CalView, date: string) {
 
 const shiftState = (s: PlannedShift) =>
   s.exception?.kind === 'ausfall'
-    ? { cls: 'cx', label: 'Ausfall' }
+    ? { cls: 'cx', label: s.exception.note ? `Ausfall – ${s.exception.note}` : 'Ausfall' }
     : s.holiday
       ? { cls: 'hol', label: s.holiday }
       : s.entry
@@ -118,7 +118,12 @@ a.sh{display:block;color:inherit;text-decoration:none;cursor:pointer}a.sh:hover{
 }
 @media (max-width:640px){.cal:not(.wk) .dc .sh .nm{display:none}.cal:not(.wk) .dc .sh{text-align:center;border-left-width:0;border-top-width:3px;border-top-style:solid}}`;
 
-const Chip: FC<{ s: PlannedShift; compact?: boolean; back: string }> = ({ s, compact, back }) => {
+const Chip: FC<{ s: PlannedShift; compact?: boolean; back: string; delTime?: boolean }> = ({
+  s,
+  compact,
+  back,
+  delTime,
+}) => {
   const st = shiftState(s);
   return (
     <a
@@ -142,6 +147,7 @@ const Chip: FC<{ s: PlannedShift; compact?: boolean; back: string }> = ({ s, com
                 ? `alle ${s.plan.every} Wochen`
                 : 'jede Woche',
         links: [
+          ...(s.entry ? [['Zeit ansehen / ändern', `/zeiterfassung/${s.entry.id}`]] : []),
           ['Serie bearbeiten', `/einsatzplanung/${s.plan.id}?zurueck=${encodeURIComponent(back)}`],
           [
             'Nur diesen Tag umplanen / Vertretung / Ausfall',
@@ -150,6 +156,7 @@ const Chip: FC<{ s: PlannedShift; compact?: boolean; back: string }> = ({ s, com
           ...(s.plan.employee_id ? [['Mitarbeiter', `/personal/${s.plan.employee_id}/kalender`]] : []),
         ],
         del: `/einsatzplanung/${s.plan.id}/loeschen`,
+        ...(delTime && s.entry ? { delTime: s.entry.id } : {}),
         back,
       })}
     >
@@ -169,7 +176,9 @@ export const SiteCalendar: FC<{
   date: string;
   today: string;
   shifts: PlannedShift[];
-}> = ({ base, view, date, today, shifts }) => {
+  /** Admin/Personal: erfasste Zeit im Detailfenster löschen */
+  canDeleteTime?: boolean;
+}> = ({ base, view, date, today, shifts, canDeleteTime = false }) => {
   const r = calRange(view, date);
   const days: string[] = [];
   for (let d = r.from; d <= r.to; d = addDays(d, 1)) days.push(d);
@@ -225,7 +234,7 @@ export const SiteCalendar: FC<{
                   </a>
                 </div>
                 {list.slice(0, 4).map((s) => (
-                  <Chip s={s} compact back={back} />
+                  <Chip s={s} compact back={back} delTime={canDeleteTime} />
                 ))}
                 {list.length > 4 && (
                   <a class="small" href={url('tag', d)}>
@@ -249,7 +258,7 @@ export const SiteCalendar: FC<{
                 </div>
                 <div class={`dc${d === today ? ' today' : ''}`}>
                   {list.map((s) => (
-                    <Chip s={s} back={back} />
+                    <Chip s={s} back={back} delTime={canDeleteTime} />
                   ))}
                   {!list.length && <span class="faint">–</span>}
                 </div>

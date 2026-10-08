@@ -492,6 +492,8 @@ export interface OfferStats {
   withdrawn: number;
   /** Zuschlagsquote = angenommen ÷ (angenommen + abgelehnt), in Prozent; null ohne Entscheidungen */
   rate: number | null;
+  /** Zuschlagsquote nach Umsatz (netto, monatliche Positionen als Jahreswert ×12): angenommen ÷ entschieden */
+  rateValue: number | null;
 }
 
 /** Zeiträume der Angebots-Statistik (Ahmed: „Annahmen diesen Monat“). */
@@ -556,6 +558,12 @@ export async function offerStats(
     rejected,
     withdrawn: get('withdrawn').count,
     rate: decided ? Math.round((accepted.count * 100) / decided) : null,
+    rateValue: (() => {
+      // Wert eines Angebots: einmalige Summe + monatliche Positionen × 12 (Jahreswert)
+      const val = (x: { net: bigint; monthly: bigint }) => x.net - x.monthly + x.monthly * 12n;
+      const tot = val(accepted) + val(rejected);
+      return tot > 0n ? Number((val(accepted) * 1000n) / tot) / 10 : null;
+    })(),
   };
 }
 

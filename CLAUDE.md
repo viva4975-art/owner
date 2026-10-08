@@ -112,7 +112,7 @@ Testadresse.
 - [x] ~~Lohnzuschlag~~ – Ahmed 06.10.: Minijob 32 %, Teilzeit bis 30 Std. 28 %, darüber 26 %
 - [x] ~~Mahngebühren/Verzugspauschale~~ – Ahmed 06.10.: 0/5/10 € + 40 € Pauschale (umgesetzt, Anrechnung beachten)
 - [ ] Rechnungsnummer-Startwert (Ahmed meldet sich), Screenshots Qualitätskontrolle (fehlten in der Anlage)
-- [ ] Qwist (Bankabruf wie Fortytools): API-Zugang/Vertrag bei Qwist anfragen
+- [x] ~~Qwist~~ → Enable Banking (gebaut 08.10.): Schlüssel hochladen + Banken verbinden (Ahmed)
 - [ ] Je Behörde klären: nimmt sie XRechnung per E-Mail an oder nur über ein Portal (ZRE/OZG-RE, Peppol)?
 - [ ] SEPA-Zahlungslauf: erste pain.001-Datei als Testeinreichung bei der Bank hochladen (Format/Limit prüfen)
 - [ ] Je ein echter Kontoauszug (CAMT.053, sonst CSV) von Münchner Bank und Targobank zum Testen des Imports
@@ -1680,3 +1680,28 @@ Testadresse.
 - 2026-10-08: Bankabruf über **Enable Banking** (statt Qwist, sofort ohne Vertrag; Restricted Production = eigene Konten).
   Ahmed legt die Anwendung an (Production, Schlüssel im Browser erzeugt, Redirect
   `https://app.viva-deluxe-reinigung.de/transfer/bank/rueckkehr`). Einbau folgt.
+- 2026-10-08: **Bankabruf Enable Banking gebaut** + Kontoumsätze wie Fortytools („Neue Umsätze zuordnen“, Ahmeds Screenshots):
+  - Einstellungen → Bankabruf (nur Admin): Application ID + .pem hochladen; Schlüssel AES-256-GCM verschlüsselt in
+    `app.bank_feed_config` (Schlüssel aus SESSION_SECRET – ändert sich SESSION_SECRET, neu hochladen), keine Lese-Policy.
+    JWT RS256 (`kid` = App-ID). „Bank verbinden“ → `/auth` (Gültigkeit bis 180 Tage bzw. Höchstwert der Bank) → Rückkehr
+    `/transfer/bank/rueckkehr` (state geprüft, Code einmal) → `/sessions` → Konten (`bank_feed_accounts`, nur eigene IBANs
+    aus Firmendaten aktiv). Abruf: Kontostand (`/balances`, CLBD bevorzugt) + Umsätze (`/transactions`, Seiten, nur BOOK,
+    erster Abruf 90 Tage, danach ab letztem Buchungstag − 10 Tage), Rohdaten write-once im Archiv, Import-Format `api`.
+    ID aus dem Inhalt (nicht aus der Bank-Referenz) → doppelt abrufen legt nichts doppelt an; schon per CAMT/CSV
+    eingelesene Umsätze werden erkannt. Automatisch alle 30 Min. geprüft, 6–21 Uhr, je Konto höchstens alle 4,5 Std.
+    (PSD2: max. 4 Abrufe/Tag ohne TAN). Abgelaufene Freigabe → Hinweis (14 Tage vorher gelb).
+  - **Neue Umsätze zuordnen:** Kontenwahl mit Anzahl offener, Vorschlag rechts (Kunde/Nr., Betrag, Rechnung, Datum, sicher/
+    wahrscheinlich/prüfen) mit grünem „✓ Zuordnen“ + ✎; ohne Vorschlag Kunde / Lieferant / Mitarbeiter / Nicht zuordnen.
+    Vorschläge jetzt auch für **Fortytools-Rechnungen** (Zahlung in `legacy_payments` mit `bank_transaction_id`, Rechnung
+    bezahlt), über **Konto des Kunden** (`customer_bank_accounts`), für **Eingangsrechnungen** im Ausgang (Rechnungsnummer im
+    Zweck, IBAN des Lieferanten, Betrag mit/ohne Skonto; auch schon von Hand „bezahlt“ festgehaltene werden verknüpft) und
+    für bekannte IBANs von Lieferanten/Mitarbeitern. Mitarbeiter/Kunde/Lieferant **ohne Rechnung** = erledigt ohne Buchung
+    (`assigned_kind/assigned_id`, wieder öffnen möglich). „sichere Vorschläge zuordnen“ in einem Klick; „Ältere Umsätze
+    abhaken“ bis Datum (vor der Umstellung in Fortytools zugeordnet). Reiter Neu / Erledigt / Alle, 40 je Seite.
+  - **Transfer → Kontoauszug**: Konto, Zeitraum, Filter, errechneter Anfangs-/End-Saldo (rückwärts aus dem Kontostand der
+    Bank), Eingänge/Ausgänge, Saldo-Verlauf 12 Monate (30-Tage-Durchschnitt), Drucken/PDF. Startseite: Karte **Bankkonten**
+    (Kontostand je Konto, Summe, „n neu“).
+  - Migration `20261114000001_bankabruf.sql`. Tests: `bank-feed.db.test.ts` (Schlüssel, JWT, Verbinden, Abruf mit Seiten,
+    Dubletten, Fortytools-Rechnung, Eingangsrechnung, Mitarbeiter, Salden), `e2e:transfer` 14 Prüfungen.
+  - Anleitung `docs/anleitung-bankabruf.html/.pdf`; `docs/umstellung-heute` Punkt 1 auf Enable Banking umgestellt.
+    **Ahmed: Schlüssel unter Einstellungen → Bankabruf hochladen, Banken verbinden, „Ältere Umsätze abhaken“ bis 07.10.**

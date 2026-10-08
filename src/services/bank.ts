@@ -32,6 +32,8 @@ export interface BankTx {
   bank_ref: string | null;
   status: 'offen' | 'zugeordnet' | 'ignoriert';
   note: string | null;
+  assigned_kind: 'kunde' | 'lieferant' | 'mitarbeiter' | 'sonstiges' | null;
+  assigned_id: string | null;
   matched_by: string | null;
   matched_at: Date | null;
 }
@@ -126,12 +128,33 @@ export async function importStatement(
   return { lines: rows.length, created };
 }
 
-export async function listTransactions(sql: Sql, f: { status?: BankTx['status'] | 'alle' } = {}) {
+export type TxFilter = BankTx['status'] | 'alle' | 'erledigt';
+export async function listTransactions(
+  sql: Sql,
+  f: { status?: TxFilter; account?: string | null; limit?: number; offset?: number } = {},
+) {
   const st = f.status ?? 'offen';
-  return sql<BankTx[]>`
-    select * from app.bank_transactions
-     where ${st === 'alle' ? sql`true` : sql`status = ${st}`}
-     order by booking_date desc, amount_cents desc limit 500`;
+  const where = sql`${
+    st === 'alle' ? sql`true` : st === 'erledigt' ? sql`status <> 'offen'` : sql`status = ${st}`
+  } and ${f.account ? sql`account_iban = ${iban(f.account)}` : sql`true`}`;
+  const [rows, [cnt]] = await Promise.all([
+    sql<BankTx[]>`
+      select * from app.bank_transactions where ${where}
+       order by booking_date desc, amount_cents desc limit ${f.limit ?? 500} offset ${f.offset ?? 0}`,
+    sql<{ n: number }[]>`select count(*)::int as n from app.bank_transactions where ${where}`,
+  ]);
+  return Object.assign(rows, { total: cnt!.n });
+}
+
+/** Vor der Umstellung (in Fortytools zugeordnet): alle offenen Umsätze bis zu einem Tag als erledigt abhaken. */
+export async function closeBefore(sql: Sql, day: string, account: string | null, actor: string) {
+  const r = await sql`
+    update app.bank_transactions set status = 'ignoriert', note = 'vor der Umstellung (in Fortytools zugeordnet)',
+           assigned_kind = 'sonstiges', matched_by = ${actor}, matched_at = now()
+     where status = 'offen' and booking_date <= ${day} and ${account ? sql`account_iban = ${iban(account)}` : sql`true`}`;
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${actor}, 'close_before', 'bank_transaction', null, ${sql.json({ day, count: r.count, account })})`;
+  return r.count;
 }
 
 export async function getTransaction(sql: Sql, id: string) {
@@ -145,6 +168,10 @@ export interface InvoiceMatch {
   invoice_id: string;
   number: string;
   customer_name: string;
+  customer_no?: string;
+  issue_date?: string;
+  /** Rechnung aus Fortytools (Zahlung in legacy_payments) */
+  legacy?: boolean;
   open_cents: bigint;
   amount: bigint; // Zahlung
   skonto: bigint; // Skonto-Abzug (eigene Buchung)
@@ -157,6 +184,22 @@ export type Suggestion =
       confidence: 'sicher' | 'wahrscheinlich' | 'prüfen';
       items: InvoiceMatch[];
     }
+  | {
+      kind: 'incoming';
+      label: string;
+      confidence: 'sicher' | 'wahrscheinlich' | 'prüfen';
+      supplierId: string;
+      supplierName: string;
+      items: { id: string; invoice_no: string; invoice_date: string; amount: bigint; skonto: bigint }[];
+    }
+  | {
+      kind: 'party';
+      label: string;
+      party: 'kunde' | 'lieferant' | 'mitarbeiter';
+      partyId: string;
+      partyName: string;
+      partyNo: string;
+    }
   | { kind: 'debit_run'; label: string; runId: string }
   | { kind: 'payment_run'; label: string; runId: string }
   | { kind: 'return'; label: string; runId: string; invoiceId: string };
@@ -166,17 +209,26 @@ interface OpenRow {
   number: string;
   customer_id: string;
   customer_name: string;
+  customer_no: string;
+  issue_date: string;
+  legacy: boolean;
   open_cents: bigint;
   payable_cents: bigint;
   skonto_percent_bp: number | null;
   skonto_date: string | null;
 }
 
+/** Offene eigene Rechnungen und offene Rechnungen aus Fortytools (ohne Skonto-Automatik). */
 async function openInvoices(sql: Sql | Tx) {
   return sql<OpenRow[]>`
-    select o.invoice_id, o.number, o.customer_id, c.name as customer_name, o.open_cents, o.payable_cents,
-           i.skonto_percent_bp, i.skonto_date
+    select o.invoice_id, o.number, o.customer_id, c.name as customer_name, c.customer_no, i.issue_date::text,
+           false as legacy, o.open_cents, o.payable_cents, i.skonto_percent_bp, i.skonto_date
       from app.open_items o join app.invoices i on i.id = o.invoice_id join app.customers c on c.id = o.customer_id
+     where o.open_cents > 0
+    union all
+    select o.invoice_id, o.number, o.customer_id, c.name, c.customer_no, o.issue_date::text,
+           true, o.open_cents, o.open_cents, null, null
+      from app.legacy_open_items o join app.customers c on c.id = o.customer_id
      where o.open_cents > 0`;
 }
 
@@ -229,6 +281,29 @@ export async function suggestions(sql: Sql, t: BankTx): Promise<Suggestion[]> {
         });
       }
     }
+    if (!out.length && t.counterparty_iban) {
+      // IBAN eines Kunden: eine offene Rechnung mit genau dem Betrag oder alle offenen zusammen
+      const custs = await sql<{ customer_id: string }[]>`
+        select distinct customer_id from app.customer_bank_accounts where iban = ${iban(t.counterparty_iban)}`;
+      const ids = new Set(custs.map((c) => c.customer_id));
+      const mine = open.filter((o) => ids.has(o.customer_id));
+      const one = mine.filter((o) => o.open_cents === amount);
+      const all = mine.reduce((a, o) => a + o.open_cents, 0n);
+      if (one.length === 1)
+        out.push({
+          kind: 'invoices',
+          confidence: 'wahrscheinlich',
+          label: `Rechnung ${one[0]!.number} (Konto des Kunden, Betrag passt)`,
+          items: [{ ...pick(one[0]!), amount, skonto: 0n }],
+        });
+      else if (mine.length > 1 && all === amount)
+        out.push({
+          kind: 'invoices',
+          confidence: 'wahrscheinlich',
+          label: `Rechnungen ${mine.map((o) => o.number).join(', ')} (alle offenen des Kunden)`,
+          items: mine.map((o) => ({ ...pick(o), amount: o.open_cents, skonto: 0n })),
+        });
+    }
     if (!out.length) {
       // ohne Nummer: eindeutiger Betrag
       const same = open.filter((o) => o.open_cents === amount);
@@ -246,6 +321,7 @@ export async function suggestions(sql: Sql, t: BankTx): Promise<Suggestion[]> {
     for (const r of runs)
       out.push({ kind: 'debit_run', runId: r.id, label: `Lastschrifteinzug ${r.number} (Sammelgutschrift)` });
   } else {
+    out.push(...(await incomingSuggestions(sql, t)));
     const prs = await sql<{ id: string; number: string }[]>`
       select id, number from app.payment_runs where total_cents = ${-t.amount_cents}
          and not exists (select 1 from app.bank_transactions b where b.status = 'zugeordnet' and b.note = 'Zahlungslauf ' || payment_runs.number)`;
@@ -265,6 +341,8 @@ export async function suggestions(sql: Sql, t: BankTx): Promise<Suggestion[]> {
       }
     }
   }
+  if (!out.some((s) => s.kind === 'invoices' || s.kind === 'incoming'))
+    out.push(...(await partySuggestions(sql, t)));
   return out;
 }
 
@@ -272,8 +350,103 @@ const pick = (o: OpenRow) => ({
   invoice_id: o.invoice_id,
   number: o.number,
   customer_name: o.customer_name,
+  customer_no: o.customer_no,
+  issue_date: o.issue_date,
+  legacy: o.legacy,
   open_cents: o.open_cents,
 });
+
+interface IncomingRow {
+  id: string;
+  supplier_id: string;
+  supplier_name: string;
+  supplier_iban: string | null;
+  invoice_no: string;
+  invoice_date: string;
+  gross_cents: bigint;
+  skonto_until: string | null;
+  skonto_percent_bp: number | null;
+  status: string;
+  paid_amount_cents: bigint | null;
+  paid_at: string | null;
+}
+
+const incomingSkonto = (i: IncomingRow, date: string) =>
+  !i.skonto_until || !i.skonto_percent_bp || date > addDays(i.skonto_until, SKONTO_GRACE_DAYS)
+    ? 0n
+    : divRoundHalfUp(i.gross_cents * BigInt(i.skonto_percent_bp), 10_000n);
+
+/** Ausgang: freigegebene Eingangsrechnung (Betrag, ggf. mit Skonto) oder schon von Hand als bezahlt festgehalten. */
+async function incomingSuggestions(sql: Sql, t: BankTx): Promise<Suggestion[]> {
+  const amount = -t.amount_cents;
+  const rows = await sql<IncomingRow[]>`
+    select i.id, i.supplier_id, s.name as supplier_name, s.iban as supplier_iban, i.invoice_no, i.invoice_date::text,
+           i.gross_cents, i.skonto_until::text, i.skonto_percent_bp, i.status, i.paid_amount_cents, i.paid_at::text
+      from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
+     where i.bank_transaction_id is null
+       and (i.status = 'freigegeben' or (i.status = 'bezahlt' and i.paid_amount_cents = ${amount}))`;
+  const purpose = t.purpose.toUpperCase().replace(/\s/g, '');
+  const cp = iban(t.counterparty_iban);
+  const hits = rows
+    .map((i) => {
+      const sk = i.status === 'bezahlt' ? 0n : incomingSkonto(i, t.booking_date);
+      const pay =
+        i.status === 'bezahlt'
+          ? i.paid_amount_cents!
+          : amount === i.gross_cents
+            ? i.gross_cents
+            : i.gross_cents - sk;
+      const no = i.invoice_no.toUpperCase().replace(/\s/g, '');
+      const byNo = no.length >= 3 && purpose.includes(no);
+      const byIban = !!cp && iban(i.supplier_iban) === cp;
+      return { i, sk: pay === i.gross_cents ? 0n : sk, pay, byNo, byIban };
+    })
+    .filter((h) => h.pay === amount && (h.byNo || h.byIban || h.i.status === 'freigegeben'));
+  const ranked = [
+    ...hits.filter((h) => h.byNo),
+    ...hits.filter((h) => !h.byNo && h.byIban),
+    ...hits.filter((h) => !h.byNo && !h.byIban),
+  ];
+  return ranked.slice(0, 3).map((h) => ({
+    kind: 'incoming' as const,
+    confidence: h.byNo ? ('sicher' as const) : h.byIban ? ('wahrscheinlich' as const) : ('prüfen' as const),
+    label: `Eingangsrechnung ${h.i.invoice_no} (${h.i.supplier_name})${h.sk > 0n ? ` mit Skonto ${fmt(h.sk)}` : ''}${h.i.status === 'bezahlt' ? ' – schon als bezahlt festgehalten' : ''}`,
+    supplierId: h.i.supplier_id,
+    supplierName: h.i.supplier_name,
+    items: [
+      { id: h.i.id, invoice_no: h.i.invoice_no, invoice_date: h.i.invoice_date, amount: h.pay, skonto: h.sk },
+    ],
+  }));
+}
+
+/** Ohne Rechnung: Gegenkonto gehört einem Kunden, Lieferanten oder Mitarbeiter. */
+async function partySuggestions(sql: Sql, t: BankTx): Promise<Suggestion[]> {
+  const cp = iban(t.counterparty_iban);
+  if (!cp) return [];
+  const rows = await sql<
+    { party: 'kunde' | 'lieferant' | 'mitarbeiter'; id: string; name: string; no: string }[]
+  >`
+    select 'kunde' as party, c.id, c.name, c.customer_no as no
+      from app.customer_bank_accounts b join app.customers c on c.id = b.customer_id where b.iban = ${cp}
+    union all
+    select 'lieferant', s.id, s.name, s.supplier_no from app.suppliers s
+     where upper(replace(coalesce(s.iban, ''), ' ', '')) = ${cp}
+    union all
+    select 'mitarbeiter', e.id, trim(coalesce(e.first_name, '') || ' ' || e.last_name), e.personnel_no
+      from app.employee_private p join app.employees e on e.id = p.employee_id
+     where upper(replace(coalesce(p.iban, ''), ' ', '')) = ${cp}
+    limit 3`;
+  return rows.map((r) => ({
+    kind: 'party' as const,
+    party: r.party,
+    partyId: r.id,
+    partyName: r.name,
+    partyNo: r.no,
+    label: `${PARTY_LABEL[r.party]} ${r.no} ${r.name} (Konto bekannt)`,
+  }));
+}
+
+export const PARTY_LABEL = { kunde: 'Kunde', lieferant: 'Lieferant', mitarbeiter: 'Mitarbeiter' } as const;
 const fmt = (c: bigint) =>
   `${(Number(c) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 
@@ -298,10 +471,11 @@ async function lockOpen(tx: Tx, id: string) {
 export async function assignInvoices(
   sql: Sql,
   txIdValue: string,
-  items: { invoiceId: string; amount: bigint; skonto: bigint }[],
+  items: { invoiceId: string; amount: bigint; skonto: bigint; legacy?: boolean }[],
   actor: string,
 ) {
   if (!items.length) throw new BusinessError('Bitte mindestens eine Rechnung wählen');
+  let customerId: string | null = null;
   await sql.begin(async (tx) => {
     const t = await lockOpen(tx, txIdValue);
     if (t.status === 'zugeordnet') return; // schon erledigt
@@ -316,6 +490,10 @@ export async function assignInvoices(
     const nos: string[] = [];
     for (const it of items) {
       if (it.amount <= 0n || it.skonto < 0n) throw new BusinessError('Beträge müssen positiv sein');
+      if (it.legacy) {
+        nos.push(await payLegacy(tx, t, it, actor));
+        continue;
+      }
       await tx`select 1 from app.invoices where id = ${it.invoiceId} for update`;
       const [o] = await tx<OpenRow[]>`
         select o.invoice_id, o.number, o.customer_id, '' as customer_name, o.open_cents, o.payable_cents,
@@ -331,6 +509,7 @@ export async function assignInvoices(
         throw new BusinessError(`Rechnung ${o.number}: Skonto nicht zulässig (Frist/Betrag)`);
       }
       nos.push(o.number);
+      customerId ??= o.customer_id;
       const ref = `Bank ${formatDateDe(t.booking_date)} ${t.counterparty_name ?? ''}`.trim().slice(0, 120);
       await tx`insert into app.payments (id, invoice_id, amount_cents, paid_on, method, reference, note, bank_transaction_id, created_by)
                values (${uuidOf(`${t.id}:${it.invoiceId}`)}, ${it.invoiceId}, ${it.amount}, ${t.booking_date}, 'ueberweisung',
@@ -346,9 +525,151 @@ export async function assignInvoices(
                values (${actor}, 'payment', 'invoice', ${it.invoiceId},
                        ${tx.json({ amount_cents: String(it.amount), skonto_cents: String(it.skonto), bank_transaction: t.id })})`;
     }
+    if (!customerId) {
+      const [l] = await tx<{ customer_id: string }[]>`
+        select customer_id from app.legacy_invoices where id = ${items[0]!.invoiceId}`;
+      customerId = l?.customer_id ?? null;
+    }
     await tx`update app.bank_transactions set status = 'zugeordnet', note = ${`Rechnung ${nos.join(', ')}`},
+               assigned_kind = 'kunde', assigned_id = ${customerId},
                matched_by = ${actor}, matched_at = now() where id = ${t.id}`;
   });
+}
+
+/** Zahlung auf eine Rechnung aus Fortytools (Skonto nur, wenn er die Rechnung genau ausgleicht). */
+async function payLegacy(
+  tx: Tx,
+  t: BankTx,
+  it: { invoiceId: string; amount: bigint; skonto: bigint },
+  actor: string,
+) {
+  await tx`select 1 from app.legacy_invoices where id = ${it.invoiceId} for update`;
+  const [o] = await tx<{ number: string; open_cents: bigint }[]>`
+    select number, open_cents from app.legacy_open_items where invoice_id = ${it.invoiceId}`;
+  if (!o) throw new BusinessError('Rechnung (Fortytools) ist nicht mehr offen');
+  if (it.amount + it.skonto > o.open_cents)
+    throw new BusinessError(
+      `Rechnung ${o.number}: Betrag höher als offen (${fmt(o.open_cents)}) – Überzahlung klären`,
+    );
+  if (it.skonto > 0n && it.amount + it.skonto !== o.open_cents)
+    throw new BusinessError(`Rechnung ${o.number}: Skonto nur als Rest der Rechnung möglich`);
+  const ref = `Bank ${formatDateDe(t.booking_date)} ${t.counterparty_name ?? ''}`.trim().slice(0, 120);
+  await tx`insert into app.legacy_payments (id, invoice_id, amount_cents, paid_on, method, reference, bank_transaction_id, created_by)
+           values (${uuidOf(`${t.id}:${it.invoiceId}`)}, ${it.invoiceId}, ${it.amount}, ${t.booking_date}, 'zahlung', ${ref}, ${t.id}, ${actor})
+           on conflict (id) do nothing`;
+  if (it.skonto > 0n)
+    await tx`insert into app.legacy_payments (id, invoice_id, amount_cents, paid_on, method, reference, bank_transaction_id, created_by)
+             values (${uuidOf(`${t.id}:${it.invoiceId}:skonto`)}, ${it.invoiceId}, ${it.skonto}, ${t.booking_date}, 'skonto', 'Skonto-Abzug', ${t.id}, ${actor})
+             on conflict (id) do nothing`;
+  const closed = it.amount + it.skonto === o.open_cents;
+  await tx`update app.legacy_invoices set paid_part_cents = paid_part_cents + ${it.amount},
+             paid = ${closed}, paid_at = ${closed ? t.booking_date : null}, paid_marked_by = ${closed ? actor : null}
+           where id = ${it.invoiceId}`;
+  await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+           values (${actor}, 'payment', 'legacy_invoice', ${it.invoiceId},
+                   ${tx.json({ amount_cents: String(it.amount), skonto_cents: String(it.skonto), bank_transaction: t.id })})`;
+  return o.number;
+}
+
+/**
+ * Ausgang auf Eingangsrechnungen: freigegebene werden als bezahlt festgehalten (Betrag = Rechnung, bei einer Rechnung
+ * auch mit Skonto), schon von Hand als bezahlt festgehaltene nur verknüpft. Summe muss dem Umsatz entsprechen.
+ */
+export async function assignIncoming(sql: Sql, txIdValue: string, ids: string[], actor: string) {
+  if (!ids.length) throw new BusinessError('Bitte mindestens eine Eingangsrechnung wählen');
+  await sql.begin(async (tx) => {
+    const t = await lockOpen(tx, txIdValue);
+    if (t.status === 'zugeordnet') return;
+    if (t.amount_cents >= 0n)
+      throw new BusinessError('Nur Zahlungsausgänge können Eingangsrechnungen zugeordnet werden');
+    const amount = -t.amount_cents;
+    const rows = await tx<IncomingRow[]>`
+      select i.id, i.supplier_id, s.name as supplier_name, s.iban as supplier_iban, i.invoice_no, i.invoice_date::text,
+             i.gross_cents, i.skonto_until::text, i.skonto_percent_bp, i.status, i.paid_amount_cents, i.paid_at::text
+        from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
+       where i.id = any(${ids}::uuid[]) for update of i`;
+    if (rows.length !== ids.length) throw new BusinessError('Eingangsrechnung nicht gefunden');
+    for (const r of rows) {
+      if (r.status !== 'freigegeben' && r.status !== 'bezahlt')
+        throw new BusinessError(`${r.invoice_no}: erst freigeben (sachlich und rechnerisch richtig)`);
+    }
+    const pay = (r: IncomingRow) =>
+      r.status === 'bezahlt' ? (r.paid_amount_cents ?? r.gross_cents) : r.gross_cents;
+    const sum = rows.reduce((a, r) => a + pay(r), 0n);
+    let skonto = 0n;
+    if (sum !== amount) {
+      const r = rows[0]!;
+      const sk = rows.length === 1 && r.status === 'freigegeben' ? incomingSkonto(r, t.booking_date) : 0n;
+      if (!(sk > 0n && r.gross_cents - sk === amount))
+        throw new BusinessError(
+          `Summe der Rechnungen (${fmt(sum)}) entspricht nicht dem Umsatz (${fmt(amount)})`,
+        );
+      skonto = sk;
+    }
+    for (const r of rows) {
+      if (r.status === 'freigegeben') {
+        await tx`update app.incoming_invoices set status = 'bezahlt', paid_at = ${t.booking_date},
+                   paid_amount_cents = ${r.gross_cents - skonto}, paid_skonto_cents = ${skonto},
+                   paid_method = 'ueberweisung', paid_note = 'Kontoumsatz', paid_by = ${actor}, bank_transaction_id = ${t.id}
+                 where id = ${r.id}`;
+      } else {
+        await tx`update app.incoming_invoices set bank_transaction_id = ${t.id} where id = ${r.id}`;
+      }
+      await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+               values (${actor}, 'paid', 'incoming_invoice', ${r.id},
+                       ${tx.json({ bank_transaction: t.id, skonto: String(skonto) })})`;
+    }
+    const supplier = rows[0]!;
+    await tx`update app.bank_transactions set status = 'zugeordnet',
+               note = ${`Eingangsrechnung ${rows.map((r) => r.invoice_no).join(', ')} (${supplier.supplier_name})`},
+               assigned_kind = 'lieferant', assigned_id = ${supplier.supplier_id},
+               matched_by = ${actor}, matched_at = now() where id = ${t.id}`;
+  });
+}
+
+/** Freigegebene/als bezahlt festgehaltene Eingangsrechnungen eines Lieferanten zur Auswahl. */
+export async function incomingForSupplier(sql: Sql, supplierId: string) {
+  return sql<IncomingRow[]>`
+    select i.id, i.supplier_id, s.name as supplier_name, s.iban as supplier_iban, i.invoice_no, i.invoice_date::text,
+           i.gross_cents, i.skonto_until::text, i.skonto_percent_bp, i.status, i.paid_amount_cents, i.paid_at::text
+      from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
+     where i.supplier_id = ${supplierId} and i.bank_transaction_id is null
+       and (i.status = 'freigegeben' or (i.status = 'bezahlt' and i.paid_at > current_date - 120))
+     order by i.invoice_date desc limit 100`;
+}
+
+/**
+ * Umsatz ohne Rechnung einem Kunden, Lieferanten oder Mitarbeiter zuordnen (z. B. Lohn, Vorschuss, Erstattung).
+ * Bucht nichts – bleibt „erledigt“ und kann wieder geöffnet werden.
+ */
+export async function assignParty(
+  sql: Sql,
+  txIdValue: string,
+  p: { kind: 'kunde' | 'lieferant' | 'mitarbeiter'; id: string; note: string | null },
+  actor: string,
+) {
+  const [who] =
+    p.kind === 'kunde'
+      ? await sql<
+          { label: string }[]
+        >`select customer_no || ' ' || name as label from app.customers where id = ${p.id}`
+      : p.kind === 'lieferant'
+        ? await sql<
+            { label: string }[]
+          >`select supplier_no || ' ' || name as label from app.suppliers where id = ${p.id}`
+        : await sql<{ label: string }[]>`
+            select personnel_no || ' ' || trim(coalesce(first_name, '') || ' ' || last_name) as label
+              from app.employees where id = ${p.id}`;
+  if (!who) throw new BusinessError('Nicht gefunden – bitte aus der Liste wählen');
+  const note = `${PARTY_LABEL[p.kind]} ${who.label}${p.note?.trim() ? `: ${p.note.trim()}` : ''}`.slice(
+    0,
+    300,
+  );
+  const r = await sql`
+    update app.bank_transactions set status = 'ignoriert', note = ${note}, assigned_kind = ${p.kind}, assigned_id = ${p.id},
+           matched_by = ${actor}, matched_at = now()
+     where id = ${txIdValue} and status = 'offen' returning id`;
+  if (!r.length) throw new BusinessError('Umsatz ist nicht (mehr) offen');
 }
 
 /** Sammelgutschrift eines Lastschrifteinzugs: alle Positionen als bezahlt buchen. */
@@ -461,7 +782,8 @@ export async function ignoreTransaction(sql: Sql, id: string, note: string | nul
 
 export async function reopenTransaction(sql: Sql, id: string, actor: string) {
   const r =
-    await sql`update app.bank_transactions set status = 'offen', note = null, matched_by = ${actor}, matched_at = now()
+    await sql`update app.bank_transactions set status = 'offen', note = null, assigned_kind = null, assigned_id = null,
+                      matched_by = ${actor}, matched_at = now()
                       where id = ${id} and status = 'ignoriert' returning id`;
   if (!r.length) throw new BusinessError('Nur ignorierte Umsätze können wieder geöffnet werden');
 }

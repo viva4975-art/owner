@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<title>Bankabruf einrichten</title>
+<style>
+  body{font-family:Inter,Arial,sans-serif;color:#1d1d1f;max-width:820px;margin:28px auto;padding:0 18px;line-height:1.5;font-size:13.5px}
+  h1{color:#7D1435;font-size:23px;margin-bottom:4px}
+  h2{color:#7D1435;font-size:16px;margin:24px 0 8px;border-bottom:2px solid #f0dbe2;padding-bottom:4px}
+  .sub{color:#666;margin-top:0}
+  code{background:#f4eef0;padding:1px 5px;border-radius:4px}
+  .box{background:#fff7e0;border:1px solid #e9c46a;border-radius:6px;padding:9px 13px;margin:10px 0}
+  .red{background:#fdecec;border-color:#e3a0a0}
+  .ok{background:#eef7ee;border-color:#9cc79c}
+  ol li{margin-bottom:6px}
+  .n{display:inline-block;background:#7D1435;color:#fff;border-radius:50%;width:22px;height:22px;text-align:center;line-height:22px;font-weight:700;margin-right:6px}
+  @media print{h2{break-after:avoid}.box{break-inside:avoid}}
+</style>
+</head>
+<body>
+<h1>Bankabruf einrichten (Enable Banking)</h1>
+<p class="sub">Münchner Bank und Targobank · Viva-Deluxe Betriebs-App · https://app.viva-deluxe-reinigung.de</p>
+
+<h2><span class="n">1</span>Im Enable-Banking-Portal (einmalig)</h2>
+<ol>
+  <li>Anwendung anlegen: <b>Production</b>, Schlüssel <b>„Generate in the browser“</b>.</li>
+  <li>Redirect URL genau so eintragen: <code>https://app.viva-deluxe-reinigung.de/transfer/bank/rueckkehr</code></li>
+  <li>Beim Anlegen lädt der Browser eine <b>.pem-Datei</b> herunter (privater Schlüssel). Diese Datei
+    <b>niemandem schicken</b> – auch nicht per Chat oder E-Mail.</li>
+  <li>Die <b>Application ID</b> (Format <code>xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code>) steht in der Liste „Applications“.</li>
+  <li>Ohne Vertrag läuft die Anwendung im Modus <b>„Restricted Production“</b>: nur die eigenen Konten, kostenlos. Dafür die
+    eigenen Konten im Portal einmal verknüpfen („Link accounts“ – haben Sie schon gemacht: „beide Banken drin“).</li>
+</ol>
+
+<h2><span class="n">2</span>In der App: Schlüssel hochladen</h2>
+<ol>
+  <li>Als Admin anmelden → Zahnrad → <b>Einstellungen → Bankabruf (Enable Banking)</b>.</li>
+  <li>Application ID eintragen, die .pem-Datei auswählen → <b>Speichern</b>.</li>
+  <li><b>Verbindung testen</b> drücken – es muss „Verbindung in Ordnung“ erscheinen.</li>
+</ol>
+<div class="box">Der Schlüssel liegt danach nur verschlüsselt auf unserem Server und wird nie wieder angezeigt. Die .pem-Datei
+auf dem eigenen Rechner anschließend sicher ablegen (z. B. Passwort-Safe) oder löschen.</div>
+
+<h2><span class="n">3</span>Banken verbinden (je Bank einmal, alle 180 Tage erneuern)</h2>
+<ol>
+  <li>Auf derselben Seite unter <b>„2. Bank verbinden“</b> die Bank wählen (Münchner Bank) → <b>Bank verbinden</b>.</li>
+  <li>Es öffnet sich das Online-Banking der Bank: Anmelden, Konten freigeben, mit <b>TAN</b> bestätigen.</li>
+  <li>Danach kommen Sie automatisch zurück in die App, die Konten sind verbunden und die Umsätze der
+    <b>letzten 90 Tage</b> werden sofort abgerufen.</li>
+  <li>Dasselbe für die <b>Targobank</b>.</li>
+</ol>
+<div class="box red"><b>Alle 180 Tage</b> verlangt die Bank eine neue Freigabe mit TAN (gesetzliche Vorgabe PSD2). Die App
+warnt 14 Tage vorher unter Transfer → Kontoumsätze; dann einfach erneut „Bank verbinden“.</div>
+
+<h2><span class="n">4</span>Täglich: Umsätze zuordnen (wie Fortytools)</h2>
+<ol>
+  <li><b>Transfer → Kontoumsätze</b> („Neue Umsätze zuordnen“). Die App ruft selbst ab (zwischen 6 und 21 Uhr etwa alle
+    4½ Stunden); „⟳ Umsätze abrufen“ holt sofort.</li>
+  <li><b>Erster Schritt nach dem Verbinden:</b> unten „Ältere Umsätze auf einmal abhaken“ → Datum <b>07.10.2026</b>. Alles,
+    was vor der Umstellung war, ist schon in Fortytools zugeordnet (es wird nichts gebucht).</li>
+  <li>Passt ein Umsatz zu einer offenen Rechnung (Rechnungsnummer im Verwendungszweck, Betrag, Konto des Kunden), steht
+    rechts der Vorschlag mit grünem <b>„✓ Zuordnen“</b> – das bucht die Zahlung, die Rechnung ist bezahlt (auch alte
+    Fortytools-Rechnungen). Oben „sichere Vorschläge zuordnen“ erledigt alle eindeutigen auf einmal.</li>
+  <li>Ohne Vorschlag: <b>Kunde</b> (auf Rechnungen verteilen, Teilzahlung/Skonto), <b>Lieferant</b> (Eingangsrechnung als
+    bezahlt), <b>Mitarbeiter</b> (Lohn, Vorschuss, Auslagen – bucht nichts) oder <b>Nicht zuordnen</b> (Gebühren,
+    Kartenzahlungen, Steuer …).</li>
+  <li><b>Transfer → Kontoauszug</b>: Umsätze je Konto und Zeitraum mit Anfangs-/End-Saldo und Verlauf. Die Startseite zeigt
+    die Karte <b>„Bankkonten“</b> mit Kontostand und Anzahl neuer Umsätze.</li>
+</ol>
+
+<h2>Gut zu wissen</h2>
+<ul>
+  <li>Doppelt abrufen oder zusätzlich eine CAMT-Datei hochladen legt nichts doppelt an.</li>
+  <li>Abgerufen werden nur Konten, die unter Einstellungen → Firmendaten als eigene Bankverbindung stehen.</li>
+  <li>Datenschutz: Enable Banking ist ein zugelassener Kontoinformationsdienst (PSD2, Finnische Finanzaufsicht). Im
+    Verzeichnis der Verarbeitungstätigkeiten aufnehmen; die Bank-Zugangsdaten sieht weder die App noch Enable Banking.</li>
+</ul>
+<div class="box ok">Bei Fehlern: Foto der Meldung schicken – <b>ohne</b> Schlüsseldatei und ohne Passwörter.</div>
+</body>
+</html>

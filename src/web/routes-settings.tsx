@@ -35,6 +35,11 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
         'Tägliche Sammel-Mail mit allen Fristen (Aufenthaltstitel, NU-Nachweise, HU, Ausschreibungen, Aufgaben, Skonto, fehlende Zeiten).',
       ],
       [
+        'Bankabruf (Enable Banking)',
+        '/einstellungen/bankabruf',
+        'Münchner Bank und Targobank verbinden: Umsätze und Kontostand automatisch abrufen (statt Kontoauszug hochladen).',
+      ],
+      [
         'Nummernkreise',
         '/einstellungen/nummernkreise',
         'Nächste Rechnungs-, Angebots- und Mahnungsnummer anzeigen und vor dem Umstieg anheben (nie senken).',

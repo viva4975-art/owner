@@ -354,6 +354,7 @@ export type DashCardKey =
   | 'abwesend'
   | 'hinweise'
   | 'ampel'
+  | 'bank'
   | 'geburtstage';
 export const DASH_CARDS: Record<DashCardKey, string> = {
   aufgaben: 'Aufgaben (inkl. Ausschreibungs-Termine)',
@@ -364,6 +365,7 @@ export const DASH_CARDS: Record<DashCardKey, string> = {
   abwesend: 'Abwesend (heute, 7 und 14 Tage)',
   hinweise: 'Hinweise (Fristen, Unterschriften, Prüfungen)',
   ampel: 'Nachkalkulation Vormonat (Ampel je Objekt)',
+  bank: 'Bankkonten (Kontostand, neue Umsätze)',
   geburtstage: 'Geburtstage & Jubiläen',
 };
 export interface DashItem {
@@ -380,6 +382,7 @@ export const DEFAULT_DASH: DashItem[] = [
   { key: 'unversendet', col: 2, hidden: false },
   { key: 'abwesend', col: 2, hidden: false },
   { key: 'hinweise', col: 2, hidden: false },
+  { key: 'bank', col: 2, hidden: false },
   { key: 'ampel', col: 2, hidden: false },
   { key: 'geburtstage', col: 2, hidden: false },
 ];
@@ -489,6 +492,8 @@ export const Dashboard: FC<{
       margin_bp: number | null;
     }[];
   } | null;
+  /** Bankkonten mit Kontostand (Bankabruf) und Anzahl neuer Umsätze */
+  bank?: { iban: string; name: string; balance_cents: bigint | null; open: number }[] | null;
   /** Anfragen aus der App der Objektleitung: NU-Aufträge zur Freigabe, neue Personalbögen */
   appRequests?: { nu: number; bogen: number };
   absentHref?: string | undefined;
@@ -512,6 +517,7 @@ export const Dashboard: FC<{
   noShift = { n: 0, href: '' },
   reminders = { n: 0, red: 0 },
   ampel = null,
+  bank = null,
   appRequests = { nu: 0, bogen: 0 },
   absentHref,
 }) => {
@@ -1016,6 +1022,43 @@ export const Dashboard: FC<{
               )}
             </section>
           ) : null,
+          bank:
+            bank && bank.length ? (
+              <section class="card dash-card">
+                <DashHead title="Bankkonten" href="/transfer/kontoumsaetze" more="Umsätze zuordnen" />
+                <ul class="dash-list">
+                  {bank.map((b) => (
+                    <li>
+                      <div class="dl-main">
+                        <a href={`/transfer/kontoauszug?konto=${b.iban}`}>
+                          {b.name} ··{b.iban.slice(-6)}
+                        </a>
+                        {b.open > 0 && (
+                          <a
+                            class="badge warn"
+                            href={`/transfer/kontoumsaetze?konto=${b.iban}`}
+                            style="margin-left:6px"
+                          >
+                            {b.open} neu
+                          </a>
+                        )}
+                      </div>
+                      <b style={`color:${(b.balance_cents ?? 0n) < 0n ? '#c0392b' : '#2e7d32'}`}>
+                        {b.balance_cents != null ? euro(b.balance_cents) : '–'}
+                      </b>
+                    </li>
+                  ))}
+                  {bank.some((b) => b.balance_cents != null) && (
+                    <li>
+                      <div class="dl-main">
+                        <b>Summe</b>
+                      </div>
+                      <b>{euro(bank.reduce((a, b) => a + (b.balance_cents ?? 0n), 0n))}</b>
+                    </li>
+                  )}
+                </ul>
+              </section>
+            ) : null,
           geburtstage: (
             <section class="card dash-card">
               <DashHead title="Geburtstage & Jubiläen" count={people.length || undefined} />

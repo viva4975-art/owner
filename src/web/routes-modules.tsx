@@ -1,3 +1,4 @@
+import { accountOverview } from '../services/bank-feed.js';
 import { siteCosting } from '../services/costing.js';
 import { collectReminders } from '../services/reminders.js';
 import { fullName } from '../services/users.js';
@@ -196,6 +197,7 @@ export function registerModuleRoutes(ctx: Ctx) {
               }
             : { n: 0, href: '' }
         }
+        bank={canAccess(role, '/transfer/kontoumsaetze') ? await accountOverview(sql) : null}
         appRequests={{
           nu: canAccess(role, '/lieferanten')
             ? Number(

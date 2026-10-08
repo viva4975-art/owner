@@ -43,6 +43,7 @@ import { registerHrRoutes } from './routes-hr.js';
 import { registerPlanningMonthRoutes } from './routes-planning-month.js';
 import { registerReportRoutes } from './routes-reports.js';
 import { registerTransferRoutes } from './routes-transfer.js';
+import { registerBankRoutes } from './routes-bank.js';
 import { registerImportRoutes } from './routes-import.js';
 import { registerHandoverRoutes } from './routes-handovers.js';
 import { registerVehicleRoutes } from './routes-vehicles.js';
@@ -368,6 +369,7 @@ export function createApp(deps: Deps) {
   registerPlanningMonthRoutes(ctx);
   registerReportRoutes(ctx);
   registerTransferRoutes(ctx);
+  registerBankRoutes(ctx);
   registerImportRoutes(ctx);
   registerHandoverRoutes(ctx);
   registerVehicleRoutes(ctx);

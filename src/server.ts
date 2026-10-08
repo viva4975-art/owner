@@ -4,6 +4,7 @@ import { loadEnv } from './config/env.js';
 import { createSql } from './db/client.js';
 import { createMailer } from './mail/mailer.js';
 import { configureAuthAdmin } from './services/auth-users.js';
+import { autoFetch } from './services/bank-feed.js';
 import { applyDueHours } from './services/employee-hours.js';
 import { sendDailyReminders } from './services/reminders.js';
 import { createApp } from './web/app.js';
@@ -43,6 +44,13 @@ const reminders = () =>
     mailer: createMailer(env),
   }).catch((e) => console.error('Erinnerungen:', e));
 setInterval(reminders, 15 * 60 * 1000).unref();
+
+// Bankabruf (Enable Banking): alle 30 Min. prüfen, je Konto höchstens etwa alle 4,5 Std. zwischen 6 und 21 Uhr
+const bankFetch = () =>
+  autoFetch({ sql, env, archive: new LocalArchiveStore(env.ARCHIVE_DIR), mailer: createMailer(env) }).catch(
+    (e) => console.error('Bankabruf:', e),
+  );
+setInterval(bankFetch, 30 * 60 * 1000).unref();
 
 const shutdown = async () => {
   await sql.end({ timeout: 5 });

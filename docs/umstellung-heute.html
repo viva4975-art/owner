@@ -22,33 +22,17 @@
 <h1>Umstellung auf die neue App – Stichtag 08.10.2026</h1>
 <p class="sub">Reihenfolge zum Abhaken · Viva-Deluxe Betriebs-App · https://app.viva-deluxe-reinigung.de</p>
 
-<h2><span class="n">1</span>Qwist (Bankabruf) – zuerst anstoßen, läuft nebenher</h2>
-<p><b>Warum neu?</b> Bisher lief Qwist <b>über Fortytools</b>: Fortytools hat einen Partnervertrag mit Qwist, und Ihre
-Bankverbindung (Login + TAN-Freigabe bei Münchner Bank und Targobank) hängt an diesem Vertrag. Diese Freigabe lässt
-sich <b>nicht auf uns übertragen</b> – das ist bei Kontoinformationsdiensten so vorgeschrieben (PSD2).</p>
+<h2><span class="n">1</span>Bankabruf (Enable Banking statt Qwist)</h2>
+<p>Qwist lief über den Partnervertrag von Fortytools und lässt sich nicht übertragen. Stattdessen ruft die App die Konten
+über <b>Enable Banking</b> ab (zugelassener Kontoinformationsdienst, für die eigenen Konten kostenlos).
+Schritt für Schritt: <b>„Bankabruf einrichten“</b> (<code>docs/anleitung-bankabruf.pdf</code>) – Kurzfassung:</p>
 <ol>
-  <li><b>Bei Qwist anfragen</b> (per E-Mail/Kontaktformular, Bezug auf Ihre Registrierung):
-    „Wir möchten Qwist Connect (Kontoinformationsdienst) für unsere eigene Software nutzen – bitte API-Zugang
-    (Client-ID/Secret), Testumgebung (Sandbox) und Entwickler-Dokumentation sowie Vertrag/Preise.“</li>
-  <li>Qwist schickt einen Vertrag/Kooperationsvereinbarung und danach die <b>Zugangsdaten</b> (Client-ID + Secret).</li>
-  <li><b>Kontodaten gibt es nicht vorab</b>: Ihre Bankkonten verbinden Sie später selbst in einem
-    <b>Qwist-Fenster</b> (Online-Banking-Login der Bank + TAN). Die Zugangsdaten zur Bank sehen weder ich noch die App.
-    Die Freigabe muss etwa alle 180 Tage mit TAN erneuert werden (gesetzliche Vorgabe).</li>
-  <li><b>Wo eintragen:</b> genau wie beim Mail-Zugang in <code>/opt/viva/deploy/.env.live</code> auf dem Server
-    (Anleitung „Zugangsdaten auf dem Server eintragen“):
-<pre>ssh root@217.160.236.117           # oder KVM-Konsole im IONOS-Panel
-nano /opt/viva/deploy/.env.live
-# ganz unten zwei neue Zeilen:
-QWIST_CLIENT_ID='hier die Client-ID von Qwist'
-QWIST_CLIENT_SECRET='hier das Secret von Qwist'
-# Strg+O, Enter, Strg+X
-bash /opt/viva/deploy/update.sh</pre></li>
-  <li><b>Dann mir Bescheid geben</b> und die Dokumentation (Link/PDF) schicken – <b>nicht die Zugangsdaten</b>.
-    Ich baue damit den Abruf in Transfer → Kontoumsätze ein (die Zuordnung zu Rechnungen gibt es schon).</li>
+  <li>Einstellungen → <b>Bankabruf</b>: Application ID eintragen, .pem-Datei hochladen, „Verbindung testen“.</li>
+  <li>„Bank verbinden“ → Online-Banking-Login + TAN (Münchner Bank, dann Targobank).</li>
+  <li>Transfer → Kontoumsätze: „Ältere Umsätze abhaken“ bis 07.10.2026, ab dann täglich zuordnen.</li>
 </ol>
-<div class="box"><b>Bis dahin:</b> Kontoauszüge als <b>CAMT.053</b> (im Online-Banking „Kontoauszug als XML/CAMT“
-exportieren) unter <b>Transfer → Kontoumsätze</b> hochladen. Doppelte Umsätze werden erkannt, Zahlungen zu Rechnungen
-werden vorgeschlagen. Am besten 1–2× pro Woche.</div>
+<div class="box">Die Qwist-Einträge in <code>.env.live</code> werden nicht gebraucht und können gelöscht werden. Ohne Bankabruf
+geht weiterhin der Upload von Kontoauszügen (CAMT.053/CSV) unter Transfer → Kontoumsätze.</div>
 
 <h2><span class="n">2</span>Fortytools heute abschließen</h2>
 <ol>

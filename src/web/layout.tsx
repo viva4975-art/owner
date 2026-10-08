@@ -1339,6 +1339,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     label: 'Transfer',
     items: [
       { label: 'Kontoumsätze', href: '/transfer/kontoumsaetze' },
+      { label: 'Kontoauszug', href: '/transfer/kontoauszug' },
       { label: 'Dokumentenversand', href: '/transfer/dokumentenversand' },
       { label: 'Dokumenteneingang', href: '/transfer/dokumenteneingang' },
       { label: 'Export Lexware Lohn', href: '/personal/export.csv' },

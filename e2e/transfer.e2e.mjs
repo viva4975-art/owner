@@ -57,6 +57,8 @@ const file = camt(
     entry('12.34', 'DBIT', `E2E Bankgebuehr ${stamp}`),
 );
 await p.goto(B + '/transfer/kontoumsaetze');
+check('Seite „Neue Umsätze zuordnen“', (await p.locator('h1').innerText()).includes('Neue Umsätze zuordnen'));
+await p.locator('summary', { hasText: 'Kontoauszug-Datei einlesen' }).click();
 await p.setInputFiles('#datei', { name: `auszug-${stamp}.xml`, mimeType: 'application/xml', buffer: file });
 await p.click('button:has-text("Einlesen")');
 await p.waitForLoadState();
@@ -64,6 +66,7 @@ const n = no ? 2 : 1;
 check('eingelesen', (await flash(p)).includes(`${n} Umsätze gelesen, davon ${n} neu`), await flash(p));
 await p.screenshot({ path: `${out}/t1-umsaetze.png`, fullPage: true });
 
+await p.locator('summary', { hasText: 'Kontoauszug-Datei einlesen' }).click();
 await p.setInputFiles('#datei', {
   name: `auszug-${stamp}-kopie.xml`,
   mimeType: 'application/xml',
@@ -75,13 +78,13 @@ check('doppelt einlesen → nichts neu', (await flash(p)).includes('davon 0 neu'
 
 if (no) {
   console.log('2. Vorschlag übernehmen (Teilzahlung)');
-  const row = p.locator('tr', { hasText: `E2E ${stamp}` });
+  const row = p.locator('.tx-row', { hasText: `E2E ${stamp}` });
   check(
     'Vorschlag Teilzahlung',
-    (await row.innerText()).includes(`Teilzahlung auf Rechnung ${no}`),
+    (await row.innerText()).includes(no) && (await row.innerText()).includes('Teilzahlung'),
     await row.innerText(),
   );
-  await row.locator('button:has-text("Übernehmen")').click();
+  await row.locator('button:has-text("Zuordnen")').click();
   await p.waitForLoadState();
   check('zugeordnet', (await flash(p)).includes('Zugeordnet'), await flash(p));
 } else {
@@ -90,17 +93,32 @@ if (no) {
 
 console.log('3. Umsatz ohne Zuordnung abhaken');
 await p.goto(B + '/transfer/kontoumsaetze');
-await p
-  .locator('tr', { hasText: `Bankgebuehr ${stamp}` })
-  .locator('a:has-text("Zuordnen")')
-  .click();
+const fee = p.locator('.tx-row', { hasText: `Bankgebuehr ${stamp}` });
+check(
+  'ohne Vorschlag: Kunde/Lieferant/Mitarbeiter/Nicht zuordnen',
+  (await fee.locator('a:has-text("Lieferant")').count()) === 1 &&
+    (await fee.locator('a:has-text("Mitarbeiter")').count()) === 1 &&
+    (await fee.locator('button:has-text("Nicht zuordnen")').count()) === 1,
+);
+await fee.locator('a:has-text("Kunde")').click();
 await p.waitForLoadState();
-await p.fill('input[name=note]', 'Kontoführung');
-await p.click('button:has-text("Ohne Zuordnung abhaken")');
+await p.fill('#ni', 'Kontoführung');
+await p.click('button:has-text("Nicht zuordnen")');
 await p.waitForLoadState();
 check('abgehakt', (await flash(p)).includes('abgehakt'));
-await p.goto(B + '/transfer/kontoumsaetze?status=ignoriert');
-check('in „ignoriert“', (await p.locator('body').innerText()).includes('Kontoführung'));
+await p.goto(B + '/transfer/kontoumsaetze?status=erledigt');
+check('in „Erledigt“', (await p.locator('body').innerText()).includes('Kontoführung'));
+
+console.log('3b. Kontoauszug und Bankabruf-Einstellungen');
+const ka = await p.goto(B + '/transfer/kontoauszug');
+check('Kontoauszug lädt', ka.ok() && (await p.locator('h1').innerText()).includes('Kontoauszug'));
+check('Bankgebühr im Auszug', (await p.locator('body').innerText()).includes(`Bankgebuehr ${stamp}`));
+const ba = await p.goto(B + '/einstellungen/bankabruf');
+check(
+  'Bankabruf-Einstellung lädt (Admin)',
+  ba.ok() && (await p.locator('h1').innerText()).includes('Bankabruf'),
+);
+await p.screenshot({ path: `${out}/t2-bankabruf.png`, fullPage: true });
 
 console.log('4. Lastschriften entfernt');
 await p.goto(B + '/transfer/lastschriften');

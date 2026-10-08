@@ -1489,3 +1489,21 @@ Testadresse.
   vermerkt. **Rechtlich:** Elektronische Abrechnung (§ 108 GewO) ist zulässig, wenn die Beschäftigten sie abrufen können
   (BAG 28.01.2025, 9 AZR 48/24) – wer kein Handy nutzt, bekommt sie weiter auf Papier. Neue Abhängigkeit `unpdf` 1.8.1
   (Text aus PDF). **Ahmed: eine echte Sammel-PDF aus Lexware zum Testen der Erkennung schicken.**
+- 2026-10-08: Rückmeldung Ahmed (3 Punkte):
+  - **Karten-Belege:** Kachel antippen öffnet den Beleg (neuer Tab), „bearbeiten“ und „+ Karten-Beleg“ auf eigener Seite
+    (kein Sprung nach unten mehr). **Löschen** nur im Monat des Belegs (Datei bleibt write-once im Archiv, Stand im
+    Protokoll), danach **stornieren** mit Grund (bleibt durchgestrichen sichtbar, zählt nicht in Summe/ZIP, nicht mehr
+    änderbar). Spalten `card_receipts.cancelled_at/by/cancel_reason`.
+  - **Zeiten endgültig löschen** (nur Admin): Zeiterfassung → Zeitraum, Filter „Herkunft: aus Fortytools übernommen /
+    abgelehnt-entfernt“, Häkchen (auch „alle“) → „Markierte löschen“ mit Grund; einzeln auf der Zeit-Seite. DB-Funktion
+    `app.purge_time_entry` schreibt Zeile + Änderungsprotokoll vollständig ins **Löschprotokoll**
+    (`time_entry_deletions`, nur anhängen, auf der Seite aufklappbar); normales DELETE bleibt gesperrt.
+    **Rechtlich:** nur für Testdaten/falsche Importe – echte Arbeitszeiten 2 Jahre aufbewahren (§ 17 MiLoG), dafür
+    weiter „korrigieren“ oder „entfernen“.
+  - **September leer:** Mit dem echten Export lokal geprüft – Import 2.459 Zeiten in 12 s, Tagesansicht 15.09. Soll
+    399 Std. / Ist 414 Std. Der Code zeigt die Zeiten; auf dem Server sind sie offenbar nicht (vollständig) übernommen.
+    Neu: Import-Seite zeigt „Bisher übernommene Zeiten“ je Monat mit Link. **Ahmed: Transfer → Import aus Fortytools →
+    Karte „Artikel und erfasste Zeiten“ prüfen; steht dort „noch keine“, Zeiten.csv hochladen → Prüfen → Übernehmen.**
+  - **Fund Lohnabrechnungen:** Die aufgeteilten PDFs bekamen einen Zeitstempel – dieselbe Sammel-PDF eine Sekunde später
+    erneut hochgeladen hätte jede Abrechnung doppelt abgelegt. Jetzt ID aus Quelldatei + Seiten, feste Zeitstempel.
+  - Tests: 411 Unit-/DB-Tests (neu `runde25.db.test.ts`), `e2e:kasse` 68, `e2e:zeit` 26, `e2e:rechte` 30 Prüfungen.

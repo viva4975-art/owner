@@ -35,6 +35,8 @@ import {
   netMinutes,
   officeSave,
   officeRemove,
+  purgeEntries,
+  listDeletions,
   plannedShifts,
   saveTimeSettings,
   warningsFor,
@@ -79,10 +81,12 @@ export const Warnings: FC<{ e: TimeEntryRow }> = ({ e }) => {
 };
 
 /** Tabelle erfasster Zeiten (wird auch bei Mitarbeiter/Objekt verwendet). */
-export const EntryTable: FC<{ rows: TimeEntryRow[]; show?: 'employee' | 'site' | 'both' }> = ({
-  rows,
-  show = 'both',
-}) => {
+export const EntryTable: FC<{
+  rows: TimeEntryRow[];
+  show?: 'employee' | 'site' | 'both';
+  /** Auswahl-Häkchen für „endgültig löschen“ (nur Admin); Wert = id des Formulars */
+  selectForm?: string;
+}> = ({ rows, show = 'both', selectForm }) => {
   const total = rows
     .filter((r) => r.end_at && r.status !== 'abgelehnt' && r.status !== 'beantragt')
     .reduce((s, r) => s + netMinutes(r), 0);
@@ -91,6 +95,11 @@ export const EntryTable: FC<{ rows: TimeEntryRow[]; show?: 'employee' | 'site' |
       <table>
         <thead>
           <tr>
+            {selectForm && (
+              <th style="width:28px">
+                <input type="checkbox" data-check-all={selectForm} aria-label="alle markieren" />
+              </th>
+            )}
             <th>Datum</th>
             {show !== 'site' && <th>Mitarbeiter</th>}
             {show !== 'employee' && <th>Objekt</th>}
@@ -105,13 +114,25 @@ export const EntryTable: FC<{ rows: TimeEntryRow[]; show?: 'employee' | 'site' |
         <tbody>
           {rows.length === 0 && (
             <tr>
-              <td colspan={9}>
+              <td colspan={selectForm ? 10 : 9}>
                 <div class="empty">Keine Zeiten im gewählten Zeitraum.</div>
               </td>
             </tr>
           )}
           {rows.map((e) => (
             <tr>
+              {selectForm && (
+                <td>
+                  <input
+                    type="checkbox"
+                    name="ids"
+                    value={e.id}
+                    form={selectForm}
+                    data-check-of={selectForm}
+                    aria-label="markieren"
+                  />
+                </td>
+              )}
               <td>
                 {weekdayDe(e.work_date)} {dateDe(e.work_date)}
               </td>
@@ -150,7 +171,7 @@ export const EntryTable: FC<{ rows: TimeEntryRow[]; show?: 'employee' | 'site' |
         {rows.length > 0 && (
           <tfoot>
             <tr>
-              <td colspan={show === 'both' ? 5 : 4} class="r">
+              <td colspan={(show === 'both' ? 5 : 4) + (selectForm ? 1 : 0)} class="r">
                 <b>Summe (erfasst/freigegeben)</b>
               </td>
               <td class="r">
@@ -497,9 +518,19 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
       listEmployees(sql, { status: 'aktiv' }),
       listSites(sql),
     ]);
-    const rows = inScope(c, allRows);
+    const src = q.quelle === 'import' || q.quelle === 'entfernt' ? q.quelle : '';
+    const rows = inScope(c, allRows).filter((r) =>
+      src === 'import'
+        ? r.created_by.startsWith('ft-import')
+        : src === 'entfernt'
+          ? r.status === 'abgelehnt'
+          : true,
+    );
     const sites = allSites.filter((s) => !c.get('sites') || c.get('sites')!.includes(s.id));
     const head = await viewHead(c, 'liste', to);
+    const admin = c.get('user').role === 'admin';
+    const deletions = admin ? await listDeletions(sql, 50) : [];
+    const self = c.req.url.replace(/^https?:\/\/[^/]+/, '');
     return shell(
       c,
       'liste',
@@ -534,6 +565,18 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
             </select>
           </div>
           <div>
+            <label for="quelle">Herkunft</label>
+            <select id="quelle" name="quelle" data-nosearch>
+              <option value="">alle Zeiten</option>
+              <option value="import" selected={src === 'import'}>
+                aus Fortytools übernommen
+              </option>
+              <option value="entfernt" selected={src === 'entfernt'}>
+                abgelehnt / entfernt
+              </option>
+            </select>
+          </div>
+          <div>
             <button class="btn">Anzeigen</button>
           </div>
           <div class="actions" style="grid-column:1/-1;margin:0">
@@ -555,9 +598,96 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
             ))}
           </div>
         </form>
-        <EntryTable rows={rows} />
+        {admin && rows.length > 0 && (
+          <form
+            id="purge"
+            method="post"
+            action="/zeiterfassung/loeschen"
+            class="card"
+            style="border-color:var(--err)"
+            onsubmit="var n=document.querySelectorAll('input[name=ids][form=purge]:checked').length;if(!n){alert('Bitte zuerst Zeiten markieren.');return false}return confirm(n+' Zeit(en) endgültig löschen? Das kann nicht rückgängig gemacht werden.')"
+          >
+            <input type="hidden" name="zurueck" value={self} />
+            <b>Markierte Zeiten endgültig löschen</b> <span class="small mut">(nur Admin)</span>
+            <p class="small mut" style="margin:4px 0 8px">
+              Nur für Testdaten und falsch übernommene Zeiten. Echte Arbeitszeiten bitte korrigieren oder
+              „entfernen“ – sie müssen 2 Jahre aufbewahrt werden (§ 17 MiLoG). Gelöschte Zeiten stehen mit
+              vollem Stand im Löschprotokoll.
+            </p>
+            <div class="actions" style="margin:0">
+              <input
+                name="reason"
+                required
+                placeholder="Grund, z. B. Testdaten / Import falsch"
+                style="max-width:360px"
+              />
+              <button class="btn danger sm">Markierte löschen</button>
+            </div>
+          </form>
+        )}
+        <EntryTable rows={rows} {...(admin ? { selectForm: 'purge' } : {})} />
+        {admin && deletions.length > 0 && (
+          <details class="card">
+            <summary>
+              <b>Löschprotokoll</b> <span class="small mut">(letzte {deletions.length})</span>
+            </summary>
+            <div class="tbl">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Gelöscht</th>
+                    <th>von</th>
+                    <th>Grund</th>
+                    <th>Zeit</th>
+                    <th>Mitarbeiter</th>
+                    <th>Objekt</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deletions.map((d) => (
+                    <tr>
+                      <td class="small">
+                        {d.deleted_at.toLocaleString('de-DE', {
+                          timeZone: 'Europe/Berlin',
+                          dateStyle: 'short',
+                          timeStyle: 'short',
+                        })}
+                      </td>
+                      <td class="small">{d.actor}</td>
+                      <td class="small">{d.reason}</td>
+                      <td class="small">
+                        {dateDe(d.work_date)} {clock(new Date(d.start_at))}–
+                        {d.end_at ? clock(new Date(d.end_at)) : '…'}
+                      </td>
+                      <td class="small">{d.employee_name ?? '–'}</td>
+                      <td class="small">{d.site_name ?? '–'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        )}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `document.addEventListener('change',function(e){var a=e.target.closest&&e.target.closest('input[data-check-all]');if(!a)return;document.querySelectorAll('input[data-check-of="'+a.dataset.checkAll+'"]').forEach(function(x){x.checked=a.checked})});`,
+          }}
+        />
       </>,
     );
+  });
+
+  app.post('/zeiterfassung/loeschen', async (c) => {
+    if (c.get('user').role !== 'admin')
+      throw new BusinessError('Zeiten endgültig löschen darf nur ein Admin');
+    const b = await c.req.parseBody({ all: true });
+    const ids = ([] as unknown[]).concat(b.ids ?? []).map(String);
+    const n = await purgeEntries(sql, ids, String(b.reason ?? ''), c.get('actor'));
+    const z =
+      typeof b.zurueck === 'string' && b.zurueck.startsWith('/') && !b.zurueck.startsWith('//')
+        ? b.zurueck
+        : '/zeiterfassung/liste';
+    return back(c, z, { ok: `${n} Zeit(en) endgültig gelöscht – stehen im Löschprotokoll.` });
   });
 
   // ------------------------------------------------------------------ Einzelner Eintrag (ansehen, korrigieren, neu)
@@ -667,6 +797,25 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
           </div>
         </form>
         <div class="card">
+          {e && c.get('user').role === 'admin' && (
+            <form
+              method="post"
+              action="/zeiterfassung/loeschen"
+              style="margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line)"
+              onsubmit="return confirm('Diese Zeit endgültig löschen? Das kann nicht rückgängig gemacht werden.')"
+            >
+              <h3 style="margin-top:0">Endgültig löschen (Admin)</h3>
+              <p class="small mut" style="margin-top:0">
+                Nur für Testdaten oder falsch übernommene Zeiten. Der Stand bleibt im Löschprotokoll.
+              </p>
+              <input type="hidden" name="ids" value={id} />
+              <input type="hidden" name="zurueck" value="/zeiterfassung/liste" />
+              <input name="reason" required placeholder="z. B. Testdaten" aria-label="Grund" />
+              <div class="actions">
+                <button class="btn danger sm">Endgültig löschen</button>
+              </div>
+            </form>
+          )}
           {e && e.status !== 'abgelehnt' && (
             <form
               method="post"

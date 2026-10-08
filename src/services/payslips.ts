@@ -106,9 +106,15 @@ export async function importPayslips(
       pages += part.pages.length;
     }
     out.setTitle(`Lohnabrechnung ${p.month} ${e.name}`);
+    // feste Zeitstempel: dieselbe Quelle ergibt dieselbe Datei (erneut hochladen legt nichts doppelt an)
+    out.setCreationDate(new Date(`${p.month}-01T00:00:00Z`));
+    out.setModificationDate(new Date(`${p.month}-01T00:00:00Z`));
     const bytes = await out.save({ useObjectStreams: false });
-    const sha = createHash('sha256').update(bytes).digest('hex');
-    const fileId = uuidFrom(`lohn:${e.id}:${p.month}:${sha}`);
+    // ID aus Quelle + Seiten, nicht aus den erzeugten Bytes
+    const srcKey = list
+      .map((x) => `${createHash('sha256').update(x.src).digest('hex')}:${x.pages.join(',')}`)
+      .join('|');
+    const fileId = uuidFrom(`lohn:${e.id}:${p.month}:${srcKey}`);
     await storeFile(
       sql,
       cfg,

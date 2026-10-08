@@ -317,6 +317,10 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
 
   app.get('/transfer/import', async (c) => {
     const imports = await listImports(sql);
+    // Stand der übernommenen Fortytools-Zeiten je Monat (Ahmed 08.10.: „September ist leer“)
+    const ftTimes = await sql<{ month: string; n: number }[]>`
+      select to_char(work_date, 'YYYY-MM') as month, count(*)::int as n
+        from app.time_entries where created_by like 'ft-import:%' group by 1 order by 1 desc limit 6`;
     return page(
       c,
       'Import aus Fortytools',
@@ -365,6 +369,25 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
             übernommen; daraus werden wöchentliche Einsätze abgeleitet (gleicher Mitarbeiter, Objekt,
             Wochentag, Beginn mindestens zweimal). Einzelne Personalnummern lassen sich ausschließen. Erst
             Vorschau, erneut importieren legt nichts doppelt an.
+          </p>
+          <p class="small" style="margin:0 0 8px">
+            <b>Bisher übernommene Zeiten:</b>{' '}
+            {ftTimes.length ? (
+              ftTimes.map((t, i) => (
+                <>
+                  {i > 0 && ' · '}
+                  <a
+                    href={`/zeiterfassung/liste?von=${t.month}-01&bis=${t.month}-${String(new Date(Number(t.month.slice(0, 4)), Number(t.month.slice(5)), 0).getDate())}&quelle=import`}
+                  >
+                    {t.month.slice(5)}/{t.month.slice(0, 4)}: {t.n.toLocaleString('de-DE')}
+                  </a>
+                </>
+              ))
+            ) : (
+              <span style="color:var(--err)">
+                noch keine – Zeiten.csv hochladen, prüfen, dann „Übernehmen“
+              </span>
+            )}
           </p>
           <input type="file" name="dateien" accept=".csv,.txt" multiple required aria-label="CSV-Dateien" />
           <div class="actions" style="margin-bottom:0">

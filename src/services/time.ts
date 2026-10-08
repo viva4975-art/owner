@@ -949,6 +949,50 @@ export async function officeRemove(sql: Sql, id: string, reason: string, actor: 
   });
 }
 
+/**
+ * Endgültig löschen (nur Admin): für Test-Zeiten und falsch übernommene Importe. Zeile und Änderungsprotokoll
+ * wandern vollständig ins Löschprotokoll (`time_entry_deletions`, nur anhängen). Echte Arbeitszeiten nicht löschen,
+ * sondern korrigieren oder entfernen (§ 17 MiLoG: 2 Jahre aufbewahren).
+ */
+export async function purgeEntries(sql: Sql, ids: string[], reason: string, actor: string) {
+  if (!reason.trim()) throw new BusinessError('Bitte begründen, warum gelöscht wird (z. B. „Testdaten“)');
+  const uniq = [...new Set(ids)].filter((x) => /^[0-9a-f-]{36}$/i.test(x));
+  if (!uniq.length) throw new BusinessError('Keine Zeiten ausgewählt');
+  let n = 0;
+  await sql.begin(async (tx) => {
+    for (const id of uniq) {
+      const [r] = await tx<
+        { ok: boolean }[]
+      >`select app.purge_time_entry(${id}, ${actor}, ${reason.trim()}) as ok`;
+      if (r?.ok) n++;
+    }
+  });
+  return n;
+}
+
+export async function listDeletions(sql: Sql, limit = 200) {
+  return sql<
+    {
+      entry_id: string;
+      deleted_at: Date;
+      actor: string;
+      reason: string;
+      work_date: string;
+      employee_name: string | null;
+      site_name: string | null;
+      start_at: string;
+      end_at: string | null;
+    }[]
+  >`
+    select d.entry_id, d.deleted_at, d.actor, d.reason, d.entry->>'work_date' as work_date,
+           e.last_name || ', ' || e.first_name as employee_name, s.name as site_name,
+           d.entry->>'start_at' as start_at, d.entry->>'end_at' as end_at
+      from app.time_entry_deletions d
+      left join app.employees e on e.id = (d.entry->>'employee_id')::uuid
+      left join app.sites s on s.id = (d.entry->>'site_id')::uuid
+     order by d.id desc limit ${limit}`;
+}
+
 /** Büro erfasst oder korrigiert eine Zeit (immer mit Begründung, protokolliert). */
 export async function officeSave(
   sql: Sql,

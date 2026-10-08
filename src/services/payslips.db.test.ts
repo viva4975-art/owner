@@ -59,6 +59,7 @@ describe.skipIf(!available)('Lohnabrechnungen einlesen (Datenbank)', () => {
       ['7702', 1],
     ]);
     expect(r.unassigned).toEqual([]);
+    await new Promise((res) => setTimeout(res, 1100)); // PDF-Zeitstempel ändern sich je Sekunde
     await importPayslips(sql, cfg, {
       name: 'Sammel.pdf',
       bytes,
@@ -77,7 +78,7 @@ describe.skipIf(!available)('Lohnabrechnungen einlesen (Datenbank)', () => {
       actor: 't',
     });
     expect(bad.unassigned[0]).toMatch(/keine Personalnummer/);
-  });
+  }, 30_000); // PDF-Textauslese ist unter Volllast der Testsuite langsam
 
   it('ZIP mit Einzel-PDFs: Nummer aus dem Dateinamen', async () => {
     const zip = zipSync({

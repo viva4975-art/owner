@@ -11,6 +11,10 @@ import {
   closeMonth,
   getEntry,
   listCardReceipts,
+  type CardReceipt,
+  cancelCardReceipt,
+  cardReceiptDeletable,
+  deleteCardReceipt,
   monthCsv,
   monthLabel,
   monthPdf,
@@ -554,14 +558,15 @@ export function registerCashbookRoutes({ app, deps, page, back }: Ctx) {
   });
 
   // ------------------------------------------------------------------ Karten-Belege
+  // Kachel antippen = Beleg öffnen (neuer Tab); Bearbeiten/Neu auf eigener Seite (Ahmed 08.10.: nicht nach unten
+  // springen). Löschen im Monat des Belegs, danach nur Storno mit Grund.
   app.get('/kassenbuch/kartenbelege', async (c) => {
     const m = MONTH_RE.test(c.req.query('monat') ?? '') ? c.req.query('monat')! : '';
     const [all, items] = await Promise.all([listCardReceipts(sql), listCardReceipts(sql, m || undefined)]);
     const months = [...new Set(all.map((k) => k.receipt_date.slice(0, 7)))].sort().reverse();
-    const sum = items.reduce((a, k) => a + k.amount_cents, 0n);
-    const edit = c.req.query('beleg');
-    const cur = edit ? all.find((k) => k.id === edit) : undefined;
-    const formId = cur?.id ?? randomUUID();
+    const live = items.filter((k) => !k.cancelled_at);
+    const sum = live.reduce((a, k) => a + k.amount_cents, 0n);
+    const back = `/kassenbuch/kartenbelege${m ? `?monat=${m}` : ''}`;
     return page(
       c,
       'Karten-Belege',
@@ -573,7 +578,7 @@ export function registerCashbookRoutes({ app, deps, page, back }: Ctx) {
             <h1>Karten-Belege</h1>
             <div class="sub">
               Eingescannte Belege von EC- oder Kreditkartenzahlungen – werden nicht in den Kassenbestand
-              eingerechnet.
+              eingerechnet. Beleg antippen = öffnen.
             </div>
           </div>
           <form class="acts" method="get" action="/kassenbuch/kartenbelege">
@@ -591,12 +596,12 @@ export function registerCashbookRoutes({ app, deps, page, back }: Ctx) {
                 </option>
               ))}
             </select>
-            {items.length > 0 && (
+            {live.length > 0 && (
               <a class="btn sec" href={`/kassenbuch/kartenbelege.zip${m ? `?monat=${m}` : ''}`}>
                 ↓ Export
               </a>
             )}
-            <a class="btn" href="#kb-form">
+            <a class="btn" href={`/kassenbuch/kartenbelege/neu${m ? `?monat=${m}` : ''}`}>
               + Karten-Beleg
             </a>
           </form>
@@ -604,8 +609,11 @@ export function registerCashbookRoutes({ app, deps, page, back }: Ctx) {
         <KbTabs active="karten" month={curMonth()} />
         <div class="stat-grid" style="max-width:600px">
           <div class="stat-card">
-            <div class="stat-num">{items.length}</div>
-            <div class="stat-lbl">Archivierte Belege</div>
+            <div class="stat-num">{live.length}</div>
+            <div class="stat-lbl">
+              Archivierte Belege
+              {items.length > live.length ? ` (+${items.length - live.length} storniert)` : ''}
+            </div>
           </div>
           <div class="stat-card tone-brand">
             <div class="stat-num">{euro(sum)}</div>
@@ -617,37 +625,117 @@ export function registerCashbookRoutes({ app, deps, page, back }: Ctx) {
         ) : (
           <div class="kb-grid">
             {items.map((k) => (
-              <a
-                class="kb-card"
-                href={`/kassenbuch/kartenbelege?${m ? `monat=${m}&` : ''}beleg=${k.id}#kb-form`}
-              >
-                <div class="kb-thumb">
+              <div class={`kb-card${k.cancelled_at ? ' kb-storno' : ''}`}>
+                <a
+                  class="kb-thumb"
+                  href={`/kassenbuch/kartenbeleg/${k.id}`}
+                  target="_blank"
+                  rel="noopener"
+                  title="Beleg öffnen"
+                >
                   {k.receipt_type?.startsWith('image/') ? (
                     <img src={`/kassenbuch/kartenbeleg/${k.id}`} alt="Beleg" loading="lazy" />
                   ) : (
                     <span>PDF</span>
                   )}
-                </div>
+                </a>
                 <div class="kb-info">
                   <div class="small mut">{dateDe(k.receipt_date)}</div>
-                  <b>{euro(k.amount_cents)}</b>
+                  <b style={k.cancelled_at ? 'text-decoration:line-through' : ''}>{euro(k.amount_cents)}</b>
                   {k.note && <div class="small mut">{k.note}</div>}
+                  {k.cancelled_at ? (
+                    <div class="small" style="color:var(--err)">
+                      storniert: {k.cancel_reason}
+                    </div>
+                  ) : (
+                    <div class="kb-acts">
+                      <a
+                        class="linkbtn small"
+                        href={`/kassenbuch/kartenbeleg/${k.id}`}
+                        target="_blank"
+                        rel="noopener"
+                      >
+                        öffnen
+                      </a>
+                      <a
+                        class="linkbtn small"
+                        href={`/kassenbuch/kartenbelege/${k.id}/bearbeiten?zurueck=${encodeURIComponent(back)}`}
+                      >
+                        bearbeiten
+                      </a>
+                      {cardReceiptDeletable(k) ? (
+                        <form
+                          method="post"
+                          action={`/kassenbuch/kartenbelege/${k.id}/loeschen`}
+                          class="inline-form"
+                          onsubmit="return confirm('Karten-Beleg löschen?')"
+                        >
+                          <input type="hidden" name="zurueck" value={back} />
+                          <button class="linkbtn small" style="color:var(--err)">
+                            löschen
+                          </button>
+                        </form>
+                      ) : (
+                        <details class="kb-storno-box">
+                          <summary class="linkbtn small" style="color:var(--err)">
+                            stornieren
+                          </summary>
+                          <form method="post" action={`/kassenbuch/kartenbelege/${k.id}/storno`}>
+                            <input type="hidden" name="zurueck" value={back} />
+                            <input name="grund" required placeholder="Grund" aria-label="Grund" />
+                            <button class="btn danger sm">Stornieren</button>
+                          </form>
+                        </details>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </a>
+              </div>
             ))}
           </div>
         )}
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `.kb-card{display:flex;flex-direction:column}.kb-card a.kb-thumb{display:flex;text-decoration:none}
+.kb-acts{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:6px}.kb-acts form{margin:0;display:inline-flex;width:auto}
+.kb-storno{opacity:.55}.kb-storno-box form{display:flex;gap:6px;margin-top:6px}.kb-storno-box input{min-width:0}
+.kb-storno-box summary{list-style:none;cursor:pointer}.kb-storno-box summary::-webkit-details-marker{display:none}`,
+          }}
+        />
+      </div>,
+    );
+  });
+
+  const cardForm = async (c: Context<AppEnv>, cur: CardReceipt | undefined) => {
+    const m = MONTH_RE.test(c.req.query('monat') ?? '') ? c.req.query('monat')! : '';
+    const z = c.req.query('zurueck');
+    const back =
+      z && z.startsWith('/kassenbuch/') && !z.startsWith('//')
+        ? z
+        : `/kassenbuch/kartenbelege${m ? `?monat=${m}` : ''}`;
+    const formId = cur?.id ?? randomUUID();
+    return page(
+      c,
+      cur ? 'Karten-Beleg bearbeiten' : 'Karten-Beleg archivieren',
+      'verwaltung',
+      <div class="portal">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">
+              <a href={back}>Karten-Belege</a>
+            </div>
+            <h1>{cur ? 'Karten-Beleg bearbeiten' : 'Karten-Beleg archivieren'}</h1>
+          </div>
+        </div>
         <form
-          id="kb-form"
           method="post"
           action={`/kassenbuch/kartenbelege/${formId}`}
           enctype="multipart/form-data"
           class="card"
-          style="margin-top:18px;max-width:640px"
+          style="max-width:640px"
         >
-          <h3>{cur ? 'Karten-Beleg bearbeiten' : 'Karten-Beleg archivieren'}</h3>
           <input type="hidden" name="version" value={String(cur?.version ?? '')} />
-          <input type="hidden" name="monat" value={m} />
+          <input type="hidden" name="zurueck" value={back} />
           <div class="grid">
             <div>
               <label for="k-datum">Datum</label>
@@ -674,9 +762,10 @@ export function registerCashbookRoutes({ app, deps, page, back }: Ctx) {
               <div>
                 {cur && (
                   <p class="small" style="margin:0 0 6px">
-                    <a href={`/kassenbuch/kartenbeleg/${cur.id}`} target="_blank">
+                    <a href={`/kassenbuch/kartenbeleg/${cur.id}`} target="_blank" rel="noopener">
                       {cur.receipt_name ?? 'Beleg'} öffnen
-                    </a>
+                    </a>{' '}
+                    <span class="mut">– neue Datei nur, wenn der Beleg ersetzt werden soll</span>
                   </p>
                 )}
                 <input
@@ -701,15 +790,38 @@ export function registerCashbookRoutes({ app, deps, page, back }: Ctx) {
           </div>
           <div class="formfoot">
             <button class="btn">Speichern</button>
-            {cur && (
-              <a class="btn sec" href={`/kassenbuch/kartenbelege${m ? `?monat=${m}` : ''}`}>
-                Abbrechen
-              </a>
-            )}
+            <a class="btn sec" href={back}>
+              Abbrechen
+            </a>
           </div>
         </form>
       </div>,
     );
+  };
+
+  app.get('/kassenbuch/kartenbelege/neu', (c) => cardForm(c, undefined));
+  app.get(`/kassenbuch/kartenbelege/:id{${UUID}}/bearbeiten`, async (c) => {
+    const [cur] = await sql<CardReceipt[]>`select * from app.card_receipts where id = ${c.req.param('id')}`;
+    if (!cur) return c.notFound();
+    if (cur.cancelled_at) return c.redirect('/kassenbuch/kartenbelege');
+    return cardForm(c, cur);
+  });
+
+  const backTo = (b: Record<string, unknown>) =>
+    typeof b.zurueck === 'string' && b.zurueck.startsWith('/kassenbuch/') && !b.zurueck.startsWith('//')
+      ? b.zurueck
+      : '/kassenbuch/kartenbelege';
+
+  app.post(`/kassenbuch/kartenbelege/:id{${UUID}}/loeschen`, async (c) => {
+    const b = await c.req.parseBody();
+    await deleteCardReceipt(sql, c.req.param('id'), c.get('actor'));
+    return back(c, backTo(b), { ok: 'Karten-Beleg gelöscht.' });
+  });
+
+  app.post(`/kassenbuch/kartenbelege/:id{${UUID}}/storno`, async (c) => {
+    const b = await c.req.parseBody();
+    await cancelCardReceipt(sql, c.req.param('id'), String(b.grund ?? ''), c.get('actor'));
+    return back(c, backTo(b), { ok: 'Karten-Beleg storniert – bleibt sichtbar, zählt nicht mehr.' });
   });
 
   app.post(`/kassenbuch/kartenbelege/:id{${UUID}}`, async (c) => {
@@ -726,10 +838,7 @@ export function registerCashbookRoutes({ app, deps, page, back }: Ctx) {
       },
       c.get('actor'),
     );
-    const m = str(b, 'monat');
-    return back(c, `/kassenbuch/kartenbelege${m && MONTH_RE.test(m) ? `?monat=${m}` : ''}`, {
-      ok: 'Karten-Beleg gespeichert.',
-    });
+    return back(c, backTo(b), { ok: 'Karten-Beleg gespeichert.' });
   });
 
   app.get(`/kassenbuch/kartenbeleg/:id{${UUID}}`, async (c) => {
@@ -743,7 +852,7 @@ export function registerCashbookRoutes({ app, deps, page, back }: Ctx) {
 
   app.get('/kassenbuch/kartenbelege.zip', async (c) => {
     const m = MONTH_RE.test(c.req.query('monat') ?? '') ? c.req.query('monat')! : '';
-    const items = await listCardReceipts(sql, m || undefined);
+    const items = (await listCardReceipts(sql, m || undefined)).filter((k) => !k.cancelled_at);
     const files: Record<string, Uint8Array> = {};
     const lines = ['Datum;Betrag;Notiz;Datei'];
     for (const [i, k] of items.entries()) {

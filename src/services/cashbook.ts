@@ -47,6 +47,10 @@ export interface CardReceipt {
   receipt_type: string | null;
   created_at: Date;
   version: number;
+  receipt_sha256: string;
+  cancelled_at: Date | null;
+  cancelled_by: string | null;
+  cancel_reason: string | null;
 }
 
 export const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -513,6 +517,7 @@ export async function saveCardReceipt(
   if (!cur && !p.file?.bytes.length) throw new BusinessError('Beleg-Foto ist Pflicht');
   if (cur && p.expectedVersion != null && cur.version !== p.expectedVersion)
     throw new BusinessError('Der Beleg wurde zwischenzeitlich geändert – bitte neu laden');
+  if (cur?.cancelled_at) throw new BusinessError('Stornierte Belege können nicht mehr geändert werden');
   const file = p.file?.bytes.length ? await storeReceipt(deps, 'kartenbelege', p.file) : null;
   const row = {
     receipt_date: p.date,
@@ -531,4 +536,36 @@ export async function saveCardReceipt(
   else
     await sql`insert into app.card_receipts ${sql({ id, ...row, created_by: actor } as Record<string, unknown>)}`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id) values (${actor}, ${cur ? 'update' : 'create'}, 'card_receipt', ${id})`;
+}
+
+/** Löschen nur im Monat des Belegs (danach stornieren); stornierte nie löschen. */
+export function cardReceiptDeletable(
+  k: Pick<CardReceipt, 'receipt_date' | 'cancelled_at'>,
+  today = todayBerlin(),
+) {
+  return !k.cancelled_at && k.receipt_date.slice(0, 7) >= today.slice(0, 7);
+}
+
+export async function deleteCardReceipt(sql: Sql, id: string, actor: string) {
+  await sql.begin(async (tx) => {
+    const [k] = await tx<CardReceipt[]>`select * from app.card_receipts where id = ${id} for update`;
+    if (!k) return;
+    if (!cardReceiptDeletable(k))
+      throw new BusinessError('Löschen geht nur im Monat des Belegs – bitte stornieren (mit Grund)');
+    await tx`delete from app.card_receipts where id = ${id}`;
+    // Datei bleibt write-once im Archiv; der Stand steht im Protokoll
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'delete', 'card_receipt', ${id},
+                     ${tx.json({ date: k.receipt_date, amount_cents: String(k.amount_cents), note: k.note, file: k.receipt_path, sha256: k.receipt_sha256 })})`;
+  });
+}
+
+export async function cancelCardReceipt(sql: Sql, id: string, reason: string, actor: string) {
+  if (!reason.trim()) throw new BusinessError('Bitte einen Grund für die Stornierung angeben');
+  const [k] = await sql<CardReceipt[]>`
+    update app.card_receipts set cancelled_at = now(), cancelled_by = ${actor}, cancel_reason = ${reason.trim()}
+     where id = ${id} and cancelled_at is null returning *`;
+  if (k)
+    await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+              values (${actor}, 'cancel', 'card_receipt', ${id}, ${sql.json({ reason: reason.trim() })})`;
 }

@@ -87,14 +87,39 @@ check('Storno sichtbar, nicht gelöscht', (await p.locator('.kb-row.storno').cou
 
 console.log('4. Karten-Beleg und Auswertung');
 await p.goto(`${B}/kassenbuch/kartenbelege`);
+await p.click('a:has-text("+ Karten-Beleg")');
+await p.waitForLoadState();
+check('Neu auf eigener Seite', p.url().includes('/kassenbuch/kartenbelege/neu'));
 await p.fill('#k-betrag', '45,67');
 await p.fill('#k-notiz', `E2E Tanken ${stamp}`);
 await p.setInputFiles('#k-datei', pdf);
-await p.click('#kb-form button:has-text("Speichern")');
+await p.click('button:has-text("Speichern")');
+await p.waitForLoadState();
+const card = p.locator('.kb-card', { hasText: `E2E Tanken ${stamp}` });
+check('Karten-Beleg archiviert', (await card.count()) === 1);
+check(
+  'Kachel öffnet den Beleg (neuer Tab)',
+  (await card.locator('a.kb-thumb').getAttribute('target')) === '_blank' &&
+    /\/kassenbuch\/kartenbeleg\//.test((await card.locator('a.kb-thumb').getAttribute('href')) ?? ''),
+);
+await card.locator('a:has-text("bearbeiten")').click();
+await p.waitForLoadState();
+check('Bearbeiten auf eigener Seite', p.url().includes('/bearbeiten'));
+await p.fill('#k-notiz', `E2E Tanken2 ${stamp}`);
+await p.click('button:has-text("Speichern")');
 await p.waitForLoadState();
 check(
-  'Karten-Beleg archiviert',
-  (await p.locator('.kb-card', { hasText: `E2E Tanken ${stamp}` }).count()) === 1,
+  'zurück zur Liste, geändert',
+  (await p.locator('.kb-card', { hasText: `E2E Tanken2 ${stamp}` }).count()) === 1,
+);
+await p
+  .locator('.kb-card', { hasText: `E2E Tanken2 ${stamp}` })
+  .locator('button:has-text("löschen")')
+  .click();
+await p.waitForLoadState();
+check(
+  'im selben Monat gelöscht',
+  (await p.locator('.kb-card', { hasText: `E2E Tanken2 ${stamp}` }).count()) === 0,
 );
 const zip = await p.request.get(`${B}/kassenbuch/kartenbelege.zip`);
 check('ZIP-Export', zip.headers()['content-type'] === 'application/zip');

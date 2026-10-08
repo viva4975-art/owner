@@ -680,7 +680,14 @@ const PDF_STATUS: Record<Subcontract['status'], string> = {
  * Auftragnehmer, Objekt/Auftrag-Kasten, Kurzfassung der Bedingungen und Unterschrift; Seite 2 Leistungsbeschreibung;
  * danach die vollständigen Auftragsbedingungen und die Bestätigung mit Unterschrift.
  */
-export async function subcontractPdf(sql: Sql, id: string) {
+export interface SubcontractSignature {
+  name: string;
+  png: Uint8Array;
+  /** 'JJJJ-MM-TT HH:MM' Berliner Zeit */
+  at: string;
+}
+
+export async function subcontractPdf(sql: Sql, id: string, sig?: SubcontractSignature) {
   const data = await getSubcontract(sql, id);
   if (!data) throw new BusinessError('Auftrag nicht gefunden');
   const { contract: sc, prices } = data;
@@ -797,8 +804,58 @@ export async function subcontractPdf(sql: Sql, id: string) {
     `Der Auftragnehmer nimmt die Bestellung ${sc.number} an und erkennt die vorstehenden Auftragsbedingungen als verbindlichen Bestandteil an.`,
     { size: 8.5, bold: true },
   );
-  d.signatures('Ort, Datum', 'Unterschrift Auftragnehmer / Stempel', { leftText: `München, den ${dateDe}` });
+  if (sig) {
+    const img = await d.embedPng(sig.png);
+    d.signatures('Ort, Datum', `Unterschrift Auftragnehmer: ${sig.name}`, {
+      leftText: `München, den ${formatDateDe(sig.at.slice(0, 10))}`,
+      png: img,
+    });
+    d.para(
+      `Elektronisch unterschrieben von ${sig.name} für ${s.name} am ${formatDateDe(sig.at.slice(0, 10))} um ${sig.at.slice(11, 16)} Uhr (Unterschrift auf dem Gerät von Viva-Deluxe).`,
+      { size: 7.5, color: FORM_COLORS.MUT },
+    );
+  } else
+    d.signatures('Ort, Datum', 'Unterschrift Auftragnehmer / Stempel', {
+      leftText: `München, den ${dateDe}`,
+    });
   return d.save();
+}
+
+/**
+ * Nachunternehmer unterschreibt die Bestellung am Handy/Tablet (Ahmed 09.10.: statt Scan hochladen). Erzeugt den
+ * Bestellschein mit Unterschrift, legt ihn und die Unterschrift write-once ab und hinterlegt ihn als unterschriebenen
+ * Auftrag. Einfache elektronische Signatur – Beweismittel für die Annahme, keine Schriftform.
+ */
+export async function signSubcontract(
+  deps: Deps,
+  id: string,
+  p: { name: string; png: Uint8Array },
+  actor: string,
+) {
+  const [sc] = await deps.sql<Subcontract[]>`select * from app.subcontracts where id = ${id}`;
+  if (!sc) throw new BusinessError('Auftrag nicht gefunden');
+  if (sc.signed_file_path) throw new BusinessError('Unterschriebener Auftrag liegt bereits vor');
+  if (sc.status !== 'erteilt') throw new BusinessError('Bitte den Auftrag zuerst erteilen');
+  const name = p.name.trim();
+  if (name.length < 3) throw new BusinessError('Bitte den Namen des Unterzeichners angeben');
+  if (p.png.byteLength < 200 || p.png.byteLength > 2_000_000)
+    throw new BusinessError('Unterschrift fehlt – bitte im Feld unterschreiben');
+  const at = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 16);
+  const pdf = await subcontractPdf(deps.sql, id, { name, png: p.png, at });
+  const sha = createHash('sha256').update(pdf).digest('hex');
+  const base = `nachunternehmer/${sc.supplier_id}/auftrag-${sc.number}`;
+  await deps.archive.put(
+    `${base}-unterschrift-${createHash('sha256').update(p.png).digest('hex').slice(0, 12)}.png`,
+    p.png,
+  );
+  const path = `${base}-signiert-${sha.slice(0, 12)}.pdf`;
+  const put = await deps.archive.put(path, pdf);
+  const done =
+    await deps.sql`update app.subcontracts set signed_file_path = ${path}, signed_file_sha256 = ${put.sha256}
+                               where id = ${id} and signed_file_path is null returning id`;
+  if (!done.length) throw new BusinessError('Unterschriebener Auftrag liegt bereits vor');
+  await deps.sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+                 values (${actor}, 'signed_digital', 'subcontract', ${id}, ${deps.sql.json({ name, at })})`;
 }
 
 // ---------------------------------------------------------------------------

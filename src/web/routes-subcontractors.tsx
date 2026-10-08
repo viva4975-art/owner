@@ -47,6 +47,7 @@ import {
   terminationPdf,
   uploadDocument,
   uploadSignedSubcontract,
+  signSubcontract,
 } from '../services/subcontractors.js';
 import { type AppEnv, type Ctx, officeSecret, UUID } from './app.js';
 import { centsToInput, str } from './forms.js';
@@ -56,6 +57,7 @@ import { PageHead, Tabs, dateDe, euro, type Tab } from './layout.js';
 import { FileArea } from './files.js';
 import { listFiles } from '../services/uploads.js';
 import { billingTracking, skipExpected } from '../services/expected-invoices.js';
+import { SIGN_JS } from './routes-orders.js';
 import { fullName } from '../services/users.js';
 
 const pdfResponse = (pdf: Uint8Array, name: string) =>
@@ -1396,24 +1398,44 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 </form>
               )}
             </div>
-            <h3>Unterschriebener Auftrag (Scan)</h3>
+            <h3>Unterschrift des Nachunternehmers</h3>
             {sc.signed_file_path ? (
               <p>
-                <a href={`/nachunternehmer/auftraege/${id}/scan`} target="_blank">
-                  Scan öffnen
+                <a class="btn sec sm" href={`/nachunternehmer/auftraege/${id}/scan`} target="_blank">
+                  Unterschriebenen Auftrag öffnen
                 </a>{' '}
                 <span class="small mut">SHA-256 {sc.signed_file_sha256?.slice(0, 16)}…</span>
               </p>
             ) : (
-              <form
-                method="post"
-                action={`/nachunternehmer/auftraege/${id}/scan`}
-                enctype="multipart/form-data"
-                class="actions"
-              >
-                <input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" required aria-label="Scan" />
-                <button class="btn sec sm">Hochladen</button>
-              </form>
+              <>
+                {sc.status === 'erteilt' ? (
+                  <p>
+                    <a class="btn" href={`/nachunternehmer/auftraege/${id}/unterschreiben`}>
+                      Am Handy / Tablet unterschreiben lassen
+                    </a>{' '}
+                    <span class="small mut">auch in der App (Verwaltung → NU unterschreiben)</span>
+                  </p>
+                ) : (
+                  <p class="small mut">
+                    Nach dem Erteilen kann der Nachunternehmer direkt am Handy unterschreiben.
+                  </p>
+                )}
+                <details>
+                  <summary class="small" style="cursor:pointer">
+                    oder auf Papier unterschrieben → Scan hochladen
+                  </summary>
+                  <form
+                    method="post"
+                    action={`/nachunternehmer/auftraege/${id}/scan`}
+                    enctype="multipart/form-data"
+                    class="actions"
+                    style="margin-top:8px"
+                  >
+                    <input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" required aria-label="Scan" />
+                    <button class="btn sec sm">Hochladen</button>
+                  </form>
+                </details>
+              </>
             )}
             {sc.status === 'erteilt' && (
               <>
@@ -1637,6 +1659,105 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     }
     return back(c, `/nachunternehmer/auftraege/${id}`, { ok: 'Scan gespeichert.' });
   });
+  app.get(`/nachunternehmer/auftraege/:id{${UUID}}/unterschreiben`, async (c) => {
+    const id = c.req.param('id');
+    const data = await getSubcontract(sql, id);
+    const sc = data?.contract;
+    if (!sc) return c.notFound();
+    if (sc.signed_file_path || sc.status !== 'erteilt') return c.redirect(`/nachunternehmer/auftraege/${id}`);
+    const [sup] = await sql<{ name: string; contact_name: string | null }[]>`
+      select name, contact_name from app.suppliers where id = ${sc.supplier_id}`;
+    return page(
+      c,
+      'Unterschrift',
+      'lieferanten',
+      <div style="max-width:720px;margin:0 auto">
+        <h1 style="margin-bottom:6px">Bestellung {sc.number}</h1>
+        <p class="mut" style="margin-top:0">
+          {sup?.name} · {sc.site_name} · {sc.service_kind}
+        </p>
+        <div class="card" style="font-size:16px">
+          <p style="margin-top:0">
+            <a class="btn sec" href={`/nachunternehmer/auftraege/${id}/auftrag.pdf`} target="_blank">
+              Bestellung lesen (PDF)
+            </a>
+          </p>
+          <p>
+            Preis: <b>{euro(sc.current_price_cents)}</b>{' '}
+            {BILLING[sc.billing] ? `(${BILLING[sc.billing]})` : ''}
+            <br />
+            Beginn: <b>{dateDe(sc.valid_from)}</b>
+            {sc.valid_to ? ` · Ende ${dateDe(sc.valid_to)}` : ''}
+          </p>
+          <p style="margin-bottom:0">
+            <b>
+              Der Auftragnehmer nimmt die Bestellung {sc.number} an und erkennt die Auftragsbedingungen als
+              verbindlichen Bestandteil an.
+            </b>
+          </p>
+        </div>
+        <form method="post" action={`/nachunternehmer/auftraege/${id}/unterschrift`} class="card">
+          <label for="name">Name des Unterzeichners (für {sup?.name})</label>
+          <input
+            id="name"
+            name="name"
+            required
+            minlength={3}
+            value={sup?.contact_name ?? ''}
+            style="font-size:18px;height:46px"
+          />
+          <label style="margin-top:14px">Unterschrift</label>
+          <canvas
+            id="sig"
+            style="width:100%;height:220px;border:1.5px dashed var(--line-2);border-radius:var(--r);background:#fff;touch-action:none;display:block"
+          ></canvas>
+          <input type="hidden" id="sig-png" name="png" />
+          <div class="actions">
+            <button type="button" class="btn sec sm" id="sig-clear">
+              Löschen
+            </button>
+            <span class="small" id="sig-hint" style="color:var(--err)" hidden>
+              Bitte im Feld unterschreiben.
+            </span>
+          </div>
+          <p class="small mut">
+            Der Bestellschein wird mit der Unterschrift als PDF unveränderbar gespeichert und beim
+            Nachunternehmer abgelegt.
+          </p>
+          <div class="formfoot">
+            <a class="btn sec" href={`/nachunternehmer/auftraege/${id}`}>
+              Zurück
+            </a>
+            <button class="btn">Unterschreiben</button>
+          </div>
+        </form>
+        <script dangerouslySetInnerHTML={{ __html: SIGN_JS }} />
+      </div>,
+    );
+  });
+
+  app.post(`/nachunternehmer/auftraege/:id{${UUID}}/unterschrift`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(b.png ?? ''));
+    try {
+      if (!m) throw new BusinessError('Unterschrift fehlt – bitte im Feld unterschreiben');
+      await signSubcontract(
+        deps,
+        id,
+        { name: String(b.name ?? ''), png: new Uint8Array(Buffer.from(m[1]!, 'base64')) },
+        c.get('actor'),
+      );
+    } catch (e) {
+      if (e instanceof BusinessError)
+        return back(c, `/nachunternehmer/auftraege/${id}/unterschreiben`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/nachunternehmer/auftraege/${id}`, {
+      ok: 'Unterschrieben. Der Bestellschein mit Unterschrift ist gespeichert.',
+    });
+  });
+
   app.get(`/nachunternehmer/auftraege/:id{${UUID}}/scan`, async (c) => {
     const data = await getSubcontract(sql, c.req.param('id'));
     if (!data?.contract.signed_file_path) return c.notFound();

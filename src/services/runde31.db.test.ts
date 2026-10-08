@@ -5,7 +5,9 @@ import { monthPdf } from './cashbook.js';
 import { siteCosting } from './costing.js';
 import { saveException } from './planning.js';
 import { DEMO } from './seed.js';
-import { dbAvailable, freshDatabase } from './testing.js';
+import { dbAvailable, freshDatabase, testDeps } from './testing.js';
+import QRCode from 'qrcode';
+import { signSubcontract } from './subcontractors.js';
 
 const available = await dbAvailable();
 
@@ -85,5 +87,26 @@ describe.skipIf(!available)('Runde 31 (Datenbank)', () => {
   it('Kassenbuch-PDF im neuen Formular-Stil', async () => {
     const pdf = await monthPdf(sql, '2026-09');
     expect(Buffer.from(pdf.slice(0, 5)).toString()).toBe('%PDF-');
+  });
+
+  it('Nachunternehmer unterschreibt die Bestellung am Handy – genau einmal, nur erteilt', async () => {
+    const deps = await testDeps(sql);
+    const png = new Uint8Array(await QRCode.toBuffer('Unterschrift', { type: 'png', width: 200 }));
+    const sup = randomUUID();
+    await sql`insert into app.suppliers (id, supplier_no, name, kind) values (${sup}, '79313', 'NU Sign', 'nachunternehmer')`;
+    const sc = randomUUID();
+    await sql`insert into app.subcontracts (id, number, supplier_id, site_id, service_kind, frequency, billing, price_cents, valid_from, status, created_by)
+              values (${sc}, 'BE-2026-3102', ${sup}, ${DEMO.siteSchool}, 'Unterhaltsreinigung', 'monatlich', 'pauschale_monat', 90000, '2026-10-01', 'entwurf', 't')`;
+    await expect(signSubcontract(deps, sc, { name: 'Max Muster', png }, 't')).rejects.toThrow(/erteilen/);
+    await sql`update app.subcontracts set status = 'erteilt' where id = ${sc}`;
+    await expect(signSubcontract(deps, sc, { name: 'M', png }, 't')).rejects.toThrow(/Namen/);
+    await signSubcontract(deps, sc, { name: 'Max Muster', png }, 't');
+    const [row] = await sql<
+      { signed_file_path: string }[]
+    >`select signed_file_path from app.subcontracts where id = ${sc}`;
+    expect(row!.signed_file_path).toMatch(/signiert-.*\.pdf$/);
+    const pdf = await deps.archive.get(row!.signed_file_path);
+    expect(Buffer.from(pdf.slice(0, 5)).toString()).toBe('%PDF-');
+    await expect(signSubcontract(deps, sc, { name: 'Max Muster', png }, 't')).rejects.toThrow(/bereits/);
   });
 });

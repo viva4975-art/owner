@@ -1816,3 +1816,10 @@ Testadresse.
     Buchungstext · Kategorie · Einnahmen · Ausgaben · Bestand, „Übertrag“ am Seitenende/-anfang, Summe Monat,
     Kassensturz, Stornos kompakt, Hinweis § 146 AO, drei Unterschriftslinien (`src/pdf/cashbook.ts`).
   - Tests: neu `runde31.db.test.ts`, `src/pdf/cashbook.test.ts` (Übertrag/quer), Rechnungsverfolgung in `expected-invoices.db.test.ts`.
+- 2026-10-09: **NU-Bestellung am Handy unterschreiben** (Ahmed: „Scan-Knopf hässlich, NU in meiner App unterschreiben
+  lassen“): In der Bestellung „Am Handy / Tablet unterschreiben lassen“ (nur erteilte), in der App Verwaltung → Formulare →
+  „NU unterschreiben“ (Liste erteilter Bestellungen ohne Unterschrift; nicht für Objektleitung). Seite mit PDF-Link, Preis,
+  Beginn, Annahmeerklärung, Name + Unterschrift (Finger). Ergebnis: Bestellschein mit eingesetzter Unterschrift und
+  Vermerk „elektronisch unterschrieben von … am … um …“, PDF + Unterschrift-PNG write-once, als unterschriebener Auftrag
+  hinterlegt, genau einmal (`signSubcontract`). Scan-Upload bleibt eingeklappt für Papier. Einfache elektronische
+  Signatur = Beweismittel für die Annahme, keine Schriftform. Datei-Feld-Stil global repariert (Knopf war abgeschnitten).

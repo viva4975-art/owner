@@ -1102,7 +1102,7 @@ td .btn.icon{min-height:34px;width:34px;height:34px;padding:0;justify-content:ce
 .dash-hero>div:nth-child(2){flex:1;min-width:220px}
 @media (max-width:760px){.dash-brand{border-right:0;padding-right:0;flex-basis:100%}}
 /* Datei-Auswahl (Ahmed 07.10.: Standard-Knopf „sieht billig aus“) – als Ablagefläche */
-input[type=file]{display:block;width:100%;max-width:520px;box-sizing:border-box;padding:12px 14px;border:1.5px dashed #d9c3cb;border-radius:10px;background:var(--brand-50);color:var(--mut);font-size:14px;cursor:pointer;transition:border-color .15s,background .15s}
+input[type=file]{display:block;height:auto!important;min-height:52px;line-height:1.4;width:100%;max-width:520px;box-sizing:border-box;padding:12px 14px;border:1.5px dashed #d9c3cb;border-radius:10px;background:var(--brand-50);color:var(--mut);font-size:14px;cursor:pointer;transition:border-color .15s,background .15s}
 input[type=file]:hover,input[type=file]:focus{border-color:var(--brand);background:#fff;outline:none}
 input[type=file]::file-selector-button{border:0;background:var(--brand);color:#fff;padding:8px 16px;border-radius:7px;margin-right:14px;font:600 13.5px/1.2 inherit;cursor:pointer}
 input[type=file]::file-selector-button:hover{background:var(--brand-2)}

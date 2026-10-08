@@ -575,6 +575,52 @@ export function registerOlAppRoutes({ app, deps, page, back }: Ctx) {
     return back(c, '/personal/personalboegen', { ok: 'Gespeichert.' });
   });
 
+  // ------------------------------------------------------------------ NU-Bestellung am Handy unterschreiben lassen
+  app.get('/qm/nu-unterschrift', async (c) => {
+    if (c.get('user').role === 'objektleitung') return c.redirect('/qm');
+    const rows = await sql<
+      {
+        id: string;
+        number: string;
+        supplier_name: string;
+        site_name: string;
+        service_kind: string;
+        valid_from: string;
+      }[]
+    >`
+      select sc.id, sc.number, sp.name as supplier_name, s.name as site_name, sc.service_kind, sc.valid_from::text
+        from app.subcontracts sc join app.suppliers sp on sp.id = sc.supplier_id join app.sites s on s.id = sc.site_id
+       where sc.status = 'erteilt' and sc.signed_file_path is null
+       order by sc.valid_from desc, sc.number desc`;
+    return render(
+      c,
+      'NU unterschreiben',
+      <>
+        <Top title="Bestellung unterschreiben lassen" />
+        <p class="mut">
+          Erteilte Bestellungen ohne Unterschrift. Antippen, dem Nachunternehmer das Handy geben – fertig. Der
+          Bestellschein mit Unterschrift wird gespeichert.
+        </p>
+        {rows.length === 0 && <p class="mut">Alle erteilten Bestellungen sind unterschrieben.</p>}
+        <div class="bogen">
+          {rows.map((r) => (
+            <a
+              class="bf"
+              href={`/nachunternehmer/auftraege/${r.id}/unterschreiben`}
+              style="display:block;text-decoration:none;color:inherit"
+            >
+              <b>{r.number}</b> · {r.supplier_name}
+              <br />
+              <span class="mut">
+                {r.site_name} · {r.service_kind} · ab {r.valid_from.split('-').reverse().join('.')}
+              </span>
+            </a>
+          ))}
+        </div>
+      </>,
+    );
+  });
+
   // ------------------------------------------------------------------ NU-Auftrag anfragen
   app.get('/qm/nu-auftrag', async (c) => {
     const scope = c.get('sites');

@@ -351,6 +351,16 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
           items={[
             ['/qm/personalbogen', 'doc', 'Personalbogen', 'neue Mitarbeitende, 7 Sprachen'],
             ['/qm/nu-auftrag', 'building', 'NU-Auftrag', 'beim Büro anfragen'],
+            ...(c.get('user').role === 'objektleitung'
+              ? []
+              : ([
+                  [
+                    '/qm/nu-unterschrift',
+                    'doc',
+                    'NU unterschreiben',
+                    'Bestellung am Handy unterschreiben lassen',
+                  ],
+                ] as const)),
             ['/arbeitsscheine', 'times', 'Arbeitsschein', 'erstellen, unterschreiben'],
           ]}
         />

@@ -112,10 +112,18 @@ export const groupBillingInput = z
     message: 'Portal-Versand braucht eine E-Rechnung (XRechnung oder ZUGFeRD)',
     path: ['bill_format'],
   })
-  .refine((b) => b.bill_format !== 'xrechnung' || !!b.buyer_reference, {
-    message: 'XRechnung braucht eine Leitweg-ID',
-    path: ['buyer_reference'],
-  })
+  // XRechnung ohne Leitweg-ID geht (Firmenkunden): Käuferreferenz = Kundennummer, Empfängeradresse = Rechnungs-E-Mail
+  .refine(
+    (b) =>
+      b.bill_format !== 'xrechnung' ||
+      !!b.buyer_reference ||
+      (Array.isArray(b.bill_emails) && b.bill_emails.length > 0) ||
+      b.delivery_channel === 'portal',
+    {
+      message: 'XRechnung braucht eine Leitweg-ID oder eine Rechnungs-E-Mail',
+      path: ['bill_emails'],
+    },
+  )
   .refine(
     (b) =>
       !b.bill_skonto_days ||

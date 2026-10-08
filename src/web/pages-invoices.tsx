@@ -473,6 +473,15 @@ export const InvoiceEditor: FC<{
           </div>
         </div>
         <input type="hidden" name="bill_shown" value="1" />
+        <span id="anschrift" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var h=location.hash;if(!h)return;setTimeout(function(){
+  if(h==='#anschrift'){var c=document.getElementById('bill_custom');if(c&&!c.checked){c.checked=true;c.dispatchEvent(new Event('change',{bubbles:true}));}
+    var f=document.querySelector('#bill-fields input');if(f){f.scrollIntoView({block:'center'});f.focus();}}
+  else{var e=document.querySelector(h);if(e){e.scrollIntoView({block:'center'});if(e.focus)e.focus();}}},50);})();`,
+          }}
+        />
         <div class="chk" style="margin-top:12px">
           <input
             type="checkbox"
@@ -929,7 +938,7 @@ export const InvoiceDetail: FC<{
           )}
           {inv.kind !== 'cancellation' && (
             <details class="inline-details">
-              <summary class="btn sec">Adresse ändern</summary>
+              <summary class="btn sec">Name / Adresse ändern</summary>
               <form
                 method="post"
                 action={`/rechnungen/${inv.id}/adresse`}
@@ -938,10 +947,10 @@ export const InvoiceDetail: FC<{
               >
                 <input type="hidden" name="rev_id" value={newId ?? ''} />
                 <p class="small" style="margin-top:0">
-                  Berichtigt nur die <b>Anschrift desselben Rechnungsempfängers</b> (z. B. Abteilung, Straße,
-                  Schreibweise). Die ursprüngliche Rechnung bleibt unverändert im Archiv; die berichtigte
-                  Fassung (PDF und E-Rechnung, vorher KoSIT-geprüft) wird zusätzlich archiviert. Anderer
-                  Empfänger = Storno und neue Rechnung.
+                  Berichtigt Name und Anschrift <b>desselben Rechnungsempfängers</b> (z. B. Abteilung, Straße,
+                  Schreibweise) – Kunde, Objekt und Kostenstelle bleiben gleich. Die ursprüngliche Rechnung
+                  bleibt unverändert im Archiv; die berichtigte Fassung (PDF und E-Rechnung, vorher
+                  KoSIT-geprüft) wird zusätzlich archiviert. Anderer Empfänger = Storno und neue Rechnung.
                 </p>
                 <div class="grid">
                   {(

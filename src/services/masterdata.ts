@@ -169,10 +169,6 @@ export const customerInput = z
     message: '§ 13b: Bitte die USt-IdNr. des Kunden angeben (Pflicht in der E-Rechnung)',
     path: ['vat_id'],
   })
-  .refine((c) => c.invoice_format !== 'xrechnung' || !!c.leitweg_id, {
-    message: 'XRechnung braucht eine Leitweg-ID',
-    path: ['leitweg_id'],
-  })
   .refine(
     (c) =>
       c.skonto_percent_bp === undefined ||

@@ -33,7 +33,7 @@ export const LETTER_CSS = `
 .lt-paper{background:#fff;border:1px solid #e3e3e6;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.05);padding:34px 0 26px;font-size:14px;color:#222}
 .lt-pad{padding:0 30px}
 .lt-sender{font-size:11px;color:#555;border-bottom:1px solid #444;display:inline-block;padding-bottom:1px;margin-bottom:6px}
-.lt-addr{line-height:1.45;min-height:84px}
+.lt-addr{line-height:1.45;min-height:84px;max-width:320px}
 .lt-band{background:#f2f2f2;margin:26px 0 0;padding:16px 30px;display:flex;gap:20px;align-items:center;flex-wrap:wrap}
 .lt-band h2{margin:0;font-size:30px;font-weight:600;letter-spacing:-.01em}
 .lt-band h2 small{font-size:20px;color:#999;font-weight:400}
@@ -61,6 +61,10 @@ export const LETTER_CSS = `
 .lt-side .btns .sec:hover{background:#faf3f5}
 .lt-side .btns .del{background:#fff;color:#b42318}
 .lt-side .card h3{margin:0 0 8px;font-size:15px}
+.lt-edit{color:inherit;text-decoration:none;border-radius:4px;outline:1px dashed transparent;outline-offset:3px;cursor:text}
+.lt-edit:hover{outline-color:#c9a3b0;background:#fbf6f8}
+.lt-edit-tbl{float:right;font-size:12px;color:#7D1435;margin-top:-2px}
+a.lt-addr{display:block}
 .lt-foot{color:#999;font-size:12px;text-align:center;margin-top:10px}
 `;
 
@@ -114,6 +118,9 @@ export const DraftLetter: FC<{
     <>
       <style dangerouslySetInnerHTML={{ __html: LETTER_CSS }} />
       {notice}
+      <p class="small mut" style="margin:0 0 8px">
+        Zum Ändern einfach auf Anschrift, Text, Positionen oder Schlusstext klicken.
+      </p>
       <div class="lt-grid">
         <div>
           <div class="lt-paper">
@@ -121,7 +128,11 @@ export const DraftLetter: FC<{
               <div class="lt-sender">
                 {s.legalName} | {s.street} | {s.postalCode} {s.city}
               </div>
-              <div class="lt-addr">
+              <a
+                class="lt-addr lt-edit"
+                href={`/rechnungen/${inv.id}/bearbeiten#anschrift`}
+                title="Anschrift ändern"
+              >
                 {[
                   b.name,
                   b.name2,
@@ -133,7 +144,7 @@ export const DraftLetter: FC<{
                   .map((x) => (
                     <div>{x}</div>
                   ))}
-              </div>
+              </a>
             </div>
             <div class="lt-band">
               <h2>
@@ -159,7 +170,21 @@ export const DraftLetter: FC<{
             </div>
             <div class="lt-body">
               <div>Sehr geehrte Damen und Herren,</div>
-              <div style="margin-top:8px;white-space:pre-line">{intro}</div>
+              <a
+                class="lt-edit"
+                href={`/rechnungen/${inv.id}/bearbeiten#intro_text`}
+                style="display:block;margin-top:8px;white-space:pre-line"
+                title="Text ändern"
+              >
+                {intro}
+              </a>
+              <a
+                class="lt-edit lt-edit-tbl"
+                href={`/rechnungen/${inv.id}/bearbeiten#lines`}
+                title="Positionen ändern"
+              >
+                ✎ Positionen ändern
+              </a>
               <table class="lt-tbl">
                 <thead>
                   <tr>
@@ -251,7 +276,14 @@ export const DraftLetter: FC<{
                 </p>
               )}
               <p style="margin-top:18px">{paymentTermsHuman(doc)}</p>
-              {doc.closingText && <p style="white-space:pre-line">{doc.closingText}</p>}
+              <a
+                class="lt-edit"
+                href={`/rechnungen/${inv.id}/bearbeiten#closing_text`}
+                style="display:block;white-space:pre-line;margin:8px 0"
+                title="Schlusstext ändern"
+              >
+                {doc.closingText || <span class="faint small">+ Schlusstext hinzufügen</span>}
+              </a>
               <p>{doc.payableTotal > 0n ? INVOICE_CLOSING_PAY : INVOICE_CLOSING_NOPAY}</p>
             </div>
           </div>

@@ -297,12 +297,54 @@ export const CLIENT_JS = String.raw`
     label();
   }
   function comboAll(root) { Array.prototype.forEach.call((root || document).querySelectorAll('select'), combo); }
+  // ---- Monatsauswahl wie Fortytools (Ahmed 08.10.): statt Monatsfeld zwei Listen „Monat“ + „Jahr“ ----
+  // Das echte Feld (name, Wert JJJJ-MM) bleibt und wird nur versteckt; onchange-Formulare lösen weiter aus.
+  var MONATE = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  function monthPick(inp) {
+    if (inp.dataset.mp === 'done') return;
+    inp.dataset.mp = 'done';
+    var now = new Date();
+    var cur = inp.value || '';
+    var y0 = Number((inp.min || '').slice(0, 4)) || Math.min(now.getFullYear() - 6, Number(cur.slice(0, 4)) || 9999);
+    var y1 = Number((inp.max || '').slice(0, 4)) || Math.max(now.getFullYear() + 2, Number(cur.slice(0, 4)) || 0);
+    var box = document.createElement('span');
+    box.className = 'mpick';
+    var m = document.createElement('select');
+    var y = document.createElement('select');
+    [m, y].forEach(function (s) { s.setAttribute('data-nosearch', '1'); s.className = 'mpick-s'; });
+    m.setAttribute('aria-label', 'Monat');
+    y.setAttribute('aria-label', 'Jahr');
+    if (!inp.required) { m.add(new Option('–', '')); y.add(new Option('–', '')); }
+    for (var i = 1; i <= 12; i++) m.add(new Option(String(i), (i < 10 ? '0' : '') + i));
+    for (var j = y1; j >= y0; j--) y.add(new Option(String(j), String(j)));
+    m.title = 'Monat';
+    function fromInput() { var v = inp.value || ''; m.value = v ? v.slice(5, 7) : ''; y.value = v ? v.slice(0, 4) : ''; }
+    function toInput() {
+      var v = m.value && y.value ? y.value + '-' + m.value : '';
+      if (!v && (m.value || y.value)) { if (!y.value) y.value = String(now.getFullYear()); if (!m.value) m.value = '01'; v = y.value + '-' + m.value; }
+      if (inp.value === v) return;
+      inp.value = v;
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    m.addEventListener('change', toInput);
+    y.addEventListener('change', toInput);
+    box.appendChild(m); box.appendChild(y);
+    inp.parentNode.insertBefore(box, inp.nextSibling);
+    inp.type = 'hidden';
+    inp._mpSync = fromInput;
+    fromInput();
+  }
+  function monthAll(root) { Array.prototype.forEach.call((root || document).querySelectorAll('input[type=month]'), monthPick); }
+  monthAll();
+  window.addEventListener('pageshow', function () { Array.prototype.forEach.call(document.querySelectorAll('input[data-mp=done]'), function (i) { if (i._mpSync) i._mpSync(); }); });
+  setTimeout(function () { Array.prototype.forEach.call(document.querySelectorAll('input[data-mp=done]'), function (i) { if (i._mpSync) i._mpSync(); }); }, 0);
   comboAll();
   // nur Anzeige auffrischen (z. B. Zurück-Taste) – kein change-Ereignis, sonst lösen onchange-Formulare neu aus
   window.addEventListener('pageshow', function () { Array.prototype.forEach.call(document.querySelectorAll('select.cbx-native'), function (s) { if (s._cbLabel) s._cbLabel(); }); });
   // nachträglich eingefügte Auswahlfelder (z. B. „Weiteren Mitarbeiter hinzufügen“)
   new MutationObserver(function (ms) {
-    ms.forEach(function (m) { m.addedNodes.forEach(function (n) { if (n.nodeType === 1) { if (n.tagName === 'SELECT') combo(n); else comboAll(n); } }); });
+    ms.forEach(function (m) { m.addedNodes.forEach(function (n) { if (n.nodeType === 1) { if (n.tagName === 'SELECT') combo(n); else { monthAll(n); comboAll(n); } } }); });
   }).observe(document.body, { childList: true, subtree: true });
 
   // ---- Tabellen sortieren: Klick auf die Spaltenüberschrift (auf/ab), wie Fortytools (Ahmed 07.10.) ----

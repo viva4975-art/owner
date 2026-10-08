@@ -37,6 +37,7 @@ const CSS = `${APP_TAB_CSS}
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
+.mpick{display:inline-flex;gap:6px;align-items:center;flex-wrap:nowrap}.mpick select.mpick-s{width:auto;min-width:76px;padding-right:28px}
 .cbx{position:relative;min-width:0;width:100%}
 .cbx-native{position:absolute!important;inset:0;width:100%!important;height:100%!important;opacity:0;pointer-events:none}
 .cbx-btn{all:unset;box-sizing:border-box;display:flex;align-items:center;width:100%;min-height:40px;padding:0 34px 0 12px;border:1px solid var(--line-2);border-radius:10px;background:#fff;color:var(--ink);font:inherit;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative}

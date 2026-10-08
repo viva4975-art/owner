@@ -18,6 +18,7 @@ import {
   getTransaction,
   incomingForSupplier,
   type Suggestion,
+  type SuggestionCache,
   type TxFilter,
   ignoreTransaction,
   importStatement,
@@ -153,8 +154,11 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
       feedConfigInfo(sql),
       listImports(sql),
     ]);
+    const cache: SuggestionCache = {};
     const sugg = await Promise.all(
-      rows.map((t) => (t.status === 'offen' ? suggestions(sql, t) : Promise.resolve([] as Suggestion[]))),
+      rows.map((t) =>
+        t.status === 'offen' ? suggestions(sql, t, cache) : Promise.resolve([] as Suggestion[]),
+      ),
     );
     const sure = rows.filter(
       (t, i) => sugg[i]![0] && 'confidence' in sugg[i]![0]! && sugg[i]![0]!.confidence === 'sicher',
@@ -241,7 +245,8 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
               .filter((a) => a.notInCompany)
               .map((a) => `${a.name} ${ibanShort(a.iban)}`)
               .join(', ')}
-            . Bitte die Bankverbindungen unter Einstellungen → Firmendaten prüfen – sie stehen auf jeder Rechnung.
+            . Bitte die Bankverbindungen unter Einstellungen → Firmendaten prüfen – sie stehen auf jeder
+            Rechnung.
           </div>
         )}
         {feed.accounts.some((a) => a.last_fetch_error) && (

@@ -82,7 +82,11 @@ describe.skipIf(!available)('Rechnungsgruppen = Rechnungseinstellungen je Objekt
 
   it('Prüfungen der Gruppe', () => {
     expect(() => billing({ bill_name: 'Schulamt' })).toThrow(/Rechnungsadresse/);
-    expect(() => billing({ bill_format: 'xrechnung' })).toThrow(/Leitweg-ID/);
+    expect(() => billing({ bill_format: 'xrechnung', bill_emails: '' })).toThrow(
+      /Leitweg-ID oder eine Rechnungs-E-Mail/,
+    );
+    // ohne Leitweg-ID, aber mit Rechnungs-E-Mail erlaubt (Firmenkunden)
+    expect(() => billing({ bill_format: 'xrechnung', bill_emails: 'rechnung@firma.example' })).not.toThrow();
     expect(() => billing({ bill_skonto_percent_bp: '2' })).toThrow(/zusammen/);
     expect(() => billing({ bill_skonto_percent_bp: '2', bill_skonto_days: '30' })).toThrow(/kürzer/);
   });

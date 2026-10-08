@@ -45,7 +45,14 @@ const reverseCharge = (() => {
   return d;
 })();
 
+// Firmenkunde ohne Leitweg-ID: Empfänger-Adresse = Rechnungs-E-Mail (BT-49), Käuferreferenz = Kundennummer
+const withoutLeitweg = (() => {
+  const base = sampleDocument();
+  return sampleDocument({ buyer: { ...base.buyer, leitwegId: null }, buyerReference: null });
+})();
+
 const cases = [
+  ['Rechnung ohne Leitweg-ID (Firmenkunde, E-Mail)', withoutLeitweg],
   ['Rechnung § 13b (Reverse Charge)', reverseCharge],
   ['Rechnung', sampleDocument()],
   ['Rechnung mit SEPA-Lastschrift', withDebit],

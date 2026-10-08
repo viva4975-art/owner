@@ -358,19 +358,42 @@ class Doc {
       thickness: 0.5,
       color: INK,
     });
-    const addr = [
-      b.name,
-      b.name2,
-      b.contactName ? `z. Hd. ${b.contactName}` : null,
-      b.street,
-      `${b.postalCode} ${b.city}`,
-    ].filter((x): x is string => !!x);
-    addr.forEach((l, i) => this.text(l, LEFT, 165.5 + i * 13.2, 10));
+    // DIN 5008 Anschriftfeld: 80 mm Schreibbreite, höchstens 6 Zeilen; lange Namen brechen am Wortende um
+    for (const [i, l] of addressLines(b, this.regular).lines.entries())
+      this.text(l.text, LEFT, 165.5 + i * l.lead, l.size);
   }
 
   finish() {
     for (const f of this.pageLabels) f(this.pages.length);
   }
+}
+
+/** Anschriftzeilen nach DIN 5008 (Breite 80 mm, max. 6 Zeilen; erst 10 pt, sonst 9 pt; zuletzt ohne „z. Hd.“). */
+export function addressLines(
+  b: Pick<BuyerSnapshot, 'name' | 'name2' | 'contactName' | 'street' | 'postalCode' | 'city'>,
+  font: PDFFont,
+) {
+  const W = 226.8; // 80 mm
+  const parts = (withContact: boolean) =>
+    [
+      b.name,
+      b.name2,
+      withContact && b.contactName ? `z. Hd. ${b.contactName}` : null,
+      b.street,
+      `${b.postalCode} ${b.city}`,
+    ]
+      .filter((x): x is string => !!x && !!x.trim())
+      .map((x) => x.trim());
+  for (const withContact of [true, false])
+    for (const size of [10, 9]) {
+      const lines = parts(withContact).flatMap((p) => wrap(p, font, size, W));
+      if (lines.length <= 6)
+        return { lines: lines.map((text) => ({ text, size, lead: size === 10 ? 13.2 : 11.5 })) };
+    }
+  const lines = parts(false).flatMap((p) => wrap(p, font, 9, W));
+  // Notfall: Name kürzen, Straße und Ort bleiben immer stehen
+  const keep = [...lines.slice(0, 4), ...lines.slice(-2)];
+  return { lines: keep.map((text) => ({ text, size: 9, lead: 11.5 })) };
 }
 
 /** Standardtexte der Rechnung (im Entwurf vorbelegt bzw. angezeigt). */

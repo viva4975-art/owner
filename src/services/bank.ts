@@ -251,11 +251,17 @@ function skontoFit(o: OpenRow, amount: bigint, bookingDate: string): bigint {
   return diff > 0n && (diff === sk || diff - sk === 1n || sk - diff === 1n) ? diff : 0n;
 }
 
-export async function suggestions(sql: Sql, t: BankTx): Promise<Suggestion[]> {
+/** Daten, die für alle Umsätze einer Seite gleich sind – einmal laden statt je Zeile (Seite war sonst langsam). */
+export interface SuggestionCache {
+  open?: Promise<OpenRow[]>;
+  incoming?: Promise<IncomingRow[]>;
+}
+
+export async function suggestions(sql: Sql, t: BankTx, cache: SuggestionCache = {}): Promise<Suggestion[]> {
   const out: Suggestion[] = [];
   if (t.status !== 'offen') return out;
   if (t.amount_cents > 0n) {
-    const open = await openInvoices(sql);
+    const open = await (cache.open ??= openInvoices(sql));
     const byNo = new Map(open.map((o) => [o.number, o]));
     const nos = invoiceNumbersIn(t.purpose, (n) => byNo.has(n));
     const found = nos.map((n) => byNo.get(n)!);
@@ -342,7 +348,7 @@ export async function suggestions(sql: Sql, t: BankTx): Promise<Suggestion[]> {
     for (const r of runs)
       out.push({ kind: 'debit_run', runId: r.id, label: `Lastschrifteinzug ${r.number} (Sammelgutschrift)` });
   } else {
-    out.push(...(await incomingSuggestions(sql, t)));
+    out.push(...(await incomingSuggestions(sql, t, cache)));
     const prs = await sql<{ id: string; number: string }[]>`
       select id, number from app.payment_runs where total_cents = ${-t.amount_cents}
          and not exists (select 1 from app.bank_transactions b where b.status = 'zugeordnet' and b.note = 'Zahlungslauf ' || payment_runs.number)`;
@@ -470,13 +476,18 @@ const RANK = { sicher: 0, wahrscheinlich: 1, prüfen: 2 } as const;
  * Betrag genau, mit Skonto (vereinbart oder als Differenz bis 5 %) oder als Verrechnung mehrerer Rechnungen und
  * Rechnungskorrekturen (Minusbeträge) desselben Lieferanten. Auch noch nicht freigegebene Rechnungen.
  */
-async function incomingSuggestions(sql: Sql, t: BankTx): Promise<Suggestion[]> {
+async function incomingSuggestions(sql: Sql, t: BankTx, cache: SuggestionCache = {}): Promise<Suggestion[]> {
   const amount = -t.amount_cents;
-  const rows = await sql<IncomingRow[]>`
+  // alle offenen (bzw. schon bezahlten, noch nicht verknüpften) Eingangsrechnungen – Betrag wird je Umsatz geprüft
+  const rows = (
+    await (cache.incoming ??= sql<IncomingRow[]>`
     select ${INCOMING_COLS(sql)}
       from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
      where i.bank_transaction_id is null
-       and (i.status in ('erfasst', 'freigegeben') or (i.status = 'bezahlt' and i.paid_amount_cents = ${amount}))`;
+       and (i.status in ('erfasst', 'freigegeben') or (i.status = 'bezahlt' and i.paid_at > current_date - 400))`.then(
+      (r) => [...r],
+    ))
+  ).filter((i) => i.status !== 'bezahlt' || i.paid_amount_cents === amount);
   const purpose = norm(t.purpose);
   const cp = iban(t.counterparty_iban);
   const byNo = (i: IncomingRow) => {

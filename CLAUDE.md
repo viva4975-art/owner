@@ -1744,3 +1744,20 @@ Testadresse.
     (`guessCategory`), Nachunternehmer über Lieferant (Art „nachunternehmer“, auch per IBAN), Mitarbeiter-IBAN → Personal.
     Umschalter „Kostenart: automatisch erkennen / nach Zuordnung“; eine von Hand gewählte Kostenart geht immer vor.
     Zeitraum bleibt frei wählbar (Ahmed).
+- 2026-10-08: Runde 29 (Ahmed, 4 Punkte + „Seite lädt langsam“):
+  - **Langsam (Kontoumsätze):** Die Fortytools-Sicht `legacy_open_items` lief ohne Index auf `ft_root_id` (~0,6 s) und wurde
+    je Umsatz-Zeile neu abgefragt. Jetzt einmal je Seite (Vorschlags-Cache) + Indizes (Migration `20261114000004`) → ~3 ms.
+  - **Entwürfe → Einzelleistungen** je Monat des Leistungszeitraums aufklappbar; maßgeblich ist das **Ende**
+    (31.10.–03.11. → November), neuester Monat oben/offen, Häkchen je Monat/Kunde/Zeile.
+  - **Entwurf direkt bearbeiten:** in der Briefansicht Anschrift, Einleitung, Positionen und Schlusstext anklickbar →
+    Editor an der passenden Stelle (Anschrift klappt „Rechnungsadresse nur für diese Rechnung“ auf).
+  - **Anschrift nach DIN 5008:** Anschriftfeld 80 mm, lange Zeilen umbrochen, höchstens 6 Zeilen (sonst 9 pt bzw. ohne
+    Ansprechpartner) – gilt für alle Briefe auf Briefpapier (`addressLines` in `src/pdf/render.ts`).
+  - **Ausgestellte Rechnung: „Name / Adresse ändern“** = berichtigte Fassung (wie bisher „Adresse ändern“, jetzt auch Name);
+    Kunde, Objekt und Kostenstelle bleiben. **Rechtlich § 31 Abs. 5 UStDV:** nur derselbe Empfänger – anderer Empfänger =
+    Storno + neue Rechnung.
+  - **Monatsauswahl überall wie Fortytools:** jedes Monatsfeld wird zu zwei Auswahllisten Monat + Jahr (`monthPick` in
+    `src/web/client.ts`, das echte Feld bleibt versteckt → Formulare unverändert).
+  - **XRechnung ohne Leitweg-ID:** Rechnungsgruppe/Kunde mit Format XRechnung braucht Leitweg-ID **oder** Rechnungs-E-Mail
+    (bzw. Portal). Ohne Leitweg-ID: Empfängeradresse BT-49 = E-Mail, Käuferreferenz BT-10 = Kundennummer – KoSIT-gültig
+    (Test). Behörden brauchen weiter ihre Leitweg-ID.

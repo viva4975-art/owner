@@ -19,7 +19,7 @@ const range = (a: string, b: string) =>
 export const SELECT_JS = `(function(){
 document.querySelectorAll('[data-select-scope]').forEach(function(scope){
   if(scope.dataset.selInit)return;scope.dataset.selInit='1';
-  function rows(g){return scope.querySelectorAll('input[data-row]'+(g?'[data-g="'+g+'"]':''))}
+  function rows(g){return scope.querySelectorAll('input[data-row]'+(g?'[data-g'+(g.slice(-1)==='|'?'^':'')+'="'+g+'"]':''))}
   function sync(){scope.querySelectorAll('input[data-group]').forEach(function(h){var r=rows(h.dataset.group);h.checked=r.length>0&&[].every.call(r,function(x){return x.checked})});
     var all=scope.querySelector('input[data-all]');if(all){var r=rows();all.checked=r.length>0&&[].every.call(r,function(x){return x.checked})}
     var n=[].filter.call(rows(),function(x){return x.checked}).length;scope.querySelectorAll('[data-count]').forEach(function(c){c.textContent=n});
@@ -198,6 +198,31 @@ const byCustomer = <T extends { customer_id: string }>(rows: T[]) => {
 };
 
 /** Rechts: vorgemerkte Einzelleistungen je Kunde → Objekt mit Betrag (kompakt, aufklappbar). */
+const MONTHS = [
+  'Januar',
+  'Februar',
+  'März',
+  'April',
+  'Mai',
+  'Juni',
+  'Juli',
+  'August',
+  'September',
+  'Oktober',
+  'November',
+  'Dezember',
+];
+const monthLabel = (m: string) => `${MONTHS[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
+/** Monat nach dem ENDE des Leistungszeitraums (31.10.–03.11. → November), neueste zuerst. */
+const byMonth = (rows: OpenExecution[]) => {
+  const m = new Map<string, OpenExecution[]>();
+  for (const e of rows) {
+    const k = String(e.date_to ?? e.date_from).slice(0, 7);
+    m.set(k, [...(m.get(k) ?? []), e]);
+  }
+  return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+};
+
 export const OpenExecutionsBox: FC<{ rows: OpenExecution[]; today: string }> = ({ rows }) => (
   <section class="card dr-side" data-select-scope>
     <h3>Aus Einzelleistungen erstellen</h3>
@@ -208,50 +233,60 @@ export const OpenExecutionsBox: FC<{ rows: OpenExecution[]; today: string }> = (
       </p>
     ) : (
       <form method="post" action="/rechnungen/entwuerfe/aus-ausfuehrungen">
-        {byCustomer(rows).map((list) => {
-          const c = list[0]!;
-          const sites = new Map<string, OpenExecution[]>();
-          for (const e of list) sites.set(e.site_id, [...(sites.get(e.site_id) ?? []), e]);
-          const sum = (l: OpenExecution[]) =>
-            l.reduce((a, e) => a + amount(e.quantity_milli, e.unit_price_cents), 0n);
-          return (
-            <details class="ex-cust">
-              <summary>
-                <input
-                  type="checkbox"
-                  data-group={c.customer_id}
-                  aria-label={`alle von ${c.customer_name}`}
-                />
-                <span class="ex-name">
-                  {c.customer_name} <span class="faint">({list.length})</span>
-                </span>
-                <b class="num">{euro(sum(list))}</b>
-              </summary>
-              {[...sites.values()].map((sl) => {
-                const s0 = sl[0]!;
-                return (
-                  <div class="ex-site">
-                    <div class="ex-site-h">
-                      <a href={`/objekte/${s0.site_id}/leistungen`}>{s0.site_name}</a>{' '}
-                      <span class="faint small">{s0.site_no}</span>
-                      <span class="num small">{euro(sum(sl))}</span>
-                    </div>
-                    {sl.map((e) => (
-                      <label class="ex-line">
-                        <input type="checkbox" name="exec" value={e.id} data-row data-g={c.customer_id} />
-                        <span class="ex-desc">
-                          {e.description}
-                          <span class="faint"> · {range(e.date_from, e.date_to)}</span>
-                        </span>
-                        <span class="num">{euro(amount(e.quantity_milli, e.unit_price_cents))}</span>
-                      </label>
-                    ))}
-                  </div>
-                );
-              })}
-            </details>
-          );
-        })}
+        {byMonth(rows).map(([month, mrows], mi) => (
+          <details class="ex-month" open={mi === 0}>
+            <summary>
+              <input type="checkbox" data-group={`${month}|`} aria-label={`alle aus ${monthLabel(month)}`} />
+              <span class="ex-name">
+                {monthLabel(month)} <span class="faint">({mrows.length})</span>
+              </span>
+              <b class="num">
+                {euro(mrows.reduce((a, e) => a + amount(e.quantity_milli, e.unit_price_cents), 0n))}
+              </b>
+            </summary>
+            {byCustomer(mrows).map((list) => {
+              const c = list[0]!;
+              const g = `${month}|${c.customer_id}`;
+              const sites = new Map<string, OpenExecution[]>();
+              for (const e of list) sites.set(e.site_id, [...(sites.get(e.site_id) ?? []), e]);
+              const sum = (l: OpenExecution[]) =>
+                l.reduce((a, e) => a + amount(e.quantity_milli, e.unit_price_cents), 0n);
+              return (
+                <details class="ex-cust">
+                  <summary>
+                    <input type="checkbox" data-group={g} aria-label={`alle von ${c.customer_name}`} />
+                    <span class="ex-name">
+                      {c.customer_name} <span class="faint">({list.length})</span>
+                    </span>
+                    <b class="num">{euro(sum(list))}</b>
+                  </summary>
+                  {[...sites.values()].map((sl) => {
+                    const s0 = sl[0]!;
+                    return (
+                      <div class="ex-site">
+                        <div class="ex-site-h">
+                          <a href={`/objekte/${s0.site_id}/leistungen`}>{s0.site_name}</a>{' '}
+                          <span class="faint small">{s0.site_no}</span>
+                          <span class="num small">{euro(sum(sl))}</span>
+                        </div>
+                        {sl.map((e) => (
+                          <label class="ex-line">
+                            <input type="checkbox" name="exec" value={e.id} data-row data-g={g} />
+                            <span class="ex-desc">
+                              {e.description}
+                              <span class="faint"> · {range(e.date_from, e.date_to)}</span>
+                            </span>
+                            <span class="num">{euro(amount(e.quantity_milli, e.unit_price_cents))}</span>
+                          </label>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </details>
+              );
+            })}
+          </details>
+        ))}
         <div class="dr-side-f">
           <label for="ex_date">Rechnungsdatum</label>
           <input id="ex_date" type="date" name="invoice_date" title="leer = Tag des Ausstellens" />
@@ -290,6 +325,12 @@ export const DRAFTS_CSS = `
 .dr-warn{color:#c77700;font-size:15px}
 .dr-foot{display:flex;flex-wrap:wrap;gap:8px;align-items:end;padding:12px 8px;background:#f6f6f8;border-top:1px solid #e3e3e6}
 .dr-side h3{margin-top:0}
+.ex-month{border-bottom:1px solid #e3e3e3;padding:6px 0}
+.ex-month>summary{display:flex;gap:8px;align-items:center;cursor:pointer;list-style:none;font-weight:600}
+.ex-month>summary::-webkit-details-marker{display:none}
+.ex-month>summary:before{content:'▸';color:#999;width:10px}
+.ex-month[open]>summary:before{content:'▾'}
+.ex-month .ex-cust{margin-left:14px}
 .ex-cust{border-bottom:1px solid #eee;padding:6px 0}
 .ex-cust summary{display:flex;gap:8px;align-items:center;cursor:pointer;list-style:none}
 .ex-cust summary::-webkit-details-marker{display:none}

@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { Sql } from '../db/client.js';
 import { type DraftLineInput, calculateDraft, formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import { type Cents, type Quantity } from '../domain/money/money.js';
-import { renderInvoicePdf, renderLetterPdf } from '../pdf/render.js';
+import { FormDoc } from '../pdf/form-doc.js';
+import { renderInvoicePdf } from '../pdf/render.js';
 import { assertVersion } from './crm.js';
 import { BusinessError } from './errors.js';
 import { saveDraft } from './invoices.js';
@@ -522,68 +523,120 @@ export async function renderWorkReportPdf(deps: Deps, id: string): Promise<Uint8
   const { report: w, lines, employees } = data;
   const seller = await getSeller(deps.sql);
   const buyer = await buildBuyerSnapshot(deps.sql, w.customer_id, w.site_id);
+  const [site] = await deps.sql<{ street: string | null; postal_code: string | null; city: string | null }[]>`
+    select street, postal_code, city from app.sites where id = ${w.site_id}`;
   const png = w.signature_path ? await deps.archive.get(w.signature_path) : null;
-  const time = w.start_time && w.end_time ? `${w.start_time}–${w.end_time} Uhr` : '–';
-  return renderLetterPdf({
+  const time =
+    w.start_time && w.end_time ? `${w.start_time.slice(0, 5)} – ${w.end_time.slice(0, 5)} Uhr` : '-';
+  const regie = lines.filter((l) => l.person);
+  const items = lines.filter((l) => !l.person);
+  // Layout wie die alte App (Ahmed 08.10.: Arbeitsscheine AS-2026-1024/1028)
+  const d = await FormDoc.create({
     title: `Arbeitsschein ${w.number}`,
+    sideRef: `VD-AS Arbeitsschein ${w.number}`,
     date: w.work_date,
-    info: [
-      ['Datum', formatDateDe(w.work_date)],
-      ['Objekt', `${w.site_name} (${w.site_no})`.slice(0, 34)],
-      ['Zeit', time],
-      ...(w.order_number ? ([['Auftrag', w.order_number]] as [string, string][]) : []),
-    ],
-    seller,
-    buyer,
-    greeting: null,
-    intro: [
-      w.description ? `Ausgeführte Arbeiten: ${w.description}` : 'Ausgeführte Arbeiten:',
-      employees.length ? `Eingesetzt: ${employees.map((e) => e.name).join(', ')}` : '',
-    ]
-      .filter(Boolean)
-      .join('\n'),
-    columns: [
-      { label: 'Pos', x: 62.3, align: 'left' },
-      { label: 'Leistung / Regiestunden', x: 90, align: 'left' },
-      { label: 'Menge', x: 470 },
-      { label: 'Einheit', x: 538.8 },
-    ],
-    rows: lines.map((l) => [
-      String(l.position),
-      (l.person ? `${l.description} – ${l.person}` : l.description).slice(0, 64),
-      qty(l.quantity_milli),
-      UNIT[l.unit_code] ?? l.unit_code,
-    ]),
-    sums: [],
-    total: null,
-    paragraphs: [
-      ...(await executionNotes(deps.sql, w.site_id, w.work_date)).map(
-        (n) => `Ausführungshinweis (${n.description}): ${n.execution_notes}`,
-      ),
-      ...(w.materials ? [`Material: ${w.materials}`] : []),
-      ...(w.remarks ? [`Bemerkungen des Kunden: ${w.remarks}`] : []),
-      ...(w.status === 'ohne_unterschrift' && !w.no_signature_reason?.startsWith('PDF erstellt')
-        ? [`Ohne Unterschrift abgeschlossen: ${w.no_signature_reason}`]
-        : []),
-    ],
-    signature:
-      w.status === 'unterschrieben'
-        ? {
-            label: 'Leistung erbracht und abgenommen:',
-            png,
-            name: w.signed_by_name ?? '',
-            at:
-              w.signed_at!.toLocaleString('de-DE', {
-                timeZone: 'Europe/Berlin',
-                dateStyle: 'medium',
-                timeStyle: 'short',
-              }) + ' Uhr',
-          }
-        : w.status === 'entwurf'
-          ? { label: 'Leistung erbracht und abgenommen:', png: null, name: 'Name, Datum', at: '' }
-          : null,
+    author: seller.legalName,
     ...(w.status === 'entwurf' ? { watermark: 'ENTWURF' } : {}),
   });
+  d.title('Arbeitsschein', `Nr. ${w.number}`);
+  d.infoGrid([
+    ['Datum', formatDateDe(w.work_date)],
+    ['Zeit', time],
+    ['Kostenstelle', w.site_no],
+    [
+      'Abrechnung',
+      regie.length ? (items.length ? 'Leistungen + Regiearbeiten' : 'Regiearbeiten') : 'Leistungen',
+    ],
+    ['Auftrag', w.order_number ?? '-'],
+    ['Eingesetzt', employees.length ? `${employees.length} Mitarbeiter` : '-'],
+  ]);
+  d.twoCols(
+    {
+      label: 'Kundenanschrift',
+      lines: [buyer.name, buyer.name2 ?? '', buyer.street, `${buyer.postalCode} ${buyer.city}`].filter(
+        Boolean,
+      ),
+    },
+    {
+      label: 'Objektanschrift',
+      lines: [
+        w.site_name,
+        site?.street ?? '',
+        `${site?.postal_code ?? ''} ${site?.city ?? ''}`.trim(),
+      ].filter(Boolean),
+    },
+  );
+  if (w.description) {
+    d.section('Ausgeführte Arbeiten');
+    d.para(w.description);
+  }
+  if (items.length) {
+    d.section('Positionen');
+    d.table(
+      [
+        { label: 'Pos.', width: 32 },
+        { label: 'Leistung / Beschreibung', width: 356 },
+        { label: 'Menge', width: 110, align: 'right' },
+      ],
+      items.map((l, i) => [
+        `${i + 1}.`,
+        l.description,
+        `${qty(l.quantity_milli)} ${UNIT[l.unit_code] ?? l.unit_code}`,
+      ]),
+    );
+  }
+  if (regie.length || employees.length) {
+    d.section('Regie-/Stundennachweis');
+    const rows: string[][] = regie.length
+      ? regie.map((l) => [
+          formatDateDe(w.work_date).slice(0, 6) + formatDateDe(w.work_date).slice(8),
+          l.person ?? '',
+          w.start_time && w.end_time ? `${w.start_time.slice(0, 5)}–${w.end_time.slice(0, 5)}` : '',
+          qty(l.quantity_milli),
+          l.description === 'Regiestunden' ? (w.description ?? '').split('\n')[0]! : l.description,
+        ])
+      : employees.map((e) => [
+          formatDateDe(w.work_date).slice(0, 6) + formatDateDe(w.work_date).slice(8),
+          e.name,
+          w.start_time && w.end_time ? `${w.start_time.slice(0, 5)}–${w.end_time.slice(0, 5)}` : '',
+          '',
+          '',
+        ]);
+    const total = regie.reduce((a, l) => a + l.quantity_milli, 0n);
+    d.table(
+      [
+        { label: 'Datum', width: 62 },
+        { label: 'Mitarbeiter', width: 150 },
+        { label: 'Zeit', width: 72 },
+        { label: 'Std.', width: 44, align: 'right' },
+        { label: 'Tätigkeit', width: 170 },
+      ],
+      [
+        ...rows,
+        ...(regie.length ? [{ sum: ['Gesamt', '', '', `${qty(total)} Std.`, ''], strong: true }] : []),
+      ],
+    );
+  }
+  for (const n of await executionNotes(deps.sql, w.site_id, w.work_date))
+    d.muted(`Ausführungshinweis (${n.description}): ${n.execution_notes}`);
+  if (w.materials) d.para(`Material: ${w.materials}`);
+  if (w.remarks) d.para(`Bemerkungen des Kunden: ${w.remarks}`);
+  if (w.status === 'ohne_unterschrift' && !w.no_signature_reason?.startsWith('PDF erstellt'))
+    d.muted(`Ohne Unterschrift abgeschlossen: ${w.no_signature_reason}`);
+  d.y += 6;
+  d.ensure(80); // Abnahmesatz und Unterschrift zusammen halten
+  d.muted('Die vorstehenden Arbeiten wurden ordnungsgemäß ausgeführt und abgenommen.');
+  const signed = w.status === 'unterschrieben';
+  d.signatures('Ort, Datum', 'Unterschrift / Stempel Auftraggeber (Kunde)', {
+    ...(signed
+      ? {
+          leftText: `München, ${w.signed_at!.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}`,
+          png: png ? await d.embedPng(png) : null,
+          rightText: w.signed_by_name ?? '',
+        }
+      : {}),
+  });
+  return d.save();
 }
 
 async function archiveWorkReportPdf(deps: Deps, id: string) {

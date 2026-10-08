@@ -1612,3 +1612,11 @@ Testadresse.
   Liste darüber („← alle Gruppen“), im Formular nur „n Objekte“ + „Weitere Objekte in diese Gruppe holen“ (eingeklappt, Suche)
   statt 66 ausgegrauter Häkchen. Neu **„Objekte den Gruppen zuordnen“**: Tabelle aller Objekte mit Gruppen-Auswahl je
   Zeile, Suche, einmal speichern (`setSiteInvoiceGroup`, Protokoll). `e2e:rechnungsangaben` 13 Prüfungen.
+- 2026-10-08: **Arbeitsschein und NU-Bestellschein wie die alte App** (Ahmeds PDFs AS-2026-1024/1028, BE-2026-0001): neuer
+  Baustein `src/pdf/form-doc.ts` (Briefpapier, Bordeaux-Titel mit Linie, grauer Infokasten mit Bordeaux-Strich, Kunden-/
+  Objektanschrift, Abschnittsbalken, Tabellen, Unterschriftslinien, senkrechte Kennung „… · Seite x von y“).
+  Arbeitsschein: Datum/Zeit/Kostenstelle/Abrechnung/Auftrag, Positionen, Regie-/Stundennachweis mit Gesamt, Abnahmesatz +
+  Unterschrift (zusammen gehalten). Bestellschein an Nachunternehmer (5 Seiten): Auftragnehmer [Nr.], Kasten Objekt/Adresse/
+  Häufigkeit/Kostenstelle/Leistungsart/Zeitraum/Status/Stundensatz bzw. Preis/Gesamtbetrag/Bestelldatum, Kurzfassung der
+  Bedingungen + Unterschrift; Leistungsbeschreibung; Auftragsbedingungen 1–10 wörtlich (`src/domain/subcontract/conditions.ts`);
+  Bestätigung mit Unterschrift. Bereits archivierte Arbeitsschein-PDFs bleiben unverändert (write-once).

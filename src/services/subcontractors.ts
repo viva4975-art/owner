@@ -3,6 +3,8 @@ import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import type { BuyerSnapshot } from '../domain/invoice/types.js';
 import { type Cents, formatEuro } from '../domain/money/money.js';
+import { NU_CONDITIONS } from '../domain/subcontract/conditions.js';
+import { FORM_COLORS, FORM_X, FormDoc } from '../pdf/form-doc.js';
 import { renderLetterPdf } from '../pdf/render.js';
 import { assertVersion } from './crm.js';
 import { hashPin, LOCK_MINUTES, MAX_ATTEMPTS, verifyHash } from './employee-auth.js';
@@ -643,66 +645,164 @@ function supplierBuyer(s: Supplier): BuyerSnapshot {
   };
 }
 
-/** Auftrag an den Nachunternehmer (Briefpapier), mit Unterschriftsfeldern beider Seiten. */
+const PDF_STATUS: Record<Subcontract['status'], string> = {
+  entwurf: 'Entwurf',
+  erteilt: 'Offen',
+  beendet: 'Beendet',
+  storniert: 'Storniert',
+};
+
+/**
+ * Bestellschein an den Nachunternehmer wie die alte App (Ahmed 08.10., Muster BE-2026-0001): Seite 1 Bestellung mit
+ * Auftragnehmer, Objekt/Auftrag-Kasten, Kurzfassung der Bedingungen und Unterschrift; Seite 2 Leistungsbeschreibung;
+ * danach die vollständigen Auftragsbedingungen und die Bestätigung mit Unterschrift.
+ */
 export async function subcontractPdf(sql: Sql, id: string) {
   const data = await getSubcontract(sql, id);
   if (!data) throw new BusinessError('Auftrag nicht gefunden');
   const { contract: sc, prices } = data;
   const s = (await getSupplier(sql, sc.supplier_id))!;
-  const [site] = await sql<{ street: string; postal_code: string; city: string }[]>`
+  const seller = await getSeller(sql);
+  const [site] = await sql<{ street: string | null; postal_code: string | null; city: string | null }[]>`
     select street, postal_code, city from app.sites where id = ${sc.site_id}`;
+  const date = sc.issued_at
+    ? sc.issued_at.toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' })
+    : todayBerlin();
+  const dateDe = formatDateDe(date)
+    .replace(/^0/, '')
+    .replace(/\.0(\d)\./, '.$1.');
   const unit =
     sc.billing === 'stunde'
-      ? 'je Stunde'
+      ? 'Std.'
       : sc.billing === 'pauschale_einsatz'
-        ? 'je Einsatz'
+        ? 'Einsatz'
         : sc.billing === 'tag'
-          ? 'je Tag'
-          : 'monatlich';
-  return renderLetterPdf({
-    title: `Auftrag ${sc.number}`,
-    date: sc.issued_at ? sc.issued_at.toISOString().slice(0, 10) : todayBerlin(),
-    info: [
-      ['Lieferanten-Nr.', s.supplier_no],
-      ['Beginn', formatDateDe(sc.valid_from)],
-      ...(sc.valid_to ? ([['Ende', formatDateDe(sc.valid_to)]] as [string, string][]) : []),
-    ],
-    seller: await getSeller(sql),
-    buyer: supplierBuyer(s),
-    intro:
-      'hiermit beauftragen wir Sie mit folgender Leistung zu den Bedingungen des Nachunternehmervertrags. ' +
-      'Der Einsatz eigener Nachunternehmer bedarf unserer schriftlichen Zustimmung.',
-    columns: [
-      { label: 'Pos', x: 62.3, align: 'left' },
-      { label: 'Leistung', x: 90, align: 'left' },
-      { label: 'Häufigkeit', x: 440 },
-      { label: 'Preis netto', x: 538.8 },
-    ],
-    rows: [
-      [
-        '1',
-        `${sc.service_kind} – ${sc.site_name} (${sc.site_no})`.slice(0, 52),
-        FREQUENCY[sc.frequency] ?? sc.frequency,
-        `${formatEuro(sc.price_cents as Cents)} ${unit}`,
-      ],
-    ],
-    sums: [],
-    total: null,
-    paragraphs: [
-      `Objekt: ${sc.site_name}, ${site?.street ?? ''}, ${site?.postal_code ?? ''} ${site?.city ?? ''}`,
-      ...(sc.description ? [`Leistungsumfang: ${sc.description}`] : []),
-      ...(sc.max_hours_month ? [`Höchstens ${sc.max_hours_month.replace('.', ',')} Stunden je Monat.`] : []),
-      ...prices.map(
-        (p) =>
-          `Preisnachtrag ab ${formatDateDe(p.valid_from_month).slice(3)}: ${formatEuro(p.price_cents as Cents)} ${unit} (${p.reason})`,
-      ),
-      'Rechnungen bitte mit dieser Auftragsnummer, Leistungsmonat und Objekt. Sie versichern, Ihren Beschäftigten ' +
-        'mindestens den gesetzlichen bzw. tariflichen Mindestlohn zu zahlen und die Arbeitszeiten aufzuzeichnen ' +
-        '(MiLoG, AEntG), und legen die Nachweise (Unbedenklichkeitsbescheinigungen u. a.) laufend vor.',
-      'Auftrag angenommen (Datum, Unterschrift, Stempel Nachunternehmer): ______________________________',
-    ],
-    signature: null,
+          ? 'Tag'
+          : 'Monat';
+  const price = `${formatEuro(sc.current_price_cents as Cents)} / ${unit}`;
+  const d = await FormDoc.create({
+    title: `Bestellung ${sc.number}`,
+    sideRef: `VD-NU-02 Bestellschein ${sc.number} · Rev. 1.0 · Stand: ${dateDe}`,
+    date,
+    author: seller.legalName,
+    ...(sc.status === 'entwurf' ? { watermark: 'ENTWURF' } : {}),
   });
+  d.y += 4;
+  d.titleRight(`BESTELLUNG  ${sc.number}`, 'Bitte Bestellnummer auf jeder Rechnung angeben.');
+  d.y += 8;
+  d.text('Auftragnehmer (Nachunternehmer):', FORM_X.L, d.y + 6, {
+    size: 7.5,
+    bold: true,
+    color: FORM_COLORS.MUT,
+  });
+  d.y += 22;
+  d.text(`[${s.supplier_no}]  ${s.name}`, FORM_X.L, d.y, { size: 12, bold: true });
+  d.y += 14;
+  for (const l of [
+    s.contact_name ? `z.Hd. ${s.contact_name}` : '',
+    s.street ?? '',
+    `${s.postal_code ?? ''} ${s.city ?? ''}`.trim(),
+  ].filter(Boolean)) {
+    d.text(l, FORM_X.L, d.y, { size: 9.5 });
+    d.y += 12;
+  }
+  if (s.phone) {
+    d.text(`Tel.: ${s.phone}`, FORM_X.L, d.y, { size: 8.5, color: FORM_COLORS.MUT });
+    d.y += 11;
+  }
+  if (s.email) {
+    d.text(s.email, FORM_X.L, d.y, { size: 8.5, color: FORM_COLORS.MUT });
+    d.y += 11;
+  }
+  d.y += 8;
+  const hourly = sc.billing === 'stunde';
+  d.kvBox([
+    { k: 'Objekt / Auftrag:', v: sc.site_name, strong: true },
+    {
+      k: 'Adresse:',
+      v: [site?.street, `${site?.postal_code ?? ''} ${site?.city ?? ''}`.trim()].filter(Boolean).join(', '),
+    },
+    { k: 'Häufigkeit:', v: FREQUENCY[sc.frequency] ?? sc.frequency, k2: 'Kostenstelle:', v2: sc.site_no },
+    { k: 'Leistungsart:', v: sc.service_kind },
+    {
+      k: 'Zeitraum:',
+      v: `${formatDateDe(sc.valid_from)}${sc.valid_to ? ` bis ${formatDateDe(sc.valid_to)}` : ' (unbefristet)'}`,
+    },
+    { k: 'Status:', v: PDF_STATUS[sc.status] },
+    hourly
+      ? {
+          k: 'Stundensatz:',
+          v: price,
+          k2: 'Angenommene Std.:',
+          v2: sc.max_hours_month ? `${sc.max_hours_month.replace('.', ',')} / Monat` : 'n. Aufmaß',
+        }
+      : { k: 'Preis:', v: price },
+    {
+      k: 'Gesamtbetrag:',
+      v: hourly
+        ? sc.max_hours_month
+          ? `max. ${formatEuro(((sc.current_price_cents * BigInt(Math.round(Number(sc.max_hours_month) * 100))) / 100n) as Cents)} / Monat`
+          : '- nach erfassten Stunden -'
+        : price,
+      accent: true,
+    },
+    { k: 'Bestelldatum:', v: formatDateDe(date) },
+  ]);
+  d.text('Leistungsbeschreibung:', FORM_X.L, d.y + 4, { size: 9.5, bold: true });
+  d.y += 14;
+  d.muted(
+    sc.description || prices.length
+      ? 'siehe Leistungsbeschreibung auf der folgenden Seite'
+      : 'keine gesonderte Beschreibung',
+  );
+  d.y += 10;
+  d.noteBox(
+    'Wichtige Auftragsbedingungen',
+    [
+      'Ausführung im Namen der Viva-Deluxe GmbH · keine Eigenwerbung · kein direkter Kundenkontakt',
+      'Arbeitskleidung neutral in Hellgrau ohne Logos oder die vom Auftraggeber gestellte Kleidung',
+      'Termin- und fachgerechte Ausführung · Mängel und Verzögerungen unverzüglich melden',
+      'MiLoG, AEntG, SOKA und Tarifvertrag Gebäudereinigung einhalten, Nachweise auf Anforderung',
+    ],
+    [
+      'Es gelten die vollständigen Auftragsbedingungen auf den Folgeseiten sowie der Rahmenvertrag.',
+      'Mit der Unterschrift bestätigt der Auftragnehmer deren Erhalt und Anerkennung.',
+    ],
+  );
+  d.signatures('Ort, Datum', 'Unterschrift Auftragnehmer / Stempel', { leftText: `München, den ${dateDe}` });
+  // Seite 2: Leistungsbeschreibung
+  if (sc.description || prices.length) {
+    d.newPage();
+    d.heading('Leistungsbeschreibung', 14);
+    d.muted(`Bestellschein ${sc.number}  ·  ${sc.service_kind}`);
+    d.y += 4;
+    if (sc.description) d.para(sc.description, { size: 9.5 });
+    for (const p of prices)
+      d.para(
+        `Preisnachtrag ab ${formatDateDe(p.valid_from_month).slice(3)}: ${formatEuro(p.price_cents as Cents)} / ${unit} (${p.reason})`,
+      );
+  }
+  // Auftragsbedingungen
+  d.newPage();
+  d.heading('Auftragsbedingungen für Nachunternehmer', 14);
+  d.para(
+    `Diese Bedingungen sind Bestandteil der Bestellung ${sc.number} und gelten ergänzend zum Rahmenvertrag. Mit Annahme des Auftrags werden sie anerkannt.`,
+    { size: 8.5, color: FORM_COLORS.MUT },
+  );
+  d.y += 4;
+  for (const sec of NU_CONDITIONS) {
+    d.ensure(40);
+    d.heading(sec.title, 10);
+    for (const p of sec.paragraphs) d.para(p, { size: 8.3, indent: 14 });
+    d.y += 2;
+  }
+  d.newPage();
+  d.heading('Bestätigung der Auftragsbedingungen', 11);
+  d.para(
+    `Der Auftragnehmer bestätigt, die vorstehenden Auftragsbedingungen erhalten, gelesen und als verbindlichen Bestandteil der Bestellung ${sc.number} anerkannt zu haben.`,
+  );
+  d.signatures('Ort, Datum', 'Unterschrift Auftragnehmer / Stempel');
+  return d.save();
 }
 
 // ---------------------------------------------------------------------------

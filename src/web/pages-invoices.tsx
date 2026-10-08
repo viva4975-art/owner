@@ -1,4 +1,5 @@
 import type { Child, FC } from 'hono/jsx';
+import { INVOICE_CLOSING_PAY, INVOICE_INTRO_DEFAULT } from '../pdf/render.js';
 import { SiteOptions } from './site-options.js';
 import { KIND_TITLES, UNIT_LABELS } from '../domain/invoice/types.js';
 import type { InvoiceRow, LineRow } from '../services/invoices.js';
@@ -503,9 +504,12 @@ export const InvoiceEditor: FC<{
         </div>
         <div style="margin:12px 0">
           <label for="intro_text">Einleitungstext</label>
-          <textarea id="intro_text" name="intro_text">
-            {inv.intro_text ?? ''}
+          <textarea id="intro_text" name="intro_text" rows={2}>
+            {inv.intro_text ?? INVOICE_INTRO_DEFAULT}
           </textarea>
+          <p class="small mut" style="margin:2px 0 0">
+            Steht auf der Rechnung unter „Sehr geehrte Damen und Herren,“. Vorbelegt mit dem Standardtext.
+          </p>
         </div>
         {inv.kind === 'final' && (
           <div class="card" style="background:#fcfafa">
@@ -552,6 +556,9 @@ export const InvoiceEditor: FC<{
           <textarea id="closing_text" name="closing_text">
             {inv.closing_text ?? ''}
           </textarea>
+          <p class="small mut" style="margin:2px 0 0">
+            Optional, steht unter der Zahlungsbedingung. Danach folgt immer: „{INVOICE_CLOSING_PAY}“
+          </p>
         </div>
         <div class="actions">
           <button class="btn">Entwurf speichern</button>
@@ -995,6 +1002,30 @@ export const InvoiceDetail: FC<{
               {r.reason}
             </div>
           ))}
+        </div>
+      )}
+      {['invoice', 'partial', 'final'].includes(inv.kind) && (
+        <div class="card" style="margin:12px 0;padding:10px 14px">
+          <div class="small mut" style="margin-bottom:4px">
+            Text auf der Rechnung
+            {draft && (
+              <>
+                {' · '}
+                <a href={`/rechnungen/${inv.id}/bearbeiten`}>ändern</a>
+              </>
+            )}
+          </div>
+          <div style="white-space:pre-line">
+            Sehr geehrte Damen und Herren,
+            {'\n'}
+            {inv.intro_text?.trim() || INVOICE_INTRO_DEFAULT}
+            {!inv.intro_text?.trim() && <span class="small mut"> (Standardtext)</span>}
+          </div>
+          <div class="small mut" style="margin-top:6px;white-space:pre-line">
+            … Positionen, Summen, Zahlungsbedingung …{'\n'}
+            {inv.closing_text?.trim() ? `${inv.closing_text.trim()}\n` : ''}
+            {INVOICE_CLOSING_PAY}
+          </div>
         </div>
       )}
       <h2 style="display:flex;align-items:center;gap:12px">

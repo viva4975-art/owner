@@ -1631,3 +1631,15 @@ Testadresse.
 - 2026-10-08: Ahmed will **jetzt live gehen** (alle sollen die neue App nutzen). Bankabruf: eigene PSD2-Schnittstelle
   braucht BaFin-Erlaubnis (Kontoinformationsdienst, § 34 ZAG) → nicht sinnvoll; Optionen Qwist (lizenziert, einfach),
   EBICS (Bankvertrag, für Firmen gedacht), bis dahin CAMT-Upload. Empfehlung: Qwist.
+- 2026-10-08: **Stichtag Umstellung = 08.10.2026** (Ahmed). Anleitung `docs/umstellung-heute.html/.pdf` (Qwist → Fortytools
+  abschließen → Importe → Mailtest → `APP_ENV='live'` **und Zeile `MAIL_TEST_RECIPIENT` löschen** (sonst gehen auch im
+  live-Betrieb alle Mails an die Testadresse, `isMailRedirected`) → Benutzer/PINs → Sicherheit). Qwist lief über den
+  Partnervertrag von Fortytools – Bankfreigabe nicht übertragbar; Ahmed fragt Qwist-Connect-API (Client-ID/Secret, Sandbox,
+  Doku) an, verbindet die Konten später selbst im Qwist-Fenster. **Qwist-Abruf ist noch nicht gebaut** – erst mit Doku.
+  Fortytools nicht kündigen, bevor alte Rechnungen (PDF/XML) für 10 Jahre gesichert sind.
+- 2026-10-08: Rechnungskopf neu (Ahmed: „Leistungsort weiter runter, alles hingeklatscht“): grauer Balken nur Datum,
+  Kundennummer, Seite; darunter Raster in 3 Spalten (Leistungsort/Objekt fett mit Adresse, Leistungszeitraum, Leitweg-ID,
+  Lieferanten-Nr., Bestellnummer, Ihre Referenz) mit feiner Linie. Gilt auch für Angebote (Objekt aus der Betreffzeile,
+  Ansprechpartner, Gültig bis) und Auftragsbestätigungen. Rechnungsentwurf: Einleitungstext mit Standardtext vorbelegt,
+  Kasten „Text auf der Rechnung“ (Einleitung, Schlusssatz) in der Entwurfsansicht. Standardtexte als Konstanten
+  `INVOICE_INTRO_DEFAULT`/`INVOICE_CLOSING_PAY` in `src/pdf/render.ts`.

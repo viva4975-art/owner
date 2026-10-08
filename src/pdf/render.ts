@@ -363,6 +363,14 @@ class Doc {
   }
 }
 
+/** Standardtexte der Rechnung (im Entwurf vorbelegt bzw. angezeigt). */
+export const INVOICE_INTRO_DEFAULT =
+  'wir danken für Ihren Auftrag und berechnen unsere Leistungen wie folgt:';
+export const INVOICE_CLOSING_PAY =
+  'Wir bitten um Überweisung auf unser Konto. Für Rückfragen zu dieser Rechnung stehen wir jederzeit gerne zur Verfügung.';
+export const INVOICE_CLOSING_NOPAY =
+  'Für Rückfragen zu dieser Rechnung stehen wir jederzeit gerne zur Verfügung.';
+
 const DATE_LABEL: Record<InvoiceDocument['kind'], string> = {
   invoice: 'Rechnungsdatum',
   partial: 'Rechnungsdatum',
@@ -434,7 +442,6 @@ export async function renderInvoicePdf(
     parsed[i]!.period ?? periodText(doc.lines[i]!.periodStart, doc.lines[i]!.periodEnd);
   const headPeriod =
     docPeriod && doc.lines.every((_, i) => !linePeriod(i) || linePeriod(i) === docPeriod) ? docPeriod : null;
-  if (headPeriod && !opts.info) info.splice(1, 0, ['Leistungszeitraum', headPeriod]);
   const keys = [...new Set(parsed.map((x) => x.place?.key ?? ''))];
   const siteOfBuyer: LinePlace | null = b.site
     ? {
@@ -450,27 +457,54 @@ export async function renderInvoicePdf(
     sitePlaces && keys.length <= 1 ? (parsed.find((x) => x.place)?.place ?? siteOfBuyer) : null;
   const grouped = sitePlaces && keys.length > 1;
 
-  w.firstPage(info);
-
+  // Kopf (Ahmed 08.10.: „alles auf ein Ding hingeklatscht“): im grauen Balken nur Datum, Kundennummer, Seite; alle
+  // weiteren Angaben (Leistungsort, Leistungszeitraum, Bestellnummer, Leitweg-ID …) als Raster unter dem Balken.
+  const facts: { label: string; lines: string[]; bold?: boolean }[] = [];
+  const subjectPlace = opts.subject?.startsWith('Objekt: ') ? opts.subject.slice(8) : null;
+  if (onePlace)
+    facts.push({
+      label: 'Leistungsort / Objekt',
+      lines: [onePlace.title, ...(onePlace.address ? [onePlace.address] : [])],
+      bold: true,
+    });
+  else if (subjectPlace) {
+    const [t, ...rest] = subjectPlace.split(', ');
+    facts.push({
+      label: 'Leistungsort / Objekt',
+      lines: [t!, ...(rest.length ? [rest.join(', ')] : [])],
+      bold: true,
+    });
+  } else if (grouped)
+    facts.push({ label: 'Leistungsort', lines: [`${keys.length} Objekte (siehe Positionen)`] });
+  if (headPeriod && sitePlaces) facts.push({ label: 'Leistungszeitraum', lines: [headPeriod] });
+  for (const [k, v] of info.slice(2)) facts.push({ label: k, lines: [v] });
+  w.firstPage(info.slice(0, 2));
   w.address(s, b);
-  if (onePlace) {
-    // rechts neben der Anschrift: Leistungsort
-    const x = 330;
-    let y = 165.5;
-    w.text('LEISTUNGSORT / OBJEKT', x, y - 13, 6.5, { color: GREY });
-    for (const l of wrap(onePlace.title, bold, 10, RIGHT - x)) {
-      w.text(l, x, y, 10, { bold: true });
-      y += 13.2;
+
+  if (facts.length) {
+    const COLS = 3;
+    const gap = 14;
+    const colW = (RIGHT - LEFT - gap * (COLS - 1)) / COLS;
+    let y = w.y - 16;
+    for (let r = 0; r < facts.length; r += COLS) {
+      const row = facts.slice(r, r + COLS);
+      let rowH = 0;
+      row.forEach((f, i) => {
+        const x = LEFT + i * (colW + gap);
+        w.text(f.label.toUpperCase(), x, y, 6.5, { color: GREY });
+        const head = wrap(f.lines[0]!, f.bold ? bold : regular, BODY, colW);
+        const ls = [...head, ...f.lines.slice(1).flatMap((t) => wrap(t, regular, BODY, colW))].slice(0, 3);
+        ls.forEach((t, k) => w.text(t, x, y + 12 + k * 11.5, BODY, { bold: !!f.bold && k < head.length }));
+        rowH = Math.max(rowH, 12 + ls.length * 11.5);
+      });
+      y += rowH + 8;
     }
-    if (onePlace.address)
-      for (const l of wrap(onePlace.address, regular, 10, RIGHT - x)) {
-        w.text(l, x, y, 10);
-        y += 13.2;
-      }
+    w.rule(y - 4, LEFT, RIGHT);
+    w.y = y + 22;
   }
 
   // ---------------------------------------------------------------- Anrede & Einleitung
-  if (opts.subject) {
+  if (opts.subject && !subjectPlace) {
     for (const l of wrap(opts.subject, bold, BODY, RIGHT - LEFT)) {
       w.text(l, LEFT, w.y, BODY, { bold: true });
       w.y += LH;
@@ -488,7 +522,7 @@ export async function renderInvoicePdf(
   } else {
     // aus Fortytools übernommene Texte beginnen selbst mit der Anrede → nicht doppelt
     const intro = doc.introText?.replace(/^\s*Sehr geehrte Damen und Herren,?\s*/i, '').trim();
-    w.paragraph(intro || 'wir danken für Ihren Auftrag und berechnen unsere Leistungen wie folgt:');
+    w.paragraph(intro || INVOICE_INTRO_DEFAULT);
   }
   w.y += 28;
 
@@ -662,8 +696,8 @@ export async function renderInvoicePdf(
   const closing = opts.closing
     ? opts.closing
     : doc.payableTotal > 0n
-      ? 'Wir bitten um Überweisung auf unser Konto. Für Rückfragen zu dieser Rechnung stehen wir jederzeit gerne zur Verfügung.'
-      : 'Für Rückfragen zu dieser Rechnung stehen wir jederzeit gerne zur Verfügung.';
+      ? INVOICE_CLOSING_PAY
+      : INVOICE_CLOSING_NOPAY;
   w.y += 10;
   w.ensure(2 * LH + (withQr ? 80 : 0));
   w.paragraph(closing);

@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<title>Umstellung auf die neue App</title>
+<style>
+  body{font-family:Inter,Arial,sans-serif;color:#1d1d1f;max-width:820px;margin:28px auto;padding:0 18px;line-height:1.5;font-size:13.5px}
+  h1{color:#7D1435;font-size:23px;margin-bottom:4px}
+  h2{color:#7D1435;font-size:16px;margin:24px 0 8px;border-bottom:2px solid #f0dbe2;padding-bottom:4px}
+  .sub{color:#666;margin-top:0}
+  pre{background:#1f1f24;color:#f3f3f3;padding:9px 13px;border-radius:6px;font-size:12.5px;white-space:pre-wrap;word-break:break-all}
+  code{background:#f4eef0;padding:1px 5px;border-radius:4px}
+  .box{background:#fff7e0;border:1px solid #e9c46a;border-radius:6px;padding:9px 13px;margin:10px 0}
+  .red{background:#fdecec;border-color:#e3a0a0}
+  .ok{background:#eef7ee;border-color:#9cc79c}
+  ol li{margin-bottom:6px}
+  .n{display:inline-block;background:#7D1435;color:#fff;border-radius:50%;width:22px;height:22px;text-align:center;line-height:22px;font-weight:700;margin-right:6px}
+  @media print{h2{break-after:avoid}.box{break-inside:avoid}}
+</style>
+</head>
+<body>
+<h1>Umstellung auf die neue App – Stichtag 08.10.2026</h1>
+<p class="sub">Reihenfolge zum Abhaken · Viva-Deluxe Betriebs-App · https://app.viva-deluxe-reinigung.de</p>
+
+<h2><span class="n">1</span>Qwist (Bankabruf) – zuerst anstoßen, läuft nebenher</h2>
+<p><b>Warum neu?</b> Bisher lief Qwist <b>über Fortytools</b>: Fortytools hat einen Partnervertrag mit Qwist, und Ihre
+Bankverbindung (Login + TAN-Freigabe bei Münchner Bank und Targobank) hängt an diesem Vertrag. Diese Freigabe lässt
+sich <b>nicht auf uns übertragen</b> – das ist bei Kontoinformationsdiensten so vorgeschrieben (PSD2).</p>
+<ol>
+  <li><b>Bei Qwist anfragen</b> (per E-Mail/Kontaktformular, Bezug auf Ihre Registrierung):
+    „Wir möchten Qwist Connect (Kontoinformationsdienst) für unsere eigene Software nutzen – bitte API-Zugang
+    (Client-ID/Secret), Testumgebung (Sandbox) und Entwickler-Dokumentation sowie Vertrag/Preise.“</li>
+  <li>Qwist schickt einen Vertrag/Kooperationsvereinbarung und danach die <b>Zugangsdaten</b> (Client-ID + Secret).</li>
+  <li><b>Kontodaten gibt es nicht vorab</b>: Ihre Bankkonten verbinden Sie später selbst in einem
+    <b>Qwist-Fenster</b> (Online-Banking-Login der Bank + TAN). Die Zugangsdaten zur Bank sehen weder ich noch die App.
+    Die Freigabe muss etwa alle 180 Tage mit TAN erneuert werden (gesetzliche Vorgabe).</li>
+  <li><b>Wo eintragen:</b> genau wie beim Mail-Zugang in <code>/opt/viva/deploy/.env.live</code> auf dem Server
+    (Anleitung „Zugangsdaten auf dem Server eintragen“):
+<pre>ssh root@217.160.236.117           # oder KVM-Konsole im IONOS-Panel
+nano /opt/viva/deploy/.env.live
+# ganz unten zwei neue Zeilen:
+QWIST_CLIENT_ID='hier die Client-ID von Qwist'
+QWIST_CLIENT_SECRET='hier das Secret von Qwist'
+# Strg+O, Enter, Strg+X
+bash /opt/viva/deploy/update.sh</pre></li>
+  <li><b>Dann mir Bescheid geben</b> und die Dokumentation (Link/PDF) schicken – <b>nicht die Zugangsdaten</b>.
+    Ich baue damit den Abruf in Transfer → Kontoumsätze ein (die Zuordnung zu Rechnungen gibt es schon).</li>
+</ol>
+<div class="box"><b>Bis dahin:</b> Kontoauszüge als <b>CAMT.053</b> (im Online-Banking „Kontoauszug als XML/CAMT“
+exportieren) unter <b>Transfer → Kontoumsätze</b> hochladen. Doppelte Umsätze werden erkannt, Zahlungen zu Rechnungen
+werden vorgeschlagen. Am besten 1–2× pro Woche.</div>
+
+<h2><span class="n">2</span>Fortytools heute abschließen</h2>
+<ol>
+  <li>Letzte Rechnungen/Angebote in Fortytools heute fertig machen und versenden.</li>
+  <li><b>Ab jetzt in Fortytools keine Rechnungen und Angebote mehr schreiben</b> – sonst entstehen doppelte
+    Rechnungsnummern (§ 14 UStG, Nummer muss einmalig sein).</li>
+  <li>Exporte ziehen: XML (Kunden, Objekte, Mitarbeitende, Angebote, Rechnungen), <b>Zeiten.csv</b> (bis heute),
+    Urlaubskonten und Krankheitstage (Excel).</li>
+  <li><b>Fortytools noch nicht kündigen.</b> Erst alle alten Rechnungen als PDF/XML sichern (Aufbewahrung 10 Jahre,
+    GoBD) – dazu sage ich Ihnen, wie, bevor das Abo endet.</li>
+</ol>
+
+<h2><span class="n">3</span>In der neuen App einspielen (Transfer → Import aus Fortytools)</h2>
+<ol>
+  <li>XML-Exporte hochladen → Prüfen → Übernehmen (nichts wird doppelt angelegt).</li>
+  <li>Zeiten.csv → Prüfen → Übernehmen (Häkchen „Einsätze ableiten“).</li>
+  <li>Urlaubskonten / Krankheitstage (Excel) → Übernehmen.</li>
+  <li>„Doppelte Kunden/Objekte prüfen“ und „Abgleich mit Fortytools-Rechnungen“ kurz durchsehen.</li>
+  <li><b>Einstellungen → Nummernkreise:</b> „nächste Nummer“ der Rechnungen muss größer sein als die letzte
+    Fortytools-Rechnung von heute (der Import hebt das automatisch an – bitte nur kontrollieren).</li>
+</ol>
+
+<h2><span class="n">4</span>Mail testen (noch im Testbetrieb)</h2>
+<p>Eine Rechnung ausstellen und „per E-Mail senden“ → die Mail muss an Ihre <b>Testadresse</b> gehen, mit PDF/XML im
+Anhang. Erst wenn das klappt, weiter mit 5.</p>
+
+<h2><span class="n">5</span>Auf echten Betrieb umstellen</h2>
+<pre>nano /opt/viva/deploy/.env.live
+# 1) ändern:      APP_ENV='test'   →   APP_ENV='live'
+# 2) LÖSCHEN:     die ganze Zeile MAIL_TEST_RECIPIENT='…'
+#    (solange sie da ist, gehen ALLE Mails weiter nur an die Testadresse)
+# Strg+O, Enter, Strg+X
+bash /opt/viva/deploy/update.sh</pre>
+<div class="box red"><b>Ab jetzt gehen Mails an die echten Kunden.</b> Erste echte Rechnung vorher als PDF-Vorschau
+ansehen und „E-Rechnung prüfen (KoSIT)“ drücken. Ungültige E-Rechnungen werden ohnehin nicht versendet.
+Behörden mit Portal (z. B. Patentamt): Rechnungsgruppe → Versandweg „Portal“, dann „Im Portal hochgeladen“ vermerken.</div>
+
+<h2><span class="n">6</span>Mitarbeitende und Büro</h2>
+<ol>
+  <li>Büro/Objektleitung: Benutzer unter Einstellungen → Benutzer anlegen, Objekte zuordnen, Einmal-Passwort weitergeben.</li>
+  <li>Mitarbeitende: Link <b>app.viva-deluxe-reinigung.de/app</b>, Anmeldung mit Personalnummer + PIN. Start-PIN ist das
+    Geburtsdatum (TTMMJJ) – <b>bitte eigene PIN vergeben lassen</b> (kennen Kollegen sonst).</li>
+  <li>Kurze schriftliche Info an alle zur Zeiterfassung per App (Datenschutz, Art. 13 DSGVO): was erfasst wird
+    (Beginn/Ende/Pause, Objekt), wozu (Lohn, § 17 MiLoG), wie lange (mind. 2 Jahre). Vorlage mache ich gern.</li>
+</ol>
+
+<h2><span class="n">7</span>Sicherheit (diese Woche)</h2>
+<ol>
+  <li>IONOS Cloud Backup buchen (Sicherung außerhalb des Servers) – heute liegt die Sicherung nur auf dem Server selbst.</li>
+  <li>root-Passwort ändern (<code>passwd</code>), ersten GitHub-Token löschen (beide standen im Chat).</li>
+  <li>Revisionssicheres Archiv (S3 mit Object Lock, z. B. IONOS) anlegen – dann baue ich die Spiegelung der Rechnungen ein.</li>
+</ol>
+<div class="box ok">Bei Problemen: Foto der Meldung bzw. <code>cd /opt/viva/deploy &amp;&amp; docker compose logs --tail 50 app</code>
+schicken – <b>ohne Passwörter</b>.</div>
+</body>
+</html>

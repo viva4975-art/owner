@@ -696,11 +696,50 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
       );
     }
 
-    const services = siteId
-      ? await sql<{ id: string; description: string; unit_code: string; unit_price_cents: bigint }[]>`
-          select id, description, unit_code, unit_price_cents from app.site_services
-           where site_id = ${siteId} and active order by sort_order, description`
+    // Leistungen des Objekts (am Arbeitsdatum gültig); hat das Objekt keine eigenen, die der anderen Objekte des Kunden
+    const wrDate = w?.work_date ?? todayBerlin();
+    type WrSvc = {
+      id: string;
+      description: string;
+      unit_code: string;
+      unit_price_cents: bigint;
+      type_name: string | null;
+      own: boolean;
+      site_label: string;
+    };
+    const services: WrSvc[] = siteId
+      ? await sql<WrSvc[]>`
+          with me as (select customer_id from app.sites where id = ${siteId}),
+          own as (select count(*) as n from app.site_services where site_id = ${siteId} and active
+                    and valid_from <= ${wrDate} and (valid_to is null or valid_to >= ${wrDate}))
+          select ss.id, ss.description, ss.unit_code, ss.unit_price_cents, t.name as type_name,
+                 ss.site_id = ${siteId} as own, s.site_no || ' · ' || s.name as site_label
+            from app.site_services ss
+            join app.sites s on s.id = ss.site_id
+            left join app.service_types t on t.id = ss.service_type_id
+           where ss.active and ss.valid_from <= ${wrDate} and (ss.valid_to is null or ss.valid_to >= ${wrDate})
+             and (ss.site_id = ${siteId}
+                  or ((select n from own) = 0 and s.customer_id = (select customer_id from me) and s.active))
+           order by (ss.site_id = ${siteId}) desc, s.site_no, ss.sort_order, ss.description`
       : [];
+    // bereits gewählte (inzwischen beendete) Leistungen bleiben wählbar
+    const chosen = (data?.lines ?? []).map((l) => l.service_id).filter((x): x is string => !!x);
+    const missingChosen = chosen.filter((x) => !services.some((s) => s.id === x));
+    if (missingChosen.length)
+      services.push(
+        ...(await sql<WrSvc[]>`
+          select ss.id, ss.description, ss.unit_code, ss.unit_price_cents, t.name as type_name,
+                 ss.site_id = ${siteId} as own, s.site_no || ' · ' || s.name as site_label
+            from app.site_services ss join app.sites s on s.id = ss.site_id
+            left join app.service_types t on t.id = ss.service_type_id
+           where ss.id in ${sql(missingChosen)}`),
+      );
+    const svcGroups = new Map<string, WrSvc[]>();
+    for (const x of services) {
+      const k = x.own ? '' : x.site_label;
+      svcGroups.set(k, [...(svcGroups.get(k) ?? []), x]);
+    }
+    const unitLabel = (u: string) => WR_UNITS.find(([k]) => k === u)?.[1] ?? u;
     const showPrices = canAccess(c.get('user').role, '/rechnungen');
     type L = { desc: string; qty: string; unit: string; svc: string; person: string };
     const all: L[] = (data?.lines ?? []).map((l) => ({
@@ -718,18 +757,24 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
       <tr>
         <td>
           <select name="line_svc" aria-label="Leistung aus dem Katalog" data-nosearch>
-            <option value="">– freie Leistung –</option>
-            {services.map((x) => (
-              <option
-                value={x.id}
-                selected={x.id === l?.svc}
-                data-desc={x.description}
-                data-unit={x.unit_code}
-              >
-                {x.description}
-                {showPrices ? ` – ${euro(x.unit_price_cents)}` : ''}
-              </option>
-            ))}
+            <option value="">
+              {services.length ? '– Leistung wählen oder frei –' : '– freie Leistung –'}
+            </option>
+            {[...svcGroups.entries()].map(([g, list]) => {
+              const opts = list.map((x) => (
+                <option
+                  value={x.id}
+                  selected={x.id === l?.svc}
+                  data-desc={x.description}
+                  data-unit={x.unit_code}
+                >
+                  {x.type_name && x.type_name !== x.description ? `${x.type_name}: ` : ''}
+                  {x.description.split('\n')[0]} ({unitLabel(x.unit_code)})
+                  {showPrices ? ` – ${euro(x.unit_price_cents)}` : ''}
+                </option>
+              ));
+              return g ? <optgroup label={`Objekt ${g}`}>{opts}</optgroup> : opts;
+            })}
           </select>
           <input name="line_desc" value={l?.desc ?? ''} placeholder="Leistung / Beschreibung" />
           <input type="hidden" name="line_person" value="" />
@@ -869,6 +914,26 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                 </textarea>
               </div>
               <h3 style="margin-top:14px">Leistungen</h3>
+              {services.length === 0 ? (
+                <p class="small mut" style="margin-top:0">
+                  Für dieses Objekt (und die anderen Objekte des Kunden) sind am {dateDe(wrDate)} keine
+                  Leistungen hinterlegt – Leistung frei eintragen
+                  {showPrices && (
+                    <>
+                      {' '}
+                      oder unter <a href={`/objekte/${siteId}/leistungen`}>Leistungen &amp; Preise</a> anlegen
+                    </>
+                  )}
+                  .
+                </p>
+              ) : (
+                !services.some((x) => x.own) && (
+                  <p class="small mut" style="margin-top:0">
+                    Das Objekt hat keine eigenen Leistungen – zur Auswahl stehen die Leistungen der anderen
+                    Objekte des Kunden.
+                  </p>
+                )
+              )}
               <div class="tbl">
                 <table id="wr-lines" class="lines">
                   <thead>

@@ -1568,3 +1568,22 @@ Testadresse.
     weiter unter „Lohnkostenanteil fehlt“ (jetzt unten). Formular oben, Vorschau direkt darunter. Anschreiben nennt
     Lohn- und Sachkostenerhöhung getrennt. Migration `20261113000004`.
   - Lohnabrechnungen einlesen: jetzt unter **Transfer** (Adresse unverändert `/personal/lohnabrechnungen`).
+- 2026-10-08: Runde 26, Paket D – Personal (Ahmed, Punkte 1, 19, 22, 27, 29):
+  - **Word-Vorlagen: Kästchen und Lücken** (`src/services/word-form.ts`): Word-Kontrollkästchen (w14:checkbox), ☐-Zeichen
+    und Lücken „____“ erscheinen auf der Ausfüll-Seite mit dem Text daneben (Reihenfolge wie im Dokument) – ankreuzen bzw.
+    ausfüllen, z. B. „keine Schwerbehinderung“ / „Grad: 50“. Vorbelegt, was sicher bekannt ist: Vollzeit/Teilzeit/Minijob,
+    unbefristet/befristet bis (+ Datum), ungekündigt. Leere Lücken bleiben Linie.
+  - **Urlaubskonten/Krankheitstage aus Fortytools** (Transfer → Import aus Fortytools, Excel): Stand zum Stichtag je
+    Personalnummer in `app.leave_openings` (Resturlaub, Anspruch, genommen, verfügbar, Krankheitstage). Urlaubskonto rechnet
+    ab dem Folgetag mit App-Abwesenheiten weiter (nichts doppelt); verfallener Resturlaub so wie Fortytools („verfügbar“).
+    Probe mit Ahmeds Dateien: 219 Konten (1 Personalnummer 1382 nicht in der App), 28 Krankheitsstände; Werte = Fortytools.
+    Krankheitstage-Auswertung mit Spalte „übernommen“. Fortytools liefert keine einzelnen Tage → Kalender bleibt dafür leer.
+  - **Unterweisungen:** Liste mit Fortschrittsbalken, Frist (überfällig rot), Aktiv/Beendet; „Löschen“ ohne Unterschrift
+    (ganz weg, Protokoll), mit Unterschriften nur „Beenden“ (offene zurückgezogen, Nachweise bleiben – Beweis § 12
+    ArbSchG), „Wieder aktiv“. Migration `20261113000006` (Trigger erlaubt Löschen nur über `app.purge`).
+  - **Urlaubskalender neu:** standardmäßig nur Personen mit Abwesenheit („alle Mitarbeitenden“ zuschaltbar), farbige
+    durchgehende Balken je Art (anklickbar = ändern), heute markiert, Kennzahlen (heute abwesend, Urlaubs-/Krankheitstage,
+    offene Anträge), Leerhinweis.
+  - **Arbeitsschein:** Leistungsauswahl nur am Arbeitsdatum gültige Leistungen mit Leistungsart und Einheit; hat das
+    Objekt keine eigenen Leistungen, stehen die der anderen Objekte des Kunden zur Auswahl (vermutlich Ahmeds Fall: leere
+    Liste), sonst klarer Hinweis.

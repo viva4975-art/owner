@@ -51,6 +51,36 @@ const ABS_CLASS: Record<AbsenceKind, string> = {
   unbezahlt: '',
   sonstiges: '',
 };
+const UK_CSS = `
+.uk-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.uk-nav{display:flex;align-items:center;gap:8px}.uk-nav b{min-width:130px;text-align:center;font-size:17px}
+.uk-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.uk-kpis>div{background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.uk-kpis span{display:block;font-size:12px;color:var(--mut)}.uk-kpis b{font-size:22px}
+.uk-filter{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.uk-filter input[name=q]{max-width:220px}.uk-filter select{max-width:170px}
+.uk-legend{display:flex;gap:10px;flex-wrap:wrap;margin-left:auto;font-size:12px;color:var(--mut)}
+.uk-legend i{display:inline-block;width:14px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.uk-wrap{overflow:auto;max-height:75vh}
+table.uk{border-collapse:separate;border-spacing:0;font-size:12px;width:100%}
+table.uk th,table.uk td{padding:0;height:30px;vertical-align:middle;border-bottom:1px solid var(--line);text-align:center;min-width:26px}
+table.uk thead th{position:sticky;top:0;background:#f7f7f9;z-index:2;font-weight:600;line-height:1.1;padding:4px 0}
+table.uk thead th span{display:block;font-size:10px;font-weight:400;color:var(--mut)}
+table.uk .uk-name{position:sticky;left:0;background:#fff;z-index:1;text-align:left;padding:0 10px;white-space:nowrap;min-width:190px}
+table.uk thead .uk-name{z-index:3;background:#f7f7f9}
+table.uk td.off,table.uk th.off{background:#f1f2f5}
+table.uk th.today{background:#fff3c4}table.uk td.today{box-shadow:inset 1px 0 #e0b800,inset -1px 0 #e0b800}
+table.uk td.r,table.uk th.r{padding:0 8px;text-align:right;min-width:34px}
+.uk-b{display:block;height:20px;margin:0 -1px;line-height:20px;font-weight:700;font-size:11px;color:#fff;text-decoration:none}
+.uk-b.s{margin-left:3px;border-top-left-radius:6px;border-bottom-left-radius:6px}
+.uk-b.e{margin-right:3px;border-top-right-radius:6px;border-bottom-right-radius:6px}
+.uk-b.o{opacity:.45}.uk-b.req{opacity:.5;background-image:repeating-linear-gradient(45deg,transparent 0 4px,rgba(255,255,255,.35) 4px 8px)}
+.uk-urlaub{background:#3d72d6}.uk-krank{background:#d0473b}.uk-kind_krank{background:#e08a2c}
+.uk-unbezahlt{background:#7b8191}.uk-sonstiges{background:#8a5cc7}
+@media (max-width:760px){.uk-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.uk-legend{margin-left:0}
+table.uk .uk-name{min-width:130px;max-width:130px;overflow:hidden;text-overflow:ellipsis}}
+`;
+
 const ABS_CODE: Record<AbsenceKind, string> = {
   urlaub: 'U',
   krank: 'K',
@@ -517,7 +547,8 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     const month = isMonth(c.req.query('monat')) ? c.req.query('monat')! : todayBerlin().slice(0, 7);
     const kind = (c.req.query('art') ?? '') as AbsenceKind | '';
     const q = (c.req.query('q') ?? '').trim().toLowerCase();
-    const onlyAbsent = c.req.query('nur') === '1';
+    // Standard: nur Personen mit Abwesenheit im Monat (bei 200+ Mitarbeitenden sonst eine leere Liste)
+    const onlyAbsent = c.req.query('alle') !== '1' || c.req.query('nur') === '1';
     const withRequested = c.req.query('beantragt') !== '0';
     const from = `${month}-01`;
     const to = addDays(`${addDays(from, 32).slice(0, 7)}-01`, -1);
@@ -556,7 +587,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     const p = new URLSearchParams({ monat });
     if (d.kind) p.set('art', d.kind);
     if (d.q) p.set('q', d.q);
-    if (d.onlyAbsent) p.set('nur', '1');
+    if (!d.onlyAbsent) p.set('alle', '1');
     if (!d.withRequested) p.set('beantragt', '0');
     return p.toString();
   };
@@ -567,26 +598,68 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     const { from, to, emps, days, cell, off, totals } = d;
     const prev = addDays(from, -1).slice(0, 7);
     const next = addDays(to, 1).slice(0, 7);
+    const today = todayBerlin();
+    const open = d.abs.filter((a) => a.status === 'beantragt').length;
+    const sum = (k: AbsenceKind[]) =>
+      emps.reduce((s, e) => s + k.reduce((x, kk) => x + (totals(e.id)[kk] ?? 0), 0), 0);
+    const absentToday = new Set(
+      d.abs
+        .filter((a) => a.status === 'genehmigt' && a.start_date <= today && a.end_date >= today)
+        .map((a) => a.employee_id),
+    ).size;
     return urlaubShell(
       c,
       'kalender',
       <>
-        <form method="get" class="actions" style="margin-top:0">
-          <a class="btn sec" href={`/urlaub/kalender?${qsOf(d, prev)}`}>
-            ←
-          </a>
-          <b style="min-width:120px;text-align:center">{d.label}</b>
-          <a class="btn sec" href={`/urlaub/kalender?${qsOf(d, next)}`}>
-            →
-          </a>
+        <div class="uk-bar">
+          <div class="uk-nav">
+            <a class="btn sec sm" href={`/urlaub/kalender?${qsOf(d, prev)}`} aria-label="Vormonat">
+              ←
+            </a>
+            <b>{d.label}</b>
+            <a class="btn sec sm" href={`/urlaub/kalender?${qsOf(d, next)}`} aria-label="Folgemonat">
+              →
+            </a>
+            {d.month !== today.slice(0, 7) && (
+              <a class="btn sec sm" href={`/urlaub/kalender?${qsOf(d, today.slice(0, 7))}`}>
+                Heute
+              </a>
+            )}
+          </div>
+          <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
+            <a class="btn sm" href="/urlaub">
+              + Abwesenheit eintragen
+            </a>
+            <a class="btn sec sm" href={`/urlaub/kalender.pdf?${qsOf(d)}`} target="_blank">
+              PDF
+            </a>
+            <a class="btn sec sm" href={`/urlaub/kalender.csv?${qsOf(d)}`}>
+              Excel (CSV)
+            </a>
+          </span>
+        </div>
+        <div class="uk-kpis">
+          <div>
+            <span>heute abwesend</span>
+            <b>{absentToday}</b>
+          </div>
+          <div>
+            <span>Urlaubstage im Monat</span>
+            <b>{fmtDays(sum(['urlaub'])) || '0'}</b>
+          </div>
+          <div>
+            <span>Krankheitstage im Monat</span>
+            <b>{fmtDays(sum(['krank', 'kind_krank'])) || '0'}</b>
+          </div>
+          <div>
+            <span>offene Anträge</span>
+            <b>{open ? <a href="/urlaub">{open}</a> : '0'}</b>
+          </div>
+        </div>
+        <form method="get" class="uk-filter">
           <input type="hidden" name="monat" value={d.month} />
-          <select
-            name="art"
-            onchange="this.form.submit()"
-            aria-label="Art"
-            style="max-width:180px"
-            data-nosearch
-          >
+          <input name="q" value={d.q} placeholder="Name oder Pers.-Nr." aria-label="Suche" />
+          <select name="art" onchange="this.form.submit()" aria-label="Art" data-nosearch>
             <option value="">Alle Arten</option>
             {(Object.keys(ABSENCE_LABEL) as AbsenceKind[]).map((k) => (
               <option value={k} selected={k === d.kind}>
@@ -594,16 +667,15 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
               </option>
             ))}
           </select>
-          <input name="q" value={d.q} placeholder="Name oder Pers.-Nr." style="max-width:200px" />
           <label class="chk" style="margin:0">
             <input
               type="checkbox"
-              name="nur"
+              name="alle"
               value="1"
-              checked={d.onlyAbsent}
+              checked={!d.onlyAbsent}
               onchange="this.form.submit()"
             />
-            nur mit Abwesenheit
+            alle Mitarbeitenden
           </label>
           <label class="chk" style="margin:0">
             <input
@@ -615,85 +687,111 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
             />
             nur genehmigte
           </label>
-          <button class="btn sec sm">Filtern</button>
-          <span style="margin-left:auto;display:flex;gap:6px">
-            <a class="btn sec sm" href={`/urlaub/kalender.pdf?${qsOf(d)}`} target="_blank">
-              PDF
-            </a>
-            <a class="btn sec sm" href={`/urlaub/kalender.csv?${qsOf(d)}`}>
-              CSV (Excel)
-            </a>
+          <button class="btn sec sm">Suchen</button>
+          <span class="uk-legend">
+            {(Object.keys(ABSENCE_LABEL) as AbsenceKind[]).map((k) => (
+              <span>
+                <i class={`uk-${k}`} />
+                {ABSENCE_LABEL[k]}
+              </span>
+            ))}
+            <span>
+              <i class="uk-urlaub" style="opacity:.45" />
+              beantragt
+            </span>
           </span>
         </form>
-        <p class="small mut" style="margin:0 0 8px">
-          U Urlaub · K krank · KK Kind krank · UB unbezahlt · S sonstiges · heller = beantragt · Tage =
-          Arbeitstage ohne Wochenende/Feiertag
-        </p>
-        <div class="tbl">
-          <table style="font-size:12px">
-            <thead>
-              <tr>
-                <th>Mitarbeiter</th>
-                {days.map((x) => (
-                  <th
-                    style={`padding:6px 3px;text-align:center;${off(x) ? 'background:#eceef2' : ''}`}
-                    title={holidayName(x) ?? ''}
-                  >
-                    {WEEKDAYS_SHORT[isoWeekday(x)]?.[0]}
-                    <br />
-                    {x.slice(8)}
-                  </th>
-                ))}
-                <th class="r" title="Urlaubstage im Monat">
-                  U
-                </th>
-                <th class="r" title="Krankheitstage im Monat">
-                  K
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {emps.map((e) => {
-                const t = totals(e.id);
-                return (
-                  <tr>
-                    <td style="white-space:nowrap">
-                      <span class="mut small">{e.personnel_no}</span>{' '}
-                      <a href={`/personal/${e.id}/abwesenheiten`}>
-                        {e.last_name}, {e.first_name}
-                      </a>
-                    </td>
-                    {days.map((x) => {
-                      const a = cell(e.id, x);
-                      const o = off(x);
-                      return (
-                        <td
-                          style={`padding:6px 3px;text-align:center;${o ? 'background:#f4f5f7;' : ''}${
-                            a && !o
-                              ? `background:${a.kind === 'urlaub' ? 'var(--info-50)' : 'var(--err-50)'};color:${a.kind === 'urlaub' ? 'var(--info)' : 'var(--err)'};font-weight:650;${a.status === 'beantragt' ? 'opacity:.55' : ''}`
-                              : ''
-                          }`}
-                          title={a ? `${ABSENCE_LABEL[a.kind]} (${ABSENCE_STATUS_LABEL[a.status]})` : ''}
-                        >
-                          {a && !o ? ABS_CODE[a.kind] : ''}
-                        </td>
-                      );
-                    })}
-                    <td class="r">{fmtDays(t.urlaub)}</td>
-                    <td class="r">{fmtDays((t.krank ?? 0) + (t.kind_krank ?? 0) || undefined)}</td>
-                  </tr>
-                );
-              })}
-              {!emps.length && (
-                <tr>
-                  <td colspan={days.length + 3}>
-                    <div class="empty">Keine Mitarbeitenden für diesen Filter.</div>
-                  </td>
-                </tr>
+        {emps.length === 0 ? (
+          <div class="card">
+            <div class="empty">
+              {d.abs.length === 0 ? (
+                <>
+                  Im {d.label} sind keine Abwesenheiten erfasst.
+                  <div class="small mut" style="margin-top:6px">
+                    Aus Fortytools kommen nur die Summen (Urlaubskonten, Krankheitstage) – einzelne Tage erst,
+                    wenn sie hier oder in der Handy-App eingetragen werden.{' '}
+                    <a href="/auswertungen/urlaub">Urlaubskonten ansehen</a>
+                  </div>
+                </>
+              ) : (
+                'Keine Mitarbeitenden für diesen Filter.'
               )}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          </div>
+        ) : (
+          <div class="card" style="padding:0">
+            <div class="uk-wrap">
+              <table class="uk">
+                <thead>
+                  <tr>
+                    <th class="uk-name">Mitarbeiter</th>
+                    {days.map((x) => (
+                      <th
+                        class={`${off(x) ? 'off' : ''}${x === today ? ' today' : ''}`}
+                        title={holidayName(x) ?? ''}
+                      >
+                        <span>{WEEKDAYS_SHORT[isoWeekday(x)]?.slice(0, 2)}</span>
+                        {Number(x.slice(8))}
+                      </th>
+                    ))}
+                    <th class="r" title="Urlaubstage im Monat">
+                      U
+                    </th>
+                    <th class="r" title="Krankheitstage im Monat">
+                      K
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {emps.map((e) => {
+                    const t = totals(e.id);
+                    return (
+                      <tr>
+                        <td class="uk-name">
+                          <a href={`/personal/${e.id}/abwesenheiten`}>
+                            {e.last_name}, {e.first_name}
+                          </a>
+                          <span class="mut small"> {e.personnel_no}</span>
+                        </td>
+                        {days.map((x) => {
+                          const a = cell(e.id, x);
+                          const o = off(x);
+                          const startBar = a && (x === a.start_date || x === from);
+                          const endBar = a && (x === a.end_date || x === to);
+                          return (
+                            <td
+                              class={`${o ? 'off' : ''}${x === today ? ' today' : ''}`}
+                              title={
+                                a
+                                  ? `${ABSENCE_LABEL[a.kind]} ${dateDe(a.start_date)}–${dateDe(a.end_date)} (${ABSENCE_STATUS_LABEL[a.status]})`
+                                  : (holidayName(x) ?? '')
+                              }
+                            >
+                              {a && (
+                                <a
+                                  href={`/urlaub/${a.id}/bearbeiten`}
+                                  class={`uk-b uk-${a.kind}${a.status === 'beantragt' ? ' req' : ''}${startBar ? ' s' : ''}${endBar ? ' e' : ''}${o ? ' o' : ''}`}
+                                >
+                                  {startBar && !o ? ABS_CODE[a.kind] : ''}
+                                </a>
+                              )}
+                            </td>
+                          );
+                        })}
+                        <td class="r">{fmtDays(t.urlaub)}</td>
+                        <td class="r">{fmtDays((t.krank ?? 0) + (t.kind_krank ?? 0) || undefined)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+        <p class="small mut">
+          Tage = Arbeitstage ohne Wochenende/Feiertag. Balken anklicken = Abwesenheit ändern.
+        </p>
+        <style dangerouslySetInnerHTML={{ __html: UK_CSS }} />
       </>,
     );
   });
@@ -939,7 +1037,11 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
             <div class="kpi">
               <div class="l">Urlaubsanspruch {year}</div>
               <div class="v">{String(bal.entitlement).replace('.', ',')}</div>
-              <div class="s">Tage (anteilig bei Ein-/Austritt)</div>
+              <div class="s">
+                {bal.openingAsOf
+                  ? `Stand aus Fortytools vom ${dateDe(bal.openingAsOf)}, danach Urlaub aus der App`
+                  : 'Tage (anteilig bei Ein-/Austritt)'}
+              </div>
             </div>
             {bal.carried > 0 && (
               <div class="kpi">

@@ -255,6 +255,9 @@ export interface SickRow {
   total: number;
   child: number; // davon Kind krank
   cases: number; // Krankmeldungen (Abwesenheiten)
+  /** aus Fortytools übernommene Krankheitstage bis Stichtag (in `total` enthalten, nicht in `months`) */
+  imported: number;
+  importedAsOf: string | null;
 }
 
 /** Krankheitstage je Mitarbeiter und Monat (genehmigte Abwesenheiten „krank“ und „Kind krank“, Arbeitstage). */
@@ -277,17 +280,42 @@ export async function sickDays(sql: Sql, year: number): Promise<SickRow[]> {
       from app.absences a join app.employees e on e.id = a.employee_id
      where a.status = 'genehmigt' and a.kind in ('krank', 'kind_krank') and a.start_date <= ${to} and a.end_date >= ${from}
      order by e.last_name, e.first_name`;
+  // übernommener Stand aus Fortytools: eigene Krankmeldungen erst nach dem Stichtag zählen
+  const openings = await sql<
+    { employee_id: string; name: string; personnel_no: string; sick_as_of: string; sick_days: string }[]
+  >`
+    select o.employee_id, e.last_name || ', ' || e.first_name as name, e.personnel_no, o.sick_as_of::text,
+           o.sick_days::text
+      from app.leave_openings o join app.employees e on e.id = o.employee_id
+     where o.year = ${year} and o.sick_as_of is not null`;
+  const asOf = new Map(openings.map((o) => [o.employee_id, o.sick_as_of]));
   const map = new Map<string, SickRow>();
-  for (const a of rows) {
-    const r = map.get(a.employee_id) ?? {
-      id: a.employee_id,
-      name: a.name,
-      personnel_no: a.personnel_no,
-      months: Array<number>(12).fill(0),
-      total: 0,
-      child: 0,
-      cases: 0,
-    };
+  const blank = (id: string, name: string, personnel_no: string): SickRow => ({
+    id,
+    name,
+    personnel_no,
+    months: Array<number>(12).fill(0),
+    total: 0,
+    child: 0,
+    cases: 0,
+    imported: 0,
+    importedAsOf: null,
+  });
+  for (const o of openings) {
+    const r = blank(o.employee_id, o.name, o.personnel_no);
+    r.imported = Number(o.sick_days);
+    r.importedAsOf = o.sick_as_of;
+    r.total = r.imported;
+    if (r.imported > 0) map.set(o.employee_id, r);
+  }
+  for (const a0 of rows) {
+    const cut = asOf.get(a0.employee_id);
+    if (cut && a0.end_date <= cut) continue;
+    const a = cut && a0.start_date <= cut ? { ...a0, start_date: addDays(cut, 1) } : a0;
+    const r = map.get(a.employee_id) ?? blank(a.employee_id, a.name, a.personnel_no);
+    if (cut && !r.importedAsOf) {
+      r.importedAsOf = cut;
+    }
     r.cases++;
     for (let m = 0; m < 12; m++) {
       const { start, end } = monthBounds(`${year}-${String(m + 1).padStart(2, '0')}`);

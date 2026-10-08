@@ -9,6 +9,7 @@ import {
   getTemplateFor,
   isDateKey,
   isoOfDe,
+  templateFormFields,
   templateValues,
   type WordTarget,
   type WordTemplate,
@@ -18,6 +19,7 @@ import {
   updateWordTemplate,
 } from '../services/word-templates.js';
 import type { Context } from 'hono';
+import { type FormField, defaultBlanks, defaultBoxes } from '../services/word-form.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { PageHead } from './layout.js';
 import { canAccess } from './permissions.js';
@@ -67,6 +69,59 @@ export const WordTemplateBox: FC<{ templates: WordTemplate[]; target: WordTarget
       </>
     )}
   </form>
+);
+
+/** Kästchen und Lücken der Vorlage zum Ankreuzen/Ausfüllen (Ahmed 08.10.). */
+const FormFields: FC<{
+  fields: FormField[];
+  boxes: Record<number, boolean>;
+  blanks: Record<number, string>;
+}> = ({ fields, boxes, blanks }) => (
+  <div class="wf">
+    <h3 style="margin:16px 0 4px">Kästchen und Lücken in der Vorlage</h3>
+    <p class="small mut" style="margin-top:0">
+      In der Reihenfolge wie im Dokument. Angehakt = im Dokument angekreuzt; Lücken mit Text werden
+      ausgefüllt, leere bleiben als Linie zum Ausfüllen von Hand. Vorbelegt, was aus den Stammdaten sicher
+      bekannt ist.
+    </p>
+    <input
+      type="hidden"
+      name="box_idx"
+      value={fields
+        .filter((f) => f.kind === 'box')
+        .map((f) => f.index)
+        .join(',')}
+    />
+    {fields.map((f) =>
+      f.kind === 'box' ? (
+        <label class="chk wf-row">
+          <input
+            type="checkbox"
+            name={`box:${f.index}`}
+            value="1"
+            checked={f.index in boxes ? boxes[f.index] : !!f.checked}
+          />
+          <span>{f.label || <span class="mut">(Kästchen ohne Text)</span>}</span>
+        </label>
+      ) : (
+        <div class="wf-row wf-blank">
+          <span class="small">
+            {f.before ? `${f.before.slice(-50)} ` : ''}
+            <b>____</b>
+            {f.label && f.label !== f.before ? ` ${f.label.slice(0, 60)}` : ''}
+          </span>
+          <input name={`blank:${f.index}`} value={blanks[f.index] ?? ''} maxlength={200} aria-label="Lücke" />
+        </div>
+      ),
+    )}
+    <style
+      dangerouslySetInnerHTML={{
+        __html:
+          '.wf-row{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--line);margin:0}' +
+          '.wf-blank{align-items:center;flex-wrap:wrap}.wf-blank input{max-width:280px}',
+      }}
+    />
+  </div>
 );
 
 const GroupFields: FC<{ g: string; keys: string[]; values: Record<string, string> }> = ({
@@ -288,6 +343,9 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
     const fileId = randomUUID();
     const { values } = await templateValues(sql, { type, id }, { actorName: c.get('user')!.name, fileId });
     const keys = t.placeholders;
+    const formFields = await templateFormFields(cfg, t.storage_path).catch(() => [] as FormField[]);
+    const boxDefaults = defaultBoxes(formFields, values);
+    const blankDefaults = defaultBlanks(formFields, values);
     const ret = TARGET_PAGE[type](id);
     const title =
       type === 'employee'
@@ -324,14 +382,17 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
             unverändert). Leere Felder erscheinen im Dokument als Linie „__________“ zum Ausfüllen von Hand.
             Word-Datumsfelder werden fest auf das Dokumentdatum gesetzt (ändern sich beim Öffnen nicht mehr).
           </p>
-          {keys.length === 0 && (
+          {keys.length === 0 && formFields.length === 0 && (
             <div class="empty">Diese Vorlage hat keine Platzhalter – sie wird unverändert abgelegt.</div>
           )}
           {groups.map((g) => (
             <GroupFields g={g} keys={keys} values={values} />
           ))}
+          {formFields.length > 0 && (
+            <FormFields fields={formFields} boxes={boxDefaults} blanks={blankDefaults} />
+          )}
           {master.length > 0 && (
-            <details open={groups.length === 0}>
+            <details open={groups.length === 0 && formFields.length === 0}>
               <summary style="margin-top:14px">
                 <b>Stammdaten</b>{' '}
                 <span class="small mut">(vorbelegt: {master.join(', ')} – nur bei Bedarf ändern)</span>
@@ -504,6 +565,19 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
         fileId,
         actorName: user.name,
         overrides,
+        form: (() => {
+          const boxes: Record<number, boolean> = {};
+          for (const x of String(b.box_idx ?? '').split(',')) {
+            const i = Number(x);
+            if (x !== '' && Number.isInteger(i) && i >= 0 && i < 2000) boxes[i] = b[`box:${i}`] === '1';
+          }
+          const blanks: Record<number, string> = {};
+          for (const [k, v] of Object.entries(b)) {
+            const m = /^blank:(\d{1,4})$/.exec(k);
+            if (m && typeof v === 'string' && v.trim()) blanks[Number(m[1])] = v.trim().slice(0, 200);
+          }
+          return { boxes, blanks };
+        })(),
       },
       c.get('actor'),
     );

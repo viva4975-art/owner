@@ -3,6 +3,7 @@ import { todayBerlin } from '../domain/invoice/calc.js';
 import { addDays, workingDays } from '../domain/time/holidays.js';
 import { BusinessError } from './errors.js';
 import { uuidOf } from './fortytools-export-import.js';
+import { leaveOpening } from './leave-import.js';
 import { plannedShifts } from './time.js';
 
 export type AbsenceKind = 'urlaub' | 'krank' | 'kind_krank' | 'unbezahlt' | 'sonstiges';
@@ -392,6 +393,8 @@ export interface LeaveBalance {
   carried: number;
   /** davon zum 31.03. verfallen (nicht bis dahin genommen) */
   carriedExpired: number;
+  /** Stand aus Fortytools übernommen (Stichtag); eigene Abwesenheiten zählen erst danach */
+  openingAsOf?: string;
 }
 
 /**
@@ -400,13 +403,37 @@ export interface LeaveBalance {
  * rechtzeitig zum Urlaub aufgefordert und auf den Verfall hingewiesen hat – die Anzeige ist nur ein Rechenwert.
  */
 export async function leaveBalance(sql: Sql, employeeId: string, year: number): Promise<LeaveBalance> {
+  const op = await leaveOpening(sql, employeeId, year);
+  if (op && op.taken != null) {
+    // Stand aus Fortytools: Anspruch/Resturlaub/genommen bis Stichtag, verfallener Rest so wie dort gerechnet
+    const after = await baseBalance(sql, employeeId, year, addDays(op.as_of, 1));
+    const entitlement = op.entitlement ?? after.entitlement;
+    const carried = op.carried ?? 0;
+    const expired = op.available != null ? Math.max(0, carried + entitlement - op.taken - op.available) : 0;
+    const taken = op.taken + after.taken;
+    return {
+      entitlement,
+      taken,
+      requested: after.requested,
+      rest: entitlement + carried - expired - taken - after.requested,
+      carried,
+      carriedExpired: expired,
+      openingAsOf: op.as_of,
+    };
+  }
   const base = await baseBalance(sql, employeeId, year);
   const [e] = await sql<{ carry_over_leave: boolean; entry_date: string }[]>`
     select carry_over_leave, entry_date from app.employees where id = ${employeeId}`;
   let carried = 0;
   if (e?.carry_over_leave && e.entry_date < `${year}-01-01`) {
-    const prev = await baseBalance(sql, employeeId, year - 1);
-    carried = Math.max(0, prev.entitlement - prev.taken);
+    const pop = await leaveOpening(sql, employeeId, year - 1);
+    if (pop && pop.taken != null) {
+      const after = await baseBalance(sql, employeeId, year - 1, addDays(pop.as_of, 1));
+      carried = Math.max(0, (pop.entitlement ?? after.entitlement) - pop.taken - after.taken);
+    } else {
+      const prev = await baseBalance(sql, employeeId, year - 1);
+      carried = Math.max(0, prev.entitlement - prev.taken);
+    }
   }
   // im 1. Quartal genommener Urlaub verbraucht zuerst den Übertrag
   const q1 = base.takenQ1;
@@ -423,20 +450,23 @@ export async function leaveBalance(sql: Sql, employeeId: string, year: number): 
   };
 }
 
-async function baseBalance(sql: Sql, employeeId: string, year: number) {
+/** `countFrom`: Abwesenheiten erst ab diesem Tag zählen (nach einem übernommenen Stand) */
+async function baseBalance(sql: Sql, employeeId: string, year: number, countFrom?: string) {
   const [e] = await sql<{ annual_leave_days: string; entry_date: string; exit_date: string | null }[]>`
     select annual_leave_days::text, entry_date, exit_date from app.employees where id = ${employeeId}`;
   if (!e) throw new BusinessError('Mitarbeiter nicht gefunden');
-  const yStart = `${year}-01-01`;
+  const yStart0 = `${year}-01-01`;
   const yEnd = `${year}-12-31`;
-  const from = e.entry_date > yStart ? e.entry_date : yStart;
+  const from = e.entry_date > yStart0 ? e.entry_date : yStart0;
   const to = e.exit_date && e.exit_date < yEnd ? e.exit_date : yEnd;
   // anteilig: volle Beschäftigungsmonate (§ 5 BUrlG vereinfacht), auf halbe Tage gerundet
   const months =
     from > to ? 0 : Number(to.slice(5, 7)) - Number(from.slice(5, 7)) + 1 - (from.slice(8) !== '01' ? 1 : 0);
   const full = Number(e.annual_leave_days);
   const entitlement =
-    from === yStart && to === yEnd ? full : Math.round(((full * Math.max(0, months)) / 12) * 2) / 2;
+    from === yStart0 && to === yEnd ? full : Math.round(((full * Math.max(0, months)) / 12) * 2) / 2;
+  const yStart = countFrom && countFrom > yStart0 ? countFrom : yStart0;
+  if (yStart > yEnd) return { entitlement, taken: 0, requested: 0, takenQ1: 0 };
   const list = await listAbsences(sql, { employeeId, from: yStart, to: yEnd });
   const inYear = (a: AbsenceRow) => {
     const s = a.start_date < yStart ? yStart : a.start_date;

@@ -2,15 +2,18 @@ import { randomUUID } from 'node:crypto';
 import { listEmployees } from '../services/employees.js';
 import { wordTemplatePdf } from '../services/word-templates.js';
 import { BusinessError } from '../services/errors.js';
+import { todayBerlin } from '../domain/invoice/calc.js';
 import {
   FORBIDDEN_HINT,
   SIGN_CATEGORY,
   type SignCategory,
   addRecipients,
   createSignDocument,
+  deleteSignDocument,
   getSignDocument,
   listSignDocuments,
   originalPdf,
+  reopenSignDocument,
   signedPdf,
   withdrawRequest,
 } from '../services/sign-documents.js';
@@ -40,6 +43,7 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
   const { sql } = deps;
 
   app.get('/personal/dokumente', async (c) => {
+    const archiv = c.req.query('ansicht') === 'archiv';
     const [docs, emps, tpls] = await Promise.all([
       listSignDocuments(sql),
       listEmployees(sql, { status: 'aktiv' }),
@@ -47,58 +51,102 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
         select id, name, code, category from app.word_templates where active and audience = 'mitarbeiter'
          order by (category ilike '%unterweis%' or name ilike '%unterweis%' or name ilike '%belehr%') desc, name`,
     ]);
+    const active = docs.filter((d) => !d.archived_at);
+    const ended = docs.filter((d) => d.archived_at);
+    const shown = archiv ? ended : active;
     return page(
       c,
       'Dokumente unterschreiben',
       'personal',
       <>
-        <PageHead title="Unterweisungen & Unterschriften" crumbs={[['Personal', '/personal']]} />
-        <p class="mut" style="max-width:900px;margin-top:0">
-          Unterweisung oder Dokument (PDF) an alle oder ausgewählte Mitarbeitende freigeben. Beim nächsten
-          Öffnen der Handy-App erscheint es sofort zum Lesen und Unterschreiben; mit „Später erinnern“ kommt
-          es am nächsten Tag wieder, bis unterschrieben ist. Nach Ablauf der Frist steht es als Hinweis auf
-          der Startseite.
-        </p>
-        <div class="flash err" style="max-width:900px">
-          <b>Nicht digital:</b> {FORBIDDEN_HINT}
+        <PageHead title="Unterweisungen & Unterschriften" crumbs={[['Personal', '/personal']]}>
+          <a class="btn" href="#neu">
+            + Unterweisung freigeben
+          </a>
+        </PageHead>
+        <div class="chips" style="margin-bottom:10px">
+          <a class={archiv ? '' : 'on'} href="/personal/dokumente">
+            Aktiv<span class="n">{active.length}</span>
+          </a>
+          <a class={archiv ? 'on' : ''} href="/personal/dokumente?ansicht=archiv">
+            Beendet<span class="n">{ended.length}</span>
+          </a>
         </div>
-        <div class="tbl">
-          <table>
-            <thead>
-              <tr>
-                <th>Dokument</th>
-                <th>Art</th>
-                <th>Frist</th>
-                <th class="right">Unterschrieben</th>
-                <th>angelegt</th>
-              </tr>
-            </thead>
-            <tbody>
-              {docs.map((d) => (
-                <tr>
-                  <td>
-                    <a href={`/personal/dokumente/${d.id}`}>{d.title}</a>
-                  </td>
-                  <td class="small">{SIGN_CATEGORY[d.category]}</td>
-                  <td>{dateDe(d.due_date)}</td>
-                  <td class="right">
-                    <span class={`badge ${d.open ? 'warn' : 'ok'}`}>
-                      {d.signed} / {d.total}
+        <div class="card" style="padding:0">
+          {shown.map((d) => {
+            const pct = d.total ? Math.round((d.signed / d.total) * 100) : 0;
+            const overdue = !!d.due_date && d.due_date < todayBerlin() && d.open > 0;
+            return (
+              <div class="sd-row">
+                <div class="sd-main">
+                  <a href={`/personal/dokumente/${d.id}`}>
+                    <b>{d.title}</b>
+                  </a>
+                  <div class="small mut">
+                    {SIGN_CATEGORY[d.category]} · freigegeben {berlin(d.created_at)}
+                    {d.archived_at && ` · beendet ${berlin(d.archived_at)}`}
+                  </div>
+                </div>
+                <div class="sd-due small">
+                  {d.due_date ? (
+                    <span style={overdue ? 'color:var(--err);font-weight:600' : ''}>
+                      bis {dateDe(d.due_date)}
+                      {overdue && ' – überfällig'}
                     </span>
-                  </td>
-                  <td class="small mut">{berlin(d.created_at)}</td>
-                </tr>
-              ))}
-              {!docs.length && (
-                <tr>
-                  <td colspan={5} class="mut">
-                    Noch keine Dokumente verteilt.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                  ) : (
+                    <span class="mut">ohne Frist</span>
+                  )}
+                </div>
+                <div class="sd-prog">
+                  <div class="sd-bar">
+                    <i style={`width:${pct}%`} />
+                  </div>
+                  <span class="small">
+                    <b>{d.signed}</b> von {d.total} unterschrieben
+                    {d.open > 0 && <span class="mut"> · {d.open} offen</span>}
+                  </span>
+                </div>
+                <div class="sd-act">
+                  <a class="btn sec sm" href={`/personal/dokumente/${d.id}`}>
+                    Öffnen
+                  </a>
+                  {d.archived_at ? (
+                    <form method="post" action={`/personal/dokumente/${d.id}/wieder`} style="margin:0">
+                      <button class="btn sec sm">Wieder aktiv</button>
+                    </form>
+                  ) : (
+                    <form
+                      method="post"
+                      action={`/personal/dokumente/${d.id}/loeschen`}
+                      style="margin:0"
+                      onsubmit={
+                        d.signed > 0
+                          ? "return confirm('Bereits unterschrieben – die Unterweisung wird beendet (offene Anforderungen zurückgezogen), die Nachweise bleiben erhalten. Fortfahren?')"
+                          : "return confirm('Unterweisung ganz löschen? Noch niemand hat unterschrieben.')"
+                      }
+                    >
+                      <button class="btn sec sm danger">{d.signed > 0 ? 'Beenden' : 'Löschen'}</button>
+                    </form>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {!shown.length && (
+            <div class="empty">
+              {archiv ? 'Keine beendeten Unterweisungen.' : 'Noch keine Unterweisungen freigegeben.'}
+            </div>
+          )}
         </div>
+        <style
+          dangerouslySetInnerHTML={{
+            __html:
+              '.sd-row{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(0,.9fr) minmax(0,1.4fr) auto;gap:14px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)}' +
+              '.sd-row:last-child{border-bottom:0}.sd-bar{height:8px;background:var(--line);border-radius:6px;overflow:hidden;margin-bottom:4px}' +
+              '.sd-bar i{display:block;height:100%;background:var(--ok)}.sd-act{display:flex;gap:6px}' +
+              '@media(max-width:760px){.sd-row{grid-template-columns:1fr}}',
+          }}
+        />
         <form
           method="post"
           action={`/personal/dokumente/${randomUUID()}`}
@@ -107,7 +155,12 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
           style="max-width:900px"
           id="neu"
         >
-          <h3 style="margin-top:0">Unterweisung / Dokument freigeben</h3>
+          <h3 style="margin-top:0">Neue Unterweisung / Dokument freigeben</h3>
+          <p class="small mut" style="margin-top:0">
+            Beim nächsten Öffnen der Handy-App erscheint das Dokument sofort zum Lesen und Unterschreiben; mit
+            „Später erinnern“ kommt es am nächsten Tag wieder. Nach Ablauf der Frist Hinweis auf der
+            Startseite. <b>Nicht digital:</b> {FORBIDDEN_HINT}
+          </p>
           <div class="grid">
             <div style="grid-column:1/-1">
               <label for="word_template">Eigene Vorlage (Einstellungen → Word-Vorlagen)</label>
@@ -317,6 +370,23 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
         </div>
       </>,
     );
+  });
+
+  app.post(`/personal/dokumente/:id{${UUID}}/loeschen`, async (c) => {
+    const r = await deleteSignDocument(sql, c.req.param('id'), c.get('actor'));
+    return back(c, '/personal/dokumente', {
+      ok:
+        r === 'geloescht'
+          ? 'Unterweisung gelöscht.'
+          : 'Unterweisung beendet – offene Anforderungen zurückgezogen, unterschriebene Nachweise bleiben (Reiter „Beendet“).',
+    });
+  });
+
+  app.post(`/personal/dokumente/:id{${UUID}}/wieder`, async (c) => {
+    await reopenSignDocument(sql, c.req.param('id'), c.get('actor'));
+    return back(c, '/personal/dokumente', {
+      ok: 'Wieder aktiv. Zurückgezogene Empfänger bei Bedarf unter „Öffnen“ neu hinzufügen.',
+    });
   });
 
   app.post(`/personal/dokumente/:id{${UUID}}/empfaenger`, async (c) => {

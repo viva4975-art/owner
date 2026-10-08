@@ -49,6 +49,8 @@ export interface SignDocument {
   due_date: string | null;
   created_by: string;
   created_at: Date;
+  archived_at: Date | null;
+  archived_by: string | null;
 }
 export type SignDocumentRow = SignDocument & { total: number; signed: number; open: number };
 
@@ -147,6 +149,49 @@ export async function withdrawRequest(sql: Sql, requestId: string, actor: string
   await sql`
     update app.sign_requests set status = 'zurueckgezogen', withdrawn_at = now(), withdrawn_by = ${actor}
      where id = ${requestId} and status = 'offen'`;
+}
+
+/**
+ * Löschen: ohne Unterschrift → Dokument und Anforderungen ganz entfernen (Protokoll im audit_log). Mit Unterschriften
+ * → nicht löschbar (Nachweis), stattdessen beenden: offene Anforderungen zurückziehen, ins Archiv.
+ */
+export async function deleteSignDocument(
+  sql: Sql,
+  id: string,
+  actor: string,
+): Promise<'geloescht' | 'beendet'> {
+  return sql.begin(async (tx) => {
+    const [d] = await tx<SignDocument[]>`select * from app.sign_documents where id = ${id} for update`;
+    if (!d) throw new BusinessError('Dokument nicht gefunden');
+    const [cnt] = await tx<{ signed: number }[]>`
+      select count(*) filter (where status = 'unterschrieben')::int as signed
+        from app.sign_requests where document_id = ${id}`;
+    const signed = cnt?.signed ?? 0;
+    if (signed > 0) {
+      await tx`update app.sign_requests set status = 'zurueckgezogen', withdrawn_at = now(), withdrawn_by = ${actor}
+                where document_id = ${id} and status = 'offen'`;
+      await tx`update app.sign_documents set archived_at = coalesce(archived_at, now()), archived_by = ${actor}
+                where id = ${id}`;
+      await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+               values (${actor}, 'archive', 'sign_document', ${id}, ${tx.json({ title: d.title, signed })})`;
+      return 'beendet' as const;
+    }
+    await tx`select set_config('app.purge', 'on', true)`;
+    await tx`delete from app.sign_requests where document_id = ${id}`;
+    await tx`delete from app.sign_documents where id = ${id}`;
+    await tx`select set_config('app.purge', 'off', true)`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'delete', 'sign_document', ${id},
+                     ${tx.json({ title: d.title, category: d.category, file: d.file_path, sha256: d.file_sha256 })})`;
+    return 'geloescht' as const;
+  });
+}
+
+/** beendete Unterweisung wieder aktiv (Anforderungen bleiben zurückgezogen – neu zuweisen über „Empfänger“) */
+export async function reopenSignDocument(sql: Sql, id: string, actor: string) {
+  await sql`update app.sign_documents set archived_at = null, archived_by = null where id = ${id}`;
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${actor}, 'reopen', 'sign_document', ${id}, ${sql.json({})})`;
 }
 
 export async function listSignDocuments(sql: Sql) {

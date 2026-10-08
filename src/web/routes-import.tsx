@@ -31,14 +31,194 @@ import {
   stageMore,
   stagedMore,
 } from '../services/fortytools-more-import.js';
+import {
+  applyLeaveImport,
+  planLeaveImport,
+  stageLeaveSheet,
+  stagedLeaveSheet,
+  yearAndDateOf,
+} from '../services/leave-import.js';
+import { todayBerlin } from '../domain/invoice/calc.js';
 import type { Ctx } from './app.js';
 import { PageHead, dateDe, euro } from './layout.js';
+
+const fmtDays = (n: number | null | undefined) => (n == null ? '–' : String(n).replace('.', ','));
 
 const kindOf = (v: unknown): ImportKind =>
   typeof v === 'string' && v in IMPORT_KIND ? (v as ImportKind) : 'kunden';
 
 export function registerImportRoutes({ app, deps, page, back }: Ctx) {
   const { sql } = deps;
+
+  // ------------------------------------------------------------ Urlaubskonten / Krankheitstage (Excel)
+  app.post('/transfer/import/urlaub', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const files = (Array.isArray(b.dateien) ? b.dateien : [b.dateien]).filter(
+      (f): f is File => f instanceof File && f.size > 0,
+    );
+    if (!files.length) throw new BusinessError('Bitte eine Excel-Datei wählen');
+    const parts: string[] = [];
+    let meta: { year: number | null; asOf: string | null } = { year: null, asOf: null };
+    for (const f of files.slice(0, 2)) {
+      const st = await stageLeaveSheet(deps, new Uint8Array(await f.arrayBuffer()));
+      parts.push(st.sha);
+      const m = yearAndDateOf(f.name);
+      meta = { year: meta.year ?? m.year, asOf: meta.asOf ?? m.asOf };
+    }
+    const asOf = meta.asOf ?? todayBerlin();
+    const year = meta.year ?? Number(asOf.slice(0, 4));
+    return c.redirect(`/transfer/import/urlaub?f=${parts.join(',')}&jahr=${year}&stand=${asOf}`, 303);
+  });
+
+  app.get('/transfer/import/urlaub', async (c) => {
+    const q = c.req.query();
+    const shas = (q.f ?? '')
+      .split(',')
+      .filter((x) => /^[0-9a-f]{64}$/.test(x))
+      .slice(0, 2);
+    if (!shas.length) return c.redirect('/transfer/import', 303);
+    const year = Number(q.jahr) || Number(todayBerlin().slice(0, 4));
+    const asOf = /^\d{4}-\d{2}-\d{2}$/.test(q.stand ?? '') ? q.stand! : todayBerlin();
+    const sheets = await Promise.all(shas.map((s) => stagedLeaveSheet(deps, s)));
+    const plans = await Promise.all(sheets.map((s) => planLeaveImport(sql, s)));
+    return page(
+      c,
+      'Urlaub/Krankheit übernehmen',
+      'transfer',
+      <>
+        <PageHead
+          title="Urlaubskonten / Krankheitstage übernehmen"
+          crumbs={[
+            ['Transfer', '/transfer/kontoumsaetze'],
+            ['Import aus Fortytools', '/transfer/import'],
+          ]}
+        />
+        <form method="post" action="/transfer/import/urlaub/uebernehmen" class="card">
+          <input type="hidden" name="f" value={shas.join(',')} />
+          <div class="grid">
+            <div>
+              <label for="jahr">Jahr</label>
+              <input
+                id="jahr"
+                name="jahr"
+                type="number"
+                min="2000"
+                max="2100"
+                value={String(year)}
+                required
+              />
+            </div>
+            <div>
+              <label for="stand">Stand (Stichtag)</label>
+              <input id="stand" name="stand" type="date" value={asOf} required />
+            </div>
+          </div>
+          <p class="small mut">
+            Urlaub/Krankheit, die in der App für Tage <b>bis einschließlich Stichtag</b> erfasst sind, werden
+            für diese Personen nicht mehr gezählt (stecken schon in den Fortytools-Zahlen); ab dem Folgetag
+            zählt die App.
+          </p>
+          {sheets.map((sh, i) => {
+            const plan = plans[i]!;
+            const ok = plan.filter((r) => !r.error).length;
+            return (
+              <>
+                <h3>
+                  {sh.kind === 'urlaub' ? 'Urlaubskonten' : 'Krankheitstage'}: {ok} übernehmen
+                  {plan.length > ok && (
+                    <span class="badge err" style="margin-left:6px">
+                      {plan.length - ok} nicht zuordenbar
+                    </span>
+                  )}
+                </h3>
+                <div class="tbl">
+                  <table class="small">
+                    <thead>
+                      <tr>
+                        <th>Pers.-Nr.</th>
+                        <th>Name (Datei)</th>
+                        <th>in der App</th>
+                        {sh.kind === 'urlaub' ? (
+                          <>
+                            <th class="r">Resturlaub Vorjahr</th>
+                            <th class="r">Anspruch</th>
+                            <th class="r">genommen</th>
+                            <th class="r">verfügbar</th>
+                          </>
+                        ) : (
+                          <th class="r">Krankheitstage</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {plan.map((r) => (
+                        <tr style={r.error ? 'opacity:.6' : ''}>
+                          <td>{r.personnel_no}</td>
+                          <td>{r.name}</td>
+                          <td>
+                            {r.error ? (
+                              <span style="color:var(--err)">{r.error}</span>
+                            ) : (
+                              <>
+                                <a href={`/personal/${r.employee_id}`}>{r.employee_name}</a>
+                                {r.existing && <span class="small mut"> · Stand wird ersetzt</span>}
+                              </>
+                            )}
+                          </td>
+                          {sh.kind === 'urlaub' ? (
+                            <>
+                              <td class="r">{fmtDays(r.carried)}</td>
+                              <td class="r">{fmtDays(r.entitlement)}</td>
+                              <td class="r">{fmtDays(r.taken)}</td>
+                              <td class="r" style={(r.available ?? 0) < 0 ? 'color:var(--err)' : ''}>
+                                {fmtDays(r.available)}
+                              </td>
+                            </>
+                          ) : (
+                            <td class="r">{fmtDays(r.sick)}</td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            );
+          })}
+          <div class="actions form-foot">
+            <button class="btn">Übernehmen</button>
+            <a class="btn sec" href="/transfer/import">
+              Abbrechen
+            </a>
+          </div>
+        </form>
+      </>,
+    );
+  });
+
+  app.post('/transfer/import/urlaub/uebernehmen', async (c) => {
+    const b = await c.req.parseBody();
+    const shas = String(b.f ?? '')
+      .split(',')
+      .filter((x) => /^[0-9a-f]{64}$/.test(x))
+      .slice(0, 2);
+    const year = Number(b.jahr);
+    const asOf = String(b.stand ?? '');
+    const msgs: string[] = [];
+    for (const sha of shas) {
+      const sh = await stagedLeaveSheet(deps, sha);
+      const r = await applyLeaveImport(sql, sh, {
+        year,
+        asOf,
+        actor: c.get('actor'),
+        source: `fortytools-excel:${sha.slice(0, 12)}`,
+      });
+      msgs.push(
+        `${sh.kind === 'urlaub' ? 'Urlaubskonten' : 'Krankheitstage'}: ${r.saved} übernommen${r.skipped ? `, ${r.skipped} übersprungen` : ''}`,
+      );
+    }
+    return back(c, '/auswertungen/urlaub', { ok: `${msgs.join(' · ')} (Stand ${dateDe(asOf)}).` });
+  });
 
   // ------------------------------------------------------------ Dubletten aus den Importen zusammenführen
   app.get('/transfer/import/dubletten', async (c) => {
@@ -390,6 +570,27 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
             )}
           </p>
           <input type="file" name="dateien" accept=".csv,.txt" multiple required aria-label="CSV-Dateien" />
+          <div class="actions" style="margin-bottom:0">
+            <button class="btn">Prüfen (Vorschau)</button>
+          </div>
+        </form>
+        <form method="post" action="/transfer/import/urlaub" enctype="multipart/form-data" class="card">
+          <h3 style="margin-top:0">Urlaubskonten und Krankheitstage aus Fortytools (Excel)</h3>
+          <p class="small mut" style="margin-top:0">
+            Fortytools → Auswertungen → <b>Urlaubskonten</b> bzw. <b>Krankheitstage</b> als Excel. Übernommen
+            wird der Stand zum Stichtag (aus dem Dateinamen, z. B. „urlaubskonten_2026_2026-10-08.xlsx“) je
+            Personalnummer: Resturlaub, Anspruch, genommen, verfügbar bzw. Krankheitstage. Urlaub und
+            Krankheit, die in der App erfasst sind, zählen erst ab dem Folgetag dazu (nichts doppelt). Erneut
+            importieren ersetzt den Stand. Erst Vorschau.
+          </p>
+          <input
+            type="file"
+            name="dateien"
+            accept=".xlsx,.csv"
+            multiple
+            required
+            aria-label="Excel-Dateien"
+          />
           <div class="actions" style="margin-bottom:0">
             <button class="btn">Prüfen (Vorschau)</button>
           </div>

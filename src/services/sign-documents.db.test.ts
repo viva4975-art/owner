@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import {
   createSignDocument,
+  deleteSignDocument,
   getSignDocument,
   requestsForEmployee,
   signRequest,
@@ -108,5 +109,22 @@ describe.skipIf(!available)('Dokumente digital unterschreiben', () => {
     ).rejects.toThrow(/zurückgezogen/);
     const after = (await getSignDocument(sql, id))!.requests;
     expect(after.map((r) => r.status).sort()).toEqual(['unterschrieben', 'zurueckgezogen']);
+  });
+
+  it('Löschen: ohne Unterschrift ganz weg, mit Unterschrift nur beendet (Nachweis bleibt)', async () => {
+    const leer = randomUUID();
+    await createSignDocument(deps, leer, doc({ title: 'Unterweisung leer' }), 't');
+    expect(await deleteSignDocument(sql, leer, 't')).toBe('geloescht');
+    expect(await getSignDocument(sql, leer)).toBeUndefined();
+    const mit = randomUUID();
+    await createSignDocument(deps, mit, doc({ title: 'Unterweisung mit' }), 't');
+    const r = (await getSignDocument(sql, mit))!.requests.find((x) => x.employee_id === anna)!;
+    await signRequest(deps, r.id, anna, { png, confirmed: true, ip: null, userAgent: null });
+    expect(await deleteSignDocument(sql, mit, 't')).toBe('beendet');
+    const g = (await getSignDocument(sql, mit))!;
+    expect(g.doc.archived_at).not.toBeNull();
+    expect(g.requests.map((x) => x.status).sort()).toEqual(['unterschrieben', 'zurueckgezogen']);
+    await expect(sql`delete from app.sign_documents where id = ${mit}`).rejects.toThrow();
+    await expect(sql`update app.sign_documents set title = 'x' where id = ${mit}`).rejects.toThrow(/unveränderbar/);
   });
 });

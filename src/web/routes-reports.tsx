@@ -715,6 +715,13 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
       `Urlaubskonten ${year}`,
       <>
         <YearNav base="/auswertungen/urlaub" year={year} />
+        {rows.some((r) => r.openingAsOf) && (
+          <p class="small mut">
+            Bei {rows.filter((r) => r.openingAsOf).length} Mitarbeitenden ist der Stand aus Fortytools
+            übernommen (
+            {[...new Set(rows.map((r) => r.openingAsOf).filter(Boolean))].map((d) => dateDe(d!)).join(', ')}).
+          </p>
+        )}
         <div class="card">
           <div class="tbl">
             <table>
@@ -752,7 +759,8 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
           <p class="small mut" style="margin-bottom:0">
             Arbeitstage. Übertrag aus dem Vorjahr nur bei „Resturlaub übertragen“; nicht bis 31.03. genommener
             Übertrag verfällt rechnerisch. Rechtlich nur, wenn rechtzeitig auf Urlaub und Verfall hingewiesen
-            wurde (BAG 9 AZR 541/15).
+            wurde (BAG 9 AZR 541/15). „Stand …“ = Urlaubskonto aus Fortytools übernommen (Anspruch,
+            Resturlaub, genommen bis zum Stichtag); Urlaub in der App zählt ab dem Folgetag dazu.
           </p>
         </div>
       </>,
@@ -764,6 +772,8 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
     const year = yearOf(c.req.query('jahr'));
     const rows = await sickDays(sql, year);
     const months = [...Array(12).keys()];
+    const anyImported = rows.some((r) => r.importedAsOf);
+    const cutDates = [...new Set(rows.map((r) => r.importedAsOf).filter(Boolean))] as string[];
     return shell(
       c,
       'krankheit',
@@ -776,6 +786,11 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
               <thead>
                 <tr>
                   <th>Mitarbeiter</th>
+                  {anyImported && (
+                    <th class="r" title="aus Fortytools übernommen (bis Stichtag)">
+                      übernommen
+                    </th>
+                  )}
                   {months.map((m) => (
                     <th class="r">{MON[m]}</th>
                   ))}
@@ -790,6 +805,11 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
                     <td>
                       <a href={`/personal/${r.id}`}>{r.name}</a>
                     </td>
+                    {anyImported && (
+                      <td class="r" title={r.importedAsOf ? `bis ${dateDe(r.importedAsOf)}` : ''}>
+                        {r.imported ? daysDe(r.imported) : ''}
+                      </td>
+                    )}
                     {r.months.map((d) => (
                       <td class="r">{d ? daysDe(d) : ''}</td>
                     ))}
@@ -802,7 +822,7 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
                 ))}
                 {rows.length === 0 && (
                   <tr>
-                    <td colspan={16} class="mut">
+                    <td colspan={17} class="mut">
                       Keine Krankmeldungen in {year}.
                     </td>
                   </tr>
@@ -814,6 +834,13 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
             Arbeitstage (Mo–Fr ohne Feiertage) aus genehmigten Abwesenheiten „{ABSENCE_LABEL.krank}“ und „
             {ABSENCE_LABEL.kind_krank}“. Mehr als 6 Wochen in 12 Monaten → betriebliches
             Eingliederungsmanagement anbieten (§ 167 Abs. 2 SGB IX).
+            {cutDates.length > 0 && (
+              <>
+                {' '}
+                „übernommen“ = Krankheitstage aus Fortytools bis {cutDates.map(dateDe).join(', ')} (nur als
+                Summe, ohne Monate); Krankmeldungen in der App zählen erst ab dem Folgetag.
+              </>
+            )}
           </p>
         </div>
       </>,

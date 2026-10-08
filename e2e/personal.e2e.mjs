@@ -86,7 +86,7 @@ await p.selectOption('select[name=vorlage]', {
 await p.click('button:has-text("Erstellen und ablegen")');
 await p.waitForLoadState();
 check('Dokument erstellt', (await flash(p)).includes('erstellt und abgelegt'), await flash(p));
-const href = await p.locator('a[href^="/dateien/"]').first().getAttribute('href');
+const href = await p.locator('a[href^="/dateien/"]:not([href^="/dateien/zip"])').first().getAttribute('href');
 const dl = await p.request.get(B + href);
 const pdfBytes = await dl.body();
 check('Download als PDF', dl.ok() && pdfBytes.subarray(0, 5).toString() === '%PDF-');

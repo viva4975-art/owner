@@ -4,6 +4,7 @@ import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { BusinessError } from './errors.js';
+import { type FormField, applyFormFields, formFieldsOf } from './word-form.js';
 import { type FileRow, type UploadConfig, filePath, storeFile } from './uploads.js';
 
 /*
@@ -187,7 +188,12 @@ export function freezeDateFields(xml: string, date: string): string {
     );
 }
 
-export function fillDocx(bytes: Uint8Array, value: (key: string) => string | null, docDate?: string) {
+export function fillDocx(
+  bytes: Uint8Array,
+  value: (key: string) => string | null,
+  docDate?: string,
+  form?: { boxes: Record<number, boolean>; blanks: Record<number, string> },
+) {
   const files = unzipSync(bytes);
   if (!files['word/document.xml']) throw new BusinessError('Keine Word-Datei (.docx)');
   const missing = new Set<string>();
@@ -195,9 +201,21 @@ export function fillDocx(bytes: Uint8Array, value: (key: string) => string | nul
     if (!PART.test(name)) continue;
     let xml = strFromU8(files[name]!);
     if (docDate) xml = freezeDateFields(xml, docDate);
+    // Kästchen/Lücken vor den Platzhaltern (Indizes wie auf der Ausfüll-Seite, dort aus der Originaldatei)
+    if (form && name === 'word/document.xml') xml = applyFormFields(xml, form.boxes, form.blanks);
     files[name] = strToU8(fillXml(xml, value, missing));
   }
   return { data: zipSync(files, { level: 6 }), missing: [...missing] };
+}
+
+/** Kästchen und Lücken der Vorlage (Hauptteil) für die Ausfüll-Seite. */
+export function formFieldsOfDocx(bytes: Uint8Array): FormField[] {
+  const xml = unzipSync(bytes)['word/document.xml'];
+  return xml ? formFieldsOf(strFromU8(xml)) : [];
+}
+
+export async function templateFormFields(cfg: UploadConfig, storagePath: string) {
+  return formFieldsOfDocx(await readFile(filePath(cfg, { storage_path: storagePath } as FileRow)));
 }
 
 export function placeholdersOf(bytes: Uint8Array): string[] {
@@ -641,6 +659,8 @@ export async function generateFromWordTemplate(
     fileId: string;
     actorName: string;
     overrides?: Record<string, string>;
+    /** Kästchen (Index → angekreuzt) und Lücken (Index → Text) der Ausfüll-Seite */
+    form?: { boxes: Record<number, boolean>; blanks: Record<number, string> };
   },
   actor: string,
 ): Promise<{ file: FileRow; missing: string[] }> {
@@ -657,6 +677,7 @@ export async function generateFromWordTemplate(
     bytes,
     (k) => (values[k] ? values[k]! : null),
     values['Dokument.Datum'] || de(today),
+    p.form,
   );
   const typ = t.name.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
   const suffix = base.suffix;

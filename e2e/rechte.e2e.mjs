@@ -146,7 +146,7 @@ await a.goto(B + `/personal/${empId}/dokumente`);
 await a.selectOption('select[name=vorlage]', { index: 0 });
 await a.click('button:has-text("Erstellen und ablegen")');
 await a.waitForLoadState();
-const fileHref = await a.locator('a[href^="/dateien/"]').first().getAttribute('href');
+const fileHref = await a.locator('a[href^="/dateien/"]:not([href^="/dateien/zip"])').first().getAttribute('href');
 check('Admin lädt Personaldokument', (await a.request.get(B + fileHref)).ok());
 const denied = await o.request.get(B + fileHref, { maxRedirects: 0 });
 check('Objektleitung: Personaldokument gesperrt (403)', denied.status() === 403, String(denied.status()));

@@ -143,7 +143,7 @@ export function registerModuleRoutes(ctx: Ctx) {
       sql<{ id: string; title: string; open: number }[]>`
         select d.id, d.title, count(*)::int as open from app.sign_documents d
           join app.sign_requests r on r.document_id = d.id and r.status = 'offen'
-         where d.due_date is not null and d.due_date < ${todayBerlin()}
+         where d.due_date is not null and d.due_date < ${todayBerlin()} and d.archived_at is null
          group by d.id, d.title order by d.title`,
     ]);
     return page(

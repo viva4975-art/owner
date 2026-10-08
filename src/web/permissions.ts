@@ -27,7 +27,7 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/bewerber(\/|$)/, HR],
   [/^\/personal(\/|$)/, HR],
   [/^\/zeiterfassung\/meine(\/|$)/, ALL],
-  [/^\/zeiterfassung\/(stundenzettel|lohnarten)/, ['admin', 'personal', 'buchhaltung']],
+  [/^\/zeiterfassung\/(stundenzettel|lohnarten|arbeitszeitkonto)/, ['admin', 'personal', 'buchhaltung']],
   [/^\/zeiterfassung\/(monat|pruefbericht|einstellungen)/, HR],
   [/^\/(zeiterfassung|einsatzplanung)(\/|$)/, ['admin', 'personal', 'objektleitung']],
   // Buchhaltung braucht Urlaub/Krank für den Lohn (Ahmed 07.10.)

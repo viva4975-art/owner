@@ -1277,6 +1277,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Meine Zeiten', href: '/zeiterfassung/meine' },
       { label: 'Soll/Ist je Monat', href: '/zeiterfassung/monat' },
       { label: 'Stundenliste & Lohnarten', href: '/zeiterfassung/stundenzettel' },
+      { label: 'Arbeitszeitkonto', href: '/zeiterfassung/arbeitszeitkonto' },
     ],
   },
   {

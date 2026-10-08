@@ -1,3 +1,4 @@
+import { registerTimeAccountRoutes } from './routes-time-account.js';
 import { registerMonthCloseRoutes } from './routes-month-close.js';
 import { registerReminderRoutes } from './routes-reminders.js';
 import { registerPriceAdjustmentRoutes } from './routes-price-adjustment.js';
@@ -378,6 +379,7 @@ export function createApp(deps: Deps) {
   registerPriceAdjustmentRoutes(ctx);
   registerReminderRoutes(ctx);
   registerMonthCloseRoutes(ctx);
+  registerTimeAccountRoutes(ctx);
   registerCashbookRoutes(ctx);
   registerLegacyRoutes(ctx);
   registerProspectRoutes(ctx);

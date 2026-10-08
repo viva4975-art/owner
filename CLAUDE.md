@@ -1451,3 +1451,9 @@ Testadresse.
   nicht versendet), Einkauf (erwartete NU-Rechnungen, zu prüfen), Lohn & Buchhaltung (Kasse abgeschlossen, Lohnarten-
   und DATEV-Export von Hand). „Monat abschließen“ hält den Stand fest (`month_closings`, nur anhängen; bei offenen
   Punkten nur mit Begründung), sperrt nichts. Tests: `month-close.db.test.ts`.
+- 2026-10-08: **Arbeitszeitkonto** (Personal → Arbeitszeitkonto, Admin/Personal/Buchhaltung): je Mitarbeiter und Monat
+  Soll (Wochenstunden ÷ 5 × Arbeitstage, Stunden-Verlauf), gearbeitet, bezahlte Abwesenheit, Ist, Saldo, Buchungen,
+  **Kontostand** fortlaufend ab Startmonat (Standard: erster Monat mit Zeiten, höchstens 24 Monate gerechnet). Buchungen
+  Startsaldo/Auszahlung/Freizeitausgleich/Korrektur mit Begründung, nur anhängen (`time_account_bookings`). CSV-Export.
+  **Rechtlich § 2 Abs. 2 MiLoG:** Plusstunden höchstens 50 % der Monats-Sollzeit, Ausgleich binnen 12 Monaten – Zeilen
+  darüber rot. Tests: `time-account.db.test.ts`.

@@ -1408,3 +1408,14 @@ Testadresse.
   (Firmenname im HRB prüfen: „Viva-Deluxe GmbH Gebäudeservice“ vs. „Gebäudereinigung“). Bauplan: eingehende E-Rechnungen,
   Lohnkostenanteil Pflicht + Preisanpassung, Portal-Versand, kleine Punkte, Erinnerungen, Ampel, Monatsabschluss,
   Arbeitszeitkonto, Stempeln mit Standort, Lohnabrechnungen aus Sammel-PDF, Store-App, Bankabruf (am Ende).
+- 2026-10-08: **Eingehende E-Rechnungen** (Rechnungseingang → „E-Rechnung einlesen“; auch aus dem Dokumenteneingang „als
+  E-Rechnung lesen“): XRechnung UBL (Invoice/CreditNote), CII und ZUGFeRD/Factur-X-PDF (eingebettetes XML wird aus der PDF
+  gelöst). Eigener Leser `src/domain/einvoice/incoming.ts` (xmlbuilder2 + pdf-lib, DOCTYPE abgelehnt, Beträge als Cent).
+  Prüfseite mit Kopf, Rechnungssteller, Positionen, Steueraufschlüsselung, Skonto (#SKONTO# oder Freitext); Lieferant über
+  USt-IdNr./Steuernr. → IBAN → Name erkannt, sonst „neu anlegen“ aus den Rechnungsdaten. Übernahme = Eingangsrechnung mit
+  fester ID je Datei (doppelt absenden legt nichts doppelt an), Datei write-once an der Rechnung, Positionen bleiben an der
+  Eingangsrechnung sichtbar (`incoming_invoices.einvoice`). Warnungen: Summen passen nicht, Dublette (gleiche Nummer),
+  eigene Ausgangsrechnung, anderer Rechnungsempfänger, **IBAN weicht von der hinterlegten ab (Betrugsmasche – vor Zahlung
+  telefonisch bestätigen)**. Freigabe „sachlich und rechnerisch richtig“ wie bisher.
+  Fund nebenbei: Kontoauszug-Import (CAMT) löste „&amp;“ in Namen nicht auf – gemeinsamer Helfer `src/domain/xml.ts`.
+  Noch nicht: automatischer Abruf aus dem Postfach buchhaltung@ (IMAP) – sinnvoll, sobald der Mail-Zugang steht.

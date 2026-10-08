@@ -320,6 +320,21 @@ export interface IncomingInvoice {
   approved_at: Date | null;
   paid_at: string | null;
   version: number;
+  einvoice_file_id?: string | null;
+  /** gelesene E-Rechnung (Positionen, Verkäufer) – siehe services/einvoice-inbox.ts */
+  einvoice?: {
+    syntax: string;
+    fromPdf: boolean;
+    typeCode: string;
+    seller: { name: string; vatId: string | null; taxNumber: string | null };
+    iban: string | null;
+    periodStart: string | null;
+    periodEnd: string | null;
+    paymentReference: string | null;
+    lines: { name: string; quantityMilli: string; unitCode: string | null; netCents: string; vatRateBp: number | null }[];
+    vat: { category: string; rateBp: number; baseCents: string; taxCents: string }[];
+    warnings: string[];
+  } | null;
 }
 export type IncomingRow = IncomingInvoice & {
   supplier_name: string;

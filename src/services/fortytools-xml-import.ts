@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { create } from 'xmlbuilder2';
+import { unescapeXml } from '../domain/xml.js';
 import { settleOpenItem } from './payments.js';
 import type { Sql, Tx } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
@@ -33,14 +34,6 @@ export const FTX_LABEL: Record<FtxKind, string> = {
 
 type Node = Record<string, unknown>;
 const arr = (v: unknown): Node[] => (v == null ? [] : Array.isArray(v) ? (v as Node[]) : [v as Node]);
-// xmlbuilder2 lässt Entitäten im Objekt stehen (Fund 07.10.: „Rußbach GmbH &amp; Co.KG“) → hier auflösen
-const ENT: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
-const unescapeXml = (s: string) =>
-  s.replace(/&(amp|lt|gt|quot|apos|#\d+|#x[0-9a-f]+);/gi, (m, e: string) =>
-    e[0] === '#'
-      ? String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : Number(e.slice(1)))
-      : (ENT[e.toLowerCase()] ?? m),
-  );
 const txt = (v: unknown): string => (typeof v === 'string' ? unescapeXml(v).trim() : '');
 const get = (n: Node | undefined, path: string): string => {
   let cur: unknown = n;

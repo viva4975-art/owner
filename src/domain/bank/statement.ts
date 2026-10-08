@@ -1,4 +1,5 @@
 import { create } from 'xmlbuilder2';
+import { unescapeXml } from '../xml.js';
 
 /*
  * Kontoauszüge einlesen: CAMT.053 (ISO 20022, Standard der deutschen Banken seit 2014/DK) und CSV-Export
@@ -22,7 +23,7 @@ type Node = Record<string, unknown>;
 const arr = (v: unknown): Node[] => (v == null ? [] : Array.isArray(v) ? (v as Node[]) : [v as Node]);
 const txt = (v: unknown): string | null => {
   if (v == null) return null;
-  if (typeof v === 'string') return v.trim() || null;
+  if (typeof v === 'string') return unescapeXml(v).trim() || null;
   if (typeof v === 'number') return String(v);
   if (typeof v === 'object' && '#' in (v as Node)) return txt((v as Node)['#']);
   return null;

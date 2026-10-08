@@ -573,6 +573,13 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
                       <a href={`/dateien/${f.id}`} target="_blank">
                         {f.original_name}
                       </a>
+                      {/\.(xml|pdf)$/i.test(f.original_name) && (
+                        <div class="small">
+                          <a href={`/rechnungseingang/e-rechnung/${f.id}`}>
+                            {f.category === 'E-Rechnung' ? 'E-Rechnung prüfen und übernehmen' : 'als E-Rechnung lesen'}
+                          </a>
+                        </div>
+                      )}
                     </td>
                     <td class="small">
                       {at(f.created_at)} · {f.uploaded_by}

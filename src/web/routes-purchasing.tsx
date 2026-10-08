@@ -47,6 +47,8 @@ import {
 import { hm } from '../services/time.js';
 import { toCsv } from '../services/reports.js';
 import { listFiles } from '../services/uploads.js';
+import { EInvoiceRoutes, EInvoiceTable } from './routes-einvoice-in.js';
+import { pendingEInvoices } from '../services/einvoice-inbox.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
 import { criticalSupplierIds, listSubcontracts, SC_STATUS } from '../services/subcontractors.js';
@@ -879,7 +881,11 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
 
   app.get('/rechnungseingang', async (c) => {
     const st = (c.req.query('status') ?? 'erfasst') as IncomingStatus | 'alle' | 'erwartet';
-    const [all, expected] = await Promise.all([listIncoming(sql), expectedInvoices(sql)]);
+    const [all, expected, pendingE] = await Promise.all([
+      listIncoming(sql),
+      expectedInvoices(sql),
+      pendingEInvoices(sql),
+    ]);
     const rows = st === 'alle' ? all : all.filter((i) => i.status === st);
     const today = todayBerlin();
     const tabs = incomingTabs(all, expected.length);
@@ -890,10 +896,52 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       'lieferanten',
       <>
         <PageHead title="Rechnungseingang">
-          <a class="btn" href={`/rechnungseingang/${randomUUID()}`} style="margin-left:auto">
+          <a class="btn sec" href="#e-rechnung" style="margin-left:auto">
+            <Icon name="upload" /> E-Rechnung einlesen
+          </a>
+          <a class="btn" href={`/rechnungseingang/${randomUUID()}`}>
             <Icon name="plus" /> Rechnung erfassen
           </a>
         </PageHead>
+        <details class="card" id="e-rechnung" open={pendingE.length > 0}>
+          <summary>
+            <b>E-Rechnung einlesen</b>{' '}
+            <span class="small mut">XRechnung (XML) oder ZUGFeRD/Factur-X (PDF)</span>
+            {pendingE.length > 0 && (
+              <>
+                {' '}
+                <span class="badge warn">{pendingE.length} im Eingang</span>
+              </>
+            )}
+          </summary>
+          <form
+            method="post"
+            action="/rechnungseingang/e-rechnung"
+            enctype="multipart/form-data"
+            class="actions"
+            style="margin:12px 0 0"
+          >
+            <input type="hidden" name="id" value={randomUUID()} />
+            <input type="file" name="datei" accept=".xml,.pdf" required aria-label="E-Rechnung" />
+            <button class="btn">Einlesen und prüfen</button>
+            <span class="small mut">
+              Lieferant, Rechnungsnummer, Datum, Fälligkeit, Beträge, § 13b und Skonto werden übernommen. Die Datei
+              wird unverändert archiviert.
+            </span>
+          </form>
+          {pendingE.length > 0 && (
+            <ul class="small" style="margin:10px 0 0">
+              {pendingE.map((f) => (
+                <li>
+                  <a href={`/rechnungseingang/e-rechnung/${f.id}`}>{f.original_name}</a>{' '}
+                  <span class="mut">
+                    · {dateDe(f.created_at.toISOString().slice(0, 10))} · {f.uploaded_by} – noch nicht übernommen
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </details>
         <div class="kpis">
           <div class="kpi">
             <div class="l">Zu prüfen</div>
@@ -996,6 +1044,8 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       </>,
     );
   });
+
+  EInvoiceRoutes({ app, deps, page, back } as Ctx);
 
   app.post('/rechnungseingang/erwartet/keine', async (c) => {
     const b = await c.req.parseBody();
@@ -1105,6 +1155,31 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             )}
             {i.paid_at && <span class="badge ok">bezahlt am {dateDe(i.paid_at)}</span>}
           </div>
+        )}
+        {i?.einvoice && (
+          <details class="card">
+            <summary>
+              <b>E-Rechnung</b>{' '}
+              <span class="small mut">
+                {i.einvoice.fromPdf ? 'ZUGFeRD/Factur-X' : `XRechnung ${i.einvoice.syntax}`} ·{' '}
+                {i.einvoice.lines.length} Positionen
+                {i.einvoice.periodStart &&
+                  ` · Leistung ${dateDe(i.einvoice.periodStart)} – ${i.einvoice.periodEnd ? dateDe(i.einvoice.periodEnd) : ''}`}
+                {i.einvoice.paymentReference && ` · Verwendungszweck ${i.einvoice.paymentReference}`}
+              </span>{' '}
+              {i.einvoice_file_id && (
+                <a href={`/dateien/${i.einvoice_file_id}`} target="_blank" class="small">
+                  Originaldatei
+                </a>
+              )}
+            </summary>
+            {i.einvoice.warnings.length > 0 && (
+              <div class="flash warn">
+                <span>{i.einvoice.warnings.join(' · ')}</span>
+              </div>
+            )}
+            <EInvoiceTable lines={i.einvoice.lines} vat={i.einvoice.vat} />
+          </details>
         )}
         <div class="cols">
           <form

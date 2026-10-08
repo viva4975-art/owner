@@ -23,7 +23,7 @@ const CAMT = `<?xml version="1.0" encoding="UTF-8"?>
         <BookgDt><Dt>2026-10-03</Dt></BookgDt>
         <NtryDtls><TxDtls>
           <Refs><EndToEndId>E2E-1</EndToEndId></Refs>
-          <RltdPties><Cdtr><Nm>Reinigungsbedarf GmbH</Nm></Cdtr></RltdPties>
+          <RltdPties><Cdtr><Nm>Reinigungsbedarf GmbH &amp; Co. KG</Nm></Cdtr></RltdPties>
           <RmtInf><Ustrd>Rechnung 77</Ustrd></RmtInf>
         </TxDtls></NtryDtls>
       </Ntry>
@@ -61,7 +61,7 @@ describe('Kontoauszug', () => {
     });
     expect(l[1]).toMatchObject({
       amountCents: -12000n,
-      counterpartyName: 'Reinigungsbedarf GmbH',
+      counterpartyName: 'Reinigungsbedarf GmbH & Co. KG',
       endToEndId: 'E2E-1',
     });
   });

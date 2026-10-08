@@ -587,6 +587,7 @@ export const DOC_CATEGORIES = [
   'Einwilligung',
   'Abmahnung',
   'Beendigung',
+  'Lohnabrechnung',
   'Sonstiges',
 ];
 

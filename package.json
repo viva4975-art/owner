@@ -81,6 +81,7 @@
     "nodemailer": "^10.0.13",
     "postgres": "^3.4.9",
     "qrcode": "^1.5.4",
+    "unpdf": "1.8.1",
     "xmlbuilder2": "^4.0.3",
     "zod": "^4.6.5"
   },

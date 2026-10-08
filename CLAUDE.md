@@ -1481,3 +1481,11 @@ Testadresse.
   ab 39 Std./Woche, 25 %): je Kalenderwoche über alle Objekte, Minuten über der Schwelle dem Tag zugeordnet, an dem sie
   anfallen (Wochen am Monatsrand vollständig gerechnet), neue Lohnart „Zuschlag Mehrarbeit“ mit Betrag im CSV.
   Tests: `runde24-small.db.test.ts` (Mehrarbeit über Monatsgrenze).
+- 2026-10-08: **Lohnabrechnungen verteilen** (Personal → Lohnabrechnungen, Admin/Personal/Buchhaltung): Monat wählen, ZIP mit
+  Einzel-PDFs oder eine Sammel-PDF aus dem Lohnprogramm hochladen. Zuordnung über die Personalnummer im Text (bzw.
+  Dateinamen); Folgeseiten ohne Nummer gehören zur vorigen Person; nicht zuordenbare Seiten werden aufgelistet. Ablage
+  write-once in der Personalakte (Kategorie „Lohnabrechnung“, feste ID je Person/Monat/Inhalt → doppelt hochladen legt
+  nichts doppelt an). Freigabe für die Mitarbeiter-App (`/m/dokumente`, Karte „Lohnabrechnungen“), „gesehen am“ wird
+  vermerkt. **Rechtlich:** Elektronische Abrechnung (§ 108 GewO) ist zulässig, wenn die Beschäftigten sie abrufen können
+  (BAG 28.01.2025, 9 AZR 48/24) – wer kein Handy nutzt, bekommt sie weiter auf Papier. Neue Abhängigkeit `unpdf` 1.8.1
+  (Text aus PDF). **Ahmed: eine echte Sammel-PDF aus Lexware zum Testen der Erkennung schicken.**

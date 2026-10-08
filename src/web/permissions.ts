@@ -16,6 +16,7 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/einstellungen\/erinnerungen(\/|$)/, ['admin', 'buchhaltung']],
   [/^\/erinnerungen(\/|$)/, ['admin', 'buchhaltung']],
   [/^\/monatsabschluss(\/|$)/, ['admin', 'buchhaltung']],
+  [/^\/personal\/lohnabrechnungen(\/|$)/, ['admin', 'personal', 'buchhaltung']],
   [/^\/grundreinigung\/objektleitung$/, ['admin', 'buchhaltung', 'personal', 'objektleitung']],
   [/^\/einstellungen\/?$/, ['admin', 'buchhaltung', 'personal']],
   [/^\/einstellungen\/word-vorlagen(\/|$)/, ['admin', 'buchhaltung', 'personal']],

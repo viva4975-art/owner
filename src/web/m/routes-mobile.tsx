@@ -1,3 +1,5 @@
+import { listPayslips } from '../../services/payslips.js';
+import { payslipFile } from '../routes-payslips.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -1469,12 +1471,28 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     if (!me) return res!;
     const lang = langOf(c, me);
     const docs = await requestsForEmployee(sql, me.id);
+    const slips = await listPayslips(sql, { employeeId: me.id, releasedOnly: true });
     return render(
       c,
       lang,
       me,
       <>
         <h1>{t(lang, 'docs')}</h1>
+        {slips.length > 0 && (
+          <div class="card">
+            <b>{t(lang, 'payslips')}</b>
+            {slips.slice(0, 24).map((s) => (
+              <a class="row" href={`/m/lohn/${s.file_id}`} style="color:inherit;text-decoration:none">
+                <div>
+                  {s.month.slice(5)}/{s.month.slice(0, 4)}
+                </div>
+                <div class="r">
+                  {s.viewed_at ? <span class="pill ok">✓</span> : <span class="pill warn">●</span>}
+                </div>
+              </a>
+            ))}
+          </div>
+        )}
         <div class="card">
           {docs.length === 0 && <div class="mut">{t(lang, 'none')}</div>}
           {docs.map((d) => (
@@ -1496,6 +1514,20 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         </a>
       </>,
     );
+  });
+
+  app.get('/m/lohn/:id{[0-9a-f-]{36}}', async (c) => {
+    const { me, res } = await requireMe(c);
+    if (!me) return res!;
+    const f = await payslipFile({ app, deps, back } as unknown as Ctx, me.id, c.req.param('id'));
+    if (!f) return c.redirect('/m/dokumente');
+    return new Response(f.data, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="${f.name.replace(/[^\w.-]/g, '_')}"`,
+        'Cache-Control': 'private, no-store',
+      },
+    });
   });
 
   app.get('/m/dokumente/:id{[0-9a-f-]{36}}', async (c) => {

@@ -1,3 +1,4 @@
+import { registerPayslipRoutes } from './routes-payslips.js';
 import { registerLetterRoutes } from './routes-letters.js';
 import { registerTimeAccountRoutes } from './routes-time-account.js';
 import { registerMonthCloseRoutes } from './routes-month-close.js';
@@ -382,6 +383,7 @@ export function createApp(deps: Deps) {
   registerMonthCloseRoutes(ctx);
   registerTimeAccountRoutes(ctx);
   registerLetterRoutes(ctx);
+  registerPayslipRoutes(ctx);
   registerCashbookRoutes(ctx);
   registerLegacyRoutes(ctx);
   registerProspectRoutes(ctx);

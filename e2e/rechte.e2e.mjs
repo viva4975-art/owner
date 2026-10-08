@@ -72,7 +72,7 @@ await o.fill('#next', 'MeinPasswort2026');
 await o.fill('#next2', 'MeinPasswort2026');
 await o.click('button:has-text("Passwort speichern")');
 await o.waitForLoadState();
-check('danach Startseite Zeiterfassung', new URL(o.url()).pathname === '/zeiterfassung', o.url());
+check('danach Startseite Zeiterfassung', new URL(o.url()).pathname.startsWith('/zeiterfassung'), o.url());
 const menu = await o.locator('nav.menu').innerText();
 check(
   'Menü ohne Rechnungen/Angebote/Lieferanten/Transfer',

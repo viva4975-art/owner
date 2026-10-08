@@ -28,7 +28,7 @@ describe.skipIf(!available)('Runde 20 (Datenbank)', () => {
     return id;
   };
 
-  it('Einsatz löschen: ohne erfasste Zeit ganz weg (mit Protokoll), mit Zeit abgelehnt', async () => {
+  it('Einsatz löschen: ganz weg (mit Protokoll), erfasste Zeiten bleiben', async () => {
     const a = await plan('2025-01-06');
     expect(await deleteShiftPlans(sql, [a], 'buero')).toBe(1);
     expect((await sql`select 1 from app.shift_plans where id = ${a}`).length).toBe(0);
@@ -48,9 +48,13 @@ describe.skipIf(!available)('Runde 20 (Datenbank)', () => {
       expectedVersion: null,
       actor: 'buero',
     });
-    // 06.01.2025 ist ein Montag → Zeit gehört zum Einsatz, Löschen wird abgelehnt
-    await expect(deleteShiftPlans(sql, [b], 'buero')).rejects.toThrow(/beenden/);
-    expect((await sql`select 1 from app.shift_plans where id = ${b}`).length).toBe(1);
+    // 06.01.2025 ist ein Montag → Zeit gehört zum Einsatz: Einsatz wird trotzdem gelöscht, die Zeit bleibt
+    expect(await deleteShiftPlans(sql, [b], 'buero')).toBe(1);
+    expect((await sql`select 1 from app.shift_plans where id = ${b}`).length).toBe(0);
+    expect(
+      (await sql`select 1 from app.time_entries where employee_id = ${emp} and work_date = '2025-01-06'`)
+        .length,
+    ).toBe(1);
   });
 
   it('Fortytools-XML: Tiefgaragen kommen zusätzlich in die Tiefgaragenplanung (verknüpft, nichts doppelt)', async () => {

@@ -1,4 +1,5 @@
 import type { FC } from 'hono/jsx';
+import { EventDialog } from './pages-employee-calendar.js';
 import { addDays, isoWeekday, mondayOf } from '../domain/time/holidays.js';
 import type { EmployeeTimeSum, MonthRow } from '../services/site-times.js';
 import {
@@ -122,8 +123,35 @@ const Chip: FC<{ s: PlannedShift; compact?: boolean; back: string }> = ({ s, com
   return (
     <a
       class={`sh ${st.cls}`}
-      href={`/einsatzplanung/${s.plan.id}/tag/${s.date}?zurueck=${encodeURIComponent(back)}`}
-      title={`${s.plan.start_time}–${s.plan.end_time} ${s.plan.employee_name} · ${st.label} – antippen: Umplanen, Vertretung, Ausfall`}
+      href={`/einsatzplanung/${s.plan.id}?zurueck=${encodeURIComponent(back)}`}
+      title={`${s.plan.start_time}–${s.plan.end_time} ${s.plan.employee_name} · ${st.label}`}
+      data-ev={JSON.stringify({
+        site: s.plan.employee_name,
+        addr: '',
+        date: `${s.date.split('-').reverse().join('.')}`,
+        status: st.label,
+        plan: `${s.plan.start_time}–${s.plan.end_time}`,
+        brk: s.plan.break_minutes ? `${s.plan.break_minutes} Min.` : '',
+        ist: s.entry ? 'Zeit erfasst' : '',
+        series:
+          s.plan.recurrence === 'einmalig'
+            ? 'einmalig'
+            : s.plan.recurrence === 'monatlich'
+              ? 'jeden Monat'
+              : (s.plan.every ?? 1) > 1
+                ? `alle ${s.plan.every} Wochen`
+                : 'jede Woche',
+        links: [
+          ['Serie bearbeiten', `/einsatzplanung/${s.plan.id}?zurueck=${encodeURIComponent(back)}`],
+          [
+            'Nur diesen Tag umplanen / Vertretung / Ausfall',
+            `/einsatzplanung/${s.plan.id}/tag/${s.date}?zurueck=${encodeURIComponent(back)}`,
+          ],
+          ...(s.plan.employee_id ? [['Mitarbeiter', `/personal/${s.plan.employee_id}/kalender`]] : []),
+        ],
+        del: `/einsatzplanung/${s.plan.id}/loeschen`,
+        back,
+      })}
     >
       <span class="t">
         {s.plan.start_time}
@@ -158,6 +186,7 @@ export const SiteCalendar: FC<{
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: CAL_CSS }} />
+      <EventDialog />
       <div class="calbar">
         <span class="seg">
           {CAL_VIEWS.map(([k, l]) => (

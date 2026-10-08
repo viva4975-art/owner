@@ -28,7 +28,7 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/personal\/export/, HR],
   [/^\/bewerber(\/|$)/, HR],
   [/^\/personal(\/|$)/, HR],
-  [/^\/zeiterfassung\/meine(\/|$)/, ALL],
+  [/^\/zeiterfassung\/(meine(\/|$)|plan-als-ist$)/, ALL],
   [/^\/zeiterfassung\/(stundenzettel|lohnarten|arbeitszeitkonto)/, ['admin', 'personal', 'buchhaltung']],
   [/^\/zeiterfassung\/(monat|pruefbericht|einstellungen)/, HR],
   [/^\/(zeiterfassung|einsatzplanung)(\/|$)/, ['admin', 'personal', 'objektleitung']],

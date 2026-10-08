@@ -745,9 +745,9 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
           >
             <h3 style="margin-top:0">Serie löschen</h3>
             <p class="small mut" style="margin-top:0">
-              Für falsch angelegte Einsätze: entfernt die Serie ganz (alle Mitarbeiter, alle Tage). Geht nur,
-              solange noch keine Zeit dazu erfasst ist – sonst oben „beenden“. Einen einzelnen Tag streichen:
-              in der Planung auf den Termin klicken → Ausfall.
+              Für falsch angelegte Einsätze: entfernt die Serie ganz (alle Mitarbeiter, alle Tage). Schon erfasste
+              Zeiten bleiben erhalten (sie stehen dann „ohne Einsatz“). Einen einzelnen Tag streichen: in der
+              Planung auf den Termin klicken → Ausfall.
             </p>
             <input type="hidden" name="serie" value="1" />
             <input type="hidden" name="zurueck" value={ret} />

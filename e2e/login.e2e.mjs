@@ -129,17 +129,22 @@ check(
   (await pc.content()).includes('Zeit gespeichert'),
   await pc.locator('.flash').allInnerTexts(),
 );
-await pc.goto(B + `/zeiterfassung/meine?monat=${day.slice(0, 7)}`);
-await Promise.all([pc.waitForNavigation(), pc.click('a:has-text("ändern")')]);
+await pc.goto(B + `/zeiterfassung/meine?ansicht=liste&datum=${day}`);
+check('Meine Zeiten als Kalender/Liste mit Soll', (await pc.locator('.ec-side .box.plan').count()) === 1);
+await Promise.all([
+  pc.waitForNavigation(),
+  pc.locator('.ec-list a[href*="/zeiterfassung/meine?id="]').first().click(),
+]);
 await pc.fill('#end', '12:30');
 await pc.fill('#reason', 'Ende korrigiert');
 await Promise.all([pc.waitForNavigation(), pc.click('button:has-text("Änderung speichern")')]);
+await pc.goto(B + `/zeiterfassung/meine?ansicht=liste&datum=${day}`);
 check('Änderung mit Grund gespeichert', (await pc.content()).includes('12:30'));
 
 console.log('4b. Einsatzkalender beim Mitarbeiter');
 await admin.goto(B + `/personal/${lead.id}/kalender?ansicht=woche&datum=${day}&pc=1`);
 check('Ansichten Tag/5 Tage/Woche/Monat', (await admin.locator('.ec-bar .seg a').count()) >= 7);
-check('nachgetragene Zeit mit Uhr-Symbol', (await admin.locator('.ev.extra svg').count()) >= 1);
+check('nachgetragene Zeit mit Uhr-Symbol', (await admin.locator('.blk.extra, .ev.extra svg').count()) >= 1);
 await admin.goto(B + `/personal/${worker.id}/einsaetze?pc=1`);
 check('Einsatzliste mit Übersicht', (await admin.locator('.ec-sum .pill').count()) >= 1);
 

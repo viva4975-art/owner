@@ -195,11 +195,14 @@ await o.goto(B + `/personal/${empId}/stundenzettel?monat=${yesterday.slice(0, 7)
 const rep = await o.content();
 check('Stundenliste enthält Nachtrag 17:00–19:30', rep.includes('17:00') && rep.includes('19:30'));
 await o.screenshot({ path: `${out}/z11-stundenliste.png`, fullPage: true });
-check('Prüfbericht leitet um', (await o.request.get(B + '/zeiterfassung/pruefbericht', { maxRedirects: 0 })).status() === 301);
+check(
+  'Prüfbericht leitet um',
+  (await o.request.get(B + '/zeiterfassung/pruefbericht', { maxRedirects: 0 })).status() === 301,
+);
 
 // Korrektur mit Pflicht-Begründung + Protokoll
-await o.goto(B + `/personal/${empId}/zeiten`);
-await o.locator('a:has-text("Öffnen")').first().click();
+await o.goto(B + `/personal/${empId}/zeiten?ansicht=liste&datum=${yesterday}`);
+await o.locator('.ec-list a[href^="/zeiterfassung/"]').first().click();
 await o.fill('#break_minutes', '0');
 await o.fill('#reason', 'E2E Korrektur');
 await o.click('button:has-text("Speichern")');

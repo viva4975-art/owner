@@ -591,24 +591,17 @@ export async function endShiftPlan(sql: Sql, id: string, lastDay: string, actor:
  * Zeiten bleiben unverändert). Tagesausnahmen und daraus berechnete Abwesenheitsstunden werden mit entfernt
  * (Abwesenheitsstunden des Tages zählen danach nach Wochenstunden). Der alte Stand steht im Protokoll.
  */
+/**
+ * Einsätze löschen (Ahmed 08.10.: „einfacher löschen, vom Import stimmt vieles nicht“). Erfasste Zeiten bleiben
+ * immer erhalten (§ 17 MiLoG) – nur ihre Verknüpfung zum Einsatz wird gelöst (Änderungsprotokoll). Tagesausnahmen
+ * entfallen, Abwesenheitsstunden verlieren nur die Verknüpfung. Alter Stand im Protokoll.
+ */
 export async function deleteShiftPlans(sql: Sql, ids: string[], actor: string) {
   if (!ids.length) return 0;
   return sql.begin(async (tx) => {
-    // verknüpfte Zeiten oder Zeiten desselben Mitarbeiters am selben Objekt im Gültigkeitszeitraum (Soll/Ist-Nachweis)
-    const [used] = await tx<{ n: number }[]>`
-      select count(*)::int as n from app.time_entries te
-       where te.status <> 'abgelehnt'
-         and (te.shift_plan_id in ${tx(ids)}
-              or exists (select 1 from app.shift_plans p
-                          where p.id in ${tx(ids)} and p.employee_id = te.employee_id and p.site_id = te.site_id
-                            and extract(isodow from te.work_date) = p.weekday
-                            and te.work_date between p.valid_from and coalesce(p.valid_until, 'infinity'::date)))`;
-    if (used!.n > 0)
-      throw new BusinessError(
-        `Zu diesem Einsatz sind schon ${used!.n} Zeit(en) erfasst – löschen geht nicht mehr (Nachweis nach § 17 MiLoG). ` +
-          'Bitte stattdessen „beenden“: vergangene Tage bleiben, künftige entfallen.',
-      );
+    await tx`select set_config('app.actor', ${actor}, true), set_config('app.reason', 'Einsatz gelöscht', true)`;
     const old = await tx`select * from app.shift_plans where id in ${tx(ids)} for update`;
+    await tx`update app.time_entries set shift_plan_id = null where shift_plan_id in ${tx(ids)}`;
     await tx`delete from app.shift_exceptions where shift_plan_id in ${tx(ids)}`;
     await tx`update app.absence_hours set shift_plan_id = null where shift_plan_id in ${tx(ids)}`;
     await tx`delete from app.shift_plans where id in ${tx(ids)}`;
@@ -864,6 +857,61 @@ export async function confirmPlanned(
               'soll_bestaetigt', 'erfasst', ${plan.id}, ${p.actor})`;
     return id;
   });
+}
+
+/**
+ * Büro: „Plan-Zeiten als Ist-Zeiten erfassen“ (wie Fortytools) für einen Mitarbeiter und Zeitraum. Nimmt jeden
+ * vergangenen Einsatz ohne erfasste Zeit (keine Abwesenheit, kein Ausfall, kein Feiertag) und trägt die geplante Zeit
+ * als freigegebene Zeit ein – Pause wie geplant, mindestens gesetzlich. Feste ID wie beim Bestätigen in der App →
+ * doppelt ausführen legt nichts doppelt an. Überschneidungen werden übersprungen und gemeldet.
+ */
+export async function officeConfirmPlanned(
+  sql: Sql,
+  p: { employeeId: string; from: string; to: string; actor: string; siteScope?: string[] | null },
+): Promise<{ created: number; skipped: string[] }> {
+  const today = todayBerlin();
+  const to = p.to < today ? p.to : today;
+  if (p.from > to) return { created: 0, skipped: [] };
+  const shifts = await plannedShifts(sql, { from: p.from, to, employeeId: p.employeeId });
+  const now = Date.now();
+  let created = 0;
+  const skipped: string[] = [];
+  for (const sh of shifts) {
+    if (sh.entry || sh.absence || sh.holiday || sh.exception?.kind === 'ausfall') continue;
+    if (sh.plan.employee_id !== p.employeeId) continue;
+    if (p.siteScope && !p.siteScope.includes(sh.plan.site_id)) continue;
+    const r = await withActor(sql, p.actor, 'Plan als Ist (Büro)', async (tx) => {
+      const [{ id }] = (await tx`select md5(${sh.plan.id} || ':' || ${sh.date})::uuid as id`) as unknown as [
+        { id: string },
+      ];
+      const [exists] = await tx`select 1 from app.time_entries where id = ${id}`;
+      if (exists) return 'exists';
+      const endDate = sh.plan.end_time <= sh.plan.start_time ? addDays(sh.date, 1) : sh.date;
+      const [{ s, e }] = (await tx`
+        select ((${sh.date}::date + ${sh.plan.start_time}::time) at time zone 'Europe/Berlin') as s,
+               ((${endDate}::date + ${sh.plan.end_time}::time) at time zone 'Europe/Berlin') as e`) as unknown as [
+        { s: Date; e: Date },
+      ];
+      if (e.getTime() > now) return 'open';
+      try {
+        await assertNoOverlap(tx, p.employeeId, s.toISOString(), e.toISOString(), null);
+      } catch {
+        return 'overlap';
+      }
+      const gross = Math.round((e.getTime() - s.getTime()) / 60000);
+      const brk = Math.max(sh.plan.break_minutes ?? 0, suggestedBreak(gross));
+      await tx`
+        insert into app.time_entries (id, employee_id, site_id, work_date, start_at, end_at, break_minutes, break_start_at,
+                                      break_auto, source, status, shift_plan_id, created_by, decided_by, decided_at)
+        values (${id}, ${p.employeeId}, ${sh.plan.site_id}, ${sh.date}, ${s}, ${e}, ${brk}, ${placeBreak(s, e, brk)},
+                true, 'soll_bestaetigt', 'freigegeben', ${sh.plan.id}, ${p.actor}, ${p.actor}, now())`;
+      return 'ok';
+    });
+    if (r === 'ok') created++;
+    else if (r === 'overlap')
+      skipped.push(`${sh.date.split('-').reverse().join('.')} ${sh.plan.site_name} (überschneidet sich)`);
+  }
+  return { created, skipped };
 }
 
 function toRange(date: string, start: string, end: string) {

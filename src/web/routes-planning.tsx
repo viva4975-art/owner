@@ -122,7 +122,7 @@ const PlanTable: FC<{ plans: ShiftPlanRow[]; show: 'employee' | 'site' | 'both';
                   method="post"
                   action={`/einsatzplanung/${p.id}/loeschen`}
                   style="display:inline"
-                  onsubmit="return confirm('Einsatz löschen? Geht nur, solange noch keine Zeit dazu erfasst ist.')"
+                  onsubmit="return confirm('Einsatz löschen? Schon erfasste Zeiten bleiben erhalten.')"
                 >
                   {ret && <input type="hidden" name="zurueck" value={ret} />}
                   <button class="btn sm sec">Löschen</button>
@@ -161,7 +161,28 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     return back(c, safeReturn(b.zurueck), { ok: 'Einsatz beendet.' });
   });
 
-  // Einsatz bzw. ganze Terminserie löschen (nur ohne erfasste Zeiten, sonst „beenden“)
+  // Einsatz bzw. ganze Terminserie löschen (erfasste Zeiten bleiben, nur die Verknüpfung entfällt)
+  // mehrere Einsätze auf einmal löschen (Einsatzliste beim Mitarbeiter: alle Wochentage einer Zeile)
+  app.post('/einsatzplanung/loeschen', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const ids = ([] as unknown[])
+      .concat(b.ids ?? [])
+      .map(String)
+      .filter((x) => /^[0-9a-f-]{36}$/.test(x));
+    if (!ids.length) return back(c, safeReturn(b.zurueck), { ok: 'Nichts ausgewählt.' });
+    const rows = await sql<{ id: string; site_id: string }[]>`
+      select id, site_id from app.shift_plans where id in ${sql(ids)}`;
+    for (const r of rows) assertSite(c, r.site_id);
+    const n = await deleteShiftPlans(
+      sql,
+      rows.map((r) => r.id),
+      c.get('actor'),
+    );
+    return back(c, safeReturn(b.zurueck), {
+      ok: `${n} Einsatz/Einsätze gelöscht – erfasste Zeiten bleiben.`,
+    });
+  });
+
   app.post(`/einsatzplanung/:id{${UUID}}/loeschen`, async (c) => {
     const b = await c.req.parseBody();
     const id = c.req.param('id');

@@ -36,6 +36,7 @@ import {
   officeSave,
   officeRemove,
   purgeEntries,
+  officeConfirmPlanned,
   listDeletions,
   plannedShifts,
   saveTimeSettings,
@@ -50,6 +51,9 @@ import { canAccess } from './permissions.js';
 import { Icon } from './icons.js';
 import { PageHead, dateDe, euro } from './layout.js';
 import { AbsentCard } from './pages-crm.js';
+import { EmployeeCalendarView } from './pages-employee-calendar.js';
+import { employeeCalendarData } from './employee-calendar-data.js';
+import { linkedEmployee } from '../services/users.js';
 import { absentBetween } from '../services/absences.js';
 
 const versionOf = (v: unknown) => (typeof v === 'string' && v !== '' ? Number(v) : null);
@@ -260,7 +264,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
   // ------------------------------------------------------------------ Tagesübersicht
 
   // Ansicht wählen (ein Tag / Zeitraum) und offene Nachträge – oben auf beiden Zeiterfassungs-Seiten (Ahmed 07.10.)
-  const viewHead = async (c: Context<AppEnv>, mode: 'tag' | 'liste', day: string) => {
+  const viewHead = async (c: Context<AppEnv>, mode: 'person' | 'tag' | 'liste', day: string) => {
     const [requests, running] = (
       await Promise.all([
         listEntries(sql, { status: ['beantragt'] }),
@@ -271,6 +275,9 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
     return (
       <>
         <div class="chips" style="margin:0 0 12px">
+          <a href="/zeiterfassung/mitarbeiter" class={mode === 'person' ? 'on' : ''}>
+            Je Mitarbeiter
+          </a>
           <a href={`/zeiterfassung?datum=${day}`} class={mode === 'tag' ? 'on' : ''}>
             Ein Tag
           </a>
@@ -290,7 +297,99 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
     );
   };
 
+  // Zeiterfassung je Mitarbeiter wie Fortytools: Kalender/Liste mit Geplant/Erfasst und „Plan-Zeiten als Ist-Zeiten“
+  app.get('/zeiterfassung/mitarbeiter', async (c) => {
+    const scope = c.get('sites');
+    const emps = (
+      await sql<{ id: string; name: string; personnel_no: string; site_ids: string[] | null }[]>`
+        select e.id, e.last_name || ', ' || e.first_name as name, e.personnel_no,
+               (select array_agg(es.site_id) from app.employee_sites es where es.employee_id = e.id) as site_ids
+          from app.employees e where e.status = 'aktiv' order by e.last_name, e.first_name`
+    ).filter((e) => !scope || (e.site_ids ?? []).some((s) => scope.includes(s)));
+    const q = c.req.query();
+    const sel = emps.find((e) => e.id === q.mitarbeiter) ?? emps[0];
+    const head = await viewHead(c, 'person', todayBerlin());
+    if (!sel)
+      return shell(
+        c,
+        'person',
+        'Zeiterfassung',
+        <>
+          {head}
+          <div class="empty">Keine Mitarbeitenden.</div>
+        </>,
+      );
+    const d = await employeeCalendarData(sql, sel.id, q, { siteScope: scope });
+    return shell(
+      c,
+      'person',
+      `Zeiterfassung für ${sel.name.split(', ').reverse().join(' ')}`,
+      <>
+        {head}
+        <EmployeeCalendarView
+          employeeId={sel.id}
+          today={todayBerlin()}
+          holiday={holidayName}
+          canEdit
+          base="/zeiterfassung/mitarbeiter"
+          keep={`mitarbeiter=${sel.id}`}
+          confirmAction="/zeiterfassung/plan-als-ist"
+          head={
+            <form method="get" action="/zeiterfassung/mitarbeiter" style="margin:0">
+              <input type="hidden" name="ansicht" value={d.view} />
+              <input type="hidden" name="datum" value={d.date} />
+              <select
+                name="mitarbeiter"
+                onchange="this.form.submit()"
+                aria-label="Mitarbeiter"
+                style="min-width:240px"
+              >
+                {emps.map((e) => (
+                  <option value={e.id} selected={e.id === sel.id}>
+                    {e.name} ({e.personnel_no})
+                  </option>
+                ))}
+              </select>
+            </form>
+          }
+          {...d}
+        />
+      </>,
+    );
+  });
+
+  app.post('/zeiterfassung/plan-als-ist', async (c) => {
+    const b = await c.req.parseBody();
+    const emp = String(b.mitarbeiter ?? '');
+    const own = await linkedEmployee(sql, c.get('user').id);
+    const role = c.get('user').role;
+    if (emp !== own && !['admin', 'personal', 'objektleitung'].includes(role))
+      throw new BusinessError('Keine Berechtigung');
+    const from = String(b.von ?? '');
+    const to = String(b.bis ?? '');
+    if (!isDate(from) || !isDate(to)) throw new BusinessError('Zeitraum ungültig');
+    const r = await officeConfirmPlanned(sql, {
+      employeeId: emp,
+      from,
+      to,
+      actor: c.get('actor'),
+      siteScope: emp === own ? null : c.get('sites'),
+    });
+    const z =
+      typeof b.zurueck === 'string' && b.zurueck.startsWith('/') && !b.zurueck.startsWith('//')
+        ? b.zurueck
+        : '/zeiterfassung/mitarbeiter';
+    return back(c, z, {
+      ok: `${r.created} Einsätze als Ist-Zeit eingetragen.${r.skipped.length ? ` Übersprungen: ${r.skipped.slice(0, 5).join('; ')}` : ''}`,
+    });
+  });
+
   app.get('/zeiterfassung', async (c) => {
+    // Einstieg wie Fortytools: Zeiterfassung je Mitarbeiter; Tagesübersicht über „Ein Tag“ (?datum=)
+    if (!c.req.query('datum')) {
+      const qs = new URL(c.req.url).search;
+      return c.redirect(`/zeiterfassung/mitarbeiter${qs}`);
+    }
     const day = isDate(c.req.query('datum')) ? c.req.query('datum')! : todayBerlin();
     const [allShifts, allEntries] = await Promise.all([
       plannedShifts(sql, { from: day, to: day }),
@@ -1076,23 +1175,23 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
 
   // ------------------------------------------------------------------ Reiter bei Mitarbeiter und Objekt
 
+  // Zeiten beim Mitarbeiter: gleiche Ansicht wie Einsatzkalender/Zeiterfassung, standardmäßig als Liste (Ahmed 08.10.)
   app.get(`/personal/:id{${UUID}}/zeiten`, (c) =>
     shells.employee!(c, 'zeiten', async (e) => {
-      const from = isDate(c.req.query('von')) ? c.req.query('von')! : addDays(todayBerlin(), -30);
-      const rows = await listEntries(sql, { employeeId: e.id, from });
+      const d = await employeeCalendarData(sql, e.id, c.req.query(), {
+        defaultView: 'liste',
+        siteScope: c.get('sites'),
+      });
       return (
-        <>
-          <div class="actions" style="margin-top:0">
-            <a class="btn sm" href={`/zeiterfassung/${randomUUID()}?mitarbeiter=${e.id}`}>
-              + Zeit erfassen
-            </a>
-            <a class="btn sm sec" href={`/personal/${e.id}/stundenzettel`}>
-              Stundenliste
-            </a>
-            <span class="mut small">ab {dateDe(from)}</span>
-          </div>
-          <EntryTable rows={rows} show="site" />
-        </>
+        <EmployeeCalendarView
+          employeeId={e.id}
+          today={todayBerlin()}
+          holiday={holidayName}
+          canEdit
+          base={`/personal/${e.id}/zeiten`}
+          confirmAction="/zeiterfassung/plan-als-ist"
+          {...d}
+        />
       );
     }),
   );

@@ -21,9 +21,8 @@ import { type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
 import { centsToInput, str } from './forms.js';
 import { PageHead, euro } from './layout.js';
-import { EMP_VIEWS, EmployeeCalendarView } from './pages-employee-calendar.js';
-import { calRange } from './pages-site-calendar.js';
-import { listEntries, plannedShifts } from '../services/time.js';
+import { EmployeeCalendarView } from './pages-employee-calendar.js';
+import { employeeCalendarData } from './employee-calendar-data.js';
 import { holidayName } from '../domain/time/holidays.js';
 import { uploadConfig, zipHref } from './routes-files.js';
 
@@ -323,39 +322,17 @@ export function registerHrRoutes(ctx: Ctx) {
   // ------------------------------------------------------------ Einsatzkalender
   app.get(`/personal/:id{${UUID}}/kalender`, (c) =>
     shells.employee!(c, 'kalender', async (e) => {
-      const q = c.req.query();
-      // alte Links ?monat=JJJJ-MM weiter unterstützen
-      const date = /^\d{4}-\d{2}-\d{2}$/.test(q.datum ?? '')
-        ? q.datum!
-        : /^\d{4}-\d{2}$/.test(q.monat ?? '')
-          ? `${q.monat}-01`
-          : todayBerlin();
-      const view = (EMP_VIEWS.find(([k]) => k === q.ansicht)?.[0] ??
-        'monat') as (typeof EMP_VIEWS)[number][0];
-      const r = calRange(view, date);
-      const [shifts, entries, absences] = await Promise.all([
-        plannedShifts(sql, { from: r.from, to: r.to, employeeId: e.id }),
-        listEntries(sql, { from: r.from, to: r.to, employeeId: e.id }),
-        sql<{ kind: string; start_date: string; end_date: string; half_day: boolean }[]>`
-          select kind::text, start_date::text, end_date::text, half_day from app.absences
-           where employee_id = ${e.id} and status = 'genehmigt' and start_date <= ${r.to} and end_date >= ${r.from}`,
-      ]);
-      const used = new Set(shifts.map((s) => s.entry?.id).filter(Boolean));
       const role = c.get('user').role;
+      const d = await employeeCalendarData(sql, e.id, c.req.query(), { siteScope: c.get('sites') });
       return (
-        <div class="card">
-          <EmployeeCalendarView
-            employeeId={e.id}
-            view={view}
-            date={date}
-            today={todayBerlin()}
-            shifts={shifts}
-            extra={entries.filter((x) => !used.has(x.id) && x.status !== 'abgelehnt')}
-            absences={absences}
-            holiday={holidayName}
-            canEdit={['admin', 'personal', 'objektleitung'].includes(role)}
-          />
-        </div>
+        <EmployeeCalendarView
+          employeeId={e.id}
+          today={todayBerlin()}
+          holiday={holidayName}
+          canEdit={['admin', 'personal', 'objektleitung'].includes(role)}
+          confirmAction="/zeiterfassung/plan-als-ist"
+          {...d}
+        />
       );
     }),
   );

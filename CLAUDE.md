@@ -1533,3 +1533,23 @@ Testadresse.
     Krankenkasse, Geburtsdatum, Anschrift).
   - Ahmed 08.10.: **D-U-N-S 343512805.** Qwist-Zugangsdaten wurden im Chat geschickt → **nicht verwendet, bitte bei Qwist
     neu erzeugen** und nur auf dem Server in `.env.live` eintragen (`QWIST_CLIENT_ID`, `QWIST_CLIENT_SECRET`).
+- 2026-10-08: Runde 26, Paket B – Zeiterfassung wie Fortytools (Ahmed, Screenshots):
+  - **Ein Einsatzkalender für alles** (`pages-employee-calendar.tsx`, Daten `employee-calendar-data.ts`): Mitarbeiter-Reiter
+    „Einsatzkalender“ und „Zeiten“ (Standard Liste), **Zeiterfassung → Je Mitarbeiter** (`/zeiterfassung/mitarbeiter`,
+    Mitarbeiterauswahl; `/zeiterfassung` ohne Datum führt dorthin, Tagesübersicht über „Ein Tag“) und **Meine Zeiten**.
+    Monat mit Balken je Einsatz (Uhr = Zeit bestätigt, rot gestrichelt = keine Zeit), Woche/5 Tage/Tag als Stundenraster
+    (Objekt, Zeit, Dauer, Adresse; Überschneidungen nebeneinander), Liste (geplant/erfasst/Pause/Dauer/Status). Rechts
+    „Geplant“ (Einsätze, Std.) mit **„Plan-Zeiten als Ist-Zeiten erfassen“**, „Erfasst“ (Einsätze, Krank, Urlaub, Sonstiges,
+    Gesamt) und **Soll/Ist als Balken** mit Differenz bis heute. Klick auf einen Einsatz: Details mit „So gearbeitet –
+    bestätigen“, Zeit erfassen/ändern, Serie bearbeiten, nur diesen Tag umplanen, Einsatz löschen.
+  - **Plan als Ist im Büro** (`officeConfirmPlanned`): vergangene Einsätze ohne Zeit (nicht abwesend, kein Ausfall, kein
+    Feiertag) → freigegebene Zeit mit Plan-Zeiten, Pause mindestens gesetzlich, Protokollgrund „Plan als Ist (Büro)“,
+    feste ID wie in der App (nichts doppelt), Überschneidungen übersprungen. Objektleitung nur eigene Objekte; eigene Zeiten
+    (Meine Zeiten) für jede Büro-Rolle. **Hinweis:** Bestätigt das Büro Plan-Zeiten, ohne dass gestempelt wurde, muss die
+    Arbeitszeit tatsächlich so geleistet sein (§ 17 MiLoG – Aufzeichnung muss stimmen).
+  - **Einsätze löschen** geht jetzt immer (auch vom Import): erfasste Zeiten bleiben erhalten, nur ihre Verknüpfung zum
+    Einsatz entfällt (Protokoll). In der Einsatzliste beim Mitarbeiter „Löschen“ je Zeile (alle Wochentage), im Kalender
+    im Detailfenster.
+  - **Objekt → Einsätze:** Klick auf einen Termin öffnet dasselbe Detailfenster mit „Serie bearbeiten“ (Standard), „Nur diesen
+    Tag umplanen / Vertretung / Ausfall“, Mitarbeiter, Löschen.
+  - Tests: 412 Unit-/DB-Tests (neu `runde26.db.test.ts`), e2e zeit/login/planung/runde10/objektseiten/rechte grün.

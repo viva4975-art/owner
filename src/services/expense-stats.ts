@@ -22,34 +22,262 @@ export interface ExpenseStats {
 const CATEGORY_NAME: Record<string, string> = {
   ...EXPENSE_CATEGORY,
   zahlungslauf: 'Eingangsrechnungen (SEPA-Zahlungslauf)',
-  offen: 'noch nicht zugeordnet',
+  offen: 'nicht erkannt',
 };
+
+/** Kostenart: automatisch aus Empfänger/Verwendungszweck (Ahmed: „DEVK ist klar Versicherung“) oder nach Zuordnung. */
+export type CategoryMode = 'auto' | 'zuordnung';
+
+const KEYWORDS: [string, string[]][] = [
+  [
+    'versicherung',
+    [
+      'DEVK',
+      'ALLIANZ',
+      ' AXA ',
+      'HUK',
+      ' ERGO ',
+      'GENERALI',
+      ' R V ',
+      'ZURICH',
+      'GOTHAER',
+      'SIGNAL IDUNA',
+      ' VHV ',
+      ' HDI ',
+      ' LVM ',
+      'PROVINZIAL',
+      'VERSICHERUNG',
+      'BARMENIA',
+      'WUERTTEMBERGISCHE',
+      ' ARAG ',
+      'NUERNBERGER',
+      'BAYERISCHE V',
+    ],
+  ],
+  [
+    'steuern',
+    [
+      'FINANZAMT',
+      'BUNDESKASSE',
+      'HAUPTZOLLAMT',
+      ' ZOLL ',
+      ' AOK ',
+      'TECHNIKER',
+      ' TK ',
+      'BARMER',
+      ' DAK ',
+      ' IKK ',
+      ' BKK ',
+      'KNAPPSCHAFT',
+      'MINIJOB',
+      'SOKA',
+      'SOZIALKASSE',
+      'BERUFSGENOSSENSCHAFT',
+      'BG BAU',
+      'BG ETEM',
+      ' BGN ',
+      'KRANKENKASSE',
+      'RUNDFUNK',
+      ' IHK ',
+      'HANDWERKSKAMMER',
+      'STADTKASSE',
+      'GEWERBESTEUER',
+      'SOZIALVERSICHERUNG',
+      'ZUSATZVERSORGUNG',
+      ' VBL ',
+    ],
+  ],
+  [
+    'fahrzeuge',
+    [
+      ' ARAL ',
+      ' SHELL ',
+      ' ESSO ',
+      'TOTALENERGIES',
+      ' TOTAL ',
+      ' JET ',
+      'TANKSTELLE',
+      ' OMV ',
+      ' AGIP ',
+      ' AVIA ',
+      ' ORLEN ',
+      ' STAR ',
+      'AUTOHAUS',
+      ' KFZ ',
+      ' ADAC ',
+      ' DEKRA ',
+      ' TUEV ',
+      ' TÜV ',
+      'LEASING',
+      ' SIXT ',
+      'EUROPCAR',
+      'PARKHAUS',
+      'PARKEN',
+      ' MAUT ',
+      'WERKSTATT',
+      'REIFEN',
+      'WASCHSTRASSE',
+      'CARWASH',
+      'TANKEN',
+    ],
+  ],
+  [
+    'material',
+    [
+      'HORNBACH',
+      ' OBI ',
+      'BAUHAUS',
+      ' TOOM ',
+      ' METRO ',
+      'KAERCHER',
+      'KÄRCHER',
+      'HAGLEITNER',
+      'BUZIL',
+      'DR SCHNELL',
+      ' IGEFA ',
+      'REINIGUNGSBEDARF',
+      'AMAZON',
+      'WUERTH',
+      'WÜRTH',
+      'HOLCHEM',
+      'ECOLAB',
+      ' TANA ',
+      ' KIEHL ',
+      ' DM DROGERIE',
+      'ROSSMANN',
+      ' LIDL ',
+      ' ALDI ',
+      ' REWE ',
+      ' EDEKA ',
+      'KAUFLAND',
+      ' NORMA ',
+      'HYGIENE',
+      'ARBEITSKLEIDUNG',
+      'ENGELBERT STRAUSS',
+    ],
+  ],
+  [
+    'miete',
+    [
+      'MIETE',
+      'VERMIETUNG',
+      'STADTWERKE',
+      ' SWM ',
+      ' E ON ',
+      'TELEKOM',
+      'VODAFONE',
+      ' O2 ',
+      'TELEFONICA',
+      ' 1 1 ',
+      ' IONOS ',
+      ' STROM ',
+      'NEBENKOSTEN',
+      ' STRATO ',
+      'MICROSOFT',
+      ' GOOGLE ',
+      ' ADOBE ',
+      'FORTYTOOLS',
+      'LEXWARE',
+      ' DATEV ',
+      'BUEROBEDARF',
+      'BÜROBEDARF',
+    ],
+  ],
+  [
+    'bank',
+    [
+      'KONTOFUEHRUNG',
+      'KONTOFÜHRUNG',
+      'ENTGELT',
+      ' ZINSEN ',
+      'ABSCHLUSS',
+      'GEBUEHR',
+      'GEBÜHR',
+      'KARTENENTGELT',
+    ],
+  ],
+  ['personal', [' LOHN ', 'GEHALT', 'VORSCHUSS', ' LOHN/', 'LOEHNE', 'LÖHNE']],
+  ['nachunternehmer', ['SUBUNTERNEHMER', 'NACHUNTERNEHMER']],
+];
+const norm = (s: string) =>
+  ` ${s
+    .toUpperCase()
+    .replace(/[^A-Z0-9ÄÖÜ]+/g, ' ')
+    .trim()} `;
+/** Kostenart aus Name und Verwendungszweck (Schlüsselwörter, bekannte Firmen). */
+export function guessCategory(name: string | null, purpose: string | null): string | null {
+  const who = norm(name ?? '');
+  const all = norm(`${name ?? ''} ${purpose ?? ''}`);
+  // zuerst der Name der Gegenseite (eindeutiger), dann der Verwendungszweck
+  for (const hay of [who, all])
+    for (const [cat, words] of KEYWORDS) if (words.some((w) => hay.includes(w))) return cat;
+  return null;
+}
 
 export async function expenseStats(
   sql: Sql,
-  f: { from: string; to: string; group: StatGroup; basis: ExpenseBasis },
+  f: { from: string; to: string; group: StatGroup; basis: ExpenseBasis; mode?: CategoryMode },
 ): Promise<ExpenseStats> {
-  const rows =
-    f.basis === 'konto'
-      ? await sql<{ d: string; cents: bigint; cat: string; sid: string | null; who: string }[]>`
-          select t.booking_date::text as d, (-t.amount_cents)::bigint as cents,
-                 coalesce(ii.category::text, t.expense_category,
-                          case when t.assigned_kind = 'mitarbeiter' then 'personal' end,
-                          case when t.note like 'Zahlungslauf %' then 'zahlungslauf' end, 'offen') as cat,
-                 s.id as sid,
-                 coalesce(s.name, case when t.assigned_kind = 'mitarbeiter' then 'Mitarbeiter (Lohn u. a.)' end,
-                          nullif(trim(t.counterparty_name), ''), 'unbekannt') as who
-            from app.bank_transactions t
-            left join lateral (
-              select category, supplier_id from app.incoming_invoices
-               where bank_transaction_id = t.id order by gross_cents desc limit 1) ii on true
-            left join app.suppliers s
-              on s.id = coalesce(ii.supplier_id, case when t.assigned_kind = 'lieferant' then t.assigned_id end)
-           where t.amount_cents < 0 and t.booking_date between ${f.from} and ${f.to}`
-      : await sql<{ d: string; cents: bigint; cat: string; sid: string | null; who: string }[]>`
-          select i.invoice_date::text as d, i.net_cents as cents, i.category::text as cat, s.id as sid, s.name as who
-            from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
-           where i.invoice_date between ${f.from} and ${f.to}`;
+  const mode = f.mode ?? 'auto';
+  type Row = { d: string; cents: bigint; cat: string; sid: string | null; who: string };
+  let rows: Row[];
+  if (f.basis === 'konto') {
+    const raw = await sql<
+      {
+        d: string;
+        cents: bigint;
+        name: string | null;
+        purpose: string;
+        chosen: string | null;
+        inv_cat: string | null;
+        assigned_kind: string | null;
+        run: boolean;
+        sid: string | null;
+        sname: string | null;
+        skind: string | null;
+        employee: boolean;
+      }[]
+    >`
+      select t.booking_date::text as d, (-t.amount_cents)::bigint as cents, t.counterparty_name as name, t.purpose,
+             t.expense_category as chosen, ii.category::text as inv_cat, t.assigned_kind,
+             coalesce(t.note like 'Zahlungslauf %', false) as run,
+             s.id as sid, s.name as sname, s.kind as skind,
+             (t.assigned_kind = 'mitarbeiter' or exists (
+               select 1 from app.employee_private p
+                where t.counterparty_iban is not null and upper(replace(coalesce(p.iban, ''), ' ', '')) = t.counterparty_iban)) as employee
+        from app.bank_transactions t
+        left join lateral (
+          select category, supplier_id from app.incoming_invoices
+           where bank_transaction_id = t.id order by gross_cents desc limit 1) ii on true
+        left join lateral (
+          select x.id, x.name, x.kind from app.suppliers x
+           where x.id = coalesce(ii.supplier_id, case when t.assigned_kind = 'lieferant' then t.assigned_id end)
+              or (t.counterparty_iban is not null and upper(replace(coalesce(x.iban, ''), ' ', '')) = t.counterparty_iban)
+           order by (x.id = coalesce(ii.supplier_id, case when t.assigned_kind = 'lieferant' then t.assigned_id end)) desc nulls last
+           limit 1) s on true
+       where t.amount_cents < 0 and t.booking_date between ${f.from} and ${f.to}`;
+    rows = raw.map((r) => {
+      const auto =
+        (r.skind === 'nachunternehmer' ? 'nachunternehmer' : null) ??
+        guessCategory(r.name, r.purpose) ??
+        (r.employee ? 'personal' : null);
+      const assigned =
+        r.chosen ?? r.inv_cat ?? (r.run ? 'zahlungslauf' : null) ?? (r.employee ? 'personal' : null);
+      const cat = (mode === 'auto' ? (r.chosen ?? auto ?? assigned) : (assigned ?? auto)) ?? 'offen';
+      return {
+        d: r.d,
+        cents: r.cents,
+        cat,
+        sid: r.sid,
+        who: r.sname ?? (r.employee ? 'Mitarbeiter (Lohn u. a.)' : r.name?.trim() || 'unbekannt'),
+      };
+    });
+  } else {
+    rows = await sql<Row[]>`
+      select i.invoice_date::text as d, i.net_cents as cents, i.category::text as cat, s.id as sid, s.name as who
+        from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
+       where i.invoice_date between ${f.from} and ${f.to}`;
+  }
   const keyOf = (m: string) =>
     f.group === 'jahr'
       ? m.slice(0, 4)

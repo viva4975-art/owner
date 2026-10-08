@@ -18,7 +18,13 @@ import {
 } from '../services/reports.js';
 import { hm, WEEKDAYS_SHORT } from '../services/time.js';
 import { type StatBasis, type StatGroup, revenueStats, statKpis } from '../services/statistics.js';
-import { bankIncome, type ExpenseBasis, expenseStats, openIncoming } from '../services/expense-stats.js';
+import {
+  bankIncome,
+  type CategoryMode,
+  type ExpenseBasis,
+  expenseStats,
+  openIncoming,
+} from '../services/expense-stats.js';
 import type { AppEnv, Ctx } from './app.js';
 import { PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
 import { canOpen } from './permissions.js';
@@ -417,6 +423,7 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
     if (preset === 'jahre') [from, to] = [`${y - 4}-01-01`, `${y}-12-31`];
     if (to < from) to = from;
     const basis: ExpenseBasis = q('grundlage') === 'rechnung' ? 'rechnung' : 'konto';
+    const mode: CategoryMode = q('kostenart') === 'zuordnung' ? 'zuordnung' : 'auto';
     const group: StatGroup =
       preset === 'jahre'
         ? 'jahr'
@@ -427,8 +434,8 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
             : 'monat';
     const shiftY = (d: string) => `${Number(d.slice(0, 4)) - 1}${d.slice(4)}`.replace('-02-29', '-02-28');
     const [st, prev, income, revenue, open] = await Promise.all([
-      expenseStats(sql, { from, to, group, basis }),
-      expenseStats(sql, { from: shiftY(from), to: shiftY(to), group, basis }),
+      expenseStats(sql, { from, to, group, basis, mode }),
+      expenseStats(sql, { from: shiftY(from), to: shiftY(to), group, basis, mode }),
       bankIncome(sql, from, to),
       revenueStats(sql, { from, to, basis: 'rechnung', group, customerId: null }),
       openIncoming(sql),
@@ -453,7 +460,7 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
     const base = basis === 'konto' ? income : revenue.total;
     const result = base - st.total;
     const open0 = st.categories.find((x) => x.key === 'offen');
-    const qs = new URLSearchParams({ von: from, bis: to, grundlage: basis, gruppe: group });
+    const qs = new URLSearchParams({ von: from, bis: to, grundlage: basis, gruppe: group, kostenart: mode });
     const presetHref = (p: string) => {
       const u = new URLSearchParams(qs);
       u.delete('von');
@@ -499,6 +506,17 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
               </option>
               <option value="rechnung" selected={basis === 'rechnung'}>
                 Eingangsrechnungen (netto)
+              </option>
+            </select>
+          </div>
+          <div>
+            <label for="kostenart">Kostenart</label>
+            <select id="kostenart" name="kostenart">
+              <option value="auto" selected={mode === 'auto'}>
+                automatisch erkennen
+              </option>
+              <option value="zuordnung" selected={mode === 'zuordnung'}>
+                nach Zuordnung
               </option>
             </select>
           </div>
@@ -565,9 +583,9 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
 
         {basis === 'konto' && open0 && (
           <div class="notice warn">
-            {euro(open0.cents)} der Kontoausgänge sind noch keiner Kostenart zugeordnet –{' '}
-            <a href="/transfer/kontoumsaetze">Kontoumsätze zuordnen</a> (Lieferant, Mitarbeiter oder Kostenart
-            wählen).
+            {euro(open0.cents)} der Kontoausgänge wurden keiner Kostenart erkannt – beim Zuordnen unter{' '}
+            <a href="/transfer/kontoumsaetze">Kontoumsätze</a> Lieferant (Nachunternehmer) oder Kostenart
+            wählen.
           </div>
         )}
 
@@ -664,7 +682,13 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
     const basis: ExpenseBasis = q('grundlage') === 'rechnung' ? 'rechnung' : 'konto';
     const group: StatGroup =
       q('gruppe') === 'quartal' ? 'quartal' : q('gruppe') === 'jahr' ? 'jahr' : 'monat';
-    const st = await expenseStats(sql, { from, to, group, basis });
+    const st = await expenseStats(sql, {
+      from,
+      to,
+      group,
+      basis,
+      mode: q('kostenart') === 'zuordnung' ? 'zuordnung' : 'auto',
+    });
     const e = (v: bigint) => (Number(v) / 100).toFixed(2).replace('.', ',');
     const lines: string[][] = [
       ...st.periods.map((p) => [p.key, e(p.cents)]),

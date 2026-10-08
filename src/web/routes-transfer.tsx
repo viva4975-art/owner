@@ -68,8 +68,40 @@ const TX_CSS = `
 .btn.ok,.tx-go{background:#a8dba8;color:#1d4d1d;border-color:#8cc98c}
 .tx-go{width:100%}
 .tx-head{margin-bottom:12px}
+.tx-row.inl-open .tx-match{grid-column:4/-1}.tx-row.inl-open .tx-act{display:none}
+.inl{border:1px solid var(--line,#ddd);border-radius:8px;padding:10px 12px;background:#fff}
+.inl-tabs{display:flex;gap:6px;align-items:center;margin-bottom:8px}.inl-x{margin-left:auto;font-size:20px;text-decoration:none;color:#888}
+.inl-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}.inl-row select,.inl-row input[name=note],.inl-row input[name=name]{flex:1;min-width:200px}
+.inl-small{border-top:1px dashed #ddd;padding-top:8px;margin-top:10px}
+.inl-sum{display:grid;grid-template-columns:auto auto auto auto 1fr;gap:4px 14px;align-items:center;margin:8px 0}
+.inl-full{grid-column:1/-1;font-size:13px}
+.inl-h{font-weight:600;margin:8px 0 4px}
+.inl-item{display:grid;grid-template-columns:22px 110px 1fr 90px auto;gap:8px;align-items:center;padding:3px 0;cursor:pointer}
+.inl-item .r{text-align:right;font-weight:600}
 @media (max-width:900px){.tx-row{grid-template-columns:1fr auto}.tx-arrow{display:none}.tx-match,.tx-act{grid-column:1/-1}.tx-amt{padding-top:0}.tx-act{justify-content:flex-start}}
 `;
+
+// Zuordnen direkt in der Zeile (wie Fortytools): Kunde/Lieferant/Mitarbeiter öffnen sich in der Zeile, Auswahl lädt die
+// offenen Rechnungen nach, Summe/Saldo werden beim Ankreuzen mitgerechnet. Ohne JavaScript führen die Links auf eigene Seiten.
+const INLINE_JS = `(function(){
+  function eur(c){var n=Number(c)/100;return n.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';}
+  function calc(f){var amt=Number(f.getAttribute('data-amount'));var sum=0;
+    f.querySelectorAll('input[data-cents]').forEach(function(i){if(i.checked)sum+=Number(i.getAttribute('data-cents'));});
+    var s=f.querySelector('[data-sum]'),d=f.querySelector('[data-saldo]');if(!s)return;
+    s.textContent=eur(sum);var saldo=amt-sum;d.textContent=(saldo>0?'+':'')+eur(saldo)+(sum&&saldo?' ('+(Math.round(-saldo/sum*10000)/100).toLocaleString('de-DE')+' %)':'');
+    d.style.color=saldo===0?'#2e7d32':'#c0392b';}
+  function load(row,url){var box=row.querySelector('.tx-match');if(!row._orig)row._orig=box.innerHTML;row.classList.add('inl-open');
+    box.innerHTML='<div class="mut small">lädt …</div>';
+    fetch(url,{credentials:'same-origin',headers:{'X-Requested-With':'fetch'}}).then(function(r){return r.text();}).then(function(h){
+      box.innerHTML=h;box.querySelectorAll('form.inl-pick').forEach(calc);});}
+  document.addEventListener('click',function(e){
+    var a=e.target.closest('[data-inline]');var x=e.target.closest('[data-inline-close]');
+    if(x){e.preventDefault();var r=x.closest('.tx-row');var b=r.querySelector('.tx-match');b.innerHTML=r._orig||'';r.classList.remove('inl-open');return;}
+    if(!a)return;var row=a.closest('.tx-row');if(!row)return;e.preventDefault();load(row,a.getAttribute('data-inline'));});
+  document.addEventListener('change',function(e){
+    var s=e.target.closest('select[data-inline-pick]');if(s){load(s.closest('.tx-row'),s.getAttribute('data-inline-pick')+encodeURIComponent(s.value));return;}
+    var f=e.target.closest('form.inl-pick');if(f)calc(f);});
+})();`;
 const CategorySelect = ({ id }: { id: string }) => (
   <div style="min-width:220px">
     <label for={id}>Kostenart (für die Ausgaben-Statistik)</label>
@@ -202,6 +234,16 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
             {canAccess(role, '/einstellungen/bankabruf') && <a href="/einstellungen/bankabruf">Bankabruf</a>}
           </div>
         )}
+        {accounts.some((a) => a.notInCompany) && (
+          <div class="notice warn">
+            Konto aus der Bank steht nicht unter Firmendaten:{' '}
+            {accounts
+              .filter((a) => a.notInCompany)
+              .map((a) => `${a.name} ${ibanShort(a.iban)}`)
+              .join(', ')}
+            . Bitte die Bankverbindungen unter Einstellungen → Firmendaten prüfen – sie stehen auf jeder Rechnung.
+          </div>
+        )}
         {feed.accounts.some((a) => a.last_fetch_error) && (
           <div class="notice warn">
             Letzter Abruf mit Fehler:{' '}
@@ -227,8 +269,19 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
             </a>
           ))}
           <span class="small mut">{rows.total} Umsätze</span>
+          {status === 'offen' && rows.total > 0 && (
+            <form method="post" action="/transfer/kontoumsaetze/alle-nicht" style="margin:0 0 0 auto">
+              <input type="hidden" name="konto" value={konto} />
+              <button
+                class="btn sm sec"
+                data-confirm={`Alle ${rows.total} offenen Umsätze${konto ? ' dieses Kontos' : ''} als „nicht zugeordnet“ abhaken? Es wird nichts gebucht; einzelne lassen sich unter „Erledigt“ wieder öffnen.`}
+              >
+                Alle {rows.total} nicht zuordnen
+              </button>
+            </form>
+          )}
           {status === 'offen' && sure.length > 0 && (
-            <form method="post" action="/transfer/kontoumsaetze/sicher" style="margin:0 0 0 auto">
+            <form method="post" action="/transfer/kontoumsaetze/sicher" style="margin:0">
               {sure.map((t) => (
                 <input type="hidden" name="tx" value={t.id} />
               ))}
@@ -241,6 +294,7 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
             </form>
           )}
         </div>
+        <script dangerouslySetInnerHTML={{ __html: INLINE_JS }} />
         <div class="card tx-list">
           {rows.map((t, i) => (
             <TxRow t={t} s={sugg[i]!} />
@@ -367,22 +421,23 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
             <SuggestionBox s={first} />
           ) : (
             <div class="tx-btns">
-              {t.amount_cents > 0n && (
-                <a class="btn sm sec" href={`${BACK}/${t.id}`}>
-                  Kunde
-                </a>
-              )}
-              <a class="btn sm sec" href={`${BACK}/${t.id}/lieferant`}>
+              <a class="btn sm sec" href={`${BACK}/${t.id}`} data-inline={`${BACK}/${t.id}/inline?art=kunde`}>
+                Kunde
+              </a>
+              <a
+                class="btn sm sec"
+                href={`${BACK}/${t.id}/lieferant`}
+                data-inline={`${BACK}/${t.id}/inline?art=lieferant`}
+              >
                 Lieferant
               </a>
-              <a class="btn sm sec" href={`${BACK}/${t.id}/mitarbeiter`}>
+              <a
+                class="btn sm sec"
+                href={`${BACK}/${t.id}/mitarbeiter`}
+                data-inline={`${BACK}/${t.id}/inline?art=mitarbeiter`}
+              >
                 Mitarbeiter
               </a>
-              {t.amount_cents < 0n && (
-                <a class="btn sm sec" href={`${BACK}/${t.id}`}>
-                  Kunde
-                </a>
-              )}
             </div>
           )}
         </div>
@@ -396,6 +451,7 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
               <a
                 class="btn sm sec"
                 href={`${BACK}/${t.id}`}
+                data-inline={`${BACK}/${t.id}/inline?art=${t.amount_cents > 0n ? 'kunde' : 'lieferant'}`}
                 title="Andere Zuordnung"
                 aria-label="Andere Zuordnung"
               >
@@ -507,6 +563,20 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
     });
   });
 
+  app.post('/transfer/kontoumsaetze/alle-nicht', async (c) => {
+    const b = (await c.req.parseBody()) as Record<string, string>;
+    const n = await closeBefore(
+      sql,
+      todayBerlin(),
+      str(b, 'konto') || null,
+      c.get('actor'),
+      'nicht zugeordnet (alle auf einmal)',
+    );
+    return back(c, BACK, {
+      ok: `${n} Umsätze als „nicht zugeordnet“ abgehakt – unter „Erledigt“ wieder zu öffnen.`,
+    });
+  });
+
   app.post('/transfer/kontoumsaetze/bis', async (c) => {
     const b = (await c.req.parseBody()) as Record<string, string>;
     const day = str(b, 'bis');
@@ -568,6 +638,314 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
     else if (s.kind === 'payment_run') await assignPaymentRun(sql, id, s.runId, actor);
     else await assignReturn(sql, id, s.runId, s.invoiceId, actor);
   };
+
+  // ---------------------------------------------------------------- Zuordnen direkt in der Zeile (wie Fortytools)
+  type Pick = { id: string; no: string; date: string; cents: bigint; legacy?: boolean; note?: string };
+  const custOpen = async (customerId: string): Promise<Pick[]> => {
+    const [own, legacy] = await Promise.all([
+      listOpenItems(sql, customerId),
+      listLegacyOpenItems(sql, customerId),
+    ]);
+    return [
+      ...own
+        .filter((o) => o.open_cents > 0n)
+        .map((o) => ({ id: o.invoice_id, no: o.number, date: o.issue_date, cents: o.open_cents })),
+      ...legacy
+        .filter((o) => o.open_cents > 0n)
+        .map((o) => ({
+          id: `L:${o.invoice_id}`,
+          no: o.number,
+          date: o.issue_date,
+          cents: o.open_cents,
+          legacy: true,
+        })),
+    ].sort((a, b) => b.date.localeCompare(a.date));
+  };
+  const normNo = (x: string) => x.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  app.get(`/transfer/kontoumsaetze/:id{${UUID}}/inline`, async (c) => {
+    const t = await getTransaction(sql, c.req.param('id'));
+    if (!t) return c.html(<div class="notice err">Umsatz nicht gefunden</div>);
+    const art =
+      (['kunde', 'lieferant', 'mitarbeiter'] as const).find((a) => a === c.req.query('art')) ?? 'kunde';
+    const base = `${BACK}/${t.id}/inline`;
+    let p = c.req.query('p') ?? '';
+    const purpose = normNo(t.purpose);
+    const amount = t.amount_cents < 0n ? -t.amount_cents : t.amount_cents;
+    const tabs = (
+      <div class="inl-tabs">
+        {(['kunde', 'lieferant', 'mitarbeiter'] as const).map((a) => (
+          <a class={`chip ${a === art ? 'on' : ''}`} href="#" data-inline={`${base}?art=${a}`}>
+            {a === 'kunde' ? 'Kunde' : a === 'lieferant' ? 'Lieferant' : 'Mitarbeiter'}
+          </a>
+        ))}
+        <a class="inl-x" href="#" data-inline-close="1" title="Abbrechen" aria-label="Abbrechen">
+          ×
+        </a>
+      </div>
+    );
+    const cp = (t.counterparty_iban ?? '').toUpperCase();
+    if (art === 'mitarbeiter') {
+      const emps = await sql<{ id: string; personnel_no: string; name: string; iban: string | null }[]>`
+        select e.id, e.personnel_no, trim(coalesce(e.first_name, '') || ' ' || e.last_name) as name,
+               upper(replace(coalesce(p.iban, ''), ' ', '')) as iban
+          from app.employees e left join app.employee_private p on p.employee_id = e.id
+         where e.status <> 'ausgetreten' order by e.last_name, e.first_name`;
+      const guess = emps.find((e) => cp && e.iban === cp)?.id ?? '';
+      return c.html(
+        <div class="inl">
+          {tabs}
+          <form method="post" action={`${BACK}/${t.id}/partei`} class="inl-row">
+            <input type="hidden" name="art" value="mitarbeiter" />
+            <select name="partei" required>
+              <option value="">Mitarbeiter auswählen</option>
+              {emps.map((e) => (
+                <option value={e.id} selected={e.id === guess}>
+                  {e.personnel_no} - {e.name}
+                </option>
+              ))}
+            </select>
+            <select name="note">
+              {['Lohn/Gehalt', 'Vorschuss', 'Auslagenerstattung', 'Rückzahlung', 'Sonstiges'].map((k) => (
+                <option>{k}</option>
+              ))}
+            </select>
+            <button class="btn">Zuordnen</button>
+          </form>
+        </div>,
+      );
+    }
+    if (art === 'kunde') {
+      const custs = await sql<{ id: string; customer_no: string; name: string }[]>`
+        select id, customer_no, name from app.customers where status <> 'interessent' and not is_internal order by name`;
+      if (!p && cp) {
+        const [g] = await sql<{ customer_id: string }[]>`
+          select customer_id from app.customer_bank_accounts where iban = ${cp} limit 1`;
+        p = g?.customer_id ?? '';
+      }
+      if (!p && t.amount_cents > 0n) {
+        // Rechnungsnummer im Verwendungszweck → Kunde
+        const [g] = await sql<{ customer_id: string }[]>`
+          select customer_id from (
+            select customer_id, number from app.open_items where open_cents > 0
+            union all select customer_id, number from app.legacy_open_items where open_cents > 0) x
+           where length(number) >= 5 and ${purpose} like '%' || upper(regexp_replace(number, '[^A-Za-z0-9]', '', 'g')) || '%'
+           limit 1`;
+        p = g?.customer_id ?? '';
+      }
+      const items = p && t.amount_cents > 0n ? await custOpen(p) : [];
+      const pre = new Set(
+        items.filter((i) => normNo(i.no).length >= 5 && purpose.includes(normNo(i.no))).map((i) => i.id),
+      );
+      return c.html(
+        <div class="inl">
+          {tabs}
+          <div class="inl-row">
+            <select data-inline-pick={`${base}?art=kunde&p=`}>
+              <option value="">Kunde auswählen</option>
+              {custs.map((k) => (
+                <option value={k.id} selected={k.id === p}>
+                  {k.customer_no} - {k.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          {p && t.amount_cents > 0n && (
+            <form
+              method="post"
+              action={`${BACK}/${t.id}/auswahl`}
+              class="inl-pick"
+              data-amount={String(amount)}
+            >
+              <PickList items={items} pre={pre} title="Offene Rechnungen" amount={amount} />
+              <div class="inl-row">
+                <button class="btn">Zuordnen</button>
+                <a class="btn sec" href="#" data-inline-close="1">
+                  Abbrechen
+                </a>
+              </div>
+            </form>
+          )}
+          {p && (
+            <form method="post" action={`${BACK}/${t.id}/partei`} class="inl-row inl-small">
+              <input type="hidden" name="art" value="kunde" />
+              <input type="hidden" name="partei" value={p} />
+              <input name="note" placeholder="Notiz, z. B. Vorauszahlung, Erstattung" />
+              <button class="btn sm sec">Ohne Rechnung dem Kunden zuordnen</button>
+            </form>
+          )}
+        </div>,
+      );
+    }
+    // Lieferant
+    const sups = await sql<
+      { id: string; supplier_no: string; name: string; iban: string | null; kind: string }[]
+    >`
+      select id, supplier_no, name, upper(replace(coalesce(iban, ''), ' ', '')) as iban, kind
+        from app.suppliers where active order by name`;
+    if (!p) p = sups.find((x) => cp && x.iban === cp)?.id ?? '';
+    const inv = p ? await incomingForSupplier(sql, p) : [];
+    const items: Pick[] = inv.map((i) => ({
+      id: i.id,
+      no: i.invoice_no,
+      date: i.invoice_date,
+      cents: i.status === 'bezahlt' ? (i.paid_amount_cents ?? i.gross_cents) : i.gross_cents,
+      note: i.status === 'bezahlt' ? 'schon bezahlt' : i.status === 'erfasst' ? 'nicht freigegeben' : '',
+    }));
+    const pre = new Set(
+      items.filter((i) => normNo(i.no).length >= 4 && purpose.includes(normNo(i.no))).map((i) => i.id),
+    );
+    return c.html(
+      <div class="inl">
+        {tabs}
+        <div class="inl-row">
+          <select data-inline-pick={`${base}?art=lieferant&p=`}>
+            <option value="">Lieferant auswählen</option>
+            {sups.map((x) => (
+              <option value={x.id} selected={x.id === p}>
+                {x.supplier_no} - {x.name}
+                {x.kind === 'nachunternehmer' ? ' (NU)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+        {!p && (
+          <form method="post" action={`${BACK}/${t.id}/lieferant-neu`} class="inl-row inl-small">
+            <input type="hidden" name="zurueck" value="liste" />
+            <input
+              name="name"
+              value={t.counterparty_name ?? ''}
+              required
+              aria-label="Name des neuen Lieferanten"
+            />
+            <button class="btn sm sec">+ als neuen Lieferanten anlegen</button>
+          </form>
+        )}
+        {p && t.amount_cents < 0n && items.length > 0 && (
+          <form
+            method="post"
+            action={`${BACK}/${t.id}/eingang`}
+            class="inl-pick"
+            data-amount={String(amount)}
+          >
+            <PickList items={items} pre={pre} title="Eingangsrechnungen" amount={amount} field="ein" />
+            <div class="inl-row">
+              <button class="btn">Zuordnen</button>
+              <a class="btn sec" href="#" data-inline-close="1">
+                Abbrechen
+              </a>
+            </div>
+          </form>
+        )}
+        {p && (
+          <form method="post" action={`${BACK}/${t.id}/partei`} class="inl-row inl-small">
+            <input type="hidden" name="art" value="lieferant" />
+            <input type="hidden" name="partei" value={p} />
+            <input name="note" placeholder="Notiz (ohne Rechnung)" />
+            {t.amount_cents < 0n && (
+              <select name="kategorie" aria-label="Kostenart">
+                <option value="">Kostenart: automatisch</option>
+                {Object.entries(EXPENSE_CATEGORY).map(([k, v]) => (
+                  <option value={k}>{v}</option>
+                ))}
+              </select>
+            )}
+            <button class="btn sm sec">Ohne Rechnung zuordnen</button>
+          </form>
+        )}
+      </div>,
+    );
+  });
+
+  /** Ankreuzliste mit Summe/Saldo (rechnet im Browser mit) und „Komplett bezahlt“. */
+  const PickList = ({
+    items,
+    pre,
+    title,
+    amount,
+    field = 'inv',
+  }: {
+    items: Pick[];
+    pre: Set<string>;
+    title: string;
+    amount: bigint;
+    field?: string;
+  }) => (
+    <>
+      <div class="inl-sum">
+        <span>Summe</span>
+        <b data-sum>0,00 €</b>
+        <span>Saldo</span>
+        <b data-saldo>{euro(amount)}</b>
+        <label class="inl-full">
+          <input type="checkbox" name="komplett" value="1" /> Komplett bezahlt (Differenz als Skonto)
+        </label>
+      </div>
+      <div class="inl-h">{title}</div>
+      {items.map((i) => (
+        <label class="inl-item">
+          <input
+            type="checkbox"
+            name={field}
+            value={i.id}
+            data-cents={String(i.cents)}
+            checked={pre.has(i.id)}
+          />
+          <span class="r">{euro(i.cents)}</span>
+          <span>{i.no}</span>
+          <span class="mut">{dateDe(i.date)}</span>
+          <span class="mut small">{i.note ?? ''}</span>
+        </label>
+      ))}
+      {items.length === 0 && <div class="mut small">Keine offenen Rechnungen.</div>}
+    </>
+  );
+
+  /** Kunde: angekreuzte Rechnungen der Reihe nach bezahlen; „Komplett bezahlt“ = Rest der letzten als Skonto. */
+  app.post(`/transfer/kontoumsaetze/:id{${UUID}}/auswahl`, async (c) => {
+    const id = c.req.param('id');
+    const t = await getTransaction(sql, id);
+    if (!t) throw new BusinessError('Umsatz nicht gefunden');
+    const b = await c.req.parseBody({ all: true });
+    const picked = arr(b, 'inv');
+    if (!picked.length) throw new BusinessError('Bitte mindestens eine Rechnung ankreuzen');
+    const komplett = str(b as Record<string, string>, 'komplett') === '1';
+    const own = picked.filter((x) => !x.startsWith('L:'));
+    const leg = picked.filter((x) => x.startsWith('L:')).map((x) => x.slice(2));
+    const open = new Map<string, bigint>();
+    for (const r of await sql<{ id: string; c: bigint }[]>`
+        select invoice_id as id, open_cents as c from app.open_items where invoice_id = any(${own}::uuid[])
+        union all select invoice_id, open_cents from app.legacy_open_items where invoice_id = any(${leg}::uuid[])`)
+      open.set(r.id, r.c);
+    let rest = t.amount_cents;
+    const items: { invoiceId: string; legacy: boolean; free: boolean; amount: bigint; skonto: bigint }[] = [];
+    for (const x of picked) {
+      const legacy = x.startsWith('L:');
+      const invoiceId = legacy ? x.slice(2) : x;
+      const o = open.get(invoiceId);
+      if (o == null) throw new BusinessError('Eine Rechnung ist nicht mehr offen – bitte neu laden');
+      const pay = rest < o ? rest : o;
+      if (pay <= 0n) throw new BusinessError('Der Betrag reicht nicht für alle angekreuzten Rechnungen');
+      rest -= pay;
+      items.push({ invoiceId, legacy, free: true, amount: pay, skonto: 0n });
+    }
+    if (rest > 0n)
+      throw new BusinessError(
+        `Überzahlung: ${euro(rest)} mehr als die angekreuzten Rechnungen – weitere ankreuzen`,
+      );
+    const last = items[items.length - 1]!;
+    const lastOpen = open.get(last.invoiceId)!;
+    if (komplett && last.amount < lastOpen) {
+      const diff = lastOpen - last.amount;
+      if (diff * 10_000n > lastOpen * 500n)
+        throw new BusinessError(
+          `Differenz ${euro(diff)} ist mehr als 5 % – als Teilzahlung buchen (Haken „Komplett bezahlt“ weg)`,
+        );
+      last.skonto = diff;
+    }
+    await assignInvoices(sql, id, items, c.get('actor'));
+    return back(c, BACK, { ok: `Zugeordnet: ${items.length} Rechnung(en).` });
+  });
 
   // ---------------------------------------------------------------- Zuordnen: Kunde (Rechnungen)
   app.get(`/transfer/kontoumsaetze/:id{${UUID}}`, async (c) => {
@@ -928,23 +1306,38 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
   app.post(`/transfer/kontoumsaetze/:id{${UUID}}/lieferant-neu`, async (c) => {
     const id = c.req.param('id');
     const t = await getTransaction(sql, id);
-    const sid = await quickSupplier(
-      sql,
-      str(await c.req.parseBody(), 'name') ?? '',
-      t ?? null,
-      c.get('actor'),
-    );
+    const b = (await c.req.parseBody()) as Record<string, string>;
+    const sid = await quickSupplier(sql, str(b, 'name') ?? '', t ?? null, c.get('actor'));
+    if (str(b, 'zurueck') === 'liste')
+      return back(c, BACK, {
+        ok: 'Lieferant angelegt – IBAN gemerkt. Jetzt „Lieferant“ wählen und zuordnen.',
+      });
     return back(c, `${BACK}/${id}/lieferant?l=${sid}`, { ok: 'Lieferant angelegt.' });
   });
 
   app.post(`/transfer/kontoumsaetze/:id{${UUID}}/eingang`, async (c) => {
-    const ids = arr(await c.req.parseBody({ all: true }), 'ein');
-    await assignIncoming(
-      sql,
-      c.req.param('id'),
-      ids.map((id) => ({ id })),
-      c.get('actor'),
-    );
+    const b = await c.req.parseBody({ all: true });
+    const ids = arr(b, 'ein');
+    const komplett = str(b as Record<string, string>, 'komplett') === '1';
+    let items: { id: string; skonto?: bigint }[] = ids.map((id) => ({ id }));
+    if (komplett && ids.length > 1) {
+      // Differenz (bis 5 %) als Skonto auf die größte offene Rechnung
+      const t = await getTransaction(sql, c.req.param('id'));
+      const rows = await sql<
+        { id: string; gross_cents: bigint; status: string; paid_amount_cents: bigint | null }[]
+      >`
+        select id, gross_cents, status, paid_amount_cents from app.incoming_invoices where id = any(${ids}::uuid[])`;
+      const sum = rows.reduce(
+        (a, r) => a + (r.status === 'bezahlt' ? (r.paid_amount_cents ?? r.gross_cents) : r.gross_cents),
+        0n,
+      );
+      const diff = sum + (t?.amount_cents ?? 0n);
+      const big = rows
+        .filter((r) => r.status !== 'bezahlt')
+        .sort((x, y) => (y.gross_cents > x.gross_cents ? 1 : -1))[0];
+      if (diff > 0n && big) items = items.map((x) => (x.id === big.id ? { ...x, skonto: diff } : x));
+    }
+    await assignIncoming(sql, c.req.param('id'), items, c.get('actor'));
     return back(c, BACK, { ok: `Zugeordnet: ${ids.length} Eingangsrechnung(en) als bezahlt.` });
   });
 

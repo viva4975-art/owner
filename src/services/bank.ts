@@ -147,9 +147,15 @@ export async function listTransactions(
 }
 
 /** Vor der Umstellung (in Fortytools zugeordnet): alle offenen Umsätze bis zu einem Tag als erledigt abhaken. */
-export async function closeBefore(sql: Sql, day: string, account: string | null, actor: string) {
+export async function closeBefore(
+  sql: Sql,
+  day: string,
+  account: string | null,
+  actor: string,
+  note = 'vor der Umstellung (in Fortytools zugeordnet)',
+) {
   const r = await sql`
-    update app.bank_transactions set status = 'ignoriert', note = 'vor der Umstellung (in Fortytools zugeordnet)',
+    update app.bank_transactions set status = 'ignoriert', note = ${note},
            assigned_kind = 'sonstiges', matched_by = ${actor}, matched_at = now()
      where status = 'offen' and booking_date <= ${day} and ${account ? sql`account_iban = ${iban(account)}` : sql`true`}`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)

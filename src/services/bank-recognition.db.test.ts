@@ -14,7 +14,7 @@ import {
   subsetSum,
   suggestions,
 } from './bank.js';
-import { expenseStats } from './expense-stats.js';
+import { expenseStats, guessCategory } from './expense-stats.js';
 import { dbAvailable, freshDatabase, testDeps } from './testing.js';
 import type { Deps } from './workflow.js';
 
@@ -35,6 +35,20 @@ ${ibanNo ? `<${role}Acct><Id><IBAN>${ibanNo}</IBAN></Id></${role}Acct>` : ''}</R
 const camt = (entries: string) => `<?xml version="1.0" encoding="UTF-8"?>
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><GrpHdr><MsgId>${randomUUID()}</MsgId></GrpHdr>
 <Stmt><Id>1</Id><Acct><Id><IBAN>${OWN}</IBAN></Id></Acct>${entries}</Stmt></BkToCstmrStmt></Document>`;
+
+describe('Kostenart automatisch erkennen', () => {
+  it('Name/Verwendungszweck → Kostenart', () => {
+    expect(guessCategory('DEVK Versicherungen', 'Beitrag 10/2026')).toBe('versicherung');
+    expect(guessCategory('ARAL Station 1234', null)).toBe('fahrzeuge');
+    expect(guessCategory('Finanzamt München', 'USt-VA 09/2026')).toBe('steuern');
+    expect(guessCategory('HORNBACH MUENCHEN-FREIHAM', 'HORNBACH BAUMARKT')).toBe('material');
+    expect(guessCategory('Münchner Bank', 'Entgelt Kontoführung')).toBe('bank');
+    expect(guessCategory('Max Muster', 'Lohn 09/2026')).toBe('personal');
+    expect(guessCategory('Irgendwer GmbH', 'Rechnung 123')).toBeNull();
+    // „TK“ nur als eigenes Wort
+    expect(guessCategory('Kontakt Service', null)).toBeNull();
+  });
+});
 
 describe('Teilmengen-Summe (Verrechnung)', () => {
   it('findet die kleinste Auswahl, auch mit Minusbeträgen', () => {

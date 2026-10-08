@@ -100,14 +100,15 @@ check(
     (await fee.locator('a:has-text("Mitarbeiter")').count()) === 1 &&
     (await fee.locator('button:has-text("Nicht zuordnen")').count()) === 1,
 );
-await fee.locator('a:has-text("Kunde")').click();
-await p.waitForLoadState();
-await p.fill('#ni', 'Kontoführung');
-await p.click('button:has-text("Nicht zuordnen")');
+await fee.locator('a:has-text("Lieferant")').click();
+await fee.locator('.inl').waitFor();
+check('Lieferant öffnet sich in der Zeile', (await fee.locator('select[data-inline-pick]').count()) === 1);
+await fee.locator('[data-inline-close]').first().click();
+await fee.locator('button:has-text("Nicht zuordnen")').click();
 await p.waitForLoadState();
 check('abgehakt', (await flash(p)).includes('abgehakt'));
 await p.goto(B + '/transfer/kontoumsaetze?status=erledigt');
-check('in „Erledigt“', (await p.locator('body').innerText()).includes('Kontoführung'));
+check('in „Erledigt“', (await p.locator('body').innerText()).includes(`Bankgebuehr ${stamp}`));
 
 console.log('3b. Kontoauszug und Bankabruf-Einstellungen');
 const ka = await p.goto(B + '/transfer/kontoauszug');

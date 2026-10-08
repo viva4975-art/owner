@@ -104,6 +104,8 @@ describe.skipIf(!available)('Enable Banking: Verbinden, Abrufen, Zuordnen', () =
           { uid: 'acc-foreign', account_id: { iban: FOREIGN }, currency: 'EUR' },
         ],
       };
+    if (path === '/accounts/acc-foreign/balances') return { balances: [] };
+    if (path.startsWith('/accounts/acc-foreign/transactions')) return { transactions: [] };
     if (path === '/accounts/acc-own/balances')
       return {
         balances: [{ balance_amount: { amount: '101621.13' }, balance_type: 'CLBD', reference_date: today }],
@@ -154,7 +156,7 @@ describe.skipIf(!available)('Enable Banking: Verbinden, Abrufen, Zuordnen', () =
     expect(row!.key_enc).not.toContain('PRIVATE KEY');
   });
 
-  it('Bank verbinden: Rückkehr mit Code → Sitzung, nur eigenes Konto aktiv; fremder state abgelehnt', async () => {
+  it('Bank verbinden: Rückkehr mit Code → Sitzung, alle Konten der Anmeldung aktiv (auch IBAN nicht in Firmendaten); fremder state abgelehnt', async () => {
     const url = await startConnect(deps, {
       aspsp: 'Münchner Bank',
       redirectUrl: 'https://app.example/transfer/bank/rueckkehr',
@@ -177,7 +179,7 @@ describe.skipIf(!available)('Enable Banking: Verbinden, Abrufen, Zuordnen', () =
       { uid: string; active: boolean }[]
     >`select uid, active from app.bank_feed_accounts order by uid`;
     expect(acc).toEqual([
-      { uid: 'acc-foreign', active: false },
+      { uid: 'acc-foreign', active: true },
       { uid: 'acc-own', active: true },
     ]);
     // Code nur einmal
@@ -248,10 +250,10 @@ describe.skipIf(!available)('Enable Banking: Verbinden, Abrufen, Zuordnen', () =
     });
     const r1 = await fetchAll(deps, { actor: 't' });
     expect(r1.errors).toEqual([]);
-    expect(r1.accounts).toBe(1);
+    expect(r1.accounts).toBe(2);
     expect(r1.created).toBe(2); // ohne vorgemerkten, ohne CAMT-Dublette
-    expect(calls.filter((c) => c.path.includes('/transactions')).length).toBe(2); // zwei Seiten
-    expect(calls.some((c) => c.path.includes('acc-foreign'))).toBe(false);
+    expect(calls.filter((c) => c.path.includes('acc-own/transactions')).length).toBe(2); // zwei Seiten
+    expect(calls.some((c) => c.path.includes('acc-foreign'))).toBe(true); // Konto aus der Bank-Anmeldung
     const r2 = await fetchAll(deps, { actor: 't' });
     expect(r2.created).toBe(0);
     const [acc] = await accountOverview(sql);

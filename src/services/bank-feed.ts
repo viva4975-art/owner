@@ -258,7 +258,7 @@ export async function finishConnect(
               where id = ${conn.id}`;
     throw e;
   }
-  const own = new Set((await getSeller(sql)).bankAccounts.map((b) => ibanOf(b.iban)));
+  // Konten aus der Bank-Anmeldung sind eigene Konten (Login + TAN) – auch wenn die IBAN in den Firmendaten fehlt/abweicht
   const accounts = s.accounts ?? [];
   await sql.begin(async (tx) => {
     await tx`update app.bank_connections set status = 'aktiv', session_id = ${s.session_id},
@@ -267,7 +267,7 @@ export async function finishConnect(
     for (const a of accounts) {
       const iban = ibanOf(a.account_id?.iban) || null;
       await tx`insert into app.bank_feed_accounts (uid, connection_id, iban, name, currency, active)
-               values (${a.uid}, ${conn.id}, ${iban}, ${a.name ?? null}, ${a.currency ?? null}, ${!!iban && own.has(iban)})
+               values (${a.uid}, ${conn.id}, ${iban}, ${a.name ?? null}, ${a.currency ?? null}, ${!!iban})
                on conflict (uid) do nothing`;
       // ältere Freigabe für dasselbe Konto ablösen
       if (iban)
@@ -440,7 +440,6 @@ async function fetchAllInner(deps: Deps, p: { actor: string; auto?: boolean; now
       from app.bank_feed_accounts a join app.bank_connections c on c.id = a.connection_id
      where a.active and c.status = 'aktiv'`;
   const out = { accounts: 0, lines: 0, created: 0, errors: [] as string[] };
-  const own = new Set((await getSeller(sql)).bankAccounts.map((b) => ibanOf(b.iban)));
   for (const a of accounts) {
     if (p.auto && a.last_fetch_at && now.getTime() - a.last_fetch_at.getTime() < AUTO_EVERY_MS) continue;
     if (a.valid_until && a.valid_until.getTime() < now.getTime()) {
@@ -448,7 +447,7 @@ async function fetchAllInner(deps: Deps, p: { actor: string; auto?: boolean; now
       out.errors.push(`${a.iban}: Freigabe abgelaufen – bitte Bank neu verbinden (TAN)`);
       continue;
     }
-    if (!a.iban || !own.has(a.iban)) continue;
+    if (!a.iban) continue;
     try {
       const r = await fetchAccount(deps, a, p.actor, now);
       out.accounts++;
@@ -582,6 +581,8 @@ export async function autoFetch(deps: Deps, now = new Date()) {
 // ---------------------------------------------------------------- Konten, Kontostand, Kontoauszug
 
 export interface AccountOverview {
+  /** Konto kommt aus der Bank, steht aber nicht unter Firmendaten (IBAN prüfen – Rechnungen!) */
+  notInCompany?: boolean;
   iban: string;
   name: string;
   balance_cents: bigint | null;
@@ -603,12 +604,12 @@ export async function accountOverview(sql: Sql): Promise<AccountOverview[]> {
     sql<{ account_iban: string; n: number }[]>`
       select account_iban, count(*)::int as n from app.bank_transactions where status = 'offen' group by 1`,
   ]);
-  return seller.bankAccounts.map((b) => {
-    const iban = ibanOf(b.iban);
+  const row = (iban: string, name: string, notInCompany: boolean): AccountOverview => {
     const f = feed.find((x) => x.iban === iban);
     return {
       iban,
-      name: b.name ?? 'Konto',
+      name,
+      notInCompany,
       balance_cents: f?.balance_cents ?? null,
       balance_at: f?.balance_at ?? null,
       open: open.find((o) => o.account_iban === iban)?.n ?? 0,
@@ -617,7 +618,17 @@ export async function accountOverview(sql: Sql): Promise<AccountOverview[]> {
       last_fetch_at: f?.last_fetch_at ?? null,
       last_fetch_error: f?.last_fetch_error ?? null,
     };
-  });
+  };
+  const list = seller.bankAccounts.map((b) => row(ibanOf(b.iban), b.name ?? 'Konto', false));
+  const conns = await sql<
+    { id: string; aspsp_name: string }[]
+  >`select id, aspsp_name from app.bank_connections`;
+  for (const f of feed)
+    if (f.iban && !list.some((l) => l.iban === f.iban))
+      list.push(
+        row(f.iban, f.name || conns.find((c) => c.id === f.connection_id)?.aspsp_name || 'Konto', true),
+      );
+  return list;
 }
 
 /**

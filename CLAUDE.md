@@ -1727,3 +1727,20 @@ Testadresse.
     offene Eingangsrechnungen), Schnellwahl 12 Monate / Jahr / Vorjahr / **Jahr für Jahr** (5 Jahre), CSV.
   - Tests: `bank-recognition.db.test.ts` (Skonto 3 % bei abweichender Schreibweise, Verrechnung mit Korrektur, Kunden-Skonto
     2 %, Schnellanlage, Kostenart, Ausgaben-Statistik).
+- 2026-10-08: Rückmeldung Bankabruf (Ahmed):
+  - **Fund Targobank nicht abgerufen:** Konten aus der Bank-Anmeldung wurden nur aktiv, wenn die IBAN unter Firmendaten
+    stand. Die hinterlegte Targobank-IBAN `DE66 7019 0000 0003 1914 27` hat die Bankleitzahl der Münchner Bank (70190000),
+    Targobank wäre 30020900 (Fortytools zeigt Konto 5310569341) → **IBAN unter Firmendaten prüfen, sie steht auf jeder
+    Rechnung.** Jetzt gelten alle Konten der Anmeldung als eigene Konten (Migration `20261114000003` aktiviert sie), Hinweis
+    „Konto aus der Bank steht nicht unter Firmendaten“.
+  - **„Alle n nicht zuordnen“** oben in der Liste (bucht nichts, unter „Erledigt“ wieder zu öffnen).
+  - **Zuordnen direkt in der Zeile wie Fortytools:** Kunde / Lieferant / Mitarbeiter (und ✎) öffnen sich in der Zeile:
+    Auswahl (vorbelegt über IBAN bzw. Rechnungsnummer), offene Rechnungen zum Ankreuzen (vorbelegt, wenn die Nummer im
+    Verwendungszweck steht), Summe/Saldo/% rechnet mit, „Komplett bezahlt (Differenz als Skonto)“ (≤ 5 %), Zuordnen /
+    Abbrechen; „ohne Rechnung zuordnen“, Lieferant „+ als neuen Lieferanten anlegen“. Ohne JavaScript bleiben die Seiten.
+    Kunde: angekreuzte Rechnungen werden der Reihe nach bezahlt (`/auswahl`), Überzahlung abgelehnt.
+  - **Ausgaben: Kostenart automatisch** (Ahmed: „DEVK ist klar Versicherung, Nachunternehmer usw.“): Schlüsselwörter für
+    Versicherung, Steuern/Abgaben/Sozialversicherung, Fahrzeuge/Tanken, Material, Miete/Büro, Bankgebühren, Personal
+    (`guessCategory`), Nachunternehmer über Lieferant (Art „nachunternehmer“, auch per IBAN), Mitarbeiter-IBAN → Personal.
+    Umschalter „Kostenart: automatisch erkennen / nach Zuordnung“; eine von Hand gewählte Kostenart geht immer vor.
+    Zeitraum bleibt frei wählbar (Ahmed).

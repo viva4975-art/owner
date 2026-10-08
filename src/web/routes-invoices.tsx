@@ -1,3 +1,6 @@
+import { renderLetterPdf } from '../pdf/render.js';
+import { formatDateDe } from '../domain/invoice/calc.js';
+import { getSeller } from '../services/masterdata.js';
 import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
 import { sha256 } from '../archive/store.js';
@@ -883,6 +886,69 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
   });
 
   // ------------------------------------------------------------------ Archiv
+
+  /** Lieferschein (wie Fortytools): Positionen ohne Preise, z. B. zum Unterschreiben beim Kunden. */
+  app.get(`/rechnungen/:id{${UUID}}/lieferschein.pdf`, async (c) => {
+    const id = c.req.param('id');
+    const data = await getInvoice(sql, id);
+    if (!data) return c.notFound();
+    const inv = data.invoice;
+    const UNIT: Record<string, string> = {
+      HUR: 'Std.',
+      C62: 'Stk.',
+      LS: 'psch.',
+      MTK: 'm²',
+      DAY: 'Tag',
+      MON: 'Monat',
+      MTR: 'lfm',
+    };
+    const qty = (m: bigint) => (Number(m) / 1000).toLocaleString('de-DE', { maximumFractionDigits: 3 });
+    const pdf = await renderLetterPdf({
+      title: `Lieferschein${inv.number ? ` zu Rechnung ${inv.number}` : ''}`,
+      date: todayBerlin(),
+      info: [
+        ['Datum', formatDateDe(todayBerlin())],
+        ...(inv.number ? ([['Rechnung', inv.number]] as [string, string][]) : []),
+        ...(inv.period_start
+          ? ([
+              [
+                'Leistung',
+                `${formatDateDe(inv.period_start)}${inv.period_end && inv.period_end !== inv.period_start ? ` – ${formatDateDe(inv.period_end)}` : ''}`,
+              ],
+            ] as [string, string][])
+          : []),
+      ],
+      seller: await getSeller(sql),
+      buyer:
+        inv.buyer_snapshot ??
+        (await buildBuyerSnapshot(sql, inv.customer_id, inv.site_id, inv.invoice_group_id)),
+      greeting: null,
+      intro: 'Folgende Leistungen/Waren wurden erbracht bzw. geliefert:',
+      columns: [
+        { label: 'Pos', x: 62.3, align: 'left' },
+        { label: 'Leistung / Artikel', x: 90, align: 'left' },
+        { label: 'Menge', x: 470 },
+        { label: 'Einheit', x: 538.8 },
+      ],
+      rows: data.lines.map((l, i) => [
+        String(i + 1),
+        l.description.slice(0, 64),
+        qty(l.quantity_milli < 0n ? -l.quantity_milli : l.quantity_milli),
+        UNIT[l.unit_code] ?? l.unit_code,
+      ]),
+      sums: [],
+      total: null,
+      paragraphs: ['Ware/Leistung vollständig und ordnungsgemäß erhalten:'],
+      signature: { label: 'Empfangen:', png: null, name: '', at: '' },
+    });
+    return new Response(pdf, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="Lieferschein_${inv.number ?? 'Entwurf'}.pdf"`,
+        'Cache-Control': 'private, no-store',
+      },
+    });
+  });
 
   /** PDF einer Rechnung (z. B. aus den Offenen Posten): archiviertes PDF, bei Entwürfen die Vorschau. */
   app.get(`/rechnungen/:id{${UUID}}/pdf`, async (c) => {

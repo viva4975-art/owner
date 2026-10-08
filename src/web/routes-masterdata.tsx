@@ -1,3 +1,4 @@
+import { STARTUP_STEPS, createStartupPlan } from '../services/site-startup.js';
 import { randomUUID } from 'node:crypto';
 import { LegacyInvoiceList, OpenLegacyCard, legacyInvoices } from './routes-legacy-invoices.js';
 import { openLegacyInvoices } from '../services/fortytools-xml-import.js';
@@ -524,11 +525,40 @@ export function registerMasterdataRoutes(ctx: Ctx) {
               users={await assigneeOptions(sql)}
               title={c.req.query('titel')}
             />
+            {type === 'site' && (
+              <form method="post" action={`/objekte/${e.id}/anlaufplan`} class="card">
+                <h3 style="margin-top:0">Anlaufplan (Objektübernahme)</h3>
+                <p class="small mut" style="margin-top:0">
+                  Legt {STARTUP_STEPS.length} Aufgaben für die Objektleitung an – von der Begehung (3 Wochen
+                  vorher) über Raumbuch, Personal, Schlüssel, Unterweisung und QR-Aushang bis zur ersten
+                  Qualitätskontrolle und dem Abstimmungsgespräch nach 30 Tagen. Erneut erstellen verschiebt
+                  nur offene Schritte.
+                </p>
+                <div class="actions" style="margin:0">
+                  <label for="start" class="small" style="margin:0">
+                    Leistungsbeginn
+                  </label>
+                  <input id="start" type="date" name="start" required style="max-width:170px" />
+                  <button class="btn sec sm">Anlaufplan erstellen</button>
+                </div>
+              </form>
+            )}
           </>
         );
       }),
     );
   };
+
+  app.post(`/objekte/:id{${UUID}}/anlaufplan`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    const r = await createStartupPlan(sql, id, String(b.start ?? ''), c.get('actor'));
+    return back(c, `/objekte/${id}/aufgaben`, {
+      ok: r.created
+        ? `${r.created} Aufgaben angelegt.`
+        : 'Anlaufplan aktualisiert (offene Schritte verschoben).',
+    });
+  });
 
   registerNoteRoutes(ctx, '/kunden', 'customer', customerPage);
   tasksRoute('/kunden', 'customer', customerPage, (e: Customer) => e.name);

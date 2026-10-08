@@ -993,6 +993,11 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         {subHead(data.supplier)}
         <SubTabs id={id} active="dokumente" counts={catCounts(data.rows)} />
         <div class="tabbody">
+          <div class="actions" style="margin-top:0">
+            <a class="btn sec sm" href={`/brief?an=lieferant&id=${id}`}>
+              Brief schreiben (Briefpapier)
+            </a>
+          </div>
           {SUP_DOC_CATS.map((cat) => (
             <section style="margin-bottom:16px">
               <h3 class="panel-title">{cat}</h3>

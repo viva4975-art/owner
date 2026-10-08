@@ -863,6 +863,11 @@ export const InvoiceDetail: FC<{
               </button>
             </form>
           )}
+          {inv.kind !== 'cancellation' && (
+            <a class="btn sec" href={`/rechnungen/${inv.id}/lieferschein.pdf`} target="_blank">
+              Lieferschein
+            </a>
+          )}
           {['invoice', 'partial'].includes(inv.kind) && newId && (
             <form method="post" action={`/rechnungen/${inv.id}/kopieren`}>
               <input type="hidden" name="new_id" value={newId} />

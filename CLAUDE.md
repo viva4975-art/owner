@@ -1465,3 +1465,13 @@ Testadresse.
   (Google-Maps-Link, Koordinaten oder „Mein aktueller Standort“ vor Ort), Umkreis 50–5000 m (Standard 250 m).
   **Datenschutz:** Mitarbeitende vorher informieren (Art. 13 DSGVO), Betriebsrat beteiligen falls vorhanden (§ 87 Abs. 1
   Nr. 6 BetrVG), Verzeichnis der Verarbeitungstätigkeiten. Tests: `geo.test.ts`, `geo-stamp.db.test.ts`.
+- 2026-10-08: Kleine Punkte:
+  - **Lieferschein** (Knopf an jeder Rechnung/Entwurf): PDF auf Briefpapier mit Positionen, Menge, Einheit – ohne
+    Preise – und Feld „Empfangen“ zum Unterschreiben.
+  - **Schriftverkehr:** freier Brief auf Briefpapier an Kunde (Dokumente → „Freien Brief schreiben“), Mitarbeiter
+    (Dokumente) oder Lieferant/Nachunternehmer (Dokumente): Betreff, Datum, Anrede, Text → PDF, write-once in der Akte
+    unter „Schriftverkehr“ (feste ID je Formular). Hinweis Schriftform bei Kündigung/Aufhebung/Befristung.
+  - **Anlaufplan Objektübernahme** (Objekt → Aufgaben): 12 Schritte als Aufgaben für die Objektleitung relativ zum
+    Leistungsbeginn (Begehung −21 Tage … Abstimmungsgespräch +30 Tage), erneut erstellen verschiebt nur offene Schritte.
+    Hinweis § 613a BGB bei Übernahme von Personal des Vorgängers.
+  - Tests: `runde24-small.db.test.ts`.

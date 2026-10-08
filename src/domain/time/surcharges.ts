@@ -3,7 +3,7 @@ import { addDays, easterSunday, holidayName, isoWeekday } from './holidays.js';
 /*
  * Zuschlagsstunden nach Rahmentarifvertrag Gebäudereinigung (RTV vom 31.10.2019, § 10, allgemeinverbindlich):
  * Nachtarbeit (Standard 22–6 Uhr) 30 % (Vorgabe Viva-Deluxe; RTV: 25 %), Sonntag und Feiertag 80 % (Vorgabe Viva-Deluxe; RTV: 100 %/150 %), 80 % bei
- * regelmäßiger Sonn-/Feiertagsarbeit am selben Arbeitsplatz, Neujahr/Ostersonntag/Pfingstsonntag/1. Mai/Weihnachten 200 %.
+ * regelmäßiger Sonn-/Feiertagsarbeit am selben Arbeitsplatz, Neujahr/Ostersonntag/Pfingstsonntag/1. Mai/Weihnachten 150 % (Viva-Vorgabe).
  * Treffen mehrere Zuschläge zusammen, gilt nur der höchste. Gerechnet wird je Minute der Arbeitszeit ohne Pause,
  * nach Berliner Ortszeit.
  */
@@ -27,7 +27,7 @@ export const DEFAULT_RATES: SurchargeRates = {
   sunday: 8000,
   sundayRegular: 8000,
   holiday: 8000,
-  highHoliday: 20000,
+  highHoliday: 15000,
 };
 
 /** Hohe Feiertage laut RTV: Neujahr, Ostersonntag, Pfingstsonntag, 1. Mai, 25. und 26. Dezember. */

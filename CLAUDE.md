@@ -915,7 +915,7 @@ Testadresse.
   - **Lohnarten** (Personal → Lohnarten, `/zeiterfassung/lohnarten`, CSV-Export für das Lohnprogramm, Format vorläufig):
     je Mitarbeiter/Monat Normalstunden, Urlaub, Krank, sonstige bezahlte Abwesenheit, unbezahlt (Info) und Zuschlagsstunden
     mit Betrag. Zuschläge nach **RTV Gebäudereinigung vom 31.10.2019 § 10** (allgemeinverbindlich): Nacht 22–6 Uhr 25 %,
-    Sonntag und Feiertag 80 % (Ahmed 06.10., RTV: 100 % bzw. 150 %), regelmäßig am selben Arbeitsplatz 75 % (Häkchen),
+    Sonntag und Feiertag 80 % (Ahmed 06.10.), regelmäßig am selben Arbeitsplatz 75 % (Häkchen),
     Neujahr/Ostersonntag/Pfingstsonntag/1. Mai/25.+26.12. 200 %; je Minute nur der höchste; Pause zählt nicht; Berliner
     Ortszeit inkl. Zeitumstellung; Beträge cent-genau. Sätze, Nachtzeit und Lohnart-Nummern unter Einstellungen → Zuschläge &
     Lohnarten. **Hinweis:** steuerfrei nach § 3b EStG nur bis 25 %/50 %/125 %/150 % und 50 € Grundlohn/Std. – Rest macht das
@@ -1401,3 +1401,10 @@ Testadresse.
     entfernt (doppelt zum Knopf „Objekte (n)“).
 - 2026-10-07: Objektliste zählte alle zugeordneten Mitarbeitenden, die Objektseite nur „Reinigungskräfte“ (ohne Kennzeichen
   „Objektleitung“) → 5 vs. 4. Jetzt beide gleich: „n Reinigungskräfte“ ohne Mitarbeitende mit Tag „Objektleitung“.
+- 2026-10-08: Ahmed: RTV-Sätze übernehmen – Sonntag/Feiertag 80 %, **hohe Feiertage 150 %** (vorher 200 %; Migration
+  `20261111000011` ändert nur, wenn noch 200 % eingestellt war). PDF-Checkliste Echtbetrieb (`docs/checkliste-echtbetrieb.html`):
+  SMTP über IONOS Exchange (`smtp.exchange2019.ionos.de:587`, in `/opt/viva/deploy/.env.live`), Cloud Backup prüfen
+  (Acronis-Agent, `/opt/viva-sicherung`), Patentamt über Portal (XRechnung hochladen), D-U-N-S online nicht gefunden
+  (Firmenname im HRB prüfen: „Viva-Deluxe GmbH Gebäudeservice“ vs. „Gebäudereinigung“). Bauplan: eingehende E-Rechnungen,
+  Lohnkostenanteil Pflicht + Preisanpassung, Portal-Versand, kleine Punkte, Erinnerungen, Ampel, Monatsabschluss,
+  Arbeitszeitkonto, Stempeln mit Standort, Lohnabrechnungen aus Sammel-PDF, Store-App, Bankabruf (am Ende).

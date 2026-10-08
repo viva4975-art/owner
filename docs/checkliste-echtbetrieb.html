@@ -1,0 +1,116 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Checkliste Echtbetrieb</title>
+<style>
+@page{size:A4;margin:16mm 15mm 16mm 15mm}
+body{font-family:Inter,"DejaVu Sans",Arial,sans-serif;font-size:10.2pt;color:#1f2328;line-height:1.42}
+h1{color:#7d1435;font-size:19pt;margin:0 0 2px}
+.sub{color:#6b7280;margin:0 0 14px}
+h2{color:#fff;background:#7d1435;font-size:11.5pt;padding:6px 10px;border-radius:5px;margin:18px 0 8px;page-break-after:avoid}
+.item{display:flex;gap:10px;padding:6px 2px;border-bottom:1px solid #eadfe3;page-break-inside:avoid}
+.box{flex:0 0 14px;height:14px;border:1.6px solid #7d1435;border-radius:3px;margin-top:2px}
+.t{font-weight:650}
+.d{color:#374151;margin-top:2px}
+.who{display:inline-block;font-size:8pt;font-weight:700;padding:1px 6px;border-radius:9px;margin-left:6px;vertical-align:1px}
+.a{background:#fde8ee;color:#7d1435}.c{background:#e8f0fe;color:#1d4ed8}.s{background:#fff4e5;color:#8a5300}
+code,pre{font-family:"DejaVu Sans Mono",monospace;font-size:8.6pt}
+pre{background:#f6f2f3;border:1px solid #eadfe3;border-radius:5px;padding:6px 8px;margin:4px 0;white-space:pre-wrap}
+.note{background:#fff8e6;border:1px solid #f3d48a;border-radius:5px;padding:6px 9px;margin:6px 0;color:#6b4500}
+ol.build{margin:4px 0 0 18px;padding:0}ol.build li{margin:2px 0}
+.legend{font-size:8.5pt;color:#6b7280;margin-bottom:6px}
+</style></head><body>
+<h1>Checkliste Echtbetrieb</h1>
+<p class="sub">Viva-Deluxe Betriebs-App · Stand 08.10.2026 · Häkchen setzen, wenn erledigt</p>
+<div class="legend"><span class="who a">Ahmed</span> machen Sie bzw. das Büro &nbsp; <span class="who s">Steuerberater/Anwalt</span> klären &nbsp; <span class="who c">Claude</span> baue ich in der App</div>
+
+<h2>1. Vor dem Echtbetrieb</h2>
+
+<div class="item"><div class="box"></div><div><span class="t">E-Mail-Versand über IONOS Exchange einrichten</span><span class="who a">Ahmed</span>
+<div class="d">1) Im IONOS-Kundenbereich unter E-Mail → Exchange das Postfach <b>buchhaltung@viva-deluxe-reinigung.de</b> öffnen und das Passwort bereithalten. Dort unter „Einstellungen/Servereinstellungen“ den SMTP-Server ablesen – bei IONOS Exchange 2019 in der Regel <code>smtp.exchange2019.ionos.de</code>, Port 587 (STARTTLS).<br>
+2) Auf dem Server anmelden (<code>ssh root@217.160.236.117</code>) und die Datei öffnen: <code>nano /opt/viva/deploy/.env.live</code><br>
+3) Diese Zeilen eintragen bzw. ändern (Werte in einfachen Anführungszeichen):</div>
+<pre>SMTP_HOST='smtp.exchange2019.ionos.de'
+SMTP_PORT='587'
+SMTP_SECURE='false'
+SMTP_USER='buchhaltung@viva-deluxe-reinigung.de'
+SMTP_PASS='&lt;Passwort des Postfachs&gt;'
+MAIL_FROM='Viva-Deluxe Buchhaltung &lt;buchhaltung@viva-deluxe-reinigung.de&gt;'
+MAIL_TEST_RECIPIENT='&lt;Ihre Testadresse&gt;'</pre>
+<div class="d">4) Speichern (Strg+O, Enter, Strg+X) und starten: <code>bash /opt/viva/deploy/update.sh</code><br>
+5) Testrechnung versenden – im Testbetrieb gehen <b>alle</b> Mails nur an die Testadresse. Erst beim Echtstart stellen wir auf echte Empfänger um.</div></div></div>
+
+<div class="item"><div class="box"></div><div><span class="t">Rechnungsnummer-Startwert festlegen</span><span class="who a">Ahmed</span><span class="who c">Claude</span>
+<div class="d">Am Umstiegstag die nächste freie Fortytools-Rechnungsnummer (und Angebotsnummer) nennen – ich stelle sie ein. Ab dann in Fortytools keine Rechnungen/Angebote mehr schreiben (sonst doppelte Nummern).</div></div></div>
+
+<div class="item"><div class="box"></div><div><span class="t">IONOS Cloud Backup prüfen (100 GB bestellt?)</span><span class="who a">Ahmed</span>
+<div class="d">Das kann ich von hier nicht sehen – ich habe keinen Zugang zu Ihrem IONOS-Konto. So prüfen Sie es:<br>
+1) IONOS-Kundenbereich → Verträge: Steht dort „Cloud Backup“ (z. B. 100 GB)?<br>
+2) Im Backup-Bereich (Acronis-Konsole) muss der VPS als <b>Gerät</b> erscheinen und ein <b>Sicherungsplan</b> aktiv sein (täglich). Auf dem Server prüfen: <code>systemctl list-units | grep -i acronis</code> – kommt nichts, ist der Agent noch nicht installiert.<br>
+3) Gesichert werden müssen mindestens <code>/opt/viva-sicherung</code> (nächtliche Datenbank-Sicherung) und <code>/opt/viva</code>.<br>
+4) Einmal eine Datei probeweise zurückholen. 100 GB reichen für den Anfang (Datenbank + Belege, wächst mit den Belegen).</div></div></div>
+
+<div class="item"><div class="box"></div><div><span class="t">Revisionssicheres Archiv (GoBD, 10 Jahre)</span><span class="who a">Ahmed</span><span class="who c">Claude</span>
+<div class="d">IONOS S3 Object Storage mit „Object Lock“ bestellen und mir die Zugangsdaten nur auf dem Server eintragen lassen – ich binde es an, Belege werden dann zusätzlich unveränderbar gespeichert.</div></div></div>
+
+<div class="item"><div class="box"></div><div><span class="t">Steuerberater-Termin</span><span class="who s">Steuerberater</span>
+<div class="d">Belegart 384 für Storno/Korrektur · § 13b (Reverse Charge) an Kunden und von Nachunternehmern · Skonto (USt-Korrektur) · Abschlags-/Schlussrechnung · DATEV Berater-/Mandantennummer, Kontenrahmen SKR03, BU-Schlüssel · ersten DATEV-Testexport gemeinsam einlesen.</div></div></div>
+
+<div class="item"><div class="box"></div><div><span class="t">Zuschläge kontrollieren</span><span class="who a">Ahmed</span>
+<div class="d">Umgestellt wie gewünscht: Sonntag/Feiertag 80 %, hohe Feiertage 150 %, Nacht 30 %. Unter Einstellungen → Zuschläge &amp; Lohnarten einmal ansehen.</div></div></div>
+
+<div class="item"><div class="box"></div><div><span class="t">Branchen-Mindestlohn eintragen</span><span class="who a">Ahmed</span>
+<div class="d">Einstellungen → Zeiterfassung/Mindestlohn: aktuellen Wert Gebäudereinigung (Lohngruppe 1) eintragen.</div></div></div>
+
+<div class="item"><div class="box"></div><div><span class="t">Patentamt (Portal)</span><span class="who a">Ahmed</span><span class="who c">Claude</span>
+<div class="d">Rechnungsgruppe des Patentamts: Format XRechnung + Leitweg-ID. Ablauf: Rechnung ausstellen → XRechnung herunterladen → im Portal hochladen. Ich baue „Versand über Portal“: die Rechnung wird dann nicht gemailt, sondern als „im Portal hochgeladen“ (Datum, wer) vermerkt.</div></div></div>
+
+<div class="item"><div class="box"></div><div><span class="t">Neue Adresse zum Umzug</span><span class="who a">Ahmed</span>
+<div class="d">Am Umzugstag Einstellungen → Firmendaten ändern und das neue Briefpapier (300 dpi, vom Grafiker) schicken. Ab dem Tag stehen Rechnungen mit neuer Anschrift raus (Pflichtangabe § 14 UStG).</div></div></div>
+
+<div class="item"><div class="box"></div><div><span class="t">Sicherheit</span><span class="who a">Ahmed</span>
+<div class="d">Erledigt laut Ihnen: root-Passwort geändert, GitHub-Token gelöscht. Noch: <b>AVV mit IONOS</b> im Kundenbereich abschließen (Datenschutz → Auftragsverarbeitung).</div></div></div>
+
+<h2>2. Daten auf dem Server</h2>
+<div class="item"><div class="box"></div><div><span class="t">Backup der alten App erneut einspielen (Bereich Nachunternehmer)</span><span class="who a">Ahmed</span><div class="d">Transfer → Import aus der alten App. Vorhandene Firmen/Nachweise bleiben, die Nachunternehmer-Aufträge kommen dazu.</div></div></div>
+<div class="item"><div class="box"></div><div><span class="t">Abgleich mit Fortytools-Rechnungen</span><span class="who a">Ahmed</span><div class="d">Transfer → Import aus Fortytools → Abgleich: „abweichend“ prüfen und übernehmen, „zuletzt älter“ prüfen (Leistung beendet?).</div></div></div>
+<div class="item"><div class="box"></div><div><span class="t">Dubletten / gleichnamige Objekte</span><span class="who a">Ahmed</span><div class="d">Liste „gleicher Objektname“ (z. B. Treppenhaus) durchsehen.</div></div></div>
+<div class="item"><div class="box"></div><div><span class="t">Abrechnungszyklus der Leistungen</span><span class="who a">Ahmed</span><div class="d">Import hat nur Unterhaltsreinigung/Spüldienste als monatlich angelegt, alles andere „je Ausführung“ – je Objekt kurz prüfen.</div></div></div>
+<div class="item"><div class="box"></div><div><span class="t">Lohnkostenanteil je Leistung</span><span class="who a">Ahmed</span><div class="d">Wird Pflichtfeld (für die Preisanpassung bei Tariferhöhung). Danach Liste „Lohnkostenanteil fehlt“ abarbeiten.</div></div></div>
+<div class="item"><div class="box"></div><div><span class="t">„Allgemein (aus Fortytools)“-Objekte</span><span class="who a">Ahmed</span><div class="d">Umbenennen (z. B. in den Kundennamen) oder Zeiten/Leistungen dem richtigen Objekt zuordnen.</div></div></div>
+<div class="item"><div class="box"></div><div><span class="t">Offene Posten aus Fortytools</span><span class="who a">Ahmed</span><div class="d">Teilzahlungen bei ARGE, Münchner Wohnen, MW Immobilien nachtragen. Mahnstufen aus Fortytools fehlen – schon gemahnte Rechnungen beginnen bei der Zahlungserinnerung.</div></div></div>
+<div class="item"><div class="box"></div><div><span class="t">Rechnungsgruppen je Kunde</span><span class="who a">Ahmed</span><div class="d">Leitweg-IDs, Rechnungs-E-Mails, Lieferantennummern bei Behörden, Skonto. Firmenkunden auf ZUGFeRD/XRechnung (ab 2027 keine reinen PDF-Rechnungen an Firmen).</div></div></div>
+<div class="item"><div class="box"></div><div><span class="t">Objektleitung je Objekt</span><span class="who a">Ahmed</span><div class="d">Einstellungen → Benutzer → Person → Objekte zuordnen; Benutzer mit „Mitarbeiter (eigene Zeiterfassung)“ verknüpfen.</div></div></div>
+<div class="item"><div class="box"></div><div><span class="t">Mitarbeiterdaten</span><span class="who a">Ahmed</span><div class="d">„Vergütung fehlt“, Wochenstunden, Staatsangehörigkeit, Aufenthaltstitel/Arbeitserlaubnis; Personal → Fehlende Unterlagen; Liste „ohne Einsatz“ prüfen (Ausgetretene austragen).</div></div></div>
+<div class="item"><div class="box"></div><div><span class="t">Raumbücher</span><span class="who a">Ahmed</span><div class="d">Je Objekt Raumbuch (Excel-Import möglich) – nötig für Audit in der QM-App, Reinigungsplan und Objektordner.</div></div></div>
+<div class="item"><div class="box"></div><div><span class="t">Tiefgaragen-Daten</span><span class="who a">Ahmed</span><div class="d">m², WE-Nr., Stellplätze (fest/Duplex), Dauer, TOB für 117 Objekte – am einfachsten als Excel schicken.</div></div></div>
+<div class="item"><div class="box"></div><div><span class="t">Vorlagen hochladen</span><span class="who a">Ahmed</span><div class="d">Korrigierte Word-Vorlagen (ZIP) unter Einstellungen → Word-Vorlagen; Objektordner-Komplettpaket unter Einstellungen → Objektordner-Vorlagen.</div></div></div>
+<div class="item"><div class="box"></div><div><span class="t">Bank-Tests</span><span class="who a">Ahmed</span><div class="d">Je einen echten Kontoauszug (CAMT.053, sonst CSV) von Münchner Bank und Targobank einlesen; erste SEPA-Datei (pain.001) testweise bei der Bank hochladen.</div></div></div>
+<div class="item"><div class="box"></div><div><span class="t">Übersetzungen gegenlesen</span><span class="who a">Ahmed</span><div class="d">Handy-App und Personalbogen (ro, tr, pl, hr, bg) von Muttersprachlern im Team prüfen lassen.</div></div></div>
+<div class="item"><div class="box"></div><div><span class="t">Angebotsstatus aus Fortytools bestätigen</span><span class="who a">Ahmed</span><div class="d">Zuordnung 1 angenommen, 2 abgelehnt, 3 zurückgezogen, 4 versendet, 5 Entwurf – stimmt das?</div></div></div>
+
+<h2>3. App Store / Google Play</h2>
+<div class="item"><div class="box"></div><div><span class="t">D-U-N-S-Nummer</span><span class="who a">Ahmed</span>
+<div class="d">Online habe ich keine gefunden. Kostenlos nachschlagen/beantragen über Apples D-U-N-S-Suche (developer.apple.com/enroll/duns-lookup). Wichtig: Firmenname genau wie im Handelsregister – in einer EU-Ausschreibung steht „Viva-Deluxe GmbH Gebäudeservice“, bei uns „Viva-Deluxe Gebäudereinigung GmbH“. Bitte den exakten Namen laut HRB 262 567 prüfen. Beantragung dauert bis zu 2 Wochen.</div></div></div>
+<div class="item"><div class="box"></div><div><span class="t">Apple Developer Program (Organisation)</span><span class="who a">Ahmed</span><div class="d">99 €/Jahr, mit D-U-N-S, auf die GmbH. Danach mich als Entwickler einladen (App Store Connect → Benutzer).</div></div></div>
+<div class="item"><div class="box"></div><div><span class="t">Google Play Console</span><span class="who a">Ahmed</span><div class="d">25 € einmalig, Organisationskonto mit D-U-N-S.</div></div></div>
+<div class="item"><div class="box"></div><div><span class="t">Firebase-Projekt (Push-Nachrichten)</span><span class="who a">Ahmed</span><div class="d">Kostenlos, mit dem Firmen-Google-Konto anlegen. Ein Mac ist nicht nötig – ich baue die App über einen Cloud-Dienst (Codemagic).</div></div></div>
+
+<h2>4. Entscheidungen</h2>
+<div class="item"><div class="box"></div><div><span class="t">Bankabruf (automatisch statt Datei hochladen)</span><span class="who a">Ahmed</span>
+<div class="d">Heute: Kontoauszug im Online-Banking als CAMT/CSV herunterladen und in der App hochladen (funktioniert). Automatisch geht es über <b>FinTS/HBCI</b> direkt bei der Bank (kostenlos, aber alle 90 Tage TAN-Freigabe nötig) oder über einen Dienst wie <b>Qwist/finAPI</b> (Vertrag, monatliche Kosten). To do: bei Münchner Bank und Targobank fragen, ob „FinTS mit PIN/TAN für Fremdsoftware“ freigeschaltet ist. Kommt ganz am Ende.</div></div></div>
+<div class="item"><div class="box"></div><div><span class="t">Lohnabrechnungen in die Mitarbeiter-App</span><span class="who a">Ahmed</span>
+<div class="d">Lexware Lohn hat keine offene Schnittstelle für Abrechnungen. Machbar: Sie laden einmal im Monat die <b>Sammel-PDF</b> (oder ZIP) aus Lexware hoch, die App teilt sie automatisch nach Personalnummer auf, legt jede Abrechnung in die Personalakte und zeigt sie in der App (mit „gelesen“). Dafür bitte eine Beispiel-Sammel-PDF mit geschwärzten Beträgen schicken. Rechtlich: Abrechnung per unverschlüsselter E-Mail ist datenschutzrechtlich heikel – die App ist sicherer.</div></div></div>
+
+<h2>5. Was ich als Nächstes baue</h2>
+<ol class="build">
+<li>Eingehende E-Rechnungen (XRechnung/ZUGFeRD hochladen → Rechnungseingang automatisch ausgefüllt)</li>
+<li>Lohnkostenanteil als Pflicht + Preisanpassung bei Tariferhöhung (je Leistung nach Lohnkostenanteil, mit Serienbrief)</li>
+<li>„Versand über Portal“ (Patentamt) und Nummernkreis-Einstellung</li>
+<li>Kleine Punkte komplett: Arbeitsschein-Varianten, NU-Bestellschein-Layout, Lieferschein, Schriftverkehr mit Briefkopf, Anlaufplan Objektübernahme, Mehrarbeitszuschläge, Grundreinigung ohne Preise für die Objektleitung, Auditanalyse (Lernportal: bitte Fortytools-Bilder schicken)</li>
+<li>Erinnerungen (E-Mail, später Push): Aufenthaltstitel, NU-Nachweise, HU/Inspektion, Ausschreibungsfristen, nicht gestempelte Einsätze</li>
+<li>Ampel Nachkalkulation auf der Startseite</li>
+<li>Monatsabschluss-Assistent (Zeiten bestätigen → Lohnarten → Monatslauf → Versand → DATEV)</li>
+<li>Arbeitszeitkonto (Plus-/Minusstunden, Übertrag)</li>
+<li>Stempeln mit Standort (Abstand zum Objekt wird mitgespeichert)</li>
+<li>Lohnabrechnungen aus Sammel-PDF (sobald Beispiel da)</li>
+<li>Store-App (sobald Konten da) · Bankabruf (ganz am Ende)</li>
+</ol>
+</body></html>

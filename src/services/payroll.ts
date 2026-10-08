@@ -6,6 +6,7 @@ import {
   surchargeCents,
   surchargeMinutes,
 } from '../domain/time/surcharges.js';
+import { addDays } from '../domain/time/holidays.js';
 import { listAbsenceHours } from './absences.js';
 import { BusinessError } from './errors.js';
 import { breakRange, listEntries } from './time.js';
@@ -17,7 +18,8 @@ import { monthRange } from './timesheet.js';
  * Zuschläge werden zusätzlich zum Grundlohn gezahlt (Stunden × Lohn × Satz). Nur erfasste/freigegebene Zeiten.
  */
 
-export type WageType = 'normal' | 'urlaub' | 'krank' | 'sonstige' | 'unbezahlt' | SurchargeKind;
+export type WageType =
+  'normal' | 'urlaub' | 'krank' | 'sonstige' | 'unbezahlt' | SurchargeKind | 'mehrarbeit';
 
 export const WAGE_TYPE_LABEL: Record<WageType, string> = {
   normal: 'Normalstunden',
@@ -29,6 +31,7 @@ export const WAGE_TYPE_LABEL: Record<WageType, string> = {
   sonntag: 'Zuschlag Sonntagsarbeit',
   feiertag: 'Zuschlag Feiertagsarbeit',
   feiertag_hoch: 'Zuschlag hohe Feiertage',
+  mehrarbeit: 'Zuschlag Mehrarbeit',
 };
 export const WAGE_TYPES = Object.keys(WAGE_TYPE_LABEL) as WageType[];
 export const SURCHARGES: SurchargeKind[] = ['nacht', 'sonntag', 'feiertag', 'feiertag_hoch'];
@@ -41,6 +44,9 @@ export interface PayrollSettings {
   sunday_regular_bp: number;
   holiday_bp: number;
   high_holiday_bp: number;
+  /** Mehrarbeit: Minuten je Woche, ab denen der Zuschlag gilt (0 = aus), Satz in Basispunkten */
+  overtime_weekly_minutes: number;
+  overtime_bp: number;
   wage_type_numbers: Partial<Record<WageType, string>>;
   version: number;
 }
@@ -48,7 +54,8 @@ export interface PayrollSettings {
 export async function getPayrollSettings(sql: Sql): Promise<PayrollSettings> {
   const [s] = await sql<PayrollSettings[]>`
     select to_char(night_from, 'HH24:MI') as night_from, to_char(night_to, 'HH24:MI') as night_to, night_bp,
-           sunday_bp, sunday_regular_bp, holiday_bp, high_holiday_bp, wage_type_numbers, version
+           sunday_bp, sunday_regular_bp, holiday_bp, high_holiday_bp, overtime_weekly_minutes, overtime_bp,
+           wage_type_numbers, version
       from app.payroll_settings`;
   return s!;
 }
@@ -60,7 +67,20 @@ export async function savePayrollSettings(
   const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
   if (!hhmm.test(p.night_from) || !hhmm.test(p.night_to))
     throw new BusinessError('Nachtzeit bitte als HH:MM');
-  for (const v of [p.night_bp, p.sunday_bp, p.sunday_regular_bp, p.holiday_bp, p.high_holiday_bp])
+  if (
+    !Number.isInteger(p.overtime_weekly_minutes) ||
+    p.overtime_weekly_minutes < 0 ||
+    p.overtime_weekly_minutes > 4800
+  )
+    throw new BusinessError('Mehrarbeit ab: 0–80 Stunden je Woche');
+  for (const v of [
+    p.night_bp,
+    p.sunday_bp,
+    p.sunday_regular_bp,
+    p.holiday_bp,
+    p.high_holiday_bp,
+    p.overtime_bp,
+  ])
     if (!Number.isInteger(v) || v < 0 || v > 50000) throw new BusinessError('Zuschläge 0–500 %');
   const [cur] = await sql<{ version: number }[]>`select version from app.payroll_settings`;
   if (p.expectedVersion != null && cur && cur.version !== p.expectedVersion)
@@ -68,6 +88,7 @@ export async function savePayrollSettings(
   await sql`update app.payroll_settings set night_from = ${p.night_from}, night_to = ${p.night_to},
               night_bp = ${p.night_bp}, sunday_bp = ${p.sunday_bp}, sunday_regular_bp = ${p.sunday_regular_bp},
               holiday_bp = ${p.holiday_bp}, high_holiday_bp = ${p.high_holiday_bp},
+              overtime_weekly_minutes = ${p.overtime_weekly_minutes}, overtime_bp = ${p.overtime_bp},
               wage_type_numbers = ${sql.json(p.wage_type_numbers as never)}`;
 }
 
@@ -97,6 +118,8 @@ export interface PayrollRow {
   surchargeCents: Record<SurchargeKind, bigint>;
   /** angewandter Satz je Zuschlag (Basispunkte) */
   bp: Record<SurchargeKind, number>;
+  /** Mehrarbeitszuschlag in Cent (Stunden über der Wochenschwelle × Lohn × Satz) */
+  overtimeCents: bigint;
   pending: number;
 }
 
@@ -130,6 +153,36 @@ export async function payrollMonth(sql: Sql, month: string, employeeId?: string)
       select id, kind::text from app.absences where start_date <= ${to} and end_date >= ${from}`,
   ]);
   const kindOf = new Map(kinds.map((k) => [k.id, k.kind]));
+  // Mehrarbeit je Kalenderwoche (Mo–So): Wochen am Monatsrand vollständig laden, Minuten über der Schwelle dem Tag
+  // zuordnen, an dem sie anfallen – gezählt wird nur, was im Monat liegt.
+  const overtime = new Map<string, number>();
+  if (settings.overtime_weekly_minutes > 0) {
+    const wd = (d: string) => (new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7;
+    const wFrom = addDays(from, -wd(from));
+    const wTo = addDays(to, 6 - wd(to));
+    const wk = await listEntries(sql, { from: wFrom, to: wTo, ...(employeeId ? { employeeId } : {}) });
+    const byWeek = new Map<string, (typeof wk)[number][]>();
+    for (const t of wk) {
+      if ((t.status !== 'erfasst' && t.status !== 'freigegeben') || !t.end_at) continue;
+      const key = `${t.employee_id}|${addDays(t.work_date, -wd(t.work_date))}`;
+      byWeek.set(key, [...(byWeek.get(key) ?? []), t]);
+    }
+    for (const [key, list] of byWeek) {
+      list.sort((a, b) => a.start_at.getTime() - b.start_at.getTime());
+      let cum = 0;
+      for (const t of list) {
+        const net = Math.max(0, t.gross_minutes - t.break_minutes);
+        const over =
+          Math.max(0, cum + net - settings.overtime_weekly_minutes) -
+          Math.max(0, cum - settings.overtime_weekly_minutes);
+        cum += net;
+        if (over && t.work_date >= from && t.work_date <= to) {
+          const emp = key.split('|')[0]!;
+          overtime.set(emp, (overtime.get(emp) ?? 0) + over);
+        }
+      }
+    }
+  }
   const rows: PayrollRow[] = [];
   for (const e of emps) {
     const m = zero();
@@ -150,6 +203,7 @@ export async function payrollMonth(sql: Sql, month: string, employeeId?: string)
       );
       for (const k of SURCHARGES) m[k] += sm[k];
     }
+    m.mehrarbeit = overtime.get(e.id) ?? 0;
     for (const h of absHours) {
       if (h.employee_id !== e.id) continue;
       const k = kindOf.get(h.absence_id);
@@ -168,7 +222,15 @@ export async function payrollMonth(sql: Sql, month: string, employeeId?: string)
       SURCHARGES.map((k) => [k, e.wage_cents ? surchargeCents(m[k], e.wage_cents, bp[k]) : 0n]),
     ) as Record<SurchargeKind, bigint>;
     if (WAGE_TYPES.some((k) => m[k]) || pending)
-      rows.push({ ...e, employee_id: e.id, minutes: m, surchargeCents: sc, bp, pending });
+      rows.push({
+        ...e,
+        employee_id: e.id,
+        minutes: m,
+        surchargeCents: sc,
+        bp,
+        overtimeCents: e.wage_cents ? surchargeCents(m.mehrarbeit, e.wage_cents, settings.overtime_bp) : 0n,
+        pending,
+      });
   }
   return rows;
 }
@@ -184,6 +246,7 @@ export function payrollCsv(rows: PayrollRow[], s: PayrollSettings, month: string
     for (const k of WAGE_TYPES) {
       if (!r.minutes[k]) continue;
       const sur = (SURCHARGES as string[]).includes(k) ? (k as SurchargeKind) : null;
+      const ot = k === 'mehrarbeit';
       out.push(
         [
           month,
@@ -192,9 +255,13 @@ export function payrollCsv(rows: PayrollRow[], s: PayrollSettings, month: string
           safe(s.wage_type_numbers[k] ?? ''),
           WAGE_TYPE_LABEL[k],
           dec(r.minutes[k]),
-          sur ? String(r.bp[sur] / 100).replace('.', ',') : '',
+          sur
+            ? String(r.bp[sur] / 100).replace('.', ',')
+            : ot
+              ? String(s.overtime_bp / 100).replace('.', ',')
+              : '',
           r.wage_cents ? eur(r.wage_cents) : '',
-          sur && r.wage_cents ? eur(r.surchargeCents[sur]) : '',
+          sur && r.wage_cents ? eur(r.surchargeCents[sur]) : ot && r.wage_cents ? eur(r.overtimeCents) : '',
         ].join(';'),
       );
     }

@@ -317,7 +317,10 @@ ${sheetTableHtml(s)}${sigHtml}
   const surchargeMin = (p: { minutes: Record<string, number> } | undefined) =>
     p ? SURCHARGES.reduce((a, k) => a + p.minutes[k]!, 0) : 0;
   const surchargeEur = (p: { surchargeCents: Record<string, bigint> } | undefined) =>
-    p ? SURCHARGES.reduce((a, k) => a + p.surchargeCents[k]!, 0n) : 0n;
+    p
+      ? SURCHARGES.reduce((a, k) => a + p.surchargeCents[k]!, 0n) +
+        ((p as { overtimeCents?: bigint }).overtimeCents ?? 0n)
+      : 0n;
 
   app.get('/zeiterfassung/stundenzettel', async (c) => {
     const d = await listData(c);
@@ -1013,6 +1016,29 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
               </div>
             ))}
           </div>
+          <h3>Mehrarbeit (RTV § 10)</h3>
+          <div class="grid">
+            <div>
+              <label for="ot_h">Zuschlag ab Stunden je Woche (0 = aus)</label>
+              <input
+                id="ot_h"
+                name="overtime_hours"
+                value={String(st.overtime_weekly_minutes / 60).replace('.', ',')}
+                class="right"
+                required
+              />
+            </div>
+            <div>
+              <label for="overtime_bp">Mehrarbeitszuschlag %</label>
+              <input id="overtime_bp" name="overtime_bp" value={pct(st.overtime_bp)} class="right" required />
+            </div>
+          </div>
+          <p class="small mut">
+            Gezählt je Kalenderwoche (Mo–So) über alle Objekte: Arbeitszeit ohne Pause über der Schwelle (RTV:
+            regelmäßige Arbeitszeit 39 Std./Woche). Gilt auch für Teilzeit erst über dieser Schwelle; Stunden
+            im Arbeitszeitkonto werden dadurch nicht abgebaut. Zuschläge werden nicht addiert – zusätzlich zu
+            Nacht/Sonntag möglich, mit Steuerberater abstimmen.
+          </p>
           <p class="small mut">
             Voreinstellung Viva-Deluxe: Nacht 30 %, Sonntag und Feiertag 80 %, hohe Feiertage 150 % – gilt
             automatisch für alle Mitarbeitenden (RTV vom 31.10.2019: Nacht 25 %, Sonntag 100 %, Feiertag 150
@@ -1063,6 +1089,12 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
       sunday_regular_bp: bp('sunday_regular_bp'),
       holiday_bp: bp('holiday_bp'),
       high_holiday_bp: bp('high_holiday_bp'),
+      overtime_bp: bp('overtime_bp'),
+      overtime_weekly_minutes: (() => {
+        const v = Number((str(b, 'overtime_hours') ?? '').replace(',', '.'));
+        if (!Number.isFinite(v) || v < 0 || v > 80) throw new BusinessError('Mehrarbeit ab: 0–80 Stunden');
+        return Math.round(v * 60);
+      })(),
       wage_type_numbers: numbers,
       expectedVersion: Number(str(b, 'version')) || null,
     });

@@ -1227,6 +1227,8 @@ interface MenuEntry {
   href: string;
   soon?: boolean;
   sep?: boolean;
+  /** nur für die Objektleitung (Büro hat die volle Seite) */
+  olOnly?: boolean;
 }
 
 /** Hauptmenü wie Fortytools. `soon` = geplant (Seite erklärt, was kommt). */
@@ -1300,6 +1302,8 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Glasreinigung', href: '/glasreinigung', sep: true },
       { label: 'Tiefgaragenreinigung', href: '/tiefgarage' },
       { label: 'Grundreinigung', href: '/grundreinigung' },
+      // Objektleitung: Termine ohne Preise (Büro sieht die volle Planung oben)
+      { label: 'Grundreinigung', href: '/grundreinigung/objektleitung', olOnly: true },
     ],
   },
   {
@@ -1382,6 +1386,7 @@ export const Layout: FC<{
         items: m.items?.filter(
           (i) =>
             canOpen(role, i.href) &&
+            (!i.olOnly || role === 'objektleitung') &&
             // geplante Bereiche und Handy-Ansicht nur fürs Büro einblenden
             (!(i.soon || i.href === '/m') ||
               role === 'admin' ||

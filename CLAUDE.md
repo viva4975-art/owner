@@ -1475,3 +1475,9 @@ Testadresse.
     Leistungsbeginn (Begehung −21 Tage … Abstimmungsgespräch +30 Tage), erneut erstellen verschiebt nur offene Schritte.
     Hinweis § 613a BGB bei Übernahme von Personal des Vorgängers.
   - Tests: `runde24-small.db.test.ts`.
+- 2026-10-08: **Grundreinigung für die Objektleitung** (Disposition → Grundreinigung, `/grundreinigung/objektleitung`):
+  Termine der eigenen Objekte je Jahr mit Objekt, Adresse, Zeitraum, Eigenpersonal/Nachunternehmer, Flächen und
+  Hinweis – **ohne Preise**, nur lesen. **Mehrarbeitszuschlag** (RTV § 10, Einstellungen → Zuschläge & Lohnarten:
+  ab 39 Std./Woche, 25 %): je Kalenderwoche über alle Objekte, Minuten über der Schwelle dem Tag zugeordnet, an dem sie
+  anfallen (Wochen am Monatsrand vollständig gerechnet), neue Lohnart „Zuschlag Mehrarbeit“ mit Betrag im CSV.
+  Tests: `runde24-small.db.test.ts` (Mehrarbeit über Monatsgrenze).

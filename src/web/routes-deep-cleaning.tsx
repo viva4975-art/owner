@@ -46,6 +46,101 @@ const hrs = (h100: bigint) => (Number(h100) / 100).toLocaleString('de-DE', { max
 
 /** Planung Grundreinigung wie die alte App. */
 export function registerDeepCleaningRoutes({ app, deps, page, back }: Ctx) {
+  // Objektleitung: Termine der eigenen Objekte ohne Preise (nur lesen, Ausführung vorbereiten)
+  app.get('/grundreinigung/objektleitung', async (c) => {
+    const scope = c.get('sites');
+    const year = Number(c.req.query('jahr')) || Number(todayBerlin().slice(0, 4));
+    const rows = await deps.sql<
+      {
+        id: string;
+        object: string;
+        customer: string | null;
+        site_id: string | null;
+        site_no: string | null;
+        street: string | null;
+        city: string | null;
+        date_from: string | null;
+        date_to: string | null;
+        execution: 'eigen' | 'sub';
+        supplier_name: string | null;
+        mode: string;
+        floors: { belag: string; sqm_x100: number | string }[];
+        flat_sqm_x100: bigint | null;
+        max_hours: string | null;
+        status: string;
+        note: string | null;
+      }[]
+    >`
+      select p.id, p.object, p.customer, p.site_id, s.site_no, s.street, s.city, p.date_from::text, p.date_to::text,
+             p.execution, sup.name as supplier_name, p.mode, p.floors, p.flat_sqm_x100, p.max_hours::text, p.status, p.note
+        from app.deep_cleaning_plans p
+        left join app.sites s on s.id = p.site_id
+        left join app.suppliers sup on sup.id = p.supplier_id
+       where p.year = ${year} and ${scope === null ? deps.sql`true` : scope.length ? deps.sql`p.site_id in ${deps.sql(scope)}` : deps.sql`false`}
+       order by p.date_from nulls last, p.object`;
+    const sqm = (v: number | string | bigint | null) =>
+      v == null ? '' : `${(Number(v) / 100).toLocaleString('de-DE', { maximumFractionDigits: 2 })} m²`;
+    return page(
+      c,
+      'Grundreinigung',
+      'dispo',
+      <>
+        <div class="actions" style="margin-top:0">
+          <h1 style="margin:0">Grundreinigung {year}</h1>
+          <a
+            class="btn sec sm"
+            href={`/grundreinigung/objektleitung?jahr=${year - 1}`}
+            style="margin-left:auto"
+          >
+            ← {year - 1}
+          </a>
+          <a class="btn sec sm" href={`/grundreinigung/objektleitung?jahr=${year + 1}`}>
+            {year + 1} →
+          </a>
+        </div>
+        <p class="small mut">Termine Ihrer Objekte – ohne Preise. Änderungen bitte über das Büro.</p>
+        {rows.length === 0 && <div class="empty">Keine Grundreinigungen für Ihre Objekte in {year}.</div>}
+        {rows.map((r) => (
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+              <b>
+                {r.site_id ? <a href={`/objekte/${r.site_id}`}>{r.object}</a> : r.object}
+                {r.site_no ? ` (${r.site_no})` : ''}
+              </b>
+              <span
+                class={`badge ${r.status === 'Ausgeführt' ? 'ok' : r.status === 'Übergeben' ? 'warn' : ''}`}
+              >
+                {r.status}
+              </span>
+            </div>
+            <div class="small mut">
+              {[r.customer, [r.street, r.city].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}
+            </div>
+            <div class="small" style="margin-top:6px">
+              {r.date_from
+                ? `${dateDe(r.date_from)}${r.date_to && r.date_to !== r.date_from ? ` – ${dateDe(r.date_to)}` : ''}`
+                : 'Termin offen'}{' '}
+              ·{' '}
+              {r.execution === 'eigen'
+                ? `Eigenpersonal${r.max_hours ? `, max. ${r.max_hours.replace('.', ',')} Std.` : ''}`
+                : `Nachunternehmer${r.supplier_name ? `: ${r.supplier_name}` : ''}`}
+            </div>
+            <div class="small" style="margin-top:4px">
+              {r.mode === 'pauschal'
+                ? `Fläche gesamt ${sqm(r.flat_sqm_x100)}`
+                : (r.floors ?? []).map((f) => `${f.belag} ${sqm(f.sqm_x100)}`).join(' · ')}
+            </div>
+            {r.note && (
+              <div class="small" style="margin-top:4px">
+                Hinweis: {r.note}
+              </div>
+            )}
+          </div>
+        ))}
+      </>,
+    );
+  });
+
   const { sql } = deps;
 
   app.get('/grundreinigung', async (c) => {

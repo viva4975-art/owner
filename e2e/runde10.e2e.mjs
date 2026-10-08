@@ -152,7 +152,7 @@ check('CSV-Export', csv.status() === 200 && (await csv.text()).includes('Persona
 await p.goto(B + '/zeiterfassung/lohnarten/einstellungen');
 check(
   'Zuschläge voreingestellt (RTV)',
-  (await p.inputValue('#sunday_bp')) === '80' && (await p.inputValue('#high_holiday_bp')) === '200',
+  (await p.inputValue('#sunday_bp')) === '80' && (await p.inputValue('#high_holiday_bp')) === '150',
 );
 await p.fill('#ln-normal', '1000');
 await p.click('button:has-text("Speichern")');

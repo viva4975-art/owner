@@ -1445,3 +1445,9 @@ Testadresse.
   Push aufs Handy folgt mit Firebase. **Ampel Nachkalkulation** als Startseiten-Karte (Vormonat: ≥ Ziel / unter Ziel /
   Verlust, schlechteste 5 Objekte). Behoben: Stunde aus Intl („05 Uhr“) → NaN, jetzt `hourBerlin()`.
   Tests: `reminders.db.test.ts`.
+- 2026-10-08: **Monatsabschluss-Assistent** (Rechnungen → Monatsabschluss, Standard Vormonat, ← →): Schritte mit Zähler und
+  Link – Zeiten (laufende Stempelungen, Nachträge, Einsätze ohne Zeit, Urlaubsanträge, Objekt-Bestätigungen,
+  Stundenlisten unterschrieben), Abrechnung (fällige Pauschalen ohne Rechnung, verrichtete Leistungen, Entwürfe,
+  nicht versendet), Einkauf (erwartete NU-Rechnungen, zu prüfen), Lohn & Buchhaltung (Kasse abgeschlossen, Lohnarten-
+  und DATEV-Export von Hand). „Monat abschließen“ hält den Stand fest (`month_closings`, nur anhängen; bei offenen
+  Punkten nur mit Begründung), sperrt nichts. Tests: `month-close.db.test.ts`.

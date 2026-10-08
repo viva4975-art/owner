@@ -15,6 +15,7 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/einstellungen\/nummernkreise(\/|$)/, ['admin']],
   [/^\/einstellungen\/erinnerungen(\/|$)/, ['admin', 'buchhaltung']],
   [/^\/erinnerungen(\/|$)/, ['admin', 'buchhaltung']],
+  [/^\/monatsabschluss(\/|$)/, ['admin', 'buchhaltung']],
   [/^\/einstellungen\/?$/, ['admin', 'buchhaltung', 'personal']],
   [/^\/einstellungen\/word-vorlagen(\/|$)/, ['admin', 'buchhaltung', 'personal']],
   [/^\/einstellungen\/objektordner(\/|$)/, ['admin', 'buchhaltung', 'personal']],

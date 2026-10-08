@@ -1253,6 +1253,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Offene Posten', href: '/offene-posten', sep: true },
       { label: 'Mahnwesen', href: '/mahnungen' },
       { label: 'Preisanpassung', href: '/preisanpassung' },
+      { label: 'Monatsabschluss', href: '/monatsabschluss', sep: true },
     ],
   },
   {

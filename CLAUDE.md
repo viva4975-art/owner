@@ -1810,7 +1810,9 @@ Testadresse.
   - **Einsätze für abwesende Mitarbeiter:** „Nicht notwendig“ und **Nachunternehmer-Bestellung** (erteilte Bestellungen,
     die des Objekts zuerst) wählbar → Tag gilt als Ausfall mit Vermerk, Bestellung an `shift_exceptions.subcontract_id`
     (Migration `20261116000001`).
-  - **Kassenbuch-PDF neu** (Formular-Stil statt Rechnungsvorlage): Kasten Firma/Kasse/Zeitraum/Belegnummern/Abschluss,
-    Kacheln Anfangsbestand/Einnahmen/Ausgaben/Endbestand, Buchungen je Tag mit Beleg-Nr./Kategorie/„Beleg archiviert“,
-    Summen, Kassensturz mit Differenz, stornierte Buchungen mit Grund, Hinweis § 146 AO, Unterschriften Kassenführer/GF.
-  - Tests: neu `runde31.db.test.ts`, Rechnungsverfolgung in `expected-invoices.db.test.ts`.
+  - **Kassenbuch-PDF neu wie übliche Kassenbuch-Vordrucke** (Ahmed: „online anschauen, unten brauchst du nichts, nur
+    oben Logo, quer geht auch“): A4 quer, kein Briefpapier, nur Logo + Titel/Firma/Zeitraum oben, Kopfkasten
+    Anfangsbestand + Einnahmen − Ausgaben = Endbestand, Spalten Lfd. Nr. · Datum · Beleg-Nr. (✓ = Beleg archiviert) ·
+    Buchungstext · Kategorie · Einnahmen · Ausgaben · Bestand, „Übertrag“ am Seitenende/-anfang, Summe Monat,
+    Kassensturz, Stornos kompakt, Hinweis § 146 AO, drei Unterschriftslinien (`src/pdf/cashbook.ts`).
+  - Tests: neu `runde31.db.test.ts`, `src/pdf/cashbook.test.ts` (Übertrag/quer), Rechnungsverfolgung in `expected-invoices.db.test.ts`.

@@ -1354,6 +1354,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     label: 'Auswertungen',
     items: [
       { label: 'Statistiken', href: '/auswertungen/statistik' },
+      { label: 'Ausgaben', href: '/auswertungen/ausgaben' },
       { label: 'Umsatz-Vorschau', href: '/auswertungen/vorschau' },
       { label: 'Nachkalkulation', href: '/auswertungen/nachkalkulation' },
       { label: 'Kostenstellen', href: '/auswertungen/kostenstellen' },

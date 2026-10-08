@@ -13,6 +13,8 @@ import {
   assignReturn,
   type BankTx,
   closeBefore,
+  EXPENSE_CATEGORY,
+  quickSupplier,
   getTransaction,
   incomingForSupplier,
   type Suggestion,
@@ -60,12 +62,25 @@ const TX_CSS = `
 .tx-btns{display:flex;flex-wrap:wrap;gap:4px}
 .tx-sugg .tx-mini{margin-top:4px;font-size:13px;border-collapse:collapse}
 .tx-sugg .tx-mini td{padding:1px 10px 1px 0;border:0;background:none}
-.tx-act{display:flex;gap:6px;align-items:flex-start;justify-content:flex-end}
+.tx-act{display:flex;gap:6px;align-items:flex-start;justify-content:flex-end;flex-wrap:wrap}
+.tx-skip{margin:0;flex-basis:100%;text-align:right}.tx-skip .btn{font-size:12px;padding:2px 8px}
+.tx-sugg .lbl{font-size:12.5px;color:#555;margin-top:2px}
 .btn.ok,.tx-go{background:#a8dba8;color:#1d4d1d;border-color:#8cc98c}
 .tx-go{width:100%}
 .tx-head{margin-bottom:12px}
 @media (max-width:900px){.tx-row{grid-template-columns:1fr auto}.tx-arrow{display:none}.tx-match,.tx-act{grid-column:1/-1}.tx-amt{padding-top:0}.tx-act{justify-content:flex-start}}
 `;
+const CategorySelect = ({ id }: { id: string }) => (
+  <div style="min-width:220px">
+    <label for={id}>Kostenart (für die Ausgaben-Statistik)</label>
+    <select id={id} name="kategorie">
+      <option value="">– ohne –</option>
+      {Object.entries(EXPENSE_CATEGORY).map(([k, v]) => (
+        <option value={k}>{v}</option>
+      ))}
+    </select>
+  </div>
+);
 const isDate = (d: string | null | undefined): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d);
 const at = (d: Date) =>
   d.toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'short', timeStyle: 'short' });
@@ -386,6 +401,9 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
               >
                 ✎
               </a>
+              <form method="post" action={`${BACK}/${t.id}/ignorieren`} class="tx-skip">
+                <button class="btn sm ghost">Nicht zuordnen</button>
+              </form>
             </>
           ) : t.status === 'offen' ? (
             <form method="post" action={`${BACK}/${t.id}/ignorieren`} style="margin:0">
@@ -416,6 +434,9 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
               {s.confidence}
             </span>
           </div>
+          {(s.items.length > 1 || s.items[0]!.skonto > 0n || s.confidence !== 'sicher') && (
+            <div class="lbl">{s.label}</div>
+          )}
           <table class="tx-mini">
             {s.items.map((it) => (
               <tr>
@@ -446,11 +467,14 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
               {s.confidence}
             </span>
           </div>
+          <div class="lbl">{s.label}</div>
           <table class="tx-mini">
             {s.items.map((it) => (
               <tr>
                 <td class="r">{euro(it.amount)}</td>
-                <td>Eingangsrechnung {it.invoice_no}</td>
+                <td>
+                  {it.amount < 0n ? 'Korrektur' : 'Eingangsrechnung'} {it.invoice_no}
+                </td>
                 <td>{dateDe(it.invoice_date)}</td>
                 <td class="small mut">{it.skonto > 0n ? `Skonto ${euro(it.skonto)}` : ''}</td>
               </tr>
@@ -527,6 +551,7 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
           amount: i.amount,
           skonto: i.skonto,
           legacy: !!i.legacy,
+          free: !!i.free,
         })),
         actor,
       );
@@ -534,7 +559,7 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
       await assignIncoming(
         sql,
         id,
-        s.items.map((i) => i.id),
+        s.items.map((i) => ({ id: i.id, skonto: i.skonto })),
         actor,
       );
     else if (s.kind === 'party')
@@ -719,6 +744,7 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
                 <label for="ni">Nicht zuordnen (z. B. Bankgebühr, Steuer, Miete, Kartenzahlung)</label>
                 <input id="ni" name="note" placeholder="Notiz" />
               </div>
+              {t.amount_cents < 0n && <CategorySelect id="kat-i" />}
               <button class="btn sec">Nicht zuordnen</button>
             </form>
           </>
@@ -778,6 +804,25 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
       <>
         <style>{TX_CSS}</style>
         <TxHead t={t} />
+        {!lief && t.status === 'offen' && (
+          <form
+            method="post"
+            action={`${BACK}/${t.id}/lieferant-neu`}
+            class="card actions"
+            style="align-items:end"
+          >
+            <div style="flex:1;min-width:240px">
+              <label for="ln">Lieferant gibt es noch nicht? Schnell anlegen – nur mit Namen</label>
+              <input id="ln" name="name" value={t.counterparty_name ?? ''} required />
+            </div>
+            <button class="btn">+ Lieferant anlegen</button>
+            <span class="small mut" style="flex-basis:100%">
+              IBAN wird übernommen{t.counterparty_iban ? ` (${ibanShort(t.counterparty_iban)})` : ''} –
+              künftige Zahlungen erkennt die App dann selbst. Anschrift usw. später unter Lieferanten
+              ergänzen.
+            </span>
+          </form>
+        )}
         <form method="get" class="card actions" style="align-items:end">
           <div style="flex:1;min-width:240px">
             <label for="l">Lieferant / Nachunternehmer</label>
@@ -800,9 +845,10 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
               <form method="post" action={`${BACK}/${t.id}/eingang`} class="card">
                 <h3 style="margin-top:0">Eingangsrechnungen</h3>
                 <p class="small mut" style="margin-top:0">
-                  Freigegebene werden als bezahlt festgehalten (Datum = Buchungstag); schon von Hand als
-                  bezahlt festgehaltene werden nur verknüpft. Summe = {euro(-t.amount_cents)} (bei einer
-                  Rechnung auch mit Skonto).
+                  Ankreuzen, was mit dieser Zahlung beglichen wurde – Rechnungen werden als bezahlt
+                  festgehalten (Datum = Buchungstag), Korrekturen (Minusbeträge) verrechnet. Summe ={' '}
+                  {euro(-t.amount_cents)}; bei einer einzelnen Rechnung gilt eine Differenz bis 5 % als
+                  Skonto.
                 </p>
                 <div class="tbl">
                   <table>
@@ -828,7 +874,10 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
                           <td>
                             {i.status === 'bezahlt'
                               ? `bezahlt ${i.paid_at ? dateDe(i.paid_at) : ''}`
-                              : 'freigegeben'}
+                              : i.status === 'erfasst'
+                                ? 'erfasst (noch nicht freigegeben)'
+                                : 'freigegeben'}
+                            {i.gross_cents < 0n && ' · Korrektur'}
                           </td>
                           <td class="r">
                             {euro(
@@ -840,8 +889,8 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
                       {inv.length === 0 && (
                         <tr>
                           <td colspan={5} class="mut">
-                            Keine freigegebenen Eingangsrechnungen – erst unter Rechnungseingang erfassen und
-                            freigeben.
+                            Keine offenen Eingangsrechnungen – unten ohne Rechnung zuordnen oder die Rechnung
+                            unter Rechnungseingang erfassen.
                           </td>
                         </tr>
                       )}
@@ -864,9 +913,10 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
               <input type="hidden" name="art" value="lieferant" />
               <input type="hidden" name="partei" value={lief} />
               <div style="flex:1">
-                <label for="nl">Ohne Rechnung zuordnen (z. B. Abschlag, Lastschrift, Erstattung)</label>
+                <label for="nl">Ohne Rechnung zuordnen (z. B. Kartenzahlung, Abschlag, Lastschrift)</label>
                 <input id="nl" name="note" placeholder="Notiz" />
               </div>
+              {t.amount_cents < 0n && <CategorySelect id="kat-l" />}
               <button class="btn sec">Dem Lieferanten zuordnen</button>
             </form>
           </>
@@ -875,9 +925,26 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
     );
   });
 
+  app.post(`/transfer/kontoumsaetze/:id{${UUID}}/lieferant-neu`, async (c) => {
+    const id = c.req.param('id');
+    const t = await getTransaction(sql, id);
+    const sid = await quickSupplier(
+      sql,
+      str(await c.req.parseBody(), 'name') ?? '',
+      t ?? null,
+      c.get('actor'),
+    );
+    return back(c, `${BACK}/${id}/lieferant?l=${sid}`, { ok: 'Lieferant angelegt.' });
+  });
+
   app.post(`/transfer/kontoumsaetze/:id{${UUID}}/eingang`, async (c) => {
     const ids = arr(await c.req.parseBody({ all: true }), 'ein');
-    await assignIncoming(sql, c.req.param('id'), ids, c.get('actor'));
+    await assignIncoming(
+      sql,
+      c.req.param('id'),
+      ids.map((id) => ({ id })),
+      c.get('actor'),
+    );
     return back(c, BACK, { ok: `Zugeordnet: ${ids.length} Eingangsrechnung(en) als bezahlt.` });
   });
 
@@ -945,7 +1012,12 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
     if (!['kunde', 'lieferant', 'mitarbeiter'].includes(kind)) throw new BusinessError('Art fehlt');
     const id = str(b, 'partei');
     if (!id || !/^[0-9a-f-]{36}$/.test(id)) throw new BusinessError('Bitte aus der Liste wählen');
-    await assignParty(sql, c.req.param('id'), { kind, id, note: str(b, 'note') || null }, c.get('actor'));
+    await assignParty(
+      sql,
+      c.req.param('id'),
+      { kind, id, note: str(b, 'note') || null, category: str(b, 'kategorie') || null },
+      c.get('actor'),
+    );
     return back(c, BACK, { ok: 'Zugeordnet.' });
   });
 
@@ -976,6 +1048,7 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
           return {
             invoiceId: legacy ? x.invoiceId.slice(2) : x.invoiceId,
             legacy,
+            free: true, // von Hand eingetragener Skonto: gleicht die Rechnung aus, höchstens 5 %
             amount: parseEuro(x.a),
             skonto: x.s ? parseEuro(x.s) : 0n,
           };
@@ -988,11 +1061,13 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
   });
 
   app.post(`/transfer/kontoumsaetze/:id{${UUID}}/ignorieren`, async (c) => {
+    const b = (await c.req.parseBody()) as Record<string, string>;
     await ignoreTransaction(
       sql,
       c.req.param('id'),
-      str(await c.req.parseBody(), 'note') || 'nicht zugeordnet',
+      str(b, 'note') || 'nicht zugeordnet',
       c.get('actor'),
+      str(b, 'kategorie') || null,
     );
     return back(c, BACK, { ok: 'Umsatz abgehakt.' });
   });

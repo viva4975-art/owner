@@ -175,6 +175,8 @@ export interface InvoiceMatch {
   open_cents: bigint;
   amount: bigint; // Zahlung
   skonto: bigint; // Skonto-Abzug (eigene Buchung)
+  /** Skonto nicht vereinbart, aber erkannt (Differenz in %) – nur nach Bestätigung */
+  free?: boolean;
 }
 
 export type Suggestion =
@@ -263,21 +265,34 @@ export async function suggestions(sql: Sql, t: BankTx): Promise<Suggestion[]> {
           items: [{ ...pick(o), amount, skonto: sk }],
         });
       } else if (amount < o.open_cents) {
-        out.push({
+        const part: Suggestion = {
           kind: 'invoices',
           confidence: 'prüfen',
           label: `Teilzahlung auf Rechnung ${o.number} (offen ${fmt(o.open_cents)})`,
           items: [{ ...pick(o), amount, skonto: 0n }],
-        });
+        };
+        // Kunde hat Skonto abgezogen, obwohl nicht (mehr) vereinbart: Differenz bis 5 % als Skonto anbieten
+        const diff = o.open_cents - amount;
+        const bp = Number((diff * 10_000n) / o.open_cents);
+        if (bp >= 1 && bp <= 500) {
+          const sk: Suggestion = {
+            kind: 'invoices',
+            confidence: nearRoundPercent(diff, o.open_cents) ? 'wahrscheinlich' : 'prüfen',
+            label: `Rechnung ${o.number} mit Skonto-Abzug ${pctText(diff, o.open_cents)} (${fmt(diff)}) – Skonto war nicht vereinbart`,
+            items: [{ ...pick(o), amount, skonto: diff, free: true }],
+          };
+          out.push(...(nearRoundPercent(diff, o.open_cents) ? [sk, part] : [part, sk]));
+        } else out.push(part);
       }
     } else if (found.length > 1) {
       const sum = found.reduce((a, o) => a + o.open_cents, 0n);
-      if (sum === amount) {
+      const sub = sum === amount ? found : subsetSum(found, (o) => o.open_cents, amount);
+      if (sub) {
         out.push({
           kind: 'invoices',
           confidence: 'sicher',
-          label: `Rechnungen ${found.map((o) => o.number).join(', ')}`,
-          items: found.map((o) => ({ ...pick(o), amount: o.open_cents, skonto: 0n })),
+          label: `Rechnungen ${sub.map((o) => o.number).join(', ')}`,
+          items: sub.map((o) => ({ ...pick(o), amount: o.open_cents, skonto: 0n })),
         });
       }
     }
@@ -288,7 +303,7 @@ export async function suggestions(sql: Sql, t: BankTx): Promise<Suggestion[]> {
       const ids = new Set(custs.map((c) => c.customer_id));
       const mine = open.filter((o) => ids.has(o.customer_id));
       const one = mine.filter((o) => o.open_cents === amount);
-      const all = mine.reduce((a, o) => a + o.open_cents, 0n);
+      const sub = one.length ? null : subsetSum(mine, (o) => o.open_cents, amount);
       if (one.length === 1)
         out.push({
           kind: 'invoices',
@@ -296,12 +311,12 @@ export async function suggestions(sql: Sql, t: BankTx): Promise<Suggestion[]> {
           label: `Rechnung ${one[0]!.number} (Konto des Kunden, Betrag passt)`,
           items: [{ ...pick(one[0]!), amount, skonto: 0n }],
         });
-      else if (mine.length > 1 && all === amount)
+      else if (sub)
         out.push({
           kind: 'invoices',
           confidence: 'wahrscheinlich',
-          label: `Rechnungen ${mine.map((o) => o.number).join(', ')} (alle offenen des Kunden)`,
-          items: mine.map((o) => ({ ...pick(o), amount: o.open_cents, skonto: 0n })),
+          label: `Rechnungen ${sub.map((o) => o.number).join(', ')} (Konto des Kunden, Summe passt)`,
+          items: sub.map((o) => ({ ...pick(o), amount: o.open_cents, skonto: 0n })),
         });
     }
     if (!out.length) {
@@ -371,52 +386,194 @@ interface IncomingRow {
   paid_at: string | null;
 }
 
+const INCOMING_COLS = (sql: Sql | Tx) => sql`
+  i.id, i.supplier_id, s.name as supplier_name, s.iban as supplier_iban, i.invoice_no, i.invoice_date::text,
+  i.gross_cents, i.skonto_until::text, i.skonto_percent_bp, i.status, i.paid_amount_cents, i.paid_at::text`;
+
 const incomingSkonto = (i: IncomingRow, date: string) =>
   !i.skonto_until || !i.skonto_percent_bp || date > addDays(i.skonto_until, SKONTO_GRACE_DAYS)
     ? 0n
     : divRoundHalfUp(i.gross_cents * BigInt(i.skonto_percent_bp), 10_000n);
 
-/** Ausgang: freigegebene Eingangsrechnung (Betrag, ggf. mit Skonto) oder schon von Hand als bezahlt festgehalten. */
+/** Großbuchstaben und Ziffern – „RE-2026/0815“ findet auch „RE 2026 0815“ im Verwendungszweck. */
+const norm = (s: string | null | undefined) => (s ?? '').toUpperCase().replace(/[^A-Z0-9ÄÖÜ]/g, '');
+const NAME_STOP = new Set([
+  'GMBH',
+  'MBH',
+  'HANDELS',
+  'HANDEL',
+  'SERVICE',
+  'SERVICES',
+  'DEUTSCHLAND',
+  'GERMANY',
+  'MUENCHEN',
+  'MÜNCHEN',
+  'GEBÄUDEREINIGUNG',
+  'GEBAEUDEREINIGUNG',
+  'FIRMA',
+  'UND',
+  'GROUP',
+  'GRUPPE',
+  'HOLDING',
+  'VERTRIEB',
+]);
+/** Erstes kennzeichnendes Wort des Lieferantennamens kommt im Namen der Gegenseite vor. */
+const nameMatches = (supplier: string, counterparty: string | null) => {
+  const cp = norm(counterparty);
+  if (!cp) return false;
+  const word = supplier
+    .toUpperCase()
+    .split(/[^A-Z0-9ÄÖÜ]+/)
+    .find((w) => w.length >= 4 && !NAME_STOP.has(w));
+  return !!word && cp.includes(word);
+};
+const nearRoundPercent = (diff: bigint, base: bigint) => {
+  const bp = Number((diff * 10_000n) / base);
+  const round = Math.round(bp / 50) * 50; // 0,5-%-Schritte (2 %, 2,5 %, 3 % …)
+  return (
+    round > 0 &&
+    divRoundHalfUp(base * BigInt(round), 10_000n) - diff <= 1n &&
+    diff - divRoundHalfUp(base * BigInt(round), 10_000n) <= 1n
+  );
+};
+const pctText = (diff: bigint, base: bigint) =>
+  `${(Number((diff * 10_000n) / base) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`;
+
+/** Kleinste Auswahl (bis 14 Posten), deren Summe genau dem Betrag entspricht – auch mit Minusbeträgen (Verrechnung). */
+export function subsetSum<T>(items: T[], val: (t: T) => bigint, target: bigint): T[] | null {
+  const list = items.slice(0, 14);
+  let best: T[] | null = null;
+  for (let m = 1; m < 1 << list.length; m++) {
+    let sum = 0n;
+    const pickd: T[] = [];
+    for (let i = 0; i < list.length; i++)
+      if (m & (1 << i)) {
+        sum += val(list[i]!);
+        pickd.push(list[i]!);
+      }
+    if (sum === target && pickd.length >= 2 && (!best || pickd.length < best.length)) best = pickd;
+  }
+  return best;
+}
+
+type IncomingSuggestion = Extract<Suggestion, { kind: 'incoming' }>;
+const RANK = { sicher: 0, wahrscheinlich: 1, prüfen: 2 } as const;
+
+/**
+ * Ausgang → Eingangsrechnungen. Erkannt wird über Rechnungsnummer im Verwendungszweck, IBAN oder Namen des Lieferanten;
+ * Betrag genau, mit Skonto (vereinbart oder als Differenz bis 5 %) oder als Verrechnung mehrerer Rechnungen und
+ * Rechnungskorrekturen (Minusbeträge) desselben Lieferanten. Auch noch nicht freigegebene Rechnungen.
+ */
 async function incomingSuggestions(sql: Sql, t: BankTx): Promise<Suggestion[]> {
   const amount = -t.amount_cents;
   const rows = await sql<IncomingRow[]>`
-    select i.id, i.supplier_id, s.name as supplier_name, s.iban as supplier_iban, i.invoice_no, i.invoice_date::text,
-           i.gross_cents, i.skonto_until::text, i.skonto_percent_bp, i.status, i.paid_amount_cents, i.paid_at::text
+    select ${INCOMING_COLS(sql)}
       from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
      where i.bank_transaction_id is null
-       and (i.status = 'freigegeben' or (i.status = 'bezahlt' and i.paid_amount_cents = ${amount}))`;
-  const purpose = t.purpose.toUpperCase().replace(/\s/g, '');
+       and (i.status in ('erfasst', 'freigegeben') or (i.status = 'bezahlt' and i.paid_amount_cents = ${amount}))`;
+  const purpose = norm(t.purpose);
   const cp = iban(t.counterparty_iban);
-  const hits = rows
-    .map((i) => {
-      const sk = i.status === 'bezahlt' ? 0n : incomingSkonto(i, t.booking_date);
-      const pay =
-        i.status === 'bezahlt'
-          ? i.paid_amount_cents!
-          : amount === i.gross_cents
-            ? i.gross_cents
-            : i.gross_cents - sk;
-      const no = i.invoice_no.toUpperCase().replace(/\s/g, '');
-      const byNo = no.length >= 3 && purpose.includes(no);
-      const byIban = !!cp && iban(i.supplier_iban) === cp;
-      return { i, sk: pay === i.gross_cents ? 0n : sk, pay, byNo, byIban };
-    })
-    .filter((h) => h.pay === amount && (h.byNo || h.byIban || h.i.status === 'freigegeben'));
-  const ranked = [
-    ...hits.filter((h) => h.byNo),
-    ...hits.filter((h) => !h.byNo && h.byIban),
-    ...hits.filter((h) => !h.byNo && !h.byIban),
-  ];
-  return ranked.slice(0, 3).map((h) => ({
-    kind: 'incoming' as const,
-    confidence: h.byNo ? ('sicher' as const) : h.byIban ? ('wahrscheinlich' as const) : ('prüfen' as const),
-    label: `Eingangsrechnung ${h.i.invoice_no} (${h.i.supplier_name})${h.sk > 0n ? ` mit Skonto ${fmt(h.sk)}` : ''}${h.i.status === 'bezahlt' ? ' – schon als bezahlt festgehalten' : ''}`,
-    supplierId: h.i.supplier_id,
-    supplierName: h.i.supplier_name,
-    items: [
-      { id: h.i.id, invoice_no: h.i.invoice_no, invoice_date: h.i.invoice_date, amount: h.pay, skonto: h.sk },
-    ],
-  }));
+  const byNo = (i: IncomingRow) => {
+    const n = norm(i.invoice_no);
+    return n.length >= 4 && purpose.includes(n);
+  };
+  const supplierHit = new Map<string, 'nummer' | 'iban' | 'name'>();
+  for (const i of rows) {
+    if (byNo(i)) supplierHit.set(i.supplier_id, 'nummer');
+    else if (!supplierHit.has(i.supplier_id) && cp && iban(i.supplier_iban) === cp)
+      supplierHit.set(i.supplier_id, 'iban');
+    else if (!supplierHit.has(i.supplier_id) && nameMatches(i.supplier_name, t.counterparty_name))
+      supplierHit.set(i.supplier_id, 'name');
+  }
+  const out: IncomingSuggestion[] = [];
+  const add = (
+    conf: IncomingSuggestion['confidence'],
+    label: string,
+    items: { i: IncomingRow; pay: bigint; sk: bigint }[],
+  ) => {
+    const key = items
+      .map((x) => x.i.id)
+      .sort()
+      .join();
+    if (
+      out.some(
+        (o) =>
+          o.items
+            .map((x) => x.id)
+            .sort()
+            .join() === key,
+      )
+    )
+      return;
+    const h = items[0]!.i;
+    out.push({
+      kind: 'incoming',
+      confidence: conf,
+      label,
+      supplierId: h.supplier_id,
+      supplierName: h.supplier_name,
+      items: items.map((x) => ({
+        id: x.i.id,
+        invoice_no: x.i.invoice_no,
+        invoice_date: x.i.invoice_date,
+        amount: x.pay,
+        skonto: x.sk,
+      })),
+    });
+  };
+  const paid = (i: IncomingRow) => i.status === 'bezahlt';
+  const done = (i: IncomingRow) => (paid(i) ? ' – schon als bezahlt festgehalten' : '');
+  for (const i of rows) {
+    const hit = supplierHit.get(i.supplier_id);
+    const own = byNo(i);
+    const value = paid(i) ? i.paid_amount_cents! : i.gross_cents;
+    if (value === amount && (own || hit)) {
+      add(
+        own ? 'sicher' : 'wahrscheinlich',
+        `Eingangsrechnung ${i.invoice_no} (${i.supplier_name})${done(i)}`,
+        [{ i, pay: amount, sk: 0n }],
+      );
+      continue;
+    }
+    if (paid(i) || i.gross_cents <= 0n || amount >= i.gross_cents || !(own || hit)) continue;
+    const diff = i.gross_cents - amount;
+    const agreed = incomingSkonto(i, t.booking_date);
+    const bp = Number((diff * 10_000n) / i.gross_cents);
+    const fits = agreed > 0n && diff - agreed <= 1n && agreed - diff <= 1n;
+    if (fits || (own && bp >= 1 && bp <= 500)) {
+      add(
+        own && (fits || nearRoundPercent(diff, i.gross_cents)) ? 'sicher' : 'wahrscheinlich',
+        `Eingangsrechnung ${i.invoice_no} (${i.supplier_name}) mit Skonto ${pctText(diff, i.gross_cents)} (${fmt(diff)})`,
+        [{ i, pay: amount, sk: diff }],
+      );
+    }
+  }
+  // Verrechnung: mehrere offene Rechnungen/Korrekturen desselben (erkannten) Lieferanten ergeben den Betrag
+  for (const [sid, how] of supplierHit) {
+    const mine = rows.filter((i) => i.supplier_id === sid && !paid(i));
+    const sub = subsetSum(mine, (i) => i.gross_cents, amount);
+    if (!sub) continue;
+    const plus = sub.filter((i) => i.gross_cents > 0n);
+    const minus = sub.filter((i) => i.gross_cents < 0n);
+    add(
+      how === 'nummer' && plus.every(byNo) ? 'sicher' : 'wahrscheinlich',
+      `${minus.length ? 'Verrechnung: ' : ''}Eingangsrechnungen ${plus.map((i) => i.invoice_no).join(', ')}${
+        minus.length
+          ? ` abzgl. Korrektur ${minus.map((i) => `${i.invoice_no} (${fmt(-i.gross_cents)})`).join(', ')}`
+          : ''
+      } (${sub[0]!.supplier_name})`,
+      sub.map((i) => ({ i, pay: i.gross_cents, sk: 0n })),
+    );
+  }
+  if (!out.length) {
+    // unbekannte Gegenseite: genau eine offene Rechnung mit dem Betrag
+    const same = rows.filter((i) => !paid(i) && i.gross_cents === amount);
+    if (same.length === 1)
+      add('prüfen', `Betrag passt zu Eingangsrechnung ${same[0]!.invoice_no} (${same[0]!.supplier_name})`, [
+        { i: same[0]!, pay: amount, sk: 0n },
+      ]);
+  }
+  return out.sort((x, y) => RANK[x.confidence] - RANK[y.confidence]).slice(0, 3);
 }
 
 /** Ohne Rechnung: Gegenkonto gehört einem Kunden, Lieferanten oder Mitarbeiter. */
@@ -471,7 +628,7 @@ async function lockOpen(tx: Tx, id: string) {
 export async function assignInvoices(
   sql: Sql,
   txIdValue: string,
-  items: { invoiceId: string; amount: bigint; skonto: bigint; legacy?: boolean }[],
+  items: { invoiceId: string; amount: bigint; skonto: bigint; legacy?: boolean; free?: boolean }[],
   actor: string,
 ) {
   if (!items.length) throw new BusinessError('Bitte mindestens eine Rechnung wählen');
@@ -505,7 +662,10 @@ export async function assignInvoices(
           `Rechnung ${o.number}: Betrag höher als offen (${fmt(o.open_cents)}) – Überzahlung klären`,
         );
       }
-      if (it.skonto > 0n && skontoFit(o, it.amount, t.booking_date) !== it.skonto) {
+      // erkannter, nicht vereinbarter Skonto: höchstens 5 % und nur, wenn er die Rechnung ausgleicht
+      const freeOk =
+        it.free && it.amount + it.skonto === o.open_cents && it.skonto * 10_000n <= o.open_cents * 500n;
+      if (it.skonto > 0n && !freeOk && skontoFit(o, it.amount, t.booking_date) !== it.skonto) {
         throw new BusinessError(`Rechnung ${o.number}: Skonto nicht zulässig (Frist/Betrag)`);
       }
       nos.push(o.number);
@@ -530,6 +690,7 @@ export async function assignInvoices(
         select customer_id from app.legacy_invoices where id = ${items[0]!.invoiceId}`;
       customerId = l?.customer_id ?? null;
     }
+    if (customerId) await learnCustomerIban(tx, customerId, t, actor);
     await tx`update app.bank_transactions set status = 'zugeordnet', note = ${`Rechnung ${nos.join(', ')}`},
                assigned_kind = 'kunde', assigned_id = ${customerId},
                matched_by = ${actor}, matched_at = now() where id = ${t.id}`;
@@ -571,57 +732,97 @@ async function payLegacy(
   return o.number;
 }
 
+const IBAN_RE = /^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/;
+/** Gegenkonto beim Kunden merken → nächstes Mal erkannt. */
+async function learnCustomerIban(tx: Tx, customerId: string, t: BankTx, actor: string) {
+  const i = iban(t.counterparty_iban);
+  if (!IBAN_RE.test(i)) return;
+  await tx`insert into app.customer_bank_accounts (id, customer_id, holder, iban, created_by)
+           values (${uuidOf(`cba:${customerId}:${i}`)}, ${customerId}, ${(t.counterparty_name ?? 'Konto').slice(0, 120) || 'Konto'}, ${i}, ${actor})
+           on conflict do nothing`;
+}
+/** IBAN beim Lieferanten nachtragen, wenn noch keine hinterlegt ist. */
+async function learnSupplierIban(tx: Sql | Tx, supplierId: string, t: BankTx) {
+  const i = iban(t.counterparty_iban);
+  if (!IBAN_RE.test(i)) return;
+  await tx`update app.suppliers set iban = ${i} where id = ${supplierId} and coalesce(iban, '') = ''`;
+}
+
 /**
- * Ausgang auf Eingangsrechnungen: freigegebene werden als bezahlt festgehalten (Betrag = Rechnung, bei einer Rechnung
- * auch mit Skonto), schon von Hand als bezahlt festgehaltene nur verknüpft. Summe muss dem Umsatz entsprechen.
+ * Ausgang auf Eingangsrechnungen (auch noch nicht freigegebene): als bezahlt festhalten, Betrag = Rechnung − Skonto;
+ * Rechnungskorrekturen (Minusbeträge) werden verrechnet. Schon von Hand als bezahlt festgehaltene werden nur verknüpft.
+ * Summe muss dem Umsatz entsprechen. Ohne Skonto-Angabe gilt bei einer Rechnung die Differenz bis 5 % als Skonto.
  */
-export async function assignIncoming(sql: Sql, txIdValue: string, ids: string[], actor: string) {
-  if (!ids.length) throw new BusinessError('Bitte mindestens eine Eingangsrechnung wählen');
+export async function assignIncoming(
+  sql: Sql,
+  txIdValue: string,
+  items: { id: string; skonto?: bigint }[],
+  actor: string,
+) {
+  if (!items.length) throw new BusinessError('Bitte mindestens eine Eingangsrechnung wählen');
   await sql.begin(async (tx) => {
     const t = await lockOpen(tx, txIdValue);
     if (t.status === 'zugeordnet') return;
     if (t.amount_cents >= 0n)
       throw new BusinessError('Nur Zahlungsausgänge können Eingangsrechnungen zugeordnet werden');
     const amount = -t.amount_cents;
+    const ids = items.map((x) => x.id);
     const rows = await tx<IncomingRow[]>`
-      select i.id, i.supplier_id, s.name as supplier_name, s.iban as supplier_iban, i.invoice_no, i.invoice_date::text,
-             i.gross_cents, i.skonto_until::text, i.skonto_percent_bp, i.status, i.paid_amount_cents, i.paid_at::text
+      select ${INCOMING_COLS(tx)}
         from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
-       where i.id = any(${ids}::uuid[]) for update of i`;
-    if (rows.length !== ids.length) throw new BusinessError('Eingangsrechnung nicht gefunden');
-    for (const r of rows) {
-      if (r.status !== 'freigegeben' && r.status !== 'bezahlt')
-        throw new BusinessError(`${r.invoice_no}: erst freigeben (sachlich und rechnerisch richtig)`);
-    }
+       where i.id = any(${ids}::uuid[]) and i.bank_transaction_id is null for update of i`;
+    if (rows.length !== ids.length)
+      throw new BusinessError('Eingangsrechnung nicht gefunden oder schon zugeordnet');
+    if (new Set(rows.map((r) => r.supplier_id)).size > 1)
+      throw new BusinessError('Bitte nur Rechnungen eines Lieferanten zusammen zuordnen');
+    for (const r of rows)
+      if (!['erfasst', 'freigegeben', 'bezahlt'].includes(r.status))
+        throw new BusinessError(`${r.invoice_no}: Status ${r.status} – nicht zuordenbar`);
+    const sk = new Map(items.map((x) => [x.id, x.skonto ?? 0n]));
     const pay = (r: IncomingRow) =>
-      r.status === 'bezahlt' ? (r.paid_amount_cents ?? r.gross_cents) : r.gross_cents;
-    const sum = rows.reduce((a, r) => a + pay(r), 0n);
-    let skonto = 0n;
-    if (sum !== amount) {
+      r.status === 'bezahlt' ? (r.paid_amount_cents ?? r.gross_cents) : r.gross_cents - (sk.get(r.id) ?? 0n);
+    let sum = rows.reduce((a, r) => a + pay(r), 0n);
+    if (sum !== amount && rows.length === 1 && rows[0]!.status !== 'bezahlt' && !sk.get(rows[0]!.id)) {
       const r = rows[0]!;
-      const sk = rows.length === 1 && r.status === 'freigegeben' ? incomingSkonto(r, t.booking_date) : 0n;
-      if (!(sk > 0n && r.gross_cents - sk === amount))
-        throw new BusinessError(
-          `Summe der Rechnungen (${fmt(sum)}) entspricht nicht dem Umsatz (${fmt(amount)})`,
-        );
-      skonto = sk;
+      const diff = r.gross_cents - amount;
+      if (diff > 0n && diff * 10_000n <= r.gross_cents * 500n) {
+        sk.set(r.id, diff);
+        sum = amount;
+      }
     }
     for (const r of rows) {
-      if (r.status === 'freigegeben') {
+      const s0 = sk.get(r.id) ?? 0n;
+      if (s0 < 0n || (s0 > 0n && (r.gross_cents <= 0n || s0 * 10_000n > r.gross_cents * 500n)))
+        throw new BusinessError(`${r.invoice_no}: Skonto über 5 % – bitte prüfen (Teilzahlung?)`);
+    }
+    if (sum !== amount)
+      throw new BusinessError(
+        `Summe der Rechnungen (${fmt(sum)}) entspricht nicht dem Umsatz (${fmt(amount)})`,
+      );
+    for (const r of rows) {
+      const s0 = sk.get(r.id) ?? 0n;
+      if (r.status !== 'bezahlt') {
         await tx`update app.incoming_invoices set status = 'bezahlt', paid_at = ${t.booking_date},
-                   paid_amount_cents = ${r.gross_cents - skonto}, paid_skonto_cents = ${skonto},
-                   paid_method = 'ueberweisung', paid_note = 'Kontoumsatz', paid_by = ${actor}, bank_transaction_id = ${t.id}
+                   paid_amount_cents = ${r.gross_cents - s0}, paid_skonto_cents = ${s0},
+                   paid_method = ${r.gross_cents < 0n ? 'verrechnung' : 'ueberweisung'},
+                   paid_note = ${r.gross_cents < 0n ? 'verrechnet (Kontoumsatz)' : 'Kontoumsatz'}, paid_by = ${actor},
+                   approved_by = coalesce(approved_by, ${actor}), approved_at = coalesce(approved_at, now()),
+                   bank_transaction_id = ${t.id}
                  where id = ${r.id}`;
       } else {
         await tx`update app.incoming_invoices set bank_transaction_id = ${t.id} where id = ${r.id}`;
       }
       await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
                values (${actor}, 'paid', 'incoming_invoice', ${r.id},
-                       ${tx.json({ bank_transaction: t.id, skonto: String(skonto) })})`;
+                       ${tx.json({ bank_transaction: t.id, skonto: String(s0), from_status: r.status })})`;
     }
     const supplier = rows[0]!;
+    await learnSupplierIban(tx, supplier.supplier_id, t);
+    const plus = rows.filter((r) => r.gross_cents > 0n).map((r) => r.invoice_no);
+    const minus = rows.filter((r) => r.gross_cents < 0n).map((r) => r.invoice_no);
+    const skTotal = [...sk.values()].reduce((a, b) => a + b, 0n);
     await tx`update app.bank_transactions set status = 'zugeordnet',
-               note = ${`Eingangsrechnung ${rows.map((r) => r.invoice_no).join(', ')} (${supplier.supplier_name})`},
+               note = ${`Eingangsrechnung ${plus.join(', ')}${minus.length ? ` abzgl. Korrektur ${minus.join(', ')}` : ''}${skTotal > 0n ? ` mit Skonto ${fmt(skTotal)}` : ''} (${supplier.supplier_name})`.slice(0, 300)},
                assigned_kind = 'lieferant', assigned_id = ${supplier.supplier_id},
                matched_by = ${actor}, matched_at = now() where id = ${t.id}`;
   });
@@ -634,7 +835,7 @@ export async function incomingForSupplier(sql: Sql, supplierId: string) {
            i.gross_cents, i.skonto_until::text, i.skonto_percent_bp, i.status, i.paid_amount_cents, i.paid_at::text
       from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
      where i.supplier_id = ${supplierId} and i.bank_transaction_id is null
-       and (i.status = 'freigegeben' or (i.status = 'bezahlt' and i.paid_at > current_date - 120))
+       and (i.status in ('erfasst', 'freigegeben') or (i.status = 'bezahlt' and i.paid_at > current_date - 120))
      order by i.invoice_date desc limit 100`;
 }
 
@@ -645,9 +846,15 @@ export async function incomingForSupplier(sql: Sql, supplierId: string) {
 export async function assignParty(
   sql: Sql,
   txIdValue: string,
-  p: { kind: 'kunde' | 'lieferant' | 'mitarbeiter'; id: string; note: string | null },
+  p: {
+    kind: 'kunde' | 'lieferant' | 'mitarbeiter';
+    id: string;
+    note: string | null;
+    category?: string | null;
+  },
   actor: string,
 ) {
+  const category = p.kind === 'mitarbeiter' ? 'personal' : checkCategory(p.category);
   const [who] =
     p.kind === 'kunde'
       ? await sql<
@@ -667,9 +874,54 @@ export async function assignParty(
   );
   const r = await sql`
     update app.bank_transactions set status = 'ignoriert', note = ${note}, assigned_kind = ${p.kind}, assigned_id = ${p.id},
-           matched_by = ${actor}, matched_at = now()
+           expense_category = ${category}, matched_by = ${actor}, matched_at = now()
      where id = ${txIdValue} and status = 'offen' returning id`;
   if (!r.length) throw new BusinessError('Umsatz ist nicht (mehr) offen');
+  if (p.kind === 'lieferant') {
+    const t = await getTransaction(sql, txIdValue);
+    if (t) await learnSupplierIban(sql, p.id, t);
+  }
+}
+
+/** Kostenarten für Ausgaben ohne Eingangsrechnung (Ausgaben-Statistik). */
+export const EXPENSE_CATEGORY: Record<string, string> = {
+  material: 'Material / Reinigungsmittel',
+  nachunternehmer: 'Nachunternehmer',
+  geraete: 'Geräte / Wartung',
+  fahrzeuge: 'Fahrzeuge / Tanken',
+  miete: 'Miete / Büro',
+  personal: 'Personal (Lohn, Vorschuss, Auslagen)',
+  steuern: 'Steuern / Abgaben / Sozialversicherung',
+  versicherung: 'Versicherungen',
+  bank: 'Bankgebühren / Zinsen',
+  privat: 'Privat / Gesellschafter',
+  sonstiges: 'Sonstiges',
+};
+const checkCategory = (c: string | null | undefined) => {
+  if (!c) return null;
+  if (!(c in EXPENSE_CATEGORY)) throw new BusinessError('Kostenart unbekannt');
+  return c;
+};
+
+/** Neuen Lieferanten nur mit Namen anlegen (Schnellanlage aus dem Kontoumsatz, IBAN wird übernommen). */
+export async function quickSupplier(sql: Sql, name: string, t: BankTx | null, actor: string) {
+  const n = name.trim();
+  if (n.length < 2) throw new BusinessError('Bitte einen Namen angeben');
+  const [dup] = await sql<
+    { id: string }[]
+  >`select id from app.suppliers where lower(name) = lower(${n}) limit 1`;
+  if (dup) return dup.id;
+  const [row] = await sql<{ no: string }[]>`
+    select (greatest(70000, coalesce(max(case when supplier_no ~ '^[0-9]{1,9}$' then supplier_no::bigint end), 70000)) + 1)::text as no
+      from app.suppliers`;
+  const no = row!.no;
+  const id = uuidOf(`supplier:${n.toLowerCase()}`);
+  const ib = iban(t?.counterparty_iban);
+  await sql`insert into app.suppliers (id, supplier_no, name, iban) values (${id}, ${no}, ${n.slice(0, 200)}, ${IBAN_RE.test(ib) ? ib : null})
+            on conflict (id) do nothing`;
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${actor}, 'create', 'supplier', ${id}, ${sql.json({ name: n, quick: true })})`;
+  return id;
 }
 
 /** Sammelgutschrift eines Lastschrifteinzugs: alle Positionen als bezahlt buchen. */
@@ -773,9 +1025,17 @@ export async function assignReturn(
   });
 }
 
-export async function ignoreTransaction(sql: Sql, id: string, note: string | null, actor: string) {
-  const r =
-    await sql`update app.bank_transactions set status = 'ignoriert', note = ${note}, matched_by = ${actor}, matched_at = now()
+export async function ignoreTransaction(
+  sql: Sql,
+  id: string,
+  note: string | null,
+  actor: string,
+  category: string | null = null,
+) {
+  const cat = checkCategory(category);
+  const r = await sql`update app.bank_transactions set status = 'ignoriert',
+                        note = ${cat && (!note || note === 'nicht zugeordnet') ? EXPENSE_CATEGORY[cat]! : note},
+                        expense_category = ${cat}, matched_by = ${actor}, matched_at = now()
                       where id = ${id} and status = 'offen' returning id`;
   if (!r.length) throw new BusinessError('Umsatz ist nicht (mehr) offen');
 }
@@ -783,6 +1043,7 @@ export async function ignoreTransaction(sql: Sql, id: string, note: string | nul
 export async function reopenTransaction(sql: Sql, id: string, actor: string) {
   const r =
     await sql`update app.bank_transactions set status = 'offen', note = null, assigned_kind = null, assigned_id = null,
+                      expense_category = null,
                       matched_by = ${actor}, matched_at = now()
                       where id = ${id} and status = 'ignoriert' returning id`;
   if (!r.length) throw new BusinessError('Nur ignorierte Umsätze können wieder geöffnet werden');

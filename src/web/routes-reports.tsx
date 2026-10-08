@@ -18,6 +18,7 @@ import {
 } from '../services/reports.js';
 import { hm, WEEKDAYS_SHORT } from '../services/time.js';
 import { type StatBasis, type StatGroup, revenueStats, statKpis } from '../services/statistics.js';
+import { bankIncome, type ExpenseBasis, expenseStats, openIncoming } from '../services/expense-stats.js';
 import type { AppEnv, Ctx } from './app.js';
 import { PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
 import { canOpen } from './permissions.js';
@@ -45,6 +46,12 @@ export const REPORTS: (Tab & { text: string })[] = [
     label: 'Statistiken',
     href: '/auswertungen/statistik',
     text: 'Umsatz je Monat/Quartal/Jahr, pro Kunde und nach Leistungsart (wie Fortytools)',
+  },
+  {
+    key: 'ausgaben',
+    label: 'Ausgaben',
+    href: '/auswertungen/ausgaben',
+    text: 'Ausgaben je Monat/Jahr mit Vorjahr, nach Kostenart und Empfänger (Konto oder Eingangsrechnungen)',
   },
   {
     key: 'vorschau',
@@ -391,6 +398,285 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
         </p>
       </>,
     );
+  });
+
+  // ------------------------------------------------------------------ Ausgaben (wie die Statistik, nur Ausgaben)
+  app.get('/auswertungen/ausgaben', async (c) => {
+    const q = (k: string) => c.req.query(k);
+    const today = todayBerlin();
+    const d0 = new Date(`${today.slice(0, 7)}-01T12:00:00Z`);
+    d0.setUTCMonth(d0.getUTCMonth() - 11);
+    const d1 = new Date(`${today.slice(0, 7)}-01T12:00:00Z`);
+    d1.setUTCMonth(d1.getUTCMonth() + 1, 0);
+    const preset = q('zeitraum');
+    const y = Number(today.slice(0, 4));
+    let from = isDate(q('von')) ? q('von')! : d0.toISOString().slice(0, 10);
+    let to = isDate(q('bis')) ? q('bis')! : d1.toISOString().slice(0, 10);
+    if (preset === 'jahr') [from, to] = [`${y}-01-01`, `${y}-12-31`];
+    if (preset === 'vorjahr') [from, to] = [`${y - 1}-01-01`, `${y - 1}-12-31`];
+    if (preset === 'jahre') [from, to] = [`${y - 4}-01-01`, `${y}-12-31`];
+    if (to < from) to = from;
+    const basis: ExpenseBasis = q('grundlage') === 'rechnung' ? 'rechnung' : 'konto';
+    const group: StatGroup =
+      preset === 'jahre'
+        ? 'jahr'
+        : q('gruppe') === 'quartal'
+          ? 'quartal'
+          : q('gruppe') === 'jahr'
+            ? 'jahr'
+            : 'monat';
+    const shiftY = (d: string) => `${Number(d.slice(0, 4)) - 1}${d.slice(4)}`.replace('-02-29', '-02-28');
+    const [st, prev, income, revenue, open] = await Promise.all([
+      expenseStats(sql, { from, to, group, basis }),
+      expenseStats(sql, { from: shiftY(from), to: shiftY(to), group, basis }),
+      bankIncome(sql, from, to),
+      revenueStats(sql, { from, to, basis: 'rechnung', group, customerId: null }),
+      openIncoming(sql),
+    ]);
+    const prevBy = new Map(
+      prev.periods.map((p) => [`${Number(p.key.slice(0, 4)) + 1}${p.key.slice(4)}`, p.cents]),
+    );
+    const label = (k: string) =>
+      group === 'monat'
+        ? `${MON[Number(k.slice(5, 7)) - 1]} ${k.slice(2, 4)}`
+        : group === 'quartal'
+          ? `${k.slice(5)} ${k.slice(0, 4)}`
+          : k;
+    const pct = (v: bigint, of: bigint) =>
+      of === 0n
+        ? '–'
+        : `${(Number((v * 10000n) / of) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2 })} %`;
+    const delta = (now: bigint, before: bigint | undefined) =>
+      !before || before <= 0n ? null : Number(((now - before) * 1000n) / before) / 10;
+    const totalDelta = delta(st.total, prev.total);
+    const months = Math.max(1, st.periods.length * (group === 'jahr' ? 12 : group === 'quartal' ? 3 : 1));
+    const base = basis === 'konto' ? income : revenue.total;
+    const result = base - st.total;
+    const open0 = st.categories.find((x) => x.key === 'offen');
+    const qs = new URLSearchParams({ von: from, bis: to, grundlage: basis, gruppe: group });
+    const presetHref = (p: string) => {
+      const u = new URLSearchParams(qs);
+      u.delete('von');
+      u.delete('bis');
+      if (p) u.set('zeitraum', p);
+      if (p === 'jahre') u.delete('gruppe');
+      return `/auswertungen/ausgaben?${u}`;
+    };
+    const unit = group === 'monat' ? 'Monat' : group === 'quartal' ? 'Quartal' : 'Jahr';
+    return shell(
+      c,
+      'ausgaben',
+      'Ausgaben',
+      <>
+        <form method="get" action="/auswertungen/ausgaben" class="card stat-filter">
+          <div>
+            <label for="von">von</label>
+            <input type="date" id="von" name="von" value={from} />
+          </div>
+          <div>
+            <label for="bis">bis</label>
+            <input type="date" id="bis" name="bis" value={to} />
+          </div>
+          <div>
+            <label for="gruppe">Gruppieren</label>
+            <select id="gruppe" name="gruppe">
+              <option value="monat" selected={group === 'monat'}>
+                Monat
+              </option>
+              <option value="quartal" selected={group === 'quartal'}>
+                Quartal
+              </option>
+              <option value="jahr" selected={group === 'jahr'}>
+                Jahr
+              </option>
+            </select>
+          </div>
+          <div>
+            <label for="grundlage">Grundlage</label>
+            <select id="grundlage" name="grundlage">
+              <option value="konto" selected={basis === 'konto'}>
+                Kontoausgänge (brutto)
+              </option>
+              <option value="rechnung" selected={basis === 'rechnung'}>
+                Eingangsrechnungen (netto)
+              </option>
+            </select>
+          </div>
+          <div style="align-self:end">
+            <button class="btn">Aktualisieren</button>
+          </div>
+          <div class="stat-presets">
+            <a href={presetHref('')}>Letzte 12 Monate</a>
+            <a href={presetHref('jahr')}>{y}</a>
+            <a href={presetHref('vorjahr')}>{y - 1}</a>
+            <a href={presetHref('jahre')}>Jahr für Jahr</a>
+          </div>
+        </form>
+
+        <div class="stat-kpis">
+          <div class="skpi c1">
+            <div class="l">Ausgaben {basis === 'konto' ? 'brutto' : 'netto'}</div>
+            <div class="v">{euro(st.total)}</div>
+            <div class="s">
+              {totalDelta == null ? (
+                'Vorjahr: –'
+              ) : (
+                <span class={totalDelta <= 0 ? 'up' : 'down'}>
+                  {totalDelta >= 0 ? '▲' : '▼'} {Math.abs(totalDelta).toLocaleString('de-DE')} % zum Vorjahr
+                </span>
+              )}
+            </div>
+          </div>
+          <div class="skpi c2">
+            <div class="l">Ø je Monat</div>
+            <div class="v">{euro(st.total / BigInt(months))}</div>
+            <div class="s">
+              {st.count.toLocaleString('de-DE')} {basis === 'konto' ? 'Abbuchungen' : 'Rechnungen'}
+            </div>
+          </div>
+          <div class="skpi c3">
+            <div class="l">{basis === 'konto' ? 'Einnahmen − Ausgaben' : 'Umsatz − Ausgaben (netto)'}</div>
+            <div class="v" style={result < 0n ? 'color:#c0392b' : ''}>
+              {euro(result)}
+            </div>
+            <div class="s">
+              {basis === 'konto' ? 'Kontoeingänge' : 'Umsatz'} {euro(base)} · Ausgaben {pct(st.total, base)}
+            </div>
+          </div>
+          <div class="skpi c4">
+            <div class="l">Größte Kostenart</div>
+            <div class="v" style="font-size:18px">
+              {st.categories[0]?.name ?? '–'}
+            </div>
+            <div class="s">
+              {st.categories[0]
+                ? `${euro(st.categories[0].cents)} · ${pct(st.categories[0].cents, st.total)}`
+                : ''}
+            </div>
+          </div>
+          <div class="skpi c5">
+            <div class="l">Offene Eingangsrechnungen</div>
+            <div class="v">{euro(open.cents)}</div>
+            <div class="s">
+              {open.n} Rechnungen · überfällig <b>{euro(open.overdue)}</b>
+            </div>
+          </div>
+        </div>
+
+        {basis === 'konto' && open0 && (
+          <div class="notice warn">
+            {euro(open0.cents)} der Kontoausgänge sind noch keiner Kostenart zugeordnet –{' '}
+            <a href="/transfer/kontoumsaetze">Kontoumsätze zuordnen</a> (Lieferant, Mitarbeiter oder Kostenart
+            wählen).
+          </div>
+        )}
+
+        <div class="card">
+          <div class="stat-head">
+            <h3 style="margin:0">Ausgaben je {unit}</h3>
+            <span class="legend">
+              <i class="lg-now" /> Zeitraum <i class="lg-prev" /> Vorjahr
+            </span>
+          </div>
+          <StatBars
+            rows={st.periods.map((p) => ({
+              label: label(p.key),
+              cents: p.cents,
+              prev: prevBy.get(p.key) ?? 0n,
+            }))}
+          />
+          <div class="tbl" style="margin-top:10px">
+            <table>
+              <thead>
+                <tr>
+                  <th>{unit}</th>
+                  <th class="r">Ausgaben</th>
+                  <th class="r">Vorjahr</th>
+                  <th class="r">Veränderung</th>
+                </tr>
+              </thead>
+              <tbody>
+                {st.periods.map((p) => {
+                  const pv = prevBy.get(p.key);
+                  const dv = delta(p.cents, pv);
+                  return (
+                    <tr>
+                      <td>{label(p.key)}</td>
+                      <td class="r num">{euro(p.cents)}</td>
+                      <td class="r num mut">{pv ? euro(pv) : '–'}</td>
+                      <td class={`r num ${dv == null ? 'mut' : dv <= 0 ? 'up' : 'down'}`}>
+                        {dv == null ? '–' : `${dv >= 0 ? '+' : ''}${dv.toLocaleString('de-DE')} %`}
+                      </td>
+                    </tr>
+                  );
+                })}
+                <tr>
+                  <td>
+                    <b>Summe</b>
+                  </td>
+                  <td class="r num">
+                    <b>{euro(st.total)}</b>
+                  </td>
+                  <td class="r num mut">{euro(prev.total)}</td>
+                  <td class={`r num ${totalDelta == null ? 'mut' : totalDelta <= 0 ? 'up' : 'down'}`}>
+                    {totalDelta == null
+                      ? '–'
+                      : `${totalDelta >= 0 ? '+' : ''}${totalDelta.toLocaleString('de-DE')} %`}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="small mut" style="margin-bottom:0">
+            {basis === 'konto'
+              ? 'Alle Abbuchungen der verbundenen bzw. eingelesenen Konten nach Buchungstag (brutto, inkl. Lohn und Steuern). Kostenart aus der zugeordneten Eingangsrechnung bzw. der Zuordnung im Kontoumsatz.'
+              : 'Eingangsrechnungen netto nach Rechnungsdatum, Rechnungskorrekturen mindern.'}{' '}
+            <a href={`/auswertungen/ausgaben.csv?${qs}`}>CSV herunterladen</a>
+          </p>
+        </div>
+        <div class="cols">
+          <ShareCard
+            title="Ausgaben nach Kostenart"
+            rows={st.categories.map((k) => ({ label: k.name, href: null, cents: k.cents }))}
+            total={st.total}
+            pct={pct}
+          />
+          <ShareCard
+            title={basis === 'konto' ? 'Ausgaben nach Empfänger' : 'Ausgaben nach Lieferant'}
+            rows={st.payees.map((k) => ({
+              label: k.name,
+              href: k.id ? `/lieferanten/${k.id}` : null,
+              cents: k.cents,
+            }))}
+            total={st.total}
+            pct={pct}
+          />
+        </div>
+      </>,
+    );
+  });
+
+  app.get('/auswertungen/ausgaben.csv', async (c) => {
+    const q = (k: string) => c.req.query(k);
+    const today = todayBerlin();
+    const from = isDate(q('von')) ? q('von')! : `${today.slice(0, 4)}-01-01`;
+    const to = isDate(q('bis')) && q('bis')! >= from ? q('bis')! : today;
+    const basis: ExpenseBasis = q('grundlage') === 'rechnung' ? 'rechnung' : 'konto';
+    const group: StatGroup =
+      q('gruppe') === 'quartal' ? 'quartal' : q('gruppe') === 'jahr' ? 'jahr' : 'monat';
+    const st = await expenseStats(sql, { from, to, group, basis });
+    const e = (v: bigint) => (Number(v) / 100).toFixed(2).replace('.', ',');
+    const lines: string[][] = [
+      ...st.periods.map((p) => [p.key, e(p.cents)]),
+      ['Summe', e(st.total)],
+      [],
+      ['Kostenart', 'Betrag'],
+      ...st.categories.map((k) => [k.name, e(k.cents)]),
+      [],
+      ['Empfänger', 'Betrag'],
+      ...st.payees.map((k) => [k.name, e(k.cents)]),
+    ];
+    return csvResponse(c, `ausgaben_${from}_${to}.csv`, toCsv(['Zeitraum', 'Betrag'], lines));
   });
 
   app.get('/auswertungen/statistik.csv', async (c) => {

@@ -27,6 +27,7 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/transfer\/import\/(dubletten|abgleich)$/, ['admin']],
   [/^\/vorlagen\/?$/, ['admin', 'buchhaltung', 'personal']],
   [/^\/auswertungen\/kostenstellen([/.]|$)/, ['admin', 'buchhaltung']],
+  [/^\/auswertungen\/ausgaben([/.]|$)/, ['admin', 'buchhaltung']],
   [/^\/personal\/export/, HR],
   [/^\/bewerber(\/|$)/, HR],
   [/^\/personal(\/|$)/, HR],

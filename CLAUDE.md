@@ -1705,3 +1705,25 @@ Testadresse.
     Dubletten, Fortytools-Rechnung, Eingangsrechnung, Mitarbeiter, Salden), `e2e:transfer` 14 Prüfungen.
   - Anleitung `docs/anleitung-bankabruf.html/.pdf`; `docs/umstellung-heute` Punkt 1 auf Enable Banking umgestellt.
     **Ahmed: Schlüssel unter Einstellungen → Bankabruf hochladen, Banken verbinden, „Ältere Umsätze abhaken“ bis 07.10.**
+- 2026-10-08: **Kontoumsätze: alles erkennen** (Ahmed: Rechnungseingang über Nummer bezahlt, Skonto-%, Verrechnung,
+  Nicht zuordnen, Schnellanlage Lieferant, Ausgaben-Diagramme):
+  - Eingangsrechnungen: Nummer im Verwendungszweck auch anders geschrieben (nur Buchstaben/Ziffern verglichen, ab 4 Zeichen),
+    Lieferant auch über IBAN oder Namen (erstes kennzeichnendes Wort); auch noch **nicht freigegebene** Rechnungen (werden beim
+    Zuordnen mit freigegeben). **Skonto** = Differenz bis 5 % (vereinbart oder nicht), „sicher“ bei Nummer + rundem Prozentsatz.
+    **Verrechnung**: kleinste Auswahl (bis 14 Posten) offener Rechnungen und Rechnungskorrekturen (Minusbeträge) desselben
+    Lieferanten, deren Summe genau dem Betrag entspricht; Korrektur → bezahlt mit negativem Zahlbetrag, Zahlart „Verrechnung“
+    (Migration `20261114000002`: Prüfregel `paid_amount_cents` erlaubt Minus bei Minus-Rechnungen).
+  - Kunden: Skonto-Abzug ohne Vereinbarung (bis 5 %) als Vorschlag „mit Skonto-Abzug x %“ (bei rundem % vor der
+    Teilzahlung); Sammelzahlungen als Teilmenge der offenen Rechnungen; von Hand eingetragener Skonto erlaubt, wenn er die
+    Rechnung ausgleicht (≤ 5 %). **Rechtlich:** nicht vereinbarter Skonto ist eine Kürzung – Restforderung bleibt bestehen,
+    Ausbuchen ist eine Entscheidung (mindert USt nach § 17 UStG, Steuerberater).
+  - Die App **lernt IBANs**: Kunde (`customer_bank_accounts`) und Lieferant (falls leer) nach jeder Zuordnung.
+  - „Nicht zuordnen“ in jeder Zeile (auch mit Vorschlag); **Kostenart** (Material, Fahrzeuge/Tanken, Miete, Personal,
+    Steuern, Versicherung, Bankgebühren, Privat …) bei „Nicht zuordnen“ und „Lieferant ohne Rechnung“
+    (`bank_transactions.expense_category`). **Lieferant schnell anlegen** nur mit Namen (IBAN übernommen, nächste Nummer ab 70001).
+  - **Auswertungen → Ausgaben** (wie die Statistik): Grundlage Kontoausgänge (brutto, Kostenart aus Eingangsrechnung bzw.
+    Zuordnung, Mitarbeiter = Personal) oder Eingangsrechnungen (netto); Säulen mit Vorjahr, Tabelle mit Veränderung,
+    Ringdiagramme nach Kostenart und Empfänger/Lieferant, Kennzahlen (Ø je Monat, Einnahmen − Ausgaben, größte Kostenart,
+    offene Eingangsrechnungen), Schnellwahl 12 Monate / Jahr / Vorjahr / **Jahr für Jahr** (5 Jahre), CSV.
+  - Tests: `bank-recognition.db.test.ts` (Skonto 3 % bei abweichender Schreibweise, Verrechnung mit Korrektur, Kunden-Skonto
+    2 %, Schnellanlage, Kostenart, Ausgaben-Statistik).

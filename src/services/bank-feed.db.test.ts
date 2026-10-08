@@ -303,7 +303,7 @@ describe.skipIf(!available)('Enable Banking: Verbinden, Abrufen, Zuordnen', () =
     const arc = list.find((t) => t.amount_cents === -30958n)!;
     const [s] = await suggestions(sql, arc);
     expect(s).toMatchObject({ kind: 'incoming', confidence: 'sicher', supplierId: sup });
-    await assignIncoming(sql, arc.id, [inc], 't');
+    await assignIncoming(sql, arc.id, [{ id: inc }], 't');
     const [i] = await sql<{ status: string; paid_amount_cents: bigint; bank_transaction_id: string }[]>`
       select status, paid_amount_cents, bank_transaction_id from app.incoming_invoices where id = ${inc}`;
     expect(i).toMatchObject({ status: 'bezahlt', paid_amount_cents: 30958n, bank_transaction_id: arc.id });

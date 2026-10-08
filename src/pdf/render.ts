@@ -128,6 +128,45 @@ export function girocodePayload(p: {
   ].join('\n');
 }
 
+/** Leistungsort und Zeitraum aus dem Positionstext lösen (Text wie Fortytools: „Objekt: Name (Nr.)“, Adresse, „TT.MM.JJJJ bis …“). */
+export interface LinePlace {
+  key: string;
+  title: string;
+  address: string | null;
+}
+export function splitLineDetail(detail: string | null | undefined): {
+  place: LinePlace | null;
+  period: string | null;
+  rest: string | null;
+} {
+  const rows = (detail ?? '').split('\n');
+  let place: LinePlace | null = null;
+  let period: string | null = null;
+  const rest: string[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]!;
+    const m = /^Objekt: (.+)$/.exec(r.trim());
+    if (m && !place) {
+      const next = rows[i + 1]?.trim() ?? '';
+      const isAddr = !!next && /\b\d{5}\b/.test(next) && !/^\d{2}\.\d{2}\.\d{4}/.test(next);
+      place = { title: m[1]!, address: isAddr ? next : null, key: `${m[1]}|${isAddr ? next : ''}` };
+      if (isAddr) i++;
+      continue;
+    }
+    const pm = /^(\d{2}\.\d{2}\.\d{4})( bis (\d{2}\.\d{2}\.\d{4}))?$/.exec(r.trim());
+    if (pm && !period) {
+      period = pm[3] && pm[3] !== pm[1] ? `${pm[1]} bis ${pm[3]}` : pm[1]!;
+      continue;
+    }
+    rest.push(r);
+  }
+  const t = rest.join('\n').trim();
+  return { place, period, rest: t || null };
+}
+
+const periodText = (a: string | null | undefined, b: string | null | undefined) =>
+  a ? `${formatDateDe(a)}${b && b !== a ? ` bis ${formatDateDe(b)}` : ''}` : null;
+
 class Doc {
   pages: PDFPage[] = [];
   page!: PDFPage;
@@ -241,7 +280,7 @@ class Doc {
         color: INK,
       }),
     );
-    this.y = bandTop + bandH + 60;
+    this.y = bandTop + bandH + 42;
   }
 
   /** Folgeseite: schmaler Titelbalken (Fortytools: 141–182 pt). */
@@ -385,9 +424,50 @@ export async function renderInvoicePdf(
     if (doc.orderReference) info.push(['Bestellnummer', doc.orderReference]);
     if (doc.customerReference) info.push(['Ihre Referenz', doc.customerReference]);
   }
+
+  // Objekt und Leistungszeitraum: nicht in jeder Position wiederholen (Ahmed 08.10.), sondern im Kopf bzw. als
+  // Zwischenüberschrift je Objekt (Sammelrechnung). Angebote mit eigener Betreffzeile bleiben wie bisher.
+  const sitePlaces = !opts.subject;
+  const parsed = doc.lines.map((l) => splitLineDetail(l.detail));
+  const docPeriod = periodText(doc.periodStart, doc.periodEnd);
+  const linePeriod = (i: number) =>
+    parsed[i]!.period ?? periodText(doc.lines[i]!.periodStart, doc.lines[i]!.periodEnd);
+  const headPeriod =
+    docPeriod && doc.lines.every((_, i) => !linePeriod(i) || linePeriod(i) === docPeriod) ? docPeriod : null;
+  if (headPeriod && !opts.info) info.splice(1, 0, ['Leistungszeitraum', headPeriod]);
+  const keys = [...new Set(parsed.map((x) => x.place?.key ?? ''))];
+  const siteOfBuyer: LinePlace | null = b.site
+    ? {
+        key: '',
+        title: `${b.site.name} (${b.site.siteNo})`,
+        address:
+          [b.site.street, [b.site.postalCode, b.site.city].filter(Boolean).join(' ')]
+            .filter(Boolean)
+            .join(', ') || null,
+      }
+    : null;
+  const onePlace =
+    sitePlaces && keys.length <= 1 ? (parsed.find((x) => x.place)?.place ?? siteOfBuyer) : null;
+  const grouped = sitePlaces && keys.length > 1;
+
   w.firstPage(info);
 
   w.address(s, b);
+  if (onePlace) {
+    // rechts neben der Anschrift: Leistungsort
+    const x = 330;
+    let y = 165.5;
+    w.text('LEISTUNGSORT / OBJEKT', x, y - 13, 6.5, { color: GREY });
+    for (const l of wrap(onePlace.title, bold, 10, RIGHT - x)) {
+      w.text(l, x, y, 10, { bold: true });
+      y += 13.2;
+    }
+    if (onePlace.address)
+      for (const l of wrap(onePlace.address, regular, 10, RIGHT - x)) {
+        w.text(l, x, y, 10);
+        y += 13.2;
+      }
+  }
 
   // ---------------------------------------------------------------- Anrede & Einleitung
   if (opts.subject) {
@@ -410,7 +490,7 @@ export async function renderInvoicePdf(
     const intro = doc.introText?.replace(/^\s*Sehr geehrte Damen und Herren,?\s*/i, '').trim();
     w.paragraph(intro || 'wir danken für Ihren Auftrag und berechnen unsere Leistungen wie folgt:');
   }
-  w.y += 37.4;
+  w.y += 28;
 
   // ---------------------------------------------------------------- Tabelle
   const header = () => {
@@ -427,17 +507,51 @@ export async function renderInvoicePdf(
   };
   header();
   const multiRate = doc.vatBreakdown.length > 1;
-  for (const l of doc.lines) {
+  // Sammelrechnung: Zwischensumme je Objekt (zusammenhängende Positionen gleichen Objekts)
+  const groupEnd = new Map<number, { title: string; net: Cents; count: number }>();
+  if (grouped) {
+    let start = 0;
+    for (let i = 1; i <= doc.lines.length; i++) {
+      if (i === doc.lines.length || parsed[i]!.place?.key !== parsed[start]!.place?.key) {
+        const net = doc.lines.slice(start, i).reduce((a, l) => a + l.netAmount, 0n) as Cents;
+        groupEnd.set(i - 1, { title: parsed[start]!.place?.title ?? 'ohne Objekt', net, count: i - start });
+        start = i;
+      }
+    }
+  }
+  doc.lines.forEach((l, i) => {
+    const pd = parsed[i]!;
+    if (grouped && (i === 0 || pd.place?.key !== parsed[i - 1]!.place?.key)) {
+      const head = pd.place
+        ? wrap(
+            `${pd.place.title}${pd.place.address ? ` · ${pd.place.address}` : ''}`,
+            bold,
+            BODY,
+            COL.total - COL.text,
+          )
+        : ['Ohne Objektbezug'];
+      w.ensure(head.length * LH + 3 * LH, () => {
+        w.y += 15.5;
+        header();
+      });
+      w.y += 4;
+      head.forEach((t, k) => w.text(t, COL.text, w.y + k * LH, BODY, { bold: true }));
+      w.y += head.length * LH + 2;
+    }
+    const lp = linePeriod(i);
+    const detailLines = sitePlaces
+      ? [pd.rest, lp && lp !== headPeriod ? `Leistungszeitraum: ${lp}` : null].filter((x): x is string => !!x)
+      : [
+          l.detail ?? null,
+          l.periodStart && !(l.detail ?? '').includes(formatDateDe(l.periodStart))
+            ? `Leistung: ${periodText(l.periodStart, l.periodEnd)}`
+            : null,
+        ].filter((x): x is string => !!x);
     const textLines = [
       ...wrap(l.description, regular, BODY, TEXT_WIDTH),
-      ...(l.detail ? wrap(l.detail, regular, BODY, TEXT_WIDTH) : []),
-      // Leistungszeitraum je Position (Einzelrechnungen), wenn nicht schon im Text
-      ...(l.periodStart && !(l.detail ?? '').includes(formatDateDe(l.periodStart))
-        ? [
-            `Leistung: ${formatDateDe(l.periodStart)}${l.periodEnd && l.periodEnd !== l.periodStart ? ` bis ${formatDateDe(l.periodEnd)}` : ''}`,
-          ]
-        : []),
+      ...detailLines.flatMap((d) => wrap(d, regular, BODY, TEXT_WIDTH)),
     ];
+    const descCount = wrap(l.description, regular, BODY, TEXT_WIDTH).length;
     const h = (textLines.length + (multiRate ? 1 : 0)) * LH;
     w.ensure(h + 16, () => {
       w.y += 15.5;
@@ -445,7 +559,9 @@ export async function renderInvoicePdf(
     });
     const top = w.y;
     w.right(String(l.position), 72.8, top);
-    textLines.forEach((t, i) => w.text(t, COL.text, top + i * LH));
+    textLines.forEach((t, k) =>
+      w.text(t, COL.text, top + k * LH, k < descCount ? BODY : 8.5, k < descCount ? {} : { color: GREY }),
+    );
     w.right(quantityPdf(l.quantity), COL.qty, top);
     w.unit(
       opts.units?.[l.unitCode] ?? PDF_UNITS[l.unitCode] ?? l.unitCode,
@@ -464,7 +580,19 @@ export async function renderInvoicePdf(
     w.y = top + h - 3;
     w.rule(w.y);
     w.y += 15.6;
-  }
+    const g = groupEnd.get(i);
+    if (g && g.count > 1) {
+      w.right(
+        `Summe ${g.title.length > 48 ? `${g.title.slice(0, 47)}…` : g.title}`,
+        COL.price,
+        w.y - 2,
+        8.5,
+        { color: GREY },
+      );
+      w.right(eur(g.net), COL.total, w.y - 2, 8.5, { bold: true });
+      w.y += 16;
+    }
+  });
 
   // ---------------------------------------------------------------- Summen
   const sumRows: [string, string][] = [['Gesamt netto', eur(doc.netTotal)]];

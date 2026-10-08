@@ -1620,3 +1620,14 @@ Testadresse.
   Häufigkeit/Kostenstelle/Leistungsart/Zeitraum/Status/Stundensatz bzw. Preis/Gesamtbetrag/Bestelldatum, Kurzfassung der
   Bedingungen + Unterschrift; Leistungsbeschreibung; Auftragsbedingungen 1–10 wörtlich (`src/domain/subcontract/conditions.ts`);
   Bestätigung mit Unterschrift. Bereits archivierte Arbeitsschein-PDFs bleiben unverändert (write-once).
+- 2026-10-08: **Rechnungs-PDF neu geordnet** (Ahmed: „das Objekt sollte woanders stehen“): Objekt steht nicht mehr in jeder
+  Position, sondern als „Leistungsort / Objekt“ rechts neben der Anschrift; der gemeinsame Leistungszeitraum steht im
+  Infoblock (Pflichtangabe § 14 Abs. 4 Nr. 6 UStG), abweichende Zeiträume weiter an der Position. Sammelrechnung:
+  Zwischenüberschrift je Objekt (fett, mit Adresse) und „Summe <Objekt>“ ab zwei Positionen. Zusatztexte der Position
+  grau und kleiner, weniger Leerraum über der Tabelle. Nur Darstellung (`splitLineDetail` in `src/pdf/render.ts`) – gespeicherte
+  Positionstexte und E-Rechnung (BT-127) unverändert, bereits archivierte PDFs bleiben wie ausgestellt. Angebote mit
+  Betreffzeile „Objekt: …“ wie bisher. PDF/A: nur Text/Flächen mit eingebetteten Schriften – `npm run check:pdfa` auf
+  einem Rechner mit Docker wiederholen.
+- 2026-10-08: Ahmed will **jetzt live gehen** (alle sollen die neue App nutzen). Bankabruf: eigene PSD2-Schnittstelle
+  braucht BaFin-Erlaubnis (Kontoinformationsdienst, § 34 ZAG) → nicht sinnvoll; Optionen Qwist (lizenziert, einfach),
+  EBICS (Bankvertrag, für Firmen gedacht), bis dahin CAMT-Upload. Empfehlung: Qwist.

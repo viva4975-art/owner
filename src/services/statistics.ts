@@ -31,7 +31,7 @@ export interface Stats {
 
 type Row = { month: string; customer_id: string | null; customer: string; type: string; cents: bigint };
 
-async function lineRows(sql: Sql, f: StatFilter, rechnung: boolean) {
+export async function lineRows(sql: Sql, f: StatFilter, rechnung: boolean) {
   const cust = f.customerId ? sql`and customer_id = ${f.customerId}` : sql``;
   return sql<Row[]>`
     with src as (

@@ -831,6 +831,19 @@ export const Dashboard: FC<{
                         </div>
                       </div>
                       <span class="dl-r num">{euro(d.gross_cents)}</span>
+                      <form
+                        method="post"
+                        action="/rechnungen/entwuerfe/auswahl"
+                        style="margin:0"
+                        onsubmit="return confirm('Diesen Rechnungsentwurf löschen?')"
+                      >
+                        <input type="hidden" name="inv" value={d.id} />
+                        <input type="hidden" name="aktion" value="loeschen" />
+                        <input type="hidden" name="zurueck" value="/" />
+                        <button class="btn sm sec" title="Entwurf löschen" aria-label="Entwurf löschen">
+                          ×
+                        </button>
+                      </form>
                     </li>
                   ))}
                 </ul>

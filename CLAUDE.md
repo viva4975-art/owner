@@ -96,7 +96,7 @@ Testadresse.
       (auch als PDF – für den Layout-Abgleich „sieht aus wie heute“)
 - [ ] Bestätigen: Nummernkreis von Fortytools fortführen (umgesetzt, Startwert vor Live-Start setzen)
 - [ ] Lieferantennummern bei Behörden, Leitweg-IDs der Behörden-Kunden (Steuernummer 143/190/63154 vom Briefpapier übernommen)
-- [ ] Mail-Zugang (SMTP) für buchhaltung@viva-deluxe-reinigung.de (IONOS Exchange) in `.env.live` eintragen – Absender steht fest
+- [ ] Mail-Zugang (SMTP) für buchhaltung@viva-deluxe-reinigung.de (IONOS Exchange) in `.env.live` eintragen – Anleitung `docs/anleitung-server-eintragen.pdf`
 - [ ] Testadresse für den Prototyp-Versand
 - [x] IONOS VPS (4 vCores/8 GB, Ubuntu 24.04, 217.160.236.117) installiert, läuft unter https://app.viva-deluxe-reinigung.de
 - [ ] AVV mit IONOS; IONOS Cloud Backup (Sicherung außerhalb des Servers); root-Passwort ändern und ersten GitHub-Token
@@ -1587,3 +1587,18 @@ Testadresse.
   - **Arbeitsschein:** Leistungsauswahl nur am Arbeitsdatum gültige Leistungen mit Leistungsart und Einheit; hat das
     Objekt keine eigenen Leistungen, stehen die der anderen Objekte des Kunden zur Auswahl (vermutlich Ahmeds Fall: leere
     Liste), sonst klarer Hinweis.
+- 2026-10-08: Runde 27 (Ahmed, 7 Punkte):
+  - **Bestellnummer je Leistung** (`site_services.order_reference`, Migration `20261113000007`): Monatslauf und
+    Vorfaktura übernehmen sie – alle Leistungen einer Rechnung gleich → Rechnungskopf (BT-13), verschieden → je Position
+    „Bestellnummer: …“ im Text; ohne eigene gilt weiter Gruppe/Objekt.
+  - Rechnungsentwurf: gelber Balken „Entwurf – noch änderbar“ mit **„✎ Entwurf bearbeiten“**, Link an „Positionen“ und je
+    Entwurf in der Entwurfsliste.
+  - Startseite: Rechnungsentwürfe mit „×“ löschbar (Rückfrage, zurück auf die Startseite).
+  - Einsatzkalender/Zeiten: Bordeaux statt Blau (geplant hell-Bordeaux, bestätigt Bordeaux, Feiertage gold), auch
+    Objekt-Kalender.
+  - **Umsatz-Vorschau** mit „nicht monatliche Leistungen wie im Vorjahr“: je Vorschau-Monat der Umsatz derselben
+    Leistungsarten im Vorjahresmonat (eigene + Fortytools-Rechnungen nach Leistungszeitraum); Leistungsarten wählbar,
+    Vorgabe = ohne laufende Monatspauschale, ohne Fahrzeugverkauf/Material. Probe echte Daten: 3,65 Mio. regelmäßig +
+    1,30 Mio. wie Vorjahr. Schätzung, kein Auftragsbestand.
+  - Google-Play-Entwicklerkonto angelegt (Ahmed). Anleitung „Zugangsdaten auf dem Server eintragen“
+    (`docs/anleitung-server-eintragen.html/.pdf`: KVM-Konsole/ssh, `nano /opt/viva/deploy/.env.live`, `update.sh`).

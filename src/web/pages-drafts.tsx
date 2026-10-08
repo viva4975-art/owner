@@ -338,7 +338,10 @@ export const DraftsBox: FC<{ rows: DraftRow[]; today: string }> = ({ rows, today
                         <input type="checkbox" name="inv" value={i.id} data-row data-g={c.customer_id} />
                       </td>
                       <td>
-                        <a href={`/rechnungen/${i.id}`}>{i.site_name ?? 'ohne Objekt'}</a>
+                        <a href={`/rechnungen/${i.id}`}>{i.site_name ?? 'ohne Objekt'}</a>{' '}
+                        <a class="small" href={`/rechnungen/${i.id}/bearbeiten`} title="Entwurf bearbeiten">
+                          ✎ bearbeiten
+                        </a>
                       </td>
                       <td class="small">
                         {i.period_start ? (

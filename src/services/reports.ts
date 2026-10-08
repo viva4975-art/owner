@@ -6,6 +6,7 @@ import { type LeaveBalance, leaveBalance } from './absences.js';
 import { BusinessError } from './errors.js';
 import { sollPlanIst } from './hr-month.js';
 import { type RunService, toRunService } from './invoices.js';
+import { lineRows } from './statistics.js';
 import { plannedShifts } from './time.js';
 
 /*
@@ -358,4 +359,60 @@ export function toCsv(head: string[], rows: (string | number)[][]): string {
     return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   return '﻿' + [head, ...rows].map((r) => r.map(cell).join(';')).join('\r\n') + '\r\n';
+}
+
+/**
+ * Nicht monatliche Umsätze (Glas-, Grund-, Tiefgaragenreinigung, Sonderreinigung …) für die Umsatz-Vorschau
+ * (Ahmed 08.10.): je Vorschau-Monat der Umsatz derselben Leistungsarten im selben Monat des Vorjahres (nach
+ * Leistungszeitraum, eigene + Fortytools-Rechnungen wie die Statistik). Liefert Leistungsarten mit Jahresumsatz zur
+ * Auswahl; Vorgabe = Leistungsarten ohne laufende monatliche Pauschale.
+ */
+export async function forecastPriorYear(sql: Sql, months: string[], types: string[] | null) {
+  const first = months[0]!;
+  const last = months[months.length - 1]!;
+  const from = `${nextMonth(first, -12)}-01`;
+  const lastPrev = nextMonth(last, -12);
+  const to = monthBounds(lastPrev).end;
+  const rows = await lineRows(sql, { from, to, basis: 'leistung', group: 'monat' }, false);
+  const monthly = new Set(
+    (
+      await sql<{ name: string }[]>`
+        select distinct t.name from app.site_services ss join app.service_types t on t.id = ss.service_type_id
+         where ss.active and ss.kind = 'monthly_flat'
+           and (ss.valid_to is null or ss.valid_to >= ${`${first}-01`})`
+    ).map((r) => r.name),
+  );
+  const byType = new Map<string, bigint>();
+  for (const r of rows) byType.set(r.type, (byType.get(r.type) ?? 0n) + r.cents);
+  const available = [...byType.entries()]
+    .filter(([, c]) => c > 0n)
+    .sort((a, b) => (b[1] > a[1] ? 1 : b[1] < a[1] ? -1 : 0))
+    .map(([name, cents]) => ({ name, cents, monthly: monthly.has(name) }));
+  const chosen = new Set(
+    types ??
+      available
+        .filter(
+          (t) => !t.monthly && t.name !== 'ohne Leistungsart' && !/verkauf|fahrzeug|material/i.test(t.name),
+        )
+        .map((t) => t.name),
+  );
+  const perMonth = months.map(() => 0n);
+  const perCustomer = new Map<string, { id: string | null; name: string; months: bigint[] }>();
+  for (const r of rows) {
+    if (!chosen.has(r.type)) continue;
+    const i = months.indexOf(nextMonth(r.month, 12));
+    if (i < 0) continue;
+    perMonth[i] = perMonth[i]! + r.cents;
+    const k = r.customer_id ?? r.customer;
+    const pc = perCustomer.get(k) ?? { id: r.customer_id, name: r.customer, months: months.map(() => 0n) };
+    pc.months[i] = pc.months[i]! + r.cents;
+    perCustomer.set(k, pc);
+  }
+  return {
+    available,
+    chosen: [...chosen],
+    perMonth,
+    perCustomer,
+    total: perMonth.reduce((a, b) => a + b, 0n),
+  };
 }

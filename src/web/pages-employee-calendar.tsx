@@ -63,26 +63,26 @@ const CSS = `
 .ec .dc .n{display:block;text-align:center;font-weight:700;font-size:13px;padding:5px 0 4px;color:var(--ink);text-decoration:none}
 .ec .dc.out{background:#ececec}.ec .dc.out .n{color:#8a8f98}
 .ec .dc.today{background:#fff6c7}
-.ec .dc.hol .n{background:#8fb3d9;color:#fff}.ec .dc .hn{display:block;text-align:center;font-size:11px;color:#fff;background:#8fb3d9;font-weight:600;line-height:1.2;padding:0 2px 3px;margin:-4px -2px 3px}
+.ec .dc.hol .n{background:#c9a54e;color:#fff}.ec .dc .hn{display:block;text-align:center;font-size:11px;color:#fff;background:#c9a54e;font-weight:600;line-height:1.2;padding:0 2px 3px;margin:-4px -2px 3px}
 .ec .dc.absd{background:repeating-linear-gradient(135deg,#f3f4f6 0 6px,#fff 6px 12px)}
 .ec .dc .ab{display:block;text-align:center;font-size:11px;font-weight:600;color:#5f6b7a;margin-bottom:3px}
 .ev{display:flex;align-items:center;gap:4px;padding:3px 6px;margin:0 0 2px;font-size:12.5px;line-height:1.25;text-decoration:none;cursor:pointer;min-width:0;border:1px solid transparent;border-radius:2px}
 .ev .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
 .ev .tm{font-variant-numeric:tabular-nums;opacity:.9}
 .ev .ic{flex:none;width:14px;height:14px}
-.ev.plan{background:#506ca8;color:#fff;border-color:#3f5891}
-.ev.ok{background:#506ca8;color:#fff;border-color:#3f5891}
-.ev.run{background:#1f8fd6;color:#fff}
+.ev.plan{background:#f6e6ec;color:#7d1435;border-color:#dcb0bf}
+.ev.ok{background:#7d1435;color:#fff;border-color:#64102a}
+.ev.run{background:#b2456a;color:#fff}
 .ev.req{background:#f6c24f;color:#4a3300}
 .ev.miss{background:#fff;color:#b42318;border:1px dashed #d9534f}
 .ev.abs{background:#d7dbe2;color:#55606f;text-decoration:line-through}
 .ev.cx{background:#eceef1;color:#8a8f98;text-decoration:line-through}
-.ev.hol{background:#dbe7f4;color:#2f5f9e}
+.ev.hol{background:#f4ead2;color:#7a5a12}
 .ev.extra{background:#2f8f5b;color:#fff}
 /* Woche/Tag als Stundenraster */
 .eg{display:grid;border:1px solid #dfe3e8;background:#fff;max-height:640px;overflow-y:auto;position:relative}
 .eg .gh{position:sticky;top:0;z-index:3;background:#fff;text-align:center;font-weight:700;font-size:14px;padding:8px 2px;border-bottom:1px solid #dfe3e8}
-.eg .gh.today{background:#fff6c7}.eg .gh.hol{background:#8fb3d9;color:#fff}.eg .gh small{display:block;font-weight:600;font-size:11px}
+.eg .gh.today{background:#fff6c7}.eg .gh.hol{background:#c9a54e;color:#fff}.eg .gh small{display:block;font-weight:600;font-size:11px}
 .eg .hrs{position:relative}
 .eg .hr{height:56px;border-bottom:1px solid #e9ecef;font-size:12px;color:#6b7280;padding:2px 6px;background:#f1f3f5}
 .eg .hr:nth-child(odd){background:#e9ecef}
@@ -95,10 +95,10 @@ const CSS = `
 /* Seitenleiste wie Fortytools */
 .ec-side .box{border-radius:4px;padding:14px 16px;margin-bottom:12px;color:#fff}
 .ec-side .box h4{margin:0 0 10px;font-size:15px;font-weight:600;color:#fff}
-.ec-side .plan{background:#5b74ab}.ec-side .ist{background:#2f3d58}
+.ec-side .plan{background:#9b3a57}.ec-side .ist{background:#5a0f26}
 .ec-side .row{display:grid;grid-template-columns:1fr auto auto;gap:10px;font-size:13px;padding:2px 0;font-variant-numeric:tabular-nums}
 .ec-side .row.sum{border-top:1px solid rgba(255,255,255,.35);margin-top:6px;padding-top:6px;font-weight:700;color:#fff;background:none}
-.ec-side .box .btn{width:100%;justify-content:center;background:#fff;color:#2f3d58;border-color:#fff;margin-top:10px;font-size:13px}
+.ec-side .box .btn{width:100%;justify-content:center;background:#fff;color:#5a0f26;border-color:#fff;margin-top:10px;font-size:13px}
 .ec-side .cmp{background:#fff;border:1px solid #dfe3e8;border-radius:4px;padding:12px 14px;margin-bottom:12px}
 .ec-side .cmp h4{margin:0 0 8px;font-size:14px}
 .ec-side .bar{height:12px;border-radius:6px;background:#eef0f3;overflow:hidden;margin:3px 0 8px}
@@ -118,7 +118,7 @@ const CSS = `
 `;
 
 const CLOCK_SVG =
-  '<svg class="ic" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 6.5v5.8l3.6 2.1" stroke="#506ca8" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>';
+  '<svg class="ic" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 6.5v5.8l3.6 2.1" stroke="#7d1435" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>';
 
 const DLG_JS = `(function(){var d=document.getElementById('ec-dlg');if(!d)return;
 function esc(t){return String(t||'').replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
@@ -638,7 +638,7 @@ export const EmployeeCalendarView: FC<{
               <b>{hm(plannedMin)} Std.</b>
             </div>
             <div class="bar">
-              <i style={`width:${(plannedMin / max) * 100}%;background:#5b74ab`} />
+              <i style={`width:${(plannedMin / max) * 100}%;background:#9b3a57`} />
             </div>
             <div class="lbl">
               <span>Ist (gearbeitet + Urlaub/Krank)</span>

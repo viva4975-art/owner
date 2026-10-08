@@ -11,6 +11,7 @@ import {
   hoursControl,
   leaveAccounts,
   nextMonth,
+  forecastPriorYear,
   revenueForecast,
   sickDays,
   toCsv,
@@ -424,26 +425,85 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
     const q = c.req.query('ab');
     const from = isMonth(q) ? q : todayBerlin().slice(0, 7);
     const f = await revenueForecast(sql, from, 12);
+    const withPrev = c.req.query('vj') !== '0';
+    const artQ = c.req.queries('art');
+    const prev = withPrev
+      ? await forecastPriorYear(sql, f.months, c.req.query('auswahl') ? (artQ ?? []) : null)
+      : null;
+    // Kunden-Zeilen: regelmäßig + wie Vorjahr
+    type R = { key: string; id: string | null; name: string; reg: bigint[]; vj: bigint[] };
+    const rows = new Map<string, R>();
+    for (const r of f.rows)
+      rows.set(r.customer_id, {
+        key: r.customer_id,
+        id: r.customer_id,
+        name: r.customer_name,
+        reg: r.months,
+        vj: f.months.map(() => 0n),
+      });
+    for (const [k, pc] of prev?.perCustomer ?? []) {
+      const key = pc.id ?? k;
+      const r = rows.get(key) ?? {
+        key,
+        id: pc.id,
+        name: pc.name,
+        reg: f.months.map(() => 0n),
+        vj: f.months.map(() => 0n),
+      };
+      r.vj = r.vj.map((v, i) => v + pc.months[i]!);
+      rows.set(key, r);
+    }
+    const sum = (a: bigint[]) => a.reduce((x, y) => x + y, 0n);
+    const list = [...rows.values()]
+      .map((r) => ({ ...r, total: sum(r.reg) + sum(r.vj) }))
+      .sort((a, b) => (b.total > a.total ? 1 : b.total < a.total ? -1 : 0));
+    const vjMonths = prev?.perMonth ?? f.months.map(() => 0n);
+    const grand = f.total + (prev?.total ?? 0n);
     return shell(
       c,
       'vorschau',
       'Umsatz-Vorschau',
       <>
-        <form method="get" class="actions" style="margin-top:0">
-          <label for="ab" style="margin:0">
-            ab
-          </label>
-          <input
-            id="ab"
-            type="month"
-            name="ab"
-            value={from}
-            style="max-width:180px"
-            onchange="this.form.submit()"
-          />
-          <span class="small mut">
-            12 Monate: <b>{euro(f.total)}</b> netto
-          </span>
+        <form method="get" class="card" style="padding:12px 16px">
+          <input type="hidden" name="auswahl" value="1" />
+          <div class="actions" style="margin:0;align-items:center">
+            <label for="ab" style="margin:0">
+              ab
+            </label>
+            <input id="ab" type="month" name="ab" value={from} style="max-width:180px" />
+            <label class="chk" style="margin:0">
+              <input type="checkbox" name="vj" value="1" checked={withPrev} />
+              <input type="hidden" name="vj" value="0" />
+              nicht monatliche Leistungen wie im Vorjahr dazurechnen
+            </label>
+            <button class="btn sm sec">Berechnen</button>
+            <span class="small" style="margin-left:auto">
+              12 Monate: <b>{euro(grand)}</b> netto
+              {prev && (
+                <span class="mut">
+                  {' '}
+                  ({euro(f.total)} regelmäßig + {euro(prev.total)} wie Vorjahr)
+                </span>
+              )}
+            </span>
+          </div>
+          {prev && (
+            <details style="margin-top:8px">
+              <summary class="small">
+                Leistungsarten aus dem Vorjahr ({prev.chosen.length} gewählt) – Umsatz der letzten 12 Monate
+                vor dem Vorschau-Zeitraum
+              </summary>
+              <div class="grid" style="gap:2px 16px;margin-top:8px">
+                {prev.available.map((t) => (
+                  <label class="chk" style="margin:0">
+                    <input type="checkbox" name="art" value={t.name} checked={prev.chosen.includes(t.name)} />
+                    {t.name} <span class="small mut">{euro(t.cents)}</span>
+                    {t.monthly && <span class="small mut"> · hat monatliche Pauschalen</span>}
+                  </label>
+                ))}
+              </div>
+            </details>
+          )}
         </form>
         <div class="card">
           <div class="tbl">
@@ -458,33 +518,56 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
                 </tr>
               </thead>
               <tbody>
-                {f.rows.map((r) => (
+                {list.map((r) => (
                   <tr>
-                    <td>
-                      <a href={`/kunden/${r.customer_id}`}>{r.customer_name}</a>
-                    </td>
-                    {r.months.map((v) => (
-                      <td class="r">{v ? euro(v) : ''}</td>
-                    ))}
+                    <td>{r.id ? <a href={`/kunden/${r.id}`}>{r.name}</a> : r.name}</td>
+                    {r.reg.map((v, i) => {
+                      const t = v + r.vj[i]!;
+                      return (
+                        <td class="r" title={r.vj[i] ? `davon wie Vorjahr ${euro(r.vj[i]!)}` : ''}>
+                          {t ? euro(t) : ''}
+                          {r.vj[i]! > 0n && <span style="color:var(--brand)">*</span>}
+                        </td>
+                      );
+                    })}
                     <td class="r">
                       <b>{euro(r.total)}</b>
                     </td>
                   </tr>
                 ))}
+                {prev && (
+                  <>
+                    <tr style="background:#f7f7f9">
+                      <td>regelmäßige Leistungen</td>
+                      {f.totals.map((v) => (
+                        <td class="r">{euro(v)}</td>
+                      ))}
+                      <td class="r">{euro(f.total)}</td>
+                    </tr>
+                    <tr style="background:#f7f7f9">
+                      <td>nicht monatlich (wie Vorjahr)</td>
+                      {vjMonths.map((v) => (
+                        <td class="r">{euro(v)}</td>
+                      ))}
+                      <td class="r">{euro(prev.total)}</td>
+                    </tr>
+                  </>
+                )}
                 <tr style="font-weight:600;background:#f7f7f9">
                   <td>Summe</td>
-                  {f.totals.map((v) => (
-                    <td class="r">{euro(v)}</td>
+                  {f.totals.map((v, i) => (
+                    <td class="r">{euro(v + vjMonths[i]!)}</td>
                   ))}
-                  <td class="r">{euro(f.total)}</td>
+                  <td class="r">{euro(grand)}</td>
                 </tr>
               </tbody>
             </table>
           </div>
           <p class="small mut" style="margin-bottom:0">
-            Aus den aktiven regelmäßigen Leistungen (Pauschalen) mit Abrechnungszyklus und Gültigkeit – so,
-            wie der Abrechnungslauf sie berechnen würde. Regiestunden, Sonderleistungen und Preisänderungen
-            ohne hinterlegte Leistung sind nicht enthalten.
+            Regelmäßig: aus den aktiven Pauschalen mit Abrechnungszyklus und Gültigkeit – wie der
+            Abrechnungslauf.
+            {prev &&
+              ' Wie Vorjahr (*): Umsatz der gewählten Leistungsarten im selben Monat des Vorjahres (eigene und Fortytools-Rechnungen, nach Leistungszeitraum) – eine Schätzung, kein Auftragsbestand.'}
           </p>
         </div>
       </>,

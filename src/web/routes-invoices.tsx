@@ -523,7 +523,9 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     }
     if (action === 'loeschen') {
       for (const id of ids) await deleteDraft(sql, id, actor);
-      return back(c, '/rechnungen/entwuerfe', { ok: `${ids.length} Entwurf/Entwürfe gelöscht.` });
+      return back(c, str(b, 'zurueck') === '/' ? '/' : '/rechnungen/entwuerfe', {
+        ok: `${ids.length} Entwurf/Entwürfe gelöscht.`,
+      });
     }
     if (action === 'ausstellen') {
       const d = str(b, 'invoice_date');

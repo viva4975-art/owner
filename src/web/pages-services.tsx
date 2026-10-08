@@ -39,6 +39,7 @@ const ServiceGroup: FC<{ title: string; rows: SiteServiceRow[]; siteId: string }
                 {[
                   sv.type_name,
                   sv.always_unfinished ? 'immer unfertig' : null,
+                  sv.order_reference ? `Bestellnr. ${sv.order_reference}` : null,
                   target(sv) === 'wie Objekt' ? null : target(sv),
                 ]
                   .filter(Boolean)
@@ -304,6 +305,20 @@ export const ServiceForm: FC<{
                 </option>
               ))}
           </select>
+        </div>
+        <div>
+          <label for="order_reference">Bestellnummer des Kunden</label>
+          <input
+            id="order_reference"
+            name="order_reference"
+            value={sv?.order_reference ?? ''}
+            maxlength={100}
+            placeholder="z. B. 4500123456"
+          />
+          <div class="small mut">
+            Erscheint auf der Rechnung (E-Rechnung BT-13). Mehrere Leistungen mit verschiedenen Nummern auf
+            einer Rechnung: je Position im Text.
+          </div>
         </div>
         <div>
           <label for="billing_cycle">Abrechnungszyklus (Einheit Stunde = je Ausführung)</label>

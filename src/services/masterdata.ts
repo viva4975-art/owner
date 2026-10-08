@@ -383,6 +383,7 @@ export interface SiteService {
   always_unfinished: boolean;
   invoice_group_id: string | null;
   separate_invoice: boolean;
+  order_reference: string | null;
   version: number;
 }
 
@@ -464,6 +465,7 @@ export const serviceInput = z.object({
   hours_target: optMilli,
   execution_notes: optText,
   cost_center: optText,
+  order_reference: optText,
   labor_share: optPercentBp,
   always_unfinished: z.preprocess((v) => v === 'on' || v === 'true' || v === true, z.boolean()),
   // „objekt“ = Rechnungsgruppe/Rechnung des Objekts, „separat“ = eigene Rechnung, sonst ID einer Rechnungsgruppe
@@ -533,6 +535,7 @@ export async function saveService(
     // Kostenstelle = Objektnummer, wenn nichts anderes eingetragen ist
     cost_center: input.cost_center ?? site?.site_no ?? null,
     labor_share_bp: input.labor_share,
+    order_reference: input.order_reference ? input.order_reference.slice(0, 100) : null,
     always_unfinished: input.always_unfinished,
     separate_invoice: input.invoice_target === 'separat',
     invoice_group_id:

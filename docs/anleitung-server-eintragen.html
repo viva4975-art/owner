@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<title>Zugangsdaten auf dem Server eintragen</title>
+<style>
+  body{font-family:Inter,Arial,sans-serif;color:#1d1d1f;max-width:820px;margin:28px auto;padding:0 18px;line-height:1.5;font-size:14px}
+  h1{color:#7D1435;font-size:24px;margin-bottom:4px}
+  h2{color:#7D1435;font-size:17px;margin:26px 0 8px;border-bottom:2px solid #f0dbe2;padding-bottom:4px}
+  .sub{color:#666;margin-top:0}
+  pre{background:#1f1f24;color:#f3f3f3;padding:10px 14px;border-radius:6px;font-size:13px;white-space:pre-wrap;word-break:break-all}
+  code{background:#f4eef0;padding:1px 5px;border-radius:4px}
+  .box{background:#fff7e0;border:1px solid #e9c46a;border-radius:6px;padding:10px 14px;margin:12px 0}
+  .red{background:#fdecec;border-color:#e3a0a0}
+  ol li{margin-bottom:6px}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  td,th{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top}
+  th{background:#f7eef1}
+  kbd{border:1px solid #bbb;border-bottom-width:2px;border-radius:4px;padding:0 5px;font-size:12px;background:#fafafa}
+</style>
+</head>
+<body>
+<h1>Zugangsdaten auf dem Server eintragen</h1>
+<p class="sub">Viva-Deluxe App · Server IONOS VPS 217.160.236.117 · Stand 08.10.2026</p>
+
+<div class="box">
+  <b>Worum geht es?</b> Passwörter und Schlüssel (Mail-Zugang, später Qwist, Archiv-Speicher) gehören nicht in den
+  Chat und nicht in den Programmcode, sondern nur in <b>eine Datei auf dem Server</b>:
+  <code>/opt/viva/deploy/.env.live</code>. Nur der Server liest sie. Sie tragen dort einmal ein, starten die App neu –
+  fertig. Dauer: ca. 10 Minuten.
+</div>
+
+<h2>Schritt 1 – Mit dem Server verbinden</h2>
+<p><b>Variante A (am einfachsten, im Browser):</b></p>
+<ol>
+  <li>IONOS anmelden → <b>Server &amp; Cloud</b> → den Server (217.160.236.117) anklicken.</li>
+  <li>Oben rechts <b>Aktionen → KVM-Konsole</b> (auch „Remote-Konsole“) öffnen. Es öffnet sich ein schwarzes Fenster.</li>
+  <li>Bei <code>login:</code> <b>root</b> eintippen, <kbd>Enter</kbd>, dann das root-Passwort (beim Tippen ist nichts zu sehen – normal), <kbd>Enter</kbd>.</li>
+</ol>
+<p><b>Variante B (Windows/Mac):</b> PowerShell (Windows) bzw. Terminal (Mac) öffnen und eingeben:</p>
+<pre>ssh root@217.160.236.117</pre>
+<p>Beim ersten Mal mit <b>yes</b> bestätigen, dann das root-Passwort eingeben.</p>
+<div class="box red">
+  <b>Noch offen:</b> Das root-Passwort stand im Chat – bitte direkt nach dem Anmelden ändern: <code>passwd</code> eingeben,
+  neues Passwort zweimal eintippen. Neues Passwort nur im Passwort-Manager notieren, nicht weitergeben.
+</div>
+
+<h2>Schritt 2 – Datei öffnen</h2>
+<pre>nano /opt/viva/deploy/.env.live</pre>
+<p>Es erscheint eine Liste mit Zeilen wie <code>APP_ENV='test'</code>. Mit den <b>Pfeiltasten</b> bewegen (die Maus geht hier nicht).</p>
+
+<h2>Schritt 3 – Werte eintragen</h2>
+<p>Ganz nach unten gehen (Pfeil ↓ bis zur letzten Zeile, dann <kbd>Ende</kbd>, <kbd>Enter</kbd> für eine neue Zeile).
+Je Wert <b>eine Zeile</b>: <code>NAME='Wert'</code> – Wert immer in <b>einfachen Anführungszeichen</b>, ohne Leerzeichen um das <code>=</code>.
+Gibt es den Namen schon (z. B. <code>SMTP_HOST</code>), die vorhandene Zeile ändern statt eine zweite anzulegen.</p>
+
+<p><b>Mail-Versand (IONOS Exchange, buchhaltung@):</b></p>
+<pre>SMTP_HOST='smtp.exchange2019.ionos.de'
+SMTP_PORT='587'
+SMTP_USER='buchhaltung@viva-deluxe-reinigung.de'
+SMTP_PASS='hier das Passwort des Postfachs'
+MAIL_FROM='Viva-Deluxe Buchhaltung &lt;buchhaltung@viva-deluxe-reinigung.de&gt;'</pre>
+<p class="sub">Enthält das Passwort selbst ein Hochkomma <code>'</code>, bitte kurz melden – dann ändern wir es anders.</p>
+
+<p><b>Später (erst wenn ich es Ihnen sage):</b></p>
+<table>
+  <tr><th>Wofür</th><th>Zeilen</th></tr>
+  <tr><td>Bankabruf Qwist (neuen Schlüssel bei Qwist erzeugen, der alte stand im Chat)</td>
+      <td><code>QWIST_CLIENT_ID='…'</code><br /><code>QWIST_CLIENT_SECRET='…'</code></td></tr>
+  <tr><td>Revisionssicheres Archiv (S3 mit Object Lock)</td>
+      <td><code>S3_ENDPOINT</code>, <code>S3_REGION</code>, <code>S3_BUCKET</code>, <code>S3_ACCESS_KEY</code>, <code>S3_SECRET_KEY</code></td></tr>
+</table>
+
+<div class="box red">
+  <b>Nicht ändern:</b> <code>APP_ENV='test'</code>. Solange dort <code>test</code> steht, gehen <b>alle</b> Mails nur an Ihre
+  Testadresse (<code>MAIL_TEST_RECIPIENT</code>) – kein Kunde bekommt aus Versehen eine Rechnung. Umstellen auf
+  <code>live</code> machen wir gemeinsam vor dem Echtbetrieb. Auch <code>DATABASE_URL</code>, <code>DB_PASSWORD</code> und
+  <code>SESSION_SECRET</code> nicht anfassen.
+</div>
+
+<h2>Schritt 4 – Speichern und schließen</h2>
+<ol>
+  <li><kbd>Strg</kbd> + <kbd>O</kbd> (Buchstabe O) → unten erscheint der Dateiname → <kbd>Enter</kbd>.</li>
+  <li><kbd>Strg</kbd> + <kbd>X</kbd> → zurück in der Konsole.</li>
+</ol>
+
+<h2>Schritt 5 – App neu starten</h2>
+<pre>bash /opt/viva/deploy/update.sh</pre>
+<p>Dauert 1–3 Minuten. Danach https://app.viva-deluxe-reinigung.de neu laden.</p>
+
+<h2>Schritt 6 – Prüfen</h2>
+<ol>
+  <li>In der App eine Rechnung (Entwurf → Ausstellen) per E-Mail senden → die Mail muss an Ihre <b>Testadresse</b> kommen.</li>
+  <li>Kommt nichts an, diese Meldungen anzeigen lassen und mir als Foto/Text schicken (ohne Passwörter):
+    <pre>cd /opt/viva/deploy &amp;&amp; docker compose logs --tail 50 app</pre></li>
+  <li>Verbindung schließen: <code>exit</code></li>
+</ol>
+
+<h2>Kurz zusammengefasst</h2>
+<pre>ssh root@217.160.236.117          # bzw. KVM-Konsole im IONOS-Panel
+nano /opt/viva/deploy/.env.live   # Zeilen NAME='Wert' eintragen
+# Strg+O, Enter, Strg+X
+bash /opt/viva/deploy/update.sh   # neu starten</pre>
+</body>
+</html>

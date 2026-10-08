@@ -179,6 +179,7 @@ export async function draftsFromExecutions(
         group_combine: boolean | null;
         group_name: string | null;
         order_reference: string | null;
+        sv_order_reference: string | null;
         intro_text: string | null;
         closing_text: string | null;
         reverse_charge: boolean;
@@ -189,7 +190,8 @@ export async function draftsFromExecutions(
              s.name as site_name, s.street, s.postal_code, s.city, c.id as customer_id, c.customer_no,
              c.name as customer_name, e.created_by, s.invoice_group_id as site_group, v.invoice_group_id as sv_group,
              v.separate_invoice, g.active as group_active, g.combine as group_combine, g.name as group_name,
-             coalesce(g.order_reference, s.order_reference) as order_reference, g.intro_text, g.closing_text,
+             coalesce(g.order_reference, s.order_reference) as order_reference, v.order_reference as sv_order_reference,
+             g.intro_text, g.closing_text,
              c.reverse_charge
         from app.service_executions e
         join app.site_services v on v.id = e.service_id
@@ -227,30 +229,38 @@ export async function draftsFromExecutions(
       const id = randomUUID();
       const start = items.map((i) => i.date_from).reduce((a, b) => (b < a ? b : a));
       const end = items.map((i) => i.date_to).reduce((a, b) => (b > a ? b : a));
+      // Bestellnummer der Leistung: einheitlich → Rechnungskopf, verschieden → je Position
+      const refs = [...new Set(items.map((i) => i.sv_order_reference?.trim() || ''))];
+      const svcRef = refs.length === 1 && refs[0] ? refs[0] : null;
       await tx`
         insert into app.invoices (id, kind, customer_id, site_id, invoice_group_id, period_start, period_end,
                                   invoice_format, buyer_reference, order_reference, intro_text, closing_text,
                                   planned_issue_date, reverse_charge)
         values (${id}, 'invoice', ${first.customer_id}, ${combined ? null : first.site_id}, ${groupId}, ${start}, ${end},
-                ${billing.format}, ${billing.leitwegId}, ${first.order_reference}, ${first.intro_text},
+                ${billing.format}, ${billing.leitwegId}, ${svcRef ?? first.order_reference}, ${first.intro_text},
                 ${first.closing_text}, ${invoiceDate}, ${first.reverse_charge})`;
       await writeLines(
         tx,
         id,
         items.map((i) => ({
           description: i.description,
-          detail: serviceDetail(
-            i.note,
-            {
-              siteNo: i.site_no,
-              name: i.site_name,
-              street: i.street,
-              postalCode: i.postal_code,
-              city: i.city,
-            },
-            i.date_from,
-            i.date_to,
-          ),
+          detail: [
+            serviceDetail(
+              i.note,
+              {
+                siteNo: i.site_no,
+                name: i.site_name,
+                street: i.street,
+                postalCode: i.postal_code,
+                city: i.city,
+              },
+              i.date_from,
+              i.date_to,
+            ),
+            !svcRef && i.sv_order_reference ? `Bestellnummer: ${i.sv_order_reference}` : null,
+          ]
+            .filter(Boolean)
+            .join('\n'),
           quantity: i.quantity_milli as Quantity,
           unitCode: i.unit_code,
           unitPrice: i.unit_price_cents as Cents,

@@ -757,6 +757,17 @@ export const InvoiceDetail: FC<{
         )}
       </div>
 
+      {draft && ['invoice', 'partial', 'final'].includes(inv.kind) && (
+        <div class="flash warn" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <span>
+            <b>Entwurf – noch änderbar.</b> Positionen, Texte, Rechnungsadresse, Zeitraum und Bestellnummer
+            lassen sich bis zum Ausstellen ändern; danach nur noch per Storno/Korrektur.
+          </span>
+          <a class="btn" href={`/rechnungen/${inv.id}/bearbeiten`} style="margin-left:auto">
+            ✎ Entwurf bearbeiten
+          </a>
+        </div>
+      )}
       {draft && inv.review_required && (
         <div class="flash err" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
           <span>
@@ -789,11 +800,6 @@ export const InvoiceDetail: FC<{
           <a class="btn sec" href={`/rechnungen/${inv.id}/vorschau.pdf`} target="_blank">
             PDF-Vorschau
           </a>
-          {['invoice', 'partial', 'final'].includes(inv.kind) && (
-            <a class="btn sec" href={`/rechnungen/${inv.id}/bearbeiten`}>
-              Bearbeiten
-            </a>
-          )}
           <a class="btn sec" href={`/rechnungen/${inv.id}?pruefen=1`}>
             E-Rechnung prüfen (KoSIT)
           </a>
@@ -991,7 +997,14 @@ export const InvoiceDetail: FC<{
           ))}
         </div>
       )}
-      <h2>Positionen</h2>
+      <h2 style="display:flex;align-items:center;gap:12px">
+        Positionen
+        {draft && ['invoice', 'partial', 'final'].includes(inv.kind) && (
+          <a class="small" href={`/rechnungen/${inv.id}/bearbeiten`} style="font-weight:500">
+            ✎ bearbeiten
+          </a>
+        )}
+      </h2>
       <div class="tbl">
         <table>
           <thead>

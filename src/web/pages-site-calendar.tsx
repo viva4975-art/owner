@@ -102,7 +102,7 @@ const CAL_CSS = `.calbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
 .cal .dc{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px;min-height:110px;font-size:12.5px}
 .cal .dc.out{background:var(--bg);color:var(--faint)}.cal .dc .n{font-weight:600;margin-bottom:4px}
 .cal .dc.today .n{color:var(--brand)}
-.sh{border-left:3px solid var(--info);background:var(--info-50);border-radius:3px;padding:3px 6px;margin-bottom:4px;line-height:1.3}
+.sh{border-left:3px solid var(--brand);background:var(--brand-50);border-radius:3px;padding:3px 6px;margin-bottom:4px;line-height:1.3}
 .sh.done{border-color:var(--ok);background:var(--ok-50)}.sh.abs{border-color:var(--err);background:var(--err-50)}
 .sh.sub{border-color:var(--warn);background:var(--warn-50)}.sh.hol{border-color:var(--faint);background:var(--bg)}
 .sh.cx{border-color:var(--faint);background:var(--bg);text-decoration:line-through;color:var(--mut)}

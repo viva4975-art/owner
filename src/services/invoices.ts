@@ -416,6 +416,8 @@ export interface RunService {
   always_unfinished: boolean;
   invoice_group_id: string | null;
   separate_invoice: boolean;
+  /** Bestellnummer des Kunden für diese Leistung */
+  order_reference?: string | null;
 }
 
 interface RunGroup {
@@ -550,6 +552,15 @@ export async function runMonthly(
         const [cust] = await tx<{ reverse_charge: boolean }[]>`
           select reverse_charge from app.customers where id = ${u.customerId}`;
         const rc = !!cust?.reverse_charge;
+        // Bestellnummer: haben alle Leistungen dieselbe → Rechnungskopf (BT-13); verschiedene → je Position im Text
+        const refs = [...new Set(todo.map((i) => i.service.order_reference?.trim() || ''))];
+        const svcRef = refs.length === 1 && refs[0] ? refs[0] : null;
+        const lines = todo.map((i) => {
+          const r = i.service.order_reference?.trim();
+          return !svcRef && r
+            ? { ...i.line, detail: [i.line.detail, `Bestellnummer: ${r}`].filter(Boolean).join('\n') }
+            : i.line;
+        });
         const [row] = await tx`
           insert into app.invoices (id, kind, customer_id, site_id, invoice_group_id, period_start, period_end,
                                     invoice_format, buyer_reference, order_reference, intro_text, closing_text,
@@ -557,7 +568,7 @@ export async function runMonthly(
           values (${id}, 'invoice', ${u.customerId}, ${u.site?.id ?? null}, ${u.group?.id ?? null}, ${start},
                   ${periodEnd}, ${billing.format},
                   ${billing.leitwegId},
-                  ${u.group?.order_reference || (u.site?.order_reference ?? null)},
+                  ${svcRef || u.group?.order_reference || (u.site?.order_reference ?? null)},
                   ${u.group?.intro_text ?? null}, ${u.group?.closing_text ?? null},
                   ${`${u.key}:${month}`}, ${opts.invoiceDate ?? null},
                   ${todo.some((i) => i.service.always_unfinished)}, ${rc})
@@ -568,13 +579,7 @@ export async function runMonthly(
           await tx`insert into app.monthly_run_services (service_id, month, invoice_id)
                    values (${i.service.id}, ${month}, ${id})`;
         }
-        await writeLines(
-          tx,
-          id,
-          todo.map((i) => i.line),
-          0n as Cents,
-          rc,
-        );
+        await writeLines(tx, id, lines, 0n as Cents, rc);
         await audit(tx, actor, 'monthly_run', id, {
           month,
           ...(u.group ? { invoice_group_id: u.group.id, combined: u.combined } : {}),

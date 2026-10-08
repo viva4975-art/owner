@@ -163,6 +163,7 @@ export const customerInput = z
     dunning_block: optBool,
     reverse_charge: optBool,
     is_consumer: optBool,
+    is_internal: optBool,
   })
   .refine((c) => !c.reverse_charge || !!c.vat_id, {
     message: '§ 13b: Bitte die USt-IdNr. des Kunden angeben (Pflicht in der E-Rechnung)',

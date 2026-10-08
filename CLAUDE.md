@@ -1670,3 +1670,13 @@ Testadresse.
     `de.vivadeluxe.mitarbeiter`, noch nie hochgeladen). Nach dem ersten Upload nicht mehr änderbar.
   - Qwist: Server-Einträge `QWIST_CLIENT_ID/SECRET` werden von der App noch nicht gelesen (kein Abruf gebaut, keine
     öffentliche API-Doku gefunden) – Ahmed fragt bei Qwist die Partner-/API-Dokumentation an.
+- 2026-10-08: **Fund „E-Rechnung … cac:AccountingCustomerParty/cac:Party“** (Kunde 20167 „Viva-Deluxe … (Büro) / Zeiterfassung
+  Büro“ aus Fortytools): XRechnung verlangt eine elektronische Adresse des Empfängers (BT-49: Leitweg-ID oder E-Mail).
+  Jetzt: Format „PDF“ ohne E-Mail/Leitweg-ID → nur PDF (keine E-Rechnung, Versand per Post); sonst klare Meldung „Rechnungs-
+  E-Mail bzw. Leitweg-ID fehlt (Kunde → Rechnungsgruppen)“. Kunden-Häkchen **„Interner Bereich – nie Rechnungen“**
+  (`customers.is_internal`, Monatslauf/Entwürfe/Ausstellen gesperrt). Ahmed: bei 20167 Häkchen setzen, Entwurf löschen.
+  **Rechtlich:** PDF ohne E-Rechnung an inländische Firmenkunden nur noch bis Ende 2026 (Übergang; ab 2027 Pflicht bei
+  > 800.000 € Vorjahresumsatz) – Rechnungs-E-Mails nachtragen.
+- 2026-10-08: Bankabruf über **Enable Banking** (statt Qwist, sofort ohne Vertrag; Restricted Production = eigene Konten).
+  Ahmed legt die Anwendung an (Production, Schlüssel im Browser erzeugt, Redirect
+  `https://app.viva-deluxe-reinigung.de/transfer/bank/rueckkehr`). Einbau folgt.

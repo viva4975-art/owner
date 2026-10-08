@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { sampleDocument } from './fixtures.js';
-import { generateCii } from './generate.js';
+import { generateCii, generateXRechnungUbl } from './generate.js';
 import { countryCodeOf, describeEInvoiceError, unitCodeOf } from './errors.js';
 
 describe('E-Rechnung: verständliche Fehler und Bereinigung', () => {
@@ -27,5 +27,10 @@ describe('E-Rechnung: verständliche Fehler und Bereinigung', () => {
       (e: unknown) => e,
     );
     expect(describeEInvoiceError(err2)).toContain('Einheit einer Position (Position 1)');
+    const err3 = await generateXRechnungUbl({
+      ...d,
+      buyer: { ...d.buyer, leitwegId: null, email: null },
+    }).catch((e: unknown) => e);
+    expect(describeEInvoiceError(err3)).toContain('Rechnungs-E-Mail bzw. Leitweg-ID');
   });
 });

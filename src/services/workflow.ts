@@ -41,6 +41,18 @@ export interface PreflightResult {
   valid: boolean;
 }
 
+/** XRechnung verlangt eine elektronische Adresse des Empfängers (BT-49: Leitweg-ID oder E-Mail). */
+const hasEndpoint = (doc: InvoiceDocument) => !!(doc.buyer.leitwegId || doc.buyer.email);
+/**
+ * PDF-Kunde ohne E-Mail/Leitweg-ID (Versand per Post): keine E-Rechnung, nur PDF archivieren.
+ * Rechtlich: ab 2027/2028 bei inländischen Firmenkunden E-Rechnung Pflicht – dann E-Mail nachtragen.
+ */
+const PDF_ONLY: PreflightResult = {
+  ubl: { valid: true, messages: [], reportXml: '' } as unknown as ValidationResult,
+  cii: { valid: true, messages: [], reportXml: '' } as unknown as ValidationResult,
+  valid: true,
+};
+
 async function validateBoth(doc: InvoiceDocument, env: Env): Promise<PreflightResult> {
   const [ublXml, ciiXml] = await Promise.all([generateXRechnungUbl(doc), generateCii(doc)]);
   const [ubl, cii] = await Promise.all([
@@ -55,10 +67,23 @@ async function validateBoth(doc: InvoiceDocument, env: Env): Promise<PreflightRe
  * Nur wenn gültig, darf ausgestellt (und damit eine Nummer verbraucht) werden.
  */
 export async function preflight(deps: Deps, id: string): Promise<PreflightResult> {
-  const [inv] = await deps.sql<{ planned_issue_date: string | null }[]>`
-    select planned_issue_date from app.invoices where id = ${id}`;
+  const [inv] = await deps.sql<
+    { planned_issue_date: string | null; invoice_format: string; is_internal: boolean }[]
+  >`
+    select i.planned_issue_date, i.invoice_format::text, c.is_internal from app.invoices i
+      join app.customers c on c.id = i.customer_id where i.id = ${id}`;
+  if (inv?.is_internal)
+    throw new BusinessError(
+      'Interner Bereich: dafür werden keine Rechnungen ausgestellt – Entwurf bitte löschen.',
+    );
   const issueDate = inv?.planned_issue_date ?? todayBerlin();
   const doc = await loadDocument(deps.sql, id, { number: 'ENTWURF', issueDate, dueDate: issueDate });
+  if (!hasEndpoint(doc)) {
+    if (inv?.invoice_format === 'pdf') return PDF_ONLY;
+    throw new BusinessError(
+      'E-Rechnung nicht möglich: Beim Empfänger fehlt die Rechnungs-E-Mail (bzw. Leitweg-ID). Bitte unter Kunde → Rechnungsgruppen eintragen – oder Format „PDF“ wählen (Versand per Post).',
+    );
+  }
   try {
     return await validateBoth(doc, deps.env);
   } catch (err) {
@@ -143,6 +168,8 @@ export async function ensureDocuments(deps: Deps, id: string): Promise<DocRow[]>
     if (['pdf', 'xrechnung_xml', 'zugferd_pdf', 'validation_report'].every((k) => have.has(k))) return;
 
     const doc = await loadDocument(sql, id);
+    const pdfOnly = !hasEndpoint(doc);
+    if (pdfOnly && have.has('pdf')) return;
     const base = `invoices/${inv.issue_date.slice(0, 4)}/${inv.number}${rev ? `/berichtigt-${rev}` : ''}`;
     const nm = rev ? `${inv.number}_berichtigt-${rev}` : inv.number;
     const until = retainUntil(inv.issue_date);
@@ -164,6 +191,7 @@ export async function ensureDocuments(deps: Deps, id: string): Promise<DocRow[]>
 
     const pdf = await renderInvoicePdf(doc);
     if (!have.has('pdf')) await store('pdf', `${nm}.pdf`, 'application/pdf', pdf);
+    if (pdfOnly) return; // ohne Empfänger-Adresse keine E-Rechnung (nur PDF, Versand per Post)
 
     const ublXml = await generateXRechnungUbl(doc);
     const ciiXml = await generateCii(doc);

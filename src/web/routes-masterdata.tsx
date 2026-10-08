@@ -462,6 +462,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     // Häkchen: nicht angehakt = nicht mitgeschickt → ausdrücklich „aus“, wenn das Feld im Formular war
     if (body.reverse_charge_shown === '1' && body.reverse_charge === undefined) body.reverse_charge = 'false';
     if (body.is_consumer_shown === '1' && body.is_consumer === undefined) body.is_consumer = 'false';
+    if (body.is_internal_shown === '1' && body.is_internal === undefined) body.is_internal = 'false';
     const parsed = customerInput.safeParse(body);
     if (!parsed.success) throw new BusinessError(parsed.error.issues.map((i) => i.message).join('\n'));
     try {

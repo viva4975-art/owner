@@ -5,6 +5,10 @@
 
 const FIELDS: [RegExp, string][] = [
   [
+    /AccountingCustomerParty\/cac:Party#cbc:EndpointID/,
+    'Rechnungs-E-Mail bzw. Leitweg-ID des Kunden (Kunde → Rechnungsgruppen)',
+  ],
+  [
     /AccountingCustomerParty.*Country/,
     'Land der Rechnungsanschrift (Kunde) – bitte 2-stelligen Ländercode, z. B. DE',
   ],
@@ -31,12 +35,15 @@ const FIELDS: [RegExp, string][] = [
 ];
 
 export function describeEInvoiceError(err: unknown): string {
-  const e = err as { message?: string; errors?: { instancePath?: string; message?: string }[] };
+  const e = err as {
+    message?: string;
+    errors?: { instancePath?: string; message?: string; params?: { missingProperty?: string } }[];
+  };
   const list = Array.isArray(e?.errors) ? e.errors : [];
   if (!list.length) return e?.message ?? String(err);
   const out = new Set<string>();
   for (const x of list) {
-    const p = x.instancePath ?? '';
+    const p = `${x.instancePath ?? ''}${x.params?.missingProperty ? `#${x.params.missingProperty}` : ''}`;
     const pos = /InvoiceLine\/(\d+)/.exec(p);
     const hit = FIELDS.find(([re]) => re.test(p));
     const label = hit ? hit[1] : p.replace(/^\/ubl:Invoice\//, '');

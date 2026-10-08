@@ -508,6 +508,13 @@ export const CustomerForm: FC<{ id: string; c: Partial<Customer>; isNew: boolean
           Privatkunde (Verbraucher) – keine Verzugspauschale; reine PDF-Rechnung auch ab 2027 zulässig
         </label>
       </div>
+      <div class="chk">
+        <input type="hidden" name="is_internal_shown" value="1" />
+        <input type="checkbox" id="is_internal" name="is_internal" checked={!!c.is_internal} />
+        <label for="is_internal">
+          Interner Bereich (z. B. Büro, Zeiterfassung) – nie Rechnungen, nicht im Monatslauf
+        </label>
+      </div>
       <TextBox name="notes" label="Kurzinfo" value={c.notes} />
       <TextBox
         name="billing_hint"

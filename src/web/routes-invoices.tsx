@@ -1160,7 +1160,8 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     }
     return c.body(bytes as Uint8Array<ArrayBuffer>, 200, {
       'Content-Type': doc.content_type,
-      'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(doc.filename)}`,
+      // ?download=1: als Datei speichern (z. B. E-Rechnung für ein Portal), sonst im Browser anzeigen
+      'Content-Disposition': `${c.req.query('download') ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(doc.filename)}`,
     });
   });
 }

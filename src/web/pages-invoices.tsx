@@ -623,6 +623,7 @@ interface DocInfo {
   sha256: string;
   size_bytes: bigint;
   valid: boolean | null;
+  revision?: number | null;
 }
 
 const DOC_LABEL: Record<string, string> = {
@@ -701,6 +702,16 @@ export const InvoiceDetail: FC<{
   const sent = forLatest.find((d) => d.status === 'sent');
   const failed = forLatest.find((d) => d.status === 'failed');
   const cancelled = derived.find((d) => d.kind === 'cancellation');
+  // E-Rechnung der aktuellen Fassung zum Herunterladen (z. B. für Portale): XRechnung-XML bzw. ZUGFeRD-PDF
+  const curRev = latestRev?.revision ?? null;
+  const pickDoc = (kind: string) =>
+    docs.filter((d) => d.kind === kind && (curRev == null || (d.revision ?? null) === curRev)).at(-1) ??
+    docs.filter((d) => d.kind === kind).at(-1);
+  const eDocs = (
+    inv.invoice_format === 'xrechnung' ? ['xrechnung_xml', 'zugferd_pdf'] : ['zugferd_pdf', 'xrechnung_xml']
+  )
+    .map(pickDoc)
+    .filter((d): d is DocInfo => !!d && d.valid !== false);
   return (
     <>
       <div class="actions">
@@ -853,13 +864,24 @@ export const InvoiceDetail: FC<{
         </div>
       )}
 
+      {!draft && eDocs.length > 0 && (
+        <div class="card actions" style="align-items:center">
+          <b>E-Rechnung herunterladen:</b>
+          {eDocs.map((d, i) => (
+            <a class={`btn ${i ? 'sec' : ''}`} href={`/dokumente/${d.id}?download=1`} download={d.filename}>
+              {d.kind === 'xrechnung_xml' ? 'XRechnung (XML)' : 'ZUGFeRD (PDF)'}
+            </a>
+          ))}
+          <span class="small mut">KoSIT-geprüft · für den Upload in Portale (z. B. Patentamt)</span>
+        </div>
+      )}
       {!draft && (
         <div class="actions">
           {!sent && portal != null && (
             <form method="post" action={`/rechnungen/${inv.id}/portal`} class="actions" style="margin:0">
               <span class="small">
-                Versand über <b>{portal || 'Portal des Kunden'}</b>: E-Rechnung unten unter „Belege“
-                herunterladen und im Portal hochladen, dann vermerken.
+                Versand über <b>{portal || 'Portal des Kunden'}</b>: E-Rechnung oben herunterladen und im
+                Portal hochladen, dann vermerken.
               </span>
               <input
                 name="reference"

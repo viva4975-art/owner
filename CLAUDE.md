@@ -2033,3 +2033,7 @@ Testadresse.
   Änderung mit altem/neuem Wert im Protokoll (`audit_log.details`). Hinweis im Formular; ist die Bestellung schon
   unterschrieben → neu unterschreiben lassen. Wirkt sofort auf „Rechnung erwartet“/Abrechnungsverfolgung und die
   NU-Schätzung der Nachkalkulation (nur „Pauschale je Monat“ wird geschätzt). Test in `subcontractors.db.test.ts`.
+- 2026-10-09: **E-Rechnung herunterladen** (Ahmed: „ZUGFeRD erstellt, wie lade ich die Datei fürs Portal herunter?“): An jeder
+  ausgestellten Rechnung oben Kasten „E-Rechnung herunterladen“ mit **ZUGFeRD (PDF)** und **XRechnung (XML)** der aktuellen
+  Fassung (nur KoSIT-gültige; bei Format XRechnung zuerst XML). Download mit `?download=1` speichert als Datei (vorher öffnete
+  das iPad das PDF nur im Browser). Danach im Portal hochladen und „Im Portal hochgeladen“ klicken.

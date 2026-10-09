@@ -2062,3 +2062,6 @@ Testadresse.
   Handwerk, Die Gebäudedienstleister, Umwelt- und Klimapakt Bayern – Bilder aus Ahmeds Signatur, `assets/mail/`),
   Pflichtangaben-Fußzeile, Umwelt- und Vertraulichkeitshinweis (de/en). Felder unter Einstellungen → E-Mail-Versand
   (JSON in `company.mail_signature`), Siegel/Hinweise abschaltbar, Vorschau mit Bildern.
+- 2026-10-09: **Rechnung erwartet: mehrere auf einmal erledigen** (Ahmed: „wurden schon alle bezahlt“): Häkchen je Zeitraum,
+  je Nachunternehmer und „alle“, oben Vermerk (vorbelegt „bereits bezahlt (vor der Umstellung)“) → „Markierte als erledigt
+  vermerken“ (`/rechnungseingang/erwartet/auswahl`, gleiche Speicherung wie „keine Rechnung …“ mit Grund, nichts doppelt).

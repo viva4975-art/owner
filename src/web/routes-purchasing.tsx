@@ -143,10 +143,32 @@ const ExpectedList: FC<{ rows: ExpectedRow[] }> = ({ rows }) => {
     `erwartet=${encodeURIComponent(`${r.subcontract_id}:${r.period}${r.expectedNet != null ? `:${r.expectedNet}` : ''}`)}`;
   return (
     <>
+      <form id="exp-bulk" method="post" action="/rechnungseingang/erwartet/auswahl" class="card exp-bulk">
+        <label style="display:flex;gap:6px;align-items:center;margin:0;font-weight:600">
+          <input type="checkbox" data-exp-all /> alle {rows.length} markieren
+        </label>
+        <input
+          name="grund"
+          required
+          value="bereits bezahlt (vor der Umstellung)"
+          aria-label="Vermerk"
+          style="flex:1;min-width:220px"
+        />
+        <button class="btn" data-exp-btn disabled>
+          Markierte als erledigt vermerken (<span data-exp-n>0</span>)
+        </button>
+      </form>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `(function(){var f=document.getElementById('exp-bulk');function boxes(sel){return document.querySelectorAll('input[form=exp-bulk][name=sel]'+(sel||''))}function upd(){var n=0;boxes().forEach(function(b){if(b.checked)n++});f.querySelector('[data-exp-n]').textContent=n;f.querySelector('[data-exp-btn]').disabled=!n;var all=f.querySelector('[data-exp-all]');all.checked=n>0&&n===boxes().length;document.querySelectorAll('[data-exp-sup]').forEach(function(g){var l=boxes('[data-sup="'+g.getAttribute('data-exp-sup')+'"]');g.checked=l.length>0&&[].every.call(l,function(x){return x.checked})})}document.addEventListener('change',function(e){var t=e.target;if(t.matches('[data-exp-all]'))boxes().forEach(function(b){b.checked=t.checked});else if(t.matches('[data-exp-sup]'))boxes('[data-sup="'+t.getAttribute('data-exp-sup')+'"]').forEach(function(b){b.checked=t.checked});if(t.matches('[data-exp-all],[data-exp-sup],input[form=exp-bulk]'))upd()});upd()})();`,
+        }}
+      />
       <p class="small mut" style="margin-top:0">
-        Je laufendem Nachunternehmer-Auftrag wird je abgelaufenem Abrechnungszeitraum eine Rechnung erwartet.
-        Sie verschwindet, sobald eine Eingangsrechnung den Auftrag und Zeitraum abdeckt – eine Rechnung darf
-        mehrere Aufträge/Objekte abdecken (z. B. Glasreinigung). Rückblick 12 Monate.
+        Bereits bezahlte bzw. erledigte Zeiträume (z. B. vor der Umstellung abgerechnet) ankreuzen und oben
+        als erledigt vermerken – sie verschwinden aus der Liste, der Vermerk steht in der Bestellung unter
+        „Abrechnung“. Je laufendem Nachunternehmer-Auftrag wird je abgelaufenem Abrechnungszeitraum eine
+        Rechnung erwartet. Sie verschwindet, sobald eine Eingangsrechnung den Auftrag und Zeitraum abdeckt –
+        eine Rechnung darf mehrere Aufträge/Objekte abdecken (z. B. Glasreinigung). Rückblick 12 Monate.
       </p>
       {[...bySup.values()].map((list) => {
         const s0 = list[0]!;
@@ -154,6 +176,12 @@ const ExpectedList: FC<{ rows: ExpectedRow[] }> = ({ rows }) => {
           <div class="card" style="margin-bottom:14px">
             <div class="actions" style="margin:0 0 8px">
               <h3 style="margin:0">
+                <input
+                  type="checkbox"
+                  data-exp-sup={s0.supplier_id}
+                  aria-label={`alle von ${s0.supplier_name}`}
+                  style="margin-right:6px"
+                />
                 <a href={`/lieferanten/${s0.supplier_id}`}>{s0.supplier_name}</a>{' '}
                 <span class="badge warn">{list.length} erwartet</span>
               </h3>
@@ -171,6 +199,7 @@ const ExpectedList: FC<{ rows: ExpectedRow[] }> = ({ rows }) => {
               <table class="stack-m">
                 <thead>
                   <tr>
+                    <th style="width:28px"></th>
                     <th>Auftrag</th>
                     <th>Objekt</th>
                     <th>Zeitraum</th>
@@ -182,6 +211,16 @@ const ExpectedList: FC<{ rows: ExpectedRow[] }> = ({ rows }) => {
                 <tbody>
                   {list.map((r) => (
                     <tr>
+                      <td>
+                        <input
+                          type="checkbox"
+                          form="exp-bulk"
+                          name="sel"
+                          value={`${r.subcontract_id}|${r.period}`}
+                          data-sup={r.supplier_id}
+                          aria-label={`${r.number} ${r.period}`}
+                        />
+                      </td>
                       <td data-l="Auftrag">
                         <a href={`/nachunternehmer/auftraege/${r.subcontract_id}`}>{r.number}</a>
                         <div class="small mut">{BILLING_DE[r.billing] ?? r.billing}</div>
@@ -1229,6 +1268,23 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
   });
 
   EInvoiceRoutes({ app, deps, page, back } as Ctx);
+
+  // Mehrere erwartete Rechnungen auf einmal als erledigt vermerken (Ahmed: „wurden schon alle bezahlt“)
+  app.post('/rechnungseingang/erwartet/auswahl', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const sel = ([] as unknown[]).concat(b.sel ?? []).map(String);
+    const grund = String(b.grund ?? '').trim() || 'bereits bezahlt';
+    let n = 0;
+    for (const v of sel) {
+      const [id, month] = v.split('|');
+      if (!id || !month) continue;
+      await skipExpected(sql, id, month, grund, c.get('actor'));
+      n++;
+    }
+    return back(c, '/rechnungseingang?status=erwartet', {
+      ok: n ? `${n} Zeiträume als erledigt vermerkt („${grund}“).` : 'Nichts markiert.',
+    });
+  });
 
   app.post('/rechnungseingang/erwartet/keine', async (c) => {
     const b = await c.req.parseBody();

@@ -16,6 +16,7 @@ import type { BillingCycle } from '../domain/invoice/calc.js';
 import { UNIT_LABELS } from '../domain/invoice/types.js';
 import { renderTablePdf } from '../pdf/table.js';
 import { BusinessError } from './errors.js';
+import { freezeDateFields } from './word-templates.js';
 import type { Deps } from './workflow.js';
 
 export interface FolderInfo {
@@ -75,6 +76,8 @@ export interface FolderFacts {
   services: number;
   plans: number;
   keys: number;
+  /** Frühester Beginn der aktiven Leistungen (Leistungsbeginn). */
+  start: string | null;
   missing: { label: string; href: string | null; key?: keyof FolderInfo }[];
 }
 
@@ -98,8 +101,12 @@ export async function folderFacts(sql: Sql, siteId: string): Promise<FolderFacts
   const [contact] = await sql<{ name: string; phone: string | null }[]>`
     select trim(coalesce(first_name, '') || ' ' || coalesce(last_name, '')) as name, coalesce(mobile, phone) as phone
       from app.contacts where customer_id = ${s.customer_id} order by created_at limit 1`.catch(() => []);
-  const [n] = await sql<{ rooms: number; services: number; plans: number; keys: number }[]>`
-    select (select count(*) from app.rooms where site_id = ${siteId} and active)::int as rooms,
+  const [n] = await sql<
+    { rooms: number; services: number; plans: number; keys: number; start: string | null }[]
+  >`
+    select (select to_char(min(valid_from), 'YYYY-MM-DD') from app.site_services
+              where site_id = ${siteId} and active) as start,
+           (select count(*) from app.rooms where site_id = ${siteId} and active)::int as rooms,
            (select count(*) from app.site_services where site_id = ${siteId} and active)::int as services,
            (select count(*) from app.shift_plans where site_id = ${siteId}
               and (valid_until is null or valid_until >= current_date))::int as plans,
@@ -138,6 +145,7 @@ export async function folderFacts(sql: Sql, siteId: string): Promise<FolderFacts
     services: n!.services,
     plans: n!.plans,
     keys: n!.keys,
+    start: n!.start,
     missing,
   };
 }
@@ -170,24 +178,28 @@ const normLabel = (t: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
-/** Beschriftung → Wert. „Tel“ bezieht sich auf die Beschriftung davor (Kontaktkarten). */
+/**
+ * Werte je kanonischem Schlüssel. „<key>|tel“ = Telefon zur Person; in einer Tabellenzelle ohne eigene „Tel.“-Lücke
+ * werden Name und Telefon zusammen eingesetzt.
+ */
 export function folderValues(f: FolderFacts): Record<string, string> {
   const addr = [f.site.street, [f.site.postal_code, f.site.city].filter(Boolean).join(' ')]
     .filter(Boolean)
     .join(', ');
+  const today = formatDateDe(todayBerlin());
   const v: Record<string, string> = {
     objekt: `${f.site.name} (${f.site.site_no})`,
     'objekt / objekt-nr.': `${f.site.name} / ${f.site.site_no}`,
+    'objekt / adresse': addr ? `${f.site.name}, ${addr}` : f.site.name,
     'objekt-nr.': f.site.site_no,
-    objektnummer: f.site.site_no,
     objektname: f.site.name,
     adresse: addr,
-    anschrift: addr,
-    objektadresse: addr,
     kunde: `${f.customer.name} (${f.customer.customer_no})`,
     auftraggeber: f.customer.name,
-    'angelegt am': formatDateDe(todayBerlin()),
+    'angelegt am': today,
+    erstellt: f.manager ? `${today} / ${f.manager.name}` : today,
   };
+  if (f.start) v.leistungsbeginn = formatDateDe(f.start);
   if (f.manager) {
     v.objektleitung = f.manager.name;
     if (f.manager.phone) v['objektleitung|tel'] = f.manager.phone;
@@ -195,32 +207,60 @@ export function folderValues(f: FolderFacts): Record<string, string> {
   const i = f.info;
   if (i.bereichsleitung) v.bereichsleitung = i.bereichsleitung;
   if (i.bereichsleitung_tel) v['bereichsleitung|tel'] = i.bereichsleitung_tel;
-  if (i.ersthelfer) {
-    v['ersthelfer im objekt'] = i.ersthelfer;
-    v.ersthelfer = i.ersthelfer;
-  }
+  if (i.ersthelfer) v.ersthelfer = i.ersthelfer;
   const ap = i.ansprechpartner || f.contact?.name;
   const apTel = i.ansprechpartner_tel || f.contact?.phone;
-  if (ap) v['ansprechpartner kunde'] = apTel ? `${ap}, ${apTel}` : ap;
+  if (ap) v.ansprechpartner = ap;
+  if (apTel) v['ansprechpartner|tel'] = apTel;
   if (i.putzraum) v.putzraum = i.putzraum;
   return v;
 }
 
-const lookup = (values: Record<string, string>, label: string, prev: string) => {
+/** Beschriftung in den Vorlagen → kanonischer Schlüssel (Reihenfolge zählt). */
+const LABEL_RULES: [RegExp, string][] = [
+  [/^objekt\s*\/\s*objekt-?\s*(nr\.?|nummer)$/, 'objekt / objekt-nr.'],
+  [/^objekt\s*\/\s*(adresse|anschrift)$/, 'objekt / adresse'],
+  [/^(objekt\s*\/\s*liegenschaft|liegenschaft|objektname|objektbezeichnung)$/, 'objektname'],
+  [/^objekt-?\s*(nr\.?|nummer)$/, 'objekt-nr.'],
+  [/^objekt$/, 'objekt'],
+  [/^((objekt)?adresse|anschrift)(\s+(des\s+)?objekts?)?$|^(anschrift|adresse) objekt$/, 'adresse'],
+  [/^kunde$/, 'kunde'],
+  [/^auftraggeber$/, 'auftraggeber'],
+  [/^objektleitung(\s+viva-deluxe)?$|^objektleiter(in)?$/, 'objektleitung'],
+  [/^bereichsleitung$|^bereichsleiter(in)?$/, 'bereichsleitung'],
+  [/^ansprechpartner(in)?(\s+(beim\s+|des\s+)?kunden?)?$/, 'ansprechpartner'],
+  [/^ersthelfer(in)?(\s+im\s+objekt)?$/, 'ersthelfer'],
+  [/^angelegt am$|^erstellt am$/, 'angelegt am'],
+  [/^erstellt am\s*\/\s*durch$/, 'erstellt'],
+  [/^leistungsbeginn$|^beginn der reinigung$|^vertragsbeginn$/, 'leistungsbeginn'],
+  [/^(lage\s+)?putzraum$/, 'putzraum'],
+  [/^tel\.?$|^telefon$/, 'tel'],
+];
+export const canonLabel = (label: string) => {
   const k = normLabel(label);
-  if ((k === 'tel' || k === 'telefon' || k === 'tel.') && prev) return values[`${prev}|tel`];
-  return values[k];
+  return LABEL_RULES.find(([re]) => re.test(k))?.[1] ?? '';
 };
 
-/** Unterstriche im XML-Abschnitt durch den Wert ersetzen (erste Fundstelle, weitere Unterstrich-Läufe leeren). */
-function replaceUnderscores(xml: string, value: string): string {
-  let done = false;
+/** Wert zur Beschriftung; `withTel` = Telefon anhängen (keine eigene Tel.-Lücke daneben). */
+const lookup = (values: Record<string, string>, key: string, prev: string, withTel: boolean) => {
+  if (key === 'tel') return prev ? values[`${prev}|tel`] : undefined;
+  const v = values[key];
+  const tel = values[`${key}|tel`];
+  if (!v) return undefined;
+  return withTel && tel ? `${v}, ${tel}` : v;
+};
+
+/** Unterstrich-Läufe im XML-Abschnitt der Reihe nach mit den Werten füllen, übrige Läufe leeren. */
+function replaceUnderscores(xml: string, ...vals: (string | undefined)[]): string {
+  let n = 0;
   return xml.replace(
     /(<w:t(?:\s[^>]*)?>)([^<]*)(<\/w:t>)/g,
     (m, open: string, text: string, close: string) => {
       if (!/_{3,}/.test(text)) return m;
-      const t = done ? text.replace(/_{3,}/g, '') : text.replace(/_{3,}/, esc(value)).replace(/_{3,}/g, '');
-      done = true;
+      const t = text.replace(/_{3,}/g, (u) => {
+        const val = vals[n++];
+        return val === undefined ? (n > vals.length ? '' : u) : esc(val);
+      });
       return `${open.includes('xml:space') ? open : open.replace('<w:t', '<w:t xml:space="preserve"')}${t}${close}`;
     },
   );
@@ -237,40 +277,53 @@ export function fillFolderXml(xml: string, values: Record<string, string>): { xm
   let filled = 0;
   // 1) Tabellenzeilen: Beschriftung | Lücke (Unterstriche oder leer)
   let out = xml.replace(/<w:tr[ >][\s\S]*?<\/w:tr>/g, (row) => {
-    const cells = [...row.matchAll(/<w:tc>[\s\S]*?<\/w:tc>|<w:tc [\s\S]*?<\/w:tc>/g)].map((m) => m[0]);
-    if (cells.length < 2) return row;
-    let r = row;
+    const found = [...row.matchAll(/<w:tc>[\s\S]*?<\/w:tc>|<w:tc [\s\S]*?<\/w:tc>/g)];
+    if (found.length < 2) return row;
+    const cells = found.map((m) => m[0]);
     let prev = '';
     for (let i = 0; i + 1 < cells.length; i++) {
       const label = plain(cells[i]!);
       const next = plain(cells[i + 1]!);
-      const k = normLabel(label);
-      const val = lookup(values, label, prev);
-      if (k && !/_{3,}/.test(label)) prev = k === 'tel' || k === 'telefon' ? prev : k;
-      if (!val || !label || label.length > 60) continue;
-      if (/^_{3,}$/.test(next)) {
-        r = r.replace(cells[i + 1]!, replaceUnderscores(cells[i + 1]!, val));
-        filled++;
-      } else if (next === '' && !/<w:drawing/.test(cells[i + 1]!)) {
-        r = r.replace(cells[i + 1]!, fillEmptyCell(cells[i + 1]!, val));
-        filled++;
-      }
+      if (!label || label.length > 60 || /_{3,}/.test(label)) continue;
+      const key = canonLabel(label);
+      if (!key) continue;
+      // „Name ____ Tel.: ____“ in einer Zelle → Name und Telefon getrennt
+      const telGap = /^_{3,}\s*tel(\.|efon)?:?\s*_{3,}$/i.test(next);
+      const val = lookup(values, key, prev, !telGap);
+      if (key !== 'tel') prev = key;
+      if (!val) continue;
+      if (telGap) cells[i + 1] = replaceUnderscores(cells[i + 1]!, val, values[`${key}|tel`]);
+      else if (/^_{3,}$/.test(next)) cells[i + 1] = replaceUnderscores(cells[i + 1]!, val);
+      else if (next === '' && !/<w:drawing/.test(cells[i + 1]!))
+        cells[i + 1] = fillEmptyCell(cells[i + 1]!, val);
+      else continue;
+      filled++;
     }
-    return r;
+    // Zellen an ihrer Position ersetzen (gleich aussehende leere Zellen nicht verwechseln)
+    let outRow = '';
+    let pos = 0;
+    found.forEach((m, i) => {
+      outRow += row.slice(pos, m.index) + cells[i];
+      pos = m.index! + m[0].length;
+    });
+    return outRow + row.slice(pos);
   });
-  // 2) Absätze „Beschriftung: ____“
+  // 2) Absätze „Beschriftung: ____“ (Kontaktkarten: „Tel:“ in der nächsten Zeile gehört zur Person davor)
   let prev = '';
   out = out.replace(/<w:p[ >][\s\S]*?<\/w:p>/g, (p) => {
     const text = plain(p);
     const m = /^(.{2,40}?):\s*_{3,}\s*$/.exec(text);
     if (!m) {
       const k = /^(.{2,40}?):/.exec(text)?.[1];
-      if (k) prev = normLabel(k);
+      if (k) {
+        const c = canonLabel(k);
+        if (c !== 'tel') prev = c;
+      }
       return p;
     }
-    const k = normLabel(m[1]!);
-    const val = lookup(values, m[1]!, prev);
-    if (k !== 'tel' && k !== 'telefon') prev = k;
+    const key = canonLabel(m[1]!);
+    const val = key ? lookup(values, key, prev, false) : undefined;
+    if (key !== 'tel') prev = key;
     if (!val) return p;
     filled++;
     return replaceUnderscores(p, val);
@@ -312,6 +365,8 @@ export async function packageInfo(sql: Sql) {
   return p ?? null;
 }
 
+const DATE_GAP = '______________';
+
 const safe = (s: string) =>
   s
     .replace(/[\\/:*?"<>|]+/g, '-')
@@ -342,7 +397,8 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
           const doc = unzipSync(data);
           for (const part of Object.keys(doc)) {
             if (!/^word\/(document|header\d*|footer\d*)\.xml$/.test(part)) continue;
-            doc[part] = strToU8(fillFolderXml(strFromU8(doc[part]!), values).xml);
+            // Datumsfelder (DATE) zeigen sonst beim Öffnen immer „heute“ → Linie zum Ausfüllen
+            doc[part] = strToU8(freezeDateFields(fillFolderXml(strFromU8(doc[part]!), values).xml, DATE_GAP));
           }
           data = zipSync(doc, { level: 6 });
         } catch {
@@ -366,7 +422,10 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
       'Bereichsleitung',
       [f.info.bereichsleitung, f.info.bereichsleitung_tel].filter(Boolean).join(', ') || '– fehlt –',
     ],
-    ['Ansprechpartner Kunde', values['ansprechpartner kunde'] ?? '– fehlt –'],
+    [
+      'Ansprechpartner Kunde',
+      [values.ansprechpartner, values['ansprechpartner|tel']].filter(Boolean).join(', ') || '– fehlt –',
+    ],
     ['Ersthelfer im Objekt', f.info.ersthelfer ?? '– fehlt –'],
     ['Lage Putzraum', f.info.putzraum ?? ''],
     ['Zugang / Schließung', f.info.zugang ?? ''],
@@ -494,4 +553,336 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
   });
   const zip = zipSync(out, { level: 6 });
   return { zip, name: `Objektordner_${safe(tag)}.zip`, withPackage: !!pkg, facts: f };
+}
+
+// ------------------------------------------------------------------ Objektordner als ein PDF (Ahmed 09.10.)
+
+const FOLDER_SECTIONS: [RegExp, string][] = [
+  [/^01_/, 'Aushänge im Putzraum'],
+  [/^02_/, 'Arbeitsanweisungen'],
+  [/^03_/, 'Objektunterlagen und Formulare'],
+  [/^05_/, 'Reinigungspläne'],
+  [/^06_/, 'Nachweise im Objekt'],
+];
+
+/** „OBJEKTBEGEHUNGSPROTOKOLL“ → „Objektbegehungsprotokoll“ fürs Inhaltsverzeichnis. */
+const niceTitle = (t: string) =>
+  t === t.toUpperCase() && /[A-ZÄÖÜ]{4}/.test(t)
+    ? t
+        .toLowerCase()
+        .replace(/(^|[\s(–-]\s*)(\p{L})/gu, (_m, a: string, b: string) => a + b.toUpperCase())
+        .replace(/\b(Zur|Und|Im|Der|Die|Das|Für|Von|Mit)\b/g, (w) => w.toLowerCase())
+    : t;
+
+const titleFromFile = (n: string) =>
+  (n.split('/').pop() ?? n)
+    .replace(/\.(docx|pdf)$/i, '')
+    .replace(/^VD-[A-Z]+-[\dA-Z-]*?V?\d*_/, '')
+    .replace(/^[A-C]_/, '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\bue\b/g, 'ü')
+    .trim();
+
+/**
+ * Objektordner als ein druckfertiges PDF: Deckblatt, Inhaltsverzeichnis, Objektstammblatt mit Kontakten, Leistungs-
+ * verzeichnis (ohne Preise), Reinigungsplan, Revierplan, danach Ahmeds Vorlagen (Word-Dateien mit eingesetzten
+ * Objektdaten, fertige PDF-Aushänge) und leere Nachweislisten zum Ausfüllen vor Ort.
+ */
+export async function buildFolderPdf(deps: Deps, siteId: string) {
+  const { sql } = deps;
+  const { FormDoc, FORM_Y } = await import('../pdf/form-doc.js');
+  const { parseDocx, docxTitle, renderDocx } = await import('../pdf/docx-render.js');
+  const { PDFDocument } = await import('@cantoo/pdf-lib');
+  const f = await folderFacts(sql, siteId);
+  const values = folderValues(f);
+  const today = todayBerlin();
+  const tag = `${f.site.site_no} ${f.site.name}`;
+  const d = await FormDoc.create({
+    title: `Objektordner ${tag}`,
+    sideRef: `Objektordner ${tag}`,
+    date: today,
+    author: 'Viva-Deluxe Gebäudereinigung GmbH',
+  });
+  const toc: { section?: string; title: string; page: number }[] = [];
+  const chapter = (title: string, section?: string) => {
+    d.newPage();
+    if (section && !toc.some((t) => t.section === section))
+      toc.push({ section, title: section, page: d.pdf.getPageCount() });
+    toc.push({ title, page: d.pdf.getPageCount() });
+  };
+  const addr = values.adresse ?? '';
+  const mgr = f.manager ? [f.manager.name, f.manager.phone].filter(Boolean).join(', ') : '– bitte zuordnen –';
+  const bl = [f.info.bereichsleitung, f.info.bereichsleitung_tel].filter(Boolean).join(', ') || '–';
+  const ap = [values.ansprechpartner, values['ansprechpartner|tel']].filter(Boolean).join(', ') || '–';
+
+  // Deckblatt
+  d.y = FORM_Y.TOP + 70;
+  d.text('OBJEKTORDNER', 48.5, d.y, {
+    size: 10,
+    bold: true,
+    color: (await import('@cantoo/pdf-lib')).rgb(0.49, 0.08, 0.21),
+  });
+  d.y += 30;
+  for (const l of d.wrap(f.site.name, 498, 26, true)) {
+    d.text(l, 48.5, d.y, { size: 26, bold: true });
+    d.y += 32;
+  }
+  d.text(`Objekt ${f.site.site_no}${addr ? ` · ${addr}` : ''}`, 48.5, d.y, { size: 11 });
+  d.y += 18;
+  d.text(`Kunde: ${f.customer.name} (${f.customer.customer_no})`, 48.5, d.y, { size: 11 });
+  d.y += 34;
+  d.kvBox([
+    { k: 'Objektleitung', v: mgr, strong: true },
+    { k: 'Bereichsleitung', v: bl },
+    { k: 'Ansprechpartner Kunde', v: ap },
+    { k: 'Ersthelfer im Objekt', v: f.info.ersthelfer ?? '–' },
+    { k: 'Lage Putzraum', v: f.info.putzraum ?? '–' },
+    { k: 'Notruf', v: '112 · Polizei 110 · Giftnotruf 089 19240', accent: true },
+  ]);
+  d.muted(
+    `Stand ${formatDateDe(today)} – Dieser Ordner bleibt im Objekt (Putzraum). Aktuelle Fassung jederzeit in der App unter Objekt → Objektordner.`,
+  );
+  // Inhaltsverzeichnis (wird am Ende gefüllt)
+  d.newPage();
+  const tocPage = d.pdf.getPageCount() - 1;
+
+  // 1. Objektstammblatt
+  chapter('Objektstammblatt und Kontakte');
+  d.title('Objektstammblatt', f.site.site_no);
+  d.kvBox([
+    { k: 'Objekt', v: `${f.site.name} (${f.site.site_no})`, strong: true },
+    { k: 'Adresse', v: addr || '–' },
+    { k: 'Kunde', v: `${f.customer.name} (${f.customer.customer_no})` },
+    { k: 'Objektleitung', v: mgr },
+    { k: 'Bereichsleitung', v: bl },
+    { k: 'Ansprechpartner Kunde', v: ap },
+    { k: 'Ersthelfer im Objekt', v: f.info.ersthelfer ?? '–' },
+    { k: 'Lage Putzraum', v: f.info.putzraum ?? '–' },
+    { k: 'Zugang / Schließung', v: f.info.zugang ?? '–' },
+    { k: 'Reinigungsmittel', v: f.info.produkte ?? '–' },
+    { k: 'Schlüssel (Schlüsselbuch)', v: String(f.keys) },
+  ]);
+  if (f.info.besonderheiten) d.noteBox('Besonderheiten', [f.info.besonderheiten]);
+  d.section('Notrufnummern');
+  d.tiles([
+    { label: 'NOTRUF / FEUERWEHR', value: '112', accent: true },
+    { label: 'POLIZEI', value: '110' },
+    { label: 'GIFTNOTRUF MÜNCHEN', value: '089 19240' },
+    { label: 'BÜRO VIVA-DELUXE', value: '089 63855496' },
+  ]);
+
+  // 2. Leistungsverzeichnis
+  const svc = await sql<
+    {
+      description: string;
+      note: string | null;
+      billing_cycle: BillingCycle;
+      quantity_milli: bigint;
+      unit_code: string;
+      execution_notes: string | null;
+    }[]
+  >`select description, note, billing_cycle, quantity_milli, unit_code, execution_notes from app.site_services
+     where site_id = ${siteId} and active order by sort_order, description`;
+  chapter('Leistungsverzeichnis');
+  d.title('Leistungsverzeichnis', f.site.site_no);
+  d.muted('Ohne Preise – Vertragsgrundlage liegt im Büro.');
+  d.table(
+    [
+      { label: 'Leistung', width: 210 },
+      { label: 'Turnus', width: 80 },
+      { label: 'Menge', width: 60, align: 'right' },
+      { label: 'Ausführungshinweise', width: 148 },
+    ],
+    svc.length
+      ? svc.map((x) => [
+          [x.description, x.note].filter(Boolean).join('\n'),
+          CYCLE_LABEL[x.billing_cycle] ?? x.billing_cycle,
+          `${(Number(x.quantity_milli) / 1000).toLocaleString('de-DE')} ${UNIT_LABELS[x.unit_code] ?? ''}`.trim(),
+          x.execution_notes ?? '',
+        ])
+      : [['Noch keine Leistungen am Objekt erfasst', '', '', '']],
+  );
+
+  // 3. Reinigungsplan
+  const rooms = await sql<
+    {
+      floor: string | null;
+      room_no: string | null;
+      name: string;
+      type: string;
+      floor_covering: string | null;
+      area_centi: bigint;
+      visits_per_year: number;
+    }[]
+  >`select r.floor, r.room_no, r.name, t.name as type, r.floor_covering, r.area_centi, r.visits_per_year
+      from app.rooms r join app.room_types t on t.id = r.room_type_id
+     where r.site_id = ${siteId} and r.active order by r.sort_order, r.floor, r.room_no, r.name`;
+  const interval = (v: number) =>
+    v >= 365
+      ? 'täglich'
+      : v >= 312
+        ? 'Mo–Sa'
+        : v >= 260
+          ? 'Mo–Fr'
+          : v % 52 === 0
+            ? `${v / 52}× wö.`
+            : v === 12
+              ? 'monatl.'
+              : `${v}× jährl.`;
+  chapter('Reinigungsplan (Raumbuch)');
+  d.title('Reinigungsplan', f.site.site_no);
+  d.table(
+    [
+      { label: 'Etage', width: 48 },
+      { label: 'Nr.', width: 44 },
+      { label: 'Raum', width: 140 },
+      { label: 'Raumart', width: 90 },
+      { label: 'Belag', width: 74 },
+      { label: 'm²', width: 46, align: 'right' },
+      { label: 'Intervall', width: 56 },
+    ],
+    rooms.length
+      ? rooms.map((r) => [
+          r.floor ?? '',
+          r.room_no ?? '',
+          r.name,
+          r.type,
+          r.floor_covering ?? '',
+          (Number(r.area_centi) / 100).toLocaleString('de-DE'),
+          interval(r.visits_per_year),
+        ])
+      : [['', '', 'Raumbuch fehlt – bitte am Objekt erfassen', '', '', '', '']],
+    { size: 8 },
+  );
+
+  // 4. Revierplan
+  const plans = await sql<
+    { name: string | null; weekday: number; start: string; end: string; note: string | null }[]
+  >`
+    select e.first_name || ' ' || e.last_name as name, p.weekday, to_char(p.start_time, 'HH24:MI') as start,
+           to_char(p.end_time, 'HH24:MI') as end, p.note
+      from app.shift_plans p left join app.employees e on e.id = p.employee_id
+     where p.site_id = ${siteId} and (p.valid_until is null or p.valid_until >= current_date)
+     order by e.last_name nulls last, p.weekday, p.start_time`;
+  const WD = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+  chapter('Revierplan (Einsätze)');
+  d.title('Revierplan', f.site.site_no);
+  d.muted('Aus dem Einsatzplan. Reviere bitte im Grundriss einzeichnen.');
+  d.table(
+    [
+      { label: 'Mitarbeiter/in', width: 160 },
+      { label: 'Tag', width: 40 },
+      { label: 'Zeit', width: 80 },
+      { label: 'Revier / Bereich', width: 218 },
+    ],
+    plans.length
+      ? plans.map((p) => [p.name ?? '(offen)', WD[p.weekday] ?? '', `${p.start}–${p.end}`, p.note ?? ''])
+      : [['Noch keine Einsätze geplant', '', '', '']],
+  );
+
+  // 5. Vorlagen aus dem Paket
+  const pkg = await packageInfo(sql);
+  if (pkg) {
+    const files = unzipSync(await deps.archive.get(pkg.storage_path));
+    const names = Object.keys(files)
+      .filter((n) => !/(^|\/)(__MACOSX|\._|\.DS_Store)/.test(n) && !n.endsWith('/'))
+      .sort((a, b) => a.localeCompare(b, 'de'));
+    const first = names[0]?.split('/')[0] ?? '';
+    const root = first && names.every((n) => n.startsWith(`${first}/`)) ? `${first}/` : '';
+    const mw = /m(ü|ue)nchner\s*wohnen/i.test(f.customer.name);
+    for (const n of names) {
+      const rel = n.slice(root.length);
+      const section = FOLDER_SECTIONS.find(([re]) => re.test(rel))?.[1];
+      if (!section) continue;
+      if (/inhaltsverzeichnis|revierplan_muster|muster revierplan/i.test(rel)) continue;
+      // Word-Quellen der fertigen PDF-Aushänge (sonst doppelt)
+      if (/(^|\/)C_Word-Quellen\//i.test(rel)) continue;
+      if (/muenchner-wohnen|münchner-wohnen/i.test(rel) && !mw) continue;
+      try {
+        if (/\.docx$/i.test(rel)) {
+          const doc = unzipSync(files[n]!);
+          const xml = doc['word/document.xml'];
+          if (!xml) continue;
+          const blocks = parseDocx(freezeDateFields(fillFolderXml(strFromU8(xml), values).xml, DATE_GAP));
+          chapter(niceTitle(docxTitle(blocks) ?? titleFromFile(rel)), section);
+          d.muted(`Objekt ${f.site.site_no} · ${f.site.name}`);
+          renderDocx(d, blocks);
+        } else if (/\.pdf$/i.test(rel)) {
+          const src = await PDFDocument.load(files[n]!, { ignoreEncryption: true });
+          const pages = await d.pdf.copyPages(src, src.getPageIndices());
+          if (!pages.length) continue;
+          if (!toc.some((t) => t.section === section))
+            toc.push({ section, title: section, page: d.pdf.getPageCount() + 1 });
+          toc.push({
+            title: /aushaenge|aushänge/i.test(rel)
+              ? 'Ordnung im Putzraum und Betriebsanweisungen'
+              : titleFromFile(rel),
+            page: d.pdf.getPageCount() + 1,
+          });
+          for (const p of pages) d.pdf.addPage(p);
+          // nächster Inhalt beginnt auf einer eigenen Seite
+          d.page = d.pdf.getPage(d.pdf.getPageCount() - 1);
+        }
+      } catch {
+        /* nicht lesbare Datei überspringen */
+      }
+    }
+  }
+
+  // 6. Leere Nachweislisten
+  const blank = (cols: { label: string; width: number }[], n: number) =>
+    d.table(
+      cols,
+      Array.from({ length: n }, () => cols.map(() => ' ')),
+      { size: 11 },
+    );
+  chapter('Anwesenheitsliste', 'Nachweise im Objekt');
+  d.title('Anwesenheitsliste', f.site.site_no);
+  blank(
+    [
+      { label: 'Datum', width: 70 },
+      { label: 'Name', width: 150 },
+      { label: 'Beginn', width: 55 },
+      { label: 'Ende', width: 55 },
+      { label: 'Pause', width: 50 },
+      { label: 'Unterschrift', width: 118 },
+    ],
+    24,
+  );
+  chapter('Stundennachweis Regiearbeiten', 'Nachweise im Objekt');
+  d.title('Stundennachweis Regie', f.site.site_no);
+  blank(
+    [
+      { label: 'Datum', width: 62 },
+      { label: 'Name', width: 110 },
+      { label: 'Tätigkeit', width: 140 },
+      { label: 'von', width: 40 },
+      { label: 'bis', width: 40 },
+      { label: 'Std.', width: 36 },
+      { label: 'Abnahme Kunde', width: 70 },
+    ],
+    22,
+  );
+
+  // Inhaltsverzeichnis füllen
+  d.page = d.pdf.getPage(tocPage);
+  d.y = FORM_Y.TOP;
+  d.title('Inhaltsverzeichnis', f.site.site_no);
+  let nr = 0;
+  for (const t of toc) {
+    if (t.section && t.title === t.section) {
+      d.y += 6;
+      d.text(t.section, 48.5, d.y + 9, { size: 9.5, bold: true });
+      d.y += 15;
+      continue;
+    }
+    nr++;
+    const label = d.fit(`${nr}.  ${t.title}`, 430, 9);
+    d.text(label, 60, d.y + 9, { size: 9 });
+    d.right(String(t.page), 546.5, d.y + 9, { size: 9 });
+    d.line(60 + d.width(label, 9) + 6, 546.5 - d.width(String(t.page), 9) - 6, d.y + 9, undefined, 0.3);
+    d.y += 14;
+    if (d.y > FORM_Y.BOTTOM - 10) break;
+  }
+  return { pdf: await d.save(), name: `Objektordner_${safe(tag)}.pdf`, facts: f, withPackage: !!pkg };
 }

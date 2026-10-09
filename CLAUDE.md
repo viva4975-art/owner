@@ -1988,3 +1988,34 @@ Testadresse.
   2. Formular-Schutz (CSRF) verglich hinter Caddy „http“ mit „https“: Browser ohne Sec-Fetch-Site (ältere iPhone/iPad-
      Safari) bekamen bei jedem Speichern „Forbidden“ auf weißem Grund. Jetzt zählt der Rechnername; fremde Seiten bleiben
      gesperrt. HTTP-Fehler (403 usw.) erscheinen als normale App-Seite mit Hinweis und Rückweg.
+- 2026-10-09: Ahmed (4 Punkte + 2 Nachträge):
+  - **Objektordner als ein Druck-PDF** (Objekt → Objektordner → „Objektordner als PDF (zum Drucken)“, Word-ZIP bleibt
+    daneben): Deckblatt, Inhaltsverzeichnis mit Seitenzahlen, Objektstammblatt mit Kontakten und Notrufnummern,
+    Leistungsverzeichnis (ohne Preise), Reinigungsplan (Raumbuch), Revierplan (Einsätze), danach alle Vorlagen aus Ahmeds
+    Paket: Word-Dateien werden ausgefüllt und auf Briefpapier gesetzt (eigener Leser `src/pdf/docx-render.ts`: Absätze,
+    Tabellen mit Zellfarben, Aufzählungen), fertige PDF-Aushänge angehängt; Word-Quellen der PDF-Aushänge
+    (`C_Word-Quellen`) und Muster nicht doppelt; MW-Reinigungspläne nur bei Münchner Wohnen; am Ende leere
+    Anwesenheitsliste und Stundennachweis Regie. Probe mit dem echten Paket: 51 Seiten, < 2 s.
+    **Fund „Angaben werden nicht ausgefüllt“:** die Lücken wurden nur bei wenigen Beschriftungen erkannt. Jetzt Regeln
+    (`canonLabel`) für „Objekt / Liegenschaft“, „Objekt / Adresse“, „Anschrift Objekt“, „Objektleitung Viva-Deluxe“,
+    „Ansprechpartner beim Kunden“, „Erstellt am / durch“, „Leistungsbeginn“/„Beginn der Reinigung“ (frühester Beginn der
+    Leistungen) …, Name + „Tel.:“ in einer Zelle getrennt gefüllt, Telefon sonst angehängt. Zweiter Fund: gleich
+    aussehende leere Zellen wurden verwechselt (Datum landete hinter „Übernahme am“ statt „Beginn der Reinigung“) –
+    Zellen werden jetzt an ihrer Position ersetzt. Word-Datumsfelder (zeigten fest „13.08.2026“) → Linie zum Ausfüllen
+    (PDF und ZIP). Ereignisbezogene Felder (Reklamation, Begehung am, Sammelplatz …) bleiben bewusst leer.
+  - **Leistung kopieren** jetzt in der Übersicht „Leistungen & Preise“ (Symbol rechts je Zeile), nicht mehr in der
+    Leistung; in der Kopie oben „Kopie anlegen in Objekt …“ (anderes Objekt desselben Kunden).
+  - **Versandweg „kein Versand“** je Rechnungsgruppe (Ahmed: z. B. Landeshauptstadt München will keine Zusendung): mit
+    dem Ausstellen automatisch als versendet vermerkt (Versandprotokoll Kanal „keiner“, genau einmal), Mailversand
+    gesperrt. Migration `20261118000004`. **Rechtlich:** Eine Rechnung muss dem Empfänger zugehen bzw. zugänglich sein
+    (§ 14 UStG). Wenn die Stadt keine Rechnung will, weil sie selbst abrechnet (Gutschriftverfahren/Abrechnung durch den
+    Leistungsempfänger), dürfen wir zusätzlich **keine** Rechnung mit USt ausstellen (sonst § 14c UStG) – Ahmed klärt,
+    warum die Stadt keinen Versand will.
+  - **Server-Gesamtanleitung** `docs/anleitung-server.html/.pdf` (verbinden per IONOS-KVM, Windows, Mac, Handy;
+    .env.live, update.sh, Status, Logs, Sicherungen, Benutzer-Passwort, root-Passwort, Notfall, Verbote, Spickzettel).
+  - **Nachkalkulation:** Eingangsrechnungen zählen ab „erfasst“ (nicht erst nach Zahlung) nach Kostenstelle und
+    **Leistungsmonat**. Neue Spalte **Geräte** (Kostenart „Geräte / Wartung“, z. B. Hebebühne – stand bisher unter
+    „Sonstiges“). **Filter** Kunde, Objekt, Objektleitung, „nur Verlust“ (allgemeine Kostenstellen dann ausgeblendet),
+    je Objekt **„Kosten im Detail“** = Liste der Eingangsrechnungen mit Leistungsmonat, Kostenart, Status, Anteil.
+  - Tests: neu `site-folder.db.test.ts`, erweitert `site-folder.test.ts`, `portal-ranges.db.test.ts`,
+    `cost-centers.db.test.ts`.

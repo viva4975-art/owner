@@ -17,7 +17,9 @@ export interface SiteCosting {
   site_id: string;
   site_no: string;
   site_name: string;
+  customer_id: string;
   customer_name: string;
+  manager_user_id: string | null;
   revenue: bigint;
   planned_minutes: number;
   actual_minutes: number;
@@ -27,6 +29,8 @@ export interface SiteCosting {
   subcontractor: bigint;
   /** davon laut NU-Bestellung (Monatspauschale ohne gebuchte Rechnung) */
   subcontractor_estimated: bigint;
+  /** Geräte / Wartung / Miete von Geräten (z. B. Hebebühne) */
+  equipment: bigint;
   other: bigint;
   margin: bigint;
   margin_bp: number | null; // Marge in Basispunkten vom Erlös
@@ -80,6 +84,7 @@ export interface GeneralCost {
   name: string;
   material: bigint;
   subcontractor: bigint;
+  equipment: bigint;
   other: bigint;
   total: bigint;
 }
@@ -102,8 +107,18 @@ export async function siteCosting(
   const settings = await getAccountingSettings(sql);
   const nuEst = await subcontractEstimates(sql, from, to, siteId);
   const [sites, revenue, legacyRevenue, labor, stock, incoming, shifts, general] = await Promise.all([
-    sql<{ id: string; site_no: string; name: string; customer_name: string }[]>`
-      select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id
+    sql<
+      {
+        id: string;
+        site_no: string;
+        name: string;
+        customer_id: string;
+        customer_name: string;
+        manager_user_id: string | null;
+      }[]
+    >`
+      select s.id, s.site_no, s.name, s.street, s.city, s.customer_id, s.manager_user_id,
+             c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id
        where ${
          siteId
            ? sql`s.id = ${siteId}`
@@ -178,15 +193,18 @@ export async function siteCosting(
       inc.filter((r) => r.category === 'material').reduce((a, r) => a + r.net, 0n);
     const est = nuEst.find((r) => r.site_id === s.id)?.cost ?? 0n;
     const sub = inc.filter((r) => r.category === 'nachunternehmer').reduce((a, r) => a + r.net, 0n) + est;
+    const equipment = inc.filter((r) => r.category === 'geraete').reduce((a, r) => a + r.net, 0n);
     const other = inc
-      .filter((r) => !['material', 'nachunternehmer'].includes(r.category))
+      .filter((r) => !['material', 'nachunternehmer', 'geraete'].includes(r.category))
       .reduce((a, r) => a + r.net, 0n);
-    const margin = rev - laborCents - material - sub - other;
+    const margin = rev - laborCents - material - sub - equipment - other;
     return {
       site_id: s.id,
       site_no: s.site_no,
       site_name: s.name,
+      customer_id: s.customer_id,
       customer_name: s.customer_name,
+      manager_user_id: s.manager_user_id,
       revenue: rev,
       planned_minutes: shifts
         .filter((x) => x.plan.site_id === s.id && !x.absence)
@@ -197,6 +215,7 @@ export async function siteCosting(
       material,
       subcontractor: sub,
       subcontractor_estimated: est,
+      equipment,
       other,
       margin,
       margin_bp: rev !== 0n ? Number((margin * 10000n) / rev) : null,
@@ -210,11 +229,13 @@ export async function siteCosting(
       name: g.name,
       material: 0n,
       subcontractor: 0n,
+      equipment: 0n,
       other: 0n,
       total: 0n,
     };
     if (g.category === 'material') e.material += g.net;
     else if (g.category === 'nachunternehmer') e.subcontractor += g.net;
+    else if (g.category === 'geraete') e.equipment += g.net;
     else e.other += g.net;
     e.total += g.net;
     gmap.set(g.id, e);
@@ -229,4 +250,29 @@ export async function siteCosting(
     },
     targetBp: settings.target_margin_bp,
   };
+}
+
+/** Eingangsrechnungen eines Objekts im Zeitraum (Leistungsmonat der Aufteilung) – „wo ist meine Rechnung?“. */
+export async function siteCostDetails(sql: Sql, siteId: string, period: { from: string; to: string }) {
+  const from = monthRange(period.from).from;
+  const to = monthRange(period.to).to;
+  return sql<
+    {
+      id: string;
+      supplier_name: string;
+      invoice_no: string;
+      invoice_date: string;
+      category: string;
+      status: string;
+      month: string;
+      net: bigint;
+    }[]
+  >`
+    select i.id, s.name as supplier_name, i.invoice_no, i.invoice_date::text as invoice_date,
+           i.category::text as category, i.status::text as status, to_char(a.month, 'YYYY-MM') as month,
+           sum(a.net_cents)::bigint as net
+      from app.cost_allocations a join app.incoming_invoices i on i.id = a.incoming_invoice_id
+      join app.suppliers s on s.id = i.supplier_id
+     where a.site_id = ${siteId} and a.month between ${from} and ${to}
+     group by 1, 2, 3, 4, 5, 6, 7 order by 7, 4`;
 }

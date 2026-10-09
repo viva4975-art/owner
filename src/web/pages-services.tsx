@@ -4,6 +4,7 @@ import { UNIT_LABELS } from '../domain/invoice/types.js';
 import type { InvoiceGroupRow } from '../services/invoice-groups.js';
 import type { ServiceType, SiteService, SiteServiceRow } from '../services/masterdata.js';
 import { centsToInput, milliToInput } from './forms.js';
+import { Icon } from './icons.js';
 import { dateDe, euro } from './layout.js';
 
 /*
@@ -32,40 +33,49 @@ const ServiceGroup: FC<{ title: string; rows: SiteServiceRow[]; siteId: string }
       {rows.map((sv) => {
         const lines = (sv.note ?? '').split('\n').filter((x) => x.trim());
         return (
-          <a class="svc-row" href={`/objekte/${siteId}/leistungen/${sv.id}`}>
-            <div class="svc-main">
-              <b>{sv.description}</b>
-              <div class="small mut">
-                {[
-                  sv.type_name,
-                  sv.always_unfinished ? 'immer unfertig' : null,
-                  sv.order_reference ? `Bestellnr. ${sv.order_reference}` : null,
-                  target(sv) === 'wie Objekt' ? null : target(sv),
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </div>
-              {lines.length > 0 && (
-                <div class="svc-note small" title={sv.note ?? ''}>
-                  {lines.slice(0, 2).join(' · ')}
-                  {lines.length > 2 && <span class="mut"> … (+{lines.length - 2} Zeilen)</span>}
+          <div class="svc-line">
+            <a class="svc-row" href={`/objekte/${siteId}/leistungen/${sv.id}`}>
+              <div class="svc-main">
+                <b>{sv.description}</b>
+                <div class="small mut">
+                  {[
+                    sv.type_name,
+                    sv.always_unfinished ? 'immer unfertig' : null,
+                    sv.order_reference ? `Bestellnr. ${sv.order_reference}` : null,
+                    target(sv) === 'wie Objekt' ? null : target(sv),
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </div>
-              )}
-            </div>
-            <div class="svc-when small">
-              <div>{CYCLE_LABEL[sv.billing_cycle]}</div>
-              <div class="mut">
-                ab {dateDe(sv.valid_from)}
-                {sv.valid_to ? ` bis ${dateDe(sv.valid_to)}` : ''}
+                {lines.length > 0 && (
+                  <div class="svc-note small" title={sv.note ?? ''}>
+                    {lines.slice(0, 2).join(' · ')}
+                    {lines.length > 2 && <span class="mut"> … (+{lines.length - 2} Zeilen)</span>}
+                  </div>
+                )}
               </div>
-              {sv.last_billed_month && <div class="mut">zuletzt {monthLabelDe(sv.last_billed_month)}</div>}
-            </div>
-            <div class="svc-qty small">
-              {milliToInput(sv.quantity_milli)} {UNIT_LABELS[sv.unit_code] ?? sv.unit_code} ×{' '}
-              {euro(sv.unit_price_cents)}
-            </div>
-            <div class="svc-total">{euro(lineTotal(sv))}</div>
-          </a>
+              <div class="svc-when small">
+                <div>{CYCLE_LABEL[sv.billing_cycle]}</div>
+                <div class="mut">
+                  ab {dateDe(sv.valid_from)}
+                  {sv.valid_to ? ` bis ${dateDe(sv.valid_to)}` : ''}
+                </div>
+                {sv.last_billed_month && <div class="mut">zuletzt {monthLabelDe(sv.last_billed_month)}</div>}
+              </div>
+              <div class="svc-qty small">
+                {milliToInput(sv.quantity_milli)} {UNIT_LABELS[sv.unit_code] ?? sv.unit_code} ×{' '}
+                {euro(sv.unit_price_cents)}
+              </div>
+              <div class="svc-total">{euro(lineTotal(sv))}</div>
+            </a>
+            <a
+              class="svc-copy"
+              href={`/objekte/${siteId}/leistungen/kopieren?von=${sv.id}&ziel=${siteId}`}
+              title="Leistung kopieren (auch in ein anderes Objekt des Kunden)"
+            >
+              <Icon name="copy" /> <span>Kopieren</span>
+            </a>
+          </div>
         );
       })}
     </div>
@@ -212,6 +222,27 @@ export const ServiceForm: FC<{
   const tgt = sv?.separate_invoice ? 'separat' : (sv?.invoice_group_id ?? 'objekt');
   return (
     <>
+      {copy && src && (copyTargets ?? []).length > 1 && (
+        <form
+          method="get"
+          action={`/objekte/${siteId}/leistungen/kopieren`}
+          class="card actions"
+          style="max-width:900px;margin-bottom:12px"
+        >
+          <input type="hidden" name="von" value={src.id} />
+          <b>Kopie anlegen in Objekt</b>
+          <select name="ziel" style="max-width:420px" data-nosearch onchange="this.form.submit()">
+            {(copyTargets ?? []).map((t) => (
+              <option value={t.id} selected={t.id === siteId}>
+                {t.site_no} · {t.name}
+              </option>
+            ))}
+          </select>
+          <noscript>
+            <button class="btn sec sm">Wechseln</button>
+          </noscript>
+        </form>
+      )}
       <form
         method="post"
         action={`/objekte/${siteId}/leistungen/${id}`}
@@ -425,27 +456,6 @@ export const ServiceForm: FC<{
           <button class="btn">{existing ? 'Leistung aktualisieren' : 'Leistung anlegen'}</button>
         </div>
       </form>
-      {existing && src && (
-        <form
-          method="get"
-          action={`/objekte/${siteId}/leistungen/kopieren`}
-          class="card actions"
-          style="max-width:900px"
-        >
-          <input type="hidden" name="von" value={src.id} />
-          <b>Leistung kopieren</b>
-          <span class="small mut">in Objekt</span>
-          <select name="ziel" style="max-width:420px" data-nosearch>
-            {(copyTargets ?? []).map((t) => (
-              <option value={t.id} selected={t.id === siteId}>
-                {t.site_no} · {t.name}
-                {t.id === siteId ? ' (dieses Objekt)' : ''}
-              </option>
-            ))}
-          </select>
-          <button class="btn sec">Kopieren</button>
-        </form>
-      )}
     </>
   );
 };

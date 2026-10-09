@@ -661,7 +661,11 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                     <dt>Format / Versand</dt>
                     <dd>
                       {FORMAT_LABEL[x.bill_format]}
-                      {x.delivery_channel === 'portal' ? ` · Portal ${x.portal_name ?? ''}` : ' · E-Mail'}
+                      {x.delivery_channel === 'portal'
+                        ? ` · Portal ${x.portal_name ?? ''}`
+                        : x.delivery_channel === 'keiner'
+                          ? ' · kein Versand (gilt mit Ausstellen als versendet)'
+                          : ' · E-Mail'}
                     </dd>
                     <dt>E-Mail</dt>
                     <dd>
@@ -909,6 +913,9 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                     </option>
                     <option value="portal" selected={g?.delivery_channel === 'portal'}>
                       Portal des Kunden (wir laden hoch)
+                    </option>
+                    <option value="keiner" selected={g?.delivery_channel === 'keiner'}>
+                      Kein Versand – gilt mit dem Ausstellen als versendet
                     </option>
                   </select>
                 </div>

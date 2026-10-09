@@ -122,7 +122,32 @@ export async function issueInvoice(deps: Deps, id: string, actor: string) {
     }
     await issue(deps.sql, id, actor);
   }
-  return ensureDocuments(deps, id);
+  const docs = await ensureDocuments(deps, id);
+  await recordNoDelivery(deps, id, actor);
+  return docs;
+}
+
+/**
+ * Versandweg „kein Versand“ (Rechnungsgruppe, z. B. Landeshauptstadt München): mit dem Ausstellen als versendet
+ * vermerken – genau einmal je Rechnung (Kanal „keiner“). Andere Versandwege: nichts tun.
+ */
+export async function recordNoDelivery(deps: Deps, id: string, actor: string) {
+  const { sql } = deps;
+  const { channel } = await deliveryChannel(sql, id);
+  if (channel !== 'keiner') return false;
+  const [inv] = await sql<
+    { status: string }[]
+  >`select status::text as status from app.invoices where id = ${id}`;
+  if (inv?.status !== 'issued') return false;
+  const doc = await loadDocument(sql, id);
+  const label = 'kein Versand (laut Rechnungsgruppe)';
+  const [row] = await sql<{ id: string }[]>`
+    insert into app.invoice_deliveries (invoice_id, idempotency_key, status, intended_recipients, actual_recipients,
+                                        subject, files, attempts, sent_at, channel, recorded_by)
+    values (${id}, ${`${id}:keiner`}, 'sent', ${[label]}, ${[label]},
+            ${`Kein Versand: ${KIND_TITLES[doc.kind]} ${doc.number}`}, ${sql.json([])}, 1, now(), 'keiner', ${actor})
+    on conflict (idempotency_key) do nothing returning id`;
+  return !!row;
 }
 
 /**
@@ -301,7 +326,7 @@ export interface DeliveryRow {
   attempts: number;
   created_at: Date;
   sent_at: Date | null;
-  channel?: 'email' | 'portal';
+  channel?: 'email' | 'portal' | 'manuell' | 'keiner';
   portal_reference?: string | null;
   recorded_by?: string | null;
 }
@@ -339,12 +364,14 @@ function mailText(doc: InvoiceDocument, redirectedFrom: string[] | null): string
   return lines.join('\n');
 }
 
+export type DeliveryWay = 'email' | 'portal' | 'keiner';
+
 /** Versandweg der Rechnung aus ihrer Rechnungsgruppe (bzw. der Gruppe des Objekts). */
 export async function deliveryChannel(
   sql: Sql,
   invoiceId: string,
-): Promise<{ channel: 'email' | 'portal'; portal: string | null }> {
-  const [r] = await sql<{ delivery_channel: 'email' | 'portal' | null; portal_name: string | null }[]>`
+): Promise<{ channel: DeliveryWay; portal: string | null }> {
+  const [r] = await sql<{ delivery_channel: DeliveryWay | null; portal_name: string | null }[]>`
     select g.delivery_channel, g.portal_name
       from app.invoices i
       left join app.sites s on s.id = i.site_id
@@ -455,6 +482,10 @@ export async function sendInvoice(
   };
 
   const channel = await deliveryChannel(sql, id);
+  if (channel.channel === 'keiner')
+    throw new BusinessError(
+      'Für diesen Kunden ist „kein Versand“ eingestellt (Rechnungsgruppe) – die Rechnung gilt mit dem Ausstellen als versendet.',
+    );
   if (channel.channel === 'portal')
     throw new BusinessError(
       `Dieser Kunde erhält Rechnungen über ${channel.portal ?? 'sein Portal'} – E-Rechnung herunterladen, dort hochladen und hier „Im Portal hochgeladen“ vermerken.`,

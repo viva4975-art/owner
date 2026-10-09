@@ -16,7 +16,7 @@ export interface InvoiceGroup extends GroupBilling {
   note: string | null;
   intro_text: string | null;
   closing_text: string | null;
-  delivery_channel: 'email' | 'portal';
+  delivery_channel: 'email' | 'portal' | 'keiner';
   portal_name: string | null;
   active: boolean;
   version: number;
@@ -96,7 +96,7 @@ export const groupBillingInput = z
       z.number().int('Skonto: max. 2 Nachkommastellen').min(1).max(1000, 'Skonto max. 10 %').nullable(),
     ),
     bill_skonto_days: optInt(1, 90, 'Skonto-Tage: 1–90'),
-    delivery_channel: z.enum(['email', 'portal']).default('email'),
+    delivery_channel: z.enum(['email', 'portal', 'keiner']).default('email'),
     portal_name: opt.default(null),
   })
   .refine((b) => !b.bill_name || (!!b.bill_street && !!b.bill_postal_code && !!b.bill_city), {

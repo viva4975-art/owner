@@ -9,6 +9,7 @@ import { type Ctx, UUID, assertSite } from './app.js';
 import {
   FOLDER_QUESTIONS,
   type FolderInfo,
+  buildFolderPdf,
   buildFolderZip,
   folderFacts,
   packageInfo,
@@ -55,14 +56,20 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
               <div>
                 <h3 style="margin:0">Objektordner für {s.name}</h3>
                 <div class="small mut">
-                  Alle Vorlagen aus dem Objektordner-Paket, mit den Objektdaten ausgefüllt, dazu
-                  Objektstammblatt, Leistungsverzeichnis (ohne Preise), Reinigungsplan aus dem Raumbuch und
-                  Revierplan aus den Einsätzen.
+                  Ein PDF zum Ausdrucken: Deckblatt, Inhaltsverzeichnis, Objektstammblatt mit Kontakten,
+                  Leistungsverzeichnis (ohne Preise), Reinigungsplan aus dem Raumbuch, Revierplan aus den
+                  Einsätzen, alle Vorlagen aus dem Objektordner-Paket mit den Objektdaten und leere
+                  Nachweislisten.
                 </div>
               </div>
-              <a class="btn" href={`/objekte/${s.id}/objektordner.zip`}>
-                <Icon name="download" /> Objektordner herunterladen (ZIP)
-              </a>
+              <div class="actions" style="margin:0">
+                <a class="btn" href={`/objekte/${s.id}/objektordner.pdf`} target="_blank">
+                  <Icon name="download" /> Objektordner als PDF (zum Drucken)
+                </a>
+                <a class="btn sec sm" href={`/objekte/${s.id}/objektordner.zip`}>
+                  Word-Dateien (ZIP)
+                </a>
+              </div>
             </div>
             {!pkg && (
               <div class="flash warn" style="margin-bottom:0">
@@ -149,6 +156,17 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
     return c.body(r.zip as Uint8Array<ArrayBuffer>, 200, {
       'Content-Type': 'application/zip',
       'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(r.name)}`,
+      'Cache-Control': 'private, no-store',
+    });
+  });
+
+  app.get(`/objekte/:id{${UUID}}/objektordner.pdf`, async (c) => {
+    const id = c.req.param('id');
+    assertSite(c, id);
+    const r = await buildFolderPdf(deps, id);
+    return c.body(r.pdf as Uint8Array<ArrayBuffer>, 200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(r.name)}`,
       'Cache-Control': 'private, no-store',
     });
   });

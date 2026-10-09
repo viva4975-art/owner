@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<title>Server-Anleitung Viva-Deluxe App</title>
+<style>
+  body{font-family:Inter,Arial,sans-serif;color:#1d1d1f;max-width:840px;margin:28px auto;padding:0 18px;line-height:1.5;font-size:14px}
+  h1{color:#7D1435;font-size:25px;margin-bottom:4px}
+  h2{color:#7D1435;font-size:18px;margin:30px 0 8px;border-bottom:2px solid #f0dbe2;padding-bottom:4px;page-break-after:avoid}
+  h3{font-size:15px;margin:18px 0 6px;page-break-after:avoid}
+  .sub{color:#666;margin-top:0}
+  pre{background:#1f1f24;color:#f3f3f3;padding:10px 14px;border-radius:6px;font-size:13px;white-space:pre-wrap;word-break:break-all;page-break-inside:avoid}
+  pre .c{color:#9fd39f}
+  code{background:#f4eef0;padding:1px 5px;border-radius:4px}
+  .box{background:#fff7e0;border:1px solid #e9c46a;border-radius:6px;padding:10px 14px;margin:12px 0;page-break-inside:avoid}
+  .red{background:#fdecec;border-color:#e3a0a0}
+  .ok{background:#eef8ee;border-color:#9fd39f}
+  ol li,ul li{margin-bottom:6px}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0}
+  td,th{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top}
+  th{background:#f7eef1}
+  kbd{border:1px solid #bbb;border-bottom-width:2px;border-radius:4px;padding:0 5px;font-size:12px;background:#fafafa}
+  .toc{columns:2;font-size:13.5px}
+</style>
+</head>
+<body>
+<h1>Server-Anleitung – Viva-Deluxe App</h1>
+<p class="sub">Server öffnen, Zugangsdaten eintragen, App neu starten, prüfen · IONOS VPS 217.160.236.117 · Stand 09.10.2026</p>
+
+<div class="box">
+  <b>Was ist „der Server“?</b> Ein gemieteter Rechner bei IONOS (Rechenzentrum in Deutschland). Darauf laufen die App
+  (https://app.viva-deluxe-reinigung.de), die Datenbank und die E-Rechnungs-Prüfung (KoSIT). Bedient wird er nur mit
+  Textbefehlen. Für den Alltag brauchen Sie ihn <b>nicht</b> – nur, um Zugangsdaten einzutragen (Mail, Archiv) oder wenn
+  etwas klemmt. Updates kommen automatisch alle 10 Minuten, Sicherungen jede Nacht um 02:30 Uhr.
+</div>
+
+<div class="toc">
+<ol>
+  <li>Verbinden (Browser, Windows, Mac, Handy)</li>
+  <li>Bedienung im schwarzen Fenster</li>
+  <li>Zugangsdaten eintragen (.env.live)</li>
+  <li>App neu starten / aktualisieren</li>
+  <li>Prüfen, ob alles läuft</li>
+  <li>Fehlermeldungen ansehen</li>
+  <li>Sicherungen</li>
+  <li>Passwort eines App-Benutzers zurücksetzen</li>
+  <li>Root-Passwort ändern</li>
+  <li>Wenn die App nicht lädt</li>
+  <li>Was Sie nie tun sollten</li>
+  <li>Spickzettel</li>
+</ol>
+</div>
+
+<h2>1. Verbinden</h2>
+<p>Sie brauchen das <b>root-Passwort</b> des Servers (aus der IONOS-Bestellung bzw. Ihrem Passwort-Manager).
+Benutzername ist immer <code>root</code>.</p>
+
+<h3>Variante A – im Browser über IONOS (geht immer, auch ohne Programm)</h3>
+<ol>
+  <li><b>login.ionos.de</b> öffnen und mit Ihrem IONOS-Kundenkonto anmelden.</li>
+  <li><b>Menü → Server &amp; Cloud</b> → den Server mit der IP <b>217.160.236.117</b> anklicken.</li>
+  <li>Oben rechts <b>Aktionen → KVM-Konsole</b> (heißt manchmal „Remote-Konsole“). Es öffnet sich ein schwarzes Fenster.
+    Ist es leer, einmal <kbd>Enter</kbd> drücken.</li>
+  <li>Bei <code>login:</code> → <b>root</b> eintippen, <kbd>Enter</kbd>.</li>
+  <li>Bei <code>Password:</code> → root-Passwort eintippen, <kbd>Enter</kbd>. <b>Beim Tippen erscheinen keine Zeichen
+    und keine Sternchen – das ist normal.</b></li>
+  <li>Sie sind drin, wenn vorne <code>root@…:~#</code> steht.</li>
+</ol>
+<div class="box">
+  <b>Achtung Tastatur in der KVM-Konsole:</b> Die Konsole nutzt manchmal die <b>amerikanische Tastatur</b>. Dann sind
+  <b>Y und Z vertauscht</b> und Sonderzeichen liegen woanders (z. B. <code>'</code> auf der Ä-Taste, <code>-</code> auf ß).
+  Klappt das Passwort nicht, liegt es oft daran. Bequemer ist Variante B/C (normale Tastatur, Kopieren/Einfügen geht).
+</div>
+
+<h3>Variante B – Windows (PowerShell)</h3>
+<ol>
+  <li>Windows-Taste drücken, <b>PowerShell</b> tippen, öffnen.</li>
+  <li>Eingeben und <kbd>Enter</kbd>:<pre>ssh root@217.160.236.117</pre></li>
+  <li>Beim allerersten Mal fragt Windows „Are you sure you want to continue connecting?“ → <b>yes</b> tippen, <kbd>Enter</kbd>.</li>
+  <li>root-Passwort eingeben (unsichtbar), <kbd>Enter</kbd>.</li>
+</ol>
+<p class="sub">Einfügen in PowerShell: <b>rechte Maustaste</b> (nicht Strg+V). Markieren + Rechtsklick kopiert.</p>
+
+<h3>Variante C – Mac (Terminal)</h3>
+<ol>
+  <li><kbd>Cmd</kbd> + <kbd>Leertaste</kbd>, <b>Terminal</b> tippen, öffnen.</li>
+  <li><pre>ssh root@217.160.236.117</pre> → <b>yes</b> (nur beim ersten Mal) → root-Passwort.</li>
+</ol>
+
+<h3>Variante D – Handy/iPad (nur für Notfälle)</h3>
+<p>App <b>Termius</b> (iOS/Android, kostenlos) → „New Host“ → Adresse <code>217.160.236.117</code>, Benutzer <code>root</code>,
+Passwort → verbinden. Am Handy ist Tippen mühsam – lieber am PC.</p>
+
+<h2>2. Bedienung im schwarzen Fenster</h2>
+<ul>
+  <li>Befehl eintippen (oder einfügen) und mit <kbd>Enter</kbd> abschicken. Groß-/Kleinschreibung und Leerzeichen genau
+    übernehmen.</li>
+  <li>Läuft etwas und Sie wollen abbrechen: <kbd>Strg</kbd> + <kbd>C</kbd>.</li>
+  <li>Pfeil ↑ holt den letzten Befehl zurück.</li>
+  <li>Zeilen, die in dieser Anleitung mit <code>#</code> beginnen, sind nur Erklärungen – nicht eintippen.</li>
+  <li>Verbindung beenden: <code>exit</code> (die App läuft weiter).</li>
+</ul>
+
+<h2>3. Zugangsdaten eintragen (Mail, später Archiv)</h2>
+<p>Alle Passwörter und Schlüssel stehen nur in einer Datei auf dem Server: <code>/opt/viva/deploy/.env.live</code>.
+Nie in den Chat, nie in eine E-Mail.</p>
+<ol>
+  <li>Datei öffnen:<pre>nano /opt/viva/deploy/.env.live</pre></li>
+  <li>Mit den <b>Pfeiltasten</b> bewegen (die Maus geht hier nicht). Gibt es die Zeile schon (z. B. <code>SMTP_HOST</code>),
+    die vorhandene ändern; sonst ganz unten eine neue Zeile anfangen.</li>
+  <li>Je Wert <b>eine Zeile</b>: <code>NAME='Wert'</code> – Wert in <b>einfachen Hochkommas</b>, kein Leerzeichen um das <code>=</code>.</li>
+  <li>Speichern: <kbd>Strg</kbd> + <kbd>O</kbd> (Buchstabe O), dann <kbd>Enter</kbd>.</li>
+  <li>Schließen: <kbd>Strg</kbd> + <kbd>X</kbd>.</li>
+  <li>App neu starten (Abschnitt 4).</li>
+</ol>
+
+<h3>Mail-Versand (IONOS Exchange, buchhaltung@)</h3>
+<pre>SMTP_HOST='smtp.exchange2019.ionos.de'
+SMTP_PORT='587'
+SMTP_USER='buchhaltung@viva-deluxe-reinigung.de'
+SMTP_PASS='hier das Passwort des Postfachs'
+MAIL_FROM='buchhaltung@viva-deluxe-reinigung.de'</pre>
+<p class="sub">Jede Zeile endet mit <code>'</code> – fehlt es, startet die App nicht („unterminated quoted value“).
+Enthält das Passwort selbst ein <code>'</code>, bitte melden.</p>
+<p><b>Testen ohne Kundenrisiko:</b> In der App <b>Einstellungen → E-Mail-Versand prüfen → Test-E-Mail senden</b>. Dort
+steht auch, ob Test- oder Echtbetrieb eingestellt ist und ob alle Mails an die Testadresse umgeleitet werden.</p>
+
+<div class="box red">
+  <b>Nur nach Absprache ändern:</b> <code>APP_ENV</code> und <code>MAIL_TEST_RECIPIENT</code>. Solange
+  <code>APP_ENV='test'</code> steht oder die Zeile <code>MAIL_TEST_RECIPIENT</code> existiert, gehen <b>alle</b> Mails an
+  die Testadresse – kein Kunde bekommt etwas. Für den Echtbetrieb: <code>APP_ENV='live'</code> <b>und</b> die Zeile
+  <code>MAIL_TEST_RECIPIENT</code> löschen. Nie anfassen: <code>DATABASE_URL</code>, <code>DB_PASSWORD</code>,
+  <code>SESSION_SECRET</code> (sonst sind alle abgemeldet und der Bankabruf-Schlüssel muss neu hochgeladen werden).
+</div>
+
+<h2>4. App neu starten / aktualisieren</h2>
+<pre>bash /opt/viva/deploy/update.sh</pre>
+<p>Holt die neueste Fassung, baut sie und startet neu – 1 bis 3 Minuten. Am Ende steht z. B.
+<code>… aktualisiert auf 1a2b3c4 …</code>. In dieser Zeit zeigt die App „Die App wird gerade aktualisiert“ – nach dem
+Neuladen ist alles wieder da. Eingaben, die genau in dem Moment gespeichert wurden, gehen nicht doppelt durch.</p>
+
+<h2>5. Prüfen, ob alles läuft</h2>
+<pre>cd /opt/viva/deploy
+docker compose --env-file .env.live ps</pre>
+<p>Es müssen <b>3 Zeilen</b> mit <code>Up</code> bzw. <code>running</code> erscheinen: <code>db</code> (Datenbank), <code>app</code>
+(App mit E-Rechnungs-Prüfung KoSIT), <code>caddy</code> (HTTPS). Steht irgendwo <code>Exited</code> oder
+<code>Restarting</code> → Abschnitt 6.</p>
+<p>Weitere nützliche Prüfungen:</p>
+<table>
+  <tr><th>Was</th><th>Befehl</th><th>Gut ist</th></tr>
+  <tr><td>Speicherplatz</td><td><code>df -h /</code></td><td>Spalte „Use%“ unter 80 %</td></tr>
+  <tr><td>Letzte automatische Updates</td><td><code>tail -5 /var/log/viva-update.log</code></td><td>Zeilen „aktualisiert auf …“</td></tr>
+  <tr><td>Letzte Sicherungen</td><td><code>tail -5 /var/log/viva-backup.log</code></td><td>keine Fehlermeldung</td></tr>
+  <tr><td>Arbeitsspeicher</td><td><code>free -h</code></td><td>„available“ über 1 G</td></tr>
+</table>
+
+<h2>6. Fehlermeldungen ansehen</h2>
+<pre>cd /opt/viva/deploy
+docker compose --env-file .env.live logs --tail 80 app</pre>
+<p>Zeigt die letzten 80 Meldungen der App. Davon ein Foto oder den Text an mich – <b>vorher prüfen, dass kein Passwort
+darin steht</b>. Für die anderen Teile <code>app</code> durch <code>db</code> oder <code>caddy</code> ersetzen.
+Live mitlesen: <code>… logs -f app</code>, beenden mit <kbd>Strg</kbd> + <kbd>C</kbd>.</p>
+
+<h2>7. Sicherungen</h2>
+<p>Jede Nacht um 02:30 Uhr: Datenbank + alle Dateien nach <code>/opt/viva-sicherung</code>, 14 Tage aufbewahrt.</p>
+<pre>ls -lh /opt/viva-sicherung            <span class="c"># vorhandene Sicherungen mit Größe und Datum</span>
+bash /opt/viva/deploy/backup.sh       <span class="c"># sofort eine Sicherung machen (z. B. vor größeren Änderungen)</span></pre>
+<div class="box red">
+  <b>Wichtig:</b> Diese Sicherung liegt auf <b>demselben</b> Server. Fällt der Server aus, ist sie mit weg. Deshalb im
+  IONOS-Panel <b>Cloud Backup</b> buchen und den Ordner <code>/opt/viva-sicherung</code> mitsichern lassen.
+  Wiederherstellen nur mit mir zusammen.
+</div>
+
+<h2>8. Passwort eines App-Benutzers zurücksetzen</h2>
+<p>Normalerweise in der App: <b>Einstellungen → Benutzer → Person → „Einmal-Passwort erzeugen“</b>. Kommt niemand mehr als Admin
+hinein (z. B. gesperrt nach 5 Fehlversuchen):</p>
+<pre>cd /opt/viva/deploy
+docker compose --env-file .env.live exec app npx tsx src/scripts/reset-password.ts            <span class="c"># Liste der Benutzer</span>
+docker compose --env-file .env.live exec app npx tsx src/scripts/reset-password.ts ahmed.chomontek</pre>
+<p>Es erscheint ein <b>Einmal-Passwort</b>; damit anmelden, danach muss ein neues vergeben werden. Die Sperre ist aufgehoben.</p>
+
+<h2>9. Root-Passwort des Servers ändern</h2>
+<p>Das alte root-Passwort stand im Chat – bitte ändern:</p>
+<pre>passwd</pre>
+<p>Neues Passwort zweimal eintippen (unsichtbar). Nur im Passwort-Manager notieren. Geht es vergessen, kann man es im
+IONOS-Panel unter <b>Server → Aktionen → Passwort zurücksetzen</b> neu setzen.</p>
+
+<h2>10. Wenn die App nicht lädt</h2>
+<ol>
+  <li>2–3 Minuten warten und neu laden – evtl. läuft gerade ein automatisches Update.</li>
+  <li>Verbinden (Abschnitt 1), dann Abschnitt 5: Läuft alles?</li>
+  <li>Neu starten: <pre>bash /opt/viva/deploy/update.sh</pre></li>
+  <li>Hilft nichts: Meldungen aus Abschnitt 6 an mich schicken.</li>
+  <li>Reagiert der Server gar nicht mehr (auch keine Anmeldung): im IONOS-Panel <b>Aktionen → Neu starten</b>. Alle Teile
+    der App starten danach von selbst.</li>
+</ol>
+
+<h2>11. Was Sie nie tun sollten</h2>
+<div class="box red">
+  <ul style="margin:0">
+    <li>Keine Befehle mit <code>rm</code>, <code>docker compose down -v</code>, <code>docker volume rm</code> oder
+      <code>docker system prune</code> – damit werden Datenbank oder Archiv gelöscht.</li>
+    <li>Nichts in <code>/opt/viva</code> von Hand ändern außer <code>deploy/.env.live</code> – die Updates überschreiben es
+      bzw. brechen ab.</li>
+    <li>Keine Passwörter, Schlüssel oder den Inhalt von <code>.env.live</code> in Chats, Mails oder Screenshots.</li>
+    <li>Befehle aus fremden Quellen (Foren, Mails) nur nach Rückfrage.</li>
+  </ul>
+</div>
+
+<h2>12. Spickzettel</h2>
+<pre><span class="c"># verbinden (oder KVM-Konsole im IONOS-Panel)</span>
+ssh root@217.160.236.117
+
+<span class="c"># Zugangsdaten eintragen: Strg+O, Enter, Strg+X</span>
+nano /opt/viva/deploy/.env.live
+
+<span class="c"># neu starten / aktualisieren</span>
+bash /opt/viva/deploy/update.sh
+
+<span class="c"># läuft alles? (3× Up)</span>
+cd /opt/viva/deploy &amp;&amp; docker compose --env-file .env.live ps
+
+<span class="c"># Fehlermeldungen</span>
+cd /opt/viva/deploy &amp;&amp; docker compose --env-file .env.live logs --tail 80 app
+
+<span class="c"># Sicherungen ansehen / jetzt sichern</span>
+ls -lh /opt/viva-sicherung
+bash /opt/viva/deploy/backup.sh
+
+<span class="c"># abmelden</span>
+exit</pre>
+</body>
+</html>

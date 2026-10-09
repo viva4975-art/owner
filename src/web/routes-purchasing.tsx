@@ -13,7 +13,7 @@ import type { Child, FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { type Cents, parseEuro, parseQuantity } from '../domain/money/money.js';
 import { addDays } from '../domain/time/holidays.js';
-import { siteCosting } from '../services/costing.js';
+import { siteCostDetails, siteCosting } from '../services/costing.js';
 import {
   buildExtf,
   collectBookings,
@@ -2615,13 +2615,39 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
     const von = isMonth(c.req.query('von')) ? c.req.query('von')! : isMonth(qm) ? qm! : last;
     const bisQ = isMonth(c.req.query('bis')) ? c.req.query('bis')! : von;
     const bis = bisQ < von ? von : bisQ;
-    const [{ rows, general, overhead, targetBp }, report] = await Promise.all([
+    const [{ rows, general: allGeneral, overhead, targetBp }, report] = await Promise.all([
       siteCosting(sql, { from: von, to: bis }),
       costCenterReport(sql, von, bis),
     ]);
-    const active = rows.filter(
-      (r) => r.revenue !== 0n || r.actual_minutes > 0 || r.material + r.subcontractor + r.other !== 0n,
+    // Filter wie in den Statistiken (Ahmed 09.10.): Kunde, Objekt, Objektleitung, nur Verlust
+    const fKunde = c.req.query('kunde') ?? '';
+    const fObjekt = c.req.query('objekt') ?? '';
+    const fOl = c.req.query('ol') ?? '';
+    const fVerlust = c.req.query('verlust') === '1';
+    const filtered = !!(fKunde || fObjekt || fOl);
+    const withData = rows.filter(
+      (r) =>
+        r.revenue !== 0n ||
+        r.actual_minutes > 0 ||
+        r.material + r.subcontractor + r.equipment + r.other !== 0n,
     );
+    const active = withData.filter(
+      (r) =>
+        (!fKunde || r.customer_id === fKunde) &&
+        (!fObjekt || r.site_id === fObjekt) &&
+        (!fOl || (fOl === 'ohne' ? !r.manager_user_id : r.manager_user_id === fOl)) &&
+        (!fVerlust || r.margin < 0n),
+    );
+    const general = filtered || fVerlust ? [] : allGeneral;
+    const customers = [...new Map(withData.map((r) => [r.customer_id, r.customer_name])).entries()].sort(
+      (a, b) => a[1].localeCompare(b[1], 'de'),
+    );
+    const managerIds = [...new Set(withData.map((r) => r.manager_user_id).filter((x): x is string => !!x))];
+    const managers = managerIds.length
+      ? await sql<{ user_id: string; name: string }[]>`
+          select user_id, name from app.manager_contacts where user_id = any(${managerIds}::uuid[]) order by name`
+      : [];
+    const details = fObjekt ? await siteCostDetails(sql, fObjekt, { from: von, to: bis }) : [];
     const sum = (f: (r: (typeof rows)[number]) => bigint) => active.reduce((a, r) => a + f(r), 0n);
     const totalRev = sum((r) => r.revenue);
     const generalTotal = general.reduce((a, g) => a + g.total, 0n);
@@ -2648,8 +2674,45 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             bis
           </label>
           <input type="month" name="bis" value={bis} style="max-width:200px" />
+          <select name="kunde" style="max-width:240px" data-nosearch>
+            <option value="">Alle Kunden</option>
+            {customers.map(([id, name]) => (
+              <option value={id} selected={id === fKunde}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <select name="objekt" style="max-width:260px">
+            <option value="">Alle Objekte</option>
+            {withData
+              .filter((r) => !fKunde || r.customer_id === fKunde)
+              .map((r) => (
+                <option value={r.site_id} selected={r.site_id === fObjekt}>
+                  {r.site_no} · {r.site_name}
+                </option>
+              ))}
+          </select>
+          <select name="ol" style="max-width:200px" data-nosearch>
+            <option value="">Alle Objektleitungen</option>
+            {managers.map((m) => (
+              <option value={m.user_id} selected={m.user_id === fOl}>
+                {m.name}
+              </option>
+            ))}
+            <option value="ohne" selected={fOl === 'ohne'}>
+              ohne Objektleitung
+            </option>
+          </select>
+          <label class="small" style="margin:0;display:flex;gap:4px;align-items:center">
+            <input type="checkbox" name="verlust" value="1" checked={fVerlust} /> nur Verlust
+          </label>
           <button class="btn sec sm">Anzeigen</button>
-          <span class="small mut">
+          {(filtered || fVerlust) && (
+            <a class="small" href={`/auswertungen/nachkalkulation?von=${von}&bis=${bis}`}>
+              Filter zurücksetzen
+            </a>
+          )}
+          <span class="small mut" style="flex-basis:100%">
             Lohn = Ist-Stunden × Stundenlohn (fehlt die Vergütung: niedrigster Tariflohn) + Zuschlag (Minijob{' '}
             {pct(overhead.minijob)}, Teilzeit {pct(overhead.parttime)}, über 30 Std. {pct(overhead.fulltime)})
             · Nachunternehmer = Eingangsrechnungen, sonst Monatspauschale laut Bestellung · Ziel{' '}
@@ -2674,7 +2737,9 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
           <div class="kpi">
             <div class="l">Allgemeine Kostenstellen</div>
             <div class="v">{euro(generalTotal)}</div>
-            <div class="s">Büro, Fahrzeuge, Lager …</div>
+            <div class="s">
+              {filtered || fVerlust ? 'bei Filter nicht enthalten' : 'Büro, Fahrzeuge, Lager …'}
+            </div>
           </div>
           <div class="kpi">
             <div class="l">Ergebnis</div>
@@ -2693,6 +2758,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                 <th class="r">Std. Soll / Ist</th>
                 <th class="r">Lohn</th>
                 <th class="r">Material</th>
+                <th class="r">Geräte</th>
                 <th class="r">Nachunternehmer</th>
                 <th class="r">Sonstiges</th>
                 <th class="r">Deckungsbeitrag</th>
@@ -2703,7 +2769,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             <tbody>
               {active.length === 0 && general.length === 0 && (
                 <tr>
-                  <td colspan={10}>
+                  <td colspan={11}>
                     <div class="empty">Im Zeitraum gibt es keine Erlöse, Zeiten oder Kosten.</div>
                   </td>
                 </tr>
@@ -2715,11 +2781,18 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                       {r.site_no} · {r.site_name}
                     </a>
                     <div class="small mut">{r.customer_name}</div>
-                    {r.revenue === 0n && r.material + r.subcontractor + r.other + r.labor > 0n && (
-                      <div class="small" style="color:var(--warn)">
-                        Kosten ohne Erlös
-                      </div>
-                    )}
+                    <a
+                      class="small"
+                      href={`/auswertungen/nachkalkulation?von=${von}&bis=${bis}&objekt=${r.site_id}#kosten`}
+                    >
+                      Kosten im Detail
+                    </a>
+                    {r.revenue === 0n &&
+                      r.material + r.subcontractor + r.equipment + r.other + r.labor > 0n && (
+                        <div class="small" style="color:var(--warn)">
+                          Kosten ohne Erlös
+                        </div>
+                      )}
                   </td>
                   <td class="r">{euro(r.revenue)}</td>
                   <td class="r">
@@ -2736,6 +2809,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                   </td>
                   <td class="r">{euro(r.labor)}</td>
                   <td class="r">{euro(r.material)}</td>
+                  <td class="r">{euro(r.equipment)}</td>
                   <td class="r">
                     {euro(r.subcontractor)}
                     {r.subcontractor_estimated > 0n && (
@@ -2760,7 +2834,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               ))}
               {general.length > 0 && (
                 <tr>
-                  <td colspan={10} class="small mut" style="background:var(--head)">
+                  <td colspan={11} class="small mut" style="background:var(--head)">
                     <b>Allgemeine Kostenstellen</b> (ohne Erlös)
                   </td>
                 </tr>
@@ -2776,6 +2850,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                   <td class="r">–</td>
                   <td class="r">–</td>
                   <td class="r">{euro(g.material)}</td>
+                  <td class="r">{euro(g.equipment)}</td>
                   <td class="r">{euro(g.subcontractor)}</td>
                   <td class="r">{euro(g.other)}</td>
                   <td class="r" style="color:var(--err)">
@@ -2801,6 +2876,9 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                     <b>{euro(sum((r) => r.material) + general.reduce((a, g) => a + g.material, 0n))}</b>
                   </td>
                   <td class="r">
+                    <b>{euro(sum((r) => r.equipment) + general.reduce((a, g) => a + g.equipment, 0n))}</b>
+                  </td>
+                  <td class="r">
                     <b>
                       {euro(sum((r) => r.subcontractor) + general.reduce((a, g) => a + g.subcontractor, 0n))}
                     </b>
@@ -2818,6 +2896,52 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             </tbody>
           </table>
         </div>
+        {fObjekt && (
+          <div class="card" id="kosten">
+            <h3>Eingangsrechnungen dieses Objekts im Zeitraum</h3>
+            {!details.length ? (
+              <p class="mut small">
+                Keine Eingangsrechnung mit diesem Objekt als Kostenstelle und Leistungsmonat im Zeitraum.
+                Fehlt eine Rechnung: an der Eingangsrechnung „Objekt“ und „Leistungsmonat“ bzw. die
+                Kostenstellen-Aufteilung prüfen.
+              </p>
+            ) : (
+              <div class="tbl">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Lieferant · Rechnung</th>
+                      <th>Datum</th>
+                      <th>Leistungsmonat</th>
+                      <th>Kostenart</th>
+                      <th>Status</th>
+                      <th class="r">Netto (Anteil)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {details.map((d) => (
+                      <tr>
+                        <td>
+                          <a href={`/rechnungseingang/${d.id}`}>
+                            {d.supplier_name} · {d.invoice_no}
+                          </a>
+                        </td>
+                        <td>{dateDe(d.invoice_date)}</td>
+                        <td>{d.month.split('-').reverse().join('/')}</td>
+                        <td>{COST_CATEGORY[d.category as CostCategory] ?? d.category}</td>
+                        <td>
+                          {d.status}
+                          {d.status === 'abgelehnt' && <span class="small mut"> (zählt nicht)</span>}
+                        </td>
+                        <td class="r">{euro(d.net)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
         <div class="card">
           <h3>
             Eingangsrechnungen nicht (vollständig) zugeordnet{' '}
@@ -2850,9 +2974,11 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         </div>
         <p class="small mut">
           Erlös: ausgestellte Rechnungen je Position dem Objekt zugeordnet, Leistungszeitraum sonst
-          Rechnungsdatum, inkl. Storno/Korrektur. Kosten: Eingangsrechnungen (auch Nachunternehmer) nach ihrer
-          Kostenstellen-Aufteilung und Leistungsmonat, Material zusätzlich Lagerabgänge zum EK. Objekte
-          erscheinen auch inaktiv, sobald im Zeitraum etwas anfällt.
+          Rechnungsdatum, inkl. Storno/Korrektur. Kosten: Eingangsrechnungen (auch Nachunternehmer) ab
+          „erfasst“ – nicht erst nach Zahlung – nach ihrer Kostenstellen-Aufteilung und ihrem Leistungsmonat
+          (nicht dem Rechnungsdatum); Spalte nach Kostenart (Geräte z. B. Hebebühne, Sonstiges = Fahrzeuge,
+          Miete, Sonstiges). Material zusätzlich Lagerabgänge zum EK. Objekte erscheinen auch inaktiv, sobald
+          im Zeitraum etwas anfällt.
         </p>
       </>,
     );

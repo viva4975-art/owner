@@ -43,6 +43,7 @@ describe.skipIf(!kosit)('Portal-Versand (Patentamt)', () => {
   let sql: Sql;
   let deps: Deps & { mailer: FakeMailer };
   const id = randomUUID();
+  const id2 = randomUUID();
   beforeAll(async () => {
     sql = await freshDatabase();
     deps = await testDeps(sql);
@@ -97,5 +98,44 @@ describe.skipIf(!kosit)('Portal-Versand (Patentamt)', () => {
       recorded_by: 't',
     });
     expect(d[0]!.actual_recipients).toEqual(['DPMA-Portal']);
+  });
+  it('Rechnungsgruppe „kein Versand“: mit dem Ausstellen versendet, genau einmal, kein Mail', async () => {
+    await saveDraft(
+      sql,
+      id2,
+      {
+        customerId: DEMO.company,
+        siteId: null,
+        kind: 'invoice',
+        periodStart: '2026-09-01',
+        periodEnd: '2026-09-30',
+        orderReference: null,
+        introText: null,
+        closingText: null,
+        lines: [
+          {
+            description: 'Unterhaltsreinigung',
+            quantity: 1000n as Quantity,
+            unitCode: 'LS',
+            unitPrice: 50000n as Cents,
+            vatRate: 1900,
+          },
+        ],
+      },
+      't',
+    );
+    const [g] = await sql<{ id: string }[]>`
+      insert into app.invoice_groups (id, customer_id, name, bill_format, buyer_reference)
+      select ${randomUUID()}, id, 'LHM ohne Versand', 'xrechnung', '991-12345-67' from app.customers where id = ${DEMO.company}
+      returning id`;
+    await sql`update app.invoices set invoice_group_id = ${g!.id} where id = ${id2}`;
+    await sql`update app.invoice_groups set delivery_channel = 'keiner' where id = ${g!.id}`;
+    await issueInvoice(deps, id2, 't');
+    await issueInvoice(deps, id2, 't');
+    await expect(sendInvoice(deps, id2, 't')).rejects.toThrow(/kein Versand/);
+    expect(deps.mailer.sent).toHaveLength(0);
+    const d = await listDeliveries(sql, id2);
+    expect(d).toHaveLength(1);
+    expect(d[0]).toMatchObject({ status: 'sent', channel: 'keiner' });
   });
 });

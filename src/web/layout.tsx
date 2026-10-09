@@ -1245,6 +1245,14 @@ body.shell:not(.appmode){background:#eef0f3;background-image:none}
 .svc-head{padding:9px 14px;background:#f3f4f6;font-weight:600;font-size:13px;border-bottom:1px solid var(--line)}
 a.svc-row{display:grid;grid-template-columns:minmax(0,1fr) 140px 170px 100px;gap:14px;align-items:start;padding:12px 14px;border-top:1px solid var(--line);color:inherit;text-decoration:none}
 .svc-head+a.svc-row,.svc-group>a.svc-row:first-child{border-top:0}
+.svc-line{display:flex;align-items:stretch;border-top:1px solid var(--line)}
+.svc-line>a.svc-row{flex:1;min-width:0;border-top:0}
+.svc-head+.svc-line,.svc-group>.svc-line:first-child{border-top:0}
+a.svc-copy{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:62px;flex:0 0 62px;font-size:12.5px;color:var(--mut);text-decoration:none;border-left:1px solid var(--line);white-space:nowrap}
+a.svc-copy:hover{background:#fafafb;color:var(--brand)}
+a.svc-copy svg{width:16px;height:16px}
+a.svc-copy span{font-size:10.5px}
+@media (max-width:1300px){a.svc-row{grid-template-columns:minmax(0,1fr) 120px 150px 95px;gap:10px}}
 a.svc-row:hover{background:#fafafb}
 a.svc-row b{color:var(--brand)}
 .svc-note{margin-top:4px;color:#4b5563;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

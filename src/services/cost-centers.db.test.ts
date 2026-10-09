@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { type Cents, parseEuro } from '../domain/money/money.js';
 import { costCenterReport, getAllocations, saveAllocations, splitEvenly } from './cost-centers.js';
-import { siteCosting } from './costing.js';
+import { siteCostDetails, siteCosting } from './costing.js';
 import { saveIncoming } from './purchasing.js';
 import { DEMO } from './seed.js';
 import { saveSubcontract } from './subcontractors.js';
@@ -122,5 +122,23 @@ describe.skipIf(!available)('Kostenstellen', () => {
     const b = randomUUID();
     await incoming(b, { reverseCharge: false, vat: parseEuro('570,00') as Cents, category: 'sonstiges' });
     expect((await costCenterReport(sql, '2026-09', '2026-09')).unallocated.map((u) => u.id)).toContain(b);
+  });
+
+  it('Geräte (z. B. Hebebühne) als eigene Spalte, schon ab „erfasst“, Detailliste je Objekt', async () => {
+    const h = randomUUID();
+    await incoming(h, {
+      reverseCharge: false,
+      vat: parseEuro('57,00') as Cents,
+      net: parseEuro('300,00') as Cents,
+      category: 'geraete',
+      siteId: DEMO.siteOffice,
+      serviceMonth: '2026-10',
+    });
+    const row = (await siteCosting(sql, '2026-10', DEMO.siteOffice)).rows[0]!;
+    expect(row.equipment).toBe(30000n);
+    expect(row.other).toBe(0n);
+    expect(row.customer_id).toBeTruthy();
+    const d = await siteCostDetails(sql, DEMO.siteOffice, { from: '2026-10', to: '2026-10' });
+    expect(d.map((x) => [x.id, x.category, x.net])).toEqual([[h, 'geraete', 30000n]]);
   });
 });

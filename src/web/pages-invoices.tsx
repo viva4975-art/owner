@@ -1211,7 +1211,8 @@ export const InvoiceDetail: FC<{
                   )}
                 </td>
                 <td>
-                  {d.channel === 'portal' && <span class="badge tag">Portal</span>}{' '}
+                  {d.channel === 'portal' && <span class="badge tag">Portal</span>}
+                  {d.channel === 'keiner' && <span class="badge tag">kein Versand</span>}{' '}
                   {d.actual_recipients.join(', ')}
                   {d.channel === 'portal' && (
                     <div class="small mut">

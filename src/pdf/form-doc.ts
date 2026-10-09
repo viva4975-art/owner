@@ -496,3 +496,4 @@ export class FormDoc {
 
 export const FORM_COLORS = { BORDEAUX, MUT };
 export const FORM_X = { L, R };
+export const FORM_Y = { TOP, BOTTOM, H };

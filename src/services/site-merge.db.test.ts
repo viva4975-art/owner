@@ -28,8 +28,8 @@ describe.skipIf(!available)('Objekte zusammenführen', () => {
               values (${randomUUID()}, ${emp}, ${dup}, '2026-09-07', '2026-09-07 06:00+02', '2026-09-07 09:00+02',
                       'buero', 'freigegeben', 'test')`;
     await sql`insert into app.site_services (id, site_id, kind, description, unit_code, quantity_milli, unit_price_cents,
-                                             vat_rate_bp, valid_from, sort_order)
-              values (${randomUUID()}, ${dup}, 'monthly_flat', 'Unterhaltsreinigung', 'LS', 1000, 120000, 1900, '2026-01-01', 1)`;
+                                             vat_rate_bp, valid_from, sort_order, cost_center)
+              values (${randomUUID()}, ${dup}, 'monthly_flat', 'Unterhaltsreinigung', 'LS', 1000, 120000, 1900, '2026-01-01', 1, '2890102')`;
     await sql`insert into app.notes (id, entity_type, entity_id, body, author)
               values (${randomUUID()}, 'site', ${dup}, 'Schlüssel beim Hausmeister', 'test')`;
   });
@@ -52,5 +52,19 @@ describe.skipIf(!available)('Objekte zusammenführen', () => {
     const [s] = await sql<{ external_ref: string }[]>`select external_ref from app.sites where id = ${keep}`;
     expect(s!.external_ref).toBe('ftx:f:4711');
     expect((await mergedRefs(sql)).get('ftx:f:4711')).toBe(keep);
+    const [sv] = await sql<
+      { cost_center: string }[]
+    >`select cost_center from app.site_services where site_id = ${keep}`;
+    expect(sv!.cost_center).toBe('2890101');
+  });
+
+  it('Objektnummer ändern → Kostenstelle der Leistungen zieht mit (nur wenn sie die alte Nummer war)', async () => {
+    await sql`insert into app.site_services (id, site_id, kind, description, unit_code, quantity_milli, unit_price_cents,
+                                             vat_rate_bp, valid_from, sort_order, cost_center)
+              values (${randomUUID()}, ${keep}, 'monthly_flat', 'Glas', 'LS', 1000, 5000, 1900, '2026-01-01', 2, '9000')`;
+    await sql`update app.sites set site_no = '2890199' where id = ${keep}`;
+    const rows = await sql<{ cost_center: string }[]>`
+      select cost_center from app.site_services where site_id = ${keep} order by sort_order`;
+    expect(rows.map((r) => r.cost_center)).toEqual(['2890199', '9000']);
   });
 });

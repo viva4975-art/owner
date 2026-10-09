@@ -80,6 +80,9 @@ export async function mergeSites(
        where c.contype = 'f' and c.confrelid = 'app.sites'::regclass and array_length(c.conkey, 1) = 1
          and conrelid <> 'app.site_merges'::regclass`;
     for (const f of fks) note(f.tbl, await moveColumn(tx, f.tbl, f.col, fromId, intoId));
+    // umgehängte Leistungen trugen die Objektnummer der Dublette als Kostenstelle
+    await tx`update app.site_services set cost_center = ${into.site_no}
+              where site_id = ${intoId} and cost_center = ${from.site_no}`;
     for (const tbl of ['app.file_links', 'app.notes', 'app.tasks'])
       note(tbl, await moveColumn(tx, tbl, 'entity_id', fromId, intoId, ` and entity_type = 'site'`));
 

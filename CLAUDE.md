@@ -1958,3 +1958,9 @@ Testadresse.
   deaktiviert „(zusammengeführt in …)“. Zeiten: Grund im Änderungsprotokoll (§ 17 MiLoG). Fortytools-ID wird übernommen
   bzw. in `app.site_merges` gemerkt – der XML-Import legt das Objekt nicht wieder an. Protokoll `audit_log` (merge).
   Migration `20261118000001`, Test `site-merge.db.test.ts`.
+- 2026-10-09: **Kostenstelle folgt der Objektnummer** (Ahmed: „haben andere Objekte dadurch falsche Kostenstellen?“):
+  Nachkalkulation, Kostenstellen-Auswertung, Eingangsrechnungs-Aufteilung und Arbeitsschein rechnen über das Objekt
+  selbst (site_id) – das war nie betroffen. Nur der Text „Kostenstelle“ an der Leistung (`site_services.cost_center`)
+  konnte veralten: Trigger zieht ihn bei Änderung der Objektnummer mit (nur wenn er die alte Nummer war), Zusammenführen
+  setzt umgehängte Leistungen auf die Nummer des behaltenen Objekts, Migration `20261118000002` korrigiert Bestand
+  (Nummer eines anderen Objekts oder Import-Zwischennummer „…~…“ → eigene Objektnummer; 9000er und freie Texte bleiben).

@@ -2103,3 +2103,12 @@ Testadresse.
   bzw. Sprungmarken `#adresse`, `#zahlungen`). Entwürfe unverändert (DraftLetter).
 - 2026-10-09: Objektliste: „Markierte aktiv/inaktiv setzen“ bleibt auf derselben Seite (Seitenzahl ging beim Rücksprung
   verloren; Filter/Sortierung blieben schon). Fällt die Seite durch den Filter weg, zeigt die Liste die letzte vorhandene.
+- 2026-10-09: Objektleitung (Ahmed: „sieht kranke Leute, die nicht bei ihr eingeplant sind“; „Schlüssel, Artikel, Geräte nur
+  in ihrem Objekt“):
+  - Abwesenheiten (Karte „Abwesend“ Startseite/Zeiterfassung, App-Kennzahl „abwesend“, Team-Status, „Anträge zum
+    Genehmigen“) zeigen der Objektleitung nur noch Personen, die **im Abwesenheitszeitraum an einem ihrer Objekte
+    eingeplant** sind (Einsatz oder Vertretung, `plannedAtSites` in `absences.ts`) – vorher reichte die (oft alte/importierte)
+    Zuordnung Mitarbeiter ↔ Objekt. Bei den Objekten der Person stehen nur noch ihre eigenen.
+  - Geräte: Objektleitung öffnet/speichert nur Geräte ihrer Objekte (vorher per Link jedes Gerät), Standort nur eigene
+    Objekte, kein „Lager“. Schlüssel: Ausgabe nur an Mitarbeitende ihrer Objekte (zugeordnet oder eingeplant), auch
+    serverseitig geprüft; Objekt → Schlüssel ebenso. Artikel/Fahrzeuge sind für die Objektleitung ohnehin gesperrt.

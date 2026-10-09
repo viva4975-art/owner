@@ -279,6 +279,11 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
         select e.id, e.last_name || ', ' || coalesce(e.first_name, '') as name,
                exists (select 1 from app.employee_sites es where es.employee_id = e.id and es.site_id = ${s.id}) as here
           from app.employees e where e.status = 'aktiv'
+           -- Objektleitung: nur Leute dieses Objekts (zugeordnet oder eingeplant)
+           and (${c.get('sites') === null}
+                or exists (select 1 from app.employee_sites es where es.employee_id = e.id and es.site_id = ${s.id})
+                or exists (select 1 from app.shift_plans sp where sp.employee_id = e.id and sp.site_id = ${s.id}
+                             and (sp.valid_until is null or sp.valid_until >= ${todayBerlin()})))
          order by 3 desc, e.last_name, e.first_name`;
       const back = `/objekte/${s.id}/schluessel`;
       const nextNo = `S-${s.site_no}-${String(keys.length + 1).padStart(2, '0')}`;

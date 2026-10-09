@@ -631,7 +631,10 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
   app.get(`/geraete/:id{${UUID}}/bearbeiten`, async (c) => {
     const id = c.req.param('id');
     const d = await getDevice(sql, id);
-    const sites = await listSites(sql);
+    // Objektleitung: nur Geräte ihrer Objekte öffnen und nur dorthin stellen (kein Lager)
+    if (d) assertSite(c, d.site_id);
+    const scope = c.get('sites');
+    const sites = (await listSites(sql)).filter((s) => !scope || scope.includes(s.id));
     const no = d?.inventory_no ?? (await suggestInventoryNo(sql));
     return page(
       c,
@@ -660,8 +663,8 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
             <Field name="serial_no" label="Seriennummer" value={d?.serial_no} />
             <div>
               <label for="site_id">Standort</label>
-              <select id="site_id" name="site_id">
-                <option value="">Lager / Büro</option>
+              <select id="site_id" name="site_id" required={!!scope}>
+                <option value="">{scope ? '– Objekt wählen –' : 'Lager / Büro'}</option>
                 <SiteOptions sites={sites} selected={d?.site_id} />
               </select>
             </div>
@@ -694,6 +697,9 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
   app.post(`/geraete/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
     const body = await c.req.parseBody();
+    const cur = await getDevice(sql, id);
+    if (cur) assertSite(c, cur.site_id);
+    assertSite(c, String(body.site_id ?? ''));
     await saveDevice(sql, id, body, versionOf(body.version), c.get('actor'));
     return back(c, '/geraete', { ok: 'Gerät gespeichert.' });
   });
@@ -773,7 +779,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
     const [k, sites, employees, log] = await Promise.all([
       getKey(sql, id),
       listSites(sql).then((l) => l.filter((s) => !c.get('sites') || c.get('sites')!.includes(s.id))),
-      listEmployees(sql, { status: 'aktiv' }),
+      listEmployees(sql, { status: 'aktiv', ...(c.get('sites') ? { siteIds: c.get('sites')! } : {}) }),
       keyLog(sql, id),
     ]);
     if (k) assertSite(c, k.site_id);
@@ -915,6 +921,12 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
     if (!['ausgabe', 'rueckgabe', 'verlust'].includes(action)) throw new BusinessError('Ungültige Aktion');
     const at = typeof b.at === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.at) ? b.at : todayBerlin();
     assertSite(c, (await getKey(sql, id))?.site_id);
+    const scope = c.get('sites');
+    if (scope && action === 'ausgabe' && typeof b.employee_id === 'string' && b.employee_id) {
+      const mine = await listEmployees(sql, { status: 'aktiv', siteIds: scope });
+      if (!mine.some((e) => e.id === b.employee_id))
+        throw new BusinessError('Schlüssel nur an Mitarbeitende Ihrer Objekte ausgeben');
+    }
     await keyAction(
       sql,
       id,

@@ -233,7 +233,14 @@ export type EmployeeInput = z.infer<typeof employeeInput>;
 
 export async function listEmployees(
   sql: Sql,
-  opts: { status?: 'aktiv' | 'ausgetreten'; q?: string; tag?: string; withoutShift?: boolean } = {},
+  opts: {
+    status?: 'aktiv' | 'ausgetreten';
+    q?: string;
+    tag?: string;
+    withoutShift?: boolean;
+    /** Objektleitung: nur Mitarbeitende, die diesen Objekten zugeordnet oder dort (laufend/künftig) eingeplant sind */
+    siteIds?: string[];
+  } = {},
 ) {
   return sql<
     (Employee & {
@@ -259,6 +266,15 @@ export async function listEmployees(
      where ${opts.status ? sql`e.status = ${opts.status}` : sql`true`}
        and ${opts.withoutShift ? sql`not ${hasShift(sql)}` : sql`true`}
        and ${opts.tag ? sql`${opts.tag} = any(e.tags)` : sql`true`}
+       and ${
+         opts.siteIds
+           ? sql`(exists (select 1 from app.employee_sites es where es.employee_id = e.id
+                                and es.site_id = any(${opts.siteIds}::uuid[]))
+                  or exists (select 1 from app.shift_plans sp where sp.employee_id = e.id
+                                and sp.site_id = any(${opts.siteIds}::uuid[])
+                                and (sp.valid_until is null or sp.valid_until >= ${todayBerlin()})))`
+           : sql`true`
+       }
        and ${opts.q ? sql`(e.last_name || ' ' || e.first_name || ' ' || e.personnel_no) ilike ${'%' + opts.q + '%'}` : sql`true`}
      order by e.last_name, e.first_name`;
 }

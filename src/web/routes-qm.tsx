@@ -1,3 +1,4 @@
+import { plannedAtSites } from '../services/absences.js';
 import { fullName } from '../services/users.js';
 import { canAccess } from './permissions.js';
 import { clock, plannedShifts } from '../services/time.js';
@@ -246,21 +247,17 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
     const scope = c.get('sites');
     const noSites = scope !== null && scope.length === 0;
     const siteCond = scope === null ? sql`true` : noSites ? sql`false` : sql`site_id in ${sql(scope)}`;
-    const empCond =
-      scope === null
-        ? sql`true`
-        : noSites
-          ? sql`false`
-          : sql`(exists (select 1 from app.employee_sites es where es.employee_id = a.employee_id and es.site_id in ${sql(scope)})
-                 or exists (select 1 from app.shift_plans p where p.employee_id = a.employee_id and p.site_id in ${sql(scope)}
-                             and (p.valid_until is null or p.valid_until >= ${today})))`;
+    // Abwesenheiten nur von Leuten, die an den eigenen Objekten eingeplant sind (nicht nur zugeordnet)
+    const empCond = (from: ReturnType<typeof sql> | string, to: ReturnType<typeof sql> | string) =>
+      scope === null ? sql`true` : noSites ? sql`false` : plannedAtSites(sql, sql`a.employee_id`, scope, from, to);
     const [[n], shifts] = await Promise.all([
       sql<{ running: number; corrections: number; absent: number; requests: number }[]>`
         select (select count(*)::int from app.time_entries where end_at is null and status <> 'abgelehnt' and ${siteCond}) as running,
                (select count(*)::int from app.time_entries where status = 'beantragt' and ${siteCond}) as corrections,
                (select count(distinct a.employee_id)::int from app.absences a where a.status = 'genehmigt'
-                   and ${today}::date between a.start_date and a.end_date and ${empCond}) as absent,
-               (select count(*)::int from app.absences a where a.status = 'beantragt' and ${empCond}) as requests`,
+                   and ${today}::date between a.start_date and a.end_date and ${empCond(today, today)}) as absent,
+               (select count(*)::int from app.absences a where a.status = 'beantragt'
+                   and ${empCond(sql`a.start_date`, sql`a.end_date`)}) as requests`,
       plannedShifts(sql, { from: today, to: today }),
     ]);
     const now = clock(new Date());

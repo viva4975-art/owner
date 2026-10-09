@@ -499,21 +499,52 @@ export interface AbsentNow {
   sites: string[];
 }
 
+type Frag = ReturnType<Sql>;
+
+/**
+ * Objektleitung: Ist die Person im Zeitraum an einem ihrer Objekte eingeplant (wiederkehrender Einsatz oder
+ * Vertretung)? Grundlage für Abwesenheiten – Krankheit/Urlaub nur von Leuten, die bei ihr eingeplant sind, nicht von
+ * allen, die irgendwann dem Objekt zugeordnet wurden (Ahmed 09.10.).
+ */
+export const plannedAtSites = (sql: Sql, emp: Frag, siteIds: string[], from: Frag | string, to: Frag | string) =>
+  sql`(exists (select 1 from app.shift_plans p
+                where p.employee_id = ${emp} and p.site_id = any(${siteIds}::uuid[])
+                  and p.valid_from <= ${to}::date and (p.valid_until is null or p.valid_until >= ${from}::date))
+       or exists (select 1 from app.shift_exceptions x join app.shift_plans p on p.id = x.shift_plan_id
+                   where x.substitute_employee_id = ${emp} and p.site_id = any(${siteIds}::uuid[])
+                     and x.work_date between ${from}::date and ${to}::date))`;
+
 /**
  * Abwesend im Zeitraum (genehmigt) – für „heute abwesend“ und „demnächst“ (z. B. Urlaub eine Woche vorher). Mit den
- * Objekten der Person; `siteIds` begrenzt auf Mitarbeitende dieser Objekte (Objektleitung: nur eigene Leute).
+ * Objekten der Person; `siteIds` begrenzt auf Mitarbeitende, die während der Abwesenheit an diesen Objekten eingeplant
+ * sind (Objektleitung: nur eigene Leute, Objekte nur die eigenen).
  * Art wird angezeigt (auch „krank“ – Vorgesetzte dürfen die Arbeitsunfähigkeit kennen, die Diagnose wird nie erfasst).
  */
 export async function absentBetween(sql: Sql, from: string, to: string, siteIds: string[] | null) {
+  const sites =
+    siteIds === null
+      ? sql`coalesce((select array_agg(s.name order by s.name) from app.employee_sites es
+                       join app.sites s on s.id = es.site_id where es.employee_id = e.id), '{}')`
+      : sql`coalesce((select array_agg(distinct s.name) from app.shift_plans p join app.sites s on s.id = p.site_id
+                       where p.employee_id = e.id and p.site_id = any(${siteIds}::uuid[])
+                         and p.valid_from <= least(a.end_date, ${to}::date)
+                         and (p.valid_until is null or p.valid_until >= greatest(a.start_date, ${from}::date))), '{}')`;
   return sql<AbsentNow[]>`
     select a.employee_id, e.first_name || ' ' || e.last_name as name, a.kind, a.start_date::text,
-           a.end_date::text, a.half_day,
-           coalesce((select array_agg(s.name order by s.name) from app.employee_sites es
-                       join app.sites s on s.id = es.site_id where es.employee_id = e.id), '{}') as sites
+           a.end_date::text, a.half_day, ${sites} as sites
       from app.absences a join app.employees e on e.id = a.employee_id
      where a.status = 'genehmigt' and a.start_date <= ${to} and a.end_date >= ${from}
-       and (${siteIds === null} or exists (select 1 from app.employee_sites es
-                                           where es.employee_id = e.id and es.site_id = any(${siteIds ?? []}::uuid[])))
+       and ${
+         siteIds === null
+           ? sql`true`
+           : plannedAtSites(
+               sql,
+               sql`e.id`,
+               siteIds,
+               sql`greatest(a.start_date, ${from}::date)`,
+               sql`least(a.end_date, ${to}::date)`,
+             )
+       }
      order by a.start_date, e.last_name`;
 }
 

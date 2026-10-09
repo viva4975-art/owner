@@ -48,7 +48,16 @@ describe.skipIf(!available)('Runde 16: Heute abwesend (Datenbank)', () => {
     expect(all.map((x) => x.name)).toEqual(['Ana Abwesend']); // Bens Antrag ist nur beantragt
     expect(all[0]!.sites.length).toBe(1);
     expect(await absentOn(sql, '2026-11-05', null)).toEqual([]);
-    expect((await absentOn(sql, '2026-11-03', [DEMO.siteSchool])).length).toBe(1);
+    // Objektleitung: nur zugeordnet reicht nicht – die Person muss dort eingeplant sein (Ahmed 09.10.)
+    expect(await absentOn(sql, '2026-11-03', [DEMO.siteSchool])).toEqual([]);
+    const plan = randomUUID();
+    await sql`insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes, valid_from, valid_until)
+              values (${plan}, ${a}, ${DEMO.siteSchool}, 2, '06:00', '09:00', 0, '2026-01-01', '2026-10-31')`;
+    expect(await absentOn(sql, '2026-11-03', [DEMO.siteSchool])).toEqual([]); // Einsatz schon beendet
+    await sql`update app.shift_plans set valid_until = null where id = ${plan}`;
+    const ol = await absentOn(sql, '2026-11-03', [DEMO.siteSchool]);
+    expect(ol.length).toBe(1);
+    expect(ol[0]!.sites.length).toBe(1);
     expect(await absentOn(sql, '2026-11-03', [randomUUID()])).toEqual([]);
     // eine Woche vorher: Abwesenheit ab 02.11. erscheint ab 26.10. unter „nächste 7 Tage“
     expect((await absentBetween(sql, '2026-10-26', '2026-11-02', null)).map((x) => x.kind)).toEqual([

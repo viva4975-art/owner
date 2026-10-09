@@ -8,6 +8,7 @@ import {
   ABSENCE_STATUS_LABEL,
   type AbsenceKind,
   decideAbsence,
+  plannedAtSites,
   requestAbsence,
 } from '../services/absences.js';
 import { BusinessError } from '../services/errors.js';
@@ -113,7 +114,9 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
       select e.id, e.personnel_no, e.last_name || ', ' || e.first_name as name, e.mobile, e.phone,
              e.employment_type::text as employment_type,
              (select a.kind::text from app.absences a where a.employee_id = e.id and a.status = 'genehmigt'
-                 and ${today}::date between a.start_date and a.end_date limit 1) as absence,
+                 and ${today}::date between a.start_date and a.end_date
+                 and ${scope && scope.length ? plannedAtSites(sql, sql`e.id`, scope, today, today) : sql`true`}
+               limit 1) as absence,
              (select s.name from app.time_entries t join app.sites s on s.id = t.site_id
                where t.employee_id = e.id and t.end_at is null and t.status <> 'abgelehnt' limit 1) as running
         from app.employees e
@@ -139,6 +142,7 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
 
   /** Offene Urlaubs-/Abwesenheitsanträge (aus der Mitarbeiter-App) der eigenen Leute */
   const openRequests = async (c: Context<AppEnv>) => {
+    const scope = c.get('sites');
     const ids = (await team(c)).map((m) => m.id);
     if (!ids.length) return [];
     return sql<
@@ -157,6 +161,7 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
              a.end_date::text, a.half_day, a.note
         from app.absences a join app.employees e on e.id = a.employee_id
        where a.status = 'beantragt' and a.employee_id in ${sql(ids)}
+         and ${scope && scope.length ? plannedAtSites(sql, sql`a.employee_id`, scope, sql`a.start_date`, sql`a.end_date`) : sql`true`}
        order by a.start_date`;
   };
 

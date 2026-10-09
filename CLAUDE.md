@@ -2065,3 +2065,8 @@ Testadresse.
 - 2026-10-09: **Rechnung erwartet: mehrere auf einmal erledigen** (Ahmed: „wurden schon alle bezahlt“): Häkchen je Zeitraum,
   je Nachunternehmer und „alle“, oben Vermerk (vorbelegt „bereits bezahlt (vor der Umstellung)“) → „Markierte als erledigt
   vermerken“ (`/rechnungseingang/erwartet/auswahl`, gleiche Speicherung wie „keine Rechnung …“ mit Grund, nichts doppelt).
+- 2026-10-09: **NU-Bestellung für mehrere Objekte** (Ahmed): im Entwurf „Weitere Objekte“ (Suchfeld mit Chips). Beim Speichern
+  entsteht je weiterem Objekt eine eigene Bestellung mit denselben Angaben (eigene Nummer BE-JJJJ-NNNN, gleicher Preis, im
+  Entwurf je Objekt anpassbar; feste ID aus Bestellung + Objekt → nichts doppelt). Bewusst je Objekt eine Bestellung: Kosten
+  in Nachkalkulation/Kostenstellen bleiben je Objekt richtig, „Rechnung erwartet“ und Abrechnungsverfolgung funktionieren
+  unverändert; eine Eingangsrechnung kann alle Bestellungen abdecken („Eine Rechnung für alle erfassen“).

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { SiteOptions } from './site-options.js';
 import type { Context } from 'hono';
 import type { FC } from 'hono/jsx';
@@ -1488,6 +1488,26 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                   <SiteOptions sites={sites} selected={sc?.site_id ?? c.req.query('objekt')} />
                 </select>
               </div>
+              {draft && (
+                <div style="grid-column:1/-1">
+                  <label for="more-sites">Weitere Objekte</label>
+                  <div data-multi="more_sites">
+                    <div
+                      class="multi-chips"
+                      style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"
+                    ></div>
+                    <select id="more-sites" style="max-width:520px">
+                      <option value="">+ weiteres Objekt hinzufügen …</option>
+                      <SiteOptions sites={sites} />
+                    </select>
+                  </div>
+                  <div class="small mut">
+                    Für jedes weitere Objekt wird beim Speichern eine eigene Bestellung mit denselben Angaben
+                    angelegt (eigene Nummer, gleicher Preis – im Entwurf je Objekt anpassbar). So bleiben die
+                    Kosten je Objekt richtig; eine Eingangsrechnung kann später alle Bestellungen abdecken.
+                  </div>
+                </div>
+              )}
               <div>
                 <label for="kind">Leistung</label>
                 <select id="kind" name="service_kind">
@@ -1794,25 +1814,40 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     const v = str(b, 'version');
     try {
       const sc = cur?.contract;
-      await saveSubcontract(
-        sql,
-        id,
-        {
-          supplierId: str(b, 'supplier_id') ?? sc?.supplier_id ?? '',
-          siteId: str(b, 'site_id') ?? sc?.site_id ?? '',
-          serviceKind: str(b, 'service_kind') ?? sc?.service_kind ?? '',
-          frequency: str(b, 'frequency') ?? sc?.frequency ?? '',
-          billing: str(b, 'billing') ?? sc?.billing ?? '',
-          priceCents: str(b, 'price') ? parseEuro(str(b, 'price')!) : (sc?.price_cents ?? 0n),
-          maxHours: str(b, 'max_hours'),
-          validFrom: str(b, 'valid_from') ?? sc?.valid_from ?? '',
-          validTo: str(b, 'valid_to'),
-          description: str(b, 'description'),
-          note: str(b, 'note'),
-          version: v ? Number(v) : null,
-        },
-        c.get('actor'),
+      const input = {
+        supplierId: str(b, 'supplier_id') ?? sc?.supplier_id ?? '',
+        siteId: str(b, 'site_id') ?? sc?.site_id ?? '',
+        serviceKind: str(b, 'service_kind') ?? sc?.service_kind ?? '',
+        frequency: str(b, 'frequency') ?? sc?.frequency ?? '',
+        billing: str(b, 'billing') ?? sc?.billing ?? '',
+        priceCents: str(b, 'price') ? parseEuro(str(b, 'price')!) : (sc?.price_cents ?? 0n),
+        maxHours: str(b, 'max_hours'),
+        validFrom: str(b, 'valid_from') ?? sc?.valid_from ?? '',
+        validTo: str(b, 'valid_to'),
+        description: str(b, 'description'),
+        note: str(b, 'note'),
+        version: v ? Number(v) : null,
+      };
+      await saveSubcontract(sql, id, input, c.get('actor'));
+      // weitere Objekte (nur Entwurf): je Objekt eine eigene Bestellung mit denselben Angaben, feste ID aus
+      // Bestellung + Objekt → doppelt absenden legt nichts doppelt an
+      const more = [...new Set(([] as unknown[]).concat(b.more_sites ?? []).map(String))].filter(
+        (x) => /^[0-9a-f-]{36}$/.test(x) && x !== input.siteId,
       );
+      if (more.length && (!sc || sc.status === 'entwurf')) {
+        const made: string[] = [];
+        for (const siteId of more) {
+          const h = createHash('md5').update(`more-site:${id}:${siteId}`).digest('hex');
+          const nid = `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
+          const exists = await getSubcontract(sql, nid);
+          if (!exists) await saveSubcontract(sql, nid, { ...input, siteId, version: null }, c.get('actor'));
+          const n = await getSubcontract(sql, nid);
+          if (n) made.push(n.contract.number);
+        }
+        return back(c, `/nachunternehmer/auftraege/${id}`, {
+          ok: `Gespeichert. Weitere Bestellungen für ${more.length} Objekt(e): ${made.join(', ')}.`,
+        });
+      }
     } catch (e) {
       if (e instanceof BusinessError)
         return back(c, `/nachunternehmer/auftraege/${id}`, { fehler: e.message });

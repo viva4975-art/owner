@@ -181,8 +181,19 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
           </div>
           <input type="hidden" name="jahr" value={String(year)} />
           {by === 'datum' && <input type="hidden" name="nach" value="datum" />}
-          <input name="q" value={q ?? ''} placeholder="Kunde, Objekt, Rechnungsnr." style="max-width:260px" />
+          <input
+            name="q"
+            value={q ?? ''}
+            placeholder="Rechnungsnr., Kunde, Objekt, Bestellnr."
+            style="max-width:280px"
+          />
           <button class="btn sec sm">Suchen</button>
+          {q && (
+            <span class="small">
+              Treffer aus <b>allen Jahren</b> ·{' '}
+              <a href={qs({ q: '' }).replace(/&?q=(&|$)/, '$1')}>Suche aufheben</a>
+            </span>
+          )}
           <span class="small mut" style="margin-left:auto">
             Belege unveränderbar, 10 Jahre aufbewahrt
           </span>

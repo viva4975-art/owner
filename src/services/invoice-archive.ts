@@ -40,6 +40,12 @@ export async function archiveYear(
   by: 'leistung' | 'datum' = 'leistung',
 ) {
   if (!Number.isInteger(year) || year < 2000 || year > 2100) throw new BusinessError('Jahr ungültig');
+  // Mit Suchbegriff über alle Jahre suchen (Ahmed: „man findet die Rechnungen nach Rechnungsnummer nicht“ –
+  // die Suche war auf das gewählte Jahr beschränkt). Leerzeichen in Nummern werden ignoriert.
+  q = q?.trim() || null;
+  const like = `%${(q ?? '').replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
+  const numLike = `%${(q ?? '').replace(/\s+/g, '').replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
+  const inYear = (col: ReturnType<typeof sql>) => (q ? sql`true` : sql`extract(year from ${col}) = ${year}`);
   const rows = await sql<ArchiveRow[]>`
     select i.id, i.number, i.kind::text, i.issue_date, i.period_start, i.period_end, c.name as customer_name,
            c.customer_no, s.name as site_name, i.net_cents, i.gross_cents, i.due_date,
@@ -53,9 +59,11 @@ export async function archiveYear(
                        from app.invoice_documents d where d.invoice_id = i.id and d.kind <> 'validation_report'), '[]') as docs
       from app.invoices i join app.customers c on c.id = i.customer_id left join app.sites s on s.id = i.site_id
      where i.status = 'issued'
-       and extract(year from ${by === 'datum' ? sql`i.issue_date` : sql`coalesce(i.period_start, i.issue_date)`}) = ${year}
-       and (${q}::text is null or c.name ilike ${'%' + (q ?? '') + '%'} or i.number ilike ${'%' + (q ?? '') + '%'}
-            or coalesce(s.name, '') ilike ${'%' + (q ?? '') + '%'})
+       and ${inYear(by === 'datum' ? sql`i.issue_date` : sql`coalesce(i.period_start, i.issue_date)`)}
+       and (${q}::text is null or c.name ilike ${like} or i.number ilike ${numLike} or c.customer_no ilike ${like}
+            or coalesce(s.name, '') ilike ${like} or coalesce(s.site_no, '') ilike ${like}
+            or coalesce(i.order_reference, '') ilike ${like} or coalesce(i.buyer_reference, '') ilike ${like}
+            or coalesce(i.buyer_snapshot ->> 'name', '') ilike ${like})
      order by month desc, i.number desc`;
   // Rechnungen aus Fortytools (Import) gehören in dieselbe Liste
   const legacy = await sql<ArchiveRow[]>`
@@ -74,9 +82,10 @@ export async function archiveYear(
            to_char(${by === 'datum' ? sql`issue_date` : sql`coalesce(ps, issue_date)`}, 'YYYY-MM') as month,
            '[]'::json as docs, true as legacy
       from l
-     where extract(year from ${by === 'datum' ? sql`issue_date` : sql`coalesce(ps, issue_date)`}) = ${year}
-       and (${q}::text is null or coalesce(cname, '') ilike ${'%' + (q ?? '') + '%'} or number ilike ${'%' + (q ?? '') + '%'}
-            or coalesce(sites, '') ilike ${'%' + (q ?? '') + '%'})`;
+     where ${inYear(by === 'datum' ? sql`issue_date` : sql`coalesce(ps, issue_date)`)}
+       and (${q}::text is null or coalesce(cname, '') ilike ${like} or number ilike ${numLike}
+            or coalesce(cno, customer_no, '') ilike ${like} or coalesce(sites, '') ilike ${like}
+            or coalesce(customer_reference, '') ilike ${like})`;
   rows.push(...legacy);
   rows.sort(
     (a, b) => b.month.localeCompare(a.month) || b.number.localeCompare(a.number, 'de', { numeric: true }),

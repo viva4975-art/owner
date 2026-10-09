@@ -11,7 +11,6 @@ export const SEARCH_TYPES = [
   'Mitarbeiter',
   'Kontakt',
   'Rechnung',
-  'Rechnung (früher)',
   'Aktive Leistung',
   'Angebot',
   'Auftrag',
@@ -150,7 +149,20 @@ export async function search(
                        (select string_agg(concat_ws(' ', l.description, l.detail), ' | ') from app.invoice_lines l
                          where l.invoice_id = i.id)) as hay
         from app.invoices i join app.customers c on c.id = i.customer_id
-        left join lateral (select i.site_id) s on true) x
+        left join lateral (select i.site_id) s on true
+      union all
+      -- Rechnungen von vor der Umstellung (gleiche Ansicht /rechnungen/<id>)
+      select li.id, (select l.site_id from app.legacy_invoice_lines l
+                      where l.invoice_id = li.id and l.site_id is not null limit 1) as site_id,
+             (case when li.gross_cents < 0 then 'Storno/Korrektur ' else 'Rechnung ' end) || li.number
+             || ' - ' || to_char(li.issue_date, 'DD.MM.YYYY')
+             || ' - ' || translate(to_char(li.gross_cents / 100.0, 'FM999,999,990.00'), ',.', '.,') || ' €' as label,
+             coalesce(c.name, li.customer_no) as sub,
+             concat_ws(' ', li.number, li.customer_reference, li.customer_no, c.name, c.customer_no,
+                       li.header_text, li.footer_text,
+                       (select string_agg(concat_ws(' ', l.title, l.details), ' | ') from app.legacy_invoice_lines l
+                         where l.invoice_id = li.id)) as hay
+        from app.legacy_invoices li left join app.customers c on c.id = li.customer_id) x
      where hay ilike all(${all}) order by label desc limit ${L}`,
   );
   q2(

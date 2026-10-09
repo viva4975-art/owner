@@ -2019,3 +2019,10 @@ Testadresse.
     je Objekt **„Kosten im Detail“** = Liste der Eingangsrechnungen mit Leistungsmonat, Kostenart, Status, Anteil.
   - Tests: neu `site-folder.db.test.ts`, erweitert `site-folder.test.ts`, `portal-ranges.db.test.ts`,
     `cost-centers.db.test.ts`.
+- 2026-10-09: **Fund „Rechnungen nach Rechnungsnummer nicht zu finden“** (Ahmed): 1) Die Suche unter Rechnungen → Alle
+  Rechnungen suchte nur im gewählten Jahr (Rechnung aus 2025 bei Jahr 2026 = kein Treffer). Jetzt sucht sie mit
+  Suchbegriff **über alle Jahre** (Hinweis „Treffer aus allen Jahren“, „Suche aufheben“), Nummer auch mit Leerzeichen,
+  zusätzlich Kundennr., Objektnr., Bestellnr., Käuferreferenz, Name in der Anschrift. 2) Die globale Suche oben hatte
+  die Rechnungen von vor der Umstellung nie durchsucht (Typ war angelegt, Abfrage fehlte) – jetzt in der Gruppe
+  „Rechnung“ (Nummer, Kunde, Referenz, Kopf-/Fußtext, Positionen), Link `/rechnungen/<id>`; genau ein Treffer öffnet die
+  Rechnung direkt. Test in `invoice-archive.db.test.ts`.

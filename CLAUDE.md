@@ -2026,3 +2026,10 @@ Testadresse.
   die Rechnungen von vor der Umstellung nie durchsucht (Typ war angelegt, Abfrage fehlte) – jetzt in der Gruppe
   „Rechnung“ (Nummer, Kunde, Referenz, Kopf-/Fußtext, Positionen), Link `/rechnungen/<id>`; genau ein Treffer öffnet die
   Rechnung direkt. Test in `invoice-archive.db.test.ts`.
+- 2026-10-09: **Erteilte Bestellungen an Nachunternehmer korrigierbar** (Ahmed: „manche sind als monatlich drin, obwohl es
+  nicht monatlich ist“): vorher waren nach dem Erteilen nur Ende und Notiz änderbar. Jetzt auch bei „erteilt“/„beendet“:
+  Objekt, Leistung, Häufigkeit, Abrechnungsart, max. Stunden, Beginn/Ende, Leistungsumfang. Nachunternehmer und Preis
+  bleiben gesperrt (Preisänderung über Preisnachtrag ab Monat), stornierte Bestellungen bleiben unveränderbar. Jede
+  Änderung mit altem/neuem Wert im Protokoll (`audit_log.details`). Hinweis im Formular; ist die Bestellung schon
+  unterschrieben → neu unterschreiben lassen. Wirkt sofort auf „Rechnung erwartet“/Abrechnungsverfolgung und die
+  NU-Schätzung der Nachkalkulation (nur „Pauschale je Monat“ wird geschätzt). Test in `subcontractors.db.test.ts`.

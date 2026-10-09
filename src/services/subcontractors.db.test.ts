@@ -189,6 +189,29 @@ describe.skipIf(!available)('Nachunternehmer', () => {
     const oct = (await monthOverview(sql, '2026-10')).find((r) => r.id === id)!;
     expect(oct).toMatchObject({ soll: 157500n, ist_cents: null, state: 'fehlt' });
 
+    // erteilte Bestellung korrigieren (Ahmed 09.10.): Häufigkeit/Abrechnung änderbar, Preis/Nachunternehmer bleiben
+    const [cur] = await sql<{ version: number }[]>`select version from app.subcontracts where id = ${id}`;
+    const version = cur!.version;
+    await saveSubcontract(
+      sql,
+      id,
+      { ...input, frequency: 'quartalsweise', billing: 'pauschale_einsatz', priceCents: 1n, version },
+      't',
+    );
+    const [ed] =
+      await sql`select frequency, billing, price_cents, status from app.subcontracts where id = ${id}`;
+    expect(ed).toMatchObject({
+      frequency: 'quartalsweise',
+      billing: 'pauschale_einsatz',
+      price_cents: 150000n,
+      status: 'erteilt',
+    });
+    const [log] = await sql<{ details: Record<string, { alt: unknown; neu: unknown }> }[]>`
+      select details from app.audit_log where entity = 'subcontract' and entity_id = ${id} and details is not null
+       order by id desc limit 1`;
+    expect(log!.details.frequency).toEqual({ alt: 'monatlich', neu: 'quartalsweise' });
+    expect(Object.keys(log!.details).sort()).toEqual(['billing', 'frequency']);
+
     const pdfBytes = await compliancePdf(sql, nu);
     expect((await PDFDocument.load(pdfBytes)).getTitle()).toMatch(/Nachweisübersicht/);
 

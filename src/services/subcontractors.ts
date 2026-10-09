@@ -557,9 +557,35 @@ export async function saveSubcontract(sql: Sql, id: string, p: SubcontractInput,
   await sql.begin(async (tx) => {
     const [cur] = await tx<Subcontract[]>`select * from app.subcontracts where id = ${id} for update`;
     assertVersion(cur?.version, p.version, 'Der Auftrag');
+    if (cur && cur.status === 'storniert')
+      throw new BusinessError('Stornierte Bestellung kann nicht geändert werden');
     if (cur && cur.status !== 'entwurf') {
-      // erteilt: nur Ende, Notiz – Preisänderungen über Nachtrag
-      await tx`update app.subcontracts set valid_to = ${p.validTo}, note = ${p.note?.trim() || null} where id = ${id}`;
+      // erteilt/beendet (Ahmed 09.10.: „manche sind als monatlich drin, obwohl es nicht monatlich ist“): Objekt,
+      // Leistung, Häufigkeit, Abrechnung, Stunden, Zeitraum, Beschreibung korrigierbar. Nachunternehmer und Preis bleiben
+      // (Preisänderung über Nachtrag ab Monat). Alter/neuer Stand ins Protokoll.
+      const next = {
+        site_id: p.siteId || cur.site_id,
+        service_kind: p.serviceKind.trim(),
+        frequency: p.frequency,
+        billing: p.billing,
+        max_hours_month: p.maxHours ? p.maxHours.replace(',', '.') : null,
+        valid_from: p.validFrom,
+        valid_to: p.validTo,
+        description: p.description?.trim() || null,
+        note: p.note?.trim() || null,
+      };
+      const old = cur as unknown as Record<string, unknown>;
+      const norm = (v: unknown) => (v === null || v === undefined ? null : String(v).replace(/\.0+$/, ''));
+      const changes = Object.fromEntries(
+        Object.entries(next)
+          .filter(([k, v]) => norm(old[k]) !== norm(v))
+          .map(([k, v]) => [k, { alt: old[k] ?? null, neu: v }]),
+      );
+      if (!Object.keys(changes).length) return;
+      await tx`update app.subcontracts set ${tx(next)} where id = ${id}`;
+      await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+               values (${actor}, 'update', 'subcontract', ${id}, ${tx.json(changes as never)})`;
+      return;
     } else {
       if (!sup.active) throw new BusinessError('Nachunternehmer ist inaktiv/gekündigt');
       const row = {

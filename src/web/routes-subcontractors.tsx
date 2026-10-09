@@ -1450,11 +1450,29 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
           data-version={String(sc?.version ?? '')}
         >
           <input type="hidden" name="version" value={String(sc?.version ?? '')} />
-          <fieldset disabled={!draft} style="border:0;padding:0;margin:0">
+          {!draft && sc?.status !== 'storniert' && (
+            <div class="flash" style="margin-top:0">
+              <div>
+                Bestellung ist {SC_STATUS[sc!.status]}: Objekt, Leistung, Häufigkeit, Abrechnung, Stunden,
+                Zeitraum und Beschreibung lassen sich korrigieren (alter Stand im Protokoll). Nachunternehmer
+                und Preis bleiben – eine Preisänderung bitte unten als <b>Preisnachtrag ab Monat</b> erfassen.
+                {sc?.signed_file_path
+                  ? ' Achtung: Die Bestellung ist bereits unterschrieben – bei inhaltlichen Änderungen neu unterschreiben lassen.'
+                  : ''}
+              </div>
+            </div>
+          )}
+          {!draft && (
+            <>
+              <input type="hidden" name="supplier_id" value={sc!.supplier_id} />
+              <input type="hidden" name="price" value={centsToInput(sc!.price_cents)} />
+            </>
+          )}
+          <fieldset disabled={sc?.status === 'storniert'} style="border:0;padding:0;margin:0">
             <div class="grid">
               <div>
                 <label for="nu">Nachunternehmer</label>
-                <select id="nu" name="supplier_id" required>
+                <select id="nu" name={draft ? 'supplier_id' : undefined} required disabled={!draft}>
                   <option value="">– bitte wählen –</option>
                   {subs.map((s) => (
                     <option value={s.id} selected={s.id === (sc?.supplier_id ?? c.req.query('nu'))}>
@@ -1504,10 +1522,11 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 <label for="price">Preis netto (€)</label>
                 <input
                   id="price"
-                  name="price"
+                  name={draft ? 'price' : undefined}
                   inputmode="decimal"
                   value={sc ? centsToInput(sc.price_cents) : ''}
                   required
+                  disabled={!draft}
                 />
               </div>
               <div>

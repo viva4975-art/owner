@@ -292,6 +292,8 @@ export interface WorkReport {
   customer_id: string;
   site_id: string;
   work_date: string;
+  /** letzter Tag bei mehrtägigen Arbeiten */
+  work_date_to: string | null;
   start_time: string | null;
   end_time: string | null;
   employee_ids: string[];
@@ -307,6 +309,9 @@ export interface WorkReport {
   pdf_path: string | null;
   pdf_sha256: string | null;
   invoice_id: string | null;
+  cancelled_at: Date | null;
+  cancelled_by: string | null;
+  cancel_reason: string | null;
   created_by: string;
   created_at: Date;
   version: number;
@@ -321,6 +326,8 @@ export interface WorkReportLine {
   /** Regiestunden: Name der Person */
   person: string | null;
   unit_price_cents: bigint | null;
+  /** Datum der Stunden (mehrtägige Arbeitsscheine), sonst null = Datum des Scheins */
+  line_date: string | null;
 }
 export type WorkReportRow = WorkReport & {
   customer_name: string;
@@ -330,7 +337,7 @@ export type WorkReportRow = WorkReport & {
 };
 
 const wrSelect = (sql: Sql) => sql`
-  select w.*, to_char(w.start_time, 'HH24:MI') as start_time, to_char(w.end_time, 'HH24:MI') as end_time,
+  select w.*, w.work_date_to::text as work_date_to, to_char(w.start_time, 'HH24:MI') as start_time, to_char(w.end_time, 'HH24:MI') as end_time,
          c.name as customer_name, s.name as site_name, s.site_no, o.number as order_number
     from app.work_reports w join app.customers c on c.id = w.customer_id join app.sites s on s.id = w.site_id
     left join app.orders o on o.id = w.order_id`;
@@ -344,7 +351,7 @@ export async function listWorkReports(
      where ${f.siteId ? sql`w.site_id = ${f.siteId}` : sql`true`}
        and ${f.orderId ? sql`w.order_id = ${f.orderId}` : sql`true`}
        and ${f.status?.length ? sql`w.status in ${sql(f.status)}` : sql`true`}
-       and ${f.unbilled ? sql`w.invoice_id is null` : sql`true`}
+       and ${f.unbilled ? sql`w.invoice_id is null and w.cancelled_at is null` : sql`true`}
      order by w.work_date desc, w.number desc`;
 }
 
@@ -353,7 +360,7 @@ export async function getWorkReport(sql: Sql, id: string) {
   if (!w) return undefined;
   const lines = await sql<
     WorkReportLine[]
-  >`select * from app.work_report_lines where work_report_id = ${id} order by position`;
+  >`select *, line_date::text as line_date from app.work_report_lines where work_report_id = ${id} order by position`;
   const employees = w.employee_ids.length
     ? await sql<{ id: string; name: string }[]>`
         select id, first_name || ' ' || last_name as name from app.employees where id in ${sql(w.employee_ids)} order by last_name`
@@ -365,6 +372,7 @@ export interface WorkReportInput {
   orderId: string | null;
   siteId: string;
   workDate: string;
+  workDateTo?: string | null;
   startTime: string | null;
   endTime: string | null;
   employeeIds: string[];
@@ -377,12 +385,24 @@ export interface WorkReportInput {
     unitCode: string;
     serviceId?: string | null;
     person?: string | null;
+    lineDate?: string | null;
   }[];
   expectedVersion: number | null;
 }
 
 export async function saveWorkReport(sql: Sql, id: string, input: WorkReportInput, actor: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.workDate)) throw new BusinessError('Datum ungültig');
+  const to = input.workDateTo && input.workDateTo !== input.workDate ? input.workDateTo : null;
+  if (to && (!/^\d{4}-\d{2}-\d{2}$/.test(to) || to < input.workDate))
+    throw new BusinessError('„bis“ muss am oder nach dem Datum „von“ liegen');
+  for (const l of input.lines) {
+    if (!l.lineDate) continue;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(l.lineDate)) throw new BusinessError('Datum einer Stundenzeile ungültig');
+    if (l.lineDate < input.workDate || l.lineDate > (to ?? input.workDate))
+      throw new BusinessError(
+        `Datum ${l.lineDate.split('-').reverse().join('.')} liegt außerhalb des Arbeitsscheins (von–bis)`,
+      );
+  }
   if (input.startTime && input.endTime && input.endTime <= input.startTime)
     throw new BusinessError('Ende muss nach dem Beginn liegen');
   if (!input.description?.trim() && !input.lines.length)
@@ -412,6 +432,7 @@ export async function saveWorkReport(sql: Sql, id: string, input: WorkReportInpu
       customer_id: site.customer_id,
       site_id: input.siteId,
       work_date: input.workDate,
+      work_date_to: to,
       start_time: input.startTime,
       end_time: input.endTime,
       employee_ids: input.employeeIds,
@@ -448,12 +469,59 @@ export async function saveWorkReport(sql: Sql, id: string, input: WorkReportInpu
             service_id: sv?.id ?? null,
             person: l.person?.trim() || null,
             unit_price_cents: sv ? sv.unit_price_cents : null,
+            line_date:
+              l.lineDate && l.lineDate !== input.workDate ? l.lineDate : l.lineDate && to ? l.lineDate : null,
           };
         }),
       )}`;
     }
     await tx`insert into app.audit_log (actor, action, entity, entity_id) values (${actor}, ${cur ? 'update' : 'create'}, 'work_report', ${id})`;
   });
+}
+
+/** Entwurf löschen (Positionen, Verknüpfungen zu Tiefgaragen-Terminen/Sonderdiensten lösen; Fotos bleiben im Archiv). */
+export async function deleteWorkReport(sql: Sql, id: string, actor: string) {
+  await sql.begin(async (tx) => {
+    const [w] = await tx<{ number: string; status: WorkReportStatus }[]>`
+      select number, status from app.work_reports where id = ${id} for update`;
+    if (!w) throw new BusinessError('Arbeitsschein nicht gefunden');
+    if (w.status !== 'entwurf')
+      throw new BusinessError('Abgeschlossene Arbeitsscheine können nur storniert werden');
+    for (const t of ['tg_appointments', 'special_service_runs'])
+      if ((await tx`select to_regclass(${'app.' + t}) as r`)[0]!.r)
+        await tx.unsafe(`update app.${t} set work_report_id = null where work_report_id = $1`, [id]);
+    await tx`delete from app.work_reports where id = ${id}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'delete', 'work_report', ${id}, ${tx.json({ number: w.number })})`;
+  });
+}
+
+/** Abgeschlossenen Arbeitsschein stornieren (mit Grund). Bereits abgerechnete: erst die Rechnung stornieren. */
+export async function cancelWorkReport(sql: Sql, id: string, reason: string, actor: string) {
+  if (!reason.trim()) throw new BusinessError('Bitte Grund angeben');
+  const [w] = await sql<
+    {
+      status: WorkReportStatus;
+      invoice_id: string | null;
+      cancelled_at: Date | null;
+      inv_status: string | null;
+      inv_number: string | null;
+    }[]
+  >`select w.status, w.invoice_id, w.cancelled_at, i.status::text as inv_status, i.number as inv_number
+      from app.work_reports w left join app.invoices i on i.id = w.invoice_id where w.id = ${id}`;
+  if (!w) throw new BusinessError('Arbeitsschein nicht gefunden');
+  if (w.cancelled_at) return;
+  if (w.status === 'entwurf') throw new BusinessError('Entwürfe bitte löschen');
+  if (w.invoice_id)
+    throw new BusinessError(
+      w.inv_number
+        ? `Schon abgerechnet (Rechnung ${w.inv_number}) – bitte zuerst die Rechnung stornieren bzw. korrigieren`
+        : 'Schon in einem Rechnungsentwurf – bitte zuerst den Entwurf löschen',
+    );
+  await sql`update app.work_reports set cancelled_at = now(), cancelled_by = ${actor}, cancel_reason = ${reason.trim()}
+             where id = ${id} and cancelled_at is null`;
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${actor}, 'cancel', 'work_report', ${id}, ${sql.json({ reason: reason.trim() })})`;
 }
 
 const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -526,6 +594,10 @@ export async function renderWorkReportPdf(deps: Deps, id: string): Promise<Uint8
   const [site] = await deps.sql<{ street: string | null; postal_code: string | null; city: string | null }[]>`
     select street, postal_code, city from app.sites where id = ${w.site_id}`;
   const png = w.signature_path ? await deps.archive.get(w.signature_path) : null;
+  const dShort = (d: string) => formatDateDe(d).slice(0, 6) + formatDateDe(d).slice(8);
+  const dateText = w.work_date_to
+    ? `${formatDateDe(w.work_date).slice(0, 6)} – ${formatDateDe(w.work_date_to)}`
+    : formatDateDe(w.work_date);
   const time =
     w.start_time && w.end_time ? `${w.start_time.slice(0, 5)} – ${w.end_time.slice(0, 5)} Uhr` : '-';
   const regie = lines.filter((l) => l.person);
@@ -536,11 +608,11 @@ export async function renderWorkReportPdf(deps: Deps, id: string): Promise<Uint8
     sideRef: `VD-AS Arbeitsschein ${w.number}`,
     date: w.work_date,
     author: seller.legalName,
-    ...(w.status === 'entwurf' ? { watermark: 'ENTWURF' } : {}),
+    ...(w.cancelled_at ? { watermark: 'STORNIERT' } : w.status === 'entwurf' ? { watermark: 'ENTWURF' } : {}),
   });
   d.title('Arbeitsschein', `Nr. ${w.number}`);
   d.infoGrid([
-    ['Datum', formatDateDe(w.work_date)],
+    [w.work_date_to ? 'Zeitraum' : 'Datum', dateText],
     ['Zeit', time],
     ['Kostenstelle', w.site_no],
     [
@@ -588,15 +660,17 @@ export async function renderWorkReportPdf(deps: Deps, id: string): Promise<Uint8
   if (regie.length || employees.length) {
     d.section('Regie-/Stundennachweis');
     const rows: string[][] = regie.length
-      ? regie.map((l) => [
-          formatDateDe(w.work_date).slice(0, 6) + formatDateDe(w.work_date).slice(8),
-          l.person ?? '',
-          w.start_time && w.end_time ? `${w.start_time.slice(0, 5)}–${w.end_time.slice(0, 5)}` : '',
-          qty(l.quantity_milli),
-          l.description === 'Regiestunden' ? (w.description ?? '').split('\n')[0]! : l.description,
-        ])
+      ? [...regie]
+          .sort((a, b) => (a.line_date ?? w.work_date).localeCompare(b.line_date ?? w.work_date))
+          .map((l) => [
+            dShort(l.line_date ?? w.work_date),
+            l.person ?? '',
+            w.start_time && w.end_time ? `${w.start_time.slice(0, 5)}–${w.end_time.slice(0, 5)}` : '',
+            qty(l.quantity_milli),
+            l.description === 'Regiestunden' ? (w.description ?? '').split('\n')[0]! : l.description,
+          ])
       : employees.map((e) => [
-          formatDateDe(w.work_date).slice(0, 6) + formatDateDe(w.work_date).slice(8),
+          dShort(w.work_date),
           e.name,
           w.start_time && w.end_time ? `${w.start_time.slice(0, 5)}–${w.end_time.slice(0, 5)}` : '',
           '',
@@ -654,7 +728,10 @@ export async function workReportPdf(deps: Deps, id: string): Promise<Uint8Array>
     { pdf_path: string | null }[]
   >`select pdf_path from app.work_reports where id = ${id}`;
   if (!w) throw new BusinessError('Arbeitsschein nicht gefunden');
-  return w.pdf_path ? deps.archive.get(w.pdf_path) : renderWorkReportPdf(deps, id);
+  const [c] = await deps.sql<
+    { cancelled: boolean }[]
+  >`select cancelled_at is not null as cancelled from app.work_reports where id = ${id}`;
+  return w.pdf_path && !c?.cancelled ? deps.archive.get(w.pdf_path) : renderWorkReportPdf(deps, id);
 }
 
 // ---------------------------------------------------------------------------
@@ -664,9 +741,10 @@ export async function workReportPdf(deps: Deps, id: string): Promise<Uint8Array>
 /** Abgeschlossene Arbeitsscheine an einen Rechnungsentwurf hängen (PDF als Anlage, Schein als abgerechnet markieren). */
 async function attachReports(deps: Deps, invoiceId: string, reportIds: string[], actor: string) {
   for (const rid of reportIds) {
-    const [w] = await deps.sql<{ number: string; status: WorkReportStatus; invoice_id: string | null }[]>`
-      select number, status, invoice_id from app.work_reports where id = ${rid}`;
-    if (!w || w.status === 'entwurf' || w.invoice_id) continue;
+    const [w] = await deps.sql<
+      { number: string; status: WorkReportStatus; invoice_id: string | null; cancelled_at: Date | null }[]
+    >`select number, status, invoice_id, cancelled_at from app.work_reports where id = ${rid}`;
+    if (!w || w.status === 'entwurf' || w.invoice_id || w.cancelled_at) continue;
     const pdf = await workReportPdf(deps, rid);
     await addAttachment(deps, invoiceId, `Arbeitsschein_${w.number}.pdf`, 'application/pdf', pdf, actor);
     await deps.sql`update app.work_reports set invoice_id = ${invoiceId} where id = ${rid} and invoice_id is null`;
@@ -751,11 +829,12 @@ export async function reportsToInvoice(
   for (const r of reports.sort((a, b) => a.work_date.localeCompare(b.work_date))) {
     const rl = await sql<
       WorkReportLine[]
-    >`select * from app.work_report_lines where work_report_id = ${r.id} order by position`;
+    >`select *, line_date::text as line_date from app.work_report_lines where work_report_id = ${r.id} order by position`;
     for (const l of rl) {
+      const ld = l.line_date ?? (l.person ? r.work_date : null);
       lines.push({
         description: l.person ? `${l.description} – ${l.person}` : l.description,
-        detail: `Arbeitsschein ${r.number} vom ${formatDateDe(r.work_date)}`,
+        detail: `Arbeitsschein ${r.number} vom ${formatDateDe(ld ?? r.work_date)}${!ld && r.work_date_to ? ` bis ${formatDateDe(r.work_date_to)}` : ''}`,
         quantity: l.quantity_milli as Quantity,
         unitCode: l.unit_code,
         // Leistung aus dem Katalog: eingefrorener Preis; Stunden: Regiestundensatz des Objekts
@@ -763,8 +842,8 @@ export async function reportsToInvoice(
           (l.unit_code === 'HUR' && rate ? rate.unit_price_cents : 0n)) as Cents,
         vatRate: rate?.vat_rate_bp ?? 1900,
         sourceServiceId: null,
-        periodStart: r.work_date,
-        periodEnd: r.work_date,
+        periodStart: ld ?? r.work_date,
+        periodEnd: ld ?? r.work_date_to ?? r.work_date,
       });
     }
   }
@@ -781,7 +860,10 @@ export async function reportsToInvoice(
       siteId,
       kind: 'invoice',
       periodStart: reports[0]!.work_date,
-      periodEnd: reports[reports.length - 1]!.work_date,
+      periodEnd: reports.reduce(
+        (m, r) => ((r.work_date_to ?? r.work_date) > m ? (r.work_date_to ?? r.work_date) : m),
+        reports[0]!.work_date,
+      ),
       orderReference: site!.order_reference,
       introText: 'Für die folgenden Regiearbeiten (Leistungsnachweise anbei) berechnen wir:',
       closingText: null,

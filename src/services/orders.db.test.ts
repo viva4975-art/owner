@@ -5,7 +5,9 @@ import type { Sql } from '../db/client.js';
 import { parseEuro, parseQuantity } from '../domain/money/money.js';
 import { saveOffer, setOfferStatus } from './offers.js';
 import {
+  cancelWorkReport,
   closeWithoutSignature,
+  deleteWorkReport,
   getOrder,
   getWorkReport,
   orderFromOffer,
@@ -208,5 +210,78 @@ describe.skipIf(!available)('Aufträge und Arbeitsscheine', () => {
     const o = (await getOrder(sql, o1))!;
     expect(o.lines.map((l) => l.description)).toEqual(['Sonderreinigung']);
     expect(o.order.net_cents).toBe(90000n);
+  });
+
+  it('mehrtägig von–bis, Stunden je Datum; Entwurf löschen, Abgeschlossenen stornieren', async () => {
+    const id = randomUUID();
+    const multi = report({
+      workDate: '2026-10-05',
+      workDateTo: '2026-10-07',
+      lines: [
+        {
+          description: 'Regiestunden',
+          quantity: parseQuantity('4'),
+          unitCode: 'HUR',
+          person: 'Ana',
+          lineDate: '2026-10-05',
+        },
+        {
+          description: 'Regiestunden',
+          quantity: parseQuantity('3'),
+          unitCode: 'HUR',
+          person: 'Ana',
+          lineDate: '2026-10-06',
+        },
+      ],
+    });
+    await saveWorkReport(sql, id, multi, 'test');
+    let r = (await getWorkReport(sql, id))!;
+    expect(r.report.work_date_to).toBe('2026-10-07');
+    expect(r.lines.map((l) => l.line_date)).toEqual(['2026-10-05', '2026-10-06']);
+    // Datum außerhalb von–bis abgelehnt
+    await expect(
+      saveWorkReport(
+        sql,
+        id,
+        {
+          ...multi,
+          lines: [
+            {
+              description: 'Regiestunden',
+              quantity: parseQuantity('1'),
+              unitCode: 'HUR',
+              person: 'Ana',
+              lineDate: '2026-10-09',
+            },
+          ],
+          expectedVersion: r.report.version,
+        },
+        'test',
+      ),
+    ).rejects.toThrow(/außerhalb/);
+    await expect(
+      saveWorkReport(sql, randomUUID(), report({ workDate: '2026-10-05', workDateTo: '2026-10-01' }), 'test'),
+    ).rejects.toThrow(/bis/);
+    expect(Buffer.from((await workReportPdf(deps, id)).slice(0, 5)).toString()).toBe('%PDF-');
+
+    // Entwurf löschen
+    const draft = randomUUID();
+    await saveWorkReport(sql, draft, report(), 'test');
+    await deleteWorkReport(sql, draft, 'test');
+    expect(await getWorkReport(sql, draft)).toBeUndefined();
+
+    // abgeschlossen: löschen verboten, stornieren mit Grund; danach nicht abrechenbar
+    await closeWithoutSignature(deps, id, '', 'test');
+    await expect(deleteWorkReport(sql, id, 'test')).rejects.toThrow(/storniert/);
+    await expect(cancelWorkReport(sql, id, ' ', 'test')).rejects.toThrow(/Grund/);
+    await cancelWorkReport(sql, id, 'doppelt erfasst', 'test');
+    r = (await getWorkReport(sql, id))!;
+    expect(r.report.cancel_reason).toBe('doppelt erfasst');
+    await expect(reportsToInvoice(deps, DEMO.siteSchool, [id], 'buero')).rejects.toThrow(
+      /schon abgerechnet|nicht abgeschlossen/,
+    );
+    await expect(sql`update app.work_reports set remarks = 'x' where id = ${id}`).rejects.toThrow(
+      /storniert/,
+    );
   });
 });

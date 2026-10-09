@@ -1828,3 +1828,10 @@ Testadresse.
   × zum Entfernen). Das echte Feld liegt unsichtbar darüber → Formulare, Pflichtfeld-Prüfung, Ziehen & Ablegen bleiben
   (`filePick` in `client.ts`, CSS `.fpick`). Ausgenommen: versteckte Felder, Felder in eigenen Knöpfen (label) und die
   großen Upload-Zonen.
+- 2026-10-09: **Arbeitsscheine** (Ahmed): **Datum von – bis** bei mehrtägigen Arbeiten (`work_reports.work_date_to`);
+  Regiestunden mit **Datum je Zeile** (`work_report_lines.line_date`, muss im Zeitraum liegen) und **„Kopieren“** (gleiche
+  Zeile für den nächsten Tag). PDF: „Zeitraum 05.10. – 07.10.2026“, Stundennachweis nach Datum sortiert; Abrechnung
+  übernimmt das Datum je Stundenzeile als Leistungsdatum, sonstige Positionen den Zeitraum. **Entwurf löschen**
+  (Verknüpfung Tiefgarage-Termin wird gelöst, Fotos bleiben im Archiv); **abgeschlossene stornieren** mit Grund (bleibt
+  sichtbar, Schild „storniert“, PDF mit Wasserzeichen STORNIERT, nicht abrechenbar, danach unveränderbar). Bereits
+  abgerechnete: erst Rechnung stornieren bzw. Entwurf löschen. Migration `20261116000002` (Trigger erweitert).

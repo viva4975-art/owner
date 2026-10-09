@@ -12,7 +12,9 @@ import {
   type WorkReportStatus,
   ORDER_STATUS,
   WR_STATUS,
+  cancelWorkReport,
   closeWithoutSignature,
+  deleteWorkReport,
   executionNotes,
   getOrder,
   getWorkReport,
@@ -28,6 +30,7 @@ import {
   workReportPdf,
 } from '../services/orders.js';
 import { listFiles } from '../services/uploads.js';
+import { fullName } from '../services/users.js';
 import { type Ctx, UUID, assertSite, inScope } from './app.js';
 import { FileArea } from './files.js';
 import { arr, milliToInput, parseLines, str } from './forms.js';
@@ -76,9 +79,12 @@ export const SIGN_JS = `
 const WR_LINES_JS = `
 (function(){
   function setup(tbId,tplId,addId){var tb=document.querySelector('#'+tbId+' tbody'),tpl=document.getElementById(tplId);if(!tb||!tpl)return null;
-    function wire(tr){var d=tr.querySelector('.del');if(d)d.addEventListener('click',function(){tr.remove()});var sv=tr.querySelector('[name=line_svc]');if(sv)sv.addEventListener('change',function(){var o=sv.options[sv.selectedIndex];var di=tr.querySelector('[name=line_desc]');if(sv.value&&di&&!di.value.trim())di.value=o.dataset.desc||'';var u=tr.querySelector('[name=line_unit]');if(sv.value&&u&&o.dataset.unit)u.value=o.dataset.unit;})}
+    function wire(tr){var d=tr.querySelector('.del');if(d)d.addEventListener('click',function(){tr.remove()});
+      var cp=tr.querySelector('.copy');if(cp)cp.addEventListener('click',function(){var n=tr.cloneNode(true);var src=tr.querySelectorAll('input,select'),dst=n.querySelectorAll('input,select');for(var i=0;i<src.length;i++)dst[i].value=src[i].value;
+        var dt=n.querySelector('[name=line_date]');var to=document.getElementById('work_date_to');if(dt&&dt.value){var x=new Date(dt.value+'T12:00:00Z');x.setUTCDate(x.getUTCDate()+1);var nx=x.toISOString().slice(0,10);if(!to||!to.value||nx<=to.value)dt.value=nx;}
+        tr.parentNode.insertBefore(n,tr.nextSibling);wire(n);var q=n.querySelector('[name=line_date]')||n.querySelector('input');if(q)q.focus();});var sv=tr.querySelector('[name=line_svc]');if(sv)sv.addEventListener('change',function(){var o=sv.options[sv.selectedIndex];var di=tr.querySelector('[name=line_desc]');if(sv.value&&di&&!di.value.trim())di.value=o.dataset.desc||'';var u=tr.querySelector('[name=line_unit]');if(sv.value&&u&&o.dataset.unit)u.value=o.dataset.unit;})}
     Array.prototype.forEach.call(tb.querySelectorAll('tr'),wire);
-    document.getElementById(addId).addEventListener('click',function(){var tr=tpl.content.firstElementChild.cloneNode(true);tb.appendChild(tr);wire(tr);var f=tr.querySelector('input,select');if(f)f.focus();});
+    document.getElementById(addId).addEventListener('click',function(){var tr=tpl.content.firstElementChild.cloneNode(true);var ld=tr.querySelector('input[type=date][name=line_date]');var wd=document.getElementById('work_date');if(ld&&!ld.value&&wd)ld.value=wd.value;tb.appendChild(tr);wire(tr);var f=tr.querySelector('input,select');if(f)f.focus();});
     return tb;}
   setup('wr-lines','wr-line-tpl','wr-add');
   var rt=setup('wr-regie','wr-regie-tpl','wr-regie-add');
@@ -86,6 +92,9 @@ const WR_LINES_JS = `
   var s=document.getElementById('start'), e=document.getElementById('end');
   function hours(){if(!rt||!s.value||!e.value)return;var a=s.value.split(':'),b=e.value.split(':');var h=((+b[0]*60+ +b[1])-(+a[0]*60+ +a[1]))/60;if(h<=0)return;rt.querySelectorAll('[name=line_qty]').forEach(function(inp){if(!inp.dataset.touched&&!inp.value)inp.value=(Math.round(h*100)/100).toString().replace('.',',')})}
   [s,e].forEach(function(x){x&&x.addEventListener('change',hours)});
+  var wd=document.getElementById('work_date'),wt=document.getElementById('work_date_to');
+  function range(){if(!wd)return;var to=(wt&&wt.value)||wd.value;document.querySelectorAll('#wr-regie [name=line_date]').forEach(function(i){i.min=wd.value;i.max=to;if(!i.value||i.value<wd.value||i.value>to)i.value=wd.value;});}
+  [wd,wt].forEach(function(x){x&&x.addEventListener('change',range)});
   document.addEventListener('input',function(ev){if(ev.target.name==='line_qty')ev.target.dataset.touched='1'});
   // Mitarbeiter angehakt → Regie-Zeile mit Namen anlegen
   document.querySelectorAll('input[name=employee]').forEach(function(x){x.addEventListener('change',function(){if(!x.checked||!rt)return;var n=x.dataset.name;var have=Array.prototype.some.call(rt.querySelectorAll('[name=line_person]'),function(p){return p.value===n});if(have)return;var empty=Array.prototype.find.call(rt.querySelectorAll('[name=line_person]'),function(p){return !p.value});if(!empty){document.getElementById('wr-regie-add').click();empty=rt.querySelector('tr:last-child [name=line_person]')}empty.value=n;hours()})});
@@ -117,7 +126,7 @@ export const WorkReportTable: FC<{ rows: WorkReportRow[]; select?: boolean }> = 
           <tr>
             {select && (
               <td>
-                {w.status !== 'entwurf' && !w.invoice_id && (
+                {w.status !== 'entwurf' && !w.invoice_id && !w.cancelled_at && (
                   <input type="checkbox" name="report" value={w.id} checked aria-label="abrechnen" />
                 )}
               </td>
@@ -128,11 +137,20 @@ export const WorkReportTable: FC<{ rows: WorkReportRow[]; select?: boolean }> = 
               </a>
               {w.order_number && <div class="small mut">{w.order_number}</div>}
             </td>
-            <td>{dateDe(w.work_date)}</td>
+            <td>
+              {dateDe(w.work_date)}
+              {w.work_date_to && <div class="small mut">bis {dateDe(w.work_date_to)}</div>}
+            </td>
             <td>{w.site_name}</td>
             <td class="small">{(w.description ?? '').slice(0, 80)}</td>
             <td>
-              <span class={`badge ${WR_CLASS[w.status]}`}>{WR_STATUS[w.status]}</span>
+              {w.cancelled_at ? (
+                <span class="badge err" title={w.cancel_reason ?? ''}>
+                  storniert
+                </span>
+              ) : (
+                <span class={`badge ${WR_CLASS[w.status]}`}>{WR_STATUS[w.status]}</span>
+              )}
               {w.signed_by_name && <div class="small mut">{w.signed_by_name}</div>}
             </td>
             <td class="small">
@@ -552,7 +570,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
       st === 'offen'
         ? all.filter((w) => w.status === 'entwurf')
         : st === 'abzurechnen'
-          ? all.filter((w) => w.status !== 'entwurf' && !w.invoice_id)
+          ? all.filter((w) => w.status !== 'entwurf' && !w.invoice_id && !w.cancelled_at)
           : all;
     const tabs: Tab[] = [
       { key: '', label: 'Alle', href: '/arbeitsscheine', count: all.length },
@@ -566,7 +584,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
         key: 'abzurechnen',
         label: 'Nicht abgerechnet',
         href: '/arbeitsscheine?status=abzurechnen',
-        count: all.filter((w) => w.status !== 'entwurf' && !w.invoice_id).length,
+        count: all.filter((w) => w.status !== 'entwurf' && !w.invoice_id && !w.cancelled_at).length,
       },
     ];
     return page(
@@ -616,18 +634,32 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
         'rechnungen',
         <>
           <PageHead title={`Arbeitsschein ${w.number}`} crumbs={[['Arbeitsscheine', '/arbeitsscheine']]}>
-            <span class={`badge ${WR_CLASS[w.status]}`}>{WR_STATUS[w.status]}</span>
+            {w.cancelled_at ? (
+              <span class="badge err">storniert</span>
+            ) : (
+              <span class={`badge ${WR_CLASS[w.status]}`}>{WR_STATUS[w.status]}</span>
+            )}
           </PageHead>
+          {w.cancelled_at && (
+            <div class="flash err">
+              Storniert am {w.cancelled_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })} von{' '}
+              {fullName({ login: w.cancelled_by ?? '' })}: {w.cancel_reason}. Zählt nicht mehr und kann nicht
+              abgerechnet werden.
+            </div>
+          )}
           <div class="actions" style="margin-top:-8px">
             <a class="btn" href={`/arbeitsscheine/${id}/arbeitsschein.pdf`} target="_blank">
               <Icon name="pdf" /> PDF
             </a>
-            {!w.invoice_id && !w.order_id && canAccess(c.get('user').role, '/rechnungen') && (
-              <form method="post" action={`/objekte/${w.site_id}/regie-abrechnen`}>
-                <input type="hidden" name="report" value={id} />
-                <button class="btn sec">Rechnung erstellen</button>
-              </form>
-            )}
+            {!w.invoice_id &&
+              !w.order_id &&
+              !w.cancelled_at &&
+              canAccess(c.get('user').role, '/rechnungen') && (
+                <form method="post" action={`/objekte/${w.site_id}/regie-abrechnen`}>
+                  <input type="hidden" name="report" value={id} />
+                  <button class="btn sec">Rechnung erstellen</button>
+                </form>
+              )}
             {w.invoice_id && canAccess(c.get('user').role, '/rechnungen') && (
               <a class="btn sec" href={`/rechnungen/${w.invoice_id}`}>
                 Zur Rechnung
@@ -641,7 +673,9 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                 <dd>{w.site_name}</dd>
                 <dt>Datum, Zeit</dt>
                 <dd>
-                  {dateDe(w.work_date)} {w.start_time && `${w.start_time}–${w.end_time} Uhr`}
+                  {dateDe(w.work_date)}
+                  {w.work_date_to && ` – ${dateDe(w.work_date_to)}`}{' '}
+                  {w.start_time && `${w.start_time}–${w.end_time} Uhr`}
                 </dd>
                 <dt>Mitarbeiter</dt>
                 <dd>{data!.employees.map((e) => e.name).join(', ') || '–'}</dd>
@@ -651,6 +685,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                 <dd>
                   {data!.lines.map((l) => (
                     <div>
+                      {l.person && w.work_date_to && `${dateDe(l.line_date ?? w.work_date)}: `}
                       {milliToInput(l.quantity_milli)} {UNIT_LABELS[l.unit_code] ?? l.unit_code}{' '}
                       {l.description}
                       {l.person && ` – ${l.person}`}
@@ -681,15 +716,50 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                 </dd>
               </dl>
             </div>
-            <div class="card">
-              <h3>Fotos / Anlagen</h3>
-              <FileArea
-                link={{ type: 'work_report', id }}
-                files={files}
-                category="Foto"
-                title="Fotos hierher ziehen"
-                maxBytes={env.UPLOAD_MAX_BYTES}
-              />
+            <div>
+              {!w.cancelled_at && (
+                <details class="card">
+                  <summary style="cursor:pointer">
+                    <b>Arbeitsschein stornieren …</b>
+                  </summary>
+                  {w.invoice_id ? (
+                    <p class="small mut">
+                      Schon abgerechnet – zuerst die Rechnung stornieren bzw. den Rechnungsentwurf löschen.
+                    </p>
+                  ) : (
+                    <form
+                      method="post"
+                      action={`/arbeitsscheine/${id}/stornieren`}
+                      onsubmit="return confirm('Arbeitsschein stornieren? Er bleibt sichtbar, zählt aber nicht mehr.')"
+                    >
+                      <p class="small mut" style="margin-top:6px">
+                        Abgeschlossene Arbeitsscheine werden nicht gelöscht (Nachweis), sondern mit Grund
+                        storniert.
+                      </p>
+                      <label for="grund">Grund</label>
+                      <input
+                        id="grund"
+                        name="grund"
+                        required
+                        placeholder="z. B. doppelt erfasst, falsches Objekt"
+                      />
+                      <div class="actions">
+                        <button class="btn sec danger">Stornieren</button>
+                      </div>
+                    </form>
+                  )}
+                </details>
+              )}
+              <div class="card">
+                <h3>Fotos / Anlagen</h3>
+                <FileArea
+                  link={{ type: 'work_report', id }}
+                  files={files}
+                  category="Foto"
+                  title="Fotos hierher ziehen"
+                  maxBytes={env.UPLOAD_MAX_BYTES}
+                />
+              </div>
             </div>
           </div>
         </>,
@@ -741,18 +811,21 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
     }
     const unitLabel = (u: string) => WR_UNITS.find(([k]) => k === u)?.[1] ?? u;
     const showPrices = canAccess(c.get('user').role, '/rechnungen');
-    type L = { desc: string; qty: string; unit: string; svc: string; person: string };
+    type L = { desc: string; qty: string; unit: string; svc: string; person: string; date: string };
     const all: L[] = (data?.lines ?? []).map((l) => ({
       desc: l.description,
       qty: milliToInput(l.quantity_milli),
       unit: l.unit_code,
       svc: l.service_id ?? '',
       person: l.person ?? '',
+      date: l.line_date ?? wrDate,
     }));
     const leistungen = all.filter((l) => !l.person);
     const regie = all.filter((l) => l.person);
-    if (!data) leistungen.push({ desc: '', qty: '1', unit: 'LS', svc: '', person: '' });
-    if (!regie.length) regie.push({ desc: 'Regiestunden', qty: '', unit: 'HUR', svc: '', person: '' });
+    if (!data) leistungen.push({ desc: '', qty: '1', unit: 'LS', svc: '', person: '', date: '' });
+    if (!regie.length)
+      regie.push({ desc: 'Regiestunden', qty: '', unit: 'HUR', svc: '', person: '', date: wrDate });
+    const wrTo = w?.work_date_to ?? '';
     const Row: FC<{ l?: L }> = ({ l }) => (
       <tr>
         <td>
@@ -779,6 +852,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
           <input name="line_desc" value={l?.desc ?? ''} placeholder="Leistung / Beschreibung" />
           <input type="hidden" name="line_person" value="" />
           <input type="hidden" name="line_kind" value="l" />
+          <input type="hidden" name="line_date" value="" />
         </td>
         <td style="width:110px">
           <input name="line_qty" value={l?.qty ?? '1'} class="right" inputmode="decimal" />
@@ -801,6 +875,16 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
     );
     const RegieRow: FC<{ l?: L }> = ({ l }) => (
       <tr>
+        <td style="width:160px">
+          <input
+            type="date"
+            name="line_date"
+            value={l?.date ?? ''}
+            min={wrDate}
+            max={wrTo || wrDate}
+            aria-label="Datum"
+          />
+        </td>
         <td>
           <input type="hidden" name="line_svc" value="" />
           <input type="hidden" name="line_desc" value={l?.desc || 'Regiestunden'} />
@@ -811,7 +895,10 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
         <td style="width:110px">
           <input name="line_qty" value={l?.qty ?? ''} class="right" inputmode="decimal" placeholder="Std." />
         </td>
-        <td style="width:40px">
+        <td style="width:120px;white-space:nowrap">
+          <button type="button" class="btn sm sec copy" title="Zeile kopieren (nächster Tag)">
+            Kopieren
+          </button>{' '}
           <button type="button" class="btn sm sec del" title="entfernen">
             ×
           </button>
@@ -865,7 +952,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
               )}
               <div class="grid">
                 <div>
-                  <label for="work_date">Datum</label>
+                  <label for="work_date">Datum von</label>
                   <input
                     id="work_date"
                     type="date"
@@ -873,6 +960,10 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                     value={w?.work_date ?? todayBerlin()}
                     required
                   />
+                </div>
+                <div>
+                  <label for="work_date_to">bis (bei mehreren Tagen)</label>
+                  <input id="work_date_to" type="date" name="work_date_to" value={wrTo} />
                 </div>
                 <div>
                   <label for="start">Beginn</label>
@@ -969,6 +1060,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                 <table id="wr-regie" class="lines">
                   <thead>
                     <tr>
+                      <th>Datum</th>
                       <th>Name</th>
                       <th class="r">Stunden</th>
                       <th></th>
@@ -990,7 +1082,8 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                 </button>
                 <span class="small mut">
                   Angehakte Mitarbeiter werden als Zeile übernommen, Stunden aus Beginn/Ende vorgeschlagen.
-                  Abgerechnet mit dem Regiestundensatz des Objekts.
+                  „Kopieren“ legt dieselbe Zeile für den nächsten Tag an. Abgerechnet mit dem Regiestundensatz
+                  des Objekts.
                 </span>
               </div>
               <div class="grid">
@@ -1036,6 +1129,18 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                       </a>
                     </div>
                   </div>
+                  <form
+                    method="post"
+                    action={`/arbeitsscheine/${id}/loeschen`}
+                    class="card"
+                    onsubmit="return confirm('Diesen Arbeitsschein-Entwurf löschen?')"
+                  >
+                    <h3>Entwurf löschen</h3>
+                    <p class="small mut" style="margin-top:0">
+                      Noch nicht abgeschlossen – wird ganz entfernt (Nummer {w.number} bleibt unbenutzt).
+                    </p>
+                    <button class="btn sec danger">Arbeitsschein löschen</button>
+                  </form>
                   <div class="card">
                     <h3>Fotos</h3>
                     <FileArea
@@ -1068,6 +1173,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
     const svc = arr(b, 'line_svc');
     const person = arr(b, 'line_person');
     const kind = arr(b, 'line_kind');
+    const ldate = arr(b, 'line_date');
     const lines = desc
       .map((d, i) => ({ d: d.trim(), i }))
       // leere Zeilen weglassen; Regie-Zeilen nur mit Namen
@@ -1089,6 +1195,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
           unitCode: WR_UNITS.some(([k]) => k === unit[i]) ? unit[i]! : 'HUR',
           serviceId: /^[0-9a-f-]{36}$/.test(svc[i] ?? '') ? svc[i]! : null,
           person: (person[i] ?? '').trim() || null,
+          lineDate: kind[i] === 'r' && /^\d{4}-\d{2}-\d{2}$/.test(ldate[i] ?? '') ? ldate[i]! : null,
         };
       });
     await saveWorkReport(
@@ -1098,6 +1205,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
         orderId: str(b, 'order_id'),
         siteId,
         workDate: str(b, 'work_date') ?? todayBerlin(),
+        workDateTo: str(b, 'work_date_to'),
         startTime: str(b, 'start'),
         endTime: str(b, 'end'),
         employeeIds: arr(b, 'employee').filter((x) => /^[0-9a-f-]{36}$/.test(x)),
@@ -1115,6 +1223,35 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
       return back(c, `/arbeitsscheine/${id}`, { ok: 'Arbeitsschein abgeschlossen, PDF erstellt.' });
     }
     return back(c, `/arbeitsscheine/${id}`, { ok: 'Arbeitsschein gespeichert.' });
+  });
+
+  app.post(`/arbeitsscheine/:id{${UUID}}/loeschen`, async (c) => {
+    const id = c.req.param('id');
+    const cur = await getWorkReport(sql, id);
+    if (!cur) return c.redirect('/arbeitsscheine');
+    assertSite(c, cur.report.site_id);
+    try {
+      await deleteWorkReport(sql, id, c.get('actor'));
+    } catch (e) {
+      if (e instanceof BusinessError) return back(c, `/arbeitsscheine/${id}`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, '/arbeitsscheine', { ok: `Arbeitsschein ${cur.report.number} gelöscht.` });
+  });
+
+  app.post(`/arbeitsscheine/:id{${UUID}}/stornieren`, async (c) => {
+    const id = c.req.param('id');
+    const cur = await getWorkReport(sql, id);
+    if (!cur) return c.redirect('/arbeitsscheine');
+    assertSite(c, cur.report.site_id);
+    const b = await c.req.parseBody();
+    try {
+      await cancelWorkReport(sql, id, String(b.grund ?? ''), c.get('actor'));
+    } catch (e) {
+      if (e instanceof BusinessError) return back(c, `/arbeitsscheine/${id}`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/arbeitsscheine/${id}`, { ok: `Arbeitsschein ${cur.report.number} storniert.` });
   });
 
   // Unterschriftsseite: groß, ohne Ablenkung, auch fürs Handy des Kunden
@@ -1227,7 +1364,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
   app.get(`/objekte/:id{${UUID}}/arbeitsscheine`, (c) =>
     shells.site!(c, 'arbeitsscheine', async (s) => {
       const rows = await listWorkReports(sql, { siteId: s.id });
-      const billable = rows.filter((w) => w.status !== 'entwurf' && !w.invoice_id);
+      const billable = rows.filter((w) => w.status !== 'entwurf' && !w.invoice_id && !w.cancelled_at);
       const office = canAccess(c.get('user').role, '/rechnungen');
       return (
         <>

@@ -1950,3 +1950,11 @@ Testadresse.
   `client.ts`). Entwürfe → „Aus Einzelleistungen erstellen“: Einzelaufträge stehen jetzt unter demselben Monat des
   Leistungszeitraums und Kunden wie die Einzelleistungen (nicht mehr als eigener Kasten). Migration `20261117000008`.
   Tests: 471 Unit-/DB-Tests, `e2e:auftrag` 30, `e2e:vorfaktura`, `e2e:rechte`, `e2e:leistungen` grün.
+- 2026-10-09: **Objekte zusammenführen** (Ahmed: „bei ARGE ist ein Objekt doppelt“; nur Admin): Objekt → Bearbeiten → unten
+  „Objekt doppelt? Mit einem anderen Objekt zusammenführen“ → behaltenes Objekt desselben Kunden wählen. Alle Fremdschlüssel
+  auf das Objekt (Leistungen, Einsätze, Zeiten, Rechnungen, Raumbuch, Schlüssel, Arbeitsscheine …) sowie Dateien, Notizen
+  und Aufgaben werden umgehängt (erst gesamt, sonst Zeile für Zeile); doppelte Mitarbeiter-/Datei-Zuordnungen entfallen;
+  danach wird die Dublette gelöscht. Nicht Umhängbares (ausgestellte Rechnungen sind unveränderbar) bleibt → Dublette
+  deaktiviert „(zusammengeführt in …)“. Zeiten: Grund im Änderungsprotokoll (§ 17 MiLoG). Fortytools-ID wird übernommen
+  bzw. in `app.site_merges` gemerkt – der XML-Import legt das Objekt nicht wieder an. Protokoll `audit_log` (merge).
+  Migration `20261118000001`, Test `site-merge.db.test.ts`.

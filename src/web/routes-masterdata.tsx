@@ -1,3 +1,4 @@
+import { mergeSites } from '../services/site-merge.js';
 import { CustomerOrders } from './routes-orders.js';
 import { listOrders } from '../services/orders.js';
 import { STARTUP_STEPS, createStartupPlan } from '../services/site-startup.js';
@@ -1570,6 +1571,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     const s = await getSite(sql, id);
     const customers = await listCustomers(sql);
     const kunde = c.req.query('kunde') ?? '';
+    const siblings = s ? await listSites(sql, s.customer_id) : [];
     const form = (
       <SiteForm
         id={id}
@@ -1604,8 +1606,69 @@ export function registerMasterdataRoutes(ctx: Ctx) {
           ]}
         />
         <div class="card">{form}</div>
+        {c.get('user').role === 'admin' && (
+          <details class="card">
+            <summary>
+              <b>Objekt doppelt? Mit einem anderen Objekt zusammenführen</b>
+            </summary>
+            <p class="small mut">
+              Alles von{' '}
+              <b>
+                {s.site_no} {s.name}
+              </b>{' '}
+              – Leistungen, Einsätze, erfasste Zeiten, Rechnungen, Raumbuch, Schlüssel, Dokumente, Notizen,
+              Aufgaben – wird auf das gewählte Objekt umgehängt, danach wird dieses Objekt gelöscht. Was sich
+              nicht umhängen lässt (z. B. ausgestellte Rechnungen sind unveränderbar), bleibt hier; das Objekt
+              wird dann nur deaktiviert. Zeiten bekommen einen Eintrag im Änderungsprotokoll. Nicht rückgängig
+              zu machen.
+            </p>
+            {(() => {
+              const others = siblings.filter((x) => x.id !== s.id);
+              return others.length === 0 ? (
+                <div class="empty">Der Kunde hat keine weiteren Objekte.</div>
+              ) : (
+                <form
+                  method="post"
+                  action={`/objekte/${s.id}/zusammenfuehren`}
+                  class="actions"
+                  onsubmit={`return confirm(${JSON.stringify(`${s.site_no} ${s.name} in das gewählte Objekt zusammenführen und danach löschen? Das lässt sich nicht rückgängig machen.`)})`}
+                >
+                  <select name="ziel" required style="max-width:520px">
+                    <option value="">– behalten wird: Objekt wählen –</option>
+                    {others.map((x) => (
+                      <option value={x.id}>
+                        {x.site_no} · {x.name}
+                        {x.street ? ` · ${x.street}` : ''}
+                        {x.active ? '' : ' (inaktiv)'}
+                      </option>
+                    ))}
+                  </select>
+                  <button class="btn danger">Zusammenführen</button>
+                </form>
+              );
+            })()}
+          </details>
+        )}
       </>,
     );
+  });
+
+  app.post(`/objekte/:id{${UUID}}/zusammenfuehren`, async (c) => {
+    if (c.get('user').role !== 'admin') throw new BusinessError('Nur für Administratoren');
+    const id = c.req.param('id');
+    const ziel = str(await c.req.parseBody(), 'ziel') ?? '';
+    if (!/^[0-9a-f-]{36}$/.test(ziel))
+      return back(c, `/objekte/${id}/bearbeiten`, { fehler: 'Bitte Objekt wählen' });
+    const r = await mergeSites(sql, id, ziel, c.get('actor'));
+    const moved = Object.values(r.moved).reduce((a, b) => a + b, 0);
+    const left = Object.values(r.left).reduce((a, b) => a + b, 0);
+    return back(c, `/objekte/${ziel}`, {
+      ok: `Zusammengeführt: ${moved} Einträge umgehängt${
+        r.deleted
+          ? ', doppeltes Objekt gelöscht.'
+          : `; ${left} Einträge (z. B. ausgestellte Rechnungen) bleiben am alten Objekt, es ist jetzt deaktiviert.`
+      }`,
+    });
   });
 
   app.post(`/objekte/:id{${UUID}}`, async (c) => {

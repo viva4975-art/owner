@@ -115,5 +115,6 @@
  "20261117000005_einzelauftraege.sql": "636580bd9ab98cd9ba8e39b0016c4defae0859878bda138a65b738b93d8c88b8",
  "20261117000006_nu_vorschuesse.sql": "ea443a783b58ef7c21f8a50af6f476d2f644c24e39cd8070f2fdd144f6ca8e51",
  "20261117000007_arbeitsschein_wieder_bearbeiten.sql": "d26d7bea26b1c5c86ae8291dcbf73d05925022e480df8648b814ee046acc2e7a",
- "20261117000008_einzelauftrag_leistungsart_anschrift.sql": "7b4a778e9d69e5f20989249a2cf84ee37ee43cc6d8ce1eae7702edd3b28bb539"
+ "20261117000008_einzelauftrag_leistungsart_anschrift.sql": "7b4a778e9d69e5f20989249a2cf84ee37ee43cc6d8ce1eae7702edd3b28bb539",
+ "20261118000001_objekte_zusammenfuehren.sql": "bb25b78e9c5f46e888e86096560309777ec41ca5981abc8d2e949ad1f984c7e6"
 }

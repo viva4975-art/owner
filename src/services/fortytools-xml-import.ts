@@ -10,6 +10,7 @@ import { renderInvoicePdf } from '../pdf/render.js';
 import { buildBuyerSnapshot, getSeller } from './masterdata.js';
 import { BusinessError } from './errors.js';
 import { parsePaymentTerms, uuidOf } from './fortytools-export-import.js';
+import { mergedRefs } from './site-merge.js';
 
 /*
  * Import der Fortytools-Datensicherung (XML: customers, facilities, staff_members, offers, invoices).
@@ -351,6 +352,8 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
     }[]
   >`select id, site_no, name, street, customer_id, external_ref from app.sites`;
   const sByRef = new Map(dbSites.filter((s) => s.external_ref).map((s) => [s.external_ref!, s]));
+  // von Hand zusammengeführte Objekte (Objekt → „Zusammenführen“): Fortytools-ID zeigt aufs behaltene Objekt
+  const merged = await mergedRefs(tx);
   const usedNo = new Set(dbSites.map((s) => s.site_no));
   const sc = (res.counts.Objekte = blank());
   // Zuordnung Fortytools-Objekt → Objekt der App. Fund 07.10.: gleichnamige Objekte eines Kunden („Treppenhaus“ an drei
@@ -370,7 +373,7 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
   }
   for (const f of facilities) {
     const ftId = get(f, 'address/addressable-id');
-    if (match.has(ftId)) continue;
+    if (match.has(ftId) || merged.has(`ftx:f:${ftId}`)) continue;
     const customerId = custMap.get(get(f, 'customer-id'));
     if (!customerId) continue;
     const no = get(f, 'number');
@@ -452,6 +455,13 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
       continue;
     }
     const hit = match.get(ftId);
+    const into = merged.get(`ftx:f:${ftId}`);
+    const intoSite = into ? dbSites.find((x) => x.id === into) : undefined;
+    if (!hit && intoSite) {
+      siteMap.set(ftId, { id: intoSite.id, customerId: intoSite.customer_id });
+      sc.unveraendert++;
+      continue;
+    }
     const zip = get(f, 'address/zip');
     if (hit) {
       siteMap.set(ftId, { id: hit.id, customerId: hit.customer_id });

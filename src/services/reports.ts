@@ -3,6 +3,7 @@ import { monthBounds, monthlyRunLines } from '../domain/invoice/calc.js';
 import { lineNet } from '../domain/money/money.js';
 import { addDays, workingDays } from '../domain/time/holidays.js';
 import { type LeaveBalance, leaveBalance } from './absences.js';
+import { subcontractEstimates } from './costing.js';
 import { BusinessError } from './errors.js';
 import { sollPlanIst } from './hr-month.js';
 import { type RunService, toRunService } from './invoices.js';
@@ -175,6 +176,11 @@ export interface RateRow {
   per_hour: bigint | null;
   per_plan_hour: bigint | null;
   wage_avg: bigint | null; // Ø Stundenlohn der eingesetzten Mitarbeitenden (gewichtet nach Stunden)
+  /** Nachunternehmer-Kosten (Eingangsrechnungen nach Kostenstelle, sonst Monatspauschale laut Bestellung) */
+  subcontractor: bigint;
+  subcontractor_estimated: bigint;
+  /** (Erlös − Nachunternehmer) je Ist-Stunde eigenes Personal */
+  per_hour_net_nu: bigint | null;
 }
 
 /**
@@ -184,7 +190,7 @@ export interface RateRow {
 export async function hourlyRates(sql: Sql, fromMonth: string, toMonth: string): Promise<RateRow[]> {
   const from = monthBounds(fromMonth).start;
   const to = monthBounds(toMonth).end;
-  const [sites, revenue, hours, shifts] = await Promise.all([
+  const [sites, revenue, hours, shifts, nuInc, nuEst] = await Promise.all([
     sql<{ id: string; site_no: string; name: string; customer_name: string }[]>`
       select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name
         from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.site_no`,
@@ -193,6 +199,12 @@ export async function hourlyRates(sql: Sql, fromMonth: string, toMonth: string):
         from app.invoices i join app.invoice_lines l on l.invoice_id = i.id
         left join app.site_services ss on ss.id = l.source_service_id
        where i.status = 'issued' and coalesce(i.period_start, i.issue_date) between ${from} and ${to}
+       group by 1
+      union all
+      -- Rechnungen von vor der Umstellung: je Position dem Objekt zugeordnet (wie die Nachkalkulation)
+      select l.site_id, sum(l.net_cents)::bigint as net
+        from app.legacy_invoice_lines l join app.legacy_invoices i on i.id = l.invoice_id
+       where l.site_id is not null and coalesce(l.period_start, i.issue_date) between ${from} and ${to}
        group by 1`,
     sql<{ site_id: string; minutes: number; wage_minutes: bigint; wage_known_minutes: number }[]>`
       select t.site_id,
@@ -205,17 +217,26 @@ export async function hourlyRates(sql: Sql, fromMonth: string, toMonth: string):
        where t.status in ('erfasst', 'freigegeben') and t.end_at is not null and t.work_date between ${from} and ${to}
        group by t.site_id`,
     plannedShifts(sql, { from, to }),
+    sql<{ site_id: string; net: bigint }[]>`
+      select a.site_id, sum(a.net_cents)::bigint as net
+        from app.cost_allocations a join app.incoming_invoices i on i.id = a.incoming_invoice_id
+       where a.site_id is not null and i.category = 'nachunternehmer'
+         and i.status in ('erfasst', 'freigegeben', 'bezahlt') and a.month between ${from} and ${to}
+       group by a.site_id`,
+    subcontractEstimates(sql, from, to),
   ]);
   const div = (cents: bigint, minutes: number) =>
     minutes > 0 ? (cents * 60n * 2n + BigInt(minutes)) / (2n * BigInt(minutes)) : null; // kaufmännisch gerundet
   return sites
     .map((s) => {
-      const rev = revenue.find((r) => r.site_id === s.id)?.net ?? 0n;
+      const rev = revenue.filter((r) => r.site_id === s.id).reduce((a, r) => a + r.net, 0n);
       const h = hours.find((r) => r.site_id === s.id);
       const plan = shifts
         .filter((x) => x.plan.site_id === s.id && !x.absence && !x.holiday)
         .reduce((a, x) => a + x.minutes, 0);
       const minutes = h?.minutes ?? 0;
+      const est = nuEst.find((r) => r.site_id === s.id)?.cost ?? 0n;
+      const nu = (nuInc.find((r) => r.site_id === s.id)?.net ?? 0n) + est;
       return {
         site_id: s.id,
         site_no: s.site_no,
@@ -230,9 +251,12 @@ export async function hourlyRates(sql: Sql, fromMonth: string, toMonth: string):
           h && h.wage_known_minutes > 0
             ? (h.wage_minutes * 2n + BigInt(h.wage_known_minutes)) / (2n * BigInt(h.wage_known_minutes))
             : null,
+        subcontractor: nu,
+        subcontractor_estimated: est,
+        per_hour_net_nu: nu > 0n ? div(rev - nu, minutes) : div(rev, minutes),
       };
     })
-    .filter((r) => r.revenue !== 0n || r.minutes > 0 || r.plan_minutes > 0);
+    .filter((r) => r.revenue !== 0n || r.minutes > 0 || r.plan_minutes > 0 || r.subcontractor !== 0n);
 }
 
 // ------------------------------------------------------------------ Urlaubskonten, Krankheitstage

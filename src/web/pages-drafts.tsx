@@ -4,6 +4,7 @@ import { formatDateDe } from '../domain/invoice/calc.js';
 import { UNIT_LABELS } from '../domain/invoice/types.js';
 import type { ExecutableService, OpenExecution } from '../services/executions.js';
 import type { DraftListInfo, InvoiceRow } from '../services/invoices.js';
+import type { BillableOrder } from '../services/orders.js';
 import { milliToInput } from './forms.js';
 import { dateDe, euro } from './layout.js';
 
@@ -211,16 +212,75 @@ const byMonth = (rows: OpenExecution[]) => {
   return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0]));
 };
 
-export const OpenExecutionsBox: FC<{ rows: OpenExecution[]; today: string }> = ({ rows }) => (
+const OrdersPart: FC<{ orders: BillableOrder[] }> = ({ orders }) => {
+  const byCust = new Map<string, BillableOrder[]>();
+  for (const o of orders) byCust.set(o.customer_id, [...(byCust.get(o.customer_id) ?? []), o]);
+  return (
+    <details class="ex-month" open>
+      <summary>
+        <input type="checkbox" data-group="auftrag|" aria-label="alle Einzelaufträge" />
+        <span class="ex-name">
+          Einzelaufträge <span class="faint">({orders.length})</span>
+        </span>
+        <b class="num">{euro(orders.reduce((a, o) => a + o.net_cents, 0n))}</b>
+      </summary>
+      {[...byCust.values()].map((list) => {
+        const c = list[0]!;
+        const g = `auftrag|${c.customer_id}`;
+        return (
+          <details class="ex-cust">
+            <summary>
+              <input type="checkbox" data-group={g} aria-label={`alle von ${c.customer_name}`} />
+              <span class="ex-name">
+                {c.customer_name} <span class="faint">({list.length})</span>
+              </span>
+              <b class="num">{euro(list.reduce((a, o) => a + o.net_cents, 0n))}</b>
+            </summary>
+            {list.map((o) => {
+              const waits = o.work_report_required && o.signed === 0;
+              return (
+                <label class="ex-line">
+                  <input type="checkbox" name="order" value={o.id} data-row data-g={g} />
+                  <span class="ex-desc">
+                    <a href={`/auftraege/${o.id}`}>{o.number}</a> {o.title}
+                    <span class="faint">
+                      {' '}
+                      · {o.planned_date ? formatDateDe(o.planned_date) : 'ohne Termin'}
+                      {o.place || o.site_name ? ` · ${o.place ?? o.site_name}` : ''}
+                      {o.order_reference ? ` · Best.-Nr. ${o.order_reference}` : ''}
+                    </span>
+                    {waits && (
+                      <span class="small" style="color:var(--warn)">
+                        {' '}
+                        · Arbeitsschein fehlt
+                      </span>
+                    )}
+                  </span>
+                  <span class="num">{euro(o.net_cents)}</span>
+                </label>
+              );
+            })}
+          </details>
+        );
+      })}
+    </details>
+  );
+};
+
+export const OpenExecutionsBox: FC<{ rows: OpenExecution[]; today: string; orders?: BillableOrder[] }> = ({
+  rows,
+  orders = [],
+}) => (
   <section class="card dr-side" data-select-scope>
     <h3>Aus Einzelleistungen erstellen</h3>
-    {rows.length === 0 ? (
+    {rows.length === 0 && orders.length === 0 ? (
       <p class="mut small" style="margin:0">
         Nichts vorgemerkt. Leistungen „je Ausführung“ verrichten Sie am Objekt (Reiter „Leistungen &amp;
-        Preise“).
+        Preise“), Einzelaufträge legen Sie beim Kunden an.
       </p>
     ) : (
       <form method="post" action="/rechnungen/entwuerfe/aus-ausfuehrungen">
+        {orders.length > 0 && <OrdersPart orders={orders} />}
         {byMonth(rows).map(([month, mrows], mi) => (
           <details class="ex-month" open={mi === 0}>
             <summary>
@@ -283,7 +343,7 @@ export const OpenExecutionsBox: FC<{ rows: OpenExecution[]; today: string }> = (
           </button>
         </div>
         <p class="small faint" style="margin:6px 0 0">
-          Je Objekt bzw. Rechnungsgruppe ein Entwurf.
+          Je Objekt bzw. Rechnungsgruppe ein Entwurf, je Einzelauftrag eine Rechnung.
         </p>
       </form>
     )}

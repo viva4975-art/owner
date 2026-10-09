@@ -914,6 +914,8 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
                   <th class="r">Erlös je Plan-Std.</th>
                   <th class="r">Erlös je Ist-Std.</th>
                   <th class="r">Ø Stundenlohn</th>
+                  <th class="r">Nachunternehmer</th>
+                  <th class="r">nach NU je Ist-Std.</th>
                 </tr>
               </thead>
               <tbody>
@@ -940,11 +942,20 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
                       <b>{r.per_hour == null ? '–' : euro(r.per_hour)}</b>
                     </td>
                     <td class="r">{r.wage_avg == null ? '–' : euro(r.wage_avg)}</td>
+                    <td class="r">
+                      {r.subcontractor ? euro(r.subcontractor) : '–'}
+                      {r.subcontractor_estimated > 0n && (
+                        <div class="small mut">davon {euro(r.subcontractor_estimated)} lt. Bestellung</div>
+                      )}
+                    </td>
+                    <td class="r">
+                      {r.subcontractor === 0n || r.per_hour_net_nu == null ? '–' : euro(r.per_hour_net_nu)}
+                    </td>
                   </tr>
                 ))}
                 {rows.length === 0 && (
                   <tr>
-                    <td colspan={7} class="mut">
+                    <td colspan={9} class="mut">
                       Keine Erlöse oder Stunden im Zeitraum.
                     </td>
                   </tr>
@@ -954,8 +965,11 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
           </div>
           <p class="small mut" style="margin-bottom:0">
             Erlös nach Leistungszeitraum (Rechnungspositionen je Objekt, inkl. Sammelrechnungen und Storno).
-            Rot: Erlös je Ist-Stunde unter dem doppelten Ø Stundenlohn – grober Hinweis, die genaue Rechnung
-            steht in der Nachkalkulation.
+            Nachunternehmer: Eingangsrechnungen nach Kostenstelle und Leistungsmonat; fehlt für einen Monat
+            die Rechnung, zählt die Monatspauschale der erteilten Bestellung („lt. Bestellung“). „nach NU je
+            Ist-Std.“ = (Erlös − Nachunternehmer) ÷ Ist-Stunden des eigenen Personals. Rot: Erlös je
+            Ist-Stunde unter dem doppelten Ø Stundenlohn – grober Hinweis, die genaue Rechnung steht in der
+            Nachkalkulation.
           </p>
         </div>
       </>,

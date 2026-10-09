@@ -86,7 +86,10 @@ export const DraftLetter: FC<{
   attachments: { id: string; filename: string }[];
   uploadSlot?: Child;
   notice?: Child;
-}> = ({ inv, doc, billing, portal, newId, preflight, attachments, uploadSlot, notice }) => {
+  workReports?: { id: string; number: string; status: string; cancelled: boolean; attached: boolean }[];
+}> = ({ inv, doc, billing, portal, newId, preflight, attachments, uploadSlot, notice, workReports = [] }) => {
+  const wrs = workReports.filter((w) => !w.cancelled);
+  const wrSigned = wrs.some((w) => w.status === 'unterschrieben');
   const s = doc.seller;
   const b = doc.buyer;
   const parsed = doc.lines.map((l) => splitLineDetail(l.detail));
@@ -412,6 +415,15 @@ export const DraftLetter: FC<{
             <a class="sec" href={`/rechnungen/${inv.id}/lieferschein.pdf`} target="_blank">
               Lieferschein erstellen
             </a>
+            {wrs.length === 0 && (
+              <form
+                method="post"
+                action={`/rechnungen/${inv.id}/arbeitsschein`}
+                onsubmit="return confirm('Arbeitsschein aus dieser Rechnung anlegen? Die Rechnung lässt sich dann erst ausstellen, wenn der Kunde den Arbeitsschein unterschrieben hat.')"
+              >
+                <button class="sec">Arbeitsschein erstellen</button>
+              </form>
+            )}
             <form
               method="post"
               action={`/rechnungen/${inv.id}/loeschen`}
@@ -420,6 +432,48 @@ export const DraftLetter: FC<{
               <button class="del">Löschen</button>
             </form>
           </div>
+          {(inv.work_report_required || wrs.length > 0) && (
+            <div class="card" style={inv.work_report_required && !wrSigned ? 'border-color:#e3a0a0' : ''}>
+              <h3>Arbeitsschein</h3>
+              {wrs.map((w) => (
+                <div style="margin-bottom:4px">
+                  <a href={`/arbeitsscheine/${w.id}`}>{w.number}</a>{' '}
+                  <span class={`badge ${w.status === 'unterschrieben' ? 'ok' : 'warn'}`}>
+                    {w.status === 'unterschrieben'
+                      ? 'unterschrieben'
+                      : w.status === 'entwurf'
+                        ? 'noch nicht unterschrieben'
+                        : 'ohne Unterschrift'}
+                  </span>
+                  {w.attached && <span class="small mut"> · hängt an</span>}
+                </div>
+              ))}
+              {inv.work_report_required && !wrSigned && (
+                <p class="small" style="margin:6px 0">
+                  Ausstellen erst, wenn der Kunde den Arbeitsschein unterschrieben hat (am Handy/Tablet oder
+                  in der App des Mitarbeiters). Das PDF hängt dann automatisch an der Rechnung.
+                </p>
+              )}
+              {inv.work_report_required && wrs.length === 0 && (
+                <form method="post" action={`/rechnungen/${inv.id}/arbeitsschein`}>
+                  <button class="btn sm">Neuen Arbeitsschein anlegen</button>
+                </form>
+              )}
+              {inv.work_report_required && !wrSigned && (
+                <details style="margin-top:6px">
+                  <summary class="small">Ohne unterschriebenen Arbeitsschein ausstellen …</summary>
+                  <form method="post" action={`/rechnungen/${inv.id}/arbeitsschein-pflicht`} class="actions">
+                    <input
+                      name="grund"
+                      required
+                      placeholder="Grund (z. B. Kunde unterschreibt nicht digital)"
+                    />
+                    <button class="btn sm sec">Pflicht aufheben</button>
+                  </form>
+                </details>
+              )}
+            </div>
+          )}
           {inv.review_required && (
             <div class="card" style="border-color:#e3a0a0">
               <h3>Unfertig</h3>

@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto';
-import type { Sql } from '../db/client.js';
+import { createHash, randomUUID } from 'node:crypto';
+import type { Sql, Tx } from '../db/client.js';
 import { type DraftLineInput, calculateDraft, formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import { type Cents, type Quantity } from '../domain/money/money.js';
 import { FormDoc } from '../pdf/form-doc.js';
@@ -8,6 +8,7 @@ import { assertVersion } from './crm.js';
 import { BusinessError } from './errors.js';
 import { saveDraft } from './invoices.js';
 import { buildBuyerSnapshot, getSeller } from './masterdata.js';
+import { ensureGeneralSite } from './fortytools-more-import.js';
 import { nextYearNumber } from './purchasing.js';
 import { type Deps, addAttachment } from './workflow.js';
 
@@ -46,6 +47,12 @@ export interface Order {
   status: OrderStatus;
   net_cents: bigint;
   invoice_id: string | null;
+  /** Einzelauftrag: Leistungsort (Text, ohne eigenes Objekt), Termin, eingeteilte Mitarbeitende */
+  place: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  employee_ids: string[];
+  work_report_required: boolean;
   created_by: string;
   created_at: Date;
   version: number;
@@ -83,7 +90,9 @@ export async function listOrders(
 }
 
 export async function getOrder(sql: Sql, id: string) {
-  const [o] = await sql<Order[]>`select * from app.orders where id = ${id}`;
+  const [o] = await sql<Order[]>`
+    select *, to_char(start_time, 'HH24:MI') as start_time, to_char(end_time, 'HH24:MI') as end_time
+      from app.orders where id = ${id}`;
   if (!o) return undefined;
   const lines = await sql<
     OrderLine[]
@@ -101,11 +110,22 @@ export interface OrderInput {
   plannedDate: string | null;
   lines: DraftLineInput[];
   expectedVersion: number | null;
+  place?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  employeeIds?: string[];
+  workReportRequired?: boolean;
 }
 
 export async function saveOrder(sql: Sql, id: string, input: OrderInput, actor: string) {
   if (!input.title.trim())
     throw new BusinessError('Bitte einen Titel angeben (z. B. „Grundreinigung Turnhalle“)');
+  const hm = /^\d{2}:\d{2}$/;
+  if ((input.startTime && !hm.test(input.startTime)) || (input.endTime && !hm.test(input.endTime)))
+    throw new BusinessError('Uhrzeit bitte als HH:MM');
+  if (input.endTime && !input.startTime) throw new BusinessError('Bitte auch die Uhrzeit „von“ angeben');
+  if ((input.startTime || input.employeeIds?.length) && !input.plannedDate)
+    throw new BusinessError('Für Termin und Mitarbeiter bitte das Datum angeben');
   const d = calculateDraft(input.lines);
   await sql.begin(async (tx) => {
     const [cur] = await tx<
@@ -123,6 +143,11 @@ export async function saveOrder(sql: Sql, id: string, input: OrderInput, actor: 
       order_reference: input.orderReference,
       planned_date: input.plannedDate,
       net_cents: d.net,
+      place: input.place?.trim() || null,
+      start_time: input.startTime || null,
+      end_time: input.endTime || null,
+      employee_ids: input.employeeIds ?? [],
+      work_report_required: input.workReportRequired ?? false,
     };
     if (cur) await tx`update app.orders set ${tx(row as Record<string, unknown>)} where id = ${id}`;
     else {
@@ -147,6 +172,97 @@ export async function saveOrder(sql: Sql, id: string, input: OrderInput, actor: 
     }
     await tx`insert into app.audit_log (actor, action, entity, entity_id) values (${actor}, ${cur ? 'update' : 'create'}, 'order', ${id})`;
   });
+  if (input.workReportRequired && input.plannedDate) await ensureOrderWorkReport(sql, id, actor);
+}
+
+/**
+ * Einzelauftrag mit „Arbeitsschein erforderlich“: Arbeitsschein-Entwurf mit den Positionen (ohne Preise) und den
+ * eingeteilten Mitarbeitenden – erscheint sofort in deren App zum Unterschreiben lassen. Ohne Objekt → Objekt
+ * „Allgemein“ des Kunden. Ändert sich der Termin/das Team, wird ein noch offener Schein angepasst.
+ */
+export async function ensureOrderWorkReport(
+  sql: Sql,
+  orderId: string,
+  actor: string,
+): Promise<string | null> {
+  const data = await getOrder(sql, orderId);
+  if (!data?.order.planned_date) return null;
+  const o = data.order;
+  const [existing] = await sql<{ id: string; status: WorkReportStatus }[]>`
+    select id, status from app.work_reports where order_id = ${orderId} and cancelled_at is null
+     order by created_at limit 1`;
+  if (existing) {
+    if (existing.status === 'entwurf')
+      await sql`update app.work_reports set employee_ids = ${o.employee_ids}::uuid[], work_date = ${o.planned_date},
+                       start_time = ${o.start_time}, end_time = ${o.end_time}
+                 where id = ${existing.id} and status = 'entwurf'`;
+    return existing.id;
+  }
+  let siteId = o.site_id;
+  if (!siteId) {
+    const [k] = await sql<
+      { customer_no: string }[]
+    >`select customer_no from app.customers where id = ${o.customer_id}`;
+    siteId = k ? await ensureGeneralSite(sql, k.customer_no, actor) : null;
+  }
+  if (!siteId) return null;
+  const id = stableId(`auftrag-ws:${orderId}`);
+  const [gone] = await sql`select 1 from app.work_reports where id = ${id}`;
+  if (gone) return id; // storniert → nicht neu anlegen
+  await saveWorkReport(
+    sql,
+    id,
+    {
+      orderId,
+      siteId,
+      workDate: o.planned_date!,
+      startTime: o.start_time,
+      endTime: o.end_time,
+      employeeIds: o.employee_ids,
+      description: [o.title, o.place ? `Ort: ${o.place}` : null, o.description].filter(Boolean).join('\n'),
+      materials: null,
+      remarks: null,
+      lines: data.lines
+        .filter((l) => l.quantity_milli > 0n)
+        .map((l) => ({
+          description: l.description,
+          quantity: l.quantity_milli as Quantity,
+          unitCode: l.unit_code,
+        })),
+      expectedVersion: null,
+    },
+    actor,
+  );
+  return id;
+}
+
+export interface BillableOrder {
+  id: string;
+  number: string;
+  title: string;
+  customer_id: string;
+  customer_name: string;
+  customer_no: string;
+  site_name: string | null;
+  place: string | null;
+  planned_date: string | null;
+  order_reference: string | null;
+  status: OrderStatus;
+  net_cents: bigint;
+  work_report_required: boolean;
+  signed: number;
+}
+
+/** Einzelaufträge, die noch nicht abgerechnet sind (Entwürfe → „Aus Einzelleistungen erstellen“). */
+export async function billableOrders(sql: Sql) {
+  return sql<BillableOrder[]>`
+    select o.id, o.number, o.title, o.customer_id, c.name as customer_name, c.customer_no, s.name as site_name,
+           o.place, o.planned_date, o.order_reference, o.status, o.net_cents, o.work_report_required,
+           (select count(*)::int from app.work_reports w
+             where w.order_id = o.id and w.status = 'unterschrieben' and w.cancelled_at is null) as signed
+      from app.orders o join app.customers c on c.id = o.customer_id left join app.sites s on s.id = o.site_id
+     where o.status in ('offen', 'in_arbeit', 'erledigt') and o.invoice_id is null
+     order by c.name, o.planned_date nulls last, o.number`;
 }
 
 export async function setOrderStatus(
@@ -312,6 +428,11 @@ export interface WorkReport {
   cancelled_at: Date | null;
   cancelled_by: string | null;
   cancel_reason: string | null;
+  /** einzeln erledigt (ohne Rechnung) */
+  done_at: Date | null;
+  done_by: string | null;
+  done_note: string | null;
+  draft_invoice_id: string | null;
   created_by: string;
   created_at: Date;
   version: number;
@@ -328,6 +449,10 @@ export interface WorkReportLine {
   unit_price_cents: bigint | null;
   /** Datum der Stunden (mehrtägige Arbeitsscheine), sonst null = Datum des Scheins */
   line_date: string | null;
+  /** Stundenzeile: Uhrzeit von–bis und Pause (optional, sonst nur Stunden) */
+  time_from: string | null;
+  time_to: string | null;
+  break_minutes: number | null;
 }
 export type WorkReportRow = WorkReport & {
   customer_name: string;
@@ -351,7 +476,7 @@ export async function listWorkReports(
      where ${f.siteId ? sql`w.site_id = ${f.siteId}` : sql`true`}
        and ${f.orderId ? sql`w.order_id = ${f.orderId}` : sql`true`}
        and ${f.status?.length ? sql`w.status in ${sql(f.status)}` : sql`true`}
-       and ${f.unbilled ? sql`w.invoice_id is null and w.cancelled_at is null` : sql`true`}
+       and ${f.unbilled ? sql`w.invoice_id is null and w.cancelled_at is null and w.done_at is null` : sql`true`}
      order by w.work_date desc, w.number desc`;
 }
 
@@ -360,7 +485,8 @@ export async function getWorkReport(sql: Sql, id: string) {
   if (!w) return undefined;
   const lines = await sql<
     WorkReportLine[]
-  >`select *, line_date::text as line_date from app.work_report_lines where work_report_id = ${id} order by position`;
+  >`select *, line_date::text as line_date, to_char(time_from, 'HH24:MI') as time_from,
+                 to_char(time_to, 'HH24:MI') as time_to from app.work_report_lines where work_report_id = ${id} order by position`;
   const employees = w.employee_ids.length
     ? await sql<{ id: string; name: string }[]>`
         select id, first_name || ' ' || last_name as name from app.employees where id in ${sql(w.employee_ids)} order by last_name`
@@ -386,6 +512,9 @@ export interface WorkReportInput {
     serviceId?: string | null;
     person?: string | null;
     lineDate?: string | null;
+    timeFrom?: string | null;
+    timeTo?: string | null;
+    breakMinutes?: number | null;
   }[];
   expectedVersion: number | null;
 }
@@ -471,6 +600,9 @@ export async function saveWorkReport(sql: Sql, id: string, input: WorkReportInpu
             unit_price_cents: sv ? sv.unit_price_cents : null,
             line_date:
               l.lineDate && l.lineDate !== input.workDate ? l.lineDate : l.lineDate && to ? l.lineDate : null,
+            time_from: l.person && l.timeFrom ? l.timeFrom : null,
+            time_to: l.person && l.timeTo ? l.timeTo : null,
+            break_minutes: l.person && l.timeFrom && l.timeTo ? (l.breakMinutes ?? 0) : null,
           };
         }),
       )}`;
@@ -479,49 +611,98 @@ export async function saveWorkReport(sql: Sql, id: string, input: WorkReportInpu
   });
 }
 
-/** Entwurf löschen (Positionen, Verknüpfungen zu Tiefgaragen-Terminen/Sonderdiensten lösen; Fotos bleiben im Archiv). */
-export async function deleteWorkReport(sql: Sql, id: string, actor: string) {
+/**
+ * Verknüpfung eines abgeschlossenen Scheins zu einem Rechnungs-ENTWURF lösen (Anhang-Verweis im Entwurf entfällt,
+ * Datei bleibt im Archiv). Ausgestellte Rechnung → Fehler (erst stornieren).
+ */
+async function releaseFromDraft(tx: Tx, id: string) {
+  const [w] = await tx<
+    { number: string; invoice_id: string | null; inv_status: string | null; inv_number: string | null }[]
+  >`
+    select w.number, w.invoice_id, i.status::text as inv_status, i.number as inv_number
+      from app.work_reports w left join app.invoices i on i.id = w.invoice_id where w.id = ${id}`;
+  if (!w?.invoice_id) return;
+  if (w.inv_status !== 'draft')
+    throw new BusinessError(
+      `Schon abgerechnet (Rechnung ${w.inv_number ?? ''}) – bitte zuerst die Rechnung stornieren bzw. korrigieren`,
+    );
+  await tx`update app.work_reports set invoice_id = null where id = ${id}`;
+  await tx`delete from app.invoice_documents where invoice_id = ${w.invoice_id} and kind = 'attachment'
+              and filename = ${`Arbeitsschein_${w.number}.pdf`}`;
+}
+
+/**
+ * Arbeitsschein löschen. Entwurf: jederzeit. Abgeschlossen (unterschrieben/PDF): nur Admin und nur, solange keine
+ * ausgestellte Rechnung daran hängt – aus einem Rechnungsentwurf wird er gelöst. Der vollständige Stand geht ins
+ * Protokoll, PDF und Unterschrift bleiben write-once im Archiv. Verknüpfungen zu Tiefgaragen-Terminen werden gelöst.
+ */
+export async function deleteWorkReport(sql: Sql, id: string, actor: string, opts: { admin?: boolean } = {}) {
   await sql.begin(async (tx) => {
-    const [w] = await tx<{ number: string; status: WorkReportStatus }[]>`
-      select number, status from app.work_reports where id = ${id} for update`;
+    const [w] = await tx<WorkReport[]>`select * from app.work_reports where id = ${id} for update`;
     if (!w) throw new BusinessError('Arbeitsschein nicht gefunden');
-    if (w.status !== 'entwurf')
-      throw new BusinessError('Abgeschlossene Arbeitsscheine können nur storniert werden');
+    if (w.status !== 'entwurf') {
+      if (!opts.admin)
+        throw new BusinessError(
+          'Abgeschlossene Arbeitsscheine darf nur ein Admin löschen – sonst bitte stornieren',
+        );
+      await releaseFromDraft(tx, id);
+      await tx`select set_config('app.purge', 'on', true)`;
+    }
+    const lines =
+      await tx`select * from app.work_report_lines where work_report_id = ${id} order by position`;
     for (const t of ['tg_appointments', 'special_service_runs'])
       if ((await tx`select to_regclass(${'app.' + t}) as r`)[0]!.r)
         await tx.unsafe(`update app.${t} set work_report_id = null where work_report_id = $1`, [id]);
     await tx`delete from app.work_reports where id = ${id}`;
+    await tx`select set_config('app.purge', 'off', true)`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
-             values (${actor}, 'delete', 'work_report', ${id}, ${tx.json({ number: w.number })})`;
+             values (${actor}, 'delete', 'work_report', ${id},
+                     ${tx.json(JSON.parse(JSON.stringify({ number: w.number, report: w, lines }, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))))})`;
   });
 }
 
-/** Abgeschlossenen Arbeitsschein stornieren (mit Grund). Bereits abgerechnete: erst die Rechnung stornieren. */
+/** Abgeschlossenen Arbeitsschein stornieren (mit Grund). Aus einem Rechnungsentwurf wird er gelöst. */
 export async function cancelWorkReport(sql: Sql, id: string, reason: string, actor: string) {
   if (!reason.trim()) throw new BusinessError('Bitte Grund angeben');
-  const [w] = await sql<
-    {
-      status: WorkReportStatus;
-      invoice_id: string | null;
-      cancelled_at: Date | null;
-      inv_status: string | null;
-      inv_number: string | null;
-    }[]
-  >`select w.status, w.invoice_id, w.cancelled_at, i.status::text as inv_status, i.number as inv_number
-      from app.work_reports w left join app.invoices i on i.id = w.invoice_id where w.id = ${id}`;
+  await sql.begin(async (tx) => {
+    const [w] = await tx<{ status: WorkReportStatus; cancelled_at: Date | null }[]>`
+      select status, cancelled_at from app.work_reports where id = ${id} for update`;
+    if (!w) throw new BusinessError('Arbeitsschein nicht gefunden');
+    if (w.cancelled_at) return;
+    if (w.status === 'entwurf') throw new BusinessError('Entwürfe bitte löschen');
+    await releaseFromDraft(tx, id);
+    await tx`update app.work_reports set cancelled_at = now(), cancelled_by = ${actor}, cancel_reason = ${reason.trim()}
+               where id = ${id} and cancelled_at is null`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+              values (${actor}, 'cancel', 'work_report', ${id}, ${tx.json({ reason: reason.trim() })})`;
+  });
+}
+
+/**
+ * Arbeitsschein einzeln „erledigt“ (Ahmed 09.10.): wird nicht (mehr) abgerechnet, z. B. in der Pauschale enthalten
+ * oder anders erledigt – fällt aus der Liste „abzurechnen“. Rücknahme möglich. Entwürfe vorher abschließen.
+ */
+export async function setWorkReportDone(
+  sql: Sql,
+  id: string,
+  done: boolean,
+  note: string | null,
+  actor: string,
+) {
+  const [w] = await sql<{ status: WorkReportStatus; invoice_id: string | null; cancelled_at: Date | null }[]>`
+    select status, invoice_id, cancelled_at from app.work_reports where id = ${id}`;
   if (!w) throw new BusinessError('Arbeitsschein nicht gefunden');
-  if (w.cancelled_at) return;
-  if (w.status === 'entwurf') throw new BusinessError('Entwürfe bitte löschen');
-  if (w.invoice_id)
-    throw new BusinessError(
-      w.inv_number
-        ? `Schon abgerechnet (Rechnung ${w.inv_number}) – bitte zuerst die Rechnung stornieren bzw. korrigieren`
-        : 'Schon in einem Rechnungsentwurf – bitte zuerst den Entwurf löschen',
-    );
-  await sql`update app.work_reports set cancelled_at = now(), cancelled_by = ${actor}, cancel_reason = ${reason.trim()}
-             where id = ${id} and cancelled_at is null`;
+  if (w.cancelled_at) throw new BusinessError('Storniert');
+  if (done && w.invoice_id) throw new BusinessError('Schon abgerechnet');
+  if (done && w.status === 'entwurf')
+    throw new BusinessError('Bitte zuerst abschließen (Unterschrift oder PDF)');
+  if (done)
+    await sql`update app.work_reports set done_at = now(), done_by = ${actor}, done_note = ${note?.trim() || null}
+               where id = ${id} and done_at is null`;
+  else
+    await sql`update app.work_reports set done_at = null, done_by = null, done_note = null where id = ${id}`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
-            values (${actor}, 'cancel', 'work_report', ${id}, ${sql.json({ reason: reason.trim() })})`;
+            values (${actor}, ${done ? 'done' : 'undone'}, 'work_report', ${id}, ${sql.json({ note: note ?? null })})`;
 }
 
 const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -560,6 +741,11 @@ export async function signWorkReport(
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
             values (${actor}, 'sign', 'work_report', ${id}, ${sql.json({ signed_by: p.name.trim(), sha256 })})`;
   await archiveWorkReportPdf(deps, id);
+  // aus einem Rechnungsentwurf angelegt → unterschriebenes PDF gleich an die Rechnung hängen
+  const [d] = await sql<{ draft_invoice_id: string | null; status: string | null }[]>`
+    select w.draft_invoice_id, i.status::text as status from app.work_reports w
+      left join app.invoices i on i.id = w.draft_invoice_id where w.id = ${id}`;
+  if (d?.draft_invoice_id && d.status === 'draft') await attachReports(deps, d.draft_invoice_id, [id], actor);
 }
 
 export async function closeWithoutSignature(deps: Deps, id: string, reason: string, actor: string) {
@@ -665,7 +851,11 @@ export async function renderWorkReportPdf(deps: Deps, id: string): Promise<Uint8
           .map((l) => [
             dShort(l.line_date ?? w.work_date),
             l.person ?? '',
-            w.start_time && w.end_time ? `${w.start_time.slice(0, 5)}–${w.end_time.slice(0, 5)}` : '',
+            l.time_from && l.time_to
+              ? `${l.time_from}–${l.time_to}${l.break_minutes ? ` (−${l.break_minutes} Min.)` : ''}`
+              : w.start_time && w.end_time
+                ? `${w.start_time.slice(0, 5)}–${w.end_time.slice(0, 5)}`
+                : '',
             qty(l.quantity_milli),
             l.description === 'Regiestunden' ? (w.description ?? '').split('\n')[0]! : l.description,
           ])
@@ -680,8 +870,8 @@ export async function renderWorkReportPdf(deps: Deps, id: string): Promise<Uint8
     d.table(
       [
         { label: 'Datum', width: 62 },
-        { label: 'Mitarbeiter', width: 150 },
-        { label: 'Zeit', width: 72 },
+        { label: 'Mitarbeiter', width: 130 },
+        { label: 'Zeit (Pause)', width: 92 },
         { label: 'Std.', width: 44, align: 'right' },
         { label: 'Tätigkeit', width: 170 },
       ],
@@ -738,6 +928,114 @@ export async function workReportPdf(deps: Deps, id: string): Promise<Uint8Array>
 // Abrechnung
 // ---------------------------------------------------------------------------
 
+/** Arbeitsscheine, die zu einer Rechnung gehören (aus dem Entwurf angelegt oder angehängt). */
+export async function invoiceWorkReports(sql: Sql, invoiceId: string) {
+  return sql<
+    {
+      id: string;
+      number: string;
+      status: WorkReportStatus;
+      signed_by_name: string | null;
+      signed_at: Date | null;
+      cancelled: boolean;
+      attached: boolean;
+    }[]
+  >`select id, number, status, signed_by_name, signed_at, cancelled_at is not null as cancelled,
+           invoice_id is not null as attached
+      from app.work_reports where draft_invoice_id = ${invoiceId} or invoice_id = ${invoiceId}
+     order by created_at`;
+}
+
+const stableId = (key: string) => {
+  const h = createHash('md5').update(key).digest('hex').split('');
+  h[12] = '4';
+  h[16] = '89ab'[parseInt(h[16]!, 16) % 4]!;
+  const s = h.join('');
+  return `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20)}`;
+};
+
+/**
+ * Arbeitsschein aus einem Rechnungsentwurf (Ahmed 09.10.): Objekt, Zeitraum und Positionen werden übernommen, der
+ * Schein ist mit dem Entwurf verknüpft. Ab jetzt lässt sich die Rechnung erst ausstellen, wenn der Schein vom Kunden
+ * unterschrieben ist (das PDF hängt dann an der Rechnung). Doppelt geklickt → derselbe Schein.
+ */
+export async function workReportFromInvoice(sql: Sql, invoiceId: string, actor: string): Promise<string> {
+  const [inv] = await sql<
+    { status: string; site_id: string | null; period_start: string | null; period_end: string | null }[]
+  >`select status::text as status, site_id, period_start, period_end from app.invoices where id = ${invoiceId}`;
+  if (!inv) throw new BusinessError('Rechnung nicht gefunden');
+  if (inv.status !== 'draft') throw new BusinessError('Nur für Rechnungsentwürfe');
+  const linked = await invoiceWorkReports(sql, invoiceId);
+  const open = linked.find((w) => !w.cancelled);
+  if (open) {
+    await sql`update app.invoices set work_report_required = true where id = ${invoiceId} and status = 'draft'`;
+    return open.id;
+  }
+  const lines = await sql<
+    {
+      description: string;
+      quantity_milli: bigint;
+      unit_code: string;
+      source_service_id: string | null;
+      service_site: string | null;
+    }[]
+  >`select l.description, l.quantity_milli, l.unit_code, l.source_service_id, ss.site_id as service_site
+      from app.invoice_lines l left join app.site_services ss on ss.id = l.source_service_id
+     where l.invoice_id = ${invoiceId} order by l.position`;
+  const siteId = inv.site_id ?? lines.find((l) => l.service_site)?.service_site ?? null;
+  if (!siteId)
+    throw new BusinessError(
+      'Bitte im Entwurf zuerst ein Objekt wählen (Entwurf bearbeiten) – der Arbeitsschein gehört zu einem Objekt.',
+    );
+  const date = inv.period_start ?? todayBerlin();
+  const id = stableId(`ws-aus-rechnung:${invoiceId}:${linked.length}`);
+  await saveWorkReport(
+    sql,
+    id,
+    {
+      orderId: null,
+      siteId,
+      workDate: date,
+      workDateTo: inv.period_end && inv.period_end > date ? inv.period_end : null,
+      startTime: null,
+      endTime: null,
+      employeeIds: [],
+      description: null,
+      materials: null,
+      remarks: null,
+      lines: lines
+        .filter((l) => l.quantity_milli > 0n)
+        .map((l) => ({
+          description: l.description,
+          quantity: l.quantity_milli as Quantity,
+          unitCode: l.unit_code,
+          serviceId: l.service_site === siteId ? l.source_service_id : null,
+        })),
+      expectedVersion: null,
+    },
+    actor,
+  ).catch(async (e) => {
+    // doppelt gesendet: der Schein existiert schon
+    const [w] = await sql`select 1 from app.work_reports where id = ${id}`;
+    if (!w) throw e;
+  });
+  await sql`update app.work_reports set draft_invoice_id = ${invoiceId} where id = ${id} and status = 'entwurf'`;
+  await sql`update app.invoices set work_report_required = true where id = ${invoiceId} and status = 'draft'`;
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${actor}, 'work_report_required', 'invoice', ${invoiceId}, ${sql.json({ work_report_id: id })})`;
+  return id;
+}
+
+/** Pflicht „unterschriebener Arbeitsschein“ für einen Entwurf aufheben (mit Grund, Protokoll). */
+export async function dropWorkReportRequirement(sql: Sql, invoiceId: string, reason: string, actor: string) {
+  if (!reason.trim()) throw new BusinessError('Bitte Grund angeben');
+  const res = await sql`update app.invoices set work_report_required = false
+                         where id = ${invoiceId} and status = 'draft' and work_report_required returning id`;
+  if (res.length)
+    await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+              values (${actor}, 'work_report_not_required', 'invoice', ${invoiceId}, ${sql.json({ reason: reason.trim() })})`;
+}
+
 /** Abgeschlossene Arbeitsscheine an einen Rechnungsentwurf hängen (PDF als Anlage, Schein als abgerechnet markieren). */
 async function attachReports(deps: Deps, invoiceId: string, reportIds: string[], actor: string) {
   for (const rid of reportIds) {
@@ -760,8 +1058,9 @@ export async function orderToInvoice(deps: Deps, orderId: string, actor: string)
   if (o.invoice_id) return o.invoice_id;
   if (o.status === 'storniert') throw new BusinessError('Auftrag ist storniert');
   if (!lines.length) throw new BusinessError('Auftrag hat keine Positionen mit Preisen');
-  const open = await listWorkReports(sql, { orderId, status: ['entwurf'] });
-  if (open.length)
+  const open = (await listWorkReports(sql, { orderId, status: ['entwurf'] })).filter((w) => !w.cancelled_at);
+  // mit Arbeitsschein-Pflicht darf der Entwurf schon entstehen – Ausstellen erst nach der Unterschrift
+  if (open.length && !o.work_report_required)
     throw new BusinessError(`Arbeitsschein ${open[0]!.number} ist noch nicht unterschrieben/abgeschlossen`);
   const [{ id }] = (await sql`select md5(${'order-invoice:' + orderId})::uuid as id`) as unknown as [
     { id: string },
@@ -773,10 +1072,10 @@ export async function orderToInvoice(deps: Deps, orderId: string, actor: string)
       customerId: o.customer_id,
       siteId: o.site_id,
       kind: 'invoice',
-      periodStart: null,
-      periodEnd: null,
+      periodStart: o.planned_date,
+      periodEnd: o.planned_date,
       orderReference: o.order_reference,
-      introText: `Gemäß Auftrag ${o.number} („${o.title}“) berechnen wir:`,
+      introText: `Gemäß Auftrag ${o.number} („${o.title}“)${o.place ? `, Leistungsort ${o.place},` : ''} berechnen wir:`,
       closingText: null,
       lines: lines.map((l) => ({
         description: l.description,
@@ -800,6 +1099,11 @@ export async function orderToInvoice(deps: Deps, orderId: string, actor: string)
     reports.map((r) => r.id),
     actor,
   );
+  if (o.work_report_required) {
+    await sql`update app.invoices set work_report_required = true where id = ${id} and status = 'draft'`;
+    await sql`update app.work_reports set draft_invoice_id = ${id}
+               where order_id = ${orderId} and cancelled_at is null and invoice_id is null`;
+  }
   await sql`update app.orders set status = 'abgerechnet', invoice_id = ${id} where id = ${orderId} and invoice_id is null`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details) values (${actor}, 'to_invoice', 'order', ${orderId}, ${sql.json({ invoice_id: id })})`;
   return id;
@@ -830,20 +1134,46 @@ export async function reportsToInvoice(
     const rl = await sql<
       WorkReportLine[]
     >`select *, line_date::text as line_date from app.work_report_lines where work_report_id = ${r.id} order by position`;
+    // Regiestunden je Person werden zusammengefasst (Ahmed 09.10.: „die Leute sollen nicht einzeln darauf kommen“) –
+    // eine Position je Schein und Tätigkeit mit der Summe der Stunden; die Namen stehen im angehängten Arbeitsschein.
+    const groups = new Map<string, { l: WorkReportLine; qty: bigint; from: string; to: string }>();
+    const items: { l: WorkReportLine; qty: bigint; from: string | null; to: string | null }[] = [];
     for (const l of rl) {
-      const ld = l.line_date ?? (l.person ? r.work_date : null);
+      if (!l.person) {
+        items.push({ l, qty: l.quantity_milli, from: l.line_date, to: l.line_date });
+        continue;
+      }
+      const d = l.line_date ?? r.work_date;
+      const key = `${l.description}|${l.unit_code}|${l.unit_price_cents ?? ''}`;
+      const g = groups.get(key);
+      if (!g) {
+        const entry = { l, qty: l.quantity_milli, from: d, to: d };
+        groups.set(key, entry);
+        items.push(entry);
+      } else {
+        g.qty += l.quantity_milli;
+        if (d < g.from) g.from = d;
+        if (d > g.to) g.to = d;
+      }
+    }
+    for (const { l, qty, from, to } of items) {
+      const dateText = from
+        ? from === to
+          ? `vom ${formatDateDe(from)}`
+          : `vom ${formatDateDe(from)} bis ${formatDateDe(to!)}`
+        : `vom ${formatDateDe(r.work_date)}${r.work_date_to ? ` bis ${formatDateDe(r.work_date_to)}` : ''}`;
       lines.push({
-        description: l.person ? `${l.description} – ${l.person}` : l.description,
-        detail: `Arbeitsschein ${r.number} vom ${formatDateDe(ld ?? r.work_date)}${!ld && r.work_date_to ? ` bis ${formatDateDe(r.work_date_to)}` : ''}`,
-        quantity: l.quantity_milli as Quantity,
+        description: l.description,
+        detail: `Arbeitsschein ${r.number} ${dateText}`,
+        quantity: qty as Quantity,
         unitCode: l.unit_code,
         // Leistung aus dem Katalog: eingefrorener Preis; Stunden: Regiestundensatz des Objekts
         unitPrice: (l.unit_price_cents ??
           (l.unit_code === 'HUR' && rate ? rate.unit_price_cents : 0n)) as Cents,
         vatRate: rate?.vat_rate_bp ?? 1900,
         sourceServiceId: null,
-        periodStart: ld ?? r.work_date,
-        periodEnd: ld ?? r.work_date_to ?? r.work_date,
+        periodStart: from ?? r.work_date,
+        periodEnd: to ?? r.work_date_to ?? r.work_date,
       });
     }
   }

@@ -301,6 +301,9 @@ export const CustomerSide: FC<{ c: Customer; groups: InvoiceGroupRow[] }> = ({ c
         <a class="btn sec sm" href={`/kunden/${c.id}/bearbeiten`}>
           Bearbeiten
         </a>
+        <a class="btn sec sm" href={`/auftraege/neu?kunde=${c.id}`}>
+          + Einzelauftrag
+        </a>
       </div>
       <div class="addr">
         <b>{c.name}</b>

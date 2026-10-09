@@ -680,6 +680,27 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         from app.work_reports w left join app.sites s on s.id = w.site_id
        where w.status = 'entwurf' and w.cancelled_at is null and ${me.id}::uuid = any(w.employee_ids)
        order by w.work_date, w.number`;
+    // Einzelaufträge, für die die Person eingeteilt ist (gestern bis 14 Tage voraus)
+    const myOrders = await sql<
+      {
+        id: string;
+        number: string;
+        title: string;
+        planned_date: string;
+        start_time: string | null;
+        end_time: string | null;
+        place: string | null;
+        description: string | null;
+        site_name: string | null;
+        customer_name: string;
+      }[]
+    >`select o.id, o.number, o.title, o.planned_date, to_char(o.start_time, 'HH24:MI') as start_time,
+             to_char(o.end_time, 'HH24:MI') as end_time, o.place, o.description, s.name as site_name,
+             c.name as customer_name
+        from app.orders o join app.customers c on c.id = o.customer_id left join app.sites s on s.id = o.site_id
+       where o.status in ('offen', 'in_arbeit') and ${me.id}::uuid = any(o.employee_ids)
+         and o.planned_date between ${addDays(today, -1)} and ${addDays(today, 14)}
+       order by o.planned_date, o.start_time nulls last`;
     // Neue Unterweisung/Dokument: beim Öffnen der App direkt zum Lesen und Unterschreiben (bis „Später“ für heute)
     if (openDocs.length && getCookie(c, 'm_doc_later') !== today)
       return c.redirect(`/m/dokumente/${openDocs[0]!.id}?zuerst=1`);
@@ -774,6 +795,33 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
                 </div>
                 <div class="s">{w.site_name ?? ''}</div>
               </a>
+            ))}
+          </>
+        )}
+        {myOrders.length > 0 && (
+          <>
+            <div class="today">
+              <h2>{t(lang, 'orders_next')}</h2>
+            </div>
+            {myOrders.map((o) => (
+              <div class="shift">
+                <div class="w">
+                  <span>
+                    {dayLabel(lang, o.planned_date)}
+                    {o.start_time && ` · ${o.start_time}${o.end_time ? `–${o.end_time}` : ''}`}
+                  </span>
+                  <span class="small">{o.number}</span>
+                </div>
+                <div class="s">
+                  <b>{o.title}</b> · {o.customer_name}
+                </div>
+                {(o.place || o.site_name) && <div class="s">{o.place ?? o.site_name}</div>}
+                {o.description && (
+                  <div class="s" style="white-space:pre-line">
+                    {o.description}
+                  </div>
+                )}
+              </div>
             ))}
           </>
         )}

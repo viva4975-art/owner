@@ -136,6 +136,52 @@ async function shiftEvents(sql: Sql, employeeId: string, from: string, to: strin
     }));
 }
 
+/** Einzelaufträge mit Termin (eigene bzw. alle offenen fürs Büro) */
+async function orderEvents(sql: Sql, employeeId: string | null, from: string, to: string): Promise<Ev[]> {
+  const rows = await sql<
+    {
+      id: string;
+      number: string;
+      title: string;
+      planned_date: string;
+      start_time: string | null;
+      end_time: string | null;
+      place: string | null;
+      description: string | null;
+      customer_name: string;
+      site_name: string | null;
+      site_addr: string | null;
+      order_reference: string | null;
+    }[]
+  >`select o.id, o.number, o.title, o.planned_date, to_char(o.start_time, 'HH24:MI') as start_time,
+           to_char(o.end_time, 'HH24:MI') as end_time, o.place, o.description, c.name as customer_name,
+           s.name as site_name, concat_ws(', ', s.street, concat_ws(' ', s.postal_code, s.city)) as site_addr,
+           o.order_reference
+      from app.orders o join app.customers c on c.id = o.customer_id left join app.sites s on s.id = o.site_id
+     where o.status in ('offen', 'in_arbeit') and o.planned_date between ${from} and ${to}
+       and ${employeeId ? sql`${employeeId}::uuid = any(o.employee_ids)` : sql`true`}`;
+  return rows.map((o) => {
+    const ev: Ev = {
+      uid: `auftrag-${o.id}`,
+      summary: `Auftrag ${o.number}: ${o.title} (${o.customer_name})`,
+      location: o.place ?? o.site_addr ?? o.site_name,
+      description: [o.order_reference ? `Bestellnummer ${o.order_reference}` : null, o.description]
+        .filter(Boolean)
+        .join('\n'),
+    };
+    if (o.start_time)
+      ev.at = {
+        date: o.planned_date,
+        start: o.start_time,
+        end:
+          o.end_time ??
+          `${String(Math.min(23, Number(o.start_time.slice(0, 2)) + 1)).padStart(2, '0')}${o.start_time.slice(2)}`,
+      };
+    else ev.day = { from: o.planned_date, to: o.planned_date };
+    return ev;
+  });
+}
+
 export async function feedIcs(sql: Sql, token: string): Promise<{ name: string; ics: string } | null> {
   if (!/^[A-Za-z0-9_-]{32,64}$/.test(token)) return null;
   const [f] = await sql<{ id: string; user_id: string | null; employee_id: string | null }[]>`
@@ -150,6 +196,7 @@ export async function feedIcs(sql: Sql, token: string): Promise<{ name: string; 
     const [e] = await sql<{ status: string }[]>`select status from app.employees where id = ${f.employee_id}`;
     if (!e || e.status !== 'aktiv') return null;
     events.push(...(await shiftEvents(sql, f.employee_id, from, to)));
+    events.push(...(await orderEvents(sql, f.employee_id, from, to)));
     return { name: 'Viva-Deluxe Einsätze', ics: renderIcs('Viva-Deluxe Einsätze', events) };
   }
   const [u] = await sql<{ role: string; name: string; active: boolean; employee_id: string | null }[]>`
@@ -157,6 +204,9 @@ export async function feedIcs(sql: Sql, token: string): Promise<{ name: string; 
       from app.user_accounts a join app.profiles p on p.user_id = a.id where a.id = ${f.user_id}`;
   if (!u || !u.active) return null;
   if (u.employee_id) events.push(...(await shiftEvents(sql, u.employee_id, from, to)));
+  // Einzelaufträge: Büro alle, Objektleitung nur die, bei denen sie eingeteilt ist
+  if (u.role !== 'objektleitung') events.push(...(await orderEvents(sql, null, from, to)));
+  else if (u.employee_id) events.push(...(await orderEvents(sql, u.employee_id, from, to)));
   const tasks = await sql<{ id: string; title: string; description: string | null; due_date: string }[]>`
     select id, title, description, due_date from app.tasks
      where status::text = 'open' and due_date between ${from} and ${to}

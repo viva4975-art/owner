@@ -19,6 +19,7 @@ type Dict = Record<string, string>;
 const de: Dict = {
   cal_subscribe: 'Einsätze im Handy-Kalender anzeigen',
   ws_open: 'Arbeitsscheine zum Unterschreiben',
+  orders_next: 'Einzelaufträge',
   ws_pdf: 'Arbeitsschein ansehen (PDF)',
   ws_hand_over: 'Bitte das Handy dem Kunden geben – er unterschreibt unten.',
   ws_signed: 'Unterschrieben von {name}',
@@ -179,6 +180,7 @@ const de: Dict = {
 const en: Dict = {
   cal_subscribe: 'Show shifts in phone calendar',
   ws_open: 'Work reports to sign',
+  orders_next: 'Single jobs',
   ws_pdf: 'View work report (PDF)',
   ws_hand_over: 'Please hand the phone to the customer – they sign below.',
   ws_signed: 'Signed by {name}',
@@ -339,6 +341,7 @@ const en: Dict = {
 const ro: Dict = {
   cal_subscribe: 'Afișează turele în calendarul telefonului',
   ws_open: 'Fișe de lucru de semnat',
+  orders_next: 'Comenzi individuale',
   ws_pdf: 'Vezi fișa de lucru (PDF)',
   ws_hand_over: 'Te rugăm să dai telefonul clientului – semnează mai jos.',
   ws_signed: 'Semnat de {name}',
@@ -499,6 +502,7 @@ const ro: Dict = {
 const tr: Dict = {
   cal_subscribe: 'Görevleri telefon takviminde göster',
   ws_open: 'İmzalanacak iş formları',
+  orders_next: 'Tekil işler',
   ws_pdf: 'İş formunu görüntüle (PDF)',
   ws_hand_over: 'Lütfen telefonu müşteriye verin – aşağıda imzalar.',
   ws_signed: '{name} tarafından imzalandı',
@@ -658,6 +662,7 @@ const tr: Dict = {
 const pl: Dict = {
   cal_subscribe: 'Pokaż zmiany w kalendarzu telefonu',
   ws_open: 'Protokoły pracy do podpisania',
+  orders_next: 'Zlecenia jednorazowe',
   ws_pdf: 'Zobacz protokół pracy (PDF)',
   ws_hand_over: 'Proszę podać telefon klientowi – podpisuje poniżej.',
   ws_signed: 'Podpisane przez {name}',
@@ -818,6 +823,7 @@ const pl: Dict = {
 const hr: Dict = {
   cal_subscribe: 'Prikaži smjene u kalendaru mobitela',
   ws_open: 'Radni nalozi za potpis',
+  orders_next: 'Pojedinačni nalozi',
   ws_pdf: 'Pogledaj radni nalog (PDF)',
   ws_hand_over: 'Molimo dajte mobitel klijentu – potpisuje ispod.',
   ws_signed: 'Potpisao/la {name}',
@@ -978,6 +984,7 @@ const hr: Dict = {
 const bg: Dict = {
   cal_subscribe: 'Покажи смените в календара на телефона',
   ws_open: 'Работни листове за подписване',
+  orders_next: 'Единични поръчки',
   ws_pdf: 'Виж работния лист (PDF)',
   ws_hand_over: 'Моля, дайте телефона на клиента – той подписва отдолу.',
   ws_signed: 'Подписано от {name}',

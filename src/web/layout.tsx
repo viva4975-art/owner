@@ -1287,6 +1287,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     label: 'Rechnungen',
     items: [
       { label: 'Entwürfe / Vorfaktura', href: '/rechnungen/entwuerfe' },
+      { label: 'Einzelaufträge', href: '/auftraege' },
       { label: 'Alle Rechnungen', href: '/rechnungen' },
       { label: 'Offene Posten', href: '/offene-posten', sep: true },
       { label: 'Mahnwesen', href: '/mahnungen' },

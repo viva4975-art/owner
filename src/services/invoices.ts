@@ -38,6 +38,8 @@ export interface InvoiceRow {
   invoice_group_id: string | null;
   planned_issue_date: string | null;
   review_required: boolean;
+  /** Arbeitsschein aus dem Entwurf angelegt → Ausstellen erst mit unterschriebenem Schein */
+  work_report_required: boolean;
   original_invoice_id: string | null;
   issue_date: string | null;
   due_date: string | null;
@@ -372,6 +374,11 @@ export async function deleteDraft(sql: Sql, id: string, actor: string) {
     if (!inv) return;
     if (inv.status !== 'draft')
       throw new BusinessError('Ausgestellte Rechnungen können nicht gelöscht werden');
+    // Verknüpfungen lösen: Arbeitsscheine und Aufträge werden wieder abrechenbar, Anhang-Verweise des Entwurfs
+    // entfallen (Dateien bleiben im Archiv)
+    await tx`update app.work_reports set invoice_id = null where invoice_id = ${id}`;
+    await tx`update app.orders set invoice_id = null, status = 'erledigt' where invoice_id = ${id}`;
+    await tx`delete from app.invoice_documents where invoice_id = ${id}`;
     await tx`delete from app.invoices where id = ${id}`;
     await audit(tx, actor, 'delete_draft', id);
   });

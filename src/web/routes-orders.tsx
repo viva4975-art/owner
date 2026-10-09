@@ -15,6 +15,7 @@ import {
   cancelWorkReport,
   closeWithoutSignature,
   deleteWorkReport,
+  setWorkReportDone,
   executionNotes,
   getOrder,
   getWorkReport,
@@ -96,6 +97,11 @@ const WR_LINES_JS = `
   function range(){if(!wd)return;var to=(wt&&wt.value)||wd.value;document.querySelectorAll('#wr-regie [name=line_date]').forEach(function(i){i.min=wd.value;i.max=to;if(!i.value||i.value<wd.value||i.value>to)i.value=wd.value;});}
   [wd,wt].forEach(function(x){x&&x.addEventListener('change',range)});
   document.addEventListener('input',function(ev){if(ev.target.name==='line_qty')ev.target.dataset.touched='1'});
+  // Stunden aus von–bis minus Pause, Summe aller Stundenzeilen
+  function num(v){v=(v||'').trim().replace(',','.');return v===''?NaN:+v}
+  function sum(){if(!rt)return;var t=0;rt.querySelectorAll('[name=line_qty]').forEach(function(q){var v=num(q.value);if(!isNaN(v))t+=v});var el=document.getElementById('wr-regie-sum');if(el)el.textContent=(Math.round(t*100)/100).toString().replace('.',',')+' Std.'}
+  function rowCalc(tr){var f=tr.querySelector('[name=line_from]'),to=tr.querySelector('[name=line_to]'),b=tr.querySelector('[name=line_break]'),q=tr.querySelector('[name=line_qty]');if(!f||!to||!q||!f.value||!to.value)return;var a=f.value.split(':'),c=to.value.split(':');var m=(+c[0]*60+ +c[1])-(+a[0]*60+ +a[1]);if(m<=0)m+=1440;m-=(parseInt(b&&b.value,10)||0);if(m<=0)return;q.value=(Math.round(m/60*100)/100).toString().replace('.',',');q.dataset.touched='1';}
+  if(rt){rt.addEventListener('input',function(ev){var n=ev.target.name;if(n==='line_from'||n==='line_to'||n==='line_break')rowCalc(ev.target.closest('tr'));sum()});rt.addEventListener('click',function(){setTimeout(sum,0)});sum();}
   // Mitarbeiter angehakt → Regie-Zeile mit Namen anlegen
   document.querySelectorAll('input[name=employee]').forEach(function(x){x.addEventListener('change',function(){if(!x.checked||!rt)return;var n=x.dataset.name;var have=Array.prototype.some.call(rt.querySelectorAll('[name=line_person]'),function(p){return p.value===n});if(have)return;var empty=Array.prototype.find.call(rt.querySelectorAll('[name=line_person]'),function(p){return !p.value});if(!empty){document.getElementById('wr-regie-add').click();empty=rt.querySelector('tr:last-child [name=line_person]')}empty.value=n;hours()})});
 })();`;
@@ -126,7 +132,7 @@ export const WorkReportTable: FC<{ rows: WorkReportRow[]; select?: boolean }> = 
           <tr>
             {select && (
               <td>
-                {w.status !== 'entwurf' && !w.invoice_id && !w.cancelled_at && (
+                {w.status !== 'entwurf' && !w.invoice_id && !w.cancelled_at && !w.done_at && (
                   <input type="checkbox" name="report" value={w.id} checked aria-label="abrechnen" />
                 )}
               </td>
@@ -154,7 +160,17 @@ export const WorkReportTable: FC<{ rows: WorkReportRow[]; select?: boolean }> = 
               {w.signed_by_name && <div class="small mut">{w.signed_by_name}</div>}
             </td>
             <td class="small">
-              {w.invoice_id ? <a href={`/rechnungen/${w.invoice_id}`}>abgerechnet</a> : '–'}
+              {w.invoice_id ? (
+                <a href={`/rechnungen/${w.invoice_id}`}>abgerechnet</a>
+              ) : w.done_at ? (
+                <span class="badge ok" title={w.done_note ?? ''}>
+                  erledigt
+                </span>
+              ) : w.draft_invoice_id ? (
+                <a href={`/rechnungen/${w.draft_invoice_id}`}>zur Rechnung (Entwurf)</a>
+              ) : (
+                '–'
+              )}
             </td>
           </tr>
         ))}
@@ -200,12 +216,12 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
     ];
     return page(
       c,
-      'Aufträge',
-      'angebote',
+      'Einzelaufträge',
+      'rechnungen',
       <>
-        <PageHead title="Aufträge">
+        <PageHead title="Einzelaufträge">
           <a class="btn" href={`/auftraege/${randomUUID()}/bearbeiten`} style="margin-left:auto">
-            <Icon name="plus" /> Auftrag anlegen
+            <Icon name="plus" /> Einzelauftrag anlegen
           </a>
         </PageHead>
         <Tabs tabs={tabs} active={st ?? ''} />
@@ -216,7 +232,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                 <th>Nr.</th>
                 <th>Titel</th>
                 <th>Kunde / Objekt</th>
-                <th>geplant</th>
+                <th>Termin</th>
                 <th class="r">Netto</th>
                 <th class="r">Arbeitsscheine</th>
                 <th>Status</th>
@@ -242,7 +258,10 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                     <a href={`/kunden/${o.customer_id}`}>{o.customer_name}</a>
                     {o.site_name && <div class="small mut">{o.site_name}</div>}
                   </td>
-                  <td>{dateDe(o.planned_date)}</td>
+                  <td>
+                    {dateDe(o.planned_date)}
+                    {o.place && <div class="small mut">{o.place}</div>}
+                  </td>
                   <td class="r">{euro(o.net_cents)}</td>
                   <td class="r">
                     {o.signed}/{o.reports}
@@ -259,6 +278,13 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
     );
   });
 
+  app.get('/auftraege/neu', (c) => {
+    const k = c.req.query('kunde');
+    return c.redirect(
+      `/auftraege/${randomUUID()}/bearbeiten${k && /^[0-9a-f-]{36}$/.test(k) ? `?kunde=${k}` : ''}`,
+    );
+  });
+
   app.get(`/auftraege/:id{${UUID}}/bearbeiten`, async (c) => {
     const id = c.req.param('id');
     const data = await getOrder(sql, id);
@@ -268,21 +294,27 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
     const o = data?.order;
     const customerId = o?.customer_id ?? q.kunde ?? '';
     const siteId = o?.site_id ?? q.objekt ?? '';
-    const [customers, sites] = await Promise.all([
+    const [customers, sites, staff] = await Promise.all([
       listCustomers(sql),
       customerId ? listSites(sql, customerId) : Promise.resolve([]),
+      sql<{ id: string; name: string; personnel_no: string; lead: boolean }[]>`
+        select id, last_name || ', ' || first_name as name, personnel_no,
+               coalesce('Objektleitung' = any(tags) or 'Vorarbeiter' = any(tags), false) as lead
+          from app.employees where status = 'aktiv' or id = any(${o?.employee_ids ?? []}::uuid[])
+         order by last_name, first_name`,
     ]);
+    const chosen = new Set(o?.employee_ids ?? []);
     const lines: EditorLine[] = (data?.lines ?? []).map((l) =>
       toEditorLine({ ...l, source_service_id: null } as unknown as Parameters<typeof toEditorLine>[0]),
     );
     return page(
       c,
-      o ? `Auftrag ${o.number}` : 'Neuer Auftrag',
-      'angebote',
+      o ? `Auftrag ${o.number}` : 'Neuer Einzelauftrag',
+      'rechnungen',
       <>
         <PageHead
-          title={o ? `Auftrag ${o.number} bearbeiten` : 'Neuer Auftrag'}
-          crumbs={[['Aufträge', '/auftraege']]}
+          title={o ? `Auftrag ${o.number} bearbeiten` : 'Neuer Einzelauftrag'}
+          crumbs={[['Einzelaufträge', '/auftraege']]}
         />
         <form method="get" action={`/auftraege/${id}/bearbeiten`} class="card">
           <div class="grid">
@@ -336,8 +368,77 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                 <input id="order_reference" name="order_reference" value={o?.order_reference ?? ''} />
               </div>
               <div>
-                <label for="planned_date">Ausführung geplant am</label>
+                <label for="planned_date">Termin (Datum)</label>
                 <input id="planned_date" type="date" name="planned_date" value={o?.planned_date ?? ''} />
+              </div>
+              <div>
+                <label for="start_time">Uhrzeit</label>
+                <div style="display:flex;gap:6px;align-items:center">
+                  <input
+                    id="start_time"
+                    type="time"
+                    name="start_time"
+                    value={o?.start_time ?? ''}
+                    style="max-width:130px"
+                  />
+                  –
+                  <input
+                    type="time"
+                    name="end_time"
+                    value={o?.end_time ?? ''}
+                    style="max-width:130px"
+                    aria-label="bis"
+                  />
+                </div>
+              </div>
+              {!siteId && (
+                <div style="grid-column:1/-1">
+                  <label for="place">Leistungsort (ohne eigenes Objekt)</label>
+                  <input
+                    id="place"
+                    name="place"
+                    value={o?.place ?? ''}
+                    placeholder="z. B. Hansastr. 12, 80686 München – Treppenhaus Haus B"
+                  />
+                </div>
+              )}
+              <div style="grid-column:1/-1">
+                <label>Mitarbeiter / Vorarbeiter</label>
+                <input
+                  type="search"
+                  placeholder="Name oder Personalnummer"
+                  data-filter-list=".au-staff label"
+                  style="max-width:320px"
+                />
+                <div
+                  class="au-staff"
+                  style="max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin-top:6px"
+                >
+                  {staff.map((e) => (
+                    <label style="display:block;font-weight:400">
+                      <input type="checkbox" name="employee_ids" value={e.id} checked={chosen.has(e.id)} />{' '}
+                      {e.name}{' '}
+                      <span class="small mut">
+                        {e.personnel_no}
+                        {e.lead && ' · Vorarbeiter/Objektleitung'}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <div class="small mut">
+                  Der Termin erscheint in der App der Eingeteilten und im Kalender-Abo.
+                </div>
+              </div>
+              <div style="grid-column:1/-1">
+                <label style="font-weight:400">
+                  <input
+                    type="checkbox"
+                    name="work_report_required"
+                    value="1"
+                    checked={o?.work_report_required ?? false}
+                  />{' '}
+                  Arbeitsschein erforderlich – Kunde unterschreibt vor Ort (App), Rechnung erst danach
+                </label>
               </div>
             </div>
             <div style="margin:14px 0">
@@ -376,6 +477,11 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
         plannedDate: str(b, 'planned_date'),
         lines: parseLines(b),
         expectedVersion: versionOf(b.version),
+        place: str(b, 'place'),
+        startTime: str(b, 'start_time'),
+        endTime: str(b, 'end_time'),
+        employeeIds: arr(b, 'employee_ids').filter((x) => /^[0-9a-f-]{36}$/.test(x)),
+        workReportRequired: str(b, 'work_report_required') === '1',
       },
       c.get('actor'),
     );
@@ -387,9 +493,11 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
     const data = await getOrder(sql, id);
     if (!data) return c.redirect(`/auftraege/${id}/bearbeiten`);
     const { order: o, lines } = data;
-    const [reports, files] = await Promise.all([
+    const [reports, files, team] = await Promise.all([
       listWorkReports(sql, { orderId: id }),
       listFiles(sql, { type: 'order', id }),
+      sql<{ name: string }[]>`select first_name || ' ' || last_name as name from app.employees
+                               where id = any(${o.employee_ids}::uuid[]) order by last_name`,
     ]);
     const done = !['abgerechnet', 'storniert'].includes(o.status);
     const post = (path: string, label: Child, cls = 'sec', confirm?: string) => (
@@ -404,9 +512,9 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
     return page(
       c,
       `Auftrag ${o.number}`,
-      'angebote',
+      'rechnungen',
       <>
-        <PageHead title={o.title} no={`Auftrag ${o.number}`} crumbs={[['Aufträge', '/auftraege']]}>
+        <PageHead title={o.title} no={`Auftrag ${o.number}`} crumbs={[['Einzelaufträge', '/auftraege']]}>
           <span class={`badge ${ORDER_CLASS[o.status]}`}>{ORDER_STATUS[o.status]}</span>
         </PageHead>
         <div class="actions" style="margin-top:-8px">
@@ -508,8 +616,23 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                 <dd>{o.site_id ? <a href={`/objekte/${o.site_id}`}>Objekt öffnen</a> : '–'}</dd>
                 <dt>Bestellnummer</dt>
                 <dd>{o.order_reference ?? '–'}</dd>
-                <dt>geplant</dt>
-                <dd>{dateDe(o.planned_date)}</dd>
+                {o.place && (
+                  <>
+                    <dt>Leistungsort</dt>
+                    <dd>{o.place}</dd>
+                  </>
+                )}
+                <dt>Termin</dt>
+                <dd>
+                  {dateDe(o.planned_date)}
+                  {o.start_time && ` ${o.start_time}${o.end_time ? `–${o.end_time}` : ''} Uhr`}
+                </dd>
+                <dt>Team</dt>
+                <dd>{team.map((e) => e.name).join(', ') || '–'}</dd>
+                <dt>Arbeitsschein</dt>
+                <dd>
+                  {o.work_report_required ? 'erforderlich (Rechnung erst nach Unterschrift)' : 'nicht nötig'}
+                </dd>
                 {o.offer_id && (
                   <>
                     <dt>Angebot</dt>
@@ -628,6 +751,12 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
 
     if (w && w.status !== 'entwurf') {
       // Abgeschlossen: nur ansehen
+      const [invRow] = w.invoice_id
+        ? await sql<{ status: string; number: string | null }[]>`
+            select status::text as status, number from app.invoices where id = ${w.invoice_id}`
+        : [];
+      const invIssued = invRow?.status === 'issued';
+      const isAdmin = c.get('user').role === 'admin';
       return page(
         c,
         `Arbeitsschein ${w.number}`,
@@ -647,13 +776,44 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
               abgerechnet werden.
             </div>
           )}
+          {w.done_at && (
+            <div class="flash ok">
+              Erledigt (ohne Rechnung) am{' '}
+              {w.done_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })} von{' '}
+              {fullName({ login: w.done_by ?? '' })}
+              {w.done_note ? `: ${w.done_note}` : ''}.{' '}
+              <form method="post" action={`/arbeitsscheine/${id}/erledigt`} style="display:inline">
+                <input type="hidden" name="zurueck" value="1" />
+                <button class="btn sm sec">zurücknehmen</button>
+              </form>
+            </div>
+          )}
           <div class="actions" style="margin-top:-8px">
             <a class="btn" href={`/arbeitsscheine/${id}/arbeitsschein.pdf`} target="_blank">
               <Icon name="pdf" /> PDF
             </a>
+            {!w.invoice_id && !w.cancelled_at && !w.done_at && (
+              <details class="inline-det">
+                <summary class="btn sec">Als erledigt markieren</summary>
+                <form
+                  method="post"
+                  action={`/arbeitsscheine/${id}/erledigt`}
+                  class="actions"
+                  style="margin-top:6px"
+                >
+                  <input
+                    name="notiz"
+                    placeholder="Notiz (optional), z. B. in Pauschale enthalten"
+                    style="min-width:260px"
+                  />
+                  <button class="btn sm">Erledigt</button>
+                </form>
+              </details>
+            )}
             {!w.invoice_id &&
               !w.order_id &&
               !w.cancelled_at &&
+              !w.done_at &&
               canAccess(c.get('user').role, '/rechnungen') && (
                 <form method="post" action={`/objekte/${w.site_id}/regie-abrechnen`}>
                   <input type="hidden" name="report" value={id} />
@@ -722,31 +882,47 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                   <summary style="cursor:pointer">
                     <b>Arbeitsschein stornieren …</b>
                   </summary>
-                  {w.invoice_id ? (
+                  {invIssued ? (
                     <p class="small mut">
-                      Schon abgerechnet – zuerst die Rechnung stornieren bzw. den Rechnungsentwurf löschen.
+                      Abgerechnet mit Rechnung {invRow?.number} – zuerst die Rechnung stornieren bzw.
+                      korrigieren.
                     </p>
                   ) : (
-                    <form
-                      method="post"
-                      action={`/arbeitsscheine/${id}/stornieren`}
-                      onsubmit="return confirm('Arbeitsschein stornieren? Er bleibt sichtbar, zählt aber nicht mehr.')"
-                    >
-                      <p class="small mut" style="margin-top:6px">
-                        Abgeschlossene Arbeitsscheine werden nicht gelöscht (Nachweis), sondern mit Grund
-                        storniert.
-                      </p>
-                      <label for="grund">Grund</label>
-                      <input
-                        id="grund"
-                        name="grund"
-                        required
-                        placeholder="z. B. doppelt erfasst, falsches Objekt"
-                      />
-                      <div class="actions">
-                        <button class="btn sec danger">Stornieren</button>
-                      </div>
-                    </form>
+                    <>
+                      <form
+                        method="post"
+                        action={`/arbeitsscheine/${id}/stornieren`}
+                        onsubmit="return confirm('Arbeitsschein stornieren? Er bleibt sichtbar, zählt aber nicht mehr.')"
+                      >
+                        <p class="small mut" style="margin-top:6px">
+                          Storniert bleibt der Schein mit Grund sichtbar (Nachweis).
+                          {w.invoice_id && ' Er wird dabei aus dem Rechnungsentwurf gelöst.'}
+                        </p>
+                        <label for="grund">Grund</label>
+                        <input
+                          id="grund"
+                          name="grund"
+                          required
+                          placeholder="z. B. doppelt erfasst, falsches Objekt"
+                        />
+                        <div class="actions">
+                          <button class="btn sec danger">Stornieren</button>
+                        </div>
+                      </form>
+                      {isAdmin && (
+                        <form
+                          method="post"
+                          action={`/arbeitsscheine/${id}/loeschen`}
+                          onsubmit="return confirm('Arbeitsschein endgültig löschen? Er verschwindet aus allen Listen (Stand im Protokoll, PDF bleibt im Archiv).')"
+                          style="margin-top:10px;border-top:1px solid var(--line);padding-top:8px"
+                        >
+                          <p class="small mut" style="margin:0 0 6px">
+                            Nur Admin: ganz löschen (z. B. Testschein, falsch angelegt).
+                          </p>
+                          <button class="btn sm sec danger">Endgültig löschen</button>
+                        </form>
+                      )}
+                    </>
                   )}
                 </details>
               )}
@@ -811,7 +987,17 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
     }
     const unitLabel = (u: string) => WR_UNITS.find(([k]) => k === u)?.[1] ?? u;
     const showPrices = canAccess(c.get('user').role, '/rechnungen');
-    type L = { desc: string; qty: string; unit: string; svc: string; person: string; date: string };
+    type L = {
+      desc: string;
+      qty: string;
+      unit: string;
+      svc: string;
+      person: string;
+      date: string;
+      from?: string;
+      to?: string;
+      brk?: string;
+    };
     const all: L[] = (data?.lines ?? []).map((l) => ({
       desc: l.description,
       qty: milliToInput(l.quantity_milli),
@@ -819,6 +1005,9 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
       svc: l.service_id ?? '',
       person: l.person ?? '',
       date: l.line_date ?? wrDate,
+      from: l.time_from ?? '',
+      to: l.time_to ?? '',
+      brk: l.break_minutes ? String(l.break_minutes) : '',
     }));
     const leistungen = all.filter((l) => !l.person);
     const regie = all.filter((l) => l.person);
@@ -853,6 +1042,9 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
           <input type="hidden" name="line_person" value="" />
           <input type="hidden" name="line_kind" value="l" />
           <input type="hidden" name="line_date" value="" />
+          <input type="hidden" name="line_from" value="" />
+          <input type="hidden" name="line_to" value="" />
+          <input type="hidden" name="line_break" value="" />
         </td>
         <td style="width:110px">
           <input name="line_qty" value={l?.qty ?? '1'} class="right" inputmode="decimal" />
@@ -892,7 +1084,23 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
           <input type="hidden" name="line_kind" value="r" />
           <input name="line_person" value={l?.person ?? ''} placeholder="Name" list="wr-names" />
         </td>
-        <td style="width:110px">
+        <td style="width:100px">
+          <input type="time" name="line_from" value={l?.from ?? ''} aria-label="von" />
+        </td>
+        <td style="width:100px">
+          <input type="time" name="line_to" value={l?.to ?? ''} aria-label="bis" />
+        </td>
+        <td style="width:80px">
+          <input
+            name="line_break"
+            value={l?.brk ?? ''}
+            class="right"
+            inputmode="numeric"
+            placeholder="Min."
+            aria-label="Pause in Minuten"
+          />
+        </td>
+        <td style="width:90px">
           <input name="line_qty" value={l?.qty ?? ''} class="right" inputmode="decimal" placeholder="Std." />
         </td>
         <td style="width:120px;white-space:nowrap">
@@ -1067,6 +1275,9 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                     <tr>
                       <th>Datum</th>
                       <th>Name</th>
+                      <th>von</th>
+                      <th>bis</th>
+                      <th class="r">Pause</th>
                       <th class="r">Stunden</th>
                       <th></th>
                     </tr>
@@ -1076,6 +1287,17 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                       <RegieRow l={l} />
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colspan={5} class="r">
+                        <b>Summe</b>
+                      </td>
+                      <td class="r">
+                        <b id="wr-regie-sum">–</b>
+                      </td>
+                      <td />
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
               <template id="wr-regie-tpl">
@@ -1086,9 +1308,10 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                   + Person
                 </button>
                 <span class="small mut">
-                  Angehakte Mitarbeiter werden als Zeile übernommen, Stunden aus Beginn/Ende vorgeschlagen.
-                  „Kopieren“ legt dieselbe Zeile für den nächsten Tag an. Abgerechnet mit dem Regiestundensatz
-                  des Objekts.
+                  Uhrzeit von–bis und Pause sind freiwillig – dann werden die Stunden ausgerechnet, sonst nur
+                  Stunden eintragen. Angehakte Mitarbeiter werden als Zeile übernommen, Stunden aus
+                  Beginn/Ende vorgeschlagen. „Kopieren“ legt dieselbe Zeile für den nächsten Tag an.
+                  Abgerechnet mit dem Regiestundensatz des Objekts.
                 </span>
               </div>
               <div class="grid">
@@ -1179,6 +1402,22 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
     const person = arr(b, 'line_person');
     const kind = arr(b, 'line_kind');
     const ldate = arr(b, 'line_date');
+    const lfrom = arr(b, 'line_from');
+    const lto = arr(b, 'line_to');
+    const lbreak = arr(b, 'line_break');
+    const hhmm = (v: string | undefined) => (v && /^\d{2}:\d{2}$/.test(v) ? v : null);
+    // Stundenzeile nur mit Uhrzeit: Stunden = bis − von − Pause
+    kind.forEach((k, i) => {
+      if (k !== 'r' || (qty[i] ?? '').trim()) return;
+      const f = hhmm(lfrom[i]);
+      const t = hhmm(lto[i]);
+      if (!f || !t) return;
+      let m =
+        Number(t.slice(0, 2)) * 60 + Number(t.slice(3)) - (Number(f.slice(0, 2)) * 60 + Number(f.slice(3)));
+      if (m <= 0) m += 1440;
+      m -= Number(lbreak[i]) || 0;
+      if (m > 0) qty[i] = (Math.round((m / 60) * 1000) / 1000).toString().replace('.', ',');
+    });
     const lines = desc
       .map((d, i) => ({ d: d.trim(), i }))
       // leere Zeilen weglassen; Regie-Zeilen nur mit Namen
@@ -1201,6 +1440,10 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
           serviceId: /^[0-9a-f-]{36}$/.test(svc[i] ?? '') ? svc[i]! : null,
           person: (person[i] ?? '').trim() || null,
           lineDate: kind[i] === 'r' && /^\d{4}-\d{2}-\d{2}$/.test(ldate[i] ?? '') ? ldate[i]! : null,
+          timeFrom: kind[i] === 'r' ? hhmm(lfrom[i]) : null,
+          timeTo: kind[i] === 'r' ? hhmm(lto[i]) : null,
+          breakMinutes:
+            kind[i] === 'r' && /^\d{1,3}$/.test((lbreak[i] ?? '').trim()) ? Number(lbreak[i]) : null,
         };
       });
     await saveWorkReport(
@@ -1236,12 +1479,30 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
     if (!cur) return c.redirect('/arbeitsscheine');
     assertSite(c, cur.report.site_id);
     try {
-      await deleteWorkReport(sql, id, c.get('actor'));
+      await deleteWorkReport(sql, id, c.get('actor'), { admin: c.get('user').role === 'admin' });
     } catch (e) {
       if (e instanceof BusinessError) return back(c, `/arbeitsscheine/${id}`, { fehler: e.message });
       throw e;
     }
     return back(c, '/arbeitsscheine', { ok: `Arbeitsschein ${cur.report.number} gelöscht.` });
+  });
+
+  app.post(`/arbeitsscheine/:id{${UUID}}/erledigt`, async (c) => {
+    const id = c.req.param('id');
+    const cur = await getWorkReport(sql, id);
+    if (!cur) return c.redirect('/arbeitsscheine');
+    assertSite(c, cur.report.site_id);
+    const b = await c.req.parseBody({ all: true });
+    const undo = str(b, 'zurueck') === '1';
+    try {
+      await setWorkReportDone(sql, id, !undo, str(b, 'notiz'), c.get('actor'));
+    } catch (e) {
+      if (e instanceof BusinessError) return back(c, `/arbeitsscheine/${id}`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/arbeitsscheine/${id}`, {
+      ok: undo ? 'Wieder offen zum Abrechnen.' : `Arbeitsschein ${cur.report.number} als erledigt markiert.`,
+    });
   });
 
   app.post(`/arbeitsscheine/:id{${UUID}}/stornieren`, async (c) => {

@@ -2454,9 +2454,10 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
           <input type="month" name="bis" value={bis} style="max-width:200px" />
           <button class="btn sec sm">Anzeigen</button>
           <span class="small mut">
-            Lohn = Ist-Stunden × Stundenlohn + Zuschlag (Minijob {pct(overhead.minijob)}, Teilzeit{' '}
-            {pct(overhead.parttime)}, über 30 Std. {pct(overhead.fulltime)}) · Ziel {pct(targetBp)} ·{' '}
-            <a href="/datev">Werte ändern</a>
+            Lohn = Ist-Stunden × Stundenlohn (fehlt die Vergütung: niedrigster Tariflohn) + Zuschlag (Minijob{' '}
+            {pct(overhead.minijob)}, Teilzeit {pct(overhead.parttime)}, über 30 Std. {pct(overhead.fulltime)})
+            · Nachunternehmer = Eingangsrechnungen, sonst Monatspauschale laut Bestellung · Ziel{' '}
+            {pct(targetBp)} · <a href="/datev">Werte ändern</a>
           </span>
         </form>
         <div class="kpis">
@@ -2528,14 +2529,23 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                   <td class="r">
                     {hm(r.planned_minutes)} / {hm(r.actual_minutes)}
                     {r.missing_wage > 0 && (
-                      <div class="small" style="color:var(--err)">
-                        Stundenlohn fehlt
+                      <div
+                        class="small"
+                        style="color:var(--warn)"
+                        title="Vergütung beim Mitarbeiter fehlt – gerechnet mit dem niedrigsten Tariflohn"
+                      >
+                        Lohn angenommen (Tariflohn)
                       </div>
                     )}
                   </td>
                   <td class="r">{euro(r.labor)}</td>
                   <td class="r">{euro(r.material)}</td>
-                  <td class="r">{euro(r.subcontractor)}</td>
+                  <td class="r">
+                    {euro(r.subcontractor)}
+                    {r.subcontractor_estimated > 0n && (
+                      <div class="small mut">davon {euro(r.subcontractor_estimated)} lt. Bestellung</div>
+                    )}
+                  </td>
                   <td class="r">{euro(r.other)}</td>
                   <td class="r" style={r.margin < 0n ? 'color:var(--err)' : ''}>
                     <b>{euro(r.margin)}</b>

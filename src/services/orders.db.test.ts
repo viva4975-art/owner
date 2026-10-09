@@ -272,7 +272,7 @@ describe.skipIf(!available)('Aufträge und Arbeitsscheine', () => {
 
     // abgeschlossen: löschen verboten, stornieren mit Grund; danach nicht abrechenbar
     await closeWithoutSignature(deps, id, '', 'test');
-    await expect(deleteWorkReport(sql, id, 'test')).rejects.toThrow(/storniert/);
+    await expect(deleteWorkReport(sql, id, 'test')).rejects.toThrow(/Admin/);
     await expect(cancelWorkReport(sql, id, ' ', 'test')).rejects.toThrow(/Grund/);
     await cancelWorkReport(sql, id, 'doppelt erfasst', 'test');
     r = (await getWorkReport(sql, id))!;

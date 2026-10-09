@@ -54,6 +54,13 @@ import { type AppEnv, type Ctx, UUID } from './app.js';
 import { arr, parseLines, str } from './forms.js';
 import { DRAFTS_CSS, DraftsBox, OpenExecutionsBox } from './pages-drafts.js';
 import { DraftLetter } from './pages-invoice-letter.js';
+import {
+  billableOrders,
+  dropWorkReportRequirement,
+  invoiceWorkReports,
+  orderToInvoice,
+  workReportFromInvoice,
+} from '../services/orders.js';
 import { draftsFromExecutions, listOpenExecutions } from '../services/executions.js';
 import { NEW_OPTIONS, PageHead, dateDe, euro } from './layout.js';
 import { archiveMonthZip, archiveYear } from '../services/invoice-archive.js';
@@ -460,7 +467,11 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                 </table>
               )}
             </div>
-            <OpenExecutionsBox rows={await listOpenExecutions(sql)} today={todayBerlin()} />
+            <OpenExecutionsBox
+              rows={await listOpenExecutions(sql)}
+              orders={await billableOrders(sql)}
+              today={todayBerlin()}
+            />
             <form method="post" action="/monatslauf" class="card dr-side">
               <h3>Aus Objektleistungen erstellen</h3>
               <p class="mut small" style="margin-top:0">
@@ -485,7 +496,16 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
   app.post('/rechnungen/entwuerfe/aus-ausfuehrungen', async (c) => {
     const b = await c.req.parseBody({ all: true });
     const ids = arr(b, 'exec');
-    const created = await draftsFromExecutions(sql, ids, str(b, 'invoice_date'), c.get('actor'));
+    const created = ids.length
+      ? await draftsFromExecutions(sql, ids, str(b, 'invoice_date'), c.get('actor'))
+      : [];
+    // Einzelaufträge: je Auftrag ein Entwurf (feste ID → doppelt absenden legt nichts doppelt an)
+    const date = str(b, 'invoice_date');
+    for (const oid of arr(b, 'order')) {
+      const inv = await orderToInvoice(deps, oid, c.get('actor'));
+      if (date) await setPlannedIssueDate(sql, inv, date, c.get('actor'));
+      created.push(inv);
+    }
     const backTo = str(b, 'back');
     const target =
       backTo && /^\/objekte\/[0-9a-f-]{36}\/leistungen$/.test(backTo) ? backTo : '/rechnungen/entwuerfe';
@@ -784,6 +804,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
           newId={randomUUID()}
           preflight={pre}
           attachments={docs.filter((d) => d.kind === 'attachment')}
+          workReports={await invoiceWorkReports(sql, id)}
           notice={<CustomerNotice c={customer!} />}
           uploadSlot={
             <FileArea
@@ -907,6 +928,21 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     const id = c.req.param('id');
     await markReviewed(sql, id, c.get('actor'));
     return back(c, `/rechnungen/${id}`, { ok: 'Als geprüft markiert – Ausstellen ist jetzt möglich.' });
+  });
+
+  // Arbeitsschein aus dem Entwurf: danach Ausstellen erst mit Kundenunterschrift
+  app.post(`/rechnungen/:id{${UUID}}/arbeitsschein`, async (c) => {
+    const wr = await workReportFromInvoice(sql, c.req.param('id'), c.get('actor'));
+    return back(c, `/arbeitsscheine/${wr}`, {
+      ok: 'Arbeitsschein angelegt – Mitarbeiter, Zeiten prüfen und vom Kunden unterschreiben lassen.',
+    });
+  });
+
+  app.post(`/rechnungen/:id{${UUID}}/arbeitsschein-pflicht`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    await dropWorkReportRequirement(sql, id, str(b, 'grund') ?? '', c.get('actor'));
+    return back(c, `/rechnungen/${id}`, { ok: 'Arbeitsschein-Pflicht aufgehoben (im Protokoll vermerkt).' });
   });
 
   app.post(`/rechnungen/:id{${UUID}}/rechnungsdatum`, async (c) => {

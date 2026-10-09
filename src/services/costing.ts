@@ -25,9 +25,40 @@ export interface SiteCosting {
   missing_wage: number;
   material: bigint;
   subcontractor: bigint;
+  /** davon laut NU-Bestellung (Monatspauschale ohne gebuchte Rechnung) */
+  subcontractor_estimated: bigint;
   other: bigint;
   margin: bigint;
   margin_bp: number | null; // Marge in Basispunkten vom Erlös
+}
+
+/**
+ * Nachunternehmer-Kosten laut Bestellung (Ahmed 09.10.: „NU soweit möglich einfließen lassen“): je Objekt und Monat die
+ * Monatspauschale erteilter/beendeter NU-Bestellungen (mit Preisnachträgen) – nur für Monate, in denen für das Objekt
+ * noch keine Nachunternehmer-Eingangsrechnung gebucht ist (sonst zählt die echte Rechnung). Abrechnung je Einsatz/Tag/
+ * Stunde lässt sich ohne Rechnung nicht schätzen und bleibt außen vor.
+ */
+export async function subcontractEstimates(sql: Sql, from: string, to: string, siteId?: string) {
+  return sql<{ site_id: string; cost: bigint; months: number }[]>`
+    with m as (
+      select generate_series(date_trunc('month', ${from}::date), date_trunc('month', ${to}::date), interval '1 month')::date as mon
+    )
+    select s.site_id,
+           sum(coalesce((select p.price_cents from app.subcontract_prices p
+                          where p.subcontract_id = s.id and p.valid_from_month <= m.mon
+                          order by p.valid_from_month desc limit 1), s.price_cents))::bigint as cost,
+           count(*)::int as months
+      from app.subcontracts s
+      join m on s.valid_from <= (m.mon + interval '1 month' - interval '1 day')::date
+            and (s.valid_to is null or s.valid_to >= m.mon)
+     where s.status in ('erteilt', 'beendet') and s.billing = 'pauschale_monat' and s.site_id is not null
+       and s.price_cents is not null
+       and ${siteId ? sql`s.site_id = ${siteId}` : sql`true`}
+       and not exists (
+         select 1 from app.cost_allocations a join app.incoming_invoices i on i.id = a.incoming_invoice_id
+          where a.site_id = s.site_id and a.month = m.mon and i.category = 'nachunternehmer'
+            and i.status in ('erfasst', 'freigegeben', 'bezahlt'))
+     group by s.site_id`;
 }
 
 export interface OverheadRates {
@@ -69,6 +100,7 @@ export async function siteCosting(
   const from = monthRange(pf).from;
   const to = monthRange(pt).to;
   const settings = await getAccountingSettings(sql);
+  const nuEst = await subcontractEstimates(sql, from, to, siteId);
   const [sites, revenue, legacyRevenue, labor, stock, incoming, shifts, general] = await Promise.all([
     sql<{ id: string; site_no: string; name: string; customer_name: string }[]>`
       select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id
@@ -76,7 +108,8 @@ export async function siteCosting(
          siteId
            ? sql`s.id = ${siteId}`
            : sql`(s.active or exists (select 1 from app.cost_allocations a where a.site_id = s.id and a.month between ${from} and ${to})
-                  or exists (select 1 from app.time_entries t where t.site_id = s.id and t.work_date between ${from} and ${to}))`
+                  or exists (select 1 from app.time_entries t where t.site_id = s.id and t.work_date between ${from} and ${to})
+                  or s.id = any(${nuEst.map((x) => x.site_id)}::uuid[]))`
        }
        order by s.site_no`,
     // je Position: Objekt aus der Leistung (Sammelrechnungen der Rechnungsgruppen haben kein Objekt im Kopf)
@@ -97,7 +130,10 @@ export async function siteCosting(
     sql<{ site_id: string; minutes: number; wage_minutes_cents: bigint; missing: number }[]>`
       select t.site_id,
              sum(extract(epoch from (t.end_at - t.start_at)) / 60 - t.break_minutes)::int as minutes,
-             coalesce(sum(((extract(epoch from (t.end_at - t.start_at)) / 60 - t.break_minutes)::bigint) * app.effective_wage_cents(e)
+             -- ohne hinterlegte Vergütung: niedrigster aktiver Tariflohn (als „angenommen“ gekennzeichnet)
+             coalesce(sum(((extract(epoch from (t.end_at - t.start_at)) / 60 - t.break_minutes)::bigint)
+                          * coalesce(app.effective_wage_cents(e),
+                                     (select min(w.hourly_wage_cents) from app.wage_levels w where w.active))
                           * (10000 + case when e.employment_type = 'minijob' then ${settings.overhead_minijob_bp}::int
                                           when coalesce(e.weekly_hours, case when e.employment_type = 'vollzeit' then 40 else 0 end) > 30
                                             then ${settings.overhead_fulltime_bp}::int
@@ -140,7 +176,8 @@ export async function siteCosting(
     const material =
       (stock.find((r) => r.site_id === s.id)?.cost ?? 0n) +
       inc.filter((r) => r.category === 'material').reduce((a, r) => a + r.net, 0n);
-    const sub = inc.filter((r) => r.category === 'nachunternehmer').reduce((a, r) => a + r.net, 0n);
+    const est = nuEst.find((r) => r.site_id === s.id)?.cost ?? 0n;
+    const sub = inc.filter((r) => r.category === 'nachunternehmer').reduce((a, r) => a + r.net, 0n) + est;
     const other = inc
       .filter((r) => !['material', 'nachunternehmer'].includes(r.category))
       .reduce((a, r) => a + r.net, 0n);
@@ -159,6 +196,7 @@ export async function siteCosting(
       missing_wage: l?.missing ?? 0,
       material,
       subcontractor: sub,
+      subcontractor_estimated: est,
       other,
       margin,
       margin_bp: rev !== 0n ? Number((margin * 10000n) / rev) : null,

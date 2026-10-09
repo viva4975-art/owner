@@ -1885,3 +1885,32 @@ Testadresse.
     nur lesen. In Outlook (IONOS Exchange) einmal „Aus dem Internet abonnieren“ → erscheint auf allen Geräten.
   - Anlagen-Feld in der Rechnung zeigte wieder den englischen „Choose Files“-Knopf → ausgeblendet.
   - **Vorschlag Münchner Wohnen (Einzelaufträge ohne Objekt) und Outlook-Kalender in der App: siehe offene Fragen.**
+- 2026-10-09: Runde 33 (Ahmed, 4 Punkte + Nachträge):
+  - **Nachkalkulation/Ø Stundensätze leer – Fund:** Ohne Vergütung beim Mitarbeiter war der Lohn 0 (fast alle importierten
+    Mitarbeitenden) → jetzt **niedrigster aktiver Tariflohn** als Annahme (Hinweis „Lohn angenommen (Tariflohn)“), und
+    Ø Stundensätze zählte keine Rechnungen von vor der Umstellung (Erlös 0). **Ahmed: echte Vergütung je Mitarbeiter
+    nachtragen**, sonst ist der Lohn nur geschätzt.
+  - **Nachunternehmer in Nachkalkulation und Ø Stundensätzen:** Eingangsrechnungen nach Kostenstelle/Leistungsmonat; fehlt
+    für einen Monat die NU-Rechnung, zählt die **Monatspauschale der erteilten Bestellung** (mit Preisnachträgen, „davon x
+    lt. Bestellung“, `subcontractEstimates`). Abrechnung je Einsatz/Tag/Stunde lässt sich ohne Rechnung nicht schätzen.
+    Ø Stundensätze: Spalten „Nachunternehmer“ und „nach NU je Ist-Std.“.
+  - **Arbeitsschein aus dem Rechnungsentwurf** (Knopf unter „Lieferschein erstellen“): Objekt, Zeitraum, Positionen werden
+    übernommen; die Rechnung lässt sich erst ausstellen, wenn der Schein **vom Kunden unterschrieben** ist – das PDF hängt
+    sich beim Unterschreiben automatisch an. „Pflicht aufheben“ nur mit Grund (Protokoll). Spalten
+    `invoices.work_report_required`, `work_reports.draft_invoice_id`.
+  - **Arbeitsschein Regiestunden:** je Zeile Uhrzeit von–bis und Pause (Stunden werden daraus berechnet) oder nur Stunden;
+    Summe darunter. PDF „Zeit (Pause)“. Auf der Rechnung werden die Stunden **je Tätigkeit zusammengefasst, ohne Namen**
+    (Namen stehen im angehängten Arbeitsschein).
+  - **Arbeitsschein einzeln „erledigt“** (ohne Rechnung, z. B. in Pauschale enthalten; zurücknehmbar) und **löschen**:
+    Entwurf jederzeit, abgeschlossene nur Admin (Stand ins Protokoll, PDF/Unterschrift bleiben im Archiv), nicht wenn schon
+    ausgestellt abgerechnet. Stornieren löst den Schein aus einem Rechnungsentwurf.
+  - **Fund: Rechnungsentwürfe mit Anhang ließen sich nicht löschen** (Archiv-Tabelle sperrte jedes Löschen). Jetzt dürfen
+    Anhang-Verweise eines Entwurfs mit weg (Datei bleibt write-once), Arbeitsscheine/Aufträge werden wieder frei.
+  - **Einzelaufträge** (Rechnungen → Einzelaufträge, Kunde → „+ Einzelauftrag“; nutzt die Aufträge AU-JJJJ-NNNN): Kunde,
+    Objekt **oder** Leistungsort als Text (Münchner Wohnen), Bestellnummer, Termin mit Uhrzeit, Mitarbeiter/Vorarbeiter,
+    Positionen mit Preisen, Häkchen **„Arbeitsschein erforderlich“**. Termin erscheint in der App der Eingeteilten
+    („Einzelaufträge“, 14 Tage) und im **Kalender-Abo** (Büro: alle offenen). Mit Arbeitsschein-Pflicht entsteht sofort ein
+    Schein-Entwurf für das Team (ohne Objekt → Objekt „Allgemein“ des Kunden), der in der App unterschrieben wird; Rechnung
+    erst danach. Offene Einzelaufträge stehen immer unter **Entwürfe → „Aus Einzelleistungen erstellen“** (je Kunde, Häkchen,
+    je Auftrag eine Rechnung, Leistungszeitraum = Termin). Migrationen `20261117000003`–`…05`.
+  - Tests: 467 Unit-/DB-Tests (neu `runde33.db.test.ts`), e2e auftrag/vorfaktura/leistungen/objekt/rechte/runde10 grün.

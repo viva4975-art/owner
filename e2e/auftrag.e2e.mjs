@@ -154,7 +154,8 @@ await p.click('button:has-text("Regiearbeiten abrechnen")');
 await p.waitForLoadState();
 check('Regierechnung als Entwurf', /\/rechnungen\/[0-9a-f-]{36}/.test(p.url()), p.url());
 check('Positionstext mit Arbeitsschein', (await p.locator('body').innerText()).includes('Arbeitsschein AS-'));
-check('Regie mit Namen auf der Rechnung', (await p.locator('body').innerText()).includes('Erika Beispiel'));
+// Regiestunden je Person werden zusammengefasst – Namen stehen nur im angehängten Arbeitsschein (Ahmed 09.10.)
+check('Regie ohne Namen auf der Rechnung', !(await p.locator('.lt-sheet, .sheet, body').first().innerText()).includes('– Erika Beispiel'));
 
 console.log('5. Zurück/Vor');
 await p.goBack();

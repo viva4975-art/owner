@@ -112,6 +112,7 @@ export async function issueInvoice(deps: Deps, id: string, actor: string) {
         `Rechnungsdatum ${data.invoice.planned_issue_date.split('-').reverse().join('.')} liegt in der Zukunft – Ausstellen ist erst ab diesem Tag möglich (oder Rechnungsdatum ändern).`,
       );
     }
+    if (data.invoice.work_report_required) await requireSignedWorkReport(deps, id, actor);
     const pre = await preflight(deps, id);
     if (!pre.valid) {
       const msgs = [...pre.ubl.messages, ...pre.cii.messages].filter((m) => m.level === 'error');
@@ -122,6 +123,29 @@ export async function issueInvoice(deps: Deps, id: string, actor: string) {
     await issue(deps.sql, id, actor);
   }
   return ensureDocuments(deps, id);
+}
+
+/**
+ * Rechnung mit Arbeitsschein-Pflicht (aus dem Entwurf angelegt): Ausstellen erst, wenn ein zugehöriger Schein vom
+ * Kunden unterschrieben ist. Das unterschriebene PDF hängt danach an der Rechnung (falls noch nicht geschehen).
+ */
+async function requireSignedWorkReport(deps: Deps, id: string, actor: string) {
+  const reports = await deps.sql<
+    { id: string; number: string; status: string; invoice_id: string | null; pdf_path: string | null }[]
+  >`select id, number, status::text as status, invoice_id, pdf_path from app.work_reports
+     where (draft_invoice_id = ${id} or invoice_id = ${id}) and cancelled_at is null order by created_at`;
+  const signed = reports.filter((r) => r.status === 'unterschrieben' && r.pdf_path);
+  if (!signed.length)
+    throw new BusinessError(
+      reports.length
+        ? `Arbeitsschein ${reports.map((r) => r.number).join(', ')} ist noch nicht vom Kunden unterschrieben – Rechnung erst danach fertigstellen.`
+        : 'Zu dieser Rechnung gehört ein unterschriebener Arbeitsschein – bitte „Arbeitsschein erstellen“ und unterschreiben lassen.',
+    );
+  for (const r of signed.filter((x) => !x.invoice_id)) {
+    const pdf = await deps.archive.get(r.pdf_path!);
+    await addAttachment(deps, id, `Arbeitsschein_${r.number}.pdf`, 'application/pdf', pdf, actor);
+    await deps.sql`update app.work_reports set invoice_id = ${id} where id = ${r.id} and invoice_id is null`;
+  }
 }
 
 interface DocRow {

@@ -1,4 +1,5 @@
 import { PDFDocument } from '@cantoo/pdf-lib';
+import { composeMail, loadSignature } from '../mail/compose.js';
 import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import { type Cents, formatEuro } from '../domain/money/money.js';
@@ -466,12 +467,15 @@ export async function sendDunning(deps: Deps, id: string, actor: string) {
       from: env.MAIL_FROM,
       to: actual,
       subject,
-      text:
-        (redirected
-          ? `TESTVERSAND – eigentliche Empfänger: ${c!.invoice_emails.join(', ') || '(keine hinterlegt)'}\n\n`
-          : '') +
-        `Sehr geehrte Damen und Herren,\n\nanbei erhalten Sie unser Schreiben ${d.number} (${d.title}) zu offenen Rechnungen über ${eur(d.total_cents)}.\n` +
-        `Bitte überweisen Sie den Betrag bis ${formatDateDe(d.pay_until)}.\n\nMit freundlichen Grüßen\nViva-Deluxe Gebäudereinigung GmbH`,
+      ...composeMail({
+        notice: redirected
+          ? `*** TESTVERSAND – diese Mail ging NICHT an den Kunden. ***\nEigentliche Empfänger: ${c!.invoice_emails.join(', ') || '(keine hinterlegt)'}`
+          : null,
+        body:
+          `Sehr geehrte Damen und Herren,\n\nanbei erhalten Sie unser Schreiben ${d.number} (${d.title}) zu offenen Rechnungen über ${eur(d.total_cents)}.\n` +
+          `Bitte überweisen Sie den Betrag bis ${formatDateDe(d.pay_until)}.`,
+        signature: (await loadSignature(sql)).text,
+      }),
       attachments: [
         {
           filename: `${d.title.replace(/\s+/g, '_')}_${d.number}.pdf`,

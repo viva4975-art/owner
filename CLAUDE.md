@@ -2049,3 +2049,10 @@ Testadresse.
   Hälfte der Pflicht-Nachweise gültig ist (Meldung „x von y … – Fehlt: …“). Ab 50 % geht es; fehlende Nachweise werden im
   Protokoll vermerkt (`nachweise_fehlen`), Ampel/Zahlungsliste-Markierung bleiben. **Rechtlich:** Haftung für Mindestlohn und
   SV-Beiträge des Nachunternehmers (§ 13 MiLoG, § 14 AEntG, § 28e Abs. 3a SGB IV) – fehlende Nachweise zeitnah nachfordern.
+- 2026-10-09: **E-Mails mit Signatur + Test-Mail wie beim Kunden** (Ahmed): Rechnungs- und Mahnungs-Mails gehen jetzt als
+  Text + HTML mit Logo (eingebettet, cid) und Signatur (`src/mail/compose.ts`). Signatur automatisch aus den Firmendaten
+  inkl. **Pflichtangaben § 35a GmbHG** (Rechtsform, Sitz, Amtsgericht + HRB, Geschäftsführer, USt-IdNr.) – fehlten bisher in
+  den Mails – oder eigener Text unter Einstellungen → E-Mail-Versand (`company.mail_signature`, Migration
+  `20261118000006`), dort auch Vorschau. **Test-E-Mail „wie an Kunden“**: zuletzt ausgestellte (oder gewählte) Rechnung mit
+  Betreff, Text, Signatur und Anhängen je Rechnungsformat, nur an die eingegebene Adresse, kein Versandeintrag (Rechnung
+  gilt nicht als versendet), Hinweis oben mit den echten Empfängern; Protokoll `test_mail`.

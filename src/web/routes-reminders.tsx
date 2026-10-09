@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 import type { Child } from 'hono/jsx';
 import { isMailRedirected } from '../config/env.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
+import { composeMail, loadSignature } from '../mail/compose.js';
 import { MAILER_MISSING, resolveRecipients } from '../mail/mailer.js';
+import { sendInvoiceTestMail } from '../services/workflow.js';
 import { collectReminders, getReminderSettings, saveReminderSettings } from '../services/reminders.js';
 import type { Ctx } from './app.js';
 import { str } from './forms.js';
@@ -52,8 +54,15 @@ export function registerReminderRoutes({ app, deps, page, back }: Ctx) {
   });
 
   // E-Mail-Versand prüfen (Ahmed 09.10.: „wie kann ich es testen“) – zeigt den Stand ohne Passwort, sendet eine Test-Mail
-  app.get('/einstellungen/email', (c) => {
+  app.get('/einstellungen/email', async (c) => {
     const e = deps.env;
+    const sig = await loadSignature(sql);
+    const [lastInv] = await sql<{ number: string }[]>`
+      select number from app.invoices where status = 'issued' order by issued_at desc nulls last limit 1`;
+    const preview = composeMail({
+      body: 'Sehr geehrte Damen und Herren,\n\nanbei erhalten Sie unsere Rechnung 1038316 vom 09.10.2026.\n\nBetrag: 1.234,56 €, zahlbar bis 23.10.2026.',
+      signature: sig.text,
+    }).html!.replace(/cid:[^"]+/, '/static/logo-transparent.png');
     const redirected = isMailRedirected(e);
     const row = (k: string, v: Child) => (
       <>
@@ -101,34 +110,96 @@ export function registerReminderRoutes({ app, deps, page, back }: Ctx) {
               <label for="to">an</label>
               <input id="to" name="to" type="email" required value={e.MAIL_TEST_RECIPIENT ?? ''} />
             </div>
+            <div>
+              <label for="art">Inhalt</label>
+              <select id="art" name="art">
+                <option value="rechnung">wie an Kunden: Rechnung mit Anhängen und Signatur</option>
+                <option value="einfach">nur kurzer Verbindungstest</option>
+              </select>
+            </div>
+            <div>
+              <label for="nr">Rechnungsnummer (leer = zuletzt ausgestellte)</label>
+              <input id="nr" name="nr" placeholder={lastInv?.number ?? 'noch keine ausgestellt'} />
+            </div>
           </div>
           <p class="small mut">
             {redirected
               ? `Im Testbetrieb geht auch diese Mail an ${e.MAIL_TEST_RECIPIENT ?? 'die Testadresse'}.`
-              : 'Geht an die eingetragene Adresse.'}{' '}
-            Kommt sie an, funktioniert der Versand. Fehlermeldung „Invalid login“ = Benutzer/Passwort falsch,
-            „timeout“ = Server/Port falsch.
+              : 'Geht nur an die eingetragene Adresse – nie an den Kunden.'}{' '}
+            „Wie an Kunden“ schickt Betreff, Text, Signatur und Anhänge (PDF/ZUGFeRD/XRechnung je
+            Rechnungsformat) genau so, wie der Kunde sie bekommt; die Rechnung gilt dadurch nicht als
+            versendet. Fehlermeldung „Invalid login“ = Benutzer/Passwort falsch, „timeout“ = Server/Port
+            falsch.
           </p>
           <div class="formfoot">
             <button class="btn">Test-E-Mail senden</button>
           </div>
         </form>
+        <form method="post" action="/einstellungen/email/signatur" class="card">
+          <h3 style="margin-top:0">E-Mail-Signatur</h3>
+          <p class="small mut" style="margin-top:0">
+            Steht unter jeder Mail an Kunden (Rechnungen, Mahnungen) – mit Logo. Leer lassen = automatisch aus
+            den Firmendaten (Einstellungen → Firmendaten). Pflicht für E-Mails einer GmbH (§ 35a GmbHG):
+            Rechtsform, Sitz, Registergericht + HRB, alle Geschäftsführer.
+          </p>
+          <label for="signature">Signatur {sig.custom ? '(eigene)' : '(automatisch)'}</label>
+          <textarea id="signature" name="signature" rows={9} style="font-family:inherit">
+            {sig.custom ? sig.text : ''}
+          </textarea>
+          <div class="small mut">Automatisch wäre:</div>
+          <pre class="small" style="white-space:pre-wrap;margin:4px 0 0">
+            {sig.auto}
+          </pre>
+          <div class="formfoot">
+            <button class="btn">Signatur speichern</button>
+          </div>
+        </form>
+        <div class="card">
+          <h3 style="margin-top:0">Vorschau (so sieht der Kunde die Mail)</h3>
+          <iframe
+            title="Vorschau"
+            srcdoc={preview}
+            sandbox=""
+            style="width:100%;height:420px;border:1px solid var(--line,#ddd);border-radius:6px;background:#fff"
+          ></iframe>
+        </div>
       </>,
     );
   });
 
   app.post('/einstellungen/email', async (c) => {
-    const to = str(await c.req.parseBody(), 'to') ?? '';
+    const body = (await c.req.parseBody()) as Record<string, string>;
+    const to = str(body, 'to') ?? '';
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to))
       return back(c, '/einstellungen/email', { fehler: 'Bitte E-Mail-Adresse angeben' });
     if (deps.mailer.configured === false) return back(c, '/einstellungen/email', { fehler: MAILER_MISSING });
     try {
       const { actual } = isMailRedirected(deps.env) ? resolveRecipients(deps.env, [to]) : { actual: [to] };
+      if (str(body, 'art') !== 'einfach') {
+        const nr = (str(body, 'nr') ?? '').replace(/\s+/g, '');
+        const [inv] = await sql<{ id: string; number: string }[]>`
+          select id, number from app.invoices where status = 'issued'
+             and ${nr ? sql`replace(number, ' ', '') = ${nr}` : sql`true`}
+           order by issued_at desc nulls last limit 1`;
+        if (!inv)
+          return back(c, '/einstellungen/email', {
+            fehler: nr
+              ? `Ausgestellte Rechnung ${nr} nicht gefunden`
+              : 'Noch keine ausgestellte Rechnung vorhanden',
+          });
+        const r = await sendInvoiceTestMail(deps, inv.id, actual[0]!, c.get('actor'));
+        return back(c, '/einstellungen/email', {
+          ok: `Test-E-Mail mit Rechnung ${inv.number} (${r.files.join(', ')}) an ${actual.join(', ')} gesendet – bitte Postfach prüfen. Beim echten Versand ginge sie an: ${r.intended.join(', ') || '(keine Rechnungs-E-Mail hinterlegt)'}.`,
+        });
+      }
       await deps.mailer.send({
         from: deps.env.MAIL_FROM,
         to: actual,
         subject: 'Test-E-Mail aus der Viva-Deluxe-App',
-        text: `Diese Test-E-Mail wurde am ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })} aus der App gesendet.\nDer E-Mail-Versand funktioniert.\n\nGewünschter Empfänger: ${to}`,
+        ...composeMail({
+          body: `Diese Test-E-Mail wurde am ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })} aus der App gesendet.\nDer E-Mail-Versand funktioniert.\n\nGewünschter Empfänger: ${to}`,
+          signature: (await loadSignature(sql)).text,
+        }),
         attachments: [],
         messageId: `<test-${randomUUID()}@viva-deluxe-reinigung.de>`,
       });
@@ -140,6 +211,16 @@ export function registerReminderRoutes({ app, deps, page, back }: Ctx) {
         fehler: `Versand fehlgeschlagen: ${(err as Error).message}`,
       });
     }
+  });
+
+  app.post('/einstellungen/email/signatur', async (c) => {
+    const t = (str(await c.req.parseBody(), 'signature') ?? '').trim().slice(0, 2000);
+    await sql`update app.company set mail_signature = ${t || null}, updated_at = now() where id = 1`;
+    await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+              values (${c.get('actor')}, 'mail_signature', 'company', '1', ${sql.json({ custom: !!t })})`;
+    return back(c, '/einstellungen/email', {
+      ok: t ? 'Signatur gespeichert' : 'Signatur wieder automatisch',
+    });
   });
 
   app.get('/einstellungen/erinnerungen', async (c) => {

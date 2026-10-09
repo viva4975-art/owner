@@ -6,6 +6,10 @@ export interface OutgoingMail {
   to: string[];
   subject: string;
   text: string;
+  /** HTML-Fassung (mit Logo/Signatur); Text bleibt für Programme ohne HTML */
+  html?: string;
+  /** im HTML eingebettete Bilder (cid) */
+  inline?: { filename: string; content: Uint8Array; contentType: string; cid: string }[];
   attachments: { filename: string; content: Uint8Array; contentType: string }[];
   /** Feste Message-ID → Empfänger-Server erkennen Duplikate. */
   messageId: string;
@@ -43,12 +47,23 @@ export function createMailer(env: Env): Mailer {
         to: mail.to,
         subject: mail.subject,
         text: mail.text,
+        ...(mail.html ? { html: mail.html } : {}),
         messageId: mail.messageId,
-        attachments: mail.attachments.map((a) => ({
-          filename: a.filename,
-          content: Buffer.from(a.content),
-          contentType: a.contentType,
-        })),
+        attachments: [
+          ...mail.attachments.map((a) => ({
+            filename: a.filename,
+            content: Buffer.from(a.content),
+            contentType: a.contentType,
+          })),
+          ...(mail.html
+            ? (mail.inline ?? []).map((a) => ({
+                filename: a.filename,
+                content: Buffer.from(a.content),
+                contentType: a.contentType,
+                cid: a.cid,
+              }))
+            : []),
+        ],
       });
       return { messageId: info.messageId };
     },

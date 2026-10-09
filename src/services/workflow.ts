@@ -8,6 +8,7 @@ import { formatEuro } from '../domain/money/money.js';
 import { generateCii, generateXRechnungUbl, generateZugferd } from '../einvoice/generate.js';
 import { type ValidationResult, validateWithKosit } from '../einvoice/kosit.js';
 import { MAILER_MISSING, type Mailer, resolveRecipients } from '../mail/mailer.js';
+import { composeMail, loadSignature } from '../mail/compose.js';
 import { renderInvoicePdf } from '../pdf/render.js';
 import { describeEInvoiceError } from '../einvoice/errors.js';
 import {
@@ -337,9 +338,10 @@ export async function listDeliveries(sql: Sql, invoiceId: string) {
   >`select * from app.invoice_deliveries where invoice_id = ${invoiceId} order by created_at`;
 }
 
-function mailText(doc: InvoiceDocument, redirectedFrom: string[] | null): string {
+/** Text der Rechnungs-Mail (ohne Grußformel/Signatur – die setzt composeMail). */
+export function invoiceMailBody(doc: InvoiceDocument): string {
   const title = KIND_TITLES[doc.kind];
-  const lines = [
+  return [
     'Sehr geehrte Damen und Herren,',
     '',
     `anbei erhalten Sie unsere ${title} ${doc.number} vom ${formatDateDe(doc.issueDate)}` +
@@ -348,20 +350,72 @@ function mailText(doc: InvoiceDocument, redirectedFrom: string[] | null): string
     '',
     `Betrag: ${formatEuro(doc.payableTotal)}` +
       (doc.payableTotal > 0n ? `, zahlbar bis ${formatDateDe(doc.dueDate)}.` : '.'),
-    '',
-    'Mit freundlichen Grüßen',
-    doc.seller.legalName,
-    [doc.seller.street, `${doc.seller.postalCode} ${doc.seller.city}`].join(', '),
-    doc.seller.phone ? `Tel. ${doc.seller.phone}` : '',
-  ];
-  if (redirectedFrom) {
-    lines.unshift(
-      '*** TESTVERSAND – diese Mail ging NICHT an den Kunden. ***',
-      `Eigentliche Empfänger: ${redirectedFrom.join(', ') || '(keine hinterlegt)'}`,
-      '',
-    );
+  ].join('\n');
+}
+
+const testNotice = (redirectedFrom: string[]) =>
+  `*** TESTVERSAND – diese Mail ging NICHT an den Kunden. ***\nEigentliche Empfänger: ${redirectedFrom.join(', ') || '(keine hinterlegt)'}`;
+
+/** Betreff einer Rechnungs-Mail. */
+export const invoiceMailSubject = (doc: InvoiceDocument, latest: number, test: boolean) =>
+  `${test ? '[TEST] ' : ''}${latest ? 'Berichtigte Fassung: ' : ''}${KIND_TITLES[doc.kind]} ${doc.number} – ${doc.seller.legalName}`;
+
+/** Anhänge einer Rechnungs-Mail je Rechnungsformat (aktuelle Fassung) + Anlagen. */
+export function invoiceMailDocs(docs: DocRow[], format: string) {
+  const latest = docs.reduce((m, d) => (d.kind !== 'attachment' && d.revision > m ? d.revision : m), 0);
+  const pick = (kind: DocRow['kind']) => docs.find((d) => d.kind === kind && d.revision === latest);
+  const selected: DocRow[] = [];
+  if (format === 'pdf') selected.push(pick('pdf')!);
+  if (format === 'zugferd') selected.push(pick('zugferd_pdf')!);
+  if (format === 'xrechnung') selected.push(pick('xrechnung_xml')!, pick('pdf')!);
+  for (const d of selected) {
+    if (!d) throw new BusinessError('Beleg fehlt im Archiv');
+    if ((d.kind === 'xrechnung_xml' || d.kind === 'zugferd_pdf') && d.valid !== true) {
+      throw new BusinessError('E-Rechnung hat die KoSIT-Prüfung nicht bestanden – Versand gesperrt');
+    }
   }
-  return lines.join('\n');
+  selected.push(...docs.filter((d) => d.kind === 'attachment'));
+  return { latest, selected };
+}
+
+/**
+ * Test-E-Mail genau wie an den Kunden (Betreff, Text, Signatur, Anhänge) – geht nur an die angegebene Adresse,
+ * kein Versandeintrag, die Rechnung gilt nicht als versendet.
+ */
+export async function sendInvoiceTestMail(deps: Deps, id: string, to: string, actor: string) {
+  const { sql, env } = deps;
+  const data = await getInvoice(sql, id);
+  if (!data || data.invoice.status !== 'issued') throw new BusinessError('Nur ausgestellte Rechnungen');
+  if (deps.mailer.configured === false) throw new BusinessError(MAILER_MISSING);
+  const docs = await ensureDocuments(deps, id);
+  const { latest, selected } = invoiceMailDocs(docs, data.invoice.invoice_format);
+  const doc = await loadDocument(sql, id);
+  const intended = (
+    await effectiveBilling(sql, data.invoice.customer_id, data.invoice.site_id, data.invoice.invoice_group_id)
+  ).emails;
+  const sig = await loadSignature(sql);
+  const attachments = await Promise.all(
+    selected.map(async (d) => ({
+      filename: d.filename,
+      contentType: d.content_type,
+      content: await deps.archive.get(d.storage_path),
+    })),
+  );
+  await deps.mailer.send({
+    from: env.MAIL_FROM,
+    to: [to],
+    subject: invoiceMailSubject(doc, latest, true),
+    ...composeMail({
+      notice: `*** TEST-E-MAIL – so erhält der Kunde die Rechnung. Nicht an den Kunden gegangen, Rechnung gilt nicht als versendet. ***\nEmpfänger beim echten Versand: ${intended.join(', ') || '(keine Rechnungs-E-Mail hinterlegt)'}`,
+      body: invoiceMailBody(doc),
+      signature: sig.text,
+    }),
+    attachments,
+    messageId: `<test-${randomUUID()}@viva-deluxe-app>`,
+  });
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${actor}, 'test_mail', 'invoice', ${id}, ${sql.json({ to, files: selected.map((d) => d.filename) })})`;
+  return { files: selected.map((d) => d.filename), intended };
 }
 
 export type DeliveryWay = 'email' | 'portal' | 'keiner';
@@ -496,23 +550,11 @@ export async function sendInvoice(
     );
   const docs = await ensureDocuments(deps, id);
   if (deps.mailer.configured === false) throw new BusinessError(MAILER_MISSING);
-  const latest = docs.reduce((m, d) => (d.kind !== 'attachment' && d.revision > m ? d.revision : m), 0);
-  const pick = (kind: DocRow['kind']) => docs.find((d) => d.kind === kind && d.revision === latest);
-  const format = data.invoice.invoice_format;
-  const selected: DocRow[] = [];
-  if (format === 'pdf') selected.push(pick('pdf')!);
-  if (format === 'zugferd') selected.push(pick('zugferd_pdf')!);
-  if (format === 'xrechnung') selected.push(pick('xrechnung_xml')!, pick('pdf')!);
-  for (const d of selected) {
-    if ((d.kind === 'xrechnung_xml' || d.kind === 'zugferd_pdf') && d.valid !== true) {
-      throw new BusinessError('E-Rechnung hat die KoSIT-Prüfung nicht bestanden – Versand gesperrt');
-    }
-  }
-  selected.push(...docs.filter((d) => d.kind === 'attachment'));
+  const { latest, selected } = invoiceMailDocs(docs, data.invoice.invoice_format);
 
   const { actual, redirected } = resolveRecipients(env, customer.invoice_emails);
   const doc = await loadDocument(sql, id);
-  const subject = `${redirected ? '[TEST] ' : ''}${latest ? 'Berichtigte Fassung: ' : ''}${KIND_TITLES[doc.kind]} ${doc.number} – ${doc.seller.legalName}`;
+  const subject = invoiceMailSubject(doc, latest, redirected);
   // berichtigte Fassung: eigener Versand (genau einmal je Fassung)
   const key = latest ? `${id}:berichtigt-${latest}` : `${id}:initial`;
   const files = selected.map((d) => ({ filename: d.filename, sha256: d.sha256, size: Number(d.size_bytes) }));
@@ -555,7 +597,11 @@ export async function sendInvoice(
       from: env.MAIL_FROM,
       to: actual,
       subject,
-      text: mailText(doc, redirected ? customer.invoice_emails : null),
+      ...composeMail({
+        notice: redirected ? testNotice(customer.invoice_emails) : null,
+        body: invoiceMailBody(doc),
+        signature: (await loadSignature(sql)).text,
+      }),
       attachments,
       messageId: `<${claimed.id}@viva-deluxe-app>`,
     });

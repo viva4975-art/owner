@@ -124,6 +124,8 @@ await p.click('a:has-text("Benutzer anlegen")');
 await p.fill('#name', 'Udo Objektleitung');
 await p.fill('#login', login);
 await p.selectOption('#role', 'objektleitung');
+// Objekt hat evtl. schon eine Objektleitung → ausgeblendet, erst einblenden
+if (await p.locator('[data-site-others]').count()) await p.check('[data-site-others]');
 await p.check(`#s-${SCHOOL}`);
 await p.click('button:has-text("Benutzer anlegen")');
 await p.waitForLoadState();

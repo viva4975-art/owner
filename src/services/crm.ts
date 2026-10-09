@@ -227,13 +227,35 @@ const ENTITY_LABEL = (sql: Sql) => sql`
                           from app.tenders x where x.id = t.entity_id)
   end`;
 
+export interface TaskViewer {
+  /** Namen, unter denen die Person als zuständig eingetragen sein kann (Anzeigename, Benutzername) */
+  names: string[];
+  /** Benutzer (created_by) */
+  actor: string;
+}
+
+/**
+ * Aufgabe für die Objektleitung sichtbar? Nur wenn sie ihr zugeordnet ist oder sie sie selbst ohne Zuständigkeit
+ * angelegt hat – keine allgemeinen Büro-Aufgaben, keine Ausschreibungs-Fristen (Ahmed 09.10.). Erwartet Alias `t`.
+ */
+export const taskVisibleTo = (sql: Sql, v: TaskViewer) =>
+  sql`(lower(coalesce(t.assignee, '')) = any(${v.names.map((n) => n.toLowerCase())}::text[])
+       or (coalesce(t.assignee, '') = '' and t.created_by = ${v.actor}))`;
+
 export async function listTasks(
   sql: Sql,
-  filter: { status?: 'open' | 'done'; entity?: { type: EntityType; id: string }; withinDays?: number } = {},
+  filter: {
+    status?: 'open' | 'done';
+    entity?: { type: EntityType; id: string };
+    withinDays?: number;
+    /** Objektleitung: nur ihr zugeordnete Aufgaben (bzw. selbst angelegte ohne Zuständigkeit) */
+    onlyFor?: TaskViewer | undefined;
+  } = {},
 ) {
   return sql<Task[]>`
     select t.*, ${ENTITY_LABEL(sql)} as entity_label from app.tasks t
      where ${filter.status ? sql`t.status = ${filter.status}` : sql`true`}
+       and ${filter.onlyFor ? taskVisibleTo(sql, filter.onlyFor) : sql`true`}
        and ${filter.entity ? sql`t.entity_type = ${filter.entity.type} and t.entity_id = ${filter.entity.id}` : sql`true`}
        and ${filter.withinDays !== undefined ? sql`(t.due_date is null or t.due_date <= current_date + ${filter.withinDays}::int)` : sql`true`}
      order by t.status, t.due_date nulls last, t.created_at`;

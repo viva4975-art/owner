@@ -43,26 +43,44 @@ export interface SiteCosting {
  * Stunde lässt sich ohne Rechnung nicht schätzen und bleibt außen vor.
  */
 export async function subcontractEstimates(sql: Sql, from: string, to: string, siteId?: string) {
+  // ohne NU-Rechnung im Monat: Monatspauschale der Bestellung bzw. bei „je Stunde“ die erfassten Stunden
+  // (Stundennachweis) × Stundensatz des Monats, je Eintrag kaufmännisch auf Cent gerundet
+  const priceAt = (mon: ReturnType<Sql>) => sql`coalesce((select p.price_cents from app.subcontract_prices p
+                          where p.subcontract_id = s.id and p.valid_from_month <= ${mon}
+                          order by p.valid_from_month desc limit 1), s.price_cents)`;
+  const noInvoice = (mon: ReturnType<Sql>) => sql`not exists (
+         select 1 from app.cost_allocations a join app.incoming_invoices i on i.id = a.incoming_invoice_id
+          where a.site_id = s.site_id and a.month = ${mon} and i.category = 'nachunternehmer'
+            and i.status in ('erfasst', 'freigegeben', 'bezahlt'))`;
   return sql<{ site_id: string; cost: bigint; months: number }[]>`
     with m as (
       select generate_series(date_trunc('month', ${from}::date), date_trunc('month', ${to}::date), interval '1 month')::date as mon
+    ),
+    flat as (
+      select s.site_id, ${priceAt(sql`m.mon`)}::bigint as cost, m.mon
+        from app.subcontracts s
+        join m on s.valid_from <= (m.mon + interval '1 month' - interval '1 day')::date
+              and (s.valid_to is null or s.valid_to >= m.mon)
+       where s.status in ('erteilt', 'beendet') and s.billing = 'pauschale_monat' and s.site_id is not null
+         and s.price_cents is not null
+         and ${siteId ? sql`s.site_id = ${siteId}` : sql`true`}
+         and ${noInvoice(sql`m.mon`)}
+    ),
+    hrs as (
+      select s.site_id,
+             round(h.persons * h.minutes_per_person * ${priceAt(sql`date_trunc('month', h.work_date)::date`)}::numeric / 60)::bigint as cost,
+             date_trunc('month', h.work_date)::date as mon
+        from app.subcontract_hours h join app.subcontracts s on s.id = h.subcontract_id
+       where s.status in ('erteilt', 'beendet') and s.billing = 'stunde' and s.site_id is not null
+         and s.price_cents is not null
+         and h.work_date between date_trunc('month', ${from}::date)::date
+                             and (date_trunc('month', ${to}::date) + interval '1 month' - interval '1 day')::date
+         and ${siteId ? sql`s.site_id = ${siteId}` : sql`true`}
+         and ${noInvoice(sql`date_trunc('month', h.work_date)::date`)}
     )
-    select s.site_id,
-           sum(coalesce((select p.price_cents from app.subcontract_prices p
-                          where p.subcontract_id = s.id and p.valid_from_month <= m.mon
-                          order by p.valid_from_month desc limit 1), s.price_cents))::bigint as cost,
-           count(*)::int as months
-      from app.subcontracts s
-      join m on s.valid_from <= (m.mon + interval '1 month' - interval '1 day')::date
-            and (s.valid_to is null or s.valid_to >= m.mon)
-     where s.status in ('erteilt', 'beendet') and s.billing = 'pauschale_monat' and s.site_id is not null
-       and s.price_cents is not null
-       and ${siteId ? sql`s.site_id = ${siteId}` : sql`true`}
-       and not exists (
-         select 1 from app.cost_allocations a join app.incoming_invoices i on i.id = a.incoming_invoice_id
-          where a.site_id = s.site_id and a.month = m.mon and i.category = 'nachunternehmer'
-            and i.status in ('erfasst', 'freigegeben', 'bezahlt'))
-     group by s.site_id`;
+    select site_id, sum(cost)::bigint as cost, count(distinct mon)::int as months
+      from (select * from flat union all select * from hrs) x
+     group by site_id`;
 }
 
 export interface OverheadRates {

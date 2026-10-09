@@ -7,7 +7,7 @@ import { listWordTemplates } from '../services/word-templates.js';
 import { WordTemplateBox } from './routes-word-templates.js';
 import type { Context } from 'hono';
 import type { Child } from 'hono/jsx';
-import { contactInput, deleteContact, listContacts, listTasks, saveContact } from '../services/crm.js';
+import { contactInput, deleteContact, listContacts, listTasks, saveContact, taskVisibleTo } from '../services/crm.js';
 import { BusinessError } from '../services/errors.js';
 import { assigneeOptions } from '../services/crm.js';
 import { monthBounds, todayBerlin } from '../domain/invoice/calc.js';
@@ -78,7 +78,7 @@ import {
 import { listTemplates, saveTemplate } from '../services/employees.js';
 import { uploadConfig, zipHref } from './routes-files.js';
 import { filteredSites, managers, parseSiteFilter, sitesCsv, SITE_PAGE_SIZE } from '../services/site-list.js';
-import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
+import { type AppEnv, type Ctx, UUID, assertSite, taskViewerOf } from './app.js';
 import { FileArea } from './files.js';
 import { parseQuantity } from '../domain/money/money.js';
 import { arr, str } from './forms.js';
@@ -518,7 +518,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
         return (
           <>
             <TaskBox
-              tasks={await listTasks(sql, { status, entity: { type, id: e.id } })}
+              tasks={await listTasks(sql, { status, entity: { type, id: e.id }, onlyFor: taskViewerOf(c) })}
               title={status === 'done' ? 'Erledigte Aufgaben' : 'Offene Aufgaben'}
               doneLink={`${base}/${e.id}/aufgaben?status=done`}
             />
@@ -1402,7 +1402,8 @@ export function registerMasterdataRoutes(ctx: Ctx) {
              (select count(*)::int from app.invoices where site_id = ${id} and status = 'issued')
                + (select count(distinct x.invoice_id)::int from app.legacy_invoice_lines x where x.site_id = ${id}) as invoices,
              (select count(*)::int from app.employee_sites where site_id = ${id}) as employees,
-             (select count(*)::int from app.tasks where entity_type = 'site' and entity_id = ${id} and status = 'open') as tasks`;
+             (select count(*)::int from app.tasks t where t.entity_type = 'site' and t.entity_id = ${id} and t.status = 'open'
+                and ${taskViewerOf(c) ? taskVisibleTo(sql, taskViewerOf(c)!) : sql`true`}) as tasks`;
     const [[manager], [cl], customer] = await Promise.all([
       sql<{ name: string; phone: string | null; email: string | null }[]>`
         select p.name, p.phone, p.email from app.sites s join app.manager_contacts p on p.user_id = s.manager_user_id
@@ -1440,7 +1441,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
           select e.id, e.last_name || ', ' || e.first_name as name, coalesce(e.mobile, e.phone) as phone
             from app.employee_sites es join app.employees e on e.id = es.employee_id
            where es.site_id = ${s.id} and e.status = 'aktiv' and not ('Objektleitung' = any(e.tags)) order by 2`,
-        listTasks(sql, { status: 'open', entity: { type: 'site', id: s.id } }),
+        listTasks(sql, { status: 'open', entity: { type: 'site', id: s.id }, onlyFor: taskViewerOf(c) }),
       ]);
       return (
         <SiteOverview

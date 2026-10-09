@@ -91,6 +91,12 @@ export function inScope<T extends { site_id?: string | null }>(c: Context<AppEnv
   const sites = c.get('sites');
   return sites ? rows.filter((r) => !!r.site_id && sites.includes(r.site_id)) : rows;
 }
+/** Objektleitung sieht nur ihr zugeordnete Aufgaben – Filter für listTasks/Suche; Büro: undefined (alle). */
+export function taskViewerOf(c: Context<AppEnv>): { names: string[]; actor: string } | undefined {
+  const u = c.get('user');
+  if (!u || u.role !== 'objektleitung') return undefined;
+  return { names: [u.name, u.login].filter(Boolean), actor: c.get('actor') };
+}
 export const OFFICE_COOKIE = 'vd_s';
 export const APP_COOKIE = 'vd_app';
 export const officeSecret = (env: Deps['env']) =>

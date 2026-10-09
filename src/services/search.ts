@@ -1,4 +1,5 @@
 import type { Sql } from '../db/client.js';
+import { type TaskViewer, taskVisibleTo } from './crm.js';
 
 /**
  * Globale Suche wie Fortytools: durchsucht (fast) alles – Stammdaten, Rechnungen inkl. Positionstexten, Leistungen,
@@ -75,7 +76,7 @@ export function snippetOf(hay: string, words: string[], width = 45): string {
 export async function search(
   sql: Sql,
   q: string,
-  opts: { limit?: number; types?: SearchType[]; siteScope?: string[] | null } = {},
+  opts: { limit?: number; types?: SearchType[]; siteScope?: string[] | null; taskViewer?: TaskViewer } = {},
 ): Promise<SearchResult> {
   const term = q.trim().replace(/\s+/g, ' ');
   if (term.length < 2) return { q: term, groups: [] };
@@ -302,7 +303,7 @@ export async function search(
       select id, title as label,
              coalesce('fällig ' || to_char(due_date, 'DD.MM.YYYY'), '') || case when status::text = 'done' then ' · erledigt' else '' end as sub,
              concat_ws(' ', title, description, assignee) as hay, '/aufgaben' as href
-        from app.tasks) x
+        from app.tasks t where ${opts.taskViewer ? taskVisibleTo(sql, opts.taskViewer) : sql`true`}) x
      where hay ilike all(${all}) order by label limit ${L}`,
   );
   q2(

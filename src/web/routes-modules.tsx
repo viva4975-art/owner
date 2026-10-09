@@ -10,7 +10,7 @@ import { canAccess } from './permissions.js';
 import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
 import type { Child } from 'hono/jsx';
-import { listTasks, saveTask, setTaskDone, taskInput } from '../services/crm.js';
+import { listTasks, saveTask, setTaskDone, taskInput, taskVisibleTo } from '../services/crm.js';
 import {
   type Employee,
   employeeInput,
@@ -42,7 +42,7 @@ import { upcomingEvents } from '../services/tenders.js';
 import { proposals } from '../services/dunning.js';
 import { listArticles, listDevices, supplierWarnings } from '../services/inventory.js';
 import { SEARCH_TYPES, type SearchType, search } from '../services/search.js';
-import { type AppEnv, type Ctx, UUID } from './app.js';
+import { type AppEnv, type Ctx, UUID, taskViewerOf } from './app.js';
 import { NEW_OPTIONS, PageHead, dateDe, euro } from './layout.js';
 import { homeFor } from './permissions.js';
 import {
@@ -278,6 +278,7 @@ export function registerModuleRoutes(ctx: Ctx) {
     const res = await search(sql, q, {
       limit,
       siteScope: c.get('sites') ?? null,
+      ...(taskViewerOf(c) ? { taskViewer: taskViewerOf(c)! } : {}),
       ...(type ? { types: [type] } : {}),
     });
     const DOC_GUARD: Record<string, string> = {
@@ -437,7 +438,7 @@ export function registerModuleRoutes(ctx: Ctx) {
         <div class="cols">
           <div class="card">
             <TaskBox
-              tasks={await listTasks(sql, { status })}
+              tasks={await listTasks(sql, { status, onlyFor: taskViewerOf(c) })}
               title={status === 'done' ? 'Erledigte Aufgaben' : 'Offene Aufgaben'}
               doneLink="/aufgaben?status=done"
             />
@@ -460,6 +461,11 @@ export function registerModuleRoutes(ctx: Ctx) {
 
   app.post(`/aufgaben/:id{${UUID}}/erledigt`, async (c) => {
     const body = await c.req.parseBody();
+    const viewer = taskViewerOf(c);
+    if (viewer) {
+      const [ok] = await sql`select 1 from app.tasks t where t.id = ${c.req.param('id')} and ${taskVisibleTo(sql, viewer)}`;
+      if (!ok) throw new BusinessError('Diese Aufgabe ist Ihnen nicht zugeordnet');
+    }
     await setTaskDone(sql, c.req.param('id'), body.done === '1', c.get('actor'));
     const ref = c.req.header('referer');
     const target = ref ? new URL(ref).pathname + new URL(ref).search : '/aufgaben';

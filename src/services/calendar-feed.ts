@@ -9,6 +9,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { addDays } from '../domain/time/holidays.js';
+import { taskVisibleTo } from './crm.js';
 import { plannedShifts } from './time.js';
 
 export type FeedOwner = { userId: string } | { employeeId: string };
@@ -199,8 +200,8 @@ export async function feedIcs(sql: Sql, token: string): Promise<{ name: string; 
     events.push(...(await orderEvents(sql, f.employee_id, from, to)));
     return { name: 'Viva-Deluxe Einsätze', ics: renderIcs('Viva-Deluxe Einsätze', events) };
   }
-  const [u] = await sql<{ role: string; name: string; active: boolean; employee_id: string | null }[]>`
-    select p.role::text as role, p.display_name as name, a.active, p.employee_id
+  const [u] = await sql<{ role: string; name: string; login: string; active: boolean; employee_id: string | null }[]>`
+    select p.role::text as role, p.display_name as name, a.login, a.active, p.employee_id
       from app.user_accounts a join app.profiles p on p.user_id = a.id where a.id = ${f.user_id}`;
   if (!u || !u.active) return null;
   if (u.employee_id) events.push(...(await shiftEvents(sql, u.employee_id, from, to)));
@@ -208,9 +209,13 @@ export async function feedIcs(sql: Sql, token: string): Promise<{ name: string; 
   if (u.role !== 'objektleitung') events.push(...(await orderEvents(sql, null, from, to)));
   else if (u.employee_id) events.push(...(await orderEvents(sql, u.employee_id, from, to)));
   const tasks = await sql<{ id: string; title: string; description: string | null; due_date: string }[]>`
-    select id, title, description, due_date from app.tasks
+    select id, title, description, due_date from app.tasks t
      where status::text = 'open' and due_date between ${from} and ${to}
-       and (assignee is null or assignee = '' or lower(assignee) = lower(${u.name}))`;
+       and ${
+         u.role === 'objektleitung'
+           ? taskVisibleTo(sql, { names: [u.name, u.login], actor: u.login })
+           : sql`(assignee is null or assignee = '' or lower(assignee) = lower(${u.name}))`
+       }`;
   for (const t of tasks)
     events.push({
       uid: `aufgabe-${t.id}`,

@@ -281,7 +281,12 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
       ).map((p) => [p.user_id, p.display_name]),
     );
     const byCust = new Map<string, (typeof sites)[number][]>();
-    for (const s of sites.filter((x) => x.active !== false || mine.includes(x.id))) {
+    // inaktive Objekte nicht anzeigen (Ahmed 09.10.) – bleiben sie zugeordnet, gehen sie unsichtbar mit
+    const hiddenMine = sites.filter((x) => x.active === false && mine.includes(x.id)).map((x) => x.id);
+    const others = sites.filter(
+      (x) => x.active !== false && x.manager_user_id && x.manager_user_id !== id,
+    ).length;
+    for (const s of sites.filter((x) => x.active !== false)) {
       const k = s.customer_name;
       if (!byCust.has(k)) byCust.set(k, []);
       byCust.get(k)!.push(s);
@@ -368,7 +373,8 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
             <h3 style="margin-top:16px">Objekte (nur für Objektleitung)</h3>
             <p class="small mut" style="margin-top:0">
               Häkchen setzen = diese Person ist Objektleitung des Objekts (sieht nur diese Objekte). Ein
-              Objekt hat genau eine Objektleitung – wer bisher zuständig war, steht dahinter.
+              Objekt hat genau eine Objektleitung. Objekte, die schon jemand anderes leitet, und inaktive Objekte
+              sind ausgeblendet.
             </p>
             <div class="site-pick" data-site-pick>
               <div class="actions" style="margin:0 0 8px;align-items:center">
@@ -388,7 +394,15 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
                 <span class="small mut">
                   <b data-site-n>{mine.length}</b> ausgewählt
                 </span>
+                {others > 0 && (
+                  <label class="chk small" style="margin:0 0 0 auto">
+                    <input type="checkbox" data-site-others /> auch Objekte anderer Objektleitungen ({others})
+                  </label>
+                )}
               </div>
+              {hiddenMine.map((sid) => (
+                <input type="hidden" name="site" value={sid} />
+              ))}
               <div style="max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:var(--r-sm);padding:6px 12px">
                 {groups.map(([cust, list]) => (
                   <div class="site-grp" style="padding:6px 0;border-bottom:1px solid var(--line)">
@@ -401,6 +415,8 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
                         class="chk site-row"
                         style="padding:2px 0 2px 26px"
                         data-text={`${s.site_no} ${s.name} ${cust} ${s.city ?? ''}`.toLowerCase()}
+                        data-other={s.manager_user_id && s.manager_user_id !== id ? '1' : undefined}
+                        hidden={!!(s.manager_user_id && s.manager_user_id !== id)}
                       >
                         <input
                           type="checkbox"
@@ -430,8 +446,10 @@ var q=r.querySelector('[data-site-q]'),n=r.querySelector('[data-site-n]');
 function cnt(){n.textContent=r.querySelectorAll('input[name=site]:checked').length;
 r.querySelectorAll('.site-grp').forEach(function(g){var b=g.querySelectorAll('input[name=site]'),c=g.querySelectorAll('input[name=site]:checked');var h=g.querySelector('[data-grp]');h.checked=b.length>0&&c.length===b.length;h.indeterminate=c.length>0&&c.length<b.length;});}
 function norm(x){return x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
-q.addEventListener('input',function(){var t=norm(q.value).split(/\\s+/).filter(Boolean);
-r.querySelectorAll('.site-grp').forEach(function(g){var any=false;g.querySelectorAll('.site-row').forEach(function(row){var ok=t.every(function(w){return norm(row.dataset.text).indexOf(w)>=0});row.hidden=!ok;if(ok)any=true;});g.hidden=!any;});});
+var oth=r.querySelector('[data-site-others]');
+function filt(){var t=norm(q.value).split(/\\s+/).filter(Boolean),so=oth&&oth.checked;
+r.querySelectorAll('.site-grp').forEach(function(g){var any=false;g.querySelectorAll('.site-row').forEach(function(row){var ok=(so||!row.dataset.other)&&t.every(function(w){return norm(row.dataset.text).indexOf(w)>=0});row.hidden=!ok;if(ok)any=true;});g.hidden=!any;});}
+q.addEventListener('input',filt);if(oth)oth.addEventListener('change',filt);filt();
 r.addEventListener('change',function(e){var t=e.target;if(t.hasAttribute('data-grp')){t.closest('.site-grp').querySelectorAll('.site-row:not([hidden]) input[name=site]').forEach(function(b){b.checked=t.checked});}cnt();});
 r.querySelectorAll('[data-site-all]').forEach(function(btn){btn.addEventListener('click',function(){var v=btn.dataset.siteAll==='1';r.querySelectorAll('.site-grp:not([hidden]) .site-row:not([hidden]) input[name=site]').forEach(function(b){b.checked=v});cnt();});});
 cnt();})();`,

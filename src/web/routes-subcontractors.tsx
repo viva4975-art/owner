@@ -59,6 +59,14 @@ import { PageHead, Tabs, dateDe, euro, type Tab } from './layout.js';
 import { FileArea } from './files.js';
 import { listFiles } from '../services/uploads.js';
 import { billingTracking, skipExpected } from '../services/expected-invoices.js';
+import {
+  addSubcontractHours,
+  deleteSubcontractHours,
+  listSubcontractHours,
+  type SubcontractHourRow,
+} from '../services/subcontract-hours.js';
+import { Icon } from './icons.js';
+import { parseHours } from './routes-facility.js';
 import { SIGN_JS } from './routes-orders.js';
 import { fullName } from '../services/users.js';
 
@@ -1425,6 +1433,18 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     ]);
     const draft = !sc || sc.status === 'entwurf';
     const tracking = sc ? ((await billingTracking(sql, [id], { limit: 24 })).get(id) ?? []) : [];
+    const hours: SubcontractHourRow[] = sc?.billing === 'stunde' ? await listSubcontractHours(sql, id) : [];
+    const hourMonths = new Map<string, { minutes: number; amount: bigint; rows: typeof hours }>();
+    for (const h of hours) {
+      const k = h.work_date.slice(0, 7);
+      const m = hourMonths.get(k) ?? { minutes: 0, amount: 0n, rows: [] as typeof hours };
+      m.minutes += h.total_minutes;
+      m.amount += BigInt(h.amount_cents);
+      m.rows.push(h);
+      hourMonths.set(k, m);
+    }
+    const fmtH = (m: number) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
+    const maxMin = sc?.max_hours_month ? Math.round(Number(sc.max_hours_month) * 60) : null;
     return page(
       c,
       sc ? `Bestellung ${sc.number}` : 'Neue Bestellung',
@@ -1703,6 +1723,106 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
             )}
           </div>
         )}
+        {sc && sc.billing === 'stunde' && sc.status !== 'entwurf' && (
+          <div class="card" id="stunden">
+            <h3 style="margin-top:0">Stundennachweis</h3>
+            <p class="small mut" style="margin-top:-6px">
+              Je Tag: wie viele Leute des Nachunternehmers wie viele Stunden gearbeitet haben. Betrag = Personen ×
+              Stunden × Stundensatz des Monats. Zum Prüfen der Rechnung; fehlt die Rechnung, rechnet die
+              Nachkalkulation mit diesen Stunden.
+            </p>
+            {sc.status !== 'storniert' && (
+              <form method="post" action={`/nachunternehmer/auftraege/${id}/stunden`} class="actions" style="align-items:end">
+                <input type="hidden" name="id" value={randomUUID()} />
+                <div>
+                  <label for="h-date">Datum</label>
+                  <input id="h-date" type="date" name="work_date" value={todayBerlin()} required />
+                </div>
+                <div>
+                  <label for="h-p">Personen</label>
+                  <input id="h-p" type="number" name="persons" min="1" max="200" value="1" required style="max-width:90px" />
+                </div>
+                <div>
+                  <label for="h-h">Std. je Person</label>
+                  <input id="h-h" name="hours" inputmode="decimal" placeholder="2,5 oder 2:30" required style="max-width:120px" />
+                </div>
+                <div style="flex:1;min-width:160px">
+                  <label for="h-n">Bemerkung</label>
+                  <input id="h-n" name="note" placeholder="z. B. Treppenhaus, Sonderreinigung" />
+                </div>
+                <button class="btn sm">Stunden erfassen</button>
+              </form>
+            )}
+            {hours.length === 0 ? (
+              <div class="empty">Noch keine Stunden erfasst.</div>
+            ) : (
+              <div class="tablewrap">
+                <table class="stack-m">
+                  <thead>
+                    <tr>
+                      <th>Datum</th>
+                      <th class="r">Personen</th>
+                      <th class="r">Std. je Person</th>
+                      <th class="r">Std. gesamt</th>
+                      <th class="r">Betrag netto</th>
+                      <th>Bemerkung</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...hourMonths.entries()].map(([mon, m]) => (
+                      <>
+                        <tr style="background:var(--soft,#f6f6f6)">
+                          <td colspan={3}>
+                            <b>
+                              {mon.slice(5, 7)}/{mon.slice(0, 4)}
+                            </b>
+                            {maxMin !== null && m.minutes > maxMin && (
+                              <span class="badge err" style="margin-left:8px">
+                                über max. {Number(sc.max_hours_month).toLocaleString('de-DE')} Std./Monat
+                              </span>
+                            )}
+                          </td>
+                          <td class="r">
+                            <b>{fmtH(m.minutes)}</b>
+                          </td>
+                          <td class="r">
+                            <b>{euro(m.amount)}</b>
+                          </td>
+                          <td colspan={2} />
+                        </tr>
+                        {m.rows.map((h) => (
+                          <tr>
+                            <td>{dateDe(h.work_date)}</td>
+                            <td class="r">{h.persons}</td>
+                            <td class="r">{fmtH(h.minutes_per_person)}</td>
+                            <td class="r">{fmtH(h.total_minutes)}</td>
+                            <td class="r">{euro(h.amount_cents)}</td>
+                            <td class="small">
+                              {h.note}
+                              <div class="mut">{fullName({ login: h.created_by })}</div>
+                            </td>
+                            <td class="r">
+                              <form
+                                method="post"
+                                action={`/nachunternehmer/auftraege/${id}/stunden/${h.id}/loeschen`}
+                                onsubmit="return confirm('Eintrag löschen?')"
+                              >
+                                <button class="btn ghost sm" title="Löschen" aria-label="Löschen">
+                                  <Icon name="trash" />
+                                </button>
+                              </form>
+                            </td>
+                          </tr>
+                        ))}
+                      </>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
         {sc && tracking.length > 0 && (
           <div class="card">
             <h3 style="margin-top:0">Rechnungsverfolgung</h3>
@@ -1911,6 +2031,27 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     }
     return back(c, `/nachunternehmer/auftraege/${id}`, { ok: 'Scan gespeichert.' });
   });
+  app.post(`/nachunternehmer/auftraege/:id{${UUID}}/stunden`, async (c) => {
+    const id = c.req.param('id');
+    const b = (await c.req.parseBody()) as Record<string, string>;
+    await addSubcontractHours(sql, {
+      id: /^[0-9a-f-]{36}$/i.test(b.id ?? '') ? b.id! : randomUUID(),
+      subcontractId: id,
+      workDate: b.work_date ?? '',
+      persons: Number(b.persons),
+      minutesPerPerson: parseHours(b.hours ?? '', 'Std. je Person'),
+      note: b.note?.trim() || null,
+      actor: c.get('actor'),
+    });
+    return back(c, `/nachunternehmer/auftraege/${id}#stunden`, { ok: 'Stunden erfasst.' });
+  });
+
+  app.post(`/nachunternehmer/auftraege/:id{${UUID}}/stunden/:hid{${UUID}}/loeschen`, async (c) => {
+    const id = c.req.param('id');
+    await deleteSubcontractHours(sql, c.req.param('hid'), id, c.get('actor'));
+    return back(c, `/nachunternehmer/auftraege/${id}#stunden`, { ok: 'Eintrag gelöscht.' });
+  });
+
   app.get(`/nachunternehmer/auftraege/:id{${UUID}}/unterschreiben`, async (c) => {
     const id = c.req.param('id');
     const data = await getSubcontract(sql, id);

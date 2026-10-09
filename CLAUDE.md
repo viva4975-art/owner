@@ -2112,3 +2112,17 @@ Testadresse.
   - Geräte: Objektleitung öffnet/speichert nur Geräte ihrer Objekte (vorher per Link jedes Gerät), Standort nur eigene
     Objekte, kein „Lager“. Schlüssel: Ausgabe nur an Mitarbeitende ihrer Objekte (zugeordnet oder eingeplant), auch
     serverseitig geprüft; Objekt → Schlüssel ebenso. Artikel/Fahrzeuge sind für die Objektleitung ohnehin gesperrt.
+- 2026-10-09: Objektleitung, Benutzer, NU-Stunden (Ahmed):
+  - **Aufgaben der Objektleitung:** nur noch die ihr zugeordneten (Zuständig = ihr Name oder Benutzername) bzw. von ihr
+    selbst ohne Zuständigkeit angelegten (`taskVisibleTo` in `crm.ts`, `taskViewerOf` in `app.tsx`). Gilt für
+    /aufgaben, Objekt → Aufgaben (inkl. Zähler), Suche, Kalender-Abo und „erledigt“. Ausschreibungs-Fristen (ohne
+    Zuständigen) und allgemeine Büro-Aufgaben sieht sie nicht mehr.
+  - **Benutzer → Objekte der Objektleitung:** inaktive Objekte und Objekte, die schon eine andere Objektleitung haben,
+    sind ausgeblendet; Schalter „auch Objekte anderer Objektleitungen (n)“ zum Umhängen. Zugeordnete inaktive Objekte
+    bleiben (unsichtbar) zugeordnet.
+  - **Stundennachweis bei NU-Bestellungen „je Stunde“** (Bestellung → Karte „Stundennachweis“): je Tag Personen ×
+    Stunden je Person (2,5 oder 2:30) + Bemerkung; Betrag = Personen × Std. × Stundensatz des Monats (Preisnachträge),
+    je Eintrag kaufmännisch auf Cent; Monatssumme, Warnung über „max. Std./Monat“; löschen mit Protokoll; feste ID je
+    Formular. Nachkalkulation/Ø Stundensätze: fehlt die NU-Rechnung im Monat, zählen die erfassten Stunden × Satz
+    (wie die Monatspauschale). Tabelle `app.subcontract_hours` (Migration `20261119000001`).
+  - Tests: neu `runde34.db.test.ts`; e2e rechte/uebergabe schalten „andere Objektleitungen“ ein.

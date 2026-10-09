@@ -6,9 +6,23 @@
 		max_size 6GB
 	}
 	reverse_proxy app:3000 {
+		# Während eines Updates startet die App neu (einige Sekunden bis ~1 Min.). Anfragen warten so lange,
+		# statt mit einer leeren Seite abzubrechen (Ahmed 09.10.: „weiße Seite beim Speichern“). Wiederholt wird nur,
+		# wenn die App gar nicht erreichbar war – ein Speichern kommt also genau einmal an.
+		lb_try_duration 120s
+		lb_try_interval 1s
 		transport http {
 			read_timeout 10m
 			write_timeout 10m
 		}
+	}
+	handle_errors 502 503 504 {
+		header Content-Type "text/html; charset=utf-8"
+		respond `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kurz warten</title>
+<style>body{font-family:system-ui,sans-serif;background:#f6f5f4;color:#1d1d1f;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
+.b{background:#fff;border:1px solid #e3e3e6;border-radius:10px;padding:28px 32px;max-width:460px}h1{font-size:20px;color:#7D1435;margin:0 0 10px}</style></head>
+<body><div class="b"><h1>Die App wird gerade aktualisiert</h1>
+<p>Bitte etwa eine Minute warten. Haben Sie gerade gespeichert: mit <b>Zurück</b> zum Formular – Ihre Eingaben sind dort noch da – und erneut speichern.</p>
+<p><a href="/">Zur Übersicht</a></p></div></body></html>` 503
 	}
 }

@@ -14,3 +14,8 @@ cd deploy
 docker compose --env-file .env.live up -d --build
 docker image prune -f >/dev/null
 echo "$(date '+%F %T') aktualisiert auf $(git -C /opt/viva log -1 --format='%h %s')"
+# Caddy-Konfiguration geändert? Caddy neu erstellen (die Datei ist eingebunden – eine neue Fassung sieht Caddy erst danach).
+CADDY_SUM="$(sha256sum Caddyfile | cut -c1-64)"
+if [ "$(cat /opt/viva-caddy.sum 2>/dev/null || true)" != "$CADDY_SUM" ]; then
+  docker compose --env-file .env.live up -d --force-recreate caddy && echo "$CADDY_SUM" > /opt/viva-caddy.sum
+fi

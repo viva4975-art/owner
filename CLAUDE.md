@@ -1980,3 +1980,11 @@ Testadresse.
   - **Einzelauftrag:** Titel und „Name / Firma“ mehrzeilig (Name: 1. Zeile = Name, weitere Zeilen = Zusatz/Name 2).
   - Objektordner-Paket unverändert (die App füllt die Lücken beim Herunterladen selbst) – Ahmed lädt es einmal unter
     Einstellungen → Objektordner-Vorlagen hoch.
+- 2026-10-09: **Fund „weiße Seite beim Speichern“** (Ahmed):
+  1. Beim automatischen Update (alle 10 Min., sobald es Neues gibt) startet die App neu; in dieser Zeit lieferte Caddy eine
+     leere Fehlerseite (502). Jetzt wartet Caddy bis 120 s, bis die App wieder da ist (`lb_try_duration`; wiederholt nur, wenn
+     die App gar nicht erreichbar war → Speichern kommt genau einmal an), sonst deutsche Hinweisseite „Die App wird gerade
+     aktualisiert“. `deploy/update.sh` erstellt Caddy neu, wenn sich das Caddyfile geändert hat (eingebundene Datei).
+  2. Formular-Schutz (CSRF) verglich hinter Caddy „http“ mit „https“: Browser ohne Sec-Fetch-Site (ältere iPhone/iPad-
+     Safari) bekamen bei jedem Speichern „Forbidden“ auf weißem Grund. Jetzt zählt der Rechnername; fremde Seiten bleiben
+     gesperrt. HTTP-Fehler (403 usw.) erscheinen als normale App-Seite mit Hinweis und Rückweg.

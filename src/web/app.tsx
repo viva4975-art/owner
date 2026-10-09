@@ -163,7 +163,21 @@ export function createApp(deps: Deps) {
 
   // Referer nur innerhalb der App (nötig, um nach einem Eingabefehler ins Formular zurückzukehren).
   app.use(secureHeaders({ referrerPolicy: 'same-origin' }));
-  app.use(csrf());
+  // Schutz gegen fremde Formulare. Hinter Caddy sieht die App „http://…“, der Browser schickt „https://…“ als Origin –
+  // moderne Browser bestehen über Sec-Fetch-Site, ältere (iPhone/iPad-Safari < 16.4) scheiterten bei jedem Speichern.
+  // Deshalb zählt der Rechnername (Host), nicht das Schema.
+  app.use(
+    csrf({
+      origin: (origin, c) => {
+        try {
+          const host = c.req.header('x-forwarded-host') ?? c.req.header('host');
+          return !!host && new URL(origin).host === host;
+        } catch {
+          return false;
+        }
+      },
+    }),
+  );
 
   // CSV-Exporte in der Sortierung der Bildschirm-Tabelle (?sort=<Spalte>&dir=asc|desc, siehe client.ts).
   app.use(async (c, next) => {
@@ -310,7 +324,28 @@ export function createApp(deps: Deps) {
   };
 
   app.onError((err, c) => {
-    if (err instanceof HTTPException) return err.getResponse();
+    if (err instanceof HTTPException) {
+      // Statt nackter Fehlerseite (weiß, nur „Forbidden“) eine verständliche Seite mit Rückweg (Ahmed 09.10.)
+      const status = err.status;
+      if (status === 401) return err.getResponse();
+      console.warn(`HTTP ${status} ${c.req.method} ${c.req.path}: ${err.message}`);
+      const text =
+        status === 403 && !err.message
+          ? 'Die Sicherheitsprüfung des Formulars ist fehlgeschlagen (z. B. Seite war sehr lange offen oder wurde über eine andere Adresse geöffnet). Bitte die Seite neu laden und erneut speichern.'
+          : err.message || `Fehler ${status}`;
+      return c.html(
+        '<!doctype html>' +
+          String(
+            <Layout title="Hinweis" nav="" env={env.APP_ENV} flash={{ err: text }}>
+              <p>
+                Mit „Zurück“ kommen Sie zum Formular – die Eingaben sind dort noch gespeichert.{' '}
+                <a href="/">Zur Übersicht</a>
+              </p>
+            </Layout>,
+          ),
+        status,
+      );
+    }
     if (err instanceof BusinessError) {
       // Zurück auf die Seite, von der das Formular kam (inkl. Parameter). Eingaben stellt das
       // Browser-Skript aus dem Tab-Speicher wieder her.

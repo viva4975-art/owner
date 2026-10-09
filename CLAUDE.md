@@ -2101,3 +2101,5 @@ Testadresse.
   **Zahlungsübersicht** (Rechnung, Storno/Korrektur, Zahlungen, Saldo). Alles Bisherige (Belege/Prüfberichte,
   Versandprotokoll, Zahlungen buchen, berichtigte Fassungen) eingeklappt unter „Weitere Angaben“ (öffnet bei Meldungen
   bzw. Sprungmarken `#adresse`, `#zahlungen`). Entwürfe unverändert (DraftLetter).
+- 2026-10-09: Objektliste: „Markierte aktiv/inaktiv setzen“ bleibt auf derselben Seite (Seitenzahl ging beim Rücksprung
+  verloren; Filter/Sortierung blieben schon). Fällt die Seite durch den Filter weg, zeigt die Liste die letzte vorhandene.

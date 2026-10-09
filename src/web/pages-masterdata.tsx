@@ -743,7 +743,7 @@ export const SiteList: FC<{
             style="margin:12px 0 0;gap:8px"
             onsubmit="var n=document.querySelectorAll('input[name=ids][form=sitebulk]:checked').length;if(!n){alert('Bitte zuerst Objekte markieren.');return false}return true"
           >
-            <input type="hidden" name="zurueck" value={url({})} />
+            <input type="hidden" name="zurueck" value={url({ seite: page > 1 ? String(page) : null })} />
             <label class="chk" style="margin:0">
               <input
                 type="checkbox"

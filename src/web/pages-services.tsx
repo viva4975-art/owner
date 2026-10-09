@@ -202,202 +202,250 @@ export const ServiceForm: FC<{
   groups: InvoiceGroupRow[];
   today: string;
   siteNo?: string;
-}> = ({ siteId, id, sv, types, groups, today, siteNo }) => {
+  /** Kopie: Felder aus `sv` vorbelegt, wird als neue Leistung gespeichert */
+  copy?: boolean;
+  /** Objekte des Kunden für „Kopieren in …“ */
+  copyTargets?: { id: string; site_no: string; name: string }[];
+}> = ({ siteId, id, sv: src, types, groups, today, siteNo, copy, copyTargets }) => {
+  const sv = src && copy ? { ...src, version: null, cost_center: siteNo ?? src.cost_center } : src;
+  const existing = !!src && !copy;
   const tgt = sv?.separate_invoice ? 'separat' : (sv?.invoice_group_id ?? 'objekt');
   return (
-    <form
-      method="post"
-      action={`/objekte/${siteId}/leistungen/${id}`}
-      class="card svcform"
-      style="max-width:900px"
-      data-autosave={`/objekte/${siteId}/leistungen/${id}`}
-      data-version={String(sv?.version ?? '')}
-    >
-      <style
-        dangerouslySetInnerHTML={{
-          __html: '.svcform h3{margin:24px 0 8px;padding-top:14px;border-top:1px solid var(--line)}',
-        }}
-      />
-      <input type="hidden" name="version" value={String(sv?.version ?? '')} />
-      <h2 style="margin-top:0">{sv ? `Leistung „${sv.description}“` : 'Neue Leistung'}</h2>
+    <>
+      <form
+        method="post"
+        action={`/objekte/${siteId}/leistungen/${id}`}
+        class="card svcform"
+        style="max-width:900px"
+        data-autosave={`/objekte/${siteId}/leistungen/${id}`}
+        data-version={String(sv?.version ?? '')}
+      >
+        <style
+          dangerouslySetInnerHTML={{
+            __html: '.svcform h3{margin:24px 0 8px;padding-top:14px;border-top:1px solid var(--line)}',
+          }}
+        />
+        <input type="hidden" name="version" value={String(sv?.version ?? '')} />
+        <h2 style="margin-top:0">
+          {copy && src
+            ? `Kopie von „${src.description}“`
+            : sv
+              ? `Leistung „${sv.description}“`
+              : 'Neue Leistung'}
+        </h2>
+        {copy && (
+          <div class="banner" style="margin-bottom:10px">
+            Kopie – prüfen und mit „Leistung anlegen“ speichern. Die ursprüngliche Leistung bleibt
+            unverändert.
+          </div>
+        )}
 
-      <h3>Leistung</h3>
-      <div class="grid">
-        <div>
-          <label for="valid_from">Anfang *</label>
-          <input id="valid_from" type="date" name="valid_from" value={sv?.valid_from ?? today} required />
+        <h3>Leistung</h3>
+        <div class="grid">
+          <div>
+            <label for="valid_from">Anfang *</label>
+            <input id="valid_from" type="date" name="valid_from" value={sv?.valid_from ?? today} required />
+          </div>
+          <div>
+            <label for="valid_to">Ende</label>
+            <input id="valid_to" type="date" name="valid_to" value={sv?.valid_to ?? ''} />
+          </div>
         </div>
-        <div>
-          <label for="valid_to">Ende</label>
-          <input id="valid_to" type="date" name="valid_to" value={sv?.valid_to ?? ''} />
-        </div>
-      </div>
 
-      <h3>Details</h3>
-      <div class="grid">
-        <div style="grid-column:span 2">
-          <label for="description">Leistung (Titel auf der Rechnung) *</label>
-          <input
-            id="description"
-            name="description"
-            value={sv?.description ?? ''}
-            required
-            placeholder="Unterhaltsreinigung"
-          />
-        </div>
-        <div>
-          <label for="service_type_id">Leistungsart</label>
-          <select
-            id="service_type_id"
-            name="service_type_id"
-            onchange="var d=document.getElementById('description');if(d&&!d.value.trim()&&this.value)d.value=this.options[this.selectedIndex].text;var l=document.getElementById('labor_share'),o=this.options[this.selectedIndex];if(l&&!l.value.trim()&&o.dataset.labor)l.value=o.dataset.labor"
-          >
-            <option value="">– keine –</option>
-            {types.map((t) => (
-              <option
-                value={t.id}
-                selected={t.id === sv?.service_type_id}
-                data-labor={t.labor_share_bp != null ? String(t.labor_share_bp / 100).replace('.', ',') : ''}
-              >
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div style="grid-column:1/-1">
-          <label for="note">Beschreibung (Zusatztext auf der Rechnung)</label>
-          <textarea
-            id="note"
-            name="note"
-            rows={3}
-            placeholder="z. B. 3.099,86 € + 5,07% Tariflohnerhöhung ab 01.01.2026 (Enter = neue Zeile)"
-          >
-            {sv?.note ?? ''}
-          </textarea>
-        </div>
-        <div>
-          <label for="cost_center">Kostenstelle</label>
-          <input
-            id="cost_center"
-            name="cost_center"
-            value={sv?.cost_center ?? siteNo ?? ''}
-            placeholder={siteNo ?? ''}
-          />
-        </div>
-      </div>
-
-      <h3>Abrechnung</h3>
-      <div class="grid">
-        <div>
-          <label for="invoice_target">Rechnungsgruppe</label>
-          <select id="invoice_target" name="invoice_target">
-            <option value="objekt" selected={tgt === 'objekt'}>
-              wie Objekt
-            </option>
-            <option value="separat" selected={tgt === 'separat'}>
-              eigene Rechnung für diese Leistung
-            </option>
-            {groups
-              .filter((g) => g.active || g.id === sv?.invoice_group_id)
-              .map((g) => (
-                <option value={g.id} selected={tgt === g.id}>
-                  Gruppe: {g.name}
+        <h3>Details</h3>
+        <div class="grid">
+          <div style="grid-column:span 2">
+            <label for="description">Leistung (Titel auf der Rechnung) *</label>
+            <input
+              id="description"
+              name="description"
+              value={sv?.description ?? ''}
+              required
+              placeholder="Unterhaltsreinigung"
+            />
+          </div>
+          <div>
+            <label for="service_type_id">Leistungsart</label>
+            <select
+              id="service_type_id"
+              name="service_type_id"
+              onchange="var d=document.getElementById('description');if(d&&!d.value.trim()&&this.value)d.value=this.options[this.selectedIndex].text;var l=document.getElementById('labor_share'),o=this.options[this.selectedIndex];if(l&&!l.value.trim()&&o.dataset.labor)l.value=o.dataset.labor"
+            >
+              <option value="">– keine –</option>
+              {types.map((t) => (
+                <option
+                  value={t.id}
+                  selected={t.id === sv?.service_type_id}
+                  data-labor={
+                    t.labor_share_bp != null ? String(t.labor_share_bp / 100).replace('.', ',') : ''
+                  }
+                >
+                  {t.name}
                 </option>
               ))}
-          </select>
-        </div>
-        <div>
-          <label for="order_reference">Bestellnummer des Kunden</label>
-          <input
-            id="order_reference"
-            name="order_reference"
-            value={sv?.order_reference ?? ''}
-            maxlength={100}
-            placeholder="z. B. 4500123456"
-          />
-          <div class="small mut">
-            Erscheint auf der Rechnung (E-Rechnung BT-13). Mehrere Leistungen mit verschiedenen Nummern auf
-            einer Rechnung: je Position im Text.
+            </select>
+          </div>
+          <div style="grid-column:1/-1">
+            <label for="note">Beschreibung (Zusatztext auf der Rechnung)</label>
+            <textarea
+              id="note"
+              name="note"
+              rows={3}
+              placeholder="z. B. 3.099,86 € + 5,07% Tariflohnerhöhung ab 01.01.2026 (Enter = neue Zeile)"
+            >
+              {sv?.note ?? ''}
+            </textarea>
+          </div>
+          <div>
+            <label for="cost_center">Kostenstelle</label>
+            <input
+              id="cost_center"
+              name="cost_center"
+              value={sv?.cost_center ?? siteNo ?? ''}
+              placeholder={siteNo ?? ''}
+            />
           </div>
         </div>
-        <div>
-          <label for="billing_cycle">Abrechnungszyklus (Einheit Stunde = je Ausführung)</label>
-          <select id="billing_cycle" name="billing_cycle">
-            {CYCLES.map(([k, v]) => (
-              <option value={k} selected={k === (sv?.billing_cycle ?? 'monatlich')}>
-                {v}
+
+        <h3>Abrechnung</h3>
+        <div class="grid">
+          <div>
+            <label for="invoice_target">Rechnungsgruppe</label>
+            <select id="invoice_target" name="invoice_target">
+              <option value="objekt" selected={tgt === 'objekt'}>
+                wie Objekt
+              </option>
+              <option value="separat" selected={tgt === 'separat'}>
+                eigene Rechnung für diese Leistung
+              </option>
+              {groups
+                .filter((g) => g.active || g.id === sv?.invoice_group_id)
+                .map((g) => (
+                  <option value={g.id} selected={tgt === g.id}>
+                    Gruppe: {g.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div>
+            <label for="order_reference">Bestellnummer des Kunden</label>
+            <input
+              id="order_reference"
+              name="order_reference"
+              value={sv?.order_reference ?? ''}
+              maxlength={100}
+              placeholder="z. B. 4500123456"
+            />
+            <div class="small mut">
+              Erscheint auf der Rechnung (E-Rechnung BT-13). Mehrere Leistungen mit verschiedenen Nummern auf
+              einer Rechnung: je Position im Text.
+            </div>
+          </div>
+          <div>
+            <label for="billing_cycle">Abrechnungszyklus (Einheit Stunde = je Ausführung)</label>
+            <select id="billing_cycle" name="billing_cycle">
+              {CYCLES.map(([k, v]) => (
+                <option value={k} selected={k === (sv?.billing_cycle ?? 'monatlich')}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label for="unit_code">Einheit</label>
+            <select id="unit_code" name="unit_code">
+              {Object.entries(UNIT_LABELS).map(([k, v]) => (
+                <option value={k} selected={k === (sv?.unit_code ?? 'LS')}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label for="quantity">Menge *</label>
+            <input
+              id="quantity"
+              name="quantity"
+              value={sv ? milliToInput(sv.quantity_milli) : '1'}
+              required
+            />
+          </div>
+          <div>
+            <label for="unit_price">Preis (netto, €, zzgl. 19 % USt) *</label>
+            <input
+              id="unit_price"
+              name="unit_price"
+              value={sv ? centsToInput(sv.unit_price_cents) : ''}
+              placeholder="3.257,05"
+              required
+            />
+          </div>
+          <div>
+            <label for="labor_share">Lohnkostenanteil (%) *</label>
+            <input
+              id="labor_share"
+              name="labor_share"
+              value={sv?.labor_share_bp != null ? String(sv.labor_share_bp / 100).replace('.', ',') : ''}
+              placeholder="z. B. 80"
+              inputmode="decimal"
+              required
+            />
+            <div class="small mut">
+              Anteil der Lohnkosten am Preis – Grundlage für Preisanpassungen bei Tariflohnerhöhungen.
+            </div>
+          </div>
+        </div>
+        <div class="chk" style="margin-top:10px">
+          <input
+            type="checkbox"
+            id="always_unfinished"
+            name="always_unfinished"
+            checked={sv?.always_unfinished ?? false}
+          />
+          <label for="always_unfinished">
+            Immer unfertig – Rechnungen mit dieser Leistung müssen vor dem Ausstellen geprüft werden (z. B.
+            Mengen nach Aufmaß)
+          </label>
+        </div>
+
+        <h3>Ausführung</h3>
+        <div class="grid">
+          <div style="grid-column:span 2">
+            <label for="execution_notes">Ausführungshinweise (erscheinen auf dem Arbeitsschein)</label>
+            <textarea id="execution_notes" name="execution_notes" rows={3}>
+              {sv?.execution_notes ?? ''}
+            </textarea>
+          </div>
+        </div>
+
+        <div class="formfoot">
+          <a class="btn sec" href={`/objekte/${siteId}/leistungen`}>
+            ← Zurück zur Übersicht
+          </a>
+          <button class="btn">{existing ? 'Leistung aktualisieren' : 'Leistung anlegen'}</button>
+        </div>
+      </form>
+      {existing && src && (
+        <form
+          method="get"
+          action={`/objekte/${siteId}/leistungen/kopieren`}
+          class="card actions"
+          style="max-width:900px"
+        >
+          <input type="hidden" name="von" value={src.id} />
+          <b>Leistung kopieren</b>
+          <span class="small mut">in Objekt</span>
+          <select name="ziel" style="max-width:420px" data-nosearch>
+            {(copyTargets ?? []).map((t) => (
+              <option value={t.id} selected={t.id === siteId}>
+                {t.site_no} · {t.name}
+                {t.id === siteId ? ' (dieses Objekt)' : ''}
               </option>
             ))}
           </select>
-        </div>
-        <div>
-          <label for="unit_code">Einheit</label>
-          <select id="unit_code" name="unit_code">
-            {Object.entries(UNIT_LABELS).map(([k, v]) => (
-              <option value={k} selected={k === (sv?.unit_code ?? 'LS')}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label for="quantity">Menge *</label>
-          <input id="quantity" name="quantity" value={sv ? milliToInput(sv.quantity_milli) : '1'} required />
-        </div>
-        <div>
-          <label for="unit_price">Preis (netto, €, zzgl. 19 % USt) *</label>
-          <input
-            id="unit_price"
-            name="unit_price"
-            value={sv ? centsToInput(sv.unit_price_cents) : ''}
-            placeholder="3.257,05"
-            required
-          />
-        </div>
-        <div>
-          <label for="labor_share">Lohnkostenanteil (%) *</label>
-          <input
-            id="labor_share"
-            name="labor_share"
-            value={sv?.labor_share_bp != null ? String(sv.labor_share_bp / 100).replace('.', ',') : ''}
-            placeholder="z. B. 80"
-            inputmode="decimal"
-            required
-          />
-          <div class="small mut">
-            Anteil der Lohnkosten am Preis – Grundlage für Preisanpassungen bei Tariflohnerhöhungen.
-          </div>
-        </div>
-      </div>
-      <div class="chk" style="margin-top:10px">
-        <input
-          type="checkbox"
-          id="always_unfinished"
-          name="always_unfinished"
-          checked={sv?.always_unfinished ?? false}
-        />
-        <label for="always_unfinished">
-          Immer unfertig – Rechnungen mit dieser Leistung müssen vor dem Ausstellen geprüft werden (z. B.
-          Mengen nach Aufmaß)
-        </label>
-      </div>
-
-      <h3>Ausführung</h3>
-      <div class="grid">
-        <div style="grid-column:span 2">
-          <label for="execution_notes">Ausführungshinweise (erscheinen auf dem Arbeitsschein)</label>
-          <textarea id="execution_notes" name="execution_notes" rows={3}>
-            {sv?.execution_notes ?? ''}
-          </textarea>
-        </div>
-      </div>
-
-      <div class="formfoot">
-        <a class="btn sec" href={`/objekte/${siteId}/leistungen`}>
-          ← Zurück zur Übersicht
-        </a>
-        <button class="btn">{sv ? 'Leistung aktualisieren' : 'Leistung anlegen'}</button>
-      </div>
-    </form>
+          <button class="btn sec">Kopieren</button>
+        </form>
+      )}
+    </>
   );
 };

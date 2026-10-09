@@ -1,4 +1,8 @@
+import { randomUUID } from 'node:crypto';
+import type { Child } from 'hono/jsx';
+import { isMailRedirected } from '../config/env.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
+import { MAILER_MISSING, resolveRecipients } from '../mail/mailer.js';
 import { collectReminders, getReminderSettings, saveReminderSettings } from '../services/reminders.js';
 import type { Ctx } from './app.js';
 import { str } from './forms.js';
@@ -45,6 +49,97 @@ export function registerReminderRoutes({ app, deps, page, back }: Ctx) {
         ))}
       </>,
     );
+  });
+
+  // E-Mail-Versand prüfen (Ahmed 09.10.: „wie kann ich es testen“) – zeigt den Stand ohne Passwort, sendet eine Test-Mail
+  app.get('/einstellungen/email', (c) => {
+    const e = deps.env;
+    const redirected = isMailRedirected(e);
+    const row = (k: string, v: Child) => (
+      <>
+        <dt>{k}</dt>
+        <dd>{v}</dd>
+      </>
+    );
+    return page(
+      c,
+      'E-Mail-Versand',
+      'einstellungen',
+      <>
+        <PageHead title="E-Mail-Versand prüfen" crumbs={[['Einstellungen', '/einstellungen']]} />
+        <div class="card">
+          <dl class="kv">
+            {row(
+              'Mail-Zugang (SMTP)',
+              deps.mailer.configured === false ? (
+                <span class="badge err">fehlt – in .env.live eintragen</span>
+              ) : (
+                <span class="badge ok">eingetragen</span>
+              ),
+            )}
+            {row('Server', e.SMTP_HOST ? `${e.SMTP_HOST}:${e.SMTP_PORT}` : '–')}
+            {row('Benutzer', e.SMTP_USER ?? '–')}
+            {row('Passwort', e.SMTP_PASS ? 'hinterlegt (wird nicht angezeigt)' : '–')}
+            {row('Absender', e.MAIL_FROM)}
+            {row('Betrieb', e.APP_ENV === 'live' ? 'live' : `${e.APP_ENV} (Testbetrieb)`)}
+            {row(
+              'Empfänger',
+              redirected ? (
+                <span class="badge warn">
+                  Alle Mails gehen nur an die Testadresse {e.MAIL_TEST_RECIPIENT ?? '(fehlt)'}
+                </span>
+              ) : (
+                <span class="badge ok">echte Empfänger (Kunden bekommen Rechnungen)</span>
+              ),
+            )}
+          </dl>
+        </div>
+        <form method="post" action="/einstellungen/email" class="card">
+          <h3 style="margin-top:0">Test-E-Mail senden</h3>
+          <div class="grid">
+            <div>
+              <label for="to">an</label>
+              <input id="to" name="to" type="email" required value={e.MAIL_TEST_RECIPIENT ?? ''} />
+            </div>
+          </div>
+          <p class="small mut">
+            {redirected
+              ? `Im Testbetrieb geht auch diese Mail an ${e.MAIL_TEST_RECIPIENT ?? 'die Testadresse'}.`
+              : 'Geht an die eingetragene Adresse.'}{' '}
+            Kommt sie an, funktioniert der Versand. Fehlermeldung „Invalid login“ = Benutzer/Passwort falsch,
+            „timeout“ = Server/Port falsch.
+          </p>
+          <div class="formfoot">
+            <button class="btn">Test-E-Mail senden</button>
+          </div>
+        </form>
+      </>,
+    );
+  });
+
+  app.post('/einstellungen/email', async (c) => {
+    const to = str(await c.req.parseBody(), 'to') ?? '';
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to))
+      return back(c, '/einstellungen/email', { fehler: 'Bitte E-Mail-Adresse angeben' });
+    if (deps.mailer.configured === false) return back(c, '/einstellungen/email', { fehler: MAILER_MISSING });
+    try {
+      const { actual } = isMailRedirected(deps.env) ? resolveRecipients(deps.env, [to]) : { actual: [to] };
+      await deps.mailer.send({
+        from: deps.env.MAIL_FROM,
+        to: actual,
+        subject: 'Test-E-Mail aus der Viva-Deluxe-App',
+        text: `Diese Test-E-Mail wurde am ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })} aus der App gesendet.\nDer E-Mail-Versand funktioniert.\n\nGewünschter Empfänger: ${to}`,
+        attachments: [],
+        messageId: `<test-${randomUUID()}@viva-deluxe-reinigung.de>`,
+      });
+      return back(c, '/einstellungen/email', {
+        ok: `Test-E-Mail an ${actual.join(', ')} gesendet – bitte Postfach prüfen.`,
+      });
+    } catch (err) {
+      return back(c, '/einstellungen/email', {
+        fehler: `Versand fehlgeschlagen: ${(err as Error).message}`,
+      });
+    }
   });
 
   app.get('/einstellungen/erinnerungen', async (c) => {

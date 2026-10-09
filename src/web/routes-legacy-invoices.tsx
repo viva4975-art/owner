@@ -1,3 +1,4 @@
+import { copyLegacyToDraft, createLegacyCancellation } from '../services/invoices.js';
 import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { parseEuro } from '../domain/money/money.js';
@@ -42,6 +43,11 @@ export async function legacyInvoicePage(sql: Sql, page: Ctx['page'], c: Context<
   const sites = await sql<{ id: string; name: string; site_no: string }[]>`
     select distinct s.id, s.name, s.site_no from app.legacy_invoice_lines x join app.sites s on s.id = x.site_id
      where x.invoice_id = ${id} order by s.site_no`;
+  const derived = await sql<
+    { id: string; kind: string; status: string; number: string | null; payable_cents: bigint }[]
+  >`select id, kind::text as kind, status::text as status, number, payable_cents from app.invoices
+     where original_legacy_invoice_id = ${id} order by created_at`;
+  const cancelled = derived.find((d) => d.kind === 'cancellation');
   const title = `${inv.net_cents < 0n ? 'Rechnungskorrektur' : 'Rechnung'} ${inv.number}`;
   const pdf = `/rechnungen/${id}/pdf`;
   return page(
@@ -117,6 +123,46 @@ export async function legacyInvoicePage(sql: Sql, page: Ctx['page'], c: Context<
               <dd>versendet</dd>
             </dl>
           </div>
+          {derived.length > 0 && (
+            <div class="card">
+              <h3 style="margin-top:0">Storno / Korrektur</h3>
+              {derived.map((d) => (
+                <div>
+                  <a href={`/rechnungen/${d.id}`}>
+                    {d.kind === 'cancellation' ? 'Stornorechnung' : 'Rechnungskorrektur'}{' '}
+                    {d.number ?? '(Entwurf)'}
+                  </a>{' '}
+                  <span class="small mut">{euro(d.payable_cents)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {inv.gross_cents > 0n && inv.customer_id && (
+            <div class="card">
+              <h3 style="margin-top:0">Stornieren / neu ausstellen</h3>
+              <p class="small mut" style="margin-top:0">
+                Hier in der neuen App, nicht in Fortytools – Fortytools nutzt denselben Nummernkreis. Die
+                Stornorechnung bekommt eine neue Nummer und verweist auf {inv.number}; danach ggf. die
+                Rechnung neu ausstellen.
+              </p>
+              {!cancelled && (
+                <form
+                  method="post"
+                  action={`/rechnungen/fortytools/${id}/storno`}
+                  onsubmit={`return confirm(${JSON.stringify(`Stornorechnung zu ${inv.number} als Entwurf anlegen? Sie wird erst mit „Fertigstellen“ ausgestellt.`)})`}
+                >
+                  <button class="btn sec" style="width:100%">
+                    Stornorechnung erstellen
+                  </button>
+                </form>
+              )}
+              <form method="post" action={`/rechnungen/fortytools/${id}/neu`} style="margin-top:8px">
+                <button class="btn sec" style="width:100%">
+                  Als neue Rechnung kopieren
+                </button>
+              </form>
+            </div>
+          )}
           {open && open.open_cents > 0n && (
             <form method="post" action={`/rechnungen/fortytools/${id}/bezahlt`} class="card">
               <h3 style="margin-top:0">Zahlung festhalten</h3>
@@ -155,6 +201,20 @@ export function registerLegacyInvoiceRoutes({ app, deps, back }: Ctx) {
   app.get(`/rechnungen/fortytools/:id{${UUID}}/pdf`, (c) =>
     c.redirect(`/rechnungen/${c.req.param('id')}/pdf`),
   );
+
+  // Storno / neu ausstellen in der neuen App (Ahmed 09.10.: „muss ich es noch bei Fortytools machen?“ – nein)
+  app.post(`/rechnungen/fortytools/:id{${UUID}}/storno`, async (c) => {
+    const nid = await createLegacyCancellation(sql, c.req.param('id'), c.get('actor'));
+    return back(c, `/rechnungen/${nid}`, {
+      ok: 'Stornorechnung als Entwurf angelegt – prüfen und fertigstellen (KoSIT-Prüfung, neue Nummer).',
+    });
+  });
+  app.post(`/rechnungen/fortytools/:id{${UUID}}/neu`, async (c) => {
+    const nid = await copyLegacyToDraft(sql, c.req.param('id'), c.get('actor'));
+    return back(c, `/rechnungen/${nid}`, {
+      ok: 'Neuer Rechnungsentwurf mit den Positionen der alten Rechnung.',
+    });
+  });
 
   app.post(`/rechnungen/fortytools/:id{${UUID}}/bezahlt`, async (c) => {
     const b = await c.req.parseBody();

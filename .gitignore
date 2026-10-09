@@ -9,3 +9,4 @@ coverage/
 .kosit/
 var/
 deploy/.env.live
+downloads/

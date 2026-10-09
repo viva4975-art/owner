@@ -1772,13 +1772,36 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     return back(c, target, { ok: 'Vorgemerkte Ausführung zurückgenommen.' });
   });
 
+  // Leistung kopieren (Ahmed 09.10.): neue ID, Formular mit den Werten der Vorlage, auch in ein anderes Objekt des Kunden
+  app.get(`/objekte/:id{${UUID}}/leistungen/kopieren`, async (c) => {
+    const von = c.req.query('von') ?? '';
+    const ziel = c.req.query('ziel') ?? c.req.param('id');
+    if (!/^[0-9a-f-]{36}$/.test(von) || !/^[0-9a-f-]{36}$/.test(ziel))
+      return c.redirect(`/objekte/${c.req.param('id')}/leistungen`);
+    return c.redirect(`/objekte/${ziel}/leistungen/${randomUUID()}?kopie=${von}`);
+  });
+
   app.get(`/objekte/:id{${UUID}}/leistungen/:sid{${UUID}}`, (c) =>
     sitePage(c, 'leistungen', async (s) => {
-      const sv = (await getService(sql, c.req.param('sid'))) ?? null;
+      let sv = (await getService(sql, c.req.param('sid'))) ?? null;
       if (sv && sv.site_id !== s.id) throw new BusinessError('Leistung gehört zu einem anderen Objekt');
-      const [types, groups] = await Promise.all([
+      let copy = false;
+      const kopie = c.req.query('kopie');
+      if (!sv && kopie && /^[0-9a-f-]{36}$/.test(kopie)) {
+        const src = await getService(sql, kopie);
+        const [srcSite] = src
+          ? await sql<{ customer_id: string }[]>`select customer_id from app.sites where id = ${src.site_id}`
+          : [];
+        if (src && srcSite?.customer_id === s.customer_id) {
+          sv = src;
+          copy = true;
+        }
+      }
+      const [types, groups, targets] = await Promise.all([
         listServiceTypes(sql),
         listInvoiceGroups(sql, s.customer_id),
+        sql<{ id: string; site_no: string; name: string }[]>`
+          select id, site_no, name from app.sites where customer_id = ${s.customer_id} and active order by site_no`,
       ]);
       return (
         <ServiceForm
@@ -1789,6 +1812,8 @@ export function registerMasterdataRoutes(ctx: Ctx) {
           groups={groups}
           today={todayBerlin()}
           siteNo={s.site_no}
+          copy={copy}
+          copyTargets={targets}
         />
       );
     }),

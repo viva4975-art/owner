@@ -49,6 +49,29 @@ export async function listAdvances(sql: Sql, supplierId: string) {
   return rows.map((r) => ({ ...r, offsets: offs.filter((o) => o.advance_id === r.id) })) as Advance[];
 }
 
+/** Alle Vorschüsse aller Nachunternehmer (Rechnungseingang → Vorschüsse), offene zuerst. */
+export async function listAllAdvances(sql: Sql) {
+  return sql<
+    (Omit<Advance, 'offsets'> & {
+      supplier_name: string;
+      supplier_no: string | null;
+      invoices: string | null;
+    })[]
+  >`
+    select a.*, a.paid_on::text as paid_on, s.number as subcontract_number, l.name as supplier_name,
+           l.supplier_no,
+           coalesce((select sum(o.amount_cents) from app.subcontractor_advance_offsets o where o.advance_id = a.id), 0)::bigint
+             as used_cents,
+           (select string_agg(i.invoice_no, ', ' order by i.invoice_no) from app.subcontractor_advance_offsets o
+              join app.incoming_invoices i on i.id = o.incoming_invoice_id where o.advance_id = a.id) as invoices
+      from app.subcontractor_advances a
+      join app.suppliers l on l.id = a.supplier_id
+      left join app.subcontracts s on s.id = a.subcontract_id
+     order by (a.amount_cents > coalesce((select sum(o.amount_cents) from app.subcontractor_advance_offsets o
+                                           where o.advance_id = a.id), 0)) desc,
+              a.paid_on desc, a.created_at desc`;
+}
+
 /** Offener (noch nicht verrechneter) Vorschuss je Lieferant. */
 export async function openAdvances(sql: Sql, supplierIds?: string[]) {
   const rows = await sql<{ supplier_id: string; open: bigint }[]>`

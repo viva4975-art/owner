@@ -242,9 +242,13 @@ export const CustomerOrders: FC<{ customerId: string; rows: OrderRow[]; status: 
                     <b>{o.number}</b>
                   </a>
                 </td>
-                <td>{o.title}</td>
+                <td style="white-space:pre-line">{o.title}</td>
                 <td>
-                  {o.bill_address ? o.bill_address.name : <span class="mut">wie Kunde</span>}
+                  {o.bill_address ? (
+                    [o.bill_address.name, o.bill_address.name2].filter(Boolean).join(', ')
+                  ) : (
+                    <span class="mut">wie Kunde</span>
+                  )}
                   {(o.site_name || o.place) && <div class="small mut">{o.site_name ?? o.place}</div>}
                 </td>
                 <td>{dateDe(o.planned_date)}</td>
@@ -319,7 +323,16 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
   /** Eingegebene Anschrift; gleich der Standard-Anschrift → null (folgt dann den Kundendaten). */
   const chosenAddress = async (b: Parameters<typeof str>[0]) => {
     if (typeof b.bill_name !== 'string') return null;
-    const a = parseBillAddress(b as Record<string, unknown>);
+    // Name mehrzeilig: erste Zeile = Name, weitere Zeilen = Zusatz (Name 2)
+    const [first, ...rest] = b.bill_name
+      .split(/\r?\n/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const a = parseBillAddress({
+      ...(b as Record<string, unknown>),
+      bill_name: first ?? '',
+      bill_name2: rest.join(', '),
+    });
     const customerId = str(b, 'customer_id') ?? '';
     const d = await orderAddress(null, customerId, str(b, 'site_id'));
     const same = (x: string | null, y: string | null) => (x ?? '').trim() === (y ?? '').trim();
@@ -434,12 +447,12 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
             <div class="grid">
               <div style="grid-column:1/-1">
                 <label for="bill_name">Name / Firma</label>
-                <input id="bill_name" name="bill_name" value={addr.name} required />
+                <textarea id="bill_name" name="bill_name" rows={2} required>
+                  {[addr.name, addr.name2].filter(Boolean).join('\n')}
+                </textarea>
+                <div class="small mut">Enter = zweite Zeile (z. B. Gesellschaft / Abteilung)</div>
               </div>
-              <div style="grid-column:1/-1">
-                <label for="bill_name2">Zusatz</label>
-                <input id="bill_name2" name="bill_name2" value={addr.name2 ?? ''} />
-              </div>
+
               <div style="grid-column:1/-1">
                 <label for="bill_contact">z. Hd.</label>
                 <input id="bill_contact" name="bill_contact" value={addr.contactName ?? ''} />
@@ -468,13 +481,15 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
             <div class="grid">
               <div style="grid-column:1/-1">
                 <label for="title">Titel</label>
-                <input
+                <textarea
                   id="title"
                   name="title"
-                  value={o?.title ?? ''}
+                  rows={2}
                   required
-                  placeholder="z. B. Grundreinigung Turnhalle nach Umbau"
-                />
+                  placeholder="z. B. Grundreinigung Turnhalle nach Umbau (Enter = neue Zeile)"
+                >
+                  {o?.title ?? ''}
+                </textarea>
               </div>
               <div>
                 <label for="order_reference">Bestellnummer des Kunden</label>

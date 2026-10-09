@@ -20,7 +20,7 @@ import type {
   SellerSnapshot,
   PrepaymentReference,
 } from '../domain/invoice/types.js';
-import type { Cents, Quantity } from '../domain/money/money.js';
+import type { Cents, Quantity, VatRate } from '../domain/money/money.js';
 import { buildBuyerSnapshot, effectiveBilling, getCustomer, getSeller } from './masterdata.js';
 
 export { BusinessError } from './errors.js';
@@ -41,6 +41,8 @@ export interface InvoiceRow {
   /** Arbeitsschein aus dem Entwurf angelegt → Ausstellen erst mit unterschriebenem Schein */
   work_report_required: boolean;
   original_invoice_id: string | null;
+  /** Storno/Korrektur einer Rechnung von vor der Umstellung (app.legacy_invoices) */
+  original_legacy_invoice_id?: string | null;
   issue_date: string | null;
   due_date: string | null;
   period_start: string | null;
@@ -166,13 +168,14 @@ export async function listInvoices(sql: Sql, filter: { status?: 'draft' | 'issue
     })[]
   >`
     select i.*, c.name as customer_name, c.customer_no, coalesce(s.name, 'Rechnungsgruppe ' || g.name) as site_name,
-           o.number as original_number,
+           coalesce(o.number, lo.number) as original_number,
            (select d.status::text from app.invoice_deliveries d where d.invoice_id = i.id order by d.created_at desc limit 1) as delivery_status
       from app.invoices i
       join app.customers c on c.id = i.customer_id
       left join app.sites s on s.id = i.site_id
       left join app.invoice_groups g on g.id = i.invoice_group_id
       left join app.invoices o on o.id = i.original_invoice_id
+      left join app.legacy_invoices lo on lo.id = i.original_legacy_invoice_id
      where ${filter.status ? sql`i.status = ${filter.status}` : sql`true`}
      order by i.status, i.number_year desc nulls first, i.number_seq desc nulls first, i.created_at desc`;
 }
@@ -190,7 +193,11 @@ export async function getInvoice(sql: Sql | Tx, id: string) {
      where p.final_invoice_id = ${id} order by i.number`;
   const [original] = inv.original_invoice_id
     ? await sql<InvoiceRow[]>`select * from app.invoices where id = ${inv.original_invoice_id}`
-    : [];
+    : inv.original_legacy_invoice_id
+      ? await sql<InvoiceRow[]>`
+          select id, number, issue_date::text as issue_date, 'invoice' as kind, 'issued' as status
+            from app.legacy_invoices where id = ${inv.original_legacy_invoice_id}`
+      : [];
   const derived = await sql<
     InvoiceRow[]
   >`select * from app.invoices where original_invoice_id = ${id} order by created_at`;
@@ -1051,4 +1058,160 @@ export async function patchDraft(
     lines.splice(patch.index, 1);
   }
   await saveDraft(sql, id, input, actor);
+}
+
+// ---------------------------------------------------------------------------
+// Rechnungen von vor der Umstellung (Fortytools): Storno und „neu ausstellen“ in der neuen App
+// ---------------------------------------------------------------------------
+
+const LEGACY_UNIT: Record<string, string> = {
+  pauschal: 'LS',
+  psch: 'LS',
+  'psch.': 'LS',
+  'std.': 'HUR',
+  std: 'HUR',
+  'stk.': 'C62',
+  stk: 'C62',
+  'tg.': 'DAY',
+  qm: 'MTK',
+  'm²': 'MTK',
+};
+
+/** Positionen einer alten Rechnung als Entwurfspositionen (Steuersatz aus Netto/Brutto der Rechnung). */
+export async function legacyLines(sql: Sql | Tx, legacyId: string) {
+  const [inv] = await sql<
+    {
+      id: string;
+      number: string;
+      issue_date: string;
+      customer_id: string | null;
+      net_cents: bigint;
+      gross_cents: bigint;
+      customer_reference: string | null;
+    }[]
+  >`select id, number, issue_date::text as issue_date, customer_id, net_cents, gross_cents, customer_reference
+      from app.legacy_invoices where id = ${legacyId}`;
+  if (!inv) throw new BusinessError('Rechnung nicht gefunden');
+  const rows = await sql<
+    {
+      title: string | null;
+      details: string | null;
+      quantity_milli: bigint;
+      unit: string | null;
+      unit_price_cents: bigint;
+      service_type: string | null;
+      period_start: string | null;
+      period_end: string | null;
+      site_id: string | null;
+      type_id: string | null;
+    }[]
+  >`select l.title, l.details, l.quantity_milli, l.unit, l.unit_price_cents, l.service_type,
+           l.period_start::text as period_start, l.period_end::text as period_end, l.site_id,
+           (select t.id from app.service_types t where lower(t.name) = lower(l.service_type) limit 1) as type_id
+      from app.legacy_invoice_lines l where l.invoice_id = ${legacyId} order by l.position`;
+  const vat = inv.gross_cents - inv.net_cents;
+  const reverseCharge = inv.net_cents !== 0n && vat === 0n;
+  const rate =
+    reverseCharge || inv.net_cents === 0n
+      ? 0
+      : Math.abs(Number((vat * 10000n) / inv.net_cents) - 700) <
+          Math.abs(Number((vat * 10000n) / inv.net_cents) - 1900)
+        ? 700
+        : 1900;
+  const lines: DraftLineInput[] = rows.map((l) => {
+    const title = (l.title || l.service_type || 'Leistung').split('\n');
+    return {
+      description: title[0]!,
+      detail: [title.slice(1).join('\n') || null, l.details].filter(Boolean).join('\n') || null,
+      quantity: l.quantity_milli as Quantity,
+      unitCode: LEGACY_UNIT[(l.unit ?? '').trim().toLowerCase()] ?? ((l.unit ?? '').trim() ? 'C62' : 'LS'),
+      unitPrice: l.unit_price_cents as Cents,
+      vatRate: rate as VatRate,
+      serviceTypeId: l.type_id,
+      periodStart: l.period_start,
+      periodEnd: l.period_end,
+    };
+  });
+  const sites = [...new Set(rows.map((r) => r.site_id).filter((x): x is string => !!x))];
+  const starts = rows
+    .map((r) => r.period_start)
+    .filter((x): x is string => !!x)
+    .sort();
+  const ends = rows
+    .map((r) => r.period_end ?? r.period_start)
+    .filter((x): x is string => !!x)
+    .sort();
+  return {
+    inv,
+    lines,
+    reverseCharge,
+    siteId: sites.length === 1 ? sites[0]! : null,
+    periodStart: starts[0] ?? inv.issue_date,
+    periodEnd: ends[ends.length - 1] ?? inv.issue_date,
+  };
+}
+
+/**
+ * Stornorechnung zu einer Rechnung von vor der Umstellung: eigene Nummer aus dem Nummernkreis der App, Verweis auf die
+ * alte Rechnungsnummer (BT-25), alle Positionen negativ. Ausgestellt wird wie jede Rechnung (KoSIT, Archiv).
+ */
+export async function createLegacyCancellation(sql: Sql, legacyId: string, actor: string): Promise<string> {
+  return sql.begin(async (tx) => {
+    await tx`select id from app.legacy_invoices where id = ${legacyId} for update`;
+    const d = await legacyLines(tx, legacyId);
+    if (!d.inv.customer_id) throw new BusinessError('Rechnung ist keinem Kunden zugeordnet');
+    if (d.inv.gross_cents <= 0n)
+      throw new BusinessError('Nur Rechnungen (nicht Storno/Korrektur) können storniert werden');
+    if (!d.lines.length) throw new BusinessError('Rechnung hat keine Positionen');
+    const [done] = await tx<{ id: string }[]>`
+      select id from app.invoices where original_legacy_invoice_id = ${legacyId} and kind = 'cancellation'`;
+    if (done) return done.id;
+    const billing = await effectiveBilling(tx as unknown as Sql, d.inv.customer_id, d.siteId);
+    const id = randomUUID();
+    await tx`insert into app.invoices ${tx({
+      id,
+      kind: 'cancellation',
+      reverse_charge: d.reverseCharge,
+      customer_id: d.inv.customer_id,
+      site_id: d.siteId,
+      original_legacy_invoice_id: legacyId,
+      period_start: d.periodStart,
+      period_end: d.periodEnd,
+      invoice_format: billing.format,
+      buyer_reference: billing.leitwegId ?? d.inv.customer_reference,
+      intro_text: `Hiermit stornieren wir die Rechnung ${d.inv.number} vom ${d.inv.issue_date.split('-').reverse().join('.')} vollständig.`,
+    } as Record<string, unknown>)}`;
+    await writeLines(tx, id, cancellationLines(d.lines), 0n as Cents);
+    await audit(tx, actor, 'create_cancellation', id, { original: d.inv.number, legacy: true });
+    return id;
+  });
+}
+
+/** „Neu ausstellen“: neuer Rechnungsentwurf mit den Positionen der alten Rechnung (zum Ändern vor dem Ausstellen). */
+export async function copyLegacyToDraft(sql: Sql, legacyId: string, actor: string): Promise<string> {
+  const d = await legacyLines(sql, legacyId);
+  if (!d.inv.customer_id) throw new BusinessError('Rechnung ist keinem Kunden zugeordnet');
+  const id = randomUUID();
+  await saveDraft(
+    sql,
+    id,
+    {
+      customerId: d.inv.customer_id,
+      siteId: d.siteId,
+      kind: 'invoice',
+      periodStart: d.periodStart,
+      periodEnd: d.periodEnd,
+      orderReference: null,
+      introText: null,
+      closingText: null,
+      lines: d.lines.map((l) => ({
+        ...l,
+        quantity: (l.quantity < 0n ? -l.quantity : l.quantity) as Quantity,
+      })),
+      reverseCharge: d.reverseCharge,
+      customerReference: d.inv.customer_reference,
+    },
+    actor,
+  );
+  return id;
 }

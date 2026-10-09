@@ -30,6 +30,11 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
         'Anschrift, Steuernummer, USt-ID, Handelsregister, Kontakt und Bankkonten – erscheinen auf Rechnungen, Mahnungen und in der E-Rechnung.',
       ],
       [
+        'E-Mail-Versand prüfen',
+        '/einstellungen/email',
+        'Zeigt, ob der Mail-Zugang (SMTP) eingerichtet ist und ob Test- oder Echtbetrieb gilt; Test-E-Mail senden.',
+      ],
+      [
         'Erinnerungen per E-Mail',
         '/einstellungen/erinnerungen',
         'Tägliche Sammel-Mail mit allen Fristen (Aufenthaltstitel, NU-Nachweise, HU, Ausschreibungen, Aufgaben, Skonto, fehlende Zeiten).',

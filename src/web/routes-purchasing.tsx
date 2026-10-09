@@ -21,7 +21,13 @@ import {
   getAccountingSettings,
   saveAccountingSettings,
 } from '../services/datev.js';
-import { offsetAdvance, openAdvances, undoOffsets } from '../services/advances.js';
+import {
+  ADVANCE_METHOD,
+  listAllAdvances,
+  offsetAdvance,
+  openAdvances,
+  undoOffsets,
+} from '../services/advances.js';
 import { BusinessError } from '../services/errors.js';
 import { listArticles, listSuppliers } from '../services/inventory.js';
 import { getSeller, listSites } from '../services/masterdata.js';
@@ -916,7 +922,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
   // ================================================================== Rechnungseingang
 
   /** Reiter des Rechnungseingangs; die Zahlungsliste ist ein Reiter davon (nicht separat). */
-  const incomingTabs = (all: { status: IncomingStatus }[], expected?: number): Tab[] => [
+  const incomingTabs = (all: { status: IncomingStatus }[], expected?: number, advances?: number): Tab[] => [
     {
       key: 'erwartet',
       label: 'Rechnung erwartet',
@@ -930,8 +936,130 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       count: all.filter((i) => i.status === s).length,
     })),
     { key: 'alle', label: 'Alle', href: '/rechnungseingang?status=alle', count: all.length },
+    {
+      key: 'vorschuss',
+      label: 'Vorschüsse',
+      href: '/rechnungseingang/vorschuesse',
+      ...(advances !== undefined ? { count: advances } : {}),
+    },
     { key: 'zahlung', label: 'Zahlungsliste', href: '/zahlungsliste' },
   ];
+  const openAdvanceCount = async () => {
+    const [r] = await sql<{ n: number }[]>`
+      select count(*)::int as n from app.subcontractor_advances a
+       where a.amount_cents > coalesce((select sum(o.amount_cents) from app.subcontractor_advance_offsets o
+                                         where o.advance_id = a.id), 0)`;
+    return r?.n ?? 0;
+  };
+
+  // Vorschüsse an Nachunternehmer im Überblick (Ahmed 09.10.: „damit man es nicht aus den Augen verliert“)
+  app.get('/rechnungseingang/vorschuesse', async (c) => {
+    const alle = c.req.query('alle') === '1';
+    const [all, rows, n] = await Promise.all([listIncoming(sql), listAllAdvances(sql), openAdvanceCount()]);
+    const shown = alle ? rows : rows.filter((r) => r.amount_cents > r.used_cents);
+    const sum = (f: (r: (typeof rows)[number]) => bigint) => shown.reduce((s, r) => s + f(r), 0n);
+    const today = todayBerlin();
+    return page(
+      c,
+      'Vorschüsse',
+      'lieferanten',
+      <>
+        <PageHead title="Rechnungseingang" />
+        <Tabs tabs={incomingTabs(all, undefined, n)} active="vorschuss" />
+        <div class="actions" style="margin-top:0">
+          <div class="chips" style="margin:0">
+            <a class={alle ? '' : 'on'} href="/rechnungseingang/vorschuesse">
+              Offen <span class="n">{n}</span>
+            </a>
+            <a class={alle ? 'on' : ''} href="/rechnungseingang/vorschuesse?alle=1">
+              Alle <span class="n">{rows.length}</span>
+            </a>
+          </div>
+          <span class="small mut" style="margin-left:auto">
+            Neuer Vorschuss: beim Nachunternehmer → Reiter „Vorschüsse“ oder aus Kontoumsätze → „Als Vorschuss
+            erfassen“
+          </span>
+        </div>
+        <div class="tbl">
+          <table>
+            <thead>
+              <tr>
+                <th>Gezahlt</th>
+                <th>Nachunternehmer</th>
+                <th>Bestellung / Zweck</th>
+                <th>Zahlart</th>
+                <th class="r">Vorschuss</th>
+                <th class="r">verrechnet</th>
+                <th class="r">offen</th>
+                <th>mit Rechnung</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.length === 0 && (
+                <tr>
+                  <td colspan={8}>
+                    <div class="empty">
+                      {alle ? 'Keine Vorschüsse erfasst.' : 'Keine offenen Vorschüsse.'}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              {shown.map((r) => {
+                const open = r.amount_cents - r.used_cents;
+                const days = Math.round((Date.parse(today) - Date.parse(r.paid_on)) / 86_400_000);
+                return (
+                  <tr>
+                    <td>
+                      {dateDe(r.paid_on)}
+                      {open > 0n && days > 45 && (
+                        <div class="small" style="color:var(--err)">
+                          seit {days} Tagen offen
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      <a href={`/lieferanten/${r.supplier_id}/vorschuesse`}>{r.supplier_name}</a>
+                      {r.supplier_no && <span class="small mut"> {r.supplier_no}</span>}
+                    </td>
+                    <td>
+                      {r.subcontract_number && <div>{r.subcontract_number}</div>}
+                      {r.purpose && <div class="small mut">{r.purpose}</div>}
+                    </td>
+                    <td>{ADVANCE_METHOD[r.method] ?? r.method}</td>
+                    <td class="r">{euro(r.amount_cents)}</td>
+                    <td class="r">{euro(r.used_cents)}</td>
+                    <td class="r">
+                      {open > 0n ? <b>{euro(open)}</b> : <span class="badge ok">verrechnet</span>}
+                    </td>
+                    <td class="small">{r.invoices ?? '–'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            {shown.length > 0 && (
+              <tfoot>
+                <tr>
+                  <td colspan={4}>
+                    <b>Summe</b>
+                  </td>
+                  <td class="r">{euro(sum((r) => r.amount_cents))}</td>
+                  <td class="r">{euro(sum((r) => r.used_cents))}</td>
+                  <td class="r">
+                    <b>{euro(sum((r) => r.amount_cents - r.used_cents))}</b>
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+        <p class="small mut">
+          Verrechnen: an der Eingangsrechnung des Nachunternehmers (Karte „Vorschuss“) – der Zahlbetrag sinkt
+          um den verrechneten Teil.
+        </p>
+      </>,
+    );
+  });
 
   app.get('/rechnungseingang', async (c) => {
     const st = (c.req.query('status') ?? 'erfasst') as IncomingStatus | 'alle' | 'erwartet';
@@ -942,7 +1070,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
     ]);
     const rows = st === 'alle' ? all : all.filter((i) => i.status === st);
     const today = todayBerlin();
-    const tabs = incomingTabs(all, expected.length);
+    const tabs = incomingTabs(all, expected.length, await openAdvanceCount());
     const open = all.filter((i) => i.status === 'freigegeben');
     return page(
       c,

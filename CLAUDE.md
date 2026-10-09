@@ -1964,3 +1964,19 @@ Testadresse.
   konnte veralten: Trigger zieht ihn bei Änderung der Objektnummer mit (nur wenn er die alte Nummer war), Zusammenführen
   setzt umgehängte Leistungen auf die Nummer des behaltenen Objekts, Migration `20261118000002` korrigiert Bestand
   (Nummer eines anderen Objekts oder Import-Zwischennummer „…~…“ → eigene Objektnummer; 9000er und freie Texte bleiben).
+- 2026-10-09: Ahmed (8 Punkte):
+  - **Leistung kopieren:** in jeder Leistung unten „Leistung kopieren in Objekt …“ (dieses oder ein anderes Objekt desselben
+    Kunden) → Formular mit allen Werten als neue Leistung (Kostenstelle = Zielobjekt), Original bleibt.
+  - **Einstellungen → E-Mail-Versand prüfen** (nur Admin): zeigt SMTP-Server, Benutzer, Absender (Passwort nie), Test- oder
+    Echtbetrieb und ob alles an die Testadresse umgeleitet wird; „Test-E-Mail senden“ mit verständlicher Fehlermeldung.
+  - **Storno/neu ausstellen von Rechnungen vor der Umstellung** (Fortytools nutzt denselben Nummernkreis – dort stornieren
+    würde eine Nummer doppelt vergeben): an der alten Rechnung „Stornorechnung erstellen“ (Entwurf, Kind cancellation,
+    `invoices.original_legacy_invoice_id`, Verweis BT-25 auf die alte Nummer, Positionen negativ, Steuersatz aus Netto/Brutto,
+    § 13b wenn ohne USt) und „Als neue Rechnung kopieren“ (Entwurf mit den alten Positionen). Ausgestellte Storno-/Korrektur-
+    rechnungen mindern den offenen Posten der alten Rechnung (`legacy_open_items`). Höchstens ein Storno je Rechnung
+    (DB-Index). Migration `20261118000003`, Test `legacy-cancel.db.test.ts` (KoSIT).
+  - **Rechnungseingang → Reiter „Vorschüsse“:** alle Vorschüsse aller Nachunternehmer (offen / alle), verrechnet, offen,
+    mit welcher Rechnung, Summen, „seit n Tagen offen“ ab 45 Tagen rot; Zähler offener Vorschüsse im Reiter.
+  - **Einzelauftrag:** Titel und „Name / Firma“ mehrzeilig (Name: 1. Zeile = Name, weitere Zeilen = Zusatz/Name 2).
+  - Objektordner-Paket unverändert (die App füllt die Lücken beim Herunterladen selbst) – Ahmed lädt es einmal unter
+    Einstellungen → Objektordner-Vorlagen hoch.

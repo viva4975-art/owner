@@ -408,7 +408,7 @@ export async function sendInvoiceTestMail(deps: Deps, id: string, to: string, ac
     ...composeMail({
       notice: `*** TEST-E-MAIL – so erhält der Kunde die Rechnung. Nicht an den Kunden gegangen, Rechnung gilt nicht als versendet. ***\nEmpfänger beim echten Versand: ${intended.join(', ') || '(keine Rechnungs-E-Mail hinterlegt)'}`,
       body: invoiceMailBody(doc),
-      signature: sig.text,
+      signature: sig,
     }),
     attachments,
     messageId: `<test-${randomUUID()}@viva-deluxe-app>`,
@@ -600,7 +600,7 @@ export async function sendInvoice(
       ...composeMail({
         notice: redirected ? testNotice(customer.invoice_emails) : null,
         body: invoiceMailBody(doc),
-        signature: (await loadSignature(sql)).text,
+        signature: await loadSignature(sql),
       }),
       attachments,
       messageId: `<${claimed.id}@viva-deluxe-app>`,

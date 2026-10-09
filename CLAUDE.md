@@ -2056,3 +2056,9 @@ Testadresse.
   `20261118000006`), dort auch Vorschau. **Test-E-Mail „wie an Kunden“**: zuletzt ausgestellte (oder gewählte) Rechnung mit
   Betreff, Text, Signatur und Anhängen je Rechnungsformat, nur an die eingegebene Adresse, kein Versandeintrag (Rechnung
   gilt nicht als versendet), Hinweis oben mit den echten Empfängern; Protokoll `test_mail`.
+- 2026-10-09: **Signatur wie die Outlook-Signatur** (Ahmed, Screenshot; „ohne Namen, allgemein mit buchhaltung@“): oben
+  „Buchhaltung“ + buchhaltung@viva-deluxe-reinigung.de, Logo mit Slogan, „Zentrale München“ (aus Firmendaten), „Niederlassung
+  Stuttgart“ (Königstr. 5 · 70173 Stuttgart, stuttgart@…), Siegel-Leiste (Meisterbetrieb, ISO 9001/14001, Gebäudereiniger-
+  Handwerk, Die Gebäudedienstleister, Umwelt- und Klimapakt Bayern – Bilder aus Ahmeds Signatur, `assets/mail/`),
+  Pflichtangaben-Fußzeile, Umwelt- und Vertraulichkeitshinweis (de/en). Felder unter Einstellungen → E-Mail-Versand
+  (JSON in `company.mail_signature`), Siegel/Hinweise abschaltbar, Vorschau mit Bildern.

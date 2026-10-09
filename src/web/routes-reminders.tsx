@@ -2,7 +2,13 @@ import { randomUUID } from 'node:crypto';
 import type { Child } from 'hono/jsx';
 import { isMailRedirected } from '../config/env.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
-import { composeMail, loadSignature } from '../mail/compose.js';
+import {
+  buildSignature,
+  composeMail,
+  loadSignature,
+  loadSignatureSettings,
+  type SignatureSettings,
+} from '../mail/compose.js';
 import { MAILER_MISSING, resolveRecipients } from '../mail/mailer.js';
 import { sendInvoiceTestMail } from '../services/workflow.js';
 import { collectReminders, getReminderSettings, saveReminderSettings } from '../services/reminders.js';
@@ -56,13 +62,17 @@ export function registerReminderRoutes({ app, deps, page, back }: Ctx) {
   // E-Mail-Versand prüfen (Ahmed 09.10.: „wie kann ich es testen“) – zeigt den Stand ohne Passwort, sendet eine Test-Mail
   app.get('/einstellungen/email', async (c) => {
     const e = deps.env;
-    const sig = await loadSignature(sql);
+    const { company, settings: sg } = await loadSignatureSettings(sql);
+    const sig = buildSignature(company, sg);
     const [lastInv] = await sql<{ number: string }[]>`
       select number from app.invoices where status = 'issued' order by issued_at desc nulls last limit 1`;
     const preview = composeMail({
       body: 'Sehr geehrte Damen und Herren,\n\nanbei erhalten Sie unsere Rechnung 1038316 vom 09.10.2026.\n\nBetrag: 1.234,56 €, zahlbar bis 23.10.2026.',
-      signature: sig.text,
-    }).html!.replace(/cid:[^"]+/, '/static/logo-transparent.png');
+      signature: sig,
+    }).html!.replace(/cid:([^"]+)/g, (m, cid: string) => {
+      const im = sig.inline.find((i) => i.cid === cid);
+      return im ? `data:${im.contentType};base64,${Buffer.from(im.content).toString('base64')}` : m;
+    });
     const redirected = isMailRedirected(e);
     const row = (k: string, v: Child) => (
       <>
@@ -138,18 +148,60 @@ export function registerReminderRoutes({ app, deps, page, back }: Ctx) {
         <form method="post" action="/einstellungen/email/signatur" class="card">
           <h3 style="margin-top:0">E-Mail-Signatur</h3>
           <p class="small mut" style="margin-top:0">
-            Steht unter jeder Mail an Kunden (Rechnungen, Mahnungen) – mit Logo. Leer lassen = automatisch aus
-            den Firmendaten (Einstellungen → Firmendaten). Pflicht für E-Mails einer GmbH (§ 35a GmbHG):
-            Rechtsform, Sitz, Registergericht + HRB, alle Geschäftsführer.
+            Steht unter jeder Mail an Kunden (Rechnungen, Mahnungen) – mit Logo und Siegeln, wie die
+            Outlook-Signatur. Pflichtangaben einer GmbH (§ 35a GmbHG: Rechtsform, Sitz, Registergericht + HRB,
+            alle Geschäftsführer) stehen immer in der Fußzeile.
           </p>
-          <label for="signature">Signatur {sig.custom ? '(eigene)' : '(automatisch)'}</label>
-          <textarea id="signature" name="signature" rows={9} style="font-family:inherit">
-            {sig.custom ? sig.text : ''}
-          </textarea>
-          <div class="small mut">Automatisch wäre:</div>
-          <pre class="small" style="white-space:pre-wrap;margin:4px 0 0">
-            {sig.auto}
-          </pre>
+          <h4>Person (oben in der Signatur)</h4>
+          <div class="grid">
+            <div>
+              <label for="person_name">Name</label>
+              <input id="person_name" name="person_name" value={sg.person_name} />
+            </div>
+            <div>
+              <label for="person_title">Funktion</label>
+              <input id="person_title" name="person_title" value={sg.person_title} />
+            </div>
+            <div>
+              <label for="person_mobile">Mobil</label>
+              <input id="person_mobile" name="person_mobile" value={sg.person_mobile} />
+            </div>
+            <div>
+              <label for="person_email">E-Mail</label>
+              <input id="person_email" name="person_email" value={sg.person_email} />
+            </div>
+          </div>
+          <h4>Niederlassung (leer = keine)</h4>
+          <div class="grid">
+            <div>
+              <label for="branch_title">Bezeichnung</label>
+              <input id="branch_title" name="branch_title" value={sg.branch_title} />
+            </div>
+            <div>
+              <label for="branch_address">Anschrift</label>
+              <input id="branch_address" name="branch_address" value={sg.branch_address} />
+            </div>
+            <div>
+              <label for="branch_email">E-Mail</label>
+              <input id="branch_email" name="branch_email" value={sg.branch_email} />
+            </div>
+          </div>
+          <h4>Weiteres</h4>
+          <label>
+            <input type="checkbox" name="show_badges" checked={sg.show_badges} /> Siegel „Zertifiziert &amp;
+            Mitglied“
+          </label>
+          <label>
+            <input type="checkbox" name="eco_note" checked={sg.eco_note} /> Umwelt-Hinweis
+          </label>
+          <label>
+            <input type="checkbox" name="disclaimer" checked={sg.disclaimer} /> Vertraulichkeitshinweis
+            (deutsch/englisch)
+          </label>
+          <p class="small mut">
+            Zentrale (Anschrift, Telefon, E-Mail, Web) und die Pflichtangaben unten kommen aus Einstellungen →
+            Firmendaten.
+          </p>
           <div class="formfoot">
             <button class="btn">Signatur speichern</button>
           </div>
@@ -198,7 +250,7 @@ export function registerReminderRoutes({ app, deps, page, back }: Ctx) {
         subject: 'Test-E-Mail aus der Viva-Deluxe-App',
         ...composeMail({
           body: `Diese Test-E-Mail wurde am ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })} aus der App gesendet.\nDer E-Mail-Versand funktioniert.\n\nGewünschter Empfänger: ${to}`,
-          signature: (await loadSignature(sql)).text,
+          signature: await loadSignature(sql),
         }),
         attachments: [],
         messageId: `<test-${randomUUID()}@viva-deluxe-reinigung.de>`,
@@ -214,13 +266,27 @@ export function registerReminderRoutes({ app, deps, page, back }: Ctx) {
   });
 
   app.post('/einstellungen/email/signatur', async (c) => {
-    const t = (str(await c.req.parseBody(), 'signature') ?? '').trim().slice(0, 2000);
-    await sql`update app.company set mail_signature = ${t || null}, updated_at = now() where id = 1`;
+    const b = (await c.req.parseBody()) as Record<string, string>;
+    const t = (k: string) => (str(b, k) ?? '').trim().slice(0, 200);
+    const sg: SignatureSettings = {
+      person_name: t('person_name'),
+      person_title: t('person_title'),
+      person_mobile: t('person_mobile'),
+      person_email: t('person_email'),
+      branch_title: t('branch_title'),
+      branch_address: t('branch_address'),
+      branch_email: t('branch_email'),
+      show_badges: b.show_badges === 'on',
+      eco_note: b.eco_note === 'on',
+      disclaimer: b.disclaimer === 'on',
+    };
+    for (const e of [sg.person_email, sg.branch_email])
+      if (e && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e))
+        return back(c, '/einstellungen/email', { fehler: `E-Mail-Adresse „${e}“ ungültig` });
+    await sql`update app.company set mail_signature = ${JSON.stringify(sg)}, updated_at = now() where id = 1`;
     await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
-              values (${c.get('actor')}, 'mail_signature', 'company', '1', ${sql.json({ custom: !!t })})`;
-    return back(c, '/einstellungen/email', {
-      ok: t ? 'Signatur gespeichert' : 'Signatur wieder automatisch',
-    });
+              values (${c.get('actor')}, 'mail_signature', 'company', '1', ${sql.json({ ...sg })})`;
+    return back(c, '/einstellungen/email', { ok: 'Signatur gespeichert' });
   });
 
   app.get('/einstellungen/erinnerungen', async (c) => {

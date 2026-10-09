@@ -474,7 +474,7 @@ export async function sendDunning(deps: Deps, id: string, actor: string) {
         body:
           `Sehr geehrte Damen und Herren,\n\nanbei erhalten Sie unser Schreiben ${d.number} (${d.title}) zu offenen Rechnungen über ${eur(d.total_cents)}.\n` +
           `Bitte überweisen Sie den Betrag bis ${formatDateDe(d.pay_until)}.`,
-        signature: (await loadSignature(sql)).text,
+        signature: await loadSignature(sql),
       }),
       attachments: [
         {

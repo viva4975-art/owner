@@ -106,11 +106,14 @@ export async function revenueForecast(sql: Sql, fromMonth: string, count = 12) {
   >`
     select ss.*, c.id as customer_id, c.name as customer_name, c.customer_no
       from app.site_services ss join app.sites s on s.id = ss.site_id join app.customers c on c.id = s.customer_id
-     where ss.active and ss.kind = 'monthly_flat' and s.active and c.active
+     where ss.active and s.active and c.active
+       and (ss.kind = 'monthly_flat'
+            or ss.billing_cycle in ('zweimonatlich', 'quartalsweise', 'halbjaehrlich', 'jaehrlich'))
        and (ss.valid_to is null or ss.valid_to >= ${`${fromMonth}-01`})`;
   const rows = new Map<string, ForecastRow>();
   for (const sv of services) {
-    const run = toRunService(sv);
+    // nach Ausführung abgerechnete Zyklus-Leistungen: erwartet einmal je Zyklus (Schätzung)
+    const run = { ...toRunService(sv), kind: 'monthly_flat' as const };
     months.forEach((m, i) => {
       const [line] = monthlyRunLines([run], m);
       if (!line) return;

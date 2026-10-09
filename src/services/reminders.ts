@@ -5,6 +5,7 @@ import { resolveRecipients } from '../mail/mailer.js';
 import { hrReminders } from './employees.js';
 import { ecOverview } from './eigen-compliance.js';
 import { BusinessError } from './errors.js';
+import { dueCycleServices } from './executions.js';
 import { complianceOverview } from './subcontractors.js';
 import { upcomingEvents } from './tenders.js';
 import { plannedShifts } from './time.js';
@@ -24,7 +25,8 @@ export type ReminderArea =
   | 'Eigen-Compliance'
   | 'Aufgaben'
   | 'Rechnungseingang'
-  | 'Zeiterfassung';
+  | 'Zeiterfassung'
+  | 'Leistungen';
 
 export interface Reminder {
   area: ReminderArea;
@@ -148,6 +150,17 @@ export async function collectReminders(sql: Sql, today = todayBerlin()): Promise
       href: `/zeiterfassung?datum=${y}`,
       days: -1,
     });
+  // Zyklus-Leistungen (2-monatlich … jährlich), die nach Ausführung abgerechnet werden und fällig sind
+  for (const v of await dueCycleServices(sql, today)) {
+    const d = dayDiff(today, v.next_due);
+    out.push({
+      area: 'Leistungen',
+      level: d < 0 ? 'rot' : 'gelb',
+      text: `${v.description} – ${v.site_name} (${v.site_no}), ${v.customer_name}: fällig ${d < 0 ? `seit ${-d} Tg.` : d === 0 ? 'heute' : `in ${d} Tg.`} (${formatDateDe(v.next_due)})`,
+      href: `/objekte/${v.site_id}/leistungen#verrichten`,
+      days: d,
+    });
+  }
   const lv = { rot: 0, gelb: 1 };
   return out.sort((a, b) => lv[a.level] - lv[b.level] || (a.days ?? 999) - (b.days ?? 999));
 }

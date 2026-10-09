@@ -459,6 +459,8 @@ export const serviceInput = z.object({
       'je_ausfuehrung',
     ])
     .default('monatlich'),
+  /** 2-monatlich … jährlich: nach Ausführung (Leistungen verrichten) oder automatisch im Monatslauf */
+  bill_mode: z.enum(['ausfuehrung', 'automatisch']).default('ausfuehrung'),
   hours_target: optMilli,
   execution_notes: optText,
   cost_center: optText,
@@ -474,12 +476,18 @@ export const serviceInput = z.object({
 });
 
 /**
- * Art der Leistung aus Einheit und Zyklus: Stunden (HUR) = Regiestundensatz, regelmäßiger Zyklus = Pauschale im
- * Monatslauf, „einmalig“/„je Ausführung“ = Sonderleistung (Abrechnung über „Leistungen verrichten“).
+ * Art der Leistung aus Einheit und Zyklus: Stunden (HUR) = Regiestundensatz, monatlich = Pauschale im Monatslauf,
+ * „einmalig“/„je Ausführung“ = Sonderleistung (Abrechnung über „Leistungen verrichten“). 2-monatlich … jährlich
+ * standardmäßig nach Ausführung (Sonderleistung mit Zyklus = Fälligkeit), auf Wunsch automatisch im Monatslauf.
  */
-export function serviceKindOf(unitCode: string, cycle: BillingCycle): 'monthly_flat' | 'special' | 'hourly' {
+export function serviceKindOf(
+  unitCode: string,
+  cycle: BillingCycle,
+  auto = false,
+): 'monthly_flat' | 'special' | 'hourly' {
   if (unitCode === 'HUR') return 'hourly';
-  return cycle === 'einmalig' || cycle === 'je_ausfuehrung' ? 'special' : 'monthly_flat';
+  if (cycle === 'einmalig' || cycle === 'je_ausfuehrung') return 'special';
+  return cycle === 'monatlich' || auto ? 'monthly_flat' : 'special';
 }
 
 export type SiteServiceRow = SiteService & {
@@ -516,7 +524,7 @@ export async function saveService(
   const cycle = input.unit_code === 'HUR' ? 'je_ausfuehrung' : input.billing_cycle;
   const row = {
     site_id: siteId,
-    kind: serviceKindOf(input.unit_code, cycle),
+    kind: serviceKindOf(input.unit_code, cycle, input.bill_mode === 'automatisch'),
     description: input.description,
     unit_code: input.unit_code,
     quantity_milli: input.quantity,

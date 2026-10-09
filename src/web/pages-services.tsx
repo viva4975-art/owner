@@ -1,5 +1,11 @@
 import type { FC } from 'hono/jsx';
-import { type BillingCycle, CYCLE_LABEL, monthLabelDe } from '../domain/invoice/calc.js';
+import {
+  type BillingCycle,
+  CYCLE_LABEL,
+  billsInMonthlyRun,
+  isPeriodic,
+  monthLabelDe,
+} from '../domain/invoice/calc.js';
 import { UNIT_LABELS } from '../domain/invoice/types.js';
 import type { InvoiceGroupRow } from '../services/invoice-groups.js';
 import type { ServiceType, SiteService, SiteServiceRow } from '../services/masterdata.js';
@@ -55,7 +61,10 @@ const ServiceGroup: FC<{ title: string; rows: SiteServiceRow[]; siteId: string }
                 )}
               </div>
               <div class="svc-when small">
-                <div>{CYCLE_LABEL[sv.billing_cycle]}</div>
+                <div>
+                  {CYCLE_LABEL[sv.billing_cycle]}
+                  {sv.kind !== 'monthly_flat' && isPeriodic(sv.billing_cycle) && ' · nach Ausführung'}
+                </div>
                 <div class="mut">
                   ab {dateDe(sv.valid_from)}
                   {sv.valid_to ? ` bis ${dateDe(sv.valid_to)}` : ''}
@@ -99,7 +108,7 @@ export const ServicesPanel: FC<{
   const inactive = services.filter((s) => !s.active);
   const open = preview.filter((p) => !p.billedInvoice);
   const hours = active.reduce((a, s) => a + (s.hours_target_milli ?? 0n), 0n);
-  const isRun = (s: SiteServiceRow) => s.billing_cycle === 'je_ausfuehrung' || s.billing_cycle === 'einmalig';
+  const isRun = (s: SiteServiceRow) => !billsInMonthlyRun(s.kind, s.billing_cycle);
   const regular = active.filter((s) => !isRun(s));
   const perRun = active.filter(isRun);
   const monthly = regular
@@ -120,7 +129,7 @@ export const ServicesPanel: FC<{
       </div>
       {active.length === 0 && <div class="empty">Noch keine aktiven Leistungen.</div>}
       <ServiceGroup title="Regelmäßige Leistungen" rows={regular} siteId={siteId} />
-      <ServiceGroup title="Je Ausführung / einmalig" rows={perRun} siteId={siteId} />
+      <ServiceGroup title="Nach Ausführung (je Ausführung, einmalig, Zyklus)" rows={perRun} siteId={siteId} />
       {inactive.length > 0 && (
         <details class="svc-old">
           <summary>Beendete Leistungen ({inactive.length})</summary>
@@ -381,6 +390,22 @@ export const ServiceForm: FC<{
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <label for="bill_mode">Abrechnung bei 2-monatlich … jährlich</label>
+            <select id="bill_mode" name="bill_mode">
+              <option value="ausfuehrung" selected={!sv || sv.kind !== 'monthly_flat'}>
+                nach Ausführung (Leistungen verrichten)
+              </option>
+              <option value="automatisch" selected={!!sv && sv.kind === 'monthly_flat'}>
+                automatisch im Monatslauf (im Voraus je Zyklus)
+              </option>
+            </select>
+            <div class="small mut">
+              Nach Ausführung: Die Leistung wird erst abgerechnet, wenn sie unter „Leistungen verrichten“ als
+              erledigt eingetragen ist; der Zyklus zeigt nur an, wann sie wieder fällig ist. Monatlich wird
+              immer automatisch abgerechnet.
+            </div>
           </div>
           <div>
             <label for="unit_code">Einheit</label>

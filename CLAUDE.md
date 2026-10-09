@@ -2037,3 +2037,11 @@ Testadresse.
   ausgestellten Rechnung oben Kasten „E-Rechnung herunterladen“ mit **ZUGFeRD (PDF)** und **XRechnung (XML)** der aktuellen
   Fassung (nur KoSIT-gültige; bei Format XRechnung zuerst XML). Download mit `?download=1` speichert als Datei (vorher öffnete
   das iPad das PDF nur im Browser). Danach im Portal hochladen und „Im Portal hochgeladen“ klicken.
+- 2026-10-09: **Zyklus-Leistungen nach Ausführung** (Ahmed: „halbjährliche oder jährliche Sachen sollen nach Ausführung
+  abgerechnet werden“): Leistungen mit 2-monatlich, quartalsweise, halbjährlich, jährlich werden standardmäßig nicht mehr
+  im Voraus im Monatslauf abgerechnet, sondern wie „je Ausführung“ über **Leistungen verrichten** (Art `special`, der
+  Zyklus zeigt nur die Fälligkeit). Neues Feld in der Leistung „Abrechnung bei 2-monatlich … jährlich“: nach Ausführung
+  (Standard) / automatisch im Monatslauf. Fälligkeit = Leistungsbeginn bzw. letzte Ausführung + Zyklus („fällig ab/seit“
+  in „Leistungen verrichten“), **Erinnerung** (Bereich „Leistungen“, 14 Tage vorher, entfällt sobald vorgemerkt).
+  Umsatz-Vorschau rechnet sie weiter einmal je Zyklus (Schätzung). Bestand per Migration `20261118000005` umgestellt –
+  wer weiter automatisch abrechnen will, stellt es in der Leistung um. Monatlich bleibt automatisch.

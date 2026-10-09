@@ -4,12 +4,14 @@ import type { Sql } from '../db/client.js';
 import { parseQuantity } from '../domain/money/money.js';
 import {
   deleteExecution,
+  dueCycleServices,
   draftsFromExecutions,
   executableServices,
   executeServices,
   listOpenExecutions,
 } from './executions.js';
-import { deleteDraft, getInvoice } from './invoices.js';
+import { deleteDraft, getInvoice, runMonthly } from './invoices.js';
+import { serviceKindOf } from './masterdata.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
@@ -104,5 +106,54 @@ describe.skipIf(!available)('Leistungen verrichten → Rechnungsentwürfe', () =
       'test',
     );
     expect(n).toBe(1);
+  });
+});
+
+describe.skipIf(!available)('Zyklus-Leistungen nach Ausführung (Ahmed 09.10.)', () => {
+  let sql: Sql;
+  beforeAll(async () => {
+    sql = await freshDatabase();
+  });
+  afterAll(async () => {
+    await sql?.end();
+  });
+
+  it('halbjährlich = nach Ausführung: nicht im Monatslauf, verrichtbar, Fälligkeit + Erinnerung', async () => {
+    const id = randomUUID();
+    await sql`insert into app.site_services (id, site_id, kind, description, unit_code, quantity_milli,
+                unit_price_cents, vat_rate_bp, valid_from, billing_cycle)
+              values (${id}, ${DEMO.siteSchool}, 'special', 'Glasreinigung halbjährlich', 'LS', 1000, 90000, 1900,
+                      '2026-03-01', 'halbjaehrlich')`;
+    const list = await executableServices(sql, DEMO.siteSchool);
+    expect(list.find((s) => s.id === id)?.next_due).toBe('2026-03-01');
+    const run = await runMonthly(sql, '2026-09', 'test', { siteIds: [DEMO.siteSchool] });
+    for (const c of run.created) {
+      const inv = await getInvoice(sql, c.invoiceId);
+      expect(inv!.lines.some((l) => l.description.includes('halbjährlich'))).toBe(false);
+    }
+    expect((await dueCycleServices(sql, '2026-10-09')).map((d) => d.id)).toContain(id);
+    await executeServices(
+      sql,
+      {
+        siteId: DEMO.siteSchool,
+        token: randomUUID(),
+        dateFrom: '2026-09-20',
+        dateTo: null,
+        items: [{ serviceId: id, quantity: null }],
+      },
+      'test',
+    );
+    // vorgemerkt → keine Erinnerung; nächste Fälligkeit = Ausführung + 6 Monate
+    expect((await dueCycleServices(sql, '2026-10-09')).map((d) => d.id)).not.toContain(id);
+    expect((await executableServices(sql, DEMO.siteSchool)).find((s) => s.id === id)?.next_due).toBe(
+      '2027-03-20',
+    );
+  });
+
+  it('Formular: 2-monatlich … jährlich standardmäßig nach Ausführung, auf Wunsch automatisch', () => {
+    expect(serviceKindOf('LS', 'jaehrlich')).toBe('special');
+    expect(serviceKindOf('LS', 'quartalsweise', true)).toBe('monthly_flat');
+    expect(serviceKindOf('LS', 'monatlich')).toBe('monthly_flat');
+    expect(serviceKindOf('HUR', 'monatlich')).toBe('hourly');
   });
 });

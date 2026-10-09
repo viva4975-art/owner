@@ -60,6 +60,7 @@ await p.fill('#description', `Glasreinigung E2E ${tag}`);
 await p.fill('#note', 'innen und außen');
 await p.selectOption('#invoice_target', 'separat');
 await p.selectOption('#billing_cycle', 'quartalsweise');
+await p.selectOption('#bill_mode', 'automatisch'); // Test des automatischen Monatslaufs
 await p.fill('#unit_price', '1.200,00');
 check('Lohnkostenanteil ist Pflicht', (await p.getAttribute('#labor_share', 'required')) !== null);
 await p.fill('#labor_share', '60');

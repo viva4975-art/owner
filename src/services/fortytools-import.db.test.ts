@@ -148,7 +148,7 @@ describe.skipIf(!available)('Import aus Fortytools (CSV)', () => {
     expect(rows).toEqual([
       {
         description: 'Glasreinigung',
-        kind: 'monthly_flat',
+        kind: 'special', // quartalsweise = nach Ausführung (Ahmed 09.10.)
         unit_code: 'LS',
         unit_price_cents: 120000n,
         billing_cycle: 'quartalsweise',

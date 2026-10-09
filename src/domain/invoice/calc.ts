@@ -108,6 +108,26 @@ export const CYCLE_LABEL: Record<BillingCycle, string> = {
   je_ausfuehrung: 'je Ausführung',
 };
 
+/**
+ * Wird die Leistung automatisch im Monatslauf (im Voraus je Zyklus) abgerechnet? Nur Pauschalen mit regelmäßigem
+ * Zyklus. 2-monatlich … jährlich werden standardmäßig nach Ausführung abgerechnet (Ahmed 09.10.) – Art „special“.
+ */
+export const billsInMonthlyRun = (kind: string, cycle: BillingCycle) =>
+  kind === 'monthly_flat' && isPeriodic(cycle);
+
+/** Nächste Fälligkeit einer nach Ausführung abgerechneten Zyklus-Leistung: Beginn bzw. letzte Ausführung + n Monate. */
+export function nextDueDate(cycle: BillingCycle, validFrom: string, lastDone: string | null): string | null {
+  if (!isPeriodic(cycle) || cycle === 'monatlich') return null;
+  if (!lastDone) return validFrom;
+  const n = CYCLE_MONTHS[cycle];
+  const [y, m, d] = lastDone.split('-').map(Number) as [number, number, number];
+  const idx = y * 12 + (m - 1) + n;
+  const ny = Math.floor(idx / 12);
+  const nm = (idx % 12) + 1;
+  const last = new Date(Date.UTC(ny, nm, 0)).getUTCDate();
+  return `${ny}-${String(nm).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
+}
+
 const monthIndex = (m: string) => Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7)) - 1;
 const monthOf = (i: number) => `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`;
 

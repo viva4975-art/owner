@@ -1,6 +1,7 @@
 import { Icon } from './icons.js';
 import type { FC } from 'hono/jsx';
-import { formatDateDe } from '../domain/invoice/calc.js';
+import { CYCLE_LABEL, formatDateDe } from '../domain/invoice/calc.js';
+import { addDays } from '../domain/time/holidays.js';
 import { UNIT_LABELS } from '../domain/invoice/types.js';
 import type { ExecutableService, OpenExecution } from '../services/executions.js';
 import type { DraftListInfo, InvoiceRow } from '../services/invoices.js';
@@ -44,8 +45,8 @@ export const ExecutePanel: FC<{
   token: string;
   today: string;
 }> = ({ siteId, services, open, token, today }) => (
-  <div class="card" style="margin-top:14px" data-select-scope>
-    <h3>Leistungen verrichten (je Ausführung / einmalig)</h3>
+  <div class="card" style="margin-top:14px" data-select-scope id="verrichten">
+    <h3>Leistungen verrichten (je Ausführung / einmalig / nach Zyklus)</h3>
     <form method="post" action={`/objekte/${siteId}/verrichten`} id="exec-form">
       <input type="hidden" name="token" value={token} />
       <div class="tbl">
@@ -76,8 +77,7 @@ export const ExecutePanel: FC<{
                     <b>{s.description}</b>
                     {s.note && <div class="small mut">{s.note}</div>}
                     <div class="small faint">
-                      {s.billing_cycle === 'einmalig' ? 'einmalig' : 'je Ausführung'} · ab{' '}
-                      {dateDe(s.valid_from)}
+                      {CYCLE_LABEL[s.billing_cycle]} · ab {dateDe(s.valid_from)}
                       {s.valid_to && ` bis ${dateDe(s.valid_to)}`}
                     </div>
                   </td>
@@ -94,6 +94,15 @@ export const ExecutePanel: FC<{
                   <td class="small">
                     {s.open_count > 0 && <span class="tag warn">{s.open_count} vorgemerkt</span>}{' '}
                     {s.done_at && <span class="small mut">zuletzt {dateDe(s.done_at)}</span>}
+                    {s.next_due && (
+                      <div>
+                        <span
+                          class={`tag ${s.next_due <= today ? 'err' : s.next_due <= addDays(today, 14) ? 'warn' : ''}`}
+                        >
+                          fällig {s.next_due <= today && !s.done_at ? 'seit' : 'ab'} {dateDe(s.next_due)}
+                        </span>
+                      </div>
+                    )}
                   </td>
                 </tr>
               );
@@ -101,7 +110,7 @@ export const ExecutePanel: FC<{
             {!services.length && (
               <tr>
                 <td colspan={6} class="mut">
-                  Keine Leistungen „je Ausführung“ oder „einmalig“. Zyklus in der Leistung einstellen.
+                  Keine Leistungen, die nach Ausführung abgerechnet werden. Zyklus in der Leistung einstellen.
                 </td>
               </tr>
             )}

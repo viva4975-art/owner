@@ -59,6 +59,7 @@ export interface AdjRow {
   description: string;
   type_name: string | null;
   billing_cycle: BillingCycle;
+  kind: string;
   quantity_milli: bigint;
   unit_price_cents: bigint;
   labor_share_bp: number | null;
@@ -96,7 +97,7 @@ export async function adjustmentCandidates(sql: Sql, f: AdjFilter): Promise<AdjR
   checkFrom(f.from);
   const rows = await sql<Omit<AdjRow, 'new_price_cents' | 'blocked' | 'used_labor_bp' | 'labor_assumed'>[]>`
     select ss.id, ss.site_id, s.site_no, s.name as site_name, c.id as customer_id, c.customer_no,
-           c.name as customer_name, ss.description, t.name as type_name, ss.billing_cycle, ss.quantity_milli,
+           c.name as customer_name, ss.description, t.name as type_name, ss.billing_cycle, ss.kind, ss.quantity_milli,
            ss.unit_price_cents, ss.labor_share_bp, ss.valid_from::text, ss.valid_to::text, ss.note
       from app.site_services ss
       join app.sites s on s.id = ss.site_id
@@ -116,7 +117,7 @@ export async function adjustmentCandidates(sql: Sql, f: AdjFilter): Promise<AdjR
     if (used == null) blocked = 'Lohnkostenanteil fehlt';
     else if (r.valid_from >= f.from) blocked = 'beginnt erst am/nach dem Stichtag – Preis direkt ändern';
     else if (r.unit_price_cents <= 0n) blocked = 'kein Preis';
-    else if (isPeriodic(r.billing_cycle)) {
+    else if (r.kind === 'monthly_flat' && isPeriodic(r.billing_cycle)) {
       const n = CYCLE_MONTHS[r.billing_cycle];
       if (n > 1 && (monthIdx(f.from) - monthIdx(r.valid_from)) % n !== 0)
         blocked = `Stichtag liegt mitten im Abrechnungszeitraum (${r.billing_cycle}) – Preis von Hand ändern`;

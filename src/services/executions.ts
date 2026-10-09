@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Sql } from '../db/client.js';
-import { type BillingCycle, formatDateDe, serviceDetail } from '../domain/invoice/calc.js';
+import { type BillingCycle, formatDateDe, nextDueDate, serviceDetail } from '../domain/invoice/calc.js';
 import type { Cents, Quantity, VatRate } from '../domain/money/money.js';
 import { BusinessError } from './errors.js';
 import { writeLines } from './invoices.js';
@@ -24,6 +24,8 @@ const uuidOf = (s: string) => {
 
 export const isPerExecution = (cycle: BillingCycle, kind: string) =>
   cycle === 'einmalig' || cycle === 'je_ausfuehrung' || kind !== 'monthly_flat';
+/** Spätestens so viele Tage vor der Fälligkeit erscheint eine Zyklus-Leistung als „fällig“. */
+export const DUE_AHEAD_DAYS = 14;
 
 export interface ExecutableService {
   id: string;
@@ -38,11 +40,13 @@ export interface ExecutableService {
   /** einmalige Leistung schon verrichtet */
   done_at: string | null;
   open_count: number;
+  /** 2-monatlich … jährlich nach Ausführung: nächste Fälligkeit (Beginn bzw. letzte Ausführung + Zyklus) */
+  next_due?: string | null;
 }
 
 /** Leistungen eines Objekts, die je Ausführung abgerechnet werden. */
 export async function executableServices(sql: Sql, siteId: string) {
-  return sql<ExecutableService[]>`
+  const rows = await sql<ExecutableService[]>`
     select v.id, v.description, v.note, v.billing_cycle::text as billing_cycle, v.unit_code, v.quantity_milli,
            v.unit_price_cents, v.valid_from::text as valid_from, v.valid_to::text as valid_to,
            (select max(e.date_from)::text from app.service_executions e where e.service_id = v.id) as done_at,
@@ -52,6 +56,46 @@ export async function executableServices(sql: Sql, siteId: string) {
      where v.site_id = ${siteId} and v.active
        and (v.billing_cycle in ('einmalig', 'je_ausfuehrung') or v.kind <> 'monthly_flat')
      order by v.sort_order, v.description`;
+  return rows.map((r) => ({ ...r, next_due: nextDueDate(r.billing_cycle, r.valid_from, r.done_at) }));
+}
+
+export interface DueCycleService {
+  id: string;
+  description: string;
+  billing_cycle: BillingCycle;
+  site_id: string;
+  site_no: string;
+  site_name: string;
+  customer_name: string;
+  next_due: string;
+}
+
+/**
+ * Nach Ausführung abgerechnete Zyklus-Leistungen (2-monatlich … jährlich), die fällig sind oder in den nächsten
+ * Tagen fällig werden und noch keine offene (vorgemerkte) Ausführung haben.
+ */
+export async function dueCycleServices(sql: Sql, today: string, aheadDays = DUE_AHEAD_DAYS) {
+  const rows = await sql<
+    (Omit<DueCycleService, 'next_due'> & {
+      valid_from: string;
+      valid_to: string | null;
+      done_at: string | null;
+    })[]
+  >`
+    select v.id, v.description, v.billing_cycle::text as billing_cycle, v.site_id, s.site_no, s.name as site_name,
+           c.name as customer_name, v.valid_from::text as valid_from, v.valid_to::text as valid_to,
+           (select max(e.date_from)::text from app.service_executions e where e.service_id = v.id) as done_at
+      from app.site_services v join app.sites s on s.id = v.site_id join app.customers c on c.id = s.customer_id
+     where v.active and s.active and c.active and not c.is_internal and v.kind <> 'monthly_flat'
+       and v.billing_cycle in ('zweimonatlich', 'quartalsweise', 'halbjaehrlich', 'jaehrlich')
+       and not exists (select 1 from app.service_executions e where e.service_id = v.id and e.invoice_id is null)`;
+  const limit = new Date(Date.parse(`${today}T12:00:00Z`) + aheadDays * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  return rows
+    .map((r) => ({ ...r, next_due: nextDueDate(r.billing_cycle, r.valid_from, r.done_at)! }))
+    .filter((r) => r.next_due <= limit && (!r.valid_to || r.next_due <= r.valid_to))
+    .sort((a, b) => a.next_due.localeCompare(b.next_due));
 }
 
 export interface ExecuteInput {

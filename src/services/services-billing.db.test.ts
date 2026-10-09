@@ -49,10 +49,11 @@ describe.skipIf(!available)('Leistungen wie Fortytools im Abrechnungslauf', () =
   const linesOf = async (invoiceId: string) =>
     (await getInvoice(sql, invoiceId))!.lines.map((l) => l.description);
 
-  it('quartalsweise: nur in fälligen Monaten, Zeitraum über drei Monate', async () => {
+  it('quartalsweise (automatisch im Monatslauf): nur in fälligen Monaten, Zeitraum über drei Monate', async () => {
     await svc(DEMO.siteHq, {
       description: 'Glasreinigung quartalsweise',
       billing_cycle: 'quartalsweise',
+      bill_mode: 'automatisch',
       valid_from: '2026-07-01',
     });
     const aug = await runMonthly(sql, '2026-08', 't', { siteIds: [DEMO.siteHq] });

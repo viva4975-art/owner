@@ -291,7 +291,43 @@ export async function collectBookings(
         from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
        where i.status = 'bezahlt' and i.paid_amount_cents is not null and i.paid_at between ${f.from} and ${f.to}
          and not exists (select 1 from app.payment_run_items it where it.incoming_invoice_id = i.id)`;
+    // Vorschüsse an Nachunternehmer: Zahlung auf den Kreditor; die spätere Rechnung wird nur noch mit dem Rest bezahlt
+    const adv = await sql<
+      {
+        amount_cents: bigint;
+        paid_on: string;
+        method: string;
+        supplier_no: string;
+        name: string;
+        purpose: string | null;
+      }[]
+    >`select a.amount_cents, a.paid_on::text as paid_on, a.method, s.supplier_no, s.name, a.purpose
+        from app.subcontractor_advances a join app.suppliers s on s.id = a.supplier_id
+       where a.paid_on between ${f.from} and ${f.to}`;
+    for (const a of adv) {
+      if (a.method === 'bar')
+        warnings.push(
+          `Vorschuss ${num(a.amount_cents)} € an ${a.name} bar gezahlt: Gegenkonto Kasse statt Bank prüfen.`,
+        );
+      bookings.push({
+        amount: a.amount_cents,
+        sh: 'H',
+        account: s.bank_account,
+        contra: a.supplier_no,
+        taxKey: '',
+        date: a.paid_on,
+        doc: 'Vorschuss',
+        doc2: '',
+        text: `Vorschuss ${a.name}`.slice(0, 60),
+        kind: 'zahlungsausgang',
+      });
+    }
+    if (adv.length)
+      warnings.push(
+        'Vorschüsse an Nachunternehmer sind als Zahlung auf den Kreditor gebucht. Bei § 13b-Leistungen entsteht die Steuer schon mit der Zahlung (§ 13b Abs. 4 S. 2 UStG) – mit dem Steuerberater klären.',
+      );
     for (const p of outPay) {
+      if (p.amount_cents === 0n) continue; // vollständig mit Vorschuss verrechnet
       if (p.skonto_cents > 0n)
         warnings.push(
           `Skonto ${num(p.skonto_cents)} € auf ${p.name} ${p.invoice_no}: bitte manuell buchen (Vorsteuerkorrektur).`,

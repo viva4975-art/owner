@@ -6,6 +6,8 @@ import { getCookie, setCookie } from 'hono/cookie';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { parseEuro } from '../domain/money/money.js';
 import { signSession, verifySession } from '../services/employee-auth.js';
+import { ADVANCE_METHOD, deleteAdvance, listAdvances, saveAdvance } from '../services/advances.js';
+import { listIncoming } from '../services/purchasing.js';
 import { BusinessError } from '../services/errors.js';
 import { listHandovers } from '../services/handovers.js';
 import {
@@ -111,6 +113,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
             href: `/lieferanten/${id}/nachweise/${slug}`,
           })),
           { key: 'auftraege', label: 'Bestellungen', href: `/lieferanten/${id}/auftraege` },
+          { key: 'vorschuesse', label: 'Vorschüsse', href: `/lieferanten/${id}/vorschuesse` },
           { key: 'ansprechpartner', label: 'Ansprechpartner', href: `/lieferanten/${id}/ansprechpartner` },
           { key: 'dokumente', label: 'Dokumente', href: `/lieferanten/${id}/dokumente` },
         ] as Tab[]
@@ -822,6 +825,199 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
   });
 
   // Ansprechpartner (mehrere)
+  // ------------------------------------------------------------------ Vorschüsse (Ahmed 09.10.)
+  app.get(`/lieferanten/:id{${UUID}}/vorschuesse`, async (c) => {
+    const id = c.req.param('id');
+    const data = await getSubcontractor(sql, id);
+    if (!data) return c.redirect(`/lieferanten/${id}`);
+    const [advances, contracts, openInv] = await Promise.all([
+      listAdvances(sql, id),
+      listSubcontracts(sql, { supplierId: id }),
+      listIncoming(sql, { supplierId: id, status: ['erfasst', 'freigegeben'] }),
+    ]);
+    const total = advances.reduce((a, x) => a + x.amount_cents, 0n);
+    const used = advances.reduce((a, x) => a + x.used_cents, 0n);
+    const open = total - used;
+    return page(
+      c,
+      `${data.supplier.name} – Vorschüsse`,
+      'lieferanten',
+      <>
+        {subHead(data.supplier)}
+        <SubTabs id={id} active="vorschuesse" counts={catCounts(data.rows)} />
+        <div class="tabbody">
+          <div class="kpis">
+            <div class="kpi">
+              <div class="l">Vorschüsse gesamt</div>
+              <div class="v">{euro(total)}</div>
+            </div>
+            <div class="kpi">
+              <div class="l">verrechnet</div>
+              <div class="v">{euro(used)}</div>
+            </div>
+            <div class="kpi">
+              <div class="l">offen (noch zu verrechnen)</div>
+              <div class="v" style={open > 0n ? 'color:var(--warn)' : ''}>
+                {euro(open)}
+              </div>
+            </div>
+          </div>
+          <div class="tbl">
+            <table>
+              <thead>
+                <tr>
+                  <th>Gezahlt am</th>
+                  <th>Zweck / Bestellung</th>
+                  <th>Zahlart</th>
+                  <th class="r">Betrag</th>
+                  <th class="r">verrechnet</th>
+                  <th class="r">offen</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {advances.length === 0 && (
+                  <tr>
+                    <td colspan={7}>
+                      <div class="empty">Noch keine Vorschüsse.</div>
+                    </td>
+                  </tr>
+                )}
+                {advances.map((a) => (
+                  <tr>
+                    <td>{dateDe(a.paid_on)}</td>
+                    <td>
+                      {a.purpose ?? '–'}
+                      {a.subcontract_number && <div class="small mut">Bestellung {a.subcontract_number}</div>}
+                      {a.offsets.map((o) => (
+                        <div class="small">
+                          verrechnet mit <a href={`/rechnungseingang/${o.invoice_id}`}>{o.invoice_no}</a>:{' '}
+                          {euro(o.amount_cents)}
+                        </div>
+                      ))}
+                      {a.bank_transaction_id && <div class="small mut">aus Kontoumsatz</div>}
+                    </td>
+                    <td>{ADVANCE_METHOD[a.method] ?? a.method}</td>
+                    <td class="r">{euro(a.amount_cents)}</td>
+                    <td class="r">{a.used_cents ? euro(a.used_cents) : '–'}</td>
+                    <td class="r">
+                      <b>{euro(a.amount_cents - a.used_cents)}</b>
+                    </td>
+                    <td class="r">
+                      {a.used_cents === 0n && (
+                        <form
+                          method="post"
+                          action={`/lieferanten/${id}/vorschuesse/${a.id}/loeschen`}
+                          onsubmit="return confirm('Vorschuss löschen?')"
+                        >
+                          <button class="btn sm ghost danger" title="löschen">
+                            Löschen
+                          </button>
+                        </form>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <form
+            method="post"
+            action={`/lieferanten/${id}/vorschuesse`}
+            class="card"
+            style="max-width:640px;margin-top:16px"
+          >
+            <h3>Vorschuss erfassen</h3>
+            <input type="hidden" name="form_id" value={randomUUID()} />
+            <div class="grid">
+              <div>
+                <label for="paid_on">Gezahlt am</label>
+                <input id="paid_on" type="date" name="paid_on" value={todayBerlin()} required />
+              </div>
+              <div>
+                <label for="amount">Betrag (€)</label>
+                <input id="amount" name="amount" inputmode="decimal" required placeholder="z. B. 1.500,00" />
+              </div>
+              <div>
+                <label for="method">Zahlart</label>
+                <select id="method" name="method">
+                  {Object.entries(ADVANCE_METHOD).map(([k, v]) => (
+                    <option value={k}>{v}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label for="subcontract_id">Bestellung (optional)</label>
+                <select id="subcontract_id" name="subcontract_id">
+                  <option value="">–</option>
+                  {contracts.map((k) => (
+                    <option value={k.id}>
+                      {k.number} · {k.site_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div style="grid-column:1/-1">
+                <label for="purpose">Zweck / Notiz</label>
+                <input id="purpose" name="purpose" placeholder="z. B. Abschlag Glasreinigung Oktober" />
+              </div>
+            </div>
+            <p class="small mut" style="margin:12px 0 0">
+              Kommt die Rechnung, unter Rechnungseingang → Rechnung → „Vorschuss verrechnen“: der Zahlbetrag
+              sinkt um den Vorschuss. Per Überweisung gezahlte Vorschüsse am besten direkt im Kontoumsatz
+              zuordnen (Lieferant → „als Vorschuss“) – dann nicht zusätzlich hier erfassen.
+            </p>
+            <div class="formfoot">
+              <button class="btn">Vorschuss speichern</button>
+            </div>
+          </form>
+          {open > 0n && openInv.length > 0 && (
+            <div class="card">
+              <h3>Offene Rechnungen zum Verrechnen</h3>
+              {openInv.map((i) => (
+                <div style="display:flex;gap:10px;align-items:center;margin:4px 0">
+                  <a href={`/rechnungseingang/${i.id}`}>{i.invoice_no}</a>
+                  <span class="small mut">{dateDe(i.invoice_date)}</span>
+                  <span class="num">{euro(i.gross_cents - i.advance_offset_cents)}</span>
+                  <form method="post" action={`/rechnungseingang/${i.id}/vorschuss`} style="margin-left:auto">
+                    <input type="hidden" name="zurueck" value={`/lieferanten/${id}/vorschuesse`} />
+                    <button class="btn sm sec">Vorschuss verrechnen</button>
+                  </form>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </>,
+    );
+  });
+
+  app.post(`/lieferanten/:id{${UUID}}/vorschuesse`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    const formId = str(b, 'form_id');
+    await saveAdvance(
+      sql,
+      formId && /^[0-9a-f-]{36}$/.test(formId) ? formId : randomUUID(),
+      {
+        supplierId: id,
+        subcontractId: str(b, 'subcontract_id'),
+        paidOn: str(b, 'paid_on') ?? '',
+        amount: parseEuro(str(b, 'amount') ?? '') as bigint,
+        method: str(b, 'method') ?? 'ueberweisung',
+        purpose: str(b, 'purpose'),
+      },
+      c.get('actor'),
+    );
+    return back(c, `/lieferanten/${id}/vorschuesse`, { ok: 'Vorschuss gespeichert.' });
+  });
+
+  app.post(`/lieferanten/:id{${UUID}}/vorschuesse/:aid{${UUID}}/loeschen`, async (c) => {
+    const id = c.req.param('id');
+    await deleteAdvance(sql, c.req.param('aid'), c.get('actor'));
+    return back(c, `/lieferanten/${id}/vorschuesse`, { ok: 'Vorschuss gelöscht (im Protokoll vermerkt).' });
+  });
+
   app.get(`/lieferanten/:id{${UUID}}/ansprechpartner`, async (c) => {
     const id = c.req.param('id');
     const data = await getSubcontractor(sql, id);

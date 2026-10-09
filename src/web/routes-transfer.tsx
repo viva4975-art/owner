@@ -856,6 +856,16 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
               </select>
             )}
             <button class="btn sm sec">Ohne Rechnung zuordnen</button>
+            {t.amount_cents < 0n && (
+              <button
+                class="btn sm sec"
+                name="vorschuss"
+                value="1"
+                title="später mit der Rechnung verrechnen"
+              >
+                Als Vorschuss erfassen
+              </button>
+            )}
           </form>
         )}
       </div>,
@@ -1297,6 +1307,11 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
               </div>
               {t.amount_cents < 0n && <CategorySelect id="kat-l" />}
               <button class="btn sec">Dem Lieferanten zuordnen</button>
+              {t.amount_cents < 0n && (
+                <button class="btn sec" name="vorschuss" value="1" title="später mit der Rechnung verrechnen">
+                  Als Vorschuss erfassen
+                </button>
+              )}
             </form>
           </>
         )}
@@ -1409,10 +1424,21 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
     await assignParty(
       sql,
       c.req.param('id'),
-      { kind, id, note: str(b, 'note') || null, category: str(b, 'kategorie') || null },
+      {
+        kind,
+        id,
+        note: str(b, 'note') || null,
+        category: str(b, 'kategorie') || null,
+        advance: kind === 'lieferant' && str(b, 'vorschuss') === '1',
+      },
       c.get('actor'),
     );
-    return back(c, BACK, { ok: 'Zugeordnet.' });
+    return back(c, BACK, {
+      ok:
+        kind === 'lieferant' && str(b, 'vorschuss') === '1'
+          ? 'Als Vorschuss erfasst – mit der späteren Rechnung verrechnen (Rechnungseingang → Vorschuss verrechnen).'
+          : 'Zugeordnet.',
+    });
   });
 
   app.post(`/transfer/kontoumsaetze/:id{${UUID}}/vorschlag`, async (c) => {

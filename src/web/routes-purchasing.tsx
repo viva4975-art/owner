@@ -21,6 +21,7 @@ import {
   getAccountingSettings,
   saveAccountingSettings,
 } from '../services/datev.js';
+import { offsetAdvance, openAdvances, undoOffsets } from '../services/advances.js';
 import { BusinessError } from '../services/errors.js';
 import { listArticles, listSuppliers } from '../services/inventory.js';
 import { getSeller, listSites } from '../services/masterdata.js';
@@ -1127,6 +1128,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       getAllocations(sql, id),
       costTargets(sql),
     ]);
+    const advOpen = i ? ((await openAdvances(sql, [i.supplier_id])).get(i.supplier_id) ?? 0n) : 0n;
     const q = c.req.query();
     // Zuordnung zu NU-Aufträgen: gespeicherte Zeilen oder aus „Rechnung erwartet“ (?erwartet=<auftrag>:<JJJJ-MM>:<cent>)
     const linkRows = i
@@ -1208,6 +1210,46 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               </span>
             )}
             {i.paid_at && <span class="badge ok">bezahlt am {dateDe(i.paid_at)}</span>}
+          </div>
+        )}
+        {i && (i.advance_offset_cents > 0n || advOpen > 0n) && (
+          <div class="card" style="max-width:720px">
+            <h3>Vorschuss</h3>
+            {i.advance_offset_cents > 0n && (
+              <p style="margin-top:0">
+                Mit Vorschuss verrechnet: <b>{euro(i.advance_offset_cents)}</b> · noch zu zahlen{' '}
+                <b>{euro(i.gross_cents - i.advance_offset_cents)}</b>
+                {i.status !== 'bezahlt' && (
+                  <form
+                    method="post"
+                    action={`/rechnungseingang/${id}/vorschuss/zuruecknehmen`}
+                    style="display:inline;margin-left:8px"
+                  >
+                    <button class="btn sm ghost">Verrechnung zurücknehmen</button>
+                  </form>
+                )}
+              </p>
+            )}
+            {advOpen > 0n && ['erfasst', 'freigegeben'].includes(i.status) && (
+              <form method="post" action={`/rechnungseingang/${id}/vorschuss`} class="actions">
+                <span>
+                  Offener Vorschuss bei {i.supplier_name}: <b>{euro(advOpen)}</b> –{' '}
+                  <a href={`/lieferanten/${i.supplier_id}/vorschuesse`}>ansehen</a>
+                </span>
+                <input
+                  name="amount"
+                  inputmode="decimal"
+                  aria-label="Betrag"
+                  style="max-width:140px"
+                  value={centsToInput(
+                    advOpen < i.gross_cents - i.advance_offset_cents
+                      ? advOpen
+                      : i.gross_cents - i.advance_offset_cents,
+                  )}
+                />
+                <button class="btn sm">Vorschuss verrechnen</button>
+              </form>
+            )}
           </div>
         )}
         {i?.einvoice && (
@@ -1703,6 +1745,27 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
     return back(c, `/rechnungseingang/${id}`, { ok: 'Gespeichert. Jetzt Beleg hochladen und freigeben.' });
   });
 
+  app.post(`/rechnungseingang/:id{${UUID}}/vorschuss`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    const raw = str(b, 'amount');
+    const done = await offsetAdvance(sql, id, raw ? (parseEuro(raw) as bigint) : null, c.get('actor'));
+    const z = str(b, 'zurueck');
+    return back(
+      c,
+      z && /^\/lieferanten\/[0-9a-f-]{36}\/vorschuesse$/.test(z) ? z : `/rechnungseingang/${id}`,
+      {
+        ok: `Vorschuss ${euro(done)} verrechnet – der Zahlbetrag ist entsprechend kleiner.`,
+      },
+    );
+  });
+
+  app.post(`/rechnungseingang/:id{${UUID}}/vorschuss/zuruecknehmen`, async (c) => {
+    const id = c.req.param('id');
+    await undoOffsets(sql, id, c.get('actor'));
+    return back(c, `/rechnungseingang/${id}`, { ok: 'Verrechnung zurückgenommen.' });
+  });
+
   app.post(`/rechnungseingang/:id{${UUID}}/status`, async (c) => {
     const id = c.req.param('id');
     const s = c.req.query('s');
@@ -1856,6 +1919,9 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                       <td class="r">{p.skonto > 0n ? `− ${euro(p.skonto)}` : '–'}</td>
                       <td class="r">
                         <b>{euro(p.amount)}</b>
+                        {p.invoice.advance_offset_cents > 0n && (
+                          <div class="small mut">abzgl. Vorschuss {euro(p.invoice.advance_offset_cents)}</div>
+                        )}
                       </td>
                       <td class="small">
                         {p.invoice.iban ? (
@@ -1867,6 +1933,8 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                         )}
                         <div class="mut" style="user-select:all">
                           Rechnung {p.invoice.invoice_no}
+                          {p.invoice.advance_offset_cents > 0n &&
+                            ` abzgl. Vorschuss ${euro(p.invoice.advance_offset_cents)}`}
                         </div>
                       </td>
                     </tr>

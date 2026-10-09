@@ -8,6 +8,7 @@ import {
 } from '../domain/bank/statement.js';
 import { addDays, formatDateDe } from '../domain/invoice/calc.js';
 import { divRoundHalfUp } from '../domain/money/money.js';
+import { deleteAdvance, saveAdvance } from './advances.js';
 import { BusinessError } from './errors.js';
 import { getSeller } from './masterdata.js';
 import type { Deps } from './workflow.js';
@@ -400,7 +401,9 @@ interface IncomingRow {
 
 const INCOMING_COLS = (sql: Sql | Tx) => sql`
   i.id, i.supplier_id, s.name as supplier_name, s.iban as supplier_iban, i.invoice_no, i.invoice_date::text,
-  i.gross_cents, i.skonto_until::text, i.skonto_percent_bp, i.status, i.paid_amount_cents, i.paid_at::text`;
+  -- abzüglich verrechneter Vorschüsse = noch zu zahlen
+  (i.gross_cents - coalesce((select sum(ao.amount_cents) from app.subcontractor_advance_offsets ao
+                              where ao.incoming_invoice_id = i.id), 0))::bigint as gross_cents, i.skonto_until::text, i.skonto_percent_bp, i.status, i.paid_amount_cents, i.paid_at::text`;
 
 const incomingSkonto = (i: IncomingRow, date: string) =>
   !i.skonto_until || !i.skonto_percent_bp || date > addDays(i.skonto_until, SKONTO_GRACE_DAYS)
@@ -848,8 +851,7 @@ export async function assignIncoming(
 /** Freigegebene/als bezahlt festgehaltene Eingangsrechnungen eines Lieferanten zur Auswahl. */
 export async function incomingForSupplier(sql: Sql, supplierId: string) {
   return sql<IncomingRow[]>`
-    select i.id, i.supplier_id, s.name as supplier_name, s.iban as supplier_iban, i.invoice_no, i.invoice_date::text,
-           i.gross_cents, i.skonto_until::text, i.skonto_percent_bp, i.status, i.paid_amount_cents, i.paid_at::text
+    select ${INCOMING_COLS(sql)}
       from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
      where i.supplier_id = ${supplierId} and i.bank_transaction_id is null
        and (i.status in ('erfasst', 'freigegeben') or (i.status = 'bezahlt' and i.paid_at > current_date - 120))
@@ -868,10 +870,16 @@ export async function assignParty(
     id: string;
     note: string | null;
     category?: string | null;
+    /** Zahlungsausgang an einen Lieferanten/Nachunternehmer als Vorschuss erfassen (später mit Rechnung verrechnen) */
+    advance?: boolean;
   },
   actor: string,
 ) {
-  const category = p.kind === 'mitarbeiter' ? 'personal' : checkCategory(p.category);
+  const category =
+    p.kind === 'mitarbeiter'
+      ? 'personal'
+      : (checkCategory(p.category) ?? (p.advance && p.kind === 'lieferant' ? 'nachunternehmer' : null));
+  if (p.advance) p = { ...p, note: `Vorschuss${p.note?.trim() ? ` – ${p.note.trim()}` : ''}` };
   const [who] =
     p.kind === 'kunde'
       ? await sql<
@@ -897,6 +905,23 @@ export async function assignParty(
   if (p.kind === 'lieferant') {
     const t = await getTransaction(sql, txIdValue);
     if (t) await learnSupplierIban(sql, p.id, t);
+    if (p.advance && t) {
+      if (t.amount_cents >= 0n) throw new BusinessError('Vorschuss nur bei Zahlungsausgängen');
+      await saveAdvance(
+        sql,
+        txIdValue,
+        {
+          supplierId: p.id,
+          subcontractId: null,
+          paidOn: t.booking_date,
+          amount: -t.amount_cents,
+          method: 'ueberweisung',
+          purpose: p.note?.trim() || t.purpose || null,
+          bankTransactionId: txIdValue,
+        },
+        actor,
+      );
+    }
   }
 }
 
@@ -1058,6 +1083,14 @@ export async function ignoreTransaction(
 }
 
 export async function reopenTransaction(sql: Sql, id: string, actor: string) {
+  // als Vorschuss erfasst → Vorschuss mit löschen (nur solange nicht verrechnet)
+  const [adv] = await sql<
+    { id: string }[]
+  >`select id from app.subcontractor_advances where bank_transaction_id = ${id}`;
+  if (adv) {
+    await deleteAdvance(sql, adv.id, actor);
+    return;
+  }
   const r =
     await sql`update app.bank_transactions set status = 'offen', note = null, assigned_kind = null, assigned_id = null,
                       expense_category = null,

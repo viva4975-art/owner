@@ -1914,3 +1914,17 @@ Testadresse.
     erst danach. Offene Einzelaufträge stehen immer unter **Entwürfe → „Aus Einzelleistungen erstellen“** (je Kunde, Häkchen,
     je Auftrag eine Rechnung, Leistungszeitraum = Termin). Migrationen `20261117000003`–`…05`.
   - Tests: 467 Unit-/DB-Tests (neu `runde33.db.test.ts`), e2e auftrag/vorfaktura/leistungen/objekt/rechte/runde10 grün.
+- 2026-10-09: **Vorschüsse an Nachunternehmer** (Ahmed: erfassen und wieder löschen können):
+  - Nachunternehmer → Reiter **„Vorschüsse“**: Datum, Betrag, Zahlart, optional Bestellung, Zweck; Kacheln gesamt /
+    verrechnet / offen. **Löschen** solange nichts verrechnet ist (Stand ins Protokoll). Feste ID je Formular.
+  - **Kontoumsätze:** Zahlungsausgang beim Lieferanten → „Als Vorschuss erfassen“ (Kostenart Nachunternehmer); „wieder
+    öffnen“ löscht den Vorschuss mit.
+  - **Verrechnen** an der Eingangsrechnung (Karte „Vorschuss“, Betrag vorbelegt) oder vom Reiter aus; älteste Vorschüsse
+    zuerst, nie über Vorschuss/Rechnungsbetrag hinaus (DB-Trigger). Zahlungsliste, „als bezahlt festhalten“, SEPA-Lauf
+    (Verwendungszweck „abzgl. Vorschuss“) und Kontoumsatz-Erkennung rechnen mit dem Restbetrag. Rücknahme der
+    Verrechnung, solange die Rechnung nicht bezahlt ist. Tabellen `subcontractor_advances`, `subcontractor_advance_offsets`
+    (Migration `20261117000006`).
+  - **DATEV:** Vorschuss = Zahlungsausgang auf den Kreditor (Bar → Hinweis Kasse). **Steuerlich:** Bei § 13b-Leistungen
+    entsteht unsere Umsatzsteuer schon mit der Zahlung des Vorschusses (§ 13b Abs. 4 S. 2 UStG) – mit dem Steuerberater
+    klären, Hinweis steht im DATEV-Export.
+  - Tests: `advances.db.test.ts` (3), e2e nachunternehmer/einkauf/transfer grün.

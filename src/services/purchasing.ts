@@ -11,6 +11,7 @@ import {
 } from '../domain/money/money.js';
 import { renderLetterPdf } from '../pdf/render.js';
 import { type SubcontractLink, replaceLinks } from './expected-invoices.js';
+import { invoiceOffsets } from './advances.js';
 import { BusinessError } from './errors.js';
 import { getSeller } from './masterdata.js';
 import { syncAutoAllocation } from './cost-centers.js';
@@ -350,6 +351,8 @@ export type IncomingRow = IncomingInvoice & {
   site_name: string | null;
   po_number: string | null;
   file_count: number;
+  /** mit Vorschüssen verrechnet (mindert den Zahlbetrag) */
+  advance_offset_cents: bigint;
 };
 
 export async function listIncoming(
@@ -358,6 +361,8 @@ export async function listIncoming(
 ) {
   return sql<IncomingRow[]>`
     select i.*, s.name as supplier_name, s.supplier_no, s.kind as supplier_kind, s.iban, st.name as site_name, o.number as po_number,
+           (select coalesce(sum(ao.amount_cents), 0)::bigint from app.subcontractor_advance_offsets ao
+             where ao.incoming_invoice_id = i.id) as advance_offset_cents,
            (select count(*)::int from app.file_links l join app.files f on f.id = l.file_id
              where l.entity_type = 'incoming_invoice' and l.entity_id = i.id and f.status = 'complete') as file_count
       from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
@@ -370,7 +375,9 @@ export async function listIncoming(
 
 export async function getIncoming(sql: Sql, id: string) {
   const [i] = await sql<IncomingRow[]>`
-    select i.*, s.name as supplier_name, s.supplier_no, s.kind as supplier_kind, s.iban, st.name as site_name, o.number as po_number, 0 as file_count
+    select i.*, s.name as supplier_name, s.supplier_no, s.kind as supplier_kind, s.iban, st.name as site_name, o.number as po_number, 0 as file_count,
+           (select coalesce(sum(ao.amount_cents), 0)::bigint from app.subcontractor_advance_offsets ao
+             where ao.incoming_invoice_id = i.id) as advance_offset_cents
       from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
       left join app.sites st on st.id = i.site_id left join app.purchase_orders o on o.id = i.purchase_order_id
      where i.id = ${id}`;
@@ -541,7 +548,7 @@ export async function paymentList(sql: Sql, payDate: string) {
   return list
     .map((i) => {
       const skonto = skontoFor(i, payDate);
-      return { invoice: i, skonto, amount: i.gross_cents - skonto };
+      return { invoice: i, skonto, amount: i.gross_cents - skonto - i.advance_offset_cents };
     })
     .sort((a, b) =>
       (a.invoice.skonto_until && a.skonto > 0n ? a.invoice.skonto_until : a.invoice.due_date).localeCompare(
@@ -571,13 +578,16 @@ export async function markPaid(
       if (i.status !== 'freigegeben')
         throw new BusinessError(`${i.invoice_no}: erst freigeben, dann bezahlen`);
       const sk = p.skonto ? skontoFor(i, p.date) : 0n;
+      const adv = (await invoiceOffsets(tx, [id])).get(id) ?? 0n;
+      if (i.gross_cents > 0n && i.gross_cents - sk - adv < 0n)
+        throw new BusinessError(`${i.invoice_no}: Vorschuss und Skonto übersteigen den Rechnungsbetrag`);
       await tx`update app.incoming_invoices set status = 'bezahlt', paid_at = ${p.date},
-                      paid_amount_cents = ${i.gross_cents - sk}, paid_skonto_cents = ${sk}, paid_method = ${p.method},
+                      paid_amount_cents = ${i.gross_cents - sk - adv}, paid_skonto_cents = ${sk}, paid_method = ${p.method},
                       paid_note = ${p.note?.trim() || null}, paid_by = ${actor}
                 where id = ${id}`;
       await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
                values (${actor}, 'paid', 'incoming_invoice', ${id},
-                       ${tx.json({ date: p.date, amount: String(i.gross_cents - sk), skonto: String(sk), method: p.method })})`;
+                       ${tx.json({ date: p.date, amount: String(i.gross_cents - sk - adv), skonto: String(sk), advance: String(adv), method: p.method })})`;
       n++;
     }
   });
@@ -709,7 +719,7 @@ export async function paymentProposal(sql: Sql, executionDate: string) {
   const list = await listIncoming(sql, { status: ['freigegeben'] });
   return list.map((i) => {
     const skonto = skontoFor(i, executionDate);
-    return { invoice: i, skonto, amount: i.gross_cents - skonto };
+    return { invoice: i, skonto, amount: i.gross_cents - skonto - i.advance_offset_cents };
   });
 }
 
@@ -742,7 +752,9 @@ export async function createPaymentRun(
   }
   const negative = proposal.filter((x) => x.amount <= 0n);
   if (negative.length)
-    throw new BusinessError('Rechnungskorrekturen/Gutschriften des Lieferanten bitte manuell verrechnen');
+    throw new BusinessError(
+      `Nichts zu überweisen (Rechnungskorrektur oder durch Vorschuss gedeckt): ${negative.map((x) => x.invoice.invoice_no).join(', ')} – bitte „als bezahlt festhalten“ (Verrechnung)`,
+    );
   const ibanOf = await sql<
     { id: string; bic: string | null }[]
   >`select id, bic from app.suppliers where id in ${sql(proposal.map((x) => x.invoice.supplier_id))}`;
@@ -764,7 +776,7 @@ export async function createPaymentRun(
       await tx`insert into app.payment_run_items (run_id, incoming_invoice_id, amount_cents, skonto_cents, creditor_name, creditor_iban, creditor_bic, remittance)
                values (${p.id}, ${x.invoice.id}, ${x.amount}, ${x.skonto}, ${x.invoice.supplier_name}, ${x.invoice.iban!.replace(/\s/g, '').toUpperCase()},
                        ${ibanOf.find((s) => s.id === x.invoice.supplier_id)?.bic ?? null},
-                       ${`Rechnung ${x.invoice.invoice_no} vom ${formatDateDe(x.invoice.invoice_date)}${x.skonto > 0n ? ` abzgl. Skonto ${eur(x.skonto)}` : ''}`})`;
+                       ${`Rechnung ${x.invoice.invoice_no} vom ${formatDateDe(x.invoice.invoice_date)}${x.skonto > 0n ? ` abzgl. Skonto ${eur(x.skonto)}` : ''}${x.invoice.advance_offset_cents > 0n ? ` abzgl. Vorschuss ${eur(x.invoice.advance_offset_cents)}` : ''}`})`;
     }
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
              values (${p.actor}, 'create', 'payment_run', ${p.id}, ${tx.json({ number: runNumber, items: proposal.length, total: String(total) })})`;

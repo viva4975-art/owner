@@ -2045,3 +2045,7 @@ Testadresse.
   in „Leistungen verrichten“), **Erinnerung** (Bereich „Leistungen“, 14 Tage vorher, entfällt sobald vorgemerkt).
   Umsatz-Vorschau rechnet sie weiter einmal je Zyklus (Schätzung). Bestand per Migration `20261118000005` umgestellt –
   wer weiter automatisch abrechnen will, stellt es in der Leistung um. Monatlich bleibt automatisch.
+- 2026-10-09: **NU-Bestellung erteilen erst unter 50 % gesperrt** (Ahmed): Erteilen ist nur gesperrt, wenn weniger als die
+  Hälfte der Pflicht-Nachweise gültig ist (Meldung „x von y … – Fehlt: …“). Ab 50 % geht es; fehlende Nachweise werden im
+  Protokoll vermerkt (`nachweise_fehlen`), Ampel/Zahlungsliste-Markierung bleiben. **Rechtlich:** Haftung für Mindestlohn und
+  SV-Beiträge des Nachunternehmers (§ 13 MiLoG, § 14 AEntG, § 28e Abs. 3a SGB IV) – fehlende Nachweise zeitnah nachfordern.

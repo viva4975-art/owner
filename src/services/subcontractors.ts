@@ -629,12 +629,18 @@ export async function setSubcontractStatus(
   };
   if (!allowed[sc.status]!.includes(status))
     throw new BusinessError(`Von „${SC_STATUS[sc.status]}“ nicht möglich`);
+  // Erteilen erst gesperrt, wenn weniger als die Hälfte der Pflicht-Nachweise gültig ist (Ahmed 09.10.);
+  // fehlende werden im Protokoll vermerkt.
+  let missing: string[] = [];
   if (status === 'erteilt') {
-    const crit = await criticalSupplierIds(sql);
-    if (crit.has(sc.supplier_id))
-      throw new BusinessError(
-        'Pflicht-Nachweise des Nachunternehmers fehlen oder sind abgelaufen – erst vervollständigen',
-      );
+    const c = (await complianceOverview(sql)).find((r) => r.supplier.id === sc.supplier_id);
+    if (c && c.requiredTotal > 0) {
+      missing = c.missing;
+      if (c.requiredOk * 2 < c.requiredTotal)
+        throw new BusinessError(
+          `Erst ${c.requiredOk} von ${c.requiredTotal} Pflicht-Nachweisen des Nachunternehmers gültig (unter 50 %) – erst vervollständigen. Fehlt: ${c.missing.join(', ')}`,
+        );
+    }
   }
   await sql`
     update app.subcontracts set status = ${status},
@@ -642,7 +648,7 @@ export async function setSubcontractStatus(
            valid_to = case when ${status} = 'beendet' then coalesce(valid_to, ${todayBerlin()}::date) else valid_to end
      where id = ${id}`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
-            values (${actor}, 'status', 'subcontract', ${id}, ${sql.json({ status })})`;
+            values (${actor}, 'status', 'subcontract', ${id}, ${sql.json(missing.length ? { status, nachweise_fehlen: missing } : { status })})`;
 }
 
 export async function addPriceChange(

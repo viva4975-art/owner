@@ -222,4 +222,58 @@ describe.skipIf(!available)('Nachunternehmer', () => {
     expect(ov.overall).toBe('inaktiv');
     await expect(saveSubcontract(sql, randomUUID(), input, 't')).rejects.toThrow(/inaktiv/);
   });
+
+  it('Erteilen erst ab 50 % gültiger Pflicht-Nachweise (Ahmed 09.10.)', async () => {
+    const nu2 = randomUUID();
+    await saveSupplier(
+      sql,
+      nu2,
+      {
+        supplier_no: '70177',
+        name: 'Halb GmbH',
+        kind: 'nachunternehmer',
+        legal_form: 'gmbh',
+        payment_terms_days: '30',
+        active: 'on',
+      },
+      null,
+      't',
+    );
+    const id = randomUUID();
+    await saveSubcontract(
+      sql,
+      id,
+      {
+        supplierId: nu2,
+        siteId: DEMO.siteSchool,
+        serviceKind: 'Unterhaltsreinigung',
+        frequency: 'monatlich',
+        billing: 'pauschale_monat',
+        priceCents: 100000n,
+        maxHours: null,
+        validFrom: '2026-10-01',
+        validTo: null,
+        description: null,
+        note: null,
+      },
+      't',
+    );
+    await expect(setSubcontractStatus(sql, id, 'erteilt', 't')).rejects.toThrow(/unter 50 %/);
+    const req = (await getSubcontractor(sql, nu2))!.rows.filter((r) => r.required);
+    for (const r of req.slice(0, Math.ceil(req.length / 2)))
+      await uploadDocument(deps, {
+        id: randomUUID(),
+        supplierId: nu2,
+        docType: r.type.id,
+        fileName: `${r.type.id}.pdf`,
+        data: pdf,
+        validUntil: r.type.valid_months ? '2027-06-30' : null,
+        source: 'buero',
+        actor: 't',
+      });
+    await setSubcontractStatus(sql, id, 'erteilt', 't');
+    const [log] = await sql<{ details: { nachweise_fehlen?: string[] } }[]>`
+      select details from app.audit_log where entity = 'subcontract' and entity_id = ${id} and action = 'status'`;
+    expect(log!.details.nachweise_fehlen?.length).toBeGreaterThan(0);
+  });
 });

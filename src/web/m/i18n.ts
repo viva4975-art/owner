@@ -17,6 +17,11 @@ export const isLang = (l: unknown): l is Lang => typeof l === 'string' && l in L
 type Dict = Record<string, string>;
 
 const de: Dict = {
+  cal_subscribe: 'Einsätze im Handy-Kalender anzeigen',
+  ws_open: 'Arbeitsscheine zum Unterschreiben',
+  ws_pdf: 'Arbeitsschein ansehen (PDF)',
+  ws_hand_over: 'Bitte das Handy dem Kunden geben – er unterschreibt unten.',
+  ws_signed: 'Unterschrieben von {name}',
   app: 'Zeiterfassung',
   personnel_no: 'Personalnummer',
   pin: 'PIN',
@@ -172,6 +177,11 @@ const de: Dict = {
 };
 
 const en: Dict = {
+  cal_subscribe: 'Show shifts in phone calendar',
+  ws_open: 'Work reports to sign',
+  ws_pdf: 'View work report (PDF)',
+  ws_hand_over: 'Please hand the phone to the customer – they sign below.',
+  ws_signed: 'Signed by {name}',
   app: 'Time recording',
   personnel_no: 'Personnel number',
   pin: 'PIN',
@@ -327,6 +337,11 @@ const en: Dict = {
 };
 
 const ro: Dict = {
+  cal_subscribe: 'Afișează turele în calendarul telefonului',
+  ws_open: 'Fișe de lucru de semnat',
+  ws_pdf: 'Vezi fișa de lucru (PDF)',
+  ws_hand_over: 'Te rugăm să dai telefonul clientului – semnează mai jos.',
+  ws_signed: 'Semnat de {name}',
   app: 'Pontaj',
   personnel_no: 'Număr personal',
   pin: 'PIN',
@@ -482,6 +497,11 @@ const ro: Dict = {
 };
 
 const tr: Dict = {
+  cal_subscribe: 'Görevleri telefon takviminde göster',
+  ws_open: 'İmzalanacak iş formları',
+  ws_pdf: 'İş formunu görüntüle (PDF)',
+  ws_hand_over: 'Lütfen telefonu müşteriye verin – aşağıda imzalar.',
+  ws_signed: '{name} tarafından imzalandı',
   app: 'Mesai kaydı',
   personnel_no: 'Personel numarası',
   pin: 'PIN',
@@ -636,6 +656,11 @@ const tr: Dict = {
 };
 
 const pl: Dict = {
+  cal_subscribe: 'Pokaż zmiany w kalendarzu telefonu',
+  ws_open: 'Protokoły pracy do podpisania',
+  ws_pdf: 'Zobacz protokół pracy (PDF)',
+  ws_hand_over: 'Proszę podać telefon klientowi – podpisuje poniżej.',
+  ws_signed: 'Podpisane przez {name}',
   app: 'Ewidencja czasu pracy',
   personnel_no: 'Numer pracownika',
   pin: 'PIN',
@@ -791,6 +816,11 @@ const pl: Dict = {
 };
 
 const hr: Dict = {
+  cal_subscribe: 'Prikaži smjene u kalendaru mobitela',
+  ws_open: 'Radni nalozi za potpis',
+  ws_pdf: 'Pogledaj radni nalog (PDF)',
+  ws_hand_over: 'Molimo dajte mobitel klijentu – potpisuje ispod.',
+  ws_signed: 'Potpisao/la {name}',
   app: 'Evidencija radnog vremena',
   personnel_no: 'Broj zaposlenika',
   pin: 'PIN',
@@ -946,6 +976,11 @@ const hr: Dict = {
 };
 
 const bg: Dict = {
+  cal_subscribe: 'Покажи смените в календара на телефона',
+  ws_open: 'Работни листове за подписване',
+  ws_pdf: 'Виж работния лист (PDF)',
+  ws_hand_over: 'Моля, дайте телефона на клиента – той подписва отдолу.',
+  ws_signed: 'Подписано от {name}',
   app: 'Отчитане на работно време',
   personnel_no: 'Служебен номер',
   pin: 'ПИН',

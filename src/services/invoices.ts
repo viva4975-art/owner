@@ -978,3 +978,70 @@ const addDaysIso = (iso: string, n: number) => {
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 };
+
+/**
+ * Entwurf direkt in der Briefansicht ändern (Ahmed 09.10.: „nicht in die Bearbeitung, direkt Anschrift/Position
+ * ändern“): baut den vollständigen Entwurf aus dem gespeicherten Stand und ändert nur das eine Teil – gespeichert wird
+ * über `saveDraft` mit denselben Prüfungen und dem Versionsschutz.
+ */
+export type DraftPatch =
+  | { what: 'anschrift'; billAddress: BillAddress | null }
+  | { what: 'einleitung' | 'schluss'; text: string | null }
+  | {
+      what: 'position';
+      /** Index der Position (0-basiert), null = neue Position am Ende */
+      index: number | null;
+      line: Pick<DraftLineInput, 'description' | 'quantity' | 'unitCode' | 'unitPrice'>;
+    }
+  | { what: 'position_loeschen'; index: number };
+
+export async function patchDraft(
+  sql: Sql,
+  id: string,
+  patch: DraftPatch,
+  expectedVersion: number | null,
+  actor: string,
+) {
+  const data = await getInvoice(sql, id);
+  if (!data) throw new BusinessError('Rechnung nicht gefunden');
+  const inv = data.invoice;
+  if (inv.status !== 'draft') throw new BusinessError('Ausgestellte Rechnungen sind unveränderbar');
+  if (!['invoice', 'partial', 'final'].includes(inv.kind))
+    throw new BusinessError('Storno-/Korrekturentwürfe werden über die Originalrechnung bearbeitet');
+  const lines = data.lines.map(toDraftInput);
+  const input: DraftInput = {
+    customerId: inv.customer_id,
+    siteId: inv.site_id,
+    kind: inv.kind as DraftInput['kind'],
+    periodStart: inv.period_start,
+    periodEnd: inv.period_end,
+    orderReference: inv.order_reference,
+    introText: inv.intro_text,
+    closingText: inv.closing_text,
+    lines,
+    prepaymentIds: data.prepayments.map((p) => p.partial_invoice_id),
+    reverseCharge: inv.reverse_charge,
+    expectedVersion,
+  };
+  if (patch.what === 'anschrift') input.billAddress = patch.billAddress;
+  else if (patch.what === 'einleitung') input.introText = patch.text;
+  else if (patch.what === 'schluss') input.closingText = patch.text;
+  else if (patch.what === 'position') {
+    if (!patch.line.description.trim()) throw new BusinessError('Bitte eine Beschreibung angeben');
+    if (patch.line.quantity === 0n) throw new BusinessError('Menge darf nicht 0 sein');
+    if (patch.line.unitPrice < 0n)
+      throw new BusinessError('Einzelpreis darf nicht negativ sein – Menge negativ angeben');
+    if (patch.index == null)
+      lines.push({ ...patch.line, detail: null, vatRate: inv.reverse_charge ? 0 : 1900 } as DraftLineInput);
+    else {
+      const old = lines[patch.index];
+      if (!old) throw new BusinessError('Position nicht gefunden – bitte Seite neu laden');
+      lines[patch.index] = { ...old, ...patch.line };
+    }
+  } else if (patch.what === 'position_loeschen') {
+    if (!lines[patch.index]) throw new BusinessError('Position nicht gefunden – bitte Seite neu laden');
+    if (lines.length === 1) throw new BusinessError('Die letzte Position kann nicht gelöscht werden');
+    lines.splice(patch.index, 1);
+  }
+  await saveDraft(sql, id, input, actor);
+}

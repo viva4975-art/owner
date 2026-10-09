@@ -992,6 +992,11 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                       </span>
                     ))}
                   </div>
+                  <p class="small mut" style="margin:2px 0 0">
+                    Angehakte Mitarbeitende sehen den Arbeitsschein sofort in ihrer App und können ihn vor Ort
+                    vom Kunden unterschreiben lassen. Ohne Haken bleibt er nur im Büro (z. B. zum Versand per
+                    E-Mail).
+                  </p>
                 </>
               )}
               <div style="margin-top:12px">

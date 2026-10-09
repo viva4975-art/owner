@@ -6,7 +6,7 @@ import {
   surchargeCents,
   surchargeMinutes,
 } from '../domain/time/surcharges.js';
-import { addDays } from '../domain/time/holidays.js';
+import { addDays, isoWeekday } from '../domain/time/holidays.js';
 import { listAbsenceHours } from './absences.js';
 import { BusinessError } from './errors.js';
 import { breakRange, listEntries, plannedShifts } from './time.js';
@@ -124,6 +124,8 @@ export interface PayrollRow {
   pending: number;
   /** davon geplante (noch nicht gearbeitete) Minuten ab dem Stichtag – nur bei Vorab-Abrechnung */
   forecastMinutes: number;
+  /** Minuten an Sonn-/Feiertagen ohne Einsatz „auch an Sonn- und Feiertagen“ – kein Zuschlag berechnet */
+  uncoveredSundayHolidayMinutes: number;
 }
 
 /** Ortszeit Berlin (JJJJ-MM-TT, HH:MM) → Zeitpunkt; Sommer-/Winterzeit über Intl ermittelt. */
@@ -186,6 +188,31 @@ export async function payrollMonth(
       select id, kind::text from app.absences where start_date <= ${to} and end_date >= ${from}`,
   ]);
   const kindOf = new Map(kinds.map((k) => [k.id, k.kind]));
+  // Sonn-/Feiertagszuschläge nur für Zeiten zu Einsätzen „auch an Sonn- und Feiertagen“ (Ahmed 09.10.);
+  // Nachtzuschlag gilt immer. Zeit ohne solchen Einsatz → Minuten als Hinweis (kein Zuschlag berechnet).
+  const flagged = await sql<
+    {
+      employee_id: string;
+      site_id: string;
+      weekday: number;
+      valid_from: string;
+      valid_until: string | null;
+    }[]
+  >`select employee_id, site_id, weekday, valid_from, valid_until from app.shift_plans
+     where holiday_work and employee_id is not null and valid_from <= ${to}
+       and (valid_until is null or valid_until >= ${from})`;
+  const holidayCovered = (emp: string, site: string, date: string) => {
+    const wd = isoWeekday(date);
+    return flagged.some(
+      (p) =>
+        p.employee_id === emp &&
+        p.site_id === site &&
+        p.weekday === wd &&
+        p.valid_from <= date &&
+        (!p.valid_until || p.valid_until >= date),
+    );
+  };
+  const nightOnly = { ...rates, sunday: 0, sundayRegular: 0, holiday: 0, highHoliday: 0 };
   // Feiertag (§ 2 EFZG): geplante Einsätze an Feiertagen, die nicht gearbeitet wurden und auf die keine Abwesenheit fällt
   const holidayPay = new Map<string, number>();
   for (const sh of await plannedShifts(sql, { from, to, ...(employeeId ? { employeeId } : {}) })) {
@@ -194,7 +221,13 @@ export async function payrollMonth(
     holidayPay.set(emp, (holidayPay.get(emp) ?? 0) + Math.max(0, sh.minutes));
   }
   // Vorab: geplante Einsätze nach dem Stichtag als Zeiten (Beginn/Ende in Berliner Zeit)
-  const forecast: { employee_id: string; start_at: Date; end_at: Date; break_minutes: number }[] = [];
+  const forecast: {
+    employee_id: string;
+    start_at: Date;
+    end_at: Date;
+    break_minutes: number;
+    holidayWork: boolean;
+  }[] = [];
   if (cutoff) {
     const shifts = await plannedShifts(sql, {
       from: addDays(cutoff, 1),
@@ -213,6 +246,7 @@ export async function payrollMonth(
         start_at: berlinAt(sh.date, st),
         end_at: berlinAt(endDate, en),
         break_minutes: sh.plan.break_minutes ?? 0,
+        holidayWork: !!sh.plan.holiday_work,
       });
     }
   }
@@ -249,6 +283,7 @@ export async function payrollMonth(
   const rows: PayrollRow[] = [];
   for (const e of emps) {
     const m = zero();
+    let uncovered = 0;
     let pending = 0;
     let fc = 0;
     for (const f of forecast) {
@@ -259,7 +294,14 @@ export async function payrollMonth(
       );
       m.normal += net;
       fc += net;
-      const sm = surchargeMinutes(f.start_at, f.end_at, null, null, rates, e.regular_sunday_work);
+      const sm = surchargeMinutes(
+        f.start_at,
+        f.end_at,
+        null,
+        null,
+        f.holidayWork ? rates : nightOnly,
+        e.regular_sunday_work,
+      );
       for (const k of SURCHARGES) m[k] += sm[k];
     }
     for (const t of entries) {
@@ -269,15 +311,20 @@ export async function payrollMonth(
       if ((t.status !== 'erfasst' && t.status !== 'freigegeben') || !t.end_at) continue;
       m.normal += Math.max(0, t.gross_minutes - t.break_minutes);
       const br = breakRange(t);
+      const covered = holidayCovered(e.id, t.site_id, t.work_date);
       const sm = surchargeMinutes(
         t.start_at,
         t.end_at,
         br?.from ?? null,
         br?.to ?? null,
-        rates,
+        covered ? rates : nightOnly,
         e.regular_sunday_work,
       );
       for (const k of SURCHARGES) m[k] += sm[k];
+      if (!covered) {
+        const full = surchargeMinutes(t.start_at, t.end_at, br?.from ?? null, br?.to ?? null, rates, false);
+        uncovered += full.sonntag + full.feiertag + full.feiertag_hoch;
+      }
     }
     m.mehrarbeit = overtime.get(e.id) ?? 0;
     m.feiertag_lfz = holidayPay.get(e.id) ?? 0;
@@ -308,6 +355,7 @@ export async function payrollMonth(
         overtimeCents: e.wage_cents ? surchargeCents(m.mehrarbeit, e.wage_cents, settings.overtime_bp) : 0n,
         pending,
         forecastMinutes: fc,
+        uncoveredSundayHolidayMinutes: uncovered,
       });
   }
   return rows;

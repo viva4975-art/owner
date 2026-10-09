@@ -480,6 +480,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
       validUntil: null,
       note: null,
       planningGroup: null,
+      holidayWork: false,
     };
     const customers = [...new Map(mySites.map((s) => [s.customer_id, s])).values()];
     const empSelect = (sel: string | null) => (
@@ -684,6 +685,22 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
                   ))}
                 </datalist>
               </div>
+              <div class="chk" style="margin-top:10px">
+                <input
+                  type="checkbox"
+                  id="holiday_work"
+                  name="holiday_work"
+                  value="1"
+                  checked={!!v.holidayWork}
+                />
+                <label for="holiday_work">
+                  Auch an Sonn- und Feiertagen arbeiten
+                  <span class="small mut" style="display:block">
+                    Ohne Haken ist der Feiertag frei (bezahlter Feiertag) und es gibt keine
+                    Sonn-/Feiertagszuschläge. Einsätze am Sonntag zählen immer als Sonntagsarbeit.
+                  </span>
+                </label>
+              </div>
             </div>
           </div>
           <div class="tp-row">
@@ -794,6 +811,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
         validUntil: one('valid_until') || null,
         note: one('note') || null,
         planningGroup: one('planning_group') || null,
+        holidayWork: one('holiday_work') === '1',
       },
       c.get('actor'),
     );

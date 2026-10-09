@@ -56,6 +56,11 @@ describe.skipIf(!available)('Runde 11: Lohnarten und Urlaubsanspruch (Datenbank)
     await entry('2026-10-07', '22:00', '02:00'); // Mi Nacht 4 Std.
     await entry('2026-10-11', '06:00', '10:00'); // So 4 Std.
     await entry('2026-10-03', '08:00', '10:00'); // Feiertag (Sa) 2 Std.
+    // Sonn-/Feiertagszuschläge nur zu Einsätzen „auch an Sonn- und Feiertagen“ (Runde 32)
+    for (const wd of [6, 7])
+      await sql`insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes,
+                                             valid_from, holiday_work)
+                values (${randomUUID()}, ${emp}, ${DEMO.siteSchool}, ${wd}, '06:00', '10:00', 0, '2026-10-01', true)`;
     const [r] = await payrollMonth(sql, '2026-10', emp);
     expect(r!.minutes.normal).toBe(600);
     expect(r!.minutes.nacht).toBe(240);

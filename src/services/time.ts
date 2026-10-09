@@ -423,6 +423,8 @@ export interface ShiftPlan {
   months?: number[] | null;
   series_id?: string | null;
   planning_group?: string | null;
+  /** auch an Sonn- und Feiertagen (Zuschläge); sonst ist der Feiertag frei (bezahlt) */
+  holiday_work?: boolean;
 }
 export type Recurrence = 'einmalig' | 'woechentlich' | 'monatlich';
 export const RECURRENCE: Record<Recurrence, string> = {
@@ -513,6 +515,7 @@ export async function saveShiftPlan(
     months?: number[] | null;
     seriesId?: string | null;
     planningGroup?: string | null;
+    holidayWork?: boolean;
   },
   actor: string,
 ): Promise<string[]> {
@@ -552,15 +555,16 @@ export async function saveShiftPlan(
         ];
       await tx`
         insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes, valid_from, valid_until,
-                                     note, recurrence, every, months, series_id, planning_group)
+                                     note, recurrence, every, months, series_id, planning_group, holiday_work)
         values (${pid}, ${input.employeeId}, ${input.siteId}, ${wd}, ${input.startTime}, ${input.endTime}, ${input.breakMinutes},
                 ${input.validFrom}, ${input.validUntil}, ${input.note}, ${recurrence}, ${every}, ${months},
-                ${input.seriesId ?? id}, ${input.planningGroup?.trim() || null})
+                ${input.seriesId ?? id}, ${input.planningGroup?.trim() || null}, ${!!input.holidayWork || wd === 7})
         on conflict (id) do update set employee_id = excluded.employee_id, site_id = excluded.site_id, weekday = excluded.weekday,
           start_time = excluded.start_time, end_time = excluded.end_time, break_minutes = excluded.break_minutes,
           valid_from = excluded.valid_from, valid_until = excluded.valid_until, note = excluded.note,
           recurrence = excluded.recurrence, every = excluded.every, months = excluded.months,
-          series_id = excluded.series_id, planning_group = excluded.planning_group, updated_at = now()`;
+          series_id = excluded.series_id, planning_group = excluded.planning_group,
+          holiday_work = excluded.holiday_work, updated_at = now()`;
       ids.push(pid);
     }
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
@@ -749,7 +753,8 @@ export async function plannedShifts(
         date: d,
         minutes: ex?.kind === 'ausfall' ? 0 : eh * 60 + em - (sh * 60 + sm) - p.break_minutes,
         absence: abs?.kind ?? null,
-        holiday: holidayName(d),
+        // Feiertag frei (bezahlt), außer der Einsatz ist „auch an Sonn- und Feiertagen“
+        holiday: p.holiday_work ? undefined : holidayName(d),
         entry: undefined,
         ...(ex
           ? {
@@ -1298,6 +1303,8 @@ export interface ShiftSeriesInput {
   validUntil: string | null;
   note: string | null;
   planningGroup: string | null;
+  /** auch an Sonn- und Feiertagen arbeiten (Zuschläge); Sonntags-Einsätze immer */
+  holidayWork?: boolean;
 }
 
 export interface ShiftSeries extends ShiftSeriesInput {
@@ -1334,6 +1341,7 @@ export async function getShiftSeries(sql: Sql, idOrSeries: string): Promise<Shif
     validUntil: base.valid_until,
     note: base.note,
     planningGroup: base.planning_group ?? null,
+    holidayWork: !!base.holiday_work,
     plans: rows.map((r) => ({
       id: r.id,
       employee_id: r.employee_id,
@@ -1386,15 +1394,17 @@ export async function saveShiftSeries(sql: Sql, seriesId: string, p: ShiftSeries
         keep.add(pid);
         await tx`
           insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes, valid_from,
-                                       valid_until, note, recurrence, every, months, series_id, planning_group)
+                                       valid_until, note, recurrence, every, months, series_id, planning_group,
+                                       holiday_work)
           values (${pid}, ${emp}, ${p.siteId}, ${wd}, ${p.startTime}, ${p.endTime}, ${p.breakMinutes}, ${p.validFrom},
                   ${validUntil}, ${p.note}, ${p.recurrence}, ${p.every}, ${p.months?.length ? p.months : null},
-                  ${seriesId}, ${p.planningGroup?.trim() || null})
+                  ${seriesId}, ${p.planningGroup?.trim() || null}, ${!!p.holidayWork || wd === 7})
           on conflict (id) do update set employee_id = excluded.employee_id, site_id = excluded.site_id,
             weekday = excluded.weekday, start_time = excluded.start_time, end_time = excluded.end_time,
             break_minutes = excluded.break_minutes, valid_from = excluded.valid_from, valid_until = excluded.valid_until,
             note = excluded.note, recurrence = excluded.recurrence, every = excluded.every, months = excluded.months,
-            series_id = excluded.series_id, planning_group = excluded.planning_group, updated_at = now()`;
+            series_id = excluded.series_id, planning_group = excluded.planning_group,
+            holiday_work = excluded.holiday_work, updated_at = now()`;
       }
     }
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)

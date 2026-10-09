@@ -97,9 +97,11 @@ export function surchargeMinutes(
     if (d.holiday) cands.push(['feiertag', regular ? sundayRate : rates.holiday]);
     if (d.sunday) cands.push(['sonntag', sundayRate]);
     if (night) cands.push(['nacht', rates.night]);
-    if (!cands.length) continue;
-    cands.sort((a, b) => b[1] - a[1]);
-    out[cands[0]![0]]++;
+    // Satz 0 = Zuschlag gilt hier nicht (z. B. Feiertag ohne Einsatz „auch an Sonn- und Feiertagen“)
+    const live = cands.filter((c) => c[1] > 0);
+    if (!live.length) continue;
+    live.sort((a, b) => b[1] - a[1]);
+    out[live[0]![0]]++;
   }
   return out;
 }

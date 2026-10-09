@@ -5,7 +5,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { Child, FC } from 'hono/jsx';
-import { hourBerlin, todayBerlin } from '../../domain/invoice/calc.js';
+import { formatDateDe, hourBerlin, todayBerlin } from '../../domain/invoice/calc.js';
 import { addDays } from '../../domain/time/holidays.js';
 import {
   type AbsenceKind,
@@ -42,6 +42,10 @@ import {
 import { type AppEnv, type Ctx, OFFICE_COOKIE, officeSecret } from '../app.js';
 import { getUser, linkedEmployee } from '../../services/users.js';
 import { SIGN_JS } from '../routes-orders.js';
+import { feedToken } from '../../services/calendar-feed.js';
+import { getWorkReport, signWorkReport, workReportPdf } from '../../services/orders.js';
+import { UNIT_LABELS } from '../../domain/invoice/types.js';
+import { milliToInput } from '../forms.js';
 import { latestSignature, monthToSign, signTimesheet, timesheet } from '../../services/timesheet.js';
 import { type Lang, LANGS, LOCALE, isLang, t } from './i18n.js';
 import { Ic } from './icons.js';
@@ -670,6 +674,12 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       requestsForEmployee(sql, me.id),
     ]);
     const openDocs = docs.filter((d) => d.status === 'offen');
+    // Arbeitsscheine, denen die Person zugeordnet ist: vor Ort vom Kunden unterschreiben lassen
+    const wsOpen = await sql<{ id: string; number: string; work_date: string; site_name: string | null }[]>`
+      select w.id, w.number, w.work_date, s.name as site_name
+        from app.work_reports w left join app.sites s on s.id = w.site_id
+       where w.status = 'entwurf' and w.cancelled_at is null and ${me.id}::uuid = any(w.employee_ids)
+       order by w.work_date, w.number`;
     // Neue Unterweisung/Dokument: beim Öffnen der App direkt zum Lesen und Unterschreiben (bis „Später“ für heute)
     if (openDocs.length && getCookie(c, 'm_doc_later') !== today)
       return c.redirect(`/m/dokumente/${openDocs[0]!.id}?zuerst=1`);
@@ -744,6 +754,28 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
           <a class="big go" href="/m/dokumente" style="font-size:18px">
             <Icon name="sign" size={16} /> {t(lang, 'docs_open', { n: openDocs.length })}
           </a>
+        )}
+        {wsOpen.length > 0 && (
+          <>
+            <div class="today">
+              <h2>{t(lang, 'ws_open')}</h2>
+            </div>
+            {wsOpen.map((w) => (
+              <a
+                class="shift open"
+                href={`/m/arbeitsscheine/${w.id}`}
+                style="display:block;text-decoration:none"
+              >
+                <div class="w">
+                  <span>
+                    {dayLabel(lang, w.work_date)} · {w.number}
+                  </span>
+                  <Icon name="sign" size={16} />
+                </div>
+                <div class="s">{w.site_name ?? ''}</div>
+              </a>
+            ))}
+          </>
         )}
         {pastToConfirm.length > 0 && (
           <>
@@ -969,6 +1001,12 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       me,
       <>
         <h1>{t(lang, 'nav_calendar')}</h1>
+        <a
+          class="big sec"
+          href={`webcal://${c.req.header('x-forwarded-host') ?? c.req.header('host')}/kalender/abo/${await feedToken(sql, { employeeId: me.id })}.ics`}
+        >
+          {t(lang, 'cal_subscribe')}
+        </a>
         {months.map((m) => {
           const ms = shifts.filter((x) => x.date.startsWith(m));
           const me2 = entries.filter(
@@ -1603,6 +1641,131 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         {d.status === 'offen' && <script dangerouslySetInnerHTML={{ __html: SIGN_JS }} />}
       </>,
     );
+  });
+
+  // ---- Arbeitsschein vor Ort vom Kunden unterschreiben lassen (nur zugeordnete Mitarbeitende)
+  const myReport = async (id: string, empId: string) => {
+    const data = await getWorkReport(sql, id);
+    if (!data || data.report.cancelled_at || !(data.report.employee_ids ?? []).includes(empId)) return null;
+    return data;
+  };
+  app.get('/m/arbeitsscheine/:id{[0-9a-f-]{36}}', async (c) => {
+    const { me, res } = await requireMe(c);
+    if (!me) return res!;
+    const lang = langOf(c, me);
+    const data = await myReport(c.req.param('id'), me.id);
+    if (!data) return c.redirect('/m');
+    const { report: w, lines, employees } = data;
+    const period =
+      w.work_date_to && w.work_date_to !== w.work_date
+        ? `${formatDateDe(w.work_date)} – ${formatDateDe(w.work_date_to)}`
+        : formatDateDe(w.work_date);
+    return render(
+      c,
+      lang,
+      me,
+      <>
+        <h1>Arbeitsschein {w.number}</h1>
+        <p class="mut" style="margin:0">
+          {w.site_name} · {period}
+          {w.start_time && ` · ${w.start_time}–${w.end_time} Uhr`}
+        </p>
+        <div class="card" lang="de">
+          {w.description && <p style="margin-top:0;white-space:pre-line">{w.description}</p>}
+          {lines.map((l) => (
+            <div style="padding:4px 0;border-bottom:1px solid #eee">
+              <b>
+                {milliToInput(l.quantity_milli)} {UNIT_LABELS[l.unit_code] ?? l.unit_code}
+              </b>{' '}
+              {l.person
+                ? `${l.person}${l.line_date ? ` (${formatDateDe(l.line_date)})` : ''}`
+                : l.description}
+            </div>
+          ))}
+          {w.materials && <p class="small">Material: {w.materials}</p>}
+          {employees.length > 0 && (
+            <p class="small mut">Eingesetzt: {employees.map((e) => e.name).join(', ')}</p>
+          )}
+        </div>
+        <a
+          class="big sec"
+          href={`/m/arbeitsscheine/${w.id}/arbeitsschein.pdf`}
+          target="_blank"
+          rel="noopener"
+        >
+          <Icon name="pdf" size={16} /> {t(lang, 'ws_pdf')}
+        </a>
+        {w.status !== 'entwurf' ? (
+          <div class="card run">
+            <b>✓ {t(lang, 'ws_signed', { name: w.signed_by_name ?? '' })}</b>
+          </div>
+        ) : (
+          <form method="post" action={`/m/arbeitsscheine/${w.id}`} class="card">
+            <p class="hint" style="margin-top:0">
+              {t(lang, 'ws_hand_over')}
+            </p>
+            <div lang="de">
+              <label for="name">Name des Kunden (Unterzeichner)</label>
+              <input id="name" name="name" required autocomplete="name" />
+              <label>Unterschrift Kunde</label>
+              <canvas id="sig" class="sig"></canvas>
+              <input type="hidden" id="sig-png" name="png" />
+              <p class="hint" id="sig-hint" style="color:var(--err)" hidden>
+                Bitte im Feld unterschreiben.
+              </p>
+              <p class="hint">
+                Mit der Unterschrift bestätigen Sie, dass die oben genannten Leistungen erbracht wurden. Der
+                Arbeitsschein wird danach als PDF unveränderbar gespeichert.
+              </p>
+              <div class="two" style="margin-top:12px">
+                <button type="button" class="big sec" id="sig-clear">
+                  Löschen
+                </button>
+                <button class="big go">Unterschreiben</button>
+              </div>
+            </div>
+          </form>
+        )}
+        <a class="big sec" href="/m">
+          {t(lang, 'back')}
+        </a>
+        {w.status === 'entwurf' && <script dangerouslySetInnerHTML={{ __html: SIGN_JS }} />}
+      </>,
+    );
+  });
+
+  app.get('/m/arbeitsscheine/:id{[0-9a-f-]{36}}/arbeitsschein.pdf', async (c) => {
+    const { me, res } = await requireMe(c);
+    if (!me) return res!;
+    const data = await myReport(c.req.param('id'), me.id);
+    if (!data) return c.notFound();
+    return new Response(await workReportPdf(deps, data.report.id), {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="Arbeitsschein_${data.report.number}.pdf"`,
+        'Cache-Control': 'private, no-store',
+      },
+    });
+  });
+
+  app.post('/m/arbeitsscheine/:id{[0-9a-f-]{36}}', async (c) => {
+    const { me, res } = await requireMe(c);
+    if (!me) return res!;
+    const lang = langOf(c, me);
+    const id = c.req.param('id');
+    if (!(await myReport(id, me.id))) return c.redirect('/m');
+    const b = await c.req.parseBody();
+    return guard(c, lang, `/m/arbeitsscheine/${id}`, async () => {
+      const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(b.png ?? ''));
+      if (!m) throw new BusinessError('Unterschrift fehlt', 'signature');
+      await signWorkReport(
+        deps,
+        id,
+        { name: String(b.name ?? ''), png: new Uint8Array(Buffer.from(m[1]!, 'base64')) },
+        `app:${me.personnel_no}`,
+      );
+      return back(c, `/m/arbeitsscheine/${id}`, { ok: t(lang, 'msg_signed') });
+    });
   });
 
   // „Später erinnern“: heute nicht mehr automatisch öffnen (morgen wieder)

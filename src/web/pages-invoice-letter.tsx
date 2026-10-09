@@ -16,7 +16,7 @@ import {
 import type { EffectiveBilling } from '../services/masterdata.js';
 import type { InvoiceRow } from '../services/invoices.js';
 import type { PreflightResult } from '../services/workflow.js';
-import { milliToInput } from './forms.js';
+import { centsToInput, milliToInput } from './forms.js';
 import { euro } from './layout.js';
 
 /*
@@ -66,6 +66,14 @@ export const LETTER_CSS = `
 .lt-edit-tbl{float:right;font-size:12px;color:#7D1435;margin-top:-2px}
 a.lt-addr{display:block}
 .lt-foot{color:#999;font-size:12px;text-align:center;margin-top:10px}
+.lt-row{cursor:pointer}.lt-row:hover td{background:#fbf6f8}
+.lt-add td{color:#7D1435;font-size:13px;border-bottom:0}
+.lt-f{background:#fbf6f8;border:1px solid #e8d5dc;border-radius:6px;padding:10px;margin:6px 0}
+.lt-f textarea,.lt-f input,.lt-f select{width:100%;margin:0}
+.lt-fg{display:grid;gap:6px}
+.lt-fl{display:grid;grid-template-columns:minmax(0,1fr) 90px 110px 120px;gap:6px;align-items:start}
+@media(max-width:700px){.lt-fl{grid-template-columns:1fr 1fr}}
+.lt-fb{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
 `;
 
 export const DraftLetter: FC<{
@@ -117,9 +125,11 @@ export const DraftLetter: FC<{
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: LETTER_CSS }} />
+      <script dangerouslySetInnerHTML={{ __html: DIRECT_JS }} />
       {notice}
       <p class="small mut" style="margin:0 0 8px">
-        Zum Ändern einfach auf Anschrift, Text, Positionen oder Schlusstext klicken.
+        Zum Ändern direkt auf Anschrift, Text, eine Position oder den Schlusstext klicken – wird sofort
+        gespeichert.
       </p>
       <div class="lt-grid">
         <div>
@@ -130,6 +140,8 @@ export const DraftLetter: FC<{
               </div>
               <a
                 class="lt-addr lt-edit"
+                id="v-addr"
+                data-open="f-addr"
                 href={`/rechnungen/${inv.id}/bearbeiten#anschrift`}
                 title="Anschrift ändern"
               >
@@ -145,6 +157,41 @@ export const DraftLetter: FC<{
                     <div>{x}</div>
                   ))}
               </a>
+              <Direct inv={inv} what="anschrift" id="f-addr" show="v-addr">
+                <div class="lt-fg">
+                  <input name="bill_name" value={b.name} placeholder="Name" required aria-label="Name" />
+                  <input name="bill_name2" value={b.name2 ?? ''} placeholder="Zusatz" aria-label="Zusatz" />
+                  <input
+                    name="bill_contact"
+                    value={b.contactName ?? ''}
+                    placeholder="z. Hd. (Ansprechpartner)"
+                    aria-label="Ansprechpartner"
+                  />
+                  <input
+                    name="bill_street"
+                    value={b.street}
+                    placeholder="Straße"
+                    required
+                    aria-label="Straße"
+                  />
+                  <div style="display:flex;gap:6px">
+                    <input
+                      name="bill_postal_code"
+                      value={b.postalCode}
+                      placeholder="PLZ"
+                      required
+                      style="max-width:90px"
+                      aria-label="PLZ"
+                    />
+                    <input name="bill_city" value={b.city} placeholder="Ort" required aria-label="Ort" />
+                  </div>
+                </div>
+                {inv.bill_address && (
+                  <button class="btn sec sm" name="reset" value="1" formnovalidate>
+                    Anschrift wie Kunde
+                  </button>
+                )}
+              </Direct>
             </div>
             <div class="lt-band">
               <h2>
@@ -172,18 +219,25 @@ export const DraftLetter: FC<{
               <div>Sehr geehrte Damen und Herren,</div>
               <a
                 class="lt-edit"
+                id="v-intro"
+                data-open="f-intro"
                 href={`/rechnungen/${inv.id}/bearbeiten#intro_text`}
                 style="display:block;margin-top:8px;white-space:pre-line"
                 title="Text ändern"
               >
                 {intro}
               </a>
+              <Direct inv={inv} what="einleitung" id="f-intro" show="v-intro">
+                <textarea name="text" rows={4} data-grow aria-label="Einleitungstext">
+                  {intro}
+                </textarea>
+              </Direct>
               <a
                 class="lt-edit lt-edit-tbl"
                 href={`/rechnungen/${inv.id}/bearbeiten#lines`}
-                title="Positionen ändern"
+                title="Alle Felder der Positionen (Leistungsart, Zeitraum …)"
               >
-                ✎ Positionen ändern
+                ✎ alle Felder
               </a>
               <table class="lt-tbl">
                 <thead>
@@ -221,10 +275,10 @@ export const DraftLetter: FC<{
                             <td class="r">{g && g.count > 1 ? <span>{euro(g.sum)}</span> : null}</td>
                           </tr>
                         )}
-                        <tr>
+                        <tr class="lt-row" id={`v-l${i}`} data-open={`f-l${i}`} title="Position ändern">
                           <td>{l.position}</td>
                           <td>
-                            {l.description}
+                            <span style="white-space:pre-line">{l.description}</span>
                             {det && <div class="lt-det">{det}</div>}
                           </td>
                           <td class="r">{milliToInput(l.quantity)}</td>
@@ -232,9 +286,23 @@ export const DraftLetter: FC<{
                           <td class="r">{euro(l.unitPrice)}</td>
                           <td class="r">{euro(l.netAmount)}</td>
                         </tr>
+                        <tr id={`f-l${i}`} class="lt-frow" hidden>
+                          <td colspan={6}>
+                            <LineForm inv={inv} index={i} line={l} show={`v-l${i}`} />
+                          </td>
+                        </tr>
                       </>
                     );
                   })}
+                  <tr class="lt-row lt-add" id="v-new" data-open="f-new">
+                    <td />
+                    <td colspan={5}>+ Position hinzufügen</td>
+                  </tr>
+                  <tr id="f-new" class="lt-frow" hidden>
+                    <td colspan={6}>
+                      <LineForm inv={inv} index={null} line={null} show="v-new" />
+                    </td>
+                  </tr>
                 </tbody>
               </table>
               <div class="lt-sums">
@@ -278,12 +346,19 @@ export const DraftLetter: FC<{
               <p style="margin-top:18px">{paymentTermsHuman(doc)}</p>
               <a
                 class="lt-edit"
+                id="v-closing"
+                data-open="f-closing"
                 href={`/rechnungen/${inv.id}/bearbeiten#closing_text`}
                 style="display:block;white-space:pre-line;margin:8px 0"
                 title="Schlusstext ändern"
               >
                 {doc.closingText || <span class="faint small">+ Schlusstext hinzufügen</span>}
               </a>
+              <Direct inv={inv} what="schluss" id="f-closing" show="v-closing">
+                <textarea name="text" rows={3} data-grow aria-label="Schlusstext">
+                  {doc.closingText ?? ''}
+                </textarea>
+              </Direct>
               <p>{doc.payableTotal > 0n ? INVOICE_CLOSING_PAY : INVOICE_CLOSING_NOPAY}</p>
             </div>
           </div>
@@ -400,3 +475,105 @@ export const DraftLetter: FC<{
     </>
   );
 };
+
+/* Direkt im Brief ändern: Klick blendet das kleine Formular an Ort und Stelle ein (ohne JavaScript: Link zum Editor). */
+export const DIRECT_JS = `document.addEventListener('DOMContentLoaded',function(){
+document.querySelectorAll('[data-open]').forEach(function(el){el.addEventListener('click',function(e){
+var f=document.getElementById(el.getAttribute('data-open'));if(!f)return;e.preventDefault();
+document.querySelectorAll('.lt-f-open').forEach(function(o){o.hidden=true;o.classList.remove('lt-f-open');var v=document.getElementById(o.getAttribute('data-show'));if(v)v.hidden=false;});
+f.hidden=false;f.classList.add('lt-f-open');el.hidden=true;var i=f.querySelector('textarea,input:not([type=hidden]),select');if(i){i.focus();if(i.select&&i.tagName!=='SELECT')i.select();}});});
+document.querySelectorAll('[data-cancel]').forEach(function(b){b.addEventListener('click',function(){
+var f=document.getElementById(b.getAttribute('data-cancel'));if(!f)return;f.hidden=true;f.classList.remove('lt-f-open');var v=document.getElementById(f.getAttribute('data-show'));if(v)v.hidden=false;});});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){var o=document.querySelector('.lt-f-open [data-cancel]');if(o)o.click();}});
+});`;
+
+const Direct: FC<{ inv: InvoiceRow; what: string; id: string; show: string; children?: Child }> = ({
+  inv,
+  what,
+  id,
+  show,
+  children,
+}) => (
+  <form method="post" action={`/rechnungen/${inv.id}/direkt`} class="lt-f" id={id} data-show={show} hidden>
+    <input type="hidden" name="what" value={what} />
+    <input type="hidden" name="version" value={String(inv.version)} />
+    {children}
+    <div class="lt-fb">
+      <button class="btn sm">Speichern</button>
+      <button type="button" class="btn sec sm" data-cancel={id}>
+        Abbrechen
+      </button>
+    </div>
+  </form>
+);
+
+const LineForm: FC<{
+  inv: InvoiceRow;
+  index: number | null;
+  line: InvoiceDocument['lines'][number] | null;
+  show: string;
+}> = ({ inv, index, line, show }) => (
+  <div class="lt-f" style="margin:0;border:0;padding:0;background:none">
+    <form method="post" action={`/rechnungen/${inv.id}/direkt`}>
+      <input type="hidden" name="what" value="position" />
+      <input type="hidden" name="index" value={index == null ? '' : String(index)} />
+      <input type="hidden" name="version" value={String(inv.version)} />
+      <div class="lt-fl">
+        <textarea
+          name="desc"
+          rows={2}
+          data-grow
+          required
+          aria-label="Leistungsbeschreibung"
+          placeholder="Leistung"
+        >
+          {line?.description ?? ''}
+        </textarea>
+        <input
+          name="qty"
+          inputmode="decimal"
+          value={line ? milliToInput(line.quantity) : '1'}
+          aria-label="Menge"
+          title="Menge (Stunden, Stück …)"
+        />
+        <select name="unit" aria-label="Einheit">
+          {Object.entries(UNIT_LABELS).map(([k, v]) => (
+            <option value={k} selected={(line?.unitCode ?? 'C62') === k}>
+              {v || k}
+            </option>
+          ))}
+        </select>
+        <input
+          name="price"
+          inputmode="decimal"
+          value={line ? centsToInput(line.unitPrice) : ''}
+          placeholder="Einzelpreis"
+          required
+          aria-label="Einzelpreis €"
+        />
+      </div>
+      <div class="lt-fb">
+        <button class="btn sm">Speichern</button>
+        <button
+          type="button"
+          class="btn sec sm"
+          onclick={`var f=document.getElementById('f-${index == null ? 'new' : `l${index}`}');f.hidden=true;document.getElementById('${show}').hidden=false`}
+        >
+          Abbrechen
+        </button>
+        {index != null && (
+          <button
+            class="btn sec sm"
+            style="margin-left:auto;color:var(--err)"
+            name="loeschen"
+            value="1"
+            formnovalidate
+            onclick="return confirm('Position löschen?')"
+          >
+            Position löschen
+          </button>
+        )}
+      </div>
+    </form>
+  </div>
+);

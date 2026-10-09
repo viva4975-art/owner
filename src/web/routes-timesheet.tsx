@@ -613,6 +613,18 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                     <div class="small mut">
                       {EMPLOYMENT_TYPES[e.employment_type]}
                       {p && !p.wage_cents && <span class="badge warn"> Lohn fehlt</span>}
+                      {p && p.uncoveredSundayHolidayMinutes > 0 && (
+                        <div
+                          class="small"
+                          style="color:var(--warn)"
+                          title="Zeit an Sonn-/Feiertagen ohne Einsatz „auch an Sonn- und Feiertagen“ – kein Zuschlag berechnet"
+                        >
+                          {(p.uncoveredSundayHolidayMinutes / 60).toLocaleString('de-DE', {
+                            maximumFractionDigits: 2,
+                          })}{' '}
+                          Std. Sonn-/Feiertag ohne Zuschlag
+                        </div>
+                      )}
                       {(s.open.running > 0 || s.open.pending > 0) && (
                         <span class="badge warn"> offene Zeiten</span>
                       )}

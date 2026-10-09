@@ -49,6 +49,7 @@ import { registerHandoverRoutes } from './routes-handovers.js';
 import { registerVehicleRoutes } from './routes-vehicles.js';
 import { registerWordTemplateRoutes } from './routes-word-templates.js';
 import { registerLegacyInvoiceRoutes } from './routes-legacy-invoices.js';
+import { registerCalendarFeedRoutes } from './routes-calendar-feed.js';
 import { registerHrRequiredRoutes } from './routes-hr-required.js';
 import { registerSubcontractorRoutes } from './routes-subcontractors.js';
 import { registerSettingsRoutes } from './routes-settings.js';
@@ -190,6 +191,7 @@ export function createApp(deps: Deps) {
     path === '/m' ||
     path.startsWith('/m/') ||
     path.startsWith('/np/') ||
+    path.startsWith('/kalender/abo/') ||
     path === '/anmelden' ||
     path === '/app' ||
     path === '/app/anmelden' ||
@@ -375,6 +377,7 @@ export function createApp(deps: Deps) {
   registerVehicleRoutes(ctx);
   registerWordTemplateRoutes(ctx);
   registerLegacyInvoiceRoutes(ctx);
+  registerCalendarFeedRoutes(ctx);
   registerHrRequiredRoutes(ctx);
   registerSubcontractorRoutes(ctx);
   registerSettingsRoutes(ctx);

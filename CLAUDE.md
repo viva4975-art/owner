@@ -1860,3 +1860,28 @@ Testadresse.
   Rechnungsliste von Kunde/Objekt (Zähler, Monatsübersicht) zusammen mit den eigenen, „versendet“, Kunden-Offene-Posten in
   einer Tabelle; Kästen „Frühere Rechnungen“ / „Offene Rechnungen vor der Umstellung“ entfallen. Liste beim Kunden zeigt
   die neuesten 60 („alle anzeigen“). **§ 14c UStG bleibt:** diese Rechnungen nicht erneut versenden.
+- 2026-10-09: Runde 32 (Ahmed, 5 Punkte):
+  - **Einsatz „Auch an Sonn- und Feiertagen arbeiten“** (Häkchen in „Termin oder Terminserie planen“, Standard aus;
+    `shift_plans.holiday_work`, Migration `20261117000001`): ohne Haken ist der Feiertag frei (bezahlter Feiertag, nicht
+    in Soll/App/Vorab-Lohn) und es gibt **keine Sonn-/Feiertagszuschläge** – auch nicht für Zeiten, die trotzdem an dem
+    Tag erfasst sind (Lohnarten zeigen „x Std. Sonn-/Feiertag ohne Zuschlag“ als Hinweis). Sonntags-Einsätze haben den
+    Haken immer (Bestand per Migration gesetzt). Nachtzuschlag gilt unabhängig davon. Zuschlagsrechnung: Satz 0 = gilt
+    nicht (vorher bekam ein 0-%-Feiertag die Minuten statt Nacht). **Rechtlich:** Arbeitet jemand tatsächlich an einem
+    Sonn-/Feiertag, sind die RTV-Zuschläge geschuldet – dann den Einsatz mit Haken anlegen, Hinweis in den Lohnarten
+    beachten.
+  - **Entwurf direkt im Brief ändern** (`/rechnungen/<id>`): Klick auf Anschrift, Einleitung, eine Position (Text
+    mehrzeilig, Menge, Einheit, Einzelpreis, löschen), „+ Position hinzufügen“ oder Schlusstext öffnet ein kleines
+    Formular an Ort und Stelle → `POST /rechnungen/<id>/direkt` → `patchDraft` (gleiche Prüfungen wie der Editor,
+    Versionsschutz gegen zweiten Tab). „✎ alle Felder“ führt weiter in den vollen Editor (Leistungsart, Zeitraum …).
+  - **Arbeitsschein in der Mitarbeiter-App:** Entwürfe, denen eine Person zugeordnet ist (Häkchen „Eingesetzte
+    Mitarbeiter“), stehen sofort in ihrer App-Übersicht („Arbeitsscheine zum Unterschreiben“); Details + PDF, der Kunde
+    gibt seinen Namen ein und unterschreibt mit dem Finger (Texte für den Kunden immer Deutsch) → wie im Büro
+    unterschrieben, PDF write-once. Ohne Zuordnung bleibt der Schein nur im Büro (Versand per Mail usw.).
+  - **Kalender-Abo (ICS) für iPhone, Outlook, Google** (Benutzermenü → „Kalender abonnieren“, Mitarbeiter-App →
+    Kalender → „Einsätze im Handy-Kalender anzeigen“): geheimer Link `/kalender/abo/<token>.ics` (`app.calendar_feeds`,
+    Migration `20261117000002`, neu erzeugen macht den alten ungültig). Inhalt: eigene Einsätze (verknüpfter
+    Mitarbeiter), offene Aufgaben (mir oder niemandem zugewiesen), Ausschreibungs-Fristen/Bieterfragen/Besichtigung,
+    Glas- und Tiefgaragen-Termine (nicht Objektleitung); 14 Tage zurück bis 90 Tage voraus, stündlich aktualisiert,
+    nur lesen. In Outlook (IONOS Exchange) einmal „Aus dem Internet abonnieren“ → erscheint auf allen Geräten.
+  - Anlagen-Feld in der Rechnung zeigte wieder den englischen „Choose Files“-Knopf → ausgeblendet.
+  - **Vorschlag Münchner Wohnen (Einzelaufträge ohne Objekt) und Outlook-Kalender in der App: siehe offene Fragen.**

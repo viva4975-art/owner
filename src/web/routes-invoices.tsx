@@ -20,10 +20,13 @@ import {
   loadDraftPreview,
   markReviewed,
   parseBillAddress,
+  patchDraft,
+  type DraftPatch,
   runMonthly,
   saveDraft,
   setPlannedIssueDate,
 } from '../services/invoices.js';
+import { parseEuro, parseQuantity } from '../domain/money/money.js';
 import {
   buildBuyerSnapshot,
   effectiveBilling,
@@ -695,6 +698,51 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     return back(c, `/rechnungen/${id}`, {
       ok: 'Berichtigte Fassung erstellt (KoSIT geprüft, Original bleibt im Archiv). Jetzt erneut senden, falls nötig.',
     });
+  });
+
+  // Entwurf direkt in der Briefansicht ändern (Anschrift, Texte, einzelne Position)
+  app.post(`/rechnungen/:id{${UUID}}/direkt`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    const v = (k: string) => (typeof b[k] === 'string' ? (b[k] as string) : '');
+    const version = /^\d+$/.test(v('version')) ? Number(v('version')) : null;
+    const what = v('what');
+    let patch: DraftPatch;
+    try {
+      if (what === 'anschrift')
+        patch = {
+          what,
+          billAddress: v('reset') === '1' ? null : parseBillAddress(b as Record<string, unknown>),
+        };
+      else if (what === 'einleitung' || what === 'schluss') patch = { what, text: v('text').trim() || null };
+      else if (what === 'position') {
+        const index = /^\d+$/.test(v('index')) ? Number(v('index')) : null;
+        if (v('loeschen') === '1' && index != null) patch = { what: 'position_loeschen', index };
+        else {
+          let quantity, unitPrice;
+          try {
+            quantity = parseQuantity(v('qty') || '1');
+          } catch {
+            throw new BusinessError(`Menge „${v('qty')}“ ist ungültig (max. 3 Nachkommastellen)`);
+          }
+          try {
+            unitPrice = parseEuro(v('price'));
+          } catch {
+            throw new BusinessError(`Einzelpreis „${v('price')}“ ist ungültig (max. 2 Nachkommastellen)`);
+          }
+          patch = {
+            what,
+            index,
+            line: { description: v('desc').trim(), quantity, unitCode: v('unit') || 'C62', unitPrice },
+          };
+        }
+      } else throw new BusinessError('Unbekannte Änderung');
+      await patchDraft(sql, id, patch, version, c.get('actor'));
+    } catch (e) {
+      if (e instanceof BusinessError) return back(c, `/rechnungen/${id}`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/rechnungen/${id}`, { ok: 'Gespeichert.' });
   });
 
   // ------------------------------------------------------------------ Detail

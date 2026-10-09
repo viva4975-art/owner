@@ -235,7 +235,7 @@ input::placeholder,textarea::placeholder{color:var(--faint)}
 .drop-zone:hover,.drop-zone.over{border-color:var(--brand-2);background:var(--brand-50);color:var(--brand)}
 .drop-zone .ic{color:var(--brand)}
 .drop-zone b{color:var(--ink)}
-.drop-zone input{display:none}
+.drop-zone input{display:none}.drop-zone input[type=file]{display:none!important}
 .files{list-style:none;margin:12px 0 0;padding:0;border:1px solid var(--line);border-radius:var(--r);background:#fff}
 .files:empty{display:none}
 .files li{display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)}
@@ -1601,6 +1601,7 @@ export const Layout: FC<{
                       <div class="drop right">
                         <a href="/konto">Mein Konto / Passwort</a>
                         <a href="/zeiterfassung/meine">Meine Zeiten</a>
+                        <a href="/kalender/abonnieren">Kalender abonnieren (iPhone/Outlook)</a>
                         {role === 'admin' && <a href="/benutzer">Benutzer & Rechte</a>}
                         {role && canOpen(role as Role, '/einstellungen') && (
                           <a href="/einstellungen">Einstellungen</a>

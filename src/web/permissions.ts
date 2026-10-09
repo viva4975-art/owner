@@ -10,6 +10,7 @@ const HR: Role[] = ['admin', 'personal'];
 
 const RULES: [RegExp, Role[]][] = [
   [/^\/(anmelden|abmelden|konto|static|health|m)(\/|$)/, ALL],
+  [/^\/kalender\/(abo|abonnieren)(\/|$)/, ALL],
   [/^\/benutzer(\/|$)/, ['admin']],
   [/^\/einstellungen\/firma(\/|$)/, ['admin']],
   [/^\/einstellungen\/nummernkreise(\/|$)/, ['admin']],

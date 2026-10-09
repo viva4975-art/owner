@@ -582,9 +582,9 @@ export async function applyTimes(
       }
       const r = await sql`
         insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes,
-                                     valid_from, valid_until, note, series_id, created_at)
+                                     valid_from, valid_until, note, series_id, holiday_work, created_at)
         values (${s.id}, ${s.employee_id}, ${s.site_id}, ${s.weekday}, ${s.start}, ${s.end}, ${s.break_minutes},
-                ${s.valid_from}, ${s.valid_until}, 'aus erfassten Zeiten abgeleitet', ${s.id},
+                ${s.valid_from}, ${s.valid_until}, 'aus erfassten Zeiten abgeleitet', ${s.id}, ${s.weekday === 7},
                 (${s.valid_from}::date)::timestamp at time zone 'Europe/Berlin')
         on conflict (id) do nothing`;
       shiftsCreated += r.count;

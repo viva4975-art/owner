@@ -17,6 +17,7 @@ import {
   getInvoice,
   listInvoices,
   draftListInfo,
+  loadDocument,
   loadDraftPreview,
   markReviewed,
   parseBillAddress,
@@ -53,7 +54,7 @@ import {
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { arr, parseLines, str } from './forms.js';
 import { DRAFTS_CSS, DraftsBox, OpenExecutionsBox } from './pages-drafts.js';
-import { DraftLetter } from './pages-invoice-letter.js';
+import { DraftLetter, IssuedLetter } from './pages-invoice-letter.js';
 import {
   billableOrders,
   dropWorkReportRequirement,
@@ -778,10 +779,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         />,
       );
     }
-    return page(
-      c,
-      inv.number ?? 'Entwurf',
-      'rechnungen',
+    const detailsBody = (
       <>
         <InvoiceDetail
           inv={inv}
@@ -822,8 +820,49 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
             today={todayBerlin()}
           />
         )}
-      </>,
+      </>
     );
+    if (inv.status === 'issued') {
+      const sentRow = deliveries.filter((d) => d.status === 'sent').at(-1);
+      return page(
+        c,
+        inv.number ?? 'Rechnung',
+        'rechnungen',
+        <IssuedLetter
+          inv={inv}
+          doc={await loadDocument(sql, id)}
+          billing={billing}
+          portal={channel.channel === 'portal' ? (channel.portal ?? '') : null}
+          newId={randomUUID()}
+          docs={docs}
+          sent={sentRow ? { at: sentRow.sent_at, to: sentRow.actual_recipients.join(', ') } : null}
+          derived={data.derived}
+          original={data.original ? { id: data.original.id, number: data.original.number } : null}
+          payments={payments.map((x) => ({
+            paid_on: x.paid_on,
+            method: x.method,
+            amount_cents: x.amount_cents,
+            reversed: x.reversed,
+            reverses: !!x.reverses_payment_id,
+          }))}
+          open={openRow[0]?.open_cents ?? null}
+          notice={<CustomerNotice c={customer!} />}
+          detailsOpen={c.req.query('details') === '1' || !!c.req.query('ok') || !!c.req.query('fehler')}
+          uploadSlot={
+            <FileArea
+              link={{ type: 'invoice', id }}
+              files={[]}
+              category="Anlage zur Rechnung"
+              title="Anlagen hierher ziehen"
+              hint="PDF, PNG oder JPG bis 20 MB – gehen mit der Rechnung per E-Mail raus."
+              maxBytes={20 * 1024 * 1024}
+            />
+          }
+          details={detailsBody}
+        />,
+      );
+    }
+    return page(c, inv.number ?? 'Entwurf', 'rechnungen', detailsBody);
   };
 
   // Rechnungen von vor der Umstellung: gleiche Adresse, eigene (nur lesende) Ansicht

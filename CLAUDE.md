@@ -2092,3 +2092,12 @@ Testadresse.
   Nr., Kunde, Pos, Netto, Brutto, Empfänger (Hinweis „Portal“ / „keine Rechnungs-E-Mail“), Summen. „Alle als PDF
   herunterladen“ (archivierte Belege in einer Datei). Mahnungen: neu „als versendet kennzeichnen“ (`markDunningSent`).
   Die Filter „Alle Rechnungen / Nicht versendet“ auf der Rechnungsliste entfallen (`?filter=unversendet` leitet um).
+- 2026-10-09: **Ausgestellte Rechnung wie Fortytools** (Ahmed: „unübersichtlich“, Screenshot Rechnungskorrektur 1038307):
+  `IssuedLetter` in `pages-invoice-letter.tsx` – links das Blatt (Anschrift, grauer Balken „Rechnung/Rechnungskorrektur
+  Nr.“ mit Datum, Kundennummer, Referenznummer = Original, Leistungsort/Zeitraum/Leitweg-ID/Bestellnr., Positionen je
+  Objekt, Summen, Zahlungsbedingung), Stempel **BEZAHLT** (Saldo 0) bzw. **STORNIERT**; rechts Knopfleiste (Name/Adresse
+  ändern, Kopieren, Als bezahlt markieren/Zahlung, X-Rechnung, ZUGFeRD, Anzeigen (PDF), Lieferschein, Stornieren,
+  Rechnungskorrektur), Anhänge (Upload), Versand (Status, „Jetzt versenden“, „Als versendet markieren …“ bzw. Portal),
+  **Zahlungsübersicht** (Rechnung, Storno/Korrektur, Zahlungen, Saldo). Alles Bisherige (Belege/Prüfberichte,
+  Versandprotokoll, Zahlungen buchen, berichtigte Fassungen) eingeklappt unter „Weitere Angaben“ (öffnet bei Meldungen
+  bzw. Sprungmarken `#adresse`, `#zahlungen`). Entwürfe unverändert (DraftLetter).

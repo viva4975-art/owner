@@ -959,7 +959,7 @@ export const InvoiceDetail: FC<{
             </form>
           )}
           {inv.kind !== 'cancellation' && (
-            <details class="inline-details">
+            <details class="inline-details" id="adresse">
               <summary class="btn sec">Name / Adresse ändern</summary>
               <form
                 method="post"

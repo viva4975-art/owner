@@ -631,3 +631,429 @@ const LineForm: FC<{
     </form>
   </div>
 );
+
+/** Ausgestellte Rechnung wie Fortytools (Ahmed 09.10.): links das Blatt, rechts Aktionen, Anhänge, Versand, Zahlungen. */
+export const IssuedLetter: FC<{
+  inv: InvoiceRow;
+  doc: InvoiceDocument;
+  billing: EffectiveBilling;
+  portal: string | null;
+  newId: string;
+  docs: { id: string; kind: string; filename: string; valid: boolean | null; revision?: number | null }[];
+  sent: { at: Date | null; to: string } | null;
+  derived: InvoiceRow[];
+  original: { id: string; number: string | null } | null;
+  payments: { paid_on: string; method: string; amount_cents: bigint; reversed: boolean; reverses: boolean }[];
+  open: bigint | null;
+  uploadSlot?: Child;
+  notice?: Child;
+  details: Child;
+  detailsOpen: boolean;
+}> = (p) => {
+  const { inv, doc } = p;
+  const s = doc.seller;
+  const b = doc.buyer;
+  const parsed = doc.lines.map((l) => splitLineDetail(l.detail));
+  const keys = [...new Set(parsed.map((x) => x.place?.key ?? ''))];
+  const grouped = keys.length > 1;
+  const one = !grouped ? parsed.find((x) => x.place)?.place : null;
+  const period = doc.periodStart
+    ? `${formatDateDe(doc.periodStart)}${doc.periodEnd && doc.periodEnd !== doc.periodStart ? ` bis ${formatDateDe(doc.periodEnd)}` : ''}`
+    : null;
+  const facts: [string, Child][] = [];
+  if (one)
+    facts.push(['Leistungsort / Objekt', <b>{`${one.title}${one.address ? ` · ${one.address}` : ''}`}</b>]);
+  else if (b.site)
+    facts.push([
+      'Leistungsort / Objekt',
+      <b>{`${b.site.name} (${b.site.siteNo})${b.site.street ? ` · ${b.site.street}, ${b.site.postalCode ?? ''} ${b.site.city ?? ''}` : ''}`}</b>,
+    ]);
+  else if (grouped) facts.push(['Leistungsort', `${keys.length} Objekte (siehe Positionen)`]);
+  if (period) facts.push(['Leistungszeitraum', period]);
+  if (b.leitwegId) facts.push(['Leitweg-ID', b.leitwegId]);
+  if (doc.orderReference) facts.push(['Bestellnummer', doc.orderReference]);
+  if (doc.customerReference) facts.push(['Ihre Referenz', doc.customerReference]);
+  const rc = isReverseCharge(doc);
+  const intro =
+    doc.introText?.replace(/^\s*Sehr geehrte Damen und Herren,?\s*/i, '').trim() || INVOICE_INTRO_DEFAULT;
+  const isCredit = inv.kind === 'cancellation' || inv.kind === 'correction';
+  const cancelled = p.derived.some((d) => d.kind === 'cancellation' && d.status === 'issued');
+  const paid = !isCredit && p.open != null && p.open <= 0n;
+  const latest = p.docs.reduce(
+    (m, d) => (d.kind !== 'attachment' && (d.revision ?? 0) > m ? (d.revision ?? 0) : m),
+    0,
+  );
+  const pick = (k: string) =>
+    p.docs.filter((d) => d.kind === k && (d.revision ?? 0) === latest).at(-1) ??
+    p.docs.filter((d) => d.kind === k).at(-1);
+  const pdf = pick('pdf');
+  const xr = pick('xrechnung_xml');
+  const zf = pick('zugferd_pdf');
+  const attachments = p.docs.filter((d) => d.kind === 'attachment');
+  // Zahlungsübersicht wie Fortytools: Rechnung, Folgebelege (Storno/Korrektur), Zahlungen, Saldo
+  const overview: { date: string; label: string; href?: string; amount: bigint }[] = [
+    {
+      date: inv.issue_date ?? '',
+      label: inv.number ?? '',
+      href: `/rechnungen/${inv.id}`,
+      amount: inv.gross_cents,
+    },
+    ...p.derived
+      .filter((d) => d.status === 'issued')
+      .map((d) => ({
+        date: d.issue_date ?? '',
+        label: d.number ?? '',
+        href: `/rechnungen/${d.id}`,
+        amount: d.gross_cents,
+      })),
+    ...p.payments
+      .filter((x) => !x.reversed && !x.reverses)
+      .map((x) => ({
+        date: x.paid_on,
+        label:
+          x.method === 'skonto' ? 'Skonto-Abzug' : x.method === 'verrechnung' ? 'Verrechnung' : 'Zahlung',
+        amount: -x.amount_cents,
+      })),
+  ];
+  const saldo = p.open ?? overview.reduce((a, o) => a + o.amount, 0n);
+  return (
+    <>
+      <style dangerouslySetInnerHTML={{ __html: LETTER_CSS + ISSUED_CSS }} />
+      {p.notice}
+      <div class="lt-grid">
+        <div>
+          <div class="lt-paper">
+            {(paid || cancelled) && <div class="lt-stamp">{cancelled ? 'STORNIERT' : 'BEZAHLT'}</div>}
+            <div class="lt-pad">
+              <div class="lt-sender">
+                {s.legalName} | {s.street} | {s.postalCode} {s.city}
+              </div>
+              <div class="lt-addr">
+                {[
+                  b.name,
+                  b.name2,
+                  b.contactName ? `z. Hd. ${b.contactName}` : null,
+                  b.street,
+                  `${b.postalCode} ${b.city}`,
+                ]
+                  .filter(Boolean)
+                  .map((x) => (
+                    <div>{x}</div>
+                  ))}
+              </div>
+            </div>
+            <div class="lt-band">
+              <h2>
+                {KIND_TITLES[inv.kind]} {inv.number}
+              </h2>
+              <div class="lt-info">
+                <span>Datum</span>
+                <span>{formatDateDe(doc.issueDate)}</span>
+                <span>Kundennummer</span>
+                <a href={`/kunden/${inv.customer_id}`}>{b.customerNo}</a>
+                {p.original && (
+                  <>
+                    <span>Referenznummer</span>
+                    <a href={`/rechnungen/${p.original.id}`}>{p.original.number}</a>
+                  </>
+                )}
+              </div>
+            </div>
+            {facts.length > 0 && (
+              <div class="lt-facts">
+                {facts.map(([k, v]) => (
+                  <div>
+                    <span>{k}</span>
+                    {v}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div class="lt-body">
+              <div>Sehr geehrte Damen und Herren,</div>
+              <div style="margin-top:8px;white-space:pre-line">{intro}</div>
+              <table class="lt-tbl">
+                <thead>
+                  <tr>
+                    <th style="width:44px">Pos</th>
+                    <th>Text</th>
+                    <th class="r">Menge</th>
+                    <th>Einheit</th>
+                    <th class="r">Einzelpreis</th>
+                    <th class="r">Gesamtpreis</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {doc.lines.map((l, i) => {
+                    const x = parsed[i]!;
+                    const head = grouped && (i === 0 || x.place?.key !== parsed[i - 1]!.place?.key);
+                    const lp =
+                      x.period ??
+                      (l.periodStart
+                        ? `${formatDateDe(l.periodStart)}${l.periodEnd && l.periodEnd !== l.periodStart ? ` bis ${formatDateDe(l.periodEnd)}` : ''}`
+                        : null);
+                    const det = [x.rest, lp && lp !== period ? lp : null].filter(Boolean).join('\n');
+                    return (
+                      <>
+                        {head && (
+                          <tr class="lt-grp">
+                            <td />
+                            <td colspan={5}>
+                              {x.place?.title ?? 'Ohne Objektbezug'}
+                              {x.place?.address && <span> · {x.place.address}</span>}
+                            </td>
+                          </tr>
+                        )}
+                        <tr>
+                          <td>{l.position}</td>
+                          <td>
+                            <span style="white-space:pre-line">{l.description}</span>
+                            {det && <div class="lt-det">{det}</div>}
+                          </td>
+                          <td class="r">{milliToInput(l.quantity)}</td>
+                          <td>{UNIT_LABELS[l.unitCode] ?? l.unitCode}</td>
+                          <td class="r">{euro(l.unitPrice)}</td>
+                          <td class="r">{euro(l.netAmount)}</td>
+                        </tr>
+                      </>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div class="lt-sums">
+                <div>
+                  <span>Gesamt netto</span>
+                  <span>{euro(doc.netTotal)}</span>
+                </div>
+                {doc.vatBreakdown.map((v) => (
+                  <div>
+                    <span>
+                      {rc
+                        ? 'Umsatzsteuer (§ 13b UStG)'
+                        : `zzgl. MwSt (${percentToXml(v.vatRate).replace('.', ',')}%)`}
+                    </span>
+                    <span>{euro(v.taxAmount)}</span>
+                  </div>
+                ))}
+                <div class="tot">
+                  <span>Gesamtbetrag</span>
+                  <b>{euro(doc.grossTotal)}</b>
+                </div>
+                {doc.prepayments.map((x) => (
+                  <div class="small">
+                    <span>abzgl. Abschlag {x.number}</span>
+                    <span>-{euro(x.grossAmount)}</span>
+                  </div>
+                ))}
+                {doc.prepayments.length > 0 && (
+                  <div class="tot">
+                    <span>Zahlbetrag</span>
+                    <b>{euro(doc.payableTotal)}</b>
+                  </div>
+                )}
+              </div>
+              {rc && (
+                <p>
+                  <b>{REVERSE_CHARGE_NOTE}</b>
+                  {b.vatId && <div>USt-IdNr. des Leistungsempfängers: {b.vatId}</div>}
+                </p>
+              )}
+              {!isCredit && <p style="margin-top:18px">{paymentTermsHuman(doc)}</p>}
+              {doc.closingText && <p style="white-space:pre-line">{doc.closingText}</p>}
+              <p>{doc.payableTotal > 0n ? INVOICE_CLOSING_PAY : INVOICE_CLOSING_NOPAY}</p>
+            </div>
+          </div>
+          <div class="lt-foot">
+            Ausgestellt{' '}
+            {inv.issued_at
+              ? inv.issued_at.toLocaleString('de-DE', {
+                  timeZone: 'Europe/Berlin',
+                  dateStyle: 'short',
+                  timeStyle: 'short',
+                })
+              : ''}{' '}
+            · Format {FORMAT[inv.invoice_format] ?? inv.invoice_format}
+          </div>
+        </div>
+        <aside class="lt-side">
+          <div class="btns">
+            <a href="?details=1#adresse">Name / Adresse ändern</a>
+            {['invoice', 'partial'].includes(inv.kind) && (
+              <form method="post" action={`/rechnungen/${inv.id}/kopieren`}>
+                <input type="hidden" name="new_id" value={p.newId} />
+                <button>Kopieren</button>
+              </form>
+            )}
+            {!isCredit && !paid && <a href="?details=1#zahlungen">Als bezahlt markieren / Zahlung</a>}
+            {xr && xr.valid !== false && (
+              <a href={`/dokumente/${xr.id}?download=1`} download={xr.filename}>
+                X-Rechnung
+              </a>
+            )}
+            {zf && zf.valid !== false && (
+              <a href={`/dokumente/${zf.id}?download=1`} download={zf.filename}>
+                ZUGFeRD
+              </a>
+            )}
+            {pdf && (
+              <a href={`/dokumente/${pdf.id}`} target="_blank">
+                Anzeigen (PDF)
+              </a>
+            )}
+            <a class="sec" href={`/rechnungen/${inv.id}/lieferschein.pdf`} target="_blank">
+              Lieferschein
+            </a>
+            {!isCredit && !cancelled && (
+              <>
+                <form
+                  method="post"
+                  action={`/rechnungen/${inv.id}/storno`}
+                  onsubmit="return confirm('Stornorechnung als Entwurf anlegen?')"
+                >
+                  <button class="del">Stornieren</button>
+                </form>
+                <a class="sec" href={`/rechnungen/${inv.id}/korrektur`}>
+                  Rechnungskorrektur
+                </a>
+              </>
+            )}
+          </div>
+          <div class="card">
+            <h3>Anhänge</h3>
+            {attachments.length === 0 ? (
+              <p class="small mut" style="margin:0 0 6px">
+                Keine
+              </p>
+            ) : (
+              attachments.map((a) => (
+                <div class="small">
+                  <a href={`/dokumente/${a.id}`}>{a.filename}</a>
+                </div>
+              ))
+            )}
+            {p.uploadSlot}
+          </div>
+          <div class="card">
+            <h3>Versand</h3>
+            {p.sent ? (
+              <p class="small" style="margin:0">
+                <span class="badge ok">versendet</span>{' '}
+                {p.sent.at
+                  ? p.sent.at.toLocaleString('de-DE', {
+                      timeZone: 'Europe/Berlin',
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    })
+                  : ''}
+                <div class="mut">{p.sent.to}</div>
+              </p>
+            ) : (
+              <>
+                <p class="small" style="margin:0 0 8px">
+                  Bisher noch nicht versendet.
+                  <div class="mut">
+                    {p.portal != null
+                      ? `Über das Portal${p.portal ? ` (${p.portal})` : ''}`
+                      : p.billing.emails.length
+                        ? `an ${p.billing.emails.join(', ')}`
+                        : 'keine Rechnungs-E-Mail hinterlegt'}
+                  </div>
+                </p>
+                {p.portal == null && p.billing.emails.length > 0 && (
+                  <form
+                    method="post"
+                    action={`/rechnungen/${inv.id}/versenden`}
+                    onsubmit="return confirm('Rechnung jetzt per E-Mail versenden?')"
+                    style="margin:0 0 6px"
+                  >
+                    <button class="btn sm">Jetzt versenden</button>
+                  </form>
+                )}
+                {p.portal != null ? (
+                  <form method="post" action={`/rechnungen/${inv.id}/portal`} class="lt-mini">
+                    <input name="reference" placeholder="Upload-Nr. (optional)" aria-label="Upload-Nr." />
+                    <button class="btn sm sec">Im Portal hochgeladen</button>
+                  </form>
+                ) : (
+                  <details>
+                    <summary class="small" style="cursor:pointer">
+                      Als versendet markieren …
+                    </summary>
+                    <form method="post" action={`/rechnungen/${inv.id}/versandt`} class="lt-mini">
+                      <select name="way" aria-label="Versandweg">
+                        {['Post', 'persönlich übergeben', 'Fax', 'sonstiges'].map((w) => (
+                          <option value={w}>{w}</option>
+                        ))}
+                      </select>
+                      <input name="note" placeholder="Bemerkung (optional)" aria-label="Bemerkung" />
+                      <button class="btn sm sec">Als versendet markieren</button>
+                    </form>
+                  </details>
+                )}
+              </>
+            )}
+          </div>
+          <div class="card">
+            <h3>Zahlungsübersicht</h3>
+            <table class="lt-pay">
+              {overview.map((o) => (
+                <tr>
+                  <td>
+                    {o.href ? (
+                      <a href={o.href}>
+                        {formatDateDe(o.date)} {o.label}
+                      </a>
+                    ) : (
+                      <>
+                        {formatDateDe(o.date)} {o.label}
+                      </>
+                    )}
+                  </td>
+                  <td class="r">{euro(o.amount)}</td>
+                </tr>
+              ))}
+              <tr class="sum">
+                <td class="r">Saldo:</td>
+                <td class="r" style={saldo <= 0n ? 'color:#15803d' : 'color:#b42318'}>
+                  {euro(saldo)}
+                </td>
+              </tr>
+            </table>
+            {paid && (
+              <p class="small mut" style="margin:8px 0 0">
+                Vollständig ausgeglichen.
+              </p>
+            )}
+          </div>
+        </aside>
+      </div>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `document.addEventListener('DOMContentLoaded',function(){var h=location.hash&&document.getElementById(location.hash.slice(1));if(!h)return;var d=h.tagName==='DETAILS'?h:h.closest('details');while(d){d.open=true;d=d.parentElement&&d.parentElement.closest('details')}h.scrollIntoView()});`,
+        }}
+      />
+      <details class="card lt-more" id="details" open={p.detailsOpen}>
+        <summary>
+          <b>Weitere Angaben</b>{' '}
+          <span class="small mut">
+            Belege &amp; Prüfberichte, Versandprotokoll, Zahlungen buchen, Name/Adresse ändern,
+            Storno/Korrektur
+          </span>
+        </summary>
+        {p.details}
+      </details>
+    </>
+  );
+};
+
+const ISSUED_CSS = `
+.lt-paper{position:relative}
+.lt-stamp{position:absolute;top:34px;right:34px;transform:rotate(-14deg);border:3px solid #c9c9c9;color:#c9c9c9;font-weight:800;font-size:30px;letter-spacing:.08em;padding:4px 14px;border-radius:6px;pointer-events:none}
+.lt-pay{width:100%;border-collapse:collapse;font-size:13px}
+.lt-pay td{padding:5px 0;border-bottom:1px solid #eee}
+.lt-pay td.r{text-align:right;white-space:nowrap}
+.lt-pay tr.sum td{border-bottom:0;font-weight:700}
+.lt-more{margin-top:18px}
+.lt-mini{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.lt-more>summary{cursor:pointer;padding:4px 0}
+`;

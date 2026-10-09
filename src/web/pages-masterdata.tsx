@@ -283,6 +283,7 @@ export interface CustomerCounts {
   tasks: number;
   openItems: number;
   offers: number;
+  orders: number;
   dunnings: number;
   files: number;
 }
@@ -302,6 +303,7 @@ export const CustomerShell: FC<{
     { key: 'notizen', label: 'Notizen', href: `${base}/notizen`, count: counts.notes },
     { key: 'rechnungen', label: 'Rechnungen', href: `${base}/rechnungen`, count: counts.invoices },
     { key: 'objekte', label: 'Objekte', href: `${base}/objekte`, count: counts.sites },
+    { key: 'auftraege', label: 'Einzelaufträge', href: `${base}/auftraege`, count: counts.orders },
   ];
   const more: Tab[] = [
     { key: 'aufgaben', label: 'Aufgaben', href: `${base}/aufgaben`, count: counts.tasks },

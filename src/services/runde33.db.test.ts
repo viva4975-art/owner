@@ -187,6 +187,8 @@ describe.skipIf(!available)(
     });
 
     it('Einzelauftrag ohne Objekt: Termin im Kalender-Abo, Arbeitsschein für das Team, in „Aus Einzelleistungen“', async () => {
+      const [st] = await sql<{ id: string }[]>`select id from app.service_types order by name limit 1`;
+      const STYPE = st!.id;
       const oid = randomUUID();
       await saveOrder(
         sql,
@@ -206,9 +208,18 @@ describe.skipIf(!available)(
               unitCode: 'LS',
               unitPrice: parseEuro('260,00'),
               vatRate: 1900,
+              serviceTypeId: STYPE,
             },
           ],
           expectedVersion: null,
+          billAddress: {
+            name: 'Münchner Wohnen Nord GmbH',
+            name2: null,
+            contactName: null,
+            street: 'Musterweg 1',
+            postalCode: '80333',
+            city: 'München',
+          },
           place: 'Hansastr. 12, 80686 München',
           startTime: '08:00',
           endTime: '10:00',
@@ -231,7 +242,10 @@ describe.skipIf(!available)(
       expect(ics).toContain('Hansastr. 12');
       // Rechnung: Entwurf entsteht, Ausstellen erst mit unterschriebenem Arbeitsschein
       const inv = await orderToInvoice(deps, oid, 't');
-      expect((await getInvoice(sql, inv))!.invoice.work_report_required).toBe(true);
+      const full = (await getInvoice(sql, inv))!;
+      expect(full.invoice.work_report_required).toBe(true);
+      expect(full.invoice.bill_address?.name).toBe('Münchner Wohnen Nord GmbH');
+      expect(full.lines[0]!.service_type_id).toBe(STYPE);
       await expect(issueInvoice(deps, inv, 't')).rejects.toThrow(/nicht vom Kunden unterschrieben/);
       expect((await billableOrders(sql)).some((o) => o.id === oid)).toBe(false);
     });

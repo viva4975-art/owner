@@ -492,6 +492,33 @@ export const CLIENT_JS = String.raw`
       else if (e.target === box) inp.focus();
     });
   });
+  // Mehrfachauswahl (z. B. Mitarbeiter im Einzelauftrag): Auswahlliste mit Suche fügt einen Chip hinzu, × entfernt
+  Array.prototype.forEach.call(document.querySelectorAll('[data-multi]'), function (box) {
+    var name = box.getAttribute('data-multi'), sel = box.querySelector('select');
+    if (!sel) return;
+    function sync() {
+      var taken = {};
+      Array.prototype.forEach.call(box.querySelectorAll('input[type=hidden]'), function (h) { taken[h.value] = 1; });
+      Array.prototype.forEach.call(sel.options, function (o) { if (o.value) o.disabled = !!taken[o.value]; });
+    }
+    sel.addEventListener('change', function () {
+      var o = sel.options[sel.selectedIndex];
+      if (!o || !o.value) return;
+      var c = document.createElement('span'); c.className = 'chip'; c.textContent = o.getAttribute('data-label') || o.textContent;
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = '×'; b.setAttribute('aria-label', 'entfernen');
+      var h = document.createElement('input'); h.type = 'hidden'; h.name = name; h.value = o.value;
+      c.appendChild(b); c.appendChild(h); box.querySelector('.multi-chips').appendChild(c);
+      sel.value = ''; if (sel._cbLabel) sel._cbLabel(); sync();
+      box.closest('form') && box.closest('form').dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    box.addEventListener('click', function (e) {
+      if (e.target.tagName === 'BUTTON' && e.target.parentNode.classList.contains('chip')) {
+        e.target.parentNode.remove(); sync();
+        box.closest('form') && box.closest('form').dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    });
+    sync();
+  });
   // Globale Suche: Vorschau unter dem Suchfeld (wie Fortytools), je Bereich bis 5 Treffer
   (function () {
     var q = document.getElementById('q'); if (!q) return;

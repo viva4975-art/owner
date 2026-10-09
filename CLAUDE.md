@@ -1937,3 +1937,16 @@ Testadresse.
   das Ausstellen bis zur neuen Unterschrift. DB nur über `app.reopen` (Migration `20261117000007`).
   **Rechtlich:** Die alte Unterschrift deckt den geänderten Inhalt nicht – immer neu unterschreiben lassen.
   Tests: 471 Unit-/DB-Tests, `e2e:auftrag` grün.
+- 2026-10-09: **Einzelaufträge beim Kunden** (Ahmed: „neben Objekte, Summe sehen, keine eigene Seite“): Kunde → Reiter
+  **„Einzelaufträge“** (nach „Objekte“) mit Offen / Abgerechnet / Alle, Rechnung an, Ort, Termin, Arbeitsschein, Status,
+  Netto und **Summe** (ohne stornierte; bei „Alle“ zusätzlich „davon nicht abgerechnet“). Menüpunkt und Seite
+  `/auftraege` entfallen (leitet auf Kunden), Knopf „+ Einzelauftrag“ aus der Kundenkarte in den Reiter verschoben.
+  Auftrag-Editor: oben **„Rechnung an“** mit Name, Zusatz, z. Hd., Straße, PLZ, Ort – vorbelegt aus Objekt/Gruppe/Kunde,
+  direkt änderbar (z. B. andere Gesellschaft von Münchner Wohnen); nur Abweichungen werden gespeichert
+  (`orders.bill_address`), später über „Anschrift ändern“ am Auftrag erneut änderbar (nach der Rechnung: „Name / Adresse
+  ändern“ an der Rechnung). Anschrift gilt für Auftragsbestätigung und Rechnung. **Leistungsart je Position**
+  (z. B. Sonderreinigung) und Leistungszeitraum je Position wie im Rechnungsentwurf, gehen auf die Rechnung über.
+  **Mitarbeiter** als Suchfeld „+ Mitarbeiter hinzufügen …“ mit Chips statt Liste aller Häkchen (`data-multi` in
+  `client.ts`). Entwürfe → „Aus Einzelleistungen erstellen“: Einzelaufträge stehen jetzt unter demselben Monat des
+  Leistungszeitraums und Kunden wie die Einzelleistungen (nicht mehr als eigener Kasten). Migration `20261117000008`.
+  Tests: 471 Unit-/DB-Tests, `e2e:auftrag` 30, `e2e:vorfaktura`, `e2e:rechte`, `e2e:leistungen` grün.

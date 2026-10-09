@@ -6,7 +6,7 @@ import { FormDoc } from '../pdf/form-doc.js';
 import { renderInvoicePdf } from '../pdf/render.js';
 import { assertVersion } from './crm.js';
 import { BusinessError } from './errors.js';
-import { saveDraft } from './invoices.js';
+import { type BillAddress, applyBillAddress, saveDraft } from './invoices.js';
 import { buildBuyerSnapshot, getSeller } from './masterdata.js';
 import { ensureGeneralSite } from './fortytools-more-import.js';
 import { nextYearNumber } from './purchasing.js';
@@ -53,6 +53,8 @@ export interface Order {
   end_time: string | null;
   employee_ids: string[];
   work_report_required: boolean;
+  /** Rechnungsanschrift nur für diesen Auftrag (geht in den Rechnungsentwurf) */
+  bill_address: BillAddress | null;
   created_by: string;
   created_at: Date;
   version: number;
@@ -66,6 +68,9 @@ export interface OrderLine {
   unit_price_cents: bigint;
   net_cents: bigint;
   vat_rate_bp: number;
+  service_type_id: string | null;
+  period_start: string | null;
+  period_end: string | null;
 }
 export type OrderRow = Order & {
   customer_name: string;
@@ -96,7 +101,8 @@ export async function getOrder(sql: Sql, id: string) {
   if (!o) return undefined;
   const lines = await sql<
     OrderLine[]
-  >`select * from app.order_lines where order_id = ${id} order by position`;
+  >`select *, period_start::text as period_start, period_end::text as period_end
+      from app.order_lines where order_id = ${id} order by position`;
   return { order: o, lines };
 }
 
@@ -115,6 +121,7 @@ export interface OrderInput {
   endTime?: string | null;
   employeeIds?: string[];
   workReportRequired?: boolean;
+  billAddress?: BillAddress | null;
 }
 
 export async function saveOrder(sql: Sql, id: string, input: OrderInput, actor: string) {
@@ -148,6 +155,9 @@ export async function saveOrder(sql: Sql, id: string, input: OrderInput, actor: 
       end_time: input.endTime || null,
       employee_ids: input.employeeIds ?? [],
       work_report_required: input.workReportRequired ?? false,
+      ...(input.billAddress !== undefined
+        ? { bill_address: input.billAddress ? tx.json(input.billAddress as never) : null }
+        : {}),
     };
     if (cur) await tx`update app.orders set ${tx(row as Record<string, unknown>)} where id = ${id}`;
     else {
@@ -167,6 +177,9 @@ export async function saveOrder(sql: Sql, id: string, input: OrderInput, actor: 
           unit_price_cents: l.unitPrice,
           net_cents: l.netAmount,
           vat_rate_bp: l.vatRate,
+          service_type_id: l.serviceTypeId ?? null,
+          period_start: l.periodStart ?? null,
+          period_end: l.periodStart ? (l.periodEnd ?? l.periodStart) : null,
         })),
       )}`;
     }
@@ -251,6 +264,8 @@ export interface BillableOrder {
   net_cents: bigint;
   work_report_required: boolean;
   signed: number;
+  /** Monat des Leistungszeitraums (Ende) – wie die Einzelleistungen in den Entwürfen */
+  month: string;
 }
 
 /** Einzelaufträge, die noch nicht abgerechnet sind (Entwürfe → „Aus Einzelleistungen erstellen“). */
@@ -259,7 +274,10 @@ export async function billableOrders(sql: Sql) {
     select o.id, o.number, o.title, o.customer_id, c.name as customer_name, c.customer_no, s.name as site_name,
            o.place, o.planned_date, o.order_reference, o.status, o.net_cents, o.work_report_required,
            (select count(*)::int from app.work_reports w
-             where w.order_id = o.id and w.status = 'unterschrieben' and w.cancelled_at is null) as signed
+             where w.order_id = o.id and w.status = 'unterschrieben' and w.cancelled_at is null) as signed,
+           to_char(coalesce(o.planned_date,
+                            (select max(coalesce(l.period_end, l.period_start)) from app.order_lines l where l.order_id = o.id),
+                            (o.created_at at time zone 'Europe/Berlin')::date), 'YYYY-MM') as month
       from app.orders o join app.customers c on c.id = o.customer_id left join app.sites s on s.id = o.site_id
      where o.status in ('offen', 'in_arbeit', 'erledigt') and o.invoice_id is null
      order by c.name, o.planned_date nulls last, o.number`;
@@ -354,7 +372,7 @@ export async function renderOrderConfirmation(sql: Sql, id: string) {
     })),
   );
   const seller = await getSeller(sql);
-  const buyer = await buildBuyerSnapshot(sql, o.customer_id, o.site_id);
+  const buyer = applyBillAddress(await buildBuyerSnapshot(sql, o.customer_id, o.site_id), o.bill_address);
   const date = o.created_at.toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
   const pdf = await renderInvoicePdf(
     {
@@ -1096,6 +1114,18 @@ async function attachReports(deps: Deps, invoiceId: string, reportIds: string[],
   }
 }
 
+const minPeriod = (ls: OrderLine[]) =>
+  ls
+    .map((l) => l.period_start)
+    .filter((x): x is string => !!x)
+    .sort()[0] ?? null;
+const maxPeriod = (ls: OrderLine[]) =>
+  ls
+    .map((l) => l.period_end ?? l.period_start)
+    .filter((x): x is string => !!x)
+    .sort()
+    .at(-1) ?? null;
+
 /** Rechnungsentwurf aus Auftrag; abgeschlossene Arbeitsscheine werden angehängt. Nur einmal je Auftrag. */
 export async function orderToInvoice(deps: Deps, orderId: string, actor: string): Promise<string> {
   const { sql } = deps;
@@ -1119,8 +1149,8 @@ export async function orderToInvoice(deps: Deps, orderId: string, actor: string)
       customerId: o.customer_id,
       siteId: o.site_id,
       kind: 'invoice',
-      periodStart: o.planned_date,
-      periodEnd: o.planned_date,
+      periodStart: o.planned_date ?? minPeriod(lines),
+      periodEnd: o.planned_date ?? maxPeriod(lines),
       orderReference: o.order_reference,
       introText: `Gemäß Auftrag ${o.number} („${o.title}“)${o.place ? `, Leistungsort ${o.place},` : ''} berechnen wir:`,
       closingText: null,
@@ -1131,7 +1161,10 @@ export async function orderToInvoice(deps: Deps, orderId: string, actor: string)
         unitCode: l.unit_code,
         unitPrice: l.unit_price_cents as Cents,
         vatRate: l.vat_rate_bp,
+        serviceTypeId: l.service_type_id,
+        ...(l.period_start ? { periodStart: l.period_start, periodEnd: l.period_end ?? l.period_start } : {}),
       })),
+      ...(o.bill_address ? { billAddress: o.bill_address } : {}),
     },
     actor,
   );

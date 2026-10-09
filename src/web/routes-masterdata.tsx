@@ -1,3 +1,5 @@
+import { CustomerOrders } from './routes-orders.js';
+import { listOrders } from '../services/orders.js';
 import { STARTUP_STEPS, createStartupPlan } from '../services/site-startup.js';
 import { randomUUID } from 'node:crypto';
 import { listWordTemplates } from '../services/word-templates.js';
@@ -303,6 +305,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
              (select count(*)::int from app.open_items where customer_id = ${id} and open_cents <> 0)
              + (select count(*)::int from app.legacy_open_items where customer_id = ${id} and open_cents <> 0) as "openItems",
              (select count(*)::int from app.offers where customer_id = ${id}) as offers,
+             (select count(*)::int from app.orders where customer_id = ${id} and status <> 'storniert') as orders,
              (select count(*)::int from app.dunnings where customer_id = ${id}) as dunnings,
              (select count(*)::int from app.file_links l join app.files f on f.id = l.file_id
                where l.entity_type = 'customer' and l.entity_id = ${id} and f.status = 'complete') as files`;
@@ -587,6 +590,17 @@ export function registerMasterdataRoutes(ctx: Ctx) {
         </div>
         <SiteTable sites={await listSites(sql, cust.id)} />
       </>
+    )),
+  );
+
+  // Einzelaufträge (Ahmed 09.10.: neben Objekten, mit Summe – keine eigene Seite)
+  app.get(`/kunden/:id{${UUID}}/auftraege`, (c) =>
+    customerPage(c, 'auftraege', async (cust) => (
+      <CustomerOrders
+        customerId={cust.id}
+        rows={await listOrders(sql, { customerId: cust.id })}
+        status={c.req.query('status') ?? ''}
+      />
     )),
   );
 

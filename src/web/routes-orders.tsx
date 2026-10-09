@@ -5,8 +5,10 @@ import { todayBerlin } from '../domain/invoice/calc.js';
 import { UNIT_LABELS } from '../domain/invoice/types.js';
 import { parseQuantity } from '../domain/money/money.js';
 import { BusinessError } from '../services/errors.js';
-import { listCustomers, listSites } from '../services/masterdata.js';
+import { buildBuyerSnapshot, listCustomers, listServiceTypes, listSites } from '../services/masterdata.js';
+import { type BillAddress, parseBillAddress } from '../services/invoices.js';
 import {
+  type OrderRow,
   type OrderStatus,
   type WorkReportRow,
   type WorkReportStatus,
@@ -20,7 +22,6 @@ import {
   executionNotes,
   getOrder,
   getWorkReport,
-  listOrders,
   listWorkReports,
   orderToInvoice,
   renderOrderConfirmation,
@@ -42,7 +43,7 @@ import { type EditorLine, LineEditor, toEditorLine } from './pages-invoices.js';
 import { canAccess } from './permissions.js';
 
 const versionOf = (v: unknown) => (typeof v === 'string' && v !== '' ? Number(v) : null);
-const ORDER_CLASS: Record<OrderStatus, string> = {
+export const ORDER_CLASS: Record<OrderStatus, string> = {
   offen: 'draft',
   in_arbeit: 'info',
   erledigt: 'ok',
@@ -180,104 +181,162 @@ export const WorkReportTable: FC<{ rows: WorkReportRow[]; select?: boolean }> = 
   </div>
 );
 
+/** Einzelaufträge eines Kunden (Reiter beim Kunden) mit Summen. */
+export const CustomerOrders: FC<{ customerId: string; rows: OrderRow[]; status: string }> = ({
+  customerId,
+  rows: all,
+  status,
+}) => {
+  const open = (o: OrderRow) => ['offen', 'in_arbeit', 'erledigt'].includes(o.status);
+  const rows =
+    status === 'alle'
+      ? all
+      : status === 'abgerechnet'
+        ? all.filter((o) => o.status === 'abgerechnet')
+        : all.filter(open);
+  const sum = (l: OrderRow[]) =>
+    l.filter((o) => o.status !== 'storniert').reduce((s, o) => s + o.net_cents, 0n);
+  const base = `/kunden/${customerId}/auftraege`;
+  const chip = (key: string, label: string, n: number) => (
+    <a class={status === key ? 'on' : ''} href={key ? `${base}?status=${key}` : base}>
+      {label} <span class="n">{n}</span>
+    </a>
+  );
+  return (
+    <>
+      <div class="actions" style="margin-top:0">
+        <div class="chips" style="margin:0">
+          {chip('', 'Offen', all.filter(open).length)}
+          {chip('abgerechnet', 'Abgerechnet', all.filter((o) => o.status === 'abgerechnet').length)}
+          {chip('alle', 'Alle', all.length)}
+        </div>
+        <a class="btn sm" href={`/auftraege/neu?kunde=${customerId}`} style="margin-left:auto">
+          <Icon name="plus" /> Einzelauftrag anlegen
+        </a>
+      </div>
+      <div class="tbl">
+        <table>
+          <thead>
+            <tr>
+              <th>Nr.</th>
+              <th>Titel</th>
+              <th>Rechnung an / Ort</th>
+              <th>Termin</th>
+              <th class="r">Arbeitsschein</th>
+              <th>Status</th>
+              <th class="r">Netto</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr>
+                <td colspan={7}>
+                  <div class="empty">Keine Einzelaufträge.</div>
+                </td>
+              </tr>
+            )}
+            {rows.map((o) => (
+              <tr>
+                <td>
+                  <a href={`/auftraege/${o.id}`}>
+                    <b>{o.number}</b>
+                  </a>
+                </td>
+                <td>{o.title}</td>
+                <td>
+                  {o.bill_address ? o.bill_address.name : <span class="mut">wie Kunde</span>}
+                  {(o.site_name || o.place) && <div class="small mut">{o.site_name ?? o.place}</div>}
+                </td>
+                <td>{dateDe(o.planned_date)}</td>
+                <td class="r">{o.work_report_required || o.reports ? `${o.signed}/${o.reports}` : '–'}</td>
+                <td>
+                  <span class={`badge ${ORDER_CLASS[o.status]}`}>{ORDER_STATUS[o.status]}</span>
+                  {o.invoice_id && (
+                    <div class="small">
+                      <a href={`/rechnungen/${o.invoice_id}`}>Rechnung</a>
+                    </div>
+                  )}
+                </td>
+                <td class="r">{euro(o.net_cents)}</td>
+              </tr>
+            ))}
+          </tbody>
+          {rows.length > 0 && (
+            <tfoot>
+              <tr>
+                <td colspan={6}>
+                  <b>
+                    Summe ({rows.filter((o) => o.status !== 'storniert').length} Aufträge, ohne stornierte)
+                  </b>
+                </td>
+                <td class="r">
+                  <b>{euro(sum(rows))}</b>
+                </td>
+              </tr>
+              {status === 'alle' && (
+                <tr>
+                  <td colspan={6} class="mut">
+                    davon noch nicht abgerechnet
+                  </td>
+                  <td class="r">{euro(sum(all.filter(open)))}</td>
+                </tr>
+              )}
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </>
+  );
+};
+
 export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
   const { sql, env } = deps;
 
+  /** Standard-Anschrift (Objekt/Gruppe/Kunde) bzw. die eigene des Auftrags. */
+  const orderAddress = async (own: BillAddress | null, customerId: string, siteId: string | null) => {
+    if (own) return own;
+    const empty: BillAddress = {
+      name: '',
+      name2: null,
+      contactName: null,
+      street: '',
+      postalCode: '',
+      city: '',
+    };
+    if (!customerId) return empty;
+    const b = await buildBuyerSnapshot(sql, customerId, siteId, null).catch(() => null);
+    return b
+      ? {
+          name: b.name,
+          name2: b.name2,
+          contactName: b.contactName,
+          street: b.street,
+          postalCode: b.postalCode,
+          city: b.city,
+        }
+      : empty;
+  };
+  /** Eingegebene Anschrift; gleich der Standard-Anschrift → null (folgt dann den Kundendaten). */
+  const chosenAddress = async (b: Parameters<typeof str>[0]) => {
+    if (typeof b.bill_name !== 'string') return null;
+    const a = parseBillAddress(b as Record<string, unknown>);
+    const customerId = str(b, 'customer_id') ?? '';
+    const d = await orderAddress(null, customerId, str(b, 'site_id'));
+    const same = (x: string | null, y: string | null) => (x ?? '').trim() === (y ?? '').trim();
+    return same(a.name, d.name) &&
+      same(a.name2, d.name2) &&
+      same(a.contactName, d.contactName) &&
+      same(a.street, d.street) &&
+      same(a.postalCode, d.postalCode) &&
+      same(a.city, d.city)
+      ? null
+      : a;
+  };
+
   // ================================================================== Aufträge
 
-  app.get('/auftraege', async (c) => {
-    const st = c.req.query('status') as OrderStatus | 'alle' | undefined;
-    const all = await listOrders(sql);
-    const rows =
-      st === 'alle'
-        ? all
-        : st && st in ORDER_STATUS
-          ? all.filter((o) => o.status === st)
-          : all.filter((o) => ['offen', 'in_arbeit', 'erledigt'].includes(o.status));
-    const tabs: Tab[] = [
-      {
-        key: '',
-        label: 'Offen',
-        href: '/auftraege',
-        count: all.filter((o) => ['offen', 'in_arbeit', 'erledigt'].includes(o.status)).length,
-      },
-      {
-        key: 'erledigt',
-        label: 'Erledigt, abzurechnen',
-        href: '/auftraege?status=erledigt',
-        count: all.filter((o) => o.status === 'erledigt').length,
-      },
-      {
-        key: 'abgerechnet',
-        label: 'Abgerechnet',
-        href: '/auftraege?status=abgerechnet',
-        count: all.filter((o) => o.status === 'abgerechnet').length,
-      },
-      { key: 'alle', label: 'Alle', href: '/auftraege?status=alle', count: all.length },
-    ];
-    return page(
-      c,
-      'Einzelaufträge',
-      'rechnungen',
-      <>
-        <PageHead title="Einzelaufträge">
-          <a class="btn" href={`/auftraege/${randomUUID()}/bearbeiten`} style="margin-left:auto">
-            <Icon name="plus" /> Einzelauftrag anlegen
-          </a>
-        </PageHead>
-        <Tabs tabs={tabs} active={st ?? ''} />
-        <div class="tbl">
-          <table>
-            <thead>
-              <tr>
-                <th>Nr.</th>
-                <th>Titel</th>
-                <th>Kunde / Objekt</th>
-                <th>Termin</th>
-                <th class="r">Netto</th>
-                <th class="r">Arbeitsscheine</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && (
-                <tr>
-                  <td colspan={7}>
-                    <div class="empty">Keine Aufträge.</div>
-                  </td>
-                </tr>
-              )}
-              {rows.map((o) => (
-                <tr>
-                  <td>
-                    <a href={`/auftraege/${o.id}`}>
-                      <b>{o.number}</b>
-                    </a>
-                  </td>
-                  <td>{o.title}</td>
-                  <td>
-                    <a href={`/kunden/${o.customer_id}`}>{o.customer_name}</a>
-                    {o.site_name && <div class="small mut">{o.site_name}</div>}
-                  </td>
-                  <td>
-                    {dateDe(o.planned_date)}
-                    {o.place && <div class="small mut">{o.place}</div>}
-                  </td>
-                  <td class="r">{euro(o.net_cents)}</td>
-                  <td class="r">
-                    {o.signed}/{o.reports}
-                  </td>
-                  <td>
-                    <span class={`badge ${ORDER_CLASS[o.status]}`}>{ORDER_STATUS[o.status]}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </>,
-    );
-  });
+  // Keine eigene Seite mehr (Ahmed 09.10.): Einzelaufträge stehen beim Kunden (Reiter „Einzelaufträge“)
+  app.get('/auftraege', (c) => c.redirect('/kunden'));
 
   app.get('/auftraege/neu', (c) => {
     const k = c.req.query('kunde');
@@ -305,6 +364,8 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
          order by last_name, first_name`,
     ]);
     const chosen = new Set(o?.employee_ids ?? []);
+    const addr = await orderAddress(o?.bill_address ?? null, customerId, siteId || null);
+    const types = await listServiceTypes(sql);
     const lines: EditorLine[] = (data?.lines ?? []).map((l) =>
       toEditorLine({ ...l, source_service_id: null } as unknown as Parameters<typeof toEditorLine>[0]),
     );
@@ -315,7 +376,16 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
       <>
         <PageHead
           title={o ? `Auftrag ${o.number} bearbeiten` : 'Neuer Einzelauftrag'}
-          crumbs={[['Einzelaufträge', '/auftraege']]}
+          crumbs={
+            customerId
+              ? [
+                  [
+                    customers.find((k) => k.id === customerId)?.name ?? 'Kunde',
+                    `/kunden/${customerId}/auftraege`,
+                  ],
+                ]
+              : []
+          }
         />
         <form method="get" action={`/auftraege/${id}/bearbeiten`} class="card">
           <div class="grid">
@@ -353,6 +423,48 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
             <input type="hidden" name="customer_id" value={customerId} />
             <input type="hidden" name="site_id" value={siteId} />
             <input type="hidden" name="offer_id" value={o?.offer_id ?? ''} />
+            <h2 id="anschrift" style="margin-top:0">
+              Rechnung an
+            </h2>
+            <div class="small mut" style="margin-bottom:8px">
+              Vorbelegt aus {siteId ? 'Objekt/Rechnungsgruppe' : 'den Kundendaten'} – hier direkt ändern, z.
+              B. für eine andere Gesellschaft. Gilt nur für diesen Auftrag und seine Rechnung.
+              {o?.bill_address && <b> Eigene Anschrift hinterlegt.</b>}
+            </div>
+            <div class="grid">
+              <div style="grid-column:1/-1">
+                <label for="bill_name">Name / Firma</label>
+                <input id="bill_name" name="bill_name" value={addr.name} required />
+              </div>
+              <div style="grid-column:1/-1">
+                <label for="bill_name2">Zusatz</label>
+                <input id="bill_name2" name="bill_name2" value={addr.name2 ?? ''} />
+              </div>
+              <div style="grid-column:1/-1">
+                <label for="bill_contact">z. Hd.</label>
+                <input id="bill_contact" name="bill_contact" value={addr.contactName ?? ''} />
+              </div>
+              <div style="grid-column:1/-1">
+                <label for="bill_street">Straße</label>
+                <input id="bill_street" name="bill_street" value={addr.street} required />
+              </div>
+              <div>
+                <label for="bill_postal_code">PLZ</label>
+                <input
+                  id="bill_postal_code"
+                  name="bill_postal_code"
+                  value={addr.postalCode}
+                  required
+                  pattern="[0-9]{5}"
+                  inputmode="numeric"
+                />
+              </div>
+              <div>
+                <label for="bill_city">Ort</label>
+                <input id="bill_city" name="bill_city" value={addr.city} required />
+              </div>
+            </div>
+            <h2>Auftrag</h2>
             <div class="grid">
               <div style="grid-column:1/-1">
                 <label for="title">Titel</label>
@@ -404,27 +516,30 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                 </div>
               )}
               <div style="grid-column:1/-1">
-                <label>Mitarbeiter / Vorarbeiter</label>
-                <input
-                  type="search"
-                  placeholder="Name oder Personalnummer"
-                  data-filter-list=".au-staff label"
-                  style="max-width:320px"
-                />
-                <div
-                  class="au-staff"
-                  style="max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin-top:6px"
-                >
-                  {staff.map((e) => (
-                    <label style="display:block;font-weight:400">
-                      <input type="checkbox" name="employee_ids" value={e.id} checked={chosen.has(e.id)} />{' '}
-                      {e.name}{' '}
-                      <span class="small mut">
-                        {e.personnel_no}
-                        {e.lead && ' · Vorarbeiter/Objektleitung'}
-                      </span>
-                    </label>
-                  ))}
+                <label for="au-staff">Mitarbeiter / Vorarbeiter</label>
+                <div data-multi="employee_ids">
+                  <div class="multi-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+                    {staff
+                      .filter((e) => chosen.has(e.id))
+                      .map((e) => (
+                        <span class="chip">
+                          {e.name}
+                          <button type="button" aria-label="entfernen">
+                            ×
+                          </button>
+                          <input type="hidden" name="employee_ids" value={e.id} />
+                        </span>
+                      ))}
+                  </div>
+                  <select id="au-staff" style="max-width:420px">
+                    <option value="">+ Mitarbeiter hinzufügen …</option>
+                    {staff.map((e) => (
+                      <option value={e.id} data-label={e.name}>
+                        {e.name} · {e.personnel_no}
+                        {e.lead ? ' · Vorarbeiter/Objektleitung' : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div class="small mut">
                   Der Termin erscheint in der App der Eingeteilten und im Kalender-Abo.
@@ -449,9 +564,12 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
               </textarea>
             </div>
             <h2>Positionen (für die Abrechnung)</h2>
-            <LineEditor lines={lines} />
+            <LineEditor lines={lines} types={types} />
             <div class="formfoot">
-              <a class="btn sec" href={o ? `/auftraege/${id}` : '/auftraege'}>
+              <a
+                class="btn sec"
+                href={o ? `/auftraege/${id}` : customerId ? `/kunden/${customerId}/auftraege` : '/kunden'}
+              >
                 Abbrechen
               </a>
               <button class="btn">Auftrag speichern</button>
@@ -483,6 +601,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
         endTime: str(b, 'end_time'),
         employeeIds: arr(b, 'employee_ids').filter((x) => /^[0-9a-f-]{36}$/.test(x)),
         workReportRequired: str(b, 'work_report_required') === '1',
+        billAddress: await chosenAddress(b),
       },
       c.get('actor'),
     );
@@ -494,12 +613,14 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
     const data = await getOrder(sql, id);
     if (!data) return c.redirect(`/auftraege/${id}/bearbeiten`);
     const { order: o, lines } = data;
-    const [reports, files, team] = await Promise.all([
+    const [reports, files, team, [cust]] = await Promise.all([
       listWorkReports(sql, { orderId: id }),
       listFiles(sql, { type: 'order', id }),
       sql<{ name: string }[]>`select first_name || ' ' || last_name as name from app.employees
                                where id = any(${o.employee_ids}::uuid[]) order by last_name`,
+      sql<{ name: string }[]>`select name from app.customers where id = ${o.customer_id}`,
     ]);
+    const custName = cust?.name ?? 'Kunde';
     const done = !['abgerechnet', 'storniert'].includes(o.status);
     const post = (path: string, label: Child, cls = 'sec', confirm?: string) => (
       <form
@@ -515,7 +636,11 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
       `Auftrag ${o.number}`,
       'rechnungen',
       <>
-        <PageHead title={o.title} no={`Auftrag ${o.number}`} crumbs={[['Einzelaufträge', '/auftraege']]}>
+        <PageHead
+          title={o.title}
+          no={`Auftrag ${o.number}`}
+          crumbs={[[custName, `/kunden/${o.customer_id}/auftraege`]]}
+        >
           <span class={`badge ${ORDER_CLASS[o.status]}`}>{ORDER_STATUS[o.status]}</span>
         </PageHead>
         <div class="actions" style="margin-top:-8px">
@@ -611,7 +736,26 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
               <dl class="kv">
                 <dt>Kunde</dt>
                 <dd>
-                  <a href={`/kunden/${o.customer_id}`}>Kunde öffnen</a>
+                  <a href={`/kunden/${o.customer_id}`}>{custName}</a>
+                </dd>
+                <dt>Rechnung an</dt>
+                <dd>
+                  {o.bill_address ? (
+                    <>
+                      {o.bill_address.name}
+                      {o.bill_address.name2 && <>, {o.bill_address.name2}</>}
+                      <div class="small mut">
+                        {o.bill_address.street}, {o.bill_address.postalCode} {o.bill_address.city}
+                      </div>
+                    </>
+                  ) : (
+                    <span class="mut">wie Kunde/Objekt</span>
+                  )}
+                  {done && (
+                    <div class="small">
+                      <a href={`/auftraege/${id}/bearbeiten#anschrift`}>Anschrift ändern</a>
+                    </div>
+                  )}
                 </dd>
                 <dt>Objekt</dt>
                 <dd>{o.site_id ? <a href={`/objekte/${o.site_id}`}>Objekt öffnen</a> : '–'}</dd>

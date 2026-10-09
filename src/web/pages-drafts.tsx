@@ -180,12 +180,6 @@ export const ExecutePanel: FC<{
 
 type DraftRow = InvoiceRow & { customer_name: string; customer_no: string; site_name: string | null };
 
-const byCustomer = <T extends { customer_id: string }>(rows: T[]) => {
-  const m = new Map<string, T[]>();
-  for (const r of rows) m.set(r.customer_id, [...(m.get(r.customer_id) ?? []), r]);
-  return [...m.values()];
-};
-
 /** Rechts: vorgemerkte Einzelleistungen je Kunde → Objekt mit Betrag (kompakt, aufklappbar). */
 const MONTHS = [
   'Januar',
@@ -212,144 +206,151 @@ const byMonth = (rows: OpenExecution[]) => {
   return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0]));
 };
 
-const OrdersPart: FC<{ orders: BillableOrder[] }> = ({ orders }) => {
-  const byCust = new Map<string, BillableOrder[]>();
-  for (const o of orders) byCust.set(o.customer_id, [...(byCust.get(o.customer_id) ?? []), o]);
+const OrderLine: FC<{ o: BillableOrder; g: string }> = ({ o, g }) => {
+  const waits = o.work_report_required && o.signed === 0;
   return (
-    <details class="ex-month" open>
-      <summary>
-        <input type="checkbox" data-group="auftrag|" aria-label="alle Einzelaufträge" />
-        <span class="ex-name">
-          Einzelaufträge <span class="faint">({orders.length})</span>
+    <label class="ex-line">
+      <input type="checkbox" name="order" value={o.id} data-row data-g={g} />
+      <span class="ex-desc">
+        <a href={`/auftraege/${o.id}`}>{o.number}</a> {o.title}
+        <span class="faint">
+          {' '}
+          · {o.planned_date ? formatDateDe(o.planned_date) : 'ohne Termin'}
+          {o.place || o.site_name ? ` · ${o.place ?? o.site_name}` : ''}
+          {o.order_reference ? ` · Best.-Nr. ${o.order_reference}` : ''}
         </span>
-        <b class="num">{euro(orders.reduce((a, o) => a + o.net_cents, 0n))}</b>
-      </summary>
-      {[...byCust.values()].map((list) => {
-        const c = list[0]!;
-        const g = `auftrag|${c.customer_id}`;
-        return (
-          <details class="ex-cust">
-            <summary>
-              <input type="checkbox" data-group={g} aria-label={`alle von ${c.customer_name}`} />
-              <span class="ex-name">
-                {c.customer_name} <span class="faint">({list.length})</span>
-              </span>
-              <b class="num">{euro(list.reduce((a, o) => a + o.net_cents, 0n))}</b>
-            </summary>
-            {list.map((o) => {
-              const waits = o.work_report_required && o.signed === 0;
-              return (
-                <label class="ex-line">
-                  <input type="checkbox" name="order" value={o.id} data-row data-g={g} />
-                  <span class="ex-desc">
-                    <a href={`/auftraege/${o.id}`}>{o.number}</a> {o.title}
-                    <span class="faint">
-                      {' '}
-                      · {o.planned_date ? formatDateDe(o.planned_date) : 'ohne Termin'}
-                      {o.place || o.site_name ? ` · ${o.place ?? o.site_name}` : ''}
-                      {o.order_reference ? ` · Best.-Nr. ${o.order_reference}` : ''}
-                    </span>
-                    {waits && (
-                      <span class="small" style="color:var(--warn)">
-                        {' '}
-                        · Arbeitsschein fehlt
-                      </span>
-                    )}
-                  </span>
-                  <span class="num">{euro(o.net_cents)}</span>
-                </label>
-              );
-            })}
-          </details>
-        );
-      })}
-    </details>
+        {waits && (
+          <span class="small" style="color:var(--warn)">
+            {' '}
+            · Arbeitsschein fehlt
+          </span>
+        )}
+      </span>
+      <span class="num">{euro(o.net_cents)}</span>
+    </label>
   );
 };
 
+/**
+ * Rechts: vorgemerkte Einzelleistungen und offene Einzelaufträge – je Monat des Leistungszeitraums (Ende), darin je
+ * Kunde (Ahmed 09.10.: Einzelaufträge nicht separat, sondern unter dem Leistungszeitraum).
+ */
 export const OpenExecutionsBox: FC<{ rows: OpenExecution[]; today: string; orders?: BillableOrder[] }> = ({
   rows,
   orders = [],
-}) => (
-  <section class="card dr-side" data-select-scope>
-    <h3>Aus Einzelleistungen erstellen</h3>
-    {rows.length === 0 && orders.length === 0 ? (
-      <p class="mut small" style="margin:0">
-        Nichts vorgemerkt. Leistungen „je Ausführung“ verrichten Sie am Objekt (Reiter „Leistungen &amp;
-        Preise“), Einzelaufträge legen Sie beim Kunden an.
-      </p>
-    ) : (
-      <form method="post" action="/rechnungen/entwuerfe/aus-ausfuehrungen">
-        {orders.length > 0 && <OrdersPart orders={orders} />}
-        {byMonth(rows).map(([month, mrows], mi) => (
-          <details class="ex-month" open={mi === 0}>
-            <summary>
-              <input type="checkbox" data-group={`${month}|`} aria-label={`alle aus ${monthLabel(month)}`} />
-              <span class="ex-name">
-                {monthLabel(month)} <span class="faint">({mrows.length})</span>
-              </span>
-              <b class="num">
-                {euro(mrows.reduce((a, e) => a + amount(e.quantity_milli, e.unit_price_cents), 0n))}
-              </b>
-            </summary>
-            {byCustomer(mrows).map((list) => {
-              const c = list[0]!;
-              const g = `${month}|${c.customer_id}`;
-              const sites = new Map<string, OpenExecution[]>();
-              for (const e of list) sites.set(e.site_id, [...(sites.get(e.site_id) ?? []), e]);
-              const sum = (l: OpenExecution[]) =>
-                l.reduce((a, e) => a + amount(e.quantity_milli, e.unit_price_cents), 0n);
-              return (
-                <details class="ex-cust">
-                  <summary>
-                    <input type="checkbox" data-group={g} aria-label={`alle von ${c.customer_name}`} />
-                    <span class="ex-name">
-                      {c.customer_name} <span class="faint">({list.length})</span>
-                    </span>
-                    <b class="num">{euro(sum(list))}</b>
-                  </summary>
-                  {[...sites.values()].map((sl) => {
-                    const s0 = sl[0]!;
-                    return (
-                      <div class="ex-site">
-                        <div class="ex-site-h">
-                          <a href={`/objekte/${s0.site_id}/leistungen`}>{s0.site_name}</a>{' '}
-                          <span class="faint small">{s0.site_no}</span>
-                          <span class="num small">{euro(sum(sl))}</span>
-                        </div>
-                        {sl.map((e) => (
-                          <label class="ex-line">
-                            <input type="checkbox" name="exec" value={e.id} data-row data-g={g} />
-                            <span class="ex-desc">
-                              {e.description}
-                              <span class="faint"> · {range(e.date_from, e.date_to)}</span>
-                            </span>
-                            <span class="num">{euro(amount(e.quantity_milli, e.unit_price_cents))}</span>
-                          </label>
-                        ))}
-                      </div>
-                    );
-                  })}
-                </details>
-              );
-            })}
-          </details>
-        ))}
-        <div class="dr-side-f">
-          <label for="ex_date">Rechnungsdatum</label>
-          <input id="ex_date" type="date" name="invoice_date" title="leer = Tag des Ausstellens" />
-          <button class="btn" data-needs-selection>
-            Entwürfe erstellen (<span data-count>0</span>)
-          </button>
-        </div>
-        <p class="small faint" style="margin:6px 0 0">
-          Je Objekt bzw. Rechnungsgruppe ein Entwurf, je Einzelauftrag eine Rechnung.
+}) => {
+  const execMonths = new Map(byMonth(rows));
+  const orderMonths = new Map<string, BillableOrder[]>();
+  for (const o of orders) orderMonths.set(o.month, [...(orderMonths.get(o.month) ?? []), o]);
+  const months = [...new Set([...execMonths.keys(), ...orderMonths.keys()])].sort((x, y) =>
+    y.localeCompare(x),
+  );
+  const sumE = (l: OpenExecution[]) =>
+    l.reduce((a, e) => a + amount(e.quantity_milli, e.unit_price_cents), 0n);
+  const sumO = (l: BillableOrder[]) => l.reduce((a, o) => a + o.net_cents, 0n);
+  return (
+    <section class="card dr-side" data-select-scope>
+      <h3>Aus Einzelleistungen erstellen</h3>
+      {months.length === 0 ? (
+        <p class="mut small" style="margin:0">
+          Nichts vorgemerkt. Leistungen „je Ausführung“ verrichten Sie am Objekt (Reiter „Leistungen &amp;
+          Preise“), Einzelaufträge legen Sie beim Kunden an.
         </p>
-      </form>
-    )}
-    <script dangerouslySetInnerHTML={{ __html: SELECT_JS }} />
-  </section>
-);
+      ) : (
+        <form method="post" action="/rechnungen/entwuerfe/aus-ausfuehrungen">
+          {months.map((month, mi) => {
+            const mrows = execMonths.get(month) ?? [];
+            const mord = orderMonths.get(month) ?? [];
+            const custIds = [
+              ...new Set([...mrows.map((e) => e.customer_id), ...mord.map((o) => o.customer_id)]),
+            ];
+            const custName = (id: string) =>
+              mrows.find((e) => e.customer_id === id)?.customer_name ??
+              mord.find((o) => o.customer_id === id)?.customer_name ??
+              '';
+            custIds.sort((x, y) => custName(x).localeCompare(custName(y), 'de'));
+            return (
+              <details class="ex-month" open={mi === 0}>
+                <summary>
+                  <input
+                    type="checkbox"
+                    data-group={`${month}|`}
+                    aria-label={`alle aus ${monthLabel(month)}`}
+                  />
+                  <span class="ex-name">
+                    {monthLabel(month)} <span class="faint">({mrows.length + mord.length})</span>
+                  </span>
+                  <b class="num">{euro(sumE(mrows) + sumO(mord))}</b>
+                </summary>
+                {custIds.map((cid) => {
+                  const list = mrows.filter((e) => e.customer_id === cid);
+                  const ol = mord.filter((o) => o.customer_id === cid);
+                  const g = `${month}|${cid}`;
+                  const sites = new Map<string, OpenExecution[]>();
+                  for (const e of list) sites.set(e.site_id, [...(sites.get(e.site_id) ?? []), e]);
+                  return (
+                    <details class="ex-cust">
+                      <summary>
+                        <input type="checkbox" data-group={g} aria-label={`alle von ${custName(cid)}`} />
+                        <span class="ex-name">
+                          {custName(cid)} <span class="faint">({list.length + ol.length})</span>
+                        </span>
+                        <b class="num">{euro(sumE(list) + sumO(ol))}</b>
+                      </summary>
+                      {[...sites.values()].map((sl) => {
+                        const s0 = sl[0]!;
+                        return (
+                          <div class="ex-site">
+                            <div class="ex-site-h">
+                              <a href={`/objekte/${s0.site_id}/leistungen`}>{s0.site_name}</a>{' '}
+                              <span class="faint small">{s0.site_no}</span>
+                              <span class="num small">{euro(sumE(sl))}</span>
+                            </div>
+                            {sl.map((e) => (
+                              <label class="ex-line">
+                                <input type="checkbox" name="exec" value={e.id} data-row data-g={g} />
+                                <span class="ex-desc">
+                                  {e.description}
+                                  <span class="faint"> · {range(e.date_from, e.date_to)}</span>
+                                </span>
+                                <span class="num">{euro(amount(e.quantity_milli, e.unit_price_cents))}</span>
+                              </label>
+                            ))}
+                          </div>
+                        );
+                      })}
+                      {ol.length > 0 && (
+                        <div class="ex-site">
+                          <div class="ex-site-h">
+                            Einzelaufträge <span class="num small">{euro(sumO(ol))}</span>
+                          </div>
+                          {ol.map((o) => (
+                            <OrderLine o={o} g={g} />
+                          ))}
+                        </div>
+                      )}
+                    </details>
+                  );
+                })}
+              </details>
+            );
+          })}
+          <div class="dr-side-f">
+            <label for="ex_date">Rechnungsdatum</label>
+            <input id="ex_date" type="date" name="invoice_date" title="leer = Tag des Ausstellens" />
+            <button class="btn" data-needs-selection>
+              Entwürfe erstellen (<span data-count>0</span>)
+            </button>
+          </div>
+          <p class="small faint" style="margin:6px 0 0">
+            Je Objekt bzw. Rechnungsgruppe ein Entwurf, je Einzelauftrag eine Rechnung.
+          </p>
+        </form>
+      )}
+      <script dangerouslySetInnerHTML={{ __html: SELECT_JS }} />
+    </section>
+  );
+};
 
 export const DRAFTS_CSS = `
 .dr-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}

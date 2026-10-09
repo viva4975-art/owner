@@ -58,8 +58,28 @@ const row = p.locator('#lines tbody tr').first();
 await row.locator('[name=desc]').fill('Grundreinigung Turnhalle pauschal');
 await row.locator('[name=qty]').fill('1');
 await row.locator('[name=price]').fill('1.250,00');
+await p.fill('#bill_name', 'Andere Gesellschaft GmbH (E2E)');
+await p.fill('#planned_date', '2026-12-01');
+const staffName = await p.evaluate(() => {
+  const s = document.getElementById('au-staff');
+  const o = [...s.options].find((x) => x.value);
+  s.value = o.value;
+  s.dispatchEvent(new s.ownerDocument.defaultView.Event('change', { bubbles: true }));
+  return o.getAttribute('data-label');
+});
+check('Mitarbeiter als Chip übernommen', (await p.locator('[data-multi] .chip').count()) === 1);
 await p.click('button:has-text("Auftrag speichern")');
 await p.waitForLoadState();
+const detail = await p.locator('body').innerText();
+check('Eigene Rechnungsanschrift gespeichert', detail.includes('Andere Gesellschaft GmbH (E2E)'));
+check('Mitarbeiter im Team', detail.includes(staffName.split(', ')[0]));
+await p.goto(B + `/kunden/${CUSTOMER}/auftraege?status=alle`);
+const tab = await p.locator('body').innerText();
+check(
+  'Reiter Einzelaufträge beim Kunden mit Summe',
+  tab.includes('Grundreinigung Turnhalle (E2E)') && /Summe/.test(tab),
+);
+await p.goto(B + `/auftraege/${orderId}`);
 const orderNo = (await p.locator('body').innerText()).match(/AU-\d{4}-\d{4}/)?.[0];
 check('Auftragsnummer AU-JJJJ-NNNN', !!orderNo);
 const ab = await p.request.get(B + `/auftraege/${orderId}/auftragsbestaetigung.pdf`);
@@ -139,10 +159,14 @@ await p.click('button:has-text("Speichern und PDF erstellen")');
 await p.waitForLoadState();
 check(
   'abgeschlossen mit PDF (ohne Unterschrift)',
-  (await flash(p)).includes('PDF erstellt') && (await p.locator('body').innerText()).includes('Erika Beispiel'),
+  (await flash(p)).includes('PDF erstellt') &&
+    (await p.locator('body').innerText()).includes('Erika Beispiel'),
   await flash(p),
 );
-check('Knopf „Rechnung erstellen“ am Schein', (await p.locator('button:has-text("Rechnung erstellen")').count()) === 1);
+check(
+  'Knopf „Rechnung erstellen“ am Schein',
+  (await p.locator('button:has-text("Rechnung erstellen")').count()) === 1,
+);
 await p.goto(B + `/objekte/${SITE}/arbeitsscheine`);
 const box = p.locator(`input[name=report][value="${r2}"]`);
 check('in Regie-Abrechnung auswählbar', (await box.count()) === 1);
@@ -155,7 +179,10 @@ await p.waitForLoadState();
 check('Regierechnung als Entwurf', /\/rechnungen\/[0-9a-f-]{36}/.test(p.url()), p.url());
 check('Positionstext mit Arbeitsschein', (await p.locator('body').innerText()).includes('Arbeitsschein AS-'));
 // Regiestunden je Person werden zusammengefasst – Namen stehen nur im angehängten Arbeitsschein (Ahmed 09.10.)
-check('Regie ohne Namen auf der Rechnung', !(await p.locator('.lt-sheet, .sheet, body').first().innerText()).includes('– Erika Beispiel'));
+check(
+  'Regie ohne Namen auf der Rechnung',
+  !(await p.locator('.lt-sheet, .sheet, body').first().innerText()).includes('– Erika Beispiel'),
+);
 
 console.log('5. Zurück/Vor');
 await p.goBack();

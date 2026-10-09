@@ -58,7 +58,7 @@ const LINK_PAGE: Record<string, (id: string) => string> = {
   supplier: () => '/lieferanten',
   incoming_invoice: () => '/rechnungseingang',
   purchase_order: () => '/bestellungen',
-  order: () => '/auftraege',
+  order: (id) => `/auftraege/${id}`,
   work_report: () => '/arbeitsscheine',
   quality_check: () => '/qualitaet',
   inbox: () => '/transfer/dokumenteneingang',

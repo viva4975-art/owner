@@ -1835,3 +1835,28 @@ Testadresse.
   (Verknüpfung Tiefgarage-Termin wird gelöst, Fotos bleiben im Archiv); **abgeschlossene stornieren** mit Grund (bleibt
   sichtbar, Schild „storniert“, PDF mit Wasserzeichen STORNIERT, nicht abrechenbar, danach unveränderbar). Bereits
   abgerechnete: erst Rechnung stornieren bzw. Entwurf löschen. Migration `20261116000002` (Trigger erweitert).
+- 2026-10-09: **Fortytools-Zeitbericht importieren** (Ahmed: „Zeiten.csv wurde nicht erkannt“ – es ist eine Excel-Datei mit
+  Endung .csv, anderer Bericht): Transfer → Import aus Fortytools → „Artikel und erfasste Zeiten“ erkennt jetzt auch den
+  Zeitbericht (Art, Soll/Ist, Mitarbeiter als „Nachname, Vorname“, Einsatzort nur mit Namen). Einsatzzeit → freigegebene
+  Zeit (Ist), Pause = Pausen-Zeilen innerhalb der Zeit bzw. Differenz zur Netto-„Dauer“ (Fortytools zieht die geplante Pause
+  ab); Soll-Zeit → abgeleitete Einsätze (gültig ab erstem, bis letztem Vorkommen, wenn das > 2 Wochen vor Exportende liegt).
+  Mitarbeiter über alle Namensteile (mehrteilige Nachnamen anders aufgeteilt), Objekt über Namen (gleichnamig → das Objekt
+  mit Zuordnung/Einsatz der Person, sonst das erste des Kunden mit Hinweis), gekürzter Kundenname → Objekt „Allgemein“.
+  Urlaub/Krankheit/Unbezahlt → genehmigte Abwesenheiten (Tage zusammengefasst, Lücken nur über Wochenende/Feiertag),
+  Stunden je Tag aus „Dauer“ (`absence_hours`, „Krank ohne Abrechnung“ unbezahlt). Übernahme in Blöcken (~20.000 Zeilen
+  in 5 s), feste IDs → nichts doppelt; schon übernommene September-Zeiten werden erkannt. Probe mit Ahmeds Datei
+  (Jan–Sep 2026): 17.257 Zeiten, 360 Abwesenheiten, 542 Einsätze; Stunden je Monat = Datei (ohne 1013, 94 Überschneidungen).
+  Buchungen nur auf den Kunden → je Kunde Objekt „Allgemein“ (Probe: 4 neu). **Ahmed prüfen:** 301 Zeiten „Flüchtlingsunterkunft“ (zwei
+  gleichnamige Objekte Arnold-Sommerfeld-Str. 11/15) liegen auf 2010022.
+- 2026-10-09: **Lohnart „Feiertag (Entgeltfortzahlung)“** (§ 2 EFZG, fehlte bisher): geplante Einsätze an Feiertagen ohne
+  erfasste Zeit/Abwesenheit/Ausfall → bezahlte Stunden in Lohnarten und Lohnprogramm-CSV. Fortytools-Zeilen
+  „Feiertagslohnfortzahlung“ werden deshalb nicht importiert. Lohnart-Nummer unter Einstellungen → Zuschläge & Lohnarten.
+- 2026-10-09: **Einsätze Ausgetretener** zählen bis zum Austrittstag (vorher fehlte das Soll früherer Monate komplett,
+  importierte Zeiten erschienen als „ohne Einsatz“).
+- 2026-10-09: **Nachkalkulation:** importierte Zeiten zählen als Ist-Stunden (status freigegeben). Urlaub/Krank werden
+  bewusst nicht zusätzlich als Lohnkosten gerechnet – das deckt der Lohnzuschlag (26–32 %) ab; sonst doppelt.
+- 2026-10-09: **Rechnungen vor der Umstellung ohne Import-Kennzeichen** (Ahmed: „wie originale Dateien“): gleiche Adresse
+  `/rechnungen/<id>` (alte `/rechnungen/fortytools/…` leiten um), Ansicht = PDF-Blatt + Angaben/Status/Zahlung, in der
+  Rechnungsliste von Kunde/Objekt (Zähler, Monatsübersicht) zusammen mit den eigenen, „versendet“, Kunden-Offene-Posten in
+  einer Tabelle; Kästen „Frühere Rechnungen“ / „Offene Rechnungen vor der Umstellung“ entfallen. Liste beim Kunden zeigt
+  die neuesten 60 („alle anzeigen“). **§ 14c UStG bleibt:** diese Rechnungen nicht erneut versenden.

@@ -417,7 +417,10 @@ export const EntityInvoices: FC<{
   months: { month: string; net_cents: bigint; gross_cents: bigint }[];
   showSite: boolean;
   newHref: string;
-}> = ({ rows, months, showSite, newHref }) => {
+  /** ohne: nur die neuesten 60 Rechnungen, darunter „alle anzeigen“ */
+  showAll?: boolean;
+}> = ({ rows: allRows, months, showSite, newHref, showAll }) => {
+  const rows = showAll ? allRows : allRows.slice(0, 60);
   const sumNet = months.reduce((a, m) => a + m.net_cents, 0n);
   const sumGross = months.reduce((a, m) => a + m.gross_cents, 0n);
   const status = (r: EntityInvoiceRow) =>
@@ -427,11 +430,13 @@ export const EntityInvoices: FC<{
         ? ['err', 'storniert']
         : r.kind === 'cancellation' || r.kind === 'correction'
           ? ['info', r.kind === 'cancellation' ? 'Storno' : 'Korrektur']
-          : r.open_cents == null || r.open_cents <= 0n
-            ? ['ok', 'Bezahlt']
-            : r.open_cents < r.gross_cents
-              ? ['warn', 'Teilbezahlt']
-              : ['warn', 'Offen'];
+          : r.legacy && r.open_cents == null && !r.legacy_paid
+            ? ['ok', 'Ausgeglichen']
+            : r.open_cents == null || r.open_cents <= 0n
+              ? ['ok', 'Bezahlt']
+              : r.open_cents < r.gross_cents
+                ? ['warn', 'Teilbezahlt']
+                : ['warn', 'Offen'];
   return (
     <>
       <div class="actions" style="margin-top:0">
@@ -534,6 +539,13 @@ export const EntityInvoices: FC<{
               <tr>
                 <td colspan={showSite ? 8 : 7} class="mut">
                   Noch keine Rechnungen.
+                </td>
+              </tr>
+            )}
+            {rows.length < allRows.length && (
+              <tr>
+                <td colspan={showSite ? 8 : 7}>
+                  <a href="?alle=1">Alle {allRows.length} Rechnungen anzeigen</a>
                 </td>
               </tr>
             )}

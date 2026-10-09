@@ -19,12 +19,13 @@ import { monthRange } from './timesheet.js';
  */
 
 export type WageType =
-  'normal' | 'urlaub' | 'krank' | 'sonstige' | 'unbezahlt' | SurchargeKind | 'mehrarbeit';
+  'normal' | 'urlaub' | 'krank' | 'feiertag_lfz' | 'sonstige' | 'unbezahlt' | SurchargeKind | 'mehrarbeit';
 
 export const WAGE_TYPE_LABEL: Record<WageType, string> = {
   normal: 'Normalstunden',
   urlaub: 'Urlaub',
   krank: 'Krankheit (Lohnfortzahlung)',
+  feiertag_lfz: 'Feiertag (Entgeltfortzahlung)',
   sonstige: 'Sonstige bezahlte Abwesenheit',
   unbezahlt: 'Unbezahlt (Info)',
   nacht: 'Zuschlag Nachtarbeit',
@@ -185,6 +186,13 @@ export async function payrollMonth(
       select id, kind::text from app.absences where start_date <= ${to} and end_date >= ${from}`,
   ]);
   const kindOf = new Map(kinds.map((k) => [k.id, k.kind]));
+  // Feiertag (§ 2 EFZG): geplante Einsätze an Feiertagen, die nicht gearbeitet wurden und auf die keine Abwesenheit fällt
+  const holidayPay = new Map<string, number>();
+  for (const sh of await plannedShifts(sql, { from, to, ...(employeeId ? { employeeId } : {}) })) {
+    const emp = sh.plan.employee_id;
+    if (!emp || !sh.holiday || sh.entry || sh.absence || sh.exception?.kind === 'ausfall') continue;
+    holidayPay.set(emp, (holidayPay.get(emp) ?? 0) + Math.max(0, sh.minutes));
+  }
   // Vorab: geplante Einsätze nach dem Stichtag als Zeiten (Beginn/Ende in Berliner Zeit)
   const forecast: { employee_id: string; start_at: Date; end_at: Date; break_minutes: number }[] = [];
   if (cutoff) {
@@ -272,6 +280,7 @@ export async function payrollMonth(
       for (const k of SURCHARGES) m[k] += sm[k];
     }
     m.mehrarbeit = overtime.get(e.id) ?? 0;
+    m.feiertag_lfz = holidayPay.get(e.id) ?? 0;
     for (const h of absHours) {
       if (h.employee_id !== e.id) continue;
       const k = kindOf.get(h.absence_id);

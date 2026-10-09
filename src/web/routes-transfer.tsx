@@ -1048,11 +1048,7 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
                         <tr>
                           <td>
                             <a
-                              href={
-                                o.legacy
-                                  ? `/rechnungen/fortytools/${o.invoice_id}`
-                                  : `/rechnungen/${o.invoice_id}`
-                              }
+                              href={o.legacy ? `/rechnungen/${o.invoice_id}` : `/rechnungen/${o.invoice_id}`}
                             >
                               {o.number}
                             </a>

@@ -142,7 +142,7 @@ export async function openItemLedger(
             date: a.issue_date,
             label: `Korrektur ${a.number}`,
             cents: -a.gross_cents,
-            href: `/rechnungen/fortytools/${a.id}`,
+            href: `/rechnungen/${a.id}`,
           })),
         ...own.map((p) => ({
           date: p.paid_on,

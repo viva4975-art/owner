@@ -56,6 +56,7 @@ import { NEW_OPTIONS, PageHead, dateDe, euro } from './layout.js';
 import { archiveMonthZip, archiveYear } from '../services/invoice-archive.js';
 import { KIND_TITLES } from '../domain/invoice/types.js';
 import { FileArea } from './files.js';
+import { legacyInvoicePage, legacyInvoicePdf } from './routes-legacy-invoices.js';
 import { PaymentsSection } from './pages-hr-finance.js';
 import {
   type ArticleOption,
@@ -258,9 +259,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                   {m.rows.map((r) => (
                     <tr>
                       <td>
-                        <a href={r.legacy ? `/rechnungen/fortytools/${r.id}` : `/rechnungen/${r.id}`}>
-                          {r.number}
-                        </a>
+                        <a href={`/rechnungen/${r.id}`}>{r.number}</a>
                         <div class="small faint">{dateDe(r.issue_date)}</div>
                       </td>
                       <td class="small">
@@ -296,19 +295,19 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                         ) : (
                           <span class="badge ok">bezahlt</span>
                         )}
-                        {!r.legacy && (
+                        {
                           <div class="faint" style="margin-top:2px">
-                            {r.delivery === 'sent'
+                            {r.legacy || r.delivery === 'sent'
                               ? 'versendet'
                               : r.delivery === 'failed'
                                 ? 'Versand-Fehler'
                                 : 'nicht versendet'}
                           </div>
-                        )}
+                        }
                       </td>
                       <td class="small">
                         {r.legacy && (
-                          <a href={`/rechnungen/fortytools/${r.id}/pdf`} target="_blank">
+                          <a href={`/rechnungen/${r.id}/pdf`} target="_blank">
                             PDF
                           </a>
                         )}
@@ -799,13 +798,13 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     );
   };
 
-  // Rechnungen aus Fortytools haben eine eigene Ansicht (Links aus Mahnwesen/Offenen Posten führen dorthin)
+  // Rechnungen von vor der Umstellung: gleiche Adresse, eigene (nur lesende) Ansicht
   const legacyId = async (id: string) =>
     !(await sql`select 1 from app.invoices where id = ${id}`).length &&
     (await sql`select 1 from app.legacy_invoices where id = ${id}`).length > 0;
   app.get(`/rechnungen/:id{${UUID}}`, async (c) =>
     (await legacyId(c.req.param('id')))
-      ? c.redirect(`/rechnungen/fortytools/${c.req.param('id')}`)
+      ? legacyInvoicePage(sql, page, c, c.req.param('id'))
       : detail(c, c.req.param('id'), c.req.query('pruefen') === '1'),
   );
   // alte Form (POST) bleibt erreichbar, leitet aber auf die GET-Variante um
@@ -1046,7 +1045,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
   /** PDF einer Rechnung (z. B. aus den Offenen Posten): archiviertes PDF, bei Entwürfen die Vorschau. */
   app.get(`/rechnungen/:id{${UUID}}/pdf`, async (c) => {
     const id = c.req.param('id');
-    if (await legacyId(id)) return c.redirect(`/rechnungen/fortytools/${id}/pdf`);
+    if (await legacyId(id)) return legacyInvoicePdf(sql, c, id);
     const [doc] = await sql<{ id: string }[]>`
       select id from app.invoice_documents where invoice_id = ${id} and kind = 'pdf' order by created_at desc limit 1`;
     return c.redirect(doc ? `/dokumente/${doc.id}` : `/rechnungen/${id}/vorschau.pdf`);

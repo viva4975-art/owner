@@ -666,8 +666,8 @@ export async function plannedShifts(
     : [];
   // Soll zählt erst ab dem Tag, an dem der Einsatz geplant wurde, und nicht vor dem Eintritt
   // (sonst würden rückwirkend angelegte Einsätze als „fehlende Zeiten“ erscheinen).
-  const plans = await sql<(ShiftPlanRow & { effective_from: string })[]>`
-    select p.*, to_char(p.start_time, 'HH24:MI') as start_time, to_char(p.end_time, 'HH24:MI') as end_time,
+  const plans = await sql<(ShiftPlanRow & { effective_from: string; emp_exit: string | null })[]>`
+    select p.*, e.exit_date as emp_exit, to_char(p.start_time, 'HH24:MI') as start_time, to_char(p.end_time, 'HH24:MI') as end_time,
            coalesce(e.last_name || ', ' || e.first_name, 'offen') as employee_name, coalesce(e.personnel_no, '') as personnel_no,
            s.name as site_name, s.site_no,
            ${
@@ -677,7 +677,12 @@ export async function plannedShifts(
            } as effective_from
       from app.shift_plans p left join app.employees e on e.id = p.employee_id join app.sites s on s.id = p.site_id
      where p.valid_from <= ${f.to} and (p.valid_until is null or p.valid_until >= ${f.from})
-       and ${f.includeOpen ? sql`(p.employee_id is null or e.status = 'aktiv')` : sql`e.status = 'aktiv'`}
+       -- Ausgetretene: Einsätze bis zum Austrittstag bleiben sichtbar (Soll/Ist früherer Monate)
+       and ${
+         f.includeOpen
+           ? sql`(p.employee_id is null or e.status = 'aktiv' or e.exit_date >= ${f.from})`
+           : sql`(e.status = 'aktiv' or e.exit_date >= ${f.from})`
+       }
        and ${
          f.employeeId
            ? subPlans.length
@@ -715,6 +720,7 @@ export async function plannedShifts(
   for (let d = f.from; d <= f.to; d = addDays(d, 1)) {
     for (const p0 of plans) {
       if (p0.effective_from > d || (p0.valid_until && p0.valid_until < d) || !occursOn(p0, d)) continue;
+      if (p0.emp_exit && p0.emp_exit < d) continue;
       const ex = exOf(p0.id, d);
       if (ex?.kind === 'ausfall' && !f.includeCancelled) continue;
       // Vertretung/Umplanung: Einsatz gilt an diesem Tag für den anderen Mitarbeiter bzw. zu anderer Zeit

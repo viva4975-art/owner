@@ -5,8 +5,6 @@ import { fullName } from '../services/users.js';
 import { missingDocs } from '../services/hr-required-docs.js';
 import { hoursHistory } from '../services/employee-hours.js';
 import { absentBetween } from '../services/absences.js';
-import { OpenLegacyCard } from './routes-legacy-invoices.js';
-import { openLegacyInvoices } from '../services/fortytools-xml-import.js';
 import { followups } from '../services/prospects.js';
 import { canAccess } from './permissions.js';
 import { randomUUID } from 'node:crypto';
@@ -643,9 +641,7 @@ export function registerModuleRoutes(ctx: Ctx) {
                               <td data-l="Rechnung">
                                 <a
                                   href={
-                                    i.legacy
-                                      ? `/rechnungen/fortytools/${i.invoice_id}`
-                                      : `/rechnungen/${i.invoice_id}`
+                                    i.legacy ? `/rechnungen/${i.invoice_id}` : `/rechnungen/${i.invoice_id}`
                                   }
                                 >
                                   <b>{i.number}</b>
@@ -780,7 +776,6 @@ export function registerModuleRoutes(ctx: Ctx) {
             }}
           />
         </form>
-        <OpenLegacyCard rows={await openLegacyInvoices(sql)} />
       </>,
     );
   });

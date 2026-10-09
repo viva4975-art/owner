@@ -1,7 +1,5 @@
 import { STARTUP_STEPS, createStartupPlan } from '../services/site-startup.js';
 import { randomUUID } from 'node:crypto';
-import { LegacyInvoiceList, OpenLegacyCard, legacyInvoices } from './routes-legacy-invoices.js';
-import { openLegacyInvoices } from '../services/fortytools-xml-import.js';
 import { listWordTemplates } from '../services/word-templates.js';
 import { WordTemplateBox } from './routes-word-templates.js';
 import type { Context } from 'hono';
@@ -42,7 +40,7 @@ import {
 } from '../services/masterdata.js';
 import { listDunnings } from '../services/dunning.js';
 import { listOffers } from '../services/offers.js';
-import { listOpenItems, openItemLedger } from '../services/payments.js';
+import { listLegacyOpenItems, listOpenItems, openItemLedger } from '../services/payments.js';
 import {
   customerRevenue,
   customerRevenueYears,
@@ -298,7 +296,8 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     const [r] = await sql<CustomerCounts[]>`
       select (select count(*)::int from app.contacts where customer_id = ${id}) as contacts,
              (select count(*)::int from app.notes where entity_type = 'customer' and entity_id = ${id}) as notes,
-             (select count(*)::int from app.invoices where customer_id = ${id} and status = 'issued') as invoices,
+             (select count(*)::int from app.invoices where customer_id = ${id} and status = 'issued')
+               + (select count(*)::int from app.legacy_invoices where customer_id = ${id}) as invoices,
              (select count(*)::int from app.sites where customer_id = ${id}) as sites,
              (select count(*)::int from app.tasks where entity_type = 'customer' and entity_id = ${id} and status = 'open') as tasks,
              (select count(*)::int from app.open_items where customer_id = ${id} and open_cents <> 0)
@@ -572,8 +571,8 @@ export function registerMasterdataRoutes(ctx: Ctx) {
           months={await invoiceMonths(sql, { customerId: cust.id })}
           showSite
           newHref={`/neu?typ=rechnung&kunde=${cust.id}`}
+          showAll={c.req.query('alle') === '1'}
         />
-        <LegacyInvoiceList rows={await legacyInvoices(sql, { customerId: cust.id })} />
       </>
     )),
   );
@@ -1148,8 +1147,13 @@ export function registerMasterdataRoutes(ctx: Ctx) {
   app.get(`/kunden/:id{${UUID}}/offene-posten`, (c) =>
     customerPage(c, 'op', async (cust) => (
       <>
-        <OpenItemsTable items={await listOpenItems(sql, cust.id)} />
-        <OpenLegacyCard rows={(await openLegacyInvoices(sql)).filter((r) => r.customer_id === cust.id)} />
+        <OpenItemsTable
+          items={[...(await listOpenItems(sql, cust.id)), ...(await listLegacyOpenItems(sql, cust.id))].sort(
+            (a, b) =>
+              a.due_date.localeCompare(b.due_date) ||
+              a.number.localeCompare(b.number, 'de', { numeric: true }),
+          )}
+        />
       </>
     )),
   );
@@ -1373,7 +1377,8 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     >`
       select (select count(*)::int from app.site_services where site_id = ${id} and active) as services,
              (select count(*)::int from app.notes where entity_type = 'site' and entity_id = ${id}) as notes,
-             (select count(*)::int from app.invoices where site_id = ${id} and status = 'issued') as invoices,
+             (select count(*)::int from app.invoices where site_id = ${id} and status = 'issued')
+               + (select count(distinct x.invoice_id)::int from app.legacy_invoice_lines x where x.site_id = ${id}) as invoices,
              (select count(*)::int from app.employee_sites where site_id = ${id}) as employees,
              (select count(*)::int from app.tasks where entity_type = 'site' and entity_id = ${id} and status = 'open') as tasks`;
     const [[manager], [cl], customer] = await Promise.all([
@@ -1854,8 +1859,8 @@ export function registerMasterdataRoutes(ctx: Ctx) {
           months={await invoiceMonths(sql, { siteId: s.id })}
           showSite={false}
           newHref={`/neu?typ=rechnung&kunde=${s.customer_id}&objekt=${s.id}`}
+          showAll={c.req.query('alle') === '1'}
         />
-        <LegacyInvoiceList rows={await legacyInvoices(sql, { siteId: s.id })} showSite={false} />
       </>
     )),
   );

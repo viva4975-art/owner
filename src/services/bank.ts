@@ -724,7 +724,7 @@ async function payLegacy(
   await tx`select 1 from app.legacy_invoices where id = ${it.invoiceId} for update`;
   const [o] = await tx<{ number: string; open_cents: bigint }[]>`
     select number, open_cents from app.legacy_open_items where invoice_id = ${it.invoiceId}`;
-  if (!o) throw new BusinessError('Rechnung (Fortytools) ist nicht mehr offen');
+  if (!o) throw new BusinessError('Rechnung ist nicht mehr offen');
   if (it.amount + it.skonto > o.open_cents)
     throw new BusinessError(
       `Rechnung ${o.number}: Betrag höher als offen (${fmt(o.open_cents)}) – Überzahlung klären`,

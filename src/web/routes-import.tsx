@@ -542,11 +542,12 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
           enctype="multipart/form-data"
           class="card"
         >
-          <h3 style="margin-top:0">Artikel und erfasste Zeiten aus Fortytools (CSV)</h3>
+          <h3 style="margin-top:0">Artikel und erfasste Zeiten aus Fortytools (CSV / Excel)</h3>
           <p class="small mut" style="margin-top:0">
             <b>Artikel</b> (items.csv: Nummer, Name, Einkaufs-/Verkaufspreis, Bestand) und <b>Zeiten</b>{' '}
-            (Zeiten.csv: Mitarbeiter, Einsatzort, Beginn/Ende/Pause). Zeiten werden als freigegebene Zeiten
-            übernommen; daraus werden wöchentliche Einsätze abgeleitet (gleicher Mitarbeiter, Objekt,
+            (Zeiten.csv: Mitarbeiter, Einsatzort, Beginn/Ende/Pause – oder der <b>Zeitbericht</b> als Excel
+            mit Art, Soll/Ist, Urlaub, Krankheit und unbezahlter Abwesenheit). Zeiten werden als freigegebene
+            Zeiten übernommen; daraus werden wöchentliche Einsätze abgeleitet (gleicher Mitarbeiter, Objekt,
             Wochentag, Beginn mindestens zweimal). Einzelne Personalnummern lassen sich ausschließen. Erst
             Vorschau, erneut importieren legt nichts doppelt an.
           </p>
@@ -569,7 +570,14 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
               </span>
             )}
           </p>
-          <input type="file" name="dateien" accept=".csv,.txt" multiple required aria-label="CSV-Dateien" />
+          <input
+            type="file"
+            name="dateien"
+            accept=".csv,.txt,.xlsx"
+            multiple
+            required
+            aria-label="CSV- oder Excel-Dateien"
+          />
           <div class="actions" style="margin-bottom:0">
             <button class="btn">Prüfen (Vorschau)</button>
           </div>
@@ -830,7 +838,7 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
     const files = (Array.isArray(b.dateien) ? b.dateien : [b.dateien]).filter(
       (f): f is File => f instanceof File && f.size > 0,
     );
-    if (!files.length) throw new BusinessError('Bitte mindestens eine CSV-Datei wählen');
+    if (!files.length) throw new BusinessError('Bitte mindestens eine Datei wählen');
     const staged = [];
     for (const f of files) {
       const s = await stageFtFile(deps, new Uint8Array(await f.arrayBuffer()));
@@ -1049,6 +1057,12 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
       return [...m.entries()].sort((a, b) => b[1].n - a[1].n);
     };
     const WD = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+    const ABS_LABEL: Record<string, string> = {
+      urlaub: 'Urlaub',
+      krank: 'Krank',
+      kind_krank: 'Kind krank',
+      unbezahlt: 'Unbezahlt',
+    };
     return page(
       c,
       'Artikel und Zeiten prüfen',
@@ -1184,6 +1198,78 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
                     </table>
                   </div>
                 </details>
+                {p.z.absences.length > 0 && (
+                  <div style="margin-top:12px">
+                    <b>
+                      Urlaub / Krank / unbezahlt: {p.z.absences.filter((a) => a.status === 'neu').length}{' '}
+                      Abwesenheiten neu
+                    </b>
+                    {p.z.absences.some((a) => a.status === 'vorhanden') &&
+                      `, ${p.z.absences.filter((a) => a.status === 'vorhanden').length} schon übernommen`}
+                    {p.z.absences.some((a) => a.status === 'ueberschneidung') && (
+                      <span class="err">
+                        , {p.z.absences.filter((a) => a.status === 'ueberschneidung').length} überschneiden
+                        vorhandene Abwesenheiten (werden übersprungen)
+                      </span>
+                    )}
+                    <div class="small mut">
+                      Genehmigt, Stunden je Tag wie im Bericht (Urlaub/Krankheit bezahlt, „Krank ohne
+                      Abrechnung“ und unbezahlt ohne Lohn) – erscheinen in Urlaubskalender, Stundenliste,
+                      Lohnarten und Arbeitszeitkonto.
+                    </div>
+                    <details style="margin-top:6px">
+                      <summary class="small">Abwesenheiten ansehen</summary>
+                      <div class="tbl" style="max-height:420px;overflow:auto">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Mitarbeiter</th>
+                              <th>Art</th>
+                              <th>Zeitraum</th>
+                              <th class="r">Tage</th>
+                              <th class="r">Stunden</th>
+                              <th></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {p.z.absences.map((a) => (
+                              <tr>
+                                <td>{a.employee}</td>
+                                <td>{ABS_LABEL[a.kind] ?? a.kind}</td>
+                                <td>
+                                  {dateDe(a.start)}
+                                  {a.end !== a.start && ` – ${dateDe(a.end)}`}
+                                </td>
+                                <td class="r">{a.days.length}</td>
+                                <td class="r">
+                                  {(a.days.reduce((x, d) => x + d.minutes, 0) / 60).toLocaleString('de-DE', {
+                                    maximumFractionDigits: 2,
+                                  })}
+                                  {a.days.some((d) => !d.paid) && <span class="small mut"> (unbezahlt)</span>}
+                                </td>
+                                <td class="small mut">
+                                  {a.status === 'vorhanden'
+                                    ? 'schon übernommen'
+                                    : a.status === 'ueberschneidung'
+                                      ? 'überschneidet sich'
+                                      : ''}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </details>
+                  </div>
+                )}
+                {p.z.skippedKinds.map(([k, n]) => (
+                  <div class="small mut" style="margin-top:6px">
+                    {n}× „{k}“ nicht übernommen
+                    {/feiertag/i.test(k)
+                      ? ' – bezahlte Feiertage rechnet die App aus den geplanten Einsätzen (Lohnarten → „Feiertag (Entgeltfortzahlung)“)'
+                      : ''}
+                  </div>
+                ))}
               </div>
             ),
           )}
@@ -1225,7 +1311,7 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
       } else {
         const r = await applyTimes(sql, t, { exclude, shifts: b.einsaetze === '1', actor: c.get('actor') });
         msgs.push(
-          `Zeiten: ${r.created} übernommen${r.skipped ? `, ${r.skipped} wegen Überschneidung übersprungen` : ''}, ${r.shiftsCreated} Einsätze angelegt${r.shiftsUpdated ? `, ${r.shiftsUpdated} Einsätze auf das erste Vorkommen vorgezogen` : ''}`,
+          `Zeiten: ${r.created} übernommen${r.skipped ? `, ${r.skipped} wegen Überschneidung übersprungen` : ''}, ${r.shiftsCreated} Einsätze angelegt${r.shiftsUpdated ? `, ${r.shiftsUpdated} Einsätze auf das erste Vorkommen vorgezogen` : ''}${r.absencesCreated || r.absencesSkipped ? `, ${r.absencesCreated} Abwesenheiten übernommen${r.absencesSkipped ? ` (${r.absencesSkipped} übersprungen – überschneiden vorhandene)` : ''}` : ''}`,
         );
       }
     }

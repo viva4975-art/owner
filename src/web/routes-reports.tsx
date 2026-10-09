@@ -366,7 +366,7 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
             </table>
           </div>
           <p class="small mut" style="margin-bottom:0">
-            Netto, alle ausgestellten Rechnungen (auch aus Fortytools), Stornos und Korrekturen abgezogen.
+            Netto, alle ausgestellten Rechnungen, Stornos und Korrekturen abgezogen.
             {basis === 'leistung'
               ? ' Nach Leistungszeitraum: Beträge über mehrere Monate werden tageweise verteilt.'
               : ' Nach Rechnungsdatum.'}{' '}
@@ -871,7 +871,7 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
             Regelmäßig: aus den aktiven Pauschalen mit Abrechnungszyklus und Gültigkeit – wie der
             Abrechnungslauf.
             {prev &&
-              ' Wie Vorjahr (*): Umsatz der gewählten Leistungsarten im selben Monat des Vorjahres (eigene und Fortytools-Rechnungen, nach Leistungszeitraum) – eine Schätzung, kein Auftragsbestand.'}
+              ' Wie Vorjahr (*): Umsatz der gewählten Leistungsarten im selben Monat des Vorjahres (alle Rechnungen, nach Leistungszeitraum) – eine Schätzung, kein Auftragsbestand.'}
           </p>
         </div>
       </>,

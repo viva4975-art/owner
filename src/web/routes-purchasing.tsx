@@ -2643,10 +2643,10 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
           )}
         </div>
         <p class="small mut">
-          Erlös: ausgestellte und übernommene (Fortytools-)Rechnungen je Position dem Objekt zugeordnet,
-          Leistungszeitraum sonst Rechnungsdatum, inkl. Storno/Korrektur. Kosten: Eingangsrechnungen (auch
-          Nachunternehmer) nach ihrer Kostenstellen-Aufteilung und Leistungsmonat, Material zusätzlich
-          Lagerabgänge zum EK. Objekte erscheinen auch inaktiv, sobald im Zeitraum etwas anfällt.
+          Erlös: ausgestellte Rechnungen je Position dem Objekt zugeordnet, Leistungszeitraum sonst
+          Rechnungsdatum, inkl. Storno/Korrektur. Kosten: Eingangsrechnungen (auch Nachunternehmer) nach ihrer
+          Kostenstellen-Aufteilung und Leistungsmonat, Material zusätzlich Lagerabgänge zum EK. Objekte
+          erscheinen auch inaktiv, sobald im Zeitraum etwas anfällt.
         </p>
       </>,
     );

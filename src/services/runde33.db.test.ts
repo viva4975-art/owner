@@ -14,6 +14,7 @@ import {
   getWorkReport,
   invoiceWorkReports,
   listWorkReports,
+  reopenWorkReport,
   orderToInvoice,
   reportsToInvoice,
   saveOrder,
@@ -252,6 +253,47 @@ describe.skipIf(!available)(
       expect(r.labor).toBeGreaterThan(0n);
       expect(r.subcontractor_estimated).toBe(50000n);
       expect(r.subcontractor).toBeGreaterThanOrEqual(50000n);
+    });
+
+    it('Arbeitsschein wieder bearbeiten: unterschrieben → Entwurf, aus dem Rechnungsentwurf gelöst, neu unterschreiben hängt wieder an', async () => {
+      const inv = await draft();
+      const wr = await workReportFromInvoice(sql, inv, 't');
+      await signWorkReport(deps, wr, { name: 'Frau Alt', png }, 't');
+      expect((await invoiceWorkReports(sql, inv))[0]!.attached).toBe(true);
+      await reopenWorkReport(sql, wr, 't');
+      const w = (await getWorkReport(sql, wr))!.report;
+      expect([w.status, w.signed_by_name, w.pdf_path, w.invoice_id]).toEqual(['entwurf', null, null, null]);
+      expect(w.draft_invoice_id).toBe(inv);
+      const docs =
+        await sql`select 1 from app.invoice_documents where invoice_id = ${inv} and kind = 'attachment'`;
+      expect(docs.length).toBe(0);
+      await expect(issueInvoice(deps, inv, 't')).rejects.toThrow(/nicht vom Kunden unterschrieben/);
+      // geändert und neu unterschrieben → hängt wieder an
+      const cur = (await getWorkReport(sql, wr))!;
+      await saveWorkReport(
+        sql,
+        wr,
+        {
+          orderId: null,
+          siteId: cur.report.site_id,
+          workDate: cur.report.work_date,
+          startTime: null,
+          endTime: null,
+          employeeIds: [],
+          description: 'geändert',
+          materials: null,
+          remarks: null,
+          lines: [],
+          expectedVersion: cur.report.version,
+        },
+        't',
+      );
+      await signWorkReport(deps, wr, { name: 'Frau Neu', png }, 't');
+      expect((await getWorkReport(sql, wr))!.report.signed_by_name).toBe('Frau Neu');
+      expect((await invoiceWorkReports(sql, inv))[0]!.attached).toBe(true);
+      const [log] = await sql<{ details: { signed_by_name: string } }[]>`
+        select details from app.audit_log where entity_id = ${wr} and action = 'reopen'`;
+      expect(log!.details.signed_by_name).toBe('Frau Alt');
     });
   },
 );

@@ -1928,3 +1928,12 @@ Testadresse.
     entsteht unsere Umsatzsteuer schon mit der Zahlung des Vorschusses (§ 13b Abs. 4 S. 2 UStG) – mit dem Steuerberater
     klären, Hinweis steht im DATEV-Export.
   - Tests: `advances.db.test.ts` (3), e2e nachunternehmer/einkauf/transfer grün.
+- 2026-10-09: **Arbeitsschein wieder bearbeiten** (Ahmed): Knopf „Wieder bearbeiten“ am abgeschlossenen Schein (unterschrieben
+  oder ohne Unterschrift) → zurück in den Entwurf, ändern, dann neu abschließen bzw. vom Kunden neu unterschreiben lassen
+  (mit zugeordneten Mitarbeitenden auch wieder in deren App). Alte Unterschrift/PDF bleiben write-once im Archiv, der alte
+  Stand steht im Protokoll (`reopen`); die neue Fassung bekommt eine eigene Datei (`…_Fassung2.pdf`). Gesperrt bei
+  storniert oder schon ausgestellter Rechnung (dann erst Rechnung stornieren). Hing der Schein an einem Rechnungsentwurf,
+  wird der Anhang entfernt und nach dem neuen Abschluss automatisch wieder angehängt; „Arbeitsschein erforderlich“ sperrt
+  das Ausstellen bis zur neuen Unterschrift. DB nur über `app.reopen` (Migration `20261117000007`).
+  **Rechtlich:** Die alte Unterschrift deckt den geänderten Inhalt nicht – immer neu unterschreiben lassen.
+  Tests: 471 Unit-/DB-Tests, `e2e:auftrag` grün.

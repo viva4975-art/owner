@@ -15,6 +15,7 @@ import {
   cancelWorkReport,
   closeWithoutSignature,
   deleteWorkReport,
+  reopenWorkReport,
   setWorkReportDone,
   executionNotes,
   getOrder,
@@ -792,6 +793,21 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
             <a class="btn" href={`/arbeitsscheine/${id}/arbeitsschein.pdf`} target="_blank">
               <Icon name="pdf" /> PDF
             </a>
+            {!w.cancelled_at && !invIssued && (
+              <form
+                method="post"
+                action={`/arbeitsscheine/${id}/wieder-bearbeiten`}
+                onsubmit={`return confirm(${JSON.stringify(
+                  w.status === 'unterschrieben'
+                    ? 'Arbeitsschein wieder bearbeiten? Die Unterschrift des Kunden gilt dann nicht mehr – der Schein muss neu unterschrieben werden (die alte Fassung bleibt im Archiv).'
+                    : 'Arbeitsschein wieder bearbeiten? Danach erneut „Speichern und PDF erstellen“ (die alte Fassung bleibt im Archiv).',
+                )})`}
+              >
+                <button class="btn sec">
+                  <Icon name="pencil" /> Wieder bearbeiten
+                </button>
+              </form>
+            )}
             {!w.invoice_id && !w.cancelled_at && !w.done_at && (
               <details class="inline-det">
                 <summary class="btn sec">Als erledigt markieren</summary>
@@ -1485,6 +1501,22 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
       throw e;
     }
     return back(c, '/arbeitsscheine', { ok: `Arbeitsschein ${cur.report.number} gelöscht.` });
+  });
+
+  app.post(`/arbeitsscheine/:id{${UUID}}/wieder-bearbeiten`, async (c) => {
+    const id = c.req.param('id');
+    const cur = await getWorkReport(sql, id);
+    if (!cur) return c.redirect('/arbeitsscheine');
+    assertSite(c, cur.report.site_id);
+    try {
+      await reopenWorkReport(sql, id, c.get('actor'));
+    } catch (e) {
+      if (e instanceof BusinessError) return back(c, `/arbeitsscheine/${id}`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/arbeitsscheine/${id}`, {
+      ok: `Arbeitsschein ${cur.report.number} ist wieder ein Entwurf – ändern, dann neu abschließen bzw. unterschreiben lassen.`,
+    });
   });
 
   app.post(`/arbeitsscheine/:id{${UUID}}/erledigt`, async (c) => {

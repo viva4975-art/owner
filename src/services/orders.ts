@@ -661,6 +661,43 @@ export async function deleteWorkReport(sql: Sql, id: string, actor: string, opts
   });
 }
 
+/**
+ * Abgeschlossenen Arbeitsschein wieder bearbeiten (Ahmed 09.10.): zurück in den Entwurf. Unterschrift und PDF gelten
+ * nicht mehr (Dateien bleiben write-once im Archiv, alter Stand im Protokoll) – danach neu abschließen bzw. vom Kunden
+ * neu unterschreiben lassen. Nicht bei storniert oder schon ausgestellter Rechnung; aus einem Rechnungsentwurf wird der
+ * Anhang entfernt (die Verknüpfung „Arbeitsschein erforderlich“ bleibt).
+ */
+export async function reopenWorkReport(sql: Sql, id: string, actor: string) {
+  await sql.begin(async (tx) => {
+    const [w] = await tx<WorkReport[]>`select * from app.work_reports where id = ${id} for update`;
+    if (!w) throw new BusinessError('Arbeitsschein nicht gefunden');
+    if (w.status === 'entwurf') return;
+    if (w.cancelled_at) throw new BusinessError('Stornierte Arbeitsscheine bleiben unverändert');
+    const wasDraftInvoice = w.invoice_id;
+    await releaseFromDraft(tx, id);
+    await tx`select set_config('app.reopen', 'on', true)`;
+    await tx`update app.work_reports set status = 'entwurf', signed_by_name = null, signed_at = null,
+                    signature_path = null, signature_sha256 = null, no_signature_reason = null,
+                    pdf_path = null, pdf_sha256 = null, done_at = null, done_by = null, done_note = null,
+                    draft_invoice_id = coalesce(draft_invoice_id, ${wasDraftInvoice})
+              where id = ${id}`;
+    await tx`select set_config('app.reopen', 'off', true)`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'reopen', 'work_report', ${id},
+                     ${tx.json({
+                       number: w.number,
+                       status: w.status,
+                       signed_by_name: w.signed_by_name,
+                       signed_at: w.signed_at?.toISOString() ?? null,
+                       signature_path: w.signature_path,
+                       signature_sha256: w.signature_sha256,
+                       no_signature_reason: w.no_signature_reason,
+                       pdf_path: w.pdf_path,
+                       pdf_sha256: w.pdf_sha256,
+                     })})`;
+  });
+}
+
 /** Abgeschlossenen Arbeitsschein stornieren (mit Grund). Aus einem Rechnungsentwurf wird er gelöst. */
 export async function cancelWorkReport(sql: Sql, id: string, reason: string, actor: string) {
   if (!reason.trim()) throw new BusinessError('Bitte Grund angeben');
@@ -741,8 +778,12 @@ export async function signWorkReport(
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
             values (${actor}, 'sign', 'work_report', ${id}, ${sql.json({ signed_by: p.name.trim(), sha256 })})`;
   await archiveWorkReportPdf(deps, id);
-  // aus einem Rechnungsentwurf angelegt → unterschriebenes PDF gleich an die Rechnung hängen
-  const [d] = await sql<{ draft_invoice_id: string | null; status: string | null }[]>`
+  await attachToDraftInvoice(deps, id, actor);
+}
+
+/** Zu einem Rechnungsentwurf gehörender Schein → PDF nach dem Abschließen gleich an die Rechnung hängen. */
+async function attachToDraftInvoice(deps: Deps, id: string, actor: string) {
+  const [d] = await deps.sql<{ draft_invoice_id: string | null; status: string | null }[]>`
     select w.draft_invoice_id, i.status::text as status from app.work_reports w
       left join app.invoices i on i.id = w.draft_invoice_id where w.id = ${id}`;
   if (d?.draft_invoice_id && d.status === 'draft') await attachReports(deps, d.draft_invoice_id, [id], actor);
@@ -757,6 +798,7 @@ export async function closeWithoutSignature(deps: Deps, id: string, reason: stri
   await deps.sql`insert into app.audit_log (actor, action, entity, entity_id, details)
                  values (${actor}, 'close_unsigned', 'work_report', ${id}, ${deps.sql.json({ reason: reason.trim() })})`;
   await archiveWorkReportPdf(deps, id);
+  await attachToDraftInvoice(deps, id, actor);
 }
 
 const UNIT: Record<string, string> = { HUR: 'Std.', C62: 'Stk.', LS: 'psch.', MTK: 'm²', DAY: 'Tag' };
@@ -908,7 +950,12 @@ async function archiveWorkReportPdf(deps: Deps, id: string) {
     select number, work_date, pdf_path from app.work_reports where id = ${id}`;
   if (!w || w.pdf_path) return;
   const pdf = await renderWorkReportPdf(deps, id);
-  const path = `arbeitsscheine/${w.work_date.slice(0, 4)}/${w.number}/Arbeitsschein_${w.number}.pdf`;
+  // nach „wieder bearbeiten“ neue Fassung unter eigenem Namen – die alte Datei bleibt write-once im Archiv
+  const [{ n }] = (await deps.sql`
+    select count(*)::int as n from app.audit_log where entity = 'work_report' and entity_id = ${id} and action = 'reopen'`) as unknown as [
+    { n: number },
+  ];
+  const path = `arbeitsscheine/${w.work_date.slice(0, 4)}/${w.number}/Arbeitsschein_${w.number}${n ? `_Fassung${n + 1}` : ''}.pdf`;
   const { sha256 } = await deps.archive.put(path, pdf);
   await deps.sql`update app.work_reports set pdf_path = ${path}, pdf_sha256 = ${sha256} where id = ${id} and pdf_path is null`;
 }

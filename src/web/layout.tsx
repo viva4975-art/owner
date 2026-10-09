@@ -194,6 +194,7 @@ input::placeholder,textarea::placeholder{color:var(--faint)}
 .flash{display:flex;gap:10px;align-items:flex-start;padding:12px 16px;border-radius:var(--r);margin-bottom:16px;white-space:pre-wrap;border:1px solid}
 .flash.ok{background:var(--ok-50);color:#14532d;border-color:#bbf7d0}
 .exp-sup>summary::-webkit-details-marker{display:none}.exp-sup[open] .exp-tog{display:none}.exp-sup>summary .exp-tog::before{content:'▸ '}
+.vs-card .vs-top{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:10px}.vs-card .vs-top select{max-width:300px}
 .exp-bulk{display:flex;gap:10px;flex-wrap:wrap;align-items:center;position:sticky;top:8px;z-index:5;margin-bottom:14px}
 .flash.warn{background:#fff8e6;color:#7a4b00;border-color:#f3d48a}
 .flash.err{background:var(--err-50);color:#7a271a;border-color:#fecdca}
@@ -1299,6 +1300,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     items: [
       { label: 'Entwürfe / Vorfaktura', href: '/rechnungen/entwuerfe' },
       { label: 'Alle Rechnungen', href: '/rechnungen' },
+      { label: 'Noch nicht versendet', href: '/rechnungen/versand' },
       { label: 'Offene Posten', href: '/offene-posten', sep: true },
       { label: 'Mahnwesen', href: '/mahnungen' },
       { label: 'Preisanpassung', href: '/preisanpassung' },

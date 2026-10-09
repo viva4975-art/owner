@@ -2084,3 +2084,11 @@ Testadresse.
     schmaler (Lieferant war zusammengequetscht).
   - Bestellschein: bei Pauschalen nur noch eine Zeile „Preis (netto)“ (vorher Preis und Gesamtbetrag gleich); bei Stunden
     weiter Stundensatz + angenommene Std. + Gesamtbetrag.
+- 2026-10-09: **„Noch nicht versendete Dokumente“ wie Fortytools** (Ahmed, Screenshot; „Alle Rechnungen soll weg“): Rechnungen →
+  „Noch nicht versendet“ (`/rechnungen/versand`, `routes-versand.tsx`) mit Reitern Rechnungen / Rechnungskorrekturen /
+  Mahnungen / Versandverlauf (→ Transfer → Dokumentenversand). Versandart wählen (E-Mail / als bereits versendet
+  kennzeichnen mit Weg + Bemerkung / im Portal hochgeladen), ankreuzen (alle), „Los (n)“ – jedes Dokument einzeln über die
+  bestehenden Funktionen (genau einmal; Fehler je Dokument werden aufgelistet, halten die anderen nicht auf). Spalten Datum,
+  Nr., Kunde, Pos, Netto, Brutto, Empfänger (Hinweis „Portal“ / „keine Rechnungs-E-Mail“), Summen. „Alle als PDF
+  herunterladen“ (archivierte Belege in einer Datei). Mahnungen: neu „als versendet kennzeichnen“ (`markDunningSent`).
+  Die Filter „Alle Rechnungen / Nicht versendet“ auf der Rechnungsliste entfallen (`?filter=unversendet` leitet um).

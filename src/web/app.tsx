@@ -29,6 +29,7 @@ import { canAccess, homeFor } from './permissions.js';
 import { registerAuthRoutes } from './routes-users.js';
 import { registerFileRoutes } from './routes-files.js';
 import { registerInvoiceRoutes } from './routes-invoices.js';
+import { registerVersandRoutes } from './routes-versand.js';
 import { registerMasterdataRoutes } from './routes-masterdata.js';
 import { registerMobileRoutes } from './m/routes-mobile.js';
 import { registerModuleRoutes } from './routes-modules.js';
@@ -384,6 +385,7 @@ export function createApp(deps: Deps) {
   registerFileRoutes(ctx);
   registerModuleRoutes(ctx);
   registerMasterdataRoutes(ctx);
+  registerVersandRoutes(ctx);
   registerInvoiceRoutes(ctx);
   registerOfferRoutes(ctx);
   registerDunningRoutes(ctx);

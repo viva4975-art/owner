@@ -941,21 +941,21 @@ export const Dashboard: FC<{
                 <li>
                   <span class={`dot ${unsent.invoices ? 'warn' : 'ok'}`} />
                   <div class="dl-main">
-                    <a href="/rechnungen?filter=unversendet">Rechnungen</a>
+                    <a href="/rechnungen/versand">Rechnungen</a>
                   </div>
                   <span class="dl-r num">{unsent.invoices}</span>
                 </li>
                 <li>
                   <span class={`dot ${unsent.corrections ? 'warn' : 'ok'}`} />
                   <div class="dl-main">
-                    <a href="/rechnungen?filter=unversendet">Stornos &amp; Rechnungskorrekturen</a>
+                    <a href="/rechnungen/versand?reiter=korrekturen">Stornos &amp; Rechnungskorrekturen</a>
                   </div>
                   <span class="dl-r num">{unsent.corrections}</span>
                 </li>
                 <li>
                   <span class={`dot ${todo.unsentDunnings ? 'warn' : 'ok'}`} />
                   <div class="dl-main">
-                    <a href="/mahnungen/liste">Mahnungen</a>
+                    <a href="/rechnungen/versand?reiter=mahnungen">Mahnungen</a>
                   </div>
                   <span class="dl-r num">{todo.unsentDunnings}</span>
                 </li>

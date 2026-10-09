@@ -74,7 +74,6 @@ import {
   CustomerNotice,
   InvoiceDetail,
   InvoiceEditor,
-  InvoiceTable,
   toEditorLine,
 } from './pages-invoices.js';
 
@@ -88,34 +87,6 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
   const { sql, env } = deps;
 
   // ------------------------------------------------------------------ Listen
-
-  /** „Alle / Nicht versendet“ als Filter (Entwürfe und Offene Posten stehen links im Menü). */
-  const InvoiceFilterChips = ({
-    active,
-    counts,
-  }: {
-    active: string;
-    counts: { drafts: number; all: number; unsent: number; legacy: number };
-  }) => (
-    <div class="chips" style="margin:0 0 10px">
-      <a href="/rechnungen" class={active === 'alle' ? 'on' : ''}>
-        Alle Rechnungen ({counts.all + counts.legacy})
-      </a>
-      <a href="/rechnungen?filter=unversendet" class={active === 'unversendet' ? 'on' : ''}>
-        Nicht versendet ({counts.unsent})
-      </a>
-    </div>
-  );
-
-  const counts = async () => {
-    const [r] = await sql<{ drafts: number; all: number; unsent: number; legacy: number }[]>`
-      select (select count(*)::int from app.invoices where status = 'draft') as drafts,
-             (select count(*)::int from app.legacy_invoices) as legacy,
-             (select count(*)::int from app.invoices where status = 'issued') as all,
-             (select count(*)::int from app.invoices i where status = 'issued'
-                and not exists (select 1 from app.invoice_deliveries d where d.invoice_id = i.id and d.status = 'sent')) as unsent`;
-    return r!;
-  };
 
   // ------------------------------------------------------------------ Archiv nach Leistungszeitraum
   const MONTHS = [
@@ -162,7 +133,6 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         <PageHead title="Rechnungen" create={{ options: NEW_OPTIONS, selected: 'rechnung' }}>
           <span class="mut">Nächste Nr.: {range ? `${range.prefix}${range.next_value}` : '–'}</span>
         </PageHead>
-        <InvoiceFilterChips active="alle" counts={await counts()} />
         <form method="get" action="/rechnungen" class="actions" style="margin-top:0">
           <div class="chips" style="margin:0">
             {years.map((y) => (
@@ -221,11 +191,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                   überfällig <b style="color:var(--err)">{euro(overdue)}</b>
                 </div>
               </a>
-              <a
-                class="skpi c2"
-                href="/rechnungen?filter=unversendet"
-                style="text-decoration:none;color:inherit"
-              >
+              <a class="skpi c2" href="/rechnungen/versand" style="text-decoration:none;color:inherit">
                 <div class="l">nicht versendet</div>
                 <div class="v">{unsent}</div>
                 <div class="s">eigene Rechnungen</div>
@@ -361,27 +327,9 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
   });
 
   app.get('/rechnungen', async (c) => {
-    const filter = c.req.query('filter');
-    if (filter !== 'unversendet') return allInvoices(c);
-    const [range] = await sql<{ prefix: string; next_value: bigint }[]>`
-      select prefix, next_value from app.number_ranges where key = 'invoice'`;
-    let rows = [...(await listInvoices(sql, { status: 'issued' }))];
-    if (filter === 'unversendet') rows = rows.filter((r) => r.delivery_status !== 'sent');
-    const active = filter === 'unversendet' ? 'unversendet' : 'alle';
-    return page(
-      c,
-      'Rechnungen',
-      'rechnungen',
-      <>
-        <PageHead title="Rechnungen" create={{ options: NEW_OPTIONS, selected: 'rechnung' }}>
-          <span class="mut">Nächste Nr.: {range ? `${range.prefix}${range.next_value}` : '–'}</span>
-        </PageHead>
-        <InvoiceFilterChips active={active} counts={await counts()} />
-        <div class="tabbody">
-          <InvoiceTable rows={rows} />
-        </div>
-      </>,
-    );
+    // „Nicht versendet“ ist eine eigene Seite wie Fortytools (Ahmed 09.10.)
+    if (c.req.query('filter') === 'unversendet') return c.redirect('/rechnungen/versand');
+    return allInvoices(c);
   });
 
   app.get('/rechnungen/entwuerfe', async (c) => {

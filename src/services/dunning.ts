@@ -594,3 +594,14 @@ export async function createDunningBatch(
   }
   return result;
 }
+
+/** Mahnung ohne E-Mail als versendet festhalten (Post, persönlich …) – genau einmal, Protokoll. */
+export async function markDunningSent(sql: Sql, id: string, way: string, actor: string) {
+  if (!way.trim()) throw new BusinessError('Versandweg wählen');
+  const [row] = await sql`update app.dunnings set status = 'versendet', sent_at = now(), sent_to = ${[way.trim()]}
+                           where id = ${id} and status = 'erstellt' returning id`;
+  if (!row) return { alreadySent: true };
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${actor}, 'manual_delivery', 'dunning', ${id}, ${sql.json({ way: way.trim() })})`;
+  return { alreadySent: false };
+}

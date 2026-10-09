@@ -1739,6 +1739,8 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                           </span>
                         ) : p.state === 'laufend' ? (
                           <span class="badge info">läuft noch</span>
+                        ) : p.state === 'bedarf' ? (
+                          <span class="badge">nach Ausführung</span>
                         ) : (
                           <span class="badge warn">Rechnung fehlt</span>
                         )}

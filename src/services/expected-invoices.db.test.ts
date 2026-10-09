@@ -52,10 +52,8 @@ describe.skipIf(!available)('Rechnung erwartet (Datenbank)', () => {
     expect(exp.map((e) => `${e.number}/${e.period}`)).toEqual([
       'BE-2026-0901/2026-08',
       'BE-2026-0901/2026-09',
-      'BE-2026-0902/2026-07',
-    ]);
+    ]); // quartalsweise = nach Ausführung, keine Meldung (Ahmed 09.10.: laufend sind nur monatliche)
     expect(exp[0]!.expectedNet).toBe(100000n);
-    expect(exp[2]!.expectedNet).toBeNull(); // je Einsatz = nach Aufwand
 
     // eine Rechnung: Unterhaltsreinigung August + Glasreinigung Q3 (zwei Objekte)
     const inv = randomUUID();
@@ -108,7 +106,7 @@ describe.skipIf(!available)('Rechnung erwartet (Datenbank)', () => {
     ]);
     expect(tr.get(scA)![2]!.invoices.map((i) => i.invoice_no)).toEqual(['R-77']);
     expect(tr.get(scB)!.map((p) => `${p.start}:${p.state}`)).toEqual([
-      '2026-10:laufend',
+      '2026-10:bedarf',
       '2026-07:abgerechnet',
     ]);
 
@@ -142,5 +140,59 @@ describe.skipIf(!available)('Rechnung erwartet (Datenbank)', () => {
         't',
       ),
     ).rejects.toThrow(/angleichen/);
+  });
+
+  it('selbst prüfen: Rechnung am Auftrag oder gleicher NU + Objekt deckt den Monat ab (Ahmed 09.10.)', async () => {
+    const scC = randomUUID();
+    await sql`insert into app.subcontracts (id, number, supplier_id, site_id, service_kind, frequency, billing, price_cents, valid_from, status, created_by)
+              values (${scC}, 'BE-2026-0903', ${sup}, ${DEMO.siteHq}, 'Unterhaltsreinigung', 'monatlich', 'pauschale_monat', 70000, '2026-08-01', 'erteilt', 't')`;
+    const open = async () =>
+      (await expectedInvoices(sql, { today })).filter((e) => e.subcontract_id === scC).map((e) => e.period);
+    expect(await open()).toEqual(['2026-08', '2026-09']);
+    const base = {
+      supplierId: sup,
+      invoiceDate: '2026-09-05',
+      dueDate: null,
+      net: 70000n as Cents,
+      vat: 0n as Cents,
+      reverseCharge: true,
+      category: 'nachunternehmer' as const,
+      purchaseOrderId: null,
+      skontoUntil: null,
+      skontoPercentBp: null,
+      note: null,
+      expectedVersion: null,
+    };
+    // ohne Auftrag, aber gleicher NU + Objekt, Leistungsmonat August
+    await saveIncoming(
+      sql,
+      randomUUID(),
+      {
+        ...base,
+        invoiceNo: 'R-81',
+        serviceMonth: '2026-08',
+        siteId: DEMO.siteHq,
+        subcontractId: null,
+        links: [],
+      },
+      't',
+    );
+    expect(await open()).toEqual(['2026-09']);
+    // am Auftrag erfasst, ohne Leistungsmonat → Rechnungsdatum zählt
+    await saveIncoming(
+      sql,
+      randomUUID(),
+      {
+        ...base,
+        invoiceNo: 'R-82',
+        invoiceDate: '2026-09-30',
+        serviceMonth: null,
+        siteId: DEMO.siteHq,
+        subcontractId: scC,
+        links: [],
+      },
+      't',
+    );
+    expect(await open()).toEqual([]);
   });
 });

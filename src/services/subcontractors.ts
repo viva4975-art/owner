@@ -791,23 +791,25 @@ export async function subcontractPdf(sql: Sql, id: string, sig?: SubcontractSign
       v: `${formatDateDe(sc.valid_from)}${sc.valid_to ? ` bis ${formatDateDe(sc.valid_to)}` : ' (unbefristet)'}`,
     },
     { k: 'Status:', v: PDF_STATUS[sc.status] },
-    hourly
-      ? {
-          k: 'Stundensatz:',
-          v: price,
-          k2: 'Angenommene Std.:',
-          v2: sc.max_hours_month ? `${sc.max_hours_month.replace('.', ',')} / Monat` : 'n. Aufmaß',
-        }
-      : { k: 'Preis:', v: price },
-    {
-      k: 'Gesamtbetrag:',
-      v: hourly
-        ? sc.max_hours_month
-          ? `max. ${formatEuro(((sc.current_price_cents * BigInt(Math.round(Number(sc.max_hours_month) * 100))) / 100n) as Cents)} / Monat`
-          : '- nach erfassten Stunden -'
-        : price,
-      accent: true,
-    },
+    // Pauschalen: Preis nur einmal (Ahmed 09.10.: „der Preis auf dem Bestellschein ist doppelt“); bei Stunden
+    // Stundensatz + angenommene Stunden + Gesamtbetrag (Höchstbetrag) wie die alte App
+    ...(hourly
+      ? [
+          {
+            k: 'Stundensatz:',
+            v: price,
+            k2: 'Angenommene Std.:',
+            v2: sc.max_hours_month ? `${sc.max_hours_month.replace('.', ',')} / Monat` : 'n. Aufmaß',
+          },
+          {
+            k: 'Gesamtbetrag:',
+            v: sc.max_hours_month
+              ? `max. ${formatEuro(((sc.current_price_cents * BigInt(Math.round(Number(sc.max_hours_month) * 100))) / 100n) as Cents)} / Monat`
+              : '- nach erfassten Stunden -',
+            accent: true,
+          },
+        ]
+      : [{ k: 'Preis (netto):', v: price, accent: true }]),
     { k: 'Bestelldatum:', v: formatDateDe(date) },
   ]);
   // Kompakt auf höchstens 2 Seiten (Ahmed 09.10.): Seite 1 Auftrag + Leistungsbeschreibung,

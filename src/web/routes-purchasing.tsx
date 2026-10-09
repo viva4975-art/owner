@@ -5,6 +5,7 @@ import {
   billingTracking,
   type ExpectedRow,
   expectedInvoices,
+  isRecurringOrder,
   linksOf,
   skipExpected,
 } from '../services/expected-invoices.js';
@@ -173,8 +174,8 @@ const ExpectedList: FC<{ rows: ExpectedRow[] }> = ({ rows }) => {
       {[...bySup.values()].map((list) => {
         const s0 = list[0]!;
         return (
-          <div class="card" style="margin-bottom:14px">
-            <div class="actions" style="margin:0 0 8px">
+          <details class="card exp-sup" style="margin-bottom:10px">
+            <summary class="actions" style="margin:0;cursor:pointer;list-style:none">
               <h3 style="margin:0">
                 <input
                   type="checkbox"
@@ -184,6 +185,14 @@ const ExpectedList: FC<{ rows: ExpectedRow[] }> = ({ rows }) => {
                 />
                 <a href={`/lieferanten/${s0.supplier_id}`}>{s0.supplier_name}</a>{' '}
                 <span class="badge warn">{list.length} erwartet</span>
+                {list.some((r) => r.expectedNet != null) && (
+                  <span class="small mut" style="font-weight:400;margin-left:8px">
+                    ≈ {euro(list.reduce((a, r) => a + (r.expectedNet ?? 0n), 0n))} netto
+                  </span>
+                )}
+                <span class="small mut exp-tog" style="font-weight:400;margin-left:8px">
+                  Zeiträume anzeigen
+                </span>
               </h3>
               {list.length > 1 && (
                 <a
@@ -194,7 +203,7 @@ const ExpectedList: FC<{ rows: ExpectedRow[] }> = ({ rows }) => {
                   Eine Rechnung für alle {list.length} erfassen
                 </a>
               )}
-            </div>
+            </summary>
             <div class="tbl">
               <table class="stack-m">
                 <thead>
@@ -268,7 +277,7 @@ const ExpectedList: FC<{ rows: ExpectedRow[] }> = ({ rows }) => {
                 </tbody>
               </table>
             </div>
-          </div>
+          </details>
         );
       })}
     </>
@@ -290,6 +299,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       : 'erledigen';
     const supplierId = q.lieferant && /^[0-9a-f-]{36}$/.test(q.lieferant) ? q.lieferant : '';
     const search = (q.q ?? '').trim().toLowerCase();
+    const onlyUnsigned = q.unterschrift === 'fehlt';
     const [orders, subcontracts, suppliers, billed] = await Promise.all([
       listOrders(sql),
       listSubcontracts(sql),
@@ -325,11 +335,13 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             ? `${MON(cur.start)} keine Rechnung`
             : cur.state === 'laufend'
               ? `${MON(cur.start)} läuft`
-              : `${MON(cur.start)} fehlt`;
+              : cur.state === 'bedarf'
+                ? 'nach Ausführung'
+                : `${MON(cur.start)} fehlt`;
       const tone =
         cur.state === 'abgerechnet' || cur.state === 'keine'
           ? 'ok'
-          : cur.state === 'laufend'
+          : cur.state === 'laufend' || cur.state === 'bedarf'
             ? 'info'
             : 'warn';
       return (
@@ -354,6 +366,8 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       from: string | null;
       to: string | null;
       ongoing: boolean;
+      /** erteilte NU-Bestellung ohne unterschriebenen Auftrag (Scan oder Handy-Unterschrift) */
+      unsigned: boolean;
       net: bigint;
       per: string;
       phase: 'erledigen' | 'laufend' | 'abgeschlossen' | 'storniert';
@@ -402,6 +416,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         from: o.order_date,
         to: o.delivery_date,
         ongoing: false,
+        unsigned: false,
         net: o.net_cents,
         per: '',
         // geliefert, aber noch keine Eingangsrechnung erfasst → bleibt „zu erledigen“
@@ -422,7 +437,9 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         what: `${sc.site_no} ${sc.site_name} · ${sc.service_kind}`,
         from: sc.valid_from,
         to: sc.valid_to,
-        ongoing: !sc.valid_to && sc.frequency !== 'einmalig',
+        // laufend = regelmäßige (monatliche/wöchentliche) Bestellung; jährlich usw. = nach Ausführung (Ahmed 09.10.)
+        ongoing: !sc.valid_to && isRecurringOrder(sc.frequency),
+        unsigned: sc.status === 'erteilt' && !sc.signed_file_path,
         net: sc.current_price_cents,
         per: PER[sc.billing] ?? '',
         phase: SC_PHASE[sc.status] ?? 'laufend',
@@ -436,7 +453,9 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
     const base = all
       .filter((r) => !art || r.kind === art)
       .filter((r) => !supplierId || r.supplierId === supplierId)
-      .filter((r) => !search || [r.number, r.supplier, r.what].some((v) => v.toLowerCase().includes(search)));
+      .filter((r) => !search || [r.number, r.supplier, r.what].some((v) => v.toLowerCase().includes(search)))
+      .filter((r) => !onlyUnsigned || r.unsigned);
+    const unsignedCount = all.filter((r) => r.unsigned).length;
     const count = (v: string) => (v === 'alle' ? base.length : base.filter((r) => r.phase === v).length);
     const rows = view === 'alle' ? base : base.filter((r) => r.phase === view);
     const link = (over: Record<string, string | null>) => {
@@ -522,6 +541,19 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             </a>
           )}
         </form>
+        {(unsignedCount > 0 || onlyUnsigned) && (
+          <div class={`flash ${onlyUnsigned ? 'ok' : 'warn'}`} style="margin-bottom:10px">
+            <div>
+              <b>{unsignedCount}</b> erteilte Nachunternehmer-Bestellung(en) ohne unterschriebenen Auftrag
+              (Scan oder Unterschrift am Handy) –{' '}
+              {onlyUnsigned ? (
+                <a href="/bestellungen?ansicht=alle">alle Bestellungen zeigen</a>
+              ) : (
+                <a href="/bestellungen?ansicht=alle&unterschrift=fehlt">nur diese anzeigen</a>
+              )}
+            </div>
+          </div>
+        )}
         <div class="bs-table">
           <div class="bs-tr bs-th">
             <span>Bestellnr.</span>
@@ -553,6 +585,11 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               </span>
               <span>
                 <span class={`bs-pill bs-${r.tone || 'grey'}`}>{r.status}</span>
+                {r.unsigned && (
+                  <span class="bs-sub" style="color:var(--bad)">
+                    unterschriebener Auftrag fehlt
+                  </span>
+                )}
               </span>
               <span>{billCell(r)}</span>
             </a>

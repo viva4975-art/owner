@@ -27,6 +27,71 @@ const monthAdd = (m: string, k: number) => {
 const lastDay = (m: string) =>
   new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0)).toISOString().slice(0, 10);
 
+interface CoverInvoice {
+  subcontract_id: string | null;
+  supplier_id: string;
+  site_id: string | null;
+  /** 'JJJJ-MM' – Zeitraum der Verknüpfung bzw. Leistungsmonat/Rechnungsdatum */
+  m: string;
+  id: string;
+  invoice_no: string;
+  net: bigint | null;
+  /** link = ausdrücklich verknüpft, direct = am Auftrag erfasst, loose = gleicher NU + Objekt ohne Auftrag */
+  how: 'link' | 'direct' | 'loose';
+}
+
+/** Laufend (regelmäßig eine Rechnung je Monat erwartet) sind nur monatliche/wöchentliche Bestellungen (Ahmed 09.10.);
+ * einmalig, quartalsweise, halbjährlich, jährlich = nach Ausführung, keine „Rechnung erwartet“-Meldung. */
+export const isRecurringOrder = (frequency: string) =>
+  frequency === 'monatlich' || frequency === 'woechentlich';
+
+/**
+ * Selbst prüfen (Ahmed 09.10.: „soll selber checken“): Ein Zeitraum gilt als abgerechnet, wenn eine Eingangsrechnung
+ * ihn abdeckt – ausdrücklich verknüpft (Zeitraum irgendwo im Abrechnungszeitraum), am Auftrag erfasst oder vom selben
+ * Nachunternehmer für dasselbe Objekt ohne Auftrag – mit Leistungsmonat (sonst Rechnungsdatum) im Zeitraum; bei
+ * längeren Zeiträumen auch bis 2 Monate nach Ende. Abgelehnte Rechnungen zählen nicht.
+ */
+async function coverInvoices(
+  sql: Sql,
+  orders: { id: string; supplier_id: string; site_id: string | null }[],
+): Promise<CoverInvoice[]> {
+  if (!orders.length) return [];
+  const ids = orders.map((o) => o.id);
+  const sups = [...new Set(orders.map((o) => o.supplier_id))];
+  return sql<CoverInvoice[]>`
+    select l.subcontract_id, i.supplier_id, i.site_id, to_char(l.period_month, 'YYYY-MM') as m, i.id, i.invoice_no,
+           l.net_cents as net, 'link' as how
+      from app.incoming_invoice_subcontracts l join app.incoming_invoices i on i.id = l.incoming_invoice_id
+     where l.subcontract_id in ${sql(ids)} and i.status <> 'abgelehnt'
+    union all
+    select i.subcontract_id, i.supplier_id, i.site_id, to_char(coalesce(i.service_month, i.invoice_date), 'YYYY-MM'),
+           i.id, i.invoice_no, i.net_cents, case when i.subcontract_id is null then 'loose' else 'direct' end
+      from app.incoming_invoices i
+     where i.status <> 'abgelehnt' and i.supplier_id in ${sql(sups)}
+       and (i.subcontract_id in ${sql(ids)} or i.subcontract_id is null)
+       and not exists (select 1 from app.incoming_invoice_subcontracts l where l.incoming_invoice_id = i.id)`;
+}
+
+function coverFor(
+  list: CoverInvoice[],
+  o: { id: string; supplier_id: string; site_id: string | null; frequency: string },
+  p: { start: string; end: string },
+) {
+  const step = STEP[o.frequency] ?? 1;
+  const last = monthAdd(p.end.slice(0, 7), step >= 3 ? 2 : 0);
+  const out = new Map<string, { id: string; invoice_no: string; net: bigint | null }>();
+  for (const c of list) {
+    const mine =
+      c.subcontract_id === o.id ||
+      (c.how === 'loose' && c.supplier_id === o.supplier_id && !!o.site_id && c.site_id === o.site_id);
+    if (!mine) continue;
+    const upper = c.how === 'link' ? p.end.slice(0, 7) : last;
+    if (c.m >= p.start && c.m <= upper && !out.has(c.id))
+      out.set(c.id, { id: c.id, invoice_no: c.invoice_no, net: c.net });
+  }
+  return [...out.values()];
+}
+
 export interface ExpectedRow {
   subcontract_id: string;
   number: string;
@@ -103,9 +168,7 @@ export async function expectedInvoices(sql: Sql, opts: { supplierId?: string; to
   if (!orders.length) return [];
   const ids = orders.map((o) => o.id);
   const [covered, skipped, prices] = await Promise.all([
-    sql<{ subcontract_id: string; m: string }[]>`
-      select subcontract_id, to_char(period_month, 'YYYY-MM') as m from app.incoming_invoice_subcontracts
-       where subcontract_id in ${sql(ids)}`,
+    coverInvoices(sql, orders),
     sql<{ subcontract_id: string; m: string }[]>`
       select subcontract_id, to_char(period_month, 'YYYY-MM') as m from app.subcontract_expected_skips
        where subcontract_id in ${sql(ids)}`,
@@ -113,11 +176,13 @@ export async function expectedInvoices(sql: Sql, opts: { supplierId?: string; to
       select subcontract_id, to_char(valid_from_month, 'YYYY-MM') as m, price_cents from app.subcontract_prices
        where subcontract_id in ${sql(ids)} order by valid_from_month`,
   ]);
-  const has = new Set([...covered, ...skipped].map((r) => `${r.subcontract_id}|${r.m}`));
+  const has = new Set(skipped.map((r) => `${r.subcontract_id}|${r.m}`));
   const rows: ExpectedRow[] = [];
   for (const o of orders) {
+    if (!isRecurringOrder(o.frequency)) continue;
     for (const p of periodsOf(o.frequency, o.valid_from, o.valid_to, today)) {
       if (has.has(`${o.id}|${p.start}`)) continue;
+      if (coverFor(covered, o, p).length) continue;
       let price = o.price_cents;
       for (const pr of prices) if (pr.subcontract_id === o.id && pr.m <= p.start) price = pr.price_cents;
       const days = Math.round(
@@ -209,7 +274,8 @@ export async function linksOf(sql: Sql, invoiceId: string) {
      where l.incoming_invoice_id = ${invoiceId} order by sc.number, l.period_month`;
 }
 
-export type BillingState = 'abgerechnet' | 'keine' | 'offen' | 'laufend';
+/** bedarf = nicht monatlich, Rechnung nach Ausführung (keine Meldung) */
+export type BillingState = 'abgerechnet' | 'keine' | 'offen' | 'laufend' | 'bedarf';
 export interface BillingPeriod {
   start: string;
   end: string;
@@ -231,24 +297,25 @@ export async function billingTracking(
   const today = opts.today ?? todayBerlin();
   const out = new Map<string, BillingPeriod[]>();
   if (!ids.length) return out;
-  const [orders, covered, skipped] = await Promise.all([
-    sql<{ id: string; frequency: string; valid_from: string; valid_to: string | null; status: string }[]>`
-      select id, frequency, valid_from::text, valid_to::text, status from app.subcontracts where id in ${sql(ids)}`,
-    sql<{ subcontract_id: string; m: string; id: string; invoice_no: string; net_cents: bigint | null }[]>`
-      select l.subcontract_id, to_char(l.period_month, 'YYYY-MM') as m, i.id, i.invoice_no, l.net_cents
-        from app.incoming_invoice_subcontracts l join app.incoming_invoices i on i.id = l.incoming_invoice_id
-       where l.subcontract_id in ${sql(ids)} order by i.invoice_date`,
+  const [orders, skipped] = await Promise.all([
+    sql<
+      {
+        id: string;
+        supplier_id: string;
+        site_id: string | null;
+        frequency: string;
+        valid_from: string;
+        valid_to: string | null;
+        status: string;
+      }[]
+    >`
+      select id, supplier_id, site_id, frequency, valid_from::text, valid_to::text, status
+        from app.subcontracts where id in ${sql(ids)}`,
     sql<{ subcontract_id: string; m: string; reason: string }[]>`
       select subcontract_id, to_char(period_month, 'YYYY-MM') as m, reason from app.subcontract_expected_skips
        where subcontract_id in ${sql(ids)}`,
   ]);
-  const inv = new Map<string, BillingPeriod['invoices']>();
-  for (const r of covered) {
-    const k = `${r.subcontract_id}|${r.m}`;
-    const list = inv.get(k) ?? [];
-    list.push({ id: r.id, invoice_no: r.invoice_no, net: r.net_cents });
-    inv.set(k, list);
-  }
+  const covered = await coverInvoices(sql, orders);
   const skip = new Map(skipped.map((s) => [`${s.subcontract_id}|${s.m}`, s.reason]));
   for (const o of orders) {
     if (o.status !== 'erteilt' && o.status !== 'beendet') {
@@ -271,15 +338,17 @@ export async function billingTracking(
     }
     const list = periods.slice(-(opts.limit ?? 13)).map((p): BillingPeriod => {
       const k = `${o.id}|${p.start}`;
-      const invoices = inv.get(k) ?? [];
+      const invoices = coverFor(covered, o, p);
       const reason = skip.get(k) ?? null;
       const state: BillingState = invoices.length
         ? 'abgerechnet'
         : reason
           ? 'keine'
-          : p.end < today
-            ? 'offen'
-            : 'laufend';
+          : !isRecurringOrder(o.frequency)
+            ? 'bedarf'
+            : p.end < today
+              ? 'offen'
+              : 'laufend';
       return { ...p, state, invoices, skipReason: reason };
     });
     out.set(o.id, list.reverse());

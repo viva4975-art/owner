@@ -2070,3 +2070,17 @@ Testadresse.
   Entwurf je Objekt anpassbar; feste ID aus Bestellung + Objekt → nichts doppelt). Bewusst je Objekt eine Bestellung: Kosten
   in Nachkalkulation/Kostenstellen bleiben je Objekt richtig, „Rechnung erwartet“ und Abrechnungsverfolgung funktionieren
   unverändert; eine Eingangsrechnung kann alle Bestellungen abdecken („Eine Rechnung für alle erfassen“).
+- 2026-10-09: **Rechnungsverfolgung NU prüft selbst** (Ahmed: „jährlich nicht immer bei erwartet“, „laufende Bestellungen sind nur
+  monatliche“, „je Subunternehmer aufklappen“, „ohne unterschriebenen Scan als fehlend“, „Preis doppelt“):
+  - **Nur monatliche/wöchentliche Bestellungen sind „laufend“** (`isRecurringOrder`): nur sie erzeugen „Rechnung erwartet“
+    und „fortlaufend“ in der Bestellliste. Einmalig/quartalsweise/halbjährlich/jährlich = **nach Ausführung** (Status
+    „nach Ausführung“ in der Abrechnungsverfolgung, keine Meldung).
+  - **Selbst prüfen:** ein Zeitraum gilt als abgerechnet, wenn eine Eingangsrechnung ihn abdeckt – ausdrücklich verknüpft
+    (Zeitraum irgendwo im Abrechnungszeitraum), am Auftrag erfasst oder vom selben NU für dasselbe Objekt ohne Auftrag; Monat
+    = Leistungsmonat, sonst Rechnungsdatum (längere Zeiträume bis 2 Monate nach Ende); abgelehnte zählen nicht.
+  - „Rechnung erwartet“: je Nachunternehmer **aufklappbar** (zu, mit Anzahl und ≈ Summe), Häkchen bleiben.
+  - Bestellungen: erteilte NU-Bestellungen **ohne unterschriebenen Auftrag** (Scan oder Handy-Unterschrift) mit Hinweis
+    „unterschriebener Auftrag fehlt“, oben Zähler + Filter `?unterschrift=fehlt`. Spalten der Liste bei schmalem Bildschirm
+    schmaler (Lieferant war zusammengequetscht).
+  - Bestellschein: bei Pauschalen nur noch eine Zeile „Preis (netto)“ (vorher Preis und Gesamtbetrag gleich); bei Stunden
+    weiter Stundensatz + angenommene Std. + Gesamtbetrag.

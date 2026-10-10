@@ -14,6 +14,7 @@ import { centsToInput } from './forms.js';
 import { Icon } from './icons.js';
 import { canAccess } from './permissions.js';
 import type { Role } from '../services/users.js';
+import { PaymentTermsField } from './payment-terms-field.js';
 import { FORMAT_LABEL, NEW_OPTIONS, PageHead, type Tab, Tabs, euro, initials } from './layout.js';
 
 export const Field: FC<{
@@ -505,6 +506,14 @@ export const CustomerForm: FC<{ id: string; c: Partial<Customer>; isNew: boolean
             E-Rechnung erzeugt werden – später unter Kunde → Rechnungsgruppen änderbar.
           </small>
         </div>
+      )}
+      {isNew && (
+        <PaymentTermsField
+          id="c-terms"
+          name="terms"
+          names={{ days: 'payment_terms_days', percent: 'skonto_percent_bp', skontoDays: 'skonto_days' }}
+          value={null}
+        />
       )}
     </div>
     <h2 class="form-section">Zusatzinformationen</h2>

@@ -235,6 +235,8 @@ export async function saveCustomer(
     if (cur) {
       await tx`update app.customers set ${tx({ ...data, updated_at: new Date() })} where id = ${id}`;
     } else {
+      // Ohne Angabe: 10 Tage netto ohne Skonto (Ahmed 10.10.)
+      data.payment_terms_days ??= 10;
       await tx`insert into app.customers ${tx({ id, ...data })}`;
       const [c] = await tx<Customer[]>`select * from app.customers where id = ${id}`;
       await tx`

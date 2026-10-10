@@ -460,7 +460,7 @@ export const InvoiceEditor: FC<{
             <label for="payment_terms_days">Zahlungsbedingung</label>
             <select id="payment_terms_days" name="payment_terms_days">
               <option value="">wie Rechnungsgruppe/Kunde</option>
-              {[0, 7, 10, 14, 21, 30, 45, 60].map((d) => (
+              {[0, 7, 10, 14, 20, 21, 30, 45, 60].map((d) => (
                 <option value={String(d)} selected={inv.payment_terms_days === d}>
                   {d === 0 ? 'sofort ohne Abzug' : `${d} Tage netto`}
                 </option>

@@ -65,7 +65,10 @@ const schema = z
 
     const s3 = [env.S3_ENDPOINT, env.S3_REGION, env.S3_BUCKET, env.S3_ACCESS_KEY, env.S3_SECRET_KEY];
     if (s3.some(Boolean) && !s3.every(Boolean))
-      issue('S3_ENDPOINT', 'Archiv-Kopie: S3_ENDPOINT, S3_REGION, S3_BUCKET, S3_ACCESS_KEY und S3_SECRET_KEY gemeinsam angeben');
+      issue(
+        'S3_ENDPOINT',
+        'Archiv-Kopie: S3_ENDPOINT, S3_REGION, S3_BUCKET, S3_ACCESS_KEY und S3_SECRET_KEY gemeinsam angeben',
+      );
     if (env.S3_ENDPOINT && env.APP_ENV !== 'dev' && !env.S3_ENDPOINT.startsWith('https://'))
       issue('S3_ENDPOINT', 'Archiv-Kopie: S3_ENDPOINT muss mit https:// beginnen');
 

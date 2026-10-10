@@ -7,6 +7,8 @@ import { listWordTemplates } from '../services/word-templates.js';
 import { WordTemplateBox } from './routes-word-templates.js';
 import type { Context } from 'hono';
 import type { Child } from 'hono/jsx';
+import { applyTermsChoice } from '../domain/invoice/payment-terms.js';
+import { PaymentTermsField } from './payment-terms-field.js';
 import {
   contactInput,
   deleteContact,
@@ -473,7 +475,13 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     if (body.reverse_charge_shown === '1' && body.reverse_charge === undefined) body.reverse_charge = 'false';
     if (body.is_consumer_shown === '1' && body.is_consumer === undefined) body.is_consumer = 'false';
     if (body.is_internal_shown === '1' && body.is_internal === undefined) body.is_internal = 'false';
-    const parsed = customerInput.safeParse(body);
+    const parsed = customerInput.safeParse(
+      applyTermsChoice(body, 'terms', {
+        days: 'payment_terms_days',
+        percent: 'skonto_percent_bp',
+        skontoDays: 'skonto_days',
+      }),
+    );
     if (!parsed.success) throw new BusinessError(parsed.error.issues.map((i) => i.message).join('\n'));
     try {
       await saveCustomer(sql, id, parsed.data, c.get('actor'), versionOf(body.version));
@@ -943,57 +951,31 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                   <label for="g-order">Bestellnummer</label>
                   <input id="g-order" name="order_reference" value={g?.order_reference ?? ''} />
                 </div>
-                <div>
-                  <label for="g-terms">Zahlungsziel (Tage) *</label>
-                  <input
-                    id="g-terms"
-                    name="bill_payment_terms_days"
-                    type="number"
-                    min={0}
-                    max={365}
-                    required
-                    value={String((g ?? tpl)?.bill_payment_terms_days ?? cust.payment_terms_days ?? 30)}
-                  />
-                </div>
-                <div class="chk">
-                  <input
-                    type="checkbox"
-                    id="g-own-sk"
-                    data-reveal="#g-sk"
-                    checked={!!(g ?? tpl)?.bill_skonto_percent_bp}
-                  />
-                  <label for="g-own-sk">Skonto gewähren</label>
-                </div>
-              </div>
-              <div
-                class="grid"
-                id="g-sk"
-                hidden={!(g ?? tpl)?.bill_skonto_percent_bp}
-                style="margin-top:10px"
-              >
-                <div>
-                  <label for="g-sk-pct">Skonto %</label>
-                  <input
-                    id="g-sk-pct"
-                    name="bill_skonto_percent_bp"
-                    placeholder="z. B. 3"
-                    value={
-                      (g ?? tpl)?.bill_skonto_percent_bp
-                        ? String((g ?? tpl)!.bill_skonto_percent_bp! / 100).replace('.', ',')
-                        : ''
-                    }
-                  />
-                </div>
-                <div>
-                  <label for="g-sk-days">Skonto innerhalb (Tage)</label>
-                  <input
-                    id="g-sk-days"
-                    name="bill_skonto_days"
-                    type="number"
-                    placeholder="z. B. 7"
-                    value={String((g ?? tpl)?.bill_skonto_days ?? '')}
-                  />
-                </div>
+                <PaymentTermsField
+                  id="g-terms"
+                  name="bill_terms"
+                  names={{
+                    days: 'bill_payment_terms_days',
+                    percent: 'bill_skonto_percent_bp',
+                    skontoDays: 'bill_skonto_days',
+                  }}
+                  value={(() => {
+                    const x = g ?? tpl;
+                    const days = x?.bill_payment_terms_days ?? cust.payment_terms_days;
+                    if (days == null) return null;
+                    return x
+                      ? {
+                          days,
+                          skontoBp: x.bill_skonto_percent_bp ?? null,
+                          skontoDays: x.bill_skonto_days ?? null,
+                        }
+                      : {
+                          days,
+                          skontoBp: cust.skonto_percent_bp ?? null,
+                          skontoDays: cust.skonto_days ?? null,
+                        };
+                  })()}
+                />
               </div>
               <div class="section-title">Objekte in dieser Gruppe</div>
               {(() => {
@@ -1142,7 +1124,13 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     const b = await c.req.parseBody({ all: true });
     const [exists] = await sql`select 1 from app.invoice_groups where id = ${gid}`;
     const formUrl = `/kunden/${id}/rechnungsgruppen?${exists ? `bearbeiten=${gid}` : 'neu=1'}`;
-    const parsed = groupBillingInput.safeParse(b);
+    const parsed = groupBillingInput.safeParse(
+      applyTermsChoice(b, 'bill_terms', {
+        days: 'bill_payment_terms_days',
+        percent: 'bill_skonto_percent_bp',
+        skontoDays: 'bill_skonto_days',
+      }),
+    );
     if (!parsed.success)
       return back(c, formUrl, {
         fehler: parsed.error.issues[0]?.message ?? 'Eingabe prüfen',

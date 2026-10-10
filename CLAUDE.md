@@ -2406,3 +2406,9 @@ Testadresse.
   Revisionssicheres Archiv (Stand, Fehler, „Jetzt sichern“), Systemwächter-Prüfung (Speicher weg / Object Lock aus /
   Dateien > 24 Std. ohne Kopie = Störung; nicht eingerichtet = gelber Hinweis). Getestet gegen moto (S3-Nachbau,
   `moto_server -p 5055`, Test wird ohne übersprungen). Anleitung `docs/anleitung-archiv.html/.pdf`.
+- 2026-10-10: **Zahlungsbedingung als Auswahl** (Ahmed: „nicht hinschreiben, sondern auswählen“): Rechnungsgruppe und „Neuer
+  Kunde“ mit Liste (`src/domain/invoice/payment-terms.ts`, Feld `PaymentTermsField`): **Standard 10 Tage netto ohne
+  Skonto**, sofort, 7/14/20/30/45/60 Tage netto, 14 Tage/2 % in 7, **20 Tage/3 % in 7**, 30 Tage/2 % in 10, 30 Tage/3 % in
+  10, 30 Tage/3 % in 14, 60 Tage/3 % in 14; „andere …“ blendet Tage/Skonto-Felder ein (z. B. übernommene Sonderfälle,
+  Anzeige „bisher: …“). Neue Kunden ohne Angabe = 10 Tage. Bestehende Kunden/Gruppen unverändert. Rechnungsentwurf:
+  Auswahl um 20 Tage ergänzt. Allgemein neu: `<select data-reveal="#…">` zeigt Felder nur bei „andere“.

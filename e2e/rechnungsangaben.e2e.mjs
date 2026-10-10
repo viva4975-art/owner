@@ -58,7 +58,7 @@ await p.fill('#g-plz', '80335');
 await p.fill('#g-city', 'München');
 await p.fill('#g-emails', 'sued@schule.example');
 await p.selectOption('#g-format', 'zugferd');
-await p.fill('#g-terms', '45');
+await p.selectOption('#g-terms', '45');
 await p.check('#g-own-dun');
 await p.fill('#g-dunning', 'mahnung@schule.example');
 await p.click('button:has-text("Rechnungsgruppe anlegen")');

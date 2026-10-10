@@ -91,6 +91,7 @@ export const CLIENT_JS = String.raw`
     // aufgeklappte „abweichend“-Bereiche wiederherstellen (danach Werte darin erneut setzen)
     var revealed = Array.prototype.filter.call(form.querySelectorAll('input[data-reveal]'), function (cb) { return cb.checked; });
     revealed.forEach(function (cb) { cb.dispatchEvent(new Event('change')); });
+    Array.prototype.forEach.call(form.querySelectorAll('select[data-reveal]'), function (sel) { sel.dispatchEvent(new Event('change')); });
     if (revealed.length || toggled.length) fieldsOf(form).forEach(function (el) {
       var v = byKey[el.name + '#1'];
       if (v !== undefined && el.type !== 'checkbox' && el.type !== 'radio' && !el.value) el.value = v;
@@ -156,6 +157,20 @@ export const CLIENT_JS = String.raw`
       Array.prototype.forEach.call(target.querySelectorAll('input,select,textarea'), function (el) { el.disabled = !cb.checked; });
     }
     cb.addEventListener('change', function () { sync(); if (cb.checked) { var f = target.querySelector('input,select,textarea'); if (f) f.focus(); } });
+    sync();
+  });
+
+  // Auswahl mit „andere …“: Einzelfelder nur bei diesem Wert zeigen (z. B. Zahlungsbedingung)
+  Array.prototype.forEach.call(document.querySelectorAll('select[data-reveal]'), function (sel) {
+    var target = document.querySelector(sel.getAttribute('data-reveal'));
+    if (!target) return;
+    var want = sel.getAttribute('data-reveal-value') || 'andere';
+    function sync() {
+      var on = sel.value === want;
+      target.hidden = !on;
+      Array.prototype.forEach.call(target.querySelectorAll('input,select,textarea'), function (el) { el.disabled = !on; });
+    }
+    sel.addEventListener('change', sync);
     sync();
   });
 

@@ -21,6 +21,8 @@ describe('S3 Signatur V4', () => {
   });
 
   it('kodiert Objektschlüssel je Pfadteil', () => {
-    expect(objectPath('archiv', 'invoices/2026/RE 1 ä.pdf')).toBe('/archiv/invoices/2026/RE%201%20%C3%A4.pdf');
+    expect(objectPath('archiv', 'invoices/2026/RE 1 ä.pdf')).toBe(
+      '/archiv/invoices/2026/RE%201%20%C3%A4.pdf',
+    );
   });
 });

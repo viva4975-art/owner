@@ -2258,3 +2258,5 @@ Testadresse.
   der Fußzeile des Briefpapiers), Zahlungsblock dafür über die ganze Breite neben dem GiroCode (ohne Verwendungszweck – Ahmed),
   Betreffzeile entfernt, Leistungsort/Objekt jetzt im Kopfblock rechts unter der Nummer (Angebot: „Objekt“).
   Noch nicht aktiv – nach Ahmeds Freigabe für Rechnung, Storno, Korrektur, Angebot, AB einbauen (PDF/A + KoSIT prüfen).
+- 2026-10-10: „edel“: Beschriftung „Objekt“ statt „Leistungsort“; drei Positionen zur Auswahl (`objPos`): Kopfblock rechts,
+  links unter der Anschrift, schmales Band über der Anrede (Beispiele `4-rechnung-edel-objekt-*.pdf`). Ahmed wählt.

@@ -170,4 +170,10 @@ for (const [i, v] of (['edel', 'modern', 'gross'] as Design2[]).entries()) {
     }),
   );
 }
+// edel: Objekt an drei Stellen
+for (const pos of ['kopf', 'links', 'band'] as const)
+  await writeFile(
+    `${out}/4-rechnung-edel-objekt-${pos}.pdf`,
+    await renderInvoiceDesign2(doc, { variant: 'edel', objPos: pos }),
+  );
 console.log('fertig:', out);

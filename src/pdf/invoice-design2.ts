@@ -84,6 +84,8 @@ export interface Design2Options {
   contact?: { name: string; role?: string; phone?: string | null; email?: string | null };
   acceptance?: boolean;
   validUntil?: string;
+  /** edel: wo das Objekt steht – Kopfblock rechts, links unter der Anschrift oder als Band über der Anrede */
+  objPos?: 'kopf' | 'links' | 'band';
 }
 
 class P {
@@ -273,8 +275,12 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
   const sender = `${S.legalName} · ${S.street} · ${S.postalCode} ${S.city}`;
   p.text(sender, L, 145, 6.2, 'r', GREY);
   p.line(L, 147.5, L + p.w(sender, 6.2), 147.5, 0.35, FAINT);
-  for (const [i, l] of addressLines(B, f.r).lines.entries())
-    p.text(l.text, L, 162 + i * (l.lead + 0.6), l.size - 0.4, i === 0 ? 'm' : 'r', INK);
+  let addrEnd = 162;
+  for (const [i, l] of addressLines(B, f.r).lines.entries()) {
+    addrEnd = 162 + i * (l.lead + 0.6);
+    p.text(l.text, L, addrEnd, l.size - 0.4, i === 0 ? 'm' : 'r', INK);
+  }
+  const objPos = v === 'edel' ? (o.objPos ?? 'kopf') : null;
 
   const IX = 340; // Kopfblock rechts
   const metaRows = (y0: number, rows: [string, string][], size = 8.2) => {
@@ -296,8 +302,8 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
     p.line(IX, 171, R, 171, 0.5, INK);
     // Objekt im Kopfblock (Ahmed 10.10.: kein Betreff, Objekt woanders)
     let oy = 185;
-    if (place) {
-      p.cap(isOffer ? 'Objekt' : 'Leistungsort', IX, oy, BRD, 6.4);
+    if (place && objPos === 'kopf') {
+      p.cap('Objekt', IX, oy, BRD, 6.4);
       oy += 11;
       for (const t of wrap(place.title, f.s, 8.6, R - IX)) {
         p.text(t, IX, oy, 8.6, 's', INK);
@@ -313,6 +319,22 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
       oy += 13;
     }
     p.y = Math.max(262, metaRows(oy, meta) + 24);
+    if (place && objPos === 'links') {
+      // links unter der Anschrift, gleiche Spalte wie die Anschrift
+      let ly = Math.max(addrEnd + 26, 232);
+      p.cap('Objekt', L, ly, BRD, 6.4);
+      ly += 11;
+      for (const t of wrap(place.title, f.s, 8.6, IX - L - 30)) {
+        p.text(t, L, ly, 8.6, 's', INK);
+        ly += 10.6;
+      }
+      if (place.address)
+        for (const t of wrap(place.address, f.r, 7.8, IX - L - 30)) {
+          p.text(t, L, ly, 7.8, 'r', GREY);
+          ly += 9.8;
+        }
+      p.y = Math.max(p.y, ly + 18);
+    }
   } else if (v === 'modern') {
     // Betrag zuerst: Bordeaux-Karte rechts
     const cardH = 74;
@@ -352,7 +374,16 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
   } else {
     const subj = place ? place.title : null;
     if (v === 'edel') {
-      void subj; // Objekt steht im Kopfblock
+      if (place && objPos === 'band') {
+        // schmales Band über der Anrede
+        p.rect(L, p.y - 4, R - L, 26, SOFT, 4);
+        p.rect(L, p.y - 4, 2.2, 26, BRD);
+        p.cap('Objekt', L + 10, p.y + 12, BRD, 6.4);
+        const tx = L + 52;
+        p.text(subj!, tx, p.y + 12, 9, 's', INK);
+        if (place.address) p.text(place.address, tx + p.w(subj!, 9, 's') + 10, p.y + 12, 8, 'r', GREY);
+        p.y += 40;
+      }
     } else if (place) {
       p.cap(isOffer ? 'Objekt' : 'Leistungsort', L, p.y);
       p.y += 13;

@@ -2424,4 +2424,4 @@ Testadresse.
   `deploy_daten/_data` (inkrementell) und `.env.live`, verschlüsselt, 30 Tage; Test-Wiederherstellung mit `pg_restore --list`,
   Ernstfall-Ablauf, Störungen.
 - 2026-10-11: Ahmed: AVV IONOS und GitHub-Token erledigt; autoaid-API nicht nötig; Behörden-Abfrage (Portal/Leitweg) gestrichen;
-  Landeshauptstadt München zahlt nach eigenem Rechnungs-/Zahlungsplan (deshalb Versandweg „kein Versand“).
+  Landeshauptstadt München zahlt nach eigenem Zahlungsplan und will keine Rechnung zugeschickt (Ahmed bestätigt: keine Abrechnung durch die Stadt) → Versandweg „kein Versand“ passt, Rechnung wird trotzdem ausgestellt und archiviert; kein § 14c-Risiko.

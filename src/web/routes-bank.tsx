@@ -207,6 +207,27 @@ export function registerBankRoutes({ app, deps, page, back }: Ctx) {
                 </span>
               </form>
             )}
+            {feed.accounts.length > 0 && (
+              <form method="post" action="/transfer/bank/nachladen" class="actions" style="margin-top:8px">
+                <label for="hist-from" class="small">
+                  Ältere Umsätze nachladen ab
+                </label>
+                <input
+                  id="hist-from"
+                  name="from"
+                  type="date"
+                  required
+                  value={`${todayBerlin().slice(0, 4)}-01-01`}
+                  style="max-width:170px"
+                />
+                <button class="btn sec">Nachladen</button>
+                <span class="small mut">
+                  Viele Banken geben Umsätze älter als 90 Tage nur in der ersten Stunde nach der TAN-Freigabe
+                  heraus – dann vorher „Bank verbinden“ neu ausführen. Sonst: Kontoauszug als CAMT/CSV aus dem
+                  Online-Banking einlesen (nichts wird doppelt angelegt).
+                </span>
+              </form>
+            )}
           </div>
         )}
         <div class="card small mut">
@@ -274,6 +295,24 @@ export function registerBankRoutes({ app, deps, page, back }: Ctx) {
     } catch (e) {
       return back(c, '/einstellungen/bankabruf', { fehler: (e as Error).message });
     }
+  });
+
+  app.post('/transfer/bank/nachladen', async (c) => {
+    const b = await c.req.parseBody();
+    const from = typeof b.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.from) ? b.from : null;
+    if (!from) throw new BusinessError('Bitte ein Datum wählen');
+    if (from > todayBerlin()) throw new BusinessError('Datum liegt in der Zukunft');
+    const r = await fetchAll(deps, { actor: c.get('actor'), historyFrom: from });
+    const msg = `Ab ${from.split('-').reverse().join('.')}: ${r.accounts} Konto/Konten abgerufen, ${r.created} neue Umsätze.`;
+    return back(
+      c,
+      '/transfer/kontoumsaetze',
+      r.errors.length
+        ? {
+            fehler: `${msg} ${r.errors.join(' · ')} – Ältere Umsätze gibt die Bank oft nur direkt nach einer neuen TAN-Freigabe („Bank verbinden“) heraus; sonst Kontoauszug als CAMT/CSV einlesen.`,
+          }
+        : { ok: msg },
+    );
   });
 
   app.post('/transfer/bank/abrufen', async (c) => {

@@ -2417,3 +2417,6 @@ Testadresse.
   Bucket nicht gefunden / Zugang abgelehnt (Schlüssel, Region) mit eigener Meldung; meldet der Bucket keine Sperre, prüft
   die App mit einer Probedatei (`_pruefung/object-lock-<Datum>.txt`, Compliance-Sperre 2 Tage) und nimmt das Ergebnis
   (6 Std. gemerkt). Die Seite zeigt den genauen Grund (`S3Client.lockStatus`).
+- 2026-10-10: **Ausgaben vor Juli fehlen** (Ahmed): Der Bankabruf holt beim ersten Mal nur 90 Tage (ab ~Mitte Juli). Neu unter
+  Einstellungen → Bankabruf: **„Ältere Umsätze nachladen ab <Datum>“** (Standard 01.01.), nichts doppelt. Viele Banken geben
+  > 90 Tage nur kurz nach einer neuen TAN-Freigabe heraus (PSD2) – sonst Kontoauszug als CAMT/CSV einlesen.

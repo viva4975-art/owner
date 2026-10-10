@@ -420,7 +420,10 @@ const BALANCE_ORDER = ['CLBD', 'ITBD', 'XPCD', 'ITAV', 'CLAV', 'OPBD', 'PRCD', '
 let running = false;
 
 /** Alle verbundenen Konten abrufen (Kontostand + Umsätze). `auto`: nur Konten, deren Abruf älter als 4,5 Std. ist. */
-export async function fetchAll(deps: Deps, p: { actor: string; auto?: boolean; now?: Date }) {
+export async function fetchAll(
+  deps: Deps,
+  p: { actor: string; auto?: boolean; now?: Date; historyFrom?: string },
+) {
   if (running) return { accounts: 0, lines: 0, created: 0, errors: ['Abruf läuft bereits'] };
   running = true;
   try {
@@ -430,7 +433,10 @@ export async function fetchAll(deps: Deps, p: { actor: string; auto?: boolean; n
   }
 }
 
-async function fetchAllInner(deps: Deps, p: { actor: string; auto?: boolean; now?: Date }) {
+async function fetchAllInner(
+  deps: Deps,
+  p: { actor: string; auto?: boolean; now?: Date; historyFrom?: string },
+) {
   const { sql } = deps;
   const now = p.now ?? new Date();
   const accounts = await sql<
@@ -449,7 +455,7 @@ async function fetchAllInner(deps: Deps, p: { actor: string; auto?: boolean; now
     }
     if (!a.iban) continue;
     try {
-      const r = await fetchAccount(deps, a, p.actor, now);
+      const r = await fetchAccount(deps, a, p.actor, now, p.historyFrom);
       out.accounts++;
       out.lines += r.lines;
       out.created += r.created;
@@ -474,6 +480,7 @@ async function fetchAccount(
   a: FeedAccount & { last_booking_date: string | null },
   actor: string,
   now: Date,
+  historyFrom?: string,
 ) {
   const { sql } = deps;
   const iban = a.iban!;
@@ -499,9 +506,12 @@ async function fetchAccount(
   }
   // Umsätze (mit Überlappung – doppelt schadet nicht)
   const today = todayBerlin(now);
-  const from = a.last_booking_date
-    ? addDays(a.last_booking_date, -OVERLAP_DAYS)
-    : addDays(today, -FIRST_FETCH_DAYS);
+  // „Ältere Umsätze nachladen“: fester Starttag (Banken liefern > 90 Tage oft nur kurz nach der TAN-Freigabe)
+  const from = historyFrom
+    ? historyFrom
+    : a.last_booking_date
+      ? addDays(a.last_booking_date, -OVERLAP_DAYS)
+      : addDays(today, -FIRST_FETCH_DAYS);
   const raw: EbTransaction[] = [];
   let cont: string | null = null;
   for (let page = 0; page < 100; page++) {

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<title>Revisionssicheres Archiv</title>
+<style>
+  body{font-family:Inter,Arial,sans-serif;color:#1d1d1f;max-width:820px;margin:28px auto;padding:0 18px;line-height:1.5;font-size:13.5px}
+  h1{color:#7D1435;font-size:23px;margin-bottom:4px}
+  h2{color:#7D1435;font-size:16px;margin:24px 0 8px;border-bottom:2px solid #f0dbe2;padding-bottom:4px}
+  .sub{color:#666;margin-top:0}
+  code{background:#f4eef0;padding:1px 5px;border-radius:4px}
+  .box{background:#fff7e0;border:1px solid #e9c46a;border-radius:6px;padding:9px 13px;margin:10px 0}
+  .red{background:#fdecec;border-color:#e3a0a0}
+  .ok{background:#eef7ee;border-color:#9cc79c}
+  ol li{margin-bottom:6px}
+  .n{display:inline-block;background:#7D1435;color:#fff;border-radius:50%;width:22px;height:22px;text-align:center;line-height:22px;font-weight:700;margin-right:6px}
+  @media print{h2{break-after:avoid}.box{break-inside:avoid}}
+</style>
+</head>
+<body>
+<h1>Revisionssicheres Archiv einrichten (S3 Object Lock)</h1>
+<p class="sub">Viva-Deluxe Betriebs-App · GoBD-Aufbewahrung 10 Jahre · Stand 10.10.2026</p>
+
+<div class="box ok">Die App kopiert alle 10 Minuten jeden Beleg (Rechnungen, E-Rechnungen, Storno, Mahnungen, Kasse,
+Kontoauszüge, Arbeitsscheine, unterschriebene Dokumente, Rechnungseingang, Lohnabrechnungen) in einen S3-Speicher mit
+<b>Object Lock im Compliance-Modus</b>. Bis 31.12. des 10. Folgejahres kann die Kopie <b>niemand</b> löschen oder ändern –
+auch kein Administrator, kein Angreifer, nicht IONOS.</div>
+
+<h2><span class="n">1</span>Bucket bei IONOS anlegen</h2>
+<ol>
+  <li>IONOS Cloud (DCD) → <b>Storage → Object Storage</b>. Region in Deutschland wählen (z. B. Frankfurt).</li>
+  <li>„Bucket erstellen“: Name z. B. <code>viva-archiv</code>. <b>Wichtig: „Object Lock“ beim Anlegen einschalten</b> –
+    nachträglich geht das nicht. Eine Standard-Aufbewahrung im Bucket ist nicht nötig (die App setzt sie je Datei).</li>
+  <li>In den Bucket-Eigenschaften <b>Endpunkt</b> (z. B. <code>https://s3.eu-central-1.ionoscloud.com</code>) und
+    <b>Region</b> ablesen.</li>
+  <li>Object Storage → <b>Zugangsschlüssel</b> (Key management) → neuen Schlüssel erzeugen: Access Key + Secret Key.
+    <b>Den Secret Key niemandem schicken</b> – nur auf dem Server eintragen.</li>
+</ol>
+
+<h2><span class="n">2</span>Auf dem Server eintragen</h2>
+<p>Wie in der Server-Anleitung: verbinden, dann <code>nano /opt/viva/deploy/.env.live</code> und unten ergänzen
+(Werte in einfachen Anführungszeichen):</p>
+<pre><code>S3_ENDPOINT='https://s3.eu-central-1.ionoscloud.com'
+S3_REGION='eu-central-1'
+S3_BUCKET='viva-archiv'
+S3_ACCESS_KEY='…'
+S3_SECRET_KEY='…'</code></pre>
+<p>Speichern (Strg+O, Enter, Strg+X), dann <code>cd /opt/viva/deploy &amp;&amp; ./update.sh</code>.</p>
+
+<h2><span class="n">3</span>Prüfen</h2>
+<ol>
+  <li>App → Einstellungen → <b>Revisionssicheres Archiv (S3)</b>: „Object Lock im Bucket: eingeschaltet“.</li>
+  <li>„Jetzt sichern“ – beim ersten Mal werden alle vorhandenen Belege nachgeholt (je Lauf bis 300 Dateien / 2 GB,
+    der Rest in den folgenden Läufen alle 10 Min.).</li>
+  <li>Ist Object Lock nicht eingeschaltet, kopiert die App <b>nichts</b> (eine Kopie ohne Sperre wäre nicht
+    revisionssicher) und meldet eine Störung.</li>
+  <li>Störungen (Speicher nicht erreichbar, Dateien länger als 24 Std. ohne Kopie) kommen über den Systemwächter per E-Mail.</li>
+</ol>
+
+<div class="box red"><b>Gut zu wissen:</b> Gesperrte Dateien lassen sich 10 Jahre lang nicht löschen – auch nicht der
+Bucket und nicht bei Kündigung. Die Kosten laufen so lange weiter (Größenordnung wenige Euro im Monat). Personalakten,
+Ausschreibungsunterlagen und Fotos werden deshalb bewusst <b>nicht</b> gesperrt (DSGVO-Löschpflichten) – die stecken in
+der täglichen Sicherung.</div>
+
+<div class="box">Ersetzt nicht die Sicherung: Object Lock schützt die <b>Belege</b>; die Datenbank (Kunden, Zeiten …)
+sichert weiter die tägliche Sicherung + IONOS Cloud Backup.</div>
+</body>
+</html>

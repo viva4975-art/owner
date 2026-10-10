@@ -17,6 +17,7 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/einstellungen\/bankabruf(\/|$)/, ['admin']],
   [/^\/einstellungen\/email(\/|$)/, ['admin']],
   [/^\/einstellungen\/system(\/|$)/, ['admin']],
+  [/^\/einstellungen\/archiv(\/|$)/, ['admin']],
   [/^\/transfer\/bank\/rueckkehr$/, ['admin']],
   [/^\/einstellungen\/erinnerungen(\/|$)/, ['admin', 'buchhaltung']],
   [/^\/erinnerungen(\/|$)/, ['admin', 'buchhaltung']],

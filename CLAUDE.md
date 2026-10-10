@@ -101,6 +101,7 @@ Testadresse.
 - [ ] Lieferantennummern bei Behörden, Leitweg-IDs der Behörden-Kunden (Steuernummer 143/190/63154 vom Briefpapier übernommen)
 - [ ] Mail-Zugang (SMTP) für buchhaltung@viva-deluxe-reinigung.de (IONOS Exchange) in `.env.live` eintragen – Anleitung `docs/anleitung-server-eintragen.pdf`
 - [ ] Testadresse für den Prototyp-Versand
+- [ ] S3-Bucket mit Object Lock bei IONOS anlegen, Zugang in `.env.live` (S3_*) – Anleitung `docs/anleitung-archiv.pdf`
 - [ ] Ausfallmeldung: UptimeRobot (`/health/voll`) und healthchecks.io (`BACKUP_PING_URL`) einrichten, `ALERT_EMAIL` in
       `.env.live` – Anleitung `docs/anleitung-ueberwachung.pdf`
 - [x] IONOS VPS (4 vCores/8 GB, Ubuntu 24.04, 217.160.236.117) installiert, läuft unter https://app.viva-deluxe-reinigung.de
@@ -132,7 +133,7 @@ Testadresse.
   ist dann nur noch für Privatkunden zulässig → Firmenkunden bis Ende 2026 auf ZUGFeRD/XRechnung umstellen.
 - **§ 13b UStG:** Reinigungsleistungen an andere Gebäudereiniger unterliegen ggf. dem Reverse-Charge-
   Verfahren (0 % + Pflichthinweis). Im Prototyp bewusst gesperrt (0 % wird abgelehnt).
-- **Archiv:** Supabase Storage kennt kein Object Lock. Für 10 Jahre revisionssichere Aufbewahrung (GoBD)
+- **Archiv:** (gebaut 10.10.2026, wartet auf den IONOS-Bucket) Supabase Storage kennt kein Object Lock. Für 10 Jahre revisionssichere Aufbewahrung (GoBD)
   zusätzlich S3-kompatiblen Speicher mit Object Lock (Compliance-Modus) in Deutschland/EU nutzen.
 - **§ 13b bei Nachunternehmern:** Reinigungsleistungen von Subunternehmern an uns (selbst Gebäudereiniger) → wir
   schulden die Umsatzsteuer. Eingangsrechnungen dafür ohne USt erfassen (Kennzeichen „§ 13b“), Buchung über
@@ -2395,3 +2396,13 @@ Testadresse.
   ausgefallener Server kann sich nicht selbst melden. Sicherung: `backup.sh` schreibt `status/letzte-sicherung.txt`, nur
   dieser Ordner ist schreibgeschützt in den Container eingebunden (`BACKUP_DIR=/sicherung`), optional Ping an
   `BACKUP_PING_URL` (healthchecks.io). Anleitung `docs/anleitung-ueberwachung.html/.pdf`.
+- 2026-10-10: **Revisionssicheres Archiv (S3 Object Lock)**: `src/archive/s3.ts` (eigene Signatur V4 ohne SDK, gegen
+  AWS-Beispielwerte getestet; PUT mit `x-amz-object-lock-mode: COMPLIANCE`, Content-MD5, Prüfung per HEAD),
+  `src/services/archive-replica.ts`: alle 10 Min. werden alle Dateien unter ARCHIVE_DIR und aus FILES_DIR nur
+  Buchungsbelege (Dateien an Eingangsrechnungen/Rechnungen, eingelesene E-Rechnungen, Lohnabrechnungen) kopiert,
+  Sperre bis 31.12. des 10. Folgejahres; Stand je Datei in `app.archive_replicas` (Migration `20261120000002`), Fehler
+  nach 30 Min. erneut, je Lauf bis 300 Dateien/2 GB, nichts doppelt. Ohne eingeschaltetes Object Lock im Bucket wird
+  nichts kopiert. Personalakte/Fotos/Ausschreibungen bewusst nicht gesperrt (DSGVO-Löschpflichten). Einstellungen →
+  Revisionssicheres Archiv (Stand, Fehler, „Jetzt sichern“), Systemwächter-Prüfung (Speicher weg / Object Lock aus /
+  Dateien > 24 Std. ohne Kopie = Störung; nicht eingerichtet = gelber Hinweis). Getestet gegen moto (S3-Nachbau,
+  `moto_server -p 5055`, Test wird ohne übersprungen). Anleitung `docs/anleitung-archiv.html/.pdf`.

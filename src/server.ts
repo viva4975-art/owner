@@ -9,6 +9,7 @@ import { applyDueHours } from './services/employee-hours.js';
 import { autoConfirmPlanned } from './services/time.js';
 import { sendDailyReminders } from './services/reminders.js';
 import { watch } from './services/watchdog.js';
+import { replicate } from './services/archive-replica.js';
 import { createApp } from './web/app.js';
 
 const env = loadEnv();
@@ -67,6 +68,18 @@ const watchdog = () =>
   watch({ sql, env, mailer: createMailer(env) }).catch((e) => console.error('Systemwächter:', e));
 setTimeout(watchdog, 90_000).unref();
 setInterval(watchdog, 5 * 60 * 1000).unref();
+
+// Revisionssichere Archiv-Kopie (S3 Object Lock): alle 10 Min. neue Belege kopieren (nur wenn eingerichtet)
+const replica = () =>
+  replicate({ sql, env })
+    .then(
+      (r) =>
+        (r.copied || r.failed) &&
+        console.log(`Archiv-Kopie: ${r.copied} kopiert, ${r.failed} Fehler, ${r.pending} offen`),
+    )
+    .catch((e) => console.error('Archiv-Kopie:', e));
+setTimeout(replica, 120_000).unref();
+setInterval(replica, 10 * 60 * 1000).unref();
 
 const shutdown = async () => {
   await sql.end({ timeout: 5 });

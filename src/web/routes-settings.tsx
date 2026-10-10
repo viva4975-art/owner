@@ -47,6 +47,11 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
         'Datenbank, E-Rechnungs-Prüfung, Speicherplatz, tägliche Sicherung, Mail und Archiv-Kopie – Störungen kommen per E-Mail.',
       ],
       [
+        'Revisionssicheres Archiv (S3)',
+        '/einstellungen/archiv',
+        'Gesperrte Kopie aller Belege im S3-Speicher mit Object Lock (10 Jahre, GoBD) – Stand, Fehler, jetzt sichern.',
+      ],
+      [
         'Erinnerungen per E-Mail',
         '/einstellungen/erinnerungen',
         'Tägliche Sammel-Mail mit allen Fristen (Aufenthaltstitel, NU-Nachweise, HU, Ausschreibungen, Aufgaben, Skonto, fehlende Zeiten).',

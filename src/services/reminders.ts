@@ -182,7 +182,13 @@ export async function collectReminders(sql: Sql, today = todayBerlin()): Promise
     select label, level, detail from app.system_checks
      where not ok and checked_at > now() - interval '1 hour' order by key`;
   for (const c of sys)
-    out.push({ area: 'System', level: c.level, text: `${c.label}: ${c.detail}`, href: '/einstellungen/system', days: -999 });
+    out.push({
+      area: 'System',
+      level: c.level,
+      text: `${c.label}: ${c.detail}`,
+      href: '/einstellungen/system',
+      days: -999,
+    });
   const lv = { rot: 0, gelb: 1 };
   return out.sort((a, b) => lv[a.level] - lv[b.level] || (a.days ?? 999) - (b.days ?? 999));
 }

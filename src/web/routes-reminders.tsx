@@ -12,6 +12,7 @@ import {
 import { MAILER_MISSING, resolveRecipients } from '../mail/mailer.js';
 import { sendInvoiceTestMail } from '../services/workflow.js';
 import { storedChecks, watch } from '../services/watchdog.js';
+import { replicaSummary, replicate, s3FromEnv } from '../services/archive-replica.js';
 import { collectReminders, getReminderSettings, saveReminderSettings } from '../services/reminders.js';
 import type { Ctx } from './app.js';
 import { str } from './forms.js';
@@ -142,6 +143,114 @@ export function registerReminderRoutes({ app, deps, page, back }: Ctx) {
   app.post('/einstellungen/system', async (c) => {
     await watch(deps);
     return back(c, '/einstellungen/system', { ok: 'Geprüft.' });
+  });
+
+  // Revisionssichere Archiv-Kopie: Stand, Fehler, „jetzt sichern“
+  app.get('/einstellungen/archiv', async (c) => {
+    const e = deps.env;
+    const client = s3FromEnv(e);
+    let lock: string;
+    try {
+      lock = client
+        ? (await client.lockConfiguration()).enabled
+          ? 'eingeschaltet'
+          : 'NICHT eingeschaltet'
+        : '–';
+    } catch (err) {
+      lock = `nicht erreichbar (${err instanceof Error ? err.message : String(err)})`;
+    }
+    const s = await replicaSummary(sql, e);
+    const fmt = (d: Date | null) =>
+      d
+        ? d.toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'short', timeStyle: 'short' })
+        : '–';
+    const mb = (b: number) => `${(b / 1024 ** 2).toFixed(1).replace('.', ',')} MB`;
+    return page(
+      c,
+      'Revisionssicheres Archiv',
+      'einstellungen',
+      <>
+        <PageHead
+          title="Revisionssicheres Archiv (S3 Object Lock)"
+          crumbs={[['Einstellungen', '/einstellungen']]}
+        >
+          {client && (
+            <form method="post" action="/einstellungen/archiv" style="margin-left:auto">
+              <button class="btn sec">Jetzt sichern</button>
+            </form>
+          )}
+        </PageHead>
+        {!client && (
+          <div class="flash warn">
+            <span>
+              Noch nicht eingerichtet. Auf dem Server in <code>.env.live</code> S3_ENDPOINT, S3_REGION,
+              S3_BUCKET, S3_ACCESS_KEY und S3_SECRET_KEY eintragen (Anleitung docs/anleitung-archiv.pdf). Bis
+              dahin liegen die Belege nur write-once auf dem Server und in der Sicherung.
+            </span>
+          </div>
+        )}
+        <div class="card">
+          <dl class="kv">
+            <dt>Speicher</dt>
+            <dd>{client ? `${e.S3_ENDPOINT} · Bucket ${e.S3_BUCKET} · Region ${e.S3_REGION}` : '–'}</dd>
+            <dt>Object Lock im Bucket</dt>
+            <dd>{lock}</dd>
+            <dt>Gesperrt gesichert</dt>
+            <dd>
+              {s.ok} Datei(en), {mb(s.bytes)} · zuletzt {fmt(s.last)}
+            </dd>
+            <dt>Noch ohne Kopie</dt>
+            <dd>
+              {s.open} Datei(en){s.oldest ? ` · älteste vom ${fmt(s.oldest)}` : ''}
+            </dd>
+            <dt>Mit Fehler</dt>
+            <dd>{s.fehler}</dd>
+          </dl>
+          <p class="small mut">
+            Kopiert wird alle 10 Minuten: das ganze Belegarchiv (Rechnungen, E-Rechnungen, Storno, Mahnungen,
+            Kasse, Kontoauszüge, Arbeitsscheine, unterschriebene Dokumente) und Belege aus dem
+            Rechnungseingang, Rechnungsanhänge und Lohnabrechnungen. Sperre im Compliance-Modus bis 31.12. des
+            10. Folgejahres – in dieser Zeit kann niemand die Kopie löschen oder ändern, auch wir nicht.
+          </p>
+        </div>
+        {s.errors.length > 0 && (
+          <div class="card">
+            <h3 style="margin-top:0">Fehler (werden alle 30 Min. wiederholt)</h3>
+            <div class="tbl">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Datei</th>
+                    <th>Versuche</th>
+                    <th>Fehler</th>
+                    <th>zuletzt</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {s.errors.map((r) => (
+                    <tr>
+                      <td>{r.key}</td>
+                      <td>{r.attempts}</td>
+                      <td>{r.last_error}</td>
+                      <td class="nowrap">{fmt(r.updated_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </>,
+    );
+  });
+
+  app.post('/einstellungen/archiv', async (c) => {
+    const r = await replicate(deps);
+    return back(c, '/einstellungen/archiv', {
+      [r.failed || r.skipped ? 'fehler' : 'ok']: r.skipped
+        ? `Nicht gesichert: ${r.skipped}`
+        : `${r.copied} Datei(en) gesichert, ${r.failed} Fehler, ${r.pending} noch offen.`,
+    });
   });
 
   // E-Mail-Versand prüfen (Ahmed 09.10.: „wie kann ich es testen“) – zeigt den Stand ohne Passwort, sendet eine Test-Mail

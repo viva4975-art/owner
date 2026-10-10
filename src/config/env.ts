@@ -45,6 +45,12 @@ const schema = z
     KOSIT_VALIDATOR_URL: z.url().default('http://127.0.0.1:8081'),
     /** Ordner der täglichen Sicherung (im Container schreibgeschützt eingebunden) – Systemwächter prüft ihr Alter. */
     BACKUP_DIR: z.string().optional(),
+    /** Revisionssichere Archiv-Kopie: S3-kompatibler Speicher mit Object Lock (z. B. IONOS). Alle fünf oder keiner. */
+    S3_ENDPOINT: z.url().optional(),
+    S3_REGION: z.string().min(1).optional(),
+    S3_BUCKET: z.string().min(3).optional(),
+    S3_ACCESS_KEY: z.string().min(1).optional(),
+    S3_SECRET_KEY: z.string().min(1).optional(),
     /** Empfänger der Störungsmeldungen (sonst Erinnerungs-Empfänger bzw. Firmen-E-Mail). */
     ALERT_EMAIL: z.email().optional(),
     /** Zugang zur Oberfläche im Prototyp (Benutzer:Passwort). Später Supabase Auth. */
@@ -56,6 +62,12 @@ const schema = z
   })
   .superRefine((env, ctx) => {
     const issue = (path: string, message: string) => ctx.addIssue({ code: 'custom', path: [path], message });
+
+    const s3 = [env.S3_ENDPOINT, env.S3_REGION, env.S3_BUCKET, env.S3_ACCESS_KEY, env.S3_SECRET_KEY];
+    if (s3.some(Boolean) && !s3.every(Boolean))
+      issue('S3_ENDPOINT', 'Archiv-Kopie: S3_ENDPOINT, S3_REGION, S3_BUCKET, S3_ACCESS_KEY und S3_SECRET_KEY gemeinsam angeben');
+    if (env.S3_ENDPOINT && env.APP_ENV !== 'dev' && !env.S3_ENDPOINT.startsWith('https://'))
+      issue('S3_ENDPOINT', 'Archiv-Kopie: S3_ENDPOINT muss mit https:// beginnen');
 
     const haystacks = [env.SUPABASE_PROJECT_REF, env.SUPABASE_URL, env.DATABASE_URL]
       .filter((v): v is string => !!v)

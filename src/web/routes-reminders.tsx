@@ -11,6 +11,7 @@ import {
 } from '../mail/compose.js';
 import { MAILER_MISSING, resolveRecipients } from '../mail/mailer.js';
 import { sendInvoiceTestMail } from '../services/workflow.js';
+import { storedChecks, watch } from '../services/watchdog.js';
 import { collectReminders, getReminderSettings, saveReminderSettings } from '../services/reminders.js';
 import type { Ctx } from './app.js';
 import { str } from './forms.js';
@@ -57,6 +58,90 @@ export function registerReminderRoutes({ app, deps, page, back }: Ctx) {
         ))}
       </>,
     );
+  });
+
+  // Systemwächter: Stand aller Prüfungen, „jetzt prüfen“, Hinweis auf den externen Wächter
+  app.get('/einstellungen/system', async (c) => {
+    const rows = await storedChecks(sql);
+    const fmt = (t: string) =>
+      new Date(t).toLocaleString('de-DE', {
+        timeZone: 'Europe/Berlin',
+        dateStyle: 'short',
+        timeStyle: 'short',
+      });
+    const base = (deps.env.PUBLIC_URL ?? new URL(c.req.url).origin).replace(/\/$/, '');
+    return page(
+      c,
+      'Systemzustand',
+      'einstellungen',
+      <>
+        <PageHead title="Systemzustand & Ausfallmeldung" crumbs={[['Einstellungen', '/einstellungen']]}>
+          <form method="post" action="/einstellungen/system" style="margin-left:auto">
+            <button class="btn sec">Jetzt prüfen</button>
+          </form>
+        </PageHead>
+        <div class="card">
+          {rows.length === 0 && (
+            <div class="empty">Noch nicht geprüft – „Jetzt prüfen“ oder 5 Minuten warten.</div>
+          )}
+          {rows.length > 0 && (
+            <div class="tbl">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Prüfung</th>
+                    <th>Zustand</th>
+                    <th>Einzelheiten</th>
+                    <th>seit</th>
+                    <th>geprüft</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr>
+                      <td>{r.label}</td>
+                      <td>
+                        <span class={`badge ${r.ok ? 'ok' : r.level === 'rot' ? 'err' : 'warn'}`}>
+                          {r.ok ? 'in Ordnung' : r.level === 'rot' ? 'Störung' : 'Hinweis'}
+                        </span>
+                      </td>
+                      <td>{r.detail}</td>
+                      <td class="nowrap">{fmt(r.since)}</td>
+                      <td class="nowrap">{fmt(r.checked_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p class="small mut">
+            Geprüft wird alle 5 Minuten. Bei einer Störung geht eine E-Mail an{' '}
+            {deps.env.ALERT_EMAIL ??
+              'die Empfänger unter „Erinnerungen per E-Mail“ (sonst die Firmen-E-Mail)'}{' '}
+            – höchstens einmal am Tag je Störung, bei Behebung eine Entwarnung.
+          </p>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0">Wenn der ganze Server ausfällt</h3>
+          <p>
+            Ein ausgefallener Server kann sich nicht selbst melden. Dafür einmal einen kostenlosen externen
+            Wächter einrichten (z. B. UptimeRobot), der alle 5 Minuten diese Adresse aufruft:
+          </p>
+          <p>
+            <code>{base}/health/voll</code>
+          </p>
+          <p class="small mut">
+            Antwortet sie nicht mit „ok“, meldet der Wächter per E-Mail/App. Anleitung:
+            docs/anleitung-ueberwachung.pdf.
+          </p>
+        </div>
+      </>,
+    );
+  });
+
+  app.post('/einstellungen/system', async (c) => {
+    await watch(deps);
+    return back(c, '/einstellungen/system', { ok: 'Geprüft.' });
   });
 
   // E-Mail-Versand prüfen (Ahmed 09.10.: „wie kann ich es testen“) – zeigt den Stand ohne Passwort, sendet eine Test-Mail

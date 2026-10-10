@@ -42,6 +42,11 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
         'Zeigt, ob der Mail-Zugang (SMTP) eingerichtet ist und ob Test- oder Echtbetrieb gilt; Test-E-Mail senden.',
       ],
       [
+        'Systemzustand & Ausfallmeldung',
+        '/einstellungen/system',
+        'Datenbank, E-Rechnungs-Prüfung, Speicherplatz, tägliche Sicherung, Mail und Archiv-Kopie – Störungen kommen per E-Mail.',
+      ],
+      [
         'Erinnerungen per E-Mail',
         '/einstellungen/erinnerungen',
         'Tägliche Sammel-Mail mit allen Fristen (Aufenthaltstitel, NU-Nachweise, HU, Ausschreibungen, Aufgaben, Skonto, fehlende Zeiten).',

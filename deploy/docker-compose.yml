@@ -25,8 +25,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    environment:
+      # Systemwächter prüft das Alter der täglichen Sicherung (nur die Statusdatei, nicht die Sicherungen selbst)
+      BACKUP_DIR: /sicherung
     volumes:
       - daten:/data
+      - /opt/viva-sicherung/status:/sicherung:ro
     expose:
       - '3000'
     healthcheck:

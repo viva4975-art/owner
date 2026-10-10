@@ -24,6 +24,7 @@ import {
   managedSites,
 } from '../services/users.js';
 import type { Deps } from '../services/workflow.js';
+import { cachedChecks } from '../services/watchdog.js';
 import { Layout } from './layout.js';
 import { canAccess, homeFor } from './permissions.js';
 import { registerAuthRoutes } from './routes-users.js';
@@ -218,6 +219,7 @@ export function createApp(deps: Deps) {
     path === '/app/anmelden' ||
     path === '/app/manifest.webmanifest' ||
     path === '/health' ||
+    path === '/health/voll' ||
     path.startsWith('/static/');
   app.use(async (c, next) => {
     const path = c.req.path;
@@ -454,5 +456,13 @@ export function createApp(deps: Deps) {
   );
 
   app.get('/health', (c) => c.text('ok'));
+  // Für den externen Wächter (UptimeRobot o. ä.): 200 „ok“ nur, wenn alle Störungs-Prüfungen bestehen; sonst 503 mit
+  // den Namen der gestörten Prüfungen (keine Einzelheiten nach außen).
+  app.get('/health/voll', async (c) => {
+    const list = await cachedChecks(deps).catch(() => null);
+    const bad = list ? list.filter((x) => !x.ok && x.level === 'rot').map((x) => x.key) : ['datenbank'];
+    c.header('Cache-Control', 'no-store');
+    return bad.length ? c.text(`STOERUNG: ${bad.join(', ')}`, 503) : c.text('ok');
+  });
   return app;
 }

@@ -43,6 +43,10 @@ const schema = z
     SMTP_USER: z.string().optional(),
     SMTP_PASS: z.string().optional(),
     KOSIT_VALIDATOR_URL: z.url().default('http://127.0.0.1:8081'),
+    /** Ordner der täglichen Sicherung (im Container schreibgeschützt eingebunden) – Systemwächter prüft ihr Alter. */
+    BACKUP_DIR: z.string().optional(),
+    /** Empfänger der Störungsmeldungen (sonst Erinnerungs-Empfänger bzw. Firmen-E-Mail). */
+    ALERT_EMAIL: z.email().optional(),
     /** Zugang zur Oberfläche im Prototyp (Benutzer:Passwort). Später Supabase Auth. */
     /** Geheimnis zum Signieren der Mitarbeiter-Sitzungen (Handy-Ansicht). Außerhalb von dev Pflicht. */
     SESSION_SECRET: z.string().min(32, 'SESSION_SECRET: mindestens 32 Zeichen').optional(),

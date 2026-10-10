@@ -8,6 +8,7 @@ import { autoFetch } from './services/bank-feed.js';
 import { applyDueHours } from './services/employee-hours.js';
 import { autoConfirmPlanned } from './services/time.js';
 import { sendDailyReminders } from './services/reminders.js';
+import { watch } from './services/watchdog.js';
 import { createApp } from './web/app.js';
 
 const env = loadEnv();
@@ -60,6 +61,12 @@ const bankFetch = () =>
     (e) => console.error('Bankabruf:', e),
   );
 setInterval(bankFetch, 30 * 60 * 1000).unref();
+
+// Systemwächter: alle 5 Min. Datenbank, KoSIT, Speicher, Sicherung, Mail prüfen, Störungen per Mail melden
+const watchdog = () =>
+  watch({ sql, env, mailer: createMailer(env) }).catch((e) => console.error('Systemwächter:', e));
+setTimeout(watchdog, 90_000).unref();
+setInterval(watchdog, 5 * 60 * 1000).unref();
 
 const shutdown = async () => {
   await sql.end({ timeout: 5 });

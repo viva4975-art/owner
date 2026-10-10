@@ -101,6 +101,8 @@ Testadresse.
 - [ ] Lieferantennummern bei Behörden, Leitweg-IDs der Behörden-Kunden (Steuernummer 143/190/63154 vom Briefpapier übernommen)
 - [ ] Mail-Zugang (SMTP) für buchhaltung@viva-deluxe-reinigung.de (IONOS Exchange) in `.env.live` eintragen – Anleitung `docs/anleitung-server-eintragen.pdf`
 - [ ] Testadresse für den Prototyp-Versand
+- [ ] Ausfallmeldung: UptimeRobot (`/health/voll`) und healthchecks.io (`BACKUP_PING_URL`) einrichten, `ALERT_EMAIL` in
+      `.env.live` – Anleitung `docs/anleitung-ueberwachung.pdf`
 - [x] IONOS VPS (4 vCores/8 GB, Ubuntu 24.04, 217.160.236.117) installiert, läuft unter https://app.viva-deluxe-reinigung.de
 - [ ] AVV mit IONOS; IONOS Cloud Backup (Sicherung außerhalb des Servers); root-Passwort ändern und ersten GitHub-Token
       löschen (beide standen im Chat); SMTP-Zugang nachtragen (`.env.live`)
@@ -2383,3 +2385,13 @@ Testadresse.
 - 2026-10-10: **PDF/A-3b für die Gestaltung „edel“ bestanden** (Rechnung, Storno, Schlussrechnung, Lastschrift; veraPDF 1.30.3,
   Inter vollständig eingebettet). `npm run check:pdfa` läuft jetzt auch ohne Docker (veraPDF-CLI über Maven, Cache
   `~/.cache/verapdf`, Java + mvn nötig).
+- 2026-10-10: **Systemwächter / Ausfallmeldung** (Ahmed: „Meldung, wenn der Server ausfällt“): Die App prüft alle 5 Min.
+  Datenbank, KoSIT, Speicherplatz (rot < 5 GB/5 %, gelb < 15 GB/15 %), tägliche Sicherung (älter als 26 Std. oder verdächtig
+  klein = Störung) und im Echtbetrieb den Mailzugang (`src/services/watchdog.ts`, Zustand `app.system_checks`, Migration
+  `20261120000001`). Störung → E-Mail an `ALERT_EMAIL` bzw. Erinnerungs-Empfänger (sonst Firmen-E-Mail), höchstens einmal
+  je Störung und Tag, Entwarnung bei Behebung; Mail fehlgeschlagen → nächster Durchlauf versucht es erneut. Störungen stehen
+  unter Erinnerungen (Bereich „System“) und auf **Einstellungen → Systemzustand & Ausfallmeldung** („Jetzt prüfen“).
+  `/health/voll` (ohne Anmeldung) antwortet „ok“ oder 503 „STOERUNG: <Prüfungen>“ – für den externen Wächter, denn ein
+  ausgefallener Server kann sich nicht selbst melden. Sicherung: `backup.sh` schreibt `status/letzte-sicherung.txt`, nur
+  dieser Ordner ist schreibgeschützt in den Container eingebunden (`BACKUP_DIR=/sicherung`), optional Ping an
+  `BACKUP_PING_URL` (healthchecks.io). Anleitung `docs/anleitung-ueberwachung.html/.pdf`.

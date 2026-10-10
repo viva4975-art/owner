@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<title>Ausfallmeldung einrichten</title>
+<style>
+  body{font-family:Inter,Arial,sans-serif;color:#1d1d1f;max-width:820px;margin:28px auto;padding:0 18px;line-height:1.5;font-size:13.5px}
+  h1{color:#7D1435;font-size:23px;margin-bottom:4px}
+  h2{color:#7D1435;font-size:16px;margin:24px 0 8px;border-bottom:2px solid #f0dbe2;padding-bottom:4px}
+  .sub{color:#666;margin-top:0}
+  code{background:#f4eef0;padding:1px 5px;border-radius:4px}
+  .box{background:#fff7e0;border:1px solid #e9c46a;border-radius:6px;padding:9px 13px;margin:10px 0}
+  .red{background:#fdecec;border-color:#e3a0a0}
+  .ok{background:#eef7ee;border-color:#9cc79c}
+  ol li{margin-bottom:6px}
+  .n{display:inline-block;background:#7D1435;color:#fff;border-radius:50%;width:22px;height:22px;text-align:center;line-height:22px;font-weight:700;margin-right:6px}
+  @media print{h2{break-after:avoid}.box{break-inside:avoid}}
+</style>
+</head>
+<body>
+<h1>Ausfallmeldung einrichten</h1>
+<p class="sub">Viva-Deluxe Betriebs-App · https://app.viva-deluxe-reinigung.de · Stand 10.10.2026</p>
+
+<div class="box ok">Die App prüft sich <b>selbst alle 5 Minuten</b>: Datenbank, E-Rechnungs-Prüfung (KoSIT), Speicherplatz,
+tägliche Sicherung, Mailzugang und (sobald eingerichtet) die Archiv-Kopie. Bei einer Störung kommt eine E-Mail –
+höchstens einmal am Tag je Störung, bei Behebung eine Entwarnung. Stand: <b>Einstellungen → Systemzustand &amp; Ausfallmeldung</b>.</div>
+
+<div class="box red">Fällt der <b>ganze Server</b> aus (Stromausfall, IONOS-Störung, Server hängt), kann er sich nicht selbst
+melden. Dafür braucht es einen Wächter <b>von außen</b> – Schritt 2 und 3 (kostenlos, je 5 Minuten).</div>
+
+<h2><span class="n">1</span>Wer bekommt die Meldungen?</h2>
+<ol>
+  <li>Standard: die Empfänger unter <b>Einstellungen → Erinnerungen per E-Mail</b> (sonst die Firmen-E-Mail).</li>
+  <li>Eigene Adresse nur für Störungen: auf dem Server in <code>/opt/viva/deploy/.env.live</code> eine Zeile
+    <code>ALERT_EMAIL='ahmed@viva-deluxe-reinigung.de'</code> ergänzen, dann <code>./update.sh</code>
+    (siehe Server-Anleitung). Pflicht für die Meldung „Datenbank nicht erreichbar“.</li>
+  <li>Voraussetzung: Mailzugang (SMTP) ist eingetragen – sonst kann die App keine Mail schicken.</li>
+</ol>
+
+<h2><span class="n">2</span>Externer Wächter für die App (UptimeRobot)</h2>
+<ol>
+  <li><b>uptimerobot.com</b> → „Register for FREE“ (E-Mail bestätigen).</li>
+  <li>„+ New monitor“ → Typ <b>Keyword</b> (geht auch: HTTP(s)).</li>
+  <li>URL: <code>https://app.viva-deluxe-reinigung.de/health/voll</code></li>
+  <li>Keyword: <code>ok</code> · „Alert when keyword <b>does not exist</b>“ · Intervall 5 Minuten.</li>
+  <li>Benachrichtigung: E-Mail; zusätzlich die <b>UptimeRobot-App</b> aufs Handy (Push) – empfohlen.</li>
+  <li>Test: Monitor zeigt „Up“. Bei einer Störung antwortet die Adresse mit „STOERUNG: …“ (Name der Prüfung) oder
+    gar nicht → Meldung.</li>
+</ol>
+<p>Der Wächter prüft dabei auch das <b>HTTPS-Zertifikat</b> (Ablauf wird gemeldet). Die Adresse verrät nur die Namen
+gestörter Prüfungen, keine Daten.</p>
+
+<h2><span class="n">3</span>Externer Wächter für die nächtliche Sicherung (healthchecks.io)</h2>
+<ol>
+  <li><b>healthchecks.io</b> → kostenloses Konto → „Add Check“: Name „Viva Sicherung“, Period <b>1 day</b>,
+    Grace <b>3 hours</b>.</li>
+  <li>Die angezeigte Ping-Adresse kopieren (<code>https://hc-ping.com/…</code>).</li>
+  <li>Auf dem Server in <code>.env.live</code> eintragen: <code>BACKUP_PING_URL='https://hc-ping.com/…'</code>
+    (kein Update nötig – das Sicherungsskript liest die Zeile jede Nacht).</li>
+  <li>Bleibt der Ping nach 02:30 aus (Sicherung fehlgeschlagen oder Server aus), meldet healthchecks.io per E-Mail.</li>
+</ol>
+
+<h2><span class="n">4</span>Was tun bei einer Meldung?</h2>
+<ul>
+  <li><b>Datenbank / ganze App aus:</b> Server-Anleitung → „Notfall“ (Status, <code>docker compose ps</code>, Neustart).</li>
+  <li><b>KoSIT:</b> Rechnungen lassen sich nicht ausstellen; meist hilft <code>./update.sh</code> bzw. ein Neustart der App.</li>
+  <li><b>Speicherplatz:</b> alte Dateien in <code>/opt/viva-sicherung</code> prüfen, ggf. IONOS-Speicher vergrößern.</li>
+  <li><b>Sicherung zu alt:</b> <code>/opt/viva/deploy/backup.sh</code> von Hand starten und die Ausgabe ansehen.</li>
+</ul>
+</body>
+</html>

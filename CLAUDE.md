@@ -101,7 +101,7 @@ Testadresse.
 - [ ] Lieferantennummern bei Behörden, Leitweg-IDs der Behörden-Kunden (Steuernummer 143/190/63154 vom Briefpapier übernommen)
 - [ ] Mail-Zugang (SMTP) für buchhaltung@viva-deluxe-reinigung.de (IONOS Exchange) in `.env.live` eintragen – Anleitung `docs/anleitung-server-eintragen.pdf`
 - [ ] Testadresse für den Prototyp-Versand
-- [ ] S3-Bucket mit Object Lock bei IONOS anlegen, Zugang in `.env.live` (S3_*) – Anleitung `docs/anleitung-archiv.pdf`
+- [x] ~~S3-Bucket mit Object Lock~~ – 11.10.2026 eingerichtet (IONOS eu-central-4, Bucket viva-archiv), Kopie läuft
 - [ ] Ausfallmeldung: UptimeRobot (`/health/voll`) und healthchecks.io (`BACKUP_PING_URL`) einrichten, `ALERT_EMAIL` in
       `.env.live` – Anleitung `docs/anleitung-ueberwachung.pdf`
 - [x] IONOS VPS (4 vCores/8 GB, Ubuntu 24.04, 217.160.236.117) installiert, läuft unter https://app.viva-deluxe-reinigung.de
@@ -133,7 +133,7 @@ Testadresse.
   ist dann nur noch für Privatkunden zulässig → Firmenkunden bis Ende 2026 auf ZUGFeRD/XRechnung umstellen.
 - **§ 13b UStG:** Reinigungsleistungen an andere Gebäudereiniger unterliegen ggf. dem Reverse-Charge-
   Verfahren (0 % + Pflichthinweis). Im Prototyp bewusst gesperrt (0 % wird abgelehnt).
-- **Archiv:** (gebaut 10.10.2026, wartet auf den IONOS-Bucket) Supabase Storage kennt kein Object Lock. Für 10 Jahre revisionssichere Aufbewahrung (GoBD)
+- **Archiv:** (seit 11.10.2026 aktiv: IONOS S3 mit Object Lock) Supabase Storage kennt kein Object Lock. Für 10 Jahre revisionssichere Aufbewahrung (GoBD)
   zusätzlich S3-kompatiblen Speicher mit Object Lock (Compliance-Modus) in Deutschland/EU nutzen.
 - **§ 13b bei Nachunternehmern:** Reinigungsleistungen von Subunternehmern an uns (selbst Gebäudereiniger) → wir
   schulden die Umsatzsteuer. Eingangsrechnungen dafür ohne USt erfassen (Kennzeichen „§ 13b“), Buchung über

@@ -6,7 +6,7 @@ import type { Sql, Tx } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import type { BuyerSnapshot, InvoiceDocument } from '../domain/invoice/types.js';
 import type { Cents, Quantity, VatRate } from '../domain/money/money.js';
-import { renderInvoicePdf } from '../pdf/render.js';
+import { renderInvoicePdf } from '../pdf/invoice-pdf.js';
 import { buildBuyerSnapshot, getSeller } from './masterdata.js';
 import { BusinessError } from './errors.js';
 import { parsePaymentTerms, uuidOf } from './fortytools-export-import.js';

@@ -4,7 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import type { InvoiceDocument } from '../src/domain/invoice/types.js';
 import type { Cents, Quantity, VatRate } from '../src/domain/money/money.js';
 import { type DesignVariant, renderInvoiceDesign } from '../src/pdf/invoice-design.js';
-import { renderInvoicePdf } from '../src/pdf/render.js';
+import { renderInvoicePdfClassic as renderInvoicePdf } from '../src/pdf/render.js';
 import { type Design2, renderInvoiceDesign2 } from '../src/pdf/invoice-design2.js';
 
 const out = process.argv[2] ?? 'var/design-vorschlaege';

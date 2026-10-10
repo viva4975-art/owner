@@ -2260,3 +2260,14 @@ Testadresse.
   Noch nicht aktiv – nach Ahmeds Freigabe für Rechnung, Storno, Korrektur, Angebot, AB einbauen (PDF/A + KoSIT prüfen).
 - 2026-10-10: „edel“: Beschriftung „Objekt“ statt „Leistungsort“; drei Positionen zur Auswahl (`objPos`): Kopfblock rechts,
   links unter der Anschrift, schmales Band über der Anrede (Beispiele `4-rechnung-edel-objekt-*.pdf`). Ahmed wählt.
+- 2026-10-10: **Gestaltung „edel“ ist aktiv** (Ahmed: „Los“) für Rechnung, Abschlag, Schlussrechnung, Storno,
+  Rechnungskorrektur, Angebot, Auftragsbestätigung, Entwurfs-Vorschau und PDFs der Rechnungen vor der Umstellung:
+  `src/pdf/invoice-pdf.ts` → `renderInvoiceDesign2` (Variante edel, Objekt als Band über der Anrede). Schrift Inter,
+  Kopfblock rechts (Art, große Nummer, Angaben, Seite), Bankverbindung nur in der Fußzeile, Zahlungsbedingung + GiroCode.
+  Übernommen aus der alten Gestaltung: Sammelrechnung (kein Band, Objekt-Überschrift + Zwischensumme je Objekt),
+  abweichende Leistungszeiträume je Position, mehrere Steuersätze, § 13b-Hinweis, Abschläge mit Datum/USt, Lastschrift
+  (ohne GiroCode), Wasserzeichen ENTWURF, feste PDF-Zeitstempel (gleiche Rechnung → gleiche Datei). Neu: Storno/Korrektur
+  mit „Zu Rechnung … vom …“ im Kopf; Angebot mit Ansprechpartner-Karte und Feld „Auftragserteilung“ (statt Ansprechpartner
+  im Text). Alte Gestaltung bleibt als `renderInvoicePdfClassic` (unbenutzt). **Bereits ausgestellte Rechnungen bleiben
+  unverändert (write-once).** KoSIT/ZUGFeRD-Tests grün; **PDF/A-3b mit veraPDF (`npm run check:pdfa`) auf einem Rechner mit
+  Docker wiederholen** (hier kein Docker). 491 Unit-/DB-Tests, e2e angebot/auftrag/vorfaktura/mahnung grün.

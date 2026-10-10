@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import { sampleCancellation, sampleDocument, sampleFinal } from '../einvoice/fixtures.js';
 import { generateZugferd } from '../einvoice/generate.js';
-import { renderInvoicePdf } from '../pdf/render.js';
+import { renderInvoicePdf } from '../pdf/invoice-pdf.js';
 
 /** Beispiel-ZUGFeRD-Dateien für die PDF/A-Prüfung (scripts/check-pdfa.sh). Aufruf: tsx … <Zielverzeichnis> */
 const out = process.argv[2];

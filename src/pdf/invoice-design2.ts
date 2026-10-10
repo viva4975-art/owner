@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import fontkit from '@pdf-lib/fontkit';
 import {
   PDFDocument,
+  degrees,
   type PDFFont,
   type PDFImage,
   type PDFPage,
@@ -14,10 +15,20 @@ import QRCode from 'qrcode';
 import { formatDateDe } from '../domain/invoice/calc.js';
 import { type InvoiceDocument, KIND_TITLES } from '../domain/invoice/types.js';
 import { type Cents, formatEuro } from '../domain/money/money.js';
-import { REVERSE_CHARGE_NOTE, isReverseCharge, paymentTermsHuman } from '../einvoice/mapping.js';
 import {
+  REVERSE_CHARGE_NOTE,
+  directDebitOf,
+  isReverseCharge,
+  paymentTermsHuman,
+  percentToXml,
+} from '../einvoice/mapping.js';
+import {
+  INVOICE_CLOSING_NOPAY,
   INVOICE_INTRO_DEFAULT,
+  type LinePlace,
   addressLines,
+  periodText,
+  shortPeriod,
   girocodePayload,
   quantityPdf,
   splitLineDetail,
@@ -70,6 +81,7 @@ const UNITS: Record<string, string> = {
   MTK: 'm²',
   DAY: 'Tag',
   E48: '',
+  MTR: 'lfm',
 };
 
 export interface Design2Options {
@@ -86,6 +98,10 @@ export interface Design2Options {
   validUntil?: string;
   /** edel: wo das Objekt steht – Kopfblock rechts, links unter der Anschrift oder als Band über der Anrede */
   objPos?: 'kopf' | 'links' | 'band';
+  /** Wasserzeichen quer über jede Seite (z. B. ENTWURF) */
+  watermark?: string;
+  /** abweichende Einheiten-Texte */
+  units?: Record<string, string>;
 }
 
 class P {
@@ -98,6 +114,7 @@ class P {
     private f: Record<Weight, PDFFont>,
     private lh: PDFImage,
     private running: string,
+    private watermark?: string,
   ) {}
   font(w: Weight = 'r') {
     return this.f[w];
@@ -106,6 +123,15 @@ class P {
     this.page = this.pdf.addPage([W, H]);
     this.pages.push(this.page);
     this.page.drawImage(this.lh, { x: 0, y: 0, width: W, height: H });
+    if (this.watermark)
+      this.page.drawText(this.watermark, {
+        x: 130,
+        y: 260,
+        size: 90,
+        font: this.f.b,
+        color: rgb(0.93, 0.85, 0.88),
+        rotate: degrees(45),
+      });
   }
   follow(onNew?: () => void) {
     this.add();
@@ -218,56 +244,87 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
   const lh = await pdf.embedJpg(lhB);
   const v = o.variant;
   const isOffer = !!o.title && !/rechnung/i.test(o.title);
-  const kind = isOffer ? o.title!.replace(/\s+\S+$/, '') : KIND_TITLES[doc.kind];
+  const kind = o.title ? o.title.replace(/\s+\S+$/, '') : KIND_TITLES[doc.kind];
   const no = doc.number;
   const full = `${kind} ${no}`;
   pdf.setTitle(full);
   pdf.setAuthor(doc.seller.legalName);
+  pdf.setSubject(`${full} – ${doc.buyer.name}`);
   pdf.setLanguage('de-DE');
-  const p = new P(pdf, f, lh, full);
+  pdf.setCreator('Viva-Deluxe Betriebs-App');
+  pdf.setProducer(doc.seller.legalName);
+  // feste Zeitpunkte: gleiche Rechnung → gleiche Datei (Archiv-Prüfsumme)
+  pdf.setCreationDate(new Date(`${doc.issueDate}T12:00:00Z`));
+  pdf.setModificationDate(new Date(`${doc.issueDate}T12:00:00Z`));
+  const p = new P(pdf, f, lh, full, o.watermark);
   const S = doc.seller;
   const B = doc.buyer;
 
   // ---------------------------------------------------------------- Daten
+  // Objekt und Leistungszeitraum stehen im Kopf (ein Objekt) bzw. als Zwischenüberschrift je Objekt (Sammelrechnung)
   const parsed = doc.lines.map((l) => splitLineDetail(l.detail));
   const subjPlace = o.subject?.startsWith('Objekt: ') ? o.subject.slice(8) : null;
-  const place =
-    parsed.find((x) => x.place)?.place ??
-    (B.site
-      ? {
-          title: `${B.site.name} (${B.site.siteNo})`,
-          address: [B.site.street, [B.site.postalCode, B.site.city].filter(Boolean).join(' ')]
+  const sitePlaces = !o.subject;
+  const docPeriod = periodText(doc.periodStart, doc.periodEnd);
+  const linePeriod = (i: number) =>
+    parsed[i]!.period ?? periodText(doc.lines[i]!.periodStart, doc.lines[i]!.periodEnd);
+  const headPeriod =
+    docPeriod && doc.lines.every((_, i) => !linePeriod(i) || linePeriod(i) === docPeriod) ? docPeriod : null;
+  const keys = [...new Set(parsed.map((x) => x.place?.key ?? ''))];
+  const grouped = sitePlaces && keys.length > 1;
+  const siteOfBuyer: LinePlace | null = B.site
+    ? {
+        key: '',
+        title: `${B.site.name} (${B.site.siteNo})`,
+        address:
+          [B.site.street, [B.site.postalCode, B.site.city].filter(Boolean).join(' ')]
             .filter(Boolean)
-            .join(', '),
-        }
+            .join(', ') || null,
+      }
+    : null;
+  const place: { title: string; address: string | null } | null = grouped
+    ? null
+    : sitePlaces
+      ? (parsed.find((x) => x.place)?.place ?? siteOfBuyer)
       : subjPlace
-        ? { title: subjPlace.split(', ')[0]!, address: subjPlace.split(', ').slice(1).join(', ') }
-        : null);
-  const period =
-    doc.periodStart && doc.periodEnd && doc.periodStart !== doc.periodEnd
-      ? `${formatDateDe(doc.periodStart)} – ${formatDateDe(doc.periodEnd)}`
-      : doc.periodStart
-        ? formatDateDe(doc.periodStart)
+        ? { title: subjPlace.split(', ')[0]!, address: subjPlace.split(', ').slice(1).join(', ') || null }
         : null;
+  const period = headPeriod && sitePlaces ? shortPeriod(headPeriod) : null;
   const dateLabel = isOffer ? 'Datum' : doc.kind === 'cancellation' ? 'Stornodatum' : 'Rechnungsdatum';
   const meta: [string, string][] = o.info
-    ? o.info.filter(([k]) => !/nummer$/i.test(k) || /kunden/i.test(k))
+    ? o.info.filter(([, val]) => val !== no)
     : [
         [dateLabel, formatDateDe(doc.issueDate)],
+        ...(doc.original
+          ? ([['Zu Rechnung', `${doc.original.number} vom ${formatDateDe(doc.original.issueDate)}`]] as [
+              string,
+              string,
+            ][])
+          : []),
         ['Kundennummer', B.customerNo],
         ...(period ? ([['Leistungszeitraum', period]] as [string, string][]) : []),
         ...(B.leitwegId ? ([['Leitweg-ID', B.leitwegId]] as [string, string][]) : []),
         ...(B.supplierNo ? ([['Unsere Lieferantennr.', B.supplierNo]] as [string, string][]) : []),
         ...(doc.orderReference ? ([['Ihre Bestellnummer', doc.orderReference]] as [string, string][]) : []),
+        ...(doc.customerReference ? ([['Ihre Referenz', doc.customerReference]] as [string, string][]) : []),
+        ...(grouped ? ([['Objekte', `${keys.length} (siehe Positionen)`]] as [string, string][]) : []),
       ];
   const due = formatDateDe(doc.dueDate);
   const bank = S.bankAccounts.find((x) => x.primary) ?? S.bankAccounts[0];
-  const withQr = !!bank && !isOffer && (o.qr ?? (doc.payableTotal > 0n && doc.kind !== 'cancellation'));
+  const withQr =
+    !!bank &&
+    !isOffer &&
+    !directDebitOf(doc) &&
+    (o.qr ?? (doc.payableTotal > 0n && doc.kind !== 'cancellation'));
   const rc = isReverseCharge(doc);
   const blocks = o.totalsSplit?.length
     ? o.totalsSplit
     : [{ label: '', net: doc.netTotal, vat: doc.vatTotal, gross: doc.grossTotal }];
-  const amountLabel = isOffer ? 'Angebotssumme' : doc.prepayments.length ? 'Zahlbetrag' : 'Rechnungsbetrag';
+  const amountLabel = /^angebot/i.test(kind)
+    ? 'Angebotssumme'
+    : doc.prepayments.length || doc.original
+      ? 'Gesamtbetrag'
+      : 'Rechnungsbetrag';
   const payTotal = doc.prepayments.length ? doc.payableTotal : doc.grossTotal;
 
   // ---------------------------------------------------------------- Kopf
@@ -280,7 +337,7 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
     addrEnd = 162 + i * (l.lead + 0.6);
     p.text(l.text, L, addrEnd, l.size - 0.4, i === 0 ? 'm' : 'r', INK);
   }
-  const objPos = v === 'edel' ? (o.objPos ?? 'kopf') : null;
+  const objPos = v === 'edel' ? (o.objPos ?? 'band') : null;
 
   const IX = 340; // Kopfblock rechts
   const metaRows = (y0: number, rows: [string, string][], size = 8.2) => {
@@ -444,10 +501,50 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
     p.y = y + 22;
   };
   head();
+  const multiRate = doc.vatBreakdown.length > 1;
+  // Sammelrechnung: Zwischensumme je Objekt (zusammenhängende Positionen gleichen Objekts)
+  const groupEnd = new Map<number, { title: string; net: bigint; count: number }>();
+  if (grouped) {
+    let start = 0;
+    for (let i = 1; i <= doc.lines.length; i++) {
+      if (i === doc.lines.length || parsed[i]!.place?.key !== parsed[start]!.place?.key) {
+        const net = doc.lines.slice(start, i).reduce((a, l) => a + l.netAmount, 0n);
+        groupEnd.set(i - 1, { title: parsed[start]!.place?.title ?? 'ohne Objekt', net, count: i - start });
+        start = i;
+      }
+    }
+  }
   doc.lines.forEach((l, i) => {
     const pd = parsed[i]!;
+    if (grouped && (i === 0 || pd.place?.key !== parsed[i - 1]!.place?.key)) {
+      const gh = pd.place ? wrap(pd.place.title, f.s, 9, C.total - C.text) : ['Ohne Objektbezug'];
+      const ga = pd.place?.address ? wrap(pd.place.address, f.r, 7.8, C.total - C.text) : [];
+      p.ensure(gh.length * 11.5 + ga.length * 10 + 40, () => head());
+      p.y += 2;
+      p.cap('Objekt', C.text, p.y, BRD, 6);
+      p.y += 11;
+      gh.forEach((t) => {
+        p.text(t, C.text, p.y, 9, 's', INK);
+        p.y += 11.5;
+      });
+      ga.forEach((t) => {
+        p.text(t, C.text, p.y, 7.8, 'r', GREY);
+        p.y += 10;
+      });
+      p.y += 8;
+    }
+    const lp = linePeriod(i);
+    const detail = sitePlaces
+      ? [pd.rest, lp && lp !== headPeriod ? `Leistungszeitraum: ${lp}` : null]
+      : [
+          l.detail ?? null,
+          l.periodStart && !(l.detail ?? '').includes(formatDateDe(l.periodStart))
+            ? `Leistung: ${periodText(l.periodStart, l.periodEnd)}`
+            : null,
+        ];
     const d1 = wrap(l.description, f.m, 8.8, TW);
-    const d2 = pd.rest ? wrap(pd.rest, f.r, 7.6, TW).slice(0, 8) : [];
+    const d2 = detail.filter((x): x is string => !!x).flatMap((d) => wrap(d, f.r, 7.6, TW));
+    if (multiRate) d2.push(`USt ${percentToXml(l.vatRate).replace('.', ',')} %`);
     const h = d1.length * 11.6 + d2.length * 10 + 7;
     p.ensure(h + 4, () => head());
     const t = p.y;
@@ -455,18 +552,37 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
     d1.forEach((x, k) => p.text(x, C.text, t + k * 11.6, 8.8, 'm', INK));
     d2.forEach((x, k) => p.text(x, C.text, t + d1.length * 11.6 + k * 10, 7.6, 'r', GREY));
     p.right(quantityPdf(l.quantity), C.qty, t, 8.6, 'r', INK2);
-    p.text(UNITS[l.unitCode] ?? l.unitCode, C.unit, t, 8.2, 'r', GREY);
+    p.text(o.units?.[l.unitCode] ?? UNITS[l.unitCode] ?? l.unitCode, C.unit, t, 8.2, 'r', GREY);
     p.right(eur(l.unitPrice), C.price, t, 8.6, 'r', INK2);
     p.right(eur(l.netAmount), C.total, t, 8.8, 's', INK);
     p.y = t + h;
     p.line(v === 'modern' ? L - 8 : L, p.y - 8, v === 'modern' ? R + 8 : R, p.y - 8, 0.35, HAIR);
     p.y += 4;
+    const g = groupEnd.get(i);
+    if (g && g.count > 1) {
+      const lab = `Summe ${g.title.length > 48 ? `${g.title.slice(0, 47)}…` : g.title}`;
+      p.right(lab, C.price, p.y + 2, 7.8, 'r', GREY);
+      p.right(eur(g.net), C.total, p.y + 2, 8.6, 's', INK);
+      p.y += 18;
+    }
   });
 
   // ---------------------------------------------------------------- Summen
   const SX = 336;
   const vatLabel = rc ? 'Umsatzsteuer (§ 13b UStG)' : 'zzgl. 19 % Umsatzsteuer';
-  const sumH = blocks.length * 64 + doc.prepayments.length * 14 + 6;
+  const vatRows = (t: (typeof blocks)[number]): [string, bigint][] =>
+    t.label || doc.vatBreakdown.length < 2
+      ? [[vatLabel, t.vat]]
+      : doc.vatBreakdown.map((x) => [
+          rc
+            ? 'Umsatzsteuer (§ 13b UStG)'
+            : `zzgl. ${percentToXml(x.vatRate).replace('.', ',')} % USt auf ${eur(x.taxableAmount)}`,
+          x.taxAmount,
+        ]);
+  const sumH =
+    blocks.reduce((a, t) => a + 50 + vatRows(t).length * 14, 0) +
+    (doc.prepayments.length ? doc.prepayments.length * 14 + 22 : 0) +
+    6;
   p.ensure(sumH);
   p.y += 6;
   for (const t of blocks) {
@@ -474,9 +590,12 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
     p.text(`${lab}netto`.replace(/^netto$/, 'Summe netto'), SX, p.y, 8.4, 'r', GREY);
     p.right(eur(t.net), R, p.y, 8.6, 'm', INK2);
     p.y += 14;
-    p.text(vatLabel, SX, p.y, 8.4, 'r', GREY);
-    p.right(eur(t.vat), R, p.y, 8.6, 'm', INK2);
-    p.y += 10;
+    for (const [k, val] of vatRows(t)) {
+      p.text(k, SX, p.y, 8.4, 'r', GREY);
+      p.right(eur(val), R, p.y, 8.6, 'm', INK2);
+      p.y += 14;
+    }
+    p.y -= 4;
     const gl = t.label ? `${t.label} brutto` : amountLabel;
     if (v === 'edel') {
       p.rect(SX - 10, p.y, 2.2, 28, BRD);
@@ -497,9 +616,11 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
     }
   }
   for (const pp of doc.prepayments) {
-    p.text(`abzgl. Abschlag ${pp.number}`, SX, p.y, 8.2, 'r', GREY);
+    p.text(`abzgl. Abschlag ${pp.number} vom ${formatDateDe(pp.issueDate)}`, SX - 60, p.y, 8.2, 'r', GREY);
     p.right(eur(-pp.grossAmount), R, p.y, 8.6, 'm');
-    p.y += 14;
+    p.y += 10;
+    p.text(`darin USt ${eur(pp.vatAmount)}`, SX - 60, p.y, 7, 'r', FAINT);
+    p.y += 13;
   }
   if (doc.prepayments.length) {
     p.text('Zahlbetrag', SX, p.y + 4, 10, 's');
@@ -583,10 +704,13 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
     o.closing ??
     (isOffer
       ? ''
-      : 'Vielen Dank für Ihren Auftrag. Bei Fragen zu dieser Rechnung sind wir gerne für Sie da.');
-  if (closing) {
-    const ls = wrap(closing, f.r, 8.6, R - L);
-    if (o.closing || p.y + ls.length * 12.6 <= BOTTOM) p.para(closing, L, R - L, 8.6, 'r', INK2);
+      : doc.payableTotal > 0n
+        ? 'Vielen Dank für Ihren Auftrag. Bei Fragen zu dieser Rechnung sind wir gerne für Sie da.'
+        : INVOICE_CLOSING_NOPAY);
+  // Standard-Schlusssatz nur ohne eigenen Schlusstext und nur, wenn er noch auf die Seite passt (keine Folgeseite dafür)
+  if (closing && (o.closing || (!doc.closingText && p.y + 16 <= BOTTOM))) {
+    p.y += 4;
+    p.para(closing, L, R - L, 8.6, 'r', INK2);
   }
   if (o.acceptance) {
     const ah = 78;

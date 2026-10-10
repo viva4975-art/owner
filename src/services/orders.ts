@@ -3,7 +3,7 @@ import type { Sql, Tx } from '../db/client.js';
 import { type DraftLineInput, calculateDraft, formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import { type Cents, type Quantity } from '../domain/money/money.js';
 import { FormDoc } from '../pdf/form-doc.js';
-import { renderInvoicePdf } from '../pdf/render.js';
+import { renderInvoicePdf } from '../pdf/invoice-pdf.js';
 import { assertVersion } from './crm.js';
 import { BusinessError } from './errors.js';
 import { type BillAddress, applyBillAddress, saveDraft } from './invoices.js';

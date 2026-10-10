@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { skontoTerms } from '../invoice/calc.js';
 import { LINES, sampleCancellation, sampleDocument } from '../../einvoice/fixtures.js';
 import { generateCii, generateXRechnungUbl, generateZugferd } from '../../einvoice/generate.js';
-import { renderInvoicePdf } from '../../pdf/render.js';
+import { renderInvoicePdf } from '../../pdf/invoice-pdf.js';
 import { checkTotals, decimalToCents, parseSkonto, readEInvoice } from './incoming.js';
 
 const enc = (s: string) => new TextEncoder().encode(s);

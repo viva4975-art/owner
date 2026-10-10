@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
 import { sha256 } from '../archive/store.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
-import { renderInvoicePdf } from '../pdf/render.js';
+import { renderInvoicePdf } from '../pdf/invoice-pdf.js';
 import { BusinessError } from '../services/errors.js';
 import {
   type InvoiceRow,

@@ -9,7 +9,7 @@ import { generateCii, generateXRechnungUbl, generateZugferd } from '../einvoice/
 import { type ValidationResult, validateWithKosit } from '../einvoice/kosit.js';
 import { MAILER_MISSING, type Mailer, resolveRecipients } from '../mail/mailer.js';
 import { composeMail, loadSignature } from '../mail/compose.js';
-import { renderInvoicePdf } from '../pdf/render.js';
+import { renderInvoicePdf } from '../pdf/invoice-pdf.js';
 import { describeEInvoiceError } from '../einvoice/errors.js';
 import {
   type BillAddress,

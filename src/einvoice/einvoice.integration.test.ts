@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderInvoicePdf } from '../pdf/render.js';
+import { renderInvoicePdf } from '../pdf/invoice-pdf.js';
 import { LINES, sampleCancellation, sampleDocument, sampleFinal } from './fixtures.js';
 import { generateCii, generateXRechnungUbl, generateZugferd } from './generate.js';
 import { validateWithKosit } from './kosit.js';

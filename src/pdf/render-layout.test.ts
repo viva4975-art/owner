@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { sampleDocument } from '../einvoice/fixtures.js';
-import { renderInvoicePdf, splitLineDetail } from './render.js';
+import { renderInvoicePdf } from './invoice-pdf.js';
+import { splitLineDetail } from './render.js';
 
 describe('Rechnungs-PDF: Objekt und Zeitraum aus dem Positionstext', () => {
   it('trennt Objekt, Adresse und Zeitraum vom Zusatztext', () => {

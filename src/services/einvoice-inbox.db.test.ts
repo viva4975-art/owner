@@ -7,7 +7,7 @@ import type { Sql } from '../db/client.js';
 import { skontoTerms } from '../domain/invoice/calc.js';
 import { BUYER, SELLER, sampleDocument } from '../einvoice/fixtures.js';
 import { generateCii, generateXRechnungUbl, generateZugferd } from '../einvoice/generate.js';
-import { renderInvoicePdf } from '../pdf/render.js';
+import { renderInvoicePdf } from '../pdf/invoice-pdf.js';
 import { loadEInvoice, pendingEInvoices, takeOverEInvoice, uploadEInvoice } from './einvoice-inbox.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 

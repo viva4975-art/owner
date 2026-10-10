@@ -9,7 +9,7 @@ import {
 } from '../domain/invoice/calc.js';
 import type { InvoiceDocument } from '../domain/invoice/types.js';
 import { type Cents, type Quantity, lineNet } from '../domain/money/money.js';
-import { renderInvoicePdf, clipInfo } from '../pdf/render.js';
+import { renderInvoicePdf } from '../pdf/invoice-pdf.js';
 import { assertVersion } from './crm.js';
 import { BusinessError } from './errors.js';
 import { saveDraft } from './invoices.js';
@@ -466,7 +466,6 @@ export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8
   const info: [string, string][] = [
     ['Angebotsdatum', formatDateDe(o.offer_date)],
     ['Kundennummer', buyer.customerNo],
-    ['Ansprechpartner', clipInfo(contact.name)],
   ];
   if (o.valid_until) info.push(['Gültig bis', formatDateDe(o.valid_until)]);
   if (o.tender_reference) info.push(['Vergabe-Nr.', o.tender_reference]);
@@ -505,16 +504,11 @@ export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8
         ? `Dieses Angebot ist gültig bis zum ${formatDateDe(o.valid_until)}.`
         : 'Dieses Angebot ist 30 Tage gültig.') +
       monthly +
-      ' Es gelten unsere Allgemeinen Geschäftsbedingungen.' +
-      (contact.phone || contact.email
-        ? `\nIhr Ansprechpartner: ${[
-            contact.name,
-            contact.phone ? `Tel. ${contact.phone}` : null,
-            contact.email,
-          ]
-            .filter(Boolean)
-            .join(' · ')}`
-        : ''),
+      ' Es gelten unsere Allgemeinen Geschäftsbedingungen.',
+    // Ansprechpartner als Karte, darunter Feld „Auftragserteilung“ (Gestaltung „edel“)
+    ...(contact.name ? { contact: { name: contact.name, phone: contact.phone, email: contact.email } } : {}),
+    acceptance: true,
+    ...(o.valid_until ? { validUntil: formatDateDe(o.valid_until) } : {}),
     closing: o.closing_text ?? OFFER_CLOSING_DEFAULT,
     qr: false,
     ...(split ? { totalsSplit: split } : {}),

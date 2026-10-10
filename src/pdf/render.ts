@@ -170,10 +170,11 @@ export function splitLineDetail(detail: string | null | undefined): {
   return { place, period, rest: t || null };
 }
 
-const periodText = (a: string | null | undefined, b: string | null | undefined) =>
+export const periodText = (a: string | null | undefined, b: string | null | undefined) =>
   a ? `${formatDateDe(a)}${b && b !== a ? ` bis ${formatDateDe(b)}` : ''}` : null;
 /** „01.09.2026 bis 30.09.2026“ → „01.09.–30.09.2026“ (nur für den Kopf) */
-const shortPeriod = (t: string) => t.replace(/^(\d{2}\.\d{2}\.)(\d{4}) bis (\d{2}\.\d{2}\.)\2$/, '$1–$3$2');
+export const shortPeriod = (t: string) =>
+  t.replace(/^(\d{2}\.\d{2}\.)(\d{4}) bis (\d{2}\.\d{2}\.)\2$/, '$1–$3$2');
 
 class Doc {
   pages: PDFPage[] = [];
@@ -424,7 +425,7 @@ const DATE_LABEL: Record<InvoiceDocument['kind'], string> = {
 };
 
 /** Erzeugt die sichtbare Rechnungs-PDF (Grundlage auch für ZUGFeRD). */
-export async function renderInvoicePdf(
+export async function renderInvoicePdfClassic(
   doc: InvoiceDocument,
   opts: {
     watermark?: string;

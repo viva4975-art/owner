@@ -70,6 +70,22 @@ describe.skipIf(!available)('Archiv-Kopie in S3 mit Object Lock (moto)', () => {
     expect((await replicaCheck(deps, plain))!).toMatchObject({ ok: false, level: 'rot' });
   });
 
+  it('falscher Bucket-Name heißt „nicht gefunden“, nicht „nicht eingeschaltet“', async () => {
+    const wrong = new S3Client({
+      endpoint: MOTO,
+      region: 'us-east-1',
+      bucket: 'gibt-es-nicht',
+      accessKey: 'a',
+      secretKey: 'b',
+    });
+    await expect(wrong.lockStatus()).rejects.toThrow(/nicht gefunden/);
+    expect((await replicaCheck(deps, wrong))!.detail).toMatch(/nicht gefunden/);
+  });
+
+  it('Sperre wirksam → Status eingeschaltet', async () => {
+    expect(await client.lockStatus()).toMatchObject({ enabled: true });
+  });
+
   it('kopiert gesperrt, bestätigt und kopiert nichts doppelt', async () => {
     const r = await replicate(deps, { client });
     expect(r).toMatchObject({ copied: 2, failed: 0, pending: 0 });

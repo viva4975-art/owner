@@ -120,17 +120,84 @@ export class S3Client {
     return fetch(url, init);
   }
 
-  /** Bucket-Sperre: liefert Modus/Standard-Frist oder null, wenn Object Lock nicht eingeschaltet ist. */
-  async lockConfiguration(): Promise<{ enabled: boolean; mode: string | null }> {
+  /**
+   * Bucket-Sperre laut Bucket-Einstellung. `reason` erklärt einen Fehlschlag verständlich – wichtig, weil ein falscher
+   * Bucket-Name oder eine falsche Region sonst wie „Object Lock nicht eingeschaltet“ aussähe (Fund 10.10.).
+   */
+  async lockConfiguration(): Promise<{ enabled: boolean; mode: string | null; reason: string | null }> {
     const r = await this.request('GET', this.url(null, '?object-lock='));
     const text = await r.text();
-    if (r.status === 404 || /ObjectLockConfigurationNotFound/.test(text))
-      return { enabled: false, mode: null };
+    const code = /<Code>([^<]+)<\/Code>/.exec(text)?.[1] ?? '';
+    if (code === 'NoSuchBucket')
+      throw new Error(`Bucket „${this.cfg.bucket}“ nicht gefunden – Name, Endpunkt und Region prüfen`);
+    if (
+      r.status === 403 ||
+      code === 'AccessDenied' ||
+      code === 'SignatureDoesNotMatch' ||
+      code === 'InvalidAccessKeyId'
+    )
+      throw new Error(`Zugang abgelehnt (${code || r.status}) – Schlüssel und Region prüfen`);
+    if (/ObjectLockConfigurationNotFound/.test(code) || r.status === 404)
+      return {
+        enabled: false,
+        mode: null,
+        reason: `Bucket meldet keine Object-Lock-Einstellung (${code || r.status})`,
+      };
     if (!r.ok) throw new Error(`S3 ${r.status}: ${s3Error(text)}`);
+    const enabled = /ObjectLockEnabled>\s*Enabled\s*</i.test(text);
     return {
-      enabled: /<ObjectLockEnabled>Enabled<\/ObjectLockEnabled>/.test(text),
-      mode: /<Mode>(\w+)<\/Mode>/.exec(text)?.[1] ?? null,
+      enabled,
+      mode: /Mode>\s*(\w+)\s*</.exec(text)?.[1] ?? null,
+      reason: enabled
+        ? null
+        : `Antwort ohne „ObjectLockEnabled=Enabled“: ${text.replace(/\s+/g, ' ').slice(0, 160)}`,
     };
+  }
+
+  private lockCache: { at: number; enabled: boolean; detail: string } | null = null;
+
+  /**
+   * Ist die Sperre wirklich wirksam? Meldet der Bucket sie nicht (manche Anbieter beantworten die Abfrage anders),
+   * wird eine kleine Probedatei mit 1 Tag Compliance-Sperre hochgeladen und geprüft – das ist der echte Beweis.
+   * Ergebnis 6 Std. (positiv) bzw. 10 Min. (negativ) gemerkt.
+   */
+  async lockStatus(): Promise<{ enabled: boolean; detail: string }> {
+    const c = this.lockCache;
+    if (c && Date.now() - c.at < (c.enabled ? 6 * 3_600_000 : 600_000)) return c;
+    const cfg = await this.lockConfiguration();
+    let res: { enabled: boolean; detail: string };
+    if (cfg.enabled)
+      res = { enabled: true, detail: `eingeschaltet${cfg.mode ? ` (Standard ${cfg.mode})` : ''}` };
+    else {
+      try {
+        const { mkdtemp, writeFile, rm } = await import('node:fs/promises');
+        const { tmpdir } = await import('node:os');
+        const { join } = await import('node:path');
+        const dir = await mkdtemp(join(tmpdir(), 'lock-'));
+        const f = join(dir, 'probe.txt');
+        const now = new Date();
+        await writeFile(f, `Pruefung Object Lock ${now.toISOString()}`);
+        const until = new Date(now.getTime() + 2 * 86_400_000).toISOString().slice(0, 10);
+        const key = `_pruefung/object-lock-${now.toISOString().slice(0, 10)}.txt`;
+        try {
+          await this.putLocked(key, f, until);
+        } finally {
+          await rm(dir, { recursive: true, force: true });
+        }
+        const h = await this.head(key);
+        res =
+          h?.lockMode === 'COMPLIANCE'
+            ? { enabled: true, detail: 'eingeschaltet (per Probedatei bestätigt)' }
+            : { enabled: false, detail: `NICHT wirksam – Probedatei ohne Sperre (${cfg.reason ?? ''})` };
+      } catch (e) {
+        res = {
+          enabled: false,
+          detail: `NICHT eingeschaltet – ${cfg.reason ?? ''}; Probe: ${e instanceof Error ? e.message : String(e)}`,
+        };
+      }
+    }
+    this.lockCache = { at: Date.now(), ...res };
+    return res;
   }
 
   /**

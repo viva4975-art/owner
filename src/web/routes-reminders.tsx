@@ -151,11 +151,7 @@ export function registerReminderRoutes({ app, deps, page, back }: Ctx) {
     const client = s3FromEnv(e);
     let lock: string;
     try {
-      lock = client
-        ? (await client.lockConfiguration()).enabled
-          ? 'eingeschaltet'
-          : 'NICHT eingeschaltet'
-        : '–';
+      lock = client ? (await client.lockStatus()).detail : '–';
     } catch (err) {
       lock = `nicht erreichbar (${err instanceof Error ? err.message : String(err)})`;
     }

@@ -21,7 +21,16 @@ import { type CheckResult, registerCheck } from './watchdog.js';
  * sichere Obergrenze für alles im Archiv).
  */
 
+// ein Client je Prozess, damit das Ergebnis der Sperr-Prüfung gemerkt bleibt
+let shared: { key: string; client: S3Client } | null = null;
 export function s3FromEnv(env: Env): S3Client | null {
+  const k = [env.S3_ENDPOINT, env.S3_REGION, env.S3_BUCKET, env.S3_ACCESS_KEY].join('|');
+  if (shared?.key === k) return shared.client;
+  const c = s3FromEnvNew(env);
+  if (c) shared = { key: k, client: c };
+  return c;
+}
+function s3FromEnvNew(env: Env): S3Client | null {
   if (!env.S3_ENDPOINT || !env.S3_REGION || !env.S3_BUCKET || !env.S3_ACCESS_KEY || !env.S3_SECRET_KEY)
     return null;
   return new S3Client({
@@ -106,9 +115,8 @@ export async function replicate(
   running = true;
   try {
     const { sql, env } = deps;
-    const lock = await client.lockConfiguration();
-    if (!lock.enabled)
-      return { copied: 0, failed: 0, pending: 0, skipped: 'Object Lock im Bucket nicht eingeschaltet' };
+    const lock = await client.lockStatus();
+    if (!lock.enabled) return { copied: 0, failed: 0, pending: 0, skipped: `Object Lock ${lock.detail}` };
     const done = new Map(
       (
         await sql<{ key: string; status: string; recent: boolean }[]>`
@@ -211,9 +219,8 @@ export async function replicaCheck(
       ? { ...base, ok: false, level: 'gelb', detail: 'noch nicht eingerichtet (S3 mit Object Lock fehlt)' }
       : null;
   try {
-    const lock = await client.lockConfiguration();
-    if (!lock.enabled)
-      return { ...base, ok: false, level: 'rot', detail: 'Object Lock im Bucket ist nicht eingeschaltet' };
+    const lock = await client.lockStatus();
+    if (!lock.enabled) return { ...base, ok: false, level: 'rot', detail: `Object Lock ${lock.detail}` };
   } catch (e) {
     return {
       ...base,

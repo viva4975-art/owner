@@ -2412,3 +2412,8 @@ Testadresse.
   10, 30 Tage/3 % in 14, 60 Tage/3 % in 14; „andere …“ blendet Tage/Skonto-Felder ein (z. B. übernommene Sonderfälle,
   Anzeige „bisher: …“). Neue Kunden ohne Angabe = 10 Tage. Bestehende Kunden/Gruppen unverändert. Rechnungsentwurf:
   Auswahl um 20 Tage ergänzt. Allgemein neu: `<select data-reveal="#…">` zeigt Felder nur bei „andere“.
+- 2026-10-10: **Fund Archiv „Object Lock nicht eingeschaltet“** (Ahmed nach Einrichtung bei IONOS): Jede 404-Antwort galt als
+  „nicht eingeschaltet“ – auch falscher Bucket-Name/Endpunkt; Abweichungen der Anbieter-Antwort wurden nicht erkannt. Jetzt:
+  Bucket nicht gefunden / Zugang abgelehnt (Schlüssel, Region) mit eigener Meldung; meldet der Bucket keine Sperre, prüft
+  die App mit einer Probedatei (`_pruefung/object-lock-<Datum>.txt`, Compliance-Sperre 2 Tage) und nimmt das Ergebnis
+  (6 Std. gemerkt). Die Seite zeigt den genauen Grund (`S3Client.lockStatus`).

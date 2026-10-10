@@ -2280,3 +2280,12 @@ Testadresse.
   (uebergabe einmal 1 Fehler, in drei weiteren Läufen nicht wiederholbar).
 - Zur Frage „egal, weil XRechnung?“: Behörden (XRechnung = reines XML) sehen unser Layout nicht; ZUGFeRD-Kunden, Privatkunden,
   Angebote, AB, Mahnungen und Briefe dagegen schon.
+- 2026-10-10: **Word-Vorlagen im Stil „edel“** (Ahmed: „Word-Vorlagen auch in diese Stilrichtung“): `scripts/word-restyle.py`
+  (`python3 -I scripts/word-restyle.py <Ordner> <Ziel> [--rename]`) stellt nur Gestaltung um: Schrift Inter (Regular +
+  SemiBold in jede .docx eingebettet, ~+600 KB je Datei), Text dunkel #1A171A, Abschnitte Bordeaux #7D1435, Titel dunkel,
+  Fließtext ~5 % kleiner, Haarlinien hellgrau statt schwarzer Gitter, hellgraue statt gelber Felder, Abstände etwas enger.
+  Inhalt, Platzhalter, Kästchen unverändert (geprüft: 41 + 24 Dateien, 0 Abweichungen; Seitenzahl gleich oder weniger).
+  Ergebnis an Ahmed: `Viva-Deluxe_Vorlagen-Platzhalter-V4.zip` (Codes -V4 → alte Fassungen werden beim Hochladen
+  deaktiviert) und neues Objektordner-Paket. **Ahmed: unter Einstellungen → Word-Vorlagen bzw. Objektordner-Vorlagen
+  hochladen.** Word für Mac nutzt eingebettete Schriften ggf. nicht (dann Ersatzschrift) – Inter dort installieren.
+  Echte Vorlagen nicht im Repo.

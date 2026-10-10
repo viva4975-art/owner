@@ -13,7 +13,7 @@ import {
   templateValues,
   type WordTarget,
   type WordTemplate,
-  generateFromWordTemplate,
+  fillWordTemplate,
   importWordTemplates,
   listWordTemplates,
   updateWordTemplate,
@@ -372,7 +372,13 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
             ['Vorlagen', '/vorlagen'],
           ]}
         />
-        <form method="post" action="/word-vorlagen/erzeugen" class="card" style="max-width:860px">
+        <form
+          method="post"
+          action="/word-vorlagen/erzeugen"
+          class="card"
+          style="max-width:860px"
+          data-no-autosave
+        >
           <input type="hidden" name="file_id" value={fileId} />
           <input type="hidden" name="target_type" value={type} />
           <input type="hidden" name="target_id" value={id} />
@@ -383,7 +389,9 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
             Word-Datumsfelder werden fest auf das Dokumentdatum gesetzt (ändern sich beim Öffnen nicht mehr).
           </p>
           {keys.length === 0 && formFields.length === 0 && (
-            <div class="empty">Diese Vorlage hat keine Platzhalter – sie wird unverändert abgelegt.</div>
+            <div class="empty">
+              Diese Vorlage hat keine Platzhalter – sie wird unverändert heruntergeladen.
+            </div>
           )}
           {groups.map((g) => (
             <GroupFields g={g} keys={keys} values={values} />
@@ -403,7 +411,7 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
             </details>
           )}
           <div class="actions">
-            <button class="btn">Dokument erstellen und ablegen</button>
+            <button class="btn">Word-Dokument herunterladen</button>
             <a class="btn sec" href={ret}>
               Abbrechen
             </a>
@@ -438,7 +446,7 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
         actor: string;
         entity: string;
         entity_id: string;
-        details: { template?: string; file?: string };
+        details: { template?: string; file?: string; download?: string };
       }[]
     >`
       select at, actor, entity, entity_id, details from app.audit_log where action = 'word_template'
@@ -466,7 +474,8 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
         </PageHead>
         <p class="mut" style="margin-top:-6px;max-width:900px">
           Vorlage wählen, Person bzw. Kunde/Objekt wählen, dann Daten (Beginn, Unterschriftsdatum, neue
-          Stunden …) prüfen. Das fertige Dokument liegt danach in der Akte (Dokumente).
+          Stunden …) prüfen. Das fertige Word-Dokument wird heruntergeladen (nicht in der Akte abgelegt) –
+          nach dem Unterschreiben den Scan unter Dokumente hochladen.
         </p>
         <div class="cols">
           <div>
@@ -521,7 +530,11 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
                 )
                 .map((r) => (
                   <div class="small" style="padding:4px 0;border-bottom:1px solid var(--line)">
-                    <a href={`/dateien/${r.details.file}`}>{r.details.template}</a>
+                    {r.details.file ? (
+                      <a href={`/dateien/${r.details.file}`}>{r.details.template}</a>
+                    ) : (
+                      <b>{r.details.template}</b>
+                    )}
                     <div class="mut">
                       {r.at.toLocaleString('de-DE', {
                         timeZone: 'Europe/Berlin',
@@ -556,7 +569,7 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
     const overrides: Record<string, string> = {};
     for (const [k, v] of Object.entries(b))
       if (k.startsWith('v:') && typeof v === 'string' && k.length < 90) overrides[k.slice(2)] = v;
-    const { file, missing } = await generateFromWordTemplate(
+    const { name, data } = await fillWordTemplate(
       sql,
       cfg,
       {
@@ -581,8 +594,13 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
       },
       c.get('actor'),
     );
-    return back(c, ret, {
-      ok: `„${file.original_name}“ erstellt und abgelegt${missing.length ? ` – ohne Wert (als Linie): ${missing.join(', ')}` : ''}.`,
+    // direkt herunterladen, nicht in der Akte ablegen (Ahmed 10.10.) – die unterschriebene Fassung wird hochgeladen
+    return new Response(data, {
+      headers: {
+        'content-type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'content-disposition': `attachment; filename="${name.replace(/[^\w.-]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+        'cache-control': 'no-store',
+      },
     });
   });
 }

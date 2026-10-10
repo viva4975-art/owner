@@ -102,10 +102,11 @@ const CAL_CSS = `.calbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
 .cal .dc{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px;min-height:110px;font-size:12.5px}
 .cal .dc.out{background:var(--bg);color:var(--faint)}.cal .dc .n{font-weight:600;margin-bottom:4px}
 .cal .dc.today .n{color:var(--brand)}
-.sh{border-left:3px solid var(--brand);background:var(--brand-50);border-radius:3px;padding:3px 6px;margin-bottom:4px;line-height:1.3}
-.sh.done{border-color:var(--ok);background:var(--ok-50)}.sh.abs{border-color:var(--err);background:var(--err-50)}
-.sh.sub{border-color:var(--warn);background:var(--warn-50)}.sh.hol{border-color:var(--faint);background:var(--bg)}
-.sh.cx{border-color:var(--faint);background:var(--bg);text-decoration:line-through;color:var(--mut)}
+.sh{border:1px solid #d4cfd1;border-left:3px solid #d4cfd1;background:#fff;border-radius:3px;padding:3px 6px;margin-bottom:4px;line-height:1.3}
+.sh.done{border-color:#64102a;background:#7d1435;color:#fff}.sh.done .mut,.sh.done small,.sh.done .s{color:rgba(255,255,255,.85)}
+.sh.abs{border:1px dashed #d9534f;color:#b42318}
+.sh.sub{border-left-color:#7d1435}.sh.hol{background:#f4f4f5;color:var(--mut)}
+.sh.cx{background:#f4f4f5;text-decoration:line-through;color:var(--mut)}
 .sh .t{font-weight:600}.sh .s{color:var(--mut);font-size:11.5px}
 a.sh{display:block;color:inherit;text-decoration:none;cursor:pointer}a.sh:hover{filter:brightness(.96);box-shadow:0 0 0 1px rgba(0,0,0,.08)}
 .cal.wk{grid-template-rows:auto auto;grid-auto-flow:column}.cal.wk .wkd{display:contents}.cal.wk .dc{min-height:160px}
@@ -273,19 +274,13 @@ export const SiteCalendar: FC<{
             <span class="sh">geplant</span>
           </span>
           <span>
-            <span class="sh done">erledigt (Zeit erfasst)</span>
+            <span class="sh done">Zeit bestätigt</span>
           </span>
           <span>
-            <span class="sh sub">Vertretung / umgeplant</span>
+            <span class="sh abs">abwesend – Vertretung nötig</span>
           </span>
           <span>
-            <span class="sh abs">abwesend</span>
-          </span>
-          <span>
-            <span class="sh hol">Feiertag</span>
-          </span>
-          <span>
-            <span class="sh cx">Ausfall</span>
+            <span class="sh cx">Feiertag / Ausfall</span>
           </span>
         </div>
       )}

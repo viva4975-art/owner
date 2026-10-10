@@ -1367,6 +1367,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--brand)}
 /* Seitenleiste: aktiver Eintrag ruhiger */
 .appside .sub a.on{font-weight:600}
 
+.top .right a.gear{color:var(--ink-2)!important;background:transparent}.top .right a.gear:hover{color:var(--brand)!important;background:#f4f4f5}
 `;
 
 export const euro = (c: bigint) => formatEuro(c as Cents);

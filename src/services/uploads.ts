@@ -225,6 +225,11 @@ export async function listFiles(sql: Sql, link: LinkTarget) {
   return sql<(FileRow & { category: string | null; archived_at: Date | null; archived_by: string | null })[]>`
     select f.*, l.category, l.archived_at, l.archived_by from app.file_links l join app.files f on f.id = l.file_id
      where l.entity_type = ${link.type} and l.entity_id = ${link.id} and f.status = 'complete'
+       -- aus Word-Vorlagen erzeugte Entwürfe nicht als Dokument zeigen (Ahmed 10.10.: nur der unterschriebene Scan zählt)
+       and l.category is distinct from 'Entwurf (aus Vorlage)'
+       and not exists (select 1 from app.audit_log a
+                        where a.entity = ${link.type} and a.entity_id = ${link.id} and a.action = 'word_template'
+                          and a.details->>'file' = f.id::text)
      order by f.completed_at desc`;
 }
 

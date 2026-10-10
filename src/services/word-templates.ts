@@ -647,10 +647,11 @@ export async function getTemplateFor(sql: Sql, templateId: string, target: WordT
 }
 
 /**
- * Vorlage ausfüllen und in der Akte ablegen (write-once). Dateiname nach dem Schema der Anleitung: Typ_JJJJ-MM-TT.
- * `fileId` vom Formular → doppelt absenden legt nichts doppelt an. `overrides` = Werte der Ausfüll-Seite.
+ * Vorlage ausfüllen, ohne sie abzulegen (Ahmed 10.10.: Entwürfe aus Word nicht als gespeichertes Dokument zeigen) –
+ * die Datei geht direkt als Download an den Browser; in die Akte kommt später der Scan der unterschriebenen Fassung.
+ * Das Erstellen wird protokolliert (ohne Datei).
  */
-export async function generateFromWordTemplate(
+export async function fillWordTemplate(
   sql: Sql,
   cfg: UploadConfig,
   p: {
@@ -659,14 +660,16 @@ export async function generateFromWordTemplate(
     fileId: string;
     actorName: string;
     overrides?: Record<string, string>;
-    /** Kästchen (Index → angekreuzt) und Lücken (Index → Text) der Ausfüll-Seite */
     form?: { boxes: Record<number, boolean>; blanks: Record<number, string> };
   },
-  actor: string,
-): Promise<{ file: FileRow; missing: string[] }> {
+  actor?: string,
+): Promise<{
+  name: string;
+  data: Uint8Array;
+  missing: string[];
+  template: { id: string; name: string; category: string };
+}> {
   const t = await loadTemplate(sql, p.templateId, p.target);
-  const [exists] = await sql<FileRow[]>`select * from app.files where id = ${p.fileId}`;
-  if (exists) return { file: exists, missing: [] };
   const today = todayBerlin();
   const base = await templateValues(sql, p.target, p);
   const values: Record<string, string> = { ...base.values };
@@ -682,6 +685,34 @@ export async function generateFromWordTemplate(
   const typ = t.name.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
   const suffix = base.suffix;
   const name = `${typ}_${today}${suffix ? `_${suffix.replace(/[^\p{L}\p{N}]+/gu, '-')}` : ''}.docx`;
+  if (actor)
+    await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+              values (${actor}, 'word_template', ${p.target.type}, ${p.target.id},
+                      ${sql.json({ template: t.name, template_id: t.id, download: name })})`;
+  return { name, data, missing, template: { id: t.id, name: t.name, category: t.category } };
+}
+
+/**
+ * Vorlage ausfüllen und in der Akte ablegen (write-once; für Skripte/Tests). Die Oberfläche lädt nur noch herunter
+ * (`fillWordTemplate`). `fileId` → doppelt aufrufen legt nichts doppelt an.
+ */
+export async function generateFromWordTemplate(
+  sql: Sql,
+  cfg: UploadConfig,
+  p: {
+    templateId: string;
+    target: WordTarget;
+    fileId: string;
+    actorName: string;
+    overrides?: Record<string, string>;
+    /** Kästchen (Index → angekreuzt) und Lücken (Index → Text) der Ausfüll-Seite */
+    form?: { boxes: Record<number, boolean>; blanks: Record<number, string> };
+  },
+  actor: string,
+): Promise<{ file: FileRow; missing: string[] }> {
+  const [exists] = await sql<FileRow[]>`select * from app.files where id = ${p.fileId}`;
+  if (exists) return { file: exists, missing: [] };
+  const { name, data, missing, template: t } = await fillWordTemplate(sql, cfg, p);
   const file = await storeFile(
     sql,
     cfg,

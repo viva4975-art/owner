@@ -2243,3 +2243,14 @@ Testadresse.
   „Betrag + fällig am“ oben rechts), **groß** (großer Titel, starke Linien). Rechnung je auf einer Seite; Angebot mit
   Wert-Kacheln monatlich/einmalig, Ansprechpartner-Karte, Auftragserteilung. Beispiele: `npx tsx
   scripts/design-proposals.ts <Ordner>` (Dateien 4–6). **Noch nicht aktiv – Ahmed wählt.**
+- 2026-10-10: Runde 38 (Ahmed, 3 Punkte):
+  - **Zahnrad (Einstellungen) wieder sichtbar** – war weiß auf der weißen Kopfzeile (alte Regel `.top .right a{color:#fff}`).
+  - **Einsatzkalender mit wenigen Farben:** geplant (weiß, grauer Rand), Zeit bestätigt (Bordeaux, auch „ohne Einsatz
+    gearbeitet“), keine Zeit erfasst (rot gestrichelt), Urlaub (hellgrün), Krank/Kind krank (hellgelb); läuft/Nachtrag
+    offen nur mit Bordeaux-Kante, sonstige Abwesenheit/Ausfall grau durchgestrichen, Feiertage grau statt Gold. Tage mit
+    Urlaub/Krank in der Farbe schraffiert. Objekt-Kalender gleich: geplant / Zeit bestätigt / abwesend – Vertretung nötig
+    (gestrichelt) / Feiertag-Ausfall (grau).
+  - **Word-Vorlagen werden nicht mehr in der Akte abgelegt:** „Word-Dokument herunterladen“ liefert die ausgefüllte
+    .docx direkt (`fillWordTemplate`, Protokoll `word_template` ohne Datei); in die Akte kommt der Scan der
+    unterschriebenen Fassung. Früher erzeugte Entwürfe (Kategorie „Entwurf (aus Vorlage)“ bzw. laut Protokoll aus
+    einer Vorlage erzeugt) werden in den Dokument-Listen ausgeblendet (`listFiles`), bleiben aber write-once im Archiv.

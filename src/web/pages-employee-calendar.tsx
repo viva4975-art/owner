@@ -94,13 +94,13 @@ const CSS = `
 .eg .blk.tiny{padding:2px 20px 2px 6px;font-size:11.5px;white-space:nowrap;text-overflow:ellipsis}.eg .blk.tiny b{display:inline;font-size:12px;padding-right:4px}.eg .blk.tiny div{display:none}.eg .blk.tiny .ic{top:3px;width:13px;height:13px}
 .eg .blk .ic{position:absolute;right:5px;top:5px;width:16px;height:16px}
 /* Seitenleiste wie Fortytools */
-.ec-side .box{border-radius:4px;padding:14px 16px;margin-bottom:12px;color:#fff}
-.ec-side .box h4{margin:0 0 10px;font-size:15px;font-weight:600;color:#fff}
-.ec-side .plan{background:#9b3a57}.ec-side .ist{background:#5a0f26}
+.ec-side .box{border-radius:12px;padding:14px 16px;margin-bottom:12px;color:var(--ink);background:#fff;border:1px solid var(--line);border-top:3px solid #7d1435}
+.ec-side .box h4{margin:0 0 10px;font-size:15px;font-weight:650;color:var(--ink)}
+.ec-side .plan{border-top-color:#b8607c}.ec-side .ist{border-top-color:#7d1435}
 .ec-side .row{display:grid;grid-template-columns:1fr auto auto;gap:10px;font-size:13px;padding:2px 0;font-variant-numeric:tabular-nums}
-.ec-side .row.sum{border-top:1px solid rgba(255,255,255,.35);margin-top:6px;padding-top:6px;font-weight:700;color:#fff;background:none}
-.ec-side .box .btn{width:100%;justify-content:center;background:#fff;color:#5a0f26;border-color:#fff;margin-top:10px;font-size:13px}
-.ec-side .cmp{background:#fff;border:1px solid #dfe3e8;border-radius:4px;padding:12px 14px;margin-bottom:12px}
+.ec-side .row.sum{border-top:1px solid var(--line);margin-top:6px;padding-top:6px;font-weight:700;color:var(--ink);background:none}
+.ec-side .box .btn{width:100%;justify-content:center;margin-top:10px;font-size:13px}
+.ec-side .cmp{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:12px}
 .ec-side .cmp h4{margin:0 0 8px;font-size:14px}
 .ec-side .bar{height:12px;border-radius:6px;background:#eef0f3;overflow:hidden;margin:3px 0 8px}
 .ec-side .bar i{display:block;height:100%}

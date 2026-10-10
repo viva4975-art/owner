@@ -868,7 +868,7 @@ const LETTER_CSS = `.letter tr.alt td{color:var(--mut)}
 .letter .band dl{display:grid;grid-template-columns:auto auto;gap:2px 18px;margin:0;font-size:13px}
 .letter .band dt{color:var(--mut)}.letter .band dd{margin:0;font-weight:600}
 .letter p{font-size:14px;margin:0 0 12px}
-.letter .hl{background:#fff4b8;padding:2px 6px;border-radius:4px}
+.letter .hl{background:var(--brand-50);color:var(--brand);padding:2px 8px;border-radius:6px}
 .letter .meta{font-size:12px;color:var(--mut);text-align:right;margin-top:18px}
 .actlist{display:flex;flex-direction:column;gap:8px}
 .actlist form,.actlist .btn{width:100%}

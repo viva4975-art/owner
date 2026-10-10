@@ -61,10 +61,10 @@ const QM_CSS = `
 .vw-stats .zero{opacity:.55}
 .vw-sec{margin:0 0 18px}.vw-sec h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:#8a6a76;margin:0 0 8px 2px}
 .vw-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.vw-grid a{display:flex;gap:10px;align-items:flex-start;padding:14px;border-radius:16px;background:#fff;border:1px solid #efe3e7;text-decoration:none;color:#2a1420;box-shadow:0 1px 3px rgba(125,20,53,.05)}
+.vw-grid a{display:flex;gap:10px;align-items:flex-start;padding:14px;border-radius:16px;background:#fff;border:1px solid #ebe7e9;text-decoration:none;color:#2a1420;box-shadow:0 1px 2px rgba(24,24,27,.04);min-width:0}
 .vw-grid .vi{width:38px;height:38px;flex:none;border-radius:12px;background:#f6dfe7;color:#7d1435;display:flex;align-items:center;justify-content:center}
 .vw-grid .vi svg{width:20px;height:20px}
-.vw-grid b{display:block;font-size:15px;hyphens:auto;-webkit-hyphens:auto;overflow-wrap:break-word}.vw-grid small{display:block;color:#8a7a80;font-size:12px;line-height:1.3;margin-top:2px}
+.vw-grid a>span:last-child,.vw-grid a>div{min-width:0;flex:1}.vw-grid b{display:block;font-size:15px;hyphens:auto;-webkit-hyphens:auto;overflow-wrap:anywhere}.vw-grid small{display:block;color:#8a7a80;font-size:12px;line-height:1.3;margin-top:2px}
 .vw-pc{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;margin:8px 0 20px;color:#7d1435;font-weight:600;text-decoration:none}.vw-pc svg{width:18px;height:18px}
 .vw-out{background:none;border:1px solid #e3cdd5;color:#7d1435;border-radius:12px;padding:10px 28px;font:inherit;font-weight:600}
 @media (max-width:360px){.vw-stats{grid-template-columns:repeat(3,1fr)}}

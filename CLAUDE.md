@@ -2222,3 +2222,13 @@ Testadresse.
     Bankverbindung und GiroCode im Kasten), Angebot mit Summen monatlich/einmalig, Ansprechpartner und Feld
     „Auftragserteilung“. **Noch nicht aktiv** – Ahmed wählt, dann wird die gewählte Variante für Rechnung, Storno,
     Korrektur, Angebot, AB eingebaut (PDF/A-3 + KoSIT erneut prüfen).
+- 2026-10-10: Runde 37 (Ahmed: grüne „Live“-Zeile weg, Siegel aus dem Briefkopf, Design einheitlich/professionell):
+  - Umgebungs-Schild (unten links bzw. Kopf der Anmeldung) erscheint nur noch in Test/Lokal, nie im Echtbetrieb.
+  - Anmeldung: echte Siegel aus dem Briefkopf (`assets/web/siegel.png`, aus der Mail-Signatur) auf weißem Streifen.
+  - **Design 4** (letzter CSS-Block in `layout.tsx`, gilt überall): Grundfläche neutral grau (#f4f4f5), heller
+    Bordeaux-Ton nur als Schimmer oben hinter den ersten Karten (PC und App, kein vollflächiges Hellrot mehr); einheitliche
+    Überschriften (24/17/15 px), Karten (weiß, Linie, Radius 12), Knöpfe (Bordeaux / weiß mit Rand / Geister / Gefahr,
+    Höhe 36 bzw. 30), Felder (38 px, Bordeaux-Fokusring statt Gold), Schilder, Tabellenköpfe; schlichte Aufklapp-Elemente
+    (details/summary) mit einheitlichem Pfeil. Gelbe Hervorhebungen (Gesamtbetrag, Summen) → Bordeaux-hell. Rechnung:
+    Aktionen als ruhige Liste statt Bordeaux-Block. Zeiterfassung: Seitenkästen weiß mit Bordeaux-Kante statt vollflächig.
+    App-Kacheln: lange Wörter brechen um. Auswahlfelder zeigen den vollen Text beim Darüberfahren (gekürzt mit „…“).

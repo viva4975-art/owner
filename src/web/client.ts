@@ -234,6 +234,7 @@ export const CLIENT_JS = String.raw`
       var o = sel.options[sel.selectedIndex];
       var g = o && o.parentNode && o.parentNode.tagName === 'OPTGROUP' && o.parentNode.hasAttribute('data-cust') ? o.parentNode : null;
       btn.textContent = o ? o.textContent.trim() + (g ? ' – ' + g.label : '') : '';
+      btn.title = btn.textContent; // lange Einträge werden mit … gekürzt – voller Text beim Darüberfahren
       btn.classList.toggle('ph', !o || o.value === '');
       btn.disabled = sel.disabled;
     }

@@ -377,7 +377,7 @@ export const DRAFTS_CSS = `
 .dr-list .dr-chk{white-space:nowrap}
 .dr-list .dr-obj span{color:#888}
 .dr-sum td{background:#fafafa;font-size:12px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.02em}
-.dr-pill{background:#fff3b0;padding:2px 8px;border-radius:4px;font-weight:700;color:#222;text-transform:none;letter-spacing:0;font-size:13px}
+.dr-pill{background:var(--brand-50);padding:2px 8px;border-radius:6px;font-weight:700;color:var(--brand);text-transform:none;letter-spacing:0;font-size:13px}
 .dr-ic{display:inline-flex;width:30px;height:30px;align-items:center;justify-content:center;border:1px solid #e3e3e8;border-radius:7px;background:#fff;color:#5b5f6a;cursor:pointer;text-decoration:none;padding:0}
 .dr-ic:hover{border-color:#7D1435;color:#7D1435}
 .dr-warn{color:#c77700;display:inline-flex;vertical-align:middle}

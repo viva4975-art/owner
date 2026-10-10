@@ -119,14 +119,14 @@ button.link{background:none;border:0;color:#7D1435;font:inherit;font-weight:600;
 #scanner button{margin:16px;margin-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
 canvas.sig{width:100%;height:200px;border:2px dashed #cfd4db;border-radius:12px;background:#fff;touch-action:none;display:block}
 /* ---- Runde 11: Look wie Fortytools-App, in Viva-Bordeaux ---- */
-:root{--ink:#2a1420;--mut:#6f5c64;--line:#eadfe3;--bg:#f7eff2}
-body{background:#f7eff2;background-image:radial-gradient(120% 60% at 110% -10%,#ecd3dc 0,rgba(236,211,220,0) 60%),radial-gradient(90% 50% at -20% 30%,#f3e1e7 0,rgba(243,225,231,0) 60%),linear-gradient(180deg,#f8edf1 0%,#fbf7f8 70%);background-attachment:fixed;min-height:100vh}
+:root{--ink:#2a1420;--mut:#6f5c64;--line:#e7e2e4;--bg:#f4f4f5}
+body{background:#f4f4f5;background-image:linear-gradient(180deg,#f3e2e9 0,#f6ecf0 140px,rgba(244,244,245,0) 320px);background-repeat:no-repeat;min-height:100vh}
 header{background:transparent;border:0}
 header a,header button{color:var(--mut)}
 main{padding-bottom:calc(110px + env(safe-area-inset-bottom,0px))}
-.card{background:rgba(255,255,255,.82);border:0;border-radius:20px;box-shadow:0 1px 2px rgba(80,20,40,.05),0 8px 24px rgba(80,20,40,.06);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.card{background:#fff;border:1px solid #ebe7e9;border-radius:16px;box-shadow:0 1px 2px rgba(24,24,27,.04)}
 .big{border-radius:16px}
-.sec{background:rgba(255,255,255,.9);border:1px solid #eadfe3}
+.sec{background:#fff;border:1px solid #e2dde0}
 .stop{background:#5c0e27;color:#fff}.stop:active{background:#470a1e}
 .go{background:linear-gradient(135deg,#8B2332,#7D1435)}
 .run{background:rgba(255,255,255,.9)}.run .t{color:#7D1435}

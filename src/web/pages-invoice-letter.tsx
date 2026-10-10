@@ -52,14 +52,15 @@ export const LETTER_CSS = `
 .lt-sub td{border-bottom:0;padding-top:4px;color:#777;font-size:12.5px}
 .lt-sums{margin-left:auto;width:max-content;min-width:300px}
 .lt-sums div{display:flex;justify-content:space-between;gap:30px;padding:6px 10px}
-.lt-sums .tot b{background:#fff3b0;padding:3px 8px;border-radius:4px}
-.lt-side .btns{display:flex;flex-direction:column;border-radius:6px;overflow:hidden;margin-bottom:14px}
+.lt-sums .tot b{background:var(--brand-50);color:var(--brand);padding:3px 9px;border-radius:6px}
+.lt-side .btns{display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px}
 .lt-side .btns > *{display:block;width:100%;margin:0}
-.lt-side .btns a,.lt-side .btns button{display:block;width:100%;text-align:center;background:#7D1435;color:#fff;border:0;border-bottom:1px solid rgba(255,255,255,.18);padding:10px 12px;font-weight:600;font-size:14px;text-decoration:none;cursor:pointer;border-radius:0}
-.lt-side .btns a:hover,.lt-side .btns button:hover{background:#651029}
-.lt-side .btns .sec{background:#fff;color:#7D1435;border-bottom:1px solid #eee}
-.lt-side .btns .sec:hover{background:#faf3f5}
-.lt-side .btns .del{background:#fff;color:#b42318}
+.lt-side .btns a,.lt-side .btns button{display:flex;align-items:center;width:100%;text-align:left;background:#fff;color:var(--ink);border:0;border-bottom:1px solid var(--line);padding:10px 14px;font:inherit;font-weight:550;font-size:14px;text-decoration:none;cursor:pointer;border-radius:0}
+.lt-side .btns > :last-child a,.lt-side .btns > :last-child button,.lt-side .btns > a:last-child{border-bottom:0}
+.lt-side .btns a::after,.lt-side .btns button::after{content:"›";margin-left:auto;color:var(--faint);font-size:16px}
+.lt-side .btns a:hover,.lt-side .btns button:hover{background:var(--brand-50);color:var(--brand);text-decoration:none}
+.lt-side .btns .sec{color:var(--ink)}
+.lt-side .btns .del{color:#b42318}
 .lt-side .card h3{margin:0 0 8px;font-size:15px}
 .lt-edit{color:inherit;text-decoration:none;border-radius:4px;outline:1px dashed transparent;outline-offset:3px;cursor:text}
 .lt-edit:hover{outline-color:#c9a3b0;background:#fbf6f8}

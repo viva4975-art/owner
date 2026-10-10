@@ -114,7 +114,8 @@ async function inspect(p, k, view) {
     out.overflow = document.documentElement.scrollWidth - window.innerWidth;
     for (const el of document.querySelectorAll('button, .btn, .badge, .pill, .tabs a, th, .kpi, label')) {
       const s = getComputedStyle(el);
-      if (el.offsetParent === null || s.overflow === 'visible') continue;
+      // Auswahlfelder kürzen lange Einträge bewusst mit „…“ (voller Text im title)
+      if (el.offsetParent === null || s.overflow === 'visible' || el.classList.contains('cbx-btn')) continue;
       if (el.scrollWidth > el.clientWidth + 2 && el.clientWidth > 0)
         out.clipped.push(
           `${el.tagName.toLowerCase()}.${[...el.classList].join('.')}: ${el.innerText.slice(0, 50)}`,

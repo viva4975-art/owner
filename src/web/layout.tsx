@@ -313,7 +313,7 @@ details.pop>.panel .btn{margin-top:12px;width:100%;justify-content:center}
 .op-head{display:flex;align-items:center;gap:12px;padding:14px 22px;background:var(--head);border-bottom:1px solid var(--line)}
 .op-head .no{font-size:18px;font-weight:700}
 .op-head .nm{color:var(--mut);font-size:15px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.op-head .sum{background:#fff7c2;color:var(--ink);font-weight:700;padding:4px 12px;border-radius:var(--r-sm)}
+.op-head .sum{background:var(--brand-50);color:var(--brand);font-weight:700;padding:4px 12px;border-radius:var(--r-sm)}
 .op-cols,.op-row{display:grid;grid-template-columns:1fr 130px 130px;gap:8px;padding:6px 22px;align-items:baseline}
 .op-cols{font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);text-align:right;padding-top:8px}
 .op-row .r{text-align:right;font-variant-numeric:tabular-nums}
@@ -459,7 +459,7 @@ h2.form-section:first-of-type{margin-top:4px}
 .linkbtn:hover{text-decoration:underline}
 .panel-foot{text-align:right;margin-top:8px}
 .ledger table{background:#fff}
-.ledger th.r .total{background:#fff3b0;padding:3px 8px;border-radius:3px;color:var(--ink)}
+.ledger th.r .total{background:var(--brand-50);padding:3px 8px;border-radius:3px;color:var(--ink)}
 .ledger tbody.ledger-item td{border-bottom:0;padding-top:6px;padding-bottom:4px}
 .ledger tbody.ledger-item tr.sub td{font-size:13px;padding-top:2px;padding-bottom:2px}
 .ledger tbody.ledger-item tr.sum td{border-top:1px solid var(--line);border-bottom:1px solid var(--line-2);padding-bottom:10px}
@@ -1257,7 +1257,7 @@ table.share td{vertical-align:top}
 .num{font-variant-numeric:tabular-nums;white-space:nowrap}
 .share-more{display:none}.share-all .share-more{display:table-row}
 /* ---------- App-Rahmen (aus der App geöffnet): kein PC-Menü, Zurück + Titel oben, Leiste unten ---------- */
-body.appmode{background:linear-gradient(180deg,#f8edf1 0,#faf6f7 240px,#faf6f7 100%);font-size:16px;padding-bottom:84px}
+body.appmode{background:#f4f4f5 linear-gradient(180deg,#f3e2e9 0,#f6ecf0 120px,rgba(244,244,245,0) 300px) no-repeat;font-size:16px;padding-bottom:84px}
 .appmode .apphead{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;padding:10px 12px;padding-top:max(10px,env(safe-area-inset-top));background:rgba(248,237,241,.94);backdrop-filter:blur(8px);border-bottom:1px solid #efe3e7}
 .appmode .apphead b{flex:1;text-align:center;font-size:17px;color:#2a1420;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .appmode .ah-btn{width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:12px;color:#7d1435}
@@ -1313,6 +1313,60 @@ a.svc-row b{color:var(--brand)}
 .svc-old{margin-top:8px}.svc-old summary{cursor:pointer;color:var(--mut);font-size:14px;padding:6px 0}
 .svc-old .svc-group{opacity:.7}
 @media (max-width:760px){a.svc-row{grid-template-columns:1fr auto}.svc-when{grid-column:1}.svc-qty{grid-column:1;text-align:left}.svc-total{grid-row:1;grid-column:2}.svc-note{white-space:normal}}
+/* ===================================================================================================
+   Design 4 (Ahmed 10.10.: „einheitlich und professionell, nicht vollflächig hellrot“) – gilt zuletzt und
+   vereinheitlicht Schrift, Knöpfe, Felder, Karten, Schilder und Aufklapp-Elemente auf allen Seiten.
+   Grundfläche neutral; der helle Bordeaux-Ton nur als Schimmer oben hinter den ersten Karten.
+   =================================================================================================== */
+:root{--bg:#f4f4f5;--panel:#fff;--line:#e7e5e4;--line-2:#d6d3d1;--head:#fafaf9;--ink:#18181b;--ink-2:#3f3f46;--mut:#6b6b72;--faint:#a1a1aa;--tint:#f8eff3;--ring:0 0 0 3px rgba(125,20,53,.13)}
+body.shell{background:var(--bg)!important;background-image:none!important}
+.shell .mainc{background:linear-gradient(180deg,var(--tint) 0,rgba(248,239,243,.55) 180px,rgba(244,244,245,0) 380px) no-repeat}
+.shell main h1{font-size:24px;line-height:1.25;font-weight:700;letter-spacing:-.015em;color:var(--ink)}
+.shell main h1 .no{font-size:.66em;font-weight:500;color:var(--faint);margin-left:6px}
+.shell main h2{font-size:17px;font-weight:650;letter-spacing:-.005em;color:var(--ink)}
+.shell main h3{font-size:15px;font-weight:650;letter-spacing:0;color:var(--ink)}
+.shell main .card{background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 1px 2px rgba(24,24,27,.04)}
+.shell main .card .card{box-shadow:none}
+.shell main .tabbody{background:#fff;border:1px solid var(--line);border-top:0;border-radius:0 0 12px 12px;box-shadow:0 1px 2px rgba(24,24,27,.04)}
+.shell main .tabbody>.card:not(.emp-hero),.shell main .tabbody .cols>.card,.shell main .tabbody .cols>div>.card{box-shadow:none}
+/* Knöpfe: drei Arten, zwei Größen */
+.btn{height:36px;padding:0 14px;border-radius:8px;font-size:14px;font-weight:600;letter-spacing:0;gap:7px;line-height:1;background:var(--brand);border:1px solid var(--brand);color:#fff;box-shadow:0 1px 1px rgba(125,20,53,.18);text-transform:none}
+.btn:hover{background:#6a1030;border-color:#6a1030;color:#fff}
+.btn.sec{background:#fff;color:var(--ink-2);border-color:var(--line-2);box-shadow:0 1px 1px rgba(0,0,0,.03)}
+.btn.sec:hover{background:#fafafa;border-color:var(--faint);color:var(--ink)}
+.btn.ghost{background:transparent;border-color:transparent;box-shadow:none;color:var(--ink-2)}
+.btn.ghost:hover{background:#f4f4f5}
+.btn.danger{background:#fff;color:#b42318;border-color:#f3c3bd;box-shadow:none}
+.btn.danger:hover{background:#fef3f2;border-color:#e59a90}
+.btn.sm{height:30px;padding:0 11px;font-size:13px;border-radius:7px;gap:6px}
+.btn svg,.btn .ic{width:16px;height:16px}
+.btn.sm svg,.btn.sm .ic{width:14px;height:14px}
+.btn[disabled],.btn:disabled{opacity:.5;cursor:not-allowed}
+/* Felder */
+.shell main input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]):not([type=range]):not([type=color]),.shell main select,.shell main textarea{border:1px solid var(--line-2);border-radius:8px;background:#fff;color:var(--ink);font-size:14px;transition:border-color .12s,box-shadow .12s}
+.shell main input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]):not([type=range]):not([type=color]):not(textarea),.shell main select{min-height:38px}
+.shell main input:focus,.shell main select:focus,.shell main textarea:focus{outline:none;border-color:var(--brand);box-shadow:var(--ring)}
+.cbx-btn{border-color:var(--line-2);border-radius:8px;min-height:38px}
+.cbx-btn:focus-visible,.cbx.open .cbx-btn{border-color:var(--brand);box-shadow:var(--ring)}
+.shell main label{font-weight:550;color:var(--ink-2)}
+input[type=checkbox],input[type=radio]{accent-color:var(--brand)}
+/* Schilder */
+.badge{border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600;line-height:18px;letter-spacing:0;text-transform:none}
+/* Tabellen */
+.shell main table th{font-size:12px;font-weight:600;color:var(--mut);letter-spacing:.01em}
+.shell main table td{font-variant-numeric:tabular-nums}
+/* Aufklappen: einheitlicher Pfeil statt Dreieck (nur schlichte details/summary ohne eigene Gestaltung) */
+.shell main details:not([class])>summary:not([class]),.shell main details.card>summary:not([class]),.appmode main details:not([class])>summary:not([class]){list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:600;color:var(--ink-2);padding:4px 0;user-select:none}
+.shell main details:not([class])>summary:not([class])::-webkit-details-marker,.shell main details.card>summary:not([class])::-webkit-details-marker,.appmode main details:not([class])>summary:not([class])::-webkit-details-marker{display:none}
+.shell main details:not([class])>summary:not([class])::before,.shell main details.card>summary:not([class])::before,.appmode main details:not([class])>summary:not([class])::before{content:"";width:7px;height:7px;flex:none;border-right:1.7px solid var(--mut);border-bottom:1.7px solid var(--mut);transform:rotate(-45deg);transition:transform .15s;margin:0 3px 0 1px}
+.shell main details:not([class])[open]>summary:not([class])::before,.shell main details.card[open]>summary:not([class])::before,.appmode main details:not([class])[open]>summary:not([class])::before{transform:rotate(45deg) translate(-1px,-1px)}
+.shell main details:not([class])>summary:not([class]):hover,.shell main details.card>summary:not([class]):hover{color:var(--brand)}
+/* Hinweise */
+.flash{border-radius:10px}
+.warnbox{border-radius:12px}
+/* Seitenleiste: aktiver Eintrag ruhiger */
+.appside .sub a.on{font-weight:600}
+
 `;
 
 export const euro = (c: bigint) => formatEuro(c as Cents);
@@ -1587,11 +1641,11 @@ export const Layout: FC<{
                   __html: `(function(){var p=location.pathname,best=null,len=0;document.querySelectorAll('.appside .sub a[href]').forEach(function(a){var h=a.getAttribute('href').split('?')[0];if((p===h||p.indexOf(h+'/')===0)&&h.length>len){best=a;len=h.length}});if(best){best.classList.add('on');var d=best.closest('details');if(d)d.open=true}})();`,
                 }}
               />
-              <div class="side-foot">
-                <span class={`env${env === 'live' ? ' live' : ''}`}>
-                  {env === 'live' ? 'Live' : env === 'test' ? 'Testbetrieb' : 'Lokal'}
-                </span>
-              </div>
+              {env !== 'live' && (
+                <div class="side-foot">
+                  <span class="env">{env === 'test' ? 'Testbetrieb' : 'Lokal'}</span>
+                </div>
+              )}
             </aside>
           )}
           {!bare && <label for="burger" class="scrim" aria-hidden="true" />}
@@ -1623,11 +1677,7 @@ export const Layout: FC<{
                   <span style="flex:1" />
                 )}
                 <div class="right">
-                  {bare && (
-                    <span class={`env${env === 'live' ? ' live' : ''}`}>
-                      {env === 'live' ? 'LIVE' : env === 'test' ? 'TEST' : 'LOKAL'}
-                    </span>
-                  )}
+                  {bare && env !== 'live' && <span class="env">{env === 'test' ? 'TEST' : 'LOKAL'}</span>}
                   {user && (
                     <a
                       class="btn sm sec mytime"

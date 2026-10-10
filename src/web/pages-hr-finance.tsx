@@ -865,9 +865,7 @@ export const EmployeeForm: FC<{
           placeholder="z. B. 2.800,00"
           value={e.monthly_salary_cents != null ? centsToInput(e.monthly_salary_cents) : ''}
         />
-        <small class="mut">
-          Stundensatz für Nachkalkulation/Mindestlohn = Gehalt × 3 ÷ 13 ÷ Wochenstunden
-        </small>
+        <small class="mut">Stundensatz für Nachkalkulation/Mindestlohn = Gehalt ÷ 4,33 ÷ Wochenstunden</small>
       </div>
     </div>
     <script

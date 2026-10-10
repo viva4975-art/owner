@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { type Gender, genderOf, genderizeXml, shadeEmployeeSignature } from './word-gender.js';
+import { type Gender, genderOf, genderizeXml, salaryClause, shadeEmployeeSignature } from './word-gender.js';
 import { personGreeting } from '../domain/letter/greeting.js';
 import { customerGreeting } from './letters.js';
 import { readFile } from 'node:fs/promises';
@@ -196,7 +196,7 @@ export function fillDocx(
   value: (key: string) => string | null,
   docDate?: string,
   form?: { boxes: Record<number, boolean>; blanks: Record<number, string> },
-  person?: { gender: Gender | null },
+  person?: { gender: Gender | null; salaried?: boolean },
 ) {
   const files = unzipSync(bytes);
   if (!files['word/document.xml']) throw new BusinessError('Keine Word-Datei (.docx)');
@@ -208,6 +208,7 @@ export function fillDocx(
     // Kästchen/Lücken vor den Platzhaltern (Indizes wie auf der Ausfüll-Seite, dort aus der Originaldatei)
     if (form && name === 'word/document.xml') xml = applyFormFields(xml, form.boxes, form.blanks);
     // Mitarbeiter-Dokument: „Arbeitnehmer/in“ passend zur Anrede, Unterschriftsfeld der Person hinterlegt
+    if (person?.salaried) xml = salaryClause(xml);
     if (person?.gender) xml = genderizeXml(xml, person.gender);
     if (person && name === 'word/document.xml') xml = shadeEmployeeSignature(xml);
     files[name] = strToU8(fillXml(xml, value, missing));
@@ -476,7 +477,10 @@ const EMPLOYMENT: Record<string, string> = {
   aushilfe: 'Aushilfe',
 };
 
-async function employeeValues(sql: Sql, id: string): Promise<{ v: Record<string, string>; notes: string[] }> {
+async function employeeValues(
+  sql: Sql,
+  id: string,
+): Promise<{ v: Record<string, string>; notes: string[]; salaried: boolean }> {
   const [e] = await sql<
     {
       salutation: string | null;
@@ -530,9 +534,11 @@ async function employeeValues(sql: Sql, id: string): Promise<{ v: Record<string,
   let level = e.wage_level;
   let monthly: bigint | null = e.pay_model === 'festgehalt' ? e.monthly_salary_cents : null;
   if (e.pay_model === 'festgehalt' && monthly != null && weekly > 0) {
-    // Stundensatz wie in Nachkalkulation/Mindestlohn-Prüfung: Gehalt × 3 ÷ 13 ÷ Wochenstunden
-    hourly = BigInt(Math.round((Number(monthly) * 3) / 13 / weekly));
-    notes.push('Stundenlohn aus dem Festgehalt umgerechnet (Gehalt × 3 ÷ 13 ÷ Wochenstunden).');
+    // Stundensatz wie in Nachkalkulation/Mindestlohn-Prüfung: Gehalt ÷ 4,33 ÷ Wochenstunden
+    hourly = BigInt(Math.round(Number(monthly) / 4.33 / weekly));
+    notes.push(
+      `Festgehalt: Im Arbeitsvertrag steht das Monatsgehalt statt eines Stundenlohns. Umgerechnet ${numDe(hourly)} €/Std. (Gehalt ÷ 4,33 ÷ Wochenstunden) – muss mindestens dem Branchen-Mindestlohn entsprechen.`,
+    );
   }
   if (hourly == null && e.pay_model !== 'festgehalt') {
     const [low] = await sql<{ name: string; hourly_wage_cents: bigint }[]>`
@@ -584,7 +590,7 @@ async function employeeValues(sql: Sql, id: string): Promise<{ v: Record<string,
     'Mitarbeiter.Telefon': e.mobile ?? e.phone ?? '',
     'Mitarbeiter.E-Mail': e.email ?? '',
   };
-  return { v, notes };
+  return { v, notes, salaried: e.pay_model === 'festgehalt' };
 }
 
 async function customerValues(sql: Sql, id: string): Promise<Record<string, string>> {
@@ -681,9 +687,10 @@ export async function templateValues(
   sql: Sql,
   target: WordTarget,
   p: { actorName: string; fileId: string },
-): Promise<{ values: Record<string, string>; suffix: string; notes: string[] }> {
+): Promise<{ values: Record<string, string>; suffix: string; notes: string[]; salaried: boolean }> {
   const today = todayBerlin();
   let notes: string[] = [];
+  let salaried = false;
   let values: Record<string, string> = {
     ...(await companyValues(sql)),
     'Dokument.Datum': de(today),
@@ -700,6 +707,7 @@ export async function templateValues(
     const r = await employeeValues(sql, target.id);
     const v = r.v;
     notes = r.notes;
+    salaried = r.salaried;
     values = { ...values, ...v, 'Vertrag.Datum': v['Mitarbeiter.Eintrittsdatum'] ?? '' };
     if (v['Mitarbeiter.Austrittsdatum']) values['Vertrag.Ende'] = v['Mitarbeiter.Austrittsdatum'];
     suffix = v['Mitarbeiter.Nachname'] ?? '';
@@ -711,7 +719,7 @@ export async function templateValues(
     values = { ...values, ...(await customerValues(sql, s.customerId)), ...s.v };
     suffix = values['Objekt.Nummer'] ?? '';
   }
-  return { values, suffix, notes };
+  return { values, suffix, notes, salaried };
 }
 
 /** Eingabe der Ausfüll-Seite übernehmen: Datum aus <input type=date> (JJJJ-MM-TT) → TT.MM.JJJJ. */
@@ -765,7 +773,9 @@ export async function fillWordTemplate(
     (k) => (values[k] ? values[k]! : null),
     values['Dokument.Datum'] || de(today),
     p.form,
-    p.target.type === 'employee' ? { gender: genderOf(values['Mitarbeiter.Anrede']) } : undefined,
+    p.target.type === 'employee'
+      ? { gender: genderOf(values['Mitarbeiter.Anrede']), salaried: base.salaried }
+      : undefined,
   );
   const typ = t.name.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
   const suffix = base.suffix;

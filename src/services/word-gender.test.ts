@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { genderOf, genderizeXml, shadeEmployeeSignature } from './word-gender.js';
+import { genderOf, genderizeXml, salaryClause, shadeEmployeeSignature } from './word-gender.js';
 
 const p = (t: string) => `<w:p><w:r><w:t>${t}</w:t></w:r></w:p>`;
 const txt = (xml: string) => xml.replace(/<[^>]+>/g, '');
@@ -70,5 +70,15 @@ describe('Unterschriftsfeld der Person hinterlegt', () => {
     const out = shadeEmployeeSignature(xml);
     expect(out.indexOf('w:shd')).toBeLessThan(out.indexOf('Datum, Unterschrift'));
     expect(out).toContain('w:line="640"');
+  });
+});
+
+describe('Festgehalt im Arbeitsvertrag', () => {
+  it('Stundenlohn-Satz wird zum Monatsgehalt', () => {
+    const x =
+      '<w:p><w:r><w:t>2.1  Der/die Arbeitnehmer/in erhält den Tariflohn von derzeit ${Mitarbeiter.Stunden</w:t></w:r><w:r><w:t>lohn} EUR brutto pro Stunde. Zuschläge …</w:t></w:r></w:p>';
+    expect(txt(salaryClause(x))).toBe(
+      '2.1  Der/die Arbeitnehmer/in erhält ein festes monatliches Bruttogehalt in Höhe von ${Mitarbeiter.Gehalt} EUR. Zuschläge …',
+    );
   });
 });

@@ -195,11 +195,12 @@ describe.skipIf(!available)('Word-Vorlagen (Datenbank)', () => {
     expect(r.values['Mitarbeiter.Stundenlohn']).toBe('16,00');
     expect(r.values['Mitarbeiter.Gehalt']).toBe('1.385,60');
     expect(r.notes.join(' ')).not.toContain('keine Vergütung');
-    // Festgehalt 2.600 € bei 40 Std.: Stundensatz 2600 × 3 ÷ 13 ÷ 40 = 15,00 €
+    // Festgehalt 2.600 € bei 40 Std.: Stundensatz 2600 ÷ 4,33 ÷ 40 = 15,01 €
     await sql`update app.employees set pay_model = 'festgehalt', hourly_wage_cents = null, monthly_salary_cents = 260000,
                      weekly_hours = 40 where id = ${emp}`;
     r = await t(emp);
     expect(r.values['Mitarbeiter.Gehalt']).toBe('2.600,00');
-    expect(r.values['Mitarbeiter.Stundenlohn']).toBe('15,00');
+    expect(r.values['Mitarbeiter.Stundenlohn']).toBe('15,01');
+    expect(r.salaried).toBe(true);
   });
 });

@@ -2374,4 +2374,10 @@ Testadresse.
   Anrede (divers/leer) bleibt die Doppelform. Unterschriftsfeld der Person hellgrau (#EEEBED) in Unterschriftshöhe – für
   alle drei Bauarten der Vorlagen (Linie unter leerem Absatz, Zellenlinie, Absatzlinie über der Beschriftung); Linien in
   derselben Zeile auf gleicher Höhe. Geprüft an allen 26 Mitarbeiter-Vorlagen des Pakets.
+- 2026-10-10: Unterschriftsfeld heller (#F6F4F5). **Festgehalt im Arbeitsvertrag:** Satz „erhält den Tariflohn von derzeit
+  … EUR brutto pro Stunde“ wird bei Vergütungsart Festgehalt automatisch zu „erhält ein festes monatliches Bruttogehalt in
+  Höhe von … EUR“ (`salaryClause`). **Umrechnung Festgehalt → Stundensatz jetzt Gehalt ÷ 4,33 ÷ Wochenstunden** (Ahmed;
+  vorher × 3 ÷ 13 = ÷ 4,333…, Unterschied < 0,1 %) – Vorlagen, Nachkalkulation, Mindestlohn-Prüfung
+  (`app.effective_wage_cents`, Migration `20261119000004`). **Mindestlohn:** Gehalt ÷ 4,33 ÷ Wochenstunden muss mindestens
+  den Branchen-Mindestlohn erreichen; Mehrarbeit ist nicht automatisch abgegolten (Zuschläge nach RTV bleiben).
 

@@ -113,7 +113,8 @@ export function genderizeXml(xml: string, g: Gender): string {
 }
 
 const SIG_LABEL = /(Arbeitnehmer|Mitarbeiter)(in|\/in)?\b/u;
-const SHADE = '<w:shd w:val="clear" w:color="auto" w:fill="EEEBED"/>';
+const FILL = 'F6F4F5';
+const SHADE = `<w:shd w:val="clear" w:color="auto" w:fill="${FILL}"/>`;
 
 /** Leere Linie über der Unterschrift der Arbeitnehmerin / des Arbeitnehmers hellgrau hinterlegen, in Unterschriftshöhe. */
 export function shadeEmployeeSignature(xml: string): string {
@@ -157,7 +158,7 @@ const EXACT = '<w:spacing w:before="120" w:after="34" w:line="640" w:lineRule="e
 /** In einer Zeile mit hinterlegtem Feld die anderen Unterschriftsfelder gleich hoch machen (Linien auf einer Höhe). */
 function alignSignatureRows(xml: string): string {
   return xml.replace(TR, (row) => {
-    if (!row.includes('EEEBED') || !row.includes('w:line="640"')) return row;
+    if (!row.includes(FILL) || !row.includes('w:line="640"')) return row;
     return row.replace(
       /(<w:p>(?:<w:pPr>(?:(?!<\/w:pPr>)[\s\S])*<\/w:pPr>)?<\/w:p>)(<w:p><w:pPr><w:pBdr><w:top )/g,
       (m, empty: string, next: string) => {
@@ -182,11 +183,10 @@ function shadeSignatureRows(xml: string): string {
   const text = (p: string) =>
     xmlUnesc([...p.matchAll(new RegExp(T.source, 'g'))].map((m) => m[2]).join('')).trim();
   return xml.replace(TR, (row: string, offset: number, whole: string) => {
-    if (row.includes('EEEBED')) return row;
+    if (row.includes(FILL)) return row;
     // schon eingefügt (direkt davor steht die hinterlegte Zeile)
     const before = whole.slice(Math.max(0, offset - 1500), offset);
-    if (before.endsWith('</w:tr>') && before.slice(before.lastIndexOf('<w:tr>')).includes('EEEBED'))
-      return row;
+    if (before.endsWith('</w:tr>') && before.slice(before.lastIndexOf('<w:tr>')).includes(FILL)) return row;
     const cells = [...row.matchAll(TC)].map((m) => m[0]);
     if (!cells.length) return row;
     const isSig = (c: string) => {
@@ -209,4 +209,16 @@ function shadeSignatureRows(xml: string): string {
       .join('');
     return `<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val="640" w:hRule="exact"/></w:trPr>${newCells}</w:tr>${row}`;
   });
+}
+
+/**
+ * Festgehalt (Ahmed 10.10.: „bei Leuten mit Gehalt soll ein anderer Satz nur mit Gehalt stehen“): Der Stundenlohn-Satz
+ * der Arbeitsverträge wird durch das Monatsgehalt ersetzt.
+ */
+export function salaryClause(xml: string): string {
+  return replaceInParagraphs(
+    xml,
+    /erhält (?:den Tariflohn|einen Stundenlohn|den Stundenlohn) von (?:derzeit )?\$\{Mitarbeiter\.Stundenlohn\} EUR brutto pro Stunde\./u,
+    () => 'erhält ein festes monatliches Bruttogehalt in Höhe von ${Mitarbeiter.Gehalt} EUR.',
+  );
 }

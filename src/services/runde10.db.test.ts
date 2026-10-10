@@ -239,10 +239,10 @@ describe.skipIf(!available)('Runde 10 (Datenbank)', () => {
       employeeInput.parse({ ...base, pay_model: 'festgehalt', monthly_salary: '2.600,00' }),
       'test',
     );
-    // 2.600 € × 3 / 13 / 30 Std. = 20,00 €/Std.
+    // 2.600 € ÷ 4,33 ÷ 30 Std. = 20,02 €/Std.
     const [w2] =
       await sql`select app.effective_wage_cents(e) as c, e.wage_level_id from app.employees e where id = ${id}`;
-    expect([w2!.c, w2!.wage_level_id]).toEqual([2000n, null]);
+    expect([w2!.c, w2!.wage_level_id]).toEqual([2002n, null]);
     expect(
       employeeInput.safeParse({ ...base, weekly_hours: '', pay_model: 'festgehalt', monthly_salary: '2600' })
         .success,

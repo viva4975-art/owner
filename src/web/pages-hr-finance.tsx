@@ -530,7 +530,7 @@ export const EmployeeOverview: FC<{
             </small>
           </div>
           <div>
-            <span>Objekte</span>
+            <span>Aktuelle Objekte</span>
             <b>{sites.length}</b>
             <small>
               <a href={`/personal/${e.id}/einsaetze`}>Einsätze →</a>
@@ -625,7 +625,7 @@ export const EmployeeOverview: FC<{
         </div>
         <div class="emp-side">
           <section class="card">
-            <h3>Objekte</h3>
+            <h3>Aktuelle Objekte</h3>
             {sites.length ? (
               <ul class="eh-sites">
                 {sites.map((s) => (
@@ -637,7 +637,7 @@ export const EmployeeOverview: FC<{
                 ))}
               </ul>
             ) : (
-              <div class="empty">Keinem Objekt zugeordnet.</div>
+              <div class="empty">Derzeit an keinem Objekt eingeplant.</div>
             )}
           </section>
           {showPrivate && priv && (

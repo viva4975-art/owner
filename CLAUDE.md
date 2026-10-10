@@ -2233,3 +2233,6 @@ Testadresse.
     (details/summary) mit einheitlichem Pfeil. Gelbe Hervorhebungen (Gesamtbetrag, Summen) → Bordeaux-hell. Rechnung:
     Aktionen als ruhige Liste statt Bordeaux-Block. Zeiterfassung: Seitenkästen weiß mit Bordeaux-Kante statt vollflächig.
     App-Kacheln: lange Wörter brechen um. Auswahlfelder zeigen den vollen Text beim Darüberfahren (gekürzt mit „…“).
+- 2026-10-10: Mitarbeiter (Ahmed: „bei Objekte nur aktuelle“): Übersicht „Aktuelle Objekte“ und Mitarbeiterliste zeigen nur
+  aktive Objekte mit laufendem oder künftigem Einsatz der Person (`shift_plans` gültig bis heute oder offen), nicht mehr
+  die alte Zuordnung Mitarbeiter ↔ Objekt (die bleibt für Stempelrecht/Filter unverändert).

@@ -1076,7 +1076,12 @@ export function registerModuleRoutes(ctx: Ctx) {
           <EmployeeOverview
             e={e}
             priv={data.priv}
-            sites={data.sites}
+            sites={await sql<{ id: string; site_no: string; name: string }[]>`
+              -- nur aktuelle Objekte (Ahmed 10.10.): aktives Objekt mit laufendem oder künftigem Einsatz
+              select distinct s.id, s.site_no, s.name from app.shift_plans p join app.sites s on s.id = p.site_id
+               where p.employee_id = ${e.id} and s.active
+                 and (p.valid_until is null or p.valid_until >= ${todayBerlin()})
+               order by s.site_no`}
             showPrivate
             wage={{ level: lvl?.name ?? null, cents: wage }}
             month={await monthBox(e.id)}

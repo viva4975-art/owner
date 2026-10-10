@@ -258,9 +258,13 @@ export async function listEmployees(
   >`
     select e.*, p.residence_permit_until, p.work_permit_until::text, p.street, p.postal_code, p.city,
            p.birth_date::text, p.nationality,
-           (select count(*)::int from app.employee_sites es where es.employee_id = e.id) as site_count,
-           (select array_agg(s.name order by s.name) from app.employee_sites es join app.sites s on s.id = es.site_id
-             where es.employee_id = e.id) as site_names,
+           -- nur aktuelle Objekte: aktives Objekt mit laufendem oder künftigem Einsatz (Ahmed 10.10.)
+           (select count(distinct sp.site_id)::int from app.shift_plans sp join app.sites s on s.id = sp.site_id
+             where sp.employee_id = e.id and s.active
+               and (sp.valid_until is null or sp.valid_until >= (now() at time zone 'Europe/Berlin')::date)) as site_count,
+           (select array_agg(distinct s.name order by s.name) from app.shift_plans sp join app.sites s on s.id = sp.site_id
+             where sp.employee_id = e.id and s.active
+               and (sp.valid_until is null or sp.valid_until >= (now() at time zone 'Europe/Berlin')::date)) as site_names,
            ${hasShift(sql)} as has_shift
       from app.employees e left join app.employee_private p on p.employee_id = e.id
      where ${opts.status ? sql`e.status = ${opts.status}` : sql`true`}

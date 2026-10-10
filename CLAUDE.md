@@ -2365,4 +2365,13 @@ Testadresse.
   „Angaben prüfen“ (Stammdaten aufgeklappt, Link zum Nachtragen). `Mitarbeiter.Gehalt` ist nur noch ein Monatsbetrag
   (bei Stundenlohn × Wochenstunden × 4,33) – vorher stand der Stundenlohn als „monatliches Bruttogehalt“ im OL-Vertrag.
   **Ahmed: Vergütung bei allen Mitarbeitenden nachtragen (Liste „Vergütung fehlt“).**
+- 2026-10-10: **Mitarbeiter-Vorlagen passend zur Person** (Ahmed: „Arbeitnehmer/Arbeitnehmerin unterscheiden, leichte
+  Schattierung über der Unterschrift Arbeitnehmer“), `src/services/word-gender.ts`, wirkt beim Erzeugen jeder
+  Mitarbeiter-Vorlage (kein neues Hochladen nötig): Bei Anrede Frau/Herr werden Doppelformen aufgelöst – „Der/die
+  Arbeitnehmer/in“ → „Die Arbeitnehmerin“/„Der Arbeitnehmer“, dem/der, den/die, des/der (+ Genitiv „des Arbeitnehmers“),
+  er/sie, ihm/ihr, seiner/ihrer, Neue/r, erste/r, Beauftragte/r, Mitarbeiter/Vorarbeiter/Objektleiter/Stelleninhaber/
+  Ansprechpartner/in; nicht verändert: Mehrzahl „…/innen“, andere Personen (Bereichsleiter/in), „des/der ${…}“. Ohne
+  Anrede (divers/leer) bleibt die Doppelform. Unterschriftsfeld der Person hellgrau (#EEEBED) in Unterschriftshöhe – für
+  alle drei Bauarten der Vorlagen (Linie unter leerem Absatz, Zellenlinie, Absatzlinie über der Beschriftung); Linien in
+  derselben Zeile auf gleicher Höhe. Geprüft an allen 26 Mitarbeiter-Vorlagen des Pakets.
 

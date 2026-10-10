@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { type Gender, genderOf, genderizeXml, shadeEmployeeSignature } from './word-gender.js';
 import { personGreeting } from '../domain/letter/greeting.js';
 import { customerGreeting } from './letters.js';
 import { readFile } from 'node:fs/promises';
@@ -195,6 +196,7 @@ export function fillDocx(
   value: (key: string) => string | null,
   docDate?: string,
   form?: { boxes: Record<number, boolean>; blanks: Record<number, string> },
+  person?: { gender: Gender | null },
 ) {
   const files = unzipSync(bytes);
   if (!files['word/document.xml']) throw new BusinessError('Keine Word-Datei (.docx)');
@@ -205,6 +207,9 @@ export function fillDocx(
     if (docDate) xml = freezeDateFields(xml, docDate);
     // Kästchen/Lücken vor den Platzhaltern (Indizes wie auf der Ausfüll-Seite, dort aus der Originaldatei)
     if (form && name === 'word/document.xml') xml = applyFormFields(xml, form.boxes, form.blanks);
+    // Mitarbeiter-Dokument: „Arbeitnehmer/in“ passend zur Anrede, Unterschriftsfeld der Person hinterlegt
+    if (person?.gender) xml = genderizeXml(xml, person.gender);
+    if (person && name === 'word/document.xml') xml = shadeEmployeeSignature(xml);
     files[name] = strToU8(fillXml(xml, value, missing));
   }
   return { data: zipSync(files, { level: 6 }), missing: [...missing] };
@@ -760,6 +765,7 @@ export async function fillWordTemplate(
     (k) => (values[k] ? values[k]! : null),
     values['Dokument.Datum'] || de(today),
     p.form,
+    p.target.type === 'employee' ? { gender: genderOf(values['Mitarbeiter.Anrede']) } : undefined,
   );
   const typ = t.name.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
   const suffix = base.suffix;

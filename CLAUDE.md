@@ -2309,3 +2309,14 @@ Testadresse.
   HeizkostenV; B veraltet – feste Adresse Würmtalstr. 10 in 17 Vorlagen, „Fortytools“ in 12, § 17 UWG, NachwG-Angaben;
   C doppelt – Anwesenheitslisten, FB-06/45/WD, Revierplan-Muster mit Kundendaten; D Tippfehler). Liste an Ahmed; Änderungen
   erst nach seiner Freigabe, Punkte A mit Anwalt.
+- 2026-10-10: **Word-Vorlagen V5 – Inhalte überarbeitet** (Ahmed: „pass alles an“, mit Vorgaben): Schulferien = Arbeits-
+  verhältnis ruht (neuer Paragraf + Anlage 3; Urlaub in die Ferien, Urlaubsanspruch nur für Tage mit Arbeitspflicht
+  = Jahresurlaub × Arbeitstage ÷ 260; > 1 Monat ohne Entgelt → SV-Abmeldung § 7 Abs. 3 SGB IV), Schwerbehinderung bleibt
+  (freiwillig), Taschenkontrollen raus, Datenschutz-Anlage 5 neu (Art. 13 + freiwillige Einwilligungen), eAU,
+  Vertragsstrafe nur Nichtantritt (≤ ½ Monat), Textform, Fortytools → Viva-Deluxe-App, Befristungen raus (VB, ANS-BV
+  gelöscht), Adresse Würmtalstr. bleibt (Ahmed), alle übrigen Prüfpunkte und Tippfehler. Neuer Platzhalter
+  `${Mitarbeiter.Briefanrede}`. Beim Hochladen eines V5-Pakets werden VB/ANS-BV/ANW-2026/ANW-2027 deaktiviert
+  (`RETIRED_CODES`). Objektordner: Revierplan/LV/Raumbuch aus den Scans (Objekt → Dokumente), **Anwesenheitsliste aus der
+  App** (A4 quer, zwei Monate je Seite, `src/pdf/attendance.ts`, `/objekte/:id/anwesenheit.pdf`). Werkzeug
+  `scripts/docx-edit.py`. **Ahmed: beide V5-ZIPs hochladen; Arbeitsverträge vom Fachanwalt gegenlesen lassen;
+  Datenschutzbeauftragten und Firmenname (Handelsregister) klären.**

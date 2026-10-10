@@ -136,7 +136,7 @@ Testadresse.
   schulden die Umsatzsteuer. Eingangsrechnungen dafür ohne USt erfassen (Kennzeichen „§ 13b“), Buchung über
   BU-Schlüssel – mit Steuerberater abstimmen.
 - **PDF/A-3:** ZUGFeRD-Dateien (Rechnung, Storno, Schlussrechnung, Lastschrift) bestehen veraPDF PDF/A-3b
-  (`npm run check:pdfa`, 04.10.2026) und KoSIT (XML).
+  (`npm run check:pdfa`, 04.10.2026; Gestaltung „edel“ erneut 10.10.2026, veraPDF 1.30.3) und KoSIT (XML).
 
 ## Entscheidungen / Stand (laufend ergänzen)
 
@@ -2380,4 +2380,6 @@ Testadresse.
   vorher × 3 ÷ 13 = ÷ 4,333…, Unterschied < 0,1 %) – Vorlagen, Nachkalkulation, Mindestlohn-Prüfung
   (`app.effective_wage_cents`, Migration `20261119000004`). **Mindestlohn:** Gehalt ÷ 4,33 ÷ Wochenstunden muss mindestens
   den Branchen-Mindestlohn erreichen; Mehrarbeit ist nicht automatisch abgegolten (Zuschläge nach RTV bleiben).
-
+- 2026-10-10: **PDF/A-3b für die Gestaltung „edel“ bestanden** (Rechnung, Storno, Schlussrechnung, Lastschrift; veraPDF 1.30.3,
+  Inter vollständig eingebettet). `npm run check:pdfa` läuft jetzt auch ohne Docker (veraPDF-CLI über Maven, Cache
+  `~/.cache/verapdf`, Java + mvn nötig).

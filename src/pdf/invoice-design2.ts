@@ -488,7 +488,7 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
     // Bankverbindung steht in der Fußzeile des Briefpapiers → hier nur Zahlungsbedingung, dafür breiter
     const colW = withQr ? R - L - 82 : R - L;
     const tl = wrap(terms, f.r, 8.2, colW - 16);
-    const boxH = Math.max(withQr ? 70 : 0, 40 + tl.length * 11);
+    const boxH = Math.max(withQr ? 70 : 0, 30 + tl.length * 11);
     p.ensure(boxH + 10);
     const top = p.y;
     if (v === 'modern') p.rect(L - 8, top - 4, R - L + 16, boxH + 4, SOFT, 8);
@@ -496,7 +496,6 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
     const x1 = L;
     p.cap('Zahlung', x1, top + 12, BRD);
     tl.forEach((t, k) => p.text(t, x1, top + 26 + k * 11, 8.2, 'r', INK2));
-    p.text(`Verwendungszweck: ${no}`, x1, top + 30 + tl.length * 11, 8.2, 'm', INK);
     if (withQr) {
       const qs = 56;
       const qx = R - qs;

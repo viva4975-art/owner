@@ -7,7 +7,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 import { type FileRow, filePath } from './uploads.js';
-import { generateFromWordTemplate, importWordTemplates, listWordTemplates } from './word-templates.js';
+import {
+  generateFromWordTemplate,
+  importWordTemplates,
+  listWordTemplates,
+  templateValues,
+} from './word-templates.js';
 
 const available = await dbAvailable();
 const docx = (text: string) =>
@@ -139,5 +144,35 @@ describe.skipIf(!available)('Word-Vorlagen (Datenbank)', () => {
     );
     expect(r.replaced).toContain('Verlängerung Befristung');
     expect((await listWordTemplates(sql, undefined)).some((t) => t.code === 'VD-VB-2026-V4')).toBe(false);
+  });
+
+  it('Briefanrede Kunde/Mitarbeiter und AÜ-Erlaubnis aus den Firmendaten', async () => {
+    const cust = randomUUID();
+    await sql`insert into app.customers (id, customer_no, name, street, postal_code, city, contact_name)
+              values (${cust}, '29977', 'Anrede GmbH', 'Weg 1', '80331', 'München', 'Anna Berger')`;
+    await sql`insert into app.contacts (customer_id, salutation, first_name, last_name)
+              values (${cust}, 'Frau', 'Anna', 'Berger')`;
+    await sql`update app.employees set salutation = 'Herr' where id = ${emp}`;
+    await sql`update app.company set aue_permit_date = '2025-03-01', aue_permit_file_no = 'AÜ 123',
+                     aue_permit_unlimited = false, aue_permit_valid_until = '2026-02-28' where id = 1`;
+    const k = await templateValues(
+      sql,
+      { type: 'customer', id: cust },
+      { actorName: 't', fileId: randomUUID() },
+    );
+    expect(k.values['Kunde.Briefanrede']).toBe('Sehr geehrte Frau Berger');
+    expect(k.values['Firma.AÜ_Erlaubnis_Datum']).toBe('01.03.2025');
+    expect(k.values['Firma.AÜ_Erlaubnis_Aktenzeichen']).toBe('AÜ 123');
+    expect(k.values['Firma.AÜ_Erlaubnis_Behörde']).toBe('die Bundesagentur für Arbeit');
+    expect(k.values['Firma.AÜ_Erlaubnis_gültig_bis']).toBe('28.02.2026');
+    const m = await templateValues(
+      sql,
+      { type: 'employee', id: emp },
+      {
+        actorName: 't',
+        fileId: randomUUID(),
+      },
+    );
+    expect(m.values['Mitarbeiter.Briefanrede']).toBe('Sehr geehrter Herr Vorlage');
   });
 });

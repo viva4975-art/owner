@@ -63,13 +63,7 @@ export function registerLetterRoutes(ctx: Ctx) {
             </div>
             <div>
               <label for="greeting">Anrede</label>
-              <input
-                id="greeting"
-                name="greeting"
-                value={
-                  t === 'mitarbeiter' ? `Hallo ${b.name.split(' ')[0]},` : 'Sehr geehrte Damen und Herren,'
-                }
-              />
+              <input id="greeting" name="greeting" value={r.greeting} />
             </div>
           </div>
           <label for="body" style="margin-top:12px">

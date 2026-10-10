@@ -1562,7 +1562,8 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       JSON.stringify({
         name: 'Viva-Deluxe Mitarbeiter',
         short_name: 'Viva-Deluxe',
-        description: 'Zeiterfassung, Urlaub und Dokumente für Mitarbeitende der Viva-Deluxe GmbH',
+        description:
+          'Zeiterfassung, Urlaub und Dokumente für Mitarbeitende der Viva-Deluxe Gebäudereinigung GmbH',
         lang: 'de',
         start_url: '/m',
         scope: '/m',

@@ -1,4 +1,5 @@
 import { PDFDocument } from '@cantoo/pdf-lib';
+import { customerGreeting } from './letters.js';
 import { composeMail, loadSignature } from '../mail/compose.js';
 import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
@@ -360,6 +361,7 @@ async function renderDunningLetter(sql: Sql, d: DunningLetter, watermark?: strin
     ],
     seller,
     buyer,
+    greeting: await customerGreeting(sql, d.customer_id, buyer.contactName),
     intro: d.text,
     columns: withCol
       ? [
@@ -519,7 +521,7 @@ export async function sendDunning(deps: Deps, id: string, actor: string) {
           ? `*** TESTVERSAND – diese Mail ging NICHT an den Kunden. ***\nEigentliche Empfänger: ${c!.invoice_emails.join(', ') || '(keine hinterlegt)'}`
           : null,
         body:
-          `Sehr geehrte Damen und Herren,\n\nanbei erhalten Sie unser Schreiben ${d.number} (${d.title}) zu offenen Rechnungen über ${eur(d.total_cents)}.\n` +
+          `${await customerGreeting(sql, d.customer_id, (await buildBuyerSnapshot(sql, d.customer_id, null)).contactName)}\n\nanbei erhalten Sie unser Schreiben ${d.number} (${d.title}) zu offenen Rechnungen über ${eur(d.total_cents)}.\n` +
           `Bitte überweisen Sie den Betrag bis ${formatDateDe(d.pay_until)}.`,
         signature: await loadSignature(sql),
       }),

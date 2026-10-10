@@ -47,4 +47,11 @@ describe.skipIf(!available)('Erinnerungen (Datenbank)', () => {
     expect(deps.mailer.sent[0]!.to).toEqual(['test@viva-deluxe.local']);
     expect(deps.mailer.sent[0]!.text).toContain('Vertrag prüfen');
   });
+
+  it('AÜ-Erlaubnis: Erinnerung 100 Tage vor Ablauf, nicht bei unbefristet', async () => {
+    await sql`update app.company set aue_permit_valid_until = ${today}::date + 60, aue_permit_unlimited = false where id = 1`;
+    expect((await collectReminders(sql, today)).find((r) => r.area === 'Firma')?.level).toBe('rot');
+    await sql`update app.company set aue_permit_unlimited = true where id = 1`;
+    expect((await collectReminders(sql, today)).some((r) => r.area === 'Firma')).toBe(false);
+  });
 });

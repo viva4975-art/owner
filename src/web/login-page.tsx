@@ -156,7 +156,12 @@ export function loginHtml(p: {
         <body>
           <div class="lg">
             <aside class="lg-brand">
-              <img src="/static/logo-hell.png" alt="Viva-Deluxe GmbH" width="220" height="50" />
+              <img
+                src="/static/logo-hell.png"
+                alt="Viva-Deluxe Gebäudereinigung GmbH"
+                width="220"
+                height="50"
+              />
               <div class="lg-claim">
                 <h2>Qualität, die Vertrauen schafft.</h2>
                 <p>

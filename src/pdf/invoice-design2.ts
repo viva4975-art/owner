@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { contactGreeting, stripGreeting } from '../domain/letter/greeting.js';
 import fontkit from '@pdf-lib/fontkit';
 import {
   PDFDocument,
@@ -459,13 +460,13 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
     p.para(o.subject, L, R - L, 9, 's', INK);
     p.y += 4;
   }
-  p.text('Sehr geehrte Damen und Herren,', L, p.y, 8.8, 'r', INK2);
+  p.text(contactGreeting(doc.buyer.contactName), L, p.y, 8.8, 'r', INK2);
   p.y += 15;
   const intro = doc.original
     ? doc.kind === 'cancellation'
       ? `hiermit stornieren wir unsere Rechnung ${doc.original.number} vom ${formatDateDe(doc.original.issueDate)} vollständig.`
       : `hiermit korrigieren wir unsere Rechnung ${doc.original.number} vom ${formatDateDe(doc.original.issueDate)} wie folgt:`
-    : doc.introText?.replace(/^\s*Sehr geehrte Damen und Herren,?\s*/i, '').trim() || INVOICE_INTRO_DEFAULT;
+    : stripGreeting(doc.introText) || INVOICE_INTRO_DEFAULT;
   p.para(intro, L, R - L, 8.8, 'r', INK2, 12.8);
   p.y += 8;
 
@@ -827,7 +828,7 @@ export async function renderLetterEdel(lp: LetterPdfInput): Promise<Uint8Array> 
     }
     p.y += h + 14;
   }
-  const greeting = lp.greeting === undefined ? 'Sehr geehrte Damen und Herren,' : lp.greeting;
+  const greeting = lp.greeting === undefined ? contactGreeting(lp.buyer.contactName) : lp.greeting;
   if (greeting) {
     p.text(greeting, L, p.y, 8.8, 'r', INK2);
     p.y += 15;

@@ -838,7 +838,7 @@ export interface LetterPdfInput {
   paragraphs: string[];
   girocode?: { amount: bigint; reference: string } | null;
   watermark?: string;
-  /** Anrede (Standard „Sehr geehrte Damen und Herren,“; null = keine) */
+  /** Anrede (Standard: automatisch aus dem Ansprechpartner, sonst „Sehr geehrte Damen und Herren,“; null = keine) */
   greeting?: string | null;
   /** Unterschriftsfeld, z. B. Abnahme durch den Kunden */
   signature?: { label: string; png: Uint8Array | null; name: string; at: string } | null;

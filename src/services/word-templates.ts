@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { personGreeting } from '../domain/letter/greeting.js';
+import { customerGreeting } from './letters.js';
 import { readFile } from 'node:fs/promises';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import type { Sql } from '../db/client.js';
@@ -433,8 +435,16 @@ async function companyValues(sql: Sql) {
       phone: string | null;
       email: string | null;
       managing_director: string | null;
+      aue_permit_date: string | null;
+      aue_permit_file_no: string | null;
+      aue_permit_authority: string | null;
+      aue_permit_valid_until: string | null;
+      aue_permit_unlimited: boolean | null;
     }[]
-  >`select legal_name, street, postal_code, city, phone, email, managing_director from app.company where id = 1`;
+  >`select legal_name, street, postal_code, city, phone, email, managing_director, aue_permit_date, aue_permit_file_no,
+           aue_permit_authority, aue_permit_valid_until, aue_permit_unlimited
+      from app.company where id = 1`;
+  const de = (d: string | null | undefined) => (d ? d.split('-').reverse().join('.') : '');
   return {
     'Firma.Name': co?.legal_name ?? '',
     'Firma.Straße': co?.street ?? '',
@@ -443,6 +453,13 @@ async function companyValues(sql: Sql) {
     'Firma.Telefon': co?.phone ?? '',
     'Firma.E-Mail': co?.email ?? '',
     'Firma.Geschäftsführer': co?.managing_director ?? '',
+    // Erlaubnis zur Arbeitnehmerüberlassung (Einstellungen → Firmendaten)
+    'Firma.AÜ_Erlaubnis_Datum': de(co?.aue_permit_date),
+    'Firma.AÜ_Erlaubnis_Aktenzeichen': co?.aue_permit_file_no ?? '',
+    'Firma.AÜ_Erlaubnis_Behörde': co?.aue_permit_authority || 'die Bundesagentur für Arbeit',
+    'Firma.AÜ_Erlaubnis_gültig_bis': co?.aue_permit_unlimited
+      ? 'unbefristet'
+      : de(co?.aue_permit_valid_until),
   };
 }
 
@@ -494,11 +511,7 @@ async function employeeValues(sql: Sql, id: string): Promise<Record<string, stri
   return {
     'Mitarbeiter.Anrede': e.salutation ?? '',
     // Briefanrede passend zur Anrede (sonst neutral mit vollem Namen)
-    'Mitarbeiter.Briefanrede': /^frau/i.test(e.salutation ?? '')
-      ? `Sehr geehrte Frau ${e.last_name}`
-      : /^herr/i.test(e.salutation ?? '')
-        ? `Sehr geehrter Herr ${e.last_name}`
-        : `Guten Tag ${e.first_name} ${e.last_name}`,
+    'Mitarbeiter.Briefanrede': personGreeting(e).replace(/,$/, ''),
     'Mitarbeiter.Vorname': e.first_name,
     'Mitarbeiter.Nachname': e.last_name,
     'Mitarbeiter.Straße': e.street ?? '',
@@ -554,6 +567,8 @@ async function customerValues(sql: Sql, id: string): Promise<Record<string, stri
     'Kunde.E-Mail': c.contact_email ?? c.invoice_emails[0] ?? '',
     'Kunde.Telefon': c.contact_phone ?? '',
     'Kunde.Ansprechpartner': c.contact_name ?? '',
+    // „Sehr geehrte Frau …“ aus dem Ansprechpartner (Anrede notfalls aus den Kontakten), sonst „Damen und Herren“
+    'Kunde.Briefanrede': (await customerGreeting(sql, id, c.contact_name)).replace(/,$/, ''),
   };
 }
 

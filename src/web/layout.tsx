@@ -1609,7 +1609,12 @@ export const Layout: FC<{
           {!bare && (
             <aside class="appside" aria-label="Navigation">
               <a class="side-logo" href="/" aria-label="Viva-Deluxe – Übersicht">
-                <img src="/static/logo-hell.png" alt="Viva-Deluxe GmbH" width="149" height="34" />
+                <img
+                  src="/static/logo-hell.png"
+                  alt="Viva-Deluxe Gebäudereinigung GmbH"
+                  width="149"
+                  height="34"
+                />
               </a>
               <nav class="menu" aria-label="Hauptmenü">
                 {menu.map((m) =>
@@ -1655,7 +1660,12 @@ export const Layout: FC<{
               <div class="in">
                 {bare ? (
                   <a class="logo" href="/" aria-label="Viva-Deluxe – Übersicht">
-                    <img src="/static/logo.png" alt="Viva-Deluxe GmbH" width="179" height="36" />
+                    <img
+                      src="/static/logo.png"
+                      alt="Viva-Deluxe Gebäudereinigung GmbH"
+                      width="179"
+                      height="36"
+                    />
                   </a>
                 ) : (
                   <label for="burger" class="burgerbtn" aria-label="Menü">

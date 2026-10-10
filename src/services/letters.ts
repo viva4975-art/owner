@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import type { BuyerSnapshot } from '../domain/invoice/types.js';
+import { contactGreeting, personGreeting } from '../domain/letter/greeting.js';
 import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import { BusinessError } from './errors.js';
 import { buildBuyerSnapshot, getSeller } from './masterdata.js';
@@ -17,14 +18,31 @@ import { storeFile, type UploadConfig } from './uploads.js';
 export type LetterTarget = 'kunde' | 'objekt' | 'lieferant' | 'mitarbeiter';
 const LINK = { kunde: 'customer', objekt: 'site', lieferant: 'supplier', mitarbeiter: 'employee' } as const;
 
+/** Anrede für einen Kunden-Brief: Ansprechpartner (Text) – Anrede notfalls aus den Kontakten des Kunden. */
+export async function customerGreeting(
+  sql: Sql,
+  customerId: string,
+  contactName: string | null,
+): Promise<string> {
+  if (!contactName?.trim()) return contactGreeting(null);
+  const known = await sql<{ salutation: string | null; first_name: string | null; last_name: string }[]>`
+    select salutation, first_name, last_name from app.contacts where customer_id = ${customerId}`;
+  return contactGreeting(contactName, known);
+}
+
 export async function letterRecipient(
   sql: Sql,
   target: LetterTarget,
   id: string,
-): Promise<{ buyer: BuyerSnapshot; label: string; ref: [string, string] | null }> {
+): Promise<{ buyer: BuyerSnapshot; label: string; ref: [string, string] | null; greeting: string }> {
   if (target === 'kunde') {
     const buyer = await buildBuyerSnapshot(sql, id, null);
-    return { buyer, label: buyer.name, ref: ['Kundennr.', buyer.customerNo] };
+    return {
+      buyer,
+      label: buyer.name,
+      ref: ['Kundennr.', buyer.customerNo],
+      greeting: await customerGreeting(sql, id, buyer.contactName),
+    };
   }
   if (target === 'objekt') {
     // Brief zum Objekt geht an den Kunden (Rechnungsanschrift des Objekts), abgelegt beim Objekt
@@ -32,7 +50,12 @@ export async function letterRecipient(
       select customer_id, site_no, name from app.sites where id = ${id}`;
     if (!s) throw new BusinessError('Objekt nicht gefunden');
     const buyer = await buildBuyerSnapshot(sql, s.customer_id, id);
-    return { buyer, label: `${buyer.name} (Objekt ${s.name})`, ref: ['Objekt', `${s.name} (${s.site_no})`] };
+    return {
+      buyer,
+      label: `${buyer.name} (Objekt ${s.name})`,
+      ref: ['Objekt', `${s.name} (${s.site_no})`],
+      greeting: await customerGreeting(sql, s.customer_id, buyer.contactName),
+    };
   }
   const base = {
     countryCode: 'DE',
@@ -68,6 +91,7 @@ export async function letterRecipient(
       },
       label: s.name,
       ref: ['Lieferantennr.', s.supplier_no],
+      greeting: contactGreeting(s.contact_name),
     };
   }
   const [e] = await sql<
@@ -75,12 +99,13 @@ export async function letterRecipient(
       personnel_no: string;
       first_name: string;
       last_name: string;
+      salutation: string | null;
       street: string | null;
       postal_code: string | null;
       city: string | null;
     }[]
   >`
-    select e.personnel_no, e.first_name, e.last_name, p.street, p.postal_code, p.city
+    select e.personnel_no, e.first_name, e.last_name, e.salutation, p.street, p.postal_code, p.city
       from app.employees e left join app.employee_private p on p.employee_id = e.id where e.id = ${id}`;
   if (!e) throw new BusinessError('Mitarbeiter nicht gefunden');
   return {
@@ -95,6 +120,7 @@ export async function letterRecipient(
     },
     label: `${e.first_name} ${e.last_name}`,
     ref: ['Personalnr.', e.personnel_no],
+    greeting: personGreeting(e),
   };
 }
 

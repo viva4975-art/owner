@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { stripGreeting } from '../domain/letter/greeting.js';
+import { customerGreeting } from './letters.js';
 import { PDFDocument } from '@cantoo/pdf-lib';
 import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
@@ -156,6 +158,13 @@ export async function renderCustomerLetter(deps: Deps, templateId: string, custo
     .split(/\n\s*\n/)
     .map((x) => x.replace(/\s*\n\s*/g, ' ').trim())
     .filter(Boolean);
+  // Anrede setzt die App automatisch (Ansprechpartner) – eine Anrede aus der Vorlage entfällt
+  if (paras[0] && /^(sehr geehrte|guten tag)/i.test(paras[0])) {
+    const rest = stripGreeting(paras[0]);
+    if (rest) paras[0] = rest;
+    else paras.shift();
+  }
+  const buyer = await buildBuyerSnapshot(deps.sql, customerId, null);
   return renderLetterPdf({
     title: t.title,
     date: todayBerlin(),
@@ -164,7 +173,8 @@ export async function renderCustomerLetter(deps: Deps, templateId: string, custo
       ['Kundennr.', c.customer_no],
     ],
     seller: await getSeller(deps.sql),
-    buyer: await buildBuyerSnapshot(deps.sql, customerId, null),
+    buyer,
+    greeting: await customerGreeting(deps.sql, customerId, buyer.contactName),
     intro: paras[0] ?? '',
     columns: [],
     rows: [],

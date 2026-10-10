@@ -26,7 +26,8 @@ export type ReminderArea =
   | 'Aufgaben'
   | 'Rechnungseingang'
   | 'Zeiterfassung'
-  | 'Leistungen';
+  | 'Leistungen'
+  | 'Firma';
 
 export interface Reminder {
   area: ReminderArea;
@@ -160,6 +161,20 @@ export async function collectReminders(sql: Sql, today = todayBerlin()): Promise
       href: `/objekte/${v.site_id}/leistungen#verrichten`,
       days: d,
     });
+  }
+  // Erlaubnis Arbeitnehmerüberlassung: Verlängerung spätestens 3 Monate vor Ablauf beantragen (§ 2 Abs. 4 AÜG)
+  const [aue] = await sql<{ until: string | null; unlimited: boolean }[]>`
+    select aue_permit_valid_until::text as until, aue_permit_unlimited as unlimited from app.company where id = 1`;
+  if (aue?.until && !aue.unlimited) {
+    const d = dayDiff(today, aue.until);
+    if (d <= 100)
+      out.push({
+        area: 'Firma',
+        level: d <= 92 ? 'rot' : 'gelb',
+        text: `Erlaubnis Arbeitnehmerüberlassung läuft ${d < 0 ? `seit ${-d} Tg. nicht mehr` : `am ${formatDateDe(aue.until)} ab`} – Verlängerung spätestens 3 Monate vorher bei der Agentur für Arbeit beantragen`,
+        href: '/einstellungen/firma',
+        days: d,
+      });
   }
   const lv = { rot: 0, gelb: 1 };
   return out.sort((a, b) => lv[a.level] - lv[b.level] || (a.days ?? 999) - (b.days ?? 999));

@@ -1,6 +1,6 @@
 import type { Sql } from '../db/client.js';
 
-/** Firmenstamm der Viva-Deluxe GmbH (aus dem Briefing). Idempotent. */
+/** Firmenstamm der Viva-Deluxe Gebäudereinigung GmbH (aus dem Briefing). Idempotent. */
 export async function seedCompany(sql: Sql) {
   await sql`
     insert into app.company (id, legal_name, street, postal_code, city, vat_id, tax_number, register_court,

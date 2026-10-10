@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { contactGreeting } from '../domain/letter/greeting.js';
 import { type ArchiveStore, sha256 as hashOf } from '../archive/store.js';
 import type { Env } from '../config/env.js';
 import type { Sql } from '../db/client.js';
@@ -342,7 +343,7 @@ export async function listDeliveries(sql: Sql, invoiceId: string) {
 export function invoiceMailBody(doc: InvoiceDocument): string {
   const title = KIND_TITLES[doc.kind];
   return [
-    'Sehr geehrte Damen und Herren,',
+    contactGreeting(doc.buyer.contactName),
     '',
     `anbei erhalten Sie unsere ${title} ${doc.number} vom ${formatDateDe(doc.issueDate)}` +
       (doc.buyer.site ? ` für das Objekt ${doc.buyer.site.name}` : '') +

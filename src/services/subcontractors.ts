@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomInt } from 'node:crypto';
+import { contactGreeting } from '../domain/letter/greeting.js';
 import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import type { BuyerSnapshot } from '../domain/invoice/types.js';
@@ -346,7 +347,9 @@ export function requestText(
   const line = (r: ComplianceRow) =>
     `- ${r.type.label}${r.state === 'laeuft_ab' && r.current?.valid_until ? ` (läuft ab am ${formatDateDe(r.current.valid_until)})` : r.state === 'abgelaufen' ? ' (abgelaufen)' : ''}`;
   return [
-    s.contact_name ? `Guten Tag ${s.contact_name},` : 'Sehr geehrte Damen und Herren,',
+    s.contact_name && !/^\s*(frau|herr)/i.test(s.contact_name)
+      ? `Guten Tag ${s.contact_name.trim()},`
+      : contactGreeting(s.contact_name),
     '',
     'für die weitere Zusammenarbeit benötigen wir von Ihnen folgende aktuelle Nachweise:',
     ...need.map(line),

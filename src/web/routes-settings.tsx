@@ -207,6 +207,11 @@ const companyInput = z.object({
   email: z.email('E-Mail ungültig'),
   website: z.string().trim().nullable(),
   job_whatsapp: z.string().trim().nullable(),
+  aue_permit_date: z.iso.date('Datum der AÜ-Erlaubnis ungültig').nullable(),
+  aue_permit_file_no: z.string().trim().nullable(),
+  aue_permit_authority: z.string().trim().nullable(),
+  aue_permit_valid_until: z.iso.date('„gültig bis“ ungültig').nullable(),
+  aue_permit_unlimited: z.boolean(),
 });
 
 const ibanOk = (iban: string) => {
@@ -436,6 +441,41 @@ export function registerSettingsRoutes({ app, deps, page, back }: Ctx) {
             {field('website', 'Website')}
             {field('job_whatsapp', 'Handy-/WhatsApp-Nummer für Stellenplakate')}
           </div>
+          <div class="group-title">Erlaubnis zur Arbeitnehmerüberlassung (§ 1 AÜG)</div>
+          <div class="grid">
+            <div>
+              <label for="aue_permit_date">Erteilt am</label>
+              <input id="aue_permit_date" type="date" name="aue_permit_date" value={v('aue_permit_date')} />
+            </div>
+            {field('aue_permit_file_no', 'Aktenzeichen')}
+            {field('aue_permit_authority', 'Erteilt durch (z. B. Agentur für Arbeit Nürnberg)')}
+            <div>
+              <label for="aue_permit_valid_until">Gültig bis</label>
+              <input
+                id="aue_permit_valid_until"
+                type="date"
+                name="aue_permit_valid_until"
+                value={v('aue_permit_valid_until')}
+              />
+            </div>
+            <div>
+              <label>
+                <input
+                  type="checkbox"
+                  name="aue_permit_unlimited"
+                  value="1"
+                  checked={!!co?.aue_permit_unlimited}
+                />{' '}
+                unbefristet erteilt
+              </label>
+            </div>
+          </div>
+          <p class="small mut">
+            Steht automatisch in den Word-Vorlagen „Arbeitnehmerüberlassung“ (Platzhalter
+            Firma.AÜ_Erlaubnis_…). Die Erlaubnis gilt zunächst ein Jahr; Verlängerung spätestens drei Monate
+            vor Ablauf beantragen (§ 2 Abs. 4 AÜG) – die App erinnert 100 Tage vorher. Unbefristet frühestens
+            nach drei Jahren (§ 2 Abs. 5 AÜG).
+          </p>
           <div class="group-title">Bankverbindungen (erste = Hauptkonto, steht im GiroCode)</div>
           {accts.map((a, i) => (
             <div class="grid" style="margin-bottom:10px">
@@ -484,6 +524,11 @@ export function registerSettingsRoutes({ app, deps, page, back }: Ctx) {
       email: opt('email') ?? '',
       website: opt('website'),
       job_whatsapp: opt('job_whatsapp'),
+      aue_permit_date: opt('aue_permit_date'),
+      aue_permit_file_no: opt('aue_permit_file_no'),
+      aue_permit_authority: opt('aue_permit_authority'),
+      aue_permit_valid_until: str(b, 'aue_permit_unlimited') ? null : opt('aue_permit_valid_until'),
+      aue_permit_unlimited: !!str(b, 'aue_permit_unlimited'),
     });
     if (!parsed.success)
       return back(c, '/einstellungen/firma', {

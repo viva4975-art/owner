@@ -1,5 +1,6 @@
 import type { Child, FC } from 'hono/jsx';
 import { formatDateDe } from '../domain/invoice/calc.js';
+import { contactGreeting, stripGreeting } from '../domain/letter/greeting.js';
 import { type InvoiceDocument, KIND_TITLES, UNIT_LABELS } from '../domain/invoice/types.js';
 import {
   REVERSE_CHARGE_NOTE,
@@ -139,8 +140,7 @@ export const DraftLetter: FC<{
   if (doc.orderReference) facts.push(['Bestellnummer', doc.orderReference]);
   if (doc.customerReference) facts.push(['Ihre Referenz', doc.customerReference]);
   const rc = isReverseCharge(doc);
-  const intro =
-    doc.introText?.replace(/^\s*Sehr geehrte Damen und Herren,?\s*/i, '').trim() || INVOICE_INTRO_DEFAULT;
+  const intro = stripGreeting(doc.introText) || INVOICE_INTRO_DEFAULT;
   // Zwischensummen je Objekt (wie im PDF)
   const groupSum = (i: number) => {
     let j = i;
@@ -243,7 +243,7 @@ export const DraftLetter: FC<{
               ))}
             </div>
             <div class="lt-body">
-              <div>Sehr geehrte Damen und Herren,</div>
+              <div>{contactGreeting(b.contactName)}</div>
               <a
                 class="lt-edit"
                 id="v-intro"
@@ -698,8 +698,7 @@ export const IssuedLetter: FC<{
   if (doc.orderReference) facts.push(['Bestellnummer', doc.orderReference]);
   if (doc.customerReference) facts.push(['Ihre Referenz', doc.customerReference]);
   const rc = isReverseCharge(doc);
-  const intro =
-    doc.introText?.replace(/^\s*Sehr geehrte Damen und Herren,?\s*/i, '').trim() || INVOICE_INTRO_DEFAULT;
+  const intro = stripGreeting(doc.introText) || INVOICE_INTRO_DEFAULT;
   const isCredit = inv.kind === 'cancellation' || inv.kind === 'correction';
   const cancelled = p.derived.some((d) => d.kind === 'cancellation' && d.status === 'issued');
   const paid = !isCredit && p.open != null && p.open <= 0n;
@@ -794,7 +793,7 @@ export const IssuedLetter: FC<{
               </div>
             )}
             <div class="lt-body">
-              <div>Sehr geehrte Damen und Herren,</div>
+              <div>{contactGreeting(b.contactName)}</div>
               <div style="margin-top:8px;white-space:pre-line">{intro}</div>
               <table class="lt-tbl">
                 <thead>

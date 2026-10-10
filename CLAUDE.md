@@ -95,6 +95,9 @@ Testadresse.
 - [ ] Fortytools-Export: Kunden, Objekte, Leistungen/Preise, 3–5 Beispielrechnungen inkl. XRechnung
       (auch als PDF – für den Layout-Abgleich „sieht aus wie heute“)
 - [ ] Bestätigen: Nummernkreis von Fortytools fortführen (umgesetzt, Startwert vor Live-Start setzen)
+- [ ] Unbezahlte Abwesenheit in den Schulferien: Lexware-Abmeldung bei > 1 Monat ohne Entgelt klären (siehe 10.10.)
+- [ ] Datenschutzbeauftragter: Zahl der Personen prüfen, die regelmäßig mit personenbezogenen Daten am Rechner arbeiten
+      (ab 20 Pflicht, § 38 BDSG); AÜ-Erlaubnis unter Einstellungen → Firmendaten eintragen
 - [ ] Lieferantennummern bei Behörden, Leitweg-IDs der Behörden-Kunden (Steuernummer 143/190/63154 vom Briefpapier übernommen)
 - [ ] Mail-Zugang (SMTP) für buchhaltung@viva-deluxe-reinigung.de (IONOS Exchange) in `.env.live` eintragen – Anleitung `docs/anleitung-server-eintragen.pdf`
 - [ ] Testadresse für den Prototyp-Versand
@@ -2320,3 +2323,22 @@ Testadresse.
   App** (A4 quer, zwei Monate je Seite, `src/pdf/attendance.ts`, `/objekte/:id/anwesenheit.pdf`). Werkzeug
   `scripts/docx-edit.py`. **Ahmed: beide V5-ZIPs hochladen; Arbeitsverträge vom Fachanwalt gegenlesen lassen;
   Datenschutzbeauftragten und Firmenname (Handelsregister) klären.**
+- 2026-10-10: Ahmed (5 Punkte):
+  - **Automatische Anrede überall** (`src/domain/letter/greeting.ts`): Person mit Anrede → „Sehr geehrte Frau X,“ /
+    „Sehr geehrter Herr X,“ (divers/ohne Anrede „Guten Tag Vorname Nachname,“); Ansprechpartner als Text („Frau Dr. Anna
+    Müller“, „z. Hd. Herrn Schmidt“) wird gelesen, sonst über die Kontakte des Kunden (Name → Anrede), sonst „Sehr
+    geehrte Damen und Herren,“. Gilt für Rechnung/Storno/Korrektur/Angebot/AB (PDF, Briefansicht, Entwurf), Mahnung
+    (PDF + Mail), Rechnungs-Mail, freie Briefe (Feld vorbelegt), Serienbriefe (Anrede aus der Vorlage wird ersetzt),
+    Mitarbeiter-Briefvorlagen, NU-Nachforderung, alle Briefe ohne eigene Anrede. Word: neuer Platzhalter
+    `${Kunde.Briefanrede}` (Akquise-Anschreiben). Bereits ausgestellte/archivierte PDFs bleiben unverändert.
+  - **Firmenname laut Handelsregister: „Viva-Deluxe Gebäudereinigung GmbH“** – stand schon so in Firmendaten, Rechnungen,
+    Briefen; nur Bild-Alternativtexte/Kommentare korrigiert. Logo-Bild mit „Gebäudedienstleister“ bleibt (Bildmarke).
+    D-U-N-S-Hinweis „Gebäudeservice“ damit erledigt.
+  - **Erlaubnis Arbeitnehmerüberlassung** (Einstellungen → Firmendaten: erteilt am, Aktenzeichen, Behörde, gültig bis /
+    unbefristet; Migration `20261119000002`): füllt `${Firma.AÜ_Erlaubnis_Datum/_Aktenzeichen/_Behörde/_gültig_bis}` in
+    den AÜ-Vorlagen; Erinnerung 100 Tage vor Ablauf (rot ab 3 Monaten – Verlängerung spätestens 3 Monate vorher,
+    § 2 Abs. 4 AÜG). Vorlagen V6 (AÜ-Vertrag, ZV-AÜ ohne Satz „ohne Erlaubnis nicht verwenden“, Akquise-Anschreiben),
+    ZIP `Viva-Deluxe_Vorlagen-Platzhalter-V6.zip` (übrige Dateien V5, nichts doppelt beim Hochladen).
+  - Datenschutzbeauftragter: noch keiner – Pflicht ab 20 Personen, die ständig automatisiert personenbezogene Daten
+    verarbeiten (§ 38 BDSG; Reinigungskräfte, die nur selbst stempeln, zählen in der Regel nicht, Objektleitungen mit der App schon). Anlage 5 enthält keine DSB-Zeile.
+

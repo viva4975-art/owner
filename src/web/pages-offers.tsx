@@ -1,4 +1,5 @@
 import type { Child, FC } from 'hono/jsx';
+import { contactGreeting } from '../domain/letter/greeting.js';
 import { SiteOptions } from './site-options.js';
 import type { Customer, Site } from '../services/masterdata.js';
 import { UNIT_LABELS } from '../domain/invoice/types.js';
@@ -590,7 +591,7 @@ export const OfferDetail: FC<{
                 )}
               </dl>
             </div>
-            <p>Sehr geehrte Damen und Herren,</p>
+            <p>{contactGreeting(customer.contact_name)}</p>
             <p style="white-space:pre-line">{o.intro_text ?? OFFER_INTRO_DEFAULT}</p>
             <div class="tbl">
               <table>

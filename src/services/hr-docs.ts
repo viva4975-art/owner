@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { personGreeting } from '../domain/letter/greeting.js';
 import { PDFDocument } from '@cantoo/pdf-lib';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import type { BuyerSnapshot } from '../domain/invoice/types.js';
@@ -46,11 +47,7 @@ function buyerOf(e: Employee, p: Partial<EmployeePrivate> | undefined): BuyerSna
   };
 }
 
-function greeting(e: Employee) {
-  if (e.salutation === 'Herr') return `Sehr geehrter Herr ${e.last_name},`;
-  if (e.salutation === 'Frau') return `Sehr geehrte Frau ${e.last_name},`;
-  return `Guten Tag ${e.first_name} ${e.last_name},`;
-}
+const greeting = (e: Employee) => personGreeting(e);
 
 export async function renderTemplateLetter(
   deps: Deps,

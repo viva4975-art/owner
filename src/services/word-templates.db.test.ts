@@ -121,4 +121,23 @@ describe.skipIf(!available)('Word-Vorlagen (Datenbank)', () => {
     expect(out).not.toContain('fldChar');
     expect(out).not.toContain('13.08.2026');
   });
+
+  it('Paket V5 deaktiviert entfallene Vorlagen (Befristung, Anwesenheitsliste)', async () => {
+    const cfg = { dir, maxBytes: 10_000_000 };
+    await importWordTemplates(
+      sql,
+      cfg,
+      [{ name: 'VD-VB-2026-V4_Verlaengerung-Befristung.docx', data: docx('Befristung ${Vertrag.Ende}') }],
+      't',
+    );
+    expect((await listWordTemplates(sql, undefined)).some((t) => t.code === 'VD-VB-2026-V4')).toBe(true);
+    const r = await importWordTemplates(
+      sql,
+      cfg,
+      [{ name: 'VD-UA-2026-V5_Urlaubsantrag.docx', data: docx('Urlaub ${Mitarbeiter.Nachname}') }],
+      't',
+    );
+    expect(r.replaced).toContain('Verlängerung Befristung');
+    expect((await listWordTemplates(sql, undefined)).some((t) => t.code === 'VD-VB-2026-V4')).toBe(false);
+  });
 });

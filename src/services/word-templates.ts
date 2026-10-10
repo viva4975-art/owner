@@ -383,8 +383,20 @@ export async function importWordTemplates(
       res.replaced.push(...old.map((o) => o.name));
     }
   }
+  // Vorlagen ohne Nachfolger, die nicht mehr verwendet werden (Ahmed 10.10.: keine Befristungen mehr; Anwesenheitsliste
+  // kommt aus der App) – mit dem Paket ab V5 deaktivieren, bleiben gespeichert
+  if (docs.some((d) => /-V([5-9]|\d{2,})[_.]/.test(d.path.split('/').pop() ?? ''))) {
+    const gone = await sql<{ name: string }[]>`
+      update app.word_templates set active = false
+       where active and regexp_replace(code, '-V[0-9]+$', '') = any(${RETIRED_CODES})
+      returning name`;
+    res.replaced.push(...gone.map((g) => g.name));
+  }
   return res;
 }
+
+/** Vorlagen-Codes (ohne „-Vn“), die mit dem Paket V5 entfallen */
+export const RETIRED_CODES = ['VD-VB-2026', 'VD-ANS-BV-2026', 'VD-ANW-2026', 'VD-ANW-2027'];
 
 export async function listWordTemplates(sql: Sql, audience?: Audience, all = false) {
   return sql<WordTemplate[]>`

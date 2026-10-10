@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { listWordTemplates } from '../services/word-templates.js';
 import { WordTemplateBox } from './routes-word-templates.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
+import { renderAttendancePdf } from '../pdf/attendance.js';
 import { listKeys } from '../services/inventory.js';
 import { listOffers } from '../services/offers.js';
 import { listFiles } from '../services/uploads.js';
@@ -57,9 +58,9 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                 <h3 style="margin:0">Objektordner für {s.name}</h3>
                 <div class="small mut">
                   Ein PDF zum Ausdrucken: Deckblatt, Inhaltsverzeichnis, Objektstammblatt mit Kontakten,
-                  Leistungsverzeichnis (ohne Preise), Reinigungsplan aus dem Raumbuch, Revierplan aus den
-                  Einsätzen, alle Vorlagen aus dem Objektordner-Paket mit den Objektdaten und leere
-                  Nachweislisten.
+                  Revierplan, Leistungsverzeichnis und Raumbuch aus den eingescannten Unterlagen (Reiter
+                  „Dokumente“), alle Vorlagen aus dem Objektordner-Paket mit den Objektdaten,
+                  Anwesenheitsliste (je zwei Monate auf einer Seite) und Stundennachweis.
                 </div>
               </div>
               <div class="actions" style="margin:0">
@@ -71,6 +72,30 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                 </a>
               </div>
             </div>
+            <form
+              method="get"
+              action={`/objekte/${s.id}/anwesenheit.pdf`}
+              target="_blank"
+              class="actions"
+              style="margin-bottom:0;align-items:flex-end"
+            >
+              <label>
+                Anwesenheitsliste ab Monat
+                <input type="month" name="monat" value={todayBerlin().slice(0, 7)} required />
+              </label>
+              <label>
+                Seiten (je 2 Monate)
+                <select name="seiten">
+                  <option value="1">1 – zwei Monate</option>
+                  <option value="2">2 – vier Monate</option>
+                  <option value="3">3 – sechs Monate</option>
+                  <option value="6">6 – ganzes Jahr</option>
+                </select>
+              </label>
+              <button class="btn sec" type="submit">
+                <Icon name="download" /> Anwesenheitsliste (PDF)
+              </button>
+            </form>
             {!pkg && (
               <div class="flash warn" style="margin-bottom:0">
                 Das Vorlagenpaket (ZIP „Objektordner-Komplettpaket“) ist noch nicht hochgeladen – unter{' '}
@@ -167,6 +192,32 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
     return c.body(r.pdf as Uint8Array<ArrayBuffer>, 200, {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(r.name)}`,
+      'Cache-Control': 'private, no-store',
+    });
+  });
+
+  /** Anwesenheitsliste: zwei Monate nebeneinander je Seite (Ahmed 10.10.) */
+  app.get(`/objekte/:id{${UUID}}/anwesenheit.pdf`, async (c) => {
+    const id = c.req.param('id');
+    assertSite(c, id);
+    const month = /^\d{4}-\d{2}$/.test(c.req.query('monat') ?? '')
+      ? c.req.query('monat')!
+      : todayBerlin().slice(0, 7);
+    const pages = Math.min(6, Math.max(1, Number(c.req.query('seiten')) || 1));
+    const f = await folderFacts(sql, id);
+    const addr = [f.site.street, [f.site.postal_code, f.site.city].filter(Boolean).join(' ')]
+      .filter(Boolean)
+      .join(', ');
+    const pdf = await renderAttendancePdf({
+      site: { name: f.site.name, site_no: f.site.site_no, address: addr || null },
+      customer: f.customer.name,
+      month,
+      pages,
+      company: 'Viva-Deluxe Gebäudereinigung GmbH',
+    });
+    return c.body(pdf as Uint8Array<ArrayBuffer>, 200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="Anwesenheitsliste_${f.site.site_no}_${month}.pdf"`,
       'Cache-Control': 'private, no-store',
     });
   });

@@ -5,17 +5,18 @@
  * Grundlage ist Ahmeds Vorlagenpaket (ZIP „Objektordner-Komplettpaket“, einmal unter Einstellungen hochgeladen, liegt
  * write-once im Archiv). Je Objekt wird es ausgefüllt: Lücken „Objektleitung: ____“ bzw. Tabellenzellen neben einer
  * bekannten Beschriftung bekommen die Objektdaten. Dazu erzeugt die App PDFs aus ihren Daten: Objektstammblatt,
- * Leistungsverzeichnis (ohne Preise), Reinigungsplan aus dem Raumbuch und Revierplan aus dem Einsatzplan.
+ * Revierplan, Leistungsverzeichnis und Raumbuch aus den eingescannten Unterlagen (Objekt → Dokumente).
  * Was fehlt, steht als Frage auf der Seite (sites.folder_info bzw. Link zur passenden Stelle).
  */
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import type { Sql } from '../db/client.js';
-import { CYCLE_LABEL, formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
-import type { BillingCycle } from '../domain/invoice/calc.js';
-import { UNIT_LABELS } from '../domain/invoice/types.js';
+import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
+import { renderAttendancePdf } from '../pdf/attendance.js';
 import { renderTablePdf } from '../pdf/table.js';
 import { BusinessError } from './errors.js';
+import { filePath, listFiles } from './uploads.js';
 import { freezeDateFields } from './word-templates.js';
 import type { Deps } from './workflow.js';
 
@@ -116,11 +117,12 @@ export async function folderFacts(sql: Sql, siteId: string): Promise<FolderFacts
   if (!s.street || !s.city) missing.push({ label: 'Objektadresse', href: `/objekte/${siteId}/bearbeiten` });
   if (!mgr) missing.push({ label: 'Objektleitung zuordnen', href: `/objekte/${siteId}/bearbeiten` });
   else if (!mgr.phone) missing.push({ label: 'Telefon der Objektleitung', href: '/benutzer' });
-  if (!n!.rooms)
-    missing.push({ label: 'Raumbuch (für den Reinigungsplan)', href: `/objekte/${siteId}/raumbuch` });
-  if (!n!.plans)
-    missing.push({ label: 'Einsätze (für den Revierplan)', href: `/objekte/${siteId}/einsaetze` });
-  if (!n!.services) missing.push({ label: 'Leistungen (für das LV)', href: `/objekte/${siteId}/leistungen` });
+  const scans = await sql<{ category: string }[]>`
+    select distinct l.category from app.file_links l join app.files f on f.id = l.file_id
+     where l.entity_type = 'site' and l.entity_id = ${siteId} and l.archived_at is null and f.status = 'complete'`;
+  for (const c of ['Revierplan', 'Leistungsverzeichnis', 'Raumbuch'])
+    if (!scans.some((x) => x.category === c))
+      missing.push({ label: `${c} (Scan unter Dokumente hochladen)`, href: `/objekte/${siteId}/dokumente` });
   for (const q of FOLDER_QUESTIONS) {
     if (!q.required || info[q.key]?.trim()) continue;
     if ((q.key === 'ansprechpartner' || q.key === 'ansprechpartner_tel') && contact?.name) {
@@ -374,6 +376,35 @@ const safe = (s: string) =>
     .trim();
 
 /** Objektordner als ZIP: Vorlagen ausgefüllt + PDFs aus der App. */
+/**
+ * Revierplan, Leistungsverzeichnis und Raumbuch kommen aus den eingescannten Unterlagen des Objekts (Ahmed 10.10.:
+ * „aus dem Scan genommen, keine eigene Vorlage“) – Objekt → Dokumente, jeweils die aktuellen (nicht archivierten) Dateien.
+ */
+export const FOLDER_SCANS = [
+  { category: 'Revierplan', title: 'Revierplan', dir: '04_LV-und-Revierplan' },
+  { category: 'Leistungsverzeichnis', title: 'Leistungsverzeichnis', dir: '04_LV-und-Revierplan' },
+  { category: 'Raumbuch', title: 'Raumbuch', dir: '05_Reinigungsplaene' },
+] as const;
+
+export async function folderScans(deps: Deps, siteId: string) {
+  const files = await listFiles(deps.sql, { type: 'site', id: siteId });
+  const cfg = { dir: deps.env.FILES_DIR, maxBytes: deps.env.UPLOAD_MAX_BYTES };
+  return Promise.all(
+    FOLDER_SCANS.map(async (s) => ({
+      ...s,
+      files: await Promise.all(
+        files
+          .filter((f) => f.category === s.category && !f.archived_at)
+          .map(async (f) => ({
+            name: f.original_name,
+            type: f.content_type,
+            data: new Uint8Array(await readFile(filePath(cfg, f))),
+          })),
+      ),
+    })),
+  );
+}
+
 export async function buildFolderZip(deps: Deps, siteId: string) {
   const { sql } = deps;
   const f = await folderFacts(sql, siteId);
@@ -391,6 +422,7 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
     if (first && names.every((n) => n.startsWith(`${first}/`))) root = `${first}/`;
     for (const n of names) {
       const rel = n.slice(root.length);
+      if (SKIP_IN_FOLDER.test(rel)) continue;
       let data = files[n]!;
       if (/\.docx$/i.test(n)) {
         try {
@@ -444,118 +476,29 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
     rows: kv,
     fontSize: 9.5,
   });
-  // Leistungsverzeichnis (ohne Preise – liegt im Objekt)
-  const svc = await sql<
-    {
-      description: string;
-      note: string | null;
-      billing_cycle: BillingCycle;
-      quantity_milli: bigint;
-      unit_code: string;
-      execution_notes: string | null;
-    }[]
-  >`select description, note, billing_cycle, quantity_milli, unit_code, execution_notes from app.site_services
-     where site_id = ${siteId} and active order by sort_order, description`;
-  out['04_LV-und-Revierplan/Leistungsverzeichnis.pdf'] = await renderTablePdf({
-    title: `Leistungsverzeichnis ${f.site.name}`,
-    subtitle: `Objekt ${f.site.site_no} · ohne Preise (Vertragsgrundlage liegt im Büro)`,
-    columns: [
-      { label: 'Leistung', width: 230, wrap: true },
-      { label: 'Turnus', width: 90 },
-      { label: 'Menge', width: 70, align: 'right' },
-      { label: 'Hinweise', width: 160, wrap: true },
-    ],
-    rows: svc.length
-      ? svc.map((x) => [
-          [x.description, x.note].filter(Boolean).join(' – '),
-          CYCLE_LABEL[x.billing_cycle] ?? x.billing_cycle,
-          `${(Number(x.quantity_milli) / 1000).toLocaleString('de-DE')} ${UNIT_LABELS[x.unit_code] ?? x.unit_code}`,
-          x.execution_notes ?? '',
-        ])
-      : [['Noch keine Leistungen am Objekt erfasst', '', '', '']],
-    fontSize: 8.5,
-  });
-  // Reinigungsplan aus dem Raumbuch
-  const rooms = await sql<
-    {
-      floor: string | null;
-      room_no: string | null;
-      name: string;
-      type: string;
-      floor_covering: string | null;
-      area_centi: bigint;
-      visits_per_year: number;
-    }[]
-  >`select r.floor, r.room_no, r.name, t.name as type, r.floor_covering, r.area_centi, r.visits_per_year
-      from app.rooms r join app.room_types t on t.id = r.room_type_id
-     where r.site_id = ${siteId} and r.active order by r.sort_order, r.floor, r.room_no, r.name`;
-  const interval = (v: number) =>
-    v >= 365
-      ? 'täglich (Mo–So)'
-      : v >= 312
-        ? 'Mo–Sa'
-        : v >= 260
-          ? 'Mo–Fr'
-          : v % 52 === 0
-            ? `${v / 52}× wöchentl.`
-            : v === 12
-              ? 'monatlich'
-              : `${v}× jährlich`;
-  out['05_Reinigungsplaene/Reinigungsplan.pdf'] = await renderTablePdf({
-    title: `Reinigungsplan ${f.site.name}`,
-    subtitle: `Objekt ${f.site.site_no} · aus dem Raumbuch · Stand ${formatDateDe(todayBerlin())}`,
-    landscape: true,
-    columns: [
-      { label: 'Etage', width: 70 },
-      { label: 'Nr.', width: 60 },
-      { label: 'Raum', width: 200, wrap: true },
-      { label: 'Raumart', width: 130 },
-      { label: 'Belag', width: 110 },
-      { label: 'm²', width: 60, align: 'right' },
-      { label: 'Intervall', width: 120 },
-    ],
-    rows: rooms.length
-      ? rooms.map((r) => [
-          r.floor ?? '',
-          r.room_no ?? '',
-          r.name,
-          r.type,
-          r.floor_covering ?? '',
-          (Number(r.area_centi) / 100).toLocaleString('de-DE'),
-          interval(r.visits_per_year),
-        ])
-      : [['', '', 'Raumbuch fehlt – bitte am Objekt erfassen', '', '', '', '']],
-    fontSize: 8.5,
-  });
-  // Revierplan aus dem Einsatzplan
-  const plans = await sql<
-    { name: string | null; weekday: number; start: string; end: string; note: string | null }[]
-  >`
-    select e.last_name || ', ' || e.first_name as name, p.weekday, to_char(p.start_time, 'HH24:MI') as start,
-           to_char(p.end_time, 'HH24:MI') as end, p.note
-      from app.shift_plans p left join app.employees e on e.id = p.employee_id
-     where p.site_id = ${siteId} and (p.valid_until is null or p.valid_until >= current_date)
-     order by e.last_name nulls last, p.weekday, p.start_time`;
-  const WD = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-  out['04_LV-und-Revierplan/Revierplan.pdf'] = await renderTablePdf({
-    title: `Revierplan ${f.site.name}`,
-    subtitle: `Objekt ${f.site.site_no} · aus dem Einsatzplan · Reviere bitte im Grundriss einzeichnen`,
-    columns: [
-      { label: 'Mitarbeiter', width: 170 },
-      { label: 'Tag', width: 50 },
-      { label: 'Zeit', width: 90 },
-      { label: 'Revier / Bereich', width: 230, wrap: true },
-    ],
-    rows: plans.length
-      ? plans.map((p) => [p.name ?? '(offen)', WD[p.weekday] ?? '', `${p.start}–${p.end}`, p.note ?? ''])
-      : [['Noch keine Einsätze geplant', '', '', '']],
-    fontSize: 9,
+  // Revierplan, Leistungsverzeichnis, Raumbuch: die eingescannten Unterlagen des Objekts
+  for (const sc of await folderScans(deps, siteId))
+    for (const file of sc.files) {
+      const n = safe(file.name);
+      out[`${sc.dir}/${n.toLowerCase().startsWith(sc.title.toLowerCase()) ? n : `${sc.title}_${n}`}`] =
+        file.data;
+    }
+  // Anwesenheitsliste: aktueller und nächster Monat auf einer Seite
+  out['06_Nachweise/Anwesenheitsliste.pdf'] = await renderAttendancePdf({
+    site: { name: f.site.name, site_no: f.site.site_no, address: values.adresse ?? null },
+    customer: f.customer.name,
+    month: todayBerlin().slice(0, 7),
+    pages: 2,
+    company: 'Viva-Deluxe Gebäudereinigung GmbH',
   });
   const zip = zipSync(out, { level: 6 });
   return { zip, name: `Objektordner_${safe(tag)}.zip`, withPackage: !!pkg, facts: f };
 }
 
 // ------------------------------------------------------------------ Objektordner als ein PDF (Ahmed 09.10.)
+
+/** Nicht mehr aus dem Paket: Muster für Revierplan/LV/Raumbuch (kommen als Scan) und Anwesenheitslisten (aus der App) */
+const SKIP_IN_FOLDER = /revierplan_muster|muster[ _-]?revierplan|anwesenheitsliste|VD-ANW-/i;
 
 const FOLDER_SECTIONS: [RegExp, string][] = [
   [/^01_/, 'Aushänge im Putzraum'],
@@ -671,114 +614,49 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
     { label: 'BÜRO VIVA-DELUXE', value: '089 63855496' },
   ]);
 
-  // 2. Leistungsverzeichnis
-  const svc = await sql<
-    {
-      description: string;
-      note: string | null;
-      billing_cycle: BillingCycle;
-      quantity_milli: bigint;
-      unit_code: string;
-      execution_notes: string | null;
-    }[]
-  >`select description, note, billing_cycle, quantity_milli, unit_code, execution_notes from app.site_services
-     where site_id = ${siteId} and active order by sort_order, description`;
-  chapter('Leistungsverzeichnis');
-  d.title('Leistungsverzeichnis', f.site.site_no);
-  d.muted('Ohne Preise – Vertragsgrundlage liegt im Büro.');
-  d.table(
-    [
-      { label: 'Leistung', width: 210 },
-      { label: 'Turnus', width: 80 },
-      { label: 'Menge', width: 60, align: 'right' },
-      { label: 'Ausführungshinweise', width: 148 },
-    ],
-    svc.length
-      ? svc.map((x) => [
-          [x.description, x.note].filter(Boolean).join('\n'),
-          CYCLE_LABEL[x.billing_cycle] ?? x.billing_cycle,
-          `${(Number(x.quantity_milli) / 1000).toLocaleString('de-DE')} ${UNIT_LABELS[x.unit_code] ?? ''}`.trim(),
-          x.execution_notes ?? '',
-        ])
-      : [['Noch keine Leistungen am Objekt erfasst', '', '', '']],
-  );
-
-  // 3. Reinigungsplan
-  const rooms = await sql<
-    {
-      floor: string | null;
-      room_no: string | null;
-      name: string;
-      type: string;
-      floor_covering: string | null;
-      area_centi: bigint;
-      visits_per_year: number;
-    }[]
-  >`select r.floor, r.room_no, r.name, t.name as type, r.floor_covering, r.area_centi, r.visits_per_year
-      from app.rooms r join app.room_types t on t.id = r.room_type_id
-     where r.site_id = ${siteId} and r.active order by r.sort_order, r.floor, r.room_no, r.name`;
-  const interval = (v: number) =>
-    v >= 365
-      ? 'täglich'
-      : v >= 312
-        ? 'Mo–Sa'
-        : v >= 260
-          ? 'Mo–Fr'
-          : v % 52 === 0
-            ? `${v / 52}× wö.`
-            : v === 12
-              ? 'monatl.'
-              : `${v}× jährl.`;
-  chapter('Reinigungsplan (Raumbuch)');
-  d.title('Reinigungsplan', f.site.site_no);
-  d.table(
-    [
-      { label: 'Etage', width: 48 },
-      { label: 'Nr.', width: 44 },
-      { label: 'Raum', width: 140 },
-      { label: 'Raumart', width: 90 },
-      { label: 'Belag', width: 74 },
-      { label: 'm²', width: 46, align: 'right' },
-      { label: 'Intervall', width: 56 },
-    ],
-    rooms.length
-      ? rooms.map((r) => [
-          r.floor ?? '',
-          r.room_no ?? '',
-          r.name,
-          r.type,
-          r.floor_covering ?? '',
-          (Number(r.area_centi) / 100).toLocaleString('de-DE'),
-          interval(r.visits_per_year),
-        ])
-      : [['', '', 'Raumbuch fehlt – bitte am Objekt erfassen', '', '', '', '']],
-    { size: 8 },
-  );
-
-  // 4. Revierplan
-  const plans = await sql<
-    { name: string | null; weekday: number; start: string; end: string; note: string | null }[]
-  >`
-    select e.first_name || ' ' || e.last_name as name, p.weekday, to_char(p.start_time, 'HH24:MI') as start,
-           to_char(p.end_time, 'HH24:MI') as end, p.note
-      from app.shift_plans p left join app.employees e on e.id = p.employee_id
-     where p.site_id = ${siteId} and (p.valid_until is null or p.valid_until >= current_date)
-     order by e.last_name nulls last, p.weekday, p.start_time`;
-  const WD = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-  chapter('Revierplan (Einsätze)');
-  d.title('Revierplan', f.site.site_no);
-  d.muted('Aus dem Einsatzplan. Reviere bitte im Grundriss einzeichnen.');
-  d.table(
-    [
-      { label: 'Mitarbeiter/in', width: 160 },
-      { label: 'Tag', width: 40 },
-      { label: 'Zeit', width: 80 },
-      { label: 'Revier / Bereich', width: 218 },
-    ],
-    plans.length
-      ? plans.map((p) => [p.name ?? '(offen)', WD[p.weekday] ?? '', `${p.start}–${p.end}`, p.note ?? ''])
-      : [['Noch keine Einsätze geplant', '', '', '']],
-  );
+  // 2.–4. Revierplan, Leistungsverzeichnis, Raumbuch: eingescannte Unterlagen des Objekts (keine eigene Vorlage)
+  const { embedImageFile } = await import('../pdf/image-page.js');
+  for (const sc of await folderScans(deps, siteId)) {
+    const pdfs = sc.files.filter((x) => /pdf/i.test(x.type) || /\.pdf$/i.test(x.name));
+    const images = sc.files.filter((x) => /^image\/(png|jpe?g)$/i.test(x.type));
+    const other = sc.files.filter((x) => !pdfs.includes(x) && !images.includes(x));
+    let started = false;
+    const start = () => {
+      if (started) return;
+      started = true;
+      toc.push({ title: sc.title, page: d.pdf.getPageCount() + 1 });
+    };
+    for (const file of pdfs) {
+      try {
+        const src = await PDFDocument.load(file.data, { ignoreEncryption: true });
+        const pages = await d.pdf.copyPages(src, src.getPageIndices());
+        if (!pages.length) continue;
+        start();
+        for (const pg of pages) d.pdf.addPage(pg);
+        d.page = d.pdf.getPage(d.pdf.getPageCount() - 1);
+      } catch {
+        other.push(file);
+      }
+    }
+    for (const file of images) {
+      start();
+      await embedImageFile(d.pdf, file.data, file.type);
+      d.page = d.pdf.getPage(d.pdf.getPageCount() - 1);
+    }
+    if (!started || other.length) {
+      chapter(started ? `${sc.title} (weitere Dateien)` : sc.title);
+      d.title(sc.title, f.site.site_no);
+      if (!started && !other.length)
+        d.noteBox('Noch nicht hinterlegt', [
+          `Bitte den ${sc.title} des Kunden einscannen und in der App unter Objekt → Dokumente (Kategorie „${sc.category}“) hochladen. Danach erscheint er hier automatisch.`,
+        ]);
+      else
+        d.noteBox('Als Datei hinterlegt', [
+          'Diese Unterlagen liegen nicht als PDF oder Bild vor und können hier nicht abgedruckt werden. Sie sind im Objektordner-ZIP enthalten bzw. in der App unter Objekt → Dokumente abrufbar:',
+          ...other.map((x) => `• ${x.name}`),
+        ]);
+    }
+  }
 
   // 5. Vorlagen aus dem Paket
   const pkg = await packageInfo(sql);
@@ -794,7 +672,7 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
       const rel = n.slice(root.length);
       const section = FOLDER_SECTIONS.find(([re]) => re.test(rel))?.[1];
       if (!section) continue;
-      if (/inhaltsverzeichnis|revierplan_muster|muster revierplan/i.test(rel)) continue;
+      if (/inhaltsverzeichnis/i.test(rel) || SKIP_IN_FOLDER.test(rel)) continue;
       // Word-Quellen der fertigen PDF-Aushänge (sonst doppelt)
       if (/(^|\/)C_Word-Quellen\//i.test(rel)) continue;
       if (/muenchner-wohnen|münchner-wohnen/i.test(rel) && !mw) continue;
@@ -836,19 +714,27 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
       Array.from({ length: n }, () => cols.map(() => ' ')),
       { size: 11 },
     );
-  chapter('Anwesenheitsliste', 'Nachweise im Objekt');
-  d.title('Anwesenheitsliste', f.site.site_no);
-  blank(
-    [
-      { label: 'Datum', width: 70 },
-      { label: 'Name', width: 150 },
-      { label: 'Beginn', width: 55 },
-      { label: 'Ende', width: 55 },
-      { label: 'Pause', width: 50 },
-      { label: 'Unterschrift', width: 118 },
-    ],
-    24,
-  );
+  // Anwesenheitsliste: aktueller und nächster Monat nebeneinander (A4 quer)
+  {
+    const att = await PDFDocument.load(
+      await renderAttendancePdf({
+        site: { name: f.site.name, site_no: f.site.site_no, address: addr || null },
+        customer: f.customer.name,
+        month: today.slice(0, 7),
+        pages: 2,
+        company: 'Viva-Deluxe Gebäudereinigung GmbH',
+      }),
+    );
+    if (!toc.some((t) => t.section === 'Nachweise im Objekt'))
+      toc.push({
+        section: 'Nachweise im Objekt',
+        title: 'Nachweise im Objekt',
+        page: d.pdf.getPageCount() + 1,
+      });
+    toc.push({ title: 'Anwesenheitsliste (je zwei Monate)', page: d.pdf.getPageCount() + 1 });
+    for (const pg of await d.pdf.copyPages(att, att.getPageIndices())) d.pdf.addPage(pg);
+    d.page = d.pdf.getPage(d.pdf.getPageCount() - 1);
+  }
   chapter('Stundennachweis Regiearbeiten', 'Nachweise im Objekt');
   d.title('Stundennachweis Regie', f.site.site_no);
   blank(

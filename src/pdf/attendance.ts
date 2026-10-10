@@ -110,9 +110,9 @@ export async function renderAttendancePdf(p: {
     const colW = (W - 2 * M - GAP) / 2;
     const cols = [
       { label: 'TAG', w: 50 },
-      { label: 'VON – BIS', w: 62 },
+      { label: 'UHRZEIT AUSFÜHRUNG', w: 82 },
       { label: 'NAME', w: 0 },
-      { label: 'UNTERSCHRIFT', w: 86 },
+      { label: 'UNTERSCHRIFT', w: 80 },
       { label: 'BEMERKUNG', w: 70 },
     ];
     cols[2]!.w = colW - cols.reduce((a, c) => a + c.w, 0);

@@ -517,7 +517,9 @@ export class FormDoc {
     const pages = this.pdf.getPages();
     pages.forEach((pg, i) => {
       const t = `${this.sideRef} · Seite ${i + 1} von ${pages.length}`;
-      pg.drawText(t, { x: W - 22, y: 200, size: 6.2, font: this.reg, color: GREY, rotate: degrees(90) });
+      // am rechten Rand der jeweiligen Seite (eingefügte Querseiten sind breiter als A4 hoch)
+      const { width } = pg.getSize();
+      pg.drawText(t, { x: width - 22, y: 200, size: 6.2, font: this.reg, color: GREY, rotate: degrees(90) });
     });
     return this.pdf.save({ useObjectStreams: false });
   }

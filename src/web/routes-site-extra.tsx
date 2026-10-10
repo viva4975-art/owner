@@ -59,8 +59,8 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                 <div class="small mut">
                   Ein PDF zum Ausdrucken: Deckblatt, Inhaltsverzeichnis, Objektstammblatt mit Kontakten,
                   Revierplan, Leistungsverzeichnis und Raumbuch aus den eingescannten Unterlagen (Reiter
-                  „Dokumente“), alle Vorlagen aus dem Objektordner-Paket mit den Objektdaten,
-                  Anwesenheitsliste (je zwei Monate auf einer Seite) und Stundennachweis.
+                  „Dokumente“), alle Aushänge und Anweisungen aus dem Objektordner-Paket – fertig ausgefüllt,
+                  ohne Unterschriftsfelder – und die Anwesenheitsliste (je zwei Monate auf einer Seite).
                 </div>
               </div>
               <div class="actions" style="margin:0">
@@ -106,8 +106,8 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
           </div>
           {f.missing.length > 0 ? (
             <div class="flash warn">
-              <b>Es fehlen noch {f.missing.length} Angaben</b> – sonst bleiben im Ordner Lücken (Linie zum
-              Ausfüllen von Hand).
+              <b>Es fehlen noch {f.missing.length} Angaben</b> – solange sie fehlen, lässt der Ordner die
+              betreffenden Zeilen weg (es bleibt nichts zum Ausfüllen von Hand).
               {links.length > 0 && (
                 <ul style="margin:6px 0 0 18px">
                   {links.map((m) => (
@@ -126,29 +126,34 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                 Bitte ausfüllen: {asks.map((m) => m.label).join(', ')}
               </p>
             )}
-            <div class="grid">
-              {FOLDER_QUESTIONS.map((q) => (
-                <div>
-                  <label for={`fi-${q.key}`}>
-                    {q.label}
-                    {q.required && !f.info[q.key] && asks.some((m) => m.key === q.key) ? ' *' : ''}
-                  </label>
-                  <input
-                    id={`fi-${q.key}`}
-                    name={q.key}
-                    value={f.info[q.key] ?? ''}
-                    placeholder={
-                      q.key === 'ansprechpartner' && f.contact
-                        ? `aus Kontakten: ${f.contact.name}`
-                        : q.key === 'ansprechpartner_tel' && f.contact?.phone
-                          ? `aus Kontakten: ${f.contact.phone}`
-                          : q.hint
-                    }
-                    style={asks.some((m) => m.key === q.key) ? 'border-color:var(--err)' : ''}
-                  />
+            {['Kontakte', 'Notfall- und Meldeplan', 'Abfall', 'Sonstiges'].map((g) => (
+              <>
+                <div class="group-title">{g}</div>
+                <div class="grid">
+                  {FOLDER_QUESTIONS.filter((q) => (q.group ?? 'Kontakte') === g).map((q) => (
+                    <div>
+                      <label for={`fi-${q.key}`}>
+                        {q.label}
+                        {q.required && !f.info[q.key] && asks.some((m) => m.key === q.key) ? ' *' : ''}
+                      </label>
+                      <input
+                        id={`fi-${q.key}`}
+                        name={q.key}
+                        value={f.info[q.key] ?? ''}
+                        placeholder={
+                          q.key === 'ansprechpartner' && f.contact
+                            ? `aus Kontakten: ${f.contact.name}`
+                            : q.key === 'ansprechpartner_tel' && f.contact?.phone
+                              ? `aus Kontakten: ${f.contact.phone}`
+                              : q.hint
+                        }
+                        style={asks.some((m) => m.key === q.key) ? 'border-color:var(--err)' : ''}
+                      />
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            ))}
             <div class="formfoot">
               <button class="btn">Speichern</button>
             </div>

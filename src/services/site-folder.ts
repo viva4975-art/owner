@@ -26,6 +26,17 @@ export interface FolderInfo {
   ersthelfer?: string;
   ansprechpartner?: string;
   ansprechpartner_tel?: string;
+  hausmeister?: string;
+  krankenhaus?: string;
+  sammelplatz?: string;
+  feuerloescher?: string;
+  verbandkasten?: string;
+  notausgang?: string;
+  wasser?: string;
+  strom?: string;
+  brandmelder?: string;
+  abfall_platz?: string;
+  abfuhrtage?: string;
   putzraum?: string;
   zugang?: string;
   produkte?: string;
@@ -33,7 +44,13 @@ export interface FolderInfo {
 }
 
 /** Angaben, die nur für den Objektordner gebraucht werden (alles andere kommt aus den Stammdaten). */
-export const FOLDER_QUESTIONS: { key: keyof FolderInfo; label: string; hint: string; required: boolean }[] = [
+export const FOLDER_QUESTIONS: {
+  key: keyof FolderInfo;
+  label: string;
+  hint: string;
+  required: boolean;
+  group?: string;
+}[] = [
   { key: 'bereichsleitung', label: 'Bereichsleitung', hint: 'Name der Bereichsleitung', required: true },
   { key: 'bereichsleitung_tel', label: 'Telefon Bereichsleitung', hint: 'z. B. 0176 …', required: true },
   { key: 'ersthelfer', label: 'Ersthelfer im Objekt', hint: 'Name (Notruf-Aushang)', required: true },
@@ -44,7 +61,89 @@ export const FOLDER_QUESTIONS: { key: keyof FolderInfo; label: string; hint: str
     required: true,
   },
   { key: 'ansprechpartner_tel', label: 'Telefon Ansprechpartner', hint: '', required: true },
-  { key: 'putzraum', label: 'Lage Putzraum', hint: 'z. B. UG, Raum 0.12', required: false },
+  {
+    key: 'hausmeister',
+    label: 'Hausmeister / Haustechnik',
+    hint: 'Name und Telefon, z. B. Hr. Maier 0171 …',
+    required: true,
+  },
+  {
+    key: 'krankenhaus',
+    label: 'Nächstes Krankenhaus',
+    hint: 'Name und Adresse',
+    required: true,
+    group: 'Notfall- und Meldeplan',
+  },
+  {
+    key: 'sammelplatz',
+    label: 'Sammelplatz (Evakuierung)',
+    hint: 'z. B. Parkplatz vor dem Haupteingang',
+    required: true,
+    group: 'Notfall- und Meldeplan',
+  },
+  {
+    key: 'feuerloescher',
+    label: 'Nächster Feuerlöscher',
+    hint: 'z. B. Flur EG neben Putzraum',
+    required: true,
+    group: 'Notfall- und Meldeplan',
+  },
+  {
+    key: 'verbandkasten',
+    label: 'Nächster Verbandkasten',
+    hint: 'z. B. Putzraum, Regal links',
+    required: true,
+    group: 'Notfall- und Meldeplan',
+  },
+  {
+    key: 'notausgang',
+    label: 'Nächster Notausgang',
+    hint: 'z. B. Treppenhaus Nord',
+    required: true,
+    group: 'Notfall- und Meldeplan',
+  },
+  {
+    key: 'wasser',
+    label: 'Hauptabsperrung Wasser',
+    hint: 'z. B. Keller, Raum -1.04',
+    required: true,
+    group: 'Notfall- und Meldeplan',
+  },
+  {
+    key: 'strom',
+    label: 'Hauptschalter Strom',
+    hint: 'z. B. Keller, Verteilerraum',
+    required: true,
+    group: 'Notfall- und Meldeplan',
+  },
+  {
+    key: 'brandmelder',
+    label: 'Brandmelderzentrale',
+    hint: 'Ort – oder „keine“',
+    required: true,
+    group: 'Notfall- und Meldeplan',
+  },
+  {
+    key: 'abfall_platz',
+    label: 'Müll-Sammelplatz im Objekt',
+    hint: 'z. B. Hof, Tonnenhäuschen',
+    required: true,
+    group: 'Abfall',
+  },
+  {
+    key: 'abfuhrtage',
+    label: 'Abfuhrtage',
+    hint: 'z. B. Restmüll Di, Papier Fr',
+    required: true,
+    group: 'Abfall',
+  },
+  {
+    key: 'putzraum',
+    label: 'Lage Putzraum',
+    hint: 'z. B. UG, Raum 0.12',
+    required: false,
+    group: 'Sonstiges',
+  },
   {
     key: 'zugang',
     label: 'Zugang / Schließung',
@@ -60,6 +159,52 @@ export const FOLDER_QUESTIONS: { key: keyof FolderInfo; label: string; hint: str
   { key: 'besonderheiten', label: 'Besonderheiten', hint: 'z. B. Kita – nur nach 17 Uhr', required: false },
 ];
 
+/** Firmenweite Angaben für alle Objektordner (Einstellungen → Objektordner-Vorlagen). */
+export interface FolderDefaults {
+  betriebsarzt?: string;
+  hautschutz?: string;
+  hautreinigung?: string;
+  hautpflege?: string;
+  /** Farbsystem und Dosierung: Produkt, Dosierung, Wasser, Hinweis */
+  dosierung?: { produkt: string; dosierung: string; wasser: string; hinweis: string }[];
+}
+
+export const DEFAULT_QUESTIONS: {
+  key: Exclude<keyof FolderDefaults, 'dosierung'>;
+  label: string;
+  hint: string;
+}[] = [
+  { key: 'betriebsarzt', label: 'Betriebsarzt', hint: 'Name / Dienst und Telefon' },
+  { key: 'hautschutz', label: 'Hautschutz (vor der Arbeit)', hint: 'Produktname' },
+  { key: 'hautreinigung', label: 'Hautreinigung', hint: 'Produktname' },
+  { key: 'hautpflege', label: 'Hautpflege (nach der Arbeit)', hint: 'Produktname' },
+];
+
+export async function getFolderDefaults(sql: Sql): Promise<FolderDefaults> {
+  const [r] = await sql<{ data: FolderDefaults }[]>`select data from app.site_folder_defaults where id = 1`;
+  return r?.data ?? {};
+}
+
+export async function saveFolderDefaults(sql: Sql, d: FolderDefaults, actor: string) {
+  const clean: FolderDefaults = {};
+  for (const q of DEFAULT_QUESTIONS) {
+    const v = d[q.key]?.trim();
+    if (v) clean[q.key] = v.slice(0, 300);
+  }
+  clean.dosierung = (d.dosierung ?? [])
+    .map((r) => ({
+      produkt: r.produkt.trim().slice(0, 120),
+      dosierung: r.dosierung.trim().slice(0, 60),
+      wasser: r.wasser.trim().slice(0, 60),
+      hinweis: r.hinweis.trim().slice(0, 200),
+    }))
+    .filter((r) => r.produkt)
+    .slice(0, 8);
+  await sql`insert into app.site_folder_defaults (id, data, updated_by) values (1, ${sql.json(clean as never)}, ${actor})
+            on conflict (id) do update set data = excluded.data, updated_by = excluded.updated_by, updated_at = now()`;
+  await sql`insert into app.audit_log (actor, action, entity) values (${actor}, 'folder_defaults', 'company')`;
+}
+
 export interface FolderFacts {
   site: {
     id: string;
@@ -72,6 +217,7 @@ export interface FolderFacts {
   customer: { name: string; customer_no: string };
   manager: { name: string; phone: string | null; email: string | null } | null;
   info: FolderInfo;
+  defaults: FolderDefaults;
   contact: { name: string; phone: string | null } | null;
   rooms: number;
   services: number;
@@ -113,6 +259,7 @@ export async function folderFacts(sql: Sql, siteId: string): Promise<FolderFacts
               and (valid_until is null or valid_until >= current_date))::int as plans,
            (select count(*) from app.keys where site_id = ${siteId})::int as keys`;
   const info = s.folder_info ?? {};
+  const defaults = await getFolderDefaults(sql);
   const missing: FolderFacts['missing'] = [];
   if (!s.street || !s.city) missing.push({ label: 'Objektadresse', href: `/objekte/${siteId}/bearbeiten` });
   if (!mgr) missing.push({ label: 'Objektleitung zuordnen', href: `/objekte/${siteId}/bearbeiten` });
@@ -123,6 +270,13 @@ export async function folderFacts(sql: Sql, siteId: string): Promise<FolderFacts
   for (const c of ['Revierplan', 'Leistungsverzeichnis', 'Raumbuch'])
     if (!scans.some((x) => x.category === c))
       missing.push({ label: `${c} (Scan unter Dokumente hochladen)`, href: `/objekte/${siteId}/dokumente` });
+  const noDefaults = DEFAULT_QUESTIONS.filter((q) => !defaults[q.key]).map((q) => q.label);
+  if (!defaults.dosierung?.length) noDefaults.push('Reinigungsmittel und Dosierung');
+  if (noDefaults.length)
+    missing.push({
+      label: `Firmenweite Angaben: ${noDefaults.join(', ')} (Einstellungen → Objektordner-Vorlagen)`,
+      href: '/einstellungen/objektordner',
+    });
   for (const q of FOLDER_QUESTIONS) {
     if (!q.required || info[q.key]?.trim()) continue;
     if ((q.key === 'ansprechpartner' || q.key === 'ansprechpartner_tel') && contact?.name) {
@@ -142,6 +296,7 @@ export async function folderFacts(sql: Sql, siteId: string): Promise<FolderFacts
     customer: { name: s.customer_name, customer_no: s.customer_no },
     manager: mgr ?? null,
     info,
+    defaults,
     contact: contact?.name ? contact : null,
     rooms: n!.rooms,
     services: n!.services,
@@ -215,6 +370,27 @@ export function folderValues(f: FolderFacts): Record<string, string> {
   if (ap) v.ansprechpartner = ap;
   if (apTel) v['ansprechpartner|tel'] = apTel;
   if (i.putzraum) v.putzraum = i.putzraum;
+  for (const k of [
+    'hausmeister',
+    'krankenhaus',
+    'sammelplatz',
+    'feuerloescher',
+    'verbandkasten',
+    'notausgang',
+    'wasser',
+    'strom',
+    'brandmelder',
+    'abfall_platz',
+    'abfuhrtage',
+  ] as const)
+    if (i[k]) v[k] = i[k];
+  // Stand des Ordners = heute (er wird aus den aktuellen Daten erzeugt)
+  v['letzte überprüfung'] = today;
+  const d = f.defaults;
+  if (d.betriebsarzt) v.betriebsarzt = d.betriebsarzt;
+  if (d.hautschutz) v.hautschutz = d.hautschutz;
+  if (d.hautreinigung) v.hautreinigung = d.hautreinigung;
+  if (d.hautpflege) v.hautpflege = d.hautpflege;
   return v;
 }
 
@@ -236,6 +412,22 @@ const LABEL_RULES: [RegExp, string][] = [
   [/^erstellt am\s*\/\s*durch$/, 'erstellt'],
   [/^leistungsbeginn$|^beginn der reinigung$|^vertragsbeginn$/, 'leistungsbeginn'],
   [/^(lage\s+)?putzraum$/, 'putzraum'],
+  [/^hausmeister(\s*\/\s*haustechnik)?(\s+des\s+objekts)?$|^haustechnik$/, 'hausmeister'],
+  [/^n(ä|ae)chstes krankenhaus$/, 'krankenhaus'],
+  [/^sammelplatz im objekt$|^m(ü|ue)ll-?sammelplatz$/, 'abfall_platz'],
+  [/^sammelplatz$/, 'sammelplatz'],
+  [/^n(ä|ae)chster feuerl(ö|oe)scher$/, 'feuerloescher'],
+  [/^n(ä|ae)chster verbandkasten$/, 'verbandkasten'],
+  [/^n(ä|ae)chster notausgang$/, 'notausgang'],
+  [/^hauptabsperrung wasser$/, 'wasser'],
+  [/^hauptschalter strom$/, 'strom'],
+  [/^brandmelderzentrale$/, 'brandmelder'],
+  [/^abfuhrtage$/, 'abfuhrtage'],
+  [/^letzte (ü|ue)berpr(ü|ue)fung$/, 'letzte überprüfung'],
+  [/^(mitwirkung\s+)?betriebsarzt$/, 'betriebsarzt'],
+  [/^hautschutz$/, 'hautschutz'],
+  [/^hautreinigung$/, 'hautreinigung'],
+  [/^hautpflege$/, 'hautpflege'],
   [/^tel\.?$|^telefon$/, 'tel'],
 ];
 export const canonLabel = (label: string) => {
@@ -270,9 +462,10 @@ function replaceUnderscores(xml: string, ...vals: (string | undefined)[]): strin
 
 /** Leere Tabellenzelle mit Text füllen (Format des ersten Absatzes bleibt). */
 function fillEmptyCell(cell: string, value: string): string {
+  const run = `<w:r><w:t xml:space="preserve">${esc(value)}</w:t></w:r>`;
   const i = cell.indexOf('</w:p>');
-  if (i < 0) return cell;
-  return `${cell.slice(0, i)}<w:r><w:t xml:space="preserve">${esc(value)}</w:t></w:r>${cell.slice(i)}`;
+  if (i < 0) return cell.replace(/<w:p\/>/, `<w:p>${run}</w:p>`);
+  return `${cell.slice(0, i)}${run}${cell.slice(i)}`;
 }
 
 export function fillFolderXml(xml: string, values: Record<string, string>): { xml: string; filled: number } {
@@ -333,6 +526,89 @@ export function fillFolderXml(xml: string, values: Record<string, string>): { xm
   return { xml: out, filled };
 }
 
+const GAP = /_{3,}/;
+const TBL = /<w:tbl(?:\s[^>]*)?>(?:(?!<w:tbl[ >])[\s\S])*?<\/w:tbl>/g;
+const TR = /<w:tr[ >](?:(?!<w:tr[ >])[\s\S])*?<\/w:tr>/g;
+const TC = /<w:tc[ >][\s\S]*?<\/w:tc>/g;
+const PARA = /<w:p[ >](?:(?!<w:p[ >])[\s\S])*?<\/w:p>/g;
+const cellTexts = (xml: string) => [...xml.matchAll(TC)].map((m) => plain(m[0]));
+
+/** „Farbsystem und Dosierung“: leere Zeilen der Tabelle Produkt | Dosierung | Wasser | Hinweis der Reihe nach füllen. */
+export function fillDosageTable(xml: string, rows: NonNullable<FolderDefaults['dosierung']>): string {
+  if (!rows.length) return xml;
+  return xml.replace(TBL, (t) => {
+    const head = cellTexts((t.match(TR) ?? [''])[0]!).map((c) => c.toLowerCase());
+    if (!head.includes('produkt') || !head.includes('dosierung')) return t;
+    let n = 0;
+    return t.replace(TR, (r) => {
+      const cells = [...r.matchAll(TC)];
+      if (!cells.length || !cells.every((c) => /^(_{3,})?$/.test(plain(c[0])))) return r;
+      const row = rows[n++];
+      if (!row) return r;
+      const vals = head.map((h) =>
+        h === 'produkt'
+          ? row.produkt
+          : h === 'dosierung'
+            ? row.dosierung
+            : h === 'wasser'
+              ? row.wasser
+              : h === 'hinweis'
+                ? row.hinweis
+                : '',
+      );
+      let out = '';
+      let pos = 0;
+      cells.forEach((c, i) => {
+        const cell = c[0];
+        const v = vals[i] ?? '';
+        const filled = /_{3,}/.test(plain(cell))
+          ? replaceUnderscores(cell, v)
+          : v
+            ? fillEmptyCell(cell, v)
+            : cell;
+        out += r.slice(pos, c.index) + filled;
+        pos = c.index! + cell.length;
+      });
+      return out + r.slice(pos);
+    });
+  });
+}
+
+/**
+ * Objektordner = fertige Unterlage (Ahmed 10.10.: „alles bereits ausgefüllt, Unterschriften und sowas weg“):
+ * Unterschriftsblöcke („Datum, Objektleitung“ …), Kenntnisnahme-Listen und -Überschriften entfernen; Zeilen und Absätze,
+ * in denen nach dem Ausfüllen noch eine Lücke „____“ steht, fallen weg (statt einer Linie zum Ausfüllen von Hand).
+ */
+export function cleanFolderXml(xml: string): string {
+  const sig = (c: string) => /^(ort,\s*)?datum\s*,|^unterschrift/i.test(c);
+  let out = xml.replace(TBL, (t) => {
+    const cells = cellTexts(t);
+    const filled = cells.filter(Boolean);
+    if (filled.length && filled.every(sig)) return '';
+    if (cells.some((c) => /^unterschrift(en)?$/i.test(c))) return '';
+    return t;
+  });
+  out = out.replace(TR, (r) => (GAP.test(plain(r)) ? '' : r));
+  // Abhak-Spalten (☐ / „Erledigt“) leeren – der Aushang ist eine Regel-Liste, kein Formular
+  out = out.replace(TC, (c) =>
+    /^([☐□]\s*)+$|^erledigt$/i.test(plain(c)) ? c.replace(/<w:r[ >][\s\S]*?<\/w:r>/g, '') : c,
+  );
+  out = out.replace(TBL, (t) => (/<w:tr[ >]/.test(t) ? t : ''));
+  out = out.replace(PARA, (p) => {
+    const t = plain(p);
+    if (GAP.test(t) || /^\d*\s*kenntnisnahme$/i.test(t) || /^datum,\s+\S/i.test(t))
+      return p.replace(/<w:r[ >][\s\S]*?<\/w:r>/g, '').replace(/<w:pBdr>[\s\S]*?<\/w:pBdr>/, '');
+    return p;
+  });
+  return out;
+}
+
+/** Word-XML eines Ordner-Dokuments: Objektdaten einsetzen, Datumsfelder fest, Lücken und Unterschriften entfernen. */
+export function prepareFolderXml(xml: string, values: Record<string, string>, f: FolderFacts): string {
+  const filled = fillFolderXml(fillDosageTable(xml, f.defaults.dosierung ?? []), values).xml;
+  return cleanFolderXml(freezeDateFields(filled, formatDateDe(todayBerlin())));
+}
+
 // ------------------------------------------------------------------ Vorlagenpaket
 
 export async function savePackage(deps: Deps, bytes: Uint8Array, fileName: string, actor: string) {
@@ -366,8 +642,6 @@ export async function packageInfo(sql: Sql) {
     select file_name, uploaded_at, uploaded_by, storage_path from app.site_folder_package where id = 1`;
   return p ?? null;
 }
-
-const DATE_GAP = '______________';
 
 const safe = (s: string) =>
   s
@@ -420,17 +694,19 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
     // gemeinsamen Oberordner („22_Objektordner-Komplettpaket/“) weglassen
     const first = names[0]?.split('/')[0] ?? '';
     if (first && names.every((n) => n.startsWith(`${first}/`))) root = `${first}/`;
+    const mw = /m(ü|ue)nchner\s*wohnen/i.test(f.customer.name);
     for (const n of names) {
       const rel = n.slice(root.length);
-      if (SKIP_IN_FOLDER.test(rel)) continue;
+      if (SKIP_IN_FOLDER.test(rel) || /inhaltsverzeichnis/i.test(rel)) continue;
+      if (/muenchner-wohnen|münchner-wohnen/i.test(rel) && !mw) continue;
       let data = files[n]!;
       if (/\.docx$/i.test(n)) {
         try {
           const doc = unzipSync(data);
           for (const part of Object.keys(doc)) {
             if (!/^word\/(document|header\d*|footer\d*)\.xml$/.test(part)) continue;
-            // Datumsfelder (DATE) zeigen sonst beim Öffnen immer „heute“ → Linie zum Ausfüllen
-            doc[part] = strToU8(freezeDateFields(fillFolderXml(strFromU8(doc[part]!), values).xml, DATE_GAP));
+            // Datumsfelder (DATE) zeigen sonst beim Öffnen immer „heute“ → festes Datum; Lücken/Unterschriften weg
+            doc[part] = strToU8(prepareFolderXml(strFromU8(doc[part]!), values, f));
           }
           data = zipSync(doc, { level: 6 });
         } catch {
@@ -463,6 +739,17 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
     ['Zugang / Schließung', f.info.zugang ?? ''],
     ['Reinigungsmittel', f.info.produkte ?? ''],
     ['Besonderheiten', f.info.besonderheiten ?? ''],
+    ['Hausmeister / Haustechnik', f.info.hausmeister ?? ''],
+    ['Nächstes Krankenhaus', f.info.krankenhaus ?? ''],
+    ['Sammelplatz', f.info.sammelplatz ?? ''],
+    [
+      'Feuerlöscher / Verbandkasten',
+      [f.info.feuerloescher, f.info.verbandkasten].filter(Boolean).join(' · '),
+    ],
+    ['Notausgang', f.info.notausgang ?? ''],
+    ['Absperrung Wasser / Strom', [f.info.wasser, f.info.strom].filter(Boolean).join(' · ')],
+    ['Brandmelderzentrale', f.info.brandmelder ?? ''],
+    ['Müll-Sammelplatz / Abfuhr', [f.info.abfall_platz, f.info.abfuhrtage].filter(Boolean).join(' · ')],
     ['Schlüssel im Schlüsselbuch', String(f.keys)],
     ['Notruf / Polizei / Giftnotruf', '112 / 110 / 089 19240'],
   ];
@@ -497,8 +784,15 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
 
 // ------------------------------------------------------------------ Objektordner als ein PDF (Ahmed 09.10.)
 
-/** Nicht mehr aus dem Paket: Muster für Revierplan/LV/Raumbuch (kommen als Scan) und Anwesenheitslisten (aus der App) */
-const SKIP_IN_FOLDER = /revierplan_muster|muster[ _-]?revierplan|anwesenheitsliste|VD-ANW-/i;
+/**
+ * Nicht aus dem Paket: Muster für Revierplan/LV/Raumbuch (kommen als Scan), Anwesenheitslisten (aus der App), leere
+ * Formulare und Nachweislisten (Reklamation, Übernahmeprotokoll, Abfallkonzept zum Abstimmen mit dem Kunden,
+ * Arbeitszeit-/Stundennachweis – laufen über die App:
+ * Tickets, Anlaufplan, Zeiterfassung, Arbeitsscheine) und das fertige Aushang-PDF mit Unterschriftszeilen (die
+ * Aushänge werden aus den Word-Quellen erzeugt).
+ */
+const SKIP_IN_FOLDER =
+  /revierplan_muster|muster[ _-]?revierplan|anwesenheitsliste|VD-ANW-|VD-FB-0?3_|VD-FB-0?7_|VD-AZN-|VD-SN-|VD-FB-34_|abfallkonzept|A_Aushaenge|fertig-zum-Ausdrucken|reklamation|(ü|ue)bernahmeprotokoll/i;
 
 const FOLDER_SECTIONS: [RegExp, string][] = [
   [/^01_/, 'Aushänge im Putzraum'],
@@ -529,7 +823,7 @@ const titleFromFile = (n: string) =>
 /**
  * Objektordner als ein druckfertiges PDF: Deckblatt, Inhaltsverzeichnis, Objektstammblatt mit Kontakten, Leistungs-
  * verzeichnis (ohne Preise), Reinigungsplan, Revierplan, danach Ahmeds Vorlagen (Word-Dateien mit eingesetzten
- * Objektdaten, fertige PDF-Aushänge) und leere Nachweislisten zum Ausfüllen vor Ort.
+ * Objektdaten; Unterschriftsfelder und offene Lücken entfernt) und die Anwesenheitsliste.
  */
 export async function buildFolderPdf(deps: Deps, siteId: string) {
   const { sql } = deps;
@@ -605,6 +899,26 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
     { k: 'Reinigungsmittel', v: f.info.produkte ?? '–' },
     { k: 'Schlüssel', v: String(f.keys) },
   ]);
+  const notfall: { k: string; v: string }[] = (
+    [
+      ['Hausmeister / Haustechnik', f.info.hausmeister],
+      ['Nächstes Krankenhaus', f.info.krankenhaus],
+      ['Sammelplatz', f.info.sammelplatz],
+      ['Nächster Feuerlöscher', f.info.feuerloescher],
+      ['Nächster Verbandkasten', f.info.verbandkasten],
+      ['Nächster Notausgang', f.info.notausgang],
+      ['Hauptabsperrung Wasser', f.info.wasser],
+      ['Hauptschalter Strom', f.info.strom],
+      ['Brandmelderzentrale', f.info.brandmelder],
+      ['Müll-Sammelplatz / Abfuhr', [f.info.abfall_platz, f.info.abfuhrtage].filter(Boolean).join(' · ')],
+    ] as [string, string | undefined][]
+  )
+    .filter(([, v]) => v)
+    .map(([k, v]) => ({ k, v: v! }));
+  if (notfall.length) {
+    d.section('Notfall und Haustechnik');
+    d.kvBox(notfall);
+  }
   if (f.info.besonderheiten) d.noteBox('Besonderheiten', [f.info.besonderheiten]);
   d.section('Notrufnummern');
   d.tiles([
@@ -673,15 +987,13 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
       const section = FOLDER_SECTIONS.find(([re]) => re.test(rel))?.[1];
       if (!section) continue;
       if (/inhaltsverzeichnis/i.test(rel) || SKIP_IN_FOLDER.test(rel)) continue;
-      // Word-Quellen der fertigen PDF-Aushänge (sonst doppelt)
-      if (/(^|\/)C_Word-Quellen\//i.test(rel)) continue;
       if (/muenchner-wohnen|münchner-wohnen/i.test(rel) && !mw) continue;
       try {
         if (/\.docx$/i.test(rel)) {
           const doc = unzipSync(files[n]!);
           const xml = doc['word/document.xml'];
           if (!xml) continue;
-          const blocks = parseDocx(freezeDateFields(fillFolderXml(strFromU8(xml), values).xml, DATE_GAP));
+          const blocks = parseDocx(prepareFolderXml(strFromU8(xml), values, f));
           chapter(niceTitle(docxTitle(blocks) ?? titleFromFile(rel)), section);
           d.muted(`Objekt ${f.site.site_no} · ${f.site.name}`);
           renderDocx(d, blocks);
@@ -707,13 +1019,7 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
     }
   }
 
-  // 6. Leere Nachweislisten
-  const blank = (cols: { label: string; width: number }[], n: number) =>
-    d.table(
-      cols,
-      Array.from({ length: n }, () => cols.map(() => ' ')),
-      { size: 11 },
-    );
+  // 6. Anwesenheitsliste (einzige Liste zum Ausfüllen vor Ort)
   // Anwesenheitsliste: aktueller und nächster Monat nebeneinander (A4 quer)
   {
     const att = await PDFDocument.load(
@@ -735,21 +1041,6 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
     for (const pg of await d.pdf.copyPages(att, att.getPageIndices())) d.pdf.addPage(pg);
     d.page = d.pdf.getPage(d.pdf.getPageCount() - 1);
   }
-  chapter('Stundennachweis Regiearbeiten', 'Nachweise im Objekt');
-  d.title('Stundennachweis Regie', f.site.site_no);
-  blank(
-    [
-      { label: 'Datum', width: 62 },
-      { label: 'Name', width: 110 },
-      { label: 'Tätigkeit', width: 140 },
-      { label: 'von', width: 40 },
-      { label: 'bis', width: 40 },
-      { label: 'Std.', width: 36 },
-      { label: 'Abnahme Kunde', width: 70 },
-    ],
-    22,
-  );
-
   // Inhaltsverzeichnis füllen
   d.page = d.pdf.getPage(tocPage);
   d.y = FORM_Y.TOP;

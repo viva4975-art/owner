@@ -2341,4 +2341,21 @@ Testadresse.
     ZIP `Viva-Deluxe_Vorlagen-Platzhalter-V6.zip` (übrige Dateien V5, nichts doppelt beim Hochladen).
   - Datenschutzbeauftragter: noch keiner – Pflicht ab 20 Personen, die ständig automatisiert personenbezogene Daten
     verarbeiten (§ 38 BDSG; Reinigungskräfte, die nur selbst stempeln, zählen in der Regel nicht, Objektleitungen mit der App schon). Anlage 5 enthält keine DSB-Zeile.
+- 2026-10-10: **Objektordner fertig ausgefüllt, ohne Unterschriften** (Ahmed: „alles bereits ausgefüllt, Unterschriften
+  und sowas weg“):
+  - Neue Angaben je Objekt (Objekt → Objektordner, gruppiert): Hausmeister/Haustechnik, nächstes Krankenhaus,
+    Sammelplatz, Feuerlöscher, Verbandkasten, Notausgang, Hauptabsperrung Wasser, Hauptschalter Strom,
+    Brandmelderzentrale, Müll-Sammelplatz, Abfuhrtage. Firmenweit unter Einstellungen → Objektordner-Vorlagen:
+    Betriebsarzt, Hautschutz-/Reinigungs-/Pflegeprodukt, Reinigungsmittel mit Dosierung (Tabelle, bis 8 Zeilen;
+    Tabelle `app.site_folder_defaults`, Migration `20261119000003`). „Letzte Überprüfung“ = Erstellungsdatum,
+    Word-Datumsfelder = heute.
+  - Bereinigung (`cleanFolderXml`, gilt für PDF und ZIP): Unterschriftsblöcke („Datum, Objektleitung“ …),
+    Kenntnisnahme-Listen und -Überschriften, Abhak-Spalten (☐/„Erledigt“) entfernt; Zeilen/Absätze, die nach dem
+    Ausfüllen noch eine Lücke hätten, fallen weg (fehlende Angaben zeigt die Objektseite). Aushänge (Betriebsanweisungen,
+    Putzraum) jetzt aus den Word-Quellen statt aus dem fertigen PDF mit Unterschriftszeilen.
+  - Nicht mehr im Ordner (Leerformulare, laufen über die App): Reklamationsmeldung (Tickets), Objektübernahmeprotokoll
+    (Anlaufplan), Abfallkonzept (mit dem Kunden abzustimmen), Arbeitszeit-/Stundennachweis (Zeiterfassung,
+    Arbeitsscheine), statische Prüfliste. Bleibt: Anwesenheitsliste.
+  - Anwesenheitsliste: Spalte „Uhrzeit Ausführung“ statt „von – bis“; Seitenkennung auf Querseiten am rechten Rand
+    (stand mitten im Blatt).
 

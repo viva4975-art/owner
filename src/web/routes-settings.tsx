@@ -1,4 +1,11 @@
-import { packageInfo, savePackage } from '../services/site-folder.js';
+import {
+  DEFAULT_QUESTIONS,
+  type FolderDefaults,
+  getFolderDefaults,
+  packageInfo,
+  saveFolderDefaults,
+  savePackage,
+} from '../services/site-folder.js';
 import { listRanges, raiseRange, rangeLabel } from '../services/number-ranges.js';
 import { z } from 'zod';
 import { BusinessError } from '../services/errors.js';
@@ -226,6 +233,9 @@ const ibanOk = (iban: string) => {
 export function registerSettingsRoutes({ app, deps, page, back }: Ctx) {
   app.get('/einstellungen/objektordner', async (c) => {
     const p = await packageInfo(deps.sql);
+    const fd = await getFolderDefaults(deps.sql);
+    const dos = [...(fd.dosierung ?? [])];
+    while (dos.length < 6) dos.push({ produkt: '', dosierung: '', wasser: '', hinweis: '' });
     return page(
       c,
       'Objektordner-Vorlagen',
@@ -266,8 +276,81 @@ export function registerSettingsRoutes({ app, deps, page, back }: Ctx) {
             <button class="btn">Hochladen</button>
           </div>
         </form>
+        <form method="post" action="/einstellungen/objektordner/angaben" class="card" style="max-width:980px">
+          <h3 style="margin-top:0">Angaben für alle Objektordner</h3>
+          <p class="small mut" style="margin-top:0">
+            Stehen im Hautschutzplan und im Aushang „Farbsystem und Dosierung“ jedes Objekts. Objektbezogene
+            Angaben (Notfall, Abfall, Kontakte) stehen je Objekt unter Objekt → Objektordner.
+          </p>
+          <div class="grid">
+            {DEFAULT_QUESTIONS.map((q) => (
+              <div>
+                <label for={`fd-${q.key}`}>{q.label}</label>
+                <input id={`fd-${q.key}`} name={q.key} value={fd[q.key] ?? ''} placeholder={q.hint} />
+              </div>
+            ))}
+          </div>
+          <div class="group-title">Reinigungsmittel und Dosierung</div>
+          <div class="tbl">
+            <table>
+              <thead>
+                <tr>
+                  <th>Produkt</th>
+                  <th>Dosierung</th>
+                  <th>Wasser</th>
+                  <th>Hinweis</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dos.map((r) => (
+                  <tr>
+                    <td>
+                      <input name="d_produkt" value={r.produkt} placeholder="z. B. Sanitärreiniger sauer" />
+                    </td>
+                    <td>
+                      <input name="d_dosierung" value={r.dosierung} placeholder="z. B. 20 ml" />
+                    </td>
+                    <td>
+                      <input name="d_wasser" value={r.wasser} placeholder="z. B. 8 l" />
+                    </td>
+                    <td>
+                      <input name="d_hinweis" value={r.hinweis} placeholder="z. B. nur Sanitär (rot/gelb)" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div class="formfoot">
+            <button class="btn">Speichern</button>
+          </div>
+        </form>
       </>,
     );
+  });
+
+  app.post('/einstellungen/objektordner/angaben', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const one = (k: string) => (typeof b[k] === 'string' ? (b[k] as string) : undefined);
+    const all = (k: string) => ([] as unknown[]).concat(b[k] ?? []).map((x) => String(x));
+    const prod = all('d_produkt');
+    const dz = all('d_dosierung');
+    const wa = all('d_wasser');
+    const hi = all('d_hinweis');
+    const d: FolderDefaults = {
+      dosierung: prod.map((produkt, i) => ({
+        produkt,
+        dosierung: dz[i] ?? '',
+        wasser: wa[i] ?? '',
+        hinweis: hi[i] ?? '',
+      })),
+    };
+    for (const q of DEFAULT_QUESTIONS) {
+      const v = one(q.key);
+      if (v !== undefined) d[q.key] = v;
+    }
+    await saveFolderDefaults(deps.sql, d, c.get('actor'));
+    return back(c, '/einstellungen/objektordner', { ok: 'Angaben für alle Objektordner gespeichert.' });
   });
 
   app.post('/einstellungen/objektordner', async (c) => {

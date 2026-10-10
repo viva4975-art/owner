@@ -2236,3 +2236,10 @@ Testadresse.
 - 2026-10-10: Mitarbeiter (Ahmed: „bei Objekte nur aktuelle“): Übersicht „Aktuelle Objekte“ und Mitarbeiterliste zeigen nur
   aktive Objekte mit laufendem oder künftigem Einsatz der Person (`shift_plans` gültig bis heute oder offen), nicht mehr
   die alte Zuordnung Mitarbeiter ↔ Objekt (die bleibt für Stempelrecht/Filter unverändert).
+- 2026-10-10: Gestaltungsvorschläge Runde 2 (Ahmed: „gut, aber nicht perfekt“): `src/pdf/invoice-design2.ts` mit Schrift
+  **Inter** (SIL OFL, `assets/fonts/inter/`, vollständig eingebettet; kontextabhängige Formen aus, sonst falsche Abstände
+  neben Klammern/Strichen), Kapitälchen-Beschriftungen, Haarlinien, Zahlungsleiste Fälligkeit · Bankverbindung · GiroCode.
+  Varianten **edel** (Kopfblock mit großer Nummer, Betreff, Betrag mit Bordeaux-Kante), **modern** (Bordeaux-Karte
+  „Betrag + fällig am“ oben rechts), **groß** (großer Titel, starke Linien). Rechnung je auf einer Seite; Angebot mit
+  Wert-Kacheln monatlich/einmalig, Ansprechpartner-Karte, Auftragserteilung. Beispiele: `npx tsx
+  scripts/design-proposals.ts <Ordner>` (Dateien 4–6). **Noch nicht aktiv – Ahmed wählt.**

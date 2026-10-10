@@ -5,6 +5,7 @@ import type { InvoiceDocument } from '../src/domain/invoice/types.js';
 import type { Cents, Quantity, VatRate } from '../src/domain/money/money.js';
 import { type DesignVariant, renderInvoiceDesign } from '../src/pdf/invoice-design.js';
 import { renderInvoicePdf } from '../src/pdf/render.js';
+import { type Design2, renderInvoiceDesign2 } from '../src/pdf/invoice-design2.js';
 
 const out = process.argv[2] ?? 'var/design-vorschlaege';
 const c = (n: number) => BigInt(Math.round(n * 100)) as Cents;
@@ -154,6 +155,19 @@ for (const [i, v] of (['klar', 'akzent', 'kompakt'] as DesignVariant[]).entries(
   await writeFile(
     `${out}/${i + 1}-angebot-${v}.pdf`,
     await renderInvoiceDesign(offer, { variant: v, ...offerOpts }),
+  );
+}
+// Runde 2: Inter, feines Raster
+for (const [i, v] of (['edel', 'modern', 'gross'] as Design2[]).entries()) {
+  await writeFile(`${out}/${i + 4}-rechnung-${v}.pdf`, await renderInvoiceDesign2(doc, { variant: v }));
+  await writeFile(
+    `${out}/${i + 4}-angebot-${v}.pdf`,
+    await renderInvoiceDesign2(offer, {
+      variant: v,
+      ...offerOpts,
+      validUntil: '10.11.2026',
+      contact: { name: 'Ahmed Chomontek', phone: '089 63855496', email: 'info@viva-deluxe-reinigung.de' },
+    }),
   );
 }
 console.log('fertig:', out);

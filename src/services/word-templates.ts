@@ -471,7 +471,7 @@ const EMPLOYMENT: Record<string, string> = {
   aushilfe: 'Aushilfe',
 };
 
-async function employeeValues(sql: Sql, id: string): Promise<Record<string, string>> {
+async function employeeValues(sql: Sql, id: string): Promise<{ v: Record<string, string>; notes: string[] }> {
   const [e] = await sql<
     {
       salutation: string | null;
@@ -490,7 +490,9 @@ async function employeeValues(sql: Sql, id: string): Promise<Record<string, stri
       city: string | null;
       birth_date: string | null;
       monthly_salary_cents: bigint | null;
-      wage_cents: bigint | null;
+      pay_model: string | null;
+      hourly_wage_cents: bigint | null;
+      level_wage_cents: bigint | null;
       wage_level: string | null;
       annual_leave_days: string | null;
       nationality: string | null;
@@ -500,15 +502,55 @@ async function employeeValues(sql: Sql, id: string): Promise<Record<string, stri
            e.weekly_hours::text, e.employment_type, e.phone, e.mobile, e.email,
            p.street, p.postal_code, p.city, p.birth_date::text, e.monthly_salary_cents, p.nationality,
            e.annual_leave_days::text,
+           e.pay_model, e.hourly_wage_cents,
            (select w.name from app.wage_levels w where w.id = e.wage_level_id and e.pay_model is distinct from 'individuell') as wage_level,
-           coalesce(e.hourly_wage_cents, (select w.hourly_wage_cents from app.wage_levels w where w.id = e.wage_level_id)) as wage_cents
+           (select w.hourly_wage_cents from app.wage_levels w where w.id = e.wage_level_id) as level_wage_cents
       from app.employees e left join app.employee_private p on p.employee_id = e.id where e.id = ${id}`;
   if (!e) throw new BusinessError('Mitarbeiter nicht gefunden');
   const sites = await sql<{ name: string }[]>`
     select s.name from app.employee_sites es join app.sites s on s.id = es.site_id where es.employee_id = ${id} order by s.name`;
   const hours = e.weekly_hours ? String(Number(e.weekly_hours)).replace('.', ',') : '';
-  const wage = e.wage_cents != null ? numDe(e.wage_cents) : '';
-  return {
+  // Vergütung je Vergütungsart (Ahmed 10.10.: „Gehalt/Stundenlohn wird nicht übernommen“ – bei Mitarbeitenden ohne
+  // hinterlegte Vergütung blieb das Feld leer, bei Stundenlöhnern stand der Stundenlohn als Monatsgehalt im OL-Vertrag)
+  const notes: string[] = [];
+  const weekly = e.weekly_hours ? Number(e.weekly_hours) : 0;
+  let hourly: bigint | null =
+    e.pay_model === 'individuell'
+      ? e.hourly_wage_cents
+      : e.pay_model === 'tarif'
+        ? e.level_wage_cents
+        : e.pay_model === 'festgehalt'
+          ? null
+          : (e.hourly_wage_cents ?? e.level_wage_cents);
+  let level = e.wage_level;
+  let monthly: bigint | null = e.pay_model === 'festgehalt' ? e.monthly_salary_cents : null;
+  if (e.pay_model === 'festgehalt' && monthly != null && weekly > 0) {
+    // Stundensatz wie in Nachkalkulation/Mindestlohn-Prüfung: Gehalt × 3 ÷ 13 ÷ Wochenstunden
+    hourly = BigInt(Math.round((Number(monthly) * 3) / 13 / weekly));
+    notes.push('Stundenlohn aus dem Festgehalt umgerechnet (Gehalt × 3 ÷ 13 ÷ Wochenstunden).');
+  }
+  if (hourly == null && e.pay_model !== 'festgehalt') {
+    const [low] = await sql<{ name: string; hourly_wage_cents: bigint }[]>`
+      select name, hourly_wage_cents from app.wage_levels where active order by hourly_wage_cents limit 1`;
+    if (low) {
+      hourly = low.hourly_wage_cents;
+      level = low.name;
+      notes.push(
+        `Beim Mitarbeiter ist keine Vergütung hinterlegt – vorbelegt mit ${low.name} (${numDe(low.hourly_wage_cents)} €/Std.). Bitte prüfen und in den Stammdaten nachtragen.`,
+      );
+    } else notes.push('Beim Mitarbeiter ist keine Vergütung hinterlegt – Lohn bitte unten eintragen.');
+  }
+  if (monthly == null && hourly != null && weekly > 0) {
+    // Monat = Wochenstunden × 4,33 (wie Soll/Arbeitszeitkonto)
+    monthly = BigInt(Math.round(Number(hourly) * weekly * 4.33));
+    notes.push(
+      'Monatsgehalt aus Stundenlohn × Wochenstunden × 4,33 errechnet (nur für Verträge mit Monatsgehalt).',
+    );
+  }
+  if (!weekly && e.employment_type !== 'minijob') notes.push('Wochenstunden fehlen in den Stammdaten.');
+  const wage = hourly != null ? numDe(hourly) : '';
+  const salary = monthly != null ? numDe(monthly) : '';
+  const v = {
     'Mitarbeiter.Anrede': e.salutation ?? '',
     // Briefanrede passend zur Anrede (sonst neutral mit vollem Namen)
     'Mitarbeiter.Briefanrede': personGreeting(e).replace(/,$/, ''),
@@ -524,10 +566,10 @@ async function employeeValues(sql: Sql, id: string): Promise<Record<string, stri
     'Mitarbeiter.Staatsangehörigkeit': e.nationality ?? '',
     'Mitarbeiter.Wochenstunden': hours,
     // Beträge ohne „€“ (die Vorlage schreibt „EUR“ dahinter); Gehalt = Monatsgehalt, sonst Stundenlohn
-    'Mitarbeiter.Gehalt': e.monthly_salary_cents != null ? numDe(e.monthly_salary_cents) : wage,
-    'Mitarbeiter.Monatsgehalt': e.monthly_salary_cents != null ? numDe(e.monthly_salary_cents) : '',
+    'Mitarbeiter.Gehalt': salary,
+    'Mitarbeiter.Monatsgehalt': salary,
     'Mitarbeiter.Stundenlohn': wage,
-    'Mitarbeiter.Lohngruppe': e.wage_level ?? '',
+    'Mitarbeiter.Lohngruppe': level ?? '',
     'Mitarbeiter.Urlaubstage': e.annual_leave_days
       ? String(Number(e.annual_leave_days)).replace('.', ',')
       : '',
@@ -537,6 +579,7 @@ async function employeeValues(sql: Sql, id: string): Promise<Record<string, stri
     'Mitarbeiter.Telefon': e.mobile ?? e.phone ?? '',
     'Mitarbeiter.E-Mail': e.email ?? '',
   };
+  return { v, notes };
 }
 
 async function customerValues(sql: Sql, id: string): Promise<Record<string, string>> {
@@ -633,8 +676,9 @@ export async function templateValues(
   sql: Sql,
   target: WordTarget,
   p: { actorName: string; fileId: string },
-): Promise<{ values: Record<string, string>; suffix: string }> {
+): Promise<{ values: Record<string, string>; suffix: string; notes: string[] }> {
   const today = todayBerlin();
+  let notes: string[] = [];
   let values: Record<string, string> = {
     ...(await companyValues(sql)),
     'Dokument.Datum': de(today),
@@ -648,7 +692,9 @@ export async function templateValues(
   };
   let suffix: string;
   if (target.type === 'employee') {
-    const v = await employeeValues(sql, target.id);
+    const r = await employeeValues(sql, target.id);
+    const v = r.v;
+    notes = r.notes;
     values = { ...values, ...v, 'Vertrag.Datum': v['Mitarbeiter.Eintrittsdatum'] ?? '' };
     if (v['Mitarbeiter.Austrittsdatum']) values['Vertrag.Ende'] = v['Mitarbeiter.Austrittsdatum'];
     suffix = v['Mitarbeiter.Nachname'] ?? '';
@@ -660,7 +706,7 @@ export async function templateValues(
     values = { ...values, ...(await customerValues(sql, s.customerId)), ...s.v };
     suffix = values['Objekt.Nummer'] ?? '';
   }
-  return { values, suffix };
+  return { values, suffix, notes };
 }
 
 /** Eingabe der Ausfüll-Seite übernehmen: Datum aus <input type=date> (JJJJ-MM-TT) → TT.MM.JJJJ. */

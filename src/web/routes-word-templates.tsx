@@ -341,7 +341,13 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
     if (!allowed(c, type, id)) return c.text('Keine Berechtigung', 403);
     const t = await getTemplateFor(sql, templateId, { type, id });
     const fileId = randomUUID();
-    const { values } = await templateValues(sql, { type, id }, { actorName: c.get('user')!.name, fileId });
+    const { values, notes } = await templateValues(
+      sql,
+      { type, id },
+      { actorName: c.get('user')!.name, fileId },
+    );
+    const payKeys = /^Mitarbeiter\.(Stundenlohn|Gehalt|Monatsgehalt|Lohngruppe|Wochenstunden)$/;
+    const payNotes = t.placeholders.some((k) => payKeys.test(k)) ? notes : [];
     const keys = t.placeholders;
     const formFields = await templateFormFields(cfg, t.storage_path).catch(() => [] as FormField[]);
     const boxDefaults = defaultBoxes(formFields, values);
@@ -388,6 +394,17 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
             unverändert). Leere Felder erscheinen im Dokument als Linie „__________“ zum Ausfüllen von Hand.
             Word-Datumsfelder werden fest auf das Dokumentdatum gesetzt (ändern sich beim Öffnen nicht mehr).
           </p>
+          {payNotes.length > 0 && (
+            <div class="flash warn">
+              {payNotes.map((n) => (
+                <div>{n}</div>
+              ))}
+              <div class="small" style="margin-top:4px">
+                Werte stehen unten unter „Stammdaten“ und lassen sich für dieses Dokument ändern ·{' '}
+                <a href={`/personal/${id}/bearbeiten`}>Stammdaten bearbeiten</a>
+              </div>
+            </div>
+          )}
           {keys.length === 0 && formFields.length === 0 && (
             <div class="empty">
               Diese Vorlage hat keine Platzhalter – sie wird unverändert heruntergeladen.
@@ -400,7 +417,7 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
             <FormFields fields={formFields} boxes={boxDefaults} blanks={blankDefaults} />
           )}
           {master.length > 0 && (
-            <details open={groups.length === 0 && formFields.length === 0}>
+            <details open={(groups.length === 0 && formFields.length === 0) || payNotes.length > 0}>
               <summary style="margin-top:14px">
                 <b>Stammdaten</b>{' '}
                 <span class="small mut">(vorbelegt: {master.join(', ')} – nur bei Bedarf ändern)</span>

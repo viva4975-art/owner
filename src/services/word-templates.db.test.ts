@@ -175,4 +175,31 @@ describe.skipIf(!available)('Word-Vorlagen (Datenbank)', () => {
     );
     expect(m.values['Mitarbeiter.Briefanrede']).toBe('Sehr geehrter Herr Vorlage');
   });
+
+  it('Lohn je Vergütungsart: ohne Vergütung Tariflohn mit Hinweis, Festgehalt, Stundenlohn × Stunden', async () => {
+    const t = (id: string) =>
+      templateValues(sql, { type: 'employee', id }, { actorName: 't', fileId: randomUUID() });
+    const [low] = await sql<{ name: string; c: bigint }[]>`
+      select name, hourly_wage_cents as c from app.wage_levels where active order by hourly_wage_cents limit 1`;
+    // ohne Vergütung (z. B. aus Fortytools übernommen)
+    await sql`update app.employees set pay_model = null, hourly_wage_cents = null, wage_level_id = null,
+                     monthly_salary_cents = null, weekly_hours = 20 where id = ${emp}`;
+    let r = await t(emp);
+    if (low) {
+      expect(r.values['Mitarbeiter.Stundenlohn']).toBe((Number(low.c) / 100).toFixed(2).replace('.', ','));
+      expect(r.notes.join(' ')).toContain('keine Vergütung');
+    }
+    // individueller Stundenlohn 16,00 € × 20 Std. × 4,33 = 1.385,60 €
+    await sql`update app.employees set pay_model = 'individuell', hourly_wage_cents = 1600 where id = ${emp}`;
+    r = await t(emp);
+    expect(r.values['Mitarbeiter.Stundenlohn']).toBe('16,00');
+    expect(r.values['Mitarbeiter.Gehalt']).toBe('1.385,60');
+    expect(r.notes.join(' ')).not.toContain('keine Vergütung');
+    // Festgehalt 2.600 € bei 40 Std.: Stundensatz 2600 × 3 ÷ 13 ÷ 40 = 15,00 €
+    await sql`update app.employees set pay_model = 'festgehalt', hourly_wage_cents = null, monthly_salary_cents = 260000,
+                     weekly_hours = 40 where id = ${emp}`;
+    r = await t(emp);
+    expect(r.values['Mitarbeiter.Gehalt']).toBe('2.600,00');
+    expect(r.values['Mitarbeiter.Stundenlohn']).toBe('15,00');
+  });
 });

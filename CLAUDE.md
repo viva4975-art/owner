@@ -2358,4 +2358,11 @@ Testadresse.
     Arbeitsscheine), statische Prüfliste. Bleibt: Anwesenheitsliste.
   - Anwesenheitsliste: Spalte „Uhrzeit Ausführung“ statt „von – bis“; Seitenkennung auf Querseiten am rechten Rand
     (stand mitten im Blatt).
+- 2026-10-10: **Lohn in Word-Vorlagen** (Ahmed: „Gehalt bzw. Stundenlohn wird nicht übernommen“): Vorlagen waren richtig;
+  leer blieb es bei Mitarbeitenden ohne hinterlegte Vergütung (aus Fortytools übernommen, `pay_model` leer). Jetzt je
+  Vergütungsart: Tarif → Tariflohn der Lohngruppe, individuell → eigener Stundenlohn, Festgehalt → Gehalt (Stundenlohn
+  umgerechnet Gehalt × 3 ÷ 13 ÷ Wochenstunden); ohne Vergütung → niedrigster aktiver Tariflohn mit gelbem Hinweis auf
+  „Angaben prüfen“ (Stammdaten aufgeklappt, Link zum Nachtragen). `Mitarbeiter.Gehalt` ist nur noch ein Monatsbetrag
+  (bei Stundenlohn × Wochenstunden × 4,33) – vorher stand der Stundenlohn als „monatliches Bruttogehalt“ im OL-Vertrag.
+  **Ahmed: Vergütung bei allen Mitarbeitenden nachtragen (Liste „Vergütung fehlt“).**
 

@@ -45,7 +45,10 @@ export async function setStartMonth(sql: Sql, month: string, actor: string) {
 
 /** Soll-Minuten aller Mitarbeitenden für einen Monat in einem Rutsch (Stunden-Verlauf je Mitarbeiter). */
 async function sollAll(sql: Sql, month: string): Promise<Map<string, number | null>> {
-  const { start, end } = monthBounds(month);
+  const { start, end: monthEnd } = monthBounds(month);
+  // laufender Monat: Vertragssoll nur bis heute (sonst steht im Monat jeder im Minus)
+  const today = todayBerlin();
+  const end = today >= start && today < monthEnd ? today : monthEnd;
   const [emps, hist] = await Promise.all([
     sql<{ id: string; weekly_hours: string | null; entry_date: string; exit_date: string | null }[]>`
       select id, weekly_hours::text, entry_date::text, exit_date::text from app.employees

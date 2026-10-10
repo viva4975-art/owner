@@ -15,6 +15,8 @@ export const REQUIRED_DOCS = [
   'Personalunterlagen',
 ] as const;
 
+import { countryOf, isFreeMovementCountry } from '../domain/hr/lists.js';
+
 const EU_EWR_CH = [
   'deutsch',
   'deutschland',
@@ -53,6 +55,8 @@ const EU_EWR_CH = [
 export function freeMovement(nat: string): boolean {
   const n = nat.trim().toLowerCase();
   if (!n) return false;
+  const c = countryOf(nat);
+  if (c) return isFreeMovementCountry(c);
   const stems = EU_EWR_CH.map((x) => x.replace(/(ien|land|en|ei)$/, '').slice(0, 5));
   return EU_EWR_CH.some((x) => n.includes(x)) || stems.some((s) => s.length >= 4 && n.startsWith(s));
 }

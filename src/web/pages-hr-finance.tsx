@@ -1,6 +1,12 @@
 import type { Child, FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
-import { HEALTH_INSURERS, LANGUAGES } from '../domain/hr/lists.js';
+import {
+  FREE_MOVEMENT_COUNTRIES,
+  HEALTH_INSURERS,
+  LANGUAGES,
+  OTHER_COUNTRIES,
+  countryOf,
+} from '../domain/hr/lists.js';
 import {
   EMPLOYMENT_TYPES,
   type Employee,
@@ -368,31 +374,22 @@ export const EmployeeShell: FC<{
   const base = `/personal/${e.id}`;
   const tabs: Tab[] = [
     { key: 'uebersicht', label: 'Übersicht', href: base },
-    { key: 'notizen', label: 'Notizen', href: `${base}/notizen`, count: notes },
-    { key: 'dokumente', label: 'Dokumente', href: `${base}/dokumente` },
-    { key: 'zeiten', label: 'Zeiten', href: `${base}/zeiten` },
-    { key: 'stundenzettel', label: 'Stundenliste', href: `${base}/stundenzettel` },
+    { key: 'kalender', label: 'Kalender & Zeiten', href: `${base}/kalender` },
     { key: 'einsaetze', label: 'Einsätze', href: `${base}/einsaetze` },
+    { key: 'stundenzettel', label: 'Stundenliste', href: `${base}/stundenzettel` },
     { key: 'abwesenheiten', label: 'Urlaub & Krank', href: `${base}/abwesenheiten` },
+    { key: 'dokumente', label: 'Dokumente', href: `${base}/dokumente` },
+    { key: 'uebergaben', label: 'Übergaben', href: `${base}/uebergaben` },
+    { key: 'app', label: 'Handy-Zugang', href: `${base}/app-zugang` },
   ];
   const more: Tab[] = [
+    { key: 'notizen', label: 'Notizen', href: `${base}/notizen`, count: notes },
     { key: 'aufgaben', label: 'Aufgaben', href: `${base}/aufgaben`, count: tasks },
-    { key: 'app', label: 'Handy-Zugang (PIN)', href: `${base}/app-zugang` },
-    { key: 'kalender', label: 'Einsatzkalender', href: `${base}/kalender` },
-    { key: 'uebergaben', label: 'Übergaben (Kleidung, Geräte …)', href: `${base}/uebergaben` },
   ];
   return (
     <>
-      <PageHead
-        title={`${e.first_name} ${e.last_name}`}
-        no={e.personnel_no}
-        create={{
-          options: [['aufgabe', 'Aufgabe']],
-          suffix: 'für diesen Mitarbeiter',
-          context: { mitarbeiter: e.id },
-        }}
-      />
-      <Tabs tabs={tabs} more={more} active={active} />
+      <PageHead title={`${e.first_name} ${e.last_name}`} no={e.personnel_no} />
+      <Tabs tabs={tabs} more={more} active={active === 'zeiten' ? 'kalender' : active} />
       <div class="tabbody">{children}</div>
     </>
   );
@@ -815,7 +812,31 @@ export const EmployeeForm: FC<{
       <Field name="street" label="Straße" value={priv.street} />
       <Field name="postal_code" label="PLZ" value={priv.postal_code} />
       <Field name="city" label="Ort" value={priv.city} />
-      <Field name="nationality" label="Staatsangehörigkeit" value={priv.nationality} />
+      <div>
+        <label for="nationality">Staatsangehörigkeit</label>
+        <select id="nationality" name="nationality" data-combo>
+          <option value="">– bitte wählen –</option>
+          {priv.nationality && !countryOf(priv.nationality) && (
+            <option value={priv.nationality} selected>
+              {priv.nationality} (bisher, bitte aus der Liste wählen)
+            </option>
+          )}
+          <optgroup label="EU / EWR / Schweiz – kein Aufenthaltstitel nötig">
+            {FREE_MOVEMENT_COUNTRIES.map((c) => (
+              <option value={c} selected={countryOf(priv.nationality) === c}>
+                {c}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Andere Staaten – Aufenthaltstitel mit Arbeitserlaubnis nötig">
+            {OTHER_COUNTRIES.map((c) => (
+              <option value={c} selected={countryOf(priv.nationality) === c}>
+                {c}
+              </option>
+            ))}
+          </optgroup>
+        </select>
+      </div>
       <Field
         name="residence_permit_until"
         label="Aufenthaltstitel gültig bis"

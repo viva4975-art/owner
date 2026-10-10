@@ -476,11 +476,30 @@ export const OfferDetail: FC<{
   invoices: { id: string; number: string | null; status: string; gross_cents: bigint }[];
   today: string;
   contact: string;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  split?: { label: string; net: bigint; vat: bigint; gross: bigint }[] | null;
   related?: {
     predecessor: { id: string; number: string } | null;
     successor: { id: string; number: string } | null;
   };
-}> = ({ o, lines, customer, site, sites, files, fileCount, history, invoices, today, contact, related }) => {
+}> = ({
+  o,
+  lines,
+  customer,
+  site,
+  sites,
+  files,
+  fileCount,
+  history,
+  invoices,
+  today,
+  contact,
+  contactPhone,
+  contactEmail,
+  split,
+  related,
+}) => {
   const recurring = lines.filter((l) => l.recurring && !l.alternative);
   const once = lines.filter((l) => !l.recurring && !l.alternative);
   const alternatives = lines.filter((l) => l.alternative);
@@ -552,7 +571,11 @@ export const OfferDetail: FC<{
                   <a href={`/kunden/${customer.id}`}>{customer.customer_no}</a>
                 </dd>
                 <dt>Ansprechpartner</dt>
-                <dd>{contact}</dd>
+                <dd>
+                  {contact}
+                  {contactPhone && <div class="small">Tel. {contactPhone}</div>}
+                  {contactEmail && <div class="small">{contactEmail}</div>}
+                </dd>
                 {o.tender_reference && (
                   <>
                     <dt>Vergabe-Nr.</dt>
@@ -612,20 +635,45 @@ export const OfferDetail: FC<{
             </div>
             <table class="totals" style="margin:8px 0 12px auto">
               <tbody>
-                <tr>
-                  <td>Gesamt netto</td>
-                  <td class="r">{euro(o.net_cents)}</td>
-                </tr>
-                <tr>
-                  <td>zzgl. MwSt {vatRates.length === 1 ? `(${vatRates[0]! / 100}%)` : ''}</td>
-                  <td class="r">{euro(o.vat_cents)}</td>
-                </tr>
-                <tr class="sum">
-                  <td>Gesamtbetrag</td>
-                  <td class="r">
-                    <span class="hl">{euro(o.gross_cents)}</span>
-                  </td>
-                </tr>
+                {split ? (
+                  split.map((t) => (
+                    <>
+                      <tr>
+                        <td>
+                          <b>{t.label} netto</b>
+                        </td>
+                        <td class="r">{euro(t.net)}</td>
+                      </tr>
+                      <tr>
+                        <td>zzgl. MwSt {vatRates.length === 1 ? `(${vatRates[0]! / 100}%)` : ''}</td>
+                        <td class="r">{euro(t.vat)}</td>
+                      </tr>
+                      <tr class="sum">
+                        <td>{t.label} brutto</td>
+                        <td class="r">
+                          <span class="hl">{euro(t.gross)}</span>
+                        </td>
+                      </tr>
+                    </>
+                  ))
+                ) : (
+                  <>
+                    <tr>
+                      <td>Gesamt netto</td>
+                      <td class="r">{euro(o.net_cents)}</td>
+                    </tr>
+                    <tr>
+                      <td>zzgl. MwSt {vatRates.length === 1 ? `(${vatRates[0]! / 100}%)` : ''}</td>
+                      <td class="r">{euro(o.vat_cents)}</td>
+                    </tr>
+                    <tr class="sum">
+                      <td>Gesamtbetrag</td>
+                      <td class="r">
+                        <span class="hl">{euro(o.gross_cents)}</span>
+                      </td>
+                    </tr>
+                  </>
+                )}
                 {alternatives.length > 0 && (
                   <tr>
                     <td class="mut small" colspan={2}>
@@ -634,7 +682,7 @@ export const OfferDetail: FC<{
                     </td>
                   </tr>
                 )}
-                {o.monthly_net_cents > 0n && (
+                {o.monthly_net_cents > 0n && !split && (
                   <tr>
                     <td class="mut small">davon monatlich wiederkehrend (netto)</td>
                     <td class="r mut small">{euro(o.monthly_net_cents)}</td>

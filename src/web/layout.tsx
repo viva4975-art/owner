@@ -1344,7 +1344,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Unterweisungen & Unterschriften', href: '/personal/dokumente' },
       { label: 'Zeiterfassung', href: '/zeiterfassung', sep: true },
       { label: 'Meine Zeiten', href: '/zeiterfassung/meine' },
-      { label: 'Soll/Ist je Monat', href: '/zeiterfassung/monat' },
+      { label: 'Plan/Ist je Monat', href: '/zeiterfassung/monat' },
       { label: 'Stundenliste & Lohnarten', href: '/zeiterfassung/stundenzettel' },
       { label: 'Arbeitszeitkonto', href: '/zeiterfassung/arbeitszeitkonto' },
     ],

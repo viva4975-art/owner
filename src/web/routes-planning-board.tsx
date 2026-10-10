@@ -14,6 +14,7 @@ import {
   plannedShifts,
   RECURRENCE,
   type Recurrence,
+  changeShiftSeriesFrom,
   saveShiftSeries,
   WEEKDAYS_SHORT,
 } from '../services/time.js';
@@ -730,8 +731,21 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
           </div>
           <div class="tp-foot">
             {series && (
-              <span class="small mut">
-                Änderungen gelten für die ganze Serie. Einzelne Tage: in der Planung auf den Termin klicken.
+              <span class="small" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                <label for="gilt_ab" style="margin:0">
+                  Änderung gilt ab
+                </label>
+                <input
+                  id="gilt_ab"
+                  type="date"
+                  name="gilt_ab"
+                  value={series.validFrom > todayBerlin() ? series.validFrom : todayBerlin()}
+                  style="max-width:170px"
+                />
+                <span class="mut">
+                  (bis zum Vortag bleibt die Serie wie bisher; Datum = Beginn → ganze Serie ändern. Einzelne
+                  Tage: in der Planung auf den Termin klicken.)
+                </span>
               </span>
             )}
             <a class="btn sec" href={ret}>
@@ -749,7 +763,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
           >
             <h3 style="margin-top:0">Serie beenden</h3>
             <p class="small mut" style="margin-top:0">
-              Vergangene Termine bleiben erhalten (Soll/Ist, Nachkalkulation). Gilt für alle Mitarbeiter der
+              Vergangene Termine bleiben erhalten (Plan/Ist, Nachkalkulation). Gilt für alle Mitarbeiter der
               Serie.
             </p>
             <input type="hidden" name="serie" value="1" />
@@ -808,8 +822,12 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
     if (!Number.isFinite(pause) || pause < 0 || pause > 3)
       throw new BusinessError('Pause bitte in Stunden (z. B. 0,5)');
     const employees = arr(b, 'employee_id').map((e) => (e && /^[0-9a-f-]{36}$/.test(e) ? e : null));
-    await saveShiftSeries(
-      sql,
+    const giltAb = one('gilt_ab');
+    const save = (seriesId: string, input: Parameters<typeof saveShiftSeries>[2], actor: string) =>
+      old && giltAb
+        ? changeShiftSeriesFrom(sql, seriesId, giltAb, input, actor)
+        : saveShiftSeries(sql, seriesId, input, actor);
+    await save(
       old?.seriesId ?? id,
       {
         siteId,

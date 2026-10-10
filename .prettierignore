@@ -2,3 +2,6 @@ docs/*.pdf
 package-lock.json
 .kosit
 var
+CLAUDE.md
+docs/*.html
+supabase/migration-checksums.json

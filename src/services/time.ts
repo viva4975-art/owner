@@ -1356,6 +1356,38 @@ export async function getShiftSeries(sql: Sql, idOrSeries: string): Promise<Shif
  * Tag → doppelt absenden legt nichts doppelt an). Beim Ändern bleiben vorhandene Einsätze erhalten (gleiche ID,
  * Zeiten/Nachweise hängen daran); weggefallene Mitarbeiter/Tage enden gestern (nie genutzte künftige werden entfernt).
  */
+/**
+ * Serie ab einem Datum ändern (Ahmed: „gilt ab“): die bisherige Serie endet am Vortag, ab dem Datum gilt eine neue Serie
+ * mit den neuen Angaben (feste ID aus Serie + Datum → doppelt absenden legt nichts doppelt an). Vergangene Termine und
+ * erfasste Zeiten bleiben unverändert. Liegt das Datum nicht nach dem Beginn, wird die ganze Serie geändert.
+ * Gibt die ID der gültigen (neuen) Serie zurück.
+ */
+export async function changeShiftSeriesFrom(
+  sql: Sql,
+  seriesId: string,
+  from: string,
+  p: ShiftSeriesInput,
+  actor: string,
+): Promise<string> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) throw new BusinessError('Bitte das Datum „gilt ab“ angeben');
+  const existing = await getShiftSeries(sql, seriesId);
+  if (!existing || from <= existing.validFrom) {
+    await saveShiftSeries(sql, existing?.seriesId ?? seriesId, p, actor);
+    return existing?.seriesId ?? seriesId;
+  }
+  if (p.recurrence === 'einmalig') throw new BusinessError('Ein einmaliger Termin hat kein „gilt ab“');
+  const nid = (
+    await sql<{ nid: string }[]>`select md5(${existing.seriesId} || ':ab:' || ${from})::uuid::text as nid`
+  )[0]!.nid;
+  await saveShiftSeries(sql, nid, { ...p, validFrom: from > p.validFrom ? from : p.validFrom }, actor);
+  for (const old of existing.plans)
+    if (!old.valid_until || old.valid_until >= from)
+      await endShiftPlan(sql, old.id, addDays(from, -1), actor);
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${actor}, 'split', 'shift_series', ${existing.seriesId}, ${sql.json({ ab: from, neu: nid })})`;
+  return nid;
+}
+
 export async function saveShiftSeries(sql: Sql, seriesId: string, p: ShiftSeriesInput, actor: string) {
   if (!HHMM.test(p.startTime) || !HHMM.test(p.endTime)) throw new BusinessError('Uhrzeit bitte als HH:MM');
   if (p.endTime <= p.startTime)

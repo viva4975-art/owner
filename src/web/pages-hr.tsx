@@ -21,7 +21,7 @@ export const MonthBox: FC<{
         <thead>
           <tr>
             <th>Monat</th>
-            <th class="r">Soll</th>
+            <th class="r">Vertragssoll</th>
             <th class="r">Plan</th>
             <th class="r">Ist</th>
           </tr>

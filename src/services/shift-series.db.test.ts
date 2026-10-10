@@ -6,7 +6,14 @@ import { addDays, mondayOf } from '../domain/time/holidays.js';
 import { employeeInput, saveEmployee } from './employees.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
-import { getShiftSeries, occursOn, plannedShifts, saveShiftSeries, type ShiftSeriesInput } from './time.js';
+import {
+  changeShiftSeriesFrom,
+  getShiftSeries,
+  occursOn,
+  plannedShifts,
+  saveShiftSeries,
+  type ShiftSeriesInput,
+} from './time.js';
 
 const available = await dbAvailable();
 
@@ -98,6 +105,31 @@ describe.skipIf(!available)('Terminserien (Planung wie Fortytools)', () => {
     const mine = week.filter((w) => w.plan.series_id === series);
     expect(mine.map((w) => w.plan.employee_name).every((n) => n.startsWith('Serie, Anna'))).toBe(true);
     expect(mine).toHaveLength(3);
+  });
+
+  it('Serie ab Datum ändern: alte endet am Vortag, neue gilt ab dem Datum, doppelt absenden ändert nichts', async () => {
+    const series = randomUUID();
+    await saveShiftSeries(sql, series, input({ employeeIds: [anna] }), 't');
+    const from = addDays(nextMonday, 14);
+    const nid = await changeShiftSeriesFrom(
+      sql,
+      series,
+      from,
+      input({ employeeIds: [anna], startTime: '18:00' }),
+      't',
+    );
+    expect(nid).not.toBe(series);
+    expect(
+      await changeShiftSeriesFrom(sql, series, from, input({ employeeIds: [anna], startTime: '18:00' }), 't'),
+    ).toBe(nid);
+    const before = (await plannedShifts(sql, { from: nextMonday, to: nextMonday })).filter(
+      (w) => w.plan.series_id === series,
+    );
+    expect(before.map((w) => w.plan.start_time.slice(0, 5))).toEqual(['17:00']);
+    const after = (await plannedShifts(sql, { from, to: from })).filter(
+      (w) => w.plan.series_id === series || w.plan.series_id === nid,
+    );
+    expect(after.map((w) => w.plan.start_time.slice(0, 5))).toEqual(['18:00']);
   });
 
   it('offener Termin erscheint nur mit includeOpen (zu planende Einsätze)', async () => {

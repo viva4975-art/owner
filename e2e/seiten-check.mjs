@@ -218,3 +218,11 @@ const byKind = {};
 for (const i of issues)
   byKind[i.kind.replace(/^(pc|handy): /, '')] = (byKind[i.kind.replace(/^(pc|handy): /, '')] ?? 0) + 1;
 console.log(`${n} Seiten geprüft, ${issues.length} Auffälligkeiten`, byKind);
+// Schwere Funde (Serverfehler, JS-Fehler, „undefined/NaN“ im Text) → Exit-Code 1, damit `npm run check:alles` rot wird.
+// Hinweise wie „abgeschnitten“ oder „Feld ohne Beschriftung“ stehen nur im Bericht.
+const severe = issues.filter((i) => /HTTP 5\d\d|JS-Fehler|: Text$|PDF: Fehler/.test(i.kind));
+if (severe.length) {
+  console.log('Schwere Funde:');
+  for (const i of severe.slice(0, 30)) console.log(' ', i.kind, i.page, i.detail);
+  process.exit(1);
+}

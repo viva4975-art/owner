@@ -81,7 +81,7 @@ export const REPORTS: (Tab & { text: string })[] = [
     key: 'stunden',
     label: 'Stundenkontrolle',
     href: '/auswertungen/stunden',
-    text: 'Soll / Plan / Ist aller Mitarbeitenden',
+    text: 'Vertragssoll / Plan / Ist aller Mitarbeitenden',
   },
   {
     key: 'urlaub',
@@ -1022,10 +1022,10 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
                 <tr>
                   <th>Mitarbeiter</th>
                   <th class="r">Wochenstd.</th>
-                  <th class="r">Soll</th>
+                  <th class="r">Vertragssoll</th>
                   <th class="r">Plan</th>
                   <th class="r">Ist</th>
-                  <th class="r">Ist − Soll</th>
+                  <th class="r">Ist − Vertragssoll</th>
                 </tr>
               </thead>
               <tbody>
@@ -1087,7 +1087,7 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
           'Personalnummer',
           'Name',
           'Wochenstunden',
-          'Soll (Std.)',
+          'Vertragssoll (Std.)',
           'Plan (Std.)',
           'Ist (Std.)',
           'Ist − Soll (Std.)',

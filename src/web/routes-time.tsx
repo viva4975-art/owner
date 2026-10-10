@@ -442,7 +442,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
         </form>
         <div class="kpis">
           <div class="kpi">
-            <div class="l">Soll laut Einsatzplan</div>
+            <div class="l">Plan (Einsatzplan)</div>
             <div class="v">{hm(sollMin)} Std.</div>
             <div class="s">{shifts.length} Einsätze</div>
           </div>
@@ -465,7 +465,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
               <tr>
                 <th>Objekt</th>
                 <th>Mitarbeiter</th>
-                <th>Soll</th>
+                <th>Plan</th>
                 <th>Ist</th>
                 <th class="r">Dauer</th>
                 <th>Status</th>
@@ -1005,7 +1005,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
     return shell(
       c,
       'monat',
-      'Monat Soll/Ist',
+      'Monat Plan/Ist',
       <>
         <form method="get" action="/zeiterfassung/monat" class="actions" style="margin-top:0">
           <input
@@ -1016,7 +1016,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
             onchange="this.form.submit()"
           />
           <span class="mut small">
-            Soll aus dem Einsatzplan (ohne Urlaub/Krank), Ist aus erfassten und freigegebenen Zeiten.
+            Plan aus dem Einsatzplan (ohne Urlaub/Krank), Ist aus erfassten und freigegebenen Zeiten.
             Mindestlohn-Prüfung gegen {euro(s.minWage)}/Std. (
             <a href="/zeiterfassung/einstellungen">ändern</a>).
           </span>
@@ -1026,7 +1026,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
             <thead>
               <tr>
                 <th>Mitarbeiter</th>
-                <th class="r">Soll</th>
+                <th class="r">Plan</th>
                 <th class="r">Ist</th>
                 <th class="r">Differenz</th>
                 <th class="r">fehlende Zeiten</th>
@@ -1222,26 +1222,12 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
   // ------------------------------------------------------------------ Reiter bei Mitarbeiter und Objekt
 
   // Zeiten beim Mitarbeiter: gleiche Ansicht wie Einsatzkalender/Zeiterfassung, standardmäßig als Liste (Ahmed 08.10.)
-  app.get(`/personal/:id{${UUID}}/zeiten`, (c) =>
-    shells.employee!(c, 'zeiten', async (e) => {
-      const d = await employeeCalendarData(sql, e.id, c.req.query(), {
-        defaultView: 'liste',
-        siteScope: c.get('sites'),
-      });
-      return (
-        <EmployeeCalendarView
-          employeeId={e.id}
-          today={todayBerlin()}
-          holiday={holidayName}
-          canEdit
-          canDeleteTime={['admin', 'personal'].includes(c.get('user').role)}
-          base={`/personal/${e.id}/zeiten`}
-          confirmAction="/zeiterfassung/plan-als-ist"
-          {...d}
-        />
-      );
-    }),
-  );
+  // Zeiten und Einsatzkalender sind ein Reiter („Kalender & Zeiten“); alte Links zeigen die Liste
+  app.get(`/personal/:id{${UUID}}/zeiten`, (c) => {
+    const q = new URLSearchParams(c.req.query());
+    if (!q.has('ansicht')) q.set('ansicht', 'liste');
+    return c.redirect(`/personal/${c.req.param('id')}/kalender?${q}`);
+  });
 
   app.get(`/personal/:id{${UUID}}/app-zugang`, (c) =>
     shells.employee!(c, 'app', async (e) => {
@@ -1251,15 +1237,18 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
           <form method="post" action={`/personal/${e.id}/app-zugang`} class="card">
             <h3>PIN für die Handy-Zeiterfassung</h3>
             <p class="small mut" style="margin-top:0">
-              Anmeldung unter <b>/m</b> mit Personalnummer <b>{e.personnel_no}</b> und PIN. Die PIN wird nur
-              verschlüsselt gespeichert und kann nicht angezeigt werden – bei „vergessen“ einfach neu setzen.
-              Nach 5 Fehlversuchen ist der Zugang 15 Minuten gesperrt; neu setzen entsperrt sofort.
+              Anmeldung in der App bzw. unter <b>app.viva-deluxe-reinigung.de/app</b> mit Personalnummer{' '}
+              <b>{e.personnel_no}</b> und PIN. Die PIN wird nur verschlüsselt gespeichert und kann nicht
+              angezeigt werden – bei „vergessen“ einfach neu setzen. Nach 5 Fehlversuchen ist der Zugang 15
+              Minuten gesperrt; neu setzen entsperrt sofort.
             </p>
-            <p class="small" style="background:var(--warn-50,#fffaeb);padding:8px 10px;border-radius:6px">
-              <b>Ohne eigene PIN:</b> Geburtsdatum als <b>TTMMJJ</b> (z. B. 15.03.1985 → 150385), sobald es in
-              den Stammdaten steht. Hinweis: Kollegen kennen oft Personalnummer und Geburtstag – wer sicher
-              gehen will, setzt hier eine eigene PIN.
-            </p>
+            {!pin && (
+              <p class="small" style="background:var(--warn-50,#fffaeb);padding:8px 10px;border-radius:6px">
+                <b>Ohne eigene PIN:</b> Geburtsdatum als <b>TTMMJJ</b> (z. B. 15.03.1985 → 150385), sobald es
+                in den Stammdaten steht. Hinweis: Kollegen kennen oft Personalnummer und Geburtstag – wer
+                sicher gehen will, setzt hier eine eigene PIN.
+              </p>
+            )}
             <p>
               Status:{' '}
               {!pin ? (
@@ -1267,7 +1256,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
               ) : pin.locked ? (
                 <span class="badge err">gesperrt</span>
               ) : (
-                <span class="badge ok">aktiv</span>
+                <span class="badge ok">eigene PIN gesetzt</span>
               )}
             </p>
             <label for="pin">Neue PIN (4–6 Ziffern)</label>

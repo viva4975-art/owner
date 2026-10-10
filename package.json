@@ -46,7 +46,8 @@
     "e2e:kasse": "node e2e/kasse.e2e.mjs",
     "e2e:runde10": "node e2e/runde10.e2e.mjs",
     "e2e:login": "node e2e/login.e2e.mjs",
-    "check:seiten": "node e2e/seiten-check.mjs"
+    "check:seiten": "node e2e/seiten-check.mjs",
+    "check:alles": "./scripts/check-alles.sh"
   },
   "repository": {
     "type": "git",

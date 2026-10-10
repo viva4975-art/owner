@@ -672,9 +672,9 @@ export const EmployeeCalendarView: FC<{
             </div>
           </div>
           <div class="cmp">
-            <h4>Soll / Ist</h4>
+            <h4>Plan / Ist</h4>
             <div class="lbl">
-              <span>Soll (geplant)</span>
+              <span>Plan (Einsätze)</span>
               <b>{hm(plannedMin)} Std.</b>
             </div>
             <div class="bar">

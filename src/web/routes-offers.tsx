@@ -1,3 +1,4 @@
+import type { Cents, Quantity } from '../domain/money/money.js';
 import { randomUUID } from 'node:crypto';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { getTender, linkOffer } from '../services/tenders.js';
@@ -13,7 +14,8 @@ import {
   listOffers,
   offerInvoices,
   offerToInvoiceDraft,
-  offerContact,
+  offerContactFull,
+  offerSplitTotals,
   offerStats,
   OFFER_PERIODS,
   type OfferPeriod,
@@ -273,7 +275,8 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
         select at, actor, action, details from app.audit_log where entity = 'offer' and entity_id = ${id} order by at desc limit 30`,
       offerInvoices(sql, id),
     ]);
-    const contact = await offerContact(sql, o.created_by);
+    const contactFull = await offerContactFull(sql, o.created_by);
+    const contact = contactFull.name;
     const [predecessor] = o.predecessor_id
       ? await sql<
           { id: string; number: string }[]
@@ -305,6 +308,16 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
         invoices={invoices}
         today={todayBerlin()}
         contact={contact}
+        contactPhone={contactFull.phone}
+        contactEmail={contactFull.email}
+        split={offerSplitTotals(lines, (i) => ({
+          description: lines[i]!.description,
+          detail: null,
+          quantity: lines[i]!.quantity_milli as Quantity,
+          unitCode: lines[i]!.unit_code,
+          unitPrice: lines[i]!.unit_price_cents as Cents,
+          vatRate: lines[i]!.vat_rate_bp,
+        }))}
         related={{ predecessor: predecessor ?? null, successor: successor ?? null }}
       />,
     );

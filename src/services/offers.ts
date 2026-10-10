@@ -379,9 +379,37 @@ export const OFFER_CLOSING_DEFAULT =
 
 /** Ansprechpartner = Anzeigename des Benutzers, der das Angebot angelegt hat (sonst Anmeldename). */
 export async function offerContact(sql: Sql, login: string): Promise<string> {
-  const [p] = await sql<{ name: string | null }[]>`
-    select p.display_name as name from app.user_accounts a join app.profiles p on p.user_id = a.id where a.login = ${login}`;
-  return p?.name || login;
+  return (await offerContactFull(sql, login)).name;
+}
+
+/** Ansprechpartner mit Telefon und E-Mail (Profil, sonst Mitarbeiter gleichen Namens – View manager_contacts). */
+export async function offerContactFull(
+  sql: Sql,
+  login: string,
+): Promise<{ name: string; phone: string | null; email: string | null }> {
+  const [p] = await sql<{ name: string | null; phone: string | null; email: string | null }[]>`
+    select p.display_name as name, mc.phone, mc.email
+      from app.user_accounts a join app.profiles p on p.user_id = a.id
+      left join app.manager_contacts mc on mc.user_id = a.id
+     where a.login = ${login}`;
+  return { name: p?.name || login, phone: p?.phone || null, email: p?.email || null };
+}
+
+/** Summen getrennt nach monatlich wiederkehrend und einmalig (ohne Alternativpositionen). */
+export function offerSplitTotals(
+  lines: { recurring: boolean; alternative: boolean }[],
+  toLine: (i: number) => Parameters<typeof calculateDraft>[0][number],
+): { label: string; net: bigint; vat: bigint; gross: bigint }[] | null {
+  const idx = lines.map((l, i) => ({ l, i })).filter((x) => !x.l.alternative);
+  const rec = idx.filter((x) => x.l.recurring).map((x) => toLine(x.i));
+  const once = idx.filter((x) => !x.l.recurring).map((x) => toLine(x.i));
+  if (!rec.length || !once.length) return null;
+  const r = calculateDraft(rec);
+  const o = calculateDraft(once);
+  return [
+    { label: 'Monatlich', net: r.net, vat: r.vat, gross: r.gross },
+    { label: 'Einmalig', net: o.net, vat: o.vat, gross: o.gross },
+  ];
 }
 
 export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8Array; filename: string }> {
@@ -433,15 +461,17 @@ export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8
     prepayments: [],
     skonto: null,
   };
+  const contact = await offerContactFull(sql, o.created_by);
+  const split = offerSplitTotals(lines, (i) => toLine(lines[i]!));
   const info: [string, string][] = [
     ['Angebotsdatum', formatDateDe(o.offer_date)],
     ['Kundennummer', buyer.customerNo],
-    ['Ansprechpartner', clipInfo(await offerContact(sql, o.created_by))],
+    ['Ansprechpartner', clipInfo(contact.name)],
   ];
   if (o.valid_until) info.push(['Gültig bis', formatDateDe(o.valid_until)]);
   if (o.tender_reference) info.push(['Vergabe-Nr.', o.tender_reference]);
   const monthly =
-    o.monthly_net_cents > 0n
+    o.monthly_net_cents > 0n && !split
       ? ` Davon monatlich wiederkehrend: ${(Number(o.monthly_net_cents) / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })} netto.`
       : '';
   const [site] = o.site_id
@@ -475,9 +505,19 @@ export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8
         ? `Dieses Angebot ist gültig bis zum ${formatDateDe(o.valid_until)}.`
         : 'Dieses Angebot ist 30 Tage gültig.') +
       monthly +
-      ' Es gelten unsere Allgemeinen Geschäftsbedingungen.',
+      ' Es gelten unsere Allgemeinen Geschäftsbedingungen.' +
+      (contact.phone || contact.email
+        ? `\nIhr Ansprechpartner: ${[
+            contact.name,
+            contact.phone ? `Tel. ${contact.phone}` : null,
+            contact.email,
+          ]
+            .filter(Boolean)
+            .join(' · ')}`
+        : ''),
     closing: o.closing_text ?? OFFER_CLOSING_DEFAULT,
     qr: false,
+    ...(split ? { totalsSplit: split } : {}),
     // Angebot wie Fortytools: Pauschalen mit Einheit „psch.“ (ausgeschrieben überlappte es lange Preise)
     units: { LS: 'psch.', MON: 'Monat' },
     ...(o.status === 'entwurf' ? { watermark: 'ENTWURF' } : {}),

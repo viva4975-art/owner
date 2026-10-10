@@ -442,6 +442,8 @@ export async function renderInvoicePdf(
     qr?: boolean;
     /** abweichende Einheiten-Texte (z. B. Angebot: LS → „pauschal“) */
     units?: Record<string, string>;
+    /** Summen getrennt ausweisen (Angebot: monatlich wiederkehrend / einmalig) statt einer Gesamtsumme */
+    totalsSplit?: { label: string; net: bigint; vat: bigint; gross: bigint }[];
   } = {},
 ): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
@@ -726,20 +728,36 @@ export async function renderInvoicePdf(
     ]);
   }
   const prepay = doc.prepayments.length > 0;
-  w.ensure(19.6 * (sumRows.length + 1) + (prepay ? 19.6 * (doc.prepayments.length + 1) : 0) + 10);
-  w.y += 2;
-  for (const [k, v] of sumRows) {
-    w.right(k, COL.price, w.y);
-    w.right(v, COL.total, w.y);
-    w.y += 19.6;
-  }
   const pill = (label: string, value: string) => {
     w.rect(COL.total - w.width(value) - 12, w.y - 12.2, w.width(value) + 30, 17.5, PILL, 8.5);
     w.right(label, COL.price, w.y);
     w.right(value, COL.total, w.y);
     w.y += 19.6;
   };
-  pill('Gesamtbetrag', eur(doc.grossTotal));
+  if (opts.totalsSplit?.length) {
+    // z. B. Angebot: monatliche Pauschale und einmalige Leistungen nicht zusammenzählen
+    w.ensure(19.6 * 4 * opts.totalsSplit.length + 10);
+    w.y += 2;
+    for (const t of opts.totalsSplit) {
+      w.right(`${t.label} netto`, COL.price, w.y, 8.5, { bold: true });
+      w.right(eur(t.net as Cents), COL.total, w.y);
+      w.y += 17;
+      w.right(rc ? 'Umsatzsteuer (§ 13b UStG)' : 'zzgl. MwSt (19%)', COL.price, w.y);
+      w.right(eur(t.vat as Cents), COL.total, w.y);
+      w.y += 19.6;
+      pill(`${t.label} brutto`, eur(t.gross as Cents));
+      w.y += 4;
+    }
+  } else {
+    w.ensure(19.6 * (sumRows.length + 1) + (prepay ? 19.6 * (doc.prepayments.length + 1) : 0) + 10);
+    w.y += 2;
+    for (const [k, v] of sumRows) {
+      w.right(k, COL.price, w.y);
+      w.right(v, COL.total, w.y);
+      w.y += 19.6;
+    }
+    pill('Gesamtbetrag', eur(doc.grossTotal));
+  }
   if (prepay) {
     for (const p of doc.prepayments) {
       w.right(

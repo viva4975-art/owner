@@ -152,7 +152,7 @@ const de: Dict = {
   sum_sick: 'Krank',
   sum_unpaid: 'Unbezahlt',
   sum_paid: 'Bezahlt gesamt',
-  sum_plan: 'Soll',
+  sum_plan: 'Geplant',
   e_sheet_open:
     'Es gibt noch offene Zeiten (laufende Stempelung oder Nachtrag in Prüfung). Bitte zuerst klären.',
   e_sheet_month: 'Unterschreiben geht erst ab dem letzten Tag des Monats.',

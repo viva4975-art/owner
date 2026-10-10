@@ -43,8 +43,29 @@ export function registerTimeAccountRoutes({ app, deps, page, back }: Ctx) {
     const month = monthOf(c.req.query('monat'));
     const q = (c.req.query('q') ?? '').toLowerCase();
     const [{ rows, start }, bookings] = await Promise.all([timeAccount(sql, month), listBookings(sql)]);
-    const list = rows.filter((r) => !q || r.name.toLowerCase().includes(q) || r.personnel_no.includes(q));
-    const warn = list.filter((r) => r.warn).length;
+    const filter = c.req.query('zeigen') ?? 'abweichung';
+    const isCurrent = month === todayBerlin().slice(0, 7);
+    const off = (r: (typeof rows)[number]) => r.saldo != null && Math.abs(r.saldo) >= 30;
+    const noTimes = (r: (typeof rows)[number]) => r.worked + r.paidAbsence === 0;
+    const searched = rows.filter((r) => !q || r.name.toLowerCase().includes(q) || r.personnel_no.includes(q));
+    const counts = {
+      abweichung: searched.filter((r) => off(r) && !noTimes(r)).length,
+      ueber50: searched.filter((r) => r.warn).length,
+      ohne: searched.filter(noTimes).length,
+      alle: searched.length,
+    };
+    const list = searched.filter((r) =>
+      filter === 'alle'
+        ? true
+        : filter === 'ueber50'
+          ? r.warn
+          : filter === 'ohne'
+            ? noTimes(r)
+            : off(r) && !noTimes(r),
+    );
+    const warn = counts.ueber50;
+    const qs = (z: string) =>
+      `/zeiterfassung/arbeitszeitkonto?monat=${month}&zeigen=${z}${q ? `&q=${encodeURIComponent(q)}` : ''}`;
     return page(
       c,
       'Arbeitszeitkonto',
@@ -53,6 +74,7 @@ export function registerTimeAccountRoutes({ app, deps, page, back }: Ctx) {
         <PageHead title="Arbeitszeitkonto" crumbs={[['Zeiterfassung', '/zeiterfassung']]} />
         <form method="get" class="actions" style="margin-top:0">
           <input type="month" name="monat" value={month} style="max-width:170px" />
+          <input type="hidden" name="zeigen" value={filter} />
           <input
             name="q"
             value={c.req.query('q') ?? ''}
@@ -64,13 +86,92 @@ export function registerTimeAccountRoutes({ app, deps, page, back }: Ctx) {
             CSV
           </a>
           <span class="small mut" style="margin-left:auto">
-            Kontostand ab {start.slice(5)}/{start.slice(0, 4)} (Startmonat unten änderbar)
+            Kontostand ab {start.slice(5)}/{start.slice(0, 4)}
           </span>
         </form>
+        <div class="actions" style="margin-top:0">
+          <details class="card" style="margin:0;flex:1 1 420px">
+            <summary>
+              <b>+ Buchung erfassen</b>{' '}
+              <span class="small mut">(Startsaldo, Auszahlung, Freizeitausgleich, Korrektur)</span>
+            </summary>
+            <form method="post" action="/zeiterfassung/arbeitszeitkonto/buchung">
+              <input type="hidden" name="id" value={randomUUID()} />
+              <div class="grid">
+                <div>
+                  <label for="emp">Mitarbeiter</label>
+                  <select id="emp" name="employee_id" required>
+                    <option value="">– wählen –</option>
+                    {rows.map((r) => (
+                      <option value={r.employee_id}>
+                        {r.personnel_no} · {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label for="kind">Art</label>
+                  <select id="kind" name="kind">
+                    {(Object.keys(BOOKING_KIND) as BookingKind[]).map((k) => (
+                      <option value={k}>{BOOKING_KIND[k]}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label for="bmonth">Monat</label>
+                  <input id="bmonth" type="month" name="monat" value={month} required />
+                </div>
+                <div>
+                  <label for="hours">Stunden (+/−, z. B. -8 oder 12:30)</label>
+                  <input id="hours" name="hours" required />
+                </div>
+                <div>
+                  <label for="note">Begründung</label>
+                  <input id="note" name="note" required placeholder="z. B. Auszahlung mit Lohn Oktober" />
+                </div>
+              </div>
+              <div class="actions form-foot">
+                <button class="btn">Buchen</button>
+                <span class="small mut">
+                  Buchungen sind nicht änderbar – Fehler mit einer Gegenbuchung (Korrektur) ausgleichen.
+                </span>
+              </div>
+            </form>
+          </details>
+          <details class="card" style="margin:0;flex:0 1 380px">
+            <summary>
+              <b>Startmonat</b> <span class="small mut">(Konto zählt ab …)</span>
+            </summary>
+            <form method="post" action="/zeiterfassung/arbeitszeitkonto/start" class="actions">
+              <label class="small" for="start" style="margin:0">
+                Konto zählt ab
+              </label>
+              <input id="start" type="month" name="start" value={start} style="max-width:170px" />
+              <button class="btn sec sm">Startmonat speichern</button>
+              <span class="small mut">
+                Ältere Stände als Startsaldo buchen (z. B. Übernahme aus Fortytools/Lexware).
+              </span>
+            </form>
+          </details>
+        </div>
+        <div class="chips" style="margin:6px 0 10px">
+          {(
+            [
+              ['abweichung', 'mit Abweichung (± 0:30)'],
+              ['ueber50', 'über 50 % (MiLoG)'],
+              ['ohne', 'ohne erfasste Zeit'],
+              ['alle', 'alle'],
+            ] as const
+          ).map(([k, l]) => (
+            <a class={`chip ${filter === k ? 'on' : ''}`} href={qs(k)}>
+              {l} ({counts[k]})
+            </a>
+          ))}
+        </div>
         <div class="flash warn">
           <span>
-            Ist = gearbeitet + bezahlte Abwesenheit (Urlaub, Krank, Sonstige); Soll = Wochenstunden × 4,33 je
-            Monat (anteilig).
+            Ist = gearbeitet + bezahlte Abwesenheit (Urlaub, Krank, Sonstige); Vertragssoll = Wochenstunden ×
+            4,33 je Monat (anteilig{isCurrent ? ', im laufenden Monat nur bis heute' : ''}).
             <b> § 2 Abs. 2 MiLoG:</b> Plusstunden höchstens 50 % der vereinbarten Monatsarbeitszeit und
             innerhalb von 12 Monaten ausgleichen (Freizeit oder Auszahlung).
             {warn ? ` ${warn} Mitarbeitende liegen darüber (rot).` : ''}
@@ -83,7 +184,7 @@ export function registerTimeAccountRoutes({ app, deps, page, back }: Ctx) {
                 <tr>
                   <th>Pers.-Nr.</th>
                   <th>Name</th>
-                  <th class="r">Soll</th>
+                  <th class="r">Vertragssoll</th>
                   <th class="r">gearbeitet</th>
                   <th class="r">bez. Abwesenheit</th>
                   <th class="r">Ist</th>
@@ -119,7 +220,7 @@ export function registerTimeAccountRoutes({ app, deps, page, back }: Ctx) {
                 {list.length === 0 && (
                   <tr>
                     <td colspan={9}>
-                      <div class="empty">Keine Mitarbeitenden im Monat.</div>
+                      <div class="empty">Keine Mitarbeitenden für diese Auswahl.</div>
                     </td>
                   </tr>
                 )}
@@ -127,49 +228,6 @@ export function registerTimeAccountRoutes({ app, deps, page, back }: Ctx) {
             </table>
           </div>
         </div>
-        <form method="post" action="/zeiterfassung/arbeitszeitkonto/buchung" class="card">
-          <h3 style="margin-top:0">Buchung erfassen</h3>
-          <input type="hidden" name="id" value={randomUUID()} />
-          <div class="grid">
-            <div>
-              <label for="emp">Mitarbeiter</label>
-              <select id="emp" name="employee_id" required>
-                <option value="">– wählen –</option>
-                {rows.map((r) => (
-                  <option value={r.employee_id}>
-                    {r.personnel_no} · {r.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label for="kind">Art</label>
-              <select id="kind" name="kind">
-                {(Object.keys(BOOKING_KIND) as BookingKind[]).map((k) => (
-                  <option value={k}>{BOOKING_KIND[k]}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label for="bmonth">Monat</label>
-              <input id="bmonth" type="month" name="monat" value={month} required />
-            </div>
-            <div>
-              <label for="hours">Stunden (+/−, z. B. -8 oder 12:30)</label>
-              <input id="hours" name="hours" required />
-            </div>
-            <div>
-              <label for="note">Begründung</label>
-              <input id="note" name="note" required placeholder="z. B. Auszahlung mit Lohn Oktober" />
-            </div>
-          </div>
-          <div class="actions form-foot">
-            <button class="btn">Buchen</button>
-            <span class="small mut">
-              Buchungen sind nicht änderbar – Fehler mit einer Gegenbuchung (Korrektur) ausgleichen.
-            </span>
-          </div>
-        </form>
         {bookings.length > 0 && (
           <details class="card">
             <summary>
@@ -191,16 +249,6 @@ export function registerTimeAccountRoutes({ app, deps, page, back }: Ctx) {
             </ul>
           </details>
         )}
-        <form method="post" action="/zeiterfassung/arbeitszeitkonto/start" class="actions">
-          <label class="small" for="start" style="margin:0">
-            Konto zählt ab
-          </label>
-          <input id="start" type="month" name="start" value={start} style="max-width:170px" />
-          <button class="btn sec sm">Startmonat speichern</button>
-          <span class="small mut">
-            Ältere Stände als Startsaldo buchen (z. B. Übernahme aus Fortytools/Lexware).
-          </span>
-        </form>
       </>,
     );
   });
@@ -213,7 +261,7 @@ export function registerTimeAccountRoutes({ app, deps, page, back }: Ctx) {
       [
         'Personalnummer',
         'Name',
-        'Soll Std.',
+        'Vertragssoll Std.',
         'gearbeitet Std.',
         'bez. Abwesenheit Std.',
         'Ist Std.',

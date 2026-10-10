@@ -2178,3 +2178,30 @@ Testadresse.
     „Plan“ einheitlich benennen; CSV Lohnprogramm als bewusster Export mit Rückfrage; Serie „gilt ab Datum“ ändern;
     Mitarbeiter-Kopf aufräumen (Handy-Zugang/Übergaben sichtbar, Zeiten + Kalender zusammen); Staatsangehörigkeit als
     Länderliste; Monatsabschluss auch unter Personal; Entwurf-Knopfreihenfolge, Korrektur zeigt Originalpositionen.
+- 2026-10-10: Runde 35 (Ahmed, Antworten auf die Vorschlagslisten):
+  - **Staatsangehörigkeit als Länderliste** (Mitarbeiter-Formular, suchbar): Gruppen „EU / EWR / Schweiz – kein
+    Aufenthaltstitel nötig“ und „Andere Staaten – Aufenthaltstitel mit Arbeitserlaubnis nötig“ (`src/domain/hr/lists.ts`).
+    Alte Freitexte („rumänisch“, „Türkei“ …) werden erkannt und vorausgewählt; nicht erkennbare bleiben als „(bisher)“
+    stehen. Die Prüfung „Aufenthaltstitel fehlt“ (Fehlende Unterlagen, Erinnerungen) nutzt die Liste.
+  - **Arbeitszeitkonto:** Vertragssoll im laufenden Monat nur bis heute (vorher stand mitten im Monat jeder im Minus);
+    Filter Abweichungen (Standard, ab 30 Min.) / über 50 % / ohne Zeiten / alle mit Anzahl; Buchung und Startmonat
+    eingeklappt oben.
+  - **Begriffe einheitlich:** „Vertragssoll“ = Wochenstunden × 4,33 (Arbeitszeitkonto, Stundenkontrolle, Dispo-Box),
+    „Plan“ = Summe der eingeplanten Einsätze (Kalender, Stundenliste, Objekt). Soll/Haben in den Offenen Posten bleibt.
+  - **CSV Lohnprogramm** fragt nach (laufender Monat: „Vorab-Abrechnung, Korrektur im Folgemonat“); Monatsabschluss zeigt
+    „CSV exportiert am …“ statt einer offenen Handarbeit.
+  - **Terminserie ab Datum ändern:** Feld „Änderung gilt ab“ (Standard heute): alte Einsätze enden am Vortag, ab dem Datum
+    gilt die neue Fassung (eigene IDs, Zeiten der Vergangenheit bleiben am alten Einsatz; doppelt speichern ändert nichts
+    doppelt). Datum ≤ Serienbeginn = ganze Serie wie bisher (`changeShiftSeriesFrom`).
+  - **Mitarbeiter-Kopf aufgeräumt:** Reiter Übersicht · Kalender & Zeiten (Zeiten und Einsatzkalender zusammen, alte
+    Adresse `/zeiten` leitet um) · Einsätze · Stundenliste · Urlaub & Krank · Dokumente · Übergaben · Handy-Zugang;
+    Notizen/Aufgaben unter „Mehr“. Handy-Zugang: Hinweis „ohne eigene PIN“ nur, wenn keine gesetzt ist.
+  - **Angebot:** Enthält es monatliche und einmalige Positionen, stehen im PDF und in der Briefansicht zwei Summenblöcke
+    („Monatlich netto/brutto“, „Einmalig netto/brutto“) statt einer gemischten Gesamtsumme. Ansprechpartner mit Telefon
+    und E-Mail (Profil, sonst Mitarbeiter gleichen Namens) unter den Bedingungen und in der Briefansicht.
+  - **Beschriftungen:** Browser verknüpft `<label>` ohne `for` mit dem Feld darunter, Felder in Tabellen bekommen die
+    Spaltenüberschrift als Beschriftung (Mahnstufen, Bestell-/Rechnungs-/Angebotspositionen, Nachweise …).
+  - **Prüfskript `npm run check:alles`** (`scripts/check-alles.sh`): Format, Lint, Typen, Unit-/DB-Tests (KoSIT muss
+    laufen), Seiten-Rundgang PC + Handy (App muss laufen). Rundgang endet rot bei Serverfehlern, JS-Fehlern,
+    „undefined/NaN“ im Text oder kaputten PDFs. **Vor jedem größeren Update laufen lassen.**
+  - Nicht gemacht (Ahmed: „unnötig“): Monatsabschluss zusätzlich unter Personal.

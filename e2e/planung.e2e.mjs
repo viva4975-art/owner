@@ -116,7 +116,10 @@ check(
 console.log('4. Einen Tag umplanen');
 const week = p.url();
 await p.locator('.pb-sec').nth(1).locator(`.pb-ev[title*="E2E Serie ${stamp}"]`).first().click();
-check('Detailfenster mit „Vertretung einplanen“', (await p.locator('#ev-dlg a:has-text("Vertretung einplanen")').count()) === 1);
+check(
+  'Detailfenster mit „Vertretung einplanen“',
+  (await p.locator('#ev-dlg a:has-text("Vertretung einplanen")').count()) === 1,
+);
 await p.click('#ev-dlg a:has-text("Umplanen / Ausfall")');
 await p.waitForLoadState();
 check('Tagesseite „Einsatz umplanen“', (await p.locator('h1').innerText()).includes('umplanen'));

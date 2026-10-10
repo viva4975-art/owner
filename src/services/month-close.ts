@@ -79,6 +79,11 @@ export async function monthCloseSteps(sql: Sql, month: string): Promise<CloseSte
     (sv) => monthlyRunLines([toRunService(sv)], month).length && !billed.has(sv.id),
   ).length;
   const expected = (await expectedInvoices(sql)).filter((e) => e.period <= month).length;
+  const payrollExport =
+    (
+      await sql<{ at: Date }[]>`
+        select max(created_at) as at from app.payroll_exports where month = ${month}`
+    )[0]?.at ?? null;
   const steps: CloseStep[] = [
     {
       key: 'running',
@@ -192,9 +197,11 @@ export async function monthCloseSteps(sql: Sql, month: string): Promise<CloseSte
       key: 'payroll',
       group: 'Lohn & Buchhaltung',
       title: 'Lohnarten an das Lohnprogramm',
-      open: 0,
-      manual: true,
-      detail: 'CSV „Lohnarten & Zuschläge“ exportieren und ins Lohnprogramm einlesen',
+      open: payrollExport ? 0 : 1,
+      manual: !payrollExport,
+      detail: payrollExport
+        ? `CSV exportiert am ${payrollExport.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric' })}`
+        : 'CSV „Lohnprogramm“ exportieren und ins Lohnprogramm einlesen',
       href: `/zeiterfassung/stundenzettel?monat=${month}&ansicht=lohnarten`,
     },
     {

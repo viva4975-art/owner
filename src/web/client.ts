@@ -395,6 +395,35 @@ export const CLIENT_JS = String.raw`
     show();
   }
   function fileAll(root) { Array.prototype.forEach.call((root || document).querySelectorAll('input[type=file]'), filePick); }
+  // ---- Beschriftungen mit Feldern verknüpfen (Bildschirmleser, Klick auf die Beschriftung setzt den Cursor) ----
+  // 1) <label> ohne for direkt vor dem Feld im selben Block → for/id; 2) Feld in einer Tabelle ohne eigene Beschriftung →
+  // aria-label aus der Spaltenüberschrift; 3) sonst Text des umgebenden Blocks.
+  var lblN = 0;
+  function labelFix(el) {
+    if (el.type === 'hidden' || el.getAttribute('aria-label') || el.closest('label')) return;
+    if (el.id && document.querySelector('label[for="' + CSS.escape(el.id) + '"]')) return;
+    var p = el.parentElement;
+    var lab = p && Array.prototype.find.call(p.children, function (c) { return c.tagName === 'LABEL' && !c.htmlFor; });
+    if (lab && lab.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) {
+      if (!el.id) el.id = 'fld' + (++lblN);
+      lab.htmlFor = el.id;
+      return;
+    }
+    var td = el.closest('td');
+    var table = td && td.closest('table');
+    if (td && table) {
+      var idx = Array.prototype.indexOf.call(td.parentElement.children, td);
+      var row = table.tHead && table.tHead.rows[table.tHead.rows.length - 1];
+      var th = row && row.cells[idx];
+      var t = th && (th.innerText || th.textContent || '').trim();
+      if (t) { el.setAttribute('aria-label', t); return; }
+    }
+    if (el.getAttribute('placeholder') || el.getAttribute('title')) return;
+    var box = el.closest('div,p,td');
+    var txt = box ? (box.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 60) : '';
+    if (txt) el.setAttribute('aria-label', txt);
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('input,select,textarea'), labelFix);
   fileAll();
   window.addEventListener('pageshow', function () { Array.prototype.forEach.call(document.querySelectorAll('input[data-fp]'), function (i) { i.dispatchEvent(new Event('change')); }); });
   window.addEventListener('pageshow', function () { Array.prototype.forEach.call(document.querySelectorAll('input[data-mp=done]'), function (i) { if (i._mpSync) i._mpSync(); }); });

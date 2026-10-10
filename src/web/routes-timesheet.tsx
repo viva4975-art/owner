@@ -76,10 +76,10 @@ export function sheetTableHtml(s: Timesheet): string {
     })
     .join('');
   const t = s.totals;
-  return `<table class="ts"><thead><tr><th>Tag</th><th>Objekt</th><th>Soll</th><th class="r">Std.</th><th>Beginn</th><th>Ende</th><th>Pause von–bis</th><th class="r">Min.</th><th class="r">Arbeitszeit</th><th>Abwesenheit</th><th>Hinweis</th></tr></thead>
+  return `<table class="ts"><thead><tr><th>Tag</th><th>Objekt</th><th>Plan</th><th class="r">Std.</th><th>Beginn</th><th>Ende</th><th>Pause von–bis</th><th class="r">Min.</th><th class="r">Arbeitszeit</th><th>Abwesenheit</th><th>Hinweis</th></tr></thead>
 <tbody>${body || '<tr><td colspan="11" class="ts-empty">Keine Einsätze, Zeiten oder Abwesenheiten in diesem Monat.</td></tr>'}</tbody></table>
 <table class="ts-sum"><tbody>
-<tr><td>Soll (geplant)</td><td class="r">${hm(t.plan)}</td><td>Gearbeitet (netto)</td><td class="r"><b>${hm(t.work)}</b></td><td>Pausen</td><td class="r">${hm(t.breaks)}</td></tr>
+<tr><td>Plan (Einsätze)</td><td class="r">${hm(t.plan)}</td><td>Gearbeitet (netto)</td><td class="r"><b>${hm(t.work)}</b></td><td>Pausen</td><td class="r">${hm(t.breaks)}</td></tr>
 <tr><td>Urlaub</td><td class="r">${hm(t.vacation)}</td><td>Krank</td><td class="r">${hm(t.sick)}</td><td>Sonstige bezahlt</td><td class="r">${hm(t.otherPaid)}</td></tr>
 <tr><td>Unbezahlt</td><td class="r">${hm(t.unpaid)}</td><td><b>Bezahlte Stunden gesamt</b></td><td class="r"><b>${hm(t.paid)}</b></td><td>Differenz zum Soll</td><td class="r">${t.diff > 0 ? '+' : ''}${hm(t.diff)}</td></tr>
 </tbody></table>`;
@@ -485,7 +485,16 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
               <a class="btn sm sec" href={`/zeiterfassung/stundenzettel.csv?${d.qs()}`} data-export>
                 CSV Übersicht
               </a>
-              <a class="btn sm" href={`/zeiterfassung/lohnarten.csv?${d.qs()}`} data-export>
+              <a
+                class="btn sm"
+                href={`/zeiterfassung/lohnarten.csv?${d.qs()}`}
+                data-export
+                data-confirm={
+                  month >= todayBerlin().slice(0, 7)
+                    ? `Der Monat ${month.slice(5)}/${month.slice(0, 4)} läuft noch. Diesen Stand als Vorab-Abrechnung fürs Lohnprogramm festhalten? Was sich danach noch ändert, kommt im Folgemonat als Korrekturzeile.`
+                    : `Lohnarten ${month.slice(5)}/${month.slice(0, 4)} fürs Lohnprogramm exportieren? Der Stand wird festgehalten; spätere Änderungen erscheinen im Folgemonat als Korrekturzeile.`
+                }
+              >
                 CSV Lohnprogramm
               </a>
             </>
@@ -567,7 +576,7 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                   </th>
                   <th>Pers.-Nr.</th>
                   <th>Mitarbeiter</th>
-                  <th class="r">Soll</th>
+                  <th class="r">Plan</th>
                   <th class="r">Gearbeitet</th>
                   <th class="r">Urlaub</th>
                   <th class="r">Krank</th>
@@ -753,7 +762,7 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
           'Personalnummer',
           'Name',
           'Beschäftigung',
-          'Soll',
+          'Plan',
           'Gearbeitet',
           'Pausen',
           'Urlaub',

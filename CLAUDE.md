@@ -105,7 +105,7 @@ Testadresse.
 - [ ] Ausfallmeldung: UptimeRobot (`/health/voll`) und healthchecks.io (`BACKUP_PING_URL`) einrichten, `ALERT_EMAIL` in
       `.env.live` – Anleitung `docs/anleitung-ueberwachung.pdf`
 - [x] IONOS VPS (4 vCores/8 GB, Ubuntu 24.04, 217.160.236.117) installiert, läuft unter https://app.viva-deluxe-reinigung.de
-- [ ] AVV mit IONOS; IONOS Cloud Backup (Sicherung außerhalb des Servers); root-Passwort ändern und ersten GitHub-Token
+- [ ] AVV mit IONOS; IONOS Cloud Backup (Sicherung außerhalb des Servers – Anleitung `docs/anleitung-cloud-backup.pdf`); root-Passwort ändern und ersten GitHub-Token
       löschen (beide standen im Chat); SMTP-Zugang nachtragen (`.env.live`)
 - [ ] Lexware-Lohnprogramm (genaue Bezeichnung, Importformat)
 - [ ] Fortytools: eine Rechnungsgruppe von innen zeigen (dort stecken vermutlich die Preise je Objekt)
@@ -2420,3 +2420,8 @@ Testadresse.
 - 2026-10-10: **Ausgaben vor Juli fehlen** (Ahmed): Der Bankabruf holt beim ersten Mal nur 90 Tage (ab ~Mitte Juli). Neu unter
   Einstellungen → Bankabruf: **„Ältere Umsätze nachladen ab <Datum>“** (Standard 01.01.), nichts doppelt. Viele Banken geben
   > 90 Tage nur kurz nach einer neuen TAN-Freigabe heraus (PSD2) – sonst Kontoauszug als CAMT/CSV einlesen.
+- 2026-10-11: **Anleitung IONOS Cloud Backup** (`docs/anleitung-cloud-backup.html/.pdf`): Agent (1,2 GB) direkt auf dem Server
+  laden (wget) bzw. per scp, Installation mit Token, Schutzplan „Viva täglich“ 04:00 (nach der App-Sicherung 02:30) mit
+  `/opt/viva-sicherung` (ohne `dateien_*.tar.gz` – täglich komplett neu, würde den Speicher füllen), Docker-Speicher
+  `deploy_daten/_data` (inkrementell) und `.env.live`, verschlüsselt, 30 Tage; Test-Wiederherstellung mit `pg_restore --list`,
+  Ernstfall-Ablauf, Störungen.

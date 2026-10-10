@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<title>IONOS Cloud Backup einrichten</title>
+<style>
+  body{font-family:Inter,Arial,sans-serif;color:#1d1d1f;max-width:820px;margin:28px auto;padding:0 18px;line-height:1.5;font-size:13.5px}
+  h1{color:#7D1435;font-size:23px;margin-bottom:4px}
+  h2{color:#7D1435;font-size:16px;margin:24px 0 8px;border-bottom:2px solid #f0dbe2;padding-bottom:4px}
+  h3{font-size:14px;margin:14px 0 4px}
+  .sub{color:#666;margin-top:0}
+  code{background:#f4eef0;padding:1px 5px;border-radius:4px}
+  pre{background:#1e1e22;color:#f2f2f2;padding:10px 13px;border-radius:6px;overflow-x:auto;font-size:12.5px;line-height:1.45}
+  pre code{background:none;padding:0;color:inherit}
+  .c{color:#8fd18f}
+  .box{background:#fff7e0;border:1px solid #e9c46a;border-radius:6px;padding:9px 13px;margin:10px 0}
+  .red{background:#fdecec;border-color:#e3a0a0}
+  .ok{background:#eef7ee;border-color:#9cc79c}
+  table{border-collapse:collapse;width:100%;margin:8px 0}
+  td,th{border:1px solid #ddd;padding:5px 8px;text-align:left;vertical-align:top}
+  th{background:#f6f2f3}
+  ol li,ul li{margin-bottom:5px}
+  .n{display:inline-block;background:#7D1435;color:#fff;border-radius:50%;width:22px;height:22px;text-align:center;line-height:22px;font-weight:700;margin-right:6px}
+  .chk li{list-style:none}
+  .chk li:before{content:"☐ ";font-size:15px}
+  @media print{h2{break-after:avoid}.box,pre,table{break-inside:avoid}}
+</style>
+</head>
+<body>
+<h1>IONOS Cloud Backup einrichten</h1>
+<p class="sub">Viva-Deluxe Betriebs-App · Sicherung außerhalb des Servers · Stand 11.10.2026 · Dauer ca. 45 Minuten</p>
+
+<div class="box ok"><b>Worum geht es?</b> Die App sichert sich jede Nacht um 02:30 selbst nach
+<code>/opt/viva-sicherung</code> (Datenbank + alle Dateien). Diese Sicherung liegt aber <b>auf demselben Server</b>. Fällt der Server
+aus, wird gehackt oder versehentlich gelöscht, ist auch die Sicherung weg. IONOS Cloud Backup (Acronis Cyber Protect)
+kopiert die Sicherung jede Nacht in ein Rechenzentrum <b>außerhalb des Servers</b>.</div>
+
+<table>
+  <tr><th style="width:34%">Was</th><th>Wo auf dem Server</th><th style="width:18%">Wie oft geändert</th></tr>
+  <tr><td>Datenbank (alle Kunden, Rechnungen, Zeiten …)</td><td><code>/opt/viva-sicherung/datenbank_*.dump</code></td><td>täglich neu</td></tr>
+  <tr><td>Dateien (Belege, PDFs, Uploads, Archiv)</td><td>Docker-Speicher <code>…/volumes/deploy_daten/_data</code> (Schritt 6)</td><td>nur neue kommen dazu</td></tr>
+  <tr><td>Zugangsdaten der App</td><td><code>/opt/viva/deploy/.env.live</code></td><td>selten</td></tr>
+</table>
+<p>Die Dateien sichern wir direkt aus dem Docker-Speicher statt aus den täglichen <code>dateien_*.tar.gz</code>: Die ZIP-Pakete
+sind jeden Tag komplett neu und würden den Cloud-Speicher (z. B. Starter 100 = 100 GB) in wenigen Wochen füllen. Direkt
+gesichert überträgt Acronis nach dem ersten Mal nur noch die neuen Dateien.</p>
+
+<div class="box red"><b>Niemals in den Chat schicken:</b> Registrierungstoken, Verschlüsselungs-Passwort der Sicherung, root-Passwort.
+Das Verschlüsselungs-Passwort <b>ausdrucken und in den Tresor legen</b> – ohne es ist die Sicherung wertlos, IONOS kann es nicht
+wiederherstellen.</div>
+
+<h2><span class="n">1</span>Backup-Konsole öffnen</h2>
+<ol>
+  <li>IONOS-Kundenkonto → <b>Server &amp; Cloud</b> → <b>Cloud Backup</b> → beim gebuchten Paket „<b>Backup-Konsole öffnen</b>“
+    (Rechenzentrum <b>Europa</b>, nicht USA – Datenschutz).</li>
+  <li>Es öffnet sich die Acronis-Oberfläche „Cyber Protect“. Die Adresse oben im Browser merken (z. B. <code>https://eu2-cloud.acronis.com</code>
+    – wird ggf. bei der Installation abgefragt).</li>
+</ol>
+
+<h2><span class="n">2</span>Download-Link und Registrierungstoken holen</h2>
+<ol>
+  <li>In der Konsole: <b>Geräte</b> → <b>Hinzufügen</b> (oben rechts, „+ Gerät hinzufügen“).</li>
+  <li>Unter „Server“ <b>Linux</b> wählen. Die Datei <code>CyberProtect_AgentForLinux_x86_64.bin</code> (ca. 1,2 GB) <b>nicht</b> auf den
+    PC laden, sondern: <b>Rechtsklick auf den Link → „Link-Adresse kopieren“</b>. Den Link in eine Notiz einfügen.
+    <br><i>Hast du die Datei schon auf dem PC? Dann Schritt 4 Weg B.</i></li>
+  <li>Auf derselben Seite unten: <b>„Registrierungstoken erzeugen“</b> (bzw. „Über Registrierungstoken registrieren“) →
+    Gültigkeit z. B. 1 Tag → <b>Erzeugen</b> → Token kopieren (Form <code>XXXX-XXXX-XXXX</code>). In die Notiz einfügen.</li>
+</ol>
+
+<h2><span class="n">3</span>Server vorbereiten</h2>
+<p>Mit dem Server verbinden wie in <code>docs/anleitung-server.pdf</code> (Windows: PowerShell <code>ssh root@217.160.236.117</code>,
+oder IONOS-KVM-Konsole). Dann nacheinander eingeben:</p>
+<pre><code>df -h /root                         <span class="c"># Spalte „Verf.“/„Avail“: mindestens 4 GB frei?</span>
+apt update
+apt install -y dkms gcc make perl linux-headers-$(uname -r)</code></pre>
+<p>Die letzte Zeile installiert Werkzeuge, mit denen der Agent sein Kernel-Modul („SnapAPI“) bauen kann. Dauert 1–3 Minuten.
+Meldet sie „Unable to locate package linux-headers-…“: macht nichts, weiter (siehe Störungen unten).</p>
+
+<h2><span class="n">4</span>Agent auf den Server bringen</h2>
+<h3>Weg A (empfohlen): Server lädt selbst herunter</h3>
+<pre><code>cd /root
+wget -O agent.bin "HIER-DEN-KOPIERTEN-LINK-EINFÜGEN"
+ls -lh agent.bin                    <span class="c"># sollte ca. 1,2G zeigen</span></code></pre>
+<p>Den Link <b>in Anführungszeichen</b> einfügen (enthält oft <code>&amp;</code>-Zeichen). Einfügen im Terminal: Rechtsklick bzw.
+Strg+Umschalt+V. In der KVM-Konsole geht Einfügen oft nicht – dann Weg B oder ssh nutzen.</p>
+
+<h3>Weg B: Datei vom PC hochladen</h3>
+<ul>
+  <li><b>Windows:</b> PowerShell im Download-Ordner öffnen und eingeben:<br>
+    <code>scp .\CyberProtect_AgentForLinux_x86_64.bin root@217.160.236.117:/root/agent.bin</code><br>
+    (oder Programm <b>WinSCP</b>: Server 217.160.236.117, Benutzer root, Datei nach <code>/root</code> ziehen und in <code>agent.bin</code> umbenennen)</li>
+  <li><b>Mac:</b> Terminal: <code>scp ~/Downloads/CyberProtect_AgentForLinux_x86_64.bin root@217.160.236.117:/root/agent.bin</code></li>
+</ul>
+<p>Bei 1,2 GB dauert das je nach Leitung 5–30 Minuten.</p>
+
+<h2><span class="n">5</span>Agent installieren</h2>
+<pre><code>cd /root
+chmod +x agent.bin
+./agent.bin</code></pre>
+<p>Es erscheint ein blaues Text-Menü (Bedienung: Pfeiltasten, <b>Leertaste</b> = ankreuzen, <b>Tab</b> = zu den Knöpfen, <b>Enter</b> = weiter):</p>
+<ol>
+  <li><b>Komponenten:</b> „Agent for Linux“ ist angekreuzt → <b>Weiter</b>. Sonst nichts ankreuzen.</li>
+  <li>Der Installer prüft/baut das SnapAPI-Modul (dauert etwas). Fragt er, ob er fehlende Pakete installieren soll → <b>Ja</b>.</li>
+  <li><b>Registrierung:</b> „Mit Registrierungstoken registrieren“ (bzw. „Use registration token“) wählen.
+    <ul>
+      <li>Serveradresse: die Adresse aus Schritt 1 (z. B. <code>https://eu2-cloud.acronis.com</code>), falls gefragt.</li>
+      <li>Token aus Schritt 2 eintippen.</li>
+    </ul></li>
+  <li>„Installation erfolgreich“ → <b>Beenden</b>.</li>
+</ol>
+<p>Prüfen und aufräumen:</p>
+<pre><code>systemctl status acronis_mms --no-pager | head -5   <span class="c"># „active (running)“</span>
+rm /root/agent.bin                                 <span class="c"># gibt 1,2 GB frei</span></code></pre>
+<p>In der Konsole unter <b>Geräte</b> erscheint nach 1–3 Minuten der Server (Name z. B. <code>ubuntu</code> oder die IONOS-Kennung)
+mit grünem Punkt. Optional umbenennen in „Viva App-Server“.</p>
+
+<h2><span class="n">6</span>Pfad des Datei-Speichers herausfinden</h2>
+<pre><code>docker volume inspect deploy_daten --format '{{ .Mountpoint }}'</code></pre>
+<p>Ergebnis ist normalerweise <code>/var/lib/docker/volumes/deploy_daten/_data</code>. Diesen Pfad brauchst du gleich. (Kommt
+„no such volume“: <code>docker volume ls</code> eingeben und den Namen nehmen, der auf <code>_daten</code> endet.)</p>
+
+<h2><span class="n">7</span>Schutzplan anlegen</h2>
+<p>Konsole → <b>Geräte</b> → Server anklicken → <b>Schützen</b> → <b>Plan erstellen</b> (bzw. „+ Plan erstellen“). Name: <code>Viva täglich</code>.</p>
+<table>
+  <tr><th style="width:28%">Einstellung</th><th>Wert</th></tr>
+  <tr><td><b>Sicherung</b> – Was sichern</td><td><b>Dateien/Ordner</b> (nicht „Gesamte Maschine“)</td></tr>
+  <tr><td>Elemente zum Sichern</td><td>„Direkt auswählen“ → drei Einträge:<br>
+    <code>/opt/viva-sicherung</code><br>
+    <code>/var/lib/docker/volumes/deploy_daten/_data</code> (Pfad aus Schritt 6)<br>
+    <code>/opt/viva/deploy/.env.live</code></td></tr>
+  <tr><td>Ausschlüsse</td><td>Bei „Dateifilter“ → Ausschließen: <code>dateien_*.tar.gz</code> und <code>*.tmp</code><br>
+    (die täglichen ZIP-Pakete sind schon über den Datei-Speicher abgedeckt)</td></tr>
+  <tr><td><b>Speicherort</b></td><td><b>Cloud-Speicher</b></td></tr>
+  <tr><td><b>Planung</b></td><td>Täglich, Mo–So, <b>04:00</b> Uhr (die App-Sicherung um 02:30 ist dann fertig)</td></tr>
+  <tr><td><b>Aufbewahrung</b></td><td>Nach Backup-Alter: täglich <b>30 Tage</b>, wöchentlich <b>12 Wochen</b>, monatlich <b>12 Monate</b>
+    (wenn der Platz reicht; sonst nur 30 Tage)</td></tr>
+  <tr><td><b>Verschlüsselung</b></td><td><b>An</b>, AES 256, eigenes Passwort (mind. 16 Zeichen) → <b>ausdrucken, Tresor</b></td></tr>
+  <tr><td>Backup-Format / Schema</td><td>Standard lassen („Immer inkrementell“)</td></tr>
+  <tr><td>Weitere Module (Virenschutz, Patch-Management …)</td><td><b>Aus</b> – nicht nötig, kostet Leistung</td></tr>
+</table>
+<p><b>Erstellen</b> bzw. <b>Anwenden</b> klicken. Danach im Plan „<b>Jetzt ausführen</b>“. Die erste Sicherung überträgt alles
+und kann je nach Datenmenge 15–90 Minuten dauern; die folgenden nur noch die Änderungen.</p>
+
+<h2><span class="n">8</span>Test-Wiederherstellung (wichtig!)</h2>
+<p>Eine Sicherung, die nie zurückgeholt wurde, ist keine Sicherung. Nach der ersten erfolgreichen Sicherung:</p>
+<ol>
+  <li>Konsole → <b>Geräte</b> → Server → <b>Wiederherstellung</b> → neuesten Wiederherstellungspunkt wählen →
+    <b>Dateien/Ordner wiederherstellen</b>.</li>
+  <li>Unter <code>/opt/viva-sicherung</code> die neueste <code>datenbank_….dump</code> ankreuzen → <b>Wiederherstellen</b>.</li>
+  <li><b>Wichtig: „Ziel“ ändern</b> auf „Benutzerdefinierter Speicherort“ → <code>/root/test-wiederherstellung</code>
+    (niemals über die Originaldateien!). Verschlüsselungs-Passwort eingeben → <b>Jetzt starten</b>.</li>
+  <li>Auf dem Server prüfen, ob die Datei lesbar ist:
+<pre><code>ls -lh /root/test-wiederherstellung/opt/viva-sicherung/
+cd /opt/viva/deploy
+docker compose --env-file .env.live exec -T db pg_restore --list \
+  &lt; /root/test-wiederherstellung/opt/viva-sicherung/datenbank_*.dump | head -5</code></pre>
+    Erscheinen Zeilen wie „; Archive created at …“ und „dbname: viva“, ist die Sicherung in Ordnung.</li>
+  <li>Genauso eine einzelne Datei aus <code>…/deploy_daten/_data</code> (z. B. ein PDF unter <code>archive/</code>) wiederherstellen.</li>
+  <li>Aufräumen: <code>rm -rf /root/test-wiederherstellung</code></li>
+</ol>
+<p>Test-Wiederherstellung <b>alle 6 Monate</b> wiederholen (Termin im Kalender eintragen).</p>
+
+<h2><span class="n">9</span>Benachrichtigungen</h2>
+<p>Konsole → oben rechts Benutzer → <b>Benachrichtigungen</b> (bzw. Einstellungen → E-Mail-Benachrichtigungen): an
+<code>info@</code> oder deine Adresse, angehakt: <b>Fehler</b> und <b>Warnungen</b> bei Backups, „Gerät offline“. Erfolgsmeldungen nicht nötig.</p>
+<p>Zusätzlich meldet die App selbst, wenn die nächtliche Sicherung auf dem Server fehlt (Einstellungen → Systemzustand).</p>
+
+<h2>Ernstfall: Server komplett weg</h2>
+<ol>
+  <li>Neuen IONOS-VPS (Ubuntu 24.04) bestellen, App wie bei der ersten Installation mit <code>deploy/install.sh</code> einrichten
+    (Domain-DNS auf die neue IP umstellen).</li>
+  <li>Acronis-Agent wie oben (Schritte 3–5) auf dem neuen Server installieren und registrieren.</li>
+  <li>Aus der Konsole die Sicherung des <b>alten</b> Geräts nach <code>/root/rueck</code> auf den neuen Server wiederherstellen
+    (Speicherort „Cloud-Speicher“ → altes Gerät → Ziel: neuer Server, Ordner <code>/root/rueck</code>).</li>
+  <li>Datenbank, Dateien und <code>.env.live</code> einspielen – <b>diesen Schritt mit mir zusammen machen</b>, damit nichts überschrieben
+    wird, was schon da ist.</li>
+</ol>
+
+<h2>Störungen</h2>
+<table>
+  <tr><th style="width:38%">Meldung</th><th>Was tun</th></tr>
+  <tr><td>„SnapAPI module could not be built/loaded“</td><td>Für unsere Sicherung (Dateien/Ordner) nicht schlimm – der Agent sichert
+    dann ohne Snapshot. Installation trotzdem fortsetzen. Wer es beheben will: <code>apt install -y linux-headers-$(uname -r) dkms</code>, dann
+    <code>./agent.bin</code> erneut starten → „Reparieren“.</td></tr>
+  <tr><td>„Unable to locate package linux-headers-…“</td><td>IONOS-Kernel ohne passende Header; ignorieren (siehe Zeile darüber).</td></tr>
+  <tr><td><code>wget</code>: „403 Forbidden“ / „expired“</td><td>Download-Link ist abgelaufen → in der Konsole neu kopieren (Schritt 2).</td></tr>
+  <tr><td>„Registration failed“ / Token ungültig</td><td>Token abgelaufen oder vertippt → neuen Token erzeugen. Neu registrieren:
+    <code>/usr/lib/Acronis/RegisterAgentTool/RegisterAgent -o register -t cloud -a https://&lt;Konsole&gt; --token &lt;TOKEN&gt;</code></td></tr>
+  <tr><td>„No space left on device“ beim Download</td><td><code>df -h</code> prüfen; alte Datei <code>rm /root/agent.bin</code>; ggf. Docker aufräumen
+    <code>docker image prune -f</code>.</td></tr>
+  <tr><td>Gerät in der Konsole „offline“</td><td><code>systemctl restart acronis_mms aakore</code>; Firewall lässt ausgehende Verbindungen zu
+    (ufw sperrt nur eingehende) – nichts freigeben nötig.</td></tr>
+  <tr><td>Speicher fast voll (Konsole)</td><td>Aufbewahrung auf 30 Tage ohne Wochen/Monate kürzen oder größeres Paket buchen.</td></tr>
+</table>
+
+<h2>Checkliste</h2>
+<ul class="chk">
+  <li>Agent installiert, Gerät in der Konsole grün</li>
+  <li><code>agent.bin</code> gelöscht</li>
+  <li>Schutzplan „Viva täglich“: drei Pfade, Ausschluss <code>dateien_*.tar.gz</code>, 04:00, Cloud-Speicher, verschlüsselt</li>
+  <li>Verschlüsselungs-Passwort ausgedruckt im Tresor</li>
+  <li>Erste Sicherung erfolgreich (grüner Haken)</li>
+  <li>Test-Wiederherstellung Datenbank + eine Datei geklappt, Testordner gelöscht</li>
+  <li>E-Mail-Benachrichtigung bei Fehlern eingerichtet</li>
+  <li>Termin „Test-Wiederherstellung“ in 6 Monaten im Kalender</li>
+  <li>AVV mit IONOS abgeschlossen (Kundenkonto → Datenschutz → Auftragsverarbeitung)</li>
+</ul>
+</body>
+</html>

@@ -2254,3 +2254,7 @@ Testadresse.
     .docx direkt (`fillWordTemplate`, Protokoll `word_template` ohne Datei); in die Akte kommt der Scan der
     unterschriebenen Fassung. Früher erzeugte Entwürfe (Kategorie „Entwurf (aus Vorlage)“ bzw. laut Protokoll aus
     einer Vorlage erzeugt) werden in den Dokument-Listen ausgeblendet (`listFiles`), bleiben aber write-once im Archiv.
+- 2026-10-10: Vorschlag **„edel“ überarbeitet** (Ahmed: „die erste ist sehr schön“): Bankverbindung unten entfernt (steht in
+  der Fußzeile des Briefpapiers), Zahlungsblock dafür über die ganze Breite neben dem GiroCode (+ Verwendungszweck),
+  Betreffzeile entfernt, Leistungsort/Objekt jetzt im Kopfblock rechts unter der Nummer (Angebot: „Objekt“).
+  Noch nicht aktiv – nach Ahmeds Freigabe für Rechnung, Storno, Korrektur, Angebot, AB einbauen (PDF/A + KoSIT prüfen).

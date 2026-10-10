@@ -28,8 +28,8 @@ import {
  * Gestaltungsvorschläge, Runde 2 (Ahmed 10.10.: „gut, aber nicht perfekt – noch schönere Vorlagen“).
  * Schrift Inter (SIL OFL, in vier Schnitten eingebettet) statt DejaVu, feines Raster, Kapitälchen-Beschriftungen mit
  * Sperrung, Haarlinien statt Kästen, Zahlen rechtsbündig. Drei Varianten auf dem Briefpapier:
- *   edel    – ruhig und hochwertig: Kopfblock rechts mit großer Nummer, Betreffzeile, Summen mit Bordeaux-Kante,
- *             Zahlungsleiste in drei Spalten (Fälligkeit · Bankverbindung · GiroCode)
+ *   edel    – ruhig und hochwertig: Kopfblock rechts mit großer Nummer und Leistungsort, Summen mit Bordeaux-Kante,
+ *             Zahlungsleiste (Zahlungsbedingung · GiroCode; Bankverbindung steht in der Fußzeile)
  *   modern  – „Betrag zuerst“: Bordeaux-Karte mit Rechnungsbetrag und Fälligkeit oben rechts, Positionen als Karten-
  *             Tabelle mit weichem Kopf, Zahlung als heller Kasten
  *   gross   – klar & groß (Schweizer Stil): großer Titel, Angaben als Zeile mit vier Spalten, starke Linien, viel Weiß
@@ -294,7 +294,25 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
     p.cap(kind, IX, 140, BRD, 7);
     p.text(no, IX, 162, 20, 's', INK);
     p.line(IX, 171, R, 171, 0.5, INK);
-    p.y = Math.max(262, metaRows(185, meta) + 24);
+    // Objekt im Kopfblock (Ahmed 10.10.: kein Betreff, Objekt woanders)
+    let oy = 185;
+    if (place) {
+      p.cap(isOffer ? 'Objekt' : 'Leistungsort', IX, oy, BRD, 6.4);
+      oy += 11;
+      for (const t of wrap(place.title, f.s, 8.6, R - IX)) {
+        p.text(t, IX, oy, 8.6, 's', INK);
+        oy += 10.6;
+      }
+      if (place.address)
+        for (const t of wrap(place.address, f.r, 7.8, R - IX)) {
+          p.text(t, IX, oy, 7.8, 'r', GREY);
+          oy += 9.8;
+        }
+      oy += 5;
+      p.line(IX, oy, R, oy, 0.35, HAIR);
+      oy += 13;
+    }
+    p.y = Math.max(262, metaRows(oy, meta) + 24);
   } else if (v === 'modern') {
     // Betrag zuerst: Bordeaux-Karte rechts
     const cardH = 74;
@@ -334,23 +352,7 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
   } else {
     const subj = place ? place.title : null;
     if (v === 'edel') {
-      if (subj) {
-        p.cap('Betreff', L, p.y);
-        p.y += 13;
-        p.text(
-          `${isOffer ? 'Angebot' : 'Leistungen'}${period && !isOffer ? ` ${period}` : ''} · ${subj}`,
-          L,
-          p.y,
-          11,
-          's',
-        );
-        p.y += 13;
-        if (place?.address) {
-          p.text(place.address, L, p.y, 8.2, 'r', GREY);
-          p.y += 10;
-        }
-        p.y += 14;
-      }
+      void subj; // Objekt steht im Kopfblock
     } else if (place) {
       p.cap(isOffer ? 'Objekt' : 'Leistungsort', L, p.y);
       p.y += 13;
@@ -483,25 +485,18 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
   const terms = o.terms ?? paymentTermsHuman(doc);
   p.y += 6;
   if (!isOffer) {
-    const colW = withQr ? (R - L - 82) / 2 : (R - L) / 2;
-    const tl = wrap(terms, f.r, 7.8, colW - 16);
-    const iban = bank ? bank.iban.replace(/(.{4})/g, '$1 ').trim() : '';
-    const boxH = Math.max(withQr ? 70 : 0, 26 + Math.max(tl.length * 10.4, 34));
+    // Bankverbindung steht in der Fußzeile des Briefpapiers → hier nur Zahlungsbedingung, dafür breiter
+    const colW = withQr ? R - L - 82 : R - L;
+    const tl = wrap(terms, f.r, 8.2, colW - 16);
+    const boxH = Math.max(withQr ? 70 : 0, 40 + tl.length * 11);
     p.ensure(boxH + 10);
     const top = p.y;
     if (v === 'modern') p.rect(L - 8, top - 4, R - L + 16, boxH + 4, SOFT, 8);
     else p.line(L, top - 2, R, top - 2, v === 'gross' ? 1 : 0.5, INK);
     const x1 = L;
-    const x2 = L + colW + (withQr ? 6 : 0);
     p.cap('Zahlung', x1, top + 12, BRD);
-    tl.forEach((t, k) => p.text(t, x1, top + 26 + k * 10.4, 7.8, 'r', INK2));
-    if (bank) {
-      p.cap('Bankverbindung', x2, top + 12, BRD);
-      p.text(S.legalName, x2, top + 26, 7.8, 'm', INK);
-      p.text(`IBAN ${iban}`, x2, top + 36.4, 7.8, 'r', INK2);
-      p.text(`BIC ${bank.bic} · ${bank.name}`, x2, top + 46.8, 7.8, 'r', INK2);
-      p.text(`Verwendungszweck: ${no}`, x2, top + 57.2, 7.8, 'r', INK2);
-    }
+    tl.forEach((t, k) => p.text(t, x1, top + 26 + k * 11, 8.2, 'r', INK2));
+    p.text(`Verwendungszweck: ${no}`, x1, top + 30 + tl.length * 11, 8.2, 'm', INK);
     if (withQr) {
       const qs = 56;
       const qx = R - qs;

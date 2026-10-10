@@ -5,7 +5,7 @@ import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import type { Quantity } from '../domain/money/money.js';
 import { addDays, holidayName, isoWeekday } from '../domain/time/holidays.js';
 import { letterhead } from '../pdf/form-doc.js';
-import { pdfFonts } from '../pdf/render.js';
+import { embedUiFonts } from '../pdf/fonts.js';
 import { BusinessError } from './errors.js';
 import { uuidOf } from './fortytools-export-import.js';
 import { getSeller } from './masterdata.js';
@@ -459,12 +459,10 @@ async function drawNotice(
 
 export async function noticesPdf(sql: Sql, objectIds: string[]): Promise<Uint8Array> {
   const seller = await getSeller(sql);
-  const f = await pdfFonts();
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   const fonts = {
-    regular: await pdf.embedFont(f.regular, { subset: false }),
-    bold: await pdf.embedFont(f.bold, { subset: false }),
+    ...(await embedUiFonts(pdf)),
   };
   const bg = await pdf.embedJpg(await letterhead());
   const today = todayBerlin();

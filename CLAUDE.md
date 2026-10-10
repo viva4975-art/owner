@@ -2296,3 +2296,16 @@ Testadresse.
   Lieferschein: ein Objekt → Band, Sammelrechnung → Spalte „Objekt“ je Position. Material-Bestellung: Band mit dem
   Lieferobjekt. Briefe: linksbündige Tabellenspalten brechen jetzt um statt abgeschnitten zu werden (Positionstexte nicht
   mehr gekürzt). **Bereits erstellte Mahnungen bleiben wie archiviert (write-once)** – nur neue zeigen die Objekte.
+- 2026-10-10: **Alle übrigen PDFs im Stil „edel“** (Ahmed: „pass auch Bestellungen und alles an“): NU-Bestellschein, Arbeitsschein,
+  Objektordner-PDF (Stammblatt, Leistungsverzeichnis, Reinigungs-/Revierplan, eingesetzte Word-Seiten), Listen-PDFs
+  (Fehlende Unterlagen, Stundenliste …), Kassenbuch, Tiefgaragen-Aushang, Nachweisblatt digitale Unterschrift: Schrift Inter
+  (`src/pdf/fonts.ts`, `embedUiFonts`), dunkle Titel, Kapitälchen-Beschriftungen, Haarlinien, graue Flächen mit Bordeaux-Kante
+  (`src/pdf/form-doc.ts`). Word-Seiten im Objektordner-PDF: Farben auf edel abgebildet (Bordeaux, dunkles Grau, Haarlinien).
+  ☐/☒/✔ fehlen in Inter → □/■/✓ (`uiText`; DejaVu lässt sich mit fontkit nicht als Teilmenge einbetten). Archivierte PDFs
+  bleiben unverändert. 491 Tests grün.
+- 2026-10-10: **Inhaltliche Prüfung der Word-Vorlagen** (Ahmed: „Text ändern, löschen?“): 40 Punkte (A rechtlich riskant –
+  u. a. eAU statt AU-Vorlage, Vertragsstrafen, Einwilligung § 51 BDSG falsch, Schwerbehinderung/Gesundheit, Zugangsfiktion,
+  doppelte Schriftform, Ruhen in Schulferien, Taschenkontrollen, AÜG-Erlaubnis leer, § 34a GewO in Akquise, Mietvertrag
+  HeizkostenV; B veraltet – feste Adresse Würmtalstr. 10 in 17 Vorlagen, „Fortytools“ in 12, § 17 UWG, NachwG-Angaben;
+  C doppelt – Anwesenheitslisten, FB-06/45/WD, Revierplan-Muster mit Kundendaten; D Tippfehler). Liste an Ahmed; Änderungen
+  erst nach seiner Freigabe, Punkte A mit Anwalt.

@@ -88,7 +88,31 @@ interface Table {
   marY: number;
 }
 
-const hex = (v: string | undefined): [number, number, number] | null => {
+/** Farben der Vorlagen auf die Gestaltung „edel“ abbilden (wie scripts/word-restyle.py) */
+const EDEL: Record<string, string> = {
+  '8B2332': '7D1435',
+  '8B2333': '7D1435',
+  '2E74B5': '7D1435',
+  '2F5496': '7D1435',
+  '4472C4': '7D1435',
+  '0563C1': '7D1435',
+  '1F4D78': '1A171A',
+  '1F3763': '1A171A',
+  '000000': '1A171A',
+  F2F2F2: 'F7F6F7',
+  F5F5F5: 'F7F6F7',
+  E7E6E6: 'F7F6F7',
+  D9D9D9: 'EFEDEF',
+  FDFAF2: 'FFFFFF',
+  F3E3E6: 'F9F1F4',
+  EDE3E5: 'F9F1F4',
+};
+const isBrand = (v: string | undefined) => !!v && /^(8B2332|8B2333|7D1435)$/i.test(v);
+/** Tabellenlinien als Haarlinien (Bordeaux-Linien bleiben Bordeaux) */
+const tableLine = (v: string | undefined): [number, number, number] =>
+  isBrand(v) ? [125 / 255, 20 / 255, 53 / 255] : [0.85, 0.835, 0.85];
+const hex = (raw: string | undefined): [number, number, number] | null => {
+  const v = raw ? (EDEL[raw.toUpperCase()] ?? raw) : raw;
   if (!v || !/^[0-9a-f]{6}$/i.test(v)) return null;
   return [
     parseInt(v.slice(0, 2), 16) / 255,
@@ -208,7 +232,7 @@ function parseTable(t: XNode): Table {
     kind: 'tbl',
     grid: grid.length ? grid : [1],
     rows,
-    border: hasBorder ? (hex(ih!.attrs['w:color']) ?? [0.75, 0.75, 0.75]) : null,
+    border: hasBorder ? tableLine(ih!.attrs['w:color']) : null,
     marX: Number(child(mar, 'w:left')?.attrs['w:w'] ?? 108) / 20,
     marY: Number(child(mar, 'w:top')?.attrs['w:w'] ?? 40) / 20,
   };
@@ -423,20 +447,20 @@ export function renderDocx(d: FormDoc, blocks: (Para | Table)[]) {
       }
       if (b.border) {
         const col = rgb(...b.border);
-        d.line(L, R, d.y, col, 0.5);
-        d.line(L, R, d.y + rowH, col, 0.5);
+        d.line(L, R, d.y, col, 0.4);
+        d.line(L, R, d.y + rowH, col, 0.4);
         for (const c of cells) {
           d.page.drawLine({
             start: { x: c.x0, y: FORM_Y.H - d.y },
             end: { x: c.x0, y: FORM_Y.H - d.y - rowH },
-            thickness: 0.5,
+            thickness: 0.4,
             color: col,
           });
         }
         d.page.drawLine({
           start: { x: R, y: FORM_Y.H - d.y },
           end: { x: R, y: FORM_Y.H - d.y - rowH },
-          thickness: 0.5,
+          thickness: 0.4,
           color: col,
         });
       }

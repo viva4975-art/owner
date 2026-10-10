@@ -2,7 +2,7 @@ import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, type PDFFont, type PDFPage, rgb } from '@cantoo/pdf-lib';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { pdfFonts } from './render.js';
+import { embedUiFonts } from './fonts.js';
 
 const LOGO = fileURLToPath(new URL('../../assets/web/logo-transparent.png', import.meta.url));
 let logoBytes: Promise<Buffer | null> | null = null;
@@ -29,10 +29,10 @@ export interface PdfCell {
 
 export type PdfRow = (string | PdfCell)[] | { section: string };
 
-const INK = rgb(0.13, 0.13, 0.13);
-const MUT = rgb(0.42, 0.42, 0.42);
+const INK = rgb(0.1, 0.09, 0.1);
+const MUT = rgb(0.47, 0.45, 0.47);
 const LINE = rgb(0.86, 0.86, 0.86);
-const HEAD = rgb(0.98, 0.95, 0.96);
+const HEAD = rgb(0.972, 0.968, 0.97);
 const BRAND = rgb(0.49, 0.08, 0.21);
 
 export async function renderTablePdf(p: {
@@ -48,9 +48,7 @@ export async function renderTablePdf(p: {
 }): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
-  const f = await pdfFonts();
-  const regular = await pdf.embedFont(f.regular, { subset: false });
-  const bold = await pdf.embedFont(f.bold, { subset: false });
+  const { regular, bold } = await embedUiFonts(pdf);
   const logoPng = await logo();
   const logoImg = logoPng ? await pdf.embedPng(logoPng) : null;
   pdf.setTitle(p.title);

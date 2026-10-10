@@ -2,7 +2,7 @@ import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, type PDFFont, type PDFPage, rgb } from '@cantoo/pdf-lib';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { pdfFonts } from './render.js';
+import { embedUiFonts } from './fonts.js';
 
 /*
  * Kassenbuch als Monatsblatt wie die üblichen Kassenbuch-Vordrucke (Ahmed 09.10.: „online Kassenbücher anschauen,
@@ -16,11 +16,11 @@ const LOGO = fileURLToPath(new URL('../../assets/web/logo-transparent.png', impo
 const W = 841.89;
 const H = 595.28;
 const M = 32;
-const INK = rgb(0.12, 0.12, 0.12);
-const MUT = rgb(0.42, 0.42, 0.42);
+const INK = rgb(0.1, 0.09, 0.1);
+const MUT = rgb(0.47, 0.45, 0.47);
 const LINE = rgb(0.8, 0.8, 0.8);
 const GRID = rgb(0.9, 0.9, 0.9);
-const HEAD = rgb(0.95, 0.95, 0.95);
+const HEAD = rgb(0.972, 0.968, 0.97);
 const BRAND = rgb(0.49, 0.08, 0.21);
 const ZEBRA = rgb(0.985, 0.985, 0.985);
 
@@ -73,9 +73,7 @@ const COLS: { label: string; w: number; align?: 'right' | 'center' }[] = [
 export async function renderCashbookPdf(p: CashbookPdf): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
-  const f = await pdfFonts();
-  const reg = await pdf.embedFont(f.regular, { subset: false });
-  const bold = await pdf.embedFont(f.bold, { subset: false });
+  const { regular: reg, bold } = await embedUiFonts(pdf);
   const logoBytes = await readFile(LOGO).catch(() => null);
   const logo = logoBytes ? await pdf.embedPng(logoBytes) : null;
   pdf.setTitle(p.title);

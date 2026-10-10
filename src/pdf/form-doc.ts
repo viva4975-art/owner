@@ -1,13 +1,25 @@
 import { readFile } from 'node:fs/promises';
 import fontkit from '@pdf-lib/fontkit';
-import { PDFDocument, type PDFFont, type PDFImage, type PDFPage, degrees, rgb } from '@cantoo/pdf-lib';
-import { pdfFonts } from './render.js';
+import {
+  PDFDocument,
+  type PDFFont,
+  type PDFImage,
+  type PDFPage,
+  degrees,
+  popGraphicsState,
+  pushGraphicsState,
+  rgb,
+  setCharacterSpacing,
+} from '@cantoo/pdf-lib';
+import { embedUiFonts, uiText } from './fonts.js';
 
 /*
  * Formular-Dokumente im Stil der alten Viva-App (Ahmed 08.10.: Bestellschein BE-2026-0001, Arbeitsscheine AS-2026-1024/1028):
  * Briefpapier als Hintergrund, Titel in Bordeaux mit Linie, grauer Infokasten mit Bordeaux-Strich links, zweispaltige
  * Anschriften, Abschnittsbalken, Tabellen mit Bordeaux-Kopflinie, Unterschriftslinien und senkrechter Dokumentkennung
  * rechts („VD-NU-02 Bestellschein … · Seite 1 von 5“).
+ * Seit 10.10.2026 in der Gestaltung „edel“ wie die Rechnung: Schrift Inter, dunkle Titel, Kapitälchen-Beschriftungen,
+ * Haarlinien, helle graue Flächen mit Bordeaux-Kante.
  */
 
 const ASSETS = new URL('../../assets/', import.meta.url);
@@ -18,14 +30,14 @@ const R = 546.5;
 const TOP = 128;
 const BOTTOM = 702;
 
-const BORDEAUX = rgb(0.49, 0.08, 0.21);
-const INK = rgb(0.1, 0.1, 0.1);
-const MUT = rgb(0.5, 0.42, 0.42);
-const GREY = rgb(0.45, 0.45, 0.45);
-const BOX = rgb(0.973, 0.965, 0.961);
-const BOX_LINE = rgb(0.85, 0.83, 0.83);
-const SECTION = rgb(0.973, 0.925, 0.937);
-const RULE = rgb(0.86, 0.86, 0.86);
+const BORDEAUX = rgb(125 / 255, 20 / 255, 53 / 255);
+const INK = rgb(0.1, 0.09, 0.1);
+const MUT = rgb(0.47, 0.45, 0.47);
+const GREY = rgb(0.47, 0.45, 0.47);
+const BOX = rgb(0.972, 0.968, 0.97);
+const BOX_LINE = rgb(0.89, 0.88, 0.89);
+const SECTION = rgb(0.972, 0.968, 0.97);
+const RULE = rgb(0.86, 0.85, 0.86);
 
 let letterheadBytes: Uint8Array | null = null;
 /** Briefpapier (A4, JPG) – z. B. für Aushänge, die nicht über FormDoc laufen */
@@ -62,9 +74,9 @@ export class FormDoc {
     const d = new FormDoc(p.sideRef, p.watermark);
     d.pdf = await PDFDocument.create();
     d.pdf.registerFontkit(fontkit);
-    const f = await pdfFonts();
-    d.reg = await d.pdf.embedFont(f.regular, { subset: false });
-    d.bold = await d.pdf.embedFont(f.bold, { subset: false });
+    const f = await embedUiFonts(d.pdf);
+    d.reg = f.regular;
+    d.bold = f.bold;
     letterheadBytes ??= await readFile(new URL('briefpapier/viva-deluxe-a4.jpg', ASSETS));
     d.bg = await d.pdf.embedJpg(letterheadBytes);
     d.pdf.setTitle(p.title);
@@ -101,7 +113,22 @@ export class FormDoc {
   }
 
   width(t: string, size = 9, bold = false) {
-    return (bold ? this.bold : this.reg).widthOfTextAtSize(t, size);
+    return (bold ? this.bold : this.reg).widthOfTextAtSize(uiText(t), size);
+  }
+
+  /** Kapitälchen-Beschriftung (gesperrt) wie auf der Rechnung */
+  cap(
+    t: string,
+    x: number,
+    y: number,
+    o: { size?: number; color?: ReturnType<typeof rgb>; right?: boolean } = {},
+  ) {
+    const s = t.toUpperCase();
+    const size = o.size ?? 6.4;
+    const w = this.width(s, size, true) + 0.7 * s.length;
+    this.page.pushOperators(pushGraphicsState(), setCharacterSpacing(0.7));
+    this.text(s, o.right ? x - w : x, y, { size, bold: true, color: o.color ?? GREY });
+    this.page.pushOperators(setCharacterSpacing(0), popGraphicsState());
   }
 
   text(
@@ -111,7 +138,7 @@ export class FormDoc {
     o: { size?: number; bold?: boolean; color?: ReturnType<typeof rgb> } = {},
   ) {
     if (!t) return;
-    this.page.drawText(t, {
+    this.page.drawText(uiText(t), {
       x,
       y: H - y,
       size: o.size ?? 9,
@@ -179,16 +206,16 @@ export class FormDoc {
 
   /** „Arbeitsschein … Nr. AS-2026-1024“ mit Bordeaux-Linie */
   title(left: string, right?: string) {
-    this.text(left, L, this.y + 14, { size: 17, bold: true, color: BORDEAUX });
-    if (right) this.right(right, R, this.y + 12, { size: 11, bold: true });
+    this.text(left, L, this.y + 14, { size: 17, bold: true, color: INK });
+    if (right) this.right(right, R, this.y + 12, { size: 11, bold: true, color: BORDEAUX });
     this.y += 22;
-    this.line(L, R, this.y, BORDEAUX, 1.2);
+    this.line(L, R, this.y, INK, 0.5);
     this.y += 12;
   }
 
   /** Großer Titel rechtsbündig (Bestellung) mit Hinweis darunter */
   titleRight(t: string, sub?: string) {
-    this.right(t, R, this.y + 14, { size: 13, bold: true, color: BORDEAUX });
+    this.right(t, R, this.y + 14, { size: 13, bold: true, color: INK });
     this.y += 20;
     if (sub) {
       this.right(sub, R, this.y + 6, { size: 7.5, color: MUT });
@@ -200,13 +227,13 @@ export class FormDoc {
   infoGrid(cells: [string, string][], cols = 3) {
     const rows = Math.ceil(cells.length / cols);
     const h = rows * 26 + 10;
-    this.rect(L, this.y, R - L, h, BOX, BOX_LINE);
-    this.rect(L, this.y, 3, h, BORDEAUX);
+    this.rect(L, this.y, R - L, h, BOX);
+    this.rect(L, this.y, 2.2, h, BORDEAUX);
     const cw = (R - L - 20) / cols;
     cells.forEach(([k, v], i) => {
       const x = L + 14 + (i % cols) * cw;
       const y = this.y + 14 + Math.floor(i / cols) * 26;
-      this.text(k, x, y, { size: 6.5, color: GREY });
+      this.cap(k, x, y, { size: 5.8 });
       this.text(this.fit(v, cw - 8, 9), x, y + 11, { size: 9 });
     });
     this.y += h + 12;
@@ -220,7 +247,7 @@ export class FormDoc {
     this.rect(L, this.y, R - L, h, rgb(1, 1, 1), BOX_LINE);
     let y = this.y + 18;
     for (const r of rows) {
-      this.text(r.k, L + 14, y, { size: 7.5, bold: true, color: MUT });
+      this.cap(r.k, L + 14, y, { size: 6 });
       const vw = r.k2 ? 170 : R - L - 190;
       this.text(this.fit(r.v, vw, r.strong ? 10.5 : 9), L + 120, y, {
         size: r.strong ? 10.5 : 9,
@@ -228,7 +255,7 @@ export class FormDoc {
         color: r.accent ? BORDEAUX : INK,
       });
       if (r.k2) {
-        this.text(r.k2, L + 330, y, { size: 7.5, bold: true, color: MUT });
+        this.cap(r.k2, L + 330, y, { size: 6 });
         this.text(this.fit(r.v2 ?? '', 90, 9), L + 420, y, { size: 9, bold: true });
       }
       y += lh;
@@ -243,8 +270,8 @@ export class FormDoc {
     const la = wrapAll(a.lines);
     const lb = wrapAll(b.lines);
     this.ensure(14 + Math.max(la.length, lb.length) * 12);
-    this.text(a.label, L, this.y + 6, { size: 7.5, bold: true, color: BORDEAUX });
-    this.text(b.label, L + half, this.y + 6, { size: 7.5, bold: true, color: BORDEAUX });
+    this.cap(a.label, L, this.y + 6, { color: BORDEAUX });
+    this.cap(b.label, L + half, this.y + 6, { color: BORDEAUX });
     let y = this.y + 19;
     la.forEach((l, i) => this.text(l, L, y + i * 12));
     lb.forEach((l, i) => this.text(l, L + half, y + i * 12));
@@ -256,13 +283,14 @@ export class FormDoc {
   section(t: string) {
     this.ensure(40);
     this.rect(L, this.y, R - L, 18, SECTION);
-    this.text(t, L + 8, this.y + 12.5, { size: 8, bold: true, color: BORDEAUX });
+    this.rect(L, this.y, 2.2, 18, BORDEAUX);
+    this.cap(t, L + 10, this.y + 12, { size: 6.6, color: BORDEAUX });
     this.y += 28;
   }
 
   heading(t: string, size = 11) {
     this.ensure(30);
-    this.text(t, L, this.y + 10, { size, bold: true, color: BORDEAUX });
+    this.text(t, L, this.y + 10, { size, bold: true, color: INK });
     this.y += size + 9;
   }
 
@@ -365,11 +393,11 @@ export class FormDoc {
     const head = () => {
       cols.forEach((c, i) =>
         c.align === 'right'
-          ? this.right(c.label, xs[i]! + c.width - 12, this.y + 8, { size: 7.2, bold: true, color: GREY })
-          : this.text(c.label, xs[i]!, this.y + 8, { size: 7.2, bold: true, color: GREY }),
+          ? this.cap(c.label, xs[i]! + c.width - 12, this.y + 8, { size: 6, right: true })
+          : this.cap(c.label, xs[i]!, this.y + 8, { size: 6 }),
       );
       this.y += 12;
-      this.line(L, R, this.y, BORDEAUX, 0.9);
+      this.line(L, R, this.y, INK, 0.5);
       this.y += 4;
     };
     this.ensure(40);
@@ -377,7 +405,7 @@ export class FormDoc {
     for (const r of rows) {
       if ('group' in r) {
         this.ensure(16, head);
-        this.text(r.group, L, this.y + 10, { size: 8, bold: true, color: BORDEAUX });
+        this.text(r.group, L, this.y + 10, { size: 8.4, bold: true, color: INK });
         this.y += 15;
         continue;
       }
@@ -413,7 +441,7 @@ export class FormDoc {
       const x = L + i * (w + gap);
       this.rect(x, this.y, w, h, t.accent ? BORDEAUX : BOX, t.accent ? BORDEAUX : BOX_LINE);
       const c = t.accent ? rgb(1, 1, 1) : GREY;
-      this.text(t.label, x + 10, this.y + 14, { size: 7, bold: true, color: c });
+      this.cap(t.label, x + 10, this.y + 14, { size: 6, color: c });
       this.text(this.fit(t.value, w - 20, 13), x + 10, this.y + 32, {
         size: 13,
         bold: true,
@@ -433,7 +461,8 @@ export class FormDoc {
     ];
     const h = 24 + all.length * (size + 3.5) + 6;
     this.ensure(h);
-    this.rect(L, this.y, R - L, h, BOX, BOX_LINE);
+    this.rect(L, this.y, R - L, h, BOX);
+    this.rect(L, this.y, 2.2, h, BORDEAUX);
     this.text(title, L + 12, this.y + 15, { size: 8.5, bold: true, color: BORDEAUX });
     all.forEach((l, i) =>
       this.text(l.t, L + 12, this.y + 28 + i * (size + 3.5), {
@@ -488,7 +517,7 @@ export class FormDoc {
     const pages = this.pdf.getPages();
     pages.forEach((pg, i) => {
       const t = `${this.sideRef} · Seite ${i + 1} von ${pages.length}`;
-      pg.drawText(t, { x: W - 22, y: 200, size: 6.5, font: this.reg, color: GREY, rotate: degrees(90) });
+      pg.drawText(t, { x: W - 22, y: 200, size: 6.2, font: this.reg, color: GREY, rotate: degrees(90) });
     });
     return this.pdf.save({ useObjectStreams: false });
   }

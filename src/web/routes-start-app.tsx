@@ -2,7 +2,7 @@ import { getCookie } from 'hono/cookie';
 import { verifySession } from '../services/employee-auth.js';
 import { linkedEmployee } from '../services/users.js';
 import { OFFICE_COOKIE, type Ctx, officeSecret } from './app.js';
-import { CSS as MCSS } from './m/routes-mobile.js';
+import { loginHtml } from './login-page.js';
 
 /**
  * Gemeinsame App (App Store / Google Play / Home-Bildschirm): Startbildschirm mit Auswahl
@@ -19,72 +19,53 @@ export function registerStartAppRoutes({ app, deps }: Ctx) {
       if (uid) return c.redirect((await linkedEmployee(deps.sql, uid)) ? '/m' : '/qm', 302);
       if (getCookie(c, 'vd_m')) return c.redirect('/m', 302);
     }
-    const css = `${MCSS}
-.start{max-width:460px;margin:0 auto;padding:40px 18px;display:flex;flex-direction:column;gap:16px}
-.start img{align-self:center;margin:10px 0 18px}
-.start h1{text-align:center;font-size:24px;margin:0 0 8px}
-.choice{display:flex;align-items:center;gap:16px;padding:20px;border-radius:18px;background:#fff;border:1px solid #efe3e7;color:#3b0a1c;text-decoration:none;box-shadow:0 2px 10px rgba(125,20,53,.06)}
-.choice svg{width:30px;height:30px;color:#7d1435;flex:none}
-.choice b{display:block;font-size:19px}
-.choice small{color:#8a7a80;font-size:14px}
-.foot{text-align:center;color:#8a7a80;font-size:13px;margin-top:8px}
-.login{display:flex;flex-direction:column;gap:8px;padding:20px}
-.login label{font-weight:600}
-.login input{font:inherit;font-size:18px;padding:14px;border:1px solid #e3d6db;border-radius:12px}
-.login button{margin-top:10px}`;
     return c.html(
-      '<!doctype html>' +
-        String(
-          <html lang="de">
-            <head>
-              <meta charset="utf-8" />
-              <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-              <meta name="theme-color" content="#f8edf1" />
-              <title>Viva-Deluxe</title>
-              <link rel="icon" type="image/png" href="/static/favicon.png" />
-              <link rel="manifest" href="/app/manifest.webmanifest" />
-              <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
-              <meta name="apple-mobile-web-app-capable" content="yes" />
-              <meta name="mobile-web-app-capable" content="yes" />
-              <meta name="apple-mobile-web-app-title" content="Viva-Deluxe" />
-              <style dangerouslySetInnerHTML={{ __html: css }} />
-            </head>
-            <body>
-              <main class="start">
-                <img src="/static/logo-transparent.png" alt="Viva-Deluxe" width="220" height="44" />
-                <h1>Anmelden</h1>
-                {c.req.query('fehler') && (
-                  <div class="flash err" role="alert">
-                    {c.req.query('fehler')}
-                  </div>
-                )}
-                <form method="post" action="/app/anmelden" class="card login">
-                  <label for="k">Personalnummer oder Benutzername</label>
-                  <input
-                    id="k"
-                    name="kennung"
-                    value={c.req.query('k') ?? ''}
-                    autocomplete="username"
-                    autocapitalize="none"
-                    required
-                  />
-                  <label for="p">
-                    PIN oder Passwort{' '}
-                    <small style="font-weight:400">(PIN anfangs = Geburtsdatum TTMMJJ)</small>
-                  </label>
-                  <input id="p" name="geheim" type="password" autocomplete="current-password" required />
-                  <button class="big go">Anmelden</button>
-                </form>
-                <p class="foot">
-                  Mitarbeiter: Personalnummer und PIN (am Anfang Ihr Geburtsdatum TTMMJJ).
-                  <br />
-                  Objektleitung &amp; Büro: Benutzername und Passwort.
-                </p>
-                <div class="foot">Viva-Deluxe Gebäudereinigung GmbH</div>
-              </main>
-            </body>
-          </html>,
+      loginHtml({
+        title: 'Anmelden',
+        sub: 'Mitarbeitende, Objektleitung und Büro',
+        action: '/app/anmelden',
+        err: c.req.query('fehler'),
+        env: deps.env.APP_ENV,
+        head: (
+          <>
+            <link rel="manifest" href="/app/manifest.webmanifest" />
+            <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
+            <meta name="apple-mobile-web-app-capable" content="yes" />
+            <meta name="mobile-web-app-capable" content="yes" />
+            <meta name="apple-mobile-web-app-title" content="Viva-Deluxe" />
+          </>
         ),
+        fields: [
+          {
+            id: 'k',
+            name: 'kennung',
+            label: 'Personalnummer oder Benutzername',
+            value: c.req.query('k') ?? '',
+            autocomplete: 'username',
+          },
+          {
+            id: 'p',
+            name: 'geheim',
+            label: (
+              <>
+                PIN oder Passwort <small>(PIN anfangs = Geburtsdatum TTMMJJ)</small>
+              </>
+            ),
+            type: 'password',
+            autocomplete: 'current-password',
+          },
+        ],
+        help: (
+          <p>
+            <b>Mitarbeitende:</b> Personalnummer und PIN – am Anfang Ihr Geburtsdatum (TTMMJJ, z. B. 120390).
+            Danach bitte eine eigene PIN vergeben.
+            <br />
+            <b>Objektleitung &amp; Büro:</b> Benutzername und Passwort.
+            <br />
+            Nach 5 Fehlversuchen ist die Anmeldung 15 Minuten gesperrt.
+          </p>
+        ),
+      }),
     );
   });
 

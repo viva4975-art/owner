@@ -22,8 +22,9 @@ import {
 import { type AppEnv, type Ctx, APP_COOKIE, OFFICE_COOKIE, UUID, officeSecret } from './app.js';
 import { arr } from './forms.js';
 import { Icon } from './icons.js';
-import { Layout, PageHead, initials } from './layout.js';
+import { PageHead, initials } from './layout.js';
 import { homeFor } from './permissions.js';
+import { loginHtml } from './login-page.js';
 
 const SESSION_HOURS = 12;
 const safeNext = (n: unknown) =>
@@ -38,46 +39,33 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
 
   app.get('/anmelden', (c) =>
     c.html(
-      '<!doctype html>' +
-        String(
-          <Layout
-            title="Anmelden"
-            nav=""
-            env={env.APP_ENV}
-            bare
-            flash={{ err: c.req.query('fehler'), ok: c.req.query('ok') }}
-          >
-            <div style="max-width:420px;margin:40px auto">
-              <form method="post" action="/anmelden" class="card">
-                <h1 style="margin-bottom:4px">Anmelden</h1>
-                <p class="mut small" style="margin-top:0">
-                  Viva-Deluxe Betriebs-App · Büro
-                </p>
-                <input type="hidden" name="next" value={c.req.query('next') ?? ''} />
-                <label for="login">Benutzername</label>
-                <input id="login" name="login" autocomplete="username" required autofocus />
-                <label for="password" style="margin-top:12px">
-                  Passwort
-                </label>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autocomplete="current-password"
-                  required
-                />
-                <div class="formfoot">
-                  <button class="btn" style="width:100%;justify-content:center">
-                    Anmelden
-                  </button>
-                </div>
-              </form>
-              <p class="small mut" style="text-align:center">
-                Mitarbeitende im Objekt: <a href="/m">Zeiterfassung am Handy</a>
-              </p>
-            </div>
-          </Layout>,
+      loginHtml({
+        title: 'Anmelden',
+        sub: 'Büro, Buchhaltung, Personal und Objektleitung',
+        action: '/anmelden',
+        hidden: { next: c.req.query('next') ?? '' },
+        err: c.req.query('fehler'),
+        ok: c.req.query('ok'),
+        env: env.APP_ENV,
+        fields: [
+          { id: 'login', name: 'login', label: 'Benutzername', autocomplete: 'username', autofocus: true },
+          {
+            id: 'password',
+            name: 'password',
+            label: 'Passwort',
+            type: 'password',
+            autocomplete: 'current-password',
+          },
+        ],
+        help: (
+          <p>
+            Benutzername und Passwort bekommen Sie vom Admin (Einstellungen → Benutzer). Beim ersten Anmelden
+            vergeben Sie ein eigenes Passwort. Nach 5 Fehlversuchen ist das Konto 15 Minuten gesperrt.
+            <br />
+            Mitarbeitende im Objekt melden sich in der <a href="/app">App</a> mit Personalnummer und PIN an.
+          </p>
         ),
+      }),
     ),
   );
 

@@ -655,6 +655,7 @@ summary.gear{list-style:none;cursor:pointer}summary.gear::-webkit-details-marker
 .compl-head b{color:var(--ink)}
 .lc .progress{height:6px}
 .lc-miss{font-size:12.5px;color:var(--err);margin-top:6px}
+.sup-tbl td{vertical-align:top}.sup-name{font-weight:600;color:var(--ink)}.sup-tbl .progress{margin:4px 0 2px}.sup-tbl .compl-head{display:flex;justify-content:space-between;gap:8px}
 .lc-exp{font-size:12.5px;color:var(--warn);margin-top:3px}
 .badge.muted{background:var(--head);color:var(--mut);border:1px solid var(--line)}
 .bs-table{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:16px}
@@ -1077,6 +1078,37 @@ td .btn.icon{min-height:34px;width:34px;height:34px;padding:0;justify-content:ce
 .tbl thead th,table thead th{background:#faf2f5}
 .note-tint,.empty{background:#fbf4f7}
 /* Mitarbeiter-Kopf */
+.emp-hero{padding:0;overflow:hidden}
+.eh-top{display:flex;gap:18px;align-items:center;padding:22px 24px;flex-wrap:wrap;background:linear-gradient(120deg,var(--brand-50) 0%,#fff 70%)}
+.eh-av{width:64px;height:64px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#fff;background:linear-gradient(140deg,#8b2332,#6a1030);box-shadow:0 4px 12px rgba(125,20,53,.25)}
+.eh-name{flex:1;min-width:200px}
+.eh-name h2{margin:0;font-size:22px;letter-spacing:-.01em}
+.eh-sub{color:var(--muted);font-size:14px;margin-top:2px}
+.eh-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.eh-tag{font-size:12px;padding:2px 9px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--ink)}
+.eh-acts{display:flex;flex-wrap:wrap;gap:8px}
+.eh-acts .btn svg{width:15px;height:15px}
+.eh-facts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border-top:1px solid var(--line)}
+.eh-facts>div{padding:14px 20px;display:flex;flex-direction:column;gap:2px;border-left:1px solid var(--line)}
+.eh-facts>div:first-child{border-left:0}
+.eh-facts span{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.eh-facts b{font-size:17px;font-variant-numeric:tabular-nums}
+.eh-facts small{font-size:12.5px;color:var(--muted)}
+.emp-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px;align-items:start}
+.emp-main,.emp-side{display:flex;flex-direction:column;gap:16px;min-width:0}
+.emp-main .card,.emp-side .card{margin:0}
+.eh-sites{list-style:none;margin:0;padding:0}
+.eh-sites li{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.eh-sites li:last-child{border-bottom:0}
+.eh-sites li a{flex:1;font-weight:550}
+.eh-sites svg{width:16px;height:16px;color:var(--muted);flex:none}
+.eh-info{background:var(--bg-soft,#f6f5f5);border-radius:8px;padding:10px 12px;margin-bottom:0}
+@media (max-width:900px){
+  .eh-facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .eh-facts>div{border-left:0;border-top:1px solid var(--line)}
+  .emp-grid{grid-template-columns:1fr}
+  .eh-acts{width:100%}
+}
 .person-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .person-head .avatar{width:52px;height:52px;font-size:18px;flex:none}
 .person-head .ph-n{flex:1;min-width:180px}
@@ -1327,9 +1359,10 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
   },
   {
     key: 'lieferanten',
-    label: 'Lieferanten & Nachunternehmer',
+    label: 'Einkauf & Nachunternehmer',
     items: [
-      { label: 'Lieferanten & Nachunternehmer', href: '/lieferanten' },
+      { label: 'Nachunternehmer', href: '/nachunternehmer' },
+      { label: 'Lieferanten', href: '/lieferanten' },
       { label: 'Bestellungen', href: '/bestellungen' },
       { label: 'Rechnungseingang', href: '/rechnungseingang' },
     ],

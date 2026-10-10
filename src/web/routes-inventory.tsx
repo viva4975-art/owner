@@ -156,19 +156,29 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
     const found = await getSupplier(sql, id);
     const s: Partial<Supplier> = found ?? {
       supplier_no: await suggestSupplierNo(sql),
-      kind: 'lieferant',
+      kind: c.req.query('art') === 'nachunternehmer' ? 'nachunternehmer' : 'lieferant',
       payment_terms_days: 30,
       active: true,
     };
     const isNew = !found;
     return page(
       c,
-      isNew ? 'Neuer Lieferant' : (s.name ?? ''),
+      isNew ? (s.kind === 'nachunternehmer' ? 'Neuer Nachunternehmer' : 'Neuer Lieferant') : (s.name ?? ''),
       'lieferanten',
       <>
         <PageHead
-          title={isNew ? 'Neuer Lieferant / Nachunternehmer' : `${s.name} bearbeiten`}
-          crumbs={[['Lieferanten', '/lieferanten']]}
+          title={
+            isNew
+              ? s.kind === 'nachunternehmer'
+                ? 'Neuer Nachunternehmer'
+                : 'Neuer Lieferant'
+              : `${s.name} bearbeiten`
+          }
+          crumbs={[
+            s.kind === 'nachunternehmer'
+              ? ['Nachunternehmer', '/nachunternehmer']
+              : ['Lieferanten', '/lieferanten'],
+          ]}
         />
         <form
           method="post"

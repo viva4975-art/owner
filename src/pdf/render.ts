@@ -92,7 +92,7 @@ export function quantityPdf(milli: bigint): string {
   return `${neg ? '-' : ''}${abs / 1000n},${frac}`;
 }
 
-function wrap(text: string, font: PDFFont, size: number, width: number): string[] {
+export function wrap(text: string, font: PDFFont, size: number, width: number): string[] {
   const out: string[] = [];
   for (const para of text.split('\n')) {
     let line = '';

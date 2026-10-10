@@ -2205,3 +2205,20 @@ Testadresse.
     laufen), Seiten-Rundgang PC + Handy (App muss laufen). Rundgang endet rot bei Serverfehlern, JS-Fehlern,
     „undefined/NaN“ im Text oder kaputten PDFs. **Vor jedem größeren Update laufen lassen.**
   - Nicht gemacht (Ahmed: „unnötig“): Monatsabschluss zusätzlich unter Personal.
+- 2026-10-10: Runde 36 (Ahmed: Anmeldemaske, Mitarbeiterübersicht, Lieferanten/NU getrennt, Rechnungs-/Angebotsdesign):
+  - **Anmeldung neu** (`src/web/login-page.tsx`, für `/anmelden` und `/app`): links Bordeaux-Fläche mit hellem Logo,
+    Leitsatz, Siegeln; rechts Formular mit Symbolen, Passwort-Auge, „Wie melde ich mich an?“. Am Handy Bordeaux-Kopf und
+    Formular als Karte. Feld-IDs unverändert (Browser-Tests, Passwort-Manager).
+  - **Mitarbeiter-Übersicht neu:** Kopf mit Initialen, Status, Tags, Schnellaktionen (Anrufen, WhatsApp, E-Mail,
+    Bearbeiten) und Kennzahlenleiste (im Betrieb seit + Dauer, Wochenstunden ≈ Monat, Vergütung, Urlaub, Objekte);
+    darunter Beschäftigung | Kontakt, rechts Objekte, Vertraulich (Aufenthaltstitel/Arbeitserlaubnis mit „noch n Tage“ /
+    „abgelaufen“), Plan/Ist.
+  - **Nachunternehmer und Lieferanten getrennt:** Menü „Einkauf & Nachunternehmer“ → Nachunternehmer (`/nachunternehmer`,
+    Ampel-Kacheln, kompakte Tabelle mit Nachweis-Balken, Fehlt/Läuft ab, Status) und Lieferanten (`/lieferanten`, einfache
+    Liste mit Ort, Telefon, E-Mail, offene Bestellungen). „+ … anlegen“ setzt die Art vor. Alte Links
+    `/lieferanten?art=nachunternehmer` leiten um.
+  - **Gestaltungsvorschläge Rechnung/Angebot** (`src/pdf/invoice-design.ts`, Beispiele: `npx tsx scripts/design-proposals.ts
+    <Ordner>`): Varianten „klar“, „akzent“, „kompakt“ auf dem Briefpapier; Rechnung jeweils auf **einer Seite** (Zahlung mit
+    Bankverbindung und GiroCode im Kasten), Angebot mit Summen monatlich/einmalig, Ansprechpartner und Feld
+    „Auftragserteilung“. **Noch nicht aktiv** – Ahmed wählt, dann wird die gewählte Variante für Rechnung, Storno,
+    Korrektur, Angebot, AB eingebaut (PDF/A-3 + KoSIT erneut prüfen).

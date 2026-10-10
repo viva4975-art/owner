@@ -145,7 +145,7 @@ for (const [path, name, text] of [
   ['/angebote', 'm4-angebote', 'Zuschlagsquote'],
   ['/mahnungen', 'm5-mahnwesen', 'Mahnwesen'],
   ['/mahnungen/einstellungen', 'm6-mahnstufen', 'Verzugspauschale'],
-  ['/lieferanten', 'm7-lieferanten', 'Nachunternehmer'],
+  ['/nachunternehmer', 'm7-lieferanten', 'Nachunternehmer'],
   ['/artikel?ansicht=nachbestellen', 'm8-nachbestellen', 'Müllbeutel'],
   ['/geraete', 'm9-geraete', 'Prüfung fällig'],
   ['/schluessel', 'm10-schluessel', 'Schlüsselbuch'],

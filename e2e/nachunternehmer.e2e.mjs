@@ -41,12 +41,10 @@ const stamp = Date.now().toString().slice(-6);
 
 console.log('1. Nachunternehmer anlegen');
 await p.goto(B + '/nachunternehmer');
-check(
-  'alte Adresse leitet auf die gemeinsame Liste',
-  p.url().includes('/lieferanten?art=nachunternehmer'),
-  p.url(),
-);
-await p.click('a:has-text("+ Neu anlegen")');
+check('eigene Liste Nachunternehmer', (await p.locator('h1').innerText()).includes('Nachunternehmer'));
+await p.goto(B + '/lieferanten?art=nachunternehmer');
+check('alte Adresse leitet auf die Nachunternehmer-Liste', p.url().includes('/nachunternehmer'), p.url());
+await p.click('a:has-text("+ Nachunternehmer anlegen")');
 await p.waitForLoadState();
 await p.fill('#name', `E2E Reinigung ${stamp} GmbH`);
 await p.selectOption('#kind', 'nachunternehmer');
@@ -186,12 +184,17 @@ const apdf = await p.request.get(p.url().split('?')[0] + '/auftrag.pdf');
 check('Auftrags-PDF', apdf.ok() && (await apdf.body()).subarray(0, 4).toString() === '%PDF');
 
 console.log('6. Übersicht / Zahlungslauf');
-await p.goto(B + '/lieferanten');
+await p.goto(B + '/nachunternehmer');
 {
-  const card = p.locator('.lc', { hasText: `E2E Reinigung ${stamp}` });
-  check('als Karte in „Lieferanten & Nachunternehmer“', (await card.count()) === 1);
-  check('Karte zeigt Compliance', /compliance/i.test(await card.innerText()));
+  const card = p.locator('.sup-tbl tr', { hasText: `E2E Reinigung ${stamp}` });
+  check('als Zeile in „Nachunternehmer“', (await card.count()) === 1);
+  check('Zeile zeigt Nachweise', /pflicht/i.test(await card.innerText()));
 }
+await p.goto(B + '/lieferanten');
+check(
+  'nicht in der Lieferantenliste',
+  (await p.locator('.sup-tbl tr', { hasText: `E2E Reinigung ${stamp}` }).count()) === 0,
+);
 await p.goto(B + '/bestellungen?ansicht=alle&art=nu');
 check(
   'NU-Bestellung in der gemeinsamen Bestellliste',

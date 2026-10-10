@@ -409,183 +409,278 @@ export const EmployeeOverview: FC<{
   employment?: Child;
   /** Verlauf der Wochenstunden (neueste zuerst) */
   hours?: { valid_from: string; weekly_hours: string | null; recorded_by: string }[];
-}> = ({ e, priv, sites, showPrivate, wage, month, afterHead, footer, employment, hours = [] }) => (
-  <>
-    {e.warning_note && (
-      <div class="flash err" style="white-space:pre-line">
-        <b>Warnhinweis:</b> {e.warning_note}
-      </div>
-    )}
-    <div class="card person-head">
-      <span class="avatar">{initials(`${e.first_name} ${e.last_name}`)}</span>
-      <div class="ph-n">
-        <b>
-          {e.first_name} {e.last_name}
-        </b>
-        <div class="small mut">
-          Personalnr. {e.personnel_no} · {EMPLOYMENT_TYPES[e.employment_type]}
-          {e.weekly_hours ? ` · ${String(Number(e.weekly_hours)).replace('.', ',')} Std./Woche` : ''}
+}> = ({ e, priv, sites, showPrivate, wage, month, afterHead, footer, employment, hours = [] }) => {
+  // Neu gestaltet (Ahmed 10.10.: „Mitarbeiterübersicht designtechnisch nicht schön“): Kopf mit Kennzahlen und
+  // Schnellaktionen, darunter Beschäftigung | Kontakt, rechts Objekte, Vertrauliches, Plan/Ist.
+  const today = todayBerlin();
+  const num = (v: string | number | null | undefined) =>
+    v == null ? '–' : String(Number(v)).replace('.', ',');
+  const tenure = (() => {
+    if (!e.entry_date) return null;
+    const [y, m] = e.entry_date.split('-').map(Number) as [number, number];
+    const [ty, tm] = (e.exit_date && e.exit_date < today ? e.exit_date : today).split('-').map(Number) as [
+      number,
+      number,
+    ];
+    const months = (ty - y) * 12 + (tm - m);
+    if (months < 1) return 'neu';
+    if (months < 12) return `${months} Monat${months === 1 ? '' : 'e'}`;
+    const yrs = Math.floor(months / 12);
+    return `${yrs} Jahr${yrs === 1 ? '' : 'e'}`;
+  })();
+  const tel = (v: string) => `tel:${v.replace(/[^+\d]/g, '')}`;
+  const wa = e.mobile ? `https://wa.me/${e.mobile.replace(/\D/g, '').replace(/^0/, '49')}` : null;
+  const expiry = (d: string | null | undefined) => {
+    if (!d) return null;
+    const days = Math.round((Date.parse(d) - Date.parse(today)) / 86400000);
+    if (days < 0) return <span class="badge bad">abgelaufen</span>;
+    if (days <= 60) return <span class="badge warn">noch {days} Tage</span>;
+    return null;
+  };
+  const pay =
+    wage &&
+    (e.pay_model === 'festgehalt'
+      ? `${euro(e.monthly_salary_cents ?? 0n)}/Monat`
+      : wage.cents != null
+        ? `${euro(wage.cents)}/Std.`
+        : null);
+  return (
+    <>
+      {e.warning_note && (
+        <div class="flash err" style="white-space:pre-line">
+          <b>Warnhinweis:</b> {e.warning_note}
         </div>
-        <span class={`badge ${e.status === 'aktiv' ? 'ok' : 'bad'}`}>
-          {e.status === 'aktiv' ? 'aktiv' : 'ausgetreten'}
-        </span>
-      </div>
-      <a class="btn sec ph-edit" href={`/personal/${e.id}/bearbeiten`}>
-        Stammdaten bearbeiten
-      </a>
-    </div>
-    {afterHead}
-    <div class="cols">
-      <div class="card">
-        <h3>Stammdaten</h3>
-        <dl class="kv">
-          <dt>Beschäftigung</dt>
-          <dd>{EMPLOYMENT_TYPES[e.employment_type]}</dd>
-          <dt>Eintritt</dt>
-          <dd>{dateDe(e.entry_date)}</dd>
-          {e.exit_date && (
-            <>
-              <dt>Austritt</dt>
-              <dd>{dateDe(e.exit_date)}</dd>
-            </>
-          )}
-          {employment && (
-            <>
-              <dt></dt>
-              <dd>
-                <details id="beschaeftigung" class="emp-periods">
-                  <summary class="btn sm sec">Beschäftigungszeiten / Austritt</summary>
-                  <div style="margin-top:10px">{employment}</div>
-                </details>
-              </dd>
-            </>
-          )}
-          <dt>Std./Woche</dt>
-          <dd>
-            {e.weekly_hours ? String(Number(e.weekly_hours)).replace('.', ',') : '–'}
-            {hours.length > 1 && (
-              <details class="hours-hist">
-                <summary class="small">Verlauf ({hours.length})</summary>
-                <div class="small" style="margin-top:4px">
-                  {hours.map((h) => (
-                    <div style="padding:2px 0" class={h.valid_from > todayBerlin() ? 'mut' : ''}>
-                      ab {dateDe(h.valid_from)}:{' '}
-                      <b>
-                        {h.weekly_hours != null ? String(Number(h.weekly_hours)).replace('.', ',') : '–'} Std.
-                      </b>
-                      <span class="mut">
-                        {' '}
-                        · {h.valid_from > todayBerlin() ? 'geplant · ' : ''}
-                        {h.recorded_by}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </details>
+      )}
+      <section class="card emp-hero">
+        <div class="eh-top">
+          <span class="eh-av">{initials(`${e.first_name} ${e.last_name}`)}</span>
+          <div class="eh-name">
+            <h2>
+              {e.first_name} {e.last_name}
+            </h2>
+            <div class="eh-sub">
+              Personalnr. <b>{e.personnel_no}</b> · {EMPLOYMENT_TYPES[e.employment_type]}
+              {e.weekly_hours ? ` · ${num(e.weekly_hours)} Std./Woche` : ''}
+            </div>
+            <div class="eh-chips">
+              <span class={`badge ${e.status === 'aktiv' ? 'ok' : 'bad'}`}>
+                {e.status === 'aktiv' ? 'aktiv' : 'ausgetreten'}
+              </span>
+              {e.tags
+                .filter((t) => t !== EMPLOYMENT_TYPES[e.employment_type])
+                .map((t) => (
+                  <span class="eh-tag">{t}</span>
+                ))}
+            </div>
+          </div>
+          <div class="eh-acts">
+            {(e.mobile || e.phone) && (
+              <a class="btn sec sm" href={tel((e.mobile || e.phone)!)}>
+                <Icon name="phone" /> Anrufen
+              </a>
             )}
-          </dd>
-          <dt>Urlaubsanspruch</dt>
-          <dd>{String(Number(e.annual_leave_days)).replace('.', ',')} Tage/Jahr</dd>
-          {wage && (
-            <>
-              <dt>Vergütung</dt>
+            {wa && (
+              <a class="btn sec sm" href={wa} target="_blank" rel="noopener">
+                WhatsApp
+              </a>
+            )}
+            {e.email && (
+              <a class="btn sec sm" href={`mailto:${e.email}`}>
+                <Icon name="mail" /> E-Mail
+              </a>
+            )}
+            <a class="btn sm" href={`/personal/${e.id}/bearbeiten`}>
+              <Icon name="pencil" /> Bearbeiten
+            </a>
+          </div>
+        </div>
+        <div class="eh-facts">
+          <div>
+            <span>Im Betrieb seit</span>
+            <b>{dateDe(e.entry_date)}</b>
+            <small>{e.exit_date ? `Austritt ${dateDe(e.exit_date)}` : tenure}</small>
+          </div>
+          <div>
+            <span>Wochenstunden</span>
+            <b>{e.weekly_hours ? `${num(e.weekly_hours)} Std.` : '–'}</b>
+            <small>
+              {e.weekly_hours
+                ? `≈ ${num(Math.round(Number(e.weekly_hours) * 4.33 * 10) / 10)} Std./Monat`
+                : 'nicht hinterlegt'}
+            </small>
+          </div>
+          <div>
+            <span>Vergütung</span>
+            <b>{pay ?? <span class="badge warn">fehlt</span>}</b>
+            <small>
+              {e.pay_model === 'festgehalt'
+                ? wage?.cents != null
+                  ? `≈ ${euro(wage.cents)}/Std.`
+                  : 'Festgehalt'
+                : e.pay_model === 'individuell'
+                  ? 'individuell'
+                  : (wage?.level ?? 'Tarif')}
+            </small>
+          </div>
+          <div>
+            <span>Urlaub</span>
+            <b>{num(e.annual_leave_days)} Tage</b>
+            <small>
+              <a href={`/personal/${e.id}/abwesenheiten`}>Urlaubskonto →</a>
+            </small>
+          </div>
+          <div>
+            <span>Objekte</span>
+            <b>{sites.length}</b>
+            <small>
+              <a href={`/personal/${e.id}/einsaetze`}>Einsätze →</a>
+            </small>
+          </div>
+        </div>
+      </section>
+      {afterHead}
+      <div class="emp-grid">
+        <div class="emp-main">
+          <section class="card">
+            <h3>Beschäftigung</h3>
+            <dl class="kv">
+              <dt>Art</dt>
+              <dd>{EMPLOYMENT_TYPES[e.employment_type]}</dd>
+              <dt>Eintritt</dt>
+              <dd>{dateDe(e.entry_date)}</dd>
+              {e.exit_date && (
+                <>
+                  <dt>Austritt</dt>
+                  <dd>{dateDe(e.exit_date)}</dd>
+                </>
+              )}
+              <dt>Std./Woche</dt>
               <dd>
-                {e.pay_model === 'festgehalt' ? (
-                  <>
-                    Festgehalt {euro(e.monthly_salary_cents ?? 0n)}/Monat
-                    {wage.cents != null && <span class="small mut"> (≈ {euro(wage.cents)}/Std.)</span>}
-                  </>
-                ) : (
-                  <>
-                    {wage.cents != null ? `${euro(wage.cents)}/Std.` : '–'}
+                {e.weekly_hours ? num(e.weekly_hours) : '–'}
+                {hours.length > 1 && (
+                  <details class="hours-hist">
+                    <summary class="small">Verlauf ({hours.length})</summary>
+                    <div class="small" style="margin-top:4px">
+                      {hours.map((h) => (
+                        <div style="padding:2px 0" class={h.valid_from > today ? 'mut' : ''}>
+                          ab {dateDe(h.valid_from)}: <b>{num(h.weekly_hours)} Std.</b>
+                          <span class="mut">
+                            {' '}
+                            · {h.valid_from > today ? 'geplant · ' : ''}
+                            {h.recorded_by}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </dd>
+              <dt>Urlaubsanspruch</dt>
+              <dd>{num(e.annual_leave_days)} Tage/Jahr</dd>
+              {wage && (
+                <>
+                  <dt>Vergütung</dt>
+                  <dd>
+                    {pay ?? '–'}
                     <span class="small mut">
                       {' '}
-                      ({e.pay_model === 'individuell' ? 'individuell' : (wage.level ?? 'Tarif')})
+                      (
+                      {e.pay_model === 'festgehalt'
+                        ? 'Festgehalt'
+                        : e.pay_model === 'individuell'
+                          ? 'individuell'
+                          : (wage.level ?? 'Tarif')}
+                      )
                     </span>
-                  </>
-                )}
-                {!e.pay_model && <span class="badge warn">bitte festlegen</span>}
-              </dd>
-            </>
-          )}
-          <dt>Telefon</dt>
-          <dd>{e.phone ?? '–'}</dd>
-          {e.mobile && (
-            <>
-              <dt>Mobil</dt>
-              <dd>{e.mobile}</dd>
-            </>
-          )}
-          <dt>E-Mail</dt>
-          <dd>{e.email ?? '–'}</dd>
-          {e.tags.length > 0 && (
-            <>
-              <dt>Tags</dt>
-              <dd>
-                <TagChips tags={e.tags} />
-              </dd>
-            </>
-          )}
-          <dt>Sprachen</dt>
-          <dd>{e.languages.length ? e.languages.join(', ') : '–'}</dd>
-        </dl>
-        {e.info && (
-          <p class="small" style="white-space:pre-line">
-            {e.info}
-          </p>
-        )}
-      </div>
-      <div>
-        <div class="card">
-          <h3>Objekte</h3>
-          {sites.length ? (
-            sites.map((s) => (
-              <div>
-                <a href={`/objekte/${s.id}`}>
-                  {s.site_no} · {s.name}
-                </a>
-              </div>
-            ))
-          ) : (
-            <div class="empty">Keinem Objekt zugeordnet.</div>
-          )}
-        </div>
-        {showPrivate && priv && (
-          <div class="card">
-            <h3>Vertrauliche Daten</h3>
-            <dl class="kv">
-              <dt>Geburtsdatum</dt>
-              <dd>{dateDe(priv.birth_date)}</dd>
-              <dt>Geburtsort</dt>
-              <dd>{[priv.birth_place, priv.birth_country].filter(Boolean).join(', ') || '–'}</dd>
-              <dt>Familienstand</dt>
-              <dd>{priv.marital_status ?? '–'}</dd>
-              <dt>Staatsangehörigkeit</dt>
-              <dd>{priv.nationality ?? '–'}</dd>
-              <dt>Aufenthaltstitel bis</dt>
-              <dd>
-                {dateDe(priv.residence_permit_until)}
-                {priv.residence_permit_info && <div class="small mut">{priv.residence_permit_info}</div>}
-              </dd>
-              <dt>Arbeitserlaubnis bis</dt>
-              <dd>
-                {dateDe(priv.work_permit_until)}
-                {priv.work_permit_info && <div class="small mut">{priv.work_permit_info}</div>}
-              </dd>
-              <dt>Krankenkasse</dt>
-              <dd>{priv.health_insurance ?? '–'}</dd>
+                    {!e.pay_model && <span class="badge warn">bitte festlegen</span>}
+                  </dd>
+                </>
+              )}
             </dl>
-            <p class="mut small" style="margin-bottom:0">
-              Steuer-ID, SV-Nummer und IBAN nur unter „Stammdaten“.
-            </p>
-          </div>
-        )}
-        {month}
+            {employment && (
+              <details id="beschaeftigung" class="emp-periods">
+                <summary class="btn sm sec">Beschäftigungszeiten / Austritt</summary>
+                <div style="margin-top:10px">{employment}</div>
+              </details>
+            )}
+          </section>
+          <section class="card">
+            <h3>Kontakt</h3>
+            <dl class="kv">
+              <dt>Telefon</dt>
+              <dd>{e.phone ? <a href={tel(e.phone)}>{e.phone}</a> : '–'}</dd>
+              <dt>Mobil</dt>
+              <dd>{e.mobile ? <a href={tel(e.mobile)}>{e.mobile}</a> : '–'}</dd>
+              <dt>E-Mail</dt>
+              <dd>{e.email ? <a href={`mailto:${e.email}`}>{e.email}</a> : '–'}</dd>
+              <dt>Sprachen</dt>
+              <dd>{e.languages.length ? e.languages.join(', ') : '–'}</dd>
+            </dl>
+            {e.info && (
+              <p class="small eh-info" style="white-space:pre-line">
+                {e.info}
+              </p>
+            )}
+          </section>
+        </div>
+        <div class="emp-side">
+          <section class="card">
+            <h3>Objekte</h3>
+            {sites.length ? (
+              <ul class="eh-sites">
+                {sites.map((s) => (
+                  <li>
+                    <Icon name="building" />
+                    <a href={`/objekte/${s.id}`}>{s.name}</a>
+                    <span class="mut small">{s.site_no}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div class="empty">Keinem Objekt zugeordnet.</div>
+            )}
+          </section>
+          {showPrivate && priv && (
+            <section class="card">
+              <h3>
+                Vertraulich <span class="mut small">nur Geschäftsführung/Personal</span>
+              </h3>
+              <dl class="kv">
+                <dt>Geburtsdatum</dt>
+                <dd>{dateDe(priv.birth_date)}</dd>
+                <dt>Geburtsort</dt>
+                <dd>{[priv.birth_place, priv.birth_country].filter(Boolean).join(', ') || '–'}</dd>
+                <dt>Familienstand</dt>
+                <dd>{priv.marital_status ?? '–'}</dd>
+                <dt>Staatsangehörigkeit</dt>
+                <dd>{priv.nationality ?? '–'}</dd>
+                <dt>Aufenthaltstitel</dt>
+                <dd>
+                  {priv.residence_permit_until ? `bis ${dateDe(priv.residence_permit_until)} ` : '–'}
+                  {expiry(priv.residence_permit_until)}
+                  {priv.residence_permit_info && <div class="small mut">{priv.residence_permit_info}</div>}
+                </dd>
+                <dt>Arbeitserlaubnis</dt>
+                <dd>
+                  {priv.work_permit_until ? `bis ${dateDe(priv.work_permit_until)} ` : '–'}
+                  {expiry(priv.work_permit_until)}
+                  {priv.work_permit_info && <div class="small mut">{priv.work_permit_info}</div>}
+                </dd>
+                <dt>Krankenkasse</dt>
+                <dd>{priv.health_insurance ?? '–'}</dd>
+              </dl>
+              <p class="mut small" style="margin-bottom:0">
+                Steuer-ID, SV-Nummer und IBAN unter „Bearbeiten“.
+              </p>
+            </section>
+          )}
+          {month}
+        </div>
       </div>
-    </div>
-    {footer}
-  </>
-);
+      {footer}
+    </>
+  );
+};
 
 export const EmployeeForm: FC<{
   id: string;

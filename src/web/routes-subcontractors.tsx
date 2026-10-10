@@ -139,31 +139,25 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     return out;
   };
   const subHead = (s: { id: string; name: string; supplier_no: string }) => (
-    <PageHead
-      title={s.name}
-      no={s.supplier_no}
-      crumbs={[['Lieferanten & Nachunternehmer', '/lieferanten?art=nachunternehmer']]}
-    >
+    <PageHead title={s.name} no={s.supplier_no} crumbs={[['Nachunternehmer', '/nachunternehmer']]}>
       <a class="btn sec" href={`/lieferanten/${s.id}/bearbeiten`} style="margin-left:auto">
         Stammdaten bearbeiten
       </a>
     </PageHead>
   );
 
-  // ------------------------------------------------------------------ Liste wie im alten Portal
-  // Lieferanten und Nachunternehmer in einer Liste (Karten), Nachweise/Fristen direkt sichtbar (Ahmed 06.10.)
-  app.get('/nachunternehmer', (c) => {
-    const f = c.req.query('filter');
-    return c.redirect(`/lieferanten?art=nachunternehmer${f ? `&filter=${encodeURIComponent(f)}` : ''}`);
-  });
-  app.get('/lieferanten', async (c) => {
+  // ------------------------------------------------------------------ Listen
+  // Nachunternehmer und Lieferanten getrennt (Ahmed 10.10.): Nachunternehmer mit Nachweis-Ampel als kompakte
+  // Tabelle, Lieferanten als einfache Liste. Alte Links /lieferanten?art=nachunternehmer leiten um.
+  const supplierList = async (c: Context<AppEnv>, mode: 'nachunternehmer' | 'lieferant') => {
     const q = c.req.query();
-    const art = q.art === 'lieferant' || q.art === 'nachunternehmer' ? q.art : '';
-    const filter = q.filter && q.filter in OVERALL ? (q.filter as Overall) : null;
+    const nuMode = mode === 'nachunternehmer';
+    const filter = nuMode && q.filter && q.filter in OVERALL ? (q.filter as Overall) : null;
     const showInactive = q.inaktiv === '1';
     const search = (q.q ?? '').trim().toLowerCase();
+    const base = nuMode ? '/nachunternehmer' : '/lieferanten';
     const [compliance, suppliers, openOrders, pending] = await Promise.all([
-      complianceOverview(sql),
+      nuMode ? complianceOverview(sql) : Promise.resolve([]),
       sql<
         {
           id: string;
@@ -174,42 +168,40 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
           city: string | null;
           postal_code: string | null;
           phone: string | null;
+          email: string | null;
           contact_name: string | null;
           terminated_on: string | null;
         }[]
-      >`select id, supplier_no, name, kind, active, city, postal_code, phone, contact_name, terminated_on
-          from app.suppliers order by name`,
+      >`select id, supplier_no, name, kind, active, city, postal_code, phone, email, contact_name, terminated_on
+          from app.suppliers where kind = ${mode} order by name`,
       sql<{ supplier_id: string; n: number }[]>`
         select supplier_id, count(*)::int as n from (
           select supplier_id from app.subcontracts where status in ('entwurf', 'erteilt')
           union all
           select supplier_id from app.purchase_orders where status in ('entwurf', 'bestellt')) x
          group by supplier_id`,
-      pendingCount(),
+      nuMode ? pendingCount() : Promise.resolve(0),
     ]);
     const comp = new Map(compliance.map((r) => [r.supplier.id, r]));
     const orders = new Map(openOrders.map((r) => [r.supplier_id, r.n]));
-    const statusOf = (s: (typeof suppliers)[number]): Overall | 'lieferant' =>
-      s.kind === 'nachunternehmer'
-        ? (comp.get(s.id)?.overall ?? 'kritisch')
-        : s.active
-          ? 'lieferant'
-          : 'inaktiv';
+    const statusOf = (s: (typeof suppliers)[number]): Overall =>
+      !s.active ? 'inaktiv' : nuMode ? (comp.get(s.id)?.overall ?? 'kritisch') : 'ok';
     const active = suppliers.filter((s) => s.active);
-    const nus = active.filter((s) => s.kind === 'nachunternehmer');
-    const n = (o: Overall) => nus.filter((s) => statusOf(s) === o).length;
-    const rank: Record<string, number> = { kritisch: 0, warnung: 1, ok: 2, lieferant: 3, inaktiv: 4 };
+    const n = (o: Overall) => active.filter((s) => statusOf(s) === o).length;
+    const rank: Record<string, number> = { kritisch: 0, warnung: 1, ok: 2, inaktiv: 4 };
     const rows = suppliers
       .filter((s) => (showInactive || filter === 'inaktiv' ? true : s.active))
-      .filter((s) => !art || s.kind === art)
       .filter((s) => !filter || statusOf(s) === filter)
       .filter(
         (s) =>
           !search ||
           [s.name, s.supplier_no, s.contact_name, s.city].some((v) => v?.toLowerCase().includes(search)),
       )
-      .sort((a, b) => rank[statusOf(a)]! - rank[statusOf(b)]! || a.name.localeCompare(b.name, 'de'));
-    // Fristen-Hinweis: abgelaufene oder in 14 Tagen ablaufende Pflicht-Nachweise aktiver Nachunternehmer
+      .sort((a, b) =>
+        nuMode
+          ? rank[statusOf(a)]! - rank[statusOf(b)]! || a.name.localeCompare(b.name, 'de')
+          : a.name.localeCompare(b.name, 'de'),
+      );
     const due = compliance
       .filter((r) => r.supplier.active && !r.supplier.terminated_on)
       .flatMap((r) => r.due.map((d) => ({ ...d, supplier: r.supplier })))
@@ -218,45 +210,51 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     const expired = due.filter((d) => d.days < 0).length;
     const link = (over: Record<string, string | null>) => {
       const p = new URLSearchParams();
-      const base: Record<string, string | null> = {
-        art: art || null,
+      const all: Record<string, string | null> = {
         filter,
         q: search || null,
         inaktiv: showInactive ? '1' : null,
         ...over,
       };
-      for (const [k, v] of Object.entries(base)) if (v) p.set(k, v);
+      for (const [k, v] of Object.entries(all)) if (v) p.set(k, v);
       const str = p.toString();
-      return `/lieferanten${str ? `?${str}` : ''}`;
+      return `${base}${str ? `?${str}` : ''}`;
     };
     const BADGE: Record<string, [string, string]> = {
       kritisch: ['err', 'Kritisch'],
       warnung: ['warn', 'Warnung'],
       ok: ['ok', 'Vollständig'],
       inaktiv: ['muted', 'Inaktiv'],
-      lieferant: ['muted', 'Lieferant'],
     };
     const stat = (key: Overall | null, label: string, value: number, tone: string, hint: string) => (
-      <a
-        class={`stat-card tone-${tone}${filter === key && (key || !filter) ? ' on' : ''}`}
-        href={link({ filter: key, art: key ? 'nachunternehmer' : art || null })}
-      >
+      <a class={`stat-card tone-${tone}${filter === key ? ' on' : ''}`} href={link({ filter: key })}>
         <span class="stat-lbl">{label}</span>
         <span class="stat-num">{value}</span>
         <span class="stat-hint">{hint}</span>
       </a>
     );
+    const title = nuMode ? 'Nachunternehmer' : 'Lieferanten';
     return page(
       c,
-      'Lieferanten & Nachunternehmer',
+      title,
       'lieferanten',
       <div class="portal">
         <div class="page-head">
           <div>
-            <div class="eyebrow">Einkauf · Compliance</div>
-            <h1>Lieferanten &amp; Nachunternehmer</h1>
+            <div class="eyebrow">
+              {nuMode ? 'Einkauf · Nachweise & Fristen' : 'Einkauf · Material & Dienstleister'}
+            </div>
+            <h1>{title}</h1>
             <div class="sub">
-              {active.length} aktiv · {nus.length} Nachunternehmer · Status auf einen Blick
+              {anz(
+                active.length,
+                nuMode ? 'aktiver Nachunternehmer' : 'aktiver Lieferant',
+                nuMode ? 'aktive Nachunternehmer' : 'aktive Lieferanten',
+              )}
+              {' · '}
+              <a href={nuMode ? '/lieferanten' : '/nachunternehmer'}>
+                {nuMode ? 'zu den Lieferanten' : 'zu den Nachunternehmern'}
+              </a>
             </div>
           </div>
           <div class="acts">
@@ -265,15 +263,15 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 {pending} Uploads prüfen
               </a>
             )}
-            <a class="btn" href={`/lieferanten/${randomUUID()}/bearbeiten`}>
-              + Neu anlegen
+            <a class="btn" href={`/lieferanten/${randomUUID()}/bearbeiten?art=${mode}`}>
+              {nuMode ? '+ Nachunternehmer anlegen' : '+ Lieferant anlegen'}
             </a>
           </div>
         </div>
-        {due.length > 0 && (
+        {nuMode && due.length > 0 && (
           <a
             class={`due-banner ${expired ? 'err' : 'warn'}`}
-            href={link({ art: 'nachunternehmer', filter: expired ? 'kritisch' : 'warnung' })}
+            href={link({ filter: expired ? 'kritisch' : 'warnung' })}
           >
             <span class="ico">!</span>
             <span>
@@ -299,121 +297,153 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
             </span>
           </a>
         )}
-        <div class="stat-grid">
-          {stat(null, 'Aktiv', active.length, 'brand', `${nus.length} Nachunternehmer`)}
-          {stat('kritisch', 'Kritisch', n('kritisch'), 'err', 'Nachweise fehlen / abgelaufen')}
-          {stat('warnung', 'Warnung', n('warnung'), 'warn', 'läuft in 60 Tagen ab')}
-          {stat('ok', 'Vollständig', n('ok'), 'ok', 'alle Pflicht-Nachweise gültig')}
-        </div>
-        <form class="toolbar" method="get" action="/lieferanten">
+        {nuMode && (
+          <div class="stat-grid">
+            {stat(null, 'Aktiv', active.length, 'brand', 'alle aktiven')}
+            {stat('kritisch', 'Kritisch', n('kritisch'), 'err', 'Nachweise fehlen / abgelaufen')}
+            {stat('warnung', 'Warnung', n('warnung'), 'warn', 'läuft in 60 Tagen ab')}
+            {stat('ok', 'Vollständig', n('ok'), 'ok', 'alle Pflicht-Nachweise gültig')}
+          </div>
+        )}
+        <form class="toolbar" method="get" action={base}>
           <input
             class="search-input"
             type="search"
             name="q"
             value={search}
+            aria-label="Suche"
             placeholder="Suche Firma, Nummer, Ansprechpartner oder Ort …"
           />
-          {art && <input type="hidden" name="art" value={art} />}
           {filter && <input type="hidden" name="filter" value={filter} />}
           {showInactive && <input type="hidden" name="inaktiv" value="1" />}
-          <div class="pills">
-            <a class={`pill${!art ? ' on' : ''}`} href={link({ art: null, filter: null })}>
-              Alle <span>{suppliers.filter((s) => s.active || showInactive).length}</span>
-            </a>
-            <a
-              class={`pill${art === 'nachunternehmer' ? ' on' : ''}`}
-              href={link({ art: 'nachunternehmer' })}
-            >
-              Nachunternehmer <span>{nus.length}</span>
-            </a>
-            <a
-              class={`pill${art === 'lieferant' ? ' on' : ''}`}
-              href={link({ art: 'lieferant', filter: null })}
-            >
-              Lieferanten <span>{active.filter((s) => s.kind === 'lieferant').length}</span>
-            </a>
-          </div>
           <a class="toggle" href={link({ inaktiv: showInactive ? null : '1' })}>
             <span class={`sw${showInactive ? ' on' : ''}`} /> Inaktive einbeziehen (
             {suppliers.filter((s) => !s.active).length})
           </a>
-          {(search || filter || art) && (
-            <a class="btn sec sm" href="/lieferanten">
+          {(search || filter) && (
+            <a class="btn sec sm" href={base}>
               Filter zurücksetzen
             </a>
           )}
         </form>
-        <div class="list-cards">
-          {rows.map((s) => {
-            const r = comp.get(s.id);
-            const st = statusOf(s);
-            const pct = r?.requiredTotal ? Math.round((r.requiredOk / r.requiredTotal) * 100) : 100;
-            const href =
-              s.kind === 'nachunternehmer' ? `/lieferanten/${s.id}/nachweise` : `/lieferanten/${s.id}`;
-            const o = orders.get(s.id) ?? 0;
-            return (
-              <a class={`lc${s.active ? '' : ' lc-inactive'}`} href={href}>
-                <div class="lc-head">
-                  <div>
-                    <span class="nu-tag">{s.supplier_no}</span>
-                    <span class="lc-name">{s.name}</span>
-                    {s.terminated_on && (
-                      <span class="badge err" style="margin-left:6px">
-                        gekündigt
-                      </span>
-                    )}
-                    {s.contact_name && <div class="lc-sub">{s.contact_name}</div>}
-                  </div>
-                  <div class="lc-right">
-                    {r && r.pending > 0 && <span class="badge info">{r.pending} zu prüfen</span>}
-                    <span class={`badge ${BADGE[st]![0]}`}>{BADGE[st]![1]}</span>
-                  </div>
-                </div>
-                <div class="lc-details">
-                  <span>{s.kind === 'nachunternehmer' ? 'Nachunternehmer' : 'Lieferant'}</span>
-                  {s.city && <span>{[s.postal_code, s.city].filter(Boolean).join(' ')}</span>}
-                  {s.phone && <span>{s.phone}</span>}
-                  <span>
-                    {o} offene Bestellung{o === 1 ? '' : 'en'}
-                  </span>
-                </div>
-                {s.kind === 'nachunternehmer' && r && s.active && !s.terminated_on && (
-                  <div class="lc-foot">
-                    <div class="compl-head">
-                      <span>
-                        Compliance · {r.requiredOk}/{r.requiredTotal} Pflicht
-                      </span>
-                      <b>{pct} %</b>
-                    </div>
-                    <div class={`progress ${pct >= 90 ? '' : pct >= 70 ? 'warn' : 'err'}`}>
-                      <i style={`width:${pct}%`} />
-                    </div>
-                    {r.missing.length > 0 && <div class="lc-miss">Fehlt: {short(r.missing)}</div>}
-                    {r.expiring.length > 0 && (
-                      <div class="lc-exp">
-                        Läuft ab: {short(r.expiring)}
-                        {r.nextExpiry && ` (bis ${dateDe(r.nextExpiry)})`}
-                      </div>
-                    )}
-                  </div>
+        <div class="card" style="padding:0">
+          <div class="tbl stack-m">
+            <table class="sup-tbl">
+              <thead>
+                <tr>
+                  <th>Nr.</th>
+                  <th>Firma</th>
+                  <th>Ort · Kontakt</th>
+                  {nuMode && <th>Nachweise</th>}
+                  <th class="r">Offene Bestell.</th>
+                  {nuMode && <th>Status</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((s) => {
+                  const r = comp.get(s.id);
+                  const st = statusOf(s);
+                  const pct = r?.requiredTotal ? Math.round((r.requiredOk / r.requiredTotal) * 100) : 100;
+                  const href = nuMode ? `/lieferanten/${s.id}/nachweise` : `/lieferanten/${s.id}`;
+                  const o = orders.get(s.id) ?? 0;
+                  return (
+                    <tr class={s.active ? '' : 'mut'}>
+                      <td>
+                        <span class="nu-tag">{s.supplier_no}</span>
+                      </td>
+                      <td>
+                        <a class="sup-name" href={href}>
+                          {s.name}
+                        </a>
+                        {s.terminated_on && (
+                          <span class="badge err" style="margin-left:6px">
+                            gekündigt zum {dateDe(s.terminated_on)}
+                          </span>
+                        )}
+                        {s.contact_name && <div class="small mut">{s.contact_name}</div>}
+                      </td>
+                      <td class="small">
+                        {s.city && <div>{[s.postal_code, s.city].filter(Boolean).join(' ')}</div>}
+                        {s.phone && (
+                          <div>
+                            <a href={`tel:${s.phone.replace(/[^+\d]/g, '')}`}>{s.phone}</a>
+                          </div>
+                        )}
+                        {!nuMode && s.email && (
+                          <div>
+                            <a href={`mailto:${s.email}`}>{s.email}</a>
+                          </div>
+                        )}
+                      </td>
+                      {nuMode && (
+                        <td style="min-width:220px">
+                          {r && s.active && !s.terminated_on ? (
+                            <>
+                              <div class="compl-head small">
+                                <span>
+                                  {r.requiredOk}/{r.requiredTotal} Pflicht
+                                  {r.pending > 0 && ` · ${r.pending} zu prüfen`}
+                                </span>
+                                <b>{pct} %</b>
+                              </div>
+                              <div class={`progress ${pct >= 90 ? '' : pct >= 70 ? 'warn' : 'err'}`}>
+                                <i style={`width:${pct}%`} />
+                              </div>
+                              {r.missing.length > 0 && (
+                                <div class="lc-miss small">Fehlt: {short(r.missing)}</div>
+                              )}
+                              {r.expiring.length > 0 && (
+                                <div class="lc-exp small">
+                                  Läuft ab: {short(r.expiring)}
+                                  {r.nextExpiry && ` (bis ${dateDe(r.nextExpiry)})`}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <span class="small mut">keine Nachweise erforderlich</span>
+                          )}
+                        </td>
+                      )}
+                      <td class="r">{o > 0 ? <a href={`/bestellungen?lieferant=${s.id}`}>{o}</a> : '–'}</td>
+                      {nuMode && (
+                        <td>
+                          <span class={`badge ${BADGE[st]![0]}`}>{BADGE[st]![1]}</span>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+                {!rows.length && (
+                  <tr>
+                    <td colspan={nuMode ? 6 : 4} class="mut">
+                      Keine Einträge in dieser Auswahl.
+                    </td>
+                  </tr>
                 )}
-                {s.terminated_on && (
-                  <div class="lc-sub" style="margin-top:8px">
-                    Gekündigt zum {dateDe(s.terminated_on)} · keine Nachweise mehr erforderlich
-                  </div>
-                )}
-              </a>
-            );
-          })}
-          {!rows.length && <div class="lc empty">Keine Einträge in dieser Auswahl.</div>}
+              </tbody>
+            </table>
+          </div>
         </div>
-        <p class="small mut">
-          Als Auftraggeber haften wir für Mindestlohn (§ 13 MiLoG, § 14 AEntG) und Sozialversicherungsbeiträge
-          (§ 28e Abs. 3a SGB IV) der Beschäftigten des Nachunternehmers. Bei „Kritisch“ werden keine neuen
-          Aufträge erteilt; in der Zahlungsliste sind die Rechnungen nicht vorausgewählt.
-        </p>
+        {nuMode && (
+          <p class="small mut">
+            Als Auftraggeber haften wir für Mindestlohn (§ 13 MiLoG, § 14 AEntG) und
+            Sozialversicherungsbeiträge (§ 28e Abs. 3a SGB IV) der Beschäftigten des Nachunternehmers. Bei
+            „Kritisch“ werden keine neuen Aufträge erteilt; in der Zahlungsliste sind die Rechnungen nicht
+            vorausgewählt.
+          </p>
+        )}
       </div>,
     );
+  };
+  app.get('/nachunternehmer', (c) => supplierList(c, 'nachunternehmer'));
+  app.get('/lieferanten', (c) => {
+    if (c.req.query('art') === 'nachunternehmer') {
+      const p = new URLSearchParams(c.req.query());
+      p.delete('art');
+      const str = p.toString();
+      return c.redirect(`/nachunternehmer${str ? `?${str}` : ''}`);
+    }
+    return supplierList(c, 'lieferant');
   });
 
   // ------------------------------------------------------------------ Nachweise eines Nachunternehmers
@@ -1292,10 +1322,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       'Nachweise prüfen',
       'lieferanten',
       <>
-        <PageHead
-          title="Hochgeladene Nachweise prüfen"
-          crumbs={[['Lieferanten & Nachunternehmer', '/lieferanten?art=nachunternehmer']]}
-        />
+        <PageHead title="Hochgeladene Nachweise prüfen" crumbs={[['Nachunternehmer', '/nachunternehmer']]} />
         {!rows.length && <div class="card empty">Nichts zu prüfen.</div>}
         {rows.map((d) => (
           <form method="post" action={`/nachweise/${d.id}/pruefen`} class="card">

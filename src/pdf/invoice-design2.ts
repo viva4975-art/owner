@@ -810,6 +810,23 @@ export async function renderLetterEdel(lp: LetterPdfInput): Promise<Uint8Array> 
     }
     p.y += 8;
   }
+  if (lp.objekt) {
+    // schmales Band wie auf der Rechnung; lange Adresse in eine zweite Zeile
+    const ob = lp.objekt;
+    const tx = L + 52;
+    const tw = p.w(ob.title, 9, 's');
+    const oneLine = !ob.address || tx + tw + 10 + p.w(ob.address, 8, 'r') <= R - 8;
+    const h = oneLine ? 26 : 38;
+    p.rect(L, p.y - 4, R - L, h, SOFT, 4);
+    p.rect(L, p.y - 4, 2.2, h, BRD);
+    p.cap('Objekt', L + 10, p.y + 12, BRD, 6.4);
+    p.text(ob.title, tx, p.y + 12, 9, 's', INK);
+    if (ob.address) {
+      if (oneLine) p.text(ob.address, tx + tw + 10, p.y + 12, 8, 'r', GREY);
+      else p.text(ob.address, tx, p.y + 24, 8, 'r', GREY);
+    }
+    p.y += h + 14;
+  }
   const greeting = lp.greeting === undefined ? 'Sehr geehrte Damen und Herren,' : lp.greeting;
   if (greeting) {
     p.text(greeting, L, p.y, 8.8, 'r', INK2);
@@ -831,14 +848,36 @@ export async function renderLetterEdel(lp: LetterPdfInput): Promise<Uint8Array> 
   if (cols.length) {
     p.ensure(60);
     head();
+    // linksbündige Spalten brechen um (Platz bis zur nächsten Spalte), statt in sie hineinzulaufen
+    const avail = cols.map((c, i) => {
+      if (c.align !== 'left') return Infinity;
+      const nx = cols[i + 1];
+      if (!nx) return R - c.x;
+      if (nx.align === 'left') return nx.x - c.x - 8;
+      const widest = Math.max(
+        p.w(nx.label.toUpperCase(), 6.2, 's'),
+        ...lp.rows.map((r) => p.w(r[i + 1] ?? '', 8.6, 'r')),
+      );
+      return nx.x - widest - c.x - 10;
+    });
     for (const row of lp.rows) {
-      p.ensure(18, head);
-      cols.forEach((c, i) => {
+      const cells = cols.map((c, i) => {
         const t = row[i] ?? '';
-        if (c.align === 'left') p.text(t, c.x, p.y, 8.6, i === 0 ? 'm' : 'r', INK);
-        else p.right(t, c.x, p.y, 8.6, 'r', INK2);
+        const font = i === 0 ? f.m : f.r;
+        return c.align === 'left' && avail[i]! > 20
+          ? t.split('\n').flatMap((x) => wrap(x, font, 8.6, avail[i]!))
+          : [t];
       });
-      p.y += 11;
+      const n = Math.max(1, ...cells.map((x) => x.length));
+      p.ensure(8 + n * 10.6, head);
+      cols.forEach((c, i) => {
+        cells[i]!.forEach((t, k) => {
+          if (c.align === 'left')
+            p.text(t, c.x, p.y + k * 10.6, 8.6, i === 0 && k === 0 ? 'm' : 'r', k ? INK2 : INK);
+          else p.right(t, c.x, p.y + k * 10.6, 8.6, 'r', INK2);
+        });
+      });
+      p.y += 11 + (n - 1) * 10.6;
       p.line(L, p.y - 2, R, p.y - 2, 0.35, HAIR);
       p.y += 10;
     }

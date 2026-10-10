@@ -2289,3 +2289,10 @@ Testadresse.
   deaktiviert) und neues Objektordner-Paket. **Ahmed: unter Einstellungen → Word-Vorlagen bzw. Objektordner-Vorlagen
   hochladen.** Word für Mac nutzt eingebettete Schriften ggf. nicht (dann Ersatzschrift) – Inter dort installieren.
   Echte Vorlagen nicht im Repo.
+- 2026-10-10: **Objekt auf Mahnung, Zahlungserinnerung, Lieferschein und Bestellung** (Ahmed): gleiches Objekt-Band wie auf der
+  Rechnung (`objekt` in `LetterPdfInput`, lange Adresse in zweiter Zeile). Mahnung: betreffen alle Rechnungen dasselbe
+  Objekt → Band; sonst Spalte „Objekt“ je Rechnung (Name, Nr., Adresse; Sammelrechnung bis 3 Objekte, sonst „n Objekte“),
+  auch für Rechnungen vor der Umstellung (Objekt aus den Positionen). Helfer `invoiceSites()` in `invoices.ts`.
+  Lieferschein: ein Objekt → Band, Sammelrechnung → Spalte „Objekt“ je Position. Material-Bestellung: Band mit dem
+  Lieferobjekt. Briefe: linksbündige Tabellenspalten brechen jetzt um statt abgeschnitten zu werden (Positionstexte nicht
+  mehr gekürzt). **Bereits erstellte Mahnungen bleiben wie archiviert (write-once)** – nur neue zeigen die Objekte.

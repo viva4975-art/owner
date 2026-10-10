@@ -842,6 +842,8 @@ export interface LetterPdfInput {
   greeting?: string | null;
   /** Unterschriftsfeld, z. B. Abnahme durch den Kunden */
   signature?: { label: string; png: Uint8Array | null; name: string; at: string } | null;
+  /** Objekt als Band über der Anrede (wie auf der Rechnung) */
+  objekt?: { title: string; address?: string | null } | null;
 }
 
 export async function renderLetterPdfClassic(p: LetterPdfInput): Promise<Uint8Array> {

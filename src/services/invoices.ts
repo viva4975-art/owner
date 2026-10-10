@@ -972,6 +972,38 @@ export async function draftListInfo(sql: Sql, ids: string[]): Promise<Map<string
   return out;
 }
 
+/**
+ * Objekte je Rechnung (eigene und Rechnungen vor der Umstellung): Objekt im Kopf, sonst die Objekte der Positionen
+ * (Sammelrechnung). Für Mahnung, Lieferschein usw.
+ */
+export async function invoiceSites(sql: Sql, ids: string[]) {
+  const out = new Map<string, { site_id: string; name: string; site_no: string; address: string }[]>();
+  if (!ids.length) return out;
+  const rows = await sql<
+    { invoice_id: string; site_id: string; name: string; site_no: string; address: string }[]
+  >`
+    select distinct on (x.invoice_id, s.id) x.invoice_id, s.id as site_id, s.name, s.site_no,
+           concat_ws(', ', nullif(s.street, ''), nullif(concat_ws(' ', s.postal_code, s.city), '')) as address
+      from (
+        select i.id as invoice_id, i.site_id from app.invoices i where i.id = any(${ids}::uuid[]) and i.site_id is not null
+        union all
+        select l.invoice_id, ss.site_id from app.invoice_lines l
+          join app.site_services ss on ss.id = l.source_service_id
+         where l.invoice_id = any(${ids}::uuid[])
+        union all
+        select l.invoice_id, l.site_id from app.legacy_invoice_lines l
+         where l.invoice_id = any(${ids}::uuid[]) and l.site_id is not null
+      ) x
+      join app.sites s on s.id = x.site_id
+     order by x.invoice_id, s.id`;
+  for (const r of rows) {
+    const list = out.get(r.invoice_id) ?? [];
+    list.push(r);
+    out.set(r.invoice_id, list);
+  }
+  return out;
+}
+
 /** Entwurf als Dokument für Vorschau/Briefansicht: Rechnungsdatum = geplantes oder heute, Fälligkeit = + Zahlungsziel. */
 export async function loadDraftPreview(sql: Sql, id: string) {
   const data = await getInvoice(sql, id);

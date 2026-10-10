@@ -25,6 +25,7 @@ import {
   runMonthly,
   saveDraft,
   setPlannedIssueDate,
+  invoiceSites,
 } from '../services/invoices.js';
 import { parseEuro, parseQuantity } from '../domain/money/money.js';
 import {
@@ -1091,7 +1092,21 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     // wie auf der Rechnung: mindestens eine Nachkommastelle („1,0“)
     const qty = (m: bigint) =>
       (Number(m) / 1000).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 3 });
+    // Objekt(e) wie auf der Rechnung: eines → Band, Sammelrechnung → Spalte je Position
+    const sites = (await invoiceSites(sql, [id])).get(id) ?? [];
+    const label = (x: { name: string; site_no: string }) => `${x.name} (${x.site_no})`;
+    const single = sites.length === 1 ? sites[0]! : null;
+    const lineSite = new Map<string, string>();
+    if (sites.length > 1) {
+      const rows = await sql<{ id: string; name: string; site_no: string }[]>`
+        select l.id, s.name, s.site_no from app.invoice_lines l
+          join app.site_services ss on ss.id = l.source_service_id join app.sites s on s.id = ss.site_id
+         where l.invoice_id = ${id}`;
+      for (const r of rows) lineSite.set(r.id, label(r));
+    }
+    const perLine = lineSite.size > 0;
     const pdf = await renderLetterPdf({
+      objekt: single ? { title: label(single), address: single.address || null } : null,
       title: `Lieferschein${inv.number ? ` zu Rechnung ${inv.number}` : ''}`,
       date: todayBerlin(),
       info: [
@@ -1115,12 +1130,14 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
       columns: [
         { label: 'Pos', x: 62.3, align: 'left' },
         { label: 'Leistung / Artikel', x: 90, align: 'left' },
+        ...(perLine ? [{ label: 'Objekt', x: 330, align: 'left' as const }] : []),
         { label: 'Menge', x: 470 },
         { label: 'Einheit', x: 538.8 },
       ],
       rows: data.lines.map((l, i) => [
         String(i + 1),
-        l.description.slice(0, 64),
+        l.description,
+        ...(perLine ? [lineSite.get(l.id) ?? '–'] : []),
         qty(l.quantity_milli < 0n ? -l.quantity_milli : l.quantity_milli),
         UNIT[l.unit_code] ?? l.unit_code,
       ]),

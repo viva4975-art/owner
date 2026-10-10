@@ -234,11 +234,27 @@ export async function renderOrderPdf(sql: Sql, id: string) {
   >`
     select name, street, postal_code, city, supplier_no, contact_name from app.suppliers where id = ${o.supplier_id}`;
   const [site] = o.site_id
-    ? await sql<{ name: string; street: string | null; postal_code: string | null; city: string | null }[]>`
-        select name, street, postal_code, city from app.sites where id = ${o.site_id}`
+    ? await sql<
+        {
+          name: string;
+          site_no: string | null;
+          street: string | null;
+          postal_code: string | null;
+          city: string | null;
+        }[]
+      >`
+        select name, site_no, street, postal_code, city from app.sites where id = ${o.site_id}`
     : [];
   const qty = (m: bigint) => (Number(m) / 1000).toLocaleString('de-DE', { maximumFractionDigits: 3 });
   const pdf = await renderLetterPdf({
+    objekt: site
+      ? {
+          title: `${site.name}${site.site_no ? ` (${site.site_no})` : ''}`,
+          address:
+            [site.street, `${site.postal_code ?? ''} ${site.city ?? ''}`.trim()].filter(Boolean).join(', ') ||
+            null,
+        }
+      : null,
     title: `Bestellung ${o.number}`,
     date: o.order_date,
     info: [
@@ -272,7 +288,7 @@ export async function renderOrderPdf(sql: Sql, id: string) {
     ],
     rows: lines.map((l) => [
       String(l.position),
-      l.description.slice(0, 48),
+      l.description,
       `${qty(l.quantity_milli)} ${l.unit}`,
       eur(l.unit_price_cents),
       eur(l.net_cents),

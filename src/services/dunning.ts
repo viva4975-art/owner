@@ -6,6 +6,7 @@ import { type Cents, formatEuro } from '../domain/money/money.js';
 import { MAILER_MISSING, resolveRecipients } from '../mail/mailer.js';
 import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import { BusinessError } from './errors.js';
+import { invoiceSites } from './invoices.js';
 import { buildBuyerSnapshot, effectiveBilling, getSeller } from './masterdata.js';
 import type { Deps } from './workflow.js';
 
@@ -309,7 +310,14 @@ interface DunningLetter {
   fee_cents: bigint;
   late_fee_cents: bigint;
   total_cents: bigint;
-  items: { number: string; issue_date: string; due_date: string; days_overdue: number; open_cents: bigint }[];
+  items: {
+    invoice_id: string;
+    number: string;
+    issue_date: string;
+    due_date: string;
+    days_overdue: number;
+    open_cents: bigint;
+  }[];
 }
 
 async function renderDunningLetter(sql: Sql, d: DunningLetter, watermark?: string) {
@@ -323,7 +331,25 @@ async function renderDunningLetter(sql: Sql, d: DunningLetter, watermark?: strin
     const n = Number(d.late_fee_cents / LATE_FEE_CENTS);
     sums.push([`Verzugspauschale${n > 1 ? ` ${n} × ${eur(LATE_FEE_CENTS)}` : ''}`, eur(d.late_fee_cents)]);
   }
+  // Objekte je Rechnung (Ahmed: in Mahnung/Zahlungserinnerung die jeweiligen Objekte zeigen)
+  const sites = await invoiceSites(
+    sql,
+    items.map((i) => i.invoice_id),
+  );
+  const label = (x: { name: string; site_no: string }) => `${x.name} (${x.site_no})`;
+  const objOf = (id: string) => {
+    const l = sites.get(id) ?? [];
+    if (!l.length) return '–';
+    if (l.length === 1) return `${label(l[0]!)}${l[0]!.address ? `\n${l[0]!.address}` : ''}`;
+    if (l.length <= 3) return l.map(label).join('\n');
+    return `${l.length} Objekte (Sammelrechnung)`;
+  };
+  const distinct = new Map([...sites.values()].flat().map((x) => [x.site_id, x]));
+  const allHaveOne = items.every((i) => (sites.get(i.invoice_id) ?? []).length === 1);
+  const single = distinct.size === 1 && allHaveOne ? [...distinct.values()][0]! : null;
+  const withCol = !single && distinct.size > 0;
   return renderLetterPdf({
+    objekt: single ? { title: label(single), address: single.address || null } : null,
     title: d.title,
     date: d.issue_date,
     info: [
@@ -335,20 +361,40 @@ async function renderDunningLetter(sql: Sql, d: DunningLetter, watermark?: strin
     seller,
     buyer,
     intro: d.text,
-    columns: [
-      { label: 'Rechnung', x: 62.3, align: 'left' },
-      { label: 'Rechnungsdatum', x: 150, align: 'left' },
-      { label: 'Fällig am', x: 245, align: 'left' },
-      { label: 'Tage überfällig', x: 400 },
-      { label: 'Offener Betrag', x: 538.8 },
-    ],
-    rows: items.map((i) => [
-      i.number,
-      formatDateDe(i.issue_date),
-      formatDateDe(i.due_date),
-      String(i.days_overdue),
-      eur(i.open_cents),
-    ]),
+    columns: withCol
+      ? [
+          { label: 'Rechnung', x: 62.3, align: 'left' },
+          { label: 'Objekt', x: 120, align: 'left' },
+          { label: 'Rechnungsdatum', x: 362 },
+          { label: 'Fällig am', x: 418 },
+          { label: 'Tage', x: 458 },
+          { label: 'Offener Betrag', x: 538.8 },
+        ]
+      : [
+          { label: 'Rechnung', x: 62.3, align: 'left' },
+          { label: 'Rechnungsdatum', x: 150, align: 'left' },
+          { label: 'Fällig am', x: 245, align: 'left' },
+          { label: 'Tage überfällig', x: 400 },
+          { label: 'Offener Betrag', x: 538.8 },
+        ],
+    rows: items.map((i) =>
+      withCol
+        ? [
+            i.number,
+            objOf(i.invoice_id),
+            formatDateDe(i.issue_date),
+            formatDateDe(i.due_date),
+            String(i.days_overdue),
+            eur(i.open_cents),
+          ]
+        : [
+            i.number,
+            formatDateDe(i.issue_date),
+            formatDateDe(i.due_date),
+            String(i.days_overdue),
+            eur(i.open_cents),
+          ],
+    ),
     sums,
     total: ['Zu zahlen', eur(d.total_cents)],
     paragraphs: [
@@ -411,6 +457,7 @@ export async function previewDunnings(
         late_fee_cents: lateFee,
         total_cents: open + fee + lateFee,
         items: items.map((i) => ({
+          invoice_id: i.invoice_id,
           number: i.number,
           issue_date: i.issue_date,
           due_date: i.due_date,

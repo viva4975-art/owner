@@ -105,21 +105,19 @@ Testadresse.
 - [ ] Ausfallmeldung: UptimeRobot (`/health/voll`) und healthchecks.io (`BACKUP_PING_URL`) einrichten, `ALERT_EMAIL` in
       `.env.live` – Anleitung `docs/anleitung-ueberwachung.pdf`
 - [x] IONOS VPS (4 vCores/8 GB, Ubuntu 24.04, 217.160.236.117) installiert, läuft unter https://app.viva-deluxe-reinigung.de
-- [ ] AVV mit IONOS; IONOS Cloud Backup (Sicherung außerhalb des Servers – Anleitung `docs/anleitung-cloud-backup.pdf`); root-Passwort ändern und ersten GitHub-Token
-      löschen (beide standen im Chat); SMTP-Zugang nachtragen (`.env.live`)
+- [ ] ~~AVV mit IONOS~~ (11.10. erledigt); IONOS Cloud Backup (Sicherung außerhalb des Servers – Anleitung `docs/anleitung-cloud-backup.pdf`); root-Passwort ändern (stand im Chat; GitHub-Token 11.10. gelöscht); SMTP-Zugang nachtragen (`.env.live`)
 - [ ] Lexware-Lohnprogramm (genaue Bezeichnung, Importformat)
 - [ ] Fortytools: eine Rechnungsgruppe von innen zeigen (dort stecken vermutlich die Preise je Objekt)
-- [ ] Briefpapier ab 01.11.2026 (neue Adresse) als Datei vom Grafiker, 300 dpi
-- [ ] Mit Steuerberater klären: Belegart 384 für Storno/Korrektur; Bedarf § 13b (Reverse Charge)
+- [ ] Briefpapier ab 01.11.2026 (neue Adresse) als Datei vom Grafiker, 300 dpi – 11.10. angefragt
+- [ ] Mit Steuerberater klären (11.10. angefragt): Belegart 384 für Storno/Korrektur; Bedarf § 13b (Reverse Charge)
 - [ ] Branchen-Mindestlohn Gebäudereinigung (aktueller Wert) unter Zeiterfassung → Einstellungen eintragen
-- [ ] Übersetzungen der Handy-Ansicht (ro, tr, pl, hr, bg) von Muttersprachlern im Team gegenlesen lassen
+- [ ] Übersetzungen der Handy-Ansicht (ro, tr, pl, hr, bg) – 11.10. ans Team gegeben, Rückmeldung abwarten
 - [ ] Steuerberater: DATEV Berater-/Mandantennummer, Kontenrahmen (SKR03/04), BU-Schlüssel für § 13b-Eingangsrechnungen,
       Behandlung Schlussrechnung/Abschläge und Skonto; ersten Testexport gemeinsam prüfen
 - [x] ~~Lohnzuschlag~~ – Ahmed 06.10.: Minijob 32 %, Teilzeit bis 30 Std. 28 %, darüber 26 %
 - [x] ~~Mahngebühren/Verzugspauschale~~ – Ahmed 06.10.: 0/5/10 € + 40 € Pauschale (umgesetzt, Anrechnung beachten)
 - [ ] Rechnungsnummer-Startwert (Ahmed meldet sich), Screenshots Qualitätskontrolle (fehlten in der Anlage)
 - [x] ~~Qwist~~ → Enable Banking (gebaut 08.10.): Schlüssel hochladen + Banken verbinden (Ahmed)
-- [ ] Je Behörde klären: nimmt sie XRechnung per E-Mail an oder nur über ein Portal (ZRE/OZG-RE, Peppol)?
 - [ ] SEPA-Zahlungslauf: erste pain.001-Datei als Testeinreichung bei der Bank hochladen (Format/Limit prüfen)
 - [ ] Je ein echter Kontoauszug (CAMT.053, sonst CSV) von Münchner Bank und Targobank zum Testen des Imports
 - [ ] Fortytools-XML-Exporte auf dem Live-Server einspielen (Transfer → Import aus Fortytools); Angebotsstatus-Zuordnung
@@ -2425,3 +2423,5 @@ Testadresse.
   `/opt/viva-sicherung` (ohne `dateien_*.tar.gz` – täglich komplett neu, würde den Speicher füllen), Docker-Speicher
   `deploy_daten/_data` (inkrementell) und `.env.live`, verschlüsselt, 30 Tage; Test-Wiederherstellung mit `pg_restore --list`,
   Ernstfall-Ablauf, Störungen.
+- 2026-10-11: Ahmed: AVV IONOS und GitHub-Token erledigt; autoaid-API nicht nötig; Behörden-Abfrage (Portal/Leitweg) gestrichen;
+  Landeshauptstadt München zahlt nach eigenem Rechnungs-/Zahlungsplan (deshalb Versandweg „kein Versand“).

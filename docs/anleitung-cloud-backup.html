@@ -184,6 +184,10 @@ docker compose --env-file .env.live exec -T db pg_restore --list \
 <h2>Störungen</h2>
 <table>
   <tr><th style="width:38%">Meldung</th><th>Was tun</th></tr>
+  <tr><td>„The utf8 kernel module is missing“</td><td>Installer abbrechen, dann <code>apt install -y linux-modules-extra-$(uname -r)</code>,
+    <code>modprobe nls_utf8</code>, <code>echo nls_utf8 &gt; /etc/modules-load.d/acronis.conf</code>, Installer neu starten.</td></tr>
+  <tr><td>„The utf8 kernel module is missing“-Fehler behoben, aber Registrierung unterbrochen</td><td>Agent ist installiert, nur nicht
+    registriert → neuen Token erzeugen und den Befehl aus der Zeile „Registration failed“ ausführen.</td></tr>
   <tr><td>„SnapAPI module could not be built/loaded“</td><td>Für unsere Sicherung (Dateien/Ordner) nicht schlimm – der Agent sichert
     dann ohne Snapshot. Installation trotzdem fortsetzen. Wer es beheben will: <code>apt install -y linux-headers-$(uname -r) dkms</code>, dann
     <code>./agent.bin</code> erneut starten → „Reparieren“.</td></tr>

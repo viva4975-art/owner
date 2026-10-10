@@ -68,7 +68,10 @@ export function registerStartAppRoutes({ app, deps }: Ctx) {
                     autocapitalize="none"
                     required
                   />
-                  <label for="p">PIN oder Passwort</label>
+                  <label for="p">
+                    PIN oder Passwort{' '}
+                    <small style="font-weight:400">(PIN anfangs = Geburtsdatum TTMMJJ)</small>
+                  </label>
                   <input id="p" name="geheim" type="password" autocomplete="current-password" required />
                   <button class="big go">Anmelden</button>
                 </form>

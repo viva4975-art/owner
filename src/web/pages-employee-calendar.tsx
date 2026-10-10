@@ -128,7 +128,7 @@ document.addEventListener('click',function(e){var a=e.target.closest&&e.target.c
 var x=JSON.parse(a.getAttribute('data-ev'));var b='';(x.links||[]).forEach(function(l,i){b+='<a class="btn'+(i?' sec':'')+'" href="'+esc(l[1])+'">'+esc(l[0])+'</a>'});
 if(x.ok)b='<form method="post" action="'+esc(x.ok)+'" style="margin:0"><input type="hidden" name="mitarbeiter" value="'+esc(x.emp)+'"><input type="hidden" name="von" value="'+esc(x.day)+'"><input type="hidden" name="bis" value="'+esc(x.day)+'"><input type="hidden" name="zurueck" value="'+esc(x.back)+'"><button class="btn">So gearbeitet – bestätigen</button></form>'+b;
 if(x.delTime)b+='<form method="post" action="/zeiterfassung/loeschen" style="margin:0" onsubmit="return confirm(\\'Diese erfasste Zeit löschen?\\')"><input type="hidden" name="ids" value="'+esc(x.delTime)+'"><input type="hidden" name="zurueck" value="'+esc(x.back)+'"><button class="btn sec danger">Zeit löschen</button></form>';
-if(x.del)b+='<form method="post" action="'+esc(x.del)+'" style="margin:0" onsubmit="return confirm(\\'Diesen Einsatz (die ganze Serie dieses Wochentags) löschen? Erfasste Zeiten bleiben erhalten.\\')"><input type="hidden" name="zurueck" value="'+esc(x.back)+'"><button class="btn sec danger">Einsatz löschen</button></form>';
+if(x.del)b+='<form method="post" action="'+esc(x.del)+'" style="margin:0" onsubmit="return confirm(\\'Diesen Einsatz (die ganze Serie dieses Wochentags) löschen? Erfasste Zeiten bleiben erhalten.\\')"><input type="hidden" name="zurueck" value="'+esc(x.back)+'"><button class="btn sec danger">Serie dieses Wochentags löschen</button></form>';
 d.innerHTML='<div class="hd"><div><div class="small mut">'+esc(x.date)+'</div><h3>'+esc(x.site)+'</h3><div class="small">'+esc(x.addr)+'</div><div class="small"><b>'+esc(x.status)+'</b></div></div><button type="button" class="x" aria-label="schließen">×</button></div><div class="bd">'+row('Geplant',x.plan)+row('Pause geplant',x.brk)+row('Erfasst',x.ist)+row('Pause',x.istBrk)+row('Arbeitszeit',x.net)+row('Quelle',x.src)+row('Termin',x.series)+'</div><div class="ft">'+b+'</div>';d.showModal()});
 d.addEventListener('click',function(e){if(e.target===d||e.target.classList.contains('x'))d.close()});
 var g=document.querySelector('.eg[data-scroll]');if(g)g.scrollTop=Number(g.getAttribute('data-scroll'))||0;})();`;
@@ -627,7 +627,7 @@ export const EmployeeCalendarView: FC<{
               <form
                 method="post"
                 action={confirmAction}
-                onsubmit={`return ${open.length ? `confirm('Für ${open.length} vergangene Einsätze ohne Zeit die geplanten Zeiten als Ist-Zeiten eintragen?')` : "(alert('Keine vergangenen Einsätze ohne Zeit.'),false)"}`}
+                onsubmit={`return ${open.length ? `confirm('Für ${open.length} vergangene${open.length === 1 ? 'n Einsatz' : ' Einsätze'} ohne Zeit die geplanten Zeiten als Ist-Zeiten eintragen?\\n\\nNur wenn tatsächlich so gearbeitet wurde – die Aufzeichnung muss stimmen (§ 17 MiLoG).')` : "(alert('Keine vergangenen Einsätze ohne Zeit.'),false)"}`}
               >
                 <input type="hidden" name="mitarbeiter" value={employeeId} />
                 <input type="hidden" name="von" value={calView === 'monat' ? `${month}-01` : r.from} />

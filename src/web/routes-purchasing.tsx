@@ -1418,7 +1418,19 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
           <div class="actions" style="margin-top:-8px">
             {i.status === 'erfasst' && (
               <>
-                <form method="post" action={`/rechnungseingang/${id}/status?s=freigegeben`}>
+                <form
+                  method="post"
+                  action={`/rechnungseingang/${id}/status?s=freigegeben`}
+                  onsubmit={(() => {
+                    const w: string[] = [];
+                    if (files.length === 0) w.push('Es ist kein Beleg hochgeladen.');
+                    if (Number(i.vat_cents) === 0 && !i.reverse_charge)
+                      w.push('USt ist 0 € und § 13b ist nicht angehakt.');
+                    return w.length
+                      ? `return confirm(${JSON.stringify(w.join(' ') + ' Trotzdem freigeben?')})`
+                      : undefined;
+                  })()}
+                >
                   <button class="btn">
                     <Icon name="check" /> Sachlich und rechnerisch richtig – freigeben
                   </button>
@@ -1567,6 +1579,9 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                 <div>
                   <label for="vat">USt €</label>
                   <input id="vat" name="vat" value={v.vat} class="right" placeholder="0,00" />
+                  <small class="mut" id="vat-hint">
+                    wird mit 19 % vom Netto vorbelegt · <span id="gross-out"></span>
+                  </small>
                 </div>
                 <div class="chk" style="align-self:end;height:38px">
                   <input
@@ -1620,56 +1635,58 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                     Nachunternehmer-Aufträge (setzt Objekt; mehrere Zeilen = eine Rechnung für mehrere
                     Objekte/Monate)
                   </label>
-                  <table class="tbl-in" style="width:100%">
-                    <thead>
-                      <tr>
-                        <th style="text-align:left">Auftrag</th>
-                        <th style="text-align:left;width:150px">Zeitraum ab</th>
-                        <th style="text-align:right;width:130px">netto (optional)</th>
-                      </tr>
-                    </thead>
-                    <tbody data-nu-rows>
-                      {[...linkRows, { sc: '', m: '', net: '' }].map((r) => (
+                  <div style="overflow-x:auto">
+                    <table class="tbl-in" style="width:100%">
+                      <thead>
                         <tr>
-                          <td>
-                            <select
-                              name="link_sc"
-                              disabled={dis}
-                              aria-label="Nachunternehmer-Auftrag"
-                              data-nosearch
-                            >
-                              <option value="">–</option>
-                              {subcontracts.map((x) => (
-                                <option value={x.id} selected={x.id === r.sc}>
-                                  {x.number} · {x.supplier_name} · {x.site_name ?? 'ohne Objekt'}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td>
-                            <input
-                              type="month"
-                              name="link_month"
-                              value={r.m}
-                              disabled={dis}
-                              aria-label="Zeitraum ab"
-                            />
-                          </td>
-                          <td>
-                            <input
-                              name="link_net"
-                              value={r.net}
-                              disabled={dis}
-                              inputmode="decimal"
-                              placeholder="0,00"
-                              style="text-align:right"
-                              aria-label="Anteil netto"
-                            />
-                          </td>
+                          <th style="text-align:left">Auftrag</th>
+                          <th style="text-align:left;width:150px">Zeitraum ab</th>
+                          <th style="text-align:right;width:130px">netto (optional)</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody data-nu-rows>
+                        {[...linkRows, { sc: '', m: '', net: '' }].map((r) => (
+                          <tr>
+                            <td>
+                              <select
+                                name="link_sc"
+                                disabled={dis}
+                                aria-label="Nachunternehmer-Auftrag"
+                                data-nosearch
+                              >
+                                <option value="">–</option>
+                                {subcontracts.map((x) => (
+                                  <option value={x.id} selected={x.id === r.sc}>
+                                    {x.number} · {x.supplier_name} · {x.site_name ?? 'ohne Objekt'}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td>
+                              <input
+                                type="month"
+                                name="link_month"
+                                value={r.m}
+                                disabled={dis}
+                                aria-label="Zeitraum ab"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                name="link_net"
+                                value={r.net}
+                                disabled={dis}
+                                inputmode="decimal"
+                                placeholder="0,00"
+                                style="text-align:right"
+                                aria-label="Anteil netto"
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                   {!dis && (
                     <button type="button" class="btn sm sec" data-nu-add style="margin-top:6px">
                       + weitere Zeile
@@ -1729,6 +1746,11 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               </div>
             )}
           </form>
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `(function(){var n=document.getElementById('net'),v=document.getElementById('vat'),r=document.getElementById('reverse_charge'),o=document.getElementById('gross-out');if(!n||!v)return;function p(x){x=(x||'').trim().replace(/\\./g,'').replace(',','.');var f=Number(x);return x===''||isNaN(f)?null:Math.round(f*100);}function fm(c){return (c/100).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});}function upd(){var a=p(n.value),b=p(v.value);o.textContent=a==null?'':'Brutto '+fm(a+(b||0))+' €';}n.addEventListener('change',function(){var a=p(n.value);if(a!=null&&v.value.trim()===''&&!(r&&r.checked)){v.value=fm(Math.round(a*19/100));}upd();});v.addEventListener('input',upd);n.addEventListener('input',upd);if(r)r.addEventListener('change',function(){if(r.checked)v.value='0,00';upd();});upd();})();`,
+            }}
+          />
           <div class="card">
             <h3>Beleg</h3>
             {i ? (
@@ -2200,7 +2222,8 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               ))}
             </select>
             <label class="chk" style="margin:0">
-              <input type="checkbox" name="skonto" value="1" checked /> Skonto gezogen
+              <input type="checkbox" name="skonto" value="1" checked={list.some((p) => p.skonto > 0n)} />{' '}
+              Skonto abziehen (nur wo die Skontofrist am Zahlungstag noch läuft)
             </label>
             <input name="notiz" placeholder="Notiz (optional)" style="max-width:220px" />
             <button

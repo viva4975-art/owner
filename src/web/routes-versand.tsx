@@ -193,6 +193,11 @@ export function registerVersandRoutes({ app, deps, page, back }: Ctx) {
               hidden
               style="max-width:240px"
             />
+            {rows.length > 0 && (
+              <button class="btn" data-vs-go disabled style="margin-left:auto">
+                Los (<span data-vs-n>0</span>)
+              </button>
+            )}
           </div>
           {rows.length === 0 ? (
             <div class="empty">Alles versendet – hier ist nichts offen.</div>
@@ -272,7 +277,7 @@ export function registerVersandRoutes({ app, deps, page, back }: Ctx) {
         </form>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){var f=document.querySelector('.vs-card');if(!f)return;var art=f.querySelector('#vs-art');function rows(){return f.querySelectorAll('[data-vs-row]')}function upd(){var n=0;rows().forEach(function(b){if(b.checked)n++});var s=f.querySelector('[data-vs-n]');if(s)s.textContent=n;var g=f.querySelector('[data-vs-go]');if(g)g.disabled=!n||!art.value;f.querySelectorAll('[data-vs-all]').forEach(function(a){a.checked=n>0&&n===rows().length});f.querySelectorAll('[data-vs-way]').forEach(function(w){w.hidden=art.value!=='manuell'&&!(art.value==='portal'&&w.tagName==='INPUT')})}f.addEventListener('change',function(e){if(e.target.matches('[data-vs-all]'))rows().forEach(function(b){b.checked=e.target.checked});upd()});upd()})();`,
+            __html: `(function(){var f=document.querySelector('.vs-card');if(!f)return;var art=f.querySelector('#vs-art');function rows(){return f.querySelectorAll('[data-vs-row]')}function upd(){var n=0;rows().forEach(function(b){if(b.checked)n++});f.querySelectorAll('[data-vs-n]').forEach(function(s){s.textContent=n});f.querySelectorAll('[data-vs-go]').forEach(function(g){g.disabled=!n||!art.value});f.querySelectorAll('[data-vs-all]').forEach(function(a){a.checked=n>0&&n===rows().length});f.querySelectorAll('[data-vs-way]').forEach(function(w){w.hidden=art.value!=='manuell'&&!(art.value==='portal'&&w.tagName==='INPUT')})}f.addEventListener('submit',function(e){var n=0;rows().forEach(function(b){if(b.checked)n++});var t=art.options[art.selectedIndex].text;var m=art.value==='email'?n+' Dokument(e) jetzt per E-Mail versenden? Das lässt sich nicht zurücknehmen.':n+' Dokument(e) als versendet kennzeichnen ('+t+')?';if(!confirm(m))e.preventDefault()});f.addEventListener('change',function(e){if(e.target.matches('[data-vs-all]'))rows().forEach(function(b){b.checked=e.target.checked});upd()});upd()})();`,
           }}
         />
       </>,

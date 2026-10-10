@@ -168,6 +168,7 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
           class="card"
           style="max-width:900px"
           id="neu"
+          onsubmit="var n=this.querySelectorAll('input[name=employee]:checked').length;if(!n){alert('Bitte Empfänger auswählen.');return false}return confirm('Dokument an '+n+' Mitarbeitende freigeben? Es erscheint sofort beim Öffnen ihrer Handy-App.')"
         >
           <h3 style="margin-top:0">Neue Unterweisung / Dokument freigeben</h3>
           <p class="small mut" style="margin-top:0">
@@ -230,6 +231,7 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
             <input
               type="checkbox"
               id="all"
+              checked={c.req.query('alle') === '1'}
               onchange="document.querySelectorAll('input[name=employee]').forEach(function(x){x.checked=this.checked}.bind(this))"
             />
             <label for="all">alle aktiven Mitarbeitenden ({emps.length})</label>
@@ -243,7 +245,7 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
           <div class="grid sign-emps" style="gap:4px 16px;max-height:300px;overflow:auto">
             {emps.map((e) => (
               <label class="chk" style="margin:0">
-                <input type="checkbox" name="employee" value={e.id} />
+                <input type="checkbox" name="employee" value={e.id} checked={c.req.query('alle') === '1'} />
                 {e.last_name}, {e.first_name} <span class="mut small">{e.personnel_no}</span>
               </label>
             ))}

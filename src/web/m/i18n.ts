@@ -110,7 +110,7 @@ const de: Dict = {
   doc_open_pdf: 'Dokument öffnen (PDF)',
   doc_read: 'Ich habe das Dokument gelesen und verstanden.',
   doc_sign_here: 'Hier mit dem Finger unterschreiben',
-  doc_clear: 'Löschen',
+  doc_clear: 'Neu zeichnen',
   doc_sign_btn: 'Unterschreiben',
   doc_signed: 'Unterschrieben am {date}',
   msg_signed: 'Danke, unterschrieben.',
@@ -175,6 +175,14 @@ const de: Dict = {
   cal_none: 'An diesem Tag sind keine Einsätze geplant.',
   clock_now: 'Stempeln',
   today_short: 'Heute',
+  confirm_out: 'Arbeit jetzt um {time} beenden?',
+  confirm_out_early: 'Geplant bis {end}. Arbeit wirklich jetzt um {time} beenden?',
+  doc_todo: 'bitte unterschreiben',
+  doc_done: 'erledigt',
+  abs_withdraw: 'Antrag zurückziehen',
+  abs_withdrawn: 'Antrag zurückgezogen.',
+  abs_withdraw_q: 'Antrag wirklich zurückziehen?',
+  lang_btn: 'Sprache',
 };
 
 const en: Dict = {
@@ -271,7 +279,7 @@ const en: Dict = {
   doc_open_pdf: 'Open document (PDF)',
   doc_read: 'I have read and understood the document.',
   doc_sign_here: 'Sign here with your finger',
-  doc_clear: 'Clear',
+  doc_clear: 'Redraw',
   doc_sign_btn: 'Sign',
   doc_signed: 'Signed on {date}',
   msg_signed: 'Thank you, signed.',
@@ -336,6 +344,14 @@ const en: Dict = {
   cal_none: 'No shifts planned on this day.',
   clock_now: 'Clock',
   today_short: 'Today',
+  confirm_out: 'Finish work now at {time}?',
+  confirm_out_early: 'Planned until {end}. Really finish work now at {time}?',
+  doc_todo: 'please sign',
+  doc_done: 'done',
+  abs_withdraw: 'Withdraw request',
+  abs_withdrawn: 'Request withdrawn.',
+  abs_withdraw_q: 'Really withdraw the request?',
+  lang_btn: 'Language',
 };
 
 const ro: Dict = {
@@ -432,7 +448,7 @@ const ro: Dict = {
   doc_open_pdf: 'Deschide documentul (PDF)',
   doc_read: 'Am citit și am înțeles documentul.',
   doc_sign_here: 'Semnează aici cu degetul',
-  doc_clear: 'Șterge',
+  doc_clear: 'Desenează din nou',
   doc_sign_btn: 'Semnează',
   doc_signed: 'Semnat la {date}',
   msg_signed: 'Mulțumim, semnat.',
@@ -497,6 +513,14 @@ const ro: Dict = {
   cal_none: 'În această zi nu sunt ture planificate.',
   clock_now: 'Pontaj',
   today_short: 'Azi',
+  confirm_out: 'Terminați lucrul acum la {time}?',
+  confirm_out_early: 'Planificat până la {end}. Sigur terminați lucrul acum la {time}?',
+  doc_todo: 'vă rugăm semnați',
+  doc_done: 'gata',
+  abs_withdraw: 'Retrage cererea',
+  abs_withdrawn: 'Cererea a fost retrasă.',
+  abs_withdraw_q: 'Sigur retrageți cererea?',
+  lang_btn: 'Limba',
 };
 
 const tr: Dict = {
@@ -592,7 +616,7 @@ const tr: Dict = {
   doc_open_pdf: 'Belgeyi aç (PDF)',
   doc_read: 'Belgeyi okudum ve anladım.',
   doc_sign_here: 'Buraya parmağınla imza at',
-  doc_clear: 'Sil',
+  doc_clear: 'Yeniden çiz',
   doc_sign_btn: 'İmzala',
   doc_signed: '{date} tarihinde imzalandı',
   msg_signed: 'Teşekkürler, imzalandı.',
@@ -657,6 +681,15 @@ const tr: Dict = {
   cal_none: 'Bu gün için planlı görev yok.',
   clock_now: 'Giriş/Çıkış',
   today_short: 'Bugün',
+  confirm_out: 'İşi şimdi {time} saatinde bitirmek istiyor musunuz?',
+  confirm_out_early:
+    'Plan {end} saatine kadar. İşi gerçekten şimdi {time} saatinde bitirmek istiyor musunuz?',
+  doc_todo: 'lütfen imzalayın',
+  doc_done: 'tamam',
+  abs_withdraw: 'Talebi geri çek',
+  abs_withdrawn: 'Talep geri çekildi.',
+  abs_withdraw_q: 'Talebi gerçekten geri çekmek istiyor musunuz?',
+  lang_btn: 'Dil',
 };
 
 const pl: Dict = {
@@ -753,7 +786,7 @@ const pl: Dict = {
   doc_open_pdf: 'Otwórz dokument (PDF)',
   doc_read: 'Przeczytałem/am i zrozumiałem/am dokument.',
   doc_sign_here: 'Podpisz tutaj palcem',
-  doc_clear: 'Wyczyść',
+  doc_clear: 'Narysuj ponownie',
   doc_sign_btn: 'Podpisz',
   doc_signed: 'Podpisano {date}',
   msg_signed: 'Dziękujemy, podpisano.',
@@ -818,6 +851,14 @@ const pl: Dict = {
   cal_none: 'W tym dniu nie zaplanowano zmian.',
   clock_now: 'Rejestracja',
   today_short: 'Dziś',
+  confirm_out: 'Zakończyć pracę teraz o {time}?',
+  confirm_out_early: 'Zaplanowano do {end}. Na pewno zakończyć pracę teraz o {time}?',
+  doc_todo: 'proszę podpisać',
+  doc_done: 'gotowe',
+  abs_withdraw: 'Wycofaj wniosek',
+  abs_withdrawn: 'Wniosek wycofany.',
+  abs_withdraw_q: 'Na pewno wycofać wniosek?',
+  lang_btn: 'Język',
 };
 
 const hr: Dict = {
@@ -914,7 +955,7 @@ const hr: Dict = {
   doc_open_pdf: 'Otvori dokument (PDF)',
   doc_read: 'Pročitao/la sam i razumijem dokument.',
   doc_sign_here: 'Ovdje se potpiši prstom',
-  doc_clear: 'Obriši',
+  doc_clear: 'Ponovo nacrtaj',
   doc_sign_btn: 'Potpiši',
   doc_signed: 'Potpisano {date}',
   msg_signed: 'Hvala, potpisano.',
@@ -979,6 +1020,14 @@ const hr: Dict = {
   cal_none: 'Za ovaj dan nema planiranih smjena.',
   clock_now: 'Prijava',
   today_short: 'Danas',
+  confirm_out: 'Završiti rad sada u {time}?',
+  confirm_out_early: 'Planirano do {end}. Stvarno završiti rad sada u {time}?',
+  doc_todo: 'molimo potpišite',
+  doc_done: 'gotovo',
+  abs_withdraw: 'Povuci zahtjev',
+  abs_withdrawn: 'Zahtjev povučen.',
+  abs_withdraw_q: 'Stvarno povući zahtjev?',
+  lang_btn: 'Jezik',
 };
 
 const bg: Dict = {
@@ -1074,7 +1123,7 @@ const bg: Dict = {
   doc_open_pdf: 'Отвори документа (PDF)',
   doc_read: 'Прочетох и разбрах документа.',
   doc_sign_here: 'Подпиши се тук с пръст',
-  doc_clear: 'Изчисти',
+  doc_clear: 'Начертай отново',
   doc_sign_btn: 'Подпиши',
   doc_signed: 'Подписано на {date}',
   msg_signed: 'Благодарим, подписано.',
@@ -1138,6 +1187,14 @@ const bg: Dict = {
   cal_none: 'За този ден няма планирани смени.',
   clock_now: 'Чекиране',
   today_short: 'Днес',
+  confirm_out: 'Да приключите ли работа сега в {time}?',
+  confirm_out_early: 'Планирано до {end}. Наистина ли да приключите работа сега в {time}?',
+  doc_todo: 'моля, подпишете',
+  doc_done: 'готово',
+  abs_withdraw: 'Оттегли заявлението',
+  abs_withdrawn: 'Заявлението е оттеглено.',
+  abs_withdraw_q: 'Наистина ли да оттеглите заявлението?',
+  lang_btn: 'Език',
 };
 
 const DICTS: Record<Lang, Dict> = { de, en, ro, tr, pl, hr, bg };

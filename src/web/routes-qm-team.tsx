@@ -394,9 +394,9 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
           </select>
           <label>Art</label>
           <div class="tm-kinds">
-            {(Object.keys(ABSENCE_LABEL) as AbsenceKind[]).map((k, i) => (
+            {(Object.keys(ABSENCE_LABEL) as AbsenceKind[]).map((k) => (
               <label>
-                <input type="radio" name="kind" value={k} required checked={i === 1} /> {ABSENCE_LABEL[k]}
+                <input type="radio" name="kind" value={k} required /> {ABSENCE_LABEL[k]}
               </label>
             ))}
           </div>
@@ -406,6 +406,10 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
           <input id="bis" name="end" type="date" value={today} required />
           <label style="display:flex;gap:8px;align-items:center;font-weight:400">
             <input type="checkbox" name="half_day" value="1" style="width:20px;height:20px" /> nur halber Tag
+          </label>
+          <label style="display:flex;gap:8px;align-items:center;font-weight:400">
+            <input type="checkbox" name="replace_vacation" value="1" style="width:20px;height:20px" /> Krank
+            im Urlaub: Urlaub an diesen Tagen ersetzen
           </label>
           <label for="note">Notiz (ohne Diagnose)</label>
           <textarea id="note" name="note" rows={2} />
@@ -436,6 +440,7 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
       note: str(b, 'note') ?? null,
       actor: c.get('actor'),
       approved,
+      replaceVacation: b.replace_vacation === '1',
     });
     return c.redirect(
       `/qm/team/${m.id}?ok=${encodeURIComponent(
@@ -486,6 +491,8 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
       if (s.plan.start_time <= nowHm) return <span class="tm-pill bad">nicht gestempelt</span>;
       return <span class="tm-pill">geplant</span>;
     };
+    const rank = (s: (typeof planned)[number]) =>
+      s.absence ? 3 : s.entry && !s.entry.end_at ? 1 : s.entry ? 4 : s.plan.start_time <= nowHm ? 0 : 2;
     return render(
       c,
       'Zeiten heute',
@@ -526,7 +533,8 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
           <h2>Einsätze heute ({planned.length})</h2>
           {planned.length === 0 && <div class="mut">Heute keine geplanten Einsätze.</div>}
           {planned
-            .sort((a, b) => a.plan.start_time.localeCompare(b.plan.start_time))
+            // Wichtiges zuerst: nicht gestempelt → läuft → geplant → abwesend → erledigt (Bedientest 10.10.)
+            .sort((a, b) => rank(a) - rank(b) || a.plan.start_time.localeCompare(b.plan.start_time))
             .map((s) => (
               <div class="tm-li">
                 <span>

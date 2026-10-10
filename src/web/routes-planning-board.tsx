@@ -245,7 +245,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
           </div>
           <div class="acts">
             <a class="btn sec" href={`/einsatzplanung/vertretungen?von=${r.from}&bis=${r.to}`}>
-              Umplanen
+              Vertretungen
             </a>
             <a class="btn" href={`/einsatzplanung/${randomUUID()}?datum=${date >= today ? date : today}`}>
               Einsatz planen
@@ -614,6 +614,14 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
                     </label>
                   ))}
                 </span>
+                <button
+                  type="button"
+                  class="btn sm sec"
+                  data-only="woechentlich"
+                  onclick="this.form.querySelectorAll('input[name=weekday]').forEach(function(x){x.checked=Number(x.value)<=5})"
+                >
+                  Mo–Fr
+                </button>
                 <span class="mut small" data-only="woechentlich">
                   Mehrere Tage auswählbar
                 </span>
@@ -823,8 +831,21 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
       c.get('actor'),
     );
     const ret = safeReturn(one('zurueck'));
+    const notes: string[] = [];
+    if (!old && one('valid_from') < todayBerlin())
+      notes.push(
+        'Hinweis: Rückwirkend angelegte Termine zählen erst ab heute als Plan/Soll. Vergangene Tage bitte als Zeit nachtragen.',
+      );
+    const ids = employees.filter((e): e is string => !!e);
+    if (ids.length) {
+      const early = await sql<{ name: string; entry_date: string }[]>`
+        select first_name || ' ' || last_name as name, entry_date::text
+          from app.employees where id = any(${ids}::uuid[]) and entry_date > ${one('valid_from')}::date`;
+      for (const e of early)
+        notes.push(`Achtung: ${e.name} tritt erst am ${dateDe(e.entry_date)} ein – vorher keine Einsätze.`);
+    }
     return back(c, ret !== '/einsatzplanung' ? ret : `/einsatzplanung?datum=${one('valid_from')}`, {
-      ok: old ? 'Terminserie gespeichert.' : 'Planung erstellt.',
+      ok: [old ? 'Terminserie gespeichert.' : 'Planung erstellt.', ...notes].join(' '),
     });
   });
 }

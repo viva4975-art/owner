@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { deleteCookie, setCookie } from 'hono/cookie';
+import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { signSession } from '../services/employee-auth.js';
 import { BusinessError } from '../services/errors.js';
 import { listSites } from '../services/masterdata.js';
@@ -19,7 +19,7 @@ import {
   linkedEmployee,
   saveEmployeeLink,
 } from '../services/users.js';
-import { type AppEnv, type Ctx, OFFICE_COOKIE, UUID, officeSecret } from './app.js';
+import { type AppEnv, type Ctx, APP_COOKIE, OFFICE_COOKIE, UUID, officeSecret } from './app.js';
 import { arr } from './forms.js';
 import { Icon } from './icons.js';
 import { Layout, PageHead, initials } from './layout.js';
@@ -179,7 +179,8 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
     if (b.next !== b.next2) throw new BusinessError('Die neuen Passwörter stimmen nicht überein');
     const u = c.get('user');
     await changePassword(sql, u.id, String(b.current ?? ''), String(b.next ?? ''));
-    return back(c, homeFor(u.role), { ok: 'Passwort geändert.' });
+    // aus der App (Cookie vd_app) zurück in die App – nicht auf eine PC-Seite (Bedientest 10.10.)
+    return back(c, getCookie(c, APP_COOKIE) === '1' ? '/app' : homeFor(u.role), { ok: 'Passwort geändert.' });
   });
 
   // ------------------------------------------------------------------ Benutzerverwaltung (Admin)

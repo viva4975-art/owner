@@ -535,6 +535,11 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
                 <td class="r">{euro(it.amount)}</td>
                 <td>
                   {it.amount < 0n ? 'Korrektur' : 'Eingangsrechnung'} {it.invoice_no}
+                  {it.unapproved && (
+                    <span class="badge warn" title="Wird beim Zuordnen mit freigegeben">
+                      noch nicht freigegeben
+                    </span>
+                  )}
                 </td>
                 <td>{dateDe(it.invoice_date)}</td>
                 <td class="small mut">{it.skonto > 0n ? `Skonto ${euro(it.skonto)}` : ''}</td>

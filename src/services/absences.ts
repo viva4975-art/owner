@@ -209,6 +209,8 @@ export async function requestAbsence(
     note: string | null;
     actor: string;
     approved?: boolean;
+    /** Krank während Urlaub: Urlaub an diesen Tagen kürzen/teilen (§ 9 BUrlG – Krankheit zählt nicht als Urlaub) */
+    replaceVacation?: boolean;
   },
 ) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.start) || !/^\d{4}-\d{2}-\d{2}$/.test(p.end))
@@ -227,16 +229,55 @@ export async function requestAbsence(
     const [dup] = await sql`select 1 from app.absences where id = ${p.id}`;
     if (!dup) await assertLeaveLeft(sql, p.employeeId, p.start, p.end, p.halfDay, false);
   }
+  const changed: string[] = [];
   await sql.begin(async (tx) => {
     const [exists] = await tx`select 1 from app.absences where id = ${p.id}`;
     if (exists) return;
     await tx`select pg_advisory_xact_lock(hashtext(${'abs:' + p.employeeId}))`;
-    const [overlap] = await tx<{ start_date: string; end_date: string }[]>`
-      select start_date, end_date from app.absences
+    if (p.replaceVacation && p.kind === 'krank') {
+      const vac = await tx<{ id: string; start_date: string; end_date: string; status: string }[]>`
+        select id, start_date::text, end_date::text, status from app.absences
+         where employee_id = ${p.employeeId} and kind = 'urlaub' and status in ('beantragt', 'genehmigt')
+           and start_date <= ${p.end} and end_date >= ${p.start}`;
+      for (const v of vac) {
+        const before = v.start_date < p.start ? addDays(p.start, -1) : null;
+        const after = v.end_date > p.end ? addDays(p.end, 1) : null;
+        if (!before && !after) {
+          await tx`update app.absences set status = 'storniert', decided_by = ${p.actor}, decided_at = now(),
+                     note = coalesce(note || ' · ', '') || 'ersetzt durch Krankheit' where id = ${v.id}`;
+        } else {
+          await tx`update app.absences set start_date = ${before ? v.start_date : after!},
+                     end_date = ${before ?? v.end_date} where id = ${v.id}`;
+          if (before && after) {
+            const rest = uuidOf(`abs-split:${v.id}:${p.id}`);
+            await tx`
+              insert into app.absences (id, employee_id, kind, start_date, end_date, half_day, status, note,
+                                        requested_by, decided_by, decided_at)
+              select ${rest}, employee_id, kind, ${after}, ${v.end_date}, false, status,
+                     coalesce(note || ' · ', '') || 'Rest nach Krankheit', requested_by, decided_by, decided_at
+                from app.absences where id = ${v.id}
+              on conflict (id) do nothing`;
+            changed.push(rest);
+          }
+        }
+        await tx`delete from app.absence_hours where absence_id = ${v.id}`;
+        await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+                 values (${p.actor}, 'update', 'absence', ${v.id},
+                         ${tx.json({ grund: 'Urlaub durch Krankheit ersetzt (§ 9 BUrlG)', vorher: { start: v.start_date, end: v.end_date }, krank: { start: p.start, end: p.end } })})`;
+        changed.push(v.id);
+      }
+    }
+    const [overlap] = await tx<{ start_date: string; end_date: string; kind: string }[]>`
+      select start_date, end_date, kind from app.absences
        where employee_id = ${p.employeeId} and status in ('beantragt', 'genehmigt')
          and start_date <= ${p.end} and end_date >= ${p.start}`;
     if (overlap)
-      throw new BusinessError('Für diesen Zeitraum gibt es schon eine Abwesenheit', 'absence_overlap');
+      throw new BusinessError(
+        overlap.kind === 'urlaub' && p.kind === 'krank'
+          ? 'In diesem Zeitraum ist Urlaub eingetragen. Krank im Urlaub zählt nicht als Urlaub (§ 9 BUrlG) – Häkchen „Urlaub an diesen Tagen durch Krank ersetzen“ setzen und erneut speichern.'
+          : 'Für diesen Zeitraum gibt es schon eine Abwesenheit',
+        'absence_overlap',
+      );
     await tx`
       insert into app.absences (id, employee_id, kind, start_date, end_date, half_day, status, note, requested_by,
                                 decided_by, decided_at)
@@ -244,6 +285,7 @@ export async function requestAbsence(
               ${p.note}, ${p.actor}, ${p.approved ? p.actor : null}, ${p.approved ? tx`now()` : null})`;
   });
   if (p.approved) await applyAbsenceHours(sql, p.id);
+  for (const v of changed) await applyAbsenceHours(sql, v);
 }
 
 export async function getAbsence(sql: Sql, id: string) {

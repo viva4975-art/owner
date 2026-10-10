@@ -1604,24 +1604,16 @@ export const Layout: FC<{
                       <Icon name="clock" size={16} /> <span class="hide-m">Meine Zeiten</span>
                     </a>
                   )}
-                  {user && (
-                    <details class="dd">
-                      <summary class="gear" title="Einstellungen" aria-label="Einstellungen">
-                        <Icon name="settings" size={20} />
-                      </summary>
-                      <div class="drop right">
-                        {role && canOpen(role as Role, '/einstellungen') && (
-                          <a href="/einstellungen">Einstellungen für die Firma</a>
-                        )}
-                        <a href="/konto">Einstellungen für {user}</a>
-                        <div class="sep" />
-                        <form method="post" action="/abmelden" style="margin:0">
-                          <button class="btn ghost" style="width:100%;justify-content:flex-start">
-                            Abmelden
-                          </button>
-                        </form>
-                      </div>
-                    </details>
+                  {/* Zahnrad = nur Firmeneinstellungen; Konto/Abmelden im Benutzermenü (Bedientest 10.10.: war doppelt) */}
+                  {user && role && canOpen(role as Role, '/einstellungen') && (
+                    <a
+                      class="gear"
+                      href="/einstellungen"
+                      title="Einstellungen für die Firma"
+                      aria-label="Einstellungen"
+                    >
+                      <Icon name="settings" size={20} />
+                    </a>
                   )}
                   {user && (
                     <details class="dd">
@@ -1631,12 +1623,8 @@ export const Layout: FC<{
                       </summary>
                       <div class="drop right">
                         <a href="/konto">Mein Konto / Passwort</a>
-                        <a href="/zeiterfassung/meine">Meine Zeiten</a>
                         <a href="/kalender/abonnieren">Kalender abonnieren (iPhone/Outlook)</a>
                         {role === 'admin' && <a href="/benutzer">Benutzer & Rechte</a>}
-                        {role && canOpen(role as Role, '/einstellungen') && (
-                          <a href="/einstellungen">Einstellungen</a>
-                        )}
                         <div class="sep" />
                         <form method="post" action="/abmelden" style="margin:0">
                           <button class="btn ghost" style="width:100%;justify-content:flex-start">
@@ -1714,11 +1702,12 @@ export const AppTabbar: FC<{ path?: string }> = ({ path = '' }) => (
 );
 
 /** Umschalter oben: Meine Zeit · Qualität · Verwaltung */
-export const AppSwitch: FC<{ active: AppMode }> = ({ active }) => (
+export const AppSwitch: FC<{ active: AppMode; ownTime?: boolean }> = ({ active, ownTime = true }) => (
   <nav class="appswitch" aria-label="Bereich">
     {(
       [
-        ['zeit', '/m', 'Meine Zeit'],
+        // „Meine Zeit“ nur mit verknüpftem Mitarbeiter – sonst landet man auf der PIN-Anmeldung (Bedientest 10.10.)
+        ...(ownTime ? ([['zeit', '/m', 'Meine Zeit']] as const) : []),
         ['qualitaet', '/qm/qualitaet', 'Qualität'],
         ['verwaltung', '/qm', 'Verwaltung'],
       ] as const

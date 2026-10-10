@@ -771,6 +771,13 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
           preflight={pre}
           attachments={docs.filter((d) => d.kind === 'attachment')}
           workReports={await invoiceWorkReports(sql, id)}
+          lastIssued={
+            (
+              await sql<{ d: string | null }[]>`
+                select max(issue_date)::text as d from app.invoices where status = 'issued'`
+            )[0]?.d ?? null
+          }
+          today={todayBerlin()}
           notice={<CustomerNotice c={customer!} />}
           uploadSlot={
             <FileArea

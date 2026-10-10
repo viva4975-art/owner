@@ -199,7 +199,14 @@ export type Suggestion =
       confidence: 'sicher' | 'wahrscheinlich' | 'prüfen';
       supplierId: string;
       supplierName: string;
-      items: { id: string; invoice_no: string; invoice_date: string; amount: bigint; skonto: bigint }[];
+      items: {
+        id: string;
+        invoice_no: string;
+        invoice_date: string;
+        amount: bigint;
+        skonto: bigint;
+        unapproved?: boolean;
+      }[];
     }
   | {
       kind: 'party';
@@ -538,6 +545,7 @@ async function incomingSuggestions(sql: Sql, t: BankTx, cache: SuggestionCache =
         invoice_date: x.i.invoice_date,
         amount: x.pay,
         skonto: x.sk,
+        unapproved: x.i.status === 'erfasst',
       })),
     });
   };

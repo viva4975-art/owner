@@ -386,6 +386,12 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
           <label for="half_day">halber Tag</label>
         </div>
       </div>
+      <div class="chk" style="margin-top:8px">
+        <input type="checkbox" id="replace_vacation" name="replace_vacation" value="1" />
+        <label for="replace_vacation">
+          Bei Krankheit: eingetragenen Urlaub an diesen Tagen durch Krank ersetzen (§ 9 BUrlG)
+        </label>
+      </div>
       <div style="margin-top:10px">
         <label for="note">Notiz (z. B. AU liegt vor)</label>
         <input id="note" name="note" />
@@ -405,7 +411,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     showEmployee = true,
     decide = true,
   }) => (
-    <div class="tbl">
+    <div class="tbl stack-m">
       <table>
         <thead>
           <tr>
@@ -434,16 +440,18 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                   <a href={`/personal/${a.employee_id}/abwesenheiten`}>{a.employee_name}</a>
                 </td>
               )}
-              <td>
+              <td data-l="Art">
                 <span class={`badge ${ABS_CLASS[a.kind]}`}>{ABSENCE_LABEL[a.kind]}</span>
               </td>
-              <td>
+              <td data-l="Zeitraum" style="white-space:nowrap">
                 {dateDe(a.start_date)}
                 {a.end_date !== a.start_date && ` – ${dateDe(a.end_date)}`}
                 {a.half_day && ' (halb)'}
               </td>
-              <td class="r">{String(a.days).replace('.', ',')}</td>
-              <td>
+              <td class="r" data-l="Arbeitstage">
+                {String(a.days).replace('.', ',')}
+              </td>
+              <td data-l="Status">
                 <span
                   class={`badge ${a.status === 'genehmigt' ? 'ok' : a.status === 'beantragt' ? 'warn' : ''}`}
                 >
@@ -460,7 +468,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
               <td class="small">{a.note ?? ''}</td>
               {decide && (
                 <td>
-                  <div class="actions" style="margin:0;flex-wrap:nowrap">
+                  <div class="actions" style="margin:0;flex-wrap:wrap">
                     {a.status === 'beantragt' && (
                       <>
                         <form method="post" action={`/urlaub/${a.id}/status`}>
@@ -530,13 +538,15 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     return urlaubShell(
       c,
       'offen',
-      <div class="cols">
+      <>
         <AbsenceTable rows={open} />
-        <AbsenceForm
-          employees={emps.map((e) => ({ id: e.id, name: `${e.last_name}, ${e.first_name}` }))}
-          action="/urlaub"
-        />
-      </div>,
+        <div style="max-width:640px;margin-top:16px">
+          <AbsenceForm
+            employees={emps.map((e) => ({ id: e.id, name: `${e.last_name}, ${e.first_name}` }))}
+            action="/urlaub"
+          />
+        </div>
+      </>,
     );
   });
 
@@ -776,7 +786,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                             >
                               {a && (
                                 <a
-                                  href={`/urlaub/${a.id}/bearbeiten`}
+                                  href={`/urlaub/${a.id}/bearbeiten?zurueck=${encodeURIComponent(`/urlaub/kalender?${qsOf(d)}`)}`}
                                   class={`uk-b uk-${a.kind}${a.status === 'beantragt' ? ' req' : ''}${startBar ? ' s' : ''}${endBar ? ' e' : ''}${o ? ' o' : ''}`}
                                 >
                                   {startBar && !o ? ABS_CODE[a.kind] : ''}
@@ -903,8 +913,14 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
       note: typeof b.note === 'string' && b.note.trim() ? b.note.trim() : null,
       actor: c.get('actor'),
       approved: true,
+      replaceVacation: b.replace_vacation === '1',
     });
-    return back(c, redirect(employeeId), { ok: 'Abwesenheit erfasst.' });
+    return back(c, redirect(employeeId), {
+      ok:
+        b.replace_vacation === '1' && kind === 'krank'
+          ? 'Krankheit erfasst – Urlaub an diesen Tagen gekürzt (Urlaubstage wieder gutgeschrieben).'
+          : 'Abwesenheit erfasst.',
+    });
   };
 
   app.post('/urlaub', (c) => createAbsence(c, () => '/urlaub/kalender'));

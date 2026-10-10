@@ -1,5 +1,5 @@
 import { plannedAtSites } from '../services/absences.js';
-import { fullName } from '../services/users.js';
+import { fullName, linkedEmployee } from '../services/users.js';
 import { canAccess } from './permissions.js';
 import { clock, plannedShifts } from '../services/time.js';
 import { randomUUID } from 'node:crypto';
@@ -66,6 +66,7 @@ const QM_CSS = `
 .vw-grid .vi svg{width:20px;height:20px}
 .vw-grid b{display:block;font-size:15px;hyphens:auto;-webkit-hyphens:auto;overflow-wrap:break-word}.vw-grid small{display:block;color:#8a7a80;font-size:12px;line-height:1.3;margin-top:2px}
 .vw-pc{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;margin:8px 0 20px;color:#7d1435;font-weight:600;text-decoration:none}.vw-pc svg{width:18px;height:18px}
+.vw-out{background:none;border:1px solid #e3cdd5;color:#7d1435;border-radius:12px;padding:10px 28px;font:inherit;font-weight:600}
 @media (max-width:360px){.vw-stats{grid-template-columns:repeat(3,1fr)}}
 .qm-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:12px 0}.qm-grid a{display:flex;align-items:center;gap:10px;padding:14px;border-radius:14px;background:#fff;border:1px solid #efe3e7;color:#3b0a1c;font-weight:600;text-decoration:none}.qm-grid a svg{width:22px;height:22px;color:#7d1435;flex:none}
 .quick{flex-wrap:wrap;row-gap:14px}
@@ -308,7 +309,7 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
       c,
       'Verwaltung',
       <>
-        <AppSwitch active="verwaltung" />
+        <AppSwitch active="verwaltung" ownTime={!!(await linkedEmployee(sql, c.get('user').id))} />
         <div class="hello">
           {hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend'}
           <b>{first.charAt(0).toUpperCase() + first.slice(1)}!</b>
@@ -368,6 +369,10 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
         <a class="vw-pc" href="/?pc=1">
           <Ic n="monitor" /> Zur PC-Ansicht wechseln
         </a>
+        {/* Abmelden direkt in der App (gemeinsam genutzte Tablets; Bedientest 10.10.) */}
+        <form method="post" action="/abmelden" style="margin:0 0 24px;text-align:center">
+          <button class="vw-out">Abmelden</button>
+        </form>
       </>,
     );
   });
@@ -382,7 +387,7 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
       c,
       'Qualität',
       <>
-        <AppSwitch active="qualitaet" />
+        <AppSwitch active="qualitaet" ownTime={!!(await linkedEmployee(sql, c.get('user').id))} />
         <div class="hello">
           {hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend'}
           <b>{first.charAt(0).toUpperCase() + first.slice(1)}!</b>

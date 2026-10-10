@@ -491,6 +491,21 @@ export const CustomerForm: FC<{ id: string; c: Partial<Customer>; isNew: boolean
           ))}
         </select>
       </div>
+      {isNew && (
+        <div class="full">
+          <label for="invoice_emails">Rechnungs-E-Mail(s)</label>
+          <input
+            id="invoice_emails"
+            name="invoice_emails"
+            value={(c.invoice_emails ?? []).join(', ')}
+            placeholder="z. B. rechnung@kunde.de (mehrere mit Komma)"
+          />
+          <small class="mut">
+            Wird in die Rechnungsgruppe „Standard“ übernommen. Ohne E-Mail (oder Leitweg-ID) kann keine
+            E-Rechnung erzeugt werden – später unter Kunde → Rechnungsgruppen änderbar.
+          </small>
+        </div>
+      )}
     </div>
     <h2 class="form-section">Zusatzinformationen</h2>
     <div class="grid">

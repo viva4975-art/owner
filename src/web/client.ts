@@ -74,19 +74,24 @@ export const CLIENT_JS = String.raw`
   }
   function apply(form, data) {
     var seen = {};
+    var toggled = [];
     var byKey = {};
     data.f.forEach(function (x) { byKey[x[0] + '#' + x[1]] = x[2]; });
     fieldsOf(form).forEach(function (el) {
       var idx = seen[el.name] = (seen[el.name] || 0) + 1;
       var v = byKey[el.name + '#' + idx];
       if (v === undefined) return;
-      if (el.type === 'checkbox' || el.type === 'radio') el.checked = v === '1';
-      else el.value = v;
+      if (el.type === 'checkbox' || el.type === 'radio') {
+        var on = v === '1';
+        if (el.checked !== on) { el.checked = on; if (on && el.type === 'radio') toggled.push(el); }
+      } else el.value = v;
     });
+    // Umgeschaltete Auswahlknöpfe melden (blendet abhängige Felder ein/aus, z. B. Vergütungsart)
+    toggled.forEach(function (r) { r.dispatchEvent(new Event('change', { bubbles: true })); });
     // aufgeklappte „abweichend“-Bereiche wiederherstellen (danach Werte darin erneut setzen)
     var revealed = Array.prototype.filter.call(form.querySelectorAll('input[data-reveal]'), function (cb) { return cb.checked; });
     revealed.forEach(function (cb) { cb.dispatchEvent(new Event('change')); });
-    if (revealed.length) fieldsOf(form).forEach(function (el) {
+    if (revealed.length || toggled.length) fieldsOf(form).forEach(function (el) {
       var v = byKey[el.name + '#1'];
       if (v !== undefined && el.type !== 'checkbox' && el.type !== 'radio' && !el.value) el.value = v;
     });
@@ -118,6 +123,9 @@ export const CLIENT_JS = String.raw`
         else if (data.v === (form.getAttribute('data-version') || '')) {
           // still wiederherstellen (Ahmed: kein Hinweisbalken); nur bei Konflikten mit neuerem Stand fragen
           apply(form, data);
+        } else if (JSON.stringify(data.f) === JSON.stringify(serialize(form).f)) {
+          // gespeicherter Stand = aktueller Inhalt → nichts zu fragen (Bedientest 10.10.: falscher Hinweis nach „freigeben“)
+          ss.removeItem(key);
         } else {
           banner(form, 'Es gibt nicht gespeicherte Eingaben zu einem älteren Stand dieses Datensatzes (in einem anderen Tab oder von jemand anderem geändert).', [
             { label: 'Meine Eingaben übernehmen', cls: '', run: function () { apply(form, data); } },
@@ -127,10 +135,13 @@ export const CLIENT_JS = String.raw`
       } catch (e) { ss.removeItem(key); }
     }
     var t = null;
-    function save() { try { ss.setItem(key, JSON.stringify(serialize(form))); } catch (e) {} }
-    form.addEventListener('input', function () { clearTimeout(t); t = setTimeout(save, 250); });
-    form.addEventListener('change', save);
-    form.addEventListener('submit', function () { save(); ss.setItem('vd-pending', key); });
+    // nur sichern, wenn wirklich etwas eingegeben wurde – sonst entsteht nach Aktionen anderer Formulare
+    // (Freigeben, Status) ein unnötiger „älterer Stand“-Hinweis
+    var dirty = !!raw;
+    function save() { if (!dirty) return; try { ss.setItem(key, JSON.stringify(serialize(form))); } catch (e) {} }
+    form.addEventListener('input', function (ev) { if (ev.isTrusted) dirty = true; clearTimeout(t); t = setTimeout(save, 250); });
+    form.addEventListener('change', function (ev) { if (ev.isTrusted) dirty = true; save(); });
+    form.addEventListener('submit', function () { dirty = true; save(); ss.setItem('vd-pending', key); });
     // vor dem Verlassen der Seite (auch bei Zurück über bfcache) noch einmal sichern
     window.addEventListener('pagehide', save);
   }
@@ -161,6 +172,19 @@ export const CLIENT_JS = String.raw`
     }
     setupForm(f);
   });
+
+  // ---- Rücksprung auf die aktuelle Seite (verstecktes Feld data-here) ----
+  Array.prototype.forEach.call(document.querySelectorAll('input[data-here]'), function (i) {
+    if (!i.value) i.value = location.pathname + location.search;
+  });
+
+  // ---- Rückfrage per data-confirm (Knopf oder Link) ----
+  // Capture-Phase: vor allen anderen Klick-Behandlungen; abgebrochen = kein Absenden.
+  document.addEventListener('click', function (e) {
+    var el = e.target && e.target.closest ? e.target.closest('[data-confirm]') : null;
+    if (!el) return;
+    if (!window.confirm(el.getAttribute('data-confirm'))) { e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
 
   // ---- Doppelklick-Schutz: Formular nur einmal absenden ----
   // Bubble-Phase: läuft nach den Prüfungen des Formulars (z. B. confirm(), Unterschrift fehlt) –

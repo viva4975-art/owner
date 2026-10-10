@@ -156,6 +156,9 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
     return day.find((s) => s.plan.id === planId);
   };
 
+  /** Rücksprung nur auf eigene Seiten (Planung, Mitarbeiter-/Objekt-Kalender …). */
+  const okBack = (x: string | null | undefined) => !!x && /^\/(?!\/)[\w/?=&.%-]*$/.test(x);
+
   app.get(`/einsatzplanung/:id{${UUID}}/tag/:date{\\d{4}-\\d{2}-\\d{2}}`, async (c) => {
     const s = await loadShift(c.req.param('id'), c.req.param('date'));
     if (!s) throw new BusinessError('An diesem Tag ist dieser Einsatz nicht geplant');
@@ -163,7 +166,7 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
     const cands = await substituteCandidates(sql, s);
     const ex = s.exception;
     const zurueck = c.req.query('zurueck');
-    const backTo = zurueck && /^\/einsatzplanung[\w/?=&.-]*$/.test(zurueck) ? zurueck : null;
+    const backTo = okBack(zurueck) ? zurueck! : null;
     return page(
       c,
       'Umplanen',
@@ -184,14 +187,13 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
               {s.absence && <span class="badge err"> {ABSENCE_LABEL[s.absence as AbsenceKind]}</span>}
             </p>
             <label for="kind">Was passiert an diesem Tag?</label>
-            <select id="kind" name="kind">
+            <select id="kind" name="kind" required>
+              <option value="">– bitte wählen –</option>
               {(Object.keys(EXCEPTION_LABEL) as ExceptionKind[]).map((k) => (
                 <option
                   value={k}
                   selected={
-                    k ===
-                    (ex?.kind ??
-                      (s.absence || c.req.query('art') === 'vertretung' ? 'vertretung' : 'umgeplant'))
+                    k === (ex?.kind ?? (s.absence || c.req.query('art') === 'vertretung' ? 'vertretung' : ''))
                   }
                 >
                   {EXCEPTION_LABEL[k]}
@@ -215,7 +217,9 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
             </select>
             <div class="grid">
               <div>
-                <label for="start">Beginn (abweichend)</label>
+                <label for="start">
+                  Beginn (geplant {s.plan.start_time.slice(0, 5)}, leer = wie geplant)
+                </label>
                 <input
                   id="start"
                   type="time"
@@ -224,7 +228,7 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
                 />
               </div>
               <div>
-                <label for="end">Ende (abweichend)</label>
+                <label for="end">Ende (geplant {s.plan.end_time.slice(0, 5)})</label>
                 <input
                   id="end"
                   type="time"
@@ -241,6 +245,9 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
               placeholder="z. B. Objekt wegen Ferien geschlossen"
             />
             <div class="formfoot">
+              <a class="btn sec" href={backTo ?? `/einsatzplanung?datum=${s.date}`}>
+                Abbrechen
+              </a>
               <button class="btn">Speichern</button>
             </div>
           </form>
@@ -305,7 +312,7 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
       c.get('actor'),
     );
     const to = str(b, 'back');
-    return back(c, to && /^\/einsatzplanung[\w/?=&.-]*$/.test(to) ? to : `/einsatzplanung?datum=${date}`, {
+    return back(c, okBack(to) ? to! : `/einsatzplanung?datum=${date}`, {
       ok:
         subRaw === 'nicht_notwendig'
           ? 'Als „nicht notwendig“ vermerkt.'
@@ -323,7 +330,7 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
     assertSite(c, s.plan.site_id);
     await deleteException(sql, planId, date, c.get('actor'));
     const to = str(await c.req.parseBody(), 'back');
-    return back(c, to && /^\/einsatzplanung[\w/?=&.-]*$/.test(to) ? to : `/einsatzplanung?datum=${date}`, {
+    return back(c, okBack(to) ? to! : `/einsatzplanung?datum=${date}`, {
       ok: 'Wieder wie geplant.',
     });
   });

@@ -203,7 +203,7 @@ export const EmployeeList: FC<{
   return (
     <>
       <PageHead title="Mitarbeiter">
-        <a class="btn sec" href="/personal/dokumente#neu">
+        <a class="btn sec" href="/personal/dokumente?alle=1#neu">
           Unterweisung an alle freigeben
         </a>
         <a class="btn" href="/neu?typ=mitarbeiter">

@@ -2147,3 +2147,34 @@ Testadresse.
     abgeschnitten („Persona…“); Objektstammblatt-Beschriftung lief in den Wert; QK-/Übergabe-PDF: Objektname nicht mehr
     mitten in der Klammer abgeschnitten (eigene Zeile Objekt-Nr.).
   - Browser-Test runde10 nahm „heute + 14 Tage“ als Urlaubstag – an Samstagen falsch → nächster Werktag.
+- 2026-10-10: **Bedientest wie ein Bediener** (Ahmed: „macht es Sinn, wo die Buttons sind“) – drei Prüfdurchgänge (Apps/
+  Navigation, Einkauf/Buchhaltung + Rechnungswesen, Personal/Zeit), Funde umgesetzt:
+  - **Fund: `data-confirm` wurde nirgends ausgewertet** – rund 20 Lösch-/Sammelknöpfe (Stelle/Bewerber löschen, Kassen-
+    buchung stornieren, „Alle n nicht zuordnen“, „sichere Vorschläge zuordnen“, Ältere Umsätze abhaken, Bank trennen …)
+    liefen ohne Rückfrage. Jetzt zentral in `client.ts` (Klick in der Capture-Phase).
+  - Apps: Passwort ändern führt in der App zurück zur App; „Meine Zeit“ nur mit verknüpftem Mitarbeiter; Abmelden in der
+    Verwaltung; „Arbeit beenden“ fragt nach (vor Plan-Ende deutlich); Urlaubsantrag zurückziehen; Sprache als Globus-Knopf;
+    „Zeiten heute“ sortiert nach „nicht gestempelt“ zuerst; Zahnrad = direkt Einstellungen; Offene Posten „x T. überfällig“
+    statt Minuszahlen; falsche „neuerer Stand“-Box beim Zurückkommen ohne Änderung entfällt.
+  - Einkauf: Freigeben fragt nach, wenn kein Beleg hochgeladen ist oder USt 0 € ohne § 13b; USt wird mit 19 % vom Netto
+    vorbelegt, Brutto wird angezeigt; Zahlungsliste „Skonto abziehen“ nur angehakt, wenn Skonto möglich; Kontoumsätze:
+    Schild „noch nicht freigegeben“ am Vorschlag (wird beim Zuordnen mit freigegeben); NU-Zeilen im Rechnungseingang am
+    Handy ohne Querscrollen.
+  - Rechnungen: „Fertigstellen“ nennt das Rechnungsdatum und **warnt beim Zurückdatieren** (älter als die zuletzt
+    ausgestellte Rechnung); neuer Kunde mit Feld „Rechnungs-E-Mail(s)“ (→ Gruppe „Standard“); Versand: „Los“ auch oben und
+    mit Rückfrage; ausgestellte Rechnung: „Jetzt versenden“ oben, nach Storno Kasten „Als neue Rechnung kopieren“ (der
+    Monatslauf rechnet stornierte Leistungsmonate bewusst nicht noch einmal ab).
+  - Personal/Zeit: Tariflohn-Auswahl blieb nach Prüffehler unsichtbar (Wiederherstellen löst jetzt `change` aus);
+    Offene Urlaubsanträge volle Breite/als Karten am Handy; **Krank im Urlaub** (§ 9 BUrlG): Häkchen „Urlaub an diesen Tagen
+    durch Krank ersetzen“ kürzt/teilt/storniert den Urlaub (Protokoll, Stunden neu), ohne Häkchen klare Meldung;
+    rückwirkend angelegte Serie und Einsatz vor Eintritt → Hinweis; „Nur diesen Tag umplanen“: Rücksprung zur Herkunft,
+    geplante Zeiten in der Beschriftung, Abbrechen, keine Vorauswahl; Nachtrag freigeben bleibt auf der Seite;
+    Zeit-Detail: „Endgültig löschen“ eingeklappt unten, nur mit Eintippen von LÖSCHEN; Kalender-Knopf „Serie dieses
+    Wochentags löschen“; Unterweisung „an alle“ vorausgewählt + Rückfrage mit Anzahl; Fehlende Unterlagen: Schilder
+    verlinkt, Namenssuche, Schlüssel-Text korrigiert; Plan als Ist mit § 17 MiLoG-Hinweis; Startseite „n Nachträge zur
+    Freigabe“; Planung „Umplanen“ → „Vertretungen“, Knopf „Mo–Fr“.
+  - Neuer Seiten-Rundgang `npm run check:seiten` (alle Seiten PC/Handy, Bericht `var/seiten-check/bericht.json`).
+  - **Noch offen (Vorschläge an Ahmed):** Arbeitszeitkonto Soll bis heute + Filter „nur Abweichungen“; „Vertragssoll“ vs.
+    „Plan“ einheitlich benennen; CSV Lohnprogramm als bewusster Export mit Rückfrage; Serie „gilt ab Datum“ ändern;
+    Mitarbeiter-Kopf aufräumen (Handy-Zugang/Übergaben sichtbar, Zeiten + Kalender zusammen); Staatsangehörigkeit als
+    Länderliste; Monatsabschluss auch unter Personal; Entwurf-Knopfreihenfolge, Korrektur zeigt Originalpositionen.

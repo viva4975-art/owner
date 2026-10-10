@@ -49,7 +49,7 @@ import { type AppEnv, type Ctx, UUID, assertSite, inScope } from './app.js';
 import { centsToInput } from './forms.js';
 import { canAccess } from './permissions.js';
 import { Icon } from './icons.js';
-import { PageHead, dateDe, euro } from './layout.js';
+import { PageHead, anz, dateDe, euro } from './layout.js';
 import { AbsentCard } from './pages-crm.js';
 import { EmployeeCalendarView } from './pages-employee-calendar.js';
 import { employeeCalendarData } from './employee-calendar-data.js';
@@ -381,7 +381,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
         ? b.zurueck
         : '/zeiterfassung/mitarbeiter';
     return back(c, z, {
-      ok: `${r.created} Einsätze als Ist-Zeit eingetragen.${r.skipped.length ? ` Übersprungen: ${r.skipped.slice(0, 5).join('; ')}` : ''}`,
+      ok: `${anz(r.created, 'Einsatz', 'Einsätze')} als Ist-Zeit eingetragen.${r.skipped.length ? ` Übersprungen: ${r.skipped.slice(0, 5).join('; ')}` : ''}`,
     });
   });
 
@@ -892,25 +892,6 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
           </div>
         </form>
         <div class="card">
-          {e && ['admin', 'personal'].includes(c.get('user').role) && (
-            <form
-              method="post"
-              action="/zeiterfassung/loeschen"
-              style="margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line)"
-              onsubmit="return confirm('Diese Zeit endgültig löschen? Das kann nicht rückgängig gemacht werden.')"
-            >
-              <h3 style="margin-top:0">Zeit löschen</h3>
-              <p class="small mut" style="margin-top:0">
-                Nur für Testdaten oder falsch übernommene Zeiten. Der Stand bleibt im Löschprotokoll.
-              </p>
-              <input type="hidden" name="ids" value={id} />
-              <input type="hidden" name="zurueck" value="/zeiterfassung/liste" />
-              <input name="reason" placeholder="Grund (freiwillig)" aria-label="Grund" />
-              <div class="actions">
-                <button class="btn danger sm">Endgültig löschen</button>
-              </div>
-            </form>
-          )}
           {e && e.status !== 'abgelehnt' && (
             <form
               method="post"
@@ -956,6 +937,26 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
               </div>
             </div>
           ))}
+          {e && ['admin', 'personal'].includes(c.get('user').role) && (
+            <details style="margin-top:16px">
+              <summary class="small mut">Testdaten / falscher Import: endgültig löschen …</summary>
+              <form
+                method="post"
+                action="/zeiterfassung/loeschen"
+                onsubmit="return prompt('Zum endgültigen Löschen bitte LÖSCHEN eintippen. Das kann nicht rückgängig gemacht werden. Echte Arbeitszeiten stattdessen „entfernen“ (§ 17 MiLoG).') === 'LÖSCHEN'"
+              >
+                <p class="small mut">
+                  Nur für Testdaten oder falsch übernommene Zeiten. Der Stand bleibt im Löschprotokoll.
+                </p>
+                <input type="hidden" name="ids" value={id} />
+                <input type="hidden" name="zurueck" value="/zeiterfassung/liste" />
+                <input name="reason" placeholder="Grund (freiwillig)" aria-label="Grund" />
+                <div class="actions">
+                  <button class="btn danger sm">Endgültig löschen</button>
+                </div>
+              </form>
+            </details>
+          )}
         </div>
       </div>,
     );
@@ -1634,15 +1635,17 @@ const RequestsList = ({ requests, stale }: { requests: TimeEntryRow[]; stale: Ti
         <div class="actions" style="margin-bottom:0">
           <form method="post" action={`/zeiterfassung/${e.id}/entscheiden`}>
             <input type="hidden" name="ok" value="1" />
+            <input type="hidden" name="zurueck" data-here />
             <button class="btn">
               <Icon name="check" /> Freigeben
             </button>
           </form>
           <form method="post" action={`/zeiterfassung/${e.id}/entscheiden`} class="actions" style="margin:0">
+            <input type="hidden" name="zurueck" data-here />
             <input name="reason" placeholder="Grund der Ablehnung" required style="max-width:260px" />
             <button class="btn danger">Ablehnen</button>
           </form>
-          <a class="btn ghost" href={`/zeiterfassung/${e.id}`}>
+          <a class="btn sec" href={`/zeiterfassung/${e.id}`}>
             Ändern …
           </a>
         </div>

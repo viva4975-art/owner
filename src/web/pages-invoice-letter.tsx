@@ -88,7 +88,29 @@ export const DraftLetter: FC<{
   uploadSlot?: Child;
   notice?: Child;
   workReports?: { id: string; number: string; status: string; cancelled: boolean; attached: boolean }[];
-}> = ({ inv, doc, billing, portal, newId, preflight, attachments, uploadSlot, notice, workReports = [] }) => {
+  /** Datum der zuletzt ausgestellten Rechnung (für die Warnung beim Zurückdatieren) */
+  lastIssued?: string | null;
+  today?: string;
+}> = ({
+  inv,
+  doc,
+  billing,
+  portal,
+  newId,
+  preflight,
+  attachments,
+  uploadSlot,
+  notice,
+  workReports = [],
+  lastIssued = null,
+  today = '',
+}) => {
+  const issueDate = inv.planned_issue_date ?? today;
+  const issueMsg =
+    `Rechnung jetzt verbindlich mit Datum ${formatDateDe(issueDate)} ausstellen? Danach ist sie unveränderbar und erhält eine fortlaufende Nummer.` +
+    (lastIssued && issueDate < lastIssued
+      ? `\n\nACHTUNG: Die zuletzt ausgestellte Rechnung hat das Datum ${formatDateDe(lastIssued)} – diese Rechnung wäre älter als ihre Vorgängerin (Nummern und Datum sollten aufsteigend sein). Wirklich zurückdatieren?`
+      : '');
   const wrs = workReports.filter((w) => !w.cancelled);
   const wrSigned = wrs.some((w) => w.status === 'unterschrieben');
   const s = doc.seller;
@@ -397,7 +419,7 @@ export const DraftLetter: FC<{
             <form
               method="post"
               action={`/rechnungen/${inv.id}/ausstellen`}
-              onsubmit="return confirm('Rechnung jetzt verbindlich ausstellen? Danach ist sie unveränderbar und erhält eine fortlaufende Nummer.')"
+              onsubmit={`return confirm(${JSON.stringify(issueMsg)})`}
             >
               <button>Fertigstellen (ausstellen)</button>
             </form>
@@ -877,9 +899,34 @@ export const IssuedLetter: FC<{
           </div>
         </div>
         <aside class="lt-side">
+          {cancelled && ['invoice', 'partial'].includes(inv.kind) && (
+            <div class="card lt-next">
+              <h3>Storniert – neu abrechnen?</h3>
+              <p class="small" style="margin:0 0 8px">
+                Der Monatslauf rechnet stornierte Leistungen nicht noch einmal ab. Für die richtige Rechnung
+                hier eine Kopie als Entwurf anlegen, ändern und ausstellen.
+              </p>
+              <form method="post" action={`/rechnungen/${inv.id}/kopieren`}>
+                <input type="hidden" name="new_id" value={p.newId} />
+                <button class="btn">Als neue Rechnung kopieren</button>
+              </form>
+            </div>
+          )}
+          {!p.sent && !cancelled && !isCredit && p.portal == null && p.billing.emails.length > 0 && (
+            <form
+              method="post"
+              action={`/rechnungen/${inv.id}/versenden`}
+              onsubmit={`return confirm(${JSON.stringify(`Rechnung jetzt per E-Mail an ${p.billing.emails.join(', ')} versenden?`)})`}
+              style="margin:0 0 10px"
+            >
+              <button class="btn" style="width:100%">
+                Jetzt versenden
+              </button>
+            </form>
+          )}
           <div class="btns">
             <a href="?details=1#adresse">Name / Adresse ändern</a>
-            {['invoice', 'partial'].includes(inv.kind) && (
+            {['invoice', 'partial'].includes(inv.kind) && !cancelled && (
               <form method="post" action={`/rechnungen/${inv.id}/kopieren`}>
                 <input type="hidden" name="new_id" value={p.newId} />
                 <button>Kopieren</button>

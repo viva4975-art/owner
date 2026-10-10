@@ -1,3 +1,4 @@
+import { Icon } from './icons.js';
 import type { Child, FC } from 'hono/jsx';
 import type { Contact, Task } from '../services/crm.js';
 import type { CustomerBalance } from '../services/payments.js';
@@ -378,10 +379,11 @@ export const DEFAULT_DASH: DashItem[] = [
   { key: 'offeneposten', col: 1, hidden: false },
   { key: 'aufgaben', col: 1, hidden: false },
   { key: 'akquise', col: 1, hidden: false },
+  // Hinweise (Fristen, Aufenthaltstitel …) oben rechts – vorher weit unten übersehen (Bedientest 10.10.)
+  { key: 'hinweise', col: 2, hidden: false },
   { key: 'entwuerfe', col: 2, hidden: false },
   { key: 'unversendet', col: 2, hidden: false },
   { key: 'abwesend', col: 2, hidden: false },
-  { key: 'hinweise', col: 2, hidden: false },
   { key: 'bank', col: 2, hidden: false },
   { key: 'ampel', col: 2, hidden: false },
   { key: 'geburtstage', col: 2, hidden: false },
@@ -495,7 +497,7 @@ export const Dashboard: FC<{
   /** Bankkonten mit Kontostand (Bankabruf) und Anzahl neuer Umsätze */
   bank?: { iban: string; name: string; balance_cents: bigint | null; open: number }[] | null;
   /** Anfragen aus der App der Objektleitung: NU-Aufträge zur Freigabe, neue Personalbögen */
-  appRequests?: { nu: number; bogen: number };
+  appRequests?: { nu: number; bogen: number; zeit?: number };
   absentHref?: string | undefined;
   layout?: DashItem[] | undefined;
   showAkquise?: boolean;
@@ -536,6 +538,20 @@ export const Dashboard: FC<{
               </>
             ),
             href: '/erinnerungen',
+          },
+        ]
+      : []),
+    ...(appRequests.zeit
+      ? [
+          {
+            tone: 'warn',
+            text: (
+              <>
+                <b>{appRequests.zeit}</b> {appRequests.zeit === 1 ? 'Nachtrag' : 'Nachträge'} zur Freigabe
+                (Zeiterfassung)
+              </>
+            ),
+            href: `/zeiterfassung?datum=${kpi.today}#nachtraege`,
           },
         ]
       : []),
@@ -679,8 +695,8 @@ export const Dashboard: FC<{
           <a class="btn sec" href="/neu?typ=aufgabe">
             + Aufgabe
           </a>
-          <a class="btn ghost sm" href="/startseite/anpassen" title="Karten ein-/ausblenden und anordnen">
-            Übersicht anpassen
+          <a class="btn sec sm" href="/startseite/anpassen" title="Karten ein-/ausblenden und anordnen">
+            <Icon name="settings" size={14} /> Übersicht anpassen
           </a>
         </div>
       </div>

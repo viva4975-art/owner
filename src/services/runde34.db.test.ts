@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
+import { requestAbsence } from './absences.js';
 import { subcontractEstimates } from './costing.js';
 import { listTasks } from './crm.js';
 import { DEMO } from './seed.js';
@@ -67,5 +68,42 @@ describe.skipIf(!available)('Objektleitung-Aufgaben, NU-Stundennachweis (Datenba
     expect(Number(est[0]!.cost)).toBe(19975);
     await deleteSubcontractHours(sql, id, sc, 'b');
     expect((await listSubcontractHours(sql, sc)).length).toBe(1);
+  });
+  it('Krank im Urlaub: Urlaub wird an den Kranktagen gekürzt bzw. geteilt (§ 9 BUrlG)', async () => {
+    const emp = randomUUID();
+    await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, weekly_hours, annual_leave_days)
+              values (${emp}, '79102', 'Kranke', 'Urlauberin', '2020-01-01', 40, 30)`;
+    const vac = randomUUID();
+    const base = { employeeId: emp, halfDay: false, note: null, actor: 'buero', approved: true };
+    await requestAbsence(sql, { ...base, id: vac, kind: 'urlaub', start: '2026-11-02', end: '2026-11-13' });
+    const sick = {
+      ...base,
+      id: randomUUID(),
+      kind: 'krank' as const,
+      start: '2026-11-05',
+      end: '2026-11-06',
+    };
+    await expect(requestAbsence(sql, sick)).rejects.toThrow(/§ 9 BUrlG/);
+    await requestAbsence(sql, { ...sick, replaceVacation: true });
+    const rows = await sql<{ kind: string; start_date: string; end_date: string; status: string }[]>`
+      select kind, start_date::text, end_date::text, status from app.absences
+       where employee_id = ${emp} order by start_date`;
+    expect(rows).toEqual([
+      { kind: 'urlaub', start_date: '2026-11-02', end_date: '2026-11-04', status: 'genehmigt' },
+      { kind: 'krank', start_date: '2026-11-05', end_date: '2026-11-06', status: 'genehmigt' },
+      { kind: 'urlaub', start_date: '2026-11-07', end_date: '2026-11-13', status: 'genehmigt' },
+    ]);
+    // ganz überdeckt → Urlaub storniert
+    const v2 = randomUUID();
+    await requestAbsence(sql, { ...base, id: v2, kind: 'urlaub', start: '2026-12-01', end: '2026-12-02' });
+    await requestAbsence(sql, {
+      ...base,
+      id: randomUUID(),
+      kind: 'krank',
+      start: '2026-11-30',
+      end: '2026-12-04',
+      replaceVacation: true,
+    });
+    expect((await sql`select status from app.absences where id = ${v2}`)[0]!.status).toBe('storniert');
   });
 });

@@ -197,6 +197,15 @@ export function registerModuleRoutes(ctx: Ctx) {
         }
         bank={canAccess(role, '/transfer/kontoumsaetze') ? await accountOverview(sql) : null}
         appRequests={{
+          zeit: canAccess(role, '/zeiterfassung')
+            ? Number(
+                (
+                  await sql<{ n: number }[]>`
+                    select count(*)::int as n from app.time_entries where status = 'beantragt'
+                       and ${c.get('sites') ? sql`site_id = any(${c.get('sites')!}::uuid[])` : sql`true`}`
+                )[0]!.n,
+              )
+            : 0,
           nu: canAccess(role, '/lieferanten')
             ? Number(
                 (
@@ -630,7 +639,7 @@ export function registerModuleRoutes(ctx: Ctx) {
                           <th>Rechnung</th>
                           <th>Datum</th>
                           <th>Fällig</th>
-                          <th class="r">Tage</th>
+                          <th class="r">Fälligkeit</th>
                           <th class="r">Betrag</th>
                           <th class="r">bezahlt / verrechnet</th>
                           <th class="r">Offen</th>
@@ -676,10 +685,24 @@ export function registerModuleRoutes(ctx: Ctx) {
                                 )}
                               </td>
                               <td class="r" data-l="Tage">
+                                {/* eindeutig statt „0“ (Bedientest 10.10.: widersprach der Startseite) */}
                                 {i.overdue_days > 0 ? (
-                                  <span class="badge err">{i.overdue_days}</span>
+                                  <span class="badge err">{i.overdue_days} T. überfällig</span>
+                                ) : i.due_date ? (
+                                  <span class="mut">
+                                    fällig in{' '}
+                                    {Math.max(
+                                      0,
+                                      Math.round(
+                                        (Date.parse(`${i.due_date}T12:00:00Z`) -
+                                          Date.parse(`${todayBerlin()}T12:00:00Z`)) /
+                                          86400000,
+                                      ),
+                                    )}{' '}
+                                    T.
+                                  </span>
                                 ) : (
-                                  <span class="mut">{i.overdue_days}</span>
+                                  <span class="mut">–</span>
                                 )}
                               </td>
                               <td class="r" data-l="Betrag">

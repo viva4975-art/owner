@@ -60,9 +60,16 @@ export function registerHrRequiredRoutes({ app, deps, page }: Ctx) {
         </PageHead>
         <p class="mut" style="margin-top:-6px">
           Pflicht: {REQUIRED_DOCS.join(', ')} – dazu Aufenthaltstitel/Arbeitserlaubnis außerhalb
-          EU/EWR/Schweiz (nicht abgelaufen). Kleidung und Schlüssel zählen auch über Übergaben. {d.all.length}{' '}
-          von den aktiven Mitarbeitenden haben Lücken.
+          EU/EWR/Schweiz (nicht abgelaufen). Kleidung zählt auch über Übergaben, Schlüssel über das
+          Schlüsselbuch (Objekt → Schlüssel). Schild anklicken = direkt nachtragen. {d.all.length} von den
+          aktiven Mitarbeitenden haben Lücken.
         </p>
+        <input
+          type="search"
+          placeholder="Name oder Personalnummer suchen"
+          data-filter-list=".req-rows tr"
+          style="max-width:320px;margin-bottom:8px"
+        />
         <form method="get" class="actions" style="margin-top:0">
           <select
             name="objektleitung"
@@ -105,7 +112,7 @@ export function registerHrRequiredRoutes({ app, deps, page }: Ctx) {
                   <th>fehlt</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody class="req-rows">
                 {d.list.map(({ manager, r }) => {
                   const head = manager !== last;
                   last = manager;
@@ -123,9 +130,20 @@ export function registerHrRequiredRoutes({ app, deps, page }: Ctx) {
                       </td>
                       <td data-l="fehlt">
                         {r.missing.map((m) => (
-                          <span class="badge err" style="margin:0 4px 4px 0">
+                          <a
+                            class="badge err"
+                            style="margin:0 4px 4px 0;text-decoration:none"
+                            href={
+                              m === 'Schlüssel'
+                                ? '/schluessel'
+                                : (REQUIRED_DOCS as readonly string[]).includes(m) ||
+                                    /Aufenthalt|Arbeitserlaubnis/.test(m)
+                                  ? `/personal/${r.employee_id}/dokumente`
+                                  : `/personal/${r.employee_id}/bearbeiten`
+                            }
+                          >
                             {m}
-                          </span>
+                          </a>
                         ))}
                       </td>
                     </tr>

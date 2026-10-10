@@ -10,6 +10,8 @@ import { addDays } from '../../domain/time/holidays.js';
 import {
   type AbsenceKind,
   ABSENCE_LABEL,
+  deleteAbsence,
+  getAbsence,
   leaveBalance,
   listAbsences,
   requestAbsence,
@@ -39,7 +41,7 @@ import {
   geoCheckEnabled,
   type GeoInput,
 } from '../../services/time.js';
-import { type AppEnv, type Ctx, OFFICE_COOKIE, officeSecret } from '../app.js';
+import { type AppEnv, type Ctx, OFFICE_COOKIE, UUID, officeSecret } from '../app.js';
 import { getUser, linkedEmployee } from '../../services/users.js';
 import { SIGN_JS } from '../routes-orders.js';
 import { feedToken } from '../../services/calendar-feed.js';
@@ -103,7 +105,7 @@ input:focus,select:focus,textarea:focus{outline:3px solid #f3d6df;border-color:v
 .pill{display:inline-block;font-size:13px;font-weight:600;border-radius:999px;padding:1px 9px;background:#eef0f3;color:var(--mut)}
 .pill.ok{background:var(--ok-50);color:var(--ok)}.pill.warn{background:var(--warn-50);color:var(--warn)}.pill.err{background:var(--err-50);color:var(--err)}
 .links{display:grid;gap:10px}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}.two input,.two select{width:100%;min-width:0;box-sizing:border-box}
 .langs{display:flex;flex-wrap:wrap;gap:8px}
 .langs a{padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);text-decoration:none;font-size:15px}
 .langs a.on{border-color:var(--brand);color:var(--brand);font-weight:650}
@@ -164,6 +166,8 @@ main{padding-bottom:calc(110px + env(safe-area-inset-bottom,0px))}
 .cal-g a.today{color:#7D1435;font-weight:750}
 .cal-g a.sel{background:#7D1435;color:#fff}.cal-g a.sel .dt{background:#fff}
 .cal-g a.hol{color:#2b6cb0}
+.langbtn{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 12px;border:1px solid #e3cdd5;border-radius:22px;color:#7D1435!important;font-weight:700;text-decoration:none;background:#fff}
+.st-l{display:block;font-size:11px;color:#8a7a80;font-weight:500;margin-top:1px}
 `;
 
 // Formulare robust absenden: bei Funkloch Meldung statt Fehlerseite; gleiche ID → nichts doppelt.
@@ -171,6 +175,13 @@ const JS = `
 (function(){
   document.addEventListener('submit',function(e){
     var f=e.target;
+    // Rückfrage vor „Arbeit beenden“ (Fehltipp kostet sonst einen Nachtrag); früher als geplant → mit Planende
+    if(f.dataset.ask&&!f.dataset.asked){
+      var n=new Date(),hm=('0'+n.getHours()).slice(-2)+':'+('0'+n.getMinutes()).slice(-2),end=f.dataset.end||'';
+      var q=(end&&hm<end?f.dataset.askEarly:f.dataset.ask).replace('{time}',hm).replace('{end}',end);
+      if(!confirm(q)){e.preventDefault();return;}
+      f.dataset.asked='1';
+    }
     // Standort nur im Moment des Stempelns (Einstellung); ohne Erlaubnis/Signal wird trotzdem gestempelt
     if(f.hasAttribute('data-geo')&&!f.dataset.geodone&&navigator.geolocation){
       e.preventDefault(); f.dataset.geodone='1';
@@ -258,7 +269,22 @@ const MLayout: FC<{
           <img src="/static/logo-transparent.png" alt="Viva-Deluxe" width="149" height="30" />
         </a>
         <span class="sp" />
-        <a href={`/m/sprache`}>{lang.toUpperCase()}</a>
+        {/* Sprache gut sichtbar: Globus + Kürzel, große Fläche (Bedientest 10.10.) */}
+        <a href={`/m/sprache`} class="langbtn" aria-label={t(lang, 'lang_btn')}>
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20" />
+          </svg>
+          {lang.toUpperCase()}
+        </a>
         {me?.office ? (
           <a href="/qm">Büro</a>
         ) : (
@@ -509,6 +535,9 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       <>
         <h1>{t(lang, 'language')}</h1>
         <LangPicker lang={lang} next={next} />
+        <a class="big sec" href={next}>
+          {t(lang, 'back')}
+        </a>
       </>,
     );
   });
@@ -571,7 +600,9 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     viaQr?: boolean;
     /** Standort beim Stempeln abfragen (Einstellung Zeiterfassung) */
     geo?: boolean;
-  }> = ({ lang, me, running, siteId, viaQr, geo }) =>
+    /** geplantes Ende des laufenden Einsatzes (HH:MM) – Rückfrage bei früherem Beenden */
+    planEnd?: string | undefined;
+  }> = ({ lang, me, running, siteId, viaQr, geo, planEnd }) =>
     running ? (
       <div class="card run">
         <div>{t(lang, 'running', { time: clock(running.start_at) })}</div>
@@ -633,7 +664,15 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
             </div>
           );
         })()}
-        <form method="post" action="/m/aus" data-net data-geo={geo ? '1' : undefined}>
+        <form
+          method="post"
+          action="/m/aus"
+          data-net
+          data-geo={geo ? '1' : undefined}
+          data-ask={t(lang, 'confirm_out')}
+          data-ask-early={t(lang, 'confirm_out_early')}
+          data-end={planEnd ?? ''}
+        >
           <div style="height:12px" />
           <button class="big stop">{t(lang, 'clock_out')}</button>
         </form>
@@ -719,7 +758,8 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     const notes = await siteNotes(todays.map((s) => s.plan.site_id));
     const pastToConfirm = shifts.filter((s) => !s.entry && !s.absence && s.date < today);
     const presetSite = todays.find((s) => !s.entry)?.plan.site_id;
-    const doneToday = todays.filter((s) => s.entry).length;
+    // nur abgeschlossene Zeiten zählen als erledigt (laufende Stempelung nicht – Bedientest 10.10.)
+    const doneToday = todays.filter((s) => s.entry && s.entry.end_at).length;
     const todayTimes = times.filter((e) => e.work_date === today && e.status !== 'abgelehnt');
     const workedToday = todayTimes.reduce((a, e) => a + (e.end_at ? netMinutes(e) : e.gross_minutes), 0);
     const breakToday = todayTimes.reduce((a, e) => a + (e.end_at ? e.break_minutes : 0), 0);
@@ -849,14 +889,15 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
             <span title={t(lang, 'stat_shifts')}>
               <Ic n="watch" />
               {doneToday} / {todays.length}
+              <small class="st-l">{t(lang, 'stat_shifts')}</small>
             </span>
             <span title={t(lang, 'stat_hours')}>
               <Ic n="clock" />
-              {hm(workedToday)}h
+              {hm(workedToday)}h<small class="st-l">{t(lang, 'stat_hours')}</small>
             </span>
             <span title={t(lang, 'stat_break')}>
               <Ic n="coffee" />
-              {hm(breakToday)}h
+              {hm(breakToday)}h<small class="st-l">{t(lang, 'stat_break')}</small>
             </span>
           </div>
         </div>
@@ -888,10 +929,10 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
               : me.sites,
           }}
           running={running}
+          planEnd={
+            running ? todays.find((x) => x.plan.site_id === running.site_id)?.plan.end_time : undefined
+          }
         />
-        <a class="fab" href="#clock" aria-label={t(lang, 'clock_now')}>
-          <Ic n="watch" />
-        </a>
         <Times lang={lang} rows={times} />
         <div class="card" id="install" hidden>
           <button type="button" class="big sec" hidden>
@@ -1049,12 +1090,29 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       me,
       <>
         <h1>{t(lang, 'nav_calendar')}</h1>
-        <a
-          class="big sec"
-          href={`webcal://${c.req.header('x-forwarded-host') ?? c.req.header('host')}/kalender/abo/${await feedToken(sql, { employeeId: me.id })}.ics`}
-        >
-          {t(lang, 'cal_subscribe')}
-        </a>
+        <h2>{dayLabel(lang, sel)}</h2>
+        {daySel.length === 0 && <div class="card mut">{t(lang, 'cal_none')}</div>}
+        {daySel.map((s2) => (
+          <div class={`shift${s2.entry ? ' done' : ''}`}>
+            <div class="w">
+              <span>
+                {s2.plan.start_time}–{s2.plan.end_time}
+              </span>
+              {s2.entry ? (
+                <b>✓ {t(lang, `st_${s2.entry.status}`)}</b>
+              ) : s2.absence ? (
+                <b style="color:#b45309">{t(lang, s2.absence)}</b>
+              ) : null}
+            </div>
+            <div class="s">{s2.plan.site_name}</div>
+            {!s2.entry &&
+              !s2.absence &&
+              sel >= addDays(today, -7) &&
+              (sel < today || (sel === today && s2.plan.end_time <= nowHm)) && (
+                <ConfirmBox lang={lang} s={s2} />
+              )}
+          </div>
+        ))}
         {months.map((m) => {
           const ms = shifts.filter((x) => x.date.startsWith(m));
           const me2 = entries.filter(
@@ -1116,29 +1174,12 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
             </div>
           );
         })}
-        <h2>{dayLabel(lang, sel)}</h2>
-        {daySel.length === 0 && <div class="card mut">{t(lang, 'cal_none')}</div>}
-        {daySel.map((s2) => (
-          <div class={`shift${s2.entry ? ' done' : ''}`}>
-            <div class="w">
-              <span>
-                {s2.plan.start_time}–{s2.plan.end_time}
-              </span>
-              {s2.entry ? (
-                <b>✓ {t(lang, `st_${s2.entry.status}`)}</b>
-              ) : s2.absence ? (
-                <b style="color:#b45309">{t(lang, s2.absence)}</b>
-              ) : null}
-            </div>
-            <div class="s">{s2.plan.site_name}</div>
-            {!s2.entry &&
-              !s2.absence &&
-              sel >= addDays(today, -7) &&
-              (sel < today || (sel === today && s2.plan.end_time <= nowHm)) && (
-                <ConfirmBox lang={lang} s={s2} />
-              )}
-          </div>
-        ))}
+        <a
+          class="big sec"
+          href={`webcal://${c.req.header('x-forwarded-host') ?? c.req.header('host')}/kalender/abo/${await feedToken(sql, { employeeId: me.id })}.ics`}
+        >
+          {t(lang, 'cal_subscribe')}
+        </a>
       </>,
     );
   });
@@ -1460,6 +1501,16 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
                 >
                   {t(lang, `ab_${a.status}`)}
                 </span>
+                {a.status === 'beantragt' && (
+                  <form
+                    method="post"
+                    action={`/m/abwesenheit/${a.id}/zurueck`}
+                    onsubmit={`return confirm(${JSON.stringify(t(lang, 'abs_withdraw_q'))})`}
+                    style="margin-top:6px"
+                  >
+                    <button class="link">{t(lang, 'abs_withdraw')}</button>
+                  </form>
+                )}
               </div>
             </div>
           ))}
@@ -1491,6 +1542,17 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       });
       return back(c, '/m/abwesenheit', { ok: t(lang, 'msg_absence') });
     });
+  });
+
+  // Eigenen, noch nicht entschiedenen Antrag zurückziehen (Bedientest 10.10.)
+  app.post(`/m/abwesenheit/:id{${UUID}}/zurueck`, async (c) => {
+    const { me, res } = await requireMe(c);
+    if (!me) return res!;
+    const lang = langOf(c, me);
+    const a = await getAbsence(sql, c.req.param('id'));
+    if (a && a.employee_id === me.id && a.status === 'beantragt')
+      await deleteAbsence(sql, a.id, `m:${me.personnel_no}`);
+    return back(c, '/m/abwesenheit', { ok: t(lang, 'abs_withdrawn') });
   });
 
   // ---------------------------------------------------------------- Installierbare App (PWA)
@@ -1593,10 +1655,10 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
               <div class="r">
                 {d.status === 'offen' ? (
                   <span class="pill warn">
-                    <Icon name="sign" size={13} />
+                    <Icon name="sign" size={13} /> {t(lang, 'doc_todo')}
                   </span>
                 ) : (
-                  <span class="pill ok">✓</span>
+                  <span class="pill ok">✓ {t(lang, 'doc_done')}</span>
                 )}
               </div>
             </a>

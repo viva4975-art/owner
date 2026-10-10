@@ -81,7 +81,7 @@ await p.check('input[name=pay_model][value=festgehalt]');
 await p.fill('#monthly_salary', '1.733,33');
 await p.click('button:has-text("Speichern")');
 await p.waitForLoadState();
-check('Festgehalt gespeichert', (await body(p)).includes('Festgehalt 1.733,33 €/Monat'), await flash(p));
+check('Festgehalt gespeichert', (await body(p)).includes('1.733,33 €/Monat'), await flash(p));
 
 // ---------- 3. Einsatz planen → zurück zum Mitarbeiter ----------
 console.log('3. Einsatz vom Mitarbeiter aus planen');

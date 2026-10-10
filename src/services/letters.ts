@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import type { BuyerSnapshot } from '../domain/invoice/types.js';
-import { renderLetterPdf } from '../pdf/render.js';
+import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import { BusinessError } from './errors.js';
 import { buildBuyerSnapshot, getSeller } from './masterdata.js';
 import { storeFile, type UploadConfig } from './uploads.js';

@@ -9,7 +9,7 @@ import {
   lineNet,
   toXmlDecimal,
 } from '../domain/money/money.js';
-import { renderLetterPdf } from '../pdf/render.js';
+import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import { type SubcontractLink, replaceLinks } from './expected-invoices.js';
 import { invoiceOffsets } from './advances.js';
 import { BusinessError } from './errors.js';

@@ -25,6 +25,7 @@ import {
 import {
   INVOICE_CLOSING_NOPAY,
   INVOICE_INTRO_DEFAULT,
+  type LetterPdfInput,
   type LinePlace,
   addressLines,
   periodText,
@@ -736,6 +737,174 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
     p.y = top + ah + 10;
   }
 
+  for (const fn of p.labels) fn(p.pages.length);
+  return pdf.save({ useObjectStreams: false });
+}
+
+/**
+ * Brief auf dem Briefpapier im Stil „edel“ (Mahnung, Lieferschein, Bestellung, Protokolle, freie Briefe): gleiche
+ * Schrift und gleicher Kopfblock wie die Rechnung. Spalten-x wie bisher (linke Spalten Text, übrige rechtsbündig).
+ */
+export async function renderLetterEdel(lp: LetterPdfInput): Promise<Uint8Array> {
+  const pdf = await PDFDocument.create();
+  pdf.registerFontkit(fontkit);
+  const [r, m, s, b, lhB] = await Promise.all([
+    readFile(new URL('fonts/inter/Inter-Regular.ttf', ASSETS)),
+    readFile(new URL('fonts/inter/Inter-Medium.ttf', ASSETS)),
+    readFile(new URL('fonts/inter/Inter-SemiBold.ttf', ASSETS)),
+    readFile(new URL('fonts/inter/Inter-Bold.ttf', ASSETS)),
+    readFile(new URL('briefpapier/viva-deluxe-a4.jpg', ASSETS)),
+  ]);
+  const f = {
+    r: await pdf.embedFont(r, { subset: false, features: NOFEAT }),
+    m: await pdf.embedFont(m, { subset: false, features: NOFEAT }),
+    s: await pdf.embedFont(s, { subset: false, features: NOFEAT }),
+    b: await pdf.embedFont(b, { subset: false, features: NOFEAT }),
+  };
+  const lh = await pdf.embedJpg(lhB);
+  pdf.setTitle(lp.title);
+  pdf.setAuthor(lp.seller.legalName);
+  pdf.setLanguage('de-DE');
+  pdf.setCreator('Viva-Deluxe Betriebs-App');
+  pdf.setCreationDate(new Date(`${lp.date}T12:00:00Z`));
+  pdf.setModificationDate(new Date(`${lp.date}T12:00:00Z`));
+  const p = new P(pdf, f, lh, lp.title, lp.watermark);
+  const S = lp.seller;
+
+  p.add();
+  const sender = `${S.legalName} · ${S.street} · ${S.postalCode} ${S.city}`;
+  p.text(sender, L, 145, 6.2, 'r', GREY);
+  p.line(L, 147.5, L + p.w(sender, 6.2), 147.5, 0.35, FAINT);
+  let addrEnd = 162;
+  for (const [i, l] of addressLines(lp.buyer, f.r).lines.entries()) {
+    addrEnd = 162 + i * (l.lead + 0.6);
+    p.text(l.text, L, addrEnd, l.size - 0.4, i === 0 ? 'm' : 'r', INK);
+  }
+
+  // Kopfblock rechts: „Art + Nummer“ groß, sonst nur Angaben (Titel dann als Betreff links)
+  const IX = 340;
+  const num = /^(.{2,40}?)\s+(\S*\d\S*)$/.exec(lp.title.trim());
+  let y = 145;
+  if (num) {
+    p.cap(num[1]!, IX, 140, BRD, 7);
+    const big = num[2]!;
+    const size = p.w(big, 20, 's') > R - IX ? 14 : 20;
+    p.text(big, IX, 162, size, 's', INK);
+    p.line(IX, 171, R, 171, 0.5, INK);
+    y = 185;
+  }
+  for (const [k, val] of lp.info) {
+    p.text(k, IX, y, 7.4, 'r', GREY);
+    const vs = wrap(val, f.m, 8.2, R - IX - 82);
+    vs.forEach((t, i) => p.right(t, R, y + i * 10.6, 8.2, 'm', INK));
+    y += Math.max(1, vs.length) * 10.6 + 2.6;
+  }
+  p.text('Seite', IX, y, 7.4, 'r', GREY);
+  p.pageNo(R, y, 8.2);
+  p.y = Math.max(262, y + 24, addrEnd + 40);
+
+  if (!num) {
+    for (const t of wrap(lp.title, f.s, 11, R - L)) {
+      p.text(t, L, p.y, 11, 's', INK);
+      p.y += 14;
+    }
+    p.y += 8;
+  }
+  const greeting = lp.greeting === undefined ? 'Sehr geehrte Damen und Herren,' : lp.greeting;
+  if (greeting) {
+    p.text(greeting, L, p.y, 8.8, 'r', INK2);
+    p.y += 15;
+  }
+  if (lp.intro) p.para(lp.intro, L, R - L, 8.8, 'r', INK2, 12.8);
+  p.y += 12;
+
+  // Tabelle
+  const cols = lp.columns;
+  const head = () => {
+    const hy = p.y;
+    for (const c of cols)
+      if (c.align === 'left') p.cap(c.label, c.x, hy, GREY, 6.2);
+      else p.cap(c.label, c.x, hy, GREY, 6.2, true);
+    p.line(L, hy + 6, R, hy + 6, 0.5, INK);
+    p.y = hy + 22;
+  };
+  if (cols.length) {
+    p.ensure(60);
+    head();
+    for (const row of lp.rows) {
+      p.ensure(18, head);
+      cols.forEach((c, i) => {
+        const t = row[i] ?? '';
+        if (c.align === 'left') p.text(t, c.x, p.y, 8.6, i === 0 ? 'm' : 'r', INK);
+        else p.right(t, c.x, p.y, 8.6, 'r', INK2);
+      });
+      p.y += 11;
+      p.line(L, p.y - 2, R, p.y - 2, 0.35, HAIR);
+      p.y += 10;
+    }
+  }
+  const last = cols[cols.length - 1]?.x ?? R;
+  const labelX = cols[cols.length - 2]?.x ?? last - 100;
+  if (lp.sums.length || lp.total) {
+    p.ensure(lp.sums.length * 14 + 50);
+    p.y += 6;
+    for (const [k, val] of lp.sums) {
+      p.right(k, labelX, p.y, 8.4, 'r', GREY);
+      p.right(val, last, p.y, 8.6, 'm', INK2);
+      p.y += 14;
+    }
+    if (lp.total) {
+      const [tl, tv] = lp.total;
+      const SX = Math.min(336, labelX - p.w(tl, 9, 's') - 10);
+      p.y -= 4;
+      p.rect(SX - 10, p.y, 2.2, 28, BRD);
+      p.rect(SX - 7.8, p.y, R - SX + 7.8, 28, TINT);
+      p.text(tl, SX, p.y + 18, 9, 's', BRD2);
+      p.right(tv, R - 6, p.y + 18.5, 12, 's', BRD2);
+      p.y += 40;
+    }
+  }
+  p.y += 8;
+  for (const para of lp.paragraphs) {
+    p.para(para, L, R - L, 8.6, 'r', INK2);
+    p.y += 6;
+  }
+  if (lp.signature) {
+    p.ensure(120);
+    p.y += 8;
+    p.cap(lp.signature.label, L, p.y, BRD, 6.4);
+    p.y += 8;
+    if (lp.signature.png) {
+      const img = await pdf.embedPng(lp.signature.png);
+      const h = 60;
+      const wd = Math.min(220, (img.width / img.height) * h);
+      p.page.drawImage(img, { x: L, y: H - p.y - h, width: wd, height: h });
+    }
+    p.y += 64;
+    p.line(L, p.y, L + 230, p.y, 0.5, GREY);
+    p.y += 11;
+    p.text(`${lp.signature.name}${lp.signature.at ? `, ${lp.signature.at}` : ''}`, L, p.y, 7.4, 'r', GREY);
+    p.y += 18;
+  }
+  const bank = S.bankAccounts.find((x) => x.primary) ?? S.bankAccounts[0];
+  if (lp.girocode && bank && lp.girocode.amount > 0n) {
+    p.ensure(80);
+    const qs = 56;
+    p.qr(
+      girocodePayload({
+        bic: bank.bic,
+        name: S.legalName,
+        iban: bank.iban,
+        amount: lp.girocode.amount as Cents,
+        reference: lp.girocode.reference,
+      }),
+      R - qs,
+      p.y,
+      qs,
+    );
+    p.right('GiroCode', R, p.y + qs + 9, 6, 'm', GREY);
+    p.y += qs + 16;
+  }
   for (const fn of p.labels) fn(p.pages.length);
   return pdf.save({ useObjectStreams: false });
 }

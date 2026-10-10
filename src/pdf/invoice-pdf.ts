@@ -1,5 +1,6 @@
 import type { InvoiceDocument } from '../domain/invoice/types.js';
-import { renderInvoiceDesign2 } from './invoice-design2.js';
+import { renderInvoiceDesign2, renderLetterEdel } from './invoice-design2.js';
+import type { LetterPdfInput } from './render.js';
 
 /*
  * Sichtbare Rechnungs-/Angebots-/AB-PDF (Grundlage auch für ZUGFeRD). Seit 10.10.2026 Gestaltung „edel“
@@ -34,4 +35,9 @@ export interface InvoicePdfOptions {
 
 export function renderInvoicePdf(doc: InvoiceDocument, opts: InvoicePdfOptions = {}): Promise<Uint8Array> {
   return renderInvoiceDesign2(doc, { variant: 'edel', objPos: 'band', ...opts });
+}
+
+/** Brief auf dem Briefpapier (Mahnung, Lieferschein, Bestellung, Protokolle, freie Briefe) im Stil „edel“. */
+export function renderLetterPdf(p: LetterPdfInput): Promise<Uint8Array> {
+  return renderLetterEdel(p);
 }

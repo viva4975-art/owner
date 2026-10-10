@@ -2271,3 +2271,12 @@ Testadresse.
   im Text). Alte Gestaltung bleibt als `renderInvoicePdfClassic` (unbenutzt). **Bereits ausgestellte Rechnungen bleiben
   unverändert (write-once).** KoSIT/ZUGFeRD-Tests grün; **PDF/A-3b mit veraPDF (`npm run check:pdfa`) auf einem Rechner mit
   Docker wiederholen** (hier kein Docker). 491 Unit-/DB-Tests, e2e angebot/auftrag/vorfaktura/mahnung grün.
+- 2026-10-10: **Briefe ebenfalls im Stil „edel“** (`renderLetterEdel`, gleiche Signatur wie bisher, `renderLetterPdf` jetzt aus
+  `src/pdf/invoice-pdf.ts`): Mahnung, Lieferschein, Material-Bestellung, NU-Kündigung/Nachweisübersicht, Preisanpassungs-
+  Anschreiben, Serienbriefe, freie Briefe, Übergabe-/QK-Protokolle, Eigen-Compliance-Vorlagen, Word-Vorlagen als PDF.
+  Kopfblock rechts (Art + Nummer groß, sonst nur Angaben und der Titel als fetter Betreff links), Tabelle mit Haarlinien,
+  Summe mit Bordeaux-Kante, Unterschrift, GiroCode. Bereits archivierte Briefe bleiben unverändert. Alte Gestaltung als
+  `renderLetterPdfClassic` (unbenutzt). 491 Tests, e2e uebergabe/einkauf/nachunternehmer/mahnung/kasse/objekt grün
+  (uebergabe einmal 1 Fehler, in drei weiteren Läufen nicht wiederholbar).
+- Zur Frage „egal, weil XRechnung?“: Behörden (XRechnung = reines XML) sehen unser Layout nicht; ZUGFeRD-Kunden, Privatkunden,
+  Angebote, AB, Mahnungen und Briefe dagegen schon.

@@ -4,7 +4,7 @@ import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import { type Cents, formatEuro } from '../domain/money/money.js';
 import { MAILER_MISSING, resolveRecipients } from '../mail/mailer.js';
-import { renderLetterPdf } from '../pdf/render.js';
+import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import { BusinessError } from './errors.js';
 import { buildBuyerSnapshot, effectiveBilling, getSeller } from './masterdata.js';
 import type { Deps } from './workflow.js';

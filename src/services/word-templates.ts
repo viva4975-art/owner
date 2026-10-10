@@ -779,7 +779,7 @@ export async function wordTemplatePdf(
   const bytes = await readFile(filePath(cfg, { storage_path: t.storage_path } as FileRow));
   const { data } = fillDocx(bytes, (k) => values[k] ?? null, de(today));
   const paras = docxText(data);
-  const { renderLetterPdf } = await import('../pdf/render.js');
+  const { renderLetterPdf } = await import('../pdf/invoice-pdf.js');
   const { getSeller } = await import('./masterdata.js');
   const seller = await getSeller(sql);
   const pdf = await renderLetterPdf({

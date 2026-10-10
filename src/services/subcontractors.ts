@@ -5,7 +5,7 @@ import type { BuyerSnapshot } from '../domain/invoice/types.js';
 import { type Cents, formatEuro } from '../domain/money/money.js';
 import { NU_CONDITIONS } from '../domain/subcontract/conditions.js';
 import { FORM_COLORS, FORM_X, FormDoc } from '../pdf/form-doc.js';
-import { renderLetterPdf } from '../pdf/render.js';
+import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import { assertVersion } from './crm.js';
 import { hashPin, LOCK_MINUTES, MAX_ATTEMPTS, verifyHash } from './employee-auth.js';
 import { BusinessError } from './errors.js';

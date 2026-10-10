@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import { addDays } from '../domain/time/holidays.js';
-import { renderLetterPdf } from '../pdf/render.js';
+import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import { internalBuyer } from './cashbook.js';
 import { BusinessError } from './errors.js';
 import { getSeller } from './masterdata.js';

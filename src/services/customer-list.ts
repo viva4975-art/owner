@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { PDFDocument } from '@cantoo/pdf-lib';
 import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
-import { renderLetterPdf } from '../pdf/render.js';
+import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import { BusinessError } from './errors.js';
 import { buildBuyerSnapshot, type Customer, getCustomer, getSeller } from './masterdata.js';
 import { toCsv } from './reports.js';

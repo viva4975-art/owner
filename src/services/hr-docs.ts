@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { PDFDocument } from '@cantoo/pdf-lib';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import type { BuyerSnapshot } from '../domain/invoice/types.js';
-import { renderLetterPdf } from '../pdf/render.js';
+import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import {
   type DocumentTemplate,
   type Employee,

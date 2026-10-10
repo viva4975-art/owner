@@ -823,7 +823,7 @@ export async function renderInvoicePdfClassic(
  * Brief auf dem Briefpapier mit freier Tabelle (z. B. Mahnung): keine USt-Logik, Beträge fertig formatiert.
  * Spalten: erste links (Text), übrige rechtsbündig an den angegebenen x-Positionen.
  */
-export async function renderLetterPdf(p: {
+export interface LetterPdfInput {
   title: string;
   date: string;
   info: [string, string][];
@@ -842,7 +842,9 @@ export async function renderLetterPdf(p: {
   greeting?: string | null;
   /** Unterschriftsfeld, z. B. Abnahme durch den Kunden */
   signature?: { label: string; png: Uint8Array | null; name: string; at: string } | null;
-}): Promise<Uint8Array> {
+}
+
+export async function renderLetterPdfClassic(p: LetterPdfInput): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   const assets = await loadAssets();

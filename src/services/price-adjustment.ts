@@ -1,6 +1,6 @@
 import { PDFDocument } from '@cantoo/pdf-lib';
 import type { Sql } from '../db/client.js';
-import { renderLetterPdf } from '../pdf/render.js';
+import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import { buildBuyerSnapshot, getSeller } from './masterdata.js';
 import { storeFile, type UploadConfig } from './uploads.js';
 import {

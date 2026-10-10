@@ -2224,7 +2224,8 @@ Testadresse.
     Korrektur, Angebot, AB eingebaut (PDF/A-3 + KoSIT erneut prüfen).
 - 2026-10-10: Runde 37 (Ahmed: grüne „Live“-Zeile weg, Siegel aus dem Briefkopf, Design einheitlich/professionell):
   - Umgebungs-Schild (unten links bzw. Kopf der Anmeldung) erscheint nur noch in Test/Lokal, nie im Echtbetrieb.
-  - Anmeldung: echte Siegel aus dem Briefkopf (`assets/web/siegel.png`, aus der Mail-Signatur) auf weißem Streifen.
+  - Anmeldung: Siegel aus dem Briefkopf hell direkt auf der Bordeaux-Fläche (`assets/web/siegel-hell.png`, aus
+    `siegel.png` erzeugt: weiß, Hintergrund durchsichtig, Schrift ausgespart), Überschrift „Zertifiziert & Mitglied“.
   - **Design 4** (letzter CSS-Block in `layout.tsx`, gilt überall): Grundfläche neutral grau (#f4f4f5), heller
     Bordeaux-Ton nur als Schimmer oben hinter den ersten Karten (PC und App, kein vollflächiges Hellrot mehr); einheitliche
     Überschriften (24/17/15 px), Karten (weiß, Linie, Radius 12), Knöpfe (Bordeaux / weiß mit Rand / Geister / Gefahr,

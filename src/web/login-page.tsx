@@ -17,7 +17,7 @@ body{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#1d1a
 .lg-claim{position:relative;z-index:1;max-width:440px}
 .lg-claim h2{font-size:34px;line-height:1.15;font-weight:700;margin:0 0 14px;letter-spacing:-.01em}
 .lg-claim p{margin:0;font-size:16px;line-height:1.55;color:rgba(255,255,255,.82)}
-.lg-seals{position:relative;z-index:1;display:inline-flex;align-self:flex-start;background:#fff;border-radius:10px;padding:10px 14px;box-shadow:0 6px 18px rgba(0,0,0,.18)}.lg-seals img{display:block;width:100%;max-width:454px;height:auto}
+.lg-seals{position:relative;z-index:1;display:flex;flex-direction:column;gap:10px;align-self:flex-start;max-width:454px;width:100%}.lg-seals::before{content:"Zertifiziert & Mitglied";font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.6)}.lg-seals img{opacity:.9}.lg-seals img{display:block;width:100%;max-width:454px;height:auto}
 .lg-seals span{font-size:12px;font-weight:600;letter-spacing:.02em;padding:6px 11px;border-radius:999px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18)}
 .lg-main{display:flex;align-items:center;justify-content:center;padding:40px 24px}
 .lg-box{width:100%;max-width:400px}
@@ -166,7 +166,7 @@ export function loginHtml(p: {
               </div>
               <div class="lg-seals">
                 <img
-                  src="/static/siegel.png"
+                  src="/static/siegel-hell.png"
                   alt="Meisterbetrieb, ISO 9001, ISO 14001, Gebäudereiniger-Handwerk, Die Gebäudedienstleister, Umwelt- und Klimapakt Bayern"
                   width="454"
                   height="40"

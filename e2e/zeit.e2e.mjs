@@ -89,6 +89,7 @@ await o.screenshot({ path: `${out}/z2-qr-aushang.png`, fullPage: true });
 // ---------- 2. Handy: QR scannen, anmelden, stempeln ----------
 console.log('2. Handy: QR, Anmeldung, Stempeln');
 const m = await phone.newPage();
+m.on('dialog', (d) => d.accept());
 await m.goto(B + new URL(qrUrl).pathname);
 check('ohne Anmeldung → Login', (await m.locator('#pin').count()) === 1);
 await m.screenshot({ path: `${out}/z3-handy-login.png` });

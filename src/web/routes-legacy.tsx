@@ -46,7 +46,7 @@ export function registerLegacyRoutes(ctx: Ctx) {
             />
           </div>
           <form method="get" action="/transfer/altdaten/pruefen" class="card">
-            <h3>2. Datei(en) auswählen und prüfen</h3>
+            <h3>2. Dateien auswählen und prüfen</h3>
             {files.length === 0 ? (
               <p class="small mut">Noch nichts hochgeladen.</p>
             ) : (

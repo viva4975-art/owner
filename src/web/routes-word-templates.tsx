@@ -21,7 +21,7 @@ import {
 import type { Context } from 'hono';
 import { type FormField, defaultBlanks, defaultBoxes } from '../services/word-form.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
-import { PageHead } from './layout.js';
+import { PageHead, anz } from './layout.js';
 import { canAccess } from './permissions.js';
 import { uploadConfig } from './routes-files.js';
 
@@ -308,7 +308,7 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
     );
     const r = await importWordTemplates(sql, cfg, uploads, c.get('actor'));
     return back(c, '/einstellungen/word-vorlagen', {
-      ok: `${r.created.length} Vorlage(n) übernommen${r.replaced.length ? `, ${r.replaced.length} ältere Fassung(en) deaktiviert` : ''}${r.existing.length ? `, ${r.existing.length} schon vorhanden` : ''}${r.skipped.length ? `, übersprungen: ${r.skipped.join(', ')}` : ''}.`,
+      ok: `${anz(r.created.length, 'Vorlage', 'Vorlagen')} übernommen${r.replaced.length ? `, ${anz(r.replaced.length, 'ältere Fassung', 'ältere Fassungen')} deaktiviert` : ''}${r.existing.length ? `, ${r.existing.length} schon vorhanden` : ''}${r.skipped.length ? `, übersprungen: ${r.skipped.join(', ')}` : ''}.`,
     });
   });
 

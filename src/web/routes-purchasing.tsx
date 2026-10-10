@@ -76,7 +76,7 @@ import {
 } from '../services/cost-centers.js';
 import { arr, centsToInput, milliToInput, str } from './forms.js';
 import { Icon } from './icons.js';
-import { PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
+import { PageHead, type Tab, Tabs, dateDe, euro, anz } from './layout.js';
 
 const versionOf = (v: unknown) => (typeof v === 'string' && v !== '' ? Number(v) : null);
 const isMonth = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}$/.test(v);
@@ -511,7 +511,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             ))}
           </div>
           {view !== 'erledigen' && <input type="hidden" name="ansicht" value={view} />}
-          <select name="art" onchange="this.form.submit()" style="width:auto">
+          <select name="art" onchange="this.form.submit()" style="width:auto" aria-label="Art">
             <option value="">Material + Nachunternehmer</option>
             <option value="material" selected={art === 'material'}>
               nur Material
@@ -520,7 +520,12 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               nur Nachunternehmer
             </option>
           </select>
-          <select name="lieferant" onchange="this.form.submit()" style="width:auto;max-width:260px">
+          <select
+            name="lieferant"
+            onchange="this.form.submit()"
+            style="width:auto;max-width:260px"
+            aria-label="Lieferant"
+          >
             <option value="">Alle Lieferanten / Nachunternehmer</option>
             {suppliers.map((x) => (
               <option value={x.id} selected={x.id === supplierId}>
@@ -544,8 +549,11 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         {(unsignedCount > 0 || onlyUnsigned) && (
           <div class={`flash ${onlyUnsigned ? 'ok' : 'warn'}`} style="margin-bottom:10px">
             <div>
-              <b>{unsignedCount}</b> erteilte Nachunternehmer-Bestellung(en) ohne unterschriebenen Auftrag
-              (Scan oder Unterschrift am Handy) –{' '}
+              <b>{unsignedCount}</b>{' '}
+              {unsignedCount === 1
+                ? 'erteilte Nachunternehmer-Bestellung'
+                : 'erteilte Nachunternehmer-Bestellungen'}{' '}
+              ohne unterschriebenen Auftrag (Scan oder Unterschrift am Handy) –{' '}
               {onlyUnsigned ? (
                 <a href="/bestellungen?ansicht=alle">alle Bestellungen zeigen</a>
               ) : (
@@ -940,7 +948,12 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               <dt>Wareneingang</dt>
               <dd>
                 {o.received_at
-                  ? o.received_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })
+                  ? o.received_at.toLocaleDateString('de-DE', {
+                      timeZone: 'Europe/Berlin',
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                    })
                   : '–'}
               </dd>
               <dt>Rechnungen</dt>
@@ -1427,7 +1440,12 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             {i.approved_by && (
               <span class="small mut">
                 freigegeben von {i.approved_by} am{' '}
-                {i.approved_at?.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}
+                {i.approved_at?.toLocaleDateString('de-DE', {
+                  timeZone: 'Europe/Berlin',
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                })}
               </span>
             )}
             {i.paid_at && <span class="badge ok">bezahlt am {dateDe(i.paid_at)}</span>}
@@ -2336,7 +2354,9 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         },
         c.get('actor'),
       );
-      return back(c, `/zahlungsliste?datum=${date}`, { ok: `${n} Rechnung(en) als bezahlt festgehalten.` });
+      return back(c, `/zahlungsliste?datum=${date}`, {
+        ok: `${anz(n, 'Rechnung', 'Rechnungen')} als bezahlt festgehalten.`,
+      });
     } catch (e) {
       if (e instanceof BusinessError) return back(c, `/zahlungsliste?datum=${date}`, { fehler: e.message });
       throw e;
@@ -2767,7 +2787,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             bis
           </label>
           <input type="month" name="bis" value={bis} style="max-width:200px" />
-          <select name="kunde" style="max-width:240px" data-nosearch>
+          <select name="kunde" aria-label="Kunde" style="max-width:240px" data-nosearch>
             <option value="">Alle Kunden</option>
             {customers.map(([id, name]) => (
               <option value={id} selected={id === fKunde}>
@@ -2775,7 +2795,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               </option>
             ))}
           </select>
-          <select name="objekt" style="max-width:260px">
+          <select name="objekt" aria-label="Objekt" style="max-width:260px">
             <option value="">Alle Objekte</option>
             {withData
               .filter((r) => !fKunde || r.customer_id === fKunde)
@@ -2785,7 +2805,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                 </option>
               ))}
           </select>
-          <select name="ol" style="max-width:200px" data-nosearch>
+          <select name="ol" aria-label="Objektleitung" style="max-width:200px" data-nosearch>
             <option value="">Alle Objektleitungen</option>
             {managers.map((m) => (
               <option value={m.user_id} selected={m.user_id === fOl}>

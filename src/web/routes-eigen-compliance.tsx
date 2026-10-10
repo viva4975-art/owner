@@ -131,7 +131,7 @@ function Row({
                 </a>
                 {expiresOf(a, e.dt) && ` · war gültig bis ${dateDe(expiresOf(a, e.dt))}`}
                 {a.superseded_at &&
-                  ` · archiviert ${a.superseded_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}`}
+                  ` · archiviert ${a.superseded_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric' })}`}
               </div>
             ))}
           </details>
@@ -465,7 +465,7 @@ if(!a.value){p.textContent='';return}var x=a.value.split('-').map(Number),d=new 
     const { map, last } = await getChecks(sql);
     const done = EC_CHECKS.filter((x) => map.get(x.id)?.status).length;
     const meta = last
-      ? `Zuletzt abgeschlossen von ${last.reviewed_by} am ${last.reviewed_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}`
+      ? `Zuletzt abgeschlossen von ${last.reviewed_by} am ${last.reviewed_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric' })}`
       : 'Noch nicht abgeschlossen';
     return page(
       c,

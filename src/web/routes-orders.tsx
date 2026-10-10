@@ -931,16 +931,27 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
           </PageHead>
           {w.cancelled_at && (
             <div class="flash err">
-              Storniert am {w.cancelled_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })} von{' '}
-              {fullName({ login: w.cancelled_by ?? '' })}: {w.cancel_reason}. Zählt nicht mehr und kann nicht
-              abgerechnet werden.
+              Storniert am{' '}
+              {w.cancelled_at.toLocaleDateString('de-DE', {
+                timeZone: 'Europe/Berlin',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+              })}{' '}
+              von {fullName({ login: w.cancelled_by ?? '' })}: {w.cancel_reason}. Zählt nicht mehr und kann
+              nicht abgerechnet werden.
             </div>
           )}
           {w.done_at && (
             <div class="flash ok">
               Erledigt (ohne Rechnung) am{' '}
-              {w.done_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })} von{' '}
-              {fullName({ login: w.done_by ?? '' })}
+              {w.done_at.toLocaleDateString('de-DE', {
+                timeZone: 'Europe/Berlin',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+              })}{' '}
+              von {fullName({ login: w.done_by ?? '' })}
               {w.done_note ? `: ${w.done_note}` : ''}.{' '}
               <form method="post" action={`/arbeitsscheine/${id}/erledigt`} style="display:inline">
                 <input type="hidden" name="zurueck" value="1" />

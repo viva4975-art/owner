@@ -315,7 +315,8 @@ export const CLIENT_JS = String.raw`
     m.setAttribute('aria-label', 'Monat');
     y.setAttribute('aria-label', 'Jahr');
     if (!inp.required) { m.add(new Option('–', '')); y.add(new Option('–', '')); }
-    for (var i = 1; i <= 12; i++) m.add(new Option(String(i), (i < 10 ? '0' : '') + i));
+    var MN = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+    for (var i = 1; i <= 12; i++) m.add(new Option(MN[i - 1], (i < 10 ? '0' : '') + i));
     for (var j = y1; j >= y0; j--) y.add(new Option(String(j), String(j)));
     m.title = 'Monat';
     function fromInput() { var v = inp.value || ''; m.value = v ? v.slice(5, 7) : ''; y.value = v ? v.slice(0, 4) : ''; }

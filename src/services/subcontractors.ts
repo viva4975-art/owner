@@ -702,7 +702,7 @@ function supplierBuyer(s: Supplier): BuyerSnapshot {
 
 const PDF_STATUS: Record<Subcontract['status'], string> = {
   entwurf: 'Entwurf',
-  erteilt: 'Offen',
+  erteilt: 'Erteilt',
   beendet: 'Beendet',
   storniert: 'Storniert',
 };

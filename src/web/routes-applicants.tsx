@@ -36,7 +36,7 @@ import {
 import { BusinessError } from '../services/errors.js';
 import { type Ctx, UUID } from './app.js';
 import { arr, centsToInput, str } from './forms.js';
-import { dateDe, euro } from './layout.js';
+import { dateDe, euro, anz } from './layout.js';
 
 const BwTabs = ({ active }: { active: string }) => (
   <div class="tabs">
@@ -723,7 +723,7 @@ document.getElementById('jpg').addEventListener('click', async function () {
                   {a.hours && <span>{hDe(a.hours)} Std</span>}
                   {a.language && <span>{a.language}</span>}
                   {a.job_type && <span>{a.job_type}</span>}
-                  {a.doc_count > 0 && <span>{a.doc_count} Dokument(e)</span>}
+                  {a.doc_count > 0 && <span>{anz(a.doc_count, 'Dokument', 'Dokumente')}</span>}
                 </div>
               </a>
             ))}
@@ -763,7 +763,12 @@ document.getElementById('jpg').addEventListener('click', async function () {
             <h1>{a.name}</h1>
             <div class="sub">
               <span class={`badge ${APPLICANT_STATUS[a.status]}`}>{a.status}</span> · seit{' '}
-              {a.created_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}
+              {a.created_at.toLocaleDateString('de-DE', {
+                timeZone: 'Europe/Berlin',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+              })}
             </div>
           </div>
           <div class="acts">
@@ -813,7 +818,12 @@ document.getElementById('jpg').addEventListener('click', async function () {
                   </a>
                   <span class="small mut">
                     {Math.ceil(x.size_bytes / 1024)} KB ·{' '}
-                    {x.uploaded_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}
+                    {x.uploaded_at.toLocaleDateString('de-DE', {
+                      timeZone: 'Europe/Berlin',
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                    })}
                   </span>
                   <form
                     method="post"
@@ -1022,7 +1032,7 @@ document.getElementById('jpg').addEventListener('click', async function () {
         { bytes: new Uint8Array(await f.arrayBuffer()), name: f.name, type: f.type },
         c.get('actor'),
       );
-    return back(c, `/bewerber/pool/${id}`, { ok: `${files.length} Datei(en) hochgeladen.` });
+    return back(c, `/bewerber/pool/${id}`, { ok: `${anz(files.length, 'Datei', 'Dateien')} hochgeladen.` });
   });
 
   app.get(`/bewerber/pool/:id{${UUID}}/dokument/:doc{${UUID}}`, async (c) => {

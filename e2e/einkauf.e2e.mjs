@@ -105,7 +105,7 @@ await row.locator('input[name=invoice]').check();
 await p.screenshot({ path: `${out}/e3-zahlungsliste.png`, fullPage: true });
 await p.click('button:has-text("Als bezahlt festhalten")');
 await p.waitForLoadState();
-check('als bezahlt festgehalten', (await flash(p)).includes('1 Rechnung(en) als bezahlt'), await flash(p));
+check('als bezahlt festgehalten', (await flash(p)).includes('1 Rechnung als bezahlt'), await flash(p));
 check(
   'unter „Zuletzt bezahlt“ mit Skonto',
   (

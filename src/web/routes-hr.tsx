@@ -20,7 +20,7 @@ import { archiveLink, listFiles } from '../services/uploads.js';
 import { type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
 import { centsToInput, str } from './forms.js';
-import { PageHead, euro } from './layout.js';
+import { PageHead, euro, anz } from './layout.js';
 import { EmployeeCalendarView } from './pages-employee-calendar.js';
 import { employeeCalendarData } from './employee-calendar-data.js';
 import { holidayName } from '../domain/time/holidays.js';
@@ -234,7 +234,7 @@ export function registerHrRoutes(ctx: Ctx) {
                   <div class="small" style="padding:3px 0">
                     <a href={`/personal/dokumente/${r.document_id}`}>{r.title}</a> –{' '}
                     {r.status === 'unterschrieben'
-                      ? `unterschrieben ${r.signed_at!.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}`
+                      ? `unterschrieben ${r.signed_at!.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric' })}`
                       : 'offen'}
                   </div>
                 ))}
@@ -268,7 +268,7 @@ export function registerHrRoutes(ctx: Ctx) {
       // listFiles ist nach Fertigstellung absteigend sortiert → die erste ist die neueste
       for (const f of inCat.slice(1)) await archiveLink(sql, link, f.id, true, actor);
       return back(c, `/personal/${id}/dokumente`, {
-        ok: `${Math.max(inCat.length - 1, 0)} ältere Datei(en) in „${k}“ ins Archiv gelegt.`,
+        ok: `${anz(Math.max(inCat.length - 1, 0), 'ältere Datei', 'ältere Dateien')} in „${k}“ ins Archiv gelegt.`,
       });
     }
     const fileId = str(b, 'file_id') ?? '';

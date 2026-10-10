@@ -80,7 +80,7 @@ console.log('3. Am Objekt abrechnen');
 await p.goto(B + `/objekte/${SITE}/leistungen?monat=${month}&datum=`);
 const prev = p.locator('tr', { hasText: `Glasreinigung E2E ${tag}` }).last();
 check('in der Vorschau fällig', (await prev.innerText()).includes('offen'), await prev.innerText());
-await p.click('button:has-text("Leistung(en) abrechnen")');
+await p.click('button:has-text("Leistungen abrechnen")');
 await p.waitForLoadState();
 const txt = await body(p);
 check('Entwurf(e) erstellt', /Rechnungsentw|Rechnungsentwurf/.test(await flash(p)), await flash(p));

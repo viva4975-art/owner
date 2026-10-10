@@ -115,7 +115,7 @@ export async function folderFacts(sql: Sql, siteId: string): Promise<FolderFacts
   const missing: FolderFacts['missing'] = [];
   if (!s.street || !s.city) missing.push({ label: 'Objektadresse', href: `/objekte/${siteId}/bearbeiten` });
   if (!mgr) missing.push({ label: 'Objektleitung zuordnen', href: `/objekte/${siteId}/bearbeiten` });
-  else if (!mgr.phone) missing.push({ label: 'Telefon der Objektleitung', href: '/einstellungen/benutzer' });
+  else if (!mgr.phone) missing.push({ label: 'Telefon der Objektleitung', href: '/benutzer' });
   if (!n!.rooms)
     missing.push({ label: 'Raumbuch (für den Reinigungsplan)', href: `/objekte/${siteId}/raumbuch` });
   if (!n!.plans)
@@ -439,7 +439,7 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
     subtitle: `Objekt ${f.site.site_no} · Stand ${formatDateDe(todayBerlin())}`,
     columns: [
       { label: 'Angabe', width: 170 },
-      { label: 'Wert', width: 330 },
+      { label: 'Wert', width: 330, wrap: true },
     ],
     rows: kv,
     fontSize: 9.5,
@@ -460,10 +460,10 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
     title: `Leistungsverzeichnis ${f.site.name}`,
     subtitle: `Objekt ${f.site.site_no} · ohne Preise (Vertragsgrundlage liegt im Büro)`,
     columns: [
-      { label: 'Leistung', width: 230 },
+      { label: 'Leistung', width: 230, wrap: true },
       { label: 'Turnus', width: 90 },
       { label: 'Menge', width: 70, align: 'right' },
-      { label: 'Hinweise', width: 160 },
+      { label: 'Hinweise', width: 160, wrap: true },
     ],
     rows: svc.length
       ? svc.map((x) => [
@@ -508,7 +508,7 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
     columns: [
       { label: 'Etage', width: 70 },
       { label: 'Nr.', width: 60 },
-      { label: 'Raum', width: 200 },
+      { label: 'Raum', width: 200, wrap: true },
       { label: 'Raumart', width: 130 },
       { label: 'Belag', width: 110 },
       { label: 'm²', width: 60, align: 'right' },
@@ -544,7 +544,7 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
       { label: 'Mitarbeiter', width: 170 },
       { label: 'Tag', width: 50 },
       { label: 'Zeit', width: 90 },
-      { label: 'Revier / Bereich', width: 230 },
+      { label: 'Revier / Bereich', width: 230, wrap: true },
     ],
     rows: plans.length
       ? plans.map((p) => [p.name ?? '(offen)', WD[p.weekday] ?? '', `${p.start}–${p.end}`, p.note ?? ''])
@@ -660,7 +660,7 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
     { k: 'Lage Putzraum', v: f.info.putzraum ?? '–' },
     { k: 'Zugang / Schließung', v: f.info.zugang ?? '–' },
     { k: 'Reinigungsmittel', v: f.info.produkte ?? '–' },
-    { k: 'Schlüssel (Schlüsselbuch)', v: String(f.keys) },
+    { k: 'Schlüssel', v: String(f.keys) },
   ]);
   if (f.info.besonderheiten) d.noteBox('Besonderheiten', [f.info.besonderheiten]);
   d.section('Notrufnummern');

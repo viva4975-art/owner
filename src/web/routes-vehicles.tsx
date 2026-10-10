@@ -16,7 +16,7 @@ import { type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
 import { str } from './forms.js';
 import { Icon } from './icons.js';
-import { PageHead, dateDe } from './layout.js';
+import { PageHead, dateDe, anz } from './layout.js';
 
 /** Inventar → Fahrzeuge; Einstellungen → Gegenstände für Übergaben. */
 export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
@@ -89,7 +89,7 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
                     </td>
                     <td data-l="Unterlagen">
                       {v.files ? (
-                        `${v.files} Datei(en)`
+                        anz(v.files, 'Datei', 'Dateien')
                       ) : (
                         <span class="badge warn">Fahrzeugschein fehlt</span>
                       )}

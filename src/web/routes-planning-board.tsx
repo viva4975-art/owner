@@ -231,7 +231,8 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
       </div>
     );
     // Woche/5 Tage passen ohne Scrollen auf den Bildschirm, Monat ist breiter (mit der Maus ziehen)
-    const cols = `grid-template-columns:${compact ? '170px' : '170px'} repeat(${days.length},minmax(${compact ? 92 : view === 'tag' ? 260 : 0}px,1fr))`;
+    // Tagesspalten nie schmaler als 110 px – am Handy wird seitlich gescrollt statt unlesbar gequetscht (Seitenprüfung 10.10.)
+    const cols = `grid-template-columns:clamp(110px,24vw,170px) repeat(${days.length},minmax(${compact ? 92 : view === 'tag' ? 260 : 110}px,1fr))`;
     return page(
       c,
       'Planung',
@@ -279,7 +280,13 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
               </a>
             ))}
           </span>
-          <select name="gruppe" onchange="this.form.submit()" style="width:auto" data-nosearch>
+          <select
+            name="gruppe"
+            onchange="this.form.submit()"
+            style="width:auto"
+            data-nosearch
+            aria-label="Einsatzgruppe"
+          >
             <option value="">Alle Einsatzgruppen</option>
             {groups.map((g) => (
               <option value={g || '-'} selected={(g || '-') === group}>
@@ -380,7 +387,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
                     return (
                       <>
                         <div class="pb-rn">
-                          <a href={`/personal/${e.id}/einsatzkalender`}>
+                          <a href={`/personal/${e.id}/kalender`}>
                             {e.last_name}, {e.first_name}
                           </a>
                           <span class="small mut">{total ? `${hm(total)} Std.` : e.personnel_no}</span>

@@ -2126,3 +2126,24 @@ Testadresse.
     Formular. Nachkalkulation/Ø Stundensätze: fehlt die NU-Rechnung im Monat, zählen die erfassten Stunden × Satz
     (wie die Monatspauschale). Tabelle `app.subcontract_hours` (Migration `20261119000001`).
   - Tests: neu `runde34.db.test.ts`; e2e rechte/uebergabe schalten „andere Objektleitungen“ ein.
+- 2026-10-10: **Gesamtprüfung** (Ahmed: „jede Seite, jede Position, Zeilen, Design, Vorlagen prüfen“):
+  - Neues Prüfskript `npm run check:seiten` (`e2e/seiten-check.mjs`): öffnet alle erreichbaren Seiten (je Seitentyp 2
+    Beispiele, 657 Seiten) am PC (1366 px) und Handy (390 px), meldet Fehlerseiten, JS-Fehler, „undefined/NaN/null“,
+    Querscrollen, abgeschnittene Knöpfe, kaputte Bilder, Felder ohne Beschriftung; Bericht `var/seiten-check/bericht.json`.
+    Ergebnis nach Korrektur: keine Fehlerseite, kein JS-Fehler, kein „undefined/NaN“.
+  - **Behoben (Seiten):** Reiter bei Kunde/Objekt/Mitarbeiter liefen bei 1366 px rechts aus der Seite („Offene Posten“,
+    „Mehr“ unsichtbar) → umbrechen; App-Rahmen am PC (nach /qm) zeigte Büro-Seiten zu schmal mit abgeschnittenen Tabellen
+    → einspaltig, Tabellen scrollen; Alle Rechnungen: Belege-Spalte abgeschnitten → untereinander; Wochenplanung am Handy
+    unlesbar schmal → Tagesspalten mind. 110 px, seitlich scrollen; Rechnungsansicht am Handy: Positionstabelle scrollt;
+    Kennzahl-Kacheln am Handy 2-spaltig/nicht abgeschnitten; QM-Audit: unsichtbare Auswahlfelder verursachten 700 px
+    Querscrollen; QR-Aushang-Knopf ragte aus der Karte; Verwaltungs-App „Unterweisun-gen“ silbengetrennt statt zerhackt;
+    Monatsauswahl mit Monatsnamen statt Zahlen; toter Link Planung → Mitarbeiter-Kalender (404) und Objektordner →
+    „Telefon der Objektleitung“ (404); Tiefgaragen-Aushang ohne Termine sprang auf die Startseite; „−0,00 €“ im
+    Kassenbuch; Einzahl/Mehrzahl statt „Rechnung(en)/Objekt(e)/Datei(en)/neue(r)“ (Helfer `anz()` in `layout.tsx`);
+    Datum überall zweistellig (09.10.2026 statt 9.10.2026); fehlende Beschriftungen an Filterfeldern ergänzt.
+  - **Behoben (PDF-Vorlagen):** GiroCode-Text lag auf dem Code; NU-Bestellschein „Status: Offen“ → „Erteilt“; Arbeitsschein
+    „München, 9.10.2026“ → 09.10.2026; Lieferschein Menge „1,0“ wie Rechnung + Beschriftung „Datum, Name, Unterschrift“;
+    Listen-PDFs (Fehlende Unterlagen, Objektordner) brechen lange Texte um statt „…“, Spaltenköpfe werden kleiner statt
+    abgeschnitten („Persona…“); Objektstammblatt-Beschriftung lief in den Wert; QK-/Übergabe-PDF: Objektname nicht mehr
+    mitten in der Klammer abgeschnitten (eigene Zeile Objekt-Nr.).
+  - Browser-Test runde10 nahm „heute + 14 Tage“ als Urlaubstag – an Samstagen falsch → nächster Werktag.

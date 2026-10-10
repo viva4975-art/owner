@@ -42,7 +42,7 @@ import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { str } from './forms.js';
 import { storeFile } from '../services/uploads.js';
 import { createQualityCheck } from '../services/facility.js';
-import { APP_TAB_CSS, AppSwitch, AppTabbar, PageHead, dateDe } from './layout.js';
+import { APP_TAB_CSS, AppSwitch, AppTabbar, PageHead, dateDe, anz } from './layout.js';
 import { Icon } from './icons.js';
 import { CSS as MCSS, Ic } from './m/routes-mobile.js';
 
@@ -64,7 +64,7 @@ const QM_CSS = `
 .vw-grid a{display:flex;gap:10px;align-items:flex-start;padding:14px;border-radius:16px;background:#fff;border:1px solid #efe3e7;text-decoration:none;color:#2a1420;box-shadow:0 1px 3px rgba(125,20,53,.05)}
 .vw-grid .vi{width:38px;height:38px;flex:none;border-radius:12px;background:#f6dfe7;color:#7d1435;display:flex;align-items:center;justify-content:center}
 .vw-grid .vi svg{width:20px;height:20px}
-.vw-grid b{display:block;font-size:15px;overflow-wrap:anywhere}.vw-grid small{display:block;color:#8a7a80;font-size:12px;line-height:1.3;margin-top:2px}
+.vw-grid b{display:block;font-size:15px;hyphens:auto;-webkit-hyphens:auto;overflow-wrap:break-word}.vw-grid small{display:block;color:#8a7a80;font-size:12px;line-height:1.3;margin-top:2px}
 .vw-pc{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;margin:8px 0 20px;color:#7d1435;font-weight:600;text-decoration:none}.vw-pc svg{width:18px;height:18px}
 @media (max-width:360px){.vw-stats{grid-template-columns:repeat(3,1fr)}}
 .qm-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:12px 0}.qm-grid a{display:flex;align-items:center;gap:10px;padding:14px;border-radius:14px;background:#fff;border:1px solid #efe3e7;color:#3b0a1c;font-weight:600;text-decoration:none}.qm-grid a svg{width:22px;height:22px;color:#7d1435;flex:none}
@@ -124,12 +124,12 @@ const QM_CSS = `
 .scale{display:flex;justify-content:space-between;align-items:center;position:relative;margin:22px 8px 14px}
 .scale::before{content:"";position:absolute;left:10px;right:10px;top:50%;height:3px;background:#ead6dd;border-radius:3px}
 .scale label{position:relative;margin:0;display:flex;align-items:center;justify-content:center;width:44px;height:44px;cursor:pointer}
-.scale input{position:absolute;opacity:0}
+.scale input{position:absolute;opacity:0;width:1px;height:1px;margin:0}
 .scale span{width:16px;height:16px;border-radius:50%;background:#ddd0d5;display:flex;align-items:center;justify-content:center;font-weight:750;color:#fff;font-size:20px;transition:all .12s}
 .scale input:checked+span{width:52px;height:52px;background:linear-gradient(135deg,#b34a6a,#7D1435)}
 .scale input:checked+span::after{content:attr(data-v)}
 .yn{display:flex;justify-content:center;gap:22px;margin:16px 0 8px}
-.yn label{margin:0;cursor:pointer}.yn input{position:absolute;opacity:0}
+.yn label{margin:0;cursor:pointer;position:relative}.yn input{position:absolute;opacity:0;width:1px;height:1px;margin:0}
 .yn span{display:flex;align-items:center;justify-content:center;width:80px;height:80px;border-radius:50%;border:2px solid #d7c3cb;font-size:15px;font-weight:600;color:#7D1435}
 .yn .no span{border-color:#e6a3b4;color:#b42318}
 .yn input:checked+span{background:#7D1435;border-color:#7D1435;color:#fff}.yn .no input:checked+span{background:#b42318;border-color:#b42318}
@@ -249,7 +249,11 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
     const siteCond = scope === null ? sql`true` : noSites ? sql`false` : sql`site_id in ${sql(scope)}`;
     // Abwesenheiten nur von Leuten, die an den eigenen Objekten eingeplant sind (nicht nur zugeordnet)
     const empCond = (from: ReturnType<typeof sql> | string, to: ReturnType<typeof sql> | string) =>
-      scope === null ? sql`true` : noSites ? sql`false` : plannedAtSites(sql, sql`a.employee_id`, scope, from, to);
+      scope === null
+        ? sql`true`
+        : noSites
+          ? sql`false`
+          : plannedAtSites(sql, sql`a.employee_id`, scope, from, to);
     const [[n], shifts] = await Promise.all([
       sql<{ running: number; corrections: number; absent: number; requests: number }[]>`
         select (select count(*)::int from app.time_entries where end_at is null and status <> 'abgelehnt' and ${siteCond}) as running,
@@ -806,8 +810,8 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
                     </label>
                   )}
                   <small>
-                    {e?.photo_ids.length ? `${e.photo_ids.length} Foto(s) gespeichert · ` : ''}Laden Sie bis
-                    zu 5 Fotos hoch
+                    {e?.photo_ids.length ? `${anz(e.photo_ids.length, 'Foto', 'Fotos')} gespeichert · ` : ''}
+                    Laden Sie bis zu 5 Fotos hoch
                   </small>
                 </div>
               </div>
@@ -820,7 +824,7 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
             __html: `(function(){var f=document.getElementById('qmf');if(!f)return;
 function upd(){var s=0,n=0;f.querySelectorAll('[data-item]').forEach(function(d){var sk=d.querySelector('input[type=checkbox]');d.classList.toggle('skipped',sk&&sk.checked);if(sk&&sk.checked)return;var r=d.querySelector('input[type=radio]:checked');if(r){s+=Number(r.getAttribute('data-pct'));n++}});document.getElementById('gnote').textContent=(n?Math.round(s/n):0)+' %'}
 f.addEventListener('change',upd);
-f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('change',function(){if(i.files.length>5){alert('Bitte höchstens 5 Fotos');i.value=''}var sm=i.closest('.qm-photos').querySelector('small');if(i.files.length)sm.textContent=i.files.length+' Foto(s) ausgewählt'})});})();`,
+f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('change',function(){if(i.files.length>5){alert('Bitte höchstens 5 Fotos');i.value=''}var sm=i.closest('.qm-photos').querySelector('small');if(i.files.length)sm.textContent=i.files.length+(i.files.length===1?' Foto':' Fotos')+' ausgewählt'})});})();`,
           }}
         />
       </>,

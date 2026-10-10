@@ -13,7 +13,7 @@ import {
   recordPortalUpload,
   sendInvoice,
 } from '../services/workflow.js';
-import { PageHead, dateDe, euro } from './layout.js';
+import { PageHead, dateDe, euro, anz } from './layout.js';
 
 /*
  * „Noch nicht versendete Dokumente“ wie Fortytools (Ahmed 09.10.): Reiter Rechnungen / Rechnungskorrekturen /
@@ -175,7 +175,7 @@ export function registerVersandRoutes({ app, deps, page, back }: Ctx) {
             )}
           </div>
           <div class="vs-top">
-            <select name="art" id="vs-art" required>
+            <select name="art" id="vs-art" required aria-label="Versandart">
               <option value="">– Versandart auswählen –</option>
               <option value="email">E-Mail</option>
               <option value="manuell">Als bereits versendet kennzeichnen</option>
@@ -315,7 +315,7 @@ export function registerVersandRoutes({ app, deps, page, back }: Ctx) {
       to,
       errors.length
         ? { fehler: `${ok} ${what}. Nicht möglich:\n${errors.join('\n')}` }
-        : { ok: `${ok} Dokument(e) ${what}.` },
+        : { ok: `${anz(ok, 'Dokument', 'Dokumente')} ${what}.` },
     );
   });
 

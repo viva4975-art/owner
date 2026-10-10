@@ -200,7 +200,9 @@ export async function feedIcs(sql: Sql, token: string): Promise<{ name: string; 
     events.push(...(await orderEvents(sql, f.employee_id, from, to)));
     return { name: 'Viva-Deluxe Einsätze', ics: renderIcs('Viva-Deluxe Einsätze', events) };
   }
-  const [u] = await sql<{ role: string; name: string; login: string; active: boolean; employee_id: string | null }[]>`
+  const [u] = await sql<
+    { role: string; name: string; login: string; active: boolean; employee_id: string | null }[]
+  >`
     select p.role::text as role, p.display_name as name, a.login, a.active, p.employee_id
       from app.user_accounts a join app.profiles p on p.user_id = a.id where a.id = ${f.user_id}`;
   if (!u || !u.active) return null;

@@ -105,6 +105,8 @@ check(
 console.log('4. Urlaub auf Einsätze');
 const next = new Date();
 next.setDate(next.getDate() + 14);
+// Wochenende überspringen (Urlaub zählt nur an Arbeitstagen)
+while (next.getDay() === 0 || next.getDay() === 6) next.setDate(next.getDate() + 1);
 const d = next.toISOString().slice(0, 10);
 await p.goto(B + `/personal/${empId}/abwesenheiten`);
 await p.selectOption('#kind', 'urlaub');

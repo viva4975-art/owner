@@ -245,7 +245,7 @@ export const EmployeeList: FC<{
             </div>
           )}
           <form class="actions" method="get" action="/personal" style="margin-top:0">
-            <select name="status" style="max-width:180px">
+            <select name="status" style="max-width:180px" aria-label="Status">
               {[
                 ['aktiv', 'Aktive'],
                 ['ausgetreten', 'Ausgetretene'],

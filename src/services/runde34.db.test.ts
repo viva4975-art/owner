@@ -38,17 +38,31 @@ describe.skipIf(!available)('Objektleitung-Aufgaben, NU-Stundennachweis (Datenba
 
   it('Stunden je Tag: Personen × Std. × Satz, cent-genau, nichts doppelt, Schätzung in der Nachkalkulation', async () => {
     const id = randomUUID();
-    const p = { id, subcontractId: sc, workDate: '2026-09-15', persons: 3, minutesPerPerson: 150, note: 'TH', actor: 'b' };
+    const p = {
+      id,
+      subcontractId: sc,
+      workDate: '2026-09-15',
+      persons: 3,
+      minutesPerPerson: 150,
+      note: 'TH',
+      actor: 'b',
+    };
     await addSubcontractHours(sql, p);
     await addSubcontractHours(sql, p); // doppelt absenden
-    await addSubcontractHours(sql, { ...p, id: randomUUID(), workDate: '2026-09-16', persons: 1, minutesPerPerson: 20 });
+    await addSubcontractHours(sql, {
+      ...p,
+      id: randomUUID(),
+      workDate: '2026-09-16',
+      persons: 1,
+      minutesPerPerson: 20,
+    });
     const rows = await listSubcontractHours(sql, sc);
     expect(rows.length).toBe(2);
     // 3 × 2,5 Std. × 25,50 € = 191,25 €; 1 × 20 Min. × 25,50 € = 8,50 €
     expect(rows.map((r) => Number(r.amount_cents)).sort((a, b) => a - b)).toEqual([850, 19125]);
-    await expect(addSubcontractHours(sql, { ...p, id: randomUUID(), workDate: '2026-08-31' })).rejects.toThrow(
-      /außerhalb/,
-    );
+    await expect(
+      addSubcontractHours(sql, { ...p, id: randomUUID(), workDate: '2026-08-31' }),
+    ).rejects.toThrow(/außerhalb/);
     const est = await subcontractEstimates(sql, '2026-09-01', '2026-09-30', DEMO.siteSchool);
     expect(Number(est[0]!.cost)).toBe(19975);
     await deleteSubcontractHours(sql, id, sc, 'b');

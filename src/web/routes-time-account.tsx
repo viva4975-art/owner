@@ -179,7 +179,13 @@ export function registerTimeAccountRoutes({ app, deps, page, back }: Ctx) {
               {bookings.map((b) => (
                 <li>
                   {b.month} · {b.name} · {BOOKING_KIND[b.kind]} {hhmm(b.minutes)} Std. · „{b.note}“ ·{' '}
-                  {b.actor}, {b.created_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}
+                  {b.actor},{' '}
+                  {b.created_at.toLocaleDateString('de-DE', {
+                    timeZone: 'Europe/Berlin',
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                  })}
                 </li>
               ))}
             </ul>

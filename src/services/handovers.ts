@@ -4,7 +4,7 @@ import type { Sql, Tx } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import type { BuyerSnapshot } from '../domain/invoice/types.js';
 import { type Cents, formatEuro } from '../domain/money/money.js';
-import { renderLetterPdf } from '../pdf/render.js';
+import { renderLetterPdf, clipInfo } from '../pdf/render.js';
 import { assertVersion } from './crm.js';
 import { BusinessError } from './errors.js';
 import { keyActionTx } from './inventory.js';
@@ -534,7 +534,10 @@ export async function renderHandoverPdf(deps: Deps, id: string): Promise<Uint8Ar
       ['Datum', formatDateDe(h.handover_date)],
       ['Art', HANDOVER_KIND[h.kind]],
       ...(h.site_name
-        ? ([['Objekt', `${h.site_name} (${h.site_no})`.slice(0, 34)]] as [string, string][])
+        ? ([
+            ['Objekt', clipInfo(h.site_name)],
+            ['Objekt-Nr.', h.site_no],
+          ] as [string, string][])
         : []),
       ...(h.personnel_no ? ([['Personalnr.', h.personnel_no]] as [string, string][]) : []),
       ...(h.related_number ? ([['zu Ausgabe', h.related_number]] as [string, string][]) : []),

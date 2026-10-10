@@ -1201,6 +1201,7 @@ th.sortable.asc,th.sortable.desc{color:var(--brand);text-decoration:underline;te
 .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-left:8px}
 .lg-now{background:linear-gradient(#a3214a,#6c1130)}.lg-prev{background:#e8c9d3}
 .stat-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:14px 0}
+@media (max-width:560px){.stat-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.stat-kpis .skpi{padding:10px 12px}.stat-kpis .skpi .v{font-size:18px}.stat-kpis .skpi .s{font-size:11.5px}}
 .skpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;border-top:4px solid var(--brand)}
 .skpi .l{font-size:12.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.03em}
 .skpi .v{font-size:24px;font-weight:700;margin:4px 0 2px;font-variant-numeric:tabular-nums}
@@ -1236,6 +1237,21 @@ body.appmode{background:linear-gradient(180deg,#f8edf1 0,#faf6f7 240px,#faf6f7 1
 .appmode .actions{flex-wrap:wrap}
 .appmode input,.appmode select,.appmode textarea{font-size:16px}
 .appmode .btn{min-height:44px}
+/* App-Rahmen ist schmal (auch am PC): Infospalte über den Inhalt, Reiter umbrechen, Tabellen seitlich scrollen
+   (Fund Seitenprüfung 10.10.: Reiter und Tabellen liefen rechts aus dem Inhaltsbereich) */
+.appmode .entity-layout{grid-template-columns:minmax(0,1fr)!important}
+.appmode .content-col{min-width:0}
+.appmode .tabs{flex-wrap:wrap!important;overflow:visible}
+.appmode .tbl{overflow-x:auto;max-width:100%}
+/* Reiter bei Kunde/Objekt/Mitarbeiter: umbrechen statt rechts aus der Seite zu laufen (Seitenprüfung 10.10.:
+   bei 1366 px waren „Offene Posten“ und „Mehr“ abgeschnitten) */
+.entity-layout{min-width:0}.entity-layout>*{min-width:0}
+.entity-layout .tabs{flex-wrap:wrap!important;overflow:visible!important;row-gap:2px}
+/* Knöpfe in Karten nie breiter als die Karte – lange Beschriftung bricht um (QR-Aushang: „Neuen Code erzeugen …“) */
+.card .btn{max-width:100%;white-space:normal;text-align:center;height:auto}
+/* Kennzahl-Kacheln am Handy: Beschriftung umbrechen, Betrag kleiner statt abgeschnitten (Seitenprüfung 10.10.) */
+@media (max-width:560px){.kpi{min-width:0;overflow:visible}.kpi .l{white-space:normal;overflow:visible;text-overflow:clip}
+.kpi .v{font-size:17px;white-space:nowrap;overflow:visible}}
 @media print{.apptabs,.apphead{display:none}}
 /* ---------- Runde 26 (Ahmed 08.10.: „zu viel Rot“): neutraler Hintergrund und graue Tabellenköpfe wie Fortytools,
    Bordeaux nur für Seitenleiste, Knöpfe, aktive Reiter und Hervorhebungen. Die App (/m, /qm) bleibt wie sie ist. ---------- */
@@ -1268,6 +1284,8 @@ a.svc-row b{color:var(--brand)}
 `;
 
 export const euro = (c: bigint) => formatEuro(c as Cents);
+/** „1 Rechnung“ / „3 Rechnungen“ – statt „Rechnung(en)“ */
+export const anz = (n: number, eins: string, mehr: string) => `${n} ${n === 1 ? eins : mehr}`;
 export const dateDe = (d: string | null | undefined) => (d ? formatDateDe(d) : '–');
 
 interface MenuEntry {

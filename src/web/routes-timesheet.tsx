@@ -848,7 +848,12 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
       title: `${lohn ? 'Lohnarten' : 'Stundenliste'} ${monthLabel(d.month)}`,
       subtitle: `${d.rows.length} Mitarbeitende · Stunden in Std.:Min.${lohn ? ' · für die Lohnabrechnung' : ''}`,
       columns: cols.map((label, i) => ({
-        label: label.replace('Zuschlag ', 'Zuschl. ').replace('Sonstige bezahlt', 'Sonst. bez.'),
+        label: label
+          .replace('Zuschlag ', 'Zuschl. ')
+          .replace('Sonstige bezahlt', 'Sonst. bez.')
+          .replace(/^Personal(nummer|nr\.)$/, 'Pers.-Nr.')
+          .replace(/^Beschäftigung(sart)?$/, 'Beschäft.')
+          .replace(/^Unterschrift$/, 'Unterschr.'),
         width: widths[i] ?? 44,
         align: i >= 3 && (lohn || i < cols.length - 1) ? ('right' as const) : ('left' as const),
       })),

@@ -55,7 +55,7 @@ import { type AppEnv, type Ctx, officeSecret, UUID } from './app.js';
 import { centsToInput, str } from './forms.js';
 import { CSS as MOBILE_CSS } from './m/routes-mobile.js';
 import { HandoverTable } from './routes-handovers.js';
-import { PageHead, Tabs, dateDe, euro, type Tab } from './layout.js';
+import { PageHead, Tabs, dateDe, euro, type Tab, anz } from './layout.js';
 import { FileArea } from './files.js';
 import { listFiles } from '../services/uploads.js';
 import { billingTracking, skipExpected } from '../services/expected-invoices.js';
@@ -791,7 +791,12 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                             {d.file_name}
                           </a>{' '}
                           · hochgeladen{' '}
-                          {d.created_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}
+                          {d.created_at.toLocaleDateString('de-DE', {
+                            timeZone: 'Europe/Berlin',
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                          })}
                           {d.valid_until && ` · gültig bis ${dateDe(d.valid_until)}`}
                           {d.status === 'abgelehnt' && ` · abgelehnt: ${d.reject_reason ?? ''}`}
                         </li>
@@ -1727,12 +1732,17 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
           <div class="card" id="stunden">
             <h3 style="margin-top:0">Stundennachweis</h3>
             <p class="small mut" style="margin-top:-6px">
-              Je Tag: wie viele Leute des Nachunternehmers wie viele Stunden gearbeitet haben. Betrag = Personen ×
-              Stunden × Stundensatz des Monats. Zum Prüfen der Rechnung; fehlt die Rechnung, rechnet die
-              Nachkalkulation mit diesen Stunden.
+              Je Tag: wie viele Leute des Nachunternehmers wie viele Stunden gearbeitet haben. Betrag =
+              Personen × Stunden × Stundensatz des Monats. Zum Prüfen der Rechnung; fehlt die Rechnung,
+              rechnet die Nachkalkulation mit diesen Stunden.
             </p>
             {sc.status !== 'storniert' && (
-              <form method="post" action={`/nachunternehmer/auftraege/${id}/stunden`} class="actions" style="align-items:end">
+              <form
+                method="post"
+                action={`/nachunternehmer/auftraege/${id}/stunden`}
+                class="actions"
+                style="align-items:end"
+              >
                 <input type="hidden" name="id" value={randomUUID()} />
                 <div>
                   <label for="h-date">Datum</label>
@@ -1740,11 +1750,27 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 </div>
                 <div>
                   <label for="h-p">Personen</label>
-                  <input id="h-p" type="number" name="persons" min="1" max="200" value="1" required style="max-width:90px" />
+                  <input
+                    id="h-p"
+                    type="number"
+                    name="persons"
+                    min="1"
+                    max="200"
+                    value="1"
+                    required
+                    style="max-width:90px"
+                  />
                 </div>
                 <div>
                   <label for="h-h">Std. je Person</label>
-                  <input id="h-h" name="hours" inputmode="decimal" placeholder="2,5 oder 2:30" required style="max-width:120px" />
+                  <input
+                    id="h-h"
+                    name="hours"
+                    inputmode="decimal"
+                    placeholder="2,5 oder 2:30"
+                    required
+                    style="max-width:120px"
+                  />
                 </div>
                 <div style="flex:1;min-width:160px">
                   <label for="h-n">Bemerkung</label>
@@ -1967,7 +1993,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
           if (n) made.push(n.contract.number);
         }
         return back(c, `/nachunternehmer/auftraege/${id}`, {
-          ok: `Gespeichert. Weitere Bestellungen für ${more.length} Objekt(e): ${made.join(', ')}.`,
+          ok: `Gespeichert. Weitere Bestellungen für ${anz(more.length, 'Objekt', 'Objekte')}: ${made.join(', ')}.`,
         });
       }
     } catch (e) {

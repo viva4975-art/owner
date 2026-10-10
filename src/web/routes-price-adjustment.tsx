@@ -353,6 +353,7 @@ export function registerPriceAdjustmentRoutes(ctx: Ctx) {
                         <td>
                           <input
                             name={`la_${m.id}`}
+                            aria-label="Lohnkostenanteil in %"
                             data-la
                             inputmode="decimal"
                             style="max-width:90px"
@@ -415,7 +416,12 @@ export function registerPriceAdjustmentRoutes(ctx: Ctx) {
                       </td>
                       <td class="small">
                         {r.created_by},{' '}
-                        {r.created_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}
+                        {r.created_at.toLocaleDateString('de-DE', {
+                          timeZone: 'Europe/Berlin',
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                        })}
                       </td>
                       <td>
                         {r.items > 0 && (

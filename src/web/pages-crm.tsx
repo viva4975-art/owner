@@ -545,7 +545,9 @@ export const Dashboard: FC<{
             tone: 'warn',
             text: (
               <>
-                <b>{appRequests.nu}</b> Nachunternehmer-Auftrag/-Aufträge von der Objektleitung zur Freigabe
+                <b>{appRequests.nu}</b>{' '}
+                {appRequests.nu === 1 ? 'Nachunternehmer-Auftrag' : 'Nachunternehmer-Aufträge'} der
+                Objektleitung zur Freigabe
               </>
             ),
             href: '/bestellungen',
@@ -558,7 +560,8 @@ export const Dashboard: FC<{
             tone: 'warn',
             text: (
               <>
-                <b>{appRequests.bogen}</b> neue(r) Personalbogen aus der App
+                <b>{appRequests.bogen}</b>{' '}
+                {appRequests.bogen === 1 ? 'neuer Personalbogen' : 'neue Personalbögen'} aus der App
               </>
             ),
             href: '/personal/personalboegen',

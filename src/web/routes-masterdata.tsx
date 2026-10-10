@@ -7,7 +7,14 @@ import { listWordTemplates } from '../services/word-templates.js';
 import { WordTemplateBox } from './routes-word-templates.js';
 import type { Context } from 'hono';
 import type { Child } from 'hono/jsx';
-import { contactInput, deleteContact, listContacts, listTasks, saveContact, taskVisibleTo } from '../services/crm.js';
+import {
+  contactInput,
+  deleteContact,
+  listContacts,
+  listTasks,
+  saveContact,
+  taskVisibleTo,
+} from '../services/crm.js';
 import { BusinessError } from '../services/errors.js';
 import { assigneeOptions } from '../services/crm.js';
 import { monthBounds, todayBerlin } from '../domain/invoice/calc.js';
@@ -82,7 +89,7 @@ import { type AppEnv, type Ctx, UUID, assertSite, taskViewerOf } from './app.js'
 import { FileArea } from './files.js';
 import { parseQuantity } from '../domain/money/money.js';
 import { arr, str } from './forms.js';
-import { FORMAT_LABEL, PageHead, dateDe, euro } from './layout.js';
+import { FORMAT_LABEL, PageHead, dateDe, euro, anz } from './layout.js';
 import { OfferTable } from './pages-offers.js';
 import { ContactsPanel, TaskBox, TaskForm } from './pages-crm.js';
 import { registerNoteRoutes } from './routes-notes.js';
@@ -871,7 +878,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                     data-reveal="#g-dun"
                     checked={!!g?.dunning_emails?.length}
                   />
-                  <label for="g-own-dun">Mahnungen an andere E-Mail-Adresse(n) senden</label>
+                  <label for="g-own-dun">Mahnungen an andere E-Mail-Adressen senden</label>
                 </div>
               </div>
               <div class="grid" id="g-dun" hidden={!g?.dunning_emails?.length} style="margin-top:10px">
@@ -1356,7 +1363,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     await sql`insert into app.audit_log (actor, action, entity, details)
               values (${c.get('actor')}, ${active ? 'activate' : 'deactivate'}, 'site', ${sql.json({ ids })})`;
     return back(c, z, {
-      ok: `${r.count} Objekt(e) ${active ? 'aktiv' : 'inaktiv'} gesetzt.`,
+      ok: `${anz(r.count, 'Objekt', 'Objekte')} ${active ? 'aktiv' : 'inaktiv'} gesetzt.`,
     });
   });
 
@@ -1766,7 +1773,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
       c.get('actor'),
     );
     return back(c, `/objekte/${id}/leistungen`, {
-      ok: `${n} Leistung(en) verrichtet und vorgemerkt – Rechnungsentwurf unten oder unter Rechnungen → Entwürfe.`,
+      ok: `${anz(n, 'Leistung', 'Leistungen')} verrichtet und vorgemerkt – Rechnungsentwurf unten oder unter Rechnungen → Entwürfe.`,
     });
   });
 

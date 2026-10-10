@@ -40,7 +40,7 @@ import { listLegacyOpenItems, listOpenItems } from '../services/payments.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
 import { arr, str } from './forms.js';
-import { PageHead, dateDe, euro } from './layout.js';
+import { PageHead, dateDe, euro, anz } from './layout.js';
 import { canAccess } from './permissions.js';
 
 const TX_STATUS: Record<string, string> = {
@@ -959,7 +959,7 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
       last.skonto = diff;
     }
     await assignInvoices(sql, id, items, c.get('actor'));
-    return back(c, BACK, { ok: `Zugeordnet: ${items.length} Rechnung(en).` });
+    return back(c, BACK, { ok: `Zugeordnet: ${anz(items.length, 'Rechnung', 'Rechnungen')}.` });
   });
 
   // ---------------------------------------------------------------- Zuordnen: Kunde (Rechnungen)

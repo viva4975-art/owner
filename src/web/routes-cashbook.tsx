@@ -145,8 +145,13 @@ export function registerCashbookRoutes({ app, deps, page, back }: Ctx) {
             <span class="ico">✓</span>
             <span>
               {monthLabel(month)} ist abgeschlossen ({v.closed.closed_by},{' '}
-              {v.closed.closed_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}) – keine
-              Änderungen mehr möglich.
+              {v.closed.closed_at.toLocaleDateString('de-DE', {
+                timeZone: 'Europe/Berlin',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+              })}
+              ) – keine Änderungen mehr möglich.
             </span>
           </div>
         )}
@@ -180,7 +185,7 @@ export function registerCashbookRoutes({ app, deps, page, back }: Ctx) {
             <div class="stat-lbl">Einnahmen · {v.incomeCount}</div>
           </div>
           <div class="stat-card tone-err">
-            <div class="stat-num">−{euro(v.expense)}</div>
+            <div class="stat-num">{v.expense ? `−${euro(v.expense)}` : euro(0n)}</div>
             <div class="stat-lbl">Ausgaben · {v.expenseCount}</div>
           </div>
           <div class="stat-card tone-brand on">
@@ -901,7 +906,7 @@ export function registerCashbookRoutes({ app, deps, page, back }: Ctx) {
             <div class="stat-lbl">Einnahmen gesamt</div>
           </div>
           <div class="stat-card tone-err">
-            <div class="stat-num">−{euro(exp)}</div>
+            <div class="stat-num">{exp ? `−${euro(exp)}` : euro(0n)}</div>
             <div class="stat-lbl">Ausgaben gesamt</div>
           </div>
           <div class="stat-card tone-brand">

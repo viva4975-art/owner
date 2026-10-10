@@ -39,4 +39,3 @@ export const ICON: Record<string, string> = {
 export const Ic: FC<{ n: string }> = ({ n }) => (
   <span style="display:contents" dangerouslySetInnerHTML={{ __html: ICON[n] ?? '' }} />
 );
-

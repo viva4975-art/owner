@@ -78,6 +78,12 @@ const eur = (c: bigint) => formatEuro(c as Cents);
 type Color = ReturnType<typeof rgb>;
 
 /** 1000 → "1,0", 2500 → "2,5", 1250 → "1,25" (mind. eine Nachkommastelle wie Fortytools) */
+/** Text für den Infoblock kürzen – mit „…“ statt mitten im Wort/vor der Klammer abzuschneiden. */
+export function clipInfo(s: string, max = 34): string {
+  const t = s.trim();
+  return t.length <= max ? t : `${t.slice(0, max - 1).trimEnd()}…`;
+}
+
 export function quantityPdf(milli: bigint): string {
   const neg = milli < 0n;
   const abs = neg ? -milli : milli;
@@ -343,7 +349,12 @@ class Doc {
         }
       }
     }
-    this.text('Einfach Code mit Banking-App scannen und direkt überweisen.', LEFT + size + 3, top + size - 1);
+    // Hinweis rechts neben dem Code, mittig (Fund Prüfung 10.10.: Text lag auf der Unterkante des Codes)
+    this.text(
+      'Einfach Code mit Banking-App scannen und direkt überweisen.',
+      LEFT + size + 8,
+      top + size / 2 + 3,
+    );
     this.y = top + size + 10;
   }
 

@@ -63,7 +63,7 @@ import {
   workReportFromInvoice,
 } from '../services/orders.js';
 import { draftsFromExecutions, listOpenExecutions } from '../services/executions.js';
-import { NEW_OPTIONS, PageHead, dateDe, euro } from './layout.js';
+import { NEW_OPTIONS, PageHead, dateDe, euro, anz } from './layout.js';
 import { archiveMonthZip, archiveYear } from '../services/invoice-archive.js';
 import { KIND_TITLES } from '../domain/invoice/types.js';
 import { FileArea } from './files.js';
@@ -300,7 +300,11 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                           </a>
                         )}
                         {r.docs.map((d) => (
-                          <a href={`/dokumente/${d.id}`} target="_blank" style="margin-right:8px">
+                          <a
+                            href={`/dokumente/${d.id}`}
+                            target="_blank"
+                            style="display:block;white-space:nowrap;line-height:1.6"
+                          >
                             {DOC_LABEL[d.kind] ?? d.kind}
                           </a>
                         ))}
@@ -525,7 +529,9 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         }
       }
       return back(c, '/rechnungen/entwuerfe', {
-        ...(ok.length ? { ok: `${ok.length} Rechnung(en) ausgestellt: ${ok.join(', ')}` } : {}),
+        ...(ok.length
+          ? { ok: `${anz(ok.length, 'Rechnung', 'Rechnungen')} ausgestellt: ${ok.join(', ')}` }
+          : {}),
         ...(errors.length ? { fehler: `Nicht ausgestellt:\n${errors.join('\n')}` } : {}),
       });
     }
@@ -1076,7 +1082,9 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
       MON: 'Monat',
       MTR: 'lfm',
     };
-    const qty = (m: bigint) => (Number(m) / 1000).toLocaleString('de-DE', { maximumFractionDigits: 3 });
+    // wie auf der Rechnung: mindestens eine Nachkommastelle („1,0“)
+    const qty = (m: bigint) =>
+      (Number(m) / 1000).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 3 });
     const pdf = await renderLetterPdf({
       title: `Lieferschein${inv.number ? ` zu Rechnung ${inv.number}` : ''}`,
       date: todayBerlin(),
@@ -1113,7 +1121,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
       sums: [],
       total: null,
       paragraphs: ['Ware/Leistung vollständig und ordnungsgemäß erhalten:'],
-      signature: { label: 'Empfangen:', png: null, name: '', at: '' },
+      signature: { label: 'Empfangen:', png: null, name: 'Datum, Name, Unterschrift', at: '' },
     });
     return new Response(pdf, {
       headers: {

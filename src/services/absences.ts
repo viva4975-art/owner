@@ -506,7 +506,13 @@ type Frag = ReturnType<Sql>;
  * Vertretung)? Grundlage für Abwesenheiten – Krankheit/Urlaub nur von Leuten, die bei ihr eingeplant sind, nicht von
  * allen, die irgendwann dem Objekt zugeordnet wurden (Ahmed 09.10.).
  */
-export const plannedAtSites = (sql: Sql, emp: Frag, siteIds: string[], from: Frag | string, to: Frag | string) =>
+export const plannedAtSites = (
+  sql: Sql,
+  emp: Frag,
+  siteIds: string[],
+  from: Frag | string,
+  to: Frag | string,
+) =>
   sql`(exists (select 1 from app.shift_plans p
                 where p.employee_id = ${emp} and p.site_id = any(${siteIds}::uuid[])
                   and p.valid_from <= ${to}::date and (p.valid_until is null or p.valid_until >= ${from}::date))

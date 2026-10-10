@@ -19,7 +19,7 @@ import { BusinessError } from '../services/errors.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { arr, centsToInput } from './forms.js';
 import { Icon } from './icons.js';
-import { PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
+import { PageHead, type Tab, Tabs, dateDe, euro, anz } from './layout.js';
 
 const LEVEL_CLASS = ['', 'info', 'warn', 'err'];
 
@@ -321,7 +321,7 @@ export function registerDunningRoutes({ app, deps, page, back }: Ctx) {
     if (!entries.length) throw new BusinessError('Bitte mindestens eine Rechnung auswählen');
     const r = await createDunningBatch(deps, entries, body.send === '1', c.get('actor'));
     const msg = [
-      `${r.created.length} Mahnung(en) erstellt${body.send === '1' ? ' und versendet' : ''}: ${r.created
+      `${anz(r.created.length, 'Mahnung', 'Mahnungen')} erstellt${body.send === '1' ? ' und versendet' : ''}: ${r.created
         .map((x) => `${x.number} (${x.customer})`)
         .join(', ')}`,
       ...r.failed.map((f) => `Nicht erstellt – ${f.customer}: ${f.error}`),

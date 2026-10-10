@@ -193,7 +193,12 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
                   {p.last_kind && p.last_at && (
                     <div class="lc-foot small mut">
                       Zuletzt: {ACTIVITY_KIND[p.last_kind]} am{' '}
-                      {p.last_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}
+                      {p.last_at.toLocaleDateString('de-DE', {
+                        timeZone: 'Europe/Berlin',
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                      })}
                       {p.last_note && ` · ${p.last_note.slice(0, 60)}${p.last_note.length > 60 ? '…' : ''}`}
                     </div>
                   )}

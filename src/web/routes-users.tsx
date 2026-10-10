@@ -373,8 +373,8 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
             <h3 style="margin-top:16px">Objekte (nur für Objektleitung)</h3>
             <p class="small mut" style="margin-top:0">
               Häkchen setzen = diese Person ist Objektleitung des Objekts (sieht nur diese Objekte). Ein
-              Objekt hat genau eine Objektleitung. Objekte, die schon jemand anderes leitet, und inaktive Objekte
-              sind ausgeblendet.
+              Objekt hat genau eine Objektleitung. Objekte, die schon jemand anderes leitet, und inaktive
+              Objekte sind ausgeblendet.
             </p>
             <div class="site-pick" data-site-pick>
               <div class="actions" style="margin:0 0 8px;align-items:center">

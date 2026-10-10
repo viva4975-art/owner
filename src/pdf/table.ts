@@ -17,6 +17,8 @@ export interface PdfColumn {
   label: string;
   width: number; // in pt
   align?: 'left' | 'right' | 'center';
+  /** lange Texte umbrechen (bis 4 Zeilen) statt mit „…“ abschneiden */
+  wrap?: boolean;
 }
 
 export interface PdfCell {
@@ -76,35 +78,83 @@ export async function renderTablePdf(p: {
     while (t.length > 1 && font.widthOfTextAtSize(`${t}…`, size) > w) t = t.slice(0, -1);
     return `${t}…`;
   };
-  const drawRow = (cells: (string | PdfCell)[], font: PDFFont, fill?: ReturnType<typeof rgb>) => {
+  /** Text in Zeilen der Breite w (Wortgrenzen), höchstens max Zeilen – die letzte notfalls mit „…“. */
+  const wrapLines = (s: string, font: PDFFont, size: number, w: number, max = 4) => {
+    const out: string[] = [];
+    let cur = '';
+    for (const word of s.split(/\s+/).filter(Boolean)) {
+      const t = cur ? `${cur} ${word}` : word;
+      if (font.widthOfTextAtSize(t, size) <= w || !cur) cur = t;
+      else {
+        out.push(cur);
+        cur = word;
+      }
+    }
+    if (cur) out.push(cur);
+    if (out.length > max) {
+      const keep = out.slice(0, max);
+      keep[max - 1] = fit(`${keep[max - 1]} ${out.slice(max).join(' ')}`, font, size, w);
+      return keep.map((l) => fit(l, font, size, w));
+    }
+    return out.length ? out.map((l) => fit(l, font, size, w)) : [''];
+  };
+  const LINE_GAP = fs + 2;
+  const cellObj = (cell: string | PdfCell | undefined): PdfCell =>
+    typeof cell === 'string' || cell === undefined ? { text: cell ?? '' } : cell;
+  const cellLines = (cells: (string | PdfCell)[], font: PDFFont, header: boolean) =>
+    cols.map((c, i) => {
+      const obj = cellObj(cells[i]);
+      const fnt = obj.bold ? bold : font;
+      if (header) {
+        // Kopfzeile: erst kleiner schreiben, erst dann kürzen (Fund: „Persona…“, „Beschäftigu…“)
+        let size = fs;
+        while (size > fs - 2 && fnt.widthOfTextAtSize(obj.text, size) > c.width - 4) size -= 0.5;
+        return { lines: [fit(obj.text, fnt, size, c.width - 4)], size };
+      }
+      return c.wrap
+        ? { lines: wrapLines(obj.text, fnt, fs, c.width - 4), size: fs }
+        : { lines: [fit(obj.text, fnt, fs, c.width - 4)], size: fs };
+    });
+  const heightOf = (cells: (string | PdfCell)[], font: PDFFont, header = false) =>
+    rowH + (Math.max(1, ...cellLines(cells, font, header).map((l) => l.lines.length)) - 1) * LINE_GAP;
+  const drawRow = (
+    cells: (string | PdfCell)[],
+    font: PDFFont,
+    fill?: ReturnType<typeof rgb>,
+    header = false,
+  ) => {
     let x = M;
-    if (fill) page.drawRectangle({ x: M, y: y - rowH + 3, width: W - 2 * M, height: rowH, color: fill });
+    const lines = cellLines(cells, font, header);
+    const h = rowH + (Math.max(1, ...lines.map((l) => l.lines.length)) - 1) * LINE_GAP;
+    if (fill) page.drawRectangle({ x: M, y: y - h + 3, width: W - 2 * M, height: h, color: fill });
     cols.forEach((c, i) => {
       const cell = cells[i];
-      const obj: PdfCell = typeof cell === 'string' || cell === undefined ? { text: cell ?? '' } : cell;
+      const obj = cellObj(cell);
       if (obj.fill)
         page.drawRectangle({
           x,
-          y: y - rowH + 3,
+          y: y - h + 3,
           width: c.width,
-          height: rowH,
+          height: h,
           color: rgb(...obj.fill),
         });
       const fnt = obj.bold ? bold : font;
-      const txt = fit(obj.text, fnt, fs, c.width - 4);
-      const tw = fnt.widthOfTextAtSize(txt, fs);
-      const tx =
-        c.align === 'right' ? x + c.width - 2 - tw : c.align === 'center' ? x + (c.width - tw) / 2 : x + 2;
-      page.drawText(txt, { x: tx, y: y - fs, size: fs, font: fnt, color: INK });
+      const { lines: ls, size } = lines[i]!;
+      ls.forEach((txt, li) => {
+        const tw = fnt.widthOfTextAtSize(txt, size);
+        const tx =
+          c.align === 'right' ? x + c.width - 6 - tw : c.align === 'center' ? x + (c.width - tw) / 2 : x + 2;
+        page.drawText(txt, { x: tx, y: y - fs - li * LINE_GAP, size, font: fnt, color: INK });
+      });
       x += c.width;
     });
     page.drawLine({
-      start: { x: M, y: y - rowH + 3 },
-      end: { x: W - M, y: y - rowH + 3 },
+      start: { x: M, y: y - h + 3 },
+      end: { x: W - M, y: y - h + 3 },
       thickness: 0.4,
       color: LINE,
     });
-    y -= rowH;
+    y -= h;
   };
   const newPage = () => {
     page = pdf.addPage([W, H]);
@@ -129,11 +179,12 @@ export async function renderTablePdf(p: {
       cols.map((c) => ({ text: c.label, bold: true })),
       bold,
       HEAD,
+      true,
     );
   };
   newPage();
   for (const r of p.rows) {
-    if (y - rowH < M + 24) newPage();
+    if (y - (Array.isArray(r) ? heightOf(r, regular) : rowH) < M + 24) newPage();
     if (!Array.isArray(r)) {
       y -= 4;
       page.drawText(fit(r.section, bold, fs + 1, W - 2 * M), {

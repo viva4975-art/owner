@@ -535,7 +535,12 @@ export const MonthOverview: FC<{
                     <span class="tag ok">✓ bestätigt</span>{' '}
                     <span class="small mut">
                       {r.confirmed.by},{' '}
-                      {r.confirmed.at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}
+                      {r.confirmed.at.toLocaleDateString('de-DE', {
+                        timeZone: 'Europe/Berlin',
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                      })}
                     </span>
                     {r.confirmed.minutes !== r.actual && (
                       <div class="small" style="color:var(--err)">

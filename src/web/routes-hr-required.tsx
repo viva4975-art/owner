@@ -171,8 +171,8 @@ export function registerHrRequiredRoutes({ app, deps, page }: Ctx) {
       columns: [
         { label: 'Pers.-Nr.', width: 60 },
         { label: 'Name', width: 170 },
-        { label: 'Objekte', width: 250 },
-        { label: 'fehlt', width: 300 },
+        { label: 'Objekte', width: 250, wrap: true },
+        { label: 'fehlt', width: 300, wrap: true },
       ],
       rows,
       footnote: 'Vertraulich – Personaldaten. Unterlagen bitte in der Personalakte (Dokumente) ablegen.',

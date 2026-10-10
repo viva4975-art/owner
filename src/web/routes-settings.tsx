@@ -237,8 +237,14 @@ export function registerSettingsRoutes({ app, deps, page, back }: Ctx) {
           <p style="margin-top:0">
             {p ? (
               <>
-                Aktuell: <b>{p.file_name}</b> (hochgeladen {p.uploaded_at.toLocaleDateString('de-DE')} von{' '}
-                {p.uploaded_by})
+                Aktuell: <b>{p.file_name}</b> (hochgeladen{' '}
+                {p.uploaded_at.toLocaleDateString('de-DE', {
+                  timeZone: 'Europe/Berlin',
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                })}{' '}
+                von {p.uploaded_by})
               </>
             ) : (
               'Noch kein Paket hochgeladen.'

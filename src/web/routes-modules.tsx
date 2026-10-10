@@ -43,7 +43,7 @@ import { proposals } from '../services/dunning.js';
 import { listArticles, listDevices, supplierWarnings } from '../services/inventory.js';
 import { SEARCH_TYPES, type SearchType, search } from '../services/search.js';
 import { type AppEnv, type Ctx, UUID, taskViewerOf } from './app.js';
-import { NEW_OPTIONS, PageHead, dateDe, euro } from './layout.js';
+import { NEW_OPTIONS, PageHead, dateDe, euro, anz } from './layout.js';
 import { homeFor } from './permissions.js';
 import {
   DASH_CARDS,
@@ -463,7 +463,8 @@ export function registerModuleRoutes(ctx: Ctx) {
     const body = await c.req.parseBody();
     const viewer = taskViewerOf(c);
     if (viewer) {
-      const [ok] = await sql`select 1 from app.tasks t where t.id = ${c.req.param('id')} and ${taskVisibleTo(sql, viewer)}`;
+      const [ok] =
+        await sql`select 1 from app.tasks t where t.id = ${c.req.param('id')} and ${taskVisibleTo(sql, viewer)}`;
       if (!ok) throw new BusinessError('Diese Aufgabe ist Ihnen nicht zugeordnet');
     }
     await setTaskDone(sql, c.req.param('id'), body.done === '1', c.get('actor'));
@@ -517,7 +518,7 @@ export function registerModuleRoutes(ctx: Ctx) {
     }
     if (!n && !errors.length)
       throw new BusinessError('Bitte bei mindestens einer Rechnung einen Betrag eintragen');
-    const msg = `${n} Rechnung(en): ${euro(paid)} Zahlung${skonto ? `, ${euro(skonto)} als Skonto ausgebucht` : ''}`;
+    const msg = `${anz(n, 'Rechnung', 'Rechnungen')}: ${euro(paid)} Zahlung${skonto ? `, ${euro(skonto)} als Skonto ausgebucht` : ''}`;
     return back(c, '/offene-posten', errors.length ? { fehler: [msg, ...errors].join('\n') } : { ok: msg });
   });
 
@@ -559,7 +560,12 @@ export function registerModuleRoutes(ctx: Ctx) {
             <div class="l">offen gesamt</div>
             <div class="v">{euro(total)}</div>
             <div class="s">
-              {all.length} Kunden · {all.reduce((a, g) => a + g.items.length, 0)} Rechnungen
+              {anz(all.length, 'Kunde', 'Kunden')} ·{' '}
+              {anz(
+                all.reduce((a, g) => a + g.items.length, 0),
+                'Rechnung',
+                'Rechnungen',
+              )}
             </div>
           </div>
           <a class="kpi" href="/offene-posten?filter=ueberfaellig" style="text-decoration:none">

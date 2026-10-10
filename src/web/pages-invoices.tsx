@@ -1029,8 +1029,13 @@ export const InvoiceDetail: FC<{
           {revisions.map((r) => (
             <div>
               Fassung {r.revision} vom{' '}
-              {r.created_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })} ({r.created_by}):{' '}
-              {r.reason}
+              {r.created_at.toLocaleDateString('de-DE', {
+                timeZone: 'Europe/Berlin',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+              })}{' '}
+              ({r.created_by}): {r.reason}
             </div>
           ))}
         </div>

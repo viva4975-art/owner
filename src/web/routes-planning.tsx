@@ -39,7 +39,7 @@ import {
   SiteCalendar,
   calRange,
 } from './pages-site-calendar.js';
-import { PageHead, type Tab, Tabs, dateDe } from './layout.js';
+import { PageHead, type Tab, Tabs, dateDe, anz } from './layout.js';
 import { renderTablePdf } from '../pdf/table.js';
 
 const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
@@ -209,7 +209,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
       c.get('actor'),
     );
     return back(c, safeReturn(b.zurueck), {
-      ok: `${n} Einsatz/Einsätze gelöscht – erfasste Zeiten bleiben.`,
+      ok: `${anz(n, 'Einsatz', 'Einsätze')} gelöscht – erfasste Zeiten bleiben.`,
     });
   });
 

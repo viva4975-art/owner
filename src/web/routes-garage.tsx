@@ -1,3 +1,4 @@
+import { BusinessError } from '../services/errors.js';
 import { Icon } from './icons.js';
 import { randomUUID } from 'node:crypto';
 import { SiteOptions } from './site-options.js';
@@ -824,7 +825,16 @@ box.addEventListener('click',function(e){var b=e.target.closest('[data-del-day]'
     const ids = one
       ? [one]
       : (await load(c.req.query('kunde') ?? '', 'offen', c.req.query('q') ?? '')).objs.map((o) => o.id);
-    return new Response(await noticesPdf(sql, ids), {
+    let pdf: Uint8Array;
+    try {
+      pdf = await noticesPdf(sql, ids);
+    } catch (e) {
+      // ohne kommende Termine zurück zur Tiefgarage (vorher Sprung auf die Startseite)
+      if (e instanceof BusinessError)
+        return back(c, one ? `/tiefgarage/objekt/${one}` : '/tiefgarage', { fehler: e.message });
+      throw e;
+    }
+    return new Response(pdf, {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': 'inline; filename="Aushang_Tiefgarage.pdf"',

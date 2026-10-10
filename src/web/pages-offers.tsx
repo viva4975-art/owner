@@ -15,7 +15,7 @@ import {
 } from '../services/offers.js';
 import { centsToInput, milliToInput } from './forms.js';
 import { Icon } from './icons.js';
-import { PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
+import { PageHead, type Tab, Tabs, dateDe, euro, anz } from './layout.js';
 import { type EditorLine, LineEditor } from './pages-invoices.js';
 
 export type OfferListRow = OfferRow & {
@@ -629,7 +629,8 @@ export const OfferDetail: FC<{
                 {alternatives.length > 0 && (
                   <tr>
                     <td class="mut small" colspan={2}>
-                      {alternatives.length} Alternativposition(en) – nicht in der Summe
+                      {anz(alternatives.length, 'Alternativposition', 'Alternativpositionen')} – nicht in der
+                      Summe
                     </td>
                   </tr>
                 )}
@@ -720,9 +721,16 @@ export const OfferDetail: FC<{
             <form method="post" action={`/angebote/${o.id}/objekt`} class="card">
               <h3>Leistungen ins Objekt übernehmen</h3>
               <p class="small mut" style="margin-top:0">
-                {recurring.length} monatliche Position(en) werden Monatspauschalen, {once.length} einmalige
-                werden Sonderleistungen im Objekt
-                {alternatives.length ? `; ${alternatives.length} Alternative(n) werden nicht übernommen` : ''}
+                {anz(
+                  recurring.length,
+                  'monatliche Position wird Monatspauschale',
+                  'monatliche Positionen werden Monatspauschalen',
+                )}
+                , {anz(once.length, 'einmalige wird Sonderleistung', 'einmalige werden Sonderleistungen')} im
+                Objekt
+                {alternatives.length
+                  ? `; ${anz(alternatives.length, 'Alternative wird', 'Alternativen werden')} nicht übernommen`
+                  : ''}
                 . Mehrfaches Ausführen legt nichts doppelt an.
               </p>
               <div class="grid">

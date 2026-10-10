@@ -128,7 +128,7 @@ export const ExecutePanel: FC<{
             <input id="exec_to" type="date" name="date_to" />
           </div>
           <button class="btn" data-needs-selection>
-            Markierte Leistung(en) verrichten (<span data-count>0</span>)
+            Markierte Leistungen verrichten (<span data-count>0</span>)
           </button>
         </div>
       )}

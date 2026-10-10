@@ -73,6 +73,7 @@ a.lt-addr{display:block}
 .lt-fg{display:grid;gap:6px}
 .lt-fl{display:grid;grid-template-columns:minmax(0,1fr) 90px 110px 120px;gap:6px;align-items:start}
 @media(max-width:700px){.lt-fl{grid-template-columns:1fr 1fr}}
+@media(max-width:700px){.lt-tbl{display:block;overflow-x:auto;max-width:100%}}
 .lt-fb{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
 `;
 

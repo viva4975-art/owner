@@ -705,7 +705,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
             action="/zeiterfassung/loeschen"
             class="card"
             style="border-color:var(--err)"
-            onsubmit="var n=document.querySelectorAll('input[name=ids][form=purge]:checked').length;if(!n){alert('Bitte zuerst Zeiten markieren.');return false}return confirm(n+' Zeit(en) endgültig löschen? Das kann nicht rückgängig gemacht werden.')"
+            onsubmit="var n=document.querySelectorAll('input[name=ids][form=purge]:checked').length;if(!n){alert('Bitte zuerst Zeiten markieren.');return false}return confirm(n+(n===1?' Zeit':' Zeiten')+' endgültig löschen? Das kann nicht rückgängig gemacht werden.')"
           >
             <input type="hidden" name="zurueck" value={self} />
             <b>Markierte Zeiten endgültig löschen</b> <span class="small mut">(Admin, Personal)</span>

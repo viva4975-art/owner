@@ -2,7 +2,7 @@ import { WEEKS_PER_MONTH } from '../domain/time/soll.js';
 import { randomUUID } from 'node:crypto';
 import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
-import { renderLetterPdf } from '../pdf/render.js';
+import { renderLetterPdf, clipInfo } from '../pdf/render.js';
 import { assertVersion } from './crm.js';
 import { BusinessError } from './errors.js';
 import { buildBuyerSnapshot, getSeller } from './masterdata.js';
@@ -511,9 +511,10 @@ export async function renderQualityCheckPdf(deps: Deps, id: string): Promise<Uin
     date: q.check_date,
     info: [
       ['Datum', formatDateDe(q.check_date)],
-      ['Objekt', `${q.site_name} (${q.site_no})`.slice(0, 34)],
-      ['Prüfer', q.inspector.slice(0, 34)],
-      ...(q.attendee ? ([['Anwesend', q.attendee.slice(0, 34)]] as [string, string][]) : []),
+      ['Objekt', clipInfo(q.site_name)],
+      ['Objekt-Nr.', q.site_no],
+      ['Prüfer', clipInfo(q.inspector)],
+      ...(q.attendee ? ([['Anwesend', clipInfo(q.attendee)]] as [string, string][]) : []),
     ],
     seller,
     buyer,

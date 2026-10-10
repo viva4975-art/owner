@@ -620,7 +620,7 @@ export async function reportPdf(sql: Sql) {
     sums: [],
     total: null,
     paragraphs: [
-      `2. Interne Selbstprüfung${last ? ` (abgeschlossen von ${last.reviewed_by} am ${last.reviewed_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })})` : ''}`,
+      `2. Interne Selbstprüfung${last ? ` (abgeschlossen von ${last.reviewed_by} am ${last.reviewed_at.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric' })})` : ''}`,
       ...EC_CHECKS.map((c) => {
         const r = map.get(c.id);
         return `${label(r?.status)} ${c.text}${r?.note ? ` – Bemerkung: ${r.note}` : ''}`;

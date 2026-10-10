@@ -141,7 +141,7 @@ export const ServicesPanel: FC<{
       )}
 
       <div class="card" style="margin-top:14px">
-        <h3>Regelmäßige Leistung(en) abrechnen</h3>
+        <h3>Regelmäßige Leistungen abrechnen</h3>
         <form method="get" action={`/objekte/${siteId}/leistungen`} class="grid" style="align-items:end">
           <div>
             <label for="monat">Abrechnungsmonat</label>
@@ -199,7 +199,7 @@ export const ServicesPanel: FC<{
           <input type="hidden" name="monat" value={month} />
           <input type="hidden" name="datum" value={invoiceDate} />
           <button class="btn" disabled={open.length === 0}>
-            Leistung(en) abrechnen ({open.length})
+            Leistungen abrechnen ({open.length})
           </button>
           <span class="small mut">
             Erzeugt Rechnungsentwürfe (je Rechnungsgruppe bzw. eigene Rechnung). Alle Objekte auf einmal:

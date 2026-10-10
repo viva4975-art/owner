@@ -29,7 +29,7 @@ import { type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
 import { arr, parseLines, str } from './forms.js';
 import { OfferDetail, OfferEditor, OfferList, toOfferEditorLine } from './pages-offers.js';
-import { PageHead } from './layout.js';
+import { PageHead, anz } from './layout.js';
 
 const versionOf = (v: unknown) => (typeof v === 'string' && v !== '' ? Number(v) : null);
 
@@ -359,7 +359,7 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
                where id = (select customer_id from app.offers where id = ${id}) and status = 'interessent'`;
     return back(c, `/objekte/${siteId}/leistungen`, {
       ok: n
-        ? `${n} Leistung(en) aus dem Angebot übernommen.`
+        ? `${anz(n, 'Leistung', 'Leistungen')} aus dem Angebot übernommen.`
         : 'Leistungen waren bereits übernommen – nichts doppelt angelegt.',
     });
   });

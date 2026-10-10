@@ -954,7 +954,7 @@ export async function renderWorkReportPdf(deps: Deps, id: string): Promise<Uint8
   d.signatures('Ort, Datum', 'Unterschrift / Stempel Auftraggeber (Kunde)', {
     ...(signed
       ? {
-          leftText: `München, ${w.signed_at!.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}`,
+          leftText: `München, ${w.signed_at!.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric' })}`,
           png: png ? await d.embedPng(png) : null,
           rightText: w.signed_by_name ?? '',
         }

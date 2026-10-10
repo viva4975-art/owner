@@ -9,7 +9,7 @@ import {
 } from '../domain/invoice/calc.js';
 import type { InvoiceDocument } from '../domain/invoice/types.js';
 import { type Cents, type Quantity, lineNet } from '../domain/money/money.js';
-import { renderInvoicePdf } from '../pdf/render.js';
+import { renderInvoicePdf, clipInfo } from '../pdf/render.js';
 import { assertVersion } from './crm.js';
 import { BusinessError } from './errors.js';
 import { saveDraft } from './invoices.js';
@@ -436,7 +436,7 @@ export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8
   const info: [string, string][] = [
     ['Angebotsdatum', formatDateDe(o.offer_date)],
     ['Kundennummer', buyer.customerNo],
-    ['Ansprechpartner', (await offerContact(sql, o.created_by)).slice(0, 34)],
+    ['Ansprechpartner', clipInfo(await offerContact(sql, o.created_by))],
   ];
   if (o.valid_until) info.push(['Gültig bis', formatDateDe(o.valid_until)]);
   if (o.tender_reference) info.push(['Vergabe-Nr.', o.tender_reference]);

@@ -493,6 +493,12 @@ async function employeeValues(sql: Sql, id: string): Promise<Record<string, stri
   const wage = e.wage_cents != null ? numDe(e.wage_cents) : '';
   return {
     'Mitarbeiter.Anrede': e.salutation ?? '',
+    // Briefanrede passend zur Anrede (sonst neutral mit vollem Namen)
+    'Mitarbeiter.Briefanrede': /^frau/i.test(e.salutation ?? '')
+      ? `Sehr geehrte Frau ${e.last_name}`
+      : /^herr/i.test(e.salutation ?? '')
+        ? `Sehr geehrter Herr ${e.last_name}`
+        : `Guten Tag ${e.first_name} ${e.last_name}`,
     'Mitarbeiter.Vorname': e.first_name,
     'Mitarbeiter.Nachname': e.last_name,
     'Mitarbeiter.Straße': e.street ?? '',

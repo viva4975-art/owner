@@ -950,6 +950,7 @@ input:focus,select:focus,textarea:focus,.cbx-btn:focus-visible,.cbx.open .cbx-bt
 .dh h2{margin:0;font-size:15.5px;display:flex;align-items:center;gap:8px}
 .dh a{font-size:13px;font-weight:550}
 .dh-n{background:var(--brand-50);color:var(--brand);font-size:12px;font-weight:700;border-radius:999px;padding:1px 8px}
+table.liq{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}table.liq th{font-size:11px;font-weight:600;color:#8a8085;text-align:left;padding:3px 4px;border-bottom:1px solid #eee;background:none}table.liq th.r,table.liq td.r{text-align:right}table.liq td{padding:4px;border-bottom:1px solid #f3f1f2;white-space:nowrap}
 .dash-list{list-style:none;margin:0;padding:0}
 .dash-list li{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--line)}
 .dash-list li:first-child{border-top:0}

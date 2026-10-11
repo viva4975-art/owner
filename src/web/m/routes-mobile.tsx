@@ -1,4 +1,6 @@
 import { Icon } from '../icons.js';
+import { PUSH_JS, PushCard, SW_PUSH } from '../push-ui.js';
+import { savePushSubscription, vapidKeys } from '../../services/push.js';
 import { listPayslips } from '../../services/payslips.js';
 import { payslipFile } from '../routes-payslips.js';
 import { createHash, randomUUID } from 'node:crypto';
@@ -231,7 +233,8 @@ const JS = `
 })();`;
 
 /** Service Worker: Offline-Hinweis und Schrift/Logo aus dem Cache. Seiten mit persönlichen Daten werden NIE gecacht. */
-const SW_JS = `
+const SW_JS =
+  `
 var C='vd-m-v1';
 self.addEventListener('install',function(e){e.waitUntil(caches.open(C).then(function(c){return c.addAll(['/m/offline','/static/logo.png','/static/inter-latin.woff2','/static/favicon.png']);}).then(function(){return self.skipWaiting();}));});
 self.addEventListener('activate',function(e){e.waitUntil(caches.keys().then(function(ks){return Promise.all(ks.filter(function(k){return k!==C;}).map(function(k){return caches.delete(k);}));}).then(function(){return self.clients.claim();}));});
@@ -240,7 +243,7 @@ self.addEventListener('fetch',function(e){
   var u=new URL(r.url); if(u.origin!==location.origin)return;
   if(u.pathname.indexOf('/static/')===0){e.respondWith(caches.match(r).then(function(m){return m||fetch(r);}));return;}
   if(r.mode==='navigate'&&(u.pathname==='/m'||u.pathname.indexOf('/m/')===0)){e.respondWith(fetch(r).catch(function(){return caches.match('/m/offline');}));}
-});`;
+});` + SW_PUSH;
 
 const MLayout: FC<{
   lang: Lang;
@@ -332,6 +335,7 @@ const MLayout: FC<{
         </nav>
       )}
       <script dangerouslySetInnerHTML={{ __html: JS }} />
+      <script src="/m/push.js" defer />
     </body>
   </html>
 );
@@ -934,6 +938,12 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
           }
         />
         <Times lang={lang} rows={times} />
+        <PushCard
+          save="/m/push/abo"
+          on={t(lang, 'push_on')}
+          done={t(lang, 'push_done')}
+          blocked={t(lang, 'push_blocked')}
+        />
         <div class="card" id="install" hidden>
           <button type="button" class="big sec" hidden>
             {t(lang, 'install')}
@@ -1586,6 +1596,25 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'public, max-age=86400' },
     ),
   );
+
+  // ---------------------------------------------------------------- Push-Nachrichten
+  app.get('/m/push.js', (c) =>
+    c.body(PUSH_JS, 200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache' }),
+  );
+  app.get('/m/push/key', async (c) =>
+    c.text((await vapidKeys(sql, env)).publicKey, 200, { 'Cache-Control': 'no-store' }),
+  );
+  app.post('/m/push/abo', async (c) => {
+    const me = await loadMe(c);
+    if (!me) return c.text('Nicht angemeldet', 401);
+    await savePushSubscription(
+      sql,
+      await c.req.json(),
+      { employeeId: me.id },
+      c.req.header('user-agent') ?? null,
+    );
+    return c.json({ ok: true });
+  });
 
   app.get('/m/sw.js', (c) =>
     c.body(SW_JS, 200, {

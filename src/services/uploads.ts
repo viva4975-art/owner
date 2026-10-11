@@ -221,8 +221,25 @@ export async function completeUpload(sql: Sql, cfg: UploadConfig, id: string): P
   return done;
 }
 
+const MONATE = [
+  'Januar',
+  'Februar',
+  'März',
+  'April',
+  'Mai',
+  'Juni',
+  'Juli',
+  'August',
+  'September',
+  'Oktober',
+  'November',
+  'Dezember',
+];
+
 export async function listFiles(sql: Sql, link: LinkTarget) {
-  return sql<(FileRow & { category: string | null; archived_at: Date | null; archived_by: string | null })[]>`
+  const rows = await sql<
+    (FileRow & { category: string | null; archived_at: Date | null; archived_by: string | null })[]
+  >`
     select f.*, l.category, l.archived_at, l.archived_by from app.file_links l join app.files f on f.id = l.file_id
      where l.entity_type = ${link.type} and l.entity_id = ${link.id} and f.status = 'complete'
        -- aus Word-Vorlagen erzeugte Entwürfe nicht als Dokument zeigen (Ahmed 10.10.: nur der unterschriebene Scan zählt)
@@ -231,6 +248,14 @@ export async function listFiles(sql: Sql, link: LinkTarget) {
                         where a.entity = ${link.type} and a.entity_id = ${link.id} and a.action = 'word_template'
                           and a.details->>'file' = f.id::text)
      order by f.completed_at desc`;
+  // ältere Lohnabrechnungen hießen „Lohnabrechnung_2025-08_1234.pdf“ – Datei ist unveränderbar, nur die Anzeige
+  // nennt den Monat ausgeschrieben (Ahmed 11.10.)
+  for (const r of rows) {
+    const m = /^Lohnabrechnung_(\d{4})-(\d\d)_(\d+)\.pdf$/.exec(r.original_name);
+    if (m && r.category === 'Lohnabrechnung')
+      r.original_name = `Lohnabrechnung ${m[1]}-${m[2]} ${MONATE[Number(m[2]) - 1] ?? ''} ${m[1]} (${m[3]}).pdf`;
+  }
+  return rows;
 }
 
 export function filePath(cfg: UploadConfig, f: FileRow): string {

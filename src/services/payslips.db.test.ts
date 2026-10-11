@@ -92,4 +92,23 @@ describe.skipIf(!available)('Lohnabrechnungen einlesen (Datenbank)', () => {
     );
     expect(r.assigned.map((x) => x.personnel_no).sort()).toEqual(['7701', '7702']);
   });
+
+  it('gemischte ZIP: Monat je Datei aus Lexware-Dateiname bzw. Text, Name mit Monat', async () => {
+    const zip = zipSync({
+      'A/Lohnabrechnung_2026_Juli_7701_Test_A.pdf': await pdf(['Seite ohne Nummer']),
+      'B/Lohnabrechnung_2026_August_7701_Test_A.pdf': await pdf(['Seite ohne Nummer']),
+      'x.pdf': await pdf(['Pers.-Nr. 7702 Abrechnungsmonat: Juni 2026']),
+    });
+    const r = await importPayslips(
+      sql,
+      { dir, maxBytes: 5e7 },
+      { name: 'gemischt.zip', bytes: zip, release: false, actor: 't' },
+    );
+    expect(r.unassigned).toEqual([]);
+    expect(r.months.map((m) => m.month)).toEqual(['2026-08', '2026-07', '2026-06']);
+    const [f] = await sql<{ original_name: string }[]>`
+      select f.original_name from app.files f join app.payslips p on p.file_id = f.id
+       where p.month = '2026-07'`;
+    expect(f!.original_name).toMatch(/^Lohnabrechnung 2026-07 Juli 2026 – .* \(7701\)\.pdf$/);
+  }, 30_000);
 });

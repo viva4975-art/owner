@@ -8,6 +8,7 @@ import { PageHead, dateDe, euro, initials } from './layout.js';
 import { InvoiceTable } from './pages-invoices.js';
 import { ABSENCE_LABEL, type AbsentNow } from '../services/absences.js';
 import { hourBerlin } from '../domain/invoice/calc.js';
+import type { LiquidityForecast } from '../services/liquidity.js';
 
 /** „Abwesend“: heute, nächste 7 Tage und 8–14 Tage (Urlaub zwei Wochen vorher sichtbar), mit Art inkl. „krank“. */
 export const AbsentCard: FC<{ absent: AbsentNow[]; today: string; href?: string | undefined }> = ({
@@ -356,6 +357,7 @@ export type DashCardKey =
   | 'hinweise'
   | 'ampel'
   | 'bank'
+  | 'liquiditaet'
   | 'geburtstage';
 export const DASH_CARDS: Record<DashCardKey, string> = {
   aufgaben: 'Aufgaben (inkl. Ausschreibungs-Termine)',
@@ -367,6 +369,7 @@ export const DASH_CARDS: Record<DashCardKey, string> = {
   hinweise: 'Hinweise (Fristen, Unterschriften, Prüfungen)',
   ampel: 'Nachkalkulation Vormonat (Ampel je Objekt)',
   bank: 'Bankkonten (Kontostand, neue Umsätze)',
+  liquiditaet: 'Liquiditätsvorschau (8 Wochen)',
   geburtstage: 'Geburtstage & Jubiläen',
 };
 export interface DashItem {
@@ -385,6 +388,7 @@ export const DEFAULT_DASH: DashItem[] = [
   { key: 'unversendet', col: 2, hidden: false },
   { key: 'abwesend', col: 2, hidden: false },
   { key: 'bank', col: 2, hidden: false },
+  { key: 'liquiditaet', col: 2, hidden: false },
   { key: 'ampel', col: 2, hidden: false },
   { key: 'geburtstage', col: 2, hidden: false },
 ];
@@ -443,6 +447,77 @@ const taskHref = (t: Task) =>
     : '/aufgaben';
 
 /** Kopf einer Startseiten-Karte: Titel, Anzahl, Link „alle“ */
+/** Liquiditätsvorschau: Kontostand heute, je Kalenderwoche Eingänge/Ausgänge und Stand (Schätzung). */
+const LiquidityCard: FC<{ f: LiquidityForecast }> = ({ f }) => {
+  const max = f.weeks.reduce((m, w) => {
+    const a = w.balance < 0n ? -w.balance : w.balance;
+    return a > m ? a : m;
+  }, 1n);
+  const neg = f.low && f.low.balance < 0n;
+  return (
+    <section class="card dash-card">
+      <DashHead title="Liquiditätsvorschau" href="/transfer/kontoauszug" more="Kontoauszug" />
+      <div class="small mut" style="margin:-4px 0 8px">
+        {f.start != null ? (
+          <>
+            Kontostand {f.startDate ? `vom ${dateDe(f.startDate)}` : 'heute'}: <b>{euro(f.start)}</b>
+          </>
+        ) : (
+          'Kein Kontostand aus dem Bankabruf – Vorschau ab 0 €.'
+        )}
+      </div>
+      <table class="liq">
+        <thead>
+          <tr>
+            <th>KW</th>
+            <th class="r">Eingänge</th>
+            <th class="r">Ausgänge</th>
+            <th class="r">Stand</th>
+            <th style="width:30%"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {f.weeks.map((w) => {
+            const pct = Number(((w.balance < 0n ? -w.balance : w.balance) * 100n) / max);
+            return (
+              <tr title={`${dateDe(w.from)} – ${dateDe(w.to)}`}>
+                <td>{w.kw}</td>
+                <td class="r" style="color:#2e7d32">
+                  {w.inflow ? `+${euro(w.inflow)}` : '–'}
+                </td>
+                <td class="r" style="color:#8a8085">
+                  −{euro(w.outflow)}
+                </td>
+                <td class="r" style={`font-weight:600;color:${w.balance < 0n ? '#c0392b' : 'inherit'}`}>
+                  {euro(w.balance)}
+                </td>
+                <td>
+                  <div
+                    style={`height:8px;border-radius:4px;width:${Math.max(2, pct)}%;background:${w.balance < 0n ? '#c0392b' : '#7d1435'};opacity:.75`}
+                  />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {neg && (
+        <div class="hint err" style="margin-top:8px">
+          Engpass in KW {f.low!.kw}: Stand voraussichtlich {euro(f.low!.balance)}.
+        </div>
+      )}
+      <details class="small mut" style="margin-top:8px">
+        <summary>So wird gerechnet</summary>
+        Offene Rechnungen nach Fälligkeit (überfällige {euro(f.overdueIn)} in dieser Woche), erwartete
+        Monatsrechnungen der regelmäßigen Leistungen ({euro(f.expectedRuns)}, Eingang um den 20.), offene
+        Eingangsrechnungen ( überfällige {euro(f.overdueOut)} in dieser Woche) und laufende Ausgaben ohne
+        Rechnung – Lohn, Steuern, Sozialversicherung, Miete – mit Ø {euro(f.regularMonthly)} je Monat aus den
+        Kontoumsätzen der letzten 3 Monate. Schätzung.
+      </details>
+    </section>
+  );
+};
+
 const DashHead: FC<{ title: string; count?: number | undefined; href?: string; more?: string }> = ({
   title,
   count,
@@ -496,6 +571,8 @@ export const Dashboard: FC<{
   } | null;
   /** Bankkonten mit Kontostand (Bankabruf) und Anzahl neuer Umsätze */
   bank?: { iban: string; name: string; balance_cents: bigint | null; open: number }[] | null;
+  /** Liquiditätsvorschau 8 Wochen (nur Büro mit Bankzugriff) */
+  liquidity?: LiquidityForecast | null;
   /** Anfragen aus der App der Objektleitung: NU-Aufträge zur Freigabe, neue Personalbögen */
   appRequests?: { nu: number; bogen: number; zeit?: number };
   absentHref?: string | undefined;
@@ -520,6 +597,7 @@ export const Dashboard: FC<{
   reminders = { n: 0, red: 0 },
   ampel = null,
   bank = null,
+  liquidity = null,
   appRequests = { nu: 0, bogen: 0 },
   absentHref,
 }) => {
@@ -1041,6 +1119,7 @@ export const Dashboard: FC<{
               )}
             </section>
           ) : null,
+          liquiditaet: liquidity ? <LiquidityCard f={liquidity} /> : null,
           bank:
             bank && bank.length ? (
               <section class="card dash-card">

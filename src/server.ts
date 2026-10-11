@@ -11,6 +11,7 @@ import { sendDailyReminders } from './services/reminders.js';
 import { watch } from './services/watchdog.js';
 import { schoolLeave } from './services/school-leave.js';
 import { replicate } from './services/archive-replica.js';
+import { runPushNotifier } from './services/push.js';
 import { createApp } from './web/app.js';
 
 const env = loadEnv();
@@ -46,6 +47,17 @@ const autoIst = () =>
     .catch((e) => console.error('Plan als Ist automatisch:', e));
 setTimeout(autoIst, 60_000).unref();
 setInterval(autoIst, 60 * 60 * 1000).unref();
+
+// Push-Nachrichten aufs Handy (Unterweisungen, Einsätze, Anträge, Pause) – jede Minute, jede Nachricht nur einmal
+let pushBusy = false;
+const push = () => {
+  if (pushBusy) return;
+  pushBusy = true;
+  runPushNotifier(sql, env)
+    .catch((e) => console.error('Push:', e))
+    .finally(() => (pushBusy = false));
+};
+setInterval(push, 60_000).unref();
 
 // Schulen: Schulferien für künftig eingeplante Mitarbeitende eintragen (alle 6 Std., nichts doppelt)
 const school = () =>

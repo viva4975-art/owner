@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { BusinessError } from '../services/errors.js';
-import { importPayslips, listPayslips, releasePayslips } from '../services/payslips.js';
+import { importPayslips, listPayslips, monthLabel, releasePayslips } from '../services/payslips.js';
 import { filePath, type FileRow } from '../services/uploads.js';
 import type { Ctx } from './app.js';
 import { PageHead } from './layout.js';
@@ -34,8 +34,13 @@ export function registerPayslipRoutes(ctx: Ctx) {
           <input type="hidden" name="id" value={randomUUID()} />
           <div class="grid">
             <div>
-              <label for="m">Abrechnungsmonat</label>
-              <input id="m" type="month" name="monat" value={month} required />
+              <label for="m">Abrechnungsmonat, falls nicht erkennbar</label>
+              <input id="m" type="month" name="monat" value={month} />
+              <span class="small mut">
+                Der Monat wird je Datei erkannt (Lexware-Dateiname bzw. „Abrechnungsmonat“ auf der Abrechnung)
+                – eine ZIP mit mehreren Monaten geht. Dieser Monat gilt nur für Dateien ohne erkennbaren
+                Monat.
+              </span>
             </div>
             <div>
               <label for="f">Datei aus dem Lohnprogramm (ZIP mit Einzel-PDFs oder eine Sammel-PDF)</label>
@@ -57,7 +62,7 @@ export function registerPayslipRoutes(ctx: Ctx) {
         <div class="card">
           <div class="actions" style="margin-top:0">
             <h3 style="margin:0">
-              {month.slice(5)}/{month.slice(0, 4)}: {rows.length} Abrechnungen
+              {monthLabel(month)}: {rows.length} Abrechnungen
             </h3>
             <form method="get" style="margin:0 0 0 auto" class="actions">
               <input type="month" name="monat" value={month} style="max-width:170px" />
@@ -138,14 +143,17 @@ export function registerPayslipRoutes(ctx: Ctx) {
       release: b.release === 'on',
       actor: c.get('actor'),
     });
-    const msg = `${r.assigned.length} Lohnabrechnungen zugeordnet.${
+    const shown = r.months[0]?.month ?? month;
+    const msg = `${r.assigned.length} Lohnabrechnungen zugeordnet${
+      r.months.length ? ` (${r.months.map((x) => `${monthLabel(x.month)}: ${x.count}`).join(', ')})` : ''
+    }.${
       r.unassigned.length
         ? ` Nicht zugeordnet: ${r.unassigned.slice(0, 8).join('; ')}${r.unassigned.length > 8 ? ' …' : ''}`
         : ''
     }`;
     return back(
       c,
-      `/personal/lohnabrechnungen?monat=${month}`,
+      `/personal/lohnabrechnungen?monat=${shown}`,
       r.unassigned.length ? { fehler: msg } : { ok: msg },
     );
   });

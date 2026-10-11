@@ -2477,3 +2477,22 @@ Testadresse.
   - **Alte Word-Vorlagen gelöscht** (Ahmed: „komplett löschen“): Migration `20261122000002` löscht alle deaktivierten
     Vorlagen (lokal 82 von 118) samt Verknüpfung; Dateien bleiben write-once im Archiv. Hochladen einer neuen Fassung
     löscht die alte künftig gleich mit (statt deaktivieren).
+- 2026-10-11: **Liquiditätsvorschau** (Startseiten-Karte, 8 Wochen, nur wer Kontoumsätze sieht; `src/services/liquidity.ts`):
+  Kontostand heute (Bankabruf) + offene Ausgangsrechnungen nach Fälligkeit (überfällige in Woche 1) + erwartete
+  Monatsrechnungen noch nicht abgerechneter Monate (Umsatz-Vorschau × 1,19, Eingang ~20.) − offene Eingangsrechnungen
+  (abzüglich Vorschüsse) − laufende Ausgaben ohne Eingangsrechnung (Ø der letzten 3 Monate aus den Kontoumsätzen, Lohn,
+  Steuern …). Schätzung, Engpass-Woche wird markiert.
+- 2026-10-11: **Push-Nachrichten** (Ahmed: „wichtig“) über Web Push – ohne Firebase. Knopf „Benachrichtigungen einschalten“ in
+  der Mitarbeiter-App (`/m`) und der Verwaltungs-App (`/qm`); Android immer, **iPhone ab iOS 16.4 nur, wenn die App über
+  „Zum Home-Bildschirm“ installiert ist**. VAPID-Schlüssel einmalig erzeugt (privater Teil verschlüsselt, `app.push_config`),
+  Abos `app.push_subscriptions` (ungültige werden gelöscht), jede Nachricht genau einmal (`app.push_sent`). Server prüft
+  jede Minute: neues Dokument zum Unterschreiben, Einsatzplan geändert, Vertretung, Antrag genehmigt/abgelehnt
+  (→ Mitarbeitende); neuer Urlaubsantrag, Nachtrag zur Freigabe (→ Admin/Personal + Objektleitung des Objekts);
+  Pausen-Erinnerung nach ~6 Std. Inhalte knapp, keine Gesundheitsdaten/Beträge (Sperrbildschirm). Migration
+  `20261122000003`. Neue Abhängigkeit `web-push` 3.6.7.
+- 2026-10-11: **Lohnabrechnungen aus Lexware Financial Office Pro** (Ahmeds ZIP: je Person ein Ordner,
+  `Lohnabrechnung_2025_August_1234_Name.pdf`): Personalnummer und Monat aus dem Dateinamen; **Monat wird je Datei erkannt**
+  (Lexware-Dateiname, sonst „Abrechnungsmonat …“ im Text) → gemischte ZIP mit mehreren Monaten geht, die Monatsauswahl gilt
+  nur noch für Dateien ohne erkennbaren Monat. Dateiname in der Personalakte jetzt „Lohnabrechnung 2025-08 August 2025 –
+  Name (1234).pdf“ (ältere Dateien sind unveränderbar, werden aber genauso angezeigt). Probe mit der echten ZIP: 74 von 75
+  zugeordnet (eine Personalnummer gibt es in der App nicht – wird gemeldet).

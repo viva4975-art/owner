@@ -1,3 +1,5 @@
+import { PushCard } from './push-ui.js';
+import { savePushSubscription } from '../services/push.js';
 import { plannedAtSites } from '../services/absences.js';
 import { fullName, linkedEmployee } from '../services/users.js';
 import { canAccess } from './permissions.js';
@@ -158,6 +160,7 @@ export const QmLayout: FC<{
       <title>{`${title} · Qualität · Viva-Deluxe`}</title>
       <link rel="icon" type="image/png" href="/static/favicon.png" />
       <style dangerouslySetInnerHTML={{ __html: MCSS + QM_CSS + APP_TAB_CSS }} />
+      <script src="/m/push.js" defer />
     </head>
     <body>
       <main>
@@ -241,6 +244,17 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
           </QmLayout>,
         ),
     );
+
+  app.post('/qm/push/abo', async (c) => {
+    const u = c.get('user');
+    await savePushSubscription(
+      sql,
+      await c.req.json(),
+      { userId: u.id, employeeId: (await linkedEmployee(sql, u.id)) ?? null },
+      c.req.header('user-agent') ?? null,
+    );
+    return c.json({ ok: true });
+  });
 
   app.get('/qm', async (c) => {
     const u = c.get('user');
@@ -330,6 +344,12 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
             </a>
           ))}
         </div>
+        <PushCard
+          save="/qm/push/abo"
+          on="Benachrichtigungen einschalten"
+          done="Benachrichtigungen sind eingeschaltet"
+          blocked="Benachrichtigungen sind blockiert – in den Einstellungen des Handys erlauben."
+        />
         <Section
           title="Team & Zeiten"
           items={[

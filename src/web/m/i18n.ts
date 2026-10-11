@@ -123,6 +123,9 @@ const de: Dict = {
   scan_cancel: 'Abbrechen',
   install: 'Als App auf den Startbildschirm',
   install_ios: 'Safari: Teilen-Symbol → „Zum Home-Bildschirm“',
+  push_on: 'Benachrichtigungen einschalten',
+  push_done: 'Benachrichtigungen sind eingeschaltet',
+  push_blocked: 'Benachrichtigungen sind im Browser blockiert – in den Einstellungen des Handys erlauben.',
   break_auto: 'Pause automatisch: {from}–{to} ({min} Min.)',
   break_rule:
     'Ab 6 Std. Arbeit wird die Pause automatisch nach 4 Std. eingetragen (30 Min., ab 9 Std. 45 Min.). Machst du die Pause zu einer anderen Zeit, ändere sie hier – sonst wird sie genau so übernommen.',
@@ -292,6 +295,9 @@ const en: Dict = {
   scan_cancel: 'Cancel',
   install: 'Add app to home screen',
   install_ios: 'Safari: Share icon → “Add to Home Screen”',
+  push_on: 'Turn on notifications',
+  push_done: 'Notifications are on',
+  push_blocked: 'Notifications are blocked – allow them in your phone settings.',
   break_auto: 'Automatic break: {from}–{to} ({min} min)',
   break_rule:
     'If you work more than 6 h, the break is entered automatically after 4 h (30 min, over 9 h 45 min). If you take your break at a different time, change it here – otherwise it is recorded exactly like this.',
@@ -461,6 +467,9 @@ const ro: Dict = {
   scan_cancel: 'Anulează',
   install: 'Adaugă aplicația pe ecranul principal',
   install_ios: 'Safari: pictograma Partajare → „Adaugă pe ecranul principal”',
+  push_on: 'Activează notificările',
+  push_done: 'Notificările sunt activate',
+  push_blocked: 'Notificările sunt blocate – permite-le în setările telefonului.',
   break_auto: 'Pauză automată: {from}–{to} ({min} min.)',
   break_rule:
     'Dacă lucrezi peste 6 ore, pauza se trece automat după 4 ore (30 min., peste 9 ore 45 min.). Dacă iei pauza la altă oră, modific-o aici – altfel se preia exact așa.',
@@ -629,6 +638,9 @@ const tr: Dict = {
   scan_cancel: 'İptal',
   install: 'Uygulamayı ana ekrana ekle',
   install_ios: 'Safari: Paylaş simgesi → “Ana Ekrana Ekle”',
+  push_on: 'Bildirimleri aç',
+  push_done: 'Bildirimler açık',
+  push_blocked: 'Bildirimler engellendi – telefon ayarlarından izin verin.',
   break_auto: 'Otomatik mola: {from}–{to} ({min} dk.)',
   break_rule:
     '6 saatten fazla çalışırsan mola 4 saat sonra otomatik girilir (30 dk., 9 saatten fazla 45 dk.). Molayı başka saatte yaparsan burada değiştir – yoksa aynen kaydedilir.',
@@ -799,6 +811,9 @@ const pl: Dict = {
   scan_cancel: 'Anuluj',
   install: 'Dodaj aplikację do ekranu głównego',
   install_ios: 'Safari: ikona Udostępnij → „Do ekranu początkowego”',
+  push_on: 'Włącz powiadomienia',
+  push_done: 'Powiadomienia są włączone',
+  push_blocked: 'Powiadomienia są zablokowane – zezwól w ustawieniach telefonu.',
   break_auto: 'Przerwa automatyczna: {from}–{to} ({min} min)',
   break_rule:
     'Przy pracy powyżej 6 godz. przerwa jest wpisywana automatycznie po 4 godz. (30 min, powyżej 9 godz. 45 min). Jeśli robisz przerwę o innej porze, zmień ją tutaj – w przeciwnym razie zostanie zapisana dokładnie tak.',
@@ -968,6 +983,9 @@ const hr: Dict = {
   scan_cancel: 'Odustani',
   install: 'Dodaj aplikaciju na početni zaslon',
   install_ios: 'Safari: ikona Dijeli → „Dodaj na početni zaslon”',
+  push_on: 'Uključi obavijesti',
+  push_done: 'Obavijesti su uključene',
+  push_blocked: 'Obavijesti su blokirane – dopustite ih u postavkama telefona.',
   break_auto: 'Automatska pauza: {from}–{to} ({min} min.)',
   break_rule:
     'Ako radiš više od 6 sati, pauza se automatski upisuje nakon 4 sata (30 min., preko 9 sati 45 min.). Ako pauzu uzimaš u drugo vrijeme, promijeni je ovdje – inače se preuzima točno ovako.',
@@ -1136,6 +1154,9 @@ const bg: Dict = {
   scan_cancel: 'Отказ',
   install: 'Добави приложението на началния екран',
   install_ios: 'Safari: иконата Споделяне → „Добави към началния екран”',
+  push_on: 'Включи известията',
+  push_done: 'Известията са включени',
+  push_blocked: 'Известията са блокирани – разрешете ги в настройките на телефона.',
   break_auto: 'Автоматична почивка: {from}–{to} ({min} мин.)',
   break_rule:
     'При работа над 6 ч. почивката се въвежда автоматично след 4 ч. (30 мин., над 9 ч. 45 мин.). Ако почиваш по друго време, промени я тук – иначе се записва точно така.',

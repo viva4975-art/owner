@@ -2566,3 +2566,15 @@ Testadresse.
   GmbH-Gesellschafter** (Vergütung Festgehalt; Geschäftsführer über Tag „Geschäftsführer“; anteilig nach Kalendertagen
   bei Ein-/Austritt; bei Festgehalt keine Grundlohn-Stunden im Export). Hinweis fehlender Nummern nur für Lohnarten, die
   im Monat vorkommen. Ältere Vorab-Exporte werden für die Korrektur umgerechnet. Test `payroll-lexware.test.ts`.
+- 2026-10-11: **Raumbuch aus Ausschreibungs-Kalkulation** (Ahmed: „egal wie die Kalkulation aussieht ein Raumbuch erstellen“,
+  Kalkulationstabelle Neubiberg mit 16 Blättern): Der Import liest jetzt alle Blätter einer Excel-Datei und nimmt das mit der
+  besten Kopfzeile (`readSheets`). Neu erkannt: Reinigungstage/Jahr (gehen vor dem Turnus – Schule W5 = 216 statt 260),
+  Turnus-Kürzel W1–W7 / M1–M4 / Q1 / J1–J12 / 0 = keine Reinigung (Räume ohne Reinigung bleiben im Raumbuch,
+  `rooms.visits_per_year` ab 0, Kürzel in `rooms.turnus`, Migration `20261122000007`), Leistung m²/h
+  (→ `performance_override`), Stunden/Jahr, Tageskraft (→ Hinweis). Raumart ohne eigene Spalte „Raum“ = Raumname; Nutzungsart
+  über Stichwörter (WC → Sanitär / WC, Kabine/Dusche → Umkleide, Treppe → Flur …, `guessRoomType`), Unbekanntes → „Sonstiges“
+  statt vieler neuer Nutzungsarten. „keine NR“ = ohne Nummer, gleiche Räume werden durchgezählt („WC (2)“). Optional
+  **Stundenvorgabe je Jahr aus der Datei** (Summe Stunden/Jahr, ohne Tageskraft-Räume). Probe mit der echten Datei: 435 von 436
+  Räumen (Kriechkeller 0 m²), 11.983,6 Std./Jahr = Kalkulation. **Leere Vorlage** `/raumbuch-vorlage.xlsx` (Knopf beim Import,
+  Blatt „Erklärung“ mit Turnus-Kürzeln und Nutzungsarten). Keine externe KI (Daten blieben sonst nicht auf dem Server) –
+  Kopfzeilen-Erkennung über Spaltennamen. Test `room-import-kalk.db.test.ts`.

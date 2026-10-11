@@ -42,6 +42,8 @@ export interface Room {
   floor_covering: string | null;
   area_centi: bigint;
   visits_per_year: number;
+  /** Turnus-Kürzel aus der Kalkulation (W5, J2 …) */
+  turnus: string | null;
   performance_override: number | null;
   notes: string | null;
   active: boolean;
@@ -65,6 +67,7 @@ export const FREQUENCIES: [number, string][] = [
   [4, '1× pro Quartal'],
   [2, '2× pro Jahr'],
   [1, '1× pro Jahr'],
+  [0, 'keine Reinigung'],
 ];
 export const frequencyLabel = (v: number) => FREQUENCIES.find(([k]) => k === v)?.[1] ?? `${v}× pro Jahr`;
 
@@ -125,7 +128,7 @@ export interface RoomInput {
 export async function saveRoom(sql: Sql, id: string, p: RoomInput) {
   if (!p.name.trim()) throw new BusinessError('Bitte Raumbezeichnung angeben');
   if (p.areaCenti <= 0n) throw new BusinessError('Fläche muss größer 0 sein');
-  if (!Number.isInteger(p.visitsPerYear) || p.visitsPerYear < 1 || p.visitsPerYear > 1000) {
+  if (!Number.isInteger(p.visitsPerYear) || p.visitsPerYear < 0 || p.visitsPerYear > 1000) {
     throw new BusinessError('Reinigungsintervall ungültig');
   }
   const cur = await getRoom(sql, id);
@@ -140,6 +143,8 @@ export async function saveRoom(sql: Sql, id: string, p: RoomInput) {
     floor_covering: p.floorCovering,
     area_centi: p.areaCenti,
     visits_per_year: p.visitsPerYear,
+    // Turnus-Kürzel aus dem Import gilt nur, solange das Intervall nicht von Hand geändert wird
+    turnus: cur && cur.visits_per_year === p.visitsPerYear ? cur.turnus : null,
     notes: p.notes,
     active: p.active,
   };

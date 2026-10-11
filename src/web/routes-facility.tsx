@@ -47,6 +47,7 @@ import { type Ctx, UUID, assertSite, inScope } from './app.js';
 import { FileArea } from './files.js';
 import { arr, centsToInput, str } from './forms.js';
 import { Icon } from './icons.js';
+import { writeXlsx } from '../domain/sheet/xlsx-write.js';
 import { PageHead, dateDe, euro } from './layout.js';
 import { canAccess } from './permissions.js';
 import { SIGN_JS } from './routes-orders.js';
@@ -218,7 +219,10 @@ export function registerFacilityRoutes(ctx: Ctx) {
                     <td>{r.type_name}</td>
                     <td>{r.floor_covering}</td>
                     <td class="right">{m2(r.area_centi)}</td>
-                    <td>{frequencyLabel(r.visits_per_year)}</td>
+                    <td>
+                      {frequencyLabel(r.visits_per_year)}
+                      {r.turnus && <span class="small mut"> · {r.turnus}</span>}
+                    </td>
                   </tr>
                 ))}
                 {!rooms.length && (
@@ -245,6 +249,60 @@ export function registerFacilityRoutes(ctx: Ctx) {
     }),
   );
 
+  // Leere Raumbuch-Vorlage (Ahmed 11.10.: „Vorlage mit Tagen usw., die ich immer einfügen kann“)
+  app.get('/raumbuch-vorlage.xlsx', async () => {
+    const types = await listRoomTypes(sql);
+    const bytes = writeXlsx([
+      {
+        name: 'Raumbuch',
+        title: ['Raumbuch – je Raum eine Zeile, Kopfzeile nicht ändern (Erklärung im zweiten Blatt)'],
+        header: [
+          'Gebäude',
+          'Etage',
+          'Raum-Nr.',
+          'Raum',
+          'Raumart',
+          'Bodenbelag',
+          'Fläche m²',
+          'Turnus',
+          'Reinigungstage/Jahr',
+          'Leistung m²/h',
+          'Bemerkung',
+        ],
+        rows: [],
+        widths: [22, 10, 12, 28, 22, 16, 12, 10, 20, 15, 36],
+      },
+      {
+        name: 'Erklärung',
+        header: ['Spalte / Turnus', 'Bedeutung', 'Reinigungen im Jahr'],
+        rows: [
+          ['Gebäude, Etage', 'frei, z. B. „Haus A“, „EG“ – erscheinen zusammen als Etage', null],
+          ['Raum-Nr.', 'leer lassen, wenn es keine gibt', null],
+          ['Raum', 'Pflicht, wenn keine Raum-Nr. – sonst reicht die Raumart', null],
+          ['Raumart', 'eine der Nutzungsarten unten oder frei („WC Damen“ → Sanitär / WC)', null],
+          ['Fläche m²', 'Pflicht, z. B. 24,5', null],
+          ['Reinigungstage/Jahr', 'geht vor dem Turnus (z. B. Schule: 216 statt 260)', null],
+          ['Leistung m²/h', 'optional – dann rechnet die App die Stunden je Jahr', null],
+          ['W1 … W7', '1- bis 7-mal pro Woche (W5 = Mo–Fr)', '52 … 365'],
+          ['M1 … M4', '1- bis 4-mal pro Monat', '12 … 48'],
+          ['Q1', '1-mal pro Quartal', 4],
+          ['J1 … J12', '1- bis 12-mal pro Jahr', '1 … 12'],
+          ['0', 'keine Reinigung (Raum steht trotzdem im Raumbuch)', 0],
+          ['Text', '„täglich“, „5x wöchentlich“, „14-tägig“, „1x Monat“', null],
+          [null, null, null],
+          ['Nutzungsarten', types.map((t) => t.name).join(', '), null],
+        ],
+        widths: [22, 70, 20],
+      },
+    ]);
+    return new Response(bytes, {
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': 'attachment; filename="Raumbuch-Vorlage.xlsx"',
+      },
+    });
+  });
+
   // Raumbuch aus Excel/CSV: Hochladen → Vorschau (GET, Datei write-once abgelegt) → Übernehmen
   app.get(`/objekte/:id{${UUID}}/raumbuch/import`, (c) =>
     shells.site!(c, 'raumbuch', async (s) => {
@@ -259,12 +317,22 @@ export function registerFacilityRoutes(ctx: Ctx) {
             </p>
             <h3 class="panel-title">Raumbuch aus Excel importieren</h3>
             <p class="mut" style="max-width:760px">
-              Excel (.xlsx) oder CSV. Die Spalten werden über die Kopfzeile erkannt (sie darf unter
-              Titelzeilen stehen):
-              <b> Etage, Raum-Nr., Raum, Raumart, Bodenbelag, Fläche (m²), Intervall</b>. Intervall z. B. „5x
-              wöchentlich“, „täglich“ (Mo–Fr, Mo–Sa oder Mo–So – wählbar in der Vorschau), „14-tägig“, „1x
-              Monat“ oder eine Zahl (bis 7 = pro Woche, sonst pro Jahr). Ohne Intervall gilt „täglich“. Sie
-              sehen vor dem Übernehmen eine Vorschau.
+              Excel (.xlsx) oder CSV – auch eine ganze Ausschreibungs-Kalkulation mit vielen Blättern: die App
+              sucht sich das Blatt mit dem Raumbuch selbst (die Kopfzeile darf unter Titelzeilen stehen).
+              Erkannt werden u. a.{' '}
+              <b>
+                Gebäude, Etage/Ebene, Raum-Nr., Raum, Raumart, Bodenbelag, Fläche (m²), Turnus,
+                Reinigungstage/Jahr, Leistung m²/h, Stunden/Jahr, Tageskraft, Bemerkung
+              </b>
+              . Reinigungstage im Jahr gehen vor dem Turnus (z. B. W5 = 216 Schultage). Turnus als Kürzel
+              (W1–W7, M1, J2, 0 = keine Reinigung) oder Text („5x wöchentlich“, „täglich“, „14-tägig“).
+              Raumarten wie „WC Damen“ oder „Umkleideraum, Kabine 5“ werden der passenden Nutzungsart
+              zugeordnet. Sie sehen vor dem Übernehmen eine Vorschau.
+            </p>
+            <p>
+              <a class="btn sm sec" href="/raumbuch-vorlage.xlsx">
+                <Icon name="download" /> Leere Raumbuch-Vorlage (Excel)
+              </a>
             </p>
             <form method="post" action={self} enctype="multipart/form-data">
               <div class="grid">
@@ -290,6 +358,11 @@ export function registerFacilityRoutes(ctx: Ctx) {
           </p>
           <h3 class="panel-title">Vorschau Raumbuch-Import</h3>
           <p class="small mut">
+            {a.sheetCount > 1 && (
+              <>
+                Blatt „{a.sheetName}“ (von {a.sheetCount}).{' '}
+              </>
+            )}
             Kopfzeile in Zeile {a.headerLine}. Erkannt:{' '}
             {a.columns.map((x) => `${x.header} → ${ROOM_FIELDS[x.field].label}`).join(' · ')}
             {a.ignored.length > 0 && <> · nicht verwendet: {a.ignored.join(', ')}</>}
@@ -338,15 +411,19 @@ export function registerFacilityRoutes(ctx: Ctx) {
                     <td>
                       {r.typeName}
                       {!r.typeId && <span class="small mut"> (neu)</span>}
+                      {r.typeRaw && r.typeRaw !== r.name && <div class="small mut">„{r.typeRaw}“</div>}
                     </td>
                     <td>{r.covering}</td>
                     <td class="right">{r.areaCenti != null ? m2(r.areaCenti) : '–'}</td>
                     <td>
-                      {r.visits ? frequencyLabel(r.visits) : '–'}
+                      {r.visits != null ? frequencyLabel(r.visits) : '–'}
                       {r.intervalDefaulted ? (
                         <div class="small mut">nicht angegeben</div>
                       ) : (
-                        r.visits && <div class="small mut">„{r.intervalText}“</div>
+                        r.visits != null && r.intervalText && <div class="small mut">„{r.intervalText}“</div>
+                      )}
+                      {r.hoursYear != null && r.hoursYear > 0 && (
+                        <div class="small mut">{num(r.hoursYear)} Std./Jahr</div>
                       )}
                     </td>
                     <td>
@@ -366,6 +443,17 @@ export function registerFacilityRoutes(ctx: Ctx) {
           <form method="post" action={`${self}/uebernehmen`}>
             <input type="hidden" name="datei" value={sha} />
             <input type="hidden" name="taeglich" value={String(daily)} />
+            {a.hoursYear != null && a.hoursYear > 0 && (
+              <div class="chk">
+                <input type="checkbox" id="stundenvorgabe" name="stundenvorgabe" checked />
+                <label for="stundenvorgabe">
+                  Stundenvorgabe des Objekts auf {num(a.hoursYear)} Std. je Jahr setzen (≈{' '}
+                  {num(a.hoursYear / 12)} Std./Monat, laut Datei)
+                  {a.rows.some((r) => r.notes?.includes('Tageskraft')) &&
+                    ' – Räume der Tageskraft sind darin nicht enthalten'}
+                </label>
+              </div>
+            )}
             {upd > 0 && (
               <div class="chk">
                 <input type="checkbox" id="update" name="update" />
@@ -406,7 +494,14 @@ export function registerFacilityRoutes(ctx: Ctx) {
     const b = await c.req.parseBody({ all: true });
     const sha = str(b, 'datei') ?? '';
     const a = await analyzeRooms(sql, siteId, await stagedFile(deps, sha), dailyOf(str(b, 'taeglich')));
-    const r = await applyRooms(sql, siteId, sha, a, { update: b.update === 'on' }, c.get('actor'));
+    const r = await applyRooms(
+      sql,
+      siteId,
+      sha,
+      a,
+      { update: b.update === 'on', hourTarget: b.stundenvorgabe === 'on' },
+      c.get('actor'),
+    );
     // Raumbuch als PDF (mit Logo) gleich in die Objekt-Dokumente legen
     const pdfNote = await storeRoomBookPdf(sql, uploadConfig(ctx), siteId, c.get('actor')).then(
       () => ' Raumbuch-PDF unter Dokumente abgelegt.',

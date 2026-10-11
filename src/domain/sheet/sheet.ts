@@ -15,8 +15,21 @@ export interface Sheet {
 
 const MAX_UNZIPPED = 60 * 1024 * 1024;
 
+/** Alle Blätter einer Excel-Datei (in der Reihenfolge der Arbeitsmappe); CSV = ein Blatt. */
+export function readSheets(bytes: Uint8Array): {
+  kind: 'xlsx' | 'csv';
+  sheets: { name: string; rows: string[][] }[];
+} {
+  if (bytes[0] === 0x50 && bytes[1] === 0x4b) return { kind: 'xlsx', sheets: readXlsx(bytes, true) };
+  const one = readSheet(bytes);
+  return { kind: one.kind, sheets: [{ name: 'CSV', rows: one.rows }] };
+}
+
 export function readSheet(bytes: Uint8Array): Sheet {
-  if (bytes[0] === 0x50 && bytes[1] === 0x4b) return readXlsx(bytes);
+  if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
+    const all = readXlsx(bytes, false);
+    return { kind: 'xlsx', rows: all[0]?.rows ?? [] };
+  }
   if (bytes[0] === 0xd0 && bytes[1] === 0xcf)
     throw new SheetError('Altes Excel-Format (.xls) – bitte in Excel als .xlsx oder CSV speichern');
   return readCsv(bytes);
@@ -55,7 +68,7 @@ function colIndex(ref: string): number {
   return n - 1;
 }
 
-function readXlsx(bytes: Uint8Array): Sheet {
+function readXlsx(bytes: Uint8Array, all: boolean): { name: string; rows: string[][] }[] {
   let files: Record<string, Uint8Array>;
   let total = 0;
   try {
@@ -84,22 +97,23 @@ function readXlsx(bytes: Uint8Array): Sheet {
     if (/<!DOCTYPE/i.test(t)) throw new SheetError('Excel-Datei enthält unzulässige Angaben (DOCTYPE)');
     return t;
   };
-  // erstes Blatt über workbook.xml + Beziehungen finden
-  let sheetPath = 'xl/worksheets/sheet1.xml';
+  // Blätter über workbook.xml + Beziehungen finden (Reihenfolge der Arbeitsmappe)
   const wb = xml('xl/workbook.xml');
   const rels = xml('xl/_rels/workbook.xml.rels');
-  const firstSheet = wb ? /<sheet\b[^>]*>/.exec(wb)?.[0] : undefined;
-  const rid = firstSheet ? attr(firstSheet, 'r:id') : undefined;
-  if (rid && rels) {
-    for (const m of rels.matchAll(/<Relationship\b[^>]*>/g)) {
-      if (attr(m[0], 'Id') === rid) {
-        const target = attr(m[0], 'Target') ?? '';
-        sheetPath = target.startsWith('/') ? target.slice(1) : `xl/${target.replace(/^\.\//, '')}`;
-      }
-    }
+  const targets = new Map<string, string>();
+  for (const m of (rels ?? '').matchAll(/<Relationship\b[^>]*>/g)) {
+    const target = attr(m[0], 'Target') ?? '';
+    targets.set(
+      attr(m[0], 'Id') ?? '',
+      target.startsWith('/') ? target.slice(1) : `xl/${target.replace(/^\.\//, '')}`,
+    );
   }
-  const sheet = xml(sheetPath);
-  if (!sheet) throw new SheetError('Excel-Datei enthält kein Tabellenblatt');
+  const list = [...(wb ?? '').matchAll(/<sheet\b[^>]*>/g)]
+    .map((m) => ({ name: xmlText(attr(m[0], 'name') ?? ''), path: targets.get(attr(m[0], 'r:id') ?? '') }))
+    .filter((x): x is { name: string; path: string } => !!x.path && !!files[x.path]);
+  if (!list.length && files['xl/worksheets/sheet1.xml'])
+    list.push({ name: 'Tabelle1', path: 'xl/worksheets/sheet1.xml' });
+  if (!list.length) throw new SheetError('Excel-Datei enthält kein Tabellenblatt');
 
   const shared: string[] = [];
   const ss = xml('xl/sharedStrings.xml');
@@ -110,35 +124,43 @@ function readXlsx(bytes: Uint8Array): Sheet {
     }
   }
 
-  const rows: string[][] = [];
-  for (const rm of sheet.matchAll(/<row\b[^>]*?(?:\/>|>([\s\S]*?)<\/row>)/g)) {
-    const row: string[] = [];
-    const body = rm[1] ?? '';
-    let next = 0;
-    for (const cm of body.matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
-      const head = cm[1]!;
-      const ref = attr(` ${head}`, 'r');
-      const idx = ref ? colIndex(ref) : next;
-      next = idx + 1;
-      const type = attr(` ${head}`, 't');
-      const inner = cm[2] ?? '';
-      const v = /<v>([\s\S]*?)<\/v>/.exec(inner)?.[1];
-      let val = '';
-      if (type === 's') val = shared[Number(v)] ?? '';
-      else if (type === 'inlineStr')
-        val = [...inner.matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)].map((t) => xmlText(t[1]!)).join('');
-      else if (type === 'str' || type === 'e') val = v != null ? xmlText(v) : '';
-      else if (type === 'b') val = v === '1' ? 'ja' : 'nein';
-      else if (v != null) {
-        // Gleitkomma-Artefakte aus Excel (24.500000000000004) auf 10 Stellen glätten
-        const n = Number(v);
-        val = Number.isFinite(n) ? String(Number(n.toPrecision(12))) : xmlText(v);
+  const parse = (sheet: string) => {
+    const rows: string[][] = [];
+    for (const rm of sheet!.matchAll(/<row\b[^>]*?(?:\/>|>([\s\S]*?)<\/row>)/g)) {
+      const row: string[] = [];
+      const body = rm[1] ?? '';
+      let next = 0;
+      for (const cm of body.matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+        const head = cm[1]!;
+        const ref = attr(` ${head}`, 'r');
+        const idx = ref ? colIndex(ref) : next;
+        next = idx + 1;
+        const type = attr(` ${head}`, 't');
+        const inner = cm[2] ?? '';
+        const v = /<v>([\s\S]*?)<\/v>/.exec(inner)?.[1];
+        let val = '';
+        if (type === 's') val = shared[Number(v)] ?? '';
+        else if (type === 'inlineStr')
+          val = [...inner.matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)].map((t) => xmlText(t[1]!)).join('');
+        else if (type === 'str' || type === 'e') val = v != null ? xmlText(v) : '';
+        else if (type === 'b') val = v === '1' ? 'ja' : 'nein';
+        else if (v != null) {
+          // Gleitkomma-Artefakte aus Excel (24.500000000000004) auf 10 Stellen glätten
+          const n = Number(v);
+          val = Number.isFinite(n) ? String(Number(n.toPrecision(12))) : xmlText(v);
+        }
+        while (row.length < idx) row.push('');
+        row[idx] = val.trim();
       }
-      while (row.length < idx) row.push('');
-      row[idx] = val.trim();
+      if (row.some((c) => c !== '')) rows.push(row);
     }
-    if (row.some((c) => c !== '')) rows.push(row);
+    return rows;
+  };
+  const out: { name: string; rows: string[][] }[] = [];
+  for (const sh of all ? list : list.slice(0, 1)) {
+    const rows = parse(xml(sh.path) ?? '');
+    if (rows.length) out.push({ name: sh.name, rows });
   }
-  if (!rows.length) throw new SheetError('Tabellenblatt ist leer');
-  return { kind: 'xlsx', rows };
+  if (!out.length) throw new SheetError('Tabellenblatt ist leer');
+  return out;
 }

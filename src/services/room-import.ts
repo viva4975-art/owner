@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { Sql } from '../db/client.js';
-import { SheetError, readSheet } from '../domain/sheet/sheet.js';
+import { SheetError, readSheets } from '../domain/sheet/sheet.js';
 import { BusinessError } from './errors.js';
 
 /**
@@ -19,7 +19,19 @@ const norm = (s: string) =>
     .replace(/[^a-z0-9]/g, '');
 
 export type RoomField =
-  'building' | 'floor' | 'room_no' | 'name' | 'type' | 'covering' | 'area' | 'interval' | 'notes';
+  | 'building'
+  | 'floor'
+  | 'room_no'
+  | 'name'
+  | 'type'
+  | 'covering'
+  | 'area'
+  | 'interval'
+  | 'days'
+  | 'performance'
+  | 'hours'
+  | 'daycleaner'
+  | 'notes';
 export const ROOM_FIELDS: Record<RoomField, { label: string; aliases: string[] }> = {
   // Fortytools-Raumexport hat „Gebäudeteil“ und „Etage“ getrennt → zusammen als Etage („A · UG“)
   building: { label: 'Gebäudeteil', aliases: ['gebaeudeteil', 'bauteil', 'gebaeude', 'haus', 'trakt'] },
@@ -73,12 +85,60 @@ export const ROOM_FIELDS: Record<RoomField, { label: string; aliases: string[] }
       'reinigungsintervall',
       'turnus',
       'reinigungen',
-      'reinigungenprojahr',
       'rhythmus',
       'reinigungshaeufigkeit',
       'frequenz',
     ],
   },
+  // Ausschreibungs-Kalkulationen: Reinigungstage im Jahr gehen vor dem Turnus (W5 = 216 Schultage statt 260)
+  days: {
+    label: 'Reinigungstage/Jahr',
+    aliases: [
+      'reinigungstagejahr',
+      'reinigungstage',
+      'reinigungstageprojahr',
+      'reinigungstageimjahr',
+      'tageimjahr',
+      'tageprojahr',
+      'tagejahr',
+      'reinigungenjahr',
+      'reinigungenprojahr',
+      'reinigungenimjahr',
+      'anzahlreinigungen',
+      'jahresreinigungen',
+    ],
+  },
+  performance: {
+    label: 'Leistung m²/h',
+    aliases: [
+      'qmleistungprostunde',
+      'qmleistungstunde',
+      'qmleistung',
+      'leistungqmh',
+      'leistungm2h',
+      'leistungmh',
+      'leistungswert',
+      'leistungsmass',
+      'flaechenleistung',
+      'richtleistung',
+      'qmh',
+      'm2h',
+      'mh',
+      'qmstd',
+    ],
+  },
+  hours: {
+    label: 'Stunden/Jahr',
+    aliases: [
+      'stundenjahr',
+      'jahresstunden',
+      'stundenprojahr',
+      'stdjahr',
+      'stdprojahr',
+      'reinigungsstundenjahr',
+    ],
+  },
+  daycleaner: { label: 'Tageskraft', aliases: ['tageskraft', 'tageskraefte'] },
   notes: {
     label: 'Hinweise',
     aliases: ['hinweis', 'hinweise', 'bemerkung', 'bemerkungen', 'notiz', 'beschreibung'],
@@ -98,6 +158,17 @@ export const dailyOf = (v: unknown): number =>
 export function parseInterval(raw: string, daily = 260): number | null {
   const t = raw.toLowerCase().replace(/\s+/g, ' ').trim();
   if (!t) return null;
+  // keine Reinigung (Turnus „0“, „keine Reinigung (macht HM)“)
+  if (/^0+([.,]0+)?$/.test(t) || /^(keine|ohne|entf)/.test(t)) return 0;
+  // Turnus-Kürzel aus Leistungsverzeichnissen: W1–W7 je Woche, M1–M4 je Monat, Q1 je Quartal, J1–J12 je Jahr
+  const code = /^(w|m|q|j)\s?(\d{1,2})\b/.exec(t);
+  if (code) {
+    const k = Number(code[2]);
+    if (code[1] === 'w' && k >= 1 && k <= 7) return k === 5 ? 260 : k * 52;
+    if (code[1] === 'm' && k >= 1 && k <= 4) return k * 12;
+    if (code[1] === 'q' && k >= 1 && k <= 3) return k * 4;
+    if (code[1] === 'j' && k >= 1 && k <= 12) return k;
+  }
   const numMatch = /(\d+(?:[.,]\d+)?)/.exec(t);
   const n = numMatch ? Number(numMatch[1]!.replace(',', '.')) : null;
   if (/^\d+([.,]\d+)?$/.test(t)) {
@@ -138,22 +209,34 @@ export interface RoomImportRow {
   name: string;
   typeName: string;
   typeId: string | null;
+  /** Raumart der Datei, wenn sie einer vorhandenen Nutzungsart zugeordnet wurde */
+  typeRaw: string | null;
   covering: string | null;
   areaCenti: bigint | null;
   visits: number | null;
   intervalText: string;
   intervalDefaulted: boolean;
+  /** Turnus-Kürzel/-Text aus der Datei (z. B. „W5“) */
+  turnus: string | null;
+  performance: number | null;
+  /** Reinigungsstunden im Jahr (aus der Datei oder Fläche × Reinigungen ÷ Leistung) */
+  hoursYear: number | null;
   notes: string | null;
   existingId: string | null;
   errors: string[];
 }
 
 export interface RoomImportAnalysis {
+  /** verwendetes Tabellenblatt (Excel mit mehreren Blättern: das mit der besten Kopfzeile) */
+  sheetName: string;
+  sheetCount: number;
   headerLine: number;
   columns: { field: RoomField; header: string }[];
   ignored: string[];
   rows: RoomImportRow[];
   newTypes: string[];
+  /** Summe Reinigungsstunden/Jahr der fehlerfreien Zeilen (null = nicht ermittelbar) */
+  hoursYear: number | null;
 }
 
 /** Fläche → m² × 100, exakt aus dem Text (mehr als 2 Nachkommastellen werden kaufmännisch gerundet). */
@@ -169,24 +252,50 @@ export function areaOf(v: string, kind: 'xlsx' | 'csv'): bigint | null {
   return c > 0n ? c : null;
 }
 
-export async function analyzeRooms(
-  sql: Sql,
-  siteId: string,
-  bytes: Uint8Array,
-  daily = 260,
-): Promise<RoomImportAnalysis> {
-  let rows: string[][];
-  let kind: 'xlsx' | 'csv';
-  try {
-    ({ rows, kind } = readSheet(bytes));
-  } catch (e) {
-    if (e instanceof SheetError) throw new BusinessError(e.message);
-    throw e;
-  }
-  // Kopfzeile: erste der ersten 15 Zeilen mit mindestens zwei bekannten Spalten (Fläche oder Raum dabei)
-  let headerIdx = -1;
-  let map = new Map<number, RoomField>();
-  for (let i = 0; i < Math.min(rows.length, 15) && headerIdx < 0; i++) {
+const numOf = (v: string, kind: 'xlsx' | 'csv') => {
+  const t = v.replace(/\s/g, '');
+  if (!t) return null;
+  const x = Number(kind === 'csv' || t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t);
+  return Number.isFinite(x) ? x : null;
+};
+
+/**
+ * Raumart der Datei → vorhandene Nutzungsart über Stichwörter (Kalkulationen nennen Räume „Flur“, „WC“,
+ * „Umkleideraum, Kabine 5“ …). Liefert den Namen der Standard-Nutzungsart oder null.
+ */
+const TYPE_WORDS: [string, RegExp][] = [
+  ['Umkleide / Dusche', /umkleid|dusch|kabine|waschraum|garderob|gaderob/],
+  ['Sanitär / WC', /\bwc|toilet|sanitaer|urinal|pissoir|behinderten.?wc|\bbad\b|beh\.?\s?w[cg]/],
+  ['Teeküche / Küche', /kueche|teekueche|speise|mensa|essraum|spuel|kantine|cafeteria|pausenverkauf|kiosk/],
+  ['Turnhalle', /turnhalle|sporthalle|gymnastik|hallenflaeche|spielfeld|kondition|fitness|kraftraum/],
+  [
+    'Klassenzimmer',
+    /klass|unterricht|gruppen|fachraum|werk|musik|kunst|computer|lernwerk|hort|betreuung|biblio|medien|saal|mehrzweck|atelier|textil|lehrmittel|kita|krippe/,
+  ],
+  ['Besprechung', /besprech|konferenz|sitzung|seminar/],
+  [
+    'Büro',
+    /buero|verwaltung|sekretariat|rektor|lehrer|leitung|arzt|sanitaetsraum|empfang|anmeldung|personal|beratung|sozial|management|trainer|schiedsrichter|platzwart|erste.?hilfe|aufenthalt/,
+  ],
+  ['Eingangsbereich', /eingang|foyer|windfang|aula|pausenhalle|vorraum|garderobe/],
+  [
+    'Flur / Treppenhaus',
+    /flur|gang|treppe|durchgang|diele|aufzug|verkehr|podest|galerie|notausg|empore|tribu?e?h?ne|balkon|terras/,
+  ],
+  [
+    'Lager / Technik',
+    /lager|technik|abstell|archiv|putz|reinigung|keller|heiz|hausmeister|geraet|elektro|server|muell|schacht|lueftung|maschinen|anschluss|garage|platzpflege|regie|sprechanlage|kopier/,
+  ],
+];
+export function guessRoomType(raw: string): string | null {
+  const n = raw.toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss');
+  return TYPE_WORDS.find(([, re]) => re.test(n))?.[0] ?? null;
+}
+
+/** Kopfzeile in den ersten 15 Zeilen eines Blatts suchen: bekannte Spalten, Fläche Pflicht. */
+function findHeader(rows: string[][]) {
+  let best: { idx: number; map: Map<number, RoomField> } | null = null;
+  for (let i = 0; i < Math.min(rows.length, 15); i++) {
     const m = new Map<number, RoomField>();
     rows[i]!.forEach((h, idx) => {
       const n = norm(h);
@@ -199,19 +308,54 @@ export async function analyzeRooms(
       }
     });
     const fields = new Set(m.values());
-    if (m.size >= 2 && (fields.has('area') || fields.has('name'))) {
-      headerIdx = i;
-      map = m;
-    }
+    const usable =
+      m.size >= 2 &&
+      fields.has('area') &&
+      (fields.has('name') || fields.has('room_no') || fields.has('type'));
+    if (usable && (!best || m.size > best.map.size)) best = { idx: i, map: m };
   }
-  if (headerIdx < 0)
+  return best;
+}
+
+export async function analyzeRooms(
+  sql: Sql,
+  siteId: string,
+  bytes: Uint8Array,
+  daily = 260,
+): Promise<RoomImportAnalysis> {
+  let sheets: { name: string; rows: string[][] }[];
+  let kind: 'xlsx' | 'csv';
+  try {
+    ({ sheets, kind } = readSheets(bytes));
+  } catch (e) {
+    if (e instanceof SheetError) throw new BusinessError(e.message);
+    throw e;
+  }
+  // Excel mit vielen Blättern (z. B. Ausschreibungs-Kalkulation): das Blatt mit der besten Kopfzeile nehmen,
+  // bei Gleichstand das mit den meisten Zeilen
+  let pick: { sheet: (typeof sheets)[number]; idx: number; map: Map<number, RoomField> } | null = null;
+  for (const sh of sheets) {
+    const h = findHeader(sh.rows);
+    if (!h) continue;
+    if (
+      !pick ||
+      h.map.size > pick.map.size ||
+      (h.map.size === pick.map.size && sh.rows.length > pick.sheet.rows.length)
+    )
+      pick = { sheet: sh, ...h };
+  }
+  if (!pick) {
+    const anyName = sheets.some((sh) => findHeaderLoose(sh.rows));
     throw new BusinessError(
-      'Keine Kopfzeile gefunden. Erwartet z. B. die Spalten „Etage“, „Raum-Nr.“, „Raum“, „Raumart“, „Bodenbelag“, „Fläche“, „Intervall“.',
+      anyName
+        ? 'Spalte „Fläche“ (m²) fehlt'
+        : 'Keine Kopfzeile gefunden. Erwartet z. B. die Spalten „Etage“, „Raum-Nr.“, „Raum“, „Raumart“, „Bodenbelag“, „Fläche“, „Turnus“ oder „Reinigungstage/Jahr“ – Vorlage unter Raumbuch → Importieren.',
     );
+  }
+  const rows = pick.sheet.rows;
+  const headerIdx = pick.idx;
+  const map = pick.map;
   const fields = new Set(map.values());
-  if (!fields.has('area')) throw new BusinessError('Spalte „Fläche“ (m²) fehlt');
-  if (!fields.has('name') && !fields.has('room_no'))
-    throw new BusinessError('Spalte „Raum“ oder „Raum-Nr.“ fehlt');
   const header = rows[headerIdx]!;
 
   const [types, existing] = await Promise.all([
@@ -225,6 +369,8 @@ export async function analyzeRooms(
   const existingByKey = new Map(existing.map((r) => [keyOf(r.floor, r.room_no, r.name), r.id]));
   const seen = new Set<string>();
   const newTypes = new Set<string>();
+  // ohne eigene Spalte „Raum“ ist die Raumart der Raumname (Kalkulation: „Flur“, „Umkleideraum, Kabine 5“)
+  const typeIsName = !fields.has('name') && fields.has('type');
 
   const out: RoomImportRow[] = [];
   rows.slice(headerIdx + 1).forEach((cells, i) => {
@@ -233,9 +379,11 @@ export async function analyzeRooms(
       return '';
     };
     const floor = [get('building'), get('floor')].filter(Boolean).join(' · ') || null;
-    const roomNo = get('room_no') || null;
+    const noRaw = get('room_no');
+    // „keine NR“, „ohne“, „-“ = keine Raumnummer
+    const roomNo = noRaw && !/^(keine|ohne|o\.?\s?nr|n\.?\s?a\.?|-+|\?)/i.test(noRaw) ? noRaw : null;
     const typeRaw = get('type');
-    const name = get('name') || [typeRaw, roomNo].filter(Boolean).join(' ') || '';
+    let name = get('name') || (typeIsName ? typeRaw : [typeRaw, roomNo].filter(Boolean).join(' ')) || '';
     const areaRaw = get('area');
     // Summenzeilen („Summe“, „Gesamt“) überspringen
     if (/^(summe|gesamt|total)/i.test(name) || /^(summe|gesamt|total)/i.test(floor ?? '')) return;
@@ -252,19 +400,74 @@ export async function analyzeRooms(
             : 'Fläche fehlt',
       );
     const intervalText = get('interval');
-    let visits = parseInterval(intervalText, daily);
-    const intervalDefaulted = !intervalText;
-    if (!intervalText) visits = daily;
-    else if (visits == null || visits < 1 || visits > 1000) {
-      errors.push(`Intervall „${intervalText}“ nicht erkannt`);
+    const daysRaw = get('days');
+    const days = numOf(daysRaw, kind);
+    let visits: number | null;
+    let intervalDefaulted = false;
+    if (daysRaw && days != null && Number.isInteger(days) && days >= 0 && days <= 1000) visits = days;
+    else if (daysRaw) {
+      errors.push(`Reinigungstage „${daysRaw}“ ungültig`);
       visits = null;
+    } else if (!intervalText) {
+      visits = daily;
+      intervalDefaulted = true;
+    } else {
+      visits = parseInterval(intervalText, daily);
+      if (visits == null || visits < 0 || visits > 1000) {
+        errors.push(`Intervall „${intervalText}“ nicht erkannt`);
+        visits = null;
+      }
     }
-    const typeName = typeRaw || 'Sonstiges';
-    const t = typeByNorm.get(norm(typeName));
+    // Nutzungsart: gleicher Name → vorhandene; sonst Stichwort (WC → Sanitär / WC); sonst neu anlegen
+    let typeName = typeRaw || 'Sonstiges';
+    let t = typeByNorm.get(norm(typeName));
+    if (!t && typeRaw) {
+      const g = guessRoomType(typeRaw);
+      const gt = g ? typeByNorm.get(norm(g)) : undefined;
+      if (gt) {
+        t = gt;
+        typeName = gt.name;
+      }
+    }
+    // Kalkulation (Raumart = Raumname): Unbekanntes nicht als eigene Nutzungsart anlegen, sondern „Sonstiges“
+    if (!t && typeIsName) {
+      typeName = 'Sonstiges';
+      t = typeByNorm.get(norm(typeName));
+    }
     if (!t) newTypes.add(typeName);
-    const key = keyOf(floor, roomNo, name);
+    const perfRaw = numOf(get('performance'), kind);
+    const performance = perfRaw && perfRaw >= 1 && perfRaw <= 5000 ? Math.round(perfRaw) : null;
+    const hoursRaw = numOf(get('hours'), kind);
+    const hoursYear =
+      hoursRaw != null && hoursRaw >= 0
+        ? hoursRaw
+        : visits === 0
+          ? 0
+          : performance && areaCenti != null && visits != null
+            ? ((Number(areaCenti) / 100) * visits) / performance
+            : null;
+    // gleicher Raum mehrfach (z. B. mehrere „WC“ im EG ohne Nummer, gleiche Nummer für zwei Flächen):
+    // erst Nummer + Bezeichnung, dann durchzählen statt Fehler
+    let key = keyOf(floor, roomNo, name);
+    if (seen.has(key) && name) {
+      const base = name;
+      const keyFor = (n: string) =>
+        roomNo ? `${keyOf(floor, roomNo, base)}|${norm(n)}` : keyOf(floor, null, n);
+      key = keyFor(base);
+      if (!roomNo || seen.has(key)) {
+        let n = 2;
+        while (seen.has(keyFor(`${base} (${n})`))) n++;
+        name = `${base} (${n})`;
+        key = keyFor(name);
+      }
+    }
     if (seen.has(key)) errors.push('doppelt in der Datei (gleiche Etage und Raum-Nr./Bezeichnung)');
     seen.add(key);
+    const dc = get('daycleaner');
+    const notes = [get('notes'), dc && !/^(nein|0|-)$/i.test(dc) ? `Tageskraft: ${dc}` : '']
+      .filter(Boolean)
+      .join(' · ');
+    const turnus = (intervalText || '').slice(0, 40) || null;
     out.push({
       line: headerIdx + 2 + i,
       floor,
@@ -272,24 +475,46 @@ export async function analyzeRooms(
       name,
       typeName,
       typeId: t?.id ?? null,
+      typeRaw: typeRaw && norm(typeRaw) !== norm(typeName) ? typeRaw : null,
       covering: get('covering') || null,
       areaCenti,
       visits,
-      intervalText: visits ? (intervalDefaulted ? '' : intervalText) : intervalText,
+      intervalText: visits != null ? (intervalDefaulted ? '' : intervalText || daysRaw) : intervalText,
       intervalDefaulted,
-      notes: get('notes') || null,
+      turnus,
+      performance,
+      hoursYear,
+      notes: notes || null,
       existingId: existingByKey.get(key) ?? null,
       errors,
     });
   });
   if (!out.length) throw new BusinessError('Unter der Kopfzeile stehen keine Räume');
+  const ok = out.filter((r) => !r.errors.length);
+  const withHours = ok.filter((r) => r.hoursYear != null);
   return {
+    sheetName: pick.sheet.name,
+    sheetCount: sheets.length,
     headerLine: headerIdx + 1,
     columns: [...map].map(([idx, field]) => ({ field, header: header[idx] ?? '' })),
     ignored: header.filter((h, idx) => h && !map.has(idx)),
     rows: out,
     newTypes: [...newTypes],
+    hoursYear:
+      withHours.length && withHours.length >= ok.length * 0.8
+        ? withHours.reduce((a, r) => a + (r.hoursYear ?? 0), 0)
+        : null,
   };
+}
+
+/** Blatt hat eine Raum-Kopfzeile, nur ohne Fläche (für eine genaue Fehlermeldung). */
+function findHeaderLoose(rows: string[][]) {
+  return rows.slice(0, 15).some((r) => {
+    const n = new Set(r.map(norm));
+    return (
+      ROOM_FIELDS.name.aliases.some((a) => n.has(a)) || ROOM_FIELDS.room_no.aliases.some((a) => n.has(a))
+    );
+  });
 }
 
 /**
@@ -301,7 +526,7 @@ export async function applyRooms(
   siteId: string,
   fileSha: string,
   a: RoomImportAnalysis,
-  opts: { update: boolean },
+  opts: { update: boolean; hourTarget?: boolean },
   actor: string,
 ) {
   let created = 0,
@@ -336,6 +561,8 @@ export async function applyRooms(
         floor_covering: r.covering,
         area_centi: r.areaCenti!,
         visits_per_year: r.visits!,
+        turnus: r.turnus,
+        ...(r.performance ? { performance_override: r.performance } : {}),
         notes: r.notes,
         sort_order: order,
       };
@@ -354,6 +581,23 @@ export async function applyRooms(
         if (res.count) created++;
         else skipped++;
       }
+    }
+    // Stundenvorgabe aus der Kalkulation (Jahresstunden) übernehmen
+    if (opts.hourTarget && a.hoursYear != null) {
+      const row = {
+        mode: 'jahr',
+        day_minutes: [0, 0, 0, 0, 0, 0, 0],
+        month_minutes: null,
+        year_minutes: Math.min(8784 * 60, Math.round(a.hoursYear * 60)),
+        note: `aus Raumbuch-Import (${a.sheetName})`,
+        updated_by: actor,
+        updated_at: new Date(),
+      };
+      await tx`
+        insert into app.site_hour_targets ${tx({ site_id: siteId, ...row } as Record<string, unknown>)}
+        on conflict (site_id) do update set ${tx(row as Record<string, unknown>)}`;
+      await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+               values (${actor}, 'hour_target', 'site', ${siteId}, ${tx.json(row as never)})`;
     }
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
              values (${actor}, 'room_import', 'site', ${siteId},

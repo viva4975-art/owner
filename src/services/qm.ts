@@ -138,6 +138,8 @@ export interface QmItem {
   id: string;
   name: string;
   kind: 'note' | 'janein' | 'gms' | 'punkte';
+  description: string | null;
+  area_group: string | null;
   active: boolean;
   sort_order: number;
   version: number;
@@ -177,7 +179,14 @@ export async function listQmItems(sql: Sql, all = true) {
 export async function saveQmItem(
   sql: Sql,
   id: string,
-  p: { name: string; kind: string; active: boolean; sortOrder: number | null },
+  p: {
+    name: string;
+    kind: string;
+    active: boolean;
+    sortOrder: number | null;
+    description?: string | null;
+    areaGroup?: string | null;
+  },
 ) {
   const name = p.name.trim();
   if (!name) throw new BusinessError('Bitte einen Namen für den Kontrollgegenstand angeben');
@@ -188,10 +197,12 @@ export async function saveQmItem(
   if (cur && cur.kind !== p.kind && (await qmItemUsed(sql, id)))
     throw new BusinessError('Bewertungsmodus nicht änderbar – der Gegenstand wurde schon in Audits bewertet');
   await sql`
-    insert into app.qm_items (id, name, kind, active, sort_order)
+    insert into app.qm_items (id, name, kind, active, sort_order, description, area_group)
     values (${id}, ${name}, ${p.kind}, ${p.active},
-            ${p.sortOrder ?? sql`(select coalesce(max(sort_order), 0) + 10 from app.qm_items)`})
+            ${p.sortOrder ?? sql`(select coalesce(max(sort_order), 0) + 10 from app.qm_items)`},
+            ${p.description?.trim() || null}, ${p.areaGroup?.trim() || null})
     on conflict (id) do update set name = excluded.name, kind = excluded.kind, active = excluded.active,
+      description = excluded.description, area_group = excluded.area_group,
       sort_order = ${p.sortOrder ?? sql`app.qm_items.sort_order`}`;
 }
 

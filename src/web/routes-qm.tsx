@@ -40,6 +40,7 @@ import {
   qmSites,
   setTicketStatus,
 } from '../services/qm.js';
+import { qmSettings, saveQmSettings } from '../services/qm-report.js';
 import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { str } from './forms.js';
 import { storeFile } from '../services/uploads.js';
@@ -1133,6 +1134,25 @@ f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('c
           ))}
         </select>
         {used && <input type="hidden" name="kind" value={it!.kind} />}
+        <label for="kg-area">Leistungsbereich</label>
+        <input
+          id="kg-area"
+          name="area_group"
+          list="kg-areas"
+          value={it?.area_group ?? ''}
+          placeholder="z. B. Obenarbeiten, Sanitär und Nassbereiche, Bodenreinigung"
+        />
+        <datalist id="kg-areas">
+          {['Obenarbeiten', 'Sanitär und Nassbereiche', 'Bodenreinigung', 'Sonderbereiche', 'Allgemein'].map(
+            (a) => (
+              <option value={a} />
+            ),
+          )}
+        </datalist>
+        <label for="kg-desc">Tätigkeit / Beschreibung</label>
+        <textarea id="kg-desc" name="description" rows={2} placeholder="steht im Auswertungsbericht">
+          {it?.description ?? ''}
+        </textarea>
         {it && (
           <>
             <label for="kg-so">Reihenfolge</label>
@@ -1162,6 +1182,7 @@ f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('c
 
   app.get(KG, async (c) => {
     const items = await listQmItems(sql);
+    const qs = await qmSettings(sql);
     const used = new Set(
       (await sql<{ item_id: string }[]>`select distinct item_id from app.quality_check_ratings`).map(
         (r) => r.item_id,
@@ -1188,6 +1209,7 @@ f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('c
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Leistungsbereich</th>
                 <th>Bewertungsmodus</th>
                 <th class="acts"></th>
               </tr>
@@ -1203,6 +1225,7 @@ f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('c
                       </span>
                     )}
                   </td>
+                  <td>{it.area_group ?? <span class="mut">–</span>}</td>
                   <td>{QM_KIND[it.kind]}</td>
                   <td class="r acts">
                     <a
@@ -1240,6 +1263,44 @@ f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('c
             </tbody>
           </table>
         </div>
+        <form
+          method="post"
+          action={`${KG}/schwellwerte`}
+          class="card actions"
+          style="max-width:860px;align-items:flex-end"
+        >
+          <div>
+            <label for="qs-low">Schwellwert (Mangel darunter)</label>
+            <input
+              id="qs-low"
+              name="low"
+              type="number"
+              min="1"
+              max="99"
+              value={String(qs.threshold_low)}
+              style="width:90px"
+            />{' '}
+            %
+          </div>
+          <div>
+            <label for="qs-target">Zielbereich ab</label>
+            <input
+              id="qs-target"
+              name="target"
+              type="number"
+              min="2"
+              max="100"
+              value={String(qs.threshold_target)}
+              style="width:90px"
+            />{' '}
+            %
+          </div>
+          <button class="btn sec">Schwellwerte speichern</button>
+          <span class="small mut" style="flex-basis:100%">
+            Für Auswertungsbericht und Statistik: Ampel rot unter dem Schwellwert, gelb bis zum Zielbereich,
+            grün im Zielbereich.
+          </span>
+        </form>
         <div id="anlegen" style="margin-top:22px">
           <ItemForm it={null} used={false} />
         </div>
@@ -1275,8 +1336,16 @@ f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('c
       kind: str(b, 'kind') ?? 'note',
       active: b.active === 'on',
       sortOrder: so && /^\d{1,5}$/.test(so) ? Number(so) : null,
+      description: str(b, 'description'),
+      areaGroup: str(b, 'area_group'),
     });
     return back(c, KG, { ok: 'Kontrollgegenstand gespeichert.' });
+  });
+
+  app.post(`${KG}/schwellwerte`, async (c) => {
+    const b = await c.req.parseBody();
+    await saveQmSettings(sql, Number(b.low), Number(b.target));
+    return back(c, KG, { ok: 'Schwellwerte gespeichert.' });
   });
 
   app.post(`${KG}/:id{${UUID}}/loeschen`, async (c) => {

@@ -35,6 +35,13 @@ import { listSites } from '../services/masterdata.js';
 import { stageFile, stagedFile } from '../services/fortytools-import.js';
 import { DAILY_OPTIONS, ROOM_FIELDS, analyzeRooms, applyRooms, dailyOf } from '../services/room-import.js';
 import { listFiles } from '../services/uploads.js';
+import {
+  deleteQualityCheck,
+  qmStatistics,
+  renderAuditReportPdf,
+  renderQmStatisticsPdf,
+} from '../services/qm-report.js';
+import { uploadConfig } from './routes-files.js';
 import { type Ctx, UUID, assertSite, inScope } from './app.js';
 import { FileArea } from './files.js';
 import { arr, centsToInput, str } from './forms.js';
@@ -128,7 +135,8 @@ export const QcTable: FC<{ rows: QualityCheckRow[]; site?: boolean }> = ({ rows,
   </div>
 );
 
-export function registerFacilityRoutes({ app, deps, page, back, shells }: Ctx) {
+export function registerFacilityRoutes(ctx: Ctx) {
+  const { app, deps, page, back, shells } = ctx;
   const { sql, env } = deps;
 
   // ================================================================== Raumbuch
@@ -833,7 +841,10 @@ f.addEventListener('change',show);f.addEventListener('input',sum);show();})();`,
       'disposition',
       <>
         <PageHead title="Qualitätskontrollen">
-          <a class="btn sec" href="/qm" target="_blank" style="margin-left:auto">
+          <a class="btn sec" href="/qualitaet/statistik" style="margin-left:auto">
+            Statistik
+          </a>
+          <a class="btn sec" href="/qm" target="_blank">
             QM-App (Audit am Handy) öffnen
           </a>
         </PageHead>
@@ -851,6 +862,257 @@ f.addEventListener('change',show);f.addEventListener('input',sum);show();})();`,
           Jeder Mangel erzeugt beim Abschluss eine Nachbesserungs-Aufgabe für die Objektleitung (Frist 3
           Tage).
         </p>
+      </>,
+    );
+  });
+
+  // Qualitätsstatistik über mehrere Audits (Ahmed 11.10., Vorlage Neumann & Neumann)
+  app.get('/qualitaet/statistik', async (c) => {
+    const today = todayBerlin();
+    const d12 = new Date(`${today}T12:00:00Z`);
+    d12.setUTCFullYear(d12.getUTCFullYear() - 1);
+    const isDate = (v: string | undefined) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+    const from = isDate(c.req.query('von')) ?? d12.toISOString().slice(0, 10);
+    const to = isDate(c.req.query('bis')) ?? today;
+    const customerId = c.req.query('kunde') || null;
+    const siteId = c.req.query('objekt') || null;
+    if (siteId) assertSite(c, siteId);
+    const scopeSites = c.get('sites');
+    const s = await qmStatistics(sql, { from, to, customerId, siteId, siteIds: scopeSites ?? null });
+    const siteList = inScope(
+      c,
+      (await listSites(sql)).map((x) => ({ ...x, site_id: x.id })),
+    );
+    const customers = [...new Map(siteList.map((x) => [x.customer_id, x.customer_name])).entries()].sort(
+      (a, b) => String(a[1]).localeCompare(String(b[1]), 'de'),
+    );
+    const scopeLabel = siteId
+      ? (siteList.find((x) => x.id === siteId)?.name ?? 'Objekt')
+      : customerId
+        ? String(customers.find((x) => x[0] === customerId)?.[1] ?? 'Kunde')
+        : 'alle Objekte';
+    if (c.req.query('pdf')) {
+      const pdf = await renderQmStatisticsPdf(s, { from, to, scope: scopeLabel });
+      return new Response(pdf, {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `inline; filename="Qualitaetsstatistik_${from}_${to}.pdf"`,
+          'Cache-Control': 'private, no-cache',
+        },
+      });
+    }
+    const st = s.settings;
+    const col = (v: number | null) =>
+      v == null
+        ? '#d4d4d8'
+        : v < st.threshold_low
+          ? '#b91c1c'
+          : v < st.threshold_target
+            ? '#d97706'
+            : '#15803d';
+    const bars = (rows: { name: string; v: number | null; sub?: string }[]) => (
+      <div class="qbars">
+        {rows.map((r) => (
+          <div class="qbar">
+            <span class="n" title={r.name}>
+              {r.name}
+              {r.sub && <span class="mut small"> · {r.sub}</span>}
+            </span>
+            <span class="t">
+              <i style={`width:${r.v ?? 0}%;background:${col(r.v)}`} />
+              <b style={`left:${st.threshold_low}%`} />
+            </span>
+            <span class="v">{r.v == null ? '–' : `${r.v} %`}</span>
+          </div>
+        ))}
+      </div>
+    );
+    const qs = new URLSearchParams({
+      von: from,
+      bis: to,
+      ...(customerId ? { kunde: customerId } : {}),
+      ...(siteId ? { objekt: siteId } : {}),
+    });
+    return page(
+      c,
+      'Qualitätsstatistik',
+      'disposition',
+      <>
+        <PageHead title="Qualitätsstatistik" crumbs={[['Qualitätskontrollen', '/qualitaet']]}>
+          <a
+            class="btn sec"
+            href={`/qualitaet/statistik?${qs.toString()}&pdf=1`}
+            target="_blank"
+            style="margin-left:auto"
+          >
+            <Icon name="pdf" /> Als PDF
+          </a>
+        </PageHead>
+        <form method="get" class="card actions" style="align-items:flex-end">
+          <div>
+            <label for="von">von</label>
+            <input id="von" type="date" name="von" value={from} />
+          </div>
+          <div>
+            <label for="bis">bis</label>
+            <input id="bis" type="date" name="bis" value={to} />
+          </div>
+          <div style="min-width:200px">
+            <label for="kunde">Kunde</label>
+            <select id="kunde" name="kunde">
+              <option value="">alle Kunden</option>
+              {customers.map(([id, n]) => (
+                <option value={id} selected={id === customerId}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div style="min-width:220px">
+            <label for="objekt">Objekt</label>
+            <select id="objekt" name="objekt">
+              <option value="">alle Objekte</option>
+              <SiteOptions sites={siteList} selected={siteId ?? undefined} />
+            </select>
+          </div>
+          <button class="btn">Anzeigen</button>
+        </form>
+        <div class="kpis">
+          <div class="kpi">
+            <div class="l">Ø Ergebnis</div>
+            <div class="v" style={`color:${col(s.score)}`}>
+              {s.score == null ? '–' : `${s.score} %`}
+            </div>
+            <div class="s">Ziel ab {st.threshold_target} %</div>
+          </div>
+          <div class="kpi">
+            <div class="l">Audits</div>
+            <div class="v">{s.checks}</div>
+            <div class="s">abgeschlossen im Zeitraum</div>
+          </div>
+          <div class="kpi">
+            <div class="l">Geprüfte Einheiten</div>
+            <div class="v">{s.units}</div>
+          </div>
+          <div class="kpi">
+            <div class="l">Mängel</div>
+            <div class="v">{s.defects}</div>
+            <div class="s">Bewertung unter {st.threshold_low} %</div>
+          </div>
+        </div>
+        {!s.checks ? (
+          <div class="card">
+            <div class="empty">Im Zeitraum gibt es keine abgeschlossenen Qualitätskontrollen.</div>
+          </div>
+        ) : (
+          <>
+            <div class="card">
+              <h3 style="margin-top:0">Qualitätsverlauf (Ø je Monat)</h3>
+              <div class="qcols">
+                {s.months.map((m) => (
+                  <div class="qcol" title={`${m.checks} Audits`}>
+                    <span class="v">{m.score} %</span>
+                    <span class="b">
+                      <i style={`height:${m.score}%;background:${col(m.score)}`} />
+                      <b style={`bottom:${st.threshold_low}%`} />
+                    </span>
+                    <span class="l">
+                      {m.month.slice(5)}/{m.month.slice(2, 4)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p class="small mut">Rote Linie: Schwellwert {st.threshold_low} %.</p>
+            </div>
+            <div class="cols">
+              <div class="card">
+                <h3 style="margin-top:0">Leistungsbereiche</h3>
+                {s.areas.length ? (
+                  bars(s.areas.map((a) => ({ name: a.name, v: a.score, sub: `${a.defects} Mängel` })))
+                ) : (
+                  <p class="mut small">Nur Kontrollen mit Bewertung je Kontrollgegenstand (QM-App).</p>
+                )}
+                <h3>Leistungsgruppen (Nutzungsarten)</h3>
+                {s.groups.length ? (
+                  bars(s.groups.map((a) => ({ name: a.name, v: a.score, sub: `${a.units} Einheiten` })))
+                ) : (
+                  <p class="mut small">–</p>
+                )}
+              </div>
+              <div class="card">
+                <h3 style="margin-top:0">Top 10 Verbesserungspotentiale</h3>
+                <div class="tbl">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Kontrollgegenstand</th>
+                        <th class="right">Bewertungen</th>
+                        <th class="right">Qualität</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {s.top.map((t) => (
+                        <tr>
+                          <td>
+                            {t.item}
+                            {t.description && <div class="small mut">{t.description}</div>}
+                          </td>
+                          <td class="right">{t.count}</td>
+                          <td class="right" style={`color:${col(t.score)};font-weight:600`}>
+                            {t.score} %
+                          </td>
+                        </tr>
+                      ))}
+                      {!s.top.length && (
+                        <tr>
+                          <td colspan={3} class="mut">
+                            Keine Abzüge.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <h3 style="margin-top:0">Objekte</h3>
+              <div class="tbl">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Objekt</th>
+                      <th>Kunde</th>
+                      <th class="right">Audits</th>
+                      <th>Letztes Audit</th>
+                      <th class="right">Letztes</th>
+                      <th class="right">Ø</th>
+                      <th class="right">Trend</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {s.sites.map((x) => (
+                      <tr>
+                        <td>
+                          <a href={`/objekte/${x.site_id}/qualitaet`}>{x.site_name}</a>{' '}
+                          <span class="mut small">{x.site_no}</span>
+                        </td>
+                        <td>{x.customer_name}</td>
+                        <td class="right">{x.checks}</td>
+                        <td>{dateDe(x.last_date)}</td>
+                        <td class="right" style={`color:${col(x.last)};font-weight:600`}>
+                          {x.last} %
+                        </td>
+                        <td class="right">{x.avg} %</td>
+                        <td class="right">{x.trend == null ? '–' : `${x.trend > 0 ? '+' : ''}${x.trend}`}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
       </>,
     );
   });
@@ -895,6 +1157,30 @@ f.addEventListener('change',show);f.addEventListener('input',sum);show();})();`,
         )}
       </PageHead>
     );
+    const isAdmin = c.get('user').role === 'admin';
+    const delBox =
+      q.status === 'entwurf' || isAdmin ? (
+        <details class="card" style="margin-top:12px">
+          <summary class="small">Qualitätskontrolle löschen</summary>
+          <form
+            method="post"
+            action={`/qualitaet/${id}/loeschen`}
+            data-confirm={`Qualitätskontrolle ${q.number} wirklich löschen? Bewertungen und offene Nachbesserungs-Aufgaben werden entfernt.`}
+          >
+            <p class="small mut">
+              {q.status === 'entwurf'
+                ? 'Der Entwurf wird mit allen Bewertungen gelöscht.'
+                : 'Abgeschlossene Kontrolle (nur Admin): Stand wird im Protokoll festgehalten, Prüfbericht und Fotos bleiben im Archiv, offene Nachbesserungs-Aufgaben entfallen.'}
+            </p>
+            <button class="btn danger sm">Endgültig löschen</button>
+          </form>
+        </details>
+      ) : null;
+    const reportBtn = (
+      <a class="btn" href={`/qualitaet/${id}/auswertung.pdf`} target="_blank">
+        <Icon name="pdf" /> Auswertungsbericht (PDF)
+      </a>
+    );
     const photos = (
       <div class="card">
         <FileArea
@@ -914,8 +1200,9 @@ f.addEventListener('change',show);f.addEventListener('input',sum);show();})();`,
         <>
           {head}
           <div class="actions" style="margin-top:-8px">
+            {reportBtn}
             <a class="btn sec" href={`/qualitaet/${id}/bericht.pdf`} target="_blank">
-              <Icon name="pdf" /> Prüfbericht (PDF)
+              <Icon name="pdf" /> Prüfprotokoll (archiviert)
             </a>
           </div>
           <div class="cols">
@@ -955,7 +1242,10 @@ f.addEventListener('change',show);f.addEventListener('input',sum);show();})();`,
                 </table>
               </div>
             </div>
-            {photos}
+            <div>
+              {photos}
+              {delBox}
+            </div>
           </div>
         </>,
       );
@@ -1069,11 +1359,13 @@ f.addEventListener('change',show);f.addEventListener('input',sum);show();})();`,
           </form>
           <div>
             {photos}
-            <div class="card">
+            <div class="card actions">
+              {reportBtn}
               <a class="btn sec" href={`/qualitaet/${id}/bericht.pdf`} target="_blank">
-                <Icon name="pdf" /> PDF-Vorschau
+                <Icon name="pdf" /> Prüfprotokoll (Vorschau)
               </a>
             </div>
+            {delBox}
           </div>
         </div>
       </>,
@@ -1188,6 +1480,32 @@ f.addEventListener('change',show);f.addEventListener('input',sum);show();})();`,
       c.get('actor'),
     );
     return back(c, `/qualitaet/${id}`, { ok: 'Kontrolle abgeschlossen, Prüfbericht gespeichert.' });
+  });
+
+  app.post(`/qualitaet/:id{${UUID}}/loeschen`, async (c) => {
+    const id = c.req.param('id');
+    const data = await getQualityCheck(sql, id);
+    if (!data) return c.notFound();
+    assertSite(c, data.check.site_id);
+    await deleteQualityCheck(sql, id, { admin: c.get('user').role === 'admin', actor: c.get('actor') });
+    return back(c, `/objekte/${data.check.site_id}/qualitaet`, {
+      ok: `Qualitätskontrolle ${data.check.number} gelöscht.`,
+    });
+  });
+
+  app.get(`/qualitaet/:id{${UUID}}/auswertung.pdf`, async (c) => {
+    const id = c.req.param('id');
+    const data = await getQualityCheck(sql, id);
+    if (!data) return c.notFound();
+    assertSite(c, data.check.site_id);
+    const pdf = await renderAuditReportPdf(deps, uploadConfig(ctx), id);
+    return new Response(pdf, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="Auswertungsbericht_${data.check.number}.pdf"`,
+        'Cache-Control': 'private, no-cache',
+      },
+    });
   });
 
   app.get(`/qualitaet/:id{${UUID}}/bericht.pdf`, async (c) => {

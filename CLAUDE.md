@@ -2496,3 +2496,21 @@ Testadresse.
   nur noch für Dateien ohne erkennbaren Monat. Dateiname in der Personalakte jetzt „Lohnabrechnung 2025-08 August 2025 –
   Name (1234).pdf“ (ältere Dateien sind unveränderbar, werden aber genauso angezeigt). Probe mit der echten ZIP: 74 von 75
   zugeordnet (eine Personalnummer gibt es in der App nicht – wird gemeldet).
+- 2026-10-11: **Qualitätskontrolle: Auswertungsbericht, Statistik, Löschen** (Ahmed, Vorlage Neumann & Neumann):
+  - **Auswertungsbericht (PDF)** an jeder Kontrolle (`/qualitaet/<id>/auswertung.pdf`, Stil „edel“, `src/services/qm-report.ts`):
+    Kunde/Objekt/Prüfer/Prüfdatum, Kacheln Ergebnis / geprüfte Einheiten / Mängel / Änderung zum letzten Audit, Kommentar,
+    **Ampel** (Einheiten unter Schwellwert / bis Ziel / im Ziel), **Qualitätsverlauf** des Objekts (Linie mit Schwellwert und
+    Zielbereich), **Leistungsgruppen** (= Nutzungsarten) und **Leistungsbereiche** (neu am Kontrollgegenstand: Obenarbeiten,
+    Sanitär und Nassbereiche, Bodenreinigung …) je mit Einheiten, Mängeln, Qualität, Änderung + Balken, **Top 10
+    Verbesserungspotentiale** (Kontrollgegenstand, Tätigkeit = neue Beschreibung, Bewertungen, Qualität), durchgeführte
+    Prüfungen, geprüfte Einheiten mit Uhrzeit, **Mängelliste** je Raum mit Fotos (JPG/PNG), Unterschrift. Mangel = Bewertung
+    unter dem Schwellwert. Ältere Kontrollen ohne Noten: in Ordnung = 100 %, Mangel = 0 %. Das bisherige Prüfprotokoll
+    (archiviert) bleibt daneben.
+  - **Statistik** (`/qualitaet/statistik`, Knopf in der Liste der Qualitätskontrollen): Zeitraum, Kunde, Objekt; Ø Ergebnis,
+    Audits, Einheiten, Mängel, Verlauf je Monat, Leistungsbereiche/-gruppen, Top 10, Objekte mit Trend; als PDF.
+    Objektleitung nur eigene Objekte.
+  - **Einstellungen → Kontrollgegenstände:** Leistungsbereich und Tätigkeit/Beschreibung je Gegenstand (Standardgegenstände
+    vorbelegt), **Schwellwerte** (Standard 80 % / Zielbereich ab 88 % wie N&N, `app.qm_settings`).
+  - **Löschen** (unten an der Kontrolle): Entwurf jeder mit Zugriff aufs Objekt; abgeschlossene nur Admin – Stand ins
+    Protokoll, offene Nachbesserungs-Aufgaben entfallen, Prüfbericht/Fotos bleiben write-once im Archiv, Tickets bleiben.
+    Migration `20261122000004`. Test `qm-report.db.test.ts`.

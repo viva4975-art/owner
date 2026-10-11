@@ -2557,3 +2557,12 @@ Testadresse.
   Zuschläge) dort eintragen.**
 - 2026-10-11: Export für Lexware buchhaltung wieder entfernt (Ahmed: „brauche ich nicht“) – Buchhaltung bleibt beim
   Steuerberater (DATEV-Export). Lohn-Export „Lexware (ASCII)“ bleibt.
+- 2026-10-11: **Lexware Lohn ASCII-Import neu** (Ahmed: Felder „Jahr, Monat, Personalnummer, Lohnartnummer, Wert“): je Zeile
+  `Jahr;Monat;Personalnummer;Lohnartnummer;Wert` (Windows-1252, Semikolon, Dezimalkomma, ohne Kopfzeile, Monat ohne
+  führende Null). Wert = Stunden bei Normalstunden/Aushilfslohn/Urlaub/Krank/Feiertag, Euro-Betrag bei Zuschlägen (unsere
+  Sätze) und Gehältern; Korrekturen des Vormonats im Exportmonat. Lohnarten „Sonstige bezahlte Abwesenheit“ (zählt jetzt
+  als Normalstunden) und „Unbezahlt“ (keine Lohnart mehr) entfernt; neu **Aushilfslohn (Minijob)** (Minijob mit
+  Stundenlohn statt Normalstunden), **Gehalt**, **Aushilfsgehalt (Minijob)**, **Geschäftsführergehalt
+  GmbH-Gesellschafter** (Vergütung Festgehalt; Geschäftsführer über Tag „Geschäftsführer“; anteilig nach Kalendertagen
+  bei Ein-/Austritt; bei Festgehalt keine Grundlohn-Stunden im Export). Hinweis fehlender Nummern nur für Lohnarten, die
+  im Monat vorkommen. Ältere Vorab-Exporte werden für die Korrektur umgerechnet. Test `payroll-lexware.test.ts`.

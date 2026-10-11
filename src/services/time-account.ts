@@ -127,8 +127,8 @@ export async function timeAccount(
     for (const id of ids) {
       const p = payBy.get(id);
       const s = soll.get(id) ?? null;
-      const worked = p?.minutes.normal ?? 0;
-      const paidAbsence = p ? p.minutes.urlaub + p.minutes.krank + p.minutes.sonstige : 0;
+      const worked = p ? p.minutes.normal + p.minutes.aushilfslohn : 0;
+      const paidAbsence = p ? p.minutes.urlaub + p.minutes.krank : 0;
       const ist = worked + paidAbsence;
       const saldo = s == null ? null : ist - s;
       const bookings = bookingsAll

@@ -162,7 +162,7 @@ describe.skipIf(!available)('Zeitbericht aus Fortytools (Excel): Zeiten, Pausen,
     const max = pay.find((x) => x.personnel_no === '1102')!;
     expect(max.minutes.normal).toBe(220 + 60 + 60); // 4 Std. − 20 Min. Pause + 2 × 1 Std.
     expect(max.minutes.urlaub).toBe(6 * 240);
-    expect(max.minutes.unbezahlt).toBe(120);
+    expect(Object.keys(max.minutes)).not.toContain('unbezahlt'); // unbezahlt ist keine Lohnart
     // Einsatz Mo 06:00–12:30 (30 Min. Pause) → Ostermontag 06.04. bezahlter Feiertag 6 Std.
     const april = await payrollMonth(sql, '2026-04');
     expect(april.find((x) => x.personnel_no === '1101')!.minutes.feiertag_lfz).toBe(360);

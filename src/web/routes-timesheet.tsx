@@ -26,6 +26,7 @@ import {
 } from '../services/timesheet.js';
 import {
   SURCHARGES,
+  HOUR_TYPES,
   WAGE_TYPES,
   WAGE_TYPE_LABEL,
   getPayrollSettings,
@@ -41,6 +42,7 @@ import type { Context } from 'hono';
 import type { AppEnv, Ctx } from './app.js';
 import { arr, str } from './forms.js';
 import { PageHead, dateDe, euro } from './layout.js';
+import type { WageType } from '../services/payroll.js';
 
 const UUID = '[0-9a-f-]{36}';
 const esc = (s: string | null | undefined) =>
@@ -503,7 +505,7 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                 class="btn sm"
                 href={`/zeiterfassung/lohnarten-lexware.txt?${d.qs()}`}
                 data-export
-                title="Lexware ASCII-Import: Personalnummer;Lohnart-Nr.;Stunden;Betrag – Windows-1252 (ANSI), ohne Kopfzeile"
+                title="Lexware ASCII-Import: Jahr;Monat;Personalnummer;Lohnartnummer;Wert – Windows-1252 (ANSI), ohne Kopfzeile"
                 data-confirm={
                   month >= todayBerlin().slice(0, 7)
                     ? `Der Monat ${month.slice(5)}/${month.slice(0, 4)} läuft noch. Diesen Stand als Vorab-Abrechnung für Lexware festhalten? Was sich danach noch ändert, kommt im Folgemonat als Korrekturzeile.`
@@ -516,17 +518,24 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
           )}
         </div>
         {d.view === 'lohnarten' &&
-          (['normal', 'urlaub', 'krank'] as const).some((k) => !st.wage_type_numbers[k]?.trim()) && (
-            <div class="notice warn" style="max-width:960px">
-              Für den Lexware-Export fehlen Lohnart-Nummern (
-              {(['normal', 'urlaub', 'krank', 'feiertag_lfz', 'nacht', 'sonntag', 'feiertag'] as const)
-                .filter((k) => !st.wage_type_numbers[k]?.trim())
-                .map((k) => WAGE_TYPE_LABEL[k])
-                .join(', ')}
-              ) – ohne Nummer werden diese Stunden nicht exportiert.{' '}
-              <a href="/zeiterfassung/lohnarten/einstellungen">Nummern eintragen →</a>
-            </div>
-          )}
+          (() => {
+            // nur Lohnarten, die in diesem Monat vorkommen und keine Nummer haben
+            const used = new Set<WageType>();
+            for (const x of d.rows) {
+              if (x.p?.salary) used.add(x.p.salary.type);
+              for (const k of HOUR_TYPES) if (x.p?.minutes[k]) used.add(k);
+            }
+            const miss = WAGE_TYPES.filter((k) => used.has(k) && !st.wage_type_numbers[k]?.trim());
+            return (
+              miss.length > 0 && (
+                <div class="notice warn" style="max-width:960px">
+                  Für den Lexware-Export fehlen Lohnart-Nummern (
+                  {miss.map((k) => WAGE_TYPE_LABEL[k]).join(', ')}) – ohne Nummer werden diese Werte nicht
+                  exportiert. <a href="/zeiterfassung/lohnarten/einstellungen">Nummern eintragen →</a>
+                </div>
+              )
+            );
+          })()}
         {d.view === 'lohnarten' && (
           <form method="get" class="card" style="max-width:960px;padding:12px 16px">
             {[...new URLSearchParams(d.qs({ stichtag: '' })).entries()].map(([k, v]) => (
@@ -617,10 +626,11 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                 <tr>
                   <th>Pers.-Nr.</th>
                   <th>Mitarbeiter</th>
-                  {WAGE_TYPES.map((k) => (
+                  {HOUR_TYPES.map((k) => (
                     <th class="r">{WAGE_TYPE_LABEL[k].replace('Zuschlag ', 'Zuschl. ')}</th>
                   ))}
                   <th class="r">Zuschläge €</th>
+                  <th class="r">Gehalt €</th>
                 </tr>
               )}
             </thead>
@@ -701,10 +711,13 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                     </>
                   ) : (
                     <>
-                      {WAGE_TYPES.map((k) => (
+                      {HOUR_TYPES.map((k) => (
                         <td class="r">{h(p?.minutes[k] ?? 0)}</td>
                       ))}
                       <td class="r">{euro(surchargeEur(p))}</td>
+                      <td class="r" title={p?.salary ? WAGE_TYPE_LABEL[p.salary.type] : undefined}>
+                        {p?.salary ? euro(p.salary.cents) : ''}
+                      </td>
                     </>
                   )}
                 </tr>
@@ -743,13 +756,16 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                     <td>
                       <b>Summe</b>
                     </td>
-                    {WAGE_TYPES.map((k) => (
+                    {HOUR_TYPES.map((k) => (
                       <td class="r">
                         <b>{h(tot((x) => x.p?.minutes[k] ?? 0))}</b>
                       </td>
                     ))}
                     <td class="r">
                       <b>{euro(rows.reduce((a, x) => a + surchargeEur(x.p), 0n))}</b>
+                    </td>
+                    <td class="r">
+                      <b>{euro(rows.reduce((a, x) => a + (x.p?.salary?.cents ?? 0n), 0n))}</b>
                     </td>
                   </tr>
                 )}
@@ -779,11 +795,10 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
           'Normalstunden',
           'Urlaub',
           'Krank',
-          'Sonstige bezahlt',
-          'Unbezahlt',
           'Bezahlt gesamt',
           ...SURCHARGES.map((k) => WAGE_TYPE_LABEL[k]),
           'Zuschläge €',
+          'Gehalt €',
         ]
       : [
           'Personalnummer',
@@ -808,11 +823,10 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
           hm(x.s.totals.work),
           h(x.s.totals.vacation),
           h(x.s.totals.sick),
-          h(x.s.totals.otherPaid),
-          h(x.s.totals.unpaid),
           hm(x.s.totals.paid),
           ...SURCHARGES.map((k) => h(x.p?.minutes[k] ?? 0)),
           euro(surchargeEur(x.p)),
+          x.p?.salary ? euro(x.p.salary.cents) : '',
         ]
       : [
           x.e.personnel_no,
@@ -849,7 +863,7 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
     const lohn = d.view === 'lohnarten';
     const cols = overviewCols(d.view);
     const widths = lohn
-      ? [50, 130, 62, 50, 42, 42, 46, 46, 50, 44, 44, 44, 44, 56]
+      ? [50, 136, 64, 56, 48, 48, 56, 48, 48, 48, 48, 60, 60]
       : [54, 150, 70, 56, 62, 52, 50, 50, 56, 56, 56, 60];
     const tsum = (f: (x: Row) => number) => d.rows.reduce((a, x) => a + f(x), 0);
     const totals = lohn
@@ -860,11 +874,10 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
           hm(tsum((x) => x.s.totals.work)),
           h(tsum((x) => x.s.totals.vacation)),
           h(tsum((x) => x.s.totals.sick)),
-          h(tsum((x) => x.s.totals.otherPaid)),
-          h(tsum((x) => x.s.totals.unpaid)),
           hm(tsum((x) => x.s.totals.paid)),
           ...SURCHARGES.map((k) => h(tsum((x) => x.p?.minutes[k] ?? 0))),
           euro(d.rows.reduce((a, x) => a + surchargeEur(x.p), 0n)),
+          euro(d.rows.reduce((a, x) => a + (x.p?.salary?.cents ?? 0n), 0n)),
         ]
       : [
           '',
@@ -1108,7 +1121,7 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
     const rows = d.rows.map((x) => x.p).filter((p): p is NonNullable<typeof p> => !!p);
     const prev = addMonths(month, -1);
     const corr = await payrollCorrections(sql, prev);
-    const { text, missing } = payrollLexwareAscii(rows, st, corr.rows);
+    const { text, missing } = payrollLexwareAscii(rows, st, month, corr.rows);
     // leere Datei nie still herunterladen (Ahmed 11.10.: „enthält nichts drin“) – Grund nennen
     if (!text) {
       const back2 = `/zeiterfassung/stundenzettel?ansicht=lohnarten&${d.qs()}`;
@@ -1210,9 +1223,13 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
           <h3>Lohnart-Nummern im Lohnprogramm</h3>
           <p class="small mut">
             Export „Lexware (ASCII)“: Windows-1252 (ANSI), Trennzeichen Semikolon, Dezimalkomma, ohne
-            Kopfzeile; je Zeile Personalnummer;Lohnart-Nr.;Stunden;Betrag (Betrag nur bei Zuschlägen). In
-            Lexware einmal die ASCII-Importvorlage mit diesen vier Feldern in dieser Reihenfolge anlegen.
-            Lohnarten ohne Nummer werden nicht exportiert.
+            Kopfzeile; je Zeile Jahr;Monat;Personalnummer;Lohnartnummer;Wert. Wert = Stunden bei
+            Normalstunden, Aushilfslohn, Urlaub, Krank, Feiertag; Euro-Betrag bei Zuschlägen (mit unseren
+            Sätzen) und Gehältern. Gehalt / Aushilfsgehalt / Geschäftsführergehalt gilt für Vergütung
+            „Festgehalt“ (Minijob → Aushilfsgehalt, Tag „Geschäftsführer“ → Geschäftsführergehalt;
+            anteilig bei Ein-/Austritt im Monat) – dann keine Grundlohn-Stunden. Minijob mit Stundenlohn →
+            Aushilfslohn statt Normalstunden. Sonstige bezahlte Abwesenheit zählt als Normalstunden,
+            unbezahlte wird nicht exportiert. Lohnarten ohne Nummer werden nicht exportiert.
           </p>
           <div class="grid">
             {WAGE_TYPES.map((k) => (

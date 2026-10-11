@@ -13,28 +13,42 @@ import { breakRange, listEntries, plannedShifts } from './time.js';
 import { monthRange } from './timesheet.js';
 
 /*
- * Lohnarten je Mitarbeiter und Monat für die Lohnabrechnung (Lexware): Normalstunden (gearbeitet), Urlaub, Krank,
- * sonstige bezahlte Abwesenheit, unbezahlt (nur zur Info) und Zuschlagsstunden nach RTV Gebäudereinigung.
- * Zuschläge werden zusätzlich zum Grundlohn gezahlt (Stunden × Lohn × Satz). Nur erfasste/freigegebene Zeiten.
+ * Lohnarten je Mitarbeiter und Monat für die Lohnabrechnung (Lexware): Normalstunden (gearbeitet, dazu sonstige
+ * bezahlte Abwesenheit), Aushilfslohn (Minijob mit Stundenlohn), Urlaub, Krank, Feiertag, Zuschläge nach RTV
+ * Gebäudereinigung sowie Gehalt / Aushilfsgehalt (Minijob) / Geschäftsführergehalt als Monatsbetrag bei Festgehalt.
+ * Unbezahlte Abwesenheit ist keine Lohnart (Ahmed 11.10.). Nur erfasste/freigegebene Zeiten.
  */
 
-export type WageType =
-  'normal' | 'urlaub' | 'krank' | 'feiertag_lfz' | 'sonstige' | 'unbezahlt' | SurchargeKind | 'mehrarbeit';
+/** Lohnarten mit Stunden */
+export type HourType =
+  'normal' | 'aushilfslohn' | 'urlaub' | 'krank' | 'feiertag_lfz' | SurchargeKind | 'mehrarbeit';
+/** Lohnarten mit Monatsbetrag (Festgehalt) */
+export type SalaryType = 'gehalt' | 'aushilfsgehalt' | 'gf_gehalt';
+export type WageType = HourType | SalaryType;
 
-export const WAGE_TYPE_LABEL: Record<WageType, string> = {
+export const HOUR_TYPE_LABEL: Record<HourType, string> = {
   normal: 'Normalstunden',
+  aushilfslohn: 'Aushilfslohn (Minijob)',
   urlaub: 'Urlaub',
   krank: 'Krankheit (Lohnfortzahlung)',
   feiertag_lfz: 'Feiertag (Entgeltfortzahlung)',
-  sonstige: 'Sonstige bezahlte Abwesenheit',
-  unbezahlt: 'Unbezahlt (Info)',
   nacht: 'Zuschlag Nachtarbeit',
   sonntag: 'Zuschlag Sonntagsarbeit',
   feiertag: 'Zuschlag Feiertagsarbeit',
   feiertag_hoch: 'Zuschlag hohe Feiertage',
   mehrarbeit: 'Zuschlag Mehrarbeit',
 };
+export const SALARY_TYPE_LABEL: Record<SalaryType, string> = {
+  gehalt: 'Gehalt',
+  aushilfsgehalt: 'Aushilfsgehalt (Minijob)',
+  gf_gehalt: 'Geschäftsführergehalt GmbH-Gesellschafter',
+};
+export const WAGE_TYPE_LABEL: Record<WageType, string> = { ...HOUR_TYPE_LABEL, ...SALARY_TYPE_LABEL };
+export const HOUR_TYPES = Object.keys(HOUR_TYPE_LABEL) as HourType[];
+export const SALARY_TYPES = Object.keys(SALARY_TYPE_LABEL) as SalaryType[];
 export const WAGE_TYPES = Object.keys(WAGE_TYPE_LABEL) as WageType[];
+/** Grundlohn-Stunden: bei Festgehalt im Gehalt enthalten, im Export nicht einzeln */
+const BASE_HOURS: HourType[] = ['normal', 'aushilfslohn', 'urlaub', 'krank', 'feiertag_lfz'];
 export const SURCHARGES: SurchargeKind[] = ['nacht', 'sonntag', 'feiertag', 'feiertag_hoch'];
 
 export interface PayrollSettings {
@@ -114,7 +128,9 @@ export interface PayrollRow {
   wage_cents: bigint | null;
   pay_model: string | null;
   regular_sunday_work: boolean;
-  minutes: Record<WageType, number>;
+  minutes: Record<HourType, number>;
+  /** Festgehalt: Lohnart und Monatsbetrag (anteilig bei Ein-/Austritt im Monat) */
+  salary: { type: SalaryType; cents: bigint } | null;
   /** Zuschlagsbeträge in Cent (nur bei bekanntem Stundenlohn) */
   surchargeCents: Record<SurchargeKind, bigint>;
   /** angewandter Satz je Zuschlag (Basispunkte) */
@@ -147,8 +163,25 @@ function berlinAt(date: string, hhmm: string): Date {
   return new Date(guess.getTime() - off(new Date(guess.getTime() - off(guess))));
 }
 
-const zero = (): Record<WageType, number> =>
-  Object.fromEntries(WAGE_TYPES.map((k) => [k, 0])) as Record<WageType, number>;
+const zero = (): Record<HourType, number> =>
+  Object.fromEntries(HOUR_TYPES.map((k) => [k, 0])) as Record<HourType, number>;
+
+/** Gehalts-Lohnart: Geschäftsführer (Tag „Geschäftsführer“), Minijob, sonst Gehalt. */
+export function salaryTypeOf(e: { employment_type: string | null; tags: string[] | null }): SalaryType {
+  const gf = (e.tags ?? []).some((t) => /gesch(ä|ae)ftsf(ü|ue)hr/i.test(t));
+  return gf ? 'gf_gehalt' : e.employment_type === 'minijob' ? 'aushilfsgehalt' : 'gehalt';
+}
+
+/** Monatsgehalt anteilig nach Kalendertagen der Beschäftigung im Monat (kaufmännisch auf Cent). */
+export function proratedSalary(cents: bigint, from: string, to: string, entry: string, exit: string | null) {
+  const s = entry > from ? entry : from;
+  const e = exit && exit < to ? exit : to;
+  const days = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000) + 1;
+  const total = days(from, to);
+  const worked = Math.max(0, days(s, e));
+  if (worked >= total) return cents;
+  return (cents * BigInt(worked) * 2n + BigInt(total)) / (2n * BigInt(total));
+}
 
 /**
  * Lohnarten eines Monats. Mit `cutoff` (Vorab-Abrechnung, Ahmed 09.10.: „Löhne müssen früher gedruckt werden“):
@@ -173,10 +206,16 @@ export async function payrollMonth(
       wage_cents: bigint | null;
       pay_model: string | null;
       regular_sunday_work: boolean;
+      employment_type: string | null;
+      tags: string[] | null;
+      monthly_salary_cents: bigint | null;
+      entry_date: string;
+      exit_date: string | null;
     }[]
   >`
     select e.id, e.personnel_no, e.last_name || ', ' || e.first_name as name, app.effective_wage_cents(e) as wage_cents,
-           e.pay_model, e.regular_sunday_work
+           e.pay_model, e.regular_sunday_work, e.employment_type::text, e.tags, e.monthly_salary_cents,
+           e.entry_date::text, e.exit_date::text
       from app.employees e
      where e.entry_date <= ${to} and (e.exit_date is null or e.exit_date >= ${from})
        and ${employeeId ? sql`e.id = ${employeeId}` : sql`true`}
@@ -331,11 +370,23 @@ export async function payrollMonth(
     for (const h of absHours) {
       if (h.employee_id !== e.id) continue;
       const k = kindOf.get(h.absence_id);
-      if (!h.paid) m.unbezahlt += h.minutes;
-      else if (k === 'urlaub') m.urlaub += h.minutes;
+      if (!h.paid) continue; // unbezahlt: keine Lohnart
+      if (k === 'urlaub') m.urlaub += h.minutes;
       else if (k === 'krank' || k === 'kind_krank') m.krank += h.minutes;
-      else m.sonstige += h.minutes;
+      else m.normal += h.minutes; // sonstige bezahlte Abwesenheit = Normalstunden
     }
+    // Minijob mit Stundenlohn: gearbeitete Stunden als Aushilfslohn
+    if (e.employment_type === 'minijob' && e.pay_model !== 'festgehalt') {
+      m.aushilfslohn = m.normal;
+      m.normal = 0;
+    }
+    const salary =
+      e.pay_model === 'festgehalt' && e.monthly_salary_cents
+        ? {
+            type: salaryTypeOf(e),
+            cents: proratedSalary(BigInt(e.monthly_salary_cents), from, to, e.entry_date, e.exit_date),
+          }
+        : null;
     const bp: Record<SurchargeKind, number> = {
       nacht: rates.night,
       sonntag: e.regular_sunday_work ? rates.sundayRegular : rates.sunday,
@@ -345,11 +396,16 @@ export async function payrollMonth(
     const sc = Object.fromEntries(
       SURCHARGES.map((k) => [k, e.wage_cents ? surchargeCents(m[k], e.wage_cents, bp[k]) : 0n]),
     ) as Record<SurchargeKind, bigint>;
-    if (WAGE_TYPES.some((k) => m[k]) || pending)
+    if (HOUR_TYPES.some((k) => m[k]) || pending || salary?.cents)
       rows.push({
-        ...e,
         employee_id: e.id,
+        personnel_no: e.personnel_no,
+        name: e.name,
+        wage_cents: e.wage_cents,
+        pay_model: e.pay_model,
+        regular_sunday_work: e.regular_sunday_work,
         minutes: m,
+        salary,
         surchargeCents: sc,
         bp,
         overtimeCents: e.wage_cents ? surchargeCents(m.mehrarbeit, e.wage_cents, settings.overtime_bp) : 0n,
@@ -372,9 +428,23 @@ export function payrollCsv(
   corrections?: { month: string; rows: PayrollCorrection[] },
 ): string {
   const safe = (v: string) => (/^[=+\-@]/.test(v) ? `'${v}` : v).replace(/;/g, ',');
-  const out = ['﻿Monat;Personalnummer;Name;Lohnart-Nr.;Lohnart;Stunden;Satz %;Stundenlohn;Betrag Zuschlag'];
-  for (const r of rows)
-    for (const k of WAGE_TYPES) {
+  const out = ['\uFEFFMonat;Personalnummer;Name;Lohnart-Nr.;Lohnart;Stunden;Satz %;Stundenlohn;Betrag'];
+  for (const r of rows) {
+    if (r.salary)
+      out.push(
+        [
+          month,
+          safe(r.personnel_no),
+          safe(r.name),
+          safe(s.wage_type_numbers[r.salary.type] ?? ''),
+          WAGE_TYPE_LABEL[r.salary.type],
+          '',
+          '',
+          '',
+          eur(r.salary.cents),
+        ].join(';'),
+      );
+    for (const k of HOUR_TYPES) {
       if (!r.minutes[k]) continue;
       const sur = (SURCHARGES as string[]).includes(k) ? (k as SurchargeKind) : null;
       const ot = k === 'mehrarbeit';
@@ -396,9 +466,10 @@ export function payrollCsv(
         ].join(';'),
       );
     }
+  }
   // Korrektur Vormonat (Vorab-Abrechnung): Differenz in Stunden, Beträge rechnet das Lohnprogramm
   for (const r of corrections?.rows ?? [])
-    for (const k of WAGE_TYPES) {
+    for (const k of HOUR_TYPES) {
       const v = r.minutes[k];
       if (!v) continue;
       out.push(
@@ -411,53 +482,75 @@ export function payrollCsv(
           dec(v),
           '',
           '',
-          '',
+          r.cents?.[k] != null ? eur(r.cents[k]!) : '',
         ].join(';'),
       );
     }
   return `${out.join('\r\n')}\r\n`;
 }
 
+/** Cent-Betrag mit Vorzeichen (Korrekturen können negativ sein). */
+const eurSigned = (c: bigint) => (c < 0n ? `-${eur(-c)}` : eur(c));
+/** Zuschlag in Cent auch für negative Minuten (Korrektur), kaufmännisch gerundet. */
+const surchargeSigned = (minutes: number, wage: bigint, bp: number) =>
+  minutes < 0 ? -surchargeCents(-minutes, wage, bp) : surchargeCents(minutes, wage, bp);
+
 /**
- * ASCII-Import für Lexware lohn+gehalt / Financial Office (Ahmed 11.10.: „ASCII also ANSI-Import“):
- * Windows-1252, Semikolon, Dezimalkomma, CRLF, ohne Kopfzeile. Je Mitarbeiter und Lohnart eine Zeile:
- * Personalnummer;Lohnart-Nr.;Stunden;Betrag – nur Lohnarten mit hinterlegter Nummer, „Unbezahlt (Info)“ nie.
- * Betrag nur bei Zuschlägen (sonst leer, Lexware rechnet Stunden × Stundenlohn). Korrekturen des Vormonats
- * (Vorab-Abrechnung) als eigene Zeilen mit der Stunden-Differenz (auch minus).
- * Rückgabe: Text + Lohnarten ohne Nummer (werden nicht exportiert, Hinweis auf der Seite).
+ * ASCII-Import für Lexware lohn+gehalt / Financial Office (Ahmed 11.10.: „ASCII also ANSI-Import“, Felder
+ * „Jahr, Monat, Personalnummer, Lohnartnummer, Wert“): Windows-1252, Semikolon, Dezimalkomma, CRLF, ohne Kopfzeile.
+ * Wert = Stunden bei Stunden-Lohnarten (Lexware rechnet × Stundenlohn), Euro-Betrag bei Zuschlägen (unsere Sätze)
+ * und Gehältern. Bei Festgehalt keine Grundlohn-Stunden (im Gehalt enthalten), nur Gehalt + Zuschläge.
+ * Nur Lohnarten mit hinterlegter Nummer. Korrekturen des Vormonats (Vorab-Abrechnung) im Exportmonat mit der
+ * Differenz (auch minus). Rückgabe: Text, Lohnarten ohne Nummer, Personen ohne Stundenlohn (Zuschlag nicht berechnet).
  */
 export function payrollLexwareAscii(
   rows: PayrollRow[],
   s: PayrollSettings,
+  month: string,
   corrections?: PayrollCorrection[],
-): { text: string; missing: WageType[] } {
+): { text: string; missing: WageType[]; noWage: string[] } {
   const out: string[] = [];
   const missing = new Set<WageType>();
+  const noWage = new Set<string>();
+  const [year, mon] = [month.slice(0, 4), String(Number(month.slice(5, 7)))];
   const clean = (v: string) => v.replace(/[;\r\n]/g, ' ').trim();
-  const push = (no: string, k: WageType, minutes: number, amount: string) => {
-    if (k === 'unbezahlt' || !minutes) return;
+  const push = (no: string, k: WageType, value: string) => {
     const nr = clean(s.wage_type_numbers[k] ?? '');
     if (!nr) {
       missing.add(k);
       return;
     }
-    out.push([clean(no), nr, dec(minutes), amount].join(';'));
+    out.push([year, mon, clean(no), nr, value].join(';'));
   };
-  for (const r of rows)
-    for (const k of WAGE_TYPES) {
-      const sur = (SURCHARGES as string[]).includes(k) ? (k as SurchargeKind) : null;
-      const amount =
-        sur && r.wage_cents
-          ? eur(r.surchargeCents[sur])
-          : k === 'mehrarbeit' && r.wage_cents
-            ? eur(r.overtimeCents)
-            : '';
-      push(r.personnel_no, k, r.minutes[k] ?? 0, amount);
+  for (const r of rows) {
+    if (r.salary?.cents) push(r.personnel_no, r.salary.type, eurSigned(r.salary.cents));
+    for (const k of HOUR_TYPES) {
+      const v = r.minutes[k] ?? 0;
+      if (!v || (r.salary && BASE_HOURS.includes(k))) continue;
+      if (!isAmount(k)) push(r.personnel_no, k, dec(v));
+      else if (!r.wage_cents) noWage.add(r.name);
+      else
+        push(
+          r.personnel_no,
+          k,
+          eurSigned(k === 'mehrarbeit' ? r.overtimeCents : r.surchargeCents[k as SurchargeKind]),
+        );
     }
+  }
   for (const r of corrections ?? [])
-    for (const k of WAGE_TYPES) push(r.personnel_no, k, r.minutes[k] ?? 0, '');
-  return { text: out.length ? `${out.join('\r\n')}\r\n` : '', missing: [...missing] };
+    for (const k of HOUR_TYPES) {
+      const v = r.minutes[k] ?? 0;
+      if (!v || (r.salaried && BASE_HOURS.includes(k))) continue;
+      const a = r.cents?.[k];
+      if (!isAmount(k)) push(r.personnel_no, k, dec(v));
+      else if (a == null) noWage.add(r.name);
+      else push(r.personnel_no, k, eurSigned(a));
+    }
+  return { text: out.length ? `${out.join('\r\n')}\r\n` : '', missing: [...missing], noWage: [...noWage] };
 }
+
+/** Zuschläge (inkl. Mehrarbeit) werden als Betrag exportiert, alle übrigen Stunden-Lohnarten als Stunden. */
+const isAmount = (k: HourType) => k === 'mehrarbeit' || (SURCHARGES as string[]).includes(k);
 
 /** Vorab-Export festhalten (Grundlage für die Korrektur im Folgemonat). */
 export async function recordPayrollExport(
@@ -477,7 +570,11 @@ export interface PayrollCorrection {
   personnel_no: string;
   name: string;
   /** tatsächlich − vorab exportiert, je Lohnart (Minuten, auch negativ) */
-  minutes: Partial<Record<WageType, number>>;
+  minutes: Partial<Record<HourType, number>>;
+  /** Betrag der Differenz bei Zuschlägen (Cent, auch negativ; fehlt ohne Stundenlohn) */
+  cents?: Partial<Record<HourType, bigint>>;
+  /** Festgehalt: Grundlohn-Stunden sind im Gehalt enthalten */
+  salaried?: boolean;
 }
 
 /**
@@ -489,27 +586,60 @@ export async function payrollCorrections(
   month: string,
 ): Promise<{ cutoff: string | null; rows: PayrollCorrection[] }> {
   const [ex] = await sql<
-    { cutoff: string | null; rows: { employee_id: string; minutes: Record<WageType, number> }[] }[]
+    { cutoff: string | null; rows: { employee_id: string; minutes: Record<string, number> }[] }[]
   >`
     select cutoff::text, rows from app.payroll_exports where month = ${month} order by created_at desc limit 1`;
   if (!ex?.cutoff) return { cutoff: null, rows: [] };
-  const actual = await payrollMonth(sql, month);
-  const before = new Map(ex.rows.map((r) => [r.employee_id, r.minutes]));
+  const [actual, settings] = await Promise.all([payrollMonth(sql, month), getPayrollSettings(sql)]);
+  // ältere Exporte: „sonstige“ war eine eigene Lohnart (jetzt Normalstunden), „unbezahlt“ gibt es nicht mehr,
+  // Minijob-Stunden standen unter Normalstunden (jetzt Aushilfslohn)
+  const minijob = new Set(actual.filter((r) => r.minutes.aushilfslohn).map((r) => r.employee_id));
+  const before = new Map(
+    ex.rows.map((r) => {
+      const m: Record<string, number> = { ...r.minutes };
+      if ('sonstige' in m || 'unbezahlt' in m) {
+        m.normal = (m.normal ?? 0) + (m.sonstige ?? 0);
+        delete m.sonstige;
+        delete m.unbezahlt;
+      }
+      if (!('aushilfslohn' in m) && minijob.has(r.employee_id)) {
+        m.aushilfslohn = m.normal ?? 0;
+        m.normal = 0;
+      }
+      return [r.employee_id, m];
+    }),
+  );
   const ids = new Set([...actual.map((r) => r.employee_id), ...before.keys()]);
   const names = await sql<{ id: string; personnel_no: string; name: string }[]>`
     select id, personnel_no, last_name || ', ' || first_name as name from app.employees where id = any(${[...ids]}::uuid[])`;
   const out: PayrollCorrection[] = [];
   for (const id of ids) {
-    const now = actual.find((r) => r.employee_id === id)?.minutes;
+    const act = actual.find((r) => r.employee_id === id);
+    const now = act?.minutes;
     const was = before.get(id);
-    const diff: Partial<Record<WageType, number>> = {};
-    for (const k of WAGE_TYPES) {
+    const diff: Partial<Record<HourType, number>> = {};
+    const cents: Partial<Record<HourType, bigint>> = {};
+    for (const k of HOUR_TYPES) {
       const d = (now?.[k] ?? 0) - (was?.[k] ?? 0);
-      if (d) diff[k] = d;
+      if (!d) continue;
+      diff[k] = d;
+      if (act?.wage_cents && isAmount(k))
+        cents[k] = surchargeSigned(
+          d,
+          act.wage_cents,
+          k === 'mehrarbeit' ? settings.overtime_bp : act.bp[k as SurchargeKind],
+        );
     }
     const n = names.find((x) => x.id === id);
     if (Object.keys(diff).length && n)
-      out.push({ employee_id: id, personnel_no: n.personnel_no, name: n.name, minutes: diff });
+      out.push({
+        employee_id: id,
+        personnel_no: n.personnel_no,
+        name: n.name,
+        minutes: diff,
+        cents,
+        salaried: !!act?.salary,
+      });
   }
   out.sort((a, b) => a.name.localeCompare(b.name, 'de'));
   return { cutoff: ex.cutoff, rows: out };

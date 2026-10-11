@@ -18,11 +18,14 @@ const norm = (s: string) =>
     .replace(/ß/g, 'ss')
     .replace(/[^a-z0-9]/g, '');
 
-export type RoomField = 'floor' | 'room_no' | 'name' | 'type' | 'covering' | 'area' | 'interval' | 'notes';
+export type RoomField =
+  'building' | 'floor' | 'room_no' | 'name' | 'type' | 'covering' | 'area' | 'interval' | 'notes';
 export const ROOM_FIELDS: Record<RoomField, { label: string; aliases: string[] }> = {
+  // Fortytools-Raumexport hat „Gebäudeteil“ und „Etage“ getrennt → zusammen als Etage („A · UG“)
+  building: { label: 'Gebäudeteil', aliases: ['gebaeudeteil', 'bauteil', 'gebaeude', 'haus', 'trakt'] },
   floor: {
     label: 'Etage',
-    aliases: ['etage', 'geschoss', 'ebene', 'stockwerk', 'gebaeudeteil', 'bauteil', 'og', 'etagegeschoss'],
+    aliases: ['etage', 'geschoss', 'ebene', 'stockwerk', 'og', 'etagegeschoss'],
   },
   room_no: {
     label: 'Raum-Nr.',
@@ -53,6 +56,13 @@ export const ROOM_FIELDS: Record<RoomField, { label: string; aliases: string[] }
       'bodenflaeche',
       'flaecheinm',
       'flaecheinm2',
+      // Fortytools: „Größe in m²“
+      'groesse',
+      'groesseinm',
+      'groesseinm2',
+      'groesseinqm',
+      'groessem2',
+      'groesseqm',
     ],
   },
   interval: {
@@ -69,7 +79,10 @@ export const ROOM_FIELDS: Record<RoomField, { label: string; aliases: string[] }
       'frequenz',
     ],
   },
-  notes: { label: 'Hinweise', aliases: ['hinweis', 'hinweise', 'bemerkung', 'bemerkungen', 'notiz'] },
+  notes: {
+    label: 'Hinweise',
+    aliases: ['hinweis', 'hinweise', 'bemerkung', 'bemerkungen', 'notiz', 'beschreibung'],
+  },
 };
 
 /** Was „täglich“ bedeutet: Mo–Fr 260, Mo–Sa 312, Mo–So 365 Reinigungen im Jahr (beim Import wählbar). */
@@ -219,7 +232,7 @@ export async function analyzeRooms(
       for (const [idx, ff] of map) if (ff === f) return (cells[idx] ?? '').trim();
       return '';
     };
-    const floor = get('floor') || null;
+    const floor = [get('building'), get('floor')].filter(Boolean).join(' · ') || null;
     const roomNo = get('room_no') || null;
     const typeRaw = get('type');
     const name = get('name') || [typeRaw, roomNo].filter(Boolean).join(' ') || '';
@@ -230,7 +243,14 @@ export async function analyzeRooms(
     const errors: string[] = [];
     if (!name) errors.push('Raum fehlt');
     const areaCenti = areaOf(areaRaw, kind);
-    if (areaCenti == null) errors.push(areaRaw ? `Fläche „${areaRaw}“ ungültig` : 'Fläche fehlt');
+    if (areaCenti == null)
+      errors.push(
+        /^0+([.,]0*)?$/.test(areaRaw.replace(/\s|m²|m2|qm/gi, ''))
+          ? 'Fläche 0 m² – Raum wird nicht übernommen'
+          : areaRaw
+            ? `Fläche „${areaRaw}“ ungültig`
+            : 'Fläche fehlt',
+      );
     const intervalText = get('interval');
     let visits = parseInterval(intervalText, daily);
     const intervalDefaulted = !intervalText;

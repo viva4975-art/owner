@@ -42,6 +42,7 @@ import {
   renderQmStatisticsPdf,
 } from '../services/qm-report.js';
 import { uploadConfig } from './routes-files.js';
+import { renderRoomBookPdf, storeRoomBookPdf } from '../services/room-pdf.js';
 import { type Ctx, UUID, assertSite, inScope } from './app.js';
 import { FileArea } from './files.js';
 import { arr, centsToInput, str } from './forms.js';
@@ -174,6 +175,18 @@ export function registerFacilityRoutes(ctx: Ctx) {
             <a class="btn sm sec" href={`/objekte/${s.id}/raumbuch.csv`}>
               <Icon name="download" /> CSV
             </a>
+            <a class="btn sm sec" href={`/objekte/${s.id}/raumbuch.pdf`} target="_blank">
+              <Icon name="pdf" /> PDF
+            </a>
+            <form
+              method="post"
+              action={`/objekte/${s.id}/raumbuch/pdf-ablegen`}
+              style="display:inline;margin:0"
+            >
+              <button class="btn sm sec" title="Raumbuch als PDF mit Logo unter Objekt → Dokumente ablegen">
+                PDF in Dokumente ablegen
+              </button>
+            </form>
             {office && (
               <a class="btn sm ghost" href="/einstellungen/nutzungsarten">
                 Raumarten
@@ -394,8 +407,35 @@ export function registerFacilityRoutes(ctx: Ctx) {
     const sha = str(b, 'datei') ?? '';
     const a = await analyzeRooms(sql, siteId, await stagedFile(deps, sha), dailyOf(str(b, 'taeglich')));
     const r = await applyRooms(sql, siteId, sha, a, { update: b.update === 'on' }, c.get('actor'));
+    // Raumbuch als PDF (mit Logo) gleich in die Objekt-Dokumente legen
+    const pdfNote = await storeRoomBookPdf(sql, uploadConfig(ctx), siteId, c.get('actor')).then(
+      () => ' Raumbuch-PDF unter Dokumente abgelegt.',
+      () => '',
+    );
     return back(c, `/objekte/${siteId}/raumbuch`, {
-      ok: `Raumbuch importiert: ${r.created} neu, ${r.updated} aktualisiert, ${r.skipped} übersprungen.`,
+      ok: `Raumbuch importiert: ${r.created} neu, ${r.updated} aktualisiert, ${r.skipped} übersprungen.${pdfNote}`,
+    });
+  });
+
+  app.get(`/objekte/:id{${UUID}}/raumbuch.pdf`, async (c) => {
+    const siteId = c.req.param('id');
+    assertSite(c, siteId);
+    const pdf = await renderRoomBookPdf(sql, siteId);
+    return new Response(pdf, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': 'inline; filename="Raumbuch.pdf"',
+        'Cache-Control': 'private, no-cache',
+      },
+    });
+  });
+
+  app.post(`/objekte/:id{${UUID}}/raumbuch/pdf-ablegen`, async (c) => {
+    const siteId = c.req.param('id');
+    assertSite(c, siteId);
+    await storeRoomBookPdf(sql, uploadConfig(ctx), siteId, c.get('actor'));
+    return back(c, `/objekte/${siteId}/raumbuch`, {
+      ok: 'Raumbuch-PDF unter Objekt → Dokumente (Raumbuch) abgelegt.',
     });
   });
 

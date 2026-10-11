@@ -2537,3 +2537,12 @@ Testadresse.
   Jahres (darunter Anspruch), Stammdaten zeigen Arbeitstage/Woche. **Rechtlich:** Vor der Reduzierung erworbener Urlaub
   wird nicht gekürzt (EuGH C-486/08, BAG 9 AZR 53/14) – das erfüllt die monatsweise Rechnung. Migration `20261122000006`,
   Test `days-per-week.db.test.ts`.
+- 2026-10-11: **Raumbuch-Import Fortytools-Format + Raumbuch-PDF** (Ahmed: „Raumbuch geht immer noch nicht“, Datei Grundschule
+  Neubiberg): **Fund:** Die Fläche heißt im Fortytools-Raumexport „Größe in m²“ – unbekannt → „Spalte Fläche fehlt“; außerdem
+  belegten „Gebäudeteil“ und „Etage“ dasselbe Feld (Etage ging verloren). Jetzt: „Größe (in m²)“ als Fläche, eigenes Feld
+  Gebäudeteil (zusammen mit der Etage „A · UG“), „Beschreibung“ → Hinweise; „Kundennummer“, „für dieses Objekt“, „Revier“
+  werden ignoriert, Intervall fehlt dort → Auswahl „täglich“ wie bisher. 0 m² (Kriechkeller) wird mit klarer Meldung
+  übersprungen. Probe mit der echten Datei: 234 von 235 Räumen. **Raumbuch als PDF** (Stil „edel“, Logo/Briefpapier;
+  Übersicht je Nutzungsart mit Anteil, Räume je Gebäudeteil/Etage mit Summen, Hinweise; `src/services/room-pdf.ts`): wird
+  nach jedem Import automatisch unter Objekt → Dokumente (Kategorie „Raumbuch“) abgelegt, ältere App-Fassung ins Archiv;
+  Knöpfe „PDF“ und „PDF in Dokumente ablegen“ am Raumbuch. Test `room-import-ft.db.test.ts`.

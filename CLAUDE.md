@@ -2555,3 +2555,5 @@ Testadresse.
   (bzw. „keine Stunden im Monat“), Export wird dann nicht festgehalten; gelber Hinweis in der Ansicht Lohnarten mit Link
   zu Einstellungen → Zuschläge & Lohnarten. **Ahmed: Lohnart-Nummern aus Lexware (Normalstunden, Urlaub, Krank, Feiertag,
   Zuschläge) dort eintragen.**
+- 2026-10-11: Export für Lexware buchhaltung wieder entfernt (Ahmed: „brauche ich nicht“) – Buchhaltung bleibt beim
+  Steuerberater (DATEV-Export). Lohn-Export „Lexware (ASCII)“ bleibt.

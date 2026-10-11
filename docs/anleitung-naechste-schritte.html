@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<title>Nächste Schritte Server</title>
+<style>
+  body{font-family:Inter,Arial,sans-serif;color:#1d1d1f;max-width:820px;margin:28px auto;padding:0 18px;line-height:1.5;font-size:13.5px}
+  h1{color:#7D1435;font-size:23px;margin-bottom:4px}
+  h2{color:#7D1435;font-size:16px;margin:24px 0 8px;border-bottom:2px solid #f0dbe2;padding-bottom:4px}
+  h3{font-size:14px;margin:14px 0 4px}
+  .sub{color:#666;margin-top:0}
+  code{background:#f4eef0;padding:1px 5px;border-radius:4px}
+  pre{background:#1e1e22;color:#f2f2f2;padding:10px 13px;border-radius:6px;overflow-x:auto;font-size:12.5px;line-height:1.45}
+  pre code{background:none;padding:0;color:inherit}
+  .c{color:#8fd18f}
+  .box{background:#fff7e0;border:1px solid #e9c46a;border-radius:6px;padding:9px 13px;margin:10px 0}
+  .red{background:#fdecec;border-color:#e3a0a0}
+  .ok{background:#eef7ee;border-color:#9cc79c}
+  table{border-collapse:collapse;width:100%;margin:8px 0}
+  td,th{border:1px solid #ddd;padding:5px 8px;text-align:left;vertical-align:top}
+  th{background:#f6f2f3}
+  ol li,ul li{margin-bottom:5px}
+  .n{display:inline-block;background:#7D1435;color:#fff;border-radius:50%;width:22px;height:22px;text-align:center;line-height:22px;font-weight:700;margin-right:6px}
+  .chk li{list-style:none}
+  .chk li:before{content:"☐ ";font-size:15px}
+  @media print{h2{break-after:avoid}.box,pre,table{break-inside:avoid}}
+</style>
+</head>
+<body>
+<h1>Nächste Schritte – Server fertig absichern</h1>
+<p class="sub">Viva-Deluxe Betriebs-App · https://app.viva-deluxe-reinigung.de · Stand 11.10.2026 · Reihenfolge einhalten, jeder Schritt ca. 5–15 Minuten</p>
+
+<div class="box red"><b>Niemals in den Chat schicken:</b> Passwörter, Tokens, Verschlüsselungs-Passwort, Inhalt der <code>.env.live</code>.
+Fehlermeldungen und Screenshots ohne diese Angaben sind in Ordnung.</div>
+
+<div class="box ok"><b>Schon erledigt:</b> Acronis-Agent installiert und angemeldet, erste Sicherung der kompletten Maschine erfolgreich (11.10.2026).</div>
+
+<h2><span class="n">1</span>Aufräumen nach der Anmeldung</h2>
+<ol>
+  <li>Auf dem Server das Passwort aus dem Befehlsverlauf löschen:
+<pre>history -c &amp;&amp; history -w</pre></li>
+  <li>In der Backup-Konsole (Acronis) die beiden im Chat geschickten <b>Registrierungstokens löschen</b>
+    (Geräte → + Hinzufügen → ganz unten „Registrierungstoken“ → Liste/Verwalten → löschen). Falls nicht auffindbar: sie laufen von selbst ab.</li>
+</ol>
+
+<h2><span class="n">2</span>Sicherung: täglich und verschlüsselt</h2>
+<p>Der Standard-Plan „Backup entire workload“ sichert nur Mo–Fr und <b>unverschlüsselt</b>. Auf dem Server liegen Personaldaten
+(Steuer-ID, SV-Nummer, IBAN, Krankmeldungen) → eigener, verschlüsselter Plan.</p>
+<ol>
+  <li>Backup-Konsole → <b>Geräte</b> → <code>ubuntu</code> anklicken → oben rechts <b>„Plan hinzufügen“</b> → <b>„Plan erstellen“</b>.</li>
+  <li>Name: <b>Viva täglich</b>.</li>
+  <li><b>Was sichern:</b> Komplette Maschine · <b>Wohin:</b> Cloud Storage.</li>
+  <li><b>Planung:</b> täglich, <b>alle 7 Tage (Mo–So)</b>, <b>04:00</b> (nach der App-Sicherung um 02:30).</li>
+  <li><b>Aufbewahrung:</b> 90 Backups (oder 90 Tage) – falls der gebuchte Speicher knapp wird: 30.</li>
+  <li><b>Verschlüsselung: AN</b>, AES-256, eigenes Passwort.
+    <div class="box red"><b>Passwort sofort sicher aufschreiben</b> (Passwort-Manager oder Papier im Tresor, am besten zwei Stellen).
+    Ohne dieses Passwort kann niemand – auch IONOS nicht – die Sicherung wiederherstellen.</div></li>
+  <li>Alle anderen Module (Virenschutz, Patches, Überwachung …) ausschalten, falls angezeigt. → <b>Erstellen</b>.</li>
+  <li>Beim neuen Plan <b>„Jetzt ausführen“</b> → warten bis grün „Backup erfolgreich abgeschlossen“ (erstes Mal dauert länger).</li>
+  <li>Erst danach beim alten Plan <b>„Backup entire workload“</b>: <b>… → Widerrufen</b> (bzw. Entfernen). Die alte Sicherung bleibt
+    nach der Aufbewahrungsregel erhalten.</li>
+</ol>
+
+<h2><span class="n">3</span>root-Passwort des Servers ändern</h2>
+<p>Das alte root-Passwort stand im Chat – daher neu setzen.</p>
+<ol>
+  <li>Auf dem Server (angemeldet als root):
+<pre>passwd</pre></li>
+  <li>Neues Passwort zweimal eintippen (es wird beim Tippen <b>nicht angezeigt</b> – das ist normal). Mind. 16 Zeichen.</li>
+  <li>Meldung <code>password updated successfully</code>. Passwort im Passwort-Manager speichern.</li>
+  <li>Test: Verbindung trennen (<code>exit</code>) und mit dem neuen Passwort neu anmelden – <b>erst dann</b> das alte Fenster schließen.</li>
+</ol>
+<div class="box">Falls die Anmeldung über die IONOS-KVM-Konsole läuft: dort gilt ebenfalls das neue Passwort. Das IONOS-Kundenkonto-Passwort ist etwas anderes und bleibt.</div>
+
+<h2><span class="n">4</span>Mailzugang eintragen (falls noch nicht geschehen)</h2>
+<ol>
+  <li>Datei öffnen:
+<pre>nano /opt/viva/deploy/.env.live</pre></li>
+  <li>Zeilen ergänzen bzw. vorhandene ändern (Wert immer in einfachen Hochkommas, ohne Leerzeichen um <code>=</code>):
+<pre>SMTP_HOST='smtp.exchange2019.ionos.de'
+SMTP_PORT='587'
+SMTP_USER='buchhaltung@viva-deluxe-reinigung.de'
+SMTP_PASS='Passwort des Postfachs'
+MAIL_FROM='buchhaltung@viva-deluxe-reinigung.de'
+ALERT_EMAIL='ahmed@viva-deluxe-reinigung.de'</pre>
+    <span class="sub"><code>ALERT_EMAIL</code> = wer Störungsmeldungen bekommt (gern Ihre eigene Adresse).</span></li>
+  <li>Speichern: <kbd>Strg</kbd>+<kbd>O</kbd>, <kbd>Enter</kbd>, Beenden: <kbd>Strg</kbd>+<kbd>X</kbd>.</li>
+  <li>App neu starten:
+<pre>bash /opt/viva/deploy/update.sh</pre></li>
+  <li>Test in der App: <b>Einstellungen → E-Mail-Versand prüfen → „Test-E-Mail senden“</b>.</li>
+</ol>
+<div class="box"><b>Solange <code>APP_ENV='test'</code> und <code>MAIL_TEST_RECIPIENT</code> gesetzt sind, gehen alle Mails nur an die Testadresse.</b>
+Für den Echtversand an Kunden: <code>APP_ENV='live'</code> und die Zeile <code>MAIL_TEST_RECIPIENT</code> löschen – erst wenn die Test-Mail ankommt.</div>
+
+<h2><span class="n">5</span>Wächter von außen: UptimeRobot (App erreichbar?)</h2>
+<ol>
+  <li><b>uptimerobot.com</b> → „Register for FREE“ → E-Mail bestätigen.</li>
+  <li><b>„+ New monitor“</b> → Typ <b>Keyword</b>.</li>
+  <li>URL: <code>https://app.viva-deluxe-reinigung.de/health/voll</code></li>
+  <li>Keyword: <code>ok</code> · „Alert when keyword <b>does not exist</b>“ · Intervall <b>5 Minuten</b>.</li>
+  <li>Benachrichtigung per E-Mail; zusätzlich die UptimeRobot-App aufs Handy (Push).</li>
+  <li>Prüfen: Monitor zeigt grün <b>„Up“</b>.</li>
+</ol>
+
+<h2><span class="n">6</span>Wächter für die nächtliche Sicherung: healthchecks.io</h2>
+<ol>
+  <li><b>healthchecks.io</b> → kostenloses Konto → <b>„Add Check“</b>: Name „Viva Sicherung“, Period <b>1 day</b>, Grace <b>3 hours</b>.</li>
+  <li>Die Ping-Adresse kopieren (<code>https://hc-ping.com/…</code>).</li>
+  <li>In <code>/opt/viva/deploy/.env.live</code> eine Zeile ergänzen (wie in Schritt 4):
+<pre>BACKUP_PING_URL='https://hc-ping.com/…'</pre>
+    Kein Neustart nötig – die Sicherung um 02:30 liest die Zeile selbst.</li>
+  <li>Am nächsten Morgen: Check steht auf grün „Up“. Bleibt der Ping aus, kommt eine E-Mail.</li>
+</ol>
+
+<h2><span class="n">7</span>Kontrolle</h2>
+<ul class="chk">
+  <li>App: <b>Einstellungen → Systemzustand &amp; Ausfallmeldung</b> → „Jetzt prüfen“ → alles grün (Mail, Sicherung, Archiv-Kopie).</li>
+  <li>Acronis: Plan „Viva täglich“ grün, Verschlüsselung „Ein“, Planung Mo–So 04:00; alter Plan widerrufen.</li>
+  <li>UptimeRobot „Up“, healthchecks.io „Up“.</li>
+  <li>Neues root-Passwort und Backup-Verschlüsselungs-Passwort sicher abgelegt.</li>
+</ul>
+
+<h2><span class="n">8</span>Einmal im Quartal: Probe-Wiederherstellung</h2>
+<ol>
+  <li>Acronis: Gerät <code>ubuntu</code> → <b>Wiederherstellung</b> → jüngste Sicherung → <b>Dateien/Ordner</b> →
+    <code>/opt/viva-sicherung</code> → eine <code>datenbank_*.dump</code>-Datei auswählen → <b>Herunterladen</b> (Verschlüsselungs-Passwort nötig).</li>
+  <li>Lässt sich die Datei herunterladen, funktioniert die Sicherung. Datei danach wieder löschen (enthält Personaldaten).</li>
+</ol>
+
+<div class="box">Bei Problemen: Fehlermeldung bzw. Screenshot (ohne Passwörter/Tokens) schicken.</div>
+</body>
+</html>

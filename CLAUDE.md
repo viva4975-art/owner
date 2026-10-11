@@ -2454,4 +2454,8 @@ Testadresse.
   (§ 7 Abs. 3 SGB IV, SV-Abmeldung). **Rechtlich:** unbezahlt nur mit Ruhens-Klausel im Vertrag (Vorlagen V5); Urlaubs-
   anspruch dann nur für Tage mit Arbeitspflicht (Jahresurlaub je Mitarbeiter so hinterlegen). **Schulferien nach Sommer
   2027 in `src/domain/time/school-holidays.ts` ergänzen.** Migration `20261121000001`, Test `school-leave.db.test.ts`.
+- 2026-10-11: **Cloud Backup läuft** (Acronis-Agent über Benutzername/Passwort angemeldet – Token-Anmeldung an eu2-cloud
+  scheiterte mit 401; erste Sicherung komplette Maschine erfolgreich). Standard-Plan war Mo–Fr und unverschlüsselt →
+  Anleitung `docs/anleitung-naechste-schritte.html/.pdf`: eigener Plan „Viva täglich“ (Mo–So 04:00, verschlüsselt),
+  alten widerrufen, root-Passwort (`passwd`), SMTP/ALERT_EMAIL, UptimeRobot, healthchecks.io, Probe-Wiederherstellung.
 

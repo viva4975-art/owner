@@ -25,6 +25,7 @@ export interface Employee {
   email: string | null;
   languages: string[];
   annual_leave_days: string;
+  days_per_week: string;
   salutation: 'Herr' | 'Frau' | 'divers' | null;
   tags: string[];
   warning_note: string | null;
@@ -130,8 +131,18 @@ export const employeeInput = z
       (v) => (typeof v === 'string' && v.trim() ? Number(v.replace(',', '.')) : null),
       z.number().min(0).max(60).nullable(),
     ),
-    /** ab wann geänderte Wochenstunden gelten (leer = heute) */
+    /** ab wann geänderte Wochenstunden/Arbeitstage gelten (leer = heute) */
     hours_valid_from: optDate,
+    days_per_week: z.preprocess(
+      (v) =>
+        typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v.replace(',', '.')) : null,
+      z
+        .number({ error: 'Arbeitstage pro Woche: Zahl von 0,5 bis 7' })
+        .min(0.5, 'Arbeitstage pro Woche: 0,5 bis 7')
+        .max(7, 'Arbeitstage pro Woche: 0,5 bis 7')
+        .refine((n) => Number.isInteger(n * 2), 'Arbeitstage pro Woche in halben Tagen (z. B. 3 oder 2,5)')
+        .nullable(),
+    ),
     hourly_wage: z.preprocess(
       (v) => (typeof v === 'string' && v.trim() ? v.trim() : null),
       z
@@ -381,21 +392,36 @@ export async function saveEmployee(sql: Sql, id: string, input: EmployeeInput, a
   try {
     await sql.begin(async (tx) => {
       const [cur] = await tx<
-        { version: number; weekly_hours: string | null }[]
-      >`select version, weekly_hours::text from app.employees where id = ${id} for update`;
+        { version: number; weekly_hours: string | null; days_per_week: string }[]
+      >`select version, weekly_hours::text, days_per_week::text from app.employees where id = ${id} for update`;
       assertVersion(cur?.version, input.version, 'Der Mitarbeiter');
-      // Wochenstunden mit Verlauf: Änderung gilt ab „gültig ab“ (Zukunft → bis dahin bleibt der alte Wert)
+      // Wochenstunden und Arbeitstage mit Verlauf: Änderung gilt ab „gültig ab“ (Zukunft → bis dahin der alte Wert)
       const oldHours = cur?.weekly_hours != null ? Number(cur.weekly_hours) : null;
-      const hoursChanged = cur ? oldHours !== input.weekly_hours : true;
+      const oldDays = cur ? Number(cur.days_per_week) : 5;
+      // leer (z. B. Import) = unverändert
+      const newDays = input.days_per_week ?? oldDays;
+      const daysChanged = cur ? oldDays !== newDays : newDays !== 5;
+      const hoursChanged = cur ? oldHours !== input.weekly_hours || daysChanged : true;
       const validFrom = cur ? (input.hours_valid_from ?? todayBerlin()) : input.entry_date;
       const row =
-        cur && hoursChanged && validFrom > todayBerlin() ? { ...base, weekly_hours: oldHours } : base;
+        cur && hoursChanged && validFrom > todayBerlin()
+          ? { ...base, weekly_hours: oldHours, days_per_week: oldDays }
+          : { ...base, days_per_week: newDays };
       if (cur) {
         await tx`update app.employees set ${tx({ ...row, updated_at: new Date() } as Record<string, unknown>)} where id = ${id}`;
       } else {
         await tx`insert into app.employees ${tx({ id, ...row } as Record<string, unknown>)}`;
       }
-      if (hoursChanged) await recordHoursChange(tx, id, input.weekly_hours, validFrom, actor);
+      if (hoursChanged)
+        await recordHoursChange(
+          tx,
+          id,
+          input.weekly_hours,
+          validFrom,
+          actor,
+          null,
+          daysChanged || !cur ? newDays : null,
+        );
       const [curP] = await tx<
         { version: number }[]
       >`select version from app.employee_private where employee_id = ${id} for update`;

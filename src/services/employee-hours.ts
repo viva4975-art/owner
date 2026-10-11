@@ -13,6 +13,8 @@ export interface HoursRow {
   id: string;
   valid_from: string;
   weekly_hours: string | null;
+  /** Arbeitstage pro Woche ab diesem Tag (leer = unverändert) */
+  days_per_week: string | null;
   note: string | null;
   recorded_by: string;
   recorded_at: Date;
@@ -21,7 +23,7 @@ export interface HoursRow {
 /** Verlauf, neueste zuerst; je Stichtag nur der zuletzt erfasste Eintrag. */
 export async function hoursHistory(sql: Sql | Tx, employeeId: string) {
   return sql<HoursRow[]>`
-    select distinct on (valid_from) id, valid_from::text, weekly_hours::text, note, recorded_by, recorded_at
+    select distinct on (valid_from) id, valid_from::text, weekly_hours::text, days_per_week::text, note, recorded_by, recorded_at
       from app.employee_hours where employee_id = ${employeeId}
      order by valid_from desc, recorded_at desc`;
 }
@@ -51,6 +53,37 @@ export async function hoursPeriods(sql: Sql, employeeId: string, from: string, t
   return out;
 }
 
+/**
+ * Arbeitstage pro Woche je Abschnitt im Zeitraum [from, to]. Einträge ohne Tage übernehmen den vorigen Wert,
+ * vor dem ersten Eintrag mit Tagen gilt 5 (bzw. der Wert am Mitarbeiter, wenn es gar keinen Verlauf gibt).
+ */
+export async function daysPeriods(sql: Sql | Tx, employeeId: string, from: string, to: string) {
+  const hist = (await hoursHistory(sql, employeeId)).slice().reverse();
+  const withDays = hist.filter((h) => h.days_per_week != null);
+  if (!withDays.length) {
+    const [e] = await sql<
+      { d: string }[]
+    >`select days_per_week::text as d from app.employees where id = ${employeeId}`;
+    return [{ from, to, days: e ? Number(e.d) : 5 }];
+  }
+  const out: { from: string; to: string; days: number }[] = [];
+  let cur = 5;
+  let segStart = from;
+  for (const h of withDays) {
+    const d = Number(h.days_per_week);
+    if (h.valid_from <= from) {
+      cur = d;
+      continue;
+    }
+    if (h.valid_from > to) break;
+    out.push({ from: segStart, to: addDays(h.valid_from, -1), days: cur });
+    segStart = h.valid_from;
+    cur = d;
+  }
+  out.push({ from: segStart, to, days: cur });
+  return out.filter((s) => s.from <= s.to);
+}
+
 /** Soll-Minuten = je Abschnitt Wochenstunden × 4,33 je Monat (anteilig). null, wenn nirgends Stunden hinterlegt sind. */
 export async function sollMinutes(sql: Sql, employeeId: string, from: string, to: string) {
   if (from > to) return 0;
@@ -70,10 +103,11 @@ export async function recordHoursChange(
   validFrom: string,
   actor: string,
   note: string | null = null,
+  daysPerWeek: number | null = null,
 ) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(validFrom)) throw new BusinessError('„Gültig ab“ ist kein Datum');
-  await tx`insert into app.employee_hours (employee_id, valid_from, weekly_hours, note, recorded_by)
-          values (${employeeId}, ${validFrom}, ${hours}, ${note}, ${actor})`;
+  await tx`insert into app.employee_hours (employee_id, valid_from, weekly_hours, days_per_week, note, recorded_by)
+          values (${employeeId}, ${validFrom}, ${hours}, ${daysPerWeek}, ${note}, ${actor})`;
   await applyDueHours(tx, employeeId);
 }
 
@@ -89,5 +123,16 @@ export async function applyDueHours(sql: Sql | Tx, employeeId?: string) {
     update app.employees e set weekly_hours = cur.weekly_hours, version = e.version + 1, updated_at = now()
       from cur where cur.employee_id = e.id and e.weekly_hours is distinct from cur.weekly_hours
     returning e.id`;
-  return r.length;
+  // Arbeitstage: zuletzt gültiger Eintrag mit Tagen
+  const d = await sql`
+    with cur as (
+      select distinct on (employee_id) employee_id, days_per_week
+        from app.employee_hours
+       where valid_from <= ${today} and days_per_week is not null
+         and ${employeeId ? sql`employee_id = ${employeeId}` : sql`true`}
+       order by employee_id, valid_from desc, recorded_at desc)
+    update app.employees e set days_per_week = cur.days_per_week, version = e.version + 1, updated_at = now()
+      from cur where cur.employee_id = e.id and e.days_per_week is distinct from cur.days_per_week
+    returning e.id`;
+  return r.length + d.length;
 }

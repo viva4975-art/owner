@@ -1,6 +1,7 @@
 import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
-import { addDays, workingDays } from '../domain/time/holidays.js';
+import { addDays, holidayName, isoWeekday, workingDays } from '../domain/time/holidays.js';
+import { daysPeriods } from './employee-hours.js';
 import { BusinessError } from './errors.js';
 import { uuidOf } from './fortytools-export-import.js';
 import { leaveOpening } from './leave-import.js';
@@ -179,6 +180,34 @@ export async function addAbsenceDay(
             on conflict do nothing`;
 }
 
+/**
+ * Urlaubstage eines Zeitraums für diese Person (Ahmed 11.10.: weniger Arbeitstage → weniger Urlaub, aber auch eine
+ * Urlaubswoche kostet dann weniger Tage). 5-Tage-Woche: Mo–Fr ohne Feiertage. Weniger Tage: die Wochentage, an denen
+ * die Person eingeplant ist (ohne Feiertage); ohne Planung anteilig Mo–Fr × Tage ÷ 5 (auf halbe Tage).
+ */
+export async function leaveDaysOf(sql: Sql, employeeId: string, from: string, to: string, halfDay: boolean) {
+  if (from > to) return 0;
+  if (halfDay) return 0.5;
+  let sum = 0;
+  for (const seg of await daysPeriods(sql, employeeId, from, to)) {
+    if (seg.days >= 5) {
+      sum += workingDays(seg.from, seg.to);
+      continue;
+    }
+    const wds = (
+      await sql<{ wd: number }[]>`
+        select distinct weekday as wd from app.shift_plans
+         where employee_id = ${employeeId} and valid_from <= ${seg.to}
+           and (valid_until is null or valid_until >= ${seg.from})`
+    ).map((r) => Number(r.wd));
+    if (wds.length && wds.length <= Math.ceil(seg.days)) {
+      for (let d = seg.from; d <= seg.to; d = addDays(d, 1))
+        if (wds.includes(isoWeekday(d)) && !holidayName(d)) sum += 1;
+    } else sum += Math.round(((workingDays(seg.from, seg.to) * seg.days) / 5) * 2) / 2;
+  }
+  return sum;
+}
+
 /** Tage (Mo–Fr ohne Feiertage Bayern); halber Tag = 0,5. */
 export const absenceDays = (a: Pick<Absence, 'start_date' | 'end_date' | 'half_day'>) =>
   a.half_day ? 0.5 : workingDays(a.start_date, a.end_date);
@@ -343,10 +372,11 @@ export async function updateAbsence(
       const clip = (s: string, e: string) =>
         [s > `${y}-01-01` ? s : `${y}-01-01`, e < `${y}-12-31` ? e : `${y}-12-31`] as const;
       const [ns, ne] = clip(p.start, p.end);
-      const need = p.halfDay ? 0.5 : workingDays(ns, ne);
+      const need = await leaveDaysOf(sql, a.employee_id, ns, ne, p.halfDay);
       if (!need) continue;
       const [os, oe] = clip(a.start_date, a.end_date);
-      const old = a.kind === 'urlaub' && os <= oe ? (a.half_day ? 0.5 : workingDays(os, oe)) : 0;
+      const old =
+        a.kind === 'urlaub' && os <= oe ? await leaveDaysOf(sql, a.employee_id, os, oe, a.half_day) : 0;
       const bal = await leaveBalance(sql, a.employee_id, y);
       if (bal.rest + old < need)
         throw new BusinessError(
@@ -432,7 +462,7 @@ export async function assertLeaveLeft(
   for (let y = Number(start.slice(0, 4)); y <= Number(end.slice(0, 4)); y++) {
     const s = start > `${y}-01-01` ? start : `${y}-01-01`;
     const t = end < `${y}-12-31` ? end : `${y}-12-31`;
-    const days = halfDay ? 0.5 : workingDays(s, t);
+    const days = await leaveDaysOf(sql, employeeId, s, t, halfDay);
     if (!days) continue;
     const bal = await leaveBalance(sql, employeeId, y);
     const left = bal.rest + (included ? days : 0);
@@ -525,29 +555,55 @@ async function baseBalance(sql: Sql, employeeId: string, year: number, countFrom
   const months =
     from > to ? 0 : Number(to.slice(5, 7)) - Number(from.slice(5, 7)) + 1 - (from.slice(8) !== '01' ? 1 : 0);
   const full = Number(e.annual_leave_days);
-  const entitlement =
-    from === yStart0 && to === yEnd ? full : Math.round(((full * Math.max(0, months)) / 12) * 2) / 2;
+  // Anspruch gilt für 5 Arbeitstage/Woche; je Beschäftigungsmonat anteilig nach den dann gültigen Arbeitstagen
+  // (Wechsel im Monat: tageweise gewichtet). Vor einer Änderung erworbener Urlaub bleibt so erhalten.
+  let entitlement: number;
+  const segs = from <= to ? await daysPeriods(sql, employeeId, from, to) : [];
+  if (segs.every((g) => g.days === 5))
+    entitlement =
+      from === yStart0 && to === yEnd ? full : Math.round(((full * Math.max(0, months)) / 12) * 2) / 2;
+  else {
+    const firstFull = from.slice(8) !== '01' ? Number(from.slice(5, 7)) + 1 : Number(from.slice(5, 7));
+    let factorSum = 0;
+    for (let m = firstFull; m <= Number(to.slice(5, 7)); m++) {
+      const ms = `${year}-${String(m).padStart(2, '0')}-01`;
+      const me = addDays(m === 12 ? `${year + 1}-01-01` : `${year}-${String(m + 1).padStart(2, '0')}-01`, -1);
+      let w = 0;
+      let n = 0;
+      for (const g of segs) {
+        const a = g.from > ms ? g.from : ms;
+        const b = g.to < me ? g.to : me;
+        if (a > b) continue;
+        const len =
+          Math.round((Date.parse(`${b}T12:00:00Z`) - Date.parse(`${a}T12:00:00Z`)) / 86_400_000) + 1;
+        w += (g.days / 5) * len;
+        n += len;
+      }
+      factorSum += n ? w / n : 0;
+    }
+    entitlement = Math.round(((full * factorSum) / 12) * 2) / 2;
+  }
   const yStart = countFrom && countFrom > yStart0 ? countFrom : yStart0;
   if (yStart > yEnd) return { entitlement, taken: 0, requested: 0, takenQ1: 0 };
   const list = await listAbsences(sql, { employeeId, from: yStart, to: yEnd });
-  const inYear = (a: AbsenceRow) => {
-    const s = a.start_date < yStart ? yStart : a.start_date;
-    const t = a.end_date > yEnd ? yEnd : a.end_date;
-    return a.half_day ? 0.5 : workingDays(s, t);
-  };
-  const taken = list
-    .filter((a) => a.kind === 'urlaub' && a.status === 'genehmigt')
-    .reduce((s, a) => s + inYear(a), 0);
-  const requested = list
-    .filter((a) => a.kind === 'urlaub' && a.status === 'beantragt')
-    .reduce((s, a) => s + inYear(a), 0);
-  const takenQ1 = list
-    .filter((a) => a.kind === 'urlaub' && a.status === 'genehmigt' && a.start_date <= `${year}-03-31`)
-    .reduce((sum, a) => {
-      const st = a.start_date < yStart ? yStart : a.start_date;
-      const t = a.end_date > `${year}-03-31` ? `${year}-03-31` : a.end_date;
-      return sum + (a.half_day ? 0.5 : workingDays(st, t));
-    }, 0);
+  const inYear = (a: AbsenceRow, until = yEnd) =>
+    leaveDaysOf(
+      sql,
+      employeeId,
+      a.start_date < yStart ? yStart : a.start_date,
+      a.end_date > until ? until : a.end_date,
+      a.half_day,
+    );
+  let taken = 0;
+  let requested = 0;
+  let takenQ1 = 0;
+  for (const a of list) {
+    if (a.kind !== 'urlaub') continue;
+    if (a.status === 'genehmigt') {
+      taken += await inYear(a);
+      if (a.start_date <= `${year}-03-31`) takenQ1 += await inYear(a, `${year}-03-31`);
+    } else if (a.status === 'beantragt') requested += await inYear(a);
+  }
   return { entitlement, taken, requested, takenQ1 };
 }
 

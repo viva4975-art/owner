@@ -408,8 +408,15 @@ export const EmployeeOverview: FC<{
   footer?: Child;
   employment?: Child;
   /** Verlauf der Wochenstunden (neueste zuerst) */
-  hours?: { valid_from: string; weekly_hours: string | null; recorded_by: string }[];
-}> = ({ e, priv, sites, showPrivate, wage, month, afterHead, footer, employment, hours = [] }) => {
+  hours?: {
+    valid_from: string;
+    weekly_hours: string | null;
+    days_per_week?: string | null;
+    recorded_by: string;
+  }[];
+  /** Urlaubskonto des laufenden Jahres (Resturlaub statt Jahresanspruch in der Kopfleiste) */
+  leave?: { rest: number; entitlement: number; year: number } | null;
+}> = ({ e, priv, sites, showPrivate, wage, month, afterHead, footer, employment, hours = [], leave }) => {
   // Neu gestaltet (Ahmed 10.10.: „Mitarbeiterübersicht designtechnisch nicht schön“): Kopf mit Kennzahlen und
   // Schnellaktionen, darunter Beschäftigung | Kontakt, rechts Objekte, Vertrauliches, Plan/Ist.
   const today = todayBerlin();
@@ -523,9 +530,10 @@ export const EmployeeOverview: FC<{
             </small>
           </div>
           <div>
-            <span>Urlaub</span>
-            <b>{num(e.annual_leave_days)} Tage</b>
+            <span>Resturlaub {leave?.year ?? ''}</span>
+            <b>{leave ? `${num(leave.rest)} Tage` : `${num(e.annual_leave_days)} Tage`}</b>
             <small>
+              {leave ? `Anspruch ${num(leave.entitlement)} · ` : ''}
               <a href={`/personal/${e.id}/abwesenheiten`}>Urlaubskonto →</a>
             </small>
           </div>
@@ -564,6 +572,7 @@ export const EmployeeOverview: FC<{
                       {hours.map((h) => (
                         <div style="padding:2px 0" class={h.valid_from > today ? 'mut' : ''}>
                           ab {dateDe(h.valid_from)}: <b>{num(h.weekly_hours)} Std.</b>
+                          {h.days_per_week != null && <b> · {num(h.days_per_week)} Tage/Woche</b>}
                           <span class="mut">
                             {' '}
                             · {h.valid_from > today ? 'geplant · ' : ''}
@@ -575,8 +584,16 @@ export const EmployeeOverview: FC<{
                   </details>
                 )}
               </dd>
+              <dt>Arbeitstage/Woche</dt>
+              <dd>{num(e.days_per_week ?? '5')}</dd>
               <dt>Urlaubsanspruch</dt>
-              <dd>{num(e.annual_leave_days)} Tage/Jahr</dd>
+              <dd>
+                {num(e.annual_leave_days)} Tage/Jahr
+                <span class="small mut">
+                  {' '}
+                  (bei 5-Tage-Woche{Number(e.days_per_week ?? 5) !== 5 ? ', wird anteilig umgerechnet' : ''})
+                </span>
+              </dd>
               {wage && (
                 <>
                   <dt>Vergütung</dt>
@@ -802,19 +819,25 @@ export const EmployeeForm: FC<{
         label="Stunden/Woche"
         value={e.weekly_hours ? String(Number(e.weekly_hours)).replace('.', ',') : ''}
       />
+      <Field
+        name="days_per_week"
+        label="Arbeitstage/Woche"
+        value={String(Number(e.days_per_week ?? 5)).replace('.', ',')}
+      />
       {!isNew && (
         <div>
-          <label for="hours_valid_from">Stunden gültig ab</label>
+          <label for="hours_valid_from">Stunden/Tage gültig ab</label>
           <input id="hours_valid_from" name="hours_valid_from" type="date" />
           <div class="small mut">
-            Nur bei geänderten Stunden: ab wann sie gelten (leer = heute). Der alte Wert bleibt im Verlauf
-            sichtbar.
+            Nur bei geänderten Stunden oder Arbeitstagen: ab wann sie gelten (leer = heute, z. B. 01.11.). Der
+            alte Wert bleibt im Verlauf sichtbar; der Urlaub wird je Monat nach den dann gültigen Arbeitstagen
+            gerechnet.
           </div>
         </div>
       )}
       <Field
         name="annual_leave_days"
-        label="Urlaubsanspruch (Tage/Jahr)"
+        label="Urlaubsanspruch (Tage/Jahr bei 5-Tage-Woche)"
         value={e.annual_leave_days != null ? String(Number(e.annual_leave_days)).replace('.', ',') : '30'}
       />
     </div>

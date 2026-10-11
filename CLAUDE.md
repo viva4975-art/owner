@@ -2526,3 +2526,14 @@ Testadresse.
   nur Lohnarten mit Nummer, nie „Unbezahlt“. Export wird festgehalten wie die CSV. **Ahmed: in Lexware einmal die
   ASCII-Importvorlage mit diesen 4 Feldern anlegen und die Lohnart-Nummern unter Einstellungen → Zuschläge & Lohnarten
   eintragen; ersten Import gemeinsam prüfen.**
+- 2026-10-11: **Arbeitstage pro Woche mit Verlauf + Resturlaub** (Ahmed: „ab 01.11. weniger Tage, dadurch weniger Urlaub“):
+  Mitarbeiter-Formular „Arbeitstage/Woche“ (0,5–7, halbe Tage) mit „Stunden/Tage gültig ab“ → `employee_hours.days_per_week`
+  (nur anhängen), `employees.days_per_week` = heute gültiger Wert (Stichtag in der Zukunft übernimmt der Server). Der
+  Urlaubsanspruch in den Stammdaten gilt für die 5-Tage-Woche; **je Beschäftigungsmonat anteilig nach den dann gültigen
+  Arbeitstagen** (Monat mit Wechsel tageweise gewichtet, auf halbe Tage gerundet) – z. B. 30 Tage, ab 01.11. 3 Tage →
+  2026: 28 Tage, 2027: 18 Tage. **Urlaubstage zählen nur an Arbeitstagen der Person** (`leaveDaysOf`: bei < 5 Tagen die
+  eingeplanten Wochentage, ohne Planung Mo–Fr × Tage ÷ 5) – eine Urlaubswoche kostet bei 3-Tage-Woche 3 Tage. Gilt für
+  Urlaubskonto, Anspruchsprüfung, Warnung. Leer (Import) = unverändert. Übersicht: Kachel **Resturlaub** des laufenden
+  Jahres (darunter Anspruch), Stammdaten zeigen Arbeitstage/Woche. **Rechtlich:** Vor der Reduzierung erworbener Urlaub
+  wird nicht gekürzt (EuGH C-486/08, BAG 9 AZR 53/14) – das erfüllt die monatsweise Rechnung. Migration `20261122000006`,
+  Test `days-per-week.db.test.ts`.

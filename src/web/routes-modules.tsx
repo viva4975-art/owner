@@ -5,7 +5,7 @@ import { collectReminders } from '../services/reminders.js';
 import { fullName } from '../services/users.js';
 import { missingDocs } from '../services/hr-required-docs.js';
 import { hoursHistory } from '../services/employee-hours.js';
-import { absentBetween } from '../services/absences.js';
+import { absentBetween, leaveBalance } from '../services/absences.js';
 import { followups } from '../services/prospects.js';
 import { canAccess } from './permissions.js';
 import { randomUUID } from 'node:crypto';
@@ -1090,6 +1090,13 @@ export function registerModuleRoutes(ctx: Ctx) {
             afterHead={einsaetze}
             employment={beschaeftigung}
             hours={await hoursHistory(sql, e.id)}
+            leave={await leaveBalance(sql, e.id, Number(todayBerlin().slice(0, 4)))
+              .then((b) => ({
+                rest: b.rest,
+                entitlement: b.entitlement + b.carried - b.carriedExpired,
+                year: Number(todayBerlin().slice(0, 4)),
+              }))
+              .catch(() => null)}
           />
         </>
       );

@@ -56,8 +56,13 @@ export class FormDoc {
   pdf!: PDFDocument;
   reg!: PDFFont;
   bold!: PDFFont;
-  bg!: PDFImage;
+  bg: PDFImage | null = null;
+  /** schlanke Fassung ohne Briefpapier: nur Logo oben (Ahmed 11.10.: Raumbuch, QK-Bericht) */
+  logo: PDFImage | null = null;
   page!: PDFPage;
+  /** Inhaltsbereich (Briefpapier: 128–702; schlank: 74–806) */
+  top = TOP;
+  bottom = BOTTOM;
   y = TOP;
   private constructor(
     private sideRef: string,
@@ -70,6 +75,8 @@ export class FormDoc {
     date: string;
     author: string;
     watermark?: string;
+    /** ohne Briefpapier (kein Briefkopf, keine Fußzeile), nur Logo oben links */
+    plain?: boolean;
   }) {
     const d = new FormDoc(p.sideRef, p.watermark);
     d.pdf = await PDFDocument.create();
@@ -77,8 +84,14 @@ export class FormDoc {
     const f = await embedUiFonts(d.pdf);
     d.reg = f.regular;
     d.bold = f.bold;
-    letterheadBytes ??= await readFile(new URL('briefpapier/viva-deluxe-a4.jpg', ASSETS));
-    d.bg = await d.pdf.embedJpg(letterheadBytes);
+    if (p.plain) {
+      d.logo = await d.pdf.embedPng(await readFile(new URL('web/logo-transparent.png', ASSETS)));
+      d.top = 74;
+      d.bottom = 806;
+    } else {
+      letterheadBytes ??= await readFile(new URL('briefpapier/viva-deluxe-a4.jpg', ASSETS));
+      d.bg = await d.pdf.embedJpg(letterheadBytes);
+    }
     d.pdf.setTitle(p.title);
     d.pdf.setAuthor(p.author);
     d.pdf.setLanguage('de-DE');
@@ -91,7 +104,12 @@ export class FormDoc {
 
   newPage() {
     this.page = this.pdf.addPage([W, H]);
-    this.page.drawImage(this.bg, { x: 0, y: 0, width: W, height: H });
+    if (this.bg) this.page.drawImage(this.bg, { x: 0, y: 0, width: W, height: H });
+    if (this.logo) {
+      const lw = 110;
+      const lh = (this.logo.height / this.logo.width) * lw;
+      this.page.drawImage(this.logo, { x: L, y: H - 22 - lh, width: lw, height: lh });
+    }
     if (this.watermark)
       this.page.drawText(this.watermark, {
         x: 140,
@@ -102,12 +120,12 @@ export class FormDoc {
         rotate: degrees(35),
         opacity: 0.5,
       });
-    this.y = TOP;
+    this.y = this.top;
   }
 
   /** Platz prüfen, sonst neue Seite (optional mit Wiederholung z. B. eines Tabellenkopfs) */
   ensure(h: number, onBreak?: () => void) {
-    if (this.y + h <= BOTTOM) return;
+    if (this.y + h <= this.bottom) return;
     this.newPage();
     onBreak?.();
   }
@@ -330,7 +348,7 @@ export class FormDoc {
     const height = (ls: typeof lines) => ls.reduce((a, l) => a + lh + (l.gapAfter ?? 0), 0);
     let i = 0;
     while (i < lines.length) {
-      const avail = BOTTOM - this.y;
+      const avail = this.bottom - this.y;
       const rest = lines.slice(i);
       // passt der Rest in zwei Spalten? → in der Mitte (nach Höhe) teilen, sonst linke Spalte voll füllen
       let cut = i;
@@ -349,7 +367,7 @@ export class FormDoc {
         let y = this.y;
         for (let k = from; k < to; k++) {
           const l = lines[k]!;
-          if (y + lh > BOTTOM) return { y, k };
+          if (y + lh > this.bottom) return { y, k };
           this.text(l.t, x, y + size, l.title ? { size: size + 0.6, bold: true, color: BORDEAUX } : { size });
           y += lh + (l.gapAfter ?? 0);
         }

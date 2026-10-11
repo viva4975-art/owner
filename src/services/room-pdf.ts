@@ -34,6 +34,7 @@ export async function renderRoomBookPdf(sql: Sql, siteId: string): Promise<Uint8
     sideRef: `Raumbuch ${s.name} (${s.site_no}) · Stand ${formatDateDe(today)}`,
     date: today,
     author: 'Viva-Deluxe Gebäudereinigung GmbH',
+    plain: true,
   });
   d.title('Raumbuch', s.site_no);
   d.infoGrid([

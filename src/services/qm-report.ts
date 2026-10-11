@@ -551,7 +551,7 @@ const AMBER = rgb(0.86, 0.6, 0.1);
 const GREEN = rgb(0.2, 0.55, 0.32);
 const LIGHT = rgb(0.93, 0.92, 0.93);
 const { L, R } = FORM_X;
-const { H, BOTTOM } = FORM_Y;
+const { H } = FORM_Y;
 const { BORDEAUX, MUT } = FORM_COLORS;
 
 const pctText = (n: number | null) => (n == null ? '–' : `${n} %`);
@@ -676,6 +676,7 @@ export async function renderAuditReportPdf(deps: Deps, cfg: UploadConfig, id: st
     sideRef: `Auswertungsbericht Qualitätskontrolle ${q.number}`,
     date: q.check_date,
     author: 'Viva-Deluxe Gebäudereinigung GmbH',
+    plain: true,
     ...(q.status === 'entwurf' ? { watermark: 'ENTWURF' } : {}),
   });
   d.title('Auswertungsbericht Qualitätskontrolle', q.number);
@@ -849,7 +850,7 @@ export async function renderAuditReportPdf(deps: Deps, cfg: UploadConfig, id: st
           px = L;
           d.y += ph + 6;
         }
-        if (d.y + ph > BOTTOM) {
+        if (d.y + ph > d.bottom) {
           d.newPage();
           px = L;
         }
@@ -885,6 +886,7 @@ export async function renderQmStatisticsPdf(
     sideRef: `Qualitätsstatistik ${formatDateDe(f.from)} – ${formatDateDe(f.to)}`,
     date: f.to,
     author: 'Viva-Deluxe Gebäudereinigung GmbH',
+    plain: true,
   });
   d.title('Qualitätsstatistik', `${formatDateDe(f.from)} – ${formatDateDe(f.to)}`);
   d.infoGrid([

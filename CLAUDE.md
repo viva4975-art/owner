@@ -2546,3 +2546,7 @@ Testadresse.
   Übersicht je Nutzungsart mit Anteil, Räume je Gebäudeteil/Etage mit Summen, Hinweise; `src/services/room-pdf.ts`): wird
   nach jedem Import automatisch unter Objekt → Dokumente (Kategorie „Raumbuch“) abgelegt, ältere App-Fassung ins Archiv;
   Knöpfe „PDF“ und „PDF in Dokumente ablegen“ am Raumbuch. Test `room-import-ft.db.test.ts`.
+- 2026-10-11: **Raumbuch-PDF und QK-Auswertungsbericht schlank** (Ahmed: „kürzer, fetten Briefkopf brauchen wir nicht, Angaben
+  unten weg, nur Logo oben“): `FormDoc.create({ plain: true })` – kein Briefpapier (kein Briefkopf, keine Fußzeile mit
+  Bank/Siegeln), nur Logo oben links, Inhaltsbereich 74–806 pt statt 128–702 (Raumbuch Neubiberg 9 → 7 Seiten). Gilt für
+  Raumbuch-PDF, Auswertungsbericht und Qualitätsstatistik; Rechnungen, Briefe, Bestellscheine bleiben auf dem Briefpapier.

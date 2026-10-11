@@ -99,13 +99,13 @@ Testadresse.
 - [ ] Datenschutzbeauftragter: Zahl der Personen prüfen, die regelmäßig mit personenbezogenen Daten am Rechner arbeiten
       (ab 20 Pflicht, § 38 BDSG); AÜ-Erlaubnis unter Einstellungen → Firmendaten eintragen
 - [ ] Lieferantennummern bei Behörden, Leitweg-IDs der Behörden-Kunden (Steuernummer 143/190/63154 vom Briefpapier übernommen)
-- [ ] Mail-Zugang (SMTP) für buchhaltung@viva-deluxe-reinigung.de (IONOS Exchange) in `.env.live` eintragen – Anleitung `docs/anleitung-server-eintragen.pdf`
+- [x] ~~Mail-Zugang (SMTP) für buchhaltung@ in `.env.live`~~ – 11.10.2026 eingetragen (Ahmed)
 - [ ] Testadresse für den Prototyp-Versand
 - [x] ~~S3-Bucket mit Object Lock~~ – 11.10.2026 eingerichtet (IONOS eu-central-4, Bucket viva-archiv), Kopie läuft
-- [ ] Ausfallmeldung: UptimeRobot (`/health/voll`) und healthchecks.io (`BACKUP_PING_URL`) einrichten, `ALERT_EMAIL` in
-      `.env.live` – Anleitung `docs/anleitung-ueberwachung.pdf`
+- [x] ~~Ausfallmeldung~~ – 11.10.2026 UptimeRobot (`/health/voll`) + `ALERT_EMAIL` eingerichtet (Ahmed); healthchecks.io optional
 - [x] IONOS VPS (4 vCores/8 GB, Ubuntu 24.04, 217.160.236.117) installiert, läuft unter https://app.viva-deluxe-reinigung.de
-- [ ] ~~AVV mit IONOS~~ (11.10. erledigt); IONOS Cloud Backup (Sicherung außerhalb des Servers – Anleitung `docs/anleitung-cloud-backup.pdf`); root-Passwort ändern (stand im Chat; GitHub-Token 11.10. gelöscht); SMTP-Zugang nachtragen (`.env.live`)
+- [x] ~~AVV mit IONOS, IONOS Cloud Backup (Plan „Viva täglich“, verschlüsselt), root-Passwort, GitHub-Token~~ – 11.10.2026 erledigt (Ahmed);
+      Probe-Wiederherstellung vierteljährlich (`docs/anleitung-naechste-schritte.pdf`, Schritt 8)
 - [ ] Lexware-Lohnprogramm (genaue Bezeichnung, Importformat)
 - [ ] Fortytools: eine Rechnungsgruppe von innen zeigen (dort stecken vermutlich die Preise je Objekt)
 - [ ] Briefpapier ab 01.11.2026 (neue Adresse) als Datei vom Grafiker, 300 dpi – 11.10. angefragt

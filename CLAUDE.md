@@ -2550,3 +2550,8 @@ Testadresse.
   unten weg, nur Logo oben“): `FormDoc.create({ plain: true })` – kein Briefpapier (kein Briefkopf, keine Fußzeile mit
   Bank/Siegeln), nur Logo oben links, Inhaltsbereich 74–806 pt statt 128–702 (Raumbuch Neubiberg 9 → 7 Seiten). Gilt für
   Raumbuch-PDF, Auswertungsbericht und Qualitätsstatistik; Rechnungen, Briefe, Bestellscheine bleiben auf dem Briefpapier.
+- 2026-10-11: Lexware-Export „enthält nichts“ (Ahmed): Lohnarten ohne Lohnart-Nummer werden nicht exportiert – auf dem Server
+  waren keine Nummern eingetragen → leere Datei. Jetzt keine leere Datei mehr, sondern Meldung mit den fehlenden Lohnarten
+  (bzw. „keine Stunden im Monat“), Export wird dann nicht festgehalten; gelber Hinweis in der Ansicht Lohnarten mit Link
+  zu Einstellungen → Zuschläge & Lohnarten. **Ahmed: Lohnart-Nummern aus Lexware (Normalstunden, Urlaub, Krank, Feiertag,
+  Zuschläge) dort eintragen.**

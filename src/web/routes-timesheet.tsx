@@ -515,6 +515,18 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
             </>
           )}
         </div>
+        {d.view === 'lohnarten' &&
+          (['normal', 'urlaub', 'krank'] as const).some((k) => !st.wage_type_numbers[k]?.trim()) && (
+            <div class="notice warn" style="max-width:960px">
+              Für den Lexware-Export fehlen Lohnart-Nummern (
+              {(['normal', 'urlaub', 'krank', 'feiertag_lfz', 'nacht', 'sonntag', 'feiertag'] as const)
+                .filter((k) => !st.wage_type_numbers[k]?.trim())
+                .map((k) => WAGE_TYPE_LABEL[k])
+                .join(', ')}
+              ) – ohne Nummer werden diese Stunden nicht exportiert.{' '}
+              <a href="/zeiterfassung/lohnarten/einstellungen">Nummern eintragen →</a>
+            </div>
+          )}
         {d.view === 'lohnarten' && (
           <form method="get" class="card" style="max-width:960px;padding:12px 16px">
             {[...new URLSearchParams(d.qs({ stichtag: '' })).entries()].map(([k, v]) => (
@@ -1096,8 +1108,21 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
     const rows = d.rows.map((x) => x.p).filter((p): p is NonNullable<typeof p> => !!p);
     const prev = addMonths(month, -1);
     const corr = await payrollCorrections(sql, prev);
+    const { text, missing } = payrollLexwareAscii(rows, st, corr.rows);
+    // leere Datei nie still herunterladen (Ahmed 11.10.: „enthält nichts drin“) – Grund nennen
+    if (!text) {
+      const back2 = `/zeiterfassung/stundenzettel?ansicht=lohnarten&${d.qs()}`;
+      return back(c, back2, {
+        fehler: missing.length
+          ? `Lexware-Datei wäre leer: Es fehlen die Lohnart-Nummern für ${missing
+              .map((k) => WAGE_TYPE_LABEL[k])
+              .join(
+                ', ',
+              )}. Bitte unter Einstellungen → Zuschläge & Lohnarten die Nummern aus Lexware eintragen.`
+          : `Im Monat ${month.slice(5)}/${month.slice(0, 4)} gibt es für die Auswahl keine Stunden zum Exportieren.`,
+      });
+    }
     await recordPayrollExport(sql, month, d.cutoff, rows, c.get('actor'));
-    const { text } = payrollLexwareAscii(rows, st, corr.rows);
     return new Response(encodeCp1252(text), {
       headers: {
         'Content-Type': 'text/plain; charset=windows-1252',

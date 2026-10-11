@@ -142,10 +142,19 @@ export async function updateUser(
     active: boolean;
     siteIds: string[];
     expectedVersion: number | null;
+    /** neuer Benutzername (Ahmed 11.10.: änderbar) */
+    login?: string;
   },
   actor: string,
 ) {
   if (!(p.role in ROLE_LABEL)) throw new BusinessError('Rolle ungültig');
+  const newLogin = p.login?.trim().toLowerCase();
+  if (newLogin !== undefined) {
+    if (!/^[a-z0-9._@-]{3,64}$/.test(newLogin))
+      throw new BusinessError('Benutzername: 3–64 Zeichen, nur Kleinbuchstaben, Ziffern und . _ @ -');
+    // nur Ziffern = Personalnummer (die App-Anmeldung unterscheidet daran Mitarbeiter und Büro)
+    if (/^\d+$/.test(newLogin)) throw new BusinessError('Benutzername darf nicht nur aus Ziffern bestehen');
+  }
   await sql.begin(async (tx) => {
     const [cur] = await tx<{ version: number; role: Role }[]>`
       select a.version, p.role::text as role from app.user_accounts a join app.profiles p on p.user_id = a.id where a.id = ${id} for update of a`;
@@ -161,6 +170,19 @@ export async function updateUser(
     await tx`update app.profiles set display_name = ${p.name.trim()}, role = ${p.role}, email = ${p.email} where user_id = ${id}`;
     if (p.phone !== undefined) await tx`update app.profiles set phone = ${p.phone} where user_id = ${id}`;
     await tx`update app.user_accounts set active = ${p.active} where id = ${id}`;
+    if (newLogin) {
+      const [old] = await tx<{ login: string }[]>`select login from app.user_accounts where id = ${id}`;
+      if (old && old.login !== newLogin) {
+        const [taken] = await tx`select 1 from app.user_accounts where login = ${newLogin} and id <> ${id}`;
+        if (taken) throw new BusinessError(`Benutzername „${newLogin}“ ist schon vergeben`);
+        await tx`update app.user_accounts set login = ${newLogin} where id = ${id}`;
+        // Aufgaben hängen am Namen oder Benutzernamen → mitziehen
+        await tx`update app.tasks set assignee = ${newLogin} where lower(assignee) = ${old.login}`;
+        await tx`update app.tasks set created_by = ${newLogin} where created_by = ${old.login}`;
+        await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+                 values (${actor}, 'rename', 'user', ${id}, ${tx.json({ alt: old.login, neu: newLogin })})`;
+      }
+    }
     // Objekt-Zuordnung (nur Objektleitung)
     await tx`update app.sites set manager_user_id = null where manager_user_id = ${id}
               and ${p.role === 'objektleitung' ? tx`id not in ${tx(p.siteIds.length ? p.siteIds : ['00000000-0000-0000-0000-000000000000'])}` : tx`true`}`;

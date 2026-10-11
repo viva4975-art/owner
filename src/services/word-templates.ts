@@ -381,26 +381,32 @@ export async function importWordTemplates(
               values (${id}, ${code}, ${name}, ${audience}, ${categoryFor(code, name, audience)}, ${f.id}, ${sha},
                       ${ph}, ${actor}) on conflict (sha256) do nothing`;
     res.created.push(name);
-    // neue Fassung (z. B. VD-AV-2026-V3 statt -V2): ältere Fassung bleibt gespeichert, wird aber deaktiviert
+    // neue Fassung (z. B. VD-AV-2026-V3 statt -V2): ältere Fassung wird gelöscht (Ahmed 11.10.), die Datei bleibt im Archiv
     if (code) {
-      const old = await sql<{ name: string }[]>`
-        update app.word_templates set active = false
-         where id <> ${id} and active and audience = ${audience}
-           and regexp_replace(code, '-V[0-9]+$', '') = ${code.replace(/-V\d+$/, '')}
-        returning name`;
+      const old = await dropTemplates(
+        sql,
+        sql`id <> ${id} and audience = ${audience}
+            and regexp_replace(code, '-V[0-9]+$', '') = ${code.replace(/-V\d+$/, '')}`,
+      );
       res.replaced.push(...old.map((o) => o.name));
     }
   }
   // Vorlagen ohne Nachfolger, die nicht mehr verwendet werden (Ahmed 10.10.: keine Befristungen mehr; Anwesenheitsliste
-  // kommt aus der App) – mit dem Paket ab V5 deaktivieren, bleiben gespeichert
+  // kommt aus der App) – mit dem Paket ab V5 löschen
   if (docs.some((d) => /-V([5-9]|\d{2,})[_.]/.test(d.path.split('/').pop() ?? ''))) {
-    const gone = await sql<{ name: string }[]>`
-      update app.word_templates set active = false
-       where active and regexp_replace(code, '-V[0-9]+$', '') = any(${RETIRED_CODES})
-      returning name`;
+    const gone = await dropTemplates(sql, sql`regexp_replace(code, '-V[0-9]+$', '') = any(${RETIRED_CODES})`);
     res.replaced.push(...gone.map((g) => g.name));
   }
   return res;
+}
+
+/** Löscht Vorlagen samt Datei-Verknüpfung; die Datei selbst bleibt write-once im Archiv. */
+async function dropTemplates(sql: Sql, where: ReturnType<Sql>) {
+  const gone = await sql<{ id: string; name: string }[]>`
+    delete from app.word_templates where ${where} returning id, name`;
+  if (gone.length)
+    await sql`delete from app.file_links where entity_type = 'word_template' and entity_id = any(${gone.map((g) => g.id)})`;
+  return gone;
 }
 
 /** Vorlagen-Codes (ohne „-Vn“), die mit dem Paket V5 entfallen */

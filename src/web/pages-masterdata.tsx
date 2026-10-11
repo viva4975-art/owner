@@ -638,7 +638,7 @@ export const SiteList: FC<{
   const params = (over: Record<string, string | null>) => {
     const p = new URLSearchParams();
     const cur: Record<string, string | null> = {
-      status: filter.status,
+      status: filter.status ?? 'alle',
       ol: filter.manager,
       buchstabe: filter.letter,
       q: filter.q,

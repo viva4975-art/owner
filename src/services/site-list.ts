@@ -43,7 +43,8 @@ export function parseSiteFilter(get: (k: string) => string | undefined): SiteFil
   const so = get('sort');
   const ol = get('ol');
   return {
-    status: st === 'aktiv' || st === 'inaktiv' ? st : null,
+    // ohne Auswahl nur aktive Objekte (Ahmed 11.10.); „Alle“ = status=alle
+    status: st === 'inaktiv' ? 'inaktiv' : st === 'alle' ? null : 'aktiv',
     manager: ol && (ol === 'ohne' || /^[0-9a-f-]{36}$/.test(ol)) ? ol : null,
     letter: l && /^[A-Z0-9]$/.test(l) ? l : null,
     q: get('q')?.trim() || null,

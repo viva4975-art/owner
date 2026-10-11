@@ -196,4 +196,37 @@ describe.skipIf(!available)('Benutzerkonten (Datenbank)', () => {
       ),
     ).rejects.toThrow(/vergeben/);
   });
+
+  it('Benutzername ändern: Anmeldung mit neuem Namen, Aufgaben ziehen mit, Regeln (Ahmed 11.10.)', async () => {
+    const id = randomUUID();
+    await createUser(
+      sql,
+      {
+        id,
+        login: 'umbenennen.alt',
+        name: 'Uma Umbenannt',
+        email: null,
+        role: 'buchhaltung',
+        password: 'Passwort12345',
+        mustChange: false,
+      },
+      'ahmed',
+    );
+    await sql`insert into app.tasks (id, title, assignee, created_by) values (${randomUUID()}, 'T', 'umbenennen.alt', 'umbenennen.alt')`;
+    const base = {
+      name: 'Uma Umbenannt',
+      email: null,
+      role: 'buchhaltung' as const,
+      active: true,
+      siteIds: [],
+      expectedVersion: null,
+    };
+    await expect(updateUser(sql, id, { ...base, login: '12345' }, 'ahmed')).rejects.toThrow(/Ziffern/);
+    await expect(updateUser(sql, id, { ...base, login: 'maria.ol' }, 'ahmed')).rejects.toThrow(/vergeben/);
+    await updateUser(sql, id, { ...base, login: 'Uma.Neu' }, 'ahmed');
+    expect((await authenticate(sql, 'uma.neu', 'Passwort12345')).id).toBe(id);
+    await expect(authenticate(sql, 'umbenennen.alt', 'Passwort12345')).rejects.toThrow();
+    const [t] = await sql`select assignee, created_by from app.tasks where title = 'T'`;
+    expect(t).toMatchObject({ assignee: 'uma.neu', created_by: 'uma.neu' });
+  });
 });

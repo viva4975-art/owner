@@ -26,6 +26,7 @@ export function registerStartAppRoutes({ app, deps }: Ctx) {
         action: '/app/anmelden',
         err: c.req.query('fehler'),
         env: deps.env.APP_ENV,
+        remember: true,
         head: (
           <>
             <link rel="manifest" href="/app/manifest.webmanifest" />
@@ -81,7 +82,12 @@ export function registerStartAppRoutes({ app, deps }: Ctx) {
     const body = new URLSearchParams(
       employee
         ? { personnel_no: kennung, pin: geheim, next: '/m' }
-        : { login: kennung.toLowerCase(), password: geheim, next: '/app' },
+        : {
+            login: kennung.toLowerCase(),
+            password: geheim,
+            next: '/app',
+            bleiben: b.bleiben === '1' ? '1' : '',
+          },
     );
     const headers = new Headers({ 'Content-Type': 'application/x-www-form-urlencoded' });
     for (const h of ['origin', 'cookie', 'user-agent', 'x-forwarded-for', 'x-forwarded-proto', 'host'])

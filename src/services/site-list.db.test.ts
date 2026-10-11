@@ -19,7 +19,8 @@ describe.skipIf(!available)('Objektliste', () => {
   });
 
   it('Kunde, Objektleitung, Filter, Sortierung, Bereich der Objektleitung', async () => {
-    const f = parseSiteFilter(() => undefined);
+    expect(parseSiteFilter(() => undefined).status).toBe('aktiv');
+    const f = parseSiteFilter((k) => (k === 'status' ? 'alle' : undefined));
     const all = await filteredSites(sql, null, f);
     const school = all.rows.find((r) => r.id === DEMO.siteSchool)!;
     expect(school.manager_name).toBe('Olga OL');

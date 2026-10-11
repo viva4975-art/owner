@@ -7,7 +7,7 @@ import { registerPriceAdjustmentRoutes } from './routes-price-adjustment.js';
 import { fileURLToPath } from 'node:url';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono, type Context } from 'hono';
-import { getCookie, setCookie } from 'hono/cookie';
+import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { csrf } from 'hono/csrf';
 import { HTTPException } from 'hono/http-exception';
 import type { Child } from 'hono/jsx';
@@ -251,9 +251,37 @@ export function createApp(deps: Deps) {
       }
     }
     if (!user || !user.active) {
-      if (c.req.method === 'GET' && !path.startsWith('/api/')) {
+      // Abgelaufene Sitzung: nie eine leere Fehlerseite, sondern zur Anmeldung und danach zurück (Ahmed 11.10.).
+      // Beim Speichern (POST) geht es zurück auf die Formularseite – die Eingaben stellt der Browser wieder her.
+      const expired = !!getCookie(c, OFFICE_COOKIE);
+      // Formular abgeschickt (Seitenwechsel) – nicht bei fetch()-Aufrufen wie Uploads oder Suchvorschau
+      const mode = c.req.header('sec-fetch-mode');
+      const formPost =
+        mode === 'navigate' ||
+        (!mode && /form-urlencoded|multipart\/form-data/.test(c.req.header('content-type') ?? ''));
+      if (!path.startsWith('/api/') && (c.req.method === 'GET' || formPost)) {
         const u = new URL(c.req.url);
-        return c.redirect(`/anmelden?next=${encodeURIComponent(u.pathname + u.search)}`, 303);
+        let back = c.req.method === 'GET' ? u.pathname + u.search : '';
+        if (!back) {
+          try {
+            const r = new URL(c.req.header('referer') ?? '');
+            if (r.host === u.host) back = r.pathname + r.search;
+          } catch {
+            /* ohne Herkunft → Startseite */
+          }
+        }
+        const msg =
+          c.req.method !== 'GET'
+            ? 'Sie waren abgemeldet – bitte neu anmelden. Danach stehen Ihre Eingaben wieder im Formular; bitte noch einmal speichern.'
+            : expired
+              ? 'Sitzung abgelaufen – bitte neu anmelden.'
+              : '';
+        const q = new URLSearchParams();
+        if (back && back.startsWith('/') && !back.startsWith('//') && !back.startsWith('/anmelden'))
+          q.set('next', back);
+        if (msg) q.set('fehler', msg);
+        if (expired) deleteCookie(c, OFFICE_COOKIE, { path: '/' });
+        return c.redirect(`/anmelden${q.size ? `?${q}` : ''}`, 303);
       }
       return c.text('Anmeldung erforderlich', 401);
     }

@@ -27,6 +27,8 @@ import { homeFor } from './permissions.js';
 import { loginHtml } from './login-page.js';
 
 const SESSION_HOURS = 12;
+/** „Angemeldet bleiben“ (Ahmed 11.10.: nach Pausen nicht ständig neu anmelden) */
+const REMEMBER_DAYS = 30;
 const safeNext = (n: unknown) =>
   typeof n === 'string' && n.startsWith('/') && !n.startsWith('//') && !n.startsWith('/m') ? n : null;
 
@@ -47,6 +49,7 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
         err: c.req.query('fehler'),
         ok: c.req.query('ok'),
         env: env.APP_ENV,
+        remember: true,
         fields: [
           { id: 'login', name: 'login', label: 'Benutzername', autocomplete: 'username', autofocus: true },
           {
@@ -74,12 +77,13 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
     const next = safeNext(b.next);
     try {
       const u = await authenticate(sql, String(b.login ?? ''), String(b.password ?? ''));
-      setCookie(c, OFFICE_COOKIE, signSession(secret, u.id, Date.now(), SESSION_HOURS / 24), {
+      const days = b.bleiben === '1' ? REMEMBER_DAYS : SESSION_HOURS / 24;
+      setCookie(c, OFFICE_COOKIE, signSession(secret, u.id, Date.now(), days), {
         httpOnly: true,
         secure,
         sameSite: 'Lax',
         path: '/',
-        maxAge: SESSION_HOURS * 3600,
+        maxAge: Math.round(days * 86400),
       });
       await sql`insert into app.audit_log (actor, action, entity, entity_id) values (${u.login}, 'login', 'user', ${u.id})`;
       return c.redirect(u.must_change_password ? '/konto' : (next ?? homeFor(u.role)), 303);
@@ -316,9 +320,14 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
                   name="login"
                   value={u?.login ?? ''}
                   required
-                  disabled={!!u}
+                  autocapitalize="none"
                   pattern="[a-z0-9._@\-]{3,64}"
                 />
+                {u && (
+                  <p class="small mut" style="margin:4px 0 0">
+                    Änderbar – die Person meldet sich danach mit dem neuen Benutzernamen an (Passwort bleibt).
+                  </p>
+                )}
               </div>
               <div>
                 <label for="email">E-Mail</label>
@@ -531,6 +540,7 @@ cnt();})();`,
         active: b.active === 'on',
         siteIds: arr(b, 'site'),
         expectedVersion: typeof b.version === 'string' && b.version ? Number(b.version) : null,
+        ...(one('login') ? { login: one('login') } : {}),
       },
       c.get('actor'),
     );

@@ -37,6 +37,7 @@ body{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#1d1a
 .lg-btn:hover{background:#6a1030}.lg-btn:active{transform:translateY(1px)}
 .lg-err{display:flex;gap:10px;align-items:flex-start;background:#fdf0f1;border:1px solid #f2c9cf;color:#8b1d2c;border-radius:10px;padding:12px 14px;margin-bottom:18px;font-size:14px}
 .lg-ok{background:#eef8f1;border:1px solid #c6e6d0;color:#1c6b3a;border-radius:10px;padding:12px 14px;margin-bottom:18px;font-size:14px}
+.lg-rem{display:flex;align-items:center;gap:8px;margin:4px 0 6px;font-size:14px;color:#4a4246;cursor:pointer}.lg-rem input{width:18px;height:18px;accent-color:#7d1435;margin:0}
 .lg-help{margin-top:22px;border-top:1px solid #e8e1e4;padding-top:16px;font-size:13.5px;color:#6d6468;line-height:1.55}
 .lg-help summary{cursor:pointer;font-weight:600;color:#3a3236}
 .lg-help a{color:#7d1435}
@@ -130,6 +131,8 @@ export function loginHtml(p: {
   ok?: string | undefined;
   help: Child;
   env?: string;
+  /** Häkchen „Angemeldet bleiben“ (Name `bleiben`) */
+  remember?: boolean;
   /** zusätzliche Kopfzeilen (Manifest, App-Symbole) */
   head?: Child;
 }): string {
@@ -226,6 +229,12 @@ export function loginHtml(p: {
                       </div>
                     </div>
                   ))}
+                  {p.remember && (
+                    <label class="lg-rem">
+                      <input type="checkbox" name="bleiben" value="1" checked /> Angemeldet bleiben (30 Tage,
+                      nur auf eigenem Gerät)
+                    </label>
+                  )}
                   <button class="lg-btn">Anmelden</button>
                 </form>
                 <details class="lg-help">

@@ -144,6 +144,10 @@ describe.skipIf(!available)('Word-Vorlagen (Datenbank)', () => {
     );
     expect(r.replaced).toContain('Verlängerung Befristung');
     expect((await listWordTemplates(sql, undefined)).some((t) => t.code === 'VD-VB-2026-V4')).toBe(false);
+    // ganz gelöscht, nicht nur deaktiviert (Ahmed 11.10.)
+    const [n] = await sql<{ n: number }[]>`
+      select count(*)::int as n from app.word_templates where code in ('VD-VB-2026-V4', 'VD-AV-2026-V2')`;
+    expect(n!.n).toBe(0);
   });
 
   it('Briefanrede Kunde/Mitarbeiter und AÜ-Erlaubnis aus den Firmendaten', async () => {

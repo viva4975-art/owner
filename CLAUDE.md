@@ -120,9 +120,9 @@ Testadresse.
 - [x] ~~Qwist~~ → Enable Banking (gebaut 08.10.): Schlüssel hochladen + Banken verbinden (Ahmed)
 - [ ] SEPA-Zahlungslauf: erste pain.001-Datei als Testeinreichung bei der Bank hochladen (Format/Limit prüfen)
 - [ ] Je ein echter Kontoauszug (CAMT.053, sonst CSV) von Münchner Bank und Targobank zum Testen des Imports
-- [ ] Fortytools-XML-Exporte auf dem Live-Server einspielen (Transfer → Import aus Fortytools); Angebotsstatus-Zuordnung
-      bestätigen; danach in Fortytools keine Rechnungen/Angebote mehr schreiben (Nummernkreise)
-- [ ] Korrigierte Word-Vorlagen (ZIP „Viva-Deluxe_Vorlagen-Platzhalter“) unter Einstellungen → Word-Vorlagen hochladen
+- [x] ~~Fortytools-XML-Exporte einspielen, Angebotsstatus-Zuordnung~~ – Ahmed 11.10.: Angebote „hat alles gestimmt“;
+      in Fortytools keine Rechnungen/Angebote mehr schreiben (Nummernkreise)
+- [ ] Word-Vorlagen V6 (vollständig) und Objektordner-Paket V5 hochladen – 11.10. erneut geschickt
 
 ## Risiken (rechtlich/steuerlich)
 
@@ -2462,3 +2462,18 @@ Testadresse.
   `20261122000001` setzt bei allen Mitarbeitenden ohne Vergütung (kein individueller Lohn, kein Festgehalt, keine
   Lohngruppe) Vergütung = Tarif, Lohngruppe „Tariflohn 1“. Geänderte IDs im Protokoll (`audit_log` action
   `tariflohn1_vorbelegt`) – rücknehmbar. Abweichungen ändert Ahmed je Mitarbeiter (Stammdaten bearbeiten → Vergütung).
+- 2026-10-11: Ahmed (Punkte 8–10 + alte Vorlagen):
+  - **Objektliste zeigt standardmäßig nur aktive Objekte** („Alle“ = `status=alle`), wie schon Kunden (`kunde`) und
+    Mitarbeiter (`aktiv`).
+  - **Abgemeldet beim Speichern:** Ohne gültige Sitzung gab ein abgeschicktes Formular nur „Anmeldung erforderlich“ (401,
+    leere Seite) – Neuladen nötig. Jetzt geht jedes Formular (Seitenwechsel) zur Anmeldung mit Hinweis und danach zurück auf
+    die Formularseite; die Eingaben stellt der Browser wieder her (sessionStorage), einmal neu speichern. Abgelaufene
+    Sitzung beim Seitenaufruf → Hinweis „Sitzung abgelaufen“. fetch()-Aufrufe (Uploads, Suche) bekommen weiter 401.
+    **„Angemeldet bleiben“** (Häkchen, Standard an) auf `/anmelden` und `/app`: Sitzung 30 Tage statt 12 Std. – auf
+    fremden/gemeinsamen Rechnern abwählen.
+  - **Benutzername änderbar** (Einstellungen → Benutzer → Person): Regeln wie beim Anlegen, nicht nur Ziffern (App-Anmeldung
+    unterscheidet daran Personalnummer/Benutzer), eindeutig; Aufgaben (Zuständig/angelegt von) ziehen mit, Passwort und
+    Sitzung bleiben, Protokoll `rename`.
+  - **Alte Word-Vorlagen gelöscht** (Ahmed: „komplett löschen“): Migration `20261122000002` löscht alle deaktivierten
+    Vorlagen (lokal 82 von 118) samt Verknüpfung; Dateien bleiben write-once im Archiv. Hochladen einer neuen Fassung
+    löscht die alte künftig gleich mit (statt deaktivieren).

@@ -308,7 +308,7 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
     );
     const r = await importWordTemplates(sql, cfg, uploads, c.get('actor'));
     return back(c, '/einstellungen/word-vorlagen', {
-      ok: `${anz(r.created.length, 'Vorlage', 'Vorlagen')} übernommen${r.replaced.length ? `, ${anz(r.replaced.length, 'ältere Fassung', 'ältere Fassungen')} deaktiviert` : ''}${r.existing.length ? `, ${r.existing.length} schon vorhanden` : ''}${r.skipped.length ? `, übersprungen: ${r.skipped.join(', ')}` : ''}.`,
+      ok: `${anz(r.created.length, 'Vorlage', 'Vorlagen')} übernommen${r.replaced.length ? `, ${anz(r.replaced.length, 'ältere Fassung', 'ältere Fassungen')} gelöscht` : ''}${r.existing.length ? `, ${r.existing.length} schon vorhanden` : ''}${r.skipped.length ? `, übersprungen: ${r.skipped.join(', ')}` : ''}.`,
     });
   });
 

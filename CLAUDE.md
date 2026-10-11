@@ -2458,4 +2458,7 @@ Testadresse.
   scheiterte mit 401; erste Sicherung komplette Maschine erfolgreich). Standard-Plan war Mo–Fr und unverschlüsselt →
   Anleitung `docs/anleitung-naechste-schritte.html/.pdf`: eigener Plan „Viva täglich“ (Mo–So 04:00, verschlüsselt),
   alten widerrufen, root-Passwort (`passwd`), SMTP/ALERT_EMAIL, UptimeRobot, healthchecks.io, Probe-Wiederherstellung.
-
+- 2026-10-11: **Tariflohn 1 vorbelegt** (Ahmed: „bei allen Tariflohn 1, ich ändere die Handvoll ab“): Migration
+  `20261122000001` setzt bei allen Mitarbeitenden ohne Vergütung (kein individueller Lohn, kein Festgehalt, keine
+  Lohngruppe) Vergütung = Tarif, Lohngruppe „Tariflohn 1“. Geänderte IDs im Protokoll (`audit_log` action
+  `tariflohn1_vorbelegt`) – rücknehmbar. Abweichungen ändert Ahmed je Mitarbeiter (Stammdaten bearbeiten → Vergütung).

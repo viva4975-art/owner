@@ -6,6 +6,7 @@ import { hrReminders } from './employees.js';
 import { ecOverview } from './eigen-compliance.js';
 import { BusinessError } from './errors.js';
 import { dueCycleServices } from './executions.js';
+import { isOpen, leaveWarnings, warningText } from './leave-warnings.js';
 import { complianceOverview } from './subcontractors.js';
 import { upcomingEvents } from './tenders.js';
 import { plannedShifts } from './time.js';
@@ -136,6 +137,24 @@ export async function collectReminders(sql: Sql, today = todayBerlin()): Promise
       days: d,
     });
   }
+  // Kein Resturlaub mehr (0 oder überzogen) – als erledigt markierbar unter Auswertungen → Urlaubskonten
+  const lw = (await leaveWarnings(sql, today)).filter(isOpen);
+  for (const w of lw.slice(0, lw.length > 8 ? 7 : 8))
+    out.push({
+      area: 'Personal',
+      level: w.rest < 0 ? 'rot' : 'gelb',
+      text: `Urlaub: ${warningText(w)}`,
+      href: `/auswertungen/urlaub?jahr=${w.year}#warnungen`,
+      days: null,
+    });
+  if (lw.length > 8)
+    out.push({
+      area: 'Personal',
+      level: lw.some((w) => w.rest < 0) ? 'rot' : 'gelb',
+      text: `Urlaub: ${lw.length - 7} weitere Mitarbeitende ohne Resturlaub`,
+      href: `/auswertungen/urlaub#warnungen`,
+      days: null,
+    });
   // Einsätze von gestern ohne erfasste Zeit (nicht abwesend, kein Ausfall)
   const y = addDays(today, -1);
   const missing = (await plannedShifts(sql, { from: y, to: y })).filter(

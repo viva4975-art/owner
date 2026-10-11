@@ -9,6 +9,7 @@ import { applyDueHours } from './services/employee-hours.js';
 import { autoConfirmPlanned } from './services/time.js';
 import { sendDailyReminders } from './services/reminders.js';
 import { watch } from './services/watchdog.js';
+import { schoolLeave } from './services/school-leave.js';
 import { replicate } from './services/archive-replica.js';
 import { createApp } from './web/app.js';
 
@@ -45,6 +46,17 @@ const autoIst = () =>
     .catch((e) => console.error('Plan als Ist automatisch:', e));
 setTimeout(autoIst, 60_000).unref();
 setInterval(autoIst, 60 * 60 * 1000).unref();
+
+// Schulen: Schulferien für künftig eingeplante Mitarbeitende eintragen (alle 6 Std., nichts doppelt)
+const school = () =>
+  schoolLeave(sql, { apply: true, actor: 'automatisch' })
+    .then(
+      (r) =>
+        r.planned.length && console.log(`Schulferien automatisch: ${r.planned.length} Zeitraum/Zeiträume`),
+    )
+    .catch((e) => console.error('Schulferien automatisch:', e));
+setTimeout(school, 120_000).unref();
+setInterval(school, 6 * 60 * 60 * 1000).unref();
 
 // Erinnerungen: tägliche Sammel-Mail (höchstens einmal je Tag, ab der eingestellten Uhrzeit)
 const reminders = () =>

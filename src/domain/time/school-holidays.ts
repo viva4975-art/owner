@@ -24,3 +24,27 @@ export const SCHOOL_HOLIDAYS_BY: { name: string; from: string; to: string }[] = 
 export function schoolHoliday(date: string): string | undefined {
   return SCHOOL_HOLIDAYS_BY.find((f) => date >= f.from && date <= f.to)?.name;
 }
+
+/** Buß- und Bettag: Mittwoch vor dem 23. November – in Bayern schulfrei (kein gesetzlicher Feiertag). */
+export function bussUndBettag(year: number): string {
+  const d = new Date(Date.UTC(year, 10, 22, 12));
+  const back = (d.getUTCDay() - 3 + 7) % 7; // 3 = Mittwoch
+  d.setUTCDate(d.getUTCDate() - back);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Letzter Tag, bis zu dem Ferientermine vorliegen. */
+export const SCHOOL_DATA_UNTIL = SCHOOL_HOLIDAYS_BY.reduce((m, f) => (f.to > m ? f.to : m), '');
+
+/** Alle schulfreien Zeiträume Bayern: Ferien + Buß- und Bettag (je Jahr der Ferienliste). */
+export function schoolFreePeriods(): { name: string; from: string; to: string }[] {
+  const years = [...new Set(SCHOOL_HOLIDAYS_BY.map((f) => Number(f.from.slice(0, 4))))];
+  const extra = years.map((y) => ({
+    name: `Buß- und Bettag ${y}`,
+    from: bussUndBettag(y),
+    to: bussUndBettag(y),
+  }));
+  return [...SCHOOL_HOLIDAYS_BY, ...extra]
+    .filter((p) => !SCHOOL_HOLIDAYS_BY.some((f) => f !== p && p.from >= f.from && p.to <= f.to))
+    .sort((a, b) => a.from.localeCompare(b.from));
+}

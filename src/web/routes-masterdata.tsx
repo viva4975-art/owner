@@ -1,3 +1,4 @@
+import { SchoolCard } from './routes-school-leave.js';
 import { mergeSites } from '../services/site-merge.js';
 import { CustomerOrders } from './routes-orders.js';
 import { listOrders } from '../services/orders.js';
@@ -1438,12 +1439,22 @@ export function registerMasterdataRoutes(ctx: Ctx) {
            where es.site_id = ${s.id} and e.status = 'aktiv' and not ('Objektleitung' = any(e.tags)) order by 2`,
         listTasks(sql, { status: 'open', entity: { type: 'site', id: s.id }, onlyFor: taskViewerOf(c) }),
       ]);
+      const [school] = await sql<
+        { on: boolean }[]
+      >`select school_closure as on from app.sites where id = ${s.id}`;
       return (
         <SiteOverview
           s={s}
           services={services}
           employees={employees}
           tasksSlot={<TaskBox tasks={tasks} doneLink={`/objekte/${s.id}/aufgaben?status=done`} />}
+          docsSlot={
+            <SchoolCard
+              siteId={s.id}
+              on={!!school?.on}
+              canEdit={['admin', 'personal'].includes(c.get('user').role)}
+            />
+          }
         />
       );
     }),

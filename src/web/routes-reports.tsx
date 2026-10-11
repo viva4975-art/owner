@@ -29,6 +29,7 @@ import type { AppEnv, Ctx } from './app.js';
 import { PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
 import { canOpen } from './permissions.js';
 import { ExportBar } from './routes-absence-stats.js';
+import { ackLeaveWarning, isOpen, leaveWarnings } from '../services/leave-warnings.js';
 
 const MON = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 const monShort = (m: string) => `${MON[Number(m.slice(5, 7)) - 1]} ${m.slice(2, 4)}`;
@@ -115,7 +116,7 @@ export const ReportTabs = ({ c, active }: { c: Context<AppEnv>; active: string }
   <Tabs tabs={REPORTS.filter((r) => canOpen(c.get('user').role, r.href))} active={active} />
 );
 
-export function registerReportRoutes({ app, deps, page }: Ctx) {
+export function registerReportRoutes({ app, deps, page, back }: Ctx) {
   const { sql } = deps;
 
   const shell = (c: Context<AppEnv>, active: string, title: string, body: Child, actions?: Child) => {
@@ -1115,13 +1116,99 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
   // ------------------------------------------------------------------ Urlaubskonten
   app.get('/auswertungen/urlaub', async (c) => {
     const year = yearOf(c.req.query('jahr'));
-    const rows = await leaveAccounts(sql, year);
+    const [rows, warns] = await Promise.all([leaveAccounts(sql, year), leaveWarnings(sql)]);
+    const open = warns.filter(isOpen);
+    const done = warns.filter((w) => !isOpen(w));
     return shell(
       c,
       'urlaub',
       `Urlaubskonten ${year}`,
       <>
         <YearNav base="/auswertungen/urlaub" year={year} />
+        {warns.length > 0 && (
+          <div
+            class="card"
+            id="warnungen"
+            style={open.length ? 'border-left:4px solid var(--warn,#d97706)' : ''}
+          >
+            <h3 style="margin-top:0">
+              Kein Resturlaub mehr <span class="cnt">({open.length} offen)</span>
+            </h3>
+            {open.length === 0 && <p class="small mut">Alle Warnungen sind als erledigt markiert.</p>}
+            {open.length > 0 && (
+              <div class="tbl">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Mitarbeiter</th>
+                      <th>Jahr</th>
+                      <th class="r">Anspruch</th>
+                      <th class="r">Rest</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {open.map((w) => (
+                      <tr>
+                        <td>
+                          <a href={`/personal/${w.employee_id}/abwesenheiten`}>{w.name}</a>{' '}
+                          <span class="small mut">{w.personnel_no}</span>
+                          {w.acked && (
+                            <div class="small mut">
+                              erledigt bei Rest {daysDe(w.acked.rest)} – seitdem weiter gesunken
+                            </div>
+                          )}
+                        </td>
+                        <td>{w.year}</td>
+                        <td class="r">{w.entitlement ? daysDe(w.entitlement) : 'nicht hinterlegt'}</td>
+                        <td class="r" style={w.rest < 0 ? 'color:var(--err)' : ''}>
+                          <b>{daysDe(w.rest)}</b>
+                        </td>
+                        <td class="r">
+                          <form method="post" action="/auswertungen/urlaub/warnung">
+                            <input type="hidden" name="employee_id" value={w.employee_id} />
+                            <input type="hidden" name="year" value={String(w.year)} />
+                            <button class="btn sm sec">als erledigt markieren</button>
+                          </form>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {open.length > 1 && (
+              <form
+                method="post"
+                action="/auswertungen/urlaub/warnung"
+                data-confirm={`Alle ${open.length} Warnungen als erledigt markieren?`}
+                style="margin-top:8px"
+              >
+                <input type="hidden" name="alle" value="1" />
+                <button class="btn sm sec">alle als erledigt markieren</button>
+              </form>
+            )}
+            {done.length > 0 && (
+              <details style="margin-top:8px">
+                <summary class="small">{done.length} als erledigt markiert</summary>
+                <ul class="small" style="margin:6px 0 0">
+                  {done.map((w) => (
+                    <li>
+                      <a href={`/personal/${w.employee_id}/abwesenheiten`}>{w.name}</a> ({w.year}): Rest{' '}
+                      {daysDe(w.rest)} – erledigt von {w.acked!.by} am{' '}
+                      {dateDe(w.acked!.at.toISOString().slice(0, 10))}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            <p class="small mut" style="margin-bottom:0">
+              Laufendes Jahr: Rest 0 oder weniger; Folgejahr: schon überplant. Wird weiterer Urlaub
+              eingetragen, fragt die App nach. Sinkt der Rest nach „erledigt“ weiter, erscheint die Warnung
+              wieder.
+            </p>
+          </div>
+        )}
         <div class="actions" style="margin-top:0">
           <ExportBar base="/auswertungen/urlaub" year={year} />
           <a class="btn sm sec" href={`/auswertungen/ausfallzeiten?jahr=${year}`}>
@@ -1178,6 +1265,21 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
         </div>
       </>,
     );
+  });
+
+  app.post('/auswertungen/urlaub/warnung', async (c) => {
+    const b = await c.req.parseBody();
+    const list = (await leaveWarnings(sql)).filter(isOpen);
+    const pick =
+      b.alle === '1'
+        ? list
+        : list.filter((w) => w.employee_id === String(b.employee_id) && String(w.year) === String(b.year));
+    for (const w of pick) await ackLeaveWarning(sql, w.employee_id, w.year, c.get('actor'));
+    const ref = c.req.header('referer');
+    const target = ref ? new URL(ref).pathname + new URL(ref).search : '/auswertungen/urlaub';
+    return back(c, target, {
+      ok: pick.length === 1 ? 'Als erledigt markiert.' : `${pick.length} Warnungen als erledigt markiert.`,
+    });
   });
 
   // ------------------------------------------------------------------ Krankheitstage

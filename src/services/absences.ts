@@ -6,6 +6,11 @@ import { uuidOf } from './fortytools-export-import.js';
 import { leaveOpening } from './leave-import.js';
 import { plannedShifts } from './time.js';
 
+/** Zwischenspeicher der Urlaubs-Warnungen (leave-warnings.ts) – bei jeder Urlaubsänderung verwerfen. */
+const leaveWarningHooks: (() => void)[] = [];
+export const onLeaveChange = (fn: () => void) => leaveWarningHooks.push(fn);
+export const invalidateLeaveWarnings = () => leaveWarningHooks.forEach((f) => f());
+
 export type AbsenceKind = 'urlaub' | 'krank' | 'kind_krank' | 'unbezahlt' | 'sonstiges';
 export type AbsenceStatus = 'beantragt' | 'genehmigt' | 'abgelehnt' | 'storniert';
 
@@ -211,6 +216,10 @@ export async function requestAbsence(
     approved?: boolean;
     /** Krank während Urlaub: Urlaub an diesen Tagen kürzen/teilen (§ 9 BUrlG – Krankheit zählt nicht als Urlaub) */
     replaceVacation?: boolean;
+    /** Urlaub trotz fehlendem Resturlaub eintragen (nach Rückfrage „wirklich?“, Ahmed 11.10.) */
+    allowNoLeave?: boolean;
+    /** automatisch eingetragen für die Schulferien (Objekt „Schule“) */
+    autoSchool?: boolean;
   },
 ) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.start) || !/^\d{4}-\d{2}-\d{2}$/.test(p.end))
@@ -227,7 +236,7 @@ export async function requestAbsence(
   }
   if (p.kind === 'urlaub') {
     const [dup] = await sql`select 1 from app.absences where id = ${p.id}`;
-    if (!dup) await assertLeaveLeft(sql, p.employeeId, p.start, p.end, p.halfDay, false);
+    if (!dup && !p.allowNoLeave) await assertLeaveLeft(sql, p.employeeId, p.start, p.end, p.halfDay, false);
   }
   const changed: string[] = [];
   await sql.begin(async (tx) => {
@@ -280,10 +289,14 @@ export async function requestAbsence(
       );
     await tx`
       insert into app.absences (id, employee_id, kind, start_date, end_date, half_day, status, note, requested_by,
-                                decided_by, decided_at)
+                                decided_by, decided_at, auto_school)
       values (${p.id}, ${p.employeeId}, ${p.kind}, ${p.start}, ${p.end}, ${p.halfDay}, ${p.approved ? 'genehmigt' : 'beantragt'},
-              ${p.note}, ${p.actor}, ${p.approved ? p.actor : null}, ${p.approved ? tx`now()` : null})`;
+              ${p.note}, ${p.actor}, ${p.approved ? p.actor : null}, ${p.approved ? tx`now()` : null}, ${p.autoSchool ?? false})`;
+    if (p.allowNoLeave && p.kind === 'urlaub' && !p.autoSchool)
+      await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+               values (${p.actor}, 'create', 'absence', ${p.id}, ${tx.json({ urlaub_ohne_anspruch: true })})`;
   });
+  if (p.kind === 'urlaub') invalidateLeaveWarnings();
   if (p.approved) await applyAbsenceHours(sql, p.id);
   for (const v of changed) await applyAbsenceHours(sql, v);
 }
@@ -309,6 +322,7 @@ export async function updateAbsence(
     halfDay: boolean;
     note: string | null;
     expectedVersion: number | null;
+    allowNoLeave?: boolean;
   },
   actor: string,
 ) {
@@ -323,7 +337,7 @@ export async function updateAbsence(
   if (p.end < p.start) throw new BusinessError('„bis“ liegt vor „von“');
   if (p.halfDay && p.start !== p.end) throw new BusinessError('Halber Tag nur für einen einzelnen Tag');
   if (!(p.kind in ABSENCE_LABEL)) throw new BusinessError('Art ungültig');
-  if (p.kind === 'urlaub') {
+  if (p.kind === 'urlaub' && !p.allowNoLeave) {
     // Rest + bisherige Tage dieser Abwesenheit (sie sind im Rest schon abgezogen, falls Urlaub)
     for (let y = Number(p.start.slice(0, 4)); y <= Number(p.end.slice(0, 4)); y++) {
       const clip = (s: string, e: string) =>
@@ -337,6 +351,8 @@ export async function updateAbsence(
       if (bal.rest + old < need)
         throw new BusinessError(
           `Kein ausreichender Urlaubsanspruch ${y}: Rest ${String(bal.rest + old).replace('.', ',')} Tage, benötigt ${String(need).replace('.', ',')} Tage`,
+          'no_leave',
+          { rest: String(bal.rest + old).replace('.', ','), days: String(need).replace('.', ',') },
         );
     }
   }
@@ -352,8 +368,9 @@ export async function updateAbsence(
     await tx`delete from app.absence_hours where absence_id = ${id}`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
              values (${actor}, 'update', 'absence', ${id},
-                     ${tx.json({ vorher: { kind: a.kind, start: a.start_date, end: a.end_date, half_day: a.half_day, note: a.note } })})`;
+                     ${tx.json({ vorher: { kind: a.kind, start: a.start_date, end: a.end_date, half_day: a.half_day, note: a.note }, ...(p.allowNoLeave && p.kind === 'urlaub' ? { urlaub_ohne_anspruch: true } : {}) })})`;
   });
+  invalidateLeaveWarnings();
   await applyAbsenceHours(sql, id);
 }
 
@@ -361,6 +378,7 @@ export async function updateAbsence(
 export async function deleteAbsence(sql: Sql, id: string, actor: string) {
   const a = await getAbsence(sql, id);
   if (!a) return;
+  invalidateLeaveWarnings();
   await sql.begin(async (tx) => {
     await tx`delete from app.absence_hours where absence_id = ${id}`;
     await tx`delete from app.absences where id = ${id}`;
@@ -375,6 +393,7 @@ export async function decideAbsence(
   id: string,
   status: 'genehmigt' | 'abgelehnt' | 'storniert',
   actor: string,
+  allowNoLeave = false,
 ) {
   const [a] = await sql<Absence[]>`select * from app.absences where id = ${id}`;
   if (!a) throw new BusinessError('Abwesenheit nicht gefunden');
@@ -386,14 +405,15 @@ export async function decideAbsence(
   };
   if (a.status === status) return;
   // Genehmigen nur mit ausreichendem Urlaubsanspruch (der Antrag ist im Rest schon als „beantragt“ abgezogen)
-  if (status === 'genehmigt' && a.kind === 'urlaub')
+  if (status === 'genehmigt' && a.kind === 'urlaub' && !allowNoLeave)
     await assertLeaveLeft(sql, a.employee_id, a.start_date, a.end_date, a.half_day, true);
   if (!allowed[a.status].includes(status))
     throw new BusinessError(
       `„${ABSENCE_STATUS_LABEL[a.status]}“ kann nicht zu „${ABSENCE_STATUS_LABEL[status]}“ werden`,
     );
   await sql`update app.absences set status = ${status}, decided_by = ${actor}, decided_at = now() where id = ${id} and status = ${a.status}`;
-  await sql`insert into app.audit_log (actor, action, entity, entity_id, details) values (${actor}, 'status', 'absence', ${id}, ${sql.json({ status })})`;
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details) values (${actor}, 'status', 'absence', ${id}, ${sql.json({ status, ...(allowNoLeave && status === 'genehmigt' && a.kind === 'urlaub' ? { urlaub_ohne_anspruch: true } : {}) })})`;
+  if (a.kind === 'urlaub') invalidateLeaveWarnings();
   await applyAbsenceHours(sql, id);
 }
 

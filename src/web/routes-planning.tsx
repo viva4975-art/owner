@@ -18,6 +18,7 @@ import {
   listAbsences,
   requestAbsence,
 } from '../services/absences.js';
+import { isOpen, leaveWarnings, warningText } from '../services/leave-warnings.js';
 import { listEmployees } from '../services/employees.js';
 import { BusinessError } from '../services/errors.js';
 import {
@@ -914,6 +915,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
       actor: c.get('actor'),
       approved: true,
       replaceVacation: b.replace_vacation === '1',
+      allowNoLeave: b.urlaub_ohne_anspruch === '1',
     });
     return back(c, redirect(employeeId), {
       ok:
@@ -1020,6 +1022,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
         halfDay: b.half_day === '1',
         note: typeof b.note === 'string' && b.note.trim() ? b.note.trim() : null,
         expectedVersion: typeof b.version === 'string' && b.version ? Number(b.version) : null,
+        allowNoLeave: b.urlaub_ohne_anspruch === '1',
       },
       c.get('actor'),
     );
@@ -1036,7 +1039,13 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     const b = await c.req.parseBody();
     const status = String(b.status);
     if (!['genehmigt', 'abgelehnt', 'storniert'].includes(status)) throw new BusinessError('Status ungültig');
-    await decideAbsence(sql, c.req.param('id'), status as 'genehmigt', c.get('actor'));
+    await decideAbsence(
+      sql,
+      c.req.param('id'),
+      status as 'genehmigt',
+      c.get('actor'),
+      b.urlaub_ohne_anspruch === '1',
+    );
     const ref = c.req.header('referer');
     return back(c, ref ? new URL(ref).pathname : '/urlaub', { ok: `Abwesenheit ${status}.` });
   });
@@ -1044,10 +1053,12 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
   app.get(`/personal/:id{${UUID}}/abwesenheiten`, (c) =>
     shells.employee!(c, 'abwesenheiten', async (e) => {
       const year = Number(todayBerlin().slice(0, 4));
-      const [bal, list] = await Promise.all([
+      const [bal, list, warns] = await Promise.all([
         leaveBalance(sql, e.id, year),
         listAbsences(sql, { employeeId: e.id }),
+        leaveWarnings(sql),
       ]);
+      const myWarns = warns.filter((w) => w.employee_id === e.id && isOpen(w));
       const sick = list.filter(
         (a) =>
           a.status === 'genehmigt' &&
@@ -1056,6 +1067,16 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
       );
       return (
         <>
+          {myWarns.map((w) => (
+            <div class="flash warn" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <span>{warningText(w)} – weiterer Urlaub wird nur nach Rückfrage eingetragen.</span>
+              <form method="post" action="/auswertungen/urlaub/warnung" style="margin-left:auto">
+                <input type="hidden" name="employee_id" value={w.employee_id} />
+                <input type="hidden" name="year" value={String(w.year)} />
+                <button class="btn sm sec">als erledigt markieren</button>
+              </form>
+            </div>
+          ))}
           <div class="kpis">
             <div class="kpi">
               <div class="l">Urlaubsanspruch {year}</div>

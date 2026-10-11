@@ -44,6 +44,7 @@ import { registerSignRoutes } from './routes-sign.js';
 import { registerHrRoutes } from './routes-hr.js';
 import { registerPlanningMonthRoutes } from './routes-planning-month.js';
 import { registerReportRoutes } from './routes-reports.js';
+import { registerSchoolLeaveRoutes } from './routes-school-leave.js';
 import { registerAbsenceStatsRoutes } from './routes-absence-stats.js';
 import { registerTransferRoutes } from './routes-transfer.js';
 import { registerBankRoutes } from './routes-bank.js';
@@ -356,6 +357,47 @@ export function createApp(deps: Deps) {
         status,
       );
     }
+    if (err instanceof BusinessError && err.code === 'no_leave' && c.req.method === 'POST') {
+      // Kein Resturlaub: nicht ablehnen, sondern nachfragen (Ahmed 11.10.) – „Ja“ sendet dasselbe Formular erneut
+      // mit urlaub_ohne_anspruch=1.
+      return (async () => {
+        const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>;
+        const fields = Object.entries(body).filter(
+          ([k, v]) => typeof v === 'string' && k !== 'urlaub_ohne_anspruch',
+        ) as [string, string][];
+        const ref = c.req.header('referer');
+        const backTo = ref ? new URL(ref).pathname + new URL(ref).search : '/';
+        return c.html(
+          '<!doctype html>' +
+            String(
+              <Layout title="Kein Urlaub mehr verfügbar" nav="" env={env.APP_ENV}>
+                <div class="card" style="max-width:640px;border-left:4px solid var(--err)">
+                  <h2 style="margin-top:0">Wirklich Urlaub eintragen?</h2>
+                  <p>{err.message}.</p>
+                  <p class="small mut">
+                    Es steht nicht genug Urlaub zur Verfügung. Wird trotzdem eingetragen, geht das
+                    Urlaubskonto ins Minus (Vorgriff auf künftigen Anspruch) – das wird im Protokoll vermerkt.
+                    Alternative: als „Unbezahlt frei“ eintragen.
+                  </p>
+                  <form method="post" action={c.req.path + (new URL(c.req.url).search || '')}>
+                    {fields.map(([k, v]) => (
+                      <input type="hidden" name={k} value={v} />
+                    ))}
+                    <input type="hidden" name="urlaub_ohne_anspruch" value="1" />
+                    <div class="actions">
+                      <button class="btn">Ja, trotzdem eintragen</button>
+                      <a class="btn sec" href={backTo}>
+                        Abbrechen
+                      </a>
+                    </div>
+                  </form>
+                </div>
+              </Layout>,
+            ),
+          409,
+        );
+      })();
+    }
     if (err instanceof BusinessError) {
       // Zurück auf die Seite, von der das Formular kam (inkl. Parameter). Eingaben stellt das
       // Browser-Skript aus dem Tab-Speicher wieder her.
@@ -417,6 +459,7 @@ export function createApp(deps: Deps) {
   registerPlanningMonthRoutes(ctx);
   registerReportRoutes(ctx);
   registerAbsenceStatsRoutes(ctx);
+  registerSchoolLeaveRoutes(ctx);
   registerTransferRoutes(ctx);
   registerBankRoutes(ctx);
   registerImportRoutes(ctx);

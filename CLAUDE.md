@@ -2436,3 +2436,22 @@ Testadresse.
   `src/domain/sheet/xlsx-write.ts` (Texte nie als Formel). Teilzeit mit < 5 Tagen/Woche = Näherung.
   **Datenschutz:** Krankheitstage sind Gesundheitsdaten (Art. 9 DSGVO) – zum Weitergeben (Steuerberater, Kalkulation,
   Ausschreibung) die geschwärzte Fassung nutzen. Tests `absence-stats.db.test.ts`, `xlsx-write.test.ts`.
+- 2026-10-11: **Urlaub ohne Anspruch + Warnung** (Ahmed): Urlaub über den Rest hinaus wird im Büro/in der App der
+  Objektleitung nicht mehr abgelehnt, sondern nachgefragt („Wirklich Urlaub eintragen?“ → „Ja, trotzdem eintragen“ sendet
+  dasselbe Formular mit `urlaub_ohne_anspruch=1`; gilt für Erfassen, Ändern, Genehmigen; Vermerk im Protokoll). Die
+  Mitarbeiter-App (`/m`) lehnt weiter ab (Antrag ohne Anspruch). **Warnung „kein Resturlaub“**: aktive Mitarbeitende mit
+  Rest ≤ 0 im laufenden Jahr bzw. < 0 im Folgejahr – unter Erinnerungen, oben in Auswertungen → Urlaubskonten und beim
+  Mitarbeiter (Urlaub & Krank); „als erledigt markieren“ (einzeln/alle, `app.leave_warning_acks`); sinkt der Rest danach
+  weiter, kommt die Warnung wieder (`src/services/leave-warnings.ts`, 10 Min. zwischengespeichert, bei Änderung verworfen).
+- 2026-10-11: **Schulen: Schulferien automatisch** (Ahmed): Objekt → Übersicht → „Als Schule markieren“
+  (`sites.school_closure`, nur Admin/Personal) → „Vorschau & eintragen“ (`/objekte/:id/schulferien`). Für alle, die künftig
+  an Schul-Objekten eingeplant sind, je Ferienzeitraum (Schulferien Bayern + Buß- und Bettag, `schoolFreePeriods`):
+  Resturlaub des Jahres anteilig auf die Ferien verteilt (Übertrag aus dem Vorjahr nur bis 31.03.), Urlaub jeweils in der
+  Mitte des Zeitraums, Rest „Unbezahlt frei“ (`absences.auto_school`, feste IDs). Übersprungen mit Grund: Person arbeitet
+  im Zeitraum auch an einem Nicht-Schul-Objekt, oder es gibt schon eine Abwesenheit. Jahre mit unvollständigen
+  Ferienterminen (2027 nur bis Sommer): Urlaub nur anteilig (bekannte ÷ Ferientage des letzten vollständigen Jahres).
+  Server prüft alle 6 Std. automatisch (neue Mitarbeitende/Einsätze). Hinweis bei > 1 Monat unbezahlt am Stück
+  (§ 7 Abs. 3 SGB IV, SV-Abmeldung). **Rechtlich:** unbezahlt nur mit Ruhens-Klausel im Vertrag (Vorlagen V5); Urlaubs-
+  anspruch dann nur für Tage mit Arbeitspflicht (Jahresurlaub je Mitarbeiter so hinterlegen). **Schulferien nach Sommer
+  2027 in `src/domain/time/school-holidays.ts` ergänzen.** Migration `20261121000001`, Test `school-leave.db.test.ts`.
+

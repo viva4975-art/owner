@@ -2578,3 +2578,9 @@ Testadresse.
   Räumen (Kriechkeller 0 m²), 11.983,6 Std./Jahr = Kalkulation. **Leere Vorlage** `/raumbuch-vorlage.xlsx` (Knopf beim Import,
   Blatt „Erklärung“ mit Turnus-Kürzeln und Nutzungsarten). Keine externe KI (Daten blieben sonst nicht auf dem Server) –
   Kopfzeilen-Erkennung über Spaltennamen. Test `room-import-kalk.db.test.ts`.
+- 2026-10-11: Raumbuch-Import (Ahmed: „Stundenvorgabe löschen, nicht ewig nach unten scrollen“, „das Objekt wird nicht
+  unterschieden?“): Option „Stundenvorgabe aus der Datei“ wieder entfernt; Knopf „übernehmen“ steht oben (mitlaufend) statt
+  unter hunderten Zeilen. **Mehrere Gebäude in einer Datei** (Spalte „Gebäude“, z. B. Grundschule Neubiberg / Unterbiberg /
+  Sportzentrum): Vorschau fragt je Gebäude das Objekt desselben Kunden ab (Vorschlag über den Objektnamen, jedes Objekt nur
+  einmal vorgeschlagen, sonst „nicht übernehmen“); je Objekt werden nur dessen Räume übernommen, Etage ohne Gebäudenamen,
+  Raumbuch-PDF je Objekt. Fehlt ein Objekt, vorher beim Kunden anlegen. `suggestBuildingSites`, `analyzeRooms(…, { building })`.

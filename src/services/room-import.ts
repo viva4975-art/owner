@@ -237,6 +237,8 @@ export interface RoomImportAnalysis {
   newTypes: string[];
   /** Summe Reinigungsstunden/Jahr der fehlerfreien Zeilen (null = nicht ermittelbar) */
   hoursYear: number | null;
+  /** verschiedene Werte der Spalte „Gebäude“ (Reihenfolge der Datei) – mehrere = mehrere Objekte möglich */
+  buildings: string[];
 }
 
 /** Fläche → m² × 100, exakt aus dem Text (mehr als 2 Nachkommastellen werden kaufmännisch gerundet). */
@@ -322,6 +324,7 @@ export async function analyzeRooms(
   siteId: string,
   bytes: Uint8Array,
   daily = 260,
+  opts: { building?: string } = {},
 ): Promise<RoomImportAnalysis> {
   let sheets: { name: string; rows: string[][] }[];
   let kind: 'xlsx' | 'csv';
@@ -373,12 +376,18 @@ export async function analyzeRooms(
   const typeIsName = !fields.has('name') && fields.has('type');
 
   const out: RoomImportRow[] = [];
+  const buildings: string[] = [];
   rows.slice(headerIdx + 1).forEach((cells, i) => {
     const get = (f: RoomField) => {
       for (const [idx, ff] of map) if (ff === f) return (cells[idx] ?? '').trim();
       return '';
     };
-    const floor = [get('building'), get('floor')].filter(Boolean).join(' · ') || null;
+    const bld = get('building');
+    if (bld && !/^(summe|gesamt|total)/i.test(bld) && !buildings.includes(bld)) buildings.push(bld);
+    // nur ein Gebäude (= ein Objekt): andere Zeilen auslassen, Gebäude nicht mehr in die Etage schreiben
+    if (opts.building != null && bld !== opts.building) return;
+    const floor =
+      (opts.building != null ? get('floor') : [bld, get('floor')].filter(Boolean).join(' · ')) || null;
     const noRaw = get('room_no');
     // „keine NR“, „ohne“, „-“ = keine Raumnummer
     const roomNo = noRaw && !/^(keine|ohne|o\.?\s?nr|n\.?\s?a\.?|-+|\?)/i.test(noRaw) ? noRaw : null;
@@ -489,7 +498,7 @@ export async function analyzeRooms(
       errors,
     });
   });
-  if (!out.length) throw new BusinessError('Unter der Kopfzeile stehen keine Räume');
+  if (!out.length && opts.building == null) throw new BusinessError('Unter der Kopfzeile stehen keine Räume');
   const ok = out.filter((r) => !r.errors.length);
   const withHours = ok.filter((r) => r.hoursYear != null);
   return {
@@ -500,6 +509,7 @@ export async function analyzeRooms(
     ignored: header.filter((h, idx) => h && !map.has(idx)),
     rows: out,
     newTypes: [...newTypes],
+    buildings,
     hoursYear:
       withHours.length && withHours.length >= ok.length * 0.8
         ? withHours.reduce((a, r) => a + (r.hoursYear ?? 0), 0)
@@ -526,7 +536,7 @@ export async function applyRooms(
   siteId: string,
   fileSha: string,
   a: RoomImportAnalysis,
-  opts: { update: boolean; hourTarget?: boolean },
+  opts: { update: boolean },
   actor: string,
 ) {
   let created = 0,
@@ -582,26 +592,59 @@ export async function applyRooms(
         else skipped++;
       }
     }
-    // Stundenvorgabe aus der Kalkulation (Jahresstunden) übernehmen
-    if (opts.hourTarget && a.hoursYear != null) {
-      const row = {
-        mode: 'jahr',
-        day_minutes: [0, 0, 0, 0, 0, 0, 0],
-        month_minutes: null,
-        year_minutes: Math.min(8784 * 60, Math.round(a.hoursYear * 60)),
-        note: `aus Raumbuch-Import (${a.sheetName})`,
-        updated_by: actor,
-        updated_at: new Date(),
-      };
-      await tx`
-        insert into app.site_hour_targets ${tx({ site_id: siteId, ...row } as Record<string, unknown>)}
-        on conflict (site_id) do update set ${tx(row as Record<string, unknown>)}`;
-      await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
-               values (${actor}, 'hour_target', 'site', ${siteId}, ${tx.json(row as never)})`;
-    }
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
              values (${actor}, 'room_import', 'site', ${siteId},
                      ${tx.json({ file: fileSha, created, updated, skipped, new_types: a.newTypes })})`;
   });
   return { created, updated, skipped };
+}
+
+/**
+ * Mehrere Gebäude in einer Datei (Ausschreibung mit mehreren Liegenschaften): Vorschlag Gebäude → Objekt desselben
+ * Kunden über gemeinsame Wörter im Namen (mind. 4 Buchstaben, Ortsteil zählt); ohne Treffer beim ersten Gebäude das
+ * aktuelle Objekt, sonst „nicht übernehmen“.
+ */
+export async function suggestBuildingSites(sql: Sql, siteId: string, buildings: string[]) {
+  const sites = await sql<
+    { id: string; name: string; site_no: string; street: string | null; city: string | null }[]
+  >`
+    select s.id, s.name, s.site_no, s.street, s.city from app.sites s
+     where s.customer_id = (select customer_id from app.sites where id = ${siteId}) and (s.active or s.id = ${siteId})
+     order by s.name`;
+  const words = (t: string) =>
+    new Set(
+      t
+        .toLowerCase()
+        .replace(/ä/g, 'ae')
+        .replace(/ö/g, 'oe')
+        .replace(/ü/g, 'ue')
+        .replace(/ß/g, 'ss')
+        .split(/[^a-z0-9]+/)
+        .filter((w) => w.length >= 4),
+    );
+  // Punkte je Gebäude × Objekt; vergeben nach höchster Punktzahl, jedes Objekt nur einmal (zwei „Grundschule …“
+  // sollen nicht beide im selben Objekt landen)
+  const pairs: { b: string; id: string; score: number }[] = [];
+  for (const b of buildings) {
+    const bw = words(b);
+    for (const st of sites) {
+      // Treffer im Objektnamen zählen mehr als Straße/Ort (mehrere Objekte liegen oft im selben Ort)
+      const nw = words(st.name);
+      const aw = words(`${st.street ?? ''} ${st.city ?? ''}`);
+      const score = [...bw].reduce((a, w) => a + (nw.has(w) ? 10 : aw.has(w) ? 1 : 0), 0);
+      if (score) pairs.push({ b, id: st.id, score });
+    }
+  }
+  pairs.sort((x, y) => y.score - x.score);
+  const suggestion = new Map<string, string>(buildings.map((b) => [b, '']));
+  const used = new Set<string>();
+  for (const p of pairs) {
+    if (suggestion.get(p.b) || used.has(p.id)) continue;
+    // gleich gute Alternative für dasselbe Gebäude → keine Vorauswahl
+    if (pairs.some((q) => q.b === p.b && q.id !== p.id && q.score === p.score && !used.has(q.id))) continue;
+    suggestion.set(p.b, p.id);
+    used.add(p.id);
+  }
+  if (buildings.length && ![...suggestion.values()].some(Boolean)) suggestion.set(buildings[0]!, siteId);
+  return { sites, suggestion };
 }

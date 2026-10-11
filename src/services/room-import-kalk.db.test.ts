@@ -1,7 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { writeXlsx } from '../domain/sheet/xlsx-write.js';
-import { analyzeRooms, applyRooms, guessRoomType, parseInterval } from './room-import.js';
+import {
+  analyzeRooms,
+  applyRooms,
+  guessRoomType,
+  parseInterval,
+  suggestBuildingSites,
+} from './room-import.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
@@ -35,7 +41,7 @@ describe.skipIf(!available)('Raumbuch aus einer Ausschreibungs-Kalkulation (mehr
     await sql?.end();
   });
 
-  it('findet das Blatt, Reinigungstage vor Turnus, Stunden je Jahr, Stundenvorgabe', async () => {
+  it('findet das Blatt, Reinigungstage vor Turnus, Stunden je Jahr', async () => {
     const xlsx = writeXlsx([
       { name: 'Inhalt', header: ['Vergabe Unterhaltsreinigung'], rows: [['Anhang Teil C']] },
       {
@@ -111,14 +117,22 @@ describe.skipIf(!available)('Raumbuch aus einer Ausschreibungs-Kalkulation (mehr
     expect([by('WC').roomNo, by('WC (2)').roomNo]).toEqual([null, null]);
     expect(a.newTypes).toEqual([]);
     expect(a.hoursYear).toBeCloseTo(68.21 + 0 + 7.86 + 8.25 + 0.04, 6);
-    const r = await applyRooms(sql, DEMO.siteSchool, 'kalk', a, { update: false, hourTarget: true }, 't');
+    const r = await applyRooms(sql, DEMO.siteSchool, 'kalk', a, { update: false }, 't');
     expect(r.created).toBe(6);
-    const [t] = await sql<{ mode: string; year_minutes: number }[]>`
-      select mode, year_minutes from app.site_hour_targets where site_id = ${DEMO.siteSchool}`;
-    expect(t).toEqual({ mode: 'jahr', year_minutes: Math.round((68.21 + 7.86 + 8.25 + 0.04) * 60) });
     const [h] = await sql<{ visits_per_year: number; turnus: string }[]>`
       select visits_per_year, turnus from app.rooms where site_id = ${DEMO.siteSchool} and name = 'Hausmeisterraum'`;
     expect(h).toEqual({ visits_per_year: 0, turnus: '0' });
+    // mehrere Gebäude: je Gebäude ein Objekt, Etage ohne Gebäudename
+    expect(a.buildings).toEqual(['Grundschule', 'Sportzentrum']);
+    const gs = await analyzeRooms(sql, DEMO.siteSchool, xlsx, 260, { building: 'Grundschule' });
+    expect(gs.rows.map((r) => [r.floor, r.name])).toEqual([
+      ['EG', 'Klasse 1a'],
+      ['EG', 'WC Damen'],
+      ['UG', 'Hausmeisterraum'],
+    ]);
+    const sug = await suggestBuildingSites(sql, DEMO.siteSchool, a.buildings);
+    expect(sug.sites.some((x) => x.id === DEMO.siteSchool)).toBe(true);
+    expect(sug.suggestion.size).toBe(2);
     // zweimal übernehmen legt nichts doppelt an
     expect((await applyRooms(sql, DEMO.siteSchool, 'kalk', a, { update: false }, 't')).created).toBe(0);
   }, 30_000);

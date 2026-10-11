@@ -33,7 +33,15 @@ import {
 } from '../services/facility.js';
 import { listSites } from '../services/masterdata.js';
 import { stageFile, stagedFile } from '../services/fortytools-import.js';
-import { DAILY_OPTIONS, ROOM_FIELDS, analyzeRooms, applyRooms, dailyOf } from '../services/room-import.js';
+import {
+  DAILY_OPTIONS,
+  ROOM_FIELDS,
+  analyzeRooms,
+  applyRooms,
+  dailyOf,
+  suggestBuildingSites,
+} from '../services/room-import.js';
+import type { Context } from 'hono';
 import { listFiles } from '../services/uploads.js';
 import {
   deleteQualityCheck,
@@ -43,7 +51,7 @@ import {
 } from '../services/qm-report.js';
 import { uploadConfig } from './routes-files.js';
 import { renderRoomBookPdf, storeRoomBookPdf } from '../services/room-pdf.js';
-import { type Ctx, UUID, assertSite, inScope } from './app.js';
+import { type AppEnv, type Ctx, UUID, assertSite, inScope } from './app.js';
 import { FileArea } from './files.js';
 import { arr, centsToInput, str } from './forms.js';
 import { Icon } from './icons.js';
@@ -303,6 +311,45 @@ export function registerFacilityRoutes(ctx: Ctx) {
     });
   });
 
+  // Datei mit mehreren Gebäuden (Ausschreibung über mehrere Liegenschaften): je Gebäude ein Objekt desselben Kunden,
+  // Vorschlag über den Namen, in der Vorschau änderbar („geb0“, „geb1“ … = Objekt-ID oder leer = nicht übernehmen)
+  const importPlan = async (
+    c: Context<AppEnv>,
+    siteId: string,
+    bytes: Uint8Array,
+    daily: number,
+    pick: (key: string) => string | undefined,
+  ) => {
+    const all = await analyzeRooms(sql, siteId, bytes, daily);
+    if (all.buildings.length < 2)
+      return {
+        all,
+        sites: [] as { id: string; name: string; site_no: string }[],
+        mapping: [] as { building: string; key: string; siteId: string }[],
+        parts: [{ building: null as string | null, siteId, siteName: '', a: all }],
+      };
+    const { sites, suggestion } = await suggestBuildingSites(sql, siteId, all.buildings);
+    const own = c.get('sites');
+    const allowed = sites.filter((x) => !own || own.includes(x.id));
+    const mapping = all.buildings.map((b, i) => {
+      const q = pick(`geb${i}`);
+      const v = q !== undefined ? q : (suggestion.get(b) ?? '');
+      return { building: b, key: `geb${i}`, siteId: allowed.some((x) => x.id === v) ? v : '' };
+    });
+    const parts: { building: string | null; siteId: string; siteName: string; a: typeof all }[] = [];
+    for (const m of mapping)
+      if (m.siteId) {
+        const st = allowed.find((x) => x.id === m.siteId)!;
+        parts.push({
+          building: m.building,
+          siteId: m.siteId,
+          siteName: `${st.name} (${st.site_no})`,
+          a: await analyzeRooms(sql, m.siteId, bytes, daily, { building: m.building }),
+        });
+      }
+    return { all, sites: allowed, mapping, parts };
+  };
+
   // Raumbuch aus Excel/CSV: Hochladen → Vorschau (GET, Datei write-once abgelegt) → Übernehmen
   app.get(`/objekte/:id{${UUID}}/raumbuch/import`, (c) =>
     shells.site!(c, 'raumbuch', async (s) => {
@@ -348,9 +395,13 @@ export function registerFacilityRoutes(ctx: Ctx) {
           </>
         );
       }
-      const a = await analyzeRooms(sql, s.id, await stagedFile(deps, sha), daily);
-      const ok = a.rows.filter((r) => !r.errors.length);
+      const plan = await importPlan(c, s.id, await stagedFile(deps, sha), daily, (k) => c.req.query(k));
+      const a = plan.all;
+      const rowsAll = plan.parts.flatMap((p) => p.a.rows);
+      const ok = rowsAll.filter((r) => !r.errors.length);
       const upd = ok.filter((r) => r.existingId).length;
+      const newTypes = [...new Set(plan.parts.flatMap((p) => p.a.newTypes))];
+      const mapHidden = plan.mapping.map((m) => <input type="hidden" name={m.key} value={m.siteId} />);
       return (
         <>
           <p>
@@ -369,6 +420,39 @@ export function registerFacilityRoutes(ctx: Ctx) {
           </p>
           <form method="get" action={self} class="small" style="margin:8px 0">
             <input type="hidden" name="datei" value={sha} />
+            {plan.mapping.length > 0 && (
+              <div class="card" style="padding:10px 14px;margin-bottom:8px">
+                <b>Die Datei enthält {plan.mapping.length} Gebäude – welches gehört zu welchem Objekt?</b>
+                <div class="grid" style="margin-top:6px">
+                  {plan.mapping.map((m) => {
+                    const n = plan.all.rows.filter(
+                      (r) => r.floor?.startsWith(`${m.building} · `) || r.floor === m.building,
+                    ).length;
+                    return (
+                      <div>
+                        <label for={m.key}>
+                          {m.building} <span class="mut">({n} Räume)</span>
+                        </label>
+                        <select id={m.key} name={m.key} onchange="this.form.submit()">
+                          <option value="" selected={!m.siteId}>
+                            – nicht übernehmen –
+                          </option>
+                          {plan.sites.map((x) => (
+                            <option value={x.id} selected={x.id === m.siteId}>
+                              {x.site_no} · {x.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p class="small mut" style="margin:6px 0 0">
+                  Vorschlag über den Namen. Fehlt ein Objekt, zuerst beim Kunden anlegen und diese Seite neu
+                  laden.
+                </p>
+              </div>
+            )}
             <label for="taeglich" style="display:inline">
               „täglich“ bzw. ohne Intervall bedeutet:{' '}
             </label>
@@ -383,9 +467,35 @@ export function registerFacilityRoutes(ctx: Ctx) {
               <button class="btn sec">Anwenden</button>
             </noscript>
           </form>
-          {a.newTypes.length > 0 && (
-            <div class="flash warn">Neue Raumarten werden angelegt: {a.newTypes.join(', ')}</div>
+          {newTypes.length > 0 && (
+            <div class="flash warn">Neue Raumarten werden angelegt: {newTypes.join(', ')}</div>
           )}
+          <form
+            method="post"
+            action={`${self}/uebernehmen`}
+            class="card"
+            style="position:sticky;top:0;z-index:5;padding:10px 14px;margin:8px 0"
+          >
+            <input type="hidden" name="datei" value={sha} />
+            <input type="hidden" name="taeglich" value={String(daily)} />
+            {mapHidden}
+            {upd > 0 && (
+              <div class="chk">
+                <input type="checkbox" id="update" name="update" />
+                <label for="update">{upd} vorhandene Räume mit den Werten aus der Datei überschreiben</label>
+              </div>
+            )}
+            <div class="actions">
+              <button class="btn" disabled={!ok.length}>
+                {ok.length - upd} neue Räume übernehmen
+                {plan.parts.length > 1 && ` (${plan.parts.length} Objekte)`}
+              </button>
+              <span class="small mut">
+                {rowsAll.length - ok.length > 0 &&
+                  `${rowsAll.length - ok.length} Zeilen mit Fehler werden übersprungen.`}
+              </span>
+            </div>
+          </form>
           <div class="tbl">
             <table>
               <thead>
@@ -401,75 +511,52 @@ export function registerFacilityRoutes(ctx: Ctx) {
                   <th>Status</th>
                 </tr>
               </thead>
-              <tbody>
-                {a.rows.map((r) => (
-                  <tr style={r.errors.length ? 'background:#fdf1f1' : ''}>
-                    <td class="mut">{r.line}</td>
-                    <td>{r.floor}</td>
-                    <td>{r.roomNo}</td>
-                    <td>{r.name}</td>
-                    <td>
-                      {r.typeName}
-                      {!r.typeId && <span class="small mut"> (neu)</span>}
-                      {r.typeRaw && r.typeRaw !== r.name && <div class="small mut">„{r.typeRaw}“</div>}
-                    </td>
-                    <td>{r.covering}</td>
-                    <td class="right">{r.areaCenti != null ? m2(r.areaCenti) : '–'}</td>
-                    <td>
-                      {r.visits != null ? frequencyLabel(r.visits) : '–'}
-                      {r.intervalDefaulted ? (
-                        <div class="small mut">nicht angegeben</div>
-                      ) : (
-                        r.visits != null && r.intervalText && <div class="small mut">„{r.intervalText}“</div>
-                      )}
-                      {r.hoursYear != null && r.hoursYear > 0 && (
-                        <div class="small mut">{num(r.hoursYear)} Std./Jahr</div>
-                      )}
-                    </td>
-                    <td>
-                      {r.errors.length ? (
-                        <span class="tag err">{r.errors.join('; ')}</span>
-                      ) : r.existingId ? (
-                        <span class="tag warn">vorhanden</span>
-                      ) : (
-                        <span class="tag ok">neu</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+              {plan.parts.map((p) => (
+                <tbody>
+                  {p.building != null && (
+                    <tr>
+                      <th colspan={9} style="background:var(--bg2,#f4f4f5)">
+                        {p.building} → {p.siteName} · {p.a.rows.length} Räume
+                      </th>
+                    </tr>
+                  )}
+                  {p.a.rows.map((r) => (
+                    <tr style={r.errors.length ? 'background:#fdf1f1' : ''}>
+                      <td class="mut">{r.line}</td>
+                      <td>{r.floor}</td>
+                      <td>{r.roomNo}</td>
+                      <td>{r.name}</td>
+                      <td>
+                        {r.typeName}
+                        {!r.typeId && <span class="small mut"> (neu)</span>}
+                        {r.typeRaw && r.typeRaw !== r.name && <div class="small mut">„{r.typeRaw}“</div>}
+                      </td>
+                      <td>{r.covering}</td>
+                      <td class="right">{r.areaCenti != null ? m2(r.areaCenti) : '–'}</td>
+                      <td>
+                        {r.visits != null ? frequencyLabel(r.visits) : '–'}
+                        {r.intervalDefaulted ? (
+                          <div class="small mut">nicht angegeben</div>
+                        ) : (
+                          r.visits != null &&
+                          r.intervalText && <div class="small mut">„{r.intervalText}“</div>
+                        )}
+                      </td>
+                      <td>
+                        {r.errors.length ? (
+                          <span class="tag err">{r.errors.join('; ')}</span>
+                        ) : r.existingId ? (
+                          <span class="tag warn">vorhanden</span>
+                        ) : (
+                          <span class="tag ok">neu</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              ))}
             </table>
           </div>
-          <form method="post" action={`${self}/uebernehmen`}>
-            <input type="hidden" name="datei" value={sha} />
-            <input type="hidden" name="taeglich" value={String(daily)} />
-            {a.hoursYear != null && a.hoursYear > 0 && (
-              <div class="chk">
-                <input type="checkbox" id="stundenvorgabe" name="stundenvorgabe" checked />
-                <label for="stundenvorgabe">
-                  Stundenvorgabe des Objekts auf {num(a.hoursYear)} Std. je Jahr setzen (≈{' '}
-                  {num(a.hoursYear / 12)} Std./Monat, laut Datei)
-                  {a.rows.some((r) => r.notes?.includes('Tageskraft')) &&
-                    ' – Räume der Tageskraft sind darin nicht enthalten'}
-                </label>
-              </div>
-            )}
-            {upd > 0 && (
-              <div class="chk">
-                <input type="checkbox" id="update" name="update" />
-                <label for="update">{upd} vorhandene Räume mit den Werten aus der Datei überschreiben</label>
-              </div>
-            )}
-            <div class="actions">
-              <button class="btn" disabled={!ok.length}>
-                {ok.length - upd} neue Räume übernehmen
-              </button>
-              <span class="small mut">
-                {a.rows.length - ok.length > 0 &&
-                  `${a.rows.length - ok.length} Zeilen mit Fehler werden übersprungen.`}
-              </span>
-            </div>
-          </form>
         </>
       );
     }),
@@ -493,23 +580,24 @@ export function registerFacilityRoutes(ctx: Ctx) {
     assertSite(c, siteId);
     const b = await c.req.parseBody({ all: true });
     const sha = str(b, 'datei') ?? '';
-    const a = await analyzeRooms(sql, siteId, await stagedFile(deps, sha), dailyOf(str(b, 'taeglich')));
-    const r = await applyRooms(
-      sql,
-      siteId,
-      sha,
-      a,
-      { update: b.update === 'on', hourTarget: b.stundenvorgabe === 'on' },
-      c.get('actor'),
+    const plan = await importPlan(c, siteId, await stagedFile(deps, sha), dailyOf(str(b, 'taeglich')), (k) =>
+      typeof b[k] === 'string' ? (b[k] as string) : undefined,
     );
-    // Raumbuch als PDF (mit Logo) gleich in die Objekt-Dokumente legen
-    const pdfNote = await storeRoomBookPdf(sql, uploadConfig(ctx), siteId, c.get('actor')).then(
-      () => ' Raumbuch-PDF unter Dokumente abgelegt.',
-      () => '',
-    );
-    return back(c, `/objekte/${siteId}/raumbuch`, {
-      ok: `Raumbuch importiert: ${r.created} neu, ${r.updated} aktualisiert, ${r.skipped} übersprungen.${pdfNote}`,
-    });
+    if (!plan.parts.length) throw new BusinessError('Bitte mindestens einem Gebäude ein Objekt zuordnen');
+    const msgs: string[] = [];
+    for (const p of plan.parts) {
+      assertSite(c, p.siteId);
+      const r = await applyRooms(sql, p.siteId, sha, p.a, { update: b.update === 'on' }, c.get('actor'));
+      // Raumbuch als PDF (mit Logo) gleich in die Objekt-Dokumente legen
+      const pdf = await storeRoomBookPdf(sql, uploadConfig(ctx), p.siteId, c.get('actor')).then(
+        () => true,
+        () => false,
+      );
+      msgs.push(
+        `${p.building != null ? `${p.siteName}: ` : ''}${r.created} neu, ${r.updated} aktualisiert, ${r.skipped} übersprungen${pdf ? ', PDF unter Dokumente' : ''}`,
+      );
+    }
+    return back(c, `/objekte/${siteId}/raumbuch`, { ok: `Raumbuch importiert – ${msgs.join(' · ')}.` });
   });
 
   app.get(`/objekte/:id{${UUID}}/raumbuch.pdf`, async (c) => {

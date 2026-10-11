@@ -22,7 +22,6 @@ import {
   getAccountingSettings,
   saveAccountingSettings,
 } from '../services/datev.js';
-import { lexwareAccounts, lexwareBookings } from '../services/lexware-fibu.js';
 import {
   ADVANCE_METHOD,
   listAllAdvances,
@@ -2611,19 +2610,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               <a class="btn" href={`/datev/buchungsstapel.csv?von=${from}&bis=${to}`}>
                 <Icon name="download" /> Buchungsstapel herunterladen (EXTF)
               </a>
-              <a class="btn sec" href={`/datev/lexware-buchungen.txt?von=${from}&bis=${to}`}>
-                <Icon name="download" /> Lexware buchhaltung: Buchungen
-              </a>
-              <a class="btn sec" href="/datev/lexware-personenkonten.txt">
-                <Icon name="download" /> Lexware buchhaltung: Personenkonten
-              </a>
             </div>
-            <p class="small mut">
-              Lexware buchhaltung pro (ASCII/ANSI-Import): Windows-1252, Semikolon, erste Zeile = Feldnamen
-              wie in der Lexware-Schnittstellenbeschreibung. Zuerst die Personenkonten (Kunden = Kundennummer,
-              Lieferanten = Lieferantennummer) einlesen, dann die Buchungen. Steuerschlüssel =
-              DATEV-Schlüssel, § 13b mit Zusatzangabe 10 (Reinigung von Gebäuden).
-            </p>
             <p class="small mut">
               Format DATEV-Buchungsstapel (EXTF 700), Windows-1252, nicht festgeschrieben. Belege (PDF) liegen
               im Archiv. Vorläufig – vor dem ersten Echt-Export mit dem Steuerberater testen.
@@ -2751,43 +2738,6 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       headers: {
         'Content-Type': 'text/csv; charset=windows-1252',
         'Content-Disposition': `attachment; filename="EXTF_Buchungsstapel_${from}_${to}.csv"`,
-        'Cache-Control': 'no-store',
-      },
-    });
-  });
-
-  // Lexware buchhaltung pro: ASCII/ANSI-Import (Buchungsdaten + Personenkonten), Ahmed 11.10.
-  app.get('/datev/lexware-buchungen.txt', async (c) => {
-    const from = c.req.query('von');
-    const to = c.req.query('bis');
-    if (!isDate(from) || !isDate(to)) throw new BusinessError('Zeitraum ungültig');
-    const { bookings } = await collectBookings(sql, {
-      from,
-      to,
-      outgoing: true,
-      incoming: true,
-      payments: true,
-    });
-    if (!bookings.length)
-      return back(c, `/datev?von=${from}&bis=${to}`, { fehler: 'Im Zeitraum gibt es keine Buchungen.' });
-    const txt = lexwareBookings(bookings, await getAccountingSettings(sql));
-    await sql`insert into app.audit_log (actor, action, entity, details) values (${c.get('actor')}, 'export', 'lexware_buchungen', ${sql.json({ from, to, bookings: bookings.length })})`;
-    return new Response(encodeCp1252(txt), {
-      headers: {
-        'Content-Type': 'text/plain; charset=windows-1252',
-        'Content-Disposition': `attachment; filename="Lexware_Buchungen_${from}_${to}.txt"`,
-        'Cache-Control': 'no-store',
-      },
-    });
-  });
-
-  app.get('/datev/lexware-personenkonten.txt', async (c) => {
-    const txt = await lexwareAccounts(sql);
-    await sql`insert into app.audit_log (actor, action, entity) values (${c.get('actor')}, 'export', 'lexware_personenkonten')`;
-    return new Response(encodeCp1252(txt), {
-      headers: {
-        'Content-Type': 'text/plain; charset=windows-1252',
-        'Content-Disposition': 'attachment; filename="Lexware_Personenkonten.txt"',
         'Cache-Control': 'no-store',
       },
     });

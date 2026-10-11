@@ -2555,14 +2555,3 @@ Testadresse.
   (bzw. „keine Stunden im Monat“), Export wird dann nicht festgehalten; gelber Hinweis in der Ansicht Lohnarten mit Link
   zu Einstellungen → Zuschläge & Lohnarten. **Ahmed: Lohnart-Nummern aus Lexware (Normalstunden, Urlaub, Krank, Feiertag,
   Zuschläge) dort eintragen.**
-- 2026-10-11: **Export für Lexware buchhaltung pro** (Ahmed schickte die Lexware-Schnittstellenbeschreibung ASCII/ANSI –
-  das ist die Buchhaltung, nicht das Lohnprogramm): DATEV-Seite → „Lexware buchhaltung: Buchungen“
-  (`/datev/lexware-buchungen.txt`, Zeitraum) und „Personenkonten“ (`/datev/lexware-personenkonten.txt`),
-  `src/services/lexware-fibu.ts`. Windows-1252, Semikolon, Dezimalkomma, TT.MM.JJJJ, erste Zeile = Feldnamen genau wie in
-  der Beschreibung. Buchungen = dieselben wie der DATEV-Stapel (Ausgangsrechnungen, Zahlungseingänge, Eingangsrechnungen,
-  Zahlungsausgänge): Soll/Haben aus dem Kennzeichen, Buchungsperiode = Monat im Wirtschaftsjahr, Belegnummernkreis
-  AR/ER/ZE/ZA, Steuerschlüssel = DATEV-Schlüssel (Erlöse 8400 als Automatikkonto ohne Schlüssel), § 13b mit Zusatzangabe
-  10 (Reinigung von Gebäuden). Personenkonten: Kunden (Konto = Kundennummer) und Lieferanten (Konto = Lieferantennummer)
-  mit Anschrift (Straße/Hausnummer getrennt), Ansprechpartner, Zahlungsziel, Skonto, IBAN/BIC, USt-IdNr.
-  **Ersten Import gemeinsam bzw. mit dem Steuerberater prüfen** (Kontenrahmen, Automatikkonten, Nummernbereiche der
-  Personenkonten in Lexware). Der Lohn-Export (Lexware lohn+gehalt) bleibt davon getrennt.

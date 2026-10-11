@@ -418,6 +418,47 @@ export function payrollCsv(
   return `${out.join('\r\n')}\r\n`;
 }
 
+/**
+ * ASCII-Import für Lexware lohn+gehalt / Financial Office (Ahmed 11.10.: „ASCII also ANSI-Import“):
+ * Windows-1252, Semikolon, Dezimalkomma, CRLF, ohne Kopfzeile. Je Mitarbeiter und Lohnart eine Zeile:
+ * Personalnummer;Lohnart-Nr.;Stunden;Betrag – nur Lohnarten mit hinterlegter Nummer, „Unbezahlt (Info)“ nie.
+ * Betrag nur bei Zuschlägen (sonst leer, Lexware rechnet Stunden × Stundenlohn). Korrekturen des Vormonats
+ * (Vorab-Abrechnung) als eigene Zeilen mit der Stunden-Differenz (auch minus).
+ * Rückgabe: Text + Lohnarten ohne Nummer (werden nicht exportiert, Hinweis auf der Seite).
+ */
+export function payrollLexwareAscii(
+  rows: PayrollRow[],
+  s: PayrollSettings,
+  corrections?: PayrollCorrection[],
+): { text: string; missing: WageType[] } {
+  const out: string[] = [];
+  const missing = new Set<WageType>();
+  const clean = (v: string) => v.replace(/[;\r\n]/g, ' ').trim();
+  const push = (no: string, k: WageType, minutes: number, amount: string) => {
+    if (k === 'unbezahlt' || !minutes) return;
+    const nr = clean(s.wage_type_numbers[k] ?? '');
+    if (!nr) {
+      missing.add(k);
+      return;
+    }
+    out.push([clean(no), nr, dec(minutes), amount].join(';'));
+  };
+  for (const r of rows)
+    for (const k of WAGE_TYPES) {
+      const sur = (SURCHARGES as string[]).includes(k) ? (k as SurchargeKind) : null;
+      const amount =
+        sur && r.wage_cents
+          ? eur(r.surchargeCents[sur])
+          : k === 'mehrarbeit' && r.wage_cents
+            ? eur(r.overtimeCents)
+            : '';
+      push(r.personnel_no, k, r.minutes[k] ?? 0, amount);
+    }
+  for (const r of corrections ?? [])
+    for (const k of WAGE_TYPES) push(r.personnel_no, k, r.minutes[k] ?? 0, '');
+  return { text: out.length ? `${out.join('\r\n')}\r\n` : '', missing: [...missing] };
+}
+
 /** Vorab-Export festhalten (Grundlage für die Korrektur im Folgemonat). */
 export async function recordPayrollExport(
   sql: Sql,

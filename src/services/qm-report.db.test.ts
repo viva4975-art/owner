@@ -68,15 +68,16 @@ describe.skipIf(!available)('Qualitätskontrolle: Auswertungsbericht, Statistik,
       await sql`insert into app.rooms (id, site_id, name, room_type_id, area_centi, visits_per_year)
                 values (${id}, ${DEMO.siteSchool}, ${name}, '00000000-0000-4000-8000-0000000a0001', 1500, 260)`;
     await audit('2026-09-01', { [r1]: 1, [r2]: 1 });
-    const id = await audit('2026-10-01', { [r1]: 1, [r2]: 4 }); // r2: 40 % + 100 % = 70 %
+    const id = await audit('2026-10-01', { [r1]: 1, [r2]: 4 }); // r2: Boden 40 % (Gewicht 4) + Türen 100 % (Gewicht 1) = 52 %
     const rep = await auditReport(sql, id);
     expect(rep.rooms).toHaveLength(2);
     expect(rep.ampel).toEqual({ low: 1, mid: 0, high: 1 });
-    expect(rep.score).toBe(85);
+    expect(rep.score).toBe(76);
     expect(rep.prevScore).toBe(100);
-    expect(rep.history.map((h) => h.score)).toEqual([100, 85]);
+    expect(rep.history.map((h) => h.score)).toEqual([100, 76]);
     expect(rep.defectCount).toBe(1);
     expect(rep.top[0]!.score).toBe(70);
+    expect(rep.top[0]!.weight).toBe(4);
     expect(rep.groups[0]!.prev).toBe(100);
     expect(rep.areas.length).toBeGreaterThan(0);
     const pdf = await renderAuditReportPdf(deps, { dir, maxBytes: 1e7 }, id);
@@ -84,8 +85,8 @@ describe.skipIf(!available)('Qualitätskontrolle: Auswertungsbericht, Statistik,
 
     const s = await qmStatistics(sql, { from: '2026-01-01', to: '2026-12-31', siteIds: null });
     expect(s.checks).toBe(2);
-    expect(s.score).toBe(93);
-    expect(s.sites[0]!.trend).toBe(-15);
+    expect(s.score).toBe(88);
+    expect(s.sites[0]!.trend).toBe(-24);
     expect(
       (await renderQmStatisticsPdf(s, { from: '2026-01-01', to: '2026-12-31', scope: 'alle' })).length,
     ).toBeGreaterThan(1000);

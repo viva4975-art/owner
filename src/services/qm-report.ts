@@ -4,7 +4,7 @@ import type { Sql } from '../db/client.js';
 import { formatDateDe } from '../domain/invoice/calc.js';
 import { FORM_COLORS, FORM_X, FORM_Y, FormDoc } from '../pdf/form-doc.js';
 import { BusinessError } from './errors.js';
-import { QM_SCALE, type QmItem, roomMeta } from './qm.js';
+import { QM_SCALE, type QmItem, roomMeta, weightedScore } from './qm.js';
 import { filePath, type FileRow, type UploadConfig } from './uploads.js';
 import type { Deps } from './workflow.js';
 
@@ -15,6 +15,15 @@ import type { Deps } from './workflow.js';
  * Verbesserungspotentiale, durchgeführte Prüfungen, geprüfte Einheiten mit Zeit und Mängelliste mit Fotos.
  * Mangel = Bewertung unter dem Schwellwert (Standard 80 %, Einstellungen → Kontrollgegenstände).
  */
+
+/** Gewichtung je Kontrollgegenstand (Einstellungen → Kontrollgegenstände) */
+export const WEIGHT_LABEL: Record<number, string> = {
+  1: 'gering',
+  2: 'normal',
+  3: 'wichtig',
+  4: 'sehr wichtig',
+  5: 'kritisch',
+};
 
 export interface QmSettings {
   threshold_low: number;
@@ -76,6 +85,7 @@ export interface ReportDefect {
   note: string | null;
   label: string;
   pct: number;
+  weight: number;
   photos: string[];
 }
 export interface ReportRoom {
@@ -121,7 +131,7 @@ export interface AuditReport {
   history: { id: string; number: string; date: string; score: number; inspector: string; units: number }[];
   groups: ReportRow[];
   areas: ReportRow[];
-  top: { item: string; description: string | null; count: number; score: number }[];
+  top: TopItem[];
   defectCount: number;
 }
 
@@ -137,6 +147,7 @@ interface RatingRow {
   area_group: string | null;
   value: number | null;
   percent: number | null;
+  weight: number;
   skipped: boolean;
   note: string | null;
   photo_ids: string[];
@@ -147,9 +158,46 @@ async function ratingsOf(sql: Sql, checkIds: string[]) {
   if (!checkIds.length) return [] as RatingRow[];
   return sql<RatingRow[]>`
     select r.check_id, r.room_id, r.item_id, i.name as item, i.kind, i.description, i.area_group, r.value, r.percent,
-           r.skipped, r.note, r.photo_ids, r.rated_at
+           r.weight, r.skipped, r.note, r.photo_ids, r.rated_at
       from app.quality_check_ratings r join app.qm_items i on i.id = r.item_id
      where r.check_id in ${sql(checkIds)}`;
+}
+
+export interface TopItem {
+  item: string;
+  description: string | null;
+  weight: number;
+  count: number;
+  score: number;
+}
+
+/**
+ * Top 10 Verbesserungspotentiale: nach Gewicht des Abzugs sortiert – (100 % − Qualität) × Gewichtung × Anzahl
+ * Bewertungen. Ein schlecht gereinigter Boden (Gewicht 4) steht damit vor einer vergessenen Steckdose (Gewicht 1).
+ */
+function topItems(ratings: RatingRow[]): TopItem[] {
+  const by = new Map<string, { item: string; description: string | null; weight: number; pct: number[] }>();
+  for (const r of ratings) {
+    if (r.skipped || r.percent == null) continue;
+    const e = by.get(r.item_id) ?? { item: r.item, description: r.description, weight: r.weight, pct: [] };
+    e.pct.push(r.percent);
+    e.weight = Math.max(e.weight, r.weight);
+    by.set(r.item_id, e);
+  }
+  return [...by.values()]
+    .map((e) => ({
+      item: e.item,
+      description: e.description,
+      weight: e.weight,
+      count: e.pct.length,
+      score: avg(e.pct)!,
+    }))
+    .filter((e) => e.score < 100)
+    .sort(
+      (a, b) =>
+        (100 - b.score) * b.weight * b.count - (100 - a.score) * a.weight * a.count || a.score - b.score,
+    )
+    .slice(0, 10);
 }
 
 /** Werte je Leistungsgruppe/-bereich eines Audits (für „Änderung zum letzten Audit“) */
@@ -159,30 +207,26 @@ function breakdown(
   low: number,
   by: 'group' | 'area',
 ): Map<string, ReportRow> {
-  const m = new Map<
-    string,
-    { units: Set<string>; pct: number[]; roomPct: Map<string, number[]>; defects: number }
-  >();
+  const m = new Map<string, { units: Set<string>; rs: RatingRow[]; defects: number }>();
   for (const r of ratings) {
     if (r.skipped || r.percent == null) continue;
     const key =
       by === 'group' ? (roomGroup.get(r.room_id) ?? 'Ohne Nutzungsart') : r.area_group || 'Allgemein';
-    const e = m.get(key) ?? {
-      units: new Set<string>(),
-      pct: [] as number[],
-      roomPct: new Map<string, number[]>(),
-      defects: 0,
-    };
+    const e = m.get(key) ?? { units: new Set<string>(), rs: [] as RatingRow[], defects: 0 };
     e.units.add(r.room_id);
-    e.pct.push(r.percent);
-    e.roomPct.set(r.room_id, [...(e.roomPct.get(r.room_id) ?? []), r.percent]);
+    e.rs.push(r);
     if (r.percent < low) e.defects++;
     m.set(key, e);
   }
   const out = new Map<string, ReportRow>();
   for (const [name, e] of m) {
-    // Leistungsgruppe: Ø der Räume (wie das Gesamtergebnis); Leistungsbereich: Ø der Bewertungen
-    const score = by === 'group' ? avg([...e.roomPct.values()].map((v) => avg(v)!)) : avg(e.pct);
+    // Leistungsgruppe: Ø der Räume (je Raum gewichtet, wie das Gesamtergebnis); Leistungsbereich: gewichteter Ø
+    let score: number | null;
+    if (by === 'group') {
+      const perRoom = new Map<string, RatingRow[]>();
+      for (const r of e.rs) perRoom.set(r.room_id, [...(perRoom.get(r.room_id) ?? []), r]);
+      score = avg([...perRoom.values()].map((v) => weightedScore(v)!));
+    } else score = weightedScore(e.rs);
     out.set(name, { name, units: e.units.size, defects: e.defects, score, prev: null });
   }
   return out;
@@ -243,14 +287,13 @@ export async function auditReport(sql: Sql, id: string): Promise<AuditReport> {
     reportRooms = rooms
       .map((r) => {
         const rs = cur.filter((x) => x.room_id === r.id);
-        const vals = rs.filter((x) => !x.skipped && x.percent != null).map((x) => x.percent!);
         const times = rs.map((x) => x.rated_at.getTime());
         return {
           id: r.id,
           label: [r.room_no, r.name].filter(Boolean).join(' '),
           meta: roomMeta(r),
           group: r.room_type,
-          score: avg(vals),
+          score: weightedScore(rs),
           defects: rs
             .filter((x) => !x.skipped && x.percent != null && x.percent < low)
             .map((x) => ({
@@ -259,6 +302,7 @@ export async function auditReport(sql: Sql, id: string): Promise<AuditReport> {
               note: x.note,
               label: QM_SCALE[x.kind].find((o) => o.v === x.value)?.label ?? String(x.value),
               pct: x.percent!,
+              weight: x.weight,
               photos: x.photo_ids,
             })),
           first: times.length ? new Date(Math.min(...times)) : null,
@@ -294,6 +338,7 @@ export async function auditReport(sql: Sql, id: string): Promise<AuditReport> {
                 note: i.note,
                 label: 'Mangel',
                 pct: 0,
+                weight: 2,
                 photos: [],
               },
             ]
@@ -337,18 +382,7 @@ export async function auditReport(sql: Sql, id: string): Promise<AuditReport> {
   groups.sort((a, b) => a.name.localeCompare(b.name, 'de'));
   areas.sort((a, b) => a.name.localeCompare(b.name, 'de'));
 
-  const byItem = new Map<string, { item: string; description: string | null; pct: number[] }>();
-  for (const r of cur) {
-    if (r.skipped || r.percent == null) continue;
-    const e = byItem.get(r.item_id) ?? { item: r.item, description: r.description, pct: [] };
-    e.pct.push(r.percent);
-    byItem.set(r.item_id, e);
-  }
-  const top = [...byItem.values()]
-    .map((e) => ({ item: e.item, description: e.description, count: e.pct.length, score: avg(e.pct)! }))
-    .filter((e) => e.score < 100)
-    .sort((a, b) => a.score - b.score || b.count - a.count)
-    .slice(0, 10);
+  const top = topItems(cur);
 
   const unitsOf = async (ids: string[]) => {
     if (!ids.length) return new Map<string, number>();
@@ -410,7 +444,7 @@ export interface QmStatistics {
   }[];
   areas: ReportRow[];
   groups: ReportRow[];
-  top: { item: string; description: string | null; count: number; score: number }[];
+  top: TopItem[];
 }
 
 export async function qmStatistics(
@@ -495,18 +529,7 @@ export async function qmStatistics(
   const groups = [...breakdown(ratings, roomGroup, low, 'group').values()].sort(
     (a, b) => (a.score ?? 0) - (b.score ?? 0),
   );
-  const byItem = new Map<string, { item: string; description: string | null; pct: number[] }>();
-  for (const r of ratings) {
-    if (r.skipped || r.percent == null) continue;
-    const e = byItem.get(r.item_id) ?? { item: r.item, description: r.description, pct: [] };
-    e.pct.push(r.percent);
-    byItem.set(r.item_id, e);
-  }
-  const top = [...byItem.values()]
-    .map((e) => ({ item: e.item, description: e.description, count: e.pct.length, score: avg(e.pct)! }))
-    .filter((e) => e.score < 100)
-    .sort((a, b) => a.score - b.score || b.count - a.count)
-    .slice(0, 10);
+  const top = topItems(ratings);
   return {
     settings,
     checks: checks.length,
@@ -721,12 +744,19 @@ export async function renderAuditReportPdf(deps: Deps, cfg: UploadConfig, id: st
     d.section('Top 10 Verbesserungspotentiale');
     d.table(
       [
-        { label: 'Kontrollgegenstand', width: 140 },
-        { label: 'Tätigkeit', width: 230 },
-        { label: 'Bewertungen', width: 64, align: 'right' },
-        { label: 'Qualität', width: 64, align: 'right' },
+        { label: 'Kontrollgegenstand', width: 130 },
+        { label: 'Tätigkeit', width: 196 },
+        { label: 'Gewicht', width: 56 },
+        { label: 'Bewertungen', width: 60, align: 'right' },
+        { label: 'Qualität', width: 56, align: 'right' },
       ],
-      r.top.map((t) => [t.item, t.description ?? '', String(t.count), pctText(t.score)]),
+      r.top.map((t) => [
+        t.item,
+        t.description ?? '',
+        WEIGHT_LABEL[t.weight] ?? '',
+        String(t.count),
+        pctText(t.score),
+      ]),
     );
   }
   d.section('Durchgeführte Prüfungen');
@@ -780,11 +810,18 @@ export async function renderAuditReportPdf(deps: Deps, cfg: UploadConfig, id: st
       d.table(
         [
           { label: 'Kontrollgegenstand', width: 120 },
-          { label: 'Beschreibung', width: 170 },
-          { label: 'Bemerkung', width: 140 },
-          { label: 'Bewertung', width: 68, align: 'right' },
+          { label: 'Beschreibung', width: 150 },
+          { label: 'Bemerkung', width: 120 },
+          { label: 'Gewicht', width: 50 },
+          { label: 'Bewertung', width: 58, align: 'right' },
         ],
-        room.defects.map((x) => [x.item, x.description ?? '', x.note ?? '', `${x.label} (${x.pct} %)`]),
+        room.defects.map((x) => [
+          x.item,
+          x.description ?? '',
+          x.note ?? '',
+          WEIGHT_LABEL[x.weight] ?? '',
+          `${x.label} (${x.pct} %)`,
+        ]),
         { size: 8 },
       );
       // Fotos klein darunter (nur JPG/PNG)
@@ -832,7 +869,7 @@ export async function renderAuditReportPdf(deps: Deps, cfg: UploadConfig, id: st
     });
   } else {
     d.muted(
-      `Bewertung je Einheit: Durchschnitt der Kontrollgegenstände; Ergebnis: Durchschnitt der Einheiten. Mängel = Bewertung unter ${st.threshold_low} %.`,
+      `Bewertung je Einheit: gewichteter Durchschnitt der Kontrollgegenstände (Gewicht 1 gering … 5 kritisch); Ergebnis: Durchschnitt der Einheiten. Mängel = Bewertung unter ${st.threshold_low} %.`,
     );
   }
   return d.save();
@@ -909,12 +946,19 @@ export async function renderQmStatisticsPdf(
     d.section('Top 10 Verbesserungspotentiale');
     d.table(
       [
-        { label: 'Kontrollgegenstand', width: 140 },
-        { label: 'Tätigkeit', width: 230 },
-        { label: 'Bewertungen', width: 64, align: 'right' },
-        { label: 'Qualität', width: 64, align: 'right' },
+        { label: 'Kontrollgegenstand', width: 130 },
+        { label: 'Tätigkeit', width: 196 },
+        { label: 'Gewicht', width: 56 },
+        { label: 'Bewertungen', width: 60, align: 'right' },
+        { label: 'Qualität', width: 56, align: 'right' },
       ],
-      s.top.map((t) => [t.item, t.description ?? '', String(t.count), pctText(t.score)]),
+      s.top.map((t) => [
+        t.item,
+        t.description ?? '',
+        WEIGHT_LABEL[t.weight] ?? '',
+        String(t.count),
+        pctText(t.score),
+      ]),
     );
   }
   return d.save();

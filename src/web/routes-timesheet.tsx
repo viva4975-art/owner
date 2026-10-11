@@ -31,10 +31,12 @@ import {
   getPayrollSettings,
   payrollCorrections,
   payrollCsv,
+  payrollLexwareAscii,
   recordPayrollExport,
   payrollMonth,
   savePayrollSettings,
 } from '../services/payroll.js';
+import { encodeCp1252 } from '../services/datev.js';
 import type { Context } from 'hono';
 import type { AppEnv, Ctx } from './app.js';
 import { arr, str } from './forms.js';
@@ -496,6 +498,19 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                 }
               >
                 CSV Lohnprogramm
+              </a>
+              <a
+                class="btn sm"
+                href={`/zeiterfassung/lohnarten-lexware.txt?${d.qs()}`}
+                data-export
+                title="Lexware ASCII-Import: Personalnummer;Lohnart-Nr.;Stunden;Betrag – Windows-1252 (ANSI), ohne Kopfzeile"
+                data-confirm={
+                  month >= todayBerlin().slice(0, 7)
+                    ? `Der Monat ${month.slice(5)}/${month.slice(0, 4)} läuft noch. Diesen Stand als Vorab-Abrechnung für Lexware festhalten? Was sich danach noch ändert, kommt im Folgemonat als Korrekturzeile.`
+                    : `Lohnarten ${month.slice(5)}/${month.slice(0, 4)} als Lexware-ASCII-Datei exportieren? Der Stand wird festgehalten; spätere Änderungen erscheinen im Folgemonat als Korrekturzeile.`
+                }
+              >
+                Lexware (ASCII)
               </a>
             </>
           )}
@@ -1073,6 +1088,24 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
     );
   });
 
+  // Lexware ASCII-Import (ANSI/Windows-1252, ohne Kopfzeile)
+  app.get('/zeiterfassung/lohnarten-lexware.txt', async (c) => {
+    const d = await listData(c);
+    const month = d.month;
+    const st = await getPayrollSettings(sql);
+    const rows = d.rows.map((x) => x.p).filter((p): p is NonNullable<typeof p> => !!p);
+    const prev = addMonths(month, -1);
+    const corr = await payrollCorrections(sql, prev);
+    await recordPayrollExport(sql, month, d.cutoff, rows, c.get('actor'));
+    const { text } = payrollLexwareAscii(rows, st, corr.rows);
+    return new Response(encodeCp1252(text), {
+      headers: {
+        'Content-Type': 'text/plain; charset=windows-1252',
+        'Content-Disposition': `attachment; filename="lexware-lohnarten-${month}.txt"`,
+      },
+    });
+  });
+
   app.get('/zeiterfassung/lohnarten/einstellungen', async (c) => {
     const st = await getPayrollSettings(sql);
     const pct = (bp: number) => String(bp / 100).replace('.', ',');
@@ -1150,6 +1183,12 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
             Lohnprogramm.
           </p>
           <h3>Lohnart-Nummern im Lohnprogramm</h3>
+          <p class="small mut">
+            Export „Lexware (ASCII)“: Windows-1252 (ANSI), Trennzeichen Semikolon, Dezimalkomma, ohne
+            Kopfzeile; je Zeile Personalnummer;Lohnart-Nr.;Stunden;Betrag (Betrag nur bei Zuschlägen). In
+            Lexware einmal die ASCII-Importvorlage mit diesen vier Feldern in dieser Reihenfolge anlegen.
+            Lohnarten ohne Nummer werden nicht exportiert.
+          </p>
           <div class="grid">
             {WAGE_TYPES.map((k) => (
               <div>

@@ -40,7 +40,7 @@ import {
   qmSites,
   setTicketStatus,
 } from '../services/qm.js';
-import { qmSettings, saveQmSettings } from '../services/qm-report.js';
+import { WEIGHT_LABEL, qmSettings, saveQmSettings } from '../services/qm-report.js';
 import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { str } from './forms.js';
 import { storeFile } from '../services/uploads.js';
@@ -1134,6 +1134,21 @@ f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('c
           ))}
         </select>
         {used && <input type="hidden" name="kind" value={it!.kind} />}
+        <label for="kg-weight">Gewichtung *</label>
+        <select id="kg-weight" name="weight" data-nosearch>
+          {[1, 2, 3, 4, 5].map((w) => (
+            <option value={String(w)} selected={(it?.weight ?? 2) === w}>
+              {w} – {WEIGHT_LABEL[w]}
+              {w === 1
+                ? ' (z. B. Steckdosen, Heizkörper)'
+                : w === 4
+                  ? ' (z. B. Boden, Waschbecken)'
+                  : w === 5
+                    ? ' (z. B. WC/Urinal)'
+                    : ''}
+            </option>
+          ))}
+        </select>
         <label for="kg-area">Leistungsbereich</label>
         <input
           id="kg-area"
@@ -1201,8 +1216,12 @@ f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('c
         <QmTabs on="kg" />
         <p class="mut" style="max-width:860px">
           Was im Audit je Raum bewertet wird. Welche Gegenstände in einem Raum geprüft werden, legen Sie unter{' '}
-          <a href={NA}>Nutzungsarten</a> fest. Prozent im Ergebnis: Note 1 = 100 % … 6 = 0 %; Gut 100 %,
-          Mittel 50 %, Schlecht 0 %; Ja 100 %, Nein 0 %; Punkte 5 = 100 % … 1 = 0 %.
+          <a href={NA}>Nutzungsarten</a> fest. <b>Gewichtung</b> wie bei Neumann &amp; Neumann: Ein Raum wird
+          als gewichteter Durchschnitt bewertet – ein nicht gereinigter Boden (4) zieht das Ergebnis stärker
+          herunter als eine vergessene Steckdose (1); die Top 10 Verbesserungspotentiale sind danach sortiert.
+          Die Gewichtung wird je Bewertung festgehalten, spätere Änderungen verändern alte Audits nicht.
+          Prozent im Ergebnis: Note 1 = 100 % … 6 = 0 %; Gut 100 %, Mittel 50 %, Schlecht 0 %; Ja 100 %, Nein
+          0 %; Punkte 5 = 100 % … 1 = 0 %.
         </p>
         <div class="tbl card" style="max-width:860px;padding:0">
           <table>
@@ -1210,6 +1229,7 @@ f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('c
               <tr>
                 <th>Name</th>
                 <th>Leistungsbereich</th>
+                <th>Gewichtung</th>
                 <th>Bewertungsmodus</th>
                 <th class="acts"></th>
               </tr>
@@ -1226,6 +1246,11 @@ f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('c
                     )}
                   </td>
                   <td>{it.area_group ?? <span class="mut">–</span>}</td>
+                  <td>
+                    <span class={`badge${it.weight >= 4 ? ' err' : it.weight === 3 ? ' warn' : ''}`}>
+                      {it.weight} · {WEIGHT_LABEL[it.weight]}
+                    </span>
+                  </td>
                   <td>{QM_KIND[it.kind]}</td>
                   <td class="r acts">
                     <a
@@ -1338,6 +1363,7 @@ f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('c
       sortOrder: so && /^\d{1,5}$/.test(so) ? Number(so) : null,
       description: str(b, 'description'),
       areaGroup: str(b, 'area_group'),
+      weight: /^[1-5]$/.test(str(b, 'weight') ?? '') ? Number(str(b, 'weight')) : 2,
     });
     return back(c, KG, { ok: 'Kontrollgegenstand gespeichert.' });
   });

@@ -447,7 +447,7 @@ export async function closeQualityCheck(
   // Audit mit Noten je Kontrollgegenstand (QM-App): Ergebnis = Durchschnitt der Räume
   const [live] = await sql<{ score: number | null }[]>`
     select round(avg(room_score))::int as score from (
-      select avg(percent) as room_score from app.quality_check_ratings
+      select sum(percent * weight)::numeric / sum(weight) as room_score from app.quality_check_ratings
        where check_id = ${id} and not skipped and percent is not null group by room_id) x`;
   const score = live?.score ?? okScore;
   let sig: { path: string; sha256: string; name: string } | null = null;

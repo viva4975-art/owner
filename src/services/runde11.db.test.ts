@@ -164,9 +164,9 @@ describe.skipIf(!available)('Runde 11: Lohnarten und Urlaubsanspruch (Datenbank)
       ],
       actor: 'qm',
     });
-    expect(await auditScore(sql, qc)).toBe(58); // (75 + 100 + 0) / 3
+    expect(await auditScore(sql, qc)).toBe(61); // gewichtet: (75×2 + 100×4 + 0×3) / 9
     const [r] = (await auditRooms(sql, qc, DEMO.siteSchool)).filter((x) => x.id === room);
-    expect([r!.rated, r!.score]).toEqual([4, 58]);
+    expect([r!.rated, r!.score]).toEqual([4, 61]);
     const [line] =
       await sql`select rating::text, defects from app.quality_check_items where check_id = ${qc} and room_id = ${room}`;
     expect(line!.rating).toBe('mangel');
@@ -230,7 +230,7 @@ describe.skipIf(!available)('Runde 11: Lohnarten und Urlaubsanspruch (Datenbank)
       actor: 'qm',
     });
     const [r] = (await auditRooms(sql, qc, DEMO.siteSchool)).filter((x) => x.id === room);
-    expect(r!.score).toBe(75);
+    expect(r!.score).toBe(83); // gewichtet: (50×2 + 100×4) / 6
     await expect(deleteQmItem(sql, item)).rejects.toThrow(/nicht löschbar/);
     await expect(
       saveQmItem(sql, item, { name: 'Lichtschalter T', kind: 'note', active: true, sortOrder: null }),

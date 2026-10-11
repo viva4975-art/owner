@@ -1054,7 +1054,7 @@ f.addEventListener('change',show);f.addEventListener('input',sum);show();})();`,
                       {s.top.map((t) => (
                         <tr>
                           <td>
-                            {t.item}
+                            {t.item} <span class="mut small">· Gewicht {t.weight}</span>
                             {t.description && <div class="small mut">{t.description}</div>}
                           </td>
                           <td class="right">{t.count}</td>

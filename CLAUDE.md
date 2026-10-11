@@ -2514,3 +2514,15 @@ Testadresse.
   - **Löschen** (unten an der Kontrolle): Entwurf jeder mit Zugriff aufs Objekt; abgeschlossene nur Admin – Stand ins
     Protokoll, offene Nachbesserungs-Aufgaben entfallen, Prüfbericht/Fotos bleiben write-once im Archiv, Tickets bleiben.
     Migration `20261122000004`. Test `qm-report.db.test.ts`.
+- 2026-10-11: **Gewichtung der Kontrollgegenstände** (Ahmed, wie Neumann & Neumann: „Boden nicht gereinigt ist schlimmer als
+  Steckdose vergessen“): Einstellungen → Kontrollgegenstände → Gewichtung 1 gering / 2 normal / 3 wichtig / 4 sehr wichtig /
+  5 kritisch (vorbelegt: WC 5, Boden/Waschbecken/Verbrauchsmaterial 4, Abfall/Küche 3, Türen/Heizkörper/Fensterbänke/Glas/
+  Spinnweben 1, Rest 2). Raumergebnis = gewichteter Durchschnitt (QM-App, Abschluss, Bericht, Statistik); Top 10
+  Verbesserungspotentiale nach (100 % − Qualität) × Gewicht × Anzahl. Gewicht wird je Bewertung festgehalten
+  (`quality_check_ratings.weight`) – spätere Änderungen verändern alte Audits nicht. Migration `20261122000005`.
+- 2026-10-11: **Lexware ASCII-Import** (Ahmed: „ASCII also ANSI-Import“): Stundenliste & Lohnarten → Knopf „Lexware (ASCII)“
+  (`/zeiterfassung/lohnarten-lexware.txt`): Windows-1252, Semikolon, Dezimalkomma, CRLF, ohne Kopfzeile, je Zeile
+  Personalnummer;Lohnart-Nr.;Stunden;Betrag (Betrag nur bei Zuschlägen), Korrekturzeilen Vormonat mit Stunden-Differenz,
+  nur Lohnarten mit Nummer, nie „Unbezahlt“. Export wird festgehalten wie die CSV. **Ahmed: in Lexware einmal die
+  ASCII-Importvorlage mit diesen 4 Feldern anlegen und die Lohnart-Nummern unter Einstellungen → Zuschläge & Lohnarten
+  eintragen; ersten Import gemeinsam prüfen.**

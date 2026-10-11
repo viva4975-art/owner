@@ -140,6 +140,8 @@ export interface QmItem {
   kind: 'note' | 'janein' | 'gms' | 'punkte';
   description: string | null;
   area_group: string | null;
+  /** Gewichtung 1 gering … 5 kritisch (Raumergebnis = gewichteter Durchschnitt) */
+  weight: number;
   active: boolean;
   sort_order: number;
   version: number;
@@ -186,23 +188,26 @@ export async function saveQmItem(
     sortOrder: number | null;
     description?: string | null;
     areaGroup?: string | null;
+    weight?: number | null;
   },
 ) {
   const name = p.name.trim();
   if (!name) throw new BusinessError('Bitte einen Namen für den Kontrollgegenstand angeben');
   if (!(p.kind in QM_KIND)) throw new BusinessError('Bewertungsart ungültig');
+  const weight = p.weight ?? 2;
+  if (!Number.isInteger(weight) || weight < 1 || weight > 5) throw new BusinessError('Gewichtung 1 bis 5');
   const [dup] = await sql`select 1 from app.qm_items where lower(name) = lower(${name}) and id <> ${id}`;
   if (dup) throw new BusinessError(`„${name}“ gibt es schon`);
   const [cur] = await sql<{ kind: string }[]>`select kind from app.qm_items where id = ${id}`;
   if (cur && cur.kind !== p.kind && (await qmItemUsed(sql, id)))
     throw new BusinessError('Bewertungsmodus nicht änderbar – der Gegenstand wurde schon in Audits bewertet');
   await sql`
-    insert into app.qm_items (id, name, kind, active, sort_order, description, area_group)
+    insert into app.qm_items (id, name, kind, active, sort_order, description, area_group, weight)
     values (${id}, ${name}, ${p.kind}, ${p.active},
             ${p.sortOrder ?? sql`(select coalesce(max(sort_order), 0) + 10 from app.qm_items)`},
-            ${p.description?.trim() || null}, ${p.areaGroup?.trim() || null})
+            ${p.description?.trim() || null}, ${p.areaGroup?.trim() || null}, ${weight})
     on conflict (id) do update set name = excluded.name, kind = excluded.kind, active = excluded.active,
-      description = excluded.description, area_group = excluded.area_group,
+      description = excluded.description, area_group = excluded.area_group, weight = excluded.weight,
       sort_order = ${p.sortOrder ?? sql`app.qm_items.sort_order`}`;
 }
 
@@ -307,6 +312,19 @@ export async function saveRoomTypeItems(sql: Sql, pairs: string[]) {
 export const ratingPercent = (v: number, kind: QmItem['kind'] = 'note') =>
   QM_SCALE[kind].find((o) => o.v === v)?.pct ?? Math.round(((6 - v) * 100) / 5);
 
+/** Gewichteter Durchschnitt der Bewertungen (übersprungene zählen nicht), kaufmännisch gerundet. */
+export function weightedScore(rs: { percent: number | null; skipped: boolean; weight?: number | null }[]) {
+  let sum = 0;
+  let w = 0;
+  for (const r of rs) {
+    if (r.skipped || r.percent == null) continue;
+    const g = r.weight ?? 2;
+    sum += r.percent * g;
+    w += g;
+  }
+  return w ? Math.round(sum / w) : null;
+}
+
 export interface AuditRoom {
   id: string;
   name: string;
@@ -353,17 +371,16 @@ export async function auditRooms(sql: Sql, checkId: string, siteId: string, q = 
   const [{ all }] = (await sql`select count(*)::int as all from app.qm_items where active`) as unknown as [
     { all: number },
   ];
-  const ratings = await sql<{ room_id: string; percent: number | null; skipped: boolean }[]>`
-    select room_id, percent, skipped from app.quality_check_ratings where check_id = ${checkId}`;
+  const ratings = await sql<{ room_id: string; percent: number | null; skipped: boolean; weight: number }[]>`
+    select room_id, percent, skipped, weight from app.quality_check_ratings where check_id = ${checkId}`;
   const cnt = new Map(counts.map((c) => [c.room_type_id, c.n]));
   return rooms.map((r) => {
     const rs = ratings.filter((x) => x.room_id === r.id);
-    const vals = rs.filter((x) => !x.skipped && x.percent != null).map((x) => x.percent!);
     return {
       ...r,
       items: cnt.get(r.room_type_id) ?? all,
       rated: rs.length,
-      score: vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null,
+      score: weightedScore(rs),
     };
   });
 }
@@ -415,10 +432,12 @@ export async function saveRoomRatings(
       if (!items.has(r.itemId)) continue;
       await tx`
         insert into app.quality_check_ratings (id, check_id, room_id, item_id, value, percent, skipped, note,
-                                               photo_ids, rated_by)
+                                               photo_ids, rated_by, weight)
         values (md5(${`qcr:${p.checkId}:${p.roomId}:${r.itemId}`})::uuid, ${p.checkId}, ${p.roomId}, ${r.itemId},
-                ${r.skipped ? null : r.value}, ${pctOf(r)}, ${r.skipped}, ${r.note}, ${r.photoIds}, ${p.actor})
+                ${r.skipped ? null : r.value}, ${pctOf(r)}, ${r.skipped}, ${r.note}, ${r.photoIds}, ${p.actor},
+                ${items.get(r.itemId)!.weight ?? 2})
         on conflict (check_id, room_id, item_id) do update set value = excluded.value, percent = excluded.percent,
+          weight = excluded.weight,
           skipped = excluded.skipped,
           note = excluded.note,
           photo_ids = (select array(select distinct unnest(app.quality_check_ratings.photo_ids || excluded.photo_ids))),
@@ -426,8 +445,9 @@ export async function saveRoomRatings(
     }
     const rated = p.ratings.filter((r) => items.has(r.itemId) && pctOf(r) != null);
     if (!rated.length) return;
-    const pct = rated.map((r) => pctOf(r)!);
-    const score = Math.round(pct.reduce((a, b) => a + b, 0) / pct.length);
+    const score = weightedScore(
+      rated.map((r) => ({ percent: pctOf(r), skipped: false, weight: items.get(r.itemId)!.weight })),
+    )!;
     const weak = rated.filter((r) => pctOf(r)! < 50).map((r) => items.get(r.itemId)?.name ?? '');
     const notes = p.ratings.filter((r) => r.note).map((r) => `${items.get(r.itemId)?.name}: ${r.note}`);
     await tx`
@@ -442,7 +462,7 @@ export async function saveRoomRatings(
 export async function auditScore(sql: Sql, checkId: string) {
   const [r] = await sql<{ score: number | null }[]>`
     select round(avg(room_score))::int as score from (
-      select avg(percent) as room_score from app.quality_check_ratings
+      select sum(percent * weight)::numeric / sum(weight) as room_score from app.quality_check_ratings
        where check_id = ${checkId} and not skipped and percent is not null group by room_id) x`;
   return r?.score ?? null;
 }

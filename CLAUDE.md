@@ -2425,3 +2425,14 @@ Testadresse.
   Ernstfall-Ablauf, Störungen.
 - 2026-10-11: Ahmed: AVV IONOS und GitHub-Token erledigt; autoaid-API nicht nötig; Behörden-Abfrage (Portal/Leitweg) gestrichen;
   Landeshauptstadt München zahlt nach eigenem Zahlungsplan und will keine Rechnung zugeschickt (Ahmed bestätigt: keine Abrechnung durch die Stadt) → Versandweg „kein Versand“ passt, Rechnung wird trotzdem ausgestellt und archiviert; kein § 14c-Risiko.
+- 2026-10-11: **Ausfallzeiten für die Kalkulation** (Ahmed: Krankheit/Urlaub, Durchschnitt, PDF/Excel, Namen schwärzbar):
+  Auswertungen → **Ausfallzeiten (Kalkulation)** (`/auswertungen/ausfallzeiten`, Admin/Personal/Buchhaltung): je Jahr und
+  Mitarbeiter Tage Mo–Fr im Beschäftigungszeitraum, Feiertage, Urlaub, Krank (inkl. Kind krank, Fälle), anwesend; Durchschnitt
+  je Beschäftigungsart und gesamt: Ø Urlaub/Krank je Vollzeit-Jahr (Teiljahre anteilig), Kranken-/Urlaubsquote,
+  **Ausfallquote** = (Feiertage + Urlaub + Krank) ÷ Tage Mo–Fr, **Ausfallzuschlag** = (Feiertage + Urlaub + Krank) ÷
+  Anwesenheitstage (Aufschlag auf die gearbeitete Stunde). Halbe Tage 0,5; laufendes Jahr bis heute; übernommene
+  Fortytools-Stände zählen bis zum Stichtag, App-Abwesenheiten danach. Export **PDF** und **Excel (.xlsx)** mit Häkchen
+  „Namen schwärzen“ (Mitarbeiter/in 001 …) – auch auf Urlaubskonten und Krankheitstage. Eigener xlsx-Schreiber
+  `src/domain/sheet/xlsx-write.ts` (Texte nie als Formel). Teilzeit mit < 5 Tagen/Woche = Näherung.
+  **Datenschutz:** Krankheitstage sind Gesundheitsdaten (Art. 9 DSGVO) – zum Weitergeben (Steuerberater, Kalkulation,
+  Ausschreibung) die geschwärzte Fassung nutzen. Tests `absence-stats.db.test.ts`, `xlsx-write.test.ts`.

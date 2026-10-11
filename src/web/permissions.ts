@@ -41,7 +41,7 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/(zeiterfassung|einsatzplanung)(\/|$)/, ['admin', 'personal', 'objektleitung']],
   // Buchhaltung braucht Urlaub/Krank für den Lohn (Ahmed 07.10.)
   [/^\/urlaub(\/|$)/, ['admin', 'personal', 'buchhaltung']],
-  [/^\/auswertungen\/(urlaub|krankheit)([/.]|$)/, ['admin', 'personal', 'buchhaltung']],
+  [/^\/auswertungen\/(urlaub|krankheit|ausfallzeiten)([/.]|$)/, ['admin', 'personal', 'buchhaltung']],
   [/^\/auswertungen\/stunden([/.]|$)/, HR],
   [/^\/auswertungen\/dienste([/.]|$)/, ALL],
   [/^\/auswertungen\/?$/, ALL],

@@ -28,6 +28,7 @@ import {
 import type { AppEnv, Ctx } from './app.js';
 import { PageHead, type Tab, Tabs, dateDe, euro } from './layout.js';
 import { canOpen } from './permissions.js';
+import { ExportBar } from './routes-absence-stats.js';
 
 const MON = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 const monShort = (m: string) => `${MON[Number(m.slice(5, 7)) - 1]} ${m.slice(2, 4)}`;
@@ -94,6 +95,12 @@ export const REPORTS: (Tab & { text: string })[] = [
     label: 'Krankheitstage',
     href: '/auswertungen/krankheit',
     text: 'Arbeitstage krank je Monat',
+  },
+  {
+    key: 'ausfallzeiten',
+    label: 'Ausfallzeiten (Kalkulation)',
+    href: '/auswertungen/ausfallzeiten',
+    text: 'Ø Urlaubs- und Krankheitstage, Kranken-/Ausfallquote und Ausfallzuschlag für die Kalkulation',
   },
   {
     key: 'dienste',
@@ -1115,6 +1122,12 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
       `Urlaubskonten ${year}`,
       <>
         <YearNav base="/auswertungen/urlaub" year={year} />
+        <div class="actions" style="margin-top:0">
+          <ExportBar base="/auswertungen/urlaub" year={year} />
+          <a class="btn sm sec" href={`/auswertungen/ausfallzeiten?jahr=${year}`}>
+            Durchschnitt für Kalkulation
+          </a>
+        </div>
         {rows.some((r) => r.openingAsOf) && (
           <p class="small mut">
             Bei {rows.filter((r) => r.openingAsOf).length} Mitarbeitenden ist der Stand aus Fortytools
@@ -1180,6 +1193,12 @@ export function registerReportRoutes({ app, deps, page }: Ctx) {
       `Krankheitstage ${year}`,
       <>
         <YearNav base="/auswertungen/krankheit" year={year} />
+        <div class="actions" style="margin-top:0">
+          <ExportBar base="/auswertungen/krankheit" year={year} />
+          <a class="btn sm sec" href={`/auswertungen/ausfallzeiten?jahr=${year}`}>
+            Durchschnitt für Kalkulation
+          </a>
+        </div>
         <div class="card">
           <div class="tbl">
             <table class="small">

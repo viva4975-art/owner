@@ -44,6 +44,7 @@ import { registerSignRoutes } from './routes-sign.js';
 import { registerHrRoutes } from './routes-hr.js';
 import { registerPlanningMonthRoutes } from './routes-planning-month.js';
 import { registerReportRoutes } from './routes-reports.js';
+import { registerAbsenceStatsRoutes } from './routes-absence-stats.js';
 import { registerTransferRoutes } from './routes-transfer.js';
 import { registerBankRoutes } from './routes-bank.js';
 import { registerImportRoutes } from './routes-import.js';
@@ -415,6 +416,7 @@ export function createApp(deps: Deps) {
   registerHrRoutes(ctx);
   registerPlanningMonthRoutes(ctx);
   registerReportRoutes(ctx);
+  registerAbsenceStatsRoutes(ctx);
   registerTransferRoutes(ctx);
   registerBankRoutes(ctx);
   registerImportRoutes(ctx);

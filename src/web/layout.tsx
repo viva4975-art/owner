@@ -1495,6 +1495,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Ø Stundensätze', href: '/auswertungen/stundensaetze' },
       { label: 'Urlaubskonten', href: '/auswertungen/urlaub' },
       { label: 'Krankheitstage', href: '/auswertungen/krankheit' },
+      { label: 'Ausfallzeiten (Kalkulation)', href: '/auswertungen/ausfallzeiten' },
       { label: 'Dienste-Liste', href: '/auswertungen/dienste' },
     ],
   },

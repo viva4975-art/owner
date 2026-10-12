@@ -2729,3 +2729,7 @@ Testadresse.
   und den Hauptpunkten, Untermenüs klappen als Liste auf (immer nur eins offen, Klick daneben/Esc schließt), bleibt beim
   Scrollen oben; bei schmalen Fenstern bricht die Leiste um, unter 1025 px gilt wie bisher die Schublade (☰). Browser-Test
   `npm run e2e:menu` (11 Prüfungen); navigation/login/rechte grün.
+- 2026-10-12: **Menü-Position je Benutzerkonto** (Ahmed: „oben besser, für das Benutzerkonto, nicht Browser“): gespeichert in
+  `app.user_prefs.menu_pos` (Migration `20261124000004`), gilt auf allen Geräten; **Standard jetzt oben**, „links“ nur bei
+  ausdrücklicher Wahl (Benutzermenü bzw. Mein Konto → Menü). Cookie `vd_menu` entfällt. „Startseite zurücksetzen“ löscht
+  nur noch die Startseiten-Einstellung (vorher die ganze Zeile). `e2e:menu` 14 Prüfungen (auch: zweiter Browser sieht dieselbe Wahl).

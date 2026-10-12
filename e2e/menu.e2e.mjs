@@ -13,15 +13,30 @@ const check = (n, c) => {
   console.log(`${c ? '✓' : '✗'} ${n}`);
   if (!c) fails++;
 };
+await p.goto(B + '/konto');
+await p.click('button:has-text("Oben (Menüleiste)")'); // Ausgangslage: Standard „oben“
 await p.goto(B + '/kunden');
+check('Standard: Menü oben', await p.evaluate(() => document.body.classList.contains('menu-top')));
+await p.click('details.dd summary');
+await p.click('button:has-text("Menü links anzeigen")');
+await p.waitForLoadState();
+check('zurück auf derselben Seite', p.url().endsWith('/kunden'));
+check('jetzt Seitenleiste links', !(await p.evaluate(() => document.body.classList.contains('menu-top'))));
+// gilt für das Benutzerkonto: neuer Browser (ohne Cookies) zeigt dieselbe Wahl
+const ctx2 = await browser.newContext({
+  extraHTTPHeaders: { Authorization: `Basic ${Buffer.from('ahmed:prototyp2026').toString('base64')}` },
+  viewport: { width: 1366, height: 860 },
+});
+const p2 = await ctx2.newPage();
+await p2.goto(B + '/kunden');
 check(
-  'Standard: Seitenleiste links',
-  !(await p.evaluate(() => document.body.classList.contains('menu-top'))),
+  'anderer Browser: ebenfalls links',
+  !(await p2.evaluate(() => document.body.classList.contains('menu-top'))),
 );
+await ctx2.close();
 await p.click('details.dd summary');
 await p.click('button:has-text("Menü oben anzeigen")');
 await p.waitForLoadState();
-check('zurück auf derselben Seite', p.url().endsWith('/kunden'));
 check('Menü oben aktiv', await p.evaluate(() => document.body.classList.contains('menu-top')));
 const box = await p.locator('.appside').boundingBox();
 check(
@@ -57,10 +72,10 @@ await p.setViewportSize({ width: 1366, height: 860 });
 await p.goto(B + '/konto');
 await p.click('button:has-text("Links (Seitenleiste)")');
 await p.waitForLoadState();
-check(
-  'über Mein Konto zurück auf links',
-  !(await p.evaluate(() => document.body.classList.contains('menu-top'))),
-);
+check('über Mein Konto auf links', !(await p.evaluate(() => document.body.classList.contains('menu-top'))));
+await p.click('button:has-text("Oben (Menüleiste)")');
+await p.waitForLoadState();
+check('über Mein Konto wieder oben', await p.evaluate(() => document.body.classList.contains('menu-top')));
 await browser.close();
 console.log(`${fails ? 'FEHLER' : 'ok'}: ${fails} fehlgeschlagen`);
 process.exit(fails ? 1 : 0);

@@ -81,7 +81,9 @@ import { registerOlAppRoutes } from './routes-ol-app.js';
 
 export const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 
-export type AppEnv = { Variables: { actor: string; user: User; sites: string[] | null } };
+export type AppEnv = {
+  Variables: { actor: string; user: User; sites: string[] | null; menuTop?: boolean };
+};
 
 /** Objektleitung: nur eigene Objekte. Wirft 403, wenn das Objekt nicht dazugehört. */
 export function assertSite(c: Context<AppEnv>, siteId: string | null | undefined) {
@@ -102,8 +104,6 @@ export function taskViewerOf(c: Context<AppEnv>): { names: string[]; actor: stri
 }
 export const OFFICE_COOKIE = 'vd_s';
 export const APP_COOKIE = 'vd_app';
-/** Menü oben statt links (je Browser gemerkt, Ahmed 12.10.) */
-export const MENU_COOKIE = 'vd_menu';
 export const officeSecret = (env: Deps['env']) =>
   createHash('sha256')
     .update(`office:${env.SESSION_SECRET ?? `dev-session:${env.APP_BASIC_AUTH}`}`)
@@ -295,7 +295,13 @@ export function createApp(deps: Deps) {
     }
     c.set('user', user);
     c.set('actor', user.login);
-    c.set('sites', await managedSites(sql, user));
+    const [[pref], sites] = await Promise.all([
+      sql<{ menu_pos: string | null }[]>`select menu_pos from app.user_prefs where user_id = ${user.id}`,
+      managedSites(sql, user),
+    ]);
+    // Menü oben ist Standard (Ahmed 12.10.), „links“ nur, wenn im Konto so gewählt
+    c.set('menuTop', pref?.menu_pos !== 'links');
+    c.set('sites', sites);
     if (!canAccess(user.role, path)) {
       return page(
         c,
@@ -344,7 +350,7 @@ export function createApp(deps: Deps) {
             env={env.APP_ENV}
             {...(u ? { user: fullName(u), role: u.role } : {})}
             app={c.req.query('pc') !== '1' && getCookie(c, APP_COOKIE) === '1'}
-            menuTop={getCookie(c, MENU_COOKIE) === 'oben'}
+            menuTop={c.get('menuTop') ?? false}
             flash={{ ok: c.req.query('ok'), err: c.req.query('fehler') }}
           >
             {body}

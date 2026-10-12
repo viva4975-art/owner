@@ -412,7 +412,8 @@ export function registerModuleRoutes(ctx: Ctx) {
     const b = await c.req.parseBody();
     const uid = c.get('user').id;
     if (b.reset === '1') {
-      await sql`delete from app.user_prefs where user_id = ${uid}`;
+      // nur die Startseite zurücksetzen – andere Einstellungen (Menü-Position) bleiben
+      await sql`update app.user_prefs set dashboard = null, updated_at = now() where user_id = ${uid}`;
       return back(c, '/', { ok: 'Startseite auf Standard zurückgesetzt.' });
     }
     const lay = (Object.keys(DASH_CARDS) as DashCardKey[])

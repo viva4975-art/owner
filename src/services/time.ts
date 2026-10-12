@@ -677,11 +677,7 @@ export async function plannedShifts(
            to_char(p.created_at at time zone 'Europe/Berlin', 'YYYY-MM-DD') as planned_on,
            coalesce(e.last_name || ', ' || e.first_name, 'offen') as employee_name, coalesce(e.personnel_no, '') as personnel_no,
            s.name as site_name, s.site_no,
-           ${
-             f.includeOpen
-               ? sql`p.valid_from`
-               : sql`greatest(p.valid_from, e.entry_date)`
-           } as effective_from
+           ${f.includeOpen ? sql`p.valid_from` : sql`greatest(p.valid_from, e.entry_date)`} as effective_from
       from app.shift_plans p left join app.employees e on e.id = p.employee_id join app.sites s on s.id = p.site_id
      where p.valid_from <= ${f.to} and (p.valid_until is null or p.valid_until >= ${f.from})
        -- Ausgetretene: Einsätze bis zum Austrittstag bleiben sichtbar (Soll/Ist früherer Monate)

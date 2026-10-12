@@ -1226,10 +1226,10 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
             Kopfzeile; je Zeile Jahr;Monat;Personalnummer;Lohnartnummer;Wert. Wert = Stunden bei
             Normalstunden, Aushilfslohn, Urlaub, Krank, Feiertag; Euro-Betrag bei Zuschlägen (mit unseren
             Sätzen) und Gehältern. Gehalt / Aushilfsgehalt / Geschäftsführergehalt gilt für Vergütung
-            „Festgehalt“ (Minijob → Aushilfsgehalt, Tag „Geschäftsführer“ → Geschäftsführergehalt;
-            anteilig bei Ein-/Austritt im Monat) – dann keine Grundlohn-Stunden. Minijob mit Stundenlohn →
-            Aushilfslohn statt Normalstunden. Sonstige bezahlte Abwesenheit zählt als Normalstunden,
-            unbezahlte wird nicht exportiert. Lohnarten ohne Nummer werden nicht exportiert.
+            „Festgehalt“ (Minijob → Aushilfsgehalt, Tag „Geschäftsführer“ → Geschäftsführergehalt; anteilig
+            bei Ein-/Austritt im Monat) – dann keine Grundlohn-Stunden. Minijob mit Stundenlohn → Aushilfslohn
+            statt Normalstunden. Sonstige bezahlte Abwesenheit zählt als Normalstunden, unbezahlte wird nicht
+            exportiert. Lohnarten ohne Nummer werden nicht exportiert.
           </p>
           <div class="grid">
             {WAGE_TYPES.map((k) => (

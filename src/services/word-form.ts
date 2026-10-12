@@ -6,7 +6,7 @@
  */
 
 export interface FormField {
-  kind: 'box' | 'blank';
+  kind: 'box' | 'blank' | 'cell';
   index: number;
   /** Text daneben (für die Anzeige) */
   label: string;
@@ -126,8 +126,88 @@ function context(xml: string, w: Where) {
   return { label: label.replace(/_{4,}/g, '…').slice(0, 160), before: before.slice(-60) };
 }
 
+/*
+ * Leere Felder ohne Linie (Ahmed 12.10.: „Personalstammblatt muss ausgefüllt werden“): leere Tabellenzelle rechts neben
+ * einer Beschriftung („Name | ___“, „IBAN | ___“) und Zeilen „Ort, Datum:“ ohne Inhalt. Index = Reihenfolge im Dokument.
+ */
+const ROW = /<w:tr[ >](?:(?!<w:tr[ >])[\s\S])*?<\/w:tr>/g;
+const CELL = /<w:tc>[\s\S]*?<\/w:tc>/g;
+const cellText = (c: string) =>
+  plain(c.replace(/<\/w:tc>/g, ''))
+    .replace(/\s+/g, ' ')
+    .trim();
+/** Beschriftung, neben der eine Eingabe erwartet wird (keine laufende Nummer, kein Preis, keine Unterschrift) */
+const isLabel = (t: string) =>
+  t.length >= 2 &&
+  t.length <= 80 &&
+  !/^[\d.,\s€%]+$/.test(t) &&
+  !/[☐☒]/.test(t) &&
+  !/\$\{/.test(t) &&
+  !/unterschrift|stempel/i.test(t);
+const ORT_DATUM = /^(Ort,? Datum):?\s*$/i;
+
+type OnCell = (i: number, label: string) => string | undefined;
+
+function scanCells(xml: string, on: OnCell): string {
+  let n = 0;
+  // erst Tabellenzeilen, dann freie Zeilen „Ort, Datum:“ – Reihenfolge fest, damit die Indizes stabil bleiben
+  let out = xml.replace(ROW, (row) => {
+    if (/<w:tbl>/.test(row)) return row; // verschachtelte Tabelle: nicht anfassen
+    const cells = row.match(CELL) ?? [];
+    let changed = false;
+    const repl = cells.map((c, i) => {
+      if (i === 0 || cellText(c) || /<w14:checkbox>/.test(c)) return c;
+      const label = cellText(cells[i - 1]!);
+      if (!isLabel(label)) return c;
+      const v = on(n++, label);
+      if (!v) return c;
+      changed = true;
+      // Leerzeichen-Läufe der leeren Zelle entfernen, sonst steht der Wert eingerückt
+      return insertRun(c.replace(/(<w:t(?:\s[^>]*)?>)\s+(<\/w:t>)/g, '$1$2'), v);
+    });
+    if (!changed) return row;
+    let k = 0;
+    return row.replace(CELL, () => repl[k++]!);
+  });
+  out = out.replace(/<w:p[ >](?:(?!<w:p[ >])[\s\S])*?<\/w:p>/g, (p) => {
+    const t = plain(p).trim();
+    const m = ORT_DATUM.exec(t);
+    if (!m || /<w:tc>/.test(p)) return p;
+    const v = on(n++, m[1]!);
+    if (!v) return p;
+    // Leerzeichen-Läufe hinter „Ort, Datum:“ entfernen, damit der Wert direkt dahinter steht
+    const trimmed = p
+      .replace(/(<w:t(?:\s[^>]*)?>)\s+(<\/w:t>)/g, '$1$2')
+      .replace(/(<w:t(?:\s[^>]*)?>)([^<]*?:)\s+(<\/w:t>)/g, '$1$2$3');
+    return insertRun(trimmed, ` ${v}`, true);
+  });
+  return out;
+}
+
+/** Text als Lauf ans Ende des ersten Absatzes (Formatierung des Absatzzeichens), Zeilenumbrüche als <w:br/>. */
+function insertRun(xml: string, value: string, appendToLast = false): string {
+  const end = appendToLast ? xml.lastIndexOf('</w:p>') : xml.indexOf('</w:p>');
+  if (end < 0) return xml;
+  const pStart = xml.lastIndexOf('<w:p', end);
+  const ppr = /<w:pPr>[\s\S]*?<\/w:pPr>/.exec(xml.slice(pStart, end))?.[0] ?? '';
+  // Formatierung: Absatzzeichen, sonst letzter Lauf im Absatz
+  const rpr =
+    /<w:rPr>[\s\S]*?<\/w:rPr>/.exec(ppr)?.[0] ??
+    [...xml.slice(pStart, end).matchAll(/<w:r>\s*(<w:rPr>[\s\S]*?<\/w:rPr>)/g)].pop()?.[1] ??
+    '';
+  const body = value
+    .split('\n')
+    .map((l) => `<w:t xml:space="preserve">${esc(l)}</w:t>`)
+    .join('<w:br/>');
+  return `${xml.slice(0, end)}<w:r>${rpr.replace(/<w:(vanish|strike)\/>/g, '')}${body}</w:r>${xml.slice(end)}`;
+}
+
 export function formFieldsOf(documentXml: string): FormField[] {
   const out: FormField[] = [];
+  scanCells(documentXml, (i, label) => {
+    out.push({ kind: 'cell', index: i, label, before: label });
+    return undefined;
+  });
   scan(
     documentXml,
     (i, checked, w) => {
@@ -146,9 +226,12 @@ export function applyFormFields(
   documentXml: string,
   boxes: Record<number, boolean>,
   blanks: Record<number, string>,
+  cells: Record<number, string> = {},
 ): string {
+  // Zellen zuerst: Kästchen/Lücken ändern nur Text in nicht leeren Zellen, die Zell-Indizes bleiben gleich
+  const withCells = Object.keys(cells).length ? scanCells(documentXml, (i) => cells[i]) : documentXml;
   return scan(
-    documentXml,
+    withCells,
     (i) => (i in boxes ? boxes[i] : undefined),
     (i) => blanks[i],
   );
@@ -182,5 +265,100 @@ export function defaultBlanks(fields: FormField[], v: Record<string, string>): R
   const exit = v['Mitarbeiter.Austrittsdatum'] ?? '';
   for (const f of fields)
     if (f.kind === 'blank' && exit && /(befristet bis|gekündigt zum)$/i.test(f.before)) out[f.index] = exit;
+  return out;
+}
+
+/** Beschriftung vereinfachen: „E-Mail / Notfallkontakt“ → „e mail notfallkontakt“ */
+export const normLabel = (l: string) =>
+  l
+    .toLowerCase()
+    .replace(/[–—]/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+
+/**
+ * Vorbelegung leerer Felder neben Beschriftungen aus den Stammdaten (Ahmed 12.10.: „es muss alles ausgefüllt werden“).
+ * Was die App nicht weiß (z. B. Kennzeichen, Rückgabe), bleibt leer und kann auf der Ausfüll-Seite eingetragen werden.
+ */
+export function defaultCells(fields: FormField[], v: Record<string, string>): Record<number, string> {
+  const g = (k: string) => (v[k] ?? '').trim();
+  const join = (sep: string, ...xs: string[]) => xs.filter(Boolean).join(sep);
+  const emp = 'Mitarbeiter.Vorname' in v;
+  const site = 'Objekt.Name' in v;
+  const fullName = join(' ', g('Mitarbeiter.Vorname'), g('Mitarbeiter.Nachname'));
+  const empAddr = join(', ', g('Mitarbeiter.Straße'), join(' ', g('Mitarbeiter.PLZ'), g('Mitarbeiter.Ort')));
+  const custAddr = join(', ', g('Kunde.Straße'), join(' ', g('Kunde.PLZ'), g('Kunde.Ort')));
+  const siteAddr = join(', ', g('Objekt.Straße'), join(' ', g('Objekt.PLZ'), g('Objekt.Ort')));
+  const siteName = site
+    ? join(' ', g('Objekt.Name'), g('Objekt.Nummer') ? `(${g('Objekt.Nummer')})` : '')
+    : '';
+  const signed = g('Dokument.Unterschriftsdatum') || g('Dokument.Datum');
+  // Befreiung von der RV-Pflicht wirkt ab dem Monat des Eingangs beim Arbeitgeber, frühestens ab Beschäftigungsbeginn
+  const rvStart = (() => {
+    const iso = (d: string) => d.split('.').reverse().join('-');
+    const de = (d: string) => d.split('-').reverse().join('.');
+    if (!signed) return '';
+    const first = `${iso(signed).slice(0, 7)}-01`;
+    const entry = g('Mitarbeiter.Eintrittsdatum');
+    return de(entry && iso(entry) > first ? iso(entry) : first);
+  })();
+  const rules: [RegExp, () => string][] = [
+    [/^name$/, () => (emp ? g('Mitarbeiter.Nachname') : '')],
+    [/^vorname$/, () => g('Mitarbeiter.Vorname')],
+    [
+      /^(name vorname|mitarbeiter ?in|mieter( arbeitnehmer ?in)?)$/,
+      () => (emp ? join(', ', g('Mitarbeiter.Nachname'), g('Mitarbeiter.Vorname')) : ''),
+    ],
+    [/^geburtsdatum$/, () => g('Mitarbeiter.Geburtsdatum')],
+    [
+      /^geburtsort staatsangeh/,
+      () => join(' / ', g('Mitarbeiter.Geburtsort'), g('Mitarbeiter.Staatsangehörigkeit')),
+    ],
+    [/^geburtsort$/, () => g('Mitarbeiter.Geburtsort')],
+    [/^staatsangeh/, () => g('Mitarbeiter.Staatsangehörigkeit')],
+    [/^familienstand$/, () => g('Mitarbeiter.Familienstand')],
+    [/^stra(ss|ß)e( hausnummer| hausnr)?$/, () => g('Mitarbeiter.Straße')],
+    [/^plz (wohnort|ort)$/, () => join(' ', g('Mitarbeiter.PLZ'), g('Mitarbeiter.Ort'))],
+    [/^anschrift$/, () => (emp ? empAddr : custAddr)],
+    [/^adresse$/, () => (emp ? empAddr : site ? siteAddr : custAddr)],
+    [/^telefon( mobil)?$/, () => g('Mitarbeiter.Telefon')],
+    [/^e mail( notfallkontakt)?$/, () => g('Mitarbeiter.E-Mail')],
+    [/^sozialversicherungsnummer$/, () => g('Mitarbeiter.SV-Nummer')],
+    [/^steuer identifikationsnummer$|^steuer id$/, () => g('Mitarbeiter.Steuer-ID')],
+    [/^krankenkasse$/, () => g('Mitarbeiter.Krankenkasse')],
+    [/^iban$/, () => g('Mitarbeiter.IBAN')],
+    [/^kontoinhaber/, () => (g('Mitarbeiter.IBAN') ? fullName : '')],
+    [
+      /^(gew(ü|u)nschter eintritt|eintritt|eintrittsdatum|arbeitsverh(ä|a)ltnis seit)$/,
+      () => g('Mitarbeiter.Eintrittsdatum'),
+    ],
+    [/^t(ä|a)tigkeit$/, () => g('Mitarbeiter.Tätigkeit')],
+    [/^personalnummer$/, () => g('Mitarbeiter.Personalnummer')],
+    [
+      /^(objekt )?einsatz(gebiet|ort)$/,
+      () => (site ? join(', ', siteName, siteAddr) : g('Mitarbeiter.Objekte')),
+    ],
+    [/^(verantwortliche )?objektleitung$/, () => g('Objekt.Objektleitung') || g('Mitarbeiter.Objektleitung')],
+    [/^resturlaub$/, () => g('Mitarbeiter.Resturlaub')],
+    [/^(kunde|auftraggeber|entleiher)$/, () => g('Kunde.Name')],
+    [/^ansprechpartner( vor ort)?$/, () => g('Kunde.Ansprechpartner')],
+    [/^(objekt|objekt objekt nr|objekt liegenschaft|leistung objekt|einsatzort objekt)$/, () => siteName],
+    [/^objekt adresse$/, () => join(', ', siteName, siteAddr)],
+    [/^objekt nr$/, () => g('Objekt.Nummer')],
+    [/^ort datum$/, () => join(', ', g('Dokument.Ort') || 'München', g('Dokument.Datum'))],
+    // Antrag auf Befreiung von der Rentenversicherungspflicht (Minijob, Anlage 10)
+    [/^eingang beim arbeitgeber$/, () => signed],
+    [/^beginn der befreiung$/, () => rvStart],
+    [/^meldung an (die )?minijob zentrale$/, () => signed],
+    [/^zu den entgeltunterlagen$/, () => signed],
+  ];
+  const out: Record<number, string> = {};
+  for (const f of fields) {
+    if (f.kind !== 'cell') continue;
+    const l = normLabel(f.label);
+    const r = rules.find(([re]) => re.test(l));
+    const val = r ? r[1]() : '';
+    if (val) out[f.index] = val;
+  }
   return out;
 }

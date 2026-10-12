@@ -196,7 +196,7 @@ export function fillDocx(
   bytes: Uint8Array,
   value: (key: string) => string | null,
   docDate?: string,
-  form?: { boxes: Record<number, boolean>; blanks: Record<number, string> },
+  form?: { boxes: Record<number, boolean>; blanks: Record<number, string>; cells?: Record<number, string> },
   person?: { gender: Gender | null; salaried?: boolean },
 ) {
   const files = unzipSync(bytes);
@@ -207,7 +207,7 @@ export function fillDocx(
     let xml = strFromU8(files[name]!);
     if (docDate) xml = freezeDateFields(xml, docDate);
     // Kästchen/Lücken vor den Platzhaltern (Indizes wie auf der Ausfüll-Seite, dort aus der Originaldatei)
-    if (form && name === 'word/document.xml') xml = applyFormFields(xml, form.boxes, form.blanks);
+    if (form && name === 'word/document.xml') xml = applyFormFields(xml, form.boxes, form.blanks, form.cells);
     // Mitarbeiter-Dokument: „Arbeitnehmer/in“ passend zur Anrede, Unterschriftsfeld der Person hinterlegt
     if (person?.salaried) xml = salaryClause(xml);
     if (person?.gender) xml = genderizeXml(xml, person.gender);
@@ -512,19 +512,43 @@ async function employeeValues(
       wage_level: string | null;
       days_per_week: string | null;
       nationality: string | null;
+      birth_place: string | null;
+      marital_status: string | null;
+      tax_id: string | null;
+      social_security_no: string | null;
+      health_insurance: string | null;
+      iban: string | null;
+      tags: string[] | null;
     }[]
   >`
     select e.salutation, e.first_name, e.last_name, e.personnel_no, e.entry_date::text, e.exit_date::text,
            e.weekly_hours::text, e.employment_type, e.phone, e.mobile, e.email,
            p.street, p.postal_code, p.city, p.birth_date::text, e.monthly_salary_cents, p.nationality,
-           e.days_per_week::text,
+           e.days_per_week::text, p.birth_place, p.marital_status, p.tax_id, p.social_security_no,
+           p.health_insurance, p.iban, e.tags,
            e.pay_model, e.hourly_wage_cents,
            (select w.name from app.wage_levels w where w.id = e.wage_level_id and e.pay_model is distinct from 'individuell') as wage_level,
            (select w.hourly_wage_cents from app.wage_levels w where w.id = e.wage_level_id) as level_wage_cents
       from app.employees e left join app.employee_private p on p.employee_id = e.id where e.id = ${id}`;
   if (!e) throw new BusinessError('Mitarbeiter nicht gefunden');
-  const sites = await sql<{ name: string }[]>`
-    select s.name from app.employee_sites es join app.sites s on s.id = es.site_id where es.employee_id = ${id} order by s.name`;
+  const sites = await sql<{ name: string; manager: string | null }[]>`
+    select s.name, (select concat_ws(' · ', mc.name, mc.phone) from app.manager_contacts mc
+                     where mc.user_id = s.manager_user_id) as manager
+      from app.employee_sites es join app.sites s on s.id = es.site_id
+     where es.employee_id = ${id} and s.active order by s.name`;
+  // dynamisch: absences.ts hängt (über Abwesenheiten/Einsätze) indirekt an diesem Modul
+  const { leaveBalance } = await import('./absences.js');
+  const rest = await leaveBalance(sql, id, Number(todayBerlin().slice(0, 4)))
+    .then((b) => `${String(b.rest).replace('.', ',')} Tage`)
+    .catch(() => '');
+  const tags = (e.tags ?? []).map((t) => t.toLowerCase());
+  const job = tags.includes('objektleitung')
+    ? 'Objektleitung'
+    : tags.some((t) => t.startsWith('vorarbeit'))
+      ? 'Vorarbeiter/in'
+      : tags.some((t) => t.startsWith('glas'))
+        ? 'Glas- und Gebäudereinigung'
+        : 'Reinigungskraft';
   const hours = e.weekly_hours ? String(Number(e.weekly_hours)).replace('.', ',') : '';
   // Vergütung je Vergütungsart (Ahmed 10.10.: „Gehalt/Stundenlohn wird nicht übernommen“ – bei Mitarbeitenden ohne
   // hinterlegte Vergütung blieb das Feld leer, bei Stundenlöhnern stand der Stundenlohn als Monatsgehalt im OL-Vertrag)
@@ -595,6 +619,16 @@ async function employeeValues(
     'Mitarbeiter.Einsatzgebiet': sites.map((s) => s.name).join(', '),
     'Mitarbeiter.Telefon': e.mobile ?? e.phone ?? '',
     'Mitarbeiter.E-Mail': e.email ?? '',
+    // für Felder neben Beschriftungen (Personalstammblatt usw.; Personalakte nur Admin/Personal)
+    'Mitarbeiter.Geburtsort': e.birth_place ?? '',
+    'Mitarbeiter.Familienstand': e.marital_status ?? '',
+    'Mitarbeiter.SV-Nummer': e.social_security_no ?? '',
+    'Mitarbeiter.Steuer-ID': e.tax_id ?? '',
+    'Mitarbeiter.Krankenkasse': e.health_insurance ?? '',
+    'Mitarbeiter.IBAN': (e.iban ?? '').replace(/(.{4})(?=.)/g, '$1 '),
+    'Mitarbeiter.Tätigkeit': job,
+    'Mitarbeiter.Objektleitung': [...new Set(sites.map((s) => s.manager).filter(Boolean))].join(', '),
+    'Mitarbeiter.Resturlaub': rest,
   };
   return { v, notes, salaried: e.pay_model === 'festgehalt' };
 }
@@ -641,8 +675,11 @@ async function siteValues(sql: Sql, id: string): Promise<{ v: Record<string, str
       postal_code: string | null;
       city: string | null;
       customer_id: string;
+      manager: string | null;
     }[]
-  >`select name, site_no, street, postal_code, city, customer_id from app.sites where id = ${id}`;
+  >`select name, site_no, street, postal_code, city, customer_id,
+           (select concat_ws(' · ', mc.name, mc.phone) from app.manager_contacts mc where mc.user_id = s.manager_user_id) as manager
+      from app.sites s where id = ${id}`;
   if (!s) throw new BusinessError('Objekt nicht gefunden');
   return {
     customerId: s.customer_id,
@@ -652,6 +689,7 @@ async function siteValues(sql: Sql, id: string): Promise<{ v: Record<string, str
       'Objekt.Straße': s.street ?? '',
       'Objekt.PLZ': s.postal_code ?? '',
       'Objekt.Ort': s.city ?? '',
+      'Objekt.Objektleitung': s.manager ?? '',
     },
   };
 }
@@ -758,7 +796,7 @@ export async function fillWordTemplate(
     fileId: string;
     actorName: string;
     overrides?: Record<string, string>;
-    form?: { boxes: Record<number, boolean>; blanks: Record<number, string> };
+    form?: { boxes: Record<number, boolean>; blanks: Record<number, string>; cells?: Record<number, string> };
   },
   actor?: string,
 ): Promise<{
@@ -807,7 +845,7 @@ export async function generateFromWordTemplate(
     actorName: string;
     overrides?: Record<string, string>;
     /** Kästchen (Index → angekreuzt) und Lücken (Index → Text) der Ausfüll-Seite */
-    form?: { boxes: Record<number, boolean>; blanks: Record<number, string> };
+    form?: { boxes: Record<number, boolean>; blanks: Record<number, string>; cells?: Record<number, string> };
   },
   actor: string,
 ): Promise<{ file: FileRow; missing: string[] }> {

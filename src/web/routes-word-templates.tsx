@@ -19,7 +19,7 @@ import {
   updateWordTemplate,
 } from '../services/word-templates.js';
 import type { Context } from 'hono';
-import { type FormField, defaultBlanks, defaultBoxes } from '../services/word-form.js';
+import { type FormField, defaultBlanks, defaultBoxes, defaultCells } from '../services/word-form.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { PageHead, anz } from './layout.js';
 import { canAccess } from './permissions.js';
@@ -76,9 +76,31 @@ const FormFields: FC<{
   fields: FormField[];
   boxes: Record<number, boolean>;
   blanks: Record<number, string>;
-}> = ({ fields, boxes, blanks }) => (
+  cells: Record<number, string>;
+}> = ({ fields, boxes, blanks, cells }) => (
   <div class="wf">
-    <h3 style="margin:16px 0 4px">Kästchen und Lücken in der Vorlage</h3>
+    {fields.some((f) => f.kind === 'cell') && (
+      <>
+        <h3 style="margin:16px 0 4px">Felder im Dokument</h3>
+        <p class="small mut" style="margin-top:0">
+          Vorbelegt aus den Stammdaten; leere Felder hier eintragen (z. B. Kennzeichen, Zeitraum) – sonst
+          bleiben sie im Dokument zum Ausfüllen von Hand frei.
+        </p>
+        <div class="grid">
+          {fields
+            .filter((f) => f.kind === 'cell')
+            .map((f) => (
+              <div>
+                <label>{f.label}</label>
+                <input name={`cell:${f.index}`} value={cells[f.index] ?? ''} maxlength={300} />
+              </div>
+            ))}
+        </div>
+      </>
+    )}
+    {fields.some((f) => f.kind !== 'cell') && (
+      <h3 style="margin:16px 0 4px">Kästchen und Lücken in der Vorlage</h3>
+    )}
     <p class="small mut" style="margin-top:0">
       In der Reihenfolge wie im Dokument. Angehakt = im Dokument angekreuzt; Lücken mit Text werden
       ausgefüllt, leere bleiben als Linie zum Ausfüllen von Hand. Vorbelegt, was aus den Stammdaten sicher
@@ -92,28 +114,35 @@ const FormFields: FC<{
         .map((f) => f.index)
         .join(',')}
     />
-    {fields.map((f) =>
-      f.kind === 'box' ? (
-        <label class="chk wf-row">
-          <input
-            type="checkbox"
-            name={`box:${f.index}`}
-            value="1"
-            checked={f.index in boxes ? boxes[f.index] : !!f.checked}
-          />
-          <span>{f.label || <span class="mut">(Kästchen ohne Text)</span>}</span>
-        </label>
-      ) : (
-        <div class="wf-row wf-blank">
-          <span class="small">
-            {f.before ? `${f.before.slice(-50)} ` : ''}
-            <b>____</b>
-            {f.label && f.label !== f.before ? ` ${f.label.slice(0, 60)}` : ''}
-          </span>
-          <input name={`blank:${f.index}`} value={blanks[f.index] ?? ''} maxlength={200} aria-label="Lücke" />
-        </div>
-      ),
-    )}
+    {fields
+      .filter((f) => f.kind !== 'cell')
+      .map((f) =>
+        f.kind === 'box' ? (
+          <label class="chk wf-row">
+            <input
+              type="checkbox"
+              name={`box:${f.index}`}
+              value="1"
+              checked={f.index in boxes ? boxes[f.index] : !!f.checked}
+            />
+            <span>{f.label || <span class="mut">(Kästchen ohne Text)</span>}</span>
+          </label>
+        ) : (
+          <div class="wf-row wf-blank">
+            <span class="small">
+              {f.before ? `${f.before.slice(-50)} ` : ''}
+              <b>____</b>
+              {f.label && f.label !== f.before ? ` ${f.label.slice(0, 60)}` : ''}
+            </span>
+            <input
+              name={`blank:${f.index}`}
+              value={blanks[f.index] ?? ''}
+              maxlength={200}
+              aria-label="Lücke"
+            />
+          </div>
+        ),
+      )}
     <style
       dangerouslySetInnerHTML={{
         __html:
@@ -352,6 +381,7 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
     const formFields = await templateFormFields(cfg, t.storage_path).catch(() => [] as FormField[]);
     const boxDefaults = defaultBoxes(formFields, values);
     const blankDefaults = defaultBlanks(formFields, values);
+    const cellDefaults = defaultCells(formFields, values);
     const ret = TARGET_PAGE[type](id);
     const title =
       type === 'employee'
@@ -414,7 +444,7 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
             <GroupFields g={g} keys={keys} values={values} />
           ))}
           {formFields.length > 0 && (
-            <FormFields fields={formFields} boxes={boxDefaults} blanks={blankDefaults} />
+            <FormFields fields={formFields} boxes={boxDefaults} blanks={blankDefaults} cells={cellDefaults} />
           )}
           {master.length > 0 && (
             <details open={(groups.length === 0 && formFields.length === 0) || payNotes.length > 0}>
@@ -606,7 +636,12 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
             const m = /^blank:(\d{1,4})$/.exec(k);
             if (m && typeof v === 'string' && v.trim()) blanks[Number(m[1])] = v.trim().slice(0, 200);
           }
-          return { boxes, blanks };
+          const cells: Record<number, string> = {};
+          for (const [k, v] of Object.entries(b)) {
+            const m = /^cell:(\d{1,4})$/.exec(k);
+            if (m && typeof v === 'string' && v.trim()) cells[Number(m[1])] = v.trim().slice(0, 300);
+          }
+          return { boxes, blanks, cells };
         })(),
       },
       c.get('actor'),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyFormFields, defaultBlanks, defaultBoxes, formFieldsOf } from './word-form.js';
+import { applyFormFields, defaultBlanks, defaultBoxes, defaultCells, formFieldsOf } from './word-form.js';
 
 const box = (checked: boolean, attr = 'w:val') =>
   `<w:sdt><w:sdtPr><w14:checkbox><w14:checked ${attr}="${checked ? 1 : 0}"/><w14:checkedState w:val="2612"/></w14:checkbox></w:sdtPr><w:sdtContent><w:r><w:t>${checked ? '☒' : '☐'}</w:t></w:r></w:sdtContent></w:sdt>`;
@@ -48,5 +48,48 @@ describe('Kästchen und Lücken in Word-Vorlagen', () => {
         .filter((x) => x.kind === 'box')
         .map((x) => x.checked),
     ).toEqual([false, true, false, true, false, false, true]);
+  });
+});
+
+describe('leere Felder neben Beschriftungen (Ahmed 12.10.)', () => {
+  const cell = (t: string) =>
+    `<w:tc><w:p><w:pPr><w:rPr><w:b/></w:rPr></w:pPr>${t ? `<w:r><w:t>${t}</w:t></w:r>` : '<w:r><w:t xml:space="preserve"> </w:t></w:r>'}</w:p></w:tc>`;
+  const xml =
+    `<w:body><w:tbl><w:tr>${cell('Name')}${cell('')}${cell('IBAN')}${cell('')}</w:tr>` +
+    `<w:tr>${cell('1')}${cell('')}</w:tr>` +
+    `<w:tr>${cell('Eingang beim Arbeitgeber')}${cell('')}${cell('Beginn der Befreiung')}${cell('')}</w:tr></w:tbl>` +
+    `<w:p><w:r><w:t xml:space="preserve">Ort, Datum:      </w:t></w:r></w:p></w:body>`;
+  it('erkennt Zellen und „Ort, Datum:“, belegt sie aus den Stammdaten vor und füllt sie', () => {
+    const f = formFieldsOf(xml).filter((x) => x.kind === 'cell');
+    // laufende Nummern („1“) zählen nicht als Beschriftung
+    expect(f.map((x) => x.label)).toEqual([
+      'Name',
+      'IBAN',
+      'Eingang beim Arbeitgeber',
+      'Beginn der Befreiung',
+      'Ort, Datum',
+    ]);
+    const v = {
+      'Mitarbeiter.Vorname': 'Anna',
+      'Mitarbeiter.Nachname': 'Muster',
+      'Mitarbeiter.IBAN': 'DE02 1203',
+      'Mitarbeiter.Eintrittsdatum': '15.10.2026',
+      'Dokument.Datum': '12.10.2026',
+      'Dokument.Unterschriftsdatum': '12.10.2026',
+    };
+    const cells = defaultCells(f, v);
+    // RV-Befreiung: ab Monat des Eingangs, frühestens ab Beschäftigungsbeginn
+    expect(Object.values(cells)).toEqual([
+      'Muster',
+      'DE02 1203',
+      '12.10.2026',
+      '15.10.2026',
+      'München, 12.10.2026',
+    ]);
+    const out = applyFormFields(xml, {}, {}, cells);
+    expect(out).toContain('<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">Muster</w:t></w:r>');
+    expect(out).toContain('Ort, Datum:</w:t></w:r><w:r><w:t xml:space="preserve"> München, 12.10.2026</w:t>');
+    // Felder sind danach nicht mehr leer → werden nicht noch einmal erkannt
+    expect(formFieldsOf(out).filter((x) => x.kind === 'cell')).toHaveLength(0);
   });
 });

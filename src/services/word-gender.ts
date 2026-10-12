@@ -113,7 +113,8 @@ export function genderizeXml(xml: string, g: Gender): string {
 }
 
 const SIG_LABEL = /(Arbeitnehmer|Mitarbeiter)(in|\/in)?\b/u;
-const FILL = 'F6F4F5';
+// beim Drucken sichtbar (Ahmed 12.10.: F6F4F5 war auf Papier nicht zu sehen)
+const FILL = 'E4E0E2';
 const SHADE = `<w:shd w:val="clear" w:color="auto" w:fill="${FILL}"/>`;
 
 /** Leere Linie über der Unterschrift der Arbeitnehmerin / des Arbeitnehmers hellgrau hinterlegen, in Unterschriftshöhe. */

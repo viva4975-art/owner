@@ -2680,3 +2680,16 @@ Testadresse.
   Objekt „Sonderreinigung“ (`SPECIAL_SITE_ID` in `costing.ts`) statt beim Kunden-Objekt – dort stehen auch Zeiten und
   Kosten der Sonderreiniger, so ergibt sich ein eigener Deckungsbeitrag. Rechnungen selbst bleiben unverändert.
   Test in `cost-centers.db.test.ts`.
+- 2026-10-12: **Word-Vorlagen: leere Felder ausfüllen** (Ahmed: „Personalstammblatt muss ausgefüllt werden“, „RV-Befreiung
+  beim Minijob unten mit Datum“, „alle Vorlagen prüfen“): Viele Vorlagen haben statt Platzhaltern leere Tabellenzellen neben
+  einer Beschriftung bzw. „Ort, Datum:“ ohne Inhalt. Neu in `word-form.ts`: Feldart `cell` (leere Zelle rechts neben einer
+  Beschriftung; laufende Nummern, Preise, Kästchen, Unterschrift/Stempel zählen nicht) und Zeilen „Ort, Datum:“.
+  Vorbelegung `defaultCells` aus den Stammdaten (Name, Vorname, Geburtsdatum/-ort, Staatsangehörigkeit, Familienstand,
+  Anschrift, Telefon, E-Mail, SV-Nr., Steuer-ID, Krankenkasse, IBAN, Kontoinhaber, Eintritt, Tätigkeit aus Tags,
+  Einsatzgebiet, Objektleitung, Resturlaub, Kunde/Auftraggeber/Entleiher, Objekt/Nr./Adresse, Ort + Datum); RV-Befreiung:
+  Eingang beim Arbeitgeber / Meldung / Entgeltunterlagen = Unterschriftsdatum, Beginn der Befreiung = Monat des Eingangs,
+  frühestens Eintritt (§ 6 Abs. 4 SGB VI). Ausfüll-Seite zeigt „Felder im Dokument“ zum Prüfen/Ergänzen (z. B. Kennzeichen,
+  Urlaubszeitraum, weitere Beschäftigungen); leer bleibt zum Ausfüllen von Hand. Wirkt ohne neues Hochladen. Durchsicht
+  aller 37 Vorlagen (V6): offen bleiben nur Angaben, die die App nicht kennt (Geburtsname, Steuerklasse, Fahrzeug-/
+  Tankkartendaten, Rückgabe-/Abnahmefelder). Unterschriftsfeld der Person dunkler (#E4E0E2, beim Drucken sichtbar).
+  Tests in `word-form.test.ts`.

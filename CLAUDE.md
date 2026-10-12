@@ -2631,3 +2631,6 @@ Testadresse.
   gültigem Datum in den Stammdaten. Jetzt getrennt: Datum fehlt / abgelaufen (→ Stammdaten) und „Aufenthaltstitel: Kopie
   fehlt in der Akte“ (→ Hochladen mit vorgewählter Kategorie). **Rechtlich:** Die Kopie muss für die Dauer der Beschäftigung
   in der Personalakte liegen (§ 4a Abs. 5 S. 3 Nr. 3 AufenthG) – das Datum allein reicht nicht.
+- 2026-10-12: Fund Mitarbeiterformular (Ahmed, Screenshot): Die Hülle um die Aufenthaltstitel-Felder (zum Ausblenden) war ein
+  eigenes Rasterfeld und verschob die vertraulichen Daten (Felder gequetscht, Aufenthaltstitel quer). Jetzt hat jedes der vier
+  Felder selbst die Klasse `aufenthalt-feld` (`Field` mit `wrapClass`/`hidden`); per Screenshot geprüft (mit/ohne EU-Land).

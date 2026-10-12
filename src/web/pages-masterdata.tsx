@@ -24,8 +24,11 @@ export const Field: FC<{
   type?: string;
   required?: boolean;
   placeholder?: string;
+  /** Klasse/verborgen für den Zeilen-Container (z. B. ein-/ausblendbare Felder) */
+  wrapClass?: string;
+  hidden?: boolean;
 }> = (p) => (
-  <div>
+  <div class={p.wrapClass} hidden={p.hidden}>
     <label for={p.name}>{p.label}</label>
     <input
       id={p.name}

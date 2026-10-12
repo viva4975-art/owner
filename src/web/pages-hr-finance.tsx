@@ -960,32 +960,40 @@ export const EmployeeForm: FC<{
           </optgroup>
         </select>
       </div>
-      <div id="aufenthalt-felder" style="display:contents" hidden={!permitNeeded(priv.nationality)}>
-        <Field
-          name="residence_permit_until"
-          label="Aufenthaltstitel gültig bis"
-          type="date"
-          value={priv.residence_permit_until}
-        />
-        <Field
-          name="residence_permit_info"
-          label="Aufenthaltstitel Info"
-          value={priv.residence_permit_info}
-          placeholder="z. B. Art, Nummer"
-        />
-        <Field
-          name="work_permit_until"
-          label="Arbeitserlaubnis gültig bis"
-          type="date"
-          value={priv.work_permit_until}
-        />
-        <Field
-          name="work_permit_info"
-          label="Arbeitserlaubnis Info"
-          value={priv.work_permit_info}
-          placeholder="z. B. Auflagen, Beschränkung auf Arbeitgeber"
-        />
-      </div>
+
+      <Field
+        name="residence_permit_until"
+        wrapClass="aufenthalt-feld"
+        hidden={!permitNeeded(priv.nationality)}
+        label="Aufenthaltstitel gültig bis"
+        type="date"
+        value={priv.residence_permit_until}
+      />
+      <Field
+        name="residence_permit_info"
+        wrapClass="aufenthalt-feld"
+        hidden={!permitNeeded(priv.nationality)}
+        label="Aufenthaltstitel Info"
+        value={priv.residence_permit_info}
+        placeholder="z. B. Art, Nummer"
+      />
+      <Field
+        name="work_permit_until"
+        wrapClass="aufenthalt-feld"
+        hidden={!permitNeeded(priv.nationality)}
+        label="Arbeitserlaubnis gültig bis"
+        type="date"
+        value={priv.work_permit_until}
+      />
+      <Field
+        name="work_permit_info"
+        wrapClass="aufenthalt-feld"
+        hidden={!permitNeeded(priv.nationality)}
+        label="Arbeitserlaubnis Info"
+        value={priv.work_permit_info}
+        placeholder="z. B. Auflagen, Beschränkung auf Arbeitgeber"
+      />
+
       <Field name="tax_id" label="Steuer-ID (11 Ziffern)" value={priv.tax_id} />
       <Field name="social_security_no" label="SV-Nummer" value={priv.social_security_no} />
       <div>
@@ -1020,8 +1028,8 @@ export const EmployeeForm: FC<{
       dangerouslySetInnerHTML={{
         __html: `(function(){var s=document.getElementById('nationality');if(!s)return;
 function t(){var o=s.options[s.selectedIndex];var frei=!!(o&&o.getAttribute('data-frei'));
-var f=document.getElementById('aufenthalt-felder'),h=document.getElementById('aufenthalt-hinweis');
-if(f){f.hidden=frei;f.querySelectorAll('input,select,textarea').forEach(function(i){i.disabled=frei;});}
+var h=document.getElementById('aufenthalt-hinweis');
+document.querySelectorAll('.aufenthalt-feld').forEach(function(f){f.hidden=frei;f.querySelectorAll('input,select,textarea').forEach(function(i){i.disabled=frei;});});
 if(h)h.hidden=frei;}
 s.addEventListener('change',t);t();})();`,
       }}

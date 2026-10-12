@@ -48,7 +48,8 @@ const keyOf = (u) => {
 };
 const skip = (k) =>
   /^\/(api|static|dateien|abmelden|anmelden|health)(\/|$)/.test(k) ||
-  /\.(csv|zip|ics|xml|docx|webmanifest|js)(\?|$)/.test(k) ||
+  /\.(csv|zip|ics|xml|docx|xlsx|webmanifest|js)(\?|$)/.test(k) ||
+  /\/zip(\/|$)/.test(k.split('?')[0]) ||
   /download=1|pruefen=1|\/m\/sprache|\/kalender\/abo\//.test(k);
 const patternOf = (k) =>
   k
@@ -191,9 +192,12 @@ while (queue.length && n < MAX) {
     if ((pdfs.get(pat) ?? 0) >= 1) continue;
     pdfs.set(pat, 1);
     try {
-      const r = await pc.request.get(B + k, { timeout: 60000 });
-      if (r.status() >= 400 || !(r.headers()['content-type'] ?? '').includes('pdf'))
-        add(k, `PDF: HTTP ${r.status()}`, '');
+      // Umleitung mit Hinweis (z. B. „Keine kommenden Termine für einen Aushang“) ist gewollt, kein Fehler
+      const r = await pc.request.get(B + k, { timeout: 60000, maxRedirects: 0 });
+      const ok =
+        (r.headers()['content-type'] ?? '').includes('pdf') ||
+        (r.status() === 303 && /[?&](fehler|ok)=/.test(r.headers().location ?? ''));
+      if (r.status() >= 400 || !ok) add(k, `PDF: HTTP ${r.status()}`, '');
     } catch (e) {
       add(k, 'PDF: Fehler', String(e.message ?? e).slice(0, 200));
     }

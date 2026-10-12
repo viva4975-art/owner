@@ -2721,4 +2721,6 @@ Testadresse.
     erwartete eine neue Raumart, die inzwischen per Stichwort zugeordnet wird, Vorfaktura-Test sucht jetzt im Monat von
     heute. Alle 25 Browser-Suiten grün, 551 Unit-/DB-Tests grün. **Fund Testumgebung:** Platte voll (300-MB-Upload-Test) →
     temporäre Testordner (`/tmp/viva-*`) gelöscht.
+  - Seiten-Rundgang (`npm run check:seiten`): 685 Seiten PC + Handy, keine Fehlerseite, kein JS-Fehler; die 8 Meldungen
+    waren Downloads (ZIP/xlsx) und gewollte Umleitungen mit Hinweis – Prüfskript überspringt bzw. akzeptiert sie jetzt.
   - Vergleichsbilder: `e2e/_ruhe-shots.mjs` (`OUT=<ordner> node e2e/_ruhe-shots.mjs`, 22 Seiten PC + Handy).

@@ -4,7 +4,7 @@ import { siteCosting } from '../services/costing.js';
 import { collectReminders } from '../services/reminders.js';
 import { fullName } from '../services/users.js';
 import { missingDocs } from '../services/hr-required-docs.js';
-import { hoursHistory } from '../services/employee-hours.js';
+import { hoursHistory, plannedDaysPerWeek } from '../services/employee-hours.js';
 import { absentBetween, leaveBalance } from '../services/absences.js';
 import { followups } from '../services/prospects.js';
 import { canAccess } from './permissions.js';
@@ -1090,10 +1090,18 @@ export function registerModuleRoutes(ctx: Ctx) {
             afterHead={einsaetze}
             employment={beschaeftigung}
             hours={await hoursHistory(sql, e.id)}
+            plannedDays={await plannedDaysPerWeek(
+              sql,
+              e.id,
+              `${todayBerlin().slice(0, 7)}-01`,
+              // Monatsende: Tag 28 + 4 liegt immer im Folgemonat
+              addDays(`${addDays(`${todayBerlin().slice(0, 7)}-28`, 4).slice(0, 7)}-01`, -1),
+            )}
             leave={await leaveBalance(sql, e.id, Number(todayBerlin().slice(0, 4)))
               .then((b) => ({
                 rest: b.rest,
                 entitlement: b.entitlement + b.carried - b.carriedExpired,
+                yearEntitlement: b.entitlement,
                 year: Number(todayBerlin().slice(0, 4)),
               }))
               .catch(() => null)}

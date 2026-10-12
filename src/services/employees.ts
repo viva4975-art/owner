@@ -1,3 +1,4 @@
+import { LEAVE_DAYS_5DAY } from '../domain/time/leave.js';
 import { permitNeeded } from './hr-required-docs.js';
 import { normSvNumber, normTaxId, validSvNumber, validTaxId } from '../domain/hr/ids.js';
 import { z } from 'zod';
@@ -28,6 +29,8 @@ export interface Employee {
   languages: string[];
   annual_leave_days: string;
   days_per_week: string;
+  /** Arbeitstage/Woche automatisch aus der Einsatzplanung (sonst von Hand in den Stammdaten) */
+  days_auto?: boolean;
   salutation: 'Herr' | 'Frau' | 'divers' | null;
   tags: string[];
   warning_note: string | null;
@@ -164,10 +167,10 @@ export const employeeInput = z
           : (v ?? []),
       z.array(z.string()),
     ),
-    annual_leave_days: z.preprocess(
-      (v) => (typeof v === 'string' && v.trim() ? Number(v.replace(',', '.')) : 30),
-      z.number().min(0, 'Urlaubsanspruch 0–60 Tage').max(60, 'Urlaubsanspruch 0–60 Tage'),
-    ),
+    /** Urlaub immer laut Rahmentarifvertrag (30 Tage bei 5-Tage-Woche), nicht mehr je Mitarbeiter eingetragen */
+    annual_leave_days: z.preprocess(() => LEAVE_DAYS_5DAY, z.number()),
+    /** Arbeitstage: „auto“ = aus der Einsatzplanung, „fest“ = Wert aus den Stammdaten; fehlt (Import) = unverändert */
+    days_mode: z.preprocess(emptyToNull, z.enum(['auto', 'fest']).nullable().default(null)),
     salutation: z.preprocess(emptyToNull, z.enum(['Herr', 'Frau', 'divers']).nullable().default(null)),
     tags: tagList,
     warning_note: optText,
@@ -377,6 +380,7 @@ export async function saveEmployee(sql: Sql, id: string, input: EmployeeInput, a
     email: input.email,
     languages: input.languages,
     annual_leave_days: input.annual_leave_days,
+    ...(input.days_mode ? { days_auto: input.days_mode === 'auto' } : {}),
     salutation: input.salutation,
     // Beschäftigungsart immer als erster Tag (wie Fortytools), andere Beschäftigungsart-Tags fallen weg
     tags: [
@@ -429,7 +433,17 @@ export async function saveEmployee(sql: Sql, id: string, input: EmployeeInput, a
       const oldHours = cur?.weekly_hours != null ? Number(cur.weekly_hours) : null;
       const oldDays = cur ? Number(cur.days_per_week) : 5;
       // leer (z. B. Import) = unverändert
-      const newDays = input.days_per_week ?? oldDays;
+      const newDays =
+        input.days_mode === 'fest'
+          ? (input.days_per_week ??
+            (() => {
+              throw new BusinessError(
+                'Arbeitstage pro Woche angeben oder „automatisch aus der Einsatzplanung“ wählen',
+              );
+            })())
+          : input.days_mode === 'auto'
+            ? oldDays
+            : (input.days_per_week ?? oldDays);
       const daysChanged = cur ? oldDays !== newDays : newDays !== 5;
       const hoursChanged = cur ? oldHours !== input.weekly_hours || daysChanged : true;
       const validFrom = cur ? (input.hours_valid_from ?? todayBerlin()) : input.entry_date;

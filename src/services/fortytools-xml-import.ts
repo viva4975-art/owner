@@ -607,7 +607,6 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
     const loc = get(m, 'app-locale');
     const ik = get(m, 'health-insurance-ik');
     const insurer = ik ? (IK[ik] ?? `Sonstige (IK ${ik})`) : null;
-    const vac = get(m, 'vacation-days-per-year');
     const zip = get(m, 'address/zip');
     const type = tags.includes('Minijob')
       ? 'minijob'
@@ -638,7 +637,7 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
         exit_date: sep || null,
         status,
         weekly_hours: hoursNum,
-        annual_leave_days: vac ? Math.min(60, Number(vac)) : 30,
+        annual_leave_days: 30, // Urlaub immer laut Rahmentarifvertrag (Ahmed 12.10.)
         tags: [
           ...new Set([
             type === 'minijob' ? 'Minijob' : type === 'vollzeit' ? 'Vollzeit' : 'Teilzeit',
@@ -665,7 +664,6 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
     }
     const r1 = await tx`
       update app.employees set
-        annual_leave_days = case when ${vac || null}::numeric is not null and annual_leave_days = 30 then least(60, ${vac || null}::numeric) else annual_leave_days end,
         languages = case when cardinality(languages) = 0 and ${loc && LOCALE_LANG[loc] ? LOCALE_LANG[loc] : null}::text is not null
                          then array[${loc && LOCALE_LANG[loc] ? LOCALE_LANG[loc] : ''}]::text[] else languages end,
         app_language = case when app_language = 'de' and ${loc && APP_LANGS.has(loc) ? loc : null}::text is not null
@@ -674,8 +672,7 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
         updated_at = now()
       where id = ${e.id}
         and (cardinality(languages) = 0 and ${loc && LOCALE_LANG[loc] ? 1 : 0} = 1
-             or not (tags @> ${tags}::text[])
-             or annual_leave_days = 30 and ${vac || null}::numeric is not null and ${vac || null}::numeric <> 30)
+             or not (tags @> ${tags}::text[]))
       returning id`;
     const r2 = await tx`
       insert into app.employee_private (employee_id, street, postal_code, city, health_insurance)

@@ -1,3 +1,4 @@
+import { leaveDaysForWeek } from '../domain/time/leave.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { type Gender, genderOf, genderizeXml, salaryClause, shadeEmployeeSignature } from './word-gender.js';
 import { personGreeting } from '../domain/letter/greeting.js';
@@ -509,14 +510,14 @@ async function employeeValues(
       hourly_wage_cents: bigint | null;
       level_wage_cents: bigint | null;
       wage_level: string | null;
-      annual_leave_days: string | null;
+      days_per_week: string | null;
       nationality: string | null;
     }[]
   >`
     select e.salutation, e.first_name, e.last_name, e.personnel_no, e.entry_date::text, e.exit_date::text,
            e.weekly_hours::text, e.employment_type, e.phone, e.mobile, e.email,
            p.street, p.postal_code, p.city, p.birth_date::text, e.monthly_salary_cents, p.nationality,
-           e.annual_leave_days::text,
+           e.days_per_week::text,
            e.pay_model, e.hourly_wage_cents,
            (select w.name from app.wage_levels w where w.id = e.wage_level_id and e.pay_model is distinct from 'individuell') as wage_level,
            (select w.hourly_wage_cents from app.wage_levels w where w.id = e.wage_level_id) as level_wage_cents
@@ -587,9 +588,8 @@ async function employeeValues(
     'Mitarbeiter.Monatsgehalt': salary,
     'Mitarbeiter.Stundenlohn': wage,
     'Mitarbeiter.Lohngruppe': level ?? '',
-    'Mitarbeiter.Urlaubstage': e.annual_leave_days
-      ? String(Number(e.annual_leave_days)).replace('.', ',')
-      : '',
+    // Urlaub laut Rahmentarifvertrag: 30 Tage bei 5-Tage-Woche, anteilig nach Arbeitstagen
+    'Mitarbeiter.Urlaubstage': String(leaveDaysForWeek(Number(e.days_per_week ?? 5))).replace('.', ','),
     'Mitarbeiter.Beschäftigungsart': EMPLOYMENT[e.employment_type] ?? e.employment_type,
     'Mitarbeiter.Objekte': sites.map((s) => s.name).join(', '),
     'Mitarbeiter.Einsatzgebiet': sites.map((s) => s.name).join(', '),

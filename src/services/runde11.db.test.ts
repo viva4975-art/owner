@@ -40,6 +40,8 @@ describe.skipIf(!available)('Runde 11: Lohnarten und Urlaubsanspruch (Datenbank)
     sql = await freshDatabase();
     await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, hourly_wage_cents, pay_model, annual_leave_days)
               values (${emp}, '4001', 'Nina', 'Lohn', '2024-01-01', 1500, 'individuell', 2)`;
+    // feste 5-Tage-Woche, kein Resturlaub aus dem Vorjahr
+    await sql`update app.employees set days_auto = false, carry_over_leave = false where id = ${emp}`;
   });
   afterAll(async () => {
     await sql?.end();
@@ -77,6 +79,18 @@ describe.skipIf(!available)('Runde 11: Lohnarten und Urlaubsanspruch (Datenbank)
   });
 
   it('Urlaub ohne ausreichenden Anspruch wird abgelehnt', async () => {
+    // 30 Tage (Rahmentarifvertrag), davon 28 schon genommen (07.01.–13.02.2026) → Rest 2
+    await requestAbsence(sql, {
+      id: randomUUID(),
+      employeeId: emp,
+      kind: 'urlaub',
+      start: '2026-01-07',
+      end: '2026-02-13',
+      halfDay: false,
+      note: null,
+      actor: 'buero',
+      approved: true,
+    });
     await expect(
       requestAbsence(sql, {
         id: randomUUID(),

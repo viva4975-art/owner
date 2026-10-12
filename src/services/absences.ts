@@ -1,7 +1,8 @@
 import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { addDays, holidayName, isoWeekday, workingDays } from '../domain/time/holidays.js';
-import { daysPeriods } from './employee-hours.js';
+import { leaveDaysPeriods } from './employee-hours.js';
+import { LEAVE_DAYS_5DAY } from '../domain/time/leave.js';
 import { BusinessError } from './errors.js';
 import { uuidOf } from './fortytools-export-import.js';
 import { leaveOpening } from './leave-import.js';
@@ -189,7 +190,7 @@ export async function leaveDaysOf(sql: Sql, employeeId: string, from: string, to
   if (from > to) return 0;
   if (halfDay) return 0.5;
   let sum = 0;
-  for (const seg of await daysPeriods(sql, employeeId, from, to)) {
+  for (const seg of await leaveDaysPeriods(sql, employeeId, from, to)) {
     if (seg.days >= 5) {
       sum += workingDays(seg.from, seg.to);
       continue;
@@ -499,9 +500,12 @@ export async function leaveBalance(sql: Sql, employeeId: string, year: number): 
   if (op && op.taken != null) {
     // Stand aus Fortytools: Anspruch/Resturlaub/genommen bis Stichtag, verfallener Rest so wie dort gerechnet
     const after = await baseBalance(sql, employeeId, year, addDays(op.as_of, 1));
-    const entitlement = op.entitlement ?? after.entitlement;
+    // Anspruch immer selbst gerechnet (30 Tage RTV, Arbeitstage); der Fortytools-Anspruch dient nur dazu,
+    // den dort verfallenen Resturlaub nachzurechnen
+    const entitlement = after.entitlement;
+    const ftEntitlement = op.entitlement ?? entitlement;
     const carried = op.carried ?? 0;
-    const expired = op.available != null ? Math.max(0, carried + entitlement - op.taken - op.available) : 0;
+    const expired = op.available != null ? Math.max(0, carried + ftEntitlement - op.taken - op.available) : 0;
     const taken = op.taken + after.taken;
     return {
       entitlement,
@@ -544,8 +548,8 @@ export async function leaveBalance(sql: Sql, employeeId: string, year: number): 
 
 /** `countFrom`: Abwesenheiten erst ab diesem Tag zählen (nach einem übernommenen Stand) */
 async function baseBalance(sql: Sql, employeeId: string, year: number, countFrom?: string) {
-  const [e] = await sql<{ annual_leave_days: string; entry_date: string; exit_date: string | null }[]>`
-    select annual_leave_days::text, entry_date, exit_date from app.employees where id = ${employeeId}`;
+  const [e] = await sql<{ entry_date: string; exit_date: string | null }[]>`
+    select entry_date, exit_date from app.employees where id = ${employeeId}`;
   if (!e) throw new BusinessError('Mitarbeiter nicht gefunden');
   const yStart0 = `${year}-01-01`;
   const yEnd = `${year}-12-31`;
@@ -554,11 +558,12 @@ async function baseBalance(sql: Sql, employeeId: string, year: number, countFrom
   // anteilig: volle Beschäftigungsmonate (§ 5 BUrlG vereinfacht), auf halbe Tage gerundet
   const months =
     from > to ? 0 : Number(to.slice(5, 7)) - Number(from.slice(5, 7)) + 1 - (from.slice(8) !== '01' ? 1 : 0);
-  const full = Number(e.annual_leave_days);
+  // Rahmentarifvertrag: 30 Tage bei 5-Tage-Woche für alle (Ahmed 12.10.) – nicht mehr je Mitarbeiter eingetragen
+  const full = LEAVE_DAYS_5DAY;
   // Anspruch gilt für 5 Arbeitstage/Woche; je Beschäftigungsmonat anteilig nach den dann gültigen Arbeitstagen
   // (Wechsel im Monat: tageweise gewichtet). Vor einer Änderung erworbener Urlaub bleibt so erhalten.
   let entitlement: number;
-  const segs = from <= to ? await daysPeriods(sql, employeeId, from, to) : [];
+  const segs = from <= to ? await leaveDaysPeriods(sql, employeeId, from, to) : [];
   if (segs.every((g) => g.days === 5))
     entitlement =
       from === yStart0 && to === yEnd ? full : Math.round(((full * Math.max(0, months)) / 12) * 2) / 2;

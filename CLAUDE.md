@@ -2655,4 +2655,15 @@ Testadresse.
   „Erfasst“ (Admin/Personal): löscht alle erfassten Zeiten des angezeigten Monats/der Woche/des Tages (mit und ohne
   Einsatz) über das bestehende Löschen mit Löschprotokoll, Grund freiwillig, Rückfrage mit Anzahl; Einsätze bleiben.
   **Rechtlich:** nur für falsche Importe/Testdaten – echte Arbeitszeiten 2 Jahre aufbewahren (§ 17 MiLoG).
+- 2026-10-12: **Urlaub automatisch** (Ahmed: „Tage sollen nicht drinstehen, automatisch berechnen, damit keine Fehler
+  entstehen; laut Rahmentarifvertrag 30 Tage bei 5-Tage-Woche“): Feld „Urlaubsanspruch“ im Mitarbeiterformular entfällt;
+  Anspruch = 30 × Arbeitstage ÷ 5 (`LEAVE_DAYS_5DAY` in `src/domain/time/leave.ts`), je Monat anteilig, Ein-/Austritt nach
+  § 5 BUrlG. **Arbeitstage/Woche**: „automatisch aus der Einsatzplanung“ (Standard; `employees.days_auto`) = Wochentage mit
+  eigenem Einsatz je Monat (alle 2 Wochen = ½, monatlich ≈ ¼, höchstens 6; Monat ohne Einsatz = 5; **Vollzeit immer 5**,
+  damit eine unvollständige Planung den Urlaub nicht kürzt) oder „fest eintragen …“ (mit „gültig ab“ wie bisher).
+  `leaveDaysPeriods`/`plannedDaysPerWeek` in `employee-hours.ts`; gilt für Anspruch und für die Tage, die ein Urlaub kostet.
+  Fortytools-Urlaubsstände: Anspruch wird jetzt immer selbst gerechnet (übernommene genommene/verfallene Tage bleiben).
+  Word-Platzhalter `Mitarbeiter.Urlaubstage` = 30 × Arbeitstage ÷ 5. Migration `20261124000001` (alle auf 30; wer bisher
+  andere Arbeitstage als 5 eingetragen hatte, bleibt „fest“). **Rechtlich:** 30 Tage stammen von Ahmed (RTV) – bei
+  Tarifänderung Wert in `leave.ts` anpassen; Mindesturlaub nach BUrlG wird nie unterschritten.
 

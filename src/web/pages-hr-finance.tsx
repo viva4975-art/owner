@@ -416,8 +416,23 @@ export const EmployeeOverview: FC<{
     recorded_by: string;
   }[];
   /** Urlaubskonto des laufenden Jahres (Resturlaub statt Jahresanspruch in der Kopfleiste) */
-  leave?: { rest: number; entitlement: number; year: number } | null;
-}> = ({ e, priv, sites, showPrivate, wage, month, afterHead, footer, employment, hours = [], leave }) => {
+  leave?: { rest: number; entitlement: number; yearEntitlement?: number; year: number } | null;
+  /** Arbeitstage/Woche laut Einsatzplanung (aktueller Monat) */
+  plannedDays?: number | null;
+}> = ({
+  e,
+  priv,
+  sites,
+  showPrivate,
+  wage,
+  month,
+  afterHead,
+  footer,
+  employment,
+  hours = [],
+  leave,
+  plannedDays,
+}) => {
   // Neu gestaltet (Ahmed 10.10.: „Mitarbeiterübersicht designtechnisch nicht schön“): Kopf mit Kennzahlen und
   // Schnellaktionen, darunter Beschäftigung | Kontakt, rechts Objekte, Vertrauliches, Plan/Ist.
   const today = todayBerlin();
@@ -532,7 +547,7 @@ export const EmployeeOverview: FC<{
           </div>
           <div>
             <span>Resturlaub {leave?.year ?? ''}</span>
-            <b>{leave ? `${num(leave.rest)} Tage` : `${num(e.annual_leave_days)} Tage`}</b>
+            <b>{leave ? `${num(leave.rest)} Tage` : '–'}</b>
             <small>
               {leave ? `Anspruch ${num(leave.entitlement)} · ` : ''}
               <a href={`/personal/${e.id}/abwesenheiten`}>Urlaubskonto →</a>
@@ -586,24 +601,34 @@ export const EmployeeOverview: FC<{
                 )}
               </dd>
               <dt>Arbeitstage/Woche</dt>
-              <dd>{num(e.days_per_week ?? '5')}</dd>
+              <dd>
+                {e.days_auto === false ? (
+                  <>{num(e.days_per_week ?? '5')} (fest eingetragen)</>
+                ) : e.employment_type === 'vollzeit' ? (
+                  <>
+                    5 <span class="small mut">(Vollzeit)</span>
+                  </>
+                ) : (
+                  <>
+                    {plannedDays != null ? num(plannedDays) : '–'}{' '}
+                    <span class="small mut">(automatisch aus der Einsatzplanung)</span>
+                  </>
+                )}
+              </dd>
               <dt>Urlaubsanspruch</dt>
               <dd>
-                {num(e.annual_leave_days)} Tage/Jahr
+                {leave ? <b>{num(leave.yearEntitlement ?? leave.entitlement)} Tage</b> : '–'}
+                {leave && ` ${leave.year}`}
                 <span class="small mut">
                   {' '}
-                  (bei 5-Tage-Woche{Number(e.days_per_week ?? 5) !== 5 ? ', wird anteilig umgerechnet' : ''})
+                  (30 Tage bei 5-Tage-Woche laut Rahmentarifvertrag
+                  {e.entry_date?.slice(0, 4) === String(leave?.year) && !e.entry_date.endsWith('-01-01')
+                    ? `, anteilig ab Eintritt ${e.entry_date.split('-').reverse().join('.')}`
+                    : e.exit_date?.slice(0, 4) === String(leave?.year)
+                      ? `, anteilig bis Austritt ${e.exit_date.split('-').reverse().join('.')}`
+                      : ''}
+                  )
                 </span>
-                {leave && leave.entitlement !== Number(e.annual_leave_days) && (
-                  <div class="small">
-                    {leave.year}: <b>{num(leave.entitlement)} Tage</b>
-                    {e.entry_date.slice(0, 4) === String(leave.year)
-                      ? ` (anteilig ab Eintritt ${e.entry_date.split('-').reverse().join('.')})`
-                      : e.exit_date?.slice(0, 4) === String(leave.year)
-                        ? ` (anteilig bis Austritt ${e.exit_date.split('-').reverse().join('.')})`
-                        : ' (anteilig)'}
-                  </div>
-                )}
               </dd>
               {wage && (
                 <>
@@ -836,27 +861,50 @@ export const EmployeeForm: FC<{
         label="Stunden/Woche"
         value={e.weekly_hours ? String(Number(e.weekly_hours)).replace('.', ',') : ''}
       />
-      <Field
-        name="days_per_week"
-        label="Arbeitstage/Woche"
-        value={String(Number(e.days_per_week ?? 5)).replace('.', ',')}
-      />
+      <div>
+        <label for="days_mode">Arbeitstage/Woche</label>
+        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select
+            id="days_mode"
+            name="days_mode"
+            style="width:auto"
+            data-nosearch
+            onchange="var f=document.getElementById('days-fest');if(f)f.hidden=this.value!=='fest'"
+          >
+            <option value="auto" selected={e.days_auto !== false}>
+              automatisch aus der Einsatzplanung
+            </option>
+            <option value="fest" selected={e.days_auto === false}>
+              fest eintragen …
+            </option>
+          </select>
+          <span id="days-fest" hidden={e.days_auto !== false}>
+            <input
+              name="days_per_week"
+              aria-label="Arbeitstage pro Woche"
+              value={String(Number(e.days_per_week ?? 5)).replace('.', ',')}
+              style="width:70px"
+              inputmode="decimal"
+            />{' '}
+            Tage
+          </span>
+        </span>
+        <div class="small mut">
+          Urlaub laut Rahmentarifvertrag: 30 Tage bei 5-Tage-Woche, bei weniger Tagen anteilig (z. B. 3 Tage =
+          18). Automatisch = Vollzeit 5 Tage, sonst die Wochentage der geplanten Einsätze je Monat.
+        </div>
+      </div>
       {!isNew && (
         <div>
           <label for="hours_valid_from">Stunden/Tage gültig ab</label>
           <input id="hours_valid_from" name="hours_valid_from" type="date" />
           <div class="small mut">
-            Nur bei geänderten Stunden oder Arbeitstagen: ab wann sie gelten (leer = heute, z. B. 01.11.). Der
-            alte Wert bleibt im Verlauf sichtbar; der Urlaub wird je Monat nach den dann gültigen Arbeitstagen
-            gerechnet.
+            Nur bei geänderten Stunden oder fest eingetragenen Arbeitstagen: ab wann sie gelten (leer = heute,
+            z. B. 01.11.). Der alte Wert bleibt im Verlauf sichtbar; der Urlaub wird je Monat nach den dann
+            gültigen Arbeitstagen gerechnet.
           </div>
         </div>
       )}
-      <Field
-        name="annual_leave_days"
-        label="Urlaubsanspruch (Tage/Jahr bei 5-Tage-Woche)"
-        value={e.annual_leave_days != null ? String(Number(e.annual_leave_days)).replace('.', ',') : '30'}
-      />
     </div>
     <h3 style="margin-top:20px">Vergütung *</h3>
     <div class="pay-pick" data-pay>

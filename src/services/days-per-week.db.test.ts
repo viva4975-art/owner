@@ -42,10 +42,28 @@ describe.skipIf(!available)('Arbeitstage pro Woche: Urlaub anteilig', () => {
                 values (${id}, ${no}, 'Ein', 'Tritt', ${entry}, ${exit}, 'vollzeit', 40, ${days})`;
       return (await leaveBalance(sql, id, 2026)).entitlement;
     };
-    expect(await mk('9881', '2026-10-01', null, 30)).toBe(7.5); // Wartezeit im Jahr nicht erfüllt → nur anteilig
-    expect(await mk('9882', '2026-03-01', null, 30)).toBe(25); // 10/12 von 30
-    expect(await mk('9883', '2026-03-15', null, 24)).toBe(20); // 9/12 von 24 = 18 → Mindesturlaub 20
-    expect(await mk('9884', '2020-01-01', '2026-05-31', 24)).toBe(10); // Austritt 1. Halbjahr → anteilig
-    expect(await mk('9885', '2020-01-01', '2026-08-31', 24)).toBe(20); // Austritt 2. Halbjahr → Mindesturlaub
+    // alle 30 Tage laut Rahmentarifvertrag (annual_leave_days wird nicht mehr verwendet)
+    expect(await mk('9881', '2026-10-01', null, 24)).toBe(7.5); // Wartezeit im Jahr nicht erfüllt → nur anteilig
+    expect(await mk('9882', '2026-03-01', null, 24)).toBe(25); // 10/12 von 30
+    expect(await mk('9883', '2026-06-15', null, 30)).toBe(20); // 6/12 = 15 → gesetzlicher Mindesturlaub 20
+    expect(await mk('9884', '2020-01-01', '2026-05-31', 30)).toBe(12.5); // Austritt 1. Halbjahr → anteilig
+    expect(await mk('9885', '2020-01-01', '2026-08-31', 30)).toBe(20); // 8/12 von 30
+  });
+
+  it('Arbeitstage automatisch aus der Einsatzplanung oder fest aus den Stammdaten', async () => {
+    const auto = randomUUID();
+    const fest = randomUUID();
+    await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, employment_type, weekly_hours)
+              values (${auto}, '9891', 'Auto', 'Tage', '2024-01-01', 'teilzeit', 10),
+                     (${fest}, '9892', 'Fest', 'Tage', '2024-01-01', 'teilzeit', 10)`;
+    for (const wd of [1, 3])
+      await sql`insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes, valid_from)
+                values (${randomUUID()}, ${auto}, ${DEMO.siteSchool}, ${wd}, '06:00', '10:00', 0, '2024-01-01')`;
+    // Mo + Mi eingeplant → 2 Tage/Woche → 30 × 2/5 = 12; eine Urlaubswoche kostet 2 Tage
+    expect((await leaveBalance(sql, auto, 2025)).entitlement).toBe(12);
+    expect(await leaveDaysOf(sql, auto, '2025-10-06', '2025-10-12', false)).toBe(2);
+    // fest 3 Tage (ohne Einsätze) → 18
+    await sql`update app.employees set days_auto = false, days_per_week = 3 where id = ${fest}`;
+    expect((await leaveBalance(sql, fest, 2025)).entitlement).toBe(18);
   });
 });

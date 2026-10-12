@@ -39,6 +39,18 @@ describe.skipIf(!available)('Schulferien automatisch, Urlaubs-Warnung (Datenbank
     const plan = (emp: string, site: string, wd: number) =>
       sql`insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, valid_from)
           values (${randomUUID()}, ${emp}, ${site}, ${wd}, '06:00', '09:00', '2026-09-01')`;
+    // 30 Tage Anspruch, 20 davon schon genommen (12.01.–06.02.2026) → Rest 10
+    await requestAbsence(sql, {
+      id: randomUUID(),
+      employeeId: a,
+      kind: 'urlaub',
+      start: '2026-01-12',
+      end: '2026-02-06',
+      halfDay: false,
+      note: null,
+      actor: 't',
+      approved: true,
+    });
     for (const wd of [1, 2, 3, 4, 5]) {
       await plan(a, DEMO.siteSchool, wd);
       await plan(mixed, DEMO.siteSchool, wd);
@@ -63,7 +75,7 @@ describe.skipIf(!available)('Schulferien automatisch, Urlaubs-Warnung (Datenbank
     expect(y26.reduce((s, p) => s + p.unpaid, 0)).toBe(1);
     // 2027 (Ferien nur bis Sommer bekannt): nur ein Teil des Jahresurlaubs verplant
     const y27 = mine.filter((p) => p.from >= '2027-01-01');
-    expect(y27.reduce((s, p) => s + p.vacation, 0)).toBeLessThan(10);
+    expect(y27.reduce((s, p) => s + p.vacation, 0)).toBeLessThan(30);
     expect(y27.reduce((s, p) => s + p.vacation, 0)).toBeGreaterThan(0);
     expect(r.skipped.some((x) => x.employee_id === mixed && x.reason.includes('arbeitet auch'))).toBe(true);
     expect(r.planned.some((p) => p.employee_id === mixed)).toBe(false);
@@ -73,7 +85,7 @@ describe.skipIf(!available)('Schulferien automatisch, Urlaubs-Warnung (Datenbank
     const r = await schoolLeave(sql, { siteId: DEMO.siteSchool, apply: true, actor: 't', today: TODAY });
     expect(r.planned.length).toBeGreaterThan(0);
     const abs = await sql<{ kind: string; auto_school: boolean; status: string }[]>`
-      select kind, auto_school, status from app.absences where employee_id = ${a}`;
+      select kind, auto_school, status from app.absences where employee_id = ${a} and auto_school`;
     expect(abs.every((x) => x.auto_school && x.status === 'genehmigt')).toBe(true);
     expect(abs.some((x) => x.kind === 'urlaub')).toBe(true);
     expect(abs.some((x) => x.kind === 'unbezahlt')).toBe(true);
@@ -83,7 +95,7 @@ describe.skipIf(!available)('Schulferien automatisch, Urlaubs-Warnung (Datenbank
     expect(again.done).toBeGreaterThan(0);
     const [n] = await sql<
       { n: number }[]
-    >`select count(*)::int as n from app.absences where employee_id = ${a}`;
+    >`select count(*)::int as n from app.absences where employee_id = ${a} and auto_school`;
     expect(n!.n).toBe(abs.length);
   });
 

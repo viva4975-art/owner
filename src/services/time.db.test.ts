@@ -85,6 +85,8 @@ describe.skipIf(!available)('Zeiterfassung, Einsatzplanung, Urlaub (Datenbank)',
     sql = await freshDatabase();
     await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, hourly_wage_cents)
               values (${emp}, '2001', 'Elena', 'Popescu', '2024-01-01', 1425), (${other}, '2002', 'Ana', 'Test', '2026-07-01', 1425)`;
+    // Urlaub hier mit fester 5-Tage-Woche (nicht aus der Einsatzplanung)
+    await sql`update app.employees set days_auto = false where id in (${emp}, ${other})`;
     await sql`insert into app.employee_sites (employee_id, site_id) values (${emp}, ${DEMO.siteSchool})`;
   });
   afterAll(async () => {

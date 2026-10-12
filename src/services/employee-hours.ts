@@ -136,3 +136,51 @@ export async function applyDueHours(sql: Sql | Tx, employeeId?: string) {
     returning e.id`;
   return r.length + d.length;
 }
+
+/**
+ * Arbeitstage je Woche aus der Einsatzplanung eines Zeitraums (Ahmed 12.10.: „je nachdem, wie viele Tage er eingesetzt
+ * ist“): je Wochentag mit eigenem Einsatz 1 Tag (alle 2 Wochen = ½, monatlich ≈ ¼), gleiche Wochentage an mehreren
+ * Objekten zählen einmal; auf halbe Tage gerundet, höchstens 6. Ohne Einsatz → null.
+ */
+export async function plannedDaysPerWeek(sql: Sql | Tx, employeeId: string, from: string, to: string) {
+  const rows = await sql<{ weekday: number; recurrence: string | null; every: number | null }[]>`
+    select weekday, recurrence, every from app.shift_plans
+     where employee_id = ${employeeId} and valid_from <= ${to} and (valid_until is null or valid_until >= ${from})
+       and coalesce(recurrence, 'woechentlich') <> 'einmalig'`;
+  if (!rows.length) return null;
+  const perDay = new Map<number, number>();
+  for (const r of rows) {
+    const every = Math.max(1, Number(r.every ?? 1));
+    const w = r.recurrence === 'monatlich' ? 12 / 52 / every : 1 / every;
+    perDay.set(Number(r.weekday), Math.max(perDay.get(Number(r.weekday)) ?? 0, w));
+  }
+  const sum = [...perDay.values()].reduce((a, b) => a + b, 0);
+  return Math.min(6, Math.max(0.5, Math.round(sum * 2) / 2));
+}
+
+/**
+ * Arbeitstage je Abschnitt für den Urlaub: von Hand in den Stammdaten gesetzt (`days_auto = false`) → Verlauf wie
+ * bisher; Vollzeit → 5; sonst je Kalendermonat aus der Einsatzplanung (Monat ohne Einsatz = 5-Tage-Woche).
+ */
+export async function leaveDaysPeriods(sql: Sql | Tx, employeeId: string, from: string, to: string) {
+  if (from > to) return [];
+  const [e] = await sql<
+    { days_auto: boolean }[]
+  >`select days_auto from app.employees where id = ${employeeId}`;
+  if (e && !e.days_auto) return daysPeriods(sql, employeeId, from, to);
+  const out: { from: string; to: string; days: number }[] = [];
+  let ms = `${from.slice(0, 7)}-01`;
+  while (ms <= to) {
+    const [y, m] = ms.split('-').map(Number) as [number, number];
+    const next = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
+    const me = addDays(next, -1);
+    const a = ms < from ? from : ms;
+    const b = me > to ? to : me;
+    const days = (await plannedDaysPerWeek(sql, employeeId, ms, me)) ?? 5;
+    const last = out[out.length - 1];
+    if (last && last.days === days && addDays(last.to, 1) === a) last.to = b;
+    else out.push({ from: a, to: b, days });
+    ms = next;
+  }
+  return out;
+}

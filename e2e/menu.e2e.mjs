@@ -40,8 +40,8 @@ await p.waitForLoadState();
 check('Menü oben aktiv', await p.evaluate(() => document.body.classList.contains('menu-top')));
 const box = await p.locator('.appside').boundingBox();
 check(
-  'Leiste oben einzeilig über die ganze Breite',
-  !!box && box.y === 0 && box.width > 1300 && box.height <= 64,
+  'Menüleiste einzeilig über die ganze Breite, unter der Kopfzeile',
+  !!box && box.y >= 50 && box.y <= 80 && box.width > 1300 && box.height <= 64,
 );
 await p.click('.appside .grp:has(> summary span:text-is("Rechnungen")) > summary');
 check(
@@ -64,7 +64,10 @@ await p.click('.appside .grp:has(> summary span:text-is("Rechnungen")) .sub a:ha
 await p.waitForLoadState();
 check('Navigation über das Aufklapp-Menü', p.url().includes('/offene-posten'));
 const hd = await p.locator('header.top').boundingBox();
-check('Suchleiste unter der Menüleiste', !!hd && hd.y >= 50);
+check(
+  'Kopfzeile mit Logo und Suche ganz oben',
+  !!hd && hd.y === 0 && (await p.locator('.top-logo').isVisible()),
+);
 await p.setViewportSize({ width: 390, height: 844 });
 await p.reload();
 check('Handy: Schublade wie bisher', await p.locator('.burgerbtn').isVisible());

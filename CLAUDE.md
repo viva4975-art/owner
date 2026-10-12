@@ -2740,3 +2740,6 @@ Testadresse.
   vollbreiten Aktionen (`.actstack` in `layout.tsx`; Stornieren/Zurückziehen heller), statt einer Reihe einzelner Knöpfe
   unter dem Titel bzw. unter dem Brief. Knöpfe allgemein flacher (ohne Schatten, Radius 6 px, Text bricht um).
   `e2e:menu` (14 Prüfungen) neu.
+- 2026-10-12: **Fund Entwürfe am Handy** (Ahmed, Screenshot): Durch die festen Spaltenbreiten blieb für „Empfänger“ am
+  Handy nur ein Buchstabe Platz (Name lief senkrecht). Entwurfsliste ist unter 760 px jetzt eine Kartenliste je Entwurf
+  (Häkchen, Datum, PDF/Löschen oben, Empfänger + Objekt + Leistungszeitraum, netto/brutto unten), PC unverändert.

@@ -416,6 +416,24 @@ export const DRAFTS_CSS = `
 .dr-side-f{display:grid;grid-template-columns:1fr;gap:6px 8px;align-items:center;margin-top:10px}
 .dr-side-f .btn{grid-column:1/-1}
 .dr-side-f input{min-width:0;width:100%}
+@media(max-width:760px){
+.dr-main,.dr-main tbody{display:block;width:100%}.dr-main thead{display:none}
+.dr-main tr{display:grid;grid-template-columns:30px minmax(0,1fr) auto auto;grid-template-areas:"c d p x" "c r r r" "c ne b b";gap:4px 8px;padding:10px 12px;border-bottom:1px solid #eee}
+.dr-main tr td{display:block;padding:0;border:0;min-width:0;background:none!important}
+.dr-main tr td:nth-child(1){grid-area:c;padding:2px 0 0}
+.dr-main tr td:nth-child(2){grid-area:d}.dr-main tr td:nth-child(2) b{display:inline;margin-right:6px}
+.dr-main tr td:nth-child(3){grid-area:r;overflow-wrap:break-word}
+.dr-main tr td:nth-child(4){grid-area:p}.dr-main tr td:nth-child(5){display:none}
+.dr-main tr td:nth-child(6){grid-area:ne;text-align:left;color:#666;font-size:13px}.dr-main tr td:nth-child(6):before{content:'netto '}
+.dr-main tr td:nth-child(7){grid-area:b;font-weight:600}
+.dr-main tr td:nth-child(8){grid-area:x}
+.dr-main tr.dr-sum{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;background:#fafafa}
+.dr-main tr.dr-sum td:first-child,.dr-main tr.dr-sum td:last-child{display:none}
+.dr-main tr.dr-sum td:nth-child(2){flex:1 1 100%}
+.dr-main tr.dr-sum td:nth-child(3),.dr-main tr.dr-sum td:nth-child(4){display:block}
+.dr-main tr.dr-sum td:nth-child(3):before{content:none}
+.dr-foot .btn{flex:1 1 auto}
+}
 .dr-side{min-width:0}.dr-side .dr-list td{white-space:nowrap;font-size:13px;padding-left:4px;padding-right:4px}.dr-side .mpick{width:100%}.dr-side .mpick select.mpick-s{flex:1}
 `;
 

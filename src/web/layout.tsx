@@ -1356,8 +1356,14 @@ input[type=checkbox],input[type=radio]{accent-color:var(--brand)}
   .menu-top .top-logo img{height:38px;width:auto}
   .menu-top .top .search{max-width:520px;margin:0 auto}
 }
-:root{--bg:#f7f0f2}
-.shell .mainc{background:var(--bg)}
+:root{--bg:#f4f4f5;--tint-2:#f8eff2}
+/* Variante D (Ahmed 13.10.): oben heller Bordeaux-Schimmer, nach unten ruhiges Grau; graue Flächen in den Karten
+   (Tabellenköpfe, Kartenköpfe, Hinweiskästen) hell-bordeaux, Arbeitsflächen weiß */
+html body.shell{background:#f4f4f5 linear-gradient(180deg,#f6e9ee 0,#f7eef2 160px,rgba(244,244,245,0) 420px) no-repeat!important}
+.shell .mainc{background:transparent}
+.tbl thead th,table thead th,.info-col .panel-head,.svc-head,.revtable tr.sum td,.empty-line,.note-tint,.empty{background:var(--tint-2)}
+.empty,.empty-line{border-color:#ecd9e0}
+main .dr-list th,main .dr-sum td,main .dr-foot{background:var(--tint-2)}
 .shell .mainc{background-image:none}
 /* „Neu anlegen“ als Knopf + Menü statt Auswahlliste */
 .newmenu{display:flex;gap:6px;align-items:center;margin-left:auto}

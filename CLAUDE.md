@@ -2753,3 +2753,7 @@ Testadresse.
   aktiv/inaktiv setzen“ erscheint erst, wenn etwas markiert ist (`.bulkbar`).
 - 2026-10-12: Hintergrund (Ahmed: „hellen leichten Bordeaux-Ton lieber dort, wo jetzt grau ist“): Seitenfläche gleichmäßig
   hell-bordeaux `#f7f0f2` (`--bg`), Karten bleiben weiß, Kopfzeile weiß, Menüleiste Bordeaux.
+- 2026-10-13: **Hintergrund Variante D** (Ahmed: „ok mach das so“): oben unter der Menüleiste heller Bordeaux-Schimmer
+  wie früher, nach unten ruhiges Grau; Tabellenköpfe, Kartenköpfe der Seitenkästen, Hinweiskästen („Derzeit keine …“) und
+  Summenzeilen hell-bordeaux (`--tint-2` #f8eff2); Tabellen, Formulare, Beträge weiß. Schrift: App und Rechnungen nutzen
+  beide schon Inter.

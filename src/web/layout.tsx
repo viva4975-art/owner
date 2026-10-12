@@ -1294,6 +1294,28 @@ input[type=checkbox],input[type=radio]{accent-color:var(--brand)}
   .entity-layout>.info-col>*{order:2}.entity-layout>.info-col>:first-child{order:0}
   .entity-layout>.content-col{order:1}
 }
+/* Menü oben (Konto → Menü, Cookie vd_menu): Bordeaux-Leiste mit Aufklapp-Menüs, nur ab Tablet-Breite;
+   darunter bleibt die Schublade (☰) wie bisher */
+@media (min-width:1025px){
+  .menu-top .appside{position:sticky;top:0;inset:auto;width:auto;height:auto;min-height:52px;flex-direction:row;align-items:center;overflow:visible;padding:0 12px 0 0;z-index:41}
+  .menu-top .side-logo{height:52px;border:0;padding:0 12px 0 16px;flex:none}
+  .menu-top .side-logo img{height:26px}
+  .menu-top .side-foot{display:none}
+  .menu-top .appside nav.menu{flex-direction:row;flex-wrap:wrap;align-items:center;overflow:visible;padding:6px 0;gap:0;flex:1;min-width:0}
+  .menu-top .appside nav.menu a.item,.menu-top .appside nav.menu .grp>summary{min-height:36px;padding:4px 8px;gap:3px;font-size:13px;white-space:nowrap}
+  .menu-top .appside nav.menu a.item .ic:first-child,.menu-top .appside nav.menu .grp>summary .ic:first-child{display:none}
+  .menu-top .appside nav.menu .grp>summary .ic:last-child{margin-left:2px}
+  .menu-top .appside nav.menu a.item.on{box-shadow:inset 0 -2px 0 #fff}
+  .menu-top .appside nav.menu .grp{position:relative}
+  .menu-top .appside nav.menu .sub{position:absolute;top:calc(100% + 6px);left:0;min-width:240px;padding:6px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:var(--sh-2);z-index:50}
+  .menu-top .appside nav.menu .sub a{color:var(--ink-2);white-space:nowrap}
+  .menu-top .appside nav.menu .sub a:hover{background:var(--head);color:var(--brand)}
+  .menu-top .appside nav.menu .sub a.on{background:var(--brand-50);color:var(--brand);box-shadow:inset 3px 0 0 var(--brand)}
+  .menu-top .appside nav.menu .soon{color:var(--faint)}
+  .menu-top.shell .mainc{margin-left:0;min-height:calc(100vh - 52px)}
+  .menu-top .top{position:static}
+  .menu-top .burgerbtn{display:none}
+}
 @media (max-width:700px){
   .pagehead .newform{width:100%;flex-wrap:nowrap}
   .pagehead .newform select{flex:1 1 auto;min-width:120px;width:auto}
@@ -1466,9 +1488,11 @@ export const Layout: FC<{
   bare?: boolean;
   /** aus der App geöffnet: App-Rahmen (Zurück, Titel, Leiste unten) statt PC-Menü */
   app?: boolean;
+  /** Hauptmenü als Leiste oben statt Seitenleiste links (Cookie vd_menu) */
+  menuTop?: boolean;
   flash?: { ok?: string | undefined; err?: string | undefined };
   children?: Child;
-}> = ({ title, nav, env, user, role, bare, app, flash, children }) => {
+}> = ({ title, nav, env, user, role, bare, app, menuTop, flash, children }) => {
   const menu = role
     ? MENU.map((m) => ({
         ...m,
@@ -1536,7 +1560,7 @@ export const Layout: FC<{
           <script dangerouslySetInnerHTML={{ __html: CLIENT_JS }} />
         </body>
       ) : (
-        <body class={bare ? 'bare' : 'shell'}>
+        <body class={bare ? 'bare' : menuTop ? 'shell menu-top' : 'shell'}>
           <input type="checkbox" id="burger" class="burger-cb" aria-hidden="true" />
           {!bare && (
             <aside class="appside" aria-label="Navigation">
@@ -1556,7 +1580,7 @@ export const Layout: FC<{
                       <span>{m.label}</span>
                     </a>
                   ) : (
-                    <details class={`grp item${nav === m.key ? ' on' : ''}`} open={nav === m.key}>
+                    <details class={`grp item${nav === m.key ? ' on' : ''}`} open={!menuTop && nav === m.key}>
                       <summary>
                         <Icon name={MENU_ICON[m.key] ?? 'file'} size={18} />
                         <span>{m.label}</span>
@@ -1576,7 +1600,7 @@ export const Layout: FC<{
               </nav>
               <script
                 dangerouslySetInnerHTML={{
-                  __html: `(function(){var p=location.pathname,best=null,len=0;document.querySelectorAll('.appside .sub a[href]').forEach(function(a){var h=a.getAttribute('href').split('?')[0];if((p===h||p.indexOf(h+'/')===0)&&h.length>len){best=a;len=h.length}});if(best){best.classList.add('on');var d=best.closest('details');if(d)d.open=true}})();`,
+                  __html: `(function(){var p=location.pathname,best=null,len=0,top=document.body.classList.contains('menu-top');document.querySelectorAll('.appside .sub a[href]').forEach(function(a){var h=a.getAttribute('href').split('?')[0];if((p===h||p.indexOf(h+'/')===0)&&h.length>len){best=a;len=h.length}});if(best){best.classList.add('on');var d=best.closest('details');if(d&&!top)d.open=true}if(top){var g=[].slice.call(document.querySelectorAll('.appside .grp'));var mq=window.matchMedia('(min-width:1025px)');g.forEach(function(d){d.querySelector('summary').addEventListener('click',function(){if(mq.matches)g.forEach(function(o){if(o!==d)o.open=false})})});document.addEventListener('click',function(e){if(mq.matches&&!e.target.closest('.appside .grp'))g.forEach(function(o){o.open=false})});document.addEventListener('keydown',function(e){if(e.key==='Escape')g.forEach(function(o){o.open=false})})}})();`,
                 }}
               />
               {env !== 'live' && (
@@ -1650,6 +1674,13 @@ export const Layout: FC<{
                       <div class="drop right">
                         <a href="/konto">Mein Konto / Passwort</a>
                         <a href="/kalender/abonnieren">Kalender abonnieren (iPhone/Outlook)</a>
+                        <form method="post" action="/konto/menue" style="margin:0" class="menu-pos">
+                          <input type="hidden" name="pos" value={menuTop ? 'links' : 'oben'} />
+                          <input type="hidden" name="zurueck" value="" data-here />
+                          <button class="btn ghost" style="width:100%;justify-content:flex-start">
+                            {menuTop ? 'Menü links anzeigen' : 'Menü oben anzeigen'}
+                          </button>
+                        </form>
                         {role === 'admin' && <a href="/benutzer">Benutzer & Rechte</a>}
                         <div class="sep" />
                         <form method="post" action="/abmelden" style="margin:0">

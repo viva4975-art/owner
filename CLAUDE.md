@@ -2724,3 +2724,8 @@ Testadresse.
   - Seiten-Rundgang (`npm run check:seiten`): 685 Seiten PC + Handy, keine Fehlerseite, kein JS-Fehler; die 8 Meldungen
     waren Downloads (ZIP/xlsx) und gewollte Umleitungen mit Hinweis – Prüfskript überspringt bzw. akzeptiert sie jetzt.
   - Vergleichsbilder: `e2e/_ruhe-shots.mjs` (`OUT=<ordner> node e2e/_ruhe-shots.mjs`, 22 Seiten PC + Handy).
+- 2026-10-12: **Menü oben oder links wählbar** (Ahmed): Benutzermenü (Name oben rechts) → „Menü oben anzeigen“ / „Menü links
+  anzeigen“, ebenso unter Mein Konto → Menü. Gemerkt je Browser (Cookie `vd_menu`, 1 Jahr). Oben: Bordeaux-Leiste mit Logo
+  und den Hauptpunkten, Untermenüs klappen als Liste auf (immer nur eins offen, Klick daneben/Esc schließt), bleibt beim
+  Scrollen oben; bei schmalen Fenstern bricht die Leiste um, unter 1025 px gilt wie bisher die Schublade (☰). Browser-Test
+  `npm run e2e:menu` (11 Prüfungen); navigation/login/rechte grün.

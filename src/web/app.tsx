@@ -102,6 +102,8 @@ export function taskViewerOf(c: Context<AppEnv>): { names: string[]; actor: stri
 }
 export const OFFICE_COOKIE = 'vd_s';
 export const APP_COOKIE = 'vd_app';
+/** Menü oben statt links (je Browser gemerkt, Ahmed 12.10.) */
+export const MENU_COOKIE = 'vd_menu';
 export const officeSecret = (env: Deps['env']) =>
   createHash('sha256')
     .update(`office:${env.SESSION_SECRET ?? `dev-session:${env.APP_BASIC_AUTH}`}`)
@@ -342,6 +344,7 @@ export function createApp(deps: Deps) {
             env={env.APP_ENV}
             {...(u ? { user: fullName(u), role: u.role } : {})}
             app={c.req.query('pc') !== '1' && getCookie(c, APP_COOKIE) === '1'}
+            menuTop={getCookie(c, MENU_COOKIE) === 'oben'}
             flash={{ ok: c.req.query('ok'), err: c.req.query('fehler') }}
           >
             {body}

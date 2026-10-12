@@ -19,7 +19,7 @@ import {
   linkedEmployee,
   saveEmployeeLink,
 } from '../services/users.js';
-import { type AppEnv, type Ctx, APP_COOKIE, OFFICE_COOKIE, UUID, officeSecret } from './app.js';
+import { type AppEnv, type Ctx, APP_COOKIE, MENU_COOKIE, OFFICE_COOKIE, UUID, officeSecret } from './app.js';
 import { arr } from './forms.js';
 import { Icon } from './icons.js';
 import { PageHead, initials } from './layout.js';
@@ -150,6 +150,29 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
             </div>
           </form>
           <div class="card">
+            <h3>Menü</h3>
+            <p class="small mut" style="margin-top:0">
+              Wo soll das Hauptmenü stehen? Gilt für diesen Browser (Handy: immer über ☰).
+            </p>
+            <form method="post" action="/konto/menue" class="actions" style="margin-top:0">
+              <input type="hidden" name="zurueck" value="/konto" />
+              <button
+                class={`btn${getCookie(c, MENU_COOKIE) === 'oben' ? ' sec' : ''}`}
+                name="pos"
+                value="links"
+              >
+                Links (Seitenleiste)
+              </button>
+              <button
+                class={`btn${getCookie(c, MENU_COOKIE) === 'oben' ? '' : ' sec'}`}
+                name="pos"
+                value="oben"
+              >
+                Oben (Menüleiste)
+              </button>
+            </form>
+          </div>
+          <div class="card">
             <div class="person">
               <span class="avatar">{initials(u.name)}</span>
               <div>
@@ -164,6 +187,20 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
         </div>
       </>,
     );
+  });
+
+  // Menü links (Seitenleiste) oder oben (Leiste mit Aufklapp-Menüs) – je Browser gemerkt
+  app.post('/konto/menue', async (c) => {
+    const b = await c.req.parseBody();
+    const pos = b.pos === 'oben' ? 'oben' : 'links';
+    setCookie(c, MENU_COOKIE, pos, {
+      path: '/',
+      sameSite: 'Lax',
+      secure: env.APP_ENV !== 'dev',
+      maxAge: 365 * 86400,
+    });
+    const to = String(b.zurueck ?? '');
+    return c.redirect(/^\/(?!\/)/.test(to) ? to : '/konto', 303);
   });
 
   app.post('/konto', async (c) => {

@@ -93,6 +93,8 @@ describe.skipIf(!available)('Runde 26: Plan-Zeiten als Ist-Zeiten (Datenbank)', 
     expect((await row()).missing).not.toContain('Schlüssel');
     expect((await row()).missing).toContain('Arbeitsvertrag');
     await expect(setDocNotNeeded(sql, e4, 'Arbeitsvertrag', true, 'buero')).rejects.toThrow(/Pflicht/);
+    await setDocNotNeeded(sql, e4, 'Unterweisung', true, 'buero');
+    expect((await row()).missing).not.toContain('Unterweisung');
     await setDocNotNeeded(sql, e4, 'Schlüssel', false, 'buero');
     expect((await row()).missing).toContain('Schlüssel');
   });

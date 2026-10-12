@@ -21,7 +21,7 @@ import { validSvNumber, validTaxId } from '../domain/hr/ids.js';
 import { validIban } from './employees.js';
 
 /** Pflichtunterlagen, die je Mitarbeiter als „nicht nötig“ markiert werden können (z. B. hat keinen Schlüssel). */
-export const OPTIONAL_PER_EMPLOYEE = ['Arbeitskleidung', 'Schlüssel'] as const;
+export const OPTIONAL_PER_EMPLOYEE = ['Unterweisung', 'Arbeitskleidung', 'Schlüssel'] as const;
 
 export async function setDocNotNeeded(
   sql: Sql,
@@ -121,6 +121,7 @@ export async function missingDocs(sql: Sql, opts: { siteIds?: string[] | null } 
       sites: string[] | null;
       site_ids: string[] | null;
       not_needed: string[];
+      signed_instruction: boolean;
       tax_id: string | null;
       social_security_no: string | null;
       iban: string | null;
@@ -138,6 +139,9 @@ export async function missingDocs(sql: Sql, opts: { siteIds?: string[] | null } 
            ], null) as data_missing,
            (select array_agg(distinct l.category) from app.file_links l join app.files f on f.id = l.file_id
              where l.entity_type = 'employee' and l.entity_id = e.id and f.status = 'complete' and l.archived_at is null) as cats,
+           exists (select 1 from app.sign_requests sr join app.sign_documents sd on sd.id = sr.document_id
+                    where sr.employee_id = e.id and sr.status = 'unterschrieben'
+                      and sd.category = 'unterweisung') as signed_instruction,
            (select array_agg(distinct h.kind) from app.handovers h
              where h.employee_id = e.id and h.status in ('unterschrieben', 'ohne_unterschrift')) as ho,
            (select array_agg(distinct coalesce(pr.display_name, 'ohne Objektleitung')) from app.employee_sites es
@@ -159,6 +163,7 @@ export async function missingDocs(sql: Sql, opts: { siteIds?: string[] | null } 
       if (r.not_needed.includes(d)) continue;
       const ok =
         cats.has(d) ||
+        (d === 'Unterweisung' && r.signed_instruction) ||
         (d === 'Arbeitskleidung' && ho.has('kleidung')) ||
         (d === 'Schlüssel' && ho.has('schluessel'));
       if (!ok) missing.push(d);

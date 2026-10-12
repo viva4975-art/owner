@@ -301,6 +301,24 @@ export async function archiveLink(
 }
 
 /**
+ * Dokument aus einer Akte löschen: nur die Verknüpfung entfällt (Stand ins Protokoll). Die Datei selbst bleibt
+ * write-once im Speicher (Belege ggf. im revisionssicheren Archiv) – sie taucht nur in der Akte nicht mehr auf.
+ */
+export async function unlinkFile(sql: Sql, link: LinkTarget, fileId: string, actor: string) {
+  return sql.begin(async (tx) => {
+    const r = await tx<{ category: string | null; name: string }[]>`
+      delete from app.file_links l using app.files f
+       where l.file_id = ${fileId} and l.entity_type = ${link.type} and l.entity_id = ${link.id} and f.id = l.file_id
+      returning l.category, f.original_name as name`;
+    if (r.length)
+      await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+               values (${actor}, 'file_unlink', 'file_links', ${fileId},
+                       ${tx.json({ type: link.type, id: link.id, category: r[0]!.category, name: r[0]!.name })})`;
+    return r.length > 0;
+  });
+}
+
+/**
  * Serverseitig erzeugte Datei (z. B. Brief aus Vorlage) direkt als fertige Datei ablegen: write-once,
  * SHA-256, mit Verknüpfung. Idempotent über die ID.
  */

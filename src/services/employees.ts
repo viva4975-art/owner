@@ -676,7 +676,11 @@ export const DOC_CATEGORIES = [
 /** Checkliste der Personalakte: Arbeitsvertrag Pflicht, die übrigen empfohlen (wie Pflichtdokumente am Objekt). */
 export const DOC_CHECKLIST: { name: string; required: boolean; hint: string }[] = [
   { name: 'Arbeitsvertrag', required: true, hint: 'unterschriebener Vertrag (Nachweisgesetz)' },
-  { name: 'Unterweisung', required: true, hint: 'Arbeitsschutz/Gefahrstoffe (§ 12 ArbSchG), jährlich' },
+  {
+    name: 'Unterweisung',
+    required: true,
+    hint: 'Arbeitsschutz/Gefahrstoffe (§ 12 ArbSchG), jährlich – auch digital in der App unterschrieben',
+  },
   { name: 'Arbeitskleidung', required: true, hint: 'Ausgabeprotokoll (auch über „Übergaben“)' },
   { name: 'Schlüssel', required: true, hint: 'Schlüsselquittung (auch über „Übergaben“)' },
   {

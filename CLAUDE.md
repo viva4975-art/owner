@@ -2614,3 +2614,15 @@ Testadresse.
     aus dem Import) erscheinen unter Personal → Fehlende Unterlagen als „Ungültig: …“. **Grenze:** geprüft wird nur Aufbau
     und Prüfziffer – ob die Nummer der Person gehört, zeigt erst ELStAM-Abruf bzw. DEÜV-Meldung im Lohnprogramm.
   - Tests: `ids.test.ts`, `phase2.db.test.ts`.
+- 2026-10-12: **Personalakte hochladen, Unterweisung, Löschen** (Ahmed, Screenshot):
+  - „Hochladen als“ wechselt die Kategorie ohne Neuladen (Seite sprang nach oben); Adresse merkt sich die Kategorie für das
+    Neuladen nach dem Upload (`#hochladen`). Auswahl kürzer: „Häufig“ (Arbeitsvertrag, Vertragsänderung, Personalunterlagen,
+    Unterweisung, Aufenthalts-/Arbeitserlaubnis, Bescheinigung, Sonstiges) und „Weitere“, „Entwurf (aus Vorlage)“ nicht mehr
+    wählbar. Uploader liest die Kategorie beim Hochladen (`box.dataset.category`).
+  - **Alle Klapplisten mit Suche** passen sich dem Platz im Fenster an: unten zu eng → öffnen nach oben, sonst eigene
+    Scrollleiste (`client.ts`, `.cbx-pop.up`).
+  - **Unterweisung je Mitarbeiter abwählbar** wie Schlüssel/Kleidung (Migration `20261123000002`) und zählt als vorhanden,
+    sobald eine Unterweisung digital in der App unterschrieben ist. **Rechtlich:** Unterweisung bleibt Pflicht des
+    Arbeitgebers (§ 12 ArbSchG, jährlich) – „nicht nötig“ nur, wenn der Nachweis anders geführt wird.
+  - **Dokument löschen** in der Personalakte (Admin/Personal, auch im Archiv, mit Rückfrage): entfernt nur die Verknüpfung,
+    Stand im Protokoll (`file_unlink`); die Datei bleibt write-once gespeichert (Belege auch im S3-Archiv).

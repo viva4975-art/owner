@@ -34,7 +34,6 @@ export const UPLOADER_JS = String.raw`
     var zone = box.querySelector('.drop-zone');
     var list = box.querySelector('.files');
     var link = { type: box.dataset.linkType, id: box.dataset.linkId };
-    var category = box.dataset.category || '';
     var pending = 0;
 
     zone.addEventListener('click', function () { input.click(); });
@@ -74,7 +73,7 @@ export const UPLOADER_JS = String.raw`
       var info = null, queue = [], inflight = 0;
       active++; pending++;
       show('Wird vorbereitet …');
-      api('POST', '/api/uploads', JSON.stringify({ id: id, name: file.name, size: file.size, type: file.type, linkType: link.type, linkId: link.id, category: category }), { 'Content-Type': 'application/json' })
+      api('POST', '/api/uploads', JSON.stringify({ id: id, name: file.name, size: file.size, type: file.type, linkType: link.type, linkId: link.id, category: box.dataset.category || '' }), { 'Content-Type': 'application/json' })
         .then(function (j) {
           info = j;
           var have = {}; j.received.forEach(function (n) { have[n] = 1; });

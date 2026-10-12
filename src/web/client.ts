@@ -331,7 +331,13 @@ export const CLIENT_JS = String.raw`
       if (!pop) build();
       pop.hidden = false; wrap.classList.add('open');
       input.value = initial || '';
-      render(); input.focus();
+      render();
+      // Liste passt sich dem Platz im Fenster an: unten zu eng → nach oben aufklappen, sonst eigene Scrollleiste
+      var r = wrap.getBoundingClientRect(), below = window.innerHeight - r.bottom - 12, above = r.top - 12;
+      var up = below < 260 && above > below;
+      pop.classList.toggle('up', up);
+      list.style.maxHeight = Math.max(140, Math.min(320, (up ? above : below) - 64)) + 'px';
+      input.focus({ preventScroll: true });
       openBox = { wrap: wrap, close: close };
     }
     function close() { if (pop) pop.hidden = true; wrap.classList.remove('open'); if (openBox && openBox.wrap === wrap) openBox = null; }

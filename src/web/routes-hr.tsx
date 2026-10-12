@@ -6,6 +6,7 @@ import { parseEuro } from '../domain/money/money.js';
 import {
   DOC_CATEGORIES,
   DOC_CHECKLIST,
+  DRAFT_CATEGORY,
   TEMPLATE_FIELDS,
   listEmployees,
   listTemplates,
@@ -17,7 +18,7 @@ import { BusinessError } from '../services/errors.js';
 import { createFromTemplate, serialLetter } from '../services/hr-docs.js';
 import { OPTIONAL_PER_EMPLOYEE, setDocNotNeeded } from '../services/hr-required-docs.js';
 import { requestsForEmployee } from '../services/sign-documents.js';
-import { archiveLink, listFiles } from '../services/uploads.js';
+import { archiveLink, listFiles, unlinkFile } from '../services/uploads.js';
 import { type Ctx, UUID } from './app.js';
 import { DocFoldAll, FileArea, docOpen } from './files.js';
 import { centsToInput, str } from './forms.js';
@@ -28,6 +29,21 @@ import { holidayName } from '../domain/time/holidays.js';
 import { uploadConfig, zipHref } from './routes-files.js';
 
 /** Personal wie Fortytools: Dokumente je Mitarbeiter, Vorlagen/Serienbrief, Lohnstufen, Einsatzkalender. */
+/** Kategorien, die oben in der Hochlade-Auswahl stehen; die übrigen unter „Weitere“. */
+const UPLOAD_MAIN = [
+  'Arbeitsvertrag',
+  'Vertragsänderung',
+  'Personalunterlagen',
+  'Unterweisung',
+  'Aufenthalts-/Arbeitserlaubnis',
+  'Bescheinigung',
+  'Sonstiges',
+];
+/** Kategorie wechseln ohne Neuladen (Seite springt nicht nach oben); Adresse merkt sie für das Neuladen nach dem Upload. */
+const CATEGORY_JS = `var c=this.closest('.card'),u=c&&c.querySelector('[data-uploader]'),k=this.value;
+if(u){u.dataset.category=k;var b=u.querySelector('.drop-zone b');if(b)b.textContent=k+' hierher ziehen';}
+try{var q=new URLSearchParams(location.search);q.set('kategorie',k);history.replaceState(null,'',location.pathname+'?'+q+'#hochladen');}catch(e){}`;
+
 export function registerHrRoutes(ctx: Ctx) {
   const { app, deps, page, back, shells } = ctx;
   const { sql, env } = deps;
@@ -57,6 +73,7 @@ export function registerHrRoutes(ctx: Ctx) {
             .sort((a, b) => +b.archived_at! - +a.archived_at!),
         }))
         .filter((g) => g.now.length || g.old.length);
+      const canDelete = ['admin', 'personal'].includes(c.get('user').role);
       const archForm = (fileId: string, aktion: 'archivieren' | 'zurueck', label: string) => (
         <form method="post" action={`/personal/${e.id}/dokumente/archiv`} style="display:inline">
           <input type="hidden" name="file_id" value={fileId} />
@@ -71,8 +88,12 @@ export function registerHrRoutes(ctx: Ctx) {
         select docs_not_needed as d from app.employees where id = ${e.id}`;
       const notNeeded = nn?.d ?? [];
       const hoCount = (k: string) => handovers.find((h) => h.kind === k)?.n ?? 0;
+      const [si] = await sql<{ n: number }[]>`
+        select count(*)::int as n from app.sign_requests sr join app.sign_documents sd on sd.id = sr.document_id
+         where sr.employee_id = ${e.id} and sr.status = 'unterschrieben' and sd.category = 'unterweisung'`;
       const has = (name: string) =>
         current.some((f) => f.category === name) ||
+        (name === 'Unterweisung' && (si?.n ?? 0) > 0) ||
         (name === 'Arbeitskleidung' && hoCount('kleidung') > 0) ||
         (name === 'Schlüssel' && hoCount('schluessel') > 0);
       return (
@@ -188,7 +209,28 @@ export function registerHrRoutes(ctx: Ctx) {
                         files={now}
                         maxBytes={0}
                         listOnly
-                        action={(f) => archForm(f.id, 'archivieren', 'ins Archiv')}
+                        action={(f) => (
+                          <>
+                            {archForm(f.id, 'archivieren', 'ins Archiv')}
+                            {canDelete && (
+                              <form
+                                method="post"
+                                action={`/personal/${e.id}/dokumente/archiv`}
+                                style="display:inline"
+                              >
+                                <input type="hidden" name="file_id" value={f.id} />
+                                <input type="hidden" name="aktion" value="loeschen" />
+                                <button
+                                  class="btn sm ghost"
+                                  title="Dokument löschen"
+                                  data-confirm={`„${f.original_name}“ aus der Personalakte löschen?`}
+                                >
+                                  Löschen
+                                </button>
+                              </form>
+                            )}
+                          </>
+                        )}
                       />
                     ) : (
                       <div class="small mut">Keine aktuelle Fassung – nur Archiv.</div>
@@ -210,6 +252,22 @@ export function registerHrRoutes(ctx: Ctx) {
                                 })}
                               </span>
                               {archForm(f.id, 'zurueck', 'zurückholen')}
+                              {canDelete && (
+                                <form
+                                  method="post"
+                                  action={`/personal/${e.id}/dokumente/archiv`}
+                                  style="display:inline"
+                                >
+                                  <input type="hidden" name="file_id" value={f.id} />
+                                  <input type="hidden" name="aktion" value="loeschen" />
+                                  <button
+                                    class="btn sm ghost"
+                                    data-confirm={`„${f.original_name}“ aus der Personalakte löschen?`}
+                                  >
+                                    Löschen
+                                  </button>
+                                </form>
+                              )}
                             </>
                           )}
                         />
@@ -231,21 +289,37 @@ export function registerHrRoutes(ctx: Ctx) {
                   <select
                     id="kategorie"
                     name="kategorie"
-                    onchange="this.form.submit()"
-                    style="max-width:240px"
+                    data-combo
+                    onchange={CATEGORY_JS}
+                    style="max-width:260px"
                   >
-                    {DOC_CATEGORIES.map((k) => (
-                      <option value={k} selected={k === category}>
-                        {k}
-                      </option>
-                    ))}
+                    <optgroup label="Häufig">
+                      {UPLOAD_MAIN.map((k) => (
+                        <option value={k} selected={k === category}>
+                          {k}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Weitere">
+                      {DOC_CATEGORIES.filter((k) => !UPLOAD_MAIN.includes(k) && k !== DRAFT_CATEGORY).map(
+                        (k) => (
+                          <option value={k} selected={k === category}>
+                            {k}
+                          </option>
+                        ),
+                      )}
+                    </optgroup>
                   </select>
+                  <noscript>
+                    <button class="btn sm sec">Wählen</button>
+                  </noscript>
                 </form>
                 <FileArea
                   link={{ type: 'employee', id: e.id }}
                   files={[]}
                   category={category}
                   title={`${category} hierher ziehen`}
+                  hint="Kategorie oben wechseln – die Seite bleibt hier."
                   maxBytes={env.UPLOAD_MAX_BYTES}
                 />
               </div>
@@ -335,8 +409,16 @@ export function registerHrRoutes(ctx: Ctx) {
       });
     }
     const fileId = str(b, 'file_id') ?? '';
-    if (!/^[0-9a-f-]{36}$/.test(fileId) || (aktion !== 'archivieren' && aktion !== 'zurueck'))
+    if (!/^[0-9a-f-]{36}$/.test(fileId) || !['archivieren', 'zurueck', 'loeschen'].includes(aktion ?? ''))
       throw new BusinessError('Ungültige Anfrage');
+    if (aktion === 'loeschen') {
+      if (!['admin', 'personal'].includes(c.get('user').role))
+        throw new BusinessError('Löschen dürfen nur Geschäftsführung und Personal');
+      const gone = await unlinkFile(sql, link, fileId, actor);
+      return back(c, `/personal/${id}/dokumente`, {
+        ok: gone ? 'Dokument aus der Personalakte gelöscht.' : 'Keine Änderung.',
+      });
+    }
     const done = await archiveLink(sql, link, fileId, aktion === 'archivieren', actor);
     return back(c, `/personal/${id}/dokumente`, {
       ok: done

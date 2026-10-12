@@ -163,11 +163,10 @@ describe.skipIf(!available)('Zeiterfassung, Einsatzplanung, Urlaub (Datenbank)',
       },
       'buero',
     );
-    // vor dem Anlegen geplanter Tage zählen nicht als Soll
-    expect(await plannedShifts(sql, { from: yesterday, to: yesterday, employeeId: emp })).toHaveLength(0);
-    await expect(
-      confirmPlanned(sql, { employeeId: emp, planId: plan!, date: yesterday, confirmed: true, actor: 'm' }),
-    ).rejects.toThrow(/Kein geplanter/);
+    // rückwirkend geplante Tage zählen (Ahmed 12.10.), sind aber als „nach dem Tag geplant“ erkennbar
+    const back = await plannedShifts(sql, { from: yesterday, to: yesterday, employeeId: emp });
+    expect(back).toHaveLength(1);
+    expect(back[0]!.plan.planned_on! > yesterday).toBe(true);
     await sql`update app.shift_plans set created_at = now() - interval '30 days' where id = ${plan!}`;
     const shifts = await plannedShifts(sql, { from: yesterday, to: yesterday, employeeId: emp });
     expect(shifts).toHaveLength(1);

@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import { missingDocs, setDocNotNeeded } from './hr-required-docs.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
-import { autoConfirmPlanned, officeConfirmPlanned } from './time.js';
+import { autoConfirmPlanned, officeConfirmPlanned, plannedShifts } from './time.js';
 import { payrollCorrections, payrollMonth, recordPayrollExport } from './payroll.js';
 
 const available = await dbAvailable();
@@ -67,8 +68,33 @@ describe.skipIf(!available)('Runde 26: Plan-Zeiten als Ist-Zeiten (Datenbank)', 
        where t.employee_id = ${e2} limit 1`;
     expect(log).toMatchObject({ actor: 'automatisch' });
     expect(log!.reason).toMatch(/automatisch/);
+    // rückwirkend geplanter Einsatz (angelegt am 09.03. ab 01.03.): nie automatisch als Ist
+    const e3 = randomUUID();
+    await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date)
+              values (${e3}, '8803', 'Rück', 'Wirkend', '2024-01-01')`;
+    for (let wd = 1; wd <= 7; wd++)
+      await sql`insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, valid_from, created_at)
+                values (${randomUUID()}, ${e3}, ${DEMO.siteSchool}, ${wd}, '09:00', '10:00', '2026-03-01', '2026-03-09 12:00+01')`;
+    expect(await autoConfirmPlanned(sql, '2026-03-10')).toBe(0);
+    expect(await plannedShifts(sql, { from: '2026-03-03', to: '2026-03-08', employeeId: e3 })).toHaveLength(
+      6,
+    );
     await sql`update app.time_settings set auto_confirm_days = null`;
     expect(await autoConfirmPlanned(sql, '2026-03-20')).toBe(0);
+  });
+
+  it('Pflichtunterlage „Schlüssel“ je Mitarbeiter abwählbar', async () => {
+    const e4 = randomUUID();
+    await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date)
+              values (${e4}, '8804', 'Ohne', 'Schlüssel', '2024-01-01')`;
+    const row = async () => (await missingDocs(sql)).find((r) => r.employee_id === e4)!;
+    expect((await row()).missing).toContain('Schlüssel');
+    await setDocNotNeeded(sql, e4, 'Schlüssel', true, 'buero');
+    expect((await row()).missing).not.toContain('Schlüssel');
+    expect((await row()).missing).toContain('Arbeitsvertrag');
+    await expect(setDocNotNeeded(sql, e4, 'Arbeitsvertrag', true, 'buero')).rejects.toThrow(/Pflicht/);
+    await setDocNotNeeded(sql, e4, 'Schlüssel', false, 'buero');
+    expect((await row()).missing).toContain('Schlüssel');
   });
 
   it('Vorab-Lohnabrechnung: Ist bis Stichtag + Plan bis Monatsende, Korrektur im Folgemonat', async () => {

@@ -15,6 +15,7 @@ import {
 } from '../services/employees.js';
 import { BusinessError } from '../services/errors.js';
 import { createFromTemplate, serialLetter } from '../services/hr-docs.js';
+import { OPTIONAL_PER_EMPLOYEE, setDocNotNeeded } from '../services/hr-required-docs.js';
 import { requestsForEmployee } from '../services/sign-documents.js';
 import { archiveLink, listFiles } from '../services/uploads.js';
 import { type Ctx, UUID } from './app.js';
@@ -66,6 +67,9 @@ export function registerHrRoutes(ctx: Ctx) {
       const handovers = await sql<{ kind: string; n: number }[]>`
         select kind, count(*)::int as n from app.handovers
          where employee_id = ${e.id} and status in ('unterschrieben', 'ohne_unterschrift') group by kind`;
+      const [nn] = await sql<{ d: string[] }[]>`
+        select docs_not_needed as d from app.employees where id = ${e.id}`;
+      const notNeeded = nn?.d ?? [];
       const hoCount = (k: string) => handovers.find((h) => h.kind === k)?.n ?? 0;
       const has = (name: string) =>
         current.some((f) => f.category === name) ||
@@ -88,24 +92,52 @@ export function registerHrRoutes(ctx: Ctx) {
               <div class="card">
                 <h3 style="margin-top:0">Personalakte – Checkliste</h3>
                 <div class="doc-check">
-                  {DOC_CHECKLIST.map((d) => (
-                    <a
-                      href={`/personal/${e.id}/dokumente?kategorie=${encodeURIComponent(d.name)}#hochladen`}
-                      class={`dc ${has(d.name) ? 'ok' : d.required ? 'missing' : 'open'}`}
-                    >
-                      <span class="dc-i">{has(d.name) ? '✓' : d.required ? '!' : '–'}</span>
-                      <span>
-                        <b>{d.name}</b>{' '}
-                        {d.required ? (
-                          <span class="badge err">Pflicht</span>
-                        ) : (
-                          <span class="badge">optional</span>
-                        )}
-                        <div class="small mut">{has(d.name) ? 'vorhanden' : d.hint}</div>
-                      </span>
-                    </a>
-                  ))}
+                  {DOC_CHECKLIST.map((d) => {
+                    const off = notNeeded.includes(d.name);
+                    const req = d.required && !off;
+                    return (
+                      <a
+                        href={`/personal/${e.id}/dokumente?kategorie=${encodeURIComponent(d.name)}#hochladen`}
+                        class={`dc ${has(d.name) ? 'ok' : req ? 'missing' : 'open'}`}
+                      >
+                        <span class="dc-i">{has(d.name) ? '✓' : req ? '!' : '–'}</span>
+                        <span>
+                          <b>{d.name}</b>{' '}
+                          {off ? (
+                            <span class="badge">nicht nötig</span>
+                          ) : d.required ? (
+                            <span class="badge err">Pflicht</span>
+                          ) : (
+                            <span class="badge">optional</span>
+                          )}
+                          <div class="small mut">
+                            {has(d.name) ? 'vorhanden' : off ? 'für diese Person nicht nötig' : d.hint}
+                          </div>
+                        </span>
+                      </a>
+                    );
+                  })}
                 </div>
+                {OPTIONAL_PER_EMPLOYEE.some((d) => !has(d)) && (
+                  <div class="actions" style="margin-top:8px">
+                    {OPTIONAL_PER_EMPLOYEE.filter((d) => !has(d)).map((d) => {
+                      const off = notNeeded.includes(d);
+                      return (
+                        <form
+                          method="post"
+                          action={`/personal/${e.id}/unterlage-noetig`}
+                          style="display:inline"
+                        >
+                          <input type="hidden" name="unterlage" value={d} />
+                          <input type="hidden" name="noetig" value={off ? '1' : '0'} />
+                          <button class="btn sm sec">
+                            {off ? `${d}: wieder Pflicht` : `${d} nicht nötig (z. B. hat keine)`}
+                          </button>
+                        </form>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
               <div class="card">
                 <h3>Dokumente ({current.length})</h3>
@@ -248,6 +280,23 @@ export function registerHrRoutes(ctx: Ctx) {
       );
     }),
   );
+
+  // Pflichtunterlage für diese Person nicht nötig (z. B. hat keinen Schlüssel) bzw. wieder Pflicht
+  app.post(`/personal/:id{${UUID}}/unterlage-noetig`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    const doc = str(b, 'unterlage') ?? '';
+    const needed = str(b, 'noetig') === '1';
+    await setDocNotNeeded(sql, id, doc, !needed, c.get('actor'));
+    const to = str(b, 'zurueck');
+    return back(
+      c,
+      to && /^\/personal\/unterlagen(\?[\w=&%.-]*)?$/.test(to) ? to : `/personal/${id}/dokumente`,
+      {
+        ok: needed ? `${doc} ist wieder Pflicht.` : `${doc} für diese Person als „nicht nötig“ vermerkt.`,
+      },
+    );
+  });
 
   app.post(`/personal/:id{${UUID}}/dokumente/archiv`, async (c) => {
     const id = c.req.param('id');

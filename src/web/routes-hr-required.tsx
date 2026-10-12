@@ -1,6 +1,11 @@
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { renderTablePdf } from '../pdf/table.js';
-import { type MissingRow, REQUIRED_DOCS, missingDocs } from '../services/hr-required-docs.js';
+import {
+  type MissingRow,
+  OPTIONAL_PER_EMPLOYEE,
+  REQUIRED_DOCS,
+  missingDocs,
+} from '../services/hr-required-docs.js';
 import type { Ctx } from './app.js';
 import { PageHead, dateDe } from './layout.js';
 
@@ -145,6 +150,22 @@ export function registerHrRequiredRoutes({ app, deps, page }: Ctx) {
                             {m}
                           </a>
                         ))}
+                        {r.missing
+                          .filter((m) => (OPTIONAL_PER_EMPLOYEE as readonly string[]).includes(m))
+                          .map((m) => (
+                            <form
+                              method="post"
+                              action={`/personal/${r.employee_id}/unterlage-noetig`}
+                              style="display:inline"
+                            >
+                              <input type="hidden" name="unterlage" value={m} />
+                              <input type="hidden" name="noetig" value="0" />
+                              <input type="hidden" name="zurueck" value={`/personal/unterlagen?${qs}`} />
+                              <button class="btn sm ghost" title={`${m} für diese Person nicht nötig`}>
+                                {m} nicht nötig
+                              </button>
+                            </form>
+                          ))}
                       </td>
                     </tr>
                   );

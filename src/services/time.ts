@@ -475,6 +475,8 @@ export type ShiftPlanRow = ShiftPlan & {
   personnel_no: string;
   site_name: string;
   site_no: string;
+  /** Tag der Anlage (Europe/Berlin) – nur in plannedShifts gesetzt */
+  planned_on?: string;
 };
 
 export const WEEKDAYS = ['', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
@@ -668,16 +670,17 @@ export async function plannedShifts(
            where substitute_employee_id = ${f.employeeId} and work_date between ${f.from} and ${f.to}`
       ).map((r) => r.id)
     : [];
-  // Soll zählt erst ab dem Tag, an dem der Einsatz geplant wurde, und nicht vor dem Eintritt
-  // (sonst würden rückwirkend angelegte Einsätze als „fehlende Zeiten“ erscheinen).
+  // Soll zählt ab „gültig ab“ (auch rückwirkend geplant, Ahmed 12.10.), nicht vor dem Eintritt.
+  // planned_on (Anlagetag) nutzt „Soll als Ist automatisch“: rückwirkend geplante Tage werden nie automatisch bestätigt.
   const plans = await sql<(ShiftPlanRow & { effective_from: string; emp_exit: string | null })[]>`
     select p.*, e.exit_date as emp_exit, to_char(p.start_time, 'HH24:MI') as start_time, to_char(p.end_time, 'HH24:MI') as end_time,
+           to_char(p.created_at at time zone 'Europe/Berlin', 'YYYY-MM-DD') as planned_on,
            coalesce(e.last_name || ', ' || e.first_name, 'offen') as employee_name, coalesce(e.personnel_no, '') as personnel_no,
            s.name as site_name, s.site_no,
            ${
              f.includeOpen
                ? sql`p.valid_from`
-               : sql`greatest(p.valid_from, (p.created_at at time zone 'Europe/Berlin')::date, e.entry_date)`
+               : sql`greatest(p.valid_from, e.entry_date)`
            } as effective_from
       from app.shift_plans p left join app.employees e on e.id = p.employee_id join app.sites s on s.id = p.site_id
      where p.valid_from <= ${f.to} and (p.valid_until is null or p.valid_until >= ${f.from})
@@ -820,7 +823,7 @@ export async function confirmPlanned(
       select *, to_char(start_time, 'HH24:MI') as start_time, to_char(end_time, 'HH24:MI') as end_time
         from app.shift_plans where id = ${p.planId}
          and valid_from <= ${p.date} and (valid_until is null or valid_until >= ${p.date})
-         and (created_at at time zone 'Europe/Berlin')::date <= ${p.date}`;
+`;
     const [ex] = await tx<
       {
         kind: string;
@@ -886,6 +889,8 @@ export async function officeConfirmPlanned(
     siteScope?: string[] | null;
     /** Protokollgrund, Standard „Plan als Ist (Büro)“ */
     reason?: string;
+    /** nur Tage ab Anlage des Einsatzes (automatische Übernahme: rückwirkend geplante Tage nie) */
+    onlyPlannedAhead?: boolean;
   },
 ): Promise<{ created: number; skipped: string[] }> {
   const today = todayBerlin();
@@ -899,6 +904,7 @@ export async function officeConfirmPlanned(
     if (sh.entry || sh.absence || sh.holiday || sh.exception?.kind === 'ausfall') continue;
     if (sh.plan.employee_id !== p.employeeId) continue;
     if (p.siteScope && !p.siteScope.includes(sh.plan.site_id)) continue;
+    if (p.onlyPlannedAhead && sh.plan.planned_on && sh.plan.planned_on > sh.date) continue;
     const r = await withActor(sql, p.actor, p.reason ?? 'Plan als Ist (Büro)', async (tx) => {
       const [{ id }] = (await tx`select md5(${sh.plan.id} || ':' || ${sh.date})::uuid as id`) as unknown as [
         { id: string },
@@ -952,7 +958,13 @@ export async function autoConfirmPlanned(sql: Sql, today = todayBerlin()) {
       shifts
         .filter(
           (s) =>
-            !s.entry && !s.absence && !s.holiday && s.exception?.kind !== 'ausfall' && s.plan.employee_id,
+            !s.entry &&
+            !s.absence &&
+            !s.holiday &&
+            s.exception?.kind !== 'ausfall' &&
+            s.plan.employee_id &&
+            // nur im Voraus geplante Tage – rückwirkend angelegte nie automatisch als Ist
+            (!s.plan.planned_on || s.plan.planned_on <= s.date),
         )
         .map((s) => s.plan.employee_id!),
     ),
@@ -965,6 +977,7 @@ export async function autoConfirmPlanned(sql: Sql, today = todayBerlin()) {
       to,
       actor: 'automatisch',
       reason: `Plan als Ist automatisch (keine Zeit nach ${cfg.days} Tagen)`,
+      onlyPlannedAhead: true,
     });
     n += r.created;
   }

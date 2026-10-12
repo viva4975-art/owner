@@ -16,6 +16,35 @@ export const REQUIRED_DOCS = [
 ] as const;
 
 import { countryOf, isFreeMovementCountry } from '../domain/hr/lists.js';
+import { BusinessError } from './errors.js';
+
+/** Pflichtunterlagen, die je Mitarbeiter als „nicht nötig“ markiert werden können (z. B. hat keinen Schlüssel). */
+export const OPTIONAL_PER_EMPLOYEE = ['Arbeitskleidung', 'Schlüssel'] as const;
+
+export async function setDocNotNeeded(
+  sql: Sql,
+  employeeId: string,
+  doc: string,
+  notNeeded: boolean,
+  actor: string,
+) {
+  if (!(OPTIONAL_PER_EMPLOYEE as readonly string[]).includes(doc))
+    throw new BusinessError('Diese Unterlage bleibt Pflicht');
+  await sql.begin(async (tx) => {
+    const [r] = await tx`
+      update app.employees
+         set docs_not_needed = ${
+           notNeeded
+             ? tx`array(select distinct x from unnest(docs_not_needed || ${[doc]}::text[]) x)`
+             : tx`array_remove(docs_not_needed, ${doc})`
+         }
+       where id = ${employeeId} returning id`;
+    if (!r) throw new BusinessError('Mitarbeiter nicht gefunden');
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, ${notNeeded ? 'unterlage_nicht_noetig' : 'unterlage_wieder_pflicht'}, 'employee',
+                     ${employeeId}, ${tx.json({ unterlage: doc })})`;
+  });
+}
 
 const EU_EWR_CH = [
   'deutsch',
@@ -86,9 +115,10 @@ export async function missingDocs(sql: Sql, opts: { siteIds?: string[] | null } 
       managers: string[] | null;
       sites: string[] | null;
       site_ids: string[] | null;
+      not_needed: string[];
     }[]
   >`
-    select e.id, e.personnel_no, e.last_name || ', ' || e.first_name as name, p.nationality,
+    select e.id, e.docs_not_needed as not_needed, e.personnel_no, e.last_name || ', ' || e.first_name as name, p.nationality,
            p.residence_permit_until::text, p.work_permit_until::text,
            array_remove(array[
              case when coalesce(p.tax_id, '') = '' then 'Steuer-ID' end,
@@ -118,6 +148,7 @@ export async function missingDocs(sql: Sql, opts: { siteIds?: string[] | null } 
     const ho = new Set(r.ho ?? []);
     const missing: string[] = [];
     for (const d of REQUIRED_DOCS) {
+      if (r.not_needed.includes(d)) continue;
       const ok =
         cats.has(d) ||
         (d === 'Arbeitskleidung' && ho.has('kleidung')) ||

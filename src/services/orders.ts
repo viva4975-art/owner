@@ -264,6 +264,8 @@ export interface BillableOrder {
   net_cents: bigint;
   work_report_required: boolean;
   signed: number;
+  /** Arbeitsscheine im Entwurf (ohne Pflicht blockieren sie die Rechnung, bis sie abgeschlossen sind) */
+  open_reports: number;
   /** Monat des Leistungszeitraums (Ende) – wie die Einzelleistungen in den Entwürfen */
   month: string;
 }
@@ -275,6 +277,8 @@ export async function billableOrders(sql: Sql) {
            o.place, o.planned_date, o.order_reference, o.status, o.net_cents, o.work_report_required,
            (select count(*)::int from app.work_reports w
              where w.order_id = o.id and w.status = 'unterschrieben' and w.cancelled_at is null) as signed,
+           (select count(*)::int from app.work_reports w
+             where w.order_id = o.id and w.status = 'entwurf' and w.cancelled_at is null) as open_reports,
            to_char(coalesce(o.planned_date,
                             (select max(coalesce(l.period_end, l.period_start)) from app.order_lines l where l.order_id = o.id),
                             (o.created_at at time zone 'Europe/Berlin')::date), 'YYYY-MM') as month

@@ -16,12 +16,16 @@ export const SchoolCard: FC<{ siteId: string; on: boolean; canEdit: boolean }> =
   on,
   canEdit,
 }) => (
-  <section>
-    <h2 class="panel-title">Schule / Schulferien</h2>
-    <p class="small" style="margin-top:0">
+  // Selten gebraucht → zugeklappt am Ende der Übersicht (Ahmed 12.10.: Seiten ruhiger).
+  <details class="quiet-box">
+    <summary>
+      Schule / Schulferien:{' '}
+      <span class={on ? 'badge ok' : 'mut'}>{on ? 'Schule – Ferien automatisch' : 'keine Schule'}</span>
+    </summary>
+    <p class="small" style="margin-top:8px">
       {on
         ? 'In den Schulferien geschlossen: Für alle Mitarbeitenden, die hier künftig eingeplant sind, trägt die App die Ferien (und Buß- und Bettag) automatisch ein – Resturlaub als Urlaub, den Rest als „Unbezahlt frei“.'
-        : 'Keine Schule. Ist das Objekt in den Schulferien geschlossen, hier markieren – dann trägt die App Urlaub bzw. unbezahlte Tage für die Ferien automatisch ein.'}
+        : 'Ist das Objekt in den Schulferien geschlossen, hier markieren – dann trägt die App Urlaub bzw. unbezahlte Tage für die Ferien automatisch ein.'}
     </p>
     <div class="actions" style="margin-top:0">
       {on && (
@@ -44,7 +48,7 @@ export const SchoolCard: FC<{ siteId: string; on: boolean; canEdit: boolean }> =
         </form>
       )}
     </div>
-  </section>
+  </details>
 );
 
 export function registerSchoolLeaveRoutes({ app, deps, shells, back }: Ctx) {

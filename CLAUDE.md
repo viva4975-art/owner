@@ -2698,3 +2698,27 @@ Testadresse.
   gelöschte Einsätze oder schon Stunden ohne Einsatz, entstanden zwei Zeilen „ohne Einsatz“ → Fehler, nichts gelöscht.
   Jetzt werden sie je Tag zu einer Zeile zusammengefasst (Minuten addiert, höchstens 16 Std.; `detachAbsenceHours` in
   `time.ts`). Test in `runde20.db.test.ts`.
+- 2026-10-12: **Ruhe und Stabilität** (Ahmed: „Design beruhigen, Seiten leerer/aufgeräumter für neue Mitarbeiter, stabiler“):
+  - **CSS bereinigt:** 494 Angaben, die durch eine spätere Regel mit gleichem Selektor/gleichem @media sicher überschrieben
+    wurden, und 108 leere Regeln entfernt (Werkzeug: postcss, Rückfall-Werte wie `dvh`/`env()` und `:has()` ausgenommen).
+    Bildvergleich vorher/nachher an 22 Seiten × PC/Handy: pixelgleich. Neue Gestaltung nur noch im Block „Ruhe“ am Ende
+    des Stylesheets (`layout.tsx`) – keine weitere Schicht.
+  - **Objekt → Übersicht:** Leistungen als kurze Liste, Reinigungskräfte in Spalten (erste 12, „alle n anzeigen“),
+    „Schule / Schulferien“ zugeklappt am Ende (vorher oben, Objekt-Seite 4.700 → 1.100 px).
+  - **Kunde → Übersicht:** Offene Posten eine Zeile je Rechnung (Betrag, bezahlt – Zahlungen im Tooltip –, offen, fällig
+    „in n T.“/„n T. überfällig“), erste 8 sichtbar, Summe im Titel; offene Angebote erste 6 + „alle“. Am Handy erst Reiter
+    und Inhalt, Seitenkästen (Adresse, Karte, Bankkonten, Gruppen) danach; „Neu anlegen“-Auswahl am Handy wieder lesbar.
+  - **Ausgestellte Rechnung:** sichtbar nur Jetzt versenden, PDF, Zahlung, X-Rechnung/ZUGFeRD; Name/Adresse ändern,
+    Kopieren, Lieferschein, Stornieren, Rechnungskorrektur unter „Weitere Aktionen“; doppelter Versand-Knopf entfernt.
+  - **Entwürfe:** feste Spaltenbreiten (Empfänger hatte nur 145 px → Zeilen halb so hoch), Knopf „Entwürfe erstellen“
+    in voller Höhe. **Startseite:** Listen kürzer (Aufgaben 5, Wiedervorlagen 3, Hinweise 5), Summen-Schilder der
+    Offenen Posten als ruhige farbige Zahlen statt grün/rot/gelber Flächen.
+  - **Fund:** DB-Test `invoices.db.test.ts` zählte seit dem internen Objekt „Sonderreinigung“ 4 statt 5 Objekte → angepasst.
+  - **Entwürfe → Aus Einzelleistungen:** Einzelaufträge mit Arbeitsschein im Entwurf (ohne Pflicht) sind nicht mehr
+    ankreuzbar („Arbeitsschein erst abschließen“) – vorher scheiterte „Entwürfe erstellen“ für den ganzen Kunden.
+  - **Browser-Tests repariert** (scheiterten schon vor dieser Runde, geprüft am alten Stand): Zeit-Test klickte den
+    Status-Link statt die Zeit, Import-Test klappte den per Sprungmarke schon offenen Bereich wieder zu, Raumbuch-Test
+    erwartete eine neue Raumart, die inzwischen per Stichwort zugeordnet wird, Vorfaktura-Test sucht jetzt im Monat von
+    heute. Alle 25 Browser-Suiten grün, 551 Unit-/DB-Tests grün. **Fund Testumgebung:** Platte voll (300-MB-Upload-Test) →
+    temporäre Testordner (`/tmp/viva-*`) gelöscht.
+  - Vergleichsbilder: `e2e/_ruhe-shots.mjs` (`OUT=<ordner> node e2e/_ruhe-shots.mjs`, 22 Seiten PC + Handy).

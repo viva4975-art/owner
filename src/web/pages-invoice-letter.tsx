@@ -54,6 +54,9 @@ export const LETTER_CSS = `
 .lt-sums{margin-left:auto;width:max-content;min-width:300px}
 .lt-sums div{display:flex;justify-content:space-between;gap:30px;padding:6px 10px}
 .lt-sums .tot b{background:var(--brand-50);color:var(--brand);padding:3px 9px;border-radius:6px}
+.lt-side .more-acts{margin:-6px 0 14px}.lt-side .more-acts>summary{cursor:pointer;list-style:none;font-size:13.5px;font-weight:600;color:var(--ink-2);padding:6px 2px}
+.lt-side .more-acts>summary::-webkit-details-marker{display:none}.lt-side .more-acts>summary::after{content:" ▾";color:var(--faint)}
+.lt-side .more-acts[open]>summary::after{content:" ▴"}.lt-side .more-acts .btns{margin-bottom:0}
 .lt-side .btns{display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px}
 .lt-side .btns > *{display:block;width:100%;margin:0}
 .lt-side .btns a,.lt-side .btns button{display:flex;align-items:center;width:100%;text-align:left;background:#fff;color:var(--ink);border:0;border-bottom:1px solid var(--line);padding:10px 14px;font:inherit;font-weight:550;font-size:14px;text-decoration:none;cursor:pointer;border-radius:0}
@@ -924,13 +927,12 @@ export const IssuedLetter: FC<{
               </button>
             </form>
           )}
+          {/* Häufiges sichtbar, Seltenes unter „Weitere Aktionen“ (Ahmed 12.10.: ruhiger für neue Mitarbeitende) */}
           <div class="btns">
-            <a href="?details=1#adresse">Name / Adresse ändern</a>
-            {['invoice', 'partial'].includes(inv.kind) && !cancelled && (
-              <form method="post" action={`/rechnungen/${inv.id}/kopieren`}>
-                <input type="hidden" name="new_id" value={p.newId} />
-                <button>Kopieren</button>
-              </form>
+            {pdf && (
+              <a href={`/dokumente/${pdf.id}`} target="_blank">
+                Anzeigen (PDF)
+              </a>
             )}
             {!isCredit && !paid && <a href="?details=1#zahlungen">Als bezahlt markieren / Zahlung</a>}
             {xr && xr.valid !== false && (
@@ -943,29 +945,36 @@ export const IssuedLetter: FC<{
                 ZUGFeRD
               </a>
             )}
-            {pdf && (
-              <a href={`/dokumente/${pdf.id}`} target="_blank">
-                Anzeigen (PDF)
-              </a>
-            )}
-            <a class="sec" href={`/rechnungen/${inv.id}/lieferschein.pdf`} target="_blank">
-              Lieferschein
-            </a>
-            {!isCredit && !cancelled && (
-              <>
-                <form
-                  method="post"
-                  action={`/rechnungen/${inv.id}/storno`}
-                  onsubmit="return confirm('Stornorechnung als Entwurf anlegen?')"
-                >
-                  <button class="del">Stornieren</button>
-                </form>
-                <a class="sec" href={`/rechnungen/${inv.id}/korrektur`}>
-                  Rechnungskorrektur
-                </a>
-              </>
-            )}
           </div>
+          <details class="more-acts">
+            <summary>Weitere Aktionen</summary>
+            <div class="btns">
+              <a href="?details=1#adresse">Name / Adresse ändern</a>
+              {['invoice', 'partial'].includes(inv.kind) && !cancelled && (
+                <form method="post" action={`/rechnungen/${inv.id}/kopieren`}>
+                  <input type="hidden" name="new_id" value={p.newId} />
+                  <button>Kopieren</button>
+                </form>
+              )}
+              <a class="sec" href={`/rechnungen/${inv.id}/lieferschein.pdf`} target="_blank">
+                Lieferschein
+              </a>
+              {!isCredit && !cancelled && (
+                <>
+                  <form
+                    method="post"
+                    action={`/rechnungen/${inv.id}/storno`}
+                    onsubmit="return confirm('Stornorechnung als Entwurf anlegen?')"
+                  >
+                    <button class="del">Stornieren</button>
+                  </form>
+                  <a class="sec" href={`/rechnungen/${inv.id}/korrektur`}>
+                    Rechnungskorrektur
+                  </a>
+                </>
+              )}
+            </div>
+          </details>
           <div class="card">
             <h3>Anhänge</h3>
             {attachments.length === 0 ? (
@@ -1007,7 +1016,7 @@ export const IssuedLetter: FC<{
                         : 'keine Rechnungs-E-Mail hinterlegt'}
                   </div>
                 </p>
-                {p.portal == null && p.billing.emails.length > 0 && (
+                {p.portal == null && p.billing.emails.length > 0 && (cancelled || isCredit) && (
                   <form
                     method="post"
                     action={`/rechnungen/${inv.id}/versenden`}

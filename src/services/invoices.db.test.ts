@@ -260,7 +260,7 @@ describe.skipIf(!available)('Rechnungen in der Datenbank', () => {
       expect(m).toEqual({ invoices: 0, sites: 1 });
       const o = await asUser(office);
       expect(o.invoices).toBeGreaterThan(0);
-      expect(o.sites).toBe(4); // 3 Testobjekte + „Büro“ (intern)
+      expect(o.sites).toBe(5); // 3 Testobjekte + „Büro“ und „Sonderreinigung“ (intern)
       const anon = await asUser(randomUUID());
       expect(anon).toEqual({ invoices: 0, sites: 0 });
     });

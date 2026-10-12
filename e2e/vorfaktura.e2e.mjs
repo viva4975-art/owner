@@ -61,8 +61,28 @@ console.log('2. Entwürfe aus Vorgemerktem');
 await p.goto(`${B}/rechnungen/entwuerfe`);
 const box = p.locator('section:has(h3:has-text("Aus Einzelleistungen erstellen"))');
 check('Vorgemerkte Leistungen sichtbar', (await box.locator('input[name=exec]').count()) >= 2);
-// Kunde komplett auswählen
-const cust = box.locator('details.ex-cust', { hasText: 'Referat' }).first();
+// Kunde komplett auswählen – im Monat von heute (die Liste ist je Leistungsmonat aufgeklappt)
+const MONATE = [
+  'Januar',
+  'Februar',
+  'März',
+  'April',
+  'Mai',
+  'Juni',
+  'Juli',
+  'August',
+  'September',
+  'Oktober',
+  'November',
+  'Dezember',
+];
+const monat = box
+  .locator('details.ex-month', {
+    has: p.locator(`summary:has-text("${MONATE[Number(today.slice(5, 7)) - 1]} ${today.slice(0, 4)}")`),
+  })
+  .first();
+await monat.evaluate((d) => (d.open = true));
+const cust = monat.locator('details.ex-cust', { hasText: 'Referat' }).first();
 check('Einzelleistungen je Objekt mit Betrag', /Grundschule[\s\S]*€/.test((await cust.textContent()) ?? ''));
 await cust.locator('input[data-group]').check();
 const n = Number(await box.locator('[data-count]').first().innerText());
@@ -72,7 +92,7 @@ await p.waitForLoadState();
 check('Entwurf erstellt', /Rechnungsentwurf/.test(await flash(p)), await flash(p));
 check(
   'vorgemerkt jetzt leer (für den Kunden)',
-  (await box.locator('.ex-site', { hasText: 'Grundschule' }).count()) === 0,
+  (await monat.locator('.ex-site', { hasText: 'Grundschule' }).count()) === 0,
 );
 
 console.log('3. Entwürfe auswählen, Datum setzen, ausstellen');

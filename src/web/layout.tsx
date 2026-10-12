@@ -396,7 +396,7 @@ h2.form-section:first-of-type{margin-top:4px}
 .ledger tbody.ledger-item td{border-bottom:0;padding-top:6px;padding-bottom:4px}
 .ledger tbody.ledger-item tr.sub td{font-size:13px;padding-top:2px;padding-bottom:2px}
 .ledger tbody.ledger-item tr.sum td{border-top:1px solid var(--line);border-bottom:1px solid var(--line-2);padding-bottom:10px}
-.ledger .pdf{font-size:11px;font-weight:600;margin-left:8px;color:var(--mut);border:1px solid var(--line-2);border-radius:3px;padding:0 4px}
+.ledger .pdf,.ledger-calm .pdf{font-size:11px;font-weight:600;margin-left:8px;color:var(--mut);border:1px solid var(--line-2);border-radius:3px;padding:0 4px}
 .ledger td.neg{color:var(--err);font-weight:600}.ledger td.pos{color:var(--ok)}
 .revenue{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:20px;align-items:start}
 .revchart{width:100%;height:auto;display:block}
@@ -1265,6 +1265,40 @@ input[type=checkbox],input[type=radio]{accent-color:var(--brand)}
 .appside .sub a.on{font-weight:600}
 
 .top .right a.gear{color:var(--ink-2)!important;background:transparent}.top .right a.gear:hover{color:var(--brand)!important;background:#f4f4f5}
+
+/* ===================================================================================================
+   Ruhe (Ahmed 12.10.2026: „Seiten leerer und aufgeräumter, damit sich neue Mitarbeiter gut fühlen“).
+   Kurze Listen statt Tabellen, mehr Luft, gedämpfte Summen-Schilder, seltene Dinge zugeklappt.
+   =================================================================================================== */
+.calm-list,.calm-cols{list-style:none;margin:0;padding:0}
+.calm-list li{padding:7px 0;border-bottom:1px solid var(--line)}.calm-list li:last-child{border-bottom:0}
+.calm-cols{columns:3 220px;column-gap:28px}
+.calm-cols li{break-inside:avoid;padding:5px 0;border-bottom:1px solid var(--line)}
+.more-list{margin-top:6px}.more-list>summary{cursor:pointer;color:var(--brand);font-size:13.5px;font-weight:600;list-style:none;padding:6px 0}
+.more-list>summary::-webkit-details-marker{display:none}.more-list[open]>summary{display:none}
+.quiet-box{margin-top:22px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.quiet-box>summary{cursor:pointer;font-weight:600;font-size:14px;color:var(--ink-2);list-style:none}
+.quiet-box>summary::-webkit-details-marker{display:none}
+.pill-ok,.pill-bad,.pill-sum{font-weight:600;background:transparent;padding:2px 0}
+.pill-ok{color:#2f7d3a}.pill-bad{color:#b4232a}.pill-sum{color:var(--ink)}
+.main-col>section+section{margin-top:26px}
+.panel-title .op-total{float:right;font-size:15px;font-weight:700;color:var(--ink);margin-top:4px}
+#cust-op .panel-foot{display:flex;align-items:center;justify-content:flex-end;gap:12px}
+.ledger-calm tr.op-more{display:none}.op-all-toggle:checked~.ledger-calm tr.op-more{display:table-row}
+.op-all-toggle:checked~.panel-foot .op-all-lbl{display:none}
+.op-all-lbl{cursor:pointer;color:var(--brand);font-weight:600;font-size:13.5px;margin-right:auto}
+.ledger-calm td.neg{color:#b4232a;font-weight:600}.ledger-calm .nowrap{white-space:nowrap}
+@media (max-width:1000px){
+  /* Handy/Tablet: Adresskarte oben, dann Reiter und Inhalt, weitere Seitenkästen (Karte, Bankkonten …) danach */
+  .entity-layout>.info-col{display:contents}
+  .entity-layout>.info-col>*{order:2}.entity-layout>.info-col>:first-child{order:0}
+  .entity-layout>.content-col{order:1}
+}
+@media (max-width:700px){
+  .pagehead .newform{width:100%;flex-wrap:nowrap}
+  .pagehead .newform select{flex:1 1 auto;min-width:120px;width:auto}
+  .pagehead .newform>span,.pagehead .newform .suffix{display:none}
+}
 `;
 
 export const euro = (c: bigint) => formatEuro(c as Cents);

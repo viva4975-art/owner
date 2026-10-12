@@ -217,9 +217,15 @@ const byMonth = (rows: OpenExecution[]) => {
 
 const OrderLine: FC<{ o: BillableOrder; g: string }> = ({ o, g }) => {
   const waits = o.work_report_required && o.signed === 0;
+  // Arbeitsschein im Entwurf ohne Pflicht: Rechnung erst nach Abschluss möglich → nicht ankreuzbar (sonst Fehler)
+  const blocked = !o.work_report_required && o.open_reports > 0;
   return (
-    <label class="ex-line">
-      <input type="checkbox" name="order" value={o.id} data-row data-g={g} />
+    <label class="ex-line" title={blocked ? 'Erst den Arbeitsschein abschließen' : undefined}>
+      {blocked ? (
+        <span style="display:inline-block;width:13px" />
+      ) : (
+        <input type="checkbox" name="order" value={o.id} data-row data-g={g} />
+      )}
       <span class="ex-desc">
         <a href={`/auftraege/${o.id}`}>{o.number}</a> {o.title}
         <span class="faint">
@@ -232,6 +238,12 @@ const OrderLine: FC<{ o: BillableOrder; g: string }> = ({ o, g }) => {
           <span class="small" style="color:var(--warn)">
             {' '}
             · Arbeitsschein fehlt
+          </span>
+        )}
+        {blocked && (
+          <span class="small" style="color:var(--warn)">
+            {' '}
+            · Arbeitsschein erst abschließen
           </span>
         )}
       </span>
@@ -365,6 +377,7 @@ export const DRAFTS_CSS = `
 .dr-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
 @media(max-width:1100px){.dr-grid{grid-template-columns:minmax(0,1fr)}}
 .dr-list{width:100%;border-collapse:collapse}
+.dr-main{table-layout:fixed}.dr-main td.dr-chk{padding-left:12px;padding-right:8px}.dr-side-f .btn{min-height:36px;line-height:1.2;justify-content:center}.dr-main td{overflow-wrap:anywhere}
 .dr-list th{font-size:12px;font-weight:600;color:#667;text-align:left;padding:8px 8px;border-bottom:1px solid #e3e3e6;background:#f6f6f8}
 .dr-list td{padding:8px 8px;border-bottom:1px solid #eee;vertical-align:top}
 .dr-list tr:hover td{background:#fbfafb}
@@ -374,7 +387,7 @@ export const DRAFTS_CSS = `
 .dr-list .dr-rcp a:hover{text-decoration:underline}
 .dr-list .dr-sub{font-size:12px;color:#777;margin-top:2px}
 .dr-list .dr-obj{font-size:12px;color:#444;margin-top:2px;line-height:1.35}
-.dr-list .dr-chk{white-space:nowrap}
+.dr-list .dr-chk{white-space:nowrap}.dr-list .dr-chk .dr-warn{display:block;margin-bottom:2px}
 .dr-list .dr-obj span{color:#888}
 .dr-sum td{background:#fafafa;font-size:12px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.02em}
 .dr-pill{background:var(--brand-50);padding:2px 8px;border-radius:6px;font-weight:700;color:var(--brand);text-transform:none;letter-spacing:0;font-size:13px}
@@ -422,19 +435,23 @@ export const DraftsBox: FC<{ rows: DraftRow[]; today: string; info: Map<string, 
       ) : (
         <form method="post" action="/rechnungen/entwuerfe/auswahl">
           <div class="tbl" style="margin:0;border:0">
-            <table class="dr-list">
+            <table class="dr-list dr-main">
               <thead>
                 <tr>
-                  <th style="width:28px" />
-                  <th style="width:110px">Datum</th>
+                  <th style="width:44px" />
+                  <th style="width:96px">Datum</th>
                   <th>Empfänger · Objekt</th>
-                  <th style="width:36px" />
-                  <th class="r" style="width:40px">
+                  <th style="width:40px" />
+                  <th class="r" style="width:38px">
                     Pos
                   </th>
-                  <th class="r">Netto</th>
-                  <th class="r">Brutto</th>
-                  <th style="width:36px" />
+                  <th class="r" style="width:108px">
+                    Netto
+                  </th>
+                  <th class="r" style="width:108px">
+                    Brutto
+                  </th>
+                  <th style="width:42px" />
                 </tr>
               </thead>
               <tbody>

@@ -53,12 +53,12 @@ export const AbsentCard: FC<{ absent: AbsentNow[]; today: string; href?: string 
           <div class="dash-empty">{empty}</div>
         ) : (
           <ul class="dash-list">
-            {list.slice(0, 8).map((a) => (
+            {list.slice(0, 5).map((a) => (
               <Row a={a} />
             ))}
           </ul>
         )}
-        {list.length > 8 && <div class="dash-more">+ {list.length - 8} weitere</div>}
+        {list.length > 5 && <div class="dash-more">+ {list.length - 5} weitere</div>}
       </>
     );
   return (
@@ -798,7 +798,7 @@ export const Dashboard: FC<{
                 <div class="dash-empty">Keine offenen Aufgaben – alles erledigt.</div>
               ) : (
                 <ul class="dash-list">
-                  {tasks.slice(0, 7).map((t) => (
+                  {tasks.slice(0, 5).map((t) => (
                     <li>
                       <form method="post" action={`/aufgaben/${t.id}/erledigt`} class="dl-check">
                         <input type="hidden" name="done" value="1" />
@@ -862,9 +862,9 @@ export const Dashboard: FC<{
                   </ul>
                 </>
               )}
-              {tasks.length > 7 && (
+              {tasks.length > 5 && (
                 <a class="dash-more" href="/aufgaben">
-                  + {tasks.length - 7} weitere
+                  + {tasks.length - 5} weitere
                 </a>
               )}
             </section>
@@ -881,7 +881,7 @@ export const Dashboard: FC<{
                 <div class="dash-empty">Keine Wiedervorlagen in den nächsten 7 Tagen.</div>
               ) : (
                 <ul class="dash-list">
-                  {todo.followups.due.slice(0, 4).map((f) => (
+                  {todo.followups.due.slice(0, 3).map((f) => (
                     <li>
                       <span class="dot warn" />
                       <div class="dl-main">
@@ -903,9 +903,9 @@ export const Dashboard: FC<{
                   ))}
                 </ul>
               )}
-              {todo.followups.due.length > 4 && (
+              {todo.followups.due.length > 3 && (
                 <a class="dash-more" href="/akquise?filter=due">
-                  + {todo.followups.due.length - 4} weitere Wiedervorlagen fällig
+                  + {todo.followups.due.length - 3} weitere Wiedervorlagen fällig
                 </a>
               )}
             </section>
@@ -1066,7 +1066,7 @@ export const Dashboard: FC<{
                 <section class="card dash-card">
                   <DashHead title="Hinweise" count={hints.length} />
                   <ul class="dash-list">
-                    {hints.slice(0, 6).map((h) => (
+                    {hints.slice(0, 5).map((h) => (
                       <li>
                         <span class={`dot ${h.tone}`} />
                         <div class="dl-main">
@@ -1075,7 +1075,7 @@ export const Dashboard: FC<{
                       </li>
                     ))}
                   </ul>
-                  {hints.length > 6 && <div class="dash-more">+ {hints.length - 6} weitere Hinweise</div>}
+                  {hints.length > 5 && <div class="dash-more">+ {hints.length - 5} weitere Hinweise</div>}
                 </section>
               )}
             </>

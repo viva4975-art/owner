@@ -203,7 +203,7 @@ check(
 
 // Korrektur mit Pflicht-Begründung + Protokoll
 await o.goto(B + `/personal/${empId}/zeiten?ansicht=liste&datum=${yesterday}`);
-await o.locator('.ec-list a[href^="/zeiterfassung/"]').first().click();
+await o.locator('.ec-list a[href^="/zeiterfassung/"]:not(.ev)').first().click();
 await o.fill('#break_minutes', '0');
 await o.fill('#reason', 'E2E Korrektur');
 await o.click('button:has-text("Speichern")');

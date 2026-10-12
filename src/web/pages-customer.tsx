@@ -30,81 +30,70 @@ const monthLabel = (m: string) => `${MONTHS[Number(m.slice(5, 7)) - 1]} ${m.slic
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
 
-/** Offene Posten eines Kunden: je Rechnung Soll, darunter Zahlungen, dann Summenzeile mit Saldo und Auswahl. */
+/**
+ * Offene Posten eines Kunden: eine Zeile je Rechnung (Betrag, bezahlt/verrechnet, offen), Auswahl → Mahnung.
+ * Ruhig (Ahmed 12.10.): die ersten 8 sichtbar, Rest auf Klick; Zahlungen stehen im Tooltip und an der Rechnung.
+ */
 export const CustomerLedger: FC<{
   customerId: string;
   items: (OpenItem & { haben: LedgerEntry[] })[];
   today: string;
 }> = ({ customerId, items, today }) => {
   const total = items.reduce((a, i) => a + i.open_cents, 0n);
+  const SHOW = 8;
+  const toggleId = `op-all-${customerId.slice(0, 8)}`;
   return (
     <section class="panel">
       <h2 class="panel-title">
         Offene Posten <span class="cnt">({items.length})</span>
+        {items.length > 0 && <span class="op-total">{euro(total)}</span>}
       </h2>
       {!items.length ? (
         <div class="empty-line">Derzeit keine offenen Posten.</div>
       ) : (
         <form method="post" action="/mahnungen/stapel" id="cust-op">
-          <div class="tbl ledger">
+          <input type="checkbox" id={toggleId} class="op-all-toggle" hidden />
+          <div class="tbl ledger-calm">
             <table>
               <thead>
                 <tr>
                   <th>Rechnung</th>
-                  <th>Datum</th>
-                  <th class="r" title="Tage bis zur Fälligkeit (negativ = überfällig)">
-                    Tage
-                  </th>
-                  <th class="r">Soll</th>
-                  <th class="r">Skonto</th>
-                  <th class="r">Haben</th>
-                  <th class="r">
-                    <span class="total">{euro(total)}</span>
-                  </th>
+                  <th class="hide-m">Datum</th>
+                  <th>Fällig</th>
+                  <th class="r hide-m">Betrag</th>
+                  <th class="r hide-m">Bezahlt</th>
+                  <th class="r">Offen</th>
                   <th />
                 </tr>
               </thead>
-              {items.map((i) => {
-                const skonto = i.haben.filter((h) => h.skonto).reduce((a, h) => a + h.cents, 0n);
-                const haben = i.haben.filter((h) => !h.skonto).reduce((a, h) => a + h.cents, 0n);
-                const days = daysBetween(today, i.due_date);
-                return (
-                  <tbody class="ledger-item">
-                    <tr>
+              <tbody>
+                {items.map((i, n) => {
+                  const paid = i.haben.reduce((a, h) => a + h.cents, 0n);
+                  const days = daysBetween(today, i.due_date);
+                  const detail = i.haben
+                    .map(
+                      (h) => `${dateDe(h.date)} ${h.label}: ${euro(h.cents)}${h.skonto ? ' (Skonto)' : ''}`,
+                    )
+                    .join('\n');
+                  return (
+                    <tr class={n >= SHOW ? 'op-more' : undefined}>
                       <td>
                         <a href={`/rechnungen/${i.invoice_id}`}>
                           <b>{i.number}</b>
-                        </a>
+                        </a>{' '}
                         <a class="pdf" href={`/rechnungen/${i.invoice_id}/pdf`} title="PDF">
                           PDF
                         </a>
                         {i.site_name && <div class="small mut">{i.site_name}</div>}
                       </td>
-                      <td>{dateDe(i.issue_date)}</td>
-                      <td class={`r ${days < 0 ? 'neg' : 'pos'}`}>{days}</td>
-                      <td class="r">{euro(i.payable_cents)}</td>
-                      <td />
-                      <td />
-                      <td />
-                      <td />
-                    </tr>
-                    {i.haben.map((h) => (
-                      <tr class="sub">
-                        <td class="mut">{h.href ? <a href={h.href}>{h.label}</a> : h.label}</td>
-                        <td class="mut">{dateDe(h.date)}</td>
-                        <td />
-                        <td />
-                        <td class="r">{h.skonto ? euro(h.cents) : ''}</td>
-                        <td class="r">{h.skonto ? '' : euro(h.cents)}</td>
-                        <td />
-                        <td />
-                      </tr>
-                    ))}
-                    <tr class="sum">
-                      <td colspan={3} />
-                      <td class="r">{euro(i.payable_cents)}</td>
-                      <td class="r">{skonto ? euro(skonto) : ''}</td>
-                      <td class="r">{euro(haben)}</td>
+                      <td class="hide-m">{dateDe(i.issue_date)}</td>
+                      <td class={days < 0 ? 'neg nowrap' : 'mut nowrap'}>
+                        {days < 0 ? `${-days} T. überfällig` : days === 0 ? 'heute' : `in ${days} T.`}
+                      </td>
+                      <td class="r hide-m">{euro(i.payable_cents)}</td>
+                      <td class="r mut hide-m" title={detail || undefined}>
+                        {paid ? euro(paid) : '–'}
+                      </td>
                       <td class="r">
                         <b>{euro(i.open_cents)}</b>
                       </td>
@@ -117,12 +106,17 @@ export const CustomerLedger: FC<{
                         />
                       </td>
                     </tr>
-                  </tbody>
-                );
-              })}
+                  );
+                })}
+              </tbody>
             </table>
           </div>
           <div class="panel-foot">
+            {items.length > SHOW && (
+              <label for={toggleId} class="op-all-lbl">
+                alle {items.length} anzeigen
+              </label>
+            )}
             <button class="linkbtn">Mahnung erstellen →</button>
           </div>
         </form>
@@ -155,7 +149,7 @@ export const OpenOffers: FC<{
       <div class="tbl">
         <table>
           <tbody>
-            {offers.map((o) => (
+            {offers.slice(0, 6).map((o) => (
               <tr>
                 <td>
                   <a href={`/angebote/${o.id}`}>
@@ -170,6 +164,11 @@ export const OpenOffers: FC<{
             ))}
           </tbody>
         </table>
+        {offers.length > 6 && (
+          <div class="panel-foot">
+            <a href={`/kunden/${customerId}/angebote`}>alle {offers.length} Angebote →</a>
+          </div>
+        )}
       </div>
     )}
   </section>

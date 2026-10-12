@@ -1092,26 +1092,30 @@ export const SiteOverview: FC<{
   docsSlot?: Child;
 }> = ({ s, services, employees, tasksSlot, docsSlot }) => {
   const kinds = [...new Set(services.filter((x) => x.active).map((x) => x.description))];
+  // Ruhige Übersicht (Ahmed 12.10.: „aufgeräumter für neue Mitarbeiter“): Leistungen als kurze Liste, Reinigungskräfte
+  // in Spalten und nur die ersten 12 sichtbar, Seltenes (Schule) unten.
+  const SHOW = 12;
+  const nameLink = (e: { id: string; name: string; phone: string | null }) => (
+    <li>
+      <a href={`/personal/${e.id}`}>{e.name}</a>
+      {e.phone && <span class="mut small"> · {e.phone}</span>}
+    </li>
+  );
   return (
     <div class="main-col">
       {tasksSlot}
-      {docsSlot}
       <section>
-        <h2 class="panel-title">Aktive Leistungen</h2>
+        <h2 class="panel-title">
+          Aktive Leistungen <span class="cnt">({kinds.length})</span>
+        </h2>
         {kinds.length ? (
-          <div class="tbl">
-            <table>
-              <tbody>
-                {kinds.map((k) => (
-                  <tr>
-                    <td>
-                      <a href={`/objekte/${s.id}/leistungen`}>{k}</a>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ul class="calm-list">
+            {kinds.map((k) => (
+              <li>
+                <a href={`/objekte/${s.id}/leistungen`}>{k}</a>
+              </li>
+            ))}
+          </ul>
         ) : (
           <div class="empty-line">Keine aktiven Leistungen.</div>
         )}
@@ -1121,24 +1125,20 @@ export const SiteOverview: FC<{
           Reinigungskräfte <span class="cnt">({employees.length})</span>
         </h2>
         {employees.length ? (
-          <div class="tbl">
-            <table>
-              <tbody>
-                {employees.map((e) => (
-                  <tr>
-                    <td>
-                      <a href={`/personal/${e.id}`}>{e.name}</a>
-                    </td>
-                    <td>{e.phone ?? ''}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <ul class="calm-cols">{employees.slice(0, SHOW).map(nameLink)}</ul>
+            {employees.length > SHOW && (
+              <details class="more-list">
+                <summary>alle {employees.length} anzeigen</summary>
+                <ul class="calm-cols">{employees.slice(SHOW).map(nameLink)}</ul>
+              </details>
+            )}
+          </>
         ) : (
           <div class="empty-line">Noch keine Reinigungskräfte zugeordnet (Zuordnung beim Mitarbeiter).</div>
         )}
       </section>
+      {docsSlot}
     </div>
   );
 };

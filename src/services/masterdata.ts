@@ -795,6 +795,8 @@ export interface ServiceType {
   labor_share_bp: number | null;
   sort_order: number;
   active: boolean;
+  /** Umsatz zählt in der Nachkalkulation beim internen Objekt „Sonderreinigung“ */
+  special_cleaning: boolean;
   version: number;
 }
 
@@ -806,18 +808,25 @@ export async function listServiceTypes(sql: Sql, all = false) {
 export async function saveServiceType(
   sql: Sql,
   id: string,
-  p: { name: string; laborShareBp: number | null; active: boolean; expectedVersion: number | null },
+  p: {
+    name: string;
+    laborShareBp: number | null;
+    active: boolean;
+    specialCleaning?: boolean;
+    expectedVersion: number | null;
+  },
 ) {
   if (!p.name.trim()) throw new BusinessError('Bitte Bezeichnung angeben');
   const [cur] = await sql<{ version: number }[]>`select version from app.service_types where id = ${id}`;
   assertVersion(cur?.version, p.expectedVersion, 'Die Leistungsart');
   try {
     await sql`
-      insert into app.service_types (id, name, labor_share_bp, sort_order, active)
+      insert into app.service_types (id, name, labor_share_bp, sort_order, active, special_cleaning)
       values (${id}, ${p.name.trim()}, ${p.laborShareBp},
-              (select coalesce(max(sort_order), 0) + 10 from app.service_types), ${p.active})
+              (select coalesce(max(sort_order), 0) + 10 from app.service_types), ${p.active},
+              ${p.specialCleaning ?? false})
       on conflict (id) do update set name = excluded.name, labor_share_bp = excluded.labor_share_bp,
-                                     active = excluded.active`;
+                                     active = excluded.active, special_cleaning = excluded.special_cleaning`;
   } catch (e) {
     if ((e as { code?: string }).code === '23505')
       throw new BusinessError(`„${p.name.trim()}“ gibt es schon`);

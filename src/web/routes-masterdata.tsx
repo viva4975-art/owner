@@ -1860,7 +1860,9 @@ export function registerMasterdataRoutes(ctx: Ctx) {
         <PageHead title="Leistungsarten" />
         <p class="mut" style="max-width:780px">
           Leistungsarten ordnen die Leistungen an den Objekten (Auswertung, Nachkalkulation). Der
-          Lohnkostenanteil ist die Vorgabe, wenn an der Leistung nichts eingetragen ist.
+          Lohnkostenanteil ist die Vorgabe, wenn an der Leistung nichts eingetragen ist. Bei „Sonderreinigung“
+          angehakte Leistungsarten zählen in der Nachkalkulation mit ihrem Umsatz beim internen Objekt
+          „Sonderreinigung“ (dort laufen auch Zeiten und Kosten der Sonderreiniger), nicht beim Kunden-Objekt.
         </p>
         <div class="tbl" style="max-width:780px">
           <table>
@@ -1868,6 +1870,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
               <tr>
                 <th>Leistungsart</th>
                 <th class="r">Lohnkostenanteil %</th>
+                <th>Sonderreinigung</th>
                 <th>aktiv</th>
                 <th></th>
               </tr>
@@ -1898,6 +1901,15 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                           t?.labor_share_bp != null ? String(t.labor_share_bp / 100).replace('.', ',') : ''
                         }
                         aria-label="Lohnkostenanteil"
+                      />
+                    </td>
+                    <td style="width:120px">
+                      <input
+                        type="checkbox"
+                        form={f}
+                        name="special_cleaning"
+                        checked={!!t?.special_cleaning}
+                        aria-label="zählt als Sonderreinigung"
                       />
                     </td>
                     <td style="width:70px">
@@ -1936,6 +1948,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
       name: String(b.name ?? ''),
       laborShareBp: ls == null ? null : Math.round(ls * 100),
       active: b.active === 'on',
+      specialCleaning: b.special_cleaning === 'on',
       expectedVersion: typeof b.version === 'string' && b.version ? Number(b.version) : null,
     });
     return back(c, '/einstellungen/leistungsarten', { ok: 'Gespeichert.' });

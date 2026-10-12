@@ -2673,3 +2673,10 @@ Testadresse.
   **Interne Kostenstelle „Sonderreinigung“** (`INT-SONDER`, Migration `20261124000002`) beim internen Kunden angelegt:
   Sonderreiniger mit wechselnden Einmal-Einsätzen werden dort geplant, Zeiten/Kosten laufen darauf; keine Rechnungen.
   Erlöse der Sonderreinigungen stehen weiter an den jeweiligen Kunden-Objekten.
+- 2026-10-12: **Nachkalkulation „Sonderreinigung“** (Ahmed: „ja kannst du machen“): Einstellungen → Leistungsarten, Spalte
+  „Sonderreinigung“ (`service_types.special_cleaning`, Migration `20261124000003`; vorbelegt Sonderreinigung,
+  Grundreinigung, Bauendreinigung). Umsatz dieser Leistungsarten (eigene Rechnungen über die Leistungsart der Position bzw.
+  der Leistung, Rechnungen vor der Umstellung über den Namen der Leistungsart) zählt in der Nachkalkulation beim internen
+  Objekt „Sonderreinigung“ (`SPECIAL_SITE_ID` in `costing.ts`) statt beim Kunden-Objekt – dort stehen auch Zeiten und
+  Kosten der Sonderreiniger, so ergibt sich ein eigener Deckungsbeitrag. Rechnungen selbst bleiben unverändert.
+  Test in `cost-centers.db.test.ts`.

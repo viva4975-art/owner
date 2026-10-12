@@ -83,6 +83,9 @@ export async function subcontractEstimates(sql: Sql, from: string, to: string, s
      group by site_id`;
 }
 
+/** Internes Objekt „Sonderreinigung“ (Migration 20261124000002) – Erlös der Leistungsarten „Sonderreinigung“. */
+export const SPECIAL_SITE_ID = 'fd5b5bba-dc84-810d-e8aa-ae9f1b1135db';
+
 export interface OverheadRates {
   minijob: number;
   parttime: number;
@@ -145,18 +148,25 @@ export async function siteCosting(
                   or s.id = any(${nuEst.map((x) => x.site_id)}::uuid[]))`
        }
        order by s.site_no`,
-    // je Position: Objekt aus der Leistung (Sammelrechnungen der Rechnungsgruppen haben kein Objekt im Kopf)
+    // je Position: Objekt aus der Leistung (Sammelrechnungen der Rechnungsgruppen haben kein Objekt im Kopf);
+    // Leistungsarten „Sonderreinigung“ → internes Objekt Sonderreinigung (falls vorhanden)
     sql<{ site_id: string; net: bigint }[]>`
-      select coalesce(ss.site_id, i.site_id) as site_id, sum(l.net_cents)::bigint as net
+      select case when st.special_cleaning and sp.id is not null then sp.id
+                  else coalesce(ss.site_id, i.site_id) end as site_id, sum(l.net_cents)::bigint as net
         from app.invoices i join app.invoice_lines l on l.invoice_id = i.id
         left join app.site_services ss on ss.id = l.source_service_id
+        left join app.service_types st on st.id = coalesce(l.service_type_id, ss.service_type_id)
+        left join app.sites sp on sp.id = ${SPECIAL_SITE_ID}
        where i.status = 'issued' and coalesce(ss.site_id, i.site_id) is not null
          and coalesce(i.period_start, i.issue_date) between ${from} and ${to}
        group by 1`,
     // übernommene Fortytools-Rechnungen: Position mit Objekt, Leistungszeitraum sonst Rechnungsdatum
     sql<{ site_id: string; net: bigint }[]>`
-      select l.site_id, sum(l.net_cents)::bigint as net
+      select case when st.special_cleaning and sp.id is not null then sp.id else l.site_id end as site_id,
+             sum(l.net_cents)::bigint as net
         from app.legacy_invoice_lines l join app.legacy_invoices i on i.id = l.invoice_id
+        left join app.service_types st on lower(st.name) = lower(trim(l.service_type))
+        left join app.sites sp on sp.id = ${SPECIAL_SITE_ID}
        where l.site_id is not null and coalesce(l.period_start, i.issue_date) between ${from} and ${to}
        group by 1`,
     // Lohn je Eintrag: Minuten × Stundenlohn / 60 (Cent-genau, kaufmännisch gerundet je Objekt)

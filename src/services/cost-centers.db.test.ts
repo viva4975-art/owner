@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { type Cents, parseEuro } from '../domain/money/money.js';
 import { costCenterReport, getAllocations, saveAllocations, splitEvenly } from './cost-centers.js';
-import { siteCostDetails, siteCosting } from './costing.js';
+import { SPECIAL_SITE_ID, siteCostDetails, siteCosting } from './costing.js';
 import { saveIncoming } from './purchasing.js';
 import { DEMO } from './seed.js';
 import { saveSubcontract } from './subcontractors.js';
@@ -140,5 +140,24 @@ describe.skipIf(!available)('Kostenstellen', () => {
     expect(row.customer_id).toBeTruthy();
     const d = await siteCostDetails(sql, DEMO.siteOffice, { from: '2026-10', to: '2026-10' });
     expect(d.map((x) => [x.id, x.category, x.net])).toEqual([[h, 'geraete', 30000n]]);
+  });
+
+  it('Leistungsarten „Sonderreinigung“ zählen beim internen Objekt Sonderreinigung (Ahmed 12.10.)', async () => {
+    const inv = randomUUID();
+    await sql`insert into app.legacy_invoices (id, number, issue_date, customer_id, net_cents, gross_cents, paid)
+              values (${inv}, '1037555', '2026-07-15', ${DEMO.authority}, 30000, 35700, true)`;
+    const line = (pos: number, type: string, net: number) => sql`
+      insert into app.legacy_invoice_lines (id, invoice_id, position, title, quantity_milli, unit_price_cents, net_cents,
+                                            service_type, site_id)
+      values (${randomUUID()}, ${inv}, ${pos}, ${type}, 1000, ${net}, ${net}, ${type}, ${DEMO.siteSchool})`;
+    await line(1, 'Unterhaltsreinigung', 10000);
+    await line(2, 'Sonderreinigung', 20000);
+    const { rows } = await siteCosting(sql, '2026-07');
+    expect(rows.find((r) => r.site_id === DEMO.siteSchool)?.revenue).toBe(10000n);
+    expect(rows.find((r) => r.site_id === SPECIAL_SITE_ID)?.revenue).toBe(20000n);
+    // Häkchen weg → Umsatz bleibt beim Kunden-Objekt
+    await sql`update app.service_types set special_cleaning = false where name = 'Sonderreinigung'`;
+    const again = (await siteCosting(sql, '2026-07')).rows;
+    expect(again.find((r) => r.site_id === DEMO.siteSchool)?.revenue).toBe(30000n);
   });
 });

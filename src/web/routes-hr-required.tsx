@@ -141,10 +141,8 @@ export function registerHrRequiredRoutes({ app, deps, page }: Ctx) {
                             href={
                               m === 'Schlüssel'
                                 ? '/schluessel'
-                                : (REQUIRED_DOCS as readonly string[]).includes(m) ||
-                                    m === 'Aufenthaltstitel/Arbeitserlaubnis' ||
-                                    /Kopie fehlt/.test(m)
-                                  ? `/personal/${r.employee_id}/dokumente${/Aufenthalt/.test(m) ? '?kategorie=Aufenthalts-%2FArbeitserlaubnis#hochladen' : ''}`
+                                : (REQUIRED_DOCS as readonly string[]).includes(m)
+                                  ? `/personal/${r.employee_id}/dokumente`
                                   : `/personal/${r.employee_id}/bearbeiten`
                             }
                           >

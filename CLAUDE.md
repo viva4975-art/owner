@@ -2634,3 +2634,12 @@ Testadresse.
 - 2026-10-12: Fund Mitarbeiterformular (Ahmed, Screenshot): Die Hülle um die Aufenthaltstitel-Felder (zum Ausblenden) war ein
   eigenes Rasterfeld und verschob die vertraulichen Daten (Felder gequetscht, Aufenthaltstitel quer). Jetzt hat jedes der vier
   Felder selbst die Klasse `aufenthalt-feld` (`Field` mit `wrapClass`/`hidden`); per Screenshot geprüft (mit/ohne EU-Land).
+- 2026-10-12: **Terminserie: einzelne Tage mit anderer Zeit** (Ahmed): In „Termin oder Terminserie planen“ (wöchentlich)
+  aufklappbar „Einzelne Tage mit anderer Zeit“ – je gewähltem Wochentag Beginn/Ende und optional Pause (leer = wie oben).
+  Gespeichert je Wochentag im Einsatz (`saveShiftSeries` mit `dayTimes`, Prüfung HH:MM/Ende nach Beginn je Tag);
+  beim Bearbeiten gilt die häufigste Zeit als Serienzeit, abweichende Tage werden vorbelegt. Hinweis zu rückwirkend
+  angelegten Serien korrigiert (Tage erscheinen als „keine Zeit erfasst“ → nachtragen bzw. „Plan als Ist“).
+- 2026-10-12: Personalakte: „Arbeitskleidung“ in der häufigen Hochlade-Auswahl. **Aufenthaltstitel** (Ahmed: Kopie liegt
+  meist in den Personalunterlagen): Fehlende Unterlagen melden nur noch „gültig bis fehlt“ bzw. „abgelaufen“ aus den
+  Stammdaten, keine fehlende Kopie mehr.
+

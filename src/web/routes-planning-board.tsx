@@ -489,6 +489,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
       note: null,
       planningGroup: null,
       holidayWork: false,
+      dayTimes: {} as Record<number, { start: string; end: string; breakMinutes: number }>,
     };
     const customers = [...new Map(mySites.map((s) => [s.customer_id, s])).values()];
     const empSelect = (sel: string | null) => (
@@ -619,7 +620,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
                   type="button"
                   class="btn sm sec"
                   data-only="woechentlich"
-                  onclick="this.form.querySelectorAll('input[name=weekday]').forEach(function(x){x.checked=Number(x.value)<=5})"
+                  onclick="this.form.querySelectorAll('input[name=weekday]').forEach(function(x){x.checked=Number(x.value)<=5});this.form.dispatchEvent(new Event('change'))"
                 >
                   Mo–Fr
                 </button>
@@ -627,6 +628,56 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
                   Mehrere Tage auswählbar
                 </span>
               </div>
+              <details
+                class="tp-line tp-days"
+                data-only="woechentlich"
+                open={!!Object.keys(v.dayTimes ?? {}).length}
+              >
+                <summary>Einzelne Tage mit anderer Zeit</summary>
+                <div class="mut small">Leer = Zeit wie oben. Nur für ausgewählte Wochentage.</div>
+                <table class="tp-daytab">
+                  {[1, 2, 3, 4, 5, 6, 7].map((d) => {
+                    const t = v.dayTimes?.[d];
+                    return (
+                      <tr data-day={String(d)} hidden={!v.weekdays.includes(d)}>
+                        <th>{WEEKDAYS_SHORT[d]}</th>
+                        <td>
+                          <input
+                            type="time"
+                            name={`day_start_${d}`}
+                            value={t?.start ?? ''}
+                            aria-label={`${WEEKDAYS_SHORT[d]} Beginn`}
+                          />
+                          <span> – </span>
+                          <input
+                            type="time"
+                            name={`day_end_${d}`}
+                            value={t?.end ?? ''}
+                            aria-label={`${WEEKDAYS_SHORT[d]} Ende`}
+                          />
+                        </td>
+                        <td>
+                          <span class="mut">Pause</span>{' '}
+                          <input
+                            name={`day_break_${d}`}
+                            value={
+                              t
+                                ? (t.breakMinutes / 60).toLocaleString('de-DE', { maximumFractionDigits: 2 })
+                                : ''
+                            }
+                            style="width:96px"
+                            inputmode="decimal"
+                            placeholder="wie oben"
+                            title="leer = Pause wie oben"
+                            aria-label={`${WEEKDAYS_SHORT[d]} Pause in Stunden`}
+                          />{' '}
+                          <span>h</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </table>
+              </details>
               <div class="tp-line" data-only="woechentlich monatlich">
                 <span class="seg">
                   <label>
@@ -822,6 +873,25 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
     if (!Number.isFinite(pause) || pause < 0 || pause > 3)
       throw new BusinessError('Pause bitte in Stunden (z. B. 0,5)');
     const employees = arr(b, 'employee_id').map((e) => (e && /^[0-9a-f-]{36}$/.test(e) ? e : null));
+    // einzelne Wochentage mit anderer Zeit (beide Uhrzeiten nötig, Pause leer = wie oben)
+    const dayTimes: Record<number, { start: string; end: string; breakMinutes: number }> = {};
+    const chosen = arr(b, 'weekday').map(Number);
+    for (const d of [1, 2, 3, 4, 5, 6, 7]) {
+      const ds = one(`day_start_${d}`);
+      const de = one(`day_end_${d}`);
+      if (!chosen.includes(d) || (!ds && !de)) continue;
+      if (!ds || !de)
+        throw new BusinessError(
+          `${WEEKDAYS_SHORT[d]}: bitte Beginn und Ende angeben (oder beide leer lassen)`,
+        );
+      const bh = one(`day_break_${d}`);
+      const bp = bh ? Number(bh.replace(',', '.')) : pause;
+      if (!Number.isFinite(bp) || bp < 0 || bp > 3)
+        throw new BusinessError(`${WEEKDAYS_SHORT[d]}: Pause bitte in Stunden (z. B. 0,5)`);
+      if (ds === one('start') && de === one('end') && Math.round(bp * 60) === Math.round(pause * 60))
+        continue;
+      dayTimes[d] = { start: ds, end: de, breakMinutes: Math.round(bp * 60) };
+    }
     const giltAb = one('gilt_ab');
     const save = (seriesId: string, input: Parameters<typeof saveShiftSeries>[2], actor: string) =>
       old && giltAb
@@ -845,6 +915,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
         note: one('note') || null,
         planningGroup: one('planning_group') || null,
         holidayWork: one('holiday_work') === '1',
+        dayTimes,
       },
       c.get('actor'),
     );
@@ -852,7 +923,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
     const notes: string[] = [];
     if (!old && one('valid_from') < todayBerlin())
       notes.push(
-        'Hinweis: Rückwirkend angelegte Termine zählen erst ab heute als Plan/Soll. Vergangene Tage bitte als Zeit nachtragen.',
+        'Hinweis: Rückwirkend angelegte Tage erscheinen als „keine Zeit erfasst“ – Zeiten nachtragen oder „Plan als Ist“ übernehmen.',
       );
     const ids = employees.filter((e): e is string => !!e);
     if (ids.length) {
@@ -895,6 +966,7 @@ const FORM_JS = `
     var s=f.querySelector('[name=start]').value, e=f.querySelector('[name=end]').value, p=parseFloat((f.querySelector('[name=break_h]').value||'0').replace(',','.'))||0;
     var d=document.getElementById('tp-dur');
     if(s&&e){var m=(+e.slice(0,2)*60+ +e.slice(3))-(+s.slice(0,2)*60+ +s.slice(3))-p*60; d.textContent=m>0?(m/60).toFixed(2).replace('.',',')+' h':'Ende vor Beginn';}
+    f.querySelectorAll('tr[data-day]').forEach(function(tr){var c=f.querySelector('input[name=weekday][value="'+tr.getAttribute('data-day')+'"]'); tr.hidden=!(c&&c.checked);});
   }
   f.addEventListener('change',sync); f.addEventListener('input',sync); sync();
   var list=document.getElementById('emp-list'), tpl=document.getElementById('emp-tpl');

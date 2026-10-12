@@ -739,6 +739,7 @@ a.bs-tr:hover{text-decoration:none;background:var(--head)}
 .tp-main>select{max-width:640px}
 .tp-line{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
 .tp-time{display:inline-flex;gap:8px;align-items:center}
+.tp-days{display:block}.tp-days summary{cursor:pointer;color:var(--accent,#7D1435);font-size:13px}.tp-daytab{margin-top:6px;border-collapse:collapse;width:auto!important}.tp-daytab tr{background:none!important}.tp-daytab th{text-align:left;padding:3px 10px 3px 0;font-weight:600;width:34px;vertical-align:middle;border:0}.tp-daytab td{border:0}.tp-daytab td{padding:3px 12px 3px 0;white-space:nowrap}.tp-daytab input[type=time]{width:auto}
 .tp-time input[type=date]{width:150px}.tp-time input[type=time]{width:110px}
 .tp-dur{font-weight:600;color:var(--ink-2);background:var(--head);border:1px solid var(--line-2);border-radius:6px;padding:6px 10px}
 .tp-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}

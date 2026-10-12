@@ -1314,6 +1314,8 @@ export interface ShiftSeriesInput {
   planningGroup: string | null;
   /** auch an Sonn- und Feiertagen arbeiten (Zuschläge); Sonntags-Einsätze immer */
   holidayWork?: boolean;
+  /** einzelne Wochentage mit anderer Zeit (nur wöchentlich; fehlt = Zeit wie oben) */
+  dayTimes?: Record<number, { start: string; end: string; breakMinutes: number }>;
 }
 
 export interface ShiftSeries extends ShiftSeriesInput {
@@ -1333,8 +1335,17 @@ export async function getShiftSeries(sql: Sql, idOrSeries: string): Promise<Shif
   const today = todayBerlin();
   // laufende/künftige Teile der Serie bestimmen die Anzeige (beendete bleiben für die Vergangenheit)
   const live = rows.filter((r) => !r.valid_until || r.valid_until >= today || r.recurrence === 'einmalig');
-  const base = live[0] ?? rows[0]!;
   const cur = live.length ? live : rows;
+  // häufigste Zeit = Zeit der Serie, abweichende Wochentage = „andere Zeit“
+  const key = (r: (typeof rows)[number]) => `${r.start}|${r.end}|${r.break_minutes}`;
+  const freq = new Map<string, number>();
+  for (const r of cur) freq.set(key(r), (freq.get(key(r)) ?? 0) + 1);
+  const common = [...freq.entries()].sort((a, b) => b[1] - a[1])[0]![0];
+  const base = cur.find((r) => key(r) === common) ?? rows[0]!;
+  const dayTimes: Record<number, { start: string; end: string; breakMinutes: number }> = {};
+  for (const r of cur)
+    if (key(r) !== common && !dayTimes[r.weekday])
+      dayTimes[r.weekday] = { start: r.start, end: r.end, breakMinutes: r.break_minutes };
   return {
     seriesId: base.series_id ?? base.id,
     siteId: base.site_id,
@@ -1351,6 +1362,7 @@ export async function getShiftSeries(sql: Sql, idOrSeries: string): Promise<Shif
     note: base.note,
     planningGroup: base.planning_group ?? null,
     holidayWork: !!base.holiday_work,
+    dayTimes,
     plans: rows.map((r) => ({
       id: r.id,
       employee_id: r.employee_id,
@@ -1410,6 +1422,16 @@ export async function saveShiftSeries(sql: Sql, seriesId: string, p: ShiftSeries
     throw new BusinessError('Wochentag ungültig');
   const validUntil = p.recurrence === 'einmalig' ? p.validFrom : p.validUntil;
   if (validUntil && validUntil < p.validFrom) throw new BusinessError('Enddatum liegt vor dem Beginn');
+  const dayTimes = p.recurrence === 'woechentlich' ? (p.dayTimes ?? {}) : {};
+  for (const [wd, t] of Object.entries(dayTimes)) {
+    const tag = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][Number(wd) - 1] ?? wd;
+    if (!HHMM.test(t.start) || !HHMM.test(t.end)) throw new BusinessError(`${tag}: Uhrzeit bitte als HH:MM`);
+    if (t.end <= t.start) throw new BusinessError(`${tag}: Ende muss nach dem Beginn liegen`);
+    if (!Number.isInteger(t.breakMinutes) || t.breakMinutes < 0)
+      throw new BusinessError(`${tag}: Pause ungültig`);
+  }
+  const timeOf = (wd: number) =>
+    dayTimes[wd] ?? { start: p.startTime, end: p.endTime, breakMinutes: p.breakMinutes };
   const employees = [...new Set(p.employeeIds.length ? p.employeeIds : [null])];
   const existing = await getShiftSeries(sql, seriesId);
   const yesterday = addDays(todayBerlin(), -1);
@@ -1433,11 +1455,12 @@ export async function saveShiftSeries(sql: Sql, seriesId: string, p: ShiftSeries
             >`select md5(${seriesId} || ':' || ${emp ?? 'offen'} || ':' || ${wd})::uuid::text as pid`
           )[0]!.pid;
         keep.add(pid);
+        const t = timeOf(wd);
         await tx`
           insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes, valid_from,
                                        valid_until, note, recurrence, every, months, series_id, planning_group,
                                        holiday_work)
-          values (${pid}, ${emp}, ${p.siteId}, ${wd}, ${p.startTime}, ${p.endTime}, ${p.breakMinutes}, ${p.validFrom},
+          values (${pid}, ${emp}, ${p.siteId}, ${wd}, ${t.start}, ${t.end}, ${t.breakMinutes}, ${p.validFrom},
                   ${validUntil}, ${p.note}, ${p.recurrence}, ${p.every}, ${p.months?.length ? p.months : null},
                   ${seriesId}, ${p.planningGroup?.trim() || null}, ${!!p.holidayWork || wd === 7})
           on conflict (id) do update set employee_id = excluded.employee_id, site_id = excluded.site_id,
@@ -1450,7 +1473,12 @@ export async function saveShiftSeries(sql: Sql, seriesId: string, p: ShiftSeries
     }
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
              values (${actor}, ${existing ? 'update' : 'create'}, 'shift_series', ${seriesId},
-                     ${tx.json({ recurrence: p.recurrence, weekdays, employees: employees.length })})`;
+                     ${tx.json({
+                       recurrence: p.recurrence,
+                       weekdays,
+                       employees: employees.length,
+                       ...(Object.keys(dayTimes).length ? { andere_zeiten: dayTimes } : {}),
+                     })})`;
   });
   // weggefallene Teile der Serie beenden (Vergangenheit bleibt erhalten)
   for (const old of existing?.plans ?? [])

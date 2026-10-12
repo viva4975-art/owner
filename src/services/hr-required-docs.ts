@@ -179,16 +179,11 @@ export async function missingDocs(sql: Sql, opts: { siteIds?: string[] | null } 
     const nat = r.nationality ?? '';
     if (!nat.trim()) missing.push('Staatsangehörigkeit');
     else if (!freeMovement(nat)) {
-      const doc = cats.has('Aufenthalts-/Arbeitserlaubnis');
+      // Kopie liegt meist in den Personalunterlagen (Ahmed 12.10.) → nur Stammdaten prüfen: gültig bis fehlt/abgelaufen
       const until = [r.residence_permit_until, r.work_permit_until].filter(Boolean).sort()[0] ?? null;
-      // Stammdaten (gültig bis) und Kopie in der Akte (§ 4a Abs. 5 AufenthG) getrennt melden
-      if (!doc && !until) missing.push('Aufenthaltstitel/Arbeitserlaubnis');
-      else {
-        if (!until) missing.push('Aufenthaltstitel: gültig bis fehlt');
-        else if (until < today)
-          missing.push(`Aufenthaltstitel abgelaufen (${until.split('-').reverse().join('.')})`);
-        if (!doc) missing.push('Aufenthaltstitel: Kopie fehlt in der Akte');
-      }
+      if (!until) missing.push('Aufenthaltstitel: gültig bis fehlt');
+      else if (until < today)
+        missing.push(`Aufenthaltstitel abgelaufen (${until.split('-').reverse().join('.')})`);
     }
     if (missing.length)
       out.push({

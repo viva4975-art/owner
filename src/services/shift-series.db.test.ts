@@ -157,4 +157,37 @@ describe.skipIf(!available)('Terminserien (Planung wie Fortytools)', () => {
       saveShiftSeries(sql, randomUUID(), input({ validUntil: addDays(nextMonday, -1) }), 't'),
     ).rejects.toThrow(/Enddatum/);
   });
+
+  it('einzelne Wochentage mit anderer Zeit', async () => {
+    const series = randomUUID();
+    await saveShiftSeries(
+      sql,
+      series,
+      input({
+        employeeIds: [anna],
+        weekdays: [1, 3, 5],
+        dayTimes: { 5: { start: '12:00', end: '15:30', breakMinutes: 15 } },
+      }),
+      't',
+    );
+    const rows = await sql<{ weekday: number; s: string; e: string; break_minutes: number }[]>`
+      select weekday, to_char(start_time, 'HH24:MI') as s, to_char(end_time, 'HH24:MI') as e, break_minutes
+        from app.shift_plans where series_id = ${series} order by weekday`;
+    expect(rows.map((r) => `${r.weekday} ${r.s}-${r.e} ${r.break_minutes}`)).toEqual([
+      '1 17:00-19:00 0',
+      '3 17:00-19:00 0',
+      '5 12:00-15:30 15',
+    ]);
+    const got = await getShiftSeries(sql, series);
+    expect(got?.startTime).toBe('17:00');
+    expect(got?.dayTimes).toEqual({ 5: { start: '12:00', end: '15:30', breakMinutes: 15 } });
+    await expect(
+      saveShiftSeries(
+        sql,
+        series,
+        input({ dayTimes: { 3: { start: '10:00', end: '09:00', breakMinutes: 0 } } }),
+        't',
+      ),
+    ).rejects.toThrow(/Mi: Ende/);
+  });
 });

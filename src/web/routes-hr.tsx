@@ -35,6 +35,7 @@ const UPLOAD_MAIN = [
   'Vertragsänderung',
   'Personalunterlagen',
   'Unterweisung',
+  'Arbeitskleidung',
   'Aufenthalts-/Arbeitserlaubnis',
   'Bescheinigung',
   'Sonstiges',

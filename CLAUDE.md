@@ -2751,3 +2751,5 @@ Testadresse.
   wo es keine eindeutige Hauptaktion gibt (Kunde, Objekt), ein Knopf „+ Neu ▾“ (`NewMenu` in `layout.tsx`, Links auf
   `/neu?typ=…`). Objektliste: CSV, QR-Aushänge, Objektleitungen zuordnen unter „Weitere Aktionen ▾“; „Markierte
   aktiv/inaktiv setzen“ erscheint erst, wenn etwas markiert ist (`.bulkbar`).
+- 2026-10-12: Hintergrund (Ahmed: „hellen leichten Bordeaux-Ton lieber dort, wo jetzt grau ist“): Seitenfläche gleichmäßig
+  hell-bordeaux `#f7f0f2` (`--bg`), Karten bleiben weiß, Kopfzeile weiß, Menüleiste Bordeaux.

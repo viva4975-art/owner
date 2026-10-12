@@ -1356,7 +1356,8 @@ input[type=checkbox],input[type=radio]{accent-color:var(--brand)}
   .menu-top .top-logo img{height:38px;width:auto}
   .menu-top .top .search{max-width:520px;margin:0 auto}
 }
-.shell .mainc,body.shell{background:#f3f4f6}
+:root{--bg:#f7f0f2}
+.shell .mainc{background:var(--bg)}
 .shell .mainc{background-image:none}
 /* „Neu anlegen“ als Knopf + Menü statt Auswahlliste */
 .newmenu{display:flex;gap:6px;align-items:center;margin-left:auto}

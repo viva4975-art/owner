@@ -301,7 +301,7 @@ const CopyWorkReport: FC<{
   sites: Parameters<typeof SiteOptions>[0]['sites'];
 }> = ({ id, siteId, sites }) => (
   <details class="inline-det">
-    <summary class="btn sec">
+    <summary>
       <Icon name="copy" /> Kopieren
     </summary>
     <form
@@ -694,37 +694,6 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
         >
           <span class={`badge ${ORDER_CLASS[o.status]}`}>{ORDER_STATUS[o.status]}</span>
         </PageHead>
-        <div class="actions" style="margin-top:-8px">
-          {done && (
-            <a class="btn sec" href={`/auftraege/${id}/bearbeiten`}>
-              Bearbeiten
-            </a>
-          )}
-          <a class="btn sec" href={`/auftraege/${id}/auftragsbestaetigung.pdf`} target="_blank">
-            <Icon name="pdf" /> Auftragsbestätigung
-          </a>
-          {done && o.site_id && (
-            <a class="btn" href={`/arbeitsscheine/${randomUUID()}?auftrag=${id}`}>
-              <Icon name="plus" /> Arbeitsschein
-            </a>
-          )}
-          {done && o.status !== 'erledigt' && post('status?s=erledigt', 'Als erledigt markieren')}
-          {done &&
-            post(
-              'rechnung',
-              <>
-                <Icon name="euro" /> Rechnung erstellen
-              </>,
-              '',
-              'Rechnungsentwurf aus diesem Auftrag erstellen? Abgeschlossene Arbeitsscheine werden angehängt.',
-            )}
-          {o.invoice_id && (
-            <a class="btn sec" href={`/rechnungen/${o.invoice_id}`}>
-              Zur Rechnung
-            </a>
-          )}
-          {done && post('status?s=storniert', 'Stornieren', 'ghost', 'Auftrag stornieren?')}
-        </div>
         <div class="cols">
           <div>
             <div class="card">
@@ -783,6 +752,37 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
             </div>
           </div>
           <div>
+            <div class="actstack">
+              {done && (
+                <a class="btn sec" href={`/auftraege/${id}/bearbeiten`}>
+                  Bearbeiten
+                </a>
+              )}
+              <a class="btn sec" href={`/auftraege/${id}/auftragsbestaetigung.pdf`} target="_blank">
+                <Icon name="pdf" /> Auftragsbestätigung
+              </a>
+              {done && o.site_id && (
+                <a class="btn" href={`/arbeitsscheine/${randomUUID()}?auftrag=${id}`}>
+                  <Icon name="plus" /> Arbeitsschein
+                </a>
+              )}
+              {done && o.status !== 'erledigt' && post('status?s=erledigt', 'Als erledigt markieren')}
+              {done &&
+                post(
+                  'rechnung',
+                  <>
+                    <Icon name="euro" /> Rechnung erstellen
+                  </>,
+                  '',
+                  'Rechnungsentwurf aus diesem Auftrag erstellen? Abgeschlossene Arbeitsscheine werden angehängt.',
+                )}
+              {o.invoice_id && (
+                <a class="btn sec" href={`/rechnungen/${o.invoice_id}`}>
+                  Zur Rechnung
+                </a>
+              )}
+              {done && post('status?s=storniert', 'Stornieren', 'quiet', 'Auftrag stornieren?')}
+            </div>
             <div class="card">
               <dl class="kv">
                 <dt>Kunde</dt>
@@ -995,60 +995,6 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
               </form>
             </div>
           )}
-          <div class="actions" style="margin-top:-8px">
-            <a class="btn" href={`/arbeitsscheine/${id}/arbeitsschein.pdf`} target="_blank">
-              <Icon name="pdf" /> PDF
-            </a>
-            {!w.cancelled_at && !invIssued && (
-              <form
-                method="post"
-                action={`/arbeitsscheine/${id}/wieder-bearbeiten`}
-                onsubmit={`return confirm(${JSON.stringify(
-                  w.status === 'unterschrieben'
-                    ? 'Arbeitsschein wieder bearbeiten? Die Unterschrift des Kunden gilt dann nicht mehr – der Schein muss neu unterschrieben werden (die alte Fassung bleibt im Archiv).'
-                    : 'Arbeitsschein wieder bearbeiten? Danach erneut „Speichern und PDF erstellen“ (die alte Fassung bleibt im Archiv).',
-                )})`}
-              >
-                <button class="btn sec">
-                  <Icon name="pencil" /> Wieder bearbeiten
-                </button>
-              </form>
-            )}
-            <CopyWorkReport id={id} siteId={w.site_id} sites={sites} />
-            {!w.invoice_id && !w.cancelled_at && !w.done_at && (
-              <details class="inline-det">
-                <summary class="btn sec">Als erledigt markieren</summary>
-                <form
-                  method="post"
-                  action={`/arbeitsscheine/${id}/erledigt`}
-                  class="actions"
-                  style="margin-top:6px"
-                >
-                  <input
-                    name="notiz"
-                    placeholder="Notiz (optional), z. B. in Pauschale enthalten"
-                    style="min-width:260px"
-                  />
-                  <button class="btn sm">Erledigt</button>
-                </form>
-              </details>
-            )}
-            {!w.invoice_id &&
-              !w.order_id &&
-              !w.cancelled_at &&
-              !w.done_at &&
-              canAccess(c.get('user').role, '/rechnungen') && (
-                <form method="post" action={`/objekte/${w.site_id}/regie-abrechnen`}>
-                  <input type="hidden" name="report" value={id} />
-                  <button class="btn sec">Rechnung erstellen</button>
-                </form>
-              )}
-            {w.invoice_id && canAccess(c.get('user').role, '/rechnungen') && (
-              <a class="btn sec" href={`/rechnungen/${w.invoice_id}`}>
-                Zur Rechnung
-              </a>
-            )}
-          </div>
           <div class="cols">
             <div class="card">
               <dl class="kv">
@@ -1100,6 +1046,59 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
               </dl>
             </div>
             <div>
+              {/* Aktionen als ein Block wie in Fortytools */}
+              <div class="actstack">
+                <a href={`/arbeitsscheine/${id}/arbeitsschein.pdf`} target="_blank">
+                  <Icon name="pdf" /> PDF
+                </a>
+                {!w.cancelled_at && !invIssued && (
+                  <form
+                    method="post"
+                    action={`/arbeitsscheine/${id}/wieder-bearbeiten`}
+                    onsubmit={`return confirm(${JSON.stringify(
+                      w.status === 'unterschrieben'
+                        ? 'Arbeitsschein wieder bearbeiten? Die Unterschrift des Kunden gilt dann nicht mehr – der Schein muss neu unterschrieben werden (die alte Fassung bleibt im Archiv).'
+                        : 'Arbeitsschein wieder bearbeiten? Danach erneut „Speichern und PDF erstellen“ (die alte Fassung bleibt im Archiv).',
+                    )})`}
+                  >
+                    <button>
+                      <Icon name="pencil" /> Wieder bearbeiten
+                    </button>
+                  </form>
+                )}
+                <CopyWorkReport id={id} siteId={w.site_id} sites={sites} />
+                {!w.invoice_id && !w.cancelled_at && !w.done_at && (
+                  <details class="inline-det">
+                    <summary>Als erledigt markieren</summary>
+                    <form
+                      method="post"
+                      action={`/arbeitsscheine/${id}/erledigt`}
+                      class="actions"
+                      style="margin-top:6px"
+                    >
+                      <input
+                        name="notiz"
+                        placeholder="Notiz (optional), z. B. in Pauschale enthalten"
+                        style="min-width:260px"
+                      />
+                      <button class="btn sm">Erledigt</button>
+                    </form>
+                  </details>
+                )}
+                {!w.invoice_id &&
+                  !w.order_id &&
+                  !w.cancelled_at &&
+                  !w.done_at &&
+                  canAccess(c.get('user').role, '/rechnungen') && (
+                    <form method="post" action={`/objekte/${w.site_id}/regie-abrechnen`}>
+                      <input type="hidden" name="report" value={id} />
+                      <button>Rechnung erstellen</button>
+                    </form>
+                  )}
+                {w.invoice_id && canAccess(c.get('user').role, '/rechnungen') && (
+                  <a href={`/rechnungen/${w.invoice_id}`}>Zur Rechnung</a>
+                )}
+              </div>
               {!w.cancelled_at && (
                 <details class="card">
                   <summary style="cursor:pointer">

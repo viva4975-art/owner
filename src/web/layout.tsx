@@ -1294,6 +1294,26 @@ input[type=checkbox],input[type=radio]{accent-color:var(--brand)}
   .entity-layout>.info-col>*{order:2}.entity-layout>.info-col>:first-child{order:0}
   .entity-layout>.content-col{order:1}
 }
+/* Knöpfe wie Fortytools: flach, eckiger, ohne Schatten; lange Beschriftung bricht um statt gequetscht zu werden */
+.btn{height:auto;min-height:36px;padding:7px 14px;line-height:1.25;border-radius:6px;box-shadow:none}
+.btn.sm{height:auto;min-height:30px;padding:5px 11px;border-radius:5px}
+.btn.sec,.btn.danger{box-shadow:none}
+/* Aktionsblock wie Fortytools (Ahmed 12.10.: „solche Buttons sind hässlich“): ein durchgehender Bordeaux-Block,
+   jede Aktion eine volle Zeile, zentriert, feine Trennlinien. Für Angebot, Rechnung, Entwurf … (class="actstack") */
+.actstack{display:flex;flex-direction:column;background:var(--brand);border-radius:8px;overflow:hidden;margin:0 0 16px;box-shadow:0 1px 2px rgba(60,10,25,.12)}
+.actstack>*{display:block;width:100%;margin:0!important}
+.actstack.actstack>:is(a,button),.actstack.actstack>form>button,.actstack.actstack>details>summary{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:46px;height:auto;padding:10px 16px;background:transparent;color:#fff;border:0;border-bottom:1px solid rgba(255,255,255,.17);border-radius:0;box-shadow:none;font:inherit;font-size:14.5px;font-weight:600;line-height:1.3;text-align:center;text-decoration:none;cursor:pointer;white-space:normal;list-style:none}
+.actstack.actstack>details>summary::-webkit-details-marker{display:none}
+.actstack.actstack>:last-child:is(a,button),.actstack.actstack>form:last-child>button,.actstack.actstack>details:last-child:not([open])>summary{border-bottom:0}
+.actstack.actstack>:is(a,button):hover,.actstack.actstack>form>button:hover,.actstack.actstack>details>summary:hover{background:rgba(0,0,0,.16);color:#fff;text-decoration:none}
+.actstack.actstack>:is(a,button)::after,.actstack.actstack>form>button::after{content:none}
+.actstack.actstack :is(a,button,summary) .ic{color:#fff;opacity:.9}
+.actstack.actstack>:is(.del,.ghost,.quiet),.actstack.actstack>form>button:is(.del,.ghost,.quiet){color:rgba(255,255,255,.82);font-weight:500}
+.actstack.actstack>form>button:disabled{opacity:.5;cursor:not-allowed}
+/* aufgeklappte Eingaben (z. B. Kopieren → Objekt/Datum) innerhalb des Blocks hell */
+.actstack>details>:not(summary){background:#fff;color:var(--ink);padding:12px 14px;margin:0!important;max-width:none!important;border:0;border-radius:0;box-shadow:none}
+.actstack>details[open]>summary{border-bottom:0}
+.actstack-note{font-size:13px;color:var(--mut);margin:-6px 0 16px;line-height:1.5}
 /* Menü oben (Konto → Menü, Cookie vd_menu): Bordeaux-Leiste mit Aufklapp-Menüs, nur ab Tablet-Breite;
    darunter bleibt die Schublade (☰) wie bisher */
 @media (min-width:1025px){

@@ -2733,3 +2733,10 @@ Testadresse.
   `app.user_prefs.menu_pos` (Migration `20261124000004`), gilt auf allen Geräten; **Standard jetzt oben**, „links“ nur bei
   ausdrücklicher Wahl (Benutzermenü bzw. Mein Konto → Menü). Cookie `vd_menu` entfällt. „Startseite zurücksetzen“ löscht
   nur noch die Startseiten-Einstellung (vorher die ganze Zeile). `e2e:menu` 14 Prüfungen (auch: zweiter Browser sieht dieselbe Wahl).
+- 2026-10-12: **Menü oben/links je Benutzerkonto** (Ahmed: „oben besser, für das Konto, nicht den Browser“): Standard oben,
+  umstellbar unter Mein Konto bzw. im Benutzermenü (`app.user_prefs.menu_pos`, Migration `20261124000004`, gilt auf allen
+  Geräten). **Aktionsknöpfe wie Fortytools** (Ahmed: „solche Buttons sind hässlich“): Angebot, Rechnung (Entwurf und
+  ausgestellt), Arbeitsschein und Einzelauftrag haben rechts oben einen Bordeaux-Block mit untereinander stehenden,
+  vollbreiten Aktionen (`.actstack` in `layout.tsx`; Stornieren/Zurückziehen heller), statt einer Reihe einzelner Knöpfe
+  unter dem Titel bzw. unter dem Brief. Knöpfe allgemein flacher (ohne Schatten, Radius 6 px, Text bricht um).
+  `e2e:menu` (14 Prüfungen) neu.

@@ -703,69 +703,6 @@ export const OfferDetail: FC<{
             </p>
           </div>
 
-          {/* Aktionen wie in Fortytools unter dem Angebot */}
-          <div class="card actlist">
-            {o.status === 'entwurf' && (
-              <a class="btn" href={`/angebote/${o.id}/bearbeiten`}>
-                Bearbeiten
-              </a>
-            )}
-            <a class="btn sec" href={`/angebote/${o.id}/angebot.pdf`} target="_blank">
-              <Icon name="pdf" /> PDF anzeigen {o.status === 'entwurf' ? '(Entwurf)' : ''}
-            </a>
-            {['entwurf', 'versendet'].includes(o.status) &&
-              !related?.successor &&
-              post('folgeangebot', 'Folgeangebot erstellen (überarbeitete Fassung)')}
-            {post('kopieren', 'Kopieren (neues Angebot)')}
-            {related?.predecessor && (
-              <div class="small">
-                Folgeangebot zu{' '}
-                <a href={`/angebote/${related.predecessor.id}`}>Angebot {related.predecessor.number}</a>
-              </div>
-            )}
-            {related?.successor && (
-              <div class="small">
-                Ersetzt durch Folgeangebot{' '}
-                <a href={`/angebote/${related.successor.id}`}>Angebot {related.successor.number}</a>
-              </div>
-            )}
-            {o.status === 'entwurf' &&
-              post('status', 'Als abgegeben markieren', {
-                hidden: { status: 'versendet' },
-                confirm: 'Angebot als abgegeben markieren? Danach ist es nicht mehr änderbar.',
-              })}
-            {o.status === 'versendet' && (
-              <>
-                {post('status', 'Zuschlag erhalten (angenommen)', {
-                  cls: '',
-                  hidden: { status: 'angenommen' },
-                })}
-                {post('status', 'Absage (abgelehnt)', {
-                  hidden: { status: 'abgelehnt' },
-                  confirm: 'Angebot als abgelehnt markieren?',
-                })}
-              </>
-            )}
-            {accepted && post('auftrag', 'Auftrag erstellen (mit Arbeitsschein)', { cls: '' })}
-            {accepted && post('rechnung', 'Rechnung erstellen (Entwurf)')}
-            {['entwurf', 'versendet'].includes(o.status) &&
-              post('status', 'Zurückziehen', {
-                cls: 'ghost',
-                hidden: { status: 'zurueckgezogen' },
-                confirm: 'Angebot zurückziehen?',
-              })}
-            {invoices.length > 0 && (
-              <div class="small">
-                Rechnungen aus diesem Angebot:{' '}
-                {invoices.map((i) => (
-                  <a href={`/rechnungen/${i.id}`} style="margin-right:8px">
-                    {i.number ?? 'Entwurf'} ({euro(i.gross_cents)})
-                  </a>
-                ))}
-              </div>
-            )}
-          </div>
-
           {accepted && (
             <form method="post" action={`/angebote/${o.id}/objekt`} class="card">
               <h3>Leistungen ins Objekt übernehmen</h3>
@@ -807,6 +744,65 @@ export const OfferDetail: FC<{
           )}
         </div>
         <div>
+          {/* Aktionen wie in Fortytools: ein Block rechts oben */}
+          <div class="actstack">
+            {o.status === 'entwurf' && <a href={`/angebote/${o.id}/bearbeiten`}>Bearbeiten</a>}
+            <a href={`/angebote/${o.id}/angebot.pdf`} target="_blank">
+              <Icon name="pdf" /> PDF anzeigen {o.status === 'entwurf' ? '(Entwurf)' : ''}
+            </a>
+            {['entwurf', 'versendet'].includes(o.status) &&
+              !related?.successor &&
+              post('folgeangebot', 'Folgeangebot erstellen (überarbeitete Fassung)')}
+            {post('kopieren', 'Kopieren (neues Angebot)')}
+            {o.status === 'entwurf' &&
+              post('status', 'Als abgegeben markieren', {
+                hidden: { status: 'versendet' },
+                confirm: 'Angebot als abgegeben markieren? Danach ist es nicht mehr änderbar.',
+              })}
+            {o.status === 'versendet' && (
+              <>
+                {post('status', 'Zuschlag erhalten (angenommen)', { hidden: { status: 'angenommen' } })}
+                {post('status', 'Absage (abgelehnt)', {
+                  hidden: { status: 'abgelehnt' },
+                  confirm: 'Angebot als abgelehnt markieren?',
+                })}
+              </>
+            )}
+            {accepted && post('auftrag', 'Auftrag erstellen (mit Arbeitsschein)')}
+            {accepted && post('rechnung', 'Rechnung erstellen (Entwurf)')}
+            {['entwurf', 'versendet'].includes(o.status) &&
+              post('status', 'Zurückziehen', {
+                cls: 'quiet',
+                hidden: { status: 'zurueckgezogen' },
+                confirm: 'Angebot zurückziehen?',
+              })}
+          </div>
+          {(related?.predecessor || related?.successor || invoices.length > 0) && (
+            <div class="actstack-note">
+              {related?.predecessor && (
+                <div>
+                  Folgeangebot zu{' '}
+                  <a href={`/angebote/${related.predecessor.id}`}>Angebot {related.predecessor.number}</a>
+                </div>
+              )}
+              {related?.successor && (
+                <div>
+                  Ersetzt durch Folgeangebot{' '}
+                  <a href={`/angebote/${related.successor.id}`}>Angebot {related.successor.number}</a>
+                </div>
+              )}
+              {invoices.length > 0 && (
+                <div>
+                  Rechnungen aus diesem Angebot:{' '}
+                  {invoices.map((i) => (
+                    <a href={`/rechnungen/${i.id}`} style="margin-right:8px">
+                      {i.number ?? 'Entwurf'} ({euro(i.gross_cents)})
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <div class="card">
             <h3>Ausschreibung</h3>
             <dl class="kv">
@@ -871,9 +867,6 @@ const LETTER_CSS = `.letter tr.alt td{color:var(--mut)}
 .letter p{font-size:14px;margin:0 0 12px}
 .letter .hl{background:var(--brand-50);color:var(--brand);padding:2px 8px;border-radius:6px}
 .letter .meta{font-size:12px;color:var(--mut);text-align:right;margin-top:18px}
-.actlist{display:flex;flex-direction:column;gap:8px}
-.actlist form,.actlist .btn{width:100%}
-.actlist .btn{justify-content:center}
 @media (max-width:700px){.letter{padding:18px}.letter .band{margin:0 -18px 16px;padding:12px 18px}}
 `;
 

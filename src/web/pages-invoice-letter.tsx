@@ -54,17 +54,7 @@ export const LETTER_CSS = `
 .lt-sums{margin-left:auto;width:max-content;min-width:300px}
 .lt-sums div{display:flex;justify-content:space-between;gap:30px;padding:6px 10px}
 .lt-sums .tot b{background:var(--brand-50);color:var(--brand);padding:3px 9px;border-radius:6px}
-.lt-side .more-acts{margin:-6px 0 14px}.lt-side .more-acts>summary{cursor:pointer;list-style:none;font-size:13.5px;font-weight:600;color:var(--ink-2);padding:6px 2px}
-.lt-side .more-acts>summary::-webkit-details-marker{display:none}.lt-side .more-acts>summary::after{content:" ▾";color:var(--faint)}
-.lt-side .more-acts[open]>summary::after{content:" ▴"}.lt-side .more-acts .btns{margin-bottom:0}
-.lt-side .btns{display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px}
-.lt-side .btns > *{display:block;width:100%;margin:0}
-.lt-side .btns a,.lt-side .btns button{display:flex;align-items:center;width:100%;text-align:left;background:#fff;color:var(--ink);border:0;border-bottom:1px solid var(--line);padding:10px 14px;font:inherit;font-weight:550;font-size:14px;text-decoration:none;cursor:pointer;border-radius:0}
-.lt-side .btns > :last-child a,.lt-side .btns > :last-child button,.lt-side .btns > a:last-child{border-bottom:0}
-.lt-side .btns a::after,.lt-side .btns button::after{content:"›";margin-left:auto;color:var(--faint);font-size:16px}
-.lt-side .btns a:hover,.lt-side .btns button:hover{background:var(--brand-50);color:var(--brand);text-decoration:none}
-.lt-side .btns .sec{color:var(--ink)}
-.lt-side .btns .del{color:#b42318}
+.lt-side .btns{margin-bottom:14px}
 .lt-side .card h3{margin:0 0 8px;font-size:15px}
 .lt-edit{color:inherit;text-decoration:none;border-radius:4px;outline:1px dashed transparent;outline-offset:3px;cursor:text}
 .lt-edit:hover{outline-color:#c9a3b0;background:#fbf6f8}
@@ -418,7 +408,7 @@ export const DraftLetter: FC<{
           )}
         </div>
         <aside class="lt-side">
-          <div class="btns">
+          <div class="btns actstack">
             <a href={`/rechnungen/${inv.id}/bearbeiten`}>✎ Bearbeiten</a>
             <form
               method="post"
@@ -915,20 +905,17 @@ export const IssuedLetter: FC<{
               </form>
             </div>
           )}
-          {!p.sent && !cancelled && !isCredit && p.portal == null && p.billing.emails.length > 0 && (
-            <form
-              method="post"
-              action={`/rechnungen/${inv.id}/versenden`}
-              onsubmit={`return confirm(${JSON.stringify(`Rechnung jetzt per E-Mail an ${p.billing.emails.join(', ')} versenden?`)})`}
-              style="margin:0 0 10px"
-            >
-              <button class="btn" style="width:100%">
-                Jetzt versenden
-              </button>
-            </form>
-          )}
-          {/* Häufiges sichtbar, Seltenes unter „Weitere Aktionen“ (Ahmed 12.10.: ruhiger für neue Mitarbeitende) */}
-          <div class="btns">
+          {/* Ein Aktionsblock wie in Fortytools (Ahmed 12.10.) */}
+          <div class="btns actstack">
+            {!p.sent && !cancelled && !isCredit && p.portal == null && p.billing.emails.length > 0 && (
+              <form
+                method="post"
+                action={`/rechnungen/${inv.id}/versenden`}
+                onsubmit={`return confirm(${JSON.stringify(`Rechnung jetzt per E-Mail an ${p.billing.emails.join(', ')} versenden?`)})`}
+              >
+                <button>Jetzt versenden</button>
+              </form>
+            )}
             {pdf && (
               <a href={`/dokumente/${pdf.id}`} target="_blank">
                 Anzeigen (PDF)
@@ -945,36 +932,29 @@ export const IssuedLetter: FC<{
                 ZUGFeRD
               </a>
             )}
-          </div>
-          <details class="more-acts">
-            <summary>Weitere Aktionen</summary>
-            <div class="btns">
-              <a href="?details=1#adresse">Name / Adresse ändern</a>
-              {['invoice', 'partial'].includes(inv.kind) && !cancelled && (
-                <form method="post" action={`/rechnungen/${inv.id}/kopieren`}>
-                  <input type="hidden" name="new_id" value={p.newId} />
-                  <button>Kopieren</button>
+            {['invoice', 'partial'].includes(inv.kind) && !cancelled && (
+              <form method="post" action={`/rechnungen/${inv.id}/kopieren`}>
+                <input type="hidden" name="new_id" value={p.newId} />
+                <button>Kopieren</button>
+              </form>
+            )}
+            <a href="?details=1#adresse">Name / Adresse ändern</a>
+            <a href={`/rechnungen/${inv.id}/lieferschein.pdf`} target="_blank">
+              Lieferschein
+            </a>
+            {!isCredit && !cancelled && (
+              <>
+                <a href={`/rechnungen/${inv.id}/korrektur`}>Rechnungskorrektur</a>
+                <form
+                  method="post"
+                  action={`/rechnungen/${inv.id}/storno`}
+                  onsubmit="return confirm('Stornorechnung als Entwurf anlegen?')"
+                >
+                  <button class="quiet">Stornieren</button>
                 </form>
-              )}
-              <a class="sec" href={`/rechnungen/${inv.id}/lieferschein.pdf`} target="_blank">
-                Lieferschein
-              </a>
-              {!isCredit && !cancelled && (
-                <>
-                  <form
-                    method="post"
-                    action={`/rechnungen/${inv.id}/storno`}
-                    onsubmit="return confirm('Stornorechnung als Entwurf anlegen?')"
-                  >
-                    <button class="del">Stornieren</button>
-                  </form>
-                  <a class="sec" href={`/rechnungen/${inv.id}/korrektur`}>
-                    Rechnungskorrektur
-                  </a>
-                </>
-              )}
-            </div>
-          </details>
+              </>
+            )}
+          </div>
           <div class="card">
             <h3>Anhänge</h3>
             {attachments.length === 0 ? (

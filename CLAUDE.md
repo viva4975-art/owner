@@ -2603,3 +2603,14 @@ Testadresse.
   aufklappbar (Zähler im Kopf, beim Mitarbeiter „+ n im Archiv“), oben „Alle aufklappen / Alle zuklappen“. Offen sind
   Kategorien mit 1–5 Dateien, lange Listen und leere sind zu (am Objekt bleiben fehlende Pflichtdokumente offen).
   Sprungmarken (#kat-…, #hochladen) klappen das Ziel automatisch auf (`client.ts`).
+- 2026-10-12: **Aufenthaltstitel nur bei Bedarf + Nummern prüfen** (Ahmed: „wenn jemand Deutsch ist, keine Angaben zu
+  Aufenthaltstitel“, „Bank, Steuer- und SV-Nummer immer prüfen lassen“):
+  - Staatsangehörigkeit EU/EWR/Schweiz (`permitNeeded` in `hr-required-docs.ts`): Felder Aufenthaltstitel/Arbeitserlaubnis
+    und der Fristen-Hinweis verschwinden im Formular (sofort beim Auswählen), in Übersicht und Liste; beim Speichern werden
+    alte Angaben dazu geleert; keine Ablauf-Warnungen (Startseite, Erinnerungen). Ohne Staatsangehörigkeit bleiben sie.
+  - **Prüfung beim Speichern** (Mitarbeiterformular und Personalbogen in der App): Steuer-ID (11 Ziffern, Ziffernregel,
+    Prüfziffer ISO 7064 – § 139b AO), SV-Nummer (Aufbau 12 TTMMJJ A 123 + Prüfziffer), IBAN (Prüfziffer, wie bisher);
+    Leerzeichen werden entfernt, verständliche Meldung (`src/domain/hr/ids.ts`). Bereits gespeicherte falsche Nummern (z. B.
+    aus dem Import) erscheinen unter Personal → Fehlende Unterlagen als „Ungültig: …“. **Grenze:** geprüft wird nur Aufbau
+    und Prüfziffer – ob die Nummer der Person gehört, zeigt erst ELStAM-Abruf bzw. DEÜV-Meldung im Lohnprogramm.
+  - Tests: `ids.test.ts`, `phase2.db.test.ts`.

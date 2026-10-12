@@ -17,6 +17,8 @@ export const REQUIRED_DOCS = [
 
 import { countryOf, isFreeMovementCountry } from '../domain/hr/lists.js';
 import { BusinessError } from './errors.js';
+import { validSvNumber, validTaxId } from '../domain/hr/ids.js';
+import { validIban } from './employees.js';
 
 /** Pflichtunterlagen, die je Mitarbeiter als „nicht nötig“ markiert werden können (z. B. hat keinen Schlüssel). */
 export const OPTIONAL_PER_EMPLOYEE = ['Arbeitskleidung', 'Schlüssel'] as const;
@@ -90,6 +92,9 @@ export function freeMovement(nat: string): boolean {
   return EU_EWR_CH.some((x) => n.includes(x)) || stems.some((s) => s.length >= 4 && n.startsWith(s));
 }
 
+/** Aufenthaltstitel/Arbeitserlaubnis nötig? Nein bei EU/EWR/Schweiz, ja bei anderen und unbekannter Staatsangehörigkeit. */
+export const permitNeeded = (nat: string | null | undefined) => !nat?.trim() || !freeMovement(nat);
+
 export interface MissingRow {
   employee_id: string;
   personnel_no: string;
@@ -116,9 +121,12 @@ export async function missingDocs(sql: Sql, opts: { siteIds?: string[] | null } 
       sites: string[] | null;
       site_ids: string[] | null;
       not_needed: string[];
+      tax_id: string | null;
+      social_security_no: string | null;
+      iban: string | null;
     }[]
   >`
-    select e.id, e.docs_not_needed as not_needed, e.personnel_no, e.last_name || ', ' || e.first_name as name, p.nationality,
+    select e.id, e.docs_not_needed as not_needed, p.tax_id, p.social_security_no, p.iban, e.personnel_no, e.last_name || ', ' || e.first_name as name, p.nationality,
            p.residence_permit_until::text, p.work_permit_until::text,
            array_remove(array[
              case when coalesce(p.tax_id, '') = '' then 'Steuer-ID' end,
@@ -156,6 +164,13 @@ export async function missingDocs(sql: Sql, opts: { siteIds?: string[] | null } 
       if (!ok) missing.push(d);
     }
     if (r.data_missing?.length) missing.push(`Stammdaten: ${r.data_missing.join(', ')}`);
+    // vorhandene Nummern prüfen (z. B. aus dem Import oder vor Einführung der Prüfung erfasst)
+    const bad = [
+      r.tax_id?.trim() && !validTaxId(r.tax_id) ? 'Steuer-ID' : null,
+      r.social_security_no?.trim() && !validSvNumber(r.social_security_no) ? 'SV-Nummer' : null,
+      r.iban?.trim() && !validIban(r.iban) ? 'IBAN' : null,
+    ].filter(Boolean);
+    if (bad.length) missing.push(`Ungültig: ${bad.join(', ')}`);
     const nat = r.nationality ?? '';
     if (!nat.trim()) missing.push('Staatsangehörigkeit');
     else if (!freeMovement(nat)) {

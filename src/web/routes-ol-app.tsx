@@ -14,6 +14,8 @@ import type { Child } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { parseEuro } from '../domain/money/money.js';
 import { BusinessError } from '../services/errors.js';
+import { validIban } from '../services/employees.js';
+import { normSvNumber, normTaxId, validSvNumber, validTaxId } from '../domain/hr/ids.js';
 import { BILLING, FREQUENCY, saveSubcontract } from '../services/subcontractors.js';
 import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { str } from './forms.js';
@@ -461,6 +463,18 @@ export function registerOlAppRoutes({ app, deps, page, back }: Ctx) {
       if (v) data[f.key] = v;
     }
     if (data.iban) data.iban = data.iban.replace(/\s+/g, '').toUpperCase();
+    // Nummern gleich hier prüfen (Tippfehler fallen sonst erst im Büro auf)
+    if (data.iban && !validIban(data.iban))
+      throw new BusinessError(`${tr(lang, 'iban')}: ungültig (Prüfziffer)`);
+    if (data.tax_id) {
+      data.tax_id = normTaxId(data.tax_id);
+      if (!validTaxId(data.tax_id)) throw new BusinessError(`${tr(lang, 'tax_id')}: ungültig (Prüfziffer)`);
+    }
+    if (data.social_security_no) {
+      data.social_security_no = normSvNumber(data.social_security_no);
+      if (!validSvNumber(data.social_security_no))
+        throw new BusinessError(`${tr(lang, 'social_security_no')}: ungültig (Prüfziffer)`);
+    }
     const site = typeof b.objekt === 'string' && /^[0-9a-f-]{36}$/.test(b.objekt) ? b.objekt : null;
     if (site) assertSite(c, site);
     await sql`insert into app.personnel_forms (id, lang, site_id, data, created_by)

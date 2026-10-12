@@ -323,7 +323,7 @@ describe.skipIf(!available)('Phase 2: Kontakte, Aufgaben, Zahlungen, Personal', 
       postal_code: '81375',
       city: 'München',
       nationality: 'rumänisch',
-      tax_id: '12345678901',
+      tax_id: '86095742719',
       social_security_no: '',
       health_insurance: 'AOK Bayern',
       iban: 'DE89 3704 0044 0532 0130 00',
@@ -339,6 +339,10 @@ describe.skipIf(!available)('Phase 2: Kontakte, Aufgaben, Zahlungen, Personal', 
 
     it('validiert Steuer-ID und IBAN', () => {
       expect(employeeInput.safeParse({ ...base, tax_id: '123' }).success).toBe(false);
+      expect(employeeInput.safeParse({ ...base, tax_id: '12345678901' }).success).toBe(false);
+      expect(employeeInput.safeParse({ ...base, tax_id: '860 957 427 19' }).success).toBe(true);
+      expect(employeeInput.safeParse({ ...base, social_security_no: '65 170839 J 003' }).success).toBe(true);
+      expect(employeeInput.safeParse({ ...base, social_security_no: '65 170839 J 004' }).success).toBe(false);
       expect(employeeInput.safeParse({ ...base, iban: 'DE00 1234' }).success).toBe(false);
       expect(employeeInput.safeParse({ ...base, exit_date: '2020-01-01' }).success).toBe(false);
     });

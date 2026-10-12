@@ -1,3 +1,4 @@
+import { permitNeeded } from '../services/hr-required-docs.js';
 import type { Child, FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import {
@@ -153,8 +154,8 @@ const EmployeeCard: FC<{ e: EmployeeRow }> = ({ e }) => {
             {e.weekly_hours ? ` · ${String(Number(e.weekly_hours)).replace('.', ',')} Wochenstunden` : ''}
           </div>
           {e.nationality && <div>Staatsangehörigkeit: {e.nationality}</div>}
-          {permit('Aufenthaltstitel', e.residence_permit_until)}
-          {permit('Arbeitserlaubnis', e.work_permit_until)}
+          {permitNeeded(e.nationality) && permit('Aufenthaltstitel', e.residence_permit_until)}
+          {permitNeeded(e.nationality) && permit('Arbeitserlaubnis', e.work_permit_until)}
         </div>
       </div>
     </article>
@@ -671,18 +672,24 @@ export const EmployeeOverview: FC<{
                 <dd>{priv.marital_status ?? '–'}</dd>
                 <dt>Staatsangehörigkeit</dt>
                 <dd>{priv.nationality ?? '–'}</dd>
-                <dt>Aufenthaltstitel</dt>
-                <dd>
-                  {priv.residence_permit_until ? `bis ${dateDe(priv.residence_permit_until)} ` : '–'}
-                  {expiry(priv.residence_permit_until)}
-                  {priv.residence_permit_info && <div class="small mut">{priv.residence_permit_info}</div>}
-                </dd>
-                <dt>Arbeitserlaubnis</dt>
-                <dd>
-                  {priv.work_permit_until ? `bis ${dateDe(priv.work_permit_until)} ` : '–'}
-                  {expiry(priv.work_permit_until)}
-                  {priv.work_permit_info && <div class="small mut">{priv.work_permit_info}</div>}
-                </dd>
+                {permitNeeded(priv.nationality) && (
+                  <>
+                    <dt>Aufenthaltstitel</dt>
+                    <dd>
+                      {priv.residence_permit_until ? `bis ${dateDe(priv.residence_permit_until)} ` : '–'}
+                      {expiry(priv.residence_permit_until)}
+                      {priv.residence_permit_info && (
+                        <div class="small mut">{priv.residence_permit_info}</div>
+                      )}
+                    </dd>
+                    <dt>Arbeitserlaubnis</dt>
+                    <dd>
+                      {priv.work_permit_until ? `bis ${dateDe(priv.work_permit_until)} ` : '–'}
+                      {expiry(priv.work_permit_until)}
+                      {priv.work_permit_info && <div class="small mut">{priv.work_permit_info}</div>}
+                    </dd>
+                  </>
+                )}
                 <dt>Krankenkasse</dt>
                 <dd>{priv.health_insurance ?? '–'}</dd>
               </dl>
@@ -939,7 +946,7 @@ export const EmployeeForm: FC<{
           )}
           <optgroup label="EU / EWR / Schweiz – kein Aufenthaltstitel nötig">
             {FREE_MOVEMENT_COUNTRIES.map((c) => (
-              <option value={c} selected={countryOf(priv.nationality) === c}>
+              <option value={c} data-frei="1" selected={countryOf(priv.nationality) === c}>
                 {c}
               </option>
             ))}
@@ -953,30 +960,32 @@ export const EmployeeForm: FC<{
           </optgroup>
         </select>
       </div>
-      <Field
-        name="residence_permit_until"
-        label="Aufenthaltstitel gültig bis"
-        type="date"
-        value={priv.residence_permit_until}
-      />
-      <Field
-        name="residence_permit_info"
-        label="Aufenthaltstitel Info"
-        value={priv.residence_permit_info}
-        placeholder="z. B. Art, Nummer"
-      />
-      <Field
-        name="work_permit_until"
-        label="Arbeitserlaubnis gültig bis"
-        type="date"
-        value={priv.work_permit_until}
-      />
-      <Field
-        name="work_permit_info"
-        label="Arbeitserlaubnis Info"
-        value={priv.work_permit_info}
-        placeholder="z. B. Auflagen, Beschränkung auf Arbeitgeber"
-      />
+      <div id="aufenthalt-felder" style="display:contents" hidden={!permitNeeded(priv.nationality)}>
+        <Field
+          name="residence_permit_until"
+          label="Aufenthaltstitel gültig bis"
+          type="date"
+          value={priv.residence_permit_until}
+        />
+        <Field
+          name="residence_permit_info"
+          label="Aufenthaltstitel Info"
+          value={priv.residence_permit_info}
+          placeholder="z. B. Art, Nummer"
+        />
+        <Field
+          name="work_permit_until"
+          label="Arbeitserlaubnis gültig bis"
+          type="date"
+          value={priv.work_permit_until}
+        />
+        <Field
+          name="work_permit_info"
+          label="Arbeitserlaubnis Info"
+          value={priv.work_permit_info}
+          placeholder="z. B. Auflagen, Beschränkung auf Arbeitgeber"
+        />
+      </div>
       <Field name="tax_id" label="Steuer-ID (11 Ziffern)" value={priv.tax_id} />
       <Field name="social_security_no" label="SV-Nummer" value={priv.social_security_no} />
       <div>
@@ -997,11 +1006,26 @@ export const EmployeeForm: FC<{
       </div>
       <Field name="iban" label="IBAN" value={priv.iban} />
     </div>
-    <div class="flash warn" style="margin-top:12px">
+    <div
+      class="flash warn"
+      id="aufenthalt-hinweis"
+      style="margin-top:12px"
+      hidden={!permitNeeded(priv.nationality)}
+    >
       <b>Bitte auf die Fristen achten:</b> Ohne gültigen Aufenthaltstitel bzw. Arbeitserlaubnis darf nicht
       beschäftigt werden (§ 4a AufenthG; Bußgeld bis 500.000 € nach § 404 SGB III). Eine Kopie gehört in die
       Personalakte (§ 4a Abs. 5 AufenthG). Die Startseite warnt 60 Tage vor Ablauf.
     </div>
+    <script
+      dangerouslySetInnerHTML={{
+        __html: `(function(){var s=document.getElementById('nationality');if(!s)return;
+function t(){var o=s.options[s.selectedIndex];var frei=!!(o&&o.getAttribute('data-frei'));
+var f=document.getElementById('aufenthalt-felder'),h=document.getElementById('aufenthalt-hinweis');
+if(f){f.hidden=frei;f.querySelectorAll('input,select,textarea').forEach(function(i){i.disabled=frei;});}
+if(h)h.hidden=frei;}
+s.addEventListener('change',t);t();})();`,
+      }}
+    />
     <div class="actions">
       <button class="btn">Speichern</button>
       <a class="btn sec" href={isNew ? '/personal' : `/personal/${id}`}>

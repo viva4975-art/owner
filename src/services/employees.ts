@@ -1,3 +1,5 @@
+import { permitNeeded } from './hr-required-docs.js';
+import { normSvNumber, normTaxId, validSvNumber, validTaxId } from '../domain/hr/ids.js';
 import { z } from 'zod';
 import type { Sql } from '../db/client.js';
 import { assertVersion, versionField } from './crm.js';
@@ -201,18 +203,39 @@ export const employeeInput = z
     city: optText,
     nationality: optText,
     tax_id: z.preprocess(
-      emptyToNull,
+      (v) => (typeof v === 'string' ? emptyToNull(normTaxId(v)) : v),
       z
         .string()
         .regex(/^\d{11}$/, 'Steuer-ID hat 11 Ziffern')
+        .refine(
+          validTaxId,
+          'Steuer-ID ist ungültig (Prüfziffer stimmt nicht) – bitte mit dem Schreiben vom Finanzamt vergleichen',
+        )
         .nullable()
         .default(null),
     ),
-    social_security_no: optText,
+    social_security_no: z.preprocess(
+      (v) => (typeof v === 'string' ? emptyToNull(normSvNumber(v)) : v),
+      z
+        .string()
+        .refine(
+          validSvNumber,
+          'SV-Nummer ist ungültig (Aufbau 12 123456 A 123 oder Prüfziffer) – bitte mit dem SV-Ausweis vergleichen',
+        )
+        .nullable()
+        .default(null),
+    ),
     health_insurance: optText,
     iban: z.preprocess(
       emptyToNull,
-      z.string().refine(validIban, 'IBAN ist ungültig (Prüfziffer)').nullable().default(null),
+      z
+        .string()
+        .refine(
+          validIban,
+          'IBAN ist ungültig (Prüfziffer stimmt nicht) – bitte mit der Bankkarte vergleichen',
+        )
+        .nullable()
+        .default(null),
     ),
     residence_permit_until: optDate,
     work_permit_until: optDate,
@@ -389,6 +412,13 @@ export async function saveEmployee(sql: Sql, id: string, input: EmployeeInput, a
     work_permit_until: input.work_permit_until,
     work_permit_info: input.work_permit_info,
   };
+  // EU/EWR/Schweiz: kein Aufenthaltstitel/keine Arbeitserlaubnis nötig → keine Angaben (Ahmed 12.10.)
+  if (!permitNeeded(input.nationality)) {
+    priv.residence_permit_until = null;
+    priv.residence_permit_info = null;
+    priv.work_permit_until = null;
+    priv.work_permit_info = null;
+  }
   try {
     await sql.begin(async (tx) => {
       const [cur] = await tx<
@@ -476,16 +506,21 @@ export async function hrReminders(sql: Sql) {
                       least(extract(day from entry_date)::int, 28)) - current_date) between 0 and 14
      order by extract(month from entry_date), extract(day from entry_date)`;
   // Aufenthaltstitel und Arbeitserlaubnis getrennt, je 60 Tage vor Ablauf
-  const permits = await sql<{ id: string; name: string; residence_permit_until: string; kind: string }[]>`
+  const permitRows = await sql<
+    { id: string; name: string; residence_permit_until: string; kind: string; nationality: string | null }[]
+  >`
     select * from (
-      select e.id, e.first_name || ' ' || e.last_name as name, p.residence_permit_until::text, 'Aufenthaltstitel' as kind
+      select e.id, e.first_name || ' ' || e.last_name as name, p.residence_permit_until::text, 'Aufenthaltstitel' as kind,
+             p.nationality
         from app.employees e join app.employee_private p on p.employee_id = e.id
        where e.status = 'aktiv' and p.residence_permit_until is not null and p.residence_permit_until <= current_date + 60
       union all
-      select e.id, e.first_name || ' ' || e.last_name, p.work_permit_until::text, 'Arbeitserlaubnis'
+      select e.id, e.first_name || ' ' || e.last_name, p.work_permit_until::text, 'Arbeitserlaubnis', p.nationality
         from app.employees e join app.employee_private p on p.employee_id = e.id
        where e.status = 'aktiv' and p.work_permit_until is not null and p.work_permit_until <= current_date + 60) x
      order by residence_permit_until`;
+  // EU/EWR/Schweiz: alte Einträge (z. B. Import) lösen keine Warnung aus
+  const permits = permitRows.filter((r) => permitNeeded(r.nationality));
   return { birthdays, jubilees, permits };
 }
 

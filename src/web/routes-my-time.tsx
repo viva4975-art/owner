@@ -10,6 +10,7 @@ import { EmployeeCalendarView } from './pages-employee-calendar.js';
 import { employeeCalendarData } from './employee-calendar-data.js';
 import { holidayName } from '../domain/time/holidays.js';
 import { SiteOptions } from './site-options.js';
+import { canAccess } from './permissions.js';
 
 /*
  * Meine Zeiten (Büro, Objektleitung, Admin am PC): eigene Arbeitszeit ansehen, nachtragen und ändern.
@@ -88,6 +89,7 @@ export function registerMyTimeRoutes({ app, deps, page, back }: Ctx) {
           holiday={holidayName}
           canEdit={false}
           self
+          {...(canAccess(c.get('user').role, '/einsatzplanung') ? { planSites: c.get('sites') ?? null } : {})}
           base="/zeiterfassung/meine"
           confirmAction="/zeiterfassung/plan-als-ist"
           {...cal}

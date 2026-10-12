@@ -2596,3 +2596,6 @@ Testadresse.
   keins eingetragen. **Nur mit unterschriebenem Auftrag** (Scan oder Handy-Unterschrift, `signed_file_path`) – sonst kein
   Knopf, Hinweis „unterschriebener Auftrag fehlt“, und der Server lehnt ab (`setSubcontractStatus`). Kündigung des
   Nachunternehmers ist davon nicht betroffen. Test in `subcontractors.db.test.ts`.
+- 2026-10-12: **Meine Zeiten: Einsatz umplanen** (Ahmed): Klick auf einen eigenen Einsatz zeigt neben „Zeit ändern/eintragen“
+  auch „Nur diesen Tag umplanen“ (Umplanen / Vertretung / Ausfall) und „Serie bearbeiten“; danach zurück zu Meine Zeiten.
+  Nur für Rollen mit Zugriff auf die Einsatzplanung (Admin, Personal, Objektleitung – diese nur an eigenen Objekten).

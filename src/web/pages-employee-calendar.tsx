@@ -178,6 +178,8 @@ export const EmployeeCalendarView: FC<{
   self?: boolean;
   /** erfasste Zeiten direkt löschen (Papierkorb wie Fortytools; Admin/Personal) */
   canDeleteTime?: boolean;
+  /** Meine Zeiten: Einsätze an diesen Objekten darf der Benutzer umplanen (null = alle, undefined = keine) */
+  planSites?: string[] | null;
 }> = ({
   employeeId,
   view,
@@ -195,6 +197,7 @@ export const EmployeeCalendarView: FC<{
   head,
   self = false,
   canDeleteTime = false,
+  planSites,
 }) => {
   const calView = view === 'liste' ? 'monat' : view;
   const r = calRange(calView, date);
@@ -240,6 +243,13 @@ export const EmployeeCalendarView: FC<{
           'Andere Zeit eintragen',
           `/zeiterfassung/meine?datum=${s.date}&objekt=${s.plan.site_id}&von=${s.plan.start_time}&bis=${s.plan.end_time}&pause=${s.plan.break_minutes ?? 0}#form`,
         ]);
+      if (planSites === null || planSites?.includes(s.plan.site_id)) {
+        links.push([
+          'Nur diesen Tag umplanen',
+          `/einsatzplanung/${s.plan.id}/tag/${s.date}?zurueck=${encodeURIComponent(back)}`,
+        ]);
+        links.push(['Serie bearbeiten', `/einsatzplanung/${s.plan.id}?zurueck=${encodeURIComponent(back)}`]);
+      }
       return links;
     }
     if (canEdit) {

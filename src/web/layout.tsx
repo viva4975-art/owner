@@ -1336,6 +1336,38 @@ input[type=checkbox],input[type=radio]{accent-color:var(--brand)}
   .menu-top .top{position:static}
   .menu-top .burgerbtn{display:none}
 }
+/* Konzern-Kopf (Ahmed 12.10.: „bedienerfreundlicher, einfacher, professioneller wie bei einem Konzern“):
+   oben weiße Kopfzeile mit farbigem Logo, Suche und Benutzer, darunter die Bordeaux-Menüleiste (bleibt beim Scrollen
+   stehen). Grundfläche ruhig grau ohne Farbschimmer. */
+.top-logo{display:none}
+@media (min-width:1025px){
+  body.menu-top{display:flex;flex-direction:column;min-height:100vh}
+  .menu-top.shell .mainc{display:contents}
+  .menu-top .mainc>.top{order:1}
+  .menu-top .appside{order:2;top:0;min-height:46px;box-shadow:0 1px 0 rgba(0,0,0,.08)}
+  .menu-top .mainc>:not(.top){order:3}
+  .menu-top .side-logo{display:none}
+  .menu-top .appside nav.menu{padding:0 0 0 16px}
+  .menu-top .appside nav.menu a.item,.menu-top .appside nav.menu .grp>summary{min-height:46px;padding:0 12px;font-size:13.5px;font-weight:500;border-radius:0}
+  .menu-top .appside nav.menu a.item.on,.menu-top .appside nav.menu .grp.on>summary{background:rgba(0,0,0,.14);box-shadow:inset 0 -3px 0 #fff}
+  .menu-top .top{position:static;background:#fff;border-bottom:1px solid var(--line)}
+  .menu-top .top .in{height:64px;gap:24px;padding:0 20px}
+  .menu-top .top-logo{display:flex;align-items:center;flex:none}
+  .menu-top .top-logo img{height:38px;width:auto}
+  .menu-top .top .search{max-width:520px;margin:0 auto}
+}
+.shell .mainc,body.shell{background:#f3f4f6}
+.shell .mainc{background-image:none}
+/* „Neu anlegen“ als Knopf + Menü statt Auswahlliste */
+.newmenu{display:flex;gap:6px;align-items:center;margin-left:auto}
+.newmenu .newmore>summary{list-style:none;gap:4px}
+.newmenu .newmore>summary::-webkit-details-marker{display:none}
+.newmenu .newmore .drop{min-width:220px;max-height:60vh;overflow:auto}
+.eh-top{background:#fff}
+@media (min-width:1025px){.menu-top .dash-brand{display:none}}
+/* Sammelaktionen erst zeigen, wenn etwas markiert ist */
+main:not(:has(input[name=ids]:checked)) .bulkbar .btn{display:none}
+main:has(input[name=ids]:checked) .bulkbar .small.mut{display:none}
 @media (max-width:700px){
   .pagehead .newform{width:100%;flex-wrap:nowrap}
   .pagehead .newform select{flex:1 1 auto;min-width:120px;width:auto}
@@ -1644,9 +1676,21 @@ export const Layout: FC<{
                     />
                   </a>
                 ) : (
-                  <label for="burger" class="burgerbtn" aria-label="Menü">
-                    <Icon name="menu" />
-                  </label>
+                  <>
+                    <label for="burger" class="burgerbtn" aria-label="Menü">
+                      <Icon name="menu" />
+                    </label>
+                    {menuTop && (
+                      <a class="top-logo" href="/" aria-label="Viva-Deluxe – Übersicht">
+                        <img
+                          src="/static/logo.png"
+                          alt="Viva-Deluxe Gebäudereinigung GmbH"
+                          width="179"
+                          height="36"
+                        />
+                      </a>
+                    )}
+                  </>
                 )}
                 {search ? (
                   <form class="search" action="/suche" method="get" role="search">
@@ -1796,6 +1840,56 @@ export const AppSwitch: FC<{ active: AppMode; ownTime?: boolean }> = ({ active, 
   </nav>
 );
 
+/** „+ Objekt anlegen“ als Hauptknopf, weitere Arten im kleinen Menü daneben (statt Auswahlliste + „Anlegen“). */
+const NewMenu: FC<{
+  create: {
+    options: [string, string][];
+    selected?: string;
+    suffix?: string;
+    context?: Record<string, string>;
+  };
+}> = ({ create }) => {
+  const href = (v: string) => `/neu?${new URLSearchParams({ typ: v, ...(create.context ?? {}) }).toString()}`;
+  const main = create.options.find(([v]) => v === create.selected);
+  if (!main) {
+    // keine eindeutige Hauptaktion (Kunde, Objekt …): ein Knopf „+ Neu“ mit Auswahl
+    return (
+      <div class="newmenu">
+        <details class="dd newmore">
+          <summary class="btn" title={create.suffix ? `Neu anlegen ${create.suffix}` : 'Neu anlegen'}>
+            <Icon name="plus" /> Neu <Icon name="chevron" size={14} />
+          </summary>
+          <div class="drop right">
+            {create.options.map(([v, l]) => (
+              <a href={href(v)}>{l}</a>
+            ))}
+          </div>
+        </details>
+      </div>
+    );
+  }
+  const rest = create.options.filter(([v]) => v !== main[0]);
+  return (
+    <div class="newmenu">
+      <a class="btn" href={href(main[0])} title={create.suffix ? `${main[1]} ${create.suffix}` : undefined}>
+        <Icon name="plus" /> {main[1]} anlegen
+      </a>
+      {rest.length > 0 && (
+        <details class="dd newmore">
+          <summary class="btn sec" aria-label="Weitere anlegen" title="Weitere anlegen">
+            Weitere <Icon name="chevron" size={14} />
+          </summary>
+          <div class="drop right">
+            {rest.map(([v, l]) => (
+              <a href={href(v)}>{l}</a>
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
+  );
+};
+
 /** Seitentitel + „Neu anlegen: [Auswahl] Los“ wie Fortytools. */
 export const PageHead: FC<{
   title: string;
@@ -1826,25 +1920,7 @@ export const PageHead: FC<{
         {no && <span class="no">{no}</span>}
       </h1>
       {children}
-      {create && (
-        <form class="newform" action="/neu" method="get">
-          <label for="neu-typ">Neu anlegen</label>
-          <select id="neu-typ" name="typ">
-            {create.options.map(([v, l]) => (
-              <option value={v} selected={v === create.selected}>
-                {l}
-              </option>
-            ))}
-          </select>
-          {Object.entries(create.context ?? {}).map(([k, v]) => (
-            <input type="hidden" name={k} value={v} />
-          ))}
-          {create.suffix && <span class="mut small">{create.suffix}</span>}
-          <button class="btn">
-            <Icon name="plus" /> Anlegen
-          </button>
-        </form>
-      )}
+      {create && <NewMenu create={create} />}
     </div>
   </>
 );

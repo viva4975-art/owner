@@ -733,23 +733,24 @@ export const SiteList: FC<{
             </span>{' '}
             {filtered}
           </span>
-          <a class="btn sec sm" href={`/objekte/export.csv${exportQuery ? `?${exportQuery}` : ''}`}>
-            CSV-Export
-          </a>
-          <a
-            class="btn sec sm hide-m"
-            href={`/objekte/qr-druck${exportQuery ? `?${exportQuery}` : ''}`}
-            target="_blank"
-          >
-            QR-Codes drucken
-          </a>
-          <a
-            class="btn sec sm hide-m"
-            href="/benutzer"
-            title="Objektleitung je Benutzer mehreren Objekten zuordnen"
-          >
-            Objektleitungen zuordnen
-          </a>
+          <details class="dd">
+            <summary class="btn sec sm">
+              Weitere Aktionen <Icon name="chevron" size={14} />
+            </summary>
+            <div class="drop right">
+              <a href={`/objekte/export.csv${exportQuery ? `?${exportQuery}` : ''}`}>Liste als CSV (Excel)</a>
+              <a
+                href={`/objekte/qr-druck${exportQuery ? `?${exportQuery}` : ''}`}
+                target="_blank"
+                class="hide-m"
+              >
+                QR-Aushänge drucken
+              </a>
+              <a href="/benutzer" class="hide-m">
+                Objektleitungen zuordnen
+              </a>
+            </div>
+          </details>
         </form>
         <div class="letters">
           <a href={url({ buchstabe: null, seite: null })} class={filter.letter ? '' : 'on'}>
@@ -766,7 +767,7 @@ export const SiteList: FC<{
             id="sitebulk"
             method="post"
             action="/objekte/status"
-            class="actions"
+            class="actions bulkbar"
             style="margin:12px 0 0;gap:8px"
             onsubmit="var n=document.querySelectorAll('input[name=ids][form=sitebulk]:checked').length;if(!n){alert('Bitte zuerst Objekte markieren.');return false}return true"
           >

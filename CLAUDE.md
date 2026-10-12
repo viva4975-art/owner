@@ -2743,3 +2743,11 @@ Testadresse.
 - 2026-10-12: **Fund Entwürfe am Handy** (Ahmed, Screenshot): Durch die festen Spaltenbreiten blieb für „Empfänger“ am
   Handy nur ein Buchstabe Platz (Name lief senkrecht). Entwurfsliste ist unter 760 px jetzt eine Kartenliste je Entwurf
   (Häkchen, Datum, PDF/Löschen oben, Empfänger + Objekt + Leistungszeitraum, netto/brutto unten), PC unverändert.
+- 2026-10-12: **Konzern-Design** (Ahmed: „bedienerfreundlicher, einfacher, unkomplizierter, professioneller wie bei einem
+  Konzern“): Kopf wie in Konzern-Anwendungen – oben weiße Kopfzeile mit farbigem Logo, Suche, Meine Zeiten, Einstellungen,
+  Benutzer; darunter die Bordeaux-Menüleiste (bleibt beim Scrollen stehen, aktiver Bereich hervorgehoben). Grundfläche
+  ruhig grau ohne Rosa-Schimmer, Mitarbeiterkopf weiß. Startseite ohne doppeltes Logo (steht im Kopf; am Handy bleibt es).
+  **„Neu anlegen“** statt Auswahlliste + „Anlegen“: ein Hauptknopf „+ Objekt/Kunde/Rechnung … anlegen“ und „Weitere ▾“;
+  wo es keine eindeutige Hauptaktion gibt (Kunde, Objekt), ein Knopf „+ Neu ▾“ (`NewMenu` in `layout.tsx`, Links auf
+  `/neu?typ=…`). Objektliste: CSV, QR-Aushänge, Objektleitungen zuordnen unter „Weitere Aktionen ▾“; „Markierte
+  aktiv/inaktiv setzen“ erscheint erst, wenn etwas markiert ist (`.bulkbar`).

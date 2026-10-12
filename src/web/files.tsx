@@ -95,5 +95,5 @@ export const DocFoldAll: FC = () => (
   </span>
 );
 
-/** Kategorie standardmäßig offen, solange sie wenige Dateien hat (lange Listen zugeklappt). */
-export const docOpen = (n: number) => n > 0 && n <= 5;
+/** Dokument-Kategorien starten immer zugeklappt (Ahmed 12.10.); Sprungmarken öffnen das Ziel im Browser. */
+export const docOpen = (_n: number) => false;

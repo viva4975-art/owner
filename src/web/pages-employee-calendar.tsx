@@ -231,6 +231,13 @@ export const EmployeeCalendarView: FC<{
   const open = work.filter((s) => !s.entry && s.date < today);
   const pastPlanned = work.filter((s) => s.date <= today).reduce((a, s) => a + s.minutes, 0);
   const ist = workedMin + krank + urlaub;
+  // alle erfassten Zeiten im angezeigten Zeitraum (mit und ohne Einsatz) – für „Alle Zeiten löschen“
+  const delIds = [
+    ...new Set([
+      ...shifts.filter((s) => inScope(s.date) && s.entry).map((s) => s.entry!.id),
+      ...extra.filter((e) => inScope(e.work_date)).map((e) => e.id),
+    ]),
+  ];
   const max = Math.max(plannedMin, ist, 1);
 
   const linksFor = (s: PlannedShift) => {
@@ -690,6 +697,32 @@ export const EmployeeCalendarView: FC<{
               <span>{hm(ist + sonst)}</span>
               <span>{dec(ist + sonst)}</span>
             </div>
+            {canDeleteTime && delIds.length > 0 && (
+              <details style="margin-top:8px">
+                <summary class="small">Alle Zeiten dieses Zeitraums löschen ({delIds.length})</summary>
+                <form
+                  method="post"
+                  action="/zeiterfassung/loeschen"
+                  style="margin-top:6px"
+                  onsubmit={`return confirm('Alle ${delIds.length} erfassten Zeiten von ${rangeLabel} endgültig löschen?\\n\\nNur für falsche Importe/Testdaten – echte Arbeitszeiten 2 Jahre aufbewahren (§ 17 MiLoG).')`}
+                >
+                  {delIds.map((id) => (
+                    <input type="hidden" name="ids" value={id} />
+                  ))}
+                  <input type="hidden" name="zurueck" value={back} />
+                  <input
+                    name="reason"
+                    placeholder="Grund (freiwillig)"
+                    aria-label="Grund"
+                    style="width:100%;margin-bottom:6px"
+                  />
+                  <button class="btn sm danger">{delIds.length} Zeiten löschen</button>
+                  <div class="small mut" style="margin-top:4px">
+                    Einsätze bleiben, nur die erfassten Zeiten werden gelöscht (Stand im Löschprotokoll).
+                  </div>
+                </form>
+              </details>
+            )}
           </div>
           <div class="cmp">
             <h4>Plan / Ist</h4>

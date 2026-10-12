@@ -280,11 +280,7 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
           {SITE_DOC_CATEGORIES.map((k) => {
             const list = files.filter((f) => f.category === k.name);
             return (
-              <details
-                class="doc-cat card"
-                id={`kat-${k.name}`}
-                open={docOpen(list.length) || (k.required && !list.length)}
-              >
+              <details class="doc-cat card" id={`kat-${k.name}`} open={docOpen(list.length)}>
                 <summary>
                   <b>{k.name}</b> <span class="mut small">({list.length})</span>
                   {k.required &&

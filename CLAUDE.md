@@ -2650,4 +2650,9 @@ Testadresse.
   anteilig gekürzt (setzt eine entsprechende Vertragsklausel voraus). Beispiele: Eintritt 01.10. → 7,5 von 30; Eintritt
   15.03. mit 24 Tagen → 20 statt 18; Eintritt 01.07. → 20 statt 15. Urlaub beim Vorarbeitgeber (§ 6 BUrlG,
   Urlaubsbescheinigung) wird nicht automatisch abgezogen. Test in `days-per-week.db.test.ts`.
+- 2026-10-12: Dokumente (Mitarbeiter, Kunde, Objekt) starten **immer zugeklappt** (Ahmed); Sprungmarken/Upload-Rücksprung
+  öffnen weiter die Zielkategorie. **Mitarbeiter → Kalender & Zeiten: „Alle Zeiten dieses Zeitraums löschen (n)“** im Kasten
+  „Erfasst“ (Admin/Personal): löscht alle erfassten Zeiten des angezeigten Monats/der Woche/des Tages (mit und ohne
+  Einsatz) über das bestehende Löschen mit Löschprotokoll, Grund freiwillig, Rückfrage mit Anzahl; Einsätze bleiben.
+  **Rechtlich:** nur für falsche Importe/Testdaten – echte Arbeitszeiten 2 Jahre aufbewahren (§ 17 MiLoG).
 

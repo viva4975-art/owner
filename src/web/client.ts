@@ -193,6 +193,15 @@ export const CLIENT_JS = String.raw`
     if (!i.value) i.value = location.pathname + location.search;
   });
 
+  // ---- Sprungmarke auf zugeklapptes Element (z. B. #kat-Raumbuch, #hochladen) → aufklappen ----
+  function openHash() {
+    var id = decodeURIComponent(location.hash.slice(1));
+    var t = id && document.getElementById(id);
+    for (var el = t; el; el = el.parentElement) if (el.tagName === 'DETAILS') el.open = true;
+  }
+  openHash();
+  window.addEventListener('hashchange', openHash);
+
   // ---- Rückfrage per data-confirm (Knopf oder Link) ----
   // Capture-Phase: vor allen anderen Klick-Behandlungen; abgebrochen = kein Absenden.
   document.addEventListener('click', function (e) {

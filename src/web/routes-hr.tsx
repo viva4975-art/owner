@@ -19,7 +19,7 @@ import { OPTIONAL_PER_EMPLOYEE, setDocNotNeeded } from '../services/hr-required-
 import { requestsForEmployee } from '../services/sign-documents.js';
 import { archiveLink, listFiles } from '../services/uploads.js';
 import { type Ctx, UUID } from './app.js';
-import { FileArea } from './files.js';
+import { DocFoldAll, FileArea, docOpen } from './files.js';
 import { centsToInput, str } from './forms.js';
 import { PageHead, euro, anz } from './layout.js';
 import { EmployeeCalendarView } from './pages-employee-calendar.js';
@@ -147,10 +147,24 @@ export function registerHrRoutes(ctx: Ctx) {
                   unverändert abrufbar.
                 </p>
                 {groups.length === 0 && <div class="empty">Noch keine Dokumente.</div>}
+                {groups.length > 1 && (
+                  <div style="margin:-2px 0 8px">
+                    <DocFoldAll />
+                  </div>
+                )}
                 {groups.map(({ k, now, old }) => (
-                  <>
-                    <h4 style="margin:14px 0 4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                      {k}
+                  <details
+                    class="doc-cat"
+                    open={docOpen(now.length) || (k === category && !!c.req.query('kategorie'))}
+                  >
+                    <summary>
+                      <b>{k}</b>{' '}
+                      <span class="mut small">
+                        ({now.length}
+                        {old.length ? ` + ${old.length} im Archiv` : ''})
+                      </span>
+                    </summary>
+                    <div style="margin:4px 0">
                       {now.length > 1 && (
                         <form
                           method="post"
@@ -167,7 +181,7 @@ export function registerHrRoutes(ctx: Ctx) {
                           </button>
                         </form>
                       )}
-                    </h4>
+                    </div>
                     {now.length > 0 ? (
                       <FileArea
                         link={{ type: 'employee', id: e.id }}
@@ -201,7 +215,7 @@ export function registerHrRoutes(ctx: Ctx) {
                         />
                       </details>
                     )}
-                  </>
+                  </details>
                 ))}
               </div>
               <div class="card" id="hochladen">

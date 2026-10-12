@@ -16,7 +16,7 @@ import {
   packageInfo,
   saveFolderInfo,
 } from '../services/site-folder.js';
-import { FileArea } from './files.js';
+import { DocFoldAll, FileArea, docOpen } from './files.js';
 import { zipHref } from './routes-files.js';
 import { Icon } from './icons.js';
 import { dateDe } from './layout.js';
@@ -274,19 +274,26 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
               Alle Pflichtdokumente (Raumbuch, Leistungsverzeichnis, Revierplan) sind vorhanden.
             </div>
           )}
+          <div style="margin:0 0 8px">
+            <DocFoldAll />
+          </div>
           {SITE_DOC_CATEGORIES.map((k) => {
             const list = files.filter((f) => f.category === k.name);
             return (
-              <section class="doc-cat" id={`kat-${k.name}`}>
-                <h3 class="panel-title">
-                  {k.name}{' '}
+              <details
+                class="doc-cat card"
+                id={`kat-${k.name}`}
+                open={docOpen(list.length) || (k.required && !list.length)}
+              >
+                <summary>
+                  <b>{k.name}</b> <span class="mut small">({list.length})</span>
                   {k.required &&
                     (list.length ? (
                       <span class="tag ok">vorhanden</span>
                     ) : (
                       <span class="tag err">Pflicht – fehlt</span>
                     ))}
-                </h3>
+                </summary>
                 <p class="small mut" style="margin:0 0 6px">
                   {k.hint}
                 </p>
@@ -298,19 +305,21 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                   hint="PDF, Excel, Bilder – auch große Dateien"
                   maxBytes={env.UPLOAD_MAX_BYTES}
                 />
-              </section>
+              </details>
             );
           })}
           {other.length > 0 && (
-            <section class="doc-cat">
-              <h3 class="panel-title">Weitere Dateien</h3>
+            <details class="doc-cat card" open={docOpen(other.length)}>
+              <summary>
+                <b>Weitere Dateien</b> <span class="mut small">({other.length})</span>
+              </summary>
               <FileArea
                 link={{ type: 'site', id: s.id }}
                 files={other}
                 maxBytes={env.UPLOAD_MAX_BYTES}
                 listOnly
               />
-            </section>
+            </details>
           )}
           <p class="small mut">
             Dateien werden unveränderbar abgelegt (Prüfsumme SHA-256). Neue Fassung = neue Datei.

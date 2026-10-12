@@ -74,3 +74,26 @@ export const FileArea: FC<{
     <script dangerouslySetInnerHTML={{ __html: UPLOADER_JS }} />
   </div>
 );
+
+/** Knöpfe „Alle aufklappen / Alle zuklappen“ für die Dokument-Kategorien (details.doc-cat) einer Seite. */
+export const DocFoldAll: FC = () => (
+  <span class="doc-fold">
+    <button
+      type="button"
+      class="btn sm ghost"
+      onclick="document.querySelectorAll('details.doc-cat').forEach(function(d){d.open=true})"
+    >
+      Alle aufklappen
+    </button>
+    <button
+      type="button"
+      class="btn sm ghost"
+      onclick="document.querySelectorAll('details.doc-cat').forEach(function(d){d.open=false})"
+    >
+      Alle zuklappen
+    </button>
+  </span>
+);
+
+/** Kategorie standardmäßig offen, solange sie wenige Dateien hat (lange Listen zugeklappt). */
+export const docOpen = (n: number) => n > 0 && n <= 5;

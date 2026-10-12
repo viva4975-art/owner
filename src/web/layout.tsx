@@ -987,6 +987,10 @@ body.shell{background:#f6f0f2;background-image:radial-gradient(70% 45% at 100% 0
 .form-card h3{font-size:22px;margin:22px 0 10px;color:var(--ink)}
 .form-card h3:first-of-type{margin-top:4px}
 /* Runde 13: Checkliste Personalakte */
+details.doc-cat{margin:0 0 10px}
+details.doc-cat>summary{cursor:pointer;padding:4px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+details.doc-cat>summary .tag,details.doc-cat>summary .badge{margin-left:2px}
+.doc-fold{display:inline-flex;gap:6px;flex-wrap:wrap}
 .doc-check{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
 .doc-check .dc{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:8px;color:var(--ink);text-decoration:none;background:#fff}
 .doc-check .dc:hover{border-color:var(--line-2);text-decoration:none}

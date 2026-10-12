@@ -2599,3 +2599,7 @@ Testadresse.
 - 2026-10-12: **Meine Zeiten: Einsatz umplanen** (Ahmed): Klick auf einen eigenen Einsatz zeigt neben „Zeit ändern/eintragen“
   auch „Nur diesen Tag umplanen“ (Umplanen / Vertretung / Ausfall) und „Serie bearbeiten“; danach zurück zu Meine Zeiten.
   Nur für Rollen mit Zugriff auf die Einsatzplanung (Admin, Personal, Objektleitung – diese nur an eigenen Objekten).
+- 2026-10-12: **Dokumente auf- und zuklappen** (Ahmed): Kategorien der Dokumente bei Mitarbeiter, Objekt und Kunde sind
+  aufklappbar (Zähler im Kopf, beim Mitarbeiter „+ n im Archiv“), oben „Alle aufklappen / Alle zuklappen“. Offen sind
+  Kategorien mit 1–5 Dateien, lange Listen und leere sind zu (am Objekt bleiben fehlende Pflichtdokumente offen).
+  Sprungmarken (#kat-…, #hochladen) klappen das Ziel automatisch auf (`client.ts`).

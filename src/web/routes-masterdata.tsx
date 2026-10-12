@@ -89,7 +89,7 @@ import { listTemplates, saveTemplate } from '../services/employees.js';
 import { uploadConfig, zipHref } from './routes-files.js';
 import { filteredSites, managers, parseSiteFilter, sitesCsv, SITE_PAGE_SIZE } from '../services/site-list.js';
 import { type AppEnv, type Ctx, UUID, assertSite, taskViewerOf } from './app.js';
-import { FileArea } from './files.js';
+import { DocFoldAll, FileArea, docOpen } from './files.js';
 import { parseQuantity } from '../domain/money/money.js';
 import { arr, str } from './forms.js';
 import { FORMAT_LABEL, PageHead, dateDe, euro, anz } from './layout.js';
@@ -1262,11 +1262,12 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                 <a class="btn sm sec" href={`/brief?an=kunde&id=${cust.id}`}>
                   Freien Brief schreiben
                 </a>
+                <DocFoldAll />
               </div>
               {CUSTOMER_DOC_CATEGORIES.map((k) => {
                 const list = files.filter((f) => f.category === k.name);
                 return (
-                  <details class="doc-cat card" open={list.length > 0}>
+                  <details class="doc-cat card" open={docOpen(list.length)}>
                     <summary>
                       <b>{k.name}</b> <span class="mut small">({list.length})</span>
                     </summary>
@@ -1284,7 +1285,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                 );
               })}
               {other.length > 0 && (
-                <details class="doc-cat card" open>
+                <details class="doc-cat card" open={docOpen(other.length)}>
                   <summary>
                     <b>Weitere Dateien</b> <span class="mut small">({other.length})</span>
                   </summary>

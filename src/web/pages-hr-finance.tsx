@@ -594,6 +594,16 @@ export const EmployeeOverview: FC<{
                   {' '}
                   (bei 5-Tage-Woche{Number(e.days_per_week ?? 5) !== 5 ? ', wird anteilig umgerechnet' : ''})
                 </span>
+                {leave && leave.entitlement !== Number(e.annual_leave_days) && (
+                  <div class="small">
+                    {leave.year}: <b>{num(leave.entitlement)} Tage</b>
+                    {e.entry_date.slice(0, 4) === String(leave.year)
+                      ? ` (anteilig ab Eintritt ${e.entry_date.split('-').reverse().join('.')})`
+                      : e.exit_date?.slice(0, 4) === String(leave.year)
+                        ? ` (anteilig bis Austritt ${e.exit_date.split('-').reverse().join('.')})`
+                        : ' (anteilig)'}
+                  </div>
+                )}
               </dd>
               {wage && (
                 <>

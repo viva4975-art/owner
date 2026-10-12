@@ -335,8 +335,8 @@ describe.skipIf(!available)('Zeiterfassung, Einsatzplanung, Urlaub (Datenbank)',
     expect(bal.carried).toBe(26); // Resturlaub 2026 (30 − 4) wird übertragen, nutzbar bis 31.03.2027
     expect(bal.rest).toBe(30 + 26 - 4);
     expect((await listAbsences(sql, { employeeId: emp }))[0]!.days).toBe(8);
-    // anteiliger Anspruch bei Eintritt 01.07.
-    expect((await leaveBalance(sql, other, 2026)).entitlement).toBe(15);
+    // Eintritt 01.07.: Wartezeit endet am 31.12. → voller gesetzlicher Mindesturlaub (20), Mehrurlaub anteilig (30 × 6/12 = 15)
+    expect((await leaveBalance(sql, other, 2026)).entitlement).toBe(20);
     // geplanter Einsatz im Urlaub ist markiert
     await saveShiftPlan(
       sql,

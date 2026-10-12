@@ -583,6 +583,28 @@ async function baseBalance(sql: Sql, employeeId: string, year: number, countFrom
     }
     entitlement = Math.round(((full * factorSum) / 12) * 2) / 2;
   }
+  // Gesetzlicher Mindesturlaub (§ 3 BUrlG: 4 Wochen = 20 Tage bei 5-Tage-Woche) wird nur gekürzt, wenn § 5 Abs. 1
+  // BUrlG es erlaubt: Wartezeit (6 Monate, § 4) im Jahr nicht erfüllt (Eintritt nach dem 30.06.) oder Austritt in der
+  // ersten Jahreshälfte. Sonst steht der volle Mindesturlaub zu – nur der vertragliche Mehrurlaub wird anteilig gekürzt.
+  if (from <= to && entitlement < full) {
+    const em = new Date(`${e.entry_date}T12:00:00Z`);
+    em.setUTCMonth(em.getUTCMonth() + 6);
+    const waitingEnd = addDays(em.toISOString().slice(0, 10), -1);
+    const leavesFirstHalf = !!e.exit_date && e.exit_date <= `${year}-06-30` && e.exit_date >= yStart0;
+    if (waitingEnd <= to && waitingEnd <= yEnd && !leavesFirstHalf) {
+      let w = 0;
+      let n = 0;
+      for (const g of segs) {
+        const len =
+          Math.round((Date.parse(`${g.to}T12:00:00Z`) - Date.parse(`${g.from}T12:00:00Z`)) / 86_400_000) + 1;
+        w += g.days * len;
+        n += len;
+      }
+      const avgDays = n ? w / n : 5;
+      const legalMin = Math.round(4 * avgDays * 2) / 2;
+      entitlement = Math.max(entitlement, Math.min(legalMin, full));
+    }
+  }
   const yStart = countFrom && countFrom > yStart0 ? countFrom : yStart0;
   if (yStart > yEnd) return { entitlement, taken: 0, requested: 0, takenQ1: 0 };
   const list = await listAbsences(sql, { employeeId, from: yStart, to: yEnd });

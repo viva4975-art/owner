@@ -34,4 +34,18 @@ describe.skipIf(!available)('Arbeitstage pro Woche: Urlaub anteilig', () => {
     expect(await leaveDaysOf(sql, emp, '2026-11-09', '2026-11-15', false)).toBe(3);
     expect(await leaveDaysOf(sql, emp, '2026-10-05', '2026-10-11', false)).toBe(5);
   });
+
+  it('Eintritt/Austritt: anteilig, gesetzlicher Mindesturlaub nach § 5 BUrlG bleibt', async () => {
+    const mk = async (no: string, entry: string, exit: string | null, days: number) => {
+      const id = randomUUID();
+      await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, exit_date, employment_type, weekly_hours, annual_leave_days)
+                values (${id}, ${no}, 'Ein', 'Tritt', ${entry}, ${exit}, 'vollzeit', 40, ${days})`;
+      return (await leaveBalance(sql, id, 2026)).entitlement;
+    };
+    expect(await mk('9881', '2026-10-01', null, 30)).toBe(7.5); // Wartezeit im Jahr nicht erfüllt → nur anteilig
+    expect(await mk('9882', '2026-03-01', null, 30)).toBe(25); // 10/12 von 30
+    expect(await mk('9883', '2026-03-15', null, 24)).toBe(20); // 9/12 von 24 = 18 → Mindesturlaub 20
+    expect(await mk('9884', '2020-01-01', '2026-05-31', 24)).toBe(10); // Austritt 1. Halbjahr → anteilig
+    expect(await mk('9885', '2020-01-01', '2026-08-31', 24)).toBe(20); // Austritt 2. Halbjahr → Mindesturlaub
+  });
 });

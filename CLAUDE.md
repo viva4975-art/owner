@@ -2642,4 +2642,12 @@ Testadresse.
 - 2026-10-12: Personalakte: „Arbeitskleidung“ in der häufigen Hochlade-Auswahl. **Aufenthaltstitel** (Ahmed: Kopie liegt
   meist in den Personalunterlagen): Fehlende Unterlagen melden nur noch „gültig bis fehlt“ bzw. „abgelaufen“ aus den
   Stammdaten, keine fehlende Kopie mehr.
+- 2026-10-12: **Urlaubsanspruch bei Eintritt/Austritt** (Ahmed: „muss auf Eintritt gekürzt werden“): wurde im Urlaubskonto
+  schon anteilig gerechnet (volle Beschäftigungsmonate ÷ 12), stand aber in den Stammdaten nur als Jahreswert – jetzt dort
+  zusätzlich „2026: x Tage (anteilig ab Eintritt …)“. **Rechtlich neu eingebaut (§ 5 BUrlG):** gekürzt wird nur, wenn die
+  Wartezeit (6 Monate) im Jahr nicht erfüllt ist (Eintritt nach dem 30.06.) oder bei Austritt in der ersten Jahreshälfte.
+  Sonst bleibt mindestens der gesetzliche Mindesturlaub (4 Wochen = 20 Tage bei 5-Tage-Woche); nur der Mehrurlaub wird
+  anteilig gekürzt (setzt eine entsprechende Vertragsklausel voraus). Beispiele: Eintritt 01.10. → 7,5 von 30; Eintritt
+  15.03. mit 24 Tagen → 20 statt 18; Eintritt 01.07. → 20 statt 15. Urlaub beim Vorarbeitgeber (§ 6 BUrlG,
+  Urlaubsbescheinigung) wird nicht automatisch abgezogen. Test in `days-per-week.db.test.ts`.
 

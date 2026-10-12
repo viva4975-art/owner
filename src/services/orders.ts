@@ -630,6 +630,65 @@ export async function saveWorkReport(sql: Sql, id: string, input: WorkReportInpu
 }
 
 /**
+ * Arbeitsschein kopieren (Ahmed 12.10.: „für ein anderes oder selbes Objekt“): neuer Entwurf mit Datum, Zeiten,
+ * Mitarbeitenden, Arbeiten, Material, Bemerkungen und Positionen. Leistungen aus dem Katalog bleiben nur am selben
+ * Objekt verknüpft (an einem anderen Objekt: freier Text, ohne Preis); Auftrag nur am selben Objekt. Mehrtägige
+ * Scheine verschieben die Datumsangaben der Stundenzeilen mit. Unterschrift, Fotos und Abrechnung werden nicht übernommen.
+ * Feste ID je Formular → doppelt absenden legt nichts doppelt an.
+ */
+export async function copyWorkReport(
+  sql: Sql,
+  srcId: string,
+  newId: string,
+  p: { siteId: string; workDate: string },
+  actor: string,
+): Promise<string> {
+  const [exists] = await sql`select 1 from app.work_reports where id = ${newId}`;
+  if (exists) return newId;
+  const src = await getWorkReport(sql, srcId);
+  if (!src) throw new BusinessError('Arbeitsschein nicht gefunden');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.workDate)) throw new BusinessError('Datum ungültig');
+  const w = src.report;
+  const same = p.siteId === w.site_id;
+  const dayMs = 86_400_000;
+  const shift = Math.round((Date.parse(p.workDate) - Date.parse(w.work_date)) / dayMs);
+  const move = (d: string | null) =>
+    d ? new Date(Date.parse(d) + shift * dayMs).toISOString().slice(0, 10) : null;
+  await saveWorkReport(
+    sql,
+    newId,
+    {
+      orderId: same ? w.order_id : null,
+      siteId: p.siteId,
+      workDate: p.workDate,
+      workDateTo: move(w.work_date_to),
+      startTime: w.start_time,
+      endTime: w.end_time,
+      employeeIds: w.employee_ids,
+      description: w.description,
+      materials: w.materials,
+      remarks: w.remarks,
+      lines: src.lines.map((l) => ({
+        description: l.description,
+        quantity: l.quantity_milli as Quantity,
+        unitCode: l.unit_code,
+        serviceId: same ? l.service_id : null,
+        person: l.person,
+        lineDate: move(l.line_date),
+        timeFrom: l.time_from,
+        timeTo: l.time_to,
+        breakMinutes: l.break_minutes,
+      })),
+      expectedVersion: null,
+    },
+    actor,
+  );
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${actor}, 'copy', 'work_report', ${newId}, ${sql.json({ from: srcId, number: w.number })})`;
+  return newId;
+}
+
+/**
  * Verknüpfung eines abgeschlossenen Scheins zu einem Rechnungs-ENTWURF lösen (Anhang-Verweis im Entwurf entfällt,
  * Datei bleibt im Archiv). Ausgestellte Rechnung → Fehler (erst stornieren).
  */

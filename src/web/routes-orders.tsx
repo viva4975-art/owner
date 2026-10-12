@@ -18,6 +18,7 @@ import {
   closeWithoutSignature,
   deleteWorkReport,
   reopenWorkReport,
+  copyWorkReport,
   setWorkReportDone,
   executionNotes,
   getOrder,
@@ -292,6 +293,41 @@ export const CustomerOrders: FC<{ customerId: string; rows: OrderRow[]; status: 
     </>
   );
 };
+
+/** Arbeitsschein kopieren – für dasselbe oder ein anderes Objekt (neuer Entwurf). */
+const CopyWorkReport: FC<{
+  id: string;
+  siteId: string;
+  sites: Parameters<typeof SiteOptions>[0]['sites'];
+}> = ({ id, siteId, sites }) => (
+  <details class="inline-det">
+    <summary class="btn sec">
+      <Icon name="copy" /> Kopieren
+    </summary>
+    <form
+      method="post"
+      action={`/arbeitsscheine/${id}/kopieren`}
+      class="card"
+      style="margin-top:6px;max-width:520px"
+    >
+      <input type="hidden" name="neu" value={randomUUID()} />
+      <p class="small mut" style="margin-top:0">
+        Neuer Entwurf mit Zeiten, Mitarbeitenden, Arbeiten und Positionen. Unterschrift, Fotos und Abrechnung
+        werden nicht übernommen. An einem anderen Objekt werden Katalog-Leistungen zu freiem Text (ohne
+        Preis).
+      </p>
+      <label for={`kop-objekt-${id}`}>Objekt</label>
+      <select id={`kop-objekt-${id}`} name="objekt" required>
+        <SiteOptions sites={sites} selected={siteId} />
+      </select>
+      <label for={`kop-datum-${id}`}>Datum</label>
+      <input id={`kop-datum-${id}`} type="date" name="datum" value={todayBerlin()} required />
+      <div class="actions">
+        <button class="btn">Kopie anlegen</button>
+      </div>
+    </form>
+  </details>
+);
 
 export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
   const { sql, env } = deps;
@@ -978,6 +1014,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                 </button>
               </form>
             )}
+            <CopyWorkReport id={id} siteId={w.site_id} sites={sites} />
             {!w.invoice_id && !w.cancelled_at && !w.done_at && (
               <details class="inline-det">
                 <summary class="btn sec">Als erledigt markieren</summary>
@@ -1543,6 +1580,10 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                       </a>
                     </div>
                   </div>
+                  <div class="card">
+                    <h3>Kopieren</h3>
+                    <CopyWorkReport id={id} siteId={w.site_id} sites={sites} />
+                  </div>
                   <form
                     method="post"
                     action={`/arbeitsscheine/${id}/loeschen`}
@@ -1671,6 +1712,32 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
       throw e;
     }
     return back(c, '/arbeitsscheine', { ok: `Arbeitsschein ${cur.report.number} gelöscht.` });
+  });
+
+  app.post(`/arbeitsscheine/:id{${UUID}}/kopieren`, async (c) => {
+    const id = c.req.param('id');
+    const cur = await getWorkReport(sql, id);
+    if (!cur) return c.redirect('/arbeitsscheine');
+    assertSite(c, cur.report.site_id);
+    const b = await c.req.parseBody({ all: true });
+    const siteId = str(b, 'objekt') ?? cur.report.site_id;
+    assertSite(c, siteId);
+    const newId = /^[0-9a-f-]{36}$/.test(str(b, 'neu') ?? '') ? str(b, 'neu')! : randomUUID();
+    try {
+      await copyWorkReport(
+        sql,
+        id,
+        newId,
+        { siteId, workDate: str(b, 'datum') ?? todayBerlin() },
+        c.get('actor'),
+      );
+    } catch (e) {
+      if (e instanceof BusinessError) return back(c, `/arbeitsscheine/${id}`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/arbeitsscheine/${newId}`, {
+      ok: `Kopie von Arbeitsschein ${cur.report.number} angelegt – bitte prüfen und speichern bzw. abschließen.`,
+    });
   });
 
   app.post(`/arbeitsscheine/:id{${UUID}}/wieder-bearbeiten`, async (c) => {

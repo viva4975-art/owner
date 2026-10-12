@@ -7,6 +7,7 @@ import { saveOffer, setOfferStatus } from './offers.js';
 import {
   cancelWorkReport,
   closeWithoutSignature,
+  copyWorkReport,
   deleteWorkReport,
   getOrder,
   getWorkReport,
@@ -283,5 +284,49 @@ describe.skipIf(!available)('Aufträge und Arbeitsscheine', () => {
     await expect(sql`update app.work_reports set remarks = 'x' where id = ${id}`).rejects.toThrow(
       /storniert/,
     );
+  });
+
+  it('Arbeitsschein kopieren: selbes Objekt mit Katalog-Leistung, anderes Objekt ohne; mehrtägig verschoben; idempotent', async () => {
+    const [svc] = await sql<
+      { id: string }[]
+    >`select id from app.site_services where site_id = ${DEMO.siteSchool} limit 1`;
+    const src = randomUUID();
+    await saveWorkReport(
+      sql,
+      src,
+      report({
+        workDate: '2026-09-01',
+        workDateTo: '2026-09-02',
+        lines: [
+          { description: '', quantity: parseQuantity('1'), unitCode: 'LS', serviceId: svc!.id },
+          {
+            description: 'Regie',
+            quantity: parseQuantity('2'),
+            unitCode: 'HUR',
+            person: 'Max',
+            lineDate: '2026-09-02',
+          },
+        ],
+      }),
+      'test',
+    );
+    const same = randomUUID();
+    await copyWorkReport(sql, src, same, { siteId: DEMO.siteSchool, workDate: '2026-10-05' }, 'test');
+    const a = (await getWorkReport(sql, same))!;
+    expect([a.report.status, a.report.work_date, a.report.work_date_to]).toEqual([
+      'entwurf',
+      '2026-10-05',
+      '2026-10-06',
+    ]);
+    expect(a.lines[0]!.service_id).toBe(svc!.id);
+    expect(a.lines[1]!.line_date).toBe('2026-10-06');
+    expect(a.report.number).not.toBe((await getWorkReport(sql, src))!.report.number);
+    const other = randomUUID();
+    await copyWorkReport(sql, src, other, { siteId: DEMO.siteHq, workDate: '2026-10-05' }, 'test');
+    await copyWorkReport(sql, src, other, { siteId: DEMO.siteHq, workDate: '2026-10-05' }, 'test');
+    const b = (await getWorkReport(sql, other))!;
+    expect([b.report.site_id, b.report.customer_id]).toEqual([DEMO.siteHq, DEMO.company]);
+    expect([b.lines[0]!.service_id, b.lines[0]!.unit_price_cents]).toEqual([null, null]);
+    expect(b.lines[0]!.description).not.toBe('');
   });
 });

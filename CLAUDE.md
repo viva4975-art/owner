@@ -2584,3 +2584,9 @@ Testadresse.
   Sportzentrum): Vorschau fragt je Gebäude das Objekt desselben Kunden ab (Vorschlag über den Objektnamen, jedes Objekt nur
   einmal vorgeschlagen, sonst „nicht übernehmen“); je Objekt werden nur dessen Räume übernommen, Etage ohne Gebäudenamen,
   Raumbuch-PDF je Objekt. Fehlt ein Objekt, vorher beim Kunden anlegen. `suggestBuildingSites`, `analyzeRooms(…, { building })`.
+- 2026-10-12: **Arbeitsschein kopieren** (Ahmed: „für ein anderes oder selbes Objekt“): Knopf „Kopieren“ am Arbeitsschein
+  (Entwurf und abgeschlossen) → Objekt (vorbelegt: dasselbe) + Datum → neuer Entwurf mit eigener Nummer AS-JJJJ-NNNN, Zeiten,
+  Mitarbeitenden, Arbeiten, Material, Bemerkungen und Positionen; mehrtägige Scheine und Stundenzeilen-Daten werden mit
+  verschoben. Am selben Objekt bleiben Katalog-Leistungen (Preis) und Auftrag verknüpft, an einem anderen Objekt werden sie
+  zu freiem Text ohne Preis. Unterschrift, Fotos, Abrechnung/Erledigt werden nicht übernommen. Feste ID je Formular,
+  Protokoll `copy`. `copyWorkReport` in `orders.ts`, Test in `orders.db.test.ts`.

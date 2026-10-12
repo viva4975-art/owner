@@ -2590,3 +2590,9 @@ Testadresse.
   verschoben. Am selben Objekt bleiben Katalog-Leistungen (Preis) und Auftrag verknüpft, an einem anderen Objekt werden sie
   zu freiem Text ohne Preis. Unterschrift, Fotos, Abrechnung/Erledigt werden nicht übernommen. Feste ID je Formular,
   Protokoll `copy`. `copyWorkReport` in `orders.ts`, Test in `orders.db.test.ts`.
+- 2026-10-12: **NU-Bestellung als erledigt markieren** (Ahmed: „unter Bestellungen komplett erledigt, außer wenn Unterschrift
+  fehlt“): In der Bestellliste bei erteilten NU-Bestellungen Knopf „✓ erledigt“ (Rückfrage, bleibt auf der Liste mit
+  gleichem Filter), in der Bestellung „✓ Als erledigt markieren“ (bisher „Beenden“). Status → beendet, Ende = heute, falls
+  keins eingetragen. **Nur mit unterschriebenem Auftrag** (Scan oder Handy-Unterschrift, `signed_file_path`) – sonst kein
+  Knopf, Hinweis „unterschriebener Auftrag fehlt“, und der Server lehnt ab (`setSubcontractStatus`). Kündigung des
+  Nachunternehmers ist davon nicht betroffen. Test in `subcontractors.db.test.ts`.

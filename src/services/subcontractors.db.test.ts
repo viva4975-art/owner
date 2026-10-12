@@ -276,4 +276,49 @@ describe.skipIf(!available)('Nachunternehmer', () => {
       select details from app.audit_log where entity = 'subcontract' and entity_id = ${id} and action = 'status'`;
     expect(log!.details.nachweise_fehlen?.length).toBeGreaterThan(0);
   });
+
+  it('Erledigt (beendet) nur mit unterschriebenem Auftrag (Ahmed 12.10.)', async () => {
+    const nu3 = randomUUID();
+    await saveSupplier(
+      sql,
+      nu3,
+      {
+        supplier_no: '70178',
+        name: 'Erledigt GmbH',
+        kind: 'nachunternehmer',
+        legal_form: 'gmbh',
+        payment_terms_days: '30',
+        active: 'on',
+      },
+      null,
+      't',
+    );
+    const id = randomUUID();
+    await saveSubcontract(
+      sql,
+      id,
+      {
+        supplierId: nu3,
+        siteId: DEMO.siteSchool,
+        serviceKind: 'Grundreinigung',
+        frequency: 'einmalig',
+        billing: 'pauschale_monat',
+        priceCents: 90000n,
+        maxHours: null,
+        validFrom: '2026-09-01',
+        validTo: null,
+        description: 'einmalig',
+        note: null,
+      },
+      't',
+    );
+    await sql`update app.subcontracts set status = 'erteilt' where id = ${id}`; // Nachweise hier egal
+    await expect(setSubcontractStatus(sql, id, 'beendet', 't')).rejects.toThrow(
+      /unterschriebener Auftrag fehlt/,
+    );
+    await sql`update app.subcontracts set signed_file_path = 'x/scan.pdf' where id = ${id}`;
+    await setSubcontractStatus(sql, id, 'beendet', 't');
+    const [r] = await sql<{ status: string }[]>`select status from app.subcontracts where id = ${id}`;
+    expect(r!.status).toBe('beendet');
+  });
 });

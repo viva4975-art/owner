@@ -632,6 +632,11 @@ export async function setSubcontractStatus(
   };
   if (!allowed[sc.status]!.includes(status))
     throw new BusinessError(`Von „${SC_STATUS[sc.status]}“ nicht möglich`);
+  // Erledigt/beendet nur mit unterschriebenem Auftrag (Scan oder Handy-Unterschrift) – Ahmed 12.10.
+  if (status === 'beendet' && !sc.signed_file_path)
+    throw new BusinessError(
+      `Auftrag ${sc.number}: unterschriebener Auftrag fehlt – erst Scan hochladen oder am Handy unterschreiben lassen`,
+    );
   // Erteilen erst gesperrt, wenn weniger als die Hälfte der Pflicht-Nachweise gültig ist (Ahmed 09.10.);
   // fehlende werden im Protokoll vermerkt.
   let missing: string[] = [];

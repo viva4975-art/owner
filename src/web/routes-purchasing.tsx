@@ -368,6 +368,8 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       ongoing: boolean;
       /** erteilte NU-Bestellung ohne unterschriebenen Auftrag (Scan oder Handy-Unterschrift) */
       unsigned: boolean;
+      /** erteilte NU-Bestellung mit Unterschrift → „erledigt“ möglich */
+      canFinish: boolean;
       net: bigint;
       per: string;
       phase: 'erledigen' | 'laufend' | 'abgeschlossen' | 'storniert';
@@ -417,6 +419,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         to: o.delivery_date,
         ongoing: false,
         unsigned: false,
+        canFinish: false,
         net: o.net_cents,
         per: '',
         // geliefert, aber noch keine Eingangsrechnung erfasst → bleibt „zu erledigen“
@@ -440,6 +443,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         // laufend = regelmäßige (monatliche/wöchentliche) Bestellung; jährlich usw. = nach Ausführung (Ahmed 09.10.)
         ongoing: !sc.valid_to && isRecurringOrder(sc.frequency),
         unsigned: sc.status === 'erteilt' && !sc.signed_file_path,
+        canFinish: sc.status === 'erteilt' && !!sc.signed_file_path,
         net: sc.current_price_cents,
         per: PER[sc.billing] ?? '',
         phase: SC_PHASE[sc.status] ?? 'laufend',
@@ -598,12 +602,40 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                     unterschriebener Auftrag fehlt
                   </span>
                 )}
+                {r.canFinish && (
+                  <button
+                    type="button"
+                    class="btn sm sec"
+                    style="margin-top:4px"
+                    title="Auftrag komplett erledigt (beendet)"
+                    onclick={`event.preventDefault();event.stopPropagation();if(confirm(${JSON.stringify(`Auftrag ${r.number} als komplett erledigt markieren?`)}))document.getElementById('fin-${r.id}').submit()`}
+                  >
+                    ✓ erledigt
+                  </button>
+                )}
               </span>
               <span>{billCell(r)}</span>
             </a>
           ))}
           {!rows.length && <div class="bs-tr empty">Keine Bestellungen in dieser Ansicht.</div>}
         </div>
+        {rows
+          .filter((r) => r.canFinish)
+          .map((r) => (
+            <form
+              id={`fin-${r.id}`}
+              method="post"
+              action={`/nachunternehmer/auftraege/${r.id}/status`}
+              hidden
+            >
+              <input type="hidden" name="status" value="beendet" />
+              <input
+                type="hidden"
+                name="zurueck"
+                value={c.req.url.slice(c.req.url.indexOf('/bestellungen'))}
+              />
+            </form>
+          ))}
       </div>,
     );
   });

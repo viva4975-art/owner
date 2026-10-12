@@ -1665,18 +1665,23 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                   </button>
                 </form>
               )}
-              {sc.status === 'erteilt' && (
-                <form method="post" action={`/nachunternehmer/auftraege/${id}/status`} style="margin:0">
-                  <button
-                    class="btn sec"
-                    name="status"
-                    value="beendet"
-                    onclick="return confirm('Auftrag beenden?')"
-                  >
-                    Beenden
-                  </button>
-                </form>
-              )}
+              {sc.status === 'erteilt' &&
+                (sc.signed_file_path ? (
+                  <form method="post" action={`/nachunternehmer/auftraege/${id}/status`} style="margin:0">
+                    <button
+                      class="btn sec"
+                      name="status"
+                      value="beendet"
+                      onclick="return confirm('Auftrag als komplett erledigt markieren? Er gilt dann als beendet (Ende = heute, falls kein Ende eingetragen).')"
+                    >
+                      ✓ Als erledigt markieren
+                    </button>
+                  </form>
+                ) : (
+                  <span class="small" style="color:var(--bad);align-self:center">
+                    Erledigt erst mit unterschriebenem Auftrag (Scan oder Handy-Unterschrift)
+                  </span>
+                ))}
               {sc.status === 'entwurf' && (
                 <form method="post" action={`/nachunternehmer/auftraege/${id}/status`} style="margin:0">
                   <button class="btn sec" name="status" value="storniert">
@@ -2035,16 +2040,20 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     const id = c.req.param('id');
     const b = await c.req.parseBody();
     const st = String(b.status ?? '');
+    // Rücksprung zur Bestellliste (nur eigene Pfade)
+    const ret = typeof b.zurueck === 'string' && /^\/bestellungen(\?|$)/.test(b.zurueck) ? b.zurueck : null;
     try {
       if (st !== 'erteilt' && st !== 'beendet' && st !== 'storniert')
         throw new BusinessError('Unbekannter Status');
       await setSubcontractStatus(sql, id, st, c.get('actor'));
     } catch (e) {
       if (e instanceof BusinessError)
-        return back(c, `/nachunternehmer/auftraege/${id}`, { fehler: e.message });
+        return back(c, ret ?? `/nachunternehmer/auftraege/${id}`, { fehler: e.message });
       throw e;
     }
-    return back(c, `/nachunternehmer/auftraege/${id}`, { ok: `Auftrag ${SC_STATUS[st]}.` });
+    return back(c, ret ?? `/nachunternehmer/auftraege/${id}`, {
+      ok: st === 'beendet' ? 'Auftrag als erledigt markiert.' : `Auftrag ${SC_STATUS[st]}.`,
+    });
   });
 
   app.post(`/nachunternehmer/auftraege/:id{${UUID}}/nachtrag`, async (c) => {

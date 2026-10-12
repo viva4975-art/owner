@@ -2693,3 +2693,8 @@ Testadresse.
   aller 37 Vorlagen (V6): offen bleiben nur Angaben, die die App nicht kennt (Geburtsname, Steuerklasse, Fahrzeug-/
   Tankkartendaten, Rückgabe-/Abnahmefelder). Unterschriftsfeld der Person dunkler (#E4E0E2, beim Drucken sichtbar).
   Tests in `word-form.test.ts`.
+- 2026-10-12: **Fund „duplicate key … absence_hours_uq“** (Ahmed): Beim Löschen von Einsätzen wurden die daran hängenden
+  Abwesenheitsstunden (Urlaub/Krank je Einsatz) nur von der Verknüpfung gelöst. Hatte die Abwesenheit am selben Tag zwei
+  gelöschte Einsätze oder schon Stunden ohne Einsatz, entstanden zwei Zeilen „ohne Einsatz“ → Fehler, nichts gelöscht.
+  Jetzt werden sie je Tag zu einer Zeile zusammengefasst (Minuten addiert, höchstens 16 Std.; `detachAbsenceHours` in
+  `time.ts`). Test in `runde20.db.test.ts`.

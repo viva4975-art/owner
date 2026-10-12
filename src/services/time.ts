@@ -602,6 +602,41 @@ export async function endShiftPlan(sql: Sql, id: string, lastDay: string, actor:
  * immer erhalten (§ 17 MiLoG) – nur ihre Verknüpfung zum Einsatz wird gelöst (Änderungsprotokoll). Tagesausnahmen
  * entfallen, Abwesenheitsstunden verlieren nur die Verknüpfung. Alter Stand im Protokoll.
  */
+/**
+ * Abwesenheitsstunden von gelöschten Einsätzen lösen. Hat dieselbe Abwesenheit am selben Tag schon Stunden ohne
+ * Einsatz (oder zwei gelöschte Einsätze am selben Tag), würden zwei Zeilen „ohne Einsatz“ entstehen (Index
+ * absence_hours_uq) → zu einer Zeile zusammenfassen (Minuten addiert, höchstens 16 Std.).
+ */
+async function detachAbsenceHours(tx: Tx, ids: string[]) {
+  type Row = { id: string; absence_id: string; work_date: string; minutes: number; paid: boolean };
+  const rows = await tx<Row[]>`
+    select h.id, h.absence_id, h.work_date::text, h.minutes, h.paid, h.shift_plan_id
+      from app.absence_hours h
+     where h.shift_plan_id in ${tx(ids)}
+        or (h.shift_plan_id is null and (h.absence_id, h.work_date) in
+              (select absence_id, work_date from app.absence_hours where shift_plan_id in ${tx(ids)}))
+     order by h.shift_plan_id nulls first, h.id`;
+  const groups = new Map<string, Row[]>();
+  for (const r of rows) {
+    const k = `${r.absence_id}|${r.work_date}`;
+    const g = groups.get(k) ?? [];
+    g.push(r);
+    groups.set(k, g);
+  }
+  for (const g of groups.values()) {
+    const [keep, ...rest] = g;
+    if (!keep) continue;
+    if (rest.length) await tx`delete from app.absence_hours where id in ${tx(rest.map((r) => r.id))}`;
+    const minutes = Math.min(
+      960,
+      g.reduce((s, r) => s + r.minutes, 0),
+    );
+    const paid = g.some((r) => r.paid);
+    await tx`update app.absence_hours set shift_plan_id = null, minutes = ${minutes}, paid = ${paid}
+              where id = ${keep.id}`;
+  }
+}
+
 export async function deleteShiftPlans(sql: Sql, ids: string[], actor: string) {
   if (!ids.length) return 0;
   return sql.begin(async (tx) => {
@@ -609,7 +644,7 @@ export async function deleteShiftPlans(sql: Sql, ids: string[], actor: string) {
     const old = await tx`select * from app.shift_plans where id in ${tx(ids)} for update`;
     await tx`update app.time_entries set shift_plan_id = null where shift_plan_id in ${tx(ids)}`;
     await tx`delete from app.shift_exceptions where shift_plan_id in ${tx(ids)}`;
-    await tx`update app.absence_hours set shift_plan_id = null where shift_plan_id in ${tx(ids)}`;
+    await detachAbsenceHours(tx, ids);
     await tx`delete from app.shift_plans where id in ${tx(ids)}`;
     for (const o of old)
       await tx`insert into app.audit_log (actor, action, entity, entity_id, details)

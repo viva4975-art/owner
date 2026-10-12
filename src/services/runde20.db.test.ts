@@ -57,6 +57,22 @@ describe.skipIf(!available)('Runde 20 (Datenbank)', () => {
     ).toBe(1);
   });
 
+  it('Einsätze löschen: Abwesenheitsstunden mehrerer Einsätze am selben Tag werden zusammengefasst', async () => {
+    const a = await plan('2025-02-03');
+    const b = await plan('2025-02-03');
+    const abs = randomUUID();
+    await sql`insert into app.absences (id, employee_id, kind, start_date, end_date, half_day, status, requested_by)
+              values (${abs}, ${emp}, 'urlaub', '2025-02-10', '2025-02-10', false, 'genehmigt', 'buero')`;
+    await sql`insert into app.absence_hours (id, absence_id, employee_id, work_date, shift_plan_id, minutes, paid)
+              values (${randomUUID()}, ${abs}, ${emp}, '2025-02-10', ${a}, 180, true),
+                     (${randomUUID()}, ${abs}, ${emp}, '2025-02-10', ${b}, 120, true),
+                     (${randomUUID()}, ${abs}, ${emp}, '2025-02-10', null, 60, true)`;
+    expect(await deleteShiftPlans(sql, [a, b], 'buero')).toBe(2);
+    const rows = await sql`select shift_plan_id, minutes from app.absence_hours where absence_id = ${abs}`;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ shift_plan_id: null, minutes: 360 });
+  });
+
   it('Fortytools-XML: Tiefgaragen kommen zusätzlich in die Tiefgaragenplanung (verknüpft, nichts doppelt)', async () => {
     const files = [
       {

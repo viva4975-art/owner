@@ -181,10 +181,14 @@ export async function missingDocs(sql: Sql, opts: { siteIds?: string[] | null } 
     else if (!freeMovement(nat)) {
       const doc = cats.has('Aufenthalts-/Arbeitserlaubnis');
       const until = [r.residence_permit_until, r.work_permit_until].filter(Boolean).sort()[0] ?? null;
-      if (!doc) missing.push('Aufenthaltstitel/Arbeitserlaubnis');
-      else if (!until) missing.push('Aufenthaltstitel: gültig bis fehlt');
-      else if (until < today)
-        missing.push(`Aufenthaltstitel abgelaufen (${until.split('-').reverse().join('.')})`);
+      // Stammdaten (gültig bis) und Kopie in der Akte (§ 4a Abs. 5 AufenthG) getrennt melden
+      if (!doc && !until) missing.push('Aufenthaltstitel/Arbeitserlaubnis');
+      else {
+        if (!until) missing.push('Aufenthaltstitel: gültig bis fehlt');
+        else if (until < today)
+          missing.push(`Aufenthaltstitel abgelaufen (${until.split('-').reverse().join('.')})`);
+        if (!doc) missing.push('Aufenthaltstitel: Kopie fehlt in der Akte');
+      }
     }
     if (missing.length)
       out.push({

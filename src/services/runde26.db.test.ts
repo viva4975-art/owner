@@ -97,6 +97,13 @@ describe.skipIf(!available)('Runde 26: Plan-Zeiten als Ist-Zeiten (Datenbank)', 
     expect((await row()).missing).not.toContain('Unterweisung');
     await setDocNotNeeded(sql, e4, 'Schlüssel', false, 'buero');
     expect((await row()).missing).toContain('Schlüssel');
+    // Aufenthaltstitel in den Stammdaten eingetragen → nur noch die Kopie in der Akte fehlt
+    await sql`insert into app.employee_private (employee_id, nationality, residence_permit_until)
+              values (${e4}, 'Türkei', '2030-01-01')
+              on conflict (employee_id) do update set nationality = 'Türkei', residence_permit_until = '2030-01-01'`;
+    const m = (await row()).missing;
+    expect(m).not.toContain('Aufenthaltstitel/Arbeitserlaubnis');
+    expect(m).toContain('Aufenthaltstitel: Kopie fehlt in der Akte');
   });
 
   it('Vorab-Lohnabrechnung: Ist bis Stichtag + Plan bis Monatsende, Korrektur im Folgemonat', async () => {

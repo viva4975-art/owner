@@ -142,8 +142,9 @@ export function registerHrRequiredRoutes({ app, deps, page }: Ctx) {
                               m === 'Schlüssel'
                                 ? '/schluessel'
                                 : (REQUIRED_DOCS as readonly string[]).includes(m) ||
-                                    /Aufenthalt|Arbeitserlaubnis/.test(m)
-                                  ? `/personal/${r.employee_id}/dokumente`
+                                    m === 'Aufenthaltstitel/Arbeitserlaubnis' ||
+                                    /Kopie fehlt/.test(m)
+                                  ? `/personal/${r.employee_id}/dokumente${/Aufenthalt/.test(m) ? '?kategorie=Aufenthalts-%2FArbeitserlaubnis#hochladen' : ''}`
                                   : `/personal/${r.employee_id}/bearbeiten`
                             }
                           >

@@ -2626,3 +2626,8 @@ Testadresse.
     Arbeitgebers (§ 12 ArbSchG, jährlich) – „nicht nötig“ nur, wenn der Nachweis anders geführt wird.
   - **Dokument löschen** in der Personalakte (Admin/Personal, auch im Archiv, mit Rückfrage): entfernt nur die Verknüpfung,
     Stand im Protokoll (`file_unlink`); die Datei bleibt write-once gespeichert (Belege auch im S3-Archiv).
+- 2026-10-12: **Fehlende Unterlagen: Aufenthaltstitel** (Ahmed: „obwohl Aufenthalt in den Stammdaten eingetragen ist“): Bisher
+  kam „Aufenthaltstitel/Arbeitserlaubnis“, sobald keine Datei in der Kategorie „Aufenthalts-/Arbeitserlaubnis“ lag – auch mit
+  gültigem Datum in den Stammdaten. Jetzt getrennt: Datum fehlt / abgelaufen (→ Stammdaten) und „Aufenthaltstitel: Kopie
+  fehlt in der Akte“ (→ Hochladen mit vorgewählter Kategorie). **Rechtlich:** Die Kopie muss für die Dauer der Beschäftigung
+  in der Personalakte liegen (§ 4a Abs. 5 S. 3 Nr. 3 AufenthG) – das Datum allein reicht nicht.

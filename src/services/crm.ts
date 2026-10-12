@@ -214,7 +214,7 @@ export const taskInput = z.object({
     emptyToNull,
     z.enum(['customer', 'site', 'employee', 'invoice']).nullable().default(null),
   ),
-  entity_id: z.preprocess(emptyToNull, z.uuid().nullable().default(null)),
+  entity_id: z.preprocess(emptyToNull, z.guid().nullable().default(null)),
 });
 
 const ENTITY_LABEL = (sql: Sql) => sql`

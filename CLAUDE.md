@@ -2667,3 +2667,9 @@ Testadresse.
   andere Arbeitstage als 5 eingetragen hatte, bleibt „fest“). **Rechtlich:** 30 Tage stammen von Ahmed (RTV) – bei
   Tarifänderung Wert in `leave.ts` anpassen; Mindesturlaub nach BUrlG wird nie unterschritten.
 
+- 2026-10-12: **Fund „Kunde fehlt“ beim Objekt anlegen** (Ahmed, Objekt „Sonderreinigung“ beim Kunden „Viva-Deluxe intern“):
+  Die Formularprüfung (zod 4, `z.uuid()`) verlangt RFC-UUIDs; feste IDs aus `md5(...)::uuid` (interner Kunde, Büro,
+  Gruppen, Importe) wurden abgelehnt. Alle Prüfungen jetzt `z.guid()` (allgemeines UUID-Format), Test `fixed-ids.test.ts`.
+  **Interne Kostenstelle „Sonderreinigung“** (`INT-SONDER`, Migration `20261124000002`) beim internen Kunden angelegt:
+  Sonderreiniger mit wechselnden Einmal-Einsätzen werden dort geplant, Zeiten/Kosten laufen darauf; keine Rechnungen.
+  Erlöse der Sonderreinigungen stehen weiter an den jeweiligen Kunden-Objekten.

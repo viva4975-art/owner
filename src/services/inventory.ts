@@ -310,7 +310,7 @@ export const deviceInput = z.object({
   name: z.string().trim().min(1, 'Bezeichnung fehlt'),
   manufacturer: optText,
   serial_no: optText,
-  site_id: z.preprocess(emptyToNull, z.uuid().nullable().default(null)),
+  site_id: z.preprocess(emptyToNull, z.guid().nullable().default(null)),
   purchase_date: optDate,
   next_inspection: optDate,
   notes: optText,
@@ -359,7 +359,7 @@ export interface KeyRow {
 
 export const keyInput = z.object({
   key_no: z.string().trim().min(1, 'Schlüsselnummer fehlt'),
-  site_id: z.uuid('Bitte ein Objekt wählen'),
+  site_id: z.guid('Bitte ein Objekt wählen'),
   description: z.string().trim().min(1, 'Beschreibung fehlt (z. B. Haupteingang, Generalschlüssel)'),
   quantity: z.coerce.number().int().min(1),
   notes: optText,

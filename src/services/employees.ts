@@ -177,7 +177,7 @@ export const employeeInput = z
     info: optText,
     mobile: optText,
     email_private: z.preprocess(emptyToNull, z.email('Ungültige weitere E-Mail').nullable().default(null)),
-    wage_level_id: z.preprocess(emptyToNull, z.uuid().nullable().default(null)),
+    wage_level_id: z.preprocess(emptyToNull, z.guid().nullable().default(null)),
     pay_model: z.preprocess(
       emptyToNull,
       z.enum(['tarif', 'individuell', 'festgehalt']).nullable().default(null),

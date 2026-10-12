@@ -273,7 +273,7 @@ export interface Site {
 }
 
 export const siteInput = z.object({
-  customer_id: z.uuid('Kunde fehlt'),
+  customer_id: z.guid('Kunde fehlt'),
   site_no: z.string().trim().min(1, 'Objektnummer fehlt'),
   name: z.string().trim().min(1, 'Bezeichnung fehlt'),
   street: optText,
@@ -282,9 +282,9 @@ export const siteInput = z.object({
   order_reference: optText,
   contract_reference: optText,
   // Objektleitung: nur setzen, wenn das Feld mitgeschickt wird (Import lässt es unverändert)
-  manager_user_id: z.preprocess(emptyToNull, z.uuid('Objektleitung ungültig').nullable()).optional(),
+  manager_user_id: z.preprocess(emptyToNull, z.guid('Objektleitung ungültig').nullable()).optional(),
   // Rechnungsgruppe (Rechnungseinstellungen); neu angelegte Objekte ohne Angabe → Gruppe „Standard“ des Kunden
-  invoice_group_id: z.preprocess(emptyToNull, z.uuid('Rechnungsgruppe ungültig').nullable()).optional(),
+  invoice_group_id: z.preprocess(emptyToNull, z.guid('Rechnungsgruppe ungültig').nullable()).optional(),
 });
 export type SiteInput = z.infer<typeof siteInput>;
 
@@ -449,7 +449,7 @@ export const serviceInput = z.object({
   valid_from: z.iso.date(),
   valid_to: z.preprocess(emptyToNull, z.iso.date().nullable().default(null)),
   note: optText,
-  service_type_id: z.preprocess(emptyToNull, z.uuid().nullable().default(null)),
+  service_type_id: z.preprocess(emptyToNull, z.guid().nullable().default(null)),
   billing_cycle: z
     .enum([
       'monatlich',

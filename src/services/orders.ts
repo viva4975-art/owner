@@ -295,8 +295,9 @@ export async function setOrderStatus(
 ) {
   const [o] = await sql<{ status: OrderStatus }[]>`select status from app.orders where id = ${id}`;
   if (!o) throw new BusinessError('Auftrag nicht gefunden');
-  if (o.status === 'abgerechnet' || o.status === 'storniert')
-    throw new BusinessError('Auftrag ist abgeschlossen');
+  if (o.status === 'abgerechnet') throw new BusinessError('Auftrag ist abgerechnet');
+  // Storno zurücknehmen (versehentlich storniert) → wieder offen
+  if (o.status === 'storniert' && status !== 'offen') throw new BusinessError('Auftrag ist storniert');
   await sql`update app.orders set status = ${status} where id = ${id}`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details) values (${actor}, 'status', 'order', ${id}, ${sql.json({ status })})`;
 }

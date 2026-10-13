@@ -184,6 +184,56 @@ export async function listOpenExecutions(sql: Sql, f: { siteId?: string } = {}) 
      order by c.name, s.site_no, e.date_from`;
 }
 
+/**
+ * Einmalige Leistungen, die noch nie verrichtet wurden – erscheinen direkt unter „Aus Einzelleistungen erstellen“
+ * (ohne vorher „Leistungen verrichten“). ID = `svc:<Leistung>`; Datum = Beginn (bzw. Ende) der Leistung.
+ */
+export async function pendingOnceServices(sql: Sql): Promise<OpenExecution[]> {
+  return sql<OpenExecution[]>`
+    select 'svc:' || v.id as id, v.id as service_id, v.site_id, v.valid_from::text as date_from,
+           coalesce(v.valid_to, v.valid_from)::text as date_to, v.quantity_milli, v.unit_price_cents,
+           v.description, v.unit_code, v.note, s.site_no, s.name as site_name,
+           c.id as customer_id, c.customer_no, c.name as customer_name, '' as created_by
+      from app.site_services v
+      join app.sites s on s.id = v.site_id
+      join app.customers c on c.id = s.customer_id
+     where v.active and v.billing_cycle = 'einmalig' and not c.is_internal and v.quantity_milli > 0
+       and not exists (select 1 from app.service_executions e where e.service_id = v.id)
+     order by c.name, s.site_no, v.valid_from`;
+}
+
+/**
+ * Auswahl aus „Aus Einzelleistungen“: `svc:<Leistung>` (einmalige Leistung ohne Ausführung) wird jetzt verrichtet
+ * (feste ID je Leistung → doppelt absenden legt nichts doppelt an). Gibt die Ausführungs-IDs zurück.
+ */
+export async function resolveExecutionIds(sql: Sql, ids: string[], actor: string): Promise<string[]> {
+  const out: string[] = [];
+  for (const raw of ids) {
+    if (!raw.startsWith('svc:')) {
+      out.push(raw);
+      continue;
+    }
+    const serviceId = raw.slice(4);
+    const [sv] = await sql<{ site_id: string; valid_from: string; valid_to: string | null }[]>`
+      select site_id, valid_from::text as valid_from, valid_to::text as valid_to
+        from app.site_services where id = ${serviceId} and billing_cycle = 'einmalig'`;
+    if (!sv) throw new BusinessError('Leistung nicht gefunden');
+    await executeServices(
+      sql,
+      {
+        siteId: sv.site_id,
+        token: 'once',
+        dateFrom: sv.valid_from,
+        dateTo: sv.valid_to ?? sv.valid_from,
+        items: [{ serviceId, quantity: null }],
+      },
+      actor,
+    );
+    out.push(uuidOf(`exec:once:${serviceId}`));
+  }
+  return out;
+}
+
 /** Vorgemerkte (noch nicht abgerechnete) Ausführung zurücknehmen. */
 export async function deleteExecution(sql: Sql, id: string, actor: string) {
   const res = await sql`delete from app.service_executions where id = ${id} and invoice_id is null`;

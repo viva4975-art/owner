@@ -2771,3 +2771,11 @@ Testadresse.
 - 2026-10-13: **Fund Rechnungsentwurf** (Ahmed: „andere Rechnungsadresse – Felder kommen erst nach Neuladen“): Das Häkchen
   „Rechnungsadresse nur für diese Rechnung ändern“ verwies auf `bill-fields` statt `#bill-fields` – die Felder klappten
   nicht auf. Behoben (einzige solche Stelle), im Browser geprüft.
+- 2026-10-13: **Einmalige Leistungen direkt in „Aus Einzelleistungen erstellen“** (Ahmed): Leistungen mit Zyklus „einmalig“,
+  die noch nie verrichtet wurden, stehen dort automatisch (Monat = Ende bzw. Beginn der Leistung, Kennzeichen „einmalig“),
+  ohne vorher „Leistungen verrichten“. Beim Erstellen wird die Ausführung mit fester ID angelegt (Datum = Gültigkeit der
+  Leistung, Menge/Preis der Leistung) → doppelt absenden legt nichts doppelt an (`pendingOnceServices`,
+  `resolveExecutionIds` in `executions.ts`). **Einzelauftrag: „Storno zurücknehmen“** (stornierter, nicht abgerechneter
+  Auftrag → wieder offen, Protokoll). Aufträge selbst lassen sich nicht löschen; ein gelöschter Rechnungsentwurf gibt
+  Aufträge/Ausführungen wieder frei. Zurückgenommene Ausführungen („zurücknehmen“) sind ohne Inhalt protokolliert –
+  wiederherstellbar nur aus der Sicherung (pg_dump 14 Tage, Cloud Backup).

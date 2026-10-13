@@ -782,6 +782,8 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                 </a>
               )}
               {done && post('status?s=storniert', 'Stornieren', 'quiet', 'Auftrag stornieren?')}
+              {o.status === 'storniert' &&
+                post('status?s=offen', 'Storno zurücknehmen', '', 'Auftrag wieder öffnen?')}
             </div>
             <div class="card">
               <dl class="kv">
@@ -869,10 +871,12 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
   app.post(`/auftraege/:id{${UUID}}/status`, async (c) => {
     const id = c.req.param('id');
     const s = c.req.query('s');
-    if (s !== 'erledigt' && s !== 'storniert' && s !== 'in_arbeit')
+    if (s !== 'erledigt' && s !== 'storniert' && s !== 'in_arbeit' && s !== 'offen')
       throw new BusinessError('Status ungültig');
     await setOrderStatus(sql, id, s, c.get('actor'));
-    return back(c, `/auftraege/${id}`, { ok: `Auftrag ${ORDER_STATUS[s]}.` });
+    return back(c, `/auftraege/${id}`, {
+      ok: s === 'offen' ? 'Auftrag wieder offen.' : `Auftrag ${ORDER_STATUS[s]}.`,
+    });
   });
 
   app.post(`/auftraege/:id{${UUID}}/rechnung`, async (c) => {

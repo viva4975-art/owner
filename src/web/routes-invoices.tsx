@@ -62,7 +62,12 @@ import {
   orderToInvoice,
   workReportFromInvoice,
 } from '../services/orders.js';
-import { draftsFromExecutions, listOpenExecutions } from '../services/executions.js';
+import {
+  draftsFromExecutions,
+  listOpenExecutions,
+  pendingOnceServices,
+  resolveExecutionIds,
+} from '../services/executions.js';
 import { NEW_OPTIONS, PageHead, dateDe, euro, anz } from './layout.js';
 import { archiveMonthZip, archiveYear } from '../services/invoice-archive.js';
 import { KIND_TITLES } from '../domain/invoice/types.js';
@@ -432,7 +437,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
               )}
             </div>
             <OpenExecutionsBox
-              rows={await listOpenExecutions(sql)}
+              rows={[...(await listOpenExecutions(sql)), ...(await pendingOnceServices(sql))]}
               orders={await billableOrders(sql)}
               today={todayBerlin()}
             />
@@ -459,7 +464,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
   // Entwürfe aus vorgemerkten Ausführungen (Auswahl je Kunde/Objekt oder alle)
   app.post('/rechnungen/entwuerfe/aus-ausfuehrungen', async (c) => {
     const b = await c.req.parseBody({ all: true });
-    const ids = arr(b, 'exec');
+    const ids = await resolveExecutionIds(sql, arr(b, 'exec'), c.get('actor'));
     const created = ids.length
       ? await draftsFromExecutions(sql, ids, str(b, 'invoice_date'), c.get('actor'))
       : [];

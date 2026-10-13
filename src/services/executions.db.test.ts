@@ -9,6 +9,8 @@ import {
   executableServices,
   executeServices,
   listOpenExecutions,
+  pendingOnceServices,
+  resolveExecutionIds,
 } from './executions.js';
 import { deleteDraft, getInvoice, runMonthly } from './invoices.js';
 import { serviceKindOf } from './masterdata.js';
@@ -155,5 +157,21 @@ describe.skipIf(!available)('Zyklus-Leistungen nach Ausführung (Ahmed 09.10.)',
     expect(serviceKindOf('LS', 'quartalsweise', true)).toBe('monthly_flat');
     expect(serviceKindOf('LS', 'monatlich')).toBe('monthly_flat');
     expect(serviceKindOf('HUR', 'monatlich')).toBe('hourly');
+  });
+  it('einmalige Leistung ohne Ausführung steht direkt in „Aus Einzelleistungen“', async () => {
+    const id = randomUUID();
+    await sql`insert into app.site_services
+      select (jsonb_populate_record(s, jsonb_build_object('id', ${id}::uuid, 'billing_cycle', 'einmalig',
+              'description', 'Bauendreinigung einmalig'))).* from app.site_services s where s.id = ${GLAS}`;
+    const pend = await pendingOnceServices(sql);
+    const row = pend.find((p) => p.service_id === id)!;
+    expect(row.id).toBe(`svc:${id}`);
+    const a = await resolveExecutionIds(sql, [row.id], 'test');
+    expect(await resolveExecutionIds(sql, [row.id], 'test')).toEqual(a); // doppelt abgeschickt
+    expect((await pendingOnceServices(sql)).some((p) => p.service_id === id)).toBe(false);
+    const [inv] = await draftsFromExecutions(sql, a, null, 'test');
+    expect((await getInvoice(sql, inv!))!.lines.some((l) => l.description.includes('Bauendreinigung'))).toBe(
+      true,
+    );
   });
 });

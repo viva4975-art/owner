@@ -274,8 +274,9 @@ export const OpenExecutionsBox: FC<{ rows: OpenExecution[]; today: string; order
       <h3>Aus Einzelleistungen erstellen</h3>
       {months.length === 0 ? (
         <p class="mut small" style="margin:0">
-          Nichts vorgemerkt. Leistungen „je Ausführung“ verrichten Sie am Objekt (Reiter „Leistungen &amp;
-          Preise“), Einzelaufträge legen Sie beim Kunden an.
+          Nichts offen. Einmalige Leistungen erscheinen hier automatisch, Leistungen „je Ausführung“
+          verrichten Sie am Objekt (Reiter „Leistungen &amp; Preise“), Einzelaufträge legen Sie beim Kunden
+          an.
         </p>
       ) : (
         <form method="post" action="/rechnungen/entwuerfe/aus-ausfuehrungen">
@@ -333,6 +334,7 @@ export const OpenExecutionsBox: FC<{ rows: OpenExecution[]; today: string; order
                                 <span class="ex-desc">
                                   {e.description}
                                   <span class="faint"> · {range(e.date_from, e.date_to)}</span>
+                                  {e.id.startsWith('svc:') && <span class="faint"> · einmalig</span>}
                                 </span>
                                 <span class="num">{euro(amount(e.quantity_milli, e.unit_price_cents))}</span>
                               </label>

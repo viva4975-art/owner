@@ -292,7 +292,7 @@ export const OpenExecutionsBox: FC<{ rows: OpenExecution[]; today: string; order
               '';
             custIds.sort((x, y) => custName(x).localeCompare(custName(y), 'de'));
             return (
-              <details class="ex-month" open={mi === 0}>
+              <details class="ex-month" open={mi === 0 || mord.length > 0}>
                 <summary>
                   <input
                     type="checkbox"

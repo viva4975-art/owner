@@ -248,6 +248,11 @@ describe.skipIf(!available)(
       expect(full.lines[0]!.service_type_id).toBe(STYPE);
       await expect(issueInvoice(deps, inv, 't')).rejects.toThrow(/nicht vom Kunden unterschrieben/);
       expect((await billableOrders(sql)).some((o) => o.id === oid)).toBe(false);
+      // Entwurf gelöscht → Auftrag wieder in „Aus Einzelleistungen“
+      await deleteDraft(sql, inv, 't');
+      const back = (await billableOrders(sql)).find((o) => o.id === oid);
+      expect(back).toBeTruthy();
+      expect((await sql`select status from app.orders where id = ${oid}`)[0]!.status).not.toBe('storniert');
     });
 
     it('Nachkalkulation: Lohn ohne Vergütung = niedrigster Tariflohn; NU-Pauschale laut Bestellung', async () => {

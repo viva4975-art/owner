@@ -2779,3 +2779,7 @@ Testadresse.
   Auftrag → wieder offen, Protokoll). Aufträge selbst lassen sich nicht löschen; ein gelöschter Rechnungsentwurf gibt
   Aufträge/Ausführungen wieder frei. Zurückgenommene Ausführungen („zurücknehmen“) sind ohne Inhalt protokolliert –
   wiederherstellbar nur aus der Sicherung (pg_dump 14 Tage, Cloud Backup).
+- 2026-10-13: Ahmed: „Rechnungsentwurf gelöscht, dann war der Einzelauftrag weg“ – geprüft (Test + Klick im Testsystem):
+  Entwurf löschen setzt den Auftrag auf „erledigt“, er steht wieder unter Entwürfe → „Aus Einzelleistungen erstellen“ im
+  Monat seines Termins/Leistungszeitraums und beim Kunden → Einzelaufträge → Offen. Monate mit Einzelaufträgen sind dort
+  jetzt immer aufgeklappt (vorher nur der neueste Monat → ältere Aufträge wirkten verschwunden). Test in `runde33.db.test.ts`.

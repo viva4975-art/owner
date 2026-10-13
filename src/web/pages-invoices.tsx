@@ -487,7 +487,7 @@ export const InvoiceEditor: FC<{
             type="checkbox"
             id="bill_custom"
             name="bill_custom"
-            data-reveal="bill-fields"
+            data-reveal="#bill-fields"
             checked={!!inv.bill_address}
           />
           <label for="bill_custom">

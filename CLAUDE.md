@@ -2768,3 +2768,6 @@ Testadresse.
   trotzdem möglich · nachfordern“. Vor „Als bezahlt festhalten“ und „SEPA-Datei erstellen“ kommt eine Rückfrage mit den
   betroffenen Firmen. **Rechtlich:** Wir haften als Auftraggeber für Mindestlohn und SV-Beiträge des Nachunternehmers
   (§ 13 MiLoG, § 14 AEntG, § 28e Abs. 3a SGB IV), egal ob wir zahlen oder nicht – die Nachweise nachfordern.
+- 2026-10-13: **Fund Rechnungsentwurf** (Ahmed: „andere Rechnungsadresse – Felder kommen erst nach Neuladen“): Das Häkchen
+  „Rechnungsadresse nur für diese Rechnung ändern“ verwies auf `bill-fields` statt `#bill-fields` – die Felder klappten
+  nicht auf. Behoben (einzige solche Stelle), im Browser geprüft.

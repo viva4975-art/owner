@@ -6,7 +6,7 @@ import {
   isPeriodic,
   monthLabelDe,
 } from '../domain/invoice/calc.js';
-import { UNIT_LABELS } from '../domain/invoice/types.js';
+import { UNIT_LABELS, unitLabel } from '../domain/invoice/types.js';
 import type { InvoiceGroupRow } from '../services/invoice-groups.js';
 import type { ServiceType, SiteService, SiteServiceRow } from '../services/masterdata.js';
 import { centsToInput, milliToInput } from './forms.js';
@@ -72,7 +72,7 @@ const ServiceGroup: FC<{ title: string; rows: SiteServiceRow[]; siteId: string }
                 {sv.last_billed_month && <div class="mut">zuletzt {monthLabelDe(sv.last_billed_month)}</div>}
               </div>
               <div class="svc-qty small">
-                {milliToInput(sv.quantity_milli)} {UNIT_LABELS[sv.unit_code] ?? sv.unit_code} ×{' '}
+                {milliToInput(sv.quantity_milli)} {unitLabel(sv.unit_code, sv.quantity_milli)} ×{' '}
                 {euro(sv.unit_price_cents)}
               </div>
               <div class="svc-total">{euro(lineTotal(sv))}</div>

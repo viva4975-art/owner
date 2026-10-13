@@ -1350,7 +1350,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--brand)}
   .menu-top .appside nav.menu{padding:0 0 0 16px}
   .menu-top .appside nav.menu a.item,.menu-top .appside nav.menu .grp>summary{min-height:46px;padding:0 12px;font-size:13.5px;font-weight:500;border-radius:0}
   .menu-top .appside nav.menu a.item.on,.menu-top .appside nav.menu .grp.on>summary{background:rgba(0,0,0,.14);box-shadow:inset 0 -3px 0 #fff}
-  .menu-top .top{position:static;background:#fff;border-bottom:1px solid var(--line)}
+  .menu-top .top{position:relative;z-index:60;background:#fff;border-bottom:1px solid var(--line)}
   .menu-top .top .in{height:64px;gap:24px;padding:0 20px}
   .menu-top .top-logo{display:flex;align-items:center;flex:none}
   .menu-top .top-logo img{height:38px;width:auto}

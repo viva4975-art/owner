@@ -962,7 +962,7 @@ export async function renderWorkReportPdf(deps: Deps, id: string): Promise<Uint8
       items.map((l, i) => [
         `${i + 1}.`,
         l.description,
-        `${qty(l.quantity_milli)} ${UNIT[l.unit_code] ?? l.unit_code}`,
+        `${qty(l.quantity_milli)} ${l.quantity_milli !== 1000n && l.unit_code === 'DAY' ? 'Tage' : (UNIT[l.unit_code] ?? l.unit_code)}`,
       ]),
     );
   }

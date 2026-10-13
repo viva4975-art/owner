@@ -147,3 +147,15 @@ export const UNIT_LABELS: Record<string, string> = {
   E48: 'Leistung',
   MTR: 'lfm',
 };
+
+/** Einheit passend zur Menge: „1 Tag“, aber „26 Tage“ (Menge in Tausendsteln). */
+export function unitLabel(code: string, quantityMilli?: bigint | number | null): string {
+  const label = UNIT_LABELS[code] ?? code;
+  if (quantityMilli == null) return label;
+  const q = typeof quantityMilli === 'bigint' ? quantityMilli : BigInt(Math.round(quantityMilli));
+  const one = q === 1000n || q === -1000n;
+  if (one) return label;
+  if (code === 'DAY') return 'Tage';
+  if (code === 'MON') return 'Monate';
+  return label;
+}

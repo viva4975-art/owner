@@ -2757,3 +2757,8 @@ Testadresse.
   wie früher, nach unten ruhiges Grau; Tabellenköpfe, Kartenköpfe der Seitenkästen, Hinweiskästen („Derzeit keine …“) und
   Summenzeilen hell-bordeaux (`--tint-2` #f8eff2); Tabellen, Formulare, Beträge weiß. Schrift: App und Rechnungen nutzen
   beide schon Inter.
+- 2026-10-13: **Mehrzahl bei Einheiten** (Ahmed: Arbeitsschein „26 Tag“): `unitLabel(code, menge)` in
+  `src/domain/invoice/types.ts` – „Tage“/„Monate“, wenn die Menge ≠ 1 vor der Einheit steht (Arbeitsschein-PDF und
+  -Seite, Auftrag, Entwürfe, Leistungen, Mitarbeiter-App). Die Einheiten-Spalte der Rechnung bleibt „Tag“. Bereits
+  archivierte PDFs bleiben unverändert (write-once). **Suche:** Die Vorschau unter dem Suchfeld lag hinter der
+  Bordeaux-Menüleiste – Kopfzeile jetzt darüber (`z-index`).

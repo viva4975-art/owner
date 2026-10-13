@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { SiteOptions } from './site-options.js';
 import type { Child, FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
-import { UNIT_LABELS } from '../domain/invoice/types.js';
+import { unitLabel } from '../domain/invoice/types.js';
 import { parseQuantity } from '../domain/money/money.js';
 import { BusinessError } from '../services/errors.js';
 import { buildBuyerSnapshot, listCustomers, listServiceTypes, listSites } from '../services/masterdata.js';
@@ -730,7 +730,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                           {l.detail && <div class="small mut">{l.detail}</div>}
                         </td>
                         <td class="r">
-                          {milliToInput(l.quantity_milli)} {UNIT_LABELS[l.unit_code] ?? ''}
+                          {milliToInput(l.quantity_milli)} {unitLabel(l.unit_code, l.quantity_milli)}
                         </td>
                         <td class="r">{euro(l.unit_price_cents)}</td>
                         <td class="r">{euro(l.net_cents)}</td>
@@ -1015,7 +1015,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                   {data!.lines.map((l) => (
                     <div>
                       {l.person && w.work_date_to && `${dateDe(l.line_date ?? w.work_date)}: `}
-                      {milliToInput(l.quantity_milli)} {UNIT_LABELS[l.unit_code] ?? l.unit_code}{' '}
+                      {milliToInput(l.quantity_milli)} {unitLabel(l.unit_code, l.quantity_milli)}{' '}
                       {l.description}
                       {l.person && ` – ${l.person}`}
                     </div>
@@ -1207,7 +1207,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
       const k = x.own ? '' : x.site_label;
       svcGroups.set(k, [...(svcGroups.get(k) ?? []), x]);
     }
-    const unitLabel = (u: string) => WR_UNITS.find(([k]) => k === u)?.[1] ?? u;
+    const wrUnit = (u: string) => WR_UNITS.find(([k]) => k === u)?.[1] ?? u;
     const showPrices = canAccess(c.get('user').role, '/rechnungen');
     type L = {
       desc: string;
@@ -1253,7 +1253,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                   data-unit={x.unit_code}
                 >
                   {x.type_name && x.type_name !== x.description ? `${x.type_name}: ` : ''}
-                  {x.description.split('\n')[0]} ({unitLabel(x.unit_code)})
+                  {x.description.split('\n')[0]} ({wrUnit(x.unit_code)})
                   {showPrices ? ` – ${euro(x.unit_price_cents)}` : ''}
                 </option>
               ));
@@ -1810,7 +1810,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
           {lines.map((l) => (
             <div>
               <b>
-                {milliToInput(l.quantity_milli)} {UNIT_LABELS[l.unit_code] ?? l.unit_code}
+                {milliToInput(l.quantity_milli)} {unitLabel(l.unit_code, l.quantity_milli)}
               </b>{' '}
               {l.description}
             </div>

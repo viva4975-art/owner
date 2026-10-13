@@ -2,7 +2,7 @@ import { Icon } from './icons.js';
 import type { FC } from 'hono/jsx';
 import { CYCLE_LABEL, formatDateDe } from '../domain/invoice/calc.js';
 import { addDays } from '../domain/time/holidays.js';
-import { UNIT_LABELS } from '../domain/invoice/types.js';
+import { UNIT_LABELS, unitLabel } from '../domain/invoice/types.js';
 import type { ExecutableService, OpenExecution } from '../services/executions.js';
 import type { DraftListInfo, InvoiceRow } from '../services/invoices.js';
 import type { BillableOrder } from '../services/orders.js';
@@ -144,7 +144,7 @@ export const ExecutePanel: FC<{
                   <td>{range(e.date_from, e.date_to)}</td>
                   <td>{e.description}</td>
                   <td class="r">
-                    {milliToInput(e.quantity_milli)} {UNIT_LABELS[e.unit_code] ?? e.unit_code}
+                    {milliToInput(e.quantity_milli)} {unitLabel(e.unit_code, e.quantity_milli)}
                   </td>
                   <td class="r">{euro(amount(e.quantity_milli, e.unit_price_cents))}</td>
                   <td class="r">

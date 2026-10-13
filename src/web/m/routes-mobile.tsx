@@ -48,7 +48,7 @@ import { getUser, linkedEmployee } from '../../services/users.js';
 import { SIGN_JS } from '../routes-orders.js';
 import { feedToken } from '../../services/calendar-feed.js';
 import { getWorkReport, signWorkReport, workReportPdf } from '../../services/orders.js';
-import { UNIT_LABELS } from '../../domain/invoice/types.js';
+import { unitLabel } from '../../domain/invoice/types.js';
 import { milliToInput } from '../forms.js';
 import { latestSignature, monthToSign, signTimesheet, timesheet } from '../../services/timesheet.js';
 import { type Lang, LANGS, LOCALE, isLang, t } from './i18n.js';
@@ -1815,7 +1815,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
           {lines.map((l) => (
             <div style="padding:4px 0;border-bottom:1px solid #eee">
               <b>
-                {milliToInput(l.quantity_milli)} {UNIT_LABELS[l.unit_code] ?? l.unit_code}
+                {milliToInput(l.quantity_milli)} {unitLabel(l.unit_code, l.quantity_milli)}
               </b>{' '}
               {l.person
                 ? `${l.person}${l.line_date ? ` (${formatDateDe(l.line_date)})` : ''}`

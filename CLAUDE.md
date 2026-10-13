@@ -2762,3 +2762,9 @@ Testadresse.
   -Seite, Auftrag, Entwürfe, Leistungen, Mitarbeiter-App). Die Einheiten-Spalte der Rechnung bleibt „Tag“. Bereits
   archivierte PDFs bleiben unverändert (write-once). **Suche:** Die Vorschau unter dem Suchfeld lag hinter der
   Bordeaux-Menüleiste – Kopfzeile jetzt darüber (`z-index`).
+- 2026-10-13: **Zahlungsliste: Nachunternehmer mit fehlenden Nachweisen bezahlen** (Ahmed): Eine Sperre im Server gab es
+  nie, aber solche Rechnungen waren nie vorausgewählt, und der Hinweis „Zahlung zurückhalten?“ klang wie ein Verbot. Jetzt
+  werden sie wie alle anderen vorausgewählt (fällig in 7 Tagen bzw. Skonto), der Hinweis lautet „Nachweise fehlen – Zahlung
+  trotzdem möglich · nachfordern“. Vor „Als bezahlt festhalten“ und „SEPA-Datei erstellen“ kommt eine Rückfrage mit den
+  betroffenen Firmen. **Rechtlich:** Wir haften als Auftraggeber für Mindestlohn und SV-Beiträge des Nachunternehmers
+  (§ 13 MiLoG, § 14 AEntG, § 28e Abs. 3a SGB IV), egal ob wir zahlen oder nicht – die Nachweise nachfordern.

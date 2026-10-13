@@ -2187,7 +2187,8 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                           name="invoice"
                           value={p.invoice.id}
                           data-amount={String(p.amount)}
-                          checked={(p.invoice.due_date <= addDays(pay, 7) || p.skonto > 0n) && !blocked}
+                          data-nachweise={blocked ? p.invoice.supplier_name : undefined}
+                          checked={p.invoice.due_date <= addDays(pay, 7) || p.skonto > 0n}
                           aria-label="auswählen"
                           onchange="window.vdSum()"
                         />
@@ -2195,9 +2196,9 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                       <td>
                         {p.invoice.supplier_name}
                         {blocked && (
-                          <div class="small" style="color:var(--err)">
-                            Nachweise fehlen – Zahlung zurückhalten?{' '}
-                            <a href={`/lieferanten/${p.invoice.supplier_id}/nachweise`}>prüfen</a>
+                          <div class="small" style="color:var(--warn)">
+                            Nachweise fehlen – Zahlung trotzdem möglich ·{' '}
+                            <a href={`/lieferanten/${p.invoice.supplier_id}/nachweise`}>nachfordern</a>
                           </div>
                         )}
                       </td>
@@ -2262,7 +2263,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               class="btn"
               style="margin-left:auto"
               disabled={!list.length}
-              onclick="return confirm('Ausgewählte Rechnungen als bezahlt festhalten?')"
+              onclick="return window.vdNuCheck() && confirm('Ausgewählte Rechnungen als bezahlt festhalten?')"
             >
               Als bezahlt festhalten
             </button>
@@ -2296,14 +2297,14 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               style="margin-left:auto"
               formaction="/zahlungsliste/sepa"
               disabled={!list.length}
-              onclick="return confirm('SEPA-Datei für die ausgewählten Rechnungen erstellen? Die Rechnungen gelten danach als bezahlt.')"
+              onclick="return window.vdNuCheck() && confirm('SEPA-Datei für die ausgewählten Rechnungen erstellen? Die Rechnungen gelten danach als bezahlt.')"
             >
               <Icon name="download" /> SEPA-Datei erstellen
             </button>
           </div>
           <script
             dangerouslySetInnerHTML={{
-              __html: `window.vdSum=function(){var t=0,n=0;document.querySelectorAll('input[name=invoice]:checked').forEach(function(x){t+=Number(x.dataset.amount);n++});document.getElementById('sel-sum').textContent=n?('Ausgewählt: '+n+' · '+(t/100).toLocaleString('de-DE',{style:'currency',currency:'EUR'})):'';};window.vdSum();`,
+              __html: `window.vdSum=function(){var t=0,n=0;document.querySelectorAll('input[name=invoice]:checked').forEach(function(x){t+=Number(x.dataset.amount);n++});document.getElementById('sel-sum').textContent=n?('Ausgewählt: '+n+' · '+(t/100).toLocaleString('de-DE',{style:'currency',currency:'EUR'})):'';};window.vdSum();window.vdNuCheck=function(){var n=[];document.querySelectorAll('input[name=invoice]:checked').forEach(function(x){if(x.dataset.nachweise&&n.indexOf(x.dataset.nachweise)<0)n.push(x.dataset.nachweise)});return !n.length||confirm('Bei '+n.join(', ')+' fehlen Nachweise (Mindestlohn/Sozialversicherung). Wir haften als Auftraggeber trotzdem (§ 13 MiLoG, § 28e SGB IV) – die Zahlung ändert daran nichts. Trotzdem bezahlen?');};`,
             }}
           />
         </form>

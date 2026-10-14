@@ -6,6 +6,8 @@ import { fullName } from '../services/users.js';
 import { missingDocs } from '../services/hr-required-docs.js';
 import { hoursHistory, plannedDaysPerWeek } from '../services/employee-hours.js';
 import { absentBetween, leaveBalance } from '../services/absences.js';
+import { permitWarningsForSites } from '../services/employees.js';
+import { AbsentCard } from './pages-crm.js';
 import { followups } from '../services/prospects.js';
 import { canAccess } from './permissions.js';
 import { randomUUID } from 'node:crypto';
@@ -70,8 +72,111 @@ export function registerModuleRoutes(ctx: Ctx) {
 
   // ------------------------------------------------------------------ Übersicht
 
+  /**
+   * Übersicht der Objektleitung (Ahmed 14.10.): Aufenthaltstitel/Arbeitserlaubnis ihrer eingeplanten Leute 6 Wochen
+   * vorher, Abwesenheiten (heute, 7 und 14 Tage), eigene Aufgaben und die wichtigsten Wege.
+   */
+  async function olHome(c: Context<AppEnv>) {
+    const sites = c.get('sites') ?? [];
+    const today = todayBerlin();
+    const [permits, absent, tasks] = await Promise.all([
+      permitWarningsForSites(sql, sites, 42),
+      absentBetween(sql, today, addDays(today, 14), sites),
+      listTasks(sql, { status: 'open', withinDays: 14, onlyFor: taskViewerOf(c) }),
+    ]);
+    const days = (d: string) => Math.round((Date.parse(d) - Date.parse(today)) / 86_400_000);
+    const LINKS: [string, string][] = [
+      ['/zeiterfassung', 'Zeiterfassung'],
+      ['/einsatzplanung', 'Planung'],
+      ['/urlaub/kalender', 'Urlaub & Abwesenheiten'],
+      ['/objekte', 'Meine Objekte'],
+      ['/qm/personalbogen', 'Personalbogen ausfüllen'],
+      ['/qm/qualitaet', 'Qualitätskontrolle (App)'],
+    ];
+    return page(
+      c,
+      'Übersicht',
+      'home',
+      <>
+        <PageHead title={`Guten Tag, ${c.get('user').name || c.get('user').login}`} />
+        <p class="actions" style="margin-top:0">
+          {LINKS.filter(([h]) => canAccess('objektleitung', h)).map(([h, l]) => (
+            <a class="btn sec" href={h}>
+              {l}
+            </a>
+          ))}
+        </p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:16px;align-items:start">
+          <div class="card">
+            <h3>Aufenthaltstitel & Arbeitserlaubnis (nächste 6 Wochen)</h3>
+            {permits.length === 0 ? (
+              <p class="muted">
+                Bei Ihren eingeplanten Mitarbeitenden läuft in den nächsten 6 Wochen nichts ab.
+              </p>
+            ) : (
+              <>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Mitarbeiter</th>
+                      <th>Nachweis</th>
+                      <th>gültig bis</th>
+                      <th>Objekt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {permits.map((p) => (
+                      <tr>
+                        <td>{p.name}</td>
+                        <td>{p.kind}</td>
+                        <td>
+                          {p.until === null ? (
+                            <span class="tag err">Angabe fehlt</span>
+                          ) : days(p.until) < 0 ? (
+                            <span class="tag err">abgelaufen {dateDe(p.until)}</span>
+                          ) : (
+                            <span class={`tag ${days(p.until) <= 14 ? 'err' : 'warn'}`}>
+                              {dateDe(p.until)} (in {anz(days(p.until), 'Tag', 'Tagen')})
+                            </span>
+                          )}
+                        </td>
+                        <td class="small">{p.sites.join(', ')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p class="small muted">
+                  Ohne gültigen Aufenthaltstitel mit Arbeitserlaubnis darf die Person nicht arbeiten (§ 4a
+                  AufenthG). Bitte rechtzeitig die neue Kopie einsammeln und ans Büro geben.
+                </p>
+              </>
+            )}
+          </div>
+          <AbsentCard absent={absent} today={today} href="/urlaub/kalender" />
+        </div>
+        <div class="card">
+          <h3>Meine Aufgaben (14 Tage)</h3>
+          {tasks.length === 0 ? (
+            <p class="muted">Keine offenen Aufgaben.</p>
+          ) : (
+            <ul>
+              {tasks.slice(0, 10).map((t) => (
+                <li>
+                  <a href={`/aufgaben/${t.id}`}>{t.title}</a>
+                  {t.due_date ? <span class="muted small"> · fällig {dateDe(t.due_date)}</span> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+          <a href="/aufgaben">Alle Aufgaben</a>
+        </div>
+      </>,
+    );
+  }
+
   app.get('/', async (c) => {
     const role = c.get('user').role;
+    if (role === 'objektleitung') return olHome(c);
     if (role !== 'admin' && role !== 'buchhaltung') return c.redirect(homeFor(role));
     const [tasks, drafts, balances, unsent, hr] = await Promise.all([
       listTasks(sql, { status: 'open', withinDays: 7 }),

@@ -74,13 +74,26 @@ await o.fill('#next', 'MeinPasswort2026');
 await o.fill('#next2', 'MeinPasswort2026');
 await o.click('button:has-text("Passwort speichern")');
 await o.waitForLoadState();
-check('danach Startseite Zeiterfassung', new URL(o.url()).pathname.startsWith('/zeiterfassung'), o.url());
+check(
+  'danach Übersicht der Objektleitung',
+  new URL(o.url()).pathname === '/' &&
+    (await o.content()).includes('Aufenthaltstitel &amp; Arbeitserlaubnis'),
+  o.url(),
+);
 const menu = await o.locator('nav.menu').innerText();
 check(
-  'Menü ohne Rechnungen/Angebote/Lieferanten/Transfer',
-  !/Rechnungen|Angebote|Lieferanten|Transfer/.test(menu), // Auswertungen: nur Dienste-Liste
+  'Menü ohne Rechnungen/Angebote/Lieferanten/Transfer/Auswertungen',
+  !/Rechnungen|Angebote|Lieferanten|Transfer|Auswertungen/.test(menu),
   menu.replace(/\s+/g, ' '),
 );
+const menuAll = (await o.locator('nav.menu').textContent()) ?? '';
+check(
+  'Menü mit Offenen Stellen und Personalbogen',
+  /Offene Stellen/.test(menuAll) && /Personalbogen/.test(menuAll),
+);
+check('Stellen lesbar', (await o.goto(B + '/stellen')).status() === 200);
+check('Bewerber gesperrt (403)', (await o.goto(B + '/bewerber')).status() === 403);
+check('Urlaubskalender erreichbar', (await o.goto(B + '/urlaub/kalender')).status() === 200);
 check('keine globale Suche', (await o.locator('form.search').count()) === 0);
 await o.screenshot({ path: `${out}/r3-objektleitung.png`, fullPage: true });
 const r = await o.goto(B + '/rechnungen');
@@ -104,7 +117,10 @@ await o.goto(B + `/objekte/${SCHOOL}/stundenvorgabe`);
 const svText = await o.locator('body').innerText();
 check('Stundenvorgabe ohne Erlöse', svText.includes('Stundenvorgabe') && !svText.includes('Monatspauschale'));
 await o.goto(B + `/objekte/${SCHOOL}/qualitaet`);
-check('Qualitätskontrolle eigenes Objekt', (await o.locator('body').innerText()).includes('Qualitätskontrolle'));
+check(
+  'Qualitätskontrolle eigenes Objekt',
+  (await o.locator('body').innerText()).includes('Qualitätskontrolle'),
+);
 const lw = await o.request.get(B + '/raumbuch/raumarten', { maxRedirects: 0 });
 check('Raumarten nur Büro (403)', lw.status() === 403, String(lw.status()));
 check('Einstellungen für Objektleitung gesperrt', (await o.goto(B + '/einstellungen')).status() === 403);

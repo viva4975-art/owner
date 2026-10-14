@@ -31,7 +31,7 @@ describe('Rechte je Rolle', () => {
     expect(canAccess('objektleitung', '/personal')).toBe(false);
     expect(canAccess('objektleitung', '/zeiterfassung/pruefbericht')).toBe(false);
     expect(canAccess('objektleitung', '/datev')).toBe(false);
-    expect(homeFor('objektleitung')).toBe('/zeiterfassung');
+    expect(homeFor('objektleitung')).toBe('/');
   });
   it('Buchhaltung ohne Personal, Personal ohne Rechnungen, Benutzer nur Admin', () => {
     expect(canAccess('buchhaltung', '/rechnungen/neu')).toBe(true);

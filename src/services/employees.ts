@@ -853,3 +853,63 @@ export async function reenterEmployee(sql: Sql, id: string, p: { date: string; a
               where id = ${id}`;
   });
 }
+
+export interface PermitWarning {
+  id: string;
+  name: string;
+  kind: 'Aufenthaltstitel' | 'Arbeitserlaubnis';
+  /** null = Datum fehlt */
+  until: string | null;
+  sites: string[];
+}
+
+/**
+ * Objektleitung (Ahmed 14.10.): 6 Wochen vorher sehen, bei wem Aufenthaltstitel bzw. Arbeitserlaubnis fehlt oder
+ * abläuft – nur Mitarbeitende, die an ihren Objekten eingeplant sind (heute bis + `days`), nur außerhalb EU/EWR/CH.
+ * Keine weiteren vertraulichen Daten.
+ */
+export async function permitWarningsForSites(
+  sql: Sql,
+  siteIds: string[],
+  days = 42,
+): Promise<PermitWarning[]> {
+  if (siteIds.length === 0) return [];
+  const rows = await sql<
+    {
+      id: string;
+      name: string;
+      nationality: string | null;
+      residence: string | null;
+      work: string | null;
+      sites: string[];
+    }[]
+  >`
+    select e.id, e.first_name || ' ' || e.last_name as name, p.nationality,
+           p.residence_permit_until::text as residence, p.work_permit_until::text as work,
+           coalesce((select array_agg(distinct s.name) from app.shift_plans sp join app.sites s on s.id = sp.site_id
+                      where sp.employee_id = e.id and sp.site_id = any(${siteIds}::uuid[])
+                        and (sp.valid_until is null or sp.valid_until >= current_date)), '{}') as sites
+      from app.employees e left join app.employee_private p on p.employee_id = e.id
+     where e.status = 'aktiv'
+       and exists (select 1 from app.shift_plans sp
+                    where sp.employee_id = e.id and sp.site_id = any(${siteIds}::uuid[])
+                      and sp.valid_from <= current_date + ${days}::int
+                      and (sp.valid_until is null or sp.valid_until >= current_date))
+     order by e.last_name, e.first_name`;
+  const limit = addDaysIso(todayBerlin(), days);
+  const out: PermitWarning[] = [];
+  for (const r of rows) {
+    if (!r.nationality?.trim() || !permitNeeded(r.nationality)) continue;
+    if (!r.residence || r.residence <= limit)
+      out.push({ id: r.id, name: r.name, kind: 'Aufenthaltstitel', until: r.residence, sites: r.sites });
+    if (r.work && r.work <= limit)
+      out.push({ id: r.id, name: r.name, kind: 'Arbeitserlaubnis', until: r.work, sites: r.sites });
+  }
+  return out.sort((a, b) => ((a.until ?? '') < (b.until ?? '') ? -1 : 1));
+}
+
+function addDaysIso(day: string, n: number) {
+  const d = new Date(`${day}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}

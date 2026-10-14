@@ -167,6 +167,60 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
     );
   });
 
+  /**
+   * Offene Stellen nur lesen (Ahmed 14.10.: Objektleitung soll die Stellen sehen) – ohne Bewerber/Matching, mit Plakat
+   * zum Aushängen bzw. Weiterschicken. Bewerberdaten bleiben bei Admin/Personal.
+   */
+  app.get('/stellen', async (c) => {
+    const posts = (await listPostings(sql)).filter((p) => p.status === 'aktiv');
+    return page(
+      c,
+      'Offene Stellen',
+      'personal',
+      <div class="portal">
+        <div class="page-head">
+          <div>
+            <h1>Offene Stellen</h1>
+            <div class="sub">
+              {anz(posts.length, 'offene Stelle', 'offene Stellen')} · Interessenten bitte an das Büro bzw.
+              die WhatsApp-Nummer auf dem Plakat verweisen.
+            </div>
+          </div>
+        </div>
+        {posts.length === 0 ? (
+          <div class="empty">
+            <b>Derzeit keine offenen Stellen</b>
+          </div>
+        ) : (
+          <div class="list-cards">
+            {posts.map((p) => (
+              <div class="lc">
+                <div class="lc-head">
+                  <div>
+                    <span class="lc-name">{p.title}</span>
+                    <div class="lc-details">
+                      {p.city && <span>{p.city}</span>}
+                      {p.hours && <span>{hDe(p.hours)}h/Woche</span>}
+                      <span>ab {p.start_on ? dateDe(p.start_on) : 'sofort'}</span>
+                    </div>
+                    {p.tasks && (
+                      <div class="small mut" style="margin-top:6px;white-space:pre-line">
+                        {p.tasks}
+                      </div>
+                    )}
+                  </div>
+                  <a class="btn sec" href={`/bewerber/stellen/${p.id}/plakat`}>
+                    Plakat
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>,
+    );
+  });
+
   app.get(`/bewerber/stellen/:id{${UUID}}`, async (c) => {
     const p = await getPosting(sql, c.req.param('id'));
     if (!p) return c.notFound();

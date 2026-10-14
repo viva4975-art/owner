@@ -33,6 +33,8 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/auswertungen\/kostenstellen([/.]|$)/, ['admin', 'buchhaltung']],
   [/^\/auswertungen\/ausgaben([/.]|$)/, ['admin', 'buchhaltung']],
   [/^\/personal\/export/, HR],
+  [/^\/bewerber\/stellen\/[0-9a-f-]{36}\/plakat$/, ALL],
+  [/^\/stellen$/, ALL],
   [/^\/bewerber(\/|$)/, HR],
   [/^\/personal(\/|$)/, HR],
   [/^\/zeiterfassung\/(meine(\/|$)|plan-als-ist$)/, ALL],
@@ -76,7 +78,7 @@ export function canAccess(role: Role, path: string): boolean {
 
 /** Startseite je Rolle (Übersicht enthält Umsätze/Offene Posten → nur Büro). */
 export function homeFor(role: Role): string {
-  return role === 'objektleitung' ? '/zeiterfassung' : role === 'personal' ? '/zeiterfassung' : '/';
+  return role === 'personal' ? '/zeiterfassung' : '/';
 }
 
 const NEW_TARGET: Record<string, string> = {
@@ -97,4 +99,23 @@ export function canOpen(role: Role, href: string): boolean {
     return canAccess(role, NEW_TARGET[typ] ?? '/');
   }
   return canAccess(role, path!);
+}
+
+/**
+ * Links auf Seiten, die die Rolle nicht öffnen darf, aus fertigem HTML nehmen (Rechte-Rundgang 14.10.: Objektleitung
+ * bekam z. B. Mitarbeiternamen als Link zur Personalakte → „Keine Berechtigung“). Knöpfe (class „btn“) entfallen ganz,
+ * normale Links werden zu Text. Sicherheit bleibt die Regel oben – das hier ist nur Bedienung.
+ */
+export function stripForbiddenLinks(html: string, role: Role): string {
+  return html.replace(
+    /<a\b([^>]*?)\bhref="(\/[^"]*)"([^>]*)>([\s\S]*?)<\/a>/g,
+    (all, pre: string, href: string, post: string, inner: string) => {
+      if (href.startsWith('//')) return all;
+      const path = href.replace(/&amp;/g, '&').split('#')[0]!;
+      if (canOpen(role, path)) return all;
+      const attrs = `${pre} ${post}`;
+      if (/\bclass="[^"]*\bbtn\b/.test(attrs)) return '';
+      return `<span>${inner}</span>`;
+    },
+  );
 }

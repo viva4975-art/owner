@@ -26,7 +26,7 @@ import {
 import type { Deps } from '../services/workflow.js';
 import { cachedChecks } from '../services/watchdog.js';
 import { Layout } from './layout.js';
-import { canAccess, homeFor } from './permissions.js';
+import { canAccess, homeFor, stripForbiddenLinks } from './permissions.js';
 import { registerAuthRoutes } from './routes-users.js';
 import { registerFileRoutes } from './routes-files.js';
 import { registerInvoiceRoutes } from './routes-invoices.js';
@@ -339,24 +339,37 @@ export function createApp(deps: Deps) {
     }
   });
 
+  // Objektleitung: keine Links ins Leere (gesperrte Seiten) – siehe stripForbiddenLinks
+  app.use(async (c, next) => {
+    await next();
+    const role = c.get('user')?.role;
+    if (role !== 'objektleitung' || !c.res.headers.get('Content-Type')?.startsWith('text/html')) return;
+    const html = await c.res.text();
+    const headers = new Headers(c.res.headers);
+    headers.delete('Content-Length');
+    c.res = new Response(stripForbiddenLinks(html, role), { status: c.res.status, headers });
+  });
+
   // App-Rahmen: Wer die App (/qm) öffnet, sieht danach jede Büro-Seite im App-Design; „?pc=1“ schaltet zurück.
   app.use(async (c, next) => {
     const p = c.req.path;
     const opts = { path: '/', sameSite: 'Lax' as const, secure: env.APP_ENV !== 'dev', maxAge: 365 * 86400 };
     if (c.req.query('pc') === '1') setCookie(c, APP_COOKIE, '0', opts);
-    else if (c.req.method === 'GET' && (p === '/qm' || p.startsWith('/qm/') || p === '/app'))
+    // Personalbogen wird auch am PC ausgefüllt (Ahmed 14.10.) → schaltet den PC nicht in den App-Rahmen
+    else if (
+      c.req.method === 'GET' &&
+      (p === '/qm' || (p.startsWith('/qm/') && !p.startsWith('/qm/personalbogen')) || p === '/app')
+    )
       setCookie(c, APP_COOKIE, '1', opts);
     await next();
   });
 
   // Qualitätskontrolle durchführen nur am Handy/Tablet (Ahmed 14.10.) – Ansehen, Berichte, Löschen bleiben am PC.
-  const QK_DO =
-    /^\/(qm\/audit\/(neu|[0-9a-f-]{36}(\/.*)?)|qualitaet\/(neu|[0-9a-f-]{36}(\/abschliessen)?))$/;
+  const QK_DO = /^\/(qm\/audit\/(neu|[0-9a-f-]{36}(\/.*)?)|qualitaet\/(neu|[0-9a-f-]{36}(\/abschliessen)?))$/;
   app.use(async (c, next) => {
     const p = c.req.path;
     const doing =
-      QK_DO.test(p) &&
-      (c.req.method === 'POST' || p.startsWith('/qm/audit/') || p.endsWith('/abschliessen'));
+      QK_DO.test(p) && (c.req.method === 'POST' || p.startsWith('/qm/audit/') || p.endsWith('/abschliessen'));
     if (doing && c.get('user') && !isTouchDevice(c))
       throw new BusinessError(
         'Qualitätskontrollen werden in der App am Handy oder Tablet durchgeführt (Qualität → Audit starten).',

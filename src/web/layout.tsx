@@ -1440,8 +1440,10 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     items: [
       { label: 'Mitarbeiter', href: '/personal' },
       { label: 'Bewerber & Stellen', href: '/bewerber' },
+      { label: 'Offene Stellen', href: '/stellen', olOnly: true },
       { label: 'Fehlende Unterlagen', href: '/personal/unterlagen' },
       { label: 'Unterweisungen & Unterschriften', href: '/personal/dokumente' },
+      { label: 'Personalbogen ausfüllen', href: '/qm/personalbogen', olOnly: true },
       { label: 'Zeiterfassung', href: '/zeiterfassung', sep: true },
       { label: 'Meine Zeiten', href: '/zeiterfassung/meine' },
       { label: 'Plan/Ist je Monat', href: '/zeiterfassung/monat' },
@@ -1565,7 +1567,10 @@ export const Layout: FC<{
               role === 'buchhaltung' ||
               (i.href === '/m' && role === 'personal')),
         ),
-      })).filter((m) => (m.href ? canAccess(role, m.href) : (m.items?.length ?? 0) > 0))
+      }))
+        // Auswertungen braucht die Objektleitung nicht (Ahmed 14.10.); Dienste-Liste bleibt über Planung erreichbar
+        .filter((m) => !(m.key === 'auswertungen' && role === 'objektleitung'))
+        .filter((m) => (m.href ? canAccess(role, m.href) : (m.items?.length ?? 0) > 0))
     : [];
   const search = !!role && canAccess(role, '/suche');
   return (

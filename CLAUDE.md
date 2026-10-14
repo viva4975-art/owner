@@ -2874,3 +2874,8 @@ Testadresse.
     `dunningRecipients()`: Mahn-/Rechnungs-E-Mails der Gruppe je Rechnung, bei übernommenen Rechnungen über die Objekte
     der Positionen, sonst die Gruppen des Kunden („Standard“ zuerst), zuletzt der Kunde. Gilt für Anzeige und Versand.
   - Aushänge-PDF schneller (Textbreiten je Wort zwischengespeichert, Einpassen per Halbierung): 10 Seiten ~1 s.
+- 2026-10-14: Mahnungen weiter „keine E-Mail beim Kunden“ (Ahmed): Der Text stammt aus dem alten Stand – der Server hatte das
+  Update zu dem Zeitpunkt noch nicht (neuer Text wäre „keine E-Mail (Rechnungsgruppe)“). Neu: **App-Stand** (Commit +
+  Datum) unter Einstellungen und Einstellungen → Systemzustand sowie `/health/version`; `deploy/update.sh` schreibt dafür
+  `version.txt` (nicht im Repo). Versandliste „Noch nicht versendet“: „Los (n)“ zählte vom Browser wiederhergestellte
+  Häkchen nicht (Safari/Zurück) → Zähler auch bei Klick, `pageshow` und kurz nach dem Laden.

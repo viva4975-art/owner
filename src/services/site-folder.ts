@@ -53,7 +53,13 @@ export const FOLDER_QUESTIONS: {
 }[] = [
   { key: 'bereichsleitung', label: 'Bereichsleitung', hint: 'Name der Bereichsleitung', required: true },
   { key: 'bereichsleitung_tel', label: 'Telefon Bereichsleitung', hint: 'z. B. 0176 …', required: true },
-  { key: 'ersthelfer', label: 'Ersthelfer im Objekt', hint: 'Name (Notruf-Aushang)', required: true },
+  {
+    key: 'ersthelfer',
+    label: 'Ersthelfer im Objekt',
+    // § 26 DGUV Vorschrift 1: ab 2 anwesenden Beschäftigten mind. 1 Ersthelfer (bis 20), darüber 10 % (Verwaltung 5 %)
+    hint: 'Name (Notruf-Aushang) – freiwillig; Pflicht ab 2 gleichzeitig Anwesenden (§ 26 DGUV V1)',
+    required: false,
+  },
   {
     key: 'ansprechpartner',
     label: 'Ansprechpartner beim Kunden',
@@ -70,28 +76,14 @@ export const FOLDER_QUESTIONS: {
   {
     key: 'krankenhaus',
     label: 'Nächstes Krankenhaus',
-    hint: 'Name und Adresse',
-    required: true,
+    hint: 'wird nach Adresse/PLZ automatisch ermittelt (Notaufnahme) – bei Bedarf ändern',
+    required: false,
     group: 'Notfall- und Meldeplan',
   },
   {
     key: 'sammelplatz',
     label: 'Sammelplatz (Evakuierung)',
     hint: 'z. B. Parkplatz vor dem Haupteingang',
-    required: true,
-    group: 'Notfall- und Meldeplan',
-  },
-  {
-    key: 'feuerloescher',
-    label: 'Nächster Feuerlöscher',
-    hint: 'z. B. Flur EG neben Putzraum',
-    required: true,
-    group: 'Notfall- und Meldeplan',
-  },
-  {
-    key: 'verbandkasten',
-    label: 'Nächster Verbandkasten',
-    hint: 'z. B. Putzraum, Regal links',
     required: true,
     group: 'Notfall- und Meldeplan',
   },
@@ -103,37 +95,9 @@ export const FOLDER_QUESTIONS: {
     group: 'Notfall- und Meldeplan',
   },
   {
-    key: 'wasser',
-    label: 'Hauptabsperrung Wasser',
-    hint: 'z. B. Keller, Raum -1.04',
-    required: true,
-    group: 'Notfall- und Meldeplan',
-  },
-  {
-    key: 'strom',
-    label: 'Hauptschalter Strom',
-    hint: 'z. B. Keller, Verteilerraum',
-    required: true,
-    group: 'Notfall- und Meldeplan',
-  },
-  {
-    key: 'brandmelder',
-    label: 'Brandmelderzentrale',
-    hint: 'Ort – oder „keine“',
-    required: true,
-    group: 'Notfall- und Meldeplan',
-  },
-  {
     key: 'abfall_platz',
     label: 'Müll-Sammelplatz im Objekt',
     hint: 'z. B. Hof, Tonnenhäuschen',
-    required: true,
-    group: 'Abfall',
-  },
-  {
-    key: 'abfuhrtage',
-    label: 'Abfuhrtage',
-    hint: 'z. B. Restmüll Di, Papier Fr',
     required: true,
     group: 'Abfall',
   },
@@ -370,19 +334,7 @@ export function folderValues(f: FolderFacts): Record<string, string> {
   if (ap) v.ansprechpartner = ap;
   if (apTel) v['ansprechpartner|tel'] = apTel;
   if (i.putzraum) v.putzraum = i.putzraum;
-  for (const k of [
-    'hausmeister',
-    'krankenhaus',
-    'sammelplatz',
-    'feuerloescher',
-    'verbandkasten',
-    'notausgang',
-    'wasser',
-    'strom',
-    'brandmelder',
-    'abfall_platz',
-    'abfuhrtage',
-  ] as const)
+  for (const k of ['hausmeister', 'krankenhaus', 'sammelplatz', 'notausgang', 'abfall_platz'] as const)
     if (i[k]) v[k] = i[k];
   // Stand des Ordners = heute (er wird aus den aktuellen Daten erzeugt)
   v['letzte überprüfung'] = today;
@@ -742,14 +694,8 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
     ['Hausmeister / Haustechnik', f.info.hausmeister ?? ''],
     ['Nächstes Krankenhaus', f.info.krankenhaus ?? ''],
     ['Sammelplatz', f.info.sammelplatz ?? ''],
-    [
-      'Feuerlöscher / Verbandkasten',
-      [f.info.feuerloescher, f.info.verbandkasten].filter(Boolean).join(' · '),
-    ],
     ['Notausgang', f.info.notausgang ?? ''],
-    ['Absperrung Wasser / Strom', [f.info.wasser, f.info.strom].filter(Boolean).join(' · ')],
-    ['Brandmelderzentrale', f.info.brandmelder ?? ''],
-    ['Müll-Sammelplatz / Abfuhr', [f.info.abfall_platz, f.info.abfuhrtage].filter(Boolean).join(' · ')],
+    ['Müll-Sammelplatz', f.info.abfall_platz ?? ''],
     ['Schlüssel im Schlüsselbuch', String(f.keys)],
     ['Notruf / Polizei / Giftnotruf', '112 / 110 / 089 19240'],
   ];
@@ -904,13 +850,8 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
       ['Hausmeister / Haustechnik', f.info.hausmeister],
       ['Nächstes Krankenhaus', f.info.krankenhaus],
       ['Sammelplatz', f.info.sammelplatz],
-      ['Nächster Feuerlöscher', f.info.feuerloescher],
-      ['Nächster Verbandkasten', f.info.verbandkasten],
       ['Nächster Notausgang', f.info.notausgang],
-      ['Hauptabsperrung Wasser', f.info.wasser],
-      ['Hauptschalter Strom', f.info.strom],
-      ['Brandmelderzentrale', f.info.brandmelder],
-      ['Müll-Sammelplatz / Abfuhr', [f.info.abfall_platz, f.info.abfuhrtage].filter(Boolean).join(' · ')],
+      ['Müll-Sammelplatz', f.info.abfall_platz],
     ] as [string, string | undefined][]
   )
     .filter(([, v]) => v)
@@ -1062,4 +1003,124 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
     if (d.y > FORM_Y.BOTTOM - 10) break;
   }
   return { pdf: await d.save(), name: `Objektordner_${safe(tag)}.pdf`, facts: f, withPackage: !!pkg };
+}
+
+// ------------------------------------------------------------------ Aushänge einzeln
+
+export const POSTERS = {
+  notfall: 'Notfall & Kontakte',
+  hautschutz: 'Hautschutzplan',
+  dosierung: 'Dosierung Reinigungsmittel',
+} as const;
+export type PosterKind = keyof typeof POSTERS;
+
+/**
+ * Einzelne Aushänge fürs Objekt (Ahmed 14.10.: „die Aushänge separat, damit man es aushängen kann“) – je eine
+ * A4-Seite mit großer Schrift, aus den Objektangaben und den firmenweiten Angaben (Einstellungen → Objektordner).
+ * Fehlende Zeilen entfallen.
+ */
+export async function buildPosterPdf(deps: Deps, siteId: string, kind: PosterKind) {
+  const { sql } = deps;
+  const { FormDoc, FORM_X, FORM_COLORS } = await import('../pdf/form-doc.js');
+  const f = await folderFacts(sql, siteId);
+  const values = folderValues(f);
+  const today = todayBerlin();
+  const title = POSTERS[kind];
+  const d = await FormDoc.create({
+    title: `${title} – ${f.site.name}`,
+    sideRef: `${title} · ${f.site.site_no}`,
+    date: today,
+    author: 'Viva-Deluxe Gebäudereinigung GmbH',
+    plain: true,
+  });
+  const { L, R } = FORM_X;
+  const addr = [f.site.street, [f.site.postal_code, f.site.city].filter(Boolean).join(' ')]
+    .filter(Boolean)
+    .join(', ');
+  d.y += 14;
+  d.text(title, L, d.y + 22, { size: 28, bold: true });
+  d.y += 34;
+  d.text(d.fit(`${f.site.name}${addr ? ` · ${addr}` : ''}`, R - L, 12), L, d.y + 12, { size: 12 });
+  d.y += 30;
+  /** große Zeile: Beschriftung klein, Wert groß, mit Umbruch */
+  const big = (label: string, value: string | undefined, size = 16, accent = false) => {
+    if (!value?.trim()) return;
+    const lines = d.wrap(value, R - L - 20, size, true);
+    const h = 16 + lines.length * (size + 4) + 10;
+    d.ensure(h);
+    d.rect(L, d.y, R - L, h, accent ? FORM_COLORS.ACCENT : FORM_COLORS.BOX);
+    d.rect(L, d.y, 3, h, FORM_COLORS.BORDEAUX);
+    d.cap(label, L + 14, d.y + 13, { size: 7.5 });
+    lines.forEach((l, i) => d.text(l, L + 14, d.y + 18 + (i + 1) * (size + 4) - 4, { size, bold: true }));
+    d.y += h + 8;
+  };
+  if (kind === 'notfall') {
+    d.tiles([
+      { label: 'NOTRUF / FEUERWEHR / RETTUNG', value: '112', accent: true },
+      { label: 'POLIZEI', value: '110' },
+      { label: 'GIFTNOTRUF MÜNCHEN', value: '089 19240' },
+    ]);
+    big('Unsere Adresse (für den Notruf)', addr || f.site.name, 18, true);
+    big('Objektleitung', [values.objektleitung, values['objektleitung|tel']].filter(Boolean).join('  ·  '));
+    big(
+      'Bereichsleitung',
+      [values.bereichsleitung, values['bereichsleitung|tel']].filter(Boolean).join('  ·  '),
+    );
+    big('Ersthelfer im Objekt', f.info.ersthelfer);
+    big('Nächstes Krankenhaus', f.info.krankenhaus, 14);
+    big('Sammelplatz', f.info.sammelplatz);
+    big('Nächster Notausgang', f.info.notausgang);
+    big('Hausmeister / Haustechnik', f.info.hausmeister);
+    big(
+      'Ansprechpartner Kunde',
+      [values.ansprechpartner, values['ansprechpartner|tel']].filter(Boolean).join('  ·  '),
+    );
+    big('Betriebsarzt', f.defaults.betriebsarzt, 13);
+    d.muted(
+      'Bei Unfall: Erste Hilfe leisten, 112 anrufen (Wo? Was? Wie viele? Welche Verletzungen? Warten auf Rückfragen), danach Objektleitung informieren. Jeden Arbeitsunfall melden.',
+    );
+  } else if (kind === 'hautschutz') {
+    const rows: [string, string, string | undefined][] = [
+      ['Vor der Arbeit und nach Pausen', 'Hautschutz auftragen', f.defaults.hautschutz],
+      [
+        'Bei Arbeit mit Reinigungsmitteln / nass',
+        'Schutzhandschuhe tragen (bei > 15 Min. Baumwoll-Unterziehhandschuhe)',
+        'Chemikalienschutzhandschuhe',
+      ],
+      [
+        'Nach der Arbeit und vor Pausen',
+        'Hände reinigen – mild, gründlich abtrocknen',
+        f.defaults.hautreinigung,
+      ],
+      ['Nach der Arbeit', 'Hände eincremen', f.defaults.hautpflege],
+    ];
+    for (const [wann, was, produkt] of rows) big(wann, `${was}${produkt ? `: ${produkt}` : ''}`, 15);
+    d.muted(
+      'Feuchtarbeit (nasse Hände oder Handschuhe mehr als 2 Std. am Tag) belastet die Haut (TRGS 401). Hautveränderungen bitte sofort der Objektleitung melden – Vorsorge beim Betriebsarzt.',
+    );
+  } else {
+    const rows = f.defaults.dosierung ?? [];
+    if (!rows.length)
+      big(
+        'Noch keine Angaben',
+        'Produkte und Dosierung unter Einstellungen → Objektordner-Vorlagen eintragen.',
+        14,
+      );
+    else
+      d.table(
+        [
+          { label: 'Produkt', width: 150 },
+          { label: 'Dosierung', width: 110 },
+          { label: 'Wasser', width: 80 },
+          { label: 'Einsatz / Hinweis', width: R - L - 340 },
+        ],
+        rows.map((r) => [r.produkt, r.dosierung, r.wasser, r.hinweis]),
+        { size: 13 },
+      );
+    d.muted(
+      'Nie Reinigungsmittel mischen. Erst Wasser, dann Reiniger. Dosierhilfe benutzen – Überdosierung schadet Oberflächen und Haut. Sicherheitsdatenblätter liegen im Objektordner.',
+    );
+  }
+  d.muted(`Stand ${formatDateDe(today)} · Viva-Deluxe Gebäudereinigung GmbH`);
+  return { pdf: await d.save(), name: `${safe(title)}_${safe(f.site.site_no)}.pdf` };
 }

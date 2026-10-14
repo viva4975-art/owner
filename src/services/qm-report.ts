@@ -868,7 +868,8 @@ export async function renderAuditReportPdf(deps: Deps, cfg: UploadConfig, id: st
         }
         d.page.drawImage(img, { x: px, y: H - d.y - ph, width: w, height: ph });
         const tag = tags.get(f.id);
-        if (tag) d.text(d.fit(tag, Math.max(w, 90), 6), px, d.y + ph + 7, { size: 6, color: rgb(0.4, 0.4, 0.4) });
+        if (tag)
+          d.text(d.fit(tag, Math.max(w, 90), 6), px, d.y + ph + 7, { size: 6, color: rgb(0.4, 0.4, 0.4) });
         px += Math.max(w, tag ? 90 : 0) + 6;
       }
       if (px > L) d.y += ph + 18;

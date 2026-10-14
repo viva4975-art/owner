@@ -1603,7 +1603,10 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
 
   // ---------------------------------------------------------------- Push-Nachrichten
   app.get('/m/push.js', (c) =>
-    c.body(TOUCH_JS + PUSH_JS, 200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache' }),
+    c.body(TOUCH_JS + PUSH_JS, 200, {
+      'Content-Type': 'text/javascript; charset=utf-8',
+      'Cache-Control': 'no-cache',
+    }),
   );
   app.get('/m/push/key', async (c) =>
     c.text((await vapidKeys(sql, env)).publicKey, 200, { 'Cache-Control': 'no-store' }),

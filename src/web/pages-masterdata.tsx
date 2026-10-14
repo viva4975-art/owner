@@ -824,7 +824,11 @@ export const SiteList: FC<{
               </div>
               <div class="cust">
                 <div class="lbl">Kunde</div>
-                {showManagerFilter ? <a href={`/kunden/${s.customer_id}`}>{s.customer_name}</a> : s.customer_name}
+                {showManagerFilter ? (
+                  <a href={`/kunden/${s.customer_id}`}>{s.customer_name}</a>
+                ) : (
+                  s.customer_name
+                )}
                 <span class="small faint"> · {s.customer_no}</span>
               </div>
               <div class="ol">

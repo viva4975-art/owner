@@ -100,6 +100,7 @@ Testadresse.
       (ab 20 Pflicht, § 38 BDSG); AÜ-Erlaubnis unter Einstellungen → Firmendaten eintragen
 - [ ] Lieferantennummern bei Behörden, Leitweg-IDs der Behörden-Kunden (Steuernummer 143/190/63154 vom Briefpapier übernommen)
 - [x] ~~Mail-Zugang (SMTP) für buchhaltung@ in `.env.live`~~ – 11.10.2026 eingetragen (Ahmed)
+- [ ] mstore-Reinigungsmittel (Unterhalts-/Sanitärreiniger): Produktnamen + Datenblätter für Dosierungs-Aushang
 - [ ] Testadresse für den Prototyp-Versand
 - [x] ~~S3-Bucket mit Object Lock~~ – 11.10.2026 eingerichtet (IONOS eu-central-4, Bucket viva-archiv), Kopie läuft
 - [x] ~~Ausfallmeldung~~ – 11.10.2026 UptimeRobot (`/health/voll`) + `ALERT_EMAIL` eingerichtet (Ahmed); healthchecks.io optional
@@ -2783,3 +2784,35 @@ Testadresse.
   Entwurf löschen setzt den Auftrag auf „erledigt“, er steht wieder unter Entwürfe → „Aus Einzelleistungen erstellen“ im
   Monat seines Termins/Leistungszeitraums und beim Kunden → Einzelaufträge → Offen. Monate mit Einzelaufträgen sind dort
   jetzt immer aufgeklappt (vorher nur der neueste Monat → ältere Aufträge wirkten verschwunden). Test in `runde33.db.test.ts`.
+- 2026-10-14: Runde 40 (Ahmed, 11 Punkte – Objektleitung, Qualitätskontrolle, Objektordner):
+  - **QK-Fotos nur mit der Kamera** (`capture="environment"`, keine Galerie im App-Ablauf) und mit Standort-Kennzeichen:
+    je Foto Aufnahmezeit, Bewertung am Objekt / entfernt / ungenau / kein Standort, Entfernung, Koordinaten
+    (`app.qm_photo_tags`, Migration `20261125000001`); im Auswertungsbericht unter jedem Mangelfoto. **Grenze:** Ein
+    Browser kann die Galerie nicht völlig sperren (Android bietet teils trotzdem „Dateien“) – Zeitpunkt + Standort zeigen
+    aber, wann und wo das Foto hochgeladen wurde.
+  - **QK nur am Handy/Tablet** (Erkennung über Gerät bzw. Touch-Cookie `vd_touch`): am PC nur ansehen, Berichte,
+    löschen; Starten/Bewerten/Abschließen am PC wird abgelehnt mit Hinweis auf die App.
+  - **Objektleitung:** eigene Startseite `/` (statt Zeiterfassung): Aufenthaltstitel/Arbeitserlaubnis der an ihren
+    Objekten eingeplanten Leute, die in 6 Wochen ablaufen oder fehlen (nur außerhalb EU/EWR/CH, keine weiteren
+    vertraulichen Daten; `permitWarningsForSites`), Abwesend heute/7/14 Tage, eigene Aufgaben, Schnellwege.
+    **Urlaub & Abwesenheiten** für ihre eingeplanten Leute (Kalender, Anträge, eintragen; Löschen/Stunden nur Büro).
+    **Kunde & Ansprechpartner** in der Objektübersicht (Name, Telefon, E-Mail – keine Rechnungen/Preise).
+    **Offene Stellen** nur lesen mit Plakat (`/stellen`, ohne Bewerber). **Personalbogen** auch am PC (Menü Personal;
+    schaltet den PC nicht in den App-Rahmen). **Auswertungen** aus dem Menü (Dienste-Liste bleibt über Planung).
+    **Anwesenheitsliste** und Aushänge druckbar (Rechte-Fund: war gesperrt).
+  - **Rechte-Rundgang als Objektleitung** (400 Seiten): Links auf gesperrte Seiten (Personalakte, Benutzer, Objekt/Kunde
+    anlegen) werden für die Rolle zentral entfernt bzw. als Text gezeigt (`stripForbiddenLinks`); danach keine 403 mehr.
+  - **Objektordner:** raus Hauptabsperrung Wasser, Hauptschalter Strom, Brandmelderzentrale, Abfuhrtage, Feuerlöscher,
+    Verbandkasten (alte Werte werden nicht mehr gedruckt). **Ersthelfer freiwillig** mit Hinweis § 26 DGUV Vorschrift 1
+    (ab 2 gleichzeitig Anwesenden mind. 1, bis 20 Personen 1, darüber 10 % bzw. Verwaltung 5 %) und Zahl der eingeplanten
+    Reinigungskräfte. **Nächstes Krankenhaus automatisch** (`src/services/hospital.ts`): Standort des Objekts bzw. Adresse/
+    PLZ (OpenStreetMap Nominatim) → Krankenhäuser im Umkreis 30 km (Overpass), Notaufnahme bevorzugt, ohne Tages-/Reha-/
+    Psychiatrie-Kliniken; beim Drucken automatisch, wenn leer, sonst Knopf „Neu ermitteln“; änderbar. Ohne Internet bleibt
+    das Feld leer. **Bitte einmal je Objekt prüfen** (OSM-Daten können lückenhaft sein).
+  - **Aushänge einzeln** (Objekt → Objektordner): Notfall & Kontakte (112/110/Giftnotruf 089 19240, Objektadresse für den
+    Notruf, Objekt-/Bereichsleitung, Ersthelfer, Krankenhaus, Sammelplatz, Notausgang, Hausmeister, Kunde, Betriebsarzt),
+    Hautschutzplan (Produkte aus Einstellungen), Dosierung Reinigungsmittel – je eine A4-Seite mit großer Schrift.
+  - **Offen (Ahmed):** mstore-Produkte (Unterhaltsreiniger, Sanitärreiniger) – genaue Produktnamen und Produkt-/
+    Sicherheitsdatenblätter schicken, dann trage ich Dosierung und Hautschutz-Hinweise ein (keine Dosierung geraten).
+  - Tests: 559 Unit-/DB-Tests (neu `hospital.test.ts`, `permissions.test.ts`), e2e rechte 35, objekt 31, login 34,
+    zeit 26, planung 27, objektseiten 40 grün.

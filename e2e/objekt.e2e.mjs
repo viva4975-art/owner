@@ -104,13 +104,19 @@ await p.screenshot({ path: `${out}/o2-stundenvorgabe.png`, fullPage: true });
 console.log('3. Qualitätskontrolle');
 await p.goto(B + `/objekte/${SITE}/qualitaet`);
 check('am PC nur Hinweis auf die App', (await body(p)).includes('in der App am Handy oder Tablet'));
-check('am PC kein Start-Knopf', (await p.locator('button:has-text("Qualitätskontrolle starten")').count()) === 0);
+check(
+  'am PC kein Start-Knopf',
+  (await p.locator('button:has-text("Qualitätskontrolle starten")').count()) === 0,
+);
 const pcPost = await p.request.post(B + '/qualitaet/neu', {
   form: { id: randomUUID(), site_id: SITE },
   headers: { Origin: B },
   maxRedirects: 0,
 });
-check('am PC anlegen abgelehnt', pcPost.status() !== 303 || !(pcPost.headers().location ?? '').includes('/qualitaet/'));
+check(
+  'am PC anlegen abgelehnt',
+  pcPost.status() !== 303 || !(pcPost.headers().location ?? '').includes('/qualitaet/'),
+);
 // ab hier wie am Tablet (Touch-Cookie)
 await ctx.addCookies([{ name: 'vd_touch', value: '1', url: B }]);
 await p.reload();

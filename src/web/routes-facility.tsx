@@ -86,8 +86,8 @@ const QkAppHint: FC<{ auditId?: string }> = ({ auditId }) => (
   <div class="card hint" style="margin:0 0 12px">
     <b>Qualitätskontrollen werden in der App am Handy oder Tablet durchgeführt.</b>
     <p class="small mut" style="margin:6px 0 0">
-      Viva-App öffnen → Qualität → {auditId ? 'Audit fortsetzen' : 'Audit starten'}. Fotos nur direkt mit der Kamera,
-      mit Zeitpunkt und Standort. Am PC: Ergebnisse, Auswertungsbericht und Statistik ansehen.
+      Viva-App öffnen → Qualität → {auditId ? 'Audit fortsetzen' : 'Audit starten'}. Fotos nur direkt mit der
+      Kamera, mit Zeitpunkt und Standort. Am PC: Ergebnisse, Auswertungsbericht und Statistik ansehen.
     </p>
   </div>
 );

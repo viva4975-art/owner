@@ -59,7 +59,7 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/qm(\/|$)/, ALL],
   [/^\/(qualitaet|zaehler)(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
   [
-    /^\/objekte\/[0-9a-f-]{36}(\/(einsaetze|zeiten|qr|notizen|aufgaben|arbeitsscheine|raumbuch|stundenvorgabe|qualitaet|zaehler|dokumente|schluessel|uebergaben|objektordner|anwesenheit)([/.]|$)|$)/,
+    /^\/objekte\/[0-9a-f-]{36}(\/(einsaetze|zeiten|qr|notizen|aufgaben|arbeitsscheine|raumbuch|stundenvorgabe|qualitaet|zaehler|dokumente|schluessel|uebergaben|objektordner|anwesenheit|aushang)([/.]|$)|$)/,
     ['admin', 'buchhaltung', 'objektleitung', 'personal'],
   ],
   [/^\/objekte\/?$/, ['admin', 'buchhaltung', 'objektleitung']],

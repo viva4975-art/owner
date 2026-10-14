@@ -10,16 +10,20 @@ import { type Ctx, UUID, assertSite } from './app.js';
 import {
   FOLDER_QUESTIONS,
   type FolderInfo,
+  POSTERS,
+  type PosterKind,
   buildFolderPdf,
+  buildPosterPdf,
   buildFolderZip,
   folderFacts,
   packageInfo,
   saveFolderInfo,
 } from '../services/site-folder.js';
 import { DocFoldAll, FileArea, docOpen } from './files.js';
+import { fillHospital } from '../services/hospital.js';
 import { zipHref } from './routes-files.js';
 import { Icon } from './icons.js';
-import { dateDe } from './layout.js';
+import { anz, dateDe } from './layout.js';
 import { OfferTable } from './pages-offers.js';
 
 /** Dokumentarten am Objekt; die ersten drei sind Pflicht (fehlende werden rot angezeigt). */
@@ -49,6 +53,9 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
       const f = await folderFacts(sql, s.id);
       const pkg = await packageInfo(sql);
       const asks = f.missing.filter((m) => m.key);
+      const [{ workers } = { workers: 0 }] = await sql<{ workers: number }[]>`
+        select count(distinct employee_id)::int as workers from app.shift_plans
+         where site_id = ${s.id} and employee_id is not null and (valid_until is null or valid_until >= current_date)`;
       const links = f.missing.filter((m) => !m.key);
       return (
         <>
@@ -71,6 +78,14 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                   Word-Dateien (ZIP)
                 </a>
               </div>
+            </div>
+            <div class="actions" style="margin-bottom:0">
+              <span class="small mut">Aushänge einzeln:</span>
+              {(Object.keys(POSTERS) as PosterKind[]).map((k) => (
+                <a class="btn sec sm" href={`/objekte/${s.id}/aushang/${k}.pdf`} target="_blank">
+                  <Icon name="download" /> {POSTERS[k]}
+                </a>
+              ))}
             </div>
             <form
               method="get"
@@ -149,6 +164,23 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                         }
                         style={asks.some((m) => m.key === q.key) ? 'border-color:var(--err)' : ''}
                       />
+                      {q.key === 'krankenhaus' && (
+                        <button
+                          class="btn ghost sm"
+                          type="submit"
+                          formaction={`/objekte/${s.id}/objektordner/krankenhaus`}
+                          formnovalidate
+                        >
+                          {f.info.krankenhaus ? 'Neu ermitteln' : 'Automatisch ermitteln'}
+                        </button>
+                      )}
+                      {q.key === 'ersthelfer' && (
+                        <div class="small mut">
+                          {anz(workers, 'Reinigungskraft', 'Reinigungskräfte')} eingeplant. Ein Ersthelfer ist
+                          Pflicht, sobald 2 oder mehr Beschäftigte gleichzeitig arbeiten (bis 20 Personen 1,
+                          darüber 10 %; § 26 DGUV Vorschrift 1) – sonst reicht der Notruf 112.
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -179,9 +211,40 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
     return back(c, `/objekte/${id}/objektordner`, { ok: 'Angaben gespeichert.' });
   });
 
+  app.post(`/objekte/:id{${UUID}}/objektordner/krankenhaus`, async (c) => {
+    const id = c.req.param('id');
+    assertSite(c, id);
+    const text = await fillHospital(sql, id, c.get('actor'), { force: true });
+    return back(
+      c,
+      `/objekte/${id}/objektordner`,
+      text
+        ? { ok: `Nächstes Krankenhaus: ${text} – bitte einmal prüfen.` }
+        : {
+            fehler:
+              'Kein Krankenhaus gefunden (Adresse prüfen oder Internetverbindung) – bitte von Hand eintragen.',
+          },
+    );
+  });
+
+  app.get(`/objekte/:id{${UUID}}/aushang/:file`, async (c) => {
+    const id = c.req.param('id');
+    assertSite(c, id);
+    const kind = c.req.param('file').replace(/\.pdf$/, '') as PosterKind;
+    if (!(kind in POSTERS)) return c.notFound();
+    if (kind === 'notfall') await fillHospital(sql, id, c.get('actor'));
+    const r = await buildPosterPdf(deps, id, kind);
+    return c.body(r.pdf as Uint8Array<ArrayBuffer>, 200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(r.name)}`,
+      'Cache-Control': 'private, no-store',
+    });
+  });
+
   app.get(`/objekte/:id{${UUID}}/objektordner.zip`, async (c) => {
     const id = c.req.param('id');
     assertSite(c, id);
+    await fillHospital(sql, id, c.get('actor'));
     const r = await buildFolderZip(deps, id);
     return c.body(r.zip as Uint8Array<ArrayBuffer>, 200, {
       'Content-Type': 'application/zip',
@@ -193,6 +256,7 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
   app.get(`/objekte/:id{${UUID}}/objektordner.pdf`, async (c) => {
     const id = c.req.param('id');
     assertSite(c, id);
+    await fillHospital(sql, id, c.get('actor'));
     const r = await buildFolderPdf(deps, id);
     return c.body(r.pdf as Uint8Array<ArrayBuffer>, 200, {
       'Content-Type': 'application/pdf',

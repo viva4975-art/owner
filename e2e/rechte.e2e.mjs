@@ -94,6 +94,11 @@ check(
 check('Stellen lesbar', (await o.goto(B + '/stellen')).status() === 200);
 check('Bewerber gesperrt (403)', (await o.goto(B + '/bewerber')).status() === 403);
 check('Urlaubskalender erreichbar', (await o.goto(B + '/urlaub/kalender')).status() === 200);
+{
+  const r1 = await o.request.get(B + `/objekte/${SCHOOL}/anwesenheit.pdf?monat=2026-10&seiten=1`);
+  const r2 = await o.request.get(B + `/objekte/${SCHOOL}/aushang/hautschutz.pdf`);
+  check('Anwesenheitsliste und Aushang druckbar', r1.status() === 200 && r2.status() === 200, `${r1.status()} ${r2.status()}`);
+}
 check('keine globale Suche', (await o.locator('form.search').count()) === 0);
 await o.screenshot({ path: `${out}/r3-objektleitung.png`, fullPage: true });
 const r = await o.goto(B + '/rechnungen');

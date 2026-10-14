@@ -7,6 +7,15 @@ import {
   savePackage,
 } from '../services/site-folder.js';
 import { listRanges, raiseRange, rangeLabel } from '../services/number-ranges.js';
+import {
+  listSafetySheets,
+  removeSafetySheet,
+  safetySheetFile,
+  safetySheetsPdf,
+  saveSafetySheet,
+  sheetOutdated,
+} from '../services/safety-sheets.js';
+import { todayBerlin } from '../domain/invoice/calc.js';
 import { z } from 'zod';
 import { BusinessError } from '../services/errors.js';
 import type { Role } from '../services/users.js';
@@ -244,6 +253,8 @@ export function registerSettingsRoutes({ app, deps, page, back }: Ctx) {
   app.get('/einstellungen/objektordner', async (c) => {
     const p = await packageInfo(deps.sql);
     const fd = await getFolderDefaults(deps.sql);
+    const sds = await listSafetySheets(deps.sql);
+    const today = todayBerlin();
     const dos = [...(fd.dosierung ?? [])];
     while (dos.length < 6) dos.push({ produkt: '', dosierung: '', wasser: '', hinweis: '' });
     return page(
@@ -335,8 +346,132 @@ export function registerSettingsRoutes({ app, deps, page, back }: Ctx) {
             <button class="btn">Speichern</button>
           </div>
         </form>
+        <div class="card" style="max-width:980px" id="sdb">
+          <h3 style="margin-top:0">Sicherheitsdatenblätter</h3>
+          <p class="small mut" style="margin-top:0">
+            Je eingesetztem Reinigungsmittel das aktuelle Sicherheitsdatenblatt des Herstellers (PDF, bekommen
+            Sie vom Lieferanten bzw. auf dessen Internetseite). Sie liegen automatisch in jedem Objektordner
+            (PDF und ZIP) und sind unter Objekt → Objektordner einzeln druckbar. Die Beschäftigten müssen
+            Zugang dazu haben (§ 14 GefStoffV). Gleicher Produktname = neue Fassung ersetzt die alte.
+          </p>
+          {sds.length === 0 ? (
+            <p class="empty">Noch keine Sicherheitsdatenblätter hochgeladen.</p>
+          ) : (
+            <div class="tbl">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Produkt</th>
+                    <th>Hersteller</th>
+                    <th>Fassung vom</th>
+                    <th>Datei</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sds.map((x) => (
+                    <tr>
+                      <td>
+                        <b>{x.product}</b>
+                      </td>
+                      <td>{x.manufacturer ?? '–'}</td>
+                      <td>
+                        {x.issued_on ? x.issued_on.split('-').reverse().join('.') : '–'}
+                        {sheetOutdated(x.issued_on, today) && (
+                          <div class="small" style="color:var(--err)">
+                            älter als 3 Jahre – aktuelle Fassung anfordern
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <a href={`/sicherheitsdatenblaetter/${x.id}`} target="_blank">
+                          {x.file_name}
+                        </a>
+                      </td>
+                      <td>
+                        <form
+                          method="post"
+                          action={`/einstellungen/objektordner/sdb/${x.id}/entfernen`}
+                          data-confirm={`Sicherheitsdatenblatt „${x.product}“ entfernen?`}
+                        >
+                          <button class="btn sm ghost">Entfernen</button>
+                        </form>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <form method="post" action="/einstellungen/objektordner/sdb" enctype="multipart/form-data">
+            <div class="grid">
+              <div>
+                <label for="sdb-produkt">Produkt</label>
+                <input id="sdb-produkt" name="produkt" required placeholder="z. B. Unterhaltsreiniger …" />
+              </div>
+              <div>
+                <label for="sdb-hersteller">Hersteller / Lieferant</label>
+                <input id="sdb-hersteller" name="hersteller" placeholder="z. B. mstore" />
+              </div>
+              <div>
+                <label for="sdb-datum">Fassung vom</label>
+                <input id="sdb-datum" name="datum" type="date" />
+              </div>
+              <div>
+                <label for="sdb-datei">Sicherheitsdatenblatt (PDF)</label>
+                <input id="sdb-datei" type="file" name="datei" accept=".pdf,application/pdf" required />
+              </div>
+            </div>
+            <div class="formfoot">
+              <button class="btn">Hochladen</button>
+            </div>
+          </form>
+        </div>
       </>,
     );
+  });
+
+  app.post('/einstellungen/objektordner/sdb', async (c) => {
+    const b = await c.req.parseBody();
+    const f = b.datei;
+    if (!(f instanceof File) || !f.size) throw new BusinessError('Bitte PDF-Datei wählen');
+    await saveSafetySheet(
+      deps,
+      {
+        product: String(b.produkt ?? ''),
+        manufacturer: String(b.hersteller ?? ''),
+        issuedOn: String(b.datum ?? ''),
+        bytes: new Uint8Array(await f.arrayBuffer()),
+        fileName: f.name,
+      },
+      c.get('actor'),
+    );
+    return back(c, '/einstellungen/objektordner#sdb', { ok: 'Sicherheitsdatenblatt gespeichert.' });
+  });
+
+  app.post('/einstellungen/objektordner/sdb/:id{[0-9a-f-]{36}}/entfernen', async (c) => {
+    await removeSafetySheet(deps.sql, c.req.param('id'), c.get('actor'));
+    return back(c, '/einstellungen/objektordner#sdb', { ok: 'Sicherheitsdatenblatt entfernt.' });
+  });
+
+  // für alle Rollen lesbar (auch Objektleitung) – Beschäftigte müssen Zugang haben
+  app.get('/sicherheitsdatenblaetter.pdf', async (c) => {
+    const pdf = await safetySheetsPdf(deps);
+    if (!pdf) throw new BusinessError('Noch keine Sicherheitsdatenblätter hochgeladen');
+    return c.body(pdf as Uint8Array<ArrayBuffer>, 200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'inline; filename="Sicherheitsdatenblaetter.pdf"',
+      'Cache-Control': 'private, no-store',
+    });
+  });
+
+  app.get('/sicherheitsdatenblaetter/:id{[0-9a-f-]{36}}', async (c) => {
+    const r = await safetySheetFile(deps, c.req.param('id'));
+    return c.body(r.bytes as Uint8Array<ArrayBuffer>, 200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(r.name)}`,
+      'Cache-Control': 'private, no-store',
+    });
   });
 
   app.post('/einstellungen/objektordner/angaben', async (c) => {

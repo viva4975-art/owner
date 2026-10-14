@@ -100,7 +100,8 @@ Testadresse.
       (ab 20 Pflicht, § 38 BDSG); AÜ-Erlaubnis unter Einstellungen → Firmendaten eintragen
 - [ ] Lieferantennummern bei Behörden, Leitweg-IDs der Behörden-Kunden (Steuernummer 143/190/63154 vom Briefpapier übernommen)
 - [x] ~~Mail-Zugang (SMTP) für buchhaltung@ in `.env.live`~~ – 11.10.2026 eingetragen (Ahmed)
-- [ ] mstore-Reinigungsmittel (Unterhalts-/Sanitärreiniger): Produktnamen + Datenblätter für Dosierungs-Aushang
+- [ ] mstore-Reinigungsmittel (Unterhalts-/Sanitärreiniger): Produktnamen, Dosierung + Sicherheitsdatenblätter (PDF) unter
+      Einstellungen → Objektordner-Vorlagen hochladen
 - [ ] Testadresse für den Prototyp-Versand
 - [x] ~~S3-Bucket mit Object Lock~~ – 11.10.2026 eingerichtet (IONOS eu-central-4, Bucket viva-archiv), Kopie läuft
 - [x] ~~Ausfallmeldung~~ – 11.10.2026 UptimeRobot (`/health/voll`) + `ALERT_EMAIL` eingerichtet (Ahmed); healthchecks.io optional
@@ -2816,3 +2817,13 @@ Testadresse.
     Sicherheitsdatenblätter schicken, dann trage ich Dosierung und Hautschutz-Hinweise ein (keine Dosierung geraten).
   - Tests: 559 Unit-/DB-Tests (neu `hospital.test.ts`, `permissions.test.ts`), e2e rechte 35, objekt 31, login 34,
     zeit 26, planung 27, objektseiten 40 grün.
+- 2026-10-14: **Sicherheitsdatenblätter** (Ahmed: „füg die Sicherheitsdatenblätter auch hinzu“): Einstellungen →
+  Objektordner-Vorlagen → Abschnitt „Sicherheitsdatenblätter“: je Produkt PDF + Hersteller + Fassung vom hochladen
+  (`app.safety_data_sheets`, Migration `20261125000002`, PDF write-once im Archiv; gleicher Produktname = neue Fassung
+  ersetzt die alte, die alte bleibt erhalten; „Entfernen“ nur deaktivieren, Protokoll). Hinweis bei Fassung älter als
+  3 Jahre. Liegen automatisch im Objektordner-PDF (eigener Abschnitt mit Inhaltsverzeichnis) und im ZIP
+  (`07_Sicherheitsdatenblaetter/`), als Sammel-PDF unter Objekt → Objektordner („Sicherheitsdatenblätter (n)“, auch für die
+  Objektleitung, `/sicherheitsdatenblaetter.pdf`). Fehlen sie, steht es in den fehlenden Angaben des Objektordners.
+  **Rechtlich:** § 14 GefStoffV – Beschäftigte müssen Zugang zu den SDB haben; zusätzlich braucht es Betriebsanweisungen
+  und die Unterweisung (liegen im Objektordner-Paket bzw. unter Unterweisungen). Tests: `safety-sheets.db.test.ts`,
+  `e2e:rechte` 36.

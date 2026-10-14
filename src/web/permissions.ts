@@ -26,6 +26,7 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/grundreinigung\/objektleitung$/, ['admin', 'buchhaltung', 'personal', 'objektleitung']],
   [/^\/einstellungen\/?$/, ['admin', 'buchhaltung', 'personal']],
   [/^\/einstellungen\/word-vorlagen(\/|$)/, ['admin', 'buchhaltung', 'personal']],
+  [/^\/sicherheitsdatenblaetter([/.]|$)/, ALL],
   [/^\/einstellungen\/objektordner(\/|$)/, ['admin', 'buchhaltung', 'personal']],
   [/^\/word-vorlagen\/(erzeugen|ausfuellen)$/, ALL],
   [/^\/transfer\/import\/(dubletten|abgleich)$/, ['admin']],

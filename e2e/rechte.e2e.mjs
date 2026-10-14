@@ -97,7 +97,13 @@ check('Urlaubskalender erreichbar', (await o.goto(B + '/urlaub/kalender')).statu
 {
   const r1 = await o.request.get(B + `/objekte/${SCHOOL}/anwesenheit.pdf?monat=2026-10&seiten=1`);
   const r2 = await o.request.get(B + `/objekte/${SCHOOL}/aushang/hautschutz.pdf`);
-  check('Anwesenheitsliste und Aushang druckbar', r1.status() === 200 && r2.status() === 200, `${r1.status()} ${r2.status()}`);
+  const r3 = await o.request.get(B + '/einstellungen/objektordner');
+  check('Objektleitung: SDB-Verwaltung gesperrt', r3.status() === 403, String(r3.status()));
+  check(
+    'Anwesenheitsliste und Aushang druckbar',
+    r1.status() === 200 && r2.status() === 200,
+    `${r1.status()} ${r2.status()}`,
+  );
 }
 check('keine globale Suche', (await o.locator('form.search').count()) === 0);
 await o.screenshot({ path: `${out}/r3-objektleitung.png`, fullPage: true });

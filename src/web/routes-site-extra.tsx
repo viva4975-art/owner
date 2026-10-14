@@ -21,6 +21,7 @@ import {
 } from '../services/site-folder.js';
 import { DocFoldAll, FileArea, docOpen } from './files.js';
 import { fillHospital } from '../services/hospital.js';
+import { listSafetySheets } from '../services/safety-sheets.js';
 import { zipHref } from './routes-files.js';
 import { Icon } from './icons.js';
 import { anz, dateDe } from './layout.js';
@@ -53,6 +54,7 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
       const f = await folderFacts(sql, s.id);
       const pkg = await packageInfo(sql);
       const asks = f.missing.filter((m) => m.key);
+      const sdbCount = (await listSafetySheets(sql)).length;
       const [{ workers } = { workers: 0 }] = await sql<{ workers: number }[]>`
         select count(distinct employee_id)::int as workers from app.shift_plans
          where site_id = ${s.id} and employee_id is not null and (valid_until is null or valid_until >= current_date)`;
@@ -86,6 +88,11 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                   <Icon name="download" /> {POSTERS[k]}
                 </a>
               ))}
+              {sdbCount > 0 && (
+                <a class="btn sec sm" href="/sicherheitsdatenblaetter.pdf" target="_blank">
+                  <Icon name="download" /> Sicherheitsdatenblätter ({sdbCount})
+                </a>
+              )}
             </div>
             <form
               method="get"

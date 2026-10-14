@@ -18,6 +18,7 @@ import { renderTablePdf } from '../pdf/table.js';
 import { BusinessError } from './errors.js';
 import { filePath, listFiles } from './uploads.js';
 import { freezeDateFields } from './word-templates.js';
+import { listSafetySheets, safeName } from './safety-sheets.js';
 import type { Deps } from './workflow.js';
 
 export interface FolderInfo {
@@ -236,6 +237,7 @@ export async function folderFacts(sql: Sql, siteId: string): Promise<FolderFacts
       missing.push({ label: `${c} (Scan unter Dokumente hochladen)`, href: `/objekte/${siteId}/dokumente` });
   const noDefaults = DEFAULT_QUESTIONS.filter((q) => !defaults[q.key]).map((q) => q.label);
   if (!defaults.dosierung?.length) noDefaults.push('Reinigungsmittel und Dosierung');
+  if (!(await listSafetySheets(sql)).length) noDefaults.push('Sicherheitsdatenblätter');
   if (noDefaults.length)
     missing.push({
       label: `Firmenweite Angaben: ${noDefaults.join(', ')} (Einstellungen → Objektordner-Vorlagen)`,
@@ -717,6 +719,15 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
         file.data;
     }
   // Anwesenheitsliste: aktueller und nächster Monat auf einer Seite
+  for (const sd of await listSafetySheets(sql)) {
+    try {
+      out[`07_Sicherheitsdatenblaetter/SDB_${safeName(sd.product)}.pdf`] = await deps.archive.get(
+        sd.storage_path,
+      );
+    } catch {
+      /* Datei fehlt im Archiv – überspringen */
+    }
+  }
   out['06_Nachweise/Anwesenheitsliste.pdf'] = await renderAttendancePdf({
     site: { name: f.site.name, site_no: f.site.site_no, address: values.adresse ?? null },
     customer: f.customer.name,
@@ -957,6 +968,29 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
       } catch {
         /* nicht lesbare Datei überspringen */
       }
+    }
+  }
+
+  // 5b. Sicherheitsdatenblätter der Reinigungsmittel (§ 14 GefStoffV: für die Beschäftigten zugänglich)
+  for (const sd of await listSafetySheets(sql)) {
+    try {
+      const src = await PDFDocument.load(await deps.archive.get(sd.storage_path), { ignoreEncryption: true });
+      const pages = await d.pdf.copyPages(src, src.getPageIndices());
+      if (!pages.length) continue;
+      if (!toc.some((t) => t.section === 'Sicherheitsdatenblätter'))
+        toc.push({
+          section: 'Sicherheitsdatenblätter',
+          title: 'Sicherheitsdatenblätter',
+          page: d.pdf.getPageCount() + 1,
+        });
+      toc.push({
+        title: `${sd.product}${sd.manufacturer ? ` (${sd.manufacturer})` : ''}`,
+        page: d.pdf.getPageCount() + 1,
+      });
+      for (const p of pages) d.pdf.addPage(p);
+      d.page = d.pdf.getPage(d.pdf.getPageCount() - 1);
+    } catch {
+      /* nicht lesbares PDF überspringen */
     }
   }
 

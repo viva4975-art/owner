@@ -29,7 +29,7 @@ describe.skipIf(!ok)('Objektordner als ein PDF', () => {
 
   it('Deckblatt, Inhaltsverzeichnis, Vorlagen ausgefüllt, ohne Lücken, Unterschriften und Leerformulare', async () => {
     const notruf = docx(
-      `<w:p><w:r><w:rPr><w:sz w:val="32"/></w:rPr><w:t>Notruf und Meldekette</w:t></w:r></w:p>` +
+      `<w:p><w:r><w:rPr><w:sz w:val="32"/></w:rPr><w:t>Objektinformation</w:t></w:r></w:p>` +
         `<w:tbl><w:tr>${tc('Ersthelfer im Objekt')}${tc('____________')}</w:tr>` +
         `<w:tr>${tc('Ansprechpartner Kunde')}${tc('____________')}</w:tr>` +
         `<w:tr>${tc('Nächstes Krankenhaus')}${tc('____________')}</w:tr>` +
@@ -40,7 +40,11 @@ describe.skipIf(!ok)('Objektordner als ein PDF', () => {
     );
     const quelle = docx(`<w:p><w:r><w:t>Aus der Word-Quelle</w:t></w:r></w:p>`);
     const pkg = zipSync({
-      'Paket/01_Aushang-Putzraum/B_Objektbezogen-ausfuellen/VD-AH-03_Notruf.docx': notruf,
+      'Paket/01_Aushang-Putzraum/B_Objektbezogen-ausfuellen/VD-AH-03_Objektinfo.docx': notruf,
+      // erzeugt die App selbst (mit Piktogrammen) → aus dem Paket nicht doppelt
+      'Paket/01_Aushang-Putzraum/B_Objektbezogen-ausfuellen/VD-AH-05_Hautschutzplan.docx': docx(
+        `<w:p><w:r><w:t>Alter Hautschutzplan aus dem Paket</w:t></w:r></w:p>`,
+      ),
       'Paket/01_Aushang-Putzraum/C_Word-Quellen/VD-AH-04_Putzraum.docx': quelle,
       'Paket/03_Objektunterlagen/VD-FB-03_Reklamationsmeldung.docx': docx(
         `<w:p><w:r><w:t>Leeres Reklamationsformular</w:t></w:r></w:p>`,
@@ -64,8 +68,13 @@ describe.skipIf(!ok)('Objektordner als ein PDF', () => {
     const { text } = await extractText(doc, { mergePages: false });
     const all = text.join('\n');
     expect(text[0]).toContain('OBJEKTORDNER');
-    expect(text[1]).toContain('Inhaltsverzeichnis');
-    expect(text[1]).toContain('Notruf und Meldekette');
+    expect(text[1]).toContain('Inhalt');
+    expect(text[1]).toContain('Objektinformation');
+    // Aushänge aus der App mit Piktogrammen, Paket-Fassung nicht doppelt
+    expect(text[1]).toContain('Notfall & Kontakte');
+    expect(text[1]).toContain('Reinigungswagen sauber halten');
+    expect(text[1]).toContain('Mopps & Tücher waschen');
+    expect(all).not.toContain('Alter Hautschutzplan aus dem Paket');
     expect(all).toContain('Erna Erst');
     expect(all).toContain('Hausmeister Maier, 089 111');
     expect(all).not.toContain('13.08.2026');

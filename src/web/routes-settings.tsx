@@ -164,6 +164,11 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
         '/einstellungen/objektordner',
         'Paket „Objektordner-Komplettpaket“ (ZIP) – wird je Objekt automatisch mit den Objektdaten ausgefüllt.',
       ],
+      [
+        'Aushänge für den Putzraum',
+        '/einstellungen/objektordner/aushaenge',
+        'Notfall, Farbsystem, Hautschutz, Reinigungswagen, Wäsche, Putzraum … – Texte ändern, Schritte löschen oder hinzufügen, eigene Aushänge.',
+      ],
     ],
   },
   {
@@ -263,6 +268,18 @@ export function registerSettingsRoutes({ app, deps, page, back }: Ctx) {
       '',
       <>
         <PageHead title="Objektordner-Vorlagen" crumbs={[['Einstellungen', '/einstellungen']]} />
+        <div class="card" style="max-width:760px">
+          <b>Aushänge für den Putzraum</b>
+          <div class="small mut">
+            Notfall & Kontakte, Farbsystem & Dosierung, Hautschutz, Sanitärreinigung, Reinigungswagen, Mopps &
+            Tücher waschen, Ordnung im Putzraum – mit Piktogrammen, je Objekt ausgefüllt.
+          </div>
+          <div class="actions" style="margin-bottom:0">
+            <a class="btn sec sm" href="/einstellungen/objektordner/aushaenge">
+              Texte ändern, Aushänge hinzufügen
+            </a>
+          </div>
+        </div>
         <form
           method="post"
           action="/einstellungen/objektordner"

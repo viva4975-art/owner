@@ -85,9 +85,7 @@ export class FormDoc {
     d.reg = f.regular;
     d.bold = f.bold;
     if (p.plain) {
-      d.logo = await d.pdf.embedPng(await readFile(new URL('web/logo-transparent.png', ASSETS)));
-      d.top = 74;
-      d.bottom = 806;
+      await d.loadLogo();
     } else {
       letterheadBytes ??= await readFile(new URL('briefpapier/viva-deluxe-a4.jpg', ASSETS));
       d.bg = await d.pdf.embedJpg(letterheadBytes);
@@ -102,10 +100,18 @@ export class FormDoc {
     return d;
   }
 
-  newPage() {
+  /**
+   * Neue Seite. `plain` = ohne Briefpapier, nur Logo (z. B. Aushänge im Objektordner); gilt nur für diese Seite –
+   * die nächste normale Seite hat wieder Briefpapier und den üblichen Inhaltsbereich.
+   */
+  newPage(o: { plain?: boolean } = {}) {
     this.page = this.pdf.addPage([W, H]);
-    if (this.bg) this.page.drawImage(this.bg, { x: 0, y: 0, width: W, height: H });
-    if (this.logo) {
+    const plain = o.plain ?? !this.bg;
+    if (plain && !this.logo) throw new Error('Logo nicht geladen (FormDoc.loadLogo)');
+    this.top = plain ? 74 : TOP;
+    this.bottom = plain ? 806 : BOTTOM;
+    if (this.bg && !plain) this.page.drawImage(this.bg, { x: 0, y: 0, width: W, height: H });
+    if (this.logo && plain) {
       const lw = 110;
       const lh = (this.logo.height / this.logo.width) * lw;
       this.page.drawImage(this.logo, { x: L, y: H - 22 - lh, width: lw, height: lh });
@@ -121,6 +127,11 @@ export class FormDoc {
         opacity: 0.5,
       });
     this.y = this.top;
+  }
+
+  /** Logo für schlanke Seiten laden (bei Briefpapier-Dokumenten nur nötig, wenn `newPage({ plain: true })` folgt) */
+  async loadLogo() {
+    this.logo ??= await this.pdf.embedPng(await readFile(new URL('web/logo-transparent.png', ASSETS)));
   }
 
   /** Platz prüfen, sonst neue Seite (optional mit Wiederholung z. B. eines Tabellenkopfs) */

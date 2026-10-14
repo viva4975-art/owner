@@ -20,6 +20,14 @@ import { filePath, listFiles } from './uploads.js';
 import { freezeDateFields } from './word-templates.js';
 import { listSafetySheets, safeName } from './safety-sheets.js';
 import type { Deps } from './workflow.js';
+import type { FormDoc } from '../pdf/form-doc.js';
+import {
+  type PosterContext,
+  type PosterDef,
+  drawPoster,
+  fillPlaceholders,
+  mergePosters,
+} from '../pdf/posters.js';
 
 export interface FolderInfo {
   bereichsleitung?: string;
@@ -132,10 +140,12 @@ export interface FolderDefaults {
   hautpflege?: string;
   /** Farbsystem und Dosierung: Produkt, Dosierung, Wasser, Hinweis */
   dosierung?: { produkt: string; dosierung: string; wasser: string; hinweis: string }[];
+  /** Aushänge: Änderungen an den Vorgaben und eigene Aushänge (src/pdf/posters.ts) */
+  aushaenge?: Partial<PosterDef>[];
 }
 
 export const DEFAULT_QUESTIONS: {
-  key: Exclude<keyof FolderDefaults, 'dosierung'>;
+  key: Exclude<keyof FolderDefaults, 'dosierung' | 'aushaenge'>;
   label: string;
   hint: string;
 }[] = [
@@ -152,6 +162,8 @@ export async function getFolderDefaults(sql: Sql): Promise<FolderDefaults> {
 
 export async function saveFolderDefaults(sql: Sql, d: FolderDefaults, actor: string) {
   const clean: FolderDefaults = {};
+  const prev = await getFolderDefaults(sql);
+  if (prev.aushaenge) clean.aushaenge = prev.aushaenge;
   for (const q of DEFAULT_QUESTIONS) {
     const v = d[q.key]?.trim();
     if (v) clean[q.key] = v.slice(0, 300);
@@ -652,6 +664,7 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
     for (const n of names) {
       const rel = n.slice(root.length);
       if (SKIP_IN_FOLDER.test(rel) || /inhaltsverzeichnis/i.test(rel)) continue;
+      if (/^01_/.test(rel) && POSTER_DUP.test(rel)) continue;
       if (/muenchner-wohnen|münchner-wohnen/i.test(rel) && !mw) continue;
       let data = files[n]!;
       if (/\.docx$/i.test(n)) {
@@ -728,6 +741,11 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
       /* Datei fehlt im Archiv – überspringen */
     }
   }
+  try {
+    out['01_Aushaenge_Putzraum/Aushaenge_Putzraum.pdf'] = (await buildPostersPdf(deps, siteId)).pdf;
+  } catch {
+    /* kein Aushang eingeschaltet */
+  }
   out['06_Nachweise/Anwesenheitsliste.pdf'] = await renderAttendancePdf({
     site: { name: f.site.name, site_no: f.site.site_no, address: values.adresse ?? null },
     customer: f.customer.name,
@@ -750,6 +768,13 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
  */
 const SKIP_IN_FOLDER =
   /revierplan_muster|muster[ _-]?revierplan|anwesenheitsliste|VD-ANW-|VD-FB-0?3_|VD-FB-0?7_|VD-AZN-|VD-SN-|VD-FB-34_|abfallkonzept|A_Aushaenge|fertig-zum-Ausdrucken|reklamation|(ü|ue)bernahmeprotokoll/i;
+
+/**
+ * Aushänge aus dem Paket, die die App selbst (mit Piktogrammen und Objektdaten) erzeugt – nicht doppelt aufnehmen.
+ * Kontaktkarten, Abfalltrennung und Betriebsanweisungen bleiben aus dem Paket.
+ */
+const POSTER_DUP =
+  /farbsystem|dosier|notruf|meldekette|notfall|hautschutz|ordnung[ _-]*im[ _-]*putzraum|putzraum[ _-]*ordnung/i;
 
 const FOLDER_SECTIONS: [RegExp, string][] = [
   [/^01_/, 'Aushänge im Putzraum'],
@@ -809,39 +834,74 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
   const bl = [f.info.bereichsleitung, f.info.bereichsleitung_tel].filter(Boolean).join(', ') || '–';
   const ap = [values.ansprechpartner, values['ansprechpartner|tel']].filter(Boolean).join(', ') || '–';
 
-  // Deckblatt
-  d.y = FORM_Y.TOP + 70;
-  d.text('OBJEKTORDNER', 48.5, d.y, {
-    size: 10,
-    bold: true,
-    color: (await import('@cantoo/pdf-lib')).rgb(0.49, 0.08, 0.21),
-  });
-  d.y += 30;
-  for (const l of d.wrap(f.site.name, 498, 26, true)) {
-    d.text(l, 48.5, d.y, { size: 26, bold: true });
-    d.y += 32;
+  let coverY: number;
+  // Deckblatt: Bordeaux-Fläche mit hellem Logo, darunter die wichtigsten Kontakte
+  {
+    const { rgb } = await import('@cantoo/pdf-lib');
+    const { readFile } = await import('node:fs/promises');
+    d.pdf.removePage(0);
+    await d.loadLogo();
+    d.newPage({ plain: true });
+    const pg = d.page;
+    const H = FORM_Y.H;
+    const band = 372;
+    pg.drawRectangle({ x: 0, y: H - band, width: pg.getWidth(), height: band, color: rgb(0.49, 0.08, 0.21) });
+    // feine Linie als Abschluss
+    pg.drawRectangle({ x: 0, y: H - band - 5, width: pg.getWidth(), height: 5, color: rgb(0.62, 0.2, 0.33) });
+    const light = await d.pdf.embedPng(
+      await readFile(new URL('../../assets/web/logo-hell.png', import.meta.url)),
+    );
+    const lw = 170;
+    pg.drawImage(light, {
+      x: 48.5,
+      y: H - 46 - (light.height / light.width) * lw,
+      width: lw,
+      height: (light.height / light.width) * lw,
+    });
+    const white = rgb(1, 1, 1);
+    const soft = rgb(0.96, 0.86, 0.9);
+    let y = 196;
+    d.cap('Objektordner', 48.5, y, { size: 10, color: soft });
+    y += 34;
+    for (const l of d.wrap(f.site.name, 498, 30, true).slice(0, 3)) {
+      d.text(l, 48.5, y, { size: 30, bold: true, color: white });
+      y += 36;
+    }
+    y += 2;
+    d.text(d.fit(`Objekt ${f.site.site_no}${addr ? `  ·  ${addr}` : ''}`, 498, 12), 48.5, y, {
+      size: 12,
+      color: soft,
+    });
+    y += 19;
+    d.text(d.fit(`Kunde: ${f.customer.name} (${f.customer.customer_no})`, 498, 12), 48.5, y, {
+      size: 12,
+      color: soft,
+    });
+    d.y = band + 34;
+    d.kvBox([
+      { k: 'Objektleitung', v: mgr, strong: true },
+      { k: 'Bereichsleitung', v: bl },
+      { k: 'Ansprechpartner Kunde', v: ap },
+      ...(f.info.ersthelfer ? [{ k: 'Ersthelfer im Objekt', v: f.info.ersthelfer }] : []),
+      { k: 'Lage Putzraum', v: f.info.putzraum ?? '–' },
+    ]);
+    d.tiles([
+      { label: 'NOTRUF / FEUERWEHR', value: '112', accent: true },
+      { label: 'POLIZEI', value: '110' },
+      { label: 'GIFTNOTRUF', value: '089 19240' },
+      { label: 'BÜRO VIVA-DELUXE', value: '089 63855496' },
+    ]);
+    d.muted(
+      `Stand ${formatDateDe(today)} · Dieser Ordner bleibt im Objekt (Putzraum). Die aktuelle Fassung gibt es jederzeit in der App unter Objekt → Objektordner.`,
+    );
+    coverY = d.y;
   }
-  d.text(`Objekt ${f.site.site_no}${addr ? ` · ${addr}` : ''}`, 48.5, d.y, { size: 11 });
-  d.y += 18;
-  d.text(`Kunde: ${f.customer.name} (${f.customer.customer_no})`, 48.5, d.y, { size: 11 });
-  d.y += 34;
-  d.kvBox([
-    { k: 'Objektleitung', v: mgr, strong: true },
-    { k: 'Bereichsleitung', v: bl },
-    { k: 'Ansprechpartner Kunde', v: ap },
-    { k: 'Ersthelfer im Objekt', v: f.info.ersthelfer ?? '–' },
-    { k: 'Lage Putzraum', v: f.info.putzraum ?? '–' },
-    { k: 'Notruf', v: '112 · Polizei 110 · Giftnotruf 089 19240', accent: true },
-  ]);
-  d.muted(
-    `Stand ${formatDateDe(today)} – Dieser Ordner bleibt im Objekt (Putzraum). Aktuelle Fassung jederzeit in der App unter Objekt → Objektordner.`,
-  );
   // Inhaltsverzeichnis (wird am Ende gefüllt)
   d.newPage();
   const tocPage = d.pdf.getPageCount() - 1;
 
   // 1. Objektstammblatt
-  chapter('Objektstammblatt und Kontakte');
+  chapter('Objektstammblatt und Kontakte', 'Objekt');
   d.title('Objektstammblatt', f.site.site_no);
   d.kvBox([
     { k: 'Objekt', v: `${f.site.name} (${f.site.site_no})`, strong: true },
@@ -924,6 +984,19 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
     }
   }
 
+  // 4b. Aushänge im Putzraum (aus der App, mit Piktogrammen)
+  {
+    const posters = (await getPosters(sql)).filter((p) => p.active);
+    if (posters.length) {
+      toc.push({
+        section: 'Aushänge im Putzraum',
+        title: 'Aushänge im Putzraum',
+        page: d.pdf.getPageCount() + 1,
+      });
+      for (const t of await drawSitePosters(d, f, posters, today)) toc.push(t);
+    }
+  }
+
   // 5. Vorlagen aus dem Paket
   const pkg = await packageInfo(sql);
   if (pkg) {
@@ -939,6 +1012,7 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
       const section = FOLDER_SECTIONS.find(([re]) => re.test(rel))?.[1];
       if (!section) continue;
       if (/inhaltsverzeichnis/i.test(rel) || SKIP_IN_FOLDER.test(rel)) continue;
+      if (/^01_/.test(rel) && POSTER_DUP.test(rel)) continue;
       if (/muenchner-wohnen|münchner-wohnen/i.test(rel) && !mw) continue;
       try {
         if (/\.docx$/i.test(rel)) {
@@ -946,6 +1020,7 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
           const xml = doc['word/document.xml'];
           if (!xml) continue;
           const blocks = parseDocx(prepareFolderXml(strFromU8(xml), values, f));
+          if (/^01_/.test(rel) && POSTER_DUP.test(docxTitle(blocks) ?? '')) continue;
           chapter(niceTitle(docxTitle(blocks) ?? titleFromFile(rel)), section);
           d.muted(`Objekt ${f.site.site_no} · ${f.site.name}`);
           renderDocx(d, blocks);
@@ -1016,50 +1091,184 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
     for (const pg of await d.pdf.copyPages(att, att.getPageIndices())) d.pdf.addPage(pg);
     d.page = d.pdf.getPage(d.pdf.getPageCount() - 1);
   }
-  // Inhaltsverzeichnis füllen
+  // Inhaltsverzeichnis füllen: Abschnitte mit Register-Nummer (wie die Laschen am Rand)
+  const { rgb } = await import('@cantoo/pdf-lib');
+  const BORD = rgb(0.49, 0.08, 0.21);
+  const sections = toc.filter((t) => t.section && t.title === t.section);
   d.page = d.pdf.getPage(tocPage);
   d.y = FORM_Y.TOP;
-  d.title('Inhaltsverzeichnis', f.site.site_no);
-  let nr = 0;
+  d.title('Inhalt', `${f.site.site_no} · ${f.site.name}`.slice(0, 60));
+  let reg = 0;
   for (const t of toc) {
     if (t.section && t.title === t.section) {
-      d.y += 6;
-      d.text(t.section, 48.5, d.y + 9, { size: 9.5, bold: true });
-      d.y += 15;
+      reg++;
+      if (d.y > FORM_Y.BOTTOM - 40) break;
+      d.y += 8;
+      d.page.drawRectangle({ x: 48.5, y: FORM_Y.H - d.y - 18, width: 22, height: 18, color: BORD });
+      const n = String(reg);
+      d.text(n, 48.5 + 11 - d.width(n, 10, true) / 2, d.y + 13, {
+        size: 10,
+        bold: true,
+        color: rgb(1, 1, 1),
+      });
+      d.text(t.section, 78, d.y + 13, { size: 11, bold: true, color: BORD });
+      d.right(String(t.page), 546.5, d.y + 13, { size: 9.5, bold: true, color: BORD });
+      d.y += 24;
       continue;
     }
-    nr++;
-    const label = d.fit(`${nr}.  ${t.title}`, 430, 9);
-    d.text(label, 60, d.y + 9, { size: 9 });
-    d.right(String(t.page), 546.5, d.y + 9, { size: 9 });
-    d.line(60 + d.width(label, 9) + 6, 546.5 - d.width(String(t.page), 9) - 6, d.y + 9, undefined, 0.3);
-    d.y += 14;
     if (d.y > FORM_Y.BOTTOM - 10) break;
+    const label = d.fit(t.title, 400, 9.5);
+    d.text(label, 78, d.y + 9, { size: 9.5 });
+    d.right(String(t.page), 546.5, d.y + 9, { size: 9.5 });
+    d.line(78 + d.width(label, 9.5) + 6, 546.5 - d.width(String(t.page), 9.5) - 6, d.y + 9, undefined, 0.3);
+    d.y += 15;
   }
+  // Deckblatt: „In diesem Ordner“ mit den Register-Nummern
+  {
+    const cover = d.pdf.getPage(0);
+    d.page = cover;
+    let y = coverY + 14;
+    d.cap('In diesem Ordner', 48.5, y, { size: 7 });
+    y += 10;
+    const colW = 249;
+    sections.forEach((t, i) => {
+      const x = 48.5 + (i % 2) * colW;
+      const yy = y + Math.floor(i / 2) * 26;
+      cover.drawRectangle({ x, y: FORM_Y.H - yy - 18, width: 22, height: 18, color: BORD });
+      const n = String(i + 1);
+      d.text(n, x + 11 - d.width(n, 10, true) / 2, yy + 13, { size: 10, bold: true, color: rgb(1, 1, 1) });
+      d.text(d.fit(t.section ?? '', colW - 40, 10.5), x + 30, yy + 13, { size: 10.5, bold: true });
+    });
+  }
+  // Registerlaschen am rechten Rand: je Abschnitt eine Lasche mit Nummer, versetzt untereinander
+  const starts = sections.map((t) => t.page).sort((x, y) => x - y);
+  const tabH = Math.min(64, 560 / Math.max(1, starts.length));
+  d.pdf.getPages().forEach((pg, i) => {
+    const pageNo = i + 1;
+    let idx = -1;
+    starts.forEach((st, j) => {
+      if (st <= pageNo) idx = j;
+    });
+    if (idx < 0) return;
+    const { width, height } = pg.getSize();
+    const top = 96 + idx * tabH;
+    pg.drawRectangle({ x: width - 16, y: height - top - tabH + 4, width: 16, height: tabH - 4, color: BORD });
+    const n = String(idx + 1);
+    pg.drawText(n, {
+      x: width - 8 - d.bold.widthOfTextAtSize(n, 10) / 2,
+      y: height - top - tabH / 2 - 2,
+      size: 10,
+      font: d.bold,
+      color: rgb(1, 1, 1),
+    });
+  });
   return { pdf: await d.save(), name: `Objektordner_${safe(tag)}.pdf`, facts: f, withPackage: !!pkg };
 }
 
-// ------------------------------------------------------------------ Aushänge einzeln
+// ------------------------------------------------------------------ Aushänge (Piktogramme, Ahmed 14.10.)
 
-export const POSTERS = {
-  notfall: 'Notfall & Kontakte',
-  hautschutz: 'Hautschutzplan',
-  dosierung: 'Dosierung Reinigungsmittel',
-} as const;
-export type PosterKind = keyof typeof POSTERS;
+/** Alle Aushänge (Vorgaben + firmenweite Änderungen aus Einstellungen → Objektordner-Vorlagen → Aushänge). */
+export async function getPosters(sql: Sql): Promise<PosterDef[]> {
+  return mergePosters((await getFolderDefaults(sql)).aushaenge);
+}
+
+/** Aushänge speichern (nur die Aushang-Texte; übrige Angaben bleiben). */
+export async function savePosters(sql: Sql, list: PosterDef[], actor: string) {
+  const data = { ...(await getFolderDefaults(sql)), aushaenge: list.map(trimPoster) };
+  await sql`insert into app.site_folder_defaults (id, data, updated_by) values (1, ${sql.json(data as never)}, ${actor})
+            on conflict (id) do update set data = excluded.data, updated_by = excluded.updated_by, updated_at = now()`;
+  await sql`insert into app.audit_log (actor, action, entity) values (${actor}, 'aushaenge', 'company')`;
+}
+
+const trimPoster = (p: PosterDef): PosterDef => ({
+  ...p,
+  title: p.title.trim().slice(0, 80) || 'Aushang',
+  intro: p.intro.trim().slice(0, 400),
+  note: p.note.trim().slice(0, 500),
+  steps: p.steps
+    .map((x) => ({ ...x, title: x.title.trim().slice(0, 80), text: x.text.trim().slice(0, 300) }))
+    .filter((x) => x.title)
+    .slice(0, 10),
+  dos: p.dos
+    .map((x) => x.trim().slice(0, 120))
+    .filter(Boolean)
+    .slice(0, 6),
+  donts: p.donts
+    .map((x) => x.trim().slice(0, 120))
+    .filter(Boolean)
+    .slice(0, 6),
+});
+
+function posterContext(f: FolderFacts, values: Record<string, string>, date: string): PosterContext {
+  const addr = values.adresse ?? '';
+  const join = (...x: (string | undefined)[]) => x.filter(Boolean).join('  ·  ');
+  const contacts: PosterContext['contacts'] = [
+    { label: 'Objektleitung', value: join(values.objektleitung, values['objektleitung|tel']), icon: 'user' },
+    {
+      label: 'Bereichsleitung',
+      value: join(values.bereichsleitung, values['bereichsleitung|tel']),
+      icon: 'user',
+    },
+    { label: 'Ersthelfer im Objekt', value: f.info.ersthelfer ?? '', icon: 'cross' },
+    { label: 'Nächstes Krankenhaus', value: f.info.krankenhaus ?? '', icon: 'house' },
+    { label: 'Sammelplatz', value: f.info.sammelplatz ?? '', icon: 'people' },
+    { label: 'Nächster Notausgang', value: f.info.notausgang ?? '', icon: 'exit' },
+    { label: 'Hausmeister / Haustechnik', value: f.info.hausmeister ?? '', icon: 'key' },
+    {
+      label: 'Ansprechpartner Kunde',
+      value: join(values.ansprechpartner, values['ansprechpartner|tel']),
+      icon: 'phone',
+    },
+    { label: 'Betriebsarzt', value: f.defaults.betriebsarzt ?? '', icon: 'cross' },
+    { label: 'Büro Viva-Deluxe', value: '089 63855496', icon: 'phone' },
+  ];
+  return {
+    siteName: f.site.name,
+    siteNo: f.site.site_no,
+    address: addr,
+    date,
+    vals: {
+      objekt: f.site.name,
+      adresse: addr,
+      objektleitung: values.objektleitung,
+      objektleitung_tel: values['objektleitung|tel'],
+      putzraum: f.info.putzraum,
+      abfall_platz: f.info.abfall_platz,
+      hautschutz: f.defaults.hautschutz,
+      hautreinigung: f.defaults.hautreinigung,
+      hautpflege: f.defaults.hautpflege,
+      betriebsarzt: f.defaults.betriebsarzt,
+    },
+    contacts,
+    dosage: f.defaults.dosierung ?? [],
+  };
+}
+
+/** Aushänge eines Objekts in ein vorhandenes Dokument zeichnen (je Aushang eine Seite); gibt die Titel zurück. */
+async function drawSitePosters(d: FormDoc, f: FolderFacts, posters: PosterDef[], date: string) {
+  const ctx = posterContext(f, folderValues(f), date);
+  await d.loadLogo();
+  const done: { title: string; page: number }[] = [];
+  for (const p of posters) {
+    drawPoster(d, p, ctx);
+    done.push({ title: fillPlaceholders(p.title, ctx.vals), page: d.pdf.getPageCount() });
+  }
+  return done;
+}
 
 /**
- * Einzelne Aushänge fürs Objekt (Ahmed 14.10.: „die Aushänge separat, damit man es aushängen kann“) – je eine
- * A4-Seite mit großer Schrift, aus den Objektangaben und den firmenweiten Angaben (Einstellungen → Objektordner).
- * Fehlende Zeilen entfallen.
+ * Aushänge fürs Objekt als ein PDF (Ahmed 14.10.: „alle Aushänge in einen Button“): alle eingeschalteten, oder mit
+ * `key` nur einer (auch ausgeschaltete – Vorschau in den Einstellungen).
  */
-export async function buildPosterPdf(deps: Deps, siteId: string, kind: PosterKind) {
-  const { sql } = deps;
-  const { FormDoc, FORM_X, FORM_COLORS } = await import('../pdf/form-doc.js');
-  const f = await folderFacts(sql, siteId);
-  const values = folderValues(f);
+export async function buildPostersPdf(deps: Deps, siteId: string, key?: string) {
+  const { FormDoc } = await import('../pdf/form-doc.js');
+  const f = await folderFacts(deps.sql, siteId);
+  const all = await getPosters(deps.sql);
+  const list = key ? all.filter((p) => p.key === key) : all.filter((p) => p.active);
+  if (!list.length)
+    throw new BusinessError('Kein Aushang eingeschaltet (Einstellungen → Objektordner-Vorlagen)');
   const today = todayBerlin();
-  const title = POSTERS[kind];
+  const title = list.length === 1 ? list[0]!.title : 'Aushänge Putzraum';
   const d = await FormDoc.create({
     title: `${title} – ${f.site.name}`,
     sideRef: `${title} · ${f.site.site_no}`,
@@ -1067,94 +1276,8 @@ export async function buildPosterPdf(deps: Deps, siteId: string, kind: PosterKin
     author: 'Viva-Deluxe Gebäudereinigung GmbH',
     plain: true,
   });
-  const { L, R } = FORM_X;
-  const addr = [f.site.street, [f.site.postal_code, f.site.city].filter(Boolean).join(' ')]
-    .filter(Boolean)
-    .join(', ');
-  d.y += 14;
-  d.text(title, L, d.y + 22, { size: 28, bold: true });
-  d.y += 34;
-  d.text(d.fit(`${f.site.name}${addr ? ` · ${addr}` : ''}`, R - L, 12), L, d.y + 12, { size: 12 });
-  d.y += 30;
-  /** große Zeile: Beschriftung klein, Wert groß, mit Umbruch */
-  const big = (label: string, value: string | undefined, size = 16, accent = false) => {
-    if (!value?.trim()) return;
-    const lines = d.wrap(value, R - L - 20, size, true);
-    const h = 16 + lines.length * (size + 4) + 10;
-    d.ensure(h);
-    d.rect(L, d.y, R - L, h, accent ? FORM_COLORS.ACCENT : FORM_COLORS.BOX);
-    d.rect(L, d.y, 3, h, FORM_COLORS.BORDEAUX);
-    d.cap(label, L + 14, d.y + 13, { size: 7.5 });
-    lines.forEach((l, i) => d.text(l, L + 14, d.y + 18 + (i + 1) * (size + 4) - 4, { size, bold: true }));
-    d.y += h + 8;
-  };
-  if (kind === 'notfall') {
-    d.tiles([
-      { label: 'NOTRUF / FEUERWEHR / RETTUNG', value: '112', accent: true },
-      { label: 'POLIZEI', value: '110' },
-      { label: 'GIFTNOTRUF MÜNCHEN', value: '089 19240' },
-    ]);
-    big('Unsere Adresse (für den Notruf)', addr || f.site.name, 18, true);
-    big('Objektleitung', [values.objektleitung, values['objektleitung|tel']].filter(Boolean).join('  ·  '));
-    big(
-      'Bereichsleitung',
-      [values.bereichsleitung, values['bereichsleitung|tel']].filter(Boolean).join('  ·  '),
-    );
-    big('Ersthelfer im Objekt', f.info.ersthelfer);
-    big('Nächstes Krankenhaus', f.info.krankenhaus, 14);
-    big('Sammelplatz', f.info.sammelplatz);
-    big('Nächster Notausgang', f.info.notausgang);
-    big('Hausmeister / Haustechnik', f.info.hausmeister);
-    big(
-      'Ansprechpartner Kunde',
-      [values.ansprechpartner, values['ansprechpartner|tel']].filter(Boolean).join('  ·  '),
-    );
-    big('Betriebsarzt', f.defaults.betriebsarzt, 13);
-    d.muted(
-      'Bei Unfall: Erste Hilfe leisten, 112 anrufen (Wo? Was? Wie viele? Welche Verletzungen? Warten auf Rückfragen), danach Objektleitung informieren. Jeden Arbeitsunfall melden.',
-    );
-  } else if (kind === 'hautschutz') {
-    const rows: [string, string, string | undefined][] = [
-      ['Vor der Arbeit und nach Pausen', 'Hautschutz auftragen', f.defaults.hautschutz],
-      [
-        'Bei Arbeit mit Reinigungsmitteln / nass',
-        'Schutzhandschuhe tragen (bei > 15 Min. Baumwoll-Unterziehhandschuhe)',
-        'Chemikalienschutzhandschuhe',
-      ],
-      [
-        'Nach der Arbeit und vor Pausen',
-        'Hände reinigen – mild, gründlich abtrocknen',
-        f.defaults.hautreinigung,
-      ],
-      ['Nach der Arbeit', 'Hände eincremen', f.defaults.hautpflege],
-    ];
-    for (const [wann, was, produkt] of rows) big(wann, `${was}${produkt ? `: ${produkt}` : ''}`, 15);
-    d.muted(
-      'Feuchtarbeit (nasse Hände oder Handschuhe mehr als 2 Std. am Tag) belastet die Haut (TRGS 401). Hautveränderungen bitte sofort der Objektleitung melden – Vorsorge beim Betriebsarzt.',
-    );
-  } else {
-    const rows = f.defaults.dosierung ?? [];
-    if (!rows.length)
-      big(
-        'Noch keine Angaben',
-        'Produkte und Dosierung unter Einstellungen → Objektordner-Vorlagen eintragen.',
-        14,
-      );
-    else
-      d.table(
-        [
-          { label: 'Produkt', width: 150 },
-          { label: 'Dosierung', width: 110 },
-          { label: 'Wasser', width: 80 },
-          { label: 'Einsatz / Hinweis', width: R - L - 340 },
-        ],
-        rows.map((r) => [r.produkt, r.dosierung, r.wasser, r.hinweis]),
-        { size: 13 },
-      );
-    d.muted(
-      'Nie Reinigungsmittel mischen. Erst Wasser, dann Reiniger. Dosierhilfe benutzen – Überdosierung schadet Oberflächen und Haut. Sicherheitsdatenblätter liegen im Objektordner.',
-    );
-  }
-  d.muted(`Stand ${formatDateDe(today)} · Viva-Deluxe Gebäudereinigung GmbH`);
+  const first = d.page;
+  await drawSitePosters(d, f, list, today);
+  d.pdf.removePage(d.pdf.getPages().indexOf(first));
   return { pdf: await d.save(), name: `${safe(title)}_${safe(f.site.site_no)}.pdf` };
 }

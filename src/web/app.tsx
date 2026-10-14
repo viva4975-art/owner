@@ -57,6 +57,7 @@ import { registerCalendarFeedRoutes } from './routes-calendar-feed.js';
 import { registerHrRequiredRoutes } from './routes-hr-required.js';
 import { registerSubcontractorRoutes } from './routes-subcontractors.js';
 import { registerSettingsRoutes } from './routes-settings.js';
+import { registerPosterRoutes } from './routes-posters.js';
 import { registerTenderRoutes } from './routes-tenders.js';
 import { registerCashbookRoutes } from './routes-cashbook.js';
 import { registerLegacyRoutes } from './routes-legacy.js';
@@ -546,6 +547,7 @@ export function createApp(deps: Deps) {
   registerHrRequiredRoutes(ctx);
   registerSubcontractorRoutes(ctx);
   registerSettingsRoutes(ctx);
+  registerPosterRoutes(ctx);
   registerTenderRoutes(ctx);
   registerCostCenterRoutes(ctx);
   registerPriceAdjustmentRoutes(ctx);

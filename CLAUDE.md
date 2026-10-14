@@ -2827,3 +2827,24 @@ Testadresse.
   **Rechtlich:** § 14 GefStoffV – Beschäftigte müssen Zugang zu den SDB haben; zusätzlich braucht es Betriebsanweisungen
   und die Unterweisung (liegen im Objektordner-Paket bzw. unter Unterweisungen). Tests: `safety-sheets.db.test.ts`,
   `e2e:rechte` 36.
+- 2026-10-14: **Aushänge Putzraum mit Piktogrammen, Objektordner schöner** (Ahmed: „alle Aushänge in einen Button …
+  Wagen, Waschmaschine, mit Piktogrammen, schön machen“; „wo man den Text ändern, Sachen löschen oder hinzufügen kann“):
+  - Objekt → Objektordner: ein Knopf **„Aushänge Putzraum (PDF)“** (`/objekte/:id/aushang/alle.pdf`), einzelne
+    Aushänge eingeklappt. 7 Aushänge, je eine A4-Seite (`src/pdf/posters.ts`, Vektor-Piktogramme `src/pdf/pictos.ts`):
+    Notfall & Kontakte, Farbsystem & Dosierung (rot/gelb/blau/grün + Dosiertabelle), Hautschutzplan, **Sanitärräume
+    richtig reinigen**, **Reinigungswagen sauber halten**, **Mopps & Tücher waschen** (Waschmaschine), Ordnung im
+    Putzraum. Bordeaux-Kopfband, nummerierte Schritt-Karten mit Symbol, Kästen „So ist es richtig“ / „Niemals“;
+    Schrift passt sich an, damit alles auf eine Seite passt. Keine festen Dosierungen/Temperaturen ohne Herstellerangabe.
+  - **Texte änderbar:** Einstellungen → Objektordner-Vorlagen → **Aushänge für den Putzraum**
+    (`/einstellungen/objektordner/aushaenge`): Titel, Symbol, Einleitung, Schritte (ändern, löschen = Überschrift leeren,
+    3 freie Zeilen zum Hinzufügen), „richtig“/„niemals“, Hinweis, an/aus, Vorschau-PDF, auf Standard zurücksetzen,
+    **eigene Aushänge** anlegen/löschen. Platzhalter `{objektleitung}`, `{putzraum}`, `{hautschutz}` … (leer → Zeile
+    entfällt). Gespeichert in `site_folder_defaults.data.aushaenge` (nur Änderungen; neue Standard-Aushänge erscheinen
+    automatisch).
+  - **Objektordner-PDF:** Deckblatt neu (Bordeaux-Fläche mit hellem Logo, Name groß, Kontakte, Notrufnummern, „In diesem
+    Ordner“), Inhalt mit Register-Nummern, **Registerlaschen am rechten Rand** je Abschnitt (1 Objekt, 2 Aushänge, 3 …).
+    Die neuen Aushänge stehen vorne im Abschnitt „Aushänge im Putzraum“; die gleichnamigen Aushänge aus Ahmeds Paket
+    (Farbsystem/Dosierung, Notruf/Meldekette, Notfallplan, Hautschutz, Ordnung im Putzraum) werden nicht mehr doppelt
+    gedruckt (PDF und ZIP); Abfalltrennung, Kontaktkarten, Betriebsanweisungen bleiben. ZIP enthält
+    `01_Aushaenge_Putzraum/Aushaenge_Putzraum.pdf`. `FormDoc.newPage({ plain: true })` für Seiten ohne Briefpapier.
+  - Tests: `posters.db.test.ts`, `site-folder.db.test.ts` angepasst; e2e objekt 31, rechte 36 grün.

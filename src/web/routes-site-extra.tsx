@@ -10,10 +10,9 @@ import { type Ctx, UUID, assertSite } from './app.js';
 import {
   FOLDER_QUESTIONS,
   type FolderInfo,
-  POSTERS,
-  type PosterKind,
   buildFolderPdf,
-  buildPosterPdf,
+  buildPostersPdf,
+  getPosters,
   buildFolderZip,
   folderFacts,
   packageInfo,
@@ -55,6 +54,8 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
       const pkg = await packageInfo(sql);
       const asks = f.missing.filter((m) => m.key);
       const sdbCount = (await listSafetySheets(sql)).length;
+      const posters = (await getPosters(sql)).filter((p) => p.active);
+      const canEditPosters = ['admin', 'buchhaltung', 'personal'].includes(c.get('user').role);
       const [{ workers } = { workers: 0 }] = await sql<{ workers: number }[]>`
         select count(distinct employee_id)::int as workers from app.shift_plans
          where site_id = ${s.id} and employee_id is not null and (valid_until is null or valid_until >= current_date)`;
@@ -68,8 +69,9 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                 <div class="small mut">
                   Ein PDF zum Ausdrucken: Deckblatt, Inhaltsverzeichnis, Objektstammblatt mit Kontakten,
                   Revierplan, Leistungsverzeichnis und Raumbuch aus den eingescannten Unterlagen (Reiter
-                  „Dokumente“), alle Aushänge und Anweisungen aus dem Objektordner-Paket – fertig ausgefüllt,
-                  ohne Unterschriftsfelder – und die Anwesenheitsliste (je zwei Monate auf einer Seite).
+                  „Dokumente“), die Aushänge für den Putzraum (mit Piktogrammen), die Anweisungen aus dem
+                  Objektordner-Paket – fertig ausgefüllt, ohne Unterschriftsfelder –, Sicherheitsdatenblätter
+                  und die Anwesenheitsliste. Register-Nummern am Rand wie bei einem Ordner.
                 </div>
               </div>
               <div class="actions" style="margin:0">
@@ -81,16 +83,32 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                 </a>
               </div>
             </div>
-            <div class="actions" style="margin-bottom:0">
-              <span class="small mut">Aushänge einzeln:</span>
-              {(Object.keys(POSTERS) as PosterKind[]).map((k) => (
-                <a class="btn sec sm" href={`/objekte/${s.id}/aushang/${k}.pdf`} target="_blank">
-                  <Icon name="download" /> {POSTERS[k]}
+            <div class="actions" style="margin-bottom:0;align-items:flex-start">
+              {posters.length > 0 && (
+                <a class="btn sec" href={`/objekte/${s.id}/aushang/alle.pdf`} target="_blank">
+                  <Icon name="download" /> Aushänge Putzraum ({posters.length} Seiten, PDF)
                 </a>
-              ))}
+              )}
               {sdbCount > 0 && (
-                <a class="btn sec sm" href="/sicherheitsdatenblaetter.pdf" target="_blank">
+                <a class="btn sec" href="/sicherheitsdatenblaetter.pdf" target="_blank">
                   <Icon name="download" /> Sicherheitsdatenblätter ({sdbCount})
+                </a>
+              )}
+              {posters.length > 0 && (
+                <details>
+                  <summary class="small">Einzelne Aushänge</summary>
+                  <div class="actions" style="margin:6px 0 0">
+                    {posters.map((p) => (
+                      <a class="btn sec sm" href={`/objekte/${s.id}/aushang/${p.key}.pdf`} target="_blank">
+                        {p.title}
+                      </a>
+                    ))}
+                  </div>
+                </details>
+              )}
+              {canEditPosters && (
+                <a class="small" href="/einstellungen/objektordner/aushaenge" style="align-self:center">
+                  Texte der Aushänge ändern
                 </a>
               )}
             </div>
@@ -237,10 +255,10 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
   app.get(`/objekte/:id{${UUID}}/aushang/:file`, async (c) => {
     const id = c.req.param('id');
     assertSite(c, id);
-    const kind = c.req.param('file').replace(/\.pdf$/, '') as PosterKind;
-    if (!(kind in POSTERS)) return c.notFound();
-    if (kind === 'notfall') await fillHospital(sql, id, c.get('actor'));
-    const r = await buildPosterPdf(deps, id, kind);
+    const key = c.req.param('file').replace(/\.pdf$/, '');
+    if (key !== 'alle' && !(await getPosters(sql)).some((p) => p.key === key)) return c.notFound();
+    if (key === 'alle' || key === 'notfall') await fillHospital(sql, id, c.get('actor'));
+    const r = await buildPostersPdf(deps, id, key === 'alle' ? undefined : key);
     return c.body(r.pdf as Uint8Array<ArrayBuffer>, 200, {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(r.name)}`,

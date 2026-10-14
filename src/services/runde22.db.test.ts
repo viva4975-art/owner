@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { addDays } from '../domain/time/holidays.js';
-import { batchCandidates, createDunning, getDunning } from './dunning.js';
+import { batchCandidates, createDunning, dunningRecipients, getDunning } from './dunning.js';
 import { markLegacyPaid } from './fortytools-xml-import.js';
 import { listBalances } from './payments.js';
 import { invoiceStatistics } from './reports.js';
@@ -56,6 +56,11 @@ describe.skipIf(!available)(
       await createDunning(deps, id, cust, [a], 't');
       const d = await getDunning(sql, id);
       expect(d!.items.map((i) => i.number)).toEqual(['9800001']);
+      // Empfänger: E-Mails stehen nur in der Rechnungsgruppe (nicht am Kunden) → trotzdem gefunden (Fund 14.10.)
+      await sql`update app.customers set invoice_emails = '{}' where id = ${cust}`;
+      await sql`insert into app.invoice_groups (id, customer_id, name, bill_emails)
+                values (${randomUUID()}, ${cust}, 'Standard', ${['rechnung@altkunde.example']})`;
+      expect(await dunningRecipients(sql, id, cust)).toEqual(['rechnung@altkunde.example']);
 
       // Rest bezahlen → bezahlt, nicht mehr offen
       await markLegacyPaid(sql, c, today, 't');

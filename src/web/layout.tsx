@@ -1049,6 +1049,7 @@ input[type=file]::file-selector-button:hover{background:var(--brand-2)}
 .poster-ic{flex:none;display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:var(--brand);color:#fff}
 .poster-t{display:flex;flex-direction:column;min-width:0;flex:1;line-height:1.3}
 .poster-dl{flex:none;color:var(--brand)}
+.poster-sk{flex:none;width:72px;height:45px;object-fit:contain;border:1px solid var(--line);border-radius:6px;background:#fff}
 .fpick .fp-ic{flex:none;display:grid;place-items:center;width:38px;height:38px;border-radius:9px;background:var(--brand-50);color:var(--brand)}
 .fpick.has .fp-ic{background:var(--brand);color:#fff}
 .fpick .fp-t{display:flex;flex-direction:column;min-width:0;line-height:1.3}

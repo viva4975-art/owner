@@ -769,7 +769,7 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
  * Aushänge werden aus den Word-Quellen erzeugt).
  */
 const SKIP_IN_FOLDER =
-  /revierplan_muster|muster[ _-]?revierplan|anwesenheitsliste|VD-ANW-|VD-FB-0?3_|VD-FB-0?7_|VD-AZN-|VD-SN-|VD-FB-34_|abfallkonzept|A_Aushaenge|fertig-zum-Ausdrucken|reklamation|(ü|ue)bernahmeprotokoll/i;
+  /revierplan_muster|muster[ _-]?revierplan|anwesenheitsliste|VD-ANW-|VD-FB-0?3_|VD-FB-0?7_|VD-AZN-|VD-SN-|VD-FB-34_|abfallkonzept|A_Aushaenge|fertig-zum-Ausdrucken|reklamation|(ü|ue)bernahmeprotokoll|kontaktkarten/i;
 
 /**
  * Aushänge aus dem Paket, die die App selbst (mit Piktogrammen und Objektdaten) erzeugt – nicht doppelt aufnehmen.
@@ -777,6 +777,9 @@ const SKIP_IN_FOLDER =
  */
 const POSTER_DUP =
   /farbsystem|dosier|notruf|meldekette|notfall|hautschutz|ordnung[ _-]*im[ _-]*putzraum|putzraum[ _-]*ordnung/i;
+
+/** Sicherheitsdatenblätter im Paket (Ordner 04_ oder am Dateinamen erkennbar) */
+const PKG_SDB = /^04_|sicherheitsdatenbl|(^|[/_ -])sdb[_ -]/i;
 
 const FOLDER_SECTIONS: [RegExp, string][] = [
   [/^01_/, 'Aushänge im Putzraum'],
@@ -1000,6 +1003,7 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
   }
 
   // 5. Vorlagen aus dem Paket
+  const pkgSdb: { title: string; data: Uint8Array }[] = [];
   const pkg = await packageInfo(sql);
   if (pkg) {
     const files = unzipSync(await deps.archive.get(pkg.storage_path));
@@ -1011,6 +1015,10 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
     const mw = /m(ü|ue)nchner\s*wohnen/i.test(f.customer.name);
     for (const n of names) {
       const rel = n.slice(root.length);
+      if (PKG_SDB.test(rel) && /\.pdf$/i.test(rel)) {
+        pkgSdb.push({ title: titleFromFile(rel), data: files[n]! });
+        continue;
+      }
       const section = FOLDER_SECTIONS.find(([re]) => re.test(rel))?.[1];
       if (!section) continue;
       if (/inhaltsverzeichnis/i.test(rel) || SKIP_IN_FOLDER.test(rel)) continue;
@@ -1048,10 +1056,18 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
     }
   }
 
-  // 5b. Sicherheitsdatenblätter der Reinigungsmittel (§ 14 GefStoffV: für die Beschäftigten zugänglich)
-  for (const sd of await listSafetySheets(sql)) {
+  // 5b. Sicherheitsdatenblätter der Reinigungsmittel (§ 14 GefStoffV: für die Beschäftigten zugänglich) –
+  // hochgeladen unter Einstellungen → Objektordner-Vorlagen, dazu PDFs aus dem Paket (Ordner 04_)
+  const sdbSources: { title: string; load: () => Promise<Uint8Array> }[] = [
+    ...(await listSafetySheets(sql)).map((sd) => ({
+      title: `${sd.product}${sd.manufacturer ? ` (${sd.manufacturer})` : ''}`,
+      load: () => deps.archive.get(sd.storage_path),
+    })),
+    ...pkgSdb.map((x) => ({ title: x.title, load: async () => x.data })),
+  ];
+  for (const sd of sdbSources) {
     try {
-      const src = await PDFDocument.load(await deps.archive.get(sd.storage_path), { ignoreEncryption: true });
+      const src = await PDFDocument.load(await sd.load(), { ignoreEncryption: true });
       const pages = await d.pdf.copyPages(src, src.getPageIndices());
       if (!pages.length) continue;
       if (!toc.some((t) => t.section === 'Sicherheitsdatenblätter'))
@@ -1060,10 +1076,7 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
           title: 'Sicherheitsdatenblätter',
           page: d.pdf.getPageCount() + 1,
         });
-      toc.push({
-        title: `${sd.product}${sd.manufacturer ? ` (${sd.manufacturer})` : ''}`,
-        page: d.pdf.getPageCount() + 1,
-      });
+      toc.push({ title: sd.title, page: d.pdf.getPageCount() + 1 });
       for (const p of pages) d.pdf.addPage(p);
       d.page = d.pdf.getPage(d.pdf.getPageCount() - 1);
     } catch {
@@ -1255,7 +1268,8 @@ function posterContext(f: FolderFacts, values: Record<string, string>, date: str
 /** Aushänge eines Objekts in ein vorhandenes Dokument zeichnen (je Aushang eine Seite); gibt die Titel zurück. */
 async function drawSitePosters(d: FormDoc, f: FolderFacts, posters: PosterDef[], date: string) {
   const ctx = posterContext(f, folderValues(f), date);
-  if (posters.some((p) => p.sketch)) ctx.sketches = await embedSketches(d.pdf);
+  const used = posters.flatMap((p) => (p.sketch ? [p.sketch] : []));
+  if (used.length) ctx.sketches = await embedSketches(d.pdf, used);
   await d.loadLogo();
   const done: { title: string; page: number }[] = [];
   for (const p of posters) {

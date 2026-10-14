@@ -2856,3 +2856,21 @@ Testadresse.
   Wasserhahn. Objekt → Objektordner: Kasten „Aushänge für den Putzraum“ mit **„Alle Aushänge (n Seiten)“** und Kacheln je
   Aushang (Symbol, Schritte, „mit Skizze“). Gespeichert werden nur Abweichungen vom Standardtext (sonst kämen spätere
   Verbesserungen nie an); bis 14 Schritte je Aushang.
+- 2026-10-14: Rückmeldung Aushänge (Ahmed, 6 Punkte):
+  - **Skizzen statt Piktogramme:** jede Aushang-Seite (außer Notfall) hat eine nummerierte Skizze im Stil von Ahmeds
+    Vorlagen; die Schritt-Karten haben keine Symbole mehr. Skizzen werden mit `node scripts/aushaenge-skizzen.mjs`
+    aus SVG erzeugt (Chromium) → `assets/aushaenge/skizze-<name>.png` (Web-Vorschau) + `.jpg` (PDF, schnell
+    einzubetten): Farbsystem, Hautschutz, Sanitärraum, Bodenreinigung, Scheuersaugmaschine, Mopps & Tücher, Putzraum;
+    Reinigungswagen/Waschmaschine von Ahmed. Nummern in der Skizze = Schritte – bei Textänderungen Reihenfolge beibehalten.
+  - **Neu:** „Böden richtig wischen“ (6 Schritte, Raum von oben) und „Scheuersaugmaschine bedienen und pflegen“
+    (8 Schritte; Reiniger/Akku nach Herstellerangabe). Jetzt 10 Aushänge. Kacheln am Objekt zeigen die Skizze.
+  - **Kontaktkarten** aus dem Paket werden nicht mehr in den Objektordner übernommen (PDF und ZIP). Seiten „Noch nicht
+    hinterlegt“ (Revierplan/LV/Raumbuch) bleiben (Ahmed).
+  - **Sicherheitsdatenblätter im Objektordner:** aus Einstellungen → Objektordner-Vorlagen und zusätzlich PDFs aus dem
+    Paket (Ordner `04_…` oder Dateiname mit „Sicherheitsdatenblatt“/„SDB“), gemeinsam im Abschnitt
+    „Sicherheitsdatenblätter“.
+  - **Fund Mahnungen „keine E-Mail beim Kunden“:** Empfänger kamen nur aus eigenen Rechnungen bzw. den (leeren)
+    Rechnungs-E-Mails am Kunden – bei übernommenen Fortytools-Rechnungen fehlte die Rechnungsgruppe. Jetzt
+    `dunningRecipients()`: Mahn-/Rechnungs-E-Mails der Gruppe je Rechnung, bei übernommenen Rechnungen über die Objekte
+    der Positionen, sonst die Gruppen des Kunden („Standard“ zuerst), zuletzt der Kunde. Gilt für Anzeige und Versand.
+  - Aushänge-PDF schneller (Textbreiten je Wort zwischengespeichert, Einpassen per Halbierung): 10 Seiten ~1 s.

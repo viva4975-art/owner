@@ -2,7 +2,7 @@ import { PDFDocument } from '@cantoo/pdf-lib';
 import type { Context } from 'hono';
 import { KIND_TITLES } from '../domain/invoice/types.js';
 import type { AppEnv, Ctx } from './app.js';
-import { listDunnings, markDunningSent, sendDunning } from '../services/dunning.js';
+import { dunningRecipients, listDunnings, markDunningSent, sendDunning } from '../services/dunning.js';
 import { BusinessError } from '../services/errors.js';
 import { effectiveBilling } from '../services/masterdata.js';
 import {
@@ -108,9 +108,7 @@ export function registerVersandRoutes({ app, deps, page, back }: Ctx) {
     const list = (await listDunnings(sql)).filter((d) => d.status === 'erstellt');
     return Promise.all(
       list.map(async (d) => {
-        const [c] = await sql<{ invoice_emails: string[] }[]>`
-          select invoice_emails from app.customers where id = ${d.customer_id}`;
-        const emails = c?.invoice_emails ?? [];
+        const emails = await dunningRecipients(sql, d.id, d.customer_id);
         return {
           id: d.id,
           date: d.issue_date,
@@ -123,7 +121,7 @@ export function registerVersandRoutes({ app, deps, page, back }: Ctx) {
           net: null,
           gross: d.total_cents,
           recipients: emails,
-          note: emails.length ? null : 'keine E-Mail beim Kunden',
+          note: emails.length ? null : 'keine E-Mail (Rechnungsgruppe)',
           href: `/mahnungen/${d.id}`,
         };
       }),

@@ -477,6 +477,49 @@ export async function previewDunnings(
 }
 
 /** Versand genau einmal: Übernahme per bedingtem Update vor dem SMTP-Versand. */
+/**
+ * Empfänger einer Mahnung: je gemahnter Rechnung die Mahn-E-Mails der Rechnungsgruppe, sonst deren Rechnungs-E-Mails.
+ * Rechnungen vor der Umstellung (Fortytools) über die Objekte ihrer Positionen; sonst die Gruppen des Kunden
+ * (Standard zuerst) und zuletzt die E-Mails am Kunden. Fund 14.10.: bei übernommenen Rechnungen stand „keine E-Mail“,
+ * obwohl die Rechnungsgruppe eine hatte.
+ */
+export async function dunningRecipients(sql: Sql, dunningId: string, customerId: string): Promise<string[]> {
+  const invs = await sql<{ site_id: string | null; invoice_group_id: string | null }[]>`
+    select distinct i.site_id, i.invoice_group_id from app.dunning_items di join app.invoices i on i.id = di.invoice_id
+     where di.dunning_id = ${dunningId}
+    union
+    select distinct l.site_id, null::uuid from app.dunning_items di
+      join app.legacy_invoice_lines l on l.invoice_id = di.invoice_id
+     where di.dunning_id = ${dunningId} and l.site_id is not null`;
+  const out = new Set<string>();
+  const add = async (siteId: string | null, groupId: string | null) => {
+    const [g] = await sql<{ dunning_emails: string[] | null }[]>`
+      select g.dunning_emails from app.invoice_groups g
+       where g.id = coalesce(${groupId}::uuid, (select invoice_group_id from app.sites where id = ${siteId}))`;
+    const list = g?.dunning_emails?.length
+      ? g.dunning_emails
+      : (await effectiveBilling(sql, customerId, siteId, groupId)).emails;
+    for (const e of list) out.add(e);
+  };
+  for (const i of invs) await add(i.site_id, i.invoice_group_id);
+  if (!out.size) {
+    // keine Zuordnung (z. B. übernommene Rechnung ohne Objekt): Gruppen des Kunden, „Standard“ zuerst
+    const groups = await sql<{ id: string }[]>`
+      select id from app.invoice_groups where customer_id = ${customerId} and active
+       order by (name = 'Standard') desc, name`;
+    for (const g of groups) {
+      await add(null, g.id);
+      if (out.size) break;
+    }
+  }
+  if (!out.size) {
+    const [c] = await sql<{ invoice_emails: string[] }[]>`
+      select invoice_emails from app.customers where id = ${customerId}`;
+    for (const e of c?.invoice_emails ?? []) out.add(e);
+  }
+  return [...out];
+}
+
 export async function sendDunning(deps: Deps, id: string, actor: string) {
   const { sql, env } = deps;
   const data = await getDunning(sql, id);
@@ -488,22 +531,7 @@ export async function sendDunning(deps: Deps, id: string, actor: string) {
   const [c] = await sql<
     { invoice_emails: string[]; name: string }[]
   >`select invoice_emails, name from app.customers where id = ${d.customer_id}`;
-  // Empfänger: Rechnungs-E-Mails der Rechnungsgruppen der gemahnten Rechnungen (sonst die des Kunden)
-  const invs = await sql<{ site_id: string | null; invoice_group_id: string | null }[]>`
-    select distinct i.site_id, i.invoice_group_id from app.dunning_items di join app.invoices i on i.id = di.invoice_id
-     where di.dunning_id = ${id}`;
-  const fromGroups = new Set<string>();
-  for (const i of invs) {
-    // eigene Mahn-E-Mails der Rechnungsgruppe vor den Rechnungs-E-Mails
-    const [g] = await sql<{ dunning_emails: string[] | null }[]>`
-      select g.dunning_emails from app.invoice_groups g
-       where g.id = coalesce(${i.invoice_group_id}::uuid, (select invoice_group_id from app.sites where id = ${i.site_id}))`;
-    const list = g?.dunning_emails?.length
-      ? g.dunning_emails
-      : (await effectiveBilling(sql, d.customer_id, i.site_id, i.invoice_group_id)).emails;
-    for (const e of list) fromGroups.add(e);
-  }
-  c!.invoice_emails = fromGroups.size ? [...fromGroups] : c!.invoice_emails;
+  c!.invoice_emails = await dunningRecipients(sql, id, d.customer_id);
   const { actual, redirected } = resolveRecipients(env, c!.invoice_emails);
   const [claimed] =
     await sql`update app.dunnings set status = 'versendet', sent_at = now(), sent_to = ${actual}

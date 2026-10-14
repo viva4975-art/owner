@@ -4,6 +4,7 @@
  * eigene Aushänge anlegen; Vorschau mit dem ersten aktiven Objekt.
  */
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import {
   DEFAULT_POSTERS,
   PICTO_LABELS,
@@ -185,7 +186,6 @@ export function registerPosterRoutes({ app, deps, page, back }: Ctx) {
             <thead>
               <tr>
                 <th style="width:30px">Nr.</th>
-                <th style="width:150px">Symbol</th>
                 <th style="width:230px">Überschrift</th>
                 <th>Text</th>
                 {p.kind === 'farben' && <th style="width:80px">Farbe</th>}
@@ -195,7 +195,7 @@ export function registerPosterRoutes({ app, deps, page, back }: Ctx) {
               {rows.map((st, i) => (
                 <tr>
                   <td>{i < p.steps.length ? i + 1 : '+'}</td>
-                  <td>{iconSelect('s_icon', st.icon)}</td>
+                  <input type="hidden" name="s_icon" value={st.icon} />
                   <td>
                     <input name="s_title" value={st.title} maxlength={80} aria-label="Überschrift" />
                   </td>
@@ -335,6 +335,14 @@ export function registerPosterRoutes({ app, deps, page, back }: Ctx) {
     return def
       ? back(c, `${BASE}/${key}`, { ok: 'Standardtext wiederhergestellt.' })
       : back(c, BASE, { ok: 'Aushang gelöscht.' });
+  });
+
+  // Skizzen als Vorschaubild (Objektordner-Seite, Einstellungen)
+  app.get('/aushaenge/skizze/:file{[a-z]+\\.png}', async (c) => {
+    const name = c.req.param('file').replace(/\.png$/, '');
+    if (!(name in SKETCHES)) return c.notFound();
+    const bytes = await readFile(new URL(`../../assets/aushaenge/skizze-${name}.png`, import.meta.url));
+    return c.body(bytes, 200, { 'Content-Type': 'image/png', 'Cache-Control': 'private, max-age=86400' });
   });
 
   app.get(`${BASE}/:key{${KEY}}/vorschau.pdf`, async (c) => {

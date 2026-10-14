@@ -91,8 +91,8 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                   <div>
                     <b>Aushänge für den Putzraum</b>
                     <div class="small mut">
-                      {posters.length} Aushänge mit Piktogrammen und Skizzen, mit den Angaben dieses Objekts –
-                      gesamt oder einzeln zum Aushängen.
+                      {posters.length} Aushänge mit Skizzen, mit den Angaben dieses Objekts – gesamt oder
+                      einzeln zum Aushängen.
                     </div>
                   </div>
                   <a class="btn" href={`/objekte/${s.id}/aushang/alle.pdf`} target="_blank">
@@ -102,11 +102,20 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                 <div class="poster-grid">
                   {posters.map((p) => (
                     <a class="poster-tile" href={`/objekte/${s.id}/aushang/${p.key}.pdf`} target="_blank">
-                      <span class="poster-ic">{raw(pictoSvg(p.icon, 26))}</span>
+                      {p.sketch ? (
+                        <img
+                          class="poster-sk"
+                          src={`/aushaenge/skizze/${p.sketch}.png`}
+                          alt=""
+                          loading="lazy"
+                        />
+                      ) : (
+                        <span class="poster-ic">{raw(pictoSvg(p.icon, 26))}</span>
+                      )}
                       <span class="poster-t">
                         <b>{p.title}</b>
                         <span class="small mut">
-                          {p.steps.length} Schritte{p.sketch ? ' · mit Skizze' : ''}
+                          {p.steps.length} Schritte{p.sketch ? ' · Skizze' : ''}
                         </span>
                       </span>
                       <span class="poster-dl" title="PDF herunterladen">

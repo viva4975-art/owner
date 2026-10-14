@@ -14,7 +14,17 @@ import { formatDateDe } from '../domain/invoice/calc.js';
 import { FORM_COLORS, FORM_X, type FormDoc } from './form-doc.js';
 import { PICTOS, type PictoName, drawPicto, drawPictoBadge } from './pictos.js';
 
-export const SKETCHES = { reinigungswagen: 'Reinigungswagen', waschmaschine: 'Waschmaschine' } as const;
+export const SKETCHES = {
+  reinigungswagen: 'Reinigungswagen',
+  waschmaschine: 'Waschmaschine',
+  farbsystem: 'Farbsystem (4 Bereiche)',
+  hautschutz: 'Hautschutz (4 Hände)',
+  sanitaer: 'Sanitärraum',
+  boden: 'Bodenreinigung (Raum von oben)',
+  scheuersaug: 'Scheuersaugmaschine',
+  waesche: 'Mopps & Tücher waschen',
+  putzraum: 'Putzraum',
+} as const;
 export type SketchName = keyof typeof SKETCHES;
 
 export type PosterColor = 'rot' | 'gelb' | 'blau' | 'gruen';
@@ -138,6 +148,7 @@ export const DEFAULT_POSTERS: PosterDef[] = [
     kind: 'farben',
     title: 'Farbsystem & Dosierung',
     icon: 'palette',
+    sketch: 'farbsystem',
     intro: 'Jede Farbe hat ihren Bereich – Tücher, Eimer und Handschuhe nie zwischen den Bereichen wechseln.',
     steps: [
       s(
@@ -171,6 +182,7 @@ export const DEFAULT_POSTERS: PosterDef[] = [
     kind: 'text',
     title: 'Hautschutzplan',
     icon: 'hand',
+    sketch: 'hautschutz',
     intro: 'Feuchtarbeit und Reinigungsmittel belasten die Haut. So bleibt sie gesund:',
     steps: [
       s('tube', 'Vor der Arbeit', 'Hautschutz auftragen – auch nach jeder Pause.\n{hautschutz}'),
@@ -197,6 +209,7 @@ export const DEFAULT_POSTERS: PosterDef[] = [
     kind: 'text',
     title: 'Sanitärräume richtig reinigen',
     icon: 'wash',
+    sketch: 'sanitaer',
     intro: 'Immer von sauber nach schmutzig, von oben nach unten.',
     steps: [
       s('trash', 'Abfall', 'Abfalleimer und Hygienebehälter leeren, neue Beutel einsetzen.'),
@@ -311,6 +324,7 @@ export const DEFAULT_POSTERS: PosterDef[] = [
     kind: 'text',
     title: 'Mopps & Tücher waschen',
     icon: 'mop',
+    sketch: 'waesche',
     intro: 'Saubere Mopps und Tücher sind die Grundlage für hygienisches Reinigen.',
     steps: [
       s('palette', 'Sortieren', 'Nach Farben trennen. Rote Tücher (WC) möglichst getrennt waschen.'),
@@ -336,10 +350,85 @@ export const DEFAULT_POSTERS: PosterDef[] = [
     builtin: true,
   },
   {
+    key: 'boden',
+    kind: 'text',
+    title: 'Böden richtig wischen',
+    icon: 'mop',
+    sketch: 'boden',
+    intro:
+      'Von sauber nach schmutzig, von hinten zur Tür. Die Nummern in der Skizze gehören zu den Schritten.',
+    steps: [
+      s('alert', 'Warnschild aufstellen', 'Vor dem Wischen „Rutschgefahr“ am Eingang aufstellen.'),
+      s(
+        'trash',
+        'Grobschmutz entfernen',
+        'Erst kehren oder saugen – Sand und Krümel zerkratzen sonst den Boden.',
+      ),
+      s('mop', 'Mopp vorbereiten', 'Frischen Mopp nehmen, Reiniger nach Herstellerangabe dosieren.'),
+      s(
+        'mop',
+        'In Schlangenlinien wischen',
+        'Rückwärts von hinten zur Tür – nicht über nasse Flächen laufen.',
+      ),
+      s('check', 'Ecken und Kanten', 'Ränder, Ecken und unter Möbeln nicht vergessen.'),
+      s(
+        'bag',
+        'Mopp wechseln',
+        'Für jeden Raum einen frischen Mopp. Benutzten in den Wäschesack – nie im Wischwasser auswaschen.',
+      ),
+    ],
+    dos: ['Holz und Linoleum nur nebelfeucht wischen'],
+    donts: ['Zu nass wischen', 'Mit dem benutzten Mopp in den nächsten Raum'],
+    note: '',
+    active: true,
+    builtin: true,
+  },
+  {
+    key: 'scheuersaug',
+    kind: 'text',
+    title: 'Scheuersaugmaschine bedienen und pflegen',
+    icon: 'cart',
+    sketch: 'scheuersaug',
+    intro:
+      'Nur nach Einweisung benutzen. Betriebsanleitung des Herstellers beachten. Die Nummern in der Skizze gehören zu den Schritten.',
+    steps: [
+      s(
+        'droplet',
+        'Frischwassertank füllen',
+        'Wasser einfüllen, Reiniger nach Herstellerangabe – schäumende Mittel nur, wenn freigegeben.',
+      ),
+      s('check', 'Bürste oder Pad prüfen', 'Richtiges Pad für den Boden einsetzen, abgenutzte tauschen.'),
+      s(
+        'check',
+        'Saugfuß prüfen',
+        'Gummilippen sauber und ohne Risse – sonst bleiben Streifen und Wasser liegen.',
+      ),
+      s(
+        'power',
+        'Langsam in Bahnen arbeiten',
+        'Bahnen leicht überlappen, Warnschild „Rutschgefahr“ aufstellen.',
+      ),
+      s('droplet', 'Schmutzwasser ablassen', 'Nach der Arbeit über den Schlauch nur im Ausguss entleeren.'),
+      s('sun', 'Tanks ausspülen', 'Beide Tanks klar ausspülen, Deckel offen lassen – keine Gerüche.'),
+      s('wipe', 'Bürste und Saugfuß reinigen', 'Abnehmen, Haare und Fäden entfernen, abspülen.'),
+      s(
+        'power',
+        'Akku laden',
+        'Ladegerät anschließen, nur im gut belüfteten Raum laden. Defekte sofort melden.',
+      ),
+    ],
+    dos: [],
+    donts: ['Weiterarbeiten, wenn der Schmutzwassertank voll ist', 'Über Kabel oder Kanten fahren'],
+    note: '',
+    active: true,
+    builtin: true,
+  },
+  {
     key: 'putzraum',
     kind: 'text',
     title: 'Ordnung im Putzraum',
     icon: 'door',
+    sketch: 'putzraum',
     intro: 'Putzraum: {putzraum}',
     steps: [
       s(
@@ -438,12 +527,15 @@ export interface PosterContext {
   sketches?: Partial<Record<SketchName, PDFImage>>;
 }
 
-/** Skizzen einmal je Dokument einbetten. */
-export async function embedSketches(pdf: PDFDocument): Promise<Partial<Record<SketchName, PDFImage>>> {
+/** Benötigte Skizzen einmal je Dokument einbetten (JPEG – PNG-Dekodierung in pdf-lib ist zu langsam). */
+export async function embedSketches(
+  pdf: PDFDocument,
+  names: Iterable<SketchName> = Object.keys(SKETCHES) as SketchName[],
+): Promise<Partial<Record<SketchName, PDFImage>>> {
   const out: Partial<Record<SketchName, PDFImage>> = {};
-  for (const k of Object.keys(SKETCHES) as SketchName[])
-    out[k] = await pdf.embedPng(
-      await readFile(new URL(`../../assets/aushaenge/skizze-${k}.png`, import.meta.url)),
+  for (const k of new Set(names))
+    out[k] = await pdf.embedJpg(
+      await readFile(new URL(`../../assets/aushaenge/skizze-${k}.jpg`, import.meta.url)),
     );
   return out;
 }
@@ -469,10 +561,35 @@ export function drawPoster(d: FormDoc, def: PosterDef, ctx: PosterContext) {
   const { L, R } = FORM_X;
   const fill = (t: string) => fillPlaceholders(t, ctx.vals);
   // Schriftgrößen-Faktor: so lange verkleinern, bis alles auf eine Seite passt
-  let k = 1.4;
-  for (; k > 0.7; k -= 0.05) if (layout(d, def, ctx, k, fill, false) <= PLAIN_BOTTOM - 30) break;
+  // Textbreiten zwischenspeichern (das Einpassen misst dieselben Wörter viele Male)
+  const width = d.width.bind(d);
+  const cache = new Map<string, number>();
+  const one = (t: string, size: number, bold: boolean) => {
+    const key = `${size}|${bold ? 1 : 0}|${t}`;
+    let w = cache.get(key);
+    if (w === undefined) cache.set(key, (w = width(t, size, bold)));
+    return w;
+  };
+  // Zeilenbreite = Summe der Wörter + Leerzeichen (Unterschied durch Unterschneidung am Leerzeichen vernachlässigbar)
+  d.width = (t: string, size = 9, bold = false) =>
+    t.split(' ').reduce((sum, w, i) => sum + (i ? one(' ', size, bold) : 0) + (w ? one(w, size, bold) : 0), 0);
+  // größten Faktor suchen, bei dem alles auf eine Seite passt (Halbierung, 0,7 … 1,4)
+  const fits = (k: number) => layout(d, def, ctx, k, fill, false) <= PLAIN_BOTTOM - 30;
+  let k: number;
+  if (fits(1.4)) k = 1.4;
+  else {
+    let lo = 0.7;
+    let hi = 1.4;
+    for (let i = 0; i < 6; i++) {
+      const mid = (lo + hi) / 2;
+      if (fits(mid)) lo = mid;
+      else hi = mid;
+    }
+    k = lo;
+  }
   d.newPage({ plain: true });
   layout(d, def, ctx, k, fill, true);
+  d.width = width;
   // Fußzeile
   const foot = `${ctx.siteName} (${ctx.siteNo}) · Stand ${formatDateDe(ctx.date)} · Viva-Deluxe Gebäudereinigung GmbH`;
   d.line(L, R, d.bottom - 14, LINE, 0.5);
@@ -627,7 +744,8 @@ function layout(
   const ts = 12.5 * k;
   const bs = 10.5 * k;
   // mit Skizze: kompakte Karten ohne Symbol (die Skizze zeigt die Stelle)
-  const compact = !!sk;
+  // Ahmed 14.10.: Skizzen statt Piktogramme – Schritte immer als kompakte Karten ohne Symbol
+  const compact = true;
   const ics = compact ? 0 : 34 * Math.min(k, 1.15);
   const tx = 38 * Math.min(k, 1.15);
   /** Text um das Symbol rechts oben herum umbrechen */

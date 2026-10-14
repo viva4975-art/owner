@@ -5,3 +5,5 @@ var
 CLAUDE.md
 docs/*.html
 supabase/migration-checksums.json
+mobile-app/android
+mobile-app/package-lock.json

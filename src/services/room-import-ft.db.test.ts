@@ -7,6 +7,7 @@ import { analyzeRooms, applyRooms } from './room-import.js';
 import { PDFDocument, StandardFonts } from '@cantoo/pdf-lib';
 import { storeRoomBookPdf } from './room-pdf.js';
 import { storeFile } from './uploads.js';
+import { deleteRooms } from './facility.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
@@ -92,5 +93,19 @@ describe.skipIf(!available)('Raumbuch im Fortytools-Format + PDF in den Dokument
     const [l] = await sql<{ archived_at: Date | null }[]>`
       select archived_at from app.file_links where file_id = ${up.id}`;
     expect(l!.archived_at).toBeNull();
+  }, 30_000);
+
+  it('Räume löschen: alle eines Objekts; Räume mit Ticket bleiben inaktiv als Nachweis', async () => {
+    const rooms = await sql<{ id: string }[]>`select id from app.rooms where site_id = ${DEMO.siteSchool}`;
+    expect(rooms.length).toBeGreaterThan(1);
+    await sql`insert into app.site_tickets (id, number, site_id, room_id, title, created_by)
+              values (gen_random_uuid(), 'T-TEST-0001', ${DEMO.siteSchool}, ${rooms[0]!.id}, 'Test', 't')`;
+    const r1 = await deleteRooms(sql, DEMO.siteSchool, [rooms[1]!.id], 't');
+    expect(r1).toEqual({ deleted: 1, deactivated: 0 });
+    const r = await deleteRooms(sql, DEMO.siteSchool, 'all', 't');
+    expect(r.deactivated).toBe(1);
+    const left = await sql<{ id: string; active: boolean }[]>`
+      select id, active from app.rooms where site_id = ${DEMO.siteSchool}`;
+    expect(left).toEqual([{ id: rooms[0]!.id, active: false }]);
   }, 30_000);
 });

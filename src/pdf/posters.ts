@@ -572,7 +572,9 @@ export function drawPoster(d: FormDoc, def: PosterDef, ctx: PosterContext) {
   };
   // Zeilenbreite = Summe der Wörter + Leerzeichen (Unterschied durch Unterschneidung am Leerzeichen vernachlässigbar)
   d.width = (t: string, size = 9, bold = false) =>
-    t.split(' ').reduce((sum, w, i) => sum + (i ? one(' ', size, bold) : 0) + (w ? one(w, size, bold) : 0), 0);
+    t
+      .split(' ')
+      .reduce((sum, w, i) => sum + (i ? one(' ', size, bold) : 0) + (w ? one(w, size, bold) : 0), 0);
   // größten Faktor suchen, bei dem alles auf eine Seite passt (Halbierung, 0,7 … 1,4)
   const fits = (k: number) => layout(d, def, ctx, k, fill, false) <= PLAIN_BOTTOM - 30;
   let k: number;

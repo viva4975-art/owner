@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Viva-Deluxe</string>
+    <string name="title_activity_main">Viva-Deluxe</string>
+    <string name="package_name">de.vivadeluxe.app</string>
+    <string name="custom_url_scheme">de.vivadeluxe.app</string>
+</resources>

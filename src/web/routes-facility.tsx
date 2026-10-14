@@ -28,6 +28,7 @@ import {
   qualityCheckPdf,
   saveQualityCheck,
   saveRoom,
+  deleteRooms,
   saveRoomType,
   saveSiteHourTarget,
 } from '../services/facility.js';
@@ -220,10 +221,43 @@ export function registerFacilityRoutes(ctx: Ctx) {
               </a>
             )}
           </div>
+          {rooms.length > 0 && (
+            <form
+              id="roombulk"
+              method="post"
+              action={`/objekte/${s.id}/raumbuch/loeschen`}
+              class="actions"
+              style="margin:12px 0 0;gap:8px;align-items:center"
+              onsubmit="if(event.submitter&&event.submitter.value==='alle')return true;var n=document.querySelectorAll('input[name=ids][form=roombulk]:checked').length;if(!n){alert('Bitte zuerst Räume markieren.');return false}return confirm(n+' markierte Räume löschen?')"
+            >
+              <label class="chk" style="margin:0">
+                <input
+                  type="checkbox"
+                  onclick="document.querySelectorAll('input[name=ids][form=roombulk]').forEach(function(x){x.checked=this.checked}.bind(this))"
+                />{' '}
+                alle markieren
+              </label>
+              <button class="btn sec sm" name="umfang" value="markierte">
+                <Icon name="trash" /> Markierte löschen
+              </button>
+              <button
+                class="btn danger sm"
+                name="umfang"
+                value="alle"
+                data-confirm={`Wirklich alle ${rooms.length} Räume dieses Objekts löschen? Danach kann das Raumbuch neu importiert werden.`}
+              >
+                <Icon name="trash" /> Alle Räume löschen ({rooms.length})
+              </button>
+              <span class="small mut">
+                Räume aus Qualitätskontrollen/Tickets bleiben als Nachweis und werden nur inaktiv.
+              </span>
+            </form>
+          )}
           <div class="tbl">
             <table>
               <thead>
                 <tr>
+                  <th style="width:28px" />
                   <th>Etage</th>
                   <th>Raum-Nr.</th>
                   <th>Raum</th>
@@ -236,6 +270,15 @@ export function registerFacilityRoutes(ctx: Ctx) {
               <tbody>
                 {rooms.map((r) => (
                   <tr class={r.active ? '' : 'mut'}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        name="ids"
+                        value={r.id}
+                        form="roombulk"
+                        aria-label="Raum markieren"
+                      />
+                    </td>
                     <td>{r.floor}</td>
                     <td>{r.room_no}</td>
                     <td>
@@ -253,7 +296,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
                 ))}
                 {!rooms.length && (
                   <tr>
-                    <td colspan={7} class="mut">
+                    <td colspan={8} class="mut">
                       Noch keine Räume erfasst. Raumbuch vom Auftraggeber? „Importieren“ oder Raumbuch unter
                       Dokumente → Raumbuch ablegen und „Aus Dokumente übernehmen“.
                     </td>
@@ -263,7 +306,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
               {rooms.length > 0 && (
                 <tfoot>
                   <tr>
-                    <th colspan={5}>Summe aktive Räume</th>
+                    <th colspan={6}>Summe aktive Räume</th>
                     <th class="right">{m2(t.areaCenti)}</th>
                     <th />
                   </tr>
@@ -730,118 +773,149 @@ export function registerFacilityRoutes(ctx: Ctx) {
       if (r && r.site_id !== s.id) throw new BusinessError('Raum gehört zu einem anderen Objekt');
       const custom = r && !FREQUENCIES.some(([k]) => k === r.visits_per_year);
       return (
-        <form
-          method="post"
-          action={`/objekte/${s.id}/raumbuch/${roomId}`}
-          class="card"
-          data-autosave={`/objekte/${s.id}/raumbuch/${roomId}`}
-          data-version={String(r?.version ?? '')}
-          style="max-width:860px"
-        >
-          <h2 style="margin-top:0">{r ? `Raum ${r.name}` : 'Neuer Raum'}</h2>
-          <input type="hidden" name="version" value={String(r?.version ?? '')} />
-          <div class="grid">
-            <div>
-              <label for="floor">Etage / Gebäudeteil</label>
-              <input id="floor" name="floor" value={r?.floor ?? ''} placeholder="EG, 1. OG, Haus B" />
-            </div>
-            <div>
-              <label for="room_no">Raumnummer</label>
-              <input id="room_no" name="room_no" value={r?.room_no ?? ''} />
-            </div>
-            <div>
-              <label for="name">Bezeichnung</label>
-              <input id="name" name="name" value={r?.name ?? ''} required />
-            </div>
-            <div>
-              <label for="room_type_id">Raumart</label>
-              <select id="room_type_id" name="room_type_id" required>
-                {types.map((t) => (
-                  <option value={t.id} selected={t.id === r?.room_type_id}>
-                    {t.name}
+        <>
+          <form
+            method="post"
+            action={`/objekte/${s.id}/raumbuch/${roomId}`}
+            class="card"
+            data-autosave={`/objekte/${s.id}/raumbuch/${roomId}`}
+            data-version={String(r?.version ?? '')}
+            style="max-width:860px"
+          >
+            <h2 style="margin-top:0">{r ? `Raum ${r.name}` : 'Neuer Raum'}</h2>
+            <input type="hidden" name="version" value={String(r?.version ?? '')} />
+            <div class="grid">
+              <div>
+                <label for="floor">Etage / Gebäudeteil</label>
+                <input id="floor" name="floor" value={r?.floor ?? ''} placeholder="EG, 1. OG, Haus B" />
+              </div>
+              <div>
+                <label for="room_no">Raumnummer</label>
+                <input id="room_no" name="room_no" value={r?.room_no ?? ''} />
+              </div>
+              <div>
+                <label for="name">Bezeichnung</label>
+                <input id="name" name="name" value={r?.name ?? ''} required />
+              </div>
+              <div>
+                <label for="room_type_id">Raumart</label>
+                <select id="room_type_id" name="room_type_id" required>
+                  {types.map((t) => (
+                    <option value={t.id} selected={t.id === r?.room_type_id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label for="floor_covering">Bodenbelag</label>
+                <input
+                  id="floor_covering"
+                  name="floor_covering"
+                  list="belaege"
+                  value={r?.floor_covering ?? ''}
+                  placeholder="Linoleum, Fliesen, Teppich …"
+                />
+                <datalist id="belaege">
+                  {[
+                    'Linoleum',
+                    'PVC',
+                    'Fliesen',
+                    'Teppich',
+                    'Parkett',
+                    'Laminat',
+                    'Naturstein',
+                    'Kautschuk',
+                    'Sportboden',
+                  ].map((b) => (
+                    <option value={b} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <label for="area">Fläche (m²)</label>
+                <input
+                  id="area"
+                  name="area"
+                  value={r ? centsToInput(r.area_centi) : ''}
+                  inputmode="decimal"
+                  required
+                />
+              </div>
+              <div>
+                <label for="visits">Reinigungsintervall</label>
+                <select id="visits" name="visits">
+                  {FREQUENCIES.map(([k, v]) => (
+                    <option value={String(k)} selected={(r?.visits_per_year ?? 260) === k}>
+                      {v}
+                    </option>
+                  ))}
+                  <option value="custom" selected={!!custom}>
+                    andere Anzahl pro Jahr …
                   </option>
-                ))}
-              </select>
+                </select>
+              </div>
+              <div>
+                <label for="visits_custom">Reinigungen pro Jahr (bei „andere“)</label>
+                <input
+                  id="visits_custom"
+                  name="visits_custom"
+                  inputmode="numeric"
+                  value={custom ? String(r!.visits_per_year) : ''}
+                />
+              </div>
             </div>
-            <div>
-              <label for="floor_covering">Bodenbelag</label>
-              <input
-                id="floor_covering"
-                name="floor_covering"
-                list="belaege"
-                value={r?.floor_covering ?? ''}
-                placeholder="Linoleum, Fliesen, Teppich …"
-              />
-              <datalist id="belaege">
-                {[
-                  'Linoleum',
-                  'PVC',
-                  'Fliesen',
-                  'Teppich',
-                  'Parkett',
-                  'Laminat',
-                  'Naturstein',
-                  'Kautschuk',
-                  'Sportboden',
-                ].map((b) => (
-                  <option value={b} />
-                ))}
-              </datalist>
+            <label for="notes">Hinweise (Besonderheiten, Zugang, Reinigungsmittel)</label>
+            <textarea id="notes" name="notes">
+              {r?.notes ?? ''}
+            </textarea>
+            <div class="chk" style="margin-top:10px">
+              <input type="checkbox" id="active" name="active" checked={r ? r.active : true} />
+              <label for="active">aktiv (wird gereinigt und kontrolliert)</label>
             </div>
-            <div>
-              <label for="area">Fläche (m²)</label>
-              <input
-                id="area"
-                name="area"
-                value={r ? centsToInput(r.area_centi) : ''}
-                inputmode="decimal"
-                required
-              />
+            <div class="formfoot">
+              <a class="btn sec" href={`/objekte/${s.id}/raumbuch`}>
+                Zurück
+              </a>
+              <button class="btn sec" name="next" value="new">
+                Speichern und nächster Raum
+              </button>
+              <button class="btn">Speichern</button>
             </div>
-            <div>
-              <label for="visits">Reinigungsintervall</label>
-              <select id="visits" name="visits">
-                {FREQUENCIES.map(([k, v]) => (
-                  <option value={String(k)} selected={(r?.visits_per_year ?? 260) === k}>
-                    {v}
-                  </option>
-                ))}
-                <option value="custom" selected={!!custom}>
-                  andere Anzahl pro Jahr …
-                </option>
-              </select>
-            </div>
-            <div>
-              <label for="visits_custom">Reinigungen pro Jahr (bei „andere“)</label>
-              <input
-                id="visits_custom"
-                name="visits_custom"
-                inputmode="numeric"
-                value={custom ? String(r!.visits_per_year) : ''}
-              />
-            </div>
-          </div>
-          <label for="notes">Hinweise (Besonderheiten, Zugang, Reinigungsmittel)</label>
-          <textarea id="notes" name="notes">
-            {r?.notes ?? ''}
-          </textarea>
-          <div class="chk" style="margin-top:10px">
-            <input type="checkbox" id="active" name="active" checked={r ? r.active : true} />
-            <label for="active">aktiv (wird gereinigt und kontrolliert)</label>
-          </div>
-          <div class="formfoot">
-            <a class="btn sec" href={`/objekte/${s.id}/raumbuch`}>
-              Zurück
-            </a>
-            <button class="btn sec" name="next" value="new">
-              Speichern und nächster Raum
-            </button>
-            <button class="btn">Speichern</button>
-          </div>
-        </form>
+          </form>
+          {r && (
+            <form method="post" action={`/objekte/${s.id}/raumbuch/loeschen`} style="margin-top:12px">
+              <input type="hidden" name="ids" value={r.id} />
+              <button
+                class="btn danger sm"
+                name="umfang"
+                value="markierte"
+                data-confirm={`Raum „${r.name}“ löschen?`}
+              >
+                <Icon name="trash" /> Raum löschen
+              </button>
+            </form>
+          )}
+        </>
       );
     }),
   );
+
+  app.post(`/objekte/:id{${UUID}}/raumbuch/loeschen`, async (c) => {
+    const siteId = c.req.param('id');
+    assertSite(c, siteId);
+    const b = await c.req.parseBody({ all: true });
+    const ids = arr(b, 'ids').filter((x) => /^[0-9a-f-]{36}$/i.test(x));
+    const alle = str(b, 'umfang') === 'alle';
+    if (!alle && !ids.length) throw new BusinessError('Bitte zuerst Räume markieren.');
+    const r = await deleteRooms(sql, siteId, alle ? 'all' : ids, c.get('actor'));
+    const msg =
+      `${r.deleted} ${r.deleted === 1 ? 'Raum' : 'Räume'} gelöscht.` +
+      (r.deactivated
+        ? ` ${r.deactivated} aus Qualitätskontrollen/Tickets nur inaktiv gesetzt (Nachweis).`
+        : '');
+    return back(c, `/objekte/${siteId}/raumbuch`, { ok: msg });
+  });
 
   app.post(`/objekte/:id{${UUID}}/raumbuch/:room{${UUID}}`, async (c) => {
     const siteId = c.req.param('id');

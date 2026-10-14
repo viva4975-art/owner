@@ -10,6 +10,8 @@ if [ "${1:-}" = "--wenn-neu" ] && [ "$(git rev-parse HEAD)" = "$(git rev-parse '
   exit 0
 fi
 git merge -q --ff-only '@{u}'
+# Stand für die App (Einstellungen → Systemzustand, /health/version)
+git log -1 --date=format-local:'%d.%m.%Y %H:%M' --format='%h vom %cd – %s' > version.txt
 cd deploy
 docker compose --env-file .env.live up -d --build
 docker image prune -f >/dev/null

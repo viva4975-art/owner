@@ -1,3 +1,4 @@
+import { appVersion } from '../services/app-version.js';
 import {
   DEFAULT_QUESTIONS,
   type FolderDefaults,
@@ -538,6 +539,9 @@ export function registerSettingsRoutes({ app, deps, page, back }: Ctx) {
       '',
       <>
         <PageHead title={`Einstellungen für ${co?.legal_name ?? 'die Firma'}`} />
+        <p class="small mut" style="margin-top:-6px">
+          App-Stand: {appVersion()}
+        </p>
         <div class="set-wrap">
           <div class="set-main">
             {sections.map((s) => (

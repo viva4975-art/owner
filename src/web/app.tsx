@@ -58,6 +58,7 @@ import { registerHrRequiredRoutes } from './routes-hr-required.js';
 import { registerSubcontractorRoutes } from './routes-subcontractors.js';
 import { registerSettingsRoutes } from './routes-settings.js';
 import { registerPosterRoutes } from './routes-posters.js';
+import { appVersion } from '../services/app-version.js';
 import { registerTenderRoutes } from './routes-tenders.js';
 import { registerCashbookRoutes } from './routes-cashbook.js';
 import { registerLegacyRoutes } from './routes-legacy.js';
@@ -235,6 +236,7 @@ export function createApp(deps: Deps) {
     path === '/app/manifest.webmanifest' ||
     path === '/health' ||
     path === '/health/voll' ||
+    path === '/health/version' ||
     path.startsWith('/static/');
   app.use(async (c, next) => {
     const path = c.req.path;
@@ -578,6 +580,7 @@ export function createApp(deps: Deps) {
   );
 
   app.get('/health', (c) => c.text('ok'));
+  app.get('/health/version', (c) => c.text(appVersion()));
   // Für den externen Wächter (UptimeRobot o. ä.): 200 „ok“ nur, wenn alle Störungs-Prüfungen bestehen; sonst 503 mit
   // den Namen der gestörten Prüfungen (keine Einzelheiten nach außen).
   app.get('/health/voll', async (c) => {

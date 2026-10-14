@@ -1,3 +1,4 @@
+import { appVersion } from '../services/app-version.js';
 import { randomUUID } from 'node:crypto';
 import type { Child } from 'hono/jsx';
 import { isMailRedirected } from '../config/env.js';
@@ -77,6 +78,9 @@ export function registerReminderRoutes({ app, deps, page, back }: Ctx) {
       'einstellungen',
       <>
         <PageHead title="Systemzustand & Ausfallmeldung" crumbs={[['Einstellungen', '/einstellungen']]}>
+          <span class="small mut" style="align-self:center">
+            App-Stand: {appVersion()}
+          </span>
           <form method="post" action="/einstellungen/system" style="margin-left:auto">
             <button class="btn sec">Jetzt prüfen</button>
           </form>

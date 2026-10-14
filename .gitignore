@@ -10,3 +10,4 @@ coverage/
 var/
 deploy/.env.live
 downloads/
+version.txt

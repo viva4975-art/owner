@@ -824,7 +824,7 @@ export const SiteList: FC<{
               </div>
               <div class="cust">
                 <div class="lbl">Kunde</div>
-                <a href={`/kunden/${s.customer_id}`}>{s.customer_name}</a>
+                {showManagerFilter ? <a href={`/kunden/${s.customer_id}`}>{s.customer_name}</a> : s.customer_name}
                 <span class="small faint"> · {s.customer_no}</span>
               </div>
               <div class="ol">
@@ -1091,14 +1091,17 @@ export const SiteOverview: FC<{
   employees: { id: string; name: string; phone: string | null }[];
   tasksSlot: Child;
   docsSlot?: Child;
-}> = ({ s, services, employees, tasksSlot, docsSlot }) => {
+  /** Objektleitung: keine Links auf Preise/Personalakten (Ahmed 14.10.) */
+  ol?: boolean;
+  contacts?: { name: string; position: string | null; phone: string | null; email: string | null }[];
+}> = ({ s, services, employees, tasksSlot, docsSlot, ol, contacts }) => {
   const kinds = [...new Set(services.filter((x) => x.active).map((x) => x.description))];
   // Ruhige Übersicht (Ahmed 12.10.: „aufgeräumter für neue Mitarbeiter“): Leistungen als kurze Liste, Reinigungskräfte
   // in Spalten und nur die ersten 12 sichtbar, Seltenes (Schule) unten.
   const SHOW = 12;
   const nameLink = (e: { id: string; name: string; phone: string | null }) => (
     <li>
-      <a href={`/personal/${e.id}`}>{e.name}</a>
+      {ol ? e.name : <a href={`/personal/${e.id}`}>{e.name}</a>}
       {e.phone && <span class="mut small"> · {e.phone}</span>}
     </li>
   );
@@ -1112,9 +1115,7 @@ export const SiteOverview: FC<{
         {kinds.length ? (
           <ul class="calm-list">
             {kinds.map((k) => (
-              <li>
-                <a href={`/objekte/${s.id}/leistungen`}>{k}</a>
-              </li>
+              <li>{ol ? k : <a href={`/objekte/${s.id}/leistungen`}>{k}</a>}</li>
             ))}
           </ul>
         ) : (
@@ -1139,6 +1140,40 @@ export const SiteOverview: FC<{
           <div class="empty-line">Noch keine Reinigungskräfte zugeordnet (Zuordnung beim Mitarbeiter).</div>
         )}
       </section>
+      {contacts && (
+        <section>
+          <h2 class="panel-title">
+            Kunde &amp; Ansprechpartner <span class="cnt">({contacts.length})</span>
+          </h2>
+          <p class="small mut" style="margin:0 0 6px">
+            {ol ? s.customer_name : <a href={`/kunden/${s.customer_id}`}>{s.customer_name}</a>}
+          </p>
+          {contacts.length ? (
+            <ul class="calm-list">
+              {contacts.map((k) => (
+                <li>
+                  <b>{k.name}</b>
+                  {k.position && <span class="mut small"> · {k.position}</span>}
+                  {k.phone && (
+                    <>
+                      {' · '}
+                      <a href={`tel:${k.phone.replace(/[^\d+]/g, '')}`}>{k.phone}</a>
+                    </>
+                  )}
+                  {k.email && (
+                    <>
+                      {' · '}
+                      <a href={`mailto:${k.email}`}>{k.email}</a>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div class="empty-line">Keine Ansprechpartner beim Kunden hinterlegt.</div>
+          )}
+        </section>
+      )}
       {docsSlot}
     </div>
   );

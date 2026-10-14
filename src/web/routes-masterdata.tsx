@@ -1440,6 +1440,12 @@ export function registerMasterdataRoutes(ctx: Ctx) {
            where es.site_id = ${s.id} and e.status = 'aktiv' and not ('Objektleitung' = any(e.tags)) order by 2`,
         listTasks(sql, { status: 'open', entity: { type: 'site', id: s.id }, onlyFor: taskViewerOf(c) }),
       ]);
+      const contacts = (await listContacts(sql, s.customer_id)).map((k) => ({
+        name: [k.first_name, k.last_name].filter(Boolean).join(' '),
+        position: k.position,
+        phone: k.mobile || k.phone,
+        email: k.email,
+      }));
       const [school] = await sql<
         { on: boolean }[]
       >`select school_closure as on from app.sites where id = ${s.id}`;
@@ -1448,6 +1454,8 @@ export function registerMasterdataRoutes(ctx: Ctx) {
           s={s}
           services={services}
           employees={employees}
+          ol={c.get('user').role === 'objektleitung'}
+          contacts={contacts}
           tasksSlot={<TaskBox tasks={tasks} doneLink={`/objekte/${s.id}/aufgaben?status=done`} />}
           docsSlot={
             <SchoolCard

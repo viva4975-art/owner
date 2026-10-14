@@ -51,7 +51,7 @@ import {
 } from '../services/qm-report.js';
 import { uploadConfig } from './routes-files.js';
 import { renderRoomBookPdf, storeRoomBookPdf } from '../services/room-pdf.js';
-import { type AppEnv, type Ctx, UUID, assertSite, inScope } from './app.js';
+import { type AppEnv, type Ctx, UUID, assertSite, inScope, isTouchDevice } from './app.js';
 import { FileArea } from './files.js';
 import { arr, centsToInput, str } from './forms.js';
 import { Icon } from './icons.js';
@@ -81,6 +81,17 @@ function parseArea(v: string | null): bigint {
 }
 
 /** „2:30“ oder „2,5“ → Minuten (leer = 0). */
+/** Hinweis am PC: Qualitätskontrollen nur in der App am Handy/Tablet (Ahmed 14.10.). */
+const QkAppHint: FC<{ auditId?: string }> = ({ auditId }) => (
+  <div class="card hint" style="margin:0 0 12px">
+    <b>Qualitätskontrollen werden in der App am Handy oder Tablet durchgeführt.</b>
+    <p class="small mut" style="margin:6px 0 0">
+      Viva-App öffnen → Qualität → {auditId ? 'Audit fortsetzen' : 'Audit starten'}. Fotos nur direkt mit der Kamera,
+      mit Zeitpunkt und Standort. Am PC: Ergebnisse, Auswertungsbericht und Statistik ansehen.
+    </p>
+  </div>
+);
+
 export function parseHours(v: string | null, what: string): number {
   const t = (v ?? '').trim();
   if (!t) return 0;
@@ -1040,11 +1051,15 @@ f.addEventListener('change',show);f.addEventListener('input',sum);show();})();`,
               <div class="s">Ziel ≥ {QC_GOOD} %</div>
             </div>
           </div>
-          <form method="post" action="/qualitaet/neu" class="actions" style="margin-top:0">
-            <input type="hidden" name="id" value={randomUUID()} />
-            <input type="hidden" name="site_id" value={s.id} />
-            <button class="btn sm">+ Qualitätskontrolle starten</button>
-          </form>
+          {isTouchDevice(c) ? (
+            <form method="post" action="/qualitaet/neu" class="actions" style="margin-top:0">
+              <input type="hidden" name="id" value={randomUUID()} />
+              <input type="hidden" name="site_id" value={s.id} />
+              <button class="btn sm">+ Qualitätskontrolle starten</button>
+            </form>
+          ) : (
+            <QkAppHint />
+          )}
           <QcTable rows={rows} />
         </>
       );
@@ -1404,6 +1419,7 @@ f.addEventListener('change',show);f.addEventListener('input',sum);show();})();`,
         <Icon name="pdf" /> Auswertungsbericht (PDF)
       </a>
     );
+    const touch = isTouchDevice(c);
     const photos = (
       <div class="card">
         <FileArea
@@ -1412,6 +1428,7 @@ f.addEventListener('change',show);f.addEventListener('input',sum);show();})();`,
           category="Foto"
           title="Fotos"
           maxBytes={env.UPLOAD_MAX_BYTES}
+          listOnly
         />
       </div>
     );
@@ -1473,6 +1490,17 @@ f.addEventListener('change',show);f.addEventListener('input',sum);show();})();`,
         </>,
       );
     }
+    if (!touch)
+      return page(
+        c,
+        `QK ${q.number}`,
+        'disposition',
+        <>
+          {head}
+          <QkAppHint auditId={id} />
+          {delBox}
+        </>,
+      );
     return page(
       c,
       `QK ${q.number}`,

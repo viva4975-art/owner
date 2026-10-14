@@ -1,5 +1,6 @@
 import { EmployeePlanList, type PlanRowLite, type SiteLite } from './pages-employee-calendar.js';
 import { safeReturn } from './routes-planning-board.js';
+import { canAccess } from './permissions.js';
 import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
 import type { Child, FC } from 'hono/jsx';
@@ -17,6 +18,7 @@ import {
   leaveBalance,
   listAbsences,
   requestAbsence,
+  plannedAtSites,
 } from '../services/absences.js';
 import { isOpen, leaveWarnings, warningText } from '../services/leave-warnings.js';
 import { listEmployees } from '../services/employees.js';
@@ -438,7 +440,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
               {showEmployee && (
                 <td>
                   <span class="mut small">{a.personnel_no}</span>{' '}
-                  <a href={`/personal/${a.employee_id}/abwesenheiten`}>{a.employee_name}</a>
+                  <a href={`/urlaub/person/${a.employee_id}`}>{a.employee_name}</a>
                 </td>
               )}
               <td data-l="Art">
@@ -512,8 +514,28 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     </div>
   );
 
+  /**
+   * Objektleitung: nur Mitarbeitende, die im Zeitraum an ihren Objekten eingeplant sind (Ahmed 14.10.: „Urlaub und
+   * Abwesenheiten für eigene Mitarbeiter sehen“). Büro: null = alle.
+   */
+  const olScope = async (c: Context<AppEnv>, from: string, to: string): Promise<Set<string> | null> => {
+    const sites = c.get('sites');
+    if (!sites) return null;
+    const rows = await sql<{ id: string }[]>`
+      select e.id from app.employees e where ${plannedAtSites(sql, sql`e.id`, sites, from, to)}`;
+    return new Set(rows.map((r) => r.id));
+  };
+  const inOl = (scope: Set<string> | null, empId: string) => !scope || scope.has(empId);
+  /** Objektleitung darf nur Abwesenheiten ihrer Leute anlegen/entscheiden/ändern. */
+  const assertOlEmployee = async (c: Context<AppEnv>, empId: string) => {
+    const today = todayBerlin();
+    const scope = await olScope(c, addDays(today, -400), addDays(today, 400));
+    if (!inOl(scope, empId)) throw new BusinessError('Diese Person ist an Ihren Objekten nicht eingeplant');
+  };
   const urlaubShell = async (c: Context<AppEnv>, active: string, body: Child) => {
-    const open = await listAbsences(sql, { status: ['beantragt'] });
+    const today0 = todayBerlin();
+    const sc0 = await olScope(c, addDays(today0, -30), addDays(today0, 365));
+    const open = (await listAbsences(sql, { status: ['beantragt'] })).filter((a) => inOl(sc0, a.employee_id));
     const tabs: Tab[] = [
       { key: 'offen', label: 'Offene Anträge', href: '/urlaub', count: open.length },
       { key: 'kalender', label: 'Kalender', href: '/urlaub/kalender' },
@@ -532,10 +554,14 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
   };
 
   app.get('/urlaub', async (c) => {
-    const [open, emps] = await Promise.all([
+    const t0 = todayBerlin();
+    const sc = await olScope(c, addDays(t0, -30), addDays(t0, 365));
+    const [open0, emps0] = await Promise.all([
       listAbsences(sql, { status: ['beantragt'] }),
       listEmployees(sql, { status: 'aktiv' }),
     ]);
+    const open = open0.filter((a) => inOl(sc, a.employee_id));
+    const emps = emps0.filter((e) => inOl(sc, e.id));
     return urlaubShell(
       c,
       'offen',
@@ -556,7 +582,14 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     return urlaubShell(
       c,
       'alle',
-      <AbsenceTable rows={await listAbsences(sql, { from: `${Number(year) - 1}-01-01` })} />,
+      <AbsenceTable
+        rows={await (async () => {
+          const sc = await olScope(c, `${Number(year) - 1}-01-01`, `${year}-12-31`);
+          return (await listAbsences(sql, { from: `${Number(year) - 1}-01-01` })).filter((a) =>
+            inOl(sc, a.employee_id),
+          );
+        })()}
+      />,
     );
   });
 
@@ -570,10 +603,13 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     const withRequested = c.req.query('beantragt') !== '0';
     const from = `${month}-01`;
     const to = addDays(`${addDays(from, 32).slice(0, 7)}-01`, -1);
-    const [allEmps, allAbs] = await Promise.all([
+    const [allEmps0, allAbs0, sc] = await Promise.all([
       listEmployees(sql, { status: 'aktiv' }),
       listAbsences(sql, { from, to, status: withRequested ? ['beantragt', 'genehmigt'] : ['genehmigt'] }),
+      olScope(c, from, to),
     ]);
+    const allEmps = allEmps0.filter((e) => inOl(sc, e.id));
+    const allAbs = allAbs0.filter((a) => inOl(sc, a.employee_id));
     const abs = allAbs.filter((a) => !kind || a.kind === kind);
     const emps = allEmps.filter(
       (e) =>
@@ -766,7 +802,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                     return (
                       <tr>
                         <td class="uk-name">
-                          <a href={`/personal/${e.id}/abwesenheiten`}>
+                          <a href={`/urlaub/person/${e.id}`}>
                             {e.last_name}, {e.first_name}
                           </a>
                           <span class="mut small"> {e.personnel_no}</span>
@@ -902,6 +938,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     const b = await c.req.parseBody();
     const employeeId = String(b.employee_id ?? '');
     if (!/^[0-9a-f-]{36}$/.test(employeeId)) throw new BusinessError('Bitte Mitarbeiter wählen');
+    await assertOlEmployee(c, employeeId);
     const kind = String(b.kind) as AbsenceKind;
     if (!(kind in ABSENCE_LABEL)) throw new BusinessError('Art ungültig');
     await requestAbsence(sql, {
@@ -926,21 +963,30 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
   };
 
   app.post('/urlaub', (c) => createAbsence(c, () => '/urlaub/kalender'));
+  // Name anklicken: Büro → Personalakte (Urlaub & Krank), Objektleitung → Kalender (keine Personalakte)
+  app.get(`/urlaub/person/:id{${UUID}}`, (c) =>
+    c.redirect(
+      canAccess(c.get('user').role, '/personal/x')
+        ? `/personal/${c.req.param('id')}/abwesenheiten`
+        : '/urlaub/kalender',
+    ),
+  );
 
   app.get(`/urlaub/:id{${UUID}}/bearbeiten`, async (c) => {
     const a = await getAbsence(sql, c.req.param('id'));
     if (!a) return c.notFound();
+    await assertOlEmployee(c, a.employee_id);
     const editable = ['beantragt', 'genehmigt'].includes(a.status);
     const ret = c.req.query('zurueck')
       ? safeReturn(c.req.query('zurueck'))
-      : `/personal/${a.employee_id}/abwesenheiten`;
+      : `/urlaub/person/${a.employee_id}`;
     return urlaubShell(
       c,
       'alle',
       <div class="cols">
         <form method="post" action={`/urlaub/${a.id}/bearbeiten`} class="card">
           <h3 style="margin-top:0">
-            Abwesenheit ändern · <a href={`/personal/${a.employee_id}/abwesenheiten`}>{a.employee_name}</a>
+            Abwesenheit ändern · <a href={`/urlaub/person/${a.employee_id}`}>{a.employee_name}</a>
           </h3>
           <p class="small mut" style="margin-top:-6px">
             Status: {ABSENCE_STATUS_LABEL[a.status]}
@@ -1011,6 +1057,9 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
 
   app.post(`/urlaub/:id{${UUID}}/bearbeiten`, async (c) => {
     const id = c.req.param('id');
+    const cur = await getAbsence(sql, id);
+    if (!cur) return c.notFound();
+    await assertOlEmployee(c, cur.employee_id);
     const b = await c.req.parseBody();
     await updateAbsence(
       sql,
@@ -1039,6 +1088,9 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     const b = await c.req.parseBody();
     const status = String(b.status);
     if (!['genehmigt', 'abgelehnt', 'storniert'].includes(status)) throw new BusinessError('Status ungültig');
+    const cur = await getAbsence(sql, c.req.param('id'));
+    if (!cur) return c.notFound();
+    await assertOlEmployee(c, cur.employee_id);
     await decideAbsence(
       sql,
       c.req.param('id'),

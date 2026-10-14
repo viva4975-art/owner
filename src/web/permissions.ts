@@ -40,7 +40,9 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/zeiterfassung\/(monat|pruefbericht|einstellungen)/, HR],
   [/^\/(zeiterfassung|einsatzplanung)(\/|$)/, ['admin', 'personal', 'objektleitung']],
   // Buchhaltung braucht Urlaub/Krank für den Lohn (Ahmed 07.10.)
-  [/^\/urlaub(\/|$)/, ['admin', 'personal', 'buchhaltung']],
+  [/^\/urlaub\/[0-9a-f-]{36}\/(loeschen|stunden)/, ['admin', 'personal', 'buchhaltung']],
+  // Objektleitung: nur ihre eingeplanten Leute (Filter in routes-planning, Ahmed 14.10.)
+  [/^\/urlaub(\/|$)/, ['admin', 'personal', 'buchhaltung', 'objektleitung']],
   [/^\/auswertungen\/(urlaub|krankheit|ausfallzeiten)([/.]|$)/, ['admin', 'personal', 'buchhaltung']],
   [/^\/auswertungen\/stunden([/.]|$)/, HR],
   [/^\/auswertungen\/dienste([/.]|$)/, ALL],
@@ -55,7 +57,7 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/qm(\/|$)/, ALL],
   [/^\/(qualitaet|zaehler)(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
   [
-    /^\/objekte\/[0-9a-f-]{36}(\/(einsaetze|zeiten|qr|notizen|aufgaben|arbeitsscheine|raumbuch|stundenvorgabe|qualitaet|zaehler|dokumente|schluessel|uebergaben|objektordner)([/.]|$)|$)/,
+    /^\/objekte\/[0-9a-f-]{36}(\/(einsaetze|zeiten|qr|notizen|aufgaben|arbeitsscheine|raumbuch|stundenvorgabe|qualitaet|zaehler|dokumente|schluessel|uebergaben|objektordner|anwesenheit)([/.]|$)|$)/,
     ['admin', 'buchhaltung', 'objektleitung', 'personal'],
   ],
   [/^\/objekte\/?$/, ['admin', 'buchhaltung', 'objektleitung']],

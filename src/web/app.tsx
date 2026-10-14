@@ -102,6 +102,16 @@ export function taskViewerOf(c: Context<AppEnv>): { names: string[]; actor: stri
   if (!u || u.role !== 'objektleitung') return undefined;
   return { names: [u.name, u.login].filter(Boolean), actor: c.get('actor') };
 }
+/** Cookie, das der Browser auf Touch-Geräten (Handy/Tablet, auch iPad mit Desktop-Kennung) selbst setzt. */
+export const TOUCH_COOKIE = 'vd_touch';
+/**
+ * Handy oder Tablet? Qualitätskontrollen nur dort (Ahmed 14.10.: „nicht am PC, nur in der App“) – Kennung des
+ * Browsers bzw. Touch-Cookie (iPadOS meldet sich als Mac). Keine Sicherheitsgrenze, sondern Arbeitsablauf.
+ */
+export function isTouchDevice(c: Context<AppEnv>): boolean {
+  const ua = c.req.header('user-agent') ?? '';
+  return /iPhone|iPad|iPod|Android|Mobile/i.test(ua) || getCookie(c, TOUCH_COOKIE) === '1';
+}
 export const OFFICE_COOKIE = 'vd_s';
 export const APP_COOKIE = 'vd_app';
 export const officeSecret = (env: Deps['env']) =>
@@ -336,6 +346,21 @@ export function createApp(deps: Deps) {
     if (c.req.query('pc') === '1') setCookie(c, APP_COOKIE, '0', opts);
     else if (c.req.method === 'GET' && (p === '/qm' || p.startsWith('/qm/') || p === '/app'))
       setCookie(c, APP_COOKIE, '1', opts);
+    await next();
+  });
+
+  // Qualitätskontrolle durchführen nur am Handy/Tablet (Ahmed 14.10.) – Ansehen, Berichte, Löschen bleiben am PC.
+  const QK_DO =
+    /^\/(qm\/audit\/(neu|[0-9a-f-]{36}(\/.*)?)|qualitaet\/(neu|[0-9a-f-]{36}(\/abschliessen)?))$/;
+  app.use(async (c, next) => {
+    const p = c.req.path;
+    const doing =
+      QK_DO.test(p) &&
+      (c.req.method === 'POST' || p.startsWith('/qm/audit/') || p.endsWith('/abschliessen'));
+    if (doing && c.get('user') && !isTouchDevice(c))
+      throw new BusinessError(
+        'Qualitätskontrollen werden in der App am Handy oder Tablet durchgeführt (Qualität → Audit starten).',
+      );
     await next();
   });
 

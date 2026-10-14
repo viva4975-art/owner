@@ -1,3 +1,4 @@
+import { GEO_LABEL, type GeoStatus } from '../domain/time/geo.js';
 import { readFile } from 'node:fs/promises';
 import { rgb } from '@cantoo/pdf-lib';
 import type { Sql } from '../db/client.js';
@@ -805,6 +806,17 @@ export async function renderAuditReportPdf(deps: Deps, cfg: UploadConfig, id: st
         FileRow[]
       >`select * from app.files where id in ${deps.sql(ids)} and status = 'complete'`)
         files.set(f.id, f);
+    // Aufnahme-Kennzeichen je Foto (Zeitpunkt, Standort gegenüber dem Objekt)
+    const tags = new Map<string, string>();
+    if (ids.length)
+      for (const t of await deps.sql<
+        { file_id: string; taken: string; geo: GeoStatus; geo_m: number | null }[]
+      >`select file_id, to_char(taken_at at time zone 'Europe/Berlin', 'DD.MM. HH24:MI') as taken, geo, geo_m
+          from app.qm_photo_tags where file_id in ${deps.sql(ids)}`)
+        tags.set(
+          t.file_id,
+          `${t.taken} · ${GEO_LABEL[t.geo]}${t.geo_m != null && t.geo !== 'am_objekt' ? ` (${t.geo_m} m)` : ''}`,
+        );
     let photoBudget = 60;
     for (const room of withDefects) {
       d.heading(`${room.label}${room.meta ? ` · ${room.meta}` : ''} – ${pctText(room.score)}`, 9.5);
@@ -855,9 +867,11 @@ export async function renderAuditReportPdf(deps: Deps, cfg: UploadConfig, id: st
           px = L;
         }
         d.page.drawImage(img, { x: px, y: H - d.y - ph, width: w, height: ph });
-        px += w + 6;
+        const tag = tags.get(f.id);
+        if (tag) d.text(d.fit(tag, Math.max(w, 90), 6), px, d.y + ph + 7, { size: 6, color: rgb(0.4, 0.4, 0.4) });
+        px += Math.max(w, tag ? 90 : 0) + 6;
       }
-      if (px > L) d.y += ph + 10;
+      if (px > L) d.y += ph + 18;
     }
   }
 

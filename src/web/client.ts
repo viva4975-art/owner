@@ -16,6 +16,7 @@
  */
 export const CLIENT_JS = String.raw`
 (function () {
+  try{if(window.matchMedia&&matchMedia('(pointer: coarse)').matches&&document.cookie.indexOf('vd_touch=1')<0)document.cookie='vd_touch=1; path=/; max-age=31536000; SameSite=Lax'}catch(e){}
   var PREFIX = 'vd-form:';
   var MAX_AGE = 7 * 24 * 3600 * 1000;
   function store() { try { return window.sessionStorage; } catch (e) { return null; } }

@@ -5,6 +5,7 @@ import { fullName, linkedEmployee } from '../services/users.js';
 import { canAccess } from './permissions.js';
 import { clock, plannedShifts } from '../services/time.js';
 import { randomUUID } from 'node:crypto';
+import { judgePosition } from '../domain/time/geo.js';
 import { SiteOptions } from './site-options.js';
 import type { Context } from 'hono';
 import type { Child, FC } from 'hono/jsx';
@@ -141,7 +142,7 @@ const QM_CSS = `
 .qm-item textarea{margin-top:6px;font-size:16px;border-radius:12px}
 .qm-photos{display:flex;align-items:center;gap:14px;margin-top:10px}
 .qm-photos label{margin:0;width:84px;height:84px;border-radius:14px;border:1px dashed #d7c3cb;display:flex;align-items:center;justify-content:center;color:#7D1435;cursor:pointer;flex:none}
-.qm-photos label svg{width:34px;height:34px}.qm-photos input{display:none}.qm-photos small{color:var(--mut);font-size:13.5px}
+.qm-photos label svg{width:34px;height:34px}.qm-photos input{display:none}.qm-taken{font-size:13px;color:#2e7d32;font-weight:600}.qm-photos{flex-wrap:wrap}.qm-photos small{color:var(--mut);font-size:13.5px}
 #qmf{display:flex;flex-direction:column;gap:16px}
 .qm-note{display:flex;justify-content:space-between;align-items:center;padding:4px 4px 0}.qm-note b{font-size:30px;color:#7D1435}
 
@@ -828,21 +829,29 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
                 >
                   {e?.note ?? ''}
                 </textarea>
-                <div class="qm-photos">
+                <div class="qm-photos" data-photos>
                   {!locked && (
-                    <label>
+                    <label title="Foto aufnehmen">
                       <Ic n="plus" />
-                      <input type="file" name={`f_${it.id}`} accept="image/*" multiple />
+                      <input type="file" name={`f_${it.id}`} accept="image/*" capture="environment" />
                     </label>
                   )}
                   <small>
                     {e?.photo_ids.length ? `${anz(e.photo_ids.length, 'Foto', 'Fotos')} gespeichert · ` : ''}
-                    Laden Sie bis zu 5 Fotos hoch
+                    Bis zu 5 Fotos mit der Kamera aufnehmen
                   </small>
                 </div>
               </div>
             );
           })}
+          <input type="hidden" name="geo_lat" />
+          <input type="hidden" name="geo_lng" />
+          <input type="hidden" name="geo_acc" />
+          {!locked && (
+            <p class="small mut" id="geo-hint">
+              Fotos erhalten Zeitpunkt und Standort (Nachweis der Kontrolle vor Ort).
+            </p>
+          )}
           {!locked && <button class="big go">Speichern &amp; nächster Raum</button>}
         </form>
         <script
@@ -850,7 +859,10 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
             __html: `(function(){var f=document.getElementById('qmf');if(!f)return;
 function upd(){var s=0,n=0;f.querySelectorAll('[data-item]').forEach(function(d){var sk=d.querySelector('input[type=checkbox]');d.classList.toggle('skipped',sk&&sk.checked);if(sk&&sk.checked)return;var r=d.querySelector('input[type=radio]:checked');if(r){s+=Number(r.getAttribute('data-pct'));n++}});document.getElementById('gnote').textContent=(n?Math.round(s/n):0)+' %'}
 f.addEventListener('change',upd);
-f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('change',function(){if(i.files.length>5){alert('Bitte höchstens 5 Fotos');i.value=''}var sm=i.closest('.qm-photos').querySelector('small');if(i.files.length)sm.textContent=i.files.length+(i.files.length===1?' Foto':' Fotos')+' ausgewählt'})});})();`,
+function geo(){if(!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(function(p){f.geo_lat.value=p.coords.latitude.toFixed(5);f.geo_lng.value=p.coords.longitude.toFixed(5);f.geo_acc.value=Math.round(p.coords.accuracy)},function(){var h=document.getElementById('geo-hint');if(h)h.textContent='Standort nicht freigegeben – Fotos werden ohne Standort gespeichert.'},{enableHighAccuracy:true,timeout:15000,maximumAge:60000})}
+geo();
+function bind(i){i.addEventListener('change',function(){var box=i.closest('[data-photos]');if(!i.files.length)return;var n=box.querySelectorAll('input[type=file]').length;var lab=i.parentNode;var keep=document.createElement('span');keep.className='qm-taken';keep.textContent='\u2713 Foto '+n;i.style.display='none';keep.appendChild(i);box.insertBefore(keep,lab);geo();if(n>=5){lab.style.display='none';return}var ni=document.createElement('input');ni.type='file';ni.name=i.name;ni.accept='image/*';ni.setAttribute('capture','environment');lab.appendChild(ni);bind(ni)})}
+f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
           }}
         />
       </>,
@@ -867,6 +879,26 @@ f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('c
     const items = await itemsForRoomType(sql, room.room_type_id);
     const b = await c.req.parseBody({ all: true });
     const cfg = { dir: deps.env.FILES_DIR, maxBytes: deps.env.UPLOAD_MAX_BYTES };
+    // Standort beim Fotografieren (aus dem Browser) → Kennzeichen je Foto
+    const num = (k: string) => {
+      const v = Number(str(b, k));
+      return str(b, k) && Number.isFinite(v) ? v : null;
+    };
+    const [lat, lng, acc] = [num('geo_lat'), num('geo_lng'), num('geo_acc')];
+    const pos =
+      lat != null && lng != null && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+        ? { lat, lng, acc: acc ?? 9999 }
+        : null;
+    const [sg] = await sql<{ lat: string | null; lng: string | null; radius: number }[]>`
+      select geo_lat::text as lat, geo_lng::text as lng, geo_radius_m as radius from app.sites where id = ${qc.site_id}`;
+    const judged = judgePosition(
+      {
+        lat: sg?.lat != null ? Number(sg.lat) : null,
+        lng: sg?.lng != null ? Number(sg.lng) : null,
+        radius: sg?.radius ?? 250,
+      },
+      pos,
+    );
     const ratings = [];
     for (const it of items) {
       const skipped = str(b, `s_${it.id}`) === '1';
@@ -896,6 +928,10 @@ f.querySelectorAll('input[type=file]').forEach(function(i){i.addEventListener('c
           },
           c.get('actor'),
         );
+        await sql`insert into app.qm_photo_tags (file_id, check_id, geo, geo_m, geo_acc_m, lat, lng, created_by)
+                  values (${fid}, ${qc.id}, ${judged.status}, ${judged.distance}, ${judged.accuracy},
+                          ${pos ? pos.lat.toFixed(5) : null}, ${pos ? pos.lng.toFixed(5) : null}, ${c.get('actor')})
+                  on conflict (file_id) do nothing`;
         photoIds.push(fid);
       }
       ratings.push({ itemId: it.id, value, skipped, note, photoIds });

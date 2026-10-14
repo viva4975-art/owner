@@ -351,6 +351,10 @@ const geoOf = (b: Record<string, unknown>): GeoInput => {
   return { lat, lng, acc: Number.isFinite(acc) && acc >= 0 ? acc : 9999 };
 };
 
+/** Touch-Gerät (Handy/Tablet) im Cookie merken – Qualitätskontrolle nur dort (app.tsx isTouchDevice). */
+const TOUCH_JS =
+  "try{if(window.matchMedia&&matchMedia('(pointer: coarse)').matches&&document.cookie.indexOf('vd_touch=1')<0)document.cookie='vd_touch=1; path=/; max-age=31536000; SameSite=Lax'}catch(e){}\n";
+
 export function registerMobileRoutes({ app, deps, back }: Ctx) {
   const { sql, env } = deps;
   const secret =
@@ -1599,7 +1603,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
 
   // ---------------------------------------------------------------- Push-Nachrichten
   app.get('/m/push.js', (c) =>
-    c.body(PUSH_JS, 200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache' }),
+    c.body(TOUCH_JS + PUSH_JS, 200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache' }),
   );
   app.get('/m/push/key', async (c) =>
     c.text((await vapidKeys(sql, env)).publicKey, 200, { 'Cache-Control': 'no-store' }),

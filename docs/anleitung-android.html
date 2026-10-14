@@ -50,11 +50,16 @@ npx cap sync android</pre>
 <h2>Schritt 3 – In Android Studio öffnen und auf dem Handy testen</h2>
 <ol>
   <li>Android Studio → <b>Open</b> → Ordner <code>mobile-app\android</code> wählen (nicht <code>mobile-app</code>).</li>
+  <li><b>Java 21 einstellen</b> (sonst Meldung „Gradle … incompatible with the Gradle JVM version 25“): File → Settings →
+    Build, Execution, Deployment → Build Tools → Gradle → <b>Gradle JDK</b> = <b>jbr-21</b> (fehlt sie: „Download JDK…“ →
+    Version 21) → OK → File → <b>Sync Project with Gradle Files</b>.</li>
   <li>Warten, bis unten „Gradle sync finished“ steht (beim ersten Mal einige Minuten, lädt Werkzeuge nach).
     Fragt Android Studio nach einem Update von Gradle/AGP: <b>nicht aktualisieren</b>.</li>
-  <li>Handy per USB anschließen. Am Handy: Einstellungen → Über das Telefon → 7× auf <b>Build-Nummer</b> tippen →
-    Entwickleroptionen → <b>USB-Debugging</b> an. Alternativ in Android Studio einen Emulator anlegen (Device Manager).</li>
-  <li>Oben das Handy auswählen und auf ▶ <b>Run</b> klicken. Die App startet mit der Anmeldung.</li>
+  <li><b>Ohne Android-Handy:</b> rechts <b>Device Manager</b> → <b>+ → Create Virtual Device</b> → Pixel 8 → System-Image
+    API 35 herunterladen → Finish. (Mit Handy: Einstellungen → Über das Telefon → 7× auf <b>Build-Nummer</b> →
+    Entwickleroptionen → <b>USB-Debugging</b> an, per USB anschließen.)</li>
+  <li>Oben das Gerät auswählen und auf ▶ <b>Run</b> klicken. Die App startet mit der Anmeldung. Der Test ist freiwillig –
+    man kann auch direkt Schritt 4 machen und über den internen Test in Google Play prüfen.</li>
 </ol>
 
 <h2>Schritt 4 – Datei für Google Play erzeugen (.aab)</h2>

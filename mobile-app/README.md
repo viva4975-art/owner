@@ -34,6 +34,9 @@ Risiko: Apple lehnt reine „Webseiten-Hüllen“ teils ab (Richtlinie 4.2 Minim
 
 ## Bauen
 
+Schritt-für-Schritt für Ahmed (Windows): `docs/anleitung-android.pdf`. Das Android-Projekt (`android/`) ist
+angelegt (Icons/Startbild aus `assets/`, erzeugt mit `npx @capacitor/assets generate --android`).
+
 ```bash
 cd mobile-app
 npm install

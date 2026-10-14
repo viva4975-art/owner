@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<title>Android-App bauen und in Google Play hochladen</title>
+<style>
+  body{font-family:Inter,Arial,sans-serif;color:#1d1d1f;max-width:820px;margin:28px auto;padding:0 18px;line-height:1.5;font-size:14px}
+  h1{color:#7D1435;font-size:24px;margin-bottom:4px}
+  h2{color:#7D1435;font-size:17px;margin:26px 0 8px;border-bottom:2px solid #f0dbe2;padding-bottom:4px}
+  .sub{color:#666;margin-top:0}
+  pre{background:#1f1f24;color:#f3f3f3;padding:10px 14px;border-radius:6px;font-size:13px;white-space:pre-wrap;word-break:break-all}
+  code{background:#f4eef0;padding:1px 5px;border-radius:4px}
+  .box{background:#fff7e0;border:1px solid #e9c46a;border-radius:6px;padding:10px 14px;margin:12px 0}
+  .red{background:#fdecec;border-color:#e3a0a0}
+  .ok{background:#eef8f0;border-color:#9fd3ab}
+  ol li{margin-bottom:6px}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  td,th{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top}
+  th{background:#f7eef1}
+  kbd{border:1px solid #bbb;border-bottom-width:2px;border-radius:4px;padding:0 5px;font-size:12px;background:#fafafa}
+</style>
+</head>
+<body>
+<h1>Android-App bauen und in Google Play hochladen</h1>
+<p class="sub">Viva-Deluxe App (<code>de.vivadeluxe.app</code>) · eine App für Mitarbeitende und Büro · Stand 14.10.2026</p>
+
+<div class="box ok">
+  <b>Schon erledigt:</b> Das Android-Projekt liegt fertig im Repository (Ordner <code>mobile-app/android</code>) – mit
+  App-Name „Viva-Deluxe“, Paketname <code>de.vivadeluxe.app</code>, Bordeaux-Icon, Startbild, Kamera-Berechtigung für den
+  QR-Scanner. Die App lädt die Seiten vom Server (<code>app.viva-deluxe-reinigung.de/app</code>): <b>neue Funktionen
+  sind sofort in der App, ohne neues Store-Update.</b>
+</div>
+
+<h2>Schritt 1 – Einmalig: Node.js installieren</h2>
+<ol>
+  <li><a href="https://nodejs.org">nodejs.org</a> → Version <b>LTS</b> herunterladen und installieren (alles mit „Weiter“).</li>
+</ol>
+
+<h2>Schritt 2 – Projekt herunterladen</h2>
+<ol>
+  <li>github.com → Repository <b>viva4975-art/owner</b> → oben links Branch <b>claude/new-session-t3lg2s</b> wählen.</li>
+  <li>Grüner Knopf <b>Code → Download ZIP</b>, ZIP entpacken (z. B. nach <code>C:\viva</code>).</li>
+  <li>Im entpackten Ordner den Unterordner <code>mobile-app</code> öffnen, oben in die Adresszeile <code>cmd</code> tippen,
+    <kbd>Enter</kbd> – es öffnet sich ein schwarzes Fenster in diesem Ordner. Dort eingeben:</li>
+</ol>
+<pre>npm install
+npx cap sync android</pre>
+<p>Dauert 1–2 Minuten. Am Ende steht „Sync finished“.</p>
+
+<h2>Schritt 3 – In Android Studio öffnen und auf dem Handy testen</h2>
+<ol>
+  <li>Android Studio → <b>Open</b> → Ordner <code>mobile-app\android</code> wählen (nicht <code>mobile-app</code>).</li>
+  <li>Warten, bis unten „Gradle sync finished“ steht (beim ersten Mal einige Minuten, lädt Werkzeuge nach).
+    Fragt Android Studio nach einem Update von Gradle/AGP: <b>nicht aktualisieren</b>.</li>
+  <li>Handy per USB anschließen. Am Handy: Einstellungen → Über das Telefon → 7× auf <b>Build-Nummer</b> tippen →
+    Entwickleroptionen → <b>USB-Debugging</b> an. Alternativ in Android Studio einen Emulator anlegen (Device Manager).</li>
+  <li>Oben das Handy auswählen und auf ▶ <b>Run</b> klicken. Die App startet mit der Anmeldung.</li>
+</ol>
+
+<h2>Schritt 4 – Datei für Google Play erzeugen (.aab)</h2>
+<ol>
+  <li>Menü <b>Build → Generate Signed App Bundle or APK</b> → <b>Android App Bundle</b> → Next.</li>
+  <li>Bei „Key store path“ <b>Create new…</b>: Speicherort z. B. <code>C:\viva-schluessel\upload.jks</code>, Passwort
+    vergeben, Alias <code>upload</code>, Name „Ahmed Chomontek“, Organisation „Viva-Deluxe Gebäudereinigung GmbH“, Land DE.</li>
+  <li>Next → <b>release</b> → Create. Die Datei liegt danach unter
+    <code>mobile-app\android\app\release\app-release.aab</code>.</li>
+</ol>
+<div class="box red">
+  <b>Wichtig:</b> Die Schlüsseldatei <code>upload.jks</code> und ihr Passwort sicher aufbewahren (Passwort-Manager +
+  Sicherungskopie, <b>nicht</b> in den Chat, nicht ins Repository). Ohne sie lassen sich keine Updates hochladen. Bei Verlust
+  kann Google den Upload-Schlüssel zurücksetzen (Play App Signing) – das dauert aber Tage.
+</div>
+
+<h2>Schritt 5 – In der Play Console hochladen</h2>
+<ol>
+  <li>play.google.com/console → <b>App erstellen</b>: Name „Viva-Deluxe“, Sprache Deutsch, App, kostenlos, Erklärungen
+    bestätigen.</li>
+  <li>Links <b>Testen → Interner Test</b> → Tester: E-Mail-Liste anlegen (Gmail-Adressen der Testpersonen) →
+    <b>Neuen Release erstellen</b> → <code>app-release.aab</code> hochladen → Versionshinweis „Erste Version“ → speichern →
+    Release prüfen → <b>Einführen</b>.</li>
+  <li>Unter „Tester“ den <b>Link zur Teilnahme</b> kopieren und an die Tester schicken. Interne Tests sind meist nach
+    wenigen Minuten verfügbar (ohne Prüfung durch Google).</li>
+</ol>
+
+<h2>Schritt 6 – Für alle Mitarbeitenden freigeben</h2>
+<p>Vor der Freigabe will Google unter <b>App-Inhalte</b> einige Angaben:</p>
+<table>
+  <tr><th>Angabe</th><th>Was eintragen</th></tr>
+  <tr><td>Datenschutzerklärung (URL)</td><td>Pflicht. Seite mit den Datenschutzhinweisen zur App (Art. 13 DSGVO) –
+    z. B. auf viva-deluxe-reinigung.de. Muss Zeiterfassung, Standort beim Stempeln (falls an), Kamera (QR, Fotos),
+    Push-Nachrichten, Unterschriften erwähnen. <b>Kann ich als Entwurf schreiben.</b></td></tr>
+  <tr><td>App-Zugriff</td><td>„Alle oder einige Funktionen sind eingeschränkt“ → Test-Zugang für die Google-Prüfung
+    angeben (eigener Benutzer, z. B. <code>google.pruefung</code> mit Passwort, Rolle ohne echte Personaldaten).</td></tr>
+  <tr><td>Datensicherheit</td><td>Erfasst: Name, E-Mail, Telefon, Arbeitszeiten, Fotos, ggf. ungefährer Standort;
+    verschlüsselt übertragen (HTTPS); keine Weitergabe an Dritte; Löschung auf Anfrage.</td></tr>
+  <tr><td>Werbung / Zielgruppe / Einstufung</td><td>Keine Werbung · Zielgruppe ab 18 · Fragebogen Inhaltseinstufung ausfüllen.</td></tr>
+</table>
+<p>Danach <b>Produktion → Neuen Release erstellen</b> (dasselbe .aab) oder – empfohlen für eine reine Firmen-App – die
+  App über einen <b>geschlossenen Test</b> bzw. „Private App“ (Managed Google Play) nur für die eigenen Leute verteilen.</p>
+<div class="box">
+  <b>Hinweis Konto:</b> Google verlangt bei <b>privaten</b> Entwicklerkonten vor der Produktion einen geschlossenen Test mit
+  mindestens 12 Testern über 14 Tage. Bei einem <b>Organisationskonto</b> (GmbH mit D-U-N-S 343512805) entfällt das.
+</div>
+
+<h2>Später: Updates</h2>
+<ul>
+  <li><b>Neue Funktionen / Fehlerbehebungen</b> kommen automatisch – die App lädt die Seiten vom Server. Kein Store-Update.</li>
+  <li>Nur wenn sich die Hülle ändert (Icon, Name, Berechtigungen, Plugins): in
+    <code>mobile-app\android\app\build.gradle</code> <code>versionCode</code> um 1 erhöhen (2, 3 …), Schritt 4 + 5 wiederholen.</li>
+  <li><b>Push-Nachrichten in der installierten Store-App</b> brauchen Firebase (Google) – im Browser/Home-Bildschirm-App
+    funktionieren sie schon. Einrichtung folgt, wenn die App im Store ist.</li>
+</ul>
+
+<h2>iPhone</h2>
+<p>Für den App Store braucht es zusätzlich einen <b>Mac mit Xcode</b> und das <b>Apple-Developer-Konto der GmbH</b>
+  (99 €/Jahr). Bis dahin: Safari → <code>app.viva-deluxe-reinigung.de/app</code> → Teilen → „Zum Home-Bildschirm“.</p>
+</body>
+</html>

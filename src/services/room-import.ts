@@ -89,6 +89,8 @@ export const ROOM_FIELDS: Record<RoomField, { label: string; aliases: string[] }
       'rhythmus',
       'reinigungshaeufigkeit',
       'frequenz',
+      'wieoft',
+      'wiehaeufig',
     ],
   },
   // Ausschreibungs-Kalkulationen: Reinigungstage im Jahr gehen vor dem Turnus (W5 = 216 Schultage statt 260)
@@ -329,6 +331,7 @@ export async function analyzeRooms(
 ): Promise<RoomImportAnalysis> {
   let sheets: { name: string; rows: string[][] }[];
   let kind: 'xlsx' | 'csv';
+  let fromPdf = false;
   try {
     if (isPdf(bytes)) {
       const rows = await readPdfTable(bytes);
@@ -339,6 +342,7 @@ export async function analyzeRooms(
       // Text aus PDF: deutsche Zahlen („12,76“) wie bei CSV
       sheets = [{ name: 'PDF', rows }];
       kind = 'csv';
+      fromPdf = true;
     } else ({ sheets, kind } = readSheets(bytes));
   } catch (e) {
     if (e instanceof SheetError) throw new BusinessError(e.message);
@@ -414,6 +418,8 @@ export async function analyzeRooms(
     // Summenzeilen („Summe“, „Gesamt“) überspringen
     if (/^(summe|gesamt|total)/i.test(name) || /^(summe|gesamt|total)/i.test(floor ?? '')) return;
     if (!name && !areaRaw) return;
+    // PDF (Revierplan, gedruckte Liste): Zeilen ohne Zahl in der Fläche sind Titel, Zwischenüberschriften, Fußzeilen
+    if (fromPdf && !/^\s*\d[\d.,\s]*(m²|m2|qm)?\s*$/i.test(areaRaw)) return;
     const errors: string[] = [];
     if (!name) errors.push('Raum fehlt');
     const areaCenti = areaOf(areaRaw, kind);
@@ -447,8 +453,10 @@ export async function analyzeRooms(
     // Nutzungsart: gleicher Name → vorhandene; sonst Stichwort (WC → Sanitär / WC); sonst neu anlegen
     let typeName = typeRaw || 'Sonstiges';
     let t = typeByNorm.get(norm(typeName));
-    if (!t && typeRaw) {
-      const g = guessRoomType(typeRaw);
+    // ohne Spalte „Raumart“ (z. B. Revierplan): Nutzungsart aus dem Raumnamen erraten
+    const guessSrc = typeRaw || (!fields.has('type') ? name : '');
+    if ((!t || !typeRaw) && guessSrc) {
+      const g = guessRoomType(guessSrc);
       const gt = g ? typeByNorm.get(norm(g)) : undefined;
       if (gt) {
         t = gt;

@@ -42,6 +42,7 @@ import {
   dailyOf,
   suggestBuildingSites,
 } from '../services/room-import.js';
+import type { RoomField } from '../services/room-import.js';
 import type { Context } from 'hono';
 import { filePath, listFiles } from '../services/uploads.js';
 import { readFile } from 'node:fs/promises';
@@ -418,11 +419,54 @@ export function registerFacilityRoutes(ctx: Ctx) {
   const roomDocs = async (siteId: string) =>
     (await listFiles(sql, { type: 'site', id: siteId })).filter(
       (f) =>
-        f.category === 'Raumbuch' &&
+        (f.category === 'Raumbuch' || f.category === 'Revierplan') &&
         !f.archived_at &&
         !appRoomBook.test(f.original_name) &&
         /\.(pdf|xlsx|csv|txt)$/i.test(f.original_name),
     );
+
+  /** Kurzauswertung je Datei (Anzahl lesbarer Räume, erkannte Angaben) – zwischengespeichert je Dateiinhalt */
+  const docInfoCache = new Map<
+    string,
+    { rooms: number; fields: string[]; missing: string[]; error?: string }
+  >();
+  const docInfo = async (siteId: string, f: Awaited<ReturnType<typeof roomDocs>>[number]) => {
+    const key = `${f.sha256 ?? f.id}`;
+    const hit = docInfoCache.get(key);
+    if (hit) return hit;
+    let info: { rooms: number; fields: string[]; missing: string[]; error?: string };
+    try {
+      const a = await analyzeRooms(
+        sql,
+        siteId,
+        new Uint8Array(await readFile(filePath(uploadConfig(ctx), f))),
+      );
+      const has = new Set(a.columns.map((col) => col.field));
+      const label: [RoomField, string][] = [
+        ['floor', 'Etage'],
+        ['room_no', 'Raum-Nr.'],
+        ['type', 'Raumart'],
+        ['covering', 'Bodenbelag'],
+        ['interval', 'Intervall'],
+        ['days', 'Reinigungstage'],
+        ['notes', 'Hinweise'],
+      ];
+      const interval = has.has('interval') || has.has('days');
+      info = {
+        rooms: a.rows.filter((r) => !r.errors.length).length,
+        fields: label.filter(([k]) => has.has(k)).map(([, l]) => l),
+        missing: [
+          ...label.filter(([k]) => k !== 'interval' && k !== 'days' && k !== 'notes' && !has.has(k)),
+          ...(interval ? [] : ([['interval', 'Intervall']] as [RoomField, string][])),
+        ].map(([, l]) => l),
+      };
+    } catch (e) {
+      info = { rooms: 0, fields: [], missing: [], error: e instanceof Error ? e.message : String(e) };
+    }
+    if (docInfoCache.size > 200) docInfoCache.clear();
+    docInfoCache.set(key, info);
+    return info;
+  };
 
   // Raumbuch aus Excel/CSV: Hochladen → Vorschau (GET, Datei write-once abgelegt) → Übernehmen
   app.get(`/objekte/:id{${UUID}}/raumbuch/import`, (c) =>
@@ -431,7 +475,14 @@ export function registerFacilityRoutes(ctx: Ctx) {
       const daily = dailyOf(c.req.query('taeglich'));
       const self = `/objekte/${s.id}/raumbuch/import`;
       if (!sha) {
-        const docs = await roomDocs(s.id);
+        const docsRaw = await roomDocs(s.id);
+        const infos = await Promise.all(docsRaw.map((f) => docInfo(s.id, f)));
+        // vollständigste Datei zuerst: die meisten Räume, bei Gleichstand die meisten Angaben
+        const score = (i: (typeof infos)[number]) => i.rooms * 100 + i.fields.length;
+        const docs = docsRaw
+          .map((f, i) => ({ f, info: infos[i]! }))
+          .sort((a, b) => score(b.info) - score(a.info));
+        const bestId = docs.length > 1 && docs[0]!.info.rooms > 0 ? docs[0]!.f.id : null;
         return (
           <>
             <p>
@@ -442,10 +493,16 @@ export function registerFacilityRoutes(ctx: Ctx) {
               <div class="card" id="dokumente" style="max-width:760px">
                 <h3>Aus Dokumente übernehmen</h3>
                 <p class="mut">
-                  Unter Dokumente → Raumbuch abgelegt – die App liest die Räume aus der Datei.
+                  Unter Dokumente → Raumbuch bzw. Revierplan abgelegt – die App liest die Räume aus der Datei
+                  und schlägt die vollständigste vor.
                 </p>
-                {docs.map((f) => (
-                  <form method="post" action={`${self}/dokument`} class="row" style="gap:8px;margin:6px 0">
+                {docs.map(({ f, info }) => (
+                  <form
+                    method="post"
+                    action={`${self}/dokument`}
+                    class="row"
+                    style={`gap:8px;margin:6px 0;padding:8px;border-radius:8px;${f.id === bestId ? 'background:var(--tint-2,#f8eff2)' : ''}`}
+                  >
                     <input type="hidden" name="file_id" value={f.id} />
                     <span style="flex:1">
                       <a href={`/dateien/${f.id}`} target="_blank">
@@ -460,8 +517,28 @@ export function registerFacilityRoutes(ctx: Ctx) {
                           year: 'numeric',
                         })}
                       </span>
+                      <br />
+                      {info.error ? (
+                        <span class="small" style="color:var(--bad,#b42318)">
+                          nicht lesbar: {info.error}
+                        </span>
+                      ) : (
+                        <span class="small">
+                          {f.id === bestId && <span class="badge ok">empfohlen – am vollständigsten</span>}{' '}
+                          <b>{info.rooms} Räume</b>
+                          {info.fields.length > 0 && <> · mit {info.fields.join(', ')}</>}
+                          {info.missing.length > 0 && (
+                            <span class="mut"> · ohne {info.missing.join(', ')}</span>
+                          )}
+                        </span>
+                      )}
                     </span>
-                    <button class="btn sm">Räume übernehmen …</button>
+                    <button
+                      class={f.id === bestId || docs.length === 1 ? 'btn sm' : 'btn sm sec'}
+                      disabled={!!info.error || !info.rooms}
+                    >
+                      Räume übernehmen …
+                    </button>
                   </form>
                 ))}
               </div>

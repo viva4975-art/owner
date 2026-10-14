@@ -2892,3 +2892,19 @@ Testadresse.
   **Fund:** Die App-Raumbuch-PDF archivierte beim Ablegen auch hochgeladene Dateien, deren Name mit „Raumbuch_“
   beginnt (z. B. Ahmeds „Raumbuch_Grundschule_Neubiberg.pdf“) – jetzt nur noch eigene („Raumbuch_<Nr.>_JJJJ-MM-TT.pdf“).
   „Nebenraum“ → Nutzungsart Lager / Technik. Tests `pdf-table.test.ts`, `room-import-ft.db.test.ts`.
+- 2026-10-14: **Räume löschen** (Ahmed: „alle Räume auch löschen können“): Objekt → Raumbuch: Häkchen je Raum, „alle markieren“,
+  „Markierte löschen“, „Alle Räume löschen (n)“ (Rückfrage); im Raum „Raum löschen“. Räume aus Qualitätskontrollen/Tickets
+  bleiben als Nachweis und werden nur inaktiv gesetzt (`deleteRooms` in `facility.ts`, Protokoll `rooms_delete` mit Stand).
+- 2026-10-14: **Raumbuch aus Revierplan** (Ahmed: „Raumbuch aus Revierplan auch übernehmen, das vollständigere vorschlagen“):
+  „Aus Dokumente übernehmen“ nimmt Dateien der Kategorien Raumbuch **und Revierplan**, liest jede kurz aus und zeigt je Datei
+  Anzahl Räume + erkannte/fehlende Angaben; die vollständigste (meiste Räume, dann meiste Angaben) steht oben als
+  „empfohlen“. PDF-Leser: Seiten mit eigener Skalierung werden über die wiederkehrende Kopfzeile ausgerichtet, Titel/
+  Fußzeilen/Legenden zählen nicht als Spalten, zentrierte Spaltenköpfe werden der Datenspalte zugeordnet; im PDF zählen nur
+  Zeilen mit Zahl in der Fläche (Zwischenüberschriften „Geschoss EG“, Fußzeile fallen weg). Spalte „Wie oft“ = Intervall;
+  ohne Spalte Raumart wird die Nutzungsart aus dem Raumnamen erraten. Probe Neubiberg: Raumbuch 234 Räume (ohne Intervall),
+  Revierplan 184 Räume (mit Intervall, 0 Fehlzeilen) → Raumbuch empfohlen.
+- 2026-10-14: **Android-Projekt angelegt** (Ahmed: „hab jetzt Android Studio“): `mobile-app/android` (Capacitor 7, Paket
+  `de.vivadeluxe.app`, Icons/Startbild Bordeaux, Kamera-Berechtigung). Anleitung `docs/anleitung-android.html/.pdf`:
+  Node installieren → ZIP vom Branch → `npm install` + `npx cap sync android` → Android Studio öffnen → signiertes .aab
+  (Upload-Schlüssel sicher aufbewahren) → Play Console interner Test → App-Inhalte (Datenschutzerklärung-URL fehlt noch,
+  Test-Zugang für Google, Datensicherheit). Push in der Store-App braucht später Firebase.

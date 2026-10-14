@@ -8,10 +8,14 @@
  * leere Platzhalter verschwinden samt Zeile.
  * Bewusst keine festen Dosierungen/Temperaturen ohne Herstellerangabe – die stehen beim Produkt bzw. Pflegeetikett.
  */
-import { rgb, type RGB } from '@cantoo/pdf-lib';
+import { readFile } from 'node:fs/promises';
+import { type PDFDocument, type PDFImage, rgb, type RGB } from '@cantoo/pdf-lib';
 import { formatDateDe } from '../domain/invoice/calc.js';
 import { FORM_COLORS, FORM_X, type FormDoc } from './form-doc.js';
 import { PICTOS, type PictoName, drawPicto, drawPictoBadge } from './pictos.js';
+
+export const SKETCHES = { reinigungswagen: 'Reinigungswagen', waschmaschine: 'Waschmaschine' } as const;
+export type SketchName = keyof typeof SKETCHES;
 
 export type PosterColor = 'rot' | 'gelb' | 'blau' | 'gruen';
 export interface PosterStep {
@@ -29,6 +33,8 @@ export interface PosterDef {
   icon: PictoName;
   /** Zeile unter den Schritten bzw. Einleitung */
   intro: string;
+  /** Skizze mit nummerierten Stellen (Nummern = Schritte), assets/aushaenge/skizze-<name>.png */
+  sketch?: SketchName;
   steps: PosterStep[];
   dos: string[];
   donts: string[];
@@ -78,6 +84,9 @@ export const PICTO_LABELS: Partial<Record<PictoName, string>> = {
   doc: 'Dokument',
   key: 'Schlüssel',
   calendar: 'Kalender',
+  wheel: 'Rad',
+  power: 'Ein/Aus',
+  tap: 'Wasserhahn',
 };
 
 /** Platzhalter, die in allen Texten gehen (Hilfe in den Einstellungen) */
@@ -213,23 +222,86 @@ export const DEFAULT_POSTERS: PosterDef[] = [
   {
     key: 'wagen',
     kind: 'text',
-    title: 'Reinigungswagen sauber halten',
+    title: 'Reinigungswagen pflegen und bestücken',
     icon: 'cart',
-    intro: 'Täglich nach der Arbeit – einmal pro Woche gründlich mit Rädern und Eimern.',
+    sketch: 'reinigungswagen',
+    intro: 'Nach jeder Schicht diese 10 Punkte erledigen. Die Nummern in der Skizze zeigen, wo am Wagen.',
     steps: [
-      s('trash', 'Leeren', 'Abfallsack herausnehmen und entsorgen, Eimer ausleeren.'),
-      s('bucket', 'Eimer & Presse ausspülen', 'Mit klarem Wasser ausspülen, Rückstände entfernen.'),
       s(
-        'wipe',
-        'Wagen abwischen',
-        'Griffe, Ablagen, Gestell und Räder feucht abwischen – von oben nach unten.',
+        'trash',
+        'Müllsack leeren und neu einsetzen',
+        'Vollen Sack zuknoten, entsorgen, neuen Sack einsetzen.',
       ),
-      s('bottle', 'Flaschen prüfen', 'Außen abwischen, Etikett lesbar, Deckel zu.'),
-      s('sun', 'Trocknen lassen', 'Eimer umgedreht abstellen, benutzte Mopps und Tücher in den Wäschesack.'),
-      s('check', 'Auffüllen', 'Säcke, Papier, Seife und frische Tücher für den nächsten Einsatz.'),
+      s(
+        'droplet',
+        'Schmutzwasser ausleeren',
+        'Roten Eimer nur im Ausguss leeren – nicht ins Handwaschbecken.',
+      ),
+      s(
+        'bucket',
+        'Eimer und Presse ausspülen',
+        'Beide Eimer und Presse klar ausspülen, umgedreht trocknen lassen.',
+      ),
+      s(
+        'bag',
+        'Mopps und Tücher in den Wäschesack',
+        'Benutzte Mopps und Tücher nie wieder verwenden – ab in die Wäsche.',
+      ),
+      s('palette', 'Farbeimer reinigen', 'Auswaschen und trocknen. Farben nie vertauschen – Rot nur für WC.'),
+      s(
+        'spray',
+        'Sprühflaschen kontrollieren',
+        'Nur beschriftete Flaschen, Deckel zu, nichts ohne Etikett umfüllen.',
+      ),
+      s('wipe', 'Griff und Ablagen abwischen', 'Wagen außen feucht abwischen – Griff, Ablagen, Deckel.'),
+      s('wheel', 'Räder kontrollieren', 'Haare und Fäden entfernen, damit der Wagen leicht rollt.'),
+      s('cart', 'Wagen neu bestücken', 'Frische Mopps, Tücher, Handschuhe, Müllsäcke und Mittel auffüllen.'),
+      s(
+        'door',
+        'Wagen ordentlich abstellen',
+        'In der Reinigungskammer abstellen. Mittel nie offen stehen lassen.',
+      ),
     ],
-    dos: ['Wagen am festen Platz abstellen', 'Defekte Räder sofort melden'],
-    donts: ['Reiniger in Getränkeflaschen umfüllen', 'Benutzte Mopps im Wagen liegen lassen'],
+    dos: [],
+    donts: [],
+    note: '',
+    active: true,
+    builtin: true,
+  },
+  {
+    key: 'waschmaschine',
+    kind: 'text',
+    title: 'Waschmaschine bedienen und pflegen',
+    icon: 'washer',
+    sketch: 'waschmaschine',
+    intro:
+      'Nach jedem Waschgang diese 10 Punkte erledigen. Die Nummern in der Skizze zeigen, wo an der Maschine.',
+    steps: [
+      s('washer', 'Wäsche sofort entnehmen', 'Gleich nach Programmende raus – nasse Wäsche riecht schnell.'),
+      s('wipe', 'Türdichtung reinigen', 'Gummi abwischen, Haare, Klettreste und Wasser entfernen.'),
+      s('spray', 'Türglas innen abwischen', 'Schmutz und Waschmittelreste mit feuchtem Tuch entfernen.'),
+      s('droplet', 'Waschmittelschublade reinigen', 'Herausziehen, Reste ausspülen, trocknen lassen.'),
+      s(
+        'filter',
+        'Flusensieb reinigen (1× pro Woche)',
+        'Klappe öffnen, Wasser auffangen, Sieb säubern, fest zudrehen.',
+      ),
+      s('wipe', 'Gehäuse außen reinigen', 'Bedienfeld, Tür und Oberseite feucht abwischen.'),
+      s('power', 'Programm auf AUS stellen', 'Wahlschalter auf AUS drehen, Gerät ausschalten.'),
+      s('tap', 'Wasserhahn zudrehen', 'Nach Arbeitsende Zulauf schließen – schützt vor Wasserschäden.'),
+      s(
+        'door',
+        'Tür und Schublade offen lassen',
+        'Spaltbreit offen, damit alles trocknet – keine Gerüche, kein Schimmel.',
+      ),
+      s(
+        'thermo',
+        'Hygiene-Waschgang 1× pro Woche',
+        'Leer bei 90 °C waschen. Defekte sofort dem Vorarbeiter melden.',
+      ),
+    ],
+    dos: [],
+    donts: [],
     note: '',
     active: true,
     builtin: true,
@@ -238,7 +310,7 @@ export const DEFAULT_POSTERS: PosterDef[] = [
     key: 'waesche',
     kind: 'text',
     title: 'Mopps & Tücher waschen',
-    icon: 'washer',
+    icon: 'mop',
     intro: 'Saubere Mopps und Tücher sind die Grundlage für hygienisches Reinigen.',
     steps: [
       s('palette', 'Sortieren', 'Nach Farben trennen. Rote Tücher (WC) möglichst getrennt waschen.'),
@@ -255,11 +327,6 @@ export const DEFAULT_POSTERS: PosterDef[] = [
         'Nach Herstellerangabe dosieren. Kein Weichspüler – Mikrofaser reinigt sonst nicht mehr.',
       ),
       s('sun', 'Trocknen', 'Sofort herausnehmen und trocknen (Trockner nach Pflegeetikett).'),
-      s(
-        'filter',
-        'Maschine pflegen',
-        'Flusensieb und Einspülschale regelmäßig reinigen, Tür nach dem Waschen offen lassen.',
-      ),
       s('bag', 'Lagern', 'Saubere Wäsche trocken und getrennt von benutzter aufbewahren.'),
     ],
     dos: [],
@@ -324,6 +391,8 @@ function clean(o: Partial<PosterDef>): Partial<PosterDef> {
   if (typeof o.active === 'boolean') r.active = o.active;
   if (Array.isArray(o.dos)) r.dos = o.dos.filter((x) => typeof x === 'string');
   if (Array.isArray(o.donts)) r.donts = o.donts.filter((x) => typeof x === 'string');
+  if (o.sketch === null || (typeof o.sketch === 'string' && o.sketch in SKETCHES))
+    r.sketch = o.sketch ?? undefined;
   if (Array.isArray(o.steps))
     r.steps = o.steps
       .filter((x) => x && typeof x.title === 'string')
@@ -365,6 +434,18 @@ export interface PosterContext {
   contacts: { label: string; value: string; icon: PictoName }[];
   /** Farbsystem: Dosiertabelle */
   dosage: { produkt: string; dosierung: string; wasser: string; hinweis: string }[];
+  /** eingebettete Skizzen (embedSketches) */
+  sketches?: Partial<Record<SketchName, PDFImage>>;
+}
+
+/** Skizzen einmal je Dokument einbetten. */
+export async function embedSketches(pdf: PDFDocument): Promise<Partial<Record<SketchName, PDFImage>>> {
+  const out: Partial<Record<SketchName, PDFImage>> = {};
+  for (const k of Object.keys(SKETCHES) as SketchName[])
+    out[k] = await pdf.embedPng(
+      await readFile(new URL(`../../assets/aushaenge/skizze-${k}.png`, import.meta.url)),
+    );
+  return out;
 }
 
 /** Inhaltsbereich schlanker Seiten (FormDoc.newPage({ plain: true })) */
@@ -415,7 +496,8 @@ function layout(
   // Kopfband
   const bandH = 84;
   const title = fill(def.title);
-  const tSize = d.width(title, 26, true) > W - 120 ? 21 : 26;
+  let tSize = 26;
+  while (tSize > 15 && d.width(title, tSize, true) > W - 104) tSize -= 1;
   if (draw) {
     page.drawRectangle({ x: L, y: page.getHeight() - y - bandH, width: W, height: bandH, color: BORDEAUX });
     drawPictoBadge(page, def.icon, L + 44, y + bandH / 2, 27, WHITE, BORDEAUX);
@@ -515,6 +597,25 @@ function layout(
   } else if (def.intro) {
     para(fill(def.intro), 11.5 * k);
   }
+  // Skizze mit Nummern (Wagen, Waschmaschine)
+  const sk = def.sketch ? ctx.sketches?.[def.sketch] : undefined;
+  if (sk) {
+    const sw = W * Math.min(0.86, 0.86 * k);
+    const sh = (sk.height / sk.width) * sw;
+    if (draw) {
+      page.drawRectangle({
+        x: L,
+        y: page.getHeight() - y - sh - 12,
+        width: W,
+        height: sh + 12,
+        color: WHITE,
+        borderColor: LINE,
+        borderWidth: 0.6,
+      });
+      page.drawImage(sk, { x: L + (W - sw) / 2, y: page.getHeight() - y - sh - 6, width: sw, height: sh });
+    }
+    y += sh + 12 + 10;
+  }
 
   // Schritt-Karten (zwei Spalten; Farbsystem mit Farbkennung)
   const steps = def.steps
@@ -525,14 +626,16 @@ function layout(
   const cw = (W - (cols - 1) * gap) / cols;
   const ts = 12.5 * k;
   const bs = 10.5 * k;
-  const ics = 34 * Math.min(k, 1.15);
+  // mit Skizze: kompakte Karten ohne Symbol (die Skizze zeigt die Stelle)
+  const compact = !!sk;
+  const ics = compact ? 0 : 34 * Math.min(k, 1.15);
   const tx = 38 * Math.min(k, 1.15);
   /** Text um das Symbol rechts oben herum umbrechen */
   const card = (st: (typeof steps)[number]) => {
-    const narrow = cw - tx - ics - 18;
+    const narrow = compact ? cw - tx - 10 : cw - tx - ics - 18;
     const full = cw - tx - 10;
     const lines: { t: string; bold: boolean; size: number; y: number }[] = [];
-    let yy = 14;
+    let yy = compact ? 7 : 14;
     const add = (text: string, size: number, bold: boolean, lh: number) => {
       for (const para of text.split('\n')) {
         let line = '';
@@ -560,9 +663,9 @@ function layout(
       }
     };
     add(st.title, ts, true, ts + 3);
-    yy += 5;
+    yy += compact ? 3 : 5;
     add(st.text, bs, false, bs + 3.5);
-    return { lines, h: Math.max(yy + 12, ics + 24) };
+    return { lines, h: compact ? yy + 9 : Math.max(yy + 12, ics + 24) };
   };
   for (let i = 0; i < steps.length; i += cols) {
     const row = steps.slice(i, i + cols);
@@ -585,19 +688,20 @@ function layout(
       // Nummer
       const n = String(i + j + 1);
       const r = 10.5 * Math.min(k, 1.15);
+      const top = compact ? 6 : 10;
       page.drawCircle({
         x: x + 8 + r,
-        y: page.getHeight() - y - 10 - r,
+        y: page.getHeight() - y - top - r,
         size: r,
         color: col ? col.bg : BORDEAUX,
       });
-      d.text(n, x + 8 + r - d.width(n, r, true) / 2, y + 10 + r * 1.36, {
+      d.text(n, x + 8 + r - d.width(n, r, true) / 2, y + top + r * 1.36, {
         size: r,
         bold: true,
         color: col ? col.fg : WHITE,
       });
       // Symbol rechts oben
-      drawPicto(page, st.icon, x + cw - ics - 10, y + 10, ics, col ? col.bg : BORDEAUX, 1.9);
+      if (!compact) drawPicto(page, st.icon, x + cw - ics - 10, y + 10, ics, col ? col.bg : BORDEAUX, 1.9);
       for (const l of cards[j]!.lines)
         d.text(l.t, x + tx, y + l.y - 3, {
           size: l.size,
@@ -605,7 +709,7 @@ function layout(
           ...(l.bold ? {} : { color: rgb(0.25, 0.23, 0.25) }),
         });
     });
-    y += hh + gap;
+    y += hh + (compact ? 6 : gap);
   }
 
   // Dosiertabelle (Farbsystem)

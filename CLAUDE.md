@@ -2848,3 +2848,11 @@ Testadresse.
     gedruckt (PDF und ZIP); Abfalltrennung, Kontaktkarten, Betriebsanweisungen bleiben. ZIP enthält
     `01_Aushaenge_Putzraum/Aushaenge_Putzraum.pdf`. `FormDoc.newPage({ plain: true })` für Seiten ohne Briefpapier.
   - Tests: `posters.db.test.ts`, `site-folder.db.test.ts` angepasst; e2e objekt 31, rechte 36 grün.
+- 2026-10-14: **Aushänge mit Skizzen** (Ahmed: Arbeitsanweisungen Waschmaschine + Reinigungswagen als Word mit Skizze,
+  „mach auch Skizzen, füg die Sachen hinzu, Einzel-Download übersichtlicher“): Ahmeds 10 Punkte und Skizzen
+  (`assets/aushaenge/skizze-*.png`, Nummern = Schritte) als Aushänge **„Reinigungswagen pflegen und bestücken“** und
+  **„Waschmaschine bedienen und pflegen“** (neu); „Mopps & Tücher waschen“ bleibt (ohne Maschinenpflege). Mit Skizze
+  werden die Schritte kompakte Karten ohne Symbol; Skizze wählbar je Aushang (auch eigene). Neue Piktogramme Rad, Ein/Aus,
+  Wasserhahn. Objekt → Objektordner: Kasten „Aushänge für den Putzraum“ mit **„Alle Aushänge (n Seiten)“** und Kacheln je
+  Aushang (Symbol, Schritte, „mit Skizze“). Gespeichert werden nur Abweichungen vom Standardtext (sonst kämen spätere
+  Verbesserungen nie an); bis 14 Schritte je Aushang.

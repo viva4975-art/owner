@@ -83,7 +83,7 @@ describe.skipIf(!ok)('Aushänge als PDF', () => {
     expect(text[0]).toContain('112');
     expect(text[0]).toContain('Erna Erst');
     expect(text[0]).toContain('Klinikum Test');
-    expect(text.join('\n')).toContain('Reinigungswagen sauber halten');
+    expect(text.join('\n')).toContain('Reinigungswagen pflegen und bestücken');
 
     // Text ändern, Aushang ausschalten – andere Objektordner-Angaben bleiben erhalten
     await saveFolderDefaults(sql, { betriebsarzt: 'Dr. Test' }, 'test');

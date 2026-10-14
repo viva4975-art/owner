@@ -9,6 +9,8 @@ import {
   PICTO_LABELS,
   PICTO_NAMES,
   POSTER_PLACEHOLDERS,
+  SKETCHES,
+  type SketchName,
   type PosterColor,
   type PosterDef,
   type PosterStep,
@@ -145,6 +147,17 @@ export function registerPosterRoutes({ app, deps, page, back }: Ctx) {
             <label>
               Symbol im Kopf
               {iconSelect('icon', p.icon)}
+            </label>
+            <label>
+              Skizze mit Nummern
+              <select name="sketch">
+                <option value="">keine</option>
+                {Object.entries(SKETCHES).map(([k, v]) => (
+                  <option value={k} selected={p.sketch === k}>
+                    {v} (Nummern 1–10 = Schritte)
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Einleitung
@@ -302,6 +315,9 @@ export function registerPosterRoutes({ app, deps, page, back }: Ctx) {
       dos: lines('dos'),
       donts: lines('donts'),
     };
+    const sk = one('sketch');
+    if (sk in SKETCHES) next.sketch = sk as SketchName;
+    else delete next.sketch;
     await savePosters(
       sql,
       list.map((x) => (x.key === key ? next : x)),

@@ -114,6 +114,14 @@ export const PICTOS = {
     'M8 17h6',
   ],
   key: [circle(7.5, 15.5, 5), 'M11 12l9.5-9.5', 'M17 6l3 3', 'M14.5 8.5l2 2'],
+  wheel: [circle(12, 12, 8.5), circle(12, 12, 2.5), 'M12 3.5v6', 'M12 14.5v6'],
+  power: ['M12 2.5v9', 'M18.4 6.6a9 9 0 1 1-12.8 0'],
+  tap: [
+    'M3 8h11a4 4 0 0 1 4 4v2',
+    'M8 8V5',
+    'M5 5h6',
+    'M18 18c0 1.1-.9 2-2 2s-2-.9-2-2 2-3.5 2-3.5 2 2.4 2 3.5z',
+  ],
   calendar: [rrect(3, 4, 18, 18, 2), 'M16 2v4', 'M8 2v4', 'M3 10h18'],
 } satisfies Record<string, Prim[]>;
 
@@ -160,4 +168,14 @@ export function drawPictoBadge(
   page.drawCircle({ x: cx, y: page.getHeight() - cyTop, size: r, color: bg });
   const size = r * 1.15;
   drawPicto(page, name, cx - size / 2, cyTop - size / 2, size, fg, 2.2);
+}
+
+/** Piktogramm als SVG-Text (für die Web-Oberfläche, gleiche Zeichnung wie im PDF). */
+export function pictoSvg(name: PictoName, size = 28): string {
+  const parts = (PICTOS[name] as Prim[]).map((p) =>
+    typeof p === 'string'
+      ? `<path d="${p}"/>`
+      : `<circle cx="${p.dot[0]}" cy="${p.dot[1]}" r="${p.dot[2]}" fill="currentColor" stroke="none"/>`,
+  );
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${parts.join('')}</svg>`;
 }

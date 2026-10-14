@@ -23,6 +23,8 @@ import { fillHospital } from '../services/hospital.js';
 import { listSafetySheets } from '../services/safety-sheets.js';
 import { zipHref } from './routes-files.js';
 import { Icon } from './icons.js';
+import { raw } from 'hono/html';
+import { pictoSvg } from '../pdf/pictos.js';
 import { anz, dateDe } from './layout.js';
 import { OfferTable } from './pages-offers.js';
 
@@ -83,35 +85,57 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                 </a>
               </div>
             </div>
-            <div class="actions" style="margin-bottom:0;align-items:flex-start">
-              {posters.length > 0 && (
-                <a class="btn sec" href={`/objekte/${s.id}/aushang/alle.pdf`} target="_blank">
-                  <Icon name="download" /> Aushänge Putzraum ({posters.length} Seiten, PDF)
-                </a>
-              )}
-              {sdbCount > 0 && (
-                <a class="btn sec" href="/sicherheitsdatenblaetter.pdf" target="_blank">
+            {posters.length > 0 && (
+              <div class="poster-box">
+                <div class="poster-head">
+                  <div>
+                    <b>Aushänge für den Putzraum</b>
+                    <div class="small mut">
+                      {posters.length} Aushänge mit Piktogrammen und Skizzen, mit den Angaben dieses Objekts –
+                      gesamt oder einzeln zum Aushängen.
+                    </div>
+                  </div>
+                  <a class="btn" href={`/objekte/${s.id}/aushang/alle.pdf`} target="_blank">
+                    <Icon name="download" /> Alle Aushänge ({posters.length} Seiten)
+                  </a>
+                </div>
+                <div class="poster-grid">
+                  {posters.map((p) => (
+                    <a class="poster-tile" href={`/objekte/${s.id}/aushang/${p.key}.pdf`} target="_blank">
+                      <span class="poster-ic">{raw(pictoSvg(p.icon, 26))}</span>
+                      <span class="poster-t">
+                        <b>{p.title}</b>
+                        <span class="small mut">
+                          {p.steps.length} Schritte{p.sketch ? ' · mit Skizze' : ''}
+                        </span>
+                      </span>
+                      <span class="poster-dl" title="PDF herunterladen">
+                        <Icon name="download" />
+                      </span>
+                    </a>
+                  ))}
+                </div>
+                <div class="actions" style="margin:8px 0 0">
+                  {sdbCount > 0 && (
+                    <a class="btn sec sm" href="/sicherheitsdatenblaetter.pdf" target="_blank">
+                      <Icon name="download" /> Sicherheitsdatenblätter ({sdbCount})
+                    </a>
+                  )}
+                  {canEditPosters && (
+                    <a class="small" href="/einstellungen/objektordner/aushaenge" style="align-self:center">
+                      Texte der Aushänge ändern
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+            {posters.length === 0 && sdbCount > 0 && (
+              <div class="actions">
+                <a class="btn sec sm" href="/sicherheitsdatenblaetter.pdf" target="_blank">
                   <Icon name="download" /> Sicherheitsdatenblätter ({sdbCount})
                 </a>
-              )}
-              {posters.length > 0 && (
-                <details>
-                  <summary class="small">Einzelne Aushänge</summary>
-                  <div class="actions" style="margin:6px 0 0">
-                    {posters.map((p) => (
-                      <a class="btn sec sm" href={`/objekte/${s.id}/aushang/${p.key}.pdf`} target="_blank">
-                        {p.title}
-                      </a>
-                    ))}
-                  </div>
-                </details>
-              )}
-              {canEditPosters && (
-                <a class="small" href="/einstellungen/objektordner/aushaenge" style="align-self:center">
-                  Texte der Aushänge ändern
-                </a>
-              )}
-            </div>
+              </div>
+            )}
             <form
               method="get"
               action={`/objekte/${s.id}/anwesenheit.pdf`}

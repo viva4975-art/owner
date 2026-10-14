@@ -1041,6 +1041,14 @@ input[type=file]::file-selector-button{border:0;background:var(--brand);color:#f
 input[type=file]::file-selector-button:hover{background:var(--brand-2)}
 .fpick{position:relative;display:flex;align-items:center;gap:12px;width:100%;max-width:520px;box-sizing:border-box;padding:10px 14px;border:1.5px dashed var(--line-2);border-radius:10px;background:#fff;color:var(--ink);cursor:pointer;transition:border-color .15s,background .15s;margin:0;font-weight:400}
 .fpick:hover,.fpick.over,.fpick:focus-within{border-color:var(--brand);background:var(--brand-50)}
+.poster-box{margin-top:14px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--tint-2,#f8eff2)}
+.poster-head{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
+.poster-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+.poster-tile{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border:1px solid var(--line);border-radius:8px;color:var(--ink);text-decoration:none}
+.poster-tile:hover{border-color:var(--brand);box-shadow:0 1px 4px rgba(125,20,53,.12)}
+.poster-ic{flex:none;display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:var(--brand);color:#fff}
+.poster-t{display:flex;flex-direction:column;min-width:0;flex:1;line-height:1.3}
+.poster-dl{flex:none;color:var(--brand)}
 .fpick .fp-ic{flex:none;display:grid;place-items:center;width:38px;height:38px;border-radius:9px;background:var(--brand-50);color:var(--brand)}
 .fpick.has .fp-ic{background:var(--brand);color:#fff}
 .fpick .fp-t{display:flex;flex-direction:column;min-width:0;line-height:1.3}

@@ -72,8 +72,8 @@ describe.skipIf(!ok)('Objektordner als ein PDF', () => {
     expect(text[1]).toContain('Objektinformation');
     // Aushänge aus der App mit Piktogrammen, Paket-Fassung nicht doppelt
     expect(text[1]).toContain('Notfall & Kontakte');
-    expect(text[1]).toContain('Reinigungswagen sauber halten');
-    expect(text[1]).toContain('Mopps & Tücher waschen');
+    expect(text[1]).toContain('Reinigungswagen pflegen und bestücken');
+    expect(text[1]).toContain('Waschmaschine bedienen und pflegen');
     expect(all).not.toContain('Alter Hautschutzplan aus dem Paket');
     expect(all).toContain('Erna Erst');
     expect(all).toContain('Hausmeister Maier, 089 111');

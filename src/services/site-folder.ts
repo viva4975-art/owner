@@ -24,7 +24,9 @@ import type { FormDoc } from '../pdf/form-doc.js';
 import {
   type PosterContext,
   type PosterDef,
+  DEFAULT_POSTERS,
   drawPoster,
+  embedSketches,
   fillPlaceholders,
   mergePosters,
 } from '../pdf/posters.js';
@@ -1174,7 +1176,13 @@ export async function getPosters(sql: Sql): Promise<PosterDef[]> {
 
 /** Aushänge speichern (nur die Aushang-Texte; übrige Angaben bleiben). */
 export async function savePosters(sql: Sql, list: PosterDef[], actor: string) {
-  const data = { ...(await getFolderDefaults(sql)), aushaenge: list.map(trimPoster) };
+  // nur Abweichungen von der Vorgabe speichern – sonst kämen spätere Verbesserungen der Standardtexte nie an
+  const same = (a: PosterDef, b: PosterDef) => JSON.stringify(a) === JSON.stringify(b);
+  const aushaenge = list.map(trimPoster).filter((p) => {
+    const def = DEFAULT_POSTERS.find((x) => x.key === p.key);
+    return !def || !same(trimPoster({ ...def }), p);
+  });
+  const data = { ...(await getFolderDefaults(sql)), aushaenge };
   await sql`insert into app.site_folder_defaults (id, data, updated_by) values (1, ${sql.json(data as never)}, ${actor})
             on conflict (id) do update set data = excluded.data, updated_by = excluded.updated_by, updated_at = now()`;
   await sql`insert into app.audit_log (actor, action, entity) values (${actor}, 'aushaenge', 'company')`;
@@ -1188,7 +1196,7 @@ const trimPoster = (p: PosterDef): PosterDef => ({
   steps: p.steps
     .map((x) => ({ ...x, title: x.title.trim().slice(0, 80), text: x.text.trim().slice(0, 300) }))
     .filter((x) => x.title)
-    .slice(0, 10),
+    .slice(0, 14),
   dos: p.dos
     .map((x) => x.trim().slice(0, 120))
     .filter(Boolean)
@@ -1247,6 +1255,7 @@ function posterContext(f: FolderFacts, values: Record<string, string>, date: str
 /** Aushänge eines Objekts in ein vorhandenes Dokument zeichnen (je Aushang eine Seite); gibt die Titel zurück. */
 async function drawSitePosters(d: FormDoc, f: FolderFacts, posters: PosterDef[], date: string) {
   const ctx = posterContext(f, folderValues(f), date);
+  if (posters.some((p) => p.sketch)) ctx.sketches = await embedSketches(d.pdf);
   await d.loadLogo();
   const done: { title: string; page: number }[] = [];
   for (const p of posters) {

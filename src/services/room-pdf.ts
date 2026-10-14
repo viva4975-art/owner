@@ -125,6 +125,10 @@ export async function renderRoomBookPdf(sql: Sql, siteId: string): Promise<Uint8
 }
 
 /** Raumbuch-PDF unter Objekt → Dokumente ablegen (gleicher Inhalt = gleiche Datei; ältere App-Fassung ins Archiv). */
+/** Name der von der App erzeugten Raumbuch-PDF („Raumbuch_<Objektnr.>_JJJJ-MM-TT.pdf“) – hochgeladene Raumbücher
+ * (z. B. „Raumbuch_Grundschule_Neubiberg.pdf“) bleiben unberührt und dienen als Import-Quelle. */
+export const APP_ROOMBOOK_RE = '^Raumbuch_.*_[0-9]{4}-[0-9]{2}-[0-9]{2}\\.pdf$';
+
 export async function storeRoomBookPdf(sql: Sql, cfg: UploadConfig, siteId: string, actor: string) {
   const pdf = await renderRoomBookPdf(sql, siteId);
   // ID aus dem Inhalt ohne Zeitstempel: Raumliste bestimmt die Datei
@@ -163,7 +167,7 @@ export async function storeRoomBookPdf(sql: Sql, cfg: UploadConfig, siteId: stri
   const older = await sql<{ file_id: string }[]>`
     select l.file_id from app.file_links l join app.files f on f.id = l.file_id
      where l.entity_type = 'site' and l.entity_id = ${siteId} and l.category = 'Raumbuch' and l.archived_at is null
-       and f.original_name like 'Raumbuch\\_%' and f.content_type = 'application/pdf' and l.file_id <> ${id}`;
+       and f.original_name ~ ${APP_ROOMBOOK_RE} and f.content_type = 'application/pdf' and l.file_id <> ${id}`;
   for (const o of older) await archiveLink(sql, { type: 'site', id: siteId }, o.file_id, true, actor);
   return file;
 }

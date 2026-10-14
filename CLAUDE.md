@@ -2879,3 +2879,16 @@ Testadresse.
   Datum) unter Einstellungen und Einstellungen → Systemzustand sowie `/health/version`; `deploy/update.sh` schreibt dafür
   `version.txt` (nicht im Repo). Versandliste „Noch nicht versendet“: „Los (n)“ zählte vom Browser wiederhergestellte
   Häkchen nicht (Safari/Zurück) → Zähler auch bei Klick, `pageshow` und kurz nach dem Laden.
+- 2026-10-14: **Raumbuch aus PDF und aus Dokumente** (Ahmed: „Raumbuch liegt als PDF unter Dokumente → Raumbuch, kann er
+  das nicht selber übernehmen?“): Raumbuch-Import liest jetzt auch **PDF mit Textebene** (aus Excel/Fortytools gedruckt;
+  Scans ohne Text → klare Meldung, keine Texterkennung). Eigener Leser `src/domain/sheet/pdf-table.ts`: Spalten über die
+  x-Positionen (in vielen Zeilen belegte Bereiche), leere Spalten bleiben an ihrer Stelle, zusammengezogene Kopfzeilen
+  („Objektnummer * Raumname *“) werden wortweise verteilt, je Seite wiederholte Kopfzeilen nur einmal. Objekt → Raumbuch:
+  Knopf **„Aus Dokumente übernehmen (n)“** = Dateien unter Dokumente → Raumbuch (PDF/Excel/CSV, nicht die von der App
+  erzeugte Raumbuch-PDF) → „Räume übernehmen …“ → gleiche Vorschau wie beim Hochladen. Probe mit der echten
+  Neubiberg-PDF: 234 von 235 Räumen (Kriechkeller 0 m²), wie beim Excel. **Fund:** „Gebäudeteil“ (A, B, C … einer
+  Schule) wurde wie „Gebäude“ behandelt → die Vorschau wollte jeden Gebäudeteil einem eigenen Objekt zuordnen. Jetzt
+  bleiben Gebäudeteil/Bauteil/Trakt in einem Objekt (nur in der Etage „A · UG“); nur Spalte „Gebäude/Haus“ teilt auf.
+  **Fund:** Die App-Raumbuch-PDF archivierte beim Ablegen auch hochgeladene Dateien, deren Name mit „Raumbuch_“
+  beginnt (z. B. Ahmeds „Raumbuch_Grundschule_Neubiberg.pdf“) – jetzt nur noch eigene („Raumbuch_<Nr.>_JJJJ-MM-TT.pdf“).
+  „Nebenraum“ → Nutzungsart Lager / Technik. Tests `pdf-table.test.ts`, `room-import-ft.db.test.ts`.

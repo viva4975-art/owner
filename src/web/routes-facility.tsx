@@ -42,7 +42,8 @@ import {
   suggestBuildingSites,
 } from '../services/room-import.js';
 import type { Context } from 'hono';
-import { listFiles } from '../services/uploads.js';
+import { filePath, listFiles } from '../services/uploads.js';
+import { readFile } from 'node:fs/promises';
 import {
   deleteQualityCheck,
   qmStatistics,
@@ -50,7 +51,7 @@ import {
   renderQmStatisticsPdf,
 } from '../services/qm-report.js';
 import { uploadConfig } from './routes-files.js';
-import { renderRoomBookPdf, storeRoomBookPdf } from '../services/room-pdf.js';
+import { APP_ROOMBOOK_RE, renderRoomBookPdf, storeRoomBookPdf } from '../services/room-pdf.js';
 import { type AppEnv, type Ctx, UUID, assertSite, inScope, isTouchDevice } from './app.js';
 import { FileArea } from './files.js';
 import { arr, centsToInput, str } from './forms.js';
@@ -167,6 +168,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
       const rooms = await listRooms(sql, s.id, true);
       const t = await hourTarget(sql, s.id);
       const office = canAccess(c.get('user').role, '/raumbuch/raumarten');
+      const docsRb = await roomDocs(s.id);
       return (
         <>
           <div class="kpis">
@@ -190,8 +192,13 @@ export function registerFacilityRoutes(ctx: Ctx) {
               + Raum
             </a>
             <a class="btn sm sec" href={`/objekte/${s.id}/raumbuch/import`}>
-              <Icon name="upload" /> Aus Excel importieren
+              <Icon name="upload" /> Importieren (Excel, CSV, PDF)
             </a>
+            {docsRb.length ? (
+              <a class="btn sm" href={`/objekte/${s.id}/raumbuch/import#dokumente`}>
+                <Icon name="upload" /> Aus Dokumente übernehmen ({docsRb.length})
+              </a>
+            ) : null}
             <a class="btn sm sec" href={`/objekte/${s.id}/raumbuch.csv`}>
               <Icon name="download" /> CSV
             </a>
@@ -247,7 +254,8 @@ export function registerFacilityRoutes(ctx: Ctx) {
                 {!rooms.length && (
                   <tr>
                     <td colspan={7} class="mut">
-                      Noch keine Räume erfasst. Raumbuch vom Auftraggeber? „Aus Excel importieren“.
+                      Noch keine Räume erfasst. Raumbuch vom Auftraggeber? „Importieren“ oder Raumbuch unter
+                      Dokumente → Raumbuch ablegen und „Aus Dokumente übernehmen“.
                     </td>
                   </tr>
                 )}
@@ -361,6 +369,18 @@ export function registerFacilityRoutes(ctx: Ctx) {
     return { all, sites: allowed, mapping, parts };
   };
 
+  /** Unter Objekt → Dokumente → „Raumbuch“ abgelegte Dateien, aus denen sich das Raumbuch lesen lässt
+   *  (PDF mit Text, Excel, CSV) – ohne die von der App selbst erzeugte Raumbuch-PDF. */
+  const appRoomBook = new RegExp(APP_ROOMBOOK_RE);
+  const roomDocs = async (siteId: string) =>
+    (await listFiles(sql, { type: 'site', id: siteId })).filter(
+      (f) =>
+        f.category === 'Raumbuch' &&
+        !f.archived_at &&
+        !appRoomBook.test(f.original_name) &&
+        /\.(pdf|xlsx|csv|txt)$/i.test(f.original_name),
+    );
+
   // Raumbuch aus Excel/CSV: Hochladen → Vorschau (GET, Datei write-once abgelegt) → Übernehmen
   app.get(`/objekte/:id{${UUID}}/raumbuch/import`, (c) =>
     shells.site!(c, 'raumbuch', async (s) => {
@@ -368,16 +388,45 @@ export function registerFacilityRoutes(ctx: Ctx) {
       const daily = dailyOf(c.req.query('taeglich'));
       const self = `/objekte/${s.id}/raumbuch/import`;
       if (!sha) {
+        const docs = await roomDocs(s.id);
         return (
           <>
             <p>
               <a href={`/objekte/${s.id}/raumbuch`}>‹ Raumbuch</a>
             </p>
-            <h3 class="panel-title">Raumbuch aus Excel importieren</h3>
+            <h3 class="panel-title">Raumbuch importieren</h3>
+            {docs.length ? (
+              <div class="card" id="dokumente" style="max-width:760px">
+                <h3>Aus Dokumente übernehmen</h3>
+                <p class="mut">
+                  Unter Dokumente → Raumbuch abgelegt – die App liest die Räume aus der Datei.
+                </p>
+                {docs.map((f) => (
+                  <form method="post" action={`${self}/dokument`} class="row" style="gap:8px;margin:6px 0">
+                    <input type="hidden" name="file_id" value={f.id} />
+                    <span style="flex:1">
+                      <a href={`/dateien/${f.id}`} target="_blank">
+                        {f.original_name}
+                      </a>{' '}
+                      <span class="mut">
+                        ·{' '}
+                        {(f.completed_at ?? f.created_at).toLocaleDateString('de-DE', {
+                          timeZone: 'Europe/Berlin',
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                        })}
+                      </span>
+                    </span>
+                    <button class="btn sm">Räume übernehmen …</button>
+                  </form>
+                ))}
+              </div>
+            ) : null}
             <p class="mut" style="max-width:760px">
-              Excel (.xlsx) oder CSV – auch eine ganze Ausschreibungs-Kalkulation mit vielen Blättern: die App
-              sucht sich das Blatt mit dem Raumbuch selbst (die Kopfzeile darf unter Titelzeilen stehen).
-              Erkannt werden u. a.{' '}
+              Excel (.xlsx), CSV oder PDF (mit Text, z. B. aus Excel/Fortytools gedruckt – keine Scans) – auch
+              eine ganze Ausschreibungs-Kalkulation mit vielen Blättern: die App sucht sich das Blatt mit dem
+              Raumbuch selbst (die Kopfzeile darf unter Titelzeilen stehen). Erkannt werden u. a.{' '}
               <b>
                 Gebäude, Etage/Ebene, Raum-Nr., Raum, Raumart, Bodenbelag, Fläche (m²), Turnus,
                 Reinigungstage/Jahr, Leistung m²/h, Stunden/Jahr, Tageskraft, Bemerkung
@@ -396,7 +445,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
               <div class="grid">
                 <div>
                   <label for="file">Datei</label>
-                  <input type="file" id="file" name="file" accept=".xlsx,.csv,.txt" required />
+                  <input type="file" id="file" name="file" accept=".xlsx,.csv,.txt,.pdf" required />
                 </div>
               </div>
               <div class="actions">
@@ -579,9 +628,21 @@ export function registerFacilityRoutes(ctx: Ctx) {
     const b = await c.req.parseBody();
     const file = b.file;
     if (!(file instanceof File) || !file.size)
-      throw new BusinessError('Bitte eine Excel- oder CSV-Datei wählen');
+      throw new BusinessError('Bitte eine Excel-, CSV- oder PDF-Datei wählen');
     const bytes = new Uint8Array(await file.arrayBuffer());
     await analyzeRooms(sql, siteId, bytes); // Fehler (z. B. keine Kopfzeile) gleich hier melden
+    const sha = await stageFile(deps, bytes);
+    return c.redirect(`/objekte/${siteId}/raumbuch/import?datei=${sha}`, 303);
+  });
+
+  app.post(`/objekte/:id{${UUID}}/raumbuch/import/dokument`, async (c) => {
+    const siteId = c.req.param('id');
+    assertSite(c, siteId);
+    const fileId = str(await c.req.parseBody(), 'file_id') ?? '';
+    const f = (await roomDocs(siteId)).find((x) => x.id === fileId);
+    if (!f) throw new BusinessError('Datei nicht unter Dokumente → Raumbuch dieses Objekts gefunden');
+    const bytes = new Uint8Array(await readFile(filePath(uploadConfig(ctx), f)));
+    await analyzeRooms(sql, siteId, bytes);
     const sha = await stageFile(deps, bytes);
     return c.redirect(`/objekte/${siteId}/raumbuch/import?datei=${sha}`, 303);
   });

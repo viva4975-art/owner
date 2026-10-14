@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Sql } from '../db/client.js';
 import { SheetError, readSheets } from '../domain/sheet/sheet.js';
+import { isPdf, readPdfTable } from '../domain/sheet/pdf-table.js';
 import { BusinessError } from './errors.js';
 
 /**
@@ -286,7 +287,7 @@ const TYPE_WORDS: [string, RegExp][] = [
   ],
   [
     'Lager / Technik',
-    /lager|technik|abstell|archiv|putz|reinigung|keller|heiz|hausmeister|geraet|elektro|server|muell|schacht|lueftung|maschinen|anschluss|garage|platzpflege|regie|sprechanlage|kopier/,
+    /lager|technik|nebenraum|abstell|archiv|putz|reinigung|keller|heiz|hausmeister|geraet|elektro|server|muell|schacht|lueftung|maschinen|anschluss|garage|platzpflege|regie|sprechanlage|kopier/,
   ],
 ];
 export function guessRoomType(raw: string): string | null {
@@ -329,7 +330,16 @@ export async function analyzeRooms(
   let sheets: { name: string; rows: string[][] }[];
   let kind: 'xlsx' | 'csv';
   try {
-    ({ sheets, kind } = readSheets(bytes));
+    if (isPdf(bytes)) {
+      const rows = await readPdfTable(bytes);
+      if (!rows.length)
+        throw new BusinessError(
+          'In der PDF ist kein Text zu finden (eingescannt?) – bitte das Raumbuch als Excel/CSV oder als PDF mit Text hochladen',
+        );
+      // Text aus PDF: deutsche Zahlen („12,76“) wie bei CSV
+      sheets = [{ name: 'PDF', rows }];
+      kind = 'csv';
+    } else ({ sheets, kind } = readSheets(bytes));
   } catch (e) {
     if (e instanceof SheetError) throw new BusinessError(e.message);
     throw e;
@@ -360,6 +370,10 @@ export async function analyzeRooms(
   const map = pick.map;
   const fields = new Set(map.values());
   const header = rows[headerIdx]!;
+  // „Gebäudeteil/Bauteil/Trakt“ (Fortytools: A, B, C … derselben Schule) = Teil EINES Objekts → nur in die Etage;
+  // nur „Gebäude/Haus/Liegenschaft“ können verschiedene Objekte sein (Kalkulation mit mehreren Schulen)
+  const bldIdx = [...map].find(([, f]) => f === 'building')?.[0];
+  const bldIsPart = bldIdx != null && /teil|trakt/.test(norm(header[bldIdx] ?? ''));
 
   const [types, existing] = await Promise.all([
     sql<{ id: string; name: string }[]>`select id, name from app.room_types`,
@@ -383,11 +397,14 @@ export async function analyzeRooms(
       return '';
     };
     const bld = get('building');
-    if (bld && !/^(summe|gesamt|total)/i.test(bld) && !buildings.includes(bld)) buildings.push(bld);
+    if (bld && !bldIsPart && !/^(summe|gesamt|total)/i.test(bld) && !buildings.includes(bld))
+      buildings.push(bld);
     // nur ein Gebäude (= ein Objekt): andere Zeilen auslassen, Gebäude nicht mehr in die Etage schreiben
-    if (opts.building != null && bld !== opts.building) return;
+    if (opts.building != null && !bldIsPart && bld !== opts.building) return;
     const floor =
-      (opts.building != null ? get('floor') : [bld, get('floor')].filter(Boolean).join(' · ')) || null;
+      (opts.building != null && !bldIsPart
+        ? get('floor')
+        : [bld, get('floor')].filter(Boolean).join(' · ')) || null;
     const noRaw = get('room_no');
     // „keine NR“, „ohne“, „-“ = keine Raumnummer
     const roomNo = noRaw && !/^(keine|ohne|o\.?\s?nr|n\.?\s?a\.?|-+|\?)/i.test(noRaw) ? noRaw : null;

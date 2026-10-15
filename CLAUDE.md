@@ -3094,3 +3094,10 @@ Testadresse.
   Zurück/Weiter bleiben unten stehen. „75 %“ bricht nicht mehr um. **iPhone-PDF:** neben „‹ Zurück“ Knopf
   „Teilen / Drucken“ (lädt das PDF mit der App-Anmeldung, iOS-Teilen: Drucken, In Dateien sichern, Mail, WhatsApp) –
   `VivaViewController` Fassung 2 im Skript (ersetzt Fassung 1); wirkt nach `bash ios-einrichten.sh` + neuem Build.
+- 2026-10-15: **Automatischer iPhone-Build** (Ahmed: „jedes Mal Build ist super viel Aufwand“): GitHub Actions
+  `.github/workflows/ios-testflight.yml` (macOS-Runner, neuestes Xcode) läuft bei Änderungen unter `mobile-app/`
+  (ohne android) oder per „Run workflow“: `ios-einrichten.sh` (mit `CI=1` ohne Xcode-Fenster) → Archive mit
+  automatischer Signierung über den App-Store-Connect-API-Schlüssel → Upload zu TestFlight. Build-Nummer = 100 + Lauf-Nr.
+  (immer höher als die Hand-Builds). Secrets nur in GitHub: `APPSTORE_KEY_ID`, `APPSTORE_ISSUER_ID`, `APPSTORE_KEY_P8`
+  (Inhalt der .p8), `APPLE_TEAM_ID`. **Schlüssel braucht Rolle „Admin“** (Zertifikate in der Cloud anlegen). Ohne
+  Secrets bricht der Lauf mit Hinweis ab. Server-Änderungen brauchen weiterhin keinen Build. Android folgt (Dienstkonto).

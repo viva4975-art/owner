@@ -1,0 +1,80 @@
+# iPhone-App automatisch bauen und zu TestFlight hochladen (ohne Mac im Büro).
+# Läuft bei Änderungen an der App-Hülle (mobile-app/, ohne Android) oder per Knopf
+# „Run workflow“ unter GitHub → Actions → „iPhone-App → TestFlight“.
+# Benötigte Secrets (GitHub → Settings → Secrets and variables → Actions):
+#   APPSTORE_KEY_ID, APPSTORE_ISSUER_ID, APPSTORE_KEY_P8 (Inhalt der .p8-Datei), APPLE_TEAM_ID
+# Einrichtung: CLAUDE.md, Eintrag „Automatischer iPhone-Build“
+name: iPhone-App → TestFlight
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, claude/new-session-t3lg2s]
+    paths:
+      - 'mobile-app/**'
+      - '!mobile-app/android/**'
+      - '.github/workflows/ios-testflight.yml'
+concurrency:
+  group: ios-testflight
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      CI: '1'
+      KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+      ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+      TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - name: Zugangsdaten vorhanden?
+        run: |
+          if [ -z "$KEY_ID" ] || [ -z "$ISSUER_ID" ] || [ -z "$TEAM_ID" ] || [ -z "${{ secrets.APPSTORE_KEY_P8 }}" ]; then
+            echo "::error::Secrets fehlen (APPSTORE_KEY_ID, APPSTORE_ISSUER_ID, APPSTORE_KEY_P8, APPLE_TEAM_ID)"; exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: iOS-Projekt einrichten (wie auf dem Mac)
+        working-directory: mobile-app
+        run: bash ios-einrichten.sh
+      - name: API-Schlüssel ablegen
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s' "${{ secrets.APPSTORE_KEY_P8 }}" > "$RUNNER_TEMP/keys/AuthKey_$KEY_ID.p8"
+      - name: Archivieren
+        working-directory: mobile-app/ios/App
+        run: |
+          BUILD=$((100 + ${{ github.run_number }}))
+          echo "Build-Nummer $BUILD"
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/keys/AuthKey_$KEY_ID.p8" \
+            -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER_ID" \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic CURRENT_PROJECT_VERSION="$BUILD" \
+            archive
+      - name: Zu App Store Connect (TestFlight) hochladen
+        run: |
+          cat > "$RUNNER_TEMP/export.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/keys/AuthKey_$KEY_ID.p8" \
+            -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER_ID"
+      - name: Schlüssel entfernen
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/keys"

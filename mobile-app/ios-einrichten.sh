@@ -203,5 +203,6 @@ done
 schritt "Abgleichen (npx cap sync ios, inkl. pod install)"
 npx cap sync ios
 
+if [ -n "${CI:-}" ]; then gruen "Fertig (automatischer Build)."; exit 0; fi
 gruen "Fertig. Xcode öffnet sich jetzt – weiter mit Schritt 6 der Anleitung (Team wählen, Archive)."
 npx cap open ios

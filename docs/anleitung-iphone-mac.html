@@ -143,6 +143,7 @@ bash ios-einrichten.sh</pre></li>
 <tr><td><code>xcode-select: error</code> / Xcode fehlt</td><td>Xcode einmal öffnen und Lizenz bestätigen, dann den <code>sudo xcode-select …</code>-Befehl aus Schritt 2.</td></tr>
 <tr><td>Fehler bei <code>pod install</code></td><td>Im Terminal <code>pod repo update</code>, danach <code>bash ios-einrichten.sh</code> erneut.</td></tr>
 <tr><td>Xcode: „No Account for Team“ / „Signing requires a development team“</td><td>Schritt 6 – Konto unter Settings → Accounts hinzufügen und Team wählen.</td></tr>
+<tr><td>„Your team has no devices …“ / „No profiles for 'de.vivadeluxe.app' were found“</td><td>Apple braucht einmal ein registriertes Gerät: iPhone per Kabel anschließen, entsperren, „Diesem Computer vertrauen“, in Xcode oben das iPhone als Ziel wählen, unter Signing „Try Again“. Ggf. am iPhone Einstellungen → Datenschutz &amp; Sicherheit → Entwicklermodus an (Neustart). Danach wieder „Any iOS Device (arm64)“ → Archive.</td></tr>
 <tr><td>„Archive“ ist grau</td><td>Oben als Ziel „Any iOS Device (arm64)“ wählen statt eines Simulators.</td></tr>
 <tr><td>Upload: „The bundle version must be higher …“</td><td>Build-Nummer in Schritt 6 um 1 erhöhen, erneut Archive.</td></tr>
 </table>

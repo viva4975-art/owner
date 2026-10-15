@@ -144,6 +144,7 @@ bash ios-einrichten.sh</pre></li>
 <tr><td>Fehler bei <code>pod install</code></td><td>Im Terminal <code>pod repo update</code>, danach <code>bash ios-einrichten.sh</code> erneut.</td></tr>
 <tr><td>Xcode: „No Account for Team“ / „Signing requires a development team“</td><td>Schritt 6 – Konto unter Settings → Accounts hinzufügen und Team wählen.</td></tr>
 <tr><td>„Your team has no devices …“ / „No profiles for 'de.vivadeluxe.app' were found“</td><td>Apple braucht einmal ein registriertes Gerät: iPhone per Kabel anschließen, entsperren, „Diesem Computer vertrauen“, in Xcode oben das iPhone als Ziel wählen, unter Signing „Try Again“. Ggf. am iPhone Einstellungen → Datenschutz &amp; Sicherheit → Entwicklermodus an (Neustart). Danach wieder „Any iOS Device (arm64)“ → Archive.</td></tr>
+<tr><td>Viele rote Fehler „The iOS deployment target 'IPHONEOS_DEPLOYMENT_TARGET' is set to 14.0, but the range …“</td><td>Xcode schließen, neues ZIP laden (Schritt 4) und im Ordner <code>mobile-app</code> erneut <code>bash ios-einrichten.sh</code> – das Skript stellt jetzt alle Bausteine auf iOS 15.5. In Xcode danach Product → Clean Build Folder.</td></tr>
 <tr><td>„Archive“ ist grau</td><td>Oben als Ziel „Any iOS Device (arm64)“ wählen statt eines Simulators.</td></tr>
 <tr><td>Upload: „The bundle version must be higher …“</td><td>Build-Nummer in Schritt 6 um 1 erhöhen, erneut Archive.</td></tr>
 </table>

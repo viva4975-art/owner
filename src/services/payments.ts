@@ -146,7 +146,7 @@ export async function openItemLedger(
           })),
         ...own.map((p) => ({
           date: p.paid_on,
-          label: `${p.method === 'skonto' ? 'Skonto-Abzug' : 'Zahlung'}${p.reference ? ` (${p.reference})` : ''}`,
+          label: `${p.method === 'skonto' ? 'Skonto-Abzug' : p.method === 'kuerzung' ? 'Kürzung ausgebucht' : 'Zahlung'}${p.reference ? ` (${p.reference})` : ''}`,
           cents: p.amount_cents,
           href: null,
           skonto: p.method === 'skonto',
@@ -266,6 +266,7 @@ export const PAYMENT_METHODS = {
   skonto: 'Skonto-Abzug',
   verrechnung: 'Verrechnung',
   korrektur: 'Korrekturbuchung',
+  kuerzung: 'Kürzung ausgebucht',
 } as const;
 
 export const paymentInput = z.object({
@@ -280,7 +281,7 @@ export const paymentInput = z.object({
     }
   }),
   paid_on: z.iso.date('Datum fehlt'),
-  method: z.enum(['ueberweisung', 'lastschrift', 'bar', 'skonto', 'verrechnung']),
+  method: z.enum(['ueberweisung', 'lastschrift', 'bar', 'skonto', 'verrechnung', 'kuerzung']),
   reference: z.preprocess(
     (v) => (typeof v === 'string' && v.trim() ? v.trim() : null),
     z.string().nullable(),
@@ -361,13 +362,19 @@ export async function settleOpenItem(
     legacy: boolean;
     amount: bigint;
     date: string;
-    rest: 'offen' | 'skonto';
+    rest: 'offen' | 'skonto' | 'kuerzung';
     reference: string | null;
+    /** Grund der Kürzung (Pflicht bei rest = 'kuerzung') */
+    reason?: string | null;
     actor: string;
   },
 ) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date)) throw new BusinessError('Zahlungsdatum fehlt');
   if (p.amount < 0n) throw new BusinessError('Betrag darf nicht negativ sein');
+  if (p.rest === 'kuerzung' && !p.reason?.trim())
+    throw new BusinessError('Bitte den Grund der Kürzung angeben (z. B. „Kunde zieht Mängel ab“)');
+  const restMethod = p.rest === 'kuerzung' ? 'kuerzung' : 'skonto';
+  const restRef = p.rest === 'kuerzung' ? `Kürzung: ${p.reason!.trim()}`.slice(0, 200) : 'Rest als Skonto';
   const pid = (k: string) => idFrom(`${p.batchId}:${p.invoiceId}:${k}`);
   if (!p.legacy) {
     const [o] = await sql<{ open_cents: bigint }[]>`
@@ -387,15 +394,15 @@ export async function settleOpenItem(
         p.actor,
       );
     const rest = o.open_cents - p.amount;
-    if (p.rest === 'skonto' && rest > 0n)
+    if (p.rest !== 'offen' && rest > 0n)
       await bookPayment(
         sql,
         pid('skonto'),
         p.invoiceId,
-        { amount: rest as Cents, paid_on: p.date, method: 'skonto', reference: 'Rest als Skonto' },
+        { amount: rest as Cents, paid_on: p.date, method: restMethod, reference: restRef },
         p.actor,
       );
-    return { paid: p.amount, skonto: p.rest === 'skonto' ? rest : 0n };
+    return { paid: p.amount, skonto: p.rest !== 'offen' ? rest : 0n };
   }
   return sql.begin(async (tx) => {
     await tx`select 1 from app.legacy_invoices where id = ${p.invoiceId} for update`;
@@ -410,10 +417,10 @@ export async function settleOpenItem(
     if (p.amount > 0n)
       await tx`insert into app.legacy_payments (id, invoice_id, amount_cents, paid_on, method, reference, created_by)
                values (${pid('zahlung')}, ${p.invoiceId}, ${p.amount}, ${p.date}, 'zahlung', ${p.reference}, ${p.actor})`;
-    if (p.rest === 'skonto' && rest > 0n)
+    if (p.rest !== 'offen' && rest > 0n)
       await tx`insert into app.legacy_payments (id, invoice_id, amount_cents, paid_on, method, reference, created_by)
-               values (${pid('skonto')}, ${p.invoiceId}, ${rest}, ${p.date}, 'skonto', 'Rest als Skonto', ${p.actor})`;
-    if (rest === 0n || p.rest === 'skonto')
+               values (${pid('skonto')}, ${p.invoiceId}, ${rest}, ${p.date}, ${restMethod}, ${restRef}, ${p.actor})`;
+    if (rest === 0n || p.rest !== 'offen')
       await tx`update app.legacy_invoices set paid = true, paid_at = ${p.date}, paid_marked_by = ${p.actor},
                       paid_part_cents = paid_part_cents + ${p.amount}
                 where id = ${p.invoiceId}`;
@@ -422,7 +429,7 @@ export async function settleOpenItem(
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
              values (${p.actor}, 'payment', 'legacy_invoice', ${p.invoiceId},
                      ${tx.json({ amount_cents: String(p.amount), rest: p.rest, rest_cents: String(rest) })})`;
-    return { paid: p.amount, skonto: p.rest === 'skonto' ? rest : 0n };
+    return { paid: p.amount, skonto: p.rest !== 'offen' ? rest : 0n };
   });
 }
 

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { getTender, linkOffer } from '../services/tenders.js';
 import { BusinessError } from '../services/errors.js';
-import { getCustomer, getSite, listCustomers, listSites } from '../services/masterdata.js';
+import { getCustomer, getSite, listCustomers, listServiceTypes, listSites } from '../services/masterdata.js';
 import {
   type OfferRow,
   type OfferStatus,
@@ -91,7 +91,8 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
   // Angebot schreiben oder Ausschreibung vormerken (Fristen, Link).
   app.get('/angebote/neu', async (c) => {
     const [customers, recent] = await Promise.all([
-      listCustomers(sql).then((l) => l.filter((x) => x.active)),
+      // auch ehemalige Kunden (Ahmed 15.10.: „ehemaliger Kunde wird nicht ausgewählt“)
+      listCustomers(sql),
       recentCustomers(sql, c.get('actor'), 12),
     ]);
     return page(
@@ -117,7 +118,9 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
                 />
                 <datalist id="kunden-liste">
                   {customers.map((x) => (
-                    <option value={`${x.customer_no} · ${x.name}`} />
+                    <option value={`${x.customer_no} · ${x.name}`}>
+                      {x.active ? '' : 'ehemaliger Kunde'}
+                    </option>
                   ))}
                 </datalist>
               </div>
@@ -165,8 +168,8 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
       const term = q.kunde_suche.split(' · ')[0]!.trim();
       const [hit] = await sql<{ id: string }[]>`
         select id from app.customers
-         where active and (customer_no = ${term} or name ilike ${q.kunde_suche.trim()} or name ilike ${`%${term}%`})
-         order by (customer_no = ${term}) desc, name limit 2`;
+         where (customer_no = ${term} or name ilike ${q.kunde_suche.trim()} or name ilike ${`%${term}%`})
+         order by (customer_no = ${term}) desc, active desc, name limit 2`;
       customerId = hit?.id ?? null;
     }
     if (!customerId)
@@ -200,7 +203,7 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
       if (tender.customer_id) o.customer_id = tender.customer_id;
     }
     const [customers, recent] = await Promise.all([
-      listCustomers(sql).then((l) => l.filter((x) => x.active)),
+      listCustomers(sql),
       data ? Promise.resolve([]) : recentCustomers(sql, c.get('actor')),
     ]);
     const sites = o.customer_id ? await listSites(sql, o.customer_id) : [];
@@ -218,6 +221,7 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
         isNew={!data}
         recent={recent}
         tenderId={tender?.id ?? null}
+        types={await listServiceTypes(sql)}
       />,
     );
   });

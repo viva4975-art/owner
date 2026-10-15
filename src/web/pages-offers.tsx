@@ -17,7 +17,7 @@ import {
 import { centsToInput, milliToInput } from './forms.js';
 import { Icon } from './icons.js';
 import { PageHead, type Tab, Tabs, dateDe, euro, anz } from './layout.js';
-import { type EditorLine, LineEditor } from './pages-invoices.js';
+import { type EditorLine, LineEditor, type ServiceTypeOption } from './pages-invoices.js';
 
 export type OfferListRow = OfferRow & {
   customer_name: string;
@@ -340,6 +340,7 @@ export const toOfferEditorLine = (l: OfferLineRow): EditorLine => ({
   vat: String(l.vat_rate_bp),
   src: '',
   rec: String((l.recurring ? 1 : 0) + (l.alternative ? 2 : 0)),
+  stype: l.service_type_id ?? '',
 });
 
 export const OfferEditor: FC<{
@@ -351,9 +352,11 @@ export const OfferEditor: FC<{
   sites: Site[];
   isNew: boolean;
   tenderId?: string | null;
-}> = ({ id, o, lines, customers, sites, isNew, recent = [], tenderId = null }) => {
-  const prospects = customers.filter((c) => c.status === 'interessent');
-  const clients = customers.filter((c) => c.status !== 'interessent');
+  types?: ServiceTypeOption[];
+}> = ({ id, o, lines, customers, sites, isNew, recent = [], tenderId = null, types }) => {
+  const prospects = customers.filter((c) => c.status === 'interessent' && c.active);
+  const clients = customers.filter((c) => c.status !== 'interessent' && c.active);
+  const former = customers.filter((c) => !c.active);
   return (
     <>
       <PageHead
@@ -380,6 +383,15 @@ export const OfferEditor: FC<{
               {prospects.length > 0 && (
                 <optgroup label="Interessenten">
                   {prospects.map((c) => (
+                    <option value={c.id} selected={c.id === o.customer_id}>
+                      {c.customer_no} · {c.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {former.length > 0 && (
+                <optgroup label="Ehemalige Kunden">
+                  {former.map((c) => (
                     <option value={c.id} selected={c.id === o.customer_id}>
                       {c.customer_no} · {c.name}
                     </option>
@@ -507,7 +519,7 @@ export const OfferEditor: FC<{
             (Monatslauf rechnet sie dann automatisch ab). <b>Einmalig</b> = Sonderleistung, z. B.
             Grundreinigung.
           </div>
-          <LineEditor lines={lines} recurring />
+          <LineEditor lines={lines} recurring types={types} />
           <div style="margin:14px 0 0">
             <label for="closing_text">Schlusstext</label>
             <textarea id="closing_text" name="closing_text">

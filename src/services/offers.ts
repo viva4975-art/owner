@@ -66,6 +66,7 @@ export interface OfferLineRow {
   recurring: boolean;
   /** Alternativposition: wird angeboten, zählt aber nicht zur Summe und wird nicht übernommen */
   alternative: boolean;
+  service_type_id: string | null;
 }
 
 export interface OfferInput {
@@ -180,6 +181,7 @@ export async function saveOffer(sql: Sql, id: string, input: OfferInput, actor: 
         vat_rate_bp: l.vatRate,
         recurring: input.lines[i]!.recurring,
         alternative: input.lines[i]!.alternative ?? false,
+        service_type_id: input.lines[i]!.serviceTypeId ?? null,
       })),
     )}`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id) values (${actor}, ${cur ? 'update' : 'create'}, 'offer', ${id})`;
@@ -269,6 +271,7 @@ export async function copyOffer(
         vatRate: l.vat_rate_bp,
         recurring: l.recurring,
         alternative: l.alternative,
+        serviceTypeId: l.service_type_id ?? null,
       })),
       ...(opts.followUp ? { predecessorId: id, submissionDeadline: null } : {}),
     },
@@ -314,10 +317,10 @@ export async function acceptIntoSite(
       ];
       const res = await tx`
         insert into app.site_services (id, site_id, kind, description, unit_code, quantity_milli, unit_price_cents,
-                                       vat_rate_bp, valid_from, note, sort_order)
+                                       vat_rate_bp, valid_from, note, sort_order, service_type_id)
         values (${id}, ${siteId}, ${l.recurring ? 'monthly_flat' : 'special'}, ${l.description}, ${l.unit_code},
                 ${l.quantity_milli}, ${l.unit_price_cents}, ${l.vat_rate_bp}, ${validFrom},
-                ${`aus Angebot ${data.offer.number}`}, ${l.position})
+                ${`aus Angebot ${data.offer.number}`}, ${l.position}, ${l.service_type_id ?? null})
         on conflict (id) do nothing`;
       n += res.count;
     }
@@ -356,6 +359,7 @@ export async function offerToInvoiceDraft(sql: Sql, offerId: string, actor: stri
           unitCode: l.unit_code,
           unitPrice: l.unit_price_cents as Cents,
           vatRate: l.vat_rate_bp,
+          serviceTypeId: l.service_type_id ?? null,
         })),
     },
     actor,

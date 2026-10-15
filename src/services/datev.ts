@@ -197,9 +197,9 @@ export async function collectBookings(
         from app.payments p join app.invoices i on i.id = p.invoice_id join app.customers c on c.id = i.customer_id
        where p.paid_on between ${f.from} and ${f.to} order by p.paid_on`;
     for (const p of pays) {
-      if (p.method === 'skonto' || p.method === 'verrechnung') {
+      if (p.method === 'skonto' || p.method === 'verrechnung' || p.method === 'kuerzung') {
         warnings.push(
-          `${p.method === 'skonto' ? 'Skonto-Abzug' : 'Verrechnung'} ${p.number} (${num(p.amount_cents)} €): bitte manuell buchen (USt-Korrektur § 17 UStG).`,
+          `${p.method === 'skonto' ? 'Skonto-Abzug' : p.method === 'kuerzung' ? 'Kürzung durch Kunden' : 'Verrechnung'} ${p.number} (${num(p.amount_cents)} €): bitte manuell buchen (USt-Korrektur § 17 UStG).`,
         );
         continue;
       }

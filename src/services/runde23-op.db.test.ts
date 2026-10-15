@@ -53,4 +53,26 @@ describe.skipIf(!available)('Runde 23: Offene Posten – Teilzahlung und Skonto 
     ).rejects.toThrow(/höher/);
     await expect(sql`delete from app.legacy_payments`).rejects.toThrow();
   });
+  it('Kürzung: Rest wird mit Grund ausgebucht (ohne Beleg an den Kunden), ohne Grund abgelehnt', async () => {
+    const c = await legacy('9700003', 20000n);
+    const base = { batchId: randomUUID(), legacy: true, date: today, reference: null, actor: 't' };
+    await expect(
+      settleOpenItem(sql, { ...base, invoiceId: c, amount: 15000n, rest: 'kuerzung' }),
+    ).rejects.toThrow(/Grund/);
+    await settleOpenItem(sql, {
+      ...base,
+      invoiceId: c,
+      amount: 15000n,
+      rest: 'kuerzung',
+      reason: 'Mängelabzug',
+    });
+    const rows = await sql<{ method: string; amount_cents: bigint }[]>`
+      select method, amount_cents from app.legacy_payments where invoice_id = ${c} order by amount_cents desc`;
+    expect(rows.map((x) => [x.method, x.amount_cents])).toEqual([
+      ['zahlung', 15000n],
+      ['kuerzung', 5000n],
+    ]);
+    const [pc] = await sql<{ paid: boolean }[]>`select paid from app.legacy_invoices where id = ${c}`;
+    expect(pc!.paid).toBe(true);
+  });
 });

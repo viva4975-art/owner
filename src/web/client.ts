@@ -235,6 +235,9 @@ export const CLIENT_JS = String.raw`
   }
   var openBox = null;
   function closeOpen() { if (openBox) { openBox.close(); openBox = null; } }
+  // beim Scrollen/Größe ändern mitwandern (nicht beim Scrollen in der Liste selbst)
+  window.addEventListener('scroll', function (e) { if (openBox && openBox.place && !(e.target && e.target.closest && e.target.closest('.cbx-pop'))) openBox.place(); }, true);
+  window.addEventListener('resize', function () { if (openBox && openBox.place) openBox.place(); });
   document.addEventListener('mousedown', function (e) { if (openBox && !openBox.wrap.contains(e.target)) closeOpen(); });
   function combo(sel) {
     if (sel.multiple || sel.dataset.combo === 'done' || sel.hasAttribute('data-nosearch') || sel.closest('[data-nosearch]') || sel.closest('template')) return;
@@ -334,12 +337,22 @@ export const CLIENT_JS = String.raw`
       input.value = initial || '';
       render();
       // Liste passt sich dem Platz im Fenster an: unten zu eng → nach oben aufklappen, sonst eigene Scrollleiste
+      place();
+      input.focus({ preventScroll: true });
+      openBox = { wrap: wrap, close: close, place: place };
+    }
+    // Liste „schwebt“ über allem (position:fixed) – sonst schneiden Tabellen mit Scrollbereich sie ab (Ahmed 15.10.)
+    function place() {
       var r = wrap.getBoundingClientRect(), below = window.innerHeight - r.bottom - 12, above = r.top - 12;
       var up = below < 260 && above > below;
       pop.classList.toggle('up', up);
+      pop.style.position = 'fixed';
+      pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - Math.max(r.width, 260) - 8)) + 'px';
+      pop.style.width = Math.max(r.width, 260) + 'px';
+      pop.style.right = 'auto';
+      if (up) { pop.style.top = 'auto'; pop.style.bottom = (window.innerHeight - r.top + 4) + 'px'; }
+      else { pop.style.bottom = 'auto'; pop.style.top = (r.bottom + 4) + 'px'; }
       list.style.maxHeight = Math.max(140, Math.min(320, (up ? above : below) - 64)) + 'px';
-      input.focus({ preventScroll: true });
-      openBox = { wrap: wrap, close: close };
     }
     function close() { if (pop) pop.hidden = true; wrap.classList.remove('open'); if (openBox && openBox.wrap === wrap) openBox = null; }
     btn.addEventListener('click', function () { if (pop && !pop.hidden) close(); else open(''); });

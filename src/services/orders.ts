@@ -335,6 +335,7 @@ export async function orderFromOffer(sql: Sql, offerId: string, actor: string): 
       vat_rate_bp: number;
       recurring: boolean;
       alternative: boolean;
+      service_type_id: string | null;
     }[]
   >`
     select * from app.offer_lines where offer_id = ${offerId} order by position`;
@@ -358,6 +359,7 @@ export async function orderFromOffer(sql: Sql, offerId: string, actor: string): 
           unitCode: l.unit_code,
           unitPrice: l.unit_price_cents as Cents,
           vatRate: l.vat_rate_bp,
+          serviceTypeId: l.service_type_id,
         })),
       expectedVersion: null,
     },

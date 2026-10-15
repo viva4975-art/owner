@@ -605,8 +605,9 @@ export function registerModuleRoutes(ctx: Ctx) {
       const m = /^pay_([0-9a-f-]{36})$/.exec(k);
       if (!m) continue;
       const raw = String(b[k] ?? '').trim();
-      const rest = b[`rest_${m[1]}`] === 'skonto' ? 'skonto' : 'offen';
-      if (!raw && rest !== 'skonto') continue;
+      const rv = b[`rest_${m[1]}`];
+      const rest = rv === 'skonto' ? 'skonto' : rv === 'kuerzung' ? 'kuerzung' : 'offen';
+      if (!raw && rest === 'offen') continue;
       let amount: bigint;
       try {
         amount = raw ? parseEuro(raw) : 0n;
@@ -623,6 +624,7 @@ export function registerModuleRoutes(ctx: Ctx) {
           date,
           rest,
           reference,
+          reason: typeof b[`grund_${m[1]}`] === 'string' ? String(b[`grund_${m[1]}`]) : null,
           actor: c.get('actor'),
         });
         n++;
@@ -853,7 +855,14 @@ export function registerModuleRoutes(ctx: Ctx) {
                                     <select name={`rest_${i.invoice_id}`} aria-label={`Rest ${i.number}`}>
                                       <option value="offen">Rest bleibt offen</option>
                                       <option value="skonto">Rest als Skonto</option>
+                                      <option value="kuerzung">Rest als Kürzung ausbuchen</option>
                                     </select>
+                                    <input
+                                      name={`grund_${i.invoice_id}`}
+                                      placeholder="Grund der Kürzung (bei Kürzung Pflicht)"
+                                      aria-label={`Grund Kürzung ${i.number}`}
+                                      style="min-width:220px"
+                                    />
                                     {i.legacy && (
                                       <input type="hidden" name={`lg_${i.invoice_id}`} value="1" />
                                     )}

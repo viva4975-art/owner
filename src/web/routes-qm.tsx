@@ -170,8 +170,10 @@ export const QmLayout: FC<{
   path: string;
   title: string;
   flash: { ok?: string; err?: string };
+  /** mit Mitarbeiter verknüpft → „Meine Zeit“ im Menü */
+  ownTime?: boolean;
   children?: Child;
-}> = ({ path, title, flash, children }) => (
+}> = ({ path, title, flash, ownTime = false, children }) => (
   <html lang="de">
     <head>
       <meta charset="utf-8" />
@@ -183,6 +185,19 @@ export const QmLayout: FC<{
       <script src="/m/push.js" defer />
     </head>
     <body class="shellbar mshell">
+      {/* Kopfzeile mit Logo und „Büro“-Menü wie in der Mitarbeiter-App (Ahmed 15.10.); nicht während Audit/Personalbogen */}
+      {!/^\/qm\/(audit|personalbogen)\//.test(path) && (
+        <header>
+          <a href="/qm" aria-label="Start">
+            <img src="/static/logo-transparent.png" alt="Viva-Deluxe" width="149" height="30" />
+          </a>
+          <span class="sp" />
+          <AppSwitch
+            active={/^\/qm\/(qualitaet|audit|tickets)/.test(path) ? 'qualitaet' : 'verwaltung'}
+            ownTime={ownTime}
+          />
+        </header>
+      )}
       <main>
         {flash.ok && (
           <div class="flash ok" role="status">
@@ -253,11 +268,12 @@ const dayMonth = (d: string) =>
 
 export function registerQmRoutes({ app, deps, back, page }: Ctx) {
   const { sql } = deps;
-  const render = (c: Context<AppEnv>, title: string, body: Child) =>
+  const render = async (c: Context<AppEnv>, title: string, body: Child) =>
     c.html(
       '<!doctype html>' +
         String(
           <QmLayout
+            ownTime={!!(await linkedEmployee(sql, c.get('user').id))}
             path={c.req.query('start') === '1' ? '/qm/qualitaet' : c.req.path}
             title={title}
             flash={{ ok: c.req.query('ok') ?? '', err: c.req.query('fehler') ?? '' }}
@@ -345,10 +361,11 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
       c,
       'Verwaltung',
       <>
-        <AppSwitch active="verwaltung" ownTime={!!(await linkedEmployee(sql, c.get('user').id))} />
-        <div class="hello">
-          {hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend'}
-          <b>{first.charAt(0).toUpperCase() + first.slice(1)}!</b>
+        <div class="qm-hellorow">
+          <div class="hello">
+            {hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend'}
+            <b>{first.charAt(0).toUpperCase() + first.slice(1)}!</b>
+          </div>
         </div>
         <div class="vw-stats">
           {(
@@ -487,10 +504,11 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
       c,
       'Qualität',
       <>
-        <AppSwitch active="qualitaet" ownTime={!!(await linkedEmployee(sql, c.get('user').id))} />
-        <div class="hello">
-          {hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend'}
-          <b>{first.charAt(0).toUpperCase() + first.slice(1)}!</b>
+        <div class="qm-hellorow">
+          <div class="hello">
+            {hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend'}
+            <b>{first.charAt(0).toUpperCase() + first.slice(1)}!</b>
+          </div>
         </div>
         {audits.length === 0 ? (
           <div class="qm-empty">

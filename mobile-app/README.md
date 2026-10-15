@@ -53,7 +53,7 @@ Kamera-Berechtigung eintragen:
 - iOS `ios/App/App/Info.plist`: `NSCameraUsageDescription` = „Zum Scannen des QR-Codes am Objekt“.
 - Android: wird vom Scanner-Plugin ergänzt.
 
-App-Icons: `assets/web/app-icon-512.png` (Erzeugung: `node scripts/app-icons.mjs`), z. B. mit
+App-Icons: `assets/web/app-icon-512.png` (Erzeugung: `python3 -I scripts/app-icons.py`), z. B. mit
 `npx @capacitor/assets generate` auf alle Größen bringen.
 
 ## Sicherheit

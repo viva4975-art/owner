@@ -92,14 +92,20 @@ await ol.fill('#next2', 'OlPasswort2026');
 await Promise.all([ol.waitForNavigation(), ol.click('button:has-text("Passwort speichern")')]);
 await ol.goto(B + '/app');
 check('erneut öffnen → zuerst die eigene Zeit', new URL(ol.url()).pathname === '/m', ol.url());
-check('Umschalter Meine Zeit / Qualität / Verwaltung', (await ol.locator('nav.appswitch a').count()) === 3);
-await ol.click('nav.appswitch a:has-text("Verwaltung")');
+check(
+  'Menü „Büro“ oben mit Meine Zeit / Qualität / Verwaltung',
+  (await ol.locator('header details.appswitch .menu a').count()) === 3,
+);
+await ol.click('details.appswitch summary');
+await ol.click('details.appswitch a:has-text("Verwaltung")');
 await ol.waitForLoadState();
 check(
   'Verwaltung mit Bereichen',
   (await ol.locator('.vw-sec').count()) >= 2 && (await ol.locator('.vw-stats .vs').count()) === 5,
 );
-await ol.click('nav.appswitch a:has-text("Qualität")');
+check('Logo in der Verwaltung', (await ol.locator('header img[alt="Viva-Deluxe"]').count()) === 1);
+await ol.click('details.appswitch summary');
+await ol.click('details.appswitch a:has-text("Qualität")');
 await ol.waitForLoadState();
 check('Qualität', new URL(ol.url()).pathname === '/qm/qualitaet');
 await ol.goto(B + '/m');

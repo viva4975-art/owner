@@ -323,7 +323,7 @@ Testadresse.
   - Tests: 159 Unit-/DB-Tests, Browser-Tests 147 Prüfungen.
 - 2026-10-03: Mitarbeiter-App und Dokumente digital unterschreiben:
   - `/m` ist installierbare Web-App (Manifest, Service Worker nur für Offline-Hinweis und Schrift/Logo – keine
-    persönlichen Daten im Cache, Icons `assets/web/app-icon-*.png` via `scripts/app-icons.mjs`). Android:
+    persönlichen Daten im Cache, Icons `assets/web/app-icon-*.png` via `scripts/app-icons.py`). Android:
     „App installieren“, iPhone: Safari → Teilen → „Zum Home-Bildschirm“.
   - Knopf „QR-Code am Objekt scannen“: nativ in der App, im Browser per BarcodeDetector (sonst Kamera-App).
   - `mobile-app/`: Capacitor-Hülle für App Store / Google Play (lädt `/m` vom Live-Server, QR-Scanner- und
@@ -3045,4 +3045,19 @@ Testadresse.
   `writeOffPart` entfernt. Bleibt: „Rest als Kürzung ausbuchen“ in den Offenen Posten mit KB-Beleg (DATEV-Buchung, ZIP).
   **Steuerlich:** Die Korrektur sollte dem Kunden zugehen, damit er seine Vorsteuer berichtigt (§ 17 Abs. 1 UStG).
   Test in `legacy-cancel.db.test.ts`.
-
+- 2026-10-15: App (Ahmed, 5 Punkte + 2 Nachträge):
+  - **Zeit bestätigen in zwei Schritten:** „Zeiten bestätigen“ öffnet die Rückfrage „Stimmt die Zeit?“ (Tag, von–bis,
+    Objekt) mit „Ja, stimmt – bestätigen“ oder „Nein, Zeit bearbeiten“ (Beginn/Ende/Pause → Nachtrag an die
+    Objektleitung). Separater Link „Zeit anpassen“ entfällt.
+  - **Schnellknöpfe oben weg** (Urlaub/Krank, Dokumente); Leiste unten jetzt Übersicht · Kalender · Zeiten · Urlaub ·
+    Dokumente.
+  - **Büro-Menü statt Umschalter-Leiste:** Knopf „Büro ▾“ (bzw. „Verwaltung ▾“/„Qualität ▾“) oben rechts mit Meine Zeit /
+    Qualität / Verwaltung. Verwaltung und Qualität haben jetzt dieselbe Kopfzeile mit Logo wie die Mitarbeiter-App
+    (nicht während Audit/Personalbogen).
+  - **PDFs in der Android-App** (QK-Auswertungsbericht, Prüfprotokoll, Rechnungen, Arbeitsscheine …): Die WebView
+    kann PDFs nicht anzeigen → beim Antippen passierte nichts. `MainActivity` lädt sie jetzt mit der Anmeldung der App
+    (DownloadManager, App-eigener Ordner, keine Speicher-Berechtigung) und öffnet sie im PDF-Programm. **Braucht den
+    neuen App-Build (versionCode 4).** Im Browser/iPhone öffnen sie wie bisher.
+  - **App-Icon mit Firmenlogo** (Globus mit „VD“ aus dem Briefpapier, weiß hinterlegt): `python3 -I scripts/app-icons.py`
+    erzeugt PWA-Icons, `assets/web/app-icon-1024.png` / `mobile-app/resources/icon.png` (App Store, ohne Transparenz) und
+    die Android-Startsymbole (adaptiv, ohne Inset). Ersetzt `scripts/app-icons.mjs`.

@@ -105,7 +105,7 @@ check('nach Login zurück am Objekt', (await m.locator('h1').innerText()).includ
 // ---------- 3. Soll als Ist bestätigen ----------
 console.log('3. Soll als Ist (vor dem Stempeln)');
 await m.goto(B + '/m');
-const confirmCards = m.locator('form[action="/m/bestaetigen"]');
+const confirmCards = m.locator('details.cfm');
 check(
   'heutiger Einsatz (00:05–00:35) zu bestätigen',
   (await confirmCards.count()) >= 1,
@@ -114,13 +114,14 @@ check(
 await m.screenshot({ path: `${out}/z5-handy-start.png`, fullPage: true });
 if ((await confirmCards.count()) > 0) {
   const card = confirmCards.first();
-  await card.locator('button').click();
+  await card.locator('summary').first().click();
   check(
-    'ohne Häkchen nicht absendbar',
-    (await m.url()).endsWith('/m') || !(await flash(m)).includes('bestätigt'),
+    'Rückfrage „Stimmt die Zeit?“',
+    (await card.locator('.cfm-q').innerText()).includes('Stimmt die Zeit?'),
   );
-  // anders gearbeitet: Zeit anpassen (geht als Nachtrag an die Objektleitung)
-  const adj = m.locator('details.adjust').first();
+  check('kein separater Link „Zeit anpassen“', (await m.locator('text=Zeit anpassen').count()) === 0);
+  // nein → Zeit bearbeiten (geht als Nachtrag an die Objektleitung)
+  const adj = card.locator('details.adjust');
   await adj.locator('summary').click();
   await adj.locator('input[name=start]').fill('00:10');
   await adj.locator('input[name=end]').fill('00:40');
@@ -151,11 +152,9 @@ check('ausgestempelt', (await flash(m)).includes('Ausgestempelt'), await flash(m
 // ---------- 4. Nachtrag + Urlaub ----------
 console.log('4. Nachtrag und Urlaub');
 const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
-check(
-  'Nachtragen nur noch über die Objektleitung',
-  (await m.locator('.quick a[href="/m/nachtrag"]').count()) === 0,
-);
-await m.click('.quick a[href="/m/abwesenheit"]');
+check('keine Schnellknöpfe oben (Leiste unten reicht)', (await m.locator('.quick').count()) === 0);
+check('Dokumente in der Leiste unten', (await m.locator('.tabbar a[href="/m/dokumente"]').count()) === 1);
+await m.click('.tabbar a[href="/m/abwesenheit"]');
 await m.fill('#from', '2026-12-21');
 await m.fill('#to', '2026-12-23');
 await nav(m, 'button:has-text("Absenden")');
@@ -165,7 +164,7 @@ await m.screenshot({ path: `${out}/z6-handy-urlaub.png`, fullPage: true });
 
 // Sprache
 await m.goto(B + '/m/sprache?l=ro&next=/m');
-check('Rumänisch', (await m.locator('.quick a:has-text("Documente")').count()) === 1);
+check('Rumänisch', (await m.locator('.tabbar a:has-text("Documente")').count()) === 1);
 await m.screenshot({ path: `${out}/z7-handy-rumaenisch.png`, fullPage: true });
 await m.goto(B + '/m/sprache?l=de&next=/m');
 

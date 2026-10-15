@@ -17,6 +17,9 @@ export const isLang = (l: unknown): l is Lang => typeof l === 'string' && l in L
 type Dict = Record<string, string>;
 
 const de: Dict = {
+  confirm_q: 'Stimmt die Zeit?',
+  confirm_yes: 'Ja, stimmt – bestätigen',
+  confirm_edit: 'Nein, Zeit bearbeiten',
   adjust_time: 'Zeit anpassen',
   adjust_hint: 'Anders gearbeitet? Zeit ändern und senden – die Objektleitung gibt sie frei.',
   adjust_send: 'Geänderte Zeit senden',
@@ -200,6 +203,9 @@ const de: Dict = {
 };
 
 const en: Dict = {
+  confirm_q: 'Is this time correct?',
+  confirm_yes: 'Yes, correct – confirm',
+  confirm_edit: 'No, edit time',
   adjust_time: 'Adjust time',
   adjust_hint: 'Worked differently? Change the time and send – your site manager approves it.',
   adjust_send: 'Send changed time',
@@ -383,6 +389,9 @@ const en: Dict = {
 };
 
 const ro: Dict = {
+  confirm_q: 'Ora este corectă?',
+  confirm_yes: 'Da, corect – confirm',
+  confirm_edit: 'Nu, modific ora',
   adjust_time: 'Ajustează ora',
   adjust_hint: 'Ai lucrat altfel? Modifică ora și trimite – responsabilul de obiectiv o aprobă.',
   adjust_send: 'Trimite ora modificată',
@@ -566,6 +575,9 @@ const ro: Dict = {
 };
 
 const tr: Dict = {
+  confirm_q: 'Saat doğru mu?',
+  confirm_yes: 'Evet, doğru – onayla',
+  confirm_edit: 'Hayır, saati düzenle',
   adjust_time: 'Saati düzelt',
   adjust_hint: 'Farklı mı çalıştın? Saati değiştir ve gönder – sorumlu onaylar.',
   adjust_send: 'Değişen saati gönder',
@@ -749,6 +761,9 @@ const tr: Dict = {
 };
 
 const pl: Dict = {
+  confirm_q: 'Czy czas się zgadza?',
+  confirm_yes: 'Tak, zgadza się – potwierdź',
+  confirm_edit: 'Nie, edytuj czas',
   adjust_time: 'Popraw czas',
   adjust_hint: 'Pracowałeś inaczej? Zmień czas i wyślij – kierownik obiektu zatwierdzi.',
   adjust_send: 'Wyślij zmieniony czas',
@@ -932,6 +947,9 @@ const pl: Dict = {
 };
 
 const hr: Dict = {
+  confirm_q: 'Je li vrijeme točno?',
+  confirm_yes: 'Da, točno – potvrdi',
+  confirm_edit: 'Ne, uredi vrijeme',
   adjust_time: 'Promijeni vrijeme',
   adjust_hint: 'Radio si drugačije? Promijeni vrijeme i pošalji – voditelj objekta odobrava.',
   adjust_send: 'Pošalji promijenjeno vrijeme',
@@ -1115,6 +1133,9 @@ const hr: Dict = {
 };
 
 const bg: Dict = {
+  confirm_q: 'Часът верен ли е?',
+  confirm_yes: 'Да, верен е – потвърди',
+  confirm_edit: 'Не, промени часа',
   adjust_time: 'Промени часа',
   adjust_hint: 'Работил си различно? Промени часа и изпрати – отговорникът одобрява.',
   adjust_send: 'Изпрати променения час',

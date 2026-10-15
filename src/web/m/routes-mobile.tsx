@@ -165,13 +165,16 @@ main{padding-bottom:calc(110px + env(safe-area-inset-bottom,0px))}
 .shift.open{border:2px solid #f0c8d4}
 .shift .confirm{margin-top:10px;padding-top:10px;border-top:1px solid #f0e4e8}
 .shift .confirm .chk label{font-size:15px}
-.adjust{margin-top:6px}.adjust>summary{color:#7D1435;font-weight:600;font-size:15px;padding:8px 0;cursor:pointer}.adjust form{margin-top:4px}
+.adjust{margin-top:8px}.adjust form{margin-top:8px}
+.cfm>summary{list-style:none;text-align:center}.cfm>summary::-webkit-details-marker,.adjust>summary::-webkit-details-marker{display:none}.cfm[open]>summary{display:none}
+.adjust>summary{list-style:none;text-align:center;cursor:pointer}.adjust[open]>summary{display:none}
+.cfm-q{background:#fbf6f8;border:1px solid #eadfe3;border-radius:12px;padding:12px}.cfm-q>b{display:block;font-size:17px;color:#7D1435}.cfm-q>p{margin:6px 0 10px;font-size:15px;line-height:1.4}
 button.link{background:none;border:0;font:inherit;cursor:pointer;text-decoration:underline}
 .fab{position:fixed;right:20px;bottom:calc(92px + env(safe-area-inset-bottom,0px));width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#9b2a45,#7D1435);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 24px rgba(125,20,53,.35);z-index:20;text-decoration:none}
 .fab svg{width:30px;height:30px}
-.tabbar{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.96);border-top:1px solid #eadfe3;display:grid;grid-template-columns:repeat(4,1fr);padding:8px 6px calc(8px + env(safe-area-inset-bottom,0px));z-index:15;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.tabbar{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.96);border-top:1px solid #eadfe3;display:grid;grid-template-columns:repeat(5,1fr);padding:8px 4px calc(8px + env(safe-area-inset-bottom,0px));z-index:15;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
 .tabbar a{display:flex;flex-direction:column;align-items:center;gap:3px;color:#5b4650;text-decoration:none;font-size:12.5px;font-weight:550}
-.tabbar a i{display:flex;align-items:center;justify-content:center;width:56px;height:30px;border-radius:999px}
+.tabbar a i{display:flex;align-items:center;justify-content:center;width:48px;height:30px;border-radius:999px}
 .tabbar a svg{width:22px;height:22px}
 .tabbar a.on{color:#7D1435}.tabbar a.on i{background:#f3dfe6}
 .cal{background:rgba(255,255,255,.82);border-radius:20px;padding:14px 12px 10px;box-shadow:0 1px 2px rgba(80,20,40,.05),0 8px 24px rgba(80,20,40,.06)}
@@ -214,7 +217,7 @@ h2{font-size:16px}
 .shift .big{min-height:46px;font-size:16px;border-radius:12px}
 .shift .confirm{margin-top:8px;padding-top:8px}.shift .confirm .chk{margin:6px 0 10px}.shift .confirm .chk label{font-size:14px;line-height:1.35}
 .shift .confirm .chk input{width:22px;height:22px}
-.shift details summary{font-size:14px}
+.shift details summary{font-size:14px}.shift .cfm summary.big,.shift .adjust summary.big{font-size:17px}
 `;
 
 // Formulare robust absenden: bei Funkloch Meldung statt Fehlerseite; gleiche ID → nichts doppelt.
@@ -346,7 +349,7 @@ const MLayout: FC<{
           {lang.toUpperCase()}
         </a>
         {me?.office ? (
-          <a href="/qm">Büro</a>
+          <AppSwitch active="zeit" />
         ) : (
           me && (
             <form method="post" action="/m/abmelden" style="margin:0">
@@ -356,7 +359,6 @@ const MLayout: FC<{
         )}
       </header>
       <main>
-        {me?.office && <AppSwitch active="zeit" />}
         {flash.ok && (
           <div class="flash ok" role="status">
             {flash.ok}
@@ -380,6 +382,7 @@ const MLayout: FC<{
               ['/m/kalender', 'cal', 'nav_calendar'],
               ['/m/stundenzettel', 'times', 'nav_times'],
               ['/m/abwesenheit', 'sun', 'nav_absence'],
+              ['/m/dokumente', 'doc', 'q_docs'],
             ] as const
           ).map(([href, ic, key]) => (
             <a href={href} class={(href === '/m' ? path === '/m' : path.startsWith(href)) ? 'on' : ''}>
@@ -639,70 +642,63 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       };
       date: string;
     };
-  }> = ({ lang, s }) => (
-    <>
-      <form method="post" action="/m/bestaetigen" class="confirm" data-net>
-        <input type="hidden" name="plan_id" value={s.plan.id} />
-        <input type="hidden" name="date" value={s.date} />
-        <div class="chk">
-          <input type="checkbox" id={`c-${s.plan.id}-${s.date}`} name="confirm" value="1" required />
-          <label for={`c-${s.plan.id}-${s.date}`}>
+  }> = ({ lang, s }) => {
+    const k = `${s.plan.id}-${s.date}`;
+    return (
+      // Zwei Schritte (Ahmed 15.10.): „Zeiten bestätigen“ → Rückfrage „Stimmt die Zeit?“ → Ja / Bearbeiten
+      <details class="confirm cfm">
+        <summary class="big go">✓ {t(lang, 'confirm_btn')}</summary>
+        <div class="cfm-q">
+          <b>{t(lang, 'confirm_q')}</b>
+          <p>
             {t(lang, 'confirm_text', {
               day: dayLabel(lang, s.date),
               from: s.plan.start_time,
               to: s.plan.end_time,
               site: s.plan.site_name,
             })}
-          </label>
+          </p>
+          <form method="post" action="/m/bestaetigen" data-net>
+            <input type="hidden" name="plan_id" value={s.plan.id} />
+            <input type="hidden" name="date" value={s.date} />
+            <input type="hidden" name="confirm" value="1" />
+            <button class="big go">{t(lang, 'confirm_yes')}</button>
+          </form>
+          <details class="adjust">
+            <summary class="big sec">{t(lang, 'confirm_edit')}</summary>
+            <form method="post" action="/m/bestaetigen" data-net>
+              <input type="hidden" name="plan_id" value={s.plan.id} />
+              <input type="hidden" name="date" value={s.date} />
+              <input type="hidden" name="site_id" value={s.plan.site_id} />
+              <input type="hidden" name="adjust" value="1" />
+              <input type="hidden" name="id" value={randomUUID()} />
+              <p class="hint">{t(lang, 'adjust_hint')}</p>
+              <div class="two">
+                <div>
+                  <label for={`af-${k}`}>{t(lang, 'from')}</label>
+                  <input id={`af-${k}`} type="time" name="start" value={s.plan.start_time} required />
+                </div>
+                <div>
+                  <label for={`at-${k}`}>{t(lang, 'to')}</label>
+                  <input id={`at-${k}`} type="time" name="end" value={s.plan.end_time} required />
+                </div>
+              </div>
+              <label for={`ab-${k}`}>{t(lang, 'break')}</label>
+              <select id={`ab-${k}`} name="break_minutes">
+                {[0, 15, 30, 45, 60].map((m) => (
+                  <option value={String(m)} selected={m === (s.plan.break_minutes ?? 0)}>
+                    {m} Min.
+                  </option>
+                ))}
+              </select>
+              <div style="height:10px" />
+              <button class="big go">{t(lang, 'adjust_send')}</button>
+            </form>
+          </details>
         </div>
-        <button class="big go">✓ {t(lang, 'confirm_btn')}</button>
-      </form>
-      {/* Anders gearbeitet: Zeit anpassen – geht als Nachtrag an die Objektleitung (Ahmed 15.10.) */}
-      <details class="adjust">
-        <summary>{t(lang, 'adjust_time')}</summary>
-        <form method="post" action="/m/bestaetigen" data-net>
-          <input type="hidden" name="plan_id" value={s.plan.id} />
-          <input type="hidden" name="date" value={s.date} />
-          <input type="hidden" name="site_id" value={s.plan.site_id} />
-          <input type="hidden" name="adjust" value="1" />
-          <input type="hidden" name="id" value={randomUUID()} />
-          <p class="hint">{t(lang, 'adjust_hint')}</p>
-          <div class="two">
-            <div>
-              <label for={`af-${s.plan.id}-${s.date}`}>{t(lang, 'from')}</label>
-              <input
-                id={`af-${s.plan.id}-${s.date}`}
-                type="time"
-                name="start"
-                value={s.plan.start_time}
-                required
-              />
-            </div>
-            <div>
-              <label for={`at-${s.plan.id}-${s.date}`}>{t(lang, 'to')}</label>
-              <input
-                id={`at-${s.plan.id}-${s.date}`}
-                type="time"
-                name="end"
-                value={s.plan.end_time}
-                required
-              />
-            </div>
-          </div>
-          <label for={`ab-${s.plan.id}-${s.date}`}>{t(lang, 'break')}</label>
-          <select id={`ab-${s.plan.id}-${s.date}`} name="break_minutes">
-            {[0, 15, 30, 45, 60].map((m) => (
-              <option value={String(m)} selected={m === (s.plan.break_minutes ?? 0)}>
-                {m} Min.
-              </option>
-            ))}
-          </select>
-          <div style="height:10px" />
-          <button class="big sec">{t(lang, 'adjust_send')}</button>
-        </form>
       </details>
-    </>
-  );
+    );
+  };
 
   const ClockCard: FC<{
     lang: Lang;
@@ -942,20 +938,6 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       <>
         <div class="hello">
           {t(lang, greetKey)} <b>{me.first_name}!</b>
-        </div>
-        <div class="quick">
-          <a href="/m/abwesenheit">
-            <span class="qi">
-              <Ic n="sun" />
-            </span>
-            {t(lang, 'q_absence')}
-          </a>
-          <a href="/m/dokumente">
-            <span class="qi">
-              <Ic n="doc" />
-            </span>
-            {t(lang, 'q_docs')}
-          </a>
         </div>
         <div id="scanner" hidden>
           <video playsinline muted></video>

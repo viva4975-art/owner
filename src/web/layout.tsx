@@ -17,7 +17,8 @@ import { canAccess, canOpen } from './permissions.js';
  * Zurück = an dieselbe Stelle (Ahmed 15.10.): In der App scrollt nur der Inhalt (main), das stellt der Browser beim
  * Zurückgehen nicht wieder her. Position je Seite merken und nur bei Zurück/Vor wiederherstellen.
  */
-export const SCROLL_JS = `(function(){try{var nav=performance.getEntriesByType('navigation')[0];var back=nav&&nav.type==='back_forward';
+export const SCROLL_JS = `document.addEventListener('click',function(e){document.querySelectorAll('details.appswitch[open]').forEach(function(d){if(!d.contains(e.target))d.open=false})});
+(function(){try{var nav=performance.getEntriesByType('navigation')[0];var back=nav&&nav.type==='back_forward';
 var m=document.querySelector('body.shellbar main');var el=m||document.scrollingElement;var k='vd_sc:'+location.pathname+location.search;
 var get=function(){return m?m.scrollTop:window.scrollY};var save=function(){try{sessionStorage.setItem(k,String(get()))}catch(e){}};
 if(back){var v=+(sessionStorage.getItem(k)||0);if(v){var go=function(){if(m)m.scrollTop=v;else window.scrollTo(0,v)};go();requestAnimationFrame(go);setTimeout(go,120);}}
@@ -31,7 +32,9 @@ body.shellbar>header{flex:none}
 body.shellbar>main{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain}
 body.shellbar>.tabbar,body.shellbar>.apptabs{position:static;flex:none}
 body.mshell>main{max-width:none;width:100%;margin:0;padding-left:max(16px,calc((100% - 528px)/2));padding-right:max(16px,calc((100% - 528px)/2));padding-bottom:24px}
-.appswitch{display:flex;gap:4px;padding:4px;margin:4px 0 14px;background:#f1e3e8;border-radius:14px}.appswitch a{flex:1;text-align:center;padding:10px 4px;border-radius:11px;font-weight:600;font-size:14px;color:#6b4a57;text-decoration:none}.appswitch a.on{background:#fff;color:#7d1435;box-shadow:0 1px 4px rgba(125,20,53,.12)}
+.appswitch{position:relative;display:inline-block;flex:none}.appswitch>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;background:#fff;color:#7d1435;font-weight:650;font-size:15px;border:1px solid #ead9df;white-space:nowrap}.appswitch>summary::-webkit-details-marker{display:none}.appswitch>summary:after{content:'';width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg) translateY(-2px)}.appswitch[open]>summary:after{transform:rotate(-135deg) translateY(-2px)}.appswitch .menu{position:absolute;right:0;top:calc(100% + 6px);min-width:200px;background:#fff;border-radius:12px;box-shadow:0 10px 30px rgba(60,10,30,.2);padding:6px;z-index:60}.appswitch .menu a{display:block;padding:13px 14px;border-radius:9px;color:#3b0a1c;text-decoration:none;font-weight:600;font-size:16px}.appswitch .menu a.on{background:#f6e8ed;color:#7d1435}
+body.shellbar>header{position:relative;z-index:30}
+.qm-hellorow{display:flex;align-items:center;justify-content:space-between;gap:10px}.qm-hellorow .hello{min-width:0}
 .apptabs{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:#fff;border-top:1px solid #efe3e7;padding-bottom:env(safe-area-inset-bottom)}
 .apptabs a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 2px 10px;font-size:12px;color:#5b4650;text-decoration:none}
 .apptabs a i{display:flex;width:44px;height:28px;align-items:center;justify-content:center;border-radius:14px}
@@ -1888,23 +1891,29 @@ export const AppTabbar: FC<{ path?: string }> = ({ path = '' }) => (
   </nav>
 );
 
-/** Umschalter oben: Meine Zeit · Qualität · Verwaltung */
-export const AppSwitch: FC<{ active: AppMode; ownTime?: boolean }> = ({ active, ownTime = true }) => (
-  <nav class="appswitch" aria-label="Bereich">
-    {(
-      [
-        // „Meine Zeit“ nur mit verknüpftem Mitarbeiter – sonst landet man auf der PIN-Anmeldung (Bedientest 10.10.)
-        ...(ownTime ? ([['zeit', '/m', 'Meine Zeit']] as const) : []),
-        ['qualitaet', '/qm/qualitaet', 'Qualität'],
-        ['verwaltung', '/qm', 'Verwaltung'],
-      ] as const
-    ).map(([k, href, label]) => (
-      <a href={href} class={k === active ? 'on' : ''}>
-        {label}
-      </a>
-    ))}
-  </nav>
-);
+/** Knopf oben mit Untermenü: Meine Zeit · Qualität · Verwaltung (statt Leiste, Ahmed 15.10.) */
+export const AppSwitch: FC<{ active: AppMode; ownTime?: boolean }> = ({ active, ownTime = true }) => {
+  const items = [
+    // „Meine Zeit“ nur mit verknüpftem Mitarbeiter – sonst landet man auf der PIN-Anmeldung (Bedientest 10.10.)
+    ...(ownTime ? ([['zeit', '/m', 'Meine Zeit']] as const) : []),
+    ['qualitaet', '/qm/qualitaet', 'Qualität'],
+    ['verwaltung', '/qm', 'Verwaltung'],
+  ] as const;
+  return (
+    <details class="appswitch">
+      <summary aria-label="Bereich wechseln">
+        {active === 'zeit' ? 'Büro' : active === 'qualitaet' ? 'Qualität' : 'Verwaltung'}
+      </summary>
+      <div class="menu">
+        {items.map(([k, href, label]) => (
+          <a href={href} class={k === active ? 'on' : ''}>
+            {label}
+          </a>
+        ))}
+      </div>
+    </details>
+  );
+};
 
 /** „+ Objekt anlegen“ als Hauptknopf, weitere Arten im kleinen Menü daneben (statt Auswahlliste + „Anlegen“). */
 const NewMenu: FC<{

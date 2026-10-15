@@ -8,6 +8,7 @@
  *   lesen (vertraulich: Steuer-ID, SV-Nr., IBAN – RLS nur Admin/Personal).
  * - NU-Auftrag anfragen: Entwurf mit „angefragt von“, das Büro prüft (Nachweise, Preis) und erteilt.
  */
+import { linkedEmployee } from '../services/users.js';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -533,11 +534,12 @@ const tr = (lang: Lang, k: string) => (lang === 'de' ? DE[k] : (T[lang][k] ?? DE
 
 export function registerOlAppRoutes({ app, deps, page, back }: Ctx) {
   const { sql } = deps;
-  const render = (c: Context<AppEnv>, title: string, body: Child) =>
+  const render = async (c: Context<AppEnv>, title: string, body: Child) =>
     c.html(
       '<!doctype html>' +
         String(
           <QmLayout
+            ownTime={!!(await linkedEmployee(sql, c.get('user').id))}
             path={c.req.path}
             title={title}
             flash={{ ok: c.req.query('ok') ?? '', err: c.req.query('fehler') ?? '' }}

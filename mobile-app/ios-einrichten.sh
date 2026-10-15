@@ -7,6 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 rot() { printf '\033[31m%s\033[0m\n' "$1"; }
+gelb() { printf '\033[33m%s\033[0m\n' "$1"; }
 gruen() { printf '\033[32m%s\033[0m\n' "$1"; }
 schritt() { printf '\n\033[1m▶ %s\033[0m\n' "$1"; }
 
@@ -25,7 +26,10 @@ npm install --no-audit --no-fund
 
 if [ ! -d ios ]; then
   schritt "iOS-Projekt anlegen"
-  npx cap add ios
+  # pod install schlägt hier fehl (Vorlage hat iOS 14, ML Kit braucht 15.5) –
+  # das Projekt ist trotzdem angelegt; pod install läuft unten mit cap sync erneut.
+  npx cap add ios || gelb "pod install beim Anlegen fehlgeschlagen – wird nach dem Umstellen auf iOS 15.5 wiederholt."
+  [ -f ios/App/Podfile ] || { rot "iOS-Projekt wurde nicht angelegt"; exit 1; }
 fi
 
 schritt "Einstellungen setzen"

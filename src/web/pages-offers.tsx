@@ -484,16 +484,8 @@ export const OfferEditor: FC<{
           )}
           <h2>Angebot</h2>
           <div class="grid">
-            <div style="grid-column:1/-1">
-              <label for="title">Titel / Betreff *</label>
-              <input
-                id="title"
-                name="title"
-                value={o.title ?? ''}
-                placeholder="z. B. Unterhaltsreinigung Grundschule an der Musterstraße"
-                required
-              />
-            </div>
+            {/* kein Titel/Betreff mehr (Ahmed 15.10.) – Titel ergibt sich aus der ersten Position */}
+            <input type="hidden" id="title" name="title" value={o.title ?? ''} />
 
             <div>
               <label for="offer_date">Angebotsdatum</label>
@@ -823,7 +815,7 @@ export const OfferDetail: FC<{
           <div class="actstack">
             {o.status === 'entwurf' && <a href={`/angebote/${o.id}/bearbeiten`}>Bearbeiten</a>}
             <a href={`/angebote/${o.id}/angebot.pdf`} target="_blank">
-              <Icon name="pdf" /> PDF anzeigen {o.status === 'entwurf' ? '(Entwurf)' : ''}
+              <Icon name="pdf" /> PDF herunterladen
             </a>
             {['entwurf', 'versendet'].includes(o.status) &&
               !related?.successor &&

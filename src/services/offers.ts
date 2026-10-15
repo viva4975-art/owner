@@ -120,11 +120,11 @@ export async function getOffer(sql: Sql | Tx, id: string) {
 
 /** Anlegen/Ändern. Neue Angebote bekommen sofort eine Nummer (wie Fortytools, z. B. 3843). */
 export async function saveOffer(sql: Sql, id: string, input: OfferInput, actor: string): Promise<string> {
-  if (!input.title.trim())
-    throw new BusinessError('Bitte einen Titel angeben (z. B. „Unterhaltsreinigung Grundschule …“)');
   if (!input.lines.length) throw new BusinessError('Bitte mindestens eine Position erfassen');
   const main = input.lines.filter((l) => !l.alternative);
   if (!main.length) throw new BusinessError('Mindestens eine Position darf keine Alternative sein');
+  // kein eigener Titel/Betreff mehr (Ahmed 15.10.): Titel = erste Position (für Listen und Suche)
+  if (!input.title.trim()) input = { ...input, title: main[0]!.description.slice(0, 200) };
   // Positionen (Nummern, Zeilenbeträge) über alle Zeilen, Summen nur ohne Alternativen
   const all = calculateDraft(input.lines);
   const d = { ...calculateDraft(main), lines: all.lines };
@@ -522,7 +522,6 @@ export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8
     ...(split ? { totalsSplit: split } : {}),
     // Angebot wie Fortytools: Pauschalen mit Einheit „psch.“ (ausgeschrieben überlappte es lange Preise)
     units: { LS: 'psch.', MON: 'Monat' },
-    ...(o.status === 'entwurf' ? { watermark: 'ENTWURF' } : {}),
   });
   return { pdf, filename: `Angebot_${o.number}.pdf` };
 }

@@ -46,7 +46,7 @@ import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { str } from './forms.js';
 import { storeFile } from '../services/uploads.js';
 import { createQualityCheck } from '../services/facility.js';
-import { APP_TAB_CSS, AppSwitch, AppTabbar, PageHead, dateDe, anz } from './layout.js';
+import { APP_TAB_CSS, SCROLL_JS, AppSwitch, AppTabbar, PageHead, dateDe, anz } from './layout.js';
 import { Icon } from './icons.js';
 import { CSS as MCSS, Ic } from './m/routes-mobile.js';
 
@@ -196,7 +196,9 @@ export const QmLayout: FC<{
         )}
         {children}
       </main>
-      <AppTabbar path={path} />
+      {/* während einer Kontrolle keine Leiste unten (Ahmed 15.10.) */}
+      {!/^\/qm\/audit\//.test(path) && <AppTabbar path={path} />}
+      <script dangerouslySetInnerHTML={{ __html: SCROLL_JS }} />
     </body>
   </html>
 );
@@ -384,7 +386,6 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
           items={[
             ['/qm/objekte', 'building', 'Objekte', 'Schlüssel, Ordner, Raumbuch'],
             ['/personal/dokumente', 'doc', 'Unterweisungen', 'verteilen, Unterschriften'],
-            ['/transfer/dokumenteneingang', 'doc', 'Posteingang', 'Dokumente zuordnen'],
             ['/kunden', 'home', 'Kunden', 'Kontakte, Objekte'],
           ]}
         />
@@ -393,16 +394,7 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
           items={[
             ['/qm/personalbogen', 'doc', 'Personalbogen', 'neue Mitarbeitende, 7 Sprachen'],
             ['/qm/nu-auftrag', 'building', 'NU-Auftrag', 'beim Büro anfragen'],
-            ...(c.get('user').role === 'objektleitung'
-              ? []
-              : ([
-                  [
-                    '/qm/nu-unterschrift',
-                    'doc',
-                    'NU unterschreiben',
-                    'Bestellung am Handy unterschreiben lassen',
-                  ],
-                ] as const)),
+            ['/qm/nu-unterschrift', 'doc', 'NU unterschreiben', 'Bestellung am Handy unterschreiben lassen'],
             ['/arbeitsscheine', 'times', 'Arbeitsschein', 'erstellen, unterschreiben'],
           ]}
         />

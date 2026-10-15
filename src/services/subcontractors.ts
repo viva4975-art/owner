@@ -657,6 +657,10 @@ export async function setSubcontractStatus(
      where id = ${id}`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
             values (${actor}, 'status', 'subcontract', ${id}, ${sql.json(missing.length ? { status, nachweise_fehlen: missing } : { status })})`;
+  // Aufgabe „NU-Auftrag freigeben“ aus der Anfrage der Objektleitung erledigt
+  if (status === 'erteilt' || status === 'storniert')
+    await sql`update app.tasks set status = 'done', done_at = now(), done_by = ${actor}
+               where id = md5(${'nu-anfrage:' + id})::uuid and status = 'open'`;
 }
 
 export async function addPriceChange(

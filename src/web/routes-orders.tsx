@@ -111,76 +111,115 @@ const WR_LINES_JS = `
 })();`;
 
 export const WorkReportTable: FC<{ rows: WorkReportRow[]; select?: boolean }> = ({ rows, select }) => (
-  <div class="tbl">
-    <table>
-      <thead>
-        <tr>
-          {select && <th></th>}
-          <th>Nr.</th>
-          <th>Datum</th>
-          <th>Objekt</th>
-          <th>Arbeiten</th>
-          <th>Status</th>
-          <th>Rechnung</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.length === 0 && (
-          <tr>
-            <td colspan={7}>
-              <div class="empty">Keine Arbeitsscheine.</div>
-            </td>
-          </tr>
-        )}
+  <>
+    {/* Handy: Karten statt breiter Tabelle (Ahmed 15.10.: „komplett nach rechts scrollen“) */}
+    {!select && (
+      <div class="only-m wr-cards">
+        {rows.length === 0 && <div class="empty">Keine Arbeitsscheine.</div>}
         {rows.map((w) => (
-          <tr>
-            {select && (
-              <td>
-                {w.status !== 'entwurf' && !w.invoice_id && !w.cancelled_at && !w.done_at && (
-                  <input type="checkbox" name="report" value={w.id} checked aria-label="abrechnen" />
-                )}
-              </td>
-            )}
-            <td>
-              <a href={`/arbeitsscheine/${w.id}`}>
-                <b>{w.number}</b>
-              </a>
-              {w.order_number && <div class="small mut">{w.order_number}</div>}
-            </td>
-            <td>
-              {dateDe(w.work_date)}
-              {w.work_date_to && <div class="small mut">bis {dateDe(w.work_date_to)}</div>}
-            </td>
-            <td>{w.site_name}</td>
-            <td class="small">{(w.description ?? '').slice(0, 80)}</td>
-            <td>
+          <a class="wr-card" href={`/arbeitsscheine/${w.id}`}>
+            <span class="wr-top">
+              <b>{w.number}</b>
               {w.cancelled_at ? (
-                <span class="badge err" title={w.cancel_reason ?? ''}>
-                  storniert
-                </span>
+                <span class="badge err">storniert</span>
               ) : (
                 <span class={`badge ${WR_CLASS[w.status]}`}>{WR_STATUS[w.status]}</span>
               )}
-              {w.signed_by_name && <div class="small mut">{w.signed_by_name}</div>}
-            </td>
-            <td class="small">
-              {w.invoice_id ? (
-                <a href={`/rechnungen/${w.invoice_id}`}>abgerechnet</a>
-              ) : w.done_at ? (
-                <span class="badge ok" title={w.done_note ?? ''}>
-                  erledigt
-                </span>
-              ) : w.draft_invoice_id ? (
-                <a href={`/rechnungen/${w.draft_invoice_id}`}>zur Rechnung (Entwurf)</a>
-              ) : (
-                '–'
-              )}
-            </td>
-          </tr>
+            </span>
+            <span class="wr-site">{w.site_name}</span>
+            {w.description && <span class="wr-desc">{(w.description ?? '').slice(0, 90)}</span>}
+            <span class="wr-meta">
+              {dateDe(w.work_date)}
+              {w.work_date_to ? ` – ${dateDe(w.work_date_to)}` : ''}
+              {w.invoice_id
+                ? ' · abgerechnet'
+                : w.done_at
+                  ? ' · erledigt'
+                  : w.draft_invoice_id
+                    ? ' · Rechnungsentwurf'
+                    : ''}
+            </span>
+          </a>
         ))}
-      </tbody>
-    </table>
-  </div>
+      </div>
+    )}
+    <div class={select ? 'tbl' : 'tbl hide-m'}>
+      <table>
+        <thead>
+          <tr>
+            {select && <th></th>}
+            <th>Nr.</th>
+            <th>Datum</th>
+            <th>Objekt</th>
+            <th>Arbeiten</th>
+            <th>Status</th>
+            <th>Rechnung</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 && (
+            <tr>
+              <td colspan={7}>
+                <div class="empty">Keine Arbeitsscheine.</div>
+              </td>
+            </tr>
+          )}
+          {rows.map((w) => (
+            <tr>
+              {select && (
+                <td>
+                  {w.status !== 'entwurf' && !w.invoice_id && !w.cancelled_at && !w.done_at && (
+                    <input type="checkbox" name="report" value={w.id} checked aria-label="abrechnen" />
+                  )}
+                </td>
+              )}
+              <td>
+                <a href={`/arbeitsscheine/${w.id}`}>
+                  <b>{w.number}</b>
+                </a>
+                {w.order_number && <div class="small mut">{w.order_number}</div>}
+              </td>
+              <td>
+                {dateDe(w.work_date)}
+                {w.work_date_to && <div class="small mut">bis {dateDe(w.work_date_to)}</div>}
+              </td>
+              <td>{w.site_name}</td>
+              <td class="small">{(w.description ?? '').slice(0, 80)}</td>
+              <td>
+                {w.cancelled_at ? (
+                  <span class="badge err" title={w.cancel_reason ?? ''}>
+                    storniert
+                  </span>
+                ) : (
+                  <span class={`badge ${WR_CLASS[w.status]}`}>{WR_STATUS[w.status]}</span>
+                )}
+                {w.signed_by_name && <div class="small mut">{w.signed_by_name}</div>}
+              </td>
+              <td class="small">
+                {w.invoice_id ? (
+                  <a href={`/rechnungen/${w.invoice_id}`}>abgerechnet</a>
+                ) : w.done_at ? (
+                  <span class="badge ok" title={w.done_note ?? ''}>
+                    erledigt
+                  </span>
+                ) : w.draft_invoice_id ? (
+                  <a href={`/rechnungen/${w.draft_invoice_id}`}>zur Rechnung (Entwurf)</a>
+                ) : (
+                  '–'
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <style
+      dangerouslySetInnerHTML={{
+        __html:
+          '@media (max-width:640px){.wr-cards{display:flex!important}}.wr-cards{flex-direction:column;gap:8px}.wr-card{display:flex;flex-direction:column;gap:3px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;text-decoration:none;color:inherit}.wr-top{display:flex;justify-content:space-between;align-items:center;gap:8px}.wr-top b{color:var(--accent,#7d1435)}.wr-site{font-weight:600}.wr-desc{font-size:13px;color:var(--mut)}.wr-meta{font-size:12px;color:var(--mut)}',
+      }}
+    />
+  </>
 );
 
 /** Einzelaufträge eines Kunden (Reiter beim Kunden) mit Summen. */

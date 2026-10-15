@@ -53,7 +53,7 @@ import { milliToInput } from '../forms.js';
 import { latestSignature, monthToSign, signTimesheet, timesheet } from '../../services/timesheet.js';
 import { type Lang, LANGS, LOCALE, isLang, t } from './i18n.js';
 import { Ic } from './icons.js';
-import { APP_TAB_CSS, AppSwitch } from '../layout.js';
+import { APP_TAB_CSS, AppSwitch, SCROLL_JS } from '../layout.js';
 export { Ic } from './icons.js';
 
 const COOKIE = 'vd_m';
@@ -392,6 +392,7 @@ const MLayout: FC<{
       )}
       <script dangerouslySetInnerHTML={{ __html: JS }} />
       <script src="/m/push.js" defer />
+      <script dangerouslySetInnerHTML={{ __html: SCROLL_JS }} />
     </body>
   </html>
 );

@@ -51,7 +51,7 @@ import {
   uploadSignedSubcontract,
   signSubcontract,
 } from '../services/subcontractors.js';
-import { type AppEnv, type Ctx, officeSecret, UUID } from './app.js';
+import { type AppEnv, type Ctx, assertSite, officeSecret, UUID } from './app.js';
 import { centsToInput, str } from './forms.js';
 import { CSS as MOBILE_CSS } from './m/routes-mobile.js';
 import { HandoverTable } from './routes-handovers.js';
@@ -2119,73 +2119,84 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     const data = await getSubcontract(sql, id);
     const sc = data?.contract;
     if (!sc) return c.notFound();
-    if (sc.signed_file_path || sc.status !== 'erteilt') return c.redirect(`/nachunternehmer/auftraege/${id}`);
+    assertSite(c, sc.site_id);
+    const ol = c.get('user').role === 'objektleitung';
+    const fromApp = c.req.query('von') === 'app';
+    const backTo = fromApp || ol ? '/qm/nu-unterschrift' : `/nachunternehmer/auftraege/${id}`;
+    if (sc.signed_file_path || sc.status !== 'erteilt') return c.redirect(backTo);
     const [sup] = await sql<{ name: string; contact_name: string | null }[]>`
       select name, contact_name from app.suppliers where id = ${sc.supplier_id}`;
+    const row = (k: string, v: unknown) => (
+      <div class="nus-r">
+        <span>{k}</span>
+        <b>{v}</b>
+      </div>
+    );
     return page(
       c,
-      'Unterschrift',
+      'Bestellung unterschreiben',
       'lieferanten',
-      <div style="max-width:720px;margin:0 auto">
-        <h1 style="margin-bottom:6px">Bestellung {sc.number}</h1>
-        <p class="mut" style="margin-top:0">
-          {sup?.name} · {sc.site_name} · {sc.service_kind}
-        </p>
-        <div class="card" style="font-size:16px">
-          <p style="margin-top:0">
-            <a class="btn sec" href={`/nachunternehmer/auftraege/${id}/auftrag.pdf`} target="_blank">
-              Bestellung lesen (PDF)
-            </a>
-          </p>
-          <p>
-            Preis: <b>{euro(sc.current_price_cents)}</b>{' '}
-            {BILLING[sc.billing] ? `(${BILLING[sc.billing]})` : ''}
-            <br />
-            Beginn: <b>{dateDe(sc.valid_from)}</b>
-            {sc.valid_to ? ` · Ende ${dateDe(sc.valid_to)}` : ''}
-          </p>
-          <p style="margin-bottom:0">
-            <b>
-              Der Auftragnehmer nimmt die Bestellung {sc.number} an und erkennt die Auftragsbedingungen als
-              verbindlichen Bestandteil an.
-            </b>
-          </p>
+      <div class="nus">
+        <a class="nus-back" href={backTo}>
+          ← Zurück
+        </a>
+        <div class="nus-card">
+          <div class="nus-k">Bestellung</div>
+          <div class="nus-no">{sc.number}</div>
+          <div class="nus-sup">{sup?.name}</div>
+          {row('Objekt', sc.site_name)}
+          {row('Leistung', sc.service_kind)}
+          {row('Turnus', FREQUENCY[sc.frequency] ?? sc.frequency)}
+          {!ol &&
+            row(
+              'Preis netto',
+              `${euro(sc.current_price_cents)}${BILLING[sc.billing] ? ` · ${BILLING[sc.billing]}` : ''}`,
+            )}
+          {row('Beginn', `${dateDe(sc.valid_from)}${sc.valid_to ? ` – ${dateDe(sc.valid_to)}` : ''}`)}
+          <a class="nus-pdf" href={`/nachunternehmer/auftraege/${id}/auftrag.pdf`} target="_blank">
+            Bestellschein mit Bedingungen lesen (PDF)
+          </a>
         </div>
-        <form method="post" action={`/nachunternehmer/auftraege/${id}/unterschrift`} class="card">
-          <label for="name">Name des Unterzeichners (für {sup?.name})</label>
+        <form
+          method="post"
+          action={`/nachunternehmer/auftraege/${id}/unterschrift${fromApp ? '?von=app' : ''}`}
+          class="nus-card"
+        >
+          <p class="nus-decl">
+            Der Auftragnehmer nimmt die Bestellung {sc.number} an und erkennt die Auftragsbedingungen als
+            verbindlichen Bestandteil an.
+          </p>
+          <label for="name" class="nus-l">
+            Name des Unterzeichners
+          </label>
           <input
             id="name"
             name="name"
             required
             minlength={3}
             value={sup?.contact_name ?? ''}
-            style="font-size:18px;height:46px"
+            class="nus-in"
           />
-          <label style="margin-top:14px">Unterschrift</label>
-          <canvas
-            id="sig"
-            style="width:100%;height:220px;border:1.5px dashed var(--line-2);border-radius:var(--r);background:#fff;touch-action:none;display:block"
-          ></canvas>
-          <input type="hidden" id="sig-png" name="png" />
-          <div class="actions">
-            <button type="button" class="btn sec sm" id="sig-clear">
+          <div class="nus-l" style="display:flex;justify-content:space-between;align-items:center">
+            <span>Unterschrift</span>
+            <button type="button" class="nus-clear" id="sig-clear">
               Löschen
             </button>
-            <span class="small" id="sig-hint" style="color:var(--err)" hidden>
-              Bitte im Feld unterschreiben.
-            </span>
           </div>
-          <p class="small mut">
-            Der Bestellschein wird mit der Unterschrift als PDF unveränderbar gespeichert und beim
-            Nachunternehmer abgelegt.
-          </p>
-          <div class="formfoot">
-            <a class="btn sec" href={`/nachunternehmer/auftraege/${id}`}>
-              Zurück
-            </a>
-            <button class="btn">Unterschreiben</button>
-          </div>
+          <canvas id="sig" class="nus-sig"></canvas>
+          <input type="hidden" id="sig-png" name="png" />
+          <span class="small" id="sig-hint" style="color:var(--err)" hidden>
+            Bitte im Feld unterschreiben.
+          </span>
+          <button class="nus-go">Unterschreiben</button>
+          <p class="nus-note">Wird mit der Unterschrift als PDF unveränderbar gespeichert.</p>
         </form>
+        <style
+          dangerouslySetInnerHTML={{
+            __html:
+              '.nus{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:12px}.nus-back{color:#7d1435;text-decoration:none;font-weight:600}.nus-card{background:#fff;border:1px solid #e7e1e4;border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:6px}.nus-k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8a7a80;font-weight:700}.nus-no{font-size:24px;font-weight:800;color:#1a171a}.nus-sup{font-size:16px;font-weight:600;color:#7d1435;margin-bottom:6px}.nus-r{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid #f0ebed;font-size:14px}.nus-r span{color:#8a7a80}.nus-r b{text-align:right;font-weight:600}.nus-pdf{margin-top:8px;display:block;text-align:center;padding:11px;border:1px solid #e3d6db;border-radius:10px;color:#7d1435;font-weight:600;text-decoration:none}.nus-decl{margin:0 0 6px;font-weight:600;font-size:15px;line-height:1.45}.nus-l{font-size:13px;font-weight:600;color:#5a4f53;margin-top:6px}.nus-in{font:inherit;font-size:17px;padding:12px;border:1px solid #e3d6db;border-radius:10px}.nus-sig{width:100%;height:200px;border:1.5px dashed #cdbfc5;border-radius:12px;background:#fff;touch-action:none;display:block}.nus-clear{font:inherit;font-size:13px;border:0;background:none;color:#7d1435;font-weight:600;padding:4px}.nus-go{margin-top:10px;font:inherit;font-size:17px;font-weight:700;padding:15px;border:0;border-radius:12px;background:#7d1435;color:#fff}.nus-note{margin:4px 0 0;font-size:12px;color:#8a7a80;text-align:center}',
+          }}
+        />
         <script dangerouslySetInnerHTML={{ __html: SIGN_JS }} />
       </div>,
     );
@@ -2193,6 +2204,10 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
 
   app.post(`/nachunternehmer/auftraege/:id{${UUID}}/unterschrift`, async (c) => {
     const id = c.req.param('id');
+    const [own] = await sql<{ site_id: string }[]>`select site_id from app.subcontracts where id = ${id}`;
+    if (!own) return c.notFound();
+    assertSite(c, own.site_id);
+    const viaApp = c.req.query('von') === 'app' || c.get('user').role === 'objektleitung';
     const b = await c.req.parseBody();
     const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(b.png ?? ''));
     try {
@@ -2205,9 +2220,16 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       );
     } catch (e) {
       if (e instanceof BusinessError)
-        return back(c, `/nachunternehmer/auftraege/${id}/unterschreiben`, { fehler: e.message });
+        return back(c, `/nachunternehmer/auftraege/${id}/unterschreiben${viaApp ? '?von=app' : ''}`, {
+          fehler: e.message,
+        });
       throw e;
     }
+    if (viaApp)
+      return c.redirect(
+        `/qm/nu-unterschrift?ok=${encodeURIComponent(`Bestellung unterschrieben – Bestellschein gespeichert.`)}`,
+        303,
+      );
     return back(c, `/nachunternehmer/auftraege/${id}`, {
       ok: 'Unterschrieben. Der Bestellschein mit Unterschrift ist gespeichert.',
     });
@@ -2229,9 +2251,15 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       },
     });
   });
-  app.get(`/nachunternehmer/auftraege/:id{${UUID}}/auftrag.pdf`, async (c) =>
-    pdfResponse(await subcontractPdf(sql, c.req.param('id')), 'Auftrag.pdf'),
-  );
+  app.get(`/nachunternehmer/auftraege/:id{${UUID}}/auftrag.pdf`, async (c) => {
+    if (c.get('sites')) {
+      const [own] = await sql<
+        { site_id: string }[]
+      >`select site_id from app.subcontracts where id = ${c.req.param('id')}`;
+      assertSite(c, own?.site_id);
+    }
+    return pdfResponse(await subcontractPdf(sql, c.req.param('id')), 'Auftrag.pdf');
+  });
 
   // ------------------------------------------------------------------ Soll/Ist je Monat
   // Soll/Ist je Monat entfällt (Ahmed 06.10.)

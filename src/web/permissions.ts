@@ -57,6 +57,11 @@ const RULES: [RegExp, Role[]][] = [
     OFFICE,
   ],
   [/^\/objekte\/(export\.csv|qr-druck)$/, ['admin', 'buchhaltung', 'objektleitung']],
+  // NU-Bestellung am Handy unterschreiben lassen: Objektleitung nur eigene Objekte (assertSite in der Route)
+  [
+    /^\/nachunternehmer\/auftraege\/[0-9a-f-]{36}\/(unterschreiben|unterschrift|auftrag\.pdf)$/,
+    ['admin', 'buchhaltung', 'objektleitung'],
+  ],
   [/^\/arbeitsscheine(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
   [/^\/qm(\/|$)/, ALL],
   [/^\/(qualitaet|zaehler)(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],

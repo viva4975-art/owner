@@ -16,7 +16,7 @@ import { parseEuro } from '../domain/money/money.js';
 import { BusinessError } from '../services/errors.js';
 import { validIban } from '../services/employees.js';
 import { normSvNumber, normTaxId, validSvNumber, validTaxId } from '../domain/hr/ids.js';
-import { BILLING, FREQUENCY, saveSubcontract } from '../services/subcontractors.js';
+import { BILLING, FREQUENCY, SERVICE_KINDS, saveSubcontract } from '../services/subcontractors.js';
 import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { str } from './forms.js';
 import { PageHead, dateDe } from './layout.js';
@@ -630,46 +630,57 @@ export function registerOlAppRoutes({ app, deps, page, back }: Ctx) {
 
   // ------------------------------------------------------------------ NU-Bestellung am Handy unterschreiben lassen
   app.get('/qm/nu-unterschrift', async (c) => {
-    if (c.get('user').role === 'objektleitung') return c.redirect('/qm');
+    const scope = c.get('sites');
     const rows = await sql<
       {
         id: string;
         number: string;
         supplier_name: string;
         site_name: string;
+        site_no: string;
         service_kind: string;
         valid_from: string;
       }[]
     >`
-      select sc.id, sc.number, sp.name as supplier_name, s.name as site_name, sc.service_kind, sc.valid_from::text
+      select sc.id, sc.number, sp.name as supplier_name, s.name as site_name, s.site_no, sc.service_kind,
+             sc.valid_from::text
         from app.subcontracts sc join app.suppliers sp on sp.id = sc.supplier_id join app.sites s on s.id = sc.site_id
        where sc.status = 'erteilt' and sc.signed_file_path is null
+         and ${scope ? sql`sc.site_id = any(${scope}::uuid[])` : sql`true`}
        order by sc.valid_from desc, sc.number desc`;
+    const ok = c.req.query('ok');
     return render(
       c,
       'NU unterschreiben',
       <>
-        <Top title="Bestellung unterschreiben lassen" />
-        <p class="mut">
-          Erteilte Bestellungen ohne Unterschrift. Antippen, dem Nachunternehmer das Handy geben – fertig. Der
-          Bestellschein mit Unterschrift wird gespeichert.
+        <Top title="Bestellung unterschreiben" />
+        {ok && <p class="nul-ok">{ok}</p>}
+        <p class="mut" style="margin:0 0 10px">
+          Bestellung antippen, dem Nachunternehmer das Handy geben, unterschreiben lassen.
         </p>
-        {rows.length === 0 && <p class="mut">Alle erteilten Bestellungen sind unterschrieben.</p>}
-        <div class="bogen">
+        {rows.length === 0 && <p class="nul-empty">Keine offenen Bestellungen zum Unterschreiben.</p>}
+        <div class="nul">
           {rows.map((r) => (
-            <a
-              class="bf"
-              href={`/nachunternehmer/auftraege/${r.id}/unterschreiben`}
-              style="display:block;text-decoration:none;color:inherit"
-            >
-              <b>{r.number}</b> · {r.supplier_name}
-              <br />
-              <span class="mut">
-                {r.site_name} · {r.service_kind} · ab {r.valid_from.split('-').reverse().join('.')}
+            <a class="nul-i" href={`/nachunternehmer/auftraege/${r.id}/unterschreiben?von=app`}>
+              <span class="nul-t">
+                <b>{r.supplier_name}</b>
+                <span>
+                  {r.site_name} ({r.site_no}) · {r.service_kind}
+                </span>
+                <span class="nul-m">
+                  {r.number} · ab {r.valid_from.split('-').reverse().join('.')}
+                </span>
               </span>
+              <span class="nul-go">›</span>
             </a>
           ))}
         </div>
+        <style
+          dangerouslySetInnerHTML={{
+            __html:
+              '.nul{display:flex;flex-direction:column;gap:8px}.nul-i{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e7e1e4;border-radius:12px;padding:12px 14px;text-decoration:none;color:inherit}.nul-t{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}.nul-t b{font-size:15px}.nul-t span{font-size:13px;color:#5a4f53}.nul-t .nul-m{font-size:12px;color:#8a7a80}.nul-go{font-size:24px;color:#7d1435}.nul-ok{background:#eaf6ee;color:#1d6b3a;border-radius:10px;padding:10px 12px;margin:0 0 10px;font-weight:600}.nul-empty{background:#fff;border:1px dashed #e3d6db;border-radius:12px;padding:16px;text-align:center;color:#8a7a80}',
+          }}
+        />
       </>,
     );
   });
@@ -726,7 +737,12 @@ export function registerOlAppRoutes({ app, deps, page, back }: Ctx) {
           </label>
           <label class="bf">
             <span>Leistung *</span>
-            <input name="service_kind" required placeholder="z. B. Glasreinigung, Grundreinigung Turnhalle" />
+            <select name="service_kind" required>
+              <option value="">– Leistung wählen –</option>
+              {SERVICE_KINDS.map((k) => (
+                <option value={k}>{k}</option>
+              ))}
+            </select>
           </label>
           <label class="bf">
             <span>Turnus</span>
@@ -810,6 +826,20 @@ export function registerOlAppRoutes({ app, deps, page, back }: Ctx) {
         c.get('actor'),
       );
       await sql`update app.subcontracts set requested_by = ${c.get('actor')}, request_note = ${str(b, 'description') ?? null} where id = ${id}`;
+      // Aufgabe fürs Büro (Startseite „Aufgaben“, Erinnerungen) – wird beim Erteilen erledigt
+      const [info] = await sql<{ number: string; supplier: string; site: string }[]>`
+        select sc.number, sp.name as supplier, s.name as site
+          from app.subcontracts sc join app.suppliers sp on sp.id = sc.supplier_id join app.sites s on s.id = sc.site_id
+         where sc.id = ${id}`;
+      if (info) {
+        await sql`
+          insert into app.tasks (id, title, description, due_date, status, created_by)
+          values (md5(${'nu-anfrage:' + id})::uuid,
+                  ${`NU-Auftrag freigeben: ${info.supplier} – ${info.site}`},
+                  ${`Anfrage ${info.number} von ${c.get('actor')}: ${str(b, 'service_kind') ?? ''}. Preis und Nachweise prüfen, dann erteilen. /nachunternehmer/auftraege/${id}`},
+                  ${todayBerlin()}, 'open', ${c.get('actor')})
+          on conflict (id) do nothing`;
+      }
     }
     return c.redirect(`/qm?ok=${encodeURIComponent('Anfrage ans Büro gesendet – Freigabe folgt.')}`, 303);
   });

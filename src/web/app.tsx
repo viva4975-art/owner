@@ -391,6 +391,7 @@ export function createApp(deps: Deps) {
             env={env.APP_ENV}
             {...(u ? { user: fullName(u), role: u.role } : {})}
             app={c.req.query('pc') !== '1' && getCookie(c, APP_COOKIE) === '1'}
+            noTabs={/^\/(qualitaet|qm\/audit|arbeitsscheine)(\/|$)/.test(c.req.path)}
             menuTop={c.get('menuTop') ?? false}
             flash={{ ok: c.req.query('ok'), err: c.req.query('fehler') }}
           >

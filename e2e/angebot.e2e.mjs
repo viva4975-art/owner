@@ -43,10 +43,10 @@ check('erst Kunde auswählen (wie Fortytools)', p.url().endsWith('/angebote/neu'
 check('zuletzt bearbeitete Kunden rechts', (await body(p)).includes('zuletzt bearbeiteten Kunden'));
 await p.fill('#kunde_suche', '29901');
 await p.click('button:has-text("Anlegen")');
-await p.waitForSelector('#title');
+await p.waitForSelector('#lines');
 check('Kunde per Nummer gefunden', (await p.locator('#kunde').inputValue()) !== '');
 check('normales Angebot ohne Vergabe-Felder', (await p.locator('#tender_reference').count()) === 0);
-await p.fill('#title', 'E2E Alternativen');
+await p.locator('#title').evaluate((e, v) => (e.value = v), 'E2E Alternativen');
 const r0 = p.locator('#lines tbody tr').first();
 await r0.locator('[name=desc]').evaluate((e, v) => (e.value = v), 'Unterhaltsreinigung 5×/Woche');
 await r0.locator('[name=price]').fill('1.000,00');

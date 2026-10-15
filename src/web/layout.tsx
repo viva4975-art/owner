@@ -13,6 +13,17 @@ import { canAccess, canOpen } from './permissions.js';
  * Aufbau weiterhin wie Fortytools (Hauptmenü mit Untermenüs, „Neu anlegen“, Reiter).
  */
 /** Leiste unten in der App – auch in den QM-Seiten genutzt. */
+/**
+ * Zurück = an dieselbe Stelle (Ahmed 15.10.): In der App scrollt nur der Inhalt (main), das stellt der Browser beim
+ * Zurückgehen nicht wieder her. Position je Seite merken und nur bei Zurück/Vor wiederherstellen.
+ */
+export const SCROLL_JS = `(function(){try{var nav=performance.getEntriesByType('navigation')[0];var back=nav&&nav.type==='back_forward';
+var m=document.querySelector('body.shellbar main');var el=m||document.scrollingElement;var k='vd_sc:'+location.pathname+location.search;
+var get=function(){return m?m.scrollTop:window.scrollY};var save=function(){try{sessionStorage.setItem(k,String(get()))}catch(e){}};
+if(back){var v=+(sessionStorage.getItem(k)||0);if(v){var go=function(){if(m)m.scrollTop=v;else window.scrollTo(0,v)};go();requestAnimationFrame(go);setTimeout(go,120);}}
+var t;(m||window).addEventListener('scroll',function(){clearTimeout(t);t=setTimeout(save,150)},{passive:true});
+window.addEventListener('pagehide',save);document.addEventListener('click',function(e){if(e.target.closest&&e.target.closest('a'))save()},true);}catch(e){}})();`;
+
 export const APP_TAB_CSS = `
 .to-app{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:80;background:#7d1435;color:#fff!important;padding:12px 22px;border-radius:999px;font-weight:600;text-decoration:none;box-shadow:0 8px 24px rgba(125,20,53,.35)}
 body.shellbar{display:flex;flex-direction:column;height:100vh;height:100dvh;min-height:0;overflow:hidden}
@@ -1577,11 +1588,13 @@ export const Layout: FC<{
   bare?: boolean;
   /** aus der App geöffnet: App-Rahmen (Zurück, Titel, Leiste unten) statt PC-Menü */
   app?: boolean;
+  /** App-Rahmen ohne Leiste unten (während einer Qualitätskontrolle) */
+  noTabs?: boolean;
   /** Hauptmenü als Leiste oben statt Seitenleiste links (Cookie vd_menu) */
   menuTop?: boolean;
   flash?: { ok?: string | undefined; err?: string | undefined };
   children?: Child;
-}> = ({ title, nav, env, user, role, bare, app, menuTop, flash, children }) => {
+}> = ({ title, nav, env, user, role, bare, app, noTabs, menuTop, flash, children }) => {
   const menu = role
     ? MENU.map((m) => ({
         ...m,
@@ -1648,8 +1661,9 @@ export const Layout: FC<{
             )}
             {children}
           </main>
-          <AppTabbar />
+          {!noTabs && <AppTabbar />}
           <script dangerouslySetInnerHTML={{ __html: CLIENT_JS }} />
+          <script dangerouslySetInnerHTML={{ __html: SCROLL_JS }} />
         </body>
       ) : (
         <body class={bare ? 'bare' : menuTop ? 'shell menu-top' : 'shell'}>
@@ -1829,6 +1843,7 @@ export const Layout: FC<{
             }}
           />
           <script dangerouslySetInnerHTML={{ __html: CLIENT_JS }} />
+          <script dangerouslySetInnerHTML={{ __html: SCROLL_JS }} />
         </body>
       )}
     </html>

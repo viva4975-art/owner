@@ -217,15 +217,49 @@ export async function collectBookings(
         kind: 'zahlungseingang',
       });
     }
-    // Kürzungen (auch auf Rechnungen vor der Umstellung) mit internem Buchungsbeleg
+    // Kürzungen (auch auf Rechnungen vor der Umstellung) mit eigenem Kürzungsbeleg: Erlösminderung gegen Debitor
+    // (Haben auf dem Kunden, Erlöskonto mit Automatik-USt wie bei einer Rechnungskorrektur)
     const kb = await sql<
-      { number: string; invoice_number: string; gross_cents: bigint; vat_cents: bigint }[]
+      {
+        number: string;
+        invoice_number: string;
+        voucher_date: string;
+        gross_cents: bigint;
+        net_cents: bigint;
+        vat_cents: bigint;
+        customer_no: string;
+        name: string;
+      }[]
     >`
-      select number, invoice_number, gross_cents, vat_cents from app.reduction_vouchers
-       where voucher_date between ${f.from} and ${f.to} order by voucher_date, number`;
-    for (const v of kb)
+      select v.number, v.invoice_number, v.voucher_date::text, v.gross_cents, v.net_cents, v.vat_cents,
+             c.customer_no, c.name
+        from app.reduction_vouchers v join app.customers c on c.id = v.customer_id
+       where v.voucher_date between ${f.from} and ${f.to} order by v.voucher_date, v.number`;
+    for (const v of kb) {
+      const bp = v.net_cents === 0n ? 0 : Math.round((Number(v.vat_cents) * 10000) / Number(v.net_cents));
+      const contra = Math.abs(bp - 1900) <= 50 ? s.revenue_19 : Math.abs(bp - 700) <= 50 ? s.revenue_7 : null;
+      if (!contra) {
+        warnings.push(
+          `Kürzungsbeleg ${v.number} zu Rechnung ${v.invoice_number} (${num(v.gross_cents)} € brutto, ohne USt bzw. § 13b): bitte manuell buchen.`,
+        );
+        continue;
+      }
+      bookings.push({
+        amount: v.gross_cents,
+        sh: 'H',
+        account: v.customer_no,
+        contra,
+        taxKey: '',
+        date: v.voucher_date,
+        doc: v.number,
+        doc2: v.invoice_number,
+        text: `Kürzung ${v.name}`.slice(0, 60),
+        kind: 'ausgang',
+      });
+    }
+    if (kb.length)
       warnings.push(
-        `Kürzung durch Kunden, Beleg ${v.number} zu Rechnung ${v.invoice_number} (${num(v.gross_cents)} € brutto, davon ${num(v.vat_cents)} € USt): bitte manuell buchen (USt-Korrektur § 17 UStG). PDF unter Rechnungen → Kürzungsbelege.`,
+        `${kb.length} Kürzungsbeleg(e) als Erlösminderung gebucht (USt-Korrektur § 17 UStG) – PDFs unter Rechnungen → Kürzungsbelege (ZIP).`,
       );
   }
 

@@ -4,14 +4,9 @@ import type { Sql } from '../db/client.js';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  copyLegacyToDraft,
-  createLegacyCancellation,
-  createLegacyCorrection,
-  getInvoice,
-  loadDocument,
-} from './invoices.js';
+import { copyLegacyToDraft, createLegacyCancellation, getInvoice, loadDocument } from './invoices.js';
 import { writeOffPart } from './payments.js';
+import { collectBookings } from './datev.js';
 import { createReductionVoucher } from './reduction-vouchers.js';
 import { DEMO } from './seed.js';
 import { type FakeMailer, dbAvailable, freshDatabase, kositAvailable, testDeps } from './testing.js';
@@ -65,7 +60,7 @@ describe.skipIf(!available)('Storno einer Rechnung von vor der Umstellung (Forty
     expect(d.invoice.site_id).toBe(DEMO.siteSchool);
   });
 
-  it('Kürzung und Rechnungskorrektur zu einer zweiten alten Rechnung', async () => {
+  it('Kürzung mit Kürzungsbeleg und DATEV-Buchung zu einer zweiten alten Rechnung', async () => {
     const l2 = randomUUID();
     await sql`insert into app.legacy_invoices (id, number, issue_date, due_date, customer_id, net_cents, gross_cents, paid)
               values (${l2}, '1038201', '2026-09-30', '2026-10-14', ${DEMO.authority}, 100000, 119000, false)`;
@@ -96,21 +91,15 @@ describe.skipIf(!available)('Storno einer Rechnung von vor der Umstellung (Forty
     const v = await createReductionVoucher(sql, { dir, maxBytes: 5e7 }, { ...p, grossCents: 11900n });
     expect(v.number).toMatch(/^KB-\d{4}-\d{4}$/);
     await expect(writeOffPart(sql, { ...p, key: 'k2', amount: 200000n })).rejects.toThrow(/höher/);
-    // Rechnungskorrektur 100 € netto → nach Ausstellen offen −119 €
-    await expect(createLegacyCorrection(sql, l2, { netCents: 200000n, reason: 'x' }, 't')).rejects.toThrow(
-      /höher/,
-    );
-    const id = await createLegacyCorrection(
-      sql,
-      l2,
-      { netCents: 10000n, reason: 'Fenster nicht gereinigt' },
-      't',
-    );
-    const doc = await loadDocument(sql, id);
-    expect(doc.kind).toBe('correction');
-    expect(doc.lines[0]!.quantity).toBe(-1000n);
-    await issueInvoice(deps, id, 't');
-    expect((await getInvoice(sql, id))!.original?.number).toBe('1038201');
-    expect(await open()).toBe(95200n);
+    // Buchhaltung: Erlösminderung im DATEV-Stapel (Haben Debitor, Beleg KB, Verweis auf die Rechnung)
+    const { bookings } = await collectBookings(sql, {
+      from: '2026-10-01',
+      to: '2026-10-31',
+      outgoing: false,
+      incoming: false,
+      payments: true,
+    });
+    const b = bookings.find((x) => x.doc === v.number)!;
+    expect(b).toMatchObject({ amount: 11900n, sh: 'H', doc2: '1038201' });
   });
 });

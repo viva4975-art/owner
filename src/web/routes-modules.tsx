@@ -11,6 +11,9 @@ import { AbsentCard } from './pages-crm.js';
 import { followups } from '../services/prospects.js';
 import { canAccess } from './permissions.js';
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { zipSync } from 'fflate';
+import { type FileRow, filePath } from '../services/uploads.js';
 import type { Context } from 'hono';
 import type { Child } from 'hono/jsx';
 import { listTasks, saveTask, setTaskDone, taskInput, taskVisibleTo } from '../services/crm.js';
@@ -681,6 +684,26 @@ export function registerModuleRoutes(ctx: Ctx) {
   app.get('/rechnungen/kuerzungen', async (c) => {
     const year = /^\d{4}$/.test(c.req.query('jahr') ?? '') ? c.req.query('jahr')! : todayBerlin().slice(0, 4);
     const rows = await listReductionVouchers(sql, { from: `${year}-01-01`, to: `${year}-12-31` });
+    if (c.req.query('format') === 'zip') {
+      // alle Kürzungsbelege des Jahres als PDF für die Buchhaltung / den Steuerberater
+      const files: Record<string, Uint8Array> = {};
+      for (const r of rows.filter((x) => x.file_id)) {
+        const [f] = await sql<
+          FileRow[]
+        >`select * from app.files where id = ${r.file_id} and status = 'complete'`;
+        if (f)
+          files[`${r.number}_Rechnung_${r.invoice_number}.pdf`] = new Uint8Array(
+            await readFile(filePath(uploadConfig(ctx), f)),
+          );
+      }
+      if (!Object.keys(files).length) throw new BusinessError(`Keine Kürzungsbelege in ${year}`);
+      return new Response(zipSync(files, { level: 0 }), {
+        headers: {
+          'Content-Type': 'application/zip',
+          'Content-Disposition': `attachment; filename="Kuerzungsbelege_${year}.zip"`,
+        },
+      });
+    }
     if (c.req.query('format') === 'csv') {
       const q = (v: string) => `"${v.replace(/"/g, '""').replace(/^[=+@-]/, "'$&")}"`;
       const cents = (v: bigint) => (Number(v) / 100).toFixed(2).replace('.', ',');
@@ -714,10 +737,10 @@ export function registerModuleRoutes(ctx: Ctx) {
       <>
         <PageHead title="Kürzungsbelege" crumbs={[['Offene Posten', '/offene-posten']]} />
         <p class="mut small" style="max-width:760px">
-          Interne Buchungsbelege, wenn ein Kunde weniger gezahlt hat und der Rest ausgebucht wurde (Offene
-          Posten → Zahlung erfassen → „Rest als Kürzung ausbuchen“). Sie gehen nicht an den Kunden. Für den
-          Steuerberater: PDF je Beleg und CSV. Die Umsatzsteuer mindert sich erst, wenn die Kürzung endgültig
-          ist (§ 17 UStG).
+          Eigene Belege (KB-…) für Kürzungen und Verrechnungen zu Rechnungen – an der Rechnung „Kürzung /
+          Verrechnung“ oder in den Offenen Posten „Rest als Kürzung ausbuchen“. Sie gehen nicht an den Kunden,
+          sondern an die Buchhaltung: im DATEV-Export als Erlösminderung gebucht, PDFs hier als ZIP, Liste als
+          CSV. Die Umsatzsteuer mindert sich, sobald die Kürzung endgültig ist (§ 17 UStG).
         </p>
         <form method="get" class="actions" style="margin:8px 0">
           <label for="jahr" class="small mut">
@@ -727,6 +750,9 @@ export function registerModuleRoutes(ctx: Ctx) {
           <button class="btn sm sec">Anzeigen</button>
           <a class="btn sm sec" href={`/rechnungen/kuerzungen?jahr=${year}&format=csv`}>
             CSV
+          </a>
+          <a class="btn sm sec" href={`/rechnungen/kuerzungen?jahr=${year}&format=zip`}>
+            Alle PDFs (ZIP)
           </a>
         </form>
         <div class="card" style="padding:0">

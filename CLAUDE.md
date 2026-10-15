@@ -3020,14 +3020,17 @@ Testadresse.
     Schlüsselbuch jetzt auch beim Nachunternehmer (`keys.holder_supplier_id`, `key_log.supplier_id`, Migration
     `20261127000004`), Rückgabe nur vom NU.
   - Tests: `handovers.db.test.ts` (Schlüssel an NU), e2e `app` 20, `login` 39 (Personalbogen mit Foto).
-- 2026-10-15: **Verrechnung zu Rechnungen, auch von vor der Umstellung** (Ahmed: „Gutschrift oder so zur Verrechnung,
-  intern, mit der Rechnung verbunden, buchhalterisch richtig“): An jeder offenen Rechnung (eigene und übernommene)
-  „Gutschrift / Verrechnung (Kürzung)“ → `/rechnungen/:id/verrechnung` mit zwei Wegen:
-  **A Rechnungskorrektur an den Kunden** (eigene Nummer, Belegart 384, Verweis BT-25 auf die alte Nummer, eine
-  Minus-Position „Minderung zur Rechnung …“ mit Grund und Steuersatz/Leistungsart der alten Rechnung,
-  `createLegacyCorrection`; nie mehr als der noch nicht korrigierte Nettobetrag) – USt sofort gemindert, mindert nach dem
-  Ausstellen den offenen Posten. **B Nur intern: Kürzung ausbuchen** (Teilbetrag brutto, Grund, Datum, `writeOffPart`,
-  feste ID → nichts doppelt; bei übernommenen Rechnungen zählt sie wie eine Teilzahlung) + interner Kürzungsbeleg
-  KB-JJJJ-NNNN (PDF in der Kundenakte, Liste Kürzungsbelege, DATEV-Hinweis). Das Wort „Gutschrift“ steht auf keinem
-  Beleg (umsatzsteuerlich = Abrechnung durch den Leistungsempfänger, § 14 Abs. 2 S. 2 UStG). **Steuerlich:** Kürzung
-  mindert die USt erst, wenn sie endgültig ist (§ 17 UStG, Steuerberater). Test in `legacy-cancel.db.test.ts`.
+- 2026-10-15: **Kürzung / Verrechnung zu Rechnungen, auch von vor der Umstellung** (Ahmed: „Gutschrift oder so zur
+  Verrechnung, intern, mit der Rechnung verbunden, buchhalterisch richtig“ → „lieber nur ein Weg: interne Kürzung mit
+  eigenem Beleg wie Rechnung, den die Buchhaltung auch bekommt“): An jeder offenen Rechnung (eigene und übernommene)
+  „Kürzung / Verrechnung“ → `/rechnungen/:id/verrechnung`: Betrag brutto, Datum, Grund → `writeOffPart` (feste ID →
+  nichts doppelt; bei übernommenen Rechnungen zählt sie wie eine Teilzahlung) + **Kürzungsbeleg KB-JJJJ-NNNN im
+  Rechnungslayout „edel“** (Briefpapier, Kopfblock mit Nummer, Kunde, „Zu Rechnung … vom …“, Position netto/USt/brutto
+  negativ, Grund, „Interner Buchungsbeleg – wird dem Kunden nicht zugesandt“, Freigabe-Linie; `createReductionVoucher`).
+  Buchhaltung bekommt ihn: Kundenakte, Rechnungen → Kürzungsbelege (PDF je Beleg, **ZIP aller PDFs**, CSV) und im
+  **DATEV-Export als Buchung** (Haben Debitor gegen Erlöskonto 19/7 % mit Automatik-USt, Belegfeld 1 = KB-Nr.,
+  Belegfeld 2 = Rechnungsnr.; ohne USt/§ 13b → Hinweis zum manuellen Buchen). Bisherige Kürzungen aus „Rest als Kürzung
+  ausbuchen“ (Offene Posten) laufen genauso. Kein zweiter Weg (Rechnungskorrektur an der eigenen Rechnung bleibt
+  unverändert). „Gutschrift“ steht auf keinem Beleg (§ 14 Abs. 2 S. 2 UStG). **Steuerlich:** USt-Minderung, sobald die
+  Kürzung endgültig ist (§ 17 UStG); DATEV-Konten mit dem Steuerberater abstimmen (ggf. eigenes Erlösschmälerungskonto).
+  Test in `legacy-cancel.db.test.ts`.

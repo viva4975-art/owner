@@ -2,8 +2,9 @@ import { createHash } from 'node:crypto';
 import type { Sql } from '../db/client.js';
 import { formatDateDe } from '../domain/invoice/calc.js';
 import { type Cents, formatEuro } from '../domain/money/money.js';
-import { FormDoc } from '../pdf/form-doc.js';
+import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import { BusinessError } from './errors.js';
+import { buildBuyerSnapshot, getSeller } from './masterdata.js';
 import { nextYearNumber } from './purchasing.js';
 import { storeFile, type UploadConfig } from './uploads.js';
 
@@ -84,54 +85,57 @@ export async function createReductionVoucher(
   // Nettoanteil im Verhältnis der Rechnung (kaufmännisch gerundet)
   const net = inv.gross === 0n ? p.grossCents : (p.grossCents * inv.net * 2n + inv.gross) / (inv.gross * 2n);
   const vat = p.grossCents - net;
-  const [cust] = await sql<
-    { name: string; customer_no: string; street: string; postal_code: string; city: string }[]
-  >`
-    select name, customer_no, street, postal_code, city from app.customers where id = ${inv.customer_id}`;
+  const [cust] = await sql<{ customer_no: string }[]>`
+    select customer_no from app.customers where id = ${inv.customer_id}`;
   const number = await sql.begin((tx) => nextYearNumber(tx, 'reduction', 'KB-', p.date.slice(0, 4), 4));
 
-  const doc = await FormDoc.create({
-    title: `Interner Buchungsbeleg ${number}`,
-    sideRef: `Interner Beleg ${number}`,
+  const rate = net === 0n ? 0 : Math.round((Number(vat) * 100) / Number(net));
+  const eur = (c: bigint) => formatEuro(c as Cents);
+  const pdf = await renderLetterPdf({
+    title: `Kürzungsbeleg ${number}`,
     date: p.date,
-    author: 'Viva-Deluxe Gebäudereinigung GmbH',
-    plain: true,
+    info: [
+      ['Belegdatum', formatDateDe(p.date)],
+      ['Kundennummer', cust?.customer_no ?? ''],
+      ['Zu Rechnung', `${inv.number}${inv.issue_date ? ` vom ${formatDateDe(inv.issue_date)}` : ''}`],
+      ['Art', 'Interner Buchungsbeleg'],
+    ],
+    seller: await getSeller(sql),
+    buyer: await buildBuyerSnapshot(sql, inv.customer_id, null),
+    greeting: null,
+    intro:
+      `Forderungskürzung zur Rechnung ${inv.number} (Rechnungsbetrag ${eur(inv.gross)} brutto). ` +
+      'Der Kunde hat diesen Betrag nicht gezahlt bzw. verrechnet; er wird intern ausgebucht und mit der Rechnung ' +
+      'verrechnet.',
+    columns: [
+      { label: 'Pos', x: 62.3, align: 'left' },
+      { label: 'Bezeichnung', x: 90, align: 'left' },
+      { label: 'Netto', x: 400 },
+      { label: 'USt', x: 462 },
+      { label: 'Brutto', x: 538.8 },
+    ],
+    rows: [
+      [
+        '1',
+        `Kürzung zu Rechnung ${inv.number}\nGrund: ${p.reason.trim()}`,
+        eur(-net),
+        `${rate} %`,
+        eur(-p.grossCents),
+      ],
+    ],
+    sums: [
+      ['Kürzung netto', eur(-net)],
+      [`Umsatzsteuer ${rate} %`, eur(-vat)],
+    ],
+    total: ['Kürzung brutto', eur(-p.grossCents)],
+    paragraphs: [
+      `Offener Betrag der Rechnung ${inv.number} wird um ${eur(p.grossCents)} gemindert.`,
+      'Interner Buchungsbeleg für die Buchhaltung – wird dem Kunden nicht zugesandt; keine Rechnung, keine ' +
+        'Rechnungskorrektur. Buchung: Erlösminderung gegen Forderung (Debitor), Umsatzsteuer-Korrektur nach § 17 UStG, ' +
+        'sobald die Kürzung endgültig ist.',
+      `Erfasst am ${formatDateDe(p.date)} von ${p.actor}.     Geprüft / freigegeben: ______________________________`,
+    ],
   });
-  doc.title('Interner Buchungsbeleg – Forderungskürzung', number);
-  doc.infoGrid([
-    ['Belegdatum', formatDateDe(p.date)],
-    ['Belegnummer', number],
-    ['Erfasst von', p.actor],
-    ['Kunde', `${cust?.name ?? ''}`],
-    ['Kundennummer', cust?.customer_no ?? ''],
-    ['Anschrift', cust ? `${cust.street}, ${cust.postal_code} ${cust.city}` : ''],
-    ['Rechnung', inv.number],
-    ['Rechnungsdatum', inv.issue_date ? formatDateDe(inv.issue_date) : '–'],
-    ['Rechnungsbetrag brutto', formatEuro(inv.gross as Cents)],
-  ]);
-  doc.kvBox([
-    { k: 'Ausgebuchter Betrag brutto', v: formatEuro(p.grossCents as Cents), strong: true, accent: true },
-    { k: 'davon netto', v: formatEuro(net as Cents) },
-    { k: 'davon Umsatzsteuer', v: formatEuro(vat as Cents) },
-  ]);
-  doc.section('Grund der Kürzung');
-  doc.para(p.reason);
-  doc.section('Hinweis für die Buchhaltung');
-  doc.para(
-    'Der Kunde hat die Rechnung nicht vollständig bezahlt. Der Restbetrag wird intern als Forderungskürzung ausgebucht. ' +
-      'Dieser Beleg ist ein interner Buchungsbeleg und wird dem Kunden nicht zugesandt; er ist weder Rechnung noch ' +
-      'Rechnungskorrektur.',
-    { size: 8.5 },
-  );
-  doc.para(
-    'Umsatzsteuer: Die Bemessungsgrundlage mindert sich erst, wenn die Kürzung endgültig feststeht (§ 17 Abs. 1 UStG, ' +
-      'bei Uneinbringlichkeit § 17 Abs. 2 UStG). Bitte durch den Steuerberater prüfen und buchen.',
-    { size: 8.5 },
-  );
-  doc.signatures('Datum, erfasst', 'Datum, geprüft / freigegeben (Geschäftsführung)', {
-    leftText: `${formatDateDe(p.date)}, ${p.actor}`,
-  });
-  const pdf = await doc.save();
   const fileId = uuidFrom(`kuerzung-datei:${p.key}`);
   await storeFile(
     sql,

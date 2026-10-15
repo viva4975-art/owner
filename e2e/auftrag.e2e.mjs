@@ -52,7 +52,6 @@ async function sign(page, name) {
 console.log('1. Auftrag anlegen');
 const orderId = randomUUID();
 await p.goto(B + `/auftraege/${orderId}/bearbeiten?kunde=${CUSTOMER}&objekt=${SITE}`);
-await p.fill('#title', 'Grundreinigung Turnhalle (E2E)');
 await p.fill('#order_reference', 'E2E-' + Date.now().toString().slice(-5));
 const row = p.locator('#lines tbody tr').first();
 await row.locator('[name=desc]').fill('Grundreinigung Turnhalle pauschal');
@@ -77,7 +76,7 @@ await p.goto(B + `/kunden/${CUSTOMER}/auftraege?status=alle`);
 const tab = await p.locator('body').innerText();
 check(
   'Reiter Einzelaufträge beim Kunden mit Summe',
-  tab.includes('Grundreinigung Turnhalle (E2E)') && /Summe/.test(tab),
+  tab.includes('Grundreinigung Turnhalle pauschal') && /Summe/.test(tab),
 );
 await p.goto(B + `/auftraege/${orderId}`);
 const orderNo = (await p.locator('body').innerText()).match(/AU-\d{4}-\d{4}/)?.[0];

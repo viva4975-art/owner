@@ -2927,3 +2927,7 @@ Testadresse.
     nichts doppelt. Betreff „Erneute Zusendung: …“, Text „dieselbe Rechnung, keine neue Forderung – bitte nicht doppelt
     buchen“. Geht auch bei Portal/„kein Versand“-Kunden, nicht bei stornierten Rechnungen.
   - Android: minSdk 24, targetSdk 36 (Play-Vorgabe), Status-/Navigationsleiste mit Rand (`MainActivity`), versionCode 3.
+- 2026-10-15: Einzelauftrag ohne „Titel“ und „Uhrzeit“ (Ahmed: unnötig). Titel wird automatisch aus der ersten Position
+  gebildet (bestehende Aufträge behalten ihren Titel), Uhrzeiten bleiben bei alten Aufträgen erhalten, werden aber nicht
+  mehr abgefragt. „Leistungsort (ohne eigenes Objekt)“ heißt jetzt „Objektadresse (wenn kein Objekt angelegt ist)“,
+  in der Rechnungseinleitung „Objekt …“.

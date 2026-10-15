@@ -125,8 +125,12 @@ export interface OrderInput {
 }
 
 export async function saveOrder(sql: Sql, id: string, input: OrderInput, actor: string) {
-  if (!input.title.trim())
-    throw new BusinessError('Bitte einen Titel angeben (z. B. „Grundreinigung Turnhalle“)');
+  // Titel ist im Formular weggefallen (Ahmed 15.10.): leer → bisheriger Titel bzw. erste Position
+  const autoTitle =
+    input.lines
+      .map((l) => l.description?.split('\n')[0]?.trim())
+      .find((x) => x)
+      ?.slice(0, 120) ?? 'Einzelauftrag';
   const hm = /^\d{2}:\d{2}$/;
   if ((input.startTime && !hm.test(input.startTime)) || (input.endTime && !hm.test(input.endTime)))
     throw new BusinessError('Uhrzeit bitte als HH:MM');
@@ -145,14 +149,15 @@ export async function saveOrder(sql: Sql, id: string, input: OrderInput, actor: 
       customer_id: input.customerId,
       site_id: input.siteId,
       offer_id: input.offerId,
-      title: input.title.trim(),
+      ...(input.title.trim() ? { title: input.title.trim() } : cur ? {} : { title: autoTitle }),
       description: input.description,
       order_reference: input.orderReference,
       planned_date: input.plannedDate,
       net_cents: d.net,
       place: input.place?.trim() || null,
-      start_time: input.startTime || null,
-      end_time: input.endTime || null,
+      // Uhrzeit nicht mehr im Formular: undefined = unverändert lassen
+      ...(input.startTime !== undefined ? { start_time: input.startTime || null } : {}),
+      ...(input.endTime !== undefined ? { end_time: input.endTime || null } : {}),
       employee_ids: input.employeeIds ?? [],
       work_report_required: input.workReportRequired ?? false,
       ...(input.billAddress !== undefined
@@ -1216,7 +1221,7 @@ export async function orderToInvoice(deps: Deps, orderId: string, actor: string)
       periodStart: o.planned_date ?? minPeriod(lines),
       periodEnd: o.planned_date ?? maxPeriod(lines),
       orderReference: o.order_reference,
-      introText: `Gemäß Auftrag ${o.number} („${o.title}“)${o.place ? `, Leistungsort ${o.place},` : ''} berechnen wir:`,
+      introText: `Gemäß Auftrag ${o.number} („${o.title}“)${o.place ? `, Objekt ${o.place},` : ''} berechnen wir:`,
       closingText: null,
       lines: lines.map((l) => ({
         description: l.description,

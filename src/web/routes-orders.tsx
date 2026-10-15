@@ -515,18 +515,6 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
             </div>
             <h2>Auftrag</h2>
             <div class="grid">
-              <div style="grid-column:1/-1">
-                <label for="title">Titel</label>
-                <textarea
-                  id="title"
-                  name="title"
-                  rows={2}
-                  required
-                  placeholder="z. B. Grundreinigung Turnhalle nach Umbau (Enter = neue Zeile)"
-                >
-                  {o?.title ?? ''}
-                </textarea>
-              </div>
               <div>
                 <label for="order_reference">Bestellnummer des Kunden</label>
                 <input id="order_reference" name="order_reference" value={o?.order_reference ?? ''} />
@@ -535,29 +523,9 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                 <label for="planned_date">Termin (Datum)</label>
                 <input id="planned_date" type="date" name="planned_date" value={o?.planned_date ?? ''} />
               </div>
-              <div>
-                <label for="start_time">Uhrzeit</label>
-                <div style="display:flex;gap:6px;align-items:center">
-                  <input
-                    id="start_time"
-                    type="time"
-                    name="start_time"
-                    value={o?.start_time ?? ''}
-                    style="max-width:130px"
-                  />
-                  –
-                  <input
-                    type="time"
-                    name="end_time"
-                    value={o?.end_time ?? ''}
-                    style="max-width:130px"
-                    aria-label="bis"
-                  />
-                </div>
-              </div>
               {!siteId && (
                 <div style="grid-column:1/-1">
-                  <label for="place">Leistungsort (ohne eigenes Objekt)</label>
+                  <label for="place">Objektadresse (wenn kein Objekt angelegt ist)</label>
                   <input
                     id="place"
                     name="place"
@@ -642,14 +610,15 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
         siteId: str(b, 'site_id'),
         offerId: str(b, 'offer_id'),
         title: str(b, 'title') ?? '',
+        // Uhrzeit gibt es im Formular nicht mehr – nur übernehmen, wenn mitgeschickt
+        ...(b.start_time !== undefined ? { startTime: str(b, 'start_time') } : {}),
+        ...(b.end_time !== undefined ? { endTime: str(b, 'end_time') } : {}),
         description: str(b, 'description'),
         orderReference: str(b, 'order_reference'),
         plannedDate: str(b, 'planned_date'),
         lines: parseLines(b),
         expectedVersion: versionOf(b.version),
         place: str(b, 'place'),
-        startTime: str(b, 'start_time'),
-        endTime: str(b, 'end_time'),
         employeeIds: arr(b, 'employee_ids').filter((x) => /^[0-9a-f-]{36}$/.test(x)),
         workReportRequired: str(b, 'work_report_required') === '1',
         billAddress: await chosenAddress(b),
@@ -816,7 +785,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                 <dd>{o.order_reference ?? '–'}</dd>
                 {o.place && (
                   <>
-                    <dt>Leistungsort</dt>
+                    <dt>Objektadresse</dt>
                     <dd>{o.place}</dd>
                   </>
                 )}

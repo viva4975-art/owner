@@ -336,6 +336,16 @@ const T: Record<Exclude<Lang, 'de'>, Record<string, string>> = {
     choose: 'Изберете език',
   },
 };
+/**
+ * Formular Schritt für Schritt: Abschnitte [data-step] einzeln, Weiter prüft die Pflichtfelder des Abschnitts,
+ * „Absenden“ erst im letzten Schritt. Ohne JavaScript bleibt alles auf einer Seite.
+ */
+export const WIZARD_JS = `(function(){document.querySelectorAll('form').forEach(function(f){var st=[].slice.call(f.querySelectorAll('[data-step]'));if(st.length<2)return;var i=0,prev=f.querySelector('[data-prev]'),next=f.querySelector('[data-next]'),sub=f.querySelector('[data-submit]'),cnt=f.querySelector('[data-count]');
+function show(){st.forEach(function(s,k){s.hidden=k!==i});prev.style.visibility=i?'visible':'hidden';next.hidden=i===st.length-1;sub.hidden=i!==st.length-1;if(cnt)cnt.textContent=(i+1)+' / '+st.length;var m=f.closest('main');(m||window).scrollTo(0,0)}
+function ok(){var els=st[i].querySelectorAll('input,select,textarea');for(var k=0;k<els.length;k++){if(!els[k].checkValidity()){els[k].reportValidity();return false}}return true}
+next.addEventListener('click',function(){if(ok()){i++;show()}});prev.addEventListener('click',function(){if(i){i--;show()}});
+f.addEventListener('invalid',function(e){var s=e.target.closest('[data-step]');var k=st.indexOf(s);if(k>=0&&k!==i){i=k;show()}},true);show()})})();`;
+
 const tr = (lang: Lang, k: string) => (lang === 'de' ? DE[k] : (T[lang][k] ?? DE[k])) ?? k;
 
 export function registerOlAppRoutes({ app, deps, page, back }: Ctx) {
@@ -401,50 +411,79 @@ export function registerOlAppRoutes({ app, deps, page, back }: Ctx) {
           <input type="hidden" name="id" value={randomUUID()} />
           <input type="hidden" name="lang" value={lang} />
           <input type="hidden" name="objekt" value={objekt} />
-          {BOGEN_FIELDS.map((f) => (
-            <label class="bf">
-              <span>
-                {L(f.key)}
-                {f.required ? ' *' : ''}
-                {lang !== 'de' && <small>{DE[f.key]}</small>}
-              </span>
-              {f.key === 'salutation' ? (
-                <select name={f.key}>
-                  <option value="" />
-                  <option value="Herr">{L('herr')}</option>
-                  <option value="Frau">{L('frau')}</option>
-                  <option value="divers">{L('divers')}</option>
-                </select>
-              ) : f.key === 'marital_status' ? (
-                <select name={f.key}>
-                  <option value="" />
-                  {['ledig', 'verheiratet', 'geschieden', 'verwitwet'].map((k) => (
-                    <option value={k}>{L(k)}</option>
-                  ))}
-                </select>
-              ) : f.key === 'notes' || f.key === 'emergency_contact' ? (
-                <textarea name={f.key} rows={2} />
-              ) : (
-                <input
-                  name={f.key}
-                  type={f.type ?? 'text'}
-                  required={f.required}
-                  autocomplete="off"
-                  {...(f.key === 'postal_code' ? { inputmode: 'numeric' } : {})}
-                />
+          {/* Schritt für Schritt mit Weiter/Zurück (Ahmed 15.10.) */}
+          {(
+            [
+              [0, 4],
+              [4, 8],
+              [8, 13],
+              [13, 17],
+              [17, BOGEN_FIELDS.length],
+            ] as const
+          ).map(([a, b], i, all) => (
+            <div class="wstep" data-step>
+              {BOGEN_FIELDS.slice(a, b).map((f) => (
+                <label class="bf">
+                  <span>
+                    {L(f.key)}
+                    {f.required ? ' *' : ''}
+                    {lang !== 'de' && <small>{DE[f.key]}</small>}
+                  </span>
+                  {f.key === 'salutation' ? (
+                    <select name={f.key}>
+                      <option value="" />
+                      <option value="Herr">{L('herr')}</option>
+                      <option value="Frau">{L('frau')}</option>
+                      <option value="divers">{L('divers')}</option>
+                    </select>
+                  ) : f.key === 'marital_status' ? (
+                    <select name={f.key}>
+                      <option value="" />
+                      {['ledig', 'verheiratet', 'geschieden', 'verwitwet'].map((k) => (
+                        <option value={k}>{L(k)}</option>
+                      ))}
+                    </select>
+                  ) : f.key === 'notes' || f.key === 'emergency_contact' ? (
+                    <textarea name={f.key} rows={2} />
+                  ) : (
+                    <input
+                      name={f.key}
+                      type={f.type ?? 'text'}
+                      required={f.required}
+                      autocomplete="off"
+                      {...(f.key === 'postal_code' ? { inputmode: 'numeric' } : {})}
+                    />
+                  )}
+                </label>
+              ))}
+              {i === all.length - 1 && (
+                <>
+                  <p class="small mut">{L('privacy')}</p>
+                  <label class="bf chk">
+                    <input type="checkbox" name="confirm" value="1" required /> {L('confirm')}
+                  </label>
+                </>
               )}
-            </label>
+            </div>
           ))}
-          <p class="small mut">{L('privacy')}</p>
-          <label class="bf chk">
-            <input type="checkbox" name="confirm" value="1" required /> {L('confirm')}
-          </label>
-          <button class="btn-big">{L('send')}</button>
+          <div class="wnav">
+            <button type="button" class="wbtn sec" data-prev>
+              ←
+            </button>
+            <span class="wcount" data-count />
+            <button type="button" class="wbtn" data-next>
+              →
+            </button>
+            <button class="btn-big" data-submit>
+              {L('send')}
+            </button>
+          </div>
         </form>
+        <script dangerouslySetInnerHTML={{ __html: WIZARD_JS }} />
         <style
           dangerouslySetInnerHTML={{
             __html:
-              '.bogen{display:flex;flex-direction:column;gap:10px}.bf{display:flex;flex-direction:column;gap:4px;font-weight:600}.bf small{display:block;font-weight:400;color:#8a7a80;font-size:12px}.bf input,.bf select,.bf textarea{font:inherit;font-weight:400;padding:12px;border:1px solid #e3d6db;border-radius:10px;background:#fff}.bf.chk{flex-direction:row;align-items:center;gap:10px}.btn-big{font:inherit;font-weight:700;padding:14px;border:0;border-radius:12px;background:#7d1435;color:#fff}',
+              '.bogen{display:flex;flex-direction:column;gap:10px}.wstep{display:flex;flex-direction:column;gap:10px}.wnav{display:flex;align-items:center;gap:10px;margin-top:8px}.wbtn{font:inherit;font-size:22px;font-weight:700;min-width:64px;padding:12px;border:0;border-radius:12px;background:#7d1435;color:#fff}.wbtn.sec{background:#fff;color:#7d1435;border:1px solid #e3d6db}.wcount{flex:1;text-align:center;color:#8a7a80;font-weight:600}.wnav .btn-big{flex:1}.bf{display:flex;flex-direction:column;gap:4px;font-weight:600}.bf small{display:block;font-weight:400;color:#8a7a80;font-size:12px}.bf input,.bf select,.bf textarea{font:inherit;font-weight:400;padding:12px;border:1px solid #e3d6db;border-radius:10px;background:#fff}.bf.chk{flex-direction:row;align-items:center;gap:10px}.btn-big{font:inherit;font-weight:700;padding:14px;border:0;border-radius:12px;background:#7d1435;color:#fff}',
           }}
         />
       </>,
@@ -732,7 +771,7 @@ export function registerOlAppRoutes({ app, deps, page, back }: Ctx) {
         <style
           dangerouslySetInnerHTML={{
             __html:
-              '.bogen{display:flex;flex-direction:column;gap:10px}.bf{display:flex;flex-direction:column;gap:4px;font-weight:600}.bf input,.bf select,.bf textarea{font:inherit;font-weight:400;padding:12px;border:1px solid #e3d6db;border-radius:10px;background:#fff}.btn-big{font:inherit;font-weight:700;padding:14px;border:0;border-radius:12px;background:#7d1435;color:#fff}',
+              '.bogen{display:flex;flex-direction:column;gap:10px}.wstep{display:flex;flex-direction:column;gap:10px}.wnav{display:flex;align-items:center;gap:10px;margin-top:8px}.wbtn{font:inherit;font-size:22px;font-weight:700;min-width:64px;padding:12px;border:0;border-radius:12px;background:#7d1435;color:#fff}.wbtn.sec{background:#fff;color:#7d1435;border:1px solid #e3d6db}.wcount{flex:1;text-align:center;color:#8a7a80;font-weight:600}.wnav .btn-big{flex:1}.bf{display:flex;flex-direction:column;gap:4px;font-weight:600}.bf input,.bf select,.bf textarea{font:inherit;font-weight:400;padding:12px;border:1px solid #e3d6db;border-radius:10px;background:#fff}.btn-big{font:inherit;font-weight:700;padding:14px;border:0;border-radius:12px;background:#7d1435;color:#fff}',
           }}
         />
       </>,

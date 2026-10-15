@@ -2931,3 +2931,24 @@ Testadresse.
   gebildet (bestehende Aufträge behalten ihren Titel), Uhrzeiten bleiben bei alten Aufträgen erhalten, werden aber nicht
   mehr abgefragt. „Leistungsort (ohne eigenes Objekt)“ heißt jetzt „Objektadresse (wenn kein Objekt angelegt ist)“,
   in der Rechnungseinleitung „Objekt …“.
+- 2026-10-15: Rückmeldung Android-App (Ahmed, 13 Punkte):
+  - **Einzelauftrag → „Rechnung als PDF-Vorschau“**: derselbe Weg wie „Rechnung erstellen“, aber in einer Transaktion, die
+    zurückgerollt wird (`previewOrderInvoicePdf`) – kein Entwurf, Auftrag bleibt offen.
+  - **Leiste unten immer sichtbar** (Mitarbeiter-App, QM-App, App-Rahmen): Seite als Spalte, nur der Inhalt scrollt
+    (`body.shellbar`), Leiste nicht mehr `position:fixed`.
+  - **Zeit anpassen** beim Bestätigen: „Zeit anpassen“ an jedem Einsatz (Beginn/Ende/Pause) → geht als Nachtrag zur
+    Freigabe an die Objektleitung. **„Nachtragen“ in der App entfernt** (nur noch Objektleitung/Büro).
+  - **Stundenliste unterschreiben** nur am letzten Tag des Monats bzw. bis zum 7. des Folgemonats; dann öffnet die App
+    zuerst die Stundenliste im Vollbild (ohne Leiste). „Später (nur heute)“ bleibt, damit Stempeln nie blockiert ist.
+  - **Kein „Objekt wählen“** mehr: Stempeln am heutigen Einsatz bzw. einzigen Objekt; nur ohne Einsatz und mit mehreren
+    Objekten kommt die Frage „wo arbeitest du?“.
+  - **Art der Zeiterfassung je Mitarbeiter** (Zeiterfassung → Einstellungen; `employees.time_mode`, Migration
+    `20261126000003`): Alle Wege / Nur Einsatz bestätigen / Stoppuhr / Stoppuhr mit QR-Code. Stoppuhr zeigt Sekunden.
+    QR-Modus: Start öffnet die Kamera, nach dem Scan startet die Zeit am Objekt (Server prüft den QR-Code).
+  - **QM-App:** Audit zurück ohne bewerteten Raum → wird verworfen, man landet in „Qualität“; Bewertung per
+    **Schieberegler** (Wert erst gesetzt, wenn bewegt); „Speichern & zur Raumübersicht“ und **„Speichern & Audit
+    beenden“**; Leiste unten Audits / Objekte / Tickets, oben keine Schnellknöpfe mehr; „+“-Menü nicht mehr abgeschnitten.
+    PC: **Qualitätskontrollen in der Liste löschen** (Entwurf jeder, abgeschlossene nur Admin).
+  - **PC-Ansicht → „← Zurück zur App“** (Knopf unten auf Handy/Tablet/App).
+  - **Personalbogen Schritt für Schritt** (5 Schritte, Weiter prüft Pflichtfelder, Absenden im letzten Schritt;
+    `WIZARD_JS` für weitere Formulare nutzbar).

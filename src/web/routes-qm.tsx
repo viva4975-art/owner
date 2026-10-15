@@ -41,7 +41,7 @@ import {
   qmSites,
   setTicketStatus,
 } from '../services/qm.js';
-import { WEIGHT_LABEL, qmSettings, saveQmSettings } from '../services/qm-report.js';
+import { WEIGHT_LABEL, deleteQualityCheck, qmSettings, saveQmSettings } from '../services/qm-report.js';
 import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { str } from './forms.js';
 import { storeFile } from '../services/uploads.js';
@@ -102,7 +102,8 @@ const QM_CSS = `
 .qm-score{font-size:20px;font-weight:700;color:#7D1435}.qm-score.lo{color:#b42318}.qm-score.mid{color:#b45309}.qm-score.hi{color:#15803d}
 .qm-empty{text-align:center;color:var(--mut);padding:40px 16px;font-size:17px}
 .qm-empty svg{width:64px;height:64px;color:#9b8790;display:block;margin:0 auto 14px}
-.qm-sheet{position:fixed;inset:0;z-index:30}
+.qm-sheet{position:fixed;inset:0;z-index:60}
+.qm-back{background:none;border:0;padding:0;width:36px;height:36px;display:flex;align-items:center;justify-content:center;color:inherit;cursor:pointer}.qm-back svg{width:24px;height:24px}
 .qm-sheet>summary{list-style:none}.qm-sheet>summary::-webkit-details-marker{display:none}
 .qm-sheet[open]::before{content:"";position:fixed;inset:0;background:rgba(60,20,35,.25)}
 .qm-sheet .panel{position:fixed;left:0;right:0;bottom:0;background:#fff;border-radius:28px 28px 0 0;padding:14px 24px calc(28px + env(safe-area-inset-bottom,0px));box-shadow:0 -10px 30px rgba(60,20,35,.15)}
@@ -133,6 +134,16 @@ const QM_CSS = `
 .scale span{width:16px;height:16px;border-radius:50%;background:#ddd0d5;display:flex;align-items:center;justify-content:center;font-weight:750;color:#fff;font-size:20px;transition:all .12s}
 .scale input:checked+span{width:52px;height:52px;background:linear-gradient(135deg,#b34a6a,#7D1435)}
 .scale input:checked+span::after{content:attr(data-v)}
+.slide{margin:14px 4px 6px}
+.slide-val{font-size:30px;font-weight:800;color:#7D1435;text-align:center;line-height:1.1;margin-bottom:8px}
+.slide input[type=range]{width:100%;height:44px;-webkit-appearance:none;appearance:none;background:transparent;margin:0}
+.slide input[type=range]::-webkit-slider-runnable-track{height:10px;border-radius:9px;background:linear-gradient(90deg,#e7b3c0,#7D1435)}
+.slide input[type=range]::-moz-range-track{height:10px;border-radius:9px;background:linear-gradient(90deg,#e7b3c0,#7D1435)}
+.slide input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:38px;height:38px;border-radius:50%;background:#fff;border:3px solid #7D1435;margin-top:-14px;box-shadow:0 2px 8px rgba(125,20,53,.3)}
+.slide input[type=range]::-moz-range-thumb{width:34px;height:34px;border-radius:50%;background:#fff;border:3px solid #7D1435}
+.slide input[type=range]:not(.set)::-webkit-slider-thumb{border-color:#c9b3bb;background:#f3eef0}
+.slide-ends{display:flex;justify-content:space-between;font-size:13px;color:var(--mut);margin-top:2px}
+.qm-item.skipped .slide{opacity:.3;pointer-events:none}
 .yn{display:flex;justify-content:center;gap:22px;margin:16px 0 8px}
 .yn label{margin:0;cursor:pointer;position:relative}.yn input{position:absolute;opacity:0;width:1px;height:1px;margin:0}
 .yn span{display:flex;align-items:center;justify-content:center;width:80px;height:80px;border-radius:50%;border:2px solid #d7c3cb;font-size:15px;font-weight:600;color:#7D1435}
@@ -238,7 +249,7 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
       '<!doctype html>' +
         String(
           <QmLayout
-            path={c.req.path}
+            path={c.req.query('start') === '1' ? '/qm/qualitaet' : c.req.path}
             title={title}
             flash={{ ok: c.req.query('ok') ?? '', err: c.req.query('fehler') ?? '' }}
           >
@@ -402,7 +413,10 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
   app.get('/qm/qualitaet', async (c) => {
     const u = c.get('user');
     const today = todayBerlin();
-    const audits = await qmAudits(sql, { siteIds: c.get('sites'), date: today });
+    // angefangene Audits ohne bewerteten Raum zählen nicht (Ahmed 15.10.: „zurück = kein Entwurf“)
+    const audits = (await qmAudits(sql, { siteIds: c.get('sites'), date: today })).filter(
+      (a) => a.status !== 'entwurf' || a.rated > 0,
+    );
     const hour = hourBerlin();
     const first = fullName(u).split(' ')[0]!;
     return render(
@@ -413,25 +427,6 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
         <div class="hello">
           {hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend'}
           <b>{first.charAt(0).toUpperCase() + first.slice(1)}!</b>
-        </div>
-        <div class="quick">
-          {(
-            [
-              ['/qm/objekte?start=1', 'plus', 'Audit starten'],
-              ['/qm/tickets', 'ticket', 'Tickets'],
-              ['/qualitaet', 'list', 'Alle Audits'],
-              ['/arbeitsscheine', 'times', 'Arbeitsscheine'],
-            ] as const
-          )
-            .filter(([href]) => canAccess(u.role, href.split('?')[0]!))
-            .map(([href, ic, label]) => (
-              <a href={href}>
-                <span class="qi">
-                  <Ic n={ic} />
-                </span>
-                {label}
-              </a>
-            ))}
         </div>
         {audits.length === 0 ? (
           <div class="qm-empty">
@@ -666,9 +661,12 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
       qc.site_name,
       <>
         <div class="qm-top">
-          <a href={`/qm/objekt/${qc.site_id}`} aria-label="zurück">
-            <Ic n="back" />
-          </a>
+          {/* zurück: leeres Audit wird verworfen, man bleibt im Bereich Qualität */}
+          <form method="post" action={`/qm/audit/${qc.id}/zurueck`} style="margin:0">
+            <button class="qm-back" aria-label="zurück">
+              <Ic n="back" />
+            </button>
+          </form>
           <h1>
             {qc.site_no} - {qc.site_name}
           </h1>
@@ -712,11 +710,21 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
         </div>
         {qc.status === 'entwurf' && done > 0 && (
           <a class="big go" href={`/qualitaet/${qc.id}/abschliessen`}>
-            Audit abschließen
+            Audit beenden
           </a>
         )}
       </>,
     );
+  });
+
+  app.post(`/qm/audit/:id{${UUID}}/zurueck`, async (c) => {
+    const qc = await loadAudit(c, c.req.param('id'));
+    if (!qc) return c.redirect('/qm/qualitaet', 303);
+    const [r] = await sql<{ n: number }[]>`
+      select count(*)::int as n from app.quality_check_ratings where check_id = ${qc.id}`;
+    if (qc.status === 'entwurf' && !r?.n)
+      await deleteQualityCheck(sql, qc.id, { admin: false, actor: c.get('actor') });
+    return c.redirect('/qm/qualitaet', 303);
   });
 
   app.get(`/qm/audit/:id{${UUID}}/raum/:room{${UUID}}`, async (c) => {
@@ -781,29 +789,39 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
                   />{' '}
                   Überspringen
                 </label>
-                {it.kind === 'note' || it.kind === 'punkte' ? (
-                  <div
-                    class="scale"
-                    title={
-                      it.kind === 'note'
-                        ? 'links 6 (ungenügend) … rechts 1 (sehr gut)'
-                        : 'links 1 (schlecht) … rechts 5 (sehr gut)'
-                    }
-                  >
-                    {QM_SCALE[it.kind].map((o) => (
-                      <label>
+                {it.kind === 'note' || it.kind === 'punkte' || it.kind === 'gms' ? (
+                  // Schieberegler wie eine Skala (Ahmed 15.10.); Wert erst gesetzt, wenn bewegt
+                  (() => {
+                    const opts = QM_SCALE[it.kind];
+                    const idx = e?.value != null ? opts.findIndex((o) => o.v === e.value) : -1;
+                    return (
+                      <div class="slide" data-slide>
                         <input
-                          type="radio"
+                          type="hidden"
                           name={`v_${it.id}`}
-                          value={String(o.v)}
-                          data-pct={String(o.pct)}
-                          checked={e?.value === o.v}
-                          disabled={locked}
+                          value={idx >= 0 ? String(opts[idx]!.v) : ''}
                         />
-                        <span data-v={o.label} />
-                      </label>
-                    ))}
-                  </div>
+                        <div class="slide-val" data-out>
+                          {idx >= 0 ? opts[idx]!.label : '–'}
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max={String(opts.length - 1)}
+                          step="1"
+                          value={String(idx >= 0 ? idx : Math.floor((opts.length - 1) / 2))}
+                          class={idx >= 0 ? 'set' : ''}
+                          data-opts={JSON.stringify(opts.map((o) => [o.v, o.label, o.pct]))}
+                          disabled={locked}
+                          aria-label={it.name}
+                        />
+                        <div class="slide-ends">
+                          <span>{opts[0]!.label}</span>
+                          <span>{opts[opts.length - 1]!.label}</span>
+                        </div>
+                      </div>
+                    );
+                  })()
                 ) : (
                   <div class="yn">
                     {QM_SCALE[it.kind].map((o) => (
@@ -852,12 +870,19 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
               Fotos erhalten Zeitpunkt und Standort (Nachweis der Kontrolle vor Ort).
             </p>
           )}
-          {!locked && <button class="big go">Speichern &amp; nächster Raum</button>}
+          {!locked && <button class="big go">Speichern &amp; zur Raumübersicht</button>}
+          {!locked && (
+            <button class="big sec" name="beenden" value="1">
+              Speichern &amp; Audit beenden
+            </button>
+          )}
         </form>
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){var f=document.getElementById('qmf');if(!f)return;
-function upd(){var s=0,n=0;f.querySelectorAll('[data-item]').forEach(function(d){var sk=d.querySelector('input[type=checkbox]');d.classList.toggle('skipped',sk&&sk.checked);if(sk&&sk.checked)return;var r=d.querySelector('input[type=radio]:checked');if(r){s+=Number(r.getAttribute('data-pct'));n++}});document.getElementById('gnote').textContent=(n?Math.round(s/n):0)+' %'}
+function pctOf(d){var r=d.querySelector('input[type=radio]:checked');if(r)return Number(r.getAttribute('data-pct'));var sl=d.querySelector('[data-slide] input[type=range]');if(sl&&sl.classList.contains('set')){var o=JSON.parse(sl.getAttribute('data-opts'))[Number(sl.value)];return o?o[2]:null}return null}
+function upd(){var s=0,n=0;f.querySelectorAll('[data-item]').forEach(function(d){var sk=d.querySelector('input[type=checkbox]');d.classList.toggle('skipped',sk&&sk.checked);if(sk&&sk.checked)return;var p=pctOf(d);if(p!=null){s+=p;n++}});document.getElementById('gnote').textContent=(n?Math.round(s/n):0)+' %'}
+f.querySelectorAll('[data-slide]').forEach(function(w){var sl=w.querySelector('input[type=range]'),h=w.querySelector('input[type=hidden]'),out=w.querySelector('[data-out]');var opts=JSON.parse(sl.getAttribute('data-opts'));function set(){var o=opts[Number(sl.value)];sl.classList.add('set');h.value=String(o[0]);out.textContent=o[1];upd()}sl.addEventListener('input',set);sl.addEventListener('change',set);sl.addEventListener('pointerdown',function(){if(!sl.classList.contains('set'))setTimeout(set,0)})});
 f.addEventListener('change',upd);
 function geo(){if(!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(function(p){f.geo_lat.value=p.coords.latitude.toFixed(5);f.geo_lng.value=p.coords.longitude.toFixed(5);f.geo_acc.value=Math.round(p.coords.accuracy)},function(){var h=document.getElementById('geo-hint');if(h)h.textContent='Standort nicht freigegeben – Fotos werden ohne Standort gespeichert.'},{enableHighAccuracy:true,timeout:15000,maximumAge:60000})}
 geo();
@@ -937,9 +962,6 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
       ratings.push({ itemId: it.id, value, skipped, note, photoIds });
     }
     await saveRoomRatings(sql, { checkId: qc.id, roomId, ratings, actor: c.get('actor') });
-    // nächster noch nicht bewerteter Raum
-    const idx = rooms.findIndex((r) => r.id === roomId);
-    const next = [...rooms.slice(idx + 1), ...rooms.slice(0, idx)].find((r) => r.rated === 0);
     const kindOf = new Map(items.map((i) => [i.id, i.kind]));
     const pct = ratings
       .filter((r) => !r.skipped && r.value)
@@ -947,7 +969,9 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
     const msg = pct.length
       ? `${room.name}: ${Math.round(pct.reduce((a, x) => a + x, 0) / pct.length)} %`
       : 'Gespeichert.';
-    return back(c, next ? `/qm/audit/${qc.id}/raum/${next.id}` : `/qm/audit/${qc.id}`, { ok: msg });
+    // danach in die Raumübersicht (Ahmed 15.10.) bzw. direkt zum Abschluss
+    if (str(b, 'beenden') === '1') return back(c, `/qualitaet/${qc.id}/abschliessen`, { ok: msg });
+    return back(c, `/qm/audit/${qc.id}`, { ok: msg });
   });
 
   // ------------------------------------------------------------ Tickets

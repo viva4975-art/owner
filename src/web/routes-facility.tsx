@@ -109,7 +109,12 @@ export function parseHours(v: string | null, what: string): number {
 const scoreClass = (s: number | null) =>
   s == null ? 'draft' : s >= QC_GOOD ? 'ok' : s >= QC_FAIR ? 'warn' : 'err';
 
-export const QcTable: FC<{ rows: QualityCheckRow[]; site?: boolean }> = ({ rows, site }) => (
+export const QcTable: FC<{
+  rows: QualityCheckRow[];
+  site?: boolean;
+  /** Löschen direkt in der Liste (Ahmed 15.10.: „vor allem für Tests“) – abgeschlossene nur Admin */
+  del?: { admin: boolean; ret: string };
+}> = ({ rows, site, del }) => (
   <div class="tbl">
     <table>
       <thead>
@@ -121,6 +126,7 @@ export const QcTable: FC<{ rows: QualityCheckRow[]; site?: boolean }> = ({ rows,
           <th class="right">Bereiche</th>
           <th class="right">Mängel</th>
           <th>Ergebnis</th>
+          {del && <th />}
         </tr>
       </thead>
       <tbody>
@@ -145,6 +151,22 @@ export const QcTable: FC<{ rows: QualityCheckRow[]; site?: boolean }> = ({ rows,
                 <span class={`badge ${scoreClass(q.score_percent)}`}>{q.score_percent} %</span>
               )}
             </td>
+            {del && (
+              <td class="right">
+                {(q.status === 'entwurf' || del.admin) && (
+                  <form method="post" action={`/qualitaet/${q.id}/loeschen`} class="inline-form">
+                    <input type="hidden" name="zurueck" value={del.ret} />
+                    <button
+                      class="btn sm danger"
+                      title="Kontrolle löschen"
+                      data-confirm={`Qualitätskontrolle ${q.number} löschen?${q.status === 'entwurf' ? '' : ' Prüfbericht und Fotos bleiben im Archiv.'}`}
+                    >
+                      ✕
+                    </button>
+                  </form>
+                )}
+              </td>
+            )}
           </tr>
         ))}
         {!rows.length && (
@@ -1306,7 +1328,7 @@ f.addEventListener('change',show);f.addEventListener('input',sum);show();})();`,
           </select>
           <button class="btn">+ Kontrolle starten</button>
         </form>
-        <QcTable rows={rows} site />
+        <QcTable rows={rows} site del={{ admin: c.get('user').role === 'admin', ret: '/qualitaet' }} />
         <p class="small mut">
           Bewertung: Anteil der geprüften Bereiche ohne Mangel. Grün ab {QC_GOOD} %, gelb ab {QC_FAIR} %.
           Jeder Mangel erzeugt beim Abschluss eine Nachbesserungs-Aufgabe für die Objektleitung (Frist 3
@@ -1951,7 +1973,12 @@ f.addEventListener('change',show);f.addEventListener('input',sum);show();})();`,
     if (!data) return c.notFound();
     assertSite(c, data.check.site_id);
     await deleteQualityCheck(sql, id, { admin: c.get('user').role === 'admin', actor: c.get('actor') });
-    return back(c, `/objekte/${data.check.site_id}/qualitaet`, {
+    const b = await c.req.parseBody();
+    const ret =
+      typeof b.zurueck === 'string' && /^\/(qualitaet|qm)(\/|$|\?)/.test(b.zurueck)
+        ? b.zurueck
+        : `/objekte/${data.check.site_id}/qualitaet`;
+    return back(c, ret, {
       ok: `Qualitätskontrolle ${data.check.number} gelöscht.`,
     });
   });

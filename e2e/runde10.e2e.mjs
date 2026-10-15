@@ -210,21 +210,38 @@ await p.waitForLoadState();
 check('Nutzungsart angelegt', (await flash(p)).includes('Nutzungsart gespeichert'), await flash(p));
 const naRow = await p.locator('tr', { hasText: `Besprechungsraum ${tag}` }).innerText();
 check('Nutzungsart mit 2 Gegenständen', /\b2\b/.test(naRow), naRow);
+// Audit nur am Handy/Tablet (Touch-Cookie wie auf dem Gerät)
+await ctx.addCookies([{ name: 'vd_touch', value: '1', url: B }]);
 await p.goto(B + '/qm/objekt/00000000-0000-4000-8000-000000000012');
 await p.click('summary.fab');
 await Promise.all([p.waitForNavigation(), p.click('button:has-text("Audit starten")')]);
 check('Audit: Raumliste', (await p.locator('a.qm-room').count()) > 0);
 await p.locator('a.qm-room').first().click();
 await p.waitForLoadState();
-await p.locator('.scale input[data-pct="80"]').first().check({ force: true });
-check('Gesamtnote live', (await p.textContent('#gnote')) === '80 %');
-await p.click('button:has-text("Speichern")');
+// Schieberegler ganz nach rechts (beste Stufe = 100 %)
+await p.evaluate(() => {
+  const sl = document.querySelector('[data-slide] input[type=range]');
+  sl.value = sl.max;
+  sl.dispatchEvent(new Event('input', { bubbles: true }));
+});
+check('Gesamtnote live', (await p.textContent('#gnote')) === '100 %', await p.textContent('#gnote'));
+await p.click('button:has-text("Speichern & zur Raumübersicht")');
 await p.waitForLoadState();
 check(
-  'Raum gespeichert, weiter zum nächsten Raum',
-  (await flash(p)).includes('80 %') && p.url().includes('/raum/'),
+  'Raum gespeichert, zurück in der Raumübersicht',
+  (await flash(p)).includes('100 %') && /\/qm\/audit\/[0-9a-f-]{36}$/.test(new URL(p.url()).pathname),
   await flash(p),
 );
+check('Audit beenden sichtbar', (await p.locator('a:has-text("Audit beenden")').count()) === 1);
+// leeres Audit: zurück → verworfen, man landet in „Qualität“
+await p.goto(B + '/qm/objekt/00000000-0000-4000-8000-000000000012');
+await p.click('summary.fab');
+await Promise.all([p.waitForNavigation(), p.click('button:has-text("Audit starten")')]);
+const emptyAudit = new URL(p.url()).pathname;
+await Promise.all([p.waitForNavigation(), p.click('button.qm-back')]);
+check('zurück aus leerem Audit → Qualität', new URL(p.url()).pathname === '/qm/qualitaet', p.url());
+const gone = await p.request.get(B + emptyAudit);
+check('leeres Audit verworfen', gone.status() === 404, String(gone.status()));
 
 console.log(`\n${ok} bestanden, ${fail} fehlgeschlagen`);
 await browser.close();

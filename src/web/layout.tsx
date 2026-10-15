@@ -14,6 +14,7 @@ import { canAccess, canOpen } from './permissions.js';
  */
 /** Leiste unten in der App – auch in den QM-Seiten genutzt. */
 export const APP_TAB_CSS = `
+.to-app{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:80;background:#7d1435;color:#fff!important;padding:12px 22px;border-radius:999px;font-weight:600;text-decoration:none;box-shadow:0 8px 24px rgba(125,20,53,.35)}
 body.shellbar{display:flex;flex-direction:column;height:100vh;height:100dvh;min-height:0;overflow:hidden}
 body.shellbar>header{flex:none}
 body.shellbar>main{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain}
@@ -1817,6 +1818,16 @@ export const Layout: FC<{
               {children}
             </main>
           </div>
+          {/* aus der App in die PC-Ansicht gewechselt: Knopf zurück (Handy/Tablet/App) – Ahmed 15.10. */}
+          <a id="to-app" class="to-app" href="/qm" hidden>
+            ← Zurück zur App
+          </a>
+          <script
+            dangerouslySetInnerHTML={{
+              __html:
+                "(function(){var a=document.getElementById('to-app');if(a&&(window.Capacitor||matchMedia('(pointer:coarse)').matches))a.hidden=false})();",
+            }}
+          />
           <script dangerouslySetInnerHTML={{ __html: CLIENT_JS }} />
         </body>
       )}
@@ -1836,7 +1847,7 @@ const APP_TABS: Record<'qualitaet' | 'verwaltung', (readonly [string, string, st
   ],
   qualitaet: [
     ['/qm/qualitaet', 'list', 'Audits'],
-    ['/qm/objekte?start=1', 'building', 'Audit starten'],
+    ['/qm/objekte?start=1', 'building', 'Objekte'],
     ['/qm/tickets', 'ticket', 'Tickets'],
   ],
 };

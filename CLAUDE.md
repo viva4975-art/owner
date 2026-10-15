@@ -3109,3 +3109,6 @@ Testadresse.
   `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`,
   `PLAY_SERVICE_ACCOUNT_JSON` (Dienstkonto mit Release-Rechten für die App). **Voraussetzung:** erstes .aab einmal von
   Hand in der Play Console hochgeladen (Google verlangt das). Hier nicht testbar (kein Android-SDK).
+- 2026-10-15: iPhone-App **nur für iPhone** (`TARGETED_DEVICE_FAMILY = 1` im Skript), sonst verlangt Apple iPad-
+  Bildschirmfotos. iOS-Build: .ipa lokal exportieren, Upload mit `xcrun altool` (Export mit „upload“ scheiterte an
+  „Cannot verify client's JWT headers“). Store-Angaben: Datenschutz-URL `/m/datenschutz`, Testzugang Personalnr. 9999.

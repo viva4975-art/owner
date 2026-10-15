@@ -36,6 +36,8 @@ schritt "Einstellungen setzen"
 # QR-Scanner (Google ML Kit) braucht mindestens iOS 15.5
 sed -i '' "s/platform :ios, '[0-9.]*'/platform :ios, '15.5'/" ios/App/Podfile
 sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 1[0-4]\.[0-9]*;/IPHONEOS_DEPLOYMENT_TARGET = 15.5;/' ios/App/App.xcodeproj/project.pbxproj
+# Nur iPhone (kein iPad): sonst verlangt Apple iPad-Bildschirmfotos, und die App ist fürs Handy gebaut
+sed -i '' 's/TARGETED_DEVICE_FAMILY = "1,2";/TARGETED_DEVICE_FAMILY = 1;/' ios/App/App.xcodeproj/project.pbxproj
 # Auch alle Pods (Capacitor, Google …) auf 15.5 – sonst meldet neues Xcode
 # „IPHONEOS_DEPLOYMENT_TARGET is set to 14.0, but the range …“
 if ! grep -q 'viva-deployment-target' ios/App/Podfile; then

@@ -59,8 +59,9 @@ Es erscheint z. B. <code>Xcode 26.0</code>.</li>
 <h2>Schritt 3 – Homebrew und CocoaPods installieren (ca. 10 Minuten)</h2>
 <p>CocoaPods lädt den QR-Scanner (Google ML Kit) in die App. Am einfachsten über Homebrew.</p>
 <ol>
-<li>Im Terminal (eine Zeile, komplett kopieren):
-<pre>/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</pre>
+<li><b>Am einfachsten:</b> Im Safari <code>https://github.com/Homebrew/brew/releases/latest</code> öffnen, ganz unten bei „Assets“ die Datei <b><code>Homebrew-….pkg</code></b> laden, doppelklicken und durchklicken (wie bei Node.js).<br>
+<b>Oder</b> im Terminal – der Befehl muss <u>in einer einzigen Zeile ohne Umbruch</u> stehen (beim Kopieren aus dem PDF entsteht sonst ein Fehler „404“):
+<pre style="white-space:pre;word-break:normal;overflow-x:auto;font-size:11px">/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</pre>
 Mac-Passwort eingeben, mit Enter bestätigen, warten.</li>
 <li>Am Ende zeigt Homebrew unter „<b>Next steps</b>“ zwei Zeilen an, die mit <code>echo</code> bzw. <code>eval</code> beginnen. <b>Diese beiden Zeilen kopieren und ausführen.</b> Auf Macs mit Apple-Chip (M1/M2/M3/M4) sind es:
 <pre>echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' &gt;&gt; ~/.zprofile
@@ -137,6 +138,7 @@ bash ios-einrichten.sh</pre></li>
 <table>
 <tr><th>Meldung</th><th>Lösung</th></tr>
 <tr><td><code>command not found: node</code></td><td>Schritt 1 wiederholen, danach Terminal schließen und neu öffnen.</td></tr>
+<tr><td><code>curl: (56) … error: 404</code> bei Homebrew</td><td>Befehl ist beim Kopieren umgebrochen (…/instal + l/HEAD…). In einer Zeile einfügen oder das .pkg aus Schritt 3 nehmen.</td></tr>
 <tr><td><code>command not found: brew</code> oder <code>pod</code></td><td>In Schritt 3 die beiden „Next steps“-Zeilen ausführen, Terminal neu öffnen, <code>brew install cocoapods</code> wiederholen.</td></tr>
 <tr><td><code>xcode-select: error</code> / Xcode fehlt</td><td>Xcode einmal öffnen und Lizenz bestätigen, dann den <code>sudo xcode-select …</code>-Befehl aus Schritt 2.</td></tr>
 <tr><td>Fehler bei <code>pod install</code></td><td>Im Terminal <code>pod repo update</code>, danach <code>bash ios-einrichten.sh</code> erneut.</td></tr>

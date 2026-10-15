@@ -1832,14 +1832,15 @@ export const Layout: FC<{
               {children}
             </main>
           </div>
-          {/* aus der App in die PC-Ansicht gewechselt: Knopf zurück (Handy/Tablet/App) – Ahmed 15.10. */}
+          {/* aus der App in die PC-Ansicht gewechselt: Knopf zurück – nur in der installierten App (Store-App oder
+              „Zum Home-Bildschirm“), nicht im Handy-Browser (Ahmed 15.10.) */}
           <a id="to-app" class="to-app" href="/qm" hidden>
             ← Zurück zur App
           </a>
           <script
             dangerouslySetInnerHTML={{
               __html:
-                "(function(){var a=document.getElementById('to-app');if(a&&(window.Capacitor||matchMedia('(pointer:coarse)').matches))a.hidden=false})();",
+                "(function(){var a=document.getElementById('to-app');if(a&&(window.Capacitor||matchMedia('(display-mode: standalone)').matches||navigator.standalone))a.hidden=false})();",
             }}
           />
           <script dangerouslySetInnerHTML={{ __html: CLIENT_JS }} />

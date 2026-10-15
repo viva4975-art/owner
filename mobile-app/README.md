@@ -34,7 +34,7 @@ Risiko: Apple lehnt reine „Webseiten-Hüllen“ teils ab (Richtlinie 4.2 Minim
 
 ## Bauen
 
-Schritt-für-Schritt für Ahmed (Windows): `docs/anleitung-android.pdf`. Das Android-Projekt (`android/`) ist
+Schritt-für-Schritt für Ahmed: Android (Windows) `docs/anleitung-android.pdf`, iPhone (Mac) `docs/anleitung-iphone-mac.pdf` – auf dem Mac richtet `bash ios-einrichten.sh` das iOS-Projekt ein (Name, Logo, Berechtigungstexte, iOS 15.5 für ML Kit). Das Android-Projekt (`android/`) ist
 angelegt (Icons/Startbild aus `assets/`, erzeugt mit `npx @capacitor/assets generate --android`).
 
 ```bash

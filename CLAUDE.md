@@ -3070,3 +3070,9 @@ Testadresse.
   Google Play/App Store; **vor dem Einreichen von Datenschutzberater/Anwalt prüfen lassen.**
   Anleitung `docs/anleitung-stores.html/.pdf` (Google Play Schritt für Schritt, App Store: Mac/Xcode nötig, iOS-Projekt
   noch anzulegen, Risiko Apple 4.2 → Unlisted/Custom App).
+- 2026-10-15: **iPhone-App auf dem Mac** (Ahmed: „wo Node.js für Mac, Anleitung genauer“): `docs/anleitung-iphone-mac.html/.pdf`
+  (Node.js LTS als .pkg von nodejs.org, Xcode aus dem App Store + `xcode-select`, Homebrew + CocoaPods, ZIP vom Branch,
+  Team/Signing, Archive → App Store Connect, TestFlight, Angaben, Fehlerliste) und Skript `mobile-app/ios-einrichten.sh`:
+  prüft Werkzeuge, `npm install`, `cap add ios` (CocoaPods), Mindest-iOS 15.5 (Google ML Kit 7), App-Name, Logo als
+  App-Symbol, Bordeaux-Startbild, Texte für Kamera/Standort/Fotos, `ITSAppUsesNonExemptEncryption=false`, `cap sync`,
+  öffnet Xcode; darf mehrfach laufen. Hier nicht ausführbar (kein macOS) – erster Lauf auf Ahmeds Mac.

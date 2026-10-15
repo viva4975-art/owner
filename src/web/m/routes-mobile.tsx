@@ -104,6 +104,9 @@ h2{font-size:17px;margin:0 0 10px;font-weight:650}
 .sec{background:#fff;color:var(--ink);border:1px solid var(--line);font-size:17px;min-height:52px}
 label{display:block;font-size:15px;color:var(--mut);margin:10px 0 6px;font-weight:550}
 input,select,textarea{width:100%;font:inherit;font-size:18px;padding:12px;border:1px solid #cfd4db;border-radius:10px;background:#fff;color:var(--ink)}
+[hidden]{display:none!important}
+input[type=checkbox],input[type=radio]{width:22px;height:22px;flex:none;padding:0;accent-color:var(--brand)}
+body:has(details.msheet[open]) .tabbar,body:has(details.qm-sheet[open]) .tabbar,body:has(details.qm-sheet[open]) .apptabs{display:none}
 input:focus,select:focus,textarea:focus{outline:3px solid #f3d6df;border-color:var(--brand)}
 .chk{display:flex;gap:12px;align-items:flex-start;margin:12px 0}
 .chk input{width:26px;height:26px;flex:none;accent-color:var(--brand);margin-top:2px}

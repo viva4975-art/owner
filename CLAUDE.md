@@ -3087,3 +3087,10 @@ Testadresse.
   Kopfzeile) beginnen unter der Statusleiste (`main.nohead`). **PDF ohne Zurück:** Skript setzt in Main.storyboard
   `VivaViewController` (in `AppDelegate.swift`): bei PDFs (Pfad .pdf oder `document.contentType`) Knopf „‹ Zurück“ oben
   links, dazu Wischen vom linken Rand. Wirksam nach erneutem `bash ios-einrichten.sh` (nicht auf macOS getestet).
+- 2026-10-15: App am iPhone (Ahmed, Screenshots): Fenster von unten (Stoppuhr, „Was möchten Sie als nächstes erledigen?“)
+  lagen unter der Leiste unten → Leiste ausgeblendet, solange ein solches Fenster offen ist (`body:has(details.msheet[open])`).
+  Häkchen/Auswahlknöpfe waren in der App 100 % breit (Namen rutschten nach rechts) → feste Größe; `[hidden]` gilt jetzt
+  auch in den Apps (Feld „Objekt“ erschien bei „einzelne auswählen“). Unterweisung freigeben ohne Leiste unten,
+  Zurück/Weiter bleiben unten stehen. „75 %“ bricht nicht mehr um. **iPhone-PDF:** neben „‹ Zurück“ Knopf
+  „Teilen / Drucken“ (lädt das PDF mit der App-Anmeldung, iOS-Teilen: Drucken, In Dateien sichern, Mail, WhatsApp) –
+  `VivaViewController` Fassung 2 im Skript (ersetzt Fassung 1); wirkt nach `bash ios-einrichten.sh` + neuem Build.

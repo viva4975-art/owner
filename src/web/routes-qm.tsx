@@ -119,7 +119,7 @@ main.nohead{padding-top:calc(12px + env(safe-area-inset-top,0px))}
 .qm-more .mn a,.qm-more .mn button{display:block;text-align:left;padding:10px 12px;border-radius:8px;font-size:15px;color:inherit;text-decoration:none;background:none;border:0;width:100%;font:inherit;cursor:pointer}
 .qm-more .mn a:hover,.qm-more .mn button:hover{background:#f6eff1}.qm-more .mn .del{color:#b42318}
 .qm-audit b{font-size:18px}.qm-audit .m{font-size:15px;color:var(--mut);margin-top:4px}
-.qm-score{font-size:20px;font-weight:700;color:#7D1435}.qm-score.lo{color:#b42318}.qm-score.mid{color:#b45309}.qm-score.hi{color:#15803d}
+.qm-score{font-size:20px;white-space:nowrap;flex:none;font-weight:700;color:#7D1435}.qm-score.lo{color:#b42318}.qm-score.mid{color:#b45309}.qm-score.hi{color:#15803d}
 .qm-empty{text-align:center;color:var(--mut);padding:40px 16px;font-size:17px}
 .qm-empty svg{width:64px;height:64px;color:#9b8790;display:block;margin:0 auto 14px}
 .qm-sheet{position:fixed;inset:0;z-index:60}
@@ -229,7 +229,7 @@ export const QmLayout: FC<{
         {children}
       </main>
       {/* während einer Kontrolle keine Leiste unten (Ahmed 15.10.) */}
-      {!/^\/qm\/(audit|personalbogen)\//.test(path) && <AppTabbar path={path} />}
+      {!/^\/qm\/(audit\/|personalbogen\/|unterweisungen\/neu)/.test(path) && <AppTabbar path={path} />}
       <script dangerouslySetInnerHTML={{ __html: SCROLL_JS }} />
     </body>
   </html>

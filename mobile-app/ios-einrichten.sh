@@ -81,52 +81,73 @@ schritt "Zurück-Knopf bei PDFs"
 # WKWebView zeigt PDFs ganzseitig ohne Zurück → eigener Controller mit Knopf „‹ Zurück“ und Wisch-Geste
 sb=ios/App/App/Base.lproj/Main.storyboard
 sed -i '' 's/customClass="CAPBridgeViewController" customModule="Capacitor"/customClass="VivaViewController" customModule="App" customModuleProvider="target"/' "$sb"
-if ! grep -q 'viva-pdf-zurueck' "$appdelegate"; then
+# Fassung 2: zusätzlich „Teilen“ (Drucken, Sichern, Mail, WhatsApp). Ältere Fassung wird ersetzt.
+if grep -q 'viva-pdf-zurueck' "$appdelegate" && ! grep -q 'viva-pdf-zurueck-v2' "$appdelegate"; then
+  perl -0pi -e 's/\n*\/\/ viva-pdf-zurueck:.*\z/\n/s' "$appdelegate"
+fi
+if ! grep -q 'viva-pdf-zurueck-v2' "$appdelegate"; then
   grep -q '^import WebKit' "$appdelegate" || perl -0pi -e 's/^/import WebKit\n/' "$appdelegate"
   cat >> "$appdelegate" <<'SWIFT'
 
-// viva-pdf-zurueck: Bei PDFs oben links „‹ Zurück“; Wischen vom linken Rand geht ebenfalls zurück
+// viva-pdf-zurueck-v2: Bei PDFs oben links „‹ Zurück“, oben rechts „Teilen“ (Drucken, Sichern, Mail …);
+// Wischen vom linken Rand geht ebenfalls zurück
 class VivaViewController: CAPBridgeViewController {
     private var urlObs: NSKeyValueObservation?
     private var loadObs: NSKeyValueObservation?
     private let backButton = UIButton(type: .system)
+    private let shareButton = UIButton(type: .system)
 
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
         guard let wv = webView else { return }
         wv.allowsBackForwardNavigationGestures = true
-        backButton.setTitle("‹ Zurück", for: .normal)
-        backButton.setTitleColor(.white, for: .normal)
-        backButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
-        backButton.backgroundColor = UIColor(red: 125 / 255, green: 20 / 255, blue: 53 / 255, alpha: 0.95)
-        backButton.layer.cornerRadius = 22
-        backButton.isHidden = true
-        backButton.translatesAutoresizingMaskIntoConstraints = false
-        backButton.addTarget(self, action: #selector(goBack), for: .touchUpInside)
-        view.addSubview(backButton)
+        style(backButton, title: "‹ Zurück", action: #selector(goBack))
+        style(shareButton, title: "Teilen / Drucken", action: #selector(sharePdf))
         NSLayoutConstraint.activate([
             backButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
             backButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
             backButton.heightAnchor.constraint(equalToConstant: 44),
             backButton.widthAnchor.constraint(equalToConstant: 120),
+            shareButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12),
+            shareButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            shareButton.heightAnchor.constraint(equalToConstant: 44),
+            shareButton.widthAnchor.constraint(equalToConstant: 170),
         ])
-        urlObs = wv.observe(\.url, options: [.new]) { [weak self] _, _ in self?.updateBack() }
-        loadObs = wv.observe(\.isLoading, options: [.new]) { [weak self] _, _ in self?.updateBack() }
+        urlObs = wv.observe(\.url, options: [.new]) { [weak self] _, _ in self?.updateButtons() }
+        loadObs = wv.observe(\.isLoading, options: [.new]) { [weak self] _, _ in self?.updateButtons() }
     }
 
-    private func updateBack() {
+    private func style(_ b: UIButton, title: String, action: Selector) {
+        b.setTitle(title, for: .normal)
+        b.setTitleColor(.white, for: .normal)
+        b.titleLabel?.font = .boldSystemFont(ofSize: 17)
+        b.backgroundColor = UIColor(red: 125 / 255, green: 20 / 255, blue: 53 / 255, alpha: 0.95)
+        b.layer.cornerRadius = 22
+        b.isHidden = true
+        b.translatesAutoresizingMaskIntoConstraints = false
+        b.addTarget(self, action: action, for: .touchUpInside)
+        view.addSubview(b)
+    }
+
+    private func setVisible(_ on: Bool) {
+        backButton.isHidden = !on
+        shareButton.isHidden = !on
+        if on {
+            view.bringSubviewToFront(backButton)
+            view.bringSubviewToFront(shareButton)
+        }
+    }
+
+    private func updateButtons() {
         guard let wv = webView else { return }
         if wv.url?.path.lowercased().hasSuffix(".pdf") == true {
-            backButton.isHidden = false
-            view.bringSubviewToFront(backButton)
+            setVisible(true)
             return
         }
-        backButton.isHidden = true
+        setVisible(false)
         if wv.isLoading { return }
         wv.evaluateJavaScript("document.contentType") { [weak self] result, _ in
-            guard let self = self, (result as? String) == "application/pdf" else { return }
-            self.backButton.isHidden = false
-            self.view.bringSubviewToFront(self.backButton)
+            if (result as? String) == "application/pdf" { self?.setVisible(true) }
         }
     }
 
@@ -136,6 +157,37 @@ class VivaViewController: CAPBridgeViewController {
             wv.goBack()
         } else if let start = URL(string: "https://app.viva-deluxe-reinigung.de/app") {
             wv.load(URLRequest(url: start))
+        }
+    }
+
+    // PDF mit der Anmeldung der App laden und über das iOS-Teilen-Menü anbieten
+    @objc private func sharePdf() {
+        guard let wv = webView, let url = wv.url else { return }
+        shareButton.isEnabled = false
+        wv.configuration.websiteDataStore.httpCookieStore.getAllCookies { [weak self] cookies in
+            var req = URLRequest(url: url)
+            let host = url.host ?? ""
+            let mine = cookies.filter { c in
+                let d = c.domain.hasPrefix(".") ? String(c.domain.dropFirst()) : c.domain
+                return host == d || host.hasSuffix("." + d)
+            }
+            for (k, v) in HTTPCookie.requestHeaderFields(with: mine) { req.setValue(v, forHTTPHeaderField: k) }
+            URLSession.shared.dataTask(with: req) { data, resp, _ in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    self.shareButton.isEnabled = true
+                    guard let data = data, !data.isEmpty else { return }
+                    var name = resp?.suggestedFilename ?? url.lastPathComponent
+                    if name.isEmpty { name = "Dokument" }
+                    if !name.lowercased().hasSuffix(".pdf") { name += ".pdf" }
+                    let file = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+                    do { try data.write(to: file, options: .atomic) } catch { return }
+                    let vc = UIActivityViewController(activityItems: [file], applicationActivities: nil)
+                    vc.popoverPresentationController?.sourceView = self.shareButton
+                    vc.popoverPresentationController?.sourceRect = self.shareButton.bounds
+                    self.present(vc, animated: true)
+                }
+            }.resume()
         }
     }
 }

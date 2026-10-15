@@ -77,6 +77,71 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 SWIFT
 fi
 
+schritt "Zurück-Knopf bei PDFs"
+# WKWebView zeigt PDFs ganzseitig ohne Zurück → eigener Controller mit Knopf „‹ Zurück“ und Wisch-Geste
+sb=ios/App/App/Base.lproj/Main.storyboard
+sed -i '' 's/customClass="CAPBridgeViewController" customModule="Capacitor"/customClass="VivaViewController" customModule="App" customModuleProvider="target"/' "$sb"
+if ! grep -q 'viva-pdf-zurueck' "$appdelegate"; then
+  grep -q '^import WebKit' "$appdelegate" || perl -0pi -e 's/^/import WebKit\n/' "$appdelegate"
+  cat >> "$appdelegate" <<'SWIFT'
+
+// viva-pdf-zurueck: Bei PDFs oben links „‹ Zurück“; Wischen vom linken Rand geht ebenfalls zurück
+class VivaViewController: CAPBridgeViewController {
+    private var urlObs: NSKeyValueObservation?
+    private var loadObs: NSKeyValueObservation?
+    private let backButton = UIButton(type: .system)
+
+    override func capacitorDidLoad() {
+        super.capacitorDidLoad()
+        guard let wv = webView else { return }
+        wv.allowsBackForwardNavigationGestures = true
+        backButton.setTitle("‹ Zurück", for: .normal)
+        backButton.setTitleColor(.white, for: .normal)
+        backButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
+        backButton.backgroundColor = UIColor(red: 125 / 255, green: 20 / 255, blue: 53 / 255, alpha: 0.95)
+        backButton.layer.cornerRadius = 22
+        backButton.isHidden = true
+        backButton.translatesAutoresizingMaskIntoConstraints = false
+        backButton.addTarget(self, action: #selector(goBack), for: .touchUpInside)
+        view.addSubview(backButton)
+        NSLayoutConstraint.activate([
+            backButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
+            backButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            backButton.heightAnchor.constraint(equalToConstant: 44),
+            backButton.widthAnchor.constraint(equalToConstant: 120),
+        ])
+        urlObs = wv.observe(\.url, options: [.new]) { [weak self] _, _ in self?.updateBack() }
+        loadObs = wv.observe(\.isLoading, options: [.new]) { [weak self] _, _ in self?.updateBack() }
+    }
+
+    private func updateBack() {
+        guard let wv = webView else { return }
+        if wv.url?.path.lowercased().hasSuffix(".pdf") == true {
+            backButton.isHidden = false
+            view.bringSubviewToFront(backButton)
+            return
+        }
+        backButton.isHidden = true
+        if wv.isLoading { return }
+        wv.evaluateJavaScript("document.contentType") { [weak self] result, _ in
+            guard let self = self, (result as? String) == "application/pdf" else { return }
+            self.backButton.isHidden = false
+            self.view.bringSubviewToFront(self.backButton)
+        }
+    }
+
+    @objc private func goBack() {
+        guard let wv = webView else { return }
+        if wv.canGoBack {
+            wv.goBack()
+        } else if let start = URL(string: "https://app.viva-deluxe-reinigung.de/app") {
+            wv.load(URLRequest(url: start))
+        }
+    }
+}
+SWIFT
+fi
+
 schritt "App-Symbol und Startbild (Viva-Deluxe-Logo)"
 cp resources/icon.png ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png
 for f in splash-2732x2732.png splash-2732x2732-1.png splash-2732x2732-2.png; do

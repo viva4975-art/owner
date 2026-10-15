@@ -86,6 +86,7 @@ const QM_CSS = `
 @media (max-width:360px){.vw-stats{grid-template-columns:repeat(3,1fr)}}
 .qm-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:12px 0}.qm-grid a{display:flex;align-items:center;gap:10px;padding:14px;border-radius:14px;background:#fff;border:1px solid #efe3e7;color:#3b0a1c;font-weight:600;text-decoration:none}.qm-grid a svg{width:22px;height:22px;color:#7d1435;flex:none}
 .quick{flex-wrap:wrap;row-gap:14px}
+main.nohead{padding-top:calc(12px + env(safe-area-inset-top,0px))}
 .qm-top{display:flex;align-items:center;gap:10px;padding:4px 0 6px}
 .qm-top h1{flex:1;text-align:center;font-size:19px;margin:0;color:#2a1420}
 .qm-top a{width:36px;height:36px;display:flex;align-items:center;justify-content:center;color:#2a1420}
@@ -213,7 +214,8 @@ export const QmLayout: FC<{
           {userName && <Avatar name={userName} href="/qm/profil" label="Profil" />}
         </header>
       )}
-      <main>
+      {/* ohne Kopfzeile (Audit, Personalbogen) selbst unter der Statusleiste/Notch beginnen */}
+      <main class={/^\/qm\/(audit|personalbogen)\//.test(path) ? 'nohead' : undefined}>
         {flash.ok && (
           <div class="flash ok" role="status">
             {flash.ok}

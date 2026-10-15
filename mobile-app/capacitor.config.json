@@ -8,7 +8,7 @@
     "errorPath": "offline.html"
   },
   "ios": {
-    "contentInset": "always"
+    "contentInset": "never"
   },
   "android": {
     "allowMixedContent": false

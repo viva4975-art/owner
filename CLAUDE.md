@@ -3081,3 +3081,9 @@ Testadresse.
   built with this SDK“) → Skript ergänzt `UIApplicationSceneManifest` (Storyboard Main, `App.SceneDelegate`) und eine
   minimale `SceneDelegate`-Klasse in `AppDelegate.swift` (Capacitor 7 nutzt noch den alten Lebenszyklus). Beides
   idempotent; hier nicht testbar (kein macOS).
+- 2026-10-15: iPhone-App (Ahmed testet auf dem iPhone): Logo oben angeschnitten, Leiste unten nicht ganz unten,
+  Stoppuhr-Fenster unten abgeschnitten → `ios.contentInset` von „always“ auf „never“ (das Einrücken machte iOS zusätzlich
+  zu unseren `env(safe-area-inset-*)`-Abständen, die Seite wurde höher als der Bildschirm). Audit/Personalbogen (ohne
+  Kopfzeile) beginnen unter der Statusleiste (`main.nohead`). **PDF ohne Zurück:** Skript setzt in Main.storyboard
+  `VivaViewController` (in `AppDelegate.swift`): bei PDFs (Pfad .pdf oder `document.contentType`) Knopf „‹ Zurück“ oben
+  links, dazu Wischen vom linken Rand. Wirksam nach erneutem `bash ios-einrichten.sh` (nicht auf macOS getestet).

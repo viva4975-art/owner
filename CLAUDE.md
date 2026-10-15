@@ -2952,3 +2952,22 @@ Testadresse.
   - **PC-Ansicht → „← Zurück zur App“** (Knopf unten auf Handy/Tablet/App).
   - **Personalbogen Schritt für Schritt** (5 Schritte, Weiter prüft Pflichtfelder, Absenden im letzten Schritt;
     `WIZARD_JS` für weitere Formulare nutzbar).
+- 2026-10-15: Runde 41 (Ahmed, 8 Punkte):
+  - **Angebot: Leistungsart je Position** (`offer_lines.service_type_id`, Migration `20261126000004`), geht bei Übernahme
+    ins Objekt, Auftrag und Rechnung mit; Kopie behält sie. **Auswahllisten schweben** (`cbx-pop` `position:fixed`) –
+    wurden in Tabellen/Karten abgeschnitten. **Ehemalige Kunden** sind bei „Angebot für den Kunden“ und in der
+    Kundensuche wählbar (eigene Gruppe „Ehemalige Kunden“).
+  - **Kürzung ausbuchen** (Offene Posten → Zahlung erfassen → „Rest als Kürzung ausbuchen“ + Grund Pflicht): Kunde zahlt
+    weniger (Mängelabzug o. ä.) → Rest wird intern ausgebucht (Zahlart `kuerzung`, Migration `20261126000005`), kein
+    Beleg an den Kunden, kein „Gutschrift“-Dokument. DATEV-Hinweisliste nennt jede Kürzung. **Steuerlich:** Die USt
+    mindert sich erst, wenn die Kürzung endgültig ist (§ 17 UStG) – bei strittigen Abzügen Forderung offen lassen bzw.
+    mit dem Steuerberater klären.
+  - **Mitarbeiter-App: Stoppuhr wie Fortytools** oben auf der Startseite: runde Uhr (läuft sekundengenau, Objekt +
+    Beginn), runder Knopf Start/Stopp (statt „Arbeit beginnen/beenden“); QR-Modus: Start öffnet den Scanner. Knopf „QR
+    scannen“ in der Schnellleiste entfernt, Liste „Meine Zeiten (letzte 7 Tage)“ auf der Startseite entfernt (steht unter
+    „Zeiten“).
+  - **Pause laut Einsatzplan in der Mitte** (`plannedBreak` in `time.ts`): Hat der heutige Einsatz eine Pause, wird sie
+    beim Einstempeln vorgemerkt – mittig in der Planzeit (auf 5 Min. gerundet), mindestens gesetzlich für die Planzeit
+    (§ 4 ArbZG). Mitarbeitende können sie verschieben/kürzen („Pause ändern“) oder ablehnen („Pause ablehnen“). Beim
+    Ausstempeln gilt sie, wenn bis nach ihrem Ende gearbeitet wurde (sonst gesetzliche Pause); abgelehnt = 0, Büro sieht
+    den § 4-Hinweis. Ohne geplante Pause wie bisher (nach 4 Std.).

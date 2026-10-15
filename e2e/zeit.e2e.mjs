@@ -129,24 +129,21 @@ if ((await confirmCards.count()) > 0) {
 }
 
 await m.goto(B + new URL(qrUrl).pathname);
-await nav(m, 'button:has-text("Arbeit beginnen")');
+await nav(m, 'button.rb.go');
 check('eingestempelt', (await flash(m)).includes('Eingestempelt um'), await flash(m));
-check('Laufende Zeit sichtbar', (await m.locator('.run').count()) === 1);
+check('Laufende Zeit sichtbar', (await m.locator('.sw.on').count()) === 1);
 await m.screenshot({ path: `${out}/z4-handy-laeuft.png`, fullPage: true });
 // zweimal tippen / erneut senden → kein zweiter Eintrag
 await m.goBack();
 await m.goBack();
 await m.waitForLoadState();
 await m.goto(B + new URL(qrUrl).pathname);
-check(
-  'am Objekt: Beenden statt Beginnen',
-  (await m.locator('button:has-text("Arbeit beenden")').count()) === 1,
-);
+check('am Objekt: Beenden statt Beginnen', (await m.locator('button.rb.stop').count()) === 1);
 check(
   'Pause automatisch angezeigt (nach 4 Std.)',
   (await m.locator('.brk').innerText()).includes('Pause automatisch'),
 );
-await nav(m, 'button:has-text("Arbeit beenden")');
+await nav(m, 'button.rb.stop');
 check('ausgestempelt', (await flash(m)).includes('Ausgestempelt'), await flash(m));
 
 // ---------- 4. Nachtrag + Urlaub ----------
@@ -166,7 +163,7 @@ await m.screenshot({ path: `${out}/z6-handy-urlaub.png`, fullPage: true });
 
 // Sprache
 await m.goto(B + '/m/sprache?l=ro&next=/m');
-check('Rumänisch', (await m.locator('button:has-text("Încep lucrul")').count()) === 1);
+check('Rumänisch', (await m.locator('.quick a:has-text("Documente")').count()) === 1);
 await m.screenshot({ path: `${out}/z7-handy-rumaenisch.png`, fullPage: true });
 await m.goto(B + '/m/sprache?l=de&next=/m');
 

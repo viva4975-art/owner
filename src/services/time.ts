@@ -131,6 +131,52 @@ export function placeBreak(start: Date, end: Date, minutes: number): Date | null
   return new Date(Math.max(start.getTime(), Math.min(start.getTime() + BREAK_AFTER_MINUTES * 60000, latest)));
 }
 
+/**
+ * Geplante Pause des laufenden Einsatzes (Ahmed 15.10.): Hat der heutige Einsatz am Objekt eine Pause, liegt sie
+ * ungefähr in der Mitte der Planzeit – mindestens so lang wie gesetzlich für die Planzeit nötig (§ 4 ArbZG).
+ */
+export async function plannedBreak(
+  sql: Sql,
+  p: { employeeId: string; siteId: string; workDate: string; startAt: Date },
+): Promise<{ minutes: number; start: Date } | null> {
+  const shifts = await plannedShifts(sql, { from: p.workDate, to: p.workDate, employeeId: p.employeeId });
+  const cand = shifts.filter(
+    (s) =>
+      s.plan.site_id === p.siteId &&
+      s.plan.employee_id === p.employeeId &&
+      !s.absence &&
+      s.exception?.kind !== 'ausfall' &&
+      (s.plan.break_minutes ?? 0) > 0,
+  );
+  if (!cand.length) return null;
+  const toDate = (d: string, hm: string) => {
+    // Berliner Ortszeit → Zeitpunkt (Versatz über Intl ermitteln, inkl. Sommerzeit)
+    const guess = new Date(`${d}T${hm}:00Z`);
+    const local = new Date(guess.toLocaleString('en-US', { timeZone: 'Europe/Berlin' }));
+    const utc = new Date(guess.toLocaleString('en-US', { timeZone: 'UTC' }));
+    return new Date(guess.getTime() - (local.getTime() - utc.getTime()));
+  };
+  const best = cand
+    .map((s) => {
+      const st = toDate(s.date, s.plan.start_time);
+      let en = toDate(s.date, s.plan.end_time);
+      if (en <= st) en = new Date(en.getTime() + 864e5);
+      return { s, st, en };
+    })
+    .sort(
+      (a, b) =>
+        Math.abs(a.st.getTime() - p.startAt.getTime()) - Math.abs(b.st.getTime() - p.startAt.getTime()),
+    )[0]!;
+  const gross = Math.round((best.en.getTime() - best.st.getTime()) / 60000);
+  const minutes = Math.max(best.s.plan.break_minutes, suggestedBreak(gross));
+  if (minutes >= gross) return null;
+  const mid = (best.st.getTime() + best.en.getTime()) / 2;
+  // auf 5 Minuten gerundet, nie vor Arbeitsbeginn
+  let start = Math.round((mid - (minutes * 60000) / 2) / 300000) * 300000;
+  start = Math.max(start, p.startAt.getTime());
+  return { minutes, start: new Date(start) };
+}
+
 /** Lage der Pause für Anzeige/Stundenzettel (gespeichert oder – bei alten Einträgen – nach 4 Std.). */
 export function breakRange(
   e: Pick<TimeEntry, 'start_at' | 'end_at' | 'break_minutes'> & { break_start_at?: Date | null },
@@ -282,6 +328,14 @@ export async function clockIn(
   sql: Sql,
   p: { id: string; employeeId: string; siteId: string; viaQr: boolean; actor: string; geo?: GeoInput },
 ) {
+  // geplante Pause des Einsatzes gleich vormerken (Mitte der Planzeit); Mitarbeiter kann sie ändern/ablehnen
+  const startAt = new Date(Math.floor(Date.now() / 60000) * 60000);
+  const pb = await plannedBreak(sql, {
+    employeeId: p.employeeId,
+    siteId: p.siteId,
+    workDate: todayBerlin(),
+    startAt,
+  }).catch(() => null);
   return withActor(sql, p.actor, null, async (tx) => {
     const [exists] = await tx`select 1 from app.time_entries where id = ${p.id}`;
     if (exists) return p.id; // gleiche Stempelung erneut gesendet
@@ -302,9 +356,10 @@ export async function clockIn(
     }
     await assertNoOverlap(tx, p.employeeId, new Date().toISOString(), 'infinity', null);
     await tx`
-      insert into app.time_entries (id, employee_id, site_id, work_date, start_at, source, status, via_qr, created_by)
+      insert into app.time_entries (id, employee_id, site_id, work_date, start_at, source, status, via_qr, created_by,
+                                    break_minutes, break_start_at, break_auto)
       values (${p.id}, ${p.employeeId}, ${p.siteId}, (now() at time zone 'Europe/Berlin')::date, date_trunc('minute', now()),
-              'stempel', 'laeuft', ${p.viaQr}, ${p.actor})`;
+              'stempel', 'laeuft', ${p.viaQr}, ${p.actor}, ${pb?.minutes ?? 0}, ${pb?.start ?? null}, true)`;
     await recordGeo(tx, p.id, p.siteId, 'start', p.geo);
     return p.id;
   });
@@ -355,6 +410,16 @@ export async function clockOut(
     } else if (run.break_start_at && !run.break_auto) {
       // vom Mitarbeiter in der App geändert („später Pause“) → so übernehmen
       brk = { minutes: run.break_minutes, start: run.break_start_at, auto: false };
+    } else if (run.break_auto && run.break_start_at && run.break_minutes) {
+      // geplante Pause (Mitte des Einsatzes) – gilt, wenn bis nach der Pause gearbeitet wurde, sonst gesetzlich
+      const endOfBreak = run.break_start_at.getTime() + run.break_minutes * 60000;
+      if (Date.now() >= endOfBreak) {
+        brk = {
+          minutes: Math.max(run.break_minutes, suggestedBreak(minutes)),
+          start: run.break_start_at,
+          auto: true,
+        };
+      } else brk = { ...autoBreak(run.start_at, minutes), auto: true };
     } else {
       // nicht geändert → gesetzliche Pause automatisch, Beginn nach 4 Std.
       const a = autoBreak(run.start_at, minutes);

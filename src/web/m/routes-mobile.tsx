@@ -114,6 +114,15 @@ input:focus,select:focus,textarea:focus{outline:3px solid #f3d6df;border-color:v
 .langs a{padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);text-decoration:none;font-size:15px}
 .langs a.on{border-color:var(--brand);color:var(--brand);font-weight:650}
 button[disabled]{opacity:.6}
+.sw{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}
+.sw .dial{width:208px;height:208px;border-radius:50%;border:10px solid #efe3e7;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box}
+.sw.on .dial{border-color:#7D1435}
+.sw .dial .t{font-size:40px;font-weight:700;font-variant-numeric:tabular-nums;color:#1d1d1f;line-height:1.1}
+.sw .dial small{color:#6b6b70;font-size:13px;margin-top:6px;max-width:150px;line-height:1.3}
+.sw .rb{width:88px;height:88px;border-radius:50%;border:0;color:#fff;font-size:15px;font-weight:700;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.15)}
+.sw .rb svg{width:24px;height:24px}
+.sw .rb.go{background:#2e7d32}.sw .rb.stop{background:#7D1435}.sw .rb:disabled{opacity:.6}
+.sw label{align-self:stretch;text-align:left}.sw select{width:100%}
 .brk{margin-top:12px;padding:12px;border-radius:12px;background:rgba(255,255,255,.65);border:1px solid #e3d9dc;text-align:left}
 .brk details{margin-top:8px}.brk summary{cursor:pointer;color:#7D1435;font-weight:600}
 button.link{background:none;border:0;color:#7D1435;font:inherit;font-weight:600;padding:8px 0;cursor:pointer}
@@ -661,31 +670,6 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     </>
   );
 
-  const Times: FC<{ lang: Lang; rows: Awaited<ReturnType<typeof listEntries>> }> = ({ lang, rows }) => (
-    <div class="card">
-      <h2>{t(lang, 'my_times')}</h2>
-      {rows.length === 0 && <div class="mut">{t(lang, 'none')}</div>}
-      {rows.map((e) => (
-        <div class="row">
-          <div>
-            <div>
-              {dayLabel(lang, e.work_date)} · {clock(e.start_at)}–{e.end_at ? clock(e.end_at) : '…'}
-            </div>
-            <div class="small mut">{e.site_name}</div>
-          </div>
-          <div class="r">
-            <div>{e.end_at ? `${hm(netMinutes(e))} ${t(lang, 'hours')}` : ''}</div>
-            <span
-              class={`pill ${e.status === 'abgelehnt' ? 'err' : e.status === 'beantragt' ? 'warn' : e.status === 'freigegeben' ? 'ok' : ''}`}
-            >
-              {t(lang, `st_${e.status}`)}
-            </span>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
   const ClockCard: FC<{
     lang: Lang;
     me: Me;
@@ -702,19 +686,43 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     autostart?: boolean;
   }> = ({ lang, me, running, siteId, viaQr, geo, planEnd, token, autostart }) =>
     running ? (
-      <div class="card run">
-        <div>{t(lang, 'running', { time: clock(running.start_at) })}</div>
-        <div class="t" data-since={String(running.start_at.getTime())}>
-          {hm(running.gross_minutes)}
+      <div class="card">
+        <div class="sw on">
+          <div class="dial">
+            <span class="t" data-since={String(running.start_at.getTime())}>
+              {hm(running.gross_minutes)}
+            </span>
+            <small>
+              {t(lang, 'running', { time: clock(running.start_at) })}
+              <br />
+              {running.site_name}
+            </small>
+          </div>
+          <form
+            method="post"
+            action="/m/aus"
+            data-net
+            data-geo={geo ? '1' : undefined}
+            data-ask={t(lang, 'confirm_out')}
+            data-ask-early={t(lang, 'confirm_out_early')}
+            data-end={planEnd ?? ''}
+          >
+            <button class="rb stop" aria-label={t(lang, 'clock_out')}>
+              <Ic n="stop" />
+              {t(lang, 'clock_out')}
+            </button>
+          </form>
         </div>
-        <div class="mut">{t(lang, 'at_site', { site: running.site_name })}</div>
         {(() => {
-          // Pause: vom Mitarbeiter geändert → so; sonst automatisch nach 4 Std. (30 Min. ab 6 Std.)
+          // Pause: vom Mitarbeiter geändert → so; geplante Pause (Mitte des Einsatzes) → so;
+          // sonst automatisch nach 4 Std. (30 Min. ab 6 Std.)
           const mine = !!running.break_start_at && !running.break_auto;
-          const from = mine
-            ? running.break_start_at!
-            : new Date(running.start_at.getTime() + BREAK_AFTER_MINUTES * 60000);
-          const min = mine ? running.break_minutes : 30;
+          const planned = !mine && !!running.break_start_at && running.break_minutes > 0;
+          const from =
+            mine || planned
+              ? running.break_start_at!
+              : new Date(running.start_at.getTime() + BREAK_AFTER_MINUTES * 60000);
+          const min = mine || planned ? running.break_minutes : 30;
           const to = new Date(from.getTime() + min * 60000);
           return (
             <div class="brk" data-break-at={String(from.getTime())} data-break-min={String(min)}>
@@ -727,7 +735,14 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
                     })
                   : t(lang, 'break_none')}
               </b>
-              {!mine && <p class="hint">{t(lang, 'break_rule')}</p>}
+              {!mine && <p class="hint">{t(lang, planned ? 'break_plan_hint' : 'break_rule')}</p>}
+              {min > 0 && (
+                <form method="post" action="/m/pause" data-net style="margin-top:6px">
+                  <input type="hidden" name="start" value={clock(from)} />
+                  <input type="hidden" name="minutes" value="0" />
+                  <button class="link">{t(lang, 'break_decline')}</button>
+                </form>
+              )}
               <details>
                 <summary>{t(lang, 'break_change')}</summary>
                 <form method="post" action="/m/pause" data-net>
@@ -762,27 +777,21 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
             </div>
           );
         })()}
-        <form
-          method="post"
-          action="/m/aus"
-          data-net
-          data-geo={geo ? '1' : undefined}
-          data-ask={t(lang, 'confirm_out')}
-          data-ask-early={t(lang, 'confirm_out_early')}
-          data-end={planEnd ?? ''}
-        >
-          <div style="height:12px" />
-          <button class="big stop">{t(lang, 'clock_out')}</button>
-        </form>
         <script dangerouslySetInnerHTML={{ __html: REMIND_JS }} />
       </div>
     ) : me.timeMode === 'qr' && !token ? (
       // Stoppuhr mit QR-Code: Start öffnet die Kamera, nach dem Scannen startet die Zeit am Objekt
       <div class="card">
-        <button type="button" class="big go" data-scan="start">
-          <Ic n="qr" /> {t(lang, 'qr_start')}
-        </button>
-        <p class="hint">{t(lang, 'qr_required')}</p>
+        <div class="sw">
+          <div class="dial">
+            <span class="t">0:00:00</span>
+            <small>{t(lang, 'qr_required')}</small>
+          </div>
+          <button type="button" class="rb go" data-scan="start" aria-label={t(lang, 'qr_start')}>
+            <Ic n="qr" />
+            {t(lang, 'clock_in')}
+          </button>
+        </div>
       </div>
     ) : (
       <form
@@ -796,22 +805,28 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         <input type="hidden" name="id" value={randomUUID()} />
         <input type="hidden" name="qr" value={viaQr ? '1' : ''} />
         {token && <input type="hidden" name="token" value={token} />}
-        {siteId ? (
-          <>
+        <div class="sw">
+          <div class="dial">
+            <span class="t">0:00:00</span>
+            {siteId && <small>{me.sites.find((x) => x.id === siteId)?.name ?? ''}</small>}
+          </div>
+          {siteId ? (
             <input type="hidden" name="site_id" value={siteId} />
-          </>
-        ) : (
-          <>
-            <label for="site">{t(lang, 'where_work')}</label>
-            <select id="site" name="site_id" required>
-              {me.sites.map((s) => (
-                <option value={s.id}>{s.name}</option>
-              ))}
-            </select>
-            <div style="height:12px" />
-          </>
-        )}
-        <button class="big go">{t(lang, 'clock_in')}</button>
+          ) : (
+            <label>
+              {t(lang, 'where_work')}
+              <select id="site" name="site_id" required>
+                {me.sites.map((s) => (
+                  <option value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          <button class="rb go" aria-label={t(lang, 'clock_in')}>
+            <Ic n="play" />
+            {t(lang, 'clock_in')}
+          </button>
+        </div>
       </form>
     );
 
@@ -895,12 +910,6 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
           <b>{me.first_name}!</b>
         </div>
         <div class="quick">
-          <button type="button" id="scan" hidden={true} data-mode={me.timeMode}>
-            <span class="qi">
-              <Ic n="qr" />
-            </span>
-            {t(lang, 'q_scan')}
-          </button>
           <a href="/m/abwesenheit">
             <span class="qi">
               <Ic n="sun" />
@@ -920,6 +929,20 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
             {t(lang, 'scan_cancel')}
           </button>
         </div>
+        <div id="clock" />
+        {(running || me.timeMode !== 'bestaetigen') && (
+          <ClockCard
+            geo={await geoCheckEnabled(sql)}
+            lang={lang}
+            me={me}
+            // Objekt nicht mehr wählen (Ahmed 15.10.): heutiger Einsatz bzw. einziges Objekt; nur ohne Einsatz fragen
+            siteId={presetSite ?? (me.sites.length === 1 ? me.sites[0]!.id : undefined)}
+            running={running}
+            planEnd={
+              running ? todays.find((x) => x.plan.site_id === running.site_id)?.plan.end_time : undefined
+            }
+          />
+        )}
         {sheetDue && (
           <a class="big go" href={`/m/stundenzettel?monat=${signMonth}`} style="font-size:18px">
             <Icon name="sign" size={16} /> {t(lang, 'sheet_sign_open', { month: monthName(lang, signMonth) })}
@@ -1032,21 +1055,6 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
             {mayConfirm && !s.entry && s.plan.end_time <= nowHm && <ConfirmBox lang={lang} s={s} />}
           </div>
         ))}
-        <div id="clock" />
-        {(running || me.timeMode !== 'bestaetigen') && (
-          <ClockCard
-            geo={await geoCheckEnabled(sql)}
-            lang={lang}
-            me={me}
-            // Objekt nicht mehr wählen (Ahmed 15.10.): heutiger Einsatz bzw. einziges Objekt; nur ohne Einsatz fragen
-            siteId={presetSite ?? (me.sites.length === 1 ? me.sites[0]!.id : undefined)}
-            running={running}
-            planEnd={
-              running ? todays.find((x) => x.plan.site_id === running.site_id)?.plan.end_time : undefined
-            }
-          />
-        )}
-        <Times lang={lang} rows={times} />
         <PushCard
           save="/m/push/abo"
           on={t(lang, 'push_on')}

@@ -15,6 +15,7 @@ import {
   entryLog,
   getEntry,
   officeSave,
+  plannedBreak,
   plannedShifts,
   requestCorrection,
   runningEntry,
@@ -358,5 +359,33 @@ describe.skipIf(!available)('Zeiterfassung, Einsatzplanung, Urlaub (Datenbank)',
     );
     const s = await plannedShifts(sql, { from: '2027-01-04', to: '2027-01-04', employeeId: emp });
     expect(s.some((x) => x.absence === 'urlaub')).toBe(true);
+  });
+  it('Pause laut Einsatzplan: ungefähr in der Mitte, beim Einstempeln vorgemerkt, ablehnbar', async () => {
+    const e3 = randomUUID();
+    await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, hourly_wage_cents)
+              values (${e3}, '2093', 'Paula', 'Pause', '2024-01-01', 1425)`;
+    await sql`insert into app.employee_sites (employee_id, site_id) values (${e3}, ${DEMO.siteSchool})`;
+    const today = todayBerlin();
+    await sql`insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes, valid_from)
+              values (${randomUUID()}, ${e3}, ${DEMO.siteSchool}, ${isoWeekday(today)}, '06:00', '14:00', 30, ${addDays(today, -7)})`;
+    const pb = await plannedBreak(sql, {
+      employeeId: e3,
+      siteId: DEMO.siteSchool,
+      workDate: today,
+      startAt: new Date(Date.now() - 864e5),
+    });
+    expect(pb!.minutes).toBe(30);
+    const hm = (d: Date) =>
+      d.toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' });
+    expect(hm(pb!.start)).toBe('09:45');
+    // Einstempeln merkt die Pause vor (automatisch, also noch änderbar)
+    const id = randomUUID();
+    await clockIn(sql, { id, employeeId: e3, siteId: DEMO.siteSchool, viaQr: false, actor: 'm:2093' });
+    const r = (await runningEntry(sql, e3))!;
+    expect(r.break_minutes).toBe(30);
+    expect(r.break_auto).toBe(true);
+    // Mitarbeiter lehnt ab bzw. gibt eine eigene Pause an → so übernommen
+    expect(await clockOut(sql, { employeeId: e3, breakMinutes: 0, actor: 'm:2093' })).toBe(id);
+    expect((await getEntry(sql, id))!.break_minutes).toBe(0);
   });
 });

@@ -108,6 +108,18 @@ await ol.click('details.appswitch summary');
 await ol.click('details.appswitch a:has-text("Qualität")');
 await ol.waitForLoadState();
 check('Qualität', new URL(ol.url()).pathname === '/qm/qualitaet');
+await ol.click('header .avatar');
+await ol.waitForLoadState();
+check(
+  'Profil mit App-Tour, Berechtigungen, Über die App',
+  (await ol.locator('.pf-list a').count()) >= 4,
+  ol.url(),
+);
+check('Abmelden im Profil', (await ol.locator('form[action="/abmelden"] .pf-out').count()) === 1);
+check(
+  'Datenschutz öffentlich',
+  (await (await ol.request.get(B + '/m/datenschutz')).text()).includes('Verantwortlicher'),
+);
 await ol.goto(B + '/m');
 const m = await ol.content();
 check('eigene Zeiterfassung ohne PIN (Name)', m.includes('Oskar') && !m.includes('id="pin"'));

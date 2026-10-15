@@ -3061,3 +3061,12 @@ Testadresse.
   - **App-Icon mit Firmenlogo** (Globus mit „VD“ aus dem Briefpapier, weiß hinterlegt): `python3 -I scripts/app-icons.py`
     erzeugt PWA-Icons, `assets/web/app-icon-1024.png` / `mobile-app/resources/icon.png` (App Store, ohne Transparenz) und
     die Android-Startsymbole (adaptiv, ohne Inset). Ersetzt `scripts/app-icons.mjs`.
+- 2026-10-15: **Profil in den Apps wie Fortytools** (Ahmed, Screenshots): Initialen oben rechts → Profil (Name, E-Mail,
+  Firma, ggf. Personalnummer) mit **App-Tour** (startet beim ersten Öffnen, danach über das Profil; Mitarbeiter-App
+  7 Sprachen, Verwaltung Deutsch), **App-Berechtigungen** (Mitteilungen, Kamera, Standort: Status + „Erlauben“),
+  Sprache bzw. Passwort ändern, **Über die App** (Datenschutz, Lizenzen, Version) und Abmelden – „Abmelden“ oben
+  entfällt. „Nachrichten“ bewusst nicht (Ahmed). `src/web/m/profile.tsx`, Routen `/m/profil…`, `/qm/profil…`.
+  **Datenschutzhinweise öffentlich unter `/m/datenschutz`** (Art. 13 DSGVO, Daten aus Firmendaten) – Adresse für
+  Google Play/App Store; **vor dem Einreichen von Datenschutzberater/Anwalt prüfen lassen.**
+  Anleitung `docs/anleitung-stores.html/.pdf` (Google Play Schritt für Schritt, App Store: Mac/Xcode nötig, iOS-Projekt
+  noch anzulegen, Risiko Apple 4.2 → Unlisted/Custom App).

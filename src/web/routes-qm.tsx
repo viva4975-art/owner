@@ -1,4 +1,16 @@
 import { PushCard } from './push-ui.js';
+import { appVersion } from '../services/app-version.js';
+import {
+  AboutBody,
+  Avatar,
+  type CompanyInfo,
+  LicensesBody,
+  PROFILE_CSS,
+  PermissionsBody,
+  ProfileBody,
+  tourJs,
+} from './m/profile.js';
+import { t as mt } from './m/i18n.js';
 import { savePushSubscription } from '../services/push.js';
 import { plannedAtSites } from '../services/absences.js';
 import { fullName, linkedEmployee } from '../services/users.js';
@@ -172,8 +184,10 @@ export const QmLayout: FC<{
   flash: { ok?: string; err?: string };
   /** mit Mitarbeiter verknüpft → „Meine Zeit“ im Menü */
   ownTime?: boolean;
+  /** angemeldeter Benutzer (Initialen oben rechts → Profil) */
+  userName?: string;
   children?: Child;
-}> = ({ path, title, flash, ownTime = false, children }) => (
+}> = ({ path, title, flash, ownTime = false, userName, children }) => (
   <html lang="de">
     <head>
       <meta charset="utf-8" />
@@ -181,7 +195,7 @@ export const QmLayout: FC<{
       <meta name="theme-color" content="#f8edf1" />
       <title>{`${title} · Qualität · Viva-Deluxe`}</title>
       <link rel="icon" type="image/png" href="/static/favicon.png" />
-      <style dangerouslySetInnerHTML={{ __html: MCSS + QM_CSS + APP_TAB_CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: MCSS + QM_CSS + APP_TAB_CSS + PROFILE_CSS }} />
       <script src="/m/push.js" defer />
     </head>
     <body class="shellbar mshell">
@@ -196,6 +210,7 @@ export const QmLayout: FC<{
             active={/^\/qm\/(qualitaet|audit|tickets)/.test(path) ? 'qualitaet' : 'verwaltung'}
             ownTime={ownTime}
           />
+          {userName && <Avatar name={userName} href="/qm/profil" label="Profil" />}
         </header>
       )}
       <main>
@@ -274,6 +289,7 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
         String(
           <QmLayout
             ownTime={!!(await linkedEmployee(sql, c.get('user').id))}
+            userName={fullName(c.get('user'))}
             path={c.req.query('start') === '1' ? '/qm/qualitaet' : c.req.path}
             title={title}
             flash={{ ok: c.req.query('ok') ?? '', err: c.req.query('fehler') ?? '' }}
@@ -282,6 +298,76 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
           </QmLayout>,
         ),
     );
+
+  // ---------------------------------------------------------------- Profil (Ahmed 15.10., wie Fortytools)
+  const tx = (k: string) => mt('de', k);
+  const ProfTop: FC<{ title: string; back: string }> = ({ title, back }) => (
+    <div class="qm-top">
+      <a href={back} aria-label="Zurück">
+        <Ic n="back" />
+      </a>
+      <h1>{title}</h1>
+      <span style="width:36px" />
+    </div>
+  );
+  app.get('/qm/profil', async (c) => {
+    const u = c.get('user');
+    const [co] = await sql<Pick<CompanyInfo, 'legal_name'>[]>`select legal_name from app.company limit 1`;
+    return render(
+      c,
+      'Profil',
+      <>
+        <ProfTop title="Profil" back="/qm" />
+        <ProfileBody
+          tx={tx}
+          name={fullName(u)}
+          email={u.email}
+          company={co?.legal_name ?? ''}
+          base="/qm"
+          logout="/abmelden"
+          extra={[{ href: '/konto', label: 'Passwort ändern' }]}
+        />
+      </>,
+    );
+  });
+  app.get('/qm/profil/berechtigungen', async (c) =>
+    render(
+      c,
+      'App-Berechtigungen',
+      <>
+        <ProfTop title="App-Berechtigungen" back="/qm/profil" />
+        <div hidden>
+          <PushCard
+            save="/qm/push/abo"
+            on="Benachrichtigungen einschalten"
+            done="Benachrichtigungen sind eingeschaltet"
+            blocked="Im Browser blockiert – in den Einstellungen erlauben."
+          />
+        </div>
+        <PermissionsBody tx={tx} pushSave="/qm/push/abo" />
+      </>,
+    ),
+  );
+  app.get('/qm/profil/app', async (c) =>
+    render(
+      c,
+      'Über die App',
+      <>
+        <ProfTop title="Über die App" back="/qm/profil" />
+        <AboutBody tx={tx} base="/qm" version={appVersion()} privacy="/m/datenschutz" />
+      </>,
+    ),
+  );
+  app.get('/qm/profil/lizenzen', async (c) =>
+    render(
+      c,
+      'Lizenzen',
+      <>
+        <ProfTop title="Lizenzen" back="/qm/profil/app" />
+        <LicensesBody />
+      </>,
+    ),
+  );
 
   app.post('/qm/push/abo', async (c) => {
     const u = c.get('user');
@@ -363,7 +449,7 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
       <>
         <div class="qm-hellorow">
           <div class="hello">
-            {hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend'}
+            {hour < 11 ? 'Guten Morgen ' : hour < 18 ? 'Guten Tag ' : 'Guten Abend '}
             <b>{first.charAt(0).toUpperCase() + first.slice(1)}!</b>
           </div>
         </div>
@@ -388,6 +474,33 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
           on="Benachrichtigungen einschalten"
           done="Benachrichtigungen sind eingeschaltet"
           blocked="Benachrichtigungen sind blockiert – in den Einstellungen des Handys erlauben."
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: tourJs(
+              'vd_tour_qm',
+              [
+                {
+                  sel: '.vw-stats',
+                  text: 'Heute auf einen Blick: wer im Einsatz ist, wer nicht gestempelt hat, Anträge und Nachträge.',
+                },
+                {
+                  sel: '.vw-sec',
+                  text: 'Darunter alle Bereiche: Team, Zeiten, Urlaub, Planung, Objekte, Dokumente und Formulare.',
+                },
+                { sel: '.apptabs', text: 'Unten schnell zu Übersicht, Team, Zeiten und Objekten.' },
+                {
+                  sel: 'details.appswitch',
+                  text: 'Hier wechselst du zwischen Meine Zeit, Qualität und Verwaltung.',
+                },
+                {
+                  sel: 'header .avatar',
+                  text: 'Deine Initialen: Profil, App-Tour, Berechtigungen, Passwort und Abmelden.',
+                },
+              ],
+              { next: 'Weiter', skip: 'Überspringen', done: 'Fertig' },
+            ),
+          }}
         />
         <Section
           title="Team & Zeiten"
@@ -506,7 +619,7 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
       <>
         <div class="qm-hellorow">
           <div class="hello">
-            {hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend'}
+            {hour < 11 ? 'Guten Morgen ' : hour < 18 ? 'Guten Tag ' : 'Guten Abend '}
             <b>{first.charAt(0).toUpperCase() + first.slice(1)}!</b>
           </div>
         </div>

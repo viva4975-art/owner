@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<title>App veröffentlichen – Google Play und App Store</title>
+<style>
+  body{font-family:Inter,Arial,sans-serif;color:#1d1d1f;max-width:820px;margin:28px auto;padding:0 18px;line-height:1.5;font-size:14px}
+  h1{color:#7D1435;font-size:24px;margin-bottom:4px}
+  h2{color:#7D1435;font-size:17px;margin:26px 0 8px;border-bottom:2px solid #f0dbe2;padding-bottom:4px}
+  .sub{color:#666;margin-top:0}
+  pre{background:#1f1f24;color:#f3f3f3;padding:10px 14px;border-radius:6px;font-size:13px;white-space:pre-wrap;word-break:break-all}
+  code{background:#f4eef0;padding:1px 5px;border-radius:4px}
+  .box{background:#fff7e0;border:1px solid #e9c46a;border-radius:6px;padding:10px 14px;margin:12px 0}
+  .red{background:#fdecec;border-color:#e3a0a0}
+  .ok{background:#eef8f0;border-color:#9fd3ab}
+  ol li{margin-bottom:6px}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  td,th{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top}
+  th{background:#f7eef1}
+  kbd{border:1px solid #bbb;border-bottom-width:2px;border-radius:4px;padding:0 5px;font-size:12px;background:#fafafa}
+</style>
+</head>
+<body>
+<h1>App veröffentlichen: Google Play und App Store</h1>
+<p class="sub">Viva-Deluxe App (<code>de.vivadeluxe.app</code>) · Stand 15.10.2026 · Android-Version 4 (neues Logo, PDFs öffnen)</p>
+
+<div class="box ok"><b>Für beide Stores brauchst du:</b>
+<ul>
+<li><b>Datenschutz-Adresse:</b> <code>https://app.viva-deluxe-reinigung.de/m/datenschutz</code> (öffentlich, schon online – bitte einmal von einem Datenschutzberater gegenlesen lassen)</li>
+<li><b>Prüf-Zugang für Google/Apple:</b> In der App einen Test-Mitarbeiter „App Prüfung“ anlegen (z. B. Personalnummer 9999, eigene PIN setzen, einem Test-Objekt zuordnen, einen Einsatz für heute planen). Ohne Zugang lehnen beide Stores ab.</li>
+<li><b>App-Icon:</b> <code>mobile-app/resources/icon.png</code> (1024 × 1024, Firmenlogo) bzw. <code>assets/web/app-icon-512.png</code></li>
+<li><b>Bildschirmfotos:</b> 3–5 Bilder vom Handy (Startseite mit Einsätzen, Kalender, Urlaub, Dokumente) – <u>Testdaten, keine echten Namen</u>.</li>
+</ul></div>
+
+<h2>Teil A – Google Play (geht ohne Mac)</h2>
+<ol>
+<li><b>Neue Version bauen</b> (wie in <code>anleitung-android.pdf</code>): neueste ZIP vom Branch laden, in <code>mobile-app</code>:
+<pre>npm install
+npx cap sync android</pre>
+Android Studio → <i>Build → Generate Signed App Bundle / APK → Android App Bundle</i> → <b>derselbe Upload-Schlüssel wie beim letzten Mal</b> → <i>release</i>. Ergebnis: <code>app-release.aab</code> (versionCode 4).</li>
+<li><b>Play Console</b> (play.google.com/console) → <i>App erstellen</i> (falls noch nicht): Name „Viva-Deluxe“, Standardsprache Deutsch, App, kostenlos, Erklärungen bestätigen.</li>
+<li><b>Erst intern testen:</b> <i>Testen → Interne Tests → Neuen Release erstellen</i> → <code>.aab</code> hochladen → Versionshinweis „Neues Logo, PDFs öffnen“ → Tester-Liste (E-Mail-Adressen von dir, Objektleitungen) → <i>Teilnahmelink</i> per WhatsApp schicken. Interne Tests sind in Minuten verfügbar, ohne Prüfung.</li>
+<li><b>App-Inhalte ausfüllen</b> (Menü <i>Richtlinien → App-Inhalte</i>):
+<table>
+<tr><th>Punkt</th><th>Was eintragen</th></tr>
+<tr><td>Datenschutzerklärung</td><td>Adresse oben</td></tr>
+<tr><td>App-Zugriff</td><td>„Alle oder einige Funktionen sind eingeschränkt“ → Anleitung: „Personalnummer 9999, PIN …, auf ‚Anmelden‘ tippen“</td></tr>
+<tr><td>Werbung</td><td>Nein</td></tr>
+<tr><td>Einstufung</td><td>Fragebogen: Kategorie „Dienstprogramm/Produktivität“, alles „Nein“ → USK 0</td></tr>
+<tr><td>Zielgruppe</td><td>18 Jahre und älter</td></tr>
+<tr><td>Datensicherheit</td><td>Erhoben: Name, E-Mail, Telefon, <b>genauer Standort</b> (nur beim Stempeln, wenn eingeschaltet), Fotos, App-Aktivität (Arbeitszeiten), Geräte-ID für Mitteilungen. Zweck: App-Funktionen. Nicht an Dritte weitergegeben. Übertragung verschlüsselt: Ja. Löschung: auf Anfrage über die Firma.</td></tr>
+<tr><td>Behörden-/Gesundheits-Apps</td><td>Nein</td></tr>
+</table></li>
+<li><b>Store-Eintrag</b> (<i>Wachstum → Store-Präsenz → Haupteintrag</i>): Kurzbeschreibung „Zeiterfassung, Einsätze und Dokumente für das Team der Viva-Deluxe Gebäudereinigung“, ausführliche Beschreibung (Hinweis: „Nur für Beschäftigte, Zugang über die Firma“), Icon 512 × 512, Vorstellungsgrafik 1024 × 500 (Logo auf Weiß/Bordeaux), mind. 2 Bildschirmfotos, Kategorie <i>Business</i>, Kontakt-E-Mail.</li>
+<li><b>Veröffentlichen:</b> <i>Produktion → Länder: Deutschland → Neuen Release erstellen</i> → denselben <code>.aab</code> aus dem internen Test übernehmen → <i>Zur Überprüfung senden</i>. Prüfung meist 1–7 Tage.</li>
+</ol>
+<div class="box">Euer Entwicklerkonto läuft auf die GmbH (D-U-N-S). Die Pflicht „12 Tester × 14 Tage geschlossener Test“ gilt nur für <b>private</b> Konten – für euch nicht. Falls die Console sie trotzdem verlangt: <i>Geschlossener Test</i> mit 12 Kolleginnen/Kollegen 14 Tage laufen lassen.</div>
+<div class="box">Die App ist im Store auffindbar, nutzen kann sie nur, wer von uns einen Zugang hat. Ganz unsichtbar („private App“) ginge nur über Managed Google Play mit Google Workspace – für euch nicht nötig.</div>
+
+<h2>Teil B – Apple App Store</h2>
+<div class="box red"><b>Wichtig:</b> Eine iPhone-App kann nur auf einem <b>Mac mit Xcode</b> gebaut und hochgeladen werden. App Store Connect allein reicht nicht. Ohne eigenen Mac: Mac leihen oder einen Miet-Mac in der Cloud (z. B. MacinCloud, ca. 30 €/Monat) nutzen. Das iOS-Projekt ist noch nicht angelegt – das geht nur auf dem Mac (Schritt 3).</div>
+<ol>
+<li><b>Bundle-ID registrieren</b> (developer.apple.com → <i>Certificates, IDs &amp; Profiles → Identifiers → +</i> → App IDs → App): Beschreibung „Viva-Deluxe“, Bundle ID <b>explicit</b> <code>de.vivadeluxe.app</code>, Capability <i>Push Notifications</i> anhaken.</li>
+<li><b>App in App Store Connect anlegen</b> (appstoreconnect.apple.com → <i>Apps → + → Neue App</i>): Plattform iOS, Name „Viva-Deluxe“ (falls vergeben: „Viva-Deluxe Team“), Primärsprache Deutsch, Bundle-ID aus Schritt 1, SKU <code>vivadeluxe-app</code>, Benutzerzugriff „Voller Zugriff“.</li>
+<li><b>Auf dem Mac:</b> Xcode aus dem App Store installieren, Node.js installieren, Projekt-ZIP laden, im Terminal in <code>mobile-app</code>:
+<pre>npm install
+npx cap add ios
+npx cap sync ios
+npx cap open ios</pre>
+In Xcode: links <i>App</i> → <i>Signing &amp; Capabilities</i> → Team = eure GmbH, Bundle Identifier <code>de.vivadeluxe.app</code>. <i>Assets → AppIcon</i>: <code>mobile-app/resources/icon.png</code> hineinziehen. In <i>Info</i> zwei Texte ergänzen:
+<table>
+<tr><th>Schlüssel</th><th>Text</th></tr>
+<tr><td>Privacy – Camera Usage Description</td><td>Zum Scannen des QR-Codes am Objekt und für Fotos der Qualitätskontrolle.</td></tr>
+<tr><td>Privacy – Location When In Use Usage Description</td><td>Nur beim Ein- und Ausstempeln, um zu prüfen, ob du am Objekt bist.</td></tr>
+</table></li>
+<li><b>Hochladen:</b> oben als Ziel <i>Any iOS Device</i> wählen → <i>Product → Archive</i> → <i>Distribute App → App Store Connect → Upload</i>. Nach ca. 15 Minuten erscheint der Build in App Store Connect unter <i>TestFlight</i> → dich und die Objektleitungen als interne Tester eintragen und auf dem iPhone mit der App „TestFlight“ testen.</li>
+<li><b>Angaben in App Store Connect:</b>
+<table>
+<tr><th>Bereich</th><th>Was eintragen</th></tr>
+<tr><td>App-Informationen</td><td>Kategorie Business, Altersfreigabe-Fragebogen (alles „Nein“ → 4+)</td></tr>
+<tr><td>App-Datenschutz</td><td>Datenschutz-Adresse oben; Datenarten wie bei Google (Kontakt, Standort genau, Fotos, Nutzungsdaten, Geräte-ID) → „mit der Identität verknüpft“, <b>nicht</b> für Tracking</td></tr>
+<tr><td>Preise</td><td>Kostenlos, Verfügbarkeit Deutschland</td></tr>
+<tr><td>Version 1.0</td><td>Bildschirmfotos 6,7" bzw. 6,9" iPhone (Pflicht), Beschreibung, Schlüsselwörter, Support-URL <code>https://www.viva-deluxe-reinigung.de</code>, Build aus TestFlight auswählen</td></tr>
+<tr><td>Informationen zur App-Prüfung</td><td>Anmeldedaten des Prüf-Zugangs (Personalnummer/PIN) und Hinweis: „Interne App für Beschäftigte der Viva-Deluxe Gebäudereinigung GmbH; Zugang wird von der Firma vergeben.“</td></tr>
+</table></li>
+<li><b>Zur Prüfung einreichen.</b> Prüfung meist 1–3 Tage.</li>
+</ol>
+<div class="box"><b>Risiko Ablehnung (Richtlinie 4.2 / 3.2):</b> Apple lehnt reine „Webseiten in einer Hülle“ und Firmen-Apps für einen geschlossenen Nutzerkreis manchmal im öffentlichen Store ab. Dann: <b>„Unlisted App“</b> beantragen (Formular bei Apple „Unlisted app distribution request“ – App ist nur über Link installierbar) oder als <b>Custom App</b> über Apple Business Manager verteilen. Bis dahin: iPhone-Nutzer nehmen die Web-App (Safari → Teilen → „Zum Home-Bildschirm“) – Mitteilungen gehen dort ab iOS 16.4 auch.</div>
+
+<h2>Bei jedem Update</h2>
+<p>Inhalt und Funktionen kommen vom Server – <b>dafür ist kein neuer Store-Upload nötig</b>. Neu hochladen nur, wenn sich Logo, Name, Berechtigungen oder der native Teil ändern (Android: <code>versionCode</code> in <code>mobile-app/android/app/build.gradle</code> um 1 erhöhen; iOS: Build-Nummer in Xcode erhöhen).</p>
+
+</body>
+</html>

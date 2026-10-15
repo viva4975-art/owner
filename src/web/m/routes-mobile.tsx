@@ -54,6 +54,18 @@ import { milliToInput } from '../forms.js';
 import { latestSignature, monthToSign, signTimesheet, timesheet } from '../../services/timesheet.js';
 import { type Lang, LANGS, LOCALE, isLang, t } from './i18n.js';
 import { Ic } from './icons.js';
+import { appVersion } from '../../services/app-version.js';
+import {
+  AboutBody,
+  Avatar,
+  type CompanyInfo,
+  LicensesBody,
+  PROFILE_CSS,
+  PermissionsBody,
+  PrivacyBody,
+  ProfileBody,
+  tourJs,
+} from './profile.js';
 import { APP_TAB_CSS, AppSwitch, SCROLL_JS } from '../layout.js';
 export { Ic } from './icons.js';
 
@@ -64,6 +76,7 @@ interface Me {
   id: string;
   personnel_no: string;
   first_name: string;
+  last_name: string;
   lang: Lang;
   sites: { id: string; name: string; site_no: string }[];
   /** über die Büro-Anmeldung (Objektleitung/Büro stempeln selbst) – kein eigenes Abmelden in /m */
@@ -323,7 +336,7 @@ const MLayout: FC<{
       <meta name="apple-mobile-web-app-capable" content="yes" />
       <meta name="mobile-web-app-capable" content="yes" />
       <meta name="apple-mobile-web-app-title" content="Viva-Deluxe" />
-      <style dangerouslySetInnerHTML={{ __html: CSS + APP_TAB_CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: CSS + APP_TAB_CSS + PROFILE_CSS }} />
     </head>
     {/* Leiste unten immer sichtbar: Seite als Spalte, nur der Inhalt scrollt (Ahmed 15.10.: „Leiste erst beim Scrollen“) */}
     <body class={me && !full ? 'shellbar mshell' : undefined}>
@@ -348,14 +361,14 @@ const MLayout: FC<{
           </svg>
           {lang.toUpperCase()}
         </a>
-        {me?.office ? (
-          <AppSwitch active="zeit" />
-        ) : (
-          me && (
-            <form method="post" action="/m/abmelden" style="margin:0">
-              <button>{t(lang, 'logout')}</button>
-            </form>
-          )
+        {me?.office && <AppSwitch active="zeit" />}
+        {/* Profil statt „Abmelden“ (Ahmed 15.10., wie Fortytools): Abmelden, App-Tour, Berechtigungen im Profil */}
+        {me && (
+          <Avatar
+            name={`${me.first_name} ${me.last_name}`}
+            href={me.office ? '/qm/profil' : '/m/profil'}
+            label={t(lang, 'pf_profile')}
+          />
         )}
       </header>
       <main>
@@ -446,12 +459,13 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         id: string;
         personnel_no: string;
         first_name: string;
+        last_name: string;
         app_language: string;
         status: string;
         time_mode: Me['timeMode'];
       }[]
     >`
-      select id, personnel_no, first_name, app_language, status, time_mode from app.employees where id = ${id}`;
+      select id, personnel_no, first_name, last_name, app_language, status, time_mode from app.employees where id = ${id}`;
     if (!e || e.status !== 'aktiv') return null;
     const sites = await sql<{ id: string; name: string; site_no: string }[]>`
       select s.id, s.name, s.site_no from app.sites s
@@ -467,6 +481,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       id: e.id,
       personnel_no: e.personnel_no,
       first_name: e.first_name,
+      last_name: e.last_name,
       lang: isLang(e.app_language) ? e.app_language : 'de',
       sites,
       office,
@@ -600,6 +615,127 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
   app.post('/m/abmelden', (c) => {
     deleteCookie(c, COOKIE, { path: '/' });
     return c.redirect('/m', 303);
+  });
+
+  // ---------------------------------------------------------------- Profil (Ahmed 15.10., wie Fortytools)
+
+  const companyInfo = async (): Promise<CompanyInfo> => {
+    const [co] = await sql<CompanyInfo[]>`
+      select legal_name, street, postal_code, city, phone, email, managing_director from app.company limit 1`;
+    return (
+      co ?? {
+        legal_name: 'Viva-Deluxe Gebäudereinigung GmbH',
+        street: null,
+        postal_code: null,
+        city: null,
+        phone: null,
+        email: null,
+        managing_director: null,
+      }
+    );
+  };
+  const SubHead: FC<{ title: string; back: string }> = ({ title, back }) => (
+    <div class="qm-top" style="display:flex;align-items:center;gap:10px">
+      <a href={back} aria-label="←" style="color:#2a1420;display:flex">
+        <Ic n="back" />
+      </a>
+      <h1 style="margin:0;font-size:20px">{title}</h1>
+    </div>
+  );
+
+  app.get('/m/profil', async (c) => {
+    const me = await loadMe(c);
+    if (!me) return c.redirect('/m');
+    if (me.office) return c.redirect('/qm/profil');
+    const lang = langOf(c, me);
+    const tx = (k: string) => t(lang, k);
+    const [e] = await sql<{ email: string | null }[]>`select email from app.employees where id = ${me.id}`;
+    return render(
+      c,
+      lang,
+      me,
+      <>
+        <SubHead title={tx('pf_profile')} back="/m" />
+        <ProfileBody
+          tx={tx}
+          name={`${me.first_name} ${me.last_name}`}
+          email={e?.email ?? null}
+          company={`${(await companyInfo()).legal_name} · ${tx('personnel_no')} ${me.personnel_no}`}
+          base="/m"
+          logout="/m/abmelden"
+          extra={[{ href: '/m/sprache?next=/m/profil', label: tx('language') }]}
+        />
+      </>,
+    );
+  });
+
+  app.get('/m/profil/berechtigungen', async (c) => {
+    const me = await loadMe(c);
+    if (!me) return c.redirect('/m');
+    const lang = langOf(c, me);
+    const tx = (k: string) => t(lang, k);
+    return render(
+      c,
+      lang,
+      me,
+      <>
+        <SubHead title={tx('pf_perms')} back="/m/profil" />
+        <div hidden>
+          <PushCard
+            save="/m/push/abo"
+            on={tx('push_on')}
+            done={tx('push_done')}
+            blocked={tx('push_blocked')}
+          />
+        </div>
+        <PermissionsBody tx={tx} pushSave="/m/push/abo" />
+      </>,
+    );
+  });
+
+  app.get('/m/profil/app', async (c) => {
+    const me = await loadMe(c);
+    if (!me) return c.redirect('/m');
+    const lang = langOf(c, me);
+    const tx = (k: string) => t(lang, k);
+    return render(
+      c,
+      lang,
+      me,
+      <>
+        <SubHead title={tx('pf_about')} back="/m/profil" />
+        <AboutBody tx={tx} base="/m" version={appVersion()} privacy="/m/datenschutz" />
+      </>,
+    );
+  });
+
+  app.get('/m/profil/lizenzen', async (c) => {
+    const me = await loadMe(c);
+    const lang = langOf(c, me);
+    return render(
+      c,
+      lang,
+      me,
+      <>
+        <SubHead title={t(lang, 'pf_licenses')} back="/m/profil/app" />
+        <LicensesBody />
+      </>,
+    );
+  });
+
+  /** Datenschutzhinweise – öffentlich (auch Adresse für App Store / Google Play). */
+  app.get('/m/datenschutz', async (c) => {
+    const me = await loadMe(c);
+    const lang = langOf(c, me);
+    return render(
+      c,
+      lang,
+      me,
+      <>
+        {me && <SubHead title={t(lang, 'pf_privacy')} back="/m/profil/app" />}
+        <PrivacyBody co={await companyInfo()} />
+      </>,
+    );
   });
 
   app.get('/m/sprache', async (c) => {
@@ -1082,6 +1218,22 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
           on={t(lang, 'push_on')}
           done={t(lang, 'push_done')}
           blocked={t(lang, 'push_blocked')}
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: tourJs(
+              'vd_tour_m',
+              [
+                { sel: '.shift', text: t(lang, 'tour_1') },
+                { sel: 'details.cfm', text: t(lang, 'tour_2') },
+                { sel: 'summary.fab', text: t(lang, 'tour_3') },
+                { sel: '.tabbar', text: t(lang, 'tour_4') },
+                { sel: '.langbtn', text: t(lang, 'tour_lang') },
+                { sel: 'header .avatar', text: t(lang, 'tour_5') },
+              ],
+              { next: t(lang, 'tour_next'), skip: t(lang, 'tour_skip'), done: t(lang, 'tour_done') },
+            ),
+          }}
         />
         <div class="card" id="install" hidden>
           <button type="button" class="big sec" hidden>

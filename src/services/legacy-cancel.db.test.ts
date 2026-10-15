@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
-import { mkdtemp } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { copyLegacyToDraft, createLegacyCancellation, getInvoice, loadDocument } from './invoices.js';
-import { writeOffPart } from './payments.js';
-import { collectBookings } from './datev.js';
-import { createReductionVoucher } from './reduction-vouchers.js';
+import {
+  copyLegacyToDraft,
+  createLegacyCancellation,
+  createReductionCorrection,
+  getInvoice,
+  loadDocument,
+} from './invoices.js';
 import { DEMO } from './seed.js';
 import { type FakeMailer, dbAvailable, freshDatabase, kositAvailable, testDeps } from './testing.js';
 import { type Deps, issueInvoice } from './workflow.js';
@@ -60,7 +60,7 @@ describe.skipIf(!available)('Storno einer Rechnung von vor der Umstellung (Forty
     expect(d.invoice.site_id).toBe(DEMO.siteSchool);
   });
 
-  it('Kürzung mit Kürzungsbeleg und DATEV-Buchung zu einer zweiten alten Rechnung', async () => {
+  it('Betrag mindern = Rechnungskorrektur mit Minusbetrag (alte und eigene Rechnung)', async () => {
     const l2 = randomUUID();
     await sql`insert into app.legacy_invoices (id, number, issue_date, due_date, customer_id, net_cents, gross_cents, paid)
               values (${l2}, '1038201', '2026-09-30', '2026-10-14', ${DEMO.authority}, 100000, 119000, false)`;
@@ -68,38 +68,34 @@ describe.skipIf(!available)('Storno einer Rechnung von vor der Umstellung (Forty
                                                    net_cents, period_start, period_end, site_id)
               values (${randomUUID()}, ${l2}, 1, 'Unterhaltsreinigung September', 1000, 'pauschal', 100000, 100000,
                       '2026-09-01', '2026-09-30', ${DEMO.siteSchool})`;
-    const open = async () =>
-      (
-        await sql<
-          { open_cents: bigint }[]
-        >`select open_cents from app.legacy_open_items where invoice_id = ${l2}`
-      )[0]!.open_cents;
-    // interne Kürzung 119 € brutto, doppelt abgeschickt → einmal gebucht, ein Beleg
-    const p = {
-      key: 'k1',
-      invoiceId: l2,
-      legacy: true,
-      amount: 11900n,
-      date: '2026-10-15',
-      reason: 'Mängel',
-      actor: 't',
-    };
-    expect(await writeOffPart(sql, p)).toBe(true);
-    expect(await writeOffPart(sql, p)).toBe(false);
-    expect(await open()).toBe(107100n);
-    const dir = await mkdtemp(join(tmpdir(), 'viva-kb-'));
-    const v = await createReductionVoucher(sql, { dir, maxBytes: 5e7 }, { ...p, grossCents: 11900n });
-    expect(v.number).toMatch(/^KB-\d{4}-\d{4}$/);
-    await expect(writeOffPart(sql, { ...p, key: 'k2', amount: 200000n })).rejects.toThrow(/höher/);
-    // Buchhaltung: Erlösminderung im DATEV-Stapel (Haben Debitor, Beleg KB, Verweis auf die Rechnung)
-    const { bookings } = await collectBookings(sql, {
-      from: '2026-10-01',
-      to: '2026-10-31',
-      outgoing: false,
-      incoming: false,
-      payments: true,
-    });
-    const b = bookings.find((x) => x.doc === v.number)!;
-    expect(b).toMatchObject({ amount: 11900n, sh: 'H', doc2: '1038201' });
+    const key = randomUUID();
+    const p = { grossCents: 11900n, reason: 'Mängelabzug Fenster', id: key };
+    const id = await createReductionCorrection(sql, l2, p, 't');
+    expect(await createReductionCorrection(sql, l2, p, 't')).toBe(id); // doppelt → derselbe Entwurf
+    const doc = await loadDocument(sql, id);
+    expect(doc.kind).toBe('correction');
+    expect(doc.lines[0]!.quantity).toBe(-1000n);
+    expect(doc.lines[0]!.unitPrice).toBe(10000n);
+    await expect(
+      createReductionCorrection(sql, l2, { grossCents: 200000n, reason: 'x' }, 't'),
+    ).rejects.toThrow(/höher/);
+    await issueInvoice(deps, id, 't');
+    expect((await getInvoice(sql, id))!.original?.number).toBe('1038201');
+    const [o] = await sql<{ open_cents: bigint }[]>`
+      select open_cents from app.legacy_open_items where invoice_id = ${l2}`;
+    expect(o!.open_cents).toBe(107100n);
+    // eigene Rechnung: neu ausstellen, dann 23,80 € brutto mindern
+    const own = await copyLegacyToDraft(sql, l2, 't');
+    await issueInvoice(deps, own, 't');
+    const cid = await createReductionCorrection(
+      sql,
+      own,
+      { grossCents: 2380n, reason: 'Ausfall 1 Tag' },
+      't',
+    );
+    await issueInvoice(deps, cid, 't');
+    const [oo] = await sql<{ open_cents: bigint }[]>`
+      select open_cents from app.open_items where invoice_id = ${own}`;
+    expect(oo!.open_cents).toBe(119000n - 2380n);
   });
 });

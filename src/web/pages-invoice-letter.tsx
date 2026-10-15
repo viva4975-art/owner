@@ -973,7 +973,7 @@ export const IssuedLetter: FC<{
               <>
                 <a href={`/rechnungen/${inv.id}/korrektur`}>Rechnungskorrektur</a>
                 {!paid && (
-                  <a href={`/rechnungen/${inv.id}/verrechnung`}>Kürzung / Verrechnung (interner Beleg)</a>
+                  <a href={`/rechnungen/${inv.id}/verrechnung`}>Betrag mindern (Rechnungskorrektur)</a>
                 )}
                 <form
                   method="post"

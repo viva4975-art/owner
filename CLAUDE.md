@@ -3034,3 +3034,15 @@ Testadresse.
   unverändert). „Gutschrift“ steht auf keinem Beleg (§ 14 Abs. 2 S. 2 UStG). **Steuerlich:** USt-Minderung, sobald die
   Kürzung endgültig ist (§ 17 UStG); DATEV-Konten mit dem Steuerberater abstimmen (ggf. eigenes Erlösschmälerungskonto).
   Test in `legacy-cancel.db.test.ts`.
+- 2026-10-15: **Korrektur (Ahmed: „mach doch lieber die Rechnungskorrektur und dort minus den Betrag“)** – ersetzt den
+  internen Kürzungsbeleg an der Rechnung: An jeder offenen Rechnung (eigene und von vor der Umstellung) „Betrag mindern
+  (Rechnungskorrektur)“ → `/rechnungen/:id/verrechnung`: Minderung **brutto** + Grund → Entwurf einer Rechnungskorrektur
+  (`createReductionCorrection` in `invoices.ts`; eigene Nummer, Belegart 384, Verweis BT-25, eine Position „Minderung zur
+  Rechnung …“ mit Grund, Menge −1, netto = brutto ÷ (1 + Steuersatz der Rechnung) kaufmännisch gerundet, § 13b wie
+  Rechnung; feste ID je Formular → nichts doppelt; nie mehr als der noch nicht korrigierte Nettobetrag). Danach wie jede
+  Rechnung fertigstellen (KoSIT), versenden bzw. „als versendet markieren“; nach dem Ausstellen mindert sie den offenen
+  Posten und steht im DATEV-Export als Ausgangsbeleg. Liste der bisherigen Korrekturen auf derselben Seite.
+  `writeOffPart` entfernt. Bleibt: „Rest als Kürzung ausbuchen“ in den Offenen Posten mit KB-Beleg (DATEV-Buchung, ZIP).
+  **Steuerlich:** Die Korrektur sollte dem Kunden zugehen, damit er seine Vorsteuer berichtigt (§ 17 Abs. 1 UStG).
+  Test in `legacy-cancel.db.test.ts`.
+

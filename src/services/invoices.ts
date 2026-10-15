@@ -1221,6 +1221,142 @@ export async function createLegacyCancellation(sql: Sql, legacyId: string, actor
   });
 }
 
+/**
+ * Rechnungskorrektur „Betrag mindern“ (Ahmed 15.10.: „Rechnungskorrektur und dort minus den Betrag“) – für eigene
+ * Rechnungen und Rechnungen von vor der Umstellung. Eingabe = Minderung brutto; daraus netto mit dem Steuersatz der
+ * Rechnung (USt rechnet die Rechnung selbst, ±1 Cent). Eigene Nummer, Belegart 384, Verweis auf die Rechnung (BT-25),
+ * eine Minus-Position „Minderung zur Rechnung …“ mit Grund. Mindert nach dem Ausstellen den offenen Posten.
+ */
+export async function createReductionCorrection(
+  sql: Sql,
+  invoiceId: string,
+  p: { grossCents: bigint; reason: string; id?: string },
+  actor: string,
+): Promise<string> {
+  if (p.grossCents <= 0n) throw new BusinessError('Bitte den Betrag der Minderung (brutto) angeben');
+  const reason = p.reason.trim();
+  // feste ID je Formular → doppelt absenden legt keinen zweiten Entwurf an
+  if (p.id) {
+    const [done] = await sql`select id from app.invoices where id = ${p.id}`;
+    if (done) return p.id;
+  }
+  if (!reason) throw new BusinessError('Bitte den Grund angeben (steht auf der Rechnungskorrektur)');
+  const toNet = (rate: number) =>
+    rate === 0 ? p.grossCents : (p.grossCents * 20000n + BigInt(10000 + rate)) / BigInt(2 * (10000 + rate));
+  const [lg] = await sql`select 1 from app.legacy_invoices where id = ${invoiceId}`;
+  if (!lg) {
+    return sql.begin(async (tx) => {
+      const orig = await loadIssuedOriginal(tx, invoiceId);
+      if (orig.kind === 'correction')
+        throw new BusinessError('Eine Rechnungskorrektur kann nicht korrigiert werden');
+      const [first] = await tx<
+        LineRow[]
+      >`select * from app.invoice_lines where invoice_id = ${invoiceId} order by position limit 1`;
+      const rate = orig.reverse_charge ? 0 : (first?.vat_rate_bp ?? 1900);
+      const net = toNet(rate);
+      const [prev] = await tx<{ net: bigint }[]>`
+        select coalesce(sum(l.net_cents), 0)::bigint as net
+          from app.invoices i join app.invoice_lines l on l.invoice_id = i.id
+         where i.original_invoice_id = ${invoiceId} and i.kind = 'correction'`;
+      if (net > orig.net_cents + (prev?.net ?? 0n))
+        throw new BusinessError('Minderung ist höher als der (noch nicht korrigierte) Betrag der Rechnung');
+      const id = p.id ?? randomUUID();
+      await tx`insert into app.invoices ${tx({
+        id,
+        kind: 'correction',
+        reverse_charge: orig.reverse_charge,
+        customer_id: orig.customer_id,
+        site_id: orig.site_id,
+        invoice_group_id: orig.invoice_group_id,
+        original_invoice_id: orig.id,
+        period_start: orig.period_start,
+        period_end: orig.period_end,
+        invoice_format: orig.invoice_format,
+        buyer_reference: orig.buyer_reference,
+        order_reference: orig.order_reference,
+        intro_text: `Korrektur zur Rechnung ${orig.number} vom ${orig.issue_date!.split('-').reverse().join('.')}:`,
+      } as Record<string, unknown>)}`;
+      await writeLines(
+        tx,
+        id,
+        [
+          {
+            description: `Minderung zur Rechnung ${orig.number}`,
+            detail: reason,
+            quantity: -1000n as Quantity,
+            unitCode: 'LS',
+            unitPrice: net as Cents,
+            vatRate: rate as VatRate,
+            serviceTypeId: first?.service_type_id ?? null,
+            periodStart: orig.period_start,
+            periodEnd: orig.period_end,
+          },
+        ],
+        0n as Cents,
+        orig.reverse_charge,
+      );
+      await audit(tx, actor, 'create_correction', id, { original: orig.number, gross: String(p.grossCents) });
+      return id;
+    });
+  }
+  return sql.begin(async (tx) => {
+    await tx`select id from app.legacy_invoices where id = ${invoiceId} for update`;
+    const d = await legacyLines(tx, invoiceId);
+    if (!d.inv.customer_id) throw new BusinessError('Rechnung ist keinem Kunden zugeordnet');
+    if (d.inv.gross_cents <= 0n)
+      throw new BusinessError('Nur Rechnungen (nicht Storno/Korrektur) können korrigiert werden');
+    const first = d.lines[0];
+    const rate = d.reverseCharge ? 0 : (first?.vatRate ?? 1900);
+    const net = toNet(rate);
+    const [prev] = await tx<{ net: bigint }[]>`
+      select coalesce(sum(l.net_cents), 0)::bigint as net
+        from app.invoices i join app.invoice_lines l on l.invoice_id = i.id
+       where i.original_legacy_invoice_id = ${invoiceId}`;
+    if (net > d.inv.net_cents + (prev?.net ?? 0n))
+      throw new BusinessError('Minderung ist höher als der (noch nicht korrigierte) Betrag der Rechnung');
+    const billing = await effectiveBilling(tx as unknown as Sql, d.inv.customer_id, d.siteId);
+    const id = p.id ?? randomUUID();
+    await tx`insert into app.invoices ${tx({
+      id,
+      kind: 'correction',
+      reverse_charge: d.reverseCharge,
+      customer_id: d.inv.customer_id,
+      site_id: d.siteId,
+      original_legacy_invoice_id: invoiceId,
+      period_start: d.periodStart,
+      period_end: d.periodEnd,
+      invoice_format: billing.format,
+      buyer_reference: billing.leitwegId ?? d.inv.customer_reference,
+      intro_text: `Korrektur zur Rechnung ${d.inv.number} vom ${d.inv.issue_date.split('-').reverse().join('.')}:`,
+    } as Record<string, unknown>)}`;
+    await writeLines(
+      tx,
+      id,
+      [
+        {
+          description: `Minderung zur Rechnung ${d.inv.number}`,
+          detail: reason,
+          quantity: -1000n as Quantity,
+          unitCode: 'LS',
+          unitPrice: net as Cents,
+          vatRate: rate as VatRate,
+          serviceTypeId: first?.serviceTypeId ?? null,
+          periodStart: d.periodStart,
+          periodEnd: d.periodEnd,
+        },
+      ],
+      0n as Cents,
+      d.reverseCharge,
+    );
+    await audit(tx, actor, 'create_correction', id, {
+      original: d.inv.number,
+      legacy: true,
+      gross: String(p.grossCents),
+    });
+    return id;
+  });
+}
+
 /** „Neu ausstellen“: neuer Rechnungsentwurf mit den Positionen der alten Rechnung (zum Ändern vor dem Ausstellen). */
 export async function copyLegacyToDraft(sql: Sql, legacyId: string, actor: string): Promise<string> {
   const d = await legacyLines(sql, legacyId);

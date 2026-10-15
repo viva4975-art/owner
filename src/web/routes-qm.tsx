@@ -197,7 +197,7 @@ export const QmLayout: FC<{
         {children}
       </main>
       {/* während einer Kontrolle keine Leiste unten (Ahmed 15.10.) */}
-      {!/^\/qm\/audit\//.test(path) && <AppTabbar path={path} />}
+      {!/^\/qm\/(audit|personalbogen)\//.test(path) && <AppTabbar path={path} />}
       <script dangerouslySetInnerHTML={{ __html: SCROLL_JS }} />
     </body>
   </html>

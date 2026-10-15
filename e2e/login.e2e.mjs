@@ -186,6 +186,40 @@ check(
   (await ol.content()).includes('nicht in Ihren Objekten'),
 );
 
+// Personalbogen in kleinen Schritten mit Fotos (Runde 43)
+await admin.goto(B + '/qm/personalbogen/de');
+const nxt = async () => admin.click('[data-next]');
+check(
+  'Schritt 1 zeigt nur Name',
+  (await admin.locator('[data-step]:not([hidden]) input,[data-step]:not([hidden]) select').count()) === 3,
+);
+await admin.fill('input[name=first_name]', 'Bogen');
+await admin.fill('input[name=last_name]', `Foto${stamp}`);
+await nxt();
+await admin.fill('input[name=birth_date]', '1990-05-01');
+await admin.fill('input[name=nationality]', 'deutsch');
+await nxt();
+await admin.fill('input[name=street]', 'Teststr. 1');
+await admin.fill('input[name=postal_code]', '81375');
+await admin.fill('input[name=city]', 'München');
+await nxt();
+await admin.fill('input[name=mobile]', '0170 1234567');
+await nxt();
+await nxt();
+await nxt();
+await admin.locator('[data-photos=ph_id] .phk-cam').setInputFiles('assets/aushaenge/skizze-boden.jpg');
+await admin.waitForSelector('[data-photos=ph_id] .phk-t img');
+check('Foto als Vorschau', (await admin.locator('[data-photos=ph_id] .phk-t').count()) === 1);
+await nxt();
+await admin.check('input[name=confirm]');
+await Promise.all([admin.waitForNavigation(), admin.click('[data-submit]')]);
+check('Personalbogen mit Foto abgesendet', (await admin.content()).includes('übermittelt'));
+await admin.goto(B + '/personal/personalboegen');
+const pbLink = admin.locator(`details:has-text("Foto${stamp}") a:has-text("Fotos der Unterlagen")`);
+check('Fotos als PDF beim Bogen', (await pbLink.count()) === 1);
+const pbRes = await admin.request.get(B + (await pbLink.getAttribute('href')));
+check('PDF abrufbar', pbRes.ok() && (pbRes.headers()['content-type'] ?? '').includes('pdf'));
+
 await browser.close();
 console.log(`\n${ok} ok, ${fail} fehlgeschlagen`);
 process.exit(fail ? 1 : 0);

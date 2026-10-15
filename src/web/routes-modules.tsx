@@ -1374,6 +1374,7 @@ export function registerModuleRoutes(ctx: Ctx) {
       <EmployeeForm
         wageLevels={wageLevels}
         id={id}
+        bogenId={bogen ? bogenId : undefined}
         e={
           data?.employee ?? {
             personnel_no: await suggestPersonnelNo(sql),
@@ -1480,6 +1481,17 @@ export function registerModuleRoutes(ctx: Ctx) {
     if (['teilzeit', 'minijob'].includes(parsed.data.employment_type) && !parsed.data.weekly_hours)
       throw new BusinessError('Bitte die Wochenstunden angeben (Teilzeit/Minijob).');
     await saveEmployee(sql, id, parsed.data, c.get('actor'));
+    // Aus dem Personalbogen angelegt: Fotos der Unterlagen in die Personalakte, Bogen erledigt
+    const bogen = typeof flat.bogen === 'string' && /^[0-9a-f-]{36}$/.test(flat.bogen) ? flat.bogen : null;
+    if (bogen) {
+      await sql`insert into app.file_links (file_id, entity_type, entity_id, category, linked_by)
+                select docs_file_id, 'employee', ${id}, 'Personalunterlagen', ${c.get('actor')}
+                  from app.personnel_forms where id = ${bogen} and docs_file_id is not null
+                on conflict do nothing`;
+      await sql`update app.personnel_forms set status = 'uebernommen', employee_id = ${id},
+                       decided_by = ${c.get('actor')}, decided_at = now()
+                 where id = ${bogen} and status = 'neu'`;
+    }
     // Objekt-Zuordnung nicht mehr im Stammdatenformular (Ahmed 06.10.) – entsteht über Planung/Einsätze
     return back(c, `/personal/${id}`, { ok: 'Mitarbeiter gespeichert.' });
   });

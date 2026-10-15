@@ -747,7 +747,8 @@ export const EmployeeForm: FC<{
   priv: Partial<EmployeePrivate>;
   isNew: boolean;
   wageLevels?: WageLevel[];
-}> = ({ id, e, priv, isNew, wageLevels = [] }) => (
+  bogenId?: string | undefined;
+}> = ({ id, e, priv, isNew, wageLevels = [], bogenId }) => (
   <form
     method="post"
     action={`/personal/${id}`}
@@ -756,6 +757,7 @@ export const EmployeeForm: FC<{
   >
     <input type="hidden" name="version" value={String(e.version ?? '')} />
     <input type="hidden" name="private_version" value={String(priv.version ?? '')} />
+    {bogenId && <input type="hidden" name="bogen" value={bogenId} />}
     <h3>Personendaten</h3>
     <div class="grid">
       <div>

@@ -9,11 +9,15 @@
  * - NU-Auftrag anfragen: Entwurf mit „angefragt von“, das Büro prüft (Nachweise, Preis) und erteilt.
  */
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import type { Context } from 'hono';
 import type { Child } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { parseEuro } from '../domain/money/money.js';
 import { BusinessError } from '../services/errors.js';
+import { storeFile } from '../services/uploads.js';
+import { photosToPdf } from '../pdf/photos.js';
 import { validIban } from '../services/employees.js';
 import { normSvNumber, normTaxId, validSvNumber, validTaxId } from '../domain/hr/ids.js';
 import { BILLING, FREQUENCY, SERVICE_KINDS, saveSubcontract } from '../services/subcontractors.js';
@@ -100,6 +104,27 @@ const DE: Record<string, string> = {
   send: 'Absenden',
   thanks: 'Danke! Ihre Angaben wurden an das Büro übermittelt.',
   choose: 'Sprache wählen',
+  s_person: 'Wer sind Sie?',
+  s_birth: 'Geburt und Herkunft',
+  s_address: 'Adresse',
+  s_contact: 'Kontakt',
+  s_bank: 'Bank und Versicherung',
+  s_permit: 'Aufenthalt und Sprachen',
+  s_photos: 'Fotos der Unterlagen',
+  s_done: 'Fast fertig',
+  ph_hint:
+    'Bitte die Karten gut lesbar fotografieren (ohne Blitz-Spiegelung). Was Sie nicht haben, einfach überspringen.',
+  ph_id: 'Ausweis oder Reisepass (Vorder- und Rückseite)',
+  ph_health: 'Krankenkassenkarte',
+  ph_bank: 'Bankkarte (IBAN sichtbar)',
+  ph_permit: 'Aufenthaltstitel / Arbeitserlaubnis',
+  ph_sv: 'Sozialversicherungsausweis',
+  ph_other: 'Weitere Unterlagen',
+  ph_take: 'Foto aufnehmen',
+  ph_more: 'weiteres Foto',
+  next: 'Weiter',
+  back: 'Zurück',
+  step: 'Schritt',
 };
 const T: Record<Exclude<Lang, 'de'>, Record<string, string>> = {
   en: {
@@ -140,6 +165,27 @@ const T: Record<Exclude<Lang, 'de'>, Record<string, string>> = {
     send: 'Send',
     thanks: 'Thank you! Your details have been sent to the office.',
     choose: 'Choose language',
+    s_person: 'Who are you?',
+    s_birth: 'Birth and origin',
+    s_address: 'Address',
+    s_contact: 'Contact',
+    s_bank: 'Bank and insurance',
+    s_permit: 'Residence and languages',
+    s_photos: 'Photos of your documents',
+    s_done: 'Almost done',
+    ph_hint:
+      'Please photograph the cards so they are easy to read (no flash glare). Skip anything you do not have.',
+    ph_id: 'ID card or passport (front and back)',
+    ph_health: 'Health insurance card',
+    ph_bank: 'Bank card (IBAN visible)',
+    ph_permit: 'Residence / work permit',
+    ph_sv: 'Social security card',
+    ph_other: 'Other documents',
+    ph_take: 'Take photo',
+    ph_more: 'another photo',
+    next: 'Next',
+    back: 'Back',
+    step: 'Step',
   },
   ro: {
     title: 'Fișă de personal',
@@ -179,6 +225,26 @@ const T: Record<Exclude<Lang, 'de'>, Record<string, string>> = {
     send: 'Trimite',
     thanks: 'Mulțumim! Datele au fost trimise la birou.',
     choose: 'Alegeți limba',
+    s_person: 'Cine sunteți?',
+    s_birth: 'Naștere și origine',
+    s_address: 'Adresă',
+    s_contact: 'Contact',
+    s_bank: 'Bancă și asigurare',
+    s_permit: 'Ședere și limbi',
+    s_photos: 'Fotografii ale documentelor',
+    s_done: 'Aproape gata',
+    ph_hint: 'Fotografiați cardurile clar, fără reflexii de bliț. Ce nu aveți, puteți sări.',
+    ph_id: 'Buletin sau pașaport (față și verso)',
+    ph_health: 'Card de asigurare de sănătate',
+    ph_bank: 'Card bancar (IBAN vizibil)',
+    ph_permit: 'Permis de ședere / de muncă',
+    ph_sv: 'Card de asigurare socială',
+    ph_other: 'Alte documente',
+    ph_take: 'Faceți o fotografie',
+    ph_more: 'altă fotografie',
+    next: 'Înainte',
+    back: 'Înapoi',
+    step: 'Pasul',
   },
   tr: {
     title: 'Personel formu',
@@ -217,6 +283,26 @@ const T: Record<Exclude<Lang, 'de'>, Record<string, string>> = {
     send: 'Gönder',
     thanks: 'Teşekkürler! Bilgileriniz ofise iletildi.',
     choose: 'Dil seçin',
+    s_person: 'Siz kimsiniz?',
+    s_birth: 'Doğum ve köken',
+    s_address: 'Adres',
+    s_contact: 'İletişim',
+    s_bank: 'Banka ve sigorta',
+    s_permit: 'Oturum ve diller',
+    s_photos: 'Belgelerin fotoğrafları',
+    s_done: 'Neredeyse bitti',
+    ph_hint: 'Kartları okunaklı şekilde fotoğraflayın (flaş yansıması olmadan). Olmayanları atlayın.',
+    ph_id: 'Kimlik kartı veya pasaport (ön ve arka)',
+    ph_health: 'Sağlık sigortası kartı',
+    ph_bank: 'Banka kartı (IBAN görünür)',
+    ph_permit: 'Oturum / çalışma izni',
+    ph_sv: 'Sosyal sigorta kartı',
+    ph_other: 'Diğer belgeler',
+    ph_take: 'Fotoğraf çek',
+    ph_more: 'başka fotoğraf',
+    next: 'İleri',
+    back: 'Geri',
+    step: 'Adım',
   },
   pl: {
     title: 'Kwestionariusz osobowy',
@@ -256,6 +342,26 @@ const T: Record<Exclude<Lang, 'de'>, Record<string, string>> = {
     send: 'Wyślij',
     thanks: 'Dziękujemy! Dane zostały przekazane do biura.',
     choose: 'Wybierz język',
+    s_person: 'Kim Pan/Pani jest?',
+    s_birth: 'Urodzenie i pochodzenie',
+    s_address: 'Adres',
+    s_contact: 'Kontakt',
+    s_bank: 'Bank i ubezpieczenie',
+    s_permit: 'Pobyt i języki',
+    s_photos: 'Zdjęcia dokumentów',
+    s_done: 'Prawie gotowe',
+    ph_hint: 'Proszę sfotografować karty czytelnie (bez odblasku lampy). To, czego nie ma, można pominąć.',
+    ph_id: 'Dowód osobisty lub paszport (przód i tył)',
+    ph_health: 'Karta ubezpieczenia zdrowotnego',
+    ph_bank: 'Karta bankowa (widoczny IBAN)',
+    ph_permit: 'Dokument pobytowy / pozwolenie na pracę',
+    ph_sv: 'Legitymacja ubezpieczenia społecznego',
+    ph_other: 'Inne dokumenty',
+    ph_take: 'Zrób zdjęcie',
+    ph_more: 'kolejne zdjęcie',
+    next: 'Dalej',
+    back: 'Wstecz',
+    step: 'Krok',
   },
   hr: {
     title: 'Upitnik za zaposlenike',
@@ -295,6 +401,26 @@ const T: Record<Exclude<Lang, 'de'>, Record<string, string>> = {
     send: 'Pošalji',
     thanks: 'Hvala! Vaši podaci poslani su u ured.',
     choose: 'Odaberite jezik',
+    s_person: 'Tko ste vi?',
+    s_birth: 'Rođenje i podrijetlo',
+    s_address: 'Adresa',
+    s_contact: 'Kontakt',
+    s_bank: 'Banka i osiguranje',
+    s_permit: 'Boravak i jezici',
+    s_photos: 'Fotografije dokumenata',
+    s_done: 'Skoro gotovo',
+    ph_hint: 'Fotografirajte kartice čitljivo (bez odsjaja bljeskalice). Ono što nemate preskočite.',
+    ph_id: 'Osobna iskaznica ili putovnica (prednja i stražnja strana)',
+    ph_health: 'Kartica zdravstvenog osiguranja',
+    ph_bank: 'Bankovna kartica (vidljiv IBAN)',
+    ph_permit: 'Boravišna / radna dozvola',
+    ph_sv: 'Iskaznica socijalnog osiguranja',
+    ph_other: 'Ostali dokumenti',
+    ph_take: 'Fotografiraj',
+    ph_more: 'još jedna fotografija',
+    next: 'Dalje',
+    back: 'Natrag',
+    step: 'Korak',
   },
   bg: {
     title: 'Лична карта на служителя',
@@ -334,6 +460,26 @@ const T: Record<Exclude<Lang, 'de'>, Record<string, string>> = {
     send: 'Изпрати',
     thanks: 'Благодарим! Данните Ви бяха изпратени в офиса.',
     choose: 'Изберете език',
+    s_person: 'Кои сте вие?',
+    s_birth: 'Раждане и произход',
+    s_address: 'Адрес',
+    s_contact: 'Контакт',
+    s_bank: 'Банка и осигуровка',
+    s_permit: 'Пребиваване и езици',
+    s_photos: 'Снимки на документите',
+    s_done: 'Почти готово',
+    ph_hint: 'Моля, снимайте картите четливо (без отблясък от светкавица). Каквото нямате, пропуснете.',
+    ph_id: 'Лична карта или паспорт (лице и гръб)',
+    ph_health: 'Карта на здравната каса',
+    ph_bank: 'Банкова карта (видим IBAN)',
+    ph_permit: 'Разрешение за пребиваване / работа',
+    ph_sv: 'Карта за социално осигуряване',
+    ph_other: 'Други документи',
+    ph_take: 'Направете снимка',
+    ph_more: 'още една снимка',
+    next: 'Напред',
+    back: 'Назад',
+    step: 'Стъпка',
   },
 };
 /**
@@ -341,10 +487,33 @@ const T: Record<Exclude<Lang, 'de'>, Record<string, string>> = {
  * „Absenden“ erst im letzten Schritt. Ohne JavaScript bleibt alles auf einer Seite.
  */
 export const WIZARD_JS = `(function(){document.querySelectorAll('form').forEach(function(f){var st=[].slice.call(f.querySelectorAll('[data-step]'));if(st.length<2)return;var i=0,prev=f.querySelector('[data-prev]'),next=f.querySelector('[data-next]'),sub=f.querySelector('[data-submit]'),cnt=f.querySelector('[data-count]');
-function show(){st.forEach(function(s,k){s.hidden=k!==i});prev.style.visibility=i?'visible':'hidden';next.hidden=i===st.length-1;sub.hidden=i!==st.length-1;if(cnt)cnt.textContent=(i+1)+' / '+st.length;var m=f.closest('main');(m||window).scrollTo(0,0)}
+function show(){st.forEach(function(s,k){s.hidden=k!==i});prev.style.visibility=i?'visible':'hidden';next.hidden=i===st.length-1;sub.hidden=i!==st.length-1;if(cnt)cnt.textContent=(i+1)+' / '+st.length;var bar=f.querySelector('[data-bar]');if(bar)bar.style.width=((i+1)/st.length*100)+'%';var m=f.closest('main');(m||window).scrollTo(0,0)}
 function ok(){var els=st[i].querySelectorAll('input,select,textarea');for(var k=0;k<els.length;k++){if(!els[k].checkValidity()){els[k].reportValidity();return false}}return true}
 next.addEventListener('click',function(){if(ok()){i++;show()}});prev.addEventListener('click',function(){if(i){i--;show()}});
 f.addEventListener('invalid',function(e){var s=e.target.closest('[data-step]');var k=st.indexOf(s);if(k>=0&&k!==i){i=k;show()}},true);show()})})();`;
+
+/** Schritte des Personalbogens: Titel-Schlüssel + Felder. */
+const BOGEN_STEPS: [string, string[]][] = [
+  ['s_person', ['salutation', 'first_name', 'last_name']],
+  ['s_birth', ['birth_date', 'birth_place', 'birth_country', 'nationality', 'marital_status']],
+  ['s_address', ['street', 'postal_code', 'city']],
+  ['s_contact', ['mobile', 'email_private', 'emergency_contact']],
+  ['s_bank', ['iban', 'tax_id', 'social_security_no', 'health_insurance']],
+  ['s_permit', ['residence_permit_until', 'work_permit_until', 'languages']],
+  ['s_photos', []],
+  ['s_done', ['notes']],
+];
+/** Foto-Arten im Personalbogen (Formularname = Schlüssel). */
+export const PHOTO_KINDS = ['ph_id', 'ph_health', 'ph_bank', 'ph_permit', 'ph_sv', 'ph_other'] as const;
+
+/**
+ * Fotos: Kamera-Feld je Art, Bild im Browser auf höchstens 1600 px als JPEG verkleinern (sonst 5 MB je Handyfoto)
+ * und im versteckten Sammelfeld der Art ablegen (DataTransfer). Vorschaubilder mit × zum Entfernen.
+ */
+const PHOTO_JS = `(function(){document.querySelectorAll('[data-photos]').forEach(function(box){var store=box.querySelector('.phk-store'),cam=box.querySelector('.phk-cam'),list=box.querySelector('.phk-list'),files=[];
+function sync(){try{var dt=new DataTransfer();files.forEach(function(f){dt.items.add(f)});store.files=dt.files}catch(e){}list.innerHTML='';files.forEach(function(f,i){var d=document.createElement('div');d.className='phk-t';var im=document.createElement('img');im.src=URL.createObjectURL(f);var x=document.createElement('button');x.type='button';x.textContent='×';x.onclick=function(){files.splice(i,1);sync()};d.appendChild(im);d.appendChild(x);list.appendChild(d)})}
+function shrink(f,cb){var img=new Image();img.onload=function(){var m=1600,w=img.naturalWidth,h=img.naturalHeight,r=Math.min(1,m/Math.max(w,h));var c=document.createElement('canvas');c.width=Math.round(w*r);c.height=Math.round(h*r);c.getContext('2d').drawImage(img,0,0,c.width,c.height);c.toBlob(function(b){cb(b?new File([b],(f.name||'foto').replace(/\.[^.]*$/,'')+'.jpg',{type:'image/jpeg'}):f)},'image/jpeg',0.82)};img.onerror=function(){cb(f)};img.src=URL.createObjectURL(f)}
+cam.addEventListener('change',function(){[].slice.call(cam.files).forEach(function(f){shrink(f,function(g){files.push(g);sync()})});cam.value=''})})})();`;
 
 const tr = (lang: Lang, k: string) => (lang === 'de' ? DE[k] : (T[lang][k] ?? DE[k])) ?? k;
 
@@ -407,56 +576,87 @@ export function registerOlAppRoutes({ app, deps, page, back }: Ctx) {
       <>
         <Top title={L('title')} href="/qm/personalbogen" />
         <p class="mut">{L('intro')}</p>
-        <form method="post" action="/qm/personalbogen" class="bogen" lang={lang}>
+        <form
+          method="post"
+          action="/qm/personalbogen"
+          class="bogen"
+          lang={lang}
+          enctype="multipart/form-data"
+        >
           <input type="hidden" name="id" value={randomUUID()} />
           <input type="hidden" name="lang" value={lang} />
           <input type="hidden" name="objekt" value={objekt} />
-          {/* Schritt für Schritt mit Weiter/Zurück (Ahmed 15.10.) */}
-          {(
-            [
-              [0, 4],
-              [4, 8],
-              [8, 13],
-              [13, 17],
-              [17, BOGEN_FIELDS.length],
-            ] as const
-          ).map(([a, b], i, all) => (
+          <div class="wprog">
+            <div class="wprog-bar" data-bar />
+          </div>
+          {/* Kleine Schritte (Ahmed 15.10.: „zuerst nur Name, Adresse, dann weiter, nicht ewig lange Listen“) */}
+          {BOGEN_STEPS.map(([title, keys]) => (
             <div class="wstep" data-step>
-              {BOGEN_FIELDS.slice(a, b).map((f) => (
-                <label class="bf">
-                  <span>
-                    {L(f.key)}
-                    {f.required ? ' *' : ''}
-                    {lang !== 'de' && <small>{DE[f.key]}</small>}
-                  </span>
-                  {f.key === 'salutation' ? (
-                    <select name={f.key}>
-                      <option value="" />
-                      <option value="Herr">{L('herr')}</option>
-                      <option value="Frau">{L('frau')}</option>
-                      <option value="divers">{L('divers')}</option>
-                    </select>
-                  ) : f.key === 'marital_status' ? (
-                    <select name={f.key}>
-                      <option value="" />
-                      {['ledig', 'verheiratet', 'geschieden', 'verwitwet'].map((k) => (
-                        <option value={k}>{L(k)}</option>
-                      ))}
-                    </select>
-                  ) : f.key === 'notes' || f.key === 'emergency_contact' ? (
-                    <textarea name={f.key} rows={2} />
-                  ) : (
-                    <input
-                      name={f.key}
-                      type={f.type ?? 'text'}
-                      required={f.required}
-                      autocomplete="off"
-                      {...(f.key === 'postal_code' ? { inputmode: 'numeric' } : {})}
-                    />
-                  )}
-                </label>
-              ))}
-              {i === all.length - 1 && (
+              <h2 class="wtitle">
+                {L(title)}
+                {lang !== 'de' && <small>{DE[title]}</small>}
+              </h2>
+              {title === 's_photos' ? (
+                <>
+                  <p class="small mut" style="margin:0">
+                    {L('ph_hint')}
+                  </p>
+                  {PHOTO_KINDS.map((k) => (
+                    <div class="phk" data-photos={k}>
+                      <div class="phk-h">
+                        <b>{L(k)}</b>
+                        {lang !== 'de' && <small>{DE[k]}</small>}
+                      </div>
+                      <div class="phk-list" />
+                      <input type="file" name={k} accept="image/*" multiple hidden class="phk-store" />
+                      <label class="phk-add">
+                        <input type="file" accept="image/*" capture="environment" class="phk-cam" />
+                        <span>+ {L('ph_take')}</span>
+                      </label>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                keys.map((key) => {
+                  const f = BOGEN_FIELDS.find((x) => x.key === key)!;
+                  return (
+                    <label class="bf">
+                      <span>
+                        {L(f.key)}
+                        {f.required ? ' *' : ''}
+                        {lang !== 'de' && <small>{DE[f.key]}</small>}
+                      </span>
+                      {f.key === 'salutation' ? (
+                        <select name={f.key}>
+                          <option value="" />
+                          <option value="Herr">{L('herr')}</option>
+                          <option value="Frau">{L('frau')}</option>
+                          <option value="divers">{L('divers')}</option>
+                        </select>
+                      ) : f.key === 'marital_status' ? (
+                        <select name={f.key}>
+                          <option value="" />
+                          {['ledig', 'verheiratet', 'geschieden', 'verwitwet'].map((k) => (
+                            <option value={k}>{L(k)}</option>
+                          ))}
+                        </select>
+                      ) : f.key === 'notes' || f.key === 'emergency_contact' ? (
+                        <textarea name={f.key} rows={2} />
+                      ) : (
+                        <input
+                          name={f.key}
+                          type={f.type ?? 'text'}
+                          required={f.required}
+                          autocomplete="off"
+                          {...(f.key === 'postal_code' ? { inputmode: 'numeric' } : {})}
+                          {...(f.key === 'mobile' ? { inputmode: 'tel' } : {})}
+                        />
+                      )}
+                    </label>
+                  );
+                })
+              )}
+              {title === 's_done' && (
                 <>
                   <p class="small mut">{L('privacy')}</p>
                   <label class="bf chk">
@@ -468,22 +668,22 @@ export function registerOlAppRoutes({ app, deps, page, back }: Ctx) {
           ))}
           <div class="wnav">
             <button type="button" class="wbtn sec" data-prev>
-              ←
+              {L('back')}
             </button>
             <span class="wcount" data-count />
             <button type="button" class="wbtn" data-next>
-              →
+              {L('next')}
             </button>
             <button class="btn-big" data-submit>
               {L('send')}
             </button>
           </div>
         </form>
-        <script dangerouslySetInnerHTML={{ __html: WIZARD_JS }} />
+        <script dangerouslySetInnerHTML={{ __html: WIZARD_JS + PHOTO_JS }} />
         <style
           dangerouslySetInnerHTML={{
             __html:
-              '.bogen{display:flex;flex-direction:column;gap:10px}.wstep{display:flex;flex-direction:column;gap:10px}.wnav{display:flex;align-items:center;gap:10px;margin-top:8px}.wbtn{font:inherit;font-size:22px;font-weight:700;min-width:64px;padding:12px;border:0;border-radius:12px;background:#7d1435;color:#fff}.wbtn.sec{background:#fff;color:#7d1435;border:1px solid #e3d6db}.wcount{flex:1;text-align:center;color:#8a7a80;font-weight:600}.wnav .btn-big{flex:1}.bf{display:flex;flex-direction:column;gap:4px;font-weight:600}.bf small{display:block;font-weight:400;color:#8a7a80;font-size:12px}.bf input,.bf select,.bf textarea{font:inherit;font-weight:400;padding:12px;border:1px solid #e3d6db;border-radius:10px;background:#fff}.bf.chk{flex-direction:row;align-items:center;gap:10px}.btn-big{font:inherit;font-weight:700;padding:14px;border:0;border-radius:12px;background:#7d1435;color:#fff}',
+              '.bogen{display:flex;flex-direction:column;gap:10px}.wstep{display:flex;flex-direction:column;gap:12px}.wstep[hidden]{display:none}.wtitle{margin:4px 0 2px;font-size:22px;line-height:1.2}.wtitle small{display:block;font-size:12px;font-weight:400;color:#8a7a80}.wprog{height:6px;background:#efe6ea;border-radius:6px;overflow:hidden}.wprog-bar{height:100%;width:0;background:#7d1435;transition:width .2s}.wnav{display:flex;align-items:center;gap:10px;margin-top:10px}.wbtn{font:inherit;font-size:16px;font-weight:700;min-width:96px;padding:14px;border:0;border-radius:12px;background:#7d1435;color:#fff}.wbtn.sec{background:#fff;color:#7d1435;border:1px solid #e3d6db}.wcount{flex:1;text-align:center;color:#8a7a80;font-weight:600}.wnav .btn-big{flex:1}.bf{display:flex;flex-direction:column;gap:4px;font-weight:600}.bf small{display:block;font-weight:400;color:#8a7a80;font-size:12px}.bf input,.bf select,.bf textarea{font:inherit;font-size:17px;font-weight:400;padding:13px;border:1px solid #e3d6db;border-radius:10px;background:#fff}.bf.chk{flex-direction:row;align-items:center;gap:10px}.btn-big{font:inherit;font-weight:700;padding:14px;border:0;border-radius:12px;background:#7d1435;color:#fff}.phk{background:#fff;border:1px solid #e7e1e4;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}.phk-h small{display:block;font-size:12px;color:#8a7a80}.phk-list{display:flex;flex-wrap:wrap;gap:8px}.phk-list:empty{display:none}.phk-t{position:relative;width:84px;height:64px;border-radius:8px;overflow:hidden;border:1px solid #e3d6db}.phk-t img{width:100%;height:100%;object-fit:cover}.phk-t button{position:absolute;top:2px;right:2px;width:24px;height:24px;border-radius:12px;border:0;background:rgba(0,0,0,.6);color:#fff;font-size:15px;line-height:1}.phk-add{display:block;text-align:center;padding:12px;border:1.5px dashed #cdbfc5;border-radius:10px;color:#7d1435;font-weight:600}.phk-add input{display:none}',
           }}
         />
       </>,
@@ -491,7 +691,14 @@ export function registerOlAppRoutes({ app, deps, page, back }: Ctx) {
   });
 
   app.post('/qm/personalbogen', async (c) => {
-    const b = await c.req.parseBody();
+    const b = (await c.req.parseBody({ all: true })) as Record<string, string | File | (string | File)[]>;
+    const photos: { kind: string; file: File }[] = [];
+    for (const k of PHOTO_KINDS) {
+      const v = b[k];
+      for (const f of Array.isArray(v) ? v : v ? [v] : [])
+        if (f instanceof File && f.size > 0) photos.push({ kind: k, file: f });
+      b[k] = '';
+    }
     const id = typeof b.id === 'string' && /^[0-9a-f-]{36}$/.test(b.id) ? b.id : randomUUID();
     const lang = (BOGEN_LANGS.find(([k]) => k === b.lang)?.[0] ?? 'de') as Lang;
     if (b.confirm !== '1') throw new BusinessError(tr(lang, 'confirm'));
@@ -516,9 +723,34 @@ export function registerOlAppRoutes({ app, deps, page, back }: Ctx) {
     }
     const site = typeof b.objekt === 'string' && /^[0-9a-f-]{36}$/.test(b.objekt) ? b.objekt : null;
     if (site) assertSite(c, site);
-    await sql`insert into app.personnel_forms (id, lang, site_id, data, created_by)
-              values (${id}, ${lang}, ${site}, ${sql.json(data)}, ${c.get('actor')})
-              on conflict (id) do nothing`;
+    const [done] = await sql`select 1 from app.personnel_forms where id = ${id}`;
+    if (!done) {
+      // Erst das PDF der Fotos (kann scheitern, z. B. Format), dann den Bogen speichern → nichts halb gespeichert
+      let fileId: string | null = null;
+      if (photos.length) {
+        const pdf = await photosToPdf(
+          photos.map((p) => ({ label: DE[p.kind] ?? p.kind, file: p.file })),
+          `${data.last_name ?? ''}, ${data.first_name ?? ''}`,
+        );
+        fileId = randomUUID();
+        await storeFile(
+          sql,
+          { dir: deps.env.FILES_DIR, maxBytes: deps.env.UPLOAD_MAX_BYTES },
+          {
+            id: fileId,
+            name: `Personalbogen_Unterlagen_${data.last_name ?? ''}_${data.first_name ?? ''}.pdf`,
+            type: 'application/pdf',
+            data: pdf,
+            link: { type: 'personnel_form', id },
+            category: 'Personalunterlagen',
+          },
+          c.get('actor'),
+        );
+      }
+      await sql`insert into app.personnel_forms (id, lang, site_id, data, created_by, docs_file_id)
+                values (${id}, ${lang}, ${site}, ${sql.json(data)}, ${c.get('actor')}, ${fileId})
+                on conflict (id) do nothing`;
+    }
     await sql`insert into app.audit_log (actor, action, entity, entity_id)
               values (${c.get('actor')}, 'personnel_form', 'personnel_form', ${id})`;
     return render(
@@ -555,6 +787,7 @@ export function registerOlAppRoutes({ app, deps, page, back }: Ctx) {
         created_at: Date;
         site_name: string | null;
         employee_id: string | null;
+        docs_file_id: string | null;
       }[]
     >`select f.*, s.name as site_name from app.personnel_forms f left join app.sites s on s.id = f.site_id
        order by (f.status = 'neu') desc, f.created_at desc limit 300`;
@@ -596,6 +829,20 @@ export function registerOlAppRoutes({ app, deps, page, back }: Ctx) {
                 </>
               ))}
             </dl>
+            {r.docs_file_id && (
+              <p>
+                <a
+                  class="btn sec sm"
+                  href={`/personal/personalboegen/${r.id}/unterlagen.pdf`}
+                  target="_blank"
+                >
+                  Fotos der Unterlagen (PDF)
+                </a>{' '}
+                <span class="small mut">
+                  {r.employee_id ? 'liegt in der Personalakte' : 'kommt beim Anlegen in die Personalakte'}
+                </span>
+              </p>
+            )}
             {r.status === 'neu' && (
               <div class="actions">
                 <a class="btn" href={`/personal/${randomUUID()}/bearbeiten?bogen=${r.id}`}>
@@ -618,6 +865,17 @@ export function registerOlAppRoutes({ app, deps, page, back }: Ctx) {
         {!rows.length && <div class="card empty">Noch keine Personalbögen eingegangen.</div>}
       </>,
     );
+  });
+
+  app.get(`/personal/personalboegen/:id{${UUID}}/unterlagen.pdf`, async (c) => {
+    const [f] = await sql<{ storage_path: string }[]>`
+      select f.storage_path from app.personnel_forms p join app.files f on f.id = p.docs_file_id
+       where p.id = ${c.req.param('id')}`;
+    if (!f) return c.notFound();
+    const bytes = await readFile(join(resolve(deps.env.FILES_DIR), f.storage_path));
+    return new Response(bytes, {
+      headers: { 'Content-Type': 'application/pdf', 'Cache-Control': 'private, no-store' },
+    });
   });
 
   app.post(`/personal/personalboegen/:id{${UUID}}`, async (c) => {

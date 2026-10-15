@@ -60,6 +60,7 @@ export type LinkTarget = {
     | 'note'
     | 'vehicle'
     | 'word_template'
+    | 'personnel_form'
     | 'legacy_import';
   id: string;
 };

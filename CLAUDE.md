@@ -3101,3 +3101,11 @@ Testadresse.
   (immer höher als die Hand-Builds). Secrets nur in GitHub: `APPSTORE_KEY_ID`, `APPSTORE_ISSUER_ID`, `APPSTORE_KEY_P8`
   (Inhalt der .p8), `APPLE_TEAM_ID`. **Schlüssel braucht Rolle „Admin“** (Zertifikate in der Cloud anlegen). Ohne
   Secrets bricht der Lauf mit Hinweis ab. Server-Änderungen brauchen weiterhin keinen Build. Android folgt (Dienstkonto).
+- 2026-10-15: **Automatischer Android-Build** (wie iPhone): GitHub Actions `.github/workflows/android-play.yml` (Ubuntu,
+  Java 21, Node 22) bei Änderungen unter `mobile-app/` oder per „Run workflow“: `npm ci` + `cap sync android` →
+  `./gradlew bundleRelease` (signiert mit dem Upload-Schlüssel aus den Secrets; `build.gradle` liest ihn nur aus
+  Umgebungsvariablen, Android Studio baut ohne sie wie bisher) → Upload in den Track „Interner Test“
+  (`r0adkll/upload-google-play`, Status completed oder per Knopf draft). Versionscode = 100 + Lauf-Nr. Secrets:
+  `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`,
+  `PLAY_SERVICE_ACCOUNT_JSON` (Dienstkonto mit Release-Rechten für die App). **Voraussetzung:** erstes .aab einmal von
+  Hand in der Play Console hochgeladen (Google verlangt das). Hier nicht testbar (kein Android-SDK).

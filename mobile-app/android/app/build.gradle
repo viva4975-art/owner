@@ -7,7 +7,8 @@ android {
         applicationId "de.vivadeluxe.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 4
+        // Im automatischen Build (GitHub Actions) setzt VERSION_CODE die Nummer, sonst 4
+        versionCode((System.getenv("VERSION_CODE") ?: "4") as Integer)
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -16,8 +17,22 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Upload-Schlüssel nur aus Umgebungsvariablen (GitHub Secrets) – nie im Repo.
+    // Ohne Variablen baut Android Studio wie bisher (Signieren über „Generate Signed Bundle“).
+    def ks = System.getenv("ANDROID_KEYSTORE_FILE")
+    signingConfigs {
+        if (ks) {
+            release {
+                storeFile file(ks)
+                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword System.getenv("ANDROID_KEY_PASSWORD") ?: System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
+            if (ks) { signingConfig signingConfigs.release }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

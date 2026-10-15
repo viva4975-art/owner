@@ -66,6 +66,13 @@ jobs:
             echo "::error::ANDROID_KEYSTORE_BASE64 ist kein gültiger Base64-Text ($(wc -c < "$RUNNER_TEMP/keys/ks.b64") Zeichen). Bitte neu erzeugen (Anleitung in CLAUDE.md / Chat)."; exit 1
           fi
           echo "Schlüsseldatei: $(wc -c < "$RUNNER_TEMP/keys/upload.jks") Bytes"
+          # häufige Verwechslungen erkennen (ohne den Inhalt auszugeben)
+          if head -c 200 "$RUNNER_TEMP/keys/upload.jks" | grep -q '"type"'; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 enthält die JSON-Datei des Google-Dienstkontos, nicht den Upload-Schlüssel (.jks). Die JSON gehört in PLAY_SERVICE_ACCOUNT_JSON."; exit 1
+          fi
+          if head -c 30 "$RUNNER_TEMP/keys/upload.jks" | grep -q 'BEGIN'; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 enthält ein Zertifikat/PEM (z. B. upload_certificate.pem), nicht den Upload-Schlüssel (.jks)."; exit 1
+          fi
       - name: Schlüssel und Passwort prüfen
         env:
           KSP: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}

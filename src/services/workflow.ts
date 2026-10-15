@@ -358,8 +358,8 @@ const testNotice = (redirectedFrom: string[]) =>
   `*** TESTVERSAND – diese Mail ging NICHT an den Kunden. ***\nEigentliche Empfänger: ${redirectedFrom.join(', ') || '(keine hinterlegt)'}`;
 
 /** Betreff einer Rechnungs-Mail. */
-export const invoiceMailSubject = (doc: InvoiceDocument, latest: number, test: boolean) =>
-  `${test ? '[TEST] ' : ''}${latest ? 'Berichtigte Fassung: ' : ''}${KIND_TITLES[doc.kind]} ${doc.number} – ${doc.seller.legalName}`;
+export const invoiceMailSubject = (doc: InvoiceDocument, latest: number, test: boolean, again = false) =>
+  `${test ? '[TEST] ' : ''}${again ? 'Erneute Zusendung: ' : ''}${latest ? 'Berichtigte Fassung: ' : ''}${KIND_TITLES[doc.kind]} ${doc.number} – ${doc.seller.legalName}`;
 
 /** Anhänge einer Rechnungs-Mail je Rechnungsformat (aktuelle Fassung) + Anlagen. */
 export function invoiceMailDocs(docs: DocRow[], format: string) {
@@ -517,13 +517,18 @@ export async function sendInvoice(
   deps: Deps,
   id: string,
   actor: string,
-  opts: { retryFailed?: boolean } = {},
+  opts: {
+    retryFailed?: boolean;
+    /** erneuter Versand (Ahmed 15.10.): eigener Versandeintrag je Formular, Empfänger frei wählbar */
+    resend?: { id: string; recipients: string[] };
+  } = {},
 ) {
   const { sql, env } = deps;
   const data = await getInvoice(sql, id);
   if (!data) throw new BusinessError('Rechnung nicht gefunden');
   if (data.invoice.status !== 'issued')
     throw new BusinessError('Nur ausgestellte Rechnungen können versendet werden');
+  const resend = opts.resend;
   // Empfänger: abweichende Rechnungs-E-Mails des Objekts vor denen des Kunden
   const customer = {
     invoice_emails: (
@@ -536,7 +541,8 @@ export async function sendInvoice(
     ).emails,
   };
 
-  const channel = await deliveryChannel(sql, id);
+  if (resend) customer.invoice_emails = resend.recipients;
+  const channel = resend ? { channel: 'email', portal: null } : await deliveryChannel(sql, id);
   if (channel.channel === 'keiner')
     throw new BusinessError(
       'Für diesen Kunden ist „kein Versand“ eingestellt (Rechnungsgruppe) – die Rechnung gilt mit dem Ausstellen als versendet.',
@@ -555,9 +561,9 @@ export async function sendInvoice(
 
   const { actual, redirected } = resolveRecipients(env, customer.invoice_emails);
   const doc = await loadDocument(sql, id);
-  const subject = invoiceMailSubject(doc, latest, redirected);
-  // berichtigte Fassung: eigener Versand (genau einmal je Fassung)
-  const key = latest ? `${id}:berichtigt-${latest}` : `${id}:initial`;
+  const subject = invoiceMailSubject(doc, latest, redirected, !!resend);
+  // berichtigte Fassung: eigener Versand (genau einmal je Fassung); erneuter Versand: genau einmal je Formular
+  const key = resend ? `${id}:erneut-${resend.id}` : latest ? `${id}:berichtigt-${latest}` : `${id}:initial`;
   const files = selected.map((d) => ({ filename: d.filename, sha256: d.sha256, size: Number(d.size_bytes) }));
 
   await sql`insert into app.invoice_deliveries (invoice_id, idempotency_key, intended_recipients, actual_recipients, subject, files)
@@ -600,7 +606,10 @@ export async function sendInvoice(
       subject,
       ...composeMail({
         notice: redirected ? testNotice(customer.invoice_emails) : null,
-        body: invoiceMailBody(doc),
+        body: resend
+          ? invoiceMailBody(doc).replace(/\n\nanbei erhalten Sie/, '\n\nhiermit senden wir Ihnen erneut') +
+            '\n\nBitte beachten Sie: Es handelt sich um dieselbe Rechnung, keine neue Forderung – bitte nicht doppelt buchen.'
+          : invoiceMailBody(doc),
         signature: await loadSignature(sql),
       }),
       attachments,
@@ -610,12 +619,57 @@ export async function sendInvoice(
       update app.invoice_deliveries set status = 'sent', sent_at = now(), message_id = ${messageId}
        where id = ${claimed.id} returning *`;
     await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
-              values (${actor}, 'send', 'invoice', ${id}, ${sql.json({ to: actual, redirected, files: files.map((f) => f.filename) })})`;
+              values (${actor}, ${resend ? 'resend' : 'send'}, 'invoice', ${id}, ${sql.json({ to: actual, redirected, files: files.map((f) => f.filename) })})`;
     return { delivery: sent!, alreadySent: false };
   } catch (err) {
     await sql`update app.invoice_deliveries set status = 'failed', error = ${(err as Error).message} where id = ${claimed.id}`;
     throw new BusinessError(`Versand fehlgeschlagen: ${(err as Error).message}`);
   }
+}
+
+/** E-Mail-Liste aus einem Eingabefeld (Komma, Semikolon, Zeilen) – geprüft, ohne Doppelte */
+export function parseEmailList(text: string): string[] {
+  const list = [
+    ...new Set(
+      text
+        .split(/[\s,;]+/)
+        .map((x) => x.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
+  const bad = list.find((x) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
+  if (bad) throw new BusinessError(`E-Mail ungültig: ${bad}`);
+  if (!list.length) throw new BusinessError('Bitte mindestens eine E-Mail-Adresse angeben');
+  return list;
+}
+
+/**
+ * Rechnung erneut per E-Mail versenden (z. B. Kunde hat sie nicht erhalten oder nennt eine neue Adresse). Eigener
+ * Versandeintrag mit fester ID je Formular → doppelt absenden schickt nichts doppelt. Optional werden die Adressen
+ * dauerhaft in der Rechnungsgruppe der Rechnung gespeichert (ohne Gruppe: beim Kunden).
+ */
+export async function resendInvoice(
+  deps: Deps,
+  id: string,
+  actor: string,
+  p: { resendId: string; recipients: string; saveToGroup: boolean },
+) {
+  const { sql } = deps;
+  const recipients = parseEmailList(p.recipients);
+  const res = await sendInvoice(deps, id, actor, { resend: { id: p.resendId, recipients } });
+  if (p.saveToGroup) {
+    const [inv] = await sql<{ customer_id: string; gid: string | null }[]>`
+      select i.customer_id, coalesce(i.invoice_group_id, s.invoice_group_id) as gid
+        from app.invoices i left join app.sites s on s.id = i.site_id where i.id = ${id}`;
+    if (inv?.gid)
+      await sql`update app.invoice_groups set bill_emails = ${recipients} where id = ${inv.gid}`;
+    else if (inv)
+      await sql`update app.customers set invoice_emails = ${recipients} where id = ${inv.customer_id}`;
+    await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+              values (${actor}, 'invoice_emails', ${inv?.gid ? 'invoice_group' : 'customer'},
+                      ${inv?.gid ?? inv?.customer_id ?? id}, ${sql.json({ emails: recipients, from_invoice: id })})`;
+  }
+  return res;
 }
 
 /**

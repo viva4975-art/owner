@@ -2908,3 +2908,22 @@ Testadresse.
   Node installieren → ZIP vom Branch → `npm install` + `npx cap sync android` → Android Studio öffnen → signiertes .aab
   (Upload-Schlüssel sicher aufbewahren) → Play Console interner Test → App-Inhalte (Datenschutzerklärung-URL fehlt noch,
   Test-Zugang für Google, Datensicherheit). Push in der Store-App braucht später Firebase.
+- 2026-10-15: Ahmed (4 Punkte):
+  - **Angebote „aufgehoben“** (Vergabe/Anfrage vom Auftraggeber aufgehoben; Migration `20261126000001`): aus Entwurf oder
+    versendet; zählt nicht in der Zuschlagsquote, eigene Zeile in der Statistik, Reiter „Aufgehoben“. In der Liste je
+    offenem Angebot Schnellknöpfe **Zusage / Absage / Aufgehoben** (Rückfrage, bleibt in der Liste), entschiedene Zeilen
+    mit Farbkante (grün/rot/gelb). Korrektur am Angebot: Absage ↔ aufgehoben, doch Zusage, Entscheidung zurücknehmen
+    (wieder „versendet“). Eine Zusage lässt sich nicht zurücknehmen (Übernahme ins Objekt/Rechnung).
+  - **Logo größer** auf allen Aushängen (230 pt ≈ 8 cm, `POSTER_LOGO_W`) und auf dem Objektordner-Deckblatt (260 pt);
+    `FormDoc.newPage({ plain, logoWidth })`. Raumbuch/QK-Bericht unverändert.
+  - **Bewerber: interne Einschätzung** Gut/Mittel/Schlecht (Farbpunkt + Kante in der Liste, Filter-Chips) und
+    **Kontaktverlauf** (Datum, Anruf/WhatsApp/E-Mail/SMS/Gespräch/Notiz, Ergebnis, Notiz; feste ID je Formular). Ergebnis
+    „hat etwas anderes gefunden“ setzt den neuen Status **„Hat etwas gefunden“** (nicht mehr im Matching, nach 6 Monaten
+    Löschvorschlag wie Abgelehnte). Liste zeigt „Zuletzt: Anruf 15.10.2026 · nicht erreicht“. Kontakte werden mit dem
+    Bewerber gelöscht (DSGVO). Migration `20261126000002`. **Hinweis:** Einschätzung sachlich halten – Auskunftsrecht Art. 15 DSGVO.
+  - **Rechnung erneut versenden / an andere Adresse** (Rechnung → Versand → „Erneut senden / an andere Adresse …“): Adressen
+    frei (mehrere mit Komma), vorbelegt mit der Rechnungsgruppe; optional „dauerhaft speichern“ (Rechnungsgruppe der
+    Rechnung, sonst Kunde; Protokoll). Eigener Versandeintrag je Formular (`…:erneut-<id>`) → doppelt absenden schickt
+    nichts doppelt. Betreff „Erneute Zusendung: …“, Text „dieselbe Rechnung, keine neue Forderung – bitte nicht doppelt
+    buchen“. Geht auch bei Portal/„kein Versand“-Kunden, nicht bei stornierten Rechnungen.
+  - Android: minSdk 24, targetSdk 36 (Play-Vorgabe), Status-/Navigationsleiste mit Rand (`MainActivity`), versionCode 3.

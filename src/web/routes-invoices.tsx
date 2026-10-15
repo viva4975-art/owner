@@ -46,6 +46,7 @@ import {
   listDocuments,
   preflight,
   reviseInvoiceAddress,
+  resendInvoice,
   sendInvoice,
   deliveryChannel,
   recordPortalUpload,
@@ -1002,6 +1003,24 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
       ok: res.alreadySent
         ? 'Diese Rechnung wurde bereits versendet – kein zweiter Versand.'
         : `Versendet an ${res.delivery.actual_recipients.join(', ')}.`,
+    });
+  });
+
+  app.post(`/rechnungen/:id{${UUID}}/erneut`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    const rid = String(b.rid ?? '');
+    if (!/^[0-9a-f-]{36}$/i.test(rid)) throw new BusinessError('Formular ungültig – bitte neu laden');
+    const res = await resendInvoice(deps, id, c.get('actor'), {
+      resendId: rid,
+      recipients: String(b.emails ?? ''),
+      saveToGroup: b.speichern === '1',
+    });
+    return back(c, `/rechnungen/${id}`, {
+      ok: res.alreadySent
+        ? 'Schon versendet (Formular doppelt abgeschickt) – kein zweiter Versand.'
+        : `Erneut versendet an ${res.delivery.actual_recipients.join(', ')}.` +
+          (b.speichern === '1' ? ' Adresse in der Rechnungsgruppe gespeichert.' : ''),
     });
   });
 

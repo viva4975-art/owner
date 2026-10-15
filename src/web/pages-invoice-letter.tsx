@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Child, FC } from 'hono/jsx';
 import { formatDateDe } from '../domain/invoice/calc.js';
 import { contactGreeting, stripGreeting } from '../domain/letter/greeting.js';
@@ -1028,6 +1029,42 @@ export const IssuedLetter: FC<{
                   </details>
                 )}
               </>
+            )}
+            {!cancelled && (
+              <details class="resend" style="margin-top:8px">
+                <summary class="small" style="cursor:pointer">
+                  {p.sent ? 'Erneut senden / an andere Adresse …' : 'An andere Adresse senden …'}
+                </summary>
+                <form
+                  method="post"
+                  action={`/rechnungen/${inv.id}/erneut`}
+                  class="lt-mini"
+                  style="flex-direction:column;align-items:stretch"
+                  onsubmit="return confirm('Rechnung an diese Adresse(n) per E-Mail senden?')"
+                >
+                  <input type="hidden" name="rid" value={randomUUID()} />
+                  <label class="small" for={`re-${inv.id}`}>
+                    E-Mail-Adresse(n), mehrere mit Komma
+                  </label>
+                  <input
+                    id={`re-${inv.id}`}
+                    name="emails"
+                    type="text"
+                    inputmode="email"
+                    required
+                    value={p.billing.emails.join(', ')}
+                  />
+                  <label class="small" style="display:flex;gap:6px;align-items:center;font-weight:400">
+                    <input type="checkbox" name="speichern" value="1" /> neue Adresse dauerhaft für diesen
+                    Kunden speichern (Rechnungsgruppe)
+                  </label>
+                  <button class="btn sm">Senden</button>
+                  <span class="small mut">
+                    Gleiche Rechnung, gleiche Nummer – die Mail sagt „erneute Zusendung, nicht doppelt
+                    buchen“.
+                  </span>
+                </form>
+              </details>
             )}
           </div>
           <div class="card">

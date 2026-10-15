@@ -122,7 +122,9 @@ describe.skipIf(!available)('Angebote: Alternativen, Folgeangebot, Statistik', (
     expect([s2.rejected.count, s2.cancelled.count, s2.rate]).toEqual([0, 1, 100]);
     await setOfferStatus(sql, lost, 'versendet', 'ben');
     expect((await getOffer(sql, lost))!.offer.decided_at).toBeNull();
-    const won = (await sql<{ id: string }[]>`select id from app.offers where status = 'angenommen' limit 1`)[0]!.id;
+    const won = (
+      await sql<{ id: string }[]>`select id from app.offers where status = 'angenommen' limit 1`
+    )[0]!.id;
     await expect(setOfferStatus(sql, won, 'aufgehoben', 'ben')).rejects.toThrow(/kann nicht/);
   });
 });

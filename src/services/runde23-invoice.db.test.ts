@@ -6,7 +6,7 @@ import { generateXRechnungUbl } from '../einvoice/generate.js';
 import { copyInvoice, getInvoice, loadDocument, saveDraft } from './invoices.js';
 import { DEMO } from './seed.js';
 import { type FakeMailer, dbAvailable, freshDatabase, kositAvailable, testDeps } from './testing.js';
-import { type Deps, issueInvoice, reviseInvoiceAddress, sendInvoice } from './workflow.js';
+import { type Deps, issueInvoice, resendInvoice, reviseInvoiceAddress, sendInvoice } from './workflow.js';
 
 const available = (await kositAvailable()) && (await dbAvailable());
 
@@ -145,5 +145,24 @@ describe.skipIf(!available)('Runde 23: Einzelrechnung wie Fortytools', () => {
     await sendInvoice(deps, id, 't');
     expect(deps.mailer.sent.length).toBe(2);
     expect(deps.mailer.sent.at(-1)!.subject).toMatch(/Berichtigte Fassung/);
+    // erneut an eine neue Adresse: genau einmal je Formular, Adresse optional in der Gruppe gespeichert
+    await expect(
+      resendInvoice(deps, id, 't', { resendId: randomUUID(), recipients: 'kein-at', saveToGroup: false }),
+    ).rejects.toThrow(/ungültig/);
+    const rid = randomUUID();
+    const p = { resendId: rid, recipients: 'Neu@Kunde.de; zweite@kunde.de', saveToGroup: true };
+    const r1 = await resendInvoice(deps, id, 't', p);
+    const r2 = await resendInvoice(deps, id, 't', p);
+    expect([r1.alreadySent, r2.alreadySent]).toEqual([false, true]);
+    expect(deps.mailer.sent.length).toBe(3);
+    expect(deps.mailer.sent.at(-1)!.subject).toMatch(/^\[TEST\] Erneute Zusendung/);
+    expect(r1.delivery.intended_recipients).toEqual(['neu@kunde.de', 'zweite@kunde.de']);
+    const [g] = await sql<{ e: string[] }[]>`
+      select coalesce(g.bill_emails, c.invoice_emails) as e from app.invoices i
+        join app.customers c on c.id = i.customer_id
+        left join app.sites s on s.id = i.site_id
+        left join app.invoice_groups g on g.id = coalesce(i.invoice_group_id, s.invoice_group_id)
+       where i.id = ${id}`;
+    expect(g!.e).toEqual(['neu@kunde.de', 'zweite@kunde.de']);
   });
 });

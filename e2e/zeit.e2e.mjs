@@ -152,7 +152,10 @@ check('ausgestempelt', (await flash(m)).includes('Ausgestempelt'), await flash(m
 // ---------- 4. Nachtrag + Urlaub ----------
 console.log('4. Nachtrag und Urlaub');
 const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
-check('Nachtragen nur noch über die Objektleitung', (await m.locator('.quick a[href="/m/nachtrag"]').count()) === 0);
+check(
+  'Nachtragen nur noch über die Objektleitung',
+  (await m.locator('.quick a[href="/m/nachtrag"]').count()) === 0,
+);
 await m.click('.quick a[href="/m/abwesenheit"]');
 await m.fill('#from', '2026-12-21');
 await m.fill('#to', '2026-12-23');

@@ -17,6 +17,18 @@ import { todayBerlin } from '../domain/invoice/calc.js';
 import { parseEuro } from '../domain/money/money.js';
 import { BusinessError } from '../services/errors.js';
 import { storeFile } from '../services/uploads.js';
+import {
+  SIGN_CATEGORY,
+  createSignDocument,
+  getSignDocument,
+  listSignDocuments,
+} from '../services/sign-documents.js';
+import {
+  getInstructionTemplate,
+  instructionPdf,
+  listInstructionTemplates,
+} from '../services/instructions.js';
+import { canAccess } from './permissions.js';
 import { photosToPdf } from '../pdf/photos.js';
 import { validIban } from '../services/employees.js';
 import { normSvNumber, normTaxId, validSvNumber, validTaxId } from '../domain/hr/ids.js';
@@ -486,6 +498,8 @@ const T: Record<Exclude<Lang, 'de'>, Record<string, string>> = {
  * Formular Schritt für Schritt: Abschnitte [data-step] einzeln, Weiter prüft die Pflichtfelder des Abschnitts,
  * „Absenden“ erst im letzten Schritt. Ohne JavaScript bleibt alles auf einer Seite.
  */
+const WIZARD_CSS =
+  '.bogen{display:flex;flex-direction:column;gap:10px}.wstep{display:flex;flex-direction:column;gap:12px}.wstep[hidden]{display:none}.wtitle{margin:4px 0 2px;font-size:22px;line-height:1.2}.wprog{height:6px;background:#efe6ea;border-radius:6px;overflow:hidden}.wprog-bar{height:100%;width:0;background:#7d1435;transition:width .2s}.wnav{display:flex;align-items:center;gap:10px;margin-top:10px}.wbtn{font:inherit;font-size:16px;font-weight:700;min-width:96px;padding:14px;border:0;border-radius:12px;background:#7d1435;color:#fff}.wbtn.sec{background:#fff;color:#7d1435;border:1px solid #e3d6db}.wcount{flex:1;text-align:center;color:#8a7a80;font-weight:600}.wnav .btn-big{flex:1}.bf{display:flex;flex-direction:column;gap:4px;font-weight:600}.bf input,.bf select,.bf textarea{font:inherit;font-size:17px;font-weight:400;padding:13px;border:1px solid #e3d6db;border-radius:10px;background:#fff}.btn-big{font:inherit;font-weight:700;padding:14px;border:0;border-radius:12px;background:#7d1435;color:#fff}';
 export const WIZARD_JS = `(function(){document.querySelectorAll('form').forEach(function(f){var st=[].slice.call(f.querySelectorAll('[data-step]'));if(st.length<2)return;var i=0,prev=f.querySelector('[data-prev]'),next=f.querySelector('[data-next]'),sub=f.querySelector('[data-submit]'),cnt=f.querySelector('[data-count]');
 function show(){st.forEach(function(s,k){s.hidden=k!==i});prev.style.visibility=i?'visible':'hidden';next.hidden=i===st.length-1;sub.hidden=i!==st.length-1;if(cnt)cnt.textContent=(i+1)+' / '+st.length;var bar=f.querySelector('[data-bar]');if(bar)bar.style.width=((i+1)/st.length*100)+'%';var m=f.closest('main');(m||window).scrollTo(0,0)}
 function ok(){var els=st[i].querySelectorAll('input,select,textarea');for(var k=0;k<els.length;k++){if(!els[k].checkValidity()){els[k].reportValidity();return false}}return true}
@@ -884,6 +898,262 @@ export function registerOlAppRoutes({ app, deps, page, back }: Ctx) {
     await sql`update app.personnel_forms set status = ${status}, decided_by = ${c.get('actor')}, decided_at = now()
                where id = ${c.req.param('id')} and status = 'neu'`;
     return back(c, '/personal/personalboegen', { ok: 'Gespeichert.' });
+  });
+
+  // ------------------------------------------------------------------ Unterweisungen am Handy (Büro/Personal)
+  const mayInstruct = (c: Context<AppEnv>) => canAccess(c.get('user').role, '/personal/dokumente');
+  const QMU_CSS =
+    '.qu{display:flex;flex-direction:column;gap:8px}.qu-i{display:block;background:#fff;border:1px solid #e7e1e4;border-radius:12px;padding:12px 14px;text-decoration:none;color:inherit}.qu-i b{display:block;font-size:15px}.qu-m{font-size:12px;color:#8a7a80;margin-top:2px}.qu-bar{height:6px;background:#efe6ea;border-radius:4px;overflow:hidden;margin-top:8px}.qu-bar i{display:block;height:100%;background:#2f7d4f}.qu-new{display:block;text-align:center;padding:14px;border-radius:12px;background:#7d1435;color:#fff;font-weight:700;text-decoration:none;margin-bottom:12px}.qu-p{display:flex;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid #f0ebed;font-size:14px}.qu-ok{color:#2f7d4f;font-weight:600}.qu-open{color:#a15c00;font-weight:600}.qu-t{display:flex;flex-direction:column;gap:6px}.qu-t label{display:flex;gap:10px;align-items:flex-start;background:#fff;border:1px solid #e7e1e4;border-radius:12px;padding:12px;font-weight:600}.qu-t input{margin-top:3px;width:20px;height:20px}.qu-emps{max-height:320px;overflow:auto;background:#fff;border:1px solid #e7e1e4;border-radius:12px;padding:4px 10px}.qu-emps label{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid #f4f0f2;font-weight:400}';
+
+  app.get('/qm/unterweisungen', async (c) => {
+    if (!mayInstruct(c)) return c.redirect('/qm');
+    const docs = (await listSignDocuments(sql)).filter((d) => !d.archived_at);
+    return render(
+      c,
+      'Unterweisungen',
+      <>
+        <Top title="Unterweisungen" />
+        <a class="qu-new" href="/qm/unterweisungen/neu">
+          + Unterweisung freigeben
+        </a>
+        {!docs.length && <p class="mut">Noch keine Unterweisungen freigegeben.</p>}
+        <div class="qu">
+          {docs.map((d) => (
+            <a class="qu-i" href={`/qm/unterweisungen/${d.id}`}>
+              <b>{d.title}</b>
+              <div class="qu-m">
+                {d.signed} von {d.total} unterschrieben
+                {d.open ? ` · ${d.open} offen` : ''}
+                {d.due_date ? ` · bis ${dateDe(d.due_date)}` : ''}
+              </div>
+              <div class="qu-bar">
+                <i style={`width:${d.total ? Math.round((d.signed / d.total) * 100) : 0}%`} />
+              </div>
+            </a>
+          ))}
+        </div>
+        <style dangerouslySetInnerHTML={{ __html: QMU_CSS }} />
+      </>,
+    );
+  });
+
+  app.get('/qm/unterweisungen/neu', async (c) => {
+    if (!mayInstruct(c)) return c.redirect('/qm');
+    const [its, sites, emps] = await Promise.all([
+      listInstructionTemplates(sql),
+      sql<
+        {
+          id: string;
+          site_no: string;
+          name: string;
+          customer_name: string;
+          street: string | null;
+          city: string | null;
+        }[]
+      >`
+        select s.id, s.site_no, s.name, c.name as customer_name, s.street, s.city
+          from app.sites s join app.customers c on c.id = s.customer_id where s.active order by c.name, s.name`,
+      sql<{ id: string; name: string; personnel_no: string }[]>`
+        select id, last_name || ', ' || first_name as name, personnel_no from app.employees
+         where status = 'aktiv' order by last_name, first_name`,
+    ]);
+    return render(
+      c,
+      'Unterweisung freigeben',
+      <>
+        <Top title="Unterweisung freigeben" href="/qm/unterweisungen" />
+        <form method="post" action="/qm/unterweisungen" class="bogen">
+          <input type="hidden" name="id" value={randomUUID()} />
+          <div class="wprog">
+            <div class="wprog-bar" data-bar />
+          </div>
+          <div class="wstep" data-step>
+            <h2 class="wtitle">Welche Unterweisung?</h2>
+            <div class="qu-t">
+              {its.map((t, i) => (
+                <label>
+                  <input type="radio" name="instruction" value={t.id} required={i === 0} />
+                  <span>
+                    {t.title}
+                    <div class="qu-m">{SIGN_CATEGORY[t.category]}</div>
+                  </span>
+                </label>
+              ))}
+            </div>
+            {!its.length && (
+              <p class="mut">Keine Vorlagen – am PC unter Einstellungen → Unterweisungen anlegen.</p>
+            )}
+          </div>
+          <div class="wstep" data-step>
+            <h2 class="wtitle">An wen?</h2>
+            <label class="bf">
+              <span>Empfänger</span>
+              <select
+                name="an"
+                onchange="document.getElementById('qu-site').hidden=this.value!=='objekt';document.getElementById('qu-sel').hidden=this.value!=='auswahl'"
+              >
+                <option value="alle">alle aktiven Mitarbeitenden ({emps.length})</option>
+                <option value="objekt">alle eines Objekts</option>
+                <option value="auswahl">einzelne auswählen</option>
+              </select>
+            </label>
+            <label class="bf" id="qu-site" hidden>
+              <span>Objekt</span>
+              <select name="site_id">
+                <option value="">– bitte wählen –</option>
+                <SiteOptions sites={sites as never} selected="" />
+              </select>
+            </label>
+            <div id="qu-sel" hidden>
+              <input
+                type="search"
+                placeholder="Name oder Personalnummer"
+                data-filter-list=".qu-emps label"
+                style="width:100%;font:inherit;padding:12px;border:1px solid #e3d6db;border-radius:10px;margin-bottom:8px"
+                oninput="var q=this.value.toLowerCase();document.querySelectorAll('.qu-emps label').forEach(function(l){l.hidden=q&&l.textContent.toLowerCase().indexOf(q)<0})"
+              />
+              <div class="qu-emps">
+                {emps.map((e) => (
+                  <label>
+                    <input type="checkbox" name="employee" value={e.id} /> {e.name}{' '}
+                    <span class="qu-m">{e.personnel_no}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div class="wstep" data-step>
+            <h2 class="wtitle">Frist</h2>
+            <label class="bf">
+              <span>Unterschreiben bis (optional)</span>
+              <input type="date" name="due_date" />
+            </label>
+            <p class="small mut">
+              Die Unterweisung erscheint beim nächsten Öffnen der Mitarbeiter-App zum Lesen und
+              Unterschreiben.
+            </p>
+          </div>
+          <div class="wnav">
+            <button type="button" class="wbtn sec" data-prev>
+              Zurück
+            </button>
+            <span class="wcount" data-count />
+            <button type="button" class="wbtn" data-next>
+              Weiter
+            </button>
+            <button class="btn-big" data-submit>
+              Freigeben
+            </button>
+          </div>
+        </form>
+        <script dangerouslySetInnerHTML={{ __html: WIZARD_JS }} />
+        <style dangerouslySetInnerHTML={{ __html: QMU_CSS + WIZARD_CSS }} />
+      </>,
+    );
+  });
+
+  app.post('/qm/unterweisungen', async (c) => {
+    if (!mayInstruct(c)) return c.redirect('/qm');
+    const b = (await c.req.parseBody({ all: true })) as Record<string, string | File | (string | File)[]>;
+    const id = typeof b.id === 'string' && /^[0-9a-f-]{36}$/.test(b.id) ? b.id : randomUUID();
+    const t = await getInstructionTemplate(sql, str(b, 'instruction') ?? '');
+    if (!t) throw new BusinessError('Bitte eine Unterweisung wählen');
+    const an = str(b, 'an') ?? 'alle';
+    let employeeIds: string[];
+    if (an === 'objekt') {
+      const site = str(b, 'site_id') ?? '';
+      if (!/^[0-9a-f-]{36}$/.test(site)) throw new BusinessError('Bitte Objekt wählen');
+      employeeIds = (
+        await sql<{ id: string }[]>`
+          select distinct e.id from app.employees e
+           where e.status = 'aktiv'
+             and (exists (select 1 from app.employee_sites es where es.employee_id = e.id and es.site_id = ${site})
+                  or exists (select 1 from app.shift_plans sp where sp.employee_id = e.id and sp.site_id = ${site}
+                               and (sp.valid_to is null or sp.valid_to >= ${todayBerlin()}::date)))`
+      ).map((r) => r.id);
+    } else if (an === 'auswahl') {
+      const v = b.employee;
+      employeeIds = (Array.isArray(v) ? v : v ? [v] : []).filter(
+        (x): x is string => typeof x === 'string' && /^[0-9a-f-]{36}$/.test(x),
+      );
+    } else {
+      employeeIds = (await sql<{ id: string }[]>`select id from app.employees where status = 'aktiv'`).map(
+        (r) => r.id,
+      );
+    }
+    await createSignDocument(
+      deps,
+      id,
+      {
+        title: t.title,
+        category: t.category,
+        description: null,
+        dueDate: str(b, 'due_date'),
+        fileName: `${t.title.replace(/[^\p{L}\p{N}]+/gu, '-')}.pdf`,
+        pdf: await instructionPdf(t.title, t.body),
+        body: t.body,
+        employeeIds,
+      },
+      c.get('actor'),
+    );
+    return c.redirect(`/qm/unterweisungen/${id}?ok=${encodeURIComponent('Unterweisung freigegeben.')}`, 303);
+  });
+
+  app.get(`/qm/unterweisungen/:id{${UUID}}`, async (c) => {
+    if (!mayInstruct(c)) return c.redirect('/qm');
+    const data = await getSignDocument(sql, c.req.param('id'));
+    if (!data) return c.redirect('/qm/unterweisungen');
+    const reqs = data.requests.filter((r) => r.status !== 'zurueckgezogen');
+    const open = reqs.filter((r) => r.status === 'offen');
+    const signed = reqs.filter((r) => r.status === 'unterschrieben');
+    return render(
+      c,
+      data.doc.title,
+      <>
+        <Top title="Unterweisung" href="/qm/unterweisungen" />
+        <h2 class="wtitle" style="margin:0 0 4px">
+          {data.doc.title}
+        </h2>
+        <div class="qu-m" style="margin-bottom:10px">
+          {signed.length} von {reqs.length} unterschrieben
+          {data.doc.due_date ? ` · bis ${dateDe(data.doc.due_date)}` : ''}
+        </div>
+        <div class="qu-bar" style="margin-bottom:14px">
+          <i style={`width:${reqs.length ? Math.round((signed.length / reqs.length) * 100) : 0}%`} />
+        </div>
+        {open.length > 0 && (
+          <div class="qu-i" style="margin-bottom:10px">
+            <b>Offen ({open.length})</b>
+            {open.map((r) => (
+              <div class="qu-p">
+                <span>{r.employee_name}</span>
+                <span class="qu-open">offen</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {signed.length > 0 && (
+          <div class="qu-i">
+            <b>Unterschrieben ({signed.length})</b>
+            {signed.map((r) => (
+              <div class="qu-p">
+                <span>{r.employee_name}</span>
+                <span class="qu-ok">
+                  ✓{' '}
+                  {r.signed_at?.toLocaleDateString('de-DE', {
+                    timeZone: 'Europe/Berlin',
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                  })}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        <style dangerouslySetInnerHTML={{ __html: QMU_CSS + WIZARD_CSS }} />
+      </>,
+    );
   });
 
   // ------------------------------------------------------------------ NU-Bestellung am Handy unterschreiben lassen

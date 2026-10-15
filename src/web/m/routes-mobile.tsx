@@ -1,3 +1,4 @@
+import { parseBody } from '../../services/instructions.js';
 import { Icon } from '../icons.js';
 import { PUSH_JS, PushCard, SW_PUSH } from '../push-ui.js';
 import { savePushSubscription, vapidKeys } from '../../services/push.js';
@@ -1878,9 +1879,32 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
             {d.description}
           </p>
         )}
-        <a class="big sec" href={`/m/dokumente/${d.id}/dokument.pdf`} target="_blank" rel="noopener">
-          <Icon name="pdf" size={16} /> {t(lang, 'doc_open_pdf')}
-        </a>
+        {d.body ? (
+          <div class="card ub-text" lang="de">
+            {parseBody(d.body).map((b) =>
+              b.kind === 'h' ? (
+                <h3>{b.text}</h3>
+              ) : b.kind === 'li' ? (
+                <p class="ub-li">{b.text}</p>
+              ) : (
+                <p>{b.text}</p>
+              ),
+            )}
+            <a href={`/m/dokumente/${d.id}/dokument.pdf`} target="_blank" rel="noopener" class="ub-pdf">
+              <Icon name="pdf" size={14} /> {t(lang, 'doc_open_pdf')}
+            </a>
+          </div>
+        ) : (
+          <a class="big sec" href={`/m/dokumente/${d.id}/dokument.pdf`} target="_blank" rel="noopener">
+            <Icon name="pdf" size={16} /> {t(lang, 'doc_open_pdf')}
+          </a>
+        )}
+        <style
+          dangerouslySetInnerHTML={{
+            __html:
+              '.ub-text{font-size:16px;line-height:1.5}.ub-text h3{font-size:17px;margin:14px 0 6px;color:#7d1435}.ub-text h3:first-child{margin-top:0}.ub-text p{margin:0 0 8px}.ub-li{position:relative;padding-left:18px}.ub-li::before{content:"";position:absolute;left:4px;top:.6em;width:6px;height:6px;border-radius:3px;background:#7d1435}.ub-pdf{display:inline-flex;gap:6px;align-items:center;margin-top:6px;font-size:13px;color:#7d1435}',
+          }}
+        />
         {d.status === 'unterschrieben' ? (
           <div class="card run">
             <b>✓ {t(lang, 'doc_signed', { date: signedAt ?? '' })}</b>

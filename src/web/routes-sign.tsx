@@ -18,6 +18,12 @@ import {
   signedPdf,
   withdrawRequest,
 } from '../services/sign-documents.js';
+import {
+  getInstructionTemplate,
+  instructionPdf,
+  listInstructionTemplates,
+  saveInstructionTemplate,
+} from '../services/instructions.js';
 import { type Ctx, UUID } from './app.js';
 import { arr, str } from './forms.js';
 import { Icon } from './icons.js';
@@ -43,15 +49,152 @@ const pdfResponse = (pdf: Uint8Array, name: string) =>
 export function registerSignRoutes({ app, deps, page, back }: Ctx) {
   const { sql } = deps;
 
+  // ------------------------------------------------------------------ Unterweisungen als Textvorlagen
+  app.get('/einstellungen/unterweisungen', async (c) => {
+    const tpls = await listInstructionTemplates(sql, true);
+    return page(
+      c,
+      'Unterweisungen',
+      'einstellungen',
+      <>
+        <PageHead title="Unterweisungen (Textvorlagen)" crumbs={[['Einstellungen', '/einstellungen']]}>
+          <a class="btn" href={`/einstellungen/unterweisungen/${randomUUID()}`}>
+            + Neue Unterweisung
+          </a>
+        </PageHead>
+        <p class="mut" style="margin-top:0">
+          Unterweisungen zum Auswählen unter Personal → Unterweisungen & Unterschriften. Die Mitarbeitenden
+          lesen den Text direkt in der App und unterschreiben mit dem Finger. Die Texte sind Vorschläge –
+          bitte mit der Fachkraft für Arbeitssicherheit bzw. dem Betriebsarzt abstimmen und objektbezogen
+          ergänzen.
+        </p>
+        <div class="card" style="padding:0">
+          {tpls.map((t) => (
+            <a class="it-row" href={`/einstellungen/unterweisungen/${t.id}`}>
+              <span>
+                <b>{t.title}</b>
+                <span class="small mut">
+                  {SIGN_CATEGORY[t.category]}
+                  {t.updated_at ? ` · geändert ${berlin(t.updated_at)}` : ''}
+                </span>
+              </span>
+              {!t.active && <span class="badge">inaktiv</span>}
+            </a>
+          ))}
+          {!tpls.length && <div class="empty">Noch keine Unterweisungen.</div>}
+        </div>
+        <style
+          dangerouslySetInnerHTML={{
+            __html:
+              '.it-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);color:inherit;text-decoration:none}.it-row:last-child{border-bottom:0}.it-row>span:first-child{display:flex;flex-direction:column;gap:2px}',
+          }}
+        />
+      </>,
+    );
+  });
+
+  app.get(`/einstellungen/unterweisungen/:id{${UUID}}`, async (c) => {
+    const id = c.req.param('id');
+    const t = await getInstructionTemplate(sql, id);
+    return page(
+      c,
+      t?.title ?? 'Neue Unterweisung',
+      'einstellungen',
+      <>
+        <PageHead
+          title={t?.title ?? 'Neue Unterweisung'}
+          crumbs={[
+            ['Einstellungen', '/einstellungen'],
+            ['Unterweisungen', '/einstellungen/unterweisungen'],
+          ]}
+        >
+          {t && (
+            <a class="btn sec" href={`/einstellungen/unterweisungen/${id}/vorschau.pdf`} target="_blank">
+              PDF-Vorschau
+            </a>
+          )}
+        </PageHead>
+        <form
+          method="post"
+          action={`/einstellungen/unterweisungen/${id}`}
+          class="card"
+          style="max-width:900px"
+        >
+          <input type="hidden" name="version" value={String(t?.version ?? '')} />
+          <div class="grid">
+            <div>
+              <label for="title">Titel</label>
+              <input id="title" name="title" required value={t?.title ?? ''} />
+            </div>
+            <div>
+              <label for="category">Art</label>
+              <select id="category" name="category">
+                {Object.entries(SIGN_CATEGORY).map(([k, v]) => (
+                  <option value={k} selected={(t?.category ?? 'unterweisung') === k}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <label for="body">Text</label>
+          <textarea id="body" name="body" rows={24} required style="font-size:14px;line-height:1.5">
+            {t?.body ?? '## Überschrift\n- Punkt 1\n- Punkt 2\n'}
+          </textarea>
+          <p class="small mut">
+            Absätze durch eine Leerzeile trennen. „## “ am Zeilenanfang = Überschrift, „- “ =
+            Aufzählungspunkt. Schon verteilte Unterweisungen ändern sich nicht (der Text wird beim Freigeben
+            eingefroren).
+          </p>
+          <div class="chk">
+            <input type="checkbox" id="active" name="active" value="1" checked={t?.active ?? true} />
+            <label for="active">zur Auswahl anbieten (aktiv)</label>
+          </div>
+          <div class="formfoot">
+            <a class="btn sec" href="/einstellungen/unterweisungen">
+              Zurück
+            </a>
+            <button class="btn">Speichern</button>
+          </div>
+        </form>
+      </>,
+    );
+  });
+
+  app.post(`/einstellungen/unterweisungen/:id{${UUID}}`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    await saveInstructionTemplate(
+      sql,
+      id,
+      {
+        title: String(b.title ?? ''),
+        category: String(b.category ?? ''),
+        body: String(b.body ?? ''),
+        active: b.active === '1',
+        version: b.version ? Number(b.version) : null,
+      },
+      c.get('actor'),
+    );
+    return back(c, '/einstellungen/unterweisungen', { ok: 'Unterweisung gespeichert.' });
+  });
+
+  app.get(`/einstellungen/unterweisungen/:id{${UUID}}/vorschau.pdf`, async (c) => {
+    const t = await getInstructionTemplate(sql, c.req.param('id'));
+    if (!t) return c.notFound();
+    return pdfResponse(await instructionPdf(t.title, t.body), `${t.title}.pdf`);
+  });
+
   app.get('/personal/dokumente', async (c) => {
     const admin = c.get('user').role === 'admin';
     const archiv = c.req.query('ansicht') === 'archiv';
-    const [docs, emps, tpls] = await Promise.all([
+    const [docs, emps, tpls, its] = await Promise.all([
       listSignDocuments(sql),
       listEmployees(sql, { status: 'aktiv' }),
       sql<{ id: string; name: string; code: string | null; category: string }[]>`
         select id, name, code, category from app.word_templates where active and audience = 'mitarbeiter'
          order by (category ilike '%unterweis%' or name ilike '%unterweis%' or name ilike '%belehr%') desc, name`,
+      listInstructionTemplates(sql),
     ]);
     const active = docs.filter((d) => !d.archived_at);
     const ended = docs.filter((d) => d.archived_at);
@@ -178,13 +321,38 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
           </p>
           <div class="grid">
             <div style="grid-column:1/-1">
+              <label for="quelle">Inhalt</label>
+              <select id="quelle" name="quelle" onchange="ksrc(this.value)">
+                <option value="text">Unterweisung aus Vorlage (Text, in der App direkt lesen)</option>
+                <option value="word">eigene Word-Vorlage</option>
+                <option value="pdf">eigenes PDF hochladen</option>
+              </select>
+            </div>
+            <div style="grid-column:1/-1" id="q-text">
+              <label for="instruction">Unterweisung</label>
+              <select id="instruction" name="instruction" onchange="kfill(this)">
+                <option value="">– wählen –</option>
+                {its.map((t) => (
+                  <option value={t.id} data-cat={t.category}>
+                    {t.title}
+                  </option>
+                ))}
+              </select>
+              <label for="body">Text (hier für diese Freigabe anpassbar)</label>
+              <textarea id="body" name="body" rows={12} style="font-size:13px;line-height:1.45" />
+              <div class="small mut">
+                Vorlagen dauerhaft ändern oder neue anlegen:{' '}
+                <a href="/einstellungen/unterweisungen">Einstellungen → Unterweisungen</a>
+              </div>
+            </div>
+            <div style="grid-column:1/-1" id="q-word" hidden>
               <label for="word_template">Eigene Vorlage (Einstellungen → Word-Vorlagen)</label>
               <select
                 id="word_template"
                 name="word_template"
-                onchange="var t=document.getElementById('title');if(this.value&&!t.value)t.value=this.options[this.selectedIndex].dataset.name;document.getElementById('file').required=!this.value"
+                onchange="var t=document.getElementById('title');if(this.value&&!t.value)t.value=this.options[this.selectedIndex].dataset.name"
               >
-                <option value="">– keine, PDF hochladen –</option>
+                <option value="">– wählen –</option>
                 {tpls.map((t) => (
                   <option value={t.id} data-name={t.name}>
                     {t.name}
@@ -192,12 +360,10 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
                   </option>
                 ))}
               </select>
-              {!tpls.length && (
-                <div class="small mut">
-                  Noch keine Mitarbeiter-Vorlagen hochgeladen – unter Einstellungen → Word-Vorlagen die ZIP
-                  hochladen.
-                </div>
-              )}
+            </div>
+            <div style="grid-column:1/-1" id="q-pdf" hidden>
+              <label for="file">PDF (max. 20 MB)</label>
+              <input id="file" name="file" type="file" accept="application/pdf,.pdf" />
             </div>
             <div>
               <label for="title">Titel</label>
@@ -214,10 +380,6 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
             <div>
               <label for="due_date">Unterschreiben bis</label>
               <input id="due_date" name="due_date" type="date" />
-            </div>
-            <div>
-              <label for="file">oder eigenes PDF (max. 20 MB)</label>
-              <input id="file" name="file" type="file" accept="application/pdf,.pdf" required />
             </div>
           </div>
           <label for="description">Hinweis für die Mitarbeitenden</label>
@@ -259,6 +421,15 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
             <button class="btn">Freigeben</button>
           </div>
         </form>
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              `var KT=${JSON.stringify(Object.fromEntries(its.map((t) => [t.id, t.body]))).replace(/</g, '\\u003c')};` +
+              "function ksrc(v){['text','word','pdf'].forEach(function(k){document.getElementById('q-'+k).hidden=k!==v});document.getElementById('file').required=v==='pdf';document.getElementById('word_template').required=v==='word';document.getElementById('instruction').required=v==='text'}" +
+              "function kfill(s){var o=s.options[s.selectedIndex];if(!o.value)return;document.getElementById('body').value=KT[o.value]||'';var t=document.getElementById('title');t.value=o.textContent.trim();var c=document.getElementById('category');if(o.dataset.cat)c.value=o.dataset.cat}" +
+              "ksrc(document.getElementById('quelle').value)",
+          }}
+        />
       </>,
     );
   });
@@ -268,9 +439,17 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
     const b = await c.req.parseBody({ all: true });
     const file = Array.isArray(b.file) ? b.file[0] : b.file;
     const tplId = str(b, 'word_template');
+    const quelle = str(b, 'quelle') ?? (file instanceof File && file.size ? 'pdf' : tplId ? 'word' : 'text');
     let pdf: Uint8Array;
     let fileName: string;
-    if (file instanceof File && file.size) {
+    let body: string | null = null;
+    if (quelle === 'text') {
+      body = (str(b, 'body') ?? '').replace(/\r/g, '').trim();
+      if (body.length < 20) throw new BusinessError('Bitte eine Unterweisung wählen bzw. den Text eingeben');
+      const title = str(b, 'title') ?? 'Unterweisung';
+      pdf = await instructionPdf(title, body);
+      fileName = `${title.replace(/[^\p{L}\p{N}]+/gu, '-')}.pdf`;
+    } else if (quelle === 'pdf' && file instanceof File && file.size) {
       pdf = new Uint8Array(await file.arrayBuffer());
       fileName = file.name || 'dokument.pdf';
     } else if (tplId && /^[0-9a-f-]{36}$/.test(tplId)) {
@@ -292,6 +471,7 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
         dueDate: str(b, 'due_date'),
         fileName,
         pdf,
+        body,
         employeeIds: arr(b, 'employee').filter((x) => /^[0-9a-f-]{36}$/.test(x)),
       },
       c.get('actor'),

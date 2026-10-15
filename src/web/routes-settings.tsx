@@ -151,6 +151,11 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
         'Bescheinigungen, Unterweisungen und Serienbriefe mit Platzhaltern.',
       ],
       [
+        'Unterweisungen (Textvorlagen)',
+        '/einstellungen/unterweisungen',
+        'Unterweisungen zum Auswählen (Arbeitsschutz, Gefahrstoffe, Hautschutz, Leitern …) – Text ändern, eigene anlegen; in der App direkt lesen und unterschreiben.',
+      ],
+      [
         'Word-Vorlagen',
         '/einstellungen/word-vorlagen',
         'Arbeitsverträge, Nutzungsüberlassungen, Protokolle als Word-Datei mit Platzhaltern (wie Fortytools) – ZIP hochladen, beim Mitarbeiter/Kunden/Objekt ausfüllen.',

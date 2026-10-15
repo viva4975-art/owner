@@ -25,6 +25,7 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/personal\/lohnabrechnungen(\/|$)/, ['admin', 'personal', 'buchhaltung']],
   [/^\/grundreinigung\/objektleitung$/, ['admin', 'buchhaltung', 'personal', 'objektleitung']],
   [/^\/einstellungen\/?$/, ['admin', 'buchhaltung', 'personal']],
+  [/^\/einstellungen\/unterweisungen(\/|$)/, ['admin', 'buchhaltung', 'personal']],
   [/^\/einstellungen\/word-vorlagen(\/|$)/, ['admin', 'buchhaltung', 'personal']],
   [/^\/sicherheitsdatenblaetter([/.]|$)/, ALL],
   [/^\/aushaenge\/skizze\//, ALL],

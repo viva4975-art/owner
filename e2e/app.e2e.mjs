@@ -70,6 +70,7 @@ const pdfBytes = Buffer.from(await d.save());
 
 await o.goto(B + '/personal/dokumente');
 check('Hinweis Schriftform sichtbar', (await o.locator('body').innerText()).includes('§ 623 BGB'));
+await o.selectOption('#quelle', 'pdf');
 await o.fill('#title', 'Kündigung Test');
 await o.setInputFiles('#file', { name: 'k.pdf', mimeType: 'application/pdf', buffer: pdfBytes });
 await o.check(`input[name=employee][value="${empId}"]`);
@@ -78,6 +79,7 @@ await o.waitForLoadState();
 check('Kündigung abgelehnt', (await flash(o)).includes('Schriftform'), await flash(o));
 
 await o.goto(B + '/personal/dokumente');
+await o.selectOption('#quelle', 'pdf');
 await o.fill('#title', `Unterweisung ${stamp}`);
 await o.selectOption('#category', 'unterweisung');
 await o.setInputFiles('#file', { name: 'unterweisung.pdf', mimeType: 'application/pdf', buffer: pdfBytes });
@@ -148,6 +150,24 @@ const nb = await o.request.get(B + nw);
 const loaded = await PDFDocument.load(await nb.body());
 check('Nachweis-PDF: Original + Nachweisblatt', loaded.getPageCount() === 2);
 await o.screenshot({ path: `${out}/app3-buero.png`, fullPage: true });
+
+console.log('5. Unterweisung aus Textvorlage (Handy-Verwaltung)');
+await o.goto(B + '/qm/unterweisungen/neu');
+await o.locator('input[name=instruction]').first().check();
+await o.click('[data-next]');
+await o.selectOption('select[name=an]', 'auswahl');
+await o.check(`input[name=employee][value="${empId}"]`);
+await o.click('[data-next]');
+await nav(o, '[data-submit]');
+check('Unterweisung aus Vorlage freigegeben', (await o.content()).includes('Unterweisung freigegeben'));
+check('Liste offen/unterschrieben', (await o.locator('body').innerText()).includes('Offen (1)'));
+await m.goto(B + '/m/dokumente');
+await m.click('a:has-text("Allgemeine Unterweisung Arbeitsschutz")');
+await m.waitForLoadState();
+check(
+  'Text direkt in der App',
+  (await m.locator('.ub-text').innerText()).includes('Persönliche Schutzausrüstung'),
+);
 
 console.log(`\n${ok} bestanden, ${fail} fehlgeschlagen`);
 await browser.close();

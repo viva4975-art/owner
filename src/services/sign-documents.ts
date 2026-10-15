@@ -76,6 +76,7 @@ export type SignRequestRow = SignRequest & {
   description: string | null;
   due_date: string | null;
   page_count: number;
+  body: string | null;
 };
 
 const reqId = (sql: Sql, docId: string, empId: string) => sql`md5(${'sign:' + docId + ':' + empId})::uuid`;
@@ -91,6 +92,8 @@ export async function createSignDocument(
     fileName: string;
     pdf: Uint8Array;
     employeeIds: string[];
+    /** Text der Unterweisung (Textvorlage) – wird in der App direkt angezeigt */
+    body?: string | null;
   },
   actor: string,
 ) {
@@ -119,9 +122,9 @@ export async function createSignDocument(
   await sql.begin(async (tx) => {
     const [row] = await tx`
       insert into app.sign_documents (id, title, category, description, file_name, file_path, file_sha256, file_size,
-                                      page_count, due_date, created_by)
+                                      page_count, due_date, created_by, body)
       values (${id}, ${title}, ${p.category}, ${p.description}, ${p.fileName.slice(0, 200)}, ${path}, ${sha256},
-              ${p.pdf.byteLength}, ${pages}, ${p.dueDate}, ${actor})
+              ${p.pdf.byteLength}, ${pages}, ${p.dueDate}, ${actor}, ${p.body ?? null})
       on conflict (id) do nothing returning id`;
     if (!row) return;
     await insertRequests(tx as unknown as Sql, id, p.employeeIds, actor);
@@ -225,7 +228,7 @@ export async function listSignDocuments(sql: Sql) {
 
 const reqSelect = (sql: Sql) => sql`
   select r.*, e.first_name || ' ' || e.last_name as employee_name, e.personnel_no,
-         d.title, d.category, d.description, d.due_date, d.page_count
+         d.title, d.category, d.description, d.due_date, d.page_count, d.body
     from app.sign_requests r join app.employees e on e.id = r.employee_id join app.sign_documents d on d.id = r.document_id`;
 
 export async function getSignDocument(sql: Sql, id: string) {

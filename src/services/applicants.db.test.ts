@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import {
+  addApplicantContact,
   addDocument,
+  setApplicantRating,
   deleteApplicant,
   deletionDue,
   getApplicant,
@@ -114,6 +116,24 @@ describe.skipIf(!available)('Bewerber', () => {
     expect((await deletionDue(sql)).map((d) => d.id)).toEqual([id]);
     await deleteApplicant(sql, id, 't');
     expect((await sql`select count(*)::int as n from app.applicant_documents`)[0]!.n).toBe(0);
+  });
+
+  it('Einschätzung und Kontaktverlauf; „hat etwas gefunden“ setzt den Status', async () => {
+    const id = randomUUID();
+    await sql`insert into app.applicants (id, name, created_by) values (${id}, 'Kontakt Test', 't')`;
+    await setApplicantRating(sql, id, 'gut');
+    await expect(setApplicantRating(sql, id, 'super')).rejects.toThrow(/ungültig/);
+    const kid = randomUUID();
+    const k = { id: kid, on: '2026-10-14', kind: 'anruf', result: 'nicht_erreicht', note: null };
+    await addApplicantContact(sql, id, k, 't');
+    await addApplicantContact(sql, id, k, 't'); // doppelt abgesendet
+    await addApplicantContact(sql, id, { ...k, id: randomUUID(), on: '2026-10-15', result: 'gefunden' }, 't');
+    const d = (await getApplicant(sql, id))!;
+    expect(d.contacts.map((x) => x.result)).toEqual(['gefunden', 'nicht_erreicht']);
+    expect(d.a.status).toBe('Hat etwas gefunden');
+    const row = (await listApplicants(sql)).find((x) => x.id === id)!;
+    expect([row.rating, row.contact_count, row.last_contact_result]).toEqual(['gut', 2, 'gefunden']);
+    expect(matches([row], base)).toHaveLength(0);
   });
 
   it('Import alte App: Vokabular, Status, idempotent', async () => {

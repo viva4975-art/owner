@@ -31,7 +31,15 @@ const STATUS_CLASS: Record<OfferStatus, string> = {
   versendet: 'info',
   angenommen: 'ok',
   abgelehnt: 'err',
+  aufgehoben: 'warn',
   zurueckgezogen: '',
+};
+
+/** Farbe am linken Rand der Listenzeile: Zusage grün, Absage rot, aufgehoben gelb */
+const ROW_COLOR: Partial<Record<OfferStatus, string>> = {
+  angenommen: '#3b6b4d',
+  abgelehnt: '#b42318',
+  aufgehoben: '#d4a017',
 };
 
 export const OfferBadge: FC<{ s: OfferStatus }> = ({ s }) => (
@@ -72,9 +80,10 @@ export const DeadlineBadge: FC<{ days: number | null; status: OfferStatus }> = (
   return <span class="badge">noch {days} Tage</span>;
 };
 
-export const OfferTable: FC<{ rows: OfferListRow[]; showCustomer?: boolean }> = ({
+export const OfferTable: FC<{ rows: OfferListRow[]; showCustomer?: boolean; ret?: string }> = ({
   rows,
   showCustomer = true,
+  ret,
 }) => (
   <div class="tbl">
     <table>
@@ -98,7 +107,10 @@ export const OfferTable: FC<{ rows: OfferListRow[]; showCustomer?: boolean }> = 
           </tr>
         )}
         {rows.map((o) => (
-          <tr>
+          <tr
+            class={ROW_COLOR[o.status] ? 'offer-decided' : undefined}
+            style={ROW_COLOR[o.status] ? `box-shadow:inset 4px 0 0 ${ROW_COLOR[o.status]}` : undefined}
+          >
             <td>
               <a href={`/angebote/${o.id}`}>
                 <b>{o.number}</b>
@@ -134,6 +146,42 @@ export const OfferTable: FC<{ rows: OfferListRow[]; showCustomer?: boolean }> = 
             <td class="r">{o.monthly_net_cents > 0n ? euro(o.monthly_net_cents) : '–'}</td>
             <td>
               <OfferBadge s={o.status} />
+              {ret && ['entwurf', 'versendet'].includes(o.status) && (
+                <form method="post" action={`/angebote/${o.id}/status`} class="offer-quick">
+                  <input type="hidden" name="zurueck" value={ret} />
+                  {o.status === 'versendet' && (
+                    <>
+                      <button
+                        name="status"
+                        value="angenommen"
+                        class="q-ok"
+                        title="Zusage (Zuschlag erhalten)"
+                        data-confirm={`Zusage für Angebot ${o.number} erfassen?`}
+                      >
+                        Zusage
+                      </button>
+                      <button
+                        name="status"
+                        value="abgelehnt"
+                        class="q-err"
+                        title="Absage"
+                        data-confirm={`Absage für Angebot ${o.number} erfassen?`}
+                      >
+                        Absage
+                      </button>
+                    </>
+                  )}
+                  <button
+                    name="status"
+                    value="aufgehoben"
+                    class="q-warn"
+                    title="Ausschreibung/Anfrage vom Auftraggeber aufgehoben"
+                    data-confirm={`Angebot ${o.number} als aufgehoben markieren?`}
+                  >
+                    Aufgehoben
+                  </button>
+                </form>
+              )}
             </td>
           </tr>
         ))}
@@ -150,7 +198,9 @@ export const OfferList: FC<{
   stats: OfferStats;
   period?: OfferPeriod;
   tenders?: number;
-}> = ({ rows, all, active, title, stats, tenders, period = '12m' }) => {
+  /** Adresse der Liste für den Rücksprung nach einer Schnellmarkierung */
+  ret?: string;
+}> = ({ rows, all, active, title, stats, tenders, period = '12m', ret = '/angebote' }) => {
   const plabel = OFFER_PERIODS[period];
   const count = (s: OfferStatus) => all.filter((o) => o.status === s).length;
   const tabs: Tab[] = [
@@ -165,6 +215,12 @@ export const OfferList: FC<{
       count: count('angenommen'),
     },
     { key: 'abgelehnt', label: 'Abgelehnt', href: '/angebote?status=abgelehnt', count: count('abgelehnt') },
+    {
+      key: 'aufgehoben',
+      label: 'Aufgehoben',
+      href: '/angebote?status=aufgehoben',
+      count: count('aufgehoben'),
+    },
     { key: 'alle', label: 'Alle', href: '/angebote?status=alle', count: all.length },
   ];
   const pipeline = all.filter((o) => o.status === 'versendet').reduce((s, o) => s + o.monthly_net_cents, 0n);
@@ -215,7 +271,7 @@ export const OfferList: FC<{
           ))}
         </div>
         <p class="small mut" style="margin-top:0">
-          Angenommen/abgelehnt nach dem Tag der Entscheidung, offene nach Angebotsdatum.
+          Angenommen/abgelehnt/aufgehoben nach dem Tag der Entscheidung, offene nach Angebotsdatum.
         </p>
         <div class="tbl">
           <table>
@@ -234,9 +290,16 @@ export const OfferList: FC<{
                   ['offen (Entwurf/versendet)', stats.open, '#9aa1ad', '/angebote'],
                   ['angenommen', stats.accepted, '#3b6b4d', '/angebote?status=angenommen'],
                   ['abgelehnt', stats.rejected, '#b42318', '/angebote?status=abgelehnt'],
+                  [
+                    'aufgehoben (nicht in der Quote)',
+                    stats.cancelled,
+                    '#d4a017',
+                    '/angebote?status=aufgehoben',
+                  ],
                 ] as const
               ).map(([label, v, color, href]) => {
-                const total = stats.open.count + stats.accepted.count + stats.rejected.count || 1;
+                const total =
+                  stats.open.count + stats.accepted.count + stats.rejected.count + stats.cancelled.count || 1;
                 return (
                   <tr>
                     <td>
@@ -263,7 +326,7 @@ export const OfferList: FC<{
         )}
       </div>
       <Tabs tabs={tabs} active={active} />
-      <OfferTable rows={rows} />
+      <OfferTable rows={rows} ret={ret} />
     </>
   );
 };
@@ -765,6 +828,27 @@ export const OfferDetail: FC<{
                 {post('status', 'Absage (abgelehnt)', {
                   hidden: { status: 'abgelehnt' },
                   confirm: 'Angebot als abgelehnt markieren?',
+                })}
+              </>
+            )}
+            {['entwurf', 'versendet'].includes(o.status) &&
+              post('status', 'Aufgehoben (Vergabe/Anfrage aufgehoben)', {
+                hidden: { status: 'aufgehoben' },
+                confirm: 'Angebot als aufgehoben markieren? Es zählt dann nicht in der Zuschlagsquote.',
+              })}
+            {['abgelehnt', 'aufgehoben'].includes(o.status) && (
+              <>
+                {o.status === 'abgelehnt'
+                  ? post('status', 'Korrektur: war aufgehoben', { hidden: { status: 'aufgehoben' } })
+                  : post('status', 'Korrektur: war eine Absage', { hidden: { status: 'abgelehnt' } })}
+                {post('status', 'Korrektur: doch Zusage', {
+                  hidden: { status: 'angenommen' },
+                  confirm: 'Angebot als angenommen markieren?',
+                })}
+                {post('status', 'Entscheidung zurücknehmen (wieder offen)', {
+                  cls: 'quiet',
+                  hidden: { status: 'versendet' },
+                  confirm: 'Entscheidung zurücknehmen? Das Angebot ist dann wieder „versendet“.',
                 })}
               </>
             )}

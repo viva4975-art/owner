@@ -50,6 +50,33 @@ export const APPLICANT_STATUS: Record<string, string> = {
   Gespräch: 'gold',
   Eingestellt: 'ok',
   Abgelehnt: 'err',
+  'Hat etwas gefunden': '',
+};
+
+/** interne Einschätzung (nur Büro/Personal sichtbar) */
+export const RATINGS: Record<string, { label: string; color: string }> = {
+  gut: { label: 'Gut', color: '#2e7d4f' },
+  mittel: { label: 'Mittel', color: '#d4a017' },
+  schlecht: { label: 'Schlecht', color: '#b42318' },
+};
+
+export const CONTACT_KINDS: Record<string, string> = {
+  anruf: 'Anruf',
+  whatsapp: 'WhatsApp',
+  email: 'E-Mail',
+  sms: 'SMS',
+  gespraech: 'Gespräch',
+  notiz: 'Notiz',
+};
+
+export const CONTACT_RESULTS: Record<string, string> = {
+  erreicht: 'erreicht',
+  nicht_erreicht: 'nicht erreicht',
+  rueckruf: 'Rückruf vereinbart',
+  termin: 'Termin vereinbart',
+  interessiert: 'weiter interessiert',
+  gefunden: 'hat etwas anderes gefunden',
+  kein_interesse: 'kein Interesse mehr',
 };
 export const OBJECT_TYPES: [string, string][] = [
   ['Schule', 'Schule'],
@@ -165,6 +192,11 @@ export interface Applicant {
   created_at: Date;
   version: number;
   doc_count: number;
+  rating: string | null;
+  contact_count?: number;
+  last_contact_on?: string | null;
+  last_contact_kind?: string | null;
+  last_contact_result?: string | null;
 }
 
 export interface Posting {
@@ -250,7 +282,7 @@ export const postingCriteria = (p: Posting): Criteria => ({
 
 export function matches(list: Applicant[], c: Criteria, min = 50) {
   return list
-    .filter((a) => a.status !== 'Eingestellt' && a.status !== 'Abgelehnt')
+    .filter((a) => !['Eingestellt', 'Abgelehnt', 'Hat etwas gefunden'].includes(a.status))
     .map((a) => ({ a, ...score(a, c) }))
     .filter((m) => m.score >= min)
     .sort((x, y) => y.score - x.score);
@@ -260,8 +292,13 @@ export function matches(list: Applicant[], c: Criteria, min = 50) {
 
 export async function listApplicants(sql: Sql): Promise<Applicant[]> {
   return sql<Applicant[]>`
-    select a.*, a.hours::float8 as hours, (select count(*)::int from app.applicant_documents d where d.applicant_id = a.id) as doc_count
-      from app.applicants a order by a.created_at desc`;
+    select a.*, a.hours::float8 as hours, (select count(*)::int from app.applicant_documents d where d.applicant_id = a.id) as doc_count,
+           (select count(*)::int from app.applicant_contacts k where k.applicant_id = a.id) as contact_count,
+           lc.contact_on::text as last_contact_on, lc.kind as last_contact_kind, lc.result as last_contact_result
+      from app.applicants a
+      left join lateral (select contact_on, kind, result from app.applicant_contacts k where k.applicant_id = a.id
+                          order by contact_on desc, created_at desc limit 1) lc on true
+     order by a.created_at desc`;
 }
 
 export async function getApplicant(sql: Sql, id: string) {
@@ -274,7 +311,53 @@ export async function getApplicant(sql: Sql, id: string) {
   >`
     select id, name, size_bytes, uploaded_at, uploaded_by from app.applicant_documents
      where applicant_id = ${id} order by uploaded_at`;
-  return { a, docs };
+  const contacts = await sql<ApplicantContact[]>`
+    select id, contact_on::text as contact_on, kind, result, note, created_by, created_at from app.applicant_contacts
+     where applicant_id = ${id} order by contact_on desc, created_at desc`;
+  return { a, docs, contacts };
+}
+
+export interface ApplicantContact {
+  id: string;
+  contact_on: string;
+  kind: string;
+  result: string | null;
+  note: string | null;
+  created_by: string;
+  created_at: Date;
+}
+
+export async function setApplicantRating(sql: Sql, id: string, rating: string | null) {
+  if (rating && !(rating in RATINGS)) throw new BusinessError('Einschätzung ungültig');
+  await sql`update app.applicants set rating = ${rating || null}, updated_at = now() where id = ${id}`;
+}
+
+/**
+ * Kontakt festhalten (feste ID je Formular → doppelt absenden legt nichts doppelt an). Ergebnis „hat etwas anderes
+ * gefunden“ setzt den Status mit (zählt dann nicht mehr im Matching, Löschvorschlag nach 6 Monaten).
+ */
+export async function addApplicantContact(
+  sql: Sql,
+  applicantId: string,
+  c: { id: string; on: string; kind: string; result: string | null; note: string | null },
+  actor: string,
+) {
+  if (!(c.kind in CONTACT_KINDS)) throw new BusinessError('Art des Kontakts ungültig');
+  if (c.result && !(c.result in CONTACT_RESULTS)) throw new BusinessError('Ergebnis ungültig');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(c.on)) throw new BusinessError('Datum ungültig');
+  await sql.begin(async (tx) => {
+    const r =
+      await tx`insert into app.applicant_contacts (id, applicant_id, contact_on, kind, result, note, created_by)
+                       values (${c.id}, ${applicantId}, ${c.on}, ${c.kind}, ${c.result || null}, ${t(c.note)}, ${actor})
+                       on conflict (id) do nothing`;
+    if (r.count && c.result === 'gefunden')
+      await tx`update app.applicants set status = 'Hat etwas gefunden', status_changed_at = now()
+                where id = ${applicantId} and status not in ('Eingestellt', 'Hat etwas gefunden')`;
+  });
+}
+
+export async function deleteApplicantContact(sql: Sql, applicantId: string, contactId: string) {
+  await sql`delete from app.applicant_contacts where id = ${contactId} and applicant_id = ${applicantId}`;
 }
 
 export interface ApplicantInput {
@@ -381,7 +464,8 @@ export async function deleteDocument(sql: Sql, applicantId: string, docId: strin
 export async function deletionDue(sql: Sql) {
   return sql<{ id: string; name: string; status_changed_at: Date }[]>`
     select id, name, status_changed_at from app.applicants
-     where status = 'Abgelehnt' and status_changed_at < now() - interval '6 months' order by status_changed_at`;
+     where status in ('Abgelehnt', 'Hat etwas gefunden') and status_changed_at < now() - interval '6 months'
+     order by status_changed_at`;
 }
 
 // ------------------------------------------------------------------ Stellen

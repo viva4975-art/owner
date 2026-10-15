@@ -540,8 +540,10 @@ export async function embedSketches(
   return out;
 }
 
-/** Inhaltsbereich schlanker Seiten (FormDoc.newPage({ plain: true })) */
-const PLAIN_TOP = 74;
+/** Logo auf Aushängen: groß (Ahmed 15.10.: „Logo viel größer“) – 230 pt ≈ 8 cm breit */
+export const POSTER_LOGO_W = 230;
+/** Inhaltsbereich schlanker Seiten (FormDoc.newPage({ plain: true, logoWidth: POSTER_LOGO_W })) */
+const PLAIN_TOP = Math.round(22 + (96 / 420) * POSTER_LOGO_W + 18);
 const PLAIN_BOTTOM = 806;
 const BORDEAUX = FORM_COLORS.BORDEAUX;
 const WHITE = rgb(1, 1, 1);
@@ -589,7 +591,7 @@ export function drawPoster(d: FormDoc, def: PosterDef, ctx: PosterContext) {
     }
     k = lo;
   }
-  d.newPage({ plain: true });
+  d.newPage({ plain: true, logoWidth: POSTER_LOGO_W });
   layout(d, def, ctx, k, fill, true);
   d.width = width;
   // Fußzeile

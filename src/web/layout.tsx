@@ -1389,6 +1389,19 @@ main:has(input[name=ids]:checked) .bulkbar .small.mut{display:none}
   .pagehead .newform select{flex:1 1 auto;min-width:120px;width:auto}
   .pagehead .newform>span,.pagehead .newform .suffix{display:none}
 }
+/* Angebote: Schnellmarkierung in der Liste (Zusage/Absage/aufgehoben) */
+.offer-quick{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.offer-quick button{font-size:11.5px;padding:2px 8px;min-height:0;height:auto;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--ink-2);box-shadow:none;cursor:pointer}
+.offer-quick .q-ok:hover{border-color:#3b6b4d;color:#3b6b4d;background:#eef6f0}
+.offer-quick .q-err:hover{border-color:#b42318;color:#b42318;background:#fdeeee}
+.offer-quick .q-warn:hover{border-color:#d4a017;color:#8a6500;background:#fdf6e3}
+tr.offer-decided td{background:#fcfcfc}
+/* Bewerber: interne Einschätzung (Farbe) */
+.rate-dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin-right:4px;border:1px solid rgba(0,0,0,.12)}
+.rate-pick{display:flex;gap:6px;flex-wrap:wrap}
+.rate-pick label{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 10px;cursor:pointer;font-size:13px;background:#fff;font-weight:500}
+.rate-pick input{margin:0}
+.rate-pick label:has(input:checked){border-color:var(--brand);box-shadow:0 0 0 2px rgba(125,20,53,.12)}
 `;
 
 export const euro = (c: bigint) => formatEuro(c as Cents);

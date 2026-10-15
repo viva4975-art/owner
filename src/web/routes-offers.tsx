@@ -79,6 +79,10 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
         stats={stats}
         tenders={t?.n ?? 0}
         period={period}
+        ret={(() => {
+          const u = new URL(c.req.url);
+          return u.pathname + u.search;
+        })()}
       />,
     );
   });
@@ -336,16 +340,23 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
 
   app.post(`/angebote/:id{${UUID}}/status`, async (c) => {
     const id = c.req.param('id');
-    const status = String((await c.req.parseBody()).status ?? '') as OfferStatus;
+    const b = await c.req.parseBody();
+    const status = String(b.status ?? '') as OfferStatus;
     if (!(status in OFFER_STATUS)) throw new BusinessError('Ungültiger Status');
+    // Schnellmarkierung aus der Liste: zurück in die Liste (nur eigene Pfade)
+    const ret =
+      typeof b.zurueck === 'string' && b.zurueck.startsWith('/angebote') && !b.zurueck.startsWith('//')
+        ? b.zurueck
+        : `/angebote/${id}`;
     await setOfferStatus(sql, id, status, c.get('actor'));
     const msg: Record<string, string> = {
       versendet: 'Angebot als abgegeben markiert.',
-      angenommen: 'Zuschlag erfasst – jetzt ins Objekt übernehmen oder Rechnungsentwurf erstellen.',
+      angenommen: 'Zusage erfasst – jetzt ins Objekt übernehmen oder Rechnungsentwurf erstellen.',
       abgelehnt: 'Absage erfasst.',
+      aufgehoben: 'Als aufgehoben markiert (zählt nicht in der Zuschlagsquote).',
       zurueckgezogen: 'Angebot zurückgezogen.',
     };
-    return back(c, `/angebote/${id}`, { ok: msg[status] ?? 'Status geändert.' });
+    return back(c, ret, { ok: msg[status] ?? 'Status geändert.' });
   });
 
   app.post(`/angebote/:id{${UUID}}/folgeangebot`, async (c) => {

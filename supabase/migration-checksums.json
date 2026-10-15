@@ -143,5 +143,7 @@
  "20261124000003_sonderreinigung_erloes.sql": "fc8cce067a3c095fc8a5dbe80a75ffaee5348ce72aea563e0200b8a708db8295",
  "20261124000004_menue_position.sql": "d32de295e300b23e6824af7d3a72f55eb4c383c8e0a386176eacdc1e5edcb92d",
  "20261125000001_qm_fotos_standort.sql": "0fb9722a93394d4314bcc9834a3c402f0ffe344557212bef3ef330ed41009949",
- "20261125000002_sicherheitsdatenblaetter.sql": "0a5001178194f7ca6d3a8bfda3d7cfd05097bdcb84f123b2c2d73caa2ab5b4a0"
+ "20261125000002_sicherheitsdatenblaetter.sql": "0a5001178194f7ca6d3a8bfda3d7cfd05097bdcb84f123b2c2d73caa2ab5b4a0",
+ "20261126000001_angebot_aufgehoben.sql": "a92fccb2947a4c5e9f89369c1e2239bdffe4ad54d43b9a5e00693cc142262906",
+ "20261126000002_bewerber_einschaetzung_kontakte.sql": "805102bf4d532fec698cecb33bb46faf47a681099e5364d5143b0c4b389cd3ca"
 }

@@ -856,7 +856,7 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
     const light = await d.pdf.embedPng(
       await readFile(new URL('../../assets/web/logo-hell.png', import.meta.url)),
     );
-    const lw = 170;
+    const lw = 260;
     pg.drawImage(light, {
       x: 48.5,
       y: H - 46 - (light.height / light.width) * lw,

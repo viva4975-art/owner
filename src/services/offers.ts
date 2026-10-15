@@ -15,13 +15,15 @@ import { BusinessError } from './errors.js';
 import { saveDraft } from './invoices.js';
 import { buildBuyerSnapshot, getSeller } from './masterdata.js';
 
-export type OfferStatus = 'entwurf' | 'versendet' | 'angenommen' | 'abgelehnt' | 'zurueckgezogen';
+export type OfferStatus =
+  'entwurf' | 'versendet' | 'angenommen' | 'abgelehnt' | 'aufgehoben' | 'zurueckgezogen';
 
 export const OFFER_STATUS: Record<OfferStatus, string> = {
   entwurf: 'Entwurf',
   versendet: 'Versendet',
   angenommen: 'Angenommen',
   abgelehnt: 'Abgelehnt',
+  aufgehoben: 'Aufgehoben',
   zurueckgezogen: 'Zurückgezogen',
 };
 
@@ -192,10 +194,12 @@ export async function setOfferStatus(sql: Sql, id: string, status: OfferStatus, 
     >`select status from app.offers where id = ${id} for update`;
     if (!o) throw new BusinessError('Angebot nicht gefunden');
     const allowed: Record<OfferStatus, OfferStatus[]> = {
-      entwurf: ['versendet', 'zurueckgezogen'],
-      versendet: ['angenommen', 'abgelehnt', 'zurueckgezogen'],
+      entwurf: ['versendet', 'aufgehoben', 'zurueckgezogen'],
+      versendet: ['angenommen', 'abgelehnt', 'aufgehoben', 'zurueckgezogen'],
       angenommen: [],
-      abgelehnt: [],
+      // Korrektur einer falsch erfassten Entscheidung (Zusage geht nicht zurück – Übernahme ins Objekt/Rechnung)
+      abgelehnt: ['aufgehoben', 'angenommen', 'versendet'],
+      aufgehoben: ['abgelehnt', 'angenommen', 'versendet'],
       zurueckgezogen: [],
     };
     if (o.status === status) return;
@@ -205,7 +209,7 @@ export async function setOfferStatus(sql: Sql, id: string, status: OfferStatus, 
       );
     }
     await tx`update app.offers set status = ${status},
-               decided_at = ${['angenommen', 'abgelehnt'].includes(status) ? tx`now()` : null} where id = ${id}`;
+               decided_at = ${['angenommen', 'abgelehnt', 'aufgehoben'].includes(status) ? tx`now()` : null} where id = ${id}`;
     // Folgeangebot versendet → voriges Angebot ist überholt
     if (status === 'versendet') {
       const prev = await tx<{ id: string }[]>`
@@ -524,6 +528,8 @@ export interface OfferStats {
   accepted: { count: number; net: bigint; monthly: bigint };
   rejected: { count: number; net: bigint; monthly: bigint };
   withdrawn: number;
+  /** aufgehobene Vergaben – nicht in der Zuschlagsquote */
+  cancelled: { count: number; net: bigint; monthly: bigint };
   /** Zuschlagsquote = angenommen ÷ (angenommen + abgelehnt), in Prozent; null ohne Entscheidungen */
   rate: number | null;
   /** Zuschlagsquote nach Umsatz (netto, monatliche Positionen als Jahreswert ×12): angenommen ÷ entschieden */
@@ -572,8 +578,9 @@ export async function offerStats(
     select g, count(*)::int as count, coalesce(sum(net_cents), 0)::bigint as net,
            coalesce(sum(monthly_net_cents), 0)::bigint as monthly
       from (select case when status in ('entwurf', 'versendet') then 'open' when status = 'angenommen' then 'accepted'
-                        when status = 'abgelehnt' then 'rejected' else 'withdrawn' end as g,
-                   case when status in ('angenommen', 'abgelehnt')
+                        when status = 'abgelehnt' then 'rejected' when status = 'aufgehoben' then 'cancelled'
+                        else 'withdrawn' end as g,
+                   case when status in ('angenommen', 'abgelehnt', 'aufgehoben')
                         then coalesce((decided_at at time zone 'Europe/Berlin')::date, offer_date) else offer_date end as d,
                    net_cents, monthly_net_cents
               from app.offers) x
@@ -591,6 +598,7 @@ export async function offerStats(
     accepted,
     rejected,
     withdrawn: get('withdrawn').count,
+    cancelled: get('cancelled'),
     rate: decided ? Math.round((accepted.count * 100) / decided) : null,
     rateValue: (() => {
       // Wert eines Angebots: einmalige Summe + monatliche Positionen × 12 (Jahreswert)

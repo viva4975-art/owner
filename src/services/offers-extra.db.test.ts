@@ -116,5 +116,13 @@ describe.skipIf(!available)('Angebote: Alternativen, Folgeangebot, Statistik', (
     expect(s.rate).toBe(50);
     expect((await recentCustomers(sql, 'ben')).map((c) => c.id)).toEqual([DEMO.company]);
     expect((await recentCustomers(sql, 'anna')).map((c) => c.id)).toEqual([DEMO.authority]);
+    // aufgehoben: zählt nicht in der Quote; Korrektur abgelehnt ↔ aufgehoben; Zusage nicht zurück
+    await setOfferStatus(sql, lost, 'aufgehoben', 'ben');
+    const s2 = await offerStats(sql);
+    expect([s2.rejected.count, s2.cancelled.count, s2.rate]).toEqual([0, 1, 100]);
+    await setOfferStatus(sql, lost, 'versendet', 'ben');
+    expect((await getOffer(sql, lost))!.offer.decided_at).toBeNull();
+    const won = (await sql<{ id: string }[]>`select id from app.offers where status = 'angenommen' limit 1`)[0]!.id;
+    await expect(setOfferStatus(sql, won, 'aufgehoben', 'ben')).rejects.toThrow(/kann nicht/);
   });
 });

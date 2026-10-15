@@ -104,18 +104,17 @@ export class FormDoc {
    * Neue Seite. `plain` = ohne Briefpapier, nur Logo (z. B. Aushänge im Objektordner); gilt nur für diese Seite –
    * die nächste normale Seite hat wieder Briefpapier und den üblichen Inhaltsbereich.
    */
-  newPage(o: { plain?: boolean } = {}) {
+  newPage(o: { plain?: boolean; logoWidth?: number } = {}) {
     this.page = this.pdf.addPage([W, H]);
     const plain = o.plain ?? !this.bg;
     if (plain && !this.logo) throw new Error('Logo nicht geladen (FormDoc.loadLogo)');
-    this.top = plain ? 74 : TOP;
+    // Logo-Breite schlanker Seiten: 110 pt (Raumbuch, Berichte); Aushänge größer (Ahmed 15.10.)
+    const lw = o.logoWidth ?? 110;
+    const lh = this.logo ? (this.logo.height / this.logo.width) * lw : 0;
+    this.top = plain ? Math.max(74, Math.round(22 + lh + 18)) : TOP;
     this.bottom = plain ? 806 : BOTTOM;
     if (this.bg && !plain) this.page.drawImage(this.bg, { x: 0, y: 0, width: W, height: H });
-    if (this.logo && plain) {
-      const lw = 110;
-      const lh = (this.logo.height / this.logo.width) * lw;
-      this.page.drawImage(this.logo, { x: L, y: H - 22 - lh, width: lw, height: lh });
-    }
+    if (this.logo && plain) this.page.drawImage(this.logo, { x: L, y: H - 22 - lh, width: lw, height: lh });
     if (this.watermark)
       this.page.drawText(this.watermark, {
         x: 140,

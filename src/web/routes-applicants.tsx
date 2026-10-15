@@ -4,6 +4,12 @@ import { parseEuro } from '../domain/money/money.js';
 import posterI18n from '../i18n/job-poster.json' with { type: 'json' };
 import {
   APPLICANT_STATUS,
+  CONTACT_KINDS,
+  CONTACT_RESULTS,
+  RATINGS,
+  addApplicantContact,
+  deleteApplicantContact,
+  setApplicantRating,
   type Criteria,
   DAYS,
   EXPERIENCE,
@@ -685,6 +691,7 @@ document.getElementById('jpg').addEventListener('click', async function () {
   app.get('/bewerber/pool', async (c) => {
     const q = (c.req.query('q') ?? '').trim().toLowerCase();
     const f = c.req.query('status') ?? '';
+    const rf = c.req.query('einschaetzung') ?? '';
     const all = await listApplicants(sql);
     const due = await deletionDue(sql);
     const found = all.filter(
@@ -692,7 +699,15 @@ document.getElementById('jpg').addEventListener('click', async function () {
         !q ||
         [a.name, a.city, a.phone, a.language, a.job_type].some((v) => (v ?? '').toLowerCase().includes(q)),
     );
-    const list = found.filter((a) => !f || a.status === f);
+    const list = found
+      .filter((a) => !f || a.status === f)
+      .filter((a) => !rf || (rf === 'ohne' ? !a.rating : a.rating === rf));
+    const rateHref = (k: string) =>
+      `/bewerber/pool?${new URLSearchParams({
+        ...(q ? { q } : {}),
+        ...(f ? { status: f } : {}),
+        ...(k && rf !== k ? { einschaetzung: k } : {}),
+      })}`;
     const cnt = (s: string) => found.filter((a) => a.status === s).length;
     const tile = (key: string, n: number, lbl: string, tone = '') => (
       <a
@@ -758,15 +773,46 @@ document.getElementById('jpg').addEventListener('click', async function () {
           >
             <Opt list={pairs(Object.keys(APPLICANT_STATUS))} sel={f} empty="Alle Status" />
           </select>
+          {rf && <input type="hidden" name="einschaetzung" value={rf} />}
         </form>
+        <div class="chips" style="margin:-4px 0 12px;display:flex;gap:6px;flex-wrap:wrap">
+          <span class="small mut" style="align-self:center">
+            Einschätzung:
+          </span>
+          {Object.entries(RATINGS).map(([k, r]) => (
+            <a class={`chip ${rf === k ? 'on' : ''}`} href={rateHref(k)}>
+              <span class="rate-dot" style={`background:${r.color}`} />
+              {r.label} ({found.filter((a) => a.rating === k).length})
+            </a>
+          ))}
+          <a class={`chip ${rf === 'ohne' ? 'on' : ''}`} href={rateHref('ohne')}>
+            ohne ({found.filter((a) => !a.rating).length})
+          </a>
+        </div>
         {list.length === 0 ? (
           <div class="empty">Keine Bewerber</div>
         ) : (
           <div class="list-cards">
             {list.map((a) => (
               <a class="lc" href={`/bewerber/pool/${a.id}`}>
-                <div class="lc-head">
-                  <span class="lc-name">{a.name || '(ohne Name)'}</span>
+                <div
+                  class="lc-head"
+                  style={
+                    a.rating
+                      ? `border-left:4px solid ${RATINGS[a.rating]?.color};padding-left:8px`
+                      : undefined
+                  }
+                >
+                  <span class="lc-name">
+                    {a.rating && (
+                      <span
+                        class="rate-dot"
+                        style={`background:${RATINGS[a.rating]?.color}`}
+                        title={`Einschätzung: ${RATINGS[a.rating]?.label}`}
+                      />
+                    )}
+                    {a.name || '(ohne Name)'}
+                  </span>
                   <span class={`badge ${APPLICANT_STATUS[a.status]}`}>{a.status}</span>
                 </div>
                 <div class="lc-details">
@@ -779,6 +825,14 @@ document.getElementById('jpg').addEventListener('click', async function () {
                   {a.job_type && <span>{a.job_type}</span>}
                   {a.doc_count > 0 && <span>{anz(a.doc_count, 'Dokument', 'Dokumente')}</span>}
                 </div>
+                {a.last_contact_on && (
+                  <div class="small mut" style="margin-top:4px">
+                    Zuletzt: {CONTACT_KINDS[a.last_contact_kind ?? ''] ?? a.last_contact_kind}{' '}
+                    {dateDe(a.last_contact_on)}
+                    {a.last_contact_result && ` · ${CONTACT_RESULTS[a.last_contact_result] ?? ''}`}
+                    {(a.contact_count ?? 0) > 1 && ` · ${a.contact_count} Kontakte`}
+                  </div>
+                )}
               </a>
             ))}
           </div>
@@ -790,7 +844,7 @@ document.getElementById('jpg').addEventListener('click', async function () {
   app.get(`/bewerber/pool/:id{${UUID}}`, async (c) => {
     const d = await getApplicant(sql, c.req.param('id'));
     if (!d) return c.redirect(`/bewerber/pool/${c.req.param('id')}/bearbeiten`);
-    const { a, docs } = d;
+    const { a, docs, contacts } = d;
     const posts = (await listPostings(sql)).filter((p) => p.status === 'aktiv');
     const fit = posts
       .map((p) => ({ p, ...score(a, postingCriteria(p)) }))
@@ -864,6 +918,75 @@ document.getElementById('jpg').addEventListener('click', async function () {
               )}
             </div>
             <div class="card">
+              <h3>Kontaktverlauf ({contacts.length})</h3>
+              <form method="post" action={`/bewerber/pool/${a.id}/kontakt`} class="bw-contact-form">
+                <input type="hidden" name="kid" value={randomUUID()} />
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                  <div>
+                    <label for="k-on">Datum</label>
+                    <input id="k-on" type="date" name="datum" value={todayBerlin()} required />
+                  </div>
+                  <div>
+                    <label for="k-kind">Art</label>
+                    <select id="k-kind" name="art" data-nosearch>
+                      {Object.entries(CONTACT_KINDS).map(([k, l]) => (
+                        <option value={k}>{l}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label for="k-res">Ergebnis</label>
+                    <select id="k-res" name="ergebnis" data-nosearch>
+                      <option value="">–</option>
+                      {Object.entries(CONTACT_RESULTS).map(([k, l]) => (
+                        <option value={k}>{l}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <label for="k-note" style="margin-top:8px">
+                  Notiz
+                </label>
+                <textarea id="k-note" name="notiz" rows={2} placeholder="z. B. ruft Montag zurück" />
+                <button class="btn sm" style="margin-top:8px">
+                  Kontakt festhalten
+                </button>
+                <div class="small mut" style="margin-top:4px">
+                  „hat etwas anderes gefunden“ setzt den Status automatisch auf „Hat etwas gefunden“.
+                </div>
+              </form>
+              {contacts.length > 0 && (
+                <ul class="calm-list" style="margin-top:12px">
+                  {contacts.map((k) => (
+                    <li style="display:flex;gap:10px;align-items:flex-start">
+                      <div style="flex:1">
+                        <b>{CONTACT_KINDS[k.kind] ?? k.kind}</b> · {dateDe(k.contact_on)}
+                        {k.result && (
+                          <span
+                            class={`badge ${k.result === 'gefunden' || k.result === 'kein_interesse' ? 'err' : k.result === 'nicht_erreicht' ? 'warn' : 'ok'}`}
+                            style="margin-left:6px"
+                          >
+                            {CONTACT_RESULTS[k.result]}
+                          </span>
+                        )}
+                        {k.note && <div style="white-space:pre-wrap">{k.note}</div>}
+                        <div class="small mut">{k.created_by}</div>
+                      </div>
+                      <form
+                        method="post"
+                        action={`/bewerber/pool/${a.id}/kontakt/${k.id}/loeschen`}
+                        class="inline-form"
+                      >
+                        <button class="btn sm danger" data-confirm="Eintrag löschen?" title="löschen">
+                          ✕
+                        </button>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div class="card">
               <h3>Dokumente ({docs.length})</h3>
               {docs.map((x) => (
                 <div class="bw-doc">
@@ -915,23 +1038,60 @@ document.getElementById('jpg').addEventListener('click', async function () {
               </button>
             </form>
           </div>
-          <div class="card">
-            <h3>Passende offene Stellen ({fit.length})</h3>
-            {fit.length === 0 ? (
-              <p class="small mut">Keine offene Stelle mit mindestens 50 % Übereinstimmung.</p>
-            ) : (
-              fit.map((x) => (
-                <a class="bw-match" href={`/bewerber/stellen/${x.p.id}`}>
-                  <div>
-                    <b>{x.p.title}</b>
-                    <div class="small mut">
-                      {[x.p.city, x.p.hours ? `${hDe(x.p.hours)} h` : null].filter(Boolean).join(' · ')}
+          <div>
+            <div class="card">
+              <h3>Interne Einschätzung</h3>
+              <form method="post" action={`/bewerber/pool/${a.id}/einschaetzung`} class="rate-pick">
+                {Object.entries(RATINGS).map(([k, r]) => (
+                  <label>
+                    <input
+                      type="radio"
+                      name="einschaetzung"
+                      value={k}
+                      checked={a.rating === k}
+                      onchange="this.form.submit()"
+                    />
+                    <span class="rate-dot" style={`background:${r.color}`} />
+                    {r.label}
+                  </label>
+                ))}
+                <label>
+                  <input
+                    type="radio"
+                    name="einschaetzung"
+                    value=""
+                    checked={!a.rating}
+                    onchange="this.form.submit()"
+                  />
+                  keine
+                </label>
+                <noscript>
+                  <button class="btn sm">Speichern</button>
+                </noscript>
+              </form>
+              <p class="small mut" style="margin-bottom:0">
+                Nur intern sichtbar (Admin/Personal). Sachlich halten – Bewerber haben ein Auskunftsrecht
+                (Art. 15 DSGVO).
+              </p>
+            </div>
+            <div class="card">
+              <h3>Passende offene Stellen ({fit.length})</h3>
+              {fit.length === 0 ? (
+                <p class="small mut">Keine offene Stelle mit mindestens 50 % Übereinstimmung.</p>
+              ) : (
+                fit.map((x) => (
+                  <a class="bw-match" href={`/bewerber/stellen/${x.p.id}`}>
+                    <div>
+                      <b>{x.p.title}</b>
+                      <div class="small mut">
+                        {[x.p.city, x.p.hours ? `${hDe(x.p.hours)} h` : null].filter(Boolean).join(' · ')}
+                      </div>
                     </div>
-                  </div>
-                  <span class={`badge ${pct(x.percent)}`}>{x.percent}%</span>
-                </a>
-              ))
-            )}
+                    <span class={`badge ${pct(x.percent)}`}>{x.percent}%</span>
+                  </a>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </div>,
@@ -1065,6 +1225,36 @@ document.getElementById('jpg').addEventListener('click', async function () {
     const b = await c.req.parseBody({ all: true });
     await setApplicantStatus(sql, c.req.param('id'), str(b, 'status') ?? '');
     return back(c, `/bewerber/pool/${c.req.param('id')}`, { ok: `Status: ${str(b, 'status')}` });
+  });
+
+  app.post(`/bewerber/pool/:id{${UUID}}/einschaetzung`, async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    await setApplicantRating(sql, c.req.param('id'), str(b, 'einschaetzung'));
+    return back(c, `/bewerber/pool/${c.req.param('id')}`, { ok: 'Einschätzung gespeichert.' });
+  });
+
+  app.post(`/bewerber/pool/:id{${UUID}}/kontakt`, async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const kid = str(b, 'kid') ?? '';
+    if (!/^[0-9a-f-]{36}$/i.test(kid)) throw new BusinessError('Formular ungültig – bitte neu laden');
+    await addApplicantContact(
+      sql,
+      c.req.param('id'),
+      {
+        id: kid,
+        on: str(b, 'datum') ?? todayBerlin(),
+        kind: str(b, 'art') ?? 'anruf',
+        result: str(b, 'ergebnis'),
+        note: str(b, 'notiz'),
+      },
+      c.get('actor'),
+    );
+    return back(c, `/bewerber/pool/${c.req.param('id')}`, { ok: 'Kontakt festgehalten.' });
+  });
+
+  app.post(`/bewerber/pool/:id{${UUID}}/kontakt/:k{${UUID}}/loeschen`, async (c) => {
+    await deleteApplicantContact(sql, c.req.param('id'), c.req.param('k'));
+    return back(c, `/bewerber/pool/${c.req.param('id')}`, { ok: 'Eintrag gelöscht.' });
   });
 
   app.post(`/bewerber/pool/:id{${UUID}}/loeschen`, async (c) => {

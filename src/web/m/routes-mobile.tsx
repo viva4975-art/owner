@@ -67,6 +67,8 @@ interface Me {
   sites: { id: string; name: string; site_no: string }[];
   /** über die Büro-Anmeldung (Objektleitung/Büro stempeln selbst) – kein eigenes Abmelden in /m */
   office?: boolean;
+  /** Art der Zeiterfassung (Zeiterfassung → Einstellungen): alle, nur bestätigen, Stoppuhr, Stoppuhr mit QR */
+  timeMode: 'alle' | 'bestaetigen' | 'stoppuhr' | 'qr';
 }
 
 export const CSS = `
@@ -150,6 +152,8 @@ main{padding-bottom:calc(110px + env(safe-area-inset-bottom,0px))}
 .shift.open{border:2px solid #f0c8d4}
 .shift .confirm{margin-top:10px;padding-top:10px;border-top:1px solid #f0e4e8}
 .shift .confirm .chk label{font-size:15px}
+.adjust{margin-top:6px}.adjust>summary{color:#7D1435;font-weight:600;font-size:15px;padding:8px 0;cursor:pointer}.adjust form{margin-top:4px}
+button.link{background:none;border:0;font:inherit;cursor:pointer;text-decoration:underline}
 .fab{position:fixed;right:20px;bottom:calc(92px + env(safe-area-inset-bottom,0px));width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#9b2a45,#7D1435);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 24px rgba(125,20,53,.35);z-index:20;text-decoration:none}
 .fab svg{width:30px;height:30px}
 .tabbar{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.96);border-top:1px solid #eadfe3;display:grid;grid-template-columns:repeat(4,1fr);padding:8px 6px calc(8px + env(safe-area-inset-bottom,0px));z-index:15;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
@@ -201,7 +205,7 @@ const JS = `
       .catch(function(){clearTimeout(tm); if(b)b.disabled=false; var m=document.getElementById('net'); if(m){m.hidden=false; m.scrollIntoView({block:'center'});}});
   });
   var el=document.querySelector('[data-since]');
-  if(el){var s=Number(el.getAttribute('data-since'));var tick=function(){var m=Math.max(0,Math.floor((Date.now()-s)/60000));el.textContent=Math.floor(m/60)+':'+String(m%60).padStart(2,'0');};tick();setInterval(tick,15000);
+  if(el){var s=Number(el.getAttribute('data-since'));var tick=function(){var sec=Math.max(0,Math.floor((Date.now()-s)/1000)),m=Math.floor(sec/60);el.textContent=Math.floor(m/60)+':'+String(m%60).padStart(2,'0')+':'+String(sec%60).padStart(2,'0');};tick();setInterval(tick,1000);
     var br=document.getElementById('break'); if(br&&!br.dataset.touched){var m=(Date.now()-s)/60000; br.value=m>540?45:m>360?30:0; br.addEventListener('input',function(){br.dataset.touched='1'});}}
   // Installierbare App (Service Worker nur für Offline-Hinweis und Schrift/Logo – keine persönlichen Daten im Cache)
   if('serviceWorker' in navigator){navigator.serviceWorker.register('/m/sw.js',{scope:'/m'}).catch(function(){});}
@@ -213,13 +217,20 @@ const JS = `
     window.addEventListener('beforeinstallprompt',function(ev){ev.preventDefault(); inst.hidden=false; var b=inst.querySelector('button'); b.hidden=false; b.onclick=function(){ev.prompt(); inst.hidden=true;};});
   }
   // QR-Code am Objekt scannen: in der App nativ (Capacitor), im Browser per BarcodeDetector, sonst Kamera-App
-  var scan=document.getElementById('scan');
-  if(scan){
+  // Formular nach dem Scannen sofort absenden (Stoppuhr mit QR-Code)
+  var auto=document.querySelector('form[data-autostart]'); if(auto&&auto.requestSubmit)setTimeout(function(){auto.requestSubmit()},150);
+  var scans=[].slice.call(document.querySelectorAll('#scan,[data-scan]'));
+  if(scans.length){
     var cap=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.BarcodeScanner;
     var web='BarcodeDetector' in window&&navigator.mediaDevices&&navigator.mediaDevices.getUserMedia;
-    if(cap||web){scan.hidden=false;}
-    var go=function(v){try{var u=new URL(v,location.href); if(u.origin===location.origin&&/^\\/m\\/o\\/[0-9a-f]{32}$/.test(u.pathname)){location.href=u.pathname;}}catch(e){}};
+    var qs='';
+    var go=function(v){try{var u=new URL(v,location.href); if(u.origin===location.origin&&/^\\/m\\/o\\/[0-9a-f]{32}$/.test(u.pathname)){location.href=u.pathname+qs;}}catch(e){}};
+    scans.forEach(function(scan){
+    var md=scan.getAttribute('data-mode');
+    if(scan.id==='scan'&&(cap||web)&&(md==='alle'||md==='qr')){scan.hidden=false;}
     scan.addEventListener('click',function(){
+      qs=scan.getAttribute('data-scan')==='start'?'?start=1':'';
+      if(!cap&&!web){alert('Kamera-Scan wird auf diesem Gerät nicht unterstützt – bitte die Kamera-App nutzen.');return;}
       if(cap){cap.scan({formats:['QR_CODE']}).then(function(r){if(r&&r.barcodes&&r.barcodes[0])go(r.barcodes[0].rawValue);}).catch(function(){});return;}
       var ov=document.getElementById('scanner'),v=ov.querySelector('video'),stop=false,st=null;
       var end=function(){stop=true; if(st)st.getTracks().forEach(function(t){t.stop()}); ov.hidden=true;};
@@ -228,6 +239,7 @@ const JS = `
         var det=new window.BarcodeDetector({formats:['qr_code']});
         (function loop(){if(stop)return; det.detect(v).then(function(c){if(c[0]){end(); go(c[0].rawValue);} else setTimeout(loop,250);}).catch(function(){setTimeout(loop,400);});})();
       }).catch(end);
+    });
     });
   }
 })();`;
@@ -250,8 +262,10 @@ const MLayout: FC<{
   path?: string;
   me?: Me | null;
   flash: { ok?: string | undefined; err?: string | undefined };
+  /** Vollbild ohne Leiste (z. B. Stundenliste unterschreiben) */
+  full?: boolean;
   children?: Child;
-}> = ({ lang, path = '/m', me, flash, children }) => (
+}> = ({ lang, path = '/m', me, flash, full, children }) => (
   <html lang={lang}>
     <head>
       <meta charset="utf-8" />
@@ -264,9 +278,10 @@ const MLayout: FC<{
       <meta name="apple-mobile-web-app-capable" content="yes" />
       <meta name="mobile-web-app-capable" content="yes" />
       <meta name="apple-mobile-web-app-title" content="Viva-Deluxe" />
-      <style dangerouslySetInnerHTML={{ __html: me?.office ? CSS + APP_TAB_CSS : CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: CSS + APP_TAB_CSS }} />
     </head>
-    <body>
+    {/* Leiste unten immer sichtbar: Seite als Spalte, nur der Inhalt scrollt (Ahmed 15.10.: „Leiste erst beim Scrollen“) */}
+    <body class={me && !full ? 'shellbar mshell' : undefined}>
       <header>
         <a href="/m" aria-label="Start">
           <img src="/static/logo-transparent.png" alt="Viva-Deluxe" width="149" height="30" />
@@ -315,7 +330,7 @@ const MLayout: FC<{
         </div>
         {children}
       </main>
-      {me && (
+      {me && !full && (
         <nav class="tabbar">
           {(
             [
@@ -381,9 +396,16 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     }
     if (!id) return null;
     const [e] = await sql<
-      { id: string; personnel_no: string; first_name: string; app_language: string; status: string }[]
+      {
+        id: string;
+        personnel_no: string;
+        first_name: string;
+        app_language: string;
+        status: string;
+        time_mode: Me['timeMode'];
+      }[]
     >`
-      select id, personnel_no, first_name, app_language, status from app.employees where id = ${id}`;
+      select id, personnel_no, first_name, app_language, status, time_mode from app.employees where id = ${id}`;
     if (!e || e.status !== 'aktiv') return null;
     const sites = await sql<{ id: string; name: string; site_no: string }[]>`
       select s.id, s.name, s.site_no from app.sites s
@@ -402,10 +424,17 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       lang: isLang(e.app_language) ? e.app_language : 'de',
       sites,
       office,
+      timeMode: e.time_mode ?? 'alle',
     };
   };
 
-  const render = (c: Context<AppEnv>, lang: Lang, me: Me | null, body: Child) =>
+  const render = (
+    c: Context<AppEnv>,
+    lang: Lang,
+    me: Me | null,
+    body: Child,
+    opts: { full?: boolean } = {},
+  ) =>
     c.html(
       '<!doctype html>' +
         String(
@@ -413,6 +442,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
             lang={lang}
             path={c.req.path}
             me={me}
+            full={!!opts.full}
             flash={{ ok: c.req.query('ok'), err: c.req.query('fehler') }}
           >
             {body}
@@ -555,24 +585,80 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
   /** „Soll als Ist“: Zeit des geplanten Einsatzes bestätigen (Häkchen Pflicht), direkt in der Einsatz-Karte. */
   const ConfirmBox: FC<{
     lang: Lang;
-    s: { plan: { id: string; start_time: string; end_time: string; site_name: string }; date: string };
+    s: {
+      plan: {
+        id: string;
+        start_time: string;
+        end_time: string;
+        site_name: string;
+        site_id: string;
+        break_minutes: number;
+      };
+      date: string;
+    };
   }> = ({ lang, s }) => (
-    <form method="post" action="/m/bestaetigen" class="confirm" data-net>
-      <input type="hidden" name="plan_id" value={s.plan.id} />
-      <input type="hidden" name="date" value={s.date} />
-      <div class="chk">
-        <input type="checkbox" id={`c-${s.plan.id}-${s.date}`} name="confirm" value="1" required />
-        <label for={`c-${s.plan.id}-${s.date}`}>
-          {t(lang, 'confirm_text', {
-            day: dayLabel(lang, s.date),
-            from: s.plan.start_time,
-            to: s.plan.end_time,
-            site: s.plan.site_name,
-          })}
-        </label>
-      </div>
-      <button class="big go">✓ {t(lang, 'confirm_btn')}</button>
-    </form>
+    <>
+      <form method="post" action="/m/bestaetigen" class="confirm" data-net>
+        <input type="hidden" name="plan_id" value={s.plan.id} />
+        <input type="hidden" name="date" value={s.date} />
+        <div class="chk">
+          <input type="checkbox" id={`c-${s.plan.id}-${s.date}`} name="confirm" value="1" required />
+          <label for={`c-${s.plan.id}-${s.date}`}>
+            {t(lang, 'confirm_text', {
+              day: dayLabel(lang, s.date),
+              from: s.plan.start_time,
+              to: s.plan.end_time,
+              site: s.plan.site_name,
+            })}
+          </label>
+        </div>
+        <button class="big go">✓ {t(lang, 'confirm_btn')}</button>
+      </form>
+      {/* Anders gearbeitet: Zeit anpassen – geht als Nachtrag an die Objektleitung (Ahmed 15.10.) */}
+      <details class="adjust">
+        <summary>{t(lang, 'adjust_time')}</summary>
+        <form method="post" action="/m/bestaetigen" data-net>
+          <input type="hidden" name="plan_id" value={s.plan.id} />
+          <input type="hidden" name="date" value={s.date} />
+          <input type="hidden" name="site_id" value={s.plan.site_id} />
+          <input type="hidden" name="adjust" value="1" />
+          <input type="hidden" name="id" value={randomUUID()} />
+          <p class="hint">{t(lang, 'adjust_hint')}</p>
+          <div class="two">
+            <div>
+              <label for={`af-${s.plan.id}-${s.date}`}>{t(lang, 'from')}</label>
+              <input
+                id={`af-${s.plan.id}-${s.date}`}
+                type="time"
+                name="start"
+                value={s.plan.start_time}
+                required
+              />
+            </div>
+            <div>
+              <label for={`at-${s.plan.id}-${s.date}`}>{t(lang, 'to')}</label>
+              <input
+                id={`at-${s.plan.id}-${s.date}`}
+                type="time"
+                name="end"
+                value={s.plan.end_time}
+                required
+              />
+            </div>
+          </div>
+          <label for={`ab-${s.plan.id}-${s.date}`}>{t(lang, 'break')}</label>
+          <select id={`ab-${s.plan.id}-${s.date}`} name="break_minutes">
+            {[0, 15, 30, 45, 60].map((m) => (
+              <option value={String(m)} selected={m === (s.plan.break_minutes ?? 0)}>
+                {m} Min.
+              </option>
+            ))}
+          </select>
+          <div style="height:10px" />
+          <button class="big sec">{t(lang, 'adjust_send')}</button>
+        </form>
+      </details>
+    </>
   );
 
   const Times: FC<{ lang: Lang; rows: Awaited<ReturnType<typeof listEntries>> }> = ({ lang, rows }) => (
@@ -604,13 +690,17 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     lang: Lang;
     me: Me;
     running: Awaited<ReturnType<typeof runningEntry>>;
-    siteId?: string;
+    siteId?: string | undefined;
     viaQr?: boolean;
     /** Standort beim Stempeln abfragen (Einstellung Zeiterfassung) */
     geo?: boolean;
     /** geplantes Ende des laufenden Einsatzes (HH:MM) – Rückfrage bei früherem Beenden */
     planEnd?: string | undefined;
-  }> = ({ lang, me, running, siteId, viaQr, geo, planEnd }) =>
+    /** QR-Code des Objekts (Modus „Stoppuhr mit QR“) */
+    token?: string;
+    /** nach dem Scannen sofort starten */
+    autostart?: boolean;
+  }> = ({ lang, me, running, siteId, viaQr, geo, planEnd, token, autostart }) =>
     running ? (
       <div class="card run">
         <div>{t(lang, 'running', { time: clock(running.start_at) })}</div>
@@ -686,17 +776,33 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         </form>
         <script dangerouslySetInnerHTML={{ __html: REMIND_JS }} />
       </div>
+    ) : me.timeMode === 'qr' && !token ? (
+      // Stoppuhr mit QR-Code: Start öffnet die Kamera, nach dem Scannen startet die Zeit am Objekt
+      <div class="card">
+        <button type="button" class="big go" data-scan="start">
+          <Ic n="qr" /> {t(lang, 'qr_start')}
+        </button>
+        <p class="hint">{t(lang, 'qr_required')}</p>
+      </div>
     ) : (
-      <form method="post" action="/m/ein" class="card" data-net data-geo={geo ? '1' : undefined}>
+      <form
+        method="post"
+        action="/m/ein"
+        class="card"
+        data-net
+        data-geo={geo ? '1' : undefined}
+        data-autostart={autostart ? '1' : undefined}
+      >
         <input type="hidden" name="id" value={randomUUID()} />
         <input type="hidden" name="qr" value={viaQr ? '1' : ''} />
+        {token && <input type="hidden" name="token" value={token} />}
         {siteId ? (
           <>
             <input type="hidden" name="site_id" value={siteId} />
           </>
         ) : (
           <>
-            <label for="site">{t(lang, 'choose_site')}</label>
+            <label for="site">{t(lang, 'where_work')}</label>
             <select id="site" name="site_id" required>
               {me.sites.map((s) => (
                 <option value={s.id}>{s.name}</option>
@@ -757,6 +863,11 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     const lastSig = await latestSignature(sql, me.id, signMonth);
     const sheetOpen =
       sheet.rows.some((r) => r.workMinutes || r.absenceMinutes) && lastSig?.sheet_hash !== sheet.hash;
+    // Unterschreiben erst am Monatsende (letzter Tag) bzw. in den ersten 7 Tagen des Folgemonats – dann als
+    // Vollbild, bevor die App weitergeht (Ahmed 15.10.); „Später“ nur für heute, damit Stempeln nie blockiert ist
+    const sheetDue = sheetOpen && (signMonth === today.slice(0, 7) || Number(today.slice(8, 10)) <= 7);
+    if (sheetDue && getCookie(c, 'm_sheet_later') !== today)
+      return c.redirect(`/m/stundenzettel?monat=${signMonth}&zuerst=1`);
     const nowHm = new Date().toLocaleTimeString('de-DE', {
       timeZone: 'Europe/Berlin',
       hour: '2-digit',
@@ -764,7 +875,8 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     });
     const todays = shifts.filter((s) => s.date === today && !s.absence);
     const notes = await siteNotes(todays.map((s) => s.plan.site_id));
-    const pastToConfirm = shifts.filter((s) => !s.entry && !s.absence && s.date < today);
+    const mayConfirm = me.timeMode === 'alle' || me.timeMode === 'bestaetigen';
+    const pastToConfirm = mayConfirm ? shifts.filter((s) => !s.entry && !s.absence && s.date < today) : [];
     const presetSite = todays.find((s) => !s.entry)?.plan.site_id;
     // nur abgeschlossene Zeiten zählen als erledigt (laufende Stempelung nicht – Bedientest 10.10.)
     const doneToday = todays.filter((s) => s.entry && s.entry.end_at).length;
@@ -783,18 +895,12 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
           <b>{me.first_name}!</b>
         </div>
         <div class="quick">
-          <button type="button" id="scan" hidden>
+          <button type="button" id="scan" hidden={true} data-mode={me.timeMode}>
             <span class="qi">
               <Ic n="qr" />
             </span>
             {t(lang, 'q_scan')}
           </button>
-          <a href="/m/nachtrag">
-            <span class="qi">
-              <Ic n="plus" />
-            </span>
-            {t(lang, 'q_later')}
-          </a>
           <a href="/m/abwesenheit">
             <span class="qi">
               <Ic n="sun" />
@@ -814,7 +920,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
             {t(lang, 'scan_cancel')}
           </button>
         </div>
-        {sheetOpen && (
+        {sheetDue && (
           <a class="big go" href={`/m/stundenzettel?monat=${signMonth}`} style="font-size:18px">
             <Icon name="sign" size={16} /> {t(lang, 'sheet_sign_open', { month: monthName(lang, signMonth) })}
           </a>
@@ -923,24 +1029,23 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
             </div>
             <div class="s">{s.plan.site_name}</div>
             {notes.get(s.plan.site_id) && <div class="note">{notes.get(s.plan.site_id)}</div>}
-            {!s.entry && s.plan.end_time <= nowHm && <ConfirmBox lang={lang} s={s} />}
+            {mayConfirm && !s.entry && s.plan.end_time <= nowHm && <ConfirmBox lang={lang} s={s} />}
           </div>
         ))}
         <div id="clock" />
-        <ClockCard
-          geo={await geoCheckEnabled(sql)}
-          lang={lang}
-          me={{
-            ...me,
-            sites: presetSite
-              ? [...me.sites].sort((a, b) => Number(b.id === presetSite) - Number(a.id === presetSite))
-              : me.sites,
-          }}
-          running={running}
-          planEnd={
-            running ? todays.find((x) => x.plan.site_id === running.site_id)?.plan.end_time : undefined
-          }
-        />
+        {(running || me.timeMode !== 'bestaetigen') && (
+          <ClockCard
+            geo={await geoCheckEnabled(sql)}
+            lang={lang}
+            me={me}
+            // Objekt nicht mehr wählen (Ahmed 15.10.): heutiger Einsatz bzw. einziges Objekt; nur ohne Einsatz fragen
+            siteId={presetSite ?? (me.sites.length === 1 ? me.sites[0]!.id : undefined)}
+            running={running}
+            planEnd={
+              running ? todays.find((x) => x.plan.site_id === running.site_id)?.plan.end_time : undefined
+            }
+          />
+        )}
         <Times lang={lang} rows={times} />
         <PushCard
           save="/m/push/abo"
@@ -1011,6 +1116,8 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
           running={running}
           siteId={site.id}
           viaQr
+          token={c.req.param('token')}
+          autostart={c.req.query('start') === '1' && !running}
           geo={await geoCheckEnabled(sql)}
         />
         <a class="big sec" href="/m">
@@ -1029,10 +1136,18 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     const from = ref ? new URL(ref).pathname : '/m';
     return guard(c, lang, from, async () => {
       const id = typeof b.id === 'string' && /^[0-9a-f-]{36}$/.test(b.id) ? b.id : randomUUID();
+      let siteId = String(b.site_id ?? '');
+      if (me.timeMode === 'bestaetigen') throw new BusinessError(t(lang, 'confirm_open'));
+      if (me.timeMode === 'qr') {
+        const [s] = await sql<{ id: string }[]>`
+          select id from app.sites where clock_token = ${String(b.token ?? '')} and active`;
+        if (!s) throw new BusinessError(t(lang, 'qr_required'));
+        siteId = s.id;
+      }
       await clockIn(sql, {
         id,
         employeeId: me.id,
-        siteId: String(b.site_id ?? ''),
+        siteId,
         viaQr: b.qr === '1',
         actor: `m:${me.personnel_no}`,
         geo: geoOf(b),
@@ -1210,12 +1325,21 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     const sig = await latestSignature(sql, me.id, month);
     const signedNow = sig?.sheet_hash === sheet.hash;
     const tt = sheet.totals;
+    const today = todayBerlin();
+    // erst ab dem letzten Tag des Monats unterschreiben (Ahmed 15.10.)
+    const complete = month < today.slice(0, 7) || monthToSign(today) === month;
+    const first = c.req.query('zuerst') === '1' && !signedNow && complete;
     return render(
       c,
       lang,
       me,
       <>
         <h1>{t(lang, 'sheet_title', { month: monthName(lang, month) })}</h1>
+        {first && (
+          <div class="card note" style="font-size:17px">
+            <b>{t(lang, 'sheet_must', { month: monthName(lang, month) })}</b>
+          </div>
+        )}
         <div class="card">
           {sheet.rows
             .filter((r) => r.workMinutes || r.absenceMinutes || r.start)
@@ -1281,6 +1405,8 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
               })}
             </b>
           </div>
+        ) : !complete ? (
+          <p class="hint">{t(lang, 'sheet_from')}</p>
         ) : (
           <form method="post" action={`/m/stundenzettel?monat=${month}`} class="card">
             {sig && (
@@ -1306,12 +1432,32 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
             </div>
           </form>
         )}
-        <a class="big sec" href="/m">
-          {t(lang, 'back')}
-        </a>
-        {!signedNow && <script dangerouslySetInnerHTML={{ __html: SIGN_JS }} />}
+        {first ? (
+          <form method="post" action="/m/stundenzettel/spaeter" style="margin:0">
+            <button class="link" style="width:100%;padding:12px;color:var(--mut)">
+              {t(lang, 'sheet_later')}
+            </button>
+          </form>
+        ) : (
+          <a class="big sec" href="/m">
+            {t(lang, 'back')}
+          </a>
+        )}
+        {!signedNow && complete && <script dangerouslySetInnerHTML={{ __html: SIGN_JS }} />}
       </>,
+      { full: first },
     );
+  });
+
+  app.post('/m/stundenzettel/spaeter', (c) => {
+    setCookie(c, 'm_sheet_later', todayBerlin(), {
+      path: '/m',
+      maxAge: 86400,
+      sameSite: 'Lax',
+      secure,
+      httpOnly: true,
+    });
+    return c.redirect('/m', 303);
   });
 
   app.post('/m/stundenzettel', async (c) => {
@@ -1358,6 +1504,20 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     const lang = langOf(c, me);
     const b = await c.req.parseBody();
     return guard(c, lang, '/m', async () => {
+      if (b.adjust === '1') {
+        await requestCorrection(sql, {
+          id: typeof b.id === 'string' && /^[0-9a-f-]{36}$/.test(b.id) ? b.id : randomUUID(),
+          employeeId: me.id,
+          siteId: String(b.site_id ?? ''),
+          date: String(b.date ?? ''),
+          start: String(b.start ?? ''),
+          end: String(b.end ?? ''),
+          breakMinutes: Number(b.break_minutes ?? 0) || 0,
+          reason: 'Zeit beim Bestätigen angepasst (App)',
+          actor: `m:${me.personnel_no}`,
+        });
+        return back(c, '/m', { ok: t(lang, 'msg_sent') });
+      }
       await confirmPlanned(sql, {
         employeeId: me.id,
         planId: String(b.plan_id ?? ''),
@@ -1371,88 +1531,10 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
 
   // ---------------------------------------------------------------- Nachtrag
 
-  app.get('/m/nachtrag', async (c) => {
-    const { me, res } = await requireMe(c);
-    if (!me) return res!;
-    const lang = langOf(c, me);
-    const today = todayBerlin();
-    return render(
-      c,
-      lang,
-      me,
-      <>
-        <h1>{t(lang, 'correction')}</h1>
-        <form method="post" action="/m/nachtrag" class="card" data-net>
-          <input type="hidden" name="id" value={randomUUID()} />
-          <label for="date">{t(lang, 'date')}</label>
-          <input
-            id="date"
-            type="date"
-            name="date"
-            value={today}
-            max={today}
-            min={addDays(today, -31)}
-            required
-          />
-          <label for="site">{t(lang, 'choose_site')}</label>
-          <select id="site" name="site_id" required>
-            {me.sites.map((s) => (
-              <option value={s.id}>{s.name}</option>
-            ))}
-          </select>
-          <div class="two">
-            <div>
-              <label for="from">{t(lang, 'from')}</label>
-              <input id="from" type="time" name="start" required />
-            </div>
-            <div>
-              <label for="to">{t(lang, 'to')}</label>
-              <input id="to" type="time" name="end" required />
-            </div>
-          </div>
-          <label for="break">{t(lang, 'break')}</label>
-          <input
-            id="break"
-            type="number"
-            inputmode="numeric"
-            name="break_minutes"
-            min="0"
-            max="240"
-            value="0"
-          />
-          <p class="hint">{t(lang, 'break_hint')}</p>
-          <label for="reason">{t(lang, 'reason')}</label>
-          <input id="reason" name="reason" placeholder={t(lang, 'reason_ph')} required />
-          <div style="height:14px" />
-          <button class="big go">{t(lang, 'send')}</button>
-        </form>
-        <a class="big sec" href="/m">
-          {t(lang, 'back')}
-        </a>
-      </>,
-    );
-  });
+  // Nachtragen nur noch über die Objektleitung (Ahmed 15.10.) – in der App „Zeit anpassen“ am Einsatz
+  app.get('/m/nachtrag', (c) => c.redirect('/m'));
 
-  app.post('/m/nachtrag', async (c) => {
-    const { me, res } = await requireMe(c);
-    if (!me) return res!;
-    const lang = langOf(c, me);
-    const b = await c.req.parseBody();
-    return guard(c, lang, '/m/nachtrag', async () => {
-      await requestCorrection(sql, {
-        id: typeof b.id === 'string' && /^[0-9a-f-]{36}$/.test(b.id) ? b.id : randomUUID(),
-        employeeId: me.id,
-        siteId: String(b.site_id ?? ''),
-        date: String(b.date ?? ''),
-        start: String(b.start ?? ''),
-        end: String(b.end ?? ''),
-        breakMinutes: Number(b.break_minutes ?? 0) || 0,
-        reason: String(b.reason ?? ''),
-        actor: `m:${me.personnel_no}`,
-      });
-      return back(c, '/m', { ok: t(lang, 'msg_sent') });
-    });
-  });
+  app.post('/m/nachtrag', (c) => c.redirect('/m', 303));
 
   // ---------------------------------------------------------------- Abwesenheit
 

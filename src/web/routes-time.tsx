@@ -1085,6 +1085,9 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
     const [autoCfg] = await sql<{ days: number | null; since: string | null }[]>`
       select auto_confirm_days as days, auto_confirm_since::text as since from app.time_settings`;
     const geo = await geoCheckEnabled(sql);
+    const modes = await sql<{ id: string; name: string; personnel_no: string; time_mode: string }[]>`
+      select id, last_name || ', ' || first_name as name, personnel_no, time_mode
+        from app.employees where status = 'aktiv' order by last_name, first_name`;
     const [withGeo] = await sql<{ n: number; all: number }[]>`
       select count(*) filter (where geo_lat is not null)::int as n, count(*)::int as all from app.sites where active`;
     return shell(
@@ -1115,6 +1118,60 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
             der Anwesenheit am Einsatzort); gibt es einen Betriebsrat, ist er zu beteiligen (§ 87 Abs. 1 Nr. 6
             BetrVG). Ins Verzeichnis der Verarbeitungstätigkeiten aufnehmen.
           </p>
+          <div class="formfoot">
+            <button class="btn">Speichern</button>
+          </div>
+        </form>
+        <form method="post" action="/zeiterfassung/einstellungen/art" class="card" style="max-width:720px">
+          <h3 style="margin-top:0">Art der Zeiterfassung in der App (je Mitarbeiter)</h3>
+          <p class="small mut">
+            <b>Alle Wege</b>: Einsatz bestätigen (auch mit geänderter Zeit) und Stoppuhr.{' '}
+            <b>Nur bestätigen</b>: keine Stoppuhr. <b>Stoppuhr</b>: Start/Stopp, kein Bestätigen der
+            Plan-Zeit. <b>Stoppuhr mit QR-Code</b>: Start nur durch Scannen des QR-Codes am Objekt (Kamera
+            öffnet sich beim Start).
+          </p>
+          <input
+            type="search"
+            placeholder="Mitarbeiter suchen …"
+            data-filter-list="#tm-list"
+            style="max-width:320px;margin-bottom:8px"
+            aria-label="Mitarbeiter suchen"
+          />
+          <div class="tbl" style="max-height:420px;overflow:auto">
+            <table id="tm-list">
+              <thead>
+                <tr>
+                  <th>Mitarbeiter</th>
+                  <th>Zeiterfassung</th>
+                </tr>
+              </thead>
+              <tbody>
+                {modes.map((e) => (
+                  <tr data-filter-item>
+                    <td>
+                      {e.name} <span class="small mut">{e.personnel_no}</span>
+                    </td>
+                    <td>
+                      <select name={`tm_${e.id}`} data-nosearch aria-label={`Zeiterfassung ${e.name}`}>
+                        {(
+                          [
+                            ['alle', 'Alle Wege'],
+                            ['bestaetigen', 'Nur Einsatz bestätigen'],
+                            ['stoppuhr', 'Stoppuhr'],
+                            ['qr', 'Stoppuhr mit QR-Code'],
+                          ] as const
+                        ).map(([v, l]) => (
+                          <option value={v} selected={e.time_mode === v}>
+                            {l}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <div class="formfoot">
             <button class="btn">Speichern</button>
           </div>
@@ -1174,6 +1231,22 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
         </form>
       </>,
     );
+  });
+
+  app.post('/zeiterfassung/einstellungen/art', async (c) => {
+    const b = await c.req.parseBody();
+    let n = 0;
+    for (const [k, v] of Object.entries(b)) {
+      const m = /^tm_([0-9a-f-]{36})$/.exec(k);
+      if (!m || typeof v !== 'string' || !['alle', 'bestaetigen', 'stoppuhr', 'qr'].includes(v)) continue;
+      const r =
+        await sql`update app.employees set time_mode = ${v} where id = ${m[1]!} and time_mode <> ${v}`;
+      n += r.count;
+    }
+    if (n)
+      await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+                values (${c.get('actor')}, 'time_mode', 'employees', null, ${sql.json({ changed: n })})`;
+    return back(c, '/zeiterfassung/einstellungen', { ok: `Gespeichert (${n} geändert).` });
   });
 
   app.post('/zeiterfassung/einstellungen/plan-als-ist', async (c) => {

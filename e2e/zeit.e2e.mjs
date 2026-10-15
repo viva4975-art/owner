@@ -119,9 +119,13 @@ if ((await confirmCards.count()) > 0) {
     'ohne Häkchen nicht absendbar',
     (await m.url()).endsWith('/m') || !(await flash(m)).includes('bestätigt'),
   );
-  await card.locator('input[type=checkbox]').check();
-  await Promise.all([m.waitForNavigation({ waitUntil: 'load' }), card.locator('button').click()]);
-  check('bestätigt', (await flash(m)).includes('bestätigt'), await flash(m));
+  // anders gearbeitet: Zeit anpassen (geht als Nachtrag an die Objektleitung)
+  const adj = m.locator('details.adjust').first();
+  await adj.locator('summary').click();
+  await adj.locator('input[name=start]').fill('00:10');
+  await adj.locator('input[name=end]').fill('00:40');
+  await Promise.all([m.waitForNavigation({ waitUntil: 'load' }), adj.locator('button').click()]);
+  check('angepasste Zeit gesendet', (await flash(m)).includes('Gesendet'), await flash(m));
 }
 
 await m.goto(B + new URL(qrUrl).pathname);
@@ -147,14 +151,8 @@ check('ausgestempelt', (await flash(m)).includes('Ausgestempelt'), await flash(m
 
 // ---------- 4. Nachtrag + Urlaub ----------
 console.log('4. Nachtrag und Urlaub');
-await m.click('.quick a[href="/m/nachtrag"]');
 const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
-await m.fill('#date', yesterday);
-await m.fill('#from', '17:00');
-await m.fill('#to', '19:30');
-await m.fill('#reason', 'Handy-Akku leer');
-await nav(m, 'button:has-text("Absenden")');
-check('Nachtrag gesendet', (await flash(m)).includes('Gesendet'), await flash(m));
+check('Nachtragen nur noch über die Objektleitung', (await m.locator('.quick a[href="/m/nachtrag"]').count()) === 0);
 await m.click('.quick a[href="/m/abwesenheit"]');
 await m.fill('#from', '2026-12-21');
 await m.fill('#to', '2026-12-23');
@@ -192,9 +190,9 @@ check('Tagesübersicht zeigt Mitarbeiter', (await o.content()).includes(`Test${s
 await o.screenshot({ path: `${out}/z10-tagesuebersicht.png`, fullPage: true });
 
 // Prüfbericht Zoll entfällt – die Stundenliste je Mitarbeiter enthält Beginn/Ende/Dauer
-await o.goto(B + `/personal/${empId}/stundenzettel?monat=${yesterday.slice(0, 7)}`);
+await o.goto(B + `/personal/${empId}/stundenzettel?monat=${today.slice(0, 7)}`);
 const rep = await o.content();
-check('Stundenliste enthält Nachtrag 17:00–19:30', rep.includes('17:00') && rep.includes('19:30'));
+check('Stundenliste enthält angepasste Zeit 00:10–00:40', rep.includes('00:10') && rep.includes('00:40'));
 await o.screenshot({ path: `${out}/z11-stundenliste.png`, fullPage: true });
 check(
   'Prüfbericht leitet um',

@@ -17,6 +17,15 @@ export const isLang = (l: unknown): l is Lang => typeof l === 'string' && l in L
 type Dict = Record<string, string>;
 
 const de: Dict = {
+  adjust_time: 'Zeit anpassen',
+  adjust_hint: 'Anders gearbeitet? Zeit ändern und senden – die Objektleitung gibt sie frei.',
+  adjust_send: 'Geänderte Zeit senden',
+  sheet_later: 'Später (nur heute)',
+  sheet_must: 'Bitte jetzt deine Stundenliste für {month} prüfen und unterschreiben.',
+  qr_start: 'QR-Code scannen und starten',
+  qr_required: 'Bitte zum Starten den QR-Code am Objekt scannen.',
+  where_work: 'Kein Einsatz geplant – wo arbeitest du?',
+  sheet_from: 'Unterschreiben ab dem letzten Tag des Monats.',
   cal_subscribe: 'Einsätze im Handy-Kalender anzeigen',
   ws_open: 'Arbeitsscheine zum Unterschreiben',
   orders_next: 'Einzelaufträge',
@@ -189,6 +198,15 @@ const de: Dict = {
 };
 
 const en: Dict = {
+  adjust_time: 'Adjust time',
+  adjust_hint: 'Worked differently? Change the time and send – your site manager approves it.',
+  adjust_send: 'Send changed time',
+  sheet_later: 'Later (today only)',
+  sheet_must: 'Please check and sign your timesheet for {month} now.',
+  qr_start: 'Scan QR code and start',
+  qr_required: 'Please scan the QR code at the site to start.',
+  where_work: 'No shift planned – where are you working?',
+  sheet_from: 'Signing opens on the last day of the month.',
   cal_subscribe: 'Show shifts in phone calendar',
   ws_open: 'Work reports to sign',
   orders_next: 'Single jobs',
@@ -361,6 +379,15 @@ const en: Dict = {
 };
 
 const ro: Dict = {
+  adjust_time: 'Ajustează ora',
+  adjust_hint: 'Ai lucrat altfel? Modifică ora și trimite – responsabilul de obiectiv o aprobă.',
+  adjust_send: 'Trimite ora modificată',
+  sheet_later: 'Mai târziu (doar azi)',
+  sheet_must: 'Te rugăm să verifici și să semnezi acum pontajul pentru {month}.',
+  qr_start: 'Scanează codul QR și pornește',
+  qr_required: 'Pentru a porni, scanează codul QR de la obiectiv.',
+  where_work: 'Nicio tură planificată – unde lucrezi?',
+  sheet_from: 'Semnarea este posibilă din ultima zi a lunii.',
   cal_subscribe: 'Afișează turele în calendarul telefonului',
   ws_open: 'Fișe de lucru de semnat',
   orders_next: 'Comenzi individuale',
@@ -533,6 +560,15 @@ const ro: Dict = {
 };
 
 const tr: Dict = {
+  adjust_time: 'Saati düzelt',
+  adjust_hint: 'Farklı mı çalıştın? Saati değiştir ve gönder – sorumlu onaylar.',
+  adjust_send: 'Değişen saati gönder',
+  sheet_later: 'Sonra (sadece bugün)',
+  sheet_must: 'Lütfen {month} çalışma listeni şimdi kontrol et ve imzala.',
+  qr_start: 'QR kodu tara ve başla',
+  qr_required: 'Başlamak için lütfen objedeki QR kodu tara.',
+  where_work: 'Planlanmış görev yok – nerede çalışıyorsun?',
+  sheet_from: 'İmza ayın son gününden itibaren mümkündür.',
   cal_subscribe: 'Görevleri telefon takviminde göster',
   ws_open: 'İmzalanacak iş formları',
   orders_next: 'Tekil işler',
@@ -705,6 +741,15 @@ const tr: Dict = {
 };
 
 const pl: Dict = {
+  adjust_time: 'Popraw czas',
+  adjust_hint: 'Pracowałeś inaczej? Zmień czas i wyślij – kierownik obiektu zatwierdzi.',
+  adjust_send: 'Wyślij zmieniony czas',
+  sheet_later: 'Później (tylko dziś)',
+  sheet_must: 'Sprawdź i podpisz teraz listę godzin za {month}.',
+  qr_start: 'Zeskanuj kod QR i zacznij',
+  qr_required: 'Aby zacząć, zeskanuj kod QR na obiekcie.',
+  where_work: 'Brak zaplanowanej zmiany – gdzie pracujesz?',
+  sheet_from: 'Podpis możliwy od ostatniego dnia miesiąca.',
   cal_subscribe: 'Pokaż zmiany w kalendarzu telefonu',
   ws_open: 'Protokoły pracy do podpisania',
   orders_next: 'Zlecenia jednorazowe',
@@ -877,6 +922,15 @@ const pl: Dict = {
 };
 
 const hr: Dict = {
+  adjust_time: 'Promijeni vrijeme',
+  adjust_hint: 'Radio si drugačije? Promijeni vrijeme i pošalji – voditelj objekta odobrava.',
+  adjust_send: 'Pošalji promijenjeno vrijeme',
+  sheet_later: 'Kasnije (samo danas)',
+  sheet_must: 'Molimo sada provjeri i potpiši evidenciju sati za {month}.',
+  qr_start: 'Skeniraj QR kod i počni',
+  qr_required: 'Za početak skeniraj QR kod na objektu.',
+  where_work: 'Nema planirane smjene – gdje radiš?',
+  sheet_from: 'Potpis je moguć od zadnjeg dana u mjesecu.',
   cal_subscribe: 'Prikaži smjene u kalendaru mobitela',
   ws_open: 'Radni nalozi za potpis',
   orders_next: 'Pojedinačni nalozi',
@@ -1049,6 +1103,15 @@ const hr: Dict = {
 };
 
 const bg: Dict = {
+  adjust_time: 'Промени часа',
+  adjust_hint: 'Работил си различно? Промени часа и изпрати – отговорникът одобрява.',
+  adjust_send: 'Изпрати променения час',
+  sheet_later: 'По-късно (само днес)',
+  sheet_must: 'Моля, провери и подпиши сега списъка с часове за {month}.',
+  qr_start: 'Сканирай QR кода и започни',
+  qr_required: 'За да започнеш, сканирай QR кода на обекта.',
+  where_work: 'Няма планирана смяна – къде работиш?',
+  sheet_from: 'Подписването е възможно от последния ден на месеца.',
   cal_subscribe: 'Покажи смените в календара на телефона',
   ws_open: 'Работни листове за подписване',
   orders_next: 'Единични поръчки',

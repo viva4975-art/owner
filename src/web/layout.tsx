@@ -14,6 +14,11 @@ import { canAccess, canOpen } from './permissions.js';
  */
 /** Leiste unten in der App – auch in den QM-Seiten genutzt. */
 export const APP_TAB_CSS = `
+body.shellbar{display:flex;flex-direction:column;height:100vh;height:100dvh;min-height:0;overflow:hidden}
+body.shellbar>header{flex:none}
+body.shellbar>main{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain}
+body.shellbar>.tabbar,body.shellbar>.apptabs{position:static;flex:none}
+body.mshell>main{max-width:none;width:100%;margin:0;padding-left:max(16px,calc((100% - 528px)/2));padding-right:max(16px,calc((100% - 528px)/2));padding-bottom:24px}
 .appswitch{display:flex;gap:4px;padding:4px;margin:4px 0 14px;background:#f1e3e8;border-radius:14px}.appswitch a{flex:1;text-align:center;padding:10px 4px;border-radius:11px;font-weight:600;font-size:14px;color:#6b4a57;text-decoration:none}.appswitch a.on{background:#fff;color:#7d1435;box-shadow:0 1px 4px rgba(125,20,53,.12)}
 .apptabs{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:#fff;border-top:1px solid #efe3e7;padding-bottom:env(safe-area-inset-bottom)}
 .apptabs a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 2px 10px;font-size:12px;color:#5b4650;text-decoration:none}
@@ -1612,7 +1617,7 @@ export const Layout: FC<{
         <style dangerouslySetInnerHTML={{ __html: CSS }} />
       </head>
       {app ? (
-        <body class="appmode">
+        <body class="appmode shellbar">
           <header class="apphead">
             <a
               href="/qm"

@@ -164,7 +164,7 @@ export const QmLayout: FC<{
       <style dangerouslySetInnerHTML={{ __html: MCSS + QM_CSS + APP_TAB_CSS }} />
       <script src="/m/push.js" defer />
     </head>
-    <body>
+    <body class="shellbar mshell">
       <main>
         {flash.ok && (
           <div class="flash ok" role="status">

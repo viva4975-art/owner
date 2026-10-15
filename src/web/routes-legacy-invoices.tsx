@@ -297,7 +297,7 @@ export function registerLegacyInvoiceRoutes(ctx: Ctx) {
             onsubmit="return confirm('Rechnungskorrektur als Entwurf anlegen?')"
           >
             <input type="hidden" name="key" value={key} />
-            <label for="w_amt">Minderung brutto (€)</label>
+            <label for="w_amt">Minderung brutto (€, ohne Minus eingeben)</label>
             <input id="w_amt" name="betrag" inputmode="decimal" required placeholder="0,00" />
             <label for="w_reason">Grund (steht auf der Rechnungskorrektur)</label>
             <input
@@ -344,7 +344,12 @@ export function registerLegacyInvoiceRoutes(ctx: Ctx) {
     const key = /^[0-9a-f-]{36}$/.test(String(b.key ?? '')) ? String(b.key) : randomUUID();
     let amount: bigint;
     try {
-      amount = parseEuro(String(b.betrag ?? ''));
+      // Betrag positiv eingeben; ein versehentliches Minus wird ignoriert (das Minus setzt die Korrektur selbst)
+      amount = parseEuro(
+        String(b.betrag ?? '')
+          .trim()
+          .replace(/^[-−]\s*/, ''),
+      );
     } catch {
       throw new BusinessError('Betrag ungültig');
     }

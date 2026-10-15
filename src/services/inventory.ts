@@ -352,6 +352,7 @@ export interface KeyRow {
   description: string;
   quantity: number;
   holder_employee_id: string | null;
+  holder_supplier_id: string | null;
   issued_at: string | null;
   notes: string | null;
   version: number;
@@ -368,8 +369,10 @@ export const keyInput = z.object({
 export async function listKeys(sql: Sql) {
   return sql<(KeyRow & { site_name: string; site_no: string; holder_name: string | null })[]>`
     select k.*, s.name as site_name, s.site_no,
-           case when e.id is null then null else e.last_name || ', ' || e.first_name end as holder_name
+           case when e.id is not null then e.last_name || ', ' || e.first_name
+                when sp.id is not null then sp.name || ' (NU)' end as holder_name
       from app.keys k join app.sites s on s.id = k.site_id left join app.employees e on e.id = k.holder_employee_id
+      left join app.suppliers sp on sp.id = k.holder_supplier_id
      order by s.site_no, k.key_no`;
 }
 
@@ -410,21 +413,25 @@ export async function keyActionTx(
   at: string,
   note: string | null,
   actor: string,
+  supplierId: string | null = null,
 ) {
   const [k] = await tx<KeyRow[]>`select * from app.keys where id = ${keyId} for update`;
   if (!k) throw new BusinessError('Schlüssel nicht gefunden');
   if (action === 'ausgabe') {
-    if (!employeeId) throw new BusinessError('Bitte Mitarbeiter wählen');
-    if (k.holder_employee_id)
+    if (!employeeId && !supplierId) throw new BusinessError('Bitte Mitarbeiter wählen');
+    if (k.holder_employee_id || k.holder_supplier_id)
       throw new BusinessError(`Schlüssel ${k.key_no} ist bereits ausgegeben – zuerst Rückgabe buchen`);
-    await tx`update app.keys set holder_employee_id = ${employeeId}, issued_at = ${at} where id = ${keyId}`;
+    await tx`update app.keys set holder_employee_id = ${employeeId}, holder_supplier_id = ${employeeId ? null : supplierId},
+                    issued_at = ${at} where id = ${keyId}`;
   } else {
-    if (!k.holder_employee_id) throw new BusinessError(`Schlüssel ${k.key_no} ist nicht ausgegeben`);
+    if (!k.holder_employee_id && !k.holder_supplier_id)
+      throw new BusinessError(`Schlüssel ${k.key_no} ist nicht ausgegeben`);
     employeeId = k.holder_employee_id;
-    await tx`update app.keys set holder_employee_id = null, issued_at = null where id = ${keyId}`;
+    supplierId = k.holder_supplier_id;
+    await tx`update app.keys set holder_employee_id = null, holder_supplier_id = null, issued_at = null where id = ${keyId}`;
   }
-  await tx`insert into app.key_log (key_id, action, employee_id, at, note, created_by)
-           values (${keyId}, ${action}, ${employeeId}, ${at}, ${note}, ${actor})`;
+  await tx`insert into app.key_log (key_id, action, employee_id, supplier_id, at, note, created_by)
+           values (${keyId}, ${action}, ${employeeId}, ${employeeId ? null : supplierId}, ${at}, ${note}, ${actor})`;
 }
 
 export async function keyLog(sql: Sql, keyId: string) {

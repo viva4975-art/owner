@@ -9,7 +9,7 @@ import { signSession, verifySession } from '../services/employee-auth.js';
 import { ADVANCE_METHOD, deleteAdvance, listAdvances, saveAdvance } from '../services/advances.js';
 import { listIncoming } from '../services/purchasing.js';
 import { BusinessError } from '../services/errors.js';
-import { listHandovers } from '../services/handovers.js';
+import { HANDOVER_STATUS, listHandovers } from '../services/handovers.js';
 import {
   addPriceChange,
   BILLING,
@@ -1464,6 +1464,12 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       >`select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`,
     ]);
     const draft = !sc || sc.status === 'entwurf';
+    // Übergaben an den NU für dieses Objekt (Schlüssel, Kleidung, Einweisung – Ahmed 15.10.)
+    const nuHandovers = sc
+      ? (await listHandovers(sql, { scope: null, supplierId: sc.supplier_id })).filter(
+          (h) => h.site_id === sc.site_id && h.status !== 'storniert',
+        )
+      : [];
     const tracking = sc ? ((await billingTracking(sql, [id], { limit: 24 })).get(id) ?? []) : [];
     const hours: SubcontractHourRow[] = sc?.billing === 'stunde' ? await listSubcontractHours(sql, id) : [];
     const hourMonths = new Map<string, { minutes: number; amount: bigint; rows: typeof hours }>();
@@ -1727,6 +1733,55 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                     <button class="btn sec sm">Hochladen</button>
                   </form>
                 </details>
+              </>
+            )}
+            {(sc.status === 'erteilt' || sc.status === 'beendet') && (
+              <>
+                <h3 id="uebergaben">Schlüssel, Kleidung &amp; Einweisung</h3>
+                <p class="small mut" style="margin-top:0">
+                  Bei festen Aufträgen: Übergaben und die Objekteinweisung am Handy/Tablet vom Nachunternehmer
+                  unterschreiben lassen. Schlüssel werden im Schlüsselbuch beim Nachunternehmer geführt.
+                </p>
+                <div class="actions">
+                  {(
+                    [
+                      ['schluessel', 'Schlüssel übergeben', ''],
+                      ['kleidung', 'Arbeitskleidung übergeben', ''],
+                      ['dokument', 'Objekteinweisung unterschreiben', '&vorlage=einweisung-nu'],
+                    ] as const
+                  ).map(([art, label, extra]) => (
+                    <a
+                      class="btn sec sm"
+                      href={`/uebergaben/${randomUUID()}?an=nu&nachunternehmer=${sc.supplier_id}&objekt=${sc.site_id}&art=${art}${extra}`}
+                    >
+                      + {label}
+                    </a>
+                  ))}
+                </div>
+                {nuHandovers.length > 0 && (
+                  <div class="tbl" style="margin-top:8px">
+                    <table>
+                      <tbody>
+                        {nuHandovers.map((h) => (
+                          <tr>
+                            <td>
+                              <a href={`/uebergaben/${h.id}`}>{h.number}</a>
+                            </td>
+                            <td>{h.title}</td>
+                            <td class="small">{dateDe(h.handover_date)}</td>
+                            <td>
+                              <span
+                                class={`badge ${h.status === 'entwurf' ? 'warn' : h.status === 'unterschrieben' ? 'ok' : ''}`}
+                              >
+                                {HANDOVER_STATUS[h.status]}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </>
             )}
             {sc.status === 'erteilt' && (

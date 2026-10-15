@@ -470,7 +470,7 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
          order by 3 desc, e.last_name, e.first_name`;
       const back = `/objekte/${s.id}/schluessel`;
       const nextNo = `S-${s.site_no}-${String(keys.length + 1).padStart(2, '0')}`;
-      const out = keys.filter((k) => k.holder_employee_id).length;
+      const out = keys.filter((k) => k.holder_employee_id || k.holder_supplier_id).length;
       return (
         <>
           <p class="mut" style="margin-top:0">
@@ -519,7 +519,7 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                       >
                         <input type="hidden" name="back" value={back} />
                         <input type="hidden" name="at" value={todayBerlin()} />
-                        {k.holder_employee_id ? (
+                        {k.holder_employee_id || k.holder_supplier_id ? (
                           <button class="btn sm sec" name="action" value="rueckgabe">
                             Rückgabe heute
                           </button>

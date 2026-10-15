@@ -128,7 +128,7 @@ check('Angebot mit Objekt vorbelegt', p.url().includes('/angebote/'), p.url());
 
 console.log('5. Raumbuch aus Excel/CSV importieren');
 await p.goto(`${B}/objekte/${SITE}/raumbuch`);
-await p.click('a:has-text("Aus Excel importieren")');
+await p.click('a:has-text("Importieren (Excel")');
 await p.waitForLoadState();
 const csvRooms = `Raumbuch Verwaltung\n\nEtage;Raum-Nr.;Raum;Raumart;Bodenbelag;Fläche m²;Intervall\nEG;I${tag}1;Empfang;Eingangsbereich;Fliesen;32,5;5x wöchentlich\nEG;I${tag}2;Archiv;Testart Q${tag};PVC;12;14-tägig\nEG;I${tag}3;Kaputt;Büro;;abc;täglich\n`;
 await p.setInputFiles('#file', { name: 'raumbuch.csv', mimeType: 'text/csv', buffer: Buffer.from(csvRooms) });

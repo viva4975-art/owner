@@ -7,6 +7,7 @@ import { type Cents, formatEuro } from '../domain/money/money.js';
 import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import { clipInfo } from '../pdf/render.js';
 import { assertVersion } from './crm.js';
+import { parseBody } from './instructions.js';
 import { BusinessError } from './errors.js';
 import { keyActionTx } from './inventory.js';
 import { getSeller } from './masterdata.js';
@@ -246,10 +247,8 @@ export async function saveHandover(deps: Deps, id: string, p: HandoverInput, act
   if (!recipient) throw new BusinessError('Bitte Empfänger wählen');
   if (!p.employeeId && !p.supplierId && p.kind !== 'sonstiges')
     throw new BusinessError('Bitte Mitarbeiter oder Nachunternehmer wählen');
-  if (p.kind === 'schluessel' && !p.employeeId)
-    throw new BusinessError(
-      'Schlüssel werden im Schlüsselbuch je Mitarbeiter geführt – bitte Mitarbeiter wählen',
-    );
+  if (p.kind === 'schluessel' && !p.employeeId && !p.supplierId)
+    throw new BusinessError('Schlüssel: bitte Mitarbeiter oder Nachunternehmer wählen');
   if (p.kind === 'schluessel' && !p.siteId) throw new BusinessError('Bitte Objekt wählen');
 
   const items = await normalizeItems(sql, p);
@@ -406,9 +405,13 @@ async function applyEffects(tx: Tx, h: Handover, actor: string) {
     for (const it of h.items) {
       if (!it.key_id) continue;
       if (h.direction === 'rueckgabe') {
-        const [k] = await tx<{ holder_employee_id: string | null; key_no: string }[]>`
-          select holder_employee_id, key_no from app.keys where id = ${it.key_id}`;
-        if (k?.holder_employee_id !== h.employee_id)
+        const [k] = await tx<
+          { holder_employee_id: string | null; holder_supplier_id: string | null; key_no: string }[]
+        >`select holder_employee_id, holder_supplier_id, key_no from app.keys where id = ${it.key_id}`;
+        const holds = h.employee_id
+          ? k?.holder_employee_id === h.employee_id
+          : !!h.supplier_id && k?.holder_supplier_id === h.supplier_id;
+        if (!holds)
           throw new BusinessError(
             `Schlüssel ${k?.key_no ?? ''} ist laut Schlüsselbuch nicht bei ${h.recipient_name}`,
           );
@@ -421,6 +424,7 @@ async function applyEffects(tx: Tx, h: Handover, actor: string) {
         h.handover_date,
         `Übergabe ${h.number}`,
         actor,
+        h.supplier_id,
       );
     }
   }
@@ -569,7 +573,8 @@ export async function renderHandoverPdf(deps: Deps, id: string): Promise<Uint8Ar
             `Dokument: ${h.document_name} (SHA-256 ${h.document_sha256!.slice(0, 16)}…) – liegt diesem Protokoll bei.`,
           ]
         : []),
-      ...(h.body_text ? [h.body_text] : []),
+      // Text aus Unterweisungs-Vorlagen: „## “ = Überschrift, „- “ = Punkt → je Block ein Absatz
+      ...(h.body_text ? parseBody(h.body_text).map((b) => (b.kind === 'li' ? `•  ${b.text}` : b.text)) : []),
       ...(h.wage_deduction ? [WAGE_DEDUCTION_TEXT] : []),
       ...(h.items.some((i) => i.ppe)
         ? ['Persönliche Schutzausrüstung (PSA) wird kostenlos gestellt (§ 3 Abs. 3 ArbSchG).']

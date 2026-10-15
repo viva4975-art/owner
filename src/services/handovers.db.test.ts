@@ -221,6 +221,64 @@ describe.skipIf(!available)('Übergaben mit Unterschrift', () => {
     expect((await holdings(sql, emp)).keys).toEqual([]);
   });
 
+  it('Schlüssel an Nachunternehmer: Schlüsselbuch beim NU, Rückgabe nur vom NU (Runde 43)', async () => {
+    const key = randomUUID();
+    await saveKey(
+      sql,
+      key,
+      { key_no: 'GS-NU1', site_id: DEMO.siteSchool, description: 'Turnhalle', quantity: '1' },
+      null,
+      't',
+    );
+    const nu = randomUUID();
+    await sql`insert into app.suppliers (id, supplier_no, name, kind)
+              values (${nu}, 'NU-T43', 'Glas Test GmbH', 'nachunternehmer')`;
+    const id = randomUUID();
+    await saveHandover(
+      deps,
+      id,
+      input({
+        kind: 'schluessel',
+        employeeId: null,
+        supplierId: nu,
+        recipientName: 'Herr Glas',
+        items: [{ label: '', key_id: key, qty: 1 }],
+      }),
+      't',
+    );
+    await signHandover(deps, id, { name: 'Herr Glas', png }, 'ol');
+    const [k] = await sql<{ holder_supplier_id: string | null; holder_employee_id: string | null }[]>`
+      select holder_supplier_id, holder_employee_id from app.keys where id = ${key}`;
+    expect(k).toEqual({ holder_supplier_id: nu, holder_employee_id: null });
+    // Mitarbeiter-Rückgabe passt nicht
+    const wrong = randomUUID();
+    await saveHandover(
+      deps,
+      wrong,
+      input({ kind: 'schluessel', direction: 'rueckgabe', items: [{ label: '', key_id: key, qty: 1 }] }),
+      't',
+    );
+    await expect(signHandover(deps, wrong, { name: 'Ana', png }, 'ol')).rejects.toThrow(/nicht bei/);
+    const ret = randomUUID();
+    await saveHandover(
+      deps,
+      ret,
+      input({
+        kind: 'schluessel',
+        direction: 'rueckgabe',
+        employeeId: null,
+        supplierId: nu,
+        items: [{ label: '', key_id: key, qty: 1 }],
+      }),
+      't',
+    );
+    await signHandover(deps, ret, { name: 'Herr Glas', png }, 'ol');
+    const [k2] = await sql<{ holder_supplier_id: string | null }[]>`
+      select holder_supplier_id from app.keys where id = ${key}`;
+    expect(k2!.holder_supplier_id).toBeNull();
+    expect((await keyLog(sql, key)).map((l) => l.action)).toEqual(['rueckgabe', 'ausgabe']);
+  });
+
   it('Dokument: PDF wird mit dem Protokoll zusammengeführt', async () => {
     const doc = await PDFDocument.create();
     doc.addPage();

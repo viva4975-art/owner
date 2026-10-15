@@ -234,12 +234,21 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
     ]);
     const objectNames = [...objects.map((o) => o.name), ...vehicles.map((v) => `Fahrzeug ${v.label}`)];
     const recipientPerson = h && !h.employee_id ? h.recipient_name.replace(/ \([^)]*\)$/, '') : '';
+    // Vorlage aus „Unterweisungen (Textvorlagen)“, z. B. Objekteinweisung für Nachunternehmer
+    const vorlage = c.req.query('vorlage');
+    const [preset] =
+      !h && kind === 'dokument' && vorlage && /^[a-z0-9-]{2,40}$/.test(vorlage)
+        ? await sql<{ title: string; body: string }[]>`
+            select title, body from app.instruction_templates where id = md5(${'unterweisung:' + vorlage})::uuid`
+        : [];
     const keys =
       kind === 'schluessel' && siteId
         ? await sql<{ id: string; key_no: string; description: string; holder: string | null }[]>`
             select k.id, k.key_no, k.description,
-                   case when e.id is null then null else e.last_name || ', ' || e.first_name end as holder
+                   case when e.id is not null then e.last_name || ', ' || e.first_name
+                        when sp.id is not null then sp.name end as holder
               from app.keys k left join app.employees e on e.id = k.holder_employee_id
+              left join app.suppliers sp on sp.id = k.holder_supplier_id
              where k.site_id = ${siteId} order by k.key_no`
         : [];
     const devices =
@@ -278,7 +287,7 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
             Art
           </label>
           <select id="sel-art" name="art" onchange="this.form.submit()" style="max-width:220px">
-            {(kind === 'schluessel' ? KINDS : NEW_KINDS).map((k) => (
+            {(kind === 'schluessel' || to === 'nu' ? KINDS : NEW_KINDS).map((k) => (
               <option value={k} selected={k === kind}>
                 {HANDOVER_KIND[k]}
               </option>
@@ -306,11 +315,9 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
             <option value="ma" selected={to === 'ma'}>
               eigenen Mitarbeiter
             </option>
-            {kind !== 'schluessel' && (
-              <option value="nu" selected={to === 'nu'}>
-                Nachunternehmer
-              </option>
-            )}
+            <option value="nu" selected={to === 'nu'}>
+              Nachunternehmer
+            </option>
           </select>
           {to === 'nu' && (
             <select
@@ -424,7 +431,7 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
               <input
                 id="title"
                 name="title"
-                value={h?.title ?? ''}
+                value={h?.title ?? preset?.title ?? ''}
                 placeholder="wird sonst automatisch gesetzt"
               />
             </div>
@@ -655,8 +662,8 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
               ? 'Text (z. B. Inhalt der Unterweisung)'
               : 'Zusätzliche Erklärung (optional)'}
           </label>
-          <textarea id="body" name="body_text" rows={kind === 'dokument' ? 6 : 2}>
-            {h?.body_text ?? ''}
+          <textarea id="body" name="body_text" rows={kind === 'dokument' ? (preset ? 16 : 6) : 2}>
+            {h?.body_text ?? preset?.body ?? ''}
           </textarea>
           <label for="note">Bemerkung (z. B. Zustand)</label>
           <input id="note" name="note" value={h?.note ?? ''} />
@@ -892,7 +899,7 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
           kind,
           direction: str(b, 'direction') === 'rueckgabe' ? 'rueckgabe' : 'ausgabe',
           employeeId,
-          supplierId: kind === 'schluessel' ? null : str(b, 'supplier_id'),
+          supplierId: str(b, 'supplier_id'),
           recipientName:
             str(b, 'recipient_name') === '__andere' ? str(b, 'recipient_other') : str(b, 'recipient_name'),
           siteId,

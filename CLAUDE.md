@@ -2990,3 +2990,33 @@ Testadresse.
     Löschen (Entwurf jeder, abgeschlossene nur Admin).
   - **Mitarbeiter-App kompakter wie Fortytools:** Begrüßung einzeilig, Schnellknöpfe 3 je Zeile, Einsatzkarten weiß mit
     Objektnummer, Adresse und Symbol (Uhr offen / Haken erledigt), kleinere Abstände und Knöpfe.
+- 2026-10-15: Runde 43 (Ahmed, 13 Punkte):
+  - **Angebot:** Betreff-Feld entfällt (Titel intern = erste Position), „PDF herunterladen“ ohne „versendet“ und ohne
+    ENTWURF-Wasserzeichen.
+  - **NU-Auftrag anfragen (App):** Leistung als Auswahl; jede Anfrage legt fürs Büro die Aufgabe „NU-Auftrag freigeben:
+    …“ an (Startseite/Aufgaben, feste ID), sie wird beim Erteilen/Stornieren erledigt.
+  - **NU-Bestellung unterschreiben** aufgeräumt (Karte mit Nummer, Firma, Objekt, Leistung, Turnus, Beginn, PDF; große
+    Unterschriftsfläche). **Objektleitung** darf es jetzt auch – nur für Bestellungen ihrer Objekte, ohne Preis auf der
+    Seite (Rechte + Objektprüfung). **Hinweis:** Der Bestellschein (PDF) enthält den Preis – den sieht die Objektleitung
+    beim Öffnen des PDF.
+  - **Zurück = alte Stelle:** Scrollposition je Seite wird gemerkt und bei Zurück/Vor wiederhergestellt (PC und Apps).
+  - **Arbeitsscheine am Handy:** Karten statt breiter Tabelle, ohne untere Leiste; ebenso keine Leiste während einer
+    Qualitätskontrolle und im Personalbogen. Posteingang aus der App entfernt.
+  - **Personalbogen** in 8 kleinen Schritten (Name → Geburt → Adresse → Kontakt → Bank → Aufenthalt → Fotos →
+    Abschluss) mit Fortschrittsbalken, 7 Sprachen. **Fotos** (Ausweis Vorder-/Rückseite, Krankenkassenkarte, Bankkarte,
+    Aufenthaltstitel, SV-Ausweis, Sonstiges) mit der Kamera; im Browser auf 1600 px verkleinert, auf dem Server zu einem
+    PDF (je Foto eine Seite) zusammengefügt. Das PDF sieht nur Personal/Admin (Personalbögen → „Fotos der Unterlagen“);
+    beim „Als Mitarbeiter anlegen“ landet es automatisch in der Personalakte (Personalunterlagen), Bogen = übernommen.
+    Migration `20261127000002`. **Datenschutz:** Ausweiskopien nur, soweit für das Arbeitsverhältnis nötig (z. B.
+    Aufenthaltstitel § 4a AufenthG); nicht benötigte Kopien nicht aufbewahren.
+  - **Unterweisungen als Textvorlagen** (Einstellungen → Unterweisungen, `app.instruction_templates`, Migration
+    `20261127000003`): 9 vorbereitete Texte (Arbeitsschutz allgemein, Gefahrstoffe, Hautschutz, Leitern, Rutschgefahr,
+    Brandschutz, Verschwiegenheit, Schlüssel, Zeiterfassung) + Objekteinweisung NU, änderbar, eigene anlegen. Freigabe
+    am PC (Inhalt: Vorlage / Word / PDF) oder **am Handy** (Verwaltung → Unterweisungen: Vorlage → an alle / Objekt /
+    Auswahl → Frist). Der Text wird eingefroren (`sign_documents.body`), als PDF archiviert und in der Mitarbeiter-App
+    **direkt angezeigt** und unterschrieben. **Texte mit Fachkraft für Arbeitssicherheit/Betriebsarzt abstimmen.**
+  - **Nachunternehmer bei festen Aufträgen:** In der erteilten Bestellung Kasten „Schlüssel, Kleidung & Einweisung“ →
+    Übergabe an den NU (Schlüssel, Arbeitskleidung, Objekteinweisung aus Vorlage) mit Unterschrift. Schlüssel liegen im
+    Schlüsselbuch jetzt auch beim Nachunternehmer (`keys.holder_supplier_id`, `key_log.supplier_id`, Migration
+    `20261127000004`), Rückgabe nur vom NU.
+  - Tests: `handovers.db.test.ts` (Schlüssel an NU), e2e `app` 20, `login` 39 (Personalbogen mit Foto).

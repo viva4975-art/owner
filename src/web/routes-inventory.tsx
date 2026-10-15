@@ -718,7 +718,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
 
   app.get('/schluessel', async (c) => {
     const rows = inScope(c, await listKeys(sql));
-    const out = rows.filter((k) => k.holder_employee_id).length;
+    const out = rows.filter((k) => k.holder_employee_id || k.holder_supplier_id).length;
     return page(
       c,
       'Schlüsselbuch',

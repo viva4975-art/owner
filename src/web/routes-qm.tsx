@@ -98,6 +98,13 @@ const QM_CSS = `
 .qm-sec{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
 .qm-sec h2{margin:0;font-size:19px}
 .qm-audit{display:flex;justify-content:space-between;align-items:center;text-decoration:none;color:inherit;background:rgba(255,255,255,.82);border-radius:18px;padding:16px 18px;box-shadow:0 1px 2px rgba(80,20,40,.05),0 8px 24px rgba(80,20,40,.06)}
+.qm-row{position:relative}.qm-row .qm-audit{padding-right:52px}
+.qm-more{position:absolute;right:8px;top:50%;transform:translateY(-50%)}
+.qm-more summary{list-style:none;cursor:pointer;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--mut);line-height:1}
+.qm-more summary::-webkit-details-marker{display:none}.qm-more[open] summary{background:rgba(125,20,53,.08)}
+.qm-more .mn{position:absolute;right:0;top:40px;z-index:30;background:#fff;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.16);min-width:190px;padding:6px;display:flex;flex-direction:column}
+.qm-more .mn a,.qm-more .mn button{display:block;text-align:left;padding:10px 12px;border-radius:8px;font-size:15px;color:inherit;text-decoration:none;background:none;border:0;width:100%;font:inherit;cursor:pointer}
+.qm-more .mn a:hover,.qm-more .mn button:hover{background:#f6eff1}.qm-more .mn .del{color:#b42318}
 .qm-audit b{font-size:18px}.qm-audit .m{font-size:15px;color:var(--mut);margin-top:4px}
 .qm-score{font-size:20px;font-weight:700;color:#7D1435}.qm-score.lo{color:#b42318}.qm-score.mid{color:#b45309}.qm-score.hi{color:#15803d}
 .qm-empty{text-align:center;color:var(--mut);padding:40px 16px;font-size:17px}
@@ -410,6 +417,69 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
     );
   });
 
+  /** Audit-Zeile mit Menü „⋮“: öffnen, Bericht, löschen (Ahmed 15.10.) */
+  const AuditRow: FC<{
+    a: { id: string; status: string; rated: number; items: number; score_percent: number | null };
+    title: Child;
+    sub: Child;
+    admin: boolean;
+  }> = ({ a, title, sub, admin }) => {
+    const href = a.status === 'entwurf' ? `/qm/audit/${a.id}` : `/qualitaet/${a.id}`;
+    return (
+      <div class="qm-row">
+        <a class="qm-audit" href={href}>
+          <div>
+            <b>{title}</b>
+            <div class="m">{sub}</div>
+          </div>
+          <span class={`qm-score ${scoreCls(a.score_percent)}`}>
+            {a.score_percent != null ? `${a.score_percent} %` : '–'}
+          </span>
+        </a>
+        <details class="qm-more">
+          <summary aria-label="Mehr">⋮</summary>
+          <div class="mn">
+            <a href={href}>{a.status === 'entwurf' ? 'Weiter bewerten' : 'Öffnen'}</a>
+            {a.status !== 'entwurf' && (
+              <a href={`/qualitaet/${a.id}/auswertung.pdf`}>Auswertungsbericht (PDF)</a>
+            )}
+            {(a.status === 'entwurf' || admin) && (
+              <form method="post" action={`/qm/audit/${a.id}/loeschen`}>
+                <button
+                  class="del"
+                  data-confirm={
+                    a.status === 'entwurf'
+                      ? 'Dieses Audit löschen?'
+                      : 'Abgeschlossenes Audit löschen? Prüfbericht und Fotos bleiben im Archiv.'
+                  }
+                >
+                  Löschen
+                </button>
+              </form>
+            )}
+          </div>
+        </details>
+      </div>
+    );
+  };
+
+  app.post(`/qm/audit/:id{${UUID}}/loeschen`, async (c) => {
+    const qc = await loadAudit(c, c.req.param('id'));
+    const ref = c.req.header('referer');
+    const to =
+      ref && new URL(ref).pathname.startsWith('/qm')
+        ? new URL(ref).pathname + new URL(ref).search
+        : '/qm/qualitaet';
+    if (!qc) return back(c, to, { fehler: 'Audit nicht gefunden.' });
+    try {
+      await deleteQualityCheck(sql, qc.id, { admin: c.get('user').role === 'admin', actor: c.get('actor') });
+    } catch (e) {
+      if (e instanceof BusinessError) return back(c, to, { fehler: e.message });
+      throw e;
+    }
+    return back(c, to, { ok: 'Audit gelöscht.' });
+  });
+
   app.get('/qm/qualitaet', async (c) => {
     const u = c.get('user');
     const today = todayBerlin();
@@ -439,17 +509,12 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
               <h2>Heute</h2>
             </div>
             {audits.map((a) => (
-              <a class="qm-audit" href={a.status === 'entwurf' ? `/qm/audit/${a.id}` : `/qualitaet/${a.id}`}>
-                <div>
-                  <b>{a.site_name}</b>
-                  <div class="m">
-                    {a.rated} von {a.items} Räumen · {a.status === 'entwurf' ? 'in Arbeit' : 'abgeschlossen'}
-                  </div>
-                </div>
-                <span class={`qm-score ${scoreCls(a.score_percent)}`}>
-                  {a.score_percent != null ? `${a.score_percent} %` : '…'}
-                </span>
-              </a>
+              <AuditRow
+                a={a}
+                admin={u.role === 'admin'}
+                title={a.site_name}
+                sub={`${a.rated} von ${a.items} Räumen · ${a.status === 'entwurf' ? 'in Arbeit' : 'abgeschlossen'}`}
+              />
             ))}
           </>
         )}
@@ -596,17 +661,12 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
         </div>
         {audits.length === 0 && <div class="qm-empty">Noch keine Audits für dieses Objekt.</div>}
         {audits.map((a) => (
-          <a class="qm-audit" href={a.status === 'entwurf' ? `/qm/audit/${a.id}` : `/qualitaet/${a.id}`}>
-            <div>
-              <b>{dayMonth(a.check_date)}</b>
-              <div class="m">
-                {a.rated} von {a.items} Räumen{a.status === 'entwurf' ? ' · in Arbeit' : ''}
-              </div>
-            </div>
-            <span class={`qm-score ${scoreCls(a.score_percent)}`}>
-              {a.score_percent != null ? `${a.score_percent} %` : '…'}
-            </span>
-          </a>
+          <AuditRow
+            a={a}
+            admin={c.get('user').role === 'admin'}
+            title={dayMonth(a.check_date)}
+            sub={`${a.rated} von ${a.items} Räumen${a.status === 'entwurf' ? ' · in Arbeit' : ''}`}
+          />
         ))}
         <Fab siteId={id} />
       </>,

@@ -197,9 +197,10 @@ export async function collectBookings(
         from app.payments p join app.invoices i on i.id = p.invoice_id join app.customers c on c.id = i.customer_id
        where p.paid_on between ${f.from} and ${f.to} order by p.paid_on`;
     for (const p of pays) {
-      if (p.method === 'skonto' || p.method === 'verrechnung' || p.method === 'kuerzung') {
+      if (p.method === 'kuerzung') continue; // steht unten mit Kürzungsbeleg
+      if (p.method === 'skonto' || p.method === 'verrechnung') {
         warnings.push(
-          `${p.method === 'skonto' ? 'Skonto-Abzug' : p.method === 'kuerzung' ? 'Kürzung durch Kunden' : 'Verrechnung'} ${p.number} (${num(p.amount_cents)} €): bitte manuell buchen (USt-Korrektur § 17 UStG).`,
+          `${p.method === 'skonto' ? 'Skonto-Abzug' : 'Verrechnung'} ${p.number} (${num(p.amount_cents)} €): bitte manuell buchen (USt-Korrektur § 17 UStG).`,
         );
         continue;
       }
@@ -216,6 +217,16 @@ export async function collectBookings(
         kind: 'zahlungseingang',
       });
     }
+    // Kürzungen (auch auf Rechnungen vor der Umstellung) mit internem Buchungsbeleg
+    const kb = await sql<
+      { number: string; invoice_number: string; gross_cents: bigint; vat_cents: bigint }[]
+    >`
+      select number, invoice_number, gross_cents, vat_cents from app.reduction_vouchers
+       where voucher_date between ${f.from} and ${f.to} order by voucher_date, number`;
+    for (const v of kb)
+      warnings.push(
+        `Kürzung durch Kunden, Beleg ${v.number} zu Rechnung ${v.invoice_number} (${num(v.gross_cents)} € brutto, davon ${num(v.vat_cents)} € USt): bitte manuell buchen (USt-Korrektur § 17 UStG). PDF unter Rechnungen → Kürzungsbelege.`,
+      );
   }
 
   if (f.incoming) {

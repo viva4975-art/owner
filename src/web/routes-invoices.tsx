@@ -725,7 +725,13 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
           patch = {
             what,
             index,
-            line: { description: v('desc').trim(), quantity, unitCode: v('unit') || 'C62', unitPrice },
+            line: {
+              description: v('desc').trim(),
+              quantity,
+              unitCode: v('unit') || 'C62',
+              unitPrice,
+              serviceTypeId: /^[0-9a-f-]{36}$/i.test(v('stype')) ? v('stype') : null,
+            },
           };
         }
       } else throw new BusinessError('Unbekannte Änderung');
@@ -784,6 +790,11 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
             )[0]?.d ?? null
           }
           today={todayBerlin()}
+          types={await listServiceTypes(sql)}
+          lineTypes={(
+            await sql<{ t: string | null }[]>`
+              select service_type_id::text as t from app.invoice_lines where invoice_id = ${id} order by position`
+          ).map((r) => r.t)}
           notice={<CustomerNotice c={customer!} />}
           uploadSlot={
             <FileArea

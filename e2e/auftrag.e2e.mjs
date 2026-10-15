@@ -54,7 +54,7 @@ const orderId = randomUUID();
 await p.goto(B + `/auftraege/${orderId}/bearbeiten?kunde=${CUSTOMER}&objekt=${SITE}`);
 await p.fill('#order_reference', 'E2E-' + Date.now().toString().slice(-5));
 const row = p.locator('#lines tbody tr').first();
-await row.locator('[name=desc]').fill('Grundreinigung Turnhalle pauschal');
+await row.locator('[name=desc]').evaluate((e, v) => (e.value = v), 'Grundreinigung Turnhalle pauschal');
 await row.locator('[name=qty]').fill('1');
 await row.locator('[name=price]').fill('1.250,00');
 await p.fill('#bill_name', 'Andere Gesellschaft GmbH (E2E)');

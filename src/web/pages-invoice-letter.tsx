@@ -3,6 +3,7 @@ import type { Child, FC } from 'hono/jsx';
 import { formatDateDe } from '../domain/invoice/calc.js';
 import { contactGreeting, stripGreeting } from '../domain/letter/greeting.js';
 import { type InvoiceDocument, KIND_TITLES, UNIT_LABELS } from '../domain/invoice/types.js';
+import { type ServiceTypeOption, TypeSelect } from './pages-invoices.js';
 import {
   REVERSE_CHARGE_NOTE,
   isReverseCharge,
@@ -87,6 +88,10 @@ export const DraftLetter: FC<{
   /** Datum der zuletzt ausgestellten Rechnung (für die Warnung beim Zurückdatieren) */
   lastIssued?: string | null;
   today?: string;
+  /** Leistungsarten für die Direktbearbeitung der Positionen */
+  types?: ServiceTypeOption[];
+  /** Leistungsart je Position (gleiche Reihenfolge wie doc.lines) */
+  lineTypes?: (string | null)[];
 }> = ({
   inv,
   doc,
@@ -97,6 +102,8 @@ export const DraftLetter: FC<{
   attachments,
   uploadSlot,
   notice,
+  types = [],
+  lineTypes = [],
   workReports = [],
   lastIssued = null,
   today = '',
@@ -309,7 +316,14 @@ export const DraftLetter: FC<{
                         </tr>
                         <tr id={`f-l${i}`} class="lt-frow" hidden>
                           <td colspan={6}>
-                            <LineForm inv={inv} index={i} line={l} show={`v-l${i}`} />
+                            <LineForm
+                              inv={inv}
+                              index={i}
+                              line={l}
+                              show={`v-l${i}`}
+                              types={types}
+                              typeId={lineTypes[i] ?? null}
+                            />
                           </td>
                         </tr>
                       </>
@@ -321,7 +335,7 @@ export const DraftLetter: FC<{
                   </tr>
                   <tr id="f-new" class="lt-frow" hidden>
                     <td colspan={6}>
-                      <LineForm inv={inv} index={null} line={null} show="v-new" />
+                      <LineForm inv={inv} index={null} line={null} show="v-new" types={types} typeId={null} />
                     </td>
                   </tr>
                 </tbody>
@@ -584,23 +598,35 @@ const LineForm: FC<{
   index: number | null;
   line: InvoiceDocument['lines'][number] | null;
   show: string;
-}> = ({ inv, index, line, show }) => (
+  types: ServiceTypeOption[];
+  typeId: string | null;
+}> = ({ inv, index, line, show, types, typeId }) => (
   <div class="lt-f" style="margin:0;border:0;padding:0;background:none">
     <form method="post" action={`/rechnungen/${inv.id}/direkt`}>
       <input type="hidden" name="what" value="position" />
       <input type="hidden" name="index" value={index == null ? '' : String(index)} />
       <input type="hidden" name="version" value={String(inv.version)} />
       <div class="lt-fl">
-        <textarea
-          name="desc"
-          rows={2}
-          data-grow
-          required
-          aria-label="Leistungsbeschreibung"
-          placeholder="Leistung"
-        >
-          {line?.description ?? ''}
-        </textarea>
+        {types.length ? (
+          <TypeSelect
+            types={types}
+            typeId={typeId}
+            desc={line?.description}
+            required
+            onchange="var o=this.options[this.selectedIndex],d=this.form.querySelector('[name=desc]');if(d)d.value=o&&(o.value||o.hasAttribute('data-keep'))?o.text:''"
+          />
+        ) : (
+          <textarea
+            name="desc"
+            rows={2}
+            data-grow
+            required
+            aria-label="Leistungsbeschreibung"
+            placeholder="Leistung"
+          >
+            {line?.description ?? ''}
+          </textarea>
+        )}
         <input
           name="qty"
           inputmode="decimal"

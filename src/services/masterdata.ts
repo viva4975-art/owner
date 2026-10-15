@@ -424,7 +424,7 @@ const optPercentBp = z.preprocess(
 export const serviceInput = z.object({
   // Art wird aus Zyklus/Einheit abgeleitet (siehe serviceKindOf); Angabe nur noch für Altaufrufer
   kind: z.enum(['monthly_flat', 'special', 'hourly']).optional(),
-  description: z.string().trim().min(1, 'Beschreibung fehlt'),
+  description: z.string().trim().min(1, 'Leistungsart fehlt – bitte auswählen'),
   unit_code: z.string().trim().min(1),
   quantity: z.string().transform((v, ctx) => {
     try {
@@ -449,7 +449,11 @@ export const serviceInput = z.object({
   valid_from: z.iso.date(),
   valid_to: z.preprocess(emptyToNull, z.iso.date().nullable().default(null)),
   note: optText,
-  service_type_id: z.preprocess(emptyToNull, z.guid().nullable().default(null)),
+  // 'text' = bisheriger Titel ohne Leistungsart (Auswahl „bisher“)
+  service_type_id: z.preprocess(
+    (v) => (v === 'text' ? null : emptyToNull(v)),
+    z.guid().nullable().default(null),
+  ),
   billing_cycle: z
     .enum([
       'monatlich',

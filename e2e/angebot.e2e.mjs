@@ -48,12 +48,12 @@ check('Kunde per Nummer gefunden', (await p.locator('#kunde').inputValue()) !== 
 check('normales Angebot ohne Vergabe-Felder', (await p.locator('#tender_reference').count()) === 0);
 await p.fill('#title', 'E2E Alternativen');
 const r0 = p.locator('#lines tbody tr').first();
-await r0.locator('[name=desc]').fill('Unterhaltsreinigung 5×/Woche');
+await r0.locator('[name=desc]').evaluate((e, v) => (e.value = v), 'Unterhaltsreinigung 5×/Woche');
 await r0.locator('[name=price]').fill('1.000,00');
 await r0.locator('[name=rec]').selectOption('1');
 await p.click('#add-line');
 const r1 = p.locator('#lines tbody tr').nth(1);
-await r1.locator('[name=desc]').fill('Unterhaltsreinigung 3×/Woche');
+await r1.locator('[name=desc]').evaluate((e, v) => (e.value = v), 'Unterhaltsreinigung 3×/Woche');
 await r1.locator('[name=price]').fill('700,00');
 await r1.locator('[name=rec]').selectOption('3');
 check(

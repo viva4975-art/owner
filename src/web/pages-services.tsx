@@ -12,6 +12,7 @@ import type { ServiceType, SiteService, SiteServiceRow } from '../services/maste
 import { centsToInput, milliToInput } from './forms.js';
 import { Icon } from './icons.js';
 import { dateDe, euro } from './layout.js';
+import { TypeSelect } from './pages-invoices.js';
 
 /*
  * Leistungen am Objekt wie die Fortytools-„Aufträge“: Liste aktiver Leistungen, Bearbeiten je Leistung
@@ -295,35 +296,17 @@ export const ServiceForm: FC<{
         <h3>Details</h3>
         <div class="grid">
           <div style="grid-column:span 2">
-            <label for="description">Leistung (Titel auf der Rechnung) *</label>
-            <input
-              id="description"
-              name="description"
-              value={sv?.description ?? ''}
-              required
-              placeholder="Unterhaltsreinigung"
-            />
-          </div>
-          <div>
-            <label for="service_type_id">Leistungsart</label>
-            <select
+            <label for="service_type_id">Leistungsart (Titel auf der Rechnung) *</label>
+            <TypeSelect
               id="service_type_id"
               name="service_type_id"
-              onchange="var d=document.getElementById('description');if(d&&!d.value.trim()&&this.value)d.value=this.options[this.selectedIndex].text;var l=document.getElementById('labor_share'),o=this.options[this.selectedIndex];if(l&&!l.value.trim()&&o.dataset.labor)l.value=o.dataset.labor"
-            >
-              <option value="">– keine –</option>
-              {types.map((t) => (
-                <option
-                  value={t.id}
-                  selected={t.id === sv?.service_type_id}
-                  data-labor={
-                    t.labor_share_bp != null ? String(t.labor_share_bp / 100).replace('.', ',') : ''
-                  }
-                >
-                  {t.name}
-                </option>
-              ))}
-            </select>
+              descName="description"
+              types={types}
+              typeId={sv?.service_type_id}
+              desc={sv?.description}
+              required
+              onchange="var o=this.options[this.selectedIndex],d=this.form.querySelector('[name=description]');if(d)d.value=o&&(o.value||o.hasAttribute('data-keep'))?o.text:'';var l=document.getElementById('labor_share');if(l&&!l.value.trim()&&o&&o.dataset.labor)l.value=o.dataset.labor"
+            />
           </div>
           <div style="grid-column:1/-1">
             <label for="note">Beschreibung (Zusatztext auf der Rechnung)</label>

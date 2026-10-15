@@ -542,6 +542,8 @@ export type ShiftPlanRow = ShiftPlan & {
   site_no: string;
   /** Tag der Anlage (Europe/Berlin) – nur in plannedShifts gesetzt */
   planned_on?: string;
+  /** Anschrift des Objekts – nur in plannedShifts gesetzt */
+  site_address?: string;
 };
 
 export const WEEKDAYS = ['', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
@@ -776,7 +778,7 @@ export async function plannedShifts(
     select p.*, e.exit_date as emp_exit, to_char(p.start_time, 'HH24:MI') as start_time, to_char(p.end_time, 'HH24:MI') as end_time,
            to_char(p.created_at at time zone 'Europe/Berlin', 'YYYY-MM-DD') as planned_on,
            coalesce(e.last_name || ', ' || e.first_name, 'offen') as employee_name, coalesce(e.personnel_no, '') as personnel_no,
-           s.name as site_name, s.site_no,
+           s.name as site_name, s.site_no, concat_ws(', ', nullif(s.street, ''), nullif(trim(concat_ws(' ', s.postal_code, s.city)), '')) as site_address,
            ${f.includeOpen ? sql`p.valid_from` : sql`greatest(p.valid_from, e.entry_date)`} as effective_from
       from app.shift_plans p left join app.employees e on e.id = p.employee_id join app.sites s on s.id = p.site_id
      where p.valid_from <= ${f.to} and (p.valid_until is null or p.valid_until >= ${f.from})

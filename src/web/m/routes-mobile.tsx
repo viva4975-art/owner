@@ -114,15 +114,18 @@ input:focus,select:focus,textarea:focus{outline:3px solid #f3d6df;border-color:v
 .langs a{padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);text-decoration:none;font-size:15px}
 .langs a.on{border-color:var(--brand);color:var(--brand);font-weight:650}
 button[disabled]{opacity:.6}
-.sw{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}
-.sw .dial{width:208px;height:208px;border-radius:50%;border:10px solid #efe3e7;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box}
-.sw.on .dial{border-color:#7D1435}
-.sw .dial .t{font-size:40px;font-weight:700;font-variant-numeric:tabular-nums;color:#1d1d1f;line-height:1.1}
-.sw .dial small{color:#6b6b70;font-size:13px;margin-top:6px;max-width:150px;line-height:1.3}
-.sw .rb{width:88px;height:88px;border-radius:50%;border:0;color:#fff;font-size:15px;font-weight:700;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.15)}
-.sw .rb svg{width:24px;height:24px}
-.sw .rb.go{background:#2e7d32}.sw .rb.stop{background:#7D1435}.sw .rb:disabled{opacity:.6}
-.sw label{align-self:stretch;text-align:left}.sw select{width:100%}
+.msheet>summary{list-style:none}.msheet>summary::-webkit-details-marker{display:none}
+.msheet[open]{position:fixed;inset:0;z-index:60}
+.msheet[open]::before{content:"";position:fixed;inset:0;background:rgba(60,20,35,.28)}
+.msheet .panel{position:fixed;left:0;right:0;bottom:0;max-height:88vh;overflow:auto;background:#fff;border-radius:24px 24px 0 0;padding:12px 20px calc(24px + env(safe-area-inset-bottom,0px));box-shadow:0 -10px 30px rgba(60,20,35,.15)}
+.msheet .grip{width:48px;height:5px;border-radius:9px;background:#d9cdd2;margin:0 auto 14px}
+.msheet[open]>summary.fab{display:none}
+.msheet .sh-t{font-size:44px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums;color:#2a1420;line-height:1.1;margin-top:4px}
+.msheet .sh-s{text-align:center;color:var(--mut);font-size:15px;margin:4px 0 6px}
+.msheet .big svg{width:22px;height:22px;margin-right:8px}
+.fab.clk{border:0;cursor:pointer}
+.fab.clk.on{width:auto;min-width:64px;padding:0 20px 0 16px;border-radius:32px;gap:8px;font-weight:700;font-size:17px;font-variant-numeric:tabular-nums}
+.fab.clk.on svg{width:24px;height:24px}
 .brk{margin-top:12px;padding:12px;border-radius:12px;background:rgba(255,255,255,.65);border:1px solid #e3d9dc;text-align:left}
 .brk details{margin-top:8px}.brk summary{cursor:pointer;color:#7D1435;font-weight:600}
 button.link{background:none;border:0;color:#7D1435;font:inherit;font-weight:600;padding:8px 0;cursor:pointer}
@@ -183,6 +186,34 @@ button.link{background:none;border:0;font:inherit;cursor:pointer;text-decoration
 .cal-g a.hol{color:#2b6cb0}
 .langbtn{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 12px;border:1px solid #e3cdd5;border-radius:22px;color:#7D1435!important;font-weight:700;text-decoration:none;background:#fff}
 .st-l{display:block;font-size:11px;color:#8a7a80;font-weight:500;margin-top:1px}
+/* ---- Runde 42: kompakter wie Fortytools ---- */
+main{gap:12px;padding-top:6px}
+header{padding-top:calc(6px + env(safe-area-inset-top,0px));padding-bottom:4px}
+header img{height:26px}
+.hello{font-size:30px;line-height:1.15;margin:6px 0 2px;font-weight:400;color:#2a1420}
+.hello b{display:inline;font-weight:700}
+.quick{grid-template-columns:repeat(3,1fr);gap:12px;margin:2px 0 4px}
+.quick .qi{height:50px;box-shadow:0 1px 2px rgba(80,20,40,.05),0 4px 12px rgba(80,20,40,.05)}
+.quick .qi svg{width:22px;height:22px}
+.quick a,.quick button{font-size:13px;color:#5b4650}
+.today{margin-top:4px}.today h2{font-size:18px;font-weight:700}
+.stats{font-size:14px}.stats svg{width:17px;height:17px}.st-l{display:none}
+.prog{height:6px}
+.shift{background:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 1px 2px rgba(80,20,40,.04),0 4px 14px rgba(80,20,40,.05)}
+.shift .w{font-size:14px;align-items:center}.shift .w .ic{display:flex;color:#b9a7ae}.shift .w .ic svg{width:22px;height:22px}
+.shift.done .w .ic{color:#7D1435}
+.shift .s{font-size:17px;font-weight:650;line-height:1.3;margin-top:2px}
+.shift .a{font-size:14px;color:var(--mut);margin-top:6px}
+.shift.open{border:1.5px solid #ecc3d0}
+.card{border-radius:14px;padding:14px}
+h2{font-size:16px}
+.big{min-height:56px;font-size:18px;border-radius:14px}
+.tabbar{padding-top:6px}.tabbar a{font-size:12px}
+.fab{width:60px;height:60px;bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+.shift .big{min-height:46px;font-size:16px;border-radius:12px}
+.shift .confirm{margin-top:8px;padding-top:8px}.shift .confirm .chk{margin:6px 0 10px}.shift .confirm .chk label{font-size:14px;line-height:1.35}
+.shift .confirm .chk input{width:22px;height:22px}
+.shift details summary{font-size:14px}
 `;
 
 // Formulare robust absenden: bei Funkloch Meldung statt Fehlerseite; gleiche ID → nichts doppelt.
@@ -213,8 +244,8 @@ const JS = `
       .then(function(r){clearTimeout(tm); location.href=r.url;})
       .catch(function(){clearTimeout(tm); if(b)b.disabled=false; var m=document.getElementById('net'); if(m){m.hidden=false; m.scrollIntoView({block:'center'});}});
   });
-  var el=document.querySelector('[data-since]');
-  if(el){var s=Number(el.getAttribute('data-since'));var tick=function(){var sec=Math.max(0,Math.floor((Date.now()-s)/1000)),m=Math.floor(sec/60);el.textContent=Math.floor(m/60)+':'+String(m%60).padStart(2,'0')+':'+String(sec%60).padStart(2,'0');};tick();setInterval(tick,1000);
+  var els=[].slice.call(document.querySelectorAll('[data-since]')),el=els[0];
+  if(el){var s=Number(el.getAttribute('data-since'));var tick=function(){var sec=Math.max(0,Math.floor((Date.now()-s)/1000)),m=Math.floor(sec/60);els.forEach(function(x){x.textContent=Math.floor(m/60)+':'+String(m%60).padStart(2,'0')+':'+String(sec%60).padStart(2,'0')})};tick();setInterval(tick,1000);
     var br=document.getElementById('break'); if(br&&!br.dataset.touched){var m=(Date.now()-s)/60000; br.value=m>540?45:m>360?30:0; br.addEventListener('input',function(){br.dataset.touched='1'});}}
   // Installierbare App (Service Worker nur für Offline-Hinweis und Schrift/Logo – keine persönlichen Daten im Cache)
   if('serviceWorker' in navigator){navigator.serviceWorker.register('/m/sw.js',{scope:'/m'}).catch(function(){});}
@@ -227,6 +258,7 @@ const JS = `
   }
   // QR-Code am Objekt scannen: in der App nativ (Capacitor), im Browser per BarcodeDetector, sonst Kamera-App
   // Formular nach dem Scannen sofort absenden (Stoppuhr mit QR-Code)
+  document.querySelectorAll('.msheet').forEach(function(d){d.addEventListener('click',function(e){if(d.open&&!e.target.closest('.panel')&&!e.target.closest('summary'))d.open=false})});
   var auto=document.querySelector('form[data-autostart]'); if(auto&&auto.requestSubmit)setTimeout(function(){auto.requestSubmit()},150);
   var scans=[].slice.call(document.querySelectorAll('#scan,[data-scan]'));
   if(scans.length){
@@ -684,151 +716,152 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     token?: string;
     /** nach dem Scannen sofort starten */
     autostart?: boolean;
-  }> = ({ lang, me, running, siteId, viaQr, geo, planEnd, token, autostart }) =>
-    running ? (
-      <div class="card">
-        <div class="sw on">
-          <div class="dial">
+  }> = ({ lang, me, running, siteId, viaQr, geo, planEnd, token, autostart }) => {
+    // Stoppuhr wie Fortytools (Ahmed 15.10.): runder Bordeaux-Knopf unten rechts, Antippen öffnet ein Fenster von unten
+    const label = running ? t(lang, 'clock_out') : t(lang, 'clock_in');
+    if (!running && me.timeMode === 'qr' && !token)
+      return (
+        <button type="button" class="fab clk" data-scan="start" aria-label={t(lang, 'qr_start')}>
+          <Ic n="watch" />
+        </button>
+      );
+    return (
+      <details class="msheet" open={!!token || autostart}>
+        <summary class={`fab clk${running ? ' on' : ''}`} aria-label={label}>
+          <Ic n="watch" />
+          {running && (
             <span class="t" data-since={String(running.start_at.getTime())}>
               {hm(running.gross_minutes)}
             </span>
-            <small>
-              {t(lang, 'running', { time: clock(running.start_at) })}
-              <br />
-              {running.site_name}
-            </small>
-          </div>
-          <form
-            method="post"
-            action="/m/aus"
-            data-net
-            data-geo={geo ? '1' : undefined}
-            data-ask={t(lang, 'confirm_out')}
-            data-ask-early={t(lang, 'confirm_out_early')}
-            data-end={planEnd ?? ''}
-          >
-            <button class="rb stop" aria-label={t(lang, 'clock_out')}>
-              <Ic n="stop" />
-              {t(lang, 'clock_out')}
-            </button>
-          </form>
-        </div>
-        {(() => {
-          // Pause: vom Mitarbeiter geändert → so; geplante Pause (Mitte des Einsatzes) → so;
-          // sonst automatisch nach 4 Std. (30 Min. ab 6 Std.)
-          const mine = !!running.break_start_at && !running.break_auto;
-          const planned = !mine && !!running.break_start_at && running.break_minutes > 0;
-          const from =
-            mine || planned
-              ? running.break_start_at!
-              : new Date(running.start_at.getTime() + BREAK_AFTER_MINUTES * 60000);
-          const min = mine || planned ? running.break_minutes : 30;
-          const to = new Date(from.getTime() + min * 60000);
-          return (
-            <div class="brk" data-break-at={String(from.getTime())} data-break-min={String(min)}>
-              <b>
-                {min
-                  ? t(lang, mine ? 'break_mine' : 'break_auto', {
-                      from: clock(from),
-                      to: clock(to),
-                      min: String(min),
-                    })
-                  : t(lang, 'break_none')}
-              </b>
-              {!mine && <p class="hint">{t(lang, planned ? 'break_plan_hint' : 'break_rule')}</p>}
-              {min > 0 && (
-                <form method="post" action="/m/pause" data-net style="margin-top:6px">
-                  <input type="hidden" name="start" value={clock(from)} />
-                  <input type="hidden" name="minutes" value="0" />
-                  <button class="link">{t(lang, 'break_decline')}</button>
-                </form>
-              )}
-              <details>
-                <summary>{t(lang, 'break_change')}</summary>
-                <form method="post" action="/m/pause" data-net>
-                  <div class="two">
-                    <div>
-                      <label for="bfrom">{t(lang, 'break_from')}</label>
-                      <input id="bfrom" type="time" name="start" value={clock(from)} required />
-                    </div>
-                    <div>
-                      <label for="blen">{t(lang, 'break_len')}</label>
-                      <select id="blen" name="minutes">
-                        {[0, 15, 30, 45, 60].map((m) => (
-                          <option value={String(m)} selected={m === min}>
-                            {m ? `${m} Min.` : t(lang, 'break_none')}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <button class="big sec">{t(lang, 'break_save')}</button>
-                </form>
-              </details>
-              <button
-                type="button"
-                class="link"
-                id="remind"
-                hidden
-                data-text={t(lang, 'remind_text', { from: clock(from), min: String(min) })}
-              >
-                <Icon name="bell" size={16} /> {t(lang, 'remind_on')}
-              </button>
-            </div>
-          );
-        })()}
-        <script dangerouslySetInnerHTML={{ __html: REMIND_JS }} />
-      </div>
-    ) : me.timeMode === 'qr' && !token ? (
-      // Stoppuhr mit QR-Code: Start öffnet die Kamera, nach dem Scannen startet die Zeit am Objekt
-      <div class="card">
-        <div class="sw">
-          <div class="dial">
-            <span class="t">0:00:00</span>
-            <small>{t(lang, 'qr_required')}</small>
-          </div>
-          <button type="button" class="rb go" data-scan="start" aria-label={t(lang, 'qr_start')}>
-            <Ic n="qr" />
-            {t(lang, 'clock_in')}
-          </button>
-        </div>
-      </div>
-    ) : (
-      <form
-        method="post"
-        action="/m/ein"
-        class="card"
-        data-net
-        data-geo={geo ? '1' : undefined}
-        data-autostart={autostart ? '1' : undefined}
-      >
-        <input type="hidden" name="id" value={randomUUID()} />
-        <input type="hidden" name="qr" value={viaQr ? '1' : ''} />
-        {token && <input type="hidden" name="token" value={token} />}
-        <div class="sw">
-          <div class="dial">
-            <span class="t">0:00:00</span>
-            {siteId && <small>{me.sites.find((x) => x.id === siteId)?.name ?? ''}</small>}
-          </div>
-          {siteId ? (
-            <input type="hidden" name="site_id" value={siteId} />
-          ) : (
-            <label>
-              {t(lang, 'where_work')}
-              <select id="site" name="site_id" required>
-                {me.sites.map((s) => (
-                  <option value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            </label>
           )}
-          <button class="rb go" aria-label={t(lang, 'clock_in')}>
-            <Ic n="play" />
-            {t(lang, 'clock_in')}
-          </button>
+        </summary>
+        <div class="panel">
+          <div class="grip" />
+          {running ? (
+            <>
+              <div class="sh-t">
+                <span data-since={String(running.start_at.getTime())}>{hm(running.gross_minutes)}</span>
+              </div>
+              <div class="sh-s">
+                {t(lang, 'running', { time: clock(running.start_at) })} · {running.site_name}
+              </div>
+              {(() => {
+                // Pause: vom Mitarbeiter geändert → so; geplante Pause (Mitte des Einsatzes) → so;
+                // sonst automatisch nach 4 Std. (30 Min. ab 6 Std.)
+                const mine = !!running.break_start_at && !running.break_auto;
+                const planned = !mine && !!running.break_start_at && running.break_minutes > 0;
+                const from =
+                  mine || planned
+                    ? running.break_start_at!
+                    : new Date(running.start_at.getTime() + BREAK_AFTER_MINUTES * 60000);
+                const min = mine || planned ? running.break_minutes : 30;
+                const to = new Date(from.getTime() + min * 60000);
+                return (
+                  <div class="brk" data-break-at={String(from.getTime())} data-break-min={String(min)}>
+                    <b>
+                      {min
+                        ? t(lang, mine ? 'break_mine' : 'break_auto', {
+                            from: clock(from),
+                            to: clock(to),
+                            min: String(min),
+                          })
+                        : t(lang, 'break_none')}
+                    </b>
+                    {!mine && <p class="hint">{t(lang, planned ? 'break_plan_hint' : 'break_rule')}</p>}
+                    {min > 0 && (
+                      <form method="post" action="/m/pause" data-net style="margin-top:6px">
+                        <input type="hidden" name="start" value={clock(from)} />
+                        <input type="hidden" name="minutes" value="0" />
+                        <button class="link">{t(lang, 'break_decline')}</button>
+                      </form>
+                    )}
+                    <details>
+                      <summary>{t(lang, 'break_change')}</summary>
+                      <form method="post" action="/m/pause" data-net>
+                        <div class="two">
+                          <div>
+                            <label for="bfrom">{t(lang, 'break_from')}</label>
+                            <input id="bfrom" type="time" name="start" value={clock(from)} required />
+                          </div>
+                          <div>
+                            <label for="blen">{t(lang, 'break_len')}</label>
+                            <select id="blen" name="minutes">
+                              {[0, 15, 30, 45, 60].map((m) => (
+                                <option value={String(m)} selected={m === min}>
+                                  {m ? `${m} Min.` : t(lang, 'break_none')}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <button class="big sec">{t(lang, 'break_save')}</button>
+                      </form>
+                    </details>
+                    <button
+                      type="button"
+                      class="link"
+                      id="remind"
+                      hidden
+                      data-text={t(lang, 'remind_text', { from: clock(from), min: String(min) })}
+                    >
+                      <Icon name="bell" size={16} /> {t(lang, 'remind_on')}
+                    </button>
+                  </div>
+                );
+              })()}
+              <form
+                method="post"
+                action="/m/aus"
+                data-net
+                data-geo={geo ? '1' : undefined}
+                data-ask={t(lang, 'confirm_out')}
+                data-ask-early={t(lang, 'confirm_out_early')}
+                data-end={planEnd ?? ''}
+                style="margin-top:14px"
+              >
+                <button class="big stop" id="clock-stop">
+                  <Ic n="stop" /> {t(lang, 'clock_out')}
+                </button>
+              </form>
+              <script dangerouslySetInnerHTML={{ __html: REMIND_JS }} />
+            </>
+          ) : (
+            <form
+              method="post"
+              action="/m/ein"
+              data-net
+              data-geo={geo ? '1' : undefined}
+              data-autostart={autostart ? '1' : undefined}
+            >
+              <input type="hidden" name="id" value={randomUUID()} />
+              <input type="hidden" name="qr" value={viaQr ? '1' : ''} />
+              {token && <input type="hidden" name="token" value={token} />}
+              <div class="sh-t">0:00:00</div>
+              {siteId ? (
+                <>
+                  <div class="sh-s">{me.sites.find((x) => x.id === siteId)?.name ?? ''}</div>
+                  <input type="hidden" name="site_id" value={siteId} />
+                </>
+              ) : (
+                <>
+                  <label for="site">{t(lang, 'where_work')}</label>
+                  <select id="site" name="site_id" required>
+                    {me.sites.map((s) => (
+                      <option value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </>
+              )}
+              <div style="height:14px" />
+              <button class="big go" id="clock-start">
+                <Ic n="play" /> {t(lang, 'clock_in')}
+              </button>
+            </form>
+          )}
         </div>
-      </form>
+      </details>
     );
+  };
 
   app.get('/m', async (c) => {
     const me = await loadMe(c);
@@ -906,8 +939,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
       me,
       <>
         <div class="hello">
-          {t(lang, greetKey)}
-          <b>{me.first_name}!</b>
+          {t(lang, greetKey)} <b>{me.first_name}!</b>
         </div>
         <div class="quick">
           <a href="/m/abwesenheit">
@@ -1048,9 +1080,15 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
               <span>
                 {dayLabel(lang, s.date)} · {s.plan.start_time}–{s.plan.end_time}
               </span>
-              {s.entry && <b>✓ {t(lang, `st_${s.entry.status}`)}</b>}
+              <span class="ic" title={s.entry ? t(lang, `st_${s.entry.status}`) : undefined}>
+                <Ic n={s.entry ? 'check' : 'watch'} />
+              </span>
             </div>
-            <div class="s">{s.plan.site_name}</div>
+            <div class="s">
+              {s.plan.site_no ? `${s.plan.site_no} – ` : ''}
+              {s.plan.site_name}
+            </div>
+            {s.plan.site_address && <div class="a">{s.plan.site_address}</div>}
             {notes.get(s.plan.site_id) && <div class="note">{notes.get(s.plan.site_id)}</div>}
             {mayConfirm && !s.entry && s.plan.end_time <= nowHm && <ConfirmBox lang={lang} s={s} />}
           </div>

@@ -222,7 +222,7 @@ await p.waitForLoadState();
 await p.evaluate(() => {
   const sl = document.querySelector('[data-slide] input[type=range]');
   sl.value = sl.max;
-  sl.dispatchEvent(new Event('input', { bubbles: true }));
+  sl.dispatchEvent(new sl.ownerDocument.defaultView.Event('input', { bubbles: true }));
 });
 check('Gesamtnote live', (await p.textContent('#gnote')) === '100 %', await p.textContent('#gnote'));
 await p.click('button:has-text("Speichern & zur Raumübersicht")');

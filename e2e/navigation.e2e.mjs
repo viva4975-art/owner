@@ -41,12 +41,16 @@ const editorUrl = a.url();
 await a.fill('#period_start', '2026-09-15');
 await a.fill('#intro_text', 'Sonderreinigung nach Wasserschaden im Keller');
 const row = a.locator('#lines tbody tr').first();
-await row.locator('[name=desc]').fill('Trocknung und Reinigung');
+await row.locator('[name=desc]').evaluate((e, v) => (e.value = v), 'Trocknung und Reinigung');
 await row.locator('[name=qty]').fill('3,5');
 await row.locator('[name=unit]').selectOption('HUR');
 await row.locator('[name=price]').fill('31,50');
 await a.click('#add-line');
-await a.locator('#lines tbody tr').nth(1).locator('[name=desc]').fill('Entsorgung');
+await a
+  .locator('#lines tbody tr')
+  .nth(1)
+  .locator('[name=desc]')
+  .evaluate((e, v) => (e.value = v), 'Entsorgung');
 await a.locator('#lines tbody tr').nth(1).locator('[name=price]').fill('80,00');
 await a.waitForTimeout(400);
 await a.click('nav.menu a.item:has-text("Übersicht")');

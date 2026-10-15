@@ -79,8 +79,9 @@ const lineEditorScript = `
   function round(n,d){var neg=n<0n;if(neg)n=-n;var q=(n*2n+d)/(d*2n);return neg?-q:q}
   function fmt(c){var neg=c<0n;if(neg)c=-c;var e=(c/100n).toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g,'.');return (neg?'-':'')+e+','+(c%100n).toString().padStart(2,'0')+' €'}
   function recalc(){var net=0n,vat={};tbody.querySelectorAll('tr').forEach(function(tr){var q=toMilli(tr.querySelector('[name=qty]').value||'1'),p=toCents(tr.querySelector('[name=price]').value),r=BigInt(tr.querySelector('[name=vat]').value);var out=tr.querySelector('.ln');if(q===null||p===null){out.textContent='';return}var l=round(q*p,1000n);var rc=tr.querySelector('[name=rec]');if(rc&&(rc.value==='2'||rc.value==='3')){out.textContent='('+fmt(l)+')';return}out.textContent=fmt(l);net+=l;vat[r]=(vat[r]||0n)+l});var v=0n;Object.keys(vat).forEach(function(r){v+=round(vat[r]*BigInt(r),10000n)});document.getElementById('t-net').textContent=fmt(net);document.getElementById('t-vat').textContent=fmt(v);document.getElementById('t-gross').textContent=fmt(net+v)}
-  function add(data){var row=tpl.content.firstElementChild.cloneNode(true);if(data){Object.keys(data).forEach(function(k){var el=row.querySelector('[name='+k+']');if(el)el.value=data[k]})}tbody.appendChild(row);recalc();return row}
-  document.getElementById('add-line').addEventListener('click',function(){add().querySelector('[name=desc]').focus()});
+  function syncType(row){var s=row.querySelector('[data-typesel]'),d=row.querySelector('[name=desc]');if(!s||!d||!d.value)return;for(var i=0;i<s.options.length;i++){var o=s.options[i];if(o.value===s.value&&o.text===d.value){o.selected=true;return}}var n=document.createElement('option');n.value=s.value||'text';n.text=d.value;n.setAttribute('data-keep','');s.insertBefore(n,s.options[1]||null);n.selected=true}
+  function add(data){var row=tpl.content.firstElementChild.cloneNode(true);if(data){Object.keys(data).forEach(function(k){var el=row.querySelector('[name='+k+']');if(el)el.value=data[k]});syncType(row)}tbody.appendChild(row);recalc();return row}
+  document.getElementById('add-line').addEventListener('click',function(){var r=add();(r.querySelector('[data-typesel]')||r.querySelector('[name=desc]')).focus()});
   var sel=document.getElementById('from-service');
   if(sel)sel.addEventListener('change',function(){if(!sel.value)return;add(JSON.parse(sel.value));sel.value=''});
   var asel=document.getElementById('from-article');
@@ -89,7 +90,7 @@ const lineEditorScript = `
   function grow(t){t.style.height='auto';t.style.height=(t.scrollHeight+2)+'px'}
   tbody.querySelectorAll('textarea').forEach(grow);
   tbody.addEventListener('input',function(e){if(e.target.tagName==='TEXTAREA')grow(e.target);recalc()});
-  tbody.addEventListener('change',function(e){var t=e.target;if(t.name!=='stype'||!t.value)return;var d=t.closest('tr').querySelector('[name=desc]');if(d&&!d.value.trim())d.value=t.options[t.selectedIndex].text});
+  tbody.addEventListener('change',function(e){var t=e.target;if(!t.hasAttribute('data-typesel'))return;var d=t.closest('tr').querySelector('[name=desc]');var o=t.options[t.selectedIndex];if(d)d.value=o&&o.value||o&&o.hasAttribute('data-keep')?o.text:''});
   tbody.addEventListener('change',recalc);
   window.vdLines={set:function(rows){tbody.innerHTML='';rows.forEach(function(r){add(r)});if(!tbody.children.length)add();recalc()}};
   if(!tbody.children.length)add();
@@ -139,6 +140,57 @@ export const toEditorLine = (l: LineRow): EditorLine => ({
   lpe: l.period_end && l.period_end !== l.period_start ? l.period_end : '',
 });
 
+/**
+ * Leistungsart als einzige Zeile der Position (Ahmed 15.10.): Auswahl statt Freitext, der Rechnungstext ist der Name der
+ * Leistungsart. Bisherige Texte, die keiner Leistungsart entsprechen, bleiben als eigene Auswahl („bisher“) erhalten.
+ */
+export const TypeSelect: FC<{
+  types: (ServiceTypeOption & { labor_share_bp?: number | null })[];
+  typeId?: string | null | undefined;
+  desc?: string | null | undefined;
+  name?: string;
+  onchange?: string;
+  descName?: string;
+  id?: string;
+  required?: boolean;
+}> = ({ types, typeId, desc, name = 'stype', descName = 'desc', id, required, onchange }) => {
+  const typeName = types.find((t) => t.id === typeId)?.name;
+  const keep = !!desc && desc !== typeName;
+  return (
+    <>
+      <select
+        name={name}
+        id={id}
+        class="ln-type"
+        aria-label="Leistungsart"
+        data-typesel
+        data-nosearch
+        required={required}
+        onchange={onchange}
+      >
+        <option value="">– Leistungsart wählen –</option>
+        {keep && (
+          <option value={typeId || 'text'} selected data-keep>
+            {desc}
+          </option>
+        )}
+        {types.map((t) => (
+          <option
+            value={t.id}
+            selected={!keep && t.id === typeId}
+            data-labor={
+              t.labor_share_bp != null ? String(t.labor_share_bp / 100).replace('.', ',') : undefined
+            }
+          >
+            {t.name}
+          </option>
+        ))}
+      </select>
+      <input type="hidden" name={descName} value={desc ?? typeName ?? ''} />
+    </>
+  );
+};
+
 const LineRowInputs: FC<{
   l?: EditorLine;
   recurring?: boolean | undefined;
@@ -146,17 +198,11 @@ const LineRowInputs: FC<{
 }> = ({ l, recurring, types }) => (
   <tr>
     <td style="min-width:260px">
-      {types && (
-        <select name="stype" class="ln-type" aria-label="Leistungsart" data-nosearch>
-          <option value="">– Leistungsart –</option>
-          {types.map((t) => (
-            <option value={t.id} selected={t.id === l?.stype}>
-              {t.name}
-            </option>
-          ))}
-        </select>
+      {types ? (
+        <TypeSelect types={types} typeId={l?.stype} desc={l?.desc} />
+      ) : (
+        <input name="desc" value={l?.desc ?? ''} placeholder="Leistung" />
       )}
-      <input name="desc" value={l?.desc ?? ''} placeholder="Leistung" />
       <textarea
         name="detail"
         rows={2}

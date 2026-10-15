@@ -3,7 +3,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { addDays } from '../domain/time/holidays.js';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { openItemLedger, settleOpenItem } from './payments.js';
+import { createReductionVoucher } from './reduction-vouchers.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
 const available = await dbAvailable();
@@ -74,5 +78,29 @@ describe.skipIf(!available)('Runde 23: Offene Posten – Teilzahlung und Skonto 
     ]);
     const [pc] = await sql<{ paid: boolean }[]>`select paid from app.legacy_invoices where id = ${c}`;
     expect(pc!.paid).toBe(true);
+    // interner Buchungsbeleg (PDF) für den Steuerberater, doppelt anlegen legt nichts doppelt an
+    const dir = await mkdtemp(join(tmpdir(), 'viva-kb-'));
+    try {
+      const p = {
+        key: 'k1',
+        invoiceId: c,
+        legacy: true,
+        grossCents: 5000n,
+        date: today,
+        reason: 'Mängelabzug',
+        actor: 't',
+      };
+      const v1 = await createReductionVoucher(sql, { dir, maxBytes: 5e7 }, p);
+      const v2 = await createReductionVoucher(sql, { dir, maxBytes: 5e7 }, p);
+      expect(v1.number).toMatch(/^KB-\d{4}-0001$/);
+      expect(v2.id).toBe(v1.id);
+      expect(v1.net_cents + v1.vat_cents).toBe(5000n);
+      expect(v1.net_cents).toBe(4202n);
+      const [f] =
+        await sql`select 1 from app.file_links where file_id = ${v1.file_id} and entity_type = 'customer'`;
+      expect(f).toBeTruthy();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

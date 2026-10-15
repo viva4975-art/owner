@@ -63,6 +63,8 @@ import {
 import { EmployeeForm, EmployeeList, EmployeeOverview, EmployeeShell } from './pages-hr-finance.js';
 import { lastMonth } from './routes-invoices.js';
 import { registerNoteRoutes } from './routes-notes.js';
+import { uploadConfig } from './routes-files.js';
+import { createReductionVoucher, listReductionVouchers } from '../services/reduction-vouchers.js';
 
 const uuidOr = (v: unknown) => (typeof v === 'string' && /^[0-9a-f-]{36}$/.test(v) ? v : randomUUID());
 
@@ -601,6 +603,7 @@ export function registerModuleRoutes(ctx: Ctx) {
     let paid = 0n;
     let skonto = 0n;
     const errors: string[] = [];
+    const vouchers: string[] = [];
     for (const k of Object.keys(b)) {
       const m = /^pay_([0-9a-f-]{36})$/.exec(k);
       if (!m) continue;
@@ -630,6 +633,19 @@ export function registerModuleRoutes(ctx: Ctx) {
         n++;
         paid += r.paid;
         skonto += r.skonto;
+        // Kürzung: interner Buchungsbeleg für den Steuerberater (Ahmed 15.10.)
+        if (rest === 'kuerzung' && r.skonto > 0n) {
+          const v = await createReductionVoucher(sql, uploadConfig(ctx), {
+            key: `${batch}:${m[1]}`,
+            invoiceId: m[1]!,
+            legacy: b[`lg_${m[1]}`] === '1',
+            grossCents: r.skonto,
+            date,
+            reason: String(b[`grund_${m[1]}`] ?? ''),
+            actor: c.get('actor'),
+          });
+          vouchers.push(v.number);
+        }
       } catch (e) {
         if (!(e instanceof BusinessError)) throw e;
         errors.push(e.message);
@@ -637,7 +653,7 @@ export function registerModuleRoutes(ctx: Ctx) {
     }
     if (!n && !errors.length)
       throw new BusinessError('Bitte bei mindestens einer Rechnung einen Betrag eintragen');
-    const msg = `${anz(n, 'Rechnung', 'Rechnungen')}: ${euro(paid)} Zahlung${skonto ? `, ${euro(skonto)} als Skonto ausgebucht` : ''}`;
+    const msg = `${anz(n, 'Rechnung', 'Rechnungen')}: ${euro(paid)} Zahlung${skonto ? `, ${euro(skonto)} ausgebucht` : ''}${vouchers.length ? ` · Kürzungsbeleg ${vouchers.join(', ')} erstellt (Kunde → Dokumente, Rechnungen → Kürzungsbelege)` : ''}`;
     return back(c, '/offene-posten', errors.length ? { fehler: [msg, ...errors].join('\n') } : { ok: msg });
   });
 
@@ -661,6 +677,117 @@ export function registerModuleRoutes(ctx: Ctx) {
     return back(c, '/offene-posten', { ok: `${euro(r.paid)} als bezahlt gebucht.` });
   });
 
+  // Kürzungsbelege (interne Buchungsbelege, Ahmed 15.10.): Liste für den Steuerberater, CSV
+  app.get('/rechnungen/kuerzungen', async (c) => {
+    const year = /^\d{4}$/.test(c.req.query('jahr') ?? '') ? c.req.query('jahr')! : todayBerlin().slice(0, 4);
+    const rows = await listReductionVouchers(sql, { from: `${year}-01-01`, to: `${year}-12-31` });
+    if (c.req.query('format') === 'csv') {
+      const q = (v: string) => `"${v.replace(/"/g, '""').replace(/^[=+@-]/, "'$&")}"`;
+      const cents = (v: bigint) => (Number(v) / 100).toFixed(2).replace('.', ',');
+      const csv = [
+        'Belegnr.;Belegdatum;Kundennr.;Kunde;Rechnung;Rechnungsdatum;Brutto;Netto;USt;Grund',
+        ...rows.map((r) =>
+          [
+            r.number,
+            r.voucher_date,
+            r.customer_no ?? '',
+            q(r.customer_name ?? ''),
+            r.invoice_number,
+            r.invoice_date ?? '',
+            cents(r.gross_cents),
+            cents(r.net_cents),
+            cents(r.vat_cents),
+            q(r.reason),
+          ].join(';'),
+        ),
+      ].join('\r\n');
+      return c.body(`\ufeff${csv}`, 200, {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="Kuerzungsbelege_${year}.csv"`,
+      });
+    }
+    const sum = rows.reduce((a, r) => a + r.gross_cents, 0n);
+    return page(
+      c,
+      'Kürzungsbelege',
+      'rechnungen',
+      <>
+        <PageHead title="Kürzungsbelege" crumbs={[['Offene Posten', '/offene-posten']]} />
+        <p class="mut small" style="max-width:760px">
+          Interne Buchungsbelege, wenn ein Kunde weniger gezahlt hat und der Rest ausgebucht wurde (Offene
+          Posten → Zahlung erfassen → „Rest als Kürzung ausbuchen“). Sie gehen nicht an den Kunden. Für den
+          Steuerberater: PDF je Beleg und CSV. Die Umsatzsteuer mindert sich erst, wenn die Kürzung endgültig
+          ist (§ 17 UStG).
+        </p>
+        <form method="get" class="actions" style="margin:8px 0">
+          <label for="jahr" class="small mut">
+            Jahr
+          </label>
+          <input id="jahr" name="jahr" value={year} style="width:90px" inputmode="numeric" />
+          <button class="btn sm sec">Anzeigen</button>
+          <a class="btn sm sec" href={`/rechnungen/kuerzungen?jahr=${year}&format=csv`}>
+            CSV
+          </a>
+        </form>
+        <div class="card" style="padding:0">
+          <table>
+            <thead>
+              <tr>
+                <th>Beleg</th>
+                <th>Datum</th>
+                <th>Kunde</th>
+                <th>Rechnung</th>
+                <th class="r">Brutto</th>
+                <th class="r">Netto</th>
+                <th class="r">USt</th>
+                <th>Grund</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 && (
+                <tr>
+                  <td colspan={8} class="mut">
+                    Keine Kürzungsbelege in {year}.
+                  </td>
+                </tr>
+              )}
+              {rows.map((r) => (
+                <tr>
+                  <td>{r.file_id ? <a href={`/dateien/${r.file_id}`}>{r.number}</a> : r.number}</td>
+                  <td>{dateDe(r.voucher_date)}</td>
+                  <td>
+                    <a href={`/kunden/${r.customer_id}`}>{r.customer_name}</a>{' '}
+                    <span class="mut small">{r.customer_no}</span>
+                  </td>
+                  <td>
+                    <a href={`/rechnungen/${r.invoice_id ?? r.legacy_invoice_id}`}>{r.invoice_number}</a>
+                  </td>
+                  <td class="r">{euro(r.gross_cents)}</td>
+                  <td class="r">{euro(r.net_cents)}</td>
+                  <td class="r">{euro(r.vat_cents)}</td>
+                  <td class="small">{r.reason}</td>
+                </tr>
+              ))}
+            </tbody>
+            {rows.length > 0 && (
+              <tfoot>
+                <tr>
+                  <td colspan={4}>
+                    <b>Summe {year}</b>
+                  </td>
+                  <td class="r">
+                    <b>{euro(sum)}</b>
+                  </td>
+                  <td colspan={3}></td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </>,
+    );
+  });
+
   app.get('/offene-posten', async (c) => {
     const q = c.req.query('q') ?? '';
     const overdueOnly = c.req.query('filter') === 'ueberfaellig';
@@ -673,7 +800,11 @@ export function registerModuleRoutes(ctx: Ctx) {
       'Offene Posten',
       'rechnungen',
       <>
-        <PageHead title="Offene Posten" />
+        <PageHead title="Offene Posten">
+          <a class="btn sm sec" href="/rechnungen/kuerzungen">
+            Kürzungsbelege
+          </a>
+        </PageHead>
         <div class="kpis">
           <div class="kpi">
             <div class="l">offen gesamt</div>

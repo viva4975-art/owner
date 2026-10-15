@@ -129,21 +129,23 @@ if ((await confirmCards.count()) > 0) {
 }
 
 await m.goto(B + new URL(qrUrl).pathname);
-await nav(m, 'button.rb.go');
+if (!(await m.locator('.msheet[open]').count())) await m.click('summary.fab');
+await nav(m, '#clock-start');
 check('eingestempelt', (await flash(m)).includes('Eingestempelt um'), await flash(m));
-check('Laufende Zeit sichtbar', (await m.locator('.sw.on').count()) === 1);
+check('Laufende Zeit sichtbar', (await m.locator('summary.fab.on').count()) === 1);
 await m.screenshot({ path: `${out}/z4-handy-laeuft.png`, fullPage: true });
 // zweimal tippen / erneut senden → kein zweiter Eintrag
 await m.goBack();
 await m.goBack();
 await m.waitForLoadState();
 await m.goto(B + new URL(qrUrl).pathname);
-check('am Objekt: Beenden statt Beginnen', (await m.locator('button.rb.stop').count()) === 1);
+check('am Objekt: Beenden statt Beginnen', (await m.locator('#clock-stop').count()) === 1);
 check(
   'Pause automatisch angezeigt (nach 4 Std.)',
   (await m.locator('.brk').innerText()).includes('Pause automatisch'),
 );
-await nav(m, 'button.rb.stop');
+if (!(await m.locator('.msheet[open]').count())) await m.click('summary.fab');
+await nav(m, '#clock-stop');
 check('ausgestempelt', (await flash(m)).includes('Ausgestempelt'), await flash(m));
 
 // ---------- 4. Nachtrag + Urlaub ----------

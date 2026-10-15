@@ -2971,3 +2971,22 @@ Testadresse.
     (§ 4 ArbZG). Mitarbeitende können sie verschieben/kürzen („Pause ändern“) oder ablehnen („Pause ablehnen“). Beim
     Ausstempeln gilt sie, wenn bis nach ihrem Ende gearbeitet wurde (sonst gesetzliche Pause); abgelehnt = 0, Büro sieht
     den § 4-Hinweis. Ohne geplante Pause wie bisher (nach 4 Std.).
+- 2026-10-15: Runde 42 (Ahmed, 5 Punkte):
+  - **Leistungsart statt Freitext** überall, wo Positionen erfasst werden (Rechnung, Rechnungskorrektur, Angebot,
+    Einzelauftrag, Direktbearbeitung im Rechnungsbrief, Leistung am Objekt): nur noch eine Auswahl „Leistungsart“, der
+    Rechnungstext ist ihr Name (`TypeSelect` in `pages-invoices.tsx`, verstecktes Feld `desc`/`description`). Bisherige
+    Texte ohne passende Leistungsart bleiben als eigene Auswahl stehen (Wert `text` → keine Leistungsart). Beschreibung
+    bleibt als Zusatztext.
+  - **Kürzungsbeleg**: „Rest als Kürzung ausbuchen“ erzeugt einen internen Buchungsbeleg KB-JJJJ-NNNN als PDF
+    (`reduction-vouchers.ts`, Tabelle `app.reduction_vouchers`, Migration `20261127000001`, nur anhängen): Kunde,
+    Rechnung, Betrag brutto/netto/USt (im Verhältnis der Rechnung), Grund, Hinweis § 17 UStG, Unterschriftsfeld
+    „geprüft/freigegeben“. Ablage write-once in der Kundenakte („Rechnungen & Belege“), revisionssicher kopiert (S3),
+    Liste **Rechnungen → Kürzungsbelege** (`/rechnungen/kuerzungen`, Knopf auf Offene Posten) mit CSV für den
+    Steuerberater; DATEV-Hinweisliste nennt die Belegnummer. Geht nie an den Kunden.
+  - **Stoppuhr als runder Bordeaux-Knopf unten rechts** (Symbol wie „Einsätze erledigt“); Antippen öffnet ein Fenster
+    von unten mit Start bzw. laufender Zeit, Pause und Stopp. Läuft die Zeit, zeigt der Knopf die Uhrzeit. QR-Modus:
+    Knopf öffnet direkt den Scanner.
+  - **QM-App:** jede Audit-Zeile (Übersicht, Objekt) hat ein Menü „⋮“: Öffnen/Weiter bewerten, Auswertungsbericht,
+    Löschen (Entwurf jeder, abgeschlossene nur Admin).
+  - **Mitarbeiter-App kompakter wie Fortytools:** Begrüßung einzeilig, Schnellknöpfe 3 je Zeile, Einsatzkarten weiß mit
+    Objektnummer, Adresse und Symbol (Uhr offen / Haken erledigt), kleinere Abstände und Knöpfe.

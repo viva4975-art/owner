@@ -1037,7 +1037,9 @@ export type DraftPatch =
       what: 'position';
       /** Index der Position (0-basiert), null = neue Position am Ende */
       index: number | null;
-      line: Pick<DraftLineInput, 'description' | 'quantity' | 'unitCode' | 'unitPrice'>;
+      line: Pick<DraftLineInput, 'description' | 'quantity' | 'unitCode' | 'unitPrice'> & {
+        serviceTypeId?: string | null;
+      };
     }
   | { what: 'position_loeschen'; index: number };
 
@@ -1073,7 +1075,7 @@ export async function patchDraft(
   else if (patch.what === 'einleitung') input.introText = patch.text;
   else if (patch.what === 'schluss') input.closingText = patch.text;
   else if (patch.what === 'position') {
-    if (!patch.line.description.trim()) throw new BusinessError('Bitte eine Beschreibung angeben');
+    if (!patch.line.description.trim()) throw new BusinessError('Bitte eine Leistungsart wählen');
     if (patch.line.quantity === 0n) throw new BusinessError('Menge darf nicht 0 sein');
     if (patch.line.unitPrice < 0n)
       throw new BusinessError('Einzelpreis darf nicht negativ sein – Menge negativ angeben');

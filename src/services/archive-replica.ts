@@ -84,7 +84,8 @@ export async function candidates(sql: Sql, env: Env): Promise<Candidate[]> {
        and (exists (select 1 from app.file_links l where l.file_id = f.id
                      and l.entity_type in ('invoice', 'incoming_invoice'))
             or exists (select 1 from app.incoming_invoices i where i.einvoice_file_id = f.id)
-            or exists (select 1 from app.payslips p where p.file_id = f.id))`;
+            or exists (select 1 from app.payslips p where p.file_id = f.id)
+            or exists (select 1 from app.reduction_vouchers v where v.file_id = f.id))`;
   const root = resolve(env.FILES_DIR);
   for (const f of files)
     list.push({ key: `dateien/${f.storage_path}`, file: join(root, f.storage_path), stored: f.completed_at });

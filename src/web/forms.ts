@@ -51,7 +51,7 @@ export function parseLines(body: Body, opts: { allowNegative?: boolean } = {}): 
     const description = d.trim();
     if (!description && !(price[i] ?? '').trim()) return;
     const n = i + 1;
-    if (!description) throw new BusinessError(`Position ${n}: Beschreibung fehlt`);
+    if (!description) throw new BusinessError(`Position ${n}: Leistungsart fehlt – bitte auswählen`);
     let quantity, unitPrice;
     try {
       quantity = parseQuantity(qty[i] || '1');

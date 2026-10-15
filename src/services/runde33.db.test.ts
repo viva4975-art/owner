@@ -17,6 +17,7 @@ import {
   reopenWorkReport,
   orderToInvoice,
   reportsToInvoice,
+  previewOrderInvoicePdf,
   saveOrder,
   saveWorkReport,
   setWorkReportDone,
@@ -228,6 +229,16 @@ describe.skipIf(!available)(
         },
         't',
       );
+      // PDF-Vorschau der künftigen Rechnung: kein Entwurf bleibt zurück, Auftrag bleibt offen
+      const pdf = await previewOrderInvoicePdf(deps, oid);
+      expect(Buffer.from(pdf.slice(0, 4)).toString()).toBe('%PDF');
+      const [o2] = await sql<{ invoice_id: string | null; status: string }[]>`
+        select invoice_id, status::text from app.orders where id = ${oid}`;
+      expect(o2!.invoice_id).toBeNull();
+      expect(o2!.status).not.toBe('abgerechnet');
+      expect(
+        (await sql`select 1 from app.invoices where id = md5(${'order-invoice:' + oid})::uuid`).length,
+      ).toBe(0);
       const reports = await listWorkReports(sql, { orderId: oid });
       expect(reports).toHaveLength(1);
       expect(reports[0]!.employee_ids).toEqual([EMP]);

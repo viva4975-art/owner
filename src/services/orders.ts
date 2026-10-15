@@ -6,7 +6,7 @@ import { FormDoc } from '../pdf/form-doc.js';
 import { renderInvoicePdf } from '../pdf/invoice-pdf.js';
 import { assertVersion } from './crm.js';
 import { BusinessError } from './errors.js';
-import { type BillAddress, applyBillAddress, saveDraft } from './invoices.js';
+import { type BillAddress, applyBillAddress, loadDraftPreview, saveDraft } from './invoices.js';
 import { buildBuyerSnapshot, getSeller } from './masterdata.js';
 import { ensureGeneralSite } from './fortytools-more-import.js';
 import { nextYearNumber } from './purchasing.js';
@@ -1196,7 +1196,12 @@ const maxPeriod = (ls: OrderLine[]) =>
     .at(-1) ?? null;
 
 /** Rechnungsentwurf aus Auftrag; abgeschlossene Arbeitsscheine werden angehängt. Nur einmal je Auftrag. */
-export async function orderToInvoice(deps: Deps, orderId: string, actor: string): Promise<string> {
+export async function orderToInvoice(
+  deps: Deps,
+  orderId: string,
+  actor: string,
+  opts: { preview?: boolean } = {},
+): Promise<string> {
   const { sql } = deps;
   const data = await getOrder(sql, orderId);
   if (!data) throw new BusinessError('Auftrag nicht gefunden');
@@ -1206,7 +1211,7 @@ export async function orderToInvoice(deps: Deps, orderId: string, actor: string)
   if (!lines.length) throw new BusinessError('Auftrag hat keine Positionen mit Preisen');
   const open = (await listWorkReports(sql, { orderId, status: ['entwurf'] })).filter((w) => !w.cancelled_at);
   // mit Arbeitsschein-Pflicht darf der Entwurf schon entstehen – Ausstellen erst nach der Unterschrift
-  if (open.length && !o.work_report_required)
+  if (open.length && !o.work_report_required && !opts.preview)
     throw new BusinessError(`Arbeitsschein ${open[0]!.number} ist noch nicht unterschrieben/abgeschlossen`);
   const [{ id }] = (await sql`select md5(${'order-invoice:' + orderId})::uuid as id`) as unknown as [
     { id: string },
@@ -1256,6 +1261,30 @@ export async function orderToInvoice(deps: Deps, orderId: string, actor: string)
   await sql`update app.orders set status = 'abgerechnet', invoice_id = ${id} where id = ${orderId} and invoice_id is null`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details) values (${actor}, 'to_invoice', 'order', ${orderId}, ${sql.json({ invoice_id: id })})`;
   return id;
+}
+
+/**
+ * PDF-Vorschau der Rechnung, die aus dem Auftrag entstehen würde (Ahmed 15.10.): derselbe Weg wie „Rechnung erstellen“,
+ * aber in einer Transaktion, die danach zurückgerollt wird – es entsteht kein Entwurf, der Auftrag bleibt offen.
+ */
+export async function previewOrderInvoicePdf(deps: Deps, orderId: string): Promise<Uint8Array> {
+  const rollback = new Error('vorschau');
+  let pdf: Uint8Array | null = null;
+  try {
+    await deps.sql.begin(async (tx) => {
+      // verschachtelte Transaktionen (saveDraft) laufen als Sicherungspunkt
+      const inner = Object.assign(tx, {
+        begin: (fn: (t: Tx) => Promise<unknown>) => tx.savepoint(fn),
+      }) as unknown as Sql;
+      const id = await orderToInvoice({ ...deps, sql: inner }, orderId, 'vorschau', { preview: true });
+      pdf = await renderInvoicePdf(await loadDraftPreview(inner, id), { watermark: 'ENTWURF' });
+      throw rollback;
+    });
+  } catch (e) {
+    if (e !== rollback) throw e;
+  }
+  if (!pdf) throw new BusinessError('Vorschau nicht möglich');
+  return pdf;
 }
 
 /**

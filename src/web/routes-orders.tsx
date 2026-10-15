@@ -25,6 +25,7 @@ import {
   getWorkReport,
   listWorkReports,
   orderToInvoice,
+  previewOrderInvoicePdf,
   renderOrderConfirmation,
   reportsToInvoice,
   saveOrder,
@@ -730,6 +731,11 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
               <a class="btn sec" href={`/auftraege/${id}/auftragsbestaetigung.pdf`} target="_blank">
                 <Icon name="pdf" /> Auftragsbestätigung
               </a>
+              {o.status !== 'storniert' && (
+                <a class="btn sec" href={`/auftraege/${id}/rechnung-vorschau.pdf`} target="_blank">
+                  <Icon name="pdf" /> Rechnung als PDF-Vorschau
+                </a>
+              )}
               {done && o.site_id && (
                 <a class="btn" href={`/arbeitsscheine/${randomUUID()}?auftrag=${id}`}>
                   <Icon name="plus" /> Arbeitsschein
@@ -845,6 +851,20 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
     await setOrderStatus(sql, id, s, c.get('actor'));
     return back(c, `/auftraege/${id}`, {
       ok: s === 'offen' ? 'Auftrag wieder offen.' : `Auftrag ${ORDER_STATUS[s]}.`,
+    });
+  });
+
+  app.get(`/auftraege/:id{${UUID}}/rechnung-vorschau.pdf`, async (c) => {
+    const id = c.req.param('id');
+    const o = (await getOrder(sql, id))?.order;
+    if (o?.invoice_id) return c.redirect(`/rechnungen/${o.invoice_id}/vorschau.pdf`);
+    const pdf = await previewOrderInvoicePdf(deps, id);
+    return new Response(pdf, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="Rechnung_Vorschau_${o?.number ?? 'Auftrag'}.pdf"`,
+        'Cache-Control': 'private, no-cache',
+      },
     });
   });
 

@@ -661,8 +661,7 @@ export async function resendInvoice(
     const [inv] = await sql<{ customer_id: string; gid: string | null }[]>`
       select i.customer_id, coalesce(i.invoice_group_id, s.invoice_group_id) as gid
         from app.invoices i left join app.sites s on s.id = i.site_id where i.id = ${id}`;
-    if (inv?.gid)
-      await sql`update app.invoice_groups set bill_emails = ${recipients} where id = ${inv.gid}`;
+    if (inv?.gid) await sql`update app.invoice_groups set bill_emails = ${recipients} where id = ${inv.gid}`;
     else if (inv)
       await sql`update app.customers set invoice_emails = ${recipients} where id = ${inv.customer_id}`;
     await sql`insert into app.audit_log (actor, action, entity, entity_id, details)

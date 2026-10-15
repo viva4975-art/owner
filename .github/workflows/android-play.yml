@@ -59,7 +59,27 @@ jobs:
           KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           mkdir -p "$RUNNER_TEMP/keys"
-          printf '%s' "$KS" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/keys/upload.jks"
+          # tolerant: Zeilen wie „-----BEGIN CERTIFICATE-----“ (Windows certutil), Leerzeichen,
+          # Zeilenumbrüche und URL-sichere Zeichen werden bereinigt
+          printf '%s' "$KS" | grep -v -- '-----' | tr '_-' '/+' | tr -cd 'A-Za-z0-9+/=' > "$RUNNER_TEMP/keys/ks.b64"
+          if ! base64 -d "$RUNNER_TEMP/keys/ks.b64" > "$RUNNER_TEMP/keys/upload.jks" 2>/dev/null; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 ist kein gültiger Base64-Text ($(wc -c < "$RUNNER_TEMP/keys/ks.b64") Zeichen). Bitte neu erzeugen (Anleitung in CLAUDE.md / Chat)."; exit 1
+          fi
+          echo "Schlüsseldatei: $(wc -c < "$RUNNER_TEMP/keys/upload.jks") Bytes"
+      - name: Schlüssel und Passwort prüfen
+        env:
+          KSP: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if ! keytool -list -keystore "$RUNNER_TEMP/keys/upload.jks" -storepass "$KSP" > "$RUNNER_TEMP/keys/list.txt" 2>&1; then
+            echo "::error::Schlüsseldatei lässt sich nicht öffnen – Passwort (ANDROID_KEYSTORE_PASSWORD) falsch oder Datei beschädigt."
+            grep -v -i pass "$RUNNER_TEMP/keys/list.txt" | head -3; exit 1
+          fi
+          if ! keytool -list -keystore "$RUNNER_TEMP/keys/upload.jks" -storepass "$KSP" -alias "$ALIAS" > /dev/null 2>&1; then
+            echo "::error::Alias (ANDROID_KEY_ALIAS) nicht gefunden. Vorhandene Aliase:"
+            grep -i 'entry\|eintrag' "$RUNNER_TEMP/keys/list.txt" | cut -d, -f1; exit 1
+          fi
+          echo "Schlüssel, Passwort und Alias passen."
       - name: App-Bundle bauen (.aab)
         working-directory: mobile-app/android
         env:

@@ -3020,3 +3020,14 @@ Testadresse.
     Schlüsselbuch jetzt auch beim Nachunternehmer (`keys.holder_supplier_id`, `key_log.supplier_id`, Migration
     `20261127000004`), Rückgabe nur vom NU.
   - Tests: `handovers.db.test.ts` (Schlüssel an NU), e2e `app` 20, `login` 39 (Personalbogen mit Foto).
+- 2026-10-15: **Verrechnung zu Rechnungen, auch von vor der Umstellung** (Ahmed: „Gutschrift oder so zur Verrechnung,
+  intern, mit der Rechnung verbunden, buchhalterisch richtig“): An jeder offenen Rechnung (eigene und übernommene)
+  „Gutschrift / Verrechnung (Kürzung)“ → `/rechnungen/:id/verrechnung` mit zwei Wegen:
+  **A Rechnungskorrektur an den Kunden** (eigene Nummer, Belegart 384, Verweis BT-25 auf die alte Nummer, eine
+  Minus-Position „Minderung zur Rechnung …“ mit Grund und Steuersatz/Leistungsart der alten Rechnung,
+  `createLegacyCorrection`; nie mehr als der noch nicht korrigierte Nettobetrag) – USt sofort gemindert, mindert nach dem
+  Ausstellen den offenen Posten. **B Nur intern: Kürzung ausbuchen** (Teilbetrag brutto, Grund, Datum, `writeOffPart`,
+  feste ID → nichts doppelt; bei übernommenen Rechnungen zählt sie wie eine Teilzahlung) + interner Kürzungsbeleg
+  KB-JJJJ-NNNN (PDF in der Kundenakte, Liste Kürzungsbelege, DATEV-Hinweis). Das Wort „Gutschrift“ steht auf keinem
+  Beleg (umsatzsteuerlich = Abrechnung durch den Leistungsempfänger, § 14 Abs. 2 S. 2 UStG). **Steuerlich:** Kürzung
+  mindert die USt erst, wenn sie endgültig ist (§ 17 UStG, Steuerberater). Test in `legacy-cancel.db.test.ts`.

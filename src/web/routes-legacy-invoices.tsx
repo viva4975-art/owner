@@ -1,4 +1,9 @@
-import { copyLegacyToDraft, createLegacyCancellation } from '../services/invoices.js';
+import { randomUUID } from 'node:crypto';
+import { copyLegacyToDraft, createLegacyCancellation, createLegacyCorrection } from '../services/invoices.js';
+import { writeOffPart } from '../services/payments.js';
+import { createReductionVoucher } from '../services/reduction-vouchers.js';
+import { BusinessError } from '../services/errors.js';
+import { uploadConfig } from './routes-files.js';
 import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { parseEuro } from '../domain/money/money.js';
@@ -163,6 +168,17 @@ export async function legacyInvoicePage(sql: Sql, page: Ctx['page'], c: Context<
               </form>
             </div>
           )}
+          {inv.gross_cents > 0n && inv.customer_id && open && open.open_cents > 0n && (
+            <div class="card">
+              <h3 style="margin-top:0">Gutschrift / Verrechnung</h3>
+              <p class="small mut" style="margin-top:0">
+                Betrag mindern – als Rechnungskorrektur an den Kunden oder nur intern mit Kürzungsbeleg.
+              </p>
+              <a class="btn sec" style="width:100%" href={`/rechnungen/${id}/verrechnung`}>
+                Minderung erfassen …
+              </a>
+            </div>
+          )}
           {open && open.open_cents > 0n && (
             <form method="post" action={`/rechnungen/fortytools/${id}/bezahlt`} class="card">
               <h3 style="margin-top:0">Zahlung festhalten</h3>
@@ -194,7 +210,8 @@ export async function legacyInvoicePdf(sql: Sql, c: Context<AppEnv>, id: string)
   });
 }
 
-export function registerLegacyInvoiceRoutes({ app, deps, back }: Ctx) {
+export function registerLegacyInvoiceRoutes(ctx: Ctx) {
+  const { app, deps, back, page } = ctx;
   const sql = deps.sql;
   // alte Adressen → gemeinsame Rechnungsadresse
   app.get(`/rechnungen/fortytools/:id{${UUID}}`, (c) => c.redirect(`/rechnungen/${c.req.param('id')}`));
@@ -213,6 +230,172 @@ export function registerLegacyInvoiceRoutes({ app, deps, back }: Ctx) {
     const nid = await copyLegacyToDraft(sql, c.req.param('id'), c.get('actor'));
     return back(c, `/rechnungen/${nid}`, {
       ok: 'Neuer Rechnungsentwurf mit den Positionen der alten Rechnung.',
+    });
+  });
+
+  // ------------------------------------------------------------------ Gutschrift / Verrechnung (Minderung)
+  // Ahmed 15.10.: „auch aus den alten Rechnungen eine Gutschrift oder so zur Verrechnung, intern, mit der Rechnung
+  // verbunden, buchhalterisch richtig“. Zwei richtige Wege: Rechnungskorrektur (Beleg an den Kunden, Belegart 384) oder
+  // interne Kürzung mit Kürzungsbeleg (nichts an den Kunden). Das Wort „Gutschrift“ wird auf Belegen nicht verwendet.
+  app.get(`/rechnungen/:id{${UUID}}/verrechnung`, async (c) => {
+    const id = c.req.param('id');
+    const [lg] = await sql<{ number: string; issue_date: string; net_cents: bigint; gross_cents: bigint }[]>`
+      select number, issue_date::text, net_cents, gross_cents from app.legacy_invoices where id = ${id}`;
+    const [own] = lg
+      ? []
+      : await sql<
+          { number: string | null; issue_date: string | null; net_cents: bigint; gross_cents: bigint }[]
+        >`
+          select number, issue_date::text, net_cents, gross_cents from app.invoices
+           where id = ${id} and status = 'issued' and kind in ('invoice', 'partial', 'final')`;
+    const inv = lg ?? own;
+    if (!inv) return c.notFound();
+    const [o] = lg
+      ? await sql<
+          { open_cents: bigint }[]
+        >`select open_cents from app.legacy_open_items where invoice_id = ${id}`
+      : await sql<{ open_cents: bigint }[]>`select open_cents from app.open_items where invoice_id = ${id}`;
+    const open = o?.open_cents ?? 0n;
+    const key = randomUUID();
+    return page(
+      c,
+      `Minderung zu ${inv.number}`,
+      'rechnungen',
+      <>
+        <PageHead
+          title={`Gutschrift / Verrechnung zu Rechnung ${inv.number}`}
+          crumbs={[[`Rechnung ${inv.number}`, `/rechnungen/${id}`]]}
+        />
+        <p class="mut" style="margin-top:0">
+          Rechnung vom {dateDe(inv.issue_date ?? '')} · netto {euro(inv.net_cents)} · brutto{' '}
+          {euro(inv.gross_cents)} · <b>offen {euro(open)}</b>
+        </p>
+        <div
+          class="grid2"
+          style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px"
+        >
+          <div class="card">
+            <h3 style="margin-top:0">A · Rechnungskorrektur an den Kunden</h3>
+            <p class="small">
+              Wenn der Kunde einen Beleg bekommen soll oder die Minderung vereinbart ist (z. B. Leistung nicht
+              erbracht, Preisfehler). Eigene Nummer, Verweis auf {inv.number}, E-Rechnung (Belegart 384). Die
+              Umsatzsteuer wird damit sofort richtig gemindert. Der Betrag wird mit dem offenen Posten
+              verrechnet.
+            </p>
+            {lg ? (
+              <form method="post" action={`/rechnungen/fortytools/${id}/korrektur`}>
+                <label for="k_net">Minderung netto (€)</label>
+                <input id="k_net" name="netto" inputmode="decimal" required placeholder="0,00" />
+                <label for="k_reason">Grund (steht auf der Korrektur)</label>
+                <input
+                  id="k_reason"
+                  name="grund"
+                  required
+                  placeholder="z. B. Reinigung 03.–05.09. ausgefallen"
+                />
+                <div class="formfoot">
+                  <button class="btn">Rechnungskorrektur als Entwurf anlegen</button>
+                </div>
+              </form>
+            ) : (
+              <a class="btn" href={`/rechnungen/${id}/korrektur`}>
+                Rechnungskorrektur anlegen
+              </a>
+            )}
+          </div>
+          <div class="card">
+            <h3 style="margin-top:0">B · Nur intern: Kürzung ausbuchen</h3>
+            <p class="small">
+              Wenn der Kunde einfach weniger zahlt bzw. mit etwas verrechnet und kein Beleg an ihn geht. Der
+              Betrag (brutto) wird an der Rechnung ausgebucht, es entsteht ein interner Kürzungsbeleg KB-…
+              (PDF in der Kundenakte, Liste unter Rechnungen → Kürzungsbelege, DATEV-Hinweis). Umsatzsteuer:
+              Minderung erst, wenn die Kürzung endgültig ist (§ 17 UStG) – der Steuerberater bucht nach dem
+              Beleg.
+            </p>
+            {open > 0n ? (
+              <form
+                method="post"
+                action={`/rechnungen/${id}/verrechnung`}
+                onsubmit="return confirm('Betrag intern ausbuchen und Kürzungsbeleg erstellen?')"
+              >
+                <input type="hidden" name="key" value={key} />
+                <label for="w_amt">Betrag brutto (€, höchstens {euro(open)})</label>
+                <input id="w_amt" name="betrag" inputmode="decimal" required placeholder="0,00" />
+                <label for="w_date">Datum</label>
+                <input id="w_date" name="datum" type="date" value={todayBerlin()} required />
+                <label for="w_reason">Grund</label>
+                <input
+                  id="w_reason"
+                  name="grund"
+                  required
+                  placeholder="z. B. Kunde verrechnet Mängelabzug / Gegenforderung"
+                />
+                <div class="formfoot">
+                  <button class="btn">Ausbuchen + Kürzungsbeleg</button>
+                </div>
+              </form>
+            ) : (
+              <p class="small mut">Rechnung ist nicht mehr offen.</p>
+            )}
+          </div>
+        </div>
+      </>,
+    );
+  });
+
+  app.post(`/rechnungen/fortytools/:id{${UUID}}/korrektur`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    let net: bigint;
+    try {
+      net = parseEuro(String(b.netto ?? ''));
+    } catch {
+      throw new BusinessError('Betrag ungültig');
+    }
+    const nid = await createLegacyCorrection(
+      sql,
+      id,
+      { netCents: net, reason: String(b.grund ?? '') },
+      c.get('actor'),
+    );
+    return back(c, `/rechnungen/${nid}`, {
+      ok: 'Rechnungskorrektur als Entwurf angelegt – prüfen und fertigstellen (KoSIT-Prüfung, neue Nummer).',
+    });
+  });
+
+  app.post(`/rechnungen/:id{${UUID}}/verrechnung`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    const key = /^[0-9a-f-]{36}$/.test(String(b.key ?? '')) ? String(b.key) : randomUUID();
+    const [lg] = await sql`select 1 from app.legacy_invoices where id = ${id}`;
+    let amount: bigint;
+    try {
+      amount = parseEuro(String(b.betrag ?? ''));
+    } catch {
+      throw new BusinessError('Betrag ungültig');
+    }
+    const date = String(b.datum ?? '');
+    const reason = String(b.grund ?? '');
+    await writeOffPart(sql, {
+      key,
+      invoiceId: id,
+      legacy: !!lg,
+      amount,
+      date,
+      reason,
+      actor: c.get('actor'),
+    });
+    const v = await createReductionVoucher(sql, uploadConfig(ctx), {
+      key,
+      invoiceId: id,
+      legacy: !!lg,
+      grossCents: amount,
+      date,
+      reason,
+      actor: c.get('actor'),
+    });
+    return back(c, `/rechnungen/${id}`, {
+      ok: `Kürzung ${euro(amount)} ausgebucht · Kürzungsbeleg ${v.number} erstellt (Kunde → Dokumente, Rechnungen → Kürzungsbelege).`,
     });
   });
 

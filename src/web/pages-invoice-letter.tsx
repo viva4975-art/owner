@@ -972,6 +972,9 @@ export const IssuedLetter: FC<{
             {!isCredit && !cancelled && (
               <>
                 <a href={`/rechnungen/${inv.id}/korrektur`}>Rechnungskorrektur</a>
+                {!paid && (
+                  <a href={`/rechnungen/${inv.id}/verrechnung`}>Gutschrift / Verrechnung (Kürzung)</a>
+                )}
                 <form
                   method="post"
                   action={`/rechnungen/${inv.id}/storno`}

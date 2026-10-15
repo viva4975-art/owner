@@ -433,6 +433,68 @@ export async function settleOpenItem(
   });
 }
 
+/**
+ * Teil einer Forderung intern ausbuchen (Kürzung, Ahmed 15.10.: „zur Verrechnung, nur intern, mit der Rechnung
+ * verbunden“) – eigene oder Rechnung von vor der Umstellung. Bucht nur den Betrag, der Rest bleibt offen.
+ * Feste ID aus dem Schlüssel → doppelt absenden bucht nichts doppelt. Beleg: createReductionVoucher.
+ */
+export async function writeOffPart(
+  sql: Sql,
+  p: {
+    key: string;
+    invoiceId: string;
+    legacy: boolean;
+    amount: bigint;
+    date: string;
+    reason: string;
+    actor: string;
+  },
+): Promise<boolean> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date)) throw new BusinessError('Datum fehlt');
+  if (p.amount <= 0n) throw new BusinessError('Bitte den Kürzungsbetrag (brutto) angeben');
+  if (!p.reason.trim()) throw new BusinessError('Bitte den Grund der Kürzung angeben');
+  const id = idFrom(`kuerzung:${p.key}`);
+  const ref = `Kürzung: ${p.reason.trim()}`.slice(0, 200);
+  if (!p.legacy) {
+    const [done] = await sql`select 1 from app.payments where id = ${id}`;
+    if (done) return false;
+    const [o] = await sql<{ open_cents: bigint }[]>`
+      select open_cents from app.open_items where invoice_id = ${p.invoiceId}`;
+    if (!o || o.open_cents <= 0n) throw new BusinessError('Rechnung ist nicht (mehr) offen');
+    if (p.amount > o.open_cents) throw new BusinessError('Kürzung ist höher als der offene Betrag');
+    await bookPayment(
+      sql,
+      id,
+      p.invoiceId,
+      { amount: p.amount as Cents, paid_on: p.date, method: 'kuerzung', reference: ref },
+      p.actor,
+    );
+    return true;
+  }
+  return sql.begin(async (tx) => {
+    await tx`select 1 from app.legacy_invoices where id = ${p.invoiceId} for update`;
+    const [done] = await tx`select 1 from app.legacy_payments where id = ${id}`;
+    if (done) return false;
+    const [o] = await tx<{ open_cents: bigint }[]>`
+      select open_cents from app.legacy_open_items where invoice_id = ${p.invoiceId}`;
+    if (!o || o.open_cents <= 0n) throw new BusinessError('Rechnung ist nicht (mehr) offen');
+    if (p.amount > o.open_cents) throw new BusinessError('Kürzung ist höher als der offene Betrag');
+    await tx`insert into app.legacy_payments (id, invoice_id, amount_cents, paid_on, method, reference, created_by)
+             values (${id}, ${p.invoiceId}, ${p.amount}, ${p.date}, 'kuerzung', ${ref}, ${p.actor})`;
+    // ausgeglichener Teil zählt wie eine Teilzahlung (offener Posten = brutto − paid_part_cents …)
+    if (p.amount === o.open_cents)
+      await tx`update app.legacy_invoices set paid = true, paid_at = ${p.date}, paid_marked_by = ${p.actor},
+                      paid_part_cents = paid_part_cents + ${p.amount}
+                where id = ${p.invoiceId}`;
+    else
+      await tx`update app.legacy_invoices set paid_part_cents = paid_part_cents + ${p.amount} where id = ${p.invoiceId}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${p.actor}, 'write_off', 'legacy_invoice', ${p.invoiceId},
+                     ${tx.json({ amount_cents: String(p.amount), reason: p.reason.trim() })})`;
+    return true;
+  });
+}
+
 /** Feste UUID aus einem Schlüssel (v4-Format). */
 function idFrom(key: string) {
   const h = createHash('md5').update(key).digest('hex').split('');

@@ -50,6 +50,33 @@ setze NSPhotoLibraryUsageDescription string "Zum Hochladen von Fotos und Dokumen
 # nur HTTPS (Standardverschlüsselung) → Exportfrage in App Store Connect entfällt
 setze ITSAppUsesNonExemptEncryption bool false
 
+schritt "UIScene-Lebenszyklus (Pflicht ab iOS-SDK 26)"
+# Ohne Scene-Manifest startet die App mit neuem Xcode nicht:
+# „UIScene life cycle is required for apps built with this SDK“ (schwarzer Bildschirm).
+if ! /usr/libexec/PlistBuddy -c "Print :UIApplicationSceneManifest" "$plist" >/dev/null 2>&1; then
+  pb() { /usr/libexec/PlistBuddy -c "$1" "$plist"; }
+  k=":UIApplicationSceneManifest"
+  pb "Add $k dict"
+  pb "Add $k:UIApplicationSupportsMultipleScenes bool false"
+  pb "Add $k:UISceneConfigurations dict"
+  pb "Add $k:UISceneConfigurations:UIWindowSceneSessionRoleApplication array"
+  r="$k:UISceneConfigurations:UIWindowSceneSessionRoleApplication:0"
+  pb "Add $r dict"
+  pb "Add $r:UISceneConfigurationName string Default"
+  pb "Add $r:UISceneDelegateClassName string App.SceneDelegate"
+  pb "Add $r:UISceneStoryboardFile string Main"
+fi
+appdelegate=ios/App/App/AppDelegate.swift
+if ! grep -q 'viva-scene-delegate' "$appdelegate"; then
+  cat >> "$appdelegate" <<'SWIFT'
+
+// viva-scene-delegate: Fenster je Scene; die Oberfläche (Capacitor) kommt aus Main.storyboard
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+    var window: UIWindow?
+}
+SWIFT
+fi
+
 schritt "App-Symbol und Startbild (Viva-Deluxe-Logo)"
 cp resources/icon.png ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png
 for f in splash-2732x2732.png splash-2732x2732-1.png splash-2732x2732-2.png; do

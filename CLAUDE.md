@@ -3076,3 +3076,8 @@ Testadresse.
   prüft Werkzeuge, `npm install`, `cap add ios` (CocoaPods), Mindest-iOS 15.5 (Google ML Kit 7), App-Name, Logo als
   App-Symbol, Bordeaux-Startbild, Texte für Kamera/Standort/Fotos, `ITSAppUsesNonExemptEncryption=false`, `cap sync`,
   öffnet Xcode; darf mehrfach laufen. Hier nicht ausführbar (kein macOS) – erster Lauf auf Ahmeds Mac.
+- 2026-10-15: iPhone-App auf Ahmeds Mac (Xcode mit iOS-SDK 26): 1) Pods meldeten „deployment target 14.0“ → Skript
+  setzt im Podfile (post_install) alle Pods auf 15.5. 2) App startete schwarz („UIScene life cycle is required for apps
+  built with this SDK“) → Skript ergänzt `UIApplicationSceneManifest` (Storyboard Main, `App.SceneDelegate`) und eine
+  minimale `SceneDelegate`-Klasse in `AppDelegate.swift` (Capacitor 7 nutzt noch den alten Lebenszyklus). Beides
+  idempotent; hier nicht testbar (kein macOS).

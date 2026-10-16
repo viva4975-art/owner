@@ -1624,6 +1624,8 @@ export const Layout: FC<{
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{`${title} · Viva-Deluxe`}</title>
         <link rel="icon" type="image/png" href="/static/favicon.png" />
+        <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=2" />
+        <meta name="apple-mobile-web-app-title" content="Viva-Deluxe" />
         <link
           rel="preload"
           href="/static/inter-latin.woff2"

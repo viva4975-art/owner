@@ -335,7 +335,7 @@ const MLayout: FC<{
       <title>{`${t(lang, 'app')} · Viva-Deluxe`}</title>
       <link rel="icon" type="image/png" href="/static/favicon.png" />
       <link rel="manifest" href="/m/manifest.webmanifest" />
-      <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
+      <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=2" />
       <meta name="apple-mobile-web-app-capable" content="yes" />
       <meta name="mobile-web-app-capable" content="yes" />
       <meta name="apple-mobile-web-app-title" content="Viva-Deluxe" />
@@ -1831,10 +1831,10 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         background_color: '#f4f5f7',
         theme_color: '#7D1435',
         icons: [
-          { src: '/static/app-icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/static/app-icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: '/static/app-icon-192.png?v=2', sizes: '192x192', type: 'image/png' },
+          { src: '/static/app-icon-512.png?v=2', sizes: '512x512', type: 'image/png' },
           {
-            src: '/static/app-icon-maskable-512.png',
+            src: '/static/app-icon-maskable-512.png?v=2',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',

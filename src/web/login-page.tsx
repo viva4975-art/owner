@@ -146,6 +146,8 @@ export function loginHtml(p: {
           <meta name="theme-color" content="#7D1435" />
           <title>{`${p.title} · Viva-Deluxe`}</title>
           <link rel="icon" type="image/png" href="/static/favicon.png" />
+          <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=2" />
+          <meta name="apple-mobile-web-app-title" content="Viva-Deluxe" />
           <link
             rel="preload"
             href="/static/inter-latin.woff2"

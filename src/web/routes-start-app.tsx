@@ -32,10 +32,8 @@ export function unifiedLoginHtml(
     head: (
       <>
         <link rel="manifest" href="/app/manifest.webmanifest" />
-        <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-title" content="Viva-Deluxe" />
       </>
     ),
     fields: [
@@ -152,10 +150,10 @@ export function registerStartAppRoutes({ app, deps }: Ctx) {
         background_color: '#f4f5f7',
         theme_color: '#7D1435',
         icons: [
-          { src: '/static/app-icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/static/app-icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: '/static/app-icon-192.png?v=2', sizes: '192x192', type: 'image/png' },
+          { src: '/static/app-icon-512.png?v=2', sizes: '512x512', type: 'image/png' },
           {
-            src: '/static/app-icon-maskable-512.png',
+            src: '/static/app-icon-maskable-512.png?v=2',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',

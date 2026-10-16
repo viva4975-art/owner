@@ -3118,8 +3118,11 @@ Testadresse.
   Personalnummer + PIN → Mitarbeiter-Ansicht, sonst Benutzer + Passwort (am PC → Startseite der Rolle bzw. `next`, in
   der App → `/app`). Die alte Mitarbeiter-Maske in `/m` (mit Link „Objektleitung & Büro: hier anmelden“) ist weg;
   Abmelden in der App führt zurück auf `/app`. Sprache der Mitarbeiter-App folgt nach der Anmeldung den Stammdaten.
-  **Kurzadresse `mobile.viva-deluxe-reinigung.de`** leitet auf `https://app…/app` (Caddyfile, `MOBILE_DOMAIN`
-  überschreibbar). **Ahmed: bei IONOS DNS-A-Eintrag „mobile“ → 217.160.236.117 anlegen**, das Zertifikat holt Caddy
-  nach dem nächsten Update selbst. Die installierte Web-App bleibt auf app.… (Anmeldung gilt je Adresse).
+  (Kurzadresse mobile.… wieder verworfen – Ahmed: bleibt bei app.viva-deluxe-reinigung.de.)
   Android/iPhone vorerst als Web-App (Chrome „App installieren“, Safari „Zum Home-Bildschirm“); Google Play: privates
   Entwicklerkonto → geschlossener Test mit 12 Testern über 14 Tage nötig, oder Organisationskonto der GmbH.
+- 2026-10-16: **Anleitungen für Objektleitungen** (mit Bildern aus der Demo-App, nur Beispieldaten):
+  `docs/anleitung-app-installieren.html/.pdf` (iPhone Safari „Zum Home-Bildschirm“, Android Chrome „App installieren“,
+  QR-Code zur Adresse, Anmeldung mit der einen Maske, Benachrichtigungen) und `docs/anleitung-zeiterfassung-app.html/.pdf`
+  (Startseite, Stoppuhr Start/Stopp, Pause, Zeit bestätigen „Stimmt die Zeit?“, Zeit bearbeiten = Nachtrag, Stundenliste,
+  Verwaltung → Zeiten heute: Nachträge freigeben, „nicht gestempelt“). Bilder in `docs/bilder/anleitung-app/`.

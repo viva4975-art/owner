@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { deleteAbsence, getAbsence, requestAbsence, updateAbsence } from './absences.js';
 import { getApplicant, saveApplicant } from './applicants.js';
-import { birthPin, login } from './employee-auth.js';
+import { birthPin, changeOwnPin, login, pinMustChange } from './employee-auth.js';
 import { exitEmployee, revokeExit } from './employees.js';
 import { saveDraft } from './invoices.js';
 import { DEMO } from './seed.js';
@@ -40,6 +40,16 @@ describe.skipIf(!available)('Runde 18 (Datenbank)', () => {
     expect(p).toMatchObject({ failed_attempts: 1, set_by: 'Geburtsdatum (automatisch)' });
     const ok = await login(sql, '8801', '150385');
     expect(ok.id).toBe(emp);
+    // mit Geburtsdatum angemeldet → eigene PIN Pflicht (Ahmed 17.10.)
+    expect(ok.mustChange).toBe(true);
+    expect(await pinMustChange(sql, emp)).toBe(true);
+    await expect(changeOwnPin(sql, emp, '150385', '150385')).rejects.toThrow(/Geburtsdatum/);
+    await expect(changeOwnPin(sql, emp, '4826', '4827')).rejects.toThrow(/überein/);
+    await expect(changeOwnPin(sql, emp, '1234', '1234')).rejects.toThrow(/einfach/);
+    await changeOwnPin(sql, emp, '4826', '4826');
+    expect(await pinMustChange(sql, emp)).toBe(false);
+    await expect(login(sql, '8801', '150385')).rejects.toThrow(/falsch/);
+    expect((await login(sql, '8801', '4826')).mustChange).toBe(false);
   });
 
   it('Zeit entfernen: zählt nicht mehr, bleibt im Protokoll', async () => {

@@ -59,8 +59,32 @@ export async function setPin(sql: Sql, employeeId: string, pin: string, actor: s
   await sql`
     insert into app.employee_pins (employee_id, pin_hash, set_by) values (${employeeId}, ${hash}, ${actor})
     on conflict (employee_id) do update set pin_hash = excluded.pin_hash, failed_attempts = 0, locked_until = null,
-      set_at = now(), set_by = excluded.set_by`;
+      set_at = now(), set_by = excluded.set_by, must_change = false`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id) values (${actor}, 'set_pin', 'employee', ${employeeId})`;
+}
+
+/** Muss die Person zuerst eine eigene PIN festlegen? (Anmeldung mit dem Geburtsdatum) */
+export async function pinMustChange(sql: Sql, employeeId: string) {
+  const [r] = await sql<{ must_change: boolean }[]>`
+    select must_change from app.employee_pins where employee_id = ${employeeId}`;
+  return !!r?.must_change;
+}
+
+/** Mitarbeitende legen ihre eigene PIN fest (nicht das Geburtsdatum, keine einfache Folge). */
+export async function changeOwnPin(sql: Sql, employeeId: string, pin: string, repeat: string) {
+  checkPinRules(pin);
+  if (pin !== repeat) throw new BusinessError('Die beiden PINs stimmen nicht überein');
+  const [e] = await sql<{ birth_date: string | null }[]>`
+    select birth_date::text from app.employee_private where employee_id = ${employeeId}`;
+  if (e?.birth_date && pin === birthPin(e.birth_date))
+    throw new BusinessError('Bitte nicht das Geburtsdatum als PIN verwenden');
+  const hash = await hashPin(pin);
+  await sql`
+    insert into app.employee_pins (employee_id, pin_hash, set_by) values (${employeeId}, ${hash}, 'selbst')
+    on conflict (employee_id) do update set pin_hash = excluded.pin_hash, failed_attempts = 0, locked_until = null,
+      set_at = now(), set_by = 'selbst', must_change = false`;
+  await sql`insert into app.audit_log (actor, action, entity, entity_id)
+            values ('mitarbeiter', 'set_own_pin', 'employee', ${employeeId})`;
 }
 
 export async function hasPin(sql: Sql, employeeId: string) {
@@ -74,7 +98,7 @@ export async function login(
   sql: Sql,
   personnelNo: string,
   pin: string,
-): Promise<{ id: string; language: string; name: string }> {
+): Promise<{ id: string; language: string; name: string; mustChange: boolean }> {
   const generic = new BusinessError('Personalnummer oder PIN falsch');
   const [e] = await sql<
     {
@@ -99,7 +123,8 @@ export async function login(
     const pinFromBirth = birthPin(e.birth_date);
     const hash = await hashPin(pinFromBirth);
     await sql`
-      insert into app.employee_pins (employee_id, pin_hash, set_by) values (${e.id}, ${hash}, 'Geburtsdatum (automatisch)')
+      insert into app.employee_pins (employee_id, pin_hash, set_by, must_change)
+      values (${e.id}, ${hash}, 'Geburtsdatum (automatisch)', true)
       on conflict (employee_id) do nothing`;
     const [p] = await sql<{ pin_hash: string; failed_attempts: number; locked_until: Date | null }[]>`
       select pin_hash, failed_attempts, locked_until from app.employee_pins where employee_id = ${e.id}`;
@@ -121,8 +146,12 @@ export async function login(
        where employee_id = ${e.id}`;
     throw generic;
   }
-  await sql`update app.employee_pins set failed_attempts = 0, locked_until = null where employee_id = ${e.id}`;
-  return { id: e.id, language: e.app_language, name: e.first_name };
+  // Mit dem Geburtsdatum angemeldet → eigene PIN festlegen (kennen Kolleginnen und Kollegen sonst; Ahmed 17.10.)
+  const viaBirth = !!e.birth_date && pin === birthPin(e.birth_date);
+  const [r] = await sql<{ must_change: boolean }[]>`
+    update app.employee_pins set failed_attempts = 0, locked_until = null, must_change = must_change or ${viaBirth}
+     where employee_id = ${e.id} returning must_change`;
+  return { id: e.id, language: e.app_language, name: e.first_name, mustChange: !!r?.must_change };
 }
 
 // ---------------------------------------------------------------- Sitzung (Cookie)

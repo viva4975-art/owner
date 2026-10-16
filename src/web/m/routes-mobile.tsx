@@ -19,7 +19,13 @@ import {
   listAbsences,
   requestAbsence,
 } from '../../services/absences.js';
-import { login, signSession, verifySession } from '../../services/employee-auth.js';
+import {
+  changeOwnPin,
+  login,
+  pinMustChange,
+  signSession,
+  verifySession,
+} from '../../services/employee-auth.js';
 import {
   getRequest,
   originalPdf,
@@ -494,6 +500,19 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     env.SESSION_SECRET ?? createHash('sha256').update(`dev-session:${env.APP_BASIC_AUTH}`).digest('hex');
   const secure = env.APP_ENV !== 'dev';
 
+  // Angemeldet mit dem Geburtsdatum → erst eigene PIN festlegen, vorher keine andere Seite (Ahmed 17.10.)
+  const PIN_FREE =
+    /^\/m\/(pin|abmelden|anmelden|sprache|datenschutz|manifest\.webmanifest|sw\.js|push\.js|offline|pdf)(\/|$)/;
+  const pinGate = async (c: Context<AppEnv>, next: () => Promise<void>) => {
+    if (!PIN_FREE.test(c.req.path)) {
+      const id = verifySession(secret, getCookie(c, COOKIE));
+      if (id && (await pinMustChange(sql, id))) return c.redirect('/m/pin', 303);
+    }
+    await next();
+  };
+  app.use('/m', pinGate);
+  app.use('/m/*', pinGate);
+
   const langOf = (c: Context<AppEnv>, me?: Me | null): Lang => {
     const q = getCookie(c, LANG_COOKIE);
     if (isLang(q)) return q;
@@ -648,6 +667,85 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     }
   });
 
+  // ---------------------------------------------------------------- eigene PIN festlegen
+  const pinError = (lang: Lang, msg: string) =>
+    /überein/.test(msg)
+      ? t(lang, 'pin_e_repeat')
+      : /Geburtsdatum/.test(msg)
+        ? t(lang, 'pin_e_birth')
+        : t(lang, 'pin_e_rules');
+
+  app.get('/m/pin', async (c) => {
+    const me = await loadMe(c);
+    if (!me) return c.redirect('/m', 303);
+    const lang = langOf(c, me);
+    const must = !me.office && (await pinMustChange(sql, me.id));
+    return render(
+      c,
+      lang,
+      me,
+      <>
+        <h1>{t(lang, must ? 'pin_title' : 'pin_change')}</h1>
+        {must && <div class="card note">{t(lang, 'pin_text')}</div>}
+        <form method="post" action="/m/pin" class="card" autocomplete="off">
+          <label for="pin1">{t(lang, 'pin_new')}</label>
+          <input
+            id="pin1"
+            name="pin"
+            type="password"
+            inputmode="numeric"
+            pattern="[0-9]{4,6}"
+            minlength={4}
+            maxlength={6}
+            autocomplete="new-password"
+            required
+          />
+          <label for="pin2">{t(lang, 'pin_repeat')}</label>
+          <input
+            id="pin2"
+            name="pin2"
+            type="password"
+            inputmode="numeric"
+            pattern="[0-9]{4,6}"
+            minlength={4}
+            maxlength={6}
+            autocomplete="new-password"
+            required
+          />
+          <p class="hint">{t(lang, 'pin_hint')}</p>
+          <button class="big go" id="pin-save">
+            {t(lang, 'pin_save')}
+          </button>
+        </form>
+        {must ? (
+          <form method="post" action="/m/abmelden">
+            <button class="big sec">{t(lang, 'logout')}</button>
+          </form>
+        ) : (
+          <a class="big sec" href="/m/profil">
+            {t(lang, 'back')}
+          </a>
+        )}
+      </>,
+      { full: must },
+    );
+  });
+
+  app.post('/m/pin', async (c) => {
+    const me = await loadMe(c);
+    if (!me || me.office) return c.redirect('/m', 303);
+    const lang = langOf(c, me);
+    const b = await c.req.parseBody();
+    try {
+      await changeOwnPin(sql, me.id, String(b.pin ?? ''), String(b.pin2 ?? ''));
+    } catch (err) {
+      if (err instanceof BusinessError)
+        return c.redirect(`/m/pin?fehler=${encodeURIComponent(pinError(lang, err.message))}`, 303);
+      throw err;
+    }
+    return c.redirect(`/m?ok=${encodeURIComponent(t(lang, 'pin_saved'))}`, 303);
+  });
+
   app.post('/m/abmelden', (c) => {
     deleteCookie(c, COOKIE, { path: '/' });
     return c.redirect('/m', 303);
@@ -699,7 +797,10 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
           company={`${(await companyInfo()).legal_name} · ${tx('personnel_no')} ${me.personnel_no}`}
           base="/m"
           logout="/m/abmelden"
-          extra={[{ href: '/m/sprache?next=/m/profil', label: tx('language') }]}
+          extra={[
+            { href: '/m/sprache?next=/m/profil', label: tx('language') },
+            ...(me.office ? [] : [{ href: '/m/pin', label: tx('pin_change') }]),
+          ]}
         />
       </>,
     );

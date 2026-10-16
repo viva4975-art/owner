@@ -3186,3 +3186,14 @@ Testadresse.
   Vollbild) und zeigt dann die Anleitung (`SCOPE_JS` in `push-ui.tsx`).
 - 2026-10-17: **„Mitarbeiter-Ansicht“ entfernt** (Ahmed): Knopf in der Zeiterfassung (öffnete `/m` im neuen Tab) und die
   Menü-Sonderregel dafür entfallen. Die eigene Zeiterfassung bleibt über „Meine Zeiten“ bzw. in der App „Meine Zeit“.
+- 2026-10-17: **Anmeldung mit Geburtsdatum → eigene PIN Pflicht** (Ahmed): Meldet sich jemand mit dem Geburtsdatum TTMMJJ
+  an (automatisch angelegte PIN oder PIN = Geburtsdatum), setzt die App `employee_pins.must_change` (Migration
+  `20261129000001`; bestehende automatisch angelegte PINs werden ebenfalls markiert) und zeigt nur noch **„Eigene PIN
+  festlegen“** (`/m/pin`, Vollbild, 7 Sprachen) – alle anderen /m-Seiten leiten dorthin um (`pinGate`). Neue PIN: 4–6
+  Ziffern, nicht zu einfach, nicht das Geburtsdatum, zweimal eingeben (`changeOwnPin`, Protokoll `set_own_pin`).
+  Vom Büro gesetzte PIN gilt ohne Wechsel. Später ändern: Profil → „PIN ändern“. Test in `runde18.db.test.ts`.
+- 2026-10-17: **Anleitungen neu** (Ahmed): `docs/anleitung-mitarbeiter-app.html/.pdf` (neu, für Reinigungskräfte: anmelden +
+  eigene PIN, Startseite, Start/Stopp, Zeit bestätigen/bearbeiten, Urlaub/Krank, Dokumente/Lohn/Stundenliste, Profil);
+  `anleitung-app-installieren` (Abschnitt „Erste Anmeldung: eigene PIN festlegen“) und `anleitung-zeiterfassung-app`
+  (neue Objektauswahl der Stoppuhr) aktualisiert. Bilder mit Beispieldaten: `OUT=docs/bilder/anleitung-app node
+  e2e/_guide-shots.mjs` (Mitarbeiterin 7701 „Maria Beispiel“ in der Entwicklungs-DB; `OFFICE=1` für die Objektauswahl).

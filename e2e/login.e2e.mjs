@@ -79,6 +79,21 @@ check('kein Büro-Bereich', (await phone.goto(B + '/qm')).url().includes('/anmel
 await phone.goto(B + '/app');
 check('erneut öffnen → direkt Mitarbeiter-Ansicht', new URL(phone.url()).pathname === '/m');
 
+console.log('2b. Eine Maske überall: PC-Anmeldung mit Personalnummer, Abmelden');
+const pcw = await (await browser.newContext({ locale: 'de-DE' })).newPage();
+await pcw.goto(B + '/anmelden');
+check('PC: dieselbe Maske', (await pcw.locator('form[action="/app/anmelden"] #k').count()) === 1);
+await pcw.fill('#k', worker.pno);
+await pcw.fill('#p', '5173');
+await Promise.all([pcw.waitForNavigation(), pcw.click('button:has-text("Anmelden")')]);
+check('PC: Personalnummer → Mitarbeiter-Ansicht', new URL(pcw.url()).pathname === '/m', pcw.url());
+await pcw.context().clearCookies();
+await pcw.goto(B + '/m');
+check(
+  '/m ohne Anmeldung → gemeinsame Maske',
+  new URL(pcw.url()).pathname === '/app' && (await pcw.locator('#k').count()) === 1,
+);
+
 console.log('3. Objektleitung: Benutzername + Passwort → Objektleitung & Büro, Stempeln ohne PIN');
 const ol = await (await browser.newContext({ ...devices['Pixel 7'], locale: 'de-DE' })).newPage();
 await ol.goto(B + '/app');
@@ -128,8 +143,8 @@ check('Link zurück ins Büro statt Abmelden', (await ol.locator('header a[href=
 console.log('4. Büro am PC: Meine Zeiten unter Zeiterfassung, von Hand ändern');
 const pc = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
 await pc.goto(B + '/anmelden');
-await pc.fill('#login', login);
-await pc.fill('#password', 'OlPasswort2026');
+await pc.fill('#k', login);
+await pc.fill('#p', 'OlPasswort2026');
 await Promise.all([pc.waitForNavigation(), pc.click('button:has-text("Anmelden")')]);
 check(
   'Knopf „Meine Zeiten“ in der Kopfzeile',

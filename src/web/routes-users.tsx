@@ -1,3 +1,4 @@
+import { unifiedLoginHtml } from './routes-start-app.js';
 import { randomUUID } from 'node:crypto';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { signSession } from '../services/employee-auth.js';
@@ -24,7 +25,6 @@ import { arr } from './forms.js';
 import { Icon } from './icons.js';
 import { PageHead, initials } from './layout.js';
 import { homeFor } from './permissions.js';
-import { loginHtml } from './login-page.js';
 
 const SESSION_HOURS = 12;
 /** „Angemeldet bleiben“ (Ahmed 11.10.: nach Pausen nicht ständig neu anmelden) */
@@ -39,35 +39,15 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
 
   // ------------------------------------------------------------------ Anmeldung
 
+  // Eine Anmeldemaske für alle (Personalnummer + PIN oder Benutzername + Passwort) – siehe routes-start-app.tsx
   app.get('/anmelden', (c) =>
     c.html(
-      loginHtml({
-        title: 'Anmelden',
-        sub: 'Büro, Buchhaltung, Personal und Objektleitung',
-        action: '/anmelden',
-        hidden: { next: c.req.query('next') ?? '' },
+      unifiedLoginHtml(env.APP_ENV, {
+        from: 'pc',
+        next: c.req.query('next') ?? '',
         err: c.req.query('fehler'),
         ok: c.req.query('ok'),
-        env: env.APP_ENV,
-        remember: true,
-        fields: [
-          { id: 'login', name: 'login', label: 'Benutzername', autocomplete: 'username', autofocus: true },
-          {
-            id: 'password',
-            name: 'password',
-            label: 'Passwort',
-            type: 'password',
-            autocomplete: 'current-password',
-          },
-        ],
-        help: (
-          <p>
-            Benutzername und Passwort bekommen Sie vom Admin (Einstellungen → Benutzer). Beim ersten Anmelden
-            vergeben Sie ein eigenes Passwort. Nach 5 Fehlversuchen ist das Konto 15 Minuten gesperrt.
-            <br />
-            Mitarbeitende im Objekt melden sich in der <a href="/app">App</a> mit Personalnummer und PIN an.
-          </p>
-        ),
+        k: c.req.query('k'),
       }),
     ),
   );
@@ -100,7 +80,9 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
 
   app.post('/abmelden', (c) => {
     deleteCookie(c, OFFICE_COOKIE, { path: '/' });
-    return c.redirect('/anmelden?ok=Abgemeldet.', 303);
+    // in der App zurück auf den App-Start (gleiche Anmeldemaske, App-Rahmen bleibt)
+    const ok = encodeURIComponent('Abgemeldet.');
+    return c.redirect(getCookie(c, APP_COOKIE) === '1' ? `/app?wahl=1&ok=${ok}` : `/anmelden?ok=${ok}`, 303);
   });
 
   // ------------------------------------------------------------------ Mein Konto

@@ -26,3 +26,10 @@
 <p><a href="/">Zur Übersicht</a></p></div></body></html>` 503
 	}
 }
+
+# Kurzadresse fürs Handy (Ahmed 16.10.): mobile.viva-deluxe-reinigung.de → Anmeldung der App.
+# Voraussetzung: DNS-A-Eintrag „mobile“ → IP dieses Servers (IONOS). Bis dahin versucht Caddy nur im
+# Hintergrund ein Zertifikat zu holen – die App unter APP_DOMAIN läuft davon unberührt.
+{$MOBILE_DOMAIN:mobile.viva-deluxe-reinigung.de} {
+	redir https://{$APP_DOMAIN}/app 302
+}

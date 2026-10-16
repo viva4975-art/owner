@@ -93,8 +93,8 @@ check('Status offen', (await o.locator('body').innerText()).includes('offen'));
 console.log('3. Handy: unterschreiben');
 const m = await phone.newPage();
 await m.goto(B + '/m');
-await m.fill('#pn', pno);
-await m.fill('#pin', '5173');
+await m.fill('#k', pno);
+await m.fill('#p', '5173');
 await nav(m, 'button:has-text("Anmelden")');
 check(
   'App öffnet neues Dokument direkt',

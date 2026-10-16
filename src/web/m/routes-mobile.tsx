@@ -544,35 +544,6 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
 
   // ---------------------------------------------------------------- Anmeldung
 
-  const LoginForm: FC<{ lang: Lang; next: string }> = ({ lang, next }) => (
-    <>
-      <h1>{t(lang, 'app')}</h1>
-      <form method="post" action="/m/anmelden" class="card" data-net>
-        <input type="hidden" name="next" value={next} />
-        <label for="pn">{t(lang, 'personnel_no')}</label>
-        <input id="pn" name="personnel_no" inputmode="numeric" autocomplete="username" required />
-        <label for="pin">{t(lang, 'pin')}</label>
-        <input
-          id="pin"
-          name="pin"
-          type="password"
-          inputmode="numeric"
-          autocomplete="current-password"
-          maxlength={6}
-          required
-        />
-        <div style="height:14px" />
-        <button class="big go">{t(lang, 'login')}</button>
-      </form>
-      <LangPicker lang={lang} next={next} />
-      <p style="text-align:center;margin-top:18px">
-        <a href="/qm" style="color:#7d1435;font-weight:600">
-          Objektleitung &amp; Büro: hier anmelden
-        </a>
-      </p>
-    </>
-  );
-
   const LangPicker: FC<{ lang: Lang; next: string }> = ({ lang, next }) => (
     <div class="langs" aria-label={t(lang, 'language')}>
       {(Object.keys(LANGS) as Lang[]).map((l) => (
@@ -1003,7 +974,14 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
   app.get('/m', async (c) => {
     const me = await loadMe(c);
     const lang = langOf(c, me);
-    if (!me) return render(c, lang, null, <LoginForm lang={lang} next={safeNext(c.req.query('next'))} />);
+    if (!me) {
+      // eine Anmeldemaske für alle (Ahmed 16.10.) – /app erkennt Personalnummer oder Benutzername
+      const q = new URLSearchParams({ wahl: '1' });
+      const next = safeNext(c.req.query('next'));
+      if (next !== '/m') q.set('next', next);
+      if (c.req.query('fehler')) q.set('fehler', c.req.query('fehler')!);
+      return c.redirect(`/app?${q}`, 302);
+    }
     const today = todayBerlin();
     const [running, shifts, times, docs] = await Promise.all([
       runningEntry(sql, me.id),

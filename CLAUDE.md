@@ -3112,3 +3112,14 @@ Testadresse.
 - 2026-10-15: iPhone-App **nur für iPhone** (`TARGETED_DEVICE_FAMILY = 1` im Skript), sonst verlangt Apple iPad-
   Bildschirmfotos. iOS-Build: .ipa lokal exportieren, Upload mit `xcrun altool` (Export mit „upload“ scheiterte an
   „Cannot verify client's JWT headers“). Store-Angaben: Datenschutz-URL `/m/datenschutz`, Testzugang Personalnr. 9999.
+- 2026-10-16: **Eine Anmeldemaske für alle** (Ahmed: „nur eine Eingabeform“): `/app`, `/anmelden` (PC) und `/m` ohne
+  Anmeldung zeigen dieselbe Maske „Personalnummer oder Benutzername“ + „PIN oder Passwort“ (`unifiedLoginHtml` in
+  `routes-start-app.tsx`, Feld-IDs `k`/`p`, Ziel `/app/anmelden` mit `from` = app/pc und `next`). Nur Ziffern →
+  Personalnummer + PIN → Mitarbeiter-Ansicht, sonst Benutzer + Passwort (am PC → Startseite der Rolle bzw. `next`, in
+  der App → `/app`). Die alte Mitarbeiter-Maske in `/m` (mit Link „Objektleitung & Büro: hier anmelden“) ist weg;
+  Abmelden in der App führt zurück auf `/app`. Sprache der Mitarbeiter-App folgt nach der Anmeldung den Stammdaten.
+  **Kurzadresse `mobile.viva-deluxe-reinigung.de`** leitet auf `https://app…/app` (Caddyfile, `MOBILE_DOMAIN`
+  überschreibbar). **Ahmed: bei IONOS DNS-A-Eintrag „mobile“ → 217.160.236.117 anlegen**, das Zertifikat holt Caddy
+  nach dem nächsten Update selbst. Die installierte Web-App bleibt auf app.… (Anmeldung gilt je Adresse).
+  Android/iPhone vorerst als Web-App (Chrome „App installieren“, Safari „Zum Home-Bildschirm“); Google Play: privates
+  Entwicklerkonto → geschlossener Test mit 12 Testern über 14 Tage nötig, oder Organisationskonto der GmbH.

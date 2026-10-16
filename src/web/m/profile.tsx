@@ -235,8 +235,8 @@ export const PrivacyBody: FC<{ co: CompanyInfo }> = ({ co }) => (
       <li>Abwesenheiten: Urlaub, Krankheit (nur „krank“, nie eine Diagnose), sonstige Abwesenheiten.</li>
       <li>Unterschriften und Bestätigungen zu Dokumenten, Arbeitsscheinen und Stundenlisten.</li>
       <li>
-        Standort: nur, wenn wir „Stempeln mit Standort“ eingeschaltet haben, und nur im Moment des Ein- und
-        Ausstempelns. Gespeichert wird nur, ob Sie am Objekt waren, die Entfernung und die Genauigkeit – keine
+        Standort: nur im Moment des Ein- und Ausstempelns (Nachweis der Anwesenheit am Einsatzort).
+        Gespeichert wird nur, ob Sie am Objekt waren, die Entfernung und die Genauigkeit – keine
         Bewegungsprofile.
       </li>
       <li>

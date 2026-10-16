@@ -3150,3 +3150,8 @@ Testadresse.
   alle Seiten als Bilder (pdf.js aus `unpdf`, `/static/vendor/pdfjs.mjs`, iOS zeigt PDFs im Rahmen nur unvollständig;
   Rückfall Rahmen), Bilder direkt. Nur eigene Pfade; Rechte prüft die PDF-Adresse selbst.
 
+- 2026-10-16: **Standort beim Stempeln immer an** (Ahmed: „GPS immer beim Stempeln an“): Schalter unter Zeiterfassung →
+  Einstellungen entfällt (`geoCheckEnabled` immer true, Spalte `time_settings.geo_check` ungenutzt). Weiter nur Bewertung
+  am Objekt / nicht am Objekt / ungenau / kein Standort + Entfernung, keine Koordinaten; Stempeln wird nie verweigert.
+  Prüfung braucht einen Standort je Objekt (Objekt → QR-Aushang & Standort). **Datenschutz:** Mitarbeitende vorher
+  informieren (Art. 13 DSGVO), Betriebsrat beteiligen falls vorhanden, Verzeichnis der Verarbeitungstätigkeiten.

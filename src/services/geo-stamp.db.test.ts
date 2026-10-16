@@ -21,7 +21,7 @@ describe.skipIf(!available)('Stempeln mit Standort (Datenbank)', () => {
     await sql?.end();
   });
 
-  it('nur bei eingeschalteter Prüfung; speichert Bewertung + Entfernung, keine Koordinaten', async () => {
+  it('immer an; speichert Bewertung + Entfernung, keine Koordinaten', async () => {
     const a = randomUUID();
     await clockIn(sql, {
       id: a,
@@ -32,9 +32,8 @@ describe.skipIf(!available)('Stempeln mit Standort (Datenbank)', () => {
       geo: { lat: 48.137, lng: 11.5754, acc: 15 },
     });
     const [x] = await sql`select start_geo from app.time_entries where id = ${a}`;
-    expect(x!.start_geo).toBeNull(); // Prüfung aus
+    expect(x!.start_geo).toBe('am_objekt'); // immer an (auch ohne Einstellung)
     await sql`update app.time_entries set start_at = start_at - interval '2 hours' where id = ${a}`;
-    await sql`update app.time_settings set geo_check = true`;
     await clockOut(sql, {
       employeeId: emp,
       breakMinutes: 0,

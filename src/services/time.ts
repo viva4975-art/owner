@@ -305,8 +305,6 @@ async function recordGeo(
   geo: GeoInput,
 ) {
   if (geo === undefined) return;
-  const [cfg] = await tx<{ geo_check: boolean }[]>`select geo_check from app.time_settings`;
-  if (!cfg?.geo_check) return;
   const [site] = await tx<{ lat: string | null; lng: string | null; radius: number }[]>`
     select geo_lat::text as lat, geo_lng::text as lng, geo_radius_m as radius from app.sites where id = ${siteId}`;
   const j = judgePosition(
@@ -325,9 +323,9 @@ async function recordGeo(
               where id = ${entryId}`;
 }
 
-export async function geoCheckEnabled(sql: Sql) {
-  const [cfg] = await sql<{ geo_check: boolean }[]>`select geo_check from app.time_settings`;
-  return !!cfg?.geo_check;
+/** Standort beim Stempeln: immer an (Ahmed 16.10.: „GPS immer beim Stempeln an“); Spalte geo_check bleibt ungenutzt. */
+export async function geoCheckEnabled(_sql: Sql) {
+  return true;
 }
 
 export async function clockIn(

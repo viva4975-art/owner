@@ -42,7 +42,6 @@ import {
   saveTimeSettings,
   warningsFor,
   WEEKDAYS_SHORT,
-  geoCheckEnabled,
 } from '../services/time.js';
 import { GEO_LABEL, parseCoordinates } from '../domain/time/geo.js';
 import { type AppEnv, type Ctx, UUID, assertSite, inScope } from './app.js';
@@ -1084,7 +1083,6 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
     const s = await getTimeSettings(sql);
     const [autoCfg] = await sql<{ days: number | null; since: string | null }[]>`
       select auto_confirm_days as days, auto_confirm_since::text as since from app.time_settings`;
-    const geo = await geoCheckEnabled(sql);
     const modes = await sql<{ id: string; name: string; personnel_no: string; time_mode: string }[]>`
       select id, last_name || ', ' || first_name as name, personnel_no, time_mode
         from app.employees where status = 'aktiv' order by last_name, first_name`;
@@ -1095,33 +1093,23 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
       'einstellungen',
       'Einstellungen Zeiterfassung',
       <>
-        <form
-          method="post"
-          action="/zeiterfassung/einstellungen/standort"
-          class="card"
-          style="max-width:720px"
-        >
-          <h3 style="margin-top:0">Stempeln mit Standort</h3>
-          <div class="chk">
-            <input type="checkbox" id="geo" name="geo" checked={geo} />
-            <label for="geo">Beim Ein- und Ausstempeln den Standort prüfen</label>
-          </div>
+        <div class="card" style="max-width:720px">
+          <h3 style="margin-top:0">Stempeln mit Standort – immer eingeschaltet</h3>
           <p class="small mut">
-            Das Handy fragt nur im Moment des Stempelns nach dem Standort. Gespeichert wird nur, ob die Person
+            Beim Ein- und Ausstempeln fragt das Handy nach dem Standort. Gespeichert wird nur, ob die Person
             am Objekt war (Entfernung in Metern, Genauigkeit) – keine Koordinaten, kein Bewegungsprofil.
-            Stempeln wird nie verweigert; „nicht am Objekt“ erscheint in der Zeiterfassung zur Klärung.
-            Standort je Objekt: Objekt → Bearbeiten (Google-Maps-Link einfügen) oder in der App vor Ort
-            „Standort hier speichern“. Derzeit {withGeo!.n} von {withGeo!.all} aktiven Objekten mit Standort.
+            Stempeln wird nie verweigert (auch ohne Standortfreigabe); „nicht am Objekt“ bzw. „kein Standort“
+            erscheint in der Zeiterfassung zur Klärung. Standort je Objekt: Objekt → QR-Aushang &amp; Standort
+            (Google-Maps-Link) oder in der App vor Ort „Standort hier speichern“. Derzeit {withGeo!.n} von{' '}
+            {withGeo!.all} aktiven Objekten mit Standort – ohne hinterlegten Standort kann nichts geprüft
+            werden.
           </p>
           <p class="small" style="color:var(--warn)">
             <b>Datenschutz:</b> Mitarbeitende vorher schriftlich informieren (Art. 13 DSGVO, Zweck: Nachweis
             der Anwesenheit am Einsatzort); gibt es einen Betriebsrat, ist er zu beteiligen (§ 87 Abs. 1 Nr. 6
             BetrVG). Ins Verzeichnis der Verarbeitungstätigkeiten aufnehmen.
           </p>
-          <div class="formfoot">
-            <button class="btn">Speichern</button>
-          </div>
-        </form>
+        </div>
         <form method="post" action="/zeiterfassung/einstellungen/art" class="card" style="max-width:720px">
           <h3 style="margin-top:0">Art der Zeiterfassung in der App (je Mitarbeiter)</h3>
           <p class="small mut">
@@ -1261,17 +1249,6 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
               values (${c.get('actor')}, 'save', 'time_settings', ${sql.json({ auto_confirm_days: days })})`;
     return back(c, '/zeiterfassung/einstellungen', {
       ok: days ? `Soll als Ist nach ${days} Tag(en) eingeschaltet.` : 'Soll als Ist automatisch aus.',
-    });
-  });
-
-  app.post('/zeiterfassung/einstellungen/standort', async (c) => {
-    const b = await c.req.parseBody();
-    const on = b.geo === 'on';
-    await sql`update app.time_settings set geo_check = ${on}`;
-    await sql`insert into app.audit_log (actor, action, entity, details)
-              values (${c.get('actor')}, 'save', 'time_settings', ${sql.json({ geo_check: on })})`;
-    return back(c, '/zeiterfassung/einstellungen', {
-      ok: on ? 'Standortprüfung eingeschaltet.' : 'Standortprüfung aus.',
     });
   });
 
@@ -1601,8 +1578,7 @@ h1{font-size:34px;margin:10px 0 4px}.n{color:#666;font-size:16px}
                       {g.geo_lat
                         ? `Hinterlegt: ${g.geo_lat}, ${g.geo_lng} (Umkreis ${g.geo_radius_m} m).`
                         : 'Noch kein Standort hinterlegt.'}{' '}
-                      Wird nur genutzt, wenn unter Zeiterfassung → Einstellungen „Stempeln mit Standort“
-                      eingeschaltet ist.
+                      Wird beim Ein- und Ausstempeln zur Prüfung „am Objekt“ genutzt.
                     </p>
                     <label for="geo_input">Google-Maps-Link oder Koordinaten („48.137, 11.575“)</label>
                     <input id="geo_input" name="geo" value={g.geo_lat ? `${g.geo_lat}, ${g.geo_lng}` : ''} />

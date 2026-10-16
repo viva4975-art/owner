@@ -185,6 +185,16 @@ export function createApp(deps: Deps) {
     return c.body(await readFile(H2C));
   });
 
+  // pdf.js (Seiten der PDF-Ansicht in der installierten App als Bilder zeichnen; iOS zeigt PDFs im Rahmen nur
+  // unvollständig) – aus node_modules (unpdf), ohne fremdes CDN.
+  const PDFJS = fileURLToPath(new URL('../../node_modules/unpdf/dist/pdfjs.mjs', import.meta.url));
+  app.get('/static/vendor/pdfjs.mjs', async (c) => {
+    const { readFile } = await import('node:fs/promises');
+    c.header('Content-Type', 'text/javascript; charset=utf-8');
+    c.header('Cache-Control', 'public, max-age=604800');
+    return c.body(await readFile(PDFJS));
+  });
+
   // Referer nur innerhalb der App (nötig, um nach einem Eingabefehler ins Formular zurückzukehren).
   app.use(secureHeaders({ referrerPolicy: 'same-origin' }));
   // Schutz gegen fremde Formulare. Hinter Caddy sieht die App „http://…“, der Browser schickt „https://…“ als Origin –

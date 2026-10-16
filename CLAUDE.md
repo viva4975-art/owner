@@ -3143,3 +3143,10 @@ Testadresse.
     = Tabelle bleibt). Kopf der Mitarbeiter-App etwas tiefer unter der Statusleiste.
   - GPS beim Stempeln nur, wenn unter Zeiterfassung → Einstellungen „Stempeln mit Standort“ eingeschaltet (Standard aus);
     gespeichert wird nur am Objekt / nicht am Objekt + Entfernung, keine Koordinaten.
+- 2026-10-16: **PDFs in der Home-Bildschirm-App** (Ahmed: „6. fehlt immer noch“ – Lohnabrechnung ohne Drucken/Teilen/Zurück):
+  Mit Scope `/` öffnet iOS auch `target=_blank`-Links in der App ohne Leiste. Jetzt leitet `PDF_JS` (nur installierte
+  Web-App, nicht Store-App) PDF-Links (`.pdf`, `/m/lohn/`, `/dateien/`) auf die eigene Ansicht **`/m/pdf?u=<Pfad>`**:
+  Kopfzeile „‹ Zurück“ + **„Teilen / Drucken“** (iOS-Teilenmenü: Drucken, In Dateien sichern, Mail, WhatsApp), darunter
+  alle Seiten als Bilder (pdf.js aus `unpdf`, `/static/vendor/pdfjs.mjs`, iOS zeigt PDFs im Rahmen nur unvollständig;
+  Rückfall Rahmen), Bilder direkt. Nur eigene Pfade; Rechte prüft die PDF-Adresse selbst.
+

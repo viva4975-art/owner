@@ -75,11 +75,10 @@ self.addEventListener('notificationclick',function(e){e.notification.close();var
 
 /**
  * PDFs in der installierten Web-App (Ahmed 16.10.: Lohnabrechnung ließ sich nicht drucken, teilen, zurück): im
- * Home-Bildschirm-Modus öffnen PDF-Links in einem eigenen Fenster mit „Fertig“ und Teilen-Knopf statt die App zu
- * ersetzen. Die Store-App (Capacitor) behandelt PDFs selbst.
+ * Home-Bildschirm-Modus öffnen PDF-Links in der eigenen Ansicht /m/pdf mit „Zurück“ und „Teilen / Drucken“. Die Store-App (Capacitor) behandelt PDFs selbst.
  */
 export const PDF_JS =
-  "try{if(!window.Capacitor&&((window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone)){document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a[href]'):null;if(!a||a.target)return;var h=a.getAttribute('href')||'';if(/\\.pdf(\\?|#|$)|\\/m\\/lohn\\/|\\/dateien\\//.test(h)){a.target='_blank';a.rel='noopener';}},true);}}catch(e){}\n";
+  "try{if(!window.Capacitor&&((window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone)){document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a[href]'):null;if(!a||a.hasAttribute('download'))return;var l;try{l=new URL(a.getAttribute('href')||'',location.href);}catch(x){return;}if(l.origin!==location.origin)return;var p=l.pathname;if(!/\\.pdf$|^\\/m\\/lohn\\/|^\\/dateien\\//.test(p)||l.searchParams.get('download')==='1')return;e.preventDefault();var t=(a.getAttribute('data-title')||a.textContent||'').replace(/\\s+/g,' ').trim().slice(0,80);location.href='/m/pdf?u='+encodeURIComponent(p+l.search)+'&t='+encodeURIComponent(t);},true);}}catch(e){}\n";
 
 /**
  * App-Rahmen (Büro-Seiten in der App, Ahmed 16.10.: „sieht aus wie am PC“): Reiter als wischbare Leiste in einer Zeile

@@ -73,13 +73,16 @@ export { Ic } from './icons.js';
 const COOKIE = 'vd_m';
 const LANG_COOKIE = 'vd_lang';
 
+type PickToday = { siteId: string; time: string };
+type SiteOpt = { id: string; name: string; site_no: string; address: string; customer: string };
+
 interface Me {
   id: string;
   personnel_no: string;
   first_name: string;
   last_name: string;
   lang: Lang;
-  sites: { id: string; name: string; site_no: string }[];
+  sites: SiteOpt[];
   /** über die Büro-Anmeldung (Objektleitung/Büro stempeln selbst) – kein eigenes Abmelden in /m */
   office?: boolean;
   /** Art der Zeiterfassung (Zeiterfassung → Einstellungen): alle, nur bestätigen, Stoppuhr, Stoppuhr mit QR */
@@ -236,7 +239,58 @@ h2{font-size:16px}
 .shift .confirm{margin-top:8px;padding-top:8px}.shift .confirm .chk{margin:6px 0 10px}.shift .confirm .chk label{font-size:14px;line-height:1.35}
 .shift .confirm .chk input{width:22px;height:22px}
 .shift details summary{font-size:14px}.shift .cfm summary.big,.shift .adjust summary.big{font-size:17px}
+.pk [hidden]{display:none!important}
+.pk[data-step=list] .pk-det,.pk[data-step=go] .pk-list{display:none}
+.pk-h{font-size:20px;font-weight:700;text-align:center;margin:0 0 12px;color:#2a1420}
+.pk-q{position:sticky;top:-12px;z-index:2;display:flex;align-items:center;gap:8px;background:#f3f1f2;border-radius:12px;padding:0 12px;height:46px;color:var(--mut);box-shadow:0 -12px 0 #fff,0 6px 10px -6px rgba(0,0,0,.06)}
+.pk-q svg{width:18px;height:18px;flex:none}
+.pk-q input{border:0;background:none;flex:1;font:inherit;font-size:16px;outline:none;min-width:0;padding:0;height:44px;-webkit-appearance:none}
+.pk h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);font-weight:600;margin:16px 2px 2px}
+.pk-it{display:flex;align-items:center;gap:12px;width:100%;min-height:0;text-align:left;background:#fff;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:11px 2px;font:inherit;color:inherit;cursor:pointer}
+.pk-it:active{background:var(--brand-50)}
+.pk-ic{width:38px;height:38px;border-radius:50%;background:var(--brand-50);color:var(--brand);display:flex;align-items:center;justify-content:center;flex:none}
+.pk-ic svg{width:18px;height:18px}
+.pk-tx{flex:1;min-width:0;display:flex;flex-direction:column}
+.pk-tx b{font-size:16px;font-weight:600;line-height:1.3}
+.pk-tx em{font-style:normal;font-weight:600;color:var(--brand);font-size:13px;margin-left:8px;white-space:nowrap}
+.pk-tx small{font-size:13px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pk-go{display:flex;color:#b9aab0}.pk-go svg{width:18px;height:18px}
+.pk-hint,.pk-empty{color:var(--mut);font-size:14px;text-align:center;margin:18px 0 6px}
+.pk-back{display:inline-flex;align-items:center;gap:4px;background:none;border:0;color:var(--brand);font:inherit;font-size:15px;font-weight:600;padding:4px 0;margin-bottom:10px;cursor:pointer}
+.pk-back svg{width:18px;height:18px}
+.pk-no{color:var(--mut);font-size:14px;font-weight:600;min-height:1em}
+.pk-name{font-size:24px;font-weight:700;line-height:1.25;margin:2px 0 12px;color:#2a1420}
+.pk-row{display:flex;align-items:flex-start;gap:10px;color:#3a2e33;font-size:15px;padding:9px 0;border-top:1px solid var(--line)}
+.pk-row svg{width:18px;height:18px;color:var(--brand);flex:none;margin-top:2px}
+.pk-det .big{margin-top:18px}
 `;
+
+// Objekt wählen (Stoppuhr): Liste → Einsatzdetails → starten
+const PICK_JS = `(function(){
+  var pk=document.currentScript.parentNode;
+  var hid=pk.querySelector('input[name=site_id]'),det=pk.querySelector('.pk-det'),q=pk.querySelector('#site-q');
+  var all=pk.querySelector('.pk-all'),fix=pk.querySelector('.pk-fix'),hint=pk.querySelector('.pk-hint'),empty=pk.querySelector('.pk-empty');
+  var set=function(sel,v){var r=det.querySelector(sel);r.hidden=!v;r.querySelector('.v').textContent=v||'';};
+  var filter=function(){
+    if(!all||!q)return;
+    var v=q.value.trim().toLowerCase(),words=v.split(/\\s+/).filter(Boolean),on=!!all.dataset.few||v.length>=2,n=0;
+    all.hidden=!on; if(fix)fix.hidden=v.length>0; if(hint)hint.hidden=on;
+    all.querySelectorAll('.pk-it').forEach(function(b){var hit=words.every(function(w){return b.dataset.q.indexOf(w)>=0});b.hidden=!hit;if(hit)n++;});
+    if(empty)empty.hidden=n>0;
+  };
+  pk.addEventListener('click',function(e){
+    var it=e.target.closest('.pk-it');
+    if(it){
+      hid.value=it.dataset.site; det.querySelector('.pk-no').textContent=it.dataset.no; det.querySelector('.pk-name').textContent=it.dataset.name;
+      set('.pk-time',it.dataset.time); set('.pk-addr',it.dataset.addr); set('.pk-cust',it.dataset.cust);
+      pk.dataset.step='go'; var pn=pk.closest('.panel'); if(pn)pn.scrollTop=0; return;
+    }
+    if(e.target.closest('.pk-back')){pk.dataset.step='list'; if(q){q.value=''; filter();}}
+  });
+  if(q){q.addEventListener('input',filter); filter();}
+  // ohne gewähltes Objekt nicht absenden
+  pk.closest('form').addEventListener('submit',function(e){if(!hid.value){e.preventDefault();e.stopImmediatePropagation();pk.dataset.step='list';}},true);
+})();`;
 
 // Formulare robust absenden: bei Funkloch Meldung statt Fehlerseite; gleiche ID → nichts doppelt.
 const JS = `
@@ -472,8 +526,11 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     >`
       select id, personnel_no, first_name, last_name, app_language, status, time_mode from app.employees where id = ${id}`;
     if (!e || e.status !== 'aktiv') return null;
-    const sites = await sql<{ id: string; name: string; site_no: string }[]>`
-      select s.id, s.name, s.site_no from app.sites s
+    const sites = await sql<SiteOpt[]>`
+      select s.id, s.name, s.site_no,
+             concat_ws(', ', nullif(s.street, ''), nullif(concat_ws(' ', s.postal_code, s.city), '')) as address,
+             coalesce(cu.name, '') as customer
+        from app.sites s left join app.customers cu on cu.id = s.customer_id
        where s.active
          and (exists (select 1 from app.employee_sites es where es.employee_id = ${id} and es.site_id = s.id)
               -- Vertretung heute/morgen: fremdes Objekt vorübergehend auswählbar
@@ -824,6 +881,140 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     return rec > r.start_at.getTime() && rec - r.start_at.getTime() < 60000 ? rec : r.start_at.getTime();
   };
 
+  /**
+   * Objekt wählen wie Fortytools (Ahmed 17.10., Video), aber in einem Fenster: oben Suche, darunter „Heute geplant“,
+   * „Zuletzt“ und (bei wenigen Objekten bzw. beim Suchen) alle Objekte; Antippen → Einsatzdetails mit großem
+   * „Zeiterfassung starten“. Steht das Objekt fest (heutiger Einsatz, einziges Objekt, QR-Code), geht es direkt zu
+   * den Details – „Anderes Objekt“ führt zur Liste zurück.
+   */
+  const SitePicker: FC<{
+    lang: Lang;
+    me: Me;
+    siteId?: string | undefined;
+    fixed: boolean;
+    today: PickToday[];
+    recent: string[];
+  }> = ({ lang, me, siteId, fixed, today, recent }) => {
+    const byId = new Map(me.sites.map((x) => [x.id, x]));
+    const pre = siteId ? byId.get(siteId) : undefined;
+    const todayIds = new Set(today.map((x) => x.siteId));
+    const recentSites = recent
+      .filter((id) => !todayIds.has(id))
+      .map((id) => byId.get(id))
+      .filter((x): x is SiteOpt => !!x)
+      .slice(0, 3);
+    const few = me.sites.length <= 12;
+    const choose = !fixed && me.sites.length > 1;
+    const Item: FC<{ s: SiteOpt; time?: string | undefined; all?: boolean }> = ({ s, time, all }) => (
+      <button
+        type="button"
+        class="pk-it"
+        data-site={s.id}
+        data-name={s.name}
+        data-no={s.site_no}
+        data-addr={s.address}
+        data-cust={s.customer}
+        data-time={time ?? ''}
+        data-q={all ? `${s.site_no} ${s.name} ${s.customer} ${s.address}`.toLowerCase() : undefined}
+      >
+        <span class="pk-ic">
+          <Ic n={time ? 'clock' : 'pin'} />
+        </span>
+        <span class="pk-tx">
+          <b>
+            {s.name}
+            {time && <em>{time}</em>}
+          </b>
+          <small>{[s.site_no, s.address || s.customer].filter(Boolean).join(' · ')}</small>
+        </span>
+        <span class="pk-go">
+          <Ic n="next" />
+        </span>
+      </button>
+    );
+    const preTime = pre ? today.find((x) => x.siteId === pre.id)?.time : undefined;
+    return (
+      <div class="pk" data-step={pre ? 'go' : 'list'}>
+        <input type="hidden" name="site_id" value={pre?.id ?? ''} />
+        {choose && (
+          <div class="pk-list">
+            <div class="pk-h">{t(lang, 'pick_title')}</div>
+            <label class="pk-q">
+              <Ic n="search" />
+              <input
+                type="search"
+                id="site-q"
+                placeholder={t(lang, 'pick_search')}
+                autocomplete="off"
+                aria-label={t(lang, 'pick_search')}
+              />
+            </label>
+            <div class="pk-fix">
+              {today.length > 0 && (
+                <section>
+                  <h3>{t(lang, 'pick_today')}</h3>
+                  {today.map((x) => {
+                    const s = byId.get(x.siteId);
+                    return s ? <Item s={s} time={x.time} /> : null;
+                  })}
+                </section>
+              )}
+              {recentSites.length > 0 && (
+                <section>
+                  <h3>{t(lang, 'pick_recent')}</h3>
+                  {recentSites.map((s) => (
+                    <Item s={s} />
+                  ))}
+                </section>
+              )}
+            </div>
+            <section class="pk-all" data-few={few ? '1' : undefined}>
+              <h3>{t(lang, 'pick_all')}</h3>
+              {me.sites.map((s) => (
+                <Item s={s} all />
+              ))}
+              <p class="pk-empty" hidden>
+                {t(lang, 'pick_none')}
+              </p>
+            </section>
+            {!few && <p class="pk-hint">{t(lang, 'pick_hint', { n: me.sites.length })}</p>}
+          </div>
+        )}
+        <div class="pk-det">
+          {choose && (
+            <button type="button" class="pk-back">
+              <Ic n="back" /> {t(lang, 'pick_other')}
+            </button>
+          )}
+          <div class="pk-no">{pre?.site_no ?? ''}</div>
+          <div class="pk-name">{pre?.name ?? ''}</div>
+          <div class="pk-row pk-time" hidden={!preTime}>
+            <Ic n="clock" /> <span class="v">{preTime ?? ''}</span>
+          </div>
+          <div class="pk-row pk-addr" hidden={!pre?.address}>
+            <Ic n="pin" /> <span class="v">{pre?.address ?? ''}</span>
+          </div>
+          <div class="pk-row pk-cust" hidden={!pre?.customer}>
+            <Ic n="building" /> <span class="v">{pre?.customer ?? ''}</span>
+          </div>
+          <button class="big go" id="clock-start">
+            <Ic n="play" /> {t(lang, 'pick_start')}
+          </button>
+        </div>
+        <script dangerouslySetInnerHTML={{ __html: PICK_JS }} />
+      </div>
+    );
+  };
+
+  /** zuletzt besuchte Objekte (eigene Zeiten der letzten 60 Tage, neueste zuerst) */
+  const recentSites = async (employeeId: string) =>
+    (
+      await sql<{ site_id: string }[]>`
+        select site_id from app.time_entries
+         where employee_id = ${employeeId} and work_date >= (now() at time zone 'Europe/Berlin')::date - 60
+         group by site_id order by max(start_at) desc limit 5`
+    ).map((r) => r.site_id);
+
   const ClockCard: FC<{
     lang: Lang;
     me: Me;
@@ -838,7 +1029,11 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     token?: string;
     /** nach dem Scannen sofort starten */
     autostart?: boolean;
-  }> = ({ lang, me, running, siteId, viaQr, geo, planEnd, token, autostart }) => {
+    /** heute geplante Einsätze (Objekt + Zeit) – oben in der Auswahl */
+    today?: PickToday[];
+    /** zuletzt besuchte Objekte */
+    recent?: string[];
+  }> = ({ lang, me, running, siteId, viaQr, geo, planEnd, token, autostart, today, recent }) => {
     // Stoppuhr wie Fortytools (Ahmed 15.10.): runder Bordeaux-Knopf unten rechts, Antippen öffnet ein Fenster von unten
     const label = running ? t(lang, 'clock_out') : t(lang, 'clock_in');
     if (!running && me.timeMode === 'qr' && !token)
@@ -958,47 +1153,14 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
               <input type="hidden" name="id" value={randomUUID()} />
               <input type="hidden" name="qr" value={viaQr ? '1' : ''} />
               {token && <input type="hidden" name="token" value={token} />}
-              <div class="sh-t">0:00:00</div>
-              {siteId && !(me.office && !viaQr && me.sites.length > 1) ? (
-                <>
-                  <div class="sh-s">{me.sites.find((x) => x.id === siteId)?.name ?? ''}</div>
-                  <input type="hidden" name="site_id" value={siteId} />
-                </>
-              ) : me.office && me.sites.length > 8 ? (
-                <>
-                  {/* Büro/Objektleitung: an jedem sichtbaren Objekt stempeln – Suchfeld über der langen Liste */}
-                  <label for="site-q">{t(lang, 'where_work')}</label>
-                  <input
-                    id="site-q"
-                    type="search"
-                    placeholder="Objekt suchen …"
-                    autocomplete="off"
-                    oninput="var q=this.value.toLowerCase(),sel=document.getElementById('site'),first=null;for(var o of sel.options){var hit=!q||o.text.toLowerCase().indexOf(q)>=0;o.hidden=!hit;if(hit&&!first)first=o}if(first&&sel.selectedOptions[0]&&sel.selectedOptions[0].hidden)first.selected=true"
-                  />
-                  <select id="site" name="site_id" required aria-label={t(lang, 'where_work')}>
-                    {me.sites.map((s) => (
-                      <option value={s.id} selected={s.id === siteId}>
-                        {s.site_no} · {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </>
-              ) : (
-                <>
-                  <label for="site">{t(lang, 'where_work')}</label>
-                  <select id="site" name="site_id" required>
-                    {me.sites.map((s) => (
-                      <option value={s.id} selected={s.id === siteId}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </>
-              )}
-              <div style="height:14px" />
-              <button class="big go" id="clock-start">
-                <Ic n="play" /> {t(lang, 'clock_in')}
-              </button>
+              <SitePicker
+                lang={lang}
+                me={me}
+                siteId={siteId}
+                fixed={!!viaQr}
+                today={today ?? []}
+                recent={recent ?? []}
+              />
             </form>
           )}
         </div>
@@ -1105,6 +1267,13 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
             me={me}
             // Objekt nicht mehr wählen (Ahmed 15.10.): heutiger Einsatz bzw. einziges Objekt; nur ohne Einsatz fragen
             siteId={presetSite ?? (me.sites.length === 1 ? me.sites[0]!.id : undefined)}
+            today={todays
+              .filter((x) => !x.entry)
+              .map((x) => ({
+                siteId: x.plan.site_id,
+                time: `${x.plan.start_time.slice(0, 5)}–${x.plan.end_time.slice(0, 5)}`,
+              }))}
+            recent={running ? [] : await recentSites(me.id)}
             running={running}
             planEnd={
               running ? todays.find((x) => x.plan.site_id === running.site_id)?.plan.end_time : undefined

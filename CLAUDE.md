@@ -3171,3 +3171,10 @@ Testadresse.
     Person sieht (Büro-Rollen alle aktiven, Objektleitung ihre Objekte), mit Suchfeld; geplantes Objekt vorausgewählt.
     Server-Prüfung `assertMaySite` erlaubt dasselbe (`officeProfiles` in `time.ts`, nur aktive Konten).
   - PDF-Ansicht: Knöpfe der Kopfzeile schrumpfen nicht mehr (Text „‹ Zurück“ war angeschnitten), mehr Rand oben/seitlich.
+- 2026-10-17: **Stoppuhr: Objekt wählen wie Fortytools, einfacher** (Ahmed, Bildschirmvideo): Fenster der Stoppuhr zeigt
+  „Wo arbeitest du?“ mit Suchfeld (Objekt, Kunde, Adresse; mehrere Wörter), darunter „Heute geplant“ (mit Uhrzeit),
+  „Zuletzt“ (eigene Zeiten der letzten 60 Tage) und bei bis zu 12 Objekten alle, sonst ab 2 Zeichen. Antippen →
+  Einsatzdetails (Nr., Name groß, Adresse, Kunde, geplante Zeit) mit großem „Zeiterfassung starten“; „Anderes Objekt“
+  zurück zur Liste. Steht das Objekt fest (heutiger Einsatz, einziges Objekt, QR), öffnen direkt die Details.
+  Ohne den Zwischenschritt „Kundeneinsatz / Pause“ aus Fortytools (Pause steht in der laufenden Stoppuhr).
+  `SitePicker` + `PICK_JS` in `routes-mobile.tsx`, Texte in 7 Sprachen (`pick_*`).

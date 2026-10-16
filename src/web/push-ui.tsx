@@ -118,7 +118,7 @@ export const SCOPE_JS = `(function(){try{
     d.innerHTML='<b style="display:block;font-size:16px;margin-bottom:4px">App bitte einmal neu hinzufügen</b>'
       +'Diese Seite öffnet sich im Browserfenster, weil das App-Symbol noch mit einer alten Einstellung installiert ist. So beheben Sie es (einmalig):'
       +'<ol style="margin:8px 0 10px;padding-left:20px"><li>Symbol „Viva-Deluxe“ auf dem Home-Bildschirm lange drücken → „App entfernen“.</li>'
-      +'<li>In <b>Safari</b> app.viva-deluxe-reinigung.de öffnen.</li><li>Teilen <span aria-hidden="true">⬆︎</span> → „Zum Home-Bildschirm“.</li></ol>'
+      +'<li>In <b>Safari</b> app.viva-deluxe-reinigung.de/m öffnen.</li><li>Teilen <span aria-hidden="true">⬆︎</span> → „Zum Home-Bildschirm“.</li></ol>'
       +'Danach bleibt alles in der App. Ihre Anmeldung müssen Sie einmal neu eingeben.'
       +'<button type="button" style="display:block;width:100%;margin-top:12px;min-height:44px;border:0;border-radius:10px;background:#7D1435;color:#fff;font:inherit;font-weight:600">Verstanden</button>';
     d.querySelector('button').onclick=function(){d.remove();try{sessionStorage.setItem('vd_scope_ok','1')}catch(e){}};

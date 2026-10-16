@@ -3178,3 +3178,9 @@ Testadresse.
   zurück zur Liste. Steht das Objekt fest (heutiger Einsatz, einziges Objekt, QR), öffnen direkt die Details.
   Ohne den Zwischenschritt „Kundeneinsatz / Pause“ aus Fortytools (Pause steht in der laufenden Stoppuhr).
   `SitePicker` + `PICK_JS` in `routes-mobile.tsx`, Texte in 7 Sprachen (`pick_*`).
+- 2026-10-17: **„Beim Wechseln sieht man wieder Safari“** (Ahmed, Screenshot Qualität mit X und Adresse): iOS merkt sich den
+  App-Bereich beim Hinzufügen zum Home-Bildschirm – bei Installation vor dem 16.10. (Bereich nur `/m`) öffnen /qm und
+  Büro-Seiten im Browserfenster. Server kann das an einer installierten App nicht ändern → **einmal Symbol entfernen und
+  neu „Zum Home-Bildschirm“**. Neu: App-Seiten (/qm, App-Rahmen) verlinken das Manifest (Bereich `/`), Manifest ohne
+  Zwischenspeicher (`no-cache`); die App erkennt die alte Installation (Cookie `vd_pwa` aus dem Vollbild, Seite ohne
+  Vollbild) und zeigt dann die Anleitung (`SCOPE_JS` in `push-ui.tsx`).

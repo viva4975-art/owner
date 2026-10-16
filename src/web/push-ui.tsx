@@ -98,3 +98,32 @@ export const APPMODE_JS = `(function(){
       var l=hs[c]||'';if(!td.colSpan||td.colSpan<2){if(l&&!td.hasAttribute('data-l'))td.setAttribute('data-l',l);}c+=td.colSpan||1;});});
   });
 })();`;
+
+/**
+ * Alte Installation erkennen (Ahmed 17.10.: „beim Wechseln sieht man wieder Website wie bei Safari“): iOS merkt sich den
+ * App-Bereich beim Hinzufügen zum Home-Bildschirm. Wer die App vor der Umstellung auf den Bereich „/“ (16.10.)
+ * installiert hat, bekommt /qm und Büro-Seiten im Browserfenster mit „X“. Die App selbst (Vollbild) setzt ein Cookie;
+ * erscheint eine Seite ohne Vollbild, aber mit diesem Cookie, läuft sie in diesem Browserfenster → einmal Anleitung zeigen.
+ * (Safari und Home-Bildschirm-Apps haben unter iOS getrennte Cookies – im normalen Safari erscheint der Hinweis nicht.)
+ */
+export const SCOPE_JS = `(function(){try{
+  if(window.Capacitor||!/iphone|ipad|ipod/i.test(navigator.userAgent))return;
+  var sa=(window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone;
+  if(sa){document.cookie='vd_pwa=1; path=/; max-age=31536000; samesite=lax';return;}
+  if(!/(^|; )vd_pwa=1/.test(document.cookie))return;
+  try{if(sessionStorage.getItem('vd_scope_ok'))return;}catch(e){}
+  var show=function(){
+    var d=document.createElement('div');d.id='scopehint';
+    d.setAttribute('style','position:fixed;left:10px;right:10px;top:calc(10px + env(safe-area-inset-top,0px));z-index:9999;background:#fff;border:1px solid #e8d6dd;border-left:4px solid #7D1435;border-radius:14px;padding:14px 16px;box-shadow:0 10px 30px rgba(60,20,35,.18);font:15px/1.45 Inter,system-ui,-apple-system,sans-serif;color:#1b1f24');
+    d.innerHTML='<b style="display:block;font-size:16px;margin-bottom:4px">App bitte einmal neu hinzufügen</b>'
+      +'Diese Seite öffnet sich im Browserfenster, weil das App-Symbol noch mit einer alten Einstellung installiert ist. So beheben Sie es (einmalig):'
+      +'<ol style="margin:8px 0 10px;padding-left:20px"><li>Symbol „Viva-Deluxe“ auf dem Home-Bildschirm lange drücken → „App entfernen“.</li>'
+      +'<li>In <b>Safari</b> app.viva-deluxe-reinigung.de öffnen.</li><li>Teilen <span aria-hidden="true">⬆︎</span> → „Zum Home-Bildschirm“.</li></ol>'
+      +'Danach bleibt alles in der App. Ihre Anmeldung müssen Sie einmal neu eingeben.'
+      +'<button type="button" style="display:block;width:100%;margin-top:12px;min-height:44px;border:0;border-radius:10px;background:#7D1435;color:#fff;font:inherit;font-weight:600">Verstanden</button>';
+    d.querySelector('button').onclick=function(){d.remove();try{sessionStorage.setItem('vd_scope_ok','1')}catch(e){}};
+    document.body.appendChild(d);
+  };
+  if(document.body)show();else document.addEventListener('DOMContentLoaded',show);
+}catch(e){}})();
+`;

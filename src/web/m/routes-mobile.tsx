@@ -1,6 +1,6 @@
 import { parseBody } from '../../services/instructions.js';
 import { Icon } from '../icons.js';
-import { PDF_JS, PUSH_JS, PushCard, SW_PUSH } from '../push-ui.js';
+import { PDF_JS, PUSH_JS, PushCard, SCOPE_JS, SW_PUSH } from '../push-ui.js';
 import { savePushSubscription, vapidKeys } from '../../services/push.js';
 import { listPayslips } from '../../services/payslips.js';
 import { payslipFile } from '../routes-payslips.js';
@@ -2057,13 +2057,13 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         ],
       }),
       200,
-      { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'public, max-age=3600' },
+      { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'no-cache' },
     ),
   );
 
   // ---------------------------------------------------------------- Push-Nachrichten
   app.get('/m/push.js', (c) =>
-    c.body(TOUCH_JS + PDF_JS + PUSH_JS, 200, {
+    c.body(TOUCH_JS + PDF_JS + PUSH_JS + SCOPE_JS, 200, {
       'Content-Type': 'text/javascript; charset=utf-8',
       'Cache-Control': 'no-cache',
     }),

@@ -2,7 +2,7 @@ import type { Child, FC } from 'hono/jsx';
 import { formatEuro, type Cents } from '../domain/money/money.js';
 import { formatDateDe } from '../domain/invoice/calc.js';
 import { CLIENT_JS } from './client.js';
-import { APPMODE_JS, PDF_JS } from './push-ui.js';
+import { APPMODE_JS, PDF_JS, SCOPE_JS } from './push-ui.js';
 import type { Role } from '../services/users.js';
 import { Icon } from './icons.js';
 import { Ic } from './m/icons.js';
@@ -1647,6 +1647,7 @@ export const Layout: FC<{
         <link rel="icon" type="image/png" href="/static/favicon.png" />
         <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=2" />
         <meta name="apple-mobile-web-app-title" content="Viva-Deluxe" />
+        {app && <link rel="manifest" href="/m/manifest.webmanifest" />}
         <link
           rel="preload"
           href="/static/inter-latin.woff2"
@@ -1689,7 +1690,7 @@ export const Layout: FC<{
           </main>
           {!noTabs && <AppTabbar />}
           <script dangerouslySetInnerHTML={{ __html: CLIENT_JS }} />
-          <script dangerouslySetInnerHTML={{ __html: PDF_JS + APPMODE_JS }} />
+          <script dangerouslySetInnerHTML={{ __html: PDF_JS + APPMODE_JS + SCOPE_JS }} />
           <script dangerouslySetInnerHTML={{ __html: SCROLL_JS }} />
         </body>
       ) : (

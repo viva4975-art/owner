@@ -197,6 +197,9 @@ export const QmLayout: FC<{
       <meta name="theme-color" content="#f8edf1" />
       <title>{`${title} · Qualität · Viva-Deluxe`}</title>
       <link rel="icon" type="image/png" href="/static/favicon.png" />
+      <link rel="manifest" href="/m/manifest.webmanifest" />
+      <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=2" />
+      <meta name="apple-mobile-web-app-capable" content="yes" />
       <style dangerouslySetInnerHTML={{ __html: MCSS + QM_CSS + APP_TAB_CSS + PROFILE_CSS }} />
       <script src="/m/push.js" defer />
     </head>

@@ -248,7 +248,7 @@ if(window.__pdfReady)window.__pdfReady();
         ],
       }),
       200,
-      { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'public, max-age=86400' },
+      { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'no-cache' },
     ),
   );
 }

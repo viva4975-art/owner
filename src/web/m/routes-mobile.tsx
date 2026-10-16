@@ -1,6 +1,6 @@
 import { parseBody } from '../../services/instructions.js';
 import { Icon } from '../icons.js';
-import { PUSH_JS, PushCard, SW_PUSH } from '../push-ui.js';
+import { PDF_JS, PUSH_JS, PushCard, SW_PUSH } from '../push-ui.js';
 import { savePushSubscription, vapidKeys } from '../../services/push.js';
 import { listPayslips } from '../../services/payslips.js';
 import { payslipFile } from '../routes-payslips.js';
@@ -208,7 +208,7 @@ button.link{background:none;border:0;font:inherit;cursor:pointer;text-decoration
 .st-l{display:block;font-size:11px;color:#8a7a80;font-weight:500;margin-top:1px}
 /* ---- Runde 42: kompakter wie Fortytools ---- */
 main{gap:12px;padding-top:6px}
-header{padding-top:calc(6px + env(safe-area-inset-top,0px));padding-bottom:4px}
+header{padding-top:calc(14px + env(safe-area-inset-top,0px));padding-bottom:6px}
 header img{height:26px}
 .hello{font-size:30px;line-height:1.15;margin:6px 0 2px;font-weight:400;color:#2a1420}
 .hello b{display:inline;font-weight:700}
@@ -224,6 +224,7 @@ header img{height:26px}
 .shift.done .w .ic{color:#7D1435}
 .shift .s{font-size:17px;font-weight:650;line-height:1.3;margin-top:2px}
 .shift .a{font-size:14px;color:var(--mut);margin-top:6px}
+.shift .rec{font-size:14px;font-weight:600;color:#7D1435;margin-top:8px}
 .shift.open{border:1.5px solid #ecc3d0}
 .card{border-radius:14px;padding:14px}
 h2{font-size:16px}
@@ -810,6 +811,15 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     );
   };
 
+  /**
+   * Startpunkt der Stoppuhr: gespeichert wird auf die Minute genau, angezeigt wird ab dem Antippen (sonst stünden direkt
+   * nach dem Start schon bis zu 59 Sekunden da – Ahmed 16.10.).
+   */
+  const sinceOf = (r: { start_at: Date; recorded_at: Date }) => {
+    const rec = r.recorded_at.getTime();
+    return rec > r.start_at.getTime() && rec - r.start_at.getTime() < 60000 ? rec : r.start_at.getTime();
+  };
+
   const ClockCard: FC<{
     lang: Lang;
     me: Me;
@@ -838,7 +848,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         <summary class={`fab clk${running ? ' on' : ''}`} aria-label={label}>
           <Ic n="watch" />
           {running && (
-            <span class="t" data-since={String(running.start_at.getTime())}>
+            <span class="t" data-since={String(sinceOf(running))}>
               {hm(running.gross_minutes)}
             </span>
           )}
@@ -848,7 +858,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
           {running ? (
             <>
               <div class="sh-t">
-                <span data-since={String(running.start_at.getTime())}>{hm(running.gross_minutes)}</span>
+                <span data-since={String(sinceOf(running))}>{hm(running.gross_minutes)}</span>
               </div>
               <div class="sh-s">
                 {t(lang, 'running', { time: clock(running.start_at) })} · {running.site_name}
@@ -1182,7 +1192,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
                 {dayLabel(lang, s.date)} · {s.plan.start_time}–{s.plan.end_time}
               </span>
               <span class="ic" title={s.entry ? t(lang, `st_${s.entry.status}`) : undefined}>
-                <Ic n={s.entry ? 'check' : 'watch'} />
+                <Ic n={s.entry?.end_at ? 'check' : 'watch'} />
               </span>
             </div>
             <div class="s">
@@ -1190,6 +1200,14 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
               {s.plan.site_name}
             </div>
             {s.plan.site_address && <div class="a">{s.plan.site_address}</div>}
+            {s.entry && (
+              // erfasste Zeit statt nur der Planzeit zeigen (Ahmed 16.10.)
+              <div class="rec">
+                {s.entry.end_at
+                  ? `✓ ${clock(s.entry.start_at)}–${clock(s.entry.end_at)} · ${t(lang, `st_${s.entry.status}`)}`
+                  : `▶ ${t(lang, 'running', { time: clock(s.entry.start_at) })}`}
+              </div>
+            )}
             {notes.get(s.plan.site_id) && <div class="note">{notes.get(s.plan.site_id)}</div>}
             {mayConfirm && !s.entry && s.plan.end_time <= nowHm && <ConfirmBox lang={lang} s={s} />}
           </div>
@@ -1199,6 +1217,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
           on={t(lang, 'push_on')}
           done={t(lang, 'push_done')}
           blocked={t(lang, 'push_blocked')}
+          later={t(lang, 'sheet_later')}
         />
         <script
           dangerouslySetInnerHTML={{
@@ -1819,13 +1838,15 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
   app.get('/m/manifest.webmanifest', (c) =>
     c.body(
       JSON.stringify({
-        name: 'Viva-Deluxe Mitarbeiter',
+        // Eine App für alle (Ahmed 16.10.): Bereich = ganze Seite, sonst öffnen sich Verwaltung/Qualität (/qm) und
+        // Büro-Seiten im Browserfenster mit „X“ statt in der App
+        name: 'Viva-Deluxe',
         short_name: 'Viva-Deluxe',
-        description:
-          'Zeiterfassung, Urlaub und Dokumente für Mitarbeitende der Viva-Deluxe Gebäudereinigung GmbH',
+        description: 'App der Viva-Deluxe Gebäudereinigung GmbH für Mitarbeitende, Objektleitung und Büro',
         lang: 'de',
+        id: '/m',
         start_url: '/m',
-        scope: '/m',
+        scope: '/',
         display: 'standalone',
         orientation: 'portrait',
         background_color: '#f4f5f7',
@@ -1842,13 +1863,13 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         ],
       }),
       200,
-      { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'public, max-age=86400' },
+      { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'public, max-age=3600' },
     ),
   );
 
   // ---------------------------------------------------------------- Push-Nachrichten
   app.get('/m/push.js', (c) =>
-    c.body(TOUCH_JS + PUSH_JS, 200, {
+    c.body(TOUCH_JS + PDF_JS + PUSH_JS, 200, {
       'Content-Type': 'text/javascript; charset=utf-8',
       'Cache-Control': 'no-cache',
     }),
@@ -1913,7 +1934,13 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
           <div class="card">
             <b>{t(lang, 'payslips')}</b>
             {slips.slice(0, 24).map((s) => (
-              <a class="row" href={`/m/lohn/${s.file_id}`} style="color:inherit;text-decoration:none">
+              <a
+                class="row"
+                href={`/m/lohn/${s.file_id}`}
+                target="_blank"
+                rel="noopener"
+                style="color:inherit;text-decoration:none"
+              >
                 <div>
                   {s.month.slice(5)}/{s.month.slice(0, 4)}
                 </div>

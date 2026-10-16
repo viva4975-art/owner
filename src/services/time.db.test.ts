@@ -368,16 +368,28 @@ describe.skipIf(!available)('Zeiterfassung, Einsatzplanung, Urlaub (Datenbank)',
     const today = todayBerlin();
     await sql`insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes, valid_from)
               values (${randomUUID()}, ${e3}, ${DEMO.siteSchool}, ${isoWeekday(today)}, '06:00', '14:00', 30, ${addDays(today, -7)})`;
+    const at = async (hhmm: string) =>
+      (
+        await sql<{ t: Date }[]>`select (${today}::date + ${hhmm}::time) at time zone 'Europe/Berlin' as t`
+      )[0]!.t;
     const pb = await plannedBreak(sql, {
       employeeId: e3,
       siteId: DEMO.siteSchool,
       workDate: today,
-      startAt: new Date(Date.now() - 864e5),
+      startAt: await at('06:00'),
     });
     expect(pb!.minutes).toBe(30);
     const hm = (d: Date) =>
       d.toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' });
     expect(hm(pb!.start)).toBe('09:45');
+    // deutlich später angefangen (Ahmed 16.10.: abends statt morgens gestempelt) → Pause wandert mit, nicht direkt am Anfang
+    const late = await plannedBreak(sql, {
+      employeeId: e3,
+      siteId: DEMO.siteSchool,
+      workDate: today,
+      startAt: await at('10:00'),
+    });
+    expect(hm(late!.start)).toBe('13:45');
     // Einstempeln merkt die Pause vor (automatisch, also noch änderbar)
     const id = randomUUID();
     await clockIn(sql, { id, employeeId: e3, siteId: DEMO.siteSchool, viaQr: false, actor: 'm:2093' });

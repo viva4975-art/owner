@@ -143,7 +143,9 @@ export function registerStartAppRoutes({ app, deps }: Ctx) {
         short_name: 'Viva-Deluxe',
         description: 'App der Viva-Deluxe Gebäudereinigung GmbH für Mitarbeitende, Objektleitung und Büro',
         lang: 'de',
-        start_url: '/app',
+        // gleiche App wie /m/manifest.webmanifest (Adresse für alle: app.viva-deluxe-reinigung.de/m)
+        id: '/m',
+        start_url: '/m',
         scope: '/',
         display: 'standalone',
         orientation: 'portrait',

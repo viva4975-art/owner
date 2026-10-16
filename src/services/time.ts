@@ -171,8 +171,14 @@ export async function plannedBreak(
   const minutes = Math.max(best.s.plan.break_minutes, suggestedBreak(gross));
   if (minutes >= gross) return null;
   const mid = (best.st.getTime() + best.en.getTime()) / 2;
+  // Weicht der Arbeitsbeginn mehr als 30 Min. vom Plan ab (z. B. abends statt morgens gestempelt), wandert die Pause
+  // mit: gleicher Abstand zum Beginn wie im Plan – sonst läge sie in der Vergangenheit bzw. direkt am Anfang (Ahmed 16.10.)
+  const shift =
+    Math.abs(p.startAt.getTime() - best.st.getTime()) > 30 * 60000
+      ? p.startAt.getTime() - best.st.getTime()
+      : 0;
   // auf 5 Minuten gerundet, nie vor Arbeitsbeginn
-  let start = Math.round((mid - (minutes * 60000) / 2) / 300000) * 300000;
+  let start = Math.round((mid + shift - (minutes * 60000) / 2) / 300000) * 300000;
   start = Math.max(start, p.startAt.getTime());
   return { minutes, start: new Date(start) };
 }

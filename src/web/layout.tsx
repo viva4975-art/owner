@@ -2,6 +2,7 @@ import type { Child, FC } from 'hono/jsx';
 import { formatEuro, type Cents } from '../domain/money/money.js';
 import { formatDateDe } from '../domain/invoice/calc.js';
 import { CLIENT_JS } from './client.js';
+import { APPMODE_JS, PDF_JS } from './push-ui.js';
 import type { Role } from '../services/users.js';
 import { Icon } from './icons.js';
 import { Ic } from './m/icons.js';
@@ -1422,6 +1423,25 @@ tr.offer-decided td{background:#fcfcfc}
 .rate-pick label{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 10px;cursor:pointer;font-size:13px;background:#fff;font-weight:500}
 .rate-pick input{margin:0}
 .rate-pick label:has(input:checked){border-color:var(--brand);box-shadow:0 0 0 2px rgba(125,20,53,.12)}
+/* App-Rahmen wie eine Handy-App (Ahmed 16.10.: „Übergaben und so sieht aus wie am PC“): Reiter als wischbare Pillen in
+   einer Zeile, Tabellen als Karten (APPMODE_JS setzt .appstack und die Beschriftung je Wert) */
+.appmode .tabs,.appmode .entity-layout .tabs{flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;gap:6px;margin:0 -14px 12px;padding:2px 14px 6px;border-bottom:0!important;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.appmode .tabs::-webkit-scrollbar{display:none}
+.appmode .tabs a{flex:none;white-space:nowrap;border:1px solid #ead7de!important;border-radius:999px!important;padding:7px 14px!important;background:#fff!important;color:#5d4a52!important;font-size:15px;margin:0!important}
+.appmode .tabs a.on{background:#7D1435!important;color:#fff!important;border-color:#7D1435!important}
+.appmode .tabs a.on .cnt{background:rgba(255,255,255,.2);color:#fff;border-color:transparent}
+.appmode .tabbody{padding:0;border:0;background:transparent}
+.appmode .tbl.appstack{overflow:visible;border:0;background:transparent;box-shadow:none}
+.appmode .tbl.appstack thead{display:none}
+.appmode .tbl.appstack table,.appmode .tbl.appstack tbody,.appmode .tbl.appstack tfoot,.appmode .tbl.appstack tr,.appmode .tbl.appstack td,.appmode .tbl.appstack th{display:block;width:auto}
+.appmode .tbl.appstack tr{background:#fff;border:1px solid #eee3e7;border-radius:14px;margin:0 0 10px;padding:10px 4px}
+.appmode .tbl.appstack td,.appmode .tbl.appstack tfoot th{border:0!important;padding:3px 12px!important;text-align:left!important;white-space:normal!important;background:transparent!important}
+.appmode .tbl.appstack td[data-l]::before{content:attr(data-l);display:block;color:var(--mut);font-size:12px;font-weight:500}
+.appmode .tbl.appstack td:first-child{font-weight:600}
+.appmode .tbl.appstack td:empty{display:none}
+.appmode .tbl.appstack td .btn,.appmode .tbl.appstack td button{margin-top:4px}
+.appmode .btnrow,.appmode .actions{gap:8px}
+.appmode main>.card,.appmode .tabbody>.card{padding:14px}
 `;
 
 export const euro = (c: bigint) => formatEuro(c as Cents);
@@ -1668,6 +1688,7 @@ export const Layout: FC<{
           </main>
           {!noTabs && <AppTabbar />}
           <script dangerouslySetInnerHTML={{ __html: CLIENT_JS }} />
+          <script dangerouslySetInnerHTML={{ __html: PDF_JS + APPMODE_JS }} />
           <script dangerouslySetInnerHTML={{ __html: SCROLL_JS }} />
         </body>
       ) : (

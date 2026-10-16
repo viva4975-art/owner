@@ -532,9 +532,6 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
             ['/arbeitsscheine', 'times', 'Arbeitsschein', 'erstellen, unterschreiben'],
           ]}
         />
-        <a class="vw-pc" href="/?pc=1">
-          <Ic n="monitor" /> Zur PC-Ansicht wechseln
-        </a>
         {/* Abmelden direkt in der App (gemeinsam genutzte Tablets; Bedientest 10.10.) */}
         <form method="post" action="/abmelden" style="margin:0 0 24px;text-align:center">
           <button class="vw-out">Abmelden</button>

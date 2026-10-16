@@ -3126,3 +3126,20 @@ Testadresse.
   QR-Code zur Adresse, Anmeldung mit der einen Maske, Benachrichtigungen) und `docs/anleitung-zeiterfassung-app.html/.pdf`
   (Startseite, Stoppuhr Start/Stopp, Pause, Zeit bestätigen „Stimmt die Zeit?“, Zeit bearbeiten = Nachtrag, Stundenliste,
   Verwaltung → Zeiten heute: Nachträge freigeben, „nicht gestempelt“). Bilder in `docs/bilder/anleitung-app/`.
+- 2026-10-16: App-Rückmeldung (Ahmed, 10 Punkte, iPhone als Home-Bildschirm-App):
+  - **Stoppuhr** zeigte direkt nach dem Start bis zu 59 s (Zeit wird auf die Minute gespeichert) → Anzeige ab dem Antippen
+    (`sinceOf`: recorded_at, wenn < 60 s nach start_at). **Pause** lag direkt am Beginn, wenn deutlich anders als geplant
+    gestempelt wurde → wandert mit (gleicher Abstand zum Beginn wie im Plan, ab 30 Min. Abweichung; Test in `time.db.test.ts`).
+  - **Einsatzkarte** zeigt die erfasste Zeit („▶ Eingestempelt seit …“ bzw. „✓ 20:56–21:30 · erfasst“), Haken erst nach Ende.
+  - **Benachrichtigungen automatisch:** schon erlaubt → still abonnieren, kein Knopf; noch nicht gefragt → Fenster mit
+    „Benachrichtigungen einschalten“ / „Später (nur heute)“ erscheint von selbst (iPhone braucht einen Fingertipp).
+  - **Fund „Qualität/Übergaben sehen aus wie Website mit X“:** Die Home-Bildschirm-App galt nur für `/m` (Manifest-scope),
+    alles unter `/qm` und die Büro-Seiten öffneten im Browserfenster. Jetzt scope `/` (beide Manifeste, id `/m`).
+    **Wer die App schon installiert hat: Symbol entfernen und neu „Zum Home-Bildschirm“** (iOS merkt sich den Bereich).
+  - **PDFs** (Lohnabrechnung, Dokumente) öffnen in der Home-Bildschirm-App in eigenem Fenster mit „Fertig“ und Teilen
+    (`PDF_JS`, nicht in der Store-App).
+  - „Zur PC-Ansicht wechseln“ aus der Verwaltung entfernt. **Büro-Seiten im App-Rahmen** (`APPMODE_JS` + CSS): Reiter als
+    wischbare Pillen in einer Zeile („Mehr“ aufgelöst), Tabellen bis 10 Spalten als Karten mit Beschriftung (Klasse `keep`
+    = Tabelle bleibt). Kopf der Mitarbeiter-App etwas tiefer unter der Statusleiste.
+  - GPS beim Stempeln nur, wenn unter Zeiterfassung → Einstellungen „Stempeln mit Standort“ eingeschaltet (Standard aus);
+    gespeichert wird nur am Objekt / nicht am Objekt + Entfernung, keine Koordinaten.

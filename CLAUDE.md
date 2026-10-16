@@ -3155,3 +3155,8 @@ Testadresse.
   am Objekt / nicht am Objekt / ungenau / kein Standort + Entfernung, keine Koordinaten; Stempeln wird nie verweigert.
   Prüfung braucht einen Standort je Objekt (Objekt → QR-Aushang & Standort). **Datenschutz:** Mitarbeitende vorher
   informieren (Art. 13 DSGVO), Betriebsrat beteiligen falls vorhanden, Verzeichnis der Verarbeitungstätigkeiten.
+- 2026-10-16: **PDF-Ansicht „leicht abgeschnitten“** (Ahmed, Lohnabrechnung Lexware): Lexware bettet Standardschriften nicht
+  ein; ohne Schriftdaten nimmt pdf.js am iPhone eine Ersatzschrift mit anderen Breiten → Zahlen laufen über Zellränder.
+  Jetzt liefert der Server die Standardschriften/CMaps von pdf.js mit (`pdfjs-dist` 6.1.200, gleiche Version wie in
+  `unpdf`; `/static/vendor/pdfjs/standard_fonts|cmaps/…`, `useSystemFonts:false`). Seiten werden 1,5× schärfer als der
+  Bildschirm gezeichnet (höchstens ~10 Mio. Pixel je Seite), damit Heranzoomen lesbar bleibt.

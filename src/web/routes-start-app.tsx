@@ -203,11 +203,15 @@ document.getElementById('share').onclick=function(){
 // Seiten als Bilder zeichnen (iOS zeigt PDFs in einem Rahmen nur unvollständig, ohne Blättern)
 window.__pdfRender=async function(b){
   const pdfjs=await import('/static/vendor/pdfjs.mjs');
-  const doc=await pdfjs.getDocument({data:new Uint8Array(await b.arrayBuffer()),isEvalSupported:false}).promise;
+  const doc=await pdfjs.getDocument({data:new Uint8Array(await b.arrayBuffer()),isEvalSupported:false,useSystemFonts:false,
+    standardFontDataUrl:'/static/vendor/pdfjs/standard_fonts/',cMapUrl:'/static/vendor/pdfjs/cmaps/',cMapPacked:true}).promise;
   const view=document.getElementById('view');view.innerHTML='';
-  const w=Math.min(view.clientWidth-16,1000),dpr=Math.min(window.devicePixelRatio||1,2);
+  // schärfer als der Bildschirm, damit Heranzoomen (zwei Finger) lesbar bleibt; je Seite höchstens ~10 Mio. Pixel
+  const w=Math.min(view.clientWidth-16,1000),dpr=Math.min((window.devicePixelRatio||1)*1.5,4);
   for(let i=1;i<=doc.numPages;i++){
-    const page=await doc.getPage(i);const v0=page.getViewport({scale:1});const vp=page.getViewport({scale:(w/v0.width)*dpr});
+    const page=await doc.getPage(i);const v0=page.getViewport({scale:1});
+    let sc=(w/v0.width)*dpr;const area=v0.width*v0.height*sc*sc;if(area>1e7)sc*=Math.sqrt(1e7/area);
+    const vp=page.getViewport({scale:sc});
     const cv=document.createElement('canvas');cv.width=Math.floor(vp.width);cv.height=Math.floor(vp.height);view.appendChild(cv);
     await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
   }

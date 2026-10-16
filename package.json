@@ -83,6 +83,7 @@
     "hono": "^4.13.12",
     "html2canvas": "^1.4.1",
     "nodemailer": "^10.0.13",
+    "pdfjs-dist": "6.1.200",
     "postgres": "^3.4.9",
     "qrcode": "^1.5.4",
     "unpdf": "1.8.1",

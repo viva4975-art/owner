@@ -195,6 +195,23 @@ export function createApp(deps: Deps) {
     return c.body(await readFile(PDFJS));
   });
 
+  // Schriften/CMaps für pdf.js: Lexware & Co. betten Standardschriften oft nicht ein – ohne diese Daten nimmt das Handy
+  // eine Ersatzschrift mit anderen Breiten, Zahlen laufen dann über die Zellränder.
+  const PDFJS_DIR = fileURLToPath(new URL('../../node_modules/pdfjs-dist/', import.meta.url));
+  app.get('/static/vendor/pdfjs/:dir{standard_fonts|cmaps}/:file{[A-Za-z0-9_.-]+}', async (c) => {
+    const { readFile } = await import('node:fs/promises');
+    const file = c.req.param('file');
+    if (file.includes('..')) return c.notFound();
+    try {
+      const data = await readFile(PDFJS_DIR + c.req.param('dir') + '/' + file);
+      c.header('Content-Type', 'application/octet-stream');
+      c.header('Cache-Control', 'public, max-age=604800');
+      return c.body(data);
+    } catch {
+      return c.notFound();
+    }
+  });
+
   // Referer nur innerhalb der App (nötig, um nach einem Eingabefehler ins Formular zurückzukehren).
   app.use(secureHeaders({ referrerPolicy: 'same-origin' }));
   // Schutz gegen fremde Formulare. Hinter Caddy sieht die App „http://…“, der Browser schickt „https://…“ als Origin –

@@ -1626,11 +1626,8 @@ export const Layout: FC<{
           (i) =>
             canOpen(role, i.href) &&
             (!i.olOnly || role === 'objektleitung') &&
-            // geplante Bereiche und Handy-Ansicht nur fürs Büro einblenden
-            (!(i.soon || i.href === '/m') ||
-              role === 'admin' ||
-              role === 'buchhaltung' ||
-              (i.href === '/m' && role === 'personal')),
+            // geplante Bereiche nur fürs Büro einblenden
+            (!i.soon || role === 'admin' || role === 'buchhaltung'),
         ),
       }))
         // Auswertungen braucht die Objektleitung nicht (Ahmed 14.10.); Dienste-Liste bleibt über Planung erreichbar

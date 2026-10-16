@@ -3184,3 +3184,5 @@ Testadresse.
   neu „Zum Home-Bildschirm“**. Neu: App-Seiten (/qm, App-Rahmen) verlinken das Manifest (Bereich `/`), Manifest ohne
   Zwischenspeicher (`no-cache`); die App erkennt die alte Installation (Cookie `vd_pwa` aus dem Vollbild, Seite ohne
   Vollbild) und zeigt dann die Anleitung (`SCOPE_JS` in `push-ui.tsx`).
+- 2026-10-17: **„Mitarbeiter-Ansicht“ entfernt** (Ahmed): Knopf in der Zeiterfassung (öffnete `/m` im neuen Tab) und die
+  Menü-Sonderregel dafür entfallen. Die eigene Zeiterfassung bleibt über „Meine Zeiten“ bzw. in der App „Meine Zeit“.

@@ -260,10 +260,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
               {cnt!.requests} Nachträge freigeben
             </a>
           )}
-          <a class="btn sec" href="/m" target="_blank" style="margin-left:auto">
-            <Icon name="user" /> Mitarbeiter-Ansicht
-          </a>
-          <a class="btn" href={`/zeiterfassung/${randomUUID()}`}>
+          <a class="btn" href={`/zeiterfassung/${randomUUID()}`} style="margin-left:auto">
             <Icon name="plus" /> Zeit erfassen
           </a>
         </PageHead>

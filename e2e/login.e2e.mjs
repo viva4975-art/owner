@@ -116,7 +116,7 @@ await ol.click('details.appswitch a:has-text("Verwaltung")');
 await ol.waitForLoadState();
 check(
   'Verwaltung mit Bereichen',
-  (await ol.locator('.vw-sec').count()) >= 2 && (await ol.locator('.vw-stats .vs').count()) === 5,
+  (await ol.locator('.vw-sec').count()) >= 2 && (await ol.locator('.vw-stats .vs').count()) === 6,
 );
 check('Logo in der Verwaltung', (await ol.locator('header img[alt="Viva-Deluxe"]').count()) === 1);
 await ol.click('details.appswitch summary');

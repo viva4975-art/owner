@@ -42,6 +42,7 @@ import {
   BREAK_AFTER_MINUTES,
   setRunningBreak,
   geoCheckEnabled,
+  officeProfiles,
   type GeoInput,
 } from '../../services/time.js';
 import { type AppEnv, type Ctx, OFFICE_COOKIE, UUID, officeSecret } from '../app.js';
@@ -479,7 +480,10 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
               or exists (select 1 from app.shift_exceptions x join app.shift_plans p on p.id = x.shift_plan_id
                           where x.substitute_employee_id = ${id} and p.site_id = s.id and x.kind <> 'ausfall'
                             and x.work_date between (now() at time zone 'Europe/Berlin')::date
-                                                and (now() at time zone 'Europe/Berlin')::date + 1))
+                                                and (now() at time zone 'Europe/Berlin')::date + 1)
+              -- Büro/Objektleitung: alle Objekte, die sie sehen (Stoppuhr ohne Einsatz)
+              or (${office} and exists (select 1 from ${officeProfiles(sql, id)} pr
+                                         where pr.role <> 'objektleitung' or s.manager_user_id = pr.user_id)))
        order by s.name`;
     return {
       id: e.id,
@@ -955,17 +959,38 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
               <input type="hidden" name="qr" value={viaQr ? '1' : ''} />
               {token && <input type="hidden" name="token" value={token} />}
               <div class="sh-t">0:00:00</div>
-              {siteId ? (
+              {siteId && !(me.office && !viaQr && me.sites.length > 1) ? (
                 <>
                   <div class="sh-s">{me.sites.find((x) => x.id === siteId)?.name ?? ''}</div>
                   <input type="hidden" name="site_id" value={siteId} />
+                </>
+              ) : me.office && me.sites.length > 8 ? (
+                <>
+                  {/* Büro/Objektleitung: an jedem sichtbaren Objekt stempeln – Suchfeld über der langen Liste */}
+                  <label for="site-q">{t(lang, 'where_work')}</label>
+                  <input
+                    id="site-q"
+                    type="search"
+                    placeholder="Objekt suchen …"
+                    autocomplete="off"
+                    oninput="var q=this.value.toLowerCase(),sel=document.getElementById('site'),first=null;for(var o of sel.options){var hit=!q||o.text.toLowerCase().indexOf(q)>=0;o.hidden=!hit;if(hit&&!first)first=o}if(first&&sel.selectedOptions[0]&&sel.selectedOptions[0].hidden)first.selected=true"
+                  />
+                  <select id="site" name="site_id" required aria-label={t(lang, 'where_work')}>
+                    {me.sites.map((s) => (
+                      <option value={s.id} selected={s.id === siteId}>
+                        {s.site_no} · {s.name}
+                      </option>
+                    ))}
+                  </select>
                 </>
               ) : (
                 <>
                   <label for="site">{t(lang, 'where_work')}</label>
                   <select id="site" name="site_id" required>
                     {me.sites.map((s) => (
-                      <option value={s.id}>{s.name}</option>
+                      <option value={s.id} selected={s.id === siteId}>
+                        {s.name}
+                      </option>
                     ))}
                   </select>
                 </>

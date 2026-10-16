@@ -574,7 +574,7 @@ export const Dashboard: FC<{
   /** Liquiditätsvorschau 8 Wochen (nur Büro mit Bankzugriff) */
   liquidity?: LiquidityForecast | null;
   /** Anfragen aus der App der Objektleitung: NU-Aufträge zur Freigabe, neue Personalbögen */
-  appRequests?: { nu: number; bogen: number; zeit?: number };
+  appRequests?: { nu: number; bogen: number; zeit?: number; auffaellig?: number };
   absentHref?: string | undefined;
   layout?: DashItem[] | undefined;
   showAkquise?: boolean;
@@ -616,6 +616,21 @@ export const Dashboard: FC<{
               </>
             ),
             href: '/erinnerungen',
+          },
+        ]
+      : []),
+    ...(appRequests.auffaellig
+      ? [
+          {
+            tone: 'warn',
+            text: (
+              <>
+                <b>{appRequests.auffaellig}</b>{' '}
+                {appRequests.auffaellig === 1 ? 'auffällige Zeit' : 'auffällige Zeiten'} (Plan/Ist stark
+                abweichend oder nicht am Objekt gestempelt)
+              </>
+            ),
+            href: '/zeiterfassung/auffaellig',
           },
         ]
       : []),

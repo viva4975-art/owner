@@ -3160,3 +3160,14 @@ Testadresse.
   Jetzt liefert der Server die Standardschriften/CMaps von pdf.js mit (`pdfjs-dist` 6.1.200, gleiche Version wie in
   `unpdf`; `/static/vendor/pdfjs/standard_fonts|cmaps/…`, `useSystemFonts:false`). Seiten werden 1,5× schärfer als der
   Bildschirm gezeichnet (höchstens ~10 Mio. Pixel je Seite), damit Heranzoomen lesbar bleibt.
+- 2026-10-16: Ahmed (3 Punkte):
+  - **Auffällige Zeiten** (`/zeiterfassung/auffaellig`, Menü Personal → Auffällige Zeiten; `src/services/time-anomalies.ts`):
+    letzte 14 Tage, abgeschlossene Zeiten, bei denen Ist stark vom Plan abweicht (mind. 30 Min. **und** 25 % der Planzeit;
+    Plan = verknüpfter Einsatz bzw. Einsatz gleicher Person/Objekt/Wochentag, Tagesausnahme berücksichtigt) oder beim Ein-/
+    Ausstempeln „nicht am Objekt“ (mit Entfernung). Häkchen → „als geprüft“ (optional Vermerk, `app.time_entry_reviews`,
+    Migration `20261128000001`), dann verschwinden sie. Hinweis auf der Startseite (Büro und Objektleitung), Schild in der
+    Zeiterfassung, Kachel „auffällig“ in der App unter Verwaltung. Objektleitung nur ihre Objekte.
+  - **Büro/Objektleitung stempeln ohne Einsatz:** Mit verknüpftem Mitarbeiter zeigt die Stoppuhr alle Objekte, die die
+    Person sieht (Büro-Rollen alle aktiven, Objektleitung ihre Objekte), mit Suchfeld; geplantes Objekt vorausgewählt.
+    Server-Prüfung `assertMaySite` erlaubt dasselbe (`officeProfiles` in `time.ts`, nur aktive Konten).
+  - PDF-Ansicht: Knöpfe der Kopfzeile schrumpfen nicht mehr (Text „‹ Zurück“ war angeschnitten), mehr Rand oben/seitlich.

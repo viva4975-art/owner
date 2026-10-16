@@ -158,12 +158,13 @@ export function registerStartAppRoutes({ app, deps }: Ctx) {
 <style>
 html,body{margin:0;height:100%;background:#525659;font-family:Inter,system-ui,-apple-system,sans-serif}
 body{display:flex;flex-direction:column}
-header{display:flex;align-items:center;gap:8px;background:#7D1435;color:#fff;
-  padding:calc(8px + env(safe-area-inset-top)) 10px 8px;flex:none}
+header{display:flex;align-items:center;gap:8px;background:#7D1435;color:#fff;flex:none;
+  padding:calc(10px + env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 10px max(12px,env(safe-area-inset-left))}
 header .t{flex:1;min-width:0;font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
-header button{background:rgba(255,255,255,.16);color:#fff;border:0;border-radius:8px;padding:9px 12px;
+header button{flex:none;background:rgba(255,255,255,.16);color:#fff;border:0;border-radius:8px;padding:9px 12px;line-height:1.2;
   font-size:15px;font-weight:600;font-family:inherit;white-space:nowrap;cursor:pointer}
 main{flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;padding:10px 8px calc(16px + env(safe-area-inset-bottom))}
+@media (max-width:360px){header button{padding:8px 10px;font-size:14px}}
 main canvas,main img{display:block;width:100%;height:auto;margin:0 auto 10px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
 main iframe{display:block;width:100%;height:100%;border:0;background:#fff}
 main.frame{padding:0}

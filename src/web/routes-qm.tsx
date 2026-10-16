@@ -1,4 +1,5 @@
 import { PushCard } from './push-ui.js';
+import { timeAnomalies } from '../services/time-anomalies.js';
 import { appVersion } from '../services/app-version.js';
 import {
   AboutBody,
@@ -70,7 +71,7 @@ import { CSS as MCSS, Ic } from './m/routes-mobile.js';
  */
 
 const QM_CSS = `
-.vw-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:6px 0 18px}
+.vw-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:6px 0 18px}
 .vw-stats .vs{display:flex;flex-direction:column;align-items:center;gap:2px;padding:12px 4px;border-radius:14px;background:#fff;border:1px solid #efe3e7;text-decoration:none;color:#5b4650;font-size:11.5px;text-align:center}
 .vw-stats .vs b{font-size:22px;line-height:1}
 .vw-stats .run b{color:#1f4f99}.vw-stats .bad b{color:#c0262d}.vw-stats .warn b{color:#a86a00}.vw-stats .brd b{color:#7d1435}
@@ -405,6 +406,10 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
                    and ${empCond(sql`a.start_date`, sql`a.end_date`)}) as requests`,
       plannedShifts(sql, { from: today, to: today }),
     ]);
+    // Plan/Ist stark abweichend oder nicht am Objekt gestempelt (letzte 14 Tage, noch nicht geprüft)
+    const odd = canAccess(u.role, '/zeiterfassung/auffaellig')
+      ? (await timeAnomalies(sql, { managerUserId: u.role === 'objektleitung' ? u.id : undefined })).length
+      : 0;
     const now = clock(new Date());
     const missing = shifts.filter(
       (s) =>
@@ -463,6 +468,7 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
               ['/qm/team', 'warn', n!.absent, 'abwesend'],
               ['/qm/team', 'brd', n!.requests, 'Anträge'],
               ['/qm/zeiten', 'brd', n!.corrections, 'Nachträge'],
+              ['/zeiterfassung/auffaellig', 'bad', odd, 'auffällig'],
             ] as const
           ).map(([href, cls, v, label]) => (
             <a href={href} class={`vs ${cls}${v ? '' : ' zero'}`}>

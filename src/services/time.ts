@@ -268,6 +268,19 @@ async function assertNoOverlap(
   }
 }
 
+/**
+ * Aktive Büro-/Objektleitungs-Konten, die mit dem Mitarbeiter verknüpft sind (ausdrücklich oder – ohne Verknüpfung –
+ * über den gleichen Namen wie `linkedEmployee`). Als Unterabfrage mit `role` und `user_id`.
+ */
+export function officeProfiles(sql: Sql | Tx, employeeId: string) {
+  return sql`(select pr.role::text as role, pr.user_id from app.profiles pr
+                join app.user_accounts a on a.id = pr.user_id and a.active
+               where pr.employee_id = ${employeeId}
+                  or (pr.employee_id is null
+                      and lower(pr.display_name) = (select lower(e2.first_name || ' ' || e2.last_name)
+                                                      from app.employees e2 where e2.id = ${employeeId})))`;
+}
+
 async function assertMaySite(sql: Sql | Tx, employeeId: string, siteId: string) {
   const [ok] = await sql`
     select 1 from app.employees e where e.id = ${employeeId} and e.status = 'aktiv'
@@ -276,7 +289,11 @@ async function assertMaySite(sql: Sql | Tx, employeeId: string, siteId: string) 
             or exists (select 1 from app.shift_exceptions x join app.shift_plans p on p.id = x.shift_plan_id
                         where x.substitute_employee_id = e.id and p.site_id = ${siteId} and x.kind <> 'ausfall'
                           and x.work_date between (now() at time zone 'Europe/Berlin')::date - 7
-                                              and (now() at time zone 'Europe/Berlin')::date + 1))`;
+                                              and (now() at time zone 'Europe/Berlin')::date + 1)
+            -- Büro/Objektleitung mit verknüpftem Mitarbeiter: alle Objekte, die sie sehen (auch ohne Einsatz)
+            or exists (select 1 from app.sites s join ${officeProfiles(sql, employeeId)} pr on true
+                        where s.id = ${siteId} and s.active
+                          and (pr.role <> 'objektleitung' or s.manager_user_id = pr.user_id)))`;
   if (!ok)
     throw new BusinessError('Diesem Objekt nicht zugeordnet – bitte Objektleitung anrufen', 'not_assigned');
 }

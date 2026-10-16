@@ -1507,6 +1507,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Unterweisungen & Unterschriften', href: '/personal/dokumente' },
       { label: 'Personalbogen ausfüllen', href: '/qm/personalbogen', olOnly: true },
       { label: 'Zeiterfassung', href: '/zeiterfassung', sep: true },
+      { label: 'Auffällige Zeiten', href: '/zeiterfassung/auffaellig' },
       { label: 'Meine Zeiten', href: '/zeiterfassung/meine' },
       { label: 'Plan/Ist je Monat', href: '/zeiterfassung/monat' },
       { label: 'Stundenliste & Lohnarten', href: '/zeiterfassung/stundenzettel' },

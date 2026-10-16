@@ -1,4 +1,5 @@
 import { accountOverview } from '../services/bank-feed.js';
+import { timeAnomalies } from '../services/time-anomalies.js';
 import { liquidityForecast } from '../services/liquidity.js';
 import { siteCosting } from '../services/costing.js';
 import { collectReminders } from '../services/reminders.js';
@@ -84,10 +85,11 @@ export function registerModuleRoutes(ctx: Ctx) {
   async function olHome(c: Context<AppEnv>) {
     const sites = c.get('sites') ?? [];
     const today = todayBerlin();
-    const [permits, absent, tasks] = await Promise.all([
+    const [permits, absent, tasks, odd] = await Promise.all([
       permitWarningsForSites(sql, sites, 42),
       absentBetween(sql, today, addDays(today, 14), sites),
       listTasks(sql, { status: 'open', withinDays: 14, onlyFor: taskViewerOf(c) }),
+      timeAnomalies(sql, { managerUserId: c.get('user').id }),
     ]);
     const days = (d: string) => Math.round((Date.parse(d) - Date.parse(today)) / 86_400_000);
     const LINKS: [string, string][] = [
@@ -111,6 +113,14 @@ export function registerModuleRoutes(ctx: Ctx) {
             </a>
           ))}
         </p>
+        {odd.length > 0 && (
+          <p class="flash warn">
+            <a href="/zeiterfassung/auffaellig">
+              <b>{anz(odd.length, 'auffällige Zeit', 'auffällige Zeiten')}</b>
+            </a>{' '}
+            an Ihren Objekten (Ist weicht stark vom Plan ab oder nicht am Objekt gestempelt) – bitte prüfen.
+          </p>
+        )}
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:16px;align-items:start">
           <div class="card">
             <h3>Aufenthaltstitel & Arbeitserlaubnis (nächste 6 Wochen)</h3>
@@ -309,6 +319,7 @@ export function registerModuleRoutes(ctx: Ctx) {
         bank={canAccess(role, '/transfer/kontoumsaetze') ? await accountOverview(sql) : null}
         liquidity={canAccess(role, '/transfer/kontoumsaetze') ? await liquidityForecast(sql) : null}
         appRequests={{
+          auffaellig: canAccess(role, '/zeiterfassung/auffaellig') ? (await timeAnomalies(sql)).length : 0,
           zeit: canAccess(role, '/zeiterfassung')
             ? Number(
                 (

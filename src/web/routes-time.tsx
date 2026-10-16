@@ -54,6 +54,7 @@ import { EmployeeCalendarView } from './pages-employee-calendar.js';
 import { employeeCalendarData } from './employee-calendar-data.js';
 import { linkedEmployee } from '../services/users.js';
 import { absentBetween } from '../services/absences.js';
+import { ANOMALY_DAYS, reviewAnomalies, timeAnomalies } from '../services/time-anomalies.js';
 
 const versionOf = (v: unknown) => (typeof v === 'string' && v !== '' ? Number(v) : null);
 const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
@@ -226,6 +227,10 @@ const GeoBadge = ({
 export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
   const { sql, env } = deps;
 
+  /** Objektleitung sieht nur auffällige Zeiten ihrer Objekte */
+  const anomalyScope = (c: Context<AppEnv>) =>
+    c.get('user').role === 'objektleitung' ? c.get('user').id : undefined;
+
   const shell = async (c: Context<AppEnv>, active: string, title: string, body: Child, nav = 'personal') => {
     const scope = c.get('sites');
     const [[cnt]] = await Promise.all([
@@ -234,6 +239,8 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
           from app.time_entries where ${scope ? sql`site_id in ${sql(scope.length ? scope : ['00000000-0000-0000-0000-000000000000'])}` : sql`true`}`,
     ]);
     void active; // Bereiche stehen links im Menü (keine doppelte Reiterzeile)
+    const odd =
+      active === 'auffaellig' ? 0 : (await timeAnomalies(sql, { managerUserId: anomalyScope(c) })).length;
     return page(
       c,
       title,
@@ -243,6 +250,11 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
           <span class="badge info" style="margin-left:4px">
             {cnt!.running} jetzt im Einsatz
           </span>
+          {odd > 0 && (
+            <a class="badge bad" href="/zeiterfassung/auffaellig">
+              {anz(odd, 'auffällige Zeit', 'auffällige Zeiten')}
+            </a>
+          )}
           {cnt!.requests > 0 && canAccess(c.get('user').role, '/zeiterfassung/freigaben') && (
             <a class="badge warn" href="/zeiterfassung#nachtraege">
               {cnt!.requests} Nachträge freigeben
@@ -567,6 +579,105 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
   });
 
   // ------------------------------------------------------------------ Freigaben
+
+  // --------------------------------------------- Auffällige Zeiten (Plan/Ist, Standort)
+  const hmBerlin = (d: Date) =>
+    d.toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' });
+
+  app.get('/zeiterfassung/auffaellig', async (c) => {
+    const list = await timeAnomalies(sql, { managerUserId: anomalyScope(c) });
+    return shell(
+      c,
+      'auffaellig',
+      'Auffällige Zeiten',
+      <>
+        <h2 style="margin-top:0">Auffällige Zeiten ({list.length})</h2>
+        <p class="mut" style="margin-top:0">
+          Letzte {ANOMALY_DAYS} Tage: Ist weicht stark vom Plan ab (mindestens 30 Minuten und 25 %) oder beim
+          Ein-/ Ausstempeln war das Handy nicht am Objekt. Prüfen (Zeit ansehen, ggf. korrigieren oder mit der
+          Person klären) und als geprüft markieren.
+        </p>
+        {list.length === 0 ? (
+          <p class="empty">Keine auffälligen Zeiten.</p>
+        ) : (
+          <form method="post" action="/zeiterfassung/auffaellig/geprueft">
+            <div class="tbl">
+              <table>
+                <thead>
+                  <tr>
+                    <th>
+                      <input
+                        type="checkbox"
+                        aria-label="alle markieren"
+                        onclick="for(const x of this.form.querySelectorAll('input[name=id]'))x.checked=this.checked"
+                      />
+                    </th>
+                    <th>Datum</th>
+                    <th>Mitarbeiter</th>
+                    <th>Objekt</th>
+                    <th>Plan</th>
+                    <th>Ist</th>
+                    <th>Auffällig</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {list.map((a) => (
+                    <tr>
+                      <td>
+                        <input type="checkbox" name="id" value={a.entryId} aria-label="markieren" />
+                      </td>
+                      <td>{dateDe(a.workDate)}</td>
+                      <td>
+                        {a.name} <span class="mut small">({a.personnelNo})</span>
+                      </td>
+                      <td>
+                        {a.siteName} <span class="mut small">({a.siteNo})</span>
+                      </td>
+                      <td>
+                        {a.planStart ? `${a.planStart}–${a.planEnd}` : <span class="mut">ohne Einsatz</span>}
+                      </td>
+                      <td>
+                        {hmBerlin(a.start)}–{hmBerlin(a.end)}
+                      </td>
+                      <td>
+                        {a.reasons.map((r) => (
+                          <div>
+                            <span class={`badge ${r.includes('Objekt') ? 'bad' : 'warn'}`}>{r}</span>
+                          </div>
+                        ))}
+                      </td>
+                      <td>
+                        <a href={`/zeiterfassung/${a.entryId}`}>ansehen</a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div class="formfoot">
+              <input name="note" placeholder="Vermerk (optional), z. B. „mit Objektleitung geklärt“" />
+              <button class="btn">Markierte als geprüft</button>
+            </div>
+          </form>
+        )}
+      </>,
+    );
+  });
+
+  app.post('/zeiterfassung/auffaellig/geprueft', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const ids = ([] as unknown[])
+      .concat(b.id ?? [])
+      .map(String)
+      .filter((x) => /^[0-9a-f-]{36}$/i.test(x));
+    if (!ids.length) throw new BusinessError('Bitte mindestens eine Zeit markieren');
+    const note = typeof b.note === 'string' && b.note.trim() ? b.note.trim().slice(0, 300) : undefined;
+    const n = await reviewAnomalies(sql, ids, c.get('actor'), { managerUserId: anomalyScope(c), note });
+    const ret =
+      typeof b.zurueck === 'string' && b.zurueck.startsWith('/') ? b.zurueck : '/zeiterfassung/auffaellig';
+    return back(c, ret, { ok: `${anz(n, 'Zeit', 'Zeiten')} als geprüft markiert.` });
+  });
 
   app.get('/zeiterfassung/freigaben', async (c) => {
     const [requests, running] = (

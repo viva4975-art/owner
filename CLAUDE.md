@@ -3288,3 +3288,9 @@ Testadresse.
   Grube an (6 Objekte mit mehreren Positionen, keine Leistung mit eigener Rechnung/Anschrift/Gruppe). Reihenfolge in der
   Rechnung jetzt fest: Kehrsaugen → Duplex → Grube (Ausführungen nach Datum, Vormerk-Zeitpunkt, Leistung sortiert).
   Nur Ankreuzen einzelner Zeilen würde sie trennen – je Kunde/Monat alles ankreuzen. Test in `garage-mw-schedule.db.test.ts`.
+- 2026-10-17: **Fehlende TG-Leistungen** (Ahmed: „bei einigen fehlen noch Leistungen“): Garagen, deren Fläche nur aus den
+  Terminlisten 2026 kam (z. B. nur September-Termin), bekamen keine Standard-Leistungen – jetzt für jede Garage der Listen;
+  Stand `mw_services` v4 holt das beim nächsten Start einmal nach. Ohne Fläche (nirgends hinterlegt) keine Leistungen:
+  Liste Tiefgaragenreinigung zeigt „m² fehlt – keine Leistungen am Objekt“. In der Datenkopie: 2001712 (Krokusstr. 73),
+  2001721 (Zillertalstr. 60), 2001724 (Züricherstr. 178), 2001728 (Skagerrakstr. 11) – **Ahmed: m² eintragen**, beim
+  Speichern entstehen die Leistungen. Keine Platzhalter-Menge (würde falsche Beträge abrechnen).

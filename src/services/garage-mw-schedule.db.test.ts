@@ -34,6 +34,9 @@ describe.skipIf(!available)('Termine Münchner Wohnen 2026', () => {
       select e.site_id, e.date_from::text, e.quantity_milli * e.unit_price_cents / 1000 as total
         from app.service_executions e`;
     expect(ex).toEqual([{ site_id: esswurm, date_from: '2026-10-13', total: 11840n }]); // 370 m² × 0,32 €
+    // Siglstr. (nur September, Fläche nur aus der Liste) bekommt trotzdem die Standard-Leistungen
+    const [sv] = await sql<{ n: number }[]>`select count(*)::int as n from app.site_services where site_id = ${sigl}`;
+    expect(sv!.n).toBe(3);
     expect((await applyMwSchedule2026(sql, 't')).appointments).toBe(0);
   });
 

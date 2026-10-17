@@ -238,6 +238,9 @@ export function registerGarageRoutes({ app, deps, page, back }: Ctx) {
                         </span>
                       )}
                       {o.sqm && <span>{o.sqm} m²</span>}
+                      {!o.sqm && /münchner wohnen/i.test(o.customer) && (
+                        <span class="badge err">m² fehlt – keine Leistungen am Objekt</span>
+                      )}
                       {o.duration && <span>{o.duration}</span>}
                       {o.tob_name && (
                         <span>

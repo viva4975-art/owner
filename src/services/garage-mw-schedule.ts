@@ -42,6 +42,14 @@ export async function applyMwSchedule2026(sql: Sql, actor = 'automatisch'): Prom
       await sql`update app.tg_objects set spaces_duplex = coalesce(spaces_duplex, ${d}) where id = ${x.tg_id}`;
   }
 
+  // Standard-Leistungen für jede Garage der Listen (Fläche kann erst jetzt bekannt sein)
+  const ensured = new Set<string>();
+  for (const x of sites) {
+    if (!x.tg_id || ensured.has(x.tg_id)) continue;
+    await ensureMwServicesFor(sql, x.tg_id, actor);
+    ensured.add(x.tg_id);
+  }
+
   // in Fortytools schon für Herbst 2026 abgerechnet?
   const billed = new Set(
     (
@@ -53,7 +61,6 @@ export async function applyMwSchedule2026(sql: Sql, actor = 'automatisch'): Prom
     ).map((r) => r.site_id),
   );
 
-  const ensured = new Set<string>();
   for (const a of MW_TG_2026) {
     const x = bySite.get(a.siteNo);
     if (!x?.tg_id) {
@@ -75,10 +82,6 @@ export async function applyMwSchedule2026(sql: Sql, actor = 'automatisch'): Prom
     if (billed.has(x.site_id)) {
       res.skipped.push(`${a.siteNo}: Herbst 2026 schon in Fortytools abgerechnet`);
       continue;
-    }
-    if (!ensured.has(x.tg_id)) {
-      await ensureMwServicesFor(sql, x.tg_id, actor);
-      ensured.add(x.tg_id);
     }
     const svcs = await sql<
       {

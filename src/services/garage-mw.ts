@@ -318,9 +318,10 @@ export async function ensureMwTgObjects(sql: Sql) {
 
 /**
  * Stand der Standard-Leistungen: 1 = Scheuer-/Kehrsaugen + Duplex, 2 = zusätzlich Grube (17.10.), 3 = Fläche aus den
- * übernommenen Rechnungen und TG-Objekte für alle „TG …“-Objekte von Münchner Wohnen (Ahmed 17.10.: TG 3 leer).
+ * übernommenen Rechnungen und TG-Objekte für alle „TG …“-Objekte von Münchner Wohnen (Ahmed 17.10.: TG 3 leer),
+ * 4 = erneut nach den Terminlisten 2026 (Flächen nur aus den Listen bekamen sonst keine Leistungen).
  */
-const MW_VERSION = 3;
+const MW_VERSION = 4;
 
 /**
  * Beim Start: fehlende Standard-Leistungen anlegen, je Stand nur einmal (Protokoll `mw_services`).

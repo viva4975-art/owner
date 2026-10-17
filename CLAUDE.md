@@ -3211,3 +3211,8 @@ Testadresse.
   nachladen“ oder verbindet die Bank, schickt die App jetzt die Angaben des anwesenden Benutzers mit (`Psu-Ip-Address`
   aus X-Forwarded-For von Caddy, `Psu-User-Agent`, `Psu-Accept-Language`; `psuHeaders`/`psuOf`) – dann gilt die Grenze
   nicht. Der automatische Abruf schickt sie nie (wäre eine falsche Angabe gegenüber der Bank). Test in `bank-feed.db.test.ts`.
+- 2026-10-17: **Soll als Ist nach 2 Tagen sieht aus wie vom Mitarbeiter bestätigt** (Ahmed: „wenn er sich nicht darum
+  kümmert“): Die stündliche Übernahme (Einstellung seit 09.10. an, 2 Tage) trägt jetzt wie die Bestätigung in der App ein –
+  Quelle „Soll bestätigt“, Status „erfasst“, erfasst von `m:<Personalnr.>`, ohne Büro-Freigabe (vorher „freigegeben“ von
+  „automatisch“). Nur das Änderungsprotokoll nennt „automatisch“ (Grund „Plan als Ist automatisch …“) – nötig als Nachweis.
+  Bereits automatisch übernommene Zeiten bleiben unverändert. **§ 17 MiLoG:** abweichende tatsächliche Zeiten korrigieren.

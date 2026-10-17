@@ -1291,8 +1291,9 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
             ))}
           </select>
           <p class="small mut">
-            Nicht bei Abwesenheit, Ausfall, Feiertag oder Überschneidung. Im Protokoll steht „automatisch“;
-            die Zeit lässt sich wie jede andere ändern oder löschen.
+            Nicht bei Abwesenheit, Ausfall, Feiertag oder Überschneidung. Die Zeit erscheint überall so, als
+            hätte der Mitarbeiter sie in der App bestätigt („Soll bestätigt“, Kalender „Zeit bestätigt“); nur
+            im Änderungsprotokoll steht „automatisch“. Sie lässt sich wie jede andere ändern oder löschen.
             {autoCfg?.since ? ` Gilt für Einsätze ab ${dateDe(autoCfg.since)}.` : ''}
           </p>
           <p class="small" style="color:var(--warn)">

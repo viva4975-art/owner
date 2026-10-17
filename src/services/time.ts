@@ -1010,6 +1010,12 @@ export async function officeConfirmPlanned(
     reason?: string;
     /** nur Tage ab Anlage des Einsatzes (automatische Übernahme: rückwirkend geplante Tage nie) */
     onlyPlannedAhead?: boolean;
+    /**
+     * wie vom Mitarbeiter in der App bestätigt eintragen (Status „erfasst“, erfasst von m:<Personalnr.>) – für die
+     * automatische Übernahme nach N Tagen (Ahmed 17.10.: soll aussehen, als hätte er bestätigt). Der Protokollgrund
+     * hält fest, dass es automatisch war (§ 17 MiLoG).
+     */
+    asEmployee?: boolean;
   },
 ): Promise<{ created: number; skipped: string[] }> {
   const today = todayBerlin();
@@ -1019,6 +1025,14 @@ export async function officeConfirmPlanned(
   const now = Date.now();
   let created = 0;
   const skipped: string[] = [];
+  let by = p.actor;
+  if (p.asEmployee) {
+    const [emp] = await sql<{ personnel_no: string }[]>`
+      select personnel_no from app.employees where id = ${p.employeeId}`;
+    if (emp) by = `m:${emp.personnel_no}`;
+  }
+  const status = p.asEmployee ? 'erfasst' : 'freigegeben';
+  const decidedBy = p.asEmployee ? null : p.actor;
   for (const sh of shifts) {
     if (sh.entry || sh.absence || sh.holiday || sh.exception?.kind === 'ausfall') continue;
     if (sh.plan.employee_id !== p.employeeId) continue;
@@ -1048,7 +1062,8 @@ export async function officeConfirmPlanned(
         insert into app.time_entries (id, employee_id, site_id, work_date, start_at, end_at, break_minutes, break_start_at,
                                       break_auto, source, status, shift_plan_id, created_by, decided_by, decided_at)
         values (${id}, ${p.employeeId}, ${sh.plan.site_id}, ${sh.date}, ${s}, ${e}, ${brk}, ${placeBreak(s, e, brk)},
-                true, 'soll_bestaetigt', 'freigegeben', ${sh.plan.id}, ${p.actor}, ${p.actor}, now())`;
+                true, 'soll_bestaetigt', ${status}, ${sh.plan.id}, ${by}, ${decidedBy},
+                case when ${decidedBy}::text is null then null else now() end)`;
       return 'ok';
     });
     if (r === 'ok') created++;
@@ -1097,6 +1112,7 @@ export async function autoConfirmPlanned(sql: Sql, today = todayBerlin()) {
       actor: 'automatisch',
       reason: `Plan als Ist automatisch (keine Zeit nach ${cfg.days} Tagen)`,
       onlyPlannedAhead: true,
+      asEmployee: true,
     });
     n += r.created;
   }

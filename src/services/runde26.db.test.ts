@@ -68,6 +68,17 @@ describe.skipIf(!available)('Runde 26: Plan-Zeiten als Ist-Zeiten (Datenbank)', 
        where t.employee_id = ${e2} limit 1`;
     expect(log).toMatchObject({ actor: 'automatisch' });
     expect(log!.reason).toMatch(/automatisch/);
+    // sieht aus wie vom Mitarbeiter bestätigt (Ahmed 17.10.)
+    const [te] = await sql<
+      { status: string; created_by: string; source: string; decided_by: string | null }[]
+    >`
+      select status, created_by, source, decided_by from app.time_entries where employee_id = ${e2} limit 1`;
+    expect(te).toMatchObject({
+      status: 'erfasst',
+      created_by: 'm:8802',
+      source: 'soll_bestaetigt',
+      decided_by: null,
+    });
     // rückwirkend geplanter Einsatz (angelegt am 09.03. ab 01.03.): nie automatisch als Ist
     const e3 = randomUUID();
     await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date)

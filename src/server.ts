@@ -1,3 +1,4 @@
+import { ensureMwServices } from './services/garage-mw.js';
 import { serve } from '@hono/node-server';
 import { LocalArchiveStore } from './archive/store.js';
 import { loadEnv } from './config/env.js';
@@ -47,6 +48,18 @@ const autoIst = () =>
     .catch((e) => console.error('Plan als Ist automatisch:', e));
 setTimeout(autoIst, 60_000).unref();
 setInterval(autoIst, 60 * 60 * 1000).unref();
+
+// Münchner Wohnen: Tiefgaragen-Leistungen einmalig anlegen (Ahmed 17.10.)
+setTimeout(
+  () =>
+    ensureMwServices(sql)
+      .then(
+        (r) =>
+          r && console.log(`Leistungen Münchner Wohnen: ${r.created} angelegt, ${r.skipped} TG übersprungen`),
+      )
+      .catch((e) => console.error('Leistungen Münchner Wohnen:', e)),
+  90_000,
+).unref();
 
 // Push-Nachrichten aufs Handy (Unterweisungen, Einsätze, Anträge, Pause) – jede Minute, jede Nachricht nur einmal
 let pushBusy = false;

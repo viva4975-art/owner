@@ -9,6 +9,7 @@ import { embedUiFonts } from '../pdf/fonts.js';
 import { BusinessError } from './errors.js';
 import { uuidOf } from './fortytools-export-import.js';
 import { getSeller } from './masterdata.js';
+import { mwWorkReportLines } from './garage-mw.js';
 import { saveWorkReport } from './orders.js';
 
 /*
@@ -226,7 +227,14 @@ export async function createWorkReport(sql: Sql, appointmentId: string, actor: s
           unitCode: u === 'psch' ? 'LS' : 'C62',
         }),
       )
-    : [{ description: `Tiefgaragenreinigung – ${a.kind}`, quantity: q(1), unitCode: 'LS' }];
+    : /münchner wohnen/i.test(o.customer)
+      ? (await mwWorkReportLines(sql, o.id, o.site_id, o.sqm, o.spaces_duplex)).map((l) => ({
+          ...l,
+          quantity: l.quantity as Quantity,
+        }))
+      : [];
+  if (!lines.length)
+    lines.push({ description: `Tiefgaragenreinigung – ${a.kind}`, quantity: q(1), unitCode: 'LS' });
   const id = uuidOf(`tg-as:${appointmentId}`);
   const [exists] = await sql`select 1 from app.work_reports where id = ${id}`;
   if (!exists)

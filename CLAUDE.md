@@ -3230,3 +3230,12 @@ Testadresse.
 - 2026-10-17: **Liquiditätsvorschau gelöscht** (Ahmed: „komplett löschen“): Startseiten-Karte, `src/services/liquidity.ts` und
   Test entfernt (keine eigenen Tabellen – nichts in der Datenbank gelöscht). Gespeicherte Startseiten-Layouts verwerfen den
   Eintrag automatisch (`normalizeDash`).
+- 2026-10-17: **Tiefgaragen Münchner Wohnen: Leistungen eingefügt** (Ahmed: „überall hinzufügen“, ohne eigene Seite): Je
+  aktivem TG-Objekt von Münchner Wohnen mit verknüpftem Objekt am Objekt die Leistungen „je Ausführung“ (Leistungsart
+  Tiefgaragenreinigung, 19 %, gültig ab 01.01.2026): 1. Scheuersaugen 0,47 €/m², 2. Scheuersaugen 0,26 €/m², 3. Kehrsaugen
+  0,32 €/m²; bei Duplex-Stellplätzen 1. Reinigung Duplex 5,27 €, 2. Reinigung Duplex 2,11 € je Stellplatz (Preise aus
+  Ahmeds Fortytools-Bild). Menge = Fläche/Duplex am TG-Objekt, sonst aus der vorhandenen Fortytools-Leistung (wird dann am
+  TG-Objekt ergänzt). Gleichnamige Leistung vorhanden → nichts doppelt; feste IDs. Läuft einmalig ~90 s nach dem Start
+  (`ensureMwServices`, Protokoll `mw_services`). Ohne verknüpftes Objekt oder Fläche übersprungen. Arbeitsschein bei
+  „bestätigen“ übernimmt diese Leistungen (mit Preis). „Mechanische Reinigung der Grube“ nicht enthalten.
+  **Ahmed: Preise mit dem Vertrag abgleichen, ggf. je Leistung am Objekt ändern.**

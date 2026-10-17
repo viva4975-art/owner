@@ -74,7 +74,8 @@ import {
   OpenOffers,
   RevenuePanel,
 } from './pages-customer.js';
-import { listFiles } from '../services/uploads.js';
+import { linkCustomerFilesToSites, listFiles } from '../services/uploads.js';
+import { SITE_DOC_CATEGORIES } from './routes-site-extra.js';
 import {
   CUSTOMER_STATUS,
   CUSTOMER_TEMPLATE_FIELDS,
@@ -1263,6 +1264,11 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                 <a class="btn sm sec" href={`/brief?an=kunde&id=${cust.id}`}>
                   Freien Brief schreiben
                 </a>
+                {files.length > 0 && (
+                  <a class="btn sm sec" href={`/kunden/${cust.id}/dokumente/uebertragen`}>
+                    Auf Objekte übertragen
+                  </a>
+                )}
                 <DocFoldAll />
               </div>
               {CUSTOMER_DOC_CATEGORIES.map((k) => {
@@ -1308,6 +1314,117 @@ export function registerMasterdataRoutes(ctx: Ctx) {
       </>
     )),
   );
+
+  // Kunden-Dokumente (z. B. LV) auf mehrere oder alle Objekte übertragen (Ahmed 17.10.) – nur Verknüpfung, keine Kopie
+  const SITE_CAT_OF: Record<string, string> = {
+    Leistungsverzeichnis: 'Leistungsverzeichnis',
+    Vertrag: 'Vertrag',
+  };
+  app.get(`/kunden/:id{${UUID}}/dokumente/uebertragen`, (c) =>
+    customerPage(c, 'dokumente', async (cust) => {
+      if (c.get('sites') !== null) throw new BusinessError('Nur das Büro kann Dokumente übertragen');
+      const files = await listFiles(sql, { type: 'customer', id: cust.id });
+      const pre = c.req.query('datei');
+      const sites = await sql<
+        { id: string; site_no: string; name: string; street: string | null; active: boolean }[]
+      >`
+        select id, site_no, name, street, active from app.sites where customer_id = ${cust.id}
+         order by not active, site_no`;
+      const active = sites.filter((s) => s.active);
+      return (
+        <form method="post" action={`/kunden/${cust.id}/dokumente/uebertragen`} class="card">
+          <h3 style="margin-top:0">Dokumente auf Objekte übertragen</h3>
+          <p class="small mut">
+            Die Datei wird nicht kopiert, sondern zusätzlich beim Objekt abgelegt (unter Objekt → Dokumente).
+            Schon vorhandene bleiben unverändert.
+          </p>
+          {files.length === 0 ? (
+            <p class="mut">Beim Kunden liegen noch keine Dokumente.</p>
+          ) : (
+            <>
+              <h4>1. Dokumente</h4>
+              <div class="stack">
+                {files.map((f) => (
+                  <label class="chk">
+                    <input type="checkbox" name="file" value={f.id} checked={pre === f.id} />{' '}
+                    {f.original_name} <span class="mut small">· {f.category ?? 'ohne Kategorie'}</span>
+                  </label>
+                ))}
+              </div>
+              <h4>2. Objekte</h4>
+              <label class="chk">
+                <input
+                  type="checkbox"
+                  onclick="document.querySelectorAll('input[name=site][data-active]').forEach(function(x){x.checked=this.checked}.bind(this))"
+                />{' '}
+                <b>alle aktiven Objekte ({active.length})</b>
+              </label>
+              <div class="stack" style="margin-top:6px">
+                {sites.map((s) => (
+                  <label class="chk">
+                    <input
+                      type="checkbox"
+                      name="site"
+                      value={s.id}
+                      data-active={s.active ? '1' : undefined}
+                    />{' '}
+                    {s.site_no} {s.name}
+                    <span class="mut small">
+                      {s.street ? ` · ${s.street}` : ''}
+                      {s.active ? '' : ' · inaktiv'}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <h4>3. Ablegen unter</h4>
+              <select name="category" data-nosearch>
+                <option value="">
+                  wie beim Kunden (LV → Leistungsverzeichnis, Vertrag → Vertrag, sonst Sonstiges)
+                </option>
+                {SITE_DOC_CATEGORIES.map((k) => (
+                  <option value={k.name}>{k.name}</option>
+                ))}
+              </select>
+              <div class="formfoot">
+                <button class="btn">Übertragen</button>
+                <a class="btn sec" href={`/kunden/${cust.id}/dokumente`}>
+                  Abbrechen
+                </a>
+              </div>
+            </>
+          )}
+        </form>
+      );
+    }),
+  );
+  app.post(`/kunden/:id{${UUID}}/dokumente/uebertragen`, async (c) => {
+    if (c.get('sites') !== null) throw new BusinessError('Nur das Büro kann Dokumente übertragen');
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    const cat = str(b, 'category');
+    const fileIds = arr(b, 'file');
+    // ohne Auswahl der Ablage: je Datei passend zur Kategorie beim Kunden
+    const files = await listFiles(sql, { type: 'customer', id });
+    let added = 0;
+    const groups = new Map<string, string[]>();
+    for (const fid of fileIds) {
+      const f = files.find((x) => x.id === fid);
+      const target = cat || SITE_CAT_OF[f?.category ?? ''] || 'Sonstiges';
+      groups.set(target, [...(groups.get(target) ?? []), fid]);
+    }
+    if (!groups.size) throw new BusinessError('Bitte mindestens ein Dokument auswählen');
+    for (const [category, ids] of groups)
+      added += await linkCustomerFilesToSites(
+        sql,
+        { customerId: id, fileIds: ids, siteIds: arr(b, 'site'), category },
+        c.get('actor'),
+      );
+    return back(c, `/kunden/${id}/dokumente`, {
+      ok: added
+        ? `${added} Ablage(n) bei Objekten angelegt.`
+        : 'War schon bei allen gewählten Objekten abgelegt.',
+    });
+  });
 
   // ------------------------------------------------------------------ Objekte
 

@@ -356,3 +356,41 @@ export async function storeFile(
     return f!;
   });
 }
+
+/**
+ * Dokument eines Kunden (z. B. LV) zusätzlich bei Objekten ablegen: dieselbe Datei (write-once) bekommt je Objekt
+ * eine Verknüpfung – keine Kopie. Nur Dateien des Kunden und Objekte desselben Kunden; schon vorhandene bleiben.
+ */
+export async function linkCustomerFilesToSites(
+  sql: Sql,
+  p: { customerId: string; fileIds: string[]; siteIds: string[]; category: string | null },
+  actor: string,
+) {
+  if (!p.fileIds.length) throw new BusinessError('Bitte mindestens ein Dokument auswählen');
+  if (!p.siteIds.length) throw new BusinessError('Bitte mindestens ein Objekt auswählen');
+  return sql.begin(async (tx) => {
+    const files = await tx<{ file_id: string; category: string | null }[]>`
+      select l.file_id, l.category from app.file_links l join app.files f on f.id = l.file_id
+       where l.entity_type = 'customer' and l.entity_id = ${p.customerId} and f.status = 'complete'
+         and l.file_id in ${tx(p.fileIds)}`;
+    const sites = await tx<{ id: string }[]>`
+      select id from app.sites where customer_id = ${p.customerId} and id in ${tx(p.siteIds)}`;
+    if (files.length !== new Set(p.fileIds).size)
+      throw new BusinessError('Dokument gehört nicht zu diesem Kunden');
+    if (sites.length !== new Set(p.siteIds).size)
+      throw new BusinessError('Objekt gehört nicht zu diesem Kunden');
+    let added = 0;
+    for (const f of files)
+      for (const s of sites) {
+        const r = await tx`
+          insert into app.file_links (file_id, entity_type, entity_id, category, linked_by)
+          values (${f.file_id}, 'site', ${s.id}, ${p.category ?? f.category}, ${actor})
+          on conflict do nothing returning file_id`;
+        added += r.length;
+      }
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'file_link_sites', 'customers', ${p.customerId},
+                     ${tx.json({ files: p.fileIds, sites: p.siteIds, category: p.category, added })})`;
+    return added;
+  });
+}

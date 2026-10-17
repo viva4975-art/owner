@@ -3216,3 +3216,7 @@ Testadresse.
   Quelle „Soll bestätigt“, Status „erfasst“, erfasst von `m:<Personalnr.>`, ohne Büro-Freigabe (vorher „freigegeben“ von
   „automatisch“). Nur das Änderungsprotokoll nennt „automatisch“ (Grund „Plan als Ist automatisch …“) – nötig als Nachweis.
   Bereits automatisch übernommene Zeiten bleiben unverändert. **§ 17 MiLoG:** abweichende tatsächliche Zeiten korrigieren.
+- 2026-10-17: **App Store lehnt öffentliche Verteilung ab** (Guideline 3.2, Build 1.0 (106)): App ist nur für Viva-Deluxe-
+  Mitarbeitende → **Unlisted App Distribution** beantragen (developer.apple.com/support/unlisted/request), erst nach
+  Zusage-Mail erneut einreichen; App ist dann nur über den direkten Link im App Store zu finden. Alternative Custom App
+  über Apple Business Manager (D-U-N-S 343512805) nur sinnvoll für firmeneigene, verwaltete Geräte. Bis dahin Web-App.

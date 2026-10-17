@@ -1231,6 +1231,11 @@ a.svc-copy{display:flex;flex-direction:column;align-items:center;justify-content
 a.svc-copy:hover{background:#fafafb;color:var(--brand)}
 a.svc-copy svg{width:16px;height:16px}
 a.svc-copy span{font-size:10.5px}
+.svc-act{margin:0;display:flex;width:62px;flex:0 0 62px;border-left:1px solid var(--line)}
+.svc-act button{all:unset;cursor:pointer;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--mut);font-size:12.5px}
+.svc-act button:hover{background:#fafafb;color:var(--brand)}
+.svc-act svg{width:16px;height:16px}
+.svc-act span{font-size:10.5px}
 @media (max-width:1300px){a.svc-row{grid-template-columns:minmax(0,1fr) 120px 150px 95px;gap:10px}}
 a.svc-row:hover{background:#fafafb}
 a.svc-row b{color:var(--brand)}

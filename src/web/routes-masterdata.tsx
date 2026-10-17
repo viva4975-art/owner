@@ -607,7 +607,33 @@ export function registerMasterdataRoutes(ctx: Ctx) {
             + Objekt anlegen
           </a>
         </div>
-        <SiteTable sites={await listSites(sql, cust.id)} />
+        {await (async () => {
+          // inaktive Objekte ausblenden (Ahmed 17.10.); Standard: nur aktive
+          const all = await listSites(sql, cust.id);
+          const st = c.req.query('status') ?? 'aktiv';
+          const n = {
+            aktiv: all.filter((x) => x.active).length,
+            inaktiv: all.filter((x) => !x.active).length,
+          };
+          const rows = st === 'alle' ? all : all.filter((x) => x.active === (st !== 'inaktiv'));
+          const href = (v: string) => `/kunden/${cust.id}/objekte?status=${v}`;
+          return (
+            <>
+              <div class="chips">
+                <a href={href('aktiv')} class={st === 'aktiv' ? 'on' : ''}>
+                  Aktiv<span class="n">{n.aktiv}</span>
+                </a>
+                <a href={href('inaktiv')} class={st === 'inaktiv' ? 'on' : ''}>
+                  Inaktiv<span class="n">{n.inaktiv}</span>
+                </a>
+                <a href={href('alle')} class={st === 'alle' ? 'on' : ''}>
+                  Alle<span class="n">{all.length}</span>
+                </a>
+              </div>
+              <SiteTable sites={rows} />
+            </>
+          );
+        })()}
       </>
     )),
   );

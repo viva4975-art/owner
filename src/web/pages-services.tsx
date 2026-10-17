@@ -86,6 +86,25 @@ const ServiceGroup: FC<{ title: string; rows: SiteServiceRow[]; siteId: string }
             >
               <Icon name="copy" /> <span>Kopieren</span>
             </a>
+            <form method="post" action={`/leistungen/${sv.id}/aktiv`} class="svc-copy svc-act">
+              <input type="hidden" name="site_id" value={siteId} />
+              <input type="hidden" name="active" value={sv.active ? 'false' : 'true'} />
+              <button
+                type="submit"
+                title={
+                  sv.active
+                    ? 'Leistung inaktiv setzen (wird nicht mehr abgerechnet)'
+                    : 'Leistung wieder aktiv setzen'
+                }
+                data-confirm={
+                  sv.active
+                    ? `„${sv.description}“ inaktiv setzen? Sie wird nicht mehr abgerechnet und steht unter „Inaktive Leistungen“.`
+                    : undefined
+                }
+              >
+                <Icon name={sv.active ? 'x' : 'undo'} /> <span>{sv.active ? 'Inaktiv' : 'Aktivieren'}</span>
+              </button>
+            </form>
           </div>
         );
       })}
@@ -134,7 +153,7 @@ export const ServicesPanel: FC<{
       <ServiceGroup title="Nach Ausführung (je Ausführung, einmalig, Zyklus)" rows={perRun} siteId={siteId} />
       {inactive.length > 0 && (
         <details class="svc-old">
-          <summary>Beendete Leistungen ({inactive.length})</summary>
+          <summary>Inaktive Leistungen ({inactive.length})</summary>
           <ServiceGroup title="" rows={inactive} siteId={siteId} />
         </details>
       )}

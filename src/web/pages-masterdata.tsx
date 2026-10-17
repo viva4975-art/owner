@@ -190,13 +190,20 @@ export const CustomerList: FC<{
                   </a>
                   {ss.length > 0 ? (
                     <details class="pop">
-                      <summary class="btn sec sm">Objekte ({ss.length}) ▾</summary>
+                      <summary class="btn sec sm">Objekte ({ss.filter((x) => x.active).length}) ▾</summary>
                       <div class="panel" style="padding:6px;max-height:340px;overflow:auto">
-                        {ss.map((x) => (
-                          <a href={`/objekte/${x.id}`} class="menuitem" style={x.active ? '' : 'opacity:.55'}>
-                            {x.name} <span class="small faint">{x.site_no}</span>
+                        {ss
+                          .filter((x) => x.active)
+                          .map((x) => (
+                            <a href={`/objekte/${x.id}`} class="menuitem">
+                              {x.name} <span class="small faint">{x.site_no}</span>
+                            </a>
+                          ))}
+                        {ss.some((x) => !x.active) && (
+                          <a href={`/kunden/${c.id}/objekte?status=inaktiv`} class="menuitem small mut">
+                            + {ss.filter((x) => !x.active).length} inaktive anzeigen
                           </a>
-                        ))}
+                        )}
                         <a href={`/objekte/neu?kunde=${c.id}`} class="menuitem" style="color:var(--brand)">
                           + Objekt anlegen
                         </a>

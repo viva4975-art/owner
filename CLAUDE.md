@@ -3239,3 +3239,21 @@ Testadresse.
   (`ensureMwServices`, Protokoll `mw_services`). Ohne verknüpftes Objekt oder Fläche übersprungen. Arbeitsschein bei
   „bestätigen“ übernimmt diese Leistungen (mit Preis). „Mechanische Reinigung der Grube“ nicht enthalten.
   **Ahmed: Preise mit dem Vertrag abgleichen, ggf. je Leistung am Objekt ändern.**
+- 2026-10-17: Tiefgarage Münchner Wohnen, Nachtrag (Ahmed): **„Mechanische Reinigung der Grube“** als sechste Standard-
+  Leistung, 0,53 €/m² (306 m² = 162,18 € laut Fortytools-Auftragsliste). Fläche der Grube neu am TG-Objekt
+  (`tg_objects.pit_sqm`, Migration `20261130000002`, Feld „Grube m²“), sonst aus einer vorhandenen Grube-Leistung.
+  **Lohnkostenanteil 85 %** für alle Tiefgaragen-Leistungen der MW-Objekte (neue und übernommene) und als Vorgabe der
+  Leistungsart „Tiefgaragenreinigung“. Beim Start einmal je Stand (`mw_services` mit `v: 2`): Stand 2 legt nur die Grube
+  nach und setzt die 85 % – gelöschte Leistungen kommen nicht zurück. Speichern eines MW-TG-Objekts legt fehlende
+  Standard-Leistungen dieses Objekts sofort an (z. B. nach Eintragen der Grube-Fläche). Preise je m²/Stellplatz gelten
+  für alle MW-Garagen; der Betrag je Garage ergibt sich aus deren Fläche. Gleichnamige Leistungen aus Fortytools zählen
+  als vorhanden (nichts doppelt).
+- 2026-10-17: **Kunden-Dokumente auf Objekte übertragen** (Ahmed: „LV beim Kunden auf mehrere oder alle Objekte“): Kunde →
+  Dokumente → „Auf Objekte übertragen“: Dokumente ankreuzen, Objekte (oder „alle aktiven“), Ablage (Standard: LV →
+  Leistungsverzeichnis, Vertrag → Vertrag, sonst Sonstiges). Keine Kopie – dieselbe Datei (write-once) wird zusätzlich
+  beim Objekt verknüpft (`linkCustomerFilesToSites`, Protokoll `file_link_sites`), nichts doppelt, nur Objekte desselben
+  Kunden, nur Büro. Test `customer-docs.db.test.ts`.
+- 2026-10-17: **Inaktive Objekte ausblenden / Leistungen inaktiv** (Ahmed): Kunde → Objekte mit Filter Aktiv (Standard) /
+  Inaktiv / Alle; Kundenliste „Objekte (n)“ zählt und zeigt nur aktive („+ n inaktive anzeigen“). Leistung am Objekt:
+  Knopf „Inaktiv“ je Zeile (Rückfrage) bzw. „Aktivieren“; inaktive stehen eingeklappt unter „Inaktive Leistungen“ und
+  werden weder im Monatslauf noch bei „Leistungen verrichten“ abgerechnet (Protokoll activate/deactivate).

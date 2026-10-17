@@ -1,6 +1,5 @@
 import { accountOverview } from '../services/bank-feed.js';
 import { timeAnomalies } from '../services/time-anomalies.js';
-import { liquidityForecast } from '../services/liquidity.js';
 import { siteCosting } from '../services/costing.js';
 import { collectReminders } from '../services/reminders.js';
 import { fullName } from '../services/users.js';
@@ -317,7 +316,6 @@ export function registerModuleRoutes(ctx: Ctx) {
             : { n: 0, href: '' }
         }
         bank={canAccess(role, '/transfer/kontoumsaetze') ? await accountOverview(sql) : null}
-        liquidity={canAccess(role, '/transfer/kontoumsaetze') ? await liquidityForecast(sql) : null}
         appRequests={{
           auffaellig: canAccess(role, '/zeiterfassung/auffaellig') ? (await timeAnomalies(sql)).length : 0,
           zeit: canAccess(role, '/zeiterfassung')

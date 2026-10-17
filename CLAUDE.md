@@ -3227,3 +3227,6 @@ Testadresse.
   Anschrift „nur für diese Rechnung“ (`invoices.bill_address`); Leistungen mit gleicher Anschrift am selben Objekt kommen
   zusammen (`billAddressKey`). Format, E-Mail, Zahlungsziel, Leitweg-ID bleiben wie die Rechnungsgruppe – anderer
   Empfänger mit eigenen Angaben → eigene Rechnungsgruppe. Test in `services-billing.db.test.ts`.
+- 2026-10-17: **Liquiditätsvorschau gelöscht** (Ahmed: „komplett löschen“): Startseiten-Karte, `src/services/liquidity.ts` und
+  Test entfernt (keine eigenen Tabellen – nichts in der Datenbank gelöscht). Gespeicherte Startseiten-Layouts verwerfen den
+  Eintrag automatisch (`normalizeDash`).

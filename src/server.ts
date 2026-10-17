@@ -1,4 +1,5 @@
 import { ensureMwServices } from './services/garage-mw.js';
+import { ensureMwSchedule2026 } from './services/garage-mw-schedule.js';
 import { serve } from '@hono/node-server';
 import { LocalArchiveStore } from './archive/store.js';
 import { loadEnv } from './config/env.js';
@@ -56,6 +57,15 @@ setTimeout(
       .then(
         (r) =>
           r && console.log(`Leistungen Münchner Wohnen: ${r.created} angelegt, ${r.skipped} TG übersprungen`),
+      )
+      // danach Termine 2026 + verrichtete Leistungen Herbst (einmalig)
+      .then(() => ensureMwSchedule2026(sql))
+      .then(
+        (r) =>
+          r &&
+          console.log(
+            `Termine Münchner Wohnen 2026: ${r.appointments} Termine, ${r.executions} Leistungen vorgemerkt`,
+          ),
       )
       .catch((e) => console.error('Leistungen Münchner Wohnen:', e)),
   90_000,

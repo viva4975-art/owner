@@ -3269,3 +3269,17 @@ Testadresse.
   als fehlend, keine Seite „Noch nicht hinterlegt“ im Objektordner, nicht in den fehlenden Angaben) bzw. „Wieder als Pflicht
   führen“. `sites.docs_not_needed` (Migration `20261130000003`), Protokoll `doc_not_needed`/`doc_required`. Beim Kunden gibt es
   keine Pflichtdokumente.
+- 2026-10-17: **Tiefgaragen Münchner Wohnen: Termine 2026 + Abrechnung Herbst** (Ahmed: Terminliste März 2026 (Excel) und
+  Terminübersicht Sept./Okt. (PDF) – „Termine, Leistungen, Fläche eintragen und in ‚Aus Einzelleistungen erstellen‘“;
+  „Termine September wurden schon abgerechnet“). Daten in `src/services/garage-mw-2026.ts` (Fortytools-Objektnummern,
+  aus Ahmeds Dateien erzeugt, keine Personaldaten), Ablauf `garage-mw-schedule.ts`, einmal beim Start (`mw_tg_2026`):
+  80 Termine unter Disposition → Tiefgaragenreinigung (Frühjahr = Nassreinigung, erledigt, „in Fortytools abgerechnet“;
+  Herbst = Kehren, vergangene erledigt), Flächen/Duplex am TG-Objekt ergänzt (nur wenn leer), Hinweise wie
+  „inkl. LICHTSCHÄCHTE“ als Termin-Notiz. **Herbsttermine ab 01.10.** → verrichtete Leistungen (3. Kehrsaugen,
+  2. Reinigung Duplex, Grube – wie Fortytools 10/2025) → Entwürfe → „Aus Einzelleistungen erstellen“; September und
+  Objekte mit Fortytools-Rechnung ab 09/2026 nicht. Probe mit den übernommenen Daten: 41 Leistungen, 15.992,84 € netto.
+  Termine bis 29.10. sind schon vorgemerkt – fällt einer aus/verschiebt sich, dort „zurücknehmen“. Zuordnung:
+  „Ludlstr. 2“ → 2001742 (Ludlstr. 3), „Gilmstr. 58a“ → 20018003 (Abrechnung früher auf 2001738), „Zillertalstr. 60
+  (2 Garagen)“ → 2001721 + 2001722 (2001721 ohne Fläche → keine Leistung), „Kemptenerstr. 10+20“ → 2001709 + 2001710,
+  „Züricherstr. 178“ → 2001726. Nebenbei: Fläche aus Fortytools-Rechnungen griff nicht (Titel heißen „1. Scheuersaugen“
+  ohne „Tiefgarage“), vorhandene Leistungen werden jetzt am Positionsanfang erkannt („3. Scheuersaugen“ = 3. Durchgang).

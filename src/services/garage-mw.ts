@@ -65,7 +65,19 @@ const qtyFor = (basis: string, sqm: number | null, duplex: number | null, pit: n
   return v && v > 0 ? v : null;
 };
 
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9äöüß]+/g, '');
+/**
+ * Vorhandene Leistung derselben Position erkennen – auch mit anderem Wortlaut aus Fortytools („1. Scheuersaugen“,
+ * „3. Scheuersaugen“ = 3. Durchgang, „Mechanische Reinigung der Grube“).
+ */
+const MATCH: Record<MwKey, RegExp> = {
+  scheuer1: /^\s*1\.?\s*scheuersaugen/i,
+  scheuer2: /^\s*2\.?\s*scheuersaugen/i,
+  kehr3: /^\s*3\.?\s*(kehrsaugen|scheuersaugen)/i,
+  duplex1: /^\s*1\.?\s*reinigung\s+duplex/i,
+  duplex2: /^\s*2\.?\s*reinigung\s+duplex/i,
+  grube: /grube/i,
+};
+export const matches = (key: MwKey, description: string) => MATCH[key].test(description);
 
 export interface MwPreviewRow {
   objectId: string;
@@ -116,7 +128,7 @@ export async function previewMwServices(sql: Sql, objectId?: string): Promise<Mw
     ? await sql<{ site_id: string; title: string; quantity_milli: bigint }[]>`
         select distinct on (l.site_id, lower(l.title)) l.site_id, l.title, l.quantity_milli
           from app.legacy_invoice_lines l join app.legacy_invoices i on i.id = l.invoice_id
-         where l.site_id in ${sql(siteIds)} and l.quantity_milli > 0 and l.title ilike '%tiefgarage%'
+         where l.site_id in ${sql(siteIds)} and l.quantity_milli > 0 and l.title ~* 'saugen|duplex|grube'
          order by l.site_id, lower(l.title), i.issue_date desc`
     : [];
   return objs.map((o): MwPreviewRow => {
@@ -156,9 +168,7 @@ export async function previewMwServices(sql: Sql, objectId?: string): Promise<Mw
       positions: MW_POSITIONS.map((p) => ({
         key: p.key,
         quantity: qtyFor(p.basis, sqm, duplex, pit),
-        existing: own.some(
-          (s) => s.id === uuidOf(`tg-mw:${o.id}:${p.key}`) || norm(s.description) === norm(p.description),
-        ),
+        existing: own.some((s) => s.id === uuidOf(`tg-mw:${o.id}:${p.key}`) || matches(p.key, s.description)),
       })),
       problem: !o.site_id ? 'kein Objekt (Kostenstelle) verknüpft' : !sqm ? 'Fläche (m²) fehlt' : null,
     };
@@ -270,7 +280,7 @@ export async function mwWorkReportLines(
   for (const pos of MW_POSITIONS) {
     const qty = qtyFor(pos.basis, sqm, duplex, pit);
     const sv = svcs.find(
-      (s) => s.id === uuidOf(`tg-mw:${objectId}:${pos.key}`) || norm(s.description) === norm(pos.description),
+      (s) => s.id === uuidOf(`tg-mw:${objectId}:${pos.key}`) || matches(pos.key, s.description),
     );
     if (sv)
       out.push({
@@ -335,5 +345,5 @@ export async function ensureMwServices(
 /** Nach dem Speichern eines TG-Objekts (z. B. Grube-Fläche nachgetragen): fehlende Leistungen dieses Objekts anlegen. */
 export async function ensureMwServicesFor(sql: Sql, objectId: string, actor: string) {
   const prices = Object.fromEntries(MW_POSITIONS.map((p) => [p.key, p.price])) as Record<MwKey, bigint>;
-  return applyMwServices(sql, { prices, validFrom: todayBerlin(), update: false, objectId }, actor);
+  return applyMwServices(sql, { prices, validFrom: '2026-01-01', update: false, objectId }, actor);
 }

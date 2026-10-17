@@ -27,6 +27,9 @@ import {
   tgCsv,
 } from '../services/garage.js';
 import { type Ctx, UUID } from './app.js';
+import { ensureMwServicesFor } from '../services/garage-mw.js';
+
+const anzL = (n: number) => (n === 1 ? '1 Leistung' : `${n} Leistungen`);
 import { arr, str } from './forms.js';
 import { dateDe } from './layout.js';
 
@@ -377,6 +380,7 @@ export function registerGarageRoutes({ app, deps, page, back }: Ctx) {
             {f('postal_code', 'PLZ', { inputmode: 'numeric' })}
             {f('city', 'Ort')}
             {f('sqm', 'm² (Münchner Wohnen)', { inputmode: 'numeric' })}
+            {f('pit_sqm', 'Grube m² (Münchner Wohnen)', { inputmode: 'numeric' })}
             {f('we_no', 'WE-Nr. (Dawonia)')}
             {f('owner_company', 'Besitzgesellschaft (Dawonia)')}
             {f('spaces_fixed', 'Stellplätze fest', { inputmode: 'numeric' })}
@@ -440,6 +444,7 @@ export function registerGarageRoutes({ app, deps, page, back }: Ctx) {
       postal_code: str(b, 'postal_code'),
       city: str(b, 'city'),
       sqm: n(str(b, 'sqm')),
+      pit_sqm: n(str(b, 'pit_sqm')),
       we_no: str(b, 'we_no'),
       spaces_fixed: n(str(b, 'spaces_fixed')),
       spaces_duplex: n(str(b, 'spaces_duplex')),
@@ -455,7 +460,13 @@ export function registerGarageRoutes({ app, deps, page, back }: Ctx) {
       paused: str(b, 'paused') === '1',
       expectedVersion: n(str(b, 'version')),
     });
-    return back(c, '/tiefgarage', { ok: 'Objekt gespeichert.' });
+    // Münchner Wohnen: fehlende Standard-Leistungen (z. B. nach Eintragen der Grube-Fläche) gleich anlegen
+    let extra = '';
+    if (/münchner wohnen/i.test(str(b, 'customer') ?? '')) {
+      const r = await ensureMwServicesFor(sql, c.req.param('id'), c.get('actor'));
+      if (r.created) extra = ` ${anzL(r.created)} am Objekt angelegt.`;
+    }
+    return back(c, '/tiefgarage', { ok: `Objekt gespeichert.${extra}` });
   });
 
   app.post(`/tiefgarage/objekt/:id{${UUID}}/loeschen`, async (c) => {

@@ -46,8 +46,24 @@ export const MW_POSITIONS = [
     unit: 'C62',
     price: 211n,
   },
+  {
+    // 306 m² = 162,18 € (Fortytools-Auftragsliste, Ahmed 17.10.); Fläche der Grube am TG-Objekt
+    key: 'grube',
+    description: 'Mechanische Reinigung der Grube - Tiefgaragenreinigung',
+    basis: 'pit',
+    unit: 'MTK',
+    price: 53n,
+  },
 ] as const;
 export type MwKey = (typeof MW_POSITIONS)[number]['key'];
+
+/** Lohnkostenanteil der Tiefgaragen-Leistungen Münchner Wohnen (Ahmed 17.10.: 85 %). */
+export const MW_LABOR_PCT = 85;
+
+const qtyFor = (basis: string, sqm: number | null, duplex: number | null, pit: number | null) => {
+  const v = basis === 'sqm' ? sqm : basis === 'duplex' ? duplex : pit;
+  return v && v > 0 ? v : null;
+};
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9äöüß]+/g, '');
 
@@ -59,6 +75,8 @@ export interface MwPreviewRow {
   siteName: string | null;
   sqm: number | null;
   duplex: number | null;
+  /** Fläche der Grube (m²) */
+  pit: number | null;
   /** Fläche/Duplex stammen aus vorhandenen Leistungen (Fortytools), nicht aus dem TG-Objekt */
   fromServices: boolean;
   positions: { key: MwKey; quantity: number | null; existing: boolean }[];
@@ -66,21 +84,23 @@ export interface MwPreviewRow {
 }
 
 /** Vorschau: alle aktiven TG-Objekte von Münchner Wohnen mit Fläche, Duplex und vorhandenen Leistungen. */
-export async function previewMwServices(sql: Sql): Promise<MwPreviewRow[]> {
+export async function previewMwServices(sql: Sql, objectId?: string): Promise<MwPreviewRow[]> {
   const objs = await sql<
     {
       id: string;
       name: string;
       sqm: number | null;
       spaces_duplex: number | null;
+      pit_sqm: number | null;
       site_id: string | null;
       site_no: string | null;
       site_name: string | null;
     }[]
   >`
-    select o.id, o.name, o.sqm, o.spaces_duplex, o.site_id, s.site_no, s.name as site_name
+    select o.id, o.name, o.sqm, o.spaces_duplex, o.pit_sqm, o.site_id, s.site_no, s.name as site_name
       from app.tg_objects o left join app.sites s on s.id = o.site_id
      where o.active and o.customer ilike '%münchner wohnen%'
+       and ${objectId ? sql`o.id = ${objectId}` : sql`true`}
      order by o.postal_code nulls last, o.name`;
   const siteIds = objs.map((o) => o.site_id).filter((x): x is string => !!x);
   const svcs = siteIds.length
@@ -98,11 +118,16 @@ export async function previewMwServices(sql: Sql): Promise<MwPreviewRow[]> {
         .filter((s) => s.unit_code === unit && re.test(s.description))
         .map((s) => Number(s.quantity_milli / 1000n))
         .reduce((m, x) => Math.max(m, x), 0) || null;
-    const sqmSvc = qtyOf(/saugen|tiefgarage/i, 'MTK');
+    const sqmSvc = qtyOf(/^(?!.*grube).*(saugen|tiefgarage)/i, 'MTK');
+    const pitSvc = qtyOf(/grube/i, 'MTK');
     const duplexSvc = qtyOf(/duplex/i, 'C62');
     const sqm = o.sqm ?? sqmSvc;
     const duplex = o.spaces_duplex ?? duplexSvc;
-    const fromServices = (o.sqm == null && sqmSvc != null) || (o.spaces_duplex == null && duplexSvc != null);
+    const pit = o.pit_sqm ?? pitSvc;
+    const fromServices =
+      (o.sqm == null && sqmSvc != null) ||
+      (o.spaces_duplex == null && duplexSvc != null) ||
+      (o.pit_sqm == null && pitSvc != null);
     return {
       objectId: o.id,
       name: o.name,
@@ -111,10 +136,11 @@ export async function previewMwServices(sql: Sql): Promise<MwPreviewRow[]> {
       siteName: o.site_name,
       sqm,
       duplex,
+      pit,
       fromServices,
       positions: MW_POSITIONS.map((p) => ({
         key: p.key,
-        quantity: p.basis === 'sqm' ? sqm : duplex && duplex > 0 ? duplex : null,
+        quantity: qtyFor(p.basis, sqm, duplex, pit),
         existing: own.some(
           (s) => s.id === uuidOf(`tg-mw:${o.id}:${p.key}`) || norm(s.description) === norm(p.description),
         ),
@@ -129,8 +155,8 @@ async function tgServiceType(sql: Sql): Promise<string> {
     select id from app.service_types where lower(name) = 'tiefgaragenreinigung' limit 1`;
   if (t) return t.id;
   const id = uuidOf('service-type:tiefgaragenreinigung');
-  await sql`insert into app.service_types (id, name, sort_order) values (${id}, 'Tiefgaragenreinigung', 50)
-            on conflict do nothing`;
+  await sql`insert into app.service_types (id, name, sort_order, labor_share_bp)
+            values (${id}, 'Tiefgaragenreinigung', 50, ${MW_LABOR_PCT * 100}) on conflict do nothing`;
   return id;
 }
 
@@ -143,14 +169,22 @@ const euro = (cents: bigint) => `${cents / 100n},${String(cents % 100n).padStart
  */
 export async function applyMwServices(
   sql: Sql,
-  p: { prices: Record<MwKey, bigint>; validFrom: string; update: boolean },
+  p: {
+    prices: Record<MwKey, bigint>;
+    validFrom: string;
+    update: boolean;
+    /** nur diese Positionen (Standard: alle) */
+    keys?: readonly MwKey[];
+    /** nur dieses TG-Objekt (Standard: alle von Münchner Wohnen) */
+    objectId?: string;
+  },
   actor: string,
 ): Promise<{ created: number; updated: number; skipped: number }> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.validFrom)) throw new BusinessError('Datum „gültig ab“ ungültig');
   for (const pos of MW_POSITIONS)
     if (!(p.prices[pos.key] > 0n)) throw new BusinessError(`Preis für „${pos.description}“ fehlt`);
   const typeId = await tgServiceType(sql);
-  const rows = await previewMwServices(sql);
+  const rows = await previewMwServices(sql, p.objectId);
   let created = 0;
   let updated = 0;
   let skipped = 0;
@@ -161,8 +195,10 @@ export async function applyMwServices(
     }
     if (r.fromServices)
       await sql`update app.tg_objects set sqm = coalesce(sqm, ${r.sqm}),
-                       spaces_duplex = coalesce(spaces_duplex, ${r.duplex}) where id = ${r.objectId}`;
+                       spaces_duplex = coalesce(spaces_duplex, ${r.duplex}),
+                       pit_sqm = coalesce(pit_sqm, ${r.pit}) where id = ${r.objectId}`;
     for (const pos of MW_POSITIONS) {
+      if (p.keys && !p.keys.includes(pos.key)) continue;
       const q = r.positions.find((x) => x.key === pos.key)!;
       if (!q.quantity) continue;
       const id = uuidOf(`tg-mw:${r.objectId}:${pos.key}`);
@@ -189,6 +225,7 @@ export async function applyMwServices(
           valid_from: p.validFrom,
           billing_cycle: 'je_ausfuehrung',
           service_type_id: typeId,
+          labor_share: String(MW_LABOR_PCT),
           version: '',
         }),
         actor,
@@ -198,7 +235,7 @@ export async function applyMwServices(
   }
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
             values (${actor}, 'mw_services', 'tg_objects', null,
-                    ${sql.json({ created, updated, skipped, prices: Object.fromEntries(Object.entries(p.prices).map(([k, v]) => [k, Number(v)])) })})`;
+                    ${sql.json({ v: MW_VERSION, created, updated, skipped, prices: Object.fromEntries(Object.entries(p.prices).map(([k, v]) => [k, Number(v)])) })})`;
   return { created, updated, skipped };
 }
 
@@ -209,13 +246,14 @@ export async function mwWorkReportLines(
   siteId: string,
   sqm: number | null,
   duplex: number | null,
+  pit: number | null = null,
 ) {
   const svcs = await sql<{ id: string; description: string; unit_code: string; quantity_milli: bigint }[]>`
     select id, description, unit_code, quantity_milli from app.site_services
      where site_id = ${siteId} and active and (valid_to is null or valid_to >= ${todayBerlin()})`;
   const out: { description: string; quantity: bigint; unitCode: string; serviceId: string | null }[] = [];
   for (const pos of MW_POSITIONS) {
-    const qty = pos.basis === 'sqm' ? sqm : duplex;
+    const qty = qtyFor(pos.basis, sqm, duplex, pit);
     const sv = svcs.find(
       (s) => s.id === uuidOf(`tg-mw:${objectId}:${pos.key}`) || norm(s.description) === norm(pos.description),
     );
@@ -237,12 +275,35 @@ export async function mwWorkReportLines(
   return out;
 }
 
-/** Einmalig beim Start: Leistungen mit den Standardpreisen anlegen, falls noch nie geschehen (Protokoll `mw_services`). */
+/** Stand der Standard-Leistungen: 1 = Scheuer-/Kehrsaugen + Duplex, 2 = zusätzlich Grube (17.10.). */
+const MW_VERSION = 2;
+
+/**
+ * Beim Start: fehlende Standard-Leistungen anlegen, je Stand nur einmal (Protokoll `mw_services`). Stand 2 legt nur
+ * die Grube nach – andere, inzwischen gelöschte Leistungen kommen nicht zurück.
+ */
 export async function ensureMwServices(
   sql: Sql,
 ): Promise<{ created: number; updated: number; skipped: number } | null> {
-  const [done] = await sql`select 1 from app.audit_log where action = 'mw_services' limit 1`;
-  if (done) return null;
+  const [last] = await sql<{ v: number }[]>`
+    select coalesce(max((details->>'v')::int), 1) as v from app.audit_log where action = 'mw_services'
+    having count(*) > 0`;
+  if (last && last.v >= MW_VERSION) return null;
+  // Lohnkostenanteil 85 % für alle Tiefgaragen-Leistungen der MW-Objekte (auch die aus Fortytools übernommenen)
+  await sql`update app.site_services s set labor_share_bp = ${MW_LABOR_PCT * 100}, updated_at = now()
+             from app.tg_objects o
+            where o.site_id = s.site_id and o.customer ilike '%münchner wohnen%'
+              and s.description ilike '%tiefgarage%' and s.labor_share_bp is distinct from ${MW_LABOR_PCT * 100}`;
   const prices = Object.fromEntries(MW_POSITIONS.map((p) => [p.key, p.price])) as Record<MwKey, bigint>;
-  return applyMwServices(sql, { prices, validFrom: '2026-01-01', update: false }, 'automatisch');
+  return applyMwServices(
+    sql,
+    { prices, validFrom: '2026-01-01', update: false, ...(last ? { keys: ['grube'] as const } : {}) },
+    'automatisch',
+  );
+}
+
+/** Nach dem Speichern eines TG-Objekts (z. B. Grube-Fläche nachgetragen): fehlende Leistungen dieses Objekts anlegen. */
+export async function ensureMwServicesFor(sql: Sql, objectId: string, actor: string) {
+  const prices = Object.fromEntries(MW_POSITIONS.map((p) => [p.key, p.price])) as Record<MwKey, bigint>;
+  return applyMwServices(sql, { prices, validFrom: todayBerlin(), update: false, objectId }, actor);
 }

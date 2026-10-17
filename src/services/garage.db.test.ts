@@ -23,6 +23,7 @@ const base = {
   postal_code: '81375',
   city: 'München',
   sqm: null,
+  pit_sqm: null,
   we_no: '4711',
   spaces_fixed: 40,
   spaces_duplex: 0,

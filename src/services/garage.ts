@@ -28,6 +28,8 @@ export interface TgObject {
   postal_code: string | null;
   city: string | null;
   sqm: number | null;
+  /** Fläche der Grube (m²) – Münchner Wohnen */
+  pit_sqm: number | null;
   we_no: string | null;
   spaces_fixed: number | null;
   spaces_duplex: number | null;
@@ -96,6 +98,7 @@ export async function saveTgObject(sql: Sql, id: string, p: TgObjectInput) {
     postal_code: t(p.postal_code),
     city: t(p.city),
     sqm: int(p.sqm),
+    pit_sqm: int(p.pit_sqm),
     we_no: t(p.we_no),
     spaces_fixed: int(p.spaces_fixed),
     spaces_duplex: int(p.spaces_duplex),
@@ -228,7 +231,7 @@ export async function createWorkReport(sql: Sql, appointmentId: string, actor: s
         }),
       )
     : /münchner wohnen/i.test(o.customer)
-      ? (await mwWorkReportLines(sql, o.id, o.site_id, o.sqm, o.spaces_duplex)).map((l) => ({
+      ? (await mwWorkReportLines(sql, o.id, o.site_id, o.sqm, o.spaces_duplex, o.pit_sqm)).map((l) => ({
           ...l,
           quantity: l.quantity as Quantity,
         }))

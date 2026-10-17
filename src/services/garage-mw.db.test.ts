@@ -1,13 +1,20 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
-import { applyMwServices, ensureMwServices, mwWorkReportLines, previewMwServices } from './garage-mw.js';
+import {
+  applyMwServices,
+  ensureMwServices,
+  ensureMwServicesFor,
+  mwWorkReportLines,
+  previewMwServices,
+} from './garage-mw.js';
+import { uuidOf } from './fortytools-export-import.js';
 import { saveService, serviceInput } from './masterdata.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
 const available = await dbAvailable();
-const prices = { scheuer1: 47n, scheuer2: 26n, kehr3: 32n, duplex1: 527n, duplex2: 211n };
+const prices = { scheuer1: 47n, scheuer2: 26n, kehr3: 32n, duplex1: 527n, duplex2: 211n, grube: 53n };
 
 describe.skipIf(!available)('Leistungen Münchner Wohnen (Tiefgarage)', () => {
   let sql: Sql;
@@ -70,5 +77,28 @@ describe.skipIf(!available)('Leistungen Münchner Wohnen (Tiefgarage)', () => {
     const lines = await mwWorkReportLines(sql, a, DEMO.siteSchool, 2400, 17);
     expect(lines).toHaveLength(5);
     expect(lines.every((l) => l.serviceId)).toBe(true);
+
+    // Grube: Fläche am TG-Objekt nachgetragen → Leistung wird für dieses Objekt angelegt (306 m² = 162,18 €)
+    await sql`update app.tg_objects set pit_sqm = 306 where id = ${a}`;
+    expect((await ensureMwServicesFor(sql, a, 't')).created).toBe(1);
+    const [g] = await sql<{ quantity_milli: bigint; unit_price_cents: bigint }[]>`
+      select quantity_milli, unit_price_cents from app.site_services
+       where site_id = ${DEMO.siteSchool} and description like 'Mechanische Reinigung der Grube%'`;
+    expect((g!.quantity_milli * g!.unit_price_cents) / 1000n).toBe(16218n);
+    expect((await ensureMwServicesFor(sql, a, 't')).created).toBe(0);
+    expect(await mwWorkReportLines(sql, a, DEMO.siteSchool, 2400, 17, 306)).toHaveLength(6);
+  });
+
+  it('nur Grube nachlegen, Lohnkostenanteil 85 %', async () => {
+    const a = randomUUID();
+    await sql`insert into app.tg_objects (id, customer, name, sqm, pit_sqm, site_id)
+              values (${a}, 'Münchner Wohnen GmbH', 'TG Grube', 500, 120, ${DEMO.siteOffice})`;
+    await applyMwServices(sql, { prices, validFrom: '2026-01-01', update: false, keys: ['grube'] }, 't');
+    const svc = await sql<{ description: string; labor_share_bp: number | null }[]>`
+      select description, labor_share_bp from app.site_services
+       where id in ${sql(['scheuer1', 'grube'].map((k) => uuidOf(`tg-mw:${a}:${k}`)))}`;
+    expect(svc).toEqual([
+      { description: 'Mechanische Reinigung der Grube - Tiefgaragenreinigung', labor_share_bp: 8500 },
+    ]);
   });
 });

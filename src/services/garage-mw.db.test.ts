@@ -5,6 +5,7 @@ import {
   applyMwServices,
   ensureMwServices,
   ensureMwServicesFor,
+  ensureMwTgObjects,
   mwWorkReportLines,
   previewMwServices,
 } from './garage-mw.js';
@@ -100,5 +101,37 @@ describe.skipIf(!available)('Leistungen Münchner Wohnen (Tiefgarage)', () => {
     expect(svc).toEqual([
       { description: 'Mechanische Reinigung der Grube - Tiefgaragenreinigung', labor_share_bp: 8500 },
     ]);
+  });
+
+  it('TG-Objekt ohne Eintrag: wird angelegt, Fläche aus den übernommenen Rechnungen', async () => {
+    const cust = randomUUID();
+    const site = randomUUID();
+    const inv = randomUUID();
+    await sql`insert into app.customers (id, customer_no, name, street, postal_code, city)
+              values (${cust}, '29917', 'Münchner Wohnen GmbH', 'Gustav-Heinemann-Ring 111', '81739', 'München')`;
+    await sql`insert into app.sites (id, customer_id, site_no, name, street, postal_code, city)
+              values (${site}, ${cust}, '2991703', 'TG 3 - Sendling-Westpark', 'Esswurmstr. 27', '81371', 'München')`;
+    await sql`insert into app.legacy_invoices (id, number, issue_date, net_cents, gross_cents, paid, customer_id)
+              values (${inv}, '9990001', '2026-06-30', 0, 0, true, ${cust})`;
+    const lines: [string, number, number][] = [
+      ['1. Scheuersaugen - Tiefgaragenreinigung', 2400, 47],
+      ['1. Reinigung Duplex - Tiefgaragenreinigung', 17, 527],
+      ['Mechanische Reinigung der Grube - Tiefgaragenreinigung', 306, 53],
+    ];
+    for (const [i, [title, q, p]] of lines.entries())
+      await sql`insert into app.legacy_invoice_lines (id, invoice_id, position, title, quantity_milli, unit_price_cents, net_cents, site_id)
+                values (${randomUUID()}, ${inv}, ${i + 1}, ${title}, ${q * 1000}, ${p}, ${q * p}, ${site})`;
+    expect(await ensureMwTgObjects(sql)).toBe(1);
+    expect(await ensureMwTgObjects(sql)).toBe(0);
+    const [o] = await sql<{ id: string }[]>`select id from app.tg_objects where site_id = ${site}`;
+    const r = await applyMwServices(
+      sql,
+      { prices, validFrom: '2026-01-01', update: false, objectId: o!.id },
+      't',
+    );
+    expect(r.created).toBe(6);
+    const [t] = await sql<{ sqm: number; spaces_duplex: number; pit_sqm: number }[]>`
+      select sqm, spaces_duplex, pit_sqm from app.tg_objects where id = ${o!.id}`;
+    expect(t).toEqual({ sqm: 2400, spaces_duplex: 17, pit_sqm: 306 });
   });
 });

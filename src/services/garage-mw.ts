@@ -110,17 +110,32 @@ export async function previewMwServices(sql: Sql, objectId?: string): Promise<Mw
         select id, site_id, description, unit_code, quantity_milli from app.site_services
          where site_id in ${sql(siteIds)} and active and (valid_to is null or valid_to >= ${todayBerlin()})`
     : [];
+  // Fortytools liefert die Fläche nicht am Objekt – sie steht aber in den übernommenen Rechnungen (Menge der
+  // Positionen „1. Scheuersaugen …“ usw.); die jüngste Rechnung zählt
+  const billed = siteIds.length
+    ? await sql<{ site_id: string; title: string; quantity_milli: bigint }[]>`
+        select distinct on (l.site_id, lower(l.title)) l.site_id, l.title, l.quantity_milli
+          from app.legacy_invoice_lines l join app.legacy_invoices i on i.id = l.invoice_id
+         where l.site_id in ${sql(siteIds)} and l.quantity_milli > 0 and l.title ilike '%tiefgarage%'
+         order by l.site_id, lower(l.title), i.issue_date desc`
+    : [];
   return objs.map((o): MwPreviewRow => {
     const own = svcs.filter((s) => s.site_id === o.site_id);
+    const inv = billed.filter((b) => b.site_id === o.site_id);
+    const invQty = (re: RegExp) =>
+      inv
+        .filter((b) => re.test(b.title))
+        .map((b) => Number(b.quantity_milli / 1000n))
+        .reduce((m, x) => Math.max(m, x), 0) || null;
     // Fläche/Duplex aus vorhandenen Leistungen, falls am TG-Objekt nichts steht
     const qtyOf = (re: RegExp, unit: string) =>
       own
         .filter((s) => s.unit_code === unit && re.test(s.description))
         .map((s) => Number(s.quantity_milli / 1000n))
         .reduce((m, x) => Math.max(m, x), 0) || null;
-    const sqmSvc = qtyOf(/^(?!.*grube).*(saugen|tiefgarage)/i, 'MTK');
-    const pitSvc = qtyOf(/grube/i, 'MTK');
-    const duplexSvc = qtyOf(/duplex/i, 'C62');
+    const sqmSvc = qtyOf(/^(?!.*(grube|duplex)).*saugen/i, 'MTK') ?? invQty(/^(?!.*(grube|duplex)).*saugen/i);
+    const pitSvc = qtyOf(/grube/i, 'MTK') ?? invQty(/grube/i);
+    const duplexSvc = qtyOf(/duplex/i, 'C62') ?? invQty(/duplex/i);
     const sqm = o.sqm ?? sqmSvc;
     const duplex = o.spaces_duplex ?? duplexSvc;
     const pit = o.pit_sqm ?? pitSvc;
@@ -275,12 +290,30 @@ export async function mwWorkReportLines(
   return out;
 }
 
-/** Stand der Standard-Leistungen: 1 = Scheuer-/Kehrsaugen + Duplex, 2 = zusätzlich Grube (17.10.). */
-const MW_VERSION = 2;
+/**
+ * Objekte „TG …“/„Tiefgarage …“ von Münchner Wohnen ohne Eintrag unter Disposition → Tiefgaragenreinigung bekommen
+ * einen (feste ID, verknüpft mit dem Objekt) – sonst fehlen ihnen die Standard-Leistungen.
+ */
+export async function ensureMwTgObjects(sql: Sql) {
+  const r = await sql`
+    insert into app.tg_objects (id, customer, name, address, postal_code, city, object_no, site_id)
+    select md5('tg-site:' || s.id::text)::uuid, 'Münchner Wohnen GmbH', s.name, s.street, s.postal_code, s.city,
+           s.site_no, s.id
+      from app.sites s join app.customers c on c.id = s.customer_id
+     where s.active and c.name ilike '%münchner wohnen%' and s.name ~* '^(tg|tiefgarage)\\M'
+       and not exists (select 1 from app.tg_objects o where o.site_id = s.id)
+    on conflict (id) do nothing returning id`;
+  return r.length;
+}
 
 /**
- * Beim Start: fehlende Standard-Leistungen anlegen, je Stand nur einmal (Protokoll `mw_services`). Stand 2 legt nur
- * die Grube nach – andere, inzwischen gelöschte Leistungen kommen nicht zurück.
+ * Stand der Standard-Leistungen: 1 = Scheuer-/Kehrsaugen + Duplex, 2 = zusätzlich Grube (17.10.), 3 = Fläche aus den
+ * übernommenen Rechnungen und TG-Objekte für alle „TG …“-Objekte von Münchner Wohnen (Ahmed 17.10.: TG 3 leer).
+ */
+const MW_VERSION = 3;
+
+/**
+ * Beim Start: fehlende Standard-Leistungen anlegen, je Stand nur einmal (Protokoll `mw_services`).
  */
 export async function ensureMwServices(
   sql: Sql,
@@ -289,17 +322,14 @@ export async function ensureMwServices(
     select coalesce(max((details->>'v')::int), 1) as v from app.audit_log where action = 'mw_services'
     having count(*) > 0`;
   if (last && last.v >= MW_VERSION) return null;
+  await ensureMwTgObjects(sql);
   // Lohnkostenanteil 85 % für alle Tiefgaragen-Leistungen der MW-Objekte (auch die aus Fortytools übernommenen)
   await sql`update app.site_services s set labor_share_bp = ${MW_LABOR_PCT * 100}, updated_at = now()
              from app.tg_objects o
             where o.site_id = s.site_id and o.customer ilike '%münchner wohnen%'
               and s.description ilike '%tiefgarage%' and s.labor_share_bp is distinct from ${MW_LABOR_PCT * 100}`;
   const prices = Object.fromEntries(MW_POSITIONS.map((p) => [p.key, p.price])) as Record<MwKey, bigint>;
-  return applyMwServices(
-    sql,
-    { prices, validFrom: '2026-01-01', update: false, ...(last ? { keys: ['grube'] as const } : {}) },
-    'automatisch',
-  );
+  return applyMwServices(sql, { prices, validFrom: '2026-01-01', update: false }, 'automatisch');
 }
 
 /** Nach dem Speichern eines TG-Objekts (z. B. Grube-Fläche nachgetragen): fehlende Leistungen dieses Objekts anlegen. */

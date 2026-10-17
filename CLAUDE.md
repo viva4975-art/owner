@@ -3257,3 +3257,10 @@ Testadresse.
   Inaktiv / Alle; Kundenliste „Objekte (n)“ zählt und zeigt nur aktive („+ n inaktive anzeigen“). Leistung am Objekt:
   Knopf „Inaktiv“ je Zeile (Rückfrage) bzw. „Aktivieren“; inaktive stehen eingeklappt unter „Inaktive Leistungen“ und
   werden weder im Monatslauf noch bei „Leistungen verrichten“ abgerechnet (Protokoll activate/deactivate).
+- 2026-10-17: **Fund „TG 3 - Sendling-Westpark ohne Leistungen“** (Ahmed, Bild): Fortytools liefert die m² nicht am Objekt,
+  und viele „TG …“-Objekte hatten keinen Eintrag unter Tiefgaragenreinigung bzw. keine Fläche → übersprungen. Jetzt: Fläche,
+  Duplex-Stellplätze und Grube werden zusätzlich aus den übernommenen Rechnungen gelesen (Menge der jüngsten Position
+  „… Scheuersaugen / Duplex / Grube – Tiefgaragenreinigung“ am Objekt) und am TG-Objekt eingetragen; aktive Objekte
+  „TG …“/„Tiefgarage …“ von Münchner Wohnen ohne TG-Eintrag bekommen einen (`ensureMwTgObjects`, feste ID). Läuft beim
+  Start einmal als Stand 3 (`mw_services` `v: 3`) für alle Positionen; Objekte ohne Fläche in Rechnungen bleiben leer →
+  Fläche unter Disposition → Tiefgaragenreinigung eintragen, dann werden die Leistungen beim Speichern angelegt.

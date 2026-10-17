@@ -3294,3 +3294,9 @@ Testadresse.
   Liste Tiefgaragenreinigung zeigt „m² fehlt – keine Leistungen am Objekt“. In der Datenkopie: 2001712 (Krokusstr. 73),
   2001721 (Zillertalstr. 60), 2001724 (Züricherstr. 178), 2001728 (Skagerrakstr. 11) – **Ahmed: m² eintragen**, beim
   Speichern entstehen die Leistungen. Keine Platzhalter-Menge (würde falsche Beträge abrechnen).
+- 2026-10-17: **Raumbuch + Revierplan ARGE U5W2** (Ahmed, Containerpläne RECON/ALHO): je Objekt 20166001–005 eine Raumbuch-Excel
+  (Importformat, Raum-Nr. = Etage.lfd. Nr., Fläche und Belag laut Plan, Turnus W2 angenommen) und ein Revierplan-PDF (Logo,
+  Tätigkeiten je Raumart, Räume je Etage). Startschacht: Plan ohne Maße → Flächen geschätzt (14 / 28 m²), Erste Hilfe und
+  Bauherr Turnus 0. AG G 2.OG: Büros im Plan doppelt nummeriert (6–9) → „Büro 2.OG-1 … -4“. Dateien nur an Ahmed
+  (Kundendaten, nicht im Repo); Import über Objekt → Raumbuch, Revierplan unter Dokumente → Revierplan.
+  Für 20166006 (Sanitärcontainer Am Knie 33) und 20166007 (TU Container Personal) liegen keine Pläne vor.

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
+import { draftsFromExecutions } from './executions.js';
 import { applyMwSchedule2026 } from './garage-mw-schedule.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
@@ -34,5 +35,33 @@ describe.skipIf(!available)('Termine Münchner Wohnen 2026', () => {
         from app.service_executions e`;
     expect(ex).toEqual([{ site_id: esswurm, date_from: '2026-10-13', total: 11840n }]); // 370 m² × 0,32 €
     expect((await applyMwSchedule2026(sql, 't')).appointments).toBe(0);
+  });
+
+  it('Kehren, Duplex und Grube eines Objekts landen auf einer Rechnung', async () => {
+    const [c] = await sql<{ id: string }[]>`select id from app.customers where customer_no = '29917'`;
+    const saherr = randomUUID();
+    await sql`insert into app.sites (id, customer_id, site_no, name, street, postal_code, city)
+              values (${saherr}, ${c!.id}, '2001717', 'TG 15 - Saherrstr.', 'Saherrstr. 1', '81549', 'München')`;
+    // Grube-Fläche steht nur in der vorhandenen Leistung (aus Fortytools)
+    await sql`insert into app.site_services (id, site_id, kind, description, unit_code, quantity_milli,
+                                             unit_price_cents, vat_rate_bp, valid_from, billing_cycle)
+              values (${randomUUID()}, ${saherr}, 'special', 'Mechanische Reinigung der Grube - Tiefgaragenreinigung',
+                      'MTK', 1008000, 53, 1900, '2026-01-01', 'je_ausfuehrung')`;
+    await applyMwSchedule2026(sql, 't');
+    const ids = (
+      await sql<
+        { id: string }[]
+      >`select id from app.service_executions where site_id = ${saherr} and invoice_id is null`
+    ).map((r) => r.id);
+    expect(ids).toHaveLength(3);
+    const inv = await draftsFromExecutions(sql, ids, '2026-10-17', 't');
+    expect(inv).toHaveLength(1);
+    const lines = await sql<{ description: string }[]>`
+      select description from app.invoice_lines where invoice_id = ${inv[0]!} order by position`;
+    expect(lines.map((l) => l.description.split(' - ')[0])).toEqual([
+      '3. Kehrsaugen',
+      '2. Reinigung Duplex',
+      'Mechanische Reinigung der Grube',
+    ]);
   });
 });

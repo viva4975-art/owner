@@ -289,7 +289,7 @@ export async function draftsFromExecutions(
         join app.customers c on c.id = s.customer_id
         left join app.invoice_groups g on g.id = coalesce(v.invoice_group_id, s.invoice_group_id)
        where e.id in ${tx(ids)} and e.invoice_id is null
-       order by s.site_no, e.date_from
+       order by s.site_no, e.date_from, e.created_at, v.sort_order, v.description
          for update of e`;
     type Row = (typeof rows)[number];
     const units = new Map<string, Row[]>();

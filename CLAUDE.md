@@ -3283,3 +3283,8 @@ Testadresse.
   (2 Garagen)“ → 2001721 + 2001722 (2001721 ohne Fläche → keine Leistung), „Kemptenerstr. 10+20“ → 2001709 + 2001710,
   „Züricherstr. 178“ → 2001726. Nebenbei: Fläche aus Fortytools-Rechnungen griff nicht (Titel heißen „1. Scheuersaugen“
   ohne „Tiefgarage“), vorhandene Leistungen werden jetzt am Positionsanfang erkannt („3. Scheuersaugen“ = 3. Durchgang).
+- 2026-10-17: Tiefgarage Herbst (Ahmed: „Grube oder Duplex in derselben Rechnung wie Kehren, nicht separat“): geprüft mit
+  den übernommenen Daten – „Aus Einzelleistungen erstellen“ legt je Objekt **eine** Rechnung mit Kehrsaugen, Duplex und
+  Grube an (6 Objekte mit mehreren Positionen, keine Leistung mit eigener Rechnung/Anschrift/Gruppe). Reihenfolge in der
+  Rechnung jetzt fest: Kehrsaugen → Duplex → Grube (Ausführungen nach Datum, Vormerk-Zeitpunkt, Leistung sortiert).
+  Nur Ankreuzen einzelner Zeilen würde sie trennen – je Kunde/Monat alles ankreuzen. Test in `garage-mw-schedule.db.test.ts`.

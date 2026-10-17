@@ -98,9 +98,10 @@ export async function applyMwSchedule2026(sql: Sql, actor = 'automatisch'): Prom
       any = true;
       const e = await sql`
         insert into app.service_executions (id, service_id, site_id, date_from, date_to, quantity_milli,
-                                            unit_price_cents, note, created_by)
+                                            unit_price_cents, note, created_by, created_at)
         values (${uuidOf(`tg-mw-2026-exec:${apptId}:${key}`)}, ${sv.id}, ${x.site_id}, ${first}, ${last},
-                ${sv.quantity_milli}, ${sv.unit_price_cents}, 'Tiefgaragenreinigung Herbst 2026', ${actor})
+                ${sv.quantity_milli}, ${sv.unit_price_cents}, 'Tiefgaragenreinigung Herbst 2026', ${actor},
+                now() + make_interval(secs => ${AUTUMN_KEYS.indexOf(key)}))
         on conflict (id) do nothing returning id`;
       res.executions += e.length;
     }

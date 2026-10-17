@@ -3197,3 +3197,11 @@ Testadresse.
   `anleitung-app-installieren` (Abschnitt „Erste Anmeldung: eigene PIN festlegen“) und `anleitung-zeiterfassung-app`
   (neue Objektauswahl der Stoppuhr) aktualisiert. Bilder mit Beispieldaten: `OUT=docs/bilder/anleitung-app node
   e2e/_guide-shots.mjs` (Mitarbeiterin 7701 „Maria Beispiel“ in der Entwicklungs-DB; `OFFICE=1` für die Objektauswahl).
+- 2026-10-17: **Zwei Anleitungen für die App** (Ahmed): `docs/anleitung-app.html/.pdf` (Bedienung, 13 Seiten: Grundlagen,
+  Meine Zeit, Qualität, Verwaltung, Regeln; wer welchen Bereich sieht) und `docs/anleitung-app-installieren.html/.pdf`
+  (iPhone/Android, Anmeldung + eigene PIN, Berechtigungen, „Adressleiste → neu hinzufügen“). Ersetzt
+  `anleitung-mitarbeiter-app` und `anleitung-zeiterfassung-app`. Bilder nur mit Beispieldaten aus einer eigenen
+  Demo-Datenbank (seed + demo-data): `OUT=… PNR=1001 PIN=4821 node e2e/_guide-shots.mjs` (Meine Zeit) und
+  `OUT=… SITE=<objekt> EMP=<mitarbeiter> node e2e/_guide-shots-buero.mjs` (Objektleitung „olga“, mit Mitarbeiter
+  verknüpft). Nebenbei: Kacheln der Verwaltungs-App mit Symbol über dem Text (Wörter wurden mitten im Wort umgebrochen),
+  Audit-Ergebnis „33 %“ bricht nicht mehr um.

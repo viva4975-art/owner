@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<title>Viva-Deluxe App – Bedienung</title>
+<style>
+  @page{size:A4;margin:14mm 14mm 16mm}
+  body{font-family:Inter,Arial,sans-serif;color:#1d1a1c;max-width:820px;margin:24px auto;padding:0 18px;line-height:1.5;font-size:13.5px}
+  h1{color:#7D1435;font-size:27px;margin:0 0 4px}
+  h2{break-after:avoid;color:#fff;background:#7D1435;font-size:18px;margin:30px 0 12px;padding:8px 14px;border-radius:8px}
+  h3{break-after:avoid;color:#7D1435;font-size:16px;margin:20px 0 8px;border-bottom:2px solid #f0dbe2;padding-bottom:3px}
+  .sub{color:#666;margin-top:0}
+  .head{display:flex;gap:18px;align-items:center;margin-bottom:10px}
+  .head img{width:64px;height:64px;border-radius:15px;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+  .box{background:#fff7e0;border:1px solid #e9c46a;border-radius:8px;padding:9px 13px;margin:10px 0;break-inside:avoid}
+  .ok{background:#eef8f0;border-color:#9fd3ab}
+  .info{background:#f8eff2;border-color:#e3c3cf}
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:10px 0;break-inside:avoid}
+  .tri{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:10px 0;break-inside:avoid}
+  .pair img,.tri img,.row img{display:block;width:100%;border:1px solid #ddd;border-radius:14px}
+  .pair img{max-height:330px;width:auto;max-width:100%;margin:0 auto}
+  .tri img{max-height:290px;width:auto;max-width:100%;margin:0 auto}
+  .row{display:grid;grid-template-columns:160px 1fr;gap:22px;align-items:start;margin:12px 0;break-inside:avoid}
+  .n{display:inline-flex;width:22px;height:22px;border-radius:50%;background:#7D1435;color:#fff;align-items:center;justify-content:center;font-weight:700;font-size:12px;margin-right:6px}
+  p.c{margin:6px 0 0}
+  table.who{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px}
+  table.who th,table.who td{border:1px solid #e6dde0;padding:7px 9px;text-align:left;vertical-align:top}
+  table.who th{background:#f8eff2}
+  .toc{columns:2;column-gap:28px;margin:6px 0 0;padding-left:18px}
+  .toc li{margin-bottom:3px}
+  ul li,ol li{margin-bottom:4px}
+  .pb{break-before:page}
+  .url{font-weight:700;color:#7D1435}
+  small{color:#666}
+</style>
+</head>
+<body>
+<div class="head">
+  <img src="bilder/anleitung-app/app-icon.png" alt="App-Symbol" />
+  <div>
+    <h1>Die Viva-Deluxe App</h1>
+    <p class="sub">So funktioniert sie – Meine Zeit · Qualität · Verwaltung · Stand 17.10.2026</p>
+  </div>
+</div>
+
+<p>Eine App für alle: <span class="url">app.viva-deluxe-reinigung.de/m</span>. Wie man sie auf das Handy legt, steht in der
+Anleitung <b>„App installieren“</b>. Welche Bereiche jemand sieht, hängt von der Anmeldung ab:</p>
+
+<table class="who">
+  <tr><th>Bereich</th><th>Wofür</th><th>Wer sieht ihn</th></tr>
+  <tr><td><b>Meine Zeit</b></td><td>Stempeln, Zeiten bestätigen, Urlaub/Krank melden, Dokumente und Lohnabrechnungen,
+  Stundenliste</td><td>Alle Mitarbeitenden. Objektleitung und Büro, wenn ihr Benutzer mit dem eigenen Personaldatensatz
+  verknüpft ist.</td></tr>
+  <tr><td><b>Qualität</b></td><td>Qualitätskontrolle (Audit) Raum für Raum, Fotos, Tickets</td><td>Objektleitung (nur
+  eigene Objekte) und Büro</td></tr>
+  <tr><td><b>Verwaltung</b></td><td>Team, Zeiten heute, Nachträge und Urlaubsanträge, Objekte, Formulare</td><td>Objektleitung
+  (nur eigene Objekte und deren Leute) und Büro</td></tr>
+</table>
+
+<div class="box ok"><b>Mitarbeitende</b> brauchen nur <b>Teil 1 und 2</b>. <b>Objektleitungen</b> lesen alles.</div>
+
+<ol class="toc">
+  <li>Grundlagen: Anmelden, Bereiche, Profil</li>
+  <li>Meine Zeit: stempeln, bestätigen, Urlaub, Dokumente</li>
+  <li>Qualität: Audit, Fotos, Tickets</li>
+  <li>Verwaltung: Team, Zeiten, Objekte, Formulare</li>
+  <li>Wichtige Regeln und häufige Fragen</li>
+</ol>
+
+<h2>1. Grundlagen</h2>
+
+<h3>Anmelden</h3>
+<div class="pair">
+  <div><img src="bilder/anleitung-app/m-01-anmelden.jpg" alt="Anmeldung" />
+  <p class="c">Eine Maske für alle. <b>Mitarbeitende:</b> oben die <b>Personalnummer</b>, unten die <b>PIN</b>.
+  <b>Objektleitung und Büro:</b> oben der <b>Benutzername</b>, unten das <b>Passwort</b>. Die App erkennt selbst,
+  was eingegeben wurde. „Angemeldet bleiben“ angehakt lassen.</p></div>
+  <div><img src="bilder/anleitung-app/m-02-neue-pin.jpg" alt="Eigene PIN festlegen" />
+  <p class="c">Beim ersten Mal ist die PIN das <b>Geburtsdatum TTMMJJ</b> (12.04.1990 → 120490). Die App verlangt dann
+  sofort eine <b>eigene PIN</b> (4–6 Ziffern, nicht das Geburtsdatum, nicht 1234). Nach 5 falschen Versuchen ist die
+  Anmeldung 15 Minuten gesperrt.</p></div>
+</div>
+
+<h3>Bereich wechseln, Leiste unten, Profil</h3>
+<div class="pair">
+  <div><img src="bilder/anleitung-app/b-02-bereich-wechseln.jpg" alt="Bereich wechseln" />
+  <p class="c"><b>Objektleitung und Büro:</b> oben rechts der Knopf <b>„Büro ▾“</b> (bzw. „Qualität ▾“, „Verwaltung ▾“)
+  wechselt zwischen <b>Meine Zeit · Qualität · Verwaltung</b>. Mitarbeitende sehen diesen Knopf nicht.</p></div>
+  <div><img src="bilder/anleitung-app/m-10-profil.jpg" alt="Profil" />
+  <p class="c">Die <b>Initialen</b> oben rechts öffnen das <b>Profil</b>: App-Tour (kurze Einführung), App-Berechtigungen
+  (Mitteilungen, Kamera, Standort), Sprache, PIN bzw. Passwort ändern, Abmelden. Der <b>Globus</b> wechselt die Sprache
+  (Deutsch, Englisch, Rumänisch, Türkisch, Polnisch, Kroatisch/Bosnisch/Serbisch, Bulgarisch).</p></div>
+</div>
+<p>Die <b>Leiste unten</b> bleibt immer stehen. In Meine Zeit: Übersicht · Kalender · Zeiten · Urlaub · Dokumente.
+In Verwaltung: Übersicht · Team · Zeiten · Objekte. In Qualität: Audits · Objekte · Tickets.</p>
+
+<h2>2. Meine Zeit</h2>
+
+<h3>Die Startseite</h3>
+<div class="pair">
+  <div><img src="bilder/anleitung-app/m-03-startseite.jpg" alt="Startseite" /></div>
+  <div>
+    <ul>
+      <li><b>„Zu unterschreiben“</b>: ein Dokument (z. B. Unterweisung) wartet auf die Unterschrift.</li>
+      <li><b>„Noch zu bestätigen“</b>: Einsätze der letzten 7 Tage, für die noch keine Zeit erfasst ist.</li>
+      <li><b>„Heute“</b>: die Einsätze von heute mit Objekt, Adresse und Uhrzeit. Ein Haken heißt: Zeit erfasst.</li>
+      <li>Unten rechts der runde Knopf mit der Uhr: die <b>Stoppuhr</b>.</li>
+    </ul>
+    <div class="box info">Neue Dokumente erscheinen nach der Anmeldung <b>sofort</b> zum Lesen und Unterschreiben
+    (Bild unten). „Später erinnern“ schiebt es auf, es kommt am nächsten Tag wieder.</div>
+  </div>
+</div>
+
+<h3>Stempeln mit der Stoppuhr</h3>
+<div class="tri">
+  <div><img src="bilder/anleitung-app/m-04-stoppuhr-start.jpg" alt="Start" />
+  <p class="c"><span class="n">1</span>Beim Ankommen auf die <b>Uhr</b> tippen. Das heutige Objekt steht schon da →
+  <b>▶ Zeiterfassung starten</b>.</p></div>
+  <div><img src="bilder/anleitung-app/m-05-stoppuhr-laeuft.jpg" alt="Zeit läuft" />
+  <p class="c"><span class="n">2</span>Der Knopf zeigt die <b>laufende Zeit</b>. Die App darf jetzt geschlossen werden,
+  die Zeit läuft auf dem Server weiter.</p></div>
+  <div><img src="bilder/anleitung-app/m-06-stoppuhr-stopp.jpg" alt="Stopp" />
+  <p class="c"><span class="n">3</span>Beim Gehen wieder auf die Uhr → <b>■ Stopp</b>. Hier steht auch die
+  <b>Pause</b>: „Pause ändern“, wenn sie zu einer anderen Zeit war.</p></div>
+</div>
+<div class="pair">
+  <div><img src="bilder/anleitung-app/m-11-objekt-waehlen.jpg" alt="Objekt wählen" />
+  <p class="c"><b>Kein Einsatz geplant?</b> Dann fragt die App „Wo arbeitest du?“: zuletzt genutzte Objekte stehen oben,
+  sonst Objekt, Kunde oder Adresse eintippen.</p></div>
+  <div><img src="bilder/anleitung-app/m-12-objekt-suchen.jpg" alt="Objekt suchen" />
+  <p class="c">Ab 2 Buchstaben erscheinen die Treffer. Objekt antippen → <b>Zeiterfassung starten</b>.</p>
+  <div class="box"><b>Pause:</b> Ab 6 Stunden Arbeit trägt die App 30 Minuten ein, ab 9 Stunden 45 Minuten (§ 4 ArbZG).
+  Ist im Einsatzplan eine Pause geplant, wird sie in der Mitte der Schicht vorgemerkt. Standort und Uhrzeit des
+  Servers werden beim Start und Stopp einmal geprüft. Es wird <b>kein Weg aufgezeichnet</b>.</div></div>
+</div>
+
+<h3>Ohne Stempeln: Zeit bestätigen</h3>
+<div class="pair">
+  <div><img src="bilder/anleitung-app/m-13-stimmt-die-zeit.jpg" alt="Stimmt die Zeit?" />
+  <p class="c"><span class="n">1</span>Beim Einsatz auf <b>„✓ Zeiten bestätigen“</b> tippen. Es erscheint
+  <b>„Stimmt die Zeit?“</b> mit Tag, Uhrzeit und Objekt → <b>„Ja, stimmt – bestätigen“</b>, wenn genau so gearbeitet
+  wurde.</p></div>
+  <div><img src="bilder/anleitung-app/m-14-zeit-bearbeiten.jpg" alt="Zeit bearbeiten" />
+  <p class="c"><span class="n">2</span>Anders gearbeitet? <b>„Nein, Zeit bearbeiten“</b>: Beginn, Ende und Pause
+  eintragen → <b>Geänderte Zeit senden</b>. Das ist ein <b>Nachtrag</b>, den die Objektleitung freigibt.</p></div>
+</div>
+<div class="box">Nur bestätigen, was wirklich gearbeitet wurde. Die Zeiten sind die Grundlage für den Lohn und werden vom
+Zoll geprüft (§ 17 Mindestlohngesetz).</div>
+
+<h3>Dokument unterschreiben, Kalender, Stundenliste</h3>
+<div class="tri">
+  <div><img src="bilder/anleitung-app/m-17-unterschreiben.jpg" alt="Dokument unterschreiben" />
+  <p class="c"><b>Dokument:</b> „Dokument öffnen“ zum Lesen, Häkchen „gelesen und verstanden“, mit dem Finger
+  unterschreiben → <b>Unterschreiben</b>.</p></div>
+  <div><img src="bilder/anleitung-app/m-15-kalender.jpg" alt="Kalender" />
+  <p class="c"><b>Kalender:</b> Punkte zeigen die Einsatztage. Tag antippen → die Einsätze des Tages, dort auch
+  bestätigen.</p></div>
+  <div><img src="bilder/anleitung-app/m-16-stundenliste.jpg" alt="Stundenliste" />
+  <p class="c"><b>Zeiten:</b> die eigene <b>Stundenliste</b>. Am Monatsende (bis zum 7. des Folgemonats) bittet die App,
+  sie zu unterschreiben.</p></div>
+</div>
+
+<h3>Urlaub, Krankheit und Dokumente</h3>
+<div class="pair">
+  <div><img src="bilder/anleitung-app/m-08-urlaub.jpg" alt="Urlaub / Krank melden" />
+  <p class="c">Unten <b>„Urlaub“</b>. Oben steht der <b>Resturlaub</b>. Art wählen (Urlaub, Krank …), von – bis,
+  ggf. „Nur halber Tag“ → <b>Absenden</b>. Urlaub ist ein <b>Antrag</b>; unter „Meine Anträge“ steht, ob er genehmigt
+  ist. <b>Krank:</b> zusätzlich sofort die Objektleitung anrufen.</p></div>
+  <div><img src="bilder/anleitung-app/m-09-dokumente.jpg" alt="Dokumente" />
+  <p class="c">Unten <b>„Dokumente“</b>: offene und unterschriebene Dokumente und die <b>Lohnabrechnungen</b>. PDF
+  antippen → oben „Teilen / Drucken“ zum Speichern oder Drucken, „‹ Zurück“ zur App.</p></div>
+</div>
+
+<h2>3. Qualität (Objektleitung und Büro)</h2>
+<p>Eine Qualitätskontrolle (Audit) geht nur am <b>Handy oder Tablet</b>, weil die Fotos mit der Kamera vor Ort gemacht
+werden. Am PC lassen sich die Ergebnisse ansehen und die Berichte drucken.</p>
+
+<h3>Audit starten</h3>
+<div class="tri">
+  <div><img src="bilder/anleitung-app/q-01-qualitaet.jpg" alt="Qualität" />
+  <p class="c"><span class="n">1</span>Bereich <b>Qualität</b>: oben die Audits von heute mit Fortschritt
+  („7 von 14 Räumen“). Antippen = weitermachen.</p></div>
+  <div><img src="bilder/anleitung-app/q-02-plus.jpg" alt="Neu" />
+  <p class="c"><span class="n">2</span>Der runde <b>+</b>-Knopf: <b>Audit starten</b> oder <b>Ticket erstellen</b>.</p></div>
+  <div><img src="bilder/anleitung-app/q-03-objekt-waehlen.jpg" alt="Objekt wählen" />
+  <p class="c"><span class="n">3</span><b>Objekt wählen</b> (nach Kunde sortiert, mit Suche). Die eigene Objektleitung
+  sieht nur ihre Objekte.</p></div>
+</div>
+
+<h3>Raum für Raum bewerten</h3>
+<div class="tri">
+  <div><img src="bilder/anleitung-app/q-04-raeume.jpg" alt="Räume" />
+  <p class="c"><span class="n">4</span>Die <b>Räume aus dem Raumbuch</b> des Objekts, mit Suche (Name, Raumnummer,
+  Stockwerk). Raum antippen.</p></div>
+  <div><img src="bilder/anleitung-app/q-06-raum-bewertet.jpg" alt="Raum bewerten" />
+  <p class="c"><span class="n">5</span>Je Prüfpunkt den <b>Schieberegler</b> ziehen (bzw. Ja/Nein). Oben rechnet die
+  <b>Gesamtnote</b> mit. Nicht prüfbar → „Überspringen“. Begründung eintippen, mit <b>+</b> bis zu 5 Fotos.</p></div>
+  <div><img src="bilder/anleitung-app/q-07-raum-speichern.jpg" alt="Speichern" />
+  <p class="c"><span class="n">6</span>Unten <b>„Speichern &amp; zur Raumübersicht“</b> (nächster Raum) oder
+  <b>„Speichern &amp; Audit beenden“</b>.</p></div>
+</div>
+<div class="pair">
+  <div><img src="bilder/anleitung-app/q-08-raeume-ergebnis.jpg" alt="Ergebnis" />
+  <p class="c">Bewertete Räume zeigen ihr Ergebnis in %, oben das Gesamtergebnis. Ein Audit muss nicht in einem
+  Durchgang fertig werden.</p></div>
+  <div><img src="bilder/anleitung-app/q-09-ticket.jpg" alt="Ticket erstellen" />
+  <p class="c"><b>Ticket</b> für einen Mangel oder eine Bitte des Kunden (z. B. „Papierhandtücher fehlen WC 1“): Objekt,
+  Raum, Text, Priorität → <b>Ticket speichern</b>. Im Raum geht es direkt über <b>„+ Ticket“</b> oben rechts.</p>
+  <div class="box info">Der <b>Auswertungsbericht (PDF)</b> steht beim Audit im Menü <b>⋮</b>. Fotos bekommen Uhrzeit
+  und Standort (Nachweis der Kontrolle vor Ort). Nur Fotos mit der Kamera, nicht aus der Galerie.</div></div>
+</div>
+
+<h2>4. Verwaltung (Objektleitung und Büro)</h2>
+
+<h3>Übersicht</h3>
+<div class="pair">
+  <div><img src="bilder/anleitung-app/b-03-verwaltung.jpg" alt="Verwaltung" />
+  <p class="c">Oben die Lage von <b>heute</b>: im Einsatz, <b>nicht gestempelt</b>, abwesend, offene Urlaubsanträge,
+  Nachträge zur Freigabe und auffällige Zeiten. Jede Kachel ist antippbar.</p></div>
+  <div><img src="bilder/anleitung-app/b-04-verwaltung-bereiche.jpg" alt="Bereiche" />
+  <p class="c">Darunter alle Bereiche: <b>Team &amp; Zeiten</b> (Team, Zeiten heute, Urlaub/Krank, Planung),
+  <b>Objekte &amp; Dokumente</b>, <b>Formulare</b> (Personalbogen, NU-Auftrag, NU unterschreiben, Arbeitsschein).</p></div>
+</div>
+
+<h3>Team, Anträge, Abwesenheiten</h3>
+<div class="tri">
+  <div><img src="bilder/anleitung-app/b-05-team.jpg" alt="Team" />
+  <p class="c"><b>Team:</b> Suche nach Name oder Personalnummer. Oben <b>Anträge zum Genehmigen</b> →
+  <b>Genehmigen</b> oder <b>Ablehnen</b>.</p></div>
+  <div><img src="bilder/anleitung-app/b-06-team-person.jpg" alt="Mitarbeiter" />
+  <p class="c"><b>Person antippen:</b> Anrufen, WhatsApp, Einsätze der Woche, Abwesenheiten, Urlaub/Krank eintragen.</p></div>
+  <div><img src="bilder/anleitung-app/b-08-abwesenheit.jpg" alt="Abwesenheit eintragen" />
+  <p class="c"><b>Urlaub / Krankheit eintragen</b> für eine Person: Art, von – bis, ggf. halber Tag → speichern. Gilt
+  sofort als genehmigt.</p></div>
+</div>
+
+<h3>Zeiten heute und Nachträge</h3>
+<div class="row">
+  <img src="bilder/anleitung-app/b-07-zeiten-heute.jpg" alt="Zeiten heute" />
+  <div>
+    <ol>
+      <li>Oben <b>„Nachträge freigeben“</b>: Zeiten, die Mitarbeitende geändert gesendet haben, mit Grund →
+      <b>Freigeben</b> oder <b>Ablehnen</b> (mit Grund).</li>
+      <li>Darunter jeder Einsatz von heute: <b>erledigt</b>, <b>seit …</b> (läuft), <b>nicht gestempelt</b> (rot,
+      steht oben), <b>abwesend</b>.</li>
+      <li>Bei „nicht gestempelt“ die Person anrufen. Ist sie da, stempelt sie nach; sonst Vertretung über
+      <b>Planung</b>.</li>
+    </ol>
+    <div class="box">Freigeben heißt: „Diese Zeit stimmt.“ Im Zweifel erst nachfragen. Jede Änderung steht im Protokoll.</div>
+  </div>
+</div>
+
+<h3>Objekte</h3>
+<div class="pair">
+  <div><img src="bilder/anleitung-app/b-09-objekte.jpg" alt="Objekte" />
+  <p class="c"><b>Einsatzorte</b> nach Kunde, mit Suche nach Kunde, Adresse oder Objekt.</p></div>
+  <div><img src="bilder/anleitung-app/b-10-objekt.jpg" alt="Objekt-Details" />
+  <p class="c"><b>Objekt antippen:</b> Raumbuch, Tickets, Einsätze, Dokumente, Notizen, Zeiten, Schlüssel,
+  <b>Übergabe / Unterweisung</b> mit Unterschrift, Objektordner, Arbeitsschein, Personalbogen, NU-Auftrag anfragen.
+  „Objekt am PC öffnen“ zeigt die volle Ansicht.</p></div>
+</div>
+
+<h3>Formulare</h3>
+<div class="pair">
+  <div><img src="bilder/anleitung-app/b-12-personalbogen.jpg" alt="Personalbogen" />
+  <p class="c"><b>Personalbogen</b> für neue Mitarbeitende: Sprache wählen und das Handy übergeben. Die Person füllt
+  Schritt für Schritt aus und fotografiert Ausweis, Krankenkassenkarte, Bankkarte usw. Die Angaben gehen vertraulich
+  ans Büro; die Objektleitung sieht sie danach nicht mehr.</p></div>
+  <div><img src="bilder/anleitung-app/b-13-nu-auftrag.jpg" alt="NU-Auftrag" />
+  <p class="c"><b>NU-Auftrag anfragen:</b> Nachunternehmer, Objekt, Leistung, Turnus → senden. Das Büro prüft Preis und
+  Nachweise und erteilt den Auftrag. Erst dann darf der Nachunternehmer arbeiten.</p>
+  <p class="c"><b>NU unterschreiben:</b> eine erteilte Bestellung lässt sich vor Ort auf dem Handy vom Nachunternehmer
+  unterschreiben. <b>Arbeitsschein:</b> anlegen und vom Kunden mit dem Finger unterschreiben lassen.</p></div>
+</div>
+<p><small>Unterweisungen an viele Mitarbeitende freigeben geht für das Büro (Admin/Personal) unter Verwaltung →
+Unterweisungen.</small></p>
+
+<h2>5. Wichtige Regeln und häufige Fragen</h2>
+<ul>
+  <li><b>Zeiten:</b> nur bestätigen und freigeben, was wirklich gearbeitet wurde (§ 17 MiLoG). Erfasste Zeiten werden
+  nie spurlos gelöscht.</li>
+  <li><b>Krankheit</b> ist ein Gesundheitsdatum: nur „krank“ eintragen, nie eine Diagnose, und nicht weitererzählen.</li>
+  <li><b>PIN und Passwort</b> niemandem sagen – sonst kann jemand anderes für Sie stempeln. Vergessen → Büro setzt eine
+  neue.</li>
+  <li><b>Die App hängt?</b> Ganz schließen (nach oben wegwischen) und neu öffnen. Updates kommen automatisch.</li>
+  <li><b>Keine Benachrichtigungen?</b> Profil → App-Berechtigungen → Mitteilungen erlauben. Am iPhone nur in der App vom
+  Home-Bildschirm.</li>
+  <li><b>App öffnet mit Adressleiste (wie Safari)?</b> Symbol entfernen und neu „Zum Home-Bildschirm“ (siehe Anleitung
+  „App installieren“).</li>
+</ul>
+<p class="sub">Viva-Deluxe Gebäudereinigung GmbH · Fragen: Objektleitung oder Büro · Stand 17.10.2026 · Bilder mit
+Beispieldaten</p>
+</body>
+</html>

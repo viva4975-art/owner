@@ -7,6 +7,7 @@ import { listKeys } from '../services/inventory.js';
 import { listOffers } from '../services/offers.js';
 import { listFiles } from '../services/uploads.js';
 import { type Ctx, UUID, assertSite } from './app.js';
+import { BusinessError } from '../services/errors.js';
 import {
   FOLDER_QUESTIONS,
   type FolderInfo,
@@ -367,12 +368,41 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
   );
 
   // ------------------------------------------------------------------ Dokumente
+  // Pflichtdokument je Objekt abwählen („nicht nötig“) bzw. wieder als Pflicht führen (Ahmed 17.10.)
+  app.post(`/objekte/:id{${UUID}}/dokumente/pflicht`, async (c) => {
+    const id = c.req.param('id');
+    assertSite(c, id);
+    const b = await c.req.parseBody();
+    const cat = String(b.category ?? '');
+    if (!SITE_DOC_CATEGORIES.some((k) => k.required && k.name === cat))
+      throw new BusinessError('Unbekannte Dokumentart');
+    const needed = b.needed === '1';
+    await sql.begin(async (tx) => {
+      await tx`update app.sites set docs_not_needed = ${
+        needed
+          ? tx`array_remove(docs_not_needed, ${cat})`
+          : tx`array_append(array_remove(docs_not_needed, ${cat}), ${cat})`
+      } where id = ${id}`;
+      await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+               values (${c.get('actor')}, ${needed ? 'doc_required' : 'doc_not_needed'}, 'site', ${id},
+                       ${tx.json({ category: cat })})`;
+    });
+    return back(c, `/objekte/${id}/dokumente#kat-${cat}`, {
+      ok: needed ? `${cat} ist wieder Pflicht.` : `${cat} ist für dieses Objekt nicht nötig.`,
+    });
+  });
+
   app.get(`/objekte/:id{${UUID}}/dokumente`, (c) =>
     shells.site!(c, 'dokumente', async (s) => {
       const files = await listFiles(sql, { type: 'site', id: s.id });
       const known = new Set(SITE_DOC_CATEGORIES.map((k) => k.name));
+      const [{ docs_not_needed: notNeeded } = { docs_not_needed: [] as string[] }] = await sql<
+        { docs_not_needed: string[] }[]
+      >`select docs_not_needed from app.sites where id = ${s.id}`;
+      const isRequired = (k: (typeof SITE_DOC_CATEGORIES)[number]) =>
+        k.required && !notNeeded.includes(k.name);
       const missing = SITE_DOC_CATEGORIES.filter(
-        (k) => k.required && !files.some((f) => f.category === k.name),
+        (k) => isRequired(k) && !files.some((f) => f.category === k.name),
       );
       const other = files.filter((f) => !f.category || !known.has(f.category));
       return (
@@ -392,9 +422,7 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
               Pflichtdokumente fehlen: <b>{missing.map((m) => m.name).join(', ')}</b>
             </div>
           ) : (
-            <div class="flash ok">
-              Alle Pflichtdokumente (Raumbuch, Leistungsverzeichnis, Revierplan) sind vorhanden.
-            </div>
+            <div class="flash ok">Alle Pflichtdokumente sind vorhanden.</div>
           )}
           <div style="margin:0 0 8px">
             <DocFoldAll />
@@ -408,10 +436,21 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                   {k.required &&
                     (list.length ? (
                       <span class="tag ok">vorhanden</span>
-                    ) : (
+                    ) : isRequired(k) ? (
                       <span class="tag err">Pflicht – fehlt</span>
+                    ) : (
+                      <span class="tag">nicht nötig</span>
                     ))}
                 </summary>
+                {k.required && !list.length && (
+                  <form method="post" action={`/objekte/${s.id}/dokumente/pflicht`} style="margin:0 0 6px">
+                    <input type="hidden" name="category" value={k.name} />
+                    <input type="hidden" name="needed" value={isRequired(k) ? '' : '1'} />
+                    <button class="btn sm ghost">
+                      {isRequired(k) ? 'Für dieses Objekt nicht nötig' : 'Wieder als Pflicht führen'}
+                    </button>
+                  </form>
+                )}
                 <p class="small mut" style="margin:0 0 6px">
                   {k.hint}
                 </p>

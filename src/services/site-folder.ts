@@ -215,8 +215,9 @@ export async function folderFacts(sql: Sql, siteId: string): Promise<FolderFacts
       customer_no: string;
       manager_user_id: string | null;
       folder_info: FolderInfo;
+      docs_not_needed: string[];
     })[]
-  >`select s.id, s.site_no, s.name, s.street, s.postal_code, s.city, s.customer_id, s.manager_user_id, s.folder_info,
+  >`select s.id, s.site_no, s.name, s.street, s.postal_code, s.city, s.customer_id, s.manager_user_id, s.folder_info, s.docs_not_needed,
            c.name as customer_name, c.customer_no
       from app.sites s join app.customers c on c.id = s.customer_id where s.id = ${siteId}`;
   if (!s) throw new BusinessError('Objekt nicht gefunden');
@@ -247,7 +248,7 @@ export async function folderFacts(sql: Sql, siteId: string): Promise<FolderFacts
     select distinct l.category from app.file_links l join app.files f on f.id = l.file_id
      where l.entity_type = 'site' and l.entity_id = ${siteId} and l.archived_at is null and f.status = 'complete'`;
   for (const c of ['Revierplan', 'Leistungsverzeichnis', 'Raumbuch'])
-    if (!scans.some((x) => x.category === c))
+    if (!scans.some((x) => x.category === c) && !s.docs_not_needed.includes(c))
       missing.push({ label: `${c} (Scan unter Dokumente hochladen)`, href: `/objekte/${siteId}/dokumente` });
   const noDefaults = DEFAULT_QUESTIONS.filter((q) => !defaults[q.key]).map((q) => q.label);
   if (!defaults.dosierung?.length) noDefaults.push('Reinigungsmittel und Dosierung');
@@ -631,8 +632,15 @@ export const FOLDER_SCANS = [
 export async function folderScans(deps: Deps, siteId: string) {
   const files = await listFiles(deps.sql, { type: 'site', id: siteId });
   const cfg = { dir: deps.env.FILES_DIR, maxBytes: deps.env.UPLOAD_MAX_BYTES };
+  const [site] = await deps.sql<{ docs_not_needed: string[] }[]>`
+    select docs_not_needed from app.sites where id = ${siteId}`;
+  const notNeeded = new Set(site?.docs_not_needed ?? []);
+  // „nicht nötig“ markiert und nichts hochgeladen → keine Seite „Noch nicht hinterlegt“
+  const scans = FOLDER_SCANS.filter(
+    (s) => !notNeeded.has(s.category) || files.some((f) => f.category === s.category && !f.archived_at),
+  );
   return Promise.all(
-    FOLDER_SCANS.map(async (s) => ({
+    scans.map(async (s) => ({
       ...s,
       files: await Promise.all(
         files

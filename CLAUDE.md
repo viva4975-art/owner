@@ -3264,3 +3264,8 @@ Testadresse.
   „TG …“/„Tiefgarage …“ von Münchner Wohnen ohne TG-Eintrag bekommen einen (`ensureMwTgObjects`, feste ID). Läuft beim
   Start einmal als Stand 3 (`mw_services` `v: 3`) für alle Positionen; Objekte ohne Fläche in Rechnungen bleiben leer →
   Fläche unter Disposition → Tiefgaragenreinigung eintragen, dann werden die Leistungen beim Speichern angelegt.
+- 2026-10-17: **Pflichtdokumente je Objekt abwählbar** (Ahmed: „Pflicht wegmachen können“): Objekt → Dokumente: fehlt Raumbuch,
+  Leistungsverzeichnis oder Revierplan, steht dort „Für dieses Objekt nicht nötig“ (→ Schild „nicht nötig“, zählt nicht mehr
+  als fehlend, keine Seite „Noch nicht hinterlegt“ im Objektordner, nicht in den fehlenden Angaben) bzw. „Wieder als Pflicht
+  führen“. `sites.docs_not_needed` (Migration `20261130000003`), Protokoll `doc_not_needed`/`doc_required`. Beim Kunden gibt es
+  keine Pflichtdokumente.

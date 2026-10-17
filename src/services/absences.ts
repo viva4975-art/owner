@@ -488,6 +488,8 @@ export interface LeaveBalance {
   carriedExpired: number;
   /** Stand aus Fortytools übernommen (Stichtag); eigene Abwesenheiten zählen erst danach */
   openingAsOf?: string;
+  /** zusätzlicher Urlaub (im Anspruch enthalten, app.leave_extra) */
+  extra: number;
 }
 
 /**
@@ -515,6 +517,7 @@ export async function leaveBalance(sql: Sql, employeeId: string, year: number): 
       carried,
       carriedExpired: expired,
       openingAsOf: op.as_of,
+      extra: after.extra,
     };
   }
   const base = await baseBalance(sql, employeeId, year);
@@ -543,6 +546,7 @@ export async function leaveBalance(sql: Sql, employeeId: string, year: number): 
     rest,
     carried,
     carriedExpired: expired,
+    extra: base.extra,
   };
 }
 
@@ -610,8 +614,11 @@ async function baseBalance(sql: Sql, employeeId: string, year: number, countFrom
       entitlement = Math.max(entitlement, Math.min(legalMin, full));
     }
   }
+  // zusätzlicher Urlaub (Ahmed 17.10.) – kommt zum gerechneten Anspruch dazu, wird nicht anteilig gekürzt
+  const extra = await leaveExtraDays(sql, employeeId, year);
+  entitlement = Math.round((entitlement + extra) * 2) / 2;
   const yStart = countFrom && countFrom > yStart0 ? countFrom : yStart0;
-  if (yStart > yEnd) return { entitlement, taken: 0, requested: 0, takenQ1: 0 };
+  if (yStart > yEnd) return { entitlement, taken: 0, requested: 0, takenQ1: 0, extra };
   const list = await listAbsences(sql, { employeeId, from: yStart, to: yEnd });
   const inYear = (a: AbsenceRow, until = yEnd) =>
     leaveDaysOf(
@@ -631,7 +638,70 @@ async function baseBalance(sql: Sql, employeeId: string, year: number, countFrom
       if (a.start_date <= `${year}-03-31`) takenQ1 += await inYear(a, `${year}-03-31`);
     } else if (a.status === 'beantragt') requested += await inYear(a);
   }
-  return { entitlement, taken, requested, takenQ1 };
+  return { entitlement, taken, requested, takenQ1, extra };
+}
+
+export interface LeaveExtra {
+  id: string;
+  year: number;
+  days: number;
+  reason: string;
+  created_by: string;
+  created_at: string;
+}
+
+async function leaveExtraDays(sql: Sql, employeeId: string, year: number): Promise<number> {
+  const [r] = await sql<{ d: string | null }[]>`
+    select sum(days)::text as d from app.leave_extra where employee_id = ${employeeId} and year = ${year}`;
+  return r?.d ? Number(r.d) : 0;
+}
+
+export async function listLeaveExtra(sql: Sql, employeeId: string): Promise<LeaveExtra[]> {
+  const rows = await sql<(Omit<LeaveExtra, 'days'> & { days: string })[]>`
+    select id, year, days::text as days, reason, created_by, created_at::text as created_at
+      from app.leave_extra where employee_id = ${employeeId} order by year desc, created_at desc`;
+  return rows.map((r) => ({ ...r, days: Number(r.days) }));
+}
+
+/** Zusätzlichen Urlaub eintragen (Ahmed 17.10.); feste ID je Formular → doppelt absenden legt nichts doppelt an. */
+export async function addLeaveExtra(
+  sql: Sql,
+  p: { id: string; employeeId: string; year: number; days: number; reason: string; actor: string },
+) {
+  if (
+    !Number.isFinite(p.days) ||
+    p.days === 0 ||
+    Math.abs(p.days) > 60 ||
+    Math.round(p.days * 2) !== p.days * 2
+  )
+    throw new BusinessError('Tage: halbe oder ganze Tage, z. B. 5 oder 2,5 (minus zum Abziehen)');
+  if (!Number.isInteger(p.year) || p.year < 2000 || p.year > 2100) throw new BusinessError('Jahr ungültig');
+  const reason = p.reason.trim();
+  if (!reason) throw new BusinessError('Bitte einen Grund angeben (z. B. Schwerbehinderung § 208 SGB IX)');
+  await sql.begin(async (tx) => {
+    const r = await tx`
+      insert into app.leave_extra (id, employee_id, year, days, reason, created_by)
+      values (${p.id}, ${p.employeeId}, ${p.year}, ${p.days}, ${reason}, ${p.actor})
+      on conflict (id) do nothing returning id`;
+    if (r.length)
+      await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+               values (${p.actor}, 'create', 'leave_extra', ${p.id},
+                       ${tx.json({ employee_id: p.employeeId, year: p.year, days: p.days, reason })})`;
+  });
+  invalidateLeaveWarnings();
+}
+
+export async function deleteLeaveExtra(sql: Sql, id: string, employeeId: string, actor: string) {
+  await sql.begin(async (tx) => {
+    const [r] = await tx<{ year: number; days: string; reason: string }[]>`
+      delete from app.leave_extra where id = ${id} and employee_id = ${employeeId}
+      returning year, days::text as days, reason`;
+    if (r)
+      await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+               values (${actor}, 'delete', 'leave_extra', ${id},
+                       ${tx.json({ employee_id: employeeId, year: r.year, days: Number(r.days), reason: r.reason })})`;
+  });
+  invalidateLeaveWarnings();
 }
 
 export interface AbsentNow {

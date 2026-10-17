@@ -3300,3 +3300,11 @@ Testadresse.
   Bauherr Turnus 0. AG G 2.OG: Büros im Plan doppelt nummeriert (6–9) → „Büro 2.OG-1 … -4“. Dateien nur an Ahmed
   (Kundendaten, nicht im Repo); Import über Objekt → Raumbuch, Revierplan unter Dokumente → Revierplan.
   Für 20166006 (Sanitärcontainer Am Knie 33) und 20166007 (TU Container Personal) liegen keine Pläne vor.
+- 2026-10-17: **Zusätzlicher Urlaub** (Ahmed): Mitarbeiter → Urlaub & Krank → „Zusätzlicher Urlaub“ (Admin/Personal): Jahr,
+  Tage (halbe Tage, minus zieht ab), Grund Pflicht (`app.leave_extra`, Migration `20261201000001`, feste ID je Formular,
+  Löschen mit Protokoll). Kommt zum gerechneten Anspruch dazu (nicht anteilig gekürzt), zählt im Rest, Übertrag und in
+  der Anspruchsprüfung; Kachel zeigt „darin +n zusätzlich“. **Rechtlich:** Schwerbehinderte haben 5 Arbeitstage
+  Zusatzurlaub bei 5-Tage-Woche (§ 208 SGB IX, im Ein-/Austrittsjahr anteilig – Tage dann selbst entsprechend eintragen).
+- 2026-10-17: ARGE U5W2 Raumbuch/Revierplan Fassung 2 (Ahmed): 20166001 + 20166002 Di/Do 17:00–21:30 (W2), 20166003
+  Mo/Mi/Fr früh oder mittags (W3), 20166005 Di/Do früh oder mittags (W2), 20166004 entfällt, 20166007 TU Container
+  Personal neu aus dem Lageplan BE-A TU-Anlage (16 Container, Flächen geschätzt, Di/Do wie 20166005).

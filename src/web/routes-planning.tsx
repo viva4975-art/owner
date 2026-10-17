@@ -17,6 +17,9 @@ import {
   updateAbsence,
   leaveBalance,
   listAbsences,
+  addLeaveExtra,
+  deleteLeaveExtra,
+  listLeaveExtra,
   requestAbsence,
   plannedAtSites,
 } from '../services/absences.js';
@@ -1105,11 +1108,14 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
   app.get(`/personal/:id{${UUID}}/abwesenheiten`, (c) =>
     shells.employee!(c, 'abwesenheiten', async (e) => {
       const year = Number(todayBerlin().slice(0, 4));
-      const [bal, list, warns] = await Promise.all([
+      const [bal, list, warns, extras] = await Promise.all([
         leaveBalance(sql, e.id, year),
         listAbsences(sql, { employeeId: e.id }),
         leaveWarnings(sql),
+        listLeaveExtra(sql, e.id),
       ]);
+      const canExtra = ['admin', 'personal'].includes(c.get('user').role);
+      const num = (n: number) => String(n).replace('.', ',');
       const myWarns = warns.filter((w) => w.employee_id === e.id && isOpen(w));
       const sick = list.filter(
         (a) =>
@@ -1137,6 +1143,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                 {bal.openingAsOf
                   ? `Stand aus Fortytools vom ${dateDe(bal.openingAsOf)}, danach Urlaub aus der App`
                   : 'Tage (anteilig bei Ein-/Austritt)'}
+                {bal.extra !== 0 && ` · darin ${bal.extra > 0 ? '+' : ''}${num(bal.extra)} zusätzlich`}
               </div>
             </div>
             {bal.carried > 0 && (
@@ -1172,10 +1179,119 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
             <AbsenceTable rows={list} showEmployee={false} />
             <AbsenceForm employeeId={e.id} action={`/personal/${e.id}/abwesenheiten`} />
           </div>
+          {(canExtra || extras.length > 0) && (
+            <div class="card" id="zusatzurlaub">
+              <h3>Zusätzlicher Urlaub</h3>
+              <p class="muted">
+                Kommt zum automatisch gerechneten Anspruch dazu (30 Tage bei 5-Tage-Woche), z. B.
+                Schwerbehinderung (5 Tage bei 5-Tage-Woche, § 208 SGB IX) oder eine Vereinbarung. Minus zieht
+                ab.
+              </p>
+              {extras.length > 0 && (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Jahr</th>
+                      <th class="num">Tage</th>
+                      <th>Grund</th>
+                      <th>eingetragen</th>
+                      {canExtra && <th></th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {extras.map((x) => (
+                      <tr>
+                        <td>{x.year}</td>
+                        <td class="num">
+                          {x.days > 0 ? '+' : ''}
+                          {num(x.days)}
+                        </td>
+                        <td>{x.reason}</td>
+                        <td class="muted">
+                          {dateDe(x.created_at.slice(0, 10))} · {x.created_by}
+                        </td>
+                        {canExtra && (
+                          <td>
+                            <form
+                              method="post"
+                              action={`/personal/${e.id}/zusatzurlaub/${x.id}/loeschen`}
+                              data-confirm="Zusätzlichen Urlaub wirklich löschen?"
+                            >
+                              <button class="btn sm ghost">Löschen</button>
+                            </form>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {canExtra && (
+                <form method="post" action={`/personal/${e.id}/zusatzurlaub`} class="grid">
+                  <input type="hidden" name="id" value={randomUUID()} />
+                  <label>
+                    Jahr
+                    <select name="year">
+                      {[year - 1, year, year + 1].map((y) => (
+                        <option value={String(y)} selected={y === year}>
+                          {y}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Tage
+                    <input name="days" required inputmode="decimal" placeholder="z. B. 5 oder 2,5" />
+                  </label>
+                  <label>
+                    Grund
+                    <input name="reason" required placeholder="z. B. Schwerbehinderung (§ 208 SGB IX)" />
+                  </label>
+                  <div class="formfoot">
+                    <button class="btn">Zusätzlichen Urlaub eintragen</button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
         </>
       );
     }),
   );
+
+  const assertExtra = (c: Context<AppEnv>) => {
+    if (!['admin', 'personal'].includes(c.get('user').role))
+      throw new BusinessError('Zusätzlichen Urlaub tragen nur Admin oder Personal ein');
+  };
+  app.post(`/personal/:id{${UUID}}/zusatzurlaub`, async (c) => {
+    assertExtra(c);
+    const b = await c.req.parseBody();
+    const id = String(b.id ?? '');
+    if (!new RegExp(`^${UUID}$`).test(id)) throw new BusinessError('Formular ungültig – Seite neu laden');
+    const days = Number(
+      String(b.days ?? '')
+        .trim()
+        .replace(',', '.'),
+    );
+    await addLeaveExtra(sql, {
+      id,
+      employeeId: c.req.param('id'),
+      year: Number(b.year),
+      days,
+      reason: String(b.reason ?? ''),
+      actor: c.get('actor'),
+    });
+    return back(c, `/personal/${c.req.param('id')}/abwesenheiten#zusatzurlaub`, {
+      ok: 'Zusätzlicher Urlaub eingetragen.',
+    });
+  });
+  app.post(`/personal/:id{${UUID}}/zusatzurlaub/:xid{${UUID}}/loeschen`, async (c) => {
+    assertExtra(c);
+    await deleteLeaveExtra(sql, c.req.param('xid'), c.req.param('id'), c.get('actor'));
+    return back(c, `/personal/${c.req.param('id')}/abwesenheiten#zusatzurlaub`, {
+      ok: 'Zusätzlicher Urlaub gelöscht.',
+    });
+  });
 
   app.post(`/personal/:id{${UUID}}/abwesenheiten`, (c) =>
     createAbsence(c, (id) => `/personal/${id}/abwesenheiten`),

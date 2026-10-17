@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
-import { leaveBalance, leaveDaysOf } from './absences.js';
+import { addLeaveExtra, deleteLeaveExtra, leaveBalance, leaveDaysOf, listLeaveExtra } from './absences.js';
 import { recordHoursChange } from './employee-hours.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
@@ -33,6 +33,48 @@ describe.skipIf(!available)('Arbeitstage pro Woche: Urlaub anteilig', () => {
     expect((await leaveBalance(sql, emp, 2027)).entitlement).toBe(18);
     expect(await leaveDaysOf(sql, emp, '2026-11-09', '2026-11-15', false)).toBe(3);
     expect(await leaveDaysOf(sql, emp, '2026-10-05', '2026-10-11', false)).toBe(5);
+  });
+
+  it('Zusätzlicher Urlaub kommt zum Anspruch dazu, doppelt absenden zählt einmal, löschen nimmt ihn zurück', async () => {
+    const id = randomUUID();
+    const add = () =>
+      addLeaveExtra(sql, {
+        id,
+        employeeId: emp,
+        year: 2025,
+        days: 5,
+        reason: 'Schwerbehinderung',
+        actor: 't',
+      });
+    await add();
+    await add();
+    const b = await leaveBalance(sql, emp, 2025);
+    expect(b.entitlement).toBe(35);
+    expect(b.extra).toBe(5);
+    await addLeaveExtra(sql, {
+      id: randomUUID(),
+      employeeId: emp,
+      year: 2025,
+      days: -1.5,
+      reason: 'Korrektur',
+      actor: 't',
+    });
+    expect((await leaveBalance(sql, emp, 2025)).entitlement).toBe(33.5);
+    await expect(
+      addLeaveExtra(sql, {
+        id: randomUUID(),
+        employeeId: emp,
+        year: 2025,
+        days: 1.3,
+        reason: 'x',
+        actor: 't',
+      }),
+    ).rejects.toThrow(/halbe/);
+    await expect(
+      addLeaveExtra(sql, { id: randomUUID(), employeeId: emp, year: 2025, days: 1, reason: ' ', actor: 't' }),
+    ).rejects.toThrow(/Grund/);
+    for (const x of await listLeaveExtra(sql, emp)) await deleteLeaveExtra(sql, x.id, emp, 't');
+    expect((await leaveBalance(sql, emp, 2025)).entitlement).toBe(30);
   });
 
   it('Eintritt/Austritt: anteilig, gesetzlicher Mindesturlaub nach § 5 BUrlG bleibt', async () => {

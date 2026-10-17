@@ -127,11 +127,30 @@ export function makeJwt(appId: string, key: KeyObject, now = Date.now()) {
   return `${head}.${body}.${b64url(sign('RSA-SHA256', Buffer.from(`${head}.${body}`), key))}`;
 }
 
+/**
+ * Angaben zum angemeldeten Benutzer (PSD2 „PSU present“). Ruft jemand selbst ab (Knopf), gehen sie mit – dann gilt die
+ * Grenze von 4 Abrufen je Tag ohne Anwesenheit nicht (Delegierte VO (EU) 2018/389, Art. 36 Abs. 5). Der automatische
+ * Abruf schickt sie nie (sonst wäre es eine falsche Angabe gegenüber der Bank).
+ */
+export interface PsuInfo {
+  ip: string;
+  userAgent?: string | null;
+  acceptLanguage?: string | null;
+}
+export function psuHeaders(psu: PsuInfo | null | undefined): Record<string, string> {
+  if (!psu?.ip) return {};
+  const h: Record<string, string> = { 'Psu-Ip-Address': psu.ip };
+  if (psu.userAgent) h['Psu-User-Agent'] = psu.userAgent.slice(0, 500);
+  if (psu.acceptLanguage) h['Psu-Accept-Language'] = psu.acceptLanguage.slice(0, 200);
+  return h;
+}
+
 async function api<T>(
   deps: Deps,
   method: 'GET' | 'POST' | 'DELETE',
   path: string,
   body?: unknown,
+  psu?: PsuInfo | null,
 ): Promise<T> {
   const { appId, key } = await credentials(deps);
   let res: Response;
@@ -142,6 +161,7 @@ async function api<T>(
         Authorization: `Bearer ${makeJwt(appId, key)}`,
         'Content-Type': 'application/json',
         Accept: 'application/json',
+        ...psuHeaders(psu),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: AbortSignal.timeout(30_000),
@@ -422,7 +442,7 @@ let running = false;
 /** Alle verbundenen Konten abrufen (Kontostand + Umsätze). `auto`: nur Konten, deren Abruf älter als 4,5 Std. ist. */
 export async function fetchAll(
   deps: Deps,
-  p: { actor: string; auto?: boolean; now?: Date; historyFrom?: string },
+  p: { actor: string; auto?: boolean; now?: Date; historyFrom?: string; psu?: PsuInfo | null },
 ) {
   if (running) return { accounts: 0, lines: 0, created: 0, errors: ['Abruf läuft bereits'] };
   running = true;
@@ -435,9 +455,10 @@ export async function fetchAll(
 
 async function fetchAllInner(
   deps: Deps,
-  p: { actor: string; auto?: boolean; now?: Date; historyFrom?: string },
+  p: { actor: string; auto?: boolean; now?: Date; historyFrom?: string; psu?: PsuInfo | null },
 ) {
   const { sql } = deps;
+  const psu = p.auto ? null : (p.psu ?? null);
   const now = p.now ?? new Date();
   const accounts = await sql<
     (FeedAccount & { last_booking_date: string | null; valid_until: Date | null; conn_status: string })[]
@@ -455,7 +476,7 @@ async function fetchAllInner(
     }
     if (!a.iban) continue;
     try {
-      const r = await fetchAccount(deps, a, p.actor, now, p.historyFrom);
+      const r = await fetchAccount(deps, a, p.actor, now, p.historyFrom, psu);
       out.accounts++;
       out.lines += r.lines;
       out.created += r.created;
@@ -481,6 +502,7 @@ async function fetchAccount(
   actor: string,
   now: Date,
   historyFrom?: string,
+  psu?: PsuInfo | null,
 ) {
   const { sql } = deps;
   const iban = a.iban!;
@@ -492,7 +514,7 @@ async function fetchAccount(
       balance_type?: string;
       reference_date?: string | null;
     }[];
-  }>(deps, 'GET', `/accounts/${uid}/balances`);
+  }>(deps, 'GET', `/accounts/${uid}/balances`, undefined, psu);
   const rank = (t: string | undefined) => {
     const i = BALANCE_ORDER.indexOf(t ?? 'OTHR');
     return i < 0 ? 99 : i;
@@ -521,6 +543,8 @@ async function fetchAccount(
       deps,
       'GET',
       `/accounts/${uid}/transactions?${q}`,
+      undefined,
+      psu,
     );
     raw.push(...(r?.transactions ?? []));
     cont = r?.continuation_key ?? null;

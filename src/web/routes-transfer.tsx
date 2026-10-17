@@ -213,7 +213,7 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
               >
                 <span class="small mut">
                   {lastFetch ? `zuletzt abgerufen ${at(lastFetch)}` : 'noch nicht abgerufen'} · automatisch
-                  bis 4× täglich
+                  bis 4× täglich, von Hand jederzeit
                 </span>
                 <button class="btn sm">⟳ Umsätze abrufen</button>
               </form>

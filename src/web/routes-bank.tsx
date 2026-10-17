@@ -11,6 +11,7 @@ import {
   startConnect,
   statement,
   testFeed,
+  type PsuInfo,
 } from '../services/bank-feed.js';
 import { BusinessError } from '../services/errors.js';
 import { type Ctx, UUID } from './app.js';
@@ -21,6 +22,21 @@ import { PageHead, dateDe, euro } from './layout.js';
  * Bankabruf (Enable Banking): Einrichtung unter Einstellungen (nur Admin), Rückkehr aus dem Bank-Fenster, Abruf,
  * Kontoauszug je Konto mit errechnetem Saldo und Verlauf (wie Fortytools).
  */
+/**
+ * Angaben des angemeldeten Benutzers für die Bank (Abruf von Hand = „Benutzer anwesend“, dann ohne 4-mal-täglich-Grenze).
+ * IP aus X-Forwarded-For (Caddy setzt sie selbst und übernimmt keine Angaben fremder Absender).
+ */
+const psuOf = (c: { req: { header(name: string): string | undefined } }): PsuInfo | null => {
+  const ip =
+    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip')?.trim() || '';
+  if (!ip) return null;
+  return {
+    ip,
+    userAgent: c.req.header('user-agent') ?? null,
+    acceptLanguage: c.req.header('accept-language') ?? null,
+  };
+};
+
 const at = (d: Date) =>
   d.toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'short', timeStyle: 'short' });
 const isDate = (d: string | null | undefined): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d);
@@ -202,8 +218,9 @@ export function registerBankRoutes({ app, deps, page, back }: Ctx) {
               <form method="post" action="/transfer/bank/abrufen" class="actions">
                 <button class="btn">⟳ Umsätze jetzt abrufen</button>
                 <span class="small mut">
-                  Automatisch zwischen 6 und 21 Uhr etwa alle 4½ Stunden (PSD2: höchstens 4 Abrufe je Tag ohne
-                  TAN). Beim ersten Abruf werden die letzten 90 Tage geholt.
+                  Automatisch zwischen 6 und 21 Uhr etwa alle 4½ Stunden (PSD2: ohne Anwesenheit höchstens 4
+                  Abrufe je Tag). Von Hand mit diesem Knopf jederzeit. Beim ersten Abruf werden die letzten 90
+                  Tage geholt.
                 </span>
               </form>
             )}
@@ -286,7 +303,7 @@ export function registerBankRoutes({ app, deps, page, back }: Ctx) {
         actor: c.get('actor'),
       });
       if (!r.already) {
-        const f = await fetchAll(deps, { actor: c.get('actor') });
+        const f = await fetchAll(deps, { actor: c.get('actor'), psu: psuOf(c) });
         return back(c, '/transfer/kontoumsaetze', {
           ok: `${r.bank} verbunden (${r.accounts} Konto/Konten). ${f.created} neue Umsätze abgerufen.${f.errors.length ? ` Hinweis: ${f.errors.join(' · ')}` : ''}`,
         });
@@ -302,7 +319,7 @@ export function registerBankRoutes({ app, deps, page, back }: Ctx) {
     const from = typeof b.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.from) ? b.from : null;
     if (!from) throw new BusinessError('Bitte ein Datum wählen');
     if (from > todayBerlin()) throw new BusinessError('Datum liegt in der Zukunft');
-    const r = await fetchAll(deps, { actor: c.get('actor'), historyFrom: from });
+    const r = await fetchAll(deps, { actor: c.get('actor'), historyFrom: from, psu: psuOf(c) });
     const msg = `Ab ${from.split('-').reverse().join('.')}: ${r.accounts} Konto/Konten abgerufen, ${r.created} neue Umsätze.`;
     return back(
       c,
@@ -316,7 +333,7 @@ export function registerBankRoutes({ app, deps, page, back }: Ctx) {
   });
 
   app.post('/transfer/bank/abrufen', async (c) => {
-    const r = await fetchAll(deps, { actor: c.get('actor') });
+    const r = await fetchAll(deps, { actor: c.get('actor'), psu: psuOf(c) });
     const msg = `${r.accounts} Konto/Konten abgerufen, ${r.created} neue Umsätze.`;
     return back(
       c,

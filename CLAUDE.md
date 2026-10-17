@@ -3205,3 +3205,9 @@ Testadresse.
   `OUT=… SITE=<objekt> EMP=<mitarbeiter> node e2e/_guide-shots-buero.mjs` (Objektleitung „olga“, mit Mitarbeiter
   verknüpft). Nebenbei: Kacheln der Verwaltungs-App mit Symbol über dem Text (Wörter wurden mitten im Wort umgebrochen),
   Audit-Ergebnis „33 %“ bricht nicht mehr um.
+- 2026-10-17: **Bankabruf von Hand ohne 4-mal-täglich-Grenze** (Ahmed: „wieso nur 4× täglich?“): PSD2 (Delegierte VO (EU)
+  2018/389, Art. 36 Abs. 5) erlaubt ohne Anwesenheit des Kontoinhabers höchstens 4 Abrufe je Konto und 24 Std. – das gilt
+  weiter für den automatischen Abruf (6–21 Uhr, alle 4,5 Std.). Klickt jemand „Umsätze abrufen“, „Ältere Umsätze
+  nachladen“ oder verbindet die Bank, schickt die App jetzt die Angaben des anwesenden Benutzers mit (`Psu-Ip-Address`
+  aus X-Forwarded-For von Caddy, `Psu-User-Agent`, `Psu-Accept-Language`; `psuHeaders`/`psuOf`) – dann gilt die Grenze
+  nicht. Der automatische Abruf schickt sie nie (wäre eine falsche Angabe gegenüber der Bank). Test in `bank-feed.db.test.ts`.

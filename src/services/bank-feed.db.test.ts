@@ -80,7 +80,7 @@ describe.skipIf(!available)('Enable Banking: Verbinden, Abrufen, Zuordnen', () =
   let sql: Sql;
   let deps: Deps;
   const APP = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
-  const calls: { method: string; path: string; body: unknown; auth: string }[] = [];
+  const calls: { method: string; path: string; body: unknown; auth: string; psuIp?: string | null }[] = [];
   let txs: Record<string, unknown>[] = [];
   const reply = (path: string, body: unknown): unknown => {
     if (path === '/aspsps?country=DE')
@@ -130,6 +130,7 @@ describe.skipIf(!available)('Enable Banking: Verbinden, Abrufen, Zuordnen', () =
         path,
         body,
         auth: String((init.headers as Record<string, string>).Authorization),
+        psuIp: (init.headers as Record<string, string>)['Psu-Ip-Address'] ?? null,
       });
       return new Response(JSON.stringify(reply(path, body)), { status: 200 });
     });
@@ -254,15 +255,29 @@ describe.skipIf(!available)('Enable Banking: Verbinden, Abrufen, Zuordnen', () =
     expect(r1.created).toBe(2); // ohne vorgemerkten, ohne CAMT-Dublette
     expect(calls.filter((c) => c.path.includes('acc-own/transactions')).length).toBe(2); // zwei Seiten
     expect(calls.some((c) => c.path.includes('acc-foreign'))).toBe(true); // Konto aus der Bank-Anmeldung
-    const r2 = await fetchAll(deps, { actor: 't' });
+    expect(calls.every((c) => c.psuIp === null)).toBe(true);
+    // Abruf von Hand: Angaben zum anwesenden Benutzer gehen mit (keine 4-mal-täglich-Grenze)
+    calls.length = 0;
+    const r2 = await fetchAll(deps, {
+      actor: 't',
+      psu: { ip: '203.0.113.7', userAgent: 'Test', acceptLanguage: 'de' },
+    });
     expect(r2.created).toBe(0);
+    expect(calls.filter((c) => c.path.startsWith('/accounts/')).every((c) => c.psuIp === '203.0.113.7')).toBe(
+      true,
+    );
     const [acc] = await accountOverview(sql);
     expect(acc!.balance_cents).toBe(10162113n);
     expect(acc!.open).toBe(3);
     // Automatik: zu kurz nach dem letzten Abruf → nichts
     calls.length = 0;
-    await fetchAll(deps, { actor: 'auto', auto: true });
+    await fetchAll(deps, { actor: 'auto', auto: true, psu: { ip: '203.0.113.7' } });
     expect(calls.length).toBe(0);
+    // Automatik fällig: schickt nie Benutzerangaben (sonst falsche Angabe gegenüber der Bank)
+    await sql`update app.bank_feed_accounts set last_fetch_at = now() - interval '5 hours'`;
+    await fetchAll(deps, { actor: 'auto', auto: true, psu: { ip: '203.0.113.7' } });
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((c) => c.psuIp === null)).toBe(true);
   });
 
   it('Vorschlag Fortytools-Rechnung über Nummer im Zweck, Zuordnen bucht Zahlung, Rechnung bezahlt', async () => {

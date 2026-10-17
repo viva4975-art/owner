@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { Sql, Tx } from '../db/client.js';
 import {
   type BillingCycle,
@@ -94,6 +94,14 @@ export function applyBillAddress(buyer: BuyerSnapshot, a: BillAddress | null | u
     postalCode: a.postalCode,
     city: a.city,
   };
+}
+
+/** Kurzer, fester Schlüssel einer Anschrift (gleiche Anschrift → gleiche Rechnung im Lauf). */
+export function billAddressKey(a: BillAddress): string {
+  const norm = [a.name, a.name2, a.contactName, a.street, a.postalCode, a.city]
+    .map((x) => (x ?? '').trim().toLowerCase())
+    .join('|');
+  return createHash('sha1').update(norm).digest('hex').slice(0, 12);
 }
 
 export function parseBillAddress(v: Record<string, unknown>): BillAddress {
@@ -432,6 +440,8 @@ export interface RunService {
   separate_invoice: boolean;
   /** Bestellnummer des Kunden für diese Leistung */
   order_reference?: string | null;
+  /** abweichende Rechnungsanschrift der Leistung → eigene Rechnung an diese Anschrift */
+  bill_address?: BillAddress | null;
 }
 
 interface RunGroup {
@@ -493,6 +503,7 @@ export async function runMonthly(
     site: RunSite | null; // Rechnung je Objekt bzw. eigene Rechnung
     group: RunGroup | null; // Rechnungseinstellungen
     combined: boolean; // Sammelrechnung der Gruppe
+    billAddress: BillAddress | null; // abweichende Anschrift der Leistung(en)
     items: { site: RunSite; service: RunService; line: DraftLineInput }[];
   }
   const units = new Map<string, Unit>();
@@ -513,19 +524,24 @@ export async function runMonthly(
       const group = gid ? groups.get(gid) : undefined;
       const useGroup = group?.active ? group : null;
       // Sammelrechnung nur bei Gruppen mit „combine“; sonst je Objekt (und je abweichender Gruppe) eine Rechnung
-      const combined = !sv.separate_invoice && !!useGroup?.combine;
+      const addrKey = sv.bill_address ? billAddressKey(sv.bill_address) : null;
+      const combined = !sv.separate_invoice && !addrKey && !!useGroup?.combine;
       const key = sv.separate_invoice
         ? `service:${sv.id}`
-        : combined
-          ? `group:${useGroup!.id}`
-          : useGroup && useGroup.id !== site.invoice_group_id
-            ? `${site.id}|${useGroup.id}`
-            : site.id;
+        : addrKey
+          ? `${site.id}|addr:${addrKey}`
+          : combined
+            ? `group:${useGroup!.id}`
+            : useGroup && useGroup.id !== site.invoice_group_id
+              ? `${site.id}|${useGroup.id}`
+              : site.id;
       const label = sv.separate_invoice
         ? `${site.name} – ${sv.description}`
-        : combined
-          ? `${useGroup!.name} (Sammelrechnung)`
-          : site.name;
+        : addrKey
+          ? `${site.name} – an ${sv.bill_address!.name}`
+          : combined
+            ? `${useGroup!.name} (Sammelrechnung)`
+            : site.name;
       const u = units.get(key) ?? {
         key,
         label,
@@ -533,6 +549,7 @@ export async function runMonthly(
         site: combined ? null : site,
         group: useGroup,
         combined,
+        billAddress: sv.bill_address ?? null,
         items: [],
       };
       u.items.push({ site, service: sv, line });
@@ -578,14 +595,15 @@ export async function runMonthly(
         const [row] = await tx`
           insert into app.invoices (id, kind, customer_id, site_id, invoice_group_id, period_start, period_end,
                                     invoice_format, buyer_reference, order_reference, intro_text, closing_text,
-                                    monthly_run_key, planned_issue_date, review_required, reverse_charge)
+                                    monthly_run_key, planned_issue_date, review_required, reverse_charge, bill_address)
           values (${id}, 'invoice', ${u.customerId}, ${u.site?.id ?? null}, ${u.group?.id ?? null}, ${start},
                   ${periodEnd}, ${billing.format},
                   ${billing.leitwegId},
                   ${svcRef || u.group?.order_reference || (u.site?.order_reference ?? null)},
                   ${u.group?.intro_text ?? null}, ${u.group?.closing_text ?? null},
                   ${`${u.key}:${month}`}, ${opts.invoiceDate ?? null},
-                  ${todo.some((i) => i.service.always_unfinished)}, ${rc})
+                  ${todo.some((i) => i.service.always_unfinished)}, ${rc},
+                  ${u.billAddress ? tx.json(u.billAddress as never) : null})
           on conflict (monthly_run_key) do nothing
           returning id`;
         if (!row) return { created: false };

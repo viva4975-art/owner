@@ -21,7 +21,7 @@ import {
 import { BusinessError } from '../services/errors.js';
 import { assigneeOptions } from '../services/crm.js';
 import { monthBounds, todayBerlin } from '../domain/invoice/calc.js';
-import { billingPreview, runMonthly } from '../services/invoices.js';
+import { billingPreview, parseBillAddress, runMonthly } from '../services/invoices.js';
 import {
   groupBillingInput,
   listInvoiceGroups,
@@ -50,6 +50,7 @@ import {
   suggestCustomerNo,
   suggestSiteNo,
   effectiveBilling,
+  buildBuyerSnapshot,
 } from '../services/masterdata.js';
 import { listDunnings } from '../services/dunning.js';
 import { listOffers } from '../services/offers.js';
@@ -1820,14 +1821,27 @@ export function registerMasterdataRoutes(ctx: Ctx) {
           copy = true;
         }
       }
-      const [types, groups, targets] = await Promise.all([
+      const [types, groups, targets, buyer] = await Promise.all([
         listServiceTypes(sql),
         listInvoiceGroups(sql, s.customer_id),
         sql<{ id: string; site_no: string; name: string }[]>`
           select id, site_no, name from app.sites where customer_id = ${s.customer_id} and active order by site_no`,
+        buildBuyerSnapshot(sql, s.customer_id, s.id).catch(() => null),
       ]);
       return (
         <ServiceForm
+          defaultAddress={
+            buyer
+              ? {
+                  name: buyer.name,
+                  name2: buyer.name2,
+                  contactName: buyer.contactName,
+                  street: buyer.street,
+                  postalCode: buyer.postalCode,
+                  city: buyer.city,
+                }
+              : undefined
+          }
           siteId={s.id}
           id={c.req.param('sid')}
           sv={sv}
@@ -1964,8 +1978,10 @@ export function registerMasterdataRoutes(ctx: Ctx) {
 
   app.post(`/objekte/:id{${UUID}}/leistungen/:sid{${UUID}}`, async (c) => {
     const id = c.req.param('id');
-    const parsed = serviceInput.safeParse(await c.req.parseBody());
+    const body = await c.req.parseBody();
+    const parsed = serviceInput.safeParse(body);
     if (!parsed.success) throw new BusinessError(parsed.error.issues.map((i) => i.message).join('\n'));
+    const billAddress = body.bill_custom === 'on' ? parseBillAddress(body as Record<string, unknown>) : null;
     if (parsed.data.labor_share == null) {
       // Pflichtfeld (Ahmed 08.10.): leer → Vorgabe der Leistungsart, sonst Fehler
       const [t] = parsed.data.service_type_id
@@ -1976,7 +1992,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
         throw new BusinessError('Lohnkostenanteil fehlt – bitte in % eintragen (z. B. 80)');
       parsed.data.labor_share = t.labor_share_bp;
     }
-    await saveService(sql, c.req.param('sid'), id, parsed.data, c.get('actor'));
+    await saveService(sql, c.req.param('sid'), id, parsed.data, c.get('actor'), billAddress);
     return back(c, `/objekte/${id}/leistungen`, { ok: 'Leistung gespeichert.' });
   });
 

@@ -3220,3 +3220,10 @@ Testadresse.
   Mitarbeitende → **Unlisted App Distribution** beantragen (developer.apple.com/support/unlisted/request), erst nach
   Zusage-Mail erneut einreichen; App ist dann nur über den direkten Link im App Store zu finden. Alternative Custom App
   über Apple Business Manager (D-U-N-S 343512805) nur sinnvoll für firmeneigene, verwaltete Geräte. Bis dahin Web-App.
+- 2026-10-17: **Andere Rechnungsanschrift je Leistung** (Ahmed: „zur Leistung auch andere Rechnungsanschrift mitteilen“): In der
+  Leistung (Abschnitt Abrechnung) Häkchen „Andere Rechnungsanschrift für diese Leistung“ (Name, Zusatz, Ansprechpartner,
+  Straße, PLZ, Ort; vorbelegt mit der Anschrift laut Objekt/Gruppe/Kunde; `site_services.bill_address`, Migration
+  `20261130000001`). Monatslauf und „Entwürfe aus verrichteten Leistungen“ legen dafür eine eigene Rechnung an mit der
+  Anschrift „nur für diese Rechnung“ (`invoices.bill_address`); Leistungen mit gleicher Anschrift am selben Objekt kommen
+  zusammen (`billAddressKey`). Format, E-Mail, Zahlungsziel, Leitweg-ID bleiben wie die Rechnungsgruppe – anderer
+  Empfänger mit eigenen Angaben → eigene Rechnungsgruppe. Test in `services-billing.db.test.ts`.

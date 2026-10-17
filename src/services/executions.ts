@@ -3,7 +3,7 @@ import type { Sql } from '../db/client.js';
 import { type BillingCycle, formatDateDe, nextDueDate, serviceDetail } from '../domain/invoice/calc.js';
 import type { Cents, Quantity, VatRate } from '../domain/money/money.js';
 import { BusinessError } from './errors.js';
-import { writeLines } from './invoices.js';
+import { type BillAddress, billAddressKey, writeLines } from './invoices.js';
 import { effectiveBilling } from './masterdata.js';
 
 /**
@@ -264,6 +264,7 @@ export async function draftsFromExecutions(
         site_group: string | null;
         sv_group: string | null;
         separate_invoice: boolean;
+        bill_address: BillAddress | null;
         group_active: boolean | null;
         group_combine: boolean | null;
         group_name: string | null;
@@ -278,7 +279,7 @@ export async function draftsFromExecutions(
              e.quantity_milli, e.unit_price_cents, v.description, v.unit_code, v.note, s.site_no,
              s.name as site_name, s.street, s.postal_code, s.city, c.id as customer_id, c.customer_no,
              c.name as customer_name, e.created_by, s.invoice_group_id as site_group, v.invoice_group_id as sv_group,
-             v.separate_invoice, g.active as group_active, g.combine as group_combine, g.name as group_name,
+             v.separate_invoice, v.bill_address, g.active as group_active, g.combine as group_combine, g.name as group_name,
              coalesce(g.order_reference, s.order_reference) as order_reference, v.order_reference as sv_order_reference,
              g.intro_text, g.closing_text,
              c.reverse_charge
@@ -295,14 +296,17 @@ export async function draftsFromExecutions(
     for (const r of rows) {
       const gid = r.sv_group ?? r.site_group;
       const useGroup = r.group_active ? gid : null;
-      const combined = !r.separate_invoice && !!useGroup && !!r.group_combine;
+      const addrKey = r.bill_address ? billAddressKey(r.bill_address) : null;
+      const combined = !r.separate_invoice && !addrKey && !!useGroup && !!r.group_combine;
       const key = r.separate_invoice
         ? `service:${r.service_id}:${r.id}`
-        : combined
-          ? `group:${useGroup}`
-          : useGroup && useGroup !== r.site_group
-            ? `${r.site_id}|${useGroup}`
-            : r.site_id;
+        : addrKey
+          ? `${r.site_id}|addr:${addrKey}`
+          : combined
+            ? `group:${useGroup}`
+            : useGroup && useGroup !== r.site_group
+              ? `${r.site_id}|${useGroup}`
+              : r.site_id;
       units.set(key, [...(units.get(key) ?? []), r]);
     }
     for (const [key, items] of units) {
@@ -324,10 +328,11 @@ export async function draftsFromExecutions(
       await tx`
         insert into app.invoices (id, kind, customer_id, site_id, invoice_group_id, period_start, period_end,
                                   invoice_format, buyer_reference, order_reference, intro_text, closing_text,
-                                  planned_issue_date, reverse_charge)
+                                  planned_issue_date, reverse_charge, bill_address)
         values (${id}, 'invoice', ${first.customer_id}, ${combined ? null : first.site_id}, ${groupId}, ${start}, ${end},
                 ${billing.format}, ${billing.leitwegId}, ${svcRef ?? first.order_reference}, ${first.intro_text},
-                ${first.closing_text}, ${invoiceDate}, ${first.reverse_charge})`;
+                ${first.closing_text}, ${invoiceDate}, ${first.reverse_charge},
+                ${first.bill_address ? tx.json(first.bill_address as never) : null})`;
       await writeLines(
         tx,
         id,

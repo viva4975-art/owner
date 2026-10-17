@@ -383,6 +383,15 @@ export interface SiteService {
   invoice_group_id: string | null;
   separate_invoice: boolean;
   order_reference: string | null;
+  /** abweichende Rechnungsanschrift nur für diese Leistung (eigene Rechnung) */
+  bill_address: {
+    name: string;
+    name2: string | null;
+    contactName: string | null;
+    street: string;
+    postalCode: string;
+    city: string;
+  } | null;
   version: number;
 }
 
@@ -524,6 +533,7 @@ export async function saveService(
   siteId: string,
   input: z.infer<typeof serviceInput>,
   actor: string,
+  billAddress: SiteService['bill_address'] = null,
 ) {
   const [site] = await sql<{ site_no: string }[]>`select site_no from app.sites where id = ${siteId}`;
   // Stunden sind nie Monatspauschale → bei Einheit Stunde immer „je Ausführung“
@@ -551,6 +561,7 @@ export async function saveService(
     separate_invoice: input.invoice_target === 'separat',
     invoice_group_id:
       input.invoice_target && /^[0-9a-f-]{36}$/.test(input.invoice_target) ? input.invoice_target : null,
+    bill_address: billAddress ? sql.json(billAddress as never) : null,
   };
   await sql.begin(async (tx) => {
     const [cur] = await tx<{ version: number; site_id: string }[]>`

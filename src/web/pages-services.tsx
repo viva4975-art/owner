@@ -20,7 +20,8 @@ import { TypeSelect } from './pages-invoices.js';
  */
 
 const target = (sv: SiteServiceRow) =>
-  sv.separate_invoice ? 'eigene Rechnung' : sv.group_name ? `Gruppe: ${sv.group_name}` : 'wie Objekt';
+  (sv.separate_invoice ? 'eigene Rechnung' : sv.group_name ? `Gruppe: ${sv.group_name}` : 'wie Objekt') +
+  (sv.bill_address ? ` · Rechnung an ${sv.bill_address.name}` : '');
 
 const lineTotal = (sv: SiteServiceRow) => (sv.quantity_milli * sv.unit_price_cents + 500n) / 1000n;
 
@@ -226,7 +227,9 @@ export const ServiceForm: FC<{
   copy?: boolean;
   /** Objekte des Kunden für „Kopieren in …“ */
   copyTargets?: { id: string; site_no: string; name: string }[];
-}> = ({ siteId, id, sv: src, types, groups, today, siteNo, copy, copyTargets }) => {
+  /** Vorbelegung der abweichenden Rechnungsanschrift (Anschrift laut Objekt/Gruppe/Kunde) */
+  defaultAddress?: NonNullable<SiteService['bill_address']> | undefined;
+}> = ({ siteId, id, sv: src, types, groups, today, siteNo, copy, copyTargets, defaultAddress }) => {
   const sv = src && copy ? { ...src, version: null, cost_center: siteNo ?? src.cost_center } : src;
   const existing = !!src && !copy;
   const tgt = sv?.separate_invoice ? 'separat' : (sv?.invoice_group_id ?? 'objekt');
@@ -349,6 +352,47 @@ export const ServiceForm: FC<{
                   </option>
                 ))}
             </select>
+          </div>
+          <div style="grid-column:1/-1">
+            <div class="chk">
+              <input
+                type="checkbox"
+                id="bill_custom"
+                name="bill_custom"
+                data-reveal="#bill-fields"
+                checked={!!sv?.bill_address}
+              />
+              <label for="bill_custom">
+                Andere Rechnungsanschrift für diese Leistung (z. B. andere Gesellschaft oder Hausverwaltung)
+              </label>
+            </div>
+            <div class="grid" id="bill-fields" hidden={!sv?.bill_address} style="margin-top:6px">
+              {(
+                [
+                  ['bill_name', 'Name / Firma *', 'name'],
+                  ['bill_name2', 'Zusatz', 'name2'],
+                  ['bill_contact', 'Ansprechpartner', 'contactName'],
+                  ['bill_street', 'Straße *', 'street'],
+                  ['bill_postal_code', 'PLZ *', 'postalCode'],
+                  ['bill_city', 'Ort *', 'city'],
+                ] as const
+              ).map(([n, label, k]) => (
+                <div>
+                  <label for={n}>{label}</label>
+                  <input
+                    id={n}
+                    name={n}
+                    value={(sv?.bill_address?.[k] ?? defaultAddress?.[k] ?? '') as string}
+                  />
+                </div>
+              ))}
+              <p class="small mut" style="grid-column:1/-1;margin:0">
+                Die Leistung kommt dann auf eine eigene Rechnung an diese Anschrift (Leistungen mit gleicher
+                Anschrift am selben Objekt zusammen). Format, E-Mail, Zahlungsziel und Leitweg-ID bleiben wie
+                in der Rechnungsgruppe – für einen anderen Empfänger mit eigenen Angaben besser eine eigene
+                Rechnungsgruppe anlegen.
+              </p>
+            </div>
           </div>
           <div>
             <label for="order_reference">Bestellnummer des Kunden</label>

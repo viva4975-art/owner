@@ -126,6 +126,49 @@ describe.skipIf(!available)('Leistungen wie Fortytools im Abrechnungslauf', () =
     expect(all.created.map((c) => c.siteName)).not.toContain('Grundschule Musterweg');
   });
 
+  it('andere Rechnungsanschrift je Leistung: eigene Rechnung an diese Anschrift, gleiche Anschrift zusammen', async () => {
+    const addr = {
+      name: 'Hausverwaltung Süd GmbH',
+      name2: null,
+      contactName: null,
+      street: 'Lindwurmstr. 1',
+      postalCode: '80337',
+      city: 'München',
+    };
+    const mk = async (description: string) => {
+      const id = randomUUID();
+      await saveService(
+        sql,
+        id,
+        DEMO.siteOffice,
+        serviceInput.parse({
+          description,
+          unit_code: 'LS',
+          quantity: '1',
+          unit_price: '100,00',
+          vat_rate_bp: '1900',
+          valid_from: '2026-01-01',
+          billing_cycle: 'monatlich',
+          labor_share: '80',
+          version: '',
+        }),
+        'test',
+        addr,
+      );
+    };
+    await mk('Treppenhaus A');
+    await mk('Treppenhaus B');
+    const r = await runMonthly(sql, '2026-11', 't', { siteIds: [DEMO.siteOffice] });
+    const own = r.created.find((c) => c.siteName.includes('an Hausverwaltung Süd'));
+    expect(own).toBeTruthy();
+    const inv = (await getInvoice(sql, own!.invoiceId))!;
+    expect(inv.lines.map((l) => l.description).sort()).toEqual(['Treppenhaus A', 'Treppenhaus B']);
+    expect(inv.invoice.bill_address).toMatchObject({ name: 'Hausverwaltung Süd GmbH', postalCode: '80337' });
+    // die übrigen Leistungen des Objekts gehen weiter auf die normale Rechnung ohne eigene Anschrift
+    const rest = r.created.filter((c) => c !== own);
+    for (const x of rest) expect((await getInvoice(sql, x.invoiceId))!.invoice.bill_address).toBeNull();
+  });
+
   it('„immer unfertig“: Ausstellen erst nach Prüfung, mit Rechnungsdatum aus dem Lauf', async () => {
     const today = todayBerlin();
     await svc(DEMO.siteOffice, {

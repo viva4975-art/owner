@@ -3322,3 +3322,23 @@ Testadresse.
   `20261201000002`); „ohne Unterschrift“ abgeschlossene Scheine werden dafür wieder geöffnet (alte Fassung bleibt im
   Archiv). In der Mitarbeiter-App steht der Schein ganz oben auf der Startseite (einer = großer Knopf, mehrere = Liste zum
   Auswählen), dazu Push-Nachricht. Ohne Zuweisung wie bisher alle eingesetzten Mitarbeitenden.
+- 2026-10-18: Ahmed (5 Punkte):
+  - **Arbeitsscheine ohne Unterschrift-Pflicht** (viele auf Papier unterschrieben): „erledigt“ = abgeschlossen (Unterschrift
+    oder ohne) und als erledigt markiert bzw. abgerechnet; Schild „Unterschrift fehlt“ und Warnhinweise entfernt. Sammel-
+    „erledigt“ schließt Entwürfe vorher mit Grund „auf Papier unterschrieben / erledigt“ ab. Zuweisen zum Unterschreiben in
+    der App bleibt.
+  - **NU-Bestellungen: Gesamtbetrag** (`subcontractTotal`): Monatspauschale = Preis/Monat; je Stunde mit max. Std./Monat =
+    Satz × Stunden (darunter „25,00 € / Std. × 40 Std.“); sonst Einheitspreis mit „Gesamt nach erfassten Stunden“.
+    Bestellliste und Bestellungen beim Nachunternehmer.
+  - **Alte NU-Bestellungen gelten als unterschrieben** (Migration `20261201000003`, `subcontracts.signed_external =
+    'unterschrieben (alte App)'`): alle erteilten/beendeten ohne Nummer im Format BE-JJJJ-NNNN (Datenkopie: 118 von 122).
+    Neue Nummern bleiben unverändert. Erledigt-Markieren ist damit möglich, kein „unterschriebener Auftrag fehlt“ mehr;
+    der Import aus der alten App setzt das künftig selbst.
+  - **Fotos mit Stempel** (`src/services/photo-stamp.ts`, neue Abhängigkeit `sharp` 0.35.4): unten Balken mit hellem Logo,
+    Objekt-Nr. · Name · Adresse, Datum/Uhrzeit (Serverzeit), Name, Standort (am Objekt mit Entfernung / nicht am Objekt /
+    ungenau / kein Standort + Koordinaten). Gestempelt wird auf dem Server (nicht am Handy veränderbar). Das Original
+    bleibt write-once als eigene Datei ohne Verknüpfung, Stand in `app.photo_stamps` (Migration `20261202000001`,
+    unveränderbar). Gilt für **QM-App-Fotos** (Audit) und die neue Seite **Verwaltung → Foto** (`/qm/foto`): Objekt
+    optional (Objektleitung nur eigene), bis 10 Fotos, Bemerkung; mit Objekt → Objekt → Dokumente → „Fotos“, ohne Objekt →
+    Dokumenteneingang; „Zuletzt aufgenommen“. **Nicht** bei Arbeitsscheinen und Tickets (Ahmed).
+    **Datenschutz:** Standort nur beim Fotografieren, Mitarbeitende informieren (Art. 13 DSGVO).

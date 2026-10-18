@@ -43,6 +43,7 @@ export const SITE_DOC_CATEGORIES: { name: string; required: boolean; hint: strin
   },
   { name: 'Revierplan', required: true, hint: 'Grundrisse mit Revieren der Reinigungskräfte' },
   { name: 'Vertrag', required: false, hint: 'Reinigungsvertrag, Nachträge' },
+  { name: 'Fotos', required: false, hint: 'Fotos mit Stempel aus der App (Verwaltung → Foto)' },
   { name: 'Sonstiges', required: false, hint: 'Hausordnung, Pläne, Fotos …' },
 ];
 

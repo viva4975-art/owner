@@ -1,4 +1,7 @@
+import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
+import type { Sql } from '../db/client.js';
+import { type LinkTarget, type UploadConfig, storeFile } from './uploads.js';
 import sharp, { type OverlayOptions } from 'sharp';
 
 /*
@@ -18,7 +21,7 @@ export interface StampInfo {
   /** Aufnahmezeit (Serverzeit) */
   at: Date;
   by: string;
-  /** Bewertung des Standorts: am_objekt / nicht_am_objekt / ungenau / kein_standort / ohne Objekt null */
+  /** Bewertung des Standorts (GeoStatus), ohne Objekt null */
   geo: string | null;
   distanceM: number | null;
   lat: number | null;
@@ -42,13 +45,15 @@ export function stampLines(i: StampInfo): [string, string, string] {
   const geo =
     i.geo === 'am_objekt'
       ? `am Objekt${i.distanceM != null ? ` (${dist(i.distanceM)})` : ''}`
-      : i.geo === 'nicht_am_objekt'
+      : i.geo === 'entfernt'
         ? `nicht am Objekt${i.distanceM != null ? ` (${dist(i.distanceM)} entfernt)` : ''}`
         : i.geo === 'ungenau'
           ? 'Standort ungenau'
-          : coord
-            ? ''
-            : 'kein Standort freigegeben';
+          : i.geo === 'objekt_ohne_standort'
+            ? 'Objekt ohne hinterlegten Standort'
+            : coord
+              ? ''
+              : 'kein Standort freigegeben';
   return [
     [i.site ?? 'ohne Objekt', i.address].filter(Boolean).join(' · '),
     `${when.replace(',', ' ·')} Uhr · ${i.by}`,
@@ -75,12 +80,12 @@ export async function stampPhoto(input: Uint8Array, info: StampInfo): Promise<Ui
   const textW = W - 2 * pad;
   const fs = Math.max(11, Math.round(band * 0.15));
   const [l1, l2, l3] = stampLines(info).map(esc) as [string, string, string];
-  const text = async (markup: string, font: string, size: number) =>
+  const text = async (markup: string, font: string, size: number, family = 'Inter') =>
     sharp({
       text: {
         text: `<span foreground="white" size="${Math.round(size * 1024)}">${markup}</span>`,
         fontfile: font,
-        font: 'Inter',
+        font: family,
         width: textW,
         rgba: true,
         dpi: 72,
@@ -89,7 +94,7 @@ export async function stampPhoto(input: Uint8Array, info: StampInfo): Promise<Ui
     })
       .png()
       .toBuffer({ resolveWithObject: true });
-  const t1 = await text(l1, FONT_BOLD, fs * 1.05);
+  const t1 = await text(l1, FONT_BOLD, fs * 1.05, 'Inter SemiBold');
   const t23 = await text(`${l2}\n${l3}`, FONT, fs * 0.9);
   // Balken so hoch wie nötig (lange Objektnamen brechen um)
   const need =
@@ -116,4 +121,76 @@ export async function stampPhoto(input: Uint8Array, info: StampInfo): Promise<Ui
     .jpeg({ quality: 85, mozjpeg: true })
     .toBuffer();
   return new Uint8Array(out);
+}
+
+/**
+ * Foto stempeln und ablegen: gestempeltes JPEG mit Verknüpfung (`link`), Original write-once ohne Verknüpfung,
+ * Stand in `app.photo_stamps`. IDs fest je Formular-Foto → doppelt absenden legt nichts doppelt an.
+ */
+export async function saveStampedPhoto(
+  sql: Sql,
+  cfg: UploadConfig,
+  p: {
+    id: string;
+    data: Uint8Array;
+    name: string;
+    type: string;
+    link: LinkTarget;
+    category: string | null;
+    source: 'qm' | 'foto';
+    siteId: string | null;
+    note?: string | null;
+    info: StampInfo;
+    accuracy: number | null;
+    actor: string;
+  },
+): Promise<string> {
+  const [done] = await sql`select 1 from app.photo_stamps where file_id = ${p.id}`;
+  if (done) return p.id;
+  const stamped = await stampPhoto(p.data, p.info);
+  const origId = uuidFrom(`${p.id}:original`);
+  await storeFile(
+    sql,
+    cfg,
+    {
+      id: origId,
+      name: `original_${p.name || 'foto.jpg'}`,
+      type: p.type,
+      data: p.data,
+      link: null,
+      category: null,
+    },
+    p.actor,
+  );
+  const base = (p.name || 'foto').replace(/\.[a-z0-9]+$/i, '');
+  await storeFile(
+    sql,
+    cfg,
+    { id: p.id, name: `${base}.jpg`, type: 'image/jpeg', data: stamped, link: p.link, category: p.category },
+    p.actor,
+  );
+  const i = p.info;
+  await sql`
+    insert into app.photo_stamps (file_id, original_file_id, site_id, source, taken_at, geo, geo_m, geo_acc_m, lat, lng,
+                                  note, created_by)
+    values (${p.id}, ${origId}, ${p.siteId}, ${p.source}, ${i.at}, ${i.geo}, ${i.distanceM}, ${p.accuracy},
+            ${i.lat != null ? i.lat.toFixed(5) : null}, ${i.lng != null ? i.lng.toFixed(5) : null},
+            ${p.note ?? null}, ${p.actor})
+    on conflict (file_id) do nothing`;
+  return p.id;
+}
+
+/** Feste UUID aus einem Text (für idempotente IDs). */
+export function uuidFrom(s: string): string {
+  const h = createHash('md5').update(s).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+
+export function siteAddress(s: {
+  street: string | null;
+  postal_code: string | null;
+  city: string | null;
+}): string | null {
+  const town = [s.postal_code, s.city].filter(Boolean).join(' ');
+  return [s.street, town].filter(Boolean).join(', ') || null;
 }

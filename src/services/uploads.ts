@@ -326,7 +326,14 @@ export async function unlinkFile(sql: Sql, link: LinkTarget, fileId: string, act
 export async function storeFile(
   sql: Sql,
   cfg: UploadConfig,
-  p: { id: string; name: string; type: string; data: Uint8Array; link: LinkTarget; category: string | null },
+  p: {
+    id: string;
+    name: string;
+    type: string;
+    data: Uint8Array;
+    link: LinkTarget | null;
+    category: string | null;
+  },
   actor: string,
 ): Promise<FileRow> {
   const [exists] = await sql<FileRow[]>`select * from app.files where id = ${p.id}`;
@@ -351,8 +358,9 @@ export async function storeFile(
       values (${p.id}, ${name}, ${p.type}, ${p.data.byteLength}, ${CHUNK_SIZE}, 1, ${actor},
               'complete', ${sha}, ${rel}, now())
       returning *`;
-    await tx`insert into app.file_links (file_id, entity_type, entity_id, category, linked_by)
-             values (${p.id}, ${p.link.type}, ${p.link.id}, ${p.category}, ${actor}) on conflict do nothing`;
+    if (p.link)
+      await tx`insert into app.file_links (file_id, entity_type, entity_id, category, linked_by)
+               values (${p.id}, ${p.link.type}, ${p.link.id}, ${p.category}, ${actor}) on conflict do nothing`;
     return f!;
   });
 }

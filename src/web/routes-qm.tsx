@@ -57,7 +57,8 @@ import {
 import { WEIGHT_LABEL, deleteQualityCheck, qmSettings, saveQmSettings } from '../services/qm-report.js';
 import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { str } from './forms.js';
-import { storeFile } from '../services/uploads.js';
+import { saveStampedPhoto, siteAddress, uuidFrom } from '../services/photo-stamp.js';
+import { INBOX_ID } from '../services/documents.js';
 import { createQualityCheck } from '../services/facility.js';
 import { APP_TAB_CSS, SCROLL_JS, AppSwitch, AppTabbar, PageHead, dateDe, anz } from './layout.js';
 import { Icon } from './icons.js';
@@ -525,6 +526,7 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
         <Section
           title="Objekte & Dokumente"
           items={[
+            ['/qm/foto', 'cam', 'Foto', 'mit Stempel, Objekt optional'],
             ['/qm/objekte', 'building', 'Objekte', 'Schlüssel, Ordner, Raumbuch'],
             ...(canAccess(c.get('user').role, '/personal/dokumente')
               ? ([['/qm/unterweisungen', 'doc', 'Unterweisungen', 'verteilen, Unterschriften']] as const)
@@ -1107,8 +1109,20 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
       lat != null && lng != null && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
         ? { lat, lng, acc: acc ?? 9999 }
         : null;
-    const [sg] = await sql<{ lat: string | null; lng: string | null; radius: number }[]>`
-      select geo_lat::text as lat, geo_lng::text as lng, geo_radius_m as radius from app.sites where id = ${qc.site_id}`;
+    const [sg] = await sql<
+      {
+        lat: string | null;
+        lng: string | null;
+        radius: number;
+        site_no: string;
+        name: string;
+        street: string | null;
+        postal_code: string | null;
+        city: string | null;
+      }[]
+    >`
+      select geo_lat::text as lat, geo_lng::text as lng, geo_radius_m as radius, site_no, name, street, postal_code, city
+        from app.sites where id = ${qc.site_id}`;
     const judged = judgePosition(
       {
         lat: sg?.lat != null ? Number(sg.lat) : null,
@@ -1133,19 +1147,29 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
       for (const f of files) {
         if (!/^image\//.test(f.type)) throw new BusinessError('Nur Fotos (Bilder) hochladen');
         const fid = randomUUID();
-        await storeFile(
-          sql,
-          cfg,
-          {
-            id: fid,
-            name: f.name || 'foto.jpg',
-            type: f.type,
-            data: new Uint8Array(await f.arrayBuffer()),
-            link: { type: 'quality_check', id: qc.id },
-            category: `Audit ${room.name} – ${it.name}`.slice(0, 120),
+        // Stempel mit Logo, Objekt, Serverzeit, Standort und Name (Ahmed 18.10.); Original write-once daneben
+        await saveStampedPhoto(sql, cfg, {
+          id: fid,
+          data: new Uint8Array(await f.arrayBuffer()),
+          name: f.name || 'foto.jpg',
+          type: f.type,
+          link: { type: 'quality_check', id: qc.id },
+          category: `Audit ${room.name} – ${it.name}`.slice(0, 120),
+          source: 'qm',
+          siteId: qc.site_id,
+          info: {
+            site: sg ? `${sg.site_no} · ${sg.name}` : null,
+            address: sg ? siteAddress(sg) : null,
+            at: new Date(),
+            by: fullName(c.get('user')),
+            geo: judged.status,
+            distanceM: judged.distance,
+            lat: pos?.lat ?? null,
+            lng: pos?.lng ?? null,
           },
-          c.get('actor'),
-        );
+          accuracy: judged.accuracy,
+          actor: c.get('actor'),
+        });
         await sql`insert into app.qm_photo_tags (file_id, check_id, geo, geo_m, geo_acc_m, lat, lng, created_by)
                   values (${fid}, ${qc.id}, ${judged.status}, ${judged.distance}, ${judged.accuracy},
                           ${pos ? pos.lat.toFixed(5) : null}, ${pos ? pos.lng.toFixed(5) : null}, ${c.get('actor')})
@@ -1165,6 +1189,176 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
     // danach in die Raumübersicht (Ahmed 15.10.) bzw. direkt zum Abschluss
     if (str(b, 'beenden') === '1') return back(c, `/qualitaet/${qc.id}/abschliessen`, { ok: msg });
     return back(c, `/qm/audit/${qc.id}`, { ok: msg });
+  });
+
+  // ------------------------------------------------------------ Foto mit Stempel (Ahmed 18.10.)
+  // Unabhängig vom heutigen Einsatz: Objekt wählbar, aber nicht nötig. Ohne Objekt → Dokumenteneingang.
+  app.get('/qm/foto', async (c) => {
+    const sites = await qmSites(sql, c.get('sites'));
+    const pre = c.req.query('objekt') ?? '';
+    const scope = c.get('sites');
+    const recent = await sql<
+      {
+        file_id: string;
+        taken_at: Date;
+        site_id: string | null;
+        site_no: string | null;
+        site_name: string | null;
+      }[]
+    >`
+      select p.file_id, p.taken_at, p.site_id, s.site_no, s.name as site_name
+        from app.photo_stamps p left join app.sites s on s.id = p.site_id
+       where p.source = 'foto' and p.created_by = ${c.get('actor')}
+         and ${scope === null ? sql`true` : sql`(p.site_id is null or p.site_id in ${sql(scope.length ? scope : ['00000000-0000-0000-0000-000000000000'])})`}
+       order by p.taken_at desc limit 12`;
+    return render(
+      c,
+      'Foto',
+      <>
+        <div class="qm-top">
+          <a href="/qm" aria-label="zurück">
+            <Ic n="back" />
+          </a>
+          <h1>Foto</h1>
+          <span style="width:36px" />
+        </div>
+        <form method="post" action="/qm/foto" enctype="multipart/form-data" class="card" id="fotof">
+          <input type="hidden" name="form_id" value={randomUUID()} />
+          <input type="hidden" name="geo_lat" />
+          <input type="hidden" name="geo_lng" />
+          <input type="hidden" name="geo_acc" />
+          <label for="fobj">Objekt (optional)</label>
+          <select id="fobj" name="site_id">
+            <option value="">– ohne Objekt (Dokumenteneingang) –</option>
+            <SiteOptions sites={sites} selected={pre} />
+          </select>
+          <label for="fnote">Bemerkung (optional)</label>
+          <input id="fnote" name="note" maxLength={300} placeholder="z. B. Schaden Eingangstür" />
+          <div class="qm-photos" data-photos style="margin-top:14px">
+            <label title="Foto aufnehmen">
+              <Ic n="cam" />
+              <input type="file" name="foto" accept="image/*" capture="environment" />
+            </label>
+            <small>Foto aufnehmen (bis 10)</small>
+          </div>
+          <p class="small mut" id="geo-hint">
+            Jedes Foto bekommt einen Stempel: Logo, Objekt, Datum und Uhrzeit, Standort und dein Name.
+          </p>
+          <button class="big go" id="fsave" disabled>
+            Fotos speichern
+          </button>
+        </form>
+        {recent.length > 0 && (
+          <section class="card">
+            <h2 style="margin-top:0">Zuletzt aufgenommen</h2>
+            <div class="foto-grid">
+              {recent.map((r) => (
+                <a href={`/dateien/${r.file_id}`} target="_blank">
+                  <img src={`/dateien/${r.file_id}`} alt="Foto" loading="lazy" />
+                  <span>
+                    {dateDe(r.taken_at.toISOString().slice(0, 10))} ·{' '}
+                    {r.site_no ? `${r.site_no} ${r.site_name}` : 'Dokumenteneingang'}
+                  </span>
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
+        <style>{`.foto-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}.foto-grid a{display:block;color:inherit;text-decoration:none;font-size:12.5px}.foto-grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;border:1px solid #eadfe3;display:block;margin-bottom:4px}`}</style>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var f=document.getElementById('fotof');if(!f)return;var btn=document.getElementById('fsave');
+function geo(){if(!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(function(p){f.geo_lat.value=p.coords.latitude.toFixed(5);f.geo_lng.value=p.coords.longitude.toFixed(5);f.geo_acc.value=Math.round(p.coords.accuracy)},function(){var h=document.getElementById('geo-hint');if(h)h.textContent='Standort nicht freigegeben – Fotos werden ohne Standort gestempelt.'},{enableHighAccuracy:true,timeout:15000,maximumAge:60000})}
+geo();
+function bind(i){i.addEventListener('change',function(){var box=i.closest('[data-photos]');if(!i.files.length)return;var n=box.querySelectorAll('input[type=file]').length;var lab=i.parentNode;var keep=document.createElement('span');keep.className='qm-taken';keep.textContent='\\u2713 Foto '+n;i.style.display='none';keep.appendChild(i);box.insertBefore(keep,lab);btn.disabled=false;btn.textContent=n===1?'1 Foto speichern':n+' Fotos speichern';geo();if(n>=10){lab.style.display='none';return}var ni=document.createElement('input');ni.type='file';ni.name=i.name;ni.accept='image/*';ni.setAttribute('capture','environment');lab.appendChild(ni);bind(ni)})}
+f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
+          }}
+        />
+      </>,
+    );
+  });
+
+  app.post('/qm/foto', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const formId = str(b, 'form_id') ?? '';
+    if (!/^[0-9a-f-]{36}$/.test(formId)) throw new BusinessError('Formular ungültig – bitte neu laden');
+    const siteId = str(b, 'site_id');
+    if (siteId && !/^[0-9a-f-]{36}$/.test(siteId)) throw new BusinessError('Objekt ungültig');
+    if (siteId) assertSite(c, siteId);
+    const files = ([] as unknown[])
+      .concat(b.foto ?? [])
+      .filter((f): f is File => f instanceof File && f.size > 0);
+    if (!files.length) return back(c, '/qm/foto', { fehler: 'Bitte ein Foto aufnehmen.' });
+    if (files.length > 10) throw new BusinessError('Höchstens 10 Fotos auf einmal');
+    const num = (k: string) => {
+      const v = Number(str(b, k));
+      return str(b, k) && Number.isFinite(v) ? v : null;
+    };
+    const [lat, lng, acc] = [num('geo_lat'), num('geo_lng'), num('geo_acc')];
+    const pos =
+      lat != null && lng != null && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+        ? { lat, lng, acc: acc ?? 9999 }
+        : null;
+    const [sg] = siteId
+      ? await sql<
+          {
+            lat: string | null;
+            lng: string | null;
+            radius: number;
+            site_no: string;
+            name: string;
+            street: string | null;
+            postal_code: string | null;
+            city: string | null;
+          }[]
+        >`select geo_lat::text as lat, geo_lng::text as lng, geo_radius_m as radius, site_no, name, street,
+                 postal_code, city from app.sites where id = ${siteId}`
+      : [];
+    if (siteId && !sg) throw new BusinessError('Objekt nicht gefunden');
+    const judged = sg
+      ? judgePosition(
+          {
+            lat: sg.lat != null ? Number(sg.lat) : null,
+            lng: sg.lng != null ? Number(sg.lng) : null,
+            radius: sg.radius,
+          },
+          pos,
+        )
+      : { status: null, distance: null, accuracy: pos ? Math.round(pos.acc) : null };
+    const cfg = { dir: deps.env.FILES_DIR, maxBytes: deps.env.UPLOAD_MAX_BYTES };
+    const note = str(b, 'note')?.slice(0, 300) ?? null;
+    let i = 0;
+    for (const f of files) {
+      if (!/^image\//.test(f.type)) throw new BusinessError('Nur Fotos (Bilder) hochladen');
+      if (f.size > cfg.maxBytes) throw new BusinessError('Foto zu groß');
+      i++;
+      await saveStampedPhoto(sql, cfg, {
+        id: uuidFrom(`foto:${formId}:${i}`),
+        data: new Uint8Array(await f.arrayBuffer()),
+        name: f.name || `foto_${i}.jpg`,
+        type: f.type,
+        link: sg ? { type: 'site', id: siteId! } : { type: 'inbox', id: INBOX_ID },
+        category: sg ? 'Fotos' : 'Foto (App)',
+        source: 'foto',
+        siteId: sg ? siteId : null,
+        note,
+        info: {
+          site: sg ? `${sg.site_no} · ${sg.name}` : null,
+          address: sg ? siteAddress(sg) : null,
+          at: new Date(),
+          by: fullName(c.get('user')),
+          geo: judged.status,
+          distanceM: judged.distance,
+          lat: pos?.lat ?? null,
+          lng: pos?.lng ?? null,
+        },
+        accuracy: judged.accuracy,
+        actor: c.get('actor'),
+      });
+    }
+    return back(c, `/qm/foto${siteId ? `?objekt=${siteId}` : ''}`, {
+      ok: `${anz(files.length, 'Foto', 'Fotos')} gespeichert${sg ? ` (Objekt → Dokumente → Fotos)` : ' (Dokumenteneingang)'}.`,
+    });
   });
 
   // ------------------------------------------------------------ Tickets

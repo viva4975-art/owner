@@ -1,7 +1,6 @@
 import { registerPayslipRoutes } from './routes-payslips.js';
 import { registerLetterRoutes } from './routes-letters.js';
 import { registerTimeAccountRoutes } from './routes-time-account.js';
-import { registerMonthCloseRoutes } from './routes-month-close.js';
 import { registerReminderRoutes } from './routes-reminders.js';
 import { registerPriceAdjustmentRoutes } from './routes-price-adjustment.js';
 import { fileURLToPath } from 'node:url';
@@ -419,6 +418,7 @@ export function createApp(deps: Deps) {
             {...(u ? { user: fullName(u), role: u.role } : {})}
             app={c.req.query('pc') !== '1' && getCookie(c, APP_COOKIE) === '1'}
             noTabs={/^\/(qualitaet|qm\/audit|arbeitsscheine)(\/|$)/.test(c.req.path)}
+            path={c.req.path}
             menuTop={c.get('menuTop') ?? false}
             flash={{ ok: c.req.query('ok'), err: c.req.query('fehler') }}
           >
@@ -582,7 +582,8 @@ export function createApp(deps: Deps) {
   registerCostCenterRoutes(ctx);
   registerPriceAdjustmentRoutes(ctx);
   registerReminderRoutes(ctx);
-  registerMonthCloseRoutes(ctx);
+  // Monatsabschluss entfernt (Ahmed 18.10.); alte Lesezeichen → Startseite
+  app.get('/monatsabschluss', (c) => c.redirect('/', 302));
   registerTimeAccountRoutes(ctx);
   registerLetterRoutes(ctx);
   registerPayslipRoutes(ctx);

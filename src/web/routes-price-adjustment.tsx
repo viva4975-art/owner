@@ -77,7 +77,7 @@ export function registerPriceAdjustmentRoutes(ctx: Ctx) {
     return page(
       c,
       'Preisanpassung',
-      'rechnungen',
+      'kunden',
       <>
         <PageHead title="Preisanpassung" crumbs={[['Rechnungen', '/rechnungen']]} />
         <div class="flash warn">

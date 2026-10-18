@@ -1081,8 +1081,21 @@ export const SiteForm: FC<{
       <Field name="street" label="Straße" value={s.street} />
       <Field name="postal_code" label="PLZ" value={s.postal_code} />
       <Field name="city" label="Ort" value={s.city} />
-      <Field name="order_reference" label="Bestellnummer des Kunden" value={s.order_reference} />
-      <Field name="contract_reference" label="Vertragsnummer" value={s.contract_reference} />
+      {/* Bestellnummer gehört an die Rechnungsgruppe bzw. Leistung (Ahmed 18.10.) – nur alte Werte zum Leeren zeigen */}
+      {s.order_reference && (
+        <Field
+          name="order_reference"
+          label="Bestellnummer (alt – bitte an Rechnungsgruppe/Leistung pflegen und hier leeren)"
+          value={s.order_reference}
+        />
+      )}
+      {s.contract_reference && (
+        <Field
+          name="contract_reference"
+          label="Vertragsnummer (alt – leeren entfernt sie)"
+          value={s.contract_reference}
+        />
+      )}
     </div>
     <div class="actions">
       <button class="btn">Speichern</button>

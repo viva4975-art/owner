@@ -1474,6 +1474,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Objekte', href: '/objekte' },
       { label: 'Aufgaben', href: '/aufgaben' },
       { label: 'Akquise', href: '/akquise', sep: true },
+      { label: 'Preisanpassung', href: '/preisanpassung' },
     ],
   },
   // ein Menüpunkt: Übersicht mit „Angebot anlegen“ (dort auch Ausschreibung vormerken); Fristen auf der Startseite
@@ -1484,11 +1485,8 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     items: [
       { label: 'Entwürfe / Vorfaktura', href: '/rechnungen/entwuerfe' },
       { label: 'Alle Rechnungen', href: '/rechnungen' },
-      { label: 'Noch nicht versendet', href: '/rechnungen/versand' },
       { label: 'Offene Posten', href: '/offene-posten', sep: true },
       { label: 'Mahnwesen', href: '/mahnungen' },
-      { label: 'Preisanpassung', href: '/preisanpassung' },
-      { label: 'Monatsabschluss', href: '/monatsabschluss', sep: true },
     ],
   },
   {
@@ -1505,18 +1503,12 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     key: 'personal',
     label: 'Personal',
     items: [
+      // Unterseiten als Reiter auf der Seite (SECTION_TABS), nicht im Menü (Ahmed 18.10.)
       { label: 'Mitarbeiter', href: '/personal' },
       { label: 'Bewerber & Stellen', href: '/bewerber' },
       { label: 'Offene Stellen', href: '/stellen', olOnly: true },
-      { label: 'Fehlende Unterlagen', href: '/personal/unterlagen' },
-      { label: 'Unterweisungen & Unterschriften', href: '/personal/dokumente' },
       { label: 'Personalbogen ausfüllen', href: '/qm/personalbogen', olOnly: true },
       { label: 'Zeiterfassung', href: '/zeiterfassung', sep: true },
-      { label: 'Auffällige Zeiten', href: '/zeiterfassung/auffaellig' },
-      { label: 'Meine Zeiten', href: '/zeiterfassung/meine' },
-      { label: 'Plan/Ist je Monat', href: '/zeiterfassung/monat' },
-      { label: 'Stundenliste & Lohnarten', href: '/zeiterfassung/stundenzettel' },
-      { label: 'Arbeitszeitkonto', href: '/zeiterfassung/arbeitszeitkonto' },
     ],
   },
   {
@@ -1555,33 +1547,95 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     key: 'transfer',
     label: 'Transfer',
     items: [
-      { label: 'Kontoumsätze', href: '/transfer/kontoumsaetze' },
-      { label: 'Kontoauszug', href: '/transfer/kontoauszug' },
-      { label: 'Dokumentenversand', href: '/transfer/dokumentenversand' },
-      { label: 'Dokumenteneingang', href: '/transfer/dokumenteneingang' },
-      { label: 'Export Lexware Lohn', href: '/personal/export.csv' },
-      { label: 'Lohnabrechnungen einlesen', href: '/personal/lohnabrechnungen' },
-      { label: 'DATEV-Export', href: '/datev' },
-      { label: 'Import Fortytools', href: '/transfer/import' },
-      { label: 'Import alte App', href: '/transfer/altdaten' },
+      { label: 'Bank', href: '/transfer/kontoumsaetze' },
+      { label: 'Dokumente', href: '/transfer/dokumenteneingang' },
+      { label: 'Lohn & DATEV', href: '/datev' },
+      { label: 'Importe', href: '/transfer/import' },
     ],
   },
   {
     key: 'auswertungen',
     label: 'Auswertungen',
     items: [
-      { label: 'Statistiken', href: '/auswertungen/statistik' },
-      { label: 'Ausgaben', href: '/auswertungen/ausgaben' },
-      { label: 'Umsatz-Vorschau', href: '/auswertungen/vorschau' },
-      { label: 'Nachkalkulation & Kostenstellen', href: '/auswertungen/nachkalkulation' },
-      { label: 'Ø Stundensätze', href: '/auswertungen/stundensaetze' },
-      { label: 'Urlaubskonten', href: '/auswertungen/urlaub' },
-      { label: 'Krankheitstage', href: '/auswertungen/krankheit' },
-      { label: 'Ausfallzeiten (Kalkulation)', href: '/auswertungen/ausfallzeiten' },
+      { label: 'Umsatz & Ausgaben', href: '/auswertungen/statistik' },
+      { label: 'Nachkalkulation', href: '/auswertungen/nachkalkulation' },
+      { label: 'Urlaub & Krankheit', href: '/auswertungen/urlaub' },
       { label: 'Dienste-Liste', href: '/auswertungen/dienste' },
     ],
   },
 ];
+
+/**
+ * Zusammengefasste Bereiche (Ahmed 18.10.: „weniger Unterseiten“): ein Menüpunkt, die Seiten darunter als Reiter oben
+ * auf der Seite. `also` = weitere Adressen, auf denen der Reiter als aktiv gilt. Reiter erscheinen nur auf genau diesen
+ * Adressen (nicht auf Detailseiten) und nur, wenn die Rolle sie öffnen darf.
+ */
+export const SECTION_TABS: { label: string; href: string; also?: string[] }[][] = [
+  [
+    { label: 'Mitarbeiter', href: '/personal' },
+    { label: 'Fehlende Unterlagen', href: '/personal/unterlagen' },
+    { label: 'Unterweisungen & Unterschriften', href: '/personal/dokumente' },
+  ],
+  [
+    {
+      label: 'Zeiterfassung',
+      href: '/zeiterfassung',
+      also: ['/zeiterfassung/mitarbeiter', '/zeiterfassung/liste'],
+    },
+    { label: 'Auffällige Zeiten', href: '/zeiterfassung/auffaellig' },
+    { label: 'Plan/Ist je Monat', href: '/zeiterfassung/monat' },
+    { label: 'Stundenliste & Lohnarten', href: '/zeiterfassung/stundenzettel' },
+    { label: 'Arbeitszeitkonto', href: '/zeiterfassung/arbeitszeitkonto' },
+  ],
+  [
+    { label: 'Kontoumsätze zuordnen', href: '/transfer/kontoumsaetze' },
+    { label: 'Kontoauszug', href: '/transfer/kontoauszug' },
+  ],
+  [
+    { label: 'Dokumenteneingang', href: '/transfer/dokumenteneingang' },
+    { label: 'Dokumentenversand', href: '/transfer/dokumentenversand' },
+  ],
+  [
+    { label: 'DATEV-Export', href: '/datev' },
+    { label: 'Lohnabrechnungen einlesen', href: '/personal/lohnabrechnungen' },
+    { label: 'Mitarbeiter-Export Lexware (CSV)', href: '/personal/export.csv' },
+  ],
+  [
+    { label: 'Import Fortytools', href: '/transfer/import' },
+    { label: 'Import alte App', href: '/transfer/altdaten' },
+  ],
+  [
+    { label: 'Statistiken', href: '/auswertungen/statistik' },
+    { label: 'Ausgaben', href: '/auswertungen/ausgaben' },
+    { label: 'Umsatz-Vorschau', href: '/auswertungen/vorschau' },
+  ],
+  [
+    { label: 'Nachkalkulation & Kostenstellen', href: '/auswertungen/nachkalkulation' },
+    { label: 'Ø Stundensätze', href: '/auswertungen/stundensaetze' },
+  ],
+  [
+    { label: 'Urlaubskonten', href: '/auswertungen/urlaub' },
+    { label: 'Krankheitstage', href: '/auswertungen/krankheit' },
+    { label: 'Ausfallzeiten (Kalkulation)', href: '/auswertungen/ausfallzeiten' },
+  ],
+];
+
+const SectionTabs: FC<{ path: string; role: Role }> = ({ path, role }) => {
+  const hit = (t: { href: string; also?: string[] }) => t.href === path || !!t.also?.includes(path);
+  const group = SECTION_TABS.find((g) => g.some(hit));
+  if (!group) return null;
+  const tabs = group.filter((t) => canOpen(role, t.href));
+  if (tabs.length < 2) return null;
+  return (
+    <nav class="tabs sectabs" aria-label="Bereich">
+      {tabs.map((t) => (
+        <a href={t.href} class={hit(t) ? 'on' : ''}>
+          {t.label}
+        </a>
+      ))}
+    </nav>
+  );
+};
 
 /** Symbole der Seitenleiste je Hauptbereich */
 const MENU_ICON: Record<string, string> = {
@@ -1621,9 +1675,11 @@ export const Layout: FC<{
   noTabs?: boolean;
   /** Hauptmenü als Leiste oben statt Seitenleiste links (Cookie vd_menu) */
   menuTop?: boolean;
+  /** aktuelle Adresse (für die Bereichs-Reiter) */
+  path?: string;
   flash?: { ok?: string | undefined; err?: string | undefined };
   children?: Child;
-}> = ({ title, nav, env, user, role, bare, app, noTabs, menuTop, flash, children }) => {
+}> = ({ title, nav, env, user, role, bare, app, noTabs, menuTop, path, flash, children }) => {
   const menu = role
     ? MENU.map((m) => ({
         ...m,
@@ -1676,6 +1732,7 @@ export const Layout: FC<{
             </a>
           </header>
           <main>
+            {role && path && <SectionTabs path={path} role={role} />}
             {flash?.ok && (
               <div class="flash ok" role="status">
                 <Icon name="check" />
@@ -1724,7 +1781,17 @@ export const Layout: FC<{
                       </summary>
                       <div class="sub">
                         {(m.items ?? []).map((i) => (
-                          <a href={i.href} class={i.sep ? 'gap' : ''}>
+                          <a
+                            href={i.href}
+                            class={i.sep ? 'gap' : ''}
+                            data-also={
+                              SECTION_TABS.find(
+                                (g) => g[0]?.href === i.href || g.some((t) => t.href === i.href),
+                              )
+                                ?.flatMap((t) => [t.href, ...(t.also ?? [])])
+                                .join(' ') || undefined
+                            }
+                          >
                             {i.label}
                             {i.soon && <span class="soon">bald</span>}
                           </a>
@@ -1736,7 +1803,7 @@ export const Layout: FC<{
               </nav>
               <script
                 dangerouslySetInnerHTML={{
-                  __html: `(function(){var p=location.pathname,best=null,len=0,top=document.body.classList.contains('menu-top');document.querySelectorAll('.appside .sub a[href]').forEach(function(a){var h=a.getAttribute('href').split('?')[0];if((p===h||p.indexOf(h+'/')===0)&&h.length>len){best=a;len=h.length}});if(best){best.classList.add('on');var d=best.closest('details');if(d&&!top)d.open=true}if(top){var g=[].slice.call(document.querySelectorAll('.appside .grp'));var mq=window.matchMedia('(min-width:1025px)');g.forEach(function(d){d.querySelector('summary').addEventListener('click',function(){if(mq.matches)g.forEach(function(o){if(o!==d)o.open=false})})});document.addEventListener('click',function(e){if(mq.matches&&!e.target.closest('.appside .grp'))g.forEach(function(o){o.open=false})});document.addEventListener('keydown',function(e){if(e.key==='Escape')g.forEach(function(o){o.open=false})})}})();`,
+                  __html: `(function(){var p=location.pathname,best=null,len=0,top=document.body.classList.contains('menu-top');document.querySelectorAll('.appside .sub a[href]').forEach(function(a){var h=a.getAttribute('href').split('?')[0];if((p===h||p.indexOf(h+'/')===0)&&h.length>len){best=a;len=h.length}var al=(a.getAttribute('data-also')||'').split(' ');if(al.indexOf(p)>=0&&p.length>len){best=a;len=p.length}});if(best){best.classList.add('on');var d=best.closest('details');if(d&&!top)d.open=true}if(top){var g=[].slice.call(document.querySelectorAll('.appside .grp'));var mq=window.matchMedia('(min-width:1025px)');g.forEach(function(d){d.querySelector('summary').addEventListener('click',function(){if(mq.matches)g.forEach(function(o){if(o!==d)o.open=false})})});document.addEventListener('click',function(e){if(mq.matches&&!e.target.closest('.appside .grp'))g.forEach(function(o){o.open=false})});document.addEventListener('keydown',function(e){if(e.key==='Escape')g.forEach(function(o){o.open=false})})}})();`,
                 }}
               />
               {env !== 'live' && (
@@ -1847,6 +1914,7 @@ export const Layout: FC<{
                 <img src="/static/logo-transparent.png" alt="Viva-Deluxe" />
                 <span>Viva-Deluxe Gebäudereinigung GmbH</span>
               </div>
+              {role && path && <SectionTabs path={path} role={role} />}
               {flash?.ok && (
                 <div class="flash ok" role="status">
                   <Icon name="check" />

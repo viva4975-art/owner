@@ -3362,3 +3362,16 @@ Testadresse.
   und PDF (`/fotos/<id>/pdf`). Ist die Aufgabe erledigt: „Fotos löschen“ in der Aufgabenliste bzw. auf der Fotoseite
   (Gruppe ausgeblendet, Aufgabe gelöscht, Protokoll; Dateien bleiben write-once). QM-Audit-Fotos behalten den Stempel.
   Ältere Gruppen (vor dieser Änderung) bleiben im Eingang/beim Objekt.
+- 2026-10-18: **Menü aufgeräumt** (Ahmed, 5 Punkte):
+  - Objekt-Formular: „Bestellnummer des Kunden“ und „Vertragsnummer“ entfallen (Bestellnummer gehört an Rechnungsgruppe
+    bzw. Leistung). Alte Werte bleiben gespeichert und werden nur noch angezeigt, wenn vorhanden („alt – leeren entfernt
+    sie“); fehlt das Feld im Formular, wird nichts überschrieben. Eine alte Objekt-Bestellnummer gilt weiter als Rückfall
+    auf Rechnungen, bis sie geleert ist.
+  - „Noch nicht versendet“ aus dem Menü (Startseite verlinkt die Seite weiter). Preisanpassung unter **Kunden**.
+  - **Monatsabschluss gelöscht** (Seite, Service, Test; `/monatsabschluss` → Startseite). Tabelle `month_closings` mit
+    früheren Abschlüssen bleibt in der Datenbank.
+  - **Weniger Unterseiten:** Personal = Mitarbeiter · Bewerber & Stellen · Zeiterfassung; Transfer = Bank · Dokumente ·
+    Lohn & DATEV · Importe; Auswertungen = Umsatz & Ausgaben · Nachkalkulation · Urlaub & Krankheit · Dienste-Liste.
+    Die Seiten darunter erscheinen als **Reiter oben auf der Seite** (`SECTION_TABS`/`SectionTabs` in `layout.tsx`,
+    nur auf genau diesen Adressen, nach Rolle gefiltert; Menüpunkt bleibt markiert). „Meine Zeiten“ steht nur noch oben
+    in der Kopfzeile. Adressen unverändert.

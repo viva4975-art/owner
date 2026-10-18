@@ -279,8 +279,10 @@ export const siteInput = z.object({
   street: optText,
   postal_code: optText,
   city: optText,
-  order_reference: optText,
-  contract_reference: optText,
+  // Bestell-/Vertragsnummer am Objekt (Ahmed 18.10.: gehören an Rechnungsgruppe bzw. Leistung) – nur noch geändert,
+  // wenn mitgeschickt; das Formular zeigt sie nur bei vorhandenem Wert zum Leeren
+  order_reference: z.preprocess(emptyToNull, z.string().trim().nullable()).optional(),
+  contract_reference: z.preprocess(emptyToNull, z.string().trim().nullable()).optional(),
   // Objektleitung: nur setzen, wenn das Feld mitgeschickt wird (Import lässt es unverändert)
   manager_user_id: z.preprocess(emptyToNull, z.guid('Objektleitung ungültig').nullable()).optional(),
   // Rechnungsgruppe (Rechnungseinstellungen); neu angelegte Objekte ohne Angabe → Gruppe „Standard“ des Kunden

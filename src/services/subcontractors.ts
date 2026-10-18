@@ -487,6 +487,8 @@ export interface Subcontract {
   status: 'entwurf' | 'erteilt' | 'beendet' | 'storniert';
   issued_at: Date | null;
   signed_file_path: string | null;
+  /** ohne Datei als unterschrieben vermerkt, z. B. „unterschrieben (alte App)“ */
+  signed_external: string | null;
   signed_file_sha256: string | null;
   version: number;
 }
@@ -633,7 +635,7 @@ export async function setSubcontractStatus(
   if (!allowed[sc.status]!.includes(status))
     throw new BusinessError(`Von „${SC_STATUS[sc.status]}“ nicht möglich`);
   // Erledigt/beendet nur mit unterschriebenem Auftrag (Scan oder Handy-Unterschrift) – Ahmed 12.10.
-  if (status === 'beendet' && !sc.signed_file_path)
+  if (status === 'beendet' && !sc.signed_file_path && !sc.signed_external)
     throw new BusinessError(
       `Auftrag ${sc.number}: unterschriebener Auftrag fehlt – erst Scan hochladen oder am Handy unterschreiben lassen`,
     );
@@ -1127,4 +1129,23 @@ export async function saveSupplierContact(
 export async function deleteSupplierContact(sql: Sql, id: string, actor: string) {
   await sql`delete from app.supplier_contacts where id = ${id}`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id) values (${actor}, 'delete', 'supplier_contact', ${id})`;
+}
+
+/**
+ * Gesamtbetrag einer NU-Bestellung (Ahmed 18.10.: „Gesamtbetrag, nicht nur den Einheitspreis“): je Stunde mit
+ * angenommenen Stunden → Stundensatz × Stunden je Monat (wie Bestellschein), Monatspauschale → Preis je Monat.
+ * null = ohne Menge nicht bestimmbar (je Einsatz, je Tag, Stunden nach Aufmaß).
+ */
+export function subcontractTotal(sc: {
+  billing: string;
+  current_price_cents: bigint;
+  max_hours_month: string | null;
+}): bigint | null {
+  if (sc.billing === 'pauschale_monat') return sc.current_price_cents;
+  if (sc.billing === 'stunde' && sc.max_hours_month) {
+    const h = BigInt(Math.round(Number(sc.max_hours_month) * 100));
+    // kaufmännisch auf Cent
+    return (sc.current_price_cents * h + 50n) / 100n;
+  }
+  return null;
 }

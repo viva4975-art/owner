@@ -286,13 +286,14 @@ export async function importLegacyOrders(
     await sql`
       insert into app.subcontracts (id, number, supplier_id, site_id, service_kind, frequency, billing, price_cents,
                                     max_hours_month, valid_from, valid_to, description, note, status, issued_at,
-                                    created_by, created_at)
+                                    created_by, created_at, signed_external)
       values (${id}, ${number}, ${supplierId}, ${siteId}, ${s(o.leistungsart) ?? 'Sonstiges'}, ${freq}, ${billing},
               ${price}, ${maxH}, ${from}, ${to},
               ${[s(o.objekt), s(o.adresse)].filter(Boolean).join('\n') || null},
               ${[note, ks ? `Kostenstelle (alte App): ${ks}` : null, 'aus der alten App übernommen'].filter(Boolean).join('\n')},
               ${status}, ${status === 'entwurf' ? null : iso(o.erteilt_am) ? new Date(`${iso(o.erteilt_am)}T12:00:00Z`) : null},
-              ${actor}, ${o.created_at ? new Date(String(o.created_at)) : new Date()})
+              ${actor}, ${o.created_at ? new Date(String(o.created_at)) : new Date()},
+              ${status === 'erteilt' || status === 'beendet' ? 'unterschrieben (alte App)' : null})
       on conflict do nothing`;
     created++;
   }

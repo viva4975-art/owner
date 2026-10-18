@@ -333,14 +333,14 @@ describe.skipIf(!available)('Aufträge und Arbeitsscheine', () => {
     expect(b.lines[0]!.description).not.toBe('');
   });
 
-  it('Unterschrift zuweisen (öffnet „ohne Unterschrift“ wieder), erledigt nur mit Unterschrift', async () => {
+  it('Unterschrift zuweisen (öffnet „ohne Unterschrift“ wieder), erledigt erst nach Abschluss', async () => {
     const emp = { id: randomUUID() };
     await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, employment_type, weekly_hours)
               values (${emp.id}, '9761', 'Vor', 'Arbeiter', '2024-01-01', 'vollzeit', 40)`;
     const id = randomUUID();
     await saveWorkReport(sql, id, report({ workDate: '2026-10-06' }), 'test');
+    await expect(setWorkReportDone(sql, id, true, null, 'test')).rejects.toThrow(/zuerst abschließen/);
     await closeWithoutSignature(deps, id, 'Kunde nicht da', 'test');
-    await expect(setWorkReportDone(sql, id, true, null, 'test')).rejects.toThrow(/Unterschrift fehlt/);
     await assignWorkReportSigners(sql, id, [emp!.id], 'test');
     let w = (await getWorkReport(sql, id))!.report;
     expect(w.status).toBe('entwurf');

@@ -1177,7 +1177,7 @@ export function registerOlAppRoutes({ app, deps, page, back }: Ctx) {
       select sc.id, sc.number, sp.name as supplier_name, s.name as site_name, s.site_no, sc.service_kind,
              sc.valid_from::text
         from app.subcontracts sc join app.suppliers sp on sp.id = sc.supplier_id join app.sites s on s.id = sc.site_id
-       where sc.status = 'erteilt' and sc.signed_file_path is null
+       where sc.status = 'erteilt' and sc.signed_file_path is null and sc.signed_external is null
          and ${scope ? sql`sc.site_id = any(${scope}::uuid[])` : sql`true`}
        order by sc.valid_from desc, sc.number desc`;
     const ok = c.req.query('ok');

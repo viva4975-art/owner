@@ -839,9 +839,8 @@ export async function setWorkReportDone(
   if (!w) throw new BusinessError('Arbeitsschein nicht gefunden');
   if (w.cancelled_at) throw new BusinessError('Storniert');
   if (done && w.invoice_id) throw new BusinessError('Schon abgerechnet');
-  // ohne Unterschrift ist der Schein nicht erledigt (Ahmed 18.10.)
-  if (done && w.status !== 'unterschrieben')
-    throw new BusinessError('Unterschrift fehlt – erst vom Kunden unterschreiben lassen');
+  if (done && w.status === 'entwurf')
+    throw new BusinessError('Bitte zuerst abschließen (Unterschrift oder „ohne Unterschrift“)');
   if (done)
     await sql`update app.work_reports set done_at = now(), done_by = ${actor}, done_note = ${note?.trim() || null}
                where id = ${id} and done_at is null`;

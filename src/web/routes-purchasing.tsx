@@ -67,7 +67,12 @@ import { EInvoiceRoutes, EInvoiceTable } from './routes-einvoice-in.js';
 import { pendingEInvoices } from '../services/einvoice-inbox.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
-import { criticalSupplierIds, listSubcontracts, SC_STATUS } from '../services/subcontractors.js';
+import {
+  criticalSupplierIds,
+  listSubcontracts,
+  SC_STATUS,
+  subcontractTotal,
+} from '../services/subcontractors.js';
 import {
   addMonths,
   costTargets,
@@ -373,6 +378,8 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       canFinish: boolean;
       net: bigint;
       per: string;
+      /** Einheitspreis unter dem Gesamtbetrag, z. B. „25,00 € / Std. × 40 Std.“ */
+      unit?: string;
       phase: 'erledigen' | 'laufend' | 'abgeschlossen' | 'storniert';
       status: string;
       tone: string;
@@ -443,14 +450,29 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         to: sc.valid_to,
         // laufend = regelmäßige (monatliche/wöchentliche) Bestellung; jährlich usw. = nach Ausführung (Ahmed 09.10.)
         ongoing: !sc.valid_to && isRecurringOrder(sc.frequency),
-        unsigned: sc.status === 'erteilt' && !sc.signed_file_path,
-        canFinish: sc.status === 'erteilt' && !!sc.signed_file_path,
-        net: sc.current_price_cents,
-        per: PER[sc.billing] ?? '',
+        unsigned: sc.status === 'erteilt' && !sc.signed_file_path && !sc.signed_external,
+        canFinish: sc.status === 'erteilt' && !!(sc.signed_file_path || sc.signed_external),
+        ...((): Pick<Row, 'net' | 'per' | 'unit'> => {
+          // Gesamtbetrag zuerst, Einheitspreis darunter (Ahmed 18.10.)
+          const total = subcontractTotal(sc);
+          if (sc.billing === 'stunde')
+            return total !== null
+              ? {
+                  net: total,
+                  per: '/ Monat',
+                  unit: `${euro(sc.current_price_cents)} / Std. × ${sc.max_hours_month!.replace('.', ',')} Std.`,
+                }
+              : { net: sc.current_price_cents, per: '/ Std.', unit: 'Gesamt nach erfassten Stunden' };
+          return { net: total ?? sc.current_price_cents, per: PER[sc.billing] ?? '' };
+        })(),
         ...((): Pick<Row, 'phase' | 'status' | 'tone'> => {
           // zu erledigen (Ahmed 18.10.): Unterschrift fehlt, Rechnung fehlt, laufende am Monatsende
           const todo = subcontractTodo(
-            { status: sc.status, valid_to: sc.valid_to, signed: !!sc.signed_file_path },
+            {
+              status: sc.status,
+              valid_to: sc.valid_to,
+              signed: !!(sc.signed_file_path || sc.signed_external),
+            },
             tracking.get(sc.id) ?? [],
           );
           if (todo.length)
@@ -587,7 +609,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             <span>Bestellnr.</span>
             <span>Lieferant · Objekt</span>
             <span>Zeitraum</span>
-            <span class="r">Betrag netto</span>
+            <span class="r">Gesamt netto</span>
             <span>Status</span>
             <span>Abrechnung</span>
           </div>
@@ -610,6 +632,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               </span>
               <span class="r">
                 {euro(r.net)} <span class="small mut">{r.per}</span>
+                {r.unit && <span class="bs-sub">{r.unit}</span>}
               </span>
               <span>
                 <span class={`bs-pill bs-${r.tone || 'grey'}`}>{r.status}</span>

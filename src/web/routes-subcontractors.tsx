@@ -50,6 +50,7 @@ import {
   uploadDocument,
   uploadSignedSubcontract,
   signSubcontract,
+  subcontractTotal,
 } from '../services/subcontractors.js';
 import { type AppEnv, type Ctx, assertSite, officeSecret, UUID } from './app.js';
 import { centsToInput, str } from './forms.js';
@@ -1514,7 +1515,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 Bestellung ist {SC_STATUS[sc!.status]}: Objekt, Leistung, Häufigkeit, Abrechnung, Stunden,
                 Zeitraum und Beschreibung lassen sich korrigieren (alter Stand im Protokoll). Nachunternehmer
                 und Preis bleiben – eine Preisänderung bitte unten als <b>Preisnachtrag ab Monat</b> erfassen.
-                {sc?.signed_file_path
+                {sc?.signed_file_path || sc?.signed_external
                   ? ' Achtung: Die Bestellung ist bereits unterschrieben – bei inhaltlichen Änderungen neu unterschreiben lassen.'
                   : ''}
               </div>
@@ -1672,7 +1673,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 </form>
               )}
               {sc.status === 'erteilt' &&
-                (sc.signed_file_path ? (
+                (sc.signed_file_path || sc.signed_external ? (
                   <form method="post" action={`/nachunternehmer/auftraege/${id}/status`} style="margin:0">
                     <button
                       class="btn sec"
@@ -1697,6 +1698,12 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
               )}
             </div>
             <h3>Unterschrift des Nachunternehmers</h3>
+            {!sc.signed_file_path && sc.signed_external && (
+              <p>
+                <span class="badge ok">{sc.signed_external}</span>{' '}
+                <span class="small mut">Scan kann unten trotzdem hochgeladen werden.</span>
+              </p>
+            )}
             {sc.signed_file_path ? (
               <p>
                 <a class="btn sec sm" href={`/nachunternehmer/auftraege/${id}/scan`} target="_blank">
@@ -2178,7 +2185,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     const ol = c.get('user').role === 'objektleitung';
     const fromApp = c.req.query('von') === 'app';
     const backTo = fromApp || ol ? '/qm/nu-unterschrift' : `/nachunternehmer/auftraege/${id}`;
-    if (sc.signed_file_path || sc.status !== 'erteilt') return c.redirect(backTo);
+    if (sc.signed_file_path || sc.signed_external || sc.status !== 'erteilt') return c.redirect(backTo);
     const [sup] = await sql<{ name: string; contact_name: string | null }[]>`
       select name, contact_name from app.suppliers where id = ${sc.supplier_id}`;
     const row = (k: string, v: unknown) => (
@@ -2498,7 +2505,7 @@ function SubcontractTable({
             {showSupplier && <th>Nachunternehmer</th>}
             <th>Objekt</th>
             <th>Leistung</th>
-            <th class="r">Preis aktuell</th>
+            <th class="r">Gesamt / Preis</th>
             <th>Zeitraum</th>
             <th>Status</th>
           </tr>
@@ -2519,7 +2526,21 @@ function SubcontractTable({
                 {r.service_kind} · {FREQUENCY[r.frequency]}
               </td>
               <td class="r">
-                {euro(r.current_price_cents)} <span class="small mut">{BILLING[r.billing]}</span>
+                {(() => {
+                  const total = subcontractTotal(r);
+                  return r.billing === 'stunde' && total !== null ? (
+                    <>
+                      {euro(total)} <span class="small mut">/ Monat</span>
+                      <div class="small mut">
+                        {euro(r.current_price_cents)} / Std. × {r.max_hours_month!.replace('.', ',')} Std.
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {euro(r.current_price_cents)} <span class="small mut">{BILLING[r.billing]}</span>
+                    </>
+                  );
+                })()}
               </td>
               <td class="small">
                 {dateDe(r.valid_from)} – {r.valid_to ? dateDe(r.valid_to) : 'offen'}

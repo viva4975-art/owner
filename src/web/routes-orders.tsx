@@ -130,10 +130,10 @@ export const WorkReportTable: FC<{ rows: WorkReportRow[]; select?: boolean; bulk
                 <span class="badge err">storniert</span>
               ) : workReportDone(w) ? (
                 <span class="badge ok">erledigt</span>
-              ) : w.status === 'unterschrieben' ? (
-                <span class="badge info">unterschrieben</span>
+              ) : w.status === 'entwurf' ? (
+                <span class="badge draft">Entwurf</span>
               ) : (
-                <span class="badge warn">Unterschrift fehlt</span>
+                <span class="badge info">offen</span>
               )}
             </span>
             <span class="wr-site">{w.site_name}</span>
@@ -175,7 +175,7 @@ export const WorkReportTable: FC<{ rows: WorkReportRow[]; select?: boolean; bulk
             <th>Datum</th>
             <th>Objekt</th>
             <th>Arbeiten</th>
-            <th>{bulk ? 'Unterschrift' : 'Status'}</th>
+            <th>Status</th>
             <th>{bulk ? 'Erledigt / Rechnung' : 'Rechnung'}</th>
           </tr>
         </thead>
@@ -223,8 +223,12 @@ export const WorkReportTable: FC<{ rows: WorkReportRow[]; select?: boolean; bulk
                 ) : bulk ? (
                   w.status === 'unterschrieben' ? (
                     <span class="badge ok">unterschrieben</span>
+                  ) : w.status === 'ohne_unterschrift' ? (
+                    <span class="badge" title={w.no_signature_reason ?? ''}>
+                      abgeschlossen
+                    </span>
                   ) : (
-                    <span class="badge warn">Unterschrift fehlt</span>
+                    <span class="badge draft">Entwurf</span>
                   )
                 ) : (
                   <span class={`badge ${WR_CLASS[w.status]}`}>{WR_STATUS[w.status]}</span>
@@ -1043,7 +1047,6 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
       { key: 'erledigt', label: 'Erledigt', href: '/arbeitsscheine?status=erledigt', count: done.length },
       { key: 'alle', label: 'Alle', href: '/arbeitsscheine?status=alle', count: all.length },
     ];
-    const unsigned = open.filter((w) => w.status !== 'unterschrieben').length;
     return page(
       c,
       'Arbeitsscheine',
@@ -1055,12 +1058,6 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
           </a>
         </PageHead>
         <Tabs tabs={tabs} active={['erledigt', 'alle'].includes(st) ? st : 'offen'} />
-        {st !== 'erledigt' && st !== 'alle' && unsigned > 0 && (
-          <p class="small mut">
-            {unsigned} {unsigned === 1 ? 'Schein wartet' : 'Scheine warten'} auf die Unterschrift des Kunden –
-            ohne Unterschrift ist ein Schein nicht erledigt.
-          </p>
-        )}
         <form method="post" action="/arbeitsscheine/auswahl" id="wr-bulk">
           <input type="hidden" name="zurueck" value={st} />
           <WorkReportTable rows={rows} bulk />
@@ -1095,8 +1092,8 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
         </form>
         <p class="small mut">
           Abrechnung: über den Auftrag oder im Objekt unter „Arbeitsscheine“ → „Regiearbeiten abrechnen“.
-          Unterschriebene Scheine werden als PDF an die Rechnung gehängt. Mit ausgestellter Rechnung gilt ein
-          unterschriebener Schein automatisch als erledigt.
+          Abgeschlossene Scheine werden als PDF an die Rechnung gehängt. Mit ausgestellter Rechnung gilt ein
+          Schein automatisch als erledigt.
         </p>
       </>,
     );
@@ -1122,6 +1119,9 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
         if (action === 'zuweisen') await assignWorkReportSigners(sql, id, emps, c.get('actor'));
         else if (action === 'erledigt' || action === 'offen') {
           if (action === 'erledigt' && cur.report.done_at) continue;
+          // Entwurf: abschließen ohne Unterschrift (z. B. auf Papier unterschrieben), dann erledigt
+          if (action === 'erledigt' && cur.report.status === 'entwurf')
+            await closeWithoutSignature(deps, id, 'auf Papier unterschrieben / erledigt', c.get('actor'));
           await setWorkReportDone(sql, id, action === 'erledigt', null, c.get('actor'));
         } else throw new BusinessError('Aktion unbekannt');
         ok++;
@@ -1213,12 +1213,6 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
               nicht abgerechnet werden.
             </div>
           )}
-          {!w.cancelled_at && !w.done_at && w.status === 'ohne_unterschrift' && (
-            <div class="flash warn">
-              Unterschrift des Kunden fehlt – der Schein ist noch nicht erledigt.{' '}
-              {!invIssued && <a href="#zuweisen">In der App unterschreiben lassen …</a>}
-            </div>
-          )}
           {w.done_at && (
             <div class="flash ok">
               Erledigt am{' '}
@@ -1308,7 +1302,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                   </form>
                 )}
                 <CopyWorkReport id={id} siteId={w.site_id} sites={sites} />
-                {!w.invoice_id && !w.cancelled_at && !w.done_at && w.status === 'unterschrieben' && (
+                {!w.invoice_id && !w.cancelled_at && !w.done_at && (
                   <details class="inline-det">
                     <summary>Als erledigt markieren</summary>
                     <form

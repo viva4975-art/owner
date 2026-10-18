@@ -20,6 +20,8 @@ import {
   reopenWorkReport,
   copyWorkReport,
   setWorkReportDone,
+  assignWorkReportSigners,
+  workReportDone,
   executionNotes,
   getOrder,
   getWorkReport,
@@ -110,7 +112,11 @@ const WR_LINES_JS = `
   document.querySelectorAll('input[name=employee]').forEach(function(x){x.addEventListener('change',function(){if(!x.checked||!rt)return;var n=x.dataset.name;var have=Array.prototype.some.call(rt.querySelectorAll('[name=line_person]'),function(p){return p.value===n});if(have)return;var empty=Array.prototype.find.call(rt.querySelectorAll('[name=line_person]'),function(p){return !p.value});if(!empty){document.getElementById('wr-regie-add').click();empty=rt.querySelector('tr:last-child [name=line_person]')}empty.value=n;hours()})});
 })();`;
 
-export const WorkReportTable: FC<{ rows: WorkReportRow[]; select?: boolean }> = ({ rows, select }) => (
+export const WorkReportTable: FC<{ rows: WorkReportRow[]; select?: boolean; bulk?: boolean }> = ({
+  rows,
+  select,
+  bulk,
+}) => (
   <>
     {/* Handy: Karten statt breiter Tabelle (Ahmed 15.10.: „komplett nach rechts scrollen“) */}
     {!select && (
@@ -122,11 +128,18 @@ export const WorkReportTable: FC<{ rows: WorkReportRow[]; select?: boolean }> = 
               <b>{w.number}</b>
               {w.cancelled_at ? (
                 <span class="badge err">storniert</span>
+              ) : workReportDone(w) ? (
+                <span class="badge ok">erledigt</span>
+              ) : w.status === 'unterschrieben' ? (
+                <span class="badge info">unterschrieben</span>
               ) : (
-                <span class={`badge ${WR_CLASS[w.status]}`}>{WR_STATUS[w.status]}</span>
+                <span class="badge warn">Unterschrift fehlt</span>
               )}
             </span>
             <span class="wr-site">{w.site_name}</span>
+            {w.status !== 'unterschrieben' && !w.cancelled_at && w.sign_names.length > 0 && (
+              <span class="wr-meta">zum Unterschreiben bei {w.sign_names.join(', ')}</span>
+            )}
             {w.description && <span class="wr-desc">{(w.description ?? '').slice(0, 90)}</span>}
             <span class="wr-meta">
               {dateDe(w.work_date)}
@@ -147,19 +160,29 @@ export const WorkReportTable: FC<{ rows: WorkReportRow[]; select?: boolean }> = 
       <table>
         <thead>
           <tr>
-            {select && <th></th>}
+            {(select || bulk) && (
+              <th>
+                {bulk && (
+                  <input
+                    type="checkbox"
+                    aria-label="alle markieren"
+                    onclick="this.closest('form').querySelectorAll('input[name=ids]').forEach(function(x){x.checked=this.checked}.bind(this))"
+                  />
+                )}
+              </th>
+            )}
             <th>Nr.</th>
             <th>Datum</th>
             <th>Objekt</th>
             <th>Arbeiten</th>
-            <th>Status</th>
-            <th>Rechnung</th>
+            <th>{bulk ? 'Unterschrift' : 'Status'}</th>
+            <th>{bulk ? 'Erledigt / Rechnung' : 'Rechnung'}</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 && (
             <tr>
-              <td colspan={7}>
+              <td colspan={8}>
                 <div class="empty">Keine Arbeitsscheine.</div>
               </td>
             </tr>
@@ -173,8 +196,15 @@ export const WorkReportTable: FC<{ rows: WorkReportRow[]; select?: boolean }> = 
                   )}
                 </td>
               )}
+              {bulk && (
+                <td>
+                  {!w.cancelled_at && (
+                    <input type="checkbox" name="ids" value={w.id} aria-label={`${w.number} markieren`} />
+                  )}
+                </td>
+              )}
               <td>
-                <a href={`/arbeitsscheine/${w.id}`}>
+                <a href={`/arbeitsscheine/${w.id}`} style="white-space:nowrap">
                   <b>{w.number}</b>
                 </a>
                 {w.order_number && <div class="small mut">{w.order_number}</div>}
@@ -190,15 +220,35 @@ export const WorkReportTable: FC<{ rows: WorkReportRow[]; select?: boolean }> = 
                   <span class="badge err" title={w.cancel_reason ?? ''}>
                     storniert
                   </span>
+                ) : bulk ? (
+                  w.status === 'unterschrieben' ? (
+                    <span class="badge ok">unterschrieben</span>
+                  ) : (
+                    <span class="badge warn">Unterschrift fehlt</span>
+                  )
                 ) : (
                   <span class={`badge ${WR_CLASS[w.status]}`}>{WR_STATUS[w.status]}</span>
                 )}
                 {w.signed_by_name && <div class="small mut">{w.signed_by_name}</div>}
+                {w.status !== 'unterschrieben' && !w.cancelled_at && w.sign_names.length > 0 && (
+                  <div class="small mut">zum Unterschreiben bei {w.sign_names.join(', ')}</div>
+                )}
               </td>
               <td class="small">
+                {bulk && !w.cancelled_at && (
+                  <div>
+                    {workReportDone(w) ? (
+                      <span class="badge ok">erledigt</span>
+                    ) : (
+                      <span class="badge draft">offen</span>
+                    )}
+                  </div>
+                )}
                 {w.invoice_id ? (
-                  <a href={`/rechnungen/${w.invoice_id}`}>abgerechnet</a>
-                ) : w.done_at ? (
+                  <a href={`/rechnungen/${w.invoice_id}`}>
+                    {w.invoice_status === 'issued' ? 'abgerechnet' : 'Rechnungsentwurf'}
+                  </a>
+                ) : bulk && w.done_at ? null : w.done_at ? (
                   <span class="badge ok" title={w.done_note ?? ''}>
                     erledigt
                   </span>
@@ -220,6 +270,65 @@ export const WorkReportTable: FC<{ rows: WorkReportRow[]; select?: boolean }> = 
       }}
     />
   </>
+);
+
+type Staff = { id: string; name: string; personnel_no: string; lead: boolean };
+
+/** Auswahl Mitarbeiter (Chips) – Vorarbeiter/Objektleitung zuerst. */
+const StaffPicker: FC<{ staff: Staff[]; chosen: string[]; id: string; label: string }> = ({
+  staff,
+  chosen,
+  id,
+  label,
+}) => (
+  <div data-multi="employee_ids">
+    <div class="multi-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+      {staff
+        .filter((e) => chosen.includes(e.id))
+        .map((e) => (
+          <span class="chip">
+            {e.name}
+            <button type="button" aria-label="entfernen">
+              ×
+            </button>
+            <input type="hidden" name="employee_ids" value={e.id} />
+          </span>
+        ))}
+    </div>
+    <select id={id} aria-label={label} style="max-width:420px">
+      <option value="">{label}</option>
+      {staff.map((e) => (
+        <option value={e.id} data-label={e.name}>
+          {e.name} · {e.personnel_no}
+          {e.lead ? ' · Vorarbeiter/Objektleitung' : ''}
+        </option>
+      ))}
+    </select>
+  </div>
+);
+
+/**
+ * Arbeitsschein einer Person zum Unterschreiben-Lassen zuweisen (Ahmed 18.10.) – erscheint sofort in ihrer App.
+ */
+const SignAssignCard: FC<{ id: string; staff: Staff[]; chosen: string[]; closed: boolean }> = ({
+  id,
+  staff,
+  chosen,
+  closed,
+}) => (
+  <form method="post" action={`/arbeitsscheine/${id}/zuweisen`} class="card" id="zuweisen">
+    <h3>Unterschrift in der App einholen</h3>
+    <p class="small mut" style="margin-top:0">
+      Vorarbeiter oder Reinigungskraft wählen – der Schein erscheint sofort in deren App (Startseite) und der
+      Kunde unterschreibt dort mit dem Finger. Ohne Auswahl sehen ihn alle eingesetzten Mitarbeitenden.
+      {closed &&
+        ' Der ohne Unterschrift abgeschlossene Schein wird dafür wieder geöffnet (alte Fassung bleibt im Archiv).'}
+    </p>
+    <StaffPicker staff={staff} chosen={chosen} id={`sg-${id}`} label="+ Person auswählen …" />
+    <div class="actions">
+      <button class="btn">Zuweisen</button>
+    </div>
+  </form>
 );
 
 /** Einzelaufträge eines Kunden (Reiter beim Kunden) mit Summen. */
@@ -914,30 +1023,27 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
 
   // ================================================================== Arbeitsscheine
 
+  const activeStaff = () =>
+    sql<Staff[]>`
+      select id, last_name || ', ' || first_name as name, personnel_no,
+             coalesce('Objektleitung' = any(tags) or 'Vorarbeiter' = any(tags), false) as lead
+        from app.employees where status = 'aktiv'
+       order by 4 desc, last_name, first_name`;
+
+  // Übersicht (Ahmed 18.10.): offen / erledigt statt „mit/ohne Unterschrift“; markieren, erledigen, zuweisen
   app.get('/arbeitsscheine', async (c) => {
-    const st = c.req.query('status');
+    const st = c.req.query('status') ?? 'offen';
     const all = inScope(c, await listWorkReports(sql));
-    const rows =
-      st === 'offen'
-        ? all.filter((w) => w.status === 'entwurf')
-        : st === 'abzurechnen'
-          ? all.filter((w) => w.status !== 'entwurf' && !w.invoice_id && !w.cancelled_at)
-          : all;
+    const open = all.filter((w) => !w.cancelled_at && !workReportDone(w));
+    const done = all.filter((w) => workReportDone(w));
+    const rows = st === 'erledigt' ? done : st === 'alle' ? all : open;
+    const staff = await activeStaff();
     const tabs: Tab[] = [
-      { key: '', label: 'Alle', href: '/arbeitsscheine', count: all.length },
-      {
-        key: 'offen',
-        label: 'Ohne Unterschrift',
-        href: '/arbeitsscheine?status=offen',
-        count: all.filter((w) => w.status === 'entwurf').length,
-      },
-      {
-        key: 'abzurechnen',
-        label: 'Nicht abgerechnet',
-        href: '/arbeitsscheine?status=abzurechnen',
-        count: all.filter((w) => w.status !== 'entwurf' && !w.invoice_id && !w.cancelled_at).length,
-      },
+      { key: 'offen', label: 'Offen', href: '/arbeitsscheine', count: open.length },
+      { key: 'erledigt', label: 'Erledigt', href: '/arbeitsscheine?status=erledigt', count: done.length },
+      { key: 'alle', label: 'Alle', href: '/arbeitsscheine?status=alle', count: all.length },
     ];
+    const unsigned = open.filter((w) => w.status !== 'unterschrieben').length;
     return page(
       c,
       'Arbeitsscheine',
@@ -948,14 +1054,109 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
             <Icon name="plus" /> Arbeitsschein
           </a>
         </PageHead>
-        <Tabs tabs={tabs} active={st ?? ''} />
-        <WorkReportTable rows={rows} />
+        <Tabs tabs={tabs} active={['erledigt', 'alle'].includes(st) ? st : 'offen'} />
+        {st !== 'erledigt' && st !== 'alle' && unsigned > 0 && (
+          <p class="small mut">
+            {unsigned} {unsigned === 1 ? 'Schein wartet' : 'Scheine warten'} auf die Unterschrift des Kunden –
+            ohne Unterschrift ist ein Schein nicht erledigt.
+          </p>
+        )}
+        <form method="post" action="/arbeitsscheine/auswahl" id="wr-bulk">
+          <input type="hidden" name="zurueck" value={st} />
+          <WorkReportTable rows={rows} bulk />
+          <div class="card hide-m" style="margin-top:10px">
+            <div class="actions" style="margin-top:0;align-items:flex-start;flex-wrap:wrap">
+              {st === 'erledigt' ? (
+                <button class="btn sec" name="aktion" value="offen">
+                  Markierte wieder offen
+                </button>
+              ) : (
+                <button class="btn" name="aktion" value="erledigt">
+                  Markierte als erledigt
+                </button>
+              )}
+              <div style="flex:1;min-width:280px">
+                <StaffPicker
+                  staff={staff}
+                  chosen={[]}
+                  id="wr-bulk-staff"
+                  label="+ Person zum Unterschreiben …"
+                />
+              </div>
+              <button class="btn sec" name="aktion" value="zuweisen">
+                Markierte zum Unterschreiben zuweisen
+              </button>
+            </div>
+            <p class="small mut" style="margin-bottom:0">
+              Erledigt geht nur mit Unterschrift des Kunden. Zuweisen: der Schein erscheint sofort in der App
+              der gewählten Person (Vorarbeiter oder Reinigungskraft), der Kunde unterschreibt dort.
+            </p>
+          </div>
+        </form>
         <p class="small mut">
           Abrechnung: über den Auftrag oder im Objekt unter „Arbeitsscheine“ → „Regiearbeiten abrechnen“.
-          Unterschriebene Scheine werden als PDF an die Rechnung gehängt.
+          Unterschriebene Scheine werden als PDF an die Rechnung gehängt. Mit ausgestellter Rechnung gilt ein
+          unterschriebener Schein automatisch als erledigt.
         </p>
       </>,
     );
+  });
+
+  app.post('/arbeitsscheine/auswahl', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const ids = arr(b, 'ids').filter((x) => new RegExp(`^${UUID}$`).test(x));
+    const action = str(b, 'aktion');
+    const ret = str(b, 'zurueck');
+    const to = ret === 'erledigt' || ret === 'alle' ? `/arbeitsscheine?status=${ret}` : '/arbeitsscheine';
+    if (!ids.length) return back(c, to, { fehler: 'Bitte Arbeitsscheine markieren.' });
+    const emps = arr(b, 'employee_ids').filter((x) => new RegExp(`^${UUID}$`).test(x));
+    if (action === 'zuweisen' && !emps.length)
+      return back(c, to, { fehler: 'Bitte die Person auswählen, die die Unterschrift einholt.' });
+    const errors: string[] = [];
+    let ok = 0;
+    for (const id of ids) {
+      const cur = await getWorkReport(sql, id);
+      if (!cur) continue;
+      try {
+        assertSite(c, cur.report.site_id);
+        if (action === 'zuweisen') await assignWorkReportSigners(sql, id, emps, c.get('actor'));
+        else if (action === 'erledigt' || action === 'offen') {
+          if (action === 'erledigt' && cur.report.done_at) continue;
+          await setWorkReportDone(sql, id, action === 'erledigt', null, c.get('actor'));
+        } else throw new BusinessError('Aktion unbekannt');
+        ok++;
+      } catch (e) {
+        if (e instanceof BusinessError)
+          errors.push(`${cur.report.number}: ${e.message.replace(/^AS-[\d-]+: /, '')}`);
+        else throw e;
+      }
+    }
+    const verb =
+      action === 'zuweisen' ? 'zugewiesen' : action === 'offen' ? 'wieder offen' : 'als erledigt markiert';
+    return back(c, to, {
+      ...(ok ? { ok: `${ok} ${ok === 1 ? 'Arbeitsschein' : 'Arbeitsscheine'} ${verb}.` } : {}),
+      ...(errors.length ? { fehler: `Nicht möglich – ${errors.join(' · ')}` } : {}),
+    });
+  });
+
+  app.post(`/arbeitsscheine/:id{${UUID}}/zuweisen`, async (c) => {
+    const id = c.req.param('id');
+    const cur = await getWorkReport(sql, id);
+    if (!cur) return c.redirect('/arbeitsscheine');
+    assertSite(c, cur.report.site_id);
+    const b = await c.req.parseBody({ all: true });
+    const emps = arr(b, 'employee_ids').filter((x) => new RegExp(`^${UUID}$`).test(x));
+    try {
+      await assignWorkReportSigners(sql, id, emps, c.get('actor'));
+    } catch (e) {
+      if (e instanceof BusinessError) return back(c, `/arbeitsscheine/${id}`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/arbeitsscheine/${id}`, {
+      ok: emps.length
+        ? 'Zugewiesen – der Schein steht jetzt in der App der gewählten Person.'
+        : 'Zuweisung aufgehoben – alle eingesetzten Mitarbeitenden sehen den Schein.',
+    });
   });
 
   app.get(`/arbeitsscheine/:id{${UUID}}`, async (c) => {
@@ -985,6 +1186,8 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
         : [];
       const invIssued = invRow?.status === 'issued';
       const isAdmin = c.get('user').role === 'admin';
+      const staff =
+        w.status === 'ohne_unterschrift' && !w.cancelled_at && !invIssued ? await activeStaff() : [];
       return page(
         c,
         `Arbeitsschein ${w.number}`,
@@ -1010,9 +1213,15 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
               nicht abgerechnet werden.
             </div>
           )}
+          {!w.cancelled_at && !w.done_at && w.status === 'ohne_unterschrift' && (
+            <div class="flash warn">
+              Unterschrift des Kunden fehlt – der Schein ist noch nicht erledigt.{' '}
+              {!invIssued && <a href="#zuweisen">In der App unterschreiben lassen …</a>}
+            </div>
+          )}
           {w.done_at && (
             <div class="flash ok">
-              Erledigt (ohne Rechnung) am{' '}
+              Erledigt am{' '}
               {w.done_at.toLocaleDateString('de-DE', {
                 timeZone: 'Europe/Berlin',
                 day: '2-digit',
@@ -1099,7 +1308,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                   </form>
                 )}
                 <CopyWorkReport id={id} siteId={w.site_id} sites={sites} />
-                {!w.invoice_id && !w.cancelled_at && !w.done_at && (
+                {!w.invoice_id && !w.cancelled_at && !w.done_at && w.status === 'unterschrieben' && (
                   <details class="inline-det">
                     <summary>Als erledigt markieren</summary>
                     <form
@@ -1131,6 +1340,9 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                   <a href={`/rechnungen/${w.invoice_id}`}>Zur Rechnung</a>
                 )}
               </div>
+              {staff.length > 0 && (
+                <SignAssignCard id={id} staff={staff} chosen={w.sign_employee_ids} closed />
+              )}
               {!w.cancelled_at && (
                 <details class="card">
                   <summary style="cursor:pointer">
@@ -1368,6 +1580,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
       </tr>
     );
     const notes = siteId ? await executionNotes(sql, siteId, w?.work_date ?? todayBerlin()) : [];
+    const staff = w ? await activeStaff() : [];
     return page(
       c,
       w ? `Arbeitsschein ${w.number}` : 'Neuer Arbeitsschein',
@@ -1611,6 +1824,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                       </a>
                     </div>
                   </div>
+                  <SignAssignCard id={id} staff={staff} chosen={w.sign_employee_ids} closed={false} />
                   <div class="card">
                     <h3>Kopieren</h3>
                     <CopyWorkReport id={id} siteId={w.site_id} sites={sites} />

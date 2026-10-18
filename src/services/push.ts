@@ -186,6 +186,26 @@ export async function runPushNotifier(sql: Sql, env: KeyEnv & Pick<Env, 'APP_ENV
       `sign:${r.id}`,
     );
 
+  // Arbeitsschein zum Unterschreiben-Lassen zugewiesen (Ahmed 18.10.)
+  for (const w of await sql<{ id: string; number: string; site: string; ids: string[]; at: string }[]>`
+    select w.id, w.number, s.name as site, w.sign_employee_ids as ids, w.sign_assigned_at::text as at
+      from app.work_reports w join app.sites s on s.id = w.site_id
+     where w.status = 'entwurf' and w.cancelled_at is null and w.sign_assigned_at > ${win}
+       and cardinality(w.sign_employee_ids) > 0`)
+    for (const e of w.ids)
+      await sendPush(
+        sql,
+        env,
+        { employeeIds: [e] },
+        {
+          title: 'Arbeitsschein zum Unterschreiben',
+          body: `${w.number} · ${w.site} – vom Kunden unterschreiben lassen`,
+          url: `/m/arbeitsscheine/${w.id}`,
+          tag: `ws-${w.id}`,
+        },
+        `ws:${w.id}:${e}:${w.at}`,
+      );
+
   // Einsatzplan: neu oder geändert, noch gültig – je Person eine Nachricht
   const plans = await sql<
     {

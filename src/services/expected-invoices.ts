@@ -355,3 +355,47 @@ export async function billingTracking(
   }
   return out;
 }
+
+/**
+ * Bestellungen „nach Ausführung“, die vor diesem Tag endeten, wurden noch im alten System abgerechnet – ohne Rechnung
+ * in der App gelten sie nicht als „zu erledigen“ (Umstellung 08.10.2026, Septemberrechnungen kamen schon in die App).
+ */
+export const TODO_FROM = '2026-09-01';
+
+/** Tage vor Monatsende, ab denen eine laufende Bestellung „zu erledigen“ ist (Rechnung erwartet). */
+export const MONTH_END_DAYS = 5;
+
+/**
+ * Warum eine erteilte/beendete NU-Bestellung „zu erledigen“ ist (Ahmed 18.10.): unterschriebener Auftrag fehlt,
+ * Rechnung für einen abgelaufenen Zeitraum fehlt, laufende Bestellung am Monatsende (Rechnung erwartet) oder
+ * ausgeführte Bestellung „nach Ausführung“ ohne Rechnung. null = nichts zu tun.
+ */
+export function subcontractTodo(
+  o: { status: string; valid_to: string | null; signed: boolean },
+  periods: BillingPeriod[],
+  today = todayBerlin(),
+): string[] {
+  if (o.status !== 'erteilt' && o.status !== 'beendet') return [];
+  const out: string[] = [];
+  if (o.status === 'erteilt' && !o.signed) out.push('Unterschrift fehlt');
+  const mon = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
+  const open = periods.filter((p) => p.state === 'offen');
+  if (open.length)
+    out.push(
+      open.length === 1
+        ? `Rechnung ${mon(open[0]!.start)} fehlt`
+        : `${open.length} Rechnungen fehlen (ab ${mon(open[open.length - 1]!.start)})`,
+    );
+  const cur = periods[0];
+  if (cur?.state === 'laufend') {
+    const d = new Date(`${cur.end}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - (MONTH_END_DAYS - 1));
+    if (today >= d.toISOString().slice(0, 10)) out.push(`Monatsende – Rechnung ${mon(cur.start)} erwartet`);
+  }
+  if (
+    periods.some((p) => p.state === 'bedarf' && p.end >= TODO_FROM) &&
+    (o.status === 'beendet' || (o.valid_to !== null && o.valid_to < today))
+  )
+    out.push('ausgeführt – Rechnung fehlt');
+  return out;
+}

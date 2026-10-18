@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { SiteOptions } from './site-options.js';
 import {
   billingTracking,
+  subcontractTodo,
   type ExpectedRow,
   expectedInvoices,
   isRecurringOrder,
@@ -446,12 +447,27 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         canFinish: sc.status === 'erteilt' && !!sc.signed_file_path,
         net: sc.current_price_cents,
         per: PER[sc.billing] ?? '',
-        phase: SC_PHASE[sc.status] ?? 'laufend',
-        status:
-          sc.requested_by && sc.status === 'entwurf'
-            ? 'angefragt (Objektleitung) · Freigabe nötig'
-            : (SC_STATUS[sc.status] ?? sc.status),
-        tone: sc.requested_by && sc.status === 'entwurf' ? 'warn' : (SC_TONE[sc.status] ?? ''),
+        ...((): Pick<Row, 'phase' | 'status' | 'tone'> => {
+          // zu erledigen (Ahmed 18.10.): Unterschrift fehlt, Rechnung fehlt, laufende am Monatsende
+          const todo = subcontractTodo(
+            { status: sc.status, valid_to: sc.valid_to, signed: !!sc.signed_file_path },
+            tracking.get(sc.id) ?? [],
+          );
+          if (todo.length)
+            return {
+              phase: 'erledigen',
+              status: `${SC_STATUS[sc.status] ?? sc.status} · ${todo.join(' · ')}`,
+              tone: 'warn',
+            };
+          return {
+            phase: SC_PHASE[sc.status] ?? 'laufend',
+            status:
+              sc.requested_by && sc.status === 'entwurf'
+                ? 'angefragt (Objektleitung) · Freigabe nötig'
+                : (SC_STATUS[sc.status] ?? sc.status),
+            tone: sc.requested_by && sc.status === 'entwurf' ? 'warn' : (SC_TONE[sc.status] ?? ''),
+          };
+        })(),
       })),
     ].sort((x, y) => y.number.localeCompare(x.number, 'de', { numeric: true }));
     const base = all

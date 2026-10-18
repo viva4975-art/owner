@@ -17,6 +17,9 @@ import {
   saveOrder,
   saveWorkReport,
   signWorkReport,
+  assignWorkReportSigners,
+  setWorkReportDone,
+  workReportDone,
   workReportPdf,
 } from './orders.js';
 import { DEMO } from './seed.js';
@@ -328,5 +331,26 @@ describe.skipIf(!available)('Aufträge und Arbeitsscheine', () => {
     expect([b.report.site_id, b.report.customer_id]).toEqual([DEMO.siteHq, DEMO.company]);
     expect([b.lines[0]!.service_id, b.lines[0]!.unit_price_cents]).toEqual([null, null]);
     expect(b.lines[0]!.description).not.toBe('');
+  });
+
+  it('Unterschrift zuweisen (öffnet „ohne Unterschrift“ wieder), erledigt nur mit Unterschrift', async () => {
+    const emp = { id: randomUUID() };
+    await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, employment_type, weekly_hours)
+              values (${emp.id}, '9761', 'Vor', 'Arbeiter', '2024-01-01', 'vollzeit', 40)`;
+    const id = randomUUID();
+    await saveWorkReport(sql, id, report({ workDate: '2026-10-06' }), 'test');
+    await closeWithoutSignature(deps, id, 'Kunde nicht da', 'test');
+    await expect(setWorkReportDone(sql, id, true, null, 'test')).rejects.toThrow(/Unterschrift fehlt/);
+    await assignWorkReportSigners(sql, id, [emp!.id], 'test');
+    let w = (await getWorkReport(sql, id))!.report;
+    expect(w.status).toBe('entwurf');
+    expect(w.sign_employee_ids).toEqual([emp!.id]);
+    expect(w.sign_names.length).toBe(1);
+    expect(workReportDone(w)).toBe(false);
+    await signWorkReport(deps, id, { name: 'Kunde', png }, 'test');
+    await expect(assignWorkReportSigners(sql, id, [emp!.id], 'test')).rejects.toThrow(/schon unterschrieben/);
+    await setWorkReportDone(sql, id, true, null, 'test');
+    w = (await getWorkReport(sql, id))!.report;
+    expect(workReportDone(w)).toBe(true);
   });
 });

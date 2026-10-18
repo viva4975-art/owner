@@ -463,6 +463,10 @@ export interface WorkReport {
   done_by: string | null;
   done_note: string | null;
   draft_invoice_id: string | null;
+  /** zum Unterschreiben-Lassen zugewiesen (App); leer = alle eingesetzten Mitarbeitenden */
+  sign_employee_ids: string[];
+  sign_assigned_at: Date | null;
+  sign_assigned_by: string | null;
   created_by: string;
   created_at: Date;
   version: number;
@@ -489,13 +493,28 @@ export type WorkReportRow = WorkReport & {
   site_name: string;
   site_no: string;
   order_number: string | null;
+  /** Status der verknüpften Rechnung (draft/issued …) */
+  invoice_status: string | null;
+  /** Namen der zum Unterschreiben zugewiesenen Personen */
+  sign_names: string[];
 };
+
+/**
+ * Erledigt (Ahmed 18.10.): von Hand als erledigt markiert oder unterschrieben und mit ausgestellter Rechnung
+ * abgerechnet. Fehlt die Unterschrift, ist der Schein noch offen.
+ */
+export const workReportDone = (
+  w: Pick<WorkReportRow, 'done_at' | 'status' | 'invoice_status' | 'cancelled_at'>,
+) => !w.cancelled_at && (!!w.done_at || (w.status === 'unterschrieben' && w.invoice_status === 'issued'));
 
 const wrSelect = (sql: Sql) => sql`
   select w.*, w.work_date_to::text as work_date_to, to_char(w.start_time, 'HH24:MI') as start_time, to_char(w.end_time, 'HH24:MI') as end_time,
-         c.name as customer_name, s.name as site_name, s.site_no, o.number as order_number
+         c.name as customer_name, s.name as site_name, s.site_no, o.number as order_number,
+         i.status::text as invoice_status,
+         coalesce((select array_agg(e.first_name || ' ' || e.last_name order by e.last_name)
+                     from app.employees e where e.id = any(w.sign_employee_ids)), '{}') as sign_names
     from app.work_reports w join app.customers c on c.id = w.customer_id join app.sites s on s.id = w.site_id
-    left join app.orders o on o.id = w.order_id`;
+    left join app.orders o on o.id = w.order_id left join app.invoices i on i.id = w.invoice_id`;
 
 export async function listWorkReports(
   sql: Sql,
@@ -820,8 +839,9 @@ export async function setWorkReportDone(
   if (!w) throw new BusinessError('Arbeitsschein nicht gefunden');
   if (w.cancelled_at) throw new BusinessError('Storniert');
   if (done && w.invoice_id) throw new BusinessError('Schon abgerechnet');
-  if (done && w.status === 'entwurf')
-    throw new BusinessError('Bitte zuerst abschließen (Unterschrift oder PDF)');
+  // ohne Unterschrift ist der Schein nicht erledigt (Ahmed 18.10.)
+  if (done && w.status !== 'unterschrieben')
+    throw new BusinessError('Unterschrift fehlt – erst vom Kunden unterschreiben lassen');
   if (done)
     await sql`update app.work_reports set done_at = now(), done_by = ${actor}, done_note = ${note?.trim() || null}
                where id = ${id} and done_at is null`;
@@ -829,6 +849,37 @@ export async function setWorkReportDone(
     await sql`update app.work_reports set done_at = null, done_by = null, done_note = null where id = ${id}`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
             values (${actor}, ${done ? 'done' : 'undone'}, 'work_report', ${id}, ${sql.json({ note: note ?? null })})`;
+}
+
+/**
+ * Arbeitsschein zum Unterschreiben-Lassen zuweisen (Ahmed 18.10.): erscheint direkt in der App der gewählten
+ * Personen. „Ohne Unterschrift“ abgeschlossene Scheine werden dafür wieder geöffnet (alte Fassung bleibt im Archiv).
+ * Leere Liste = Zuweisung aufheben (dann wieder alle eingesetzten Mitarbeitenden).
+ */
+export async function assignWorkReportSigners(sql: Sql, id: string, employeeIds: string[], actor: string) {
+  const [w] = await sql<
+    { status: WorkReportStatus; cancelled_at: Date | null; number: string; invoice_status: string | null }[]
+  >`select w.status, w.cancelled_at, w.number, i.status::text as invoice_status
+      from app.work_reports w left join app.invoices i on i.id = w.invoice_id where w.id = ${id}`;
+  if (!w) throw new BusinessError('Arbeitsschein nicht gefunden');
+  if (w.cancelled_at) throw new BusinessError(`${w.number}: storniert`);
+  if (w.status === 'unterschrieben') throw new BusinessError(`${w.number}: schon unterschrieben`);
+  const ids = [...new Set(employeeIds)];
+  if (ids.length) {
+    const ok = await sql<{ id: string }[]>`
+      select id from app.employees where id in ${sql(ids)} and status = 'aktiv'`;
+    if (ok.length !== ids.length) throw new BusinessError('Mitarbeiter nicht gefunden oder nicht aktiv');
+  }
+  if (w.status === 'ohne_unterschrift') {
+    if (w.invoice_status === 'issued')
+      throw new BusinessError(`${w.number}: schon mit ausgestellter Rechnung abgerechnet`);
+    if (ids.length) await reopenWorkReport(sql, id, actor);
+  }
+  await sql`update app.work_reports set sign_employee_ids = ${ids}::uuid[],
+                   sign_assigned_at = ${ids.length ? sql`now()` : null}, sign_assigned_by = ${ids.length ? actor : null}
+             where id = ${id}`;
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${actor}, 'assign_sign', 'work_report', ${id}, ${sql.json({ employees: ids })})`;
 }
 
 const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];

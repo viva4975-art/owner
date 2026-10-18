@@ -3308,3 +3308,17 @@ Testadresse.
 - 2026-10-17: ARGE U5W2 Raumbuch/Revierplan Fassung 2 (Ahmed): 20166001 + 20166002 Di/Do 17:00–21:30 (W2), 20166003
   Mo/Mi/Fr früh oder mittags (W3), 20166005 Di/Do früh oder mittags (W2), 20166004 entfällt, 20166007 TU Container
   Personal neu aus dem Lageplan BE-A TU-Anlage (16 Container, Flächen geschätzt, Di/Do wie 20166005).
+- 2026-10-18: **Bestellungen → „Zu erledigen“ bei Nachunternehmern** (Ahmed): erteilte/beendete NU-Bestellungen stehen dort,
+  solange der unterschriebene Auftrag fehlt, eine Rechnung für einen abgelaufenen Zeitraum fehlt, eine Bestellung „nach
+  Ausführung“ beendet ist und keine Rechnung hat, oder – laufende (monatlich/wöchentlich) – ab 5 Tage vor Monatsende
+  („Monatsende – Rechnung erwartet“). Grund steht im Status (`subcontractTodo` in `expected-invoices.ts`). Bestellungen
+  „nach Ausführung“, die vor dem 01.09.2026 endeten, zählen nicht (im alten System abgerechnet, `TODO_FROM`). Probe mit
+  der Datenkopie: 60 von 122 NU-Bestellungen zu erledigen. Erledigen: Rechnung erfassen oder „keine Rechnung …“ vermerken.
+- 2026-10-18: **Arbeitsscheine offen / erledigt + Unterschrift zuweisen** (Ahmed): Übersicht mit Reitern Offen (Standard) /
+  Erledigt / Alle statt „ohne Unterschrift / nicht abgerechnet“; Häkchen je Zeile → „Markierte als erledigt“, „wieder
+  offen“, „zum Unterschreiben zuweisen“. **Erledigt nur mit Unterschrift des Kunden** (`setWorkReportDone`); erledigt =
+  von Hand markiert oder unterschrieben + ausgestellte Rechnung (`workReportDone`). **Zuweisen** (Liste oder am Schein,
+  Kasten „Unterschrift in der App einholen“): eine oder mehrere Personen (`work_reports.sign_employee_ids`, Migration
+  `20261201000002`); „ohne Unterschrift“ abgeschlossene Scheine werden dafür wieder geöffnet (alte Fassung bleibt im
+  Archiv). In der Mitarbeiter-App steht der Schein ganz oben auf der Startseite (einer = großer Knopf, mehrere = Liste zum
+  Auswählen), dazu Push-Nachricht. Ohne Zuweisung wie bisher alle eingesetzten Mitarbeitenden.

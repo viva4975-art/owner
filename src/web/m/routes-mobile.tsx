@@ -1292,8 +1292,10 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
     const wsOpen = await sql<{ id: string; number: string; work_date: string; site_name: string | null }[]>`
       select w.id, w.number, w.work_date, s.name as site_name
         from app.work_reports w left join app.sites s on s.id = w.site_id
-       where w.status = 'entwurf' and w.cancelled_at is null and ${me.id}::uuid = any(w.employee_ids)
-       order by w.work_date, w.number`;
+       where w.status = 'entwurf' and w.cancelled_at is null
+         and (${me.id}::uuid = any(w.sign_employee_ids)
+              or (cardinality(w.sign_employee_ids) = 0 and ${me.id}::uuid = any(w.employee_ids)))
+       order by cardinality(w.sign_employee_ids) = 0, w.work_date, w.number`;
     // Einzelaufträge, für die die Person eingeteilt ist (gestern bis 14 Tage voraus)
     const myOrders = await sql<
       {
@@ -1354,6 +1356,39 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         <div class="hello">
           {t(lang, greetKey)} <b>{me.first_name}!</b>
         </div>
+        {/* Arbeitsscheine zum Unterschreiben-Lassen direkt oben (Ahmed 18.10.): einer → großer Knopf, mehrere → wählen */}
+        {wsOpen.length === 1 && (
+          <a class="big go" href={`/m/arbeitsscheine/${wsOpen[0]!.id}`} style="font-size:17px">
+            <Icon name="sign" size={16} /> {t(lang, 'ws_one', { nr: wsOpen[0]!.number })}
+            {wsOpen[0]!.site_name && (
+              <span style="display:block;font-size:13px;font-weight:400;opacity:.9">
+                {wsOpen[0]!.site_name}
+              </span>
+            )}
+          </a>
+        )}
+        {wsOpen.length > 1 && (
+          <>
+            <div class="today">
+              <h2>{t(lang, 'ws_open')}</h2>
+            </div>
+            {wsOpen.map((w) => (
+              <a
+                class="shift open"
+                href={`/m/arbeitsscheine/${w.id}`}
+                style="display:block;text-decoration:none"
+              >
+                <div class="w">
+                  <span>
+                    {dayLabel(lang, w.work_date)} · {w.number}
+                  </span>
+                  <Icon name="sign" size={16} />
+                </div>
+                <div class="s">{w.site_name ?? ''}</div>
+              </a>
+            ))}
+          </>
+        )}
         <div id="scanner" hidden>
           <video playsinline muted></video>
           <button type="button" class="big sec">
@@ -1390,28 +1425,6 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
           <a class="big go" href="/m/dokumente" style="font-size:18px">
             <Icon name="sign" size={16} /> {t(lang, 'docs_open', { n: openDocs.length })}
           </a>
-        )}
-        {wsOpen.length > 0 && (
-          <>
-            <div class="today">
-              <h2>{t(lang, 'ws_open')}</h2>
-            </div>
-            {wsOpen.map((w) => (
-              <a
-                class="shift open"
-                href={`/m/arbeitsscheine/${w.id}`}
-                style="display:block;text-decoration:none"
-              >
-                <div class="w">
-                  <span>
-                    {dayLabel(lang, w.work_date)} · {w.number}
-                  </span>
-                  <Icon name="sign" size={16} />
-                </div>
-                <div class="s">{w.site_name ?? ''}</div>
-              </a>
-            ))}
-          </>
         )}
         {myOrders.length > 0 && (
           <>
@@ -2383,7 +2396,13 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
   // ---- Arbeitsschein vor Ort vom Kunden unterschreiben lassen (nur zugeordnete Mitarbeitende)
   const myReport = async (id: string, empId: string) => {
     const data = await getWorkReport(sql, id);
-    if (!data || data.report.cancelled_at || !(data.report.employee_ids ?? []).includes(empId)) return null;
+    if (!data || data.report.cancelled_at) return null;
+    const r = data.report;
+    // zugewiesen (Ahmed 18.10.) – sonst wie bisher alle eingesetzten Mitarbeitenden
+    const mine = r.sign_employee_ids.length
+      ? r.sign_employee_ids.includes(empId)
+      : r.employee_ids.includes(empId);
+    if (!mine) return null;
     return data;
   };
   app.get('/m/arbeitsscheine/:id{[0-9a-f-]{36}}', async (c) => {

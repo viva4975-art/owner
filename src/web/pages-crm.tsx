@@ -238,10 +238,27 @@ export const TaskBox: FC<{ tasks: Task[]; title?: string; doneLink?: string }> =
                     <div class="small mut">
                       {t.entity_type === 'tender' ? (
                         <a href={`/ausschreibungen/${t.entity_id}`}>{t.entity_label}</a>
+                      ) : t.entity_type === 'photo_group' ? (
+                        <>
+                          <a href={`/fotos/${t.entity_id}`}>Fotos ansehen</a> ·{' '}
+                          <a href={`/fotos/${t.entity_id}/pdf`} target="_blank">
+                            {t.entity_label}
+                          </a>
+                        </>
                       ) : (
                         t.entity_label
                       )}
                     </div>
+                  )}
+                  {t.entity_type === 'photo_group' && t.status === 'done' && (
+                    <form method="post" action={`/fotos/${t.entity_id}/loeschen`} style="margin-top:4px">
+                      <button
+                        class="btn sm sec"
+                        data-confirm="Fotos und Aufgabe löschen? Die Fotos bleiben nur im Archiv (Nachweis)."
+                      >
+                        Fotos löschen
+                      </button>
+                    </form>
                   )}
                 </td>
                 <td class="r small">
@@ -436,6 +453,7 @@ const TASK_HREF: Record<string, string> = {
   employee: '/personal/',
   tender: '/ausschreibungen/',
   supplier: '/lieferanten/',
+  photo_group: '/fotos/',
 };
 const taskHref = (t: Task) =>
   t.entity_type && t.entity_id && TASK_HREF[t.entity_type]

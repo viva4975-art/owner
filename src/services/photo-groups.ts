@@ -1,17 +1,17 @@
 import fontkit from '@pdf-lib/fontkit';
 import { readFile } from 'node:fs/promises';
-import { PDFDocument } from '@cantoo/pdf-lib';
+import { resolve } from 'node:path';
+import { PDFDocument, rgb } from '@cantoo/pdf-lib';
 import type { Sql } from '../db/client.js';
 import { embedUiFonts, uiText } from '../pdf/fonts.js';
-import { INBOX_ID } from './documents.js';
 import { BusinessError } from './errors.js';
-import { type StampInfo, saveStampedPhoto, uuidFrom } from './photo-stamp.js';
+import { type StampInfo, saveStampedPhoto, stampLines, uuidFrom } from './photo-stamp.js';
 import { type FileRow, type UploadConfig, filePath, storeFile } from './uploads.js';
 
 /*
- * Fotos als Gruppe (Ahmed 18.10.): ein Absenden = eine Gruppe. Jedes Foto bekommt den Stempel inkl. Ort/Adresse und
- * Schaden/Bemerkung; abgelegt wird je Gruppe ein PDF mit allen Fotos (Dokumenteneingang bzw. Objekt → Dokumente →
- * Fotos). Die einzelnen gestempelten Fotos und die Originale bleiben write-once ohne Verknüpfung (Nachweis).
+ * Fotos als Gruppe (Ahmed 18.10.): ein Absenden = eine Gruppe → ein PDF mit allen Fotos (Angaben über jedem Foto,
+ * kein Stempel im Bild) und eine Aufgabe für Admin. Nicht beim Objekt, nicht im Dokumenteneingang. Ist die Aufgabe
+ * erledigt, lässt sich die Gruppe löschen. Fotos und Originale bleiben write-once ohne Verknüpfung (Nachweis).
  */
 
 export interface PhotoGroupRow {
@@ -49,29 +49,64 @@ const slug = (s: string) =>
     .replace(/^_+|_+$/g, '')
     .slice(0, 60);
 
-/** PDF mit allen Fotos der Gruppe (je Foto eine A4-Seite, Kopfzeile mit Titel und Zähler). */
+interface GroupPdfInfo {
+  title: string;
+  site: string | null;
+  address: string | null;
+  place: string | null;
+  note: string | null;
+  by: string;
+}
+
+/**
+ * PDF mit allen Fotos der Gruppe: je Foto eine A4-Seite, oben Logo und die Angaben (Objekt/Ort, Schaden/Bemerkung,
+ * Datum/Uhrzeit, Name, Standort), darunter das Foto ohne Stempel.
+ */
 export async function buildGroupPdf(
   sql: Sql,
   cfg: UploadConfig,
   groupId: string,
-  title: string,
-  when: string,
+  g: GroupPdfInfo,
 ): Promise<Uint8Array> {
-  const files = await sql<FileRow[]>`
-    select f.* from app.photo_stamps p join app.files f on f.id = p.file_id
+  const files = await sql<
+    (FileRow & {
+      taken_at: Date;
+      geo: string | null;
+      geo_m: number | null;
+      lat: string | null;
+      lng: string | null;
+    })[]
+  >`
+    select f.*, p.taken_at, p.geo, p.geo_m, p.lat::text as lat, p.lng::text as lng
+      from app.photo_stamps p join app.files f on f.id = p.file_id
      where p.group_id = ${groupId} order by p.taken_at, f.original_name, f.id`;
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
-  pdf.setTitle(`Fotos – ${title}`);
+  pdf.setTitle(`Fotos – ${g.title}`);
   pdf.setCreator('Viva-Deluxe App');
   pdf.setProducer('Viva-Deluxe App');
   pdf.setCreationDate(new Date(0));
   pdf.setModificationDate(new Date(0));
   const { regular, bold } = await embedUiFonts(pdf);
-  const fit = (t: string, size: number, max: number, font = regular) => {
-    let s = uiText(t);
-    while (s.length > 4 && font.widthOfTextAtSize(s, size) > max) s = `${s.slice(0, -2).trimEnd()}…`;
-    return s;
+  const logo = await pdf.embedPng(await readFile(resolve('assets/web/logo-transparent.png')));
+  const BORDEAUX = rgb(0x7d / 255, 0x14 / 255, 0x35 / 255);
+  const DARK = rgb(0.1, 0.09, 0.1);
+  const MUT = rgb(0.42, 0.4, 0.42);
+  const wrap = (t: string, size: number, max: number, font = regular) => {
+    const out: string[] = [];
+    for (const para of uiText(t).split('\n')) {
+      let line = '';
+      for (const w of para.split(/\s+/).filter(Boolean)) {
+        const next = line ? `${line} ${w}` : w;
+        if (font.widthOfTextAtSize(next, size) <= max || !line) line = next;
+        else {
+          out.push(line);
+          line = w;
+        }
+      }
+      if (line) out.push(line);
+    }
+    return out.slice(0, 4);
   };
   let n = 0;
   for (const f of files) {
@@ -81,17 +116,43 @@ export async function buildGroupPdf(
     const [W, H] = land ? [842, 595] : [595, 842];
     const page = pdf.addPage([W, H]);
     const m = 32;
-    page.drawText(fit(title, 12, W - 2 * m - 90, bold), { x: m, y: H - m - 10, size: 12, font: bold });
+    const maxW = W - 2 * m;
+    const lw = 110;
+    const lh = (logo.height / logo.width) * lw;
+    page.drawImage(logo, { x: m, y: H - m - lh, width: lw, height: lh });
     const right = `Foto ${n} von ${files.length}`;
     page.drawText(right, {
       x: W - m - regular.widthOfTextAtSize(right, 9),
       y: H - m - 10,
       size: 9,
       font: regular,
+      color: MUT,
     });
-    page.drawText(fit(when, 9, W - 2 * m), { x: m, y: H - m - 24, size: 9, font: regular });
-    const top = H - m - 36;
-    const maxW = W - 2 * m;
+    let y = H - m - lh - 16;
+    const [where, when, standort] = stampLines({
+      site: g.site,
+      address: g.address,
+      at: f.taken_at,
+      by: g.by,
+      geo: f.geo,
+      distanceM: f.geo_m,
+      lat: f.lat != null ? Number(f.lat) : null,
+      lng: f.lng != null ? Number(f.lng) : null,
+      place: g.place,
+    });
+    const line = (t: string, size: number, font = regular, color = DARK) => {
+      for (const l of wrap(t, size, maxW, font)) {
+        page.drawText(l, { x: m, y, size, font, color });
+        y -= size * 1.3;
+      }
+    };
+    line(where, 12, bold);
+    if (g.note) line(g.note, 12, bold, BORDEAUX);
+    line(when, 9.5);
+    line(standort, 9.5, regular, MUT);
+    y -= 2;
+    page.drawRectangle({ x: m, y, width: maxW, height: 1.2, color: BORDEAUX });
+    const top = y - 10;
     const maxH = top - m;
     const r = Math.min(maxW / img.width, maxH / img.height);
     const w = img.width * r;
@@ -100,6 +161,9 @@ export async function buildGroupPdf(
   }
   return pdf.save();
 }
+
+/** Aufgabe zur Fotogruppe (feste ID). */
+export const photoTaskId = (groupId: string) => uuidFrom(`fotogruppe-aufgabe:${groupId}`);
 
 export async function savePhotoGroup(
   sql: Sql,
@@ -165,10 +229,11 @@ export async function savePhotoGroup(
         info,
         accuracy: p.accuracy,
         actor: p.actor,
+        stamp: false,
       });
       saved++;
     } catch (e) {
-      console.error('Foto mit Stempel fehlgeschlagen', label, e);
+      console.error('Foto fehlgeschlagen', label, e);
       failed.push(`${label} (Bild konnte nicht gelesen werden)`);
     }
   }
@@ -182,17 +247,17 @@ export async function savePhotoGroup(
     /^ohne Objekt/,
     p.siteLabel ?? 'ohne Objekt',
   );
-  const whenText = `${at.toLocaleString('de-DE', {
-    timeZone: 'Europe/Berlin',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })} Uhr · ${p.by} · ${count} ${count === 1 ? 'Foto' : 'Fotos'}`;
-  const bytes = await buildGroupPdf(sql, cfg, p.id, title, whenText);
+  const bytes = await buildGroupPdf(sql, cfg, p.id, {
+    title,
+    site: p.siteLabel,
+    address: p.address,
+    place: p.place,
+    note: p.note,
+    by: p.by,
+  });
   const pdfId = uuidFrom(`fotogruppe:${p.id}`);
   const day = at.toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
+  // Ahmed 18.10.: weder beim Objekt noch im Dokumenteneingang – nur als Aufgabe für Admin
   await storeFile(
     sql,
     cfg,
@@ -201,12 +266,24 @@ export async function savePhotoGroup(
       name: `Fotos_${day}_${slug(title) || 'Gruppe'}.pdf`,
       type: 'application/pdf',
       data: bytes,
-      link: p.siteId ? { type: 'site', id: p.siteId } : { type: 'inbox', id: INBOX_ID },
-      category: p.siteId ? 'Fotos' : 'Fotos (App)',
+      link: null,
+      category: null,
     },
     p.actor,
   );
-  await sql`update app.photo_groups set pdf_file_id = ${pdfId}, photo_count = ${count} where id = ${p.id}`;
+  await sql.begin(async (tx) => {
+    await tx`update app.photo_groups set pdf_file_id = ${pdfId}, photo_count = ${count} where id = ${p.id}`;
+    const [admin] = await tx<{ name: string }[]>`
+      select coalesce(nullif(p.display_name, ''), a.login) as name
+        from app.user_accounts a join app.profiles p on p.user_id = a.id
+       where a.active and p.role = 'admin' order by a.created_at limit 1`;
+    await tx`
+      insert into app.tasks (id, title, description, due_date, assignee, entity_type, entity_id, created_by)
+      values (${photoTaskId(p.id)}, ${`Fotos prüfen: ${title}`.slice(0, 300)},
+              ${`${count === 1 ? '1 Foto' : `${count} Fotos`} von ${p.by}`}, ${day}, ${admin?.name ?? null},
+              'photo_group', ${p.id}, ${p.actor})
+      on conflict (id) do nothing`;
+  });
   return { saved, failed, pdfId };
 }
 
@@ -231,7 +308,7 @@ export async function listPhotoGroups(
      order by g.created_at desc limit ${f.limit ?? 20}`;
 }
 
-/** Gruppe löschen: ausblenden und PDF aus Dokumenteneingang/Objekt entfernen. Dateien bleiben write-once. */
+/** Gruppe löschen: ausblenden, Aufgabe entfernen (ältere Gruppen: PDF-Verknüpfung). Dateien bleiben write-once. */
 export async function deletePhotoGroup(sql: Sql, id: string, actor: string) {
   return sql.begin(async (tx) => {
     const [g] = await tx<
@@ -242,6 +319,7 @@ export async function deletePhotoGroup(sql: Sql, id: string, actor: string) {
     if (g.deleted_at) return false;
     await tx`update app.photo_groups set deleted_at = now(), deleted_by = ${actor} where id = ${id}`;
     if (g.pdf_file_id) await tx`delete from app.file_links where file_id = ${g.pdf_file_id}`;
+    await tx`delete from app.tasks where id = ${photoTaskId(id)}`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
              values (${actor}, 'delete', 'photo_groups', ${id}, ${tx.json({ place: g.place, note: g.note })})`;
     return true;

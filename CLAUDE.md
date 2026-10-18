@@ -3353,3 +3353,12 @@ Testadresse.
   Dokumenteneingang zeigt die Gruppe mit Titel, Anzahl, Vorschaubildern; **„Löschen“** je Eintrag (Fotogruppe: ausgeblendet
   + PDF-Verknüpfung weg, Protokoll; sonstige Dateien: nur aus dem Eingang). Ein kaputtes Bild hält die anderen nicht auf
   (Meldung je Datei). Vermutete Ursache „nicht im Eingang“: Speichern scheiterte an einzelnen großen/HEIC-Fotos.
+- 2026-10-18: **Fotogruppen als Aufgabe für Admin** (Ahmed: „Bemerkung oben im PDF und unten im Bild – lieber nur darüber“,
+  „weder zum Objekt noch in den Dokumenteneingang, als Aufgabe für Admin, erledigt → löschen“): Fotos aus Verwaltung → Foto
+  werden **ohne Stempel** gespeichert (nur gedreht/verkleinert, `saveStampedPhoto(..., stamp: false)`); im PDF steht über
+  jedem Foto Logo, Ort/Objekt, Schaden/Bemerkung (Bordeaux), Datum/Uhrzeit · Name, Standort. Das PDF hat keine
+  Verknüpfung (nicht beim Objekt, nicht im Dokumenteneingang); je Gruppe eine **Aufgabe „Fotos prüfen: …“** (feste ID,
+  zuständig = erster aktiver Admin, `entity_type 'photo_group'`, Migration `20261202000003`) mit „Fotos ansehen“ (`/fotos/<id>`)
+  und PDF (`/fotos/<id>/pdf`). Ist die Aufgabe erledigt: „Fotos löschen“ in der Aufgabenliste bzw. auf der Fotoseite
+  (Gruppe ausgeblendet, Aufgabe gelöscht, Protokoll; Dateien bleiben write-once). QM-Audit-Fotos behalten den Stempel.
+  Ältere Gruppen (vor dieser Änderung) bleiben im Eingang/beim Objekt.

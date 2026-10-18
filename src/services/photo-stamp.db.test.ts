@@ -5,9 +5,14 @@ import sharp from 'sharp';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { saveStampedPhoto, stampLines, uuidFrom } from './photo-stamp.js';
-import { deletePhotoGroup, listPhotoGroups, photoGroupsByPdf, savePhotoGroup } from './photo-groups.js';
+import {
+  deletePhotoGroup,
+  listPhotoGroups,
+  photoGroupsByPdf,
+  photoTaskId,
+  savePhotoGroup,
+} from './photo-groups.js';
 import { PDFDocument } from '@cantoo/pdf-lib';
-import { INBOX_ID } from './documents.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
@@ -71,7 +76,7 @@ describe.skipIf(!ok)('Foto mit Stempel', () => {
     );
   });
 
-  it('Gruppe: 12 Fotos → ein PDF im Dokumenteneingang, doppelt absenden nichts doppelt, löschen', async () => {
+  it('Gruppe: 12 Fotos → ein PDF + Aufgabe für Admin, nicht im Eingang, doppelt absenden nichts doppelt, löschen', async () => {
     const cfg = { dir: await mkdtemp(join(tmpdir(), 'viva-fotogr-')), maxBytes: 50_000_000 };
     const img = new Uint8Array(
       await sharp({ create: { width: 800, height: 600, channels: 3, background: '#cc8844' } })
@@ -105,8 +110,19 @@ describe.skipIf(!ok)('Foto mit Stempel', () => {
     expect(r.failed).toHaveLength(1);
     const again = await savePhotoGroup(sql, cfg, p);
     expect(again.pdfId).toBe(r.pdfId);
-    const [link] = await sql`select entity_type, entity_id from app.file_links where file_id = ${r.pdfId}`;
-    expect(link).toMatchObject({ entity_type: 'inbox', entity_id: INBOX_ID });
+    expect(await sql`select 1 from app.file_links where file_id = ${r.pdfId}`).toHaveLength(0);
+    const tasks = await sql<{ id: string; title: string; assignee: string | null; status: string }[]>`
+      select id, title, assignee, status::text as status from app.tasks
+       where entity_type = 'photo_group' and entity_id = ${p.id}`;
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]!.id).toBe(photoTaskId(p.id));
+    expect(tasks[0]!.title).toContain('Urin im Aufzug');
+    expect(tasks[0]!.status).toBe('open');
+    // Fotos ohne Stempel: Größe wie das Original
+    const [st] = await sql<{ storage_path: string }[]>`
+      select f.storage_path from app.photo_stamps p join app.files f on f.id = p.file_id where p.group_id = ${p.id} limit 1`;
+    const meta = await sharp(join(cfg.dir, st!.storage_path)).metadata();
+    expect([meta.width, meta.height]).toEqual([800, 600]);
     const [f] = await sql<
       { storage_path: string }[]
     >`select storage_path from app.files where id = ${r.pdfId}`;
@@ -118,7 +134,7 @@ describe.skipIf(!ok)('Foto mit Stempel', () => {
     expect(g.photos).toHaveLength(12);
     expect((await listPhotoGroups(sql, { createdBy: 'test' })).map((x) => x.id)).toContain(p.id);
     expect(await deletePhotoGroup(sql, p.id, 'test')).toBe(true);
-    expect(await sql`select 1 from app.file_links where file_id = ${r.pdfId}`).toHaveLength(0);
+    expect(await sql`select 1 from app.tasks where id = ${photoTaskId(p.id)}`).toHaveLength(0);
     expect((await listPhotoGroups(sql, { createdBy: 'test' })).map((x) => x.id)).not.toContain(p.id);
   });
 });

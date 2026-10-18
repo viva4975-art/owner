@@ -58,7 +58,13 @@ import { WEIGHT_LABEL, deleteQualityCheck, qmSettings, saveQmSettings } from '..
 import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { str } from './forms.js';
 import { saveStampedPhoto, siteAddress } from '../services/photo-stamp.js';
-import { deletePhotoGroup, groupTitle, listPhotoGroups, savePhotoGroup } from '../services/photo-groups.js';
+import {
+  deletePhotoGroup,
+  groupTitle,
+  listPhotoGroups,
+  photoTaskId,
+  savePhotoGroup,
+} from '../services/photo-groups.js';
 import { type FileRow, filePath } from '../services/uploads.js';
 import { readFile } from 'node:fs/promises';
 import { createQualityCheck } from '../services/facility.js';
@@ -1222,7 +1228,7 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
           <input type="hidden" name="geo_acc" />
           <label for="fobj">Objekt (optional)</label>
           <select id="fobj" name="site_id">
-            <option value="">– ohne Objekt (Dokumenteneingang) –</option>
+            <option value="">– ohne Objekt –</option>
             <SiteOptions sites={sites} selected={pre} />
           </select>
           <label for="fplace">Ort / Adresse (optional)</label>
@@ -1235,8 +1241,8 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
           <label for="fnote">Schaden / Bemerkung (optional)</label>
           <input id="fnote" name="note" maxLength={300} placeholder="z. B. Urin im Aufzug" />
           <p class="small mut" style="margin:4px 0 0">
-            Alle Fotos dieses Vorgangs werden eine Gruppe: Ort und Bemerkung stehen auf jedem Foto, im Büro
-            kommt ein PDF mit allen Fotos an.
+            Alle Fotos dieses Vorgangs werden eine Gruppe: Das Büro bekommt eine Aufgabe mit einem PDF, über
+            jedem Foto stehen Ort, Bemerkung, Datum und Uhrzeit, Name und Standort.
           </p>
           <div class="fot-box" data-fotos>
             <div class="fot-list" />
@@ -1256,7 +1262,7 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
             <small class="mut fot-count">bis {FOTO_MAX} Fotos auf einmal</small>
           </div>
           <p class="small mut" id="geo-hint">
-            Jedes Foto bekommt einen Stempel: Logo, Objekt, Datum und Uhrzeit, Standort und dein Name.
+            Der Standort wird mitgeschickt und steht im PDF über den Fotos.
           </p>
           <button class="big go" id="fsave" disabled>
             Fotos speichern
@@ -1271,11 +1277,11 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
                   <div>
                     <b>{groupTitle(g)}</b>
                     <div class="small mut">
-                      {dateDe(todayBerlin(g.created_at))} · {anz(g.photo_count, 'Foto', 'Fotos')} ·{' '}
-                      {g.site_id ? 'Objekt → Dokumente → Fotos' : 'Dokumenteneingang'}
+                      {dateDe(todayBerlin(g.created_at))} · {anz(g.photo_count, 'Foto', 'Fotos')} · Aufgabe im
+                      Büro
                     </div>
                   </div>
-                  <a class="btn sm sec" href={`/dateien/${g.pdf_file_id}`} target="_blank">
+                  <a class="btn sm sec" href={`/fotos/${g.id}/pdf`} target="_blank">
                     PDF
                   </a>
                 </div>
@@ -1289,7 +1295,7 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
                 <form method="post" action={`/qm/foto/gruppe/${g.id}/loeschen`} style="margin:6px 0 0">
                   <button
                     class="vw-out"
-                    data-confirm="Diese Fotogruppe löschen? Das PDF verschwindet aus dem Eingang bzw. beim Objekt."
+                    data-confirm="Diese Fotogruppe löschen? Die Aufgabe im Büro verschwindet mit."
                   >
                     Gruppe löschen
                   </button>
@@ -1302,7 +1308,7 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){var f=document.getElementById('fotof');if(!f)return;var btn=document.getElementById('fsave');
-function geo(){if(!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(function(p){f.geo_lat.value=p.coords.latitude.toFixed(5);f.geo_lng.value=p.coords.longitude.toFixed(5);f.geo_acc.value=Math.round(p.coords.accuracy)},function(){var h=document.getElementById('geo-hint');if(h)h.textContent='Standort nicht freigegeben – Fotos werden ohne Standort gestempelt.'},{enableHighAccuracy:true,timeout:15000,maximumAge:60000})}
+function geo(){if(!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(function(p){f.geo_lat.value=p.coords.latitude.toFixed(5);f.geo_lng.value=p.coords.longitude.toFixed(5);f.geo_acc.value=Math.round(p.coords.accuracy)},function(){var h=document.getElementById('geo-hint');if(h)h.textContent='Standort nicht freigegeben – Fotos werden ohne Standort gespeichert.'},{enableHighAccuracy:true,timeout:15000,maximumAge:60000})}
 geo();
 var box=f.querySelector('[data-fotos]'),store=box.querySelector('.fot-store'),list=box.querySelector('.fot-list'),cnt=box.querySelector('.fot-count'),files=[],busy=0,MAX=${FOTO_MAX};
 function sync(){try{var dt=new DataTransfer();files.forEach(function(x){dt.items.add(x)});store.files=dt.files}catch(e){}list.innerHTML='';files.forEach(function(x,i){var d=document.createElement('div');d.className='fot-t';var im=document.createElement('img');im.src=URL.createObjectURL(x);var b=document.createElement('button');b.type='button';b.textContent='\\u00d7';b.setAttribute('aria-label','entfernen');b.onclick=function(){files.splice(i,1);sync()};d.appendChild(im);d.appendChild(b);list.appendChild(d)});var n=files.length;btn.disabled=!n||busy>0;btn.textContent=busy>0?'Fotos werden vorbereitet \\u2026':n===1?'1 Foto speichern':n?n+' Fotos speichern':'Fotos speichern';cnt.textContent=n?n+' von h\\u00f6chstens '+MAX+' Fotos':'bis '+MAX+' Fotos auf einmal';box.querySelectorAll('.fot-add label').forEach(function(l){l.style.display=n>=MAX?'none':''})}
@@ -1382,12 +1388,11 @@ f.addEventListener('submit',function(){btn.textContent='Wird hochgeladen \\u2026
       actor: c.get('actor'),
     });
     const to = `/qm/foto${siteId ? `?objekt=${siteId}` : ''}`;
-    const where = sg ? 'Objekt → Dokumente → Fotos' : 'Transfer → Dokumenteneingang';
     if (r.failed.length)
       return back(c, to, {
-        fehler: `${r.saved ? `${anz(r.saved, 'Foto', 'Fotos')} als PDF gespeichert (${where}). ` : ''}Nicht gespeichert: ${r.failed.join(', ')}.`,
+        fehler: `${r.saved ? `${anz(r.saved, 'Foto', 'Fotos')} als PDF gespeichert, Aufgabe im Büro. ` : ''}Nicht gespeichert: ${r.failed.join(', ')}.`,
       });
-    return back(c, to, { ok: `${anz(r.saved, 'Foto', 'Fotos')} als PDF gespeichert (${where}).` });
+    return back(c, to, { ok: `${anz(r.saved, 'Foto', 'Fotos')} als PDF gespeichert, Aufgabe im Büro.` });
   });
 
   /** Einzelnes gestempeltes Foto (ohne eigene Verknüpfung): Büro alle, Objektleitung eigene Objekte bzw. eigene Fotos. */
@@ -1417,6 +1422,119 @@ f.addEventListener('submit',function(){btn.textContent='Wird hochgeladen \\u2026
       return back(c, to, { fehler: 'Keine Berechtigung.' });
     await deletePhotoGroup(sql, c.req.param('id'), c.get('actor'));
     return back(c, to, { ok: 'Fotogruppe gelöscht.' });
+  });
+
+  // Fotogruppe im Büro (Aufgabe für Admin, Ahmed 18.10.): Büro-Rollen alle, Objektleitung nur eigene Gruppen
+  const loadGroup = async (c: Context<AppEnv>) => {
+    const [g] = await sql<
+      {
+        id: string;
+        site_id: string | null;
+        site_no: string | null;
+        site_name: string | null;
+        place: string | null;
+        note: string | null;
+        photo_count: number;
+        pdf_file_id: string | null;
+        created_by: string;
+        created_at: Date;
+        deleted_at: Date | null;
+        task_status: string | null;
+        photos: string[];
+      }[]
+    >`
+      select g.id, g.site_id, s.site_no, s.name as site_name, g.place, g.note, g.photo_count, g.pdf_file_id,
+             g.created_by, g.created_at, g.deleted_at,
+             (select t.status::text from app.tasks t where t.id = ${photoTaskId(c.req.param('id') ?? '')})
+               as task_status,
+             coalesce((select array_agg(p.file_id order by p.taken_at, p.file_id) from app.photo_stamps p
+                        where p.group_id = g.id), '{}') as photos
+        from app.photo_groups g left join app.sites s on s.id = g.site_id where g.id = ${c.req.param('id') ?? ''}`;
+    if (!g || g.deleted_at) return null;
+    if (c.get('user').role === 'objektleitung' && g.created_by !== c.get('actor')) return null;
+    return g;
+  };
+
+  app.get(`/fotos/:id{${UUID}}`, async (c) => {
+    const g = await loadGroup(c);
+    if (!g) return c.notFound();
+    const done = g.task_status === 'done';
+    return page(
+      c,
+      'Fotos',
+      'kunden',
+      <>
+        <PageHead title={`Fotos: ${groupTitle(g)}`} crumbs={[['Aufgaben', '/aufgaben']]} />
+        <div class="card">
+          <p style="margin-top:0">
+            {anz(g.photo_count, 'Foto', 'Fotos')} · aufgenommen am {dateDe(todayBerlin(g.created_at))}
+            {g.task_status ? ` · Aufgabe ${done ? 'erledigt' : 'offen'}` : ''}
+          </p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+            {g.pdf_file_id && (
+              <a class="btn" href={`/fotos/${g.id}/pdf`} target="_blank">
+                PDF mit allen Fotos
+              </a>
+            )}
+            {g.task_status && (
+              <form method="post" action={`/aufgaben/${photoTaskId(g.id)}/erledigt`}>
+                <input type="hidden" name="done" value={done ? '0' : '1'} />
+                <button class="btn sec">{done ? 'Wieder öffnen' : '✓ Erledigt'}</button>
+              </form>
+            )}
+            {(done || !g.task_status) && (
+              <form method="post" action={`/fotos/${g.id}/loeschen`}>
+                <button
+                  class="btn sec"
+                  data-confirm="Fotos und Aufgabe löschen? Die Fotos bleiben nur im Archiv (Nachweis)."
+                >
+                  Fotos löschen
+                </button>
+              </form>
+            )}
+          </div>
+          {g.task_status === 'open' && (
+            <p class="small mut">Löschen ist möglich, sobald die Aufgabe erledigt ist.</p>
+          )}
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px">
+            {g.photos.map((id) => (
+              <a href={`/qm/foto/bild/${id}`} target="_blank">
+                <img
+                  src={`/qm/foto/bild/${id}`}
+                  alt="Foto"
+                  loading="lazy"
+                  style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--line)"
+                />
+              </a>
+            ))}
+          </div>
+        </div>
+      </>,
+    );
+  });
+
+  app.get(`/fotos/:id{${UUID}}/pdf`, async (c) => {
+    const g = await loadGroup(c);
+    if (!g?.pdf_file_id) return c.notFound();
+    const [f] = await sql<FileRow[]>`select * from app.files where id = ${g.pdf_file_id}`;
+    if (!f) return c.notFound();
+    const data = await readFile(
+      filePath({ dir: deps.env.FILES_DIR, maxBytes: deps.env.UPLOAD_MAX_BYTES }, f),
+    );
+    return c.body(data, 200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${f.original_name.replace(/[^\w.-]/g, '_')}"`,
+      'Cache-Control': 'private, no-cache',
+    });
+  });
+
+  app.post(`/fotos/:id{${UUID}}/loeschen`, async (c) => {
+    const g = await loadGroup(c);
+    if (!g) return back(c, '/aufgaben', { fehler: 'Fotogruppe nicht gefunden.' });
+    if (g.task_status === 'open')
+      return back(c, `/fotos/${g.id}`, { fehler: 'Erst die Aufgabe als erledigt markieren, dann löschen.' });
+    await deletePhotoGroup(sql, g.id, c.get('actor'));
+    return back(c, '/aufgaben?status=done', { ok: 'Fotos gelöscht.' });
   });
 
   // ------------------------------------------------------------ Tickets

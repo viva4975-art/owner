@@ -65,6 +65,8 @@ const RULES: [RegExp, Role[]][] = [
   ],
   [/^\/arbeitsscheine(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
   [/^\/qm(\/|$)/, ALL],
+  // Fotogruppen (Aufgabe fürs Büro); Objektleitung nur selbst aufgenommene (Prüfung in der Route)
+  [/^\/fotos\/[0-9a-f-]{36}(\/|$)/, ALL],
   [/^\/(qualitaet|zaehler)(\/|$)/, ['admin', 'buchhaltung', 'objektleitung']],
   [
     /^\/objekte\/[0-9a-f-]{36}(\/(einsaetze|zeiten|qr|notizen|aufgaben|arbeitsscheine|raumbuch|stundenvorgabe|qualitaet|zaehler|dokumente|schluessel|uebergaben|objektordner|anwesenheit|aushang)([/.]|$)|$)/,

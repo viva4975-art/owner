@@ -66,6 +66,16 @@ export function stampLines(i: StampInfo): [string, string, string] {
   ];
 }
 
+/** Foto nur drehen (EXIF) und auf höchstens 2000 px verkleinern → JPEG. */
+export async function plainPhoto(input: Uint8Array): Promise<Uint8Array> {
+  const out = await sharp(input, { failOn: 'none' })
+    .rotate()
+    .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 85, mozjpeg: true })
+    .toBuffer();
+  return new Uint8Array(out);
+}
+
 /** Foto drehen (EXIF), auf höchstens 2000 px verkleinern und den Stempel unten einsetzen → JPEG. */
 export async function stampPhoto(input: Uint8Array, info: StampInfo): Promise<Uint8Array> {
   const base = sharp(input, { failOn: 'none' }).rotate().resize({
@@ -150,11 +160,13 @@ export async function saveStampedPhoto(
     info: StampInfo;
     accuracy: number | null;
     actor: string;
+    /** false = kein Stempel im Bild, nur drehen/verkleinern (Fotogruppen: Angaben stehen im PDF über dem Foto) */
+    stamp?: boolean;
   },
 ): Promise<string> {
   const [done] = await sql`select 1 from app.photo_stamps where file_id = ${p.id}`;
   if (done) return p.id;
-  const stamped = await stampPhoto(p.data, p.info);
+  const stamped = p.stamp === false ? await plainPhoto(p.data) : await stampPhoto(p.data, p.info);
   const origId = uuidFrom(`${p.id}:original`);
   await storeFile(
     sql,

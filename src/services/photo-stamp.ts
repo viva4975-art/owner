@@ -26,6 +26,10 @@ export interface StampInfo {
   distanceM: number | null;
   lat: number | null;
   lng: number | null;
+  /** freier Ort / Adresse (z. B. „Treppenhaus Haus 3“), optional */
+  place?: string | null;
+  /** Schaden / Bemerkung (z. B. „Urin im Aufzug“), steht fett auf dem Foto */
+  note?: string | null;
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -54,8 +58,9 @@ export function stampLines(i: StampInfo): [string, string, string] {
             : coord
               ? ''
               : 'kein Standort freigegeben';
+  const place = i.place?.trim() || null;
   return [
-    [i.site ?? 'ohne Objekt', i.address].filter(Boolean).join(' · '),
+    [i.site ?? place ?? 'ohne Objekt', i.address, i.site ? place : null].filter(Boolean).join(' · '),
     `${when.replace(',', ' ·')} Uhr · ${i.by}`,
     ['Standort', [geo, coord].filter(Boolean).join(' · ')].join(': '),
   ];
@@ -94,7 +99,8 @@ export async function stampPhoto(input: Uint8Array, info: StampInfo): Promise<Ui
     })
       .png()
       .toBuffer({ resolveWithObject: true });
-  const t1 = await text(l1, FONT_BOLD, fs * 1.05, 'Inter SemiBold');
+  const note = info.note?.trim();
+  const t1 = await text(note ? `${l1}\n${esc(note)}` : l1, FONT_BOLD, fs * 1.05, 'Inter SemiBold');
   const t23 = await text(`${l2}\n${l3}`, FONT, fs * 0.9);
   // Balken so hoch wie nötig (lange Objektnamen brechen um)
   const need =
@@ -135,9 +141,10 @@ export async function saveStampedPhoto(
     data: Uint8Array;
     name: string;
     type: string;
-    link: LinkTarget;
+    link: LinkTarget | null;
     category: string | null;
     source: 'qm' | 'foto';
+    groupId?: string | null;
     siteId: string | null;
     note?: string | null;
     info: StampInfo;
@@ -172,10 +179,10 @@ export async function saveStampedPhoto(
   const i = p.info;
   await sql`
     insert into app.photo_stamps (file_id, original_file_id, site_id, source, taken_at, geo, geo_m, geo_acc_m, lat, lng,
-                                  note, created_by)
+                                  note, created_by, group_id)
     values (${p.id}, ${origId}, ${p.siteId}, ${p.source}, ${i.at}, ${i.geo}, ${i.distanceM}, ${p.accuracy},
             ${i.lat != null ? i.lat.toFixed(5) : null}, ${i.lng != null ? i.lng.toFixed(5) : null},
-            ${p.note ?? null}, ${p.actor})
+            ${p.note ?? null}, ${p.actor}, ${p.groupId ?? null})
     on conflict (file_id) do nothing`;
   return p.id;
 }

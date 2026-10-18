@@ -3342,3 +3342,14 @@ Testadresse.
     optional (Objektleitung nur eigene), bis 10 Fotos, Bemerkung; mit Objekt → Objekt → Dokumente → „Fotos“, ohne Objekt →
     Dokumenteneingang; „Zuletzt aufgenommen“. **Nicht** bei Arbeitsscheinen und Tickets (Ahmed).
     **Datenschutz:** Standort nur beim Fotografieren, Mitarbeitende informieren (Art. 13 DSGVO).
+- 2026-10-18: **Fotos als Gruppe** (Ahmed: „mehr als 10 Fotos“, „sehe es nicht im Dokumenteneingang“, „gruppenweise, Bemerkung
+  aufs Bild, als PDF zusammen, löschen können“): Verwaltung → Foto: bis 50 Fotos je Vorgang, „Foto aufnehmen“ (Kamera)
+  oder „Aus Galerie (mehrere)“, Vorschau mit × zum Entfernen; Fotos werden im Browser auf 2000 px als JPEG verkleinert
+  (schneller Upload, iPhone-HEIC wird so JPEG). Felder **Ort / Adresse** und **Schaden / Bemerkung** stehen fett im Stempel
+  jedes Fotos. Ein Absenden = eine Gruppe (`app.photo_groups`, Migration `20261202000002`, feste ID je Formular → doppelt
+  absenden nichts doppelt): **ein PDF mit allen Fotos** (je Foto eine A4-Seite mit Titel und „Foto n von m“) im
+  Dokumenteneingang (Kategorie „Fotos (App)“) bzw. mit Objekt unter Objekt → Dokumente → Fotos. Einzelfotos und Originale
+  bleiben write-once ohne Verknüpfung, Vorschau über `/qm/foto/bild/<id>` (Büro alle, Objektleitung eigene Objekte/Fotos).
+  Dokumenteneingang zeigt die Gruppe mit Titel, Anzahl, Vorschaubildern; **„Löschen“** je Eintrag (Fotogruppe: ausgeblendet
+  + PDF-Verknüpfung weg, Protokoll; sonstige Dateien: nur aus dem Eingang). Ein kaputtes Bild hält die anderen nicht auf
+  (Meldung je Datei). Vermutete Ursache „nicht im Eingang“: Speichern scheiterte an einzelnen großen/HEIC-Fotos.

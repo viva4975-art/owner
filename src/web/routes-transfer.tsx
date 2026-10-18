@@ -1,4 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { unlinkFile } from '../services/uploads.js';
+import {
+  type PhotoGroupRow,
+  deletePhotoGroup,
+  groupTitle,
+  photoGroupsByPdf,
+} from '../services/photo-groups.js';
 import type { Context } from 'hono';
 import type { Child } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
@@ -1625,6 +1632,10 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
           from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
          order by i.created_at desc limit 200`,
     ]);
+    const photoGroups = await photoGroupsByPdf(
+      sql,
+      files.map((f) => f.id),
+    );
     const groups: [InboxTarget, { id: string; label: string }[]][] = [
       ['customer', customers],
       ['supplier', suppliers],
@@ -1666,10 +1677,14 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
                 {files.map((f) => (
                   <tr>
                     <td>
-                      <a href={`/dateien/${f.id}`} target="_blank">
-                        {f.original_name}
-                      </a>
-                      {/\.(xml|pdf)$/i.test(f.original_name) && (
+                      {photoGroups.has(f.id) ? (
+                        <PhotoGroupCell g={photoGroups.get(f.id)!} />
+                      ) : (
+                        <a href={`/dateien/${f.id}`} target="_blank">
+                          {f.original_name}
+                        </a>
+                      )}
+                      {!photoGroups.has(f.id) && /\.(xml|pdf)$/i.test(f.original_name) && (
                         <div class="small">
                           <a href={`/rechnungseingang/e-rechnung/${f.id}`}>
                             {f.category === 'E-Rechnung'
@@ -1702,6 +1717,22 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
                         <input name="category" placeholder="Kategorie" style="max-width:140px" />
                         <button class="btn sm">Zuordnen</button>
                       </form>
+                      <form
+                        method="post"
+                        action={`/transfer/dokumenteneingang/${f.id}/loeschen`}
+                        style="margin:6px 0 0"
+                      >
+                        <button
+                          class="btn sm ghost"
+                          data-confirm={
+                            photoGroups.has(f.id)
+                              ? 'Diese Fotogruppe löschen?'
+                              : 'Aus dem Dokumenteneingang löschen? Die Datei bleibt im Archiv, nur der Eintrag verschwindet.'
+                          }
+                        >
+                          Löschen
+                        </button>
+                      </form>
                     </td>
                   </tr>
                 ))}
@@ -1720,6 +1751,16 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
     );
   });
 
+  app.post(`/transfer/dokumenteneingang/:id{${UUID}}/loeschen`, async (c) => {
+    const id = c.req.param('id');
+    const g = (await photoGroupsByPdf(sql, [id])).get(id);
+    if (g) await deletePhotoGroup(sql, g.id, c.get('actor'));
+    else await unlinkFile(sql, { type: 'inbox', id: INBOX_ID }, id, c.get('actor'));
+    return back(c, '/transfer/dokumenteneingang', {
+      ok: g ? 'Fotogruppe gelöscht.' : 'Aus dem Eingang gelöscht.',
+    });
+  });
+
   app.post(`/transfer/dokumenteneingang/:id{${UUID}}`, async (c) => {
     const b = await c.req.parseBody({ all: true });
     const [type, id] = (str(b, 'target') ?? '').split(':') as [InboxTarget, string | undefined];
@@ -1731,4 +1772,30 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
     await assignInboxFile(sql, c.req.param('id'), { type, id, category: str(b, 'category') }, c.get('actor'));
     return back(c, '/transfer/dokumenteneingang', { ok: `Zugeordnet (${INBOX_TARGETS[type]}).` });
   });
+}
+
+/** Fotogruppe im Dokumenteneingang: Titel, Anzahl, PDF und ein paar Vorschaubilder. */
+function PhotoGroupCell({ g }: { g: PhotoGroupRow }) {
+  return (
+    <div>
+      <a href={`/dateien/${g.pdf_file_id}`} target="_blank">
+        <b>Fotos: {groupTitle(g)}</b>
+      </a>
+      <div class="small mut">
+        {g.photo_count} {g.photo_count === 1 ? 'Foto' : 'Fotos'} · PDF mit allen Fotos
+      </div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px">
+        {g.photos.slice(0, 6).map((id) => (
+          <a href={`/qm/foto/bild/${id}`} target="_blank">
+            <img
+              src={`/qm/foto/bild/${id}`}
+              alt="Foto"
+              loading="lazy"
+              style="width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid #e5dde0"
+            />
+          </a>
+        ))}
+      </div>
+    </div>
+  );
 }

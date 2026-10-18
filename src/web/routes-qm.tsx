@@ -57,8 +57,10 @@ import {
 import { WEIGHT_LABEL, deleteQualityCheck, qmSettings, saveQmSettings } from '../services/qm-report.js';
 import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { str } from './forms.js';
-import { saveStampedPhoto, siteAddress, uuidFrom } from '../services/photo-stamp.js';
-import { INBOX_ID } from '../services/documents.js';
+import { saveStampedPhoto, siteAddress } from '../services/photo-stamp.js';
+import { deletePhotoGroup, groupTitle, listPhotoGroups, savePhotoGroup } from '../services/photo-groups.js';
+import { type FileRow, filePath } from '../services/uploads.js';
+import { readFile } from 'node:fs/promises';
 import { createQualityCheck } from '../services/facility.js';
 import { APP_TAB_CSS, SCROLL_JS, AppSwitch, AppTabbar, PageHead, dateDe, anz } from './layout.js';
 import { Icon } from './icons.js';
@@ -1192,25 +1194,16 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
   });
 
   // ------------------------------------------------------------ Foto mit Stempel (Ahmed 18.10.)
+  const FOTO_MAX = 50;
   // Unabhängig vom heutigen Einsatz: Objekt wählbar, aber nicht nötig. Ohne Objekt → Dokumenteneingang.
   app.get('/qm/foto', async (c) => {
     const sites = await qmSites(sql, c.get('sites'));
     const pre = c.req.query('objekt') ?? '';
-    const scope = c.get('sites');
-    const recent = await sql<
-      {
-        file_id: string;
-        taken_at: Date;
-        site_id: string | null;
-        site_no: string | null;
-        site_name: string | null;
-      }[]
-    >`
-      select p.file_id, p.taken_at, p.site_id, s.site_no, s.name as site_name
-        from app.photo_stamps p left join app.sites s on s.id = p.site_id
-       where p.source = 'foto' and p.created_by = ${c.get('actor')}
-         and ${scope === null ? sql`true` : sql`(p.site_id is null or p.site_id in ${sql(scope.length ? scope : ['00000000-0000-0000-0000-000000000000'])})`}
-       order by p.taken_at desc limit 12`;
+    const groups = await listPhotoGroups(sql, {
+      createdBy: c.get('user').role === 'objektleitung' ? c.get('actor') : undefined,
+      siteIds: c.get('sites'),
+      limit: 15,
+    });
     return render(
       c,
       'Foto',
@@ -1232,14 +1225,35 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
             <option value="">– ohne Objekt (Dokumenteneingang) –</option>
             <SiteOptions sites={sites} selected={pre} />
           </select>
-          <label for="fnote">Bemerkung (optional)</label>
-          <input id="fnote" name="note" maxLength={300} placeholder="z. B. Schaden Eingangstür" />
-          <div class="qm-photos" data-photos style="margin-top:14px">
-            <label title="Foto aufnehmen">
-              <Ic n="cam" />
-              <input type="file" name="foto" accept="image/*" capture="environment" />
-            </label>
-            <small>Foto aufnehmen (bis 10)</small>
+          <label for="fplace">Ort / Adresse (optional)</label>
+          <input
+            id="fplace"
+            name="place"
+            maxLength={200}
+            placeholder="z. B. Musterstr. 5, Treppenhaus 2. OG"
+          />
+          <label for="fnote">Schaden / Bemerkung (optional)</label>
+          <input id="fnote" name="note" maxLength={300} placeholder="z. B. Urin im Aufzug" />
+          <p class="small mut" style="margin:4px 0 0">
+            Alle Fotos dieses Vorgangs werden eine Gruppe: Ort und Bemerkung stehen auf jedem Foto, im Büro
+            kommt ein PDF mit allen Fotos an.
+          </p>
+          <div class="fot-box" data-fotos>
+            <div class="fot-list" />
+            <input type="file" name="foto" accept="image/*" multiple hidden class="fot-store" />
+            <div class="fot-add">
+              <label>
+                <Ic n="cam" />
+                <span>Foto aufnehmen</span>
+                <input type="file" accept="image/*" capture="environment" class="fot-pick" />
+              </label>
+              <label>
+                <Ic n="plus" />
+                <span>Aus Galerie (mehrere)</span>
+                <input type="file" accept="image/*" multiple class="fot-pick" />
+              </label>
+            </div>
+            <small class="mut fot-count">bis {FOTO_MAX} Fotos auf einmal</small>
           </div>
           <p class="small mut" id="geo-hint">
             Jedes Foto bekommt einen Stempel: Logo, Objekt, Datum und Uhrzeit, Standort und dein Name.
@@ -1248,30 +1262,53 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
             Fotos speichern
           </button>
         </form>
-        {recent.length > 0 && (
+        {groups.length > 0 && (
           <section class="card">
-            <h2 style="margin-top:0">Zuletzt aufgenommen</h2>
-            <div class="foto-grid">
-              {recent.map((r) => (
-                <a href={`/dateien/${r.file_id}`} target="_blank">
-                  <img src={`/dateien/${r.file_id}`} alt="Foto" loading="lazy" />
-                  <span>
-                    {dateDe(r.taken_at.toISOString().slice(0, 10))} ·{' '}
-                    {r.site_no ? `${r.site_no} ${r.site_name}` : 'Dokumenteneingang'}
-                  </span>
-                </a>
-              ))}
-            </div>
+            <h2 style="margin-top:0">Zuletzt gespeichert</h2>
+            {groups.map((g) => (
+              <div class="fgrp">
+                <div class="fgrp-h">
+                  <div>
+                    <b>{groupTitle(g)}</b>
+                    <div class="small mut">
+                      {dateDe(todayBerlin(g.created_at))} · {anz(g.photo_count, 'Foto', 'Fotos')} ·{' '}
+                      {g.site_id ? 'Objekt → Dokumente → Fotos' : 'Dokumenteneingang'}
+                    </div>
+                  </div>
+                  <a class="btn sm sec" href={`/dateien/${g.pdf_file_id}`} target="_blank">
+                    PDF
+                  </a>
+                </div>
+                <div class="foto-grid">
+                  {g.photos.slice(0, 8).map((id) => (
+                    <a href={`/qm/foto/bild/${id}`} target="_blank">
+                      <img src={`/qm/foto/bild/${id}`} alt="Foto" loading="lazy" />
+                    </a>
+                  ))}
+                </div>
+                <form method="post" action={`/qm/foto/gruppe/${g.id}/loeschen`} style="margin:6px 0 0">
+                  <button
+                    class="vw-out"
+                    data-confirm="Diese Fotogruppe löschen? Das PDF verschwindet aus dem Eingang bzw. beim Objekt."
+                  >
+                    Gruppe löschen
+                  </button>
+                </form>
+              </div>
+            ))}
           </section>
         )}
-        <style>{`.foto-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}.foto-grid a{display:block;color:inherit;text-decoration:none;font-size:12.5px}.foto-grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;border:1px solid #eadfe3;display:block;margin-bottom:4px}`}</style>
+        <style>{`.fot-box{margin-top:14px;display:flex;flex-direction:column;gap:10px}.fot-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}.fot-list:empty{display:none}.fot-t{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;border:1px solid #eadfe3}.fot-t img{width:100%;height:100%;object-fit:cover;display:block}.fot-t button{position:absolute;top:3px;right:3px;width:26px;height:26px;border-radius:13px;border:0;background:rgba(0,0,0,.6);color:#fff;font-size:16px;line-height:1}.fot-add{display:grid;grid-template-columns:1fr 1fr;gap:8px}.fot-add label{margin:0;display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;border:1.5px dashed #d7c3cb;border-radius:12px;color:#7D1435;font-weight:600;font-size:14px;text-align:center;cursor:pointer}.fot-add svg{width:28px;height:28px}.fot-add input{display:none}.fgrp{border-top:1px solid #eee3e7;padding:12px 0}.fgrp:first-of-type{border-top:0;padding-top:0}.fgrp-h{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:8px}.foto-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px}.foto-grid a{display:block;color:inherit;text-decoration:none;font-size:12.5px}.foto-grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;border:1px solid #eadfe3;display:block;margin-bottom:4px}`}</style>
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){var f=document.getElementById('fotof');if(!f)return;var btn=document.getElementById('fsave');
 function geo(){if(!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(function(p){f.geo_lat.value=p.coords.latitude.toFixed(5);f.geo_lng.value=p.coords.longitude.toFixed(5);f.geo_acc.value=Math.round(p.coords.accuracy)},function(){var h=document.getElementById('geo-hint');if(h)h.textContent='Standort nicht freigegeben – Fotos werden ohne Standort gestempelt.'},{enableHighAccuracy:true,timeout:15000,maximumAge:60000})}
 geo();
-function bind(i){i.addEventListener('change',function(){var box=i.closest('[data-photos]');if(!i.files.length)return;var n=box.querySelectorAll('input[type=file]').length;var lab=i.parentNode;var keep=document.createElement('span');keep.className='qm-taken';keep.textContent='\\u2713 Foto '+n;i.style.display='none';keep.appendChild(i);box.insertBefore(keep,lab);btn.disabled=false;btn.textContent=n===1?'1 Foto speichern':n+' Fotos speichern';geo();if(n>=10){lab.style.display='none';return}var ni=document.createElement('input');ni.type='file';ni.name=i.name;ni.accept='image/*';ni.setAttribute('capture','environment');lab.appendChild(ni);bind(ni)})}
-f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
+var box=f.querySelector('[data-fotos]'),store=box.querySelector('.fot-store'),list=box.querySelector('.fot-list'),cnt=box.querySelector('.fot-count'),files=[],busy=0,MAX=${FOTO_MAX};
+function sync(){try{var dt=new DataTransfer();files.forEach(function(x){dt.items.add(x)});store.files=dt.files}catch(e){}list.innerHTML='';files.forEach(function(x,i){var d=document.createElement('div');d.className='fot-t';var im=document.createElement('img');im.src=URL.createObjectURL(x);var b=document.createElement('button');b.type='button';b.textContent='\\u00d7';b.setAttribute('aria-label','entfernen');b.onclick=function(){files.splice(i,1);sync()};d.appendChild(im);d.appendChild(b);list.appendChild(d)});var n=files.length;btn.disabled=!n||busy>0;btn.textContent=busy>0?'Fotos werden vorbereitet \\u2026':n===1?'1 Foto speichern':n?n+' Fotos speichern':'Fotos speichern';cnt.textContent=n?n+' von h\\u00f6chstens '+MAX+' Fotos':'bis '+MAX+' Fotos auf einmal';box.querySelectorAll('.fot-add label').forEach(function(l){l.style.display=n>=MAX?'none':''})}
+function shrink(x,cb){var img=new Image();img.onload=function(){var m=2000,w=img.naturalWidth,h=img.naturalHeight,r=Math.min(1,m/Math.max(w,h));var c=document.createElement('canvas');c.width=Math.round(w*r);c.height=Math.round(h*r);c.getContext('2d').drawImage(img,0,0,c.width,c.height);c.toBlob(function(b){cb(b?new File([b],(x.name||'foto').replace(/\\.[^.]*$/,'')+'.jpg',{type:'image/jpeg'}):x)},'image/jpeg',0.88)};img.onerror=function(){cb(x)};img.src=URL.createObjectURL(x)}
+box.querySelectorAll('.fot-pick').forEach(function(p){p.addEventListener('change',function(){[].slice.call(p.files).forEach(function(x){if(files.length+busy>=MAX)return;busy++;shrink(x,function(g){busy--;if(files.length<MAX)files.push(g);sync()})});p.value='';geo();sync()})});
+f.addEventListener('submit',function(){btn.textContent='Wird hochgeladen \\u2026'});sync();})();`,
           }}
         />
       </>,
@@ -1289,7 +1326,7 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
       .concat(b.foto ?? [])
       .filter((f): f is File => f instanceof File && f.size > 0);
     if (!files.length) return back(c, '/qm/foto', { fehler: 'Bitte ein Foto aufnehmen.' });
-    if (files.length > 10) throw new BusinessError('Höchstens 10 Fotos auf einmal');
+    if (files.length > FOTO_MAX) throw new BusinessError(`Höchstens ${FOTO_MAX} Fotos auf einmal`);
     const num = (k: string) => {
       const v = Number(str(b, k));
       return str(b, k) && Number.isFinite(v) ? v : null;
@@ -1326,39 +1363,60 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
         )
       : { status: null, distance: null, accuracy: pos ? Math.round(pos.acc) : null };
     const cfg = { dir: deps.env.FILES_DIR, maxBytes: deps.env.UPLOAD_MAX_BYTES };
-    const note = str(b, 'note')?.slice(0, 300) ?? null;
-    let i = 0;
-    for (const f of files) {
-      if (!/^image\//.test(f.type)) throw new BusinessError('Nur Fotos (Bilder) hochladen');
-      if (f.size > cfg.maxBytes) throw new BusinessError('Foto zu groß');
-      i++;
-      await saveStampedPhoto(sql, cfg, {
-        id: uuidFrom(`foto:${formId}:${i}`),
-        data: new Uint8Array(await f.arrayBuffer()),
-        name: f.name || `foto_${i}.jpg`,
-        type: f.type,
-        link: sg ? { type: 'site', id: siteId! } : { type: 'inbox', id: INBOX_ID },
-        category: sg ? 'Fotos' : 'Foto (App)',
-        source: 'foto',
-        siteId: sg ? siteId : null,
-        note,
-        info: {
-          site: sg ? `${sg.site_no} · ${sg.name}` : null,
-          address: sg ? siteAddress(sg) : null,
-          at: new Date(),
-          by: fullName(c.get('user')),
-          geo: judged.status,
-          distanceM: judged.distance,
-          lat: pos?.lat ?? null,
-          lng: pos?.lng ?? null,
-        },
-        accuracy: judged.accuracy,
-        actor: c.get('actor'),
-      });
-    }
-    return back(c, `/qm/foto${siteId ? `?objekt=${siteId}` : ''}`, {
-      ok: `${anz(files.length, 'Foto', 'Fotos')} gespeichert${sg ? ` (Objekt → Dokumente → Fotos)` : ' (Dokumenteneingang)'}.`,
+    const r = await savePhotoGroup(sql, cfg, {
+      id: formId,
+      siteId: sg ? siteId! : null,
+      siteLabel: sg ? `${sg.site_no} · ${sg.name}` : null,
+      address: sg ? siteAddress(sg) : null,
+      place: str(b, 'place')?.trim().slice(0, 200) || null,
+      note: str(b, 'note')?.trim().slice(0, 300) || null,
+      files: await Promise.all(
+        files.map(async (f) => ({ data: new Uint8Array(await f.arrayBuffer()), name: f.name, type: f.type })),
+      ),
+      by: fullName(c.get('user')),
+      geo: judged.status,
+      distanceM: judged.distance,
+      accuracy: judged.accuracy,
+      lat: pos?.lat ?? null,
+      lng: pos?.lng ?? null,
+      actor: c.get('actor'),
     });
+    const to = `/qm/foto${siteId ? `?objekt=${siteId}` : ''}`;
+    const where = sg ? 'Objekt → Dokumente → Fotos' : 'Transfer → Dokumenteneingang';
+    if (r.failed.length)
+      return back(c, to, {
+        fehler: `${r.saved ? `${anz(r.saved, 'Foto', 'Fotos')} als PDF gespeichert (${where}). ` : ''}Nicht gespeichert: ${r.failed.join(', ')}.`,
+      });
+    return back(c, to, { ok: `${anz(r.saved, 'Foto', 'Fotos')} als PDF gespeichert (${where}).` });
+  });
+
+  /** Einzelnes gestempeltes Foto (ohne eigene Verknüpfung): Büro alle, Objektleitung eigene Objekte bzw. eigene Fotos. */
+  app.get(`/qm/foto/bild/:id{${UUID}}`, async (c) => {
+    const [p] = await sql<{ site_id: string | null; created_by: string }[]>`
+      select site_id, created_by from app.photo_stamps where file_id = ${c.req.param('id')}`;
+    if (!p) return c.notFound();
+    const scope = c.get('sites');
+    if (scope !== null && p.created_by !== c.get('actor') && !(p.site_id && scope.includes(p.site_id)))
+      return c.notFound();
+    const [f] = await sql<FileRow[]>`select * from app.files where id = ${c.req.param('id')}`;
+    if (!f) return c.notFound();
+    const data = await readFile(
+      filePath({ dir: deps.env.FILES_DIR, maxBytes: deps.env.UPLOAD_MAX_BYTES }, f),
+    );
+    return c.body(data, 200, { 'Content-Type': f.content_type, 'Cache-Control': 'private, max-age=86400' });
+  });
+
+  app.post(`/qm/foto/gruppe/:id{${UUID}}/loeschen`, async (c) => {
+    const [g] = await sql<{ site_id: string | null; created_by: string }[]>`
+      select site_id, created_by from app.photo_groups where id = ${c.req.param('id')}`;
+    const ref = c.req.header('referer');
+    const to = ref ? new URL(ref).pathname + new URL(ref).search : '/qm/foto';
+    if (!g) return back(c, to, { fehler: 'Fotogruppe nicht gefunden.' });
+    const scope = c.get('sites');
+    if (scope !== null && g.created_by !== c.get('actor') && !(g.site_id && scope.includes(g.site_id)))
+      return back(c, to, { fehler: 'Keine Berechtigung.' });
+    await deletePhotoGroup(sql, c.req.param('id'), c.get('actor'));
+    return back(c, to, { ok: 'Fotogruppe gelöscht.' });
   });
 
   // ------------------------------------------------------------ Tickets

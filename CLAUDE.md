@@ -3418,3 +3418,10 @@ Testadresse.
     beim Mitarbeiter Knopf „Unterlagen“. Globale Suche oben bleibt für die Objektleitung aus.
     **Datenschutz:** Objektleitungen sehen damit Personalunterlagen und Ausweis-/Aufenthaltskopien ihrer Leute – im
     Verzeichnis der Verarbeitungstätigkeiten festhalten, Objektleitungen auf Vertraulichkeit verpflichten.
+- 2026-10-19: Glasreinigung (Ahmed: „Bestätigung bei manchen rausgenommen“, „Liste der bestätigten und unbestätigten drucken“):
+  **Fund:** Die Übernahme in die neue Bestätigungsliste nahm nur Termine mit gesetztem Häkchen „Termin-Bestätigung“ –
+  stand nur der Bestätigungstext da („Tel. bestätigt am …“), fehlte sie. Migration `20261203000005` holt diese Texte als
+  Bestätigung zurück (Datum unbekannt, Datum steht ggf. im Text). Neu **„Bestätigungen drucken“** (Termine-Liste,
+  `/glasreinigung/bestaetigungen`): offene Termine im Zeitraum (Standard heute + 90 Tage), Kunde, Auswahl alle / nur
+  unbestätigte / nur bestätigte; Abschnitte „Noch nicht bestätigt“ (mit Linie zum Eintragen) und „Bestätigt“ (mit
+  Bestätigungen), A4 quer, Drucken/PDF.

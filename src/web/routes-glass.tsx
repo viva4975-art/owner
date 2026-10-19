@@ -224,6 +224,13 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
           'termine',
           st,
           <>
+            <a
+              class="btn sec"
+              href={`/glasreinigung/bestaetigungen${kunde ? `?kunde=${kunde}` : ''}`}
+              target="_blank"
+            >
+              Bestätigungen drucken
+            </a>
             <a class="btn sec" href="/glasreinigung/autoplan">
               Auto-Plan
             </a>
@@ -716,6 +723,67 @@ box.addEventListener('click',function(e){var b=e.target.closest('[data-del-day]'
         </p>
       </div>,
     );
+  });
+
+  // ------------------------------------------------------------------ Bestätigungsliste (Druckseite)
+  app.get('/glasreinigung/bestaetigungen', async (c) => {
+    const today = todayBerlin();
+    const iso = (v: string | undefined) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+    const from = iso(c.req.query('von')) ?? today;
+    const to = iso(c.req.query('bis')) ?? addDays(today, 90);
+    const zeige = c.req.query('zeige') ?? 'alle';
+    const kunde = c.req.query('kunde') ?? '';
+    const [apps, customers] = await Promise.all([listAppointments(sql, { from, to }), listCustomers(sql)]);
+    const objCust = new Map(
+      (await sql<{ id: string; customer_id: string }[]>`select id, customer_id from app.glass_objects`).map(
+        (r) => [r.id, r.customer_id],
+      ),
+    );
+    const shown = apps.filter((a) => !a.done && (!kunde || objCust.get(a.object_id) === kunde));
+    const ok = shown.filter((a) => (a.confirmations ?? []).length > 0);
+    const open = shown.filter((a) => !(a.confirmations ?? []).length);
+    const esc = (s: string) =>
+      s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
+    const rows = (list: Appointment[], withConf: boolean) =>
+      list
+        .map(
+          (a) =>
+            `<tr><td>${datesText(a.days)}</td><td>${timesText(a.days)}</td><td><b>${esc(a.object_name)}</b>${a.part ? `<br><span class="k">${esc(a.part)}</span>` : ''}</td><td>${esc(a.customer_name ?? '')}</td><td>${esc(a.object_address ?? '')}</td><td>${esc(a.contact ?? '')}${a.phone ? `<br>${esc(a.phone)}` : ''}</td><td>${
+              withConf
+                ? (a.confirmations ?? [])
+                    .map((k) => `✓ ${k.at ? `${dateDe(k.at)} ` : ''}${esc(k.text)}`)
+                    .join('<br>')
+                : '<span class="box"></span>'
+            }</td></tr>`,
+        )
+        .join('');
+    const table = (title: string, list: Appointment[], withConf: boolean) =>
+      `<h2>${title} (${list.length})</h2>${
+        list.length
+          ? `<table class="ls"><thead><tr><th>Datum</th><th>Uhrzeit</th><th>Objekt</th><th>Kunde</th><th>Adresse</th><th>Ansprechpartner</th><th>${withConf ? 'Bestätigung' : 'Bestätigt am / durch'}</th></tr></thead><tbody>${rows(list, withConf)}</tbody></table>`
+          : '<p class="k">Keine Termine.</p>'
+      }`;
+    const kname = customers.find((k) => k.id === kunde)?.name;
+    const opts = customers
+      .map((k) => `<option value="${k.id}"${k.id === kunde ? ' selected' : ''}>${esc(k.name)}</option>`)
+      .join('');
+    const sel = (v: string, l: string) =>
+      `<option value="${v}"${zeige === v ? ' selected' : ''}>${l}</option>`;
+    return c.html(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Terminbestätigungen</title><style>
+@page{size:A4 landscape;margin:10mm}body{font-family:Inter,system-ui,Arial,sans-serif;margin:0 12px;color:#1c1917}
+.bar{padding:10px;border-bottom:1px solid #ddd;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center}
+.bar input,.bar select{font:inherit;padding:5px}.bar button{font:inherit;padding:7px 16px;border-radius:8px;border:0;background:#7D1435;color:#fff}
+.hd{display:flex;justify-content:space-between;align-items:flex-end;padding:8px 0}.hd h1{color:#6b1a21;font-size:22px;margin:0}.k{color:#777;font-size:11px}
+h2{font-size:15px;color:#6b1a21;margin:14px 0 4px}.ls{width:100%;border-collapse:collapse;font-size:10px}.ls th{text-align:left;background:#f4eef0;padding:4px}
+.ls td{border-bottom:1px solid #ddd;padding:4px;vertical-align:top}.ls tr{page-break-inside:avoid}.box{display:inline-block;width:120px;border-bottom:1px solid #999;height:12px}
+@media print{.bar{display:none}}</style></head><body>
+<form class="bar" method="get"><label>von <input type="date" name="von" value="${from}"></label><label>bis <input type="date" name="bis" value="${to}"></label>
+<select name="zeige">${sel('alle', 'Bestätigte und unbestätigte')}${sel('offen', 'Nur unbestätigte')}${sel('bestaetigt', 'Nur bestätigte')}</select>
+<select name="kunde"><option value="">Alle Kunden</option>${opts}</select><button type="submit" style="background:#555">Anzeigen</button><button type="button" onclick="print()">Drucken / als PDF speichern</button></form>
+<div class="hd"><div><img src="/static/logo-transparent.png" alt="Viva-Deluxe" style="height:36px;display:block;margin-bottom:4px"><b>Glasreinigung – Terminbestätigungen</b><div class="k">${esc(kname ?? 'Alle Kunden')} · offene Termine ${dateDe(from)} – ${dateDe(to)}</div></div>
+<div class="k" style="text-align:right">${open.length} unbestätigt · ${ok.length} bestätigt<br>Stand ${dateDe(today)}</div></div>
+${zeige !== 'bestaetigt' ? table('Noch nicht bestätigt', open, false) : ''}${zeige !== 'offen' ? table('Bestätigt', ok, true) : ''}
+</body></html>`);
   });
 
   // ------------------------------------------------------------------ Jahresplaner (Druckseite A4 quer)

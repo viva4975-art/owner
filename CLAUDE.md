@@ -3473,4 +3473,5 @@ Testadresse.
   § 28e Abs. 3a SGB IV); unter 50 % muss „Hinweis zur Kenntnis genommen“ angehakt werden (Server prüft
   `acceptMissing`), Protokoll `nachweise_fehlen` + `hinweis_bestaetigt`. **NU-Vorlagen mit Datum** (Rahmenvertrag,
   Selbstauskunft, Mindestlohn, Tariftreue, Bewertung): Feld „Datum“ (Standard heute) setzt Stand und „Ort, Datum“ ein
-  (Ort = Sitz des NU, beim AG bzw. Bewertungsbogen unser Ort).
+  (Ort = Sitz des NU, beim AG bzw. Bewertungsbogen unser Ort). Auch direkt am Nachweis: Datum wählen → „Vorlage ausgefüllt
+  erstellen“.

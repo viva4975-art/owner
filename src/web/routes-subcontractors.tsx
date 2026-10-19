@@ -774,12 +774,21 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                   <div class="small faint">Optionale Dokumente fließen nicht in die Vollständigkeit ein.</div>
                 )}
                 {NACHWEIS_TEMPLATE[r.type.id] && (
-                  <div class="small" style="margin-top:4px">
-                    <a href={`/lieferanten/${id}/vorlage/${NACHWEIS_TEMPLATE[r.type.id]}`} target="_blank">
-                      Vorlage ausgefüllt erstellen
-                    </a>{' '}
-                    · <a href={`/lieferanten/${id}/dokumente#vorlagen`}>weitere Optionen</a>
-                  </div>
+                  <form
+                    method="get"
+                    action={`/lieferanten/${id}/vorlage/${NACHWEIS_TEMPLATE[r.type.id]}`}
+                    target="_blank"
+                    class="small"
+                    style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"
+                  >
+                    {NACHWEIS_TEMPLATE[r.type.id] !== 'personaleinsatzliste' && (
+                      <label class="small" style="display:inline-flex;gap:5px;align-items:center;margin:0">
+                        Datum <input type="date" name="datum" value={today} style="width:auto" />
+                      </label>
+                    )}
+                    <button class="btn sec sm">Vorlage ausgefüllt erstellen</button>
+                    <a href={`/lieferanten/${id}/dokumente#vorlagen`}>weitere Optionen</a>
+                  </form>
                 )}
                 {r.current && (
                   <div style="margin-top:8px">
@@ -1395,6 +1404,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     if (!isNuDoc(kind)) return c.notFound();
     const doc = await nuDocPdf(sql, c.req.param('id'), kind, {
       checked: true,
+      date: c.req.query('datum') ?? null,
       actorName: c.get('user').name,
     });
     return pdfResponse(doc.pdf, doc.name);

@@ -3375,3 +3375,33 @@ Testadresse.
     Die Seiten darunter erscheinen als **Reiter oben auf der Seite** (`SECTION_TABS`/`SectionTabs` in `layout.tsx`,
     nur auf genau diesen Adressen, nach Rolle gefiltert; Menüpunkt bleibt markiert). „Meine Zeiten“ steht nur noch oben
     in der Kopfzeile. Adressen unverändert.
+- 2026-10-19: Ahmed (5 Punkte + 2 Nachträge):
+  - **Glasreinigung, Block-Termine:** Terminübersicht (Jahresplaner-Druck) zeigt „30.03.–31.03.2027 (2 Tage)“ und
+    Uhrzeit „täglich“, Liste „bis …“. **Fund:** Die alte App speicherte manche Block-Termine nur mit `datum`/`datum_bis`
+    ohne Einzeltage – der Import nahm nur den ersten Tag. Jetzt Mo–Fr ohne Feiertage dazwischen; erneuter Import der
+    alten App ergänzt bestehende eintägige Termine (nur wenn sie noch einen Tag haben).
+  - **Terminbestätigungen** (Glasreinigung): mehrere je Termin (Datum, wer/wie, erfasst von) in
+    `glass_appointments.confirmations` (Migration `20261203000003`, alte Bestätigung übernommen). Eintragen direkt in der
+    Terminkarte bzw. am Termin, entfernen mit Protokoll. Sie hängen am Termin selbst → wird er verschoben, bleiben sie.
+    Folgetermine starten ohne Bestätigung. Auch in der gedruckten Terminübersicht (Spalte „Bestätigung“).
+  - **Besonderheiten** als Kasten in der Objekt-Übersicht, direkt eintragbar (gleiches Feld wie Objektordner,
+    `folder_info.besonderheiten`, bis 2000 Zeichen, Protokoll). Die **Objektleitung sieht jetzt die Objekt-Übersicht**
+    (vorher Umleitung auf Einsätze wegen Preisen – die Übersicht enthält keine Preise mehr).
+  - **Verbandbuch** (`app.first_aid_entries`, Migration `20261203000002`, `routes-first-aid.tsx`): Einträge je
+    Mitarbeiter (Datum/Uhrzeit, Objekt, Ort, Hergang, Verletzung, Erste Hilfe, Ersthelfer, Zeugen, Arzt, > 3 Tage AU).
+    Personal → Verbandbuch (Admin/Personal alles; Objektleitung nur Einträge ihrer Objekte, anlegen nur für dort
+    eingesetzte Leute), beim Mitarbeiter unter „Mehr“. Ändern mit altem Stand im Protokoll, löschen nur Admin.
+    **Rechtlich:** DGUV Vorschrift 1 § 24 Abs. 6 – jede Erste-Hilfe-Leistung dokumentieren, 5 Jahre aufbewahren;
+    Gesundheitsdaten (Art. 9 DSGVO) → keine Diagnosen, Zugriff begrenzt (RLS); > 3 Tage AU = Unfallanzeige an die BG
+    (§ 193 SGB VII).
+  - **Fehlende Unterlagen:** „Stundenliste <Monat> nicht unterschrieben“ bzw. „nach Unterschrift geändert“ für die
+    letzten zwei abgeschlossenen Monate mit erfasster Zeit (ab Oktober 2026, frühere Monate sind Import;
+    10 Min. zwischengespeichert). Seite jetzt auch für die Objektleitung (Menü Personal; nur ihre Leute, ohne
+    Stammdaten-/Nummern-Lücken, kein „nicht nötig“).
+  - **Audit einheitlich Punkte 1 bis 5** (Migration `20261203000001`): Note 1–6 und Gut/Mittel/Schlecht → Punkte;
+    Ja/Nein bleibt (Abfallbehälter, Spinnweben, Verbrauchsmaterial). Alte Bewertungen behalten ihren Prozentwert
+    (Ergebnisse unverändert), der Wert wird auf die nächste Punktzahl umgerechnet. Neue Gegenstände nur Punkte oder Ja/Nein.
+  - **Fund „mobile Version am PC“:** Wer am PC einmal `/qm` oder `/app` öffnete, bekam das App-Cookie – danach alle Seiten
+    im Handy-Rahmen. Jetzt gilt der App-Rahmen nur auf Handy/Tablet (`inAppFrame`: Cookie + Touch-Gerät); `/app` am PC
+    leitet angemeldete Büro-Benutzer auf die Startseite, Anmeldung über `/app` am PC zählt wie die Büro-Anmeldung.
+  - Tests: neu `runde44.db.test.ts`; e2e login 47, rechte 42, runde10 40, kasse 68, objekt 31, objektseiten 40, menu grün.

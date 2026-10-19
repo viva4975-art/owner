@@ -1,7 +1,7 @@
 import { getCookie } from 'hono/cookie';
 import { verifySession } from '../services/employee-auth.js';
 import { linkedEmployee } from '../services/users.js';
-import { OFFICE_COOKIE, type Ctx, officeSecret } from './app.js';
+import { OFFICE_COOKIE, type Ctx, isTouchDevice, officeSecret } from './app.js';
 import { loginHtml } from './login-page.js';
 
 /**
@@ -74,6 +74,8 @@ export function registerStartAppRoutes({ app, deps }: Ctx) {
     if (c.req.query('wahl') !== '1') {
       const uid = verifySession(secret, getCookie(c, OFFICE_COOKIE));
       // Objektleitung/Büro: zuerst die eigene Zeit (wie Mitarbeitende), oben umschalten auf Qualität/Verwaltung
+      // am PC (kein Handy/Tablet) gleich die Büro-Ansicht statt der App (Ahmed 19.10.: „mobile Version am PC“)
+      if (uid && !isTouchDevice(c)) return c.redirect('/', 302);
       if (uid) return c.redirect((await linkedEmployee(deps.sql, uid)) ? '/m' : '/qm', 302);
       if (getCookie(c, 'vd_m')) return c.redirect('/m', 302);
     }
@@ -98,7 +100,8 @@ export function registerStartAppRoutes({ app, deps }: Ctx) {
     const b = await c.req.parseBody();
     const kennung = String(b.kennung ?? b.login ?? b.personnel_no ?? '').trim();
     const geheim = String(b.geheim ?? b.password ?? b.pin ?? '');
-    const from = b.from === 'pc' ? 'pc' : 'app';
+    // Anmeldung über /app am PC zählt wie die Büro-Anmeldung → Startseite statt Handy-Ansicht
+    const from = b.from === 'pc' || !isTouchDevice(c) ? 'pc' : 'app';
     const rawNext = typeof b.next === 'string' ? b.next : '';
     const employee = /^\d+$/.test(kennung);
     const okNext = rawNext.startsWith('/') && !rawNext.startsWith('//');

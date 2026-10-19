@@ -386,6 +386,7 @@ export const EmployeeShell: FC<{
   const more: Tab[] = [
     { key: 'notizen', label: 'Notizen', href: `${base}/notizen`, count: notes },
     { key: 'aufgaben', label: 'Aufgaben', href: `${base}/aufgaben`, count: tasks },
+    { key: 'verbandbuch', label: 'Verbandbuch', href: `${base}/verbandbuch` },
   ];
   return (
     <>

@@ -6,14 +6,15 @@ import {
   REQUIRED_DOCS,
   missingDocs,
 } from '../services/hr-required-docs.js';
-import type { Ctx } from './app.js';
+import type { Context } from 'hono';
+import type { AppEnv, Ctx } from './app.js';
 import { PageHead, dateDe } from './layout.js';
 
 /*
  * Personal → Fehlende Unterlagen: alle aktiven Mitarbeitenden mit fehlenden Pflichtunterlagen, sortiert nach
  * Objektleitung (je Objektleitung eine Liste zum Nachfassen), Filter, Export CSV/PDF.
  */
-const ITEMS = [...REQUIRED_DOCS, 'Aufenthaltstitel', 'Staatsangehörigkeit'];
+const ITEMS = [...REQUIRED_DOCS, 'Aufenthaltstitel', 'Staatsangehörigkeit', 'Stundenliste'];
 
 /** Je Objektleitung eine Zeile pro Mitarbeiter (wer an Objekten mehrerer Objektleitungen arbeitet, steht bei jeder). */
 function byManager(rows: MissingRow[], manager: string, item: string) {
@@ -38,8 +39,12 @@ const csvSafe = (v: string) => {
 export function registerHrRequiredRoutes({ app, deps, page }: Ctx) {
   const { sql } = deps;
 
-  const load = async (q: (k: string) => string | undefined) => {
-    const all = await missingDocs(sql);
+  const load = async (c: Context<AppEnv>) => {
+    const q = (k: string) => c.req.query(k);
+    const all = await missingDocs(sql, {
+      siteIds: c.get('sites'),
+      limited: c.get('user').role === 'objektleitung',
+    });
     const managers = [...new Set(all.flatMap((r) => r.managers))].sort((a, b) => a.localeCompare(b, 'de'));
     const manager = q('objektleitung') ?? '';
     const item = q('fehlt') ?? '';
@@ -47,7 +52,8 @@ export function registerHrRequiredRoutes({ app, deps, page }: Ctx) {
   };
 
   app.get('/personal/unterlagen', async (c) => {
-    const d = await load((k) => c.req.query(k));
+    const d = await load(c);
+    const ol = c.get('user').role === 'objektleitung';
     const qs = new URLSearchParams({ objektleitung: d.manager, fehlt: d.item }).toString();
     let last = '';
     return page(
@@ -139,32 +145,35 @@ export function registerHrRequiredRoutes({ app, deps, page }: Ctx) {
                             class="badge err"
                             style="margin:0 4px 4px 0;text-decoration:none"
                             href={
-                              m === 'Schlüssel'
-                                ? '/schluessel'
-                                : (REQUIRED_DOCS as readonly string[]).includes(m)
-                                  ? `/personal/${r.employee_id}/dokumente`
-                                  : `/personal/${r.employee_id}/bearbeiten`
+                              m.startsWith('Stundenliste')
+                                ? `/personal/${r.employee_id}/stundenzettel`
+                                : m === 'Schlüssel'
+                                  ? '/schluessel'
+                                  : (REQUIRED_DOCS as readonly string[]).includes(m)
+                                    ? `/personal/${r.employee_id}/dokumente`
+                                    : `/personal/${r.employee_id}/bearbeiten`
                             }
                           >
                             {m}
                           </a>
                         ))}
-                        {r.missing
-                          .filter((m) => (OPTIONAL_PER_EMPLOYEE as readonly string[]).includes(m))
-                          .map((m) => (
-                            <form
-                              method="post"
-                              action={`/personal/${r.employee_id}/unterlage-noetig`}
-                              style="display:inline"
-                            >
-                              <input type="hidden" name="unterlage" value={m} />
-                              <input type="hidden" name="noetig" value="0" />
-                              <input type="hidden" name="zurueck" value={`/personal/unterlagen?${qs}`} />
-                              <button class="btn sm ghost" title={`${m} für diese Person nicht nötig`}>
-                                {m} nicht nötig
-                              </button>
-                            </form>
-                          ))}
+                        {!ol &&
+                          r.missing
+                            .filter((m) => (OPTIONAL_PER_EMPLOYEE as readonly string[]).includes(m))
+                            .map((m) => (
+                              <form
+                                method="post"
+                                action={`/personal/${r.employee_id}/unterlage-noetig`}
+                                style="display:inline"
+                              >
+                                <input type="hidden" name="unterlage" value={m} />
+                                <input type="hidden" name="noetig" value="0" />
+                                <input type="hidden" name="zurueck" value={`/personal/unterlagen?${qs}`} />
+                                <button class="btn sm ghost" title={`${m} für diese Person nicht nötig`}>
+                                  {m} nicht nötig
+                                </button>
+                              </form>
+                            ))}
                       </td>
                     </tr>
                   );
@@ -178,7 +187,7 @@ export function registerHrRequiredRoutes({ app, deps, page }: Ctx) {
   });
 
   app.get('/personal/unterlagen.csv', async (c) => {
-    const d = await load((k) => c.req.query(k));
+    const d = await load(c);
     const lines = [
       ['Objektleitung', 'Personalnr.', 'Name', 'Objekte', 'fehlt'].join(';'),
       ...d.list.map(({ manager, r }) =>
@@ -195,7 +204,7 @@ export function registerHrRequiredRoutes({ app, deps, page }: Ctx) {
   });
 
   app.get('/personal/unterlagen.pdf', async (c) => {
-    const d = await load((k) => c.req.query(k));
+    const d = await load(c);
     const rows: Parameters<typeof renderTablePdf>[0]['rows'] = [];
     let last = '';
     for (const { manager, r } of d.list) {

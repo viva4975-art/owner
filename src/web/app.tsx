@@ -53,6 +53,7 @@ import { registerVehicleRoutes } from './routes-vehicles.js';
 import { registerWordTemplateRoutes } from './routes-word-templates.js';
 import { registerLegacyInvoiceRoutes } from './routes-legacy-invoices.js';
 import { registerCalendarFeedRoutes } from './routes-calendar-feed.js';
+import { registerFirstAidRoutes } from './routes-first-aid.js';
 import { registerHrRequiredRoutes } from './routes-hr-required.js';
 import { registerSubcontractorRoutes } from './routes-subcontractors.js';
 import { registerSettingsRoutes } from './routes-settings.js';
@@ -112,6 +113,13 @@ export const TOUCH_COOKIE = 'vd_touch';
 export function isTouchDevice(c: Context<AppEnv>): boolean {
   const ua = c.req.header('user-agent') ?? '';
   return /iPhone|iPad|iPod|Android|Mobile/i.test(ua) || getCookie(c, TOUCH_COOKIE) === '1';
+}
+/**
+ * App-Rahmen (Handy-Design für Büro-Seiten): nur, wenn die App geöffnet wurde UND es ein Handy/Tablet ist.
+ * Am PC nie – sonst blieb nach einem Klick auf /qm oder /app die „mobile Version“ hängen (Ahmed 19.10.).
+ */
+export function inAppFrame(c: Context<AppEnv>): boolean {
+  return c.req.query('pc') !== '1' && getCookie(c, APP_COOKIE) === '1' && isTouchDevice(c);
 }
 export const OFFICE_COOKIE = 'vd_s';
 export const APP_COOKIE = 'vd_app';
@@ -416,7 +424,7 @@ export function createApp(deps: Deps) {
             nav={nav}
             env={env.APP_ENV}
             {...(u ? { user: fullName(u), role: u.role } : {})}
-            app={c.req.query('pc') !== '1' && getCookie(c, APP_COOKIE) === '1'}
+            app={inAppFrame(c)}
             noTabs={/^\/(qualitaet|qm\/audit|arbeitsscheine)(\/|$)/.test(c.req.path)}
             path={c.req.path}
             menuTop={c.get('menuTop') ?? false}
@@ -575,6 +583,7 @@ export function createApp(deps: Deps) {
   registerLegacyInvoiceRoutes(ctx);
   registerCalendarFeedRoutes(ctx);
   registerHrRequiredRoutes(ctx);
+  registerFirstAidRoutes(ctx);
   registerSubcontractorRoutes(ctx);
   registerSettingsRoutes(ctx);
   registerPosterRoutes(ctx);

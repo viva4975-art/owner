@@ -184,6 +184,11 @@ check('Einsatzliste mit Übersicht', (await admin.locator('.ec-sum .pill').count
 console.log('5. In der App bleiben: Büro-Seiten im App-Rahmen, Urlaub/Krank für andere');
 await admin.goto(B + '/qm');
 await admin.goto(B + '/objekte');
+// am PC nie App-Rahmen, auch nachdem /qm geöffnet wurde (Ahmed 19.10.: „mobile Version am PC“)
+check('PC: nach /qm trotzdem PC-Ansicht', (await admin.locator('header.apphead').count()) === 0);
+// Handy/Tablet (Touch-Cookie wie vom Browser gesetzt) → App-Rahmen
+await admin.context().addCookies([{ name: 'vd_touch', value: '1', url: B }]);
+await admin.goto(B + '/objekte');
 check('Büro-Seite aus der App im App-Rahmen', (await admin.locator('header.apphead').count()) === 1);
 check('kein PC-Menü im App-Rahmen', (await admin.locator('aside.appside').count()) === 0);
 check('Leiste unten', (await admin.locator('nav.apptabs').count()) === 1);

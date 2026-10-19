@@ -1530,9 +1530,6 @@ export function registerMasterdataRoutes(ctx: Ctx) {
   ) => {
     const id = c.req.param('id')!;
     assertSite(c, id);
-    // Objektleitung sieht keine Preise → statt Übersicht direkt den Einsatzplan
-    if (active === 'uebersicht' && c.get('user').role === 'objektleitung')
-      return c.redirect(`/objekte/${id}/einsaetze`);
     const s = await getSite(sql, id);
     if (!s) return c.redirect(`/objekte/${id}/bearbeiten`);
     const [counts] = await sql<
@@ -1591,8 +1588,8 @@ export function registerMasterdataRoutes(ctx: Ctx) {
         email: k.email,
       }));
       const [school] = await sql<
-        { on: boolean }[]
-      >`select school_closure as on from app.sites where id = ${s.id}`;
+        { on: boolean; special: string | null }[]
+      >`select school_closure as on, folder_info ->> 'besonderheiten' as special from app.sites where id = ${s.id}`;
       return (
         <SiteOverview
           s={s}
@@ -1600,6 +1597,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
           employees={employees}
           ol={c.get('user').role === 'objektleitung'}
           contacts={contacts}
+          special={school?.special ?? null}
           tasksSlot={<TaskBox tasks={tasks} doneLink={`/objekte/${s.id}/aufgaben?status=done`} />}
           docsSlot={
             <SchoolCard

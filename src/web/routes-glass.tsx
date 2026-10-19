@@ -15,6 +15,7 @@ import {
   MONTHS_LONG,
   PER_YEAR,
   STATUS_LABEL,
+  addConfirmation,
   appointmentsCsv,
   applyProposals,
   autoPlan,
@@ -28,6 +29,7 @@ import {
   markDone,
   openPlanning,
   plzOf,
+  removeConfirmation,
   saveAppointment,
   saveCustomer,
   saveObject,
@@ -44,10 +46,76 @@ import { dateDe } from './layout.js';
 
 const WD = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const num = (s: string | null) => (s && /^\d+([.,]\d+)?$/.test(s) ? Number(s.replace(',', '.')) : null);
-const daysText = (days: Day[]) =>
-  days.length === 1
+function daysText(days: Day[]) {
+  return days.length === 1
     ? `${days[0]!.from}–${days[0]!.to} Uhr`
-    : `${days.length} Tage · ${days.map((d) => dateDe(d.date).slice(0, 6)).join(', ')}`;
+    : `${datesText(days)} · ${timesText(days)}`;
+}
+
+/** „30.03.–31.03.2027“ bei zusammenhängenden Tagen (Lücken nur Wochenende/Feiertag), sonst Liste */
+const datesText = (days: Day[]) => {
+  if (days.length === 1) return dateDe(days[0]!.date);
+  const run = days.every((d, i) => {
+    if (!i) return true;
+    for (let x = addDays(days[i - 1]!.date, 1); x < d.date; x = addDays(x, 1))
+      if (isoWeekday(x) <= 5 && !holidayName(x)) return false;
+    return true;
+  });
+  const a = days[0]!.date;
+  const b = days.at(-1)!.date;
+  return run
+    ? `${dateDe(a).slice(0, a.slice(0, 4) === b.slice(0, 4) ? 6 : 10)}–${dateDe(b)} (${days.length} Tage)`
+    : days.map((d) => dateDe(d.date)).join(', ');
+};
+const timesText = (days: Day[]) =>
+  new Set(days.map((d) => `${d.from}–${d.to}`)).size === 1
+    ? `${days[0]!.from}–${days[0]!.to}${days.length > 1 ? ' täglich' : ''}`
+    : days.map((d) => `${dateDe(d.date).slice(0, 6)} ${d.from}–${d.to}`).join(', ');
+
+/** Terminbestätigungen am Termin (mehrere; bleiben beim Termin, auch wenn er verschoben wird – Ahmed 19.10.) */
+const Confirmations = ({ a, back: ret, edit }: { a: Appointment; back: string; edit?: boolean }) => (
+  <div class="gp-conf">
+    {(a.confirmations ?? []).map((k) => (
+      <div class="gp-conf-row">
+        <span class="badge ok">✓ bestätigt</span> <b>{dateDe(k.at)}</b> {k.text}{' '}
+        <span class="mut small">({k.by})</span>
+        {edit && (
+          <form
+            method="post"
+            action={`/glasreinigung/termin/${a.id}/bestaetigung/${k.id}/entfernen`}
+            class="inline-form"
+          >
+            <input type="hidden" name="zurueck" value={ret} />
+            <button class="btn sm ghost" data-confirm="Bestätigung entfernen?" title="entfernen">
+              ×
+            </button>
+          </form>
+        )}
+      </div>
+    ))}
+    <details class="gp-conf-add">
+      <summary class="small">+ Bestätigung eintragen</summary>
+      <form
+        method="post"
+        action={`/glasreinigung/termin/${a.id}/bestaetigung`}
+        class="row"
+        style="gap:6px;flex-wrap:wrap;margin-top:4px"
+      >
+        <input type="hidden" name="id" value={randomUUID()} />
+        <input type="hidden" name="zurueck" value={ret} />
+        <input type="date" name="am" value={todayBerlin()} aria-label="bestätigt am" required />
+        <input
+          name="text"
+          placeholder="z. B. Hausmeister telefonisch"
+          aria-label="Bestätigung"
+          required
+          style="min-width:220px"
+        />
+        <button class="btn sm">Speichern</button>
+      </form>
+    </details>
+  </div>
+);
 
 const GpTabs = ({ active }: { active: string }) => (
   <div class="tabs">
@@ -214,7 +282,11 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
                       <div class="bw-chips" style="margin-bottom:6px">
                         <span class={`badge ${STATUS_LABEL[s][1]}`}>{STATUS_LABEL[s][0]}</span>
                         {a.days.length > 1 && <span class="badge">Block-Reinigung</span>}
-                        {a.confirmed && <span class="badge ok">Bestätigt</span>}
+                        {a.confirmations?.length > 0 && (
+                          <span class="badge ok">
+                            Bestätigt{a.confirmations.length > 1 ? ` (${a.confirmations.length})` : ''}
+                          </span>
+                        )}
                         {teamBadge(a.team, teams)}
                         {a.interval !== 'einmalig' && (
                           <span class="badge">{INTERVALS[a.interval]?.label}</span>
@@ -239,10 +311,14 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
                         {a.staff && <span>{a.staff}</span>}
                       </div>
                       {a.note && <div class="gp-note">{a.note}</div>}
+                      <Confirmations a={a} back={'/glasreinigung'} />
                     </div>
                     <div class="gp-date">
                       <b>{dateDe(a.first_day).slice(0, 6)}</b>
                       <span>{WD[isoWeekday(a.first_day) - 1]}</span>
+                      {a.last_day && a.last_day !== a.first_day && (
+                        <span>bis {dateDe(a.last_day).slice(0, 6)}</span>
+                      )}
                     </div>
                   </div>
                   <div class="lc-foot gp-acts">
@@ -409,18 +485,6 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
             </div>
             <div class="chk">
               <label>
-                <input type="checkbox" name="bestaetigt" value="1" checked={!!a?.confirmed} />{' '}
-                Termin-Bestätigung
-              </label>
-              <input
-                name="bestaetigung"
-                value={a?.confirm_note ?? ''}
-                placeholder="z.B. Tel. bestätigt am …"
-                aria-label="Bestätigung"
-              />
-            </div>
-            <div class="chk">
-              <label>
                 <input type="checkbox" name="erledigt" value="1" checked={!!a?.done} /> Erledigt (legt
                 Folgetermin nach Turnus an)
               </label>
@@ -433,6 +497,16 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
             </a>
           </div>
         </form>
+        {a && (
+          <section class="card" style="max-width:900px;margin-top:14px">
+            <h3>Terminbestätigungen</h3>
+            <p class="mut small">
+              Mehrere möglich (Hausmeister, Schule, Kunde …). Sie bleiben beim Termin, auch wenn er verschoben
+              wird.
+            </p>
+            <Confirmations a={a} back={`/glasreinigung/termin/${a.id}`} edit />
+          </section>
+        )}
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){var box=document.getElementById('gp-days'),tpl=document.getElementById('gp-day-tpl');
@@ -466,14 +540,31 @@ box.addEventListener('click',function(e){var b=e.target.closest('[data-del-day]'
         team: str(b, 'team'),
         staff: str(b, 'mitarbeiter'),
         note: str(b, 'notiz'),
-        confirmed: str(b, 'bestaetigt') === '1',
-        confirmNote: str(b, 'bestaetigung'),
         done: str(b, 'erledigt') === '1',
         expectedVersion: num(str(b, 'version')),
       },
       c.get('actor'),
     );
     return back(c, '/glasreinigung', { ok: 'Termin gespeichert.' });
+  });
+
+  const retOf = (v: string | null) => (v && /^\/glasreinigung(\/|$|\?)/.test(v) ? v : '/glasreinigung');
+  app.post(`/glasreinigung/termin/:id{${UUID}}/bestaetigung`, async (c) => {
+    const b = (await c.req.parseBody()) as Record<string, string | File>;
+    const eid = str(b, 'id') ?? '';
+    if (!/^[0-9a-f-]{36}$/.test(eid)) throw new BusinessError('Formular ungültig – bitte neu laden');
+    await addConfirmation(
+      sql,
+      c.req.param('id'),
+      { id: eid, at: str(b, 'am') ?? '', text: str(b, 'text') ?? '' },
+      c.get('actor'),
+    );
+    return back(c, retOf(str(b, 'zurueck')), { ok: 'Bestätigung eingetragen.' });
+  });
+  app.post(`/glasreinigung/termin/:id{${UUID}}/bestaetigung/:eid{${UUID}}/entfernen`, async (c) => {
+    const b = (await c.req.parseBody()) as Record<string, string | File>;
+    await removeConfirmation(sql, c.req.param('id'), c.req.param('eid'), c.get('actor'));
+    return back(c, retOf(str(b, 'zurueck')), { ok: 'Bestätigung entfernt.' });
   });
 
   app.post(`/glasreinigung/termin/:id{${UUID}}/erledigt`, async (c) => {
@@ -676,7 +767,7 @@ box.addEventListener('click',function(e){var b=e.target.closest('[data-del-day]'
     const listRows = shown
       .map(
         (a) =>
-          `<tr><td>${a.days.map((d) => dateDe(d.date)).join(', ')}</td><td>${a.days.map((d) => `${d.from}–${d.to}`).join(', ')}</td><td>${esc(a.object_name)}</td><td>${esc(a.customer_name ?? '')}</td><td>${esc(a.object_address ?? '')}</td><td>${esc(a.contact ?? '')}</td></tr>`,
+          `<tr><td>${datesText(a.days)}</td><td>${timesText(a.days)}</td><td>${esc(a.object_name)}</td><td>${esc(a.customer_name ?? '')}</td><td>${esc(a.object_address ?? '')}</td><td>${esc(a.contact ?? '')}</td><td>${(a.confirmations ?? []).map((k) => `✓ ${dateDe(k.at)} ${esc(k.text)}`).join('<br>')}</td></tr>`,
       )
       .join('');
     return c.html(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Jahresplaner ${y}</title><style>
@@ -691,7 +782,7 @@ box.addEventListener('click',function(e){var b=e.target.closest('[data-del-day]'
 @media print{.bar{display:none}}</style></head><body><div class="bar"><button onclick="print()">Drucken / als PDF speichern</button></div>
 <div class="hd"><div><img src="/static/logo-transparent.png" alt="Viva-Deluxe" style="height:40px;display:block;margin-bottom:6px"><b>${esc('Viva-Deluxe Gebäudereinigung GmbH')}</b><div class="k">Glasreinigung</div></div><div style="text-align:right"><h1>${y}</h1><div class="k">${esc(kname ?? 'Jahresplaner')}</div></div></div>
 ${grid}<div class="lg">Rosa = Sonn-/Feiertag · Grau = Samstag · blauer Rand = Schulferien Bayern · <span class="t-team_a">${esc(teams.team_a)}</span> · <span class="t-team_b">${esc(teams.team_b)}</span> · Alle Angaben ohne Gewähr</div>
-<div class="pg"><h2>Terminübersicht ${y}${kname ? ` · ${esc(kname)}` : ''}</h2><table class="ls"><thead><tr><th>Datum</th><th>Uhrzeit</th><th>Objekt</th><th>Kunde</th><th>Adresse</th><th>Ansprechpartner</th></tr></thead><tbody>${listRows}</tbody></table></div>
+<div class="pg"><h2>Terminübersicht ${y}${kname ? ` · ${esc(kname)}` : ''}</h2><table class="ls"><thead><tr><th>Datum</th><th>Uhrzeit</th><th>Objekt</th><th>Kunde</th><th>Adresse</th><th>Ansprechpartner</th><th>Bestätigung</th></tr></thead><tbody>${listRows}</tbody></table></div>
 </body></html>`);
   });
 

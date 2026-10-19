@@ -189,7 +189,7 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
       [
         'Kontrollgegenstände',
         '/einstellungen/kontrollgegenstaende',
-        'Was im Audit bewertet wird: Note 1 bis 6, Gut/Mittel/Schlecht, Ja/Nein oder Punkte 1 bis 5.',
+        'Was im Audit bewertet wird: Punkte 1 bis 5 oder Ja/Nein.',
       ],
       [
         'Arbeitskleidung: Bestand, Artikel & Größen',

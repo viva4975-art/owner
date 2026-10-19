@@ -153,6 +153,8 @@ export const QM_KIND: Record<QmItem['kind'], string> = {
   janein: 'Ja/Nein',
   punkte: 'Punkte 1 bis 5',
 };
+/** Wählbar seit 19.10. (Ahmed: einheitlich 1 bis 5, nur Ja/Nein daneben); Note/GMS nur noch für alte Daten. */
+export const QM_KIND_CHOICE: QmItem['kind'][] = ['punkte', 'janein'];
 
 /** Auswahl je Bewertungsmodus, von schlecht (links) nach gut (rechts): gespeicherter Wert, Beschriftung, Prozent. */
 export const QM_SCALE: Record<QmItem['kind'], { v: number; label: string; pct: number }[]> = {
@@ -193,7 +195,8 @@ export async function saveQmItem(
 ) {
   const name = p.name.trim();
   if (!name) throw new BusinessError('Bitte einen Namen für den Kontrollgegenstand angeben');
-  if (!(p.kind in QM_KIND)) throw new BusinessError('Bewertungsart ungültig');
+  if (!QM_KIND_CHOICE.includes(p.kind as QmItem['kind']))
+    throw new BusinessError('Bewertungsart: Punkte 1 bis 5 oder Ja/Nein');
   const weight = p.weight ?? 2;
   if (!Number.isInteger(weight) || weight < 1 || weight > 5) throw new BusinessError('Gewichtung 1 bis 5');
   const [dup] = await sql`select 1 from app.qm_items where lower(name) = lower(${name}) and id <> ${id}`;

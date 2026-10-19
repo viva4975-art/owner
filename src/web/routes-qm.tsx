@@ -28,6 +28,7 @@ import {
   type QmSite,
   TICKET_PRIO,
   QM_KIND,
+  QM_KIND_CHOICE,
   TICKET_STATUS,
   auditRooms,
   auditScore,
@@ -1750,9 +1751,9 @@ f.addEventListener('submit',function(){btn.textContent='Wird hochgeladen \\u2026
         <input id="kg-name" name="name" required value={it?.name ?? ''} placeholder="z. B. Lichtschalter" />
         <label for="kg-kind">Bewertungsmodus *</label>
         <select id="kg-kind" name="kind" data-nosearch disabled={used}>
-          {Object.entries(QM_KIND).map(([k, v]) => (
-            <option value={k} selected={(it?.kind ?? 'note') === k}>
-              {v}
+          {QM_KIND_CHOICE.map((k) => (
+            <option value={k} selected={(it?.kind ?? 'punkte') === k}>
+              {QM_KIND[k]}
             </option>
           ))}
         </select>
@@ -1981,7 +1982,7 @@ f.addEventListener('submit',function(){btn.textContent='Wird hochgeladen \\u2026
     const so = str(b, 'sort_order');
     await saveQmItem(sql, c.req.param('id'), {
       name: str(b, 'name') ?? '',
-      kind: str(b, 'kind') ?? 'note',
+      kind: str(b, 'kind') ?? 'punkte',
       active: b.active === 'on',
       sortOrder: so && /^\d{1,5}$/.test(so) ? Number(so) : null,
       description: str(b, 'description'),

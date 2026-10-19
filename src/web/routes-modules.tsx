@@ -302,7 +302,7 @@ export function registerModuleRoutes(ctx: Ctx) {
         }))}
         missingDocs={
           canAccess(role, '/personal/unterlagen')
-            ? (await missingDocs(sql, { siteIds: c.get('sites') })).length
+            ? (await missingDocs(sql, { siteIds: c.get('sites'), limited: false })).length
             : 0
         }
         noShift={

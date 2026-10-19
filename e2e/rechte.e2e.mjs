@@ -106,6 +106,31 @@ check('Urlaubskalender erreichbar', (await o.goto(B + '/urlaub/kalender')).statu
   );
 }
 check('keine globale Suche', (await o.locator('form.search').count()) === 0);
+// Ahmed 19.10.: Besonderheiten am Objekt, Verbandbuch, Fehlende Unterlagen auch für die Objektleitung
+await o.goto(B + `/objekte/${SCHOOL}`);
+await o.fill('textarea[name=besonderheiten]', 'Nur nach 17 Uhr (E2E)');
+await o.click('#besonderheiten button:has-text("Speichern")');
+await o.waitForLoadState();
+check(
+  'Objektleitung: Besonderheiten gespeichert',
+  (await o.locator('textarea[name=besonderheiten]').inputValue()) === 'Nur nach 17 Uhr (E2E)',
+);
+check('Objektleitung: Fehlende Unterlagen erreichbar', (await o.goto(B + '/personal/unterlagen')).status() === 200);
+check('Objektleitung: keine Stammdaten-Lücken sichtbar', !(await o.content()).includes('Stammdaten:'));
+check('Objektleitung: Verbandbuch erreichbar', (await o.goto(B + '/verbandbuch')).status() === 200);
+await o.goto(B + '/verbandbuch/neu');
+const empOpt = await o.locator('#va-emp option').nth(1).getAttribute('value');
+if (empOpt) {
+  await o.selectOption('#va-emp', empOpt);
+  await o.selectOption('#va-site', SCHOOL);
+  await o.fill('#va-what', 'E2E Hergang');
+  await o.fill('#va-inj', 'E2E Schnitt');
+  await o.fill('#va-meas', 'Pflaster');
+  await o.click('button:has-text("Speichern")');
+  await o.waitForLoadState();
+  check('Objektleitung: Verbandbuch-Eintrag gespeichert', (await o.content()).includes('E2E Schnitt'));
+}
+check('Objektleitung: Personalakte weiter gesperrt', (await o.goto(B + '/personal')).status() === 403);
 await o.screenshot({ path: `${out}/r3-objektleitung.png`, fullPage: true });
 const r = await o.goto(B + '/rechnungen');
 check('Rechnungen gesperrt (403)', r.status() === 403 && (await o.content()).includes('Keine Berechtigung'));
@@ -121,7 +146,10 @@ check(
   sites.join(' | '),
 );
 await o.goto(B + `/objekte/${SCHOOL}`);
-check('Objekt öffnet Einsatzplan statt Preise', o.url().endsWith('/einsaetze'));
+check(
+  'Objekt-Übersicht ohne Preise',
+  new URL(o.url()).pathname === `/objekte/${SCHOOL}` && !/\d,\d\d\s?€/.test(await o.locator('.main-col').innerText()),
+);
 await o.goto(B + '/einsatzplanung');
 check('Wochenplan ohne fremde Objekte', !(await o.content()).includes('Verwaltungsgebäude'));
 await o.goto(B + `/objekte/${SCHOOL}/stundenvorgabe`);

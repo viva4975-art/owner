@@ -1506,6 +1506,8 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       // Unterseiten als Reiter auf der Seite (SECTION_TABS), nicht im Menü (Ahmed 18.10.)
       { label: 'Mitarbeiter', href: '/personal' },
       { label: 'Bewerber & Stellen', href: '/bewerber' },
+      { label: 'Fehlende Unterlagen', href: '/personal/unterlagen', olOnly: true },
+      { label: 'Verbandbuch', href: '/verbandbuch', olOnly: true },
       { label: 'Offene Stellen', href: '/stellen', olOnly: true },
       { label: 'Personalbogen ausfüllen', href: '/qm/personalbogen', olOnly: true },
       { label: 'Zeiterfassung', href: '/zeiterfassung', sep: true },
@@ -1574,6 +1576,7 @@ export const SECTION_TABS: { label: string; href: string; also?: string[] }[][] 
   [
     { label: 'Mitarbeiter', href: '/personal' },
     { label: 'Fehlende Unterlagen', href: '/personal/unterlagen' },
+    { label: 'Verbandbuch', href: '/verbandbuch' },
     { label: 'Unterweisungen & Unterschriften', href: '/personal/dokumente' },
   ],
   [

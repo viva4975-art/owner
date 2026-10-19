@@ -18,6 +18,7 @@ import {
   folderFacts,
   packageInfo,
   saveFolderInfo,
+  saveSiteSpecial,
 } from '../services/site-folder.js';
 import { DocFoldAll, FileArea, docOpen } from './files.js';
 import { fillHospital } from '../services/hospital.js';
@@ -269,6 +270,19 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
     for (const q of FOLDER_QUESTIONS) if (typeof b[q.key] === 'string') info[q.key] = b[q.key] as string;
     await saveFolderInfo(sql, id, info, c.get('actor'));
     return back(c, `/objekte/${id}/objektordner`, { ok: 'Angaben gespeichert.' });
+  });
+
+  app.post(`/objekte/:id{${UUID}}/objektordner/besonderheiten`, async (c) => {
+    const id = c.req.param('id');
+    assertSite(c, id);
+    const b = await c.req.parseBody();
+    await saveSiteSpecial(
+      sql,
+      id,
+      typeof b.besonderheiten === 'string' ? b.besonderheiten : '',
+      c.get('actor'),
+    );
+    return back(c, `/objekte/${id}#besonderheiten`, { ok: 'Besonderheiten gespeichert.' });
   });
 
   app.post(`/objekte/:id{${UUID}}/objektordner/krankenhaus`, async (c) => {

@@ -148,6 +148,8 @@ export interface Appointment {
   note: string | null;
   confirmed: boolean;
   confirm_note: string | null;
+  /** Terminbestätigungen (mehrere, bleiben beim Termin) */
+  confirmations: GlassConfirmation[];
   done: boolean;
   version: number;
 }
@@ -199,6 +201,52 @@ export async function listAppointments(sql: Sql, f: { from?: string; to?: string
        and ${f.to ? sql`a.first_day <= ${f.to}` : sql`true`}
        and ${f.objectId ? sql`a.object_id = ${f.objectId}` : sql`true`}
      order by a.first_day, (a.days -> 0 ->> 'from'), o.name`;
+}
+
+export interface GlassConfirmation {
+  id: string;
+  /** Tag der Bestätigung JJJJ-MM-TT */
+  at: string;
+  text: string;
+  by: string;
+}
+
+/** Bestätigung anhängen (feste ID je Formular → doppelt absenden legt nichts doppelt an). */
+export async function addConfirmation(
+  sql: Sql,
+  apptId: string,
+  p: { id: string; at: string; text: string },
+  actor: string,
+) {
+  const text = p.text.trim().slice(0, 300);
+  if (!text)
+    throw new BusinessError('Bitte eintragen, wer wie bestätigt hat (z. B. „Hausmeister telefonisch“)');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.at)) throw new BusinessError('Datum der Bestätigung fehlt');
+  const entry = { id: p.id, at: p.at, text, by: actor };
+  const r = await sql`
+    update app.glass_appointments
+       set confirmations = confirmations || ${sql.json([entry] as never)}::jsonb,
+           confirmed = true, confirm_note = ${text}
+     where id = ${apptId} and not confirmations @> ${sql.json([{ id: p.id }] as never)}::jsonb`;
+  if (!r.count) {
+    const [a] = await sql`select 1 from app.glass_appointments where id = ${apptId}`;
+    if (!a) throw new BusinessError('Termin nicht gefunden');
+  }
+}
+
+export async function removeConfirmation(sql: Sql, apptId: string, entryId: string, actor: string) {
+  await sql.begin(async (tx) => {
+    const [a] = await tx<{ confirmations: GlassConfirmation[] }[]>`
+      select confirmations from app.glass_appointments where id = ${apptId} for update`;
+    if (!a) throw new BusinessError('Termin nicht gefunden');
+    const old = a.confirmations.find((x) => x.id === entryId);
+    if (!old) return;
+    const rest = a.confirmations.filter((x) => x.id !== entryId);
+    await tx`update app.glass_appointments set confirmations = ${tx.json(rest as never)}::jsonb,
+               confirmed = ${rest.length > 0}, confirm_note = ${rest.at(-1)?.text ?? null} where id = ${apptId}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'confirmation_remove', 'glass_appointment', ${apptId}, ${tx.json({ vorher: old } as never)})`;
+  });
 }
 
 export async function getAppointment(sql: Sql, id: string) {
@@ -289,8 +337,8 @@ export interface AppointmentInput {
   team: string | null;
   staff: string | null;
   note: string | null;
-  confirmed: boolean;
-  confirmNote: string | null;
+  confirmed?: boolean;
+  confirmNote?: string | null;
   done: boolean;
   expectedVersion: number | null;
 }
@@ -329,8 +377,6 @@ export async function saveAppointment(sql: Sql, id: string, p: AppointmentInput,
     team: p.team || null,
     staff: t(p.staff),
     note: t(p.note),
-    confirmed: p.confirmed,
-    confirm_note: t(p.confirmNote),
   };
   await sql.begin(async (tx) => {
     const [cur] = await tx<{ version: number; done: boolean }[]>`
@@ -699,7 +745,7 @@ export async function importLegacyGlass(
   for (const a of data.termine) {
     const oid = objMap.get(String(a.objektid));
     if (!oid) continue;
-    let days: Day[] = (Array.isArray(a.tage) ? a.tage : [])
+    const days: Day[] = (Array.isArray(a.tage) ? a.tage : [])
       .map((d) => d as Record<string, unknown>)
       .filter((d) => s(d.datum))
       .map((d) => ({
@@ -707,14 +753,15 @@ export async function importLegacyGlass(
         from: String(d.von ?? '08:00').slice(0, 5),
         to: String(d.bis ?? '16:00').slice(0, 5),
       }));
-    if (!days.length && s(a.datum))
-      days = [
-        {
-          date: String(a.datum).slice(0, 10),
-          from: String(a.uhrzeit ?? '08:00').slice(0, 5),
-          to: String(a.uhrzeit_bis ?? '16:00').slice(0, 5),
-        },
-      ];
+    if (!days.length && s(a.datum)) {
+      // alte App: Block-Termin teils nur mit „datum“ + „datum_bis“ ohne Einzeltage → Mo–Fr ohne Feiertage dazwischen
+      const from = String(a.uhrzeit ?? '08:00').slice(0, 5);
+      const to = String(a.uhrzeit_bis ?? '16:00').slice(0, 5);
+      const start = String(a.datum).slice(0, 10);
+      const end = s(a.datum_bis) ? String(a.datum_bis).slice(0, 10) : start;
+      for (let d = start; d <= end && days.length < 31; d = addDays(d, 1))
+        if (d === start || (isoWeekday(d) <= 5 && !holidayName(d))) days.push({ date: d, from, to });
+    }
     if (!days.length) continue;
     days.sort((x, y) => x.date.localeCompare(y.date));
     const iv = String(a.intervall ?? 'einmalig');
@@ -732,10 +779,23 @@ export async function importLegacyGlass(
       note: s(a.notiz),
       confirmed: a.bestaetigt === true,
       confirm_note: s(a.bestaetigung_notiz),
+      confirmations: sql.json(
+        (a.bestaetigt === true
+          ? [
+              {
+                id: uuidOf(`gpt-best:${String(a.id)}`),
+                at: String(a.created_at ?? a.datum ?? '').slice(0, 10),
+                text: s(a.bestaetigung_notiz) ?? 'bestätigt',
+                by: actor,
+              },
+            ]
+          : []) as never,
+      ),
       done: a.erledigt === true,
       legacy_id: `gpt:${String(a.id)}`,
       created_by: actor,
-    } as never)} on conflict (legacy_id) do nothing`;
+    } as never)} on conflict (legacy_id) do update set days = excluded.days, last_day = excluded.last_day
+      where jsonb_array_length(app.glass_appointments.days) = 1 and jsonb_array_length(excluded.days) > 1`;
     apps += r.count;
   }
   return { customers, objects, apps };

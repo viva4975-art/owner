@@ -292,10 +292,21 @@ export async function saveFolderInfo(sql: Sql, siteId: string, info: FolderInfo,
   const clean: FolderInfo = {};
   for (const q of FOLDER_QUESTIONS) {
     const v = info[q.key]?.trim();
-    if (v) clean[q.key] = v.slice(0, 500);
+    if (v) clean[q.key] = v.slice(0, q.key === 'besonderheiten' ? 2000 : 500);
   }
   await sql`update app.sites set folder_info = ${sql.json(clean as never)} where id = ${siteId}`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id) values (${actor}, 'folder_info', 'site', ${siteId})`;
+}
+
+/** Nur „Besonderheiten“ ändern (Kasten in der Objekt-Übersicht, auch Objektleitung; Ahmed 19.10.). */
+export async function saveSiteSpecial(sql: Sql, siteId: string, text: string, actor: string) {
+  const v = text.trim().slice(0, 2000);
+  await sql`update app.sites
+               set folder_info = case when ${v} = '' then coalesce(folder_info, '{}'::jsonb) - 'besonderheiten'
+                                 else coalesce(folder_info, '{}'::jsonb) || jsonb_build_object('besonderheiten', ${v}::text) end
+             where id = ${siteId}`;
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${actor}, 'besonderheiten', 'site', ${siteId}, ${sql.json({ text: v } as never)})`;
 }
 
 // ------------------------------------------------------------------ Word-Lücken füllen

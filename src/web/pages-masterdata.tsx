@@ -945,8 +945,8 @@ export const SiteShell: FC<{
     { key: 'rechnungsangaben', label: 'Rechnungsangaben', href: `${base}/rechnungsangaben` },
   ];
   const allowed = all.filter((t) => canAccess(role, t.href));
-  // Objektleitung: keine Übersicht (enthält Preise) → Einsätze als erster Reiter
-  const visible = role === 'objektleitung' ? allowed.filter((t) => t.key !== 'uebersicht') : allowed;
+  // Übersicht ohne Preise (Leistungen nur als Namen) → auch für die Objektleitung (Ahmed 19.10.: Besonderheiten)
+  const visible = allowed;
   const tabs = visible.filter((t) => t.main);
   const more = visible.filter((t) => !t.main);
   const c = info.customer;
@@ -1118,7 +1118,9 @@ export const SiteOverview: FC<{
   /** Objektleitung: keine Links auf Preise/Personalakten (Ahmed 14.10.) */
   ol?: boolean;
   contacts?: { name: string; position: string | null; phone: string | null; email: string | null }[];
-}> = ({ s, services, employees, tasksSlot, docsSlot, ol, contacts }) => {
+  /** Besonderheiten (folder_info.besonderheiten) – direkt eintragbar */
+  special?: string | null;
+}> = ({ s, services, employees, tasksSlot, docsSlot, ol, contacts, special }) => {
   const kinds = [...new Set(services.filter((x) => x.active).map((x) => x.description))];
   // Ruhige Übersicht (Ahmed 12.10.: „aufgeräumter für neue Mitarbeiter“): Leistungen als kurze Liste, Reinigungskräfte
   // in Spalten und nur die ersten 12 sichtbar, Seltenes (Schule) unten.
@@ -1198,6 +1200,24 @@ export const SiteOverview: FC<{
           )}
         </section>
       )}
+      <section id="besonderheiten" class="card special-box">
+        <h2 class="panel-title">Besonderheiten</h2>
+        <form method="post" action={`/objekte/${s.id}/objektordner/besonderheiten`}>
+          <textarea
+            name="besonderheiten"
+            rows={3}
+            maxlength={2000}
+            aria-label="Besonderheiten"
+            placeholder="z. B. Kita – nur nach 17 Uhr, Alarmanlage, Schlüssel beim Hausmeister …"
+          >
+            {special ?? ''}
+          </textarea>
+          <div class="row" style="margin-top:6px;align-items:center;gap:10px">
+            <button class="btn sm">Speichern</button>
+            <span class="mut small">Steht auch im Objektordner.</span>
+          </div>
+        </form>
+      </section>
       {docsSlot}
     </div>
   );

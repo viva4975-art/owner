@@ -38,6 +38,9 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/bewerber\/stellen\/[0-9a-f-]{36}\/plakat$/, ALL],
   [/^\/stellen$/, ALL],
   [/^\/bewerber(\/|$)/, HR],
+  // Objektleitung: Fehlende Unterlagen ihrer Leute (ohne Stammdaten; Ahmed 19.10.)
+  [/^\/personal\/unterlagen(\.csv|\.pdf)?$/, [...HR, 'objektleitung']],
+  [/^\/verbandbuch(\/|$)/, [...HR, 'objektleitung']],
   [/^\/personal(\/|$)/, HR],
   [/^\/zeiterfassung\/(meine(\/|$)|plan-als-ist$)/, ALL],
   [/^\/zeiterfassung\/(stundenzettel|lohnarten|arbeitszeitkonto)/, ['admin', 'personal', 'buchhaltung']],

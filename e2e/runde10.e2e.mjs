@@ -190,13 +190,13 @@ check('Ticket erledigt', !(await body(p)).includes(`Ticket ${tag}`));
 console.log('9. QM-Audit');
 await p.goto(B + '/einstellungen/kontrollgegenstaende');
 await p.fill('#kg-name', `Lichtschalter ${tag}`);
-await p.selectOption('#kg-kind', 'gms');
+await p.selectOption('#kg-kind', 'janein');
 await p.click('button:has-text("Kontrollgegenstand hinzufügen")');
 await p.waitForLoadState();
 check('Kontrollgegenstand angelegt', (await flash(p)).includes('gespeichert'), await flash(p));
 check(
   'Liste zeigt Bewertungsmodus',
-  (await p.locator('tr', { hasText: `Lichtschalter ${tag}` }).innerText()).includes('Gut/Mittel/Schlecht'),
+  (await p.locator('tr', { hasText: `Lichtschalter ${tag}` }).innerText()).includes('Ja/Nein'),
 );
 await p.goto(B + '/einstellungen/nutzungsarten');
 await p.fill('#na-name', `Besprechungsraum ${tag}`);

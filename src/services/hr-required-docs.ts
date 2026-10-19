@@ -1,5 +1,7 @@
 import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
+import { addDays } from '../domain/time/holidays.js';
+import { monthLabel, timesheet } from './timesheet.js';
 
 /*
  * Pflichtunterlagen der Personalakte (Ahmed 07.10.: „alles Pflicht“): Arbeitsvertrag, Unterweisung, Arbeitskleidung,
@@ -104,8 +106,56 @@ export interface MissingRow {
   missing: string[];
 }
 
-export async function missingDocs(sql: Sql, opts: { siteIds?: string[] | null } = {}): Promise<MissingRow[]> {
-  const today = todayBerlin();
+/** Stundenlisten erst ab Echtbetrieb prüfen – frühere Monate stammen aus dem Import (nie in der App unterschrieben). */
+export const TIMESHEET_CHECK_FROM = '2026-10';
+let sheetCache: { key: string; at: number; map: Map<string, string[]> } | null = null;
+
+/**
+ * Nicht (mehr) gültig unterschriebene Stundenlisten der letzten zwei abgeschlossenen Monate (Ahmed 19.10.): Monat mit
+ * erfasster Zeit und ohne Unterschrift bzw. nach der Unterschrift geändert. 10 Min. zwischengespeichert.
+ */
+export async function unsignedTimesheets(sql: Sql, today = todayBerlin()): Promise<Map<string, string[]>> {
+  const prev = addDays(`${today.slice(0, 7)}-01`, -1).slice(0, 7);
+  const months = [addDays(`${prev}-01`, -1).slice(0, 7), prev].filter((m) => m >= TIMESHEET_CHECK_FROM);
+  const key = months.join(',');
+  if (sheetCache && sheetCache.key === key && Date.now() - sheetCache.at < 600_000) return sheetCache.map;
+  const map = new Map<string, string[]>();
+  for (const m of months) {
+    const rows = await sql<{ employee_id: string; sheet_hash: string | null }[]>`
+      select t.employee_id,
+             (select s.sheet_hash from app.timesheet_signatures s
+               where s.employee_id = t.employee_id and s.month = ${m} order by s.signed_at desc limit 1) as sheet_hash
+        from app.time_entries t join app.employees e on e.id = t.employee_id
+       where t.work_date between ${`${m}-01`}::date and (${`${m}-01`}::date + interval '1 month - 1 day')
+         and t.status <> 'abgelehnt' and e.status = 'aktiv'
+       group by t.employee_id`;
+    for (const r of rows) {
+      let text: string | null = `Stundenliste ${monthLabel(m)} nicht unterschrieben`;
+      if (r.sheet_hash) {
+        const sh = await timesheet(sql, r.employee_id, m);
+        text = sh.hash === r.sheet_hash ? null : `Stundenliste ${monthLabel(m)} nach Unterschrift geändert`;
+      }
+      if (text) map.set(r.employee_id, [...(map.get(r.employee_id) ?? []), text]);
+    }
+  }
+  sheetCache = { key, at: Date.now(), map };
+  return map;
+}
+export const resetTimesheetCache = () => {
+  sheetCache = null;
+};
+
+export async function missingDocs(
+  sql: Sql,
+  opts: {
+    siteIds?: string[] | null;
+    /** Objektleitung: ohne Stammdaten/Nummern (vertraulich) */
+    limited?: boolean;
+    today?: string;
+  } = {},
+): Promise<MissingRow[]> {
+  const today = opts.today ?? todayBerlin();
+  const sheets = await unsignedTimesheets(sql, today);
   const rows = await sql<
     {
       id: string;
@@ -168,14 +218,14 @@ export async function missingDocs(sql: Sql, opts: { siteIds?: string[] | null } 
         (d === 'Schlüssel' && ho.has('schluessel'));
       if (!ok) missing.push(d);
     }
-    if (r.data_missing?.length) missing.push(`Stammdaten: ${r.data_missing.join(', ')}`);
+    if (r.data_missing?.length && !opts.limited) missing.push(`Stammdaten: ${r.data_missing.join(', ')}`);
     // vorhandene Nummern prüfen (z. B. aus dem Import oder vor Einführung der Prüfung erfasst)
     const bad = [
       r.tax_id?.trim() && !validTaxId(r.tax_id) ? 'Steuer-ID' : null,
       r.social_security_no?.trim() && !validSvNumber(r.social_security_no) ? 'SV-Nummer' : null,
       r.iban?.trim() && !validIban(r.iban) ? 'IBAN' : null,
     ].filter(Boolean);
-    if (bad.length) missing.push(`Ungültig: ${bad.join(', ')}`);
+    if (bad.length && !opts.limited) missing.push(`Ungültig: ${bad.join(', ')}`);
     const nat = r.nationality ?? '';
     if (!nat.trim()) missing.push('Staatsangehörigkeit');
     else if (!freeMovement(nat)) {
@@ -185,6 +235,7 @@ export async function missingDocs(sql: Sql, opts: { siteIds?: string[] | null } 
       else if (until < today)
         missing.push(`Aufenthaltstitel abgelaufen (${until.split('-').reverse().join('.')})`);
     }
+    missing.push(...(sheets.get(r.id) ?? []));
     if (missing.length)
       out.push({
         employee_id: r.id,

@@ -3489,3 +3489,17 @@ Testadresse.
   (Freitext)“ (`offers.object_text`, Migration `20261206000001`, bis 500 Zeichen). Es steht als „Objekt: …“-Band im PDF und
   in der Briefansicht, wird beim Kopieren/Folgeangebot übernommen; es wird kein Objekt angelegt. Mit gewähltem Objekt
   gilt das Objekt (Freitext wird geleert). Test in `offers-extra.db.test.ts`.
+- 2026-10-19: **Verträge am Objekt** (Ahmed: „neben freiem Brief Arbeitnehmerüberlassungsvertrag und Reinigungsvertrag“):
+  Objekt → Dokumente → „Reinigungsvertrag erstellen“ / „Arbeitnehmerüberlassungsvertrag erstellen“ (`/objekte/:id/vertrag`,
+  nur Büro; `src/services/site-contracts.ts`, Texte `src/domain/contracts/site-contracts.ts`, PDF im Stil „edel“, auf Wunsch
+  unter Dokumente → „Vertrag“ abgelegt). **Reinigungsvertrag:** Kunde = AG, Beginn, unbefristet oder fest bis (+ 12 Monate
+  Verlängerung), Kündigungsfrist, Monatspauschale und **Anlage 1 Leistungsverzeichnis** aus den aktiven Leistungen,
+  Zahlungsziel aus Rechnungsgruppe, **Lohngleitklausel** über den Lohnkostenanteil (Vorschlag gewichtet aus den Leistungen;
+  Kostenelementeklausel § 1 Abs. 2 Nr. 3 PrKG), Weisungsrecht beim AN (Abgrenzung zur AÜ), Mängel/Nachbesserung,
+  Haftung. **AÜ-Vertrag (§ 12 AÜG):** nur mit eingetragener AÜ-Erlaubnis (Firmendaten; gilt sie nicht bis Beginn → Fehler),
+  Bezeichnung als AÜ, Eckdaten (Einsatzort, Tätigkeit, Anzahl, Einsatzzeit, Verrechnungssatz), Benennung der
+  Leiharbeitnehmer vor Beginn (Anlage 1), Höchstüberlassungsdauer 18 Monate, Angaben des Entleihers zu vergleichbaren
+  Arbeitnehmern (Anlage 2), Arbeitsschutz/Streik, Vermittlungsvergütung wählbar (2/1,5/1/keine, je Monat −1/12).
+  **Rechtlich:** AÜ-Vertrag braucht Schriftform – ausdrucken und vor Beginn eigenhändig unterschreiben (sonst fiktives
+  Arbeitsverhältnis zum Kunden, § 9/§ 10 AÜG); beide Texte sind AGB → vor dem ersten Einsatz anwaltlich prüfen lassen.
+  Test `site-contracts.db.test.ts`.

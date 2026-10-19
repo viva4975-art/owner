@@ -39,6 +39,7 @@ import { registerOfferRoutes } from './routes-offers.js';
 import { registerOrderRoutes } from './routes-orders.js';
 import { registerFacilityRoutes } from './routes-facility.js';
 import { registerSiteExtraRoutes } from './routes-site-extra.js';
+import { registerSiteContractRoutes } from './routes-site-contracts.js';
 import { registerSignRoutes } from './routes-sign.js';
 import { registerHrRoutes } from './routes-hr.js';
 import { registerPlanningMonthRoutes } from './routes-planning-month.js';
@@ -569,6 +570,7 @@ export function createApp(deps: Deps) {
   registerOrderRoutes(ctx);
   registerFacilityRoutes(ctx);
   registerSiteExtraRoutes(ctx);
+  registerSiteContractRoutes(ctx);
   registerSignRoutes(ctx);
   registerHrRoutes(ctx);
   registerPlanningMonthRoutes(ctx);

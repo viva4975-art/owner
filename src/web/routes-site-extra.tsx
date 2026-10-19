@@ -431,6 +431,16 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
             <a class="btn sm sec" href={`/brief?an=objekt&id=${s.id}`}>
               Freien Brief schreiben
             </a>
+            {c.get('user').role !== 'objektleitung' && (
+              <>
+                <a class="btn sm sec" href={`/objekte/${s.id}/vertrag?art=reinigung`}>
+                  Reinigungsvertrag erstellen
+                </a>
+                <a class="btn sm sec" href={`/objekte/${s.id}/vertrag?art=aue`}>
+                  Arbeitnehmerüberlassungsvertrag erstellen
+                </a>
+              </>
+            )}
           </div>
           {missing.length > 0 ? (
             <div class="flash warn">

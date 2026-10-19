@@ -303,6 +303,9 @@ export interface Device {
   notes: string | null;
   active: boolean;
   version: number;
+  kind: string;
+  status: string;
+  qr_token: string;
 }
 
 export const deviceInput = z.object({
@@ -315,12 +318,45 @@ export const deviceInput = z.object({
   next_inspection: optDate,
   notes: optText,
   active: bool,
+  kind: z
+    .enum([
+      'scheuersaugmaschine',
+      'staubsauger',
+      'nasssauger',
+      'wischwagen',
+      'reinigungswagen',
+      'einscheibenmaschine',
+      'hochdruckreiniger',
+      'leiter',
+      'sonstiges',
+    ])
+    .default('sonstiges'),
+  status: z.enum(['ok', 'defekt', 'reparatur']).default('ok'),
 });
 
+export type DeviceListRow = Device & {
+  site_name: string | null;
+  site_no: string | null;
+  days: number | null;
+  /** letzter Scan aus der App (Zeitpunkt, wer, Standort) */
+  seen_at: Date | null;
+  seen_by: string | null;
+  seen_lat: string | null;
+  seen_lng: string | null;
+  seen_days: number | null;
+};
+
 export async function listDevices(sql: Sql) {
-  return sql<(Device & { site_name: string | null; days: number | null })[]>`
-    select d.*, s.name as site_name, (d.next_inspection - (now() at time zone 'Europe/Berlin')::date)::int as days
+  return sql<DeviceListRow[]>`
+    select d.*, s.name as site_name, s.site_no,
+           (d.next_inspection - (now() at time zone 'Europe/Berlin')::date)::int as days,
+           e.created_at as seen_at, e.by_name as seen_by, e.lat::text as seen_lat, e.lng::text as seen_lng,
+           ((now() at time zone 'Europe/Berlin')::date - (e.created_at at time zone 'Europe/Berlin')::date)::int as seen_days
       from app.devices d left join app.sites s on s.id = d.site_id
+      left join lateral (
+        select x.created_at, x.by_name, x.lat, x.lng from app.device_events x
+         where x.device_id = d.id and x.action in ('hier', 'mitgenommen', 'lager', 'defekt')
+         order by x.created_at desc limit 1) e on true
      order by d.active desc, d.next_inspection nulls last, d.name`;
 }
 

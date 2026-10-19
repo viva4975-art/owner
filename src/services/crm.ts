@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Sql } from '../db/client.js';
 import { BusinessError } from './errors.js';
 
-export type EntityType = 'customer' | 'site' | 'employee' | 'invoice' | 'tender' | 'photo_group';
+export type EntityType = 'customer' | 'site' | 'employee' | 'invoice' | 'tender' | 'photo_group' | 'device';
 
 const emptyToNull = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? null : v);
 const optText = z.preprocess(emptyToNull, z.string().trim().nullable().default(null));
@@ -227,6 +227,7 @@ const ENTITY_LABEL = (sql: Sql) => sql`
                           from app.tenders x where x.id = t.entity_id)
     when 'photo_group' then (select g.photo_count || case when g.photo_count = 1 then ' Foto' else ' Fotos' end
                                     || ' · PDF' from app.photo_groups g where g.id = t.entity_id)
+    when 'device' then (select 'Gerät ' || d.inventory_no || ' · ' || d.name from app.devices d where d.id = t.entity_id)
   end`;
 
 export interface TaskViewer {

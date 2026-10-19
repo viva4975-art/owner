@@ -106,8 +106,11 @@ export function registerStartAppRoutes({ app, deps }: Ctx) {
     const employee = /^\d+$/.test(kennung);
     const okNext = rawNext.startsWith('/') && !rawNext.startsWith('//');
     const mNext = okNext && /^\/m(\/[\w/-]*)?$/.test(rawNext) ? rawNext : '/m';
-    const officeNext =
-      okNext && !rawNext.startsWith('/m') && !rawNext.startsWith('/app')
+    // Geräte-Etikett (/m/g/<code>) mit Büro-Anmeldung → Büro-Scan über die Weiche /g/<code>
+    const devNext = /^\/m\/g\/([0-9a-f]{32})$/.exec(rawNext);
+    const officeNext = devNext
+      ? `/g/${devNext[1]}`
+      : okNext && !rawNext.startsWith('/m') && !rawNext.startsWith('/app')
         ? rawNext
         : from === 'app'
           ? '/app'

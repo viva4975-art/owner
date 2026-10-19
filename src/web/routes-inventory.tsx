@@ -1,7 +1,6 @@
 import { LEGAL_FORMS } from '../services/subcontractors.js';
 import { SiteOptions } from './site-options.js';
 import { randomUUID } from 'node:crypto';
-import type { FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { parseQuantity } from '../domain/money/money.js';
 import { listEmployees } from '../services/employees.js';
@@ -16,7 +15,6 @@ import {
   keyAction,
   keyLog,
   listArticles,
-  listDevices,
   listKeys,
   listMovements,
   listSuppliers,
@@ -28,6 +26,7 @@ import {
   suggestInventoryNo,
   suggestSupplierNo,
 } from '../services/inventory.js';
+import { DEVICE_KINDS, DEVICE_STATUS } from '../services/device-tracking.js';
 import { listSites } from '../services/masterdata.js';
 import { listFiles } from '../services/uploads.js';
 import { type Ctx, UUID, assertSite, inScope } from './app.js';
@@ -38,22 +37,6 @@ import { PageHead, Tabs, dateDe, euro } from './layout.js';
 import { Field } from './pages-masterdata.js';
 
 const versionOf = (v: unknown) => (typeof v === 'string' && v !== '' ? Number(v) : null);
-
-/** Ablaufdatum mit Ampel: abgelaufen rot, ≤ 30 Tage gelb. */
-const Expiry: FC<{ date: string | null; days: number | null; missing?: string }> = ({
-  date,
-  days,
-  missing = 'fehlt',
-}) =>
-  !date ? (
-    <span class="badge err">{missing}</span>
-  ) : days !== null && days < 0 ? (
-    <span class="badge err">abgelaufen {dateDe(date)}</span>
-  ) : days !== null && days <= 30 ? (
-    <span class="badge warn">bis {dateDe(date)}</span>
-  ) : (
-    <span class="badge ok">bis {dateDe(date)}</span>
-  );
 
 const Check = ({ name, label, checked }: { name: string; label: string; checked: boolean }) => (
   <div class="chk" style="align-self:end;height:38px">
@@ -569,74 +552,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
 
   // ================================================================== Geräte & Prüftermine
 
-  app.get('/geraete', async (c) => {
-    const rows = inScope(c, await listDevices(sql));
-    const due = rows.filter((d) => d.active && d.days !== null && d.days <= 30);
-    return page(
-      c,
-      'Geräte',
-      'inventar',
-      <>
-        <PageHead title="Geräte & Prüftermine">
-          <a class="btn" href={`/geraete/${randomUUID()}/bearbeiten`} style="margin-left:auto">
-            <Icon name="plus" /> Gerät anlegen
-          </a>
-        </PageHead>
-        {due.length > 0 && (
-          <div class="warnbox">
-            <h3>Prüfung fällig (≤ 30 Tage)</h3>
-            {due.map((d) => (
-              <div>
-                <a href={`/geraete/${d.id}/bearbeiten`}>{d.name}</a> ({d.inventory_no}) –{' '}
-                {dateDe(d.next_inspection)}
-              </div>
-            ))}
-            <p class="small" style="margin:8px 0 0">
-              Elektrische Geräte (Sauger, Scheuersaugmaschinen) regelmäßig nach DGUV V3 prüfen lassen.
-            </p>
-          </div>
-        )}
-        <div class="tbl">
-          <table>
-            <thead>
-              <tr>
-                <th>Inv.-Nr.</th>
-                <th>Gerät</th>
-                <th>Hersteller / Serien-Nr.</th>
-                <th>Standort</th>
-                <th>Nächste Prüfung</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && (
-                <tr>
-                  <td colspan={5}>
-                    <div class="empty">Noch keine Geräte.</div>
-                  </td>
-                </tr>
-              )}
-              {rows.map((d) => (
-                <tr style={d.active ? '' : 'opacity:.55'}>
-                  <td>{d.inventory_no}</td>
-                  <td>
-                    <a href={`/geraete/${d.id}/bearbeiten`}>
-                      <b>{d.name}</b>
-                    </a>
-                  </td>
-                  <td class="small">
-                    {d.manufacturer ?? '–'}
-                    {d.serial_no && <div class="mut">SN {d.serial_no}</div>}
-                  </td>
-                  <td>{d.site_id ? <a href={`/objekte/${d.site_id}`}>{d.site_name}</a> : 'Lager'}</td>
-                  <td>{d.next_inspection ? <Expiry date={d.next_inspection} days={d.days} /> : '–'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </>,
-    );
-  });
+  // Liste, Gerät im Detail, Etiketten, Scan: routes-devices.tsx
 
   app.get(`/geraete/:id{${UUID}}/bearbeiten`, async (c) => {
     const id = c.req.param('id');
@@ -651,7 +567,14 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
       d ? d.name : 'Neues Gerät',
       'inventar',
       <>
-        <PageHead title={d ? d.name : 'Neues Gerät'} no={d?.inventory_no} crumbs={[['Geräte', '/geraete']]} />
+        <PageHead
+          title={d ? d.name : 'Neues Gerät'}
+          no={d?.inventory_no}
+          crumbs={[
+            ['Geräte', '/geraete'],
+            ...(d ? ([[d.name, `/geraete/${id}`]] as [string, string][]) : []),
+          ]}
+        />
         <form
           method="post"
           action={`/geraete/${id}`}
@@ -669,6 +592,16 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
               required
               placeholder="z. B. Scheuersaugmaschine"
             />
+            <div>
+              <label for="kind">Art</label>
+              <select id="kind" name="kind">
+                {Object.entries(DEVICE_KINDS).map(([k, v]) => (
+                  <option value={k} selected={k === (d?.kind ?? 'sonstiges')}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
             <Field name="manufacturer" label="Hersteller / Modell" value={d?.manufacturer} />
             <Field name="serial_no" label="Seriennummer" value={d?.serial_no} />
             <div>
@@ -685,6 +618,16 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
               value={d?.next_inspection}
               type="date"
             />
+            <div>
+              <label for="status">Zustand</label>
+              <select id="status" name="status">
+                {Object.entries(DEVICE_STATUS).map(([k, v]) => (
+                  <option value={k} selected={k === (d?.status ?? 'ok')}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
             <Check name="active" label="Aktiv" checked={d?.active !== false} />
           </div>
           <div style="margin-top:12px">
@@ -694,7 +637,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
             </textarea>
           </div>
           <div class="formfoot">
-            <a class="btn sec" href="/geraete">
+            <a class="btn sec" href={d ? `/geraete/${id}` : '/geraete'}>
               Abbrechen
             </a>
             <button class="btn">Speichern</button>
@@ -711,7 +654,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
     if (cur) assertSite(c, cur.site_id);
     assertSite(c, String(body.site_id ?? ''));
     await saveDevice(sql, id, body, versionOf(body.version), c.get('actor'));
-    return back(c, '/geraete', { ok: 'Gerät gespeichert.' });
+    return back(c, `/geraete/${id}`, { ok: 'Gerät gespeichert.' });
   });
 
   // ================================================================== Schlüsselbuch

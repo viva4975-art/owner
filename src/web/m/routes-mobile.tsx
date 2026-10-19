@@ -5,6 +5,13 @@ import { savePushSubscription, vapidKeys } from '../../services/push.js';
 import { listPayslips } from '../../services/payslips.js';
 import { payslipFile } from '../routes-payslips.js';
 import { createHash, randomUUID } from 'node:crypto';
+import {
+  deviceByToken,
+  deviceEvents,
+  posFromForm,
+  recordDeviceScan,
+} from '../../services/device-tracking.js';
+import { DeviceScanForm, type ScanSite, lastSeenText } from '../device-scan.js';
 import type { Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { Child, FC } from 'hono/jsx';
@@ -347,7 +354,7 @@ const JS = `
     var cap=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.BarcodeScanner;
     var web='BarcodeDetector' in window&&navigator.mediaDevices&&navigator.mediaDevices.getUserMedia;
     var qs='';
-    var go=function(v){try{var u=new URL(v,location.href); if(u.origin===location.origin&&/^\\/m\\/o\\/[0-9a-f]{32}$/.test(u.pathname)){location.href=u.pathname+qs;}}catch(e){}};
+    var go=function(v){try{var u=new URL(v,location.href); if(u.origin===location.origin&&/^\\/m\\/o\\/[0-9a-f]{32}$/.test(u.pathname)){location.href=u.pathname+qs;}else if(u.origin===location.origin&&/^\\/g\\/[0-9a-f]{32}$/.test(u.pathname)){location.href='/m'+u.pathname;}}catch(e){}};
     scans.forEach(function(scan){
     var md=scan.getAttribute('data-mode');
     if(scan.id==='scan'&&(cap||web)&&(md==='alle'||md==='qr')){scan.hidden=false;}
@@ -1615,6 +1622,74 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         </a>
       </>,
     );
+  });
+
+  // Gerät mit QR-Etikett gescannt (Stufe 1, Ahmed 19.10.): Standort melden, defekt melden
+  app.get('/m/g/:token{[0-9a-f]{32}}', async (c) => {
+    const { me, res } = await requireMe(c);
+    if (!me) return res!;
+    const lang = langOf(c, me);
+    const d = await deviceByToken(sql, c.req.param('token'));
+    if (!d || !d.active) return back(c, '/m', { fehler: t(lang, 'dev_unknown') });
+    const [last] = await deviceEvents(sql, d.id, 1);
+    const sites: ScanSite[] = me.sites.map((s) => ({ id: s.id, name: s.name, site_no: s.site_no }));
+    if (d.site_id && !sites.some((s) => s.id === d.site_id))
+      sites.unshift({ id: d.site_id, name: d.site_name ?? '', site_no: d.site_no ?? '' });
+    const [today] = await sql<{ site_id: string }[]>`
+      select p.site_id from app.shift_plans p
+       where p.employee_id = ${me.id} and p.weekday = extract(isodow from (now() at time zone 'Europe/Berlin'))::int
+         and p.valid_from <= (now() at time zone 'Europe/Berlin')::date
+         and (p.valid_until is null or p.valid_until >= (now() at time zone 'Europe/Berlin')::date)
+       order by p.start_time limit 1`;
+    return render(
+      c,
+      lang,
+      me,
+      <DeviceScanForm
+        action={`/m/g/${d.qr_token}`}
+        formId={randomUUID()}
+        device={d}
+        sites={sites}
+        preSite={today?.site_id ?? d.site_id}
+        last={lastSeenText(last)}
+        L={(k) => t(lang, k)}
+      />,
+    );
+  });
+
+  app.post('/m/g/:token{[0-9a-f]{32}}', async (c) => {
+    const { me, res } = await requireMe(c);
+    if (!me) return res!;
+    const lang = langOf(c, me);
+    const token = c.req.param('token');
+    return guard(c, lang, `/m/g/${token}`, async () => {
+      const d = await deviceByToken(sql, token);
+      if (!d || !d.active) throw new BusinessError(t(lang, 'dev_unknown'));
+      const b = await c.req.parseBody();
+      const formId = typeof b.form_id === 'string' && /^[0-9a-f-]{36}$/.test(b.form_id) ? b.form_id : null;
+      if (!formId) throw new BusinessError('Formular ungültig – bitte neu laden');
+      const siteId = typeof b.site_id === 'string' && b.site_id ? b.site_id : null;
+      if (siteId && siteId !== d.site_id && !me.sites.some((s) => s.id === siteId))
+        throw new BusinessError(t(lang, 'e_unknown_site'));
+      const f = b.foto instanceof File && b.foto.size > 0 ? b.foto : null;
+      await recordDeviceScan(
+        sql,
+        { dir: deps.env.FILES_DIR, maxBytes: deps.env.UPLOAD_MAX_BYTES },
+        {
+          id: formId,
+          deviceId: d.id,
+          action: String(b.action ?? ''),
+          siteId,
+          note: typeof b.note === 'string' ? b.note : null,
+          pos: posFromForm(b),
+          photo: f ? { data: new Uint8Array(await f.arrayBuffer()), name: f.name, type: f.type } : null,
+          by: `${me.first_name} ${me.last_name}`,
+          employeeId: me.id,
+          actor: `m:${me.personnel_no}`,
+        },
+      );
+      return back(c, '/m', { ok: t(lang, 'dev_saved') });
+    });
   });
 
   app.post('/m/ein', async (c) => {

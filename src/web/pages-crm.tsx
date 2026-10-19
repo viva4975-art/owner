@@ -238,6 +238,8 @@ export const TaskBox: FC<{ tasks: Task[]; title?: string; doneLink?: string }> =
                     <div class="small mut">
                       {t.entity_type === 'tender' ? (
                         <a href={`/ausschreibungen/${t.entity_id}`}>{t.entity_label}</a>
+                      ) : t.entity_type === 'device' ? (
+                        <a href={`/geraete/${t.entity_id}`}>{t.entity_label}</a>
                       ) : t.entity_type === 'photo_group' ? (
                         <>
                           <a href={`/fotos/${t.entity_id}`}>Fotos ansehen</a> ·{' '}
@@ -454,6 +456,7 @@ const TASK_HREF: Record<string, string> = {
   tender: '/ausschreibungen/',
   supplier: '/lieferanten/',
   photo_group: '/fotos/',
+  device: '/geraete/',
 };
 const taskHref = (t: Task) =>
   t.entity_type && t.entity_id && TASK_HREF[t.entity_type]

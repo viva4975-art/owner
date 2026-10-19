@@ -536,6 +536,7 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
           title="Objekte & Dokumente"
           items={[
             ['/qm/foto', 'cam', 'Foto', 'mit Stempel, Objekt optional'],
+            ['/geraete', 'qr', 'Geräte', 'Standort, Defekte, Etiketten'],
             ['/qm/objekte', 'building', 'Objekte', 'Schlüssel, Ordner, Raumbuch'],
             ...(canAccess(c.get('user').role, '/personal/dokumente')
               ? ([['/qm/unterweisungen', 'doc', 'Unterweisungen', 'verteilen, Unterschriften']] as const)

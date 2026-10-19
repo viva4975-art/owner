@@ -3503,3 +3503,18 @@ Testadresse.
   **Rechtlich:** AÜ-Vertrag braucht Schriftform – ausdrucken und vor Beginn eigenhändig unterschreiben (sonst fiktives
   Arbeitsverhältnis zum Kunden, § 9/§ 10 AÜG); beide Texte sind AGB → vor dem ersten Einsatz anwaltlich prüfen lassen.
   Test `site-contracts.db.test.ts`.
+- 2026-10-19: **Geräte mit QR-Code verfolgen, Stufe 1** (Ahmed: Scheuersaugmaschinen, Staubsauger, auch Wischwagen usw.):
+  Geräte haben Art (Scheuersaugmaschine, Staubsauger, Nasssauger, Wischwagen, Reinigungswagen, Einscheibenmaschine,
+  Hochdruckreiniger, Leiter, Sonstiges), Zustand (einsatzbereit / defekt / in Reparatur) und einen QR-Code
+  (`devices.kind/status/qr_token`, Migration `20261207000001`). **Etiketten** drucken (Inventar → Geräte, markierte oder
+  alle: groß 2 × 5 bzw. klein 3 × 8 je A4, Logo, Art, Name, Nr., „Eigentum …“). Etikett zeigt auf `/g/<code>`: mit
+  Büro-Anmeldung → Scan-Seite im Büro, sonst Mitarbeiter-App `/m/g/<code>` (Anmeldung, danach zurück; auch über den
+  QR-Scanner der App). Aktionen „Gerät ist hier“, „Mitgenommen zu Objekt …“, „Zurück ins Lager“, „Defekt melden“
+  (Beschreibung Pflicht, Foto mit der Kamera) – 7 Sprachen. Gespeichert in `app.device_events` (nur anhängen, feste ID je
+  Formular): Objekt, Zeitpunkt, Person, Bewertung am Objekt/nicht am Objekt + Entfernung, Koordinaten des Handys beim Scan.
+  Defekt → Aufgabe „Gerät defekt: …“ für den Admin; Gerät → „Prüfung / Reparatur erfassen“ (Prüfung mit nächster Prüfung,
+  in Reparatur, repariert = einsatzbereit + Aufgabe erledigt, Notiz). Liste mit „zuletzt gescannt“, Filtern **Lange nicht
+  gescannt (> 60 Tage oder nie)**, Defekt/Reparatur, Prüfung fällig, Art, Suche; Gerät im Detail mit Standort, Karte
+  (Google Maps erst auf Klick), Verlauf. Kachel „Geräte“ in der Verwaltungs-App. Objektleitung: nur Geräte ihrer Objekte,
+  scannen/umsetzen nur auf eigene Objekte. **Datenschutz:** Standort nur im Moment des Scans, kein Tracking –
+  Mitarbeitende informieren (Art. 13 DSGVO). Stufe 2 (GPS-Tracker) nicht gebaut. Test `device-tracking.db.test.ts`.

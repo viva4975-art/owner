@@ -34,6 +34,7 @@ import { registerMasterdataRoutes } from './routes-masterdata.js';
 import { registerMobileRoutes } from './m/routes-mobile.js';
 import { registerModuleRoutes } from './routes-modules.js';
 import { registerDunningRoutes } from './routes-dunning.js';
+import { registerDeviceRoutes } from './routes-devices.js';
 import { registerInventoryRoutes } from './routes-inventory.js';
 import { registerOfferRoutes } from './routes-offers.js';
 import { registerOrderRoutes } from './routes-orders.js';
@@ -265,6 +266,7 @@ export function createApp(deps: Deps) {
     path === '/m' ||
     path.startsWith('/m/') ||
     path.startsWith('/np/') ||
+    /^\/g\/[0-9a-f]{32}$/.test(path) ||
     path.startsWith('/kalender/abo/') ||
     path === '/anmelden' ||
     path === '/app' ||
@@ -556,6 +558,7 @@ export function createApp(deps: Deps) {
   registerInvoiceRoutes(ctx);
   registerOfferRoutes(ctx);
   registerDunningRoutes(ctx);
+  registerDeviceRoutes(ctx);
   registerInventoryRoutes(ctx);
   registerTimesheetRoutes(ctx);
   registerOlAppRoutes(ctx);

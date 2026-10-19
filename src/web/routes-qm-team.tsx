@@ -310,6 +310,11 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
               <Ic n="sun" /> Urlaub / Krank
             </a>
           )}
+          {role(c) === 'objektleitung' && (
+            <a href={`/team/${m.id}#unterlagen`}>
+              <Ic n="doc" /> Unterlagen
+            </a>
+          )}
           {hr && (
             <a href={`/personal/${m.id}/dokumente`}>
               <Ic n="doc" /> Dokumente

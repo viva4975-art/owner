@@ -205,8 +205,8 @@ export async function listAppointments(sql: Sql, f: { from?: string; to?: string
 
 export interface GlassConfirmation {
   id: string;
-  /** Tag der Bestätigung JJJJ-MM-TT */
-  at: string;
+  /** Tag der Bestätigung JJJJ-MM-TT (null = unbekannt, aus der früheren Einzel-Bestätigung) */
+  at: string | null;
   text: string;
   by: string;
 }
@@ -784,7 +784,7 @@ export async function importLegacyGlass(
           ? [
               {
                 id: uuidOf(`gpt-best:${String(a.id)}`),
-                at: String(a.created_at ?? a.datum ?? '').slice(0, 10),
+                at: null,
                 text: s(a.bestaetigung_notiz) ?? 'bestätigt',
                 by: actor,
               },

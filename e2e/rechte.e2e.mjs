@@ -131,6 +131,23 @@ if (empOpt) {
   check('Objektleitung: Verbandbuch-Eintrag gespeichert', (await o.content()).includes('E2E Schnitt'));
 }
 check('Objektleitung: Personalakte weiter gesperrt', (await o.goto(B + '/personal')).status() === 403);
+// Mein Team (PC): Liste mit Suche, Person mit Unterlagen
+check('Objektleitung: Mein Team erreichbar', (await o.goto(B + '/team')).status() === 200);
+check('Mein Team im Menü', /Mein Team/.test((await o.locator('nav.menu').textContent()) ?? ''));
+const teamLink = o.locator('table.list a[href^="/team/"]').first();
+if (await teamLink.count()) {
+  const nm = (await teamLink.innerText()).split(',')[0].trim();
+  await o.goto(B + `/team?q=${encodeURIComponent(nm)}`);
+  check('Mein Team: Suche findet Person', (await o.locator('table.list a[href^="/team/"]').count()) >= 1);
+  await o.locator('table.list a[href^="/team/"]').first().click();
+  await o.waitForLoadState();
+  check(
+    'Mein Team: Person mit Unterlagen, ohne Arbeitsvertrag-Auswahl',
+    (await o.locator('#unterlagen').count()) === 1 &&
+      !(await o.locator('#tm-kat').innerText()).includes('Arbeitsvertrag'),
+  );
+}
+check('Büro: Mein Team gesperrt', (await a.goto(B + '/team')).status() === 403);
 await o.screenshot({ path: `${out}/r3-objektleitung.png`, fullPage: true });
 const r = await o.goto(B + '/rechnungen');
 check('Rechnungen gesperrt (403)', r.status() === 403 && (await o.content()).includes('Keine Berechtigung'));
@@ -206,7 +223,13 @@ const fileHref = await a
   .getAttribute('href');
 check('Admin lädt Personaldokument', (await a.request.get(B + fileHref)).ok());
 const denied = await o.request.get(B + fileHref, { maxRedirects: 0 });
-check('Objektleitung: Personaldokument gesperrt (403)', denied.status() === 403, String(denied.status()));
+// Unterweisung ist eine Team-Unterlage: sichtbar nur, wenn die Person an einem Objekt der Objektleitung arbeitet
+const inTeam = (await o.request.get(B + `/team/${empId}`)).status() === 200;
+check(
+  `Objektleitung: Personaldokument ${inTeam ? 'ihrer Leute sichtbar' : 'fremder Leute gesperrt'}`,
+  denied.status() === (inTeam ? 200 : 403),
+  String(denied.status()),
+);
 await o.click('.usr');
 await o.click('details:has(.usr) button:has-text("Abmelden")');
 await o.waitForLoadState();

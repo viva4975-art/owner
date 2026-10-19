@@ -41,6 +41,7 @@ const RULES: [RegExp, Role[]][] = [
   // Objektleitung: Fehlende Unterlagen ihrer Leute (ohne Stammdaten; Ahmed 19.10.)
   [/^\/personal\/unterlagen(\.csv|\.pdf)?$/, [...HR, 'objektleitung']],
   [/^\/verbandbuch(\/|$)/, [...HR, 'objektleitung']],
+  [/^\/team(\/|$)/, ['objektleitung']],
   [/^\/personal(\/|$)/, HR],
   [/^\/zeiterfassung\/(meine(\/|$)|plan-als-ist$)/, ALL],
   [/^\/zeiterfassung\/(stundenzettel|lohnarten|arbeitszeitkonto)/, ['admin', 'personal', 'buchhaltung']],

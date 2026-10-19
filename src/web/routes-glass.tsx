@@ -77,7 +77,7 @@ const Confirmations = ({ a, back: ret, edit }: { a: Appointment; back: string; e
   <div class="gp-conf">
     {(a.confirmations ?? []).map((k) => (
       <div class="gp-conf-row">
-        <span class="badge ok">✓ bestätigt</span> <b>{dateDe(k.at)}</b> {k.text}{' '}
+        <span class="badge ok">✓ bestätigt</span> {k.at && <b>{dateDe(k.at)}</b>} {k.text}{' '}
         <span class="mut small">({k.by})</span>
         {edit && (
           <form
@@ -767,7 +767,7 @@ box.addEventListener('click',function(e){var b=e.target.closest('[data-del-day]'
     const listRows = shown
       .map(
         (a) =>
-          `<tr><td>${datesText(a.days)}</td><td>${timesText(a.days)}</td><td>${esc(a.object_name)}</td><td>${esc(a.customer_name ?? '')}</td><td>${esc(a.object_address ?? '')}</td><td>${esc(a.contact ?? '')}</td><td>${(a.confirmations ?? []).map((k) => `✓ ${dateDe(k.at)} ${esc(k.text)}`).join('<br>')}</td></tr>`,
+          `<tr><td>${datesText(a.days)}</td><td>${timesText(a.days)}</td><td>${esc(a.object_name)}</td><td>${esc(a.customer_name ?? '')}</td><td>${esc(a.object_address ?? '')}</td><td>${esc(a.contact ?? '')}</td><td>${(a.confirmations ?? []).map((k) => `✓ ${k.at ? `${dateDe(k.at)} ` : ''}${esc(k.text)}`).join('<br>')}</td></tr>`,
       )
       .join('');
     return c.html(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Jahresplaner ${y}</title><style>

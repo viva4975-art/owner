@@ -3405,3 +3405,16 @@ Testadresse.
     im Handy-Rahmen. Jetzt gilt der App-Rahmen nur auf Handy/Tablet (`inAppFrame`: Cookie + Touch-Gerät); `/app` am PC
     leitet angemeldete Büro-Benutzer auf die Startseite, Anmeldung über `/app` am PC zählt wie die Büro-Anmeldung.
   - Tests: neu `runde44.db.test.ts`; e2e login 47, rechte 42, runde10 40, kasse 68, objekt 31, objektseiten 40, menu grün.
+- 2026-10-19: Nachtrag (Ahmed, 2 Punkte):
+  - **Fund Glas-Bestätigungsdatum:** Die Übernahme der alten Bestätigung (Migration `20261203000003`) setzte als Datum das
+    Anlagedatum des Termins – das war nie das Bestätigungsdatum. Migration `20261203000004` entfernt es (Datum unbekannt =
+    leer, Text bleibt); Anzeige ohne Datum. Neue Bestätigungen tragen das eingegebene Datum.
+  - **Mein Team für die Objektleitung am PC** (Personal → Mein Team, `/team`, `routes-team.tsx`, nur Objektleitung):
+    Mitarbeitende ihrer Objekte mit Suche (Name, Personalnr., Telefon), Telefon, Objekte, Schild „n fehlt“/„vollständig“;
+    je Person Kontakt, Einsätze an ihren Objekten, Abwesenheiten und **Unterlagen** (ansehen + hochladen) der Kategorien
+    `TEAM_DOC_CATEGORIES` (Personalunterlagen, Unterweisung, Arbeitskleidung, Schlüssel, Aufenthalts-/Arbeitserlaubnis,
+    Bescheinigung). Download/Upload-Recht über `linkAllowed` mit Kategorie, nur Leute ihrer Objekte; ZIP gesperrt.
+    Nicht sichtbar: Verträge, Lohnabrechnungen, Abmahnung/Beendigung, Steuer-ID, SV-Nr., Bank, Vergütung. In der App
+    beim Mitarbeiter Knopf „Unterlagen“. Globale Suche oben bleibt für die Objektleitung aus.
+    **Datenschutz:** Objektleitungen sehen damit Personalunterlagen und Ausweis-/Aufenthaltskopien ihrer Leute – im
+    Verzeichnis der Verarbeitungstätigkeiten festhalten, Objektleitungen auf Vertraulichkeit verpflichten.

@@ -54,6 +54,7 @@ import { registerWordTemplateRoutes } from './routes-word-templates.js';
 import { registerLegacyInvoiceRoutes } from './routes-legacy-invoices.js';
 import { registerCalendarFeedRoutes } from './routes-calendar-feed.js';
 import { registerFirstAidRoutes } from './routes-first-aid.js';
+import { registerTeamRoutes } from './routes-team.js';
 import { registerHrRequiredRoutes } from './routes-hr-required.js';
 import { registerSubcontractorRoutes } from './routes-subcontractors.js';
 import { registerSettingsRoutes } from './routes-settings.js';
@@ -584,6 +585,7 @@ export function createApp(deps: Deps) {
   registerCalendarFeedRoutes(ctx);
   registerHrRequiredRoutes(ctx);
   registerFirstAidRoutes(ctx);
+  registerTeamRoutes(ctx);
   registerSubcontractorRoutes(ctx);
   registerSettingsRoutes(ctx);
   registerPosterRoutes(ctx);

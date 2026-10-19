@@ -19,6 +19,8 @@ import type { Context } from 'hono';
 import { INBOX_ID } from '../services/documents.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { canAccess } from './permissions.js';
+import { TEAM_DOC_CATEGORIES } from '../services/employees.js';
+import { employeesOfSites } from '../services/first-aid.js';
 import { LEGACY_IMPORT_ID } from '../services/legacy-import.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -74,6 +76,8 @@ async function linkAllowed(
   sql: Ctx['deps']['sql'],
   type: string,
   id: string,
+  /** Kategorie der Verknüpfung (Personalakte: Objektleitung nur bestimmte Unterlagen ihrer Leute) */
+  category?: string | null,
 ): Promise<boolean> {
   if (type === 'note') {
     // Anhang einer Notiz: Recht wie die Notizen des Kunden/Objekts/Mitarbeiters
@@ -82,6 +86,10 @@ async function linkAllowed(
     return !!n && n.entity_type !== 'note' && linkAllowed(c, sql, n.entity_type, n.entity_id);
   }
   const user = c.get('user');
+  if (type === 'employee' && user?.role === 'objektleitung') {
+    if (!category || !TEAM_DOC_CATEGORIES.includes(category)) return false;
+    return (await employeesOfSites(sql, c.get('sites') ?? [])).some((e) => e.id === id);
+  }
   const page = LINK_PAGE[type];
   if (!user || !page || !canAccess(user.role, page(id))) return false;
   const scope = c.get('sites');
@@ -144,7 +152,7 @@ export function registerFileRoutes(ctx: Ctx) {
     if (link?.type === 'inbox' && link.id !== INBOX_ID) return c.json({ fehler: 'Eingang ungültig' }, 400);
     if (link?.type === 'legacy_import' && link.id !== LEGACY_IMPORT_ID)
       return c.json({ fehler: 'Import ungültig' }, 400);
-    if (link && !(await linkAllowed(c, sql, link.type, link.id))) {
+    if (link && !(await linkAllowed(c, sql, link.type, link.id, b.category ?? null))) {
       return c.json({ fehler: 'Keine Berechtigung für diesen Bereich' }, 403);
     }
     if (
@@ -255,10 +263,11 @@ export function registerFileRoutes(ctx: Ctx) {
     if (!f) return c.notFound();
     // Nur wer mindestens eine Verknüpfung sehen darf (Personalakten nur Personal/Admin, Objektleitung nur eigene
     // Objekte). Dateien ohne Verknüpfung nur der Hochlader.
-    const links = await sql<{ entity_type: string; entity_id: string }[]>`
-      select entity_type, entity_id from app.file_links where file_id = ${f.id}`;
+    const links = await sql<{ entity_type: string; entity_id: string; category: string | null }[]>`
+      select entity_type, entity_id, category from app.file_links where file_id = ${f.id}`;
     let ok = !links.length && f.uploaded_by === c.get('actor');
-    for (const l of links) if (!ok && (await linkAllowed(c, sql, l.entity_type, l.entity_id))) ok = true;
+    for (const l of links)
+      if (!ok && (await linkAllowed(c, sql, l.entity_type, l.entity_id, l.category))) ok = true;
     if (!ok) return c.text('Kein Zugriff auf diese Datei', 403);
     const path = filePath(cfg, f);
     const st = await stat(path);

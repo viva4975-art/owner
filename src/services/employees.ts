@@ -687,6 +687,19 @@ export const DOC_CATEGORIES = [
   'Sonstiges',
 ];
 
+/**
+ * Unterlagen, die die Objektleitung bei ihren Leuten sehen und hochladen darf (Ahmed 19.10.: „Personalunterlagen“).
+ * Nicht: Arbeitsvertrag, Vertragsänderung, Lohnabrechnung, Abmahnung, Beendigung (Lohn/Vertrag = nur Büro).
+ */
+export const TEAM_DOC_CATEGORIES = [
+  'Personalunterlagen',
+  'Unterweisung',
+  'Arbeitskleidung',
+  'Schlüssel',
+  'Aufenthalts-/Arbeitserlaubnis',
+  'Bescheinigung',
+];
+
 /** Checkliste der Personalakte: Arbeitsvertrag Pflicht, die übrigen empfohlen (wie Pflichtdokumente am Objekt). */
 export const DOC_CHECKLIST: { name: string; required: boolean; hint: string }[] = [
   { name: 'Arbeitsvertrag', required: true, hint: 'unterschriebener Vertrag (Nachweisgesetz)' },

@@ -878,3 +878,29 @@ export async function paymentRunItems(sql: Sql, id: string) {
 }
 
 export const newId = () => randomUUID();
+
+/**
+ * Material-Bestellung löschen (Ahmed 19.10.). Entwürfe jedes Büro-Konto, bestellte/stornierte nur Admin. Gesperrt bei
+ * gebuchtem Wareneingang (Lagerbestand) oder erfasster Eingangsrechnung. Stand vorher ins Protokoll.
+ */
+export async function deleteOrder(sql: Sql, id: string, o: { admin: boolean; actor: string }) {
+  await sql.begin(async (tx) => {
+    const [po] = await tx<{ number: string; status: PoStatus }[]>`
+      select number, status from app.purchase_orders where id = ${id} for update`;
+    if (!po) throw new BusinessError('Bestellung nicht gefunden');
+    if (po.status === 'geliefert')
+      throw new BusinessError(`${po.number}: Wareneingang gebucht – nicht löschbar`);
+    if (po.status !== 'entwurf' && !o.admin)
+      throw new BusinessError(`${po.number}: bestellte Ware darf nur ein Admin löschen`);
+    const [inv] = await tx<{ n: number }[]>`
+      select count(*)::int as n from app.incoming_invoices where purchase_order_id = ${id}`;
+    if (inv!.n > 0) throw new BusinessError(`${po.number}: Eingangsrechnung erfasst – nicht löschbar`);
+    const [snap] = await tx<{ row: unknown; lines: unknown }[]>`
+      select to_jsonb(o) as row,
+             (select coalesce(jsonb_agg(to_jsonb(l)), '[]') from app.purchase_order_lines l where l.order_id = o.id) as lines
+        from app.purchase_orders o where o.id = ${id}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${o.actor}, 'delete', 'purchase_order', ${id}, ${tx.json(snap as never)})`;
+    await tx`delete from app.purchase_orders where id = ${id}`;
+  });
+}

@@ -3425,3 +3425,9 @@ Testadresse.
   `/glasreinigung/bestaetigungen`): offene Termine im Zeitraum (Standard heute + 90 Tage), Kunde, Auswahl alle / nur
   unbestätigte / nur bestätigte; Abschnitte „Noch nicht bestätigt“ (mit Linie zum Eintragen) und „Bestätigt“ (mit
   Bestätigungen), A4 quer, Drucken/PDF.
+- 2026-10-19: **Bestellungen löschen** (Ahmed: „viele auf einmal angelegt, mit Markiermöglichkeit“): Bestellungen-Liste mit
+  Häkchen je Zeile und „alle markieren“ → „Markierte löschen“ (Rückfrage; Material- und NU-Bestellungen). Entwürfe darf
+  jedes Büro-Konto löschen, erteilte/beendete/stornierte nur Admin; gesperrt bei verknüpfter Eingangsrechnung bzw.
+  gelieferter Material-Bestellung (Meldung je Bestellung, die anderen werden trotzdem gelöscht). Stand (inkl.
+  Preisnachträge, Stundennachweis, Positionen) vorher ins Protokoll; Tagesausnahmen verlieren nur die Verknüpfung,
+  Freigabe-Aufgabe der Anfrage entfällt. Nummern werden nicht wieder vergeben.

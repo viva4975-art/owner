@@ -59,6 +59,7 @@ import {
   saveIncoming,
   saveOrder,
   setOrderStatus,
+  deleteOrder,
 } from '../services/purchasing.js';
 import { hm } from '../services/time.js';
 import { toCsv } from '../services/reports.js';
@@ -69,6 +70,7 @@ import { type AppEnv, type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
 import {
   criticalSupplierIds,
+  deleteSubcontract,
   listSubcontracts,
   SC_STATUS,
   subcontractTotal,
@@ -604,57 +606,90 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             </div>
           </div>
         )}
+        <form
+          id="bs-del"
+          method="post"
+          action="/bestellungen/loeschen"
+          class="actions bulkbar"
+          style="margin:0 0 8px"
+        >
+          <input type="hidden" name="zurueck" value={c.req.url.slice(c.req.url.indexOf('/bestellungen'))} />
+          <span class="small mut">Häkchen setzen, um Bestellungen zu löschen.</span>
+          <button
+            class="btn sm danger"
+            data-confirm="Markierte Bestellungen endgültig löschen? Bestellungen mit Eingangsrechnung oder gebuchtem Wareneingang bleiben erhalten."
+          >
+            Markierte löschen
+          </button>
+        </form>
         <div class="bs-table">
-          <div class="bs-tr bs-th">
-            <span>Bestellnr.</span>
-            <span>Lieferant · Objekt</span>
-            <span>Zeitraum</span>
-            <span class="r">Gesamt netto</span>
-            <span>Status</span>
-            <span>Abrechnung</span>
+          <div class="bs-sel bs-sel-h">
+            <input
+              type="checkbox"
+              aria-label="alle markieren"
+              title="alle markieren"
+              onchange="document.querySelectorAll('input[name=ids][form=bs-del]').forEach(function(x){x.checked=this.checked}.bind(this))"
+            />
+            <div class="bs-tr bs-th">
+              <span>Bestellnr.</span>
+              <span>Lieferant · Objekt</span>
+              <span>Zeitraum</span>
+              <span class="r">Gesamt netto</span>
+              <span>Status</span>
+              <span>Abrechnung</span>
+            </div>
           </div>
           {rows.map((r) => (
-            <a class="bs-tr" href={r.href}>
-              <span class="bs-nr">{r.number}</span>
-              <span>
-                <b>{r.supplier}</b>
-                <span class="bs-sub">
-                  {r.kind === 'nu' ? 'Nachunternehmer · ' : ''}
-                  {r.what}
-                </span>
-              </span>
-              <span class="small">
-                {r.kind === 'material'
-                  ? `${dateDe(r.from)}${r.to ? ` · Lieferung ${dateDe(r.to)}` : ''}`
-                  : r.ongoing
-                    ? `ab ${dateDe(r.from)} · fortlaufend`
-                    : `${dateDe(r.from)} – ${dateDe(r.to ?? r.from)}`}
-              </span>
-              <span class="r">
-                {euro(r.net)} <span class="small mut">{r.per}</span>
-                {r.unit && <span class="bs-sub">{r.unit}</span>}
-              </span>
-              <span>
-                <span class={`bs-pill bs-${r.tone || 'grey'}`}>{r.status}</span>
-                {r.unsigned && (
-                  <span class="bs-sub" style="color:var(--bad)">
-                    unterschriebener Auftrag fehlt
+            <div class="bs-sel">
+              <input
+                type="checkbox"
+                name="ids"
+                form="bs-del"
+                value={`${r.kind === 'nu' ? 'nu' : 'po'}:${r.id}`}
+                aria-label={`${r.number} markieren`}
+              />
+              <a class="bs-tr" href={r.href}>
+                <span class="bs-nr">{r.number}</span>
+                <span>
+                  <b>{r.supplier}</b>
+                  <span class="bs-sub">
+                    {r.kind === 'nu' ? 'Nachunternehmer · ' : ''}
+                    {r.what}
                   </span>
-                )}
-                {r.canFinish && (
-                  <button
-                    type="button"
-                    class="btn sm sec"
-                    style="margin-top:4px"
-                    title="Auftrag komplett erledigt (beendet)"
-                    onclick={`event.preventDefault();event.stopPropagation();if(confirm(${JSON.stringify(`Auftrag ${r.number} als komplett erledigt markieren?`)}))document.getElementById('fin-${r.id}').submit()`}
-                  >
-                    ✓ erledigt
-                  </button>
-                )}
-              </span>
-              <span>{billCell(r)}</span>
-            </a>
+                </span>
+                <span class="small">
+                  {r.kind === 'material'
+                    ? `${dateDe(r.from)}${r.to ? ` · Lieferung ${dateDe(r.to)}` : ''}`
+                    : r.ongoing
+                      ? `ab ${dateDe(r.from)} · fortlaufend`
+                      : `${dateDe(r.from)} – ${dateDe(r.to ?? r.from)}`}
+                </span>
+                <span class="r">
+                  {euro(r.net)} <span class="small mut">{r.per}</span>
+                  {r.unit && <span class="bs-sub">{r.unit}</span>}
+                </span>
+                <span>
+                  <span class={`bs-pill bs-${r.tone || 'grey'}`}>{r.status}</span>
+                  {r.unsigned && (
+                    <span class="bs-sub" style="color:var(--bad)">
+                      unterschriebener Auftrag fehlt
+                    </span>
+                  )}
+                  {r.canFinish && (
+                    <button
+                      type="button"
+                      class="btn sm sec"
+                      style="margin-top:4px"
+                      title="Auftrag komplett erledigt (beendet)"
+                      onclick={`event.preventDefault();event.stopPropagation();if(confirm(${JSON.stringify(`Auftrag ${r.number} als komplett erledigt markieren?`)}))document.getElementById('fin-${r.id}').submit()`}
+                    >
+                      ✓ erledigt
+                    </button>
+                  )}
+                </span>
+                <span>{billCell(r)}</span>
+              </a>
+            </div>
           ))}
           {!rows.length && <div class="bs-tr empty">Keine Bestellungen in dieser Ansicht.</div>}
         </div>
@@ -676,6 +711,36 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             </form>
           ))}
       </div>,
+    );
+  });
+
+  // Mehrere Bestellungen auf einmal löschen (Ahmed 19.10.); nicht löschbare werden mit Grund gemeldet.
+  app.post('/bestellungen/loeschen', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const raw = b['ids'];
+    const ids = (Array.isArray(raw) ? raw : raw ? [raw] : []).map(String);
+    const ret = String(b['zurueck'] ?? '');
+    const target = ret.startsWith('/bestellungen') ? ret : '/bestellungen';
+    const o = { admin: c.get('user').role === 'admin', actor: c.get('actor') };
+    let ok = 0;
+    const errs: string[] = [];
+    for (const v of ids) {
+      const m = /^(nu|po):([0-9a-f-]{36})$/.exec(v);
+      if (!m) continue;
+      try {
+        if (m[1] === 'nu') await deleteSubcontract(sql, m[2]!, o);
+        else await deleteOrder(sql, m[2]!, o);
+        ok++;
+      } catch (e) {
+        if (!(e instanceof BusinessError)) throw e;
+        errs.push(e.message);
+      }
+    }
+    const sep = target.includes('?') ? '&' : '?';
+    const msg = `${ok} ${ok === 1 ? 'Bestellung' : 'Bestellungen'} gelöscht`;
+    return c.redirect(
+      `${target}${sep}${errs.length ? `fehler=${encodeURIComponent(`${msg}. Nicht gelöscht: ${errs.slice(0, 10).join(' · ')}${errs.length > 10 ? ` … (+${errs.length - 10})` : ''}`)}` : `ok=${encodeURIComponent(msg)}`}`,
+      303,
     );
   });
 

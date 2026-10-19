@@ -1149,3 +1149,37 @@ export function subcontractTotal(sc: {
   }
   return null;
 }
+
+/**
+ * Bestellung an einen Nachunternehmer löschen (Ahmed 19.10.: „viele angelegt, wieder löschen können“).
+ * Entwürfe darf jedes Büro-Konto löschen, erteilte/beendete/stornierte nur Admin. Gesperrt, sobald eine Eingangsrechnung
+ * daran hängt (dann stornieren). Preisnachträge, „keine Rechnung“-Vermerke und Stundennachweise gehen mit; Vorschüsse
+ * und Vertretungstage verlieren nur die Verknüpfung. Der vollständige Stand steht vorher im Protokoll; ein
+ * unterschriebener Auftrag (PDF) bleibt write-once im Archiv.
+ */
+export async function deleteSubcontract(sql: Sql, id: string, o: { admin: boolean; actor: string }) {
+  await sql.begin(async (tx) => {
+    const [sc] = await tx<{ number: string; status: string }[]>`
+      select number, status from app.subcontracts where id = ${id} for update`;
+    if (!sc) throw new BusinessError('Bestellung nicht gefunden');
+    if (sc.status !== 'entwurf' && !o.admin)
+      throw new BusinessError(`${sc.number}: erteilte Bestellungen darf nur ein Admin löschen`);
+    const [inv] = await tx<{ n: number }[]>`
+      select (select count(*) from app.incoming_invoices where subcontract_id = ${id})::int
+           + (select count(*) from app.incoming_invoice_subcontracts where subcontract_id = ${id})::int as n`;
+    if (inv!.n > 0)
+      throw new BusinessError(`${sc.number}: Eingangsrechnung erfasst – nicht löschbar, bitte stornieren`);
+    const [snap] = await tx<{ row: unknown; prices: unknown; hours: unknown }[]>`
+      select to_jsonb(s) as row,
+             (select coalesce(jsonb_agg(to_jsonb(p)), '[]') from app.subcontract_prices p where p.subcontract_id = s.id) as prices,
+             (select coalesce(jsonb_agg(to_jsonb(h)), '[]') from app.subcontract_hours h where h.subcontract_id = s.id) as hours
+        from app.subcontracts s where s.id = ${id}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${o.actor}, 'delete', 'subcontract', ${id}, ${tx.json(snap as never)})`;
+    await tx`delete from app.subcontract_prices where subcontract_id = ${id}`;
+    await tx`delete from app.subcontract_expected_skips where subcontract_id = ${id}`;
+    await tx`update app.shift_exceptions set subcontract_id = null where subcontract_id = ${id}`;
+    await tx`delete from app.tasks where id = md5(${'nu-anfrage:' + id})::uuid`;
+    await tx`delete from app.subcontracts where id = ${id}`;
+  });
+}

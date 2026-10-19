@@ -32,6 +32,8 @@ export interface OfferRow {
   number: string;
   customer_id: string;
   site_id: string | null;
+  /** Objekt als Freitext (nur Info auf dem Angebot), wenn kein Objekt gewählt ist */
+  object_text: string | null;
   title: string;
   tender_reference: string | null;
   tender_platform: string | null;
@@ -72,6 +74,7 @@ export interface OfferLineRow {
 export interface OfferInput {
   customerId: string;
   siteId: string | null;
+  objectText?: string | null;
   title: string;
   tenderReference: string | null;
   tenderPlatform: string | null;
@@ -146,6 +149,7 @@ export async function saveOffer(sql: Sql, id: string, input: OfferInput, actor: 
     const row = {
       customer_id: input.customerId,
       site_id: input.siteId,
+      object_text: input.siteId ? null : input.objectText?.trim().slice(0, 500) || null,
       title: input.title.trim(),
       tender_reference: input.tenderReference,
       tender_platform: input.tenderPlatform,
@@ -254,6 +258,7 @@ export async function copyOffer(
     {
       customerId: o.customer_id,
       siteId: o.site_id,
+      objectText: o.object_text,
       title: o.title,
       tenderReference: o.tender_reference,
       tenderPlatform: o.tender_platform,
@@ -505,7 +510,9 @@ export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8
             .map((x) => `, ${x}`)
             .join('')}`,
         }
-      : {}),
+      : o.object_text
+        ? { subject: `Objekt: ${o.object_text.replace(/\s*\n\s*/g, ', ')}` }
+        : {}),
     info,
     terms:
       (o.valid_until

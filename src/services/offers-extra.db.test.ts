@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { PDFDocument } from '@cantoo/pdf-lib';
+import { extractText, getDocumentProxy } from 'unpdf';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { parseEuro, parseQuantity } from '../domain/money/money.js';
@@ -126,5 +127,23 @@ describe.skipIf(!available)('Angebote: Alternativen, Folgeangebot, Statistik', (
       await sql<{ id: string }[]>`select id from app.offers where status = 'angenommen' limit 1`
     )[0]!.id;
     await expect(setOfferStatus(sql, won, 'aufgehoben', 'ben')).rejects.toThrow(/kann nicht/);
+  });
+
+  it('Objekt als Freitext, wenn kein Objekt gewählt ist', async () => {
+    const id = randomUUID();
+    await saveOffer(sql, id, input({ objectText: '  Bürohaus Musterstr. 5, 80331 München ' }), 'anna');
+    expect((await getOffer(sql, id))!.offer.object_text).toBe('Bürohaus Musterstr. 5, 80331 München');
+    const text = (
+      await extractText(await getDocumentProxy((await renderOfferPdf(sql, id)).pdf), { mergePages: true })
+    ).text;
+    expect(text).toContain('Bürohaus Musterstr. 5');
+    const copy = await copyOffer(sql, id, 'anna');
+    expect((await getOffer(sql, copy))!.offer.object_text).toBe('Bürohaus Musterstr. 5, 80331 München');
+    // mit gewähltem Objekt gilt das Objekt, der Freitext entfällt
+    const [site] = await sql<
+      { id: string }[]
+    >`select id from app.sites where customer_id = ${DEMO.authority} limit 1`;
+    await saveOffer(sql, id, input({ siteId: site!.id, objectText: 'egal' }), 'anna');
+    expect((await getOffer(sql, id))!.offer.object_text).toBeNull();
   });
 });

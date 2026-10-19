@@ -438,6 +438,21 @@ export const OfferEditor: FC<{
           {tenderId && <input type="hidden" name="tender_id" value={tenderId} />}
           <input type="hidden" name="customer_id" value={o.customer_id} />
           <input type="hidden" name="site_id" value={o.site_id ?? ''} />
+          {!o.site_id && (
+            <div class="grid">
+              <div>
+                <label for="object_text">Objekt (Freitext)</label>
+                <input
+                  id="object_text"
+                  name="object_text"
+                  maxlength={500}
+                  value={o.object_text ?? ''}
+                  placeholder="z. B. Bürogebäude Musterstr. 5, 80331 München"
+                />
+                <p class="help">Nur als Angabe auf dem Angebot – es wird kein Objekt angelegt.</p>
+              </div>
+            </div>
+          )}
           {(tenderId || o.tender_reference || o.tender_platform || o.submission_deadline) && (
             <>
               <h2 style="margin-top:0">Ausschreibung</h2>
@@ -658,6 +673,22 @@ export const OfferDetail: FC<{
                 )}
               </dl>
             </div>
+            {(site || o.object_text) && (
+              <p>
+                <b>
+                  Objekt:{' '}
+                  {site
+                    ? `${site.name} (${site.site_no})${[
+                        site.street,
+                        [site.postal_code, site.city].filter(Boolean).join(' '),
+                      ]
+                        .filter(Boolean)
+                        .map((x) => `, ${x}`)
+                        .join('')}`
+                    : o.object_text}
+                </b>
+              </p>
+            )}
             <p>{contactGreeting(customer.contact_name)}</p>
             <p style="white-space:pre-line">{o.intro_text ?? OFFER_INTRO_DEFAULT}</p>
             <div class="tbl">
@@ -905,7 +936,7 @@ export const OfferDetail: FC<{
                 )}
               </dd>
               <dt>Objekt</dt>
-              <dd>{site ? <a href={`/objekte/${site.id}`}>{site.name}</a> : '–'}</dd>
+              <dd>{site ? <a href={`/objekte/${site.id}`}>{site.name}</a> : (o.object_text ?? '–')}</dd>
               <dt>Bezeichnung</dt>
               <dd>{o.title}</dd>
               <dt>Vergabe-Nr.</dt>

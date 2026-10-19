@@ -3485,3 +3485,7 @@ Testadresse.
   (`subcontract_sites.share_cents`, Migration `20261205000001`): bei Pauschalen wird danach statt nach Fläche verteilt
   (Rechnung, Schätzung Nachkalkulation), aus der alten App übernommen, im Kasten „Sammelbestellung“ änderbar.
   Fund: Auswahl „Bestellung für“ und Kasten hatten dieselbe ID `sammel` (jetzt `sammel-art`).
+- 2026-10-19: **Angebot: Objekt als Freitext** (Ahmed): Ist kein Objekt gewählt, gibt es im Angebot das Feld „Objekt
+  (Freitext)“ (`offers.object_text`, Migration `20261206000001`, bis 500 Zeichen). Es steht als „Objekt: …“-Band im PDF und
+  in der Briefansicht, wird beim Kopieren/Folgeangebot übernommen; es wird kein Objekt angelegt. Mit gewähltem Objekt
+  gilt das Objekt (Freitext wird geleert). Test in `offers-extra.db.test.ts`.

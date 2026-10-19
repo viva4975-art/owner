@@ -251,6 +251,7 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
       {
         customerId: str(body, 'customer_id') ?? '',
         siteId: str(body, 'site_id'),
+        objectText: str(body, 'object_text'),
         title: str(body, 'title') ?? '',
         tenderReference: str(body, 'tender_reference'),
         tenderPlatform: str(body, 'tender_platform'),

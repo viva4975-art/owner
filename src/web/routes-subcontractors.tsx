@@ -66,6 +66,12 @@ import {
   personnelListXlsx,
   storeNuDoc,
 } from '../services/nu-docs.js';
+import {
+  addSubcontractSites,
+  saveSubcontractSites,
+  sqmCenti,
+  subcontractSites,
+} from '../services/subcontract-sites.js';
 import { listFiles } from '../services/uploads.js';
 import { billingTracking, skipExpected } from '../services/expected-invoices.js';
 import {
@@ -1572,6 +1578,12 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       >`select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`,
     ]);
     const draft = !sc || sc.status === 'entwurf';
+    // Sammelbestellung: Objekte mit Fläche (Ahmed 19.10.)
+    const sammel = sc ? await subcontractSites(sql, id) : [];
+    const customers = await sql<{ id: string; customer_no: string; name: string; n: number }[]>`
+      select c.id, c.customer_no, c.name, count(s.id)::int as n from app.customers c
+        join app.sites s on s.customer_id = c.id and s.active
+       group by c.id having count(s.id) > 1 order by c.name`;
     // Übergaben an den NU für dieses Objekt (Schlüssel, Kleidung, Einweisung – Ahmed 15.10.)
     const nuHandovers = sc
       ? (await listHandovers(sql, { scope: null, supplierId: sc.supplier_id })).filter(
@@ -1667,10 +1679,28 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                       <SiteOptions sites={sites} />
                     </select>
                   </div>
+                  <label class="small" style="display:flex;gap:6px;align-items:center;margin-top:8px">
+                    <input type="checkbox" name="sammel" value="1" checked={sammel.length > 0} /> Als{' '}
+                    <b>Sammelbestellung</b>: alle Objekte in dieser einen Bestellung (eine Nummer, eine
+                    Unterschrift)
+                  </label>
+                  <div style="margin-top:6px">
+                    <label for="sammel-kunde" class="small">
+                      … oder alle aktiven Objekte eines Kunden aufnehmen (nur Sammelbestellung)
+                    </label>
+                    <select id="sammel-kunde" name="sammel_kunde" style="max-width:520px">
+                      <option value="">– kein Kunde –</option>
+                      {customers.map((k) => (
+                        <option value={k.id}>
+                          {k.name} ({k.customer_no}) · {k.n} Objekte
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <div class="small mut">
-                    Für jedes weitere Objekt wird beim Speichern eine eigene Bestellung mit denselben Angaben
-                    angelegt (eigene Nummer, gleicher Preis – im Entwurf je Objekt anpassbar). So bleiben die
-                    Kosten je Objekt richtig; eine Eingangsrechnung kann später alle Bestellungen abdecken.
+                    Ohne Häkchen wird für jedes weitere Objekt eine eigene Bestellung angelegt. Mit Häkchen
+                    bleibt es eine Bestellung; die Kosten werden auf die Objekte verteilt – nach Fläche (Preis
+                    je m² oder Pauschale) oder bei „Anteil am Umsatz“ nach unserem Umsatz je Objekt.
                   </div>
                 </div>
               )}
@@ -1725,6 +1755,17 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 />
               </div>
               <div>
+                <label for="margin">Unsere Marge in % (bei Anteil am Umsatz)</label>
+                <input
+                  id="margin"
+                  name="margin"
+                  inputmode="decimal"
+                  placeholder="z. B. 10"
+                  value={sc?.margin_bp != null ? String(sc.margin_bp / 100).replace('.', ',') : ''}
+                />
+                <div class="small mut">Rest geht an den Nachunternehmer (z. B. 10 % Marge → 90 %).</div>
+              </div>
+              <div>
                 <label for="from">Beginn</label>
                 <input
                   id="from"
@@ -1766,6 +1807,131 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
             <button class="btn">Speichern</button>
           </div>
         </form>
+        {sc && sc.status !== 'storniert' && (sammel.length > 0 || ['qm', 'umsatz'].includes(sc.billing)) && (
+          <section class="card" id="sammel">
+            <h3 class="panel-title" style="margin-top:0">
+              Sammelbestellung – {anz(sammel.length, 'Objekt', 'Objekte')}
+            </h3>
+            {(() => {
+              const total = sammel.reduce((a, r) => a + (sqmCenti(r.sqm) ?? 0n), 0n);
+              const price = BigInt(sc.price_cents);
+              const share = (r: (typeof sammel)[number]) => {
+                const c = sqmCenti(r.sqm);
+                if (sc.billing === 'umsatz')
+                  return `${String((10000 - (sc.margin_bp ?? 0)) / 100).replace('.', ',')} % vom Umsatz`;
+                if (c === null) return 'm² fehlt';
+                if (sc.billing === 'qm') return euro((price * c + 50n) / 100n);
+                if (total > 0n) return `${euro((price * c + total / 2n) / total)} (Anteil)`;
+                return '';
+              };
+              return (
+                <form method="post" action={`/nachunternehmer/auftraege/${id}/objekte`}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Objekt</th>
+                        <th>Kunde</th>
+                        <th class="num">Fläche m²</th>
+                        <th class="num">
+                          {sc.billing === 'umsatz' ? 'Nachunternehmer' : 'Kosten je Objekt'}
+                        </th>
+                        <th>entfernen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sammel.map((r) => (
+                        <tr>
+                          <td>
+                            <input type="hidden" name="site" value={r.site_id} />
+                            <a href={`/objekte/${r.site_id}`}>
+                              {r.site_no} {r.name}
+                            </a>
+                            <div class="small mut">{[r.street, r.city].filter(Boolean).join(', ')}</div>
+                          </td>
+                          <td class="small">{r.customer_name}</td>
+                          <td class="num">
+                            <input
+                              name="sqm"
+                              inputmode="decimal"
+                              style="width:110px;text-align:right"
+                              value={r.sqm ? r.sqm.replace('.', ',') : ''}
+                              placeholder={r.sqm_hint ? r.sqm_hint.replace('.', ',') : ''}
+                              aria-label="Fläche m²"
+                            />
+                          </td>
+                          <td class="num">
+                            {share(r) === 'm² fehlt' ? <span class="tag warn">m² fehlt</span> : share(r)}
+                          </td>
+                          <td>
+                            <input type="checkbox" name="remove" value={r.site_id} aria-label="entfernen" />
+                          </td>
+                        </tr>
+                      ))}
+                      <tr>
+                        <td colspan={2}>
+                          <b>Summe</b>
+                        </td>
+                        <td class="num">
+                          <b>{(Number(total) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2 })}</b>
+                        </td>
+                        <td class="num">
+                          <b>
+                            {sc.billing === 'qm'
+                              ? euro((price * total + 50n) / 100n)
+                              : sc.billing === 'umsatz'
+                                ? ''
+                                : euro(price)}
+                          </b>
+                        </td>
+                        <td></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <div class="actions">
+                    <button class="btn sm">Flächen speichern / markierte entfernen</button>
+                  </div>
+                </form>
+              );
+            })()}
+            <details style="margin-top:10px">
+              <summary>Objekte hinzufügen</summary>
+              <form method="post" action={`/nachunternehmer/auftraege/${id}/objekte`} style="margin-top:8px">
+                <input type="hidden" name="aktion" value="hinzufuegen" />
+                <label for="add-kunde">Alle aktiven Objekte eines Kunden</label>
+                <select id="add-kunde" name="kunde" style="max-width:520px">
+                  <option value="">– kein Kunde –</option>
+                  {customers.map((k) => (
+                    <option value={k.id}>
+                      {k.name} ({k.customer_no}) · {k.n} Objekte
+                    </option>
+                  ))}
+                </select>
+                <label for="add-sites" style="margin-top:8px">
+                  oder einzelne Objekte
+                </label>
+                <div data-multi="add_sites">
+                  <div
+                    class="multi-chips"
+                    style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"
+                  ></div>
+                  <select id="add-sites" style="max-width:520px">
+                    <option value="">+ Objekt hinzufügen …</option>
+                    <SiteOptions sites={sites} />
+                  </select>
+                </div>
+                <button class="btn sm" style="margin-top:8px">
+                  Hinzufügen
+                </button>
+              </form>
+            </details>
+            <p class="small mut" style="margin-bottom:0">
+              Fläche leer = Vorschlag aus Tiefgarage bzw. Raumbuch (grau). Eingangsrechnungen dieser
+              Bestellung werden automatisch auf die Objekte verteilt –{' '}
+              {sc.billing === 'umsatz' ? 'nach unserem Umsatz je Objekt im Leistungsmonat' : 'nach Fläche'};
+              ohne Fläche gleichmäßig.
+            </p>
+          </section>
+        )}
         {sc && (
           <div class="card">
             <div class="actions" style="margin-top:0">
@@ -2171,6 +2337,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         billing: str(b, 'billing') ?? sc?.billing ?? '',
         priceCents: str(b, 'price') ? parseEuro(str(b, 'price')!) : (sc?.price_cents ?? 0n),
         maxHours: str(b, 'max_hours'),
+        marginBp: str(b, 'margin') ? Math.round(Number(str(b, 'margin')!.replace(',', '.')) * 100) : null,
         validFrom: str(b, 'valid_from') ?? sc?.valid_from ?? '',
         validTo: str(b, 'valid_to'),
         description: str(b, 'description'),
@@ -2183,6 +2350,18 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       const more = [...new Set(([] as unknown[]).concat(b.more_sites ?? []).map(String))].filter(
         (x) => /^[0-9a-f-]{36}$/.test(x) && x !== input.siteId,
       );
+      // Sammelbestellung (Ahmed 19.10.): weitere Objekte in DIESER Bestellung statt je Objekt eine eigene
+      if (str(b, 'sammel') === '1' && (more.length || str(b, 'sammel_kunde'))) {
+        const n = await addSubcontractSites(
+          sql,
+          id,
+          { siteIds: more, customerId: str(b, 'sammel_kunde') },
+          c.get('actor'),
+        );
+        return back(c, `/nachunternehmer/auftraege/${id}#sammel`, {
+          ok: `Gespeichert. Sammelbestellung: ${anz(n, 'Objekt', 'Objekte')} aufgenommen – Flächen bitte prüfen.`,
+        });
+      }
       if (more.length && (!sc || sc.status === 'entwurf')) {
         const made: string[] = [];
         for (const siteId of more) {
@@ -2203,6 +2382,43 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       throw e;
     }
     return back(c, `/nachunternehmer/auftraege/${id}`, { ok: 'Gespeichert.' });
+  });
+
+  // Objekte einer Sammelbestellung: hinzufügen (einzeln/alle eines Kunden), Flächen ändern, entfernen
+  app.post(`/nachunternehmer/auftraege/:id{${UUID}}/objekte`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    try {
+      const list = (k: string) => ([] as unknown[]).concat(b[k] ?? []).map(String);
+      if (str(b, 'aktion') === 'hinzufuegen') {
+        const n = await addSubcontractSites(
+          sql,
+          id,
+          {
+            siteIds: list('add_sites').filter((x) => /^[0-9a-f-]{36}$/.test(x)),
+            customerId: str(b, 'kunde'),
+          },
+          c.get('actor'),
+        );
+        return back(c, `/nachunternehmer/auftraege/${id}#sammel`, {
+          ok: `${anz(n, 'Objekt', 'Objekte')} aufgenommen.`,
+        });
+      }
+      const ids = list('site');
+      const sqm = list('sqm');
+      const rm = new Set(list('remove'));
+      await saveSubcontractSites(
+        sql,
+        id,
+        ids.map((siteId, i) => ({ siteId, sqm: sqm[i] ?? '', remove: rm.has(siteId) })),
+        c.get('actor'),
+      );
+    } catch (e) {
+      if (e instanceof BusinessError)
+        return back(c, `/nachunternehmer/auftraege/${id}#sammel`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/nachunternehmer/auftraege/${id}#sammel`, { ok: 'Objekte gespeichert.' });
   });
 
   app.post(`/nachunternehmer/auftraege/:id{${UUID}}/status`, async (c) => {

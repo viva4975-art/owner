@@ -1,3 +1,4 @@
+import { sammelMonthCost } from './subcontract-sites.js';
 import type { Sql } from '../db/client.js';
 import { addDays } from '../domain/time/holidays.js';
 import { getAccountingSettings } from './datev.js';
@@ -52,7 +53,7 @@ export async function subcontractEstimates(sql: Sql, from: string, to: string, s
          select 1 from app.cost_allocations a join app.incoming_invoices i on i.id = a.incoming_invoice_id
           where a.site_id = s.site_id and a.month = ${mon} and i.category = 'nachunternehmer'
             and i.status in ('erfasst', 'freigegeben', 'bezahlt'))`;
-  return sql<{ site_id: string; cost: bigint; months: number }[]>`
+  const base = await sql<{ site_id: string; cost: bigint; months: number }[]>`
     with m as (
       select generate_series(date_trunc('month', ${from}::date), date_trunc('month', ${to}::date), interval '1 month')::date as mon
     ),
@@ -62,6 +63,7 @@ export async function subcontractEstimates(sql: Sql, from: string, to: string, s
         join m on s.valid_from <= (m.mon + interval '1 month' - interval '1 day')::date
               and (s.valid_to is null or s.valid_to >= m.mon)
        where s.status in ('erteilt', 'beendet') and s.billing = 'pauschale_monat' and s.site_id is not null
+         and not exists (select 1 from app.subcontract_sites x where x.subcontract_id = s.id)
          and s.price_cents is not null
          and ${siteId ? sql`s.site_id = ${siteId}` : sql`true`}
          and ${noInvoice(sql`m.mon`)}
@@ -81,6 +83,48 @@ export async function subcontractEstimates(sql: Sql, from: string, to: string, s
     select site_id, sum(cost)::bigint as cost, count(distinct mon)::int as months
       from (select * from flat union all select * from hrs) x
      group by site_id`;
+  // Sammelbestellungen (mehrere Objekte): je Objekt nach Fläche bzw. Umsatzanteil (Ahmed 19.10.)
+  const sammel = await sql<
+    { id: string; billing: string; frequency: string; margin_bp: number | null; mon: string; price: bigint }[]
+  >`
+    select s.id, s.billing, s.frequency, s.margin_bp, to_char(m.mon, 'YYYY-MM') as mon,
+           ${priceAt(sql`m.mon`)}::bigint as price
+      from app.subcontracts s
+      join (select generate_series(date_trunc('month', ${from}::date), date_trunc('month', ${to}::date), interval '1 month')::date as mon) m
+        on s.valid_from <= (m.mon + interval '1 month' - interval '1 day')::date and (s.valid_to is null or s.valid_to >= m.mon)
+     where s.status in ('erteilt', 'beendet')
+       and exists (select 1 from app.subcontract_sites x where x.subcontract_id = s.id)
+       and (s.billing in ('pauschale_monat', 'umsatz') or (s.billing = 'qm' and s.frequency = 'monatlich'))
+       and ${siteId ? sql`exists (select 1 from app.subcontract_sites x where x.subcontract_id = s.id and x.site_id = ${siteId})` : sql`true`}`;
+  if (!sammel.length) return base;
+  const booked = new Set(
+    (
+      await sql<{ k: string }[]>`
+        select distinct a.site_id || '|' || to_char(a.month, 'YYYY-MM') as k
+          from app.cost_allocations a join app.incoming_invoices i on i.id = a.incoming_invoice_id
+         where i.category = 'nachunternehmer' and i.status in ('erfasst', 'freigegeben', 'bezahlt')
+           and a.month between date_trunc('month', ${from}::date) and ${to}::date`
+    ).map((r) => r.k),
+  );
+  const acc = new Map<string, { cost: bigint; months: Set<string> }>();
+  for (const b of base)
+    acc.set(b.site_id, {
+      cost: b.cost,
+      months: new Set(Array.from({ length: b.months }, (_, i) => `b${i}`)),
+    });
+  for (const r of sammel)
+    for (const x of await sammelMonthCost(
+      sql,
+      { id: r.id, billing: r.billing, price_cents: r.price, margin_bp: r.margin_bp },
+      r.mon,
+    )) {
+      if ((siteId && x.site_id !== siteId) || booked.has(`${x.site_id}|${r.mon}`) || x.cost === 0n) continue;
+      const e = acc.get(x.site_id) ?? { cost: 0n, months: new Set<string>() };
+      e.cost += x.cost;
+      e.months.add(r.mon);
+      acc.set(x.site_id, e);
+    }
+  return [...acc].map(([site_id, e]) => ({ site_id, cost: e.cost, months: e.months.size }));
 }
 
 /** Internes Objekt „Sonderreinigung“ (Migration 20261124000002) – Erlös der Leistungsarten „Sonderreinigung“. */

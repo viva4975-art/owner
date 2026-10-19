@@ -3450,3 +3450,15 @@ Testadresse.
   Anwalt prüfen lassen. „Auftreten als Personal des Auftraggebers“ (§ 5) plus beigestellte Kleidung kann bei enger
   Einbindung als verdeckte Arbeitnehmerüberlassung gewertet werden (§ 9, § 10 AÜG) – § 6 (keine Eingliederung) im Alltag
   einhalten. Die Nachweise selbst schützen nicht vor der Auftraggeberhaftung (§ 13 MiLoG, § 28e Abs. 3a SGB IV).
+- 2026-10-19: **Sammelbestellung an Nachunternehmer** (Ahmed: „nicht jede Tiefgarage einzeln“, „Preis je m²“, „oder feste
+  Marge z. B. 10 % und Rest Sub“): Bestellung → Abrechnung neu **„je m² (Preis je m² Fläche)“** und **„Anteil am Umsatz
+  (feste Marge)“** (Feld „Unsere Marge in %“). Im Entwurf „Als Sammelbestellung“ ankreuzen und weitere Objekte bzw. **alle
+  aktiven Objekte eines Kunden** aufnehmen → eine Bestellung (eine Nummer, eine Unterschrift), Kasten „Sammelbestellung“ mit
+  Fläche je Objekt (vorbelegt aus Tiefgarage bzw. Raumbuch, änderbar), Kosten je Objekt, Summe, Objekte hinzufügen/entfernen
+  (`app.subcontract_sites`, `subcontracts.margin_bp`, Migration `20261204000001`, `src/services/subcontract-sites.ts`).
+  Kosten je Objekt: je m² = Preis × Fläche; Pauschale = nach Fläche verteilt; Anteil am Umsatz = unser Netto-Erlös des
+  Objekts im Monat × (100 % − Marge). Eingangsrechnung zur Sammelbestellung wird automatisch auf die Objekte verteilt (nach
+  Fläche bzw. Umsatz, centgenau, ohne Fläche gleichmäßig); Nachkalkulation schätzt fehlende Monate genauso (je m² nur bei
+  monatlicher Bestellung). Bestellschein mit Objektliste (Fläche, Betrag). Bestellliste: „Sammelbestellung · n Objekte“,
+  Gesamtbetrag = Preis × Gesamtfläche. Ohne Häkchen wie bisher je Objekt eine eigene Bestellung. Bereits verteilte
+  Eingangsrechnungen werden bei späteren Flächenänderungen nicht neu verteilt (dort ggf. „Kostenstellen“ neu speichern).

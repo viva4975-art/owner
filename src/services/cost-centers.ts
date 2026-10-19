@@ -1,4 +1,5 @@
 import type { Sql, Tx } from '../db/client.js';
+import { allocateSammel } from './subcontract-sites.js';
 import { assertVersion } from './crm.js';
 import { BusinessError } from './errors.js';
 
@@ -172,6 +173,32 @@ export async function syncAutoAllocation(tx: Tx, invoiceId: string, actor: strin
       await tx`insert into app.cost_allocations (id, incoming_invoice_id, site_id, month, net_cents, auto, created_by)
                values (gen_random_uuid(), ${invoiceId}, ${l.site_id}, ${l.month}, ${l.net_cents}, true, ${actor})`;
     return;
+  }
+  // Sammelbestellung (mehrere Objekte in einer NU-Bestellung): nach Fläche bzw. Umsatz auf die Objekte verteilen
+  const scLinks = await tx<{ subcontract_id: string; month: string; net_cents: bigint | null }[]>`
+    select l.subcontract_id, to_char(l.period_month, 'YYYY-MM') as month, l.net_cents
+      from app.incoming_invoice_subcontracts l where l.incoming_invoice_id = ${invoiceId}`;
+  const [head] = await tx<{ subcontract_id: string | null; month: string; net_cents: bigint }[]>`
+    select subcontract_id, to_char(coalesce(service_month, invoice_date), 'YYYY-MM') as month, net_cents
+      from app.incoming_invoices where id = ${invoiceId}`;
+  const parts =
+    scLinks.length === 1 || (!scLinks.length && head?.subcontract_id)
+      ? [
+          {
+            sc: scLinks[0]?.subcontract_id ?? head!.subcontract_id!,
+            month: scLinks[0]?.month ?? head!.month,
+            net: BigInt(head!.net_cents),
+          },
+        ]
+      : [];
+  if (parts.length && BigInt(head!.net_cents) !== 0n) {
+    const split = await allocateSammel(tx, parts[0]!.sc, parts[0]!.month, parts[0]!.net);
+    if (split) {
+      for (const x of split.filter((r) => r.net !== 0n))
+        await tx`insert into app.cost_allocations (id, incoming_invoice_id, site_id, month, net_cents, auto, created_by)
+                 values (gen_random_uuid(), ${invoiceId}, ${x.site_id}, ${`${parts[0]!.month}-01`}, ${x.net}, true, ${actor})`;
+      return;
+    }
   }
   await tx`
     insert into app.cost_allocations (id, incoming_invoice_id, site_id, month, net_cents, auto, created_by)

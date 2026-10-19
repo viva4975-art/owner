@@ -1,3 +1,4 @@
+import { sammelSqmCenti } from '../services/subcontract-sites.js';
 import { costCenterReport } from '../services/cost-centers.js';
 import { randomUUID } from 'node:crypto';
 import { SiteOptions } from './site-options.js';
@@ -317,6 +318,17 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         select distinct purchase_order_id as id from app.incoming_invoices where purchase_order_id is not null`,
     ]);
     const invoiced = new Set(billed.map((b) => b.id));
+    // Sammelbestellungen: Gesamtfläche + Zahl der Objekte
+    const sqmMap = await sammelSqmCenti(
+      sql,
+      subcontracts.map((x) => x.id),
+    );
+    const siteCount = new Map(
+      (
+        await sql<{ id: string; n: number }[]>`
+          select subcontract_id as id, count(*)::int as n from app.subcontract_sites group by subcontract_id`
+      ).map((r) => [r.id, r.n]),
+    );
     const tracking = await billingTracking(
       sql,
       subcontracts.map((x) => x.id),
@@ -378,7 +390,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       unsigned: boolean;
       /** erteilte NU-Bestellung mit Unterschrift → „erledigt“ möglich */
       canFinish: boolean;
-      net: bigint;
+      net: bigint | null;
       per: string;
       /** Einheitspreis unter dem Gesamtbetrag, z. B. „25,00 € / Std. × 40 Std.“ */
       unit?: string;
@@ -415,6 +427,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       pauschale_einsatz: '/ Einsatz',
       tag: '/ Tag',
       stunde: '/ Std.',
+      qm: '/ m²',
     };
     const all: Row[] = [
       ...orders.map((o) => ({
@@ -447,7 +460,9 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         kind: 'nu' as const,
         supplierId: sc.supplier_id,
         supplier: sc.supplier_name,
-        what: `${sc.site_no} ${sc.site_name} · ${sc.service_kind}`,
+        what: siteCount.get(sc.id)
+          ? `Sammelbestellung · ${siteCount.get(sc.id)} Objekte · ${sc.service_kind}`
+          : `${sc.site_no} ${sc.site_name} · ${sc.service_kind}`,
         from: sc.valid_from,
         to: sc.valid_to,
         // laufend = regelmäßige (monatliche/wöchentliche) Bestellung; jährlich usw. = nach Ausführung (Ahmed 09.10.)
@@ -456,7 +471,17 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         canFinish: sc.status === 'erteilt' && !!(sc.signed_file_path || sc.signed_external),
         ...((): Pick<Row, 'net' | 'per' | 'unit'> => {
           // Gesamtbetrag zuerst, Einheitspreis darunter (Ahmed 18.10.)
-          const total = subcontractTotal(sc);
+          const total = subcontractTotal({ ...sc, sqm_centi: sqmMap.get(sc.id) ?? null });
+          if (sc.billing === 'umsatz')
+            return {
+              net: null,
+              per: '',
+              unit: `${String((10000 - (sc.margin_bp ?? 0)) / 100).replace('.', ',')} % vom Umsatz`,
+            };
+          if (sc.billing === 'qm')
+            return total !== null
+              ? { net: total, per: '', unit: `${euro(sc.current_price_cents)} / m²` }
+              : { net: sc.current_price_cents, per: '/ m²', unit: 'Flächen fehlen' };
           if (sc.billing === 'stunde')
             return total !== null
               ? {
@@ -661,7 +686,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                       : `${dateDe(r.from)} – ${dateDe(r.to ?? r.from)}`}
                 </span>
                 <span class="r">
-                  {euro(r.net)} <span class="small mut">{r.per}</span>
+                  {r.net !== null && euro(r.net)} <span class="small mut">{r.per}</span>
                   {r.unit && <span class="bs-sub">{r.unit}</span>}
                 </span>
                 <span>

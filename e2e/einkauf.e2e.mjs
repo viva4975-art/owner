@@ -60,7 +60,7 @@ const stockAfter = parseFloat((await p.locator('.kpi .v').first().innerText()).r
 check('Lager +10', stockAfter - stockBefore === 10, `${stockBefore} → ${stockAfter}`);
 
 console.log('2. Eingangsrechnung zur Bestellung');
-await p.goto(B + '/bestellungen');
+await p.goto(B + '/bestellungen?ansicht=alle');
 await p.click(`a:has-text("${poNo}")`);
 await p.click('a:has-text("Rechnung erfassen")');
 const invNo = `RE-${Date.now().toString().slice(-6)}`;

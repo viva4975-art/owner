@@ -1,3 +1,4 @@
+import { sqmCenti, subcontractSites } from './subcontract-sites.js';
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { contactGreeting } from '../domain/letter/greeting.js';
 import type { Sql } from '../db/client.js';
@@ -462,6 +463,8 @@ export const BILLING: Record<string, string> = {
   pauschale_einsatz: 'Pauschale je Einsatz',
   tag: 'je Tag',
   stunde: 'je Stunde',
+  qm: 'je m² (Preis je m² Fläche)',
+  umsatz: 'Anteil am Umsatz (feste Marge)',
 };
 export const SC_STATUS: Record<string, string> = {
   entwurf: 'Entwurf',
@@ -480,6 +483,7 @@ export interface Subcontract {
   billing: string;
   price_cents: bigint;
   max_hours_month: string | null;
+  margin_bp: number | null;
   valid_from: string;
   valid_to: string | null;
   description: string | null;
@@ -540,6 +544,8 @@ export interface SubcontractInput {
   billing: string;
   priceCents: bigint;
   maxHours: string | null;
+  /** unsere Marge in Basispunkten bei Abrechnung „Anteil am Umsatz“ */
+  marginBp?: number | null;
   validFrom: string;
   validTo: string | null;
   description: string | null;
@@ -555,6 +561,9 @@ export async function saveSubcontract(sql: Sql, id: string, p: SubcontractInput,
   if (p.validTo && p.validTo < p.validFrom) throw new BusinessError('Ende liegt vor dem Beginn');
   if (p.maxHours && !/^\d{1,5}([.,]\d{1,2})?$/.test(p.maxHours))
     throw new BusinessError('Max. Stunden ungültig');
+  if (p.billing === 'umsatz' && (p.marginBp == null || p.marginBp < 0 || p.marginBp > 10000))
+    throw new BusinessError('Bitte unsere Marge in % angeben (z. B. 10)');
+  const marginBp = p.billing === 'umsatz' ? p.marginBp! : null;
   const [sup] = await sql<
     { kind: string; active: boolean }[]
   >`select kind, active from app.suppliers where id = ${p.supplierId}`;
@@ -574,6 +583,7 @@ export async function saveSubcontract(sql: Sql, id: string, p: SubcontractInput,
         frequency: p.frequency,
         billing: p.billing,
         max_hours_month: p.maxHours ? p.maxHours.replace(',', '.') : null,
+        margin_bp: marginBp,
         valid_from: p.validFrom,
         valid_to: p.validTo,
         description: p.description?.trim() || null,
@@ -601,6 +611,7 @@ export async function saveSubcontract(sql: Sql, id: string, p: SubcontractInput,
         billing: p.billing,
         price_cents: p.priceCents,
         max_hours_month: p.maxHours ? p.maxHours.replace(',', '.') : null,
+        margin_bp: marginBp,
         valid_from: p.validFrom,
         valid_to: p.validTo,
         description: p.description?.trim() || null,
@@ -754,8 +765,17 @@ export async function subcontractPdf(sql: Sql, id: string, sig?: SubcontractSign
         ? 'Einsatz'
         : sc.billing === 'tag'
           ? 'Tag'
-          : 'Monat';
-  const price = `${formatEuro(sc.current_price_cents as Cents)} / ${unit}`;
+          : sc.billing === 'qm'
+            ? 'm²'
+            : 'Monat';
+  const sammel = await subcontractSites(sql, id);
+  const sqmTotal = sammel.reduce((a, r) => a + (sqmCenti(r.sqm) ?? 0n), 0n);
+  const price =
+    sc.billing === 'umsatz'
+      ? `${String((10000 - (sc.margin_bp ?? 0)) / 100).replace('.', ',')} % unseres Netto-Umsatzes je Objekt`
+      : sc.billing === 'qm' && sqmTotal
+        ? `${formatEuro(sc.current_price_cents as Cents)} / m² × ${(Number(sqmTotal) / 100).toLocaleString('de-DE')} m² = ${formatEuro(((sc.current_price_cents * sqmTotal + 50n) / 100n) as Cents)}`
+        : `${formatEuro(sc.current_price_cents as Cents)} / ${unit}`;
   const d = await FormDoc.create({
     title: `Bestellung ${sc.number}`,
     sideRef: `VD-NU-02 Bestellschein ${sc.number} · Rev. 1.0 · Stand: ${dateDe}`,
@@ -793,11 +813,17 @@ export async function subcontractPdf(sql: Sql, id: string, sig?: SubcontractSign
   d.y += 8;
   const hourly = sc.billing === 'stunde';
   d.kvBox([
-    { k: 'Objekt / Auftrag:', v: sc.site_name, strong: true },
-    {
-      k: 'Adresse:',
-      v: [site?.street, `${site?.postal_code ?? ''} ${site?.city ?? ''}`.trim()].filter(Boolean).join(', '),
-    },
+    sammel.length
+      ? { k: 'Objekte:', v: `Sammelbestellung – ${sammel.length} Objekte (Liste unten)`, strong: true }
+      : { k: 'Objekt / Auftrag:', v: sc.site_name, strong: true },
+    sammel.length
+      ? { k: 'Kunde:', v: [...new Set(sammel.map((r) => r.customer_name))].join(', ') }
+      : {
+          k: 'Adresse:',
+          v: [site?.street, `${site?.postal_code ?? ''} ${site?.city ?? ''}`.trim()]
+            .filter(Boolean)
+            .join(', '),
+        },
     { k: 'Häufigkeit:', v: FREQUENCY[sc.frequency] ?? sc.frequency, k2: 'Kostenstelle:', v2: sc.site_no },
     { k: 'Leistungsart:', v: sc.service_kind },
     {
@@ -826,6 +852,43 @@ export async function subcontractPdf(sql: Sql, id: string, sig?: SubcontractSign
       : [{ k: 'Preis (netto):', v: price, accent: true }]),
     { k: 'Bestelldatum:', v: formatDateDe(date) },
   ]);
+  if (sammel.length) {
+    d.text('Objekte dieser Bestellung', FORM_X.L, d.y + 4, { size: 9.5, bold: true });
+    d.y += 12;
+    d.table(
+      [
+        { label: 'Nr.', width: 62 },
+        { label: 'Objekt / Adresse', width: 263 },
+        { label: 'Fläche m²', width: 80, align: 'right' },
+        { label: sc.billing === 'qm' ? 'Betrag' : '', width: 90, align: 'right' },
+      ],
+      [
+        ...sammel.map((r) => {
+          const c = sqmCenti(r.sqm);
+          return [
+            r.site_no,
+            `${r.name}${r.street ? `, ${r.street}` : ''}${r.city ? `, ${r.city}` : ''}`,
+            c === null ? '–' : (Number(c) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2 }),
+            sc.billing === 'qm' && c !== null
+              ? formatEuro(((sc.current_price_cents * c + 50n) / 100n) as Cents)
+              : '',
+          ];
+        }),
+        {
+          sum: [
+            '',
+            'Summe',
+            (Number(sqmTotal) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2 }),
+            sc.billing === 'qm'
+              ? formatEuro(((sc.current_price_cents * sqmTotal + 50n) / 100n) as Cents)
+              : '',
+          ],
+          strong: true,
+        },
+      ],
+      { size: 8 },
+    );
+  }
   // Kompakt auf höchstens 2 Seiten (Ahmed 09.10.): Seite 1 Auftrag + Leistungsbeschreibung,
   // dann Auftragsbedingungen zweispaltig und EINE Unterschrift für Bestellung und Bedingungen.
   if (sc.description || prices.length) {
@@ -1140,8 +1203,12 @@ export function subcontractTotal(sc: {
   billing: string;
   current_price_cents: bigint;
   max_hours_month: string | null;
+  /** Gesamtfläche einer Sammelbestellung in m²-Hundertsteln */
+  sqm_centi?: bigint | null;
 }): bigint | null {
   if (sc.billing === 'pauschale_monat') return sc.current_price_cents;
+  // Preis je m² × Gesamtfläche, kaufmännisch auf Cent
+  if (sc.billing === 'qm') return sc.sqm_centi ? (sc.current_price_cents * sc.sqm_centi + 50n) / 100n : null;
   if (sc.billing === 'stunde' && sc.max_hours_month) {
     const h = BigInt(Math.round(Number(sc.max_hours_month) * 100));
     // kaufmännisch auf Cent

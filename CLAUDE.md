@@ -3462,3 +3462,9 @@ Testadresse.
   monatlicher Bestellung). Bestellschein mit Objektliste (Fläche, Betrag). Bestellliste: „Sammelbestellung · n Objekte“,
   Gesamtbetrag = Preis × Gesamtfläche. Ohne Häkchen wie bisher je Objekt eine eigene Bestellung. Bereits verteilte
   Eingangsrechnungen werden bei späteren Flächenänderungen nicht neu verteilt (dort ggf. „Kostenstellen“ neu speichern).
+- 2026-10-19: **Fund „Sammelbestellung kann ich nicht anlegen“** (Ahmed): Das Häkchen „Als Sammelbestellung“ lag im
+  Formularraster (Beschriftung links / Feld rechts) und wurde zu einer schmalen, kaum bedienbaren Spalte zerdrückt. Jetzt
+  eigene Felder im Bestellformular: **„Bestellung für“** (ein Objekt / mehrere Objekte – eine Sammelbestellung) und
+  **„Alle Objekte eines Kunden“**; bei Sammelbestellung darf „Objekt“ leer bleiben (erstes weiteres Objekt bzw. erstes
+  aktives Objekt des Kunden wird Hauptobjekt). Im Browser durchgespielt (Kunde gewählt, je m², 0,30 € → Kasten mit allen
+  Objekten).

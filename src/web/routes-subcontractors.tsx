@@ -1659,48 +1659,57 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                   ))}
                 </select>
               </div>
+              {draft && (
+                <div>
+                  <label for="sammel">Bestellung für</label>
+                  <select id="sammel" name="sammel">
+                    <option value="">ein Objekt (weitere Objekte = je eine eigene Bestellung)</option>
+                    <option value="1" selected={sammel.length > 0}>
+                      mehrere Objekte – eine Sammelbestellung (eine Nummer, eine Unterschrift)
+                    </option>
+                  </select>
+                  <div class="small mut">
+                    Sammelbestellung: Kosten werden auf die Objekte verteilt – nach Fläche (Preis je m² oder
+                    Pauschale) bzw. bei „Anteil am Umsatz“ nach unserem Umsatz je Objekt.
+                  </div>
+                </div>
+              )}
+              {draft && (
+                <div>
+                  <label for="sammel-kunde">Alle Objekte eines Kunden</label>
+                  <select id="sammel-kunde" name="sammel_kunde">
+                    <option value="">– keinen Kunden übernehmen –</option>
+                    {customers.map((k) => (
+                      <option value={k.id}>
+                        {k.name} ({k.customer_no}) · {k.n} Objekte
+                      </option>
+                    ))}
+                  </select>
+                  <div class="small mut">
+                    Nur bei Sammelbestellung: alle aktiven Objekte des Kunden werden aufgenommen (z. B. alle
+                    Tiefgaragen). Das Feld „Objekt“ kann dann leer bleiben.
+                  </div>
+                </div>
+              )}
               <div>
                 <label for="site">Objekt</label>
-                <select id="site" name="site_id" required>
+                <select id="site" name="site_id" required={!draft}>
                   <option value="">– bitte wählen –</option>
                   <SiteOptions sites={sites} selected={sc?.site_id ?? c.req.query('objekt')} />
                 </select>
               </div>
               {draft && (
-                <div style="grid-column:1/-1">
+                <div>
                   <label for="more-sites">Weitere Objekte</label>
                   <div data-multi="more_sites">
                     <div
                       class="multi-chips"
                       style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"
                     ></div>
-                    <select id="more-sites" style="max-width:520px">
+                    <select id="more-sites">
                       <option value="">+ weiteres Objekt hinzufügen …</option>
                       <SiteOptions sites={sites} />
                     </select>
-                  </div>
-                  <label class="small" style="display:flex;gap:6px;align-items:center;margin-top:8px">
-                    <input type="checkbox" name="sammel" value="1" checked={sammel.length > 0} /> Als{' '}
-                    <b>Sammelbestellung</b>: alle Objekte in dieser einen Bestellung (eine Nummer, eine
-                    Unterschrift)
-                  </label>
-                  <div style="margin-top:6px">
-                    <label for="sammel-kunde" class="small">
-                      … oder alle aktiven Objekte eines Kunden aufnehmen (nur Sammelbestellung)
-                    </label>
-                    <select id="sammel-kunde" name="sammel_kunde" style="max-width:520px">
-                      <option value="">– kein Kunde –</option>
-                      {customers.map((k) => (
-                        <option value={k.id}>
-                          {k.name} ({k.customer_no}) · {k.n} Objekte
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div class="small mut">
-                    Ohne Häkchen wird für jedes weitere Objekt eine eigene Bestellung angelegt. Mit Häkchen
-                    bleibt es eine Bestellung; die Kosten werden auf die Objekte verteilt – nach Fläche (Preis
-                    je m² oder Pauschale) oder bei „Anteil am Umsatz“ nach unserem Umsatz je Objekt.
                   </div>
                 </div>
               )}
@@ -2344,6 +2353,23 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         note: str(b, 'note'),
         version: v ? Number(v) : null,
       };
+      // Sammelbestellung ohne gewähltes Objekt: erstes weiteres Objekt bzw. erstes aktives Objekt des Kunden
+      if (!input.siteId && str(b, 'sammel') === '1') {
+        const firstMore = ([] as unknown[])
+          .concat(b.more_sites ?? [])
+          .map(String)
+          .find((x) => /^[0-9a-f-]{36}$/.test(x));
+        const kunde = str(b, 'sammel_kunde');
+        const [first] = kunde
+          ? await sql<{ id: string }[]>`
+              select id from app.sites where customer_id = ${kunde} and active order by site_no limit 1`
+          : [];
+        input.siteId = firstMore ?? first?.id ?? '';
+      }
+      if (!input.siteId)
+        throw new BusinessError(
+          'Bitte ein Objekt wählen (bei Sammelbestellung: weitere Objekte oder einen Kunden wählen)',
+        );
       await saveSubcontract(sql, id, input, c.get('actor'));
       // weitere Objekte (nur Entwurf): je Objekt eine eigene Bestellung mit denselben Angaben, feste ID aus
       // Bestellung + Objekt → doppelt absenden legt nichts doppelt an

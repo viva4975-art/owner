@@ -3431,3 +3431,7 @@ Testadresse.
   gelieferter Material-Bestellung (Meldung je Bestellung, die anderen werden trotzdem gelöscht). Stand (inkl.
   Preisnachträge, Stundennachweis, Positionen) vorher ins Protokoll; Tagesausnahmen verlieren nur die Verknüpfung,
   Freigabe-Aufgabe der Anfrage entfällt. Nummern werden nicht wieder vergeben.
+- 2026-10-19: **Bestellungen → „Zu erledigen“ nur noch Entwürfe und erteilte NU-Bestellungen ohne unterschriebenen Auftrag**
+  (Scan/Handy-Unterschrift fehlt; Ahmed: „erwartete Rechnungen sind ja unter Rechnungseingang“) – ersetzt die Regel vom
+  18.10. Fehlende/erwartete Rechnungen zeigt weiter die Spalte „Abrechnung“ und Rechnungseingang → „Rechnung erwartet“;
+  gelieferte Material-Bestellungen ohne Rechnung stehen unter „Abgeschlossen“.

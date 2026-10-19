@@ -432,8 +432,8 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         canFinish: false,
         net: o.net_cents,
         per: '',
-        // geliefert, aber noch keine Eingangsrechnung erfasst → bleibt „zu erledigen“
-        phase: o.status === 'geliefert' && !invoiced.has(o.id) ? ('erledigen' as const) : PO_PHASE[o.status],
+        // „zu erledigen“ nur Entwürfe (Ahmed 19.10.); fehlende Rechnungen stehen im Rechnungseingang
+        phase: PO_PHASE[o.status],
         status:
           o.status === 'geliefert' && !invoiced.has(o.id)
             ? 'geliefert · Rechnung fehlt'
@@ -468,15 +468,11 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
           return { net: total ?? sc.current_price_cents, per: PER[sc.billing] ?? '' };
         })(),
         ...((): Pick<Row, 'phase' | 'status' | 'tone'> => {
-          // zu erledigen (Ahmed 18.10.): Unterschrift fehlt, Rechnung fehlt, laufende am Monatsende
-          const todo = subcontractTodo(
-            {
-              status: sc.status,
-              valid_to: sc.valid_to,
-              signed: !!(sc.signed_file_path || sc.signed_external),
-            },
-            tracking.get(sc.id) ?? [],
-          );
+          // zu erledigen (Ahmed 19.10.): nur Entwurf oder unterschriebener Auftrag fehlt
+          const todo = subcontractTodo({
+            status: sc.status,
+            signed: !!(sc.signed_file_path || sc.signed_external),
+          });
           if (todo.length)
             return {
               phase: 'erledigen',

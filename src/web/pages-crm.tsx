@@ -279,6 +279,11 @@ export const TaskBox: FC<{ tasks: Task[]; title?: string; doneLink?: string }> =
                   )}
                   {t.assignee && <div class="mut">{t.assignee}</div>}
                 </td>
+                <td style="width:40px" class="r">
+                  <a class="btn sm ghost" href={`/aufgaben/${t.id}/bearbeiten`} title="Aufgabe bearbeiten">
+                    ✎
+                  </a>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -338,6 +343,69 @@ export const TaskForm: FC<{
     </div>
   </form>
 );
+
+/** Aufgabe bearbeiten: Titel, Beschreibung, Fälligkeit, Zuständig. */
+export const TaskEditForm: FC<{
+  task: Task;
+  back: string;
+  users: { name: string; group: 'Büro' | 'Objektleitung' }[];
+}> = ({ task: t, back, users }) => {
+  const known = !t.assignee || users.some((u) => u.name.toLowerCase() === t.assignee!.toLowerCase());
+  return (
+    <form
+      method="post"
+      action={`/aufgaben/${t.id}/bearbeiten`}
+      class="card"
+      data-autosave={`/aufgaben/${t.id}`}
+    >
+      <h3>Aufgabe bearbeiten</h3>
+      {t.entity_label && <p class="small mut">Zu: {t.entity_label}</p>}
+      <input type="hidden" name="version" value={String(t.version)} />
+      <input type="hidden" name="back" value={back} />
+      <div class="grid">
+        <Field name="title" label="Was ist zu tun? *" required value={t.title} />
+        <Field name="due_date" label="Fällig am" type="date" value={t.due_date ?? ''} />
+        <div>
+          <label for="assignee">Zuständig</label>
+          <select id="assignee" name="assignee">
+            <option value="">– niemand Bestimmtes –</option>
+            {!known && (
+              <option value={t.assignee!} selected>
+                {t.assignee}
+              </option>
+            )}
+            {(['Büro', 'Objektleitung'] as const).map((g) => (
+              <optgroup label={g}>
+                {users
+                  .filter((u) => u.group === g)
+                  .map((u) => (
+                    <option
+                      value={u.name}
+                      selected={u.name.toLowerCase() === (t.assignee ?? '').toLowerCase()}
+                    >
+                      {u.name}
+                    </option>
+                  ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label for="description">Beschreibung</label>
+          <textarea id="description" name="description">
+            {t.description ?? ''}
+          </textarea>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn">Speichern</button>
+        <a class="btn sec" href={back}>
+          Abbrechen
+        </a>
+      </div>
+    </form>
+  );
+};
 
 // ---------------------------------------------------------------------------
 // Startseite (Aufbau wie Fortytools-Übersicht)
@@ -461,7 +529,7 @@ const TASK_HREF: Record<string, string> = {
 const taskHref = (t: Task) =>
   t.entity_type && t.entity_id && TASK_HREF[t.entity_type]
     ? `${TASK_HREF[t.entity_type]}${t.entity_id}`
-    : '/aufgaben';
+    : `/aufgaben/${t.id}/bearbeiten`;
 
 /** Kopf einer Startseiten-Karte: Titel, Anzahl, Link „alle“ */
 const DashHead: FC<{ title: string; count?: number | undefined; href?: string; more?: string }> = ({

@@ -11,6 +11,8 @@ import {
   saveContact,
   saveTask,
   setTaskDone,
+  getTask,
+  updateTask,
 } from './crm.js';
 import { employeeInput, exportEmployeesCsv, getEmployee, saveEmployee, validIban } from './employees.js';
 import { createCancellation, issue, saveDraft } from './invoices.js';
@@ -177,6 +179,43 @@ describe.skipIf(!available)('Phase 2: Kontakte, Aufgaben, Zahlungen, Personal', 
       await expect(
         saveNote(sql, randomUUID(), 'site', DEMO.siteHq, { ...input, title: ' ', body: ' ' }, 'x'),
       ).rejects.toThrow(/Titel oder Details/);
+    });
+
+    it('Aufgabe bearbeiten: Felder ändern, Protokoll, alter Stand abgelehnt', async () => {
+      const id = randomUUID();
+      const base = { description: null, due_date: null, assignee: null, entity_type: null, entity_id: null };
+      await saveTask(sql, id, { ...base, title: 'Schlüssel abholen' }, 'anna');
+      const t = (await getTask(sql, id))!;
+      await updateTask(
+        sql,
+        id,
+        {
+          title: 'Schlüssel abholen (Hausmeister)',
+          description: 'ab 8 Uhr',
+          due_date: '2026-10-21',
+          assignee: 'Ben',
+          version: t.version,
+        },
+        'anna',
+      );
+      const u = (await getTask(sql, id))!;
+      expect(u).toMatchObject({
+        title: 'Schlüssel abholen (Hausmeister)',
+        description: 'ab 8 Uhr',
+        due_date: '2026-10-21',
+        assignee: 'Ben',
+      });
+      expect(u.version).toBe(t.version + 1);
+      const [log] = await sql`select details from app.audit_log where entity = 'task' and entity_id = ${id}`;
+      expect(log!.details.alt.title).toBe('Schlüssel abholen');
+      await expect(
+        updateTask(
+          sql,
+          id,
+          { title: 'x', description: null, due_date: null, assignee: null, version: t.version },
+          'ben',
+        ),
+      ).rejects.toThrow(/zwischenzeitlich geändert/);
     });
 
     it('Aufgabe anlegen, erledigen, Fälligkeitsfilter', async () => {

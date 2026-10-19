@@ -3518,3 +3518,8 @@ Testadresse.
   (Google Maps erst auf Klick), Verlauf. Kachel „Geräte“ in der Verwaltungs-App. Objektleitung: nur Geräte ihrer Objekte,
   scannen/umsetzen nur auf eigene Objekte. **Datenschutz:** Standort nur im Moment des Scans, kein Tracking –
   Mitarbeitende informieren (Art. 13 DSGVO). Stufe 2 (GPS-Tracker) nicht gebaut. Test `device-tracking.db.test.ts`.
+- 2026-10-19: **Aufgaben bearbeiten** (Ahmed): in jeder Aufgabenliste (Aufgaben, Kunde/Objekt/Mitarbeiter → Aufgaben) Knopf
+  „✎“ → `/aufgaben/<id>/bearbeiten`: Titel, Beschreibung, Fällig am, Zuständig ändern; danach zurück zur Herkunftsseite.
+  Startseite: Aufgaben ohne Zuordnung öffnen direkt die Bearbeiten-Seite. Versionsschutz (anderer Tab), alter/neuer Stand
+  im Protokoll (`audit_log`, entity `task`). Objektleitung nur ihr zugeordnete bzw. selbst angelegte Aufgaben
+  (`updateTask`/`getTask` in `crm.ts`). Test in `phase2.db.test.ts`.

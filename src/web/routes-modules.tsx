@@ -16,7 +16,16 @@ import { zipSync } from 'fflate';
 import { type FileRow, filePath } from '../services/uploads.js';
 import type { Context } from 'hono';
 import type { Child } from 'hono/jsx';
-import { listTasks, saveTask, setTaskDone, taskInput, taskVisibleTo } from '../services/crm.js';
+import {
+  getTask,
+  listTasks,
+  saveTask,
+  setTaskDone,
+  taskEditInput,
+  taskInput,
+  taskVisibleTo,
+  updateTask,
+} from '../services/crm.js';
 import {
   type Employee,
   employeeInput,
@@ -61,6 +70,7 @@ import {
   PLANNED,
   SearchResults,
   TaskBox,
+  TaskEditForm,
   TaskForm,
 } from './pages-crm.js';
 import { EmployeeForm, EmployeeList, EmployeeOverview, EmployeeShell } from './pages-hr-finance.js';
@@ -588,6 +598,49 @@ export function registerModuleRoutes(ctx: Ctx) {
     await saveTask(sql, uuidOr(body.id), parsed.data, c.get('actor'));
     const target = typeof body.back === 'string' && body.back.startsWith('/') ? body.back : '/aufgaben';
     return back(c, target, { ok: 'Aufgabe angelegt.' });
+  });
+
+  /** Objektleitung: nur ihr zugeordnete bzw. selbst angelegte Aufgaben */
+  const assertTaskVisible = async (c: Context<AppEnv>, id: string) => {
+    const viewer = taskViewerOf(c);
+    if (!viewer) return;
+    const [ok] = await sql`select 1 from app.tasks t where t.id = ${id} and ${taskVisibleTo(sql, viewer)}`;
+    if (!ok) throw new BusinessError('Diese Aufgabe ist Ihnen nicht zugeordnet');
+  };
+  const safeBack = (v: unknown, fallback: string) =>
+    typeof v === 'string' && v.startsWith('/') && !v.startsWith('//') ? v : fallback;
+
+  app.get(`/aufgaben/:id{${UUID}}/bearbeiten`, async (c) => {
+    const id = c.req.param('id');
+    await assertTaskVisible(c, id);
+    const task = await getTask(sql, id);
+    if (!task) return c.notFound();
+    const ref = c.req.header('referer');
+    let backTo = safeBack(c.req.query('zurueck'), '');
+    if (!backTo && ref) {
+      const u = new URL(ref);
+      if (u.host === new URL(c.req.url).host && !u.pathname.endsWith('/bearbeiten'))
+        backTo = u.pathname + u.search;
+    }
+    return page(
+      c,
+      'Aufgabe bearbeiten',
+      'kunden',
+      <>
+        <PageHead title="Aufgabe bearbeiten" />
+        <TaskEditForm task={task} back={backTo || '/aufgaben'} users={await assigneeOptions(sql)} />
+      </>,
+    );
+  });
+
+  app.post(`/aufgaben/:id{${UUID}}/bearbeiten`, async (c) => {
+    const id = c.req.param('id');
+    await assertTaskVisible(c, id);
+    const body = await c.req.parseBody();
+    const parsed = taskEditInput.safeParse(body);
+    if (!parsed.success) throw new BusinessError(parsed.error.issues.map((i) => i.message).join('\n'));
+    await updateTask(sql, id, parsed.data, c.get('actor'));
+    return back(c, safeBack(body.back, '/aufgaben'), { ok: 'Aufgabe gespeichert.' });
   });
 
   app.post(`/aufgaben/:id{${UUID}}/erledigt`, async (c) => {

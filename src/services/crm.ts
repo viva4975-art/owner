@@ -270,6 +270,47 @@ export async function saveTask(sql: Sql, id: string, input: z.infer<typeof taskI
     on conflict (id) do nothing`;
 }
 
+export async function getTask(sql: Sql, id: string): Promise<Task | undefined> {
+  const [t] = await sql<
+    Task[]
+  >`select t.*, ${ENTITY_LABEL(sql)} as entity_label from app.tasks t where t.id = ${id}`;
+  return t;
+}
+
+export const taskEditInput = z.object({
+  title: z.string().trim().min(1, 'Titel fehlt').max(300, 'Titel zu lang'),
+  description: optText,
+  due_date: z.preprocess(emptyToNull, z.iso.date().nullable().default(null)),
+  assignee: optText,
+  version: versionField,
+});
+
+/** Aufgabe ändern (Titel, Beschreibung, Fälligkeit, Zuständig) – Versionsschutz, alter/neuer Stand im Protokoll. */
+export async function updateTask(sql: Sql, id: string, input: z.infer<typeof taskEditInput>, actor: string) {
+  await sql.begin(async (tx) => {
+    const [cur] = await tx<Pick<Task, 'title' | 'description' | 'due_date' | 'assignee' | 'version'>[]>`
+      select title, description, due_date, assignee, version from app.tasks where id = ${id} for update`;
+    if (!cur) throw new BusinessError('Aufgabe nicht gefunden');
+    assertVersion(cur.version, input.version, 'Die Aufgabe');
+    const next = {
+      title: input.title,
+      description: input.description ?? null,
+      due_date: input.due_date ?? null,
+      assignee: input.assignee ?? null,
+    };
+    const old = {
+      title: cur.title,
+      description: cur.description,
+      due_date: cur.due_date,
+      assignee: cur.assignee,
+    };
+    if (JSON.stringify(old) === JSON.stringify(next)) return;
+    await tx`update app.tasks set ${tx(next)} where id = ${id}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'update', 'task', ${id}, ${tx.json({ alt: old, neu: next })})`;
+  });
+}
+
 export async function setTaskDone(sql: Sql, id: string, done: boolean, actor: string) {
   await sql`update app.tasks set status = ${done ? 'done' : 'open'},
               done_at = ${done ? sql`now()` : null}, done_by = ${done ? actor : null}

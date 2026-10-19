@@ -79,9 +79,9 @@ await row.locator('input[type=file]').setInputFiles(pdfPath);
 await row.locator('button:has-text("+36M")').click();
 check(
   '„+36M“ setzt das Datum',
-  /^\d{4}-\d{2}-\d{2}$/.test(await row.locator('input[type=date]').inputValue()),
+  /^\d{4}-\d{2}-\d{2}$/.test(await row.locator('input[name=valid_until]').inputValue()),
 );
-await row.locator('input[type=date]').fill('2029-09-30');
+await row.locator('input[name=valid_until]').fill('2029-09-30');
 await row.locator('button:has-text("Datei hochladen")').click();
 await p.waitForLoadState();
 check('gespeichert', (await flash(p)).includes('Nachweis gespeichert'), await flash(p));
@@ -95,7 +95,7 @@ check(
 // neue Version → alte archiviert
 const row2 = p.locator('section.doc-card', { hasText: 'Nachunternehmervertrag' });
 await row2.locator('input[type=file]').setInputFiles(pdfPath);
-await row2.locator('input[type=date]').fill('2029-10-31');
+await row2.locator('input[name=valid_until]').fill('2029-10-31');
 await row2.locator('button:has-text("Neue Version hochladen")').click();
 await p.waitForLoadState();
 check(
@@ -125,7 +125,7 @@ await np.click('button:has-text("Weiter")');
 await np.waitForLoadState();
 const card = np.locator('form.card', { hasText: 'Betriebshaftpflicht' });
 await card.locator('input[type=file]').setInputFiles(pdfPath);
-await card.locator('input[type=date]').fill('2027-08-31');
+await card.locator('input[name=valid_until]').fill('2027-08-31');
 await card.locator('button:has-text("Hochladen")').click();
 await np.waitForLoadState();
 check('Portal-Upload angenommen', (await np.locator('.flash').innerText()).includes('geprüft'));

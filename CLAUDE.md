@@ -3475,3 +3475,13 @@ Testadresse.
   Selbstauskunft, Mindestlohn, Tariftreue, Bewertung): Feld „Datum“ (Standard heute) setzt Stand und „Ort, Datum“ ein
   (Ort = Sitz des NU, beim AG bzw. Bewertungsbogen unser Ort). Auch direkt am Nachweis: Datum wählen → „Vorlage ausgefüllt
   erstellen“.
+- 2026-10-19: **Alte NU-Aufträge mit mehreren Objekten = Sammelbestellung** (Ahmed: „in einer Bestellung waren mehrere
+  Objekte“): Der Import aus der alten App legte solche Aufträge nur auf das erste Objekt. Jetzt werden Objektnummern aus
+  der Kostenstelle („20166001 + 20166002 …“) bzw. der Objektliste (Tab-Zeilen, Betrag je Objekt am Ende) gelesen
+  (`legacyOrderSites`) und als eine Sammelbestellung angelegt; **erneuter Import (Transfer → Import aus der alten App →
+  Nachunternehmer) repariert bereits übernommene** (nur solange sie noch keine Objektliste haben). Im Backup: DIL-004
+  (Container ARGE, 7), DIL-010 (ARGE U5W2, 7), DRN-027 (SVLFG, 3), DRN-028 (Stadt Garching, 32), DRN-034 (Planegg, 19);
+  DIL-012 hat eine vertippte zweite Nummer („200175002“) → bleibt bei einem Objekt. Neu **Betrag je Objekt**
+  (`subcontract_sites.share_cents`, Migration `20261205000001`): bei Pauschalen wird danach statt nach Fläche verteilt
+  (Rechnung, Schätzung Nachkalkulation), aus der alten App übernommen, im Kasten „Sammelbestellung“ änderbar.
+  Fund: Auswahl „Bestellung für“ und Kasten hatten dieselbe ID `sammel` (jetzt `sammel-art`).

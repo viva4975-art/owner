@@ -1679,8 +1679,8 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
               </div>
               {draft && (
                 <div>
-                  <label for="sammel">Bestellung für</label>
-                  <select id="sammel" name="sammel">
+                  <label for="sammel-art">Bestellung für</label>
+                  <select id="sammel-art" name="sammel">
                     <option value="">ein Objekt (weitere Objekte = je eine eigene Bestellung)</option>
                     <option value="1" selected={sammel.length > 0}>
                       mehrere Objekte – eine Sammelbestellung (eine Nummer, eine Unterschrift)
@@ -1842,15 +1842,22 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
             {(() => {
               const total = sammel.reduce((a, r) => a + (sqmCenti(r.sqm) ?? 0n), 0n);
               const price = BigInt(sc.price_cents);
+              // Pauschale: fester Betrag je Objekt möglich (wie alte App), sonst nach Fläche
+              const flat = sc.billing !== 'qm' && sc.billing !== 'umsatz';
+              const shareSum = sammel.reduce((a, r) => a + BigInt(r.share_cents ?? '0'), 0n);
+              const byShare = flat && shareSum > 0n;
               const share = (r: (typeof sammel)[number]) => {
                 const c = sqmCenti(r.sqm);
                 if (sc.billing === 'umsatz')
                   return `${String((10000 - (sc.margin_bp ?? 0)) / 100).replace('.', ',')} % vom Umsatz`;
+                if (byShare) return '';
                 if (c === null) return 'm² fehlt';
                 if (sc.billing === 'qm') return euro((price * c + 50n) / 100n);
                 if (total > 0n) return `${euro((price * c + total / 2n) / total)} (Anteil)`;
                 return '';
               };
+              const centsDe = (v: string | null) =>
+                v === null ? '' : (Number(v) / 100).toFixed(2).replace('.', ',');
               return (
                 <form method="post" action={`/nachunternehmer/auftraege/${id}/objekte`}>
                   <table>
@@ -1887,7 +1894,22 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                             />
                           </td>
                           <td class="num">
-                            {share(r) === 'm² fehlt' ? <span class="tag warn">m² fehlt</span> : share(r)}
+                            {flat && (
+                              <input
+                                name="betrag"
+                                inputmode="decimal"
+                                style="width:110px;text-align:right"
+                                value={centsDe(r.share_cents)}
+                                placeholder={byShare ? '' : share(r).replace(' (Anteil)', '')}
+                                aria-label="Betrag je Objekt €"
+                              />
+                            )}
+                            {!byShare &&
+                              (share(r) === 'm² fehlt' ? (
+                                <span class="tag warn">m² fehlt</span>
+                              ) : flat ? null : (
+                                share(r)
+                              ))}
                           </td>
                           <td>
                             <input type="checkbox" name="remove" value={r.site_id} aria-label="entfernen" />
@@ -1907,16 +1929,27 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                               ? euro((price * total + 50n) / 100n)
                               : sc.billing === 'umsatz'
                                 ? ''
-                                : euro(price)}
+                                : euro(byShare ? shareSum : price)}
                           </b>
+                          {byShare && shareSum !== price && (
+                            <div class="small" style="color:var(--err)">
+                              Preis der Bestellung: {euro(price)}
+                            </div>
+                          )}
                         </td>
                         <td></td>
                       </tr>
                     </tbody>
                   </table>
                   <div class="actions">
-                    <button class="btn sm">Flächen speichern / markierte entfernen</button>
+                    <button class="btn sm">Speichern / markierte entfernen</button>
                   </div>
+                  {flat && (
+                    <p class="small mut" style="margin-bottom:0">
+                      Betrag je Objekt (netto, optional): ist er eingetragen, wird nach diesen Beträgen statt
+                      nach Fläche verteilt.
+                    </p>
+                  )}
                 </form>
               );
             })()}
@@ -1954,8 +1987,12 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
             <p class="small mut" style="margin-bottom:0">
               Fläche leer = Vorschlag aus Tiefgarage bzw. Raumbuch (grau). Eingangsrechnungen dieser
               Bestellung werden automatisch auf die Objekte verteilt –{' '}
-              {sc.billing === 'umsatz' ? 'nach unserem Umsatz je Objekt im Leistungsmonat' : 'nach Fläche'};
-              ohne Fläche gleichmäßig.
+              {sc.billing === 'umsatz'
+                ? 'nach unserem Umsatz je Objekt im Leistungsmonat'
+                : sc.billing !== 'qm' && sammel.some((r) => Number(r.share_cents ?? 0) > 0)
+                  ? 'nach Betrag je Objekt'
+                  : 'nach Fläche'}
+              ; ohne Fläche gleichmäßig.
             </p>
           </section>
         )}
@@ -2470,11 +2507,24 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       }
       const ids = list('site');
       const sqm = list('sqm');
+      const betrag = list('betrag');
       const rm = new Set(list('remove'));
+      const shareOf = (v: string | undefined) => {
+        if (v === undefined) return undefined;
+        if (!v.trim()) return null;
+        const c = sqmCenti(v); // gleiche Schreibweise wie Fläche: 1.234,56
+        if (c === null) throw new BusinessError(`Betrag „${v}“ ungültig`);
+        return c;
+      };
       await saveSubcontractSites(
         sql,
         id,
-        ids.map((siteId, i) => ({ siteId, sqm: sqm[i] ?? '', remove: rm.has(siteId) })),
+        ids.map((siteId, i) => ({
+          siteId,
+          sqm: sqm[i] ?? '',
+          share: betrag.length ? shareOf(betrag[i]) : undefined,
+          remove: rm.has(siteId),
+        })),
         c.get('actor'),
       );
     } catch (e) {

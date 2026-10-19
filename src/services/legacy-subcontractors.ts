@@ -216,18 +216,26 @@ export async function importLegacyOrders(
   const byNo = new Map(sites.map((x) => [x.site_no, x.id]));
   let created = 0;
   let general = 0;
+  let sammel = 0;
   const unmatched: string[] = [];
   for (const o of orders) {
     const supplierId = idOf.get(String(o.sub_id));
     const number = s(o.auftragsnummer);
     if (!supplierId || !number) continue;
     const id = uuidOf(`suborder-row:${String(o.id)}`);
-    const [done] = await sql`select 1 from app.subcontracts where id = ${id} or number = ${number}`;
-    if (done) continue;
     const ks = s(o.kostenstelle) ?? '';
+    // Aufträge der alten App mit mehreren Objekten (Kostenstellen „2016601 + 2016602 …“ oder Objektliste mit
+    // Betrag je Objekt) → eine Sammelbestellung statt nur des ersten Objekts (Ahmed 19.10.)
+    const multi = legacyOrderSites(ks, s(o.objekt), byNo);
+    const [done] = await sql<{ id: string }[]>`
+      select id from app.subcontracts where id = ${id} or number = ${number} limit 1`;
+    if (done) {
+      if (multi.length > 1 && (await addLegacySammel(sql, done.id, multi, actor))) sammel++;
+      continue;
+    }
     const text = `${ks} ${s(o.objekt) ?? ''}`;
-    let siteId: string | null = null;
-    for (const tok of text.match(/\d{5,8}/g) ?? []) {
+    let siteId: string | null = multi[0]?.siteId ?? null;
+    for (const tok of siteId ? [] : (text.match(/\d{5,8}/g) ?? [])) {
       const t = tok.length === 8 && tok[5] === '0' && !byNo.has(tok) ? tok.slice(0, 5) + tok.slice(6) : tok;
       if (byNo.has(t)) {
         siteId = byNo.get(t)!;
@@ -296,8 +304,71 @@ export async function importLegacyOrders(
               ${status === 'erteilt' || status === 'beendet' ? 'unterschrieben (alte App)' : null})
       on conflict do nothing`;
     created++;
+    if (multi.length > 1 && (await addLegacySammel(sql, id, multi, actor))) sammel++;
   }
-  return { orders: created, ordersGeneral: general, ordersUnmatched: unmatched };
+  return { orders: created, ordersGeneral: general, ordersUnmatched: unmatched, ordersSammel: sammel };
+}
+
+const siteNoOf = (tok: string, byNo: Map<string, string>) =>
+  byNo.has(tok)
+    ? tok
+    : tok.length === 8 && tok[5] === '0' && byNo.has(tok.slice(0, 5) + tok.slice(6))
+      ? tok.slice(0, 5) + tok.slice(6)
+      : null;
+
+/** Objekte eines alten Auftrags: Objektnummern aus Kostenstelle und Objektliste (Tab-Zeilen mit Betrag am Ende). */
+export function legacyOrderSites(
+  ks: string,
+  objekt: string | null,
+  byNo: Map<string, string>,
+): { siteId: string; share: bigint | null }[] {
+  const out = new Map<string, bigint | null>();
+  for (const line of (objekt ?? '').split('\n')) {
+    const p = line.split('\t').map((x) => x.trim());
+    const no = p.find((x) => /^\d{7,8}$/.test(x));
+    const sn = no ? siteNoOf(no, byNo) : null;
+    if (!sn || p.length < 3) continue;
+    const last = p[p.length - 1]!;
+    const share = /^\d+([.,]\d{1,2})?$/.test(last) ? centsOfNum(last.replace(',', '.')) : null;
+    if (!out.has(byNo.get(sn)!)) out.set(byNo.get(sn)!, share);
+  }
+  if (!out.size)
+    for (const tok of ks.match(/\d{7,8}/g) ?? []) {
+      const sn = siteNoOf(tok, byNo);
+      if (sn && !out.has(byNo.get(sn)!)) out.set(byNo.get(sn)!, null);
+    }
+  return [...out].map(([siteId, share]) => ({ siteId, share }));
+}
+
+/** Sammelbestellung nachtragen, solange die Bestellung noch keine Objektliste hat (erneuter Import repariert). */
+async function addLegacySammel(
+  sql: Deps['sql'],
+  scId: string,
+  sites: { siteId: string; share: bigint | null }[],
+  actor: string,
+) {
+  return sql.begin(async (tx) => {
+    const [has] = await tx`select 1 from app.subcontract_sites where subcontract_id = ${scId} limit 1`;
+    if (has) return false;
+    const [sc] = await tx<
+      { site_id: string }[]
+    >`select site_id from app.subcontracts where id = ${scId} for update`;
+    if (!sc) return false;
+    // Hauptobjekt = erstes Objekt der Liste
+    if (!sites.some((x) => x.siteId === sc.site_id))
+      await tx`update app.subcontracts set site_id = ${sites[0]!.siteId} where id = ${scId}`;
+    for (const x of sites)
+      await tx`
+        insert into app.subcontract_sites (subcontract_id, site_id, sqm, share_cents, created_by)
+        select ${scId}, ${x.siteId},
+               coalesce((select sum(t.sqm) from app.tg_objects t where t.site_id = ${x.siteId} and t.active),
+                        (select sum(r.area_centi) / 100.0 from app.rooms r where r.site_id = ${x.siteId} and r.active))::numeric(12,2),
+               ${x.share}, ${actor}
+        on conflict do nothing`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'sites_add', 'subcontract', ${scId}, ${tx.json({ alte_app: true, sites: sites.map((x) => x.siteId) })})`;
+    return true;
+  });
 }
 
 // ------------------------------------------------------------------ Schriftverkehr und Arbeitskleidung

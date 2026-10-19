@@ -485,7 +485,7 @@ async function applySubs(deps: Deps, b: Backup, actor: string): Promise<string[]
     actor,
   );
   return [
-    `Nachunternehmer: ${r.subs} angelegt, ${r.docs} Nachweise, ${r.orders} Aufträge (${r.ordersGeneral} auf Objekt „Allgemein“${r.ordersUnmatched.length ? `, ohne Objekt nicht übernommen: ${r.ordersUnmatched.join(', ')}` : ''}), ${r.orderFiles} Auftragsdokumente${r.missing ? `, ${r.missing} Dateien fehlen` : ''}.`,
+    `Nachunternehmer: ${r.subs} angelegt, ${r.docs} Nachweise, ${r.orders} Aufträge (${r.ordersSammel ? `${r.ordersSammel} als Sammelbestellung mit mehreren Objekten, ` : ''}${r.ordersGeneral} auf Objekt „Allgemein“${r.ordersUnmatched.length ? `, ohne Objekt nicht übernommen: ${r.ordersUnmatched.join(', ')}` : ''}), ${r.orderFiles} Auftragsdokumente${r.missing ? `, ${r.missing} Dateien fehlen` : ''}.`,
   ];
 }
 

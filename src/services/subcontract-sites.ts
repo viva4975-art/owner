@@ -19,6 +19,8 @@ export interface SammelSite {
   city: string | null;
   customer_name: string;
   sqm: string | null;
+  /** fester Betrag je Objekt (netto, Cent) – geht bei Pauschalen vor der Fläche */
+  share_cents: string | null;
   /** Vorschlag aus Tiefgaragen-Stammdaten bzw. Raumbuch */
   sqm_hint: string | null;
 }
@@ -63,7 +65,7 @@ const sqmHint = (sql: Sql) => sql`coalesce(
 export async function subcontractSites(sql: Sql, id: string): Promise<SammelSite[]> {
   return sql<SammelSite[]>`
     select x.site_id, s.site_no, s.name, s.street, s.city, c.name as customer_name, x.sqm::text as sqm,
-           ${sqmHint(sql)} as sqm_hint
+           x.share_cents::text as share_cents, ${sqmHint(sql)} as sqm_hint
       from app.subcontract_sites x join app.sites s on s.id = x.site_id join app.customers c on c.id = s.customer_id
      where x.subcontract_id = ${id}
      order by s.site_no`;
@@ -113,7 +115,7 @@ export async function addSubcontractSites(
 export async function saveSubcontractSites(
   sql: Sql,
   id: string,
-  rows: { siteId: string; sqm: string; remove: boolean }[],
+  rows: { siteId: string; sqm: string; share?: bigint | null | undefined; remove: boolean }[],
   actor: string,
 ) {
   await sql.begin(async (tx) => {
@@ -129,6 +131,9 @@ export async function saveSubcontractSites(
       if (r.sqm.trim() !== '' && c === null) throw new BusinessError(`Fläche „${r.sqm}“ ungültig`);
       await tx`update app.subcontract_sites set sqm = ${c === null ? null : (Number(c) / 100).toFixed(2)}
                 where subcontract_id = ${id} and site_id = ${r.siteId}`;
+      if (r.share !== undefined)
+        await tx`update app.subcontract_sites set share_cents = ${r.share}
+                  where subcontract_id = ${id} and site_id = ${r.siteId}`;
     }
     const left = await tx<{ site_id: string }[]>`
       select x.site_id from app.subcontract_sites x join app.sites s on s.id = x.site_id
@@ -168,6 +173,12 @@ export async function siteRevenueMonth(
   return out;
 }
 
+/** Gewichte für Pauschalen: fester Betrag je Objekt, sonst Fläche */
+const flatWeights = (sites: { sqm: string | null; share_cents: string | null }[]) =>
+  sites.some((s) => s.share_cents !== null && BigInt(s.share_cents) > 0n)
+    ? sites.map((s) => BigInt(s.share_cents ?? '0'))
+    : sites.map((s) => sqmCenti(s.sqm) ?? 0n);
+
 /**
  * Netto einer NU-Rechnung (oder einer Schätzung) auf die Objekte einer Sammelbestellung verteilen.
  * null = keine Sammelbestellung.
@@ -181,8 +192,9 @@ export async function allocateSammel(
   const [sc] = await sql<
     { billing: string }[]
   >`select billing from app.subcontracts where id = ${subcontractId}`;
-  const sites = await sql<{ site_id: string; sqm: string | null }[]>`
-    select x.site_id, x.sqm::text as sqm from app.subcontract_sites x join app.sites s on s.id = x.site_id
+  const sites = await sql<{ site_id: string; sqm: string | null; share_cents: string | null }[]>`
+    select x.site_id, x.sqm::text as sqm, x.share_cents::text as share_cents
+      from app.subcontract_sites x join app.sites s on s.id = x.site_id
      where x.subcontract_id = ${subcontractId} order by s.site_no`;
   if (!sc || sites.length < 2) return null;
   let weights: bigint[];
@@ -194,7 +206,8 @@ export async function allocateSammel(
     );
     weights = sites.map((s) => rev.get(s.site_id) ?? 0n);
     if (!weights.some((w) => w > 0n)) weights = sites.map((s) => sqmCenti(s.sqm) ?? 0n);
-  } else weights = sites.map((s) => sqmCenti(s.sqm) ?? 0n);
+  } else if (sc.billing === 'qm') weights = sites.map((s) => sqmCenti(s.sqm) ?? 0n);
+  else weights = flatWeights(sites);
   const parts = splitByWeights(net, weights);
   return sites.map((s, i) => ({ site_id: s.site_id, net: parts[i]! }));
 }
@@ -208,8 +221,9 @@ export async function sammelMonthCost(
   sc: { id: string; billing: string; price_cents: bigint; margin_bp: number | null },
   month: string,
 ): Promise<{ site_id: string; cost: bigint }[]> {
-  const sites = await sql<{ site_id: string; sqm: string | null }[]>`
-    select x.site_id, x.sqm::text as sqm from app.subcontract_sites x join app.sites s on s.id = x.site_id
+  const sites = await sql<{ site_id: string; sqm: string | null; share_cents: string | null }[]>`
+    select x.site_id, x.sqm::text as sqm, x.share_cents::text as share_cents
+      from app.subcontract_sites x join app.sites s on s.id = x.site_id
      where x.subcontract_id = ${sc.id} order by s.site_no`;
   if (!sites.length) return [];
   if (sc.billing === 'qm')
@@ -231,10 +245,7 @@ export async function sammelMonthCost(
     });
   }
   if (sc.billing === 'pauschale_monat') {
-    const parts = splitByWeights(
-      BigInt(sc.price_cents),
-      sites.map((s) => sqmCenti(s.sqm) ?? 0n),
-    );
+    const parts = splitByWeights(BigInt(sc.price_cents), flatWeights(sites));
     return sites.map((s, i) => ({ site_id: s.site_id, cost: parts[i]! }));
   }
   return [];

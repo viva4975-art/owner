@@ -3435,3 +3435,18 @@ Testadresse.
   (Scan/Handy-Unterschrift fehlt; Ahmed: „erwartete Rechnungen sind ja unter Rechnungseingang“) – ersetzt die Regel vom
   18.10. Fehlende/erwartete Rechnungen zeigt weiter die Spalte „Abrechnung“ und Rechnungseingang → „Rechnung erwartet“;
   gelieferte Material-Bestellungen ohne Rechnung stehen unter „Abgeschlossen“.
+- 2026-10-19: **Vorlagen für Nachunternehmer automatisch ausgefüllt** (Ahmed: „Selbstauskunft, Vertrag usw. wie in der alten
+  App, anpassen, verbessern“): Nachunternehmer → Dokumente → „Vorlagen erstellen“ (`src/services/nu-docs.ts`, Texte
+  `src/domain/subcontract/nu-docs.ts`, Briefpapier „edel“): Rahmenvertrag (Vertragsbeginn wählbar), Selbstauskunft &
+  Compliance-Erklärung (vorab angekreuzt oder leer), Mindestlohnerklärung, Tariftreue-Erklärung (Tariflöhne aus
+  Einstellungen), Bewertungsbogen (ISO 9001), Personaleinsatzliste (Excel). Firmen-/NU-Daten werden eingesetzt;
+  „in Dokumente ablegen“ speichert das PDF unter „Verträge“ (nichts doppelt). Am Nachweis „Vorlage ausgefüllt erstellen“;
+  im **Upload-Portal** können Nachunternehmer die ausgefüllte Vorlage selbst herunterladen, unterschreiben und hochladen.
+  **Überarbeitet gegenüber der alten App:** Arbeitszeitgesetz statt „Arbeitszeitordnung“, keine SOKA-BAU (gilt nicht für
+  Gebäudereinigung), Kundenschutz nach Vertragsende 2 statt 5 Jahre, kein „Verzicht auf Fortsetzungszusammenhang“,
+  Vertragsstrafen niedriger und je Jahr gedeckelt, 500-€-Pauschale mit Gegenbeweis (§ 309 Nr. 5 BGB), Abwerbeverbot nur
+  aktives Abwerben, Textform statt doppelter Schriftform, neu § 13b UStG, Ausschlussgründe (§ 19 MiLoG, § 21 SchwarzArbG,
+  Wettbewerbsregister) und § 17 MiLoG-Aufzeichnung. **Rechtlich:** Rahmenvertrag ist AGB – vor dem Einsatz von einem
+  Anwalt prüfen lassen. „Auftreten als Personal des Auftraggebers“ (§ 5) plus beigestellte Kleidung kann bei enger
+  Einbindung als verdeckte Arbeitnehmerüberlassung gewertet werden (§ 9, § 10 AÜG) – § 6 (keine Eingliederung) im Alltag
+  einhalten. Die Nachweise selbst schützen nicht vor der Auftraggeberhaftung (§ 13 MiLoG, § 28e Abs. 3a SGB IV).

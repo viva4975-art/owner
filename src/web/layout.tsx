@@ -617,7 +617,7 @@ a.bs-tr:hover{text-decoration:none;background:var(--head)}
 .bs-th{border-top:0;background:var(--head);font-size:12px;font-weight:700;color:var(--mut)}
 .bs-tr .r{text-align:right}
 .bs-tr.empty{display:block;color:var(--mut);text-align:center}
-.bs-sel{display:flex;align-items:center;border-top:1px solid var(--line)}.bs-sel>input{flex:0 0 auto;width:16px;height:16px;margin:0 0 0 14px}.bs-sel>.bs-tr{flex:1;min-width:0;border-top:0}.bs-sel-h{border-top:0;background:var(--head)}
+.bs-sel{display:flex;align-items:center;border-top:1px solid var(--line)}.bs-sel>input{flex:0 0 auto;width:16px;height:16px;margin:0 0 0 14px}.bs-sel>.bs-tr{flex:1;min-width:0;border-top:0}.bs-sel-h{border-top:0;background:var(--head)}.nu-tpl{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:9px 0;border-top:1px solid var(--line)}.nu-tpl-name{flex:1 1 240px}.nu-tpl label{display:inline-flex;gap:5px;align-items:center;margin:0}.nu-tpl input[type=date]{width:auto}
 .bs-nr{font-weight:700;color:var(--brand);font-variant-numeric:tabular-nums;white-space:nowrap}
 .bs-sub{display:block;font-size:12px;color:var(--mut)}
 .bs-pill{font-size:11px;font-weight:650;padding:3px 9px;border-radius:999px;white-space:nowrap}

@@ -58,6 +58,14 @@ import { CSS as MOBILE_CSS } from './m/routes-mobile.js';
 import { HandoverTable } from './routes-handovers.js';
 import { PageHead, Tabs, dateDe, euro, type Tab, anz } from './layout.js';
 import { FileArea } from './files.js';
+import {
+  isNuDoc,
+  NU_DOCS,
+  type NuDocKind,
+  nuDocPdf,
+  personnelListXlsx,
+  storeNuDoc,
+} from '../services/nu-docs.js';
 import { listFiles } from '../services/uploads.js';
 import { billingTracking, skipExpected } from '../services/expected-invoices.js';
 import {
@@ -70,6 +78,15 @@ import { Icon } from './icons.js';
 import { parseHours } from './routes-facility.js';
 import { SIGN_JS } from './routes-orders.js';
 import { fullName } from '../services/users.js';
+
+/** Nachweis-Art → automatisch ausfüllbare Vorlage */
+const NACHWEIS_TEMPLATE: Record<string, string> = {
+  vertrag: 'rahmenvertrag',
+  selbstauskunft: 'selbstauskunft',
+  milog: 'mindestlohn',
+  tarif: 'tarif',
+  personal: 'personaleinsatzliste',
+};
 
 const pdfResponse = (pdf: Uint8Array, name: string) =>
   new Response(pdf, {
@@ -750,6 +767,14 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 {!r.required && (
                   <div class="small faint">Optionale Dokumente fließen nicht in die Vollständigkeit ein.</div>
                 )}
+                {NACHWEIS_TEMPLATE[r.type.id] && (
+                  <div class="small" style="margin-top:4px">
+                    <a href={`/lieferanten/${id}/vorlage/${NACHWEIS_TEMPLATE[r.type.id]}`} target="_blank">
+                      Vorlage ausgefüllt erstellen
+                    </a>{' '}
+                    · <a href={`/lieferanten/${id}/dokumente#vorlagen`}>weitere Optionen</a>
+                  </div>
+                )}
                 {r.current && (
                   <div style="margin-top:8px">
                     <a href={`/nachweise/${r.current.id}/datei`} target="_blank">
@@ -1242,6 +1267,45 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
               Brief schreiben (Briefpapier)
             </a>
           </div>
+          {data.supplier.kind === 'nachunternehmer' && (
+            <section class="card" id="vorlagen" style="margin-bottom:16px">
+              <h3 class="panel-title" style="margin-top:0">
+                Vorlagen erstellen (automatisch ausgefüllt)
+              </h3>
+              <p class="small mut" style="margin-top:0">
+                Firmen- und Nachunternehmerdaten werden eingesetzt. „In Dokumente ablegen“ speichert das PDF
+                unter „Verträge“; die unterschriebene Fassung danach beim Nachweis hochladen.
+              </p>
+              {(Object.keys(NU_DOCS) as NuDocKind[]).map((k) => (
+                <form method="post" action={`/lieferanten/${id}/vorlage`} class="nu-tpl">
+                  <input type="hidden" name="kind" value={k} />
+                  <b class="nu-tpl-name">{NU_DOCS[k].label}</b>
+                  {k === 'rahmenvertrag' && (
+                    <label class="small">
+                      Vertragsbeginn <input type="date" name="beginn" value={todayBerlin()} />
+                    </label>
+                  )}
+                  {k === 'selbstauskunft' && (
+                    <label class="small">
+                      <input type="checkbox" name="ankreuzen" value="1" checked /> Punkte vorab angekreuzt
+                    </label>
+                  )}
+                  <label class="small">
+                    <input type="checkbox" name="ablegen" value="1" /> in Dokumente ablegen
+                  </label>
+                  <button class="btn sm" formtarget="_blank">
+                    PDF erstellen
+                  </button>
+                </form>
+              ))}
+              <div class="nu-tpl">
+                <b class="nu-tpl-name">Personaleinsatzliste (Excel, § 17 MiLoG)</b>
+                <a class="btn sec sm" href={`/lieferanten/${id}/vorlage/personaleinsatzliste.xlsx`}>
+                  Excel herunterladen
+                </a>
+              </div>
+            </section>
+          )}
           {SUP_DOC_CATS.map((cat) => (
             <section style="margin-bottom:16px">
               <h3 class="panel-title">{cat}</h3>
@@ -1303,6 +1367,49 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         'Cache-Control': 'private, no-cache',
       },
     });
+  });
+
+  // Vorlagen für Nachunternehmer automatisch ausgefüllt (Ahmed 19.10.)
+  app.get(`/lieferanten/:id{${UUID}}/vorlage/personaleinsatzliste.xlsx`, async (c) => {
+    const x = await personnelListXlsx(sql, c.req.param('id'));
+    return new Response(x.data, {
+      headers: {
+        'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'content-disposition': `attachment; filename="${x.name}"`,
+      },
+    });
+  });
+  app.get(`/lieferanten/:id{${UUID}}/vorlage/:kind`, async (c) => {
+    const kind = c.req.param('kind');
+    if (kind === 'personaleinsatzliste')
+      return c.redirect(`/lieferanten/${c.req.param('id')}/vorlage/personaleinsatzliste.xlsx`);
+    if (!isNuDoc(kind)) return c.notFound();
+    const doc = await nuDocPdf(sql, c.req.param('id'), kind, {
+      checked: true,
+      actorName: c.get('user').name,
+    });
+    return pdfResponse(doc.pdf, doc.name);
+  });
+  app.post(`/lieferanten/:id{${UUID}}/vorlage`, async (c) => {
+    const id = c.req.param('id');
+    const f = await c.req.parseBody();
+    const kind = String(f.kind ?? '');
+    if (!isNuDoc(kind)) return c.notFound();
+    const doc = await nuDocPdf(sql, id, kind, {
+      start: typeof f.beginn === 'string' ? f.beginn : null,
+      checked: f.ankreuzen === '1',
+      actorName: c.get('user').name,
+    });
+    if (f.ablegen === '1')
+      await storeNuDoc(
+        sql,
+        { dir: env.FILES_DIR, maxBytes: env.UPLOAD_MAX_BYTES },
+        id,
+        kind,
+        doc,
+        c.get('actor'),
+      );
+    return pdfResponse(doc.pdf, doc.name);
   });
 
   app.get(`/lieferanten/:id{${UUID}}/nachweise.pdf`, async (c) =>
@@ -2419,6 +2526,15 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                         ? 'abgelaufen – bitte erneuern'
                         : 'fehlt'}
               </div>
+              {NACHWEIS_TEMPLATE[r.type.id] && r.state !== 'gueltig' && !r.pending && (
+                <p style="margin:0 0 8px">
+                  <a href={`/np/${token}/vorlage/${NACHWEIS_TEMPLATE[r.type.id]}`} target="_blank">
+                    Vorlage herunterladen (schon mit Ihren Daten ausgefüllt)
+                  </a>
+                  <br />
+                  <span class="mut">ausdrucken, prüfen, unterschreiben und hier hochladen</span>
+                </p>
+              )}
               <input type="hidden" name="id" value={randomUUID()} />
               <input type="hidden" name="doc_type" value={r.type.id} />
               <input
@@ -2440,6 +2556,28 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         </>,
       ),
     );
+  });
+
+  // ausgefüllte Vorlagen im Portal (wie die alte App bei der Nachforderung)
+  app.get('/np/:token/vorlage/:kind', async (c) => {
+    const token = c.req.param('token');
+    const s = await portalSupplier(sql, token);
+    if (!s || verifySession(portalSecret(token), getCookie(c, PORTAL_COOKIE)) !== s.id)
+      return c.redirect(`/np/${token}`);
+    const kind = c.req.param('kind');
+    if (kind === 'personaleinsatzliste') {
+      const x = await personnelListXlsx(sql, s.id);
+      return new Response(x.data, {
+        headers: {
+          'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'content-disposition': `attachment; filename="${x.name}"`,
+          'cache-control': 'no-store',
+        },
+      });
+    }
+    if (!isNuDoc(kind) || kind === 'bewertung') return c.notFound();
+    const doc = await nuDocPdf(sql, s.id, kind, { checked: true });
+    return pdfResponse(doc.pdf, doc.name);
   });
 
   app.post('/np/:token/anmelden', async (c) => {

@@ -1,3 +1,4 @@
+import { extractText, getDocumentProxy } from 'unpdf';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -52,6 +53,12 @@ describe.skipIf(!available)('Vorlagen Nachunternehmer', () => {
     expect(a).toBe(b);
     const x = await personnelListXlsx(sql, nu);
     expect(x.data.byteLength).toBeGreaterThan(1000);
+  });
+
+  it('Datum der Vorlage frei wählbar (Ahmed 19.10.)', async () => {
+    const d = await nuDocPdf(sql, nu, 'mindestlohn', { date: '2026-12-03' });
+    const text = (await extractText(await getDocumentProxy(d.pdf), { mergePages: true })).text;
+    expect(text).toContain('03.12.2026');
   });
 
   it('Rahmenvertrag braucht eine Anschrift', async () => {

@@ -160,12 +160,15 @@ export async function nuDocPdf(
   sql: Sql,
   supplierId: string,
   kind: NuDocKind,
-  o: { start?: string | null; checked?: boolean; actorName?: string } = {},
+  o: { start?: string | null; checked?: boolean; actorName?: string; date?: string | null } = {},
 ): Promise<{ pdf: Uint8Array; name: string }> {
   const c = await context(sql, supplierId);
   const meta = NU_DOCS[kind];
-  const today = todayBerlin();
+  // Datum des Dokuments frei wählbar (Ahmed 19.10.); ohne Angabe heute, Ort/Datum beim NU bleibt dann leer
+  const given = o.date && /^\d{4}-\d{2}-\d{2}$/.test(o.date) ? o.date : null;
+  const today = given ?? todayBerlin();
   const dateDe = formatDateDe(today);
+  const ortDatum = given ? { leftText: `${c.s.city ? `${c.s.city}, ` : ''}${dateDe}` } : {};
   const d = await FormDoc.create({
     title: `${meta.label} – ${c.s.name}`,
     sideRef: `${meta.ref} · Rev. 2.0 · Stand: ${dateDe}`,
@@ -216,7 +219,7 @@ export async function nuDocPdf(
     for (const t of SELBSTAUSKUNFT_DOCS) check(d, t, false);
     d.section(`${n}. Bestätigung`);
     for (const t of SELBSTAUSKUNFT_END) d.para(fillAg(t, c.vars), { size: 8.8 });
-    d.signatures('Ort, Datum', 'Unterschrift Inhaber / Geschäftsführer, Stempel');
+    d.signatures('Ort, Datum', 'Unterschrift Inhaber / Geschäftsführer, Stempel', ortDatum);
   } else if (kind === 'mindestlohn') {
     header(d, 'Mindestlohnerklärung', 'nach § 13 MiLoG und § 14 AEntG');
     d.para(`gegenüber ${c.seller.legalName}, ${c.sellerAddr}`, { size: 8.8 });
@@ -235,7 +238,7 @@ export async function nuDocPdf(
       d.text(`${i + 1}.`, FORM_X.L + 2, d.y + 8.8, { size: 8.8 });
       d.para(fillAg(t, c.vars), { indent: 16, size: 8.8 });
     });
-    d.signatures('Ort, Datum', nuSig.replace('Ort, Datum · ', ''));
+    d.signatures('Ort, Datum', nuSig.replace('Ort, Datum · ', ''), ortDatum);
   } else if (kind === 'tarif') {
     const wages = await sql<{ name: string; hourly_wage_cents: number }[]>`
       select name, hourly_wage_cents from app.wage_levels where active and name ilike 'Tariflohn%' order by name`;
@@ -263,7 +266,7 @@ export async function nuDocPdf(
     d.muted(
       'Die Beträge zeigen den Stand laut Lohntabelle des Auftraggebers; maßgeblich ist der jeweils geltende Tarifvertrag.',
     );
-    d.signatures('Ort, Datum', 'Unterschrift / Stempel Nachunternehmer');
+    d.signatures('Ort, Datum', 'Unterschrift / Stempel Nachunternehmer', ortDatum);
   } else {
     header(d, 'Bewertungsbogen Nachunternehmer', 'Lieferantenbewertung nach ISO 9001 (Abschnitt 8.4)');
     d.kvBox([
@@ -296,7 +299,11 @@ export async function nuDocPdf(
       'Nicht weiter beauftragen',
     ])
       check(d, t, false);
-    d.signatures('Ort, Datum', 'Unterschrift Bewerter');
+    d.signatures(
+      'Ort, Datum',
+      'Unterschrift Bewerter',
+      given ? { leftText: `${c.seller.city}, ${dateDe}` } : {},
+    );
   }
   const safe = c.s.name.replace(/[^\wäöüÄÖÜß-]+/g, '_').slice(0, 40);
   return { pdf: await d.save(), name: `${meta.file}_${c.s.supplier_no}_${safe}.pdf` };

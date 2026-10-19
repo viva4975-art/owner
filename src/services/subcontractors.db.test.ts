@@ -259,6 +259,20 @@ describe.skipIf(!available)('Nachunternehmer', () => {
       't',
     );
     await expect(setSubcontractStatus(sql, id, 'erteilt', 't')).rejects.toThrow(/unter 50 %/);
+    // mit bestätigtem Hinweis trotzdem erteilbar (Ahmed 19.10.) – in einer Transaktion, die zurückgerollt wird
+    await sql
+      .begin(async (tx) => {
+        await setSubcontractStatus(tx as unknown as typeof sql, id, 'erteilt', 't', { acceptMissing: true });
+        const [x] = await tx<{ status: string }[]>`select status from app.subcontracts where id = ${id}`;
+        expect(x!.status).toBe('erteilt');
+        const [l] = await tx<{ details: { hinweis_bestaetigt?: boolean } }[]>`
+          select details from app.audit_log where entity = 'subcontract' and entity_id = ${id} and action = 'status'`;
+        expect(l!.details.hinweis_bestaetigt).toBe(true);
+        throw new Error('rollback');
+      })
+      .catch((e: Error) => {
+        if (e.message !== 'rollback') throw e;
+      });
     const req = (await getSubcontractor(sql, nu2))!.rows.filter((r) => r.required);
     for (const r of req.slice(0, Math.ceil(req.length / 2)))
       await uploadDocument(deps, {

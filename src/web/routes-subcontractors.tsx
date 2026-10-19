@@ -1297,6 +1297,9 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                     </label>
                   )}
                   <label class="small">
+                    Datum <input type="date" name="datum" value={todayBerlin()} />
+                  </label>
+                  <label class="small">
                     <input type="checkbox" name="ablegen" value="1" /> in Dokumente ablegen
                   </label>
                   <button class="btn sm" formtarget="_blank">
@@ -1403,6 +1406,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     if (!isNuDoc(kind)) return c.notFound();
     const doc = await nuDocPdf(sql, id, kind, {
       start: typeof f.beginn === 'string' ? f.beginn : null,
+      date: typeof f.datum === 'string' ? f.datum : null,
       checked: f.ankreuzen === '1',
       actorName: c.get('user').name,
     });
@@ -1578,6 +1582,10 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       >`select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`,
     ]);
     const draft = !sc || sc.status === 'entwurf';
+    const comp =
+      sc && sc.status === 'entwurf'
+        ? (await complianceOverview(sql)).find((r) => r.supplier.id === sc.supplier_id && r.requiredTotal > 0)
+        : undefined;
     // Sammelbestellung: Objekte mit Fläche (Ahmed 19.10.)
     const sammel = sc ? await subcontractSites(sql, id) : [];
     const customers = await sql<{ id: string; customer_no: string; name: string; n: number }[]>`
@@ -1949,6 +1957,26 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
               </a>
               {sc.status === 'entwurf' && (
                 <form method="post" action={`/nachunternehmer/auftraege/${id}/status`} style="margin:0">
+                  {comp && comp.missing.length > 0 && (
+                    <div
+                      class={comp.requiredOk * 2 < comp.requiredTotal ? 'flash err' : 'flash warn'}
+                      style="margin:0 0 8px"
+                    >
+                      <strong>
+                        Nachweise unvollständig: {comp.requiredOk} von {comp.requiredTotal} Pflicht-Nachweisen
+                        gültig.
+                      </strong>{' '}
+                      Fehlt: {comp.missing.join(', ')}. Als Auftraggeber haften wir für Mindestlohn und
+                      SV-Beiträge des Nachunternehmers (§ 13 MiLoG, § 14 AEntG, § 28e Abs. 3a SGB IV) –
+                      fehlende Nachweise zeitnah nachfordern.
+                      {comp.requiredOk * 2 < comp.requiredTotal && (
+                        <label style="display:flex;gap:6px;align-items:flex-start;margin-top:6px;font-weight:600">
+                          <input type="checkbox" name="hinweis_ok" value="1" required style="width:auto" />
+                          Hinweis zur Kenntnis genommen – Auftrag trotzdem erteilen
+                        </label>
+                      )}
+                    </div>
+                  )}
                   <button class="btn" name="status" value="erteilt">
                     Auftrag erteilen
                   </button>
@@ -2456,7 +2484,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     try {
       if (st !== 'erteilt' && st !== 'beendet' && st !== 'storniert')
         throw new BusinessError('Unbekannter Status');
-      await setSubcontractStatus(sql, id, st, c.get('actor'));
+      await setSubcontractStatus(sql, id, st, c.get('actor'), { acceptMissing: b.hinweis_ok === '1' });
     } catch (e) {
       if (e instanceof BusinessError)
         return back(c, ret ?? `/nachunternehmer/auftraege/${id}`, { fehler: e.message });

@@ -633,6 +633,7 @@ export async function setSubcontractStatus(
   id: string,
   status: 'erteilt' | 'beendet' | 'storniert',
   actor: string,
+  opts: { acceptMissing?: boolean } = {},
 ) {
   const [sc] = await sql<Subcontract[]>`select * from app.subcontracts where id = ${id}`;
   if (!sc) throw new BusinessError('Auftrag nicht gefunden');
@@ -650,16 +651,18 @@ export async function setSubcontractStatus(
     throw new BusinessError(
       `Auftrag ${sc.number}: unterschriebener Auftrag fehlt – erst Scan hochladen oder am Handy unterschreiben lassen`,
     );
-  // Erteilen erst gesperrt, wenn weniger als die Hälfte der Pflicht-Nachweise gültig ist (Ahmed 09.10.);
-  // fehlende werden im Protokoll vermerkt.
+  // Unter 50 % gültiger Pflicht-Nachweise nur mit bestätigtem Hinweis (Ahmed 19.10.);
+  // fehlende und die Bestätigung werden im Protokoll vermerkt.
   let missing: string[] = [];
+  let below = false;
   if (status === 'erteilt') {
     const c = (await complianceOverview(sql)).find((r) => r.supplier.id === sc.supplier_id);
     if (c && c.requiredTotal > 0) {
       missing = c.missing;
-      if (c.requiredOk * 2 < c.requiredTotal)
+      below = c.requiredOk * 2 < c.requiredTotal;
+      if (below && !opts.acceptMissing)
         throw new BusinessError(
-          `Erst ${c.requiredOk} von ${c.requiredTotal} Pflicht-Nachweisen des Nachunternehmers gültig (unter 50 %) – erst vervollständigen. Fehlt: ${c.missing.join(', ')}`,
+          `Erst ${c.requiredOk} von ${c.requiredTotal} Pflicht-Nachweisen des Nachunternehmers gültig (unter 50 %). Fehlt: ${c.missing.join(', ')} – zum Erteilen den Hinweis bestätigen.`,
         );
     }
   }
@@ -669,7 +672,7 @@ export async function setSubcontractStatus(
            valid_to = case when ${status} = 'beendet' then coalesce(valid_to, ${todayBerlin()}::date) else valid_to end
      where id = ${id}`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
-            values (${actor}, 'status', 'subcontract', ${id}, ${sql.json(missing.length ? { status, nachweise_fehlen: missing } : { status })})`;
+            values (${actor}, 'status', 'subcontract', ${id}, ${sql.json(missing.length ? { status, nachweise_fehlen: missing, ...(below ? { hinweis_bestaetigt: true } : {}) } : { status })})`;
   // Aufgabe „NU-Auftrag freigeben“ aus der Anfrage der Objektleitung erledigt
   if (status === 'erteilt' || status === 'storniert')
     await sql`update app.tasks set status = 'done', done_at = now(), done_by = ${actor}

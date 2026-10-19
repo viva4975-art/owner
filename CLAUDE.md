@@ -3468,3 +3468,9 @@ Testadresse.
   **„Alle Objekte eines Kunden“**; bei Sammelbestellung darf „Objekt“ leer bleiben (erstes weiteres Objekt bzw. erstes
   aktives Objekt des Kunden wird Hauptobjekt). Im Browser durchgespielt (Kunde gewählt, je m², 0,30 € → Kasten mit allen
   Objekten).
+- 2026-10-19: **NU-Bestellung auch unter 50 % Nachweise erteilen** (Ahmed): ersetzt die Sperre vom 09.10. Fehlen Nachweise,
+  zeigt der Entwurf über „Auftrag erteilen“ einen Hinweis (x von y gültig, was fehlt, Haftung § 13 MiLoG / § 14 AEntG /
+  § 28e Abs. 3a SGB IV); unter 50 % muss „Hinweis zur Kenntnis genommen“ angehakt werden (Server prüft
+  `acceptMissing`), Protokoll `nachweise_fehlen` + `hinweis_bestaetigt`. **NU-Vorlagen mit Datum** (Rahmenvertrag,
+  Selbstauskunft, Mindestlohn, Tariftreue, Bewertung): Feld „Datum“ (Standard heute) setzt Stand und „Ort, Datum“ ein
+  (Ort = Sitz des NU, beim AG bzw. Bewertungsbogen unser Ort).

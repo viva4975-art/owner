@@ -48,7 +48,7 @@ describe.skipIf(!available)('Rechnung erwartet (Datenbank)', () => {
   });
 
   it('erwartet je Zeitraum, eine Rechnung für mehrere Aufträge, „keine Rechnung“', async () => {
-    let exp = await expectedInvoices(sql, { today });
+    let exp = await expectedInvoices(sql, { today, from: '2000-01' });
     expect(exp.map((e) => `${e.number}/${e.period}`)).toEqual([
       'BE-2026-0901/2026-08',
       'BE-2026-0901/2026-09',
@@ -84,7 +84,7 @@ describe.skipIf(!available)('Rechnung erwartet (Datenbank)', () => {
       },
       't',
     );
-    exp = await expectedInvoices(sql, { today });
+    exp = await expectedInvoices(sql, { today, from: '2000-01' });
     expect(exp.map((e) => `${e.number}/${e.period}`)).toEqual(['BE-2026-0901/2026-09']);
     // Kosten automatisch je Objekt verteilt
     const alloc = await sql<{ site_id: string; net_cents: bigint }[]>`
@@ -95,10 +95,10 @@ describe.skipIf(!available)('Rechnung erwartet (Datenbank)', () => {
     ]);
 
     await skipExpected(sql, scA, '2026-09', 'Objekt geschlossen', 't');
-    expect(await expectedInvoices(sql, { today })).toEqual([]);
+    expect(await expectedInvoices(sql, { today, from: '2000-01' })).toEqual([]);
 
     // Rechnungsverfolgung je Bestellung: laufender Zeitraum (Oktober) wird mit angezeigt
-    const tr = await billingTracking(sql, [scA, scB], { today });
+    const tr = await billingTracking(sql, [scA, scB], { today, from: '2000-01' });
     expect(tr.get(scA)!.map((p) => `${p.start}:${p.state}`)).toEqual([
       '2026-10:laufend',
       '2026-09:keine',
@@ -147,7 +147,9 @@ describe.skipIf(!available)('Rechnung erwartet (Datenbank)', () => {
     await sql`insert into app.subcontracts (id, number, supplier_id, site_id, service_kind, frequency, billing, price_cents, valid_from, status, created_by)
               values (${scC}, 'BE-2026-0903', ${sup}, ${DEMO.siteHq}, 'Unterhaltsreinigung', 'monatlich', 'pauschale_monat', 70000, '2026-08-01', 'erteilt', 't')`;
     const open = async () =>
-      (await expectedInvoices(sql, { today })).filter((e) => e.subcontract_id === scC).map((e) => e.period);
+      (await expectedInvoices(sql, { today, from: '2000-01' }))
+        .filter((e) => e.subcontract_id === scC)
+        .map((e) => e.period);
     expect(await open()).toEqual(['2026-08', '2026-09']);
     const base = {
       supplierId: sup,

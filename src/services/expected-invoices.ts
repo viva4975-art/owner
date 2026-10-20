@@ -139,8 +139,18 @@ export function periodsOf(
   return out;
 }
 
-export async function expectedInvoices(sql: Sql, opts: { supplierId?: string; today?: string } = {}) {
+/**
+ * Rechnungen für Zeiträume bis September 2026 werden nicht mehr erwartet (Ahmed 20.10.: vor der Umstellung abgerechnet
+ * bzw. bezahlt, alte Bestellungen zum 30.09. beendet). Erster Monat, für den „Rechnung erwartet“ gilt.
+ */
+export const EXPECTED_FROM = '2026-10';
+
+export async function expectedInvoices(
+  sql: Sql,
+  opts: { supplierId?: string; today?: string; from?: string } = {},
+) {
   const today = opts.today ?? todayBerlin();
+  const from = opts.from ?? EXPECTED_FROM;
   const orders = await sql<
     {
       id: string;
@@ -181,6 +191,7 @@ export async function expectedInvoices(sql: Sql, opts: { supplierId?: string; to
   for (const o of orders) {
     if (!isRecurringOrder(o.frequency)) continue;
     for (const p of periodsOf(o.frequency, o.valid_from, o.valid_to, today)) {
+      if (p.start < from) continue;
       if (has.has(`${o.id}|${p.start}`)) continue;
       if (coverFor(covered, o, p).length) continue;
       let price = o.price_cents;
@@ -292,7 +303,7 @@ export interface BillingPeriod {
 export async function billingTracking(
   sql: Sql,
   ids: string[],
-  opts: { today?: string; limit?: number } = {},
+  opts: { today?: string; limit?: number; from?: string } = {},
 ): Promise<Map<string, BillingPeriod[]>> {
   const today = opts.today ?? todayBerlin();
   const out = new Map<string, BillingPeriod[]>();
@@ -339,7 +350,9 @@ export async function billingTracking(
     const list = periods.slice(-(opts.limit ?? 13)).map((p): BillingPeriod => {
       const k = `${o.id}|${p.start}`;
       const invoices = coverFor(covered, o, p);
-      const reason = skip.get(k) ?? null;
+      const reason =
+        skip.get(k) ??
+        (p.start < (opts.from ?? EXPECTED_FROM) ? 'vor der Umstellung (bis 30.09.2026)' : null);
       const state: BillingState = invoices.length
         ? 'abgerechnet'
         : reason

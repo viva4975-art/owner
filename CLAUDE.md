@@ -3623,3 +3623,7 @@ Testadresse.
   Bestellungen und alle Rechnungen bleiben unverändert. Alter Stand je Bestellung im Protokoll (`audit_log` action
   `stichtag_30_09`, `status_alt`/`valid_to_alt`) – bei Bedarf rücknehmbar. „Rechnung erwartet“ zählt die beendeten
   Bestellungen weiter bis September (dort ggf. „keine Rechnung …“ bzw. „bereits bezahlt“ vermerken).
+- 2026-10-20: **„Rechnung erwartet“ erst ab Oktober 2026** (Ahmed: „kommen die noch?“): Zeiträume bis September 2026 werden
+  nicht mehr erwartet (`EXPECTED_FROM = '2026-10'` in `expected-invoices.ts`); in der Abrechnungsverfolgung je Bestellung
+  stehen sie als „keine Rechnung – vor der Umstellung (bis 30.09.2026)“ statt „fehlt“. Vorhandene Eingangsrechnungen
+  werden weiter als „abgerechnet“ angezeigt.

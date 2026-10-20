@@ -65,6 +65,17 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
     } else {
       rows = all.filter((o) => o.status === 'entwurf' || o.status === 'versendet');
     }
+    const q = (c.req.query('q') ?? '').trim();
+    if (q) {
+      const words = q.toLowerCase().split(/\s+/);
+      rows = rows.filter((o) => {
+        const hay = [o.number, o.title, o.customer_name, o.customer_no, o.tender_reference, o.object_text]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return words.every((w) => hay.includes(w));
+      });
+    }
     const [t] = await sql<{ n: number }[]>`
       select count(*)::int as n from app.tenders where status in ('neu', 'pruefen', 'bearbeitung', 'abgegeben')`;
     return page(
@@ -79,6 +90,8 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
         stats={stats}
         tenders={t?.n ?? 0}
         period={period}
+        q={q}
+        page={Number(c.req.query('seite')) || 1}
         ret={(() => {
           const u = new URL(c.req.url);
           return u.pathname + u.search;

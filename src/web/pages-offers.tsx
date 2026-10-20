@@ -85,106 +85,112 @@ export const OfferTable: FC<{ rows: OfferListRow[]; showCustomer?: boolean; ret?
   showCustomer = true,
   ret,
 }) => (
-  <div class="tbl">
+  <div class="tbl offer-list">
     <table>
       <thead>
         <tr>
-          <th>Nr.</th>
-          <th>Titel / Ausschreibung</th>
-          {showCustomer && <th>Kunde / Interessent</th>}
-          <th>Abgabefrist</th>
+          <th>Angebot</th>
+          <th>{showCustomer ? 'Kunde / Leistung' : 'Leistung'}</th>
           <th class="r">Netto</th>
-          <th class="r">davon monatl.</th>
           <th>Status</th>
         </tr>
       </thead>
       <tbody>
         {rows.length === 0 && (
           <tr>
-            <td colspan={7}>
+            <td colspan={4}>
               <div class="empty">Keine Angebote in dieser Ansicht.</div>
             </td>
           </tr>
         )}
-        {rows.map((o) => (
-          <tr
-            class={ROW_COLOR[o.status] ? 'offer-decided' : undefined}
-            style={ROW_COLOR[o.status] ? `box-shadow:inset 4px 0 0 ${ROW_COLOR[o.status]}` : undefined}
-          >
-            <td>
-              <a href={`/angebote/${o.id}`}>
-                <b>{o.number}</b>
-              </a>
-            </td>
-            <td>
-              <a href={`/angebote/${o.id}`} style="color:inherit">
-                {o.title}
-              </a>
-              <div class="small mut">
-                {[o.tender_reference && `Vergabe-Nr. ${o.tender_reference}`, o.tender_platform]
-                  .filter(Boolean)
-                  .join(' · ')}
-                {o.file_count > 0 && (
-                  <span title="Unterlagen">
-                    {' '}
-                    <Icon name="clip" size={12} /> {o.file_count}
-                  </span>
-                )}
-              </div>
-            </td>
-            {showCustomer && (
-              <td>
-                <a href={`/kunden/${o.customer_id}`}>{o.customer_name}</a>
-                <div class="small mut">{o.customer_no}</div>
-              </td>
-            )}
-            <td>
-              <div class="small">{deadlineDe(o.submission_deadline)}</div>
-              <DeadlineBadge days={o.days_left} status={o.status} />
-            </td>
-            <td class="r">{euro(o.net_cents)}</td>
-            <td class="r">{o.monthly_net_cents > 0n ? euro(o.monthly_net_cents) : '–'}</td>
-            <td>
-              <OfferBadge s={o.status} />
-              {ret && ['entwurf', 'versendet'].includes(o.status) && (
-                <form method="post" action={`/angebote/${o.id}/status`} class="offer-quick">
-                  <input type="hidden" name="zurueck" value={ret} />
-                  {o.status === 'versendet' && (
-                    <>
-                      <button
-                        name="status"
-                        value="angenommen"
-                        class="q-ok"
-                        title="Zusage (Zuschlag erhalten)"
-                        data-confirm={`Zusage für Angebot ${o.number} erfassen?`}
-                      >
-                        Zusage
-                      </button>
-                      <button
-                        name="status"
-                        value="abgelehnt"
-                        class="q-err"
-                        title="Absage"
-                        data-confirm={`Absage für Angebot ${o.number} erfassen?`}
-                      >
-                        Absage
-                      </button>
-                    </>
+        {rows.map((o) => {
+          const sub = [
+            o.tender_reference && `Vergabe-Nr. ${o.tender_reference}`,
+            o.submission_deadline && o.status === 'entwurf' && `Frist ${deadlineDe(o.submission_deadline)}`,
+          ].filter(Boolean);
+          return (
+            <tr
+              class={ROW_COLOR[o.status] ? 'offer-decided' : undefined}
+              style={ROW_COLOR[o.status] ? `box-shadow:inset 3px 0 0 ${ROW_COLOR[o.status]}` : undefined}
+            >
+              <td class="ol-no">
+                <a href={`/angebote/${o.id}`}>
+                  <b>{o.number}</b>
+                </a>
+                <div class="small mut">
+                  {dateDe(o.offer_date)}
+                  {o.file_count > 0 && (
+                    <span title="Unterlagen">
+                      {' '}
+                      <Icon name="clip" size={11} />
+                      {o.file_count}
+                    </span>
                   )}
-                  <button
-                    name="status"
-                    value="aufgehoben"
-                    class="q-warn"
-                    title="Ausschreibung/Anfrage vom Auftraggeber aufgehoben"
-                    data-confirm={`Angebot ${o.number} als aufgehoben markieren?`}
-                  >
-                    Aufgehoben
-                  </button>
-                </form>
-              )}
-            </td>
-          </tr>
-        ))}
+                </div>
+              </td>
+              <td class="ol-main">
+                {showCustomer && (
+                  <a class="ol-cust" href={`/kunden/${o.customer_id}`} title={o.customer_name}>
+                    {o.customer_name}
+                  </a>
+                )}
+                <a class="ol-title" href={`/angebote/${o.id}`} title={o.title}>
+                  {o.title}
+                </a>
+                {sub.length > 0 && (
+                  <div class="small mut">
+                    {sub.join(' · ')} <DeadlineBadge days={o.days_left} status={o.status} />
+                  </div>
+                )}
+              </td>
+              <td class="r ol-sum">
+                {euro(o.net_cents)}
+                {o.monthly_net_cents > 0n && (
+                  <div class="small mut">davon {euro(o.monthly_net_cents)} mtl.</div>
+                )}
+              </td>
+              <td class="ol-st">
+                <OfferBadge s={o.status} />
+                {ret && ['entwurf', 'versendet'].includes(o.status) && (
+                  <form method="post" action={`/angebote/${o.id}/status`} class="offer-quick">
+                    <input type="hidden" name="zurueck" value={ret} />
+                    {o.status === 'versendet' && (
+                      <>
+                        <button
+                          name="status"
+                          value="angenommen"
+                          class="q-ok"
+                          title="Zusage (Zuschlag erhalten)"
+                          data-confirm={`Zusage für Angebot ${o.number} erfassen?`}
+                        >
+                          Zusage
+                        </button>
+                        <button
+                          name="status"
+                          value="abgelehnt"
+                          class="q-err"
+                          title="Absage"
+                          data-confirm={`Absage für Angebot ${o.number} erfassen?`}
+                        >
+                          Absage
+                        </button>
+                      </>
+                    )}
+                    <button
+                      name="status"
+                      value="aufgehoben"
+                      class="q-warn"
+                      title="Ausschreibung/Anfrage vom Auftraggeber aufgehoben"
+                      data-confirm={`Angebot ${o.number} als aufgehoben markieren?`}
+                    >
+                      Aufgehoben
+                    </button>
+                  </form>
+                )}
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   </div>
@@ -200,7 +206,19 @@ export const OfferList: FC<{
   tenders?: number;
   /** Adresse der Liste für den Rücksprung nach einer Schnellmarkierung */
   ret?: string;
-}> = ({ rows, all, active, title, stats, tenders, period = '12m', ret = '/angebote' }) => {
+  q?: string;
+  page?: number;
+}> = ({ rows, all, active, title, stats, tenders, period = '12m', ret = '/angebote', q = '', page = 1 }) => {
+  const PER = 25;
+  const pages = Math.max(1, Math.ceil(rows.length / PER));
+  const cur = Math.min(Math.max(1, page), pages);
+  const shown = rows.slice((cur - 1) * PER, cur * PER);
+  const pageUrl = (n: number) => {
+    const u = new URL(ret, 'http://x');
+    if (n > 1) u.searchParams.set('seite', String(n));
+    else u.searchParams.delete('seite');
+    return u.pathname + u.search;
+  };
   const plabel = OFFER_PERIODS[period];
   const count = (s: OfferStatus) => all.filter((o) => o.status === s).length;
   const tabs: Tab[] = [
@@ -260,9 +278,11 @@ export const OfferList: FC<{
           </div>
         </div>
       </div>
-      <div class="card" style="margin-bottom:16px">
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-          <h3 style="margin:0">Statistik: {plabel}</h3>
+      <details class="card offer-stats" style="margin-bottom:16px">
+        <summary>
+          Statistik: {plabel} · {stats.accepted.count} angenommen, {stats.rejected.count} abgelehnt
+        </summary>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0">
           <span style="flex:1" />
           {(Object.keys(OFFER_PERIODS) as OfferPeriod[]).map((k) => (
             <a class={`chip ${k === period ? 'on' : ''}`} href={`/angebote?zeitraum=${k}`}>
@@ -324,9 +344,46 @@ export const OfferList: FC<{
             Zurückgezogen bzw. durch Folgeangebot ersetzt: {stats.withdrawn} (nicht in der Quote).
           </p>
         )}
-      </div>
+      </details>
       <Tabs tabs={tabs} active={active} />
-      <OfferTable rows={rows} ret={ret} />
+      <form method="get" action="/angebote" class="offer-search">
+        {active !== 'offen' && <input type="hidden" name="status" value={active} />}
+        <input
+          type="search"
+          name="q"
+          value={q}
+          placeholder="Suchen: Nr., Kunde, Leistung …"
+          aria-label="Angebote durchsuchen"
+        />
+        <button class="btn sec sm">Suchen</button>
+        {q && (
+          <a class="btn ghost sm" href={active === 'offen' ? '/angebote' : `/angebote?status=${active}`}>
+            Suche aufheben
+          </a>
+        )}
+        <span class="small mut" style="margin-left:auto">
+          {rows.length === 0
+            ? 'keine Treffer'
+            : `${(cur - 1) * PER + 1}–${(cur - 1) * PER + shown.length} von ${rows.length}`}
+        </span>
+      </form>
+      <OfferTable rows={shown} ret={ret} />
+      {pages > 1 && (
+        <div class="pager">
+          {cur > 1 && <a href={pageUrl(cur - 1)}>‹ Zurück</a>}
+          {Array.from({ length: pages }, (_, i) => i + 1)
+            .filter((n) => n === 1 || n === pages || Math.abs(n - cur) <= 2)
+            .map((n, i, arr) => (
+              <>
+                {i > 0 && n - arr[i - 1]! > 1 && <span class="gap">…</span>}
+                <a href={pageUrl(n)} class={n === cur ? 'on' : ''}>
+                  {n}
+                </a>
+              </>
+            ))}
+          {cur < pages && <a href={pageUrl(cur + 1)}>Vor ›</a>}
+        </div>
+      )}
     </>
   );
 };

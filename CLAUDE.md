@@ -3607,3 +3607,8 @@ Testadresse.
   aktives Objekt → direkt zum Vertrag, mehrere → Objekt wählen (der Vertrag gilt je Objekt). Zusätzlich im Menü „+ Neu“
   bei Kunde und Objekt (`/neu?typ=reinigungsvertrag|aue-vertrag`, Objekt nicht für die Objektleitung). Am Objekt
   weiterhin unter Dokumente.
+- 2026-10-20: **Angebotsliste kompakter** (Ahmed: „nicht so breit und lang, unübersichtlich“): 4 statt 7 Spalten (Angebot Nr. +
+  Datum + Anlagen · Kunde fett + Leistung einzeilig gekürzt, Vergabe-Nr./Frist nur wenn vorhanden · Netto mit „davon mtl.“ ·
+  Status + Schnellknöpfe), Liste max. 1100 px breit, **25 je Seite** mit Seitenzahlen und „1–25 von n“, **Suche** (Nr., Kunde,
+  Leistung, Vergabe-Nr., Objekt), Statistik-Tabelle eingeklappt (Zusammenfassung in der Kopfzeile). Am Handy je Angebot
+  eine Karte statt seitlich scrollender Tabelle. Gilt auch für die Angebotslisten bei Kunde und Objekt.

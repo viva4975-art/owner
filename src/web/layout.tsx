@@ -1423,6 +1423,23 @@ main:has(input[name=ids]:checked) .bulkbar .small.mut{display:none}
 .offer-quick .q-err:hover{border-color:#b42318;color:#b42318;background:#fdeeee}
 .offer-quick .q-warn:hover{border-color:#d4a017;color:#8a6500;background:#fdf6e3}
 tr.offer-decided td{background:#fcfcfc}
+.offer-list{max-width:1100px}
+.offer-list td{padding-top:7px;padding-bottom:7px;vertical-align:top}
+.offer-list .ol-no{white-space:nowrap;width:1%}
+.offer-list .ol-main{max-width:520px}
+.offer-list .ol-cust{display:block;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.offer-list .ol-title{display:block;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.offer-list .ol-sum{white-space:nowrap;width:1%}
+.offer-list .ol-st{width:1%;white-space:nowrap}
+.offer-list .offer-quick{margin-top:4px;flex-wrap:nowrap}
+.offer-search{display:flex;gap:8px;align-items:center;flex-wrap:wrap;max-width:1100px;margin:0 0 10px}
+.offer-search input[type=search]{max-width:320px;flex:1}
+.offer-stats>summary{cursor:pointer;font-weight:600}
+@media (max-width:760px){.offer-list{overflow:visible}.offer-list table,.offer-list tbody{display:block;min-width:0;width:100%}
+.offer-list thead{display:none}.offer-list tr{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;padding:9px 12px;border-bottom:1px solid var(--line)}
+.offer-list td{display:block;padding:0;border:0;width:auto!important;max-width:none;min-width:0}
+.offer-list .ol-main{grid-column:2;grid-row:1/3}.offer-list .ol-sum{grid-column:2;text-align:left}
+.offer-list .ol-st{grid-column:1/3;white-space:normal;display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px}.offer-list .offer-quick{flex-wrap:wrap;margin-top:0}}
 /* Bewerber: interne Einschätzung (Farbe) */
 .rate-dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin-right:4px;border:1px solid rgba(0,0,0,.12)}
 .rate-pick{display:flex;gap:6px;flex-wrap:wrap}

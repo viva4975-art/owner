@@ -3523,3 +3523,12 @@ Testadresse.
   Startseite: Aufgaben ohne Zuordnung öffnen direkt die Bearbeiten-Seite. Versionsschutz (anderer Tab), alter/neuer Stand
   im Protokoll (`audit_log`, entity `task`). Objektleitung nur ihr zugeordnete bzw. selbst angelegte Aufgaben
   (`updateTask`/`getTask` in `crm.ts`). Test in `phase2.db.test.ts`.
+- 2026-10-20: **Rechnungskorrektur separat verrechnen** (Ahmed: „Kunde zieht die Korrektur erst nächsten Monat ab – Überzahlung
+  beim Zuordnen“): Kontoumsätze → Kunde → unter den offenen Rechnungen Abschnitt **„Rechnungskorrekturen separat“**:
+  Korrekturen, deren Originalrechnung noch offen ist, als eigene Zeile (+Betrag) ankreuzen → Rechnung wird ausgeglichen,
+  der Mehrbetrag als **Guthaben aus der Korrektur** festgehalten (`app.correction_credits`, je Korrektur einmal). Beim
+  nächsten Zahlungseingang steht das Guthaben als Minuszeile da → mit der Rechnung ankreuzen, von der der Kunde es abzieht;
+  es wird zuerst verrechnet (Zahlung „Verrechnung“, `app.correction_credit_uses`, auch auf Rechnungen von vor der
+  Umstellung, Migration `20261208000001`). Feste IDs, doppelt absenden bucht nichts doppelt. Logik `assignCustomerPick`
+  in `bank.ts`. **DATEV:** der Mehrbetrag ist ein Zahlungseingang auf den Debitor (Beleg = Korrekturnummer); die spätere
+  Verrechnung bleibt innerhalb des Debitors und wird nicht gebucht. Test `correction-credits.db.test.ts`.

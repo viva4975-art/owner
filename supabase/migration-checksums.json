@@ -172,5 +172,6 @@
  "20261204000001_nu_sammelbestellung.sql": "08dacd2ad71b31dd4e9d6d3aacb4e76c4b789aaeac39230767b4ed7090544495",
  "20261205000001_nu_sammel_betrag.sql": "98391ac98250552dd31ea911e4cbdc6bc8c8a1d4bf9129b613baf41bc0fbb1cd",
  "20261206000001_offer_object_text.sql": "450440503db7215acddf37deae76b55a3f61b088cf724f4d0a3d47dcd422d573",
- "20261207000001_geraete_qr.sql": "266bfdd2d8cd189a5ec2f99cab179c511cbe1fe92c25ddefd11c07e8cb472afb"
+ "20261207000001_geraete_qr.sql": "266bfdd2d8cd189a5ec2f99cab179c511cbe1fe92c25ddefd11c07e8cb472afb",
+ "20261208000001_korrektur_guthaben.sql": "aa29dc9bebcf843a48a827a0f7d309e26dd67a9e2aa33d5b0083d438b227c0ad"
 }

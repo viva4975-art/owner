@@ -195,7 +195,10 @@ export async function collectBookings(
     >`
       select p.amount_cents, p.paid_on, p.method::text, i.number, c.customer_no, c.name
         from app.payments p join app.invoices i on i.id = p.invoice_id join app.customers c on c.id = i.customer_id
-       where p.paid_on between ${f.from} and ${f.to} order by p.paid_on`;
+       where p.paid_on between ${f.from} and ${f.to}
+         -- Verrechnung eines Guthabens aus Rechnungskorrektur: nur innerhalb des Debitors, keine Buchung
+         and not exists (select 1 from app.correction_credit_uses u where u.id = p.id)
+       order by p.paid_on`;
     for (const p of pays) {
       if (p.method === 'kuerzung') continue; // steht unten mit Kürzungsbeleg
       if (p.method === 'skonto' || p.method === 'verrechnung') {
@@ -217,6 +220,28 @@ export async function collectBookings(
         kind: 'zahlungseingang',
       });
     }
+    // Guthaben aus Rechnungskorrektur: Kunde hat voll bezahlt, die Korrektur zieht er später ab – der Mehrbetrag ist
+    // ein echter Zahlungseingang auf den Debitor (Beleg = Korrekturnummer)
+    const credits = await sql<
+      { amount_cents: bigint; received_on: string; number: string; customer_no: string; name: string }[]
+    >`
+      select g.amount_cents, g.received_on::text, k.number, c.customer_no, c.name
+        from app.correction_credits g join app.invoices k on k.id = g.correction_id
+        join app.customers c on c.id = g.customer_id
+       where g.received_on between ${f.from} and ${f.to} order by g.received_on`;
+    for (const g of credits)
+      bookings.push({
+        amount: g.amount_cents,
+        sh: 'S',
+        account: s.bank_account,
+        contra: g.customer_no,
+        taxKey: '',
+        date: g.received_on,
+        doc: g.number,
+        doc2: '',
+        text: `Zahlung ${g.name} (Guthaben Korrektur)`.slice(0, 60),
+        kind: 'zahlungseingang',
+      });
     // Kürzungen (auch auf Rechnungen vor der Umstellung) mit eigenem Kürzungsbeleg: Erlösminderung gegen Debitor
     // (Haben auf dem Kunden, Erlöskonto mit Automatik-USt wie bei einer Rechnungskorrektur)
     const kb = await sql<

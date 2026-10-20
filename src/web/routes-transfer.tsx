@@ -13,8 +13,9 @@ import { parseEuro } from '../domain/money/money.js';
 import { accountOverview, feedConfigInfo, feedStatus } from '../services/bank-feed.js';
 import {
   assignDebitRun,
-  assignIncoming,
+  assignCustomerPick,
   assignInvoices,
+  assignIncoming,
   assignParty,
   assignPaymentRun,
   assignReturn,
@@ -31,7 +32,9 @@ import {
   importStatement,
   listImports,
   listTransactions,
+  openCorrectionCredits,
   reopenTransaction,
+  separableCorrections,
   suggestions,
 } from '../services/bank.js';
 import {
@@ -679,6 +682,32 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
     ].sort((a, b) => b.date.localeCompare(a.date));
   };
   const normNo = (x: string) => x.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  /**
+   * Rechnungskorrekturen separat (Ahmed 20.10.): K = Kunde hat die Rechnung voll bezahlt, zieht die Korrektur erst später
+   * ab (Mehrbetrag wird Guthaben); G = Guthaben aus einer früheren Korrektur jetzt abziehen.
+   */
+  const custCorr = async (customerId: string): Promise<Pick[]> => {
+    const [corr, credits] = await Promise.all([
+      separableCorrections(sql, customerId),
+      openCorrectionCredits(sql, customerId),
+    ]);
+    return [
+      ...credits.map((g) => ({
+        id: `G:${g.id}`,
+        no: g.number,
+        date: g.received_on,
+        cents: -g.remaining_cents,
+        note: 'Guthaben aus Rechnungskorrektur – Kunde zieht es jetzt ab',
+      })),
+      ...corr.map((k) => ({
+        id: `K:${k.id}`,
+        no: k.number,
+        date: k.issue_date,
+        cents: k.amount_cents,
+        note: `zu Rechnung ${k.original_no} – Kunde hat voll bezahlt, zieht die Korrektur später ab`,
+      })),
+    ];
+  };
 
   app.get(`/transfer/kontoumsaetze/:id{${UUID}}/inline`, async (c) => {
     const t = await getTransaction(sql, c.req.param('id'));
@@ -751,6 +780,7 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
         p = g?.customer_id ?? '';
       }
       const items = p && t.amount_cents > 0n ? await custOpen(p) : [];
+      const corr = p && t.amount_cents > 0n ? await custCorr(p) : [];
       const pre = new Set(
         items.filter((i) => normNo(i.no).length >= 5 && purpose.includes(normNo(i.no))).map((i) => i.id),
       );
@@ -774,7 +804,7 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
               class="inl-pick"
               data-amount={String(amount)}
             >
-              <PickList items={items} pre={pre} title="Offene Rechnungen" amount={amount} />
+              <PickList items={items} pre={pre} title="Offene Rechnungen" amount={amount} extras={corr} />
               <div class="inl-row">
                 <button class="btn">Zuordnen</button>
                 <a class="btn sec" href="#" data-inline-close="1">
@@ -891,12 +921,15 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
     title,
     amount,
     field = 'inv',
+    extras = [],
   }: {
     items: Pick[];
     pre: Set<string>;
     title: string;
     amount: bigint;
     field?: string;
+    /** Rechnungskorrekturen separat ankreuzen (Guthaben bilden / verrechnen) */
+    extras?: Pick[];
   }) => (
     <>
       <div class="inl-sum">
@@ -925,6 +958,25 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
         </label>
       ))}
       {items.length === 0 && <div class="mut small">Keine offenen Rechnungen.</div>}
+      {extras.length > 0 && (
+        <>
+          <div class="inl-h">Rechnungskorrekturen separat</div>
+          <div class="mut small" style="margin-bottom:4px">
+            Hat der Kunde eine Rechnung voll bezahlt und zieht die Korrektur erst später ab: Korrektur hier
+            ankreuzen – der Mehrbetrag wird als Guthaben festgehalten. Zieht er sie später ab, das Guthaben
+            (Minusbetrag) mit ankreuzen.
+          </div>
+          {extras.map((i) => (
+            <label class="inl-item">
+              <input type="checkbox" name={field} value={i.id} data-cents={String(i.cents)} />
+              <span class="r">{euro(i.cents)}</span>
+              <span>{i.no}</span>
+              <span class="mut">{dateDe(i.date)}</span>
+              <span class="mut small">{i.note ?? ''}</span>
+            </label>
+          ))}
+        </>
+      )}
     </>
   );
 
@@ -934,44 +986,19 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
     const t = await getTransaction(sql, id);
     if (!t) throw new BusinessError('Umsatz nicht gefunden');
     const b = await c.req.parseBody({ all: true });
-    const picked = arr(b, 'inv');
-    if (!picked.length) throw new BusinessError('Bitte mindestens eine Rechnung ankreuzen');
-    const komplett = str(b as Record<string, string>, 'komplett') === '1';
-    const own = picked.filter((x) => !x.startsWith('L:'));
-    const leg = picked.filter((x) => x.startsWith('L:')).map((x) => x.slice(2));
-    const open = new Map<string, bigint>();
-    for (const r of await sql<{ id: string; c: bigint }[]>`
-        select invoice_id as id, open_cents as c from app.open_items where invoice_id = any(${own}::uuid[])
-        union all select invoice_id, open_cents from app.legacy_open_items where invoice_id = any(${leg}::uuid[])`)
-      open.set(r.id, r.c);
-    let rest = t.amount_cents;
-    const items: { invoiceId: string; legacy: boolean; free: boolean; amount: bigint; skonto: bigint }[] = [];
-    for (const x of picked) {
-      const legacy = x.startsWith('L:');
-      const invoiceId = legacy ? x.slice(2) : x;
-      const o = open.get(invoiceId);
-      if (o == null) throw new BusinessError('Eine Rechnung ist nicht mehr offen – bitte neu laden');
-      const pay = rest < o ? rest : o;
-      if (pay <= 0n) throw new BusinessError('Der Betrag reicht nicht für alle angekreuzten Rechnungen');
-      rest -= pay;
-      items.push({ invoiceId, legacy, free: true, amount: pay, skonto: 0n });
-    }
-    if (rest > 0n)
-      throw new BusinessError(
-        `Überzahlung: ${euro(rest)} mehr als die angekreuzten Rechnungen – weitere ankreuzen`,
-      );
-    const last = items[items.length - 1]!;
-    const lastOpen = open.get(last.invoiceId)!;
-    if (komplett && last.amount < lastOpen) {
-      const diff = lastOpen - last.amount;
-      if (diff * 10_000n > lastOpen * 500n)
-        throw new BusinessError(
-          `Differenz ${euro(diff)} ist mehr als 5 % – als Teilzahlung buchen (Haken „Komplett bezahlt“ weg)`,
-        );
-      last.skonto = diff;
-    }
-    await assignInvoices(sql, id, items, c.get('actor'));
-    return back(c, BACK, { ok: `Zugeordnet: ${anz(items.length, 'Rechnung', 'Rechnungen')}.` });
+    const r = await assignCustomerPick(
+      sql,
+      t,
+      arr(b, 'inv'),
+      str(b as Record<string, string>, 'komplett') === '1',
+      c.get('actor'),
+    );
+    const parts = [
+      r.invoices ? anz(r.invoices, 'Rechnung', 'Rechnungen') : '',
+      r.credits ? anz(r.credits, 'Korrektur als Guthaben', 'Korrekturen als Guthaben') : '',
+      r.uses ? 'Guthaben verrechnet' : '',
+    ].filter(Boolean);
+    return back(c, BACK, { ok: `Zugeordnet: ${parts.join(', ')}.` });
   });
 
   // ---------------------------------------------------------------- Zuordnen: Kunde (Rechnungen)

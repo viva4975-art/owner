@@ -658,22 +658,39 @@ export async function assignInvoices(
   txIdValue: string,
   items: { invoiceId: string; amount: bigint; skonto: bigint; legacy?: boolean; free?: boolean }[],
   actor: string,
+  extra: {
+    /** Rechnungskorrekturen, die der Kunde (noch) nicht abgezogen hat → Mehrbetrag wird Guthaben */
+    credits?: string[];
+    /** Guthaben aus früheren Korrekturen jetzt verrechnen */
+    uses?: CreditUse[];
+  } = {},
 ) {
-  if (!items.length) throw new BusinessError('Bitte mindestens eine Rechnung wählen');
+  const creditIds = extra.credits ?? [];
+  const uses = extra.uses ?? [];
+  if (!items.length && !creditIds.length) throw new BusinessError('Bitte mindestens eine Rechnung wählen');
   let customerId: string | null = null;
   await sql.begin(async (tx) => {
     const t = await lockOpen(tx, txIdValue);
     if (t.status === 'zugeordnet') return; // schon erledigt
     if (t.amount_cents <= 0n)
       throw new BusinessError('Nur Zahlungseingänge können Rechnungen zugeordnet werden');
-    const sum = items.reduce((a, i) => a + i.amount, 0n);
+    const nos: string[] = [];
+    let creditSum = 0n;
+    for (const cid of creditIds) {
+      const k = await bookCorrectionCredit(tx, t, cid, actor);
+      creditSum += k.amount;
+      customerId ??= k.customerId;
+      nos.push(`Korrektur ${k.number} (Guthaben)`);
+    }
+    const sum = items.reduce((a, i) => a + i.amount, 0n) + creditSum;
     if (sum !== t.amount_cents) {
       throw new BusinessError(
         `Summe der Zuordnung (${fmt(sum)}) entspricht nicht dem Umsatz (${fmt(t.amount_cents)})`,
       );
     }
-    const nos: string[] = [];
+    for (const u of uses) nos.push(await useCorrectionCredit(tx, t, u, actor));
     for (const it of items) {
+      if (it.amount === 0n && it.skonto === 0n) continue; // ganz über Guthaben verrechnet
       if (it.amount <= 0n || it.skonto < 0n) throw new BusinessError('Beträge müssen positiv sein');
       if (it.legacy) {
         nos.push(await payLegacy(tx, t, it, actor));
@@ -723,6 +740,225 @@ export async function assignInvoices(
                assigned_kind = 'kunde', assigned_id = ${customerId},
                matched_by = ${actor}, matched_at = now() where id = ${t.id}`;
   });
+}
+
+/**
+ * Kunde: angekreuzte Rechnungen der Reihe nach bezahlen; „Komplett bezahlt“ = Rest der letzten als Skonto.
+ * `K:<id>` = Rechnungskorrektur separat (Kunde hat voll bezahlt → Mehrbetrag wird Guthaben), `G:<id>` = Guthaben jetzt
+ * abziehen (wird zuerst auf die angekreuzten Rechnungen verrechnet), `L:<id>` = Rechnung von vor der Umstellung.
+ */
+export async function assignCustomerPick(
+  sql: Sql,
+  t: BankTx,
+  all: string[],
+  komplett: boolean,
+  actor: string,
+) {
+  if (!all.length) throw new BusinessError('Bitte mindestens eine Rechnung ankreuzen');
+  const [cur] = await sql<{ status: string }[]>`select status from app.bank_transactions where id = ${t.id}`;
+  if (cur?.status === 'zugeordnet') return { invoices: 0, credits: 0, uses: 0 }; // doppelt abgeschickt
+  const creditIds = all.filter((x) => x.startsWith('K:')).map((x) => x.slice(2));
+  const useIds = all.filter((x) => x.startsWith('G:')).map((x) => x.slice(2));
+  const picked = all.filter((x) => !x.startsWith('K:') && !x.startsWith('G:'));
+  if (!picked.length && useIds.length)
+    throw new BusinessError(
+      'Zum Verrechnen des Guthabens bitte auch die Rechnung ankreuzen, von der es abgezogen wird',
+    );
+  const own = picked.filter((x) => !x.startsWith('L:'));
+  const leg = picked.filter((x) => x.startsWith('L:')).map((x) => x.slice(2));
+  const open = new Map<string, bigint>();
+  for (const r of await sql<{ id: string; c: bigint }[]>`
+      select invoice_id as id, open_cents as c from app.open_items where invoice_id = any(${own}::uuid[])
+      union all select invoice_id, open_cents from app.legacy_open_items where invoice_id = any(${leg}::uuid[])`)
+    open.set(r.id, r.c);
+  // Korrektur separat: der Betrag der Korrektur geht als Guthaben vom Umsatz ab
+  const corrAmt = new Map<string, bigint>();
+  for (const r of await sql<{ id: string; c: bigint }[]>`
+      select id, (-payable_cents)::bigint as c from app.invoices
+       where id = any(${creditIds}::uuid[]) and kind = 'correction' and status = 'issued' and payable_cents < 0`)
+    corrAmt.set(r.id, r.c);
+  let rest = t.amount_cents;
+  for (const k of creditIds) {
+    const a = corrAmt.get(k);
+    if (a == null)
+      throw new BusinessError('Eine Rechnungskorrektur ist nicht mehr verfügbar – bitte neu laden');
+    rest -= a;
+  }
+  if (rest < 0n) throw new BusinessError('Der Betrag reicht nicht für die angekreuzten Rechnungskorrekturen');
+  // Guthaben: was davon noch frei ist
+  const credits = (await openCorrectionCredits(sql)).filter((g) => useIds.includes(g.id));
+  if (credits.length !== useIds.length)
+    throw new BusinessError('Ein Guthaben ist schon verrechnet – bitte neu laden');
+  const creditLeft = credits.map((g) => ({ id: g.id, left: g.remaining_cents }));
+  const uses: { creditId: string; invoiceId: string; legacy: boolean; amount: bigint }[] = [];
+  const items: { invoiceId: string; legacy: boolean; free: boolean; amount: bigint; skonto: bigint }[] = [];
+  const paidTotal = new Map<string, bigint>();
+  for (const x of picked) {
+    const legacy = x.startsWith('L:');
+    const invoiceId = legacy ? x.slice(2) : x;
+    const o = open.get(invoiceId);
+    if (o == null) throw new BusinessError('Eine Rechnung ist nicht mehr offen – bitte neu laden');
+    let need = o;
+    // zuerst das Guthaben abziehen, dann den Zahlungseingang
+    for (const g of creditLeft) {
+      if (need <= 0n) break;
+      const take = g.left < need ? g.left : need;
+      if (take <= 0n) continue;
+      g.left -= take;
+      need -= take;
+      uses.push({ creditId: g.id, invoiceId, legacy, amount: take });
+    }
+    const pay = rest < need ? rest : need;
+    if (pay <= 0n && need > 0n && need === o)
+      throw new BusinessError('Der Betrag reicht nicht für alle angekreuzten Rechnungen');
+    rest -= pay > 0n ? pay : 0n;
+    items.push({ invoiceId, legacy, free: true, amount: pay > 0n ? pay : 0n, skonto: 0n });
+    paidTotal.set(invoiceId, o - need + (pay > 0n ? pay : 0n));
+  }
+  if (rest > 0n)
+    throw new BusinessError(
+      `Überzahlung: ${fmt(rest)} mehr als die angekreuzten Rechnungen – weitere ankreuzen` +
+        ' (oder eine Rechnungskorrektur separat ankreuzen, wenn der Kunde sie erst später abzieht)',
+    );
+  if (
+    creditLeft.some((g) => g.left > 0n) &&
+    creditLeft.every((g) => g.left === credits.find((c) => c.id === g.id)!.remaining_cents)
+  )
+    throw new BusinessError(
+      'Das angekreuzte Guthaben wird nicht gebraucht – bitte weitere Rechnungen ankreuzen',
+    );
+  const last = items[items.length - 1];
+  if (last) {
+    const lastOpen = open.get(last.invoiceId)!;
+    const covered = paidTotal.get(last.invoiceId)!;
+    if (komplett && covered < lastOpen) {
+      const diff = lastOpen - covered;
+      if (diff * 10_000n > lastOpen * 500n)
+        throw new BusinessError(
+          `Differenz ${fmt(diff)} ist mehr als 5 % – als Teilzahlung buchen (Haken „Komplett bezahlt“ weg)`,
+        );
+      last.skonto = diff;
+    }
+  }
+  await assignInvoices(sql, t.id, items, actor, { credits: creditIds, uses });
+  return { invoices: items.length, credits: creditIds.length, uses: uses.length };
+}
+
+// ---------------------------------------------------------------- Rechnungskorrektur separat verrechnen
+// Der Kunde zahlt die Rechnung voll und zieht die Rechnungskorrektur erst mit einer späteren Zahlung ab. Der Mehrbetrag
+// wird als Guthaben aus der Korrektur festgehalten (echter Zahlungseingang) und später auf andere Rechnungen verrechnet.
+
+export interface CreditUse {
+  creditId: string;
+  invoiceId: string;
+  legacy: boolean;
+  amount: bigint;
+}
+
+/** Ausgestellte Rechnungskorrekturen des Kunden, die er noch nicht abgezogen haben kann (Originalrechnung noch offen). */
+export async function separableCorrections(sql: Sql | Tx, customerId: string) {
+  return sql<{ id: string; number: string; issue_date: string; amount_cents: bigint; original_no: string }[]>`
+    select k.id, k.number, k.issue_date::text, (-k.payable_cents)::bigint as amount_cents,
+           coalesce(o.number, l.number) as original_no
+      from app.invoices k
+      left join app.open_items o on o.invoice_id = k.original_invoice_id
+      left join app.legacy_open_items l on l.invoice_id = k.original_legacy_invoice_id
+     where k.customer_id = ${customerId} and k.kind = 'correction' and k.status = 'issued' and k.payable_cents < 0
+       and coalesce(o.open_cents, l.open_cents, 0) > 0
+       and not exists (select 1 from app.correction_credits g where g.correction_id = k.id)
+     order by k.issue_date desc, k.number`;
+}
+
+/** Noch nicht (ganz) verrechnete Guthaben aus Rechnungskorrekturen. */
+export async function openCorrectionCredits(sql: Sql | Tx, customerId?: string) {
+  return sql<
+    {
+      id: string;
+      customer_id: string;
+      number: string;
+      received_on: string;
+      amount_cents: bigint;
+      remaining_cents: bigint;
+    }[]
+  >`
+    select g.id, g.customer_id, k.number, g.received_on::text, g.amount_cents,
+           (g.amount_cents - coalesce((select sum(u.amount_cents) from app.correction_credit_uses u
+                                        where u.credit_id = g.id), 0))::bigint as remaining_cents
+      from app.correction_credits g join app.invoices k on k.id = g.correction_id
+     where ${customerId ? sql`g.customer_id = ${customerId}` : sql`true`}
+       and g.amount_cents > coalesce((select sum(u.amount_cents) from app.correction_credit_uses u
+                                       where u.credit_id = g.id), 0)
+     order by g.received_on, k.number`;
+}
+
+async function bookCorrectionCredit(tx: Tx, t: BankTx, correctionId: string, actor: string) {
+  const [k] = await tx<
+    { number: string; customer_id: string; payable_cents: bigint; kind: string; status: string }[]
+  >`
+    select number, customer_id, payable_cents, kind::text, status::text from app.invoices
+     where id = ${correctionId} for update`;
+  if (!k || k.kind !== 'correction' || k.status !== 'issued' || k.payable_cents >= 0n)
+    throw new BusinessError('Nur ausgestellte Rechnungskorrekturen können separat verrechnet werden');
+  const id = uuidOf(`${t.id}:guthaben:${correctionId}`);
+  const [have] = await tx<{ id: string }[]>`
+    select id from app.correction_credits where correction_id = ${correctionId}`;
+  if (have && have.id !== id)
+    throw new BusinessError(`Rechnungskorrektur ${k.number} ist schon als Guthaben erfasst`);
+  const amount = -k.payable_cents;
+  await tx`insert into app.correction_credits (id, correction_id, customer_id, amount_cents, received_on, bank_transaction_id, created_by)
+           values (${id}, ${correctionId}, ${k.customer_id}, ${amount}, ${t.booking_date}, ${t.id}, ${actor})
+           on conflict (id) do nothing`;
+  await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+           values (${actor}, 'correction_credit', 'invoice', ${correctionId},
+                   ${tx.json({ amount_cents: String(amount), bank_transaction: t.id })})`;
+  return { amount, customerId: k.customer_id, number: k.number };
+}
+
+async function useCorrectionCredit(tx: Tx, t: BankTx, u: CreditUse, actor: string) {
+  if (u.amount <= 0n) throw new BusinessError('Verrechnungsbetrag muss positiv sein');
+  const [g] = await tx<{ customer_id: string; amount_cents: bigint; number: string }[]>`
+    select g.customer_id, g.amount_cents, k.number
+      from app.correction_credits g join app.invoices k on k.id = g.correction_id
+     where g.id = ${u.creditId} for update of g`;
+  if (!g) throw new BusinessError('Guthaben nicht gefunden');
+  const id = uuidOf(`${t.id}:verrechnung:${u.creditId}:${u.invoiceId}`);
+  const [done] = await tx`select 1 from app.correction_credit_uses where id = ${id}`;
+  if (done) return `Verrechnung ${g.number}`;
+  const [used] = await tx<{ s: bigint }[]>`
+    select coalesce(sum(amount_cents), 0)::bigint as s from app.correction_credit_uses where credit_id = ${u.creditId}`;
+  if (u.amount > g.amount_cents - used!.s)
+    throw new BusinessError(
+      `Guthaben aus Korrektur ${g.number} reicht nicht (${fmt(g.amount_cents - used!.s)})`,
+    );
+  const ref = `Verrechnung Guthaben Rechnungskorrektur ${g.number}`;
+  if (u.legacy) {
+    await tx`select 1 from app.legacy_invoices where id = ${u.invoiceId} for update`;
+    const [o] = await tx<{ number: string; open_cents: bigint; customer_id: string }[]>`
+      select number, open_cents, customer_id from app.legacy_open_items where invoice_id = ${u.invoiceId}`;
+    if (!o || o.customer_id !== g.customer_id)
+      throw new BusinessError('Rechnung gehört nicht zu diesem Kunden');
+    if (u.amount > o.open_cents) throw new BusinessError(`Rechnung ${o.number}: Verrechnung höher als offen`);
+    await tx`insert into app.correction_credit_uses (id, credit_id, legacy_invoice_id, amount_cents, used_on, bank_transaction_id, created_by)
+             values (${id}, ${u.creditId}, ${u.invoiceId}, ${u.amount}, ${t.booking_date}, ${t.id}, ${actor})`;
+    await tx`insert into app.legacy_payments (id, invoice_id, amount_cents, paid_on, method, reference, bank_transaction_id, created_by)
+             values (${id}, ${u.invoiceId}, ${u.amount}, ${t.booking_date}, 'verrechnung', ${ref}, ${t.id}, ${actor})`;
+    const closed = u.amount === o.open_cents;
+    await tx`update app.legacy_invoices set paid_part_cents = paid_part_cents + ${u.amount},
+               paid = ${closed}, paid_at = ${closed ? t.booking_date : null}, paid_marked_by = ${closed ? actor : null}
+             where id = ${u.invoiceId}`;
+    return `${o.number} (Verrechnung ${g.number})`;
+  }
+  await tx`select 1 from app.invoices where id = ${u.invoiceId} for update`;
+  const [o] = await tx<{ number: string; open_cents: bigint; customer_id: string }[]>`
+    select number, open_cents, customer_id from app.open_items where invoice_id = ${u.invoiceId}`;
+  if (!o || o.customer_id !== g.customer_id)
+    throw new BusinessError('Rechnung gehört nicht zu diesem Kunden');
+  if (u.amount > o.open_cents) throw new BusinessError(`Rechnung ${o.number}: Verrechnung höher als offen`);
+  await tx`insert into app.correction_credit_uses (id, credit_id, invoice_id, amount_cents, used_on, bank_transaction_id, created_by)
+           values (${id}, ${u.creditId}, ${u.invoiceId}, ${u.amount}, ${t.booking_date}, ${t.id}, ${actor})`;
+  await tx`insert into app.payments (id, invoice_id, amount_cents, paid_on, method, reference, bank_transaction_id, created_by)
+           values (${id}, ${u.invoiceId}, ${u.amount}, ${t.booking_date}, 'verrechnung', ${ref}, ${t.id}, ${actor})`;
+  return `${o.number} (Verrechnung ${g.number})`;
 }
 
 /** Zahlung auf eine Rechnung aus Fortytools (Skonto nur, wenn er die Rechnung genau ausgleicht). */

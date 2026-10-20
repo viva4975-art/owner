@@ -3617,3 +3617,9 @@ Testadresse.
   hat oben dieselbe Suchleiste wie das Büro** (Ahmed: „Maske soll gleich aussehen“): `/suche` für alle Rollen, Treffer
   gefiltert wie bisher (nur eigene Objekte, nur Seiten, die die Rolle öffnen darf – keine Kunden, Rechnungen, Angebote,
   Personalakten); Platzhalter „Objekte, Arbeitsscheine, Aufgaben, Notizen …“. `e2e:rechte` prüft die Treffer.
+- 2026-10-20: **NU-Bestellungen Stichtag 30.09.2026** (Ahmed: „alte Bestellungen beenden, damit ich neu bestellen kann“):
+  Migration `20261212000001` setzt alle erteilten NU-Bestellungen mit Beginn bis 30.09.2026 auf „beendet“ (Ende
+  spätestens 30.09.2026) und storniert NU-Entwürfe, die bis 30.09.2026 angelegt wurden. Bestellungen ab 01.10., Material-
+  Bestellungen und alle Rechnungen bleiben unverändert. Alter Stand je Bestellung im Protokoll (`audit_log` action
+  `stichtag_30_09`, `status_alt`/`valid_to_alt`) – bei Bedarf rücknehmbar. „Rechnung erwartet“ zählt die beendeten
+  Bestellungen weiter bis September (dort ggf. „keine Rechnung …“ bzw. „bereits bezahlt“ vermerken).

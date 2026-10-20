@@ -3566,3 +3566,16 @@ Testadresse.
   jetzt Text der Zelle rechts daneben. Lange Texte bis 400 Zeichen, am Wortende gekürzt (vorher 160 → „über Wh“).
   Unterschriftslinien werden nicht mehr als Eingabe angeboten. **Fund:** Die Ausfüll-Maske war vom Zwischenspeichern
   ausgenommen – nach „Herunterladen“ und erneutem Öffnen waren gesetzte Häkchen weg; jetzt bleiben sie im Tab erhalten.
+- 2026-10-20: **Geschwärzter Stundennachweis zur Rechnung** (Ahmed: „bei manchen Objekten mit der Rechnung übermitteln,
+  geschwärzt, am Ende Hinweis Sonderreiniger, unter Leistungen ankreuzen, einfach gehalten“): Leistung am Objekt →
+  Häkchen **„Geschwärzten Stundennachweis an die Rechnung anhängen“** (`site_services.attach_timesheet`, Migration
+  `20261211000001`; Liste zeigt „mit Stundennachweis“; Importe ändern den Wert nicht). Enthält eine Rechnung eine solche
+  Leistung, hängt beim **Fertigstellen** je Objekt ein PDF an (`src/services/redacted-timesheet.ts`, Briefpapier):
+  Objekt, Adresse, Zeitraum (Leistungszeitraum der Position bzw. Rechnung), Kunde, Rechnungsnr., Tabelle Datum ·
+  Mitarbeiter/in (**schwarzer Balken**, `FormCol.redact`) · Beginn · Ende · Pause · Stunden, Summe; nur erfasste/
+  freigegebene Zeiten des Objekts; am Ende der Hinweis, dass Quartals-/Jahresarbeiten von Sonderreinigern mit
+  zusätzlichem Personal erledigt werden und nicht enthalten sind. Geht als Anlage mit der Rechnungs-Mail raus. Nichts
+  doppelt (gleicher Dateiname); Fehler beim Anhängen halten das Ausstellen nicht auf (Protokoll
+  `timesheet_attach_failed`) → an der Rechnung „Stundennachweis als Anlage anhängen“. Entwurf: „Stundennachweis
+  (geschwärzt) – Vorschau“. **Hinweis:** Wird im Voraus abgerechnet, sind die Zeiten beim Ausstellen noch nicht erfasst –
+  solche Rechnungen erst nach Monatsende fertigstellen. Test `redacted-timesheet.db.test.ts`.

@@ -49,6 +49,7 @@ const ServiceGroup: FC<{ title: string; rows: SiteServiceRow[]; siteId: string }
                   {[
                     sv.type_name,
                     sv.always_unfinished ? 'immer unfertig' : null,
+                    sv.attach_timesheet ? 'mit Stundennachweis' : null,
                     sv.order_reference ? `Bestellnr. ${sv.order_reference}` : null,
                     target(sv) === 'wie Objekt' ? null : target(sv),
                   ]
@@ -507,6 +508,19 @@ export const ServiceForm: FC<{
           <label for="always_unfinished">
             Immer unfertig – Rechnungen mit dieser Leistung müssen vor dem Ausstellen geprüft werden (z. B.
             Mengen nach Aufmaß)
+          </label>
+        </div>
+        <div class="chk" style="margin-top:6px">
+          <input type="hidden" name="attach_timesheet_field" value="1" />
+          <input
+            type="checkbox"
+            id="attach_timesheet"
+            name="attach_timesheet"
+            checked={sv?.attach_timesheet ?? false}
+          />
+          <label for="attach_timesheet">
+            Geschwärzten Stundennachweis an die Rechnung anhängen (erfasste Zeiten des Objekts im
+            Leistungszeitraum, Namen geschwärzt – z. B. für die Unterhaltsreinigung)
           </label>
         </div>
 

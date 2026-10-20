@@ -57,6 +57,12 @@ import { arr, parseLines, str } from './forms.js';
 import { DRAFTS_CSS, DraftsBox, OpenExecutionsBox } from './pages-drafts.js';
 import { DraftLetter, IssuedLetter } from './pages-invoice-letter.js';
 import {
+  attachRedactedTimesheets,
+  previewRedactedTimesheet,
+  timesheetFilename,
+  timesheetSitesOf,
+} from '../services/redacted-timesheet.js';
+import {
   billableOrders,
   dropWorkReportRequirement,
   invoiceWorkReports,
@@ -743,6 +749,38 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     return back(c, `/rechnungen/${id}`, { ok: 'Gespeichert.' });
   });
 
+  // ------------------------------------------------------------------ Geschwärzter Stundennachweis
+
+  const timesheetState = async (id: string) => {
+    const sites = await timesheetSitesOf(sql, id);
+    const have = new Set(
+      (
+        await sql<{ filename: string }[]>`
+          select filename from app.invoice_documents where invoice_id = ${id} and kind = 'attachment'`
+      ).map((r) => r.filename),
+    );
+    return { count: sites.length, missing: sites.filter((t) => !have.has(timesheetFilename(t))).length };
+  };
+
+  app.get(`/rechnungen/:id{${UUID}}/stundennachweis.pdf`, async (c) => {
+    const pdf = await previewRedactedTimesheet(sql, c.req.param('id'));
+    if (!pdf) return c.text('Keine Leistung mit Stundennachweis auf dieser Rechnung', 404);
+    return new Response(pdf, {
+      headers: {
+        'content-type': 'application/pdf',
+        'content-disposition': 'inline; filename="Stundennachweis.pdf"',
+      },
+    });
+  });
+
+  app.post(`/rechnungen/:id{${UUID}}/stundennachweis`, async (c) => {
+    const id = c.req.param('id');
+    const n = await attachRedactedTimesheets(deps, id, c.get('actor'));
+    return back(c, `/rechnungen/${id}`, {
+      ok: n ? `Stundennachweis angehängt (${n}).` : 'Stundennachweis hing schon an.',
+    });
+  });
+
   // ------------------------------------------------------------------ Detail
 
   const detail = async (c: Context<AppEnv>, id: string, withPreflight: boolean) => {
@@ -795,6 +833,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
             await sql<{ t: string | null }[]>`
               select service_type_id::text as t from app.invoice_lines where invoice_id = ${id} order by position`
           ).map((r) => r.t)}
+          timesheets={(await timesheetSitesOf(sql, id)).length}
           notice={<CustomerNotice c={customer!} />}
           uploadSlot={
             <FileArea
@@ -889,6 +928,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
             />
           }
           details={detailsBody}
+          timesheets={await timesheetState(id)}
         />,
       );
     }

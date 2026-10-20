@@ -125,8 +125,25 @@ export async function issueInvoice(deps: Deps, id: string, actor: string) {
     await issue(deps.sql, id, actor);
   }
   const docs = await ensureDocuments(deps, id);
+  await attachTimesheetsSafe(deps, id, actor);
   await recordNoDelivery(deps, id, actor);
   return docs;
+}
+
+/**
+ * Geschwärzte Stundennachweise (Leistung mit „Stundennachweis anhängen“) beim Ausstellen anhängen. Fehler halten das
+ * Ausstellen nicht auf (Rechnung ist schon ausgestellt) – sie stehen im Protokoll, Anhängen geht an der Rechnung
+ * von Hand nach. Dynamischer Import: redacted-timesheet nutzt selbst addAttachment aus diesem Modul.
+ */
+async function attachTimesheetsSafe(deps: Deps, id: string, actor: string) {
+  try {
+    const { attachRedactedTimesheets } = await import('./redacted-timesheet.js');
+    await attachRedactedTimesheets(deps, id, actor);
+  } catch (err) {
+    await deps.sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+                   values (${actor}, 'timesheet_attach_failed', 'invoice', ${id},
+                           ${deps.sql.json({ error: err instanceof Error ? err.message : String(err) })})`;
+  }
 }
 
 /**

@@ -2133,6 +2133,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
         throw new BusinessError('Lohnkostenanteil fehlt – bitte in % eintragen (z. B. 80)');
       parsed.data.labor_share = t.labor_share_bp;
     }
+    if (body.attach_timesheet_field === '1') parsed.data.attach_timesheet = body.attach_timesheet === 'on';
     await saveService(sql, c.req.param('sid'), id, parsed.data, c.get('actor'), billAddress);
     return back(c, `/objekte/${id}/leistungen`, { ok: 'Leistung gespeichert.' });
   });

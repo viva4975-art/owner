@@ -50,6 +50,8 @@ export interface FormCol {
   label: string;
   width: number;
   align?: 'left' | 'right';
+  /** Inhalt geschwärzt: schwarzer Balken statt Text (z. B. Namen im anonymisierten Stundennachweis) */
+  redact?: boolean;
 }
 
 export class FormDoc {
@@ -443,7 +445,11 @@ export class FormDoc {
       const lines = Math.max(1, ...wrapped.map((w) => w.length));
       const h = lines * (size + 3) + 5;
       this.ensure(h, head);
-      wrapped.forEach((ls, i) =>
+      wrapped.forEach((ls, i) => {
+        if (cols[i]!.redact) {
+          if (cells[i]) this.rect(xs[i]!, this.y + 2, cols[i]!.width - 12, size + 3, INK);
+          return;
+        }
         ls.forEach((l, j) => {
           const y = this.y + size + 2 + j * (size + 3);
           const color = 'sum' in r && !strong && i === 0 ? GREY : INK;
@@ -451,8 +457,8 @@ export class FormDoc {
             this.right(l, xs[i]! + cols[i]!.width - 12, y, { size, bold: strong, color });
           else
             this.text(l, xs[i]!, y, { size, bold: strong || ('sum' in r && i === cols.length - 1), color });
-        }),
-      );
+        });
+      });
       this.y += h;
       this.line(L, R, this.y - 1, RULE, 0.4);
     }

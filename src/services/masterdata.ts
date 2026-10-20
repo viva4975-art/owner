@@ -382,6 +382,8 @@ export interface SiteService {
   cost_center: string | null;
   labor_share_bp: number | null;
   always_unfinished: boolean;
+  /** geschwärzten Stundennachweis des Objekts an die Rechnung hängen */
+  attach_timesheet: boolean;
   invoice_group_id: string | null;
   separate_invoice: boolean;
   order_reference: string | null;
@@ -484,6 +486,8 @@ export const serviceInput = z.object({
   order_reference: optText,
   labor_share: optPercentBp,
   always_unfinished: z.preprocess((v) => v === 'on' || v === 'true' || v === true, z.boolean()),
+  /** nur gesetzt, wenn das Formular das Feld enthält (Importe lassen den Wert unverändert) */
+  attach_timesheet: z.boolean().optional(),
   // „objekt“ = Rechnungsgruppe/Rechnung des Objekts, „separat“ = eigene Rechnung, sonst ID einer Rechnungsgruppe
   invoice_target: z.preprocess(emptyToNull, z.string().nullable().default(null)),
   version: z.preprocess(
@@ -560,6 +564,7 @@ export async function saveService(
     labor_share_bp: input.labor_share,
     order_reference: input.order_reference ? input.order_reference.slice(0, 100) : null,
     always_unfinished: input.always_unfinished,
+    ...(input.attach_timesheet !== undefined ? { attach_timesheet: input.attach_timesheet } : {}),
     separate_invoice: input.invoice_target === 'separat',
     invoice_group_id:
       input.invoice_target && /^[0-9a-f-]{36}$/.test(input.invoice_target) ? input.invoice_target : null,

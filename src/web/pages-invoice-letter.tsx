@@ -92,6 +92,8 @@ export const DraftLetter: FC<{
   types?: ServiceTypeOption[];
   /** Leistungsart je Position (gleiche Reihenfolge wie doc.lines) */
   lineTypes?: (string | null)[];
+  /** Anzahl Objekte mit „geschwärztem Stundennachweis“ (Leistung angekreuzt) */
+  timesheets?: number;
 }> = ({
   inv,
   doc,
@@ -107,6 +109,7 @@ export const DraftLetter: FC<{
   workReports = [],
   lastIssued = null,
   today = '',
+  timesheets = 0,
 }) => {
   const issueDate = inv.planned_issue_date ?? today;
   const issueMsg =
@@ -447,6 +450,16 @@ export const DraftLetter: FC<{
             <a class="sec" href={`/rechnungen/${inv.id}/lieferschein.pdf`} target="_blank">
               Lieferschein erstellen
             </a>
+            {timesheets > 0 && (
+              <a
+                class="sec"
+                href={`/rechnungen/${inv.id}/stundennachweis.pdf`}
+                target="_blank"
+                title="Wird beim Fertigstellen automatisch als Anlage angehängt"
+              >
+                Stundennachweis (geschwärzt) – Vorschau
+              </a>
+            )}
             {wrs.length === 0 && (
               <form
                 method="post"
@@ -693,6 +706,8 @@ export const IssuedLetter: FC<{
   notice?: Child;
   details: Child;
   detailsOpen: boolean;
+  /** Objekte mit geschwärztem Stundennachweis und ob er schon als Anlage hängt */
+  timesheets?: { count: number; missing: number };
 }> = (p) => {
   const { inv, doc } = p;
   const s = doc.seller;
@@ -969,6 +984,16 @@ export const IssuedLetter: FC<{
             <a href={`/rechnungen/${inv.id}/lieferschein.pdf`} target="_blank">
               Lieferschein
             </a>
+            {!!p.timesheets?.count && (
+              <a href={`/rechnungen/${inv.id}/stundennachweis.pdf`} target="_blank">
+                Stundennachweis (geschwärzt)
+              </a>
+            )}
+            {!!p.timesheets?.missing && !cancelled && (
+              <form method="post" action={`/rechnungen/${inv.id}/stundennachweis`}>
+                <button>Stundennachweis als Anlage anhängen</button>
+              </form>
+            )}
             {!isCredit && !cancelled && (
               <>
                 <a href={`/rechnungen/${inv.id}/korrektur`}>Rechnungskorrektur</a>

@@ -3582,3 +3582,10 @@ Testadresse.
   - Nachtrag (Ahmed): Hinweis ohne Beispiel „Grund- und Glasreinigung“ (damit sind die Quartals-/Jahresarbeiten nicht
     gemeint) – jetzt nur „Quartals- und Jahresarbeiten werden mit zusätzlichem Personal ausgeführt …“. Bereits
     angehängte Stundennachweise bleiben wie archiviert.
+- 2026-10-20: **Objekt aktiv/inaktiv stimmte nicht überein** (Ahmed: „unter Objekte nicht zu sehen, beim Kunden als aktiv“):
+  Reiter „Objekte (n)“ beim Kunden zählte auch inaktive Objekte (jetzt nur aktive, wie Objektliste und Filter „Aktiv“);
+  die Objektseite zeigte den Status nirgends. Jetzt in der Objekt-Übersicht (Seitenkasten) **Status aktiv/inaktiv** und
+  Knopf **„Objekt inaktiv setzen“** bzw. „wieder aktiv setzen“ (Büro, Rückfrage, Protokoll wie die Sammelaktion). Objektliste:
+  „Markierte aktiv/inaktiv setzen“ fragt mit Anzahl nach; Auswahl-Häkchen werden nicht mehr vom Browser bzw. der
+  Eingaben-Sicherung nach Position wiederhergestellt (sonst hätten sie nach einer Listenänderung auf anderen Objekten
+  gesessen – Häkchen mit Wert werden jetzt über den Wert zugeordnet).

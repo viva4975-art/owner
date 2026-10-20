@@ -776,7 +776,7 @@ export const SiteList: FC<{
             action="/objekte/status"
             class="actions bulkbar"
             style="margin:12px 0 0;gap:8px"
-            onsubmit="var n=document.querySelectorAll('input[name=ids][form=sitebulk]:checked').length;if(!n){alert('Bitte zuerst Objekte markieren.');return false}return true"
+            onsubmit="var n=document.querySelectorAll('input[name=ids][form=sitebulk]:checked').length;if(!n){alert('Bitte zuerst Objekte markieren.');return false}var a=event.submitter&&event.submitter.value==='aktiv'?'aktiv':'inaktiv';return confirm(n+(n===1?' Objekt ':' Objekte ')+a+' setzen?')"
           >
             <input type="hidden" name="zurueck" value={url({ seite: page > 1 ? String(page) : null })} />
             <label class="chk" style="margin:0">
@@ -806,6 +806,7 @@ export const SiteList: FC<{
                   name="ids"
                   value={s.id}
                   form="sitebulk"
+                  autocomplete="off"
                   aria-label={`${s.name} markieren`}
                   style="width:auto;margin:4px 4px 0 0"
                 />
@@ -1003,7 +1004,29 @@ export const SiteShell: FC<{
               </dd>
               <dt>Reinigungskräfte</dt>
               <dd>{info.cleaners} aktiv</dd>
+              <dt>Status</dt>
+              <dd>{s.active ? <span class="tag ok">aktiv</span> : <span class="tag err">inaktiv</span>}</dd>
             </dl>
+            {role !== 'objektleitung' && (
+              <form method="post" action="/objekte/status" style="margin-top:8px">
+                <input type="hidden" name="ids" value={s.id} />
+                <input type="hidden" name="zurueck" value={base} />
+                {s.active ? (
+                  <button
+                    class="btn sec sm"
+                    name="aktion"
+                    value="inaktiv"
+                    data-confirm="Objekt inaktiv setzen? Kein Monatslauf, keine Planung/Stempeln mehr; Daten bleiben erhalten."
+                  >
+                    Objekt inaktiv setzen
+                  </button>
+                ) : (
+                  <button class="btn sm" name="aktion" value="aktiv">
+                    Objekt wieder aktiv setzen
+                  </button>
+                )}
+              </form>
+            )}
           </section>
           <section class="panel">
             <h3 class="panel-head">Kunde / Verwaltung</h3>

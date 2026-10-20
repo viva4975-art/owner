@@ -55,11 +55,18 @@ export const CLIENT_JS = String.raw`
       return ['hidden', 'file', 'submit', 'button', 'reset', 'password'].indexOf(t) < 0;
     });
   }
+  // Auswahl-Häkchen (z. B. ids = Objekt-ID) über ihren Wert zuordnen, nicht über die Position: ändert sich die Liste
+  // (Objekt inaktiv, andere Sortierung), säße das Häkchen sonst auf einem anderen Datensatz (Fund 20.10.: aktive
+  // Objekte wurden mit „Markierte inaktiv setzen“ versehentlich mit deaktiviert).
+  function slot(el, seen) {
+    if (el.type === 'checkbox' && el.value && el.value !== 'on') return 'v:' + el.value;
+    return (seen[el.name] = (seen[el.name] || 0) + 1);
+  }
   function serialize(form) {
     var data = { v: form.getAttribute('data-version') || '', t: Date.now(), f: [], lines: null };
     var seen = {};
     fieldsOf(form).forEach(function (el) {
-      var idx = seen[el.name] = (seen[el.name] || 0) + 1;
+      var idx = slot(el, seen);
       var val = (el.type === 'checkbox' || el.type === 'radio') ? (el.checked ? '1' : '0') : el.value;
       data.f.push([el.name, idx, val]);
     });
@@ -79,7 +86,7 @@ export const CLIENT_JS = String.raw`
     var byKey = {};
     data.f.forEach(function (x) { byKey[x[0] + '#' + x[1]] = x[2]; });
     fieldsOf(form).forEach(function (el) {
-      var idx = seen[el.name] = (seen[el.name] || 0) + 1;
+      var idx = slot(el, seen);
       var v = byKey[el.name + '#' + idx];
       if (v === undefined) return;
       if (el.type === 'checkbox' || el.type === 'radio') {

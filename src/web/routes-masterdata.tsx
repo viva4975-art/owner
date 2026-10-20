@@ -313,7 +313,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
              (select count(*)::int from app.notes where entity_type = 'customer' and entity_id = ${id}) as notes,
              (select count(*)::int from app.invoices where customer_id = ${id} and status = 'issued')
                + (select count(*)::int from app.legacy_invoices where customer_id = ${id}) as invoices,
-             (select count(*)::int from app.sites where customer_id = ${id}) as sites,
+             (select count(*)::int from app.sites where customer_id = ${id} and active) as sites,
              (select count(*)::int from app.tasks where entity_type = 'customer' and entity_id = ${id} and status = 'open') as tasks,
              (select count(*)::int from app.open_items where customer_id = ${id} and open_cents <> 0)
              + (select count(*)::int from app.legacy_open_items where customer_id = ${id} and open_cents <> 0) as "openItems",

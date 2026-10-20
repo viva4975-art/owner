@@ -71,6 +71,22 @@ export const WordTemplateBox: FC<{ templates: WordTemplate[]; target: WordTarget
   </form>
 );
 
+/** Aufeinanderfolgende Felder mit gleicher Überschrift zusammenfassen (Ahmed 20.10.: „mit Miniüberschrift“). */
+function fieldGroups(fields: FormField[]) {
+  const out: { key: string; doc: string; sec: string; fields: FormField[] }[] = [];
+  for (const f of fields) {
+    const key = f.group ?? '';
+    const last = out[out.length - 1];
+    if (last && last.key === key) last.fields.push(f);
+    else {
+      const [doc = '', ...rest] = key.split(' · ');
+      const prevDoc = last?.key.split(' · ')[0] ?? '';
+      out.push({ key, doc: doc === prevDoc ? '' : doc, sec: rest.join(' · '), fields: [f] });
+    }
+  }
+  return out;
+}
+
 /** Kästchen und Lücken der Vorlage zum Ankreuzen/Ausfüllen (Ahmed 08.10.). */
 const FormFields: FC<{
   fields: FormField[];
@@ -99,13 +115,15 @@ const FormFields: FC<{
       </>
     )}
     {fields.some((f) => f.kind !== 'cell') && (
-      <h3 style="margin:16px 0 4px">Kästchen und Lücken in der Vorlage</h3>
+      <>
+        <h3 style="margin:16px 0 4px">Ankreuzen und ergänzen</h3>
+        <p class="small mut" style="margin-top:0">
+          Geordnet nach den Abschnitten der Vorlage. Angehakt = im Dokument angekreuzt; Lücken mit Text werden
+          ausgefüllt, leere bleiben als Linie zum Ausfüllen von Hand. Vorbelegt, was aus den Stammdaten sicher
+          bekannt ist.
+        </p>
+      </>
     )}
-    <p class="small mut" style="margin-top:0">
-      In der Reihenfolge wie im Dokument. Angehakt = im Dokument angekreuzt; Lücken mit Text werden
-      ausgefüllt, leere bleiben als Linie zum Ausfüllen von Hand. Vorbelegt, was aus den Stammdaten sicher
-      bekannt ist.
-    </p>
     <input
       type="hidden"
       name="box_idx"
@@ -114,40 +132,58 @@ const FormFields: FC<{
         .map((f) => f.index)
         .join(',')}
     />
-    {fields
-      .filter((f) => f.kind !== 'cell')
-      .map((f) =>
-        f.kind === 'box' ? (
-          <label class="chk wf-row">
-            <input
-              type="checkbox"
-              name={`box:${f.index}`}
-              value="1"
-              checked={f.index in boxes ? boxes[f.index] : !!f.checked}
-            />
-            <span>{f.label || <span class="mut">(Kästchen ohne Text)</span>}</span>
-          </label>
-        ) : (
-          <div class="wf-row wf-blank">
-            <span class="small">
-              {f.before ? `${f.before.slice(-50)} ` : ''}
-              <b>____</b>
-              {f.label && f.label !== f.before ? ` ${f.label.slice(0, 60)}` : ''}
-            </span>
-            <input
-              name={`blank:${f.index}`}
-              value={blanks[f.index] ?? ''}
-              maxlength={200}
-              aria-label="Lücke"
-            />
+    {fieldGroups(
+      // Unterschriftslinien bleiben Linie (werden von Hand unterschrieben) – nicht als Eingabe anbieten
+      fields.filter(
+        (f) => f.kind === 'box' || (f.kind === 'blank' && !/unterschrift/i.test(`${f.before} ${f.label}`)),
+      ),
+    ).map((g) => (
+      <div class="wf-grp">
+        {(g.doc || g.sec) && (
+          <div class="wf-head">
+            {g.doc && <div class="wf-doc">{g.doc}</div>}
+            {g.sec && <div class="wf-sec">{g.sec}</div>}
           </div>
-        ),
-      )}
+        )}
+        {g.fields.map((f) =>
+          f.kind === 'box' ? (
+            <label class="chk wf-row">
+              <input
+                type="checkbox"
+                name={`box:${f.index}`}
+                value="1"
+                checked={f.index in boxes ? boxes[f.index] : !!f.checked}
+              />
+              <span>{f.label || <span class="mut">(Kästchen ohne Text)</span>}</span>
+            </label>
+          ) : (
+            <div class="wf-row wf-blank">
+              <span class="small">
+                {f.before ? `${f.before.slice(-50)} ` : ''}
+                <b>____</b>
+                {f.label && f.label !== f.before ? ` ${f.label.slice(0, 60)}` : ''}
+              </span>
+              <input
+                name={`blank:${f.index}`}
+                value={blanks[f.index] ?? ''}
+                maxlength={200}
+                aria-label="Lücke"
+              />
+            </div>
+          ),
+        )}
+      </div>
+    ))}
     <style
       dangerouslySetInnerHTML={{
         __html:
           '.wf-row{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--line);margin:0}' +
-          '.wf-blank{align-items:center;flex-wrap:wrap}.wf-blank input{max-width:280px}',
+          '.wf-blank{align-items:center;flex-wrap:wrap}.wf-blank input{max-width:280px}' +
+          '.wf-grp{border:1px solid var(--line);border-radius:10px;padding:4px 14px 2px;margin:10px 0;background:#fff}' +
+          '.wf-grp .wf-row:last-child{border-bottom:0}' +
+          '.wf-head{padding:8px 0 6px;border-bottom:1px solid var(--line)}' +
+          '.wf-doc{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut,#6b6b72)}' +
+          '.wf-sec{font-weight:600;color:#7D1435;margin-top:2px}',
       }}
     />
   </div>
@@ -408,13 +444,7 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
             ['Vorlagen', '/vorlagen'],
           ]}
         />
-        <form
-          method="post"
-          action="/word-vorlagen/erzeugen"
-          class="card"
-          style="max-width:860px"
-          data-no-autosave
-        >
+        <form method="post" action="/word-vorlagen/erzeugen" class="card" style="max-width:860px">
           <input type="hidden" name="file_id" value={fileId} />
           <input type="hidden" name="target_type" value={type} />
           <input type="hidden" name="target_id" value={id} />

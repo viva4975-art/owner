@@ -3559,3 +3559,10 @@ Testadresse.
   zog ihn hoch. Jetzt zählen nur Nummern bis 5 Stellen, vergebene werden übersprungen (`suggestPersonnelNo`). **Ahmed:
   Mitarbeiterliste nach Personalnummer sortieren und die lange Nummer korrigieren** (sonst stimmt sie auch im
   Lexware-Export nicht).
+- 2026-10-20: **Word-Vorlagen: Ankreuzen übersichtlicher** (Ahmed, Screenshot Arbeitsvertrag): Kästchen/Lücken stehen in
+  Kästen je Abschnitt der Vorlage mit Mini-Überschrift (Dokumenttitel klein, Abschnitt Bordeaux – aus fetten Überschriften
+  der Vorlage, `headingsOf`/`group` in `word-form.ts`). **Fund:** Kästchen allein in einer Tabellenzelle bekamen den
+  Text der Zeile darüber (Empfangsbestätigung: alles um eine Zeile verschoben, erste Zeile „bäudereinigung GmbH …“) –
+  jetzt Text der Zelle rechts daneben. Lange Texte bis 400 Zeichen, am Wortende gekürzt (vorher 160 → „über Wh“).
+  Unterschriftslinien werden nicht mehr als Eingabe angeboten. **Fund:** Die Ausfüll-Maske war vom Zwischenspeichern
+  ausgenommen – nach „Herunterladen“ und erneutem Öffnen waren gesetzte Häkchen weg; jetzt bleiben sie im Tab erhalten.

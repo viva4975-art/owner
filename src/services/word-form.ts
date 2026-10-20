@@ -13,6 +13,8 @@ export interface FormField {
   /** Text davor im selben Absatz (z. B. „Grad:“ vor einer Lücke) */
   before: string;
   checked?: boolean;
+  /** Überschrift im Dokument, unter der das Feld steht (z. B. „Datenschutzinformation · Teil B – …“) */
+  group?: string;
 }
 
 const unesc = (s: string) =>
@@ -116,6 +118,19 @@ function context(xml: string, w: Where) {
     .replace(/\s+/g, ' ')
     .replace(/^[\s·]+|[\s·]+$/g, '');
   let label = after;
+  // Kästchen allein in einer Tabellenzelle: Beschriftung steht in der Zelle rechts daneben (gleiche Zeile)
+  if (label.length < 3 && xml.lastIndexOf('<w:tc>', w.pos) > xml.lastIndexOf('</w:tc>', w.pos)) {
+    const tcEnd = xml.indexOf('</w:tc>', w.end);
+    const trEnd = xml.indexOf('</w:tr>', w.end);
+    const nextEnd = tcEnd < 0 ? -1 : xml.indexOf('</w:tc>', tcEnd + 7);
+    if (tcEnd >= 0 && nextEnd >= 0 && nextEnd < trEnd) {
+      const right = plain(xml.slice(tcEnd + 7, nextEnd))
+        .split(/[☐☒]|_{4,}/)[0]!
+        .replace(/\s+/g, ' ')
+        .replace(/^[\s·]+|[\s·]+$/g, '');
+      if (right.length >= 2) label = right;
+    }
+  }
   if (label.length < 3) {
     const prev = plain(xml.slice(Math.max(0, w.pos - 6000), w.pos))
       .replace(/\s+/g, ' ')
@@ -123,7 +138,10 @@ function context(xml: string, w: Where) {
       .trim();
     label = before.length >= 3 ? before : prev.slice(-90).replace(/^.*[·]\s*/, '');
   }
-  return { label: label.replace(/_{4,}/g, '…').slice(0, 160), before: before.slice(-60) };
+  label = label.replace(/_{4,}/g, '…');
+  // lange Texte nicht mitten im Wort abschneiden (Ahmed 20.10.: „… über Wh“)
+  if (label.length > 400) label = `${label.slice(0, 400).replace(/\s+\S*$/, '')} …`;
+  return { label, before: before.slice(-60) };
 }
 
 /*
@@ -202,8 +220,48 @@ function insertRun(xml: string, value: string, appendToLast = false): string {
   return `${xml.slice(0, end)}<w:r>${rpr.replace(/<w:(vanish|strike)\/>/g, '')}${body}</w:r>${xml.slice(end)}`;
 }
 
+/**
+ * Überschriften der Vorlage mit Position (Ahmed 20.10.: „übersichtlicher mit Miniüberschrift“): fette Absätze mit
+ * Überschriften-Format bzw. großer Schrift, nummerierte Abschnitte („1  Vertragsunterlagen“) und Fragen.
+ * level 1 = Dokumenttitel (z. B. „ARBEITSVERTRAG“), level 2 = Abschnitt.
+ */
+function headingsOf(xml: string): { pos: number; level: 1 | 2; text: string }[] {
+  const out: { pos: number; level: 1 | 2; text: string }[] = [];
+  for (const m of xml.matchAll(/<w:p[ >](?:(?!<\/w:p>)[\s\S])*<\/w:p>/g)) {
+    const p = m[0];
+    const text = unesc([...p.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map((t) => t[1]).join(''))
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (text.length < 3 || text.length > 90 || /\$\{|[☐☒]|_{4,}/.test(text)) continue;
+    const style = /<w:pStyle w:val="([^"]+)"/.exec(p)?.[1] ?? '';
+    const bold = /<w:b\/>|<w:b w:val="(1|true)"\/>/.test(p);
+    const size = Number(/<w:sz w:val="(\d+)"/.exec(p)?.[1] ?? 0);
+    if (/^(Title|Titel)/i.test(style) || (bold && size >= 30)) out.push({ pos: m.index, level: 1, text });
+    else if (
+      /heading|berschrift/i.test(style) ||
+      (bold && (size >= 22 || /^\d+\s+\S/.test(text) || /\?$/.test(text)))
+    )
+      out.push({ pos: m.index, level: 2, text });
+  }
+  return out;
+}
+
+function groupAt(heads: ReturnType<typeof headingsOf>, pos: number): string {
+  let doc: string | undefined;
+  let sec: string | undefined;
+  for (const h of heads) {
+    if (h.pos > pos) break;
+    if (h.level === 1) {
+      doc = h.text;
+      sec = undefined;
+    } else sec = h.text.replace(/^(§?\s*\d+)\s+/, '$1 ');
+  }
+  return [doc, sec].filter(Boolean).join(' · ');
+}
+
 export function formFieldsOf(documentXml: string): FormField[] {
   const out: FormField[] = [];
+  const heads = headingsOf(documentXml);
   scanCells(documentXml, (i, label) => {
     out.push({ kind: 'cell', index: i, label, before: label });
     return undefined;
@@ -211,11 +269,11 @@ export function formFieldsOf(documentXml: string): FormField[] {
   scan(
     documentXml,
     (i, checked, w) => {
-      out.push({ kind: 'box', index: i, checked, ...context(documentXml, w) });
+      out.push({ kind: 'box', index: i, checked, ...context(documentXml, w), group: groupAt(heads, w.pos) });
       return undefined;
     },
     (i, w) => {
-      out.push({ kind: 'blank', index: i, ...context(documentXml, w) });
+      out.push({ kind: 'blank', index: i, ...context(documentXml, w), group: groupAt(heads, w.pos) });
       return undefined;
     },
   );

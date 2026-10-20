@@ -92,4 +92,19 @@ describe('leere Felder neben Beschriftungen (Ahmed 12.10.)', () => {
     // Felder sind danach nicht mehr leer → werden nicht noch einmal erkannt
     expect(formFieldsOf(out).filter((x) => x.kind === 'cell')).toHaveLength(0);
   });
+
+  it('Kästchen in Tabellen: Text der Zelle rechts, Überschrift als Gruppe', () => {
+    const box = (on: boolean) =>
+      `<w:sdt><w:sdtPr><w14:checkbox><w14:checked w:val="${on ? 1 : 0}"/></w14:checkbox></w:sdtPr>` +
+      `<w:sdtContent><w:r><w:t>${on ? '☒' : '☐'}</w:t></w:r></w:sdtContent></w:sdt>`;
+    const row = (t: string) =>
+      `<w:tr><w:tc><w:p>${box(true)}</w:p></w:tc><w:tc><w:p><w:r><w:t>${t}</w:t></w:r></w:p></w:tc></w:tr>`;
+    const xml =
+      '<w:body><w:p><w:r><w:rPr><w:b/><w:sz w:val="32"/></w:rPr><w:t>EMPFANGSBESTÄTIGUNG</w:t></w:r></w:p>' +
+      '<w:p><w:r><w:rPr><w:b/><w:sz w:val="24"/></w:rPr><w:t>1  Vertragsunterlagen</w:t></w:r></w:p>' +
+      `<w:tbl>${row('Arbeitsvertrag')}${row('Anlage 1')}</w:tbl></w:body>`;
+    const f = formFieldsOf(xml).filter((x) => x.kind === 'box');
+    expect(f.map((x) => x.label)).toEqual(['Arbeitsvertrag', 'Anlage 1']);
+    expect(f[0]!.group).toBe('EMPFANGSBESTÄTIGUNG · 1 Vertragsunterlagen');
+  });
 });

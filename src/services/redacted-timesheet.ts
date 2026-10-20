@@ -14,7 +14,7 @@ import { type Deps, addAttachment } from './workflow.js';
  */
 
 export const SPECIAL_STAFF_NOTE =
-  'Quartals- und Jahresarbeiten (z. B. Grund- und Glasreinigung) werden mit zusätzlichem Personal ausgeführt. ' +
+  'Quartals- und Jahresarbeiten werden mit zusätzlichem Personal ausgeführt. ' +
   'Diese Arbeiten übernehmen unsere Sonderreiniger; sie sind dem Objekt nicht fest zugeordnet und daher in ' +
   'diesem Nachweis nicht enthalten.';
 

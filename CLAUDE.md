@@ -3579,3 +3579,6 @@ Testadresse.
   `timesheet_attach_failed`) → an der Rechnung „Stundennachweis als Anlage anhängen“. Entwurf: „Stundennachweis
   (geschwärzt) – Vorschau“. **Hinweis:** Wird im Voraus abgerechnet, sind die Zeiten beim Ausstellen noch nicht erfasst –
   solche Rechnungen erst nach Monatsende fertigstellen. Test `redacted-timesheet.db.test.ts`.
+  - Nachtrag (Ahmed): Hinweis ohne Beispiel „Grund- und Glasreinigung“ (damit sind die Quartals-/Jahresarbeiten nicht
+    gemeint) – jetzt nur „Quartals- und Jahresarbeiten werden mit zusätzlichem Personal ausgeführt …“. Bereits
+    angehängte Stundennachweise bleiben wie archiviert.

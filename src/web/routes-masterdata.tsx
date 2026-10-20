@@ -1270,6 +1270,46 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     { name: 'Sonstiges', hint: 'Alles andere' },
   ];
 
+  // Verträge beim Kunden (Ahmed 20.10.): Vertrag bezieht sich auf ein Objekt (Leistungen, Einsatzort) → Objekt wählen
+  app.get(`/kunden/:id{${UUID}}/vertrag`, async (c) => {
+    const id = c.req.param('id');
+    const art = c.req.query('art') === 'aue' ? 'aue' : 'reinigung';
+    const sites = await sql<{ id: string; site_no: string; name: string; address: string }[]>`
+      select id, site_no, name, concat_ws(', ', street, nullif(concat_ws(' ', postal_code, city), '')) as address
+        from app.sites where customer_id = ${id} and active order by site_no`;
+    if (sites.length === 1) return c.redirect(`/objekte/${sites[0]!.id}/vertrag?art=${art}`);
+    const label = art === 'aue' ? 'Arbeitnehmerüberlassungsvertrag' : 'Reinigungsvertrag';
+    return customerPage(c, 'dokumente', () => (
+      <div class="card">
+        <h2 style="margin-top:0">{label} – für welches Objekt?</h2>
+        <p class="help">
+          Der Vertrag gilt für ein Objekt (Leistungsverzeichnis, Einsatzort). Bitte das Objekt wählen.
+        </p>
+        {sites.length ? (
+          <table>
+            <tbody>
+              {sites.map((s) => (
+                <tr>
+                  <td>
+                    <b>{s.name}</b> <span class="mut small">({s.site_no})</span>
+                    <div class="mut small">{s.address}</div>
+                  </td>
+                  <td style="text-align:right">
+                    <a class="btn sm" href={`/objekte/${s.id}/vertrag?art=${art}`}>
+                      {label} erstellen
+                    </a>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div class="flash warn">Der Kunde hat kein aktives Objekt – bitte zuerst ein Objekt anlegen.</div>
+        )}
+      </div>
+    ));
+  });
+
   app.get(`/kunden/:id{${UUID}}/dokumente`, (c) =>
     customerPage(c, 'dokumente', async (cust) => (
       <>
@@ -1289,6 +1329,12 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                 )}
                 <a class="btn sm sec" href={`/brief?an=kunde&id=${cust.id}`}>
                   Freien Brief schreiben
+                </a>
+                <a class="btn sm sec" href={`/kunden/${cust.id}/vertrag?art=reinigung`}>
+                  Reinigungsvertrag erstellen
+                </a>
+                <a class="btn sm sec" href={`/kunden/${cust.id}/vertrag?art=aue`}>
+                  Arbeitnehmerüberlassungsvertrag erstellen
                 </a>
                 {files.length > 0 && (
                   <a class="btn sm sec" href={`/kunden/${cust.id}/dokumente/uebertragen`}>

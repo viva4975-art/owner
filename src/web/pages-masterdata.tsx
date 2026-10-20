@@ -337,6 +337,8 @@ export const CustomerShell: FC<{
             ['angebot', 'Angebot'],
             ['objekt', 'Objekt'],
             ['kontakt', 'Kontakt'],
+            ['reinigungsvertrag', 'Reinigungsvertrag'],
+            ['aue-vertrag', 'Arbeitnehmerüberlassungsvertrag'],
           ],
           suffix: 'für diesen Kunden',
           context: { kunde: c.id },
@@ -962,6 +964,12 @@ export const SiteShell: FC<{
             ['aufgabe', 'Aufgabe'],
             ['rechnung', 'Rechnung'],
             ['angebot', 'Angebot'],
+            ...(role !== 'objektleitung'
+              ? ([
+                  ['reinigungsvertrag', 'Reinigungsvertrag'],
+                  ['aue-vertrag', 'Arbeitnehmerüberlassungsvertrag'],
+                ] as [string, string][])
+              : []),
           ],
           suffix: 'für dieses Objekt',
           context: { objekt: s.id, kunde: s.customer_id },

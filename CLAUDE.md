@@ -3599,3 +3599,11 @@ Testadresse.
 - 2026-10-20: Startseite ohne Karte „Rechnungsentwürfe & Monatslauf“ (Ahmed). **Abwesend:** lückenlose Abwesenheiten gleicher
   Art einer Person (auch über Wochenende/Feiertage) werden als ein Eintrag gezeigt (`mergeAbsent`, nur Anzeige – Startseite,
   Zeiterfassung, App). Überschneidende Abwesenheiten werden beim Anlegen/Ändern schon abgelehnt.
+- 2026-10-20: **Fund „Schwärzen: Invalid input: expected boolean, received string“** (Leistung speichern mit Häkchen
+  „Geschwärzten Stundennachweis anhängen“): Das Häkchen kam als „on“ an, die Prüfung erwartete true/false. Jetzt wird
+  „on“/„1“/„true“ als ja gelesen (`serviceInput.attach_timesheet`).
+- 2026-10-20: **Verträge auch beim Kunden** (Ahmed: „Reinigungsvertrag und AÜ-Vertrag beim Objekt und beim Kunden“): Kunde →
+  Dokumente → „Reinigungsvertrag erstellen“ / „Arbeitnehmerüberlassungsvertrag erstellen“ (`/kunden/:id/vertrag`): ein
+  aktives Objekt → direkt zum Vertrag, mehrere → Objekt wählen (der Vertrag gilt je Objekt). Zusätzlich im Menü „+ Neu“
+  bei Kunde und Objekt (`/neu?typ=reinigungsvertrag|aue-vertrag`, Objekt nicht für die Objektleitung). Am Objekt
+  weiterhin unter Dokumente.

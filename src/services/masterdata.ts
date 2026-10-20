@@ -487,7 +487,10 @@ export const serviceInput = z.object({
   labor_share: optPercentBp,
   always_unfinished: z.preprocess((v) => v === 'on' || v === 'true' || v === true, z.boolean()),
   /** nur gesetzt, wenn das Formular das Feld enthält (Importe lassen den Wert unverändert) */
-  attach_timesheet: z.boolean().optional(),
+  // Formular-Häkchen kommen als „on“ (bzw. fehlen) – nur echte Booleans/„on“/„1“ zählen
+  attach_timesheet: z
+    .preprocess((v) => (typeof v === 'string' ? v === 'on' || v === '1' || v === 'true' : v), z.boolean())
+    .optional(),
   // „objekt“ = Rechnungsgruppe/Rechnung des Objekts, „separat“ = eigene Rechnung, sonst ID einer Rechnungsgruppe
   invoice_target: z.preprocess(emptyToNull, z.string().nullable().default(null)),
   version: z.preprocess(

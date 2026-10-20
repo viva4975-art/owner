@@ -398,6 +398,13 @@ export function registerModuleRoutes(ctx: Ctx) {
         return c.redirect(`/personal/${randomUUID()}/bearbeiten`);
       case 'kontakt':
         return c.redirect(kunde ? `/kunden/${kunde}/kontakte` : '/kunden');
+      case 'reinigungsvertrag':
+      case 'aue-vertrag': {
+        const art = typ === 'aue-vertrag' ? 'aue' : 'reinigung';
+        if (objekt) return c.redirect(`/objekte/${objekt}/vertrag?art=${art}`);
+        if (kunde) return c.redirect(`/kunden/${kunde}/vertrag?art=${art}`);
+        return c.redirect('/kunden');
+      }
       case 'aufgabe': {
         const m = c.req.query('mitarbeiter');
         if (objekt) return c.redirect(`/objekte/${objekt}/aufgaben`);

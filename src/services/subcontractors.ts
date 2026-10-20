@@ -553,6 +553,8 @@ export interface SubcontractInput {
   version?: number | null;
 }
 
+const jsonSafe = (v: unknown) => (typeof v === 'bigint' ? v.toString() : (v ?? null));
+
 export async function saveSubcontract(sql: Sql, id: string, p: SubcontractInput, actor: string) {
   if (!(p.frequency in FREQUENCY)) throw new BusinessError('Bitte Häufigkeit wählen');
   if (!(p.billing in BILLING)) throw new BusinessError('Bitte Abrechnungsart wählen');
@@ -588,13 +590,19 @@ export async function saveSubcontract(sql: Sql, id: string, p: SubcontractInput,
         valid_to: p.validTo,
         description: p.description?.trim() || null,
         note: p.note?.trim() || null,
-      };
+      } as Record<string, unknown>;
+      // Preis fehlt noch (z. B. Anfrage der Objektleitung ohne Preis erteilt, Ahmed 20.10.): einmal nachtragen,
+      // solange es keinen Preisnachtrag gibt; danach nur noch über Preisnachtrag ab Monat.
+      if (BigInt(cur.price_cents) === 0n && p.priceCents > 0n) {
+        const [n] = await tx`select 1 from app.subcontract_prices where subcontract_id = ${id} limit 1`;
+        if (!n) next.price_cents = p.priceCents;
+      }
       const old = cur as unknown as Record<string, unknown>;
       const norm = (v: unknown) => (v === null || v === undefined ? null : String(v).replace(/\.0+$/, ''));
       const changes = Object.fromEntries(
         Object.entries(next)
           .filter(([k, v]) => norm(old[k]) !== norm(v))
-          .map(([k, v]) => [k, { alt: old[k] ?? null, neu: v }]),
+          .map(([k, v]) => [k, { alt: jsonSafe(old[k]), neu: jsonSafe(v) }]),
       );
       if (!Object.keys(changes).length) return;
       await tx`update app.subcontracts set ${tx(next)} where id = ${id}`;
@@ -655,6 +663,10 @@ export async function setSubcontractStatus(
   // fehlende und die Bestätigung werden im Protokoll vermerkt.
   let missing: string[] = [];
   let below = false;
+  if (status === 'erteilt' && BigInt(sc.price_cents) <= 0n && sc.billing !== 'umsatz')
+    throw new BusinessError(
+      `Auftrag ${sc.number}: bitte erst den Preis eintragen und speichern, dann erteilen`,
+    );
   if (status === 'erteilt') {
     const c = (await complianceOverview(sql)).find((r) => r.supplier.id === sc.supplier_id);
     if (c && c.requiredTotal > 0) {

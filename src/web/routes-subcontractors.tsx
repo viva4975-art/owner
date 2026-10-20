@@ -55,7 +55,7 @@ import { type AppEnv, type Ctx, assertSite, officeSecret, UUID } from './app.js'
 import { centsToInput, str } from './forms.js';
 import { CSS as MOBILE_CSS } from './m/routes-mobile.js';
 import { HandoverTable } from './routes-handovers.js';
-import { PageHead, Tabs, dateDe, euro, type Tab, anz } from './layout.js';
+import { PageHead, Pager, Tabs, dateDe, euro, type Tab, anz } from './layout.js';
 import { FileArea } from './files.js';
 import {
   isNuDoc,
@@ -117,8 +117,6 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
   const portalUrl = (token: string | null) =>
     token ? `${(env.PUBLIC_URL ?? 'http://127.0.0.1:3000').replace(/\/$/, '')}/np/${token}` : null;
 
-  const short = (l: string[]) =>
-    l.length > 3 ? `${l.slice(0, 3).join(', ')} +${l.length - 3} weitere` : l.join(', ');
   // Reiter eines Nachunternehmers (wie die alte App): Übersicht, Nachweise je Kategorie, Aufträge, Kontakte, Dokumente
   const CAT_SLUG: Record<string, string> = {
     Stammdokumente: 'stammdokumente',
@@ -250,13 +248,23 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       ok: ['ok', 'Vollständig'],
       inaktiv: ['muted', 'Inaktiv'],
     };
-    const stat = (key: Overall | null, label: string, value: number, tone: string, hint: string) => (
-      <a class={`stat-card tone-${tone}${filter === key ? ' on' : ''}`} href={link({ filter: key })}>
-        <span class="stat-lbl">{label}</span>
-        <span class="stat-num">{value}</span>
-        <span class="stat-hint">{hint}</span>
-      </a>
-    );
+    const PER_PAGE = 25;
+    const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
+    const cur = Math.min(pages, Math.max(1, Number(q.seite) || 1));
+    const shown = rows.slice((cur - 1) * PER_PAGE, cur * PER_PAGE);
+    const inactiveCount = suppliers.filter((s) => !s.active).length;
+    const TABS: [Overall | null, string, number][] = nuMode
+      ? [
+          [null, 'Aktiv', active.length],
+          ['kritisch', 'Kritisch', n('kritisch')],
+          ['warnung', 'Läuft ab', n('warnung')],
+          ['ok', 'Vollständig', n('ok')],
+          ['inaktiv', 'Inaktiv', inactiveCount],
+        ]
+      : [
+          [null, 'Aktiv', active.length],
+          ['inaktiv', 'Inaktiv', inactiveCount],
+        ];
     const title = nuMode ? 'Nachunternehmer' : 'Lieferanten';
     return page(
       c,
@@ -265,17 +273,10 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       <div class="portal">
         <div class="page-head">
           <div>
-            <div class="eyebrow">
-              {nuMode ? 'Einkauf · Nachweise & Fristen' : 'Einkauf · Material & Dienstleister'}
-            </div>
+            <div class="eyebrow">Einkauf</div>
             <h1>{title}</h1>
             <div class="sub">
-              {anz(
-                active.length,
-                nuMode ? 'aktiver Nachunternehmer' : 'aktiver Lieferant',
-                nuMode ? 'aktive Nachunternehmer' : 'aktive Lieferanten',
-              )}
-              {' · '}
+              {nuMode ? 'Nachweise, Fristen und Bestellungen je Firma' : 'Material und Dienstleister'} ·{' '}
               <a href={nuMode ? '/lieferanten' : '/nachunternehmer'}>
                 {nuMode ? 'zu den Lieferanten' : 'zu den Nachunternehmern'}
               </a>
@@ -292,79 +293,70 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
             </a>
           </div>
         </div>
+        <div class="ls-tabs">
+          {TABS.map(([k, l, v]) => (
+            <a class={filter === k ? 'on' : ''} href={link({ filter: k, inaktiv: null, seite: null })}>
+              {l} <span>{v}</span>
+            </a>
+          ))}
+        </div>
         {nuMode && due.length > 0 && (
-          <a
-            class={`due-banner ${expired ? 'err' : 'warn'}`}
-            href={link({ filter: expired ? 'kritisch' : 'warnung' })}
-          >
-            <span class="ico">!</span>
-            <span>
+          <details class="ls-hint ls-due">
+            <summary>
               <b>
                 {expired > 0 && `${expired} Nachweis${expired === 1 ? '' : 'e'} abgelaufen`}
                 {expired > 0 && due.length > expired && ' · '}
                 {due.length > expired && `${due.length - expired} laufen in 14 Tagen ab`}
-              </b>
-              <span class="lines">
-                {due.slice(0, 4).map((d) => (
-                  <span>
-                    {d.supplier.name}: {d.label} (
-                    {d.days < 0
-                      ? `seit ${-d.days} T. abgelaufen`
-                      : d.days === 0
-                        ? 'heute'
-                        : `in ${d.days} T.`}
-                    )
-                  </span>
-                ))}
-                {due.length > 4 && <span>… und {due.length - 4} weitere</span>}
-              </span>
-            </span>
-          </a>
+              </b>{' '}
+              – anzeigen
+            </summary>
+            <ul>
+              {due.slice(0, 12).map((d) => (
+                <li>
+                  <a href={`/lieferanten/${d.supplier.id}/nachweise`}>{d.supplier.name}</a>: {d.label} (
+                  {d.days < 0 ? `seit ${-d.days} T. abgelaufen` : d.days === 0 ? 'heute' : `in ${d.days} T.`})
+                </li>
+              ))}
+              {due.length > 12 && <li>… und {due.length - 12} weitere</li>}
+            </ul>
+          </details>
         )}
-        {nuMode && (
-          <div class="stat-grid">
-            {stat(null, 'Aktiv', active.length, 'brand', 'alle aktiven')}
-            {stat('kritisch', 'Kritisch', n('kritisch'), 'err', 'Nachweise fehlen / abgelaufen')}
-            {stat('warnung', 'Warnung', n('warnung'), 'warn', 'läuft in 60 Tagen ab')}
-            {stat('ok', 'Vollständig', n('ok'), 'ok', 'alle Pflicht-Nachweise gültig')}
-          </div>
-        )}
-        <form class="toolbar" method="get" action={base}>
+        <form class="ls-bar" method="get" action={base}>
           <input
             class="search-input"
             type="search"
             name="q"
             value={search}
             aria-label="Suche"
-            placeholder="Suche Firma, Nummer, Ansprechpartner oder Ort …"
+            placeholder="Firma, Nummer, Ansprechpartner, Ort …"
           />
           {filter && <input type="hidden" name="filter" value={filter} />}
           {showInactive && <input type="hidden" name="inaktiv" value="1" />}
-          <a class="toggle" href={link({ inaktiv: showInactive ? null : '1' })}>
-            <span class={`sw${showInactive ? ' on' : ''}`} /> Inaktive einbeziehen (
-            {suppliers.filter((s) => !s.active).length})
-          </a>
           {(search || filter) && (
-            <a class="btn sec sm" href={base}>
+            <a class="btn ghost sm" href={base}>
               Filter zurücksetzen
             </a>
           )}
+          <span class="small mut ls-count">
+            {rows.length === 0
+              ? 'keine Treffer'
+              : `${(cur - 1) * PER_PAGE + 1}–${(cur - 1) * PER_PAGE + shown.length} von ${rows.length}`}
+          </span>
         </form>
         <div class="card" style="padding:0">
           <div class="tbl stack-m">
-            <table class="sup-tbl">
+            <table class="sup-tbl sup2">
               <thead>
                 <tr>
-                  <th>Nr.</th>
                   <th>Firma</th>
-                  <th>Ort · Kontakt</th>
+                  <th>Kontakt</th>
                   {nuMode && <th>Nachweise</th>}
                   <th class="r">Offene Bestell.</th>
                   {nuMode && <th>Status</th>}
                 </tr>
               </thead>
               <tbody>
-                {rows.map((s) => {
+                {shown.map((s) => {
                   const r = comp.get(s.id);
                   const st = statusOf(s);
                   const pct = r?.requiredTotal ? Math.round((r.requiredOk / r.requiredTotal) * 100) : 100;
@@ -372,74 +364,73 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                   const o = orders.get(s.id) ?? 0;
                   return (
                     <tr class={s.active ? '' : 'mut'}>
-                      <td>
-                        <span class="nu-tag">{s.supplier_no}</span>
-                      </td>
-                      <td>
+                      <td data-label="Firma">
                         <a class="sup-name" href={href}>
                           {s.name}
                         </a>
+                        <div class="small mut">
+                          {[s.supplier_no, [s.postal_code, s.city].filter(Boolean).join(' ')]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </div>
                         {s.terminated_on && (
-                          <span class="badge err" style="margin-left:6px">
-                            gekündigt zum {dateDe(s.terminated_on)}
-                          </span>
+                          <span class="badge err">gekündigt zum {dateDe(s.terminated_on)}</span>
                         )}
-                        {s.contact_name && <div class="small mut">{s.contact_name}</div>}
                       </td>
-                      <td class="small">
-                        {s.city && <div>{[s.postal_code, s.city].filter(Boolean).join(' ')}</div>}
-                        {s.phone && (
-                          <div>
-                            <a href={`tel:${s.phone.replace(/[^+\d]/g, '')}`}>{s.phone}</a>
-                          </div>
-                        )}
+                      <td class="small" data-label="Kontakt">
+                        {s.contact_name && <div>{s.contact_name}</div>}
+                        {s.phone && <a href={`tel:${s.phone.replace(/[^+\d]/g, '')}`}>{s.phone}</a>}
                         {!nuMode && s.email && (
                           <div>
                             <a href={`mailto:${s.email}`}>{s.email}</a>
                           </div>
                         )}
+                        {!s.contact_name && !s.phone && !(!nuMode && s.email) && <span class="mut">–</span>}
                       </td>
                       {nuMode && (
-                        <td style="min-width:220px">
+                        <td data-label="Nachweise" class="sup-compl">
                           {r && s.active && !s.terminated_on ? (
                             <>
                               <div class="compl-head small">
                                 <span>
-                                  {r.requiredOk}/{r.requiredTotal} Pflicht
+                                  {r.requiredOk} von {r.requiredTotal} Pflicht
                                   {r.pending > 0 && ` · ${r.pending} zu prüfen`}
                                 </span>
-                                <b>{pct} %</b>
                               </div>
                               <div class={`progress ${pct >= 90 ? '' : pct >= 70 ? 'warn' : 'err'}`}>
                                 <i style={`width:${pct}%`} />
                               </div>
                               {r.missing.length > 0 && (
-                                <div class="lc-miss small">Fehlt: {short(r.missing)}</div>
+                                <div class="lc-miss small" title={r.missing.join(', ')}>
+                                  {r.missing.length} fehlen
+                                </div>
                               )}
                               {r.expiring.length > 0 && (
-                                <div class="lc-exp small">
-                                  Läuft ab: {short(r.expiring)}
-                                  {r.nextExpiry && ` (bis ${dateDe(r.nextExpiry)})`}
+                                <div class="lc-exp small" title={r.expiring.join(', ')}>
+                                  {r.expiring.length} laufen ab
+                                  {r.nextExpiry && ` (ab ${dateDe(r.nextExpiry)})`}
                                 </div>
                               )}
                             </>
                           ) : (
-                            <span class="small mut">keine Nachweise erforderlich</span>
+                            <span class="small mut">–</span>
                           )}
                         </td>
                       )}
-                      <td class="r">{o > 0 ? <a href={`/bestellungen?lieferant=${s.id}`}>{o}</a> : '–'}</td>
+                      <td class="r" data-label="Offene Bestell.">
+                        {o > 0 ? <a href={`/bestellungen?lieferant=${s.id}&ansicht=alle`}>{o}</a> : '–'}
+                      </td>
                       {nuMode && (
-                        <td>
+                        <td data-label="Status">
                           <span class={`badge ${BADGE[st]![0]}`}>{BADGE[st]![1]}</span>
                         </td>
                       )}
                     </tr>
                   );
                 })}
-                {!rows.length && (
+                {!shown.length && (
                   <tr>
-                    <td colspan={nuMode ? 6 : 4} class="mut">
+                    <td colspan={nuMode ? 5 : 3} class="mut">
                       Keine Einträge in dieser Auswahl.
                     </td>
                   </tr>
@@ -448,12 +439,12 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
             </table>
           </div>
         </div>
+        <Pager cur={cur} pages={pages} url={(p) => link({ seite: p > 1 ? String(p) : null })} />
         {nuMode && (
           <p class="small mut">
             Als Auftraggeber haften wir für Mindestlohn (§ 13 MiLoG, § 14 AEntG) und
-            Sozialversicherungsbeiträge (§ 28e Abs. 3a SGB IV) der Beschäftigten des Nachunternehmers. Bei
-            „Kritisch“ werden keine neuen Aufträge erteilt; in der Zahlungsliste sind die Rechnungen nicht
-            vorausgewählt.
+            Sozialversicherungsbeiträge (§ 28e Abs. 3a SGB IV) der Beschäftigten des Nachunternehmers –
+            fehlende Nachweise zeitnah nachfordern.
           </p>
         )}
       </div>,
@@ -1592,6 +1583,9 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       >`select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`,
     ]);
     const draft = !sc || sc.status === 'entwurf';
+    // Preis 0 bei erteilter Bestellung (z. B. Anfrage der Objektleitung): einmal nachtragen (Ahmed 20.10.)
+    const priceOpen =
+      !!sc && !draft && sc.status !== 'storniert' && BigInt(sc.price_cents) === 0n && !data?.prices.length;
     const comp =
       sc && sc.status === 'entwurf'
         ? (await complianceOverview(sql)).find((r) => r.supplier.id === sc.supplier_id && r.requiredTotal > 0)
@@ -1635,6 +1629,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
           {!draft && sc?.status !== 'storniert' && (
             <div class="flash" style="margin-top:0">
               <div>
+                {priceOpen && <b>Preis fehlt noch – bitte jetzt eintragen und speichern. </b>}
                 Bestellung ist {SC_STATUS[sc!.status]}: Objekt, Leistung, Häufigkeit, Abrechnung, Stunden,
                 Zeitraum und Beschreibung lassen sich korrigieren (alter Stand im Protokoll). Nachunternehmer
                 und Preis bleiben – eine Preisänderung bitte unten als <b>Preisnachtrag ab Monat</b> erfassen.
@@ -1647,7 +1642,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
           {!draft && (
             <>
               <input type="hidden" name="supplier_id" value={sc!.supplier_id} />
-              <input type="hidden" name="price" value={centsToInput(sc!.price_cents)} />
+              {!priceOpen && <input type="hidden" name="price" value={centsToInput(sc!.price_cents)} />}
             </>
           )}
           <fieldset disabled={sc?.status === 'storniert'} style="border:0;padding:0;margin:0">
@@ -1764,11 +1759,11 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 <label for="price">Preis netto (€)</label>
                 <input
                   id="price"
-                  name={draft ? 'price' : undefined}
+                  name={draft || priceOpen ? 'price' : undefined}
                   inputmode="decimal"
                   value={sc ? centsToInput(sc.price_cents) : ''}
                   required
-                  disabled={!draft}
+                  disabled={!draft && !priceOpen}
                 />
               </div>
               <div>

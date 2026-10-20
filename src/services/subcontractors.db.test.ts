@@ -335,4 +335,40 @@ describe.skipIf(!available)('Nachunternehmer', () => {
     const [r] = await sql<{ status: string }[]>`select status from app.subcontracts where id = ${id}`;
     expect(r!.status).toBe('beendet');
   });
+
+  it('Anfrage ohne Preis: Erteilen gesperrt, erteilte ohne Preis einmal nachtragbar (Ahmed 20.10.)', async () => {
+    const [sup] = await sql<
+      { supplier_id: string }[]
+    >`select s.supplier_id from app.subcontracts s join app.suppliers p on p.id = s.supplier_id where p.active limit 1`;
+    const id = randomUUID();
+    const input = {
+      supplierId: sup!.supplier_id,
+      siteId: DEMO.siteSchool,
+      serviceKind: 'Glasreinigung',
+      frequency: 'einmalig',
+      billing: 'pauschale_einsatz',
+      priceCents: 0n,
+      maxHours: null,
+      validFrom: '2026-10-20',
+      validTo: null,
+      description: null,
+      note: null,
+    };
+    await saveSubcontract(sql, id, input, 't');
+    await expect(setSubcontractStatus(sql, id, 'erteilt', 't', { acceptMissing: true })).rejects.toThrow(
+      /Preis eintragen/,
+    );
+    await sql`update app.subcontracts set status = 'erteilt' where id = ${id}`; // Altfall: ohne Preis erteilt
+    const [v] = await sql<{ version: number }[]>`select version from app.subcontracts where id = ${id}`;
+    await saveSubcontract(sql, id, { ...input, priceCents: 45000n, version: v!.version }, 't');
+    const [a] = await sql<{ price_cents: bigint; version: number }[]>`
+      select price_cents, version from app.subcontracts where id = ${id}`;
+    expect(a!.price_cents).toBe(45000n);
+    // danach nicht mehr direkt änderbar (nur Preisnachtrag)
+    await saveSubcontract(sql, id, { ...input, priceCents: 50000n, version: a!.version }, 't');
+    const [b] = await sql<
+      { price_cents: bigint }[]
+    >`select price_cents from app.subcontracts where id = ${id}`;
+    expect(b!.price_cents).toBe(45000n);
+  });
 });

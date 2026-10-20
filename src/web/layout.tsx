@@ -1423,7 +1423,24 @@ main:has(input[name=ids]:checked) .bulkbar .small.mut{display:none}
 .offer-quick .q-err:hover{border-color:#b42318;color:#b42318;background:#fdeeee}
 .offer-quick .q-warn:hover{border-color:#d4a017;color:#8a6500;background:#fdf6e3}
 tr.offer-decided td{background:#fcfcfc}
-.nu-links thead{display:none}.nu-links tbody tr{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:6px;padding:6px 0;border-bottom:1px solid var(--line)}.nu-links tbody td{padding:0;border:0}.nu-links tbody td:first-child{grid-column:1/-1}.nu-links select[name=link_sc]{width:100%}
+.ls-tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:4px 0 12px;overflow-x:auto}
+.ls-tabs a{padding:9px 14px;color:var(--mut);font-weight:600;text-decoration:none;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.ls-tabs a span{font-size:11px;background:var(--head);border-radius:999px;padding:1px 7px;margin-left:4px;color:var(--mut)}
+.ls-tabs a.on{color:var(--brand);border-bottom-color:var(--brand)}.ls-tabs a.on span{background:var(--brand);color:#fff}
+.ls-bar{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;margin:0 0 10px}
+.ls-bar .chips{display:flex;gap:4px;flex-wrap:wrap}.ls-bar .chips a{padding:5px 11px;border:1px solid var(--line-2);border-radius:999px;font-size:13px;color:var(--ink-2);background:#fff;text-decoration:none}
+.ls-bar .chips a.on{background:var(--brand);border-color:var(--brand);color:#fff}
+.ls-bar .search-input{flex:1 1 200px;max-width:340px}.ls-bar .ls-count{margin-left:auto}
+.ls-due summary{cursor:pointer;list-style:none}.ls-due ul{margin:6px 0 0;padding-left:18px}
+.sup2 td{vertical-align:top;padding-top:10px;padding-bottom:10px}.sup2 .sup-compl{min-width:170px;max-width:220px}.sup2 .badge{margin-top:3px}
+.kpis.kpis-sm .kpi{padding:10px 14px;min-height:0}.kpis.kpis-sm .kpi .v{font-size:20px}.kpis.kpis-sm .kpi .l{font-size:12px}
+.ls-hint{font-size:13px;color:var(--ink-2);background:var(--warn-50);border-radius:8px;padding:7px 12px;margin:0 0 10px}
+.bs2 .bs-tr{grid-template-columns:118px minmax(0,1fr) 150px 220px;gap:14px;padding:9px 14px}
+.bs2 .bs-nr{display:flex;flex-direction:column;gap:2px}.bs-kind{font-size:10.5px;font-weight:600;color:var(--mut);letter-spacing:.02em;text-transform:uppercase}
+.bs2 .bs-st{display:flex;flex-direction:column;align-items:flex-start;gap:3px}.bs2 .bs-st .btn{margin-top:2px}
+@media (max-width:820px){.bs2 .bs-tr{grid-template-columns:minmax(0,1fr) auto;gap:4px 10px}.bs2 .bs-main{grid-column:1/-1;grid-row:2}.bs2 .bs-amt{grid-column:2;grid-row:1}.bs2 .bs-st{grid-column:1/-1}.bs2 .bs-nr{flex-direction:row;gap:8px;align-items:baseline}.ls-bar .ls-count{margin-left:0}}
+
+.nu-links thead{display:none}.nu-links tbody tr{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:6px;padding:6px 0;border-bottom:1px solid var(--line)}.nu-links tbody td{padding:0;border:0}.nu-links tbody td:first-child{grid-column:1/-1}.nu-links select[name=link_sc]{width:100%}.nu-links tbody tr{border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:8px;background:#fcfcfc}.nu-links tbody td{border:0!important;padding:0!important}
 .sc-sum-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px 20px}.sc-sum-grid .l{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3,#8a8f98);margin-bottom:2px}.sc-edit>summary{cursor:pointer}.sc-edit>form.card{border:0;box-shadow:none;padding:12px 0 0;margin:0}
 .offer-list{max-width:1100px}
 .offer-list td{padding-top:7px;padding-bottom:7px;vertical-align:top}
@@ -2089,6 +2106,25 @@ const NewMenu: FC<{
 };
 
 /** Seitentitel + „Neu anlegen: [Auswahl] Los“ wie Fortytools. */
+/** Seitenzahlen unter Listen (25 je Seite usw.). */
+export const Pager: FC<{ cur: number; pages: number; url: (n: number) => string }> = ({ cur, pages, url }) =>
+  pages > 1 ? (
+    <div class="pager">
+      {cur > 1 && <a href={url(cur - 1)}>‹ Zurück</a>}
+      {Array.from({ length: pages }, (_, i) => i + 1)
+        .filter((n) => n === 1 || n === pages || Math.abs(n - cur) <= 2)
+        .map((n, i, arr) => (
+          <>
+            {i > 0 && n - arr[i - 1]! > 1 && <span class="gap">…</span>}
+            <a href={url(n)} class={n === cur ? 'on' : ''}>
+              {n}
+            </a>
+          </>
+        ))}
+      {cur < pages && <a href={url(cur + 1)}>Vor ›</a>}
+    </div>
+  ) : null;
+
 export const PageHead: FC<{
   title: string;
   no?: string | null | undefined;

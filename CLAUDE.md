@@ -3642,3 +3642,17 @@ Testadresse.
   eingeklappt** unten. Schlüssel/Kleidung/Einweisung aus der Bestellung entfernt (bleibt beim Nachunternehmer → Übergaben).
   Bei Sammelbestellungen kein einzelnes „Objekt“-Feld mehr, sondern Verweis auf die Objektliste. **Leistung = unsere
   Leistungsarten** (Einstellungen → Leistungsarten), bisheriger Wert bleibt wählbar. Entwürfe unverändert.
+- 2026-10-20: **NU-Bestellung aus Anfrage der Objektleitung ohne Preis** (Ahmed: „Preis kann ich nicht mehr hinzufügen“): Die
+  Anfrage war ohne Preis erteilt worden; danach war der Preis gesperrt. Jetzt: Erteilen ohne Preis wird abgelehnt (außer
+  „Anteil am Umsatz“); bei erteilten Bestellungen mit Preis 0 und ohne Preisnachtrag ist das Preisfeld einmal frei
+  (Hinweis „Preis fehlt noch“, Protokoll). Danach wie bisher nur Preisnachtrag ab Monat. Test in `subcontractors.db.test.ts`.
+- 2026-10-20: **Übersichten Einkauf aufgeräumt** (Ahmed: Bestellungen, Nachunternehmer, Lieferanten, Rechnungseingang
+  „übersichtlicher und sinnvoller“): gemeinsamer Aufbau `ls-tabs` (Reiter mit Anzahl) + `ls-bar` (Filter, Suche,
+  „1–25 von n“) + 25 je Seite (`Pager` in `layout.tsx`). Bestellungen: 4 Spalten (Nr. + NU/Material, Firma · Objekt ·
+  Zeitraum, Betrag, Status mit Abrechnung darunter), Art als Chips. Nachunternehmer: Ampel als Reiter (Aktiv / Kritisch /
+  Läuft ab / Vollständig / Inaktiv) statt Kacheln, Nachweise kurz („2 von 11 Pflicht“, „9 fehlen“ – Liste beim Darüberfahren),
+  Fristen-Hinweis zugeklappt; veralteter Satz „keine neuen Aufträge bei Kritisch“ entfernt. Rechnungseingang: Lieferant-
+  Filter, Suche (Nr., Firma, Objekt, Bestellung), Spalten Rechnung / Datum · fällig / Kostenart · Objekt / Brutto / Status,
+  erledigte neueste zuerst, Kennzahlen kleiner. Erfassungsmaske: Abschnitte Rechnung / Beträge / Zuordnung / Skonto, jede
+  Bestellungszeile als Kasten, „Material-Bestellung“ beschriftet, Kostenstellen-Aufteilung zugeklappt (offen, wenn die Summe
+  nicht stimmt oder von Hand aufgeteilt).

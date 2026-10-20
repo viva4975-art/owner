@@ -85,7 +85,7 @@ import {
 } from '../services/cost-centers.js';
 import { arr, centsToInput, milliToInput, str } from './forms.js';
 import { Icon } from './icons.js';
-import { PageHead, type Tab, Tabs, dateDe, euro, anz } from './layout.js';
+import { PageHead, Pager, type Tab, Tabs, dateDe, euro, anz } from './layout.js';
 
 const versionOf = (v: unknown) => (typeof v === 'string' && v !== '' ? Number(v) : null);
 const isMonth = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}$/.test(v);
@@ -373,7 +373,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         );
       }
       const ps = tracking.get(r.id) ?? [];
-      if (!ps.length) return <span class="small mut">–</span>;
+      if (!ps.length) return null;
       const cur = ps[0]!;
       const open = ps.filter((p) => p.state === 'offen').length;
       const label =
@@ -550,17 +550,22 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       .filter((r) => !onlyUnsigned || r.unsigned);
     const unsignedCount = all.filter((r) => r.unsigned).length;
     const count = (v: string) => (v === 'alle' ? base.length : base.filter((r) => r.phase === v).length);
-    const rows = view === 'alle' ? base : base.filter((r) => r.phase === view);
+    const allRows = view === 'alle' ? base : base.filter((r) => r.phase === view);
+    const PER_PAGE = 25;
+    const pages = Math.max(1, Math.ceil(allRows.length / PER_PAGE));
+    const cur = Math.min(pages, Math.max(1, Number(q.seite) || 1));
+    const rows = allRows.slice((cur - 1) * PER_PAGE, cur * PER_PAGE);
     const link = (over: Record<string, string | null>) => {
       const p = new URLSearchParams();
-      const cur: Record<string, string | null> = {
+      const st: Record<string, string | null> = {
         ansicht: view === 'erledigen' ? null : view,
         art: art || null,
         lieferant: supplierId || null,
         q: search || null,
+        unterschrift: onlyUnsigned ? 'fehlt' : null,
         ...over,
       };
-      for (const [k, v] of Object.entries(cur)) if (v) p.set(k, v);
+      for (const [k, v] of Object.entries(st)) if (v) p.set(k, v);
       const str = p.toString();
       return `/bestellungen${str ? `?${str}` : ''}`;
     };
@@ -570,6 +575,18 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       ['abgeschlossen', 'Abgeschlossen'],
       ['alle', 'Alle'],
     ];
+    const ARTS: [string, string][] = [
+      ['', 'Alle'],
+      ['nu', 'Nachunternehmer'],
+      ['material', 'Material'],
+    ];
+    const ret = c.req.url.slice(c.req.url.indexOf('/bestellungen'));
+    const period = (r: Row) =>
+      r.kind === 'material'
+        ? `bestellt ${dateDe(r.from)}${r.to ? ` · Lieferung ${dateDe(r.to)}` : ''}`
+        : r.ongoing
+          ? `ab ${dateDe(r.from)} · fortlaufend`
+          : `${dateDe(r.from)} – ${dateDe(r.to ?? r.from)}`;
     return page(
       c,
       'Bestellungen',
@@ -579,9 +596,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
           <div>
             <div class="eyebrow">Einkauf</div>
             <h1>Bestellungen</h1>
-            <div class="sub">
-              Material und Aufträge an Nachunternehmer an einer Stelle · Nummern BE-JJJJ-NNNN fortlaufend
-            </div>
+            <div class="sub">Material und Aufträge an Nachunternehmer</div>
           </div>
           <div class="acts">
             <a class="btn sec" href={`/bestellungen/${randomUUID()}/bearbeiten`}>
@@ -592,34 +607,33 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             </a>
           </div>
         </div>
-        <form class="toolbar" method="get" action="/bestellungen">
-          <div class="pills">
-            {VIEWS.map(([k, l]) => (
-              <a
-                class={`pill${view === k ? ' on' : ''}`}
-                href={link({ ansicht: k === 'erledigen' ? null : k })}
-              >
-                {l} <span>{count(k)}</span>
+        <div class="ls-tabs">
+          {VIEWS.map(([k, l]) => (
+            <a
+              class={view === k ? 'on' : ''}
+              href={link({ ansicht: k === 'erledigen' ? null : k, unterschrift: null })}
+            >
+              {l} <span>{count(k)}</span>
+            </a>
+          ))}
+        </div>
+        <form class="ls-bar" method="get" action="/bestellungen">
+          {view !== 'erledigen' && <input type="hidden" name="ansicht" value={view} />}
+          {art && <input type="hidden" name="art" value={art} />}
+          <div class="chips">
+            {ARTS.map(([k, l]) => (
+              <a class={art === k ? 'on' : ''} href={link({ art: k || null })}>
+                {l}
               </a>
             ))}
           </div>
-          {view !== 'erledigen' && <input type="hidden" name="ansicht" value={view} />}
-          <select name="art" onchange="this.form.submit()" style="width:auto" aria-label="Art">
-            <option value="">Material + Nachunternehmer</option>
-            <option value="material" selected={art === 'material'}>
-              nur Material
-            </option>
-            <option value="nu" selected={art === 'nu'}>
-              nur Nachunternehmer
-            </option>
-          </select>
           <select
             name="lieferant"
             onchange="this.form.submit()"
             style="width:auto;max-width:260px"
             aria-label="Lieferant"
           >
-            <option value="">Alle Lieferanten / Nachunternehmer</option>
+            <option value="">Alle Lieferanten</option>
             {suppliers.map((x) => (
               <option value={x.id} selected={x.id === supplierId}>
                 {x.name} ({x.supplier_no})
@@ -631,28 +645,23 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             type="search"
             name="q"
             value={search}
-            placeholder="Bestellnummer, Objekt …"
+            placeholder="Nummer, Firma, Objekt …"
           />
-          {supplierId && (
-            <a class="btn sec sm" href={`/lieferanten/${supplierId}`}>
-              Stammdaten &amp; Nachweise
-            </a>
-          )}
+          <span class="small mut ls-count">
+            {allRows.length === 0
+              ? 'keine Treffer'
+              : `${(cur - 1) * PER_PAGE + 1}–${(cur - 1) * PER_PAGE + rows.length} von ${allRows.length}`}
+          </span>
         </form>
         {(unsignedCount > 0 || onlyUnsigned) && (
-          <div class={`flash ${onlyUnsigned ? 'ok' : 'warn'}`} style="margin-bottom:10px">
-            <div>
-              <b>{unsignedCount}</b>{' '}
-              {unsignedCount === 1
-                ? 'erteilte Nachunternehmer-Bestellung'
-                : 'erteilte Nachunternehmer-Bestellungen'}{' '}
-              ohne unterschriebenen Auftrag (Scan oder Unterschrift am Handy) –{' '}
-              {onlyUnsigned ? (
-                <a href="/bestellungen?ansicht=alle">alle Bestellungen zeigen</a>
-              ) : (
-                <a href="/bestellungen?ansicht=alle&unterschrift=fehlt">nur diese anzeigen</a>
-              )}
-            </div>
+          <div class="ls-hint">
+            <b>{unsignedCount}</b> erteilte {unsignedCount === 1 ? 'Bestellung' : 'Bestellungen'} ohne
+            unterschriebenen Auftrag –{' '}
+            {onlyUnsigned ? (
+              <a href="/bestellungen?ansicht=alle">alle zeigen</a>
+            ) : (
+              <a href="/bestellungen?ansicht=alle&unterschrift=fehlt">nur diese anzeigen</a>
+            )}
           </div>
         )}
         <form
@@ -662,8 +671,8 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
           class="actions bulkbar"
           style="margin:0 0 8px"
         >
-          <input type="hidden" name="zurueck" value={c.req.url.slice(c.req.url.indexOf('/bestellungen'))} />
-          <span class="small mut">Häkchen setzen, um Bestellungen zu löschen.</span>
+          <input type="hidden" name="zurueck" value={ret} />
+          <span class="small mut" />
           <button
             class="btn sm danger"
             data-confirm="Markierte Bestellungen endgültig löschen? Bestellungen mit Eingangsrechnung oder gebuchtem Wareneingang bleiben erhalten."
@@ -671,7 +680,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             Markierte löschen
           </button>
         </form>
-        <div class="bs-table">
+        <div class="bs-table bs2">
           <div class="bs-sel bs-sel-h">
             <input
               type="checkbox"
@@ -680,12 +689,10 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               onchange="document.querySelectorAll('input[name=ids][form=bs-del]').forEach(function(x){x.checked=this.checked}.bind(this))"
             />
             <div class="bs-tr bs-th">
-              <span>Bestellnr.</span>
-              <span>Lieferant · Objekt</span>
-              <span>Zeitraum</span>
-              <span class="r">Gesamt netto</span>
-              <span>Status</span>
-              <span>Abrechnung</span>
+              <span>Nr.</span>
+              <span>Lieferant · Objekt · Zeitraum</span>
+              <span class="r">Betrag netto</span>
+              <span>Status · Abrechnung</span>
             </div>
           </div>
           {rows.map((r) => (
@@ -698,37 +705,35 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                 aria-label={`${r.number} markieren`}
               />
               <a class="bs-tr" href={r.href}>
-                <span class="bs-nr">{r.number}</span>
-                <span>
+                <span class="bs-nr">
+                  {r.number}
+                  <span class="bs-kind">{r.kind === 'nu' ? 'NU' : 'Material'}</span>
+                </span>
+                <span class="bs-main">
                   <b>{r.supplier}</b>
-                  <span class="bs-sub">
-                    {r.kind === 'nu' ? 'Nachunternehmer · ' : ''}
-                    {r.what}
-                  </span>
+                  <span class="bs-sub">{r.what}</span>
+                  <span class="bs-sub">{period(r)}</span>
                 </span>
-                <span class="small">
-                  {r.kind === 'material'
-                    ? `${dateDe(r.from)}${r.to ? ` · Lieferung ${dateDe(r.to)}` : ''}`
-                    : r.ongoing
-                      ? `ab ${dateDe(r.from)} · fortlaufend`
-                      : `${dateDe(r.from)} – ${dateDe(r.to ?? r.from)}`}
-                </span>
-                <span class="r">
-                  {r.net !== null && euro(r.net)} <span class="small mut">{r.per}</span>
+                <span class="r bs-amt">
+                  {r.net !== null && (
+                    <>
+                      {euro(r.net)} <span class="small mut">{r.per}</span>
+                    </>
+                  )}
                   {r.unit && <span class="bs-sub">{r.unit}</span>}
                 </span>
-                <span>
+                <span class="bs-st">
                   <span class={`bs-pill bs-${r.tone || 'grey'}`}>{r.status}</span>
                   {r.unsigned && (
                     <span class="bs-sub" style="color:var(--bad)">
-                      unterschriebener Auftrag fehlt
+                      Unterschrift fehlt
                     </span>
                   )}
+                  {billCell(r)}
                   {r.canFinish && (
                     <button
                       type="button"
                       class="btn sm sec"
-                      style="margin-top:4px"
                       title="Auftrag komplett erledigt (beendet)"
                       onclick={`event.preventDefault();event.stopPropagation();if(confirm(${JSON.stringify(`Auftrag ${r.number} als komplett erledigt markieren?`)}))document.getElementById('fin-${r.id}').submit()`}
                     >
@@ -736,12 +741,12 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                     </button>
                   )}
                 </span>
-                <span>{billCell(r)}</span>
               </a>
             </div>
           ))}
           {!rows.length && <div class="bs-tr empty">Keine Bestellungen in dieser Ansicht.</div>}
         </div>
+        <Pager cur={cur} pages={pages} url={(n) => link({ seite: n > 1 ? String(n) : null })} />
         {rows
           .filter((r) => r.canFinish)
           .map((r) => (
@@ -752,11 +757,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               hidden
             >
               <input type="hidden" name="status" value="beendet" />
-              <input
-                type="hidden"
-                name="zurueck"
-                value={c.req.url.slice(c.req.url.indexOf('/bestellungen'))}
-              />
+              <input type="hidden" name="zurueck" value={ret} />
             </form>
           ))}
       </div>,
@@ -1342,8 +1343,40 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       expectedInvoices(sql),
       pendingEInvoices(sql),
     ]);
-    const rows = st === 'alle' ? all : all.filter((i) => i.status === st);
     const today = todayBerlin();
+    const qs = c.req.query();
+    const search = (qs.q ?? '').trim().toLowerCase();
+    const supF = qs.lieferant && /^[0-9a-f-]{36}$/.test(qs.lieferant) ? qs.lieferant : '';
+    const filtered = (st === 'alle' ? all : all.filter((i) => i.status === st))
+      .filter((i) => !supF || i.supplier_id === supF)
+      .filter(
+        (i) =>
+          !search ||
+          [i.invoice_no, i.supplier_name, i.supplier_no, i.site_name, i.po_number].some((v) =>
+            v?.toLowerCase().includes(search),
+          ),
+      );
+    // offene nach Fälligkeit, erledigte neueste zuerst
+    if (st === 'alle' || st === 'bezahlt' || st === 'abgelehnt')
+      filtered.sort((a, b) => b.invoice_date.localeCompare(a.invoice_date));
+    const PER_PAGE = 25;
+    const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+    const cur = Math.min(pages, Math.max(1, Number(qs.seite) || 1));
+    const rows = filtered.slice((cur - 1) * PER_PAGE, cur * PER_PAGE);
+    const sups = [...new Map(all.map((i) => [i.supplier_id, i.supplier_name])).entries()].sort((a, b) =>
+      a[1].localeCompare(b[1], 'de'),
+    );
+    const listUrl = (over: Record<string, string | null>) => {
+      const p = new URLSearchParams();
+      const v: Record<string, string | null> = {
+        status: st,
+        q: search || null,
+        lieferant: supF || null,
+        ...over,
+      };
+      for (const [k, x] of Object.entries(v)) if (x) p.set(k, x);
+      return `/rechnungseingang?${p.toString()}`;
+    };
     const tabs = incomingTabs(all, expected.length, await openAdvanceCount());
     const open = all.filter((i) => i.status === 'freigegeben');
     return page(
@@ -1399,7 +1432,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             </ul>
           )}
         </details>
-        <div class="kpis">
+        <div class="kpis kpis-sm">
           <div class="kpi">
             <div class="l">Zu prüfen</div>
             <div class="v">{all.filter((i) => i.status === 'erfasst').length}</div>
@@ -1432,71 +1465,113 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         {st === 'erwartet' ? (
           <ExpectedList rows={expected} />
         ) : (
-          <div class="tbl">
-            <table>
-              <thead>
-                <tr>
-                  <th>Lieferant</th>
-                  <th>Rechnungs-Nr.</th>
-                  <th>Datum</th>
-                  <th>fällig</th>
-                  <th>Art / Objekt</th>
-                  <th class="r">Brutto</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.length === 0 && (
-                  <tr>
-                    <td colspan={7}>
-                      <div class="empty">Keine Rechnungen.</div>
-                    </td>
-                  </tr>
-                )}
-                {rows.map((i) => (
-                  <tr>
-                    <td>
-                      <a href={`/lieferanten/${i.supplier_id}`}>{i.supplier_name}</a>
-                    </td>
-                    <td>
-                      <a href={`/rechnungseingang/${i.id}`}>
-                        <b>{i.invoice_no}</b>
-                      </a>
-                      {i.file_count > 0 && (
-                        <span class="mut">
-                          {' '}
-                          <Icon name="clip" size={12} />
-                        </span>
-                      )}
-                      {i.reverse_charge && (
-                        <>
-                          {' '}
-                          <span class="badge tag">§ 13b</span>
-                        </>
-                      )}
-                    </td>
-                    <td>{dateDe(i.invoice_date)}</td>
-                    <td style={i.status !== 'bezahlt' && i.due_date < today ? 'color:var(--err)' : ''}>
-                      {dateDe(i.due_date)}
-                      {i.skonto_until && i.status === 'freigegeben' && i.skonto_until >= today && (
-                        <div class="small" style="color:var(--warn)">
-                          Skonto bis {dateDe(i.skonto_until)}
-                        </div>
-                      )}
-                    </td>
-                    <td class="small">
-                      {COST_CATEGORY[i.category]}
-                      {i.site_name && <div class="mut">{i.site_name}</div>}
-                    </td>
-                    <td class="r">{euro(i.gross_cents)}</td>
-                    <td>
-                      <span class={`badge ${IN_CLASS[i.status]}`}>{INCOMING_STATUS[i.status]}</span>
-                    </td>
-                  </tr>
+          <>
+            <form class="ls-bar" method="get" action="/rechnungseingang">
+              <input type="hidden" name="status" value={st} />
+              <select
+                name="lieferant"
+                onchange="this.form.submit()"
+                style="width:auto;max-width:280px"
+                aria-label="Lieferant"
+              >
+                <option value="">Alle Lieferanten</option>
+                {sups.map(([id, name]) => (
+                  <option value={id} selected={id === supF}>
+                    {name}
+                  </option>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </select>
+              <input
+                class="search-input"
+                type="search"
+                name="q"
+                value={search}
+                placeholder="Rechnungs-Nr., Firma, Objekt, Bestellung …"
+              />
+              {(search || supF) && (
+                <a class="btn ghost sm" href={listUrl({ q: null, lieferant: null })}>
+                  Filter zurücksetzen
+                </a>
+              )}
+              <span class="small mut ls-count">
+                {filtered.length === 0
+                  ? 'keine Treffer'
+                  : `${(cur - 1) * PER_PAGE + 1}–${(cur - 1) * PER_PAGE + rows.length} von ${filtered.length}`}
+              </span>
+            </form>
+            <div class="card" style="padding:0">
+              <div class="tbl stack-m">
+                <table class="in-tbl">
+                  <thead>
+                    <tr>
+                      <th>Rechnung</th>
+                      <th>Datum · fällig</th>
+                      <th>Kostenart · Objekt</th>
+                      <th class="r">Brutto</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.length === 0 && (
+                      <tr>
+                        <td colspan={5}>
+                          <div class="empty">Keine Rechnungen.</div>
+                        </td>
+                      </tr>
+                    )}
+                    {rows.map((i) => {
+                      const late = i.status !== 'bezahlt' && i.status !== 'abgelehnt' && i.due_date < today;
+                      return (
+                        <tr>
+                          <td data-label="Rechnung">
+                            <a href={`/rechnungseingang/${i.id}`}>
+                              <b>{i.supplier_name}</b>
+                            </a>
+                            <div class="small mut">
+                              Nr. {i.invoice_no}
+                              {i.po_number && ` · ${i.po_number}`}
+                              {i.file_count > 0 && (
+                                <>
+                                  {' '}
+                                  <Icon name="clip" size={12} />
+                                </>
+                              )}
+                              {i.reverse_charge && (
+                                <>
+                                  {' '}
+                                  <span class="badge tag">§ 13b</span>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                          <td class="small" data-label="Datum · fällig">
+                            {dateDe(i.invoice_date)}
+                            <div style={late ? 'color:var(--err);font-weight:600' : 'color:var(--mut)'}>
+                              fällig {dateDe(i.due_date)}
+                            </div>
+                            {i.skonto_until && i.status === 'freigegeben' && i.skonto_until >= today && (
+                              <div style="color:var(--warn)">Skonto bis {dateDe(i.skonto_until)}</div>
+                            )}
+                          </td>
+                          <td class="small" data-label="Kostenart · Objekt">
+                            {COST_CATEGORY[i.category]}
+                            {i.site_name && <div class="mut">{i.site_name}</div>}
+                          </td>
+                          <td class="r" data-label="Brutto">
+                            <b>{euro(i.gross_cents)}</b>
+                          </td>
+                          <td data-label="Status">
+                            <span class={`badge ${IN_CLASS[i.status]}`}>{INCOMING_STATUS[i.status]}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <Pager cur={cur} pages={pages} url={(n) => listUrl({ seite: n > 1 ? String(n) : null })} />
+          </>
         )}
       </>,
     );
@@ -1724,6 +1799,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
           >
             <input type="hidden" name="version" value={String(i?.version ?? '')} />
             <fieldset disabled={dis} style="border:0;padding:0;margin:0">
+              <h2 style="margin-top:0">Rechnung</h2>
               <div class="grid">
                 <div>
                   <label for="supplier_id">Lieferant / Nachunternehmer</label>
@@ -1758,6 +1834,9 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                   <label for="due_date">fällig am</label>
                   <input id="due_date" type="date" name="due_date" value={i?.due_date ?? ''} />
                 </div>
+              </div>
+              <h2>Beträge</h2>
+              <div class="grid">
                 <div>
                   <label for="net">Netto €</label>
                   <input id="net" name="net" value={v.net} required class="right" />
@@ -1784,9 +1863,8 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                 <div class="full nu-links" style="grid-column:1/-1">
                   <label>Bestellung beim Nachunternehmer – zuerst wählen</label>
                   <p class="small mut" style="margin:0 0 6px">
-                    Es erscheinen nur Bestellungen des oben gewählten Nachunternehmers. Objekt, Kostenart,
-                    Leistungsmonat und (bei Monatspauschale) der Betrag werden übernommen. Mehrere Zeilen =
-                    eine Rechnung für mehrere Bestellungen/Monate.
+                    Nur Bestellungen des gewählten Nachunternehmers. Objekt, Monat und Betrag werden
+                    übernommen – eine Zeile je Bestellung und Monat.
                   </p>
                   <div style="overflow-x:auto">
                     <table class="tbl-in" style="width:100%">
@@ -1925,7 +2003,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                   />
                 </div>
                 <div>
-                  <label for="purchase_order_id">Bestellung</label>
+                  <label for="purchase_order_id">Material-Bestellung</label>
                   <select id="purchase_order_id" name="purchase_order_id">
                     <option value="">–</option>
                     {orders.map((o) => (
@@ -2002,8 +2080,14 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
           </div>
         </div>
         {i && (
-          <div class="card">
-            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <details
+            class="card"
+            open={
+              allocations.reduce((a, x) => a + x.net_cents, 0n) !== i.net_cents ||
+              allocations.some((a) => !a.auto)
+            }
+          >
+            <summary style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;cursor:pointer">
               <h3 style="margin:0">Kostenstellen (Nachkalkulation)</h3>
               <span
                 class={`badge ${allocations.reduce((a, x) => a + x.net_cents, 0n) === i.net_cents ? 'ok' : 'warn'}`}
@@ -2014,7 +2098,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
               {allocations.length > 0 && allocations.every((a) => a.auto) && (
                 <span class="small mut">automatisch aus Objekt und Leistungsmonat</span>
               )}
-            </div>
+            </summary>
             <form method="post" action={`/rechnungseingang/${id}/aufteilung`} style="margin-top:12px">
               <div class="tbl">
                 <table>
@@ -2118,7 +2202,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
               <span class="small mut">Monate (z. B. Jahresversicherung)</span>
               <button class="btn sec sm">Verteilen</button>
             </form>
-          </div>
+          </details>
         )}
       </>,
     );

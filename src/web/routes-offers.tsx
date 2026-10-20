@@ -17,6 +17,8 @@ import {
   offerContactFull,
   offerSplitTotals,
   offerStats,
+  OFFER_PERIODS,
+  type OfferPeriod,
   offerPeriodRange,
   recentCustomers,
   renderOfferPdf,
@@ -29,7 +31,7 @@ import { type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
 import { arr, parseLines, str } from './forms.js';
 import { OfferDetail, OfferEditor, OfferList, toOfferEditorLine } from './pages-offers.js';
-import { PageHead, anz, dateDe } from './layout.js';
+import { PageHead, anz } from './layout.js';
 
 const versionOf = (v: unknown) => (typeof v === 'string' && v !== '' ? Number(v) : null);
 
@@ -37,38 +39,32 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
   const { sql, env } = deps;
 
   app.get('/angebote', async (c) => {
-    const view = c.req.query('ansicht');
-    if (view === 'fristen') return c.redirect('/ausschreibungen');
-    const iso = (v: string | undefined) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '');
-    const from = iso(c.req.query('von'));
-    const to = iso(c.req.query('bis'));
-    const customerId = c.req.query('kunde') ?? '';
-    const range =
-      from || to
-        ? { from: from || '2000-01-01', to: to || todayBerlin() }
-        : offerPeriodRange('12m', todayBerlin());
-    const statsLabel =
-      from || to
-        ? `${from ? `ab ${dateDe(from)}` : ''}${from && to ? ' ' : ''}${to ? `bis ${dateDe(to)}` : ''}`
-        : 'in den letzten 12 Monaten';
-    const [all, stats, customers] = await Promise.all([
+    const zr = (c.req.query('zeitraum') ?? '12m') as OfferPeriod;
+    const period: OfferPeriod = zr in OFFER_PERIODS ? zr : '12m';
+    const [all, stats] = await Promise.all([
       listOffers(sql),
-      offerStats(sql, range),
-      sql<{ id: string; name: string; customer_no: string }[]>`
-        select distinct c.id, c.name, c.customer_no from app.customers c
-          join app.offers o on o.customer_id = c.id order by c.name`,
+      offerStats(sql, offerPeriodRange(period, todayBerlin())),
     ]);
+    const view = c.req.query('ansicht');
     const status = c.req.query('status');
-    let active = 'offen';
     let rows = [...all];
-    if (status === 'alle') active = 'alle';
-    else if (status && status in OFFER_STATUS) {
+    let active = 'offen';
+    let title = 'Angebote';
+    if (view === 'fristen') return c.redirect('/ausschreibungen');
+    if (view === 'fristen-alt') {
+      active = 'fristen';
+      title = 'Abgabefristen';
+      rows = all
+        .filter((o) => o.status === 'entwurf' && o.submission_deadline)
+        .sort((a, b) => a.submission_deadline!.getTime() - b.submission_deadline!.getTime());
+    } else if (status === 'alle') {
+      active = 'alle';
+    } else if (status && status in OFFER_STATUS) {
       active = status;
       rows = all.filter((o) => o.status === status);
-    } else rows = all.filter((o) => o.status === 'entwurf' || o.status === 'versendet');
-    if (customerId) rows = rows.filter((o) => o.customer_id === customerId);
-    if (from) rows = rows.filter((o) => o.offer_date >= from);
-    if (to) rows = rows.filter((o) => o.offer_date <= to);
+    } else {
+      rows = all.filter((o) => o.status === 'entwurf' || o.status === 'versendet');
+    }
     const q = (c.req.query('q') ?? '').trim();
     if (q) {
       const words = q.toLowerCase().split(/\s+/);
@@ -84,22 +80,18 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
       select count(*)::int as n from app.tenders where status in ('neu', 'pruefen', 'bearbeitung', 'abgegeben')`;
     return page(
       c,
-      'Angebote',
+      title,
       'angebote',
       <OfferList
         rows={rows}
         all={all}
         active={active}
-        title="Angebote"
+        title={title}
         stats={stats}
-        statsLabel={statsLabel}
         tenders={t?.n ?? 0}
+        period={period}
         q={q}
         page={Number(c.req.query('seite')) || 1}
-        customers={customers}
-        customerId={customerId}
-        from={from}
-        to={to}
         ret={(() => {
           const u = new URL(c.req.url);
           return u.pathname + u.search;

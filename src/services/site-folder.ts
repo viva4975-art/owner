@@ -237,7 +237,7 @@ export async function folderFacts(sql: Sql, siteId: string): Promise<FolderFacts
            (select count(*) from app.site_services where site_id = ${siteId} and active)::int as services,
            (select count(*) from app.shift_plans where site_id = ${siteId}
               and (valid_until is null or valid_until >= current_date))::int as plans,
-           (select count(*) from app.keys where site_id = ${siteId})::int as keys`;
+           (select count(*) from app.keys where site_id = ${siteId} and deleted_at is null)::int as keys`;
   const info = s.folder_info ?? {};
   const defaults = await getFolderDefaults(sql);
   const missing: FolderFacts['missing'] = [];

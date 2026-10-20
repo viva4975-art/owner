@@ -260,7 +260,7 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
                         when sp.id is not null then sp.name end as holder
               from app.keys k left join app.employees e on e.id = k.holder_employee_id
               left join app.suppliers sp on sp.id = k.holder_supplier_id
-             where k.site_id = ${siteId} order by k.key_no`
+             where k.site_id = ${siteId} and k.deleted_at is null order by k.key_no`
         : [];
     const devices =
       kind === 'geraet'
@@ -1097,14 +1097,14 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
             ))}
           </div>
           <div class="card" id="schluesselprotokoll">
-            <h3 style="margin-top:0">Schlüsselübergabeprotokoll erstellen</h3>
+            <h3 style="margin-top:0">Schlüsselprotokoll erstellen (Ausgabe oder Rückgabe)</h3>
             {keysNow.length ? (
               <form method="post" action={`/personal/${e.id}/schluesselprotokolle`}>
                 <input type="hidden" name="form_id" value={randomUUID()} />
                 <p class="small mut" style="margin-top:0">
                   Aktuelle Liste laut Schlüsselbuch – Schlüssel abwählen, die nicht auf das Protokoll sollen.
-                  Jeder Stand wird unten gespeichert. Die unterschriebene Fassung danach unter Dokumente →
-                  Schlüssel hochladen.
+                  Ausgabe und Rückgabe sind getrennte Protokolle mit eigener Unterschrift. Jeder Stand wird
+                  unten gespeichert; die unterschriebene Fassung danach unter Dokumente → Schlüssel hochladen.
                 </p>
                 <div class="tbl">
                   <table class="keep">
@@ -1143,9 +1143,23 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
                   </table>
                 </div>
                 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
-                  <label for="sp-datum">Datum der Übergabe</label>
+                  <label for="sp-datum">Datum</label>
                   <input id="sp-datum" type="date" name="datum" value={todayBerlin()} />
-                  <button class="btn">Protokoll als PDF erstellen</button>
+                  <button class="btn" name="art" value="ausgabe">
+                    Übergabeprotokoll (PDF)
+                  </button>
+                  <button
+                    class="btn sec"
+                    name="art"
+                    value="rueckgabe"
+                    data-confirm="Rückgabeprotokoll für die angehakten Schlüssel erstellen?"
+                  >
+                    Rückgabeprotokoll (PDF)
+                  </button>
+                  <span class="chk">
+                    <input type="checkbox" id="sp-buchen" name="buchen" value="1" checked />
+                    <label for="sp-buchen">bei Rückgabe gleich im Schlüsselbuch zurückbuchen</label>
+                  </span>
                 </div>
               </form>
             ) : (
@@ -1162,6 +1176,7 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
                     <thead>
                       <tr>
                         <th>Nr.</th>
+                        <th>Art</th>
                         <th>Datum</th>
                         <th class="r">Schlüssel</th>
                         <th>erstellt</th>
@@ -1174,6 +1189,7 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
                           <td>
                             <b>{p.protocol_no}</b>
                           </td>
+                          <td>{p.kind === 'rueckgabe' ? 'Rückgabe' : 'Übergabe'}</td>
                           <td>{dateDe(p.protocol_date)}</td>
                           <td class="r">{p.items.length}</td>
                           <td class="small mut">
@@ -1440,11 +1456,21 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
     const p = await createKeyProtocol(
       sql,
       filesCfg(),
-      { id: formId, employeeId: id, date: str(b, 'datum'), keyIds: allowed },
+      {
+        id: formId,
+        employeeId: id,
+        date: str(b, 'datum'),
+        keyIds: allowed,
+        kind: str(b, 'art') === 'rueckgabe' ? 'rueckgabe' : 'ausgabe',
+        bookReturn: str(b, 'buchen') === '1',
+      },
       c.get('actor'),
     );
     return back(c, `/personal/${id}/uebergaben#schluesselprotokoll`, {
-      ok: `Schlüsselübergabeprotokoll ${p.protocol_no} erstellt (${p.items.length} Schlüssel) – PDF unten in der Liste.`,
+      ok:
+        p.kind === 'rueckgabe'
+          ? `Rückgabeprotokoll ${p.protocol_no} erstellt (${p.items.length} Schlüssel)${str(b, 'buchen') === '1' ? ', im Schlüsselbuch zurückgebucht' : ''} – PDF unten in der Liste.`
+          : `Schlüsselübergabeprotokoll ${p.protocol_no} erstellt (${p.items.length} Schlüssel) – PDF unten in der Liste.`,
     });
   });
 

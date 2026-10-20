@@ -3,7 +3,7 @@ import { listWordTemplates } from '../services/word-templates.js';
 import { WordTemplateBox } from './routes-word-templates.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { renderAttendancePdf } from '../pdf/attendance.js';
-import { listKeys } from '../services/inventory.js';
+import { listKeys, nextKeyNo } from '../services/inventory.js';
 import { listOffers } from '../services/offers.js';
 import { listFiles } from '../services/uploads.js';
 import { type Ctx, UUID, assertSite } from './app.js';
@@ -534,7 +534,7 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                              and (sp.valid_until is null or sp.valid_until >= ${todayBerlin()})))
          order by 3 desc, e.last_name, e.first_name`;
       const back = `/objekte/${s.id}/schluessel`;
-      const nextNo = `S-${s.site_no}-${String(keys.length + 1).padStart(2, '0')}`;
+      const nextNo = await nextKeyNo(sql, s.id);
       const out = keys.filter((k) => k.holder_employee_id || k.holder_supplier_id).length;
       return (
         <>

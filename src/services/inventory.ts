@@ -395,7 +395,7 @@ export interface KeyRow {
 }
 
 export const keyInput = z.object({
-  key_no: z.string().trim().min(1, 'Schlüsselnummer fehlt'),
+  key_no: z.string().trim().max(60).optional().default(''),
   site_id: z.guid('Bitte ein Objekt wählen'),
   description: z.string().trim().min(1, 'Beschreibung fehlt (z. B. Haupteingang, Generalschlüssel)'),
   quantity: z.coerce.number().int().min(1),
@@ -409,7 +409,61 @@ export async function listKeys(sql: Sql) {
                 when sp.id is not null then sp.name || ' (NU)' end as holder_name
       from app.keys k join app.sites s on s.id = k.site_id left join app.employees e on e.id = k.holder_employee_id
       left join app.suppliers sp on sp.id = k.holder_supplier_id
+     where k.deleted_at is null
      order by s.site_no, k.key_no`;
+}
+
+/** Nächste freie Schlüsselnummer S-<Objektnr.>-NN (gelöschte Nummern werden nicht wieder vergeben). */
+export async function nextKeyNo(sql: Sql | Tx, siteId: string): Promise<string> {
+  const [s] = await sql<{ site_no: string }[]>`select site_no from app.sites where id = ${siteId}`;
+  if (!s) throw new BusinessError('Objekt nicht gefunden');
+  const prefix = `S-${s.site_no}-`;
+  const rows = await sql<{ key_no: string }[]>`
+    select key_no from app.keys where key_no like ${prefix.replace(/[%_\\]/g, '\\$&') + '%'}`;
+  let max = 0;
+  for (const r of rows) {
+    const n = Number(r.key_no.slice(prefix.length));
+    if (Number.isInteger(n) && n > max) max = n;
+  }
+  return `${prefix}${String(max + 1).padStart(2, '0')}`;
+}
+
+/** Nächste Nummer je Objekt (für die Vorbelegung im Formular). */
+export async function nextKeyNos(sql: Sql): Promise<Record<string, string>> {
+  const rows = await sql<{ id: string; site_no: string; max: number | null }[]>`
+    select s.id, s.site_no,
+           max(case when substring(k.key_no from length('S-' || s.site_no || '-') + 1) ~ '^[0-9]+$'
+                    then substring(k.key_no from length('S-' || s.site_no || '-') + 1)::int end) as max
+      from app.sites s left join app.keys k on k.key_no like 'S-' || s.site_no || '-%'
+     group by s.id, s.site_no`;
+  return Object.fromEntries(
+    rows.map((r) => [r.id, `S-${r.site_no}-${String((r.max ?? 0) + 1).padStart(2, '0')}`]),
+  );
+}
+
+/**
+ * Schlüssel löschen: ausgegebene erst zurückbuchen. Ohne Protokoll ganz weg, sonst nur ausgeblendet (Nachweis bleibt).
+ */
+export async function deleteKey(sql: Sql, id: string, actor: string) {
+  await sql.begin(async (tx) => {
+    const [k] = await tx<
+      (KeyRow & { deleted_at: Date | null })[]
+    >`select * from app.keys where id = ${id} for update`;
+    if (!k || k.deleted_at) throw new BusinessError('Schlüssel nicht gefunden');
+    if (k.holder_employee_id || k.holder_supplier_id)
+      throw new BusinessError(`Schlüssel ${k.key_no} ist ausgegeben – zuerst Rückgabe buchen`);
+    const [{ n }] =
+      (await tx`select count(*)::int as n from app.key_log where key_id = ${id}`) as unknown as [
+        { n: number },
+      ];
+    const used = (
+      await tx`select 1 from app.handovers where items @> ${tx.json([{ key_id: id }] as never)} limit 1`
+    ).length;
+    if (n || used) await tx`update app.keys set deleted_at = now(), deleted_by = ${actor} where id = ${id}`;
+    else await tx`delete from app.keys where id = ${id}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'delete', 'keys', ${id}, ${tx.json({ stand: k as never, nur_ausgeblendet: !!(n || used) })})`;
+  });
 }
 
 export async function getKey(sql: Sql, id: string) {
@@ -424,7 +478,14 @@ export async function saveKey(
   expectedVersion: number | null,
   actor: string,
 ) {
-  await upsert(sql, 'keys', id, parse(keyInput, body), expectedVersion, 'Der Schlüssel', actor);
+  const data = parse(keyInput, body);
+  if (!data.key_no) {
+    const [cur] = await sql<
+      { key_no: string; site_id: string }[]
+    >`select key_no, site_id from app.keys where id = ${id}`;
+    data.key_no = cur && cur.site_id === data.site_id ? cur.key_no : await nextKeyNo(sql, data.site_id);
+  }
+  await upsert(sql, 'keys', id, data, expectedVersion, 'Der Schlüssel', actor);
 }
 
 /** Ausgabe / Rückgabe / Verlust – immer mit Protokolleintrag (unveränderbar). */
@@ -452,7 +513,8 @@ export async function keyActionTx(
   supplierId: string | null = null,
 ) {
   const [k] = await tx<KeyRow[]>`select * from app.keys where id = ${keyId} for update`;
-  if (!k) throw new BusinessError('Schlüssel nicht gefunden');
+  if (!k || (k as { deleted_at?: Date | null }).deleted_at)
+    throw new BusinessError('Schlüssel nicht gefunden');
   if (action === 'ausgabe') {
     if (!employeeId && !supplierId) throw new BusinessError('Bitte Mitarbeiter wählen');
     if (k.holder_employee_id || k.holder_supplier_id)

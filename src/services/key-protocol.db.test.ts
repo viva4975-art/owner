@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { importKeyProtocol, parseKeyProtocol, planKeyProtocol, siteNoCandidates } from './key-protocol.js';
 import { createKeyProtocol, listKeyProtocols } from './key-protocol-pdf.js';
+import { deleteKey, keyAction, nextKeyNo, saveKey } from './inventory.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
@@ -135,5 +136,54 @@ describe.skipIf(!available)('Schlüsselprotokoll einlesen', () => {
     expect(links).toHaveLength(0);
     const [f] = await sql`select content_type, size_bytes from app.files where id = ${a.file_id}`;
     expect(f!.content_type).toBe('application/pdf');
+  });
+
+  it('Rückgabe auf eigenem Protokoll, bucht im Schlüsselbuch zurück', async () => {
+    const cfg = { dir: await mkdtemp(join(tmpdir(), 'sr-')), maxBytes: 1e8 };
+    const r = await createKeyProtocol(
+      sql,
+      cfg,
+      {
+        id: '00000000-0000-4000-8000-00000000ce20',
+        employeeId: EMP,
+        date: '2026-10-21',
+        kind: 'rueckgabe',
+        bookReturn: true,
+      },
+      't',
+    );
+    expect(r.protocol_no).toBe('SR-2026-0001');
+    expect(r.kind).toBe('rueckgabe');
+    expect(r.items).toHaveLength(3);
+    expect(await sql`select 1 from app.keys where holder_employee_id = ${EMP}`).toHaveLength(0);
+    const log =
+      await sql`select note from app.key_log where action = 'rueckgabe' and note like 'Rückgabeprotokoll%'`;
+    expect(log).toHaveLength(3);
+  });
+
+  it('Schlüsselnummer automatisch, Löschen ganz bzw. ausgeblendet', async () => {
+    expect(await nextKeyNo(sql, DEMO.siteSchool)).toBe('S-2990101-03');
+    const a = '00000000-0000-4000-8000-00000000ce30';
+    await saveKey(
+      sql,
+      a,
+      { site_id: DEMO.siteSchool, description: 'Haupteingang', quantity: '1' },
+      null,
+      't',
+    );
+    const [k] = await sql`select key_no from app.keys where id = ${a}`;
+    expect(k!.key_no).toBe('S-2990101-03');
+    await deleteKey(sql, a, 't');
+    expect(await sql`select 1 from app.keys where id = ${a}`).toHaveLength(0);
+    // mit Protokoll → nur ausgeblendet, Nummer bleibt vergeben
+    const b = '00000000-0000-4000-8000-00000000ce31';
+    await saveKey(sql, b, { site_id: DEMO.siteSchool, description: 'Keller', quantity: '1' }, null, 't');
+    await keyAction(sql, b, 'ausgabe', EMP, '2026-10-21', null, 't');
+    await expect(deleteKey(sql, b, 't')).rejects.toThrow(/zuerst Rückgabe/);
+    await keyAction(sql, b, 'rueckgabe', null, '2026-10-21', null, 't');
+    await deleteKey(sql, b, 't');
+    const [d] = await sql`select deleted_at from app.keys where id = ${b}`;
+    expect(d!.deleted_at).not.toBeNull();
+    expect(await nextKeyNo(sql, DEMO.siteSchool)).toBe('S-2990101-04');
   });
 });

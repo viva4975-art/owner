@@ -2,7 +2,7 @@ import { strFromU8, unzipSync } from 'fflate';
 import type { Sql } from '../db/client.js';
 import { unescapeXml } from '../domain/xml.js';
 import { BusinessError } from './errors.js';
-import { keyActionTx } from './inventory.js';
+import { keyActionTx, nextKeyNo } from './inventory.js';
 import { uuidFrom } from './photo-stamp.js';
 
 /**
@@ -147,7 +147,7 @@ export async function planKeyProtocol(
       { id: string; holder_employee_id: string | null; holder_supplier_id: string | null }[]
     >`
       select id, holder_employee_id, holder_supplier_id from app.keys
-       where id = ${fixed} or (site_id = ${site.id} and lower(description) in (lower(${desc}), lower(${r.kennung})))
+       where (id = ${fixed} and deleted_at is null) or (site_id = ${site.id} and deleted_at is null and lower(description) in (lower(${desc}), lower(${r.kennung})))
        order by (id = ${fixed}) desc limit 1`;
     const status: KeyProtocolPlan['rows'][number]['status'] = !k
       ? 'neu'
@@ -197,13 +197,7 @@ export async function importKeyProtocol(
       if (!r.site || !r.keyId) continue;
       siteIds.add(r.site.id);
       if (r.status === 'neu') {
-        const [cnt] = await tx<{ n: number }[]>`
-          select count(*)::int as n from app.keys where site_id = ${r.site.id}`;
-        const n = cnt?.n ?? 0;
-        let no = n + 1;
-        let keyNo = `S-${r.site.site_no}-${String(no).padStart(2, '0')}`;
-        while ((await tx`select 1 from app.keys where key_no = ${keyNo}`).length)
-          keyNo = `S-${r.site.site_no}-${String(++no).padStart(2, '0')}`;
+        const keyNo = await nextKeyNo(tx, r.site.id);
         await tx`insert into app.keys (id, key_no, site_id, description, quantity, notes)
                  values (${r.keyId}, ${keyNo}, ${r.site.id}, ${`${r.art}: ${r.kennung}`}, ${r.qty},
                          ${`aus Übergabeprotokoll vom ${at.split('-').reverse().join('.')} (Nr. ${r.nr})`})

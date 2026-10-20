@@ -12,7 +12,9 @@ import {
   getDevice,
   getKey,
   getSupplier,
+  deleteKey,
   keyAction,
+  nextKeyNos,
   keyLog,
   listArticles,
   listKeys,
@@ -47,7 +49,15 @@ const Check = ({ name, label, checked }: { name: string; label: string; checked:
 
 /** Rücksprung auf die Schlüssel-Seite eines Objekts (nur diese Adresse wird akzeptiert). */
 const siteBack = (v: unknown) =>
-  typeof v === 'string' && /^\/objekte\/[0-9a-f-]{36}\/schluessel$/.test(v) ? v : null;
+  typeof v === 'string' && /^(\/objekte\/[0-9a-f-]{36}\/schluessel|\/schluessel)$/.test(v) ? v : null;
+
+/** Schlüsselnummer folgt dem Objekt, solange sie nicht von Hand geändert wurde. */
+const KEYNO_JS = `
+(function(){var f=document.getElementById('key_no'),s=document.getElementById('site_id');if(!f||!s)return;
+var m=JSON.parse(f.getAttribute('data-next')||'{}'),auto=f.value===''||Object.values(m).indexOf(f.value)>=0;
+f.addEventListener('input',function(){auto=f.value===''});
+s.addEventListener('change',function(){if(auto&&m[s.value]){f.value=m[s.value];}});
+if(f.value===''&&m[s.value])f.value=m[s.value];})();`;
 
 export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
   const { sql, env } = deps;
@@ -661,6 +671,10 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
 
   app.get('/schluessel', async (c) => {
     const rows = inScope(c, await listKeys(sql));
+    const employees = await listEmployees(sql, {
+      status: 'aktiv',
+      ...(c.get('sites') ? { siteIds: c.get('sites')! } : {}),
+    });
     const out = rows.filter((k) => k.holder_employee_id || k.holder_supplier_id).length;
     return page(
       c,
@@ -685,12 +699,13 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
                 <th>Beschreibung</th>
                 <th class="r">Anzahl</th>
                 <th>Bei</th>
+                <th>Ausgabe / Rückgabe</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colspan={5}>
+                  <td colspan={6}>
                     <div class="empty">Noch keine Schlüssel erfasst.</div>
                   </td>
                 </tr>
@@ -718,6 +733,41 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
                       <span class="badge ok">im Büro</span>
                     )}
                   </td>
+                  <td>
+                    <form
+                      method="post"
+                      action={`/schluessel/${k.id}/buchen`}
+                      style="display:flex;gap:6px;align-items:center;margin:0;flex-wrap:wrap"
+                    >
+                      <input type="hidden" name="back" value="/schluessel" />
+                      <input type="hidden" name="at" value={todayBerlin()} />
+                      {k.holder_employee_id || k.holder_supplier_id ? (
+                        <button class="btn sm sec" name="action" value="rueckgabe">
+                          Rückgabe heute
+                        </button>
+                      ) : (
+                        <>
+                          <select
+                            name="employee_id"
+                            required
+                            aria-label="Mitarbeiter"
+                            style="max-width:200px"
+                          >
+                            <option value="">– an … –</option>
+                            {employees.map((e) => (
+                              <option value={e.id}>
+                                {e.last_name}, {e.first_name}
+                                {e.personnel_no ? ` (${e.personnel_no})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                          <button class="btn sm" name="action" value="ausgabe">
+                            Ausgeben
+                          </button>
+                        </>
+                      )}
+                    </form>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -729,13 +779,16 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
 
   app.get(`/schluessel/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
-    const [k, sites, employees, log] = await Promise.all([
+    const [k, sites, employees, log, nextNos] = await Promise.all([
       getKey(sql, id),
       listSites(sql).then((l) => l.filter((s) => !c.get('sites') || c.get('sites')!.includes(s.id))),
       listEmployees(sql, { status: 'aktiv', ...(c.get('sites') ? { siteIds: c.get('sites')! } : {}) }),
       keyLog(sql, id),
+      nextKeyNos(sql),
     ]);
+    if (k && (k as { deleted_at?: Date | null }).deleted_at) return c.notFound();
     if (k) assertSite(c, k.site_id);
+    const preSite = !k && typeof c.req.query('objekt') === 'string' ? c.req.query('objekt') : undefined;
     const holder = k?.holder_employee_id ? employees.find((e) => e.id === k.holder_employee_id) : undefined;
     return page(
       c,
@@ -757,19 +810,22 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
           >
             <input type="hidden" name="version" value={String(k?.version ?? '')} />
             <div class="grid">
-              <Field
-                name="key_no"
-                label="Schlüsselnummer"
-                value={k?.key_no}
-                required
-                placeholder="z. B. S-2990101-01"
-              />
               <div>
                 <label for="site_id">Objekt</label>
                 <select id="site_id" name="site_id" required>
                   <option value="">– bitte wählen –</option>
-                  <SiteOptions sites={sites} selected={k?.site_id} />
+                  <SiteOptions sites={sites} selected={k?.site_id ?? preSite} />
                 </select>
+              </div>
+              <div>
+                <label for="key_no">Schlüsselnummer</label>
+                <input
+                  id="key_no"
+                  name="key_no"
+                  value={k?.key_no ?? ''}
+                  placeholder="wird nach Wahl des Objekts vergeben"
+                  data-next={JSON.stringify(nextNos)}
+                />
               </div>
               <Field
                 name="description"
@@ -786,6 +842,24 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
                 {k?.notes ?? ''}
               </textarea>
             </div>
+            {!k && (
+              <div class="grid" style="margin-top:12px">
+                <div>
+                  <label for="issue_to">Gleich ausgeben an (optional)</label>
+                  <select id="issue_to" name="issue_to">
+                    <option value="">– noch nicht ausgeben –</option>
+                    {employees.map((e) => (
+                      <option value={e.id}>
+                        {e.last_name}, {e.first_name}
+                        {e.personnel_no ? ` (${e.personnel_no})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <Field name="issue_at" label="Ausgabe am" value={todayBerlin()} type="date" />
+              </div>
+            )}
+            <script dangerouslySetInnerHTML={{ __html: KEYNO_JS }} />
             <div class="formfoot">
               <a class="btn sec" href="/schluessel">
                 Zurück
@@ -850,6 +924,25 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
                   </div>
                 ))}
               </div>
+              <form method="post" action={`/schluessel/${id}/loeschen`} class="card">
+                <h3>Schlüssel löschen</h3>
+                {holder || k.holder_supplier_id ? (
+                  <p class="small mut" style="margin:0">
+                    Ausgegebene Schlüssel erst zurückbuchen, dann löschen.
+                  </p>
+                ) : (
+                  <>
+                    <p class="small mut" style="margin-top:0">
+                      {log.length
+                        ? 'Der Schlüssel hat Ausgaben im Protokoll – er wird ausgeblendet, das Protokoll bleibt als Nachweis.'
+                        : 'Der Schlüssel wurde nie ausgegeben und wird ganz gelöscht.'}
+                    </p>
+                    <button class="btn danger sm" data-confirm={`Schlüssel ${k.key_no} löschen?`}>
+                      Löschen
+                    </button>
+                  </>
+                )}
+              </form>
             </div>
           )}
         </div>
@@ -864,7 +957,32 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
     if (cur) assertSite(c, cur.site_id);
     assertSite(c, String(body.site_id ?? ''));
     await saveKey(sql, id, body, versionOf(body.version), c.get('actor'));
-    return back(c, siteBack(body.back) ?? `/schluessel/${id}`, { ok: 'Schlüssel gespeichert.' });
+    const issueTo = typeof body.issue_to === 'string' && body.issue_to ? body.issue_to : null;
+    if (!cur && issueTo) {
+      const scope = c.get('sites');
+      if (
+        scope &&
+        !(await listEmployees(sql, { status: 'aktiv', siteIds: scope })).some((e) => e.id === issueTo)
+      )
+        throw new BusinessError('Schlüssel nur an Mitarbeitende Ihrer Objekte ausgeben');
+      const at =
+        typeof body.issue_at === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.issue_at)
+          ? body.issue_at
+          : todayBerlin();
+      await keyAction(sql, id, 'ausgabe', issueTo, at, null, c.get('actor'));
+    }
+    return back(c, siteBack(body.back) ?? `/schluessel/${id}`, {
+      ok: issueTo && !cur ? 'Schlüssel gespeichert und ausgegeben.' : 'Schlüssel gespeichert.',
+    });
+  });
+
+  app.post(`/schluessel/:id{${UUID}}/loeschen`, async (c) => {
+    const id = c.req.param('id');
+    const k = await getKey(sql, id);
+    if (!k) return c.notFound();
+    assertSite(c, k.site_id);
+    await deleteKey(sql, id, c.get('actor'));
+    return back(c, '/schluessel', { ok: `Schlüssel ${k.key_no} gelöscht.` });
   });
 
   app.post(`/schluessel/:id{${UUID}}/buchen`, async (c) => {

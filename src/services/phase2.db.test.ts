@@ -14,7 +14,14 @@ import {
   getTask,
   updateTask,
 } from './crm.js';
-import { employeeInput, exportEmployeesCsv, getEmployee, saveEmployee, validIban } from './employees.js';
+import {
+  employeeInput,
+  exportEmployeesCsv,
+  getEmployee,
+  saveEmployee,
+  suggestPersonnelNo,
+  validIban,
+} from './employees.js';
 import { createCancellation, issue, saveDraft } from './invoices.js';
 import { customerInput, getCustomer, saveCustomer } from './masterdata.js';
 import { bookPayment, listBalances, listOpenItems, reversePayment } from './payments.js';
@@ -429,5 +436,13 @@ describe.skipIf(!available)('Phase 2: Kontakte, Aufgaben, Zahlungen, Personal', 
       const h = await as(hr);
       expect(h.private).toBeGreaterThan(0);
     });
+  });
+
+  it('Personalnummer-Vorschlag ignoriert einzelne lange Nummern', async () => {
+    const base = Number(await suggestPersonnelNo(sql));
+    await sql`insert into app.employees (personnel_no, first_name, last_name, entry_date, employment_type)
+              values ('2001742', 'Lang', 'Nummer', '2026-01-01', 'vollzeit'),
+                     (${String(base)}, 'Nächste', 'Nummer', '2026-01-01', 'vollzeit')`;
+    expect(await suggestPersonnelNo(sql)).toBe(String(base + 1));
   });
 });

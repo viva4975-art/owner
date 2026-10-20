@@ -3554,3 +3554,8 @@ Testadresse.
   Seitenwechsel (gelegentlich rot) – wartet jetzt auf die Adresse.
   - Nachtrag (Ahmed): Unter Übergaben kein „Unterschrieben hochladen“ mehr – dort nur PDF und Stand einsehen (neuester mit
     Schild „aktuell“); die unterschriebene Fassung wird wie bisher unter Dokumente hochgeladen.
+- 2026-10-20: **Fund Personalnummer-Vorschlag ab 1.000.000** (Ahmed): Vorschlag war „höchste Ziffern-Nummer + 1“ – eine
+  einzelne lange Nummer (vermutlich versehentlich eine 7-stellige Objekt-/Kundennummer als Personalnummer eingetragen)
+  zog ihn hoch. Jetzt zählen nur Nummern bis 5 Stellen, vergebene werden übersprungen (`suggestPersonnelNo`). **Ahmed:
+  Mitarbeiterliste nach Personalnummer sortieren und die lange Nummer korrigieren** (sonst stimmt sie auch im
+  Lexware-Export nicht).

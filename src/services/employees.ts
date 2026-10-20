@@ -495,10 +495,22 @@ export async function setEmployeeSites(sql: Sql, id: string, siteIds: string[]) 
   });
 }
 
+/**
+ * Vorschlag für die nächste Personalnummer: höchste Nummer im üblichen Bereich (bis 5 Stellen) + 1.
+ * Einzelne lange Nummern (z. B. versehentlich eine Objekt- oder Telefonnummer eingetragen) zählen nicht –
+ * sonst sprang der Vorschlag auf über 1.000.000 (Ahmed 20.10.).
+ */
 export async function suggestPersonnelNo(sql: Sql): Promise<string> {
   const [r] = await sql<{ n: string | null }[]>`
-    select max(personnel_no::bigint)::text as n from app.employees where personnel_no ~ '^[0-9]+$'`;
-  return String(Math.max(Number(r?.n ?? 0) + 1, 1001));
+    select max(personnel_no::int)::text as n from app.employees where personnel_no ~ '^[0-9]{1,5}$'`;
+  let n = Math.max(Number(r?.n ?? 0) + 1, 1001);
+  const taken = new Set(
+    (
+      await sql<{ p: string }[]>`select personnel_no as p from app.employees where personnel_no is not null`
+    ).map((x) => x.p),
+  );
+  while (taken.has(String(n))) n++;
+  return String(n);
 }
 
 /** Startseite: Geburtstage (nächste 14 Tage), Firmenjubiläen, ablaufende Aufenthaltserlaubnisse (60 Tage). */

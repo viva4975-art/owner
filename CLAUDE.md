@@ -3656,3 +3656,12 @@ Testadresse.
   erledigte neueste zuerst, Kennzahlen kleiner. Erfassungsmaske: Abschnitte Rechnung / Beträge / Zuordnung / Skonto, jede
   Bestellungszeile als Kasten, „Material-Bestellung“ beschriftet, Kostenstellen-Aufteilung zugeklappt (offen, wenn die Summe
   nicht stimmt oder von Hand aufgeteilt).
+- 2026-10-20: **Kostenstellen bei mehreren Objekten automatisch** (Ahmed: „kein Objekt bei mehreren Objekten, kann ja automatisch
+  passieren“): Eingangsrechnung mit mehreren Bestellungen bzw. einer Sammelbestellung → Feld „Objekt (für Nachkalkulation)“
+  wird durch „automatisch – auf die Objekte der Bestellungen verteilt“ ersetzt. `syncAutoAllocation` verteilt jetzt jede
+  Zeile: eigene Beträge, sonst der Rest nach Preis der Bestellungen (centgenau), Sammelbestellungen weiter auf ihre Objekte
+  (Fläche/Betrag je Objekt/Umsatz). Vorher brauchte es Beträge je Zeile, die genau aufgingen – sonst landete alles auf
+  einem bzw. keinem Objekt. Eigene Aufteilung unter „Kostenstellen“ geht weiter vor. Test in `expected-invoices.db.test.ts`.
+- 2026-10-20: **NU „je Stunde“: erfasster Betrag statt Maximum** (Ahmed: „da steht die max und nicht die erfasste“): Bestellliste
+  und Reiter Bestellungen beim Nachunternehmer zeigen den Betrag der im laufenden Monat erfassten Stunden (Stundennachweis,
+  `hoursOfMonth`), darunter „x Std. × Satz · max. …“.

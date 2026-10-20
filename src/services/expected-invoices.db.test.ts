@@ -197,4 +197,48 @@ describe.skipIf(!available)('Rechnung erwartet (Datenbank)', () => {
     );
     expect(await open()).toEqual([]);
   });
+
+  it('mehrere Bestellungen ohne Beträge: Kosten automatisch nach Preis auf die Objekte (Ahmed 20.10.)', async () => {
+    const [x] = await sql<{ id: string; a: string; b: string }[]>`
+      select s.supplier_id as id, a.id::text as a, b.id::text as b
+        from app.subcontracts s
+        join app.subcontracts a on a.number = 'BE-2026-0901'
+        join app.subcontracts b on b.number = 'BE-2026-0902'
+       where s.number = 'BE-2026-0901'`;
+    const inv = randomUUID();
+    await saveIncoming(
+      sql,
+      inv,
+      {
+        supplierId: x!.id,
+        invoiceNo: 'R-AUTO-1',
+        invoiceDate: '2026-11-02',
+        dueDate: null,
+        serviceMonth: '2026-10',
+        net: 90000n as Cents,
+        vat: 0n as Cents,
+        reverseCharge: true,
+        category: 'nachunternehmer',
+        siteId: null,
+        purchaseOrderId: null,
+        subcontractId: null,
+        links: [
+          { subcontractId: x!.a, month: '2026-10', net: null },
+          { subcontractId: x!.b, month: '2026-10', net: null },
+        ],
+        skontoUntil: null,
+        skontoPercentBp: null,
+        note: null,
+        expectedVersion: null,
+      },
+      't',
+    );
+    const alloc = await sql<{ site_id: string; net_cents: bigint }[]>`
+      select site_id, net_cents from app.cost_allocations where incoming_invoice_id = ${inv} order by net_cents`;
+    // Preise 1.000 € / 500 € → 2/3 zu 1/3
+    expect(alloc.map((a) => [a.site_id, a.net_cents])).toEqual([
+      [DEMO.siteOffice, 30000n],
+      [DEMO.siteSchool, 60000n],
+    ]);
+  });
 });

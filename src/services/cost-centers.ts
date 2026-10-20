@@ -1,5 +1,5 @@
 import type { Sql, Tx } from '../db/client.js';
-import { allocateSammel } from './subcontract-sites.js';
+import { allocateSammel, splitByWeights } from './subcontract-sites.js';
 import { assertVersion } from './crm.js';
 import { BusinessError } from './errors.js';
 
@@ -155,48 +155,74 @@ export async function syncAutoAllocation(tx: Tx, invoiceId: string, actor: strin
     await tx`select 1 from app.cost_allocations where incoming_invoice_id = ${invoiceId} and not auto limit 1`;
   if (own.length) return;
   await tx`delete from app.cost_allocations where incoming_invoice_id = ${invoiceId} and auto`;
-  // Mehrere Nachunternehmer-Aufträge mit Beträgen (Summe = netto): je Objekt und Zeitraum zuordnen
-  const links = await tx<{ site_id: string; month: string; net_cents: bigint | null }[]>`
-    select sc.site_id, l.period_month::text as month, l.net_cents
+  // Nachunternehmer-Bestellungen (Ahmed 20.10.: „bei mehreren Objekten automatisch“): Netto auf die Zeilen verteilen
+  // (eigene Beträge, Rest nach Preis der Bestellung), Sammelbestellungen weiter auf ihre Objekte (Fläche/Betrag/Umsatz).
+  const links = await tx<
+    {
+      subcontract_id: string;
+      site_id: string;
+      month: string;
+      net_cents: bigint | null;
+      price_cents: bigint;
+    }[]
+  >`
+    select l.subcontract_id, sc.site_id, to_char(l.period_month, 'YYYY-MM') as month, l.net_cents, sc.price_cents
       from app.incoming_invoice_subcontracts l join app.subcontracts sc on sc.id = l.subcontract_id
-     where l.incoming_invoice_id = ${invoiceId}`;
-  const [inv] = await tx<
-    { net_cents: bigint }[]
-  >`select net_cents from app.incoming_invoices where id = ${invoiceId}`;
-  if (
-    links.length > 1 &&
-    inv &&
-    links.every((l) => l.net_cents != null && l.site_id) &&
-    links.reduce((a, l) => a + BigInt(l.net_cents!), 0n) === BigInt(inv.net_cents)
-  ) {
-    for (const l of links.filter((x) => BigInt(x.net_cents!) !== 0n))
-      await tx`insert into app.cost_allocations (id, incoming_invoice_id, site_id, month, net_cents, auto, created_by)
-               values (gen_random_uuid(), ${invoiceId}, ${l.site_id}, ${l.month}, ${l.net_cents}, true, ${actor})`;
-    return;
-  }
-  // Sammelbestellung (mehrere Objekte in einer NU-Bestellung): nach Fläche bzw. Umsatz auf die Objekte verteilen
-  const scLinks = await tx<{ subcontract_id: string; month: string; net_cents: bigint | null }[]>`
-    select l.subcontract_id, to_char(l.period_month, 'YYYY-MM') as month, l.net_cents
-      from app.incoming_invoice_subcontracts l where l.incoming_invoice_id = ${invoiceId}`;
-  const [head] = await tx<{ subcontract_id: string | null; month: string; net_cents: bigint }[]>`
-    select subcontract_id, to_char(coalesce(service_month, invoice_date), 'YYYY-MM') as month, net_cents
+     where l.incoming_invoice_id = ${invoiceId} order by l.period_month, sc.number`;
+  const [head] = await tx<
+    { subcontract_id: string | null; site_id: string | null; month: string; net_cents: bigint }[]
+  >`
+    select subcontract_id, site_id, to_char(coalesce(service_month, invoice_date), 'YYYY-MM') as month, net_cents
       from app.incoming_invoices where id = ${invoiceId}`;
-  const parts =
-    scLinks.length === 1 || (!scLinks.length && head?.subcontract_id)
-      ? [
-          {
-            sc: scLinks[0]?.subcontract_id ?? head!.subcontract_id!,
-            month: scLinks[0]?.month ?? head!.month,
-            net: BigInt(head!.net_cents),
-          },
-        ]
+  if (!head) return;
+  const total = BigInt(head.net_cents);
+  const rows = links.length
+    ? links.map((l) => ({
+        sc: l.subcontract_id,
+        site: l.site_id,
+        month: l.month,
+        net: l.net_cents == null ? null : BigInt(l.net_cents),
+        price: BigInt(l.price_cents),
+      }))
+    : head.subcontract_id
+      ? [{ sc: head.subcontract_id, site: head.site_id ?? '', month: head.month, net: null, price: 0n }]
       : [];
-  if (parts.length && BigInt(head!.net_cents) !== 0n) {
-    const split = await allocateSammel(tx, parts[0]!.sc, parts[0]!.month, parts[0]!.net);
-    if (split) {
-      for (const x of split.filter((r) => r.net !== 0n))
+  if (rows.length && total !== 0n) {
+    const given = rows.reduce((a, r) => a + (r.net ?? 0n), 0n);
+    const open = rows.filter((r) => r.net == null);
+    const amounts = rows.map((r) => r.net);
+    if (rows.length === 1) amounts[0] = total;
+    else if (open.length && (total - given === 0n || total - given > 0n === total > 0n)) {
+      const parts = splitByWeights(
+        total - given,
+        open.map((r) => (r.price > 0n ? r.price : 0n)),
+      );
+      let k = 0;
+      rows.forEach((r, i) => {
+        if (r.net == null) amounts[i] = parts[k++]!;
+      });
+    }
+    const sum = amounts.reduce<bigint>((a, x) => a + (x ?? 0n), 0n);
+    if (sum === total) {
+      const out = new Map<string, bigint>();
+      const add = (site: string, month: string, net: bigint) => {
+        const key = `${site}|${month}`;
+        out.set(key, (out.get(key) ?? 0n) + net);
+      };
+      for (const [i, r] of rows.entries()) {
+        const amt = amounts[i]!;
+        if (amt === 0n) continue;
+        const split = await allocateSammel(tx, r.sc, r.month, amt);
+        if (split) for (const x of split) add(x.site_id, r.month, x.net);
+        // eine einzelne Bestellung: Objekt der Rechnung (falls von Hand geändert), sonst der Bestellung
+        else add(rows.length === 1 && head.site_id ? head.site_id : r.site, r.month, amt);
+      }
+      for (const [key, net] of out) {
+        if (net === 0n) continue;
+        const [site, month] = key.split('|');
         await tx`insert into app.cost_allocations (id, incoming_invoice_id, site_id, month, net_cents, auto, created_by)
-                 values (gen_random_uuid(), ${invoiceId}, ${x.site_id}, ${`${parts[0]!.month}-01`}, ${x.net}, true, ${actor})`;
+                 values (gen_random_uuid(), ${invoiceId}, ${site!}, ${`${month}-01`}, ${net}, true, ${actor})`;
+      }
       return;
     }
   }

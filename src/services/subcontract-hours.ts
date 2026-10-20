@@ -71,3 +71,26 @@ export async function deleteSubcontractHours(sql: Sql, id: string, subcontractId
              values (${actor}, 'delete', 'subcontract_hours', ${id}, ${tx.json(JSON.parse(JSON.stringify(row)))})`;
   });
 }
+
+/** Erfasste Stunden und Betrag je Bestellung in einem Monat (JJJJ-MM) – für die Bestelllisten (Ahmed 20.10.). */
+export async function hoursOfMonth(
+  sql: Sql,
+  ids: string[],
+  month: string,
+): Promise<Map<string, { minutes: number; amount: bigint }>> {
+  const out = new Map<string, { minutes: number; amount: bigint }>();
+  if (!ids.length) return out;
+  for (const r of await sql<{ id: string; minutes: number; amount: bigint }[]>`
+    select h.subcontract_id as id, sum(h.persons * h.minutes_per_person)::int as minutes,
+           sum(round(h.persons * h.minutes_per_person * r.rate::numeric / 60))::bigint as amount
+      from app.subcontract_hours h join app.subcontracts s on s.id = h.subcontract_id
+      cross join lateral (
+        select coalesce((select p.price_cents from app.subcontract_prices p
+                          where p.subcontract_id = s.id and p.valid_from_month <= date_trunc('month', h.work_date)::date
+                          order by p.valid_from_month desc limit 1), s.price_cents, 0) as rate) r
+     where h.subcontract_id = any(${ids}::uuid[])
+       and date_trunc('month', h.work_date) = ${`${month}-01`}::date
+     group by h.subcontract_id`)
+    out.set(r.id, { minutes: r.minutes, amount: BigInt(r.amount) });
+  return out;
+}

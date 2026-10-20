@@ -184,7 +184,7 @@ const apdf = await p.request.get(p.url().split('?')[0] + '/auftrag.pdf');
 check('Auftrags-PDF', apdf.ok() && (await apdf.body()).subarray(0, 4).toString() === '%PDF');
 
 console.log('6. Übersicht / Zahlungslauf');
-await p.goto(B + '/nachunternehmer');
+await p.goto(B + '/nachunternehmer?q=' + stamp);
 {
   const card = p.locator('.sup-tbl tr', { hasText: `E2E Reinigung ${stamp}` });
   check('als Zeile in „Nachunternehmer“', (await card.count()) === 1);

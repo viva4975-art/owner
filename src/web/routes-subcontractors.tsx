@@ -77,6 +77,7 @@ import { listServiceTypes } from '../services/masterdata.js';
 import {
   addSubcontractHours,
   deleteSubcontractHours,
+  hoursOfMonth,
   listSubcontractHours,
   type SubcontractHourRow,
 } from '../services/subcontract-hours.js';
@@ -893,7 +894,14 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
               + Auftrag
             </a>
           </div>
-          <SubcontractTable rows={contracts} />
+          <SubcontractTable
+            rows={contracts}
+            hours={await hoursOfMonth(
+              sql,
+              contracts.filter((x) => x.billing === 'stunde').map((x) => x.id),
+              todayBerlin().slice(0, 7),
+            )}
+          />
         </div>
       </>,
     );
@@ -3075,9 +3083,12 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
 function SubcontractTable({
   rows,
   showSupplier = false,
+  hours = new Map(),
 }: {
   rows: Awaited<ReturnType<typeof listSubcontracts>>;
   showSupplier?: boolean;
+  /** erfasste Stunden des laufenden Monats bei „je Stunde“ */
+  hours?: Map<string, { minutes: number; amount: bigint }>;
 }) {
   return (
     <div class="tbl">
@@ -3111,11 +3122,14 @@ function SubcontractTable({
               <td class="r">
                 {(() => {
                   const total = subcontractTotal(r);
-                  return r.billing === 'stunde' && total !== null ? (
+                  const h = hours.get(r.id);
+                  return r.billing === 'stunde' ? (
                     <>
-                      {euro(total)} <span class="small mut">/ Monat</span>
+                      {euro(h?.amount ?? 0n)} <span class="small mut">erfasst diesen Monat</span>
                       <div class="small mut">
-                        {euro(r.current_price_cents)} / Std. × {r.max_hours_month!.replace('.', ',')} Std.
+                        {h ? (h.minutes / 60).toLocaleString('de-DE', { maximumFractionDigits: 2 }) : '0'}{' '}
+                        Std. × {euro(r.current_price_cents)}
+                        {total !== null && ` · max. ${euro(total)}`}
                       </div>
                     </>
                   ) : (

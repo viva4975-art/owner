@@ -1,4 +1,5 @@
 import { sammelSqmCenti } from '../services/subcontract-sites.js';
+import { hoursOfMonth } from '../services/subcontract-hours.js';
 import { costCenterReport } from '../services/cost-centers.js';
 import { randomUUID } from 'node:crypto';
 import { SiteOptions } from './site-options.js';
@@ -357,6 +358,12 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
           select subcontract_id as id, count(*)::int as n from app.subcontract_sites group by subcontract_id`
       ).map((r) => [r.id, r.n]),
     );
+    const curMonth = todayBerlin().slice(0, 7);
+    const hoursNow = await hoursOfMonth(
+      sql,
+      subcontracts.filter((x) => x.billing === 'stunde').map((x) => x.id),
+      curMonth,
+    );
     const tracking = await billingTracking(
       sql,
       subcontracts.map((x) => x.id),
@@ -510,14 +517,16 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             return total !== null
               ? { net: total, per: '', unit: `${euro(sc.current_price_cents)} / m²` }
               : { net: sc.current_price_cents, per: '/ m²', unit: 'Flächen fehlen' };
-          if (sc.billing === 'stunde')
-            return total !== null
-              ? {
-                  net: total,
-                  per: '/ Monat',
-                  unit: `${euro(sc.current_price_cents)} / Std. × ${sc.max_hours_month!.replace('.', ',')} Std.`,
-                }
-              : { net: sc.current_price_cents, per: '/ Std.', unit: 'Gesamt nach erfassten Stunden' };
+          if (sc.billing === 'stunde') {
+            // erfasste Stunden des laufenden Monats (Stundennachweis), max. nur als Hinweis (Ahmed 20.10.)
+            const h = hoursNow.get(sc.id);
+            const hrs = h ? (h.minutes / 60).toLocaleString('de-DE', { maximumFractionDigits: 2 }) : '0';
+            return {
+              net: h?.amount ?? 0n,
+              per: `erfasst ${MON(curMonth)}`,
+              unit: `${hrs} Std. × ${euro(sc.current_price_cents)}${total !== null ? ` · max. ${euro(total)} (${sc.max_hours_month!.replace('.', ',')} Std.)` : ''}`,
+            };
+          }
           return { net: total ?? sc.current_price_cents, per: PER[sc.billing] ?? '' };
         })(),
         ...((): Pick<Row, 'phase' | 'status' | 'tone'> => {
@@ -1624,6 +1633,12 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
     ]);
     const advOpen = i ? ((await openAdvances(sql, [i.supplier_id])).get(i.supplier_id) ?? 0n) : 0n;
     const siteById = new Map(sites.map((x) => [x.id, x]));
+    const sammelCount = new Map(
+      (
+        await sql<{ id: string; n: number }[]>`
+          select subcontract_id as id, count(*)::int as n from app.subcontract_sites group by subcontract_id`
+      ).map((r) => [r.id, r.n]),
+    );
     const q = c.req.query();
     // Zuordnung zu NU-Aufträgen: gespeicherte Zeilen oder aus „Rechnung erwartet“ (?erwartet=<auftrag>:<JJJJ-MM>:<cent>)
     const linkRows = i
@@ -1899,6 +1914,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                                       selected={x.id === r.sc}
                                       data-sup={x.supplier_id}
                                       data-site={x.site_id}
+                                      data-multi={String(sammelCount.get(x.id) ?? 0)}
                                       data-net={
                                         x.billing === 'pauschale_monat'
                                           ? centsToInput(x.current_price_cents)
@@ -1961,6 +1977,8 @@ var first=rows.querySelector('select[name=link_sc]')===sel;var sm=document.getEl
 var lm=tr.querySelector('[name=link_month]');if(lm&&!lm.value)setSel(lm,(sm&&sm.value)||prevMonth());
 if(first){setSel(document.getElementById('site_id'),o.dataset.site);setSel(document.getElementById('category'),'nachunternehmer');if(sm&&!sm.value)setSel(sm,lm&&lm.value);
 var n=document.getElementById('net');var filled=Array.prototype.filter.call(rows.querySelectorAll('select[name=link_sc]'),function(x){return x.value}).length;if(n&&!n.value&&filled===1&&o.dataset.net){n.value=o.dataset.net;n.dispatchEvent(new Event('change',{bubbles:true}));}}});
+function multi(){var set={},m=false;rows.querySelectorAll('select[name=link_sc]').forEach(function(x){var o=x.selectedOptions[0];if(!o||!o.value)return;set[o.dataset.site]=1;if(+o.dataset.multi>1)m=true;});m=m||Object.keys(set).length>1;var bx=document.getElementById('site-box'),au=document.getElementById('site-auto'),si=document.getElementById('site_id');if(!bx||!au)return;bx.hidden=m;au.hidden=!m;if(m&&si&&si.value){si.value='';if(si._cbLabel)si._cbLabel();}}
+rows.addEventListener('change',function(e){if(e.target.matches&&e.target.matches('select[name=link_sc]'))setTimeout(multi,0);});multi();
 if(sup)sup.addEventListener('change',function(){document.querySelectorAll('select[name=link_sc],#purchase_order_id').forEach(function(x){var o=x.selectedOptions[0];if(o&&o.dataset.sup&&o.dataset.sup!==sup.value)x.value='';});filter();});filter();
 var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',function(){var r=rows.lastElementChild.cloneNode(true);r.querySelectorAll('input').forEach(function(i){i.value=''});r.querySelectorAll('select').forEach(function(x){x.value=''});rows.appendChild(r);filter();});
 })();`,
@@ -1986,12 +2004,20 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                     ))}
                   </select>
                 </div>
-                <div>
+                <div id="site-box">
                   <label for="site_id">Objekt (für Nachkalkulation)</label>
                   <select id="site_id" name="site_id">
                     <option value="">– kein Objekt (Gemeinkosten) –</option>
                     <SiteOptions sites={sites} selected={v.site} />
                   </select>
+                </div>
+                <div id="site-auto" hidden>
+                  <label>Objekt (für Nachkalkulation)</label>
+                  <div class="small" style="padding-top:8px">
+                    <b>automatisch</b> – die Kosten werden auf die Objekte der Bestellungen verteilt (Beträge
+                    je Zeile, sonst nach Preis; Sammelbestellung nach Fläche bzw. Betrag je Objekt). Ergebnis
+                    nach dem Speichern unter „Kostenstellen“.
+                  </div>
                 </div>
                 <div>
                   <label for="service_month">Leistungsmonat</label>

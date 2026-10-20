@@ -370,5 +370,14 @@ describe.skipIf(!available)('Nachunternehmer', () => {
       { price_cents: bigint }[]
     >`select price_cents from app.subcontracts where id = ${id}`;
     expect(b!.price_cents).toBe(45000n);
+    // Bestelldatum nachträglich änderbar, nicht in der Zukunft (Ahmed 20.10.)
+    const [c] = await sql<{ version: number }[]>`select version from app.subcontracts where id = ${id}`;
+    await saveSubcontract(sql, id, { ...input, issuedOn: '2026-10-02', version: c!.version }, 't');
+    const [d] = await sql<{ day: string; version: number }[]>`
+      select (issued_at at time zone 'Europe/Berlin')::date::text as day, version from app.subcontracts where id = ${id}`;
+    expect(d!.day).toBe('2026-10-02');
+    await expect(
+      saveSubcontract(sql, id, { ...input, issuedOn: '2099-01-01', version: d!.version }, 't'),
+    ).rejects.toThrow(/Zukunft/);
   });
 });

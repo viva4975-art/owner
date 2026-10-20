@@ -385,6 +385,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       sql,
       subcontracts.filter((x) => x.billing === 'stunde').map((x) => x.id),
       curMonth,
+      subcontracts.filter((x) => !isRecurringOrder(x.frequency)).map((x) => x.id),
     );
     const tracking = await billingTracking(
       sql,
@@ -545,7 +546,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             const hrs = h ? (h.minutes / 60).toLocaleString('de-DE', { maximumFractionDigits: 2 }) : '0';
             return {
               net: h?.amount ?? 0n,
-              per: `erfasst ${MON(curMonth)}`,
+              per: isRecurringOrder(sc.frequency) ? `erfasst ${MON(curMonth)}` : 'erfasst bisher',
               unit: `${hrs} Std. × ${euro(sc.current_price_cents)}${total !== null ? ` · max. ${euro(total)} (${sc.max_hours_month!.replace('.', ',')} Std.)` : ''}`,
             };
           }
@@ -2014,6 +2015,8 @@ if(first){setSel(document.getElementById('site_id'),o.dataset.site);setSel(docum
 var n=document.getElementById('net');var filled=Array.prototype.filter.call(rows.querySelectorAll('select[name=link_sc]'),function(x){return x.value}).length;if(n&&!n.value&&filled===1&&o.dataset.net){n.value=o.dataset.net;n.dispatchEvent(new Event('change',{bubbles:true}));}}});
 function multi(){var sites={},m=false,label='';rows.querySelectorAll('select[name=link_sc]').forEach(function(x){var o=x.selectedOptions[0];if(!o||!o.value)return;sites[o.dataset.site]=1;if(+o.dataset.multi>1)m=true;if(!label)label=(o.textContent.split(' · ')[1]||'').trim();});var n=Object.keys(sites).length;var any=n>0;m=m||n>1;var bx=document.getElementById('site-box'),au=document.getElementById('site-auto'),si=document.getElementById('site_id'),mb=document.getElementById('month-box'),tx=document.getElementById('site-auto-text');if(!bx||!au)return;bx.hidden=any;au.hidden=!any;if(mb)mb.hidden=any;if(tx)tx.textContent=m?'automatisch – die Kosten werden auf die Objekte der Bestellungen verteilt (Beträge je Zeile, sonst nach Preis; Sammelbestellung nach Fläche bzw. Betrag je Objekt).':'aus der Bestellung: '+label;if(any&&si&&si.value){si.value='';if(si._cbLabel)si._cbLabel();}}
 rows.addEventListener('change',function(e){if(e.target.matches&&e.target.matches('select[name=link_sc]'))setTimeout(multi,0);});multi();
+// Eingaben-Wiederherstellung und Safari-Zurück setzen Werte ohne „change“ → nachträglich noch einmal prüfen
+window.addEventListener('load',function(){setTimeout(multi,50);});window.addEventListener('pageshow',function(){setTimeout(multi,50);});setTimeout(multi,400);
 if(sup)sup.addEventListener('change',function(){document.querySelectorAll('select[name=link_sc],#purchase_order_id').forEach(function(x){var o=x.selectedOptions[0];if(o&&o.dataset.sup&&o.dataset.sup!==sup.value)x.value='';});filter();});filter();
 var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',function(){var r=rows.lastElementChild.cloneNode(true);r.querySelectorAll('input').forEach(function(i){i.value=''});r.querySelectorAll('select').forEach(function(x){x.value=''});rows.appendChild(r);filter();});
 })();`,
@@ -2039,20 +2042,20 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                     ))}
                   </select>
                 </div>
-                <div id="site-box">
+                <div id="site-box" hidden={linkRows.length > 0}>
                   <label for="site_id">Objekt (für Nachkalkulation)</label>
                   <select id="site_id" name="site_id">
                     <option value="">– kein Objekt (Gemeinkosten) –</option>
                     <SiteOptions sites={sites} selected={v.site} />
                   </select>
                 </div>
-                <div id="site-auto" hidden>
+                <div id="site-auto" hidden={linkRows.length === 0}>
                   <label>Objekt (für Nachkalkulation)</label>
                   <div class="small" style="padding-top:8px" id="site-auto-text">
                     automatisch aus den Bestellungen
                   </div>
                 </div>
-                <div id="month-box">
+                <div id="month-box" hidden={linkRows.length > 0}>
                   <label for="service_month">Leistungsmonat</label>
                   <MonthSelect
                     id="service_month"

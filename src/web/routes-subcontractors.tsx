@@ -72,7 +72,7 @@ import {
   subcontractSites,
 } from '../services/subcontract-sites.js';
 import { listFiles } from '../services/uploads.js';
-import { billingTracking, skipExpected } from '../services/expected-invoices.js';
+import { billingTracking, isRecurringOrder, skipExpected } from '../services/expected-invoices.js';
 import { listServiceTypes } from '../services/masterdata.js';
 import {
   addSubcontractHours,
@@ -900,6 +900,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
               sql,
               contracts.filter((x) => x.billing === 'stunde').map((x) => x.id),
               todayBerlin().slice(0, 7),
+              contracts.filter((x) => !isRecurringOrder(x.frequency)).map((x) => x.id),
             )}
           />
         </div>
@@ -1775,7 +1776,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 />
               </div>
               <div>
-                <label for="maxh">Max. Stunden/Monat (bei Stunden)</label>
+                <label for="maxh">Max. Stunden (bei Stunden)</label>
                 <input
                   id="maxh"
                   name="max_hours"
@@ -1824,6 +1825,22 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
               <label for="to">Ende (optional)</label>
               <input id="to" type="date" name="valid_to" value={sc?.valid_to ?? ''} />
             </div>
+            {sc && !draft && (
+              <div>
+                <label for="issued">Bestelldatum</label>
+                <input
+                  id="issued"
+                  type="date"
+                  name="issued_on"
+                  max={todayBerlin()}
+                  value={
+                    sc.issued_at
+                      ? new Date(sc.issued_at).toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' })
+                      : ''
+                  }
+                />
+              </div>
+            )}
             <div>
               <label for="note">Notiz</label>
               <input id="note" name="note" value={sc?.note ?? ''} />
@@ -2197,6 +2214,14 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 <button class="btn sm">Stunden erfassen</button>
               </form>
             )}
+            {maxMin !== null &&
+              !isRecurringOrder(sc.frequency) &&
+              hours.reduce((a, h) => a + h.total_minutes, 0) > maxMin && (
+                <div class="alert warn">
+                  Erfasst sind mehr als die max. {Number(sc.max_hours_month).toLocaleString('de-DE')} Std.
+                  dieser Bestellung.
+                </div>
+              )}
             {hours.length === 0 ? (
               <div class="empty">Noch keine Stunden erfasst.</div>
             ) : (
@@ -2221,9 +2246,9 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                             <b>
                               {mon.slice(5, 7)}/{mon.slice(0, 4)}
                             </b>
-                            {maxMin !== null && m.minutes > maxMin && (
+                            {maxMin !== null && isRecurringOrder(sc.frequency) && m.minutes > maxMin && (
                               <span class="badge err" style="margin-left:8px">
-                                über max. {Number(sc.max_hours_month).toLocaleString('de-DE')} Std./Monat
+                                über max. {Number(sc.max_hours_month).toLocaleString('de-DE')} Std.
                               </span>
                             )}
                           </td>
@@ -2405,12 +2430,14 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
             <div class="l">Preis netto</div>
             <b>{euro(sc.current_price_cents)}</b>
             {sc.billing === 'stunde' && sc.max_hours_month && (
-              <div class="small mut">max. {sc.max_hours_month.replace('.', ',')} Std./Monat</div>
+              <div class="small mut">max. {sc.max_hours_month.replace('.', ',')} Std.</div>
             )}
           </div>
           <div>
             <div class="l">Zeitraum</div>
-            {dateDe(sc.valid_from)} – {sc.valid_to ? dateDe(sc.valid_to) : 'offen'}
+            {sc.valid_to || isRecurringOrder(sc.frequency)
+              ? `${dateDe(sc.valid_from)} – ${sc.valid_to ? dateDe(sc.valid_to) : 'unbefristet'}`
+              : `ab ${dateDe(sc.valid_from)}`}
           </div>
           <div>
             <div class="l">Status</div>
@@ -2549,6 +2576,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         validTo: str(b, 'valid_to'),
         description: str(b, 'description'),
         note: str(b, 'note'),
+        issuedOn: str(b, 'issued_on'),
         version: v ? Number(v) : null,
       };
       // Sammelbestellung ohne gewähltes Objekt: erstes weiteres Objekt bzw. erstes aktives Objekt des Kunden
@@ -3125,7 +3153,10 @@ function SubcontractTable({
                   const h = hours.get(r.id);
                   return r.billing === 'stunde' ? (
                     <>
-                      {euro(h?.amount ?? 0n)} <span class="small mut">erfasst diesen Monat</span>
+                      {euro(h?.amount ?? 0n)}{' '}
+                      <span class="small mut">
+                        {isRecurringOrder(r.frequency) ? 'erfasst diesen Monat' : 'erfasst bisher'}
+                      </span>
                       <div class="small mut">
                         {h ? (h.minutes / 60).toLocaleString('de-DE', { maximumFractionDigits: 2 }) : '0'}{' '}
                         Std. × {euro(r.current_price_cents)}
@@ -3140,7 +3171,9 @@ function SubcontractTable({
                 })()}
               </td>
               <td class="small">
-                {dateDe(r.valid_from)} – {r.valid_to ? dateDe(r.valid_to) : 'offen'}
+                {r.valid_to || isRecurringOrder(r.frequency)
+                  ? `${dateDe(r.valid_from)} – ${r.valid_to ? dateDe(r.valid_to) : 'unbefristet'}`
+                  : `ab ${dateDe(r.valid_from)}`}
               </td>
               <td>
                 <span class={`badge ${r.status === 'erteilt' ? 'ok' : r.status === 'entwurf' ? 'warn' : ''}`}>

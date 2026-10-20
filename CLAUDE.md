@@ -3674,3 +3674,15 @@ Testadresse.
   unterschriebenen Auftrag“ → Knopf **„Alle drucken (PDF)“** (`/bestellungen/ohne-unterschrift.pdf`, mit Lieferanten-Filter
   nur dessen): alle erteilten NU-Bestellscheine ohne Scan/Handy-Unterschrift in einer PDF, sortiert nach Nachunternehmer
   und Nummer (`unsignedSubcontractsPdf`). Jeder Bestellschein bettet seine Schrift selbst ein (~0,8 MB je Schein).
+- 2026-10-20: **NU-Bestellung „je Stunde“ ohne „monatlich“** (Ahmed: „einmalig, aber in der Bestellung wird von monatlich
+  gesprochen“, „nur Max. Std., Status entfernen, unbefristet?, Bestelldatum bearbeiten“): Feld heißt „Max. Stunden“, überall
+  „max. … Std.“ ohne „/ Monat“ (Formular, Kopfkasten, Stundennachweis, Bestellschein „Angenommene Std.“/„Gesamtbetrag“).
+  Bei einmalig/quartalsweise/… zählen Listen die bisher erfassten Stunden insgesamt („erfasst bisher“, `hoursOfMonth`
+  mit `totalIds`), die Warnung „über max.“ gilt für die ganze Bestellung; monatlich/wöchentlich weiter je Monat.
+  Bestellschein ohne Zeile „Status“; Zeitraum ohne Ende = „ab TT.MM.JJJJ (unbefristet)“ nur bei regelmäßigen
+  Bestellungen, sonst „ab TT.MM.JJJJ“ (auch in den Listen statt „offen“). **Bestelldatum** bei erteilten/beendeten
+  Bestellungen unter „Bestellung bearbeiten“ änderbar (nicht in der Zukunft, Protokoll, steht auf dem Bestellschein).
+  Eingangsrechnung: Objekt/Leistungsmonat sind bei vorhandenen Bestellzeilen schon vom Server ausgeblendet; die Prüfung
+  läuft zusätzlich nach dem Laden erneut (Wiederherstellen der Eingaben setzt Werte ohne „change“ – vermutlich der Grund,
+  warum die Felder am iPad stehen blieben).
+

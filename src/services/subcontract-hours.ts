@@ -72,11 +72,13 @@ export async function deleteSubcontractHours(sql: Sql, id: string, subcontractId
   });
 }
 
-/** Erfasste Stunden und Betrag je Bestellung in einem Monat (JJJJ-MM) – für die Bestelllisten (Ahmed 20.10.). */
+/** Erfasste Stunden und Betrag je Bestellung in einem Monat (JJJJ-MM) – für die Bestelllisten (Ahmed 20.10.).
+ * `totalIds`: Bestellungen ohne Monatsbezug (einmalig, quartalsweise …) → alle erfassten Stunden. */
 export async function hoursOfMonth(
   sql: Sql,
   ids: string[],
   month: string,
+  totalIds: string[] = [],
 ): Promise<Map<string, { minutes: number; amount: bigint }>> {
   const out = new Map<string, { minutes: number; amount: bigint }>();
   if (!ids.length) return out;
@@ -89,7 +91,7 @@ export async function hoursOfMonth(
                           where p.subcontract_id = s.id and p.valid_from_month <= date_trunc('month', h.work_date)::date
                           order by p.valid_from_month desc limit 1), s.price_cents, 0) as rate) r
      where h.subcontract_id = any(${ids}::uuid[])
-       and date_trunc('month', h.work_date) = ${`${month}-01`}::date
+       and (h.subcontract_id = any(${totalIds}::uuid[]) or date_trunc('month', h.work_date) = ${`${month}-01`}::date)
      group by h.subcontract_id`)
     out.set(r.id, { minutes: r.minutes, amount: BigInt(r.amount) });
   return out;

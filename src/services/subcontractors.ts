@@ -13,6 +13,7 @@ import { hashPin, LOCK_MINUTES, MAX_ATTEMPTS, verifyHash } from './employee-auth
 import { BusinessError } from './errors.js';
 import { getSupplier, type Supplier } from './inventory.js';
 import { getSeller } from './masterdata.js';
+import { isRecurringOrder } from './expected-invoices.js';
 import { nextYearNumber } from './purchasing.js';
 import type { Deps } from './workflow.js';
 
@@ -550,6 +551,8 @@ export interface SubcontractInput {
   validTo: string | null;
   description: string | null;
   note: string | null;
+  /** Bestelldatum (JJJJ-MM-TT), nur bei erteilten/beendeten Bestellungen änderbar (Ahmed 20.10.) */
+  issuedOn?: string | null;
   version?: number | null;
 }
 
@@ -604,8 +607,20 @@ export async function saveSubcontract(sql: Sql, id: string, p: SubcontractInput,
           .filter(([k, v]) => norm(old[k]) !== norm(v))
           .map(([k, v]) => [k, { alt: jsonSafe(old[k]), neu: jsonSafe(v) }]),
       );
+      // Bestelldatum: Tag in Berliner Zeit vergleichen, 12 Uhr speichern (kein Datumssprung durch Zeitzonen)
+      const curDay = cur.issued_at
+        ? cur.issued_at.toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' })
+        : null;
+      if (p.issuedOn && /^\d{4}-\d{2}-\d{2}$/.test(p.issuedOn) && p.issuedOn !== curDay) {
+        if (p.issuedOn > todayBerlin())
+          throw new BusinessError('Bestelldatum darf nicht in der Zukunft liegen');
+        changes.issued_at = { alt: curDay, neu: p.issuedOn };
+      }
       if (!Object.keys(changes).length) return;
       await tx`update app.subcontracts set ${tx(next)} where id = ${id}`;
+      if (changes.issued_at)
+        await tx`update app.subcontracts set issued_at = (${p.issuedOn}::date + time '12:00') at time zone 'Europe/Berlin'
+                  where id = ${id}`;
       await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
                values (${actor}, 'update', 'subcontract', ${id}, ${tx.json(changes as never)})`;
       return;
@@ -740,13 +755,6 @@ function supplierBuyer(s: Supplier): BuyerSnapshot {
   };
 }
 
-const PDF_STATUS: Record<Subcontract['status'], string> = {
-  entwurf: 'Entwurf',
-  erteilt: 'Erteilt',
-  beendet: 'Beendet',
-  storniert: 'Storniert',
-};
-
 /**
  * Bestellschein an den Nachunternehmer wie die alte App (Ahmed 08.10., Muster BE-2026-0001): Seite 1 Bestellung mit
  * Auftragnehmer, Objekt/Auftrag-Kasten, Kurzfassung der Bedingungen und Unterschrift; Seite 2 Leistungsbeschreibung;
@@ -843,9 +851,13 @@ export async function subcontractPdf(sql: Sql, id: string, sig?: SubcontractSign
     { k: 'Leistungsart:', v: sc.service_kind },
     {
       k: 'Zeitraum:',
-      v: `${formatDateDe(sc.valid_from)}${sc.valid_to ? ` bis ${formatDateDe(sc.valid_to)}` : ' (unbefristet)'}`,
+      // ohne Ende: regelmäßige Bestellung = unbefristet, einmalig usw. = Ausführung ab (Ahmed 20.10.)
+      v: sc.valid_to
+        ? `${formatDateDe(sc.valid_from)} bis ${formatDateDe(sc.valid_to)}`
+        : isRecurringOrder(sc.frequency)
+          ? `ab ${formatDateDe(sc.valid_from)} (unbefristet)`
+          : `ab ${formatDateDe(sc.valid_from)}`,
     },
-    { k: 'Status:', v: PDF_STATUS[sc.status] },
     // Pauschalen: Preis nur einmal (Ahmed 09.10.: „der Preis auf dem Bestellschein ist doppelt“); bei Stunden
     // Stundensatz + angenommene Stunden + Gesamtbetrag (Höchstbetrag) wie die alte App
     ...(hourly
@@ -854,12 +866,12 @@ export async function subcontractPdf(sql: Sql, id: string, sig?: SubcontractSign
             k: 'Stundensatz:',
             v: price,
             k2: 'Angenommene Std.:',
-            v2: sc.max_hours_month ? `${sc.max_hours_month.replace('.', ',')} / Monat` : 'n. Aufmaß',
+            v2: sc.max_hours_month ? `max. ${sc.max_hours_month.replace('.', ',')} Std.` : 'n. Aufmaß',
           },
           {
             k: 'Gesamtbetrag:',
             v: sc.max_hours_month
-              ? `max. ${formatEuro(((sc.current_price_cents * BigInt(Math.round(Number(sc.max_hours_month) * 100))) / 100n) as Cents)} / Monat`
+              ? `max. ${formatEuro(((sc.current_price_cents * BigInt(Math.round(Number(sc.max_hours_month) * 100))) / 100n) as Cents)}`
               : '- nach erfassten Stunden -',
             accent: true,
           },

@@ -1265,3 +1265,24 @@ export async function deleteSubcontract(sql: Sql, id: string, o: { admin: boolea
     await tx`delete from app.subcontracts where id = ${id}`;
   });
 }
+
+/**
+ * Alle erteilten NU-Bestellungen ohne unterschriebenen Auftrag (Scan oder Handy-Unterschrift) als eine PDF zum Drucken
+ * (Ahmed 20.10.). Sortiert nach Nachunternehmer und Nummer; optional gefiltert (Nachunternehmer).
+ */
+export async function unsignedSubcontractsPdf(sql: Sql, opts: { supplierId?: string } = {}) {
+  const { PDFDocument } = await import('@cantoo/pdf-lib');
+  const ids = await sql<{ id: string }[]>`
+    select sc.id from app.subcontracts sc join app.suppliers s on s.id = sc.supplier_id
+     where sc.status = 'erteilt' and sc.signed_file_path is null and sc.signed_external is null
+       and ${opts.supplierId ? sql`sc.supplier_id = ${opts.supplierId}` : sql`true`}
+     order by s.name, sc.number`;
+  if (!ids.length) throw new BusinessError('Keine erteilten Bestellungen ohne Unterschrift.');
+  const out = await PDFDocument.create();
+  for (const { id } of ids) {
+    const one = await PDFDocument.load(await subcontractPdf(sql, id));
+    for (const pg of await out.copyPages(one, one.getPageIndices())) out.addPage(pg);
+  }
+  out.setTitle(`Bestellungen ohne Unterschrift (${ids.length})`);
+  return { pdf: await out.save({ useObjectStreams: false }), count: ids.length };
+}

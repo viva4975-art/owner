@@ -76,6 +76,7 @@ import {
   listSubcontracts,
   SC_STATUS,
   subcontractTotal,
+  unsignedSubcontractsPdf,
 } from '../services/subcontractors.js';
 import {
   addMonths,
@@ -329,6 +330,27 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
 
   // Bestellungen = Material-Bestellungen und Aufträge an Nachunternehmer in einer Liste (gleicher Nummernkreis
   // BE-JJJJ-NNNN), Aufbau wie im alten Portal: Filter-Pillen, Nachunternehmer-Auswahl, Suche, Tabelle.
+  // Alle erteilten NU-Bestellungen ohne Unterschrift in einer PDF zum Drucken (Ahmed 20.10.)
+  app.get('/bestellungen/ohne-unterschrift.pdf', async (c) => {
+    const l = c.req.query('lieferant');
+    try {
+      const { pdf } = await unsignedSubcontractsPdf(
+        sql,
+        l && /^[0-9a-f-]{36}$/.test(l) ? { supplierId: l } : {},
+      );
+      return new Response(pdf, {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': 'inline; filename="Bestellungen_ohne_Unterschrift.pdf"',
+          'Cache-Control': 'private, no-cache',
+        },
+      });
+    } catch (e) {
+      if (!(e instanceof BusinessError)) throw e;
+      return back(c, '/bestellungen', { fehler: e.message });
+    }
+  });
+
   app.get('/bestellungen', async (c) => {
     const q = c.req.query();
     const art = q.art === 'material' || q.art === 'nu' ? q.art : '';
@@ -670,6 +692,19 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               <a href="/bestellungen?ansicht=alle">alle zeigen</a>
             ) : (
               <a href="/bestellungen?ansicht=alle&unterschrift=fehlt">nur diese anzeigen</a>
+            )}
+            {unsignedCount > 0 && (
+              <>
+                {' · '}
+                <a
+                  class="btn sm sec"
+                  href={`/bestellungen/ohne-unterschrift.pdf${supplierId ? `?lieferant=${supplierId}` : ''}`}
+                  target="_blank"
+                  style="margin-left:4px"
+                >
+                  <Icon name="file" size={14} /> Alle drucken (PDF)
+                </a>
+              </>
             )}
           </div>
         )}

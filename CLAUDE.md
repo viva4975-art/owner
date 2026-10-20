@@ -3670,3 +3670,7 @@ Testadresse.
   bzw. „automatisch verteilt“. Server: mehrere Bestellungen am selben Objekt → dieses Objekt, verschiedene → Feld leer
   (Kostenstellen je Zeile); Leistungsmonat leer → frühester Monat der Zeilen. Die Felder gelten nur noch für Rechnungen
   ohne NU-Bestellung (Material, Miete …).
+- 2026-10-20: **Bestellungen ohne Unterschrift drucken** (Ahmed): Bestellungen → Hinweis „n erteilte Bestellungen ohne
+  unterschriebenen Auftrag“ → Knopf **„Alle drucken (PDF)“** (`/bestellungen/ohne-unterschrift.pdf`, mit Lieferanten-Filter
+  nur dessen): alle erteilten NU-Bestellscheine ohne Scan/Handy-Unterschrift in einer PDF, sortiert nach Nachunternehmer
+  und Nummer (`unsignedSubcontractsPdf`). Jeder Bestellschein bettet seine Schrift selbst ein (~0,8 MB je Schein).

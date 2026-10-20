@@ -1962,8 +1962,8 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                     </button>
                   )}
                   <p class="small mut" style="margin:4px 0 0">
-                    Damit verschwindet die Rechnung aus „Rechnung erwartet“. Beträge je Zeile (Summe = netto)
-                    verteilen die Kosten automatisch auf die Objekte (Kostenstellen).
+                    Objekt und Leistungsmonat kommen aus den Zeilen. Beträge je Zeile sind freiwillig – ohne
+                    Betrag verteilt die App das Netto nach dem Preis der Bestellungen.
                   </p>
                   <script
                     dangerouslySetInnerHTML={{
@@ -1977,7 +1977,7 @@ var first=rows.querySelector('select[name=link_sc]')===sel;var sm=document.getEl
 var lm=tr.querySelector('[name=link_month]');if(lm&&!lm.value)setSel(lm,(sm&&sm.value)||prevMonth());
 if(first){setSel(document.getElementById('site_id'),o.dataset.site);setSel(document.getElementById('category'),'nachunternehmer');if(sm&&!sm.value)setSel(sm,lm&&lm.value);
 var n=document.getElementById('net');var filled=Array.prototype.filter.call(rows.querySelectorAll('select[name=link_sc]'),function(x){return x.value}).length;if(n&&!n.value&&filled===1&&o.dataset.net){n.value=o.dataset.net;n.dispatchEvent(new Event('change',{bubbles:true}));}}});
-function multi(){var set={},m=false;rows.querySelectorAll('select[name=link_sc]').forEach(function(x){var o=x.selectedOptions[0];if(!o||!o.value)return;set[o.dataset.site]=1;if(+o.dataset.multi>1)m=true;});m=m||Object.keys(set).length>1;var bx=document.getElementById('site-box'),au=document.getElementById('site-auto'),si=document.getElementById('site_id');if(!bx||!au)return;bx.hidden=m;au.hidden=!m;if(m&&si&&si.value){si.value='';if(si._cbLabel)si._cbLabel();}}
+function multi(){var sites={},m=false,label='';rows.querySelectorAll('select[name=link_sc]').forEach(function(x){var o=x.selectedOptions[0];if(!o||!o.value)return;sites[o.dataset.site]=1;if(+o.dataset.multi>1)m=true;if(!label)label=(o.textContent.split(' · ')[1]||'').trim();});var n=Object.keys(sites).length;var any=n>0;m=m||n>1;var bx=document.getElementById('site-box'),au=document.getElementById('site-auto'),si=document.getElementById('site_id'),mb=document.getElementById('month-box'),tx=document.getElementById('site-auto-text');if(!bx||!au)return;bx.hidden=any;au.hidden=!any;if(mb)mb.hidden=any;if(tx)tx.textContent=m?'automatisch – die Kosten werden auf die Objekte der Bestellungen verteilt (Beträge je Zeile, sonst nach Preis; Sammelbestellung nach Fläche bzw. Betrag je Objekt).':'aus der Bestellung: '+label;if(any&&si&&si.value){si.value='';if(si._cbLabel)si._cbLabel();}}
 rows.addEventListener('change',function(e){if(e.target.matches&&e.target.matches('select[name=link_sc]'))setTimeout(multi,0);});multi();
 if(sup)sup.addEventListener('change',function(){document.querySelectorAll('select[name=link_sc],#purchase_order_id').forEach(function(x){var o=x.selectedOptions[0];if(o&&o.dataset.sup&&o.dataset.sup!==sup.value)x.value='';});filter();});filter();
 var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',function(){var r=rows.lastElementChild.cloneNode(true);r.querySelectorAll('input').forEach(function(i){i.value=''});r.querySelectorAll('select').forEach(function(x){x.value=''});rows.appendChild(r);filter();});
@@ -2013,13 +2013,11 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                 </div>
                 <div id="site-auto" hidden>
                   <label>Objekt (für Nachkalkulation)</label>
-                  <div class="small" style="padding-top:8px">
-                    <b>automatisch</b> – die Kosten werden auf die Objekte der Bestellungen verteilt (Beträge
-                    je Zeile, sonst nach Preis; Sammelbestellung nach Fläche bzw. Betrag je Objekt). Ergebnis
-                    nach dem Speichern unter „Kostenstellen“.
+                  <div class="small" style="padding-top:8px" id="site-auto-text">
+                    automatisch aus den Bestellungen
                   </div>
                 </div>
-                <div>
+                <div id="month-box">
                   <label for="service_month">Leistungsmonat</label>
                   <MonthSelect
                     id="service_month"

@@ -462,7 +462,16 @@ export async function saveIncoming(sql: Sql, id: string, input: IncomingInput, a
       throw new BusinessError('Nachunternehmer-Auftrag gehört nicht zu diesem Lieferanten');
     // ein Auftrag (bzw. alle Zeilen desselben Auftrags) → Objekt daraus; mehrere Objekte → Kostenstellen je Zeile
     if (links.every((l) => l.subcontractId === firstSc)) siteId = sc.site_id;
+    else {
+      // mehrere Bestellungen am selben Objekt → dieses Objekt; verschiedene → Kostenstellen je Zeile (Objektfeld leer)
+      const ss = await sql<{ site_id: string }[]>`
+        select distinct site_id from app.subcontracts where id = any(${links.map((l) => l.subcontractId)}::uuid[])`;
+      siteId = ss.length === 1 ? ss[0]!.site_id : null;
+    }
   }
+  // Leistungsmonat aus den Zeilen (frühester), wenn oben keiner gewählt ist
+  const serviceMonth =
+    input.serviceMonth ?? (links.length ? [...links.map((l) => l.month)].sort()[0]! : null);
   const withNet = links.filter((l) => l.net != null);
   if (links.length > 1 && withNet.length === links.length) {
     const sum = withNet.reduce((a, l) => a + l.net!, 0n);
@@ -488,7 +497,7 @@ export async function saveIncoming(sql: Sql, id: string, input: IncomingInput, a
       invoice_no: input.invoiceNo.trim(),
       invoice_date: input.invoiceDate,
       due_date: due,
-      service_month: input.serviceMonth ? `${input.serviceMonth}-01` : `${input.invoiceDate.slice(0, 7)}-01`,
+      service_month: serviceMonth ? `${serviceMonth}-01` : `${input.invoiceDate.slice(0, 7)}-01`,
       net_cents: input.net,
       vat_cents: input.vat,
       gross_cents: input.net + input.vat,

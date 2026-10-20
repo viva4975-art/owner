@@ -3665,3 +3665,8 @@ Testadresse.
 - 2026-10-20: **NU „je Stunde“: erfasster Betrag statt Maximum** (Ahmed: „da steht die max und nicht die erfasste“): Bestellliste
   und Reiter Bestellungen beim Nachunternehmer zeigen den Betrag der im laufenden Monat erfassten Stunden (Stundennachweis,
   `hoursOfMonth`), darunter „x Std. × Satz · max. …“.
+- 2026-10-20: Eingangsrechnung (Ahmed: „da steht Objekt oder Gemeinkosten – wieso ist es da?“): Sobald eine NU-Bestellung
+  gewählt ist, verschwinden „Objekt (für Nachkalkulation)“ und „Leistungsmonat“; stattdessen „aus der Bestellung: <Objekt>“
+  bzw. „automatisch verteilt“. Server: mehrere Bestellungen am selben Objekt → dieses Objekt, verschiedene → Feld leer
+  (Kostenstellen je Zeile); Leistungsmonat leer → frühester Monat der Zeilen. Die Felder gelten nur noch für Rechnungen
+  ohne NU-Bestellung (Material, Miete …).

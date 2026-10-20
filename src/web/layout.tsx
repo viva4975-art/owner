@@ -1871,7 +1871,11 @@ export const Layout: FC<{
                     <input
                       id="q"
                       name="q"
-                      placeholder="Suchen: Kunden, Objekte, Rechnungen, Mitarbeiter, Dokumente …"
+                      placeholder={
+                        role === 'objektleitung'
+                          ? 'Suchen: Objekte, Arbeitsscheine, Aufgaben, Notizen …'
+                          : 'Suchen: Kunden, Objekte, Rechnungen, Mitarbeiter, Dokumente …'
+                      }
                       minlength={2}
                       aria-label="Suchen"
                     />

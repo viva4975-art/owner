@@ -3612,3 +3612,8 @@ Testadresse.
   Status + Schnellknöpfe), Liste max. 1100 px breit, **25 je Seite** mit Seitenzahlen und „1–25 von n“, **Suche** (Nr., Kunde,
   Leistung, Vergabe-Nr., Objekt), Statistik-Tabelle eingeklappt (Zusammenfassung in der Kopfzeile). Am Handy je Angebot
   eine Karte statt seitlich scrollender Tabelle. Gilt auch für die Angebotslisten bei Kunde und Objekt.
+- 2026-10-20: Angebotsübersicht im Fortytools-Stil wieder zurückgenommen (Ahmed: „aktuell sieht es gut aus, nicht genau
+  gleich wie Fortytools“) – es bleibt die kompakte Liste (Suche, 25 je Seite, Statistik eingeklappt). **Objektleitung
+  hat oben dieselbe Suchleiste wie das Büro** (Ahmed: „Maske soll gleich aussehen“): `/suche` für alle Rollen, Treffer
+  gefiltert wie bisher (nur eigene Objekte, nur Seiten, die die Rolle öffnen darf – keine Kunden, Rechnungen, Angebote,
+  Personalakten); Platzhalter „Objekte, Arbeitsscheine, Aufgaben, Notizen …“. `e2e:rechte` prüft die Treffer.

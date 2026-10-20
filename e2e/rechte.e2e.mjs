@@ -92,6 +92,19 @@ check(
   /Offene Stellen/.test(menuAll) && /Personalbogen/.test(menuAll),
 );
 check('Stellen lesbar', (await o.goto(B + '/stellen')).status() === 200);
+check('Suchfeld oben wie im Büro', (await o.locator('form.search input').count()) > 0);
+{
+  const hits = [];
+  for (const term of ['Grundschule', 'DEMO', 'Muster', '2026']) {
+    const j = await (await o.request.get(B + '/suche.json?q=' + encodeURIComponent(term))).json();
+    for (const g of j.groups) for (const h of g.hits) hits.push(h.href);
+  }
+  check(
+    'Suche: nur erlaubte Treffer (keine Rechnungen, Kunden, Personalakten, Angebote)',
+    hits.length > 0 && !hits.some((h) => /^\/(rechnungen|kunden|personal|angebote|lieferanten)\//.test(h)),
+    hits.slice(0, 12).join(' '),
+  );
+}
 check('Bewerber gesperrt (403)', (await o.goto(B + '/bewerber')).status() === 403);
 check('Urlaubskalender erreichbar', (await o.goto(B + '/urlaub/kalender')).status() === 200);
 {
@@ -105,7 +118,6 @@ check('Urlaubskalender erreichbar', (await o.goto(B + '/urlaub/kalender')).statu
     `${r1.status()} ${r2.status()}`,
   );
 }
-check('keine globale Suche', (await o.locator('form.search').count()) === 0);
 // Ahmed 19.10.: Besonderheiten am Objekt, Verbandbuch, Fehlende Unterlagen auch für die Objektleitung
 await o.goto(B + `/objekte/${SCHOOL}`);
 await o.fill('textarea[name=besonderheiten]', 'Nur nach 17 Uhr (E2E)');
@@ -115,7 +127,10 @@ check(
   'Objektleitung: Besonderheiten gespeichert',
   (await o.locator('textarea[name=besonderheiten]').inputValue()) === 'Nur nach 17 Uhr (E2E)',
 );
-check('Objektleitung: Fehlende Unterlagen erreichbar', (await o.goto(B + '/personal/unterlagen')).status() === 200);
+check(
+  'Objektleitung: Fehlende Unterlagen erreichbar',
+  (await o.goto(B + '/personal/unterlagen')).status() === 200,
+);
 check('Objektleitung: keine Stammdaten-Lücken sichtbar', !(await o.content()).includes('Stammdaten:'));
 check('Objektleitung: Verbandbuch erreichbar', (await o.goto(B + '/verbandbuch')).status() === 200);
 await o.goto(B + '/verbandbuch/neu');
@@ -165,7 +180,8 @@ check(
 await o.goto(B + `/objekte/${SCHOOL}`);
 check(
   'Objekt-Übersicht ohne Preise',
-  new URL(o.url()).pathname === `/objekte/${SCHOOL}` && !/\d,\d\d\s?€/.test(await o.locator('.main-col').innerText()),
+  new URL(o.url()).pathname === `/objekte/${SCHOOL}` &&
+    !/\d,\d\d\s?€/.test(await o.locator('.main-col').innerText()),
 );
 await o.goto(B + '/einsatzplanung');
 check('Wochenplan ohne fremde Objekte', !(await o.content()).includes('Verwaltungsgebäude'));

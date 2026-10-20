@@ -3612,3 +3612,8 @@ Testadresse.
   Status + Schnellknöpfe), Liste max. 1100 px breit, **25 je Seite** mit Seitenzahlen und „1–25 von n“, **Suche** (Nr., Kunde,
   Leistung, Vergabe-Nr., Objekt), Statistik-Tabelle eingeklappt (Zusammenfassung in der Kopfzeile). Am Handy je Angebot
   eine Karte statt seitlich scrollender Tabelle. Gilt auch für die Angebotslisten bei Kunde und Objekt.
+- 2026-10-20: **Angebotsübersicht wie Fortytools** (Ahmed, Screenshot): Filterzeile oben (Status mit Anzahl – Offen/Entwürfe/
+  Versendet/Angenommen/Abgelehnt/Aufgehoben/Alle –, Kunde, Angebotsdatum von–bis, Suche), links die Liste Datum · Angebot ·
+  Empfänger (darunter Kundennr. + Leistung) · PDF · Betrag · Status · Zahnrad (Zusage/Absage/Aufgehoben, Öffnen), 25 je
+  Seite; rechts Kasten „Angebote in den letzten 12 Monaten“ (bzw. im gewählten Zeitraum) mit Anzahl, Schild, Summe, Anteil
+  und Zuschlagsquote. Kennzahl-Kacheln und Reiter entfallen, „Ausschreibungen“ als Knopf oben. Am Handy Karten.

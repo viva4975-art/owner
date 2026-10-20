@@ -10,13 +10,11 @@ import {
   type OfferLineRow,
   type OfferRow,
   type OfferStats,
-  OFFER_PERIODS,
-  type OfferPeriod,
   type OfferStatus,
 } from '../services/offers.js';
 import { centsToInput, milliToInput } from './forms.js';
 import { Icon } from './icons.js';
-import { PageHead, type Tab, Tabs, dateDe, euro, anz } from './layout.js';
+import { PageHead, dateDe, euro, anz } from './layout.js';
 import { type EditorLine, LineEditor, type ServiceTypeOption } from './pages-invoices.js';
 
 export type OfferListRow = OfferRow & {
@@ -80,25 +78,57 @@ export const DeadlineBadge: FC<{ days: number | null; status: OfferStatus }> = (
   return <span class="badge">noch {days} Tage</span>;
 };
 
+/** Schnellaktionen je Angebot (Zahnrad wie Fortytools): Zusage / Absage / Aufgehoben */
+const OfferActions: FC<{ o: OfferListRow; ret: string }> = ({ o, ret }) => (
+  <details class="ol-menu">
+    <summary class="btn sec sm" title="Status setzen" aria-label="Status setzen">
+      <Icon name="settings" size={14} />
+    </summary>
+    <form method="post" action={`/angebote/${o.id}/status`} class="ol-drop">
+      <input type="hidden" name="zurueck" value={ret} />
+      {o.status === 'versendet' && (
+        <>
+          <button name="status" value="angenommen" data-confirm={`Zusage für Angebot ${o.number} erfassen?`}>
+            Zusage (Zuschlag erhalten)
+          </button>
+          <button name="status" value="abgelehnt" data-confirm={`Absage für Angebot ${o.number} erfassen?`}>
+            Absage
+          </button>
+        </>
+      )}
+      <button name="status" value="aufgehoben" data-confirm={`Angebot ${o.number} als aufgehoben markieren?`}>
+        Aufgehoben (Vergabe aufgehoben)
+      </button>
+      <a href={`/angebote/${o.id}`}>Angebot öffnen</a>
+    </form>
+  </details>
+);
+
 export const OfferTable: FC<{ rows: OfferListRow[]; showCustomer?: boolean; ret?: string }> = ({
   rows,
   showCustomer = true,
   ret,
 }) => (
   <div class="tbl offer-list">
-    <table>
+    <table class="keep">
       <thead>
         <tr>
+          <th>Datum</th>
           <th>Angebot</th>
-          <th>{showCustomer ? 'Kunde / Leistung' : 'Leistung'}</th>
-          <th class="r">Netto</th>
+          <th>
+            {showCustomer ? 'Empfänger' : 'Leistung'}
+            {showCustomer && <div class="ol-th2">Leistung</div>}
+          </th>
+          <th></th>
+          <th class="r">Betrag</th>
           <th>Status</th>
+          {ret && <th></th>}
         </tr>
       </thead>
       <tbody>
         {rows.length === 0 && (
           <tr>
-            <td colspan={4}>
+            <td colspan={7}>
               <div class="empty">Keine Angebote in dieser Ansicht.</div>
             </td>
           </tr>
@@ -113,81 +143,54 @@ export const OfferTable: FC<{ rows: OfferListRow[]; showCustomer?: boolean; ret?
               class={ROW_COLOR[o.status] ? 'offer-decided' : undefined}
               style={ROW_COLOR[o.status] ? `box-shadow:inset 3px 0 0 ${ROW_COLOR[o.status]}` : undefined}
             >
+              <td class="ol-date">{dateDe(o.offer_date)}</td>
               <td class="ol-no">
                 <a href={`/angebote/${o.id}`}>
-                  <b>{o.number}</b>
+                  <b>{o.number ?? '–'}</b>
                 </a>
-                <div class="small mut">
-                  {dateDe(o.offer_date)}
-                  {o.file_count > 0 && (
-                    <span title="Unterlagen">
-                      {' '}
-                      <Icon name="clip" size={11} />
-                      {o.file_count}
-                    </span>
-                  )}
-                </div>
               </td>
               <td class="ol-main">
                 {showCustomer && (
-                  <a class="ol-cust" href={`/kunden/${o.customer_id}`} title={o.customer_name}>
+                  <a class="ol-cust" href={`/angebote/${o.id}`} title={o.customer_name}>
                     {o.customer_name}
                   </a>
                 )}
-                <a class="ol-title" href={`/angebote/${o.id}`} title={o.title}>
+                <div class="ol-sub" title={o.title}>
+                  {showCustomer && <span class="mut">{o.customer_no} · </span>}
                   {o.title}
-                </a>
+                </div>
                 {sub.length > 0 && (
                   <div class="small mut">
                     {sub.join(' · ')} <DeadlineBadge days={o.days_left} status={o.status} />
                   </div>
                 )}
               </td>
+              <td class="ol-pdf">
+                <a href={`/angebote/${o.id}/angebot.pdf`} target="_blank" title="PDF" aria-label="PDF">
+                  <Icon name="pdf" size={16} />
+                </a>
+                {o.file_count > 0 && (
+                  <span class="small mut" title="Unterlagen">
+                    {' '}
+                    <Icon name="clip" size={11} />
+                    {o.file_count}
+                  </span>
+                )}
+              </td>
               <td class="r ol-sum">
-                {euro(o.net_cents)}
+                <b>{euro(o.net_cents)}</b>
                 {o.monthly_net_cents > 0n && (
                   <div class="small mut">davon {euro(o.monthly_net_cents)} mtl.</div>
                 )}
               </td>
               <td class="ol-st">
                 <OfferBadge s={o.status} />
-                {ret && ['entwurf', 'versendet'].includes(o.status) && (
-                  <form method="post" action={`/angebote/${o.id}/status`} class="offer-quick">
-                    <input type="hidden" name="zurueck" value={ret} />
-                    {o.status === 'versendet' && (
-                      <>
-                        <button
-                          name="status"
-                          value="angenommen"
-                          class="q-ok"
-                          title="Zusage (Zuschlag erhalten)"
-                          data-confirm={`Zusage für Angebot ${o.number} erfassen?`}
-                        >
-                          Zusage
-                        </button>
-                        <button
-                          name="status"
-                          value="abgelehnt"
-                          class="q-err"
-                          title="Absage"
-                          data-confirm={`Absage für Angebot ${o.number} erfassen?`}
-                        >
-                          Absage
-                        </button>
-                      </>
-                    )}
-                    <button
-                      name="status"
-                      value="aufgehoben"
-                      class="q-warn"
-                      title="Ausschreibung/Anfrage vom Auftraggeber aufgehoben"
-                      data-confirm={`Angebot ${o.number} als aufgehoben markieren?`}
-                    >
-                      Aufgehoben
-                    </button>
-                  </form>
-                )}
               </td>
+              {ret && (
+                <td class="ol-act">
+                  {['entwurf', 'versendet'].includes(o.status) && <OfferActions o={o} ret={ret} />}
+                </td>
+              )}
             </tr>
           );
         })}
@@ -196,19 +199,48 @@ export const OfferTable: FC<{ rows: OfferListRow[]; showCustomer?: boolean; ret?
   </div>
 );
 
+export const OFFER_FILTERS: [string, string][] = [
+  ['offen', 'Offen (Entwurf/versendet)'],
+  ['entwurf', 'Entwürfe'],
+  ['versendet', 'Versendet'],
+  ['angenommen', 'Angenommen'],
+  ['abgelehnt', 'Abgelehnt'],
+  ['aufgehoben', 'Aufgehoben'],
+  ['alle', 'Alle'],
+];
+
 export const OfferList: FC<{
   rows: OfferListRow[];
   all: OfferListRow[];
   active: string;
   title: string;
   stats: OfferStats;
-  period?: OfferPeriod;
+  statsLabel: string;
   tenders?: number;
   /** Adresse der Liste für den Rücksprung nach einer Schnellmarkierung */
   ret?: string;
   q?: string;
   page?: number;
-}> = ({ rows, all, active, title, stats, tenders, period = '12m', ret = '/angebote', q = '', page = 1 }) => {
+  customers: { id: string; name: string; customer_no: string }[];
+  customerId?: string;
+  from?: string;
+  to?: string;
+}> = ({
+  rows,
+  all,
+  active,
+  title,
+  stats,
+  statsLabel,
+  tenders,
+  ret = '/angebote',
+  q = '',
+  page = 1,
+  customers,
+  customerId = '',
+  from = '',
+  to = '',
+}) => {
   const PER = 25;
   const pages = Math.max(1, Math.ceil(rows.length / PER));
   const cur = Math.min(Math.max(1, page), pages);
@@ -219,171 +251,118 @@ export const OfferList: FC<{
     else u.searchParams.delete('seite');
     return u.pathname + u.search;
   };
-  const plabel = OFFER_PERIODS[period];
-  const count = (s: OfferStatus) => all.filter((o) => o.status === s).length;
-  const tabs: Tab[] = [
-    { key: 'offen', label: 'Offen', href: '/angebote', count: count('entwurf') + count('versendet') },
-    { key: 'fristen', label: 'Ausschreibungen', href: '/ausschreibungen', count: tenders ?? 0 },
-    { key: 'entwurf', label: 'Entwürfe', href: '/angebote?status=entwurf', count: count('entwurf') },
-    { key: 'versendet', label: 'Versendet', href: '/angebote?status=versendet', count: count('versendet') },
-    {
-      key: 'angenommen',
-      label: 'Angenommen',
-      href: '/angebote?status=angenommen',
-      count: count('angenommen'),
-    },
-    { key: 'abgelehnt', label: 'Abgelehnt', href: '/angebote?status=abgelehnt', count: count('abgelehnt') },
-    {
-      key: 'aufgehoben',
-      label: 'Aufgehoben',
-      href: '/angebote?status=aufgehoben',
-      count: count('aufgehoben'),
-    },
-    { key: 'alle', label: 'Alle', href: '/angebote?status=alle', count: all.length },
-  ];
-  const pipeline = all.filter((o) => o.status === 'versendet').reduce((s, o) => s + o.monthly_net_cents, 0n);
+  const count = (s: string) =>
+    s === 'alle'
+      ? all.length
+      : s === 'offen'
+        ? all.filter((o) => o.status === 'entwurf' || o.status === 'versendet').length
+        : all.filter((o) => o.status === s).length;
+  const total = stats.open.count + stats.accepted.count + stats.rejected.count + stats.cancelled.count || 1;
+  const pct = (n: number) => `${((n * 100) / total).toFixed(1).replace('.', ',')} %`;
+  const statRows = [
+    ['offen', 'Offen', stats.open, 'info'],
+    ['angenommen', 'Angenommen', stats.accepted, 'ok'],
+    ['abgelehnt', 'Abgelehnt', stats.rejected, 'err'],
+    ['aufgehoben', 'Aufgehoben', stats.cancelled, 'warn'],
+  ] as const;
   return (
     <>
       <PageHead title={title}>
+        <a class="btn sec" href="/ausschreibungen">
+          Ausschreibungen{tenders ? ` (${tenders})` : ''}
+        </a>
         <a class="btn" href="/angebote/neu">
           + Angebot anlegen
         </a>
       </PageHead>
-      <div class="kpis">
-        <div class="kpi">
-          <div class="l">In Arbeit</div>
-          <div class="v">{count('entwurf')}</div>
-          <div class="s">Angebote im Entwurf</div>
-        </div>
-        <div class="kpi">
-          <div class="l">Ausschreibungen</div>
-          <div class="v">{tenders ?? 0}</div>
-          <div class="s">
-            <a href="/ausschreibungen">Abgabefristen, Besichtigungen, Bieterfragen →</a>
-          </div>
-        </div>
-        <div class="kpi">
-          <div class="l">Abgegeben, Entscheidung offen</div>
-          <div class="v">{euro(pipeline)}</div>
-          <div class="s">monatlich netto ({count('versendet')} Angebote)</div>
-        </div>
-        <div class="kpi">
-          <div class="l">Zuschlagsquote ({plabel})</div>
-          <div class="v">{stats.rate == null ? '–' : `${stats.rate} %`}</div>
-          <div class="s">
-            nach Anzahl ({stats.accepted.count} von {stats.accepted.count + stats.rejected.count}) ·{' '}
-            <b>
-              nach Umsatz {stats.rateValue == null ? '–' : `${String(stats.rateValue).replace('.', ',')} %`}
-            </b>
-          </div>
-        </div>
-      </div>
-      <details class="card offer-stats" style="margin-bottom:16px">
-        <summary>
-          Statistik: {plabel} · {stats.accepted.count} angenommen, {stats.rejected.count} abgelehnt
-        </summary>
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0">
-          <span style="flex:1" />
-          {(Object.keys(OFFER_PERIODS) as OfferPeriod[]).map((k) => (
-            <a class={`chip ${k === period ? 'on' : ''}`} href={`/angebote?zeitraum=${k}`}>
-              {OFFER_PERIODS[k]}
-            </a>
+      <form method="get" action="/angebote" class="offer-filter">
+        <select name="status" aria-label="Status" onchange="this.form.submit()">
+          {OFFER_FILTERS.map(([v, l]) => (
+            <option value={v} selected={v === active}>
+              {l} ({count(v)})
+            </option>
           ))}
-        </div>
-        <p class="small mut" style="margin-top:0">
-          Angenommen/abgelehnt/aufgehoben nach dem Tag der Entscheidung, offene nach Angebotsdatum.
-        </p>
-        <div class="tbl">
-          <table>
-            <thead>
-              <tr>
-                <th>Status</th>
-                <th class="r">Anzahl</th>
-                <th class="r">Summe netto</th>
-                <th class="r">davon monatlich</th>
-                <th style="width:35%"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {(
-                [
-                  ['offen (Entwurf/versendet)', stats.open, '#9aa1ad', '/angebote'],
-                  ['angenommen', stats.accepted, '#3b6b4d', '/angebote?status=angenommen'],
-                  ['abgelehnt', stats.rejected, '#b42318', '/angebote?status=abgelehnt'],
-                  [
-                    'aufgehoben (nicht in der Quote)',
-                    stats.cancelled,
-                    '#d4a017',
-                    '/angebote?status=aufgehoben',
-                  ],
-                ] as const
-              ).map(([label, v, color, href]) => {
-                const total =
-                  stats.open.count + stats.accepted.count + stats.rejected.count + stats.cancelled.count || 1;
-                return (
-                  <tr>
-                    <td>
-                      <a href={href}>{label}</a>
-                    </td>
-                    <td class="r">{v.count}</td>
-                    <td class="r">{euro(v.net)}</td>
-                    <td class="r">{euro(v.monthly)}</td>
-                    <td>
-                      <div
-                        style={`height:10px;border-radius:3px;background:${color};width:${Math.round((v.count * 100) / total)}%`}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        {stats.withdrawn > 0 && (
-          <p class="small mut" style="margin-bottom:0">
-            Zurückgezogen bzw. durch Folgeangebot ersetzt: {stats.withdrawn} (nicht in der Quote).
-          </p>
-        )}
-      </details>
-      <Tabs tabs={tabs} active={active} />
-      <form method="get" action="/angebote" class="offer-search">
-        {active !== 'offen' && <input type="hidden" name="status" value={active} />}
-        <input
-          type="search"
-          name="q"
-          value={q}
-          placeholder="Suchen: Nr., Kunde, Leistung …"
-          aria-label="Angebote durchsuchen"
-        />
-        <button class="btn sec sm">Suchen</button>
-        {q && (
-          <a class="btn ghost sm" href={active === 'offen' ? '/angebote' : `/angebote?status=${active}`}>
-            Suche aufheben
+        </select>
+        <select name="kunde" aria-label="Kunde" onchange="this.form.submit()" class="of-cust">
+          <option value="">Alle Kunden</option>
+          {customers.map((c) => (
+            <option value={c.id} selected={c.id === customerId}>
+              {c.customer_no} · {c.name}
+            </option>
+          ))}
+        </select>
+        <input type="date" name="von" value={from} aria-label="Angebotsdatum von" />
+        <input type="date" name="bis" value={to} aria-label="Angebotsdatum bis" />
+        <input type="search" name="q" value={q} placeholder="Suchen …" aria-label="Angebote durchsuchen" />
+        <button class="btn sec">Filtern</button>
+        {(q || customerId || from || to || active !== 'offen') && (
+          <a class="btn ghost" href="/angebote">
+            zurücksetzen
           </a>
         )}
-        <span class="small mut" style="margin-left:auto">
-          {rows.length === 0
-            ? 'keine Treffer'
-            : `${(cur - 1) * PER + 1}–${(cur - 1) * PER + shown.length} von ${rows.length}`}
-        </span>
       </form>
-      <OfferTable rows={shown} ret={ret} />
-      {pages > 1 && (
-        <div class="pager">
-          {cur > 1 && <a href={pageUrl(cur - 1)}>‹ Zurück</a>}
-          {Array.from({ length: pages }, (_, i) => i + 1)
-            .filter((n) => n === 1 || n === pages || Math.abs(n - cur) <= 2)
-            .map((n, i, arr) => (
-              <>
-                {i > 0 && n - arr[i - 1]! > 1 && <span class="gap">…</span>}
-                <a href={pageUrl(n)} class={n === cur ? 'on' : ''}>
-                  {n}
-                </a>
-              </>
-            ))}
-          {cur < pages && <a href={pageUrl(cur + 1)}>Vor ›</a>}
+      <div class="offer-layout">
+        <div class="card ol-card">
+          <OfferTable rows={shown} ret={ret} />
+          <div class="ol-foot">
+            <span class="small mut">
+              {rows.length === 0
+                ? 'keine Treffer'
+                : `${(cur - 1) * PER + 1}–${(cur - 1) * PER + shown.length} von ${rows.length}`}
+            </span>
+            {pages > 1 && (
+              <div class="pager" style="margin:0">
+                {cur > 1 && <a href={pageUrl(cur - 1)}>‹</a>}
+                {Array.from({ length: pages }, (_, i) => i + 1)
+                  .filter((n) => n === 1 || n === pages || Math.abs(n - cur) <= 2)
+                  .map((n, i, arr) => (
+                    <>
+                      {i > 0 && n - arr[i - 1]! > 1 && <span class="gap">…</span>}
+                      <a href={pageUrl(n)} class={n === cur ? 'on' : ''}>
+                        {n}
+                      </a>
+                    </>
+                  ))}
+                {cur < pages && <a href={pageUrl(cur + 1)}>›</a>}
+              </div>
+            )}
+          </div>
         </div>
-      )}
+        <aside class="card ol-stats">
+          <h3>Angebote {statsLabel}</h3>
+          <table class="keep">
+            <tbody>
+              {statRows.map(([k, l, v, cls]) => (
+                <tr>
+                  <td class="mut">{v.count}</td>
+                  <td>
+                    <a href={`/angebote?status=${k}`} class={`badge ${cls}`}>
+                      {l}
+                    </a>
+                  </td>
+                  <td class="r">{euro(v.net)}</td>
+                  <td class="r small mut">{pct(v.count)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div class="ol-rate">
+            <div>
+              <span class="mut small">Zuschlagsquote</span>
+              <b>{stats.rate == null ? '–' : `${stats.rate} %`}</b>
+            </div>
+            <div>
+              <span class="mut small">nach Umsatz</span>
+              <b>{stats.rateValue == null ? '–' : `${String(stats.rateValue).replace('.', ',')} %`}</b>
+            </div>
+          </div>
+          <p class="small mut" style="margin:8px 0 0">
+            Angenommen/abgelehnt/aufgehoben nach Tag der Entscheidung, offene nach Angebotsdatum. Aufgehobene
+            zählen nicht in der Quote
+            {stats.withdrawn > 0 ? `; zurückgezogen/ersetzt: ${stats.withdrawn}` : ''}.
+          </p>
+        </aside>
+      </div>
     </>
   );
 };

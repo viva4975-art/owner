@@ -1423,23 +1423,34 @@ main:has(input[name=ids]:checked) .bulkbar .small.mut{display:none}
 .offer-quick .q-err:hover{border-color:#b42318;color:#b42318;background:#fdeeee}
 .offer-quick .q-warn:hover{border-color:#d4a017;color:#8a6500;background:#fdf6e3}
 tr.offer-decided td{background:#fcfcfc}
-.offer-list{max-width:1100px}
-.offer-list td{padding-top:7px;padding-bottom:7px;vertical-align:top}
-.offer-list .ol-no{white-space:nowrap;width:1%}
-.offer-list .ol-main{max-width:520px}
-.offer-list .ol-cust{display:block;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.offer-list .ol-title{display:block;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
-.offer-list .ol-sum{white-space:nowrap;width:1%}
-.offer-list .ol-st{width:1%;white-space:nowrap}
-.offer-list .offer-quick{margin-top:4px;flex-wrap:nowrap}
-.offer-search{display:flex;gap:8px;align-items:center;flex-wrap:wrap;max-width:1100px;margin:0 0 10px}
-.offer-search input[type=search]{max-width:320px;flex:1}
-.offer-stats>summary{cursor:pointer;font-weight:600}
-@media (max-width:760px){.offer-list{overflow:visible}.offer-list table,.offer-list tbody{display:block;min-width:0;width:100%}
-.offer-list thead{display:none}.offer-list tr{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;padding:9px 12px;border-bottom:1px solid var(--line)}
-.offer-list td{display:block;padding:0;border:0;width:auto!important;max-width:none;min-width:0}
-.offer-list .ol-main{grid-column:2;grid-row:1/3}.offer-list .ol-sum{grid-column:2;text-align:left}
-.offer-list .ol-st{grid-column:1/3;white-space:normal;display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px}.offer-list .offer-quick{flex-wrap:wrap;margin-top:0}}
+.offer-filter{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 14px}
+.offer-filter select,.offer-filter input{width:auto;min-width:0;flex:0 0 auto}.offer-filter select{width:220px}.offer-filter input[type=date]{width:150px}
+.offer-filter .of-cust{width:260px}.offer-filter input[type=search]{width:200px}
+.offer-layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:18px;align-items:start;max-width:1400px}
+.ol-card{padding:0;overflow:hidden}.ol-card .tbl{border:0;margin:0}
+.ol-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid var(--line);flex-wrap:wrap}
+.offer-list table{width:100%}
+.offer-list td{padding-top:8px;padding-bottom:8px;vertical-align:middle}
+.offer-list .ol-th2{font-weight:400;font-size:11px;color:var(--ink-3,#8a8f98)}
+.offer-list .ol-date,.offer-list .ol-no,.offer-list .ol-sum,.offer-list .ol-st,.offer-list .ol-pdf,.offer-list .ol-act{white-space:nowrap;width:1%}
+.offer-list .ol-main{max-width:0;width:auto}
+.offer-list .ol-cust{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.offer-list .ol-sub{font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ol-menu{position:relative}.ol-menu>summary{list-style:none;padding:3px 7px}.ol-menu>summary::-webkit-details-marker{display:none}
+.ol-menu .ol-drop{position:absolute;right:0;top:100%;z-index:20;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:var(--sh-2);padding:4px;min-width:220px;display:flex;flex-direction:column}
+.ol-menu .ol-drop button,.ol-menu .ol-drop a{all:unset;cursor:pointer;padding:7px 10px;border-radius:6px;font-size:13px;color:var(--ink)}
+.ol-menu .ol-drop button:hover,.ol-menu .ol-drop a:hover{background:var(--tint-2,#f8eff2)}
+.ol-stats h3{margin:0 0 10px;font-size:15px}.ol-stats table{width:100%}
+.ol-stats td{padding:6px 4px;border-bottom:1px solid var(--line)}.ol-stats .badge{text-decoration:none}
+.ol-rate{display:flex;gap:18px;margin-top:12px}.ol-rate div{display:flex;flex-direction:column}.ol-rate b{font-size:18px}
+@media (max-width:1100px){.offer-layout{grid-template-columns:1fr}}
+@media (max-width:760px){.offer-list table,.offer-list tbody{display:block;width:100%;min-width:0}
+.offer-list thead{display:none}.offer-list tr{display:grid;grid-template-columns:auto 1fr auto;grid-template-rows:auto auto 1fr;align-items:start;gap:2px 10px;padding:9px 12px;border-bottom:1px solid var(--line)}
+.offer-list td{display:block;padding:0;border:0;width:auto!important;max-width:none!important;min-width:0}
+.offer-list .ol-date{grid-column:1;grid-row:2;font-size:12px;color:var(--ink-2)}.offer-list .ol-no{grid-column:1;grid-row:1}
+.offer-list .ol-main{grid-column:2;grid-row:1/3}.offer-list .ol-cust,.offer-list .ol-sub{white-space:normal}.offer-list .ol-date{text-align:left}.offer-list .ol-sum{grid-column:3;grid-row:1}.offer-list .ol-st{grid-column:3;grid-row:2;text-align:right}
+.offer-list .ol-pdf{grid-column:1;grid-row:3}.offer-list .ol-act{grid-column:3;grid-row:3;text-align:right}
+.offer-filter select,.offer-filter input{flex:1 1 140px}.offer-filter .of-cust{max-width:none}}
 /* Bewerber: interne Einschätzung (Farbe) */
 .rate-dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin-right:4px;border:1px solid rgba(0,0,0,.12)}
 .rate-pick{display:flex;gap:6px;flex-wrap:wrap}

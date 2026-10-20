@@ -194,7 +194,7 @@ check(
   (await p.locator('select[name=item_pick]').first().innerHTML()).includes(plate),
 );
 await p.selectOption('#sel-an', 'nu');
-await p.waitForLoadState();
+await p.waitForURL(/an=nu/);
 check('Nachunternehmer: Auswahl statt Mitarbeiter', (await p.locator('#employee').count()) === 0);
 
 await browser.close();

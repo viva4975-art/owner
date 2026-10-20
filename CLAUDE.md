@@ -3543,3 +3543,12 @@ Testadresse.
   zum Mitarbeiter passen. Erneut übernehmen legt nichts doppelt an. Objektleitung nur eigene Objekte. Test
   `key-protocol.db.test.ts`. **Ahmed: Protokoll Santexis auf dem Server einmal bei Christos Santexis (1358) hochladen;
   im Protokoll fehlen die Nr. 13 und 14.**
+- 2026-10-20: **Schlüsselübergabeprotokoll selbst erstellen** (Ahmed: „aktuelle Liste, Listen immer zwischenspeichern – nicht
+  in Dokumente, dort kommen die unterschriebenen“): Mitarbeiter → Übergaben → „Schlüsselübergabeprotokoll erstellen“: aktuelle
+  Liste laut Schlüsselbuch (abwählbar), Datum → PDF auf Briefpapier (`src/services/key-protocol-pdf.ts`: Kopf, Tabelle
+  Objekt/Art-Kennung/Anzahl/Schlüssel-Nr./seit, Pflichten, Unterschriften, Rückgabe-Teil). Jeder Stand mit Nummer
+  SP-JJJJ-NNNN in `app.key_protocols` (Migration `20261209000001`, nur anhängen), PDF write-once **ohne Verknüpfung** –
+  nicht unter Dokumente; Liste „Erstellte Protokolle“ mit PDF und „Unterschrieben hochladen“ (→ Dokumente → Schlüssel).
+  Gleicher Inhalt + Datum wie der letzte Stand → kein neuer Stand; feste ID je Formular. Objektleitung nur Schlüssel ihrer
+  Objekte. Test in `key-protocol.db.test.ts`; `e2e:uebergabe` wartete nach „an Nachunternehmer“ nicht auf den
+  Seitenwechsel (gelegentlich rot) – wartet jetzt auf die Adresse.

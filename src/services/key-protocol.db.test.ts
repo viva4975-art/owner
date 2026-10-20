@@ -1,7 +1,11 @@
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { strToU8, zipSync } from 'fflate';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { importKeyProtocol, parseKeyProtocol, planKeyProtocol, siteNoCandidates } from './key-protocol.js';
+import { createKeyProtocol, listKeyProtocols } from './key-protocol-pdf.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
@@ -89,5 +93,47 @@ describe.skipIf(!available)('Schlüsselprotokoll einlesen', () => {
     await expect(
       importKeyProtocol(sql, { employeeId: EMP, fileId: FILE, data: docx(), sites: null }, 't'),
     ).rejects.toThrow(/Personal-Nr. 7781/);
+  });
+
+  it('erstellt Protokoll aus der aktuellen Liste, speichert jeden Stand, nicht unter Dokumente', async () => {
+    const cfg = { dir: await mkdtemp(join(tmpdir(), 'sp-')), maxBytes: 1e8 };
+    const keys = await sql<
+      { id: string }[]
+    >`select id from app.keys where holder_employee_id = ${EMP} order by key_no`;
+    const a = await createKeyProtocol(
+      sql,
+      cfg,
+      { id: '00000000-0000-4000-8000-00000000ce10', employeeId: EMP, date: '2026-10-20' },
+      't',
+    );
+    expect(a.protocol_no).toBe('SP-2026-0001');
+    expect(a.items).toHaveLength(3);
+    // gleicher Inhalt erneut → kein neuer Stand
+    const same = await createKeyProtocol(
+      sql,
+      cfg,
+      { id: '00000000-0000-4000-8000-00000000ce11', employeeId: EMP, date: '2026-10-20' },
+      't',
+    );
+    expect(same.id).toBe(a.id);
+    // Auswahl → neuer Stand
+    const b = await createKeyProtocol(
+      sql,
+      cfg,
+      {
+        id: '00000000-0000-4000-8000-00000000ce12',
+        employeeId: EMP,
+        date: '2026-10-20',
+        keyIds: [keys[0]!.id],
+      },
+      't',
+    );
+    expect(b.protocol_no).toBe('SP-2026-0002');
+    expect(b.items).toHaveLength(1);
+    expect(await listKeyProtocols(sql, EMP)).toHaveLength(2);
+    const links = await sql`select 1 from app.file_links where file_id in (${a.file_id}, ${b.file_id})`;
+    expect(links).toHaveLength(0);
+    const [f] = await sql`select content_type, size_bytes from app.files where id = ${a.file_id}`;
+    expect(f!.content_type).toBe('application/pdf');
   });
 });

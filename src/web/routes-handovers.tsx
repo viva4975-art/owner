@@ -31,6 +31,12 @@ import {
 } from '../services/handovers.js';
 import { listHandoverObjects } from '../services/vehicles.js';
 import { importKeyProtocol, parseKeyProtocol, planKeyProtocol } from '../services/key-protocol.js';
+import {
+  createKeyProtocol,
+  getKeyProtocol,
+  heldKeys,
+  listKeyProtocols,
+} from '../services/key-protocol-pdf.js';
 import { type FileRow, filePath, storeFile } from '../services/uploads.js';
 import { uuidFrom } from '../services/photo-stamp.js';
 import { createHash } from 'node:crypto';
@@ -1075,9 +1081,11 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
   // ------------------------------------------------------------------ Mitarbeiter: Reiter „Übergaben“
   app.get(`/personal/:id{${UUID}}/uebergaben`, (c) =>
     shells.employee!(c, 'uebergaben', async (e) => {
-      const [held, rows] = await Promise.all([
+      const [held, rows, keysNow, protocols] = await Promise.all([
         holdings(sql, e.id),
         listHandovers(sql, { scope: null, employeeId: e.id }),
+        heldKeys(sql, e.id),
+        listKeyProtocols(sql, e.id),
       ]);
       return (
         <>
@@ -1087,6 +1095,112 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
                 + {HANDOVER_KIND[k]}
               </a>
             ))}
+          </div>
+          <div class="card" id="schluesselprotokoll">
+            <h3 style="margin-top:0">Schlüsselübergabeprotokoll erstellen</h3>
+            {keysNow.length ? (
+              <form method="post" action={`/personal/${e.id}/schluesselprotokolle`}>
+                <input type="hidden" name="form_id" value={randomUUID()} />
+                <p class="small mut" style="margin-top:0">
+                  Aktuelle Liste laut Schlüsselbuch – Schlüssel abwählen, die nicht auf das Protokoll sollen.
+                  Jeder Stand wird unten gespeichert. Die unterschriebene Fassung danach unter Dokumente →
+                  Schlüssel hochladen.
+                </p>
+                <div class="tbl">
+                  <table class="keep">
+                    <thead>
+                      <tr>
+                        <th style="width:28px" aria-label="Auswahl"></th>
+                        <th>Objekt</th>
+                        <th>Art / Kennung</th>
+                        <th class="r">Anzahl</th>
+                        <th>Schlüssel-Nr.</th>
+                        <th>seit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {keysNow.map((k) => (
+                        <tr>
+                          <td>
+                            <input
+                              type="checkbox"
+                              name="key"
+                              value={k.key_id}
+                              checked
+                              aria-label={k.key_no}
+                            />
+                          </td>
+                          <td>
+                            {k.site_name} <span class="small mut">{k.site_no}</span>
+                          </td>
+                          <td>{k.description}</td>
+                          <td class="r">{k.quantity}</td>
+                          <td>{k.key_no}</td>
+                          <td>{k.issued_at ? dateDe(k.issued_at) : '–'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+                  <label for="sp-datum">Datum der Übergabe</label>
+                  <input id="sp-datum" type="date" name="datum" value={todayBerlin()} />
+                  <button class="btn">Protokoll als PDF erstellen</button>
+                </div>
+              </form>
+            ) : (
+              <p class="mut">
+                Laut Schlüsselbuch hat {e.first_name} {e.last_name} keine Schlüssel. Erst Schlüssel ausgeben
+                (Objekt → Schlüssel) oder ein vorhandenes Protokoll einlesen.
+              </p>
+            )}
+            {protocols.length > 0 && (
+              <details open={protocols.length <= 5} style="margin-top:12px">
+                <summary>Erstellte Protokolle ({protocols.length}) – gespeicherte Stände</summary>
+                <div class="tbl">
+                  <table class="keep">
+                    <thead>
+                      <tr>
+                        <th>Nr.</th>
+                        <th>Datum</th>
+                        <th class="r">Schlüssel</th>
+                        <th>erstellt</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {protocols.map((p) => (
+                        <tr>
+                          <td>
+                            <b>{p.protocol_no}</b>
+                          </td>
+                          <td>{dateDe(p.protocol_date)}</td>
+                          <td class="r">{p.items.length}</td>
+                          <td class="small mut">
+                            {berlin(p.created_at)} · {p.created_by}
+                          </td>
+                          <td>
+                            <a
+                              class="btn sm sec"
+                              href={`/personal/${e.id}/schluesselprotokolle/${p.id}/pdf`}
+                              target="_blank"
+                            >
+                              PDF
+                            </a>{' '}
+                            <a
+                              class="btn sm sec"
+                              href={`/personal/${e.id}/dokumente?kategorie=${encodeURIComponent('Schlüssel')}#hochladen`}
+                            >
+                              Unterschrieben hochladen
+                            </a>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            )}
           </div>
           <form
             method="post"
@@ -1302,6 +1416,50 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
         `Schlüsselprotokoll übernommen: ${r.created} Schlüssel neu, ${r.issued} ausgegeben, ` +
         `abgelegt beim Mitarbeiter und ${r.sites} Objekt(en).` +
         (r.skipped ? ` ${r.skipped} Zeile(n) nicht übernommen.` : ''),
+    });
+  });
+
+  // ------------------------------------------------------------------ Schlüsselprotokoll selbst erstellen
+  app.post(`/personal/:id{${UUID}}/schluesselprotokolle`, async (c) => {
+    const id = c.req.param('id');
+    assertProtoAccess(c, id);
+    const b = await c.req.parseBody({ all: true });
+    const formId = str(b, 'form_id');
+    if (!formId || !/^[0-9a-f-]{36}$/.test(formId))
+      throw new BusinessError('Formular ungültig – bitte neu laden');
+    const keyIds = arr(b, 'key');
+    // Objektleitung: nur Schlüssel ihrer Objekte
+    const scope = c.get('sites');
+    let allowed = keyIds;
+    if (scope) {
+      const own = await sql<
+        { id: string }[]
+      >`select id from app.keys where id = any(${keyIds}) and site_id = any(${scope})`;
+      allowed = own.map((r) => r.id);
+    }
+    const p = await createKeyProtocol(
+      sql,
+      filesCfg(),
+      { id: formId, employeeId: id, date: str(b, 'datum'), keyIds: allowed },
+      c.get('actor'),
+    );
+    return back(c, `/personal/${id}/uebergaben#schluesselprotokoll`, {
+      ok: `Schlüsselübergabeprotokoll ${p.protocol_no} erstellt (${p.items.length} Schlüssel) – PDF unten in der Liste.`,
+    });
+  });
+
+  app.get(`/personal/:id{${UUID}}/schluesselprotokolle/:pid{${UUID}}/pdf`, async (c) => {
+    const id = c.req.param('id');
+    assertProtoAccess(c, id);
+    const p = await getKeyProtocol(sql, c.req.param('pid'));
+    if (!p || p.employee_id !== id) return c.notFound();
+    const { data } = await loadProto(p.file_id);
+    return new Response(data, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="Schluesselprotokoll_${p.protocol_no}.pdf"`,
+        'Cache-Control': 'private, no-cache',
+      },
     });
   });
 

@@ -3633,3 +3633,12 @@ Testadresse.
   Kostenart „Nachunternehmer“, Leistungsmonat (sonst Vormonat des Rechnungsdatums) und bei Monatspauschale der Nettobetrag
   übernommen (nur leere Felder). Leistungsmonat als eine Auswahl „Oktober 2026“ (`MonthSelect`, 24 Monate zurück,
   3 voraus) statt Monat/Jahr-Feldern; Material-Bestellungen ebenfalls nach Lieferant gefiltert.
+- 2026-10-20: **NU-Bestellung übersichtlicher** (Ahmed: „unübersichtlich, Rechnung erfassen ganz unten, Schlüssel hat dort
+  nichts verloren, Leistungen wie unsere Liste, Sammelobjekte oben ein Objekt und unten die Liste“): Erteilte/beendete
+  Bestellung zeigt oben einen Kasten (Nachunternehmer, Objekt bzw. „Sammelbestellung · n Objekte“, Leistung + Häufigkeit/
+  Abrechnung, Preis, Zeitraum, Status + Unterschrift) mit **„+ Rechnung erfassen“** (öffnet die Eingangsrechnung mit
+  Nachunternehmer, Bestellung und offenem Monat vorbelegt), Bestellschein, Unterschreiben lassen, Als erledigt. Danach
+  Rechnungsverfolgung, Sammel-Objekte, Stundennachweis, Unterschrift/Preisnachtrag; **„Bestellung bearbeiten“
+  eingeklappt** unten. Schlüssel/Kleidung/Einweisung aus der Bestellung entfernt (bleibt beim Nachunternehmer → Übergaben).
+  Bei Sammelbestellungen kein einzelnes „Objekt“-Feld mehr, sondern Verweis auf die Objektliste. **Leistung = unsere
+  Leistungsarten** (Einstellungen → Leistungsarten), bisheriger Wert bleibt wählbar. Entwürfe unverändert.

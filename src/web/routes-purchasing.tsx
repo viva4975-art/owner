@@ -769,7 +769,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                 </span>
                 <span class="bs-st">
                   <span class={`bs-pill bs-${r.tone || 'grey'}`}>{r.status}</span>
-                  {r.unsigned && (
+                  {r.unsigned && !r.status.includes('Unterschrift fehlt') && (
                     <span class="bs-sub" style="color:var(--bad)">
                       Unterschrift fehlt
                     </span>

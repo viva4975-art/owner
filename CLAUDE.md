@@ -3532,3 +3532,14 @@ Testadresse.
   Umstellung, Migration `20261208000001`). Feste IDs, doppelt absenden bucht nichts doppelt. Logik `assignCustomerPick`
   in `bank.ts`. **DATEV:** der Mehrbetrag ist ein Zahlungseingang auf den Debitor (Beleg = Korrekturnummer); die spätere
   Verrechnung bleibt innerhalb des Debitors und wird nicht gebucht. Test `correction-credits.db.test.ts`.
+- 2026-10-20: **Schlüsselübergabeprotokoll (Word) einlesen** (Ahmed: Protokoll Santexis ins Schlüsselbuch, beim Mitarbeiter
+  und beim Objekt hinterlegen): Mitarbeiter → Übergaben → „Schlüsselprotokoll (Word) einlesen“ → Prüfen (GET-Vorschau:
+  je Zeile Objekt aus „Ort“ über die Objektnummer – „Büro INT-BUERO“, „Wilhelmsgymnasium2010021“ –, Status neu /
+  vorhanden / schon ausgegeben / bei jemand anderem / Objekt fehlt) → Übernehmen (`src/services/key-protocol.ts`): je Zeile
+  Schlüssel im Schlüsselbuch beim Objekt (Nummer `S-<Objektnr.>-NN`, Beschreibung „Art: Kennung“, Anzahl, Notiz mit
+  Protokoll-Nr.), ausgegeben am Übergabedatum des Protokolls; vorhandener gleicher Schlüssel am Objekt wird nur ausgegeben.
+  Protokoll (write-once, feste ID aus Mitarbeiter + Inhalt) beim Mitarbeiter (Kategorie „Schlüssel“, zählt als
+  Pflichtunterlage) und bei jedem betroffenen Objekt (neue Objekt-Kategorie „Schlüssel“). Personal-Nr. im Protokoll muss
+  zum Mitarbeiter passen. Erneut übernehmen legt nichts doppelt an. Objektleitung nur eigene Objekte. Test
+  `key-protocol.db.test.ts`. **Ahmed: Protokoll Santexis auf dem Server einmal bei Christos Santexis (1358) hochladen;
+  im Protokoll fehlen die Nr. 13 und 14.**

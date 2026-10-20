@@ -30,6 +30,11 @@ import {
   WAGE_DEDUCTION_TEXT,
 } from '../services/handovers.js';
 import { listHandoverObjects } from '../services/vehicles.js';
+import { importKeyProtocol, parseKeyProtocol, planKeyProtocol } from '../services/key-protocol.js';
+import { type FileRow, filePath, storeFile } from '../services/uploads.js';
+import { uuidFrom } from '../services/photo-stamp.js';
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { type AppEnv, assertSite, type Ctx, UUID } from './app.js';
 import { arr, centsToInput, str } from './forms.js';
 import { PageHead, dateDe, euro } from './layout.js';
@@ -1083,6 +1088,21 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
               </a>
             ))}
           </div>
+          <form
+            method="post"
+            action={protoBase(e.id)}
+            enctype="multipart/form-data"
+            class="card"
+            style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"
+          >
+            <b>Schlüsselprotokoll (Word) einlesen</b>
+            <input type="file" name="datei" accept=".docx" required aria-label="Schlüsselprotokoll" />
+            <button class="btn sm">Prüfen</button>
+            <span class="small mut">
+              Schlüssel kommen ins Schlüsselbuch beim Objekt, das Protokoll zum Mitarbeiter und zu den
+              Objekten.
+            </span>
+          </form>
           <div class="card">
             <h3 style="margin-top:0">
               Derzeit bei {e.first_name} {e.last_name}
@@ -1118,6 +1138,172 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
       );
     }),
   );
+
+  // ------------------------------------------------------------------ Schlüsselprotokoll (Word) einlesen
+  const filesCfg = () => ({ dir: deps.env.FILES_DIR, maxBytes: deps.env.UPLOAD_MAX_BYTES });
+  const protoBase = (id: string) => `/personal/${id}/schluesselprotokoll`;
+  const assertProtoAccess = (c: Context<AppEnv>, employeeId: string) => {
+    if (!canAccess(c.get('user').role, `/personal/${employeeId}/uebergaben`))
+      throw new BusinessError('Keine Berechtigung');
+  };
+  const loadProto = async (fileId: string) => {
+    const [f] = await sql<FileRow[]>`select * from app.files where id = ${fileId} and status = 'complete'`;
+    if (!f) throw new BusinessError('Datei nicht gefunden – bitte erneut hochladen');
+    return { f, data: new Uint8Array(await readFile(filePath(filesCfg(), f))) };
+  };
+
+  app.post(`/personal/:id{${UUID}}/schluesselprotokoll`, async (c) => {
+    const id = c.req.param('id');
+    assertProtoAccess(c, id);
+    const b = await c.req.parseBody();
+    const f = b.datei;
+    if (!(f instanceof File) || !f.size)
+      return back(c, `/personal/${id}/uebergaben`, { fehler: 'Bitte die Word-Datei wählen' });
+    const data = new Uint8Array(await f.arrayBuffer());
+    try {
+      parseKeyProtocol(data);
+    } catch (e) {
+      if (e instanceof BusinessError) return back(c, `/personal/${id}/uebergaben`, { fehler: e.message });
+      throw e;
+    }
+    // Feste ID aus Mitarbeiter + Inhalt → dieselbe Datei zweimal hochladen = eine Datei
+    const fileId = uuidFrom(`schluesselprotokoll:${id}:${createHash('sha256').update(data).digest('hex')}`);
+    await storeFile(
+      sql,
+      filesCfg(),
+      {
+        id: fileId,
+        name: f.name || 'Schluesseluebergabeprotokoll.docx',
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        data,
+        link: null,
+        category: null,
+      },
+      c.get('actor'),
+    );
+    return c.redirect(`${protoBase(id)}/${fileId}`, 303);
+  });
+
+  app.get(`/personal/:id{${UUID}}/schluesselprotokoll/:file{${UUID}}`, async (c) => {
+    const id = c.req.param('id');
+    assertProtoAccess(c, id);
+    const { f, data } = await loadProto(c.req.param('file'));
+    const plan = await planKeyProtocol(sql, parseKeyProtocol(data), id, c.get('sites'));
+    const e = plan.employee;
+    if (!e) return c.notFound();
+    const pnrWrong = plan.proto.personnelNo && e.personnel_no && plan.proto.personnelNo !== e.personnel_no;
+    const takeable = plan.rows.filter((r) => r.status === 'neu' || r.status === 'vorhanden').length;
+    const [linked] =
+      await sql`select 1 from app.file_links where file_id = ${f.id} and entity_type = 'employee'
+                                 and entity_id = ${id}`;
+    const STATUS: Record<string, [string, string]> = {
+      neu: ['ok', 'neu anlegen + ausgeben'],
+      vorhanden: ['info', 'vorhanden – ausgeben'],
+      schon_bei_ihm: ['mut', 'schon ausgegeben'],
+      bei_anderem: ['err', 'bei jemand anderem'],
+      kein_objekt: ['err', 'Objekt fehlt'],
+    };
+    return page(
+      c,
+      'Schlüsselprotokoll einlesen',
+      'personal',
+      <>
+        <PageHead
+          title="Schlüsselprotokoll einlesen"
+          crumbs={[
+            ['Mitarbeiter', '/personal'],
+            [e.name, `/personal/${id}/uebergaben`],
+          ]}
+        />
+        <div class="card">
+          <div>
+            <b>{plan.proto.employeeName ?? '–'}</b>
+            {plan.proto.personnelNo && <> · Personal-Nr. {plan.proto.personnelNo}</>} · Übergabe am{' '}
+            {plan.proto.date ? dateDe(plan.proto.date) : 'heute (kein Datum im Protokoll)'}
+          </div>
+          <div class="small mut">Datei: {f.original_name}</div>
+          {pnrWrong && (
+            <p class="err">
+              Das Protokoll gehört zu Personal-Nr. {plan.proto.personnelNo}, dieser Mitarbeiter hat{' '}
+              {e.personnel_no} – bitte beim richtigen Mitarbeiter hochladen.
+            </p>
+          )}
+        </div>
+        <div class="tbl">
+          <table>
+            <thead>
+              <tr>
+                <th>Nr.</th>
+                <th>Ort (Protokoll)</th>
+                <th>Objekt</th>
+                <th>Art</th>
+                <th class="r">Anzahl</th>
+                <th>Kennung</th>
+                <th>Übernahme</th>
+              </tr>
+            </thead>
+            <tbody>
+              {plan.rows.map((r) => (
+                <tr>
+                  <td>{r.nr}</td>
+                  <td>{r.ort}</td>
+                  <td>
+                    {r.site ? (
+                      <>
+                        {r.site.name}
+                        <div class="small mut">{r.site.site_no}</div>
+                      </>
+                    ) : (
+                      '–'
+                    )}
+                  </td>
+                  <td>{r.art}</td>
+                  <td class="r">{r.qty}</td>
+                  <td>{r.kennung}</td>
+                  <td>
+                    <span class={`tag ${STATUS[r.status]![0]}`}>{STATUS[r.status]![1]}</span>
+                    {r.note && <div class="small mut">{r.note}</div>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {!pnrWrong && (
+          <form method="post" action={`${protoBase(id)}/${f.id}`} class="card">
+            <p style="margin-top:0">
+              {takeable} Schlüssel werden im Schlüsselbuch beim jeweiligen Objekt angelegt bzw. an {e.name}{' '}
+              ausgegeben. Das Protokoll wird beim Mitarbeiter (Dokumente → Schlüssel) und bei jedem Objekt
+              (Dokumente → Schlüssel) abgelegt.
+              {linked && ' Bereits übernommen – erneutes Übernehmen legt nichts doppelt an.'}
+            </p>
+            <button class="btn">Übernehmen</button>{' '}
+            <a class="btn sec" href={`/personal/${id}/uebergaben`}>
+              Abbrechen
+            </a>
+          </form>
+        )}
+      </>,
+    );
+  });
+
+  app.post(`/personal/:id{${UUID}}/schluesselprotokoll/:file{${UUID}}`, async (c) => {
+    const id = c.req.param('id');
+    assertProtoAccess(c, id);
+    const fileId = c.req.param('file');
+    const { data } = await loadProto(fileId);
+    const r = await importKeyProtocol(
+      sql,
+      { employeeId: id, fileId, data, sites: c.get('sites') },
+      c.get('actor'),
+    );
+    return back(c, `/personal/${id}/uebergaben`, {
+      ok:
+        `Schlüsselprotokoll übernommen: ${r.created} Schlüssel neu, ${r.issued} ausgegeben, ` +
+        `abgelegt beim Mitarbeiter und ${r.sites} Objekt(en).` +
+        (r.skipped ? ` ${r.skipped} Zeile(n) nicht übernommen.` : ''),
+    });
+  });
 
   // Objekt → Übergaben (Objektleitung: Kleidung, Geräte, Dokumente an Mitarbeitende des Objekts)
   app.get(`/objekte/:id{${UUID}}/uebergaben`, (c) =>

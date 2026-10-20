@@ -436,7 +436,6 @@ export interface DashboardTodo {
 export type DashCardKey =
   | 'aufgaben'
   | 'akquise'
-  | 'entwuerfe'
   | 'offeneposten'
   | 'unversendet'
   | 'abwesend'
@@ -447,7 +446,6 @@ export type DashCardKey =
 export const DASH_CARDS: Record<DashCardKey, string> = {
   aufgaben: 'Aufgaben (inkl. Ausschreibungs-Termine)',
   akquise: 'Wiedervorlagen Akquise',
-  entwuerfe: 'Rechnungsentwürfe & Monatslauf',
   offeneposten: 'Offene Posten',
   unversendet: 'Noch nicht versendet',
   abwesend: 'Abwesend (heute, 7 und 14 Tage)',
@@ -468,7 +466,6 @@ export const DEFAULT_DASH: DashItem[] = [
   { key: 'akquise', col: 1, hidden: false },
   // Hinweise (Fristen, Aufenthaltstitel …) oben rechts – vorher weit unten übersehen (Bedientest 10.10.)
   { key: 'hinweise', col: 2, hidden: false },
-  { key: 'entwuerfe', col: 2, hidden: false },
   { key: 'unversendet', col: 2, hidden: false },
   { key: 'abwesend', col: 2, hidden: false },
   { key: 'bank', col: 2, hidden: false },
@@ -595,11 +592,9 @@ export const Dashboard: FC<{
   showAkquise = true,
   user,
   tasks,
-  drafts,
   balances,
   unsent,
   hr,
-  month,
   todo,
   kpi,
   absent = [],
@@ -934,54 +929,6 @@ export const Dashboard: FC<{
                   + {todo.followups.due.length - 3} weitere Wiedervorlagen fällig
                 </a>
               )}
-            </section>
-          ),
-          entwuerfe: (
-            <section class="card dash-card">
-              <DashHead
-                title="Rechnungsentwürfe"
-                count={drafts.length}
-                href="/rechnungen/entwuerfe"
-                more="Vorfaktura"
-              />
-              {drafts.length === 0 ? (
-                <div class="dash-empty">Keine offenen Entwürfe.</div>
-              ) : (
-                <ul class="dash-list">
-                  {drafts.slice(0, 5).map((d) => (
-                    <li>
-                      <span class="dot" />
-                      <div class="dl-main">
-                        <a href={`/rechnungen/${d.id}`}>{d.customer_name}</a>
-                        <div class="dl-sub">
-                          {d.period_start
-                            ? `Leistung ab ${dateDe(d.period_start)}`
-                            : 'ohne Leistungszeitraum'}
-                        </div>
-                      </div>
-                      <span class="dl-r num">{euro(d.gross_cents)}</span>
-                      <form
-                        method="post"
-                        action="/rechnungen/entwuerfe/auswahl"
-                        style="margin:0"
-                        onsubmit="return confirm('Diesen Rechnungsentwurf löschen?')"
-                      >
-                        <input type="hidden" name="inv" value={d.id} />
-                        <input type="hidden" name="aktion" value="loeschen" />
-                        <input type="hidden" name="zurueck" value="/" />
-                        <button class="btn sm sec" title="Entwurf löschen" aria-label="Entwurf löschen">
-                          ×
-                        </button>
-                      </form>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <form method="post" action="/monatslauf" class="dash-run">
-                <span>Monatslauf</span>
-                <input type="month" name="month" value={month} required aria-label="Abrechnungsmonat" />
-                <button class="btn sm">Entwürfe erstellen</button>
-              </form>
             </section>
           ),
           offeneposten: (

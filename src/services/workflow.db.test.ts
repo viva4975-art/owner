@@ -117,6 +117,19 @@ describe.skipIf(!available)('Ablauf: Monatslauf → Ausstellen → Archiv → Ve
     ]);
   });
 
+  it('vom Mailserver vor der Übertragung abgelehnt (Rate-Limit) → im Sammelversand erneut sendbar', async () => {
+    const run = await runMonthly(sql, '2026-06', 'test');
+    const id = run.created[0]!.invoiceId;
+    await issueInvoice(deps, id, 'test');
+    const orig = deps.mailer.send.bind(deps.mailer);
+    deps.mailer.send = () =>
+      Promise.reject(new Error('Mail command failed: 421 4.4.2 Message submission rate … exceeded'));
+    await expect(sendInvoice(deps, id, 'test')).rejects.toThrow(/Versand fehlgeschlagen/);
+    deps.mailer.send = orig;
+    const ok = await sendInvoice(deps, id, 'test');
+    expect(ok.delivery.status).toBe('sent');
+  });
+
   it('Storno wird ebenfalls geprüft, archiviert und versendet', async () => {
     const stornoId = await createCancellation(sql, invoiceId, 'test');
     const docs = await issueInvoice(deps, stornoId, 'test');

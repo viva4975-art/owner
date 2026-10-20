@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Env } from '../config/env.js';
-import { MAILER_MISSING, createMailer, resolveRecipients } from './mailer.js';
+import { MAILER_MISSING, createMailer, isRateLimited, notTransmitted, resolveRecipients } from './mailer.js';
 
 describe('resolveRecipients', () => {
   const intended = ['a@behoerde.de', 'b@behoerde.de'];
@@ -43,5 +43,21 @@ describe('createMailer ohne SMTP', () => {
         messageId: '<x@y>',
       }),
     ).rejects.toThrow(MAILER_MISSING);
+  });
+});
+
+describe('notTransmitted / isRateLimited', () => {
+  it('erkennt Ablehnungen vor der Übertragung (gefahrlos wiederholbar)', () => {
+    const m =
+      'Mail command failed: 421 4.4.2 Message submission rate for this client has exceeded the configured limit';
+    expect(notTransmitted(m)).toBe(true);
+    expect(notTransmitted(`Versand fehlgeschlagen: ${m}`)).toBe(true);
+    expect(isRateLimited(Object.assign(new Error(m), { responseCode: 421 }))).toBe(true);
+    // nach DATA unklar → nie von selbst wiederholen
+    expect(notTransmitted('Data command failed: 451 timeout')).toBe(false);
+    expect(notTransmitted('Unexpected socket close')).toBe(false);
+    expect(
+      isRateLimited(Object.assign(new Error('Data command failed: 421 rate'), { responseCode: 421 })),
+    ).toBe(false);
   });
 });

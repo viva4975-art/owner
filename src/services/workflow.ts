@@ -8,7 +8,7 @@ import { type InvoiceDocument, KIND_TITLES } from '../domain/invoice/types.js';
 import { formatEuro } from '../domain/money/money.js';
 import { generateCii, generateXRechnungUbl, generateZugferd } from '../einvoice/generate.js';
 import { type ValidationResult, validateWithKosit } from '../einvoice/kosit.js';
-import { MAILER_MISSING, type Mailer, resolveRecipients } from '../mail/mailer.js';
+import { MAILER_MISSING, type Mailer, notTransmitted, resolveRecipients } from '../mail/mailer.js';
 import { composeMail, loadSignature } from '../mail/compose.js';
 import { renderInvoicePdf } from '../pdf/invoice-pdf.js';
 import { describeEInvoiceError } from '../einvoice/errors.js';
@@ -587,13 +587,18 @@ export async function sendInvoice(
             values (${id}, ${key}, ${customer.invoice_emails}, ${actual}, ${subject}, ${sql.json(files)})
             on conflict (idempotency_key) do nothing`;
 
-  // Übernahme: nur wenn noch nie versucht (attempts = 0) oder ausdrücklich nach Fehler wiederholt.
+  // Übernahme: nur wenn noch nie versucht (attempts = 0) oder nach Fehler wiederholt – ausdrücklich, oder von selbst,
+  // wenn der Mailserver die Mail nachweislich vor der Übertragung abgelehnt hat (z. B. Rate-Limit).
+  const [prev] = await sql<
+    { status: string; error: string | null }[]
+  >`select status, error from app.invoice_deliveries where idempotency_key = ${key}`;
+  const retry = !!opts.retryFailed || (prev?.status === 'failed' && notTransmitted(prev.error));
   const [claimed] = await sql<DeliveryRow[]>`
     update app.invoice_deliveries
        set status = 'pending', attempts = attempts + 1, error = null,
            actual_recipients = ${actual}, subject = ${subject}, files = ${sql.json(files)}
      where idempotency_key = ${key}
-       and (attempts = 0 or (status = 'failed' and ${!!opts.retryFailed}))
+       and (attempts = 0 or (status = 'failed' and ${retry}))
      returning *`;
   if (!claimed) {
     const [existing] = await sql<

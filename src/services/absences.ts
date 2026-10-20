@@ -750,7 +750,7 @@ export async function absentBetween(sql: Sql, from: string, to: string, siteIds:
                        where p.employee_id = e.id and p.site_id = any(${siteIds}::uuid[])
                          and p.valid_from <= least(a.end_date, ${to}::date)
                          and (p.valid_until is null or p.valid_until >= greatest(a.start_date, ${from}::date))), '{}')`;
-  return sql<AbsentNow[]>`
+  const rows = await sql<AbsentNow[]>`
     select a.employee_id, e.first_name || ' ' || e.last_name as name, a.kind, a.start_date::text,
            a.end_date::text, a.half_day, ${sites} as sites
       from app.absences a join app.employees e on e.id = a.employee_id
@@ -767,6 +767,42 @@ export async function absentBetween(sql: Sql, from: string, to: string, siteIds:
              )
        }
      order by a.start_date, e.last_name`;
+  return mergeAbsent(rows);
+}
+
+/** Nur Wochenende/Feiertage zwischen zwei Tagen (ausschließlich) → gilt als durchgehend. */
+function onlyFreeDaysBetween(end: string, start: string): boolean {
+  for (let d = addDays(end, 1); d < start; d = addDays(d, 1))
+    if (isoWeekday(d) < 6 && !holidayName(d)) return false;
+  return true;
+}
+
+/**
+ * Lückenlose Abwesenheiten gleicher Art einer Person zu einem Eintrag zusammenfassen (Ahmed 20.10.: „Krank bis 22.10.,
+ * 23.10., 24.10.–02.11.“ erschien dreimal) – auch über Wochenende/Feiertage hinweg. Nur Anzeige, Daten bleiben getrennt.
+ */
+export function mergeAbsent(rows: AbsentNow[]): AbsentNow[] {
+  const sorted = [...rows].sort(
+    (a, b) =>
+      a.employee_id.localeCompare(b.employee_id) ||
+      a.kind.localeCompare(b.kind) ||
+      a.start_date.localeCompare(b.start_date),
+  );
+  const out: AbsentNow[] = [];
+  for (const r of sorted) {
+    const prev = out.at(-1);
+    if (
+      prev &&
+      prev.employee_id === r.employee_id &&
+      prev.kind === r.kind &&
+      (r.start_date <= prev.end_date || onlyFreeDaysBetween(prev.end_date, r.start_date))
+    ) {
+      if (r.end_date > prev.end_date) prev.end_date = r.end_date;
+      prev.half_day = false;
+      prev.sites = [...new Set([...prev.sites, ...r.sites])];
+    } else out.push({ ...r, sites: [...r.sites] });
+  }
+  return out.sort((a, b) => a.start_date.localeCompare(b.start_date) || a.name.localeCompare(b.name));
 }
 
 /** Wer ist am Tag abwesend (genehmigt)? */

@@ -3589,3 +3589,13 @@ Testadresse.
   „Markierte aktiv/inaktiv setzen“ fragt mit Anzahl nach; Auswahl-Häkchen werden nicht mehr vom Browser bzw. der
   Eingaben-Sicherung nach Position wiederhergestellt (sonst hätten sie nach einer Listenänderung auf anderen Objekten
   gesessen – Häkchen mit Wert werden jetzt über den Wert zugeordnet).
+- 2026-10-20: **Fund Sammelversand „421 4.4.2 Message submission rate … exceeded“** (IONOS Exchange, 13 Rechnungen 1038329–
+  1038341): Der Mailserver lehnte beim MAIL FROM ab – die Mails wurden nicht übertragen. Jede Rechnung ging schon immer als
+  eigene Mail; zu viele kamen zu schnell hintereinander. Jetzt: Mails nacheinander mit mind. 2,5 s Abstand (≤ 24/Min.), bei
+  Rate-Limit 60 s bzw. 120 s warten und denselben Versuch wiederholen (`src/mail/mailer.ts`). Ein fehlgeschlagener Versand,
+  der nachweislich vor der Übertragung abgelehnt wurde (`notTransmitted`: MAIL FROM/RCPT TO, Anmeldung, Verbindung), lässt
+  sich wieder ohne Rückfrage senden (auch im Sammelversand); nach DATA bleibt es bei „Erneut versenden“ von Hand (sonst
+  ggf. doppelt). **Ahmed: die 13 Rechnungen unter Noch nicht versendet einfach noch einmal senden.**
+- 2026-10-20: Startseite ohne Karte „Rechnungsentwürfe & Monatslauf“ (Ahmed). **Abwesend:** lückenlose Abwesenheiten gleicher
+  Art einer Person (auch über Wochenende/Feiertage) werden als ein Eintrag gezeigt (`mergeAbsent`, nur Anzeige – Startseite,
+  Zeiterfassung, App). Überschneidende Abwesenheiten werden beim Anlegen/Ändern schon abgelehnt.

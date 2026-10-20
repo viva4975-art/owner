@@ -3627,3 +3627,9 @@ Testadresse.
   nicht mehr erwartet (`EXPECTED_FROM = '2026-10'` in `expected-invoices.ts`); in der Abrechnungsverfolgung je Bestellung
   stehen sie als „keine Rechnung – vor der Umstellung (bis 30.09.2026)“ statt „fehlt“. Vorhandene Eingangsrechnungen
   werden weiter als „abgerechnet“ angezeigt.
+- 2026-10-20: **Eingangsrechnung: Bestellung zuerst** (Ahmed): Unter „Zuordnung“ steht oben „Bestellung beim Nachunternehmer –
+  zuerst wählen“; die Auswahl zeigt nur Bestellungen des gewählten Nachunternehmers (beim Wechsel neu gefiltert), je
+  Zeile Bestellnr. · Objekt (Nr.) · Adresse · Leistung · Preis + Abrechnungsart (· beendet). Beim Wählen werden Objekt,
+  Kostenart „Nachunternehmer“, Leistungsmonat (sonst Vormonat des Rechnungsdatums) und bei Monatspauschale der Nettobetrag
+  übernommen (nur leere Felder). Leistungsmonat als eine Auswahl „Oktober 2026“ (`MonthSelect`, 24 Monate zurück,
+  3 voraus) statt Monat/Jahr-Feldern; Material-Bestellungen ebenfalls nach Lieferant gefiltert.

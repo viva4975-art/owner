@@ -135,6 +135,34 @@ const BILLING_DE: Record<string, string> = {
   tag: 'je Tag',
 };
 
+/** Monatsauswahl als eine Liste „Oktober 2026“ (24 Monate zurück, 3 voraus) statt Monat/Jahr-Feldern. */
+const MonthSelect: FC<{ id?: string; name: string; value: string; label: string; disabled?: boolean }> = ({
+  id,
+  name,
+  value,
+  label,
+  disabled,
+}) => {
+  const now = todayBerlin().slice(0, 7);
+  const add = (m: string, n: number) => {
+    const d = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1 + n, 1));
+    return d.toISOString().slice(0, 7);
+  };
+  const months: string[] = [];
+  for (let i = 3; i >= -24; i--) months.push(add(now, i));
+  if (value && !months.includes(value)) months.push(value);
+  return (
+    <select id={id} name={name} aria-label={label} disabled={disabled} data-nosearch>
+      <option value="">–</option>
+      {months.map((m) => (
+        <option value={m} selected={m === value}>
+          {MONTHS_DE[Number(m.slice(5, 7)) - 1]} {m.slice(0, 4)}
+        </option>
+      ))}
+    </select>
+  );
+};
+
 /** Rechnungseingang → „Rechnung erwartet“: je Nachunternehmer die fehlenden Rechnungen laufender Aufträge. */
 const ExpectedList: FC<{ rows: ExpectedRow[] }> = ({ rows }) => {
   if (!rows.length)
@@ -1520,6 +1548,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       costTargets(sql),
     ]);
     const advOpen = i ? ((await openAdvances(sql, [i.supplier_id])).get(i.supplier_id) ?? 0n) : 0n;
+    const siteById = new Map(sites.map((x) => [x.id, x]));
     const q = c.req.query();
     // Zuordnung zu NU-Aufträgen: gespeicherte Zeilen oder aus „Rechnung erwartet“ (?erwartet=<auftrag>:<JJJJ-MM>:<cent>)
     const linkRows = i
@@ -1752,52 +1781,19 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               </div>
               <h2>Zuordnung</h2>
               <div class="grid">
-                <div>
-                  <label for="category">Kostenart</label>
-                  <select id="category" name="category">
-                    {(Object.keys(COST_CATEGORY) as CostCategory[]).map((k) => (
-                      <option
-                        value={k}
-                        selected={
-                          k ===
-                          (i?.category ??
-                            (suppliers.find((s) => s.id === v.supplier)?.kind === 'nachunternehmer'
-                              ? 'nachunternehmer'
-                              : 'material'))
-                        }
-                      >
-                        {COST_CATEGORY[k]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label for="site_id">Objekt (für Nachkalkulation)</label>
-                  <select id="site_id" name="site_id">
-                    <option value="">– kein Objekt (Gemeinkosten) –</option>
-                    <SiteOptions sites={sites} selected={v.site} />
-                  </select>
-                </div>
-                <div>
-                  <label for="service_month">Leistungsmonat</label>
-                  <input
-                    id="service_month"
-                    type="month"
-                    name="service_month"
-                    value={i?.service_month?.slice(0, 7) ?? ''}
-                  />
-                </div>
                 <div class="full nu-links" style="grid-column:1/-1">
-                  <label>
-                    Nachunternehmer-Aufträge (setzt Objekt; mehrere Zeilen = eine Rechnung für mehrere
-                    Objekte/Monate)
-                  </label>
+                  <label>Bestellung beim Nachunternehmer – zuerst wählen</label>
+                  <p class="small mut" style="margin:0 0 6px">
+                    Es erscheinen nur Bestellungen des oben gewählten Nachunternehmers. Objekt, Kostenart,
+                    Leistungsmonat und (bei Monatspauschale) der Betrag werden übernommen. Mehrere Zeilen =
+                    eine Rechnung für mehrere Bestellungen/Monate.
+                  </p>
                   <div style="overflow-x:auto">
                     <table class="tbl-in" style="width:100%">
                       <thead>
                         <tr>
-                          <th style="text-align:left">Auftrag</th>
-                          <th style="text-align:left;width:150px">Zeitraum ab</th>
+                          <th style="text-align:left">Bestellung</th>
+                          <th style="text-align:left;width:170px">Leistungsmonat</th>
                           <th style="text-align:right;width:130px">netto (optional)</th>
                         </tr>
                       </thead>
@@ -1811,21 +1807,43 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                                 aria-label="Nachunternehmer-Auftrag"
                                 data-nosearch
                               >
-                                <option value="">–</option>
-                                {subcontracts.map((x) => (
-                                  <option value={x.id} selected={x.id === r.sc}>
-                                    {x.number} · {x.supplier_name} · {x.site_name ?? 'ohne Objekt'}
-                                  </option>
-                                ))}
+                                <option value="">– Bestellung wählen –</option>
+                                {subcontracts.map((x) => {
+                                  const st = siteById.get(x.site_id);
+                                  const addr = st
+                                    ? [st.street, [st.postal_code, st.city].filter(Boolean).join(' ')]
+                                        .filter(Boolean)
+                                        .join(', ')
+                                    : '';
+                                  return (
+                                    <option
+                                      value={x.id}
+                                      selected={x.id === r.sc}
+                                      data-sup={x.supplier_id}
+                                      data-site={x.site_id}
+                                      data-net={
+                                        x.billing === 'pauschale_monat'
+                                          ? centsToInput(x.current_price_cents)
+                                          : ''
+                                      }
+                                      hidden={!!v.supplier && x.supplier_id !== v.supplier && x.id !== r.sc}
+                                    >
+                                      {x.number} · {x.site_name ?? 'ohne Objekt'}
+                                      {x.site_no ? ` (${x.site_no})` : ''}
+                                      {addr ? ` · ${addr}` : ''} · {x.service_kind} ·{' '}
+                                      {euro(x.current_price_cents)} {BILLING_DE[x.billing] ?? x.billing}
+                                      {x.status === 'beendet' ? ' · beendet' : ''}
+                                    </option>
+                                  );
+                                })}
                               </select>
                             </td>
                             <td>
-                              <input
-                                type="month"
+                              <MonthSelect
                                 name="link_month"
                                 value={r.m}
                                 disabled={dis}
-                                aria-label="Zeitraum ab"
+                                label="Leistungsmonat"
                               />
                             </td>
                             <td>
@@ -1855,8 +1873,55 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                   </p>
                   <script
                     dangerouslySetInnerHTML={{
-                      __html: `(function(){var b=document.querySelector('[data-nu-add]');if(!b)return;b.addEventListener('click',function(){var t=document.querySelector('[data-nu-rows]');var r=t.lastElementChild.cloneNode(true);r.querySelectorAll('input').forEach(function(i){i.value=''});r.querySelector('select').value='';t.appendChild(r);});})();`,
+                      __html: `(function(){
+var sup=document.getElementById('supplier_id'),rows=document.querySelector('[data-nu-rows]');if(!rows)return;
+function setSel(el,v){if(!el||!v)return;el.value=v;if(el._cbLabel)el._cbLabel();el.dispatchEvent(new Event('change',{bubbles:true}));}
+function filter(){var s=sup&&sup.value;document.querySelectorAll('select[name=link_sc],#purchase_order_id').forEach(function(sel){if(!sel._all)sel._all=Array.prototype.slice.call(sel.options);var cur=sel.value;sel._all.forEach(function(o){var ok=!o.dataset.sup||!s||o.dataset.sup===s||o.value===cur;o.hidden=false;if(ok){if(o.parentNode!==sel)sel.appendChild(o);}else if(o.parentNode===sel)sel.removeChild(o);});sel.value=cur;});}
+function prevMonth(){var d=(document.getElementById('invoice_date')||{}).value||'';if(!/^\\d{4}-\\d{2}/.test(d))return '';var y=+d.slice(0,4),m=+d.slice(5,7)-1;if(m<1){m=12;y--;}return y+'-'+(m<10?'0':'')+m;}
+rows.addEventListener('change',function(e){var sel=e.target;if(!sel.matches||!sel.matches('select[name=link_sc]'))return;var o=sel.selectedOptions[0];if(!o||!o.value)return;var tr=sel.closest('tr');
+var first=rows.querySelector('select[name=link_sc]')===sel;var sm=document.getElementById('service_month');
+var lm=tr.querySelector('[name=link_month]');if(lm&&!lm.value)setSel(lm,(sm&&sm.value)||prevMonth());
+if(first){setSel(document.getElementById('site_id'),o.dataset.site);setSel(document.getElementById('category'),'nachunternehmer');if(sm&&!sm.value)setSel(sm,lm&&lm.value);
+var n=document.getElementById('net');var filled=Array.prototype.filter.call(rows.querySelectorAll('select[name=link_sc]'),function(x){return x.value}).length;if(n&&!n.value&&filled===1&&o.dataset.net){n.value=o.dataset.net;n.dispatchEvent(new Event('change',{bubbles:true}));}}});
+if(sup)sup.addEventListener('change',function(){document.querySelectorAll('select[name=link_sc],#purchase_order_id').forEach(function(x){var o=x.selectedOptions[0];if(o&&o.dataset.sup&&o.dataset.sup!==sup.value)x.value='';});filter();});filter();
+var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',function(){var r=rows.lastElementChild.cloneNode(true);r.querySelectorAll('input').forEach(function(i){i.value=''});r.querySelectorAll('select').forEach(function(x){x.value=''});rows.appendChild(r);filter();});
+})();`,
                     }}
+                  />
+                </div>
+                <div>
+                  <label for="category">Kostenart</label>
+                  <select id="category" name="category">
+                    {(Object.keys(COST_CATEGORY) as CostCategory[]).map((k) => (
+                      <option
+                        value={k}
+                        selected={
+                          k ===
+                          (i?.category ??
+                            (suppliers.find((s) => s.id === v.supplier)?.kind === 'nachunternehmer'
+                              ? 'nachunternehmer'
+                              : 'material'))
+                        }
+                      >
+                        {COST_CATEGORY[k]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label for="site_id">Objekt (für Nachkalkulation)</label>
+                  <select id="site_id" name="site_id">
+                    <option value="">– kein Objekt (Gemeinkosten) –</option>
+                    <SiteOptions sites={sites} selected={v.site} />
+                  </select>
+                </div>
+                <div>
+                  <label for="service_month">Leistungsmonat</label>
+                  <MonthSelect
+                    id="service_month"
+                    name="service_month"
+                    value={i?.service_month?.slice(0, 7) ?? ''}
+                    label="Leistungsmonat"
                   />
                 </div>
                 <div>
@@ -1864,8 +1929,13 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                   <select id="purchase_order_id" name="purchase_order_id">
                     <option value="">–</option>
                     {orders.map((o) => (
-                      <option value={o.id} selected={o.id === v.po}>
-                        {o.number} · {o.supplier_name}
+                      <option
+                        value={o.id}
+                        selected={o.id === v.po}
+                        data-sup={o.supplier_id}
+                        hidden={!!v.supplier && o.supplier_id !== v.supplier && o.id !== v.po}
+                      >
+                        {o.number} · {o.supplier_name} · {euro(o.net_cents)}
                       </option>
                     ))}
                   </select>

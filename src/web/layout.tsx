@@ -1423,6 +1423,7 @@ main:has(input[name=ids]:checked) .bulkbar .small.mut{display:none}
 .offer-quick .q-err:hover{border-color:#b42318;color:#b42318;background:#fdeeee}
 .offer-quick .q-warn:hover{border-color:#d4a017;color:#8a6500;background:#fdf6e3}
 tr.offer-decided td{background:#fcfcfc}
+.nu-links thead{display:none}.nu-links tbody tr{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:6px;padding:6px 0;border-bottom:1px solid var(--line)}.nu-links tbody td{padding:0;border:0}.nu-links tbody td:first-child{grid-column:1/-1}.nu-links select[name=link_sc]{width:100%}
 .offer-list{max-width:1100px}
 .offer-list td{padding-top:7px;padding-bottom:7px;vertical-align:top}
 .offer-list .ol-no{white-space:nowrap;width:1%}

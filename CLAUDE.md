@@ -3552,3 +3552,5 @@ Testadresse.
   Gleicher Inhalt + Datum wie der letzte Stand → kein neuer Stand; feste ID je Formular. Objektleitung nur Schlüssel ihrer
   Objekte. Test in `key-protocol.db.test.ts`; `e2e:uebergabe` wartete nach „an Nachunternehmer“ nicht auf den
   Seitenwechsel (gelegentlich rot) – wartet jetzt auf die Adresse.
+  - Nachtrag (Ahmed): Unter Übergaben kein „Unterschrieben hochladen“ mehr – dort nur PDF und Stand einsehen (neuester mit
+    Schild „aktuell“); die unterschriebene Fassung wird wie bisher unter Dokumente hochgeladen.

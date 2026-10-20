@@ -1104,7 +1104,7 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
                 <p class="small mut" style="margin-top:0">
                   Aktuelle Liste laut Schlüsselbuch – Schlüssel abwählen, die nicht auf das Protokoll sollen.
                   Ausgabe und Rückgabe sind getrennte Protokolle mit eigener Unterschrift. Jeder Stand wird
-                  unten gespeichert; die unterschriebene Fassung danach unter Dokumente → Schlüssel hochladen.
+                  unten gespeichert und ist dort einsehbar.
                 </p>
                 <div class="tbl">
                   <table class="keep">
@@ -1184,12 +1184,19 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
                       </tr>
                     </thead>
                     <tbody>
-                      {protocols.map((p) => (
+                      {protocols.map((p, i) => (
                         <tr>
                           <td>
                             <b>{p.protocol_no}</b>
                           </td>
-                          <td>{p.kind === 'rueckgabe' ? 'Rückgabe' : 'Übergabe'}</td>
+                          <td>
+                            {p.kind === 'rueckgabe' ? 'Rückgabe' : 'Übergabe'}
+                            {i === 0 && (
+                              <span class="tag ok" style="margin-left:6px">
+                                aktuell
+                              </span>
+                            )}
+                          </td>
                           <td>{dateDe(p.protocol_date)}</td>
                           <td class="r">{p.items.length}</td>
                           <td class="small mut">
@@ -1202,12 +1209,6 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
                               target="_blank"
                             >
                               PDF
-                            </a>{' '}
-                            <a
-                              class="btn sm sec"
-                              href={`/personal/${e.id}/dokumente?kategorie=${encodeURIComponent('Schlüssel')}#hochladen`}
-                            >
-                              Unterschrieben hochladen
                             </a>
                           </td>
                         </tr>

@@ -8,7 +8,7 @@ import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { BusinessError } from './errors.js';
-import { type FormField, applyFormFields, formFieldsOf } from './word-form.js';
+import { type FormField, applyFormFields, defaultBoxes, formFieldsOf } from './word-form.js';
 import { type FileRow, type UploadConfig, filePath, storeFile } from './uploads.js';
 
 /*
@@ -916,7 +916,9 @@ export async function wordTemplatePdf(
     'Dokument.Ort': 'München',
   };
   const bytes = await readFile(filePath(cfg, { storage_path: t.storage_path } as FileRow));
-  const { data } = fillDocx(bytes, (k) => values[k] ?? null, de(today));
+  // Themen „für alle“ ankreuzen, Zusatzmodule nicht (Ahmed 21.10.)
+  const boxes = defaultBoxes(formFieldsOfDocx(bytes), {});
+  const { data } = fillDocx(bytes, (k) => values[k] ?? null, de(today), { boxes, blanks: {} });
   const paras = docxText(data);
   const { renderLetterPdf } = await import('../pdf/invoice-pdf.js');
   const { getSeller } = await import('./masterdata.js');

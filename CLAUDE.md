@@ -3726,3 +3726,21 @@ Testadresse.
   Objekte/Zeit/Planung/Arbeitsscheine/Schlüssel/Geräte sind auf ihre Objekte begrenzt – in anderen freigegebenen
   Bereichen (Rechnungen, Kunden …) sieht sie alles (Hinweis auf der Seite). **Datenschutz:** Personal-/Gesundheitsdaten
   nur für Gruppen freigeben, die sie für ihre Aufgabe brauchen (Art. 5, 9 DSGVO).
+- 2026-10-21: Ahmed (3 Punkte):
+  - **Einzelauftrag:** oben am Auftrag Knopf „Weiteren Einzelauftrag anlegen“ (gleicher Kunde).
+  - **Unterweisung aus Word-Vorlage:** Kästchen der Teile „für alle“ (Überschrift „Teil A – Gilt für alle“, „Teil B …“)
+    sind vorab angekreuzt, „Teil C – Zusatzmodule, nur bei …“ nicht; Kästchen mit Lücke („Besonderheiten: ___“) nicht.
+    Gilt auf der Ausfüll-Seite (je Abschnitt „alle ankreuzen · keine“, oben für alle) und beim Verteilen als Unterweisung
+    an alle (`word-form.ts`: `part`, `generalPart`; Überschriften „Teil X“/„A1 …“ werden erkannt). **Vorlage
+    VD-UW-2026-V6** (nur an Ahmed, nicht im Repo): gleiche Themen gekürzt, je Thema ein Kästchen, 10 pt statt 6,5 pt,
+    2 Seiten mit großem Unterschriftsfeld (Werkzeug im Scratchpad). **Ahmed: unter Einstellungen → Word-Vorlagen
+    hochladen** (V5 wird ersetzt). Inhalt fachlich wie V5; mit Fachkraft für Arbeitssicherheit abstimmen.
+  - **Materialausgabe / interner Lieferschein** (Inventar → Materialausgabe, `/materialausgabe`; auch Objekt → „+ Neu“
+    und am Artikel „An Objekt ausgeben“): Objekt, Datum, Artikel + Menge → Nummer MA-JJJJ-NNNN, Bestand abgebucht,
+    **EK des Artikels am Ausgabetag eingefroren** (`material_issue_lines`, `stock_movements.unit_cost_cents/booked_on/
+    material_issue_id`, Migration `20261215000001`, nur anhängen). Nachkalkulation zählt den Betrag als Material auf die
+    Kostenstelle des Objekts im Monat der Ausgabe (vorher: aktueller EK am Buchungszeitpunkt – jetzt auch bei normalen
+    Lagerbuchungen eingefroren). Fehlender EK → Fehler; zu wenig Bestand → Fehler oder Häkchen „Fehlbestand als
+    Inventurkorrektur zubuchen“. Lieferschein-PDF (mit / ohne Preise, Unterschrift „Empfangen“), Storno mit Grund
+    (Gegenbuchung Bestand + Kosten, bleibt sichtbar). Feste ID je Formular. Recht „Materialausgabe“ unter
+    Einstellungen → Rechte (Vorgabe Büro/Buchhaltung). Wird dem Kunden nicht berechnet (dafür Rechnung mit „+ Artikel“).

@@ -120,7 +120,17 @@ const FormFields: FC<{
         <p class="small mut" style="margin-top:0">
           Geordnet nach den Abschnitten der Vorlage. Angehakt = im Dokument angekreuzt; Lücken mit Text werden
           ausgefüllt, leere bleiben als Linie zum Ausfüllen von Hand. Vorbelegt, was aus den Stammdaten sicher
-          bekannt ist.
+          bekannt ist; bei Unterweisungen alle Themen, die für alle gelten (Zusatzmodule nur bei Bedarf
+          ankreuzen).
+        </p>
+        <p class="small" style="margin-top:0">
+          <button type="button" class="linkbtn" data-wf-all="1">
+            Alle Kästchen ankreuzen
+          </button>
+          {' · '}
+          <button type="button" class="linkbtn" data-wf-all="0">
+            alle abwählen
+          </button>
         </p>
       </>
     )}
@@ -139,10 +149,23 @@ const FormFields: FC<{
       ),
     ).map((g) => (
       <div class="wf-grp">
-        {(g.doc || g.sec) && (
+        {(g.doc || g.sec || g.fields.filter((f) => f.kind === 'box').length > 1) && (
           <div class="wf-head">
             {g.doc && <div class="wf-doc">{g.doc}</div>}
-            {g.sec && <div class="wf-sec">{g.sec}</div>}
+            <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+              {g.sec && <div class="wf-sec">{g.sec}</div>}
+              {g.fields.filter((f) => f.kind === 'box').length > 1 && (
+                <span class="small" style="margin-left:auto">
+                  <button type="button" class="linkbtn" data-wf-all="1">
+                    alle ankreuzen
+                  </button>
+                  {' · '}
+                  <button type="button" class="linkbtn" data-wf-all="0">
+                    keine
+                  </button>
+                </span>
+              )}
+            </div>
           </div>
         )}
         {g.fields.map((f) =>
@@ -183,7 +206,15 @@ const FormFields: FC<{
           '.wf-grp .wf-row:last-child{border-bottom:0}' +
           '.wf-head{padding:8px 0 6px;border-bottom:1px solid var(--line)}' +
           '.wf-doc{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut,#6b6b72)}' +
-          '.wf-sec{font-weight:600;color:#7D1435;margin-top:2px}',
+          '.wf-sec{font-weight:600;color:#7D1435;margin-top:2px}' +
+          '.wf .linkbtn{background:none;border:0;padding:0;color:#7D1435;text-decoration:underline;cursor:pointer;font:inherit}',
+      }}
+    />
+    <script
+      dangerouslySetInnerHTML={{
+        __html:
+          // „alle ankreuzen“ je Abschnitt bzw. ganz oben für alle Kästchen
+          "document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('[data-wf-all]');if(!b)return;var on=b.getAttribute('data-wf-all')==='1';var root=b.closest('.wf-grp')||b.closest('.wf');root.querySelectorAll('input[type=checkbox][name^=box\\:]').forEach(function(i){i.checked=on;i.dispatchEvent(new Event('change',{bubbles:true}))})})",
       }}
     />
   </div>

@@ -968,6 +968,7 @@ export const SiteShell: FC<{
               ? ([
                   ['reinigungsvertrag', 'Reinigungsvertrag'],
                   ['aue-vertrag', 'Arbeitnehmerüberlassungsvertrag'],
+                  ['material', 'Materialausgabe (interner Lieferschein)'],
                 ] as [string, string][])
               : []),
           ],

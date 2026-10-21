@@ -261,13 +261,14 @@ export async function bookStock(
     const [done] = await tx`select 1 from app.stock_movements where id = ${id}`;
     if (done) return;
     const [a] = await tx<
-      { stock_milli: bigint }[]
-    >`select stock_milli from app.articles where id = ${articleId} for update`;
+      { stock_milli: bigint; purchase_price_cents: bigint | null }[]
+    >`select stock_milli, purchase_price_cents from app.articles where id = ${articleId} for update`;
     if (!a) throw new BusinessError('Artikel nicht gefunden');
     if (a.stock_milli + deltaMilli < 0n)
       throw new BusinessError('Bestand würde negativ – bitte Menge prüfen');
-    await tx`insert into app.stock_movements (id, article_id, delta_milli, reason, site_id, created_by)
-             values (${id}, ${articleId}, ${deltaMilli}, ${reason.trim()}, ${siteId}, ${actor})`;
+    // EK zum Buchungstag festhalten (Nachkalkulation rechnet damit, nicht mit späteren Preisänderungen)
+    await tx`insert into app.stock_movements (id, article_id, delta_milli, reason, site_id, created_by, unit_cost_cents)
+             values (${id}, ${articleId}, ${deltaMilli}, ${reason.trim()}, ${siteId}, ${actor}, ${a.purchase_price_cents})`;
     await tx`update app.articles set stock_milli = stock_milli + ${deltaMilli}, updated_at = now() where id = ${articleId}`;
   });
 }

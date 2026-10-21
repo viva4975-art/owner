@@ -15,6 +15,8 @@ export interface FormField {
   checked?: boolean;
   /** Überschrift im Dokument, unter der das Feld steht (z. B. „Datenschutzinformation · Teil B – …“) */
   group?: string;
+  /** Teil der Vorlage („Teil A – Gilt für alle“, „Teil C – Zusatzmodule …“), falls die Vorlage so gegliedert ist */
+  part?: string | undefined;
 }
 
 const unesc = (s: string) =>
@@ -233,6 +235,11 @@ function headingsOf(xml: string): { pos: number; level: 1 | 2; text: string }[] 
       .replace(/\s+/g, ' ')
       .trim();
     if (text.length < 3 || text.length > 90 || /\$\{|[☐☒]|_{4,}/.test(text)) continue;
+    // Gliederung von Unterweisungen: „Teil A – …“, „A1 Brandschutz und Notfall“
+    if (/^(Teil\s+[A-Z]\b|[A-Z]\d{1,2}\s+\p{L})/u.test(text) && !/[.:;]$/.test(text)) {
+      out.push({ pos: m.index, level: 2, text });
+      continue;
+    }
     const style = /<w:pStyle w:val="([^"]+)"/.exec(p)?.[1] ?? '';
     const bold = /<w:b\/>|<w:b w:val="(1|true)"\/>/.test(p);
     const size = Number(/<w:sz w:val="(\d+)"/.exec(p)?.[1] ?? 0);
@@ -245,6 +252,20 @@ function headingsOf(xml: string): { pos: number; level: 1 | 2; text: string }[] 
   }
   return out;
 }
+
+function partAt(heads: ReturnType<typeof headingsOf>, pos: number): string | undefined {
+  let part: string | undefined;
+  for (const h of heads) {
+    if (h.pos > pos) break;
+    if (h.level === 1) part = undefined;
+    else if (/^Teil\s+[A-Z]\b/.test(h.text)) part = h.text;
+  }
+  return part;
+}
+
+/** Teil gilt für alle (nicht „Zusatzmodule, nur bei zutreffender Tätigkeit“) → Kästchen vorab ankreuzen. */
+export const generalPart = (part: string | undefined) =>
+  !!part && !/zusatz|nur bei|optional|falls|wahlweise/i.test(part);
 
 function groupAt(heads: ReturnType<typeof headingsOf>, pos: number): string {
   let doc: string | undefined;
@@ -269,7 +290,14 @@ export function formFieldsOf(documentXml: string): FormField[] {
   scan(
     documentXml,
     (i, checked, w) => {
-      out.push({ kind: 'box', index: i, checked, ...context(documentXml, w), group: groupAt(heads, w.pos) });
+      out.push({
+        kind: 'box',
+        index: i,
+        checked,
+        ...context(documentXml, w),
+        group: groupAt(heads, w.pos),
+        part: partAt(heads, w.pos),
+      });
       return undefined;
     },
     (i, w) => {
@@ -303,6 +331,10 @@ export function defaultBoxes(fields: FormField[], v: Record<string, string>): Re
   const out: Record<number, boolean> = {};
   const art = (v['Mitarbeiter.Beschäftigungsart'] ?? '').toLowerCase();
   const exit = v['Mitarbeiter.Austrittsdatum'] ?? '';
+  // Unterweisung (Ahmed 21.10.): Themen der Teile „für alle“ ankreuzen, Zusatzmodule nicht
+  for (const f of fields)
+    if (f.kind === 'box' && generalPart(f.part) && f.label.length >= 3 && !/:$/.test(f.label))
+      out[f.index] = true;
   if (!('Mitarbeiter.Vorname' in v)) return out;
   for (const f of fields) {
     if (f.kind !== 'box') continue;

@@ -230,9 +230,11 @@ export async function siteCosting(
        where t.status in ('erfasst', 'freigegeben') and t.work_date between ${from} and ${to}
        group by t.site_id`,
     sql<{ site_id: string; cost: bigint }[]>`
-      select m.site_id, coalesce(sum(-m.delta_milli * coalesce(a.purchase_price_cents, 0) / 1000), 0)::bigint as cost
+      select m.site_id,
+             coalesce(sum(round(-m.delta_milli * coalesce(m.unit_cost_cents, a.purchase_price_cents, 0) / 1000.0)), 0)::bigint as cost
         from app.stock_movements m join app.articles a on a.id = m.article_id
-       where m.site_id is not null and m.delta_milli < 0 and (m.created_at at time zone 'Europe/Berlin')::date between ${from} and ${to}
+       where m.site_id is not null and (m.delta_milli < 0 or m.material_issue_id is not null)
+         and coalesce(m.booked_on, (m.created_at at time zone 'Europe/Berlin')::date) between ${from} and ${to}
        group by m.site_id`,
     // Eingangsrechnungen (auch Nachunternehmer) nach Aufteilung auf Kostenstelle = Objekt und Leistungsmonat
     sql<{ site_id: string; category: string; net: bigint }[]>`

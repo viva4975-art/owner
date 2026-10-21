@@ -776,6 +776,9 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
           crumbs={[[custName, `/kunden/${o.customer_id}/auftraege`]]}
         >
           <span class={`badge ${ORDER_CLASS[o.status]}`}>{ORDER_STATUS[o.status]}</span>
+          <a class="btn sm" href={`/auftraege/neu?kunde=${o.customer_id}`} style="margin-left:auto">
+            <Icon name="plus" /> Weiteren Einzelauftrag anlegen
+          </a>
         </PageHead>
         <div class="cols">
           <div>

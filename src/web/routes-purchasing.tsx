@@ -3442,7 +3442,16 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                     )}
                   </td>
                   <td class="r">{euro(r.labor)}</td>
-                  <td class="r">{euro(r.material)}</td>
+                  <td class="r">
+                    {euro(r.material)}
+                    {r.material > 0n && (
+                      <div class="small">
+                        <a href={`/materialausgabe?objekt=${r.site_id}${von === bis ? `&monat=${von}` : ''}`}>
+                          Materialausgaben
+                        </a>
+                      </div>
+                    )}
+                  </td>
                   <td class="r">{euro(r.equipment)}</td>
                   <td class="r">
                     {euro(r.subcontractor)}

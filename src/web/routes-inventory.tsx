@@ -349,6 +349,9 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
           <a class="btn sec" href={`/artikel/${id}/bearbeiten`} style="margin-left:auto">
             Bearbeiten
           </a>
+          <a class="btn sec" href="/materialausgabe/neu">
+            An Objekt ausgeben
+          </a>
           <a class="btn" href={`/bestellungen/${randomUUID()}/bearbeiten?artikel=${id}`}>
             Nachbestellen
           </a>

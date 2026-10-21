@@ -1556,6 +1556,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     label: 'Inventar',
     items: [
       { label: 'Artikel', href: '/artikel' },
+      { label: 'Materialausgabe', href: '/materialausgabe' },
       { label: 'Geräte', href: '/geraete' },
       { label: 'Schlüsselbuch', href: '/schluessel' },
       { label: 'Fahrzeuge', href: '/fahrzeuge' },

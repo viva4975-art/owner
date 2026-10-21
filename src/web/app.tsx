@@ -1,5 +1,6 @@
 import { registerPayslipRoutes } from './routes-payslips.js';
 import { registerLetterRoutes } from './routes-letters.js';
+import { registerMaterialRoutes } from './routes-material.js';
 import { registerPermissionRoutes } from './routes-permissions.js';
 import { registerTimeAccountRoutes } from './routes-time-account.js';
 import { registerReminderRoutes } from './routes-reminders.js';
@@ -574,6 +575,7 @@ export function createApp(deps: Deps) {
   registerDunningRoutes(ctx);
   registerDeviceRoutes(ctx);
   registerInventoryRoutes(ctx);
+  registerMaterialRoutes(ctx);
   registerTimesheetRoutes(ctx);
   registerOlAppRoutes(ctx);
   registerStartAppRoutes(ctx);

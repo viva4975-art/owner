@@ -107,4 +107,16 @@ describe('leere Felder neben Beschriftungen (Ahmed 12.10.)', () => {
     expect(f.map((x) => x.label)).toEqual(['Arbeitsvertrag', 'Anlage 1']);
     expect(f[0]!.group).toBe('EMPFANGSBESTÄTIGUNG · 1 Vertragsunterlagen');
   });
+
+  it('Unterweisung: Teile „für alle“ vorab angekreuzt, Zusatzmodule nicht', () => {
+    const p = (t: string) => `<w:p><w:r><w:t>${t}</w:t></w:r></w:p>`;
+    const xml =
+      `<w:body>${p('☐ Erstunterweisung')}${p('Teil A – Gilt für alle')}${p('A1 Brandschutz')}` +
+      `${p('☐ Fluchtwege gezeigt')}${p('Teil B – Objektspezifisch')}${p('☐ Besonderheiten: ______')}` +
+      `${p('☐ Zutritt erklärt')}${p('Teil C – Zusatzmodule, nur bei zutreffender Tätigkeit')}${p('☐ Leitern')}</w:body>`;
+    const f = formFieldsOf(xml);
+    const boxes = defaultBoxes(f, {});
+    const on = f.filter((x) => x.kind === 'box' && boxes[x.index]).map((x) => x.label);
+    expect(on).toEqual(['Fluchtwege gezeigt', 'Zutritt erklärt']);
+  });
 });

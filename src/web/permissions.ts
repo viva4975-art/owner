@@ -175,6 +175,11 @@ export const PERM_GROUPS: { label: string; areas: PermArea[] }[] = [
       { key: 'tiefgarage', label: 'Tiefgaragenreinigung', prefixes: ['/tiefgarage'] },
       { key: 'grundreinigung', label: 'Grundreinigung (mit Preisen)', prefixes: ['/grundreinigung'] },
       { key: 'artikel', label: 'Artikel', prefixes: ['/artikel'] },
+      {
+        key: 'materialausgabe',
+        label: 'Materialausgabe (interner Lieferschein)',
+        prefixes: ['/materialausgabe'],
+      },
       { key: 'geraete', label: 'Geräte', prefixes: ['/geraete'] },
       { key: 'schluessel', label: 'Schlüsselbuch', prefixes: ['/schluessel'] },
       { key: 'fahrzeuge', label: 'Fahrzeuge', prefixes: ['/fahrzeuge'] },

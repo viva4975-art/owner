@@ -405,6 +405,8 @@ export function registerModuleRoutes(ctx: Ctx) {
         if (kunde) return c.redirect(`/kunden/${kunde}/vertrag?art=${art}`);
         return c.redirect('/kunden');
       }
+      case 'material':
+        return c.redirect(`/materialausgabe/neu${qs({ objekt })}`);
       case 'aufgabe': {
         const m = c.req.query('mitarbeiter');
         if (objekt) return c.redirect(`/objekte/${objekt}/aufgaben`);

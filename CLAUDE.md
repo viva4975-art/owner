@@ -3744,3 +3744,7 @@ Testadresse.
     Inventurkorrektur zubuchen“. Lieferschein-PDF (mit / ohne Preise, Unterschrift „Empfangen“), Storno mit Grund
     (Gegenbuchung Bestand + Kosten, bleibt sichtbar). Feste ID je Formular. Recht „Materialausgabe“ unter
     Einstellungen → Rechte (Vorgabe Büro/Buchhaltung). Wird dem Kunden nicht berechnet (dafür Rechnung mit „+ Artikel“).
+- 2026-10-21: **Stornorechnung/Rechnungskorrektur versenden** (Ahmed): Knopf „Stornorechnung versenden“ bzw.
+  „Rechnungskorrektur versenden“ oben im Aktionsblock (vorher nur klein im Versandkasten). Gleicher Weg wie Rechnungen
+  (Format laut Rechnungsgruppe, genau einmal, Betreff „Stornorechnung Nr. …“); auch über Rechnungen → Noch nicht
+  versendet → Reiter Rechnungskorrekturen.

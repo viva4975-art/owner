@@ -932,13 +932,13 @@ export const IssuedLetter: FC<{
           )}
           {/* Ein Aktionsblock wie in Fortytools (Ahmed 12.10.) */}
           <div class="btns actstack">
-            {!p.sent && !cancelled && !isCredit && p.portal == null && p.billing.emails.length > 0 && (
+            {!p.sent && (!cancelled || isCredit) && p.portal == null && p.billing.emails.length > 0 && (
               <form
                 method="post"
                 action={`/rechnungen/${inv.id}/versenden`}
-                onsubmit={`return confirm(${JSON.stringify(`Rechnung jetzt per E-Mail an ${p.billing.emails.join(', ')} versenden?`)})`}
+                onsubmit={`return confirm(${JSON.stringify(`${KIND_TITLES[inv.kind] ?? 'Rechnung'} jetzt per E-Mail an ${p.billing.emails.join(', ')} versenden?`)})`}
               >
-                <button>Jetzt versenden</button>
+                <button>{isCredit ? `${KIND_TITLES[inv.kind]} versenden` : 'Jetzt versenden'}</button>
               </form>
             )}
             {pdf && (
@@ -1034,7 +1034,7 @@ export const IssuedLetter: FC<{
                         : 'keine Rechnungs-E-Mail hinterlegt'}
                   </div>
                 </p>
-                {p.portal == null && p.billing.emails.length > 0 && (cancelled || isCredit) && (
+                {p.portal == null && p.billing.emails.length > 0 && cancelled && !isCredit && (
                   <form
                     method="post"
                     action={`/rechnungen/${inv.id}/versenden`}

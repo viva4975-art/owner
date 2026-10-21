@@ -36,26 +36,30 @@ export async function letterRecipient(
   sql: Sql,
   target: LetterTarget,
   id: string,
-): Promise<{ buyer: BuyerSnapshot; label: string; ref: [string, string] | null; greeting: string }> {
+): Promise<{ buyer: BuyerSnapshot; label: string; refs: [string, string][]; greeting: string }> {
   if (target === 'kunde') {
     const buyer = await buildBuyerSnapshot(sql, id, null);
     return {
       buyer,
       label: buyer.name,
-      ref: ['Kundennr.', buyer.customerNo],
+      refs: [['Kundennr.', buyer.customerNo]],
       greeting: await customerGreeting(sql, id, buyer.contactName),
     };
   }
   if (target === 'objekt') {
     // Brief zum Objekt geht an den Kunden (Rechnungsanschrift des Objekts), abgelegt beim Objekt
-    const [s] = await sql<{ customer_id: string; site_no: string; name: string }[]>`
-      select customer_id, site_no, name from app.sites where id = ${id}`;
+    const [s] = await sql<{ customer_id: string; site_no: string; name: string; customer_no: string }[]>`
+      select s.customer_id, s.site_no, s.name, c.customer_no
+        from app.sites s join app.customers c on c.id = s.customer_id where s.id = ${id}`;
     if (!s) throw new BusinessError('Objekt nicht gefunden');
     const buyer = await buildBuyerSnapshot(sql, s.customer_id, id);
     return {
       buyer,
       label: `${buyer.name} (Objekt ${s.name})`,
-      ref: ['Objekt', `${s.name} (${s.site_no})`],
+      refs: [
+        ['Objekt', `${s.name} (Nr. ${s.site_no})`],
+        ['Kundennr.', s.customer_no],
+      ],
       greeting: await customerGreeting(sql, s.customer_id, buyer.contactName),
     };
   }
@@ -92,7 +96,7 @@ export async function letterRecipient(
         contactName: s.contact_name,
       },
       label: s.name,
-      ref: ['Lieferantennr.', s.supplier_no],
+      refs: [['Lieferantennr.', s.supplier_no]],
       greeting: contactGreeting(s.contact_name),
     };
   }
@@ -121,7 +125,7 @@ export async function letterRecipient(
       contactName: null,
     },
     label: `${e.first_name} ${e.last_name}`,
-    ref: ['Personalnr.', e.personnel_no],
+    refs: [['Personalnr.', e.personnel_no]],
     greeting: personGreeting(e),
   };
 }
@@ -162,6 +166,10 @@ export async function writeLetter(
     body: string;
     date: string | null;
     actor: string;
+    /** „Unser Zeichen“, „Ihr Zeichen“, Ansprechpartner (Name unter dem Gruß) – statt Briefnummer im Brief */
+    ourRef?: string | null;
+    yourRef?: string | null;
+    sender?: string | null;
   },
 ): Promise<{ pdf: Uint8Array; fileId: string; letterId: string; letterNo: string }> {
   if (!p.subject.trim()) throw new BusinessError('Bitte Betreff angeben');
@@ -189,7 +197,7 @@ export async function writeLetter(
         site: null,
       } as BuyerSnapshot,
       label: '',
-      ref: null as [string, string] | null,
+      refs: [] as [string, string][],
       greeting: contactGreeting(p.address?.contactName ?? null),
     };
   })();
@@ -201,6 +209,10 @@ export async function writeLetter(
   const letterNo =
     done?.letter_no ??
     (archived ? await sql.begin((tx) => nextYearNumber(tx, 'letter', 'BR-', date.slice(0, 4), 4)) : '');
+  const clip = (v: string | null | undefined, n: number) => (v ?? '').trim().slice(0, n) || null;
+  const ourRef = clip(p.ourRef, 60);
+  const yourRef = clip(p.yourRef, 60);
+  const sender = clip(p.sender, 120);
   const paras = p.body
     .split(/\n\s*\n/)
     .map((x) => x.trim())
@@ -210,8 +222,10 @@ export async function writeLetter(
     date,
     info: [
       ['Datum', formatDateDe(date)],
-      ...(letterNo ? ([['Brief-Nr.', letterNo]] as [string, string][]) : []),
-      ...(base.ref ? [base.ref] : []),
+      ...(ourRef ? ([['Unser Zeichen', ourRef]] as [string, string][]) : []),
+      ...(yourRef ? ([['Ihr Zeichen', yourRef]] as [string, string][]) : []),
+      ...(sender ? ([['Ansprechpartner', sender]] as [string, string][]) : []),
+      ...base.refs,
     ],
     seller: await getSeller(sql),
     buyer,
@@ -221,7 +235,12 @@ export async function writeLetter(
     rows: [],
     sums: [],
     total: null,
-    paragraphs: [...paras.slice(1), 'Mit freundlichen Grüßen', 'Viva-Deluxe Gebäudereinigung GmbH'],
+    paragraphs: [
+      ...paras.slice(1),
+      'Mit freundlichen Grüßen',
+      ...(sender ? [sender] : []),
+      'Viva-Deluxe Gebäudereinigung GmbH',
+    ],
   });
   const link = p.target === 'frei' ? null : { type: LINK[p.target], id: p.id ?? '' };
   const file = await storeFile(
@@ -229,7 +248,7 @@ export async function writeLetter(
     cfg,
     {
       id: fileId,
-      name: `Brief_${letterNo ? `${letterNo}_` : ''}${date}_${p.subject
+      name: `Brief_${date}_${p.subject
         .trim()
         .replace(/[^\wäöüÄÖÜß -]+/g, '')
         .slice(0, 40)}.pdf`,
@@ -250,10 +269,10 @@ export async function writeLetter(
       customerId = s?.customer_id ?? null;
     }
     await sql`insert into app.letters (id, letter_no, letter_date, target, customer_id, site_id, supplier_id,
-                recipient, subject, greeting, body, file_id, created_by)
+                recipient, subject, greeting, body, file_id, created_by, our_ref, your_ref, sender)
               values (${letterId}, ${letterNo}, ${date}, ${p.target}, ${customerId}, ${siteId},
                 ${p.target === 'lieferant' ? p.id : null}, ${formatAddressBlock(buyer)}, ${p.subject.trim()},
-                ${p.greeting.trim() || null}, ${p.body}, ${file.id}, ${p.actor})
+                ${p.greeting.trim() || null}, ${p.body}, ${file.id}, ${p.actor}, ${ourRef}, ${yourRef}, ${sender})
               on conflict (id) do nothing`;
   }
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
@@ -275,6 +294,8 @@ export interface LetterRow {
   customer_no: string | null;
   site_id: string | null;
   site_no: string | null;
+  our_ref: string | null;
+  sender: string | null;
   site_name: string | null;
 }
 
@@ -282,12 +303,13 @@ export async function listLetters(sql: Sql, q: string | null, limit = 300): Prom
   const like = q?.trim() ? `%${q.trim()}%` : null;
   return sql<LetterRow[]>`
     select l.id, l.letter_no, l.letter_date::text, l.target, l.recipient, l.subject, l.file_id, l.created_by,
+           l.our_ref, l.sender,
            l.customer_id, c.customer_no, l.site_id, s.site_no, s.name as site_name
       from app.letters l
       left join app.customers c on c.id = l.customer_id
       left join app.sites s on s.id = l.site_id
      where ${like}::text is null
-        or concat_ws(' ', l.letter_no, l.subject, l.recipient, l.body, c.customer_no, s.site_no, s.name) ilike ${like}
+        or concat_ws(' ', l.letter_no, l.subject, l.recipient, l.body, l.our_ref, l.your_ref, l.sender, c.customer_no, s.site_no, s.name) ilike ${like}
      order by l.letter_date desc, l.letter_no desc
      limit ${limit}`;
 }

@@ -79,6 +79,8 @@ describe.skipIf(!available)('Anlaufplan und Schriftverkehr (Datenbank)', () => {
       body: 'anbei unser Angebot.',
       date: '2026-10-21',
       actor: 't',
+      ourRef: 'AC',
+      sender: 'Ahmed Chomontek',
     };
     const a = await writeLetter(sql, { dir, maxBytes: 5e7 }, p);
     const b = await writeLetter(sql, { dir, maxBytes: 5e7 }, p);
@@ -90,6 +92,7 @@ describe.skipIf(!available)('Anlaufplan und Schriftverkehr (Datenbank)', () => {
     const found = await listLetters(sql, 'Treppenhaus');
     expect(found.map((r) => r.letter_no)).toEqual([a.letterNo]);
     expect(found[0]!.recipient).toContain('Hausverwaltung Beispiel');
+    expect(found[0]).toMatchObject({ our_ref: 'AC', sender: 'Ahmed Chomontek' });
     await expect(sql`delete from app.letters where id = ${a.letterId}`).rejects.toThrow();
   });
 });

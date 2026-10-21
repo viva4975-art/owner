@@ -11,6 +11,41 @@ import { str } from './forms.js';
 import { dateDe, PageHead } from './layout.js';
 import { canAccess } from './permissions.js';
 import { uploadConfig } from './routes-files.js';
+import { fullName } from '../services/users.js';
+
+/** Kürzel aus dem Namen („Ahmed Chomontek“ → „AC“) als Vorschlag für „Unser Zeichen“. */
+const initials = (name: string) =>
+  name
+    .split(/[\s.-]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase())
+    .join('')
+    .slice(0, 4);
+
+/** Unser Zeichen / Ihr Zeichen / Ansprechpartner – mit dem eigenen Namen vorbelegt, änderbar. */
+function RefFields({ name }: { name: string }) {
+  return (
+    <div class="grid" style="margin-top:10px">
+      <div>
+        <label for="our_ref">Unser Zeichen</label>
+        <input id="our_ref" name="our_ref" value={initials(name)} maxlength={60} />
+      </div>
+      <div>
+        <label for="your_ref">Ihr Zeichen</label>
+        <input id="your_ref" name="your_ref" maxlength={60} placeholder="optional" />
+      </div>
+      <div>
+        <label for="sender">Ansprechpartner (Name unter dem Gruß)</label>
+        <input id="sender" name="sender" value={name} maxlength={120} />
+      </div>
+    </div>
+  );
+}
+const refsFromBody = (b: Record<string, unknown>) => ({
+  ourRef: str(b as Parameters<typeof str>[0], 'our_ref'),
+  yourRef: str(b as Parameters<typeof str>[0], 'your_ref'),
+  sender: str(b as Parameters<typeof str>[0], 'sender'),
+});
 
 const BACK: Record<LetterTarget, (id: string) => string> = {
   kunde: (id) => `/kunden/${id}/dokumente`,
@@ -83,6 +118,7 @@ export function registerLetterRoutes(ctx: Ctx) {
               <input id="greeting" name="greeting" value={r.greeting} />
             </div>
           </div>
+          <RefFields name={fullName(c.get('user'))} />
           <label for="body" style="margin-top:12px">
             Text * (Absätze mit Leerzeile trennen; Gruß wird angefügt)
           </label>
@@ -120,6 +156,7 @@ export function registerLetterRoutes(ctx: Ctx) {
       body: typeof b.body === 'string' ? b.body : '',
       date: str(b, 'date'),
       actor: c.get('actor'),
+      ...refsFromBody(b),
     });
     return new Response(pdf, {
       headers: {
@@ -156,7 +193,7 @@ export function registerLetterRoutes(ctx: Ctx) {
               class="search-input"
               name="q"
               value={q}
-              placeholder="Suchen: Nr., Betreff, Empfänger, Text …"
+              placeholder="Suchen: Betreff, Empfänger, Zeichen, Text …"
               aria-label="Suche"
             />
             <button class="btn sec sm">Suchen</button>
@@ -172,20 +209,17 @@ export function registerLetterRoutes(ctx: Ctx) {
             <table class="stack-m">
               <thead>
                 <tr>
-                  <th>Nr.</th>
                   <th>Datum</th>
                   <th>An</th>
                   <th>Betreff</th>
                   <th>Zu</th>
+                  <th>Unser Zeichen</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
                   <tr>
-                    <td data-label="Nr." style="white-space:nowrap">
-                      {r.letter_no}
-                    </td>
                     <td data-label="Datum">{dateDe(r.letter_date)}</td>
                     <td data-label="An" class="small" style="white-space:pre-line">
                       {r.recipient.split('\n').slice(0, 2).join('\n')}
@@ -203,6 +237,9 @@ export function registerLetterRoutes(ctx: Ctx) {
                       ) : (
                         <span class="mut">frei</span>
                       )}
+                    </td>
+                    <td data-label="Unser Zeichen" class="small">
+                      {[r.our_ref, r.sender].filter(Boolean).join(' · ') || '–'}
                     </td>
                     <td>
                       <a class="btn sm sec" href={`/verwaltung/briefe/${r.id}/pdf`} target="_blank">
@@ -328,6 +365,7 @@ export function registerLetterRoutes(ctx: Ctx) {
                 />
               </div>
             </div>
+            <RefFields name={fullName(c.get('user'))} />
             <label for="body" style="margin-top:12px">
               Text * (Absätze mit Leerzeile trennen; Gruß wird angefügt)
             </label>
@@ -357,7 +395,7 @@ export function registerLetterRoutes(ctx: Ctx) {
     const b = await c.req.parseBody({ all: true });
     const an = str(b, 'an');
     const t = an === 'kunde' || an === 'objekt' ? an : 'frei';
-    const { pdf, letterNo } = await writeLetter(sql, uploadConfig(ctx), {
+    const { pdf } = await writeLetter(sql, uploadConfig(ctx), {
       formId: str(b, 'form') ?? randomUUID(),
       target: t,
       id: t === 'frei' ? null : (str(b, 'id') ?? ''),
@@ -367,8 +405,9 @@ export function registerLetterRoutes(ctx: Ctx) {
       body: typeof b.body === 'string' ? b.body : '',
       date: str(b, 'date'),
       actor: c.get('actor'),
+      ...refsFromBody(b),
     });
-    return pdfResponse(pdf, `Brief_${letterNo}.pdf`);
+    return pdfResponse(pdf, `Brief_${str(b, 'date') ?? todayBerlin()}.pdf`);
   });
 
   app.get('/verwaltung/briefe/:id/pdf', async (c) => {

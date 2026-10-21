@@ -3708,3 +3708,9 @@ Testadresse.
   zurücknehmen“ an der Rechnung (nicht bei Bankzuordnung). Zahlarten `paypal`/`ec_karte` (Migration `20261214000001`).
   **DATEV:** Zahlungsausgang läuft wie bisher über das Bankkonto – PayPal/Kreditkarte buchen Steuerberater meist über ein
   eigenes Verrechnungskonto; mit dem Steuerberater klären.
+- 2026-10-21: **Briefe ohne Briefnummer, mit Zeichen** (Ahmed): Im Brief steht keine BR-Nummer mehr (nur intern im Archiv),
+  sondern **Unser Zeichen** (vorbelegt mit dem Kürzel des eigenen Namens), **Ihr Zeichen** (optional) und
+  **Ansprechpartner** (vorbelegt mit dem eigenen Namen, erscheint auch unter „Mit freundlichen Grüßen“) – alles änderbar,
+  in allen Brief-Formularen (Verwaltung → Briefe, Kunde, Objekt, Lieferant, Mitarbeiter). Bei Objekt zusätzlich
+  „Objekt … (Nr. …)“ und „Kundennr.“ im Kopf. Spalten `letters.our_ref/your_ref/sender` (Migration `20261214000002`),
+  Briefarchiv zeigt „Unser Zeichen · Ansprechpartner“ statt der Nummer, Suche findet sie.

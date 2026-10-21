@@ -1,5 +1,6 @@
 import { registerPayslipRoutes } from './routes-payslips.js';
 import { registerLetterRoutes } from './routes-letters.js';
+import { registerPermissionRoutes } from './routes-permissions.js';
 import { registerTimeAccountRoutes } from './routes-time-account.js';
 import { registerReminderRoutes } from './routes-reminders.js';
 import { registerPriceAdjustmentRoutes } from './routes-price-adjustment.js';
@@ -615,6 +616,7 @@ export function createApp(deps: Deps) {
   app.get('/monatsabschluss', (c) => c.redirect('/', 302));
   registerTimeAccountRoutes(ctx);
   registerLetterRoutes(ctx);
+  registerPermissionRoutes(ctx);
   registerPayslipRoutes(ctx);
   registerCashbookRoutes(ctx);
   registerLegacyRoutes(ctx);

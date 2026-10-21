@@ -3714,3 +3714,15 @@ Testadresse.
   in allen Brief-Formularen (Verwaltung → Briefe, Kunde, Objekt, Lieferant, Mitarbeiter). Bei Objekt zusätzlich
   „Objekt … (Nr. …)“ und „Kundennr.“ im Kopf. Spalten `letters.our_ref/your_ref/sender` (Migration `20261214000002`),
   Briefarchiv zeigt „Unser Zeichen · Ansprechpartner“ statt der Nummer, Suche findet sie.
+- 2026-10-21: **Rechte der Benutzergruppen selbst einstellen** (Ahmed: „Rechte je Gruppe in den Einstellungen“): Einstellungen →
+  Benutzer & Gruppen → **Rechte der Benutzergruppen** (`/einstellungen/rechte`, nur Admin, `routes-permissions.tsx`): Tabelle
+  aller Bereiche (Kunden, Objekte, Rechnungen, Offene Posten, Mahnwesen, Einkauf, Personal, Zeit/Planung, Disposition,
+  Inventar, Kassenbuch, Briefe, Bank, DATEV, Auswertungen, Einstellungen …) × Buchhaltung / Personal / Objektleitung mit
+  Häkchen, vorbelegt mit der bisherigen Vorgabe; Abweichungen fett, „Alles auf Vorgabe zurücksetzen“. Gespeichert nur
+  Abweichungen (`app.role_permissions`, Migration `20261214000003`, Protokoll je Änderung), gelten sofort (Menü und Seiten).
+  `canAccess` in `permissions.ts`: Bereich = längster passender Adress-Anfang (`PERM_GROUPS`/`areaOf`), Abweichung geht
+  vor der Vorgabe. Admin immer alles; nie einstellbar: Benutzer, Firmendaten, Nummernkreise, Bankabruf, E-Mail, System,
+  Archiv, Rechte-Seite, Anmelde-/App-Seiten. Einzelne Admin-Knöpfe in Seiten bleiben Admin. **Achtung Objektleitung:** nur
+  Objekte/Zeit/Planung/Arbeitsscheine/Schlüssel/Geräte sind auf ihre Objekte begrenzt – in anderen freigegebenen
+  Bereichen (Rechnungen, Kunden …) sieht sie alles (Hinweis auf der Seite). **Datenschutz:** Personal-/Gesundheitsdaten
+  nur für Gruppen freigeben, die sie für ihre Aufgabe brauchen (Art. 5, 9 DSGVO).

@@ -87,6 +87,11 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
         '/benutzer',
         'Zugänge anlegen und sperren, Rollen (Admin, Buchhaltung, Personal, Objektleitung), Objekte der Objektleitung.',
       ],
+      [
+        'Rechte der Benutzergruppen',
+        '/einstellungen/rechte',
+        'Je Gruppe (Buchhaltung, Personal, Objektleitung) festlegen, welche Bereiche sie sehen und bearbeiten darf.',
+      ],
     ],
   },
   {

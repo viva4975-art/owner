@@ -153,7 +153,7 @@ describe.skipIf(!available)('Runde 11: Lohnarten und Urlaubsanspruch (Datenbank)
     );
   });
 
-  it('Audit Raum für Raum: Noten, Ja/Nein, Überspringen, Ergebnis, Kontrollzeile', async () => {
+  it('Audit Raum für Raum: Punkte, Ja/Nein, Überspringen, Ergebnis, Kontrollzeile', async () => {
     const room = randomUUID();
     await sql`insert into app.rooms (id, site_id, name, floor, room_no, room_type_id, floor_covering, area_centi, visits_per_year)
               values (${room}, ${DEMO.siteSchool}, 'Flur', 'UG', 'A 0.01', '00000000-0000-4000-8000-0000000a0001', 'Parkett', 1200, 260)`;
@@ -172,7 +172,7 @@ describe.skipIf(!available)('Runde 11: Lohnarten und Urlaubsanspruch (Datenbank)
       roomId: room,
       ratings: [
         { itemId: by('Gesamteindruck'), value: 4, skipped: false, note: 'gut', photoIds: [] }, // Punkte 4 von 5 = 75 %
-        { itemId: by('Boden'), value: 1, skipped: false, note: null, photoIds: [] },
+        { itemId: by('Boden'), value: 5, skipped: false, note: null, photoIds: [] }, // Punkte 5 = 100 %
         { itemId: by('Abfallbehälter geleert'), value: 6, skipped: false, note: 'voll', photoIds: [] },
         { itemId: by('Türen'), value: null, skipped: true, note: null, photoIds: [] },
       ],
@@ -195,9 +195,9 @@ describe.skipIf(!available)('Runde 11: Lohnarten und Urlaubsanspruch (Datenbank)
     ).rejects.toThrow(/ungültig/);
   });
 
-  it('QM-Einstellungen: Gut/Mittel/Schlecht, Nutzungsart mit Gegenständen, Löschschutz', async () => {
+  it('QM-Einstellungen: Punkte, Nutzungsart mit Gegenständen, Löschschutz', async () => {
     const item = randomUUID();
-    await saveQmItem(sql, item, { name: 'Lichtschalter T', kind: 'gms', active: true, sortOrder: null });
+    await saveQmItem(sql, item, { name: 'Lichtschalter T', kind: 'punkte', active: true, sortOrder: null });
     const type = randomUUID();
     await expect(
       saveUsageType(sql, type, { name: 'Besprechung T', active: true, itemIds: [], expectedVersion: null }),
@@ -224,7 +224,7 @@ describe.skipIf(!available)('Runde 11: Lohnarten und Urlaubsanspruch (Datenbank)
       saveRoomRatings(sql, {
         checkId: qc,
         roomId: room,
-        ratings: [{ itemId: item, value: 5, skipped: false, note: null, photoIds: [] }],
+        ratings: [{ itemId: item, value: 6, skipped: false, note: null, photoIds: [] }],
         actor: 'qm',
       }),
     ).rejects.toThrow(/ungültig/);
@@ -232,10 +232,10 @@ describe.skipIf(!available)('Runde 11: Lohnarten und Urlaubsanspruch (Datenbank)
       checkId: qc,
       roomId: room,
       ratings: [
-        { itemId: item, value: 2, skipped: false, note: null, photoIds: [] }, // Mittel = 50 %
+        { itemId: item, value: 3, skipped: false, note: null, photoIds: [] }, // Punkte 3 = 50 %
         {
           itemId: '00000000-0000-4000-8000-0000000f0002',
-          value: 1,
+          value: 5,
           skipped: false,
           note: null,
           photoIds: [],
@@ -247,7 +247,7 @@ describe.skipIf(!available)('Runde 11: Lohnarten und Urlaubsanspruch (Datenbank)
     expect(r!.score).toBe(83); // gewichtet: (50×2 + 100×4) / 6
     await expect(deleteQmItem(sql, item)).rejects.toThrow(/nicht löschbar/);
     await expect(
-      saveQmItem(sql, item, { name: 'Lichtschalter T', kind: 'note', active: true, sortOrder: null }),
+      saveQmItem(sql, item, { name: 'Lichtschalter T', kind: 'janein', active: true, sortOrder: null }),
     ).rejects.toThrow(/nicht änderbar/);
     const spare = randomUUID();
     await saveQmItem(sql, spare, { name: 'Spare T', kind: 'punkte', active: true, sortOrder: null });

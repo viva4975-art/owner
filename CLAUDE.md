@@ -3762,8 +3762,12 @@ Testadresse.
   Detailseite und PDF als positive Menge mit negativem Einzelpreis gezeigt (Betrag gleich). Gespeichert bleibt Minus-Menge;
   in der E-Rechnung bleibt der Preis positiv und die Menge negativ (BR-27 verbietet negative Preise).
 - 2026-10-21: **Stellenanzeige kopieren** (Ahmed): An der Stelle (Bewerber & Stellen → Stelle) Knopf „Kopieren“ → Formular
-  „Stelle kopieren“ mit allen Angaben vorbelegt (Titel „… (Kopie)“, Arbeitstage, Aufgaben, Anforderungen …), wird erst
+  „Stelle kopieren“ mit allen Angaben vorbelegt (gleicher Titel, Arbeitstage, Aufgaben, Anforderungen …), wird erst
   beim Speichern als neue Stelle (aktiv) angelegt; Abbrechen führt zur Vorlage zurück. Bewerber/Matching werden nicht kopiert.
 - 2026-10-21: Telefonnummer auf dem Stellenplakat erschien am iPhone blau (Safari macht Nummern automatisch zu Links). Plakat
   und alle App-Seiten mit `format-detection: telephone=no`, Links auf dem Plakat in Textfarbe. Gewollte Anruf-Knöpfe
   (`tel:`) bleiben.
+- 2026-10-21: Stellen (Ahmed): Kopie ohne „(Kopie)“ im Titel. Arbeitstage: Zeile **„Für alle markierten Tage“** (Modus,
+  von, bis) – einmal eintragen, gilt für alle angehakten Tage (auch neu angehakte); einzelne Tage nur bei Abweichung ändern.
+  **Plakat als Bild am Handy:** Knopf „Als Bild speichern / teilen“ – Bild wird beim Laden vorab erzeugt, am Handy öffnet
+  das Teilen-Menü (iPhone „Bild sichern“, WhatsApp …), sonst Großansicht zum Gedrückthalten; am PC wie bisher Download.

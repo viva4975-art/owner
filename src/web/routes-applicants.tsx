@@ -299,8 +299,8 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
               <h3>Stellenausschreibung als Plakat</h3>
               <p class="small mut">
                 A4-Plakat mit den wichtigsten Eckdaten in 9 Sprachen (DE · EN · TR · AR · RU · PL · RO · HU ·
-                EL) und Handy-/WhatsApp-Nummer prominent. Ideal für Aushänge. Auf der Plakatseite „Als JPG
-                herunterladen“ (z. B. für WhatsApp/Social Media) oder im Druckdialog „Als PDF speichern“
+                EL) und Handy-/WhatsApp-Nummer prominent. Ideal für Aushänge. Auf der Plakatseite „Als Bild
+                speichern / teilen“ (z. B. für WhatsApp/Social Media) oder im Druckdialog „Als PDF speichern“
                 wählen.
               </p>
               <a class="btn" href={`/bewerber/stellen/${p.id}/plakat`} target="_blank">
@@ -362,12 +362,13 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
     const kopieId = c.req.query('kopie');
     const src =
       !cur && kopieId && /^[0-9a-f-]{36}$/i.test(kopieId) ? await getPosting(sql, kopieId) : undefined;
-    const p = cur ?? (src ? { ...src, title: `${src.title} (Kopie)` } : undefined);
+    const p = cur ?? src;
     const nextMonth = (() => {
       const [y, m] = todayBerlin().split('-').map(Number) as [number, number];
       return m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
     })();
     const wd: Workdays = p?.workdays ?? {};
+    const firstDay = DAYS.map((d) => wd[d]).find(Boolean);
     return page(
       c,
       cur ? 'Stelle bearbeiten' : src ? 'Stelle kopieren' : 'Neue Stelle',
@@ -458,6 +459,25 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
               Alle leeren
             </button>
           </div>
+          <div class="bw-day" style="margin-bottom:6px">
+            <span class="small" style="font-weight:600">
+              Für alle markierten Tage
+            </span>
+            <select id="all_modus" data-nosearch aria-label="Modus für alle Tage">
+              <option value="fest" selected={firstDay?.mode !== 'flexibel'}>
+                Feste Uhrzeit
+              </option>
+              <option value="flexibel" selected={firstDay?.mode === 'flexibel'}>
+                Flexibel (nach Absprache)
+              </option>
+            </select>
+            <input type="time" id="all_von" value={firstDay?.from ?? '06:00'} aria-label="von (alle Tage)" />
+            <input type="time" id="all_bis" value={firstDay?.to ?? '10:00'} aria-label="bis (alle Tage)" />
+          </div>
+          <div class="small mut" style="margin-bottom:6px">
+            Zeit hier einmal eintragen – sie gilt für alle markierten Tage. Einzelne Tage darunter nur bei
+            Abweichung ändern.
+          </div>
           <div class="bw-days">
             {DAYS.map((d) => {
               const v = wd[d];
@@ -543,7 +563,12 @@ var v=document.getElementById('vorlage');if(v)v.addEventListener('change',functi
 f.titel.value=t.name;f.art.value=t.type;f.stunden.value=t.hours;f.lohn.value=t.wage;f.zeit.value=t.time;f.aufgaben.value=t.tasks;f.voraussetzungen.value=t.req;
 ['art','zeit'].forEach(function(n){f[n].dispatchEvent(new Event('change'))});});
 f.querySelectorAll('[data-days]').forEach(function(b){b.addEventListener('click',function(){var s=b.getAttribute('data-days').split(',');
-f.querySelectorAll('input[name=tag]').forEach(function(c){c.checked=s.indexOf(c.value)>=0;});});});})();`,
+f.querySelectorAll('input[name=tag]').forEach(function(c){c.checked=s.indexOf(c.value)>=0;});apply(false);});});
+var am=document.getElementById('all_modus'),av=document.getElementById('all_von'),ab=document.getElementById('all_bis');
+function setDay(d){if(f['modus_'+d])f['modus_'+d].value=am.value;if(f['von_'+d])f['von_'+d].value=av.value;if(f['bis_'+d])f['bis_'+d].value=ab.value;}
+function apply(){f.querySelectorAll('input[name=tag]').forEach(function(c){if(c.checked)setDay(c.value);});}
+[am,av,ab].forEach(function(x){x.addEventListener('change',apply);x.addEventListener('input',apply);});
+f.querySelectorAll('input[name=tag]').forEach(function(c){c.addEventListener('change',function(){if(c.checked)setDay(c.value);});});})();`,
           }}
         />
       </div>,
@@ -648,7 +673,7 @@ f.querySelectorAll('input[name=tag]').forEach(function(c){c.checked=s.indexOf(c.
 .ft{background:#7D1435;color:#fff;padding:22px 40px 26px;text-align:center}.ft .k{font-size:13px;letter-spacing:.12em;opacity:.85}
 .ft .ph{font-size:50px;font-weight:800;line-height:1.1;margin:6px 0}.ft .em{font-size:16px}.ft .ct{font-size:10.5px;opacity:.85;margin-top:8px;line-height:1.4}
 @media print{body{background:#fff}.bar{display:none}.sheet{margin:0}}
-</style></head><body><div class="bar"><button onclick="print()">Drucken / als PDF speichern</button> <button id="jpg" type="button">Als JPG herunterladen</button></div><div class="sheet" id="sheet">
+</style></head><body><div class="bar"><button onclick="print()">Drucken / als PDF speichern</button> <button id="jpg" type="button">Als Bild speichern / teilen</button></div><div class="sheet" id="sheet">
 <div class="hd"><img src="/static/logo-hell.png" alt="Viva-Deluxe" style="height:44px;display:block;margin-bottom:12px"><div class="co">${esc(co?.legal_name ?? '')} · ${esc(co?.city ?? '')}</div><h1>${esc(p.title)}</h1>${p.job_type && p.job_type !== p.title ? `<span class="art">${esc(p.job_type)}</span>` : ''}</div>
 <div class="body">
 ${
@@ -680,18 +705,37 @@ ${timeKey ? cell(multi('workTime'), T.de?.[timeKey] ?? TIMES[p.time_of_day!] ?? 
 </div>
 <script src="/static/vendor/html2canvas.min.js"></script>
 <script>
-document.getElementById('jpg').addEventListener('click', async function () {
-  var b = this; b.disabled = true; b.textContent = 'Wird erstellt …';
-  try {
-    var el = document.getElementById('sheet');
-    // ca. 150 dpi (A4 = 1240 × 1754 px)
-    var canvas = await html2canvas(el, { scale: 1240 / el.offsetWidth, backgroundColor: '#ffffff', useCORS: false });
-    var a = document.createElement('a');
-    a.href = canvas.toDataURL('image/jpeg', 0.92);
-    a.download = ${JSON.stringify(`Stellenplakat-${p.title}`.replace(/[^\p{L}\p{N}-]+/gu, '-') + '.jpg')};
-    document.body.appendChild(a); a.click(); a.remove();
-  } catch (e) { alert('JPG konnte nicht erstellt werden: ' + e); }
-  b.disabled = false; b.textContent = 'Als JPG herunterladen';
+var FN = ${JSON.stringify(`Stellenplakat-${p.title}`.replace(/[^\p{L}\p{N}-]+/gu, '-') + '.jpg')};
+var jb = document.getElementById('jpg'), blob = null, url = null;
+function render() {
+  var el = document.getElementById('sheet');
+  // ca. 150 dpi (A4 = 1240 × 1754 px)
+  return html2canvas(el, { scale: 1240 / el.offsetWidth, backgroundColor: '#ffffff', useCORS: false }).then(function (cv) {
+    url = cv.toDataURL('image/jpeg', 0.92);
+    return new Promise(function (r) { cv.toBlob(function (bl) { blob = bl; r(); }, 'image/jpeg', 0.92); });
+  });
+}
+// vorab erzeugen: Teilen am Handy muss direkt nach dem Antippen starten
+var ready = (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(render).catch(function () {});
+function showImg() {
+  var o = document.createElement('div');
+  o.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:99;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:12px';
+  o.innerHTML = '<div style="color:#fff;font-size:15px;text-align:center">Bild lange gedrückt halten → „In Fotos sichern“ bzw. „Bild speichern“</div>';
+  var i = new Image(); i.src = url; i.style.cssText = 'max-width:100%;max-height:80vh;background:#fff';
+  var x = document.createElement('button'); x.textContent = 'Schließen'; x.onclick = function () { o.remove(); };
+  o.appendChild(i); o.appendChild(x); document.body.appendChild(o);
+}
+jb.addEventListener('click', async function () {
+  if (!blob) { jb.disabled = true; jb.textContent = 'Wird erstellt …'; await ready; if (!blob) await render().catch(function (e) { alert('Bild konnte nicht erstellt werden: ' + e); }); jb.disabled = false; jb.textContent = 'Als Bild speichern / teilen'; if (!blob) return; }
+  var file = new File([blob], FN, { type: 'image/jpeg' });
+  var touch = matchMedia('(pointer:coarse)').matches;
+  if (touch && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: FN }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; showImg(); return; }
+  }
+  if (touch) { showImg(); return; }
+  var a = document.createElement('a'); a.href = url; a.download = FN;
+  document.body.appendChild(a); a.click(); a.remove();
 });
 </script></body></html>`;
     return c.html(html);

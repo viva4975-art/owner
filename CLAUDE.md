@@ -3748,3 +3748,10 @@ Testadresse.
   „Rechnungskorrektur versenden“ oben im Aktionsblock (vorher nur klein im Versandkasten). Gleicher Weg wie Rechnungen
   (Format laut Rechnungsgruppe, genau einmal, Betreff „Stornorechnung Nr. …“); auch über Rechnungen → Noch nicht
   versendet → Reiter Rechnungskorrekturen.
+- 2026-10-21: Unterweisung V7 (Ahmed): Dauer als Lücke „____ Min.“ (später von Hand), Sprache entfernt, Objekt =
+  neuer Platzhalter `${Unterweisung.Objekt}` – auf der Ausfüll-Seite Auswahl (Objekte der Person zuerst, alle Objekte,
+  „offen lassen“ = Linie zum Nachtragen; bei genau einem Objekt vorbelegt), Datum oben (`${Unterweisung.Datum}`) und
+  über den Unterschriften („Ort, Datum“) automatisch heute. **Ahmed: VD-UW-2026-V7 hochladen.**
+- 2026-10-21: **Fund BR-27 „Item net price shall NOT be negative“** (Rechnung mit Minus-Preis): E-Rechnung schreibt
+  negative Einzelpreise jetzt als positiven Preis mit negativer Menge (Betrag gleich, KoSIT-gültig, Test in
+  `runde23-invoice.db.test.ts`). Rechnung danach einfach erneut fertigstellen.

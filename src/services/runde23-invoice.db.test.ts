@@ -65,6 +65,7 @@ describe.skipIf(!available)('Runde 23: Einzelrechnung wie Fortytools', () => {
         lines: [
           line('Sonderreinigung Whg. 12', 1000n, 18000n, '2026-09-03'),
           line('Nachlass', -1000n, 2000n),
+          line('Abzug Material', 1000n, -1000n), // negativer Einzelpreis (BR-27) → Vorzeichen in die Menge
         ],
         billAddress: {
           name: 'Münchner Test GmbH',
@@ -82,10 +83,11 @@ describe.skipIf(!available)('Runde 23: Einzelrechnung wie Fortytools', () => {
     );
     const doc = await loadDocument(sql, id, { number: 'X', issueDate: '2026-10-01', dueDate: '2026-10-15' });
     expect(doc.buyer.name).toBe('Münchner Test GmbH');
-    expect(doc.netTotal).toBe(16000n);
+    expect(doc.netTotal).toBe(15000n);
     const xml = await generateXRechnungUbl(doc);
     expect(xml).toContain('<cbc:StartDate>2026-09-03</cbc:StartDate>');
     expect(xml).toContain('Münchner Test GmbH');
+    expect(xml).not.toMatch(/<cbc:PriceAmount[^>]*>-/);
   });
 
   it('ausstellen: Zahlungsziel je Rechnung, kein Skonto; Kopie als Entwurf; Anschrift berichtigen', async () => {
@@ -99,7 +101,7 @@ describe.skipIf(!available)('Runde 23: Einzelrechnung wie Fortytools', () => {
     const copy = await copyInvoice(sql, id, randomUUID(), 't');
     const c = (await getInvoice(sql, copy))!;
     expect(c.invoice.status).toBe('draft');
-    expect(c.lines).toHaveLength(2);
+    expect(c.lines).toHaveLength(3);
     expect(c.invoice.customer_reference).toBe('KST 815');
 
     await sendInvoice(deps, id, 't');

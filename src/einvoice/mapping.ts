@@ -304,27 +304,35 @@ export function toEInvoice(doc: InvoiceDocument): Invoice {
       'cbc:PayableAmount': amt(doc.payableTotal),
       'cbc:PayableAmount@currencyID': CUR,
     } as UBL['cac:LegalMonetaryTotal'],
-    'cac:InvoiceLine': doc.lines.map((l) => ({
-      'cbc:ID': String(l.position),
-      'cbc:InvoicedQuantity': quantityToXml(l.quantity),
-      'cbc:InvoicedQuantity@unitCode': unitCodeOf(l.unitCode) as 'C62',
-      'cbc:LineExtensionAmount': amt(l.netAmount),
-      'cbc:LineExtensionAmount@currencyID': CUR,
-      ...(l.periodStart
-        ? {
-            'cac:InvoicePeriod': {
-              'cbc:StartDate': l.periodStart,
-              'cbc:EndDate': l.periodEnd ?? l.periodStart,
-            },
-          }
-        : {}),
-      'cac:Item': {
-        ...(l.detail ? { 'cbc:Description': l.detail } : {}),
-        'cbc:Name': l.description,
-        'cac:ClassifiedTaxCategory': taxCategory(l.vatRate),
-      },
-      'cac:Price': { 'cbc:PriceAmount': amt(l.unitPrice), 'cbc:PriceAmount@currencyID': CUR },
-    })) as UBL['cac:InvoiceLine'],
+    // BR-27: Einzelpreis (BT-146) darf nicht negativ sein → Vorzeichen in die Menge (Betrag bleibt gleich)
+    'cac:InvoiceLine': doc.lines
+      .map((line) => ({
+        ...line,
+        ...(line.unitPrice < 0n
+          ? { unitPrice: -line.unitPrice as Cents, quantity: -line.quantity as typeof line.quantity }
+          : {}),
+      }))
+      .map((l) => ({
+        'cbc:ID': String(l.position),
+        'cbc:InvoicedQuantity': quantityToXml(l.quantity),
+        'cbc:InvoicedQuantity@unitCode': unitCodeOf(l.unitCode) as 'C62',
+        'cbc:LineExtensionAmount': amt(l.netAmount),
+        'cbc:LineExtensionAmount@currencyID': CUR,
+        ...(l.periodStart
+          ? {
+              'cac:InvoicePeriod': {
+                'cbc:StartDate': l.periodStart,
+                'cbc:EndDate': l.periodEnd ?? l.periodStart,
+              },
+            }
+          : {}),
+        'cac:Item': {
+          ...(l.detail ? { 'cbc:Description': l.detail } : {}),
+          'cbc:Name': l.description,
+          'cac:ClassifiedTaxCategory': taxCategory(l.vatRate),
+        },
+        'cac:Price': { 'cbc:PriceAmount': amt(l.unitPrice), 'cbc:PriceAmount@currencyID': CUR },
+      })) as UBL['cac:InvoiceLine'],
   };
 
   return { 'ubl:Invoice': ubl };

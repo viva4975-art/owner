@@ -616,6 +616,8 @@ async function employeeValues(
     'Mitarbeiter.Urlaubstage': String(leaveDaysForWeek(Number(e.days_per_week ?? 5))).replace('.', ','),
     'Mitarbeiter.Beschäftigungsart': EMPLOYMENT[e.employment_type] ?? e.employment_type,
     'Mitarbeiter.Objekte': sites.map((s) => s.name).join(', '),
+    // Unterweisung: Objekt auswählbar (Ausfüll-Seite), bei genau einem Objekt vorbelegt, sonst offen zum Nachtragen
+    'Unterweisung.Objekt': sites.length === 1 ? sites[0]!.name : '',
     'Mitarbeiter.Einsatzgebiet': sites.map((s) => s.name).join(', '),
     'Mitarbeiter.Telefon': e.mobile ?? e.phone ?? '',
     'Mitarbeiter.E-Mail': e.email ?? '',
@@ -740,6 +742,7 @@ export async function templateValues(
     'Dokument.Datum': de(today),
     'Dokument.Erstelldatum': de(today),
     'Dokument.Unterschriftsdatum': de(today),
+    'Unterweisung.Datum': de(today),
     'Dokument.Frist': de(isoAdd(today, 14)),
     'Dokument.Ort': 'München',
     'Dokument.Signatur': p.actorName,
@@ -913,6 +916,8 @@ export async function wordTemplatePdf(
     ...(await companyValues(sql)),
     'Dokument.Datum': de(today),
     'Dokument.Erstelldatum': de(today),
+    'Dokument.Unterschriftsdatum': de(today),
+    'Unterweisung.Datum': de(today),
     'Dokument.Ort': 'München',
   };
   const bytes = await readFile(filePath(cfg, { storage_path: t.storage_path } as FileRow));

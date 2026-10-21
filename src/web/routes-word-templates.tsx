@@ -220,11 +220,12 @@ const FormFields: FC<{
   </div>
 );
 
-const GroupFields: FC<{ g: string; keys: string[]; values: Record<string, string> }> = ({
-  g,
-  keys,
-  values,
-}) => (
+const GroupFields: FC<{
+  g: string;
+  keys: string[];
+  values: Record<string, string>;
+  choices?: Record<string, { label: string; options: string[] }[]>;
+}> = ({ g, keys, values, choices }) => (
   <>
     <h3 style="margin:16px 0 6px">{g}</h3>
     <div class="grid">
@@ -235,7 +236,22 @@ const GroupFields: FC<{ g: string; keys: string[]; values: Record<string, string
           return (
             <div>
               <label for={`f-${k}`}>{k.slice(g.length + 1)}</label>
-              {isDateKey(k) ? (
+              {choices?.[k] ? (
+                <select id={`f-${k}`} name={`v:${k}`}>
+                  <option value="" selected={!v}>
+                    offen lassen (von Hand nachtragen)
+                  </option>
+                  {choices[k]!.map((grp) => (
+                    <optgroup label={grp.label}>
+                      {grp.options.map((o) => (
+                        <option value={o} selected={o === v}>
+                          {o}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              ) : isDateKey(k) ? (
                 <input id={`f-${k}`} type="date" name={`v:${k}`} value={isoOfDe(v)} />
               ) : (
                 <input id={`f-${k}`} name={`v:${k}`} value={v} />
@@ -463,6 +479,27 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
     const rank = (g: string) => (ORDER.includes(g) ? ORDER.indexOf(g) : 10);
     const groups = all.filter((g) => !MASTER.has(g)).sort((a, b) => rank(a) - rank(b));
     const master = all.filter((g) => MASTER.has(g));
+    // Unterweisung: Objekt zur Auswahl – eigene Objekte zuerst, dann alle aktiven
+    const choices: Record<string, { label: string; options: string[] }[]> = {};
+    if (keys.includes('Unterweisung.Objekt')) {
+      const own =
+        type === 'employee'
+          ? (
+              await sql<{ name: string }[]>`
+                select s.name from app.employee_sites es join app.sites s on s.id = es.site_id
+                 where es.employee_id = ${id} and s.active order by s.name`
+            ).map((r) => r.name)
+          : [];
+      const allSites = (
+        await sql<{ name: string }[]>`select distinct name from app.sites where active order by name`
+      )
+        .map((r) => r.name)
+        .filter((n) => !own.includes(n));
+      choices['Unterweisung.Objekt'] = [
+        ...(own.length ? [{ label: 'Objekte der Person', options: own }] : []),
+        { label: 'Alle Objekte', options: allSites },
+      ];
+    }
     return page(
       c,
       t.name,
@@ -502,7 +539,7 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
             </div>
           )}
           {groups.map((g) => (
-            <GroupFields g={g} keys={keys} values={values} />
+            <GroupFields g={g} keys={keys} values={values} choices={choices} />
           ))}
           {formFields.length > 0 && (
             <FormFields fields={formFields} boxes={boxDefaults} blanks={blankDefaults} cells={cellDefaults} />

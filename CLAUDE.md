@@ -3761,3 +3761,6 @@ Testadresse.
 - 2026-10-21: Storno/Korrektur (Ahmed: „nicht mehr −Menge sondern −Preis“): Positionen mit Minus-Menge werden in Briefansicht,
   Detailseite und PDF als positive Menge mit negativem Einzelpreis gezeigt (Betrag gleich). Gespeichert bleibt Minus-Menge;
   in der E-Rechnung bleibt der Preis positiv und die Menge negativ (BR-27 verbietet negative Preise).
+- 2026-10-21: **Stellenanzeige kopieren** (Ahmed): An der Stelle (Bewerber & Stellen → Stelle) Knopf „Kopieren“ → Formular
+  „Stelle kopieren“ mit allen Angaben vorbelegt (Titel „… (Kopie)“, Arbeitstage, Aufgaben, Anforderungen …), wird erst
+  beim Speichern als neue Stelle (aktiv) angelegt; Abbrechen führt zur Vorlage zurück. Bewerber/Matching werden nicht kopiert.

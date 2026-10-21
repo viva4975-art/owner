@@ -261,6 +261,9 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
             <a class="btn" href={`/bewerber/stellen/${p.id}/bearbeiten`}>
               Bearbeiten
             </a>
+            <a class="btn sec" href={`/bewerber/stellen/${randomUUID()}/bearbeiten?kopie=${p.id}`}>
+              Kopieren
+            </a>
           </div>
         </div>
         <div class="cols">
@@ -355,7 +358,11 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
 
   app.get(`/bewerber/stellen/:id{${UUID}}/bearbeiten`, async (c) => {
     const id = c.req.param('id');
-    const p = await getPosting(sql, id);
+    const cur = await getPosting(sql, id);
+    const kopieId = c.req.query('kopie');
+    const src =
+      !cur && kopieId && /^[0-9a-f-]{36}$/i.test(kopieId) ? await getPosting(sql, kopieId) : undefined;
+    const p = cur ?? (src ? { ...src, title: `${src.title} (Kopie)` } : undefined);
     const nextMonth = (() => {
       const [y, m] = todayBerlin().split('-').map(Number) as [number, number];
       return m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
@@ -363,7 +370,7 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
     const wd: Workdays = p?.workdays ?? {};
     return page(
       c,
-      p ? 'Stelle bearbeiten' : 'Neue Stelle',
+      cur ? 'Stelle bearbeiten' : src ? 'Stelle kopieren' : 'Neue Stelle',
       'personal',
       <div class="portal">
         <div class="page-head">
@@ -371,7 +378,7 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
             <div class="eyebrow">
               <a href="/bewerber">Offene Stellen</a>
             </div>
-            <h1>{p ? 'Stelle bearbeiten' : 'Neue Stelle'}</h1>
+            <h1>{cur ? 'Stelle bearbeiten' : src ? 'Stelle kopieren' : 'Neue Stelle'}</h1>
           </div>
         </div>
         <form
@@ -381,7 +388,7 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
           style="max-width:900px"
           id="stelle-form"
         >
-          <input type="hidden" name="version" value={String(p?.version ?? '')} />
+          <input type="hidden" name="version" value={String(cur?.version ?? '')} />
           <div class="grid">
             {!p && (
               <div>
@@ -521,7 +528,10 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
           </div>
           <div class="formfoot">
             <button class="btn">Speichern</button>
-            <a class="btn sec" href={p ? `/bewerber/stellen/${id}` : '/bewerber'}>
+            <a
+              class="btn sec"
+              href={cur ? `/bewerber/stellen/${id}` : src ? `/bewerber/stellen/${src.id}` : '/bewerber'}
+            >
               Abbrechen
             </a>
           </div>

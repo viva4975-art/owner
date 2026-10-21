@@ -3755,3 +3755,6 @@ Testadresse.
 - 2026-10-21: **Fund BR-27 „Item net price shall NOT be negative“** (Rechnung mit Minus-Preis): E-Rechnung schreibt
   negative Einzelpreise jetzt als positiven Preis mit negativer Menge (Betrag gleich, KoSIT-gültig, Test in
   `runde23-invoice.db.test.ts`). Rechnung danach einfach erneut fertigstellen.
+- 2026-10-21: **Storno-/Korrektur-Entwurf als Brief** (Ahmed): gleiche Ansicht wie der Rechnungsentwurf (Anschrift, Balken
+  „Stornorechnung (Entwurf)“, „Zu Rechnung … vom …“, Positionen, Summen), aber nicht bearbeitbar (Positionen kommen aus
+  der Originalrechnung); Aktionen Fertigstellen, PDF-Vorschau, KoSIT, Löschen, Rechnungsdatum, Anlagen, Versand.

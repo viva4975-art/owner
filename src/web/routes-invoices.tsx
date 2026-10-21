@@ -807,7 +807,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
       inv.skonto_percent_bp && inv.payable_cents > 0n
         ? (inv.payable_cents * BigInt(inv.skonto_percent_bp) + 5000n) / 10000n
         : null;
-    if (inv.status === 'draft' && ['invoice', 'partial', 'final'].includes(inv.kind)) {
+    if (inv.status === 'draft') {
       return page(
         c,
         'Entwurf',

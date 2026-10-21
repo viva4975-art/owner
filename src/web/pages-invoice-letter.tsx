@@ -112,9 +112,11 @@ export const DraftLetter: FC<{
   today = '',
   timesheets = 0,
 }) => {
+  // Storno/Rechnungskorrektur: Positionen kommen aus der Originalrechnung – gleiche Ansicht, aber nicht bearbeitbar
+  const locked = !['invoice', 'partial', 'final'].includes(inv.kind);
   const issueDate = inv.planned_issue_date ?? today;
   const issueMsg =
-    `Rechnung jetzt verbindlich mit Datum ${formatDateDe(issueDate)} ausstellen? Danach ist sie unveränderbar und erhält eine fortlaufende Nummer.` +
+    `${KIND_TITLES[inv.kind]} jetzt verbindlich mit Datum ${formatDateDe(issueDate)} ausstellen? Danach ist sie unveränderbar und erhält eine fortlaufende Nummer.` +
     (lastIssued && issueDate < lastIssued
       ? `\n\nACHTUNG: Die zuletzt ausgestellte Rechnung hat das Datum ${formatDateDe(lastIssued)} – diese Rechnung wäre älter als ihre Vorgängerin (Nummern und Datum sollten aufsteigend sein). Wirklich zurückdatieren?`
       : '');
@@ -138,6 +140,8 @@ export const DraftLetter: FC<{
       <b>{`${b.site.name} (${b.site.siteNo})${b.site.street ? ` · ${b.site.street}, ${b.site.postalCode ?? ''} ${b.site.city ?? ''}` : ''}`}</b>,
     ]);
   else if (grouped) facts.push(['Leistungsort', `${keys.length} Objekte (siehe Positionen)`]);
+  if (doc.original)
+    facts.push(['Zu Rechnung', `${doc.original.number} vom ${formatDateDe(doc.original.issueDate)}`]);
   if (period) facts.push(['Leistungszeitraum', period]);
   else facts.push(['Leistungszeitraum', <span class="tag err">fehlt – bitte eintragen</span>]);
   if (b.leitwegId) facts.push(['Leitweg-ID', b.leitwegId]);
@@ -159,11 +163,26 @@ export const DraftLetter: FC<{
       <style dangerouslySetInnerHTML={{ __html: LETTER_CSS }} />
       <script dangerouslySetInnerHTML={{ __html: DIRECT_JS }} />
       {notice}
-      <p class="small mut" style="margin:0 0 8px">
-        Zum Ändern direkt auf Anschrift, Text, eine Position oder den Schlusstext klicken – wird sofort
-        gespeichert.
-      </p>
-      <div class="lt-grid">
+      {locked ? (
+        <p class="small mut" style="margin:0 0 8px">
+          {KIND_TITLES[inv.kind]} zur Rechnung {doc.original?.number ?? ''} – Positionen und Anschrift kommen
+          aus der Originalrechnung und sind nicht änderbar. Prüfen, dann fertigstellen (oder löschen).
+        </p>
+      ) : (
+        <p class="small mut" style="margin:0 0 8px">
+          Zum Ändern direkt auf Anschrift, Text, eine Position oder den Schlusstext klicken – wird sofort
+          gespeichert.
+        </p>
+      )}
+      {locked && (
+        <style
+          dangerouslySetInnerHTML={{
+            __html:
+              '.lt-locked .lt-edit{pointer-events:none;cursor:default;text-decoration:none}.lt-locked .lt-edit:hover{background:none;outline:0}.lt-locked .lt-row{pointer-events:none;cursor:default}.lt-locked .lt-edit-tbl,.lt-locked .lt-f,.lt-locked .lt-frow,.lt-locked .lt-add{display:none!important}',
+          }}
+        />
+      )}
+      <div class={`lt-grid${locked ? ' lt-locked' : ''}`}>
         <div>
           <div class="lt-paper">
             <div class="lt-pad">
@@ -373,7 +392,7 @@ export const DraftLetter: FC<{
                 style="display:block;white-space:pre-line;margin:8px 0"
                 title="Schlusstext ändern"
               >
-                {doc.closingText || <span class="faint small">+ Schlusstext hinzufügen</span>}
+                {doc.closingText || (!locked && <span class="faint small">+ Schlusstext hinzufügen</span>)}
               </a>
               <Direct inv={inv} what="schluss" id="f-closing" show="v-closing">
                 <textarea name="text" rows={3} data-grow aria-label="Schlusstext">
@@ -410,7 +429,7 @@ export const DraftLetter: FC<{
         </div>
         <aside class="lt-side">
           <div class="btns actstack">
-            <a href={`/rechnungen/${inv.id}/bearbeiten`}>✎ Bearbeiten</a>
+            {!locked && <a href={`/rechnungen/${inv.id}/bearbeiten`}>✎ Bearbeiten</a>}
             <form
               method="post"
               action={`/rechnungen/${inv.id}/ausstellen`}
@@ -430,10 +449,12 @@ export const DraftLetter: FC<{
                 <button class="sec">Kopieren</button>
               </form>
             )}
-            <a class="sec" href={`/rechnungen/${inv.id}/lieferschein.pdf`} target="_blank">
-              Lieferschein erstellen
-            </a>
-            {timesheets > 0 && (
+            {!locked && (
+              <a class="sec" href={`/rechnungen/${inv.id}/lieferschein.pdf`} target="_blank">
+                Lieferschein erstellen
+              </a>
+            )}
+            {timesheets > 0 && !locked && (
               <a
                 class="sec"
                 href={`/rechnungen/${inv.id}/stundennachweis.pdf`}
@@ -443,7 +464,7 @@ export const DraftLetter: FC<{
                 Stundennachweis (geschwärzt) – Vorschau
               </a>
             )}
-            {wrs.length === 0 && (
+            {wrs.length === 0 && !locked && (
               <form
                 method="post"
                 action={`/rechnungen/${inv.id}/arbeitsschein`}

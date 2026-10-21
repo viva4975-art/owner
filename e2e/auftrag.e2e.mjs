@@ -57,7 +57,12 @@ const row = p.locator('#lines tbody tr').first();
 await row.locator('[name=desc]').evaluate((e, v) => (e.value = v), 'Grundreinigung Turnhalle pauschal');
 await row.locator('[name=qty]').fill('1');
 await row.locator('[name=price]').fill('1.250,00');
-await p.fill('#bill_name', 'Andere Gesellschaft GmbH (E2E)');
+{
+  const blk = p.locator('#bill_block');
+  const lines = (await blk.inputValue()).split('\n');
+  lines[0] = 'Andere Gesellschaft GmbH (E2E)';
+  await blk.fill(lines.join('\n'));
+}
 await p.fill('#planned_date', '2026-12-01');
 const staffName = await p.evaluate(() => {
   const s = document.getElementById('au-staff');

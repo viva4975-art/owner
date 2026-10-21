@@ -215,7 +215,7 @@ export function toEInvoice(doc: InvoiceDocument): Invoice {
         'cac:PartyIdentification': { 'cbc:ID': buyer.customerNo },
         'cac:PostalAddress': {
           'cbc:StreetName': buyer.street,
-          ...(buyer.name2 ? { 'cbc:AdditionalStreetName': buyer.name2 } : {}),
+          ...(buyer.name2 ? { 'cbc:AdditionalStreetName': buyer.name2.split('\n').join(', ') } : {}),
           'cbc:CityName': buyer.city,
           'cbc:PostalZone': buyer.postalCode,
           'cac:Country': { 'cbc:IdentificationCode': countryCodeOf(buyer.countryCode) as 'DE' },

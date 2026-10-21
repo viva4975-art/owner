@@ -1580,6 +1580,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     label: 'Verwaltung',
     items: [
       { label: 'Kassenbuch', href: '/kassenbuch' },
+      { label: 'Briefe', href: '/verwaltung/briefe' },
       { label: 'Eigen-Compliance', href: '/eigen-compliance', sep: true },
     ],
   },

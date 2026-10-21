@@ -83,6 +83,7 @@ import { registerStartAppRoutes } from './routes-start-app.js';
 import { registerMyTimeRoutes } from './routes-my-time.js';
 import { registerQmTeamRoutes } from './routes-qm-team.js';
 import { registerOlAppRoutes } from './routes-ol-app.js';
+import { expandAddressBlocks } from './address-block.js';
 
 export const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 
@@ -239,6 +240,18 @@ export function createApp(deps: Deps) {
       },
     }),
   );
+
+  // Anschrift als ein Textfeld (Ahmed 21.10., wie Fortytools): Formularfeld `<präfix>block` wird beim Lesen des
+  // Formulars in die bisherigen Einzelfelder (<präfix>name, name2, contact, street, postal_code, city) zerlegt –
+  // die Routen und Prüfungen dahinter bleiben unverändert.
+  app.use(async (c, next) => {
+    if (c.req.method === 'POST') {
+      const orig = c.req.parseBody.bind(c.req);
+      const wrapped = async (...a: Parameters<typeof orig>) => expandAddressBlocks(await orig(...a));
+      (c.req as unknown as { parseBody: typeof wrapped }).parseBody = wrapped;
+    }
+    await next();
+  });
 
   // CSV-Exporte in der Sortierung der Bildschirm-Tabelle (?sort=<Spalte>&dir=asc|desc, siehe client.ts).
   app.use(async (c, next) => {

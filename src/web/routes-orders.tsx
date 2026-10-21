@@ -1,3 +1,4 @@
+import { AddressBlock } from './address-block.js';
 import { randomUUID } from 'node:crypto';
 import { SiteOptions } from './site-options.js';
 import type { Child, FC } from 'hono/jsx';
@@ -512,16 +513,8 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
   /** Eingegebene Anschrift; gleich der Standard-Anschrift → null (folgt dann den Kundendaten). */
   const chosenAddress = async (b: Parameters<typeof str>[0]) => {
     if (typeof b.bill_name !== 'string') return null;
-    // Name mehrzeilig: erste Zeile = Name, weitere Zeilen = Zusatz (Name 2)
-    const [first, ...rest] = b.bill_name
-      .split(/\r?\n/)
-      .map((x) => x.trim())
-      .filter(Boolean);
-    const a = parseBillAddress({
-      ...(b as Record<string, unknown>),
-      bill_name: first ?? '',
-      bill_name2: rest.join(', '),
-    });
+    // Anschrift kommt als ein Textfeld (bill_block), zerlegt in die Einzelfelder (siehe address-block.tsx)
+    const a = parseBillAddress(b as Record<string, unknown>);
     const customerId = str(b, 'customer_id') ?? '';
     const d = await orderAddress(null, customerId, str(b, 'site_id'));
     const same = (x: string | null, y: string | null) => (x ?? '').trim() === (y ?? '').trim();
@@ -633,39 +626,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
               B. für eine andere Gesellschaft. Gilt nur für diesen Auftrag und seine Rechnung.
               {o?.bill_address && <b> Eigene Anschrift hinterlegt.</b>}
             </div>
-            <div class="grid">
-              <div style="grid-column:1/-1">
-                <label for="bill_name">Name / Firma</label>
-                <textarea id="bill_name" name="bill_name" rows={2} required>
-                  {[addr.name, addr.name2].filter(Boolean).join('\n')}
-                </textarea>
-                <div class="small mut">Enter = zweite Zeile (z. B. Gesellschaft / Abteilung)</div>
-              </div>
-
-              <div style="grid-column:1/-1">
-                <label for="bill_contact">z. Hd.</label>
-                <input id="bill_contact" name="bill_contact" value={addr.contactName ?? ''} />
-              </div>
-              <div style="grid-column:1/-1">
-                <label for="bill_street">Straße</label>
-                <input id="bill_street" name="bill_street" value={addr.street} required />
-              </div>
-              <div>
-                <label for="bill_postal_code">PLZ</label>
-                <input
-                  id="bill_postal_code"
-                  name="bill_postal_code"
-                  value={addr.postalCode}
-                  required
-                  pattern="[0-9]{5}"
-                  inputmode="numeric"
-                />
-              </div>
-              <div>
-                <label for="bill_city">Ort</label>
-                <input id="bill_city" name="bill_city" value={addr.city} required />
-              </div>
-            </div>
+            <AddressBlock id="bill_block" value={addr} required label="Rechnungsanschrift" />
             <h2>Auftrag</h2>
             <div class="grid">
               <div>

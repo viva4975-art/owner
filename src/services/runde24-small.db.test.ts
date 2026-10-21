@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
-import { writeLetter } from './letters.js';
+import { listLetters, writeLetter } from './letters.js';
 import { DEMO } from './seed.js';
 import { STARTUP_STEPS, createStartupPlan } from './site-startup.js';
 import { dbAvailable, freshDatabase } from './testing.js';
@@ -59,6 +59,38 @@ describe.skipIf(!available)('Anlaufplan und Schriftverkehr (Datenbank)', () => {
     await expect(
       writeLetter(sql, { dir, maxBytes: 5e7 }, { ...p, formId: randomUUID(), body: ' ' }),
     ).rejects.toThrow(/Text/);
+  });
+
+  it('Brief an freie Anschrift: im Briefarchiv mit Nummer, ohne Akte, nichts doppelt', async () => {
+    const p = {
+      formId: randomUUID(),
+      target: 'frei' as const,
+      id: null,
+      address: {
+        name: 'Hausverwaltung Beispiel GmbH',
+        name2: 'Abteilung Technik',
+        contactName: 'Frau Muster',
+        street: 'Musterweg 1',
+        postalCode: '80331',
+        city: 'München',
+      },
+      subject: 'Angebot Treppenhausreinigung',
+      greeting: 'Sehr geehrte Frau Muster,',
+      body: 'anbei unser Angebot.',
+      date: '2026-10-21',
+      actor: 't',
+    };
+    const a = await writeLetter(sql, { dir, maxBytes: 5e7 }, p);
+    const b = await writeLetter(sql, { dir, maxBytes: 5e7 }, p);
+    expect(a.letterId).toBe(b.letterId);
+    expect(a.letterNo).toMatch(/^BR-2026-\d{4}$/);
+    expect(b.letterNo).toBe(a.letterNo);
+    const [n] = await sql`select count(*)::int as n from app.file_links where file_id = ${a.fileId}`;
+    expect(n!.n).toBe(0);
+    const found = await listLetters(sql, 'Treppenhaus');
+    expect(found.map((r) => r.letter_no)).toEqual([a.letterNo]);
+    expect(found[0]!.recipient).toContain('Hausverwaltung Beispiel');
+    await expect(sql`delete from app.letters where id = ${a.letterId}`).rejects.toThrow();
   });
 });
 

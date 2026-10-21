@@ -1,3 +1,4 @@
+import { AddressBlock } from './address-block.js';
 import type { Child, FC } from 'hono/jsx';
 import { INVOICE_CLOSING_PAY, INVOICE_INTRO_DEFAULT } from '../pdf/render.js';
 import { SiteOptions } from './site-options.js';
@@ -524,7 +525,7 @@ export const InvoiceEditor: FC<{
           dangerouslySetInnerHTML={{
             __html: `(function(){var h=location.hash;if(!h)return;setTimeout(function(){
   if(h==='#anschrift'){var c=document.getElementById('bill_custom');if(c&&!c.checked){c.checked=true;c.dispatchEvent(new Event('change',{bubbles:true}));}
-    var f=document.querySelector('#bill-fields input');if(f){f.scrollIntoView({block:'center'});f.focus();}}
+    var f=document.querySelector('#bill-fields textarea');if(f){f.scrollIntoView({block:'center'});f.focus();}}
   else{var e=document.querySelector(h);if(e){e.scrollIntoView({block:'center'});if(e.focus)e.focus();}}},50);})();`,
           }}
         />
@@ -540,22 +541,12 @@ export const InvoiceEditor: FC<{
             Rechnungsadresse nur für diese Rechnung ändern (z. B. andere Abteilung oder Hausverwaltung)
           </label>
         </div>
-        <div class="grid" id="bill-fields" hidden={!inv.bill_address} style="margin-top:6px">
-          {(
-            [
-              ['bill_name', 'Name / Firma *', 'name'],
-              ['bill_name2', 'Zusatz', 'name2'],
-              ['bill_contact', 'Ansprechpartner', 'contactName'],
-              ['bill_street', 'Straße *', 'street'],
-              ['bill_postal_code', 'PLZ *', 'postalCode'],
-              ['bill_city', 'Ort *', 'city'],
-            ] as const
-          ).map(([n, label, k]) => (
-            <div>
-              <label for={n}>{label}</label>
-              <input id={n} name={n} value={(inv.bill_address?.[k] ?? defaultAddress?.[k] ?? '') as string} />
-            </div>
-          ))}
+        <div id="bill-fields" hidden={!inv.bill_address} style="margin-top:6px">
+          <AddressBlock
+            id="bill_block"
+            value={inv.bill_address ?? defaultAddress}
+            label="Rechnungsanschrift *"
+          />
         </div>
         <div style="margin:12px 0">
           <label for="intro_text">Einleitungstext</label>
@@ -1020,22 +1011,8 @@ export const InvoiceDetail: FC<{
                   bleibt unverändert im Archiv; die berichtigte Fassung (PDF und E-Rechnung, vorher
                   KoSIT-geprüft) wird zusätzlich archiviert. Anderer Empfänger = Storno und neue Rechnung.
                 </p>
-                <div class="grid">
-                  {(
-                    [
-                      ['bill_name', 'Name / Firma *', snap?.name],
-                      ['bill_name2', 'Zusatz', snap?.name2],
-                      ['bill_contact', 'Ansprechpartner', snap?.contactName],
-                      ['bill_street', 'Straße *', snap?.street],
-                      ['bill_postal_code', 'PLZ *', snap?.postalCode],
-                      ['bill_city', 'Ort *', snap?.city],
-                    ] as const
-                  ).map(([n, label, v]) => (
-                    <div>
-                      <label for={`r-${n}`}>{label}</label>
-                      <input id={`r-${n}`} name={n} value={v ?? ''} />
-                    </div>
-                  ))}
+                <AddressBlock id="r-bill_block" value={snap} required label="Rechnungsanschrift *" />
+                <div class="grid" style="margin-top:8px">
                   <div style="grid-column:1/-1">
                     <label for="r-reason">Grund der Berichtigung *</label>
                     <input

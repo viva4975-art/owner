@@ -1,3 +1,4 @@
+import { AddressBlock } from './address-block.js';
 import { SchoolCard } from './routes-school-leave.js';
 import { mergeSites } from '../services/site-merge.js';
 import { CustomerOrders } from './routes-orders.js';
@@ -865,31 +866,28 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                   </label>
                 </div>
               </div>
-              <div class="grid" id="g-addr" hidden={!g?.bill_name}>
-                <div>
-                  <label for="g-bname">Name *</label>
-                  <input id="g-bname" name="bill_name" value={g?.bill_name ?? cust.name} />
-                </div>
-                <div>
-                  <label for="g-bname2">Zusatz / Abteilung</label>
-                  <input
-                    id="g-bname2"
-                    name="bill_name2"
-                    value={g?.bill_name ? (g.bill_name2 ?? '') : (cust.name2 ?? '')}
-                  />
-                </div>
-                <div>
-                  <label for="g-street">Straße *</label>
-                  <input id="g-street" name="bill_street" value={g?.bill_street ?? cust.street} />
-                </div>
-                <div>
-                  <label for="g-plz">PLZ *</label>
-                  <input id="g-plz" name="bill_postal_code" value={g?.bill_postal_code ?? cust.postal_code} />
-                </div>
-                <div>
-                  <label for="g-city">Ort *</label>
-                  <input id="g-city" name="bill_city" value={g?.bill_city ?? cust.city} />
-                </div>
+              <div id="g-addr" hidden={!g?.bill_name}>
+                <AddressBlock
+                  id="g-block"
+                  label="Rechnungsanschrift *"
+                  value={
+                    g?.bill_name
+                      ? {
+                          name: g.bill_name,
+                          name2: g.bill_name2,
+                          street: g.bill_street ?? '',
+                          postalCode: g.bill_postal_code ?? '',
+                          city: g.bill_city ?? '',
+                        }
+                      : {
+                          name: cust.name,
+                          name2: cust.name2,
+                          street: cust.street,
+                          postalCode: cust.postal_code,
+                          city: cust.city,
+                        }
+                  }
+                />
               </div>
               <div class="grid" style="margin-top:10px">
                 <div>

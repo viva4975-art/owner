@@ -1,3 +1,4 @@
+import { AddressBlock } from './address-block.js';
 import type { FC } from 'hono/jsx';
 import {
   type BillingCycle,
@@ -386,27 +387,13 @@ export const ServiceForm: FC<{
                 Andere Rechnungsanschrift für diese Leistung (z. B. andere Gesellschaft oder Hausverwaltung)
               </label>
             </div>
-            <div class="grid" id="bill-fields" hidden={!sv?.bill_address} style="margin-top:6px">
-              {(
-                [
-                  ['bill_name', 'Name / Firma *', 'name'],
-                  ['bill_name2', 'Zusatz', 'name2'],
-                  ['bill_contact', 'Ansprechpartner', 'contactName'],
-                  ['bill_street', 'Straße *', 'street'],
-                  ['bill_postal_code', 'PLZ *', 'postalCode'],
-                  ['bill_city', 'Ort *', 'city'],
-                ] as const
-              ).map(([n, label, k]) => (
-                <div>
-                  <label for={n}>{label}</label>
-                  <input
-                    id={n}
-                    name={n}
-                    value={(sv?.bill_address?.[k] ?? defaultAddress?.[k] ?? '') as string}
-                  />
-                </div>
-              ))}
-              <p class="small mut" style="grid-column:1/-1;margin:0">
+            <div id="bill-fields" hidden={!sv?.bill_address} style="margin-top:6px">
+              <AddressBlock
+                id="bill_block"
+                value={sv?.bill_address ?? defaultAddress}
+                label="Rechnungsanschrift *"
+              />
+              <p class="small mut" style="margin:6px 0 0">
                 Die Leistung kommt dann auf eine eigene Rechnung an diese Anschrift (Leistungen mit gleicher
                 Anschrift am selben Objekt zusammen). Format, E-Mail, Zahlungsziel und Leitweg-ID bleiben wie
                 in der Rechnungsgruppe – für einen anderen Empfänger mit eigenen Angaben besser eine eigene

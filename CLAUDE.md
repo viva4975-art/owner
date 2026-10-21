@@ -3686,3 +3686,18 @@ Testadresse.
   läuft zusätzlich nach dem Laden erneut (Wiederherstellen der Eingaben setzt Werte ohne „change“ – vermutlich der Grund,
   warum die Felder am iPad stehen blieben).
 
+- 2026-10-21: **Briefe unter Verwaltung + Anschrift als ein Textfeld** (Ahmed: „freien Brief unter Verwaltung, im Archiv,
+  Objekt/Kunde wählen oder frei“; „überall, wo man die Anschrift ändern kann, ein freies Feld mit Umbruch wie Fortytools“):
+  - **Verwaltung → Briefe** (`/verwaltung/briefe`, Büro): Briefarchiv mit Suche und PDF je Brief; „+ Neuer Brief“ an
+    Kunde, Objekt (Anschrift vorbelegt, änderbar) oder frei eingegebene Anschrift. Jeder Brief bekommt eine Nummer
+    BR-JJJJ-NNNN und steht in `app.letters` (nur anhängen, Migration `20261213000001`); auch die freien Briefe bei Kunde,
+    Objekt, Lieferant erscheinen dort. Kunde/Objekt: PDF zusätzlich in der Akte (Schriftverkehr); frei: nur im Archiv.
+    Briefe an Mitarbeitende bleiben nur in der Personalakte (keine Nummer, Datenschutz). Feste ID je Formular → nichts doppelt.
+  - **Anschrift als ein Textfeld** (`AddressBlock`, `src/web/address-block.tsx`): Rechnungsentwurf („nur für diese
+    Rechnung“), Direktbearbeitung im Rechnungsbrief, „Name / Adresse ändern“ (berichtigte Fassung), Einzelauftrag
+    „Rechnung an“, Leistung („andere Rechnungsanschrift“), Rechnungsgruppe, Briefe. Eine Zeile im Feld = eine Zeile im
+    Brief; gespeichert wird weiter aufgeteilt (`parseAddressBlock`: erste Zeile Name, Zeilen dazwischen Zusatz – auch
+    mehrere –, „z. Hd. …“ = Ansprechpartner, vorletzte Straße/Postfach, letzte „PLZ Ort“), weil die E-Rechnung die Teile
+    braucht (mehrzeiliger Zusatz → BT-164 mit Komma). Zentral in einer POST-Middleware (`expandAddressBlocks`), alle
+    bisherigen Prüfungen bleiben. Angebote haben keine eigene Anschrift (nehmen Kunde/Interessent); Kundenstammdaten
+    behalten getrennte Felder (Karte, Suche, Import).

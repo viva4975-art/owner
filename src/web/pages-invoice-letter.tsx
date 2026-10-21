@@ -1,3 +1,4 @@
+import { formatAddressBlock } from '../domain/letter/address-block.js';
 import { randomUUID } from 'node:crypto';
 import type { Child, FC } from 'hono/jsx';
 import { formatDateDe } from '../domain/invoice/calc.js';
@@ -178,7 +179,7 @@ export const DraftLetter: FC<{
               >
                 {[
                   b.name,
-                  b.name2,
+                  ...(b.name2 ?? '').split('\n'),
                   b.contactName ? `z. Hd. ${b.contactName}` : null,
                   b.street,
                   `${b.postalCode} ${b.city}`,
@@ -189,34 +190,16 @@ export const DraftLetter: FC<{
                   ))}
               </a>
               <Direct inv={inv} what="anschrift" id="f-addr" show="v-addr">
-                <div class="lt-fg">
-                  <input name="bill_name" value={b.name} placeholder="Name" required aria-label="Name" />
-                  <input name="bill_name2" value={b.name2 ?? ''} placeholder="Zusatz" aria-label="Zusatz" />
-                  <input
-                    name="bill_contact"
-                    value={b.contactName ?? ''}
-                    placeholder="z. Hd. (Ansprechpartner)"
-                    aria-label="Ansprechpartner"
-                  />
-                  <input
-                    name="bill_street"
-                    value={b.street}
-                    placeholder="Straße"
-                    required
-                    aria-label="Straße"
-                  />
-                  <div style="display:flex;gap:6px">
-                    <input
-                      name="bill_postal_code"
-                      value={b.postalCode}
-                      placeholder="PLZ"
-                      required
-                      style="max-width:90px"
-                      aria-label="PLZ"
-                    />
-                    <input name="bill_city" value={b.city} placeholder="Ort" required aria-label="Ort" />
-                  </div>
-                </div>
+                <textarea
+                  name="bill_block"
+                  rows={6}
+                  required
+                  aria-label="Anschrift"
+                  style="width:100%;font-family:inherit;line-height:1.45"
+                >
+                  {formatAddressBlock(b)}
+                </textarea>
+                <div class="small mut">Eine Zeile je Zeile, zuletzt „PLZ Ort“.</div>
                 {inv.bill_address && (
                   <button class="btn sec sm" name="reset" value="1" formnovalidate>
                     Anschrift wie Kunde
@@ -789,7 +772,7 @@ export const IssuedLetter: FC<{
               <div class="lt-addr">
                 {[
                   b.name,
-                  b.name2,
+                  ...(b.name2 ?? '').split('\n'),
                   b.contactName ? `z. Hd. ${b.contactName}` : null,
                   b.street,
                   `${b.postalCode} ${b.city}`,

@@ -389,7 +389,8 @@ export function addressLines(
   const parts = (withContact: boolean) =>
     [
       b.name,
-      b.name2,
+      // Zusatz darf mehrzeilig sein (Anschrift als ein Textfeld, wie Fortytools)
+      ...(b.name2 ?? '').split('\n'),
       withContact && b.contactName ? `z. Hd. ${b.contactName}` : null,
       b.street,
       `${b.postalCode} ${b.city}`,

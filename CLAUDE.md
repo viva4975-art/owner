@@ -3771,3 +3771,5 @@ Testadresse.
   von, bis) – einmal eintragen, gilt für alle angehakten Tage (auch neu angehakte); einzelne Tage nur bei Abweichung ändern.
   **Plakat als Bild am Handy:** Knopf „Als Bild speichern / teilen“ – Bild wird beim Laden vorab erzeugt, am Handy öffnet
   das Teilen-Menü (iPhone „Bild sichern“, WhatsApp …), sonst Großansicht zum Gedrückthalten; am PC wie bisher Download.
+- 2026-10-21: Stellen: Beginn als Auswahl „ab sofort / ab Datum …“ (Ahmed: Datumsfeld lässt sich am Handy nicht leeren);
+  „ab sofort“ speichert kein Datum (`start_on` leer), Plakat zeigt „Ab sofort“.

@@ -514,8 +514,24 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
               <input id="strasse" name="strasse" value={p?.street ?? ''} />
             </div>
             <div>
-              <label for="beginn">Beginn (leer = sofort)</label>
-              <input id="beginn" name="beginn" type="date" value={p ? (p.start_on ?? '') : nextMonth} />
+              <label for="beginn_art">Beginn</label>
+              <select id="beginn_art" name="beginn_art" data-nosearch>
+                <option value="sofort" selected={!!p && !p.start_on}>
+                  ab sofort
+                </option>
+                <option value="datum" selected={!p || !!p.start_on}>
+                  ab Datum …
+                </option>
+              </select>
+              <input
+                id="beginn"
+                name="beginn"
+                type="date"
+                aria-label="Beginn ab Datum"
+                style="margin-top:6px"
+                hidden={!!p && !p.start_on}
+                value={p ? (p.start_on ?? '') : nextMonth}
+              />
             </div>
             <div>
               <label for="sprache">Bevorzugte Sprache</label>
@@ -568,7 +584,9 @@ var am=document.getElementById('all_modus'),av=document.getElementById('all_von'
 function setDay(d){if(f['modus_'+d])f['modus_'+d].value=am.value;if(f['von_'+d])f['von_'+d].value=av.value;if(f['bis_'+d])f['bis_'+d].value=ab.value;}
 function apply(){f.querySelectorAll('input[name=tag]').forEach(function(c){if(c.checked)setDay(c.value);});}
 [am,av,ab].forEach(function(x){x.addEventListener('change',apply);x.addEventListener('input',apply);});
-f.querySelectorAll('input[name=tag]').forEach(function(c){c.addEventListener('change',function(){if(c.checked)setDay(c.value);});});})();`,
+f.querySelectorAll('input[name=tag]').forEach(function(c){c.addEventListener('change',function(){if(c.checked)setDay(c.value);});});
+var ba=document.getElementById('beginn_art'),bd=document.getElementById('beginn');
+function bsync(){bd.hidden=ba.value!=='datum';bd.required=ba.value==='datum';}ba.addEventListener('change',bsync);bsync();setTimeout(bsync,300);})();`,
           }}
         />
       </div>,
@@ -609,7 +627,7 @@ f.querySelectorAll('input[name=tag]').forEach(function(c){c.addEventListener('ch
         city: str(b, 'ort'),
         postalCode: str(b, 'plz'),
         street: str(b, 'strasse'),
-        startOn: str(b, 'beginn'),
+        startOn: str(b, 'beginn_art') === 'sofort' ? null : str(b, 'beginn'),
         language: str(b, 'sprache'),
         tasks: str(b, 'aufgaben'),
         requirements: str(b, 'voraussetzungen'),

@@ -218,7 +218,7 @@ check('Arbeitstage zusammengefasst', (await p.locator('body').innerText()).inclu
 const stelleUrl = p.url();
 const plakat = await p.request.get(`${stelleUrl}/plakat`);
 const ph = await plakat.text();
-check('Plakat 9 Sprachen', ph.includes('Einsatzort') && ph.includes('Location') && ph.includes('WHATSAPP'));
+check('Plakat 9 Sprachen', ph.includes('Einsatzort') && ph.includes('Location') && ph.includes('Jetzt per WhatsApp bewerben') && ph.includes('wa.me/'));
 {
   const pp = await ctx.newPage();
   pp.on('dialog', (d) => d.accept().catch(() => {}));

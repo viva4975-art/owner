@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { parseEuro } from '../domain/money/money.js';
-import posterI18n from '../i18n/job-poster.json' with { type: 'json' };
 import {
   APPLICANT_STATUS,
   CONTACT_KINDS,
@@ -42,6 +41,7 @@ import {
 import { BusinessError } from '../services/errors.js';
 import { type Ctx, UUID } from './app.js';
 import { arr, centsToInput, str } from './forms.js';
+import { posterHtml } from './job-poster.js';
 import { dateDe, euro, anz } from './layout.js';
 
 const BwTabs = ({ active }: { active: string }) => (
@@ -663,100 +663,7 @@ function bsync(){bd.hidden=ba.value!=='datum';bd.required=ba.value==='datum';}ba
       { legal_name: string; city: string; email: string; phone: string | null; job_whatsapp: string | null }[]
     >`
       select legal_name, city, email, phone, job_whatsapp from app.company where id = 1`;
-    const T = posterI18n.texts as Record<string, Record<string, string>>;
-    const order = ['de', 'en', 'tr', 'ru', 'pl', 'ro', 'hu', 'el', 'ar'];
-    const multi = (k: string) => [...new Set(order.map((l) => T[l]?.[k]).filter(Boolean))].join(' · ');
-    const ot = p.object_type
-      ? (posterI18n.objektart as Record<string, Record<string, string>>)[p.object_type]
-      : undefined;
-    const timeKey = p.time_of_day === 'abends' ? 'abend' : p.time_of_day;
-    const wd = workdaysText(p.workdays);
-    const phone = co?.job_whatsapp ?? co?.phone ?? '';
-    const esc = (s: string) =>
-      s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
-    const cell = (label: string, value: string) =>
-      `<div class="pc"><div class="pv">${esc(value)}</div><div class="pl">${esc(label)}</div></div>`;
-    const html = `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="format-detection" content="telephone=no,email=no,address=no">
-<title>Plakat – ${esc(p.title)}</title><style>
-@page{size:A4;margin:0}*{box-sizing:border-box}a{color:inherit!important;text-decoration:none!important}body{margin:0;background:#eee;font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;color:#1c1917}
-.bar{position:sticky;top:0;background:#fff;padding:10px;text-align:center;border-bottom:1px solid #ddd}.bar button{font:inherit;padding:8px 18px;border-radius:8px;border:0;background:#7D1435;color:#fff;cursor:pointer}
-.sheet{width:210mm;height:297mm;margin:12px auto;background:#fff;position:relative;overflow:hidden;display:flex;flex-direction:column}
-.hd{background:#7D1435;color:#fff;padding:34px 40px 30px}.hd .co{font-size:14px;opacity:.85;letter-spacing:.02em}.hd h1{font-size:42px;line-height:1.1;margin:10px 0 0;font-weight:800}
-.hd .art{display:inline-block;margin-top:12px;background:rgba(255,255,255,.18);padding:4px 12px;border-radius:14px;font-size:14px}
-.body{padding:24px 40px;display:flex;flex-direction:column;gap:14px;flex:1}
-.band{border:1px solid #E8D0D0;border-radius:12px;padding:14px 18px;background:#FFF8F0}.band .lab{font-size:11px;color:#7D1435;font-weight:700;letter-spacing:.03em}
-.band .big{font-size:30px;font-weight:800;margin:4px 0}.band .tr{font-size:12px;color:#57534e}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pc{background:#FAFAF9;border:1px solid #e7e5e4;border-radius:12px;padding:14px 18px}
-.pv{font-size:24px;font-weight:800}.pl{font-size:10.5px;color:#78716c;margin-top:4px;line-height:1.35}.full{grid-column:1/-1}
-.ft{background:#7D1435;color:#fff;padding:22px 40px 26px;text-align:center}.ft .k{font-size:13px;letter-spacing:.12em;opacity:.85}
-.ft .ph{font-size:50px;font-weight:800;line-height:1.1;margin:6px 0}.ft .em{font-size:16px}.ft .ct{font-size:10.5px;opacity:.85;margin-top:8px;line-height:1.4}
-@media print{body{background:#fff}.bar{display:none}.sheet{margin:0}}
-</style></head><body><div class="bar"><button onclick="print()">Drucken / als PDF speichern</button> <button id="jpg" type="button">Als Bild speichern / teilen</button></div><div class="sheet" id="sheet">
-<div class="hd"><img src="/static/logo-hell.png" alt="Viva-Deluxe" style="height:44px;display:block;margin-bottom:12px"><div class="co">${esc(co?.legal_name ?? '')} · ${esc(co?.city ?? '')}</div><h1>${esc(p.title)}</h1>${p.job_type && p.job_type !== p.title ? `<span class="art">${esc(p.job_type)}</span>` : ''}</div>
-<div class="body">
-${
-  ot
-    ? `<div class="band"><div class="lab">${esc(order.map((l) => (posterI18n.label as Record<string, string>)[l]).join(' · '))}</div><div class="big">${esc(ot.de ?? '')}</div><div class="tr">${esc(
-        order
-          .slice(1)
-          .map((l) => ot[l])
-          .filter(Boolean)
-          .join(' · '),
-      )}</div></div>`
-    : ''
-}
-${wd ? `<div class="band"><div class="lab">Arbeitstage / Working days / Çalışma günleri / Dni pracy</div><div class="big" style="font-size:22px">${esc(wd)}</div></div>` : ''}
-<div class="grid">
-${cell(multi('location'), [p.street, [p.postal_code, p.city].filter(Boolean).join(' ')].filter(Boolean).join(', ') || '—')}
-${p.hours ? cell(multi('hours'), `${hDe(p.hours)} h / Woche`) : ''}
-${p.wage_cents != null ? cell(multi('salary'), euro(p.wage_cents)) : ''}
-${timeKey ? cell(multi('workTime'), T.de?.[timeKey] ?? TIMES[p.time_of_day!] ?? '') : ''}
-<div class="pc full"><div class="pv">${p.start_on ? `ab ${dateDe(p.start_on)}` : 'Ab sofort'}</div><div class="pl">${esc(multi('startDate'))}</div></div>
-</div></div>
-<div class="ft"><div class="k">WHATSAPP · TELEFON</div><div class="ph">${esc(phone || 'Nummer unter Einstellungen → Firmendaten eintragen')}</div><div class="em">${esc(co?.email ?? '')}</div>
-<div class="ct">${esc(
-      order
-        .map((l) => T[l]?.contactText)
-        .filter(Boolean)
-        .join(' · '),
-    )}</div></div>
-</div>
-<script src="/static/vendor/html2canvas.min.js"></script>
-<script>
-var FN = ${JSON.stringify(`Stellenplakat-${p.title}`.replace(/[^\p{L}\p{N}-]+/gu, '-') + '.jpg')};
-var jb = document.getElementById('jpg'), blob = null, url = null;
-function render() {
-  var el = document.getElementById('sheet');
-  // ca. 150 dpi (A4 = 1240 × 1754 px)
-  return html2canvas(el, { scale: 1240 / el.offsetWidth, backgroundColor: '#ffffff', useCORS: false }).then(function (cv) {
-    url = cv.toDataURL('image/jpeg', 0.92);
-    return new Promise(function (r) { cv.toBlob(function (bl) { blob = bl; r(); }, 'image/jpeg', 0.92); });
-  });
-}
-// vorab erzeugen: Teilen am Handy muss direkt nach dem Antippen starten
-var ready = (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(render).catch(function () {});
-function showImg() {
-  var o = document.createElement('div');
-  o.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:99;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:12px';
-  o.innerHTML = '<div style="color:#fff;font-size:15px;text-align:center">Bild lange gedrückt halten → „In Fotos sichern“ bzw. „Bild speichern“</div>';
-  var i = new Image(); i.src = url; i.style.cssText = 'max-width:100%;max-height:80vh;background:#fff';
-  var x = document.createElement('button'); x.textContent = 'Schließen'; x.onclick = function () { o.remove(); };
-  o.appendChild(i); o.appendChild(x); document.body.appendChild(o);
-}
-jb.addEventListener('click', async function () {
-  if (!blob) { jb.disabled = true; jb.textContent = 'Wird erstellt …'; await ready; if (!blob) await render().catch(function (e) { alert('Bild konnte nicht erstellt werden: ' + e); }); jb.disabled = false; jb.textContent = 'Als Bild speichern / teilen'; if (!blob) return; }
-  var file = new File([blob], FN, { type: 'image/jpeg' });
-  var touch = matchMedia('(pointer:coarse)').matches;
-  if (touch && navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: FN }); return; }
-    catch (e) { if (e && e.name === 'AbortError') return; showImg(); return; }
-  }
-  if (touch) { showImg(); return; }
-  var a = document.createElement('a'); a.href = url; a.download = FN;
-  document.body.appendChild(a); a.click(); a.remove();
-});
-</script></body></html>`;
-    return c.html(html);
+    return c.html(await posterHtml(p, co));
   });
 
   // ------------------------------------------------------------------ Bewerber-Pool

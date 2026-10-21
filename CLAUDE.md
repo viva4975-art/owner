@@ -3773,3 +3773,10 @@ Testadresse.
   das Teilen-Menü (iPhone „Bild sichern“, WhatsApp …), sonst Großansicht zum Gedrückthalten; am PC wie bisher Download.
 - 2026-10-21: Stellen: Beginn als Auswahl „ab sofort / ab Datum …“ (Ahmed: Datumsfeld lässt sich am Handy nicht leeren);
   „ab sofort“ speichert kein Datum (`start_on` leer), Plakat zeigt „Ab sofort“.
+- 2026-10-21: **Stellenplakat neu** (Ahmed: „auf eine Seite, mit Logo, schöner, WhatsApp-Knopf“, `src/web/job-poster.ts`): Kopf
+  Bordeaux mit großem Logo und „Stellenangebot“ mehrsprachig, Objektart, Kacheln mit Symbolen (Einsatzort, Stunden, Lohn,
+  Arbeitszeit, Beginn, Arbeitstage), jetzt auch **Ihre Aufgaben / Was wir erwarten / Was wir bieten** als Häkchen-Listen.
+  Unten Kontakt mit grünem Knopf **„Jetzt per WhatsApp bewerben“** (wa.me mit vorbelegtem Text „… Stelle „<Titel>“ in
+  <Ort>“) und **QR-Code** dazu (für den Aushang), Nummer groß, E-Mail. Passt der Inhalt nicht auf A4, wird die Schrift
+  schrittweise verkleinert statt abgeschnitten (bis 55 %). Druck/PDF und Bild (html2canvas) eine Seite; das WhatsApp-
+  Symbol im Knopf ist ein PNG-Hintergrund (html2canvas zeichnete SVG/Bild im Knopf nicht).

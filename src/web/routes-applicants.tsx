@@ -633,9 +633,9 @@ f.querySelectorAll('input[name=tag]').forEach(function(c){c.checked=s.indexOf(c.
       s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
     const cell = (label: string, value: string) =>
       `<div class="pc"><div class="pv">${esc(value)}</div><div class="pl">${esc(label)}</div></div>`;
-    const html = `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    const html = `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="format-detection" content="telephone=no,email=no,address=no">
 <title>Plakat – ${esc(p.title)}</title><style>
-@page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;background:#eee;font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;color:#1c1917}
+@page{size:A4;margin:0}*{box-sizing:border-box}a{color:inherit!important;text-decoration:none!important}body{margin:0;background:#eee;font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;color:#1c1917}
 .bar{position:sticky;top:0;background:#fff;padding:10px;text-align:center;border-bottom:1px solid #ddd}.bar button{font:inherit;padding:8px 18px;border-radius:8px;border:0;background:#7D1435;color:#fff;cursor:pointer}
 .sheet{width:210mm;height:297mm;margin:12px auto;background:#fff;position:relative;overflow:hidden;display:flex;flex-direction:column}
 .hd{background:#7D1435;color:#fff;padding:34px 40px 30px}.hd .co{font-size:14px;opacity:.85;letter-spacing:.02em}.hd h1{font-size:42px;line-height:1.1;margin:10px 0 0;font-weight:800}

@@ -3764,3 +3764,6 @@ Testadresse.
 - 2026-10-21: **Stellenanzeige kopieren** (Ahmed): An der Stelle (Bewerber & Stellen → Stelle) Knopf „Kopieren“ → Formular
   „Stelle kopieren“ mit allen Angaben vorbelegt (Titel „… (Kopie)“, Arbeitstage, Aufgaben, Anforderungen …), wird erst
   beim Speichern als neue Stelle (aktiv) angelegt; Abbrechen führt zur Vorlage zurück. Bewerber/Matching werden nicht kopiert.
+- 2026-10-21: Telefonnummer auf dem Stellenplakat erschien am iPhone blau (Safari macht Nummern automatisch zu Links). Plakat
+  und alle App-Seiten mit `format-detection: telephone=no`, Links auf dem Plakat in Textfarbe. Gewollte Anruf-Knöpfe
+  (`tel:`) bleiben.

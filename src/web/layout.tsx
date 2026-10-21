@@ -1744,6 +1744,7 @@ export const Layout: FC<{
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="format-detection" content="telephone=no" />
         <title>{`${title} · Viva-Deluxe`}</title>
         <link rel="icon" type="image/png" href="/static/favicon.png" />
         <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=2" />

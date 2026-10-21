@@ -49,6 +49,8 @@ import {
   listOrders,
   paymentList,
   markPaid,
+  markPaidDirect,
+  DIRECT_PAID_METHODS,
   undoPaid,
   PAID_METHOD,
   type PaidMethod,
@@ -1700,6 +1702,9 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
           )
         : null;
     const editable = !i || i.status === 'erfasst';
+    const paidRaw = i as unknown as
+      { paid_method?: PaidMethod | null; bank_transaction_id?: string | null } | undefined;
+    const paidInfo = { method: paidRaw?.paid_method ?? null, bank: !!paidRaw?.bank_transaction_id };
     const po = q.bestellung ? orders.find((o) => o.id === q.bestellung) : undefined;
     const v = {
       supplier: i?.supplier_id ?? q.lieferant ?? '',
@@ -1772,8 +1777,54 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                 })}
               </span>
             )}
-            {i.paid_at && <span class="badge ok">bezahlt am {dateDe(i.paid_at)}</span>}
+            {i.paid_at && (
+              <span class="badge ok">
+                bezahlt am {dateDe(i.paid_at)}
+                {paidInfo.method && PAID_METHOD[paidInfo.method] ? ` · ${PAID_METHOD[paidInfo.method]}` : ''}
+              </span>
+            )}
+            {i.status === 'bezahlt' &&
+              !paidInfo.bank &&
+              paidInfo.method &&
+              paidInfo.method !== 'verrechnung' && (
+                <form
+                  method="post"
+                  action={`/zahlungsliste/${id}/zuruecknehmen?zurueck=rechnung`}
+                  onsubmit="return confirm('Zahlung zurücknehmen? Die Rechnung ist danach wieder offen (freigegeben).')"
+                >
+                  <button class="btn sm ghost">Zahlung zurücknehmen</button>
+                </form>
+              )}
           </div>
+        )}
+        {i && i.status === 'freigegeben' && (
+          <details class="card" style="max-width:720px">
+            <summary>Schon bezahlt (Lastschrift, PayPal, Karte, bar …)? Als bezahlt markieren</summary>
+            <form
+              method="post"
+              action={`/rechnungseingang/${id}/bezahlt`}
+              class="actions"
+              style="margin-top:10px"
+            >
+              <label class="small" for="pd-m">
+                Zahlart
+              </label>
+              <select id="pd-m" name="paid_method">
+                {DIRECT_PAID_METHODS.map((m) => (
+                  <option value={m}>{PAID_METHOD[m]}</option>
+                ))}
+              </select>
+              <label class="small" for="pd-d">
+                am
+              </label>
+              <input id="pd-d" type="date" name="paid_date" value={todayBerlin()} max={todayBerlin()} />
+              <label class="small" for="pd-n">
+                Bemerkung
+              </label>
+              <input id="pd-n" name="paid_note" placeholder="optional" />
+              <button class="btn">Als bezahlt markieren</button>
+            </form>
+          </details>
         )}
         {i && (i.advance_offset_cents > 0n || advOpen > 0n) && (
           <div class="card" style="max-width:720px">
@@ -2103,6 +2154,47 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                   {i?.note ?? ''}
                 </textarea>
               </div>
+              {editable && (
+                <>
+                  <h2>Zahlung</h2>
+                  <label class="chk" style="display:flex;gap:8px;align-items:center">
+                    <input type="checkbox" id="paid_now" name="paid_now" value="1" data-reveal="#paid-box" />
+                    Schon bezahlt (Lastschrift, PayPal, Karte, bar …) – direkt als bezahlt markieren
+                  </label>
+                  <div id="paid-box" class="grid" hidden>
+                    <div>
+                      <label for="paid_method">Zahlart</label>
+                      <select id="paid_method" name="paid_method">
+                        {DIRECT_PAID_METHODS.map((m) => (
+                          <option value={m}>{PAID_METHOD[m]}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label for="paid_date">bezahlt am</label>
+                      <input
+                        id="paid_date"
+                        type="date"
+                        name="paid_date"
+                        value={todayBerlin()}
+                        max={todayBerlin()}
+                      />
+                    </div>
+                    <div>
+                      <label for="paid_note">Bemerkung (optional)</label>
+                      <input
+                        id="paid_note"
+                        name="paid_note"
+                        placeholder="z. B. PayPal-Transaktion, Kartenende"
+                      />
+                    </div>
+                    <p class="small mut" style="grid-column:1/-1;margin:0">
+                      Die Rechnung gilt damit als geprüft und freigegeben und erscheint nicht in der
+                      Zahlungsliste. Beleg trotzdem hochladen.
+                    </p>
+                  </div>
+                </>
+              )}
             </fieldset>
             {editable && (
               <div class="formfoot">
@@ -2376,7 +2468,37 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
       },
       c.get('actor'),
     );
+    if (one('paid_now') === '1') {
+      const method = (one('paid_method') ?? '') as PaidMethod;
+      await markPaidDirect(
+        sql,
+        id,
+        { date: one('paid_date') ?? todayBerlin(), method, note: one('paid_note') },
+        c.get('actor'),
+      );
+      return back(c, `/rechnungseingang/${id}`, {
+        ok: `Gespeichert und als bezahlt markiert (${PAID_METHOD[method]}). Bitte noch den Beleg hochladen.`,
+      });
+    }
     return back(c, `/rechnungseingang/${id}`, { ok: 'Gespeichert. Jetzt Beleg hochladen und freigeben.' });
+  });
+
+  app.post(`/rechnungseingang/:id{${UUID}}/bezahlt`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    const method = (str(b, 'paid_method') ?? '') as PaidMethod;
+    try {
+      await markPaidDirect(
+        sql,
+        id,
+        { date: str(b, 'paid_date') ?? todayBerlin(), method, note: str(b, 'paid_note') },
+        c.get('actor'),
+      );
+    } catch (e) {
+      if (e instanceof BusinessError) return back(c, `/rechnungseingang/${id}`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/rechnungseingang/${id}`, { ok: `Als bezahlt markiert (${PAID_METHOD[method]}).` });
   });
 
   app.post(`/rechnungseingang/:id{${UUID}}/vorschuss`, async (c) => {
@@ -2784,13 +2906,15 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
   });
 
   app.post(`/zahlungsliste/:id{${UUID}}/zuruecknehmen`, async (c) => {
+    const to =
+      c.req.query('zurueck') === 'rechnung' ? `/rechnungseingang/${c.req.param('id')}` : '/zahlungsliste';
     try {
       await undoPaid(sql, c.req.param('id'), c.get('actor'));
     } catch (e) {
-      if (e instanceof BusinessError) return back(c, '/zahlungsliste', { fehler: e.message });
+      if (e instanceof BusinessError) return back(c, to, { fehler: e.message });
       throw e;
     }
-    return back(c, '/zahlungsliste', { ok: 'Zahlung zurückgenommen.' });
+    return back(c, to, { ok: 'Zahlung zurückgenommen.' });
   });
 
   app.get('/zahlungsliste.csv', async (c) => {

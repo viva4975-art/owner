@@ -3701,3 +3701,10 @@ Testadresse.
     braucht (mehrzeiliger Zusatz → BT-164 mit Komma). Zentral in einer POST-Middleware (`expandAddressBlocks`), alle
     bisherigen Prüfungen bleiben. Angebote haben keine eigene Anschrift (nehmen Kunde/Interessent); Kundenstammdaten
     behalten getrennte Felder (Karte, Suche, Import).
+- 2026-10-21: **Eingangsrechnung direkt als bezahlt** (Ahmed: Lastschrift, PayPal …): Beim Erfassen Häkchen „Schon bezahlt“ mit
+  Zahlart (Lastschrift, PayPal, Kreditkarte, EC-Karte, bar, Überweisung), Datum, Bemerkung; bei freigegebenen Rechnungen
+  aufklappbar „Als bezahlt markieren“. `markPaidDirect` (purchasing.ts): gibt eine noch nicht geprüfte Rechnung dabei frei,
+  Zahlbetrag = brutto − Vorschuss, ohne Skonto, doppelt = nichts; erscheint nicht in der Zahlungsliste; „Zahlung
+  zurücknehmen“ an der Rechnung (nicht bei Bankzuordnung). Zahlarten `paypal`/`ec_karte` (Migration `20261214000001`).
+  **DATEV:** Zahlungsausgang läuft wie bisher über das Bankkonto – PayPal/Kreditkarte buchen Steuerberater meist über ein
+  eigenes Verrechnungskonto; mit dem Steuerberater klären.

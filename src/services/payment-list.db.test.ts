@@ -4,7 +4,7 @@ import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { addDays } from '../domain/time/holidays.js';
 import { collectBookings } from './datev.js';
-import { markPaid, paymentList, undoPaid } from './purchasing.js';
+import { markPaid, markPaidDirect, paymentList, undoPaid } from './purchasing.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
 const available = await dbAvailable();
@@ -67,5 +67,31 @@ describe.skipIf(!available)('Zahlungsliste', () => {
       status: 'freigegeben',
       paid_amount_cents: null,
     });
+  });
+
+  it('direkt bezahlt (PayPal) beim Erfassen: freigegeben + bezahlt, ohne Skonto, doppelt = nichts', async () => {
+    const id2 = randomUUID();
+    await sql`insert into app.incoming_invoices (id, supplier_id, invoice_no, invoice_date, due_date, net_cents, vat_cents,
+                gross_cents, category, skonto_until, skonto_percent_bp, status, created_by)
+              values (${id2}, ${SUPPLIER}, 'ZL-PP', ${today}, ${addDays(today, 30)}, 10000, 1900, 11900, 'material',
+                      ${addDays(today, 5)}, 200, 'erfasst', 't')`;
+    await expect(
+      markPaidDirect(sql, id2, { date: today, method: 'verrechnung', note: null }, 't'),
+    ).rejects.toThrow(/Zahlart/);
+    await markPaidDirect(sql, id2, { date: today, method: 'paypal', note: 'Txn 1' }, 'buero');
+    await markPaidDirect(sql, id2, { date: today, method: 'paypal', note: 'Txn 1' }, 'buero');
+    const [r] = await sql`select status, paid_amount_cents, paid_skonto_cents, paid_method, approved_by
+                            from app.incoming_invoices where id = ${id2}`;
+    expect(r).toEqual({
+      status: 'bezahlt',
+      paid_amount_cents: 11900n,
+      paid_skonto_cents: 0n,
+      paid_method: 'paypal',
+      approved_by: 'buero',
+    });
+    expect((await paymentList(sql, today)).some((x) => x.invoice.id === id2)).toBe(false);
+    await undoPaid(sql, id2, 't');
+    const [u] = await sql`select status from app.incoming_invoices where id = ${id2}`;
+    expect(u!.status).toBe('freigegeben');
   });
 });

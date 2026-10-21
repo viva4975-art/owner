@@ -558,14 +558,26 @@ export function skontoFor(
 // Zahlungsliste (statt SEPA-Datei): was ist zu zahlen, Zahlung von Hand festhalten
 // ---------------------------------------------------------------------------
 
-export type PaidMethod = 'ueberweisung' | 'lastschrift' | 'bar' | 'kreditkarte' | 'verrechnung';
+export type PaidMethod =
+  'ueberweisung' | 'lastschrift' | 'paypal' | 'kreditkarte' | 'ec_karte' | 'bar' | 'verrechnung';
 export const PAID_METHOD: Record<PaidMethod, string> = {
   ueberweisung: 'Überweisung',
   lastschrift: 'Lastschrift',
-  bar: 'Bar',
+  paypal: 'PayPal',
   kreditkarte: 'Kreditkarte',
+  ec_karte: 'EC-Karte',
+  bar: 'Bar',
   verrechnung: 'Verrechnung',
 };
+/** Zahlarten, bei denen das Geld schon weg ist (direkt beim Erfassen als bezahlt markieren). */
+export const DIRECT_PAID_METHODS: PaidMethod[] = [
+  'lastschrift',
+  'paypal',
+  'kreditkarte',
+  'ec_karte',
+  'bar',
+  'ueberweisung',
+];
 
 /** Freigegebene, unbezahlte Eingangsrechnungen; Zahlbetrag mit Skonto, wenn bis `payDate` gezahlt wird. */
 export async function paymentList(sql: Sql, payDate: string) {
@@ -617,6 +629,40 @@ export async function markPaid(
     }
   });
   return n;
+}
+
+/**
+ * Schon bezahlt (Lastschrift, PayPal, Karte, bar …): direkt als bezahlt festhalten. Noch nicht freigegebene Rechnungen
+ * werden dabei mit freigegeben (wer die Zahlung festhält, bestätigt sie als richtig). Ohne Skonto, abzüglich Vorschuss.
+ * Doppelt = nichts.
+ */
+export async function markPaidDirect(
+  sql: Sql,
+  id: string,
+  p: { date: string; method: PaidMethod; note: string | null },
+  actor: string,
+) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date)) throw new BusinessError('Bitte Zahlungsdatum angeben');
+  if (p.date > todayBerlin()) throw new BusinessError('Zahlungsdatum liegt in der Zukunft');
+  if (!DIRECT_PAID_METHODS.includes(p.method)) throw new BusinessError('Bitte Zahlart wählen');
+  await sql.begin(async (tx) => {
+    const [i] = await tx<IncomingInvoice[]>`select * from app.incoming_invoices where id = ${id} for update`;
+    if (!i) throw new BusinessError('Rechnung nicht gefunden');
+    if (i.status === 'bezahlt') return;
+    if (i.status === 'abgelehnt') throw new BusinessError('Abgelehnte Rechnung kann nicht bezahlt werden');
+    const adv = (await invoiceOffsets(tx, [id])).get(id) ?? 0n;
+    if (i.gross_cents > 0n && i.gross_cents - adv < 0n)
+      throw new BusinessError('Vorschuss übersteigt den Rechnungsbetrag');
+    const approve = i.status === 'erfasst';
+    await tx`update app.incoming_invoices set status = 'bezahlt', paid_at = ${p.date},
+                    paid_amount_cents = ${i.gross_cents - adv}, paid_skonto_cents = 0, paid_method = ${p.method},
+                    paid_note = ${p.note?.trim() || null}, paid_by = ${actor},
+                    approved_by = coalesce(approved_by, ${actor}), approved_at = coalesce(approved_at, now())
+              where id = ${id}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'paid', 'incoming_invoice', ${id},
+                     ${tx.json({ date: p.date, amount: String(i.gross_cents - adv), advance: String(adv), method: p.method, direct: true, approved: approve })})`;
+  });
 }
 
 /** Versehentlich als bezahlt markiert → zurück auf „freigegeben“ (nur von Hand erfasste Zahlungen). */

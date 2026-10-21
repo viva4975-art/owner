@@ -314,9 +314,9 @@ export const DraftLetter: FC<{
                             <span style="white-space:pre-line">{l.description}</span>
                             {det && <div class="lt-det">{det}</div>}
                           </td>
-                          <td class="r">{milliToInput(l.quantity)}</td>
+                          <td class="r">{milliToInput(l.quantity < 0n ? -l.quantity : l.quantity)}</td>
                           <td>{UNIT_LABELS[l.unitCode] ?? l.unitCode}</td>
-                          <td class="r">{euro(l.unitPrice)}</td>
+                          <td class="r">{euro(l.quantity < 0n ? -l.unitPrice : l.unitPrice)}</td>
                           <td class="r">{euro(l.netAmount)}</td>
                         </tr>
                         <tr id={`f-l${i}`} class="lt-frow" hidden>
@@ -872,9 +872,9 @@ export const IssuedLetter: FC<{
                             <span style="white-space:pre-line">{l.description}</span>
                             {det && <div class="lt-det">{det}</div>}
                           </td>
-                          <td class="r">{milliToInput(l.quantity)}</td>
+                          <td class="r">{milliToInput(l.quantity < 0n ? -l.quantity : l.quantity)}</td>
                           <td>{UNIT_LABELS[l.unitCode] ?? l.unitCode}</td>
-                          <td class="r">{euro(l.unitPrice)}</td>
+                          <td class="r">{euro(l.quantity < 0n ? -l.unitPrice : l.unitPrice)}</td>
                           <td class="r">{euro(l.netAmount)}</td>
                         </tr>
                       </>

@@ -553,9 +553,11 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
     p.right(String(l.position).padStart(2, '0'), C.pos, t, 7.6, 'm', FAINT);
     d1.forEach((x, k) => p.text(x, C.text, t + k * 11.6, 8.8, 'm', INK));
     d2.forEach((x, k) => p.text(x, C.text, t + d1.length * 11.6 + k * 10, 7.6, 'r', GREY));
-    p.right(quantityPdf(l.quantity), C.qty, t, 8.6, 'r', INK2);
+    // Storno/Korrektur (Ahmed 21.10.): Minus beim Preis statt bei der Menge zeigen (Betrag gleich)
+    const neg = l.quantity < 0n;
+    p.right(quantityPdf((neg ? -l.quantity : l.quantity) as typeof l.quantity), C.qty, t, 8.6, 'r', INK2);
     p.text(o.units?.[l.unitCode] ?? UNITS[l.unitCode] ?? l.unitCode, C.unit, t, 8.2, 'r', GREY);
-    p.right(eur(l.unitPrice), C.price, t, 8.6, 'r', INK2);
+    p.right(eur((neg ? -l.unitPrice : l.unitPrice) as typeof l.unitPrice), C.price, t, 8.6, 'r', INK2);
     p.right(eur(l.netAmount), C.total, t, 8.8, 's', INK);
     p.y = t + h;
     p.line(v === 'modern' ? L - 8 : L, p.y - 8, v === 'modern' ? R + 8 : R, p.y - 8, 0.35, HAIR);

@@ -1125,9 +1125,11 @@ export const InvoiceDetail: FC<{
                     </div>
                   )}
                 </td>
-                <td class="r">{milliToInput(l.quantity_milli)}</td>
+                <td class="r">
+                  {milliToInput(l.quantity_milli < 0n ? -l.quantity_milli : l.quantity_milli)}
+                </td>
                 <td>{UNIT_LABELS[l.unit_code] ?? l.unit_code}</td>
-                <td class="r">{euro(l.unit_price_cents)}</td>
+                <td class="r">{euro(l.quantity_milli < 0n ? -l.unit_price_cents : l.unit_price_cents)}</td>
                 <td class="r">{l.vat_rate_bp / 100} %</td>
                 <td class="r">{euro(l.net_cents)}</td>
               </tr>

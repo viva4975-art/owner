@@ -3758,3 +3758,6 @@ Testadresse.
 - 2026-10-21: **Storno-/Korrektur-Entwurf als Brief** (Ahmed): gleiche Ansicht wie der Rechnungsentwurf (Anschrift, Balken
   „Stornorechnung (Entwurf)“, „Zu Rechnung … vom …“, Positionen, Summen), aber nicht bearbeitbar (Positionen kommen aus
   der Originalrechnung); Aktionen Fertigstellen, PDF-Vorschau, KoSIT, Löschen, Rechnungsdatum, Anlagen, Versand.
+- 2026-10-21: Storno/Korrektur (Ahmed: „nicht mehr −Menge sondern −Preis“): Positionen mit Minus-Menge werden in Briefansicht,
+  Detailseite und PDF als positive Menge mit negativem Einzelpreis gezeigt (Betrag gleich). Gespeichert bleibt Minus-Menge;
+  in der E-Rechnung bleibt der Preis positiv und die Menge negativ (BR-27 verbietet negative Preise).

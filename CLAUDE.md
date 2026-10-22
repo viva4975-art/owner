@@ -3891,3 +3891,7 @@ Testadresse.
   Reiter Bestellungen zeigen den laufenden Monat („17 Tage (Mo–Fr) × 100,00 €“); Nachkalkulation schätzt fehlende
   NU-Rechnungen so; Bestellschein nennt Arbeitstage und Abrechnungsweise (`src/services/subcontract-days.ts`).
   Sammelbestellungen „je Tag“ werden noch nicht geschätzt. Test `subcontract-days.test.ts`.
+- 2026-10-22: Bestellungen-Liste: NU-Bestellungen mit Beginn in der Zukunft zeigen „beginnt TT.MM.JJJJ“ (vorher kein Schild,
+  weil es noch keinen Abrechnungszeitraum gibt – Ahmed: „bei genau den zwei fehlt nach Ausführung“). **Rechnungseingang →
+  Bestellung wählen** zeigt nur noch offene Bestellungen: erteilte mit Beginn in der Zukunft oder solche mit einem Zeitraum,
+  der weder abgerechnet noch als „keine Rechnung“ vermerkt ist; schon verknüpfte bleiben wählbar.

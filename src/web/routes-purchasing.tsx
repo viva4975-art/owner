@@ -397,7 +397,13 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       { limit: 13 },
     );
     const MON = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
-    const billCell = (r: { kind: 'material' | 'nu'; id: string; phase: string }) => {
+    const billCell = (r: {
+      kind: 'material' | 'nu';
+      id: string;
+      phase: string;
+      from: string | null;
+      status: string;
+    }) => {
       if (r.kind === 'material') {
         if (r.phase === 'storniert') return null;
         return invoiced.has(r.id) ? (
@@ -407,7 +413,11 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         );
       }
       const ps = tracking.get(r.id) ?? [];
-      if (!ps.length) return null;
+      // Beginn in der Zukunft: noch kein Abrechnungszeitraum (Ahmed 22.10.: „bei genau den zwei fehlt es“)
+      if (!ps.length)
+        return r.phase === 'storniert' || /^(Entwurf|angefragt)/.test(r.status) ? null : (
+          <span class="bs-pill bs-info">beginnt {dateDe(r.from)}</span>
+        );
       const cur = ps[0]!;
       const open = ps.filter((p) => p.state === 'offen').length;
       const label =
@@ -1705,6 +1715,28 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
             m: p[1]!,
             net: p[2] && /^\d+$/.test(p[2]) ? centsToInput(BigInt(p[2])) : '',
           })) ?? []);
+    // Nur offene Bestellungen anbieten (Ahmed 22.10.): laufende bzw. mit noch nicht abgerechnetem Zeitraum;
+    // ganz abgerechnete/erledigte nur, wenn sie an dieser Rechnung schon hängen
+    {
+      const keep = new Set(
+        [
+          ...linkRows.map((r) => r.sc),
+          (i as { subcontract_id?: string | null } | undefined)?.subcontract_id,
+        ].filter(Boolean) as string[],
+      );
+      const tr = await billingTracking(
+        sql,
+        subcontracts.map((x) => x.id),
+        { limit: 24 },
+      );
+      const open = subcontracts.filter((x) => {
+        if (keep.has(x.id)) return true;
+        const ps = tr.get(x.id) ?? [];
+        if (!ps.length) return x.status === 'erteilt';
+        return ps.some((p) => p.state !== 'abgerechnet' && p.state !== 'keine');
+      });
+      subcontracts.splice(0, subcontracts.length, ...open);
+    }
     const preNet =
       !i && linkRows.length && linkRows.every((r) => r.net)
         ? linkRows.reduce(
@@ -1976,8 +2008,9 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
                 <div class="full nu-links" style="grid-column:1/-1">
                   <label>Bestellung beim Nachunternehmer – zuerst wählen</label>
                   <p class="small mut" style="margin:0 0 6px">
-                    Nur Bestellungen des gewählten Nachunternehmers. Objekt, Monat und Betrag werden
-                    übernommen – eine Zeile je Bestellung und Monat.
+                    Nur offene Bestellungen des gewählten Nachunternehmers (laufend oder noch nicht ganz
+                    abgerechnet). Objekt, Monat und Betrag werden übernommen – eine Zeile je Bestellung und
+                    Monat.
                   </p>
                   <div style="overflow-x:auto">
                     <table class="tbl-in" style="width:100%">

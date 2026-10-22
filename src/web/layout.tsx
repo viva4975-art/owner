@@ -1013,8 +1013,8 @@ td .btn.icon{min-height:34px;width:34px;height:34px;padding:0;justify-content:ce
 .eh-tag{font-size:12px;padding:2px 9px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--ink)}
 .eh-acts{display:flex;flex-wrap:wrap;gap:8px}
 .eh-acts .btn svg{width:15px;height:15px}
-.eh-key{display:grid;grid-template-columns:1.3fr 1fr 1.1fr 1fr 1fr;border-top:1px solid var(--line);background:#fff}
-.eh-key>div{display:flex;gap:10px;padding:12px 20px;border-left:1px solid var(--line);min-width:0}
+.eh-key{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border-top:1px solid var(--line);background:#fff}
+.eh-key>div{display:flex;gap:10px;padding:14px 20px;border-left:1px solid var(--line);min-width:0}
 .eh-key>div:first-child{border-left:0}
 .eh-key svg{width:17px;height:17px;color:var(--brand,#7d1435);flex:none;margin-top:2px}
 .eh-key>div>span{display:flex;flex-direction:column;gap:1px;min-width:0;overflow-wrap:anywhere}

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
+import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { Child } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { addDays, holidayName, isoWeekday } from '../domain/time/holidays.js';
@@ -16,6 +17,7 @@ import {
   PER_YEAR,
   STATUS_LABEL,
   addConfirmation,
+  customerContactsText,
   appointmentsCsv,
   applyProposals,
   autoPlan,
@@ -27,9 +29,15 @@ import {
   listCustomers,
   listObjects,
   markDone,
+  markOpen,
   openPlanning,
+  partsOf,
+  specialsText,
+  suggestSite,
+  listSitesForGlass,
   plzOf,
   removeConfirmation,
+  updateConfirmation,
   saveAppointment,
   saveCustomer,
   saveObject,
@@ -43,6 +51,7 @@ import type { AppEnv } from './app.js';
 import { type Ctx, UUID } from './app.js';
 import { arr, str } from './forms.js';
 import { dateDe } from './layout.js';
+import { SiteOptions } from './site-options.js';
 
 const WD = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const num = (s: string | null) => (s && /^\d+([.,]\d+)?$/.test(s) ? Number(s.replace(',', '.')) : null);
@@ -79,6 +88,22 @@ const Confirmations = ({ a, back: ret, edit }: { a: Appointment; back: string; e
       <div class="gp-conf-row">
         <span class="badge ok">✓ bestätigt</span> {k.at && <b>{dateDe(k.at)}</b>} {k.text}{' '}
         <span class="mut small">({k.by})</span>
+        <details class="gp-conf-edit" style="display:inline-block">
+          <summary class="small" title="Bestätigung ändern">
+            ändern
+          </summary>
+          <form
+            method="post"
+            action={`/glasreinigung/termin/${a.id}/bestaetigung/${k.id}`}
+            class="row"
+            style="gap:6px;flex-wrap:wrap;margin-top:4px"
+          >
+            <input type="hidden" name="zurueck" value={ret} />
+            <input type="date" name="am" value={k.at ?? todayBerlin()} aria-label="bestätigt am" required />
+            <input name="text" value={k.text} aria-label="Bestätigung" required style="min-width:220px" />
+            <button class="btn sm">Speichern</button>
+          </form>
+        </details>
         {edit && (
           <form
             method="post"
@@ -116,6 +141,42 @@ const Confirmations = ({ a, back: ret, edit }: { a: Appointment; back: string; e
     </details>
   </div>
 );
+
+/** Ansprechpartner am Termin: Hausmeister des Objekts + Ansprechpartner des Kunden (statt Mitarbeiter – Ahmed 22.10.) */
+const ContactLines = ({ a }: { a: Appointment }) => {
+  const tel = (v: string) => <a href={`tel:${v.replace(/[^+\d]/g, '')}`}>{v}</a>;
+  const list = [
+    ...(a.caretaker_name || a.caretaker_phone
+      ? [
+          {
+            name: a.caretaker_name ?? '',
+            rolle: 'Hausmeister',
+            telefon: a.caretaker_phone ?? '',
+            email: a.caretaker_email ?? '',
+          },
+        ]
+      : []),
+    ...(a.customer_contacts ?? []),
+  ];
+  if (!list.length) return null;
+  return (
+    <div class="gp-contacts">
+      {list.map((k) => (
+        <span>
+          <b>{k.name || '–'}</b>
+          {k.rolle ? ` (${k.rolle})` : ''}
+          {k.telefon && <> · {tel(k.telefon)}</>}
+          {k.email && (
+            <>
+              {' '}
+              · <a href={`mailto:${k.email}`}>{k.email}</a>
+            </>
+          )}
+        </span>
+      ))}
+    </div>
+  );
+};
 
 const GpTabs = ({ active }: { active: string }) => (
   <div class="tabs">
@@ -185,28 +246,58 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
 
   // ------------------------------------------------------------------ Termine
   app.get('/glasreinigung', async (c) => {
+    // Filter bleibt erhalten (Ahmed 22.10.: „bei einem Kunden bleiben“): gemerkt im Cookie, „zurücksetzen“ löscht ihn
+    const FILTER_KEYS = ['q', 'status', 'kunde', 'sort'] as const;
+    if (c.req.query('reset') === '1') {
+      deleteCookie(c, 'gp_f', { path: '/glasreinigung' });
+      return c.redirect('/glasreinigung?status=', 303);
+    }
+    const given = FILTER_KEYS.some((k) => c.req.query(k) != null);
+    if (!given) {
+      const saved = getCookie(c, 'gp_f');
+      if (saved) {
+        const qs = new URLSearchParams(saved);
+        for (const [k, v] of new URLSearchParams(new URL(c.req.url).search)) qs.set(k, v);
+        if (!FILTER_KEYS.some((k) => qs.get(k) != null)) qs.set('status', '');
+        return c.redirect(`/glasreinigung?${qs}`, 303);
+      }
+    } else {
+      const keep = new URLSearchParams();
+      for (const k of FILTER_KEYS) if (c.req.query(k)) keep.set(k, c.req.query(k)!);
+      if (keep.toString())
+        setCookie(c, 'gp_f', keep.toString(), {
+          path: '/glasreinigung',
+          maxAge: 60 * 60 * 24 * 90,
+          sameSite: 'Lax',
+          httpOnly: true,
+        });
+      else deleteCookie(c, 'gp_f', { path: '/glasreinigung' });
+    }
     const today = todayBerlin();
     const st = c.req.query('status') ?? '';
     const q = (c.req.query('q') ?? '').trim().toLowerCase();
     const kunde = c.req.query('kunde') ?? '';
+    const sort = c.req.query('sort') === 'kunde' ? 'kunde' : 'datum';
     const [apps, customers, teams] = await Promise.all([
       listAppointments(sql),
       listCustomers(sql),
       teamNames(sql),
     ]);
-    const objCust = new Map(
-      (await sql<{ id: string; customer_id: string }[]>`select id, customer_id from app.glass_objects`).map(
-        (r) => [r.id, r.customer_id],
-      ),
-    );
     const list = apps
-      .filter((a) => !kunde || objCust.get(a.object_id) === kunde)
+      .filter((a) => !kunde || a.customer_id === kunde)
       .filter(
         (a) =>
           !q ||
-          [a.object_name, a.object_address, a.customer_name, a.staff, a.note].some((v) =>
-            (v ?? '').toLowerCase().includes(q),
-          ),
+          [
+            a.object_name,
+            a.object_address,
+            a.customer_name,
+            a.part,
+            a.note,
+            a.caretaker_name,
+            a.site_no,
+            customerContactsText(a),
+          ].some((v) => (v ?? '').toLowerCase().includes(q)),
       )
       .filter((a) => {
         const s = statusOf(a, today);
@@ -214,6 +305,18 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
         if (st === 'geplant') return !a.done && a.first_day >= today && a.first_day <= addDays(today, 7);
         return s === st || st === 'alle';
       });
+    if (sort === 'kunde')
+      list.sort(
+        (x, y) =>
+          (x.customer_name ?? '').localeCompare(y.customer_name ?? '', 'de') ||
+          x.first_day.localeCompare(y.first_day) ||
+          x.object_name.localeCompare(y.object_name, 'de'),
+      );
+    const selfQs = new URLSearchParams();
+    for (const k of FILTER_KEYS) if (c.req.query(k)) selfQs.set(k, c.req.query(k)!);
+    const self = `/glasreinigung?${selfQs.toString() || 'status='}`;
+    const ret = encodeURIComponent(self);
+    let lastCust: string | null | undefined;
     return page(
       c,
       'Glasreinigung',
@@ -234,7 +337,7 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
             <a class="btn sec" href="/glasreinigung/autoplan">
               Auto-Plan
             </a>
-            <a class="btn" href={`/glasreinigung/termin/${randomUUID()}`}>
+            <a class="btn" href={`/glasreinigung/termin/${randomUUID()}?zurueck=${ret}`}>
               + Termin
             </a>
           </>,
@@ -258,7 +361,7 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
               </option>
             ))}
           </select>
-          <select name="kunde" onchange="this.form.submit()" aria-label="Kunde" style="max-width:220px">
+          <select name="kunde" onchange="this.form.submit()" aria-label="Kunde" style="max-width:240px">
             <option value="">Alle Kunden</option>
             {customers.map((k) => (
               <option value={k.id} selected={kunde === k.id}>
@@ -266,12 +369,24 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
               </option>
             ))}
           </select>
-          <a class="btn sec" href="/glasreinigung">
+          <select
+            name="sort"
+            data-nosearch
+            onchange="this.form.submit()"
+            aria-label="Sortierung"
+            style="max-width:190px"
+          >
+            <option value="datum">nach Datum</option>
+            <option value="kunde" selected={sort === 'kunde'}>
+              nach Kunde
+            </option>
+          </select>
+          <a class="btn sec" href="/glasreinigung?reset=1">
             Filter zurücksetzen
           </a>
           <a
             class="btn sec"
-            href={`/glasreinigung/termine.csv?${new URLSearchParams({ status: st, kunde, q })}`}
+            href={`/glasreinigung/termine.csv?${new URLSearchParams({ status: st, kunde, q, sort })}`}
           >
             CSV-Export
           </a>
@@ -282,72 +397,92 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
           <div class="list-cards">
             {list.map((a) => {
               const s = statusOf(a, today);
+              const groupHead =
+                sort === 'kunde' && a.customer_name !== lastCust ? (
+                  <h3 class="gp-group">{a.customer_name ?? 'ohne Kunde'}</h3>
+                ) : null;
+              lastCust = a.customer_name;
+              const specials = specialsText(a);
               return (
-                <div class={`lc gp-card${a.done ? ' lc-inactive' : ''}`}>
-                  <div class="lc-head">
-                    <div>
-                      <div class="bw-chips" style="margin-bottom:6px">
-                        <span class={`badge ${STATUS_LABEL[s][1]}`}>{STATUS_LABEL[s][0]}</span>
-                        {a.days.length > 1 && <span class="badge">Block-Reinigung</span>}
-                        {a.confirmations?.length > 0 && (
-                          <span class="badge ok">
-                            Bestätigt{a.confirmations.length > 1 ? ` (${a.confirmations.length})` : ''}
-                          </span>
+                <>
+                  {groupHead}
+                  <div class={`lc gp-card${a.done ? ' lc-inactive' : ''}`}>
+                    <div class="lc-head">
+                      <div>
+                        <div class="bw-chips" style="margin-bottom:6px">
+                          <span class={`badge ${STATUS_LABEL[s][1]}`}>{STATUS_LABEL[s][0]}</span>
+                          {a.days.length > 1 && <span class="badge">Block-Reinigung</span>}
+                          {a.confirmations?.length > 0 && (
+                            <span class="badge ok">
+                              Bestätigt{a.confirmations.length > 1 ? ` (${a.confirmations.length})` : ''}
+                            </span>
+                          )}
+                          {teamBadge(a.team, teams)}
+                          {a.interval !== 'einmalig' && (
+                            <span class="badge">{INTERVALS[a.interval]?.label}</span>
+                          )}
+                          {a.part && partsOf(a.part).map((x) => <span class="badge">{x}</span>)}
+                          {a.days.some((d) => schoolHoliday(d.date)) && (
+                            <span class="badge gold">Ferien</span>
+                          )}
+                          {a.district && <span class="badge">{a.district}</span>}
+                        </div>
+                        <a
+                          class="lc-name"
+                          href={`/glasreinigung/termin/${a.id}?zurueck=${ret}`}
+                          style={a.done ? 'text-decoration:line-through' : ''}
+                        >
+                          {a.object_name}
+                        </a>
+                        <div class="lc-sub">
+                          {[a.customer_name, a.object_address, a.site_no ? `Kostenstelle ${a.site_no}` : null]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </div>
+                        <div class="lc-details">
+                          <span>{daysText(a.days)}</span>
+                          {a.hours && <span>{String(a.hours).replace('.', ',')} h gesamt</span>}
+                        </div>
+                        <ContactLines a={a} />
+                        {specials && <div class="gp-note">Besonderheiten: {specials}</div>}
+                        {a.note && <div class="gp-note">{a.note}</div>}
+                        <Confirmations a={a} back={self} />
+                      </div>
+                      <div class="gp-date">
+                        <b>{dateDe(a.first_day).slice(0, 6)}</b>
+                        <span>{WD[isoWeekday(a.first_day) - 1]}</span>
+                        {a.last_day && a.last_day !== a.first_day && (
+                          <span>bis {dateDe(a.last_day).slice(0, 6)}</span>
                         )}
-                        {teamBadge(a.team, teams)}
-                        {a.interval !== 'einmalig' && (
-                          <span class="badge">{INTERVALS[a.interval]?.label}</span>
-                        )}
-                        {a.part && <span class="badge">{a.part}</span>}
-                        {a.days.some((d) => schoolHoliday(d.date)) && <span class="badge gold">Ferien</span>}
-                        {a.district && <span class="badge">{a.district}</span>}
                       </div>
-                      <a
-                        class="lc-name"
-                        href={`/glasreinigung/termin/${a.id}`}
-                        style={a.done ? 'text-decoration:line-through' : ''}
-                      >
-                        {a.object_name}
-                      </a>
-                      <div class="lc-sub">
-                        {[a.customer_name, a.object_address].filter(Boolean).join(' · ')}
-                      </div>
-                      <div class="lc-details">
-                        <span>{daysText(a.days)}</span>
-                        {a.hours && <span>{String(a.hours).replace('.', ',')} h gesamt</span>}
-                        {a.staff && <span>{a.staff}</span>}
-                      </div>
-                      {a.note && <div class="gp-note">{a.note}</div>}
-                      <Confirmations a={a} back={'/glasreinigung'} />
                     </div>
-                    <div class="gp-date">
-                      <b>{dateDe(a.first_day).slice(0, 6)}</b>
-                      <span>{WD[isoWeekday(a.first_day) - 1]}</span>
-                      {a.last_day && a.last_day !== a.first_day && (
-                        <span>bis {dateDe(a.last_day).slice(0, 6)}</span>
+                    <div class="lc-foot gp-acts">
+                      {!a.done && (
+                        <form
+                          method="post"
+                          action={`/glasreinigung/termin/${a.id}/erledigt`}
+                          class="inline-form"
+                        >
+                          <input type="hidden" name="zurueck" value={self} />
+                          <button class="btn sm sec">✓ Erledigt</button>
+                        </form>
                       )}
-                    </div>
-                  </div>
-                  <div class="lc-foot gp-acts">
-                    {!a.done && (
+                      <a class="btn sm sec" href={`/glasreinigung/termin/${a.id}?zurueck=${ret}`}>
+                        Bearbeiten
+                      </a>
                       <form
                         method="post"
-                        action={`/glasreinigung/termin/${a.id}/erledigt`}
+                        action={`/glasreinigung/termin/${a.id}/loeschen`}
                         class="inline-form"
                       >
-                        <button class="btn sm sec">✓ Erledigt</button>
+                        <input type="hidden" name="zurueck" value={self} />
+                        <button class="btn sm danger" data-confirm="Termin löschen?">
+                          Löschen
+                        </button>
                       </form>
-                    )}
-                    <a class="btn sm sec" href={`/glasreinigung/termin/${a.id}`}>
-                      Bearbeiten
-                    </a>
-                    <form method="post" action={`/glasreinigung/termin/${a.id}/loeschen`} class="inline-form">
-                      <button class="btn sm danger" data-confirm="Termin löschen?">
-                        Löschen
-                      </button>
-                    </form>
+                    </div>
                   </div>
-                </div>
+                </>
               );
             })}
           </div>
@@ -360,14 +495,23 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
     const today = todayBerlin();
     const st = c.req.query('status') ?? '';
     const kunde = c.req.query('kunde') ?? '';
-    const objCust = new Map(
-      (await sql<{ id: string; customer_id: string }[]>`select id, customer_id from app.glass_objects`).map(
-        (r) => [r.id, r.customer_id],
-      ),
-    );
+    const q = (c.req.query('q') ?? '').trim().toLowerCase();
     const list = (await listAppointments(sql))
-      .filter((a) => !kunde || objCust.get(a.object_id) === kunde)
+      .filter((a) => !kunde || a.customer_id === kunde)
+      .filter(
+        (a) =>
+          !q ||
+          [a.object_name, a.object_address, a.customer_name, a.part].some((v) =>
+            (v ?? '').toLowerCase().includes(q),
+          ),
+      )
       .filter((a) => (!st ? !a.done : st === 'alle' || statusOf(a, today) === st));
+    if (c.req.query('sort') === 'kunde')
+      list.sort(
+        (x, y) =>
+          (x.customer_name ?? '').localeCompare(y.customer_name ?? '', 'de') ||
+          x.first_day.localeCompare(y.first_day),
+      );
     return new Response(appointmentsCsv(list, await teamNames(sql)), {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
@@ -377,20 +521,29 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
   });
 
   // ------------------------------------------------------------------ Termin
+  const retOf = (v: string | null | undefined) =>
+    v && /^\/glasreinigung(\/|$|\?)/.test(v) ? v : '/glasreinigung';
+
   app.get(`/glasreinigung/termin/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
     const a = await getAppointment(sql, id);
-    const [objects, teams, plan] = await Promise.all([
+    const ret = retOf(c.req.query('zurueck'));
+    const date = c.req.query('datum') ?? todayBerlin();
+    // „noch n offen“ für das Jahr des Termins (vorher immer das laufende Jahr → falsche Zahl bei Terminen im Folgejahr)
+    const planYear = Number((a?.first_day ?? date).slice(0, 4));
+    const [objects, teams, plan, customers] = await Promise.all([
       listObjects(sql),
       teamNames(sql),
-      openPlanning(sql, Number((c.req.query('datum') ?? todayBerlin()).slice(0, 4))),
+      openPlanning(sql, planYear),
+      listCustomers(sql),
     ]);
     const openOf = new Map(plan.map((p) => [p.o.id, p.open]));
     const preObj = a?.object_id ?? c.req.query('objekt') ?? '';
     const pre = objects.find((o) => o.id === preObj);
-    const date = c.req.query('datum') ?? todayBerlin();
     const days: Day[] =
       a?.days ?? (pre ? suggestDays(date, Number(pre.hours ?? 2)) : [{ date, from: '08:00', to: '12:00' }]);
+    const curParts = a ? partsOf(a.part) : ['Gesamt'];
+    const custOf = new Map(customers.map((k) => [k.id, k]));
     const dayRow = (d: Day | null) => (
       <div class="gp-dayrow">
         <input type="date" name="tag" value={d?.date ?? ''} aria-label="Datum" />
@@ -401,6 +554,93 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
         </button>
       </div>
     );
+    // je Objekt: Teilbereiche zum Ankreuzen + Hausmeister/Ansprechpartner/Besonderheiten (sichtbar nur das gewählte)
+    const objBox = (o: GlassObject) => {
+      const known = ['Gesamt', ...o.parts.map((p) => p.name)];
+      const isCur = o.id === preObj;
+      const k = o.customer_id ? custOf.get(o.customer_id) : undefined;
+      const contacts = [
+        ...(o.caretaker_name || o.caretaker_phone
+          ? [
+              {
+                name: o.caretaker_name ?? '–',
+                rolle: 'Hausmeister',
+                telefon: o.caretaker_phone,
+                email: o.caretaker_email,
+              },
+            ]
+          : []),
+        ...(k?.contacts ?? []),
+      ];
+      const specials = specialsText({
+        wishes: o.wishes,
+        needs_police_cert: o.needs_police_cert,
+        needs_lift: o.needs_lift,
+        needs_other: o.needs_other,
+      });
+      return (
+        <div class="gp-objbox" data-obj={o.id} hidden={!isCur}>
+          <label style="margin-top:12px">Teilbereiche (mehrere möglich)</label>
+          <div class="gp-parts">
+            {known.map((n) => (
+              <label>
+                <input
+                  type="checkbox"
+                  name="teil"
+                  value={n}
+                  disabled={!isCur}
+                  checked={isCur ? curParts.some((x) => x.toLowerCase() === n.toLowerCase()) : n === 'Gesamt'}
+                />{' '}
+                {n}
+                {n !== 'Gesamt' && (
+                  <span class="small mut">
+                    {' '}
+                    ({PER_YEAR.find(([v]) => v === o.parts.find((p) => p.name === n)?.per_year)?.[1] ?? ''})
+                  </span>
+                )}
+              </label>
+            ))}
+          </div>
+          <div class="gp-info">
+            <div>
+              <b>Hausmeister / Ansprechpartner Kunde</b>
+            </div>
+            {contacts.length ? (
+              contacts.map((p) => (
+                <div>
+                  {p.name}
+                  {p.rolle ? ` (${p.rolle})` : ''}
+                  {p.telefon ? ` · ${p.telefon}` : ''}
+                  {p.email ? ` · ${p.email}` : ''}
+                </div>
+              ))
+            ) : (
+              <div class="mut">Keine hinterlegt.</div>
+            )}
+            <div class="small" style="margin-top:4px">
+              <a href={`/glasreinigung/objekte/${o.id}`}>Hausmeister am Objekt bearbeiten</a>
+              {o.customer_id && (
+                <>
+                  {' · '}
+                  <a href={`/glasreinigung/kunden/${o.customer_id}`}>Ansprechpartner beim Kunden</a>
+                </>
+              )}
+            </div>
+            {specials && (
+              <div style="margin-top:6px">
+                <b>Sonderwünsche / Besonderheiten:</b> {specials}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+    const otherParts = a
+      ? curParts.filter(
+          (x) =>
+            !['gesamt', ...(pre?.parts ?? []).map((p) => p.name.toLowerCase())].includes(x.toLowerCase()),
+        )
+      : [];
     return page(
       c,
       a ? 'Termin bearbeiten' : 'Neuer Termin',
@@ -409,9 +649,14 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
         <div class="page-head">
           <div>
             <div class="eyebrow">
-              <a href="/glasreinigung">Glasreinigung</a>
+              <a href={ret}>Glasreinigung</a>
             </div>
             <h1>{a ? 'Termin bearbeiten' : 'Neuer Termin'}</h1>
+            {a?.done && (
+              <div class="sub">
+                <span class="badge ok">erledigt</span>
+              </div>
+            )}
           </div>
         </div>
         <form
@@ -422,6 +667,7 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
           id="gp-termin"
         >
           <input type="hidden" name="version" value={String(a?.version ?? '')} />
+          <input type="hidden" name="zurueck" value={ret} />
           <div class="grid">
             <div>
               <label for="objekt">Objekt *</label>
@@ -432,16 +678,22 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
                     {(openOf.get(o.id) ?? 0) > 0 ? '● ' : ''}
                     {o.customer_name ? `${o.customer_name} – ` : ''}
                     {o.name}
-                    {(openOf.get(o.id) ?? 0) > 0 ? ` — noch ${openOf.get(o.id)} offen` : ''}
+                    {(openOf.get(o.id) ?? 0) > 0 ? ` — ${planYear} noch ${openOf.get(o.id)} offen` : ''}
                   </option>
                 ))}
               </select>
             </div>
             <div>
-              <label for="teil">Teilbereich</label>
-              <input id="teil" name="teil" value={a?.part ?? ''} placeholder="leer = Gesamt" />
+              <label for="teil-frei">Weitere Teilbereiche (frei, mit Komma)</label>
+              <input
+                id="teil-frei"
+                name="teil_frei"
+                value={otherParts.join(', ')}
+                placeholder="z. B. Oberlichter"
+              />
             </div>
           </div>
+          {objects.map(objBox)}
           <label style="margin-top:12px">Tage &amp; Uhrzeiten *</label>
           <div id="gp-days">{days.map((d) => dayRow(d))}</div>
           <template id="gp-day-tpl">{dayRow(null)}</template>
@@ -481,25 +733,15 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
               </select>
             </div>
             <div>
-              <label for="ma">Mitarbeiter</label>
-              <input id="ma" name="mitarbeiter" value={a?.staff ?? pre?.default_staff ?? ''} />
-            </div>
-            <div>
-              <label for="notiz">Notizen / Sonderwünsche</label>
+              <label for="notiz">Notizen zum Termin</label>
               <textarea id="notiz" name="notiz" rows={2}>
                 {a?.note ?? ''}
               </textarea>
             </div>
-            <div class="chk">
-              <label>
-                <input type="checkbox" name="erledigt" value="1" checked={!!a?.done} /> Erledigt (legt
-                Folgetermin nach Turnus an)
-              </label>
-            </div>
           </div>
           <div class="formfoot">
             <button class="btn">Speichern</button>
-            <a class="btn sec" href="/glasreinigung">
+            <a class="btn sec" href={ret}>
               Abbrechen
             </a>
           </div>
@@ -511,15 +753,36 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
               Mehrere möglich (Hausmeister, Schule, Kunde …). Sie bleiben beim Termin, auch wenn er verschoben
               wird.
             </p>
-            <Confirmations a={a} back={`/glasreinigung/termin/${a.id}`} edit />
+            <Confirmations
+              a={a}
+              back={`/glasreinigung/termin/${a.id}?zurueck=${encodeURIComponent(ret)}`}
+              edit
+            />
           </section>
+        )}
+        {a && (
+          <div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap">
+            {a.done ? (
+              <form method="post" action={`/glasreinigung/termin/${a.id}/offen`} class="inline-form">
+                <input type="hidden" name="zurueck" value={ret} />
+                <button class="btn sm sec">Wieder als offen markieren</button>
+              </form>
+            ) : (
+              <form method="post" action={`/glasreinigung/termin/${a.id}/erledigt`} class="inline-form">
+                <input type="hidden" name="zurueck" value={ret} />
+                <button class="btn sm sec">✓ Erledigt (legt Folgetermin nach Turnus an)</button>
+              </form>
+            )}
+          </div>
         )}
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){var box=document.getElementById('gp-days'),tpl=document.getElementById('gp-day-tpl');
 document.getElementById('gp-add-day').addEventListener('click',function(){var n=tpl.content.firstElementChild.cloneNode(true);var last=box.querySelector('.gp-dayrow:last-child input[type=date]');
 if(last&&last.value){var d=new Date(last.value+'T12:00:00Z');do{d.setUTCDate(d.getUTCDate()+1)}while(d.getUTCDay()===0||d.getUTCDay()===6);n.querySelector('input[type=date]').value=d.toISOString().slice(0,10)}box.appendChild(n)});
-box.addEventListener('click',function(e){var b=e.target.closest('[data-del-day]');if(b&&box.children.length>1)b.parentElement.remove()});})();`,
+box.addEventListener('click',function(e){var b=e.target.closest('[data-del-day]');if(b&&box.children.length>1)b.parentElement.remove()});
+var sel=document.getElementById('objekt');function sync(){document.querySelectorAll('.gp-objbox').forEach(function(x){var on=x.getAttribute('data-obj')===sel.value;x.hidden=!on;x.querySelectorAll('input').forEach(function(i){i.disabled=!on})})}
+sel.addEventListener('change',sync);sync();})();`,
           }}
         />
       </div>,
@@ -535,27 +798,30 @@ box.addEventListener('click',function(e){var b=e.target.closest('[data-del-day]'
     const days = dates
       .map((d, i) => ({ date: d, from: froms[i] ?? '', to: tos[i] ?? '' }))
       .filter((d) => d.date);
+    // mehrere Teilbereiche (Ahmed 22.10.): angekreuzte + frei eingetragene, als Text „Oberlichter, Wintergarten“
+    const parts = [...arr(b, 'teil'), ...partsOf(str(b, 'teil_frei')).filter((x) => x !== 'Gesamt')]
+      .map((x) => x.trim())
+      .filter((x, i, l) => x && l.findIndex((y) => y.toLowerCase() === x.toLowerCase()) === i);
+    const part = parts.length && !(parts.length === 1 && parts[0] === 'Gesamt') ? parts.join(', ') : null;
     await saveAppointment(
       sql,
       id,
       {
         objectId: str(b, 'objekt') ?? '',
-        part: str(b, 'teil'),
+        part,
         days,
         hours: num(str(b, 'stunden')),
         interval: str(b, 'turnus') ?? 'einmalig',
         team: str(b, 'team'),
-        staff: str(b, 'mitarbeiter'),
+        staff: (await getAppointment(sql, id))?.staff ?? null,
         note: str(b, 'notiz'),
-        done: str(b, 'erledigt') === '1',
         expectedVersion: num(str(b, 'version')),
       },
       c.get('actor'),
     );
-    return back(c, '/glasreinigung', { ok: 'Termin gespeichert.' });
+    return back(c, retOf(str(b, 'zurueck')), { ok: 'Termin gespeichert.' });
   });
 
-  const retOf = (v: string | null) => (v && /^\/glasreinigung(\/|$|\?)/.test(v) ? v : '/glasreinigung');
   app.post(`/glasreinigung/termin/:id{${UUID}}/bestaetigung`, async (c) => {
     const b = (await c.req.parseBody()) as Record<string, string | File>;
     const eid = str(b, 'id') ?? '';
@@ -568,6 +834,17 @@ box.addEventListener('click',function(e){var b=e.target.closest('[data-del-day]'
     );
     return back(c, retOf(str(b, 'zurueck')), { ok: 'Bestätigung eingetragen.' });
   });
+  app.post(`/glasreinigung/termin/:id{${UUID}}/bestaetigung/:eid{${UUID}}`, async (c) => {
+    const b = (await c.req.parseBody()) as Record<string, string | File>;
+    await updateConfirmation(
+      sql,
+      c.req.param('id'),
+      c.req.param('eid'),
+      { at: str(b, 'am') ?? '', text: str(b, 'text') ?? '' },
+      c.get('actor'),
+    );
+    return back(c, retOf(str(b, 'zurueck')), { ok: 'Bestätigung geändert.' });
+  });
   app.post(`/glasreinigung/termin/:id{${UUID}}/bestaetigung/:eid{${UUID}}/entfernen`, async (c) => {
     const b = (await c.req.parseBody()) as Record<string, string | File>;
     await removeConfirmation(sql, c.req.param('id'), c.req.param('eid'), c.get('actor'));
@@ -575,13 +852,23 @@ box.addEventListener('click',function(e){var b=e.target.closest('[data-del-day]'
   });
 
   app.post(`/glasreinigung/termin/:id{${UUID}}/erledigt`, async (c) => {
+    const b = (await c.req.parseBody()) as Record<string, string | File>;
     const follow = await markDone(sql, c.req.param('id'), c.get('actor'));
-    return back(c, '/glasreinigung', { ok: follow ? 'Erledigt · Folgetermin angelegt' : 'Erledigt' });
+    return back(c, retOf(str(b, 'zurueck')), {
+      ok: follow ? 'Erledigt · Folgetermin angelegt' : 'Erledigt',
+    });
+  });
+
+  app.post(`/glasreinigung/termin/:id{${UUID}}/offen`, async (c) => {
+    const b = (await c.req.parseBody()) as Record<string, string | File>;
+    await markOpen(sql, c.req.param('id'));
+    return back(c, retOf(str(b, 'zurueck')), { ok: 'Termin wieder offen.' });
   });
 
   app.post(`/glasreinigung/termin/:id{${UUID}}/loeschen`, async (c) => {
+    const b = (await c.req.parseBody()) as Record<string, string | File>;
     await deleteAppointment(sql, c.req.param('id'));
-    return back(c, '/glasreinigung', { ok: 'Termin gelöscht.' });
+    return back(c, retOf(str(b, 'zurueck')), { ok: 'Termin gelöscht.' });
   });
 
   // ------------------------------------------------------------------ Kalender
@@ -734,12 +1021,7 @@ box.addEventListener('click',function(e){var b=e.target.closest('[data-del-day]'
     const zeige = c.req.query('zeige') ?? 'alle';
     const kunde = c.req.query('kunde') ?? '';
     const [apps, customers] = await Promise.all([listAppointments(sql, { from, to }), listCustomers(sql)]);
-    const objCust = new Map(
-      (await sql<{ id: string; customer_id: string }[]>`select id, customer_id from app.glass_objects`).map(
-        (r) => [r.id, r.customer_id],
-      ),
-    );
-    const shown = apps.filter((a) => !a.done && (!kunde || objCust.get(a.object_id) === kunde));
+    const shown = apps.filter((a) => !a.done && (!kunde || a.customer_id === kunde));
     const ok = shown.filter((a) => (a.confirmations ?? []).length > 0);
     const open = shown.filter((a) => !(a.confirmations ?? []).length);
     const esc = (s: string) =>
@@ -748,7 +1030,7 @@ box.addEventListener('click',function(e){var b=e.target.closest('[data-del-day]'
       list
         .map(
           (a) =>
-            `<tr><td>${datesText(a.days)}</td><td>${timesText(a.days)}</td><td><b>${esc(a.object_name)}</b>${a.part ? `<br><span class="k">${esc(a.part)}</span>` : ''}</td><td>${esc(a.customer_name ?? '')}</td><td>${esc(a.object_address ?? '')}</td><td>${esc(a.contact ?? '')}${a.phone ? `<br>${esc(a.phone)}` : ''}</td><td>${
+            `<tr><td>${datesText(a.days)}</td><td>${timesText(a.days)}</td><td><b>${esc(a.object_name)}</b>${a.part ? `<br><span class="k">${esc(a.part)}</span>` : ''}</td><td>${esc(a.customer_name ?? '')}</td><td>${esc(a.object_address ?? '')}</td><td>${esc(a.contact ?? '')}${a.phone ? `<br>${esc(a.phone)}` : ''}${customerContactsText(a) ? `<br><span class="k">${esc(customerContactsText(a))}</span>` : ''}</td><td>${esc(specialsText(a))}</td><td>${
               withConf
                 ? (a.confirmations ?? [])
                     .map((k) => `✓ ${k.at ? `${dateDe(k.at)} ` : ''}${esc(k.text)}`)
@@ -760,7 +1042,7 @@ box.addEventListener('click',function(e){var b=e.target.closest('[data-del-day]'
     const table = (title: string, list: Appointment[], withConf: boolean) =>
       `<h2>${title} (${list.length})</h2>${
         list.length
-          ? `<table class="ls"><thead><tr><th>Datum</th><th>Uhrzeit</th><th>Objekt</th><th>Kunde</th><th>Adresse</th><th>Ansprechpartner</th><th>${withConf ? 'Bestätigung' : 'Bestätigt am / durch'}</th></tr></thead><tbody>${rows(list, withConf)}</tbody></table>`
+          ? `<table class="ls"><thead><tr><th>Datum</th><th>Uhrzeit</th><th>Objekt</th><th>Kunde</th><th>Adresse</th><th>Hausmeister / Ansprechpartner</th><th>Sonderwünsche / Besonderheiten</th><th>${withConf ? 'Bestätigung' : 'Bestätigt am / durch'}</th></tr></thead><tbody>${rows(list, withConf)}</tbody></table>`
           : '<p class="k">Keine Termine.</p>'
       }`;
     const kname = customers.find((k) => k.id === kunde)?.name;
@@ -835,7 +1117,7 @@ ${zeige !== 'bestaetigt' ? table('Noch nicht bestätigt', open, false) : ''}${ze
     const listRows = shown
       .map(
         (a) =>
-          `<tr><td>${datesText(a.days)}</td><td>${timesText(a.days)}</td><td>${esc(a.object_name)}</td><td>${esc(a.customer_name ?? '')}</td><td>${esc(a.object_address ?? '')}</td><td>${esc(a.contact ?? '')}</td><td>${(a.confirmations ?? []).map((k) => `✓ ${k.at ? `${dateDe(k.at)} ` : ''}${esc(k.text)}`).join('<br>')}</td></tr>`,
+          `<tr><td>${datesText(a.days)}</td><td>${timesText(a.days)}</td><td>${esc(a.object_name)}</td><td>${esc(a.customer_name ?? '')}</td><td>${esc(a.object_address ?? '')}</td><td>${esc(a.contact ?? '')}${a.phone ? ` ${esc(a.phone)}` : ''}${customerContactsText(a) ? `<br>${esc(customerContactsText(a))}` : ''}</td><td>${esc(specialsText(a))}</td><td>${(a.confirmations ?? []).map((k) => `✓ ${k.at ? `${dateDe(k.at)} ` : ''}${esc(k.text)}`).join('<br>')}</td></tr>`,
       )
       .join('');
     return c.html(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Jahresplaner ${y}</title><style>
@@ -850,14 +1132,14 @@ ${zeige !== 'bestaetigt' ? table('Noch nicht bestätigt', open, false) : ''}${ze
 @media print{.bar{display:none}}</style></head><body><div class="bar"><button onclick="print()">Drucken / als PDF speichern</button></div>
 <div class="hd"><div><img src="/static/logo-transparent.png" alt="Viva-Deluxe" style="height:40px;display:block;margin-bottom:6px"><b>${esc('Viva-Deluxe Gebäudereinigung GmbH')}</b><div class="k">Glasreinigung</div></div><div style="text-align:right"><h1>${y}</h1><div class="k">${esc(kname ?? 'Jahresplaner')}</div></div></div>
 ${grid}<div class="lg">Rosa = Sonn-/Feiertag · Grau = Samstag · blauer Rand = Schulferien Bayern · <span class="t-team_a">${esc(teams.team_a)}</span> · <span class="t-team_b">${esc(teams.team_b)}</span> · Alle Angaben ohne Gewähr</div>
-<div class="pg"><h2>Terminübersicht ${y}${kname ? ` · ${esc(kname)}` : ''}</h2><table class="ls"><thead><tr><th>Datum</th><th>Uhrzeit</th><th>Objekt</th><th>Kunde</th><th>Adresse</th><th>Ansprechpartner</th><th>Bestätigung</th></tr></thead><tbody>${listRows}</tbody></table></div>
+<div class="pg"><h2>Terminübersicht ${y}${kname ? ` · ${esc(kname)}` : ''}</h2><table class="ls"><thead><tr><th>Datum</th><th>Uhrzeit</th><th>Objekt</th><th>Kunde</th><th>Adresse</th><th>Hausmeister / Ansprechpartner</th><th>Besonderheiten</th><th>Bestätigung</th></tr></thead><tbody>${listRows}</tbody></table></div>
 </body></html>`);
   });
 
   // ------------------------------------------------------------------ Offene Planung
   app.get('/glasreinigung/planung', async (c) => {
     const cy = Number(todayBerlin().slice(0, 4));
-    const y = Number(c.req.query('jahr')) || cy + 1;
+    const y = Number(c.req.query('jahr')) || cy;
     const plan = await openPlanning(sql, y);
     const open = plan.filter((p) => p.open > 0);
     const done = plan.filter((p) => p.open === 0);
@@ -1083,7 +1365,18 @@ ${grid}<div class="lg">Rosa = Sonn-/Feiertag · Grau = Samstag · blauer Rand = 
 
   // ------------------------------------------------------------------ Kunden
   app.get('/glasreinigung/kunden', async (c) => {
-    const list = await listCustomers(sql);
+    const q = (c.req.query('q') ?? '').trim().toLowerCase();
+    const all = await listCustomers(sql);
+    const list = all.filter(
+      (k) =>
+        !q ||
+        [
+          k.name,
+          k.address,
+          k.note,
+          ...k.contacts.map((p) => `${p.name} ${p.telefon ?? ''} ${p.email ?? ''}`),
+        ].some((v) => (v ?? '').toLowerCase().includes(q)),
+    );
     return page(
       c,
       'Glasreinigung – Kunden',
@@ -1102,12 +1395,32 @@ ${grid}<div class="lg">Rosa = Sonn-/Feiertag · Grau = Samstag · blauer Rand = 
           </div>
         </div>
         <GpTabs active="kunden" />
+        <form class="toolbar" method="get" action="/glasreinigung/kunden">
+          <input
+            class="search-input"
+            type="search"
+            name="q"
+            value={q}
+            placeholder="Kunde, Adresse, Ansprechpartner…"
+          />
+          <button class="btn sec">Suchen</button>
+          {q && (
+            <a class="btn sec" href="/glasreinigung/kunden">
+              zurücksetzen
+            </a>
+          )}
+          <span class="mut small">
+            {list.length} von {all.length}
+          </span>
+        </form>
+        {list.length === 0 && <div class="empty">Keine Kunden gefunden.</div>}
         <div class="list-cards">
           {list.map((k) => (
             <a class="lc" href={`/glasreinigung/kunden/${k.id}`}>
               <div class="lc-head">
                 <span class="lc-name">{k.name}</span>
                 <span class="badge">{k.objects} Objekte</span>
+                {!k.customer_id && <span class="badge warn">nicht mit Kunde verknüpft</span>}
               </div>
               <div class="lc-details">
                 {k.address && <span>{k.address}</span>}
@@ -1130,6 +1443,17 @@ ${grid}<div class="lg">Rosa = Sonn-/Feiertag · Grau = Samstag · blauer Rand = 
     const id = c.req.param('id');
     const k = (await listCustomers(sql)).find((x) => x.id === id);
     const contacts = [...(k?.contacts ?? []), { name: '', rolle: '', telefon: '', email: '' }];
+    const [appCustomers, objs, sites, apps] = await Promise.all([
+      sql<{ id: string; customer_no: string; name: string }[]>`
+        select id, customer_no, name from app.customers where not coalesce(is_internal, false) order by name`,
+      listObjects(sql, { all: true }),
+      listSitesForGlass(sql),
+      listAppointments(sql),
+    ]);
+    const mine = objs.filter((o) => o.customer_id === id);
+    const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9äöü]/g, '');
+    const suggestCust =
+      k && !k.customer_id ? appCustomers.find((x) => norm(x.name) === norm(k.name)) : undefined;
     return page(
       c,
       k ? k.name : 'Neuer Kunde',
@@ -1148,6 +1472,18 @@ ${grid}<div class="lg">Rosa = Sonn-/Feiertag · Grau = Samstag · blauer Rand = 
             <div>
               <label for="name">Kundenname *</label>
               <input id="name" name="name" value={k?.name ?? ''} required />
+            </div>
+            <div>
+              <label for="appkunde">Kunde in der App</label>
+              <select id="appkunde" name="app_kunde">
+                <option value="">— nicht verknüpft —</option>
+                {appCustomers.map((x) => (
+                  <option value={x.id} selected={(k?.customer_id ?? suggestCust?.id) === x.id}>
+                    {x.customer_no} · {x.name}
+                  </option>
+                ))}
+              </select>
+              {suggestCust && <div class="small mut">Vorschlag nach Namen – mit „Speichern“ übernehmen.</div>}
             </div>
             <div>
               <label for="adr">Adresse (Hauptsitz)</label>
@@ -1186,6 +1522,66 @@ ${grid}<div class="lg">Rosa = Sonn-/Feiertag · Grau = Samstag · blauer Rand = 
             </a>
           </div>
         </form>
+        {k && (
+          <section class="card" style="max-width:860px;margin-top:14px">
+            <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+              <h3 style="margin:0">Objekte ({mine.length})</h3>
+              <a class="btn sm" href={`/glasreinigung/objekte/${randomUUID()}?kunde=${id}`}>
+                + Objekt
+              </a>
+            </div>
+            {mine.length === 0 ? (
+              <div class="empty">Noch keine Objekte.</div>
+            ) : (
+              <table class="tbl keep" style="margin-top:8px">
+                <thead>
+                  <tr>
+                    <th>Objekt</th>
+                    <th>Kostenstelle</th>
+                    <th>Turnus</th>
+                    <th>Nächster Termin</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mine.map((o) => {
+                    const sug = o.site_id ? null : suggestSite(o, sites, k.customer_id);
+                    const nx = apps.find((a) => a.object_id === o.id && !a.done);
+                    return (
+                      <tr class={o.active ? '' : 'mut'}>
+                        <td>
+                          <a href={`/glasreinigung/objekte/${o.id}`}>{o.name}</a>
+                          <div class="small mut">{o.address}</div>
+                          {!o.active && <span class="badge">inaktiv</span>}
+                        </td>
+                        <td>
+                          {o.site_id ? (
+                            <a href={`/objekte/${o.site_id}`}>
+                              {o.site_no} · {o.site_name}
+                            </a>
+                          ) : (
+                            <>
+                              <span class="badge warn">nicht verknüpft</span>
+                              {sug && (
+                                <div class="small mut">
+                                  Vorschlag: {sug.site_no} · {sug.name}
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </td>
+                        <td>{PER_YEAR.find(([v]) => v === o.per_year)?.[1]}</td>
+                        <td>{nx ? dateDe(nx.first_day) : '–'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+            <p class="small mut">
+              <a href={`/glasreinigung?kunde=${id}&status=alle`}>Alle Termine dieses Kunden →</a>
+            </p>
+          </section>
+        )}
       </div>,
     );
   });
@@ -1200,6 +1596,7 @@ ${grid}<div class="lg">Rosa = Sonn-/Feiertag · Grau = Samstag · blauer Rand = 
       name: str(b, 'name') ?? '',
       address: str(b, 'adresse'),
       note: str(b, 'notiz'),
+      customerId: str(b, 'app_kunde'),
       contacts: names.map((n, i) => ({
         name: n.trim(),
         rolle: roles[i]?.trim(),
@@ -1207,17 +1604,33 @@ ${grid}<div class="lg">Rosa = Sonn-/Feiertag · Grau = Samstag · blauer Rand = 
         email: mails[i]?.trim(),
       })),
     });
-    return back(c, '/glasreinigung/kunden', { ok: 'Kunde gespeichert.' });
+    return back(c, `/glasreinigung/kunden/${c.req.param('id')}`, { ok: 'Kunde gespeichert.' });
   });
 
   // ------------------------------------------------------------------ Objekte
   app.get('/glasreinigung/objekte', async (c) => {
     const today = todayBerlin();
-    const [objs, apps, teams] = await Promise.all([
+    const q = (c.req.query('q') ?? '').trim().toLowerCase();
+    const kunde = c.req.query('kunde') ?? '';
+    const stat = c.req.query('status') ?? 'aktiv';
+    const link = c.req.query('kst') ?? '';
+    const [allObjs, apps, teams, customers] = await Promise.all([
       listObjects(sql, { all: true }),
       listAppointments(sql),
       teamNames(sql),
+      listCustomers(sql),
     ]);
+    const objs = allObjs.filter(
+      (o) =>
+        (stat === 'alle' || (stat === 'inaktiv' ? !o.active : o.active)) &&
+        (!kunde || o.customer_id === kunde) &&
+        (!link || (link === 'ohne' ? !o.site_id : !!o.site_id)) &&
+        (!q ||
+          [o.name, o.address, o.customer_name, o.caretaker_name, o.site_no, o.wishes, o.note].some((v) =>
+            (v ?? '').toLowerCase().includes(q),
+          )),
+    );
+    const unlinked = allObjs.filter((o) => o.active && !o.site_id).length;
     const nextOf = (o: GlassObject) => apps.find((a) => a.object_id === o.id && !a.done);
     const countOf = (o: GlassObject) => apps.filter((a) => a.object_id === o.id).length;
     const missing = objs.filter((o) => o.active && (!o.hours || !o.team)).length;
@@ -1234,6 +1647,60 @@ ${grid}<div class="lg">Rosa = Sonn-/Feiertag · Grau = Samstag · blauer Rand = 
             + Neues Objekt
           </a>,
         )}
+        <form class="toolbar" method="get" action="/glasreinigung/objekte">
+          <input
+            class="search-input"
+            type="search"
+            name="q"
+            value={q}
+            placeholder="Objekt, Adresse, Hausmeister…"
+          />
+          <select name="kunde" onchange="this.form.submit()" aria-label="Kunde" style="max-width:240px">
+            <option value="">Alle Kunden</option>
+            {customers.map((k) => (
+              <option value={k.id} selected={kunde === k.id}>
+                {k.name}
+              </option>
+            ))}
+          </select>
+          <select
+            name="status"
+            data-nosearch
+            onchange="this.form.submit()"
+            aria-label="Status"
+            style="max-width:150px"
+          >
+            <option value="aktiv">Aktive</option>
+            <option value="inaktiv" selected={stat === 'inaktiv'}>
+              Inaktive
+            </option>
+            <option value="alle" selected={stat === 'alle'}>
+              Alle
+            </option>
+          </select>
+          <select
+            name="kst"
+            data-nosearch
+            onchange="this.form.submit()"
+            aria-label="Kostenstelle"
+            style="max-width:220px"
+          >
+            <option value="">Kostenstelle: alle</option>
+            <option value="ohne" selected={link === 'ohne'}>
+              nicht verknüpft ({unlinked})
+            </option>
+            <option value="mit" selected={link === 'mit'}>
+              verknüpft
+            </option>
+          </select>
+          <a class="btn sec" href="/glasreinigung/objekte">
+            zurücksetzen
+          </a>
+          <span class="mut small">
+            {objs.length} von {allObjs.length}
+          </span>
+        </form>
+        {objs.length === 0 && <div class="empty">Keine Objekte passen zu dieser Auswahl.</div>}
         {missing > 0 && (
           <div class="due-banner warn">
             <span class="ico">!</span>
@@ -1255,6 +1722,15 @@ ${grid}<div class="lg">Rosa = Sonn-/Feiertag · Grau = Samstag · blauer Rand = 
                     </a>
                     <div class="lc-sub">
                       {[o.customer_name, o.address, o.district].filter(Boolean).join(' · ')}
+                    </div>
+                    <div class="small">
+                      {o.site_id ? (
+                        <a href={`/objekte/${o.site_id}`}>
+                          Kostenstelle {o.site_no} · {o.site_name}
+                        </a>
+                      ) : (
+                        <span class="badge warn">nicht mit Objekt/Kostenstelle verknüpft</span>
+                      )}
                     </div>
                   </div>
                   <div class="lc-right">
@@ -1279,12 +1755,15 @@ ${grid}<div class="lg">Rosa = Sonn-/Feiertag · Grau = Samstag · blauer Rand = 
                   {o.holiday_pref !== 'egal' && <span>{HOLIDAY_PREF[o.holiday_pref]}</span>}
                   {o.hours && <span>{String(o.hours).replace('.', ',')} h</span>}
                 </div>
-                {o.wishes && <div class="gp-note">{o.wishes}</div>}
+                {o.wishes && <div class="gp-note">Besonderheiten: {o.wishes}</div>}
                 <div class="lc-foot gp-acts">
                   <span class={`small ${n && n.first_day < today ? 'kb-neg' : 'mut'}`}>
                     {n ? `Nächster Termin: ${dateDe(n.first_day)}` : 'Kein Termin geplant'}
                   </span>
-                  <a class="btn sm sec" href={`/glasreinigung?status=alle&q=${encodeURIComponent(o.name)}`}>
+                  <a
+                    class="btn sm sec"
+                    href={`/glasreinigung?status=alle&q=${encodeURIComponent(o.name)}${o.customer_id ? `&kunde=${o.customer_id}` : ''}`}
+                  >
                     Termine ({countOf(o)})
                   </a>
                   <a class="btn sm sec" href={`/glasreinigung/termin/${randomUUID()}?objekt=${o.id}`}>
@@ -1331,7 +1810,20 @@ ${grid}<div class="lg">Rosa = Sonn-/Feiertag · Grau = Samstag · blauer Rand = 
 
   app.get(`/glasreinigung/objekte/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
-    const [o, customers, teams] = await Promise.all([getObject(sql, id), listCustomers(sql), teamNames(sql)]);
+    const [o, customers, teams, sites] = await Promise.all([
+      getObject(sql, id),
+      listCustomers(sql),
+      teamNames(sql),
+      listSitesForGlass(sql),
+    ]);
+    const gk = customers.find((k) => k.id === (o?.customer_id ?? c.req.query('kunde')));
+    const sug = o && !o.site_id ? suggestSite(o, sites, gk?.customer_id ?? null) : null;
+    const selSite = o?.site_id ?? sug?.id ?? '';
+    // Objekte des verknüpften Kunden zuerst
+    const siteOpts = [
+      ...sites.filter((x) => x.customer_id === gk?.customer_id),
+      ...sites.filter((x) => x.customer_id !== gk?.customer_id && (x.active || x.id === selSite)),
+    ];
     const cy = Number(todayBerlin().slice(0, 4));
     const per = o?.per_year ?? 2;
     const parts = [...(o?.parts ?? []), { name: '', per_year: 1, hours: 0 }];
@@ -1361,6 +1853,18 @@ ${grid}<div class="lg">Rosa = Sonn-/Feiertag · Grau = Samstag · blauer Rand = 
                   </option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label for="site">Objekt in der App (Kostenstelle)</label>
+              <select id="site" name="site">
+                <option value="">— nicht verknüpft —</option>
+                <SiteOptions sites={siteOpts} selected={selSite} />
+              </select>
+              {sug && (
+                <div class="small mut">
+                  Vorschlag (gleiche Adresse): {sug.site_no} · {sug.name} – mit „Speichern“ übernehmen.
+                </div>
+              )}
             </div>
             <div>
               <label for="name">Objektname *</label>
@@ -1436,30 +1940,40 @@ ${grid}<div class="lg">Rosa = Sonn-/Feiertag · Grau = Samstag · blauer Rand = 
             ))}
           </div>
           <label style="margin-top:12px">Optionale Teilbereiche mit eigenem Turnus</label>
-          {parts.map((p, i) => (
-            <div class="gp-ap">
-              <input
-                name="tb_name"
-                value={p.name}
-                placeholder="Bereich (z.B. Oberlichter)"
-                aria-label={`Teilbereich ${i + 1}`}
-              />
-              <select name="tb_freq" data-nosearch aria-label="Turnus">
-                {PER_YEAR.map(([v, l]) => (
-                  <option value={String(v)} selected={p.per_year === v}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-              <input
-                name="tb_std"
-                value={p.hours ? String(p.hours).replace('.', ',') : ''}
-                placeholder="Std."
-                aria-label="Stunden"
-                inputmode="decimal"
-              />
-            </div>
-          ))}
+          <div id="gp-parts">
+            {parts.map((p, i) => (
+              <div class="gp-ap">
+                <input
+                  name="tb_name"
+                  value={p.name}
+                  placeholder="Bereich (z.B. Oberlichter)"
+                  aria-label={`Teilbereich ${i + 1}`}
+                />
+                <select name="tb_freq" data-nosearch aria-label="Turnus">
+                  {PER_YEAR.map(([v, l]) => (
+                    <option value={String(v)} selected={p.per_year === v}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  name="tb_std"
+                  value={p.hours ? String(p.hours).replace('.', ',') : ''}
+                  placeholder="Std."
+                  aria-label="Stunden"
+                  inputmode="decimal"
+                />
+              </div>
+            ))}
+          </div>
+          <button type="button" class="btn sm sec" id="gp-add-part" style="margin-top:6px">
+            + weiteren Teilbereich
+          </button>
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `document.getElementById('gp-add-part').addEventListener('click',function(){var b=document.getElementById('gp-parts'),r=b.lastElementChild.cloneNode(true);r.querySelectorAll('input').forEach(function(i){i.value=''});r.querySelector('select').selectedIndex=0;b.appendChild(r);r.querySelector('input').focus()});`,
+            }}
+          />
           <div class="grid" style="margin-top:12px">
             <div>
               <label for="jahr">Jahr</label>
@@ -1600,6 +2114,7 @@ ${grid}<div class="lg">Rosa = Sonn-/Feiertag · Grau = Samstag · blauer Rand = 
       default_staff: str(b, 'mitarbeiter'),
       wishes: str(b, 'wuensche'),
       note: str(b, 'notiz'),
+      site_id: str(b, 'site'),
       expectedVersion: num(str(b, 'version')),
     });
     return back(c, '/glasreinigung/objekte', { ok: 'Objekt gespeichert.' });

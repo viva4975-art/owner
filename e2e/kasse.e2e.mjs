@@ -218,7 +218,13 @@ check('Arbeitstage zusammengefasst', (await p.locator('body').innerText()).inclu
 const stelleUrl = p.url();
 const plakat = await p.request.get(`${stelleUrl}/plakat`);
 const ph = await plakat.text();
-check('Plakat 9 Sprachen', ph.includes('Einsatzort') && ph.includes('Location') && ph.includes('Jetzt per WhatsApp bewerben') && ph.includes('wa.me/'));
+check(
+  'Plakat 9 Sprachen',
+  ph.includes('Einsatzort') &&
+    ph.includes('Location') &&
+    ph.includes('Jetzt per WhatsApp bewerben') &&
+    ph.includes('wa.me/'),
+);
 {
   const pp = await ctx.newPage();
   pp.on('dialog', (d) => d.accept().catch(() => {}));
@@ -271,7 +277,8 @@ await p.fill('#name', `E2E Glaskunde ${stamp}`);
 await p.locator('input[name=ap_name]').first().fill('Frau Verwaltung');
 await p.click('form.card button:has-text("Speichern")');
 await p.waitForLoadState();
-check('Glas-Kunde angelegt', (await p.locator('.lc', { hasText: `E2E Glaskunde ${stamp}` }).count()) === 1);
+check('Glas-Kunde angelegt', (await p.locator('h1', { hasText: `E2E Glaskunde ${stamp}` }).count()) === 1);
+check('Kunde zeigt seine Objekte', (await p.locator('h3', { hasText: 'Objekte (0)' }).count()) === 1);
 await p.goto(`${B}/glasreinigung/objekte`);
 await p.click('a:has-text("+ Neues Objekt")');
 await p.selectOption('#kunde', { label: `E2E Glaskunde ${stamp}` });

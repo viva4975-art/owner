@@ -473,6 +473,12 @@ summary.gear{list-style:none;cursor:pointer}summary.gear::-webkit-details-marker
 .badge.gp-team_a{background:#f4e3e7;color:var(--brand)}.badge.gp-team_b{background:#fbf3dc;color:#8b6914}
 .gp-card .lc-head{align-items:flex-start}.gp-date{display:flex;flex-direction:column;align-items:flex-end;min-width:64px}.gp-date b{font-size:18px}.gp-date span{font-size:11px;color:var(--mut)}
 .gp-note{margin-top:8px;padding:6px 10px;background:var(--warn-50);border-radius:8px;font-size:13px}
+.gp-contacts{display:flex;flex-direction:column;gap:2px;margin-top:6px;font-size:13px}
+.gp-group{margin:18px 0 4px;font-size:15px;color:var(--brand,#7d1435)}
+.gp-info{background:var(--bg-soft,#f6f5f5);border-radius:8px;padding:10px 12px;font-size:13.5px;margin-top:10px}
+.gp-info b{font-weight:600}
+.gp-parts{display:flex;flex-wrap:wrap;gap:6px 14px}
+.gp-parts label{display:inline-flex;gap:6px;align-items:center;font-weight:400;margin:0}
 .gp-acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.gp-acts .small{margin-right:auto}
 .gp-dayrow{display:grid;grid-template-columns:170px 120px 120px auto;gap:8px;margin-bottom:6px;align-items:center}
 .gp-ap{display:grid;grid-template-columns:1.2fr 1fr 1fr 1.2fr;gap:8px;margin-bottom:6px}
@@ -1007,6 +1013,13 @@ td .btn.icon{min-height:34px;width:34px;height:34px;padding:0;justify-content:ce
 .eh-tag{font-size:12px;padding:2px 9px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--ink)}
 .eh-acts{display:flex;flex-wrap:wrap;gap:8px}
 .eh-acts .btn svg{width:15px;height:15px}
+.eh-key{display:grid;grid-template-columns:1.3fr 1fr 1.1fr 1fr 1fr;border-top:1px solid var(--line);background:#fff}
+.eh-key>div{display:flex;gap:10px;padding:12px 20px;border-left:1px solid var(--line);min-width:0}
+.eh-key>div:first-child{border-left:0}
+.eh-key svg{width:17px;height:17px;color:var(--brand,#7d1435);flex:none;margin-top:2px}
+.eh-key>div>span{display:flex;flex-direction:column;gap:1px;min-width:0;overflow-wrap:anywhere}
+.eh-key small{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.eh-key b{font-size:14.5px}
 .eh-facts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border-top:1px solid var(--line)}
 .eh-facts>div{padding:14px 20px;display:flex;flex-direction:column;gap:2px;border-left:1px solid var(--line)}
 .eh-facts>div:first-child{border-left:0}
@@ -1023,7 +1036,8 @@ td .btn.icon{min-height:34px;width:34px;height:34px;padding:0;justify-content:ce
 .eh-sites svg{width:16px;height:16px;color:var(--muted);flex:none}
 .eh-info{background:var(--bg-soft,#f6f5f5);border-radius:8px;padding:10px 12px;margin-bottom:0}
 @media (max-width:900px){
-  .eh-facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .eh-facts,.eh-key{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .eh-key>div{border-left:0;border-top:1px solid var(--line)}
   .eh-facts>div{border-left:0;border-top:1px solid var(--line)}
   .emp-grid{grid-template-columns:1fr}
   .eh-acts{width:100%}
@@ -1218,6 +1232,10 @@ body.appmode{background:#f4f4f5 linear-gradient(180deg,#f3e2e9 0,#f6ecf0 120px,r
 body.shell:not(.appmode){background:#eef0f3;background-image:none}
 .tbl thead th,table thead th{background:#f3f4f6}
 .formfoot{background:#f5f6f8!important;border-top:1px solid #e3e6ea!important}
+/* Formularfuß als Zelle in einem Raster (z. B. Zusätzlicher Urlaub): keine graue Fläche, die schräg ins Raster ragt */
+.leave-exit{border-left:3px solid var(--ok,#1a7f37)}.leave-exit.neg{border-left-color:var(--err,#b42318)}
+.leave-exit-row{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px;font-size:15px}
+.grid>.formfoot,.row>.formfoot{grid-column:1/-1;margin:4px 0 0!important;padding:0!important;background:none!important;border:0!important;border-radius:0}
 .note-tint,.empty{background:#f7f8fa}
 /* Leistungen am Objekt als Zeilen */
 .svc-sum{margin-left:auto;font-size:14px;color:var(--ink)}

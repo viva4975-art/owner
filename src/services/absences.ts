@@ -497,11 +497,17 @@ export interface LeaveBalance {
  * verfällt danach (§ 7 Abs. 3 BUrlG). ACHTUNG (BAG 19.02.2019, 9 AZR 541/15): Verfall nur, wenn der Arbeitgeber
  * rechtzeitig zum Urlaub aufgefordert und auf den Verfall hingewiesen hat – die Anzeige ist nur ein Rechenwert.
  */
-export async function leaveBalance(sql: Sql, employeeId: string, year: number): Promise<LeaveBalance> {
+export async function leaveBalance(
+  sql: Sql,
+  employeeId: string,
+  year: number,
+  /** Vorschau: so rechnen, als ob die Person an diesem Tag austritt (Urlaub danach zählt nicht) */
+  exitAt?: string,
+): Promise<LeaveBalance> {
   const op = await leaveOpening(sql, employeeId, year);
   if (op && op.taken != null) {
     // Stand aus Fortytools: Anspruch/Resturlaub/genommen bis Stichtag, verfallener Rest so wie dort gerechnet
-    const after = await baseBalance(sql, employeeId, year, addDays(op.as_of, 1));
+    const after = await baseBalance(sql, employeeId, year, addDays(op.as_of, 1), exitAt);
     // Anspruch immer selbst gerechnet (30 Tage RTV, Arbeitstage); der Fortytools-Anspruch dient nur dazu,
     // den dort verfallenen Resturlaub nachzurechnen
     const entitlement = after.entitlement;
@@ -520,7 +526,7 @@ export async function leaveBalance(sql: Sql, employeeId: string, year: number): 
       extra: after.extra,
     };
   }
-  const base = await baseBalance(sql, employeeId, year);
+  const base = await baseBalance(sql, employeeId, year, undefined, exitAt);
   const [e] = await sql<{ carry_over_leave: boolean; entry_date: string }[]>`
     select carry_over_leave, entry_date from app.employees where id = ${employeeId}`;
   let carried = 0;
@@ -551,10 +557,11 @@ export async function leaveBalance(sql: Sql, employeeId: string, year: number): 
 }
 
 /** `countFrom`: Abwesenheiten erst ab diesem Tag zählen (nach einem übernommenen Stand) */
-async function baseBalance(sql: Sql, employeeId: string, year: number, countFrom?: string) {
+async function baseBalance(sql: Sql, employeeId: string, year: number, countFrom?: string, exitAt?: string) {
   const [e] = await sql<{ entry_date: string; exit_date: string | null }[]>`
     select entry_date, exit_date from app.employees where id = ${employeeId}`;
   if (!e) throw new BusinessError('Mitarbeiter nicht gefunden');
+  if (exitAt && (!e.exit_date || exitAt < e.exit_date)) e.exit_date = exitAt;
   const yStart0 = `${year}-01-01`;
   const yEnd = `${year}-12-31`;
   const from = e.entry_date > yStart0 ? e.entry_date : yStart0;
@@ -618,9 +625,9 @@ async function baseBalance(sql: Sql, employeeId: string, year: number, countFrom
   const extra = await leaveExtraDays(sql, employeeId, year);
   entitlement = Math.round((entitlement + extra) * 2) / 2;
   const yStart = countFrom && countFrom > yStart0 ? countFrom : yStart0;
-  if (yStart > yEnd) return { entitlement, taken: 0, requested: 0, takenQ1: 0, extra };
+  if (yStart > yEnd || yStart > to) return { entitlement, taken: 0, requested: 0, takenQ1: 0, extra };
   const list = await listAbsences(sql, { employeeId, from: yStart, to: yEnd });
-  const inYear = (a: AbsenceRow, until = yEnd) =>
+  const inYear = (a: AbsenceRow, until = to) =>
     leaveDaysOf(
       sql,
       employeeId,
@@ -632,10 +639,11 @@ async function baseBalance(sql: Sql, employeeId: string, year: number, countFrom
   let requested = 0;
   let takenQ1 = 0;
   for (const a of list) {
-    if (a.kind !== 'urlaub') continue;
+    if (a.kind !== 'urlaub' || a.start_date > to) continue;
     if (a.status === 'genehmigt') {
       taken += await inYear(a);
-      if (a.start_date <= `${year}-03-31`) takenQ1 += await inYear(a, `${year}-03-31`);
+      if (a.start_date <= `${year}-03-31`)
+        takenQ1 += await inYear(a, to < `${year}-03-31` ? to : `${year}-03-31`);
     } else if (a.status === 'beantragt') requested += await inYear(a);
   }
   return { entitlement, taken, requested, takenQ1, extra };
@@ -808,3 +816,25 @@ export function mergeAbsent(rows: AbsentNow[]): AbsentNow[] {
 /** Wer ist am Tag abwesend (genehmigt)? */
 export const absentOn = (sql: Sql, day: string, siteIds: string[] | null) =>
   absentBetween(sql, day, day, siteIds);
+
+/**
+ * Vorschau Urlaub bei Austritt zum Ende des laufenden Monats (Ahmed 22.10.): Anspruch anteilig (§ 5 BUrlG),
+ * genommen bis dahin, Rest. Rest > 0 = Abgeltung (§ 7 Abs. 4 BUrlG), Rest < 0 = zu viel genommen – zurückfordern
+ * geht in der Regel nicht (§ 5 Abs. 3 BUrlG), deshalb vorher planen.
+ */
+export async function leaveExitPreview(sql: Sql, employeeId: string, exitAt?: string) {
+  const today = todayBerlin();
+  const [y, m] = today.split('-').map(Number) as [number, number];
+  let at = exitAt ?? addDays(m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`, -1);
+  const [e] = await sql<{ entry_date: string; exit_date: string | null }[]>`
+    select entry_date::text, exit_date::text from app.employees where id = ${employeeId}`;
+  if (!e) return null;
+  const fixed = !exitAt && !!e.exit_date && e.exit_date >= `${y}-01-01`;
+  if (fixed) at = e.exit_date!;
+  if (e.entry_date > at || (e.exit_date && e.exit_date < `${at.slice(0, 4)}-01-01`)) return null;
+  const b = await leaveBalance(sql, employeeId, Number(at.slice(0, 4)), at);
+  const [lr] = await sql<{ n: string | null }[]>`
+    select count(*)::text as n from app.absences where employee_id = ${employeeId} and kind = 'urlaub'
+       and status in ('genehmigt', 'beantragt') and end_date > ${at} and start_date <= ${at.slice(0, 4) + '-12-31'}`;
+  return { at, fixed, ...b, laterLeave: Number(lr?.n ?? 0) };
+}

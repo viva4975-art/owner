@@ -1,3 +1,4 @@
+import { sendGreetings } from './services/greetings.js';
 import { ensureMwServices } from './services/garage-mw.js';
 import { ensureMwSchedule2026 } from './services/garage-mw-schedule.js';
 import { serve } from '@hono/node-server';
@@ -102,6 +103,11 @@ const reminders = () =>
     mailer: createMailer(env),
   }).catch((e) => console.error('Erinnerungen:', e));
 setInterval(reminders, 15 * 60 * 1000).unref();
+
+// Glückwünsche an Mitarbeitende (Geburtstag, Firmenjubiläum) – je Person/Anlass/Jahr genau einmal
+const greetings = () =>
+  sendGreetings({ sql, env, mailer: createMailer(env) }).catch((e) => console.error('Glückwünsche:', e));
+setInterval(greetings, 15 * 60 * 1000).unref();
 
 // Bankabruf (Enable Banking): alle 30 Min. prüfen, je Konto höchstens etwa alle 4,5 Std. zwischen 6 und 21 Uhr
 const bankFetch = () =>

@@ -94,6 +94,8 @@ export interface GlassCustomer {
     telefon?: string | undefined;
     email?: string | undefined;
   }[];
+  /** verknüpfter Kunde der App */
+  customer_id: string | null;
   version: number;
 }
 
@@ -124,6 +126,10 @@ export interface GlassObject {
   default_staff: string | null;
   wishes: string | null;
   note: string | null;
+  /** verknüpftes Objekt der App (= Kostenstelle) */
+  site_id: string | null;
+  site_no?: string | null;
+  site_name?: string | null;
   active: boolean;
   version: number;
 }
@@ -137,6 +143,19 @@ export interface Appointment {
   customer_name: string | null;
   contact: string | null;
   phone: string | null;
+  /** Hausmeister des Objekts */
+  caretaker_name: string | null;
+  caretaker_phone: string | null;
+  caretaker_email: string | null;
+  /** Ansprechpartner beim Kunden (Glas-Kunde) */
+  customer_contacts: GlassCustomer['contacts'];
+  customer_id: string | null;
+  /** Sonderwünsche / Besonderheiten des Objekts + Anforderungen */
+  wishes: string | null;
+  needs_police_cert: boolean;
+  needs_lift: boolean;
+  needs_other: string | null;
+  site_no: string | null;
   part: string | null;
   days: Day[];
   first_day: string;
@@ -176,27 +195,35 @@ export async function listCustomers(sql: Sql) {
 
 export async function listObjects(sql: Sql, opts: { all?: boolean } = {}) {
   return sql<GlassObject[]>`
-    select o.*, c.name as customer_name from app.glass_objects o
+    select o.*, c.name as customer_name, s.site_no, s.name as site_name from app.glass_objects o
       left join app.glass_customers c on c.id = o.customer_id
+      left join app.sites s on s.id = o.site_id
      where ${opts.all ? sql`true` : sql`o.active`}
      order by c.name nulls last, o.name`;
 }
 
 export async function getObject(sql: Sql, id: string) {
   const [o] = await sql<GlassObject[]>`
-    select o.*, c.name as customer_name from app.glass_objects o
-      left join app.glass_customers c on c.id = o.customer_id where o.id = ${id}`;
+    select o.*, c.name as customer_name, s.site_no, s.name as site_name from app.glass_objects o
+      left join app.glass_customers c on c.id = o.customer_id
+      left join app.sites s on s.id = o.site_id where o.id = ${id}`;
   return o;
 }
+
+// Zusatzfelder je Termin: Hausmeister, Ansprechpartner des Kunden, Besonderheiten, Kostenstelle
+const APPT_EXTRA = `o.caretaker_name, o.caretaker_phone, o.caretaker_email, coalesce(c.contacts, '[]'::jsonb) as customer_contacts,
+  o.customer_id, o.wishes, o.needs_police_cert, o.needs_lift, o.needs_other, s.site_no`;
+const apptExtra = (sql: Sql) => sql.unsafe(APPT_EXTRA);
 
 export async function listAppointments(sql: Sql, f: { from?: string; to?: string; objectId?: string } = {}) {
   return sql<Appointment[]>`
     select a.*, a.first_day::text, a.last_day::text, o.name as object_name, o.address as object_address, o.district,
            c.name as customer_name, coalesce(o.caretaker_name, o.contact_name) as contact,
-           coalesce(o.caretaker_phone, o.contact_phone) as phone
+           coalesce(o.caretaker_phone, o.contact_phone) as phone, ${apptExtra(sql)}
       from app.glass_appointments a
       join app.glass_objects o on o.id = a.object_id
       left join app.glass_customers c on c.id = o.customer_id
+      left join app.sites s on s.id = o.site_id
      where ${f.from ? sql`a.last_day >= ${f.from}` : sql`true`}
        and ${f.to ? sql`a.first_day <= ${f.to}` : sql`true`}
        and ${f.objectId ? sql`a.object_id = ${f.objectId}` : sql`true`}
@@ -234,6 +261,33 @@ export async function addConfirmation(
   }
 }
 
+/** Bestätigung ändern (Datum/Text), alter Stand ins Protokoll. */
+export async function updateConfirmation(
+  sql: Sql,
+  apptId: string,
+  entryId: string,
+  p: { at: string; text: string },
+  actor: string,
+) {
+  const text = p.text.trim().slice(0, 300);
+  if (!text) throw new BusinessError('Bitte eintragen, wer wie bestätigt hat');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.at)) throw new BusinessError('Datum der Bestätigung fehlt');
+  await sql.begin(async (tx) => {
+    const [a] = await tx<{ confirmations: GlassConfirmation[] }[]>`
+      select confirmations from app.glass_appointments where id = ${apptId} for update`;
+    if (!a) throw new BusinessError('Termin nicht gefunden');
+    const old = a.confirmations.find((x) => x.id === entryId);
+    if (!old) throw new BusinessError('Bestätigung nicht gefunden');
+    if (old.at === p.at && old.text === text) return;
+    const next = a.confirmations.map((x) => (x.id === entryId ? { ...x, at: p.at, text } : x));
+    await tx`update app.glass_appointments set confirmations = ${tx.json(next as never)}::jsonb,
+               confirm_note = ${next.at(-1)?.text ?? null} where id = ${apptId}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'confirmation_update', 'glass_appointment', ${apptId},
+                     ${tx.json({ vorher: old, nachher: { at: p.at, text } } as never)})`;
+  });
+}
+
 export async function removeConfirmation(sql: Sql, apptId: string, entryId: string, actor: string) {
   await sql.begin(async (tx) => {
     const [a] = await tx<{ confirmations: GlassConfirmation[] }[]>`
@@ -256,9 +310,10 @@ export async function getAppointment(sql: Sql, id: string) {
 const listAppointmentsById = (sql: Sql, id: string) => sql<Appointment[]>`
   select a.*, a.first_day::text, a.last_day::text, o.name as object_name, o.address as object_address, o.district,
          c.name as customer_name, coalesce(o.caretaker_name, o.contact_name) as contact,
-         coalesce(o.caretaker_phone, o.contact_phone) as phone
+         coalesce(o.caretaker_phone, o.contact_phone) as phone, ${apptExtra(sql)}
     from app.glass_appointments a join app.glass_objects o on o.id = a.object_id
-    left join app.glass_customers c on c.id = o.customer_id where a.id = ${id}`;
+    left join app.glass_customers c on c.id = o.customer_id
+    left join app.sites s on s.id = o.site_id where a.id = ${id}`;
 
 // ------------------------------------------------------------------ Schreiben
 
@@ -267,17 +322,33 @@ const t = (v: string | null | undefined) => (v?.trim() ? v.trim() : null);
 export async function saveCustomer(
   sql: Sql,
   id: string,
-  p: { name: string; address: string | null; note: string | null; contacts: GlassCustomer['contacts'] },
+  p: {
+    name: string;
+    address: string | null;
+    note: string | null;
+    contacts: GlassCustomer['contacts'];
+    customerId?: string | null;
+  },
 ) {
   if (!p.name.trim()) throw new BusinessError('Kundenname fehlt');
   const contacts = p.contacts.filter((c) => c.name.trim());
-  await sql`insert into app.glass_customers (id, name, address, note, contacts)
-            values (${id}, ${p.name.trim()}, ${t(p.address)}, ${t(p.note)}, ${sql.json(contacts)})
+  const cid = p.customerId || null;
+  if (cid) {
+    const [k] = await sql`select 1 from app.customers where id = ${cid}`;
+    if (!k) throw new BusinessError('Kunde der App nicht gefunden');
+  }
+  await sql`insert into app.glass_customers (id, name, address, note, contacts, customer_id)
+            values (${id}, ${p.name.trim()}, ${t(p.address)}, ${t(p.note)}, ${sql.json(contacts)}, ${cid})
             on conflict (id) do update set name = excluded.name, address = excluded.address, note = excluded.note,
-              contacts = excluded.contacts`;
+              contacts = excluded.contacts, customer_id = excluded.customer_id`;
 }
 
-export type ObjectInput = Omit<GlassObject, 'id' | 'customer_name' | 'version' | 'active'> & {
+export type ObjectInput = Omit<
+  GlassObject,
+  'id' | 'customer_name' | 'version' | 'active' | 'site_no' | 'site_name' | 'site_id'
+> & {
+  /** undefined = Verknüpfung nicht ändern */
+  site_id?: string | null;
   expectedVersion: number | null;
 };
 
@@ -315,7 +386,12 @@ export async function saveObject(sql: Sql, id: string, p: ObjectInput) {
     default_staff: t(p.default_staff),
     wishes: t(p.wishes),
     note: t(p.note),
+    ...(p.site_id !== undefined ? { site_id: p.site_id || null } : {}),
   };
+  if (row.site_id) {
+    const [st] = await sql`select 1 from app.sites where id = ${row.site_id}`;
+    if (!st) throw new BusinessError('Objekt (Kostenstelle) nicht gefunden');
+  }
   const [cur] = await sql<{ version: number }[]>`select version from app.glass_objects where id = ${id}`;
   if (cur) {
     if (p.expectedVersion != null && cur.version !== p.expectedVersion)
@@ -339,7 +415,8 @@ export interface AppointmentInput {
   note: string | null;
   confirmed?: boolean;
   confirmNote?: string | null;
-  done: boolean;
+  /** undefined = Erledigt-Stand nicht ändern (Formular hat kein Häkchen mehr – Ahmed 22.10.) */
+  done?: boolean;
   expectedVersion: number | null;
 }
 
@@ -389,7 +466,8 @@ export async function saveAppointment(sql: Sql, id: string, p: AppointmentInput,
       await tx`insert into app.glass_appointments ${tx({ id, ...row, created_by: actor } as never)} on conflict (id) do nothing`;
   });
   if (p.done) await markDone(sql, id, actor);
-  else await sql`update app.glass_appointments set done = false, done_at = null where id = ${id} and done`;
+  else if (p.done === false)
+    await sql`update app.glass_appointments set done = false, done_at = null where id = ${id} and done`;
 }
 
 /** Erledigt: Folgetermin nach Turnus (gleiche Uhrzeiten, Tage verschoben) – genau einmal. */
@@ -416,6 +494,11 @@ export async function markDone(sql: Sql, id: string, actor: string): Promise<boo
       created_by: actor,
     } as never)} on conflict do nothing`;
   return r.count > 0;
+}
+
+/** Erledigt zurücknehmen (ein schon angelegter Folgetermin bleibt bestehen). */
+export async function markOpen(sql: Sql, id: string) {
+  await sql`update app.glass_appointments set done = false, done_at = null where id = ${id}`;
 }
 
 export async function deleteAppointment(sql: Sql, id: string) {
@@ -460,6 +543,21 @@ export const unitsOf = (o: GlassObject): Unit[] => [
   ...o.parts.map((p) => ({ label: p.name, part: p.name, perYear: p.per_year, hours: p.hours })),
 ];
 
+/** Teilbereiche eines Termins („Oberlichter, Wintergarten“; leer bzw. „Gesamt“ = ganzes Objekt) */
+export const partsOf = (part: string | null | undefined) => {
+  const l = (part ?? '')
+    .split(/\s*[,;+]\s*/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  return l.length ? l : ['Gesamt'];
+};
+const norm = (x: string) => x.toLowerCase().replace(/\s+/g, ' ').trim();
+/** zählt der Termin für diesen Teilbereich (null = Gesamt)? */
+export const coversPart = (apptPart: string | null | undefined, unitPart: string | null) => {
+  const want = norm(unitPart ?? 'Gesamt');
+  return partsOf(apptPart).some((x) => norm(x) === want);
+};
+
 export async function openPlanning(sql: Sql, year: number) {
   const [objects, apps] = await Promise.all([
     listObjects(sql),
@@ -468,7 +566,7 @@ export async function openPlanning(sql: Sql, year: number) {
   return objects.map((o) => {
     const units = unitsOf(o).map((u) => {
       const ist = apps.filter(
-        (a) => a.object_id === o.id && (a.part ?? null) === u.part && a.first_day.startsWith(String(year)),
+        (a) => a.object_id === o.id && coversPart(a.part, u.part) && a.first_day.startsWith(String(year)),
       ).length;
       const open = Math.max(0, u.perYear - ist);
       return { ...u, ist, open, restHours: open * u.hours };
@@ -623,6 +721,26 @@ export async function applyProposals(sql: Sql, list: Proposal[], actor: string) 
 
 // ------------------------------------------------------------------ CSV
 
+/** Ansprechpartner des Kunden als Text („Frau Huber (Verwaltung) 089 …“) */
+export const customerContactsText = (a: Pick<Appointment, 'customer_contacts'>) =>
+  (a.customer_contacts ?? [])
+    .map((k) =>
+      [k.name, k.rolle ? `(${k.rolle})` : '', k.telefon ?? '', k.email ?? ''].filter(Boolean).join(' '),
+    )
+    .join(' · ');
+/** Sonderwünsche / Besonderheiten + Anforderungen des Objekts (für Exportlisten – Ahmed 22.10.) */
+export const specialsText = (
+  a: Pick<Appointment, 'wishes' | 'needs_police_cert' | 'needs_lift' | 'needs_other'>,
+) =>
+  [
+    a.wishes,
+    a.needs_police_cert ? 'Führungszeugnis nötig' : null,
+    a.needs_lift ? 'Hebebühne nötig' : null,
+    a.needs_other,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
 export function appointmentsCsv(list: Appointment[], teams: { team_a: string; team_b: string }) {
   const q = (s: string | null | undefined) => {
     const v = (s ?? '').replace(/"/g, '""');
@@ -633,18 +751,23 @@ export function appointmentsCsv(list: Appointment[], teams: { team_a: string; te
       a.days.map((d) => d.date.split('-').reverse().join('.')).join(' + '),
       a.days.map((d) => `${d.from}–${d.to}`).join(' + '),
       q(a.object_name),
+      q(a.part),
+      q(a.customer_name),
+      q(a.site_no),
       q(a.object_address),
       q(a.district),
       q(a.contact),
       q(a.phone),
+      q(customerContactsText(a)),
       String(a.hours ?? '').replace('.', ','),
       INTERVALS[a.interval]?.label ?? a.interval,
-      q([a.team ? teams[a.team] : null, a.staff].filter(Boolean).join(' · ')),
+      q(a.team ? teams[a.team] : null),
       STATUS_LABEL[statusOf(a)][0],
+      q(specialsText(a)),
       q(a.note),
     ].join(';'),
   );
-  return `\uFEFFDatum;Uhrzeit;Objekt;Adresse;Bezirk;Kontakt;Telefon;Dauer (h);Turnus;Mitarbeiter;Status;Notiz\r\n${rows.join('\r\n')}\r\n`;
+  return `\uFEFFDatum;Uhrzeit;Objekt;Teilbereich;Kunde;Kostenstelle;Adresse;Bezirk;Hausmeister;Telefon;Ansprechpartner Kunde;Dauer (h);Turnus;Team;Status;Sonderwünsche / Besonderheiten;Notiz\r\n${rows.join('\r\n')}\r\n`;
 }
 
 // ------------------------------------------------------------------ Import alte App
@@ -799,4 +922,52 @@ export async function importLegacyGlass(
     apps += r.count;
   }
   return { customers, objects, apps };
+}
+
+// ------------------------------------------------------------------ Verknüpfung mit unseren Objekten
+
+export interface SiteRow {
+  id: string;
+  site_no: string;
+  name: string;
+  street: string | null;
+  postal_code: string | null;
+  city: string | null;
+  customer_id: string;
+  customer_name: string | null;
+  active: boolean;
+}
+
+export const listSitesForGlass = (sql: Sql) => sql<SiteRow[]>`
+  select s.id, s.site_no, s.name, s.street, s.postal_code, s.city, s.customer_id, c.name as customer_name, s.active
+    from app.sites s join app.customers c on c.id = s.customer_id
+   where not coalesce(c.is_internal, false)
+   order by c.name, s.site_no`;
+
+/** „Straße 12a“ → „strasse 12a“ (ohne Leerzeichen/Punkte, ß = ss) zum Vergleichen */
+const streetKey = (v: string | null | undefined) => {
+  const m = /^(.*?\d+\s*[a-z]?)\b/i.exec((v ?? '').split(',')[0]!.trim());
+  return (m?.[1] ?? '')
+    .toLowerCase()
+    .replace(/ß/g, 'ss')
+    .replace(/str(\.|asse|\b)/g, 'str')
+    .replace(/[^a-z0-9äöü]/g, '');
+};
+
+/**
+ * Vorschlag für die Verknüpfung: Objekt mit gleicher Straße + Hausnummer (und PLZ, falls bekannt), bevorzugt beim
+ * verknüpften Kunden. Nur ein Vorschlag – gespeichert wird erst, wenn jemand ihn übernimmt.
+ */
+export function suggestSite(
+  o: { address: string | null; postal_code: string | null },
+  sites: SiteRow[],
+  customerId: string | null,
+) {
+  const key = streetKey(o.address);
+  if (!key) return null;
+  const plz = o.postal_code ?? plzOf(o.address);
+  const hits = sites.filter(
+    (s) => s.active && streetKey(s.street) === key && (!plz || !s.postal_code || s.postal_code === plz),
+  );
+  return hits.find((s) => s.customer_id === customerId) ?? (hits.length === 1 ? hits[0]! : null);
 }

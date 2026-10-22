@@ -453,6 +453,14 @@ export const EmployeeOverview: FC<{
     return `${yrs} Jahr${yrs === 1 ? '' : 'e'}`;
   })();
   const tel = (v: string) => `tel:${v.replace(/[^+\d]/g, '')}`;
+  const addr = priv
+    ? [priv.street, [priv.postal_code, priv.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+    : '';
+  const age = (d: string) => {
+    const [by, bm, bd] = d.split('-').map(Number) as [number, number, number];
+    const [ty, tm, td] = today.split('-').map(Number) as [number, number, number];
+    return ty - by - (tm < bm || (tm === bm && td < bd) ? 1 : 0);
+  };
   const wa = e.mobile ? `https://wa.me/${e.mobile.replace(/\D/g, '').replace(/^0/, '49')}` : null;
   const expiry = (d: string | null | undefined) => {
     if (!d) return null;
@@ -518,6 +526,81 @@ export const EmployeeOverview: FC<{
             </a>
           </div>
         </div>
+        {showPrivate && priv && (
+          <div class="eh-key">
+            <div>
+              <Icon name="pin" />
+              <span>
+                <small>Anschrift</small>
+                {addr ? (
+                  <>
+                    <b>{priv.street ?? ''}</b>
+                    <b>{[priv.postal_code, priv.city].filter(Boolean).join(' ')}</b>
+                    <a
+                      class="small"
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`}
+                      target="_blank"
+                      rel="noopener"
+                    >
+                      Karte
+                    </a>
+                  </>
+                ) : (
+                  <span class="badge warn">fehlt</span>
+                )}
+              </span>
+            </div>
+            <div>
+              <Icon name="calendar" />
+              <span>
+                <small>Geburtsdatum</small>
+                {priv.birth_date ? (
+                  <>
+                    <b>{dateDe(priv.birth_date)}</b>
+                    <span class="small mut">{age(priv.birth_date)} Jahre</span>
+                  </>
+                ) : (
+                  <span class="badge warn">fehlt</span>
+                )}
+              </span>
+            </div>
+            <div>
+              <Icon name="phone" />
+              <span>
+                <small>Telefon</small>
+                {e.mobile || e.phone ? (
+                  <a href={tel((e.mobile || e.phone)!)}>
+                    <b>{e.mobile || e.phone}</b>
+                  </a>
+                ) : (
+                  <b>–</b>
+                )}
+                {e.email && <span class="small mut">{e.email}</span>}
+              </span>
+            </div>
+            <div>
+              <Icon name="user" />
+              <span>
+                <small>Staatsangehörigkeit</small>
+                <b>{priv.nationality ?? '–'}</b>
+                {priv.nationality && permitNeeded(priv.nationality) && (
+                  <span class="small">
+                    Aufenthalt{' '}
+                    {priv.residence_permit_until ? `bis ${dateDe(priv.residence_permit_until)}` : 'fehlt'}{' '}
+                    {expiry(priv.residence_permit_until)}
+                  </span>
+                )}
+              </span>
+            </div>
+            <div>
+              <Icon name="shield" />
+              <span>
+                <small>Krankenkasse</small>
+                <b>{priv.health_insurance ?? '–'}</b>
+              </span>
+            </div>
+          </div>
+        )}
         <div class="eh-facts">
           <div>
             <span>Im Betrieb seit</span>
@@ -661,6 +744,12 @@ export const EmployeeOverview: FC<{
           <section class="card">
             <h3>Kontakt</h3>
             <dl class="kv">
+              {showPrivate && priv && (
+                <>
+                  <dt>Anschrift</dt>
+                  <dd>{addr || '–'}</dd>
+                </>
+              )}
               <dt>Telefon</dt>
               <dd>{e.phone ? <a href={tel(e.phone)}>{e.phone}</a> : '–'}</dd>
               <dt>Mobil</dt>
@@ -700,8 +789,6 @@ export const EmployeeOverview: FC<{
                 Vertraulich <span class="mut small">nur Geschäftsführung/Personal</span>
               </h3>
               <dl class="kv">
-                <dt>Geburtsdatum</dt>
-                <dd>{dateDe(priv.birth_date)}</dd>
                 <dt>Geburtsort</dt>
                 <dd>{[priv.birth_place, priv.birth_country].filter(Boolean).join(', ') || '–'}</dd>
                 <dt>Familienstand</dt>
@@ -726,8 +813,6 @@ export const EmployeeOverview: FC<{
                     </dd>
                   </>
                 )}
-                <dt>Krankenkasse</dt>
-                <dd>{priv.health_insurance ?? '–'}</dd>
               </dl>
               <p class="mut small" style="margin-bottom:0">
                 Steuer-ID, SV-Nummer und IBAN unter „Bearbeiten“.

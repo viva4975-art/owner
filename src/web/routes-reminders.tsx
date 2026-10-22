@@ -14,8 +14,20 @@ import { MAILER_MISSING, resolveRecipients } from '../mail/mailer.js';
 import { sendInvoiceTestMail } from '../services/workflow.js';
 import { storedChecks, watch } from '../services/watchdog.js';
 import { replicaSummary, replicate, s3FromEnv } from '../services/archive-replica.js';
+import {
+  BIRTHDAY_DEFAULT,
+  JUBILEE_DEFAULT,
+  SIGNED_DEFAULT,
+  getGreetingSettings,
+  greetingMail,
+  greetingsBetween,
+  recentGreetings,
+  saveGreetingSettings,
+  setNoGreetings,
+} from '../services/greetings.js';
+import { addDays } from '../domain/time/holidays.js';
 import { collectReminders, getReminderSettings, saveReminderSettings } from '../services/reminders.js';
-import type { Ctx } from './app.js';
+import { type Ctx, UUID } from './app.js';
 import { str } from './forms.js';
 import { PageHead } from './layout.js';
 
@@ -552,5 +564,195 @@ export function registerReminderRoutes({ app, deps, page, back }: Ctx) {
       c.get('actor'),
     );
     return back(c, '/einstellungen/erinnerungen', { ok: 'Gespeichert.' });
+  });
+
+  // ---------------------------------------------------------------- Glückwünsche an Mitarbeitende (Ahmed 22.10.)
+  app.get('/einstellungen/glueckwuensche', async (c) => {
+    const today = todayBerlin();
+    const [s, upcoming, sent] = await Promise.all([
+      getGreetingSettings(sql),
+      greetingsBetween(sql, today, addDays(today, 30)),
+      recentGreetings(sql),
+    ]);
+    const sample = upcoming[0] ?? {
+      employee_id: '',
+      name: 'Maria Beispiel',
+      first_name: 'Maria',
+      last_name: 'Beispiel',
+      salutation: 'Frau',
+      email: null,
+      kind: 'geburtstag' as const,
+      date: today,
+      years: 0,
+      no_greetings: false,
+    };
+    const prevB = greetingMail({ ...sample, kind: 'geburtstag' }, s);
+    const prevJ = greetingMail({ ...sample, kind: 'jubilaeum', years: 5 }, s);
+    const dd = (d: string) => d.split('-').reverse().join('.');
+    return page(
+      c,
+      'Glückwünsche',
+      'einstellungen',
+      <>
+        <PageHead title="Glückwünsche an Mitarbeitende" crumbs={[['Einstellungen', '/einstellungen']]} />
+        <form method="post" action="/einstellungen/glueckwuensche" class="card">
+          <p class="small mut" style="margin-top:0">
+            Am Geburtstag und am Jahrestag des Eintritts geht automatisch eine E-Mail an die Person – im Namen
+            des ganzen Teams und der Geschäftsführung. Je Anlass und Jahr genau einmal, nur an aktive
+            Mitarbeitende mit E-Mail-Adresse. Das Alter wird nie genannt. Platzhalter: {'{anrede}'}{' '}
+            (Liebe/Lieber Vorname), {'{vorname}'}, {'{nachname}'}, {'{jahre}'} (z. B. „5 Jahren“). Im
+            Testbetrieb nur an die Testadresse.
+          </p>
+          <div class="grid">
+            <div class="chk">
+              <input type="checkbox" id="g-on" name="enabled" checked={s.enabled} />
+              <label for="g-on">Glückwünsche automatisch senden</label>
+            </div>
+            <div>
+              <label for="g-from">Absender</label>
+              <input id="g-from" name="from_email" type="email" value={s.from_email} required />
+            </div>
+            <div>
+              <label for="g-hour">ab Uhrzeit</label>
+              <select id="g-hour" name="hour">
+                {[6, 7, 8, 9, 10, 12].map((h) => (
+                  <option value={String(h)} selected={h === s.send_hour}>
+                    {String(h).padStart(2, '0')}:00 Uhr
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label for="g-b">Text Geburtstag</label>
+              <textarea id="g-b" name="birthday_text" rows={7}>
+                {s.birthday_text ?? BIRTHDAY_DEFAULT}
+              </textarea>
+            </div>
+            <div>
+              <label for="g-j">Text Firmenjubiläum</label>
+              <textarea id="g-j" name="jubilee_text" rows={7}>
+                {s.jubilee_text ?? JUBILEE_DEFAULT}
+              </textarea>
+            </div>
+            <div>
+              <label for="g-s">Gruß darunter</label>
+              <textarea id="g-s" name="signed_by" rows={3}>
+                {s.signed_by ?? SIGNED_DEFAULT}
+              </textarea>
+            </div>
+          </div>
+          <div class="actions form-foot">
+            <button class="btn">Speichern</button>
+          </div>
+        </form>
+        <section class="card">
+          <h3>Nächste 30 Tage</h3>
+          {upcoming.length === 0 ? (
+            <div class="empty">Keine Geburtstage oder Jubiläen.</div>
+          ) : (
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>Datum</th>
+                  <th>Mitarbeiter/in</th>
+                  <th>Anlass</th>
+                  <th>E-Mail</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {upcoming.map((g) => (
+                  <tr class={g.no_greetings ? 'mut' : ''}>
+                    <td>{dd(g.date)}</td>
+                    <td>
+                      <a href={`/personal/${g.employee_id}`}>{g.name}</a>
+                    </td>
+                    <td>{g.kind === 'geburtstag' ? 'Geburtstag' : `${g.years} Jahre im Betrieb`}</td>
+                    <td>{g.email ?? <span class="badge warn">keine E-Mail – keine Mail</span>}</td>
+                    <td>
+                      <form method="post" action={`/einstellungen/glueckwuensche/${g.employee_id}/aus`}>
+                        <input type="hidden" name="aus" value={g.no_greetings ? '' : '1'} />
+                        <button class="btn sm ghost">
+                          {g.no_greetings ? 'wieder gratulieren' : 'keine Glückwünsche'}
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <p class="small mut">
+            „keine Glückwünsche“, wenn jemand das nicht möchte (Widerspruch nach Art. 21 DSGVO).
+          </p>
+        </section>
+        <section class="card">
+          <h3>Vorschau</h3>
+          <div class="cols">
+            <div>
+              <b>{prevB.subject}</b>
+              <pre class="small" style="white-space:pre-wrap;font-family:inherit">
+                {prevB.text}
+              </pre>
+            </div>
+            <div>
+              <b>{prevJ.subject}</b>
+              <pre class="small" style="white-space:pre-wrap;font-family:inherit">
+                {prevJ.text}
+              </pre>
+            </div>
+          </div>
+        </section>
+        {sent.length > 0 && (
+          <section class="card">
+            <h3>Zuletzt gesendet</h3>
+            <table class="tbl">
+              <tbody>
+                {sent.map((r) => (
+                  <tr>
+                    <td>{r.created_at}</td>
+                    <td>{r.name}</td>
+                    <td>{r.kind === 'geburtstag' ? 'Geburtstag' : 'Jubiläum'}</td>
+                    <td>{r.sent_to}</td>
+                    <td>
+                      {r.status === 'gesendet' ? (
+                        <span class="badge ok">gesendet</span>
+                      ) : (
+                        <span class="badge bad" title={r.error ?? ''}>
+                          Fehler
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
+      </>,
+    );
+  });
+
+  app.post('/einstellungen/glueckwuensche', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    await saveGreetingSettings(
+      sql,
+      {
+        enabled: str(b, 'enabled') != null,
+        from_email: str(b, 'from_email') ?? '',
+        send_hour: Number(str(b, 'hour') ?? 8),
+        birthday_text: str(b, 'birthday_text') ?? '',
+        jubilee_text: str(b, 'jubilee_text') ?? '',
+        signed_by: str(b, 'signed_by') ?? '',
+      },
+      c.get('actor'),
+    );
+    return back(c, '/einstellungen/glueckwuensche', { ok: 'Gespeichert.' });
+  });
+
+  app.post(`/einstellungen/glueckwuensche/:id{${UUID}}/aus`, async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    await setNoGreetings(sql, c.req.param('id'), str(b, 'aus') === '1', c.get('actor'));
+    return back(c, '/einstellungen/glueckwuensche', { ok: 'Gespeichert.' });
   });
 }

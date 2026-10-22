@@ -16,6 +16,7 @@ import {
   getAbsence,
   updateAbsence,
   leaveBalance,
+  leaveExitPreview,
   listAbsences,
   addLeaveExtra,
   deleteLeaveExtra,
@@ -1108,11 +1109,15 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
   app.get(`/personal/:id{${UUID}}/abwesenheiten`, (c) =>
     shells.employee!(c, 'abwesenheiten', async (e) => {
       const year = Number(todayBerlin().slice(0, 4));
-      const [bal, list, warns, extras] = await Promise.all([
+      const exitQ = /^\d{4}-\d{2}-\d{2}$/.test(c.req.query('austritt') ?? '')
+        ? c.req.query('austritt')
+        : undefined;
+      const [bal, list, warns, extras, pv] = await Promise.all([
         leaveBalance(sql, e.id, year),
         listAbsences(sql, { employeeId: e.id }),
         leaveWarnings(sql),
         listLeaveExtra(sql, e.id),
+        leaveExitPreview(sql, e.id, exitQ),
       ]);
       const canExtra = ['admin', 'personal'].includes(c.get('user').role);
       const num = (n: number) => String(n).replace('.', ',');
@@ -1175,6 +1180,60 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
               <div class="s">ab 6 Wochen: BEM anbieten (§ 167 SGB IX)</div>
             </div>
           </div>
+          {pv && (
+            <div class={`card leave-exit${pv.rest < 0 ? ' neg' : ''}`}>
+              <div
+                class="row"
+                style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"
+              >
+                <h3 style="margin:0">
+                  {pv.fixed ? 'Urlaub bis zum Austritt am' : 'Vorschau: Austritt zum'} {dateDe(pv.at)}
+                </h3>
+                <form method="get" class="row" style="gap:6px;align-items:center">
+                  <label class="small mut" for="austritt" style="margin:0;white-space:nowrap">
+                    anderer Tag
+                  </label>
+                  <input
+                    id="austritt"
+                    type="date"
+                    name="austritt"
+                    value={pv.at}
+                    onchange="this.form.submit()"
+                    style="width:auto;max-width:170px"
+                  />
+                </form>
+              </div>
+              <div class="leave-exit-row">
+                <span>
+                  Anspruch bis dahin <b>{num(pv.entitlement)}</b>
+                </span>
+                {pv.carried - pv.carriedExpired > 0 && (
+                  <span>
+                    + Übertrag <b>{num(pv.carried - pv.carriedExpired)}</b>
+                  </span>
+                )}
+                <span>
+                  − genommen/beantragt <b>{num(pv.taken + pv.requested)}</b>
+                </span>
+                <span>
+                  = Rest{' '}
+                  <b style={pv.rest < 0 ? 'color:var(--err)' : 'color:var(--ok,#1a7f37)'}>
+                    {num(pv.rest)} Tage
+                  </b>
+                </span>
+              </div>
+              <p class="small mut" style="margin:6px 0 0">
+                {pv.rest < 0
+                  ? `Zu viel Urlaub für diesen Austritt – ${num(-pv.rest)} Tage. Zurückfordern geht in der Regel nicht (§ 5 Abs. 3 BUrlG); bitte nicht mehr Urlaub genehmigen, als bis zum Austritt zusteht.`
+                  : pv.rest > 0
+                    ? 'Resturlaub bis zum Austritt nehmen lassen – sonst muss er ausbezahlt werden (§ 7 Abs. 4 BUrlG).'
+                    : 'Passt genau.'}{' '}
+                Anteilig nach § 5 BUrlG (bei Austritt nach dem 30.06. bleibt der gesetzliche Mindesturlaub).
+                {pv.laterLeave > 0 &&
+                  ` ${pv.laterLeave} Urlaub(e) nach dem Austrittstag sind nicht mitgezählt.`}
+              </p>
+            </div>
+          )}
           <div class="cols">
             <AbsenceTable rows={list} showEmployee={false} />
             <AbsenceForm employeeId={e.id} action={`/personal/${e.id}/abwesenheiten`} />

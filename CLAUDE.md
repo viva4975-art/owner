@@ -3780,3 +3780,35 @@ Testadresse.
   <Ort>“) und **QR-Code** dazu (für den Aushang), Nummer groß, E-Mail. Passt der Inhalt nicht auf A4, wird die Schrift
   schrittweise verkleinert statt abgeschnitten (bis 55 %). Druck/PDF und Bild (html2canvas) eine Seite; das WhatsApp-
   Symbol im Knopf ist ein PNG-Hintergrund (html2canvas zeichnete SVG/Bild im Knopf nicht).
+- 2026-10-22: Runde 45 (Ahmed):
+  - **Mitarbeiter-Übersicht:** Zeile „auf einen Blick“ im Kopf (nur Admin/Personal): Anschrift mit Karte, Geburtsdatum + Alter,
+    Telefon/E-Mail, Staatsangehörigkeit (+ Aufenthalt bis, wenn nötig), Krankenkasse; Anschrift auch unter Kontakt.
+  - **Glasreinigung:** Termin zeigt statt Mitarbeiter den **Hausmeister + Ansprechpartner des Kunden** (Liste, Druck, CSV);
+    Termin bearbeiten zeigt Hausmeister/Ansprechpartner/Besonderheiten des gewählten Objekts. **Filter bleibt erhalten**
+    (Cookie `gp_f`, auch nach „Erledigt“/Speichern/Löschen zurück in dieselbe Liste; „Filter zurücksetzen“), Sortierung
+    „nach Kunde“ mit Zwischenüberschriften. Fund „immer 2 offen“: Anzeige rechnete mit dem laufenden statt dem Jahr des
+    Termins, Teilbereiche wurden nur bei exakt gleichem Text gezählt, Offene Planung zeigte standardmäßig das Folgejahr –
+    jetzt Jahr des Termins, Teilbereiche ohne Groß-/Kleinschreibung, Planung startet im laufenden Jahr. **Mehrere
+    Teilbereiche je Termin** (Häkchen + frei, gespeichert „Oberlichter, Wintergarten“, zählt für jeden), am Objekt beliebig
+    viele Teilbereiche („+ weiteren Teilbereich“). Kunden/Objekte mit **Suche und Filter** (Kunde, aktiv/inaktiv,
+    Kostenstelle verknüpft/nicht). **Verknüpfung mit unseren Objekten/Kunden** (`glass_objects.site_id`,
+    `glass_customers.customer_id`, Migration `20261216000001`): Auswahl im Objekt bzw. Kunden, Vorschlag über gleiche
+    Straße + Hausnummer bzw. Namen (gespeichert erst mit „Speichern“); Glas-Kunde zeigt seine Objekte mit Kostenstelle
+    und nächstem Termin. **Sonderwünsche/Besonderheiten** (+ Führungszeugnis/Hebebühne) in CSV, Bestätigungsliste und
+    Jahresplaner-Terminübersicht. Häkchen „Erledigt“ im Formular entfernt (Knopf „✓ Erledigt“ bzw. „wieder offen“ bleibt).
+    **Bestätigungen änderbar** (Datum/Text, alter Stand im Protokoll).
+  - **Urlaub bei Austritt:** Mitarbeiter → Urlaub & Krank → **„Vorschau: Austritt zum <Monatsende>“** (anderer Tag wählbar;
+    bei eingetragenem Austritt „Urlaub bis zum Austritt“): Anspruch anteilig, genommen/beantragt bis dahin, Rest (rot bei
+    Minus). Urlaub nach dem Austrittstag zählt nicht. **Rechtlich (§ 5 BUrlG):** Austritt in der 1. Jahreshälfte → 1/12 je
+    vollem Monat; Austritt ab 01.07. (nach Wartezeit) → mindestens gesetzlicher Mindesturlaub (20 Tage bei 5-Tage-Woche),
+    nur der Mehrurlaub wird gekürzt. Zu viel genommener Urlaub kann in der Regel nicht zurückgefordert werden (§ 5 Abs. 3
+    BUrlG) → vor Genehmigung prüfen; Rest wird abgegolten (§ 7 Abs. 4 BUrlG).
+  - **Glückwünsche per E-Mail** (Einstellungen → Glückwünsche an Mitarbeitende, Standard aus): am Geburtstag (29.02. →
+    28.02.) und Jahrestag des Eintritts, im Namen des Teams und der Geschäftsführung, Absender **info@** (einstellbar), ab
+    Uhrzeit, Texte mit Platzhaltern, Vorschau, Liste nächste 30 Tage, „keine Glückwünsche“ je Person
+    (`employees.no_greetings`), je Person/Anlass/Jahr genau einmal (`app.greeting_sent`, Migration `20261216000002`), Alter
+    wird nie genannt. **Ahmed: In IONOS Exchange dem SMTP-Konto (buchhaltung@) „Senden als“ für info@ erlauben**, sonst
+    lehnt der Server ab (steht dann unter „Zuletzt gesendet“ als Fehler). **Datenschutz:** Geburtsdatum für Glückwünsche
+    = berechtigtes Interesse; Mitarbeitende informieren, Widerspruch beachten.
+  - Formularfuß in Rastern (z. B. „Zusätzlicher Urlaub“) ohne graue Fläche, die schräg ins Raster ragte.
+  - Tests: neu `greetings-exit.db.test.ts`, `e2e:kasse` 69 Prüfungen.

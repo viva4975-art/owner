@@ -67,6 +67,11 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
         'Tägliche Sammel-Mail mit allen Fristen (Aufenthaltstitel, NU-Nachweise, HU, Ausschreibungen, Aufgaben, Skonto, fehlende Zeiten).',
       ],
       [
+        'Glückwünsche an Mitarbeitende',
+        '/einstellungen/glueckwuensche',
+        'Automatische E-Mail zum Geburtstag und Firmenjubiläum im Namen des Teams und der Geschäftsführung (von info@).',
+      ],
+      [
         'Bankabruf (Enable Banking)',
         '/einstellungen/bankabruf',
         'Münchner Bank und Targobank verbinden: Umsätze und Kontostand automatisch abrufen (statt Kontoauszug hochladen).',

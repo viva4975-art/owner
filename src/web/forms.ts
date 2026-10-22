@@ -17,7 +17,7 @@ export function milliToInput(m: bigint): string {
   return `${neg ? '-' : ''}${abs / 1000n}${frac ? `,${frac}` : ''}`;
 }
 
-type Body = Record<string, string | File | (string | File)[]>;
+export type Body = Record<string, string | File | (string | File)[]>;
 
 export function arr(body: Body, key: string): string[] {
   const v = body[key] ?? body[`${key}[]`];

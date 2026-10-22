@@ -7,6 +7,9 @@ import {
   DOC_CATEGORIES,
   DOC_CHECKLIST,
   DRAFT_CATEGORY,
+  EMPLOYMENT_TYPES,
+  type Employee,
+  getEmployee,
   TEMPLATE_FIELDS,
   listEmployees,
   listTemplates,
@@ -15,13 +18,21 @@ import {
   saveWageLevel,
 } from '../services/employees.js';
 import { BusinessError } from '../services/errors.js';
+import {
+  applyContractChange,
+  type ContractChangeInput,
+  contractChangePdf,
+  contractChangeRows,
+  currentSites,
+  payText,
+} from '../services/contract-change.js';
 import { createFromTemplate, serialLetter } from '../services/hr-docs.js';
 import { OPTIONAL_PER_EMPLOYEE, setDocNotNeeded } from '../services/hr-required-docs.js';
 import { requestsForEmployee } from '../services/sign-documents.js';
 import { archiveLink, listFiles, unlinkFile } from '../services/uploads.js';
 import { type Ctx, UUID } from './app.js';
 import { DocFoldAll, FileArea, docOpen } from './files.js';
-import { centsToInput, str } from './forms.js';
+import { type Body, centsToInput, str } from './forms.js';
 import { PageHead, euro, anz } from './layout.js';
 import { EmployeeCalendarView } from './pages-employee-calendar.js';
 import { employeeCalendarData } from './employee-calendar-data.js';
@@ -108,6 +119,11 @@ export function registerHrRoutes(ctx: Ctx) {
             <a class="btn sm sec" href={`/brief?an=mitarbeiter&id=${e.id}`}>
               Freien Brief schreiben
             </a>
+            {['admin', 'personal'].includes(c.get('user').role) && (
+              <a class="btn sm sec" href={`/personal/${e.id}/vertragsaenderung`}>
+                Vertragsänderung erstellen
+              </a>
+            )}
           </div>
           <div class="cols">
             <div>
@@ -437,6 +453,273 @@ export function registerHrRoutes(ctx: Ctx) {
     if (!/^[0-9a-f-]{36}$/.test(fileId)) throw new BusinessError('Ungültige Anfrage');
     const f = await createFromTemplate(deps, cfg, fileId, str(b, 'vorlage') ?? '', id, c.get('actor'));
     return back(c, `/personal/${id}/dokumente`, { ok: `„${f.original_name}“ erstellt und abgelegt.` });
+  });
+
+  // ------------------------------------------------------------ Vertragsänderung (einfach)
+  const ccInput = async (b: Body, e: Employee): Promise<ContractChangeInput> => {
+    const n = (k: string) => {
+      const v = str(b, k)?.replace(',', '.');
+      if (!v) return null;
+      const x = Number(v);
+      if (!Number.isFinite(x) || x < 0 || x > 60) throw new BusinessError(`Ungültige Zahl: ${v}`);
+      return Math.round(x * 100) / 100;
+    };
+    const model = str(b, 'pay_model');
+    let pay: ContractChangeInput['pay'] = null;
+    if (model === 'tarif') {
+      const l = str(b, 'wage_level_id');
+      if (!l) throw new BusinessError('Bitte den neuen Tariflohn wählen');
+      pay = { model: 'tarif', levelId: l };
+    } else if (model === 'individuell') {
+      const w = parseEuro(str(b, 'wage') ?? '');
+      if (w <= 0n) throw new BusinessError('Bitte den neuen Stundenlohn eintragen');
+      pay = { model: 'individuell', wageCents: w };
+    } else if (model === 'festgehalt') {
+      const w = parseEuro(str(b, 'salary') ?? '');
+      if (w <= 0n) throw new BusinessError('Bitte das neue Monatsgehalt eintragen');
+      pay = { model: 'festgehalt', salaryCents: w };
+    }
+    const days = n('days');
+    if (days != null && (days < 0.5 || days > 7)) throw new BusinessError('Arbeitstage: 0,5 bis 7');
+    return {
+      validFrom: str(b, 'valid_from') ?? '',
+      contractDate: str(b, 'contract_date'),
+      weeklyHours: n('hours'),
+      daysPerWeek: days,
+      pay,
+      siteOld: str(b, 'site_old') ?? (await currentSites(sql, e.id)),
+      siteNew: str(b, 'site_new'),
+      taskOld: str(b, 'task_old'),
+      taskNew: str(b, 'task_new'),
+      other: str(b, 'other'),
+      signDate: str(b, 'sign_date'),
+    };
+  };
+  const ccGuard = (c: { get: (k: 'user') => { role: string } }) => {
+    if (!['admin', 'personal'].includes(c.get('user').role))
+      throw new BusinessError('Nur Geschäftsführung und Personal');
+  };
+
+  app.get(`/personal/:id{${UUID}}/vertragsaenderung`, (c) =>
+    shells.employee!(c, 'dokumente', async (head) => {
+      ccGuard(c);
+      const full = await getEmployee(sql, head.id);
+      if (!full) throw new BusinessError('Mitarbeiter nicht gefunden');
+      const e = full.employee;
+      const [levels, sites, oldPay] = await Promise.all([
+        listWageLevels(sql),
+        currentSites(sql, e.id),
+        payText(sql, null, e),
+      ]);
+      const first = (() => {
+        const t = todayBerlin();
+        const [y, m] = t.split('-').map(Number) as [number, number];
+        return m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
+      })();
+      const task = e.tags.filter((t) => !Object.values(EMPLOYMENT_TYPES).includes(t as never)).join(', ');
+      return (
+        <div class="card" style="max-width:860px">
+          <h3 style="margin-top:0">Vertragsänderung</h3>
+          <p class="small mut" style="margin-top:-4px">
+            Nur eintragen, was sich ändert – leere Felder bleiben wie bisher. Im PDF stehen nur die geänderten
+            Punkte (bisher → neu). Ausdrucken, beide unterschreiben, Scan unter Dokumente → „Vertragsänderung“
+            hochladen.
+          </p>
+          <form method="post" action={`/personal/${e.id}/vertragsaenderung`} target="_blank">
+            <div class="grid">
+              <label for="cc-from">Gilt ab</label>
+              <input id="cc-from" type="date" name="valid_from" value={first} required />
+              <label for="cc-contract">Arbeitsvertrag vom</label>
+              <input id="cc-contract" type="date" name="contract_date" value={e.entry_date} />
+            </div>
+            <table class="keep" style="margin-top:12px">
+              <thead>
+                <tr>
+                  <th>Was ändert sich</th>
+                  <th>Bisher</th>
+                  <th>Neu</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <label for="cc-h">Wochenstunden</label>
+                  </td>
+                  <td>
+                    {e.weekly_hours != null
+                      ? `${String(Number(e.weekly_hours)).replace('.', ',')} Std.`
+                      : '–'}
+                  </td>
+                  <td>
+                    <input
+                      id="cc-h"
+                      name="hours"
+                      inputmode="decimal"
+                      placeholder="unverändert"
+                      style="max-width:140px"
+                    />
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <label for="cc-d">Arbeitstage / Woche</label>
+                  </td>
+                  <td>{String(Number(e.days_per_week || 5)).replace('.', ',')} Tage</td>
+                  <td>
+                    <input
+                      id="cc-d"
+                      name="days"
+                      inputmode="decimal"
+                      placeholder="unverändert"
+                      style="max-width:140px"
+                    />
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <label for="cc-pay">Vergütung</label>
+                  </td>
+                  <td>{oldPay}</td>
+                  <td>
+                    <select
+                      id="cc-pay"
+                      name="pay_model"
+                      onchange="var v=this.value;document.querySelectorAll('[data-pay]').forEach(function(x){x.hidden=x.dataset.pay!==v})"
+                    >
+                      <option value="">unverändert</option>
+                      <option value="tarif">Tariflohn …</option>
+                      <option value="individuell">Stundenlohn …</option>
+                      <option value="festgehalt">Festgehalt …</option>
+                    </select>
+                    <div data-pay="tarif" hidden style="margin-top:6px">
+                      <select name="wage_level_id" aria-label="Tariflohn">
+                        {levels.map((l) => (
+                          <option value={l.id}>
+                            {l.name} – {euro(BigInt(l.hourly_wage_cents))} / Std.
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div data-pay="individuell" hidden style="margin-top:6px">
+                      <input
+                        name="wage"
+                        inputmode="decimal"
+                        placeholder="z. B. 16,00"
+                        aria-label="Stundenlohn"
+                        style="max-width:140px"
+                      />{' '}
+                      € / Std.
+                    </div>
+                    <div data-pay="festgehalt" hidden style="margin-top:6px">
+                      <input
+                        name="salary"
+                        inputmode="decimal"
+                        placeholder="z. B. 2.500,00"
+                        aria-label="Monatsgehalt"
+                        style="max-width:140px"
+                      />{' '}
+                      € / Monat
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <label for="cc-s">Einsatzort / Objekt</label>
+                  </td>
+                  <td>
+                    <input name="site_old" value={sites} aria-label="Einsatzort bisher" />
+                  </td>
+                  <td>
+                    <input id="cc-s" name="site_new" placeholder="unverändert" />
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <label for="cc-t">Tätigkeit</label>
+                  </td>
+                  <td>
+                    <input name="task_old" value={task || 'Reinigungskraft'} aria-label="Tätigkeit bisher" />
+                  </td>
+                  <td>
+                    <input id="cc-t" name="task_new" placeholder="unverändert" />
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <label for="cc-o">Weitere Änderung</label>
+                  </td>
+                  <td class="mut small">frei</td>
+                  <td>
+                    <textarea
+                      id="cc-o"
+                      name="other"
+                      rows={2}
+                      placeholder="z. B. Arbeitszeit Mo–Fr 17:00–20:00 Uhr"
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="grid" style="margin-top:12px">
+              <label for="cc-sign">Datum der Unterschrift</label>
+              <input id="cc-sign" type="date" name="sign_date" value={todayBerlin()} />
+            </div>
+            <p class="small mut">
+              Schriftlich mit Unterschrift (nicht nur per E-Mail): In der Gebäudereinigung muss der Nachweis
+              über geänderte Arbeitsbedingungen auf Papier erfolgen (§ 3, § 2 Abs. 1 NachwG i. V. m. § 2a
+              SchwarzArbG), spätestens am Tag, ab dem die Änderung gilt.
+            </p>
+            <div class="formfoot">
+              <button class="btn" name="aktion" value="pdf">
+                PDF erstellen
+              </button>
+              <button
+                class="btn sec"
+                name="aktion"
+                value="uebernehmen"
+                formtarget="_self"
+                data-confirm="Änderung in die Stammdaten übernehmen? Stunden/Arbeitstage gelten ab dem Stichtag, die Vergütung ab heute bzw. als Aufgabe zum Stichtag."
+              >
+                In Stammdaten übernehmen
+              </button>
+              <a class="btn ghost" href={`/personal/${e.id}/dokumente`}>
+                Zurück
+              </a>
+            </div>
+          </form>
+        </div>
+      );
+    }),
+  );
+
+  app.post(`/personal/:id{${UUID}}/vertragsaenderung`, async (c) => {
+    ccGuard(c);
+    const id = c.req.param('id');
+    const e = await getEmployee(sql, id);
+    if (!e) throw new BusinessError('Mitarbeiter nicht gefunden');
+    const b = await c.req.parseBody({ all: true });
+    const input = await ccInput(b, e.employee);
+    if (str(b, 'aktion') === 'uebernehmen') {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(input.validFrom))
+        throw new BusinessError('Bitte angeben, ab wann die Änderung gilt');
+      const { hints } = await contractChangeRows(sql, e.employee, input);
+      const done = await applyContractChange(sql, id, input, c.get('actor'));
+      return back(c, `/personal/${id}`, {
+        ok: done.length
+          ? `${done.join(' · ')}.${hints.length ? ` ${hints.join(' ')}` : ''}`
+          : 'Nichts zu übernehmen (Stunden, Arbeitstage, Vergütung unverändert).',
+      });
+    }
+    const { pdf, name } = await contractChangePdf(sql, id, input);
+    await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+              values (${c.get('actor')}, 'contract_change_pdf', 'employee', ${id}, ${sql.json({ valid_from: input.validFrom })})`;
+    return new Response(pdf, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="${name}"`,
+        'Cache-Control': 'private, no-store',
+      },
+    });
   });
 
   // ------------------------------------------------------------ Serienbrief

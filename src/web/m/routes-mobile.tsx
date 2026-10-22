@@ -2499,7 +2499,6 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         <h1>Arbeitsschein {w.number}</h1>
         <p class="mut" style="margin:0">
           {w.site_name} · {period}
-          {w.start_time && ` · ${w.start_time}–${w.end_time} Uhr`}
         </p>
         <div class="card" lang="de">
           {w.description && <p style="margin-top:0;white-space:pre-line">{w.description}</p>}

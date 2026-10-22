@@ -3824,3 +3824,16 @@ Testadresse.
   0 €). Er gilt als Grundpreis ab Beginn (wirkt auf Abrechnungsverfolgung/Nachkalkulation rückwirkend); spätere
   Preisnachträge ab Monat bleiben bestehen. Alter/neuer Preis im Protokoll, leer/0 = Preis bleibt. Ist die Bestellung
   schon unterschrieben, steht der Hinweis „neu unterschreiben lassen“ da. Test in `subcontractors.db.test.ts`.
+- 2026-10-22: **Arbeitsschein ohne Uhrzeit** (Ahmed: „Beginn/Ende löschen“): Felder Beginn/Ende im Arbeitsschein-Editor,
+  „Zeit“ im PDF-Kopf, Uhrzeit in Ansicht/Liste/Mitarbeiter-App entfernt; Zeiten nur noch je Stundenzeile (von–bis,
+  Pause). Speichern/Kopieren setzt `start_time/end_time` leer, alte Werte werden nirgends mehr gezeigt.
+- 2026-10-22: **Vertragsänderung einfach** (Ahmed: „unsere Vertragsänderung ist kompliziert“): Mitarbeiter → Dokumente →
+  „Vertragsänderung erstellen“ (`/personal/:id/vertragsaenderung`, Admin/Personal, `src/services/contract-change.ts`):
+  Gilt ab (Standard nächster Monatserster), Vertrag vom, je Punkt „bisher“ (aus Stammdaten) und „neu“ (leer =
+  unverändert): Wochenstunden, Arbeitstage, Vergütung (Tariflohn/Stundenlohn/Festgehalt), Einsatzort, Tätigkeit,
+  weitere Änderung. PDF im Stil „edel“ nur mit den geänderten Punkten (bisher → neu), Anrede, unveränderte Regelungen,
+  Hinweis § 3 NachwG, zwei Unterschriften. „In Stammdaten übernehmen“: Stunden/Arbeitstage ab Stichtag (Verlauf),
+  Vergütung ab heute sofort bzw. als Aufgabe „Vergütung ändern“ zum Stichtag (Vergütung hat keinen Verlauf; feste ID,
+  nichts doppelt). Minijob: Hinweis, wenn Stunden × Lohn × 4,33 über 603 €. Die Word-Vorlage VD-ZV-Nachtrag bleibt
+  verfügbar. **Rechtlich:** Gebäudereinigung = § 2a SchwarzArbG → Nachweis der Änderung nicht elektronisch, sondern
+  unterschrieben auf Papier, spätestens am Tag der Änderung (§ 3, § 2 Abs. 1 S. 2 NachwG). Test `contract-change.db.test.ts`.

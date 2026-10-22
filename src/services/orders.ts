@@ -693,8 +693,8 @@ export async function copyWorkReport(
       siteId: p.siteId,
       workDate: p.workDate,
       workDateTo: move(w.work_date_to),
-      startTime: w.start_time,
-      endTime: w.end_time,
+      startTime: null,
+      endTime: null,
       employeeIds: w.employee_ids,
       description: w.description,
       materials: w.materials,
@@ -965,8 +965,6 @@ export async function renderWorkReportPdf(deps: Deps, id: string): Promise<Uint8
   const dateText = w.work_date_to
     ? `${formatDateDe(w.work_date).slice(0, 6)} – ${formatDateDe(w.work_date_to)}`
     : formatDateDe(w.work_date);
-  const time =
-    w.start_time && w.end_time ? `${w.start_time.slice(0, 5)} – ${w.end_time.slice(0, 5)} Uhr` : '-';
   const regie = lines.filter((l) => l.person);
   const items = lines.filter((l) => !l.person);
   // Layout wie die alte App (Ahmed 08.10.: Arbeitsscheine AS-2026-1024/1028)
@@ -980,7 +978,6 @@ export async function renderWorkReportPdf(deps: Deps, id: string): Promise<Uint8
   d.title('Arbeitsschein', `Nr. ${w.number}`);
   d.infoGrid([
     [w.work_date_to ? 'Zeitraum' : 'Datum', dateText],
-    ['Zeit', time],
     ['Kostenstelle', w.site_no],
     [
       'Abrechnung',
@@ -1034,19 +1031,11 @@ export async function renderWorkReportPdf(deps: Deps, id: string): Promise<Uint8
             l.person ?? '',
             l.time_from && l.time_to
               ? `${l.time_from}–${l.time_to}${l.break_minutes ? ` (−${l.break_minutes} Min.)` : ''}`
-              : w.start_time && w.end_time
-                ? `${w.start_time.slice(0, 5)}–${w.end_time.slice(0, 5)}`
-                : '',
+              : '',
             qty(l.quantity_milli),
             l.description === 'Regiestunden' ? (w.description ?? '').split('\n')[0]! : l.description,
           ])
-      : employees.map((e) => [
-          dShort(w.work_date),
-          e.name,
-          w.start_time && w.end_time ? `${w.start_time.slice(0, 5)}–${w.end_time.slice(0, 5)}` : '',
-          '',
-          '',
-        ]);
+      : employees.map((e) => [dShort(w.work_date), e.name, '', '', '']);
     const total = regie.reduce((a, l) => a + l.quantity_milli, 0n);
     d.table(
       [

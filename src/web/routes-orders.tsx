@@ -96,10 +96,6 @@ const WR_LINES_JS = `
     return tb;}
   setup('wr-lines','wr-line-tpl','wr-add');
   var rt=setup('wr-regie','wr-regie-tpl','wr-regie-add');
-  // Regie: Stunden aus Beginn/Ende vorschlagen (je Person)
-  var s=document.getElementById('start'), e=document.getElementById('end');
-  function hours(){if(!rt||!s.value||!e.value)return;var a=s.value.split(':'),b=e.value.split(':');var h=((+b[0]*60+ +b[1])-(+a[0]*60+ +a[1]))/60;if(h<=0)return;rt.querySelectorAll('[name=line_qty]').forEach(function(inp){if(!inp.dataset.touched&&!inp.value)inp.value=(Math.round(h*100)/100).toString().replace('.',',')})}
-  [s,e].forEach(function(x){x&&x.addEventListener('change',hours)});
   var wd=document.getElementById('work_date'),wt=document.getElementById('work_date_to');
   function range(){if(!wd)return;var to=(wt&&wt.value)||wd.value;document.querySelectorAll('#wr-regie [name=line_date]').forEach(function(i){i.min=wd.value;i.max=to;if(!i.value||i.value<wd.value||i.value>to)i.value=wd.value;});}
   [wd,wt].forEach(function(x){x&&x.addEventListener('change',range)});
@@ -110,7 +106,7 @@ const WR_LINES_JS = `
   function rowCalc(tr){var f=tr.querySelector('[name=line_from]'),to=tr.querySelector('[name=line_to]'),b=tr.querySelector('[name=line_break]'),q=tr.querySelector('[name=line_qty]');if(!f||!to||!q||!f.value||!to.value)return;var a=f.value.split(':'),c=to.value.split(':');var m=(+c[0]*60+ +c[1])-(+a[0]*60+ +a[1]);if(m<=0)m+=1440;m-=(parseInt(b&&b.value,10)||0);if(m<=0)return;q.value=(Math.round(m/60*100)/100).toString().replace('.',',');q.dataset.touched='1';}
   if(rt){rt.addEventListener('input',function(ev){var n=ev.target.name;if(n==='line_from'||n==='line_to'||n==='line_break')rowCalc(ev.target.closest('tr'));sum()});rt.addEventListener('click',function(){setTimeout(sum,0)});sum();}
   // Mitarbeiter angehakt → Regie-Zeile mit Namen anlegen
-  document.querySelectorAll('input[name=employee]').forEach(function(x){x.addEventListener('change',function(){if(!x.checked||!rt)return;var n=x.dataset.name;var have=Array.prototype.some.call(rt.querySelectorAll('[name=line_person]'),function(p){return p.value===n});if(have)return;var empty=Array.prototype.find.call(rt.querySelectorAll('[name=line_person]'),function(p){return !p.value});if(!empty){document.getElementById('wr-regie-add').click();empty=rt.querySelector('tr:last-child [name=line_person]')}empty.value=n;hours()})});
+  document.querySelectorAll('input[name=employee]').forEach(function(x){x.addEventListener('change',function(){if(!x.checked||!rt)return;var n=x.dataset.name;var have=Array.prototype.some.call(rt.querySelectorAll('[name=line_person]'),function(p){return p.value===n});if(have)return;var empty=Array.prototype.find.call(rt.querySelectorAll('[name=line_person]'),function(p){return !p.value});if(!empty){document.getElementById('wr-regie-add').click();empty=rt.querySelector('tr:last-child [name=line_person]')}empty.value=n;})});
 })();`;
 
 export const WorkReportTable: FC<{ rows: WorkReportRow[]; select?: boolean; bulk?: boolean }> = ({
@@ -1199,11 +1195,10 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
               <dl class="kv">
                 <dt>Objekt</dt>
                 <dd>{w.site_name}</dd>
-                <dt>Datum, Zeit</dt>
+                <dt>Datum</dt>
                 <dd>
                   {dateDe(w.work_date)}
-                  {w.work_date_to && ` – ${dateDe(w.work_date_to)}`}{' '}
-                  {w.start_time && `${w.start_time}–${w.end_time} Uhr`}
+                  {w.work_date_to && ` – ${dateDe(w.work_date_to)}`}
                 </dd>
                 <dt>Mitarbeiter</dt>
                 <dd>{data!.employees.map((e) => e.name).join(', ') || '–'}</dd>
@@ -1598,14 +1593,6 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                   <label for="work_date_to">bis (bei mehreren Tagen)</label>
                   <input id="work_date_to" type="date" name="work_date_to" value={wrTo} />
                 </div>
-                <div>
-                  <label for="start">Beginn</label>
-                  <input id="start" type="time" name="start" value={w?.start_time ?? ''} />
-                </div>
-                <div>
-                  <label for="end">Ende</label>
-                  <input id="end" type="time" name="end" value={w?.end_time ?? ''} />
-                </div>
               </div>
               {emps.length > 0 && (
                 <>
@@ -1884,8 +1871,9 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
         siteId,
         workDate: str(b, 'work_date') ?? todayBerlin(),
         workDateTo: str(b, 'work_date_to'),
-        startTime: str(b, 'start'),
-        endTime: str(b, 'end'),
+        // Beginn/Ende entfallen (Ahmed 22.10.) – Zeiten je Stundenzeile
+        startTime: null,
+        endTime: null,
         employeeIds: arr(b, 'employee').filter((x) => /^[0-9a-f-]{36}$/.test(x)),
         description: str(b, 'description'),
         materials: str(b, 'materials'),
@@ -2007,7 +1995,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
       <div style="max-width:720px;margin:0 auto">
         <h1 style="margin-bottom:6px">Leistungsnachweis {w.number}</h1>
         <p class="mut" style="margin-top:0">
-          {w.site_name} · {dateDe(w.work_date)} {w.start_time && `· ${w.start_time}–${w.end_time} Uhr`}
+          {w.site_name} · {dateDe(w.work_date)}
         </p>
         <div class="card">
           {w.description && <p style="margin-top:0;white-space:pre-line">{w.description}</p>}

@@ -12,8 +12,6 @@ import { applyDueHours } from './services/employee-hours.js';
 import { autoConfirmPlanned } from './services/time.js';
 import { sendDailyReminders } from './services/reminders.js';
 import { watch } from './services/watchdog.js';
-import { runTenderFeed } from './services/tender-feed.js';
-import { hourBerlin } from './domain/invoice/calc.js';
 import { schoolLeave } from './services/school-leave.js';
 import { replicate } from './services/archive-replica.js';
 import { runPushNotifier } from './services/push.js';
@@ -117,16 +115,6 @@ const bankFetch = () =>
     (e) => console.error('Bankabruf:', e),
   );
 setInterval(bankFetch, 30 * 60 * 1000).unref();
-
-// Ausschreibungssuche: stündlich prüfen, neue Veröffentlichungstage (Bund) bzw. einmal je Tag (TED) holen – 5 bis 21 Uhr
-const tenderFeed = () => {
-  if (hourBerlin() < 5 || hourBerlin() > 21) return;
-  runTenderFeed(sql)
-    .then((r) => r.added && console.log(`Ausschreibungssuche: ${r.added} neue Treffer`))
-    .catch((e) => console.error('Ausschreibungssuche:', e));
-};
-setTimeout(tenderFeed, 180_000).unref();
-setInterval(tenderFeed, 60 * 60 * 1000).unref();
 
 // Systemwächter: alle 5 Min. Datenbank, KoSIT, Speicher, Sicherung, Mail prüfen, Störungen per Mail melden
 const watchdog = () =>

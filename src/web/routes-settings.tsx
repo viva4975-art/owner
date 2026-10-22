@@ -67,11 +67,6 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
         'Tägliche Sammel-Mail mit allen Fristen (Aufenthaltstitel, NU-Nachweise, HU, Ausschreibungen, Aufgaben, Skonto, fehlende Zeiten).',
       ],
       [
-        'Ausschreibungssuche',
-        '/einstellungen/ausschreibungssuche',
-        'Jeden Morgen neue Ausschreibungen (Bund + TED) nach Leistungen und Umkreis suchen – CPV-Codes, Stichwörter, Umkreise.',
-      ],
-      [
         'Glückwünsche an Mitarbeitende',
         '/einstellungen/glueckwuensche',
         'Automatische E-Mail zum Geburtstag und Firmenjubiläum im Namen des Teams und der Geschäftsführung (von info@).',

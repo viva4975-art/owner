@@ -3925,3 +3925,7 @@ Testadresse.
   erst auf dem Server geprüft (Format laut Doku/Open-Source-Nutzern, Lesen defensiv). Ausschreibungen, die eine Plattform
   nur selbst veröffentlicht (manche unterschwellige), fehlen → Suchagenten der Plattformen weiter nutzen. Die Homepage
   war hier nicht erreichbar – **Ahmed: CPV/Stichwörter mit den Leistungen der Homepage abgleichen.**
+- 2026-10-22: **Ausschreibungssuche wieder entfernt** (Ahmed: „lösch das, läuft zu unsicher“): Seite „Gefundene
+  Ausschreibungen“, Einstellung, stündlicher Abruf, Erinnerungs-Zeilen und Code entfernt; Migration `20261219000002`
+  löscht die Such-Tabellen (Treffer, Abruf-Protokoll, Einstellungen, Orts-Zwischenspeicher). Bereits übernommene
+  Ausschreibungen bleiben unter Ausschreibungen erhalten. Plattformen „iTWO tender“ und „TED“ bleiben in der Auswahl.

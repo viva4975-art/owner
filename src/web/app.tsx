@@ -64,7 +64,6 @@ import { registerSubcontractorRoutes } from './routes-subcontractors.js';
 import { registerSettingsRoutes } from './routes-settings.js';
 import { registerPosterRoutes } from './routes-posters.js';
 import { appVersion } from '../services/app-version.js';
-import { registerTenderFeedRoutes } from './routes-tender-feed.js';
 import { registerTenderRoutes } from './routes-tenders.js';
 import { registerCashbookRoutes } from './routes-cashbook.js';
 import { registerLegacyRoutes } from './routes-legacy.js';
@@ -628,7 +627,6 @@ export function createApp(deps: Deps) {
   registerSubcontractorRoutes(ctx);
   registerSettingsRoutes(ctx);
   registerPosterRoutes(ctx);
-  registerTenderFeedRoutes(ctx);
   registerTenderRoutes(ctx);
   registerCostCenterRoutes(ctx);
   registerPriceAdjustmentRoutes(ctx);

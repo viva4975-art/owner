@@ -120,32 +120,6 @@ export async function collectReminders(sql: Sql, today = todayBerlin()): Promise
       days: e.days,
     });
   }
-  // Ausschreibungssuche: neu gefundene der letzten 24 Std. einzeln, ältere offene als Summe
-  const found = await sql<
-    { id: string; title: string; place: string | null; days: number | null; fresh: boolean }[]
-  >`
-    select id, title, place, created_at > now() - interval '26 hours' as fresh,
-           ((deadline_at at time zone 'Europe/Berlin')::date - ${today}::date)::int as days
-      from app.tender_feed_hits
-     where status = 'neu' and (deadline_at is null or deadline_at >= now())
-     order by created_at desc limit 200`;
-  for (const f of found.filter((x) => x.fresh).slice(0, 15))
-    out.push({
-      area: 'Ausschreibungen',
-      level: 'gelb',
-      text: `Neu gefunden: ${f.title}${f.place ? ` (${f.place})` : ''}${f.days !== null ? ` – Abgabe ${fristText(f.days)}` : ''}`,
-      href: '/ausschreibungen/eingang',
-      days: f.days,
-    });
-  const older = found.filter((x) => !x.fresh).length;
-  if (older)
-    out.push({
-      area: 'Ausschreibungen',
-      level: 'gelb',
-      text: `${older} gefundene Ausschreibung${older === 1 ? '' : 'en'} noch nicht übernommen oder verworfen`,
-      href: '/ausschreibungen/eingang',
-      days: null,
-    });
   for (const e of ec.entries.filter((x) => x.bucket === 'crit' || x.bucket === 'warn')) {
     out.push({
       area: 'Eigen-Compliance',

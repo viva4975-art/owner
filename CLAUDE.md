@@ -3819,3 +3819,8 @@ Testadresse.
   mit den betroffenen IDs. Rücknahme über „Austritt zurücknehmen“ (Einsätze dann neu zuordnen). **Lohn/SV:** ist die
   Person schon angemeldet, Anmeldung stornieren (DEÜV); eine Vertragsstrafe für Nichtantritt nur, wenn im Vertrag
   vereinbart (Vorlagen V5: höchstens ½ Monatslohn). Test `not-started.db.test.ts`.
+- 2026-10-22: **NU-Bestellung: Preis änderbar** (Ahmed: „Preis bei Bestellung bearbeiten können“): Bei erteilten/beendeten
+  Bestellungen ist der Preis unter „Bestellung bearbeiten“ wieder frei (vorher gesperrt bis auf einmaliges Nachtragen bei
+  0 €). Er gilt als Grundpreis ab Beginn (wirkt auf Abrechnungsverfolgung/Nachkalkulation rückwirkend); spätere
+  Preisnachträge ab Monat bleiben bestehen. Alter/neuer Preis im Protokoll, leer/0 = Preis bleibt. Ist die Bestellung
+  schon unterschrieben, steht der Hinweis „neu unterschreiben lassen“ da. Test in `subcontractors.db.test.ts`.

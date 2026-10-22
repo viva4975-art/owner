@@ -580,8 +580,7 @@ export async function saveSubcontract(sql: Sql, id: string, p: SubcontractInput,
       throw new BusinessError('Stornierte Bestellung kann nicht geändert werden');
     if (cur && cur.status !== 'entwurf') {
       // erteilt/beendet (Ahmed 09.10.: „manche sind als monatlich drin, obwohl es nicht monatlich ist“): Objekt,
-      // Leistung, Häufigkeit, Abrechnung, Stunden, Zeitraum, Beschreibung korrigierbar. Nachunternehmer und Preis bleiben
-      // (Preisänderung über Nachtrag ab Monat). Alter/neuer Stand ins Protokoll.
+      // Leistung, Häufigkeit, Abrechnung, Stunden, Zeitraum, Beschreibung, Preis korrigierbar. Nachunternehmer bleibt. Alter/neuer Stand ins Protokoll.
       const next = {
         site_id: p.siteId || cur.site_id,
         service_kind: p.serviceKind.trim(),
@@ -594,12 +593,9 @@ export async function saveSubcontract(sql: Sql, id: string, p: SubcontractInput,
         description: p.description?.trim() || null,
         note: p.note?.trim() || null,
       } as Record<string, unknown>;
-      // Preis fehlt noch (z. B. Anfrage der Objektleitung ohne Preis erteilt, Ahmed 20.10.): einmal nachtragen,
-      // solange es keinen Preisnachtrag gibt; danach nur noch über Preisnachtrag ab Monat.
-      if (BigInt(cur.price_cents) === 0n && p.priceCents > 0n) {
-        const [n] = await tx`select 1 from app.subcontract_prices where subcontract_id = ${id} limit 1`;
-        if (!n) next.price_cents = p.priceCents;
-      }
+      // Preis korrigierbar (Ahmed 22.10.: „Preis bei Bestellung bearbeiten können“): gilt als Grundpreis ab Beginn;
+      // spätere Preisnachträge ab Monat bleiben bestehen. Alter/neuer Preis steht im Protokoll.
+      if (p.priceCents > 0n) next.price_cents = p.priceCents; // 0/leer = Preis bleibt
       const old = cur as unknown as Record<string, unknown>;
       const norm = (v: unknown) => (v === null || v === undefined ? null : String(v).replace(/\.0+$/, ''));
       const changes = Object.fromEntries(

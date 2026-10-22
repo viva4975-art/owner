@@ -189,13 +189,13 @@ describe.skipIf(!available)('Nachunternehmer', () => {
     const oct = (await monthOverview(sql, '2026-10')).find((r) => r.id === id)!;
     expect(oct).toMatchObject({ soll: 157500n, ist_cents: null, state: 'fehlt' });
 
-    // erteilte Bestellung korrigieren (Ahmed 09.10.): Häufigkeit/Abrechnung änderbar, Preis/Nachunternehmer bleiben
+    // erteilte Bestellung korrigieren (Ahmed 09.10./22.10.): Häufigkeit/Abrechnung/Preis änderbar, Nachunternehmer bleibt
     const [cur] = await sql<{ version: number }[]>`select version from app.subcontracts where id = ${id}`;
     const version = cur!.version;
     await saveSubcontract(
       sql,
       id,
-      { ...input, frequency: 'quartalsweise', billing: 'pauschale_einsatz', priceCents: 1n, version },
+      { ...input, frequency: 'quartalsweise', billing: 'pauschale_einsatz', priceCents: 160000n, version },
       't',
     );
     const [ed] =
@@ -203,14 +203,15 @@ describe.skipIf(!available)('Nachunternehmer', () => {
     expect(ed).toMatchObject({
       frequency: 'quartalsweise',
       billing: 'pauschale_einsatz',
-      price_cents: 150000n,
+      price_cents: 160000n,
       status: 'erteilt',
     });
     const [log] = await sql<{ details: Record<string, { alt: unknown; neu: unknown }> }[]>`
       select details from app.audit_log where entity = 'subcontract' and entity_id = ${id} and details is not null
        order by id desc limit 1`;
     expect(log!.details.frequency).toEqual({ alt: 'monatlich', neu: 'quartalsweise' });
-    expect(Object.keys(log!.details).sort()).toEqual(['billing', 'frequency']);
+    expect(log!.details.price_cents).toEqual({ alt: '150000', neu: '160000' });
+    expect(Object.keys(log!.details).sort()).toEqual(['billing', 'frequency', 'price_cents']);
 
     const pdfBytes = await compliancePdf(sql, nu);
     expect((await PDFDocument.load(pdfBytes)).getTitle()).toMatch(/Nachweisübersicht/);
@@ -364,12 +365,12 @@ describe.skipIf(!available)('Nachunternehmer', () => {
     const [a] = await sql<{ price_cents: bigint; version: number }[]>`
       select price_cents, version from app.subcontracts where id = ${id}`;
     expect(a!.price_cents).toBe(45000n);
-    // danach nicht mehr direkt änderbar (nur Preisnachtrag)
+    // Preis bleibt korrigierbar (Ahmed 22.10.); 0 = unverändert
     await saveSubcontract(sql, id, { ...input, priceCents: 50000n, version: a!.version }, 't');
     const [b] = await sql<
       { price_cents: bigint }[]
     >`select price_cents from app.subcontracts where id = ${id}`;
-    expect(b!.price_cents).toBe(45000n);
+    expect(b!.price_cents).toBe(50000n);
     // Bestelldatum nachträglich änderbar, nicht in der Zukunft (Ahmed 20.10.)
     const [c] = await sql<{ version: number }[]>`select version from app.subcontracts where id = ${id}`;
     await saveSubcontract(sql, id, { ...input, issuedOn: '2026-10-02', version: c!.version }, 't');

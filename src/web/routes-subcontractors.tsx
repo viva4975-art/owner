@@ -1593,8 +1593,8 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     ]);
     const draft = !sc || sc.status === 'entwurf';
     // Preis 0 bei erteilter Bestellung (z. B. Anfrage der Objektleitung): einmal nachtragen (Ahmed 20.10.)
-    const priceOpen =
-      !!sc && !draft && sc.status !== 'storniert' && BigInt(sc.price_cents) === 0n && !data?.prices.length;
+    const priceOpen = !!sc && !draft && sc.status !== 'storniert';
+    const priceMissing = priceOpen && BigInt(sc.price_cents) === 0n;
     const comp =
       sc && sc.status === 'entwurf'
         ? (await complianceOverview(sql)).find((r) => r.supplier.id === sc.supplier_id && r.requiredTotal > 0)
@@ -1638,10 +1638,12 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
           {!draft && sc?.status !== 'storniert' && (
             <div class="flash" style="margin-top:0">
               <div>
-                {priceOpen && <b>Preis fehlt noch – bitte jetzt eintragen und speichern. </b>}
+                {priceMissing && <b>Preis fehlt noch – bitte jetzt eintragen und speichern. </b>}
                 Bestellung ist {SC_STATUS[sc!.status]}: Objekt, Leistung, Häufigkeit, Abrechnung, Stunden,
-                Zeitraum und Beschreibung lassen sich korrigieren (alter Stand im Protokoll). Nachunternehmer
-                und Preis bleiben – eine Preisänderung bitte unten als <b>Preisnachtrag ab Monat</b> erfassen.
+                Zeitraum, Beschreibung und Preis lassen sich korrigieren (alter Stand im Protokoll). Der Preis
+                gilt ab Beginn – ändert er sich erst ab einem bestimmten Monat, bitte unten als{' '}
+                <b>Preisnachtrag ab Monat</b>
+                erfassen.
                 {sc?.signed_file_path || sc?.signed_external
                   ? ' Achtung: Die Bestellung ist bereits unterschrieben – bei inhaltlichen Änderungen neu unterschreiben lassen.'
                   : ''}

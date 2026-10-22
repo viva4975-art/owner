@@ -357,7 +357,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
   app.get('/bestellungen', async (c) => {
     const q = c.req.query();
     const art = q.art === 'material' || q.art === 'nu' ? q.art : '';
-    const view = ['erledigen', 'laufend', 'abgeschlossen', 'alle'].includes(q.ansicht ?? '')
+    const view = ['erledigen', 'laufend', 'einmalig', 'abgeschlossen', 'alle'].includes(q.ansicht ?? '')
       ? q.ansicht!
       : 'erledigen';
     const supplierId = q.lieferant && /^[0-9a-f-]{36}$/.test(q.lieferant) ? q.lieferant : '';
@@ -460,19 +460,21 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       ongoing: boolean;
       /** erteilte NU-Bestellung ohne unterschriebenen Auftrag (Scan oder Handy-Unterschrift) */
       unsigned: boolean;
+      /** wiederkehrend (monatlich/wöchentlich) */
+      recurring?: boolean;
       /** erteilte NU-Bestellung mit Unterschrift → „erledigt“ möglich */
       canFinish: boolean;
       net: bigint | null;
       per: string;
       /** Einheitspreis unter dem Gesamtbetrag, z. B. „25,00 € / Std. × 40 Std.“ */
       unit?: string;
-      phase: 'erledigen' | 'laufend' | 'abgeschlossen' | 'storniert';
+      phase: 'erledigen' | 'laufend' | 'einmalig' | 'abgeschlossen' | 'storniert';
       status: string;
       tone: string;
     };
     const PO_PHASE: Record<PoStatus, Row['phase']> = {
       entwurf: 'erledigen',
-      bestellt: 'laufend',
+      bestellt: 'einmalig',
       geliefert: 'abgeschlossen',
       storniert: 'storniert',
     };
@@ -540,6 +542,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         // laufend = regelmäßige (monatliche/wöchentliche) Bestellung; jährlich usw. = nach Ausführung (Ahmed 09.10.)
         ongoing: !sc.valid_to && isRecurringOrder(sc.frequency),
         unsigned: sc.status === 'erteilt' && !sc.signed_file_path && !sc.signed_external,
+        recurring: isRecurringOrder(sc.frequency),
         canFinish: sc.status === 'erteilt' && !!(sc.signed_file_path || sc.signed_external),
         ...((): Pick<Row, 'net' | 'per' | 'unit'> => {
           // Gesamtbetrag zuerst, Einheitspreis darunter (Ahmed 18.10.)
@@ -587,8 +590,10 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               status: `${SC_STATUS[sc.status] ?? sc.status} · ${todo.join(' · ')}`,
               tone: 'warn',
             };
+          // Laufend = nur wiederkehrende (monatlich/wöchentlich), einmalige usw. eigener Reiter (Ahmed 22.10.)
+          const ph = SC_PHASE[sc.status] ?? 'laufend';
           return {
-            phase: SC_PHASE[sc.status] ?? 'laufend',
+            phase: ph === 'laufend' && !isRecurringOrder(sc.frequency) ? 'einmalig' : ph,
             status:
               sc.requested_by && sc.status === 'entwurf'
                 ? 'angefragt (Objektleitung) · Freigabe nötig'
@@ -604,9 +609,12 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       .filter((r) => !search || [r.number, r.supplier, r.what].some((v) => v.toLowerCase().includes(search)))
       .filter((r) => !onlyUnsigned || r.unsigned);
     const unsignedCount = all.filter((r) => r.unsigned).length;
-    // Laufend = auch erteilte ohne Unterschrift (stehen zusätzlich unter „Zu erledigen“, Ahmed 22.10.)
+    // Laufend/Einmalig = auch erteilte ohne Unterschrift (stehen zusätzlich unter „Zu erledigen“, Ahmed 22.10.)
     const inView = (r: (typeof base)[number], v: string) =>
-      r.phase === v || (v === 'laufend' && r.phase === 'erledigen' && r.unsigned);
+      r.phase === v ||
+      (r.phase === 'erledigen' &&
+        r.unsigned &&
+        ((v === 'laufend' && r.recurring) || (v === 'einmalig' && !r.recurring)));
     const count = (v: string) => (v === 'alle' ? base.length : base.filter((r) => inView(r, v)).length);
     const allRows = view === 'alle' ? base : base.filter((r) => inView(r, view));
     const PER_PAGE = 25;
@@ -629,7 +637,8 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
     };
     const VIEWS: [string, string][] = [
       ['erledigen', 'Zu erledigen'],
-      ['laufend', 'Laufend'],
+      ['laufend', 'Laufend (monatlich)'],
+      ['einmalig', 'Einmalig / offen'],
       ['abgeschlossen', 'Abgeschlossen'],
       ['alle', 'Alle'],
     ];

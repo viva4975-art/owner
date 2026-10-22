@@ -3898,3 +3898,7 @@ Testadresse.
 - 2026-10-22: Bestellungen → Reiter „Laufend“ enthält jetzt auch erteilte NU-Bestellungen ohne unterschriebenen Auftrag
   (Ahmed: „monatlich, erscheint aber nicht unter laufend“) – sie stehen zusätzlich unter „Zu erledigen“, bis die
   Unterschrift (Scan oder Handy) da ist.
+- 2026-10-22: Bestellungen-Reiter (Ahmed: „Laufend sollen nur monatliche Sachen sein“): **Laufend (monatlich)** = erteilte
+  NU-Bestellungen mit Häufigkeit monatlich/wöchentlich; neuer Reiter **Einmalig / offen** = erteilte einmalige/quartals-/
+  halbjährliche/jährliche NU-Bestellungen und bestellte (noch nicht gelieferte) Material-Bestellungen. Ohne Unterschrift
+  stehen sie zusätzlich unter „Zu erledigen“.

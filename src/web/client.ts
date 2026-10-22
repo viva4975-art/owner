@@ -241,6 +241,11 @@ export const CLIENT_JS = String.raw`
     });
   })();
 
+  // ---- Auswahl mit data-autosubmit schickt das Formular sofort ab (z. B. Monatsauswahl) ----
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (el && el.matches && el.matches('select[data-autosubmit]') && el.form) el.form.submit();
+  });
   // ---- Rückfrage per data-confirm (Knopf oder Link) ----
   // Capture-Phase: vor allen anderen Klick-Behandlungen; abgebrochen = kein Absenden.
   document.addEventListener('click', function (e) {

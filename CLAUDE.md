@@ -3902,3 +3902,8 @@ Testadresse.
   NU-Bestellungen mit Häufigkeit monatlich/wöchentlich; neuer Reiter **Einmalig / offen** = erteilte einmalige/quartals-/
   halbjährliche/jährliche NU-Bestellungen und bestellte (noch nicht gelieferte) Material-Bestellungen. Ohne Unterschrift
   stehen sie zusätzlich unter „Zu erledigen“.
+- 2026-10-22: **Nachkalkulation einfacher** (Ahmed: „von–bis komisch, Monatsauswahl und Knöpfe, Gesamtsummen oben“): Knöpfe
+  Dieser Monat / Letzter Monat / laufendes Jahr / Vorjahr + „Zeitraum: …“, Monatsauswahl (schaltet sofort um,
+  `select[data-autosubmit]` in `client.ts`, `MonthSelect … autosubmit`) statt von/bis-Feldern (Adressen mit `von`/`bis`
+  gehen weiter); Filter Kunde/Objekt/Objektleitung bleiben beim Umschalten erhalten. Zeile **„Gesamt“** steht jetzt oben
+  direkt unter den Spaltenköpfen (hell hinterlegt) statt am Ende der Liste.

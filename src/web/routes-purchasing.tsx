@@ -141,13 +141,14 @@ const BILLING_DE: Record<string, string> = {
 };
 
 /** Monatsauswahl als eine Liste „Oktober 2026“ (24 Monate zurück, 3 voraus) statt Monat/Jahr-Feldern. */
-const MonthSelect: FC<{ id?: string; name: string; value: string; label: string; disabled?: boolean }> = ({
-  id,
-  name,
-  value,
-  label,
-  disabled,
-}) => {
+const MonthSelect: FC<{
+  id?: string;
+  name: string;
+  value: string;
+  label: string;
+  disabled?: boolean;
+  autosubmit?: boolean;
+}> = ({ id, name, value, label, disabled, autosubmit }) => {
   const now = todayBerlin().slice(0, 7);
   const add = (m: string, n: number) => {
     const d = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1 + n, 1));
@@ -157,8 +158,15 @@ const MonthSelect: FC<{ id?: string; name: string; value: string; label: string;
   for (let i = 3; i >= -24; i--) months.push(add(now, i));
   if (value && !months.includes(value)) months.push(value);
   return (
-    <select id={id} name={name} aria-label={label} disabled={disabled} data-nosearch>
-      <option value="">–</option>
+    <select
+      id={id}
+      name={name}
+      aria-label={label}
+      disabled={disabled}
+      data-nosearch
+      data-autosubmit={autosubmit ? '1' : undefined}
+    >
+      <option value="">{autosubmit ? 'Monat wählen …' : '–'}</option>
       {months.map((m) => (
         <option value={m} selected={m === value}>
           {MONTHS_DE[Number(m.slice(5, 7)) - 1]} {m.slice(0, 4)}
@@ -3300,10 +3308,12 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
   // ================================================================== Nachkalkulation
 
   app.get('/auswertungen/nachkalkulation', async (c) => {
-    const last = addDays(`${todayBerlin().slice(0, 7)}-01`, -1).slice(0, 7);
+    const curM = todayBerlin().slice(0, 7);
+    const last = addDays(`${curM}-01`, -1).slice(0, 7);
+    // Monatsauswahl geht vor von/bis (Ahmed 22.10.: „Monatsauswahl und Knöpfe wie bei Rechnungen“)
     const qm = c.req.query('monat');
-    const von = isMonth(c.req.query('von')) ? c.req.query('von')! : isMonth(qm) ? qm! : last;
-    const bisQ = isMonth(c.req.query('bis')) ? c.req.query('bis')! : von;
+    const von = isMonth(qm) ? qm! : isMonth(c.req.query('von')) ? c.req.query('von')! : last;
+    const bisQ = isMonth(qm) ? qm! : isMonth(c.req.query('bis')) ? c.req.query('bis')! : von;
     const bis = bisQ < von ? von : bisQ;
     const [{ rows, general: allGeneral, overhead, targetBp }, report] = await Promise.all([
       siteCosting(sql, { from: von, to: bis }),
@@ -3355,15 +3365,47 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
       'auswertungen',
       <>
         <PageHead title="Nachkalkulation & Kostenstellen" crumbs={[['Auswertungen', '/auswertungen']]} />
+        {(() => {
+          const y = Number(curM.slice(0, 4));
+          const keep = [
+            fKunde && `kunde=${fKunde}`,
+            fObjekt && `objekt=${fObjekt}`,
+            fOl && `ol=${fOl}`,
+            fVerlust && 'verlust=1',
+          ]
+            .filter(Boolean)
+            .join('&');
+          const href = (a: string, b: string) =>
+            `/auswertungen/nachkalkulation?von=${a}&bis=${b}${keep ? `&${keep}` : ''}`;
+          const quick: [string, string, string][] = [
+            ['Dieser Monat', curM, curM],
+            ['Letzter Monat', last, last],
+            [String(y), `${y}-01`, curM],
+            [String(y - 1), `${y - 1}-01`, `${y - 1}-12`],
+          ];
+          const label =
+            von === bis
+              ? `${MONTHS_DE[Number(von.slice(5, 7)) - 1]} ${von.slice(0, 4)}`
+              : `${MONTHS_DE[Number(von.slice(5, 7)) - 1]} ${von.slice(0, 4)} – ${MONTHS_DE[Number(bis.slice(5, 7)) - 1]} ${bis.slice(0, 4)}`;
+          return (
+            <div class="chips" style="margin-bottom:10px;align-items:center">
+              {quick.map(([l, a, b]) => (
+                <a href={href(a, b)} class={von === a && bis === b ? 'on' : ''}>
+                  {l}
+                </a>
+              ))}
+              <span class="small mut" style="margin-left:8px">
+                Zeitraum: <b>{label}</b>
+              </span>
+            </div>
+          );
+        })()}
         <form method="get" action="/auswertungen/nachkalkulation" class="actions" style="margin-top:0">
-          <label class="small" style="margin:0">
-            von
-          </label>
-          <input type="month" name="von" value={von} style="max-width:200px" />
-          <label class="small" style="margin:0">
-            bis
-          </label>
-          <input type="month" name="bis" value={bis} style="max-width:200px" />
+          <input type="hidden" name="von" value={von} />
+          <input type="hidden" name="bis" value={bis} />
+          <span style="flex:0 0 200px;max-width:200px">
+            <MonthSelect name="monat" value={von === bis ? von : ''} label="Monat" autosubmit />
+          </span>
           <select name="kunde" aria-label="Kunde" style="max-width:240px" data-nosearch>
             <option value="">Alle Kunden</option>
             {customers.map(([id, name]) => (
@@ -3457,6 +3499,39 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
               </tr>
             </thead>
             <tbody>
+              {(active.length > 0 || general.length > 0) && (
+                <tr style="background:var(--tint-2)">
+                  <td>
+                    <b>Gesamt</b>
+                  </td>
+                  <td class="r">
+                    <b>{euro(totalRev)}</b>
+                  </td>
+                  <td class="r" />
+                  <td class="r">
+                    <b>{euro(sum((r) => r.labor))}</b>
+                  </td>
+                  <td class="r">
+                    <b>{euro(sum((r) => r.material) + general.reduce((a, g) => a + g.material, 0n))}</b>
+                  </td>
+                  <td class="r">
+                    <b>{euro(sum((r) => r.equipment) + general.reduce((a, g) => a + g.equipment, 0n))}</b>
+                  </td>
+                  <td class="r">
+                    <b>
+                      {euro(sum((r) => r.subcontractor) + general.reduce((a, g) => a + g.subcontractor, 0n))}
+                    </b>
+                  </td>
+                  <td class="r">
+                    <b>{euro(sum((r) => r.other) + general.reduce((a, g) => a + g.other, 0n))}</b>
+                  </td>
+                  <td class="r" style={result < 0n ? 'color:var(--err)' : ''}>
+                    <b>{euro(result)}</b>
+                  </td>
+                  <td class="r" />
+                  <td class="r" />
+                </tr>
+              )}
               {active.length === 0 && general.length === 0 && (
                 <tr>
                   <td colspan={11}>
@@ -3559,39 +3634,6 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                   <td class="r" />
                 </tr>
               ))}
-              {(active.length > 0 || general.length > 0) && (
-                <tr>
-                  <td>
-                    <b>Gesamt</b>
-                  </td>
-                  <td class="r">
-                    <b>{euro(totalRev)}</b>
-                  </td>
-                  <td class="r" />
-                  <td class="r">
-                    <b>{euro(sum((r) => r.labor))}</b>
-                  </td>
-                  <td class="r">
-                    <b>{euro(sum((r) => r.material) + general.reduce((a, g) => a + g.material, 0n))}</b>
-                  </td>
-                  <td class="r">
-                    <b>{euro(sum((r) => r.equipment) + general.reduce((a, g) => a + g.equipment, 0n))}</b>
-                  </td>
-                  <td class="r">
-                    <b>
-                      {euro(sum((r) => r.subcontractor) + general.reduce((a, g) => a + g.subcontractor, 0n))}
-                    </b>
-                  </td>
-                  <td class="r">
-                    <b>{euro(sum((r) => r.other) + general.reduce((a, g) => a + g.other, 0n))}</b>
-                  </td>
-                  <td class="r" style={result < 0n ? 'color:var(--err)' : ''}>
-                    <b>{euro(result)}</b>
-                  </td>
-                  <td class="r" />
-                  <td class="r" />
-                </tr>
-              )}
             </tbody>
           </table>
         </div>

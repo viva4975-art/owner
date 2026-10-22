@@ -529,7 +529,6 @@ export const EmployeeOverview: FC<{
         {showPrivate && priv && (
           <div class="eh-key">
             <div>
-              <Icon name="pin" />
               <span>
                 <small>Anschrift</small>
                 {addr ? (
@@ -551,7 +550,6 @@ export const EmployeeOverview: FC<{
               </span>
             </div>
             <div>
-              <Icon name="calendar" />
               <span>
                 <small>Geburtsdatum</small>
                 {priv.birth_date ? (
@@ -565,7 +563,6 @@ export const EmployeeOverview: FC<{
               </span>
             </div>
             <div>
-              <Icon name="phone" />
               <span>
                 <small>Telefon</small>
                 {e.mobile || e.phone ? (
@@ -579,7 +576,6 @@ export const EmployeeOverview: FC<{
               </span>
             </div>
             <div>
-              <Icon name="user" />
               <span>
                 <small>Staatsangehörigkeit</small>
                 <b>{priv.nationality ?? '–'}</b>
@@ -593,7 +589,6 @@ export const EmployeeOverview: FC<{
               </span>
             </div>
             <div>
-              <Icon name="shield" />
               <span>
                 <small>Krankenkasse</small>
                 <b>{priv.health_insurance ?? '–'}</b>

@@ -1014,12 +1014,12 @@ td .btn.icon{min-height:34px;width:34px;height:34px;padding:0;justify-content:ce
 .eh-acts{display:flex;flex-wrap:wrap;gap:8px}
 .eh-acts .btn svg{width:15px;height:15px}
 .eh-key{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border-top:1px solid var(--line);background:#fff}
-.eh-key>div{display:flex;gap:10px;padding:14px 20px;border-left:1px solid var(--line);min-width:0}
+.eh-key>div{display:flex;padding:14px 20px;border-left:1px solid var(--line);min-width:0}
 .eh-key>div:first-child{border-left:0}
-.eh-key svg{width:17px;height:17px;color:var(--brand,#7d1435);flex:none;margin-top:2px}
 .eh-key>div>span{display:flex;flex-direction:column;gap:1px;min-width:0;overflow-wrap:anywhere}
 .eh-key small{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
 .eh-key b{font-size:14.5px}
+.eh-key .badge{align-self:flex-start}
 .eh-facts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border-top:1px solid var(--line)}
 .eh-facts>div{padding:14px 20px;display:flex;flex-direction:column;gap:2px;border-left:1px solid var(--line)}
 .eh-facts>div:first-child{border-left:0}

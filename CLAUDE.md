@@ -3864,3 +3864,10 @@ Testadresse.
     mit), bei Fehlern bleibt das Formular offen. Nur eigene Pfade. Normales „Speichern“ bleibt auf der Seite.
   - **Fahrzeugschein fehlt** als Hinweis auf der Startseite („bei n Fahrzeugen“) und unter Erinnerungen je Fahrzeug
     (aktive Fahrzeuge ohne Datei der Kategorie „Fahrzeugschein“, `vehiclesWithoutRegistration`).
+  - **Fahrzeuge: geschätzter Wert + Summen** (Ahmed): Feld „Geschätzter Wert heute“ (`vehicles.estimated_value_cents`,
+    Datum der Schätzung `estimated_on` bleibt, solange der Wert gleich bleibt; Migration `20261217000002`; bei Verkauf
+    geleert). Fahrzeugliste oben: Fahrzeuge im Bestand, **Kaufpreis gesamt**, **geschätzter Wert gesamt** (je mit „n ohne
+    Kaufpreis/Schätzung“), bei Inaktiv/Alle zusätzlich Verkaufserlöse. Schätzung = eigene Angabe, kein Buchwert
+    (Abschreibung macht der Steuerberater).
+  - Browser-Tests an die Änderungen dieser Woche angepasst (Arbeitsschein ohne Beginn/Ende, Auswertungen mit 4 Menüpunkten
+    + Bereichsreitern). `e2e:mahnung` braucht den lokalen Test-Mailserver (Port 1025) – lief hier nicht, kein App-Fehler.

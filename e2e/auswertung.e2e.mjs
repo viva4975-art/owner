@@ -42,8 +42,12 @@ const tabs = await p
       .locator('.appside .sub a[href^="/auswertungen/"]')
       .evaluateAll((as) => as.map((a) => a.getAttribute('href'))),
   );
-check('Berichte im Menü (reduziert)', tabs.length >= 5 && tabs.length <= 9, String(tabs.length));
-check('keine Reiterzeile', (await p.locator('.tabs a').count()) === 0);
+// seit 18.10.: 4 Menüpunkte, die Berichte darunter als Bereichsreiter oben auf der Seite
+check('Berichte im Menü (reduziert)', tabs.length >= 3 && tabs.length <= 6, String(tabs.length));
+check(
+  'nur Bereichsreiter, keine zweite Reiterzeile',
+  (await p.locator('.tabs:not(.sectabs) a').count()) === 0,
+);
 for (const href of tabs) {
   const r = await p.goto(B + href);
   check(

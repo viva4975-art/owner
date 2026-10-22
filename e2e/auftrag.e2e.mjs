@@ -93,15 +93,9 @@ console.log('2. Arbeitsschein vor Ort');
 await p.click(`a.btn[href*="?auftrag=${orderId}"]`);
 await p.waitForLoadState();
 await p.fill('#wr-regie [name=line_person]', 'Max Muster');
-await p.fill('#start', '07:00');
-await p.fill('#end', '10:30');
-await p.locator('#start').dispatchEvent('change');
-await p.locator('#end').dispatchEvent('change');
-check(
-  'Regiestunden je Person aus Beginn/Ende vorbelegt',
-  (await p.locator('#wr-regie [name=line_qty]').first().inputValue()) === '3,5',
-  await p.locator('#wr-regie [name=line_qty]').first().inputValue(),
-);
+// Arbeitsschein hat keine Uhrzeit mehr (Ahmed 22.10.) – Stunden je Regiezeile
+await p.fill('#wr-regie [name=line_qty]', '3,5');
+check('Arbeitsschein ohne Beginn/Ende', (await p.locator('#start').count()) === 0);
 check('Leistung aus dem Objekt wählbar', (await p.locator('#wr-lines [name=line_svc] option').count()) >= 1);
 await p.fill('#description', 'Turnhalle grundgereinigt, Boden neu beschichtet');
 await p.fill('#remarks', 'Keine Mängel');

@@ -50,6 +50,43 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
             Alle
           </a>
         </div>
+        {(() => {
+          const act = list.filter((v) => v.active);
+          const sum = (xs: (bigint | null)[]) => xs.reduce<bigint>((a, b) => a + (b ?? 0n), 0n);
+          const sold = list.filter((v) => v.sold_on);
+          const missingEst = act.filter((v) => v.estimated_value_cents == null).length;
+          return (
+            <div class="kpis kpis-sm">
+              <div class="kpi">
+                <div class="l">Fahrzeuge im Bestand</div>
+                <div class="v">{act.length}</div>
+              </div>
+              <div class="kpi">
+                <div class="l">Kaufpreis gesamt (Bestand)</div>
+                <div class="v">{euro(sum(act.map((v) => v.purchase_price_cents)))}</div>
+                {act.some((v) => v.purchase_price_cents == null) && (
+                  <div class="s">
+                    {anz(act.filter((v) => v.purchase_price_cents == null).length, 'Fahrzeug', 'Fahrzeuge')}{' '}
+                    ohne Kaufpreis
+                  </div>
+                )}
+              </div>
+              <div class="kpi">
+                <div class="l">Geschätzter Wert heute (Bestand)</div>
+                <div class="v">{euro(sum(act.map((v) => v.estimated_value_cents)))}</div>
+                {missingEst > 0 && (
+                  <div class="s">{anz(missingEst, 'Fahrzeug', 'Fahrzeuge')} ohne Schätzung</div>
+                )}
+              </div>
+              {f !== 'aktiv' && sold.length > 0 && (
+                <div class="kpi">
+                  <div class="l">Verkaufserlöse ({sold.length})</div>
+                  <div class="v">{euro(sum(sold.map((v) => v.sale_price_cents)))}</div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
         <div class="tbl card stack-m" style="padding:0">
           <table>
             <thead>
@@ -85,8 +122,17 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
                     <td data-l="Fahrzeug">
                       {[v.make, v.model].filter(Boolean).join(' ') || '–'}
                       {v.first_registration && <div class="small mut">EZ {dateDe(v.first_registration)}</div>}
-                      {v.purchase_price_cents != null && (
-                        <div class="small mut">Kaufpreis {euro(v.purchase_price_cents)}</div>
+                      {(v.purchase_price_cents != null || v.estimated_value_cents != null) && (
+                        <div class="small mut">
+                          {[
+                            v.purchase_price_cents != null && `Kaufpreis ${euro(v.purchase_price_cents)}`,
+                            !v.sold_on &&
+                              v.estimated_value_cents != null &&
+                              `Wert ca. ${euro(v.estimated_value_cents)}`,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </div>
                       )}
                       {v.sold_on && (
                         <div class="small mut">
@@ -292,6 +338,17 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
                 />
               </div>
               <div>
+                <label for="ev">Geschätzter Wert heute (€)</label>
+                <input
+                  id="ev"
+                  name="estimated_value"
+                  inputmode="decimal"
+                  placeholder="z. B. 12.000,00"
+                  value={d.estimated_value_cents != null ? centsText(d.estimated_value_cents) : ''}
+                />
+                {d.estimated_on && <div class="small mut">geschätzt am {dateDe(d.estimated_on)}</div>}
+              </div>
+              <div>
                 <label for="act">aktiv (im Bestand)</label>
                 <input id="act" type="checkbox" name="active" checked={d.active ?? true} />
               </div>
@@ -425,6 +482,7 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
       sold_on: b.sold === 'on' ? (str(b, 'sold_on') ?? todayBerlin()) : null,
       sale_price: b.sold === 'on' ? str(b, 'sale_price') : null,
       buyer: str(b, 'buyer'),
+      estimated_value: str(b, 'estimated_value'),
       active: b.active === 'on',
       expectedVersion: versionOf(b.version),
     });

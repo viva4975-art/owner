@@ -43,6 +43,8 @@ export interface Vehicle {
   sold_on: string | null;
   sale_price_cents: bigint | null;
   buyer: string | null;
+  estimated_value_cents: bigint | null;
+  estimated_on: string | null;
   active: boolean;
   version: number;
   files: number;
@@ -55,7 +57,7 @@ export async function listVehicles(sql: Sql, all = false) {
            v.mileage_date::text, v.driver_employee_id,
            case when e.id is null then null else e.first_name || ' ' || e.last_name end as driver_name,
            v.fuel_card, v.note, v.purchase_date::text, v.purchase_price_cents, v.sold_on::text, v.sale_price_cents,
-           v.buyer, v.active, v.version,
+           v.buyer, v.estimated_value_cents, v.estimated_on::text, v.active, v.version,
            (select count(*)::int from app.file_links l where l.entity_type = 'vehicle' and l.entity_id = v.id) as files
       from app.vehicles v left join app.employees e on e.id = v.driver_employee_id
      where ${all ? sql`true` : sql`v.active`}
@@ -128,6 +130,8 @@ export interface VehicleInput {
   sold_on?: string | null;
   sale_price?: string | null;
   buyer?: string | null;
+  /** geschätzter heutiger Wert als Text */
+  estimated_value?: string | null;
   active: boolean;
   expectedVersion: number | null;
 }
@@ -167,6 +171,12 @@ export async function saveVehicle(sql: Sql, id: string, p: VehicleInput) {
     return c;
   };
   const purchasePrice = money('Kaufpreis', p.purchase_price);
+  const estimated = money('Geschätzter Wert', p.estimated_value);
+  const [prevEst] = await sql<{ e: bigint | null; est_on: string | null }[]>`
+    select estimated_value_cents as e, estimated_on::text as est_on from app.vehicles where id = ${id}`;
+  // Datum der Schätzung: bleibt, solange der Wert gleich bleibt
+  const estimatedOn =
+    estimated == null ? null : prevEst && prevEst.e === estimated ? prevEst.est_on : todayBerlin();
   const soldOn = p.sold_on || null;
   const salePrice = soldOn ? money('Verkaufspreis', p.sale_price) : null;
   if (!soldOn && p.sale_price?.trim()) throw new BusinessError('Bitte das Verkaufsdatum angeben');
@@ -190,12 +200,13 @@ export async function saveVehicle(sql: Sql, id: string, p: VehicleInput) {
     insert into app.vehicles (id, plate, make, model, vin, first_registration, fuel, ownership, leasing_company,
                               leasing_until, insurer, insurance_no, hu_due, service_due, mileage, mileage_date,
                               driver_employee_id, fuel_card, note, purchase_date, purchase_price_cents, sold_on,
-                              sale_price_cents, buyer, active)
+                              sale_price_cents, buyer, estimated_value_cents, estimated_on, active)
     values (${id}, ${plate}, ${p.make}, ${p.model}, ${vin}, ${p.first_registration}, ${p.fuel}, ${p.ownership},
             ${leasing}, ${leasingUntil}, ${p.insurer}, ${p.insurance_no}, ${p.hu_due}, ${p.service_due},
             ${km ? Number(km) : null}, ${km ? (p.mileage_date ?? todayBerlin()) : null}, ${p.driver_employee_id},
             ${p.fuel_card}, ${p.note}, ${p.purchase_date ?? null}, ${purchasePrice}, ${soldOn}, ${salePrice},
-            ${soldOn ? (p.buyer ?? null) : null}, ${active})
+            ${soldOn ? (p.buyer ?? null) : null}, ${soldOn ? null : estimated}, ${soldOn ? null : estimatedOn},
+            ${active})
     on conflict (id) do update set plate = excluded.plate, make = excluded.make, model = excluded.model,
       vin = excluded.vin, first_registration = excluded.first_registration, fuel = excluded.fuel,
       ownership = excluded.ownership, leasing_company = excluded.leasing_company,
@@ -204,7 +215,9 @@ export async function saveVehicle(sql: Sql, id: string, p: VehicleInput) {
       mileage_date = excluded.mileage_date, driver_employee_id = excluded.driver_employee_id,
       fuel_card = excluded.fuel_card, note = excluded.note, purchase_date = excluded.purchase_date,
       purchase_price_cents = excluded.purchase_price_cents, sold_on = excluded.sold_on,
-      sale_price_cents = excluded.sale_price_cents, buyer = excluded.buyer, active = excluded.active`;
+      sale_price_cents = excluded.sale_price_cents, buyer = excluded.buyer,
+      estimated_value_cents = excluded.estimated_value_cents, estimated_on = excluded.estimated_on,
+      active = excluded.active`;
 }
 
 // ---------------------------------------------------------------- Gegenstände für Übergaben (Auswahlliste)

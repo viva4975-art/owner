@@ -9,6 +9,7 @@ import { dueCycleServices } from './executions.js';
 import { isOpen, leaveWarnings, warningText } from './leave-warnings.js';
 import { complianceOverview } from './subcontractors.js';
 import { upcomingEvents } from './tenders.js';
+import { remindFrom } from './vehicles.js';
 import { plannedShifts } from './time.js';
 import type { Deps } from './workflow.js';
 
@@ -83,17 +84,20 @@ export async function collectReminders(sql: Sql, today = todayBerlin()): Promise
     }
   }
   for (const v of vehicles) {
-    for (const [label, date] of [
-      ['HU', v.hu_due],
-      ['Inspektion', v.service_due],
+    for (const [label, date, kind] of [
+      ['HU (TÜV)', v.hu_due, 'hu'],
+      ['Inspektion', v.service_due, 'other'],
     ] as const) {
       if (!date) continue;
       const d = dayDiff(today, date);
-      if (d <= 30)
+      if (today >= remindFrom(kind, date))
         out.push({
           area: 'Fahrzeuge',
           level: d < 0 ? 'rot' : 'gelb',
-          text: `${v.plate}: ${label} ${fristText(d)}`,
+          text:
+            kind === 'hu'
+              ? `${v.plate}: HU (TÜV) ${d < 0 ? 'überfällig' : 'fällig'} – Monat ${date.slice(5, 7)}/${date.slice(0, 4)}`
+              : `${v.plate}: ${label} ${fristText(d)}`,
           href: `/fahrzeuge/${v.id}`,
           days: d,
         });

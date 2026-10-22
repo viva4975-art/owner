@@ -1,5 +1,6 @@
 import type { Sql } from '../db/client.js';
 import { addDays, todayBerlin } from '../domain/invoice/calc.js';
+import { parseEuro } from '../domain/money/money.js';
 import { BusinessError } from './errors.js';
 
 /*
@@ -37,6 +38,11 @@ export interface Vehicle {
   driver_name: string | null;
   fuel_card: string | null;
   note: string | null;
+  purchase_date: string | null;
+  purchase_price_cents: bigint | null;
+  sold_on: string | null;
+  sale_price_cents: bigint | null;
+  buyer: string | null;
   active: boolean;
   version: number;
   files: number;
@@ -48,7 +54,8 @@ export async function listVehicles(sql: Sql, all = false) {
            v.leasing_until::text, v.insurer, v.insurance_no, v.hu_due::text, v.service_due::text, v.mileage,
            v.mileage_date::text, v.driver_employee_id,
            case when e.id is null then null else e.first_name || ' ' || e.last_name end as driver_name,
-           v.fuel_card, v.note, v.active, v.version,
+           v.fuel_card, v.note, v.purchase_date::text, v.purchase_price_cents, v.sold_on::text, v.sale_price_cents,
+           v.buyer, v.active, v.version,
            (select count(*)::int from app.file_links l where l.entity_type = 'vehicle' and l.entity_id = v.id) as files
       from app.vehicles v left join app.employees e on e.id = v.driver_employee_id
      where ${all ? sql`true` : sql`v.active`}
@@ -59,16 +66,28 @@ export async function getVehicle(sql: Sql, id: string) {
   return (await listVehicles(sql, true)).find((v) => v.id === id) ?? null;
 }
 
-/** Fristen: überfällig oder in den nächsten 30 Tagen (HU, Inspektion, Leasingende). */
+/**
+ * Ab wann an eine Frist erinnert wird. HU (TÜV) ist bis Ende des Plakettenmonats fällig (gespeichert als letzter Tag)
+ * → Erinnerung einen Monat vor Beginn dieses Monats (HU 11/2026 → ab 01.10.2026). Sonst 30 Tage vorher.
+ */
+export function remindFrom(kind: 'hu' | 'other', date: string) {
+  if (kind === 'hu') {
+    const [y, m] = date.split('-').map(Number) as [number, number];
+    const pm = m === 1 ? 12 : m - 1;
+    return `${m === 1 ? y - 1 : y}-${String(pm).padStart(2, '0')}-01`;
+  }
+  return addDays(date, -30);
+}
+
+/** Fristen: überfällig oder bald fällig (HU ab einen Monat vor dem HU-Monat, Inspektion/Leasingende 30 Tage). */
 export function vehicleDeadlines(v: Vehicle, today = todayBerlin()) {
-  const soon = addDays(today, 30);
   const out: { label: string; date: string; overdue: boolean }[] = [];
-  for (const [label, date] of [
-    ['HU (TÜV)', v.hu_due],
-    ['Inspektion', v.service_due],
-    ['Leasingende', v.leasing_until],
+  for (const [label, date, kind] of [
+    ['HU (TÜV)', v.hu_due, 'hu'],
+    ['Inspektion', v.service_due, 'other'],
+    ['Leasingende', v.leasing_until, 'other'],
   ] as const)
-    if (date && date <= soon) out.push({ label, date, overdue: date < today });
+    if (date && today >= remindFrom(kind, date)) out.push({ label, date, overdue: date < today });
   return out;
 }
 
@@ -93,6 +112,12 @@ export interface VehicleInput {
   driver_employee_id: string | null;
   fuel_card: string | null;
   note: string | null;
+  purchase_date?: string | null;
+  /** Kaufpreis als Text („18.500,00“) */
+  purchase_price?: string | null;
+  sold_on?: string | null;
+  sale_price?: string | null;
+  buyer?: string | null;
   active: boolean;
   expectedVersion: number | null;
 }
@@ -110,12 +135,36 @@ export async function saveVehicle(sql: Sql, id: string, p: VehicleInput) {
     ['HU', p.hu_due],
     ['Inspektion', p.service_due],
     ['Datum Kilometerstand', p.mileage_date],
+    ['Kaufdatum', p.purchase_date ?? null],
+    ['Verkaufsdatum', p.sold_on ?? null],
   ] as const)
     if (d && !DATE.test(d)) throw new BusinessError(`${label}: Datum ungültig`);
   if (p.first_registration && p.first_registration > todayBerlin())
     throw new BusinessError('Erstzulassung liegt in der Zukunft');
   if (p.fuel && !(p.fuel in FUEL)) throw new BusinessError('Kraftstoff ungültig');
   if (!(p.ownership in OWNERSHIP)) throw new BusinessError('Eigentum/Leasing ungültig');
+  const money = (label: string, v: string | null | undefined) => {
+    if (!v?.trim()) return null;
+    let c: bigint;
+    try {
+      let t = v.replace(/[€\s]/g, '');
+      if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, ''); // „7.500“ = 7500 €
+      c = parseEuro(t);
+    } catch {
+      throw new BusinessError(`${label}: Betrag ungültig`);
+    }
+    if (c < 0n) throw new BusinessError(`${label} darf nicht negativ sein`);
+    return c;
+  };
+  const purchasePrice = money('Kaufpreis', p.purchase_price);
+  const soldOn = p.sold_on || null;
+  const salePrice = soldOn ? money('Verkaufspreis', p.sale_price) : null;
+  if (!soldOn && p.sale_price?.trim()) throw new BusinessError('Bitte das Verkaufsdatum angeben');
+  if (soldOn && soldOn > todayBerlin()) throw new BusinessError('Verkaufsdatum liegt in der Zukunft');
+  if (soldOn && p.purchase_date && soldOn < p.purchase_date)
+    throw new BusinessError('Verkaufsdatum liegt vor dem Kaufdatum');
+  // verkauft = nicht mehr im Bestand
+  const active = soldOn ? false : p.active;
   const km = p.mileage?.replace(/[.\s]/g, '') || null;
   if (km && !/^\d{1,7}$/.test(km)) throw new BusinessError('Kilometerstand bitte als ganze Zahl');
   const [cur] = await sql<{ version: number }[]>`select version from app.vehicles where id = ${id}`;
@@ -124,24 +173,28 @@ export async function saveVehicle(sql: Sql, id: string, p: VehicleInput) {
   const [dup] = await sql`
     select 1 from app.vehicles where active and upper(replace(plate, ' ', '')) = ${plate.replace(/ /g, '')}
        and id <> ${id}`;
-  if (dup && p.active) throw new BusinessError(`Kennzeichen ${plate} ist schon erfasst`);
+  if (dup && active) throw new BusinessError(`Kennzeichen ${plate} ist schon erfasst`);
   const leasing = p.ownership === 'eigentum' ? null : p.leasing_company;
   const leasingUntil = p.ownership === 'eigentum' ? null : p.leasing_until;
   await sql`
     insert into app.vehicles (id, plate, make, model, vin, first_registration, fuel, ownership, leasing_company,
                               leasing_until, insurer, insurance_no, hu_due, service_due, mileage, mileage_date,
-                              driver_employee_id, fuel_card, note, active)
+                              driver_employee_id, fuel_card, note, purchase_date, purchase_price_cents, sold_on,
+                              sale_price_cents, buyer, active)
     values (${id}, ${plate}, ${p.make}, ${p.model}, ${vin}, ${p.first_registration}, ${p.fuel}, ${p.ownership},
             ${leasing}, ${leasingUntil}, ${p.insurer}, ${p.insurance_no}, ${p.hu_due}, ${p.service_due},
             ${km ? Number(km) : null}, ${km ? (p.mileage_date ?? todayBerlin()) : null}, ${p.driver_employee_id},
-            ${p.fuel_card}, ${p.note}, ${p.active})
+            ${p.fuel_card}, ${p.note}, ${p.purchase_date ?? null}, ${purchasePrice}, ${soldOn}, ${salePrice},
+            ${soldOn ? (p.buyer ?? null) : null}, ${active})
     on conflict (id) do update set plate = excluded.plate, make = excluded.make, model = excluded.model,
       vin = excluded.vin, first_registration = excluded.first_registration, fuel = excluded.fuel,
       ownership = excluded.ownership, leasing_company = excluded.leasing_company,
       leasing_until = excluded.leasing_until, insurer = excluded.insurer, insurance_no = excluded.insurance_no,
       hu_due = excluded.hu_due, service_due = excluded.service_due, mileage = excluded.mileage,
       mileage_date = excluded.mileage_date, driver_employee_id = excluded.driver_employee_id,
-      fuel_card = excluded.fuel_card, note = excluded.note, active = excluded.active`;
+      fuel_card = excluded.fuel_card, note = excluded.note, purchase_date = excluded.purchase_date,
+      purchase_price_cents = excluded.purchase_price_cents, sold_on = excluded.sold_on,
+      sale_price_cents = excluded.sale_price_cents, buyer = excluded.buyer, active = excluded.active`;
 }
 
 // ---------------------------------------------------------------- Gegenstände für Übergaben (Auswahlliste)

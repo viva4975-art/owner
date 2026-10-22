@@ -3849,3 +3849,10 @@ Testadresse.
 - 2026-10-22: **Mitarbeiter → Übersicht → Vertraulich** zeigt jetzt alles (Ahmed): Geburtsdatum, Anschrift, Steuer-ID,
   SV-Nummer, Krankenkasse, IBAN (in Vierergruppen) mit Schild „ungültig“ bei falscher Prüfziffer, dazu Geburtsort,
   Familienstand, Staatsangehörigkeit, Aufenthalt. Weiter nur Admin/Personal (RLS unverändert).
+- 2026-10-22: **Fahrzeuge: Kauf & Verkauf, TÜV-Erinnerung** (Ahmed): neuer Abschnitt im Fahrzeug „Kauf & Verkauf“ mit
+  Kaufdatum, Kaufpreis, „aktiv (im Bestand)“ und Häkchen **„Verkauft“** (Verkauft am, Verkaufspreis, Käufer). Ein
+  verkauftes Fahrzeug ist automatisch inaktiv; sein Kennzeichen darf neu erfasst werden. Beträge in Cent („7.500“ =
+  7.500 €). Liste mit Filtern Aktive / Inaktiv-verkauft / Alle, darunter Kaufpreis bzw. „verkauft … für …“. Migration
+  `20261217000001`. **HU (TÜV):** Erinnerung (Fahrzeugseite, Liste, Erinnerungen + tägliche Mail) **einen Monat vor dem
+  HU-Monat** (HU 11/2026 → ab 01.10.2026; `remindFrom`), Inspektion/Leasingende weiter 30 Tage. **Steuerlich:** Wurde beim
+  Kauf Vorsteuer gezogen, ist der Verkauf mit 19 % USt zu fakturieren; Anlagenabgang/Buchwert macht der Steuerberater.

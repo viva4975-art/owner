@@ -16,7 +16,7 @@ import { type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
 import { str } from './forms.js';
 import { Icon } from './icons.js';
-import { PageHead, dateDe, anz } from './layout.js';
+import { PageHead, dateDe, anz, euro } from './layout.js';
 
 /** Inventar → Fahrzeuge; Einstellungen → Gegenstände für Übergaben. */
 export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
@@ -24,8 +24,10 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
   const versionOf = (v: unknown) => (typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : null);
 
   app.get('/fahrzeuge', async (c) => {
-    const all = c.req.query('alle') === '1';
-    const list = await listVehicles(sql, all);
+    const f =
+      c.req.query('alle') === '1' ? 'alle' : c.req.query('status') === 'inaktiv' ? 'inaktiv' : 'aktiv';
+    const all = f !== 'aktiv';
+    const list = (await listVehicles(sql, all)).filter((v) => f !== 'inaktiv' || !v.active);
     const today = todayBerlin();
     return page(
       c,
@@ -38,11 +40,14 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
           </a>
         </PageHead>
         <div class="chips" style="margin-bottom:12px">
-          <a href="/fahrzeuge" class={all ? '' : 'on'}>
+          <a href="/fahrzeuge" class={f === 'aktiv' ? 'on' : ''}>
             Aktive
           </a>
-          <a href="/fahrzeuge?alle=1" class={all ? 'on' : ''}>
-            Alle (auch abgemeldet)
+          <a href="/fahrzeuge?status=inaktiv" class={f === 'inaktiv' ? 'on' : ''}>
+            Inaktiv / verkauft
+          </a>
+          <a href="/fahrzeuge?alle=1" class={f === 'alle' ? 'on' : ''}>
+            Alle
           </a>
         </div>
         <div class="tbl card stack-m" style="padding:0">
@@ -75,11 +80,20 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
                       <a href={`/fahrzeuge/${v.id}`} class="plate">
                         {v.plate}
                       </a>
-                      {!v.active && <span class="badge">abgemeldet</span>}
+                      {!v.active && <span class="badge">{v.sold_on ? 'verkauft' : 'inaktiv'}</span>}
                     </td>
                     <td data-l="Fahrzeug">
                       {[v.make, v.model].filter(Boolean).join(' ') || '–'}
                       {v.first_registration && <div class="small mut">EZ {dateDe(v.first_registration)}</div>}
+                      {v.purchase_price_cents != null && (
+                        <div class="small mut">Kaufpreis {euro(v.purchase_price_cents)}</div>
+                      )}
+                      {v.sold_on && (
+                        <div class="small mut">
+                          verkauft {dateDe(v.sold_on)}
+                          {v.sale_price_cents != null && ` für ${euro(v.sale_price_cents)}`}
+                        </div>
+                      )}
                     </td>
                     <td data-l="Fahrer/in">{v.driver_name ?? '–'}</td>
                     <td data-l="HU">{due(v.hu_due)}</td>
@@ -260,10 +274,62 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
                   {d.note ?? ''}
                 </textarea>
               </div>
+            </div>
+            <h3>Kauf &amp; Verkauf</h3>
+            <div class="grid">
               <div>
-                <label for="act">im Bestand (angemeldet)</label>
+                <label for="pd">Kaufdatum</label>
+                <input id="pd" type="date" name="purchase_date" value={d.purchase_date ?? ''} />
+              </div>
+              <div>
+                <label for="pp">Kaufpreis (€)</label>
+                <input
+                  id="pp"
+                  name="purchase_price"
+                  inputmode="decimal"
+                  placeholder="z. B. 18.500,00"
+                  value={d.purchase_price_cents != null ? centsText(d.purchase_price_cents) : ''}
+                />
+              </div>
+              <div>
+                <label for="act">aktiv (im Bestand)</label>
                 <input id="act" type="checkbox" name="active" checked={d.active ?? true} />
               </div>
+              <div>
+                <label for="sold">Verkauft</label>
+                <input
+                  id="sold"
+                  type="checkbox"
+                  name="sold"
+                  data-reveal="#sale-fields"
+                  checked={!!d.sold_on}
+                />
+              </div>
+            </div>
+            <div class="grid" id="sale-fields" hidden={!d.sold_on}>
+              <div>
+                <label for="so">Verkauft am</label>
+                <input id="so" type="date" name="sold_on" value={d.sold_on ?? ''} />
+              </div>
+              <div>
+                <label for="sp">Verkaufspreis (€)</label>
+                <input
+                  id="sp"
+                  name="sale_price"
+                  inputmode="decimal"
+                  placeholder="z. B. 6.000,00"
+                  value={d.sale_price_cents != null ? centsText(d.sale_price_cents) : ''}
+                />
+              </div>
+              <div>
+                <label for="buyer">Käufer</label>
+                <input id="buyer" name="buyer" value={d.buyer ?? ''} />
+              </div>
+              <p class="small mut" style="grid-column:1/-1">
+                Verkaufte Fahrzeuge sind nicht mehr aktiv. Steuer: Wurde beim Kauf Vorsteuer gezogen, ist der
+                Verkauf umsatzsteuerpflichtig (19 %) – Rechnung an den Käufer stellen und dem Steuerberater
+                melden (Anlagenabgang, Buchwert).
+              </p>
             </div>
             <datalist id="makes">
               {[
@@ -354,6 +420,11 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
       driver_employee_id: str(b, 'driver_employee_id'),
       fuel_card: str(b, 'fuel_card'),
       note: str(b, 'note'),
+      purchase_date: str(b, 'purchase_date'),
+      purchase_price: str(b, 'purchase_price'),
+      sold_on: b.sold === 'on' ? (str(b, 'sold_on') ?? todayBerlin()) : null,
+      sale_price: b.sold === 'on' ? str(b, 'sale_price') : null,
+      buyer: str(b, 'buyer'),
       active: b.active === 'on',
       expectedVersion: versionOf(b.version),
     });
@@ -431,6 +502,12 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
     return back(c, '/einstellungen/uebergabe-gegenstaende', { ok: 'Gespeichert.' });
   });
 }
+
+const centsText = (c: bigint) => {
+  const neg = c < 0n;
+  const a = neg ? -c : c;
+  return `${neg ? '-' : ''}${a / 100n},${String(a % 100n).padStart(2, '0')}`;
+};
 
 function lastOfMonth(ym: string) {
   const [y, m] = ym.split('-').map(Number);

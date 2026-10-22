@@ -7,7 +7,9 @@ import {
   listHandoverObjects,
   saveHandoverObject,
   saveVehicle,
+  remindFrom,
   vehicleDeadlines,
+  type Vehicle,
   type VehicleInput,
 } from './vehicles.js';
 
@@ -66,6 +68,54 @@ describe.skipIf(!available)('Fahrzeuge und Übergabe-Gegenstände (Datenbank)', 
       ['HU (TÜV)', false],
       ['Inspektion', true],
     ]);
+  });
+
+  it('Kaufpreis und Verkauf: Cent-genau, verkauft = inaktiv, Prüfungen', async () => {
+    const id = randomUUID();
+    await expect(saveVehicle(sql, id, base({ plate: 'M-VK 1', purchase_price: 'abc' }))).rejects.toThrow(
+      /Kaufpreis/,
+    );
+    await saveVehicle(
+      sql,
+      id,
+      base({ plate: 'M-VK 1', purchase_date: '2022-05-02', purchase_price: '18.500,50' }),
+    );
+    let v = (await getVehicle(sql, id))!;
+    expect([v.purchase_price_cents, v.active, v.sold_on]).toEqual([1850050n, true, null]);
+    await expect(
+      saveVehicle(sql, id, base({ plate: 'M-VK 1', sold_on: '2022-01-01', purchase_date: '2022-05-02' })),
+    ).rejects.toThrow(/vor dem Kaufdatum/);
+    await saveVehicle(
+      sql,
+      id,
+      base({
+        plate: 'M-VK 1',
+        purchase_price: '18500,50',
+        sold_on: '2026-10-01',
+        sale_price: '6.000',
+        buyer: 'Autohaus X',
+      }),
+    );
+    v = (await getVehicle(sql, id))!;
+    expect([v.active, v.sold_on, v.sale_price_cents, v.buyer]).toEqual([
+      false,
+      '2026-10-01',
+      600000n,
+      'Autohaus X',
+    ]);
+    // gleiches Kennzeichen darf wieder neu erfasst werden
+    await saveVehicle(sql, randomUUID(), base({ plate: 'M-VK 1' }));
+  });
+
+  it('HU-Erinnerung einen Monat vor dem HU-Monat', () => {
+    expect(remindFrom('hu', '2026-11-30')).toBe('2026-10-01');
+    expect(remindFrom('hu', '2027-01-31')).toBe('2026-12-01');
+    const v = { hu_due: '2026-11-30', service_due: null, leasing_until: null } as Vehicle;
+    expect(vehicleDeadlines(v, '2026-09-30')).toEqual([]);
+    expect(vehicleDeadlines(v, '2026-10-01')).toEqual([
+      { label: 'HU (TÜV)', date: '2026-11-30', overdue: false },
+    ]);
+    expect(vehicleDeadlines(v, '2026-12-01')[0]!.overdue).toBe(true);
   });
 
   it('Gegenstände für Übergaben: Startliste, neu, keine Dubletten', async () => {

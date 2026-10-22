@@ -3871,3 +3871,5 @@ Testadresse.
     (Abschreibung macht der Steuerberater).
   - Browser-Tests an die Änderungen dieser Woche angepasst (Arbeitsschein ohne Beginn/Ende, Auswertungen mit 4 Menüpunkten
     + Bereichsreitern). `e2e:mahnung` braucht den lokalen Test-Mailserver (Port 1025) – lief hier nicht, kein App-Fehler.
+  - Fahrzeuge: Anzahl im Titel „Fahrzeuge (n)“, in den Filtern Aktive (n) / Inaktiv-verkauft (n) / Alle (n) und in der
+    Kachel „im Bestand“ (darunter „n insgesamt · n verkauft“). Kacheln zählen immer den ganzen Bestand, egal welcher Filter.

@@ -26,40 +26,46 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
   app.get('/fahrzeuge', async (c) => {
     const f =
       c.req.query('alle') === '1' ? 'alle' : c.req.query('status') === 'inaktiv' ? 'inaktiv' : 'aktiv';
-    const all = f !== 'aktiv';
-    const list = (await listVehicles(sql, all)).filter((v) => f !== 'inaktiv' || !v.active);
+    const everything = await listVehicles(sql, true);
+    const list = everything.filter((v) => (f === 'alle' ? true : f === 'inaktiv' ? !v.active : v.active));
+    const nAct = everything.filter((v) => v.active).length;
+    const nSold = everything.filter((v) => v.sold_on).length;
     const today = todayBerlin();
     return page(
       c,
       'Fahrzeuge',
       'inventar',
       <>
-        <PageHead title="Fahrzeuge">
+        <PageHead title={`Fahrzeuge (${nAct})`}>
           <a class="btn" href={`/fahrzeuge/${randomUUID()}`}>
             + Fahrzeug anlegen
           </a>
         </PageHead>
         <div class="chips" style="margin-bottom:12px">
           <a href="/fahrzeuge" class={f === 'aktiv' ? 'on' : ''}>
-            Aktive
+            Aktive ({nAct})
           </a>
           <a href="/fahrzeuge?status=inaktiv" class={f === 'inaktiv' ? 'on' : ''}>
-            Inaktiv / verkauft
+            Inaktiv / verkauft ({everything.length - nAct})
           </a>
           <a href="/fahrzeuge?alle=1" class={f === 'alle' ? 'on' : ''}>
-            Alle
+            Alle ({everything.length})
           </a>
         </div>
         {(() => {
-          const act = list.filter((v) => v.active);
+          const act = everything.filter((v) => v.active);
           const sum = (xs: (bigint | null)[]) => xs.reduce<bigint>((a, b) => a + (b ?? 0n), 0n);
-          const sold = list.filter((v) => v.sold_on);
+          const sold = everything.filter((v) => v.sold_on);
           const missingEst = act.filter((v) => v.estimated_value_cents == null).length;
           return (
             <div class="kpis kpis-sm">
               <div class="kpi">
                 <div class="l">Fahrzeuge im Bestand</div>
                 <div class="v">{act.length}</div>
+                <div class="s">
+                  {anz(everything.length, 'Fahrzeug', 'Fahrzeuge')} insgesamt
+                  {nSold > 0 && ` · ${nSold} verkauft`}
+                </div>
               </div>
               <div class="kpi">
                 <div class="l">Kaufpreis gesamt (Bestand)</div>

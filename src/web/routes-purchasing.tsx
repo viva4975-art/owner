@@ -604,8 +604,11 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       .filter((r) => !search || [r.number, r.supplier, r.what].some((v) => v.toLowerCase().includes(search)))
       .filter((r) => !onlyUnsigned || r.unsigned);
     const unsignedCount = all.filter((r) => r.unsigned).length;
-    const count = (v: string) => (v === 'alle' ? base.length : base.filter((r) => r.phase === v).length);
-    const allRows = view === 'alle' ? base : base.filter((r) => r.phase === view);
+    // Laufend = auch erteilte ohne Unterschrift (stehen zusätzlich unter „Zu erledigen“, Ahmed 22.10.)
+    const inView = (r: (typeof base)[number], v: string) =>
+      r.phase === v || (v === 'laufend' && r.phase === 'erledigen' && r.unsigned);
+    const count = (v: string) => (v === 'alle' ? base.length : base.filter((r) => inView(r, v)).length);
+    const allRows = view === 'alle' ? base : base.filter((r) => inView(r, view));
     const PER_PAGE = 25;
     const pages = Math.max(1, Math.ceil(allRows.length / PER_PAGE));
     const cur = Math.min(pages, Math.max(1, Number(q.seite) || 1));

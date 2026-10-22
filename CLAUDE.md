@@ -3895,3 +3895,6 @@ Testadresse.
   weil es noch keinen Abrechnungszeitraum gibt – Ahmed: „bei genau den zwei fehlt nach Ausführung“). **Rechnungseingang →
   Bestellung wählen** zeigt nur noch offene Bestellungen: erteilte mit Beginn in der Zukunft oder solche mit einem Zeitraum,
   der weder abgerechnet noch als „keine Rechnung“ vermerkt ist; schon verknüpfte bleiben wählbar.
+- 2026-10-22: Bestellungen → Reiter „Laufend“ enthält jetzt auch erteilte NU-Bestellungen ohne unterschriebenen Auftrag
+  (Ahmed: „monatlich, erscheint aber nicht unter laufend“) – sie stehen zusätzlich unter „Zu erledigen“, bis die
+  Unterschrift (Scan oder Handy) da ist.

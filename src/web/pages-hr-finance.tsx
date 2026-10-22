@@ -1,6 +1,6 @@
 import { permitNeeded } from '../services/hr-required-docs.js';
 import type { Child, FC } from 'hono/jsx';
-import { todayBerlin } from '../domain/invoice/calc.js';
+import { addDays, todayBerlin } from '../domain/invoice/calc.js';
 import {
   FREE_MOVEMENT_COUNTRIES,
   HEALTH_INSURERS,
@@ -524,6 +524,17 @@ export const EmployeeOverview: FC<{
             <a class="btn sm" href={`/personal/${e.id}/bearbeiten`}>
               <Icon name="pencil" /> Bearbeiten
             </a>
+            {/* nur bei frisch Eingestellten (Eintritt höchstens 60 Tage her oder in der Zukunft) */}
+            {showPrivate && !e.exit_date && e.entry_date >= addDays(todayBerlin(), -60) && (
+              <form method="post" action={`/personal/${e.id}/nicht-angetreten`} class="inline-form">
+                <button
+                  class="btn sm danger"
+                  data-confirm={`${e.first_name} ${e.last_name} ist nicht zur Arbeit erschienen?\n\nAustritt wird zum Eintrittstag erfasst, die Einsätze werden wieder offen. Nur möglich, solange keine Arbeitszeit erfasst ist.`}
+                >
+                  Nicht angetreten
+                </button>
+              </form>
+            )}
           </div>
         </div>
         {showPrivate && priv && (

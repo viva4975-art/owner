@@ -40,6 +40,7 @@ import {
   listWageLevels,
   employmentHistory,
   exitEmployee,
+  markNotStarted,
   reenterEmployee,
   revokeExit,
   saveEmployee,
@@ -1601,6 +1602,18 @@ export function registerModuleRoutes(ctx: Ctx) {
       reason: typeof b.reason === 'string' ? b.reason : null,
     });
     return back(c, `/personal/${id}`, { ok: 'Austritt gespeichert.' });
+  });
+
+  app.post(`/personal/:id{${UUID}}/nicht-angetreten`, async (c) => {
+    const id = c.req.param('id');
+    const r = await markNotStarted(sql, id, c.get('actor'));
+    return back(c, `/personal/${id}`, {
+      ok:
+        'Als „nicht angetreten“ erfasst (Austritt = Eintrittstag).' +
+        (r.shifts ? ` ${r.shifts} Einsätze sind wieder offen – bitte in der Planung neu besetzen.` : '') +
+        (r.absences ? ` ${r.absences} Abwesenheiten storniert.` : '') +
+        ' Lohnbüro: SV-Anmeldung ggf. stornieren.',
+    });
   });
 
   app.post(`/personal/:id{${UUID}}/austritt-zuruecknehmen`, async (c) => {

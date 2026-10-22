@@ -3812,3 +3812,10 @@ Testadresse.
     = berechtigtes Interesse; Mitarbeitende informieren, Widerspruch beachten.
   - Formularfuß in Rastern (z. B. „Zusätzlicher Urlaub“) ohne graue Fläche, die schräg ins Raster ragte.
   - Tests: neu `greetings-exit.db.test.ts`, `e2e:kasse` 69 Prüfungen.
+- 2026-10-22: **Mitarbeiter „nicht angetreten“** (Ahmed): Knopf im Kopf der Mitarbeiter-Übersicht (Admin/Personal, nur bei
+  Eintritt ≤ 60 Tage her oder in der Zukunft, Rückfrage). `markNotStarted` (employees.ts): nur ohne erfasste Arbeitszeit
+  (sonst „Austritt erfassen“); Austritt = Eintrittstag, Grund „Nicht angetreten“, sofort ausgetreten; laufende/künftige
+  Einsätze werden offen („Zu planende Einsätze“), beantragte/genehmigte Abwesenheiten storniert; Protokoll `not_started`
+  mit den betroffenen IDs. Rücknahme über „Austritt zurücknehmen“ (Einsätze dann neu zuordnen). **Lohn/SV:** ist die
+  Person schon angemeldet, Anmeldung stornieren (DEÜV); eine Vertragsstrafe für Nichtantritt nur, wenn im Vertrag
+  vereinbart (Vorlagen V5: höchstens ½ Monatslohn). Test `not-started.db.test.ts`.

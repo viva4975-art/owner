@@ -848,6 +848,43 @@ export async function exitEmployee(sql: Sql, id: string, p: { date: string; reas
              where id = ${id}`;
 }
 
+/**
+ * Nicht angetreten (Ahmed 22.10.): Die Person ist zum ersten Arbeitstag nicht erschienen. Austritt = Eintrittstag,
+ * Grund „Nicht angetreten“, sofort ausgetreten. Ihre Einsätze (laufend/künftig) werden wieder offen („Zu planende
+ * Einsätze“), offene/genehmigte Abwesenheiten storniert. Nur ohne erfasste Arbeitszeit – sonst normaler Austritt.
+ * Rücknahme über „Austritt zurücknehmen“ (Einsätze dann neu zuordnen).
+ */
+export async function markNotStarted(sql: Sql, id: string, actor: string) {
+  return sql.begin(async (tx) => {
+    const [e] = await tx<{ entry_date: string; exit_date: string | null; name: string }[]>`
+      select entry_date::text, exit_date::text, first_name || ' ' || last_name as name
+        from app.employees where id = ${id} for update`;
+    if (!e) throw new BusinessError('Mitarbeiter nicht gefunden');
+    if (e.exit_date) throw new BusinessError('Für diese Person ist schon ein Austritt erfasst');
+    const [cnt] = await tx<{ n: number }[]>`
+      select count(*)::int as n from app.time_entries where employee_id = ${id} and status <> 'abgelehnt'`;
+    const n = cnt?.n ?? 0;
+    if (n > 0)
+      throw new BusinessError(
+        `Es sind schon ${n} Arbeitszeiten erfasst – die Person hat also gearbeitet. Bitte „Austritt erfassen“ nutzen.`,
+      );
+    const shifts = await tx<{ id: string }[]>`
+      update app.shift_plans set employee_id = null
+       where employee_id = ${id} and (valid_until is null or valid_until >= ${e.entry_date}) returning id`;
+    const abs = await tx<{ id: string }[]>`
+      update app.absences set status = 'storniert', decided_by = ${actor}, decided_at = now(),
+             note = coalesce(note || ' · ', '') || 'nicht angetreten'
+       where employee_id = ${id} and status in ('beantragt', 'genehmigt') returning id`;
+    if (abs.length) await tx`delete from app.absence_hours where absence_id in ${tx(abs.map((a) => a.id))}`;
+    await tx`update app.employees set exit_date = entry_date, exit_reason = 'Nicht angetreten', status = 'ausgetreten'
+              where id = ${id}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'not_started', 'employee', ${id},
+                     ${tx.json({ entry_date: e.entry_date, einsaetze_offen: shifts.map((s) => s.id), abwesenheiten_storniert: abs.map((a) => a.id) })})`;
+    return { shifts: shifts.length, absences: abs.length };
+  });
+}
+
 /** Austritt zurücknehmen (falsch erfasst): Austrittsdatum und Grund weg, Status aktiv. Änderung steht im Protokoll. */
 export async function revokeExit(sql: Sql, id: string) {
   const [e] = await sql<

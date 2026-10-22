@@ -15,6 +15,7 @@ import {
   type TenderStatus,
   upcomingEvents,
 } from '../services/tenders.js';
+import { hitCounts } from '../services/tender-feed.js';
 import { listFiles } from '../services/uploads.js';
 import { type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
@@ -66,7 +67,7 @@ export function registerTenderRoutes({ app, deps, page, back }: Ctx) {
     const v = c.req.query('ansicht');
     const view = v === 'abgeschlossen' || v === 'alle' ? v : 'aktiv';
     const q = c.req.query('q') ?? '';
-    const [rows, events, counts] = await Promise.all([
+    const [rows, events, counts, found] = await Promise.all([
       listTenders(sql, { view, q }),
       upcomingEvents(sql, 21),
       sql<{ aktiv: number; zu: number; won: number; lost: number }[]>`
@@ -75,6 +76,7 @@ export function registerTenderRoutes({ app, deps, page, back }: Ctx) {
                count(*) filter (where status = 'gewonnen' and created_at > now() - interval '12 months')::int as won,
                count(*) filter (where status = 'verloren' and created_at > now() - interval '12 months')::int as lost
           from app.tenders`,
+      hitCounts(sql),
     ]);
     const k = counts[0]!;
     return page(
@@ -83,10 +85,19 @@ export function registerTenderRoutes({ app, deps, page, back }: Ctx) {
       'angebote',
       <>
         <PageHead title="Ausschreibungen">
-          <a class="btn" href={`/ausschreibungen/${randomUUID()}`} style="margin-left:auto">
+          <a class="btn sec" href="/ausschreibungen/eingang" style="margin-left:auto">
+            Gefundene Ausschreibungen{found.neu > 0 && ` (${found.neu} neu)`}
+          </a>
+          <a class="btn" href={`/ausschreibungen/${randomUUID()}`}>
             + Ausschreibung erfassen
           </a>
         </PageHead>
+        {found.neu > 0 && (
+          <div class="flash ok">
+            Die Suche hat <b>{found.neu}</b> {found.neu === 1 ? 'neue Ausschreibung' : 'neue Ausschreibungen'}{' '}
+            gefunden – <a href="/ausschreibungen/eingang">ansehen und übernehmen oder verwerfen</a>.
+          </div>
+        )}
         <p class="mut" style="margin-top:-8px;max-width:820px">
           Termine einer Ausschreibung erfassen, bevor es Preise gibt: Abgabefrist, Bieterfragen,
           Ortsbesichtigung, Bindefrist. Das Angebot entsteht später daraus.

@@ -37,6 +37,8 @@ export const PLATFORMS = [
   'Subreport',
   'Vergabemarktplatz München',
   'service.bund.de',
+  'iTWO tender',
+  'TED',
   'E-Mail / Post',
 ];
 

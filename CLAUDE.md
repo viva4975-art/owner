@@ -3907,3 +3907,21 @@ Testadresse.
   `select[data-autosubmit]` in `client.ts`, `MonthSelect … autosubmit`) statt von/bis-Feldern (Adressen mit `von`/`bis`
   gehen weiter); Filter Kunde/Objekt/Objektleitung bleiben beim Umschalten erhalten. Zeile **„Gesamt“** steht jetzt oben
   direkt unter den Spaltenköpfen (hell hinterlegt) statt am Ende der Liste.
+- 2026-10-22: **Ausschreibungssuche automatisch** (Ahmed: „München + 100 km, Stuttgart + 20 km, alle Leistungen“; registriert
+  bei iTWO, TED, Vergabe München, eVergabe, DTVP, Vergabe Bayern): `src/services/tender-feed.ts`, Migration
+  `20261219000001`. Quellen: **Bekanntmachungsservice des Bundes** (oeffentlichevergabe.de, Open-Data-Export je
+  Veröffentlichungstag als OCDS-ZIP, CC0, ohne Anmeldung – dort laufen die eForms-Bekanntmachungen der Plattformen
+  zusammen) und **TED** (Such-API v3, EU-weite). Server prüft stündlich 5–21 Uhr: fehlende Tage (beim ersten Lauf 14 Tage
+  zurück) bzw. TED einmal je Tag; erfolgreiche Tage gemerkt (`tender_feed_runs`), Fehler beim nächsten Lauf wiederholt.
+  Filter: CPV-Anfang (Standard 9091 alle Reinigungsdienste, 90921 Desinfektion, 90620/90630 Winterdienst, 98341140
+  Hausmeister) **oder** Stichwort in Titel/Beschreibung; Ort der Leistung (sonst Auftraggeber) per Nominatim in
+  Koordinaten (`app.geo_cache`, je Ort einmal, 1/s), Luftlinie zu den Umkreisen; ohne Ort nur bei NUTS in Bayern/Region
+  Stuttgart („Ort prüfen“). Abgelaufene Fristen weg; gleiche Ausschreibung in Bund und TED → „doppelt“ ausgeblendet.
+  Eingang **Angebote → Ausschreibungen → „Gefundene Ausschreibungen“** (`/ausschreibungen/eingang`): Frist, Auftraggeber,
+  Ort + km, Grund (CPV/Stichwort), Wert, Links Bekanntmachung/Vergabeunterlagen; **Übernehmen** → Ausschreibung mit
+  Abgabefrist-Aufgabe (feste ID, Plattform aus dem Link erkannt), **Verwerfen** (einzeln/markiert, zurückholbar),
+  „Jetzt abrufen“. Neue Treffer in der täglichen Erinnerungs-Mail. Einstellungen → **Ausschreibungssuche** (CPV,
+  Stichwörter, Umkreise, an/aus). **Grenzen:** Hier in der Testumgebung kein Internet → gegen die echten Schnittstellen
+  erst auf dem Server geprüft (Format laut Doku/Open-Source-Nutzern, Lesen defensiv). Ausschreibungen, die eine Plattform
+  nur selbst veröffentlicht (manche unterschwellige), fehlen → Suchagenten der Plattformen weiter nutzen. Die Homepage
+  war hier nicht erreichbar – **Ahmed: CPV/Stichwörter mit den Leistungen der Homepage abgleichen.**

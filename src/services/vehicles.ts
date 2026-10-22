@@ -66,6 +66,16 @@ export async function getVehicle(sql: Sql, id: string) {
   return (await listVehicles(sql, true)).find((v) => v.id === id) ?? null;
 }
 
+/** Aktive Fahrzeuge ohne hochgeladenen Fahrzeugschein (Hinweis Startseite/Erinnerungen). */
+export async function vehiclesWithoutRegistration(sql: Sql) {
+  return sql<{ id: string; plate: string }[]>`
+    select v.id, v.plate from app.vehicles v
+     where v.active and not exists (
+       select 1 from app.file_links l
+        where l.entity_type = 'vehicle' and l.entity_id = v.id and l.category = 'Fahrzeugschein')
+     order by v.plate`;
+}
+
 /**
  * Ab wann an eine Frist erinnert wird. HU (TÜV) ist bis Ende des Plakettenmonats fällig (gespeichert als letzter Tag)
  * → Erinnerung einen Monat vor Beginn dieses Monats (HU 11/2026 → ab 01.10.2026). Sonst 30 Tage vorher.

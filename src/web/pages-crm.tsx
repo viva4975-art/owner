@@ -583,7 +583,7 @@ export const Dashboard: FC<{
   /** Bankkonten mit Kontostand (Bankabruf) und Anzahl neuer Umsätze */
   bank?: { iban: string; name: string; balance_cents: bigint | null; open: number }[] | null;
   /** Anfragen aus der App der Objektleitung: NU-Aufträge zur Freigabe, neue Personalbögen */
-  appRequests?: { nu: number; bogen: number; zeit?: number; auffaellig?: number };
+  appRequests?: { nu: number; bogen: number; zeit?: number; auffaellig?: number; fahrzeugschein?: number };
   absentHref?: string | undefined;
   layout?: DashItem[] | undefined;
   showAkquise?: boolean;
@@ -680,6 +680,20 @@ export const Dashboard: FC<{
               </>
             ),
             href: '/personal/personalboegen',
+          },
+        ]
+      : []),
+    ...(appRequests.fahrzeugschein
+      ? [
+          {
+            tone: 'warn',
+            text: (
+              <>
+                Fahrzeugschein fehlt bei <b>{appRequests.fahrzeugschein}</b>{' '}
+                {appRequests.fahrzeugschein === 1 ? 'Fahrzeug' : 'Fahrzeugen'}
+              </>
+            ),
+            href: '/fahrzeuge',
           },
         ]
       : []),

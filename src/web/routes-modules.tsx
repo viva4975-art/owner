@@ -1,3 +1,4 @@
+import { vehiclesWithoutRegistration } from '../services/vehicles.js';
 import { accountOverview } from '../services/bank-feed.js';
 import { timeAnomalies } from '../services/time-anomalies.js';
 import { siteCosting } from '../services/costing.js';
@@ -328,6 +329,7 @@ export function registerModuleRoutes(ctx: Ctx) {
         }
         bank={canAccess(role, '/transfer/kontoumsaetze') ? await accountOverview(sql) : null}
         appRequests={{
+          fahrzeugschein: canAccess(role, '/fahrzeuge') ? (await vehiclesWithoutRegistration(sql)).length : 0,
           auffaellig: canAccess(role, '/zeiterfassung/auffaellig') ? (await timeAnomalies(sql)).length : 0,
           zeit: canAccess(role, '/zeiterfassung')
             ? Number(

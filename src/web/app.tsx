@@ -395,6 +395,23 @@ export function createApp(deps: Deps) {
     }
   });
 
+  // „Speichern & zurück“ (Ahmed 22.10.): Knopf hängt ?_zurueck=<Übersicht> an; bei Erfolg (Weiterleitung ohne
+  // Fehler) geht es zur Übersicht statt zurück ins Formular – Meldung „ok“ wandert mit. Nur eigene Pfade.
+  app.use(async (c, next) => {
+    await next();
+    if (c.req.method !== 'POST') return;
+    const to = c.req.query('_zurueck');
+    if (!to || !to.startsWith('/') || to.startsWith('//') || to.includes('\\')) return;
+    const loc = c.res.headers.get('Location');
+    if (!loc || c.res.status < 300 || c.res.status >= 400) return;
+    const target = new URL(loc, 'http://x');
+    if (target.searchParams.has('fehler')) return;
+    const dest = new URL(to, 'http://x');
+    const ok = target.searchParams.get('ok');
+    if (ok) dest.searchParams.set('ok', ok);
+    c.res = c.redirect(dest.pathname + dest.search + dest.hash, 303);
+  });
+
   // Objektleitung: keine Links ins Leere (gesperrte Seiten) – siehe stripForbiddenLinks
   app.use(async (c, next) => {
     await next();

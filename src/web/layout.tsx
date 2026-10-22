@@ -1510,6 +1510,12 @@ tr.offer-decided td{background:#fcfcfc}
 .tplbtn span{font-size:12px;color:var(--mut)}
 .tplbtn:hover{border-color:var(--brand);background:var(--tint-2,#f8eff2);text-decoration:none}
 .tplbtn.app{border-color:var(--brand);border-left:3px solid var(--brand)}
+/* Zurück-Knopf oben und „Speichern & zurück“ (Ahmed 22.10.) */
+.crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px}
+.crumbs a.crumb-back{display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);font-weight:600;font-size:13px;text-decoration:none}
+.crumbs a.crumb-back:hover{border-color:var(--brand);color:var(--brand)}
+.crumb-trail{color:var(--mut)}
+.btn.save-back{margin-left:6px}
 `;
 
 export const euro = (c: bigint) => formatEuro(c as Cents);
@@ -2169,12 +2175,19 @@ export const PageHead: FC<{
   <>
     {crumbs && crumbs.length > 0 && (
       <div class="crumbs">
-        {crumbs.map(([label, href], i) => (
-          <>
-            {i > 0 && ' / '}
-            <a href={href}>{label}</a>
-          </>
-        ))}
+        <a class="crumb-back" href={crumbs[crumbs.length - 1]![1]}>
+          ‹ Zurück zu {crumbs[crumbs.length - 1]![0]}
+        </a>
+        {crumbs.length > 1 && (
+          <span class="crumb-trail">
+            {crumbs.map(([label, href], i) => (
+              <>
+                {i > 0 && ' / '}
+                <a href={href}>{label}</a>
+              </>
+            ))}
+          </span>
+        )}
       </div>
     )}
     <div class="pagehead">

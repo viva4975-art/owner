@@ -210,6 +210,37 @@ export const CLIENT_JS = String.raw`
   openHash();
   window.addEventListener('hashchange', openHash);
 
+  // ---- „Speichern & zurück“ (Ahmed 22.10.): neben dem einen Speichern-Knopf im Formularfuß; Ziel = Zurück-Knopf oben.
+  // Der Server leitet nach erfolgreichem Speichern dorthin weiter (?_zurueck=…), bei Fehlern bleibt das Formular offen.
+  (function () {
+    var backA = document.querySelector('.crumbs a.crumb-back');
+    if (!backA) return;
+    var backTo = backA.getAttribute('href');
+    if (!backTo || backTo.charAt(0) !== '/') return;
+    Array.prototype.forEach.call(document.querySelectorAll('form'), function (f) {
+      if ((f.getAttribute('method') || '').toLowerCase() !== 'post' || f.hasAttribute('data-noback')) return;
+      if (f.closest('table')) return;
+      var feet = f.querySelectorAll('.formfoot, .form-foot, .actions');
+      var foot = feet[feet.length - 1];
+      if (!foot || foot.querySelector('.save-back')) return;
+      var subs = Array.prototype.filter.call(foot.querySelectorAll('button, input[type=submit]'), function (b) {
+        var t = (b.getAttribute('type') || 'submit').toLowerCase();
+        return t === 'submit' && !b.name && !b.hasAttribute('formaction') && !/(^| )(ghost|sec|danger)( |$)/.test(b.className);
+      });
+      if (subs.length !== 1) return;
+      var b = subs[0];
+      var label = (b.textContent || '').trim();
+      if (!/(speichern|anlegen)$/i.test(label) && label !== 'Übernehmen') return;
+      var act = f.getAttribute('action') || (location.pathname + location.search);
+      var nb = document.createElement('button');
+      nb.type = 'submit';
+      nb.className = 'btn sec save-back';
+      nb.textContent = /speichern$/i.test(label) ? 'Speichern & zurück' : label + ' & zurück';
+      nb.setAttribute('formaction', act + (act.indexOf('?') < 0 ? '?' : '&') + '_zurueck=' + encodeURIComponent(backTo));
+      b.parentNode.insertBefore(nb, b.nextSibling);
+    });
+  })();
+
   // ---- Rückfrage per data-confirm (Knopf oder Link) ----
   // Capture-Phase: vor allen anderen Klick-Behandlungen; abgebrochen = kein Absenden.
   document.addEventListener('click', function (e) {

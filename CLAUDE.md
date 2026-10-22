@@ -3856,3 +3856,11 @@ Testadresse.
   `20261217000001`. **HU (TÜV):** Erinnerung (Fahrzeugseite, Liste, Erinnerungen + tägliche Mail) **einen Monat vor dem
   HU-Monat** (HU 11/2026 → ab 01.10.2026; `remindFrom`), Inspektion/Leasingende weiter 30 Tage. **Steuerlich:** Wurde beim
   Kauf Vorsteuer gezogen, ist der Verkauf mit 19 % USt zu fakturieren; Anlagenabgang/Buchwert macht der Steuerberater.
+- 2026-10-22: **Nach dem Speichern zurück** (Ahmed: „z. B. Auto speichern, dann über das Menü wieder zur Übersicht“):
+  - Jede Seite mit Brotkrumen hat oben links einen Knopf **„‹ Zurück zu <Übersicht>“** (letzte Brotkrume, `PageHead`).
+  - Neben dem Speichern-Knopf im Formularfuß erscheint automatisch **„Speichern & zurück“** (`client.ts`, nur wenn das
+    Formular genau einen Speichern/Anlegen-Knopf hat, nicht in Tabellen; abschaltbar mit `data-noback`). Er hängt
+    `?_zurueck=<Übersicht>` an; eine Middleware in `app.tsx` leitet nach erfolgreichem Speichern dorthin (Meldung wandert
+    mit), bei Fehlern bleibt das Formular offen. Nur eigene Pfade. Normales „Speichern“ bleibt auf der Seite.
+  - **Fahrzeugschein fehlt** als Hinweis auf der Startseite („bei n Fahrzeugen“) und unter Erinnerungen je Fahrzeug
+    (aktive Fahrzeuge ohne Datei der Kategorie „Fahrzeugschein“, `vehiclesWithoutRegistration`).

@@ -9,7 +9,7 @@ import { dueCycleServices } from './executions.js';
 import { isOpen, leaveWarnings, warningText } from './leave-warnings.js';
 import { complianceOverview } from './subcontractors.js';
 import { upcomingEvents } from './tenders.js';
-import { remindFrom } from './vehicles.js';
+import { remindFrom, vehiclesWithoutRegistration } from './vehicles.js';
 import { plannedShifts } from './time.js';
 import type { Deps } from './workflow.js';
 
@@ -83,6 +83,14 @@ export async function collectReminders(sql: Sql, today = todayBerlin()): Promise
       });
     }
   }
+  for (const v of await vehiclesWithoutRegistration(sql))
+    out.push({
+      area: 'Fahrzeuge',
+      level: 'gelb',
+      text: `${v.plate}: Fahrzeugschein fehlt (keine Datei hochgeladen)`,
+      href: `/fahrzeuge/${v.id}`,
+      days: null,
+    });
   for (const v of vehicles) {
     for (const [label, date, kind] of [
       ['HU (TÜV)', v.hu_due, 'hu'],

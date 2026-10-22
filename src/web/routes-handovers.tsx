@@ -30,6 +30,7 @@ import {
   WAGE_DEDUCTION_TEXT,
 } from '../services/handovers.js';
 import { listHandoverObjects } from '../services/vehicles.js';
+import { DEVICE_STATUS, kindLabel } from '../services/device-tracking.js';
 import { importKeyProtocol, parseKeyProtocol, planKeyProtocol } from '../services/key-protocol.js';
 import {
   createKeyProtocol,
@@ -1494,8 +1495,75 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
   app.get(`/objekte/:id{${UUID}}/uebergaben`, (c) =>
     shells.site!(c, 'uebergaben', async (st) => {
       const rows = await listHandovers(sql, { scope: [st.id], kind: null, status: null, q: '' });
+      const devices = await sql<
+        {
+          id: string;
+          name: string;
+          inventory_no: string;
+          kind: string;
+          status: string;
+          next_inspection: string | null;
+          seen_at: string | null;
+        }[]
+      >`
+        select d.id, d.name, d.inventory_no, d.kind, d.status, d.next_inspection::text,
+               (select max(e.created_at at time zone 'Europe/Berlin')::date::text from app.device_events e where e.device_id = d.id) as seen_at
+          from app.devices d where d.site_id = ${st.id} and d.active order by d.name`;
       return (
         <>
+          <div class="card">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <h3 style="margin:0">Geräte an diesem Objekt ({devices.length})</h3>
+              {canAccess(c.get('user').role, '/geraete') && (
+                <a
+                  class="btn sm sec"
+                  style="margin-left:auto"
+                  href={`/geraete/${randomUUID()}/bearbeiten?objekt=${st.id}`}
+                >
+                  + Gerät für dieses Objekt anlegen
+                </a>
+              )}
+            </div>
+            {devices.length === 0 ? (
+              <p class="small mut">
+                Noch kein Gerät mit Standort hier. Beim Anlegen „Standort“ = dieses Objekt wählen oder den
+                QR-Code am Gerät hier scannen („Gerät ist hier“).
+              </p>
+            ) : (
+              <div class="tbl">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Gerät</th>
+                      <th>Art</th>
+                      <th>Zustand</th>
+                      <th>Nächste Prüfung</th>
+                      <th>Zuletzt gescannt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {devices.map((d) => (
+                      <tr>
+                        <td>
+                          <a href={`/geraete/${d.id}`}>{d.name}</a>{' '}
+                          <span class="small mut">Nr. {d.inventory_no}</span>
+                        </td>
+                        <td>{kindLabel(d.kind)}</td>
+                        <td>
+                          <span class={`badge ${d.status === 'ok' ? 'ok' : 'err'}`}>
+                            {DEVICE_STATUS[d.status as keyof typeof DEVICE_STATUS] ?? d.status}
+                          </span>
+                        </td>
+                        <td>{d.next_inspection ? dateDe(d.next_inspection) : '–'}</td>
+                        <td>{d.seen_at ? dateDe(d.seen_at) : 'nie'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+          <h3>Übergaben an Mitarbeitende</h3>
           <div class="actions" style="margin-top:0">
             {NEW_KINDS.map((k) => (
               <a class="btn sm" href={`/uebergaben/${randomUUID()}?art=${k}&an=ma&objekt=${st.id}`}>

@@ -621,7 +621,10 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
               <label for="site_id">Standort</label>
               <select id="site_id" name="site_id" required={!!scope}>
                 <option value="">{scope ? '– Objekt wählen –' : 'Lager / Büro'}</option>
-                <SiteOptions sites={sites} selected={d?.site_id} />
+                <SiteOptions
+                  sites={sites}
+                  selected={d ? d.site_id : sites.find((s) => s.id === c.req.query('objekt'))?.id}
+                />
               </select>
             </div>
             <Field name="purchase_date" label="Anschaffung" value={d?.purchase_date} type="date" />

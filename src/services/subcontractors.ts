@@ -10,6 +10,7 @@ import { FORM_COLORS, FORM_X, FormDoc } from '../pdf/form-doc.js';
 import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import { assertVersion } from './crm.js';
 import { hashPin, LOCK_MINUTES, MAX_ATTEMPTS, verifyHash } from './employee-auth.js';
+import { workDaysLabel } from './subcontract-days.js';
 import { BusinessError } from './errors.js';
 import { getSupplier, type Supplier } from './inventory.js';
 import { getSeller } from './masterdata.js';
@@ -485,6 +486,8 @@ export interface Subcontract {
   price_cents: bigint;
   max_hours_month: string | null;
   margin_bp: number | null;
+  /** „je Tag“: Arbeitstage (ISO 1 = Mo … 7 = So), null = Mo–Fr */
+  work_days: number[] | null;
   valid_from: string;
   valid_to: string | null;
   description: string | null;
@@ -547,6 +550,8 @@ export interface SubcontractInput {
   maxHours: string | null;
   /** unsere Marge in Basispunkten bei Abrechnung „Anteil am Umsatz“ */
   marginBp?: number | null;
+  /** „je Tag“: Arbeitstage 1–7 (leer = Mo–Fr) */
+  workDays?: number[] | null;
   validFrom: string;
   validTo: string | null;
   description: string | null;
@@ -569,6 +574,9 @@ export async function saveSubcontract(sql: Sql, id: string, p: SubcontractInput,
   if (p.billing === 'umsatz' && (p.marginBp == null || p.marginBp < 0 || p.marginBp > 10000))
     throw new BusinessError('Bitte unsere Marge in % angeben (z. B. 10)');
   const marginBp = p.billing === 'umsatz' ? p.marginBp! : null;
+  const wd =
+    p.billing === 'tag' ? [...new Set((p.workDays ?? []).filter((d) => d >= 1 && d <= 7))].sort() : [];
+  const workDays = wd.length && wd.join() !== '1,2,3,4,5' ? wd : null;
   const [sup] = await sql<
     { kind: string; active: boolean }[]
   >`select kind, active from app.suppliers where id = ${p.supplierId}`;
@@ -588,6 +596,7 @@ export async function saveSubcontract(sql: Sql, id: string, p: SubcontractInput,
         billing: p.billing,
         max_hours_month: p.maxHours ? p.maxHours.replace(',', '.') : null,
         margin_bp: marginBp,
+        work_days: workDays,
         valid_from: p.validFrom,
         valid_to: p.validTo,
         description: p.description?.trim() || null,
@@ -631,6 +640,7 @@ export async function saveSubcontract(sql: Sql, id: string, p: SubcontractInput,
         price_cents: p.priceCents,
         max_hours_month: p.maxHours ? p.maxHours.replace(',', '.') : null,
         margin_bp: marginBp,
+        work_days: workDays,
         valid_from: p.validFrom,
         valid_to: p.validTo,
         description: p.description?.trim() || null,
@@ -872,7 +882,21 @@ export async function subcontractPdf(sql: Sql, id: string, sig?: SubcontractSign
             accent: true,
           },
         ]
-      : [{ k: 'Preis (netto):', v: price, accent: true }]),
+      : sc.billing === 'tag'
+        ? [
+            {
+              k: 'Preis (netto):',
+              v: price,
+              k2: 'Arbeitstage:',
+              v2: `${workDaysLabel(sc.work_days)}, ohne Feiertage`,
+            },
+            {
+              k: 'Abrechnung:',
+              v: 'Preis × Arbeitstage je Monat (ohne Schließzeiten)',
+              accent: true,
+            },
+          ]
+        : [{ k: 'Preis (netto):', v: price, accent: true }]),
     { k: 'Bestelldatum:', v: formatDateDe(date) },
   ]);
   if (sammel.length) {

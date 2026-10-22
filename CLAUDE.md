@@ -3878,3 +3878,16 @@ Testadresse.
     km (±1 % je 5.000 km Abweichung von 20.000 km/Jahr, max. ±15 %), auf 100 € gerundet; nur Eigentum mit Kaufpreis.
     Eigene Schätzung geht vor (`vehicleValue`); Liste „Wert ca. … (automatisch)“, Summe „davon n automatisch geschätzt“,
     im Fahrzeug der Vorschlag unter dem Feld. Keine Marktdaten (DAT/Schwacke kostenpflichtig) – kein Buch- oder Verkaufswert.
+- 2026-10-22: **Geräte beim Objekt** (Ahmed: „Gerät hinzufügen – muss beim Objekt unter Übergaben sichtbar sein“): Objekt →
+  Übergaben zeigt oben „Geräte an diesem Objekt“ (Standort = Objekt: Name, Nr., Art, Zustand, nächste Prüfung, zuletzt
+  gescannt, Link zum Gerät) und „+ Gerät für dieses Objekt anlegen“ (Standort vorbelegt, `?objekt=`). Darunter wie bisher die
+  Übergaben an Mitarbeitende. **Zurück überall:** Kopf von Kunde, Objekt und Mitarbeiter hat jetzt auch „‹ Zurück zu
+  Kunden/Objekte/Mitarbeiter“ (auf allen Reitern).
+- 2026-10-22: **NU-Bestellung „je Tag“ automatisch je Monat** (Ahmed): In der Bestellung bei Abrechnung „je Tag“ Arbeitstage
+  ankreuzen (Standard Mo–Fr; `subcontracts.work_days`, Migration `20261218000001`). Betrag je Monat = Preis des Monats
+  (mit Preisnachträgen) × Arbeitstage im Gültigkeitszeitraum, **ohne Feiertage (Bayern)** und ohne **Schließzeiten**
+  (Kasten „Arbeitstage & Schließzeiten“ an der erteilten Bestellung: von–bis + Grund, entfernen mit Protokoll;
+  `app.subcontract_closures`). Kasten zeigt Vormonat bis +2 Monate (Tage, Feiertage, geschlossen, Betrag); Bestellliste und
+  Reiter Bestellungen zeigen den laufenden Monat („17 Tage (Mo–Fr) × 100,00 €“); Nachkalkulation schätzt fehlende
+  NU-Rechnungen so; Bestellschein nennt Arbeitstage und Abrechnungsweise (`src/services/subcontract-days.ts`).
+  Sammelbestellungen „je Tag“ werden noch nicht geschätzt. Test `subcontract-days.test.ts`.

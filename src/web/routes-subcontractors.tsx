@@ -11,6 +11,15 @@ import { listIncoming } from '../services/purchasing.js';
 import { BusinessError } from '../services/errors.js';
 import { listHandovers } from '../services/handovers.js';
 import {
+  WEEKDAYS,
+  addClosure,
+  dayAmounts,
+  deleteClosure,
+  listClosures,
+  countDays,
+  workDaysLabel,
+} from '../services/subcontract-days.js';
+import {
   addPriceChange,
   BILLING,
   complianceOverview,
@@ -52,7 +61,7 @@ import {
   subcontractTotal,
 } from '../services/subcontractors.js';
 import { type AppEnv, type Ctx, assertSite, officeSecret, UUID } from './app.js';
-import { centsToInput, str } from './forms.js';
+import { arr, centsToInput, str } from './forms.js';
 import { CSS as MOBILE_CSS } from './m/routes-mobile.js';
 import { HandoverTable } from './routes-handovers.js';
 import { PageHead, Pager, Tabs, dateDe, euro, type Tab, anz } from './layout.js';
@@ -902,6 +911,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
               todayBerlin().slice(0, 7),
               contracts.filter((x) => !isRecurringOrder(x.frequency)).map((x) => x.id),
             )}
+            days={await dayAmounts(sql, contracts, todayBerlin().slice(0, 7))}
           />
         </div>
       </>,
@@ -1607,6 +1617,33 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
        group by c.id having count(s.id) > 1 order by c.name`;
     const tracking = sc ? ((await billingTracking(sql, [id], { limit: 24 })).get(id) ?? []) : [];
     const hours: SubcontractHourRow[] = sc?.billing === 'stunde' ? await listSubcontractHours(sql, id) : [];
+    // „je Tag“: Arbeitstage je Monat (Wochentage ohne Feiertage und Schließzeiten), Ahmed 22.10.
+    const closures = sc?.billing === 'tag' ? await listClosures(sql, id) : [];
+    const dayMonths = (() => {
+      if (!sc || sc.billing !== 'tag') return [];
+      const cur = todayBerlin().slice(0, 7);
+      const shift = (m: string, n: number) => {
+        const d = new Date(`${m}-15T12:00:00Z`);
+        d.setUTCMonth(d.getUTCMonth() + n);
+        return d.toISOString().slice(0, 7);
+      };
+      const priceOf = (m: string) =>
+        [...(data?.prices ?? [])].reverse().find((p) => p.valid_from_month.slice(0, 7) <= m)?.price_cents ??
+        sc.price_cents;
+      return [-1, 0, 1, 2]
+        .map((n) => shift(cur, n))
+        .filter((m) => m >= sc.valid_from.slice(0, 7) && (!sc.valid_to || m <= sc.valid_to.slice(0, 7)))
+        .map((m) => {
+          const r = countDays(m, {
+            workDays: sc.work_days,
+            validFrom: sc.valid_from,
+            validTo: sc.valid_to,
+            closures,
+          });
+          const price = BigInt(priceOf(m));
+          return { month: m, ...r, price, amount: price * BigInt(r.days), current: m === cur };
+        });
+    })();
     const hourMonths = new Map<string, { minutes: number; amount: bigint; rows: typeof hours }>();
     for (const h of hours) {
       const k = h.work_date.slice(0, 7);
@@ -1775,6 +1812,31 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                   value={sc ? centsToInput(sc.price_cents) : ''}
                   required
                   disabled={!draft && !priceOpen}
+                />
+              </div>
+              <div id="wd-box">
+                <label>Arbeitstage (bei „je Tag“)</label>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                  {WEEKDAYS.map((w, i) => (
+                    <label style="display:inline-flex;gap:4px;align-items:center;font-weight:400">
+                      <input
+                        type="checkbox"
+                        name="work_days"
+                        value={String(i + 1)}
+                        checked={(sc?.work_days?.length ? sc.work_days : [1, 2, 3, 4, 5]).includes(i + 1)}
+                      />
+                      {w}
+                    </label>
+                  ))}
+                </div>
+                <div class="small mut">
+                  Betrag je Monat = Preis × diese Tage, ohne Feiertage. Schließzeiten an der Bestellung
+                  eintragen.
+                </div>
+                <script
+                  dangerouslySetInnerHTML={{
+                    __html: `(function(){var b=document.getElementById('billing'),w=document.getElementById('wd-box');if(!b||!w)return;function u(){w.hidden=b.value!=='tag'}b.addEventListener('change',u);u();})();`,
+                  }}
                 />
               </div>
               <div>
@@ -2163,6 +2225,91 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         )}
       </>
     );
+    const daysBlock = sc && sc.billing === 'tag' && (
+      <div class="card" id="tage">
+        <h3 style="margin-top:0">Arbeitstage & Schließzeiten</h3>
+        <p class="small mut" style="margin-top:-6px">
+          Betrag je Monat = Preis je Tag × Arbeitstage ({workDaysLabel(sc.work_days)}, ohne Feiertage in
+          Bayern und ohne Schließzeiten). Wochentage ändern unter „Bestellung bearbeiten“.
+        </p>
+        <div class="tbl">
+          <table class="keep">
+            <thead>
+              <tr>
+                <th>Monat</th>
+                <th class="r">Arbeitstage</th>
+                <th class="r">Feiertage</th>
+                <th class="r">geschlossen</th>
+                <th class="r">Betrag netto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dayMonths.map((m) => (
+                <tr style={m.current ? 'font-weight:600' : ''}>
+                  <td>
+                    {m.month.slice(5, 7)}/{m.month.slice(0, 4)}
+                    {m.current && <span class="small mut"> · laufend</span>}
+                  </td>
+                  <td class="r">{m.days}</td>
+                  <td class="r">{m.holidays || '–'}</td>
+                  <td class="r">{m.closed || '–'}</td>
+                  <td class="r">
+                    {euro(m.amount)}{' '}
+                    <span class="small mut">
+                      ({m.days} × {euro(m.price)})
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <h4>Schließzeiten</h4>
+        {closures.length === 0 ? (
+          <p class="small mut">Keine eingetragen.</p>
+        ) : (
+          <ul class="plain">
+            {closures.map((x) => (
+              <li>
+                {dateDe(x.date_from)}
+                {x.date_to !== x.date_from && ` – ${dateDe(x.date_to)}`}
+                {x.note && <span class="mut"> · {x.note}</span>}{' '}
+                <form
+                  method="post"
+                  action={`/nachunternehmer/auftraege/${sc.id}/schliesszeit/${x.id}/loeschen`}
+                  style="display:inline"
+                >
+                  <button class="btn ghost sm" data-confirm="Schließzeit entfernen?">
+                    entfernen
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        )}
+        <form
+          method="post"
+          action={`/nachunternehmer/auftraege/${sc.id}/schliesszeit`}
+          class="actions"
+          style="align-items:flex-end;flex-wrap:wrap"
+        >
+          <input type="hidden" name="id" value={randomUUID()} />
+          <div>
+            <label for="cl-from">von</label>
+            <input id="cl-from" type="date" name="from" required />
+          </div>
+          <div>
+            <label for="cl-to">bis</label>
+            <input id="cl-to" type="date" name="to" />
+          </div>
+          <div style="flex:1;min-width:180px">
+            <label for="cl-note">Grund (optional)</label>
+            <input id="cl-note" name="note" placeholder="z. B. Herbstferien, Betriebsruhe" />
+          </div>
+          <button class="btn sec sm">Schließzeit eintragen</button>
+        </form>
+      </div>
+    );
     const hoursBlock = (
       <>
         {sc && sc.billing === 'stunde' && sc.status !== 'entwurf' && (
@@ -2525,6 +2672,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
           <>
             {summary}
             {trackBlock}
+            {daysBlock}
             {sammelBlock}
             {hoursBlock}
             {signBlock}
@@ -2573,6 +2721,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         billing: str(b, 'billing') ?? sc?.billing ?? '',
         priceCents: str(b, 'price') ? parseEuro(str(b, 'price')!) : (sc?.price_cents ?? 0n),
         maxHours: str(b, 'max_hours'),
+        workDays: arr(b, 'work_days').map(Number),
         marginBp: str(b, 'margin') ? Math.round(Number(str(b, 'margin')!.replace(',', '.')) * 100) : null,
         validFrom: str(b, 'valid_from') ?? sc?.valid_from ?? '',
         validTo: str(b, 'valid_to'),
@@ -2758,6 +2907,29 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       actor: c.get('actor'),
     });
     return back(c, `/nachunternehmer/auftraege/${id}#stunden`, { ok: 'Stunden erfasst.' });
+  });
+
+  app.post(`/nachunternehmer/auftraege/:id{${UUID}}/schliesszeit`, async (c) => {
+    const id = c.req.param('id');
+    const b = (await c.req.parseBody()) as Record<string, string>;
+    await addClosure(
+      sql,
+      {
+        id: /^[0-9a-f-]{36}$/i.test(b.id ?? '') ? b.id! : randomUUID(),
+        subcontractId: id,
+        from: b.from ?? '',
+        to: b.to ?? '',
+        note: b.note ?? null,
+      },
+      c.get('actor'),
+    );
+    return back(c, `/nachunternehmer/auftraege/${id}#tage`, { ok: 'Schließzeit eingetragen.' });
+  });
+
+  app.post(`/nachunternehmer/auftraege/:id{${UUID}}/schliesszeit/:cid{${UUID}}/loeschen`, async (c) => {
+    const id = c.req.param('id');
+    await deleteClosure(sql, id, c.req.param('cid'), c.get('actor'));
+    return back(c, `/nachunternehmer/auftraege/${id}#tage`, { ok: 'Schließzeit entfernt.' });
   });
 
   app.post(`/nachunternehmer/auftraege/:id{${UUID}}/stunden/:hid{${UUID}}/loeschen`, async (c) => {
@@ -3114,9 +3286,12 @@ function SubcontractTable({
   rows,
   showSupplier = false,
   hours = new Map(),
+  days = new Map(),
 }: {
   rows: Awaited<ReturnType<typeof listSubcontracts>>;
   showSupplier?: boolean;
+  /** „je Tag“: Arbeitstage und Betrag des laufenden Monats */
+  days?: Map<string, { days: number; amount: bigint }>;
   /** erfasste Stunden des laufenden Monats bei „je Stunde“ */
   hours?: Map<string, { minutes: number; amount: bigint }>;
 }) {
@@ -3163,6 +3338,14 @@ function SubcontractTable({
                         {h ? (h.minutes / 60).toLocaleString('de-DE', { maximumFractionDigits: 2 }) : '0'}{' '}
                         Std. × {euro(r.current_price_cents)}
                         {total !== null && ` · max. ${euro(total)}`}
+                      </div>
+                    </>
+                  ) : r.billing === 'tag' ? (
+                    <>
+                      {euro(days.get(r.id)?.amount ?? 0n)} <span class="small mut">diesen Monat</span>
+                      <div class="small mut">
+                        {days.get(r.id)?.days ?? 0} Tage ({workDaysLabel(r.work_days)}) ×{' '}
+                        {euro(r.current_price_cents)}
                       </div>
                     </>
                   ) : (

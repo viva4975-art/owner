@@ -1,3 +1,4 @@
+import { countDays } from './subcontract-days.js';
 import { sammelMonthCost } from './subcontract-sites.js';
 import type { Sql } from '../db/client.js';
 import { addDays } from '../domain/time/holidays.js';
@@ -83,6 +84,56 @@ export async function subcontractEstimates(sql: Sql, from: string, to: string, s
     select site_id, sum(cost)::bigint as cost, count(distinct mon)::int as months
       from (select * from flat union all select * from hrs) x
      group by site_id`;
+  // „je Tag“ (Ahmed 22.10.): Preis des Monats × Arbeitstage (Wochentage ohne Feiertage/Schließzeiten)
+  const dayRows = await sql<
+    {
+      id: string;
+      site_id: string;
+      work_days: number[] | null;
+      valid_from: string;
+      valid_to: string | null;
+      mon: string;
+      price: bigint;
+    }[]
+  >`
+    select s.id, s.site_id, s.work_days, s.valid_from::text, s.valid_to::text, to_char(m.mon, 'YYYY-MM') as mon,
+           ${priceAt(sql`m.mon`)}::bigint as price
+      from app.subcontracts s
+      join (select generate_series(date_trunc('month', ${from}::date), date_trunc('month', ${to}::date), interval '1 month')::date as mon) m
+        on s.valid_from <= (m.mon + interval '1 month' - interval '1 day')::date and (s.valid_to is null or s.valid_to >= m.mon)
+     where s.status in ('erteilt', 'beendet') and s.billing = 'tag' and s.site_id is not null
+       and not exists (select 1 from app.subcontract_sites x where x.subcontract_id = s.id)
+       and s.price_cents is not null
+       and ${siteId ? sql`s.site_id = ${siteId}` : sql`true`}
+       and ${noInvoice(sql`m.mon`)}`;
+  if (dayRows.length) {
+    const cl = await sql<{ subcontract_id: string; date_from: string; date_to: string }[]>`
+      select subcontract_id, date_from::text, date_to::text from app.subcontract_closures
+       where subcontract_id in ${sql([...new Set(dayRows.map((r) => r.id))])}`;
+    const byId = new Map(base.map((b) => [b.site_id, b]));
+    const extraMonths = new Map<string, Set<string>>();
+    for (const r of dayRows) {
+      const { days } = countDays(r.mon, {
+        workDays: r.work_days,
+        validFrom: r.valid_from,
+        validTo: r.valid_to,
+        closures: cl.filter((c) => c.subcontract_id === r.id),
+      });
+      if (!days) continue;
+      const b = byId.get(r.site_id) ?? { site_id: r.site_id, cost: 0n, months: 0 };
+      b.cost = BigInt(b.cost) + BigInt(r.price) * BigInt(days);
+      const ms = extraMonths.get(r.site_id) ?? new Set<string>();
+      if (!ms.has(r.mon)) {
+        ms.add(r.mon);
+        b.months += 1;
+      }
+      extraMonths.set(r.site_id, ms);
+      if (!byId.has(r.site_id)) {
+        byId.set(r.site_id, b);
+        base.push(b);
+      }
+    }
+  }
   // Sammelbestellungen (mehrere Objekte): je Objekt nach Fläche bzw. Umsatzanteil (Ahmed 19.10.)
   const sammel = await sql<
     { id: string; billing: string; frequency: string; margin_bp: number | null; mon: string; price: bigint }[]

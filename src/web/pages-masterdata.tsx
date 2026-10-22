@@ -330,6 +330,7 @@ export const CustomerShell: FC<{
       <PageHead
         title={c.name}
         no={c.customer_no}
+        crumbs={[['Kunden', '/kunden']]}
         create={{
           options: [
             ['aufgabe', 'Aufgabe'],
@@ -959,6 +960,7 @@ export const SiteShell: FC<{
       <PageHead
         title={`Objekt: ${s.name}`}
         no={s.site_no}
+        crumbs={[['Objekte', '/objekte']]}
         create={{
           options: [
             ['aufgabe', 'Aufgabe'],

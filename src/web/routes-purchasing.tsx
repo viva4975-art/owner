@@ -3,6 +3,7 @@ import { hoursOfMonth } from '../services/subcontract-hours.js';
 import { costCenterReport } from '../services/cost-centers.js';
 import { randomUUID } from 'node:crypto';
 import { SiteOptions } from './site-options.js';
+import { dayAmounts, workDaysLabel } from '../services/subcontract-days.js';
 import {
   billingTracking,
   subcontractTodo,
@@ -389,6 +390,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       curMonth,
       subcontracts.filter((x) => !isRecurringOrder(x.frequency)).map((x) => x.id),
     );
+    const daysNow = await dayAmounts(sql, subcontracts, curMonth);
     const tracking = await billingTracking(
       sql,
       subcontracts.map((x) => x.id),
@@ -550,6 +552,15 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
               net: h?.amount ?? 0n,
               per: isRecurringOrder(sc.frequency) ? `erfasst ${MON(curMonth)}` : 'erfasst bisher',
               unit: `${hrs} Std. × ${euro(sc.current_price_cents)}${total !== null ? ` · max. ${euro(total)} (${sc.max_hours_month!.replace('.', ',')} Std.)` : ''}`,
+            };
+          }
+          if (sc.billing === 'tag') {
+            // Preis je Tag × Arbeitstage des laufenden Monats (Ahmed 22.10.)
+            const d = daysNow.get(sc.id);
+            return {
+              net: d?.amount ?? 0n,
+              per: MON(curMonth),
+              unit: `${d?.days ?? 0} Tage (${workDaysLabel(sc.work_days)}) × ${euro(sc.current_price_cents)}`,
             };
           }
           return { net: total ?? sc.current_price_cents, per: PER[sc.billing] ?? '' };

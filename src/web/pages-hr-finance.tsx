@@ -392,7 +392,11 @@ export const EmployeeShell: FC<{
   ];
   return (
     <>
-      <PageHead title={`${e.first_name} ${e.last_name}`} no={e.personnel_no} />
+      <PageHead
+        title={`${e.first_name} ${e.last_name}`}
+        no={e.personnel_no}
+        crumbs={[['Mitarbeiter', '/personal']]}
+      />
       <Tabs tabs={tabs} more={more} active={active === 'zeiten' ? 'kalender' : active} />
       <div class="tabbody">{children}</div>
     </>

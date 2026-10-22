@@ -3873,3 +3873,8 @@ Testadresse.
     + Bereichsreitern). `e2e:mahnung` braucht den lokalen Test-Mailserver (Port 1025) – lief hier nicht, kein App-Fehler.
   - Fahrzeuge: Anzahl im Titel „Fahrzeuge (n)“, in den Filtern Aktive (n) / Inaktiv-verkauft (n) / Alle (n) und in der
     Kachel „im Bestand“ (darunter „n insgesamt · n verkauft“). Kacheln zählen immer den ganzen Bestand, egal welcher Filter.
+  - **Fahrzeugwert automatisch geschätzt** (Ahmed: „Schätzung nicht automatisch?“): `autoEstimate` – Faustregel aus Kaufpreis,
+    Alter ab Erstzulassung (1. Jahr −24 %, danach −12 %/Jahr, mind. 10 %; gebraucht gekauft: Kaufpreis gilt am Kaufdatum) und
+    km (±1 % je 5.000 km Abweichung von 20.000 km/Jahr, max. ±15 %), auf 100 € gerundet; nur Eigentum mit Kaufpreis.
+    Eigene Schätzung geht vor (`vehicleValue`); Liste „Wert ca. … (automatisch)“, Summe „davon n automatisch geschätzt“,
+    im Fahrzeug der Vorschlag unter dem Feld. Keine Marktdaten (DAT/Schwacke kostenpflichtig) – kein Buch- oder Verkaufswert.

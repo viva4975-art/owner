@@ -68,6 +68,49 @@ export async function getVehicle(sql: Sql, id: string) {
   return (await listVehicles(sql, true)).find((v) => v.id === id) ?? null;
 }
 
+/**
+ * Automatische Wertschätzung (Faustregel, kein Gutachten/DAT-Wert): Restwert-Kurve ab Erstzulassung
+ * (1. Jahr −24 %, danach −12 % je Jahr, mindestens 10 %), bezogen auf den Kaufpreis zum Kaufdatum (gebraucht gekauft
+ * = Preis enthält das Alter schon), dazu ±1 % je 5.000 km Abweichung von 20.000 km/Jahr (höchstens ±15 %).
+ * Nur Eigentum mit Kaufpreis. Gerundet auf 100 €.
+ */
+export function autoEstimate(
+  v: Pick<
+    Vehicle,
+    'ownership' | 'purchase_price_cents' | 'purchase_date' | 'first_registration' | 'mileage' | 'sold_on'
+  >,
+  today = todayBerlin(),
+): bigint | null {
+  if (
+    v.sold_on ||
+    v.ownership !== 'eigentum' ||
+    v.purchase_price_cents == null ||
+    v.purchase_price_cents <= 0n
+  )
+    return null;
+  const reg = v.first_registration ?? v.purchase_date;
+  const bought = v.purchase_date ?? v.first_registration;
+  if (!reg || !bought) return null;
+  const years = (a: string, b: string) => Math.max(0, (Date.parse(b) - Date.parse(a)) / (365.25 * 86400000));
+  const curve = (y: number) => Math.max(0.1, y <= 1 ? 1 - 0.24 * y : 0.76 * Math.pow(0.88, y - 1));
+  const ageNow = years(reg, today);
+  let factor = curve(ageNow) / curve(years(reg, bought));
+  if (v.mileage != null && ageNow > 0.25) {
+    const diff = v.mileage - ageNow * 20000;
+    factor *= 1 - Math.max(-0.15, Math.min(0.15, (diff / 5000) * 0.01));
+  }
+  factor = Math.min(1, factor);
+  const cents = Math.round((Number(v.purchase_price_cents) * factor) / 10000) * 10000;
+  return BigInt(cents);
+}
+
+/** Wert für Summen: eigene Schätzung geht vor, sonst automatische. */
+export function vehicleValue(v: Vehicle, today = todayBerlin()) {
+  if (v.estimated_value_cents != null) return { cents: v.estimated_value_cents, auto: false };
+  const a = autoEstimate(v, today);
+  return a == null ? null : { cents: a, auto: true };
+}
+
 /** Aktive Fahrzeuge ohne hochgeladenen Fahrzeugschein (Hinweis Startseite/Erinnerungen). */
 export async function vehiclesWithoutRegistration(sql: Sql) {
   return sql<{ id: string; plate: string }[]>`

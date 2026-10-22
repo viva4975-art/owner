@@ -7,6 +7,7 @@ import {
   listHandoverObjects,
   saveHandoverObject,
   saveVehicle,
+  autoEstimate,
   remindFrom,
   vehicleDeadlines,
   type Vehicle,
@@ -105,6 +106,27 @@ describe.skipIf(!available)('Fahrzeuge und Übergabe-Gegenstände (Datenbank)', 
     ]);
     // gleiches Kennzeichen darf wieder neu erfasst werden
     await saveVehicle(sql, randomUUID(), base({ plate: 'M-VK 1' }));
+  });
+
+  it('automatische Wertschätzung', () => {
+    const v = {
+      ownership: 'eigentum',
+      purchase_price_cents: 3000000n,
+      purchase_date: '2024-10-22',
+      first_registration: '2024-10-22',
+      mileage: 40000,
+      sold_on: null,
+    };
+    // 2 Jahre, 40.000 km wie erwartet: 30.000 × 0,76 × 0,88 = 20.064 → 20.100 €
+    expect(autoEstimate(v, '2026-10-22')).toBe(2010000n);
+    // viel gefahren (80.000 km) → −8 %
+    expect(autoEstimate({ ...v, mileage: 80000 }, '2026-10-22')).toBe(1850000n);
+    // gebraucht gekauft: Kaufpreis gilt am Kaufdatum
+    expect(autoEstimate({ ...v, first_registration: '2020-10-22', mileage: null }, '2024-10-22')).toBe(
+      3000000n,
+    );
+    expect(autoEstimate({ ...v, ownership: 'leasing' }, '2026-10-22')).toBeNull();
+    expect(autoEstimate({ ...v, purchase_price_cents: null }, '2026-10-22')).toBeNull();
   });
 
   it('HU-Erinnerung einen Monat vor dem HU-Monat', () => {

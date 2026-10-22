@@ -9,7 +9,9 @@ import {
   listVehicles,
   saveHandoverObject,
   saveVehicle,
+  autoEstimate,
   vehicleDeadlines,
+  vehicleValue,
   type Vehicle,
 } from '../services/vehicles.js';
 import { type Ctx, UUID } from './app.js';
@@ -56,7 +58,9 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
           const act = everything.filter((v) => v.active);
           const sum = (xs: (bigint | null)[]) => xs.reduce<bigint>((a, b) => a + (b ?? 0n), 0n);
           const sold = everything.filter((v) => v.sold_on);
-          const missingEst = act.filter((v) => v.estimated_value_cents == null).length;
+          const vals = act.map((v) => vehicleValue(v, today));
+          const missingEst = vals.filter((x) => x == null).length;
+          const autoN = vals.filter((x) => x?.auto).length;
           return (
             <div class="kpis kpis-sm">
               <div class="kpi">
@@ -79,9 +83,17 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
               </div>
               <div class="kpi">
                 <div class="l">Geschätzter Wert heute (Bestand)</div>
-                <div class="v">{euro(sum(act.map((v) => v.estimated_value_cents)))}</div>
-                {missingEst > 0 && (
-                  <div class="s">{anz(missingEst, 'Fahrzeug', 'Fahrzeuge')} ohne Schätzung</div>
+                <div class="v">{euro(sum(vals.map((x) => x?.cents ?? null)))}</div>
+                {(autoN > 0 || missingEst > 0) && (
+                  <div class="s">
+                    {[
+                      autoN > 0 && `davon ${autoN} automatisch geschätzt`,
+                      missingEst > 0 &&
+                        `${anz(missingEst, 'Fahrzeug', 'Fahrzeuge')} ohne Wert (Kaufpreis fehlt)`,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </div>
                 )}
               </div>
               {f !== 'aktiv' && sold.length > 0 && (
@@ -132,9 +144,10 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
                         <div class="small mut">
                           {[
                             v.purchase_price_cents != null && `Kaufpreis ${euro(v.purchase_price_cents)}`,
-                            !v.sold_on &&
-                              v.estimated_value_cents != null &&
-                              `Wert ca. ${euro(v.estimated_value_cents)}`,
+                            (() => {
+                              const x = vehicleValue(v, today);
+                              return x && `Wert ca. ${euro(x.cents)}${x.auto ? ' (automatisch)' : ''}`;
+                            })(),
                           ]
                             .filter(Boolean)
                             .join(' · ')}
@@ -353,6 +366,15 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
                   value={d.estimated_value_cents != null ? centsText(d.estimated_value_cents) : ''}
                 />
                 {d.estimated_on && <div class="small mut">geschätzt am {dateDe(d.estimated_on)}</div>}
+                {v && autoEstimate(v) != null && (
+                  <div class="small mut">
+                    Automatisch geschätzt: <b>{euro(autoEstimate(v)!)}</b> (aus Kaufpreis, Alter und km –
+                    Faustregel){' '}
+                    {d.estimated_value_cents == null
+                      ? '· gilt, solange hier nichts eingetragen ist'
+                      : '· leeren, um sie zu verwenden'}
+                  </div>
+                )}
               </div>
               <div>
                 <label for="act">aktiv (im Bestand)</label>

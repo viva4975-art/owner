@@ -1502,6 +1502,14 @@ tr.offer-decided td{background:#fcfcfc}
 .appmode .tbl.appstack td .btn,.appmode .tbl.appstack td button{margin-top:4px}
 .appmode .btnrow,.appmode .actions{gap:8px}
 .appmode main>.card,.appmode .tabbody>.card{padding:14px}
+/* Vorlagen als Knöpfe (Ahmed 22.10.) */
+.tplcat{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);margin:12px 0 6px}
+.tplgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.tplbtn{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);text-decoration:none;font-size:13px;line-height:1.3}
+.tplbtn b{font-weight:600}
+.tplbtn span{font-size:12px;color:var(--mut)}
+.tplbtn:hover{border-color:var(--brand);background:var(--tint-2,#f8eff2);text-decoration:none}
+.tplbtn.app{border-color:var(--brand);border-left:3px solid var(--brand)}
 `;
 
 export const euro = (c: bigint) => formatEuro(c as Cents);

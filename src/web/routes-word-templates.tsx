@@ -14,6 +14,7 @@ import {
   type WordTarget,
   type WordTemplate,
   fillWordTemplate,
+  filledDocxPdf,
   importWordTemplates,
   listWordTemplates,
   updateWordTemplate,
@@ -31,45 +32,64 @@ const TARGET_PAGE: Record<WordTarget['type'], (id: string) => string> = {
   site: (id) => `/objekte/${id}/dokumente`,
 };
 
-/** Kasten „Aus Word-Vorlage erstellen“ für Mitarbeiter-, Kunden- und Objekt-Dokumente. */
-export const WordTemplateBox: FC<{ templates: WordTemplate[]; target: WordTarget }> = ({
-  templates,
-  target,
-}) => (
-  <form method="get" action="/word-vorlagen/ausfuellen" class="card">
-    <h3 style="margin-top:0">Aus Word-Vorlage erstellen</h3>
-    <input type="hidden" name="target_type" value={target.type} />
-    <input type="hidden" name="target_id" value={target.id} />
-    {templates.length === 0 ? (
-      <p class="small mut" style="margin:0">
-        Noch keine Word-Vorlagen. Unter{' '}
-        <a href="/einstellungen/word-vorlagen">Einstellungen → Word-Vorlagen</a> hochladen (einzelne .docx
-        oder die ZIP mit allen Vorlagen).
+/**
+ * Kasten „Vorlage erstellen“ für Mitarbeiter-, Kunden- und Objekt-Dokumente: jede Vorlage als Knopf (Ahmed 22.10.:
+ * „zur Auswahl wie bei Word, direkt als PDF“), gruppiert nach Ablage; `extra` = Vorlagen aus der App (z. B.
+ * Vertragsänderung). Klick → Angaben prüfen → PDF (Word weiter wählbar).
+ */
+export const WordTemplateBox: FC<{
+  templates: WordTemplate[];
+  target: WordTarget;
+  extra?: { label: string; href: string; hint?: string }[];
+}> = ({ templates, target, extra = [] }) => {
+  const href = (t: WordTemplate) =>
+    `/word-vorlagen/ausfuellen?target_type=${target.type}&target_id=${target.id}&template_id=${t.id}`;
+  const cats = [...new Set(templates.map((t) => t.category))].sort((a, b) => a.localeCompare(b, 'de'));
+  return (
+    <div class="card">
+      <h3 style="margin-top:0">Vorlage als PDF erstellen</h3>
+      <p class="small mut" style="margin:-4px 0 8px">
+        Vorlage anklicken – Name, Anschrift, Personalnummer usw. sind eingesetzt; im nächsten Schritt Daten
+        prüfen, dann „PDF erstellen“ (Word weiter wählbar). Unterschriebene Fassung danach hier hochladen.
       </p>
-    ) : (
-      <>
-        <select name="template_id" required aria-label="Word-Vorlage">
-          {templates.map((t) => (
-            <option value={t.id}>
-              {t.name} ({t.category})
-            </option>
+      {extra.length > 0 && (
+        <div class="tplgrid">
+          {extra.map((x) => (
+            <a class="tplbtn app" href={x.href}>
+              <b>{x.label}</b>
+              {x.hint && <span>{x.hint}</span>}
+            </a>
           ))}
-        </select>
-        <p class="small mut" style="margin:6px 0 0">
-          Name, Anschrift, Personalnummer usw. werden eingesetzt. Im nächsten Schritt Daten wie Beginn,
-          Unterschriftsdatum oder neue Stunden prüfen bzw. auswählen; danach wird die Word-Datei hier
-          abgelegt.
-        </p>
-        <div class="actions" style="margin-bottom:0">
-          <button class="btn sm">Weiter: Angaben prüfen</button>
-          <a class="small" href="/einstellungen/word-vorlagen">
-            Vorlagen verwalten
-          </a>
         </div>
-      </>
-    )}
-  </form>
-);
+      )}
+      {templates.length === 0 ? (
+        <p class="small mut" style="margin:0">
+          Noch keine Word-Vorlagen. Unter{' '}
+          <a href="/einstellungen/word-vorlagen">Einstellungen → Word-Vorlagen</a> hochladen (einzelne .docx
+          oder die ZIP mit allen Vorlagen).
+        </p>
+      ) : (
+        cats.map((cat) => (
+          <>
+            <div class="tplcat">{cat}</div>
+            <div class="tplgrid">
+              {templates
+                .filter((t) => t.category === cat)
+                .map((t) => (
+                  <a class="tplbtn" href={href(t)}>
+                    <b>{t.name}</b>
+                  </a>
+                ))}
+            </div>
+          </>
+        ))
+      )}
+      <p class="small" style="margin:8px 0 0">
+        <a href="/einstellungen/word-vorlagen">Vorlagen verwalten</a>
+      </p>
+    </div>
+  );
+};
 
 /** Aufeinanderfolgende Felder mit gleicher Überschrift zusammenfassen (Ahmed 20.10.: „mit Miniüberschrift“). */
 function fieldGroups(fields: FormField[]) {
@@ -534,9 +554,7 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
             </div>
           )}
           {keys.length === 0 && formFields.length === 0 && (
-            <div class="empty">
-              Diese Vorlage hat keine Platzhalter – sie wird unverändert heruntergeladen.
-            </div>
+            <div class="empty">Diese Vorlage hat keine Platzhalter – sie wird unverändert erstellt.</div>
           )}
           {groups.map((g) => (
             <GroupFields g={g} keys={keys} values={values} choices={choices} />
@@ -556,7 +574,12 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
             </details>
           )}
           <div class="actions">
-            <button class="btn">Word-Dokument herunterladen</button>
+            <button class="btn" name="format" value="pdf" formtarget="_blank">
+              PDF erstellen
+            </button>
+            <button class="btn sec" name="format" value="docx">
+              Als Word herunterladen
+            </button>
             <a class="btn sec" href={ret}>
               Abbrechen
             </a>
@@ -745,6 +768,18 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
       c.get('actor'),
     );
     // direkt herunterladen, nicht in der Akte ablegen (Ahmed 10.10.) – die unterschriebene Fassung wird hochgeladen
+    if (String(b.format ?? 'pdf') !== 'docx') {
+      // Standard: gleich als PDF (Ahmed 22.10.)
+      const pdfName = name.replace(/\.docx$/i, '.pdf');
+      const pdf = await filledDocxPdf(data, pdfName.replace(/\.pdf$/i, '').replace(/[-_]+/g, ' '));
+      return new Response(pdf, {
+        headers: {
+          'content-type': 'application/pdf',
+          'content-disposition': `inline; filename="${pdfName.replace(/[^\w.-]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(pdfName)}`,
+          'cache-control': 'no-store',
+        },
+      });
+    }
     return new Response(data, {
       headers: {
         'content-type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

@@ -3837,3 +3837,15 @@ Testadresse.
   nichts doppelt). Minijob: Hinweis, wenn Stunden × Lohn × 4,33 über 603 €. Die Word-Vorlage VD-ZV-Nachtrag bleibt
   verfügbar. **Rechtlich:** Gebäudereinigung = § 2a SchwarzArbG → Nachweis der Änderung nicht elektronisch, sondern
   unterschrieben auf Papier, spätestens am Tag der Änderung (§ 3, § 2 Abs. 1 S. 2 NachwG). Test `contract-change.db.test.ts`.
+- 2026-10-22: **Vorlagen als Knöpfe, direkt PDF oder Word** (Ahmed: „alle Word-Anlagen und die Vertragsänderung als Button,
+  direkt PDF“, „beide Möglichkeiten Word oder PDF“): Mitarbeiter/Kunde/Objekt → Dokumente → Kasten „Vorlage als PDF
+  erstellen“ zeigt jede Word-Vorlage als Knopf, gruppiert nach Ablage (`WordTemplateBox`); beim Mitarbeiter oben
+  zusätzlich „Vertragsänderung“ (App-eigene Seite; die Word-Vorlage VD-ZV-Nachtrag wird dort nicht mehr angeboten,
+  bleibt unter Einstellungen). Ausfüll-Seite: **„PDF erstellen“** (Standard, neuer Tab; `filledDocxPdf` setzt die
+  ausgefüllte .docx mit dem Objektordner-Leser `parseDocx/renderDocx` auf das Briefpapier – Bilder/Kopfzeilen aus Word
+  entfallen) oder **„Als Word herunterladen“**. Vertragsänderung ebenfalls „PDF erstellen“ / „Als Word herunterladen“
+  (`contractChangeDocx`, schlichte .docx mit gleichem Inhalt). Nichts wird in der Akte abgelegt – unterschriebenen Scan
+  hochladen.
+- 2026-10-22: **Mitarbeiter → Übersicht → Vertraulich** zeigt jetzt alles (Ahmed): Geburtsdatum, Anschrift, Steuer-ID,
+  SV-Nummer, Krankenkasse, IBAN (in Vierergruppen) mit Schild „ungültig“ bei falscher Prüfziffer, dazu Geburtsort,
+  Familienstand, Staatsangehörigkeit, Aufenthalt. Weiter nur Admin/Personal (RLS unverändert).

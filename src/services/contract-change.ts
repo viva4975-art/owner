@@ -136,7 +136,8 @@ export async function contractChangeRows(sql: Sql, e: Employee, i: ContractChang
   return { rows, hints };
 }
 
-export async function contractChangePdf(sql: Sql, employeeId: string, i: ContractChangeInput) {
+/** Inhalt der Vertragsänderung – gemeinsam für PDF und Word */
+async function contractChangeContent(sql: Sql, employeeId: string, i: ContractChangeInput) {
   const e = await getEmployee(sql, employeeId);
   if (!e) throw new BusinessError('Mitarbeiter nicht gefunden');
   if (!isDate(i.validFrom)) throw new BusinessError('Bitte angeben, ab wann die Änderung gilt');
@@ -148,37 +149,58 @@ export async function contractChangePdf(sql: Sql, employeeId: string, i: Contrac
   const priv = e.priv;
   const today = isDate(i.signDate) ? i.signDate : todayBerlin();
   const name = `${emp.first_name} ${emp.last_name}`;
-  const d = await FormDoc.create({
-    title: `Vertragsänderung – ${name}`,
-    sideRef: `VD-VA Vertragsänderung · ${emp.personnel_no} · Stand ${formatDateDe(today)}`,
-    date: today,
-    author: seller.legalName,
-  });
-  d.title('Änderung des Arbeitsvertrags', `gültig ab ${formatDateDe(i.validFrom)}`);
-  d.twoCols(
-    { label: 'Arbeitgeber', lines: [seller.legalName, seller.street, `${seller.postalCode} ${seller.city}`] },
-    {
-      label: `Mitarbeiter/in · Personal-Nr. ${emp.personnel_no}`,
-      lines: [
-        name,
-        ...(priv?.street ? [priv.street] : []),
-        ...(priv?.postal_code || priv?.city ? [`${priv?.postal_code ?? ''} ${priv?.city ?? ''}`.trim()] : []),
-      ],
-    },
-  );
-  d.y += 4;
-  d.para(
-    personGreeting({ salutation: emp.salutation, first_name: emp.first_name, last_name: emp.last_name }),
-    {
-      size: 9.5,
-    },
-  );
   const since = isDate(i.contractDate) ? i.contractDate : emp.entry_date;
-  d.para(
-    `wir vereinbaren folgende Änderung Ihres Arbeitsvertrags vom ${formatDateDe(since)}` +
+  const safe = name.replace(/[^\p{L}\p{N}]+/gu, '_');
+  return {
+    emp,
+    seller,
+    name,
+    today,
+    rows,
+    file: `Vertragsaenderung_${emp.personnel_no}_${safe}_${i.validFrom}`,
+    title: 'Änderung des Arbeitsvertrags',
+    subtitle: `gültig ab ${formatDateDe(i.validFrom)}`,
+    employer: [seller.legalName, seller.street, `${seller.postalCode} ${seller.city}`],
+    employeeLabel: `Mitarbeiter/in · Personal-Nr. ${emp.personnel_no}`,
+    employee: [
+      name,
+      ...(priv?.street ? [priv.street] : []),
+      ...(priv?.postal_code || priv?.city ? [`${priv?.postal_code ?? ''} ${priv?.city ?? ''}`.trim()] : []),
+    ],
+    greeting: personGreeting({
+      salutation: emp.salutation,
+      first_name: emp.first_name,
+      last_name: emp.last_name,
+    }),
+    intro:
+      `wir vereinbaren folgende Änderung Ihres Arbeitsvertrags vom ${formatDateDe(since)}` +
       ` (${EMPLOYMENT_TYPES[emp.employment_type]}). Die Änderung gilt ab dem ${formatDateDe(i.validFrom)}.`,
-    { size: 9.5 },
-  );
+    outro: [
+      'Alle übrigen Regelungen des Arbeitsvertrags gelten unverändert weiter, insbesondere Kündigungsfristen und der ' +
+        'Rahmentarifvertrag für die gewerblichen Beschäftigten in der Gebäudereinigung. Die Betriebszugehörigkeit läuft ' +
+        'ununterbrochen weiter; eine neue Probezeit gibt es nicht.',
+      'Diese Vereinbarung ist zugleich die schriftliche Mitteilung der geänderten Arbeitsbedingungen nach § 3 NachwG. ' +
+        'Jede Seite erhält ein unterschriebenes Exemplar.',
+    ],
+    place: `${seller.city}, den ${formatDateDe(today)}`,
+    signLeft: `Arbeitgeber · ${seller.legalName}`,
+    signRight: `Mitarbeiter/in · ${name}`,
+  };
+}
+
+export async function contractChangePdf(sql: Sql, employeeId: string, i: ContractChangeInput) {
+  const k = await contractChangeContent(sql, employeeId, i);
+  const d = await FormDoc.create({
+    title: `Vertragsänderung – ${k.name}`,
+    sideRef: `VD-VA Vertragsänderung · ${k.emp.personnel_no} · Stand ${formatDateDe(k.today)}`,
+    date: k.today,
+    author: k.seller.legalName,
+  });
+  d.title(k.title, k.subtitle);
+  d.twoCols({ label: 'Arbeitgeber', lines: k.employer }, { label: k.employeeLabel, lines: k.employee });
+  d.y += 4;
+  d.para(k.greeting, { size: 9.5 });
+  d.para(k.intro, { size: 9.5 });
   d.y += 4;
   d.table(
     [
@@ -186,30 +208,85 @@ export async function contractChangePdf(sql: Sql, employeeId: string, i: Contrac
       { label: 'Bisher', width: 170 },
       { label: 'Neu', width: 200 },
     ],
-    rows.map((r) => [r.label, r.old, r.neu]),
+    k.rows.map((r) => [r.label, r.old, r.neu]),
     { size: 9.5 },
   );
-  d.para(
-    'Alle übrigen Regelungen des Arbeitsvertrags gelten unverändert weiter, insbesondere Kündigungsfristen und der ' +
-      'Rahmentarifvertrag für die gewerblichen Beschäftigten in der Gebäudereinigung. Die Betriebszugehörigkeit läuft ' +
-      'ununterbrochen weiter; eine neue Probezeit gibt es nicht.',
-    { size: 9 },
-  );
-  d.para(
-    'Diese Vereinbarung ist zugleich die schriftliche Mitteilung der geänderten Arbeitsbedingungen nach § 3 NachwG. ' +
-      'Jede Seite erhält ein unterschriebenes Exemplar.',
-    { size: 9 },
-  );
+  for (const t of k.outro) d.para(t, { size: 9 });
   d.y += 6;
-  d.signatures(`Arbeitgeber · ${seller.legalName}`, `Mitarbeiter/in · ${name}`, {
-    leftText: `${seller.city}, den ${formatDateDe(today)}`,
+  d.signatures(k.signLeft, k.signRight, { leftText: k.place });
+  return { pdf: await d.save(), name: `${k.file}.pdf`, rows: k.rows };
+}
+
+/** Dieselbe Vertragsänderung als Word-Datei (Ahmed 22.10.: „als Word oder als PDF“) – schlicht, zum Weiterbearbeiten. */
+export async function contractChangeDocx(sql: Sql, employeeId: string, i: ContractChangeInput) {
+  const k = await contractChangeContent(sql, employeeId, i);
+  const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const run = (t: string, o: { b?: boolean; sz?: number; color?: string } = {}) =>
+    `<w:r><w:rPr>${o.b ? '<w:b/>' : ''}${o.color ? `<w:color w:val="${o.color}"/>` : ''}<w:sz w:val="${o.sz ?? 20}"/></w:rPr><w:t xml:space="preserve">${esc(t)}</w:t></w:r>`;
+  const par = (inner: string, after = 120) =>
+    `<w:p><w:pPr><w:spacing w:after="${after}"/></w:pPr>${inner}</w:p>`;
+  const lines = (ls: string[], o?: { b?: boolean }) =>
+    ls.map((l, n) => par(run(l, n === 0 && o?.b ? { b: true } : {}), 0)).join('');
+  const cell = (inner: string, w: number, fill?: string) =>
+    `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${fill ? `<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>` : ''}</w:tcPr>${inner || par('', 0)}</w:tc>`;
+  const border = (side: string) => `<w:${side} w:val="single" w:sz="4" w:space="0" w:color="BFB8BB"/>`;
+  const tbl = (rows: string[][], widths: number[], head?: string[], raw = false) =>
+    `<w:tbl><w:tblPr><w:tblW w:w="${widths.reduce((a, b) => a + b, 0)}" w:type="dxa"/><w:tblBorders>${['top', 'bottom', 'insideH'].map(border).join('')}</w:tblBorders><w:tblCellMar><w:top w:w="60" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${widths.map((w) => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>` +
+    (head
+      ? `<w:tr>${head.map((h, n) => cell(par(run(h, { b: true, sz: 16, color: '6B6266' }), 0), widths[n]!, 'F4F1F2')).join('')}</w:tr>`
+      : '') +
+    rows
+      .map(
+        (r) =>
+          `<w:tr>${r.map((c, n) => cell(raw ? c : par(run(c, n === 0 ? { b: true } : {}), 0), widths[n]!)).join('')}</w:tr>`,
+      )
+      .join('') +
+    '</w:tbl>';
+  const body =
+    par(run(k.title, { b: true, sz: 32 }), 40) +
+    par(run(k.subtitle, { b: true, color: '7D1435' }), 240) +
+    tbl(
+      [
+        [
+          lines(['Arbeitgeber', ...k.employer], { b: true }),
+          lines([k.employeeLabel, ...k.employee], { b: true }),
+        ],
+      ],
+      [4600, 4600],
+      undefined,
+      true,
+    ) +
+    par('', 120) +
+    par(run(k.greeting)) +
+    par(run(k.intro), 200) +
+    tbl(
+      k.rows.map((r) => [r.label, r.old, r.neu]),
+      [2600, 3200, 3400],
+      ['Was ändert sich', 'Bisher', 'Neu'],
+    ) +
+    par('', 120) +
+    k.outro.map((t) => par(run(t, { sz: 18 }))).join('') +
+    par('', 600) +
+    tbl(
+      [
+        [k.place, ''],
+        [k.signLeft, k.signRight],
+      ],
+      [4600, 4600],
+    ) +
+    '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1418" w:right="1134" w:bottom="1134" w:left="1418" w:header="709" w:footer="709" w:gutter="0"/></w:sectPr>';
+  const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}</w:body></w:document>`;
+  const { strToU8, zipSync } = await import('fflate');
+  const data = zipSync({
+    '[Content_Types].xml': strToU8(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
+    ),
+    '_rels/.rels': strToU8(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>',
+    ),
+    'word/document.xml': strToU8(doc),
   });
-  const safe = name.replace(/[^\p{L}\p{N}]+/gu, '_');
-  return {
-    pdf: await d.save(),
-    name: `Vertragsaenderung_${emp.personnel_no}_${safe}_${i.validFrom}.pdf`,
-    rows,
-  };
+  return { data, name: `${k.file}.docx` };
 }
 
 /**

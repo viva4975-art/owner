@@ -21,6 +21,7 @@ import { BusinessError } from '../services/errors.js';
 import {
   applyContractChange,
   type ContractChangeInput,
+  contractChangeDocx,
   contractChangePdf,
   contractChangeRows,
   currentSites,
@@ -119,11 +120,6 @@ export function registerHrRoutes(ctx: Ctx) {
             <a class="btn sm sec" href={`/brief?an=mitarbeiter&id=${e.id}`}>
               Freien Brief schreiben
             </a>
-            {['admin', 'personal'].includes(c.get('user').role) && (
-              <a class="btn sm sec" href={`/personal/${e.id}/vertragsaenderung`}>
-                Vertragsänderung erstellen
-              </a>
-            )}
           </div>
           <div class="cols">
             <div>
@@ -361,7 +357,21 @@ export function registerHrRoutes(ctx: Ctx) {
                   </a>
                 </div>
               </form>
-              <WordTemplateBox templates={wordTemplates} target={{ type: 'employee', id: e.id }} />
+              <WordTemplateBox
+                templates={wordTemplates.filter((t) => !/^VD-ZV-Nachtrag/i.test(t.code ?? ''))}
+                target={{ type: 'employee', id: e.id }}
+                extra={
+                  ['admin', 'personal'].includes(c.get('user').role)
+                    ? [
+                        {
+                          label: 'Vertragsänderung',
+                          href: `/personal/${e.id}/vertragsaenderung`,
+                          hint: 'nur was sich ändert · bisher → neu',
+                        },
+                      ]
+                    : []
+                }
+              />
               <div class="card">
                 <h3>Zur Unterschrift (App)</h3>
                 {signs.length === 0 && (
@@ -673,6 +683,9 @@ export function registerHrRoutes(ctx: Ctx) {
               <button class="btn" name="aktion" value="pdf">
                 PDF erstellen
               </button>
+              <button class="btn sec" name="aktion" value="word" formtarget="_self">
+                Als Word herunterladen
+              </button>
               <button
                 class="btn sec"
                 name="aktion"
@@ -708,6 +721,18 @@ export function registerHrRoutes(ctx: Ctx) {
         ok: done.length
           ? `${done.join(' · ')}.${hints.length ? ` ${hints.join(' ')}` : ''}`
           : 'Nichts zu übernehmen (Stunden, Arbeitstage, Vergütung unverändert).',
+      });
+    }
+    if (str(b, 'aktion') === 'word') {
+      const { data, name } = await contractChangeDocx(sql, id, input);
+      await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+                values (${c.get('actor')}, 'contract_change_docx', 'employee', ${id}, ${sql.json({ valid_from: input.validFrom })})`;
+      return new Response(data, {
+        headers: {
+          'content-type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'content-disposition': `attachment; filename="${name.replace(/[^\w.-]/g, '_')}"`,
+          'cache-control': 'no-store',
+        },
       });
     }
     const { pdf, name } = await contractChangePdf(sql, id, input);

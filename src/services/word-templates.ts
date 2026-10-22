@@ -958,3 +958,27 @@ export async function wordTemplatePdf(
   });
   return { title: t.name, pdf, category: t.category };
 }
+
+/**
+ * Ausgefüllte Word-Datei direkt als PDF (Ahmed 22.10.: „direkt eine PDF erstellen“): Absätze, Tabellen, Zellfarben und
+ * Kästchen über denselben Leser wie das Objektordner-PDF, gesetzt auf das Briefpapier. Bilder/Kopfzeilen aus Word
+ * entfallen (Briefpapier ersetzt sie); bei sehr aufwendigen Vorlagen weiter als Word herunterladen.
+ */
+export async function filledDocxPdf(
+  data: Uint8Array,
+  title: string,
+  date = todayBerlin(),
+): Promise<Uint8Array> {
+  const xml = unzipSync(data)['word/document.xml'];
+  if (!xml) throw new BusinessError('Keine Word-Datei (.docx)');
+  const { FormDoc } = await import('../pdf/form-doc.js');
+  const { parseDocx, renderDocx } = await import('../pdf/docx-render.js');
+  const d = await FormDoc.create({
+    title,
+    sideRef: title,
+    date,
+    author: 'Viva-Deluxe Gebäudereinigung GmbH',
+  });
+  renderDocx(d, parseDocx(strFromU8(xml)));
+  return d.save();
+}

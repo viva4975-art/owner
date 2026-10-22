@@ -1,4 +1,5 @@
 import { permitNeeded } from '../services/hr-required-docs.js';
+import { validSvNumber, validTaxId } from '../domain/hr/ids.js';
 import type { Child, FC } from 'hono/jsx';
 import { addDays, todayBerlin } from '../domain/invoice/calc.js';
 import {
@@ -15,6 +16,7 @@ import {
   MARITAL_STATUS,
   TAG_SUGGESTIONS,
   type WageLevel,
+  validIban,
 } from '../services/employees.js';
 import { type OpenItem, PAYMENT_METHODS, type PaymentRow } from '../services/payments.js';
 import { centsToInput } from './forms.js';
@@ -795,6 +797,38 @@ export const EmployeeOverview: FC<{
                 Vertraulich <span class="mut small">nur Geschäftsführung/Personal</span>
               </h3>
               <dl class="kv">
+                <dt>Geburtsdatum</dt>
+                <dd>{priv.birth_date ? dateDe(priv.birth_date) : '–'}</dd>
+                <dt>Anschrift</dt>
+                <dd>
+                  {[priv.street, [priv.postal_code, priv.city].filter(Boolean).join(' ')]
+                    .filter(Boolean)
+                    .join(', ') || '–'}
+                </dd>
+                <dt>Steuer-ID</dt>
+                <dd>
+                  {priv.tax_id ?? '–'}
+                  {priv.tax_id && !validTaxId(priv.tax_id) && <span class="badge err"> ungültig</span>}
+                </dd>
+                <dt>SV-Nummer</dt>
+                <dd>
+                  {priv.social_security_no ?? '–'}
+                  {priv.social_security_no && !validSvNumber(priv.social_security_no) && (
+                    <span class="badge err"> ungültig</span>
+                  )}
+                </dd>
+                <dt>Krankenkasse</dt>
+                <dd>{priv.health_insurance ?? '–'}</dd>
+                <dt>IBAN</dt>
+                <dd>
+                  {priv.iban
+                    ? priv.iban
+                        .replace(/\s+/g, '')
+                        .replace(/(.{4})/g, '$1 ')
+                        .trim()
+                    : '–'}
+                  {priv.iban && !validIban(priv.iban) && <span class="badge err"> ungültig</span>}
+                </dd>
                 <dt>Geburtsort</dt>
                 <dd>{[priv.birth_place, priv.birth_country].filter(Boolean).join(', ') || '–'}</dd>
                 <dt>Familienstand</dt>
@@ -820,9 +854,6 @@ export const EmployeeOverview: FC<{
                   </>
                 )}
               </dl>
-              <p class="mut small" style="margin-bottom:0">
-                Steuer-ID, SV-Nummer und IBAN unter „Bearbeiten“.
-              </p>
             </section>
           )}
           {month}

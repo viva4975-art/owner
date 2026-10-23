@@ -1261,7 +1261,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                   </form>
                 )}
                 <CopyWorkReport id={id} siteId={w.site_id} sites={sites} />
-                {!w.invoice_id && !w.cancelled_at && !w.done_at && (
+                {!w.cancelled_at && !w.done_at && (
                   <details class="inline-det">
                     <summary>Als erledigt markieren</summary>
                     <form

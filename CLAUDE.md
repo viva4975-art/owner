@@ -3929,3 +3929,7 @@ Testadresse.
   Ausschreibungen“, Einstellung, stündlicher Abruf, Erinnerungs-Zeilen und Code entfernt; Migration `20261219000002`
   löscht die Such-Tabellen (Treffer, Abruf-Protokoll, Einstellungen, Orts-Zwischenspeicher). Bereits übernommene
   Ausschreibungen bleiben unter Ausschreibungen erhalten. Plattformen „iTWO tender“ und „TED“ bleiben in der Auswahl.
+- 2026-10-23: **Abgerechnete Arbeitsscheine als erledigt markieren** (Ahmed: „Nicht möglich – AS-2026-0009: Schon
+  abgerechnet“): Sperre in `setWorkReportDone` entfernt; Sammelaktion „Markierte als erledigt“ und Knopf „Als erledigt
+  markieren“ am Schein gehen jetzt auch, wenn der Schein schon an einer Rechnung (Entwurf oder ausgestellt) hängt.
+  Erledigt ist nur ein Vermerk – Rechnung und Verknüpfung bleiben unverändert.

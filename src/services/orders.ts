@@ -838,7 +838,6 @@ export async function setWorkReportDone(
     select status, invoice_id, cancelled_at from app.work_reports where id = ${id}`;
   if (!w) throw new BusinessError('Arbeitsschein nicht gefunden');
   if (w.cancelled_at) throw new BusinessError('Storniert');
-  if (done && w.invoice_id) throw new BusinessError('Schon abgerechnet');
   if (done && w.status === 'entwurf')
     throw new BusinessError('Bitte zuerst abschließen (Unterschrift oder „ohne Unterschrift“)');
   if (done)

@@ -4057,3 +4057,6 @@ Testadresse.
   Sortierung), DATEV/Lexware (festes Format). Test `export-sort.test.ts`.
   **Bestellschein an Nachunternehmer ohne Kundennamen** (Ahmed): Zeile „Kunde“ bei Sammelbestellungen entfernt; es stehen
   nur Objekt(e) und Adresse darauf. Bereits archivierte/unterschriebene Bestellscheine bleiben unverändert.
+- 2026-10-23: **Ausschreibungen „Laufend“ = noch nicht abgegeben** (Ahmed: „sonst verwirrend“): Reiter Laufend zeigt nur
+  neu / prüfen / in Bearbeitung (`OPEN` in `tenders.ts`); abgegebene stehen im neuen Reiter **„Abgegeben – Entscheidung
+  offen“**, danach Abgeschlossen / Alle. Zähler „Ausschreibungen (n)“ in den Angeboten zählt nur noch nicht abgegebene.

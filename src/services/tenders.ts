@@ -21,6 +21,8 @@ export const TENDER_STATUS: Record<TenderStatus, string> = {
   aufgehoben: 'aufgehoben',
 };
 export const ACTIVE: TenderStatus[] = ['neu', 'pruefen', 'bearbeitung', 'abgegeben'];
+/** Noch nicht abgegeben – „Laufend“ in der Liste. */
+export const OPEN: TenderStatus[] = ['neu', 'pruefen', 'bearbeitung'];
 export const PROCEDURES = [
   'offenes Verfahren',
   'nicht offenes Verfahren',
@@ -85,14 +87,21 @@ const SELECT = (sql: Sql) => sql`
     left join app.customers c on c.id = t.customer_id
     left join app.offers o on o.id = t.offer_id`;
 
-export async function listTenders(
-  sql: Sql,
-  f: { view: 'aktiv' | 'abgeschlossen' | 'alle'; q?: string | null },
-) {
+export type TenderView = 'aktiv' | 'abgegeben' | 'abgeschlossen' | 'alle';
+
+export async function listTenders(sql: Sql, f: { view: TenderView; q?: string | null }) {
   const q = f.q?.trim() ? `%${f.q.trim()}%` : null;
+  const statuses: string[] | null =
+    f.view === 'aktiv'
+      ? OPEN
+      : f.view === 'abgegeben'
+        ? ['abgegeben']
+        : f.view === 'abgeschlossen'
+          ? Object.keys(TENDER_STATUS).filter((s) => !ACTIVE.includes(s as TenderStatus))
+          : null;
   return sql<TenderRow[]>`
     ${SELECT(sql)}
-     where (${f.view === 'alle'} or (${f.view === 'aktiv'} = (t.status = any(${ACTIVE}::text[]))))
+     where (${statuses}::text[] is null or t.status = any(${statuses}::text[]))
        and (${q}::text is null or t.title ilike ${q} or t.authority ilike ${q} or coalesce(t.reference_no, '') ilike ${q})
      order by (t.status = any(${ACTIVE}::text[])) desc, t.deadline_at nulls last, t.created_at desc`;
 }

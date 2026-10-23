@@ -4,6 +4,7 @@ import { BusinessError } from '../services/errors.js';
 import { listCustomers } from '../services/masterdata.js';
 import {
   ACTIVE,
+  OPEN,
   getTender,
   listTenders,
   offerTarget,
@@ -64,13 +65,14 @@ export function registerTenderRoutes({ app, deps, page, back }: Ctx) {
 
   app.get('/ausschreibungen', async (c) => {
     const v = c.req.query('ansicht');
-    const view = v === 'abgeschlossen' || v === 'alle' ? v : 'aktiv';
+    const view = v === 'abgeschlossen' || v === 'alle' || v === 'abgegeben' ? v : 'aktiv';
     const q = c.req.query('q') ?? '';
     const [rows, events, counts] = await Promise.all([
       listTenders(sql, { view, q }),
       upcomingEvents(sql, 21),
-      sql<{ aktiv: number; zu: number; won: number; lost: number }[]>`
-        select count(*) filter (where status = any(${ACTIVE}::text[]))::int as aktiv,
+      sql<{ aktiv: number; abg: number; zu: number; won: number; lost: number }[]>`
+        select count(*) filter (where status = any(${OPEN}::text[]))::int as aktiv,
+               count(*) filter (where status = 'abgegeben')::int as abg,
                count(*) filter (where not status = any(${ACTIVE}::text[]))::int as zu,
                count(*) filter (where status = 'gewonnen' and created_at > now() - interval '12 months')::int as won,
                count(*) filter (where status = 'verloren' and created_at > now() - interval '12 months')::int as lost
@@ -124,6 +126,9 @@ export function registerTenderRoutes({ app, deps, page, back }: Ctx) {
           <div class="chips" style="margin:0">
             <a href="/ausschreibungen" class={view === 'aktiv' ? 'on' : ''}>
               Laufend<span class="n">{k.aktiv}</span>
+            </a>
+            <a href="/ausschreibungen?ansicht=abgegeben" class={view === 'abgegeben' ? 'on' : ''}>
+              Abgegeben – Entscheidung offen<span class="n">{k.abg}</span>
             </a>
             <a href="/ausschreibungen?ansicht=abgeschlossen" class={view === 'abgeschlossen' ? 'on' : ''}>
               Abgeschlossen<span class="n">{k.zu}</span>

@@ -77,7 +77,7 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
       });
     }
     const [t] = await sql<{ n: number }[]>`
-      select count(*)::int as n from app.tenders where status in ('neu', 'pruefen', 'bearbeitung', 'abgegeben')`;
+      select count(*)::int as n from app.tenders where status in ('neu', 'pruefen', 'bearbeitung')`;
     return page(
       c,
       title,

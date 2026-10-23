@@ -53,7 +53,7 @@ import {
   recordManualDelivery,
 } from '../services/workflow.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
-import { arr, parseLines, str } from './forms.js';
+import { arr, centsToInput, parseLines, str } from './forms.js';
 import { DRAFTS_CSS, DraftsBox, OpenExecutionsBox } from './pages-drafts.js';
 import { DraftLetter, IssuedLetter } from './pages-invoice-letter.js';
 import {
@@ -1094,6 +1094,15 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         original={data.invoice}
         newId={randomUUID()}
         types={await listServiceTypes(sql)}
+        lines={data.lines.map((l) => {
+          const e = toEditorLine(l);
+          // Minus beim Preis; ohne Verknüpfung zur Leistung (die Korrektur rechnet keinen Monat neu ab)
+          return {
+            ...e,
+            price: centsToInput(-(l.quantity_milli < 0n ? -l.unit_price_cents : l.unit_price_cents)),
+            src: '',
+          };
+        })}
       />,
     );
   });

@@ -28,7 +28,7 @@ describe('Formular-Helfer', () => {
       /Position 1: Einzelpreis/,
     );
     expect(() => parseLines({ desc: ['A'], qty: ['-1'], price: ['1'], vat: ['1900'] })).toThrow(
-      /negative Mengen/,
+      /negative Beträge/,
     );
     expect(
       parseLines({ desc: ['A'], qty: ['-1'], price: ['1'], vat: ['1900'] }, { allowNegative: true }),
@@ -36,6 +36,10 @@ describe('Formular-Helfer', () => {
     expect(() => parseLines({ desc: ['A'], qty: ['1'], price: ['-1'], vat: ['1900'] })).toThrow(
       /nicht negativ/,
     );
+    // Minus beim Preis wird als Minus-Menge mit positivem Preis gespeichert
+    expect(
+      parseLines({ desc: ['A'], qty: ['2'], price: ['-10,50'], vat: ['1900'] }, { allowNegative: true })[0],
+    ).toMatchObject({ quantity: -2000n, unitPrice: 1050n });
     expect(() => parseLines({ desc: ['A'], qty: ['1'], price: ['1'], vat: ['500'] })).toThrow(/Steuersatz/);
   });
 });

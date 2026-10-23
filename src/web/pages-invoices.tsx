@@ -128,12 +128,13 @@ export interface ServiceTypeOption {
   name: string;
 }
 
+/** Minus-Positionen erscheinen mit Minus beim Preis, nicht bei der Menge (Ahmed 23.10.) */
 export const toEditorLine = (l: LineRow): EditorLine => ({
   desc: l.description,
   detail: l.detail ?? '',
-  qty: milliToInput(l.quantity_milli),
+  qty: milliToInput(l.quantity_milli < 0n ? -l.quantity_milli : l.quantity_milli),
   unit: l.unit_code,
-  price: centsToInput(l.unit_price_cents),
+  price: centsToInput(l.quantity_milli < 0n ? -l.unit_price_cents : l.unit_price_cents),
   vat: String(l.vat_rate_bp),
   src: l.source_service_id ?? '',
   stype: l.service_type_id ?? '',
@@ -622,11 +623,15 @@ export const CorrectionEditor: FC<{
   original: InvoiceRow;
   newId: string;
   types?: ServiceTypeOption[];
-}> = ({ id, original, newId, types }) => (
+  /** Positionen der Originalrechnung – vorbelegt mit Minus beim Preis */
+  lines?: EditorLine[];
+}> = ({ id, original, newId, types, lines }) => (
   <>
     <h1>Rechnungskorrektur zu {original.number}</h1>
     <div class="hint" style="margin-bottom:16px">
-      Für Minderungen negative Mengen eintragen (z. B. Menge <b>-1</b>, Preis <b>100,00</b>). Die
+      Vorbelegt sind die Positionen der Rechnung {original.number} mit <b>Minus beim Einzelpreis</b> – so
+      entspricht die Korrektur zunächst der ganzen Rechnung. Positionen, die nicht korrigiert werden, mit ×
+      entfernen; bei Teilbeträgen Menge oder Preis anpassen (z. B. Menge <b>1</b>, Preis <b>-100,00</b>). Die
       Originalrechnung bleibt unverändert; die Korrektur erhält eine eigene Nummer und verweist auf das
       Original.
     </div>
@@ -640,7 +645,11 @@ export const CorrectionEditor: FC<{
         >{`Korrektur zur Rechnung ${original.number} vom ${dateDe(original.issue_date)}:`}</textarea>
       </div>
       <LineEditor
-        lines={[{ desc: '', detail: '', qty: '-1', unit: 'C62', price: '', vat: '1900', src: '' }]}
+        lines={
+          lines?.length
+            ? lines
+            : [{ desc: '', detail: '', qty: '1', unit: 'C62', price: '', vat: '1900', src: '' }]
+        }
         types={types}
       />
       <div class="actions">

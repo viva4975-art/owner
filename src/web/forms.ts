@@ -65,11 +65,16 @@ export function parseLines(body: Body, opts: { allowNegative?: boolean } = {}): 
         `Position ${n}: Einzelpreis „${price[i]}“ ist ungültig (max. 2 Nachkommastellen)`,
       );
     }
-    if (unitPrice < 0n)
-      throw new BusinessError(`Position ${n}: Einzelpreis darf nicht negativ sein – Menge negativ angeben`);
     if (quantity === 0n) throw new BusinessError(`Position ${n}: Menge darf nicht 0 sein`);
+    if (unitPrice < 0n) {
+      if (!opts.allowNegative)
+        throw new BusinessError(`Position ${n}: Einzelpreis darf hier nicht negativ sein`);
+      // Minus beim Preis (Ahmed 23.10.) – gespeichert wie bisher als Minus-Menge mit positivem Preis (E-Rechnung BR-27)
+      unitPrice = -unitPrice as typeof unitPrice;
+      quantity = -quantity as typeof quantity;
+    }
     if (quantity < 0n && !opts.allowNegative) {
-      throw new BusinessError(`Position ${n}: negative Mengen sind hier nicht erlaubt`);
+      throw new BusinessError(`Position ${n}: negative Beträge sind hier nicht erlaubt`);
     }
     const vatRate = Number(vat[i] || '1900');
     if (![1900, 700, 0].includes(vatRate)) throw new BusinessError(`Position ${n}: Steuersatz nicht erlaubt`);

@@ -536,6 +536,14 @@ async function employeeValues(
                      where mc.user_id = s.manager_user_id) as manager
       from app.employee_sites es join app.sites s on s.id = es.site_id
      where es.employee_id = ${id} and s.active order by s.name`;
+  // Einsatz in Schulobjekten (Anlage 3 ja/nein): zugeordnete oder laufend/künftig eingeplante Objekte
+  const [school] = await sql<{ any: boolean; school: boolean }[]>`
+    select count(*) > 0 as any, coalesce(bool_or(s.school_closure), false) as school
+      from app.sites s
+     where s.active and s.id in (
+       select site_id from app.employee_sites where employee_id = ${id}
+       union select site_id from app.shift_plans
+              where employee_id = ${id} and (valid_until is null or valid_until >= current_date))`;
   // dynamisch: absences.ts hängt (über Abwesenheiten/Einsätze) indirekt an diesem Modul
   const { leaveBalance } = await import('./absences.js');
   const rest = await leaveBalance(sql, id, Number(todayBerlin().slice(0, 4)))
@@ -616,6 +624,8 @@ async function employeeValues(
     'Mitarbeiter.Urlaubstage': String(leaveDaysForWeek(Number(e.days_per_week ?? 5))).replace('.', ','),
     'Mitarbeiter.Beschäftigungsart': EMPLOYMENT[e.employment_type] ?? e.employment_type,
     'Mitarbeiter.Objekte': sites.map((s) => s.name).join(', '),
+    // nur intern für Kästchen-Vorbelegung: 'ja' / 'nein' / '' (noch kein Objekt bekannt)
+    'Mitarbeiter.Schulobjekt': school?.any ? (school.school ? 'ja' : 'nein') : '',
     // Unterweisung: Objekt auswählbar (Ausfüll-Seite), bei genau einem Objekt vorbelegt, sonst offen zum Nachtragen
     'Unterweisung.Objekt': sites.length === 1 ? sites[0]!.name : '',
     'Mitarbeiter.Einsatzgebiet': sites.map((s) => s.name).join(', '),

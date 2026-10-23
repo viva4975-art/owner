@@ -265,7 +265,7 @@ function partAt(heads: ReturnType<typeof headingsOf>, pos: number): string | und
 
 /** Teil gilt für alle (nicht „Zusatzmodule, nur bei zutreffender Tätigkeit“) → Kästchen vorab ankreuzen. */
 export const generalPart = (part: string | undefined) =>
-  !!part && !/zusatz|nur bei|optional|falls|wahlweise/i.test(part);
+  !!part && !/zusatz|nur bei|optional|falls|wahlweise|freiwillig|einwillig/i.test(part);
 
 function groupAt(heads: ReturnType<typeof headingsOf>, pos: number): string {
   let doc: string | undefined;
@@ -331,6 +331,7 @@ export function defaultBoxes(fields: FormField[], v: Record<string, string>): Re
   const out: Record<number, boolean> = {};
   const art = (v['Mitarbeiter.Beschäftigungsart'] ?? '').toLowerCase();
   const exit = v['Mitarbeiter.Austrittsdatum'] ?? '';
+  const school = v['Mitarbeiter.Schulobjekt'] ?? '';
   // Unterweisung (Ahmed 21.10.): Themen der Teile „für alle“ ankreuzen, Zusatzmodule nicht
   for (const f of fields)
     if (f.kind === 'box' && generalPart(f.part) && f.label.length >= 3 && !/:$/.test(f.label))
@@ -345,6 +346,9 @@ export function defaultBoxes(fields: FormField[], v: Record<string, string>): Re
     else if (/^unbefristet\b/.test(l)) out[f.index] = !exit;
     else if (/^befristet bis/.test(l)) out[f.index] = !!exit;
     else if (/^ungekündigt/.test(l)) out[f.index] = !exit;
+    // Anlage 3 Schulobjekte: nur, wenn Objekte bekannt sind (Zuordnung oder Einsatzplan)
+    else if (school && /^ja, einsatz in schulobjekten/.test(l)) out[f.index] = school === 'ja';
+    else if (school && /^nein – kein einsatz in schulobjekten/.test(l)) out[f.index] = school === 'nein';
   }
   return out;
 }

@@ -3933,3 +3933,11 @@ Testadresse.
   abgerechnet“): Sperre in `setWorkReportDone` entfernt; Sammelaktion „Markierte als erledigt“ und Knopf „Als erledigt
   markieren“ am Schein gehen jetzt auch, wenn der Schein schon an einer Rechnung (Entwurf oder ausgestellt) hängt.
   Erledigt ist nur ein Vermerk – Rechnung und Verknüpfung bleiben unverändert.
+- 2026-10-23: **Kreuze im Arbeitsvertrag** (Ahmed: „Kreuze fehlen“, PDF Bitrus): Geprüft an VD-AV-2026-V5 – die App kreuzte
+  bei Kästchen nur Beschäftigungsart/Befristung vor; § 4.1 Schwerbehinderung und Anlage 3 (Schulobjekte ja/nein) blieben
+  leer. Neu: Anlage 3 wird aus den Objekten der Person vorbelegt (Zuordnung oder laufender/künftiger Einsatz; ein Objekt
+  „Schule“ → „ja“, sonst „nein“; noch kein Objekt → offen). **Fund:** Die freiwilligen Einwilligungen in Anlage 5
+  („Teil B – Freiwillige Einwilligungen“) wurden durch die Unterweisungs-Regel „Teil … für alle“ automatisch angekreuzt –
+  vorab angekreuzte Einwilligungen sind unwirksam (Art. 7 DSGVO, EuGH C-673/17 Planet49). Jetzt nie vorab, die Person
+  kreuzt selbst an. Schwerbehinderung bleibt offen (freiwillige Angabe, die App kennt sie nicht) – auf der Ausfüll-Seite
+  ankreuzen oder von Hand. Test in `word-form.test.ts`.

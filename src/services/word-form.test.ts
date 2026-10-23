@@ -119,4 +119,18 @@ describe('leere Felder neben Beschriftungen (Ahmed 12.10.)', () => {
     const on = f.filter((x) => x.kind === 'box' && boxes[x.index]).map((x) => x.label);
     expect(on).toEqual(['Fluchtwege gezeigt', 'Zutritt erklärt']);
   });
+  it('Arbeitsvertrag: Einwilligungen nie vorab, Schulobjekt aus den Objekten', () => {
+    const p = (t: string) => `<w:p><w:r><w:t>${t}</w:t></w:r></w:p>`;
+    const xml =
+      `<w:body>${p('☐ ja, Einsatz in Schulobjekten – es gilt § 14')}${p('☐ nein – kein Einsatz in Schulobjekten; diese Anlage entfällt')}` +
+      `${p('Teil A – Information nach Art. 13 DSGVO')}${p('Teil B – Freiwillige Einwilligungen')}${p('☐ Meine Mobilnummer darf weitergegeben werden.')}</w:body>`;
+    const f = formFieldsOf(xml);
+    const on = (v: Record<string, string>) => {
+      const b = defaultBoxes(f, { 'Mitarbeiter.Vorname': 'A', ...v });
+      return f.filter((x) => x.kind === 'box' && b[x.index]).map((x) => x.label.slice(0, 4));
+    };
+    expect(on({ 'Mitarbeiter.Schulobjekt': 'ja' })).toEqual(['ja, ']);
+    expect(on({ 'Mitarbeiter.Schulobjekt': 'nein' })).toEqual(['nein']);
+    expect(on({ 'Mitarbeiter.Schulobjekt': '' })).toEqual([]);
+  });
 });

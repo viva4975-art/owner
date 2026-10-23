@@ -65,6 +65,17 @@ const CSS = `${APP_TAB_CSS}
 .cbx-pop{position:absolute;z-index:60;left:0;right:0;top:calc(100% + 4px);min-width:260px;background:#fff;border:1px solid var(--line-2);border-radius:12px;box-shadow:0 14px 36px rgba(26,20,16,.16);padding:8px}
 .cbx-q{width:100%;height:36px!important;margin-bottom:6px}
 .cbx-pop.cbx-up{top:auto;bottom:calc(100% + 4px)}
+.sc-sign{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start;margin-bottom:16px}
+.sc-sign>.card{margin:0}
+.sc-sign:has(>.card:only-child){grid-template-columns:1fr}
+.sc-sign .sc-btnrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sc-sign .sc-btnrow>*{margin:0!important;flex:0 0 auto!important;width:auto!important;display:inline-flex!important}
+.sc-sign-box{border-left:3px solid var(--bordeaux,#7D1435)}
+.sc-sign-box.done{border-left-color:var(--ok,#2e7d32)}
+.sc-sign-ways{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.sc-sign-way{border:1px dashed var(--line,#ddd);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.sc-sign-way input[type=file]{max-width:100%}
+@media (max-width:900px){.sc-sign,.sc-sign-ways{grid-template-columns:1fr}}
 .cbx-list{max-height:320px;overflow:auto;overscroll-behavior:contain}
 .cbx-grp{padding:8px 10px 4px;font-size:12px;font-weight:700;color:var(--mut)}
 .cbx-opt{padding:8px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

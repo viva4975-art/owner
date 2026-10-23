@@ -80,6 +80,7 @@ import {
   addSubcontractSites,
   saveSubcontractSites,
   objectCosts,
+  sammelSummaries,
   sammelTotals,
   sqmCenti,
   subcontractSites,
@@ -116,6 +117,17 @@ const pdfResponse = (pdf: Uint8Array, name: string) =>
       'Cache-Control': 'private, no-cache',
     },
   });
+// Bestellformular: Felder je nach Auswahl ein-/ausblenden (Ahmed 23.10.)
+const SC_FORM_JS = `(function(){var b=document.getElementById('billing'),m=document.getElementById('sammel-art');if(!b)return;
+function sh(el,on){if(!el)return;el.hidden=!on;}
+function u(){var v=b.value,sam=m?m.value==='1':false;
+sh(document.getElementById('wd-box'),v==='tag');sh(document.getElementById('maxh-box'),v==='stunde');sh(document.getElementById('margin-box'),v==='umsatz');
+document.querySelectorAll('.sammel-only').forEach(function(e){sh(e,sam)});
+document.querySelectorAll('.single-only').forEach(function(e){sh(e,!m||!sam)});
+var pb=document.getElementById('price-box'),pi=document.getElementById('price');
+var hideP=sam&&(v==='qm'||v==='pauschale_monat'||v==='umsatz');sh(pb,!hideP&&v!=='umsatz');if(pi)pi.required=!hideP&&v!=='umsatz'&&!pi.disabled;}
+b.addEventListener('change',u);if(m)m.addEventListener('change',u);window.addEventListener('pageshow',u);u();setTimeout(u,300);})();`;
+
 const PORTAL_COOKIE = 'vd_np';
 
 export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
@@ -917,6 +929,10 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
             )}
             days={await dayAmounts(sql, contracts, todayBerlin().slice(0, 7))}
             totals={await sammelTotals(sql, contracts)}
+            sammelInfo={await sammelSummaries(
+              sql,
+              contracts.map((x) => x.id),
+            )}
           />
         </div>
       </>,
@@ -1699,6 +1715,9 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         ...(sc?.service_kind ? [sc.service_kind] : []),
       ]),
     ];
+    const sammelPerObject =
+      sammel.length > 0 && !!sc && (sc.billing === 'qm' || sc.billing === 'pauschale_monat');
+    const sammelSum = sammelPerObject ? ((await sammelTotals(sql, [sc!])).get(sc!.id) ?? null) : null;
     const editForm = (
       <>
         <form
@@ -1747,35 +1766,45 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 <div>
                   <label for="sammel-art">Bestellung für</label>
                   <select id="sammel-art" name="sammel">
-                    <option value="">ein Objekt (weitere Objekte = je eine eigene Bestellung)</option>
+                    <option value="">ein Objekt</option>
                     <option value="1" selected={sammel.length > 0}>
                       mehrere Objekte – eine Sammelbestellung (eine Nummer, eine Unterschrift)
                     </option>
                   </select>
-                  <div class="small mut">
-                    Sammelbestellung: Kosten werden auf die Objekte verteilt – nach Fläche (Preis je m² oder
-                    Pauschale) bzw. bei „Anteil am Umsatz“ nach unserem Umsatz je Objekt.
+                  <div class="small mut sammel-only">
+                    Objekte und Preise je Objekt stehen in der Liste „Sammelbestellung“ – der Gesamtpreis
+                    ergibt sich daraus.
                   </div>
                 </div>
               )}
-              {draft && (
-                <div>
-                  <label for="sammel-kunde">Alle Objekte eines Kunden</label>
+              {draft && sammel.length === 0 && (
+                <div class="sammel-only">
+                  <label for="sammel-kunde">Objekte aufnehmen</label>
                   <select id="sammel-kunde" name="sammel_kunde">
-                    <option value="">– keinen Kunden übernehmen –</option>
+                    <option value="">– alle Objekte eines Kunden … –</option>
                     {customers.map((k) => (
                       <option value={k.id}>
                         {k.name} ({k.customer_no}) · {k.n} Objekte
                       </option>
                     ))}
                   </select>
+                  <div data-multi="more_sites" style="margin-top:6px">
+                    <div
+                      class="multi-chips"
+                      style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"
+                    ></div>
+                    <select id="more-sites" aria-label="einzelne Objekte">
+                      <option value="">+ oder einzelne Objekte …</option>
+                      <SiteOptions sites={sites} />
+                    </select>
+                  </div>
                   <div class="small mut">
-                    Nur bei Sammelbestellung: alle aktiven Objekte des Kunden werden aufgenommen (z. B. alle
-                    Tiefgaragen). Das Feld „Objekt“ kann dann leer bleiben.
+                    Nach dem Speichern erscheinen die Objekte unten in der Liste – dort Preise je Objekt
+                    eintragen und weitere hinzufügen.
                   </div>
                 </div>
               )}
-              {!draft && sammel.length > 0 ? (
+              {sammel.length > 0 ? (
                 <div>
                   <label>Objekte</label>
                   <input type="hidden" name="site_id" value={sc!.site_id} />
@@ -1787,27 +1816,12 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                   </div>
                 </div>
               ) : (
-                <div>
+                <div class="single-only">
                   <label for="site">Objekt</label>
                   <select id="site" name="site_id" required={!draft}>
                     <option value="">– bitte wählen –</option>
                     <SiteOptions sites={sites} selected={sc?.site_id ?? c.req.query('objekt')} />
                   </select>
-                </div>
-              )}
-              {draft && (
-                <div>
-                  <label for="more-sites">Weitere Objekte</label>
-                  <div data-multi="more_sites">
-                    <div
-                      class="multi-chips"
-                      style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"
-                    ></div>
-                    <select id="more-sites">
-                      <option value="">+ weiteres Objekt hinzufügen …</option>
-                      <SiteOptions sites={sites} />
-                    </select>
-                  </div>
                 </div>
               )}
               <div>
@@ -1840,17 +1854,30 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                   ))}
                 </select>
               </div>
-              <div>
-                <label for="price">Preis netto (€)</label>
-                <input
-                  id="price"
-                  name={draft || priceOpen ? 'price' : undefined}
-                  inputmode="decimal"
-                  value={sc ? centsToInput(sc.price_cents) : ''}
-                  required
-                  disabled={!draft && !priceOpen}
-                />
-              </div>
+              {sammelPerObject ? (
+                <div>
+                  <label>Preis netto</label>
+                  {(draft || priceOpen) && (
+                    <input type="hidden" name="price" value={sc ? centsToInput(sc.price_cents) : ''} />
+                  )}
+                  <div style="padding-top:8px">
+                    {sammelSum !== null ? <b>{euro(sammelSum)} / Monat</b> : '–'}{' '}
+                    <span class="small mut">Summe der Objekte (Liste unten)</span>
+                  </div>
+                </div>
+              ) : (
+                <div id="price-box">
+                  <label for="price">Preis netto (€)</label>
+                  <input
+                    id="price"
+                    name={draft || priceOpen ? 'price' : undefined}
+                    inputmode="decimal"
+                    value={sc ? centsToInput(sc.price_cents) : ''}
+                    required
+                    disabled={!draft && !priceOpen}
+                  />
+                </div>
+              )}
               <div id="wd-box">
                 <label>Arbeitstage (bei „je Tag“)</label>
                 <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -1870,14 +1897,9 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                   Betrag je Monat = Preis × diese Tage, ohne Feiertage. Schließzeiten an der Bestellung
                   eintragen.
                 </div>
-                <script
-                  dangerouslySetInnerHTML={{
-                    __html: `(function(){var b=document.getElementById('billing'),w=document.getElementById('wd-box');if(!b||!w)return;function u(){w.hidden=b.value!=='tag'}b.addEventListener('change',u);u();})();`,
-                  }}
-                />
               </div>
-              <div>
-                <label for="maxh">Max. Stunden (bei Stunden)</label>
+              <div id="maxh-box">
+                <label for="maxh">Max. Stunden</label>
                 <input
                   id="maxh"
                   name="max_hours"
@@ -1885,8 +1907,8 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                   value={sc?.max_hours_month?.replace('.', ',') ?? ''}
                 />
               </div>
-              <div>
-                <label for="margin">Unsere Marge in % (bei Anteil am Umsatz)</label>
+              <div id="margin-box">
+                <label for="margin">Unsere Marge in %</label>
                 <input
                   id="margin"
                   name="margin"
@@ -1907,6 +1929,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 />
               </div>
             </div>
+            <script dangerouslySetInnerHTML={{ __html: SC_FORM_JS }} />
             <label for="desc">Leistungsumfang</label>
             <textarea id="desc" name="description" rows={4}>
               {sc?.description ?? (sc ? '' : (SERVICE_DESCRIPTIONS[kindOptions[0] ?? ''] ?? ''))}
@@ -2201,142 +2224,194 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         )}
       </>
     );
+    const below = !!comp && comp.missing.length > 0 && comp.requiredOk * 2 < comp.requiredTotal;
+    // Aktionen links in einer Reihe, Unterschrift als großer Kasten rechts (Ahmed 23.10.)
     const signBlock = (
       <>
         {sc && (
-          <div class="card">
-            {draft && (
-              <div class="actions" style="margin-top:0">
-                <a class="btn sec" href={`/nachunternehmer/auftraege/${id}/auftrag.pdf`} target="_blank">
-                  Auftrag (PDF)
-                </a>
-                {sc.status === 'entwurf' && (
-                  <form method="post" action={`/nachunternehmer/auftraege/${id}/status`} style="margin:0">
-                    {comp && comp.missing.length > 0 && (
-                      <div
-                        class={comp.requiredOk * 2 < comp.requiredTotal ? 'flash err' : 'flash warn'}
-                        style="margin:0 0 8px"
-                      >
-                        <strong>
-                          Nachweise unvollständig: {comp.requiredOk} von {comp.requiredTotal}{' '}
-                          Pflicht-Nachweisen gültig.
-                        </strong>{' '}
-                        Fehlt: {comp.missing.join(', ')}. Als Auftraggeber haften wir für Mindestlohn und
-                        SV-Beiträge des Nachunternehmers (§ 13 MiLoG, § 14 AEntG, § 28e Abs. 3a SGB IV) –
-                        fehlende Nachweise zeitnah nachfordern.
-                        {comp.requiredOk * 2 < comp.requiredTotal && (
-                          <label style="display:flex;gap:6px;align-items:flex-start;margin-top:6px;font-weight:600">
-                            <input type="checkbox" name="hinweis_ok" value="1" required style="width:auto" />
-                            Hinweis zur Kenntnis genommen – Auftrag trotzdem erteilen
-                          </label>
-                        )}
-                      </div>
-                    )}
-                    <button class="btn" name="status" value="erteilt">
-                      Auftrag erteilen
-                    </button>
-                  </form>
+          <div class="sc-sign">
+            {(draft || sc.status === 'erteilt') && (
+              <div class="card sc-sign-act">
+                <h3 class="panel-title" style="margin-top:0">
+                  {sc.status === 'entwurf' ? 'Auftrag erteilen' : 'Preisnachtrag'}
+                </h3>
+                {sc.status === 'entwurf' && comp && comp.missing.length > 0 && (
+                  <div class={below ? 'flash err' : 'flash warn'} style="margin:0 0 10px;display:block">
+                    <strong>
+                      Nachweise unvollständig: {comp.requiredOk} von {comp.requiredTotal} Pflicht-Nachweisen
+                      gültig.
+                    </strong>
+                    <div class="small" style="margin-top:4px">
+                      Fehlt: {comp.missing.join(', ')}. Als Auftraggeber haften wir für Mindestlohn und
+                      SV-Beiträge des Nachunternehmers (§ 13 MiLoG, § 14 AEntG, § 28e Abs. 3a SGB IV) –
+                      fehlende Nachweise zeitnah nachfordern.
+                    </div>
+                  </div>
                 )}
-                {sc.status === 'erteilt' &&
-                  (sc.signed_file_path || sc.signed_external ? (
-                    <form method="post" action={`/nachunternehmer/auftraege/${id}/status`} style="margin:0">
-                      <button
-                        class="btn sec"
-                        name="status"
-                        value="beendet"
-                        onclick="return confirm('Auftrag als komplett erledigt markieren? Er gilt dann als beendet (Ende = heute, falls kein Ende eingetragen).')"
+                {sc.status === 'entwurf' && below && (
+                  <label
+                    class="chk"
+                    style="margin:0 0 10px;display:flex;gap:8px;align-items:flex-start;font-weight:600"
+                  >
+                    <input
+                      type="checkbox"
+                      form="erteil-form"
+                      name="hinweis_ok"
+                      value="1"
+                      required
+                      style="width:auto;margin-top:3px"
+                    />
+                    <span>Hinweis zur Kenntnis genommen – Auftrag trotzdem erteilen</span>
+                  </label>
+                )}
+                {draft && (
+                  <div class="sc-btnrow">
+                    {sc.status === 'entwurf' && (
+                      <form
+                        id="erteil-form"
+                        method="post"
+                        action={`/nachunternehmer/auftraege/${id}/status`}
+                        style="margin:0"
                       >
-                        ✓ Als erledigt markieren
-                      </button>
-                    </form>
-                  ) : (
-                    <span class="small" style="color:var(--bad);align-self:center">
-                      Erledigt erst mit unterschriebenem Auftrag (Scan oder Handy-Unterschrift)
-                    </span>
-                  ))}
+                        <button class="btn" name="status" value="erteilt">
+                          Auftrag erteilen
+                        </button>
+                      </form>
+                    )}
+                    <a class="btn sec" href={`/nachunternehmer/auftraege/${id}/auftrag.pdf`} target="_blank">
+                      Bestellschein (PDF)
+                    </a>
+                    {sc.status === 'erteilt' && (sc.signed_file_path || sc.signed_external) && (
+                      <form method="post" action={`/nachunternehmer/auftraege/${id}/status`} style="margin:0">
+                        <button
+                          class="btn sec"
+                          name="status"
+                          value="beendet"
+                          onclick="return confirm('Auftrag als komplett erledigt markieren? Er gilt dann als beendet (Ende = heute, falls kein Ende eingetragen).')"
+                        >
+                          ✓ Als erledigt markieren
+                        </button>
+                      </form>
+                    )}
+                    {sc.status === 'entwurf' && (
+                      <form method="post" action={`/nachunternehmer/auftraege/${id}/status`} style="margin:0">
+                        <button
+                          class="btn ghost"
+                          name="status"
+                          value="storniert"
+                          onclick="return confirm('Bestellung stornieren?')"
+                        >
+                          Stornieren
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                )}
                 {sc.status === 'entwurf' && (
-                  <form method="post" action={`/nachunternehmer/auftraege/${id}/status`} style="margin:0">
-                    <button class="btn sec" name="status" value="storniert">
-                      Stornieren
-                    </button>
-                  </form>
+                  <p class="small mut" style="margin:8px 0 0">
+                    Änderungen unten vorher speichern.
+                  </p>
+                )}
+                {draft && sc.status === 'erteilt' && !sc.signed_file_path && !sc.signed_external && (
+                  <p class="small" style="color:var(--bad);margin:8px 0 0">
+                    Erledigt erst mit unterschriebenem Auftrag (rechts: Handy oder Scan).
+                  </p>
+                )}
+                {sc.status === 'erteilt' && (
+                  <details style="margin-top:12px">
+                    <summary>Preisnachtrag ab Monat</summary>
+                    {data!.prices.map((p) => (
+                      <div class="small">
+                        ab {p.valid_from_month.slice(5, 7)}/{p.valid_from_month.slice(0, 4)}:{' '}
+                        {euro(p.price_cents)} – {p.reason}
+                      </div>
+                    ))}
+                    <form method="post" action={`/nachunternehmer/auftraege/${id}/nachtrag`} class="actions">
+                      <input type="hidden" name="id" value={randomUUID()} />
+                      <input type="month" name="month" required aria-label="ab Monat" />
+                      <input
+                        name="price"
+                        inputmode="decimal"
+                        placeholder="neuer Preis"
+                        required
+                        style="max-width:140px"
+                      />
+                      <input
+                        name="reason"
+                        placeholder="Grund, z. B. Tariflohnerhöhung"
+                        required
+                        style="max-width:280px"
+                      />
+                      <button class="btn sec sm">Nachtrag speichern</button>
+                    </form>
+                  </details>
                 )}
               </div>
             )}
-            <h3>Unterschrift des Nachunternehmers</h3>
-            {!sc.signed_file_path && sc.signed_external && (
-              <p>
-                <span class="badge ok">{sc.signed_external}</span>{' '}
-                <span class="small mut">Scan kann unten trotzdem hochgeladen werden.</span>
-              </p>
-            )}
-            {sc.signed_file_path ? (
-              <p>
-                <a class="btn sec sm" href={`/nachunternehmer/auftraege/${id}/scan`} target="_blank">
-                  Unterschriebenen Auftrag öffnen
-                </a>{' '}
-                <span class="small mut">SHA-256 {sc.signed_file_sha256?.slice(0, 16)}…</span>
-              </p>
-            ) : (
-              <>
-                {sc.status === 'erteilt' ? (
-                  <p>
-                    <a class="btn" href={`/nachunternehmer/auftraege/${id}/unterschreiben`}>
-                      Am Handy / Tablet unterschreiben lassen
-                    </a>{' '}
-                    <span class="small mut">auch in der App (Verwaltung → NU unterschreiben)</span>
+            <div class={`card sc-sign-box${sc.signed_file_path || sc.signed_external ? ' done' : ''}`}>
+              <h3 class="panel-title" style="margin-top:0">
+                Unterschrift des Nachunternehmers
+              </h3>
+              {sc.signed_file_path ? (
+                <>
+                  <p style="margin:0 0 8px">
+                    <span class="badge ok">unterschrieben</span>{' '}
+                    <span class="small mut">SHA-256 {sc.signed_file_sha256?.slice(0, 16)}…</span>
                   </p>
-                ) : (
-                  <p class="small mut">
-                    Nach dem Erteilen kann der Nachunternehmer direkt am Handy unterschreiben.
-                  </p>
-                )}
-                <details>
-                  <summary class="small" style="cursor:pointer">
-                    oder auf Papier unterschrieben → Scan hochladen
-                  </summary>
-                  <form
-                    method="post"
-                    action={`/nachunternehmer/auftraege/${id}/scan`}
-                    enctype="multipart/form-data"
-                    class="actions"
-                    style="margin-top:8px"
-                  >
-                    <input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" required aria-label="Scan" />
-                    <button class="btn sec sm">Hochladen</button>
-                  </form>
-                </details>
-              </>
-            )}
-            {sc.status === 'erteilt' && (
-              <>
-                <h3>Preisnachtrag</h3>
-                {data!.prices.map((p) => (
-                  <div class="small">
-                    ab {p.valid_from_month.slice(5, 7)}/{p.valid_from_month.slice(0, 4)}:{' '}
-                    {euro(p.price_cents)} – {p.reason}
+                  <a class="btn sec" href={`/nachunternehmer/auftraege/${id}/scan`} target="_blank">
+                    Unterschriebenen Auftrag öffnen
+                  </a>
+                </>
+              ) : (
+                <>
+                  {sc.signed_external && (
+                    <p style="margin:0 0 8px">
+                      <span class="badge ok">{sc.signed_external}</span>
+                    </p>
+                  )}
+                  <div class="sc-sign-ways">
+                    <div class="sc-sign-way">
+                      <b>Am Handy / Tablet</b>
+                      <div class="small mut">
+                        Nachunternehmer unterschreibt mit dem Finger, PDF wird abgelegt.
+                      </div>
+                      {sc.status === 'erteilt' ? (
+                        <a class="btn" href={`/nachunternehmer/auftraege/${id}/unterschreiben`}>
+                          Jetzt unterschreiben lassen
+                        </a>
+                      ) : (
+                        <div class="small" style="margin-top:6px">
+                          möglich, sobald der Auftrag erteilt ist
+                        </div>
+                      )}
+                    </div>
+                    <div class="sc-sign-way">
+                      <b>Auf Papier unterschrieben</b>
+                      <div class="small mut">
+                        Bestellschein drucken, unterschreiben lassen, Scan hochladen.
+                      </div>
+                      <form
+                        method="post"
+                        action={`/nachunternehmer/auftraege/${id}/scan`}
+                        enctype="multipart/form-data"
+                        style="margin:6px 0 0"
+                      >
+                        <input
+                          type="file"
+                          name="file"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          required
+                          aria-label="Scan"
+                        />
+                        <button class="btn sec sm" style="margin-top:6px">
+                          Scan hochladen
+                        </button>
+                      </form>
+                    </div>
                   </div>
-                ))}
-                <form method="post" action={`/nachunternehmer/auftraege/${id}/nachtrag`} class="actions">
-                  <input type="hidden" name="id" value={randomUUID()} />
-                  <input type="month" name="month" required aria-label="ab Monat" />
-                  <input
-                    name="price"
-                    inputmode="decimal"
-                    placeholder="neuer Preis"
-                    required
-                    style="max-width:140px"
-                  />
-                  <input
-                    name="reason"
-                    placeholder="Grund, z. B. Tariflohnerhöhung"
-                    required
-                    style="max-width:280px"
-                  />
-                  <button class="btn sec sm">Nachtrag speichern</button>
-                </form>
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
         )}
       </>
@@ -3428,8 +3503,11 @@ function SubcontractTable({
   hours = new Map(),
   days = new Map(),
   totals = new Map(),
+  sammelInfo = new Map(),
 }: {
   rows: Awaited<ReturnType<typeof listSubcontracts>>;
+  /** Sammelbestellungen: Anzahl Objekte + Kunde/erste Objekte */
+  sammelInfo?: Map<string, { n: number; text: string }>;
   /** Sammelbestellungen je Objekt: Summe der Objekte */
   totals?: Map<string, bigint>;
   showSupplier?: boolean;
@@ -3462,7 +3540,16 @@ function SubcontractTable({
               </td>
               {showSupplier && <td>{r.supplier_name}</td>}
               <td class="small">
-                {r.site_name} ({r.site_no})
+                {sammelInfo.get(r.id) ? (
+                  <>
+                    <b>Sammelbestellung ({sammelInfo.get(r.id)!.n} Objekte)</b>
+                    <div>{sammelInfo.get(r.id)!.text}</div>
+                  </>
+                ) : (
+                  <>
+                    {r.site_name} ({r.site_no})
+                  </>
+                )}
               </td>
               <td class="small">
                 {r.service_kind} · {FREQUENCY[r.frequency]}

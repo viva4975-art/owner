@@ -1,4 +1,4 @@
-import { sammelSqmCenti, sammelTotals } from '../services/subcontract-sites.js';
+import { sammelSqmCenti, sammelSummaries, sammelTotals } from '../services/subcontract-sites.js';
 import { hoursOfMonth } from '../services/subcontract-hours.js';
 import { costCenterReport } from '../services/cost-centers.js';
 import { randomUUID } from 'node:crypto';
@@ -390,11 +390,9 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       subcontracts.map((x) => x.id),
     );
     const perObjTotals = await sammelTotals(sql, subcontracts);
-    const siteCount = new Map(
-      (
-        await sql<{ id: string; n: number }[]>`
-          select subcontract_id as id, count(*)::int as n from app.subcontract_sites group by subcontract_id`
-      ).map((r) => [r.id, r.n]),
+    const sammelInfo = await sammelSummaries(
+      sql,
+      subcontracts.map((x) => x.id),
     );
     const curMonth = todayBerlin().slice(0, 7);
     const hoursNow = await hoursOfMonth(
@@ -547,8 +545,8 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         kind: 'nu' as const,
         supplierId: sc.supplier_id,
         supplier: sc.supplier_name,
-        what: siteCount.get(sc.id)
-          ? `Sammelbestellung · ${siteCount.get(sc.id)} Objekte · ${sc.service_kind}`
+        what: sammelInfo.get(sc.id)
+          ? `Sammelbestellung (${sammelInfo.get(sc.id)!.n} Objekte): ${sammelInfo.get(sc.id)!.text} · ${sc.service_kind}`
           : `${sc.site_no} ${sc.site_name} · ${sc.service_kind}`,
         from: sc.valid_from,
         to: sc.valid_to,

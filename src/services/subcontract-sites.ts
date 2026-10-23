@@ -330,3 +330,31 @@ export async function sammelSqmCenti(sql: Sql, ids: string[]): Promise<Map<strin
     out.set(r.id, BigInt(r.c ?? '0'));
   return out;
 }
+
+/**
+ * Kurzbeschreibung je Sammelbestellung für Listen (Ahmed 23.10.: „wenigstens den Kunden oder die ersten Objekte“):
+ * Kunde(n) und die ersten Objekte, z. B. „Münchner Wohnen · TG 3 Westpark, TG Krokusstr. 73 … +12“.
+ */
+export async function sammelSummaries(
+  sql: Sql,
+  ids: string[],
+): Promise<Map<string, { n: number; text: string }>> {
+  const out = new Map<string, { n: number; text: string }>();
+  if (!ids.length) return out;
+  const rows = await sql<{ id: string; site_name: string; customer: string | null }[]>`
+    select ss.subcontract_id as id, s.name as site_name, c.name as customer
+      from app.subcontract_sites ss join app.sites s on s.id = ss.site_id
+      left join app.customers c on c.id = s.customer_id
+     where ss.subcontract_id = any(${ids}::uuid[])
+     order by ss.subcontract_id, s.site_no`;
+  const by = new Map<string, (typeof rows)[number][]>();
+  for (const r of rows) by.set(r.id, [...(by.get(r.id) ?? []), r]);
+  for (const [id, list] of by) {
+    const custs = [...new Set(list.map((r) => r.customer).filter((x): x is string => !!x))];
+    const cust = custs.length > 2 ? `${custs.slice(0, 2).join(', ')} +${custs.length - 2}` : custs.join(', ');
+    const first = list.slice(0, 3).map((r) => r.site_name);
+    const more = list.length > 3 ? ` … +${list.length - 3}` : '';
+    out.set(id, { n: list.length, text: [cust, first.join(', ') + more].filter(Boolean).join(' · ') });
+  }
+  return out;
+}

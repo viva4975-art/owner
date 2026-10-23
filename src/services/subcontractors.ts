@@ -1,4 +1,4 @@
-import { objectCosts, siteMode, sqmCenti, subcontractSites } from './subcontract-sites.js';
+import { objectCosts, siteMode, sqmCenti, sammelTotals, subcontractSites } from './subcontract-sites.js';
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { contactGreeting } from '../domain/letter/greeting.js';
 import type { Sql } from '../db/client.js';
@@ -684,7 +684,13 @@ export async function setSubcontractStatus(
   // fehlende und die Bestätigung werden im Protokoll vermerkt.
   let missing: string[] = [];
   let below = false;
-  if (status === 'erteilt' && BigInt(sc.price_cents) <= 0n && sc.billing !== 'umsatz')
+  if (
+    status === 'erteilt' &&
+    BigInt(sc.price_cents) <= 0n &&
+    sc.billing !== 'umsatz' &&
+    // Sammelbestellung: Preis = Summe der Objekte (Ahmed 23.10.)
+    !((await sammelTotals(sql, [{ ...sc, current_price_cents: BigInt(sc.price_cents) }])).get(sc.id) ?? 0n)
+  )
     throw new BusinessError(
       `Auftrag ${sc.number}: bitte erst den Preis eintragen und speichern, dann erteilen`,
     );

@@ -270,6 +270,12 @@ export const CLIENT_JS = String.raw`
   window.addEventListener('pageshow', function (e) {
     if (e.persisted) Array.prototype.forEach.call(document.forms, function (f) { f.dataset.sent = ''; });
   });
+  // Auswertungen und Startseite nie aus dem Zwischenspeicher zeigen (Ahmed 23.10.: gelöschte Bestellung stand nach
+  // „Zurück“ noch in der Nachkalkulation) – beim Zurückkommen neu laden
+  window.addEventListener('pageshow', function (e) {
+    var p = location.pathname;
+    if (e.persisted && (p === '/' || p.indexOf('/auswertungen') === 0)) location.reload();
+  });
 
   // ---- Auswahlfelder zum Reintippen (wie Fortytools): ins Feld klicken, tippen, Liste filtert sich ----
   // Das echte <select> bleibt im Formular (Absenden, Pflichtfeld-Prüfung, Tests); darüber liegt ein Knopf mit Liste.

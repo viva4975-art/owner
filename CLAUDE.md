@@ -4023,3 +4023,16 @@ Testadresse.
   Gesamtbetrag in den Listen (`sammelTotals`), Verteilung der Eingangsrechnung und Schätzung der Nachkalkulation. Alte
   Pauschal-Sammelbestellungen ohne Wahl je Objekt rechnen unverändert. Test `subcontract-sites.test.ts`.
   Rechnungskorrektur-Formular ohne Zwischenspeicher der Eingaben (sonst überschrieben alte Eingaben die Vorbelegung).
+- 2026-10-23: **NU-Bestellung aufgeräumt** (Ahmed, 6 Punkte): Oben zwei Kästen – links „Auftrag erteilen“ (Nachweis-Hinweis
+  über die ganze Breite, Häkchen „zur Kenntnis genommen“ darunter links, dann eine Knopfreihe Auftrag erteilen ·
+  Bestellschein (PDF) · Stornieren), rechts groß **„Unterschrift des Nachunternehmers“** mit „Am Handy / Tablet“ und
+  „Auf Papier unterschrieben → Scan hochladen“ nebeneinander; bei erteilten Bestellungen links nur Preisnachtrag
+  (eingeklappt). Formular: „Bestellung für“ ein Objekt → nur Feld „Objekt“ (Feld „Weitere Objekte = je eine eigene
+  Bestellung“ entfällt); mehrere Objekte → kein Objekt-Feld, Objekte nur in der Liste „Sammelbestellung“ (vor dem ersten
+  Speichern einmal Kunde/Objekte aufnehmen, danach nur noch unten). Bei Sammelbestellung je m²/Pauschale kein Preisfeld –
+  „Preis netto“ = Summe der Objekte; Erteilen geht mit Preis 0, wenn die Summe der Objekte > 0 ist. „Max. Stunden“ nur bei
+  „je Stunde“, „Unsere Marge“ nur bei „Anteil am Umsatz“, Arbeitstage nur bei „je Tag“ (`SC_FORM_JS`).
+  **Bestellliste/Reiter Bestellungen:** Sammelbestellungen zeigen Kunde(n) und die ersten Objekte
+  („Sammelbestellung (32 Objekte): Stadt Garching · Rathaus, Bauhof, … +29“, `sammelSummaries`).
+  **Nachkalkulation nach gelöschter Bestellung:** Die Werte werden bei jedem Aufruf neu gerechnet; beim Zurückblättern zeigte
+  der Browser aber die alte Seite aus dem Zwischenspeicher. Auswertungen und Startseite laden beim Zurückkommen jetzt neu.

@@ -3965,3 +3965,6 @@ Testadresse.
   § 4.1 ein anderes Zeichen bzw. Symbol im Kästchen, sodass der Zustand gesetzt war (Gegenprobe ok), das PDF aber das leere
   Zeichen zeigte. Zeilen „Ort, Datum“ / „<Ort>, den …“ bekommen oben rund 18 pt Abstand (etwa eine Leerzeile). Test
   `src/pdf/docx-render.test.ts`. Die Word-Datei („Als Word herunterladen“) zeigt weiter das Zeichen aus der Vorlage.
+- 2026-10-23: **Kreuze gerade** (Ahmed: „Kreuze irgendwie schief“): Kästchen in PDFs aus Word-Vorlagen/Formularen werden jetzt
+  komplett gezeichnet – Rahmen und „X“ aus derselben Geometrie (`FormDoc.text`), statt ein X über das Schriftzeichen □ zu
+  legen. Gleiche Größe/Breite wie vorher, auch leere Kästchen ☐ im selben Strich.

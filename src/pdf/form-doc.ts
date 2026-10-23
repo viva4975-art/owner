@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import fontkit from '@pdf-lib/fontkit';
 import {
+  LineCapStyle,
   PDFDocument,
   type PDFFont,
   type PDFImage,
@@ -170,26 +171,52 @@ export class FormDoc {
     if (!t) return;
     const size = o.size ?? 9;
     const color = o.color ?? INK;
-    this.page.drawText(uiText(t), { x, y: H - y, size, font: o.bold ? this.bold : this.reg, color });
-    // Angekreuzte Kästchen (☒/☑): Inter hat kein ☒ → leeres Kästchen □ mit gezeichnetem „X“ (Ahmed 23.10.)
-    for (const m of t.matchAll(/[☒☑]/g)) {
-      const bx = x + this.width(t.slice(0, m.index), size, o.bold) + (264 / 2816) * size;
-      const side = (2048 / 2816) * size;
-      const pad = side * 0.2;
-      const thickness = Math.max(0.6, size * 0.09);
-      const y0 = H - y;
-      this.page.drawLine({
-        start: { x: bx + pad, y: y0 + pad },
-        end: { x: bx + side - pad, y: y0 + side - pad },
-        thickness,
-        color,
+    const font = o.bold ? this.bold : this.reg;
+    if (!/[☐☑☒]/.test(t)) {
+      this.page.drawText(uiText(t), { x, y: H - y, size, font, color });
+      return;
+    }
+    // Kästchen selbst zeichnen (Rahmen + „X“ aus derselben Geometrie) – Inter hat kein ☒, und ein X über dem
+    // Schriftzeichen □ saß je nach Größe leicht schief (Ahmed 23.10.). Maße wie Inter-□: Breite 2576, Kasten
+    // 264–2312 × 0–2048 Einheiten bei 2816 je Geviert → gleiche Zeilenbreite wie bisher.
+    const adv = font.widthOfTextAtSize('□', size);
+    const side = (2048 / 2816) * size;
+    const left = (264 / 2816) * size;
+    const lw = Math.max(0.5, size * 0.075);
+    const y0 = H - y;
+    let cx = x;
+    for (const part of t.split(/([☐☑☒])/)) {
+      if (!part) continue;
+      if (!/^[☐☑☒]$/.test(part)) {
+        const s2 = uiText(part);
+        this.page.drawText(s2, { x: cx, y: y0, size, font, color });
+        cx += font.widthOfTextAtSize(s2, size);
+        continue;
+      }
+      const bx = cx + left;
+      this.page.drawRectangle({
+        x: bx + lw / 2,
+        y: y0 + lw / 2,
+        width: side - lw,
+        height: side - lw,
+        borderWidth: lw,
+        borderColor: color,
       });
-      this.page.drawLine({
-        start: { x: bx + pad, y: y0 + side - pad },
-        end: { x: bx + side - pad, y: y0 + pad },
-        thickness,
-        color,
-      });
+      if (part !== '☐') {
+        const pad = side * 0.24;
+        for (const [sx, sy, ex, ey] of [
+          [bx + pad, y0 + pad, bx + side - pad, y0 + side - pad],
+          [bx + pad, y0 + side - pad, bx + side - pad, y0 + pad],
+        ] as const)
+          this.page.drawLine({
+            start: { x: sx, y: sy },
+            end: { x: ex, y: ey },
+            thickness: lw * 1.15,
+            color,
+            lineCap: LineCapStyle.Round,
+          });
+      }
+      cx += adv;
     }
   }
 

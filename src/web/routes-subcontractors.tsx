@@ -79,6 +79,8 @@ import {
 import {
   addSubcontractSites,
   saveSubcontractSites,
+  objectCosts,
+  sammelTotals,
   sqmCenti,
   subcontractSites,
 } from '../services/subcontract-sites.js';
@@ -914,6 +916,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
               contracts.filter((x) => !isRecurringOrder(x.frequency)).map((x) => x.id),
             )}
             days={await dayAmounts(sql, contracts, todayBerlin().slice(0, 7))}
+            totals={await sammelTotals(sql, contracts)}
           />
         </div>
       </>,
@@ -1613,6 +1616,38 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         : undefined;
     // Sammelbestellung: Objekte mit Fläche (Ahmed 19.10.)
     const sammel = sc ? await subcontractSites(sql, id) : [];
+    // Unser Erlös je Objekt und Monat aus den laufenden Leistungen (Ahmed 23.10.: Preise sehen, die wir erhalten)
+    const ourRevenue = new Map<string, bigint>();
+    /** Objekte, an denen unser Auftrag je m² abgerechnet wird → Vorschlag „je m²“ */
+    const ourSqm = new Set<string>();
+    if (sammel.length) {
+      const months: Record<string, number> = {
+        zweimonatlich: 2,
+        quartalsweise: 3,
+        halbjaehrlich: 6,
+        jaehrlich: 12,
+      };
+      const rows = await sql<
+        {
+          site_id: string;
+          quantity_milli: bigint;
+          unit_price_cents: bigint;
+          billing_cycle: string;
+          unit_code: string;
+        }[]
+      >`
+        select site_id, quantity_milli, unit_price_cents, billing_cycle::text as billing_cycle, unit_code
+          from app.site_services
+         where active and site_id = any(${sammel.map((r) => r.site_id)}::uuid[])
+           and (kind = 'monthly_flat' or billing_cycle in ('zweimonatlich','quartalsweise','halbjaehrlich','jaehrlich'))
+           and valid_from <= current_date and (valid_to is null or valid_to >= current_date)`;
+      for (const r of rows) {
+        if (r.unit_code === 'MTK') ourSqm.add(r.site_id);
+        const n = BigInt(months[r.billing_cycle] ?? 1);
+        const amt = (BigInt(r.quantity_milli) * BigInt(r.unit_price_cents) + 500n) / 1000n;
+        ourRevenue.set(r.site_id, (ourRevenue.get(r.site_id) ?? 0n) + (amt + n / 2n) / n);
+      }
+    }
     const customers = await sql<{ id: string; customer_no: string; name: string; n: number }[]>`
       select c.id, c.customer_no, c.name, count(s.id)::int as n from app.customers c
         join app.sites s on s.customer_id = c.id and s.active
@@ -1921,6 +1956,10 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         </form>
       </>
     );
+    const perObjectInfo =
+      sc && ['qm', 'pauschale_monat'].includes(sc.billing)
+        ? ' Je Objekt „je m²“ (Preis leer = Preis der Bestellung) oder „Pauschale“ wählen – vorgeschlagen wie unser Auftrag am Objekt. Kosten NU = Summe der Objekte.'
+        : '';
     const sammelBlock = (
       <>
         {sc && sc.status !== 'storniert' && (sammel.length > 0 || ['qm', 'umsatz'].includes(sc.billing)) && (
@@ -1931,100 +1970,180 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
             {(() => {
               const total = sammel.reduce((a, r) => a + (sqmCenti(r.sqm) ?? 0n), 0n);
               const price = BigInt(sc.price_cents);
-              // Pauschale: fester Betrag je Objekt möglich (wie alte App), sonst nach Fläche
-              const flat = sc.billing !== 'qm' && sc.billing !== 'umsatz';
-              const shareSum = sammel.reduce((a, r) => a + BigInt(r.share_cents ?? '0'), 0n);
-              const byShare = flat && shareSum > 0n;
-              const share = (r: (typeof sammel)[number]) => {
-                const c = sqmCenti(r.sqm);
-                if (sc.billing === 'umsatz')
-                  return `${String((10000 - (sc.margin_bp ?? 0)) / 100).replace('.', ',')} % vom Umsatz`;
-                if (byShare) return '';
-                if (c === null) return 'm² fehlt';
-                if (sc.billing === 'qm') return euro((price * c + 50n) / 100n);
-                if (total > 0n) return `${euro((price * c + total / 2n) / total)} (Anteil)`;
-                return '';
-              };
+              const umsatz = sc.billing === 'umsatz';
+              // je Objekt wählbar: je m² oder Pauschale (Ahmed 23.10.: wie unser Auftrag am Objekt angelegt ist)
+              const perObject = sc.billing === 'qm' || sc.billing === 'pauschale_monat';
+              const modeOf = (r: (typeof sammel)[number]) =>
+                r.mode ?? (sc.billing === 'qm' ? 'qm' : ourSqm.has(r.site_id) ? 'qm' : 'pauschale');
+              const costs = perObject
+                ? objectCosts(
+                    sc.billing,
+                    price,
+                    sammel.map((r) => ({ ...r, mode: modeOf(r) })),
+                  )
+                : null;
+              const costSum = costs ? costs.reduce((a, b) => a + b, 0n) : null;
               const centsDe = (v: string | null) =>
                 v === null ? '' : (Number(v) / 100).toFixed(2).replace('.', ',');
+              const priceDe = (Number(price) / 100).toFixed(2).replace('.', ',');
               return (
                 <form method="post" action={`/nachunternehmer/auftraege/${id}/objekte`}>
                   <table>
                     <thead>
                       <tr>
                         <th>Objekt</th>
-                        <th>Kunde</th>
+                        {perObject && <th>Abrechnung</th>}
                         <th class="num">Fläche m²</th>
-                        <th class="num">
-                          {sc.billing === 'umsatz' ? 'Nachunternehmer' : 'Kosten je Objekt'}
-                        </th>
+                        {perObject && <th class="num">€ je m² bzw. Pauschale €</th>}
+                        <th class="num">{umsatz ? 'Nachunternehmer' : 'Kosten NU / Monat'}</th>
+                        <th class="num">Unser Erlös / Monat</th>
                         <th>entfernen</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {sammel.map((r) => (
-                        <tr>
-                          <td>
-                            <input type="hidden" name="site" value={r.site_id} />
-                            <a href={`/objekte/${r.site_id}`}>
-                              {r.site_no} {r.name}
-                            </a>
-                            <div class="small mut">{[r.street, r.city].filter(Boolean).join(', ')}</div>
-                          </td>
-                          <td class="small">{r.customer_name}</td>
-                          <td class="num">
-                            <input
-                              name="sqm"
-                              inputmode="decimal"
-                              style="width:110px;text-align:right"
-                              value={r.sqm ? r.sqm.replace('.', ',') : ''}
-                              placeholder={r.sqm_hint ? r.sqm_hint.replace('.', ',') : ''}
-                              aria-label="Fläche m²"
-                            />
-                          </td>
-                          <td class="num">
-                            {flat && (
-                              <input
-                                name="betrag"
-                                inputmode="decimal"
-                                style="width:110px;text-align:right"
-                                value={centsDe(r.share_cents)}
-                                placeholder={byShare ? '' : share(r).replace(' (Anteil)', '')}
-                                aria-label="Betrag je Objekt €"
-                              />
+                      {sammel.map((r, i) => {
+                        const m = modeOf(r);
+                        const rev = ourRevenue.get(r.site_id);
+                        const cost = costs?.[i];
+                        return (
+                          <tr>
+                            <td>
+                              <input type="hidden" name="site" value={r.site_id} />
+                              <a href={`/objekte/${r.site_id}`}>
+                                {r.site_no} {r.name}
+                              </a>
+                              <div class="small mut">
+                                {[r.street, r.city].filter(Boolean).join(', ')} · {r.customer_name}
+                              </div>
+                            </td>
+                            {perObject && (
+                              <td>
+                                <select
+                                  name="mode"
+                                  aria-label="Abrechnung"
+                                  data-nosearch
+                                  style="width:auto"
+                                  onchange="var t=this.closest('tr');t.querySelector('[name=rate]').hidden=this.value!=='qm';t.querySelector('[name=betrag]').hidden=this.value!=='pauschale'"
+                                >
+                                  <option value="qm" selected={m === 'qm'}>
+                                    je m²
+                                  </option>
+                                  <option value="pauschale" selected={m === 'pauschale'}>
+                                    Pauschale
+                                  </option>
+                                </select>
+                                {!r.mode && (
+                                  <div class="small mut">
+                                    {ourSqm.has(r.site_id) ? 'unser Auftrag: je m²' : 'Vorschlag'}
+                                  </div>
+                                )}
+                              </td>
                             )}
-                            {!byShare &&
-                              (share(r) === 'm² fehlt' ? (
-                                <span class="tag warn">m² fehlt</span>
-                              ) : flat ? null : (
-                                share(r)
-                              ))}
-                          </td>
-                          <td>
-                            <input type="checkbox" name="remove" value={r.site_id} aria-label="entfernen" />
-                          </td>
-                        </tr>
-                      ))}
+                            <td class="num">
+                              <input
+                                name="sqm"
+                                inputmode="decimal"
+                                style="width:100px;text-align:right"
+                                value={r.sqm ? r.sqm.replace('.', ',') : ''}
+                                placeholder={r.sqm_hint ? r.sqm_hint.replace('.', ',') : ''}
+                                aria-label="Fläche m²"
+                              />
+                            </td>
+                            {perObject && (
+                              <td class="num">
+                                <input
+                                  name="rate"
+                                  inputmode="decimal"
+                                  style="width:100px;text-align:right"
+                                  value={centsDe(r.rate_cents)}
+                                  placeholder={priceDe}
+                                  aria-label="Preis je m² €"
+                                  hidden={m !== 'qm'}
+                                />
+                                <input
+                                  name="betrag"
+                                  inputmode="decimal"
+                                  style="width:100px;text-align:right"
+                                  value={centsDe(r.share_cents)}
+                                  placeholder="0,00"
+                                  aria-label="Pauschale je Objekt €"
+                                  hidden={m !== 'pauschale'}
+                                />
+                              </td>
+                            )}
+                            <td class="num">
+                              {umsatz ? (
+                                `${String((10000 - (sc.margin_bp ?? 0)) / 100).replace('.', ',')} % vom Umsatz`
+                              ) : cost !== undefined ? (
+                                m === 'qm' && sqmCenti(r.sqm) === null ? (
+                                  <span class="tag warn">m² fehlt</span>
+                                ) : m === 'pauschale' && !r.share_cents ? (
+                                  <span class="tag warn">Betrag fehlt</span>
+                                ) : (
+                                  euro(cost)
+                                )
+                              ) : total > 0n && sqmCenti(r.sqm) !== null ? (
+                                <span class="small">
+                                  {euro((price * sqmCenti(r.sqm)! + total / 2n) / total)} (Anteil)
+                                </span>
+                              ) : (
+                                ''
+                              )}
+                            </td>
+                            <td class="num">
+                              {rev ? (
+                                <>
+                                  {euro(rev)}
+                                  {cost !== undefined && cost > 0n && (
+                                    <div
+                                      class="small"
+                                      style={rev - cost < 0n ? 'color:var(--err)' : 'color:var(--mut)'}
+                                    >
+                                      DB {euro(rev - cost)}
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <span class="small mut">keine laufende Leistung</span>
+                              )}
+                            </td>
+                            <td>
+                              <input type="checkbox" name="remove" value={r.site_id} aria-label="entfernen" />
+                            </td>
+                          </tr>
+                        );
+                      })}
                       <tr>
-                        <td colspan={2}>
+                        <td colspan={perObject ? 2 : 1}>
                           <b>Summe</b>
                         </td>
                         <td class="num">
                           <b>{(Number(total) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2 })}</b>
                         </td>
+                        {perObject && <td></td>}
                         <td class="num">
-                          <b>
-                            {sc.billing === 'qm'
-                              ? euro((price * total + 50n) / 100n)
-                              : sc.billing === 'umsatz'
-                                ? ''
-                                : euro(byShare ? shareSum : price)}
-                          </b>
-                          {byShare && shareSum !== price && (
-                            <div class="small" style="color:var(--err)">
-                              Preis der Bestellung: {euro(price)}
-                            </div>
-                          )}
+                          <b>{costSum !== null ? euro(costSum) : umsatz ? '' : euro(price)}</b>
+                        </td>
+                        <td class="num">
+                          {(() => {
+                            const rev = sammel.reduce((a, r) => a + (ourRevenue.get(r.site_id) ?? 0n), 0n);
+                            if (!rev) return null;
+                            const cost =
+                              costSum ??
+                              (umsatz ? (rev * BigInt(10000 - (sc.margin_bp ?? 0)) + 5000n) / 10000n : price);
+                            const m = rev - cost;
+                            return (
+                              <>
+                                <b>{euro(rev)}</b>
+                                {!umsatz && (
+                                  <div class="small" style={m < 0n ? 'color:var(--err)' : 'color:var(--mut)'}>
+                                    DB {euro(m)}
+                                    {` (${((Number(m) / Number(rev)) * 100).toFixed(0)} %)`}
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
                         </td>
                         <td></td>
                       </tr>
@@ -2033,12 +2152,6 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                   <div class="actions">
                     <button class="btn sm">Speichern / markierte entfernen</button>
                   </div>
-                  {flat && (
-                    <p class="small mut" style="margin-bottom:0">
-                      Betrag je Objekt (netto, optional): ist er eingetragen, wird nach diesen Beträgen statt
-                      nach Fläche verteilt.
-                    </p>
-                  )}
                 </form>
               );
             })()}
@@ -2082,6 +2195,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                   ? 'nach Betrag je Objekt'
                   : 'nach Fläche'}
               ; ohne Fläche gleichmäßig.
+              {perObjectInfo}
             </p>
           </section>
         )}
@@ -2822,6 +2936,8 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       const ids = list('site');
       const sqm = list('sqm');
       const betrag = list('betrag');
+      const modes = list('mode');
+      const rates = list('rate');
       const rm = new Set(list('remove'));
       const shareOf = (v: string | undefined) => {
         if (v === undefined) return undefined;
@@ -2837,6 +2953,8 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
           siteId,
           sqm: sqm[i] ?? '',
           share: betrag.length ? shareOf(betrag[i]) : undefined,
+          mode: modes.length ? (modes[i] === 'qm' || modes[i] === 'pauschale' ? modes[i] : null) : undefined,
+          rate: rates.length ? shareOf(rates[i]) : undefined,
           remove: rm.has(siteId),
         })),
         c.get('actor'),
@@ -3309,8 +3427,11 @@ function SubcontractTable({
   showSupplier = false,
   hours = new Map(),
   days = new Map(),
+  totals = new Map(),
 }: {
   rows: Awaited<ReturnType<typeof listSubcontracts>>;
+  /** Sammelbestellungen je Objekt: Summe der Objekte */
+  totals?: Map<string, bigint>;
   showSupplier?: boolean;
   /** „je Tag“: Arbeitstage und Betrag des laufenden Monats */
   days?: Map<string, { days: number; amount: bigint }>;
@@ -3348,7 +3469,7 @@ function SubcontractTable({
               </td>
               <td class="r">
                 {(() => {
-                  const total = subcontractTotal(r);
+                  const total = subcontractTotal({ ...r, sammel_total: totals.get(r.id) });
                   const h = hours.get(r.id);
                   return r.billing === 'stunde' ? (
                     <>

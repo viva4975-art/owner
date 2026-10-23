@@ -64,7 +64,7 @@ const CSS = `${APP_TAB_CSS}
 .cbx.bad .cbx-btn{border-color:var(--err)}
 .cbx-pop{position:absolute;z-index:60;left:0;right:0;top:calc(100% + 4px);min-width:260px;background:#fff;border:1px solid var(--line-2);border-radius:12px;box-shadow:0 14px 36px rgba(26,20,16,.16);padding:8px}
 .cbx-q{width:100%;height:36px!important;margin-bottom:6px}
-.cbx-pop.up{top:auto;bottom:calc(100% + 4px)}
+.cbx-pop.cbx-up{top:auto;bottom:calc(100% + 4px)}
 .cbx-list{max-height:320px;overflow:auto;overscroll-behavior:contain}
 .cbx-grp{padding:8px 10px 4px;font-size:12px;font-weight:700;color:var(--mut)}
 .cbx-opt{padding:8px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

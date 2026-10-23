@@ -1,4 +1,4 @@
-import { sqmCenti, subcontractSites } from './subcontract-sites.js';
+import { objectCosts, siteMode, sqmCenti, subcontractSites } from './subcontract-sites.js';
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { contactGreeting } from '../domain/letter/greeting.js';
 import type { Sql } from '../db/client.js';
@@ -799,12 +799,17 @@ export async function subcontractPdf(sql: Sql, id: string, sig?: SubcontractSign
             : 'Monat';
   const sammel = await subcontractSites(sql, id);
   const sqmTotal = sammel.reduce((a, r) => a + (sqmCenti(r.sqm) ?? 0n), 0n);
+  // je Objekt „je m²“ oder Pauschale (Ahmed 23.10.)
+  const perObj = sammel.length ? objectCosts(sc.billing, sc.current_price_cents, sammel) : null;
+  const perSum = perObj ? perObj.reduce((a, b) => a + b, 0n) : null;
   const price =
-    sc.billing === 'umsatz'
-      ? `${String((10000 - (sc.margin_bp ?? 0)) / 100).replace('.', ',')} % unseres Netto-Umsatzes je Objekt`
-      : sc.billing === 'qm' && sqmTotal
-        ? `${formatEuro(sc.current_price_cents as Cents)} / m² × ${(Number(sqmTotal) / 100).toLocaleString('de-DE')} m² = ${formatEuro(((sc.current_price_cents * sqmTotal + 50n) / 100n) as Cents)}`
-        : `${formatEuro(sc.current_price_cents as Cents)} / ${unit}`;
+    perSum !== null && sammel.some((r) => r.mode)
+      ? `${formatEuro(perSum as Cents)} / Monat (Summe der Objekte, Liste unten)`
+      : sc.billing === 'umsatz'
+        ? `${String((10000 - (sc.margin_bp ?? 0)) / 100).replace('.', ',')} % unseres Netto-Umsatzes je Objekt`
+        : sc.billing === 'qm' && sqmTotal
+          ? `${formatEuro(sc.current_price_cents as Cents)} / m² × ${(Number(sqmTotal) / 100).toLocaleString('de-DE')} m² = ${formatEuro(((sc.current_price_cents * sqmTotal + 50n) / 100n) as Cents)}`
+          : `${formatEuro(sc.current_price_cents as Cents)} / ${unit}`;
   const d = await FormDoc.create({
     title: `Bestellung ${sc.number}`,
     sideRef: `VD-NU-02 Bestellschein ${sc.number} · Rev. 1.0 · Stand: ${dateDe}`,
@@ -907,18 +912,20 @@ export async function subcontractPdf(sql: Sql, id: string, sig?: SubcontractSign
         { label: 'Nr.', width: 62 },
         { label: 'Objekt / Adresse', width: 263 },
         { label: 'Fläche m²', width: 80, align: 'right' },
-        { label: sc.billing === 'qm' ? 'Betrag' : '', width: 90, align: 'right' },
+        { label: perObj ? 'Betrag / Monat' : '', width: 90, align: 'right' },
       ],
       [
-        ...sammel.map((r) => {
+        ...sammel.map((r, i) => {
           const c = sqmCenti(r.sqm);
+          const qm = siteMode(sc.billing, r) === 'qm';
+          const rate = r.rate_cents !== null ? BigInt(r.rate_cents) : sc.current_price_cents;
           return [
             r.site_no,
-            `${r.name}${r.street ? `, ${r.street}` : ''}${r.city ? `, ${r.city}` : ''}`,
+            `${r.name}${r.street ? `, ${r.street}` : ''}${r.city ? `, ${r.city}` : ''}${
+              perObj && qm ? ` (${formatEuro(rate as Cents)} / m²)` : perObj ? ' (Pauschale)' : ''
+            }`,
             c === null ? '–' : (Number(c) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2 }),
-            sc.billing === 'qm' && c !== null
-              ? formatEuro(((sc.current_price_cents * c + 50n) / 100n) as Cents)
-              : '',
+            perObj && (!qm || c !== null) ? formatEuro(perObj[i]! as Cents) : '',
           ];
         }),
         {
@@ -926,9 +933,7 @@ export async function subcontractPdf(sql: Sql, id: string, sig?: SubcontractSign
             '',
             'Summe',
             (Number(sqmTotal) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2 }),
-            sc.billing === 'qm'
-              ? formatEuro(((sc.current_price_cents * sqmTotal + 50n) / 100n) as Cents)
-              : '',
+            perSum !== null ? formatEuro(perSum as Cents) : '',
           ],
           strong: true,
         },
@@ -1252,7 +1257,10 @@ export function subcontractTotal(sc: {
   max_hours_month: string | null;
   /** Gesamtfläche einer Sammelbestellung in m²-Hundertsteln */
   sqm_centi?: bigint | null;
+  /** Summe der Objekte, wenn eine Sammelbestellung je Objekt abrechnet (`sammelTotals`) */
+  sammel_total?: bigint | null | undefined;
 }): bigint | null {
+  if (sc.sammel_total !== null && sc.sammel_total !== undefined) return sc.sammel_total;
   if (sc.billing === 'pauschale_monat') return sc.current_price_cents;
   // Preis je m² × Gesamtfläche, kaufmännisch auf Cent
   if (sc.billing === 'qm') return sc.sqm_centi ? (sc.current_price_cents * sc.sqm_centi + 50n) / 100n : null;

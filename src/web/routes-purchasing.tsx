@@ -1,4 +1,4 @@
-import { sammelSqmCenti } from '../services/subcontract-sites.js';
+import { sammelSqmCenti, sammelTotals } from '../services/subcontract-sites.js';
 import { hoursOfMonth } from '../services/subcontract-hours.js';
 import { costCenterReport } from '../services/cost-centers.js';
 import { randomUUID } from 'node:crypto';
@@ -389,6 +389,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       sql,
       subcontracts.map((x) => x.id),
     );
+    const perObjTotals = await sammelTotals(sql, subcontracts);
     const siteCount = new Map(
       (
         await sql<{ id: string; n: number }[]>`
@@ -558,7 +559,11 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
         canFinish: sc.status === 'erteilt' && !!(sc.signed_file_path || sc.signed_external),
         ...((): Pick<Row, 'net' | 'per' | 'unit'> => {
           // Gesamtbetrag zuerst, Einheitspreis darunter (Ahmed 18.10.)
-          const total = subcontractTotal({ ...sc, sqm_centi: sqmMap.get(sc.id) ?? null });
+          const total = subcontractTotal({
+            ...sc,
+            sqm_centi: sqmMap.get(sc.id) ?? null,
+            sammel_total: perObjTotals.get(sc.id),
+          });
           if (sc.billing === 'umsatz')
             return {
               net: null,

@@ -1,17 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { splitByWeights, sqmCenti } from './subcontract-sites.js';
+import { objectCosts } from './subcontract-sites.js';
 
-describe('Sammelbestellung', () => {
-  it('Fläche als Hundertstel', () => {
-    expect(sqmCenti('1.234,5')).toBe(123450n);
-    expect(sqmCenti('306')).toBe(30600n);
-    expect(sqmCenti('12.50')).toBe(1250n);
-    expect(sqmCenti('abc')).toBeNull();
+describe('Sammelbestellung: Kosten je Objekt', () => {
+  it('je m² und Pauschale gemischt', () => {
+    const c = objectCosts('qm', 30n, [
+      { sqm: '1000.00', share_cents: null, mode: 'qm', rate_cents: null }, // 0,30 € × 1000 m²
+      { sqm: '500.00', share_cents: null, mode: 'qm', rate_cents: '40' }, // eigener Preis 0,40 €
+      { sqm: null, share_cents: '25000', mode: 'pauschale', rate_cents: null }, // 250 € fest
+    ]);
+    expect(c).toEqual([30000n, 20000n, 25000n]);
   });
-  it('centgenau nach Gewichten, Rest an die größten Reste', () => {
-    expect(splitByWeights(10000n, [1n, 1n, 1n])).toEqual([3334n, 3333n, 3333n]);
-    expect(splitByWeights(1000n, [30000n, 10000n])).toEqual([750n, 250n]);
-    expect(splitByWeights(-1001n, [1n, 1n])).toEqual([-501n, -500n]);
-    expect(splitByWeights(100n, [0n, 0n])).toEqual([50n, 50n]);
+
+  it('alte Pauschale ohne Wahl je Objekt wird als Ganzes verteilt', () => {
+    expect(objectCosts('pauschale_monat', 100000n, [{ sqm: '10', share_cents: null }])).toBeNull();
+    expect(objectCosts('umsatz', 0n, [{ sqm: '10', share_cents: null, mode: 'qm' }])).toBeNull();
   });
 });

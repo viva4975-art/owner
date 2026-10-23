@@ -379,7 +379,13 @@ export const CLIENT_JS = String.raw`
       pop.hidden = false; wrap.classList.add('open');
       input.value = initial || '';
       render();
-      // Liste passt sich dem Platz im Fenster an: unten zu eng → nach oben aufklappen, sonst eigene Scrollleiste
+      // Liste öffnet immer nach unten (Ahmed 23.10.: „mal so, mal so“): fehlt unten Platz, rückt die Seite nach oben;
+      // nur ganz unten auf der Seite (kein Scrollen mehr möglich) klappt sie nach oben auf.
+      var r0 = wrap.getBoundingClientRect(), need = 380 - (window.innerHeight - r0.bottom);
+      if (need > 0) {
+        var room = document.documentElement.scrollHeight - window.innerHeight - window.scrollY;
+        window.scrollBy(0, Math.max(0, Math.min(need, room, r0.top - 140)));
+      }
       place();
       input.focus({ preventScroll: true });
       openBox = { wrap: wrap, close: close, place: place };
@@ -387,8 +393,8 @@ export const CLIENT_JS = String.raw`
     // Liste „schwebt“ über allem (position:fixed) – sonst schneiden Tabellen mit Scrollbereich sie ab (Ahmed 15.10.)
     function place() {
       var r = wrap.getBoundingClientRect(), below = window.innerHeight - r.bottom - 12, above = r.top - 12;
-      var up = below < 260 && above > below;
-      pop.classList.toggle('up', up);
+      var up = below < 200 && above > below + 100;
+      pop.classList.toggle('cbx-up', up);
       pop.style.position = 'fixed';
       pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - Math.max(r.width, 260) - 8)) + 'px';
       pop.style.width = Math.max(r.width, 260) + 'px';

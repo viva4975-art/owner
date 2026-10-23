@@ -4011,3 +4011,15 @@ Testadresse.
   Schließzeiten ein (`addSchoolClosures`, feste ID je Zeitraum, überlappende übersprungen). Ferientermine liegen bis
   Sommer 2027 vor – danach in `school-holidays.ts` ergänzen und erneut klicken. **Bestellentwurf:** „Auftrag erteilen“
   steht jetzt oben über dem Formular (Änderungen vorher speichern).
+- 2026-10-23: **Auswahllisten öffnen immer nach unten** (Ahmed: „mal so, mal so“): fehlt unten Platz, rückt die Seite nach
+  oben; nach oben nur ganz unten auf der Seite. **Fund:** Die nach oben geöffnete Liste hatte die Klasse `up`, die in den
+  Statistiken „Anstieg = grün“ bedeutet → alle Einträge grün. Jetzt `cbx-up`.
+- 2026-10-23: **Sammelbestellung je Objekt „je m²“ oder „Pauschale“** (Ahmed: „auswählen, wie unser Auftrag angelegt ist“,
+  „Preise sehen, die wir erhalten“): Kasten „Sammelbestellung“ bei Abrechnung je m² bzw. Pauschale je Monat: je Objekt
+  Auswahl Abrechnung (Vorschlag: je m², wenn unsere Leistung am Objekt in m² abgerechnet wird, sonst Pauschale), Preis je m²
+  (leer = Preis der Bestellung) bzw. Pauschalbetrag, Kosten NU / Monat, **Unser Erlös / Monat** (laufende Leistungen,
+  Zyklen anteilig) mit DB je Objekt und Summe. Spalten `subcontract_sites.mode/rate_cents` (Migration `20261220000002`).
+  Kosten der Bestellung = Summe der Objekte (`objectCosts`): Bestellschein (Objektliste mit Preis bzw. „Pauschale“),
+  Gesamtbetrag in den Listen (`sammelTotals`), Verteilung der Eingangsrechnung und Schätzung der Nachkalkulation. Alte
+  Pauschal-Sammelbestellungen ohne Wahl je Objekt rechnen unverändert. Test `subcontract-sites.test.ts`.
+  Rechnungskorrektur-Formular ohne Zwischenspeicher der Eingaben (sonst überschrieben alte Eingaben die Vorbelegung).

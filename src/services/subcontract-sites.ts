@@ -21,6 +21,10 @@ export interface SammelSite {
   sqm: string | null;
   /** fester Betrag je Objekt (netto, Cent) – geht bei Pauschalen vor der Fläche */
   share_cents: string | null;
+  /** Abrechnung dieses Objekts (Ahmed 23.10.): je m² oder Pauschale; null = wie die Bestellung */
+  mode: 'qm' | 'pauschale' | null;
+  /** Preis je m² für dieses Objekt (Cent); null = Preis der Bestellung */
+  rate_cents: string | null;
   /** Vorschlag aus Tiefgaragen-Stammdaten bzw. Raumbuch */
   sqm_hint: string | null;
 }
@@ -65,7 +69,8 @@ const sqmHint = (sql: Sql) => sql`coalesce(
 export async function subcontractSites(sql: Sql, id: string): Promise<SammelSite[]> {
   return sql<SammelSite[]>`
     select x.site_id, s.site_no, s.name, s.street, s.city, c.name as customer_name, x.sqm::text as sqm,
-           x.share_cents::text as share_cents, ${sqmHint(sql)} as sqm_hint
+           x.share_cents::text as share_cents, x.mode, x.rate_cents::text as rate_cents,
+           ${sqmHint(sql)} as sqm_hint
       from app.subcontract_sites x join app.sites s on s.id = x.site_id join app.customers c on c.id = s.customer_id
      where x.subcontract_id = ${id}
      order by s.site_no`;
@@ -115,13 +120,20 @@ export async function addSubcontractSites(
 export async function saveSubcontractSites(
   sql: Sql,
   id: string,
-  rows: { siteId: string; sqm: string; share?: bigint | null | undefined; remove: boolean }[],
+  rows: {
+    siteId: string;
+    sqm: string;
+    share?: bigint | null | undefined;
+    mode?: 'qm' | 'pauschale' | null | undefined;
+    rate?: bigint | null | undefined;
+    remove: boolean;
+  }[],
   actor: string,
 ) {
   await sql.begin(async (tx) => {
     const sc = await assertEditable(tx, id);
     const before =
-      await tx`select site_id, sqm::text from app.subcontract_sites where subcontract_id = ${id}`;
+      await tx`select site_id, sqm::text, share_cents::text, mode, rate_cents::text from app.subcontract_sites where subcontract_id = ${id}`;
     for (const r of rows) {
       if (r.remove) {
         await tx`delete from app.subcontract_sites where subcontract_id = ${id} and site_id = ${r.siteId}`;
@@ -133,6 +145,12 @@ export async function saveSubcontractSites(
                 where subcontract_id = ${id} and site_id = ${r.siteId}`;
       if (r.share !== undefined)
         await tx`update app.subcontract_sites set share_cents = ${r.share}
+                  where subcontract_id = ${id} and site_id = ${r.siteId}`;
+      if (r.mode !== undefined)
+        await tx`update app.subcontract_sites set mode = ${r.mode}
+                  where subcontract_id = ${id} and site_id = ${r.siteId}`;
+      if (r.rate !== undefined)
+        await tx`update app.subcontract_sites set rate_cents = ${r.rate}
                   where subcontract_id = ${id} and site_id = ${r.siteId}`;
     }
     const left = await tx<{ site_id: string }[]>`
@@ -173,6 +191,58 @@ export async function siteRevenueMonth(
   return out;
 }
 
+type CostSite = {
+  sqm: string | null;
+  share_cents: string | null;
+  mode?: string | null;
+  rate_cents?: string | null;
+};
+
+/** Abrechnungsart eines Objekts: eigene Wahl, sonst wie die Bestellung (je m² bzw. Pauschale) */
+export const siteMode = (billing: string, s: { mode?: string | null }): 'qm' | 'pauschale' | null =>
+  s.mode === 'qm' || s.mode === 'pauschale' ? s.mode : billing === 'qm' ? 'qm' : null;
+
+/**
+ * Kosten je Objekt und Monat, wenn sie sich je Objekt ergeben (Ahmed 23.10.): je m² = Preis je m² (des Objekts, sonst der
+ * Bestellung) × Fläche, Pauschale = Betrag des Objekts. null = Bestellung wird als Ganzes verteilt (alte Pauschale ohne
+ * Wahl je Objekt, Anteil am Umsatz, andere Abrechnungsarten).
+ */
+export function objectCosts(billing: string, priceCents: bigint, sites: CostSite[]): bigint[] | null {
+  if (billing !== 'qm' && billing !== 'pauschale_monat') return null;
+  if (billing === 'pauschale_monat' && !sites.some((s) => s.mode)) return null;
+  return sites.map((s) => {
+    if ((siteMode(billing, s) ?? 'pauschale') === 'qm') {
+      const rate = s.rate_cents !== null && s.rate_cents !== undefined ? BigInt(s.rate_cents) : priceCents;
+      return (rate * (sqmCenti(s.sqm) ?? 0n) * 2n + 100n) / 200n;
+    }
+    return BigInt(s.share_cents ?? '0');
+  });
+}
+
+/** Summe je Bestellung, wo sich die Kosten je Objekt ergeben (für Listen „Gesamtbetrag“). */
+export async function sammelTotals(
+  sql: Sql,
+  orders: { id: string; billing: string; current_price_cents: bigint }[],
+): Promise<Map<string, bigint>> {
+  const out = new Map<string, bigint>();
+  const ids = orders.filter((o) => o.billing === 'qm' || o.billing === 'pauschale_monat').map((o) => o.id);
+  if (!ids.length) return out;
+  const rows = await sql<(CostSite & { id: string })[]>`
+    select subcontract_id as id, sqm::text as sqm, share_cents::text as share_cents, mode, rate_cents::text as rate_cents
+      from app.subcontract_sites where subcontract_id = any(${ids}::uuid[])`;
+  for (const o of orders) {
+    const mine = rows.filter((r) => r.id === o.id);
+    if (!mine.length) continue;
+    const c = objectCosts(o.billing, BigInt(o.current_price_cents), mine);
+    if (c)
+      out.set(
+        o.id,
+        c.reduce((a, b) => a + b, 0n),
+      );
+  }
+  return out;
+}
+
 /** Gewichte für Pauschalen: fester Betrag je Objekt, sonst Fläche */
 const flatWeights = (sites: { sqm: string | null; share_cents: string | null }[]) =>
   sites.some((s) => s.share_cents !== null && BigInt(s.share_cents) > 0n)
@@ -190,15 +260,17 @@ export async function allocateSammel(
   net: bigint,
 ): Promise<{ site_id: string; net: bigint }[] | null> {
   const [sc] = await sql<
-    { billing: string }[]
-  >`select billing from app.subcontracts where id = ${subcontractId}`;
-  const sites = await sql<{ site_id: string; sqm: string | null; share_cents: string | null }[]>`
-    select x.site_id, x.sqm::text as sqm, x.share_cents::text as share_cents
+    { billing: string; price_cents: bigint }[]
+  >`select billing, price_cents from app.subcontracts where id = ${subcontractId}`;
+  const sites = await sql<(CostSite & { site_id: string })[]>`
+    select x.site_id, x.sqm::text as sqm, x.share_cents::text as share_cents, x.mode, x.rate_cents::text as rate_cents
       from app.subcontract_sites x join app.sites s on s.id = x.site_id
      where x.subcontract_id = ${subcontractId} order by s.site_no`;
   if (!sc || sites.length < 2) return null;
   let weights: bigint[];
-  if (sc.billing === 'umsatz') {
+  const per = objectCosts(sc.billing, BigInt(sc.price_cents), sites);
+  if (per && per.some((w) => w > 0n)) weights = per;
+  else if (sc.billing === 'umsatz') {
     const rev = await siteRevenueMonth(
       sql,
       sites.map((s) => s.site_id),
@@ -221,17 +293,14 @@ export async function sammelMonthCost(
   sc: { id: string; billing: string; price_cents: bigint; margin_bp: number | null },
   month: string,
 ): Promise<{ site_id: string; cost: bigint }[]> {
-  const sites = await sql<{ site_id: string; sqm: string | null; share_cents: string | null }[]>`
-    select x.site_id, x.sqm::text as sqm, x.share_cents::text as share_cents
+  const sites = await sql<(CostSite & { site_id: string })[]>`
+    select x.site_id, x.sqm::text as sqm, x.share_cents::text as share_cents, x.mode, x.rate_cents::text as rate_cents
       from app.subcontract_sites x join app.sites s on s.id = x.site_id
      where x.subcontract_id = ${sc.id} order by s.site_no`;
   if (!sites.length) return [];
-  if (sc.billing === 'qm')
-    return sites.map((s) => ({
-      site_id: s.site_id,
-      // Preis je m² (Cent) × m²-Hundertstel / 100, kaufmännisch gerundet
-      cost: (BigInt(sc.price_cents) * (sqmCenti(s.sqm) ?? 0n) * 2n + 100n) / 200n,
-    }));
+  // je m² bzw. Pauschale je Objekt: Kosten ergeben sich je Objekt
+  const per = objectCosts(sc.billing, BigInt(sc.price_cents), sites);
+  if (per) return sites.map((s, i) => ({ site_id: s.site_id, cost: per[i]! }));
   if (sc.billing === 'umsatz') {
     const rev = await siteRevenueMonth(
       sql,

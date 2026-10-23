@@ -635,7 +635,7 @@ export const CorrectionEditor: FC<{
       Originalrechnung bleibt unverändert; die Korrektur erhält eine eigene Nummer und verweist auf das
       Original.
     </div>
-    <form method="post" action={`/rechnungen/${id}/korrektur`} class="card" data-autosave>
+    <form method="post" action={`/rechnungen/${id}/korrektur`} class="card">
       <input type="hidden" name="new_id" value={newId} />
       <div style="margin-bottom:12px">
         <label for="intro_text">Begründung / Einleitung</label>

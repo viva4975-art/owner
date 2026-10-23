@@ -205,9 +205,9 @@ export function fillDocx(
   for (const name of Object.keys(files)) {
     if (!PART.test(name)) continue;
     let xml = strFromU8(files[name]!);
-    if (docDate) xml = freezeDateFields(xml, docDate);
-    // Kästchen/Lücken vor den Platzhaltern (Indizes wie auf der Ausfüll-Seite, dort aus der Originaldatei)
+    // Kästchen/Lücken zuerst auf der unveränderten Datei – genau wie auf der Ausfüll-Seite gezählt
     if (form && name === 'word/document.xml') xml = applyFormFields(xml, form.boxes, form.blanks, form.cells);
+    if (docDate) xml = freezeDateFields(xml, docDate);
     // Mitarbeiter-Dokument: „Arbeitnehmer/in“ passend zur Anrede, Unterschriftsfeld der Person hinterlegt
     if (person?.salaried) xml = salaryClause(xml);
     if (person?.gender) xml = genderizeXml(xml, person.gender);
@@ -837,10 +837,28 @@ export async function fillWordTemplate(
   const typ = t.name.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
   const suffix = base.suffix;
   const name = `${typ}_${today}${suffix ? `_${suffix.replace(/[^\p{L}\p{N}]+/gu, '-')}` : ''}.docx`;
+  // Gegenprobe (Ahmed 23.10.: „es kommen keine Kreuze an“): jedes angekreuzte Kästchen muss im Ergebnis stehen
+  const before = formFieldsOfDocx(bytes).filter((f) => f.kind === 'box');
+  const after = formFieldsOfDocx(data).filter((f) => f.kind === 'box');
+  const wanted = Object.entries(p.form?.boxes ?? {})
+    .filter(([, on]) => on)
+    .map(([i]) => Number(i));
+  const label = (i: number) => before.find((f) => f.index === i)?.label ?? `Kästchen ${i + 1}`;
+  const lost = wanted.filter((i) => !after.find((f) => f.index === i)?.checked);
   if (actor)
     await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
               values (${actor}, 'word_template', ${p.target.type}, ${p.target.id},
-                      ${sql.json({ template: t.name, template_id: t.id, download: name })})`;
+                      ${sql.json({
+                        template: t.name,
+                        template_id: t.id,
+                        download: name,
+                        boxes_on: wanted.map(label),
+                        boxes_lost: lost.map(label),
+                      })})`;
+  if (lost.length)
+    throw new BusinessError(
+      `Diese Kreuze ließen sich nicht ins Dokument setzen: ${lost.map(label).join(' · ')}. Bitte die Vorlage (Word-Datei) an den Support schicken.`,
+    );
   return { name, data, missing, template: { id: t.id, name: t.name, category: t.category } };
 }
 
@@ -991,4 +1009,14 @@ export async function filledDocxPdf(
   });
   renderDocx(d, parseDocx(strFromU8(xml)));
   return d.save();
+}
+
+/** Was beim letzten Erstellen dieser Vorlage für diesen Datensatz angekreuzt ankam (Anzeige auf der Ausfüll-Seite). */
+export async function lastWordFill(sql: Sql, target: WordTarget, templateId: string) {
+  const [r] = await sql<{ at: Date; actor: string; on: string[] | null }[]>`
+    select at, actor, details->'boxes_on' as on from app.audit_log
+     where action = 'word_template' and entity = ${target.type} and entity_id = ${target.id}
+       and details->>'template_id' = ${templateId}
+     order by at desc limit 1`;
+  return r ?? null;
 }

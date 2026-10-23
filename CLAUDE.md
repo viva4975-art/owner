@@ -3951,3 +3951,11 @@ Testadresse.
   angekreuzte Einwilligungen gelten nicht als wirksame Einwilligung (Art. 4 Nr. 11, Art. 7 DSGVO; EuGH C-673/17
   Planet49) – die Person muss die Kreuze selbst setzen bzw. bestätigen; im Zweifel Weitergabe der Handynummer usw. nicht
   darauf stützen. Test in `word-form.test.ts`.
+- 2026-10-23: Kreuze im Arbeitsvertrag, 3. Runde (Ahmed: „es kommen keine Kreuze an – trotz aktualisieren“): Hier mit
+  iPad-Simulation (Tippen) und echtem Absenden geprüft – Kreuze kommen an und stehen im PDF. Auf dem Server weiter leer,
+  Ursache von hier nicht sichtbar (Server-Vorlage weicht ab: andere Tabellenbreiten). Neu, damit es sich zeigt:
+  Kästchen werden auf der **unveränderten** Vorlage gesetzt (vorher nach dem Festschreiben der Datumsfelder – einzige
+  Stelle, an der Ausfüll-Seite und Erzeugen unterschiedlich zählen könnten); **Gegenprobe** nach dem Erzeugen: steht ein
+  angekreuztes Kästchen nicht im Ergebnis, kommt eine Fehlermeldung mit den betroffenen Kästchen statt eines falschen
+  Dokuments; Protokoll `word_template` enthält `boxes_on`/`boxes_lost`; die Ausfüll-Seite zeigt „Zuletzt erstellt … –
+  angekreuzt angekommen: …“ (`lastWordFill`). Damit ist sofort klar, ob die Häkchen vom Gerät ankommen.

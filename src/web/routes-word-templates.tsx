@@ -16,6 +16,7 @@ import {
   fillWordTemplate,
   filledDocxPdf,
   importWordTemplates,
+  lastWordFill,
   listWordTemplates,
   updateWordTemplate,
 } from '../services/word-templates.js';
@@ -485,6 +486,7 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
     const boxDefaults = defaultBoxes(formFields, values);
     const blankDefaults = defaultBlanks(formFields, values);
     const cellDefaults = defaultCells(formFields, values);
+    const last = await lastWordFill(sql, { type, id }, t.id).catch(() => null);
     const ret = TARGET_PAGE[type](id);
     const title =
       type === 'employee'
@@ -561,6 +563,22 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
           ))}
           {formFields.length > 0 && (
             <FormFields fields={formFields} boxes={boxDefaults} blanks={blankDefaults} cells={cellDefaults} />
+          )}
+          {last && last.on && (
+            <p class="small mut" style="margin:10px 0 0">
+              Zuletzt erstellt{' '}
+              {new Date(last.at).toLocaleString('de-DE', {
+                timeZone: 'Europe/Berlin',
+                dateStyle: 'medium',
+                timeStyle: 'short',
+              })}
+              {last.actor ? ` (${last.actor})` : ''} – angekreuzt angekommen:{' '}
+              {last.on.length ? (
+                last.on.map((l) => (l.length > 45 ? `${l.slice(0, 42)}…` : l)).join(' · ')
+              ) : (
+                <b>keine Kreuze</b>
+              )}
+            </p>
           )}
           {master.length > 0 && (
             <details open={(groups.length === 0 && formFields.length === 0) || payNotes.length > 0}>

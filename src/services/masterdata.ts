@@ -328,54 +328,6 @@ export async function saveSite(
   });
 }
 
-/** Feste Kunden-ID für „neuer Kunde = dieses Objekt“ (gleiche Anfrage doppelt → derselbe Kunde). */
-export function siteCustomerId(siteId: string): string {
-  const h = createHash('md5').update(`site-customer:${siteId}`).digest('hex');
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
-}
-
-/**
- * Objekt anlegen, wenn Kunde und Objekt dasselbe sind (Ahmed 23.10.): legt den Kunden mit Bezeichnung und Anschrift
- * des Objekts an (Gruppe „Standard“, ZUGFeRD wie neue Kunden). Gibt es den Kunden aus einem früheren Absenden schon,
- * wird er nur zurückgegeben.
- */
-export async function createCustomerForSite(
-  sql: Sql,
-  siteId: string,
-  p: {
-    customer_no: string;
-    name: string;
-    street: string;
-    postal_code: string;
-    city: string;
-    invoice_emails: string;
-  },
-  actor: string,
-): Promise<{ customerId: string; created: boolean }> {
-  const customerId = siteCustomerId(siteId);
-  if (await getCustomer(sql, customerId)) return { customerId, created: false };
-  const parsed = customerInput.safeParse({
-    customer_no: p.customer_no || (await suggestCustomerNo(sql)),
-    name: p.name,
-    street: p.street,
-    postal_code: p.postal_code,
-    city: p.city,
-    invoice_emails: p.invoice_emails,
-    invoice_format: 'zugferd',
-    status: 'kunde',
-  });
-  if (!parsed.success)
-    throw new BusinessError(`Neuer Kunde: ${parsed.error.issues.map((i) => i.message).join(', ')}`);
-  try {
-    await saveCustomer(sql, customerId, parsed.data, actor);
-  } catch (err) {
-    if ((err as { code?: string }).code === '23505')
-      throw new BusinessError('Kundennummer ist bereits vergeben');
-    throw err;
-  }
-  return { customerId, created: true };
-}
-
 /** Gruppe „Standard“ des Kunden (wird bei Bedarf angelegt), sonst erste aktive Gruppe. */
 async function defaultGroupId(tx: Tx, customerId: string): Promise<string> {
   const [g] = await tx<{ id: string }[]>`

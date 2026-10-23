@@ -68,6 +68,19 @@ describe.skipIf(!available)('Leistungen wie Fortytools im Abrechnungslauf', () =
     expect(inv.invoice.period_end).toBe('2026-12-31');
   });
 
+  it('Monatslauf erneut: neu angelegte Leistung kommt in den vorhandenen Entwurf, nichts doppelt', async () => {
+    const first = await runMonthly(sql, '2026-04', 't', { siteIds: [DEMO.siteHq] });
+    const inv = first.created[0]!.invoiceId;
+    await svc(DEMO.siteHq, { description: 'Spüldienst nachträglich', valid_from: '2026-01-01' });
+    const second = await runMonthly(sql, '2026-04', 't', { siteIds: [DEMO.siteHq] });
+    expect(second.created).toHaveLength(0);
+    expect(second.appended.map((a) => a.invoiceId)).toEqual([inv]);
+    expect(await linesOf(inv)).toEqual(['Unterhaltsreinigung', 'Spüldienst nachträglich']);
+    const third = await runMonthly(sql, '2026-04', 't', { siteIds: [DEMO.siteHq] });
+    expect(third.created.length + third.appended.length).toBe(0);
+    expect(await linesOf(inv)).toHaveLength(2);
+  });
+
   it('eigene Rechnung je Leistung, Rechnungsgruppe je Leistung mit Kopftext, nur gewähltes Objekt', async () => {
     const group = randomUUID();
     await saveInvoiceGroup(

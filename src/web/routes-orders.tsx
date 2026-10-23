@@ -544,7 +544,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
     const q = c.req.query();
     const o = data?.order;
     const customerId = o?.customer_id ?? q.kunde ?? '';
-    const siteId = o?.site_id ?? q.objekt ?? '';
+    let siteId = o?.site_id ?? q.objekt ?? '';
     const [customers, sites, staff] = await Promise.all([
       listCustomers(sql),
       customerId ? listSites(sql, customerId) : Promise.resolve([]),
@@ -554,6 +554,11 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
           from app.employees where status = 'aktiv' or id = any(${o?.employee_ids ?? []}::uuid[])
          order by last_name, first_name`,
     ]);
+    // Neuer Auftrag: hat der Kunde nur ein (aktives) Objekt, ist es gleich gewählt (Ahmed 23.10.)
+    if (!o && q.objekt === undefined && customerId) {
+      const act = sites.filter((s) => s.active);
+      if (act.length === 1) siteId = act[0]!.id;
+    }
     const chosen = new Set(o?.employee_ids ?? []);
     const addr = await orderAddress(o?.bill_address ?? null, customerId, siteId || null);
     const types = await listServiceTypes(sql);
@@ -582,7 +587,11 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
           <div class="grid">
             <div>
               <label for="kunde">Kunde</label>
-              <select id="kunde" name="kunde" onchange="this.form.submit()">
+              <select
+                id="kunde"
+                name="kunde"
+                onchange="if(this.form.objekt)this.form.objekt.disabled=true;this.form.submit()"
+              >
                 <option value="">– bitte wählen –</option>
                 {customers
                   .filter((k) => k.active)

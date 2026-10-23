@@ -7,6 +7,7 @@ import type { InvoiceRow, LineRow } from '../services/invoices.js';
 import type { Customer, EffectiveBilling, Site, SiteService } from '../services/masterdata.js';
 import { type DeliveryRow, MANUAL_WAYS, type PreflightResult } from '../services/workflow.js';
 import { centsToInput, milliToInput } from './forms.js';
+import { holidaysBavaria } from '../domain/time/holidays.js';
 import { FORMAT_LABEL, STATUS_LABEL, dateDe, euro } from './layout.js';
 
 type ListRow = InvoiceRow & {
@@ -221,6 +222,22 @@ const LineRowInputs: FC<{
           <input type="date" name="lpe" value={l?.lpe ?? ''} aria-label="Leistungszeitraum bis" />
         </div>
       )}
+      {types && (
+        // Abrechnung je Tag: Wochentage wählen → Menge = Tage im Leistungszeitraum ohne Feiertage (Ahmed 23.10.)
+        <div class="ln-days" hidden={(l?.unit ?? 'LS') !== 'DAY'}>
+          <span class="small mut">Tage:</span>
+          {['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((d, i) => (
+            <label class="ln-wd">
+              <input type="checkbox" data-wd={String(i + 1)} checked={i < 5} />
+              {d}
+            </label>
+          ))}
+          <button type="button" class="btn sm sec ln-days-calc">
+            Menge berechnen
+          </button>
+          <span class="small mut ln-days-info"></span>
+        </div>
+      )}
       <input type="hidden" name="src" value={l?.src ?? ''} />
     </td>
     <td style="width:90px">
@@ -367,8 +384,36 @@ export const LineEditor: FC<{
       Vorschau im Browser – maßgeblich ist die Berechnung auf dem Server beim Speichern.
     </p>
     <script dangerouslySetInnerHTML={{ __html: lineEditorScript }} />
+    {types && <script dangerouslySetInnerHTML={{ __html: daysScript() }} />}
   </>
 );
+
+/** Feiertage Bayern (Vorjahr bis +2 Jahre) für die Tagesberechnung im Browser. */
+const daysScript = () => {
+  const y = Number(new Date().toISOString().slice(0, 4));
+  const hol = [y - 1, y, y + 1, y + 2].flatMap((yy) => [...holidaysBavaria(yy).keys()]);
+  return `(function(){var HOL=${JSON.stringify(hol)};
+function rowOf(el){return el.closest('tr');}
+function sync(tr){var u=tr.querySelector('select[name=unit]'),b=tr.querySelector('.ln-days');if(u&&b)b.hidden=u.value!=='DAY';}
+function iso(d){return d.toISOString().slice(0,10);}
+function calc(tr,manual){var b=tr.querySelector('.ln-days');if(!b||b.hidden)return;
+var ps=tr.querySelector('[name=lps]'),pe=tr.querySelector('[name=lpe]');
+var gs=document.getElementById('period_start'),ge=document.getElementById('period_end');
+var from=(ps&&ps.value)||(gs&&gs.value)||'';var to=(ps&&ps.value)?((pe&&pe.value)||ps.value):((ge&&ge.value)||from);
+var info=b.querySelector('.ln-days-info');
+if(!from||!to||to<from){if(manual&&info)info.textContent='Bitte Leistungszeitraum eintragen';return;}
+var wd={};b.querySelectorAll('[data-wd]').forEach(function(c){if(c.checked)wd[c.getAttribute('data-wd')]=1;});
+var n=0,h=0,d=new Date(from+'T12:00:00Z'),e=new Date(to+'T12:00:00Z');
+for(;d<=e;d.setUTCDate(d.getUTCDate()+1)){var w=String(((d.getUTCDay()+6)%7)+1);if(!wd[w])continue;if(HOL.indexOf(iso(d))>=0){h++;continue;}n++;}
+var q=tr.querySelector('[name=qty]');if(q){q.value=String(n);q.dispatchEvent(new Event('input',{bubbles:true}));q.dispatchEvent(new Event('change',{bubbles:true}));}
+if(info)info.textContent=n+' Tage'+(h?' (ohne '+h+' Feiertag'+(h>1?'e':'')+')':'');}
+document.addEventListener('change',function(ev){var t=ev.target;if(!t.closest)return;var tr=rowOf(t);if(!tr||!tr.querySelector('.ln-days'))return;
+if(t.name==='unit'){sync(tr);if(t.value==='DAY')calc(tr,false);}
+else if(t.hasAttribute&&t.hasAttribute('data-wd'))calc(tr,true);
+else if(t.name==='lps'||t.name==='lpe')calc(tr,false);});
+document.addEventListener('click',function(ev){var t=ev.target.closest&&ev.target.closest('.ln-days-calc');if(t)calc(rowOf(t),true);});
+document.querySelectorAll('#lines tr').forEach(sync);})();`;
+};
 
 /** Warnhinweis und Hinweise zur Rechnungsstellung des Kunden (beim Erstellen/Prüfen von Rechnungen). */
 export const CustomerNotice: FC<{

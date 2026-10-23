@@ -327,7 +327,7 @@ details.pop>.panel .btn{margin-top:12px;width:100%;justify-content:center}
 .op-saldo{display:flex;align-items:center;gap:12px;justify-content:flex-end;padding:4px 22px 0}
 .op-pay{display:flex;align-items:center;gap:8px;justify-content:flex-end;padding:6px 22px 0;flex-wrap:wrap}.op-pay input{max-width:120px;text-align:right}.op-pay select{max-width:170px}
 .inline-details{display:inline-block}.inline-details[open]{display:block;width:100%}.inline-details>summary{list-style:none;cursor:pointer}.inline-details>summary::-webkit-details-marker{display:none}
-.ln-period{display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap}.ln-period input{max-width:150px;padding:4px 6px;font-size:13px}
+.ln-days{display:flex;gap:6px 10px;align-items:center;margin-top:4px;flex-wrap:wrap}.ln-days[hidden]{display:none}.ln-wd{display:inline-flex;gap:3px;align-items:center;margin:0;font-size:13px;font-weight:400}.ln-wd input{width:auto;margin:0}.ln-period{display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap}.ln-period input{max-width:150px;padding:4px 6px;font-size:13px}
 .op-paybar{flex-wrap:wrap;gap:8px 12px;align-items:center}
 .op-saldo>span.small{margin-right:auto}
 .op-saldo .lbl{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}

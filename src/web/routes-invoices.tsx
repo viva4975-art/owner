@@ -629,12 +629,30 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     const month = String(body.month ?? '');
     const invoiceDate = typeof body.invoice_date === 'string' && body.invoice_date ? body.invoice_date : null;
     const res = await runMonthly(sql, month, c.get('actor'), { invoiceDate });
-    const msg =
-      `Monatslauf ${month}: ${res.created.length} Entwurf/Entwürfe erstellt.` +
-      (res.skipped.length
-        ? `\nÜbersprungen: ${res.skipped.map((s) => `${s.siteName} (${s.reason})`).join('; ')}`
-        : '');
-    return back(c, '/rechnungen/entwuerfe', { ok: msg });
+    // Kurze Meldung (vorher jedes übersprungene Objekt einzeln → endlos lange Seite)
+    const already = res.skipped.filter((s) => s.reason.includes('existiert bereits')).length;
+    const msg = [
+      `Monatslauf ${month}: ${anz(res.created.length, 'neuer Entwurf', 'neue Entwürfe')} erstellt.`,
+      res.appended.length
+        ? `Fehlende Leistungen an ${anz(res.appended.length, 'vorhandenen Entwurf', 'vorhandene Entwürfe')} angehängt.`
+        : '',
+      already
+        ? `${anz(already, 'Objekt/Gruppe ist', 'Objekte/Gruppen sind')} schon vollständig abgerechnet.`
+        : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    return back(c, '/rechnungen/entwuerfe', {
+      ok: msg,
+      ...(res.failed.length
+        ? {
+            fehler: `Nicht erstellt (${res.failed.length}):\n${res.failed
+              .slice(0, 30)
+              .map((f) => `${f.siteName}: ${f.reason}`)
+              .join('\n')}${res.failed.length > 30 ? `\n… und ${res.failed.length - 30} weitere` : ''}`,
+          }
+        : {}),
+    });
   });
 
   // ------------------------------------------------------------------ Erfassen

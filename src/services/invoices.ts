@@ -405,7 +405,11 @@ export async function deleteDraft(sql: Sql, id: string, actor: string) {
 
 export interface MonthlyRunResult {
   created: { invoiceId: string; siteName: string }[];
+  /** fehlende Leistungen an einen schon vorhandenen Entwurf des Monats angehängt */
+  appended: { invoiceId: string; siteName: string }[];
   skipped: { siteName: string; reason: string }[];
+  /** Fehler je Objekt/Gruppe (z. B. fehlende Rechnungsangaben) */
+  failed: { siteName: string; reason: string }[];
 }
 
 interface RunSite {
@@ -493,7 +497,7 @@ export async function runMonthly(
                             from app.invoice_groups`
     ).map((g) => [g.id, g]),
   );
-  const result: MonthlyRunResult = { created: [], skipped: [] };
+  const result: MonthlyRunResult = { created: [], appended: [], skipped: [], failed: [] };
 
   // Abrechnungseinheiten bilden
   interface Unit {
@@ -606,21 +610,79 @@ export async function runMonthly(
                   ${u.billAddress ? tx.json(u.billAddress as never) : null})
           on conflict (monthly_run_key) do nothing
           returning id`;
-        if (!row) return { created: false };
-        for (const i of todo) {
-          await tx`insert into app.monthly_run_services (service_id, month, invoice_id)
-                   values (${i.service.id}, ${month}, ${id})`;
+        let target: string = id;
+        let appended = false;
+        if (!row) {
+          // Für dieses Ziel gibt es schon eine Rechnung des Monats, aber diese Leistungen fehlen noch (z. B. erst danach
+          // angelegt): offener Entwurf → Positionen anhängen; ausgestellt → eigener Entwurf mit Folgenummer im Schlüssel
+          const [ex] = await tx<
+            {
+              id: string;
+              status: string;
+              period_end: string | null;
+              prepaid_cents: bigint;
+              reverse_charge: boolean;
+            }[]
+          >`
+            select id, status, period_end::text, prepaid_cents, reverse_charge from app.invoices
+             where monthly_run_key = ${`${u.key}:${month}`} for update`;
+          if (ex?.status === 'draft') {
+            target = ex.id;
+            appended = true;
+            const old = await tx<LineRow[]>`
+              select * from app.invoice_lines where invoice_id = ${ex.id} order by position`;
+            for (const i of todo) {
+              await tx`insert into app.monthly_run_services (service_id, month, invoice_id)
+                       values (${i.service.id}, ${month}, ${ex.id})`;
+            }
+            await writeLines(
+              tx,
+              ex.id,
+              [...old.map(toDraftInput), ...lines],
+              ex.prepaid_cents as Cents,
+              ex.reverse_charge,
+            );
+            if (!ex.period_end || ex.period_end < periodEnd)
+              await tx`update app.invoices set period_end = ${periodEnd} where id = ${ex.id}`;
+          } else {
+            let n = 2;
+            for (;;) {
+              const [r2] = await tx`
+                insert into app.invoices (id, kind, customer_id, site_id, invoice_group_id, period_start, period_end,
+                                          invoice_format, buyer_reference, order_reference, intro_text, closing_text,
+                                          monthly_run_key, planned_issue_date, review_required, reverse_charge,
+                                          bill_address)
+                values (${id}, 'invoice', ${u.customerId}, ${u.site?.id ?? null}, ${u.group?.id ?? null}, ${start},
+                        ${periodEnd}, ${billing.format}, ${billing.leitwegId},
+                        ${svcRef || u.group?.order_reference || (u.site?.order_reference ?? null)},
+                        ${u.group?.intro_text ?? null}, ${u.group?.closing_text ?? null},
+                        ${`${u.key}:${month}#${n}`}, ${opts.invoiceDate ?? null},
+                        ${todo.some((i) => i.service.always_unfinished)}, ${rc},
+                        ${u.billAddress ? tx.json(u.billAddress as never) : null})
+                on conflict (monthly_run_key) do nothing returning id`;
+              if (r2) break;
+              if (++n > 20) return { created: false };
+            }
+          }
         }
-        await writeLines(tx, id, lines, 0n as Cents, rc);
-        await audit(tx, actor, 'monthly_run', id, {
+        if (!appended) {
+          for (const i of todo) {
+            await tx`insert into app.monthly_run_services (service_id, month, invoice_id)
+                     values (${i.service.id}, ${month}, ${id})`;
+          }
+          await writeLines(tx, id, lines, 0n as Cents, rc);
+        }
+        await audit(tx, actor, appended ? 'monthly_run_append' : 'monthly_run', target, {
           month,
           ...(u.group ? { invoice_group_id: u.group.id, combined: u.combined } : {}),
           site_ids: [...new Set(todo.map((i) => i.site.id))],
           service_ids: todo.map((i) => i.service.id),
         });
-        return { created: true };
+        return { created: true, appended, target };
       });
-      if (outcome.created) result.created.push({ invoiceId: id, siteName: u.label });
+      if (outcome.created && 'appended' in outcome && outcome.appended)
+        result.appended.push({ invoiceId: outcome.target, siteName: u.label });
+      else if (outcome.created) result.created.push({ invoiceId: id, siteName: u.label });
       else
         result.skipped.push({
           siteName: u.label,
@@ -633,6 +695,9 @@ export async function runMonthly(
           siteName: u.label,
           reason: `Entwurf/Rechnung für ${monthLabelDe(month)} existiert bereits`,
         });
+      } else if (e instanceof BusinessError) {
+        // ein fehlerhaftes Objekt hält die anderen nicht auf
+        result.failed.push({ siteName: u.label, reason: e.message });
       } else throw e;
     }
   }

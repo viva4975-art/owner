@@ -1077,9 +1077,7 @@ export const SiteForm: FC<{
   customers: Customer[];
   isNew: boolean;
   managers?: { id: string; name: string }[];
-  /** Vorschlag Kundennummer für „neuer Kunde = dieses Objekt“ */
-  newCustomerNo?: string | undefined;
-}> = ({ id, s, customers, isNew, managers, newCustomerNo }) => (
+}> = ({ id, s, customers, isNew, managers }) => (
   <form
     method="post"
     action={`/objekte/${id}`}
@@ -1090,14 +1088,8 @@ export const SiteForm: FC<{
     <div class="grid">
       <div>
         <label for="customer_id">Kunde *</label>
-        <select
-          id="customer_id"
-          name="customer_id"
-          required
-          {...(isNew ? { 'data-reveal': '#neukunde', 'data-reveal-value': 'neu' } : {})}
-        >
+        <select id="customer_id" name="customer_id" required>
           <option value="">– bitte wählen –</option>
-          {isNew && <option value="neu">+ Neuer Kunde mit denselben Angaben wie das Objekt</option>}
           {customers.map((c) => (
             <option value={c.id} selected={c.id === s.customer_id}>
               {c.customer_no} · {c.name}
@@ -1105,17 +1097,7 @@ export const SiteForm: FC<{
           ))}
         </select>
       </div>
-      {isNew && (
-        <div id="neukunde" class="grid" style="grid-column:1/-1" hidden>
-          <p class="small mut" style="grid-column:1/-1;margin:0">
-            Kunde und Objekt sind dasselbe: Der Kunde wird mit Bezeichnung und Anschrift des Objekts angelegt
-            (Straße, PLZ und Ort sind dann Pflicht). Objektnummer leer = automatisch (Kundennummer + 01).
-          </p>
-          <Field name="new_customer_no" label="Kundennummer *" value={newCustomerNo} />
-          <Field name="new_invoice_emails" label="Rechnungs-E-Mail(s)" placeholder="mehrere mit Komma" />
-        </div>
-      )}
-      <Field name="site_no" label="Objektnummer *" value={s.site_no} required={!isNew} />
+      <Field name="site_no" label="Objektnummer *" value={s.site_no} required />
       {managers && (
         <div>
           <label for="manager_user_id">Objektleitung</label>

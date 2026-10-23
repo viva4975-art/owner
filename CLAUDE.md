@@ -4038,7 +4038,13 @@ Testadresse.
   der Browser aber die alte Seite aus dem Zwischenspeicher. Auswertungen und Startseite laden beim Zurückkommen jetzt neu.
 - 2026-10-23: **Nach- und Plan-Kalkulation: Filter + PDF** (Ahmed): Plan-Kalkulation hat jetzt wie die Nachkalkulation
   Filter Kunde, Objekt, **Objektleitung** (auch „ohne“), nur Verlust. Beide Seiten: **„PDF exportieren“** mit den
-  aktuellen Filtern (A4 quer, Logo, Summenzeile, `src/services/costing-pdf.ts`), Häkchen **„Namen schwärzen“** → statt
-  Objekt-Nr. „Objekt 001 …“, Objekt- und Kundenname als schwarzer Balken, Mitarbeitende „MA 001“ + Balken, Filternamen
-  „(geschwärzt)“; Beträge bleiben. Plan-PDF enthält die Liste „Mitarbeitende im Plan“ nur ohne Filter (sie ist nicht je
-  Objekt aufgeteilt). Zum Weitergeben (Bank, Berater, Ausschreibung) die geschwärzte Fassung nehmen.
+  aktuellen Filtern (A4 quer, Logo, Summenzeile, `src/services/costing-pdf.ts`). Häkchen **„ohne Beträge (nur
+  Stunden und Marge)“** (Ahmed: „nicht Objekt und Kunde schwärzen, sondern Erlöse und Preise“) → nur Nr., Objekt, Kunde,
+  Stunden (Plan/Ist) und Marge in %, keine Erlöse, Kosten, Löhne; Plan-PDF dann ohne Mitarbeiterliste. Ohne Häkchen alle
+  Beträge; die Liste „Mitarbeitende im Plan“ nur ohne Filter (nicht je Objekt aufgeteilt).
+- 2026-10-23: **Rechnungsverfolgung NU: falsches „abgerechnet“** (Ahmed: alte Bestellung zeigte eine Rechnung der neuen als
+  abgerechnet): Eingangsrechnungen ohne Bestellung wurden jeder Bestellung desselben Nachunternehmers am selben Objekt
+  zugerechnet. Jetzt nur, wenn im Leistungsmonat genau diese eine Bestellung (erteilt/beendet, gültig) dort läuft; die
+  Rechnung steht dann als „(ohne Zuordnung, vermutet)“, mit Knopf „gehört nicht dazu …“ (Vermerk „keine Rechnung“, der
+  vor einer vermuteten Rechnung gilt). Fest zugeordnete Rechnungen: Hinweis „in der Eingangsrechnung unter Zuordnung die
+  richtige Bestellung wählen“.

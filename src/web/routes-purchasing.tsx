@@ -373,13 +373,11 @@ const filterLabel = (
   ol: string,
   managers: Manager[],
   loss: boolean,
-  redact: boolean,
 ) =>
   [
-    customer && `Kunde: ${redact ? '(geschwärzt)' : customer}`,
-    site && `Objekt: ${redact ? '(geschwärzt)' : `${site.site_no} ${site.site_name}`}`,
-    ol &&
-      `Objektleitung: ${ol === 'ohne' ? 'ohne' : redact ? '(geschwärzt)' : (managers.find((m) => m.user_id === ol)?.name ?? '')}`,
+    customer && `Kunde: ${customer}`,
+    site && `Objekt: ${site.site_no} ${site.site_name}`,
+    ol && `Objektleitung: ${ol === 'ohne' ? 'ohne' : (managers.find((m) => m.user_id === ol)?.name ?? '')}`,
     loss && 'nur Verlust',
   ]
     .filter(Boolean)
@@ -397,7 +395,7 @@ const OlSelect = ({ managers, value }: { managers: Manager[]; value: string }) =
     </option>
   </select>
 );
-/** PDF mit den aktuellen Filtern, wahlweise mit geschwärzten Namen (Objekte, Kunden, Mitarbeitende) */
+/** PDF mit den aktuellen Filtern, wahlweise ohne Beträge (nur Stunden und Marge) */
 const PdfExport = ({ action, params }: { action: string; params: Record<string, string> }) => (
   <form method="get" action={action} target="_blank" class="actions" style="margin:-4px 0 12px" data-noback>
     {Object.entries(params)
@@ -408,7 +406,7 @@ const PdfExport = ({ action, params }: { action: string; params: Record<string, 
     <input type="hidden" name="pdf" value="1" />
     <button class="btn sec sm">PDF exportieren</button>
     <label class="small" style="margin:0;display:flex;gap:4px;align-items:center">
-      <input type="checkbox" name="schwaerzen" value="1" /> Namen schwärzen (Objekte, Kunden, Mitarbeitende)
+      <input type="checkbox" name="schwaerzen" value="1" /> ohne Beträge (nur Stunden und Marge)
     </label>
   </form>
 );
@@ -3428,7 +3426,6 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         fOl,
         managers,
         fVerlust,
-        c.req.query('schwaerzen') === '1',
       );
       const pdf = await planCostingPdf(rows, fKunde || fObjekt || fOl || fVerlust ? null : employees, {
         title: 'Plan-Kalkulation (Soll)',
@@ -3861,7 +3858,6 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
           fOl,
           managers,
           fVerlust,
-          redact,
         ),
         redact,
       });

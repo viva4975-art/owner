@@ -2692,8 +2692,23 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                           <>
                             {k ? ', ' : ''}
                             <a href={`/rechnungseingang/${i.id}`}>{i.invoice_no}</a>
+                            {i.loose && (
+                              <span
+                                class="small mut"
+                                title="Nicht dieser Bestellung zugeordnet – nur über gleichen Nachunternehmer und gleiches Objekt erkannt"
+                              >
+                                {' '}
+                                (ohne Zuordnung, vermutet)
+                              </span>
+                            )}
                           </>
                         ))}
+                        {p.state === 'abgerechnet' && p.invoices.some((i) => !i.loose) && (
+                          <div class="small mut">
+                            gehört zu einer anderen Bestellung? In der Eingangsrechnung unter „Zuordnung“ die
+                            richtige Bestellung wählen.
+                          </div>
+                        )}
                       </td>
                       <td class="r" data-l="netto">
                         {p.invoices.some((i) => i.net != null)
@@ -2701,7 +2716,26 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                           : ''}
                       </td>
                       <td>
-                        {p.state === 'offen' || p.state === 'laufend' ? (
+                        {p.state === 'abgerechnet' && p.invoices.every((i) => i.loose) ? (
+                          <details style="display:inline-block">
+                            <summary class="btn sm ghost">gehört nicht dazu …</summary>
+                            <form
+                              method="post"
+                              action={`/nachunternehmer/auftraege/${id}/keine-rechnung`}
+                              class="actions"
+                              style="margin-top:6px"
+                            >
+                              <input type="hidden" name="monat" value={p.start} />
+                              <input
+                                name="grund"
+                                required
+                                value="Rechnung gehört zu einer anderen Bestellung"
+                                style="max-width:260px"
+                              />
+                              <button class="btn sm">Vermerken</button>
+                            </form>
+                          </details>
+                        ) : p.state === 'offen' || p.state === 'laufend' ? (
                           <span class="actions" style="margin:0;flex-wrap:nowrap">
                             <a
                               class="btn sm sec"

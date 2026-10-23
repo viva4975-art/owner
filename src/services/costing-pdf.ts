@@ -4,16 +4,14 @@ import type { GeneralCost, SiteCosting } from './costing.js';
 import type { PlanEmployeeRow, PlanSiteRow } from './plan-costing.js';
 
 /*
- * PDF der Nach- und Plan-Kalkulation (Ahmed 23.10.): wahlweise geschwärzt – dann stehen statt Objekt-, Kunden- und
- * Mitarbeiternamen schwarze Balken bzw. „Objekt 001“; Zahlen bleiben. Zum Weitergeben (Bank, Berater, Ausschreibung).
+ * PDF der Nach- und Plan-Kalkulation (Ahmed 23.10.): wahlweise „ohne Beträge“ – dann nur Objekt, Kunde, Stunden und
+ * Marge in %, keine Erlöse, Kosten, Löhne oder Preise (z. B. zum Weitergeben an Objektleitungen).
  */
 
 const eur = (c: bigint) => formatEuro(c as Cents);
 const hm = (m: number) => `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, '0')}`;
 const pct = (bp: number | null) =>
   bp === null ? '–' : `${(bp / 100).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
-const BLACK: [number, number, number] = [0.08, 0.08, 0.08];
-const bar = (): PdfCell => ({ text: '', fill: BLACK });
 const red = (v: bigint): string | PdfCell => (v < 0n ? { text: eur(v), bold: true } : eur(v));
 
 export interface CostingPdfOpts {
@@ -23,22 +21,51 @@ export interface CostingPdfOpts {
   redact: boolean;
 }
 
-function siteCells(
-  i: number,
-  no: string,
-  name: string,
-  customer: string,
-  redact: boolean,
-): (string | PdfCell)[] {
-  if (!redact) return [no, name, customer];
-  return [`Objekt ${String(i + 1).padStart(3, '0')}`, bar(), bar()];
-}
+const HOURS_COLS: PdfColumn[] = [
+  { label: 'Nr.', width: 70 },
+  { label: 'Objekt', width: 260, wrap: true },
+  { label: 'Kunde', width: 210, wrap: true },
+  { label: 'Std. (Plan)', width: 80, align: 'right' },
+  { label: 'Std. (Ist)', width: 80, align: 'right' },
+  { label: 'Marge', width: 80, align: 'right' },
+];
+const marginBp = (margin: bigint, rev: bigint) => (rev !== 0n ? Number((margin * 10000n) / rev) : null);
+const NO_AMOUNTS = 'ohne Beträge – nur Stunden und Marge';
 
 export async function siteCostingPdf(
   rows: SiteCosting[],
   general: GeneralCost[],
   o: CostingPdfOpts,
 ): Promise<Uint8Array> {
+  if (o.redact) {
+    const margin = rows.reduce((a, r) => a + r.margin, 0n) - general.reduce((a, g) => a + g.total, 0n);
+    const rev = rows.reduce((a, r) => a + r.revenue, 0n);
+    return renderTablePdf({
+      title: o.title,
+      subtitle: [o.period, o.filter, NO_AMOUNTS].filter(Boolean).join(' · '),
+      columns: HOURS_COLS,
+      rows: rows.map((r) => [
+        r.site_no,
+        r.site_name,
+        r.customer_name,
+        hm(r.planned_minutes),
+        hm(r.actual_minutes),
+        r.margin_bp !== null && r.margin_bp < 0 ? { text: pct(r.margin_bp), bold: true } : pct(r.margin_bp),
+      ]),
+      landscape: true,
+      fontSize: 8,
+      totals: [
+        'Gesamt',
+        `${rows.length} Objekte`,
+        '',
+        hm(rows.reduce((a, r) => a + r.planned_minutes, 0)),
+        hm(rows.reduce((a, r) => a + r.actual_minutes, 0)),
+        pct(marginBp(margin, rev)),
+      ],
+      footnote:
+        'Marge = Deckungsbeitrag in % vom Erlös (Gesamt nach allgemeinen Kostenstellen). Interne Auswertung.',
+    });
+  }
   const columns: PdfColumn[] = [
     { label: 'Nr.', width: 62 },
     { label: 'Objekt', width: 150, wrap: true },
@@ -54,8 +81,10 @@ export async function siteCostingPdf(
     { label: 'Marge', width: 38, align: 'right' },
   ];
   const sum = (f: (r: SiteCosting) => bigint) => rows.reduce((a, r) => a + f(r), 0n);
-  const body: PdfRow[] = rows.map((r, i) => [
-    ...siteCells(i, r.site_no, r.site_name, r.customer_name, o.redact),
+  const body: PdfRow[] = rows.map((r) => [
+    r.site_no,
+    r.site_name,
+    r.customer_name,
     eur(r.revenue),
     hm(r.actual_minutes),
     eur(r.labor),
@@ -89,7 +118,7 @@ export async function siteCostingPdf(
   const rev = sum((r) => r.revenue);
   return renderTablePdf({
     title: o.title,
-    subtitle: [o.period, o.filter, o.redact ? 'Namen geschwärzt' : ''].filter(Boolean).join(' · '),
+    subtitle: [o.period, o.filter].filter(Boolean).join(' · '),
     columns,
     rows: body,
     landscape: true,
@@ -119,6 +148,33 @@ export async function planCostingPdf(
   employees: PlanEmployeeRow[] | null,
   o: CostingPdfOpts,
 ): Promise<Uint8Array> {
+  if (o.redact) {
+    const margin = rows.reduce((a, r) => a + r.margin, 0n);
+    const rev = rows.reduce((a, r) => a + r.revenue, 0n);
+    return renderTablePdf({
+      title: o.title,
+      subtitle: [o.period, o.filter, NO_AMOUNTS].filter(Boolean).join(' · '),
+      columns: HOURS_COLS.filter((c) => c.label !== 'Std. (Ist)'),
+      rows: rows.map((r) => [
+        r.site_no,
+        r.site_name,
+        r.customer_name,
+        hm(r.minutes),
+        r.margin_bp !== null && r.margin_bp < 0 ? { text: pct(r.margin_bp), bold: true } : pct(r.margin_bp),
+      ]),
+      landscape: true,
+      fontSize: 8,
+      totals: [
+        'Gesamt',
+        `${rows.length} Objekte`,
+        '',
+        hm(rows.reduce((a, r) => a + r.minutes, 0)),
+        pct(marginBp(margin, rev)),
+      ],
+      footnote:
+        'Plan: eingeplante Einsätze; Marge = Deckungsbeitrag (Plan) in % vom Erlös laut laufenden Leistungen.',
+    });
+  }
   const columns: PdfColumn[] = [
     { label: 'Nr.', width: 62 },
     { label: 'Objekt', width: 160, wrap: true },
@@ -133,8 +189,10 @@ export async function planCostingPdf(
     { label: 'Marge', width: 40, align: 'right' },
   ];
   const sum = (f: (r: PlanSiteRow) => bigint) => rows.reduce((a, r) => a + f(r), 0n);
-  const body: PdfRow[] = rows.map((r, i) => [
-    ...siteCells(i, r.site_no, r.site_name, r.customer_name, o.redact),
+  const body: PdfRow[] = rows.map((r) => [
+    r.site_no,
+    r.site_name,
+    r.customer_name,
     eur(r.revenue),
     hm(r.minutes),
     eur(r.gross),
@@ -146,10 +204,10 @@ export async function planCostingPdf(
   ]);
   if (employees?.length) {
     body.push({ section: 'Mitarbeitende im Plan (Entgelt im Zeitraum)' });
-    employees.forEach((e, i) =>
+    employees.forEach((e) =>
       body.push([
-        o.redact ? `MA ${String(i + 1).padStart(3, '0')}` : e.personnel_no,
-        o.redact ? bar() : e.name,
+        e.personnel_no,
+        e.name,
         e.employment_type ?? '',
         '',
         hm(e.minutes),
@@ -166,7 +224,7 @@ export async function planCostingPdf(
   const rev = sum((r) => r.revenue);
   return renderTablePdf({
     title: o.title,
-    subtitle: [o.period, o.filter, o.redact ? 'Namen geschwärzt' : ''].filter(Boolean).join(' · '),
+    subtitle: [o.period, o.filter].filter(Boolean).join(' · '),
     columns,
     rows: body,
     landscape: true,

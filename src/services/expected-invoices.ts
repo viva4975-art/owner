@@ -38,6 +38,8 @@ interface CoverInvoice {
   net: bigint | null;
   /** link = ausdrücklich verknüpft, direct = am Auftrag erfasst, loose = gleicher NU + Objekt ohne Auftrag */
   how: 'link' | 'direct' | 'loose';
+  /** nur loose: erteilte/beendete Bestellungen desselben NU am Objekt, die den Monat abdecken */
+  peers: string[] | null;
 }
 
 /** Laufend (regelmäßig eine Rechnung je Monat erwartet) sind nur monatliche/wöchentliche Bestellungen (Ahmed 09.10.);
@@ -60,12 +62,18 @@ async function coverInvoices(
   const sups = [...new Set(orders.map((o) => o.supplier_id))];
   return sql<CoverInvoice[]>`
     select l.subcontract_id, i.supplier_id, i.site_id, to_char(l.period_month, 'YYYY-MM') as m, i.id, i.invoice_no,
-           l.net_cents as net, 'link' as how
+           l.net_cents as net, 'link' as how, null::uuid[] as peers
       from app.incoming_invoice_subcontracts l join app.incoming_invoices i on i.id = l.incoming_invoice_id
      where l.subcontract_id in ${sql(ids)} and i.status <> 'abgelehnt'
     union all
     select i.subcontract_id, i.supplier_id, i.site_id, to_char(coalesce(i.service_month, i.invoice_date), 'YYYY-MM'),
-           i.id, i.invoice_no, i.net_cents, case when i.subcontract_id is null then 'loose' else 'direct' end
+           i.id, i.invoice_no, i.net_cents, case when i.subcontract_id is null then 'loose' else 'direct' end,
+           case when i.subcontract_id is null then
+             array(select s.id from app.subcontracts s
+                    where s.supplier_id = i.supplier_id and s.site_id = i.site_id and s.status in ('erteilt', 'beendet')
+                      and s.valid_from <= (date_trunc('month', coalesce(i.service_month, i.invoice_date)) + interval '1 month' - interval '1 day')::date
+                      and (s.valid_to is null or s.valid_to >= date_trunc('month', coalesce(i.service_month, i.invoice_date))::date))
+           end
       from app.incoming_invoices i
      where i.status <> 'abgelehnt' and i.supplier_id in ${sql(sups)}
        and (i.subcontract_id in ${sql(ids)} or i.subcontract_id is null)
@@ -79,15 +87,21 @@ function coverFor(
 ) {
   const step = STEP[o.frequency] ?? 1;
   const last = monthAdd(p.end.slice(0, 7), step >= 3 ? 2 : 0);
-  const out = new Map<string, { id: string; invoice_no: string; net: bigint | null }>();
+  const out = new Map<string, { id: string; invoice_no: string; net: bigint | null; loose: boolean }>();
   for (const c of list) {
+    // ohne Zuordnung nur, wenn diese Bestellung im Monat die einzige des NU am Objekt ist (Ahmed 23.10.: eine Rechnung
+    // der neuen Bestellung stand bei der alten als „abgerechnet“)
     const mine =
       c.subcontract_id === o.id ||
-      (c.how === 'loose' && c.supplier_id === o.supplier_id && !!o.site_id && c.site_id === o.site_id);
+      (c.how === 'loose' &&
+        c.supplier_id === o.supplier_id &&
+        !!o.site_id &&
+        c.site_id === o.site_id &&
+        (!c.peers?.length || (c.peers.length === 1 && c.peers[0] === o.id)));
     if (!mine) continue;
     const upper = c.how === 'link' ? p.end.slice(0, 7) : last;
     if (c.m >= p.start && c.m <= upper && !out.has(c.id))
-      out.set(c.id, { id: c.id, invoice_no: c.invoice_no, net: c.net });
+      out.set(c.id, { id: c.id, invoice_no: c.invoice_no, net: c.net, loose: c.how === 'loose' });
   }
   return [...out.values()];
 }
@@ -291,7 +305,8 @@ export interface BillingPeriod {
   start: string;
   end: string;
   state: BillingState;
-  invoices: { id: string; invoice_no: string; net: bigint | null }[];
+  /** loose = nicht zugeordnet, nur über gleichen Nachunternehmer + Objekt erkannt */
+  invoices: { id: string; invoice_no: string; net: bigint | null; loose: boolean }[];
   skipReason: string | null;
 }
 
@@ -353,15 +368,17 @@ export async function billingTracking(
       const reason =
         skip.get(k) ??
         (p.start < (opts.from ?? EXPECTED_FROM) ? 'vor der Umstellung (bis 30.09.2026)' : null);
-      const state: BillingState = invoices.length
-        ? 'abgerechnet'
-        : reason
-          ? 'keine'
-          : !isRecurringOrder(o.frequency)
-            ? 'bedarf'
-            : p.end < today
-              ? 'offen'
-              : 'laufend';
+      const firm = invoices.some((i) => !i.loose);
+      const state: BillingState =
+        firm || (invoices.length && !skip.get(k))
+          ? 'abgerechnet'
+          : reason
+            ? 'keine'
+            : !isRecurringOrder(o.frequency)
+              ? 'bedarf'
+              : p.end < today
+                ? 'offen'
+                : 'laufend';
       return { ...p, state, invoices, skipReason: reason };
     });
     out.set(o.id, list.reverse());

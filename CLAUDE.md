@@ -3959,3 +3959,9 @@ Testadresse.
   angekreuztes Kästchen nicht im Ergebnis, kommt eine Fehlermeldung mit den betroffenen Kästchen statt eines falschen
   Dokuments; Protokoll `word_template` enthält `boxes_on`/`boxes_lost`; die Ausfüll-Seite zeigt „Zuletzt erstellt … –
   angekreuzt angekommen: …“ (`lastWordFill`). Damit ist sofort klar, ob die Häkchen vom Gerät ankommen.
+- 2026-10-23: Kreuze, 4. Runde + Abstand (Ahmed: „nur noch bei Schwerbehinderung fehlt das Kreuz“, „Ort und Datum stehen
+  zu nah am Text“): Das PDF aus Word-Vorlagen zeichnet Word-Kontrollkästchen jetzt nach ihrem **Zustand** (`w14:checked`),
+  nicht nach dem Zeichen im Kästchen (`parsePara` in `src/pdf/docx-render.ts`). Vermutung: In der Server-Vorlage steht in
+  § 4.1 ein anderes Zeichen bzw. Symbol im Kästchen, sodass der Zustand gesetzt war (Gegenprobe ok), das PDF aber das leere
+  Zeichen zeigte. Zeilen „Ort, Datum“ / „<Ort>, den …“ bekommen oben mindestens 34 Twips/20 ≈ 18 pt Abstand. Test
+  `src/pdf/docx-render.test.ts`. Die Word-Datei („Als Word herunterladen“) zeigt weiter das Zeichen aus der Vorlage.

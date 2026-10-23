@@ -168,6 +168,26 @@ function parsePara(p: XNode): Para {
             color: hex(val(child(rPr, 'w:color'))),
             size: sz ? Number(sz) / 2 : null,
           });
+      } else if (r.name === 'w:sdt' && child(child(r, 'w:sdtPr'), 'w14:checkbox')) {
+        // Kontrollkästchen: Zeichen aus dem Zustand (w14:checked), nicht aus dem Text darin – manche Vorlagen
+        // haben im Inhalt ein anderes Zeichen/Symbol als den Zustand (Ahmed 23.10.: § 4.1 ohne Kreuz).
+        const cb = child(child(r, 'w:sdtPr'), 'w14:checkbox');
+        const st = child(cb, 'w14:checked');
+        const on = /^(1|true)$/i.test(st?.attrs['w14:val'] ?? st?.attrs['w:val'] ?? '');
+        const from = runs.length;
+        collect(r);
+        const glyph = on ? '☒' : '☐';
+        let done = false;
+        for (let k = from; k < runs.length && !done; k++) {
+          if (/[☐☒☑✓]/.test(runs[k]!.text)) {
+            runs[k] = { ...runs[k]!, text: runs[k]!.text.replace(/[☐☒☑✓]/, glyph) };
+            done = true;
+          }
+        }
+        if (!done) {
+          const tpl = runs[from] ?? { bold: false, color: null, size: null };
+          runs.splice(from, 0, { ...tpl, text: glyph });
+        }
       } else if (
         ['w:hyperlink', 'w:ins', 'w:smartTag', 'w:sdt', 'w:sdtContent', 'w:fldSimple'].includes(r.name)
       ) {
@@ -176,12 +196,19 @@ function parsePara(p: XNode): Para {
     }
   };
   collect(p);
+  // „Ort, Datum“ / „München, den …“ stehen in den Vorlagen direkt unter dem Text – mehr Luft davor (Ahmed 23.10.)
+  const head = runs
+    .map((r) => r.text)
+    .join('')
+    .trimStart();
+  const placeDate =
+    /^(Ort\s*,?\s*(und\s*)?Datum|Ort\s*\/\s*Datum|[A-ZÄÖÜ][\wäöüß.\- ]{1,30},\s*(den|am)\b)/.test(head);
   return {
     kind: 'p',
     runs,
     align: jc === 'center' ? 'center' : jc === 'right' || jc === 'end' ? 'right' : 'left',
     after: Number(sp?.attrs['w:after'] ?? 80) / 20,
-    before: Number(sp?.attrs['w:before'] ?? 0) / 20,
+    before: Math.max(Number(sp?.attrs['w:before'] ?? 0) / 20, placeDate ? 34 : 0),
     border:
       bottom && val(bottom) !== 'nil' && val(bottom) !== 'none'
         ? (hex(bottom.attrs['w:color']) ?? [0.6, 0.6, 0.6])

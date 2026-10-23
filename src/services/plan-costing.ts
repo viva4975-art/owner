@@ -14,11 +14,11 @@ import { plannedShifts } from './time.js';
 /*
  * Plan-Kalkulation (Ahmed 23.10.: „wie eine gesamte Nachkalkulation, nur mit Soll-/Plan-Daten“):
  *   Erlös  = laufende Leistungen (Monatspauschalen, Zyklus-Leistungen anteilig je Monat)
- * − Lohn   = eingeplante Einsätze (Soll) × Stundenlohn × (1 + Ausfall Urlaub/Krank) bzw. Festgehalt,
+ * − Lohn   = eingeplante Einsätze (Soll) × Stundenlohn bzw. Festgehalt (kein Zuschlag für Urlaub/Krankheit, Ahmed 23.10.),
  *            + Arbeitgeberkosten je Person und Monat nach Lohnhöhe (Minijob / Midijob / regulär)
  * − Nachunternehmer laut Bestellung (jeder Monat, auch wenn schon eine Rechnung gebucht ist)
- * − Sachkosten (Material, Geräte, Sonstiges) als Ø der letzten 3 abgeschlossenen Monate
- * Feiertage im Plan zählen als bezahlte Stunden; Tage mit eingetragener Abwesenheit nicht (deckt der Ausfall-Zuschlag).
+ * − Material als Ø der letzten 3 abgeschlossenen Monate
+ * Feiertage im Plan zählen als bezahlte Stunden; Tage mit eingetragener Abwesenheit nicht.
  */
 
 const CYCLE_MONTHS: Record<string, number> = {
@@ -124,7 +124,7 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
   const from = monthRange(period.from).from;
   const to = monthRange(period.to).to;
   const rates = await getPlanCostRates(sql);
-  // Sachkosten: Ø der 3 Monate vor dem aktuellen Monat (Ist)
+  // Material: Ø der 3 Monate vor dem aktuellen Monat (Ist)
   const now = todayBerlin().slice(0, 7);
   const prev = monthsOf('2000-01', now).slice(-4, -1);
   const [sites, services, shifts, nu, past, emps] = await Promise.all([
@@ -232,11 +232,8 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
     const wage = BigInt(e.wage ?? e.min_wage ?? 0);
     const fixed = e.pay_model === 'festgehalt' && e.monthly_salary_cents;
     const gf = isManagingDirector(e.tags);
-    // Stundenlohn: Minuten × Lohn × (1 + Ausfall), kaufmännisch gerundet; Festgehalt: Monatsgehalt.
-    // Geschäftsführer: ohne Ausfall-Zuschlag und ohne Arbeitgeberkosten.
-    const gross = fixed
-      ? BigInt(e.monthly_salary_cents!)
-      : (BigInt(minutes) * wage * BigInt(10000 + (gf ? 0 : rates.absence_bp)) + 300000n) / 600000n;
+    // Stundenlohn: Minuten × Lohn, kaufmännisch gerundet; Festgehalt: Monatsgehalt. Geschäftsführer ohne Arbeitgeberkosten.
+    const gross = fixed ? BigInt(e.monthly_salary_cents!) : (BigInt(minutes) * wage + 30n) / 60n;
     const { band, costCents } = gf
       ? { band: 'gf' as const, costCents: 0n }
       : employerCost(
@@ -279,7 +276,7 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
   }
   for (const n of nu) if (siteMap.has(n.site_id)) row(n.site_id).subcontractor += BigInt(n.cost);
   for (const p of past.rows) {
-    const avg = (p.material + p.equipment + p.other) / 3n;
+    const avg = p.material / 3n;
     if (avg > 0n && siteMap.get(p.site_id)?.active) row(p.site_id).material += avg * BigInt(months.length);
   }
   const rows: PlanSiteRow[] = [...acc.values()]

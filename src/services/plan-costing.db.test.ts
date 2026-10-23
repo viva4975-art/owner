@@ -47,23 +47,23 @@ describe.skipIf(!available)('Plan-Kalkulation (Soll)', () => {
     const r = rows.find((x) => x.site_id === site)!;
     expect(r.revenue).toBe(220000n);
     const m = employees.find((e) => e.employee_id === mini)!;
-    // 600 Min. × 15 € × 1,13 = 169,50 € → Minijob 31,17 % + Unfall 2,5 % = 57,07 €
-    expect(m.gross).toBe(16950n);
-    expect(m.employer).toBe(5707n);
+    // 600 Min. × 15 € = 150,00 € (kein Zuschlag Urlaub/Krankheit) → Minijob 31,17 % + Unfall 2,5 % = 50,51 €
+    expect(m.gross).toBe(15000n);
+    expect(m.employer).toBe(5051n);
     expect(m.bands).toEqual(['minijob']);
     const v = employees.find((e) => e.employee_id === regular)!;
-    // November 2026: 21 Arbeitstage × 8 Std. = 168 Std. (1. Nov. ist Sonntag) × 15 € × 1,13 = 2.847,60 € → regulär 25,85 %
+    // November 2026: 21 Arbeitstage × 8 Std. = 168 Std. (1. Nov. ist Sonntag) × 15 € = 2.520,00 € → regulär 25,85 %
     expect(v.minutes).toBe(21 * 480);
-    expect(v.gross).toBe(284760n);
+    expect(v.gross).toBe(252000n);
     expect(v.bands).toEqual(['regulaer']);
-    expect(v.employer).toBe(73610n);
+    expect(v.employer).toBe(65142n);
     // Geschäftsführer: Monatsgehalt, keine Arbeitgeberkosten
     const c = employees.find((e) => e.employee_id === gf)!;
     expect(c.gross).toBe(500000n);
     expect(c.employer).toBe(0n);
     expect(c.bands).toEqual(['gf']);
-    expect(r.gross).toBe(16950n + 284760n + 500000n);
-    expect(r.employer).toBe(5707n + 73610n);
+    expect(r.gross).toBe(15000n + 252000n + 500000n);
+    expect(r.employer).toBe(5051n + 65142n);
     expect(r.margin).toBe(220000n - r.gross - r.employer - r.subcontractor - r.material);
   });
 });

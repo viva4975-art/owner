@@ -19,7 +19,7 @@ import { todayBerlin } from '../domain/invoice/calc.js';
 import { type Cents, parseEuro, parseQuantity } from '../domain/money/money.js';
 import { addDays } from '../domain/time/holidays.js';
 import { siteCostDetails, siteCosting } from '../services/costing.js';
-import { planCosting, savePlanCostRates } from '../services/plan-costing.js';
+import { getPlanCostRates, planCosting, savePlanCostRates } from '../services/plan-costing.js';
 import { PAY_BAND_LABEL } from '../domain/hr/employer-cost.js';
 import {
   buildExtf,
@@ -3411,10 +3411,10 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
             </div>
           </div>
           <div class="kpi">
-            <div class="l">Nachunternehmer + Sachkosten</div>
+            <div class="l">Nachunternehmer + Material</div>
             <div class="v">{eur(sum((r) => r.subcontractor) + sum((r) => r.material))}</div>
             <div class="s">
-              NU {eur(sum((r) => r.subcontractor))} · Sachkosten {eur(sum((r) => r.material))}
+              NU {eur(sum((r) => r.subcontractor))} · Material {eur(sum((r) => r.material))}
             </div>
           </div>
           <div class="kpi">
@@ -3435,7 +3435,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                 <th class="r">Lohn brutto</th>
                 <th class="r">AG-Kosten</th>
                 <th class="r">Nachunternehmer</th>
-                <th class="r">Sachkosten</th>
+                <th class="r">Material</th>
                 <th class="r">Deckungsbeitrag</th>
                 <th class="r">Marge</th>
                 <th class="r">Erlös / Std.</th>
@@ -3587,9 +3587,8 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
             </li>
             <li>
               <b>Lohn:</b> eingeplante Einsätze (Soll, inkl. bezahlter Feiertage, ohne Tage mit eingetragener
-              Abwesenheit) × Stundenlohn × (1 + {pct(rates.absence_bp)} für Urlaub/Krankheit); Festgehalt =
-              Monatsgehalt, verteilt nach geplanten Stunden. Sonn-/Feiertags- und Nachtzuschläge sind nicht
-              enthalten.
+              Abwesenheit) × Stundenlohn, ohne Zuschlag für Urlaub/Krankheit; Festgehalt = Monatsgehalt,
+              verteilt nach geplanten Stunden. Sonn-/Feiertags- und Nachtzuschläge sind nicht enthalten.
             </li>
             <li>
               <b>Arbeitgeberkosten je Person und Monat</b> nach dem geplanten Entgelt: bis{' '}
@@ -3599,15 +3598,14 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
               {pct(rates.sv_employer_bp)}). Midijob und regulär zusätzlich Umlagen {pct(rates.levies_bp)};
               alle zusätzlich Unfallversicherung {pct(rates.accident_bp)}. Teilzeit/Vollzeit wird nie als
               Minijob gerechnet, auch wenn weniger geplant ist. Geschäftsführer (Tag „Geschäftsführer“): nur
-              Gehalt bzw. Lohn, ohne Arbeitgeberkosten und ohne Zuschlag Urlaub/Krankheit.
+              Gehalt bzw. Lohn, ohne Arbeitgeberkosten.
             </li>
             <li>
               <b>Nachunternehmer:</b> laut erteilter Bestellung jeden Monat (Pauschale, je Tag, je m², Anteil
               am Umsatz, „je Stunde“ mit max. Stunden) – auch wenn schon eine Rechnung gebucht ist.
             </li>
             <li>
-              <b>Sachkosten:</b> Material, Geräte, Sonstiges als Ø der Monate {mLabel(plan.materialFrom)} –{' '}
-              {mLabel(plan.materialTo)} (Ist).
+              <b>Material:</b> Ø der Monate {mLabel(plan.materialFrom)} – {mLabel(plan.materialTo)} (Ist).
             </li>
           </ul>
           <p class="small" style="color:var(--warn)">
@@ -3631,7 +3629,6 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                     ['minijob_flat', 'Minijob-Pauschalen gesamt %', n(rates.minijob_flat_bp)],
                     ['minijob_limit', 'Minijobgrenze € / Monat', ce(rates.minijob_limit_cents)],
                     ['midijob_upper', 'Midijob-Obergrenze € / Monat', ce(rates.midijob_upper_cents)],
-                    ['absence', 'Zuschlag Urlaub/Krankheit %', n(rates.absence_bp)],
                   ] as [string, string, string][]
                 ).map(([k, l, v]) => (
                   <>
@@ -3670,7 +3667,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         minijob_flat_bp: bp('minijob_flat'),
         minijob_limit_cents: BigInt(bp('minijob_limit')),
         midijob_upper_cents: BigInt(bp('midijob_upper')),
-        absence_bp: bp('absence'),
+        absence_bp: (await getPlanCostRates(sql)).absence_bp,
       },
       c.get('actor'),
     );

@@ -3995,3 +3995,8 @@ Testadresse.
   beim Lohnexport, `isManagingDirector`) werden in der Plan-Kalkulation nur mit Gehalt bzw. Lohn gerechnet – ohne
   Arbeitgeberkosten und ohne Zuschlag Urlaub/Krankheit (Einstufung „Geschäftsführer (ohne Zusatzkosten)“); in der
   Nachkalkulation (Ist) ohne Lohnzuschlag. Test in `plan-costing.db.test.ts`.
+- 2026-10-23: Plan-Kalkulation vereinfacht (Ahmed: „nur Lohn + Lohnzuschlag, Material und Nachunternehmer, Urlaubszuschlag
+  weg“): kein Zuschlag Urlaub/Krankheit mehr (Lohn = Plan-Stunden × Stundenlohn bzw. Festgehalt), Arbeitgeberkosten nach
+  Lohnhöhe bleiben; statt Sachkosten nur noch **Material** (Ø der letzten 3 Monate, ohne Geräte/Sonstiges). Feld „Zuschlag
+  Urlaub/Krankheit“ aus den Sätzen entfernt (Spalte `plan_cost_settings.absence_bp` bleibt ungenutzt). Nachkalkulation (Ist)
+  unverändert.

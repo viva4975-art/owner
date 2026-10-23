@@ -24,6 +24,12 @@ export interface Mailer {
 export const MAILER_MISSING =
   'Mailversand ist noch nicht eingerichtet (SMTP-Zugang fehlt) – bitte PDF herunterladen und selbst senden.';
 
+/** Mailer für Glückwünsche: eigener Zugang (GREETING_SMTP_USER/PASS), sonst der normale. */
+export function createGreetingMailer(env: Env): Mailer {
+  if (!env.GREETING_SMTP_USER) return createMailer(env);
+  return createMailer({ ...env, SMTP_USER: env.GREETING_SMTP_USER, SMTP_PASS: env.GREETING_SMTP_PASS ?? '' });
+}
+
 export function createMailer(env: Env): Mailer {
   if (!env.SMTP_HOST) {
     return {

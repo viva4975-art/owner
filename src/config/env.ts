@@ -42,6 +42,9 @@ const schema = z
     SMTP_SECURE: bool,
     SMTP_USER: z.string().optional(),
     SMTP_PASS: z.string().optional(),
+    /** Eigener Mailzugang für Glückwünsche (z. B. info@), gleicher SMTP-Server. Leer = SMTP_USER. */
+    GREETING_SMTP_USER: z.string().optional(),
+    GREETING_SMTP_PASS: z.string().optional(),
     KOSIT_VALIDATOR_URL: z.url().default('http://127.0.0.1:8081'),
     /** Ordner der täglichen Sicherung (im Container schreibgeschützt eingebunden) – Systemwächter prüft ihr Alter. */
     BACKUP_DIR: z.string().optional(),

@@ -5,7 +5,7 @@ import { serve } from '@hono/node-server';
 import { LocalArchiveStore } from './archive/store.js';
 import { loadEnv } from './config/env.js';
 import { createSql } from './db/client.js';
-import { createMailer } from './mail/mailer.js';
+import { createGreetingMailer, createMailer } from './mail/mailer.js';
 import { configureAuthAdmin } from './services/auth-users.js';
 import { autoFetch } from './services/bank-feed.js';
 import { applyDueHours } from './services/employee-hours.js';
@@ -106,7 +106,9 @@ setInterval(reminders, 15 * 60 * 1000).unref();
 
 // Glückwünsche an Mitarbeitende (Geburtstag, Firmenjubiläum) – je Person/Anlass/Jahr genau einmal
 const greetings = () =>
-  sendGreetings({ sql, env, mailer: createMailer(env) }).catch((e) => console.error('Glückwünsche:', e));
+  sendGreetings({ sql, env, mailer: createGreetingMailer(env) }).catch((e) =>
+    console.error('Glückwünsche:', e),
+  );
 setInterval(greetings, 15 * 60 * 1000).unref();
 
 // Bankabruf (Enable Banking): alle 30 Min. prüfen, je Konto höchstens etwa alle 4,5 Std. zwischen 6 und 21 Uhr

@@ -4060,3 +4060,7 @@ Testadresse.
 - 2026-10-23: **Ausschreibungen „Laufend“ = noch nicht abgegeben** (Ahmed: „sonst verwirrend“): Reiter Laufend zeigt nur
   neu / prüfen / in Bearbeitung (`OPEN` in `tenders.ts`); abgegebene stehen im neuen Reiter **„Abgegeben – Entscheidung
   offen“**, danach Abgeschlossen / Alle. Zähler „Ausschreibungen (n)“ in den Angeboten zählt nur noch nicht abgegebene.
+- 2026-10-23: **Eigener Mailzugang für Glückwünsche** (Ahmed: info@ als Absender; „Senden als“ gibt es in den Outlook-
+  Optionen nicht, nur in der Exchange-Verwaltung): `.env.live` optional `GREETING_SMTP_USER` / `GREETING_SMTP_PASS`
+  (gleicher SMTP-Server) → Glückwünsche melden sich mit info@ an (`createGreetingMailer`), sonst wie bisher mit dem
+  Rechnungs-Zugang. Einstellungen → Glückwünsche zeigt, über welchen Zugang gesendet wird.

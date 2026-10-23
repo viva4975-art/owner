@@ -611,6 +611,11 @@ export function registerReminderRoutes({ app, deps, page, back }: Ctx) {
             <div>
               <label for="g-from">Absender</label>
               <input id="g-from" name="from_email" type="email" value={s.from_email} required />
+              <div class="small mut">
+                {deps.env.GREETING_SMTP_USER
+                  ? `Versand über eigenen Zugang ${deps.env.GREETING_SMTP_USER}.`
+                  : `Versand über den Rechnungs-Zugang ${deps.env.SMTP_USER ?? '–'}. Für info@ als Absender in .env.live GREETING_SMTP_USER und GREETING_SMTP_PASS eintragen.`}
+              </div>
             </div>
             <div>
               <label for="g-hour">ab Uhrzeit</label>

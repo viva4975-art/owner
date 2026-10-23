@@ -4064,3 +4064,10 @@ Testadresse.
   Optionen nicht, nur in der Exchange-Verwaltung): `.env.live` optional `GREETING_SMTP_USER` / `GREETING_SMTP_PASS`
   (gleicher SMTP-Server) → Glückwünsche melden sich mit info@ an (`createGreetingMailer`), sonst wie bisher mit dem
   Rechnungs-Zugang. Einstellungen → Glückwünsche zeigt, über welchen Zugang gesendet wird.
+- 2026-10-23: **Objekt anlegen = Kunde anlegen** (Ahmed: „wenn es dasselbe ist“): Neues Objekt → Auswahl Kunde
+  „+ Neuer Kunde mit denselben Angaben wie das Objekt“ → Felder Kundennummer (vorbelegt) und Rechnungs-E-Mail(s); beim
+  Speichern entsteht der Kunde mit Bezeichnung und Anschrift des Objekts (Straße, PLZ, Ort dann Pflicht; ZUGFeRD,
+  Gruppe „Standard“, `createCustomerForSite`, feste ID aus der Objekt-ID → Doppelklick legt nichts doppelt an),
+  Objektnummer leer = Kundennummer + 01. **Rechnungsentwürfe sortierbar** (Auswahl „Sortieren“ + auf-/absteigend):
+  Name (Empfänger), Kundennummer, Kostenstelle (kleinste Objektnummer der Rechnung), Objektname, Rechnungsdatum,
+  Leistungszeitraum, Betrag netto; gilt zusammen mit dem Monatsfilter.

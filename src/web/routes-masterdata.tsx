@@ -49,6 +49,7 @@ import {
   type Site,
   type SiteBilling,
   suggestCustomerNo,
+  createCustomerForSite,
   suggestSiteNo,
   effectiveBilling,
   buildBuyerSnapshot,
@@ -1788,6 +1789,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
         customers={customers}
         isNew={!s}
         managers={await managers(sql)}
+        newCustomerNo={s ? undefined : await suggestCustomerNo(sql)}
       />
     );
     if (!s) {
@@ -1882,7 +1884,30 @@ export function registerMasterdataRoutes(ctx: Ctx) {
 
   app.post(`/objekte/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
-    const body = await c.req.parseBody();
+    const body = (await c.req.parseBody()) as Record<string, string>;
+    // Neuer Kunde = dieses Objekt (gleiche Bezeichnung und Anschrift), feste ID aus der Objekt-ID → nichts doppelt
+    if (body.customer_id === 'neu') {
+      const exists = await getSite(sql, id);
+      // zweites Absenden (Doppelklick): Kunde vom ersten Mal
+      if (exists) body.customer_id = exists.customer_id;
+      else {
+        const r = await createCustomerForSite(
+          sql,
+          id,
+          {
+            customer_no: str(body, 'new_customer_no') ?? '',
+            name: str(body, 'name') ?? '',
+            street: str(body, 'street') ?? '',
+            postal_code: str(body, 'postal_code') ?? '',
+            city: str(body, 'city') ?? '',
+            invoice_emails: str(body, 'new_invoice_emails') ?? '',
+          },
+          c.get('actor'),
+        );
+        body.customer_id = r.customerId;
+        if (!str(body, 'site_no')) body.site_no = (await suggestSiteNo(sql, r.customerId)) ?? '';
+      }
+    }
     const parsed = siteInput.safeParse(body);
     if (!parsed.success) throw new BusinessError(parsed.error.issues.map((i) => i.message).join('\n'));
     try {

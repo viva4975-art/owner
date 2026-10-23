@@ -4,7 +4,7 @@ import type { PDFDocument, PDFFont } from '@cantoo/pdf-lib';
 /*
  * Schriften für alle PDFs im Stil „edel“ (Ahmed 10.10.: Bestellungen, Arbeitsscheine, Listen wie die Rechnung): Inter
  * (SIL OFL) Regular + SemiBold. Zeichen, die Inter nicht hat (☐ ☒ ✔ aus Word-Vorlagen), werden durch gleichwertige
- * ersetzt (□ ■ ✓) – eine Ersatzschrift lässt sich mit fontkit nicht als Teilmenge einbetten.
+ * ersetzt (□ ✓; angekreuzt = □ mit gezeichnetem X in FormDoc.text) – eine Ersatzschrift lässt sich mit fontkit nicht als Teilmenge einbetten.
  */
 
 const ASSETS = new URL('../../assets/', import.meta.url);
@@ -23,7 +23,7 @@ export function uiFontBytes() {
 
 /** Zeichen ohne Glyphe in Inter ersetzen (Kästchen aus Word-Vorlagen) */
 export function uiText(t: string): string {
-  return t.replace(/☐/g, '□').replace(/[☑☒]/g, '■').replace(/✔/g, '✓');
+  return t.replace(/[☐☑☒]/g, '□').replace(/✔/g, '✓');
 }
 
 /** Inter Regular/SemiBold (vollständig eingebettet) in ein PDF einbetten. */

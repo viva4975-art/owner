@@ -168,13 +168,29 @@ export class FormDoc {
     o: { size?: number; bold?: boolean; color?: ReturnType<typeof rgb> } = {},
   ) {
     if (!t) return;
-    this.page.drawText(uiText(t), {
-      x,
-      y: H - y,
-      size: o.size ?? 9,
-      font: o.bold ? this.bold : this.reg,
-      color: o.color ?? INK,
-    });
+    const size = o.size ?? 9;
+    const color = o.color ?? INK;
+    this.page.drawText(uiText(t), { x, y: H - y, size, font: o.bold ? this.bold : this.reg, color });
+    // Angekreuzte Kästchen (☒/☑): Inter hat kein ☒ → leeres Kästchen □ mit gezeichnetem „X“ (Ahmed 23.10.)
+    for (const m of t.matchAll(/[☒☑]/g)) {
+      const bx = x + this.width(t.slice(0, m.index), size, o.bold) + (264 / 2816) * size;
+      const side = (2048 / 2816) * size;
+      const pad = side * 0.2;
+      const thickness = Math.max(0.6, size * 0.09);
+      const y0 = H - y;
+      this.page.drawLine({
+        start: { x: bx + pad, y: y0 + pad },
+        end: { x: bx + side - pad, y: y0 + side - pad },
+        thickness,
+        color,
+      });
+      this.page.drawLine({
+        start: { x: bx + pad, y: y0 + side - pad },
+        end: { x: bx + side - pad, y: y0 + pad },
+        thickness,
+        color,
+      });
+    }
   }
 
   right(

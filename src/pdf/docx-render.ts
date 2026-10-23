@@ -121,7 +121,16 @@ const hex = (raw: string | undefined): [number, number, number] | null => {
   ];
 };
 
-const SYM: Record<string, string> = { F06F: '☐', F0A8: '☐', F0FE: '☒', F078: '☒', F0FC: '✓' };
+const SYM: Record<string, string> = {
+  F06F: '☐',
+  F0A8: '☐',
+  F0FE: '☒',
+  F078: '☒',
+  F0FC: '✓',
+  '2610': '☐',
+  '2611': '☒',
+  '2612': '☒',
+};
 
 function runText(r: XNode, caps: boolean): string {
   let t = '';

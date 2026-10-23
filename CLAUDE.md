@@ -3941,3 +3941,13 @@ Testadresse.
   vorab angekreuzte Einwilligungen sind unwirksam (Art. 7 DSGVO, EuGH C-673/17 Planet49). Jetzt nie vorab, die Person
   kreuzt selbst an. Schwerbehinderung bleibt offen (freiwillige Angabe, die App kennt sie nicht) – auf der Ausfüll-Seite
   ankreuzen oder von Hand. Test in `word-form.test.ts`.
+- 2026-10-23: Kreuze im Arbeitsvertrag, Nachtrag (Ahmed: „lieber als X“, „wird immer noch nicht gemacht“, „Anlage 5 soll
+  angekreuzt sein“): **Angekreuzt = Kästchen mit X** in allen PDFs aus Word-Vorlagen/Formularen (Inter hat kein ☒ →
+  □ mit zwei gezeichneten Linien, `FormDoc.text`; vorher ■). **Fund (vermutet für die Server-Vorlage):** Beim Ankreuzen
+  wurde nur der Zustand des Word-Kontrollkästchens gesetzt; das sichtbare Zeichen nur, wenn es allein als Text im
+  Kästchen stand – bei „☐ “ mit Leerzeichen oder Word-Symbol (Wingdings F0A8 / MS Gothic 2610) blieb es leer, im PDF wie
+  in Word. Jetzt wird das Zeichen in jeder Form mitgezogen; Renderer kennt auch 2610/2612. Lokal (V5) und per
+  Browser-Klick geprüft. **Anlage 5 – freiwillige Einwilligungen wieder vorab angekreuzt** (Ahmed). **Rechtlich:** Vorab
+  angekreuzte Einwilligungen gelten nicht als wirksame Einwilligung (Art. 4 Nr. 11, Art. 7 DSGVO; EuGH C-673/17
+  Planet49) – die Person muss die Kreuze selbst setzen bzw. bestätigen; im Zweifel Weitergabe der Handynummer usw. nicht
+  darauf stützen. Test in `word-form.test.ts`.

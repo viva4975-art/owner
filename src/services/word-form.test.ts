@@ -119,7 +119,7 @@ describe('leere Felder neben Beschriftungen (Ahmed 12.10.)', () => {
     const on = f.filter((x) => x.kind === 'box' && boxes[x.index]).map((x) => x.label);
     expect(on).toEqual(['Fluchtwege gezeigt', 'Zutritt erklärt']);
   });
-  it('Arbeitsvertrag: Einwilligungen nie vorab, Schulobjekt aus den Objekten', () => {
+  it('Arbeitsvertrag: Einwilligungen (Teil B) vorab, Schulobjekt aus den Objekten', () => {
     const p = (t: string) => `<w:p><w:r><w:t>${t}</w:t></w:r></w:p>`;
     const xml =
       `<w:body>${p('☐ ja, Einsatz in Schulobjekten – es gilt § 14')}${p('☐ nein – kein Einsatz in Schulobjekten; diese Anlage entfällt')}` +
@@ -129,8 +129,22 @@ describe('leere Felder neben Beschriftungen (Ahmed 12.10.)', () => {
       const b = defaultBoxes(f, { 'Mitarbeiter.Vorname': 'A', ...v });
       return f.filter((x) => x.kind === 'box' && b[x.index]).map((x) => x.label.slice(0, 4));
     };
-    expect(on({ 'Mitarbeiter.Schulobjekt': 'ja' })).toEqual(['ja, ']);
-    expect(on({ 'Mitarbeiter.Schulobjekt': 'nein' })).toEqual(['nein']);
-    expect(on({ 'Mitarbeiter.Schulobjekt': '' })).toEqual([]);
+    expect(on({ 'Mitarbeiter.Schulobjekt': 'ja' })).toEqual(['ja, ', 'Mein']);
+    expect(on({ 'Mitarbeiter.Schulobjekt': 'nein' })).toEqual(['nein', 'Mein']);
+    expect(on({ 'Mitarbeiter.Schulobjekt': '' })).toEqual(['Mein']);
+  });
+
+  it('Kontrollkästchen: sichtbares Zeichen wird mitgezogen (Text mit Leerzeichen und Word-Symbol)', () => {
+    const sdt = (inner: string) =>
+      `<w:sdt><w:sdtPr><w14:checkbox><w14:checked w14:val="0"/></w14:checkbox></w:sdtPr><w:sdtContent>${inner}</w:sdtContent></w:sdt>`;
+    const xml =
+      `<w:body><w:p>${sdt('<w:r><w:t xml:space="preserve">☐ </w:t></w:r>')}<w:r><w:t>eins</w:t></w:r></w:p>` +
+      `<w:p>${sdt('<w:r><w:sym w:font="Wingdings" w:char="F0A8"/></w:r>')}<w:r><w:t>zwei</w:t></w:r></w:p>` +
+      `<w:p>${sdt('<w:r><w:sym w:font="MS Gothic" w:char="2610"/></w:r>')}<w:r><w:t>drei</w:t></w:r></w:p></w:body>`;
+    const out = applyFormFields(xml, { 0: true, 1: true, 2: true }, {});
+    expect(out).toContain('☒ </w:t>');
+    expect(out).toContain('w:char="F0FE"');
+    expect(out).toContain('w:char="2612"');
+    expect(out.match(/w14:val="1"/g)?.length).toBe(3);
   });
 });

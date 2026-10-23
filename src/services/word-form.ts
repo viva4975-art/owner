@@ -75,10 +75,29 @@ function scan(xml: string, onBox: OnBox, onBlank: OnBlank): string {
         let out = /<w14:checked [^>]*\/>/.test(sdt)
           ? sdt.replace(/<w14:checked [^>]*\/>/, `<w14:checked ${attr}="${val}"/>`)
           : sdt.replace('<w14:checkbox>', `<w14:checkbox><w14:checked w14:val="${val}"/>`);
-        out = out.replace(
-          /(<w:sdtContent>[\s\S]*?<w:t(?:\s[^>]*)?>)[☐☒](<\/w:t>)/,
-          `$1${want ? '☒' : '☐'}$2`,
-        );
+        // Sichtbares Zeichen im Inhalt mitziehen – egal ob als Text (auch mit Leerzeichen daneben) oder als
+        // Word-Symbol (Wingdings/MS Gothic, <w:sym>); sonst stünde im Dokument/PDF weiter das leere Kästchen.
+        const at = out.indexOf('<w:sdtContent>');
+        if (at >= 0) {
+          let done = false;
+          const content = out
+            .slice(at)
+            .replace(/(<w:t(?:\s[^>]*)?>)([^<]*)(<\/w:t>)/g, (mm, o: string, txt: string, c: string) => {
+              if (done || !/[☐☒☑]/.test(txt)) return mm;
+              done = true;
+              return `${o}${txt.replace(/[☐☒☑]/, want ? '☒' : '☐')}${c}`;
+            })
+            .replace(/<w:sym\b[^>]*\/>/, (sym) =>
+              done
+                ? sym
+                : sym.replace(/w:char="([0-9A-Fa-f]+)"/, (_a, code: string) =>
+                    /^261[012]$/.test(code)
+                      ? `w:char="${want ? '2612' : '2610'}"`
+                      : `w:char="${want ? 'F0FE' : 'F0A8'}"`,
+                  ),
+            );
+          out = out.slice(0, at) + content;
+        }
         return out;
       }
       const t = unesc(text);
@@ -265,7 +284,7 @@ function partAt(heads: ReturnType<typeof headingsOf>, pos: number): string | und
 
 /** Teil gilt für alle (nicht „Zusatzmodule, nur bei zutreffender Tätigkeit“) → Kästchen vorab ankreuzen. */
 export const generalPart = (part: string | undefined) =>
-  !!part && !/zusatz|nur bei|optional|falls|wahlweise|freiwillig|einwillig/i.test(part);
+  !!part && !/zusatz|nur bei|optional|falls|wahlweise/i.test(part);
 
 function groupAt(heads: ReturnType<typeof headingsOf>, pos: number): string {
   let doc: string | undefined;

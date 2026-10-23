@@ -19,6 +19,8 @@ import { todayBerlin } from '../domain/invoice/calc.js';
 import { type Cents, parseEuro, parseQuantity } from '../domain/money/money.js';
 import { addDays } from '../domain/time/holidays.js';
 import { siteCostDetails, siteCosting } from '../services/costing.js';
+import { planCosting, savePlanCostRates } from '../services/plan-costing.js';
+import { PAY_BAND_LABEL } from '../domain/hr/employer-cost.js';
 import {
   buildExtf,
   collectBookings,
@@ -148,14 +150,16 @@ const MonthSelect: FC<{
   label: string;
   disabled?: boolean;
   autosubmit?: boolean;
-}> = ({ id, name, value, label, disabled, autosubmit }) => {
+  /** auch die nächsten 15 Monate (Plan-Kalkulation) */
+  future?: boolean;
+}> = ({ id, name, value, label, disabled, autosubmit, future }) => {
   const now = todayBerlin().slice(0, 7);
   const add = (m: string, n: number) => {
     const d = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1 + n, 1));
     return d.toISOString().slice(0, 7);
   };
   const months: string[] = [];
-  for (let i = 3; i >= -24; i--) months.push(add(now, i));
+  for (let i = future ? 15 : 3; i >= -24; i--) months.push(add(now, i));
   if (value && !months.includes(value)) months.push(value);
   return (
     <select
@@ -3303,6 +3307,376 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         'Cache-Control': 'no-store',
       },
     });
+  });
+
+  // ================================================================== Plan-Kalkulation (Soll)
+
+  app.get('/auswertungen/plankalkulation', async (c) => {
+    const curM = todayBerlin().slice(0, 7);
+    const nextM = addDays(`${addDays(`${curM}-01`, 32).slice(0, 7)}-01`, 0).slice(0, 7);
+    const qm = c.req.query('monat');
+    const von = isMonth(qm) ? qm! : isMonth(c.req.query('von')) ? c.req.query('von')! : curM;
+    const bisQ = isMonth(qm) ? qm! : isMonth(c.req.query('bis')) ? c.req.query('bis')! : von;
+    const bis = bisQ < von ? von : bisQ > `${Number(von.slice(0, 4)) + 1}-12` ? von : bisQ;
+    const fKunde = c.req.query('kunde') ?? '';
+    const fVerlust = c.req.query('verlust') === '1';
+    const [plan, acct] = await Promise.all([
+      planCosting(sql, { from: von, to: bis }),
+      getAccountingSettings(sql),
+    ]);
+    const { rows: all, employees, rates, months } = plan;
+    const rows = all.filter((r) => (!fKunde || r.customer_id === fKunde) && (!fVerlust || r.margin < 0n));
+    const customers = [...new Map(all.map((r) => [r.customer_id, r.customer_name])).entries()].sort((a, b) =>
+      a[1].localeCompare(b[1], 'de'),
+    );
+    const sum = (f: (r: (typeof rows)[number]) => bigint) => rows.reduce((a, r) => a + f(r), 0n);
+    const rev = sum((r) => r.revenue);
+    const margin = sum((r) => r.margin);
+    const pct = (bp: number | null) =>
+      bp === null ? '–' : `${(bp / 100).toLocaleString('de-DE', { maximumFractionDigits: 2 })} %`;
+    const eur = (cents: bigint) => euro(cents);
+    const keep = [fKunde && `kunde=${fKunde}`, fVerlust && 'verlust=1'].filter(Boolean).join('&');
+    const href = (a: string, b: string) =>
+      `/auswertungen/plankalkulation?von=${a}&bis=${b}${keep ? `&${keep}` : ''}`;
+    const y = Number(curM.slice(0, 4));
+    const in3 = (() => {
+      let m = curM;
+      for (let i = 0; i < 2; i++) m = addDays(`${addDays(`${m}-01`, 32).slice(0, 7)}-01`, 0).slice(0, 7);
+      return m;
+    })();
+    const quick: [string, string, string][] = [
+      ['Dieser Monat', curM, curM],
+      ['Nächster Monat', nextM, nextM],
+      ['Nächste 3 Monate', curM, in3],
+      [String(y), `${y}-01`, `${y}-12`],
+    ];
+    const mLabel = (m: string) => `${MONTHS_DE[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
+    const canEdit = ['admin', 'buchhaltung'].includes(c.get('user').role);
+    const n = (bp: number) => String(bp / 100).replace('.', ',');
+    const ce = (v: bigint) => (Number(v) / 100).toFixed(2).replace('.', ',');
+    const bandsOf = (e: (typeof employees)[number]) => e.bands.map((b) => PAY_BAND_LABEL[b]).join(' / ');
+    return page(
+      c,
+      'Plan-Kalkulation (Soll)',
+      'auswertungen',
+      <>
+        <PageHead title="Plan-Kalkulation (Soll)" crumbs={[['Auswertungen', '/auswertungen']]} />
+        <p class="small mut" style="margin-top:-6px">
+          Wie die Nachkalkulation, aber nur mit Plan-Daten: laufende Leistungen, eingeplante Einsätze,
+          Nachunternehmer laut Bestellung. Vergleich mit dem Ist:{' '}
+          <a href={`/auswertungen/nachkalkulation?von=${von}&bis=${bis}`}>
+            Nachkalkulation für diesen Zeitraum
+          </a>
+        </p>
+        <div class="chips" style="margin-bottom:10px;align-items:center">
+          {quick.map(([l, a, b]) => (
+            <a href={href(a, b)} class={von === a && bis === b ? 'on' : ''}>
+              {l}
+            </a>
+          ))}
+          <span class="small mut" style="margin-left:8px">
+            Zeitraum: <b>{von === bis ? mLabel(von) : `${mLabel(von)} – ${mLabel(bis)}`}</b>
+          </span>
+        </div>
+        <form method="get" action="/auswertungen/plankalkulation" class="actions" style="margin-top:0">
+          <input type="hidden" name="von" value={von} />
+          <input type="hidden" name="bis" value={bis} />
+          <span style="flex:0 0 200px;max-width:200px">
+            <MonthSelect name="monat" value={von === bis ? von : ''} label="Monat" autosubmit future />
+          </span>
+          <select name="kunde" aria-label="Kunde" style="max-width:240px" data-nosearch>
+            <option value="">Alle Kunden</option>
+            {customers.map(([id, name]) => (
+              <option value={id} selected={id === fKunde}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <label class="small" style="margin:0;display:flex;gap:4px;align-items:center">
+            <input type="checkbox" name="verlust" value="1" checked={fVerlust} /> nur Verlust
+          </label>
+          <button class="btn sec sm">Anzeigen</button>
+        </form>
+        <div class="kpis">
+          <div class="kpi">
+            <div class="l">Erlös laut Leistungen</div>
+            <div class="v">{eur(rev)}</div>
+            <div class="s">{months > 1 ? `${months} Monate` : 'ein Monat'} · laufende Leistungen</div>
+          </div>
+          <div class="kpi">
+            <div class="l">Lohn inkl. Arbeitgeberkosten</div>
+            <div class="v">{eur(sum((r) => r.labor))}</div>
+            <div class="s">
+              brutto {eur(sum((r) => r.gross))} + AG {eur(sum((r) => r.employer))}
+            </div>
+          </div>
+          <div class="kpi">
+            <div class="l">Nachunternehmer + Sachkosten</div>
+            <div class="v">{eur(sum((r) => r.subcontractor) + sum((r) => r.material))}</div>
+            <div class="s">
+              NU {eur(sum((r) => r.subcontractor))} · Sachkosten {eur(sum((r) => r.material))}
+            </div>
+          </div>
+          <div class="kpi">
+            <div class="l">Deckungsbeitrag (Plan)</div>
+            <div class="v" style={margin < 0n ? 'color:var(--err)' : ''}>
+              {eur(margin)}
+            </div>
+            <div class="s">{rev !== 0n ? pct(Number((margin * 10000n) / rev)) : '–'} vom Erlös</div>
+          </div>
+        </div>
+        <div class="tbl">
+          <table>
+            <thead>
+              <tr>
+                <th>Objekt</th>
+                <th class="r">Erlös (Plan)</th>
+                <th class="r">Std. (Plan)</th>
+                <th class="r">Lohn brutto</th>
+                <th class="r">AG-Kosten</th>
+                <th class="r">Nachunternehmer</th>
+                <th class="r">Sachkosten</th>
+                <th class="r">Deckungsbeitrag</th>
+                <th class="r">Marge</th>
+                <th class="r">Erlös / Std.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length > 0 && (
+                <tr style="background:var(--tint-2)">
+                  <td>
+                    <b>Gesamt</b>
+                  </td>
+                  <td class="r">
+                    <b>{eur(rev)}</b>
+                  </td>
+                  <td class="r">
+                    <b>{hm(rows.reduce((a, r) => a + r.minutes, 0))}</b>
+                  </td>
+                  <td class="r">
+                    <b>{eur(sum((r) => r.gross))}</b>
+                  </td>
+                  <td class="r">
+                    <b>{eur(sum((r) => r.employer))}</b>
+                  </td>
+                  <td class="r">
+                    <b>{eur(sum((r) => r.subcontractor))}</b>
+                  </td>
+                  <td class="r">
+                    <b>{eur(sum((r) => r.material))}</b>
+                  </td>
+                  <td class="r" style={margin < 0n ? 'color:var(--err)' : ''}>
+                    <b>{eur(margin)}</b>
+                  </td>
+                  <td class="r" />
+                  <td class="r" />
+                </tr>
+              )}
+              {rows.length === 0 && (
+                <tr>
+                  <td colspan={10}>
+                    <div class="empty">
+                      Im Zeitraum gibt es keine laufenden Leistungen, Einsätze oder Bestellungen.
+                    </div>
+                  </td>
+                </tr>
+              )}
+              {rows.map((r) => (
+                <tr>
+                  <td>
+                    <a href={`/objekte/${r.site_id}`}>
+                      {r.site_no} · {r.site_name}
+                    </a>
+                    <div class="small mut">{r.customer_name}</div>
+                    {r.revenue === 0n && r.labor + r.subcontractor + r.material > 0n && (
+                      <div class="small" style="color:var(--warn)">
+                        Kosten ohne Erlös
+                      </div>
+                    )}
+                    {r.revenue > 0n && r.minutes === 0 && r.subcontractor === 0n && (
+                      <div class="small" style="color:var(--warn)">
+                        keine Einsätze geplant
+                      </div>
+                    )}
+                  </td>
+                  <td class="r">{eur(r.revenue)}</td>
+                  <td class="r">{hm(r.minutes)}</td>
+                  <td class="r">{eur(r.gross)}</td>
+                  <td class="r">{eur(r.employer)}</td>
+                  <td class="r">{eur(r.subcontractor)}</td>
+                  <td class="r">{eur(r.material)}</td>
+                  <td class="r" style={r.margin < 0n ? 'color:var(--err)' : ''}>
+                    <b>{eur(r.margin)}</b>
+                  </td>
+                  <td class="r">
+                    <span
+                      class={`badge ${r.margin_bp === null ? '' : r.margin_bp < 0 ? 'err' : r.margin_bp < acct.target_margin_bp ? 'warn' : 'ok'}`}
+                    >
+                      {pct(r.margin_bp)}
+                    </span>
+                  </td>
+                  <td class="r">{r.minutes > 0 ? eur((r.revenue * 60n) / BigInt(r.minutes)) : '–'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <details class="card" style="margin-top:14px">
+          <summary>
+            <b>Mitarbeitende im Plan ({employees.length})</b> – Entgelt je Person und Monat, Einstufung
+          </summary>
+          <div class="tbl">
+            <table>
+              <thead>
+                <tr>
+                  <th>Mitarbeiter/in</th>
+                  <th>Beschäftigung</th>
+                  <th class="r">Std. (Plan)</th>
+                  <th class="r">Entgelt brutto</th>
+                  <th>Eingestuft als</th>
+                  <th class="r">AG-Kosten</th>
+                  <th class="r">AG-Satz</th>
+                </tr>
+              </thead>
+              <tbody>
+                {employees.map((e) => (
+                  <tr>
+                    <td>
+                      <a href={`/personal/${e.employee_id}`}>{e.name}</a>
+                      <span class="small mut"> · {e.personnel_no}</span>
+                      {e.wage_assumed && (
+                        <div class="small" style="color:var(--warn)">
+                          Vergütung fehlt – niedrigster Tariflohn angenommen
+                        </div>
+                      )}
+                      {e.low_plan && (
+                        <div class="small" style="color:var(--warn)">
+                          geplantes Entgelt unter {eur(rates.minijob_limit_cents)} – Einsätze vollständig
+                          geplant?
+                        </div>
+                      )}
+                      {e.minijob_over && (
+                        <div class="small" style="color:var(--err)">
+                          Minijob: geplantes Entgelt über {eur(rates.minijob_limit_cents)} im Monat
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      {e.employment_type ?? '–'}
+                      {e.pay_model === 'festgehalt' && <span class="small mut"> · Festgehalt</span>}
+                    </td>
+                    <td class="r">{hm(e.minutes)}</td>
+                    <td class="r">{eur(e.gross)}</td>
+                    <td>{bandsOf(e)}</td>
+                    <td class="r">{eur(e.employer)}</td>
+                    <td class="r">{e.gross > 0n ? pct(Number((e.employer * 10000n) / e.gross)) : '–'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+        <details class="card" style="margin-top:14px">
+          <summary>
+            <b>So wird gerechnet</b> · Sätze {canEdit ? 'ändern' : 'ansehen'}
+          </summary>
+          <ul class="small">
+            <li>
+              <b>Erlös:</b> laufende Leistungen am Objekt (Monatspauschalen; 2-monatlich … jährlich anteilig
+              je Monat). Einzelleistungen, Regiestunden und Einzelaufträge sind nicht planbar und fehlen hier.
+            </li>
+            <li>
+              <b>Lohn:</b> eingeplante Einsätze (Soll, inkl. bezahlter Feiertage, ohne Tage mit eingetragener
+              Abwesenheit) × Stundenlohn × (1 + {pct(rates.absence_bp)} für Urlaub/Krankheit); Festgehalt =
+              Monatsgehalt, verteilt nach geplanten Stunden. Sonn-/Feiertags- und Nachtzuschläge sind nicht
+              enthalten.
+            </li>
+            <li>
+              <b>Arbeitgeberkosten je Person und Monat</b> nach dem geplanten Entgelt: bis{' '}
+              {eur(rates.minijob_limit_cents)} bzw. Beschäftigungsart Minijob = Minijob (
+              {pct(rates.minijob_flat_bp)} Pauschalen); bis {eur(rates.midijob_upper_cents)} = Midijob
+              (Übergangsbereich, AG-Satz sinkt von 28 % auf {pct(rates.sv_employer_bp)}); darüber regulär (
+              {pct(rates.sv_employer_bp)}). Midijob und regulär zusätzlich Umlagen {pct(rates.levies_bp)};
+              alle zusätzlich Unfallversicherung {pct(rates.accident_bp)}.
+            </li>
+            <li>
+              <b>Nachunternehmer:</b> laut erteilter Bestellung jeden Monat (Pauschale, je Tag, je m², Anteil
+              am Umsatz, „je Stunde“ mit max. Stunden) – auch wenn schon eine Rechnung gebucht ist.
+            </li>
+            <li>
+              <b>Sachkosten:</b> Material, Geräte, Sonstiges als Ø der Monate {mLabel(plan.materialFrom)} –{' '}
+              {mLabel(plan.materialTo)} (Ist).
+            </li>
+          </ul>
+          <p class="small" style="color:var(--warn)">
+            Schätzung für die Kalkulation – die Lohnabrechnung rechnet je Person genau (Krankenkasse, Kinder,
+            Beitragsgruppen). Sätze jährlich (Januar) mit dem Steuerberater abgleichen.
+          </p>
+          {canEdit && (
+            <form method="post" action="/auswertungen/plankalkulation/saetze" data-noback>
+              <input
+                type="hidden"
+                name="zurueck"
+                value={`/auswertungen/plankalkulation?von=${von}&bis=${bis}`}
+              />
+              <div class="grid">
+                {(
+                  [
+                    ['sv_employer', 'AG-Anteil Sozialversicherung %', n(rates.sv_employer_bp)],
+                    ['sv_employee', 'AN-Anteil Sozialversicherung % (für Midijob)', n(rates.sv_employee_bp)],
+                    ['levies', 'Umlagen U1/U2/Insolvenzgeld %', n(rates.levies_bp)],
+                    ['accident', 'Unfallversicherung (BG) %', n(rates.accident_bp)],
+                    ['minijob_flat', 'Minijob-Pauschalen gesamt %', n(rates.minijob_flat_bp)],
+                    ['minijob_limit', 'Minijobgrenze € / Monat', ce(rates.minijob_limit_cents)],
+                    ['midijob_upper', 'Midijob-Obergrenze € / Monat', ce(rates.midijob_upper_cents)],
+                    ['absence', 'Zuschlag Urlaub/Krankheit %', n(rates.absence_bp)],
+                  ] as [string, string, string][]
+                ).map(([k, l, v]) => (
+                  <>
+                    <label for={`pk-${k}`}>{l}</label>
+                    <input id={`pk-${k}`} name={k} value={v} inputmode="decimal" required />
+                  </>
+                ))}
+              </div>
+              <div class="formfoot">
+                <button class="btn">Sätze speichern</button>
+              </div>
+            </form>
+          )}
+        </details>
+      </>,
+    );
+  });
+
+  app.post('/auswertungen/plankalkulation/saetze', async (c) => {
+    if (!['admin', 'buchhaltung'].includes(c.get('user').role)) throw new BusinessError('Keine Berechtigung');
+    const b = await c.req.parseBody();
+    const t = (k: string) =>
+      typeof b[k] === 'string' ? (b[k] as string).trim().replace(/\./g, '').replace(',', '.') : '';
+    const bp = (k: string) => {
+      const v = Math.round(Number(t(k)) * 100);
+      if (!t(k) || !Number.isFinite(v)) throw new BusinessError('Prozentwert ungültig');
+      return v;
+    };
+    await savePlanCostRates(
+      sql,
+      {
+        sv_employer_bp: bp('sv_employer'),
+        sv_employee_bp: bp('sv_employee'),
+        levies_bp: bp('levies'),
+        accident_bp: bp('accident'),
+        minijob_flat_bp: bp('minijob_flat'),
+        minijob_limit_cents: BigInt(bp('minijob_limit')),
+        midijob_upper_cents: BigInt(bp('midijob_upper')),
+        absence_bp: bp('absence'),
+      },
+      c.get('actor'),
+    );
+    const z =
+      typeof b.zurueck === 'string' && b.zurueck.startsWith('/auswertungen/plankalkulation')
+        ? b.zurueck
+        : '/auswertungen/plankalkulation';
+    return back(c, z, { ok: 'Sätze gespeichert.' });
   });
 
   // ================================================================== Nachkalkulation

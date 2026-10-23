@@ -218,6 +218,7 @@ export const PERM_GROUPS: { label: string; areas: PermArea[] }[] = [
         label: 'Nachkalkulation & Kostenstellen',
         prefixes: [
           '/auswertungen/nachkalkulation',
+          '/auswertungen/plankalkulation',
           '/auswertungen/kostenstellen',
           '/auswertungen/stundensaetze',
         ],

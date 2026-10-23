@@ -3973,3 +3973,21 @@ Testadresse.
   Vorlagen obere Zellrahmen. Jetzt gezeichnet (oben/unten je Zelle); in Unterschriftszellen dunkelgrau statt des sehr
   hellen D8D5D8, darüber etwas mehr Platz zum Unterschreiben. Die graue Unterschriftsfläche beim Arbeitnehmer bleibt
   wie bisher direkt auf der Linie. Test in `src/pdf/docx-render.test.ts`.
+- 2026-10-23: **Plan-Kalkulation (Soll)** (Ahmed: „Kalkulation nach eingeplanten Einsätzen mit automatischer Sozialversicherung
+  je Lohnhöhe – Minijob, Midijob, Vollzeit –, voraussichtliche NU-Rechnungen, laufende Leistungen; wie die Nachkalkulation,
+  nur mit Plan-Daten“): Auswertungen → Nachkalkulation → Reiter **Plan-Kalkulation (Soll)** (`/auswertungen/plankalkulation`,
+  `src/services/plan-costing.ts`, gleiches Recht wie Nachkalkulation). Zeitraum Dieser/Nächster Monat, nächste 3 Monate,
+  Jahr, Monatsauswahl bis 15 Monate voraus, Filter Kunde/nur Verlust. Je Objekt: **Erlös** = laufende Leistungen
+  (Monatspauschalen; 2-monatlich … jährlich anteilig je Monat), **Lohn** = eingeplante Einsätze (inkl. bezahlter
+  Feiertage, ohne Tage mit eingetragener Abwesenheit) × Stundenlohn × (1 + Zuschlag Urlaub/Krankheit 13 %), Festgehalt =
+  Monatsgehalt nach Plan-Stunden verteilt, **Arbeitgeberkosten je Person und Monat** nach dem geplanten Entgelt
+  (`src/domain/hr/employer-cost.ts`): Minijob (Beschäftigungsart bzw. bis 603 €) 31,17 % Pauschalen; Midijob bis 2.000 €
+  mit Übergangsbereich-Formel (§ 20 Abs. 2a SGB IV, F = 28 % ÷ Gesamtbeitrag; AG-Satz sinkt von 28 % auf 21,15 %);
+  darüber regulär 21,15 %; Midijob/regulär + Umlagen 2,2 %, alle + Unfallversicherung 2,5 %. Teilzeit/Vollzeit wird nie
+  als Minijob gerechnet (Hinweis „Einsätze vollständig geplant?“), Minijob über 603 € wird rot markiert.
+  **Nachunternehmer** laut erteilter Bestellung jeden Monat (`subcontractEstimates(..., { plan: true })`, auch wenn schon
+  eine Rechnung gebucht ist; „je Stunde“ mit max. Stunden). **Sachkosten** = Ø der letzten 3 abgeschlossenen Monate (Ist).
+  Liste „Mitarbeitende im Plan“ mit Entgelt, Einstufung, AG-Kosten und Satz; Sätze unter „So wird gerechnet“ änderbar
+  (Admin/Buchhaltung, `app.plan_cost_settings`, Migration `20261220000001`). **Werte 2026 sind Schätzwerte** (Ø-Zusatzbeitrag,
+  U1/U2 der Kasse, BG-Beitrag) – jährlich mit dem Steuerberater abgleichen; nicht enthalten: Nacht-/Sonn-/Feiertagszuschläge,
+  Einzelleistungen/Regie. Tests `employer-cost.test.ts`, `plan-costing.db.test.ts`.

@@ -4036,3 +4036,9 @@ Testadresse.
   („Sammelbestellung (32 Objekte): Stadt Garching · Rathaus, Bauhof, … +29“, `sammelSummaries`).
   **Nachkalkulation nach gelöschter Bestellung:** Die Werte werden bei jedem Aufruf neu gerechnet; beim Zurückblättern zeigte
   der Browser aber die alte Seite aus dem Zwischenspeicher. Auswertungen und Startseite laden beim Zurückkommen jetzt neu.
+- 2026-10-23: **Nach- und Plan-Kalkulation: Filter + PDF** (Ahmed): Plan-Kalkulation hat jetzt wie die Nachkalkulation
+  Filter Kunde, Objekt, **Objektleitung** (auch „ohne“), nur Verlust. Beide Seiten: **„PDF exportieren“** mit den
+  aktuellen Filtern (A4 quer, Logo, Summenzeile, `src/services/costing-pdf.ts`), Häkchen **„Namen schwärzen“** → statt
+  Objekt-Nr. „Objekt 001 …“, Objekt- und Kundenname als schwarzer Balken, Mitarbeitende „MA 001“ + Balken, Filternamen
+  „(geschwärzt)“; Beträge bleiben. Plan-PDF enthält die Liste „Mitarbeitende im Plan“ nur ohne Filter (sie ist nicht je
+  Objekt aufgeteilt). Zum Weitergeben (Bank, Berater, Ausschreibung) die geschwärzte Fassung nehmen.

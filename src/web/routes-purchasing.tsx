@@ -71,6 +71,7 @@ import {
 import { hm } from '../services/time.js';
 import { toCsv } from '../services/reports.js';
 import { listFiles } from '../services/uploads.js';
+import { planCostingPdf, siteCostingPdf } from '../services/costing-pdf.js';
 import { EInvoiceRoutes, EInvoiceTable } from './routes-einvoice-in.js';
 import { pendingEInvoices } from '../services/einvoice-inbox.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
@@ -338,8 +339,90 @@ const ExpectedList: FC<{ rows: ExpectedRow[] }> = ({ rows }) => {
   );
 };
 
+// ---- Nach-/Plan-Kalkulation: Objektleitungs-Filter und PDF-Export (Ahmed 23.10.)
+const pdfResponse = (pdf: Uint8Array, name: string) =>
+  new Response(pdf, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${name}"`,
+      'Cache-Control': 'private, no-cache',
+    },
+  });
+const MONTHS_LONG = [
+  'Januar',
+  'Februar',
+  'März',
+  'April',
+  'Mai',
+  'Juni',
+  'Juli',
+  'August',
+  'September',
+  'Oktober',
+  'November',
+  'Dezember',
+];
+const calcPeriodLabel = (von: string, bis: string) => {
+  const l = (m: string) => `${MONTHS_LONG[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
+  return von === bis ? l(von) : `${l(von)} – ${l(bis)}`;
+};
+type Manager = { user_id: string; name: string };
+const filterLabel = (
+  customer: string | undefined,
+  site: { site_no: string; site_name: string } | undefined,
+  ol: string,
+  managers: Manager[],
+  loss: boolean,
+  redact: boolean,
+) =>
+  [
+    customer && `Kunde: ${redact ? '(geschwärzt)' : customer}`,
+    site && `Objekt: ${redact ? '(geschwärzt)' : `${site.site_no} ${site.site_name}`}`,
+    ol &&
+      `Objektleitung: ${ol === 'ohne' ? 'ohne' : redact ? '(geschwärzt)' : (managers.find((m) => m.user_id === ol)?.name ?? '')}`,
+    loss && 'nur Verlust',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+const OlSelect = ({ managers, value }: { managers: Manager[]; value: string }) => (
+  <select name="ol" aria-label="Objektleitung" style="max-width:200px" data-nosearch>
+    <option value="">Alle Objektleitungen</option>
+    {managers.map((m) => (
+      <option value={m.user_id} selected={m.user_id === value}>
+        {m.name}
+      </option>
+    ))}
+    <option value="ohne" selected={value === 'ohne'}>
+      ohne Objektleitung
+    </option>
+  </select>
+);
+/** PDF mit den aktuellen Filtern, wahlweise mit geschwärzten Namen (Objekte, Kunden, Mitarbeitende) */
+const PdfExport = ({ action, params }: { action: string; params: Record<string, string> }) => (
+  <form method="get" action={action} target="_blank" class="actions" style="margin:-4px 0 12px" data-noback>
+    {Object.entries(params)
+      .filter(([, v]) => v)
+      .map(([k, v]) => (
+        <input type="hidden" name={k} value={v} />
+      ))}
+    <input type="hidden" name="pdf" value="1" />
+    <button class="btn sec sm">PDF exportieren</button>
+    <label class="small" style="margin:0;display:flex;gap:4px;align-items:center">
+      <input type="checkbox" name="schwaerzen" value="1" /> Namen schwärzen (Objekte, Kunden, Mitarbeitende)
+    </label>
+  </form>
+);
+
 export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
   const { sql, env } = deps;
+  const managersOf = async (ids: (string | null)[]): Promise<Manager[]> => {
+    const u = [...new Set(ids.filter((x): x is string => !!x))];
+    return u.length
+      ? sql<
+          Manager[]
+        >`select user_id, name from app.manager_contacts where user_id = any(${u}::uuid[]) order by name`
+      : [];
+  };
 
   // ================================================================== Bestellungen
 
@@ -3322,13 +3405,39 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     const bisQ = isMonth(qm) ? qm! : isMonth(c.req.query('bis')) ? c.req.query('bis')! : von;
     const bis = bisQ < von ? von : bisQ > `${Number(von.slice(0, 4)) + 1}-12` ? von : bisQ;
     const fKunde = c.req.query('kunde') ?? '';
+    const fObjekt = c.req.query('objekt') ?? '';
+    const fOl = c.req.query('ol') ?? '';
     const fVerlust = c.req.query('verlust') === '1';
     const [plan, acct] = await Promise.all([
       planCosting(sql, { from: von, to: bis }),
       getAccountingSettings(sql),
     ]);
     const { rows: all, employees, rates, months } = plan;
-    const rows = all.filter((r) => (!fKunde || r.customer_id === fKunde) && (!fVerlust || r.margin < 0n));
+    const rows = all.filter(
+      (r) =>
+        (!fKunde || r.customer_id === fKunde) &&
+        (!fObjekt || r.site_id === fObjekt) &&
+        (!fOl || (fOl === 'ohne' ? !r.manager_user_id : r.manager_user_id === fOl)) &&
+        (!fVerlust || r.margin < 0n),
+    );
+    const managers = await managersOf(all.map((r) => r.manager_user_id));
+    if (c.req.query('pdf') === '1') {
+      const filter = filterLabel(
+        all.find((r) => r.customer_id === fKunde)?.customer_name,
+        all.find((r) => r.site_id === fObjekt),
+        fOl,
+        managers,
+        fVerlust,
+        c.req.query('schwaerzen') === '1',
+      );
+      const pdf = await planCostingPdf(rows, fKunde || fObjekt || fOl || fVerlust ? null : employees, {
+        title: 'Plan-Kalkulation (Soll)',
+        period: calcPeriodLabel(von, bis),
+        filter,
+        redact: c.req.query('schwaerzen') === '1',
+      });
+      return pdfResponse(pdf, `Plankalkulation_${von}${bis !== von ? `_${bis}` : ''}.pdf`);
+    }
     const customers = [...new Map(all.map((r) => [r.customer_id, r.customer_name])).entries()].sort((a, b) =>
       a[1].localeCompare(b[1], 'de'),
     );
@@ -3338,7 +3447,14 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     const pct = (bp: number | null) =>
       bp === null ? '–' : `${(bp / 100).toLocaleString('de-DE', { maximumFractionDigits: 2 })} %`;
     const eur = (cents: bigint) => euro(cents);
-    const keep = [fKunde && `kunde=${fKunde}`, fVerlust && 'verlust=1'].filter(Boolean).join('&');
+    const keep = [
+      fKunde && `kunde=${fKunde}`,
+      fObjekt && `objekt=${fObjekt}`,
+      fOl && `ol=${fOl}`,
+      fVerlust && 'verlust=1',
+    ]
+      .filter(Boolean)
+      .join('&');
     const href = (a: string, b: string) =>
       `/auswertungen/plankalkulation?von=${a}&bis=${b}${keep ? `&${keep}` : ''}`;
     const y = Number(curM.slice(0, 4));
@@ -3395,11 +3511,26 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
               </option>
             ))}
           </select>
+          <select name="objekt" aria-label="Objekt" style="max-width:260px">
+            <option value="">Alle Objekte</option>
+            {all
+              .filter((r) => !fKunde || r.customer_id === fKunde)
+              .map((r) => (
+                <option value={r.site_id} selected={r.site_id === fObjekt}>
+                  {r.site_no} · {r.site_name}
+                </option>
+              ))}
+          </select>
+          <OlSelect managers={managers} value={fOl} />
           <label class="small" style="margin:0;display:flex;gap:4px;align-items:center">
             <input type="checkbox" name="verlust" value="1" checked={fVerlust} /> nur Verlust
           </label>
           <button class="btn sec sm">Anzeigen</button>
         </form>
+        <PdfExport
+          action="/auswertungen/plankalkulation"
+          params={{ von, bis, kunde: fKunde, objekt: fObjekt, ol: fOl, verlust: fVerlust ? '1' : '' }}
+        />
         <div class="kpis">
           <div class="kpi">
             <div class="l">Erlös laut Leistungen</div>
@@ -3718,11 +3849,24 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     const customers = [...new Map(withData.map((r) => [r.customer_id, r.customer_name])).entries()].sort(
       (a, b) => a[1].localeCompare(b[1], 'de'),
     );
-    const managerIds = [...new Set(withData.map((r) => r.manager_user_id).filter((x): x is string => !!x))];
-    const managers = managerIds.length
-      ? await sql<{ user_id: string; name: string }[]>`
-          select user_id, name from app.manager_contacts where user_id = any(${managerIds}::uuid[]) order by name`
-      : [];
+    const managers = await managersOf(withData.map((r) => r.manager_user_id));
+    if (c.req.query('pdf') === '1') {
+      const redact = c.req.query('schwaerzen') === '1';
+      const pdf = await siteCostingPdf(active, general, {
+        title: 'Nachkalkulation & Kostenstellen',
+        period: calcPeriodLabel(von, bis),
+        filter: filterLabel(
+          withData.find((r) => r.customer_id === fKunde)?.customer_name,
+          withData.find((r) => r.site_id === fObjekt),
+          fOl,
+          managers,
+          fVerlust,
+          redact,
+        ),
+        redact,
+      });
+      return pdfResponse(pdf, `Nachkalkulation_${von}${bis !== von ? `_${bis}` : ''}.pdf`);
+    }
     const details = fObjekt ? await siteCostDetails(sql, fObjekt, { from: von, to: bis }) : [];
     const sum = (f: (r: (typeof rows)[number]) => bigint) => active.reduce((a, r) => a + f(r), 0n);
     const totalRev = sum((r) => r.revenue);
@@ -3827,6 +3971,10 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
             Bestellung · Ziel {pct(targetBp)} · <a href="/datev">Werte ändern</a>
           </span>
         </form>
+        <PdfExport
+          action="/auswertungen/nachkalkulation"
+          params={{ von, bis, kunde: fKunde, objekt: fObjekt, ol: fOl, verlust: fVerlust ? '1' : '' }}
+        />
         <div class="kpis">
           <div class="kpi">
             <div class="l">Erlös netto</div>

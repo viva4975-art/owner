@@ -3963,5 +3963,5 @@ Testadresse.
   zu nah am Text“): Das PDF aus Word-Vorlagen zeichnet Word-Kontrollkästchen jetzt nach ihrem **Zustand** (`w14:checked`),
   nicht nach dem Zeichen im Kästchen (`parsePara` in `src/pdf/docx-render.ts`). Vermutung: In der Server-Vorlage steht in
   § 4.1 ein anderes Zeichen bzw. Symbol im Kästchen, sodass der Zustand gesetzt war (Gegenprobe ok), das PDF aber das leere
-  Zeichen zeigte. Zeilen „Ort, Datum“ / „<Ort>, den …“ bekommen oben mindestens 34 Twips/20 ≈ 18 pt Abstand. Test
+  Zeichen zeigte. Zeilen „Ort, Datum“ / „<Ort>, den …“ bekommen oben rund 18 pt Abstand (etwa eine Leerzeile). Test
   `src/pdf/docx-render.test.ts`. Die Word-Datei („Als Word herunterladen“) zeigt weiter das Zeichen aus der Vorlage.

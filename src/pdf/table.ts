@@ -3,6 +3,7 @@ import { PDFDocument, type PDFFont, type PDFPage, rgb } from '@cantoo/pdf-lib';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { embedUiFonts } from './fonts.js';
+import { sortByRequest } from '../domain/export-sort.js';
 
 const LOGO = fileURLToPath(new URL('../../assets/web/logo-transparent.png', import.meta.url));
 let logoBytes: Promise<Buffer | null> | null = null;
@@ -181,7 +182,27 @@ export async function renderTablePdf(p: {
     );
   };
   newPage();
+  // Sortierung der Bildschirm-Tabelle übernehmen (?sort=…): je Abschnitt, Abschnittszeilen bleiben stehen
+  const header = p.columns.map((c) => c.label);
+  const cellText = (r: (string | PdfCell)[], i: number) => {
+    const c = r[i];
+    return typeof c === 'string' ? c : (c?.text ?? '');
+  };
+  const sorted: PdfRow[] = [];
+  let block: (string | PdfCell)[][] = [];
+  const flush = () => {
+    sorted.push(...sortByRequest(header, block, cellText));
+    block = [];
+  };
   for (const r of p.rows) {
+    if (Array.isArray(r)) block.push(r);
+    else {
+      flush();
+      sorted.push(r);
+    }
+  }
+  flush();
+  for (const r of sorted) {
     if (y - (Array.isArray(r) ? heightOf(r, regular) : rowH) < M + 24) newPage();
     if (!Array.isArray(r)) {
       y -= 4;

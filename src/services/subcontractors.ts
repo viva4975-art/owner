@@ -856,14 +856,17 @@ export async function subcontractPdf(sql: Sql, id: string, sig?: SubcontractSign
     sammel.length
       ? { k: 'Objekte:', v: `Sammelbestellung – ${sammel.length} Objekte (Liste unten)`, strong: true }
       : { k: 'Objekt / Auftrag:', v: sc.site_name, strong: true },
-    sammel.length
-      ? { k: 'Kunde:', v: [...new Set(sammel.map((r) => r.customer_name))].join(', ') }
-      : {
-          k: 'Adresse:',
-          v: [site?.street, `${site?.postal_code ?? ''} ${site?.city ?? ''}`.trim()]
-            .filter(Boolean)
-            .join(', '),
-        },
+    // kein Kundenname auf dem Bestellschein (Ahmed 23.10.) – nur Objekt und Adresse
+    ...(sammel.length
+      ? []
+      : [
+          {
+            k: 'Adresse:',
+            v: [site?.street, `${site?.postal_code ?? ''} ${site?.city ?? ''}`.trim()]
+              .filter(Boolean)
+              .join(', '),
+          },
+        ]),
     { k: 'Häufigkeit:', v: FREQUENCY[sc.frequency] ?? sc.frequency, k2: 'Kostenstelle:', v2: sc.site_no },
     { k: 'Leistungsart:', v: sc.service_kind },
     {

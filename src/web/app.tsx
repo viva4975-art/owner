@@ -81,6 +81,7 @@ import { registerTimeRoutes } from './routes-time.js';
 import { registerTimesheetRoutes } from './routes-timesheet.js';
 import { registerQmRoutes } from './routes-qm.js';
 import { sortCsv } from './csv-sort.js';
+import { exportSortStore } from '../domain/export-sort.js';
 import { registerStartAppRoutes } from './routes-start-app.js';
 import { registerMyTimeRoutes } from './routes-my-time.js';
 import { registerQmTeamRoutes } from './routes-qm-team.js';
@@ -255,9 +256,14 @@ export function createApp(deps: Deps) {
     await next();
   });
 
-  // CSV-Exporte in der Sortierung der Bildschirm-Tabelle (?sort=<Spalte>&dir=asc|desc, siehe client.ts).
+  // Exporte in der Sortierung der Bildschirm-Tabelle (?sort=<Spalte>&dir=asc|desc, siehe client.ts): Listen-PDFs und
+  // Excel sortieren über exportSortStore, CSV wird hier nachträglich umsortiert.
   app.use(async (c, next) => {
-    await next();
+    const sortLabel = c.req.method === 'GET' ? c.req.query('sort') : undefined;
+    await exportSortStore.run(
+      sortLabel ? { label: sortLabel, dir: c.req.query('dir') === 'desc' ? 'desc' : 'asc' } : null,
+      () => next(),
+    );
     const label = c.req.query('sort');
     const type = c.res.headers.get('content-type') ?? '';
     if (!label || c.req.method !== 'GET' || c.res.status !== 200 || !/text\/csv/i.test(type)) return;

@@ -1,31 +1,10 @@
+import { cmpKey as cmp, normLabel as norm, sortKey } from '../domain/export-sort.js';
+
 /**
  * Exporte in der Sortierung der Bildschirm-Tabelle (Ahmed 07.10.): Der Browser hängt `?sort=<Spaltenname>&dir=asc|desc`
  * an CSV-Links; hier wird die fertige CSV nach der gleichnamigen Spalte umsortiert. Rohzeilen bleiben unverändert
  * (keine Neu-Quotierung), Summen-/Gesamtzeilen bleiben unten. Passt keine Spalte, bleibt die Datei, wie sie ist.
  */
-
-type Key = [0, number] | [1, string];
-
-function sortKey(v: string): Key {
-  const t = v.trim().replace(/^'/, '');
-  const d = /^(\d{2})\.(\d{2})\.(\d{4})/.exec(t);
-  if (d) return [0, Number(d[3]! + d[2]! + d[1]!)];
-  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
-  if (iso) return [0, Number(iso[1]! + iso[2]! + iso[3]!)];
-  const h = /^(\d{1,2}):(\d{2})(?!\d)/.exec(t);
-  if (h && t.length <= 13) return [0, Number(h[1]) * 60 + Number(h[2])];
-  const n = t.replace(/[€%\s\u00a0]/g, '');
-  if (/^[-−]?[\d.]*\d(,\d+)?$/.test(n))
-    return [0, Number(n.replace(/−/, '-').replace(/\./g, '').replace(',', '.'))];
-  return [1, t.toLowerCase()];
-}
-
-function cmp(a: Key, b: Key): number {
-  if (a[0] !== b[0]) return a[0] - b[0];
-  return a[0] === 0
-    ? a[1] - (b[1] as number)
-    : String(a[1]).localeCompare(String(b[1]), 'de', { numeric: true });
-}
 
 /** Zerlegt CSV in Datensätze (Anführungszeichen mit Zeilenumbrüchen erlaubt); liefert Rohtext und Zellen. */
 function records(text: string, sep: string): { raw: string; cells: string[] }[] {
@@ -60,8 +39,6 @@ function records(text: string, sep: string): { raw: string; cells: string[] }[] 
   }
   return out;
 }
-
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9äöüß]/g, '');
 
 export function sortCsv(text: string, label: string, dir: 'asc' | 'desc'): string {
   const bom = text.startsWith('﻿') ? '﻿' : '';

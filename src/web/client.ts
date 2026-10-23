@@ -572,8 +572,21 @@ export const CLIENT_JS = String.raw`
       data.concat(fixed).forEach(function (r) { body.appendChild(r); });
       Array.prototype.forEach.call(head.cells, function (c, j) { c.classList.remove('asc', 'desc'); if (j === i) c.classList.add(dir > 0 ? 'asc' : 'desc'); });
       var label = (head.cells[i].textContent || '').trim();
-      Array.prototype.forEach.call(document.querySelectorAll('a[data-export], a[href*=".csv"]'), function (a) {
-        var u = new URL(a.href, location.href); u.searchParams.set('sort', label); u.searchParams.set('dir', dir > 0 ? 'asc' : 'desc'); a.href = u.pathname + u.search;
+      // alle Exporte: CSV, PDF, Excel – Links und GET-Formulare (z. B. „PDF exportieren“)
+      var dirS = dir > 0 ? 'asc' : 'desc';
+      Array.prototype.forEach.call(document.querySelectorAll('a[data-export], a[href*=".csv"], a[href*=".pdf"], a[href*=".xlsx"], a[href*="pdf=1"], a[href*="format="], a[href*="export"]'), function (a) {
+        if (!a.href || a.origin !== location.origin) return;
+        var u = new URL(a.href, location.href); u.searchParams.set('sort', label); u.searchParams.set('dir', dirS); a.href = u.pathname + u.search + u.hash;
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('form'), function (f) {
+        if ((f.getAttribute('method') || 'get').toLowerCase() !== 'get') return;
+        var exp = f.hasAttribute('data-export') || f.querySelector('[name=pdf],[name=format],[name=export]') || /\.(pdf|csv|xlsx)$/.test(f.getAttribute('action') || '');
+        if (!exp) return;
+        [['sort', label], ['dir', dirS]].forEach(function (kv) {
+          var i = f.querySelector('input[type=hidden][name="' + kv[0] + '"]');
+          if (!i) { i = document.createElement('input'); i.type = 'hidden'; i.name = kv[0]; f.appendChild(i); }
+          i.value = kv[1];
+        });
       });
     }
     Array.prototype.forEach.call(head.cells, function (th, i) {

@@ -1,4 +1,5 @@
 import { strToU8, zipSync } from 'fflate';
+import { sortByRequest } from '../export-sort.js';
 
 /*
  * Kleiner Excel-Schreiber (.xlsx, Office Open XML) ohne Fremdbibliothek: Texte als Inline-Text (nie als Formel –
@@ -82,7 +83,15 @@ function sheetXml(s: XlsxSheet): string {
       .map((h, i) => `<c r="${col(i)}${r}" t="inlineStr" s="8"><is><t>${esc(h)}</t></is></c>`)
       .join('')}</row>`,
   );
-  for (const row of s.rows) {
+  const cellText = (row: XlsxCell[], i: number) => {
+    const v = row[i];
+    if (v == null) return '';
+    if (typeof v === 'string') return v;
+    if (typeof v === 'number') return String(v).replace('.', ',');
+    return 'b' in v ? v.b : String(v.n).replace('.', ',');
+  };
+  // Sortierung der Bildschirm-Tabelle (?sort=…) übernehmen
+  for (const row of sortByRequest(s.header, s.rows, cellText)) {
     r++;
     rows.push(`<row r="${r}">${row.map((v, i) => cellXml(`${col(i)}${r}`, v, false)).join('')}</row>`);
   }

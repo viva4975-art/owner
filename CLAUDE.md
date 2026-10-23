@@ -4048,3 +4048,12 @@ Testadresse.
   Rechnung steht dann als „(ohne Zuordnung, vermutet)“, mit Knopf „gehört nicht dazu …“ (Vermerk „keine Rechnung“, der
   vor einer vermuteten Rechnung gilt). Fest zugeordnete Rechnungen: Hinweis „in der Eingangsrechnung unter Zuordnung die
   richtige Bestellung wählen“.
+- 2026-10-23: **Export immer in der Bildschirm-Sortierung** (Ahmed: „auf jeder Seite“): Klick auf eine Spaltenüberschrift
+  hängt `sort`/`dir` jetzt an alle Exporte der Seite – CSV-, PDF- und Excel-Links sowie Export-Formulare (z. B. „PDF
+  exportieren“ der Kalkulation). Server: Middleware legt den Wunsch je Anfrage ab (`src/domain/export-sort.ts`,
+  AsyncLocalStorage); **Listen-PDFs** (`renderTablePdf`, je Abschnitt) und **Excel** (`writeXlsx`) sortieren nach der
+  gleichnamigen Spalte, CSV wie bisher (`csv-sort.ts`, gleiche Vergleichsregeln: Zahl, Betrag, Datum, Uhrzeit, Text).
+  Passt keine Spalte, bleibt die Reihenfolge. Nicht betroffen: Belege (Rechnungen, Briefe), Stundenliste (eigene
+  Sortierung), DATEV/Lexware (festes Format). Test `export-sort.test.ts`.
+  **Bestellschein an Nachunternehmer ohne Kundennamen** (Ahmed): Zeile „Kunde“ bei Sammelbestellungen entfernt; es stehen
+  nur Objekt(e) und Adresse darauf. Bereits archivierte/unterschriebene Bestellscheine bleiben unverändert.

@@ -4000,3 +4000,14 @@ Testadresse.
   Lohnhöhe bleiben; statt Sachkosten nur noch **Material** (Ø der letzten 3 Monate, ohne Geräte/Sonstiges). Feld „Zuschlag
   Urlaub/Krankheit“ aus den Sätzen entfernt (Spalte `plan_cost_settings.absence_bp` bleibt ungenutzt). Nachkalkulation (Ist)
   unverändert.
+- 2026-10-23: **Rechnungskorrektur mit Minus beim Preis, vorbelegt** (Ahmed): „Rechnungskorrektur“ an einer ausgestellten
+  Rechnung startet mit allen Positionen des Originals (Leistungsart, Text, Zeitraum, Menge, Einheit) und **negativem
+  Einzelpreis** – so entspricht sie zunächst der ganzen Rechnung; nicht betroffene Positionen entfernen, Teilbeträge über
+  Menge/Preis anpassen. Positions-Eingaben mit Minus-Preis (auch im Rechnungsentwurf) werden intern wie bisher als
+  Minus-Menge mit positivem Preis gespeichert (E-Rechnung BR-27), der Editor zeigt Minus beim Preis. Verknüpfung zur
+  Leistung wird in der Korrektur nicht übernommen. Test in `forms.test.ts`.
+- 2026-10-23: **NU-Bestellung „je Tag“: Schulferien als Schließzeiten** (Ahmed): Kasten „Arbeitstage & Schließzeiten“ →
+  „Schule: alle Schulferien eintragen“ trägt alle bekannten Schulferien Bayern + Buß- und Bettag (ab heute) als
+  Schließzeiten ein (`addSchoolClosures`, feste ID je Zeitraum, überlappende übersprungen). Ferientermine liegen bis
+  Sommer 2027 vor – danach in `school-holidays.ts` ergänzen und erneut klicken. **Bestellentwurf:** „Auftrag erteilen“
+  steht jetzt oben über dem Formular (Änderungen vorher speichern).

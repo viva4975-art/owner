@@ -13,12 +13,14 @@ import { listHandovers } from '../services/handovers.js';
 import {
   WEEKDAYS,
   addClosure,
+  addSchoolClosures,
   dayAmounts,
   deleteClosure,
   listClosures,
   countDays,
   workDaysLabel,
 } from '../services/subcontract-days.js';
+import { SCHOOL_DATA_UNTIL } from '../domain/time/school-holidays.js';
 import {
   addPriceChange,
   BILLING,
@@ -2308,6 +2310,15 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
           </div>
           <button class="btn sec sm">Schließzeit eintragen</button>
         </form>
+        <form method="post" action={`/nachunternehmer/auftraege/${sc.id}/schliesszeit/schulferien`}>
+          <button
+            class="btn ghost sm"
+            data-confirm="Alle bekannten Schulferien Bayern (und Buß- und Bettag) als Schließzeiten eintragen?"
+          >
+            Schule: alle Schulferien eintragen
+          </button>
+          <span class="small mut"> Ferientermine Bayern bis {dateDe(SCHOOL_DATA_UNTIL)}</span>
+        </form>
       </div>
     );
     const hoursBlock = (
@@ -2662,9 +2673,10 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         ) : null}
         {draft ? (
           <>
+            {/* Erteilen oben (Ahmed 23.10.: nicht erst nach unten scrollen) – Änderungen vorher speichern */}
+            {signBlock}
             {editForm}
             {sammelBlock}
-            {signBlock}
             {hoursBlock}
             {trackBlock}
           </>
@@ -2924,6 +2936,16 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       c.get('actor'),
     );
     return back(c, `/nachunternehmer/auftraege/${id}#tage`, { ok: 'Schließzeit eingetragen.' });
+  });
+
+  app.post(`/nachunternehmer/auftraege/:id{${UUID}}/schliesszeit/schulferien`, async (c) => {
+    const id = c.req.param('id');
+    const n = await addSchoolClosures(sql, id, c.get('actor'));
+    return back(c, `/nachunternehmer/auftraege/${id}#tage`, {
+      ok: n
+        ? `${n} Ferienzeiträume als Schließzeit eingetragen.`
+        : 'Alle Schulferien sind schon eingetragen.',
+    });
   });
 
   app.post(`/nachunternehmer/auftraege/:id{${UUID}}/schliesszeit/:cid{${UUID}}/loeschen`, async (c) => {

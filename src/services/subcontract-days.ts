@@ -4,6 +4,9 @@
  */
 import type { Sql } from '../db/client.js';
 import { addDays, holidayName, isoWeekday } from '../domain/time/holidays.js';
+import { createHash } from 'node:crypto';
+import { schoolFreePeriods } from '../domain/time/school-holidays.js';
+import { todayBerlin } from '../domain/invoice/calc.js';
 import { BusinessError } from './errors.js';
 
 export const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'] as const;
@@ -119,4 +122,24 @@ export async function deleteClosure(sql: Sql, subcontractId: string, id: string,
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
             values (${actor}, 'closure_delete', 'subcontract', ${subcontractId},
                     ${sql.json({ von: c.date_from, bis: c.date_to, notiz: c.note })})`;
+}
+
+/**
+ * Schulferien Bayern (+ Buß- und Bettag) als Schließzeiten eintragen (Ahmed 23.10.: Schul-Objekte). Nur Zeiträume,
+ * die heute oder später enden; schon eingetragene bzw. überlappende Schließzeiten werden übersprungen. Feste ID je
+ * Bestellung + Ferienzeitraum → erneut klicken legt nichts doppelt an.
+ */
+export async function addSchoolClosures(sql: Sql, subcontractId: string, actor: string) {
+  const today = todayBerlin();
+  const existing = await listClosures(sql, subcontractId);
+  let added = 0;
+  for (const p of schoolFreePeriods()) {
+    if (p.to < today) continue;
+    if (existing.some((x) => x.date_from <= p.to && x.date_to >= p.from)) continue;
+    const h = createHash('md5').update(`school:${subcontractId}:${p.from}`).digest('hex');
+    const id = `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+    await addClosure(sql, { id, subcontractId, from: p.from, to: p.to, note: p.name }, actor);
+    added++;
+  }
+  return added;
 }

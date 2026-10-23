@@ -1,5 +1,10 @@
 import type { Sql } from '../db/client.js';
-import { employerCost, type PayBand, type PlanCostRates } from '../domain/hr/employer-cost.js';
+import {
+  employerCost,
+  isManagingDirector,
+  type PayBand,
+  type PlanCostRates,
+} from '../domain/hr/employer-cost.js';
 import { monthBounds, todayBerlin } from '../domain/invoice/calc.js';
 import { type Cents, lineNet, type Quantity } from '../domain/money/money.js';
 import { monthRange, siteCosting, subcontractEstimates } from './costing.js';
@@ -166,10 +171,11 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
         monthly_salary_cents: bigint | null;
         wage: bigint | null;
         min_wage: bigint | null;
+        tags: string[] | null;
       }[]
     >`
       select e.id, e.last_name || ', ' || e.first_name as name, e.personnel_no, e.employment_type::text,
-             e.pay_model, e.monthly_salary_cents, app.effective_wage_cents(e)::bigint as wage,
+             e.pay_model, e.monthly_salary_cents, app.effective_wage_cents(e)::bigint as wage, e.tags,
              (select min(w.hourly_wage_cents) from app.wage_levels w where w.active)::bigint as min_wage
         from app.employees e`,
   ]);
@@ -225,15 +231,19 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
     const minutes = [...bySite.values()].reduce((a, b) => a + b, 0);
     const wage = BigInt(e.wage ?? e.min_wage ?? 0);
     const fixed = e.pay_model === 'festgehalt' && e.monthly_salary_cents;
-    // Stundenlohn: Minuten × Lohn × (1 + Ausfall), kaufmännisch gerundet; Festgehalt: Monatsgehalt
+    const gf = isManagingDirector(e.tags);
+    // Stundenlohn: Minuten × Lohn × (1 + Ausfall), kaufmännisch gerundet; Festgehalt: Monatsgehalt.
+    // Geschäftsführer: ohne Ausfall-Zuschlag und ohne Arbeitgeberkosten.
     const gross = fixed
       ? BigInt(e.monthly_salary_cents!)
-      : (BigInt(minutes) * wage * BigInt(10000 + rates.absence_bp) + 300000n) / 600000n;
-    const { band, costCents } = employerCost(
-      gross,
-      e.employment_type === 'minijob' ? 'minijob' : e.employment_type ? 'sv' : null,
-      rates,
-    );
+      : (BigInt(minutes) * wage * BigInt(10000 + (gf ? 0 : rates.absence_bp)) + 300000n) / 600000n;
+    const { band, costCents } = gf
+      ? { band: 'gf' as const, costCents: 0n }
+      : employerCost(
+          gross,
+          e.employment_type === 'minijob' ? 'minijob' : e.employment_type ? 'sv' : null,
+          rates,
+        );
     const sitesOf = [...bySite.keys()];
     const w = sitesOf.map((id) => bySite.get(id)!);
     const g = split(gross, w);
@@ -263,7 +273,7 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
     ea.employer += costCents;
     if (!ea.bands.includes(band)) ea.bands.push(band);
     if (e.employment_type === 'minijob' && gross > rates.minijob_limit_cents) ea.minijob_over = true;
-    if (e.employment_type && e.employment_type !== 'minijob' && gross <= rates.minijob_limit_cents)
+    if (!gf && e.employment_type && e.employment_type !== 'minijob' && gross <= rates.minijob_limit_cents)
       ea.low_plan = true;
     empAcc.set(empId, ea);
   }

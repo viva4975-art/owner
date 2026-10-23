@@ -12,6 +12,7 @@ describe.skipIf(!available)('Plan-Kalkulation (Soll)', () => {
   const site = randomUUID();
   const mini = randomUUID();
   const regular = randomUUID();
+  const gf = randomUUID();
   beforeAll(async () => {
     sql = await freshDatabase();
     await sql`insert into app.sites (id, customer_id, site_no, name) values (${site}, ${DEMO.company}, '2990299', 'Plan-Objekt')`;
@@ -24,6 +25,12 @@ describe.skipIf(!available)('Plan-Kalkulation (Soll)', () => {
                 pay_model, hourly_wage_cents)
               values (${mini}, '9881', 'Mini', 'Plan', '2025-01-01', 'minijob', 2, 'individuell', 1500),
                      (${regular}, '9882', 'Voll', 'Plan', '2025-01-01', 'vollzeit', 40, 'individuell', 1500)`;
+    await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, employment_type, weekly_hours,
+                pay_model, monthly_salary_cents, tags)
+              values (${gf}, '9883', 'Chef', 'Plan', '2025-01-01', 'vollzeit', 40, 'festgehalt', 500000,
+                      ${['Vollzeit', 'Geschäftsführer']})`;
+    await sql`insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes, valid_from)
+              values (${randomUUID()}, ${gf}, ${site}, 3, '09:00', '11:00', 0, '2026-01-01')`;
     // Minijob montags 2 Std. (November 2026: 5 Montage = 10 Std.), Vollzeit Mo–Fr 8 Std.
     await sql`insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes, valid_from)
               values (${randomUUID()}, ${mini}, ${site}, 1, '06:00', '08:00', 0, '2026-01-01')`;
@@ -50,7 +57,13 @@ describe.skipIf(!available)('Plan-Kalkulation (Soll)', () => {
     expect(v.gross).toBe(284760n);
     expect(v.bands).toEqual(['regulaer']);
     expect(v.employer).toBe(73610n);
-    expect(r.gross).toBe(16950n + 284760n);
+    // Geschäftsführer: Monatsgehalt, keine Arbeitgeberkosten
+    const c = employees.find((e) => e.employee_id === gf)!;
+    expect(c.gross).toBe(500000n);
+    expect(c.employer).toBe(0n);
+    expect(c.bands).toEqual(['gf']);
+    expect(r.gross).toBe(16950n + 284760n + 500000n);
+    expect(r.employer).toBe(5707n + 73610n);
     expect(r.margin).toBe(220000n - r.gross - r.employer - r.subcontractor - r.material);
   });
 });

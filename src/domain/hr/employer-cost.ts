@@ -19,12 +19,13 @@ export interface PlanCostRates {
   absence_bp: number;
 }
 
-export type PayBand = 'minijob' | 'midijob' | 'regulaer';
+export type PayBand = 'minijob' | 'midijob' | 'regulaer' | 'gf';
 
 export const PAY_BAND_LABEL: Record<PayBand, string> = {
   minijob: 'Minijob',
   midijob: 'Midijob',
   regulaer: 'regulär',
+  gf: 'Geschäftsführer (ohne Zusatzkosten)',
 };
 
 /**
@@ -50,6 +51,10 @@ function midijobEmployerShare(ae: number, r: PlanCostRates): number {
   const be2 = (og / (og - g)) * (ae - g);
   return be * total - (be2 * r.sv_employee_bp) / 10000;
 }
+
+/** Geschäftsführer (Tag „Geschäftsführer“, wie beim Lohnexport) – in der Kalkulation ohne Zusatzkosten (Ahmed 23.10.) */
+export const isManagingDirector = (tags: readonly string[] | null | undefined) =>
+  (tags ?? []).some((t) => /gesch(ä|ae)ftsf(ü|ue)hr/i.test(t));
 
 /** Arbeitgeberkosten über dem Bruttoentgelt eines Monats (Cent, kaufmännisch gerundet). */
 export function employerCost(

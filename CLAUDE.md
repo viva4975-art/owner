@@ -3991,3 +3991,7 @@ Testadresse.
   (Admin/Buchhaltung, `app.plan_cost_settings`, Migration `20261220000001`). **Werte 2026 sind Schätzwerte** (Ø-Zusatzbeitrag,
   U1/U2 der Kasse, BG-Beitrag) – jährlich mit dem Steuerberater abgleichen; nicht enthalten: Nacht-/Sonn-/Feiertagszuschläge,
   Einzelleistungen/Regie. Tests `employer-cost.test.ts`, `plan-costing.db.test.ts`.
+- 2026-10-23: **Geschäftsführer ohne Zusatzkosten** (Ahmed): Mitarbeitende mit Tag „Geschäftsführer“ (gleiche Erkennung wie
+  beim Lohnexport, `isManagingDirector`) werden in der Plan-Kalkulation nur mit Gehalt bzw. Lohn gerechnet – ohne
+  Arbeitgeberkosten und ohne Zuschlag Urlaub/Krankheit (Einstufung „Geschäftsführer (ohne Zusatzkosten)“); in der
+  Nachkalkulation (Ist) ohne Lohnzuschlag. Test in `plan-costing.db.test.ts`.

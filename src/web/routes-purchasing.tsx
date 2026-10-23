@@ -3597,7 +3597,9 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
               {pct(rates.minijob_flat_bp)} Pauschalen); bis {eur(rates.midijob_upper_cents)} = Midijob
               (Übergangsbereich, AG-Satz sinkt von 28 % auf {pct(rates.sv_employer_bp)}); darüber regulär (
               {pct(rates.sv_employer_bp)}). Midijob und regulär zusätzlich Umlagen {pct(rates.levies_bp)};
-              alle zusätzlich Unfallversicherung {pct(rates.accident_bp)}.
+              alle zusätzlich Unfallversicherung {pct(rates.accident_bp)}. Teilzeit/Vollzeit wird nie als
+              Minijob gerechnet, auch wenn weniger geplant ist. Geschäftsführer (Tag „Geschäftsführer“): nur
+              Gehalt bzw. Lohn, ohne Arbeitgeberkosten und ohne Zuschlag Urlaub/Krankheit.
             </li>
             <li>
               <b>Nachunternehmer:</b> laut erteilter Bestellung jeden Monat (Pauschale, je Tag, je m², Anteil
@@ -3820,9 +3822,9 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
           )}
           <span class="small mut" style="flex-basis:100%">
             Lohn = Ist-Stunden × Stundenlohn (fehlt die Vergütung: niedrigster Tariflohn) + Zuschlag (Minijob{' '}
-            {pct(overhead.minijob)}, Teilzeit {pct(overhead.parttime)}, über 30 Std. {pct(overhead.fulltime)})
-            · Nachunternehmer = Eingangsrechnungen, sonst Monatspauschale laut Bestellung · Ziel{' '}
-            {pct(targetBp)} · <a href="/datev">Werte ändern</a>
+            {pct(overhead.minijob)}, Teilzeit {pct(overhead.parttime)}, über 30 Std. {pct(overhead.fulltime)};
+            Geschäftsführer ohne Zuschlag) · Nachunternehmer = Eingangsrechnungen, sonst Monatspauschale laut
+            Bestellung · Ziel {pct(targetBp)} · <a href="/datev">Werte ändern</a>
           </span>
         </form>
         <div class="kpis">

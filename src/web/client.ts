@@ -560,16 +560,21 @@ export const CLIENT_JS = String.raw`
     var head = table.tHead.rows[table.tHead.rows.length - 1];
     if (Array.prototype.some.call(head.cells, function (c) { return c.colSpan > 1; })) return;
     var cols = head.cells.length;
-    // nur gleichförmige Tabellen (keine Gruppenzeilen mit colspan)
-    var grouped = Array.prototype.some.call(body.rows, function (r) { return r.cells.length !== cols && !/^\s*(Summe|Gesamt)/i.test(r.textContent); });
-    if (grouped) return;
+    // Feste Zeilen (Summe/Gesamt, Zwischenüberschriften mit colspan, class="nosort") bleiben an ihrer Stelle;
+    // sortiert wird jeweils der Block zwischen ihnen (z. B. Objekte und darunter „Allgemeine Kostenstellen“)
+    function isFixed(r) {
+      return r.cells.length !== cols || /^\s*(Summe|Gesamt)/i.test(r.cells[0] ? r.cells[0].textContent : '') || r.classList.contains('nosort');
+    }
+    var dataRows = Array.prototype.filter.call(body.rows, function (r) { return !isFixed(r); });
+    if (dataRows.length < 2) return;
     var key = 'vd-sort:' + location.pathname + ':' + ti;
     function apply(i, dir) {
       var rows = Array.prototype.slice.call(body.rows);
-      var fixed = rows.filter(function (r) { return r.cells.length !== cols || /^\s*(Summe|Gesamt)/i.test(r.cells[0] ? r.cells[0].textContent : '') || r.classList.contains('nosort'); });
-      var data = rows.filter(function (r) { return fixed.indexOf(r) < 0; });
-      data.sort(function (a, b) { return cmp(sortKey(a.cells[i]), sortKey(b.cells[i])) * dir; });
-      data.concat(fixed).forEach(function (r) { body.appendChild(r); });
+      var out = [], block = [];
+      function flush() { block.sort(function (a, b) { return cmp(sortKey(a.cells[i]), sortKey(b.cells[i])) * dir; }); out = out.concat(block); block = []; }
+      rows.forEach(function (r) { if (isFixed(r)) { flush(); out.push(r); } else block.push(r); });
+      flush();
+      out.forEach(function (r) { body.appendChild(r); });
       Array.prototype.forEach.call(head.cells, function (c, j) { c.classList.remove('asc', 'desc'); if (j === i) c.classList.add(dir > 0 ? 'asc' : 'desc'); });
       var label = (head.cells[i].textContent || '').trim();
       // alle Exporte: CSV, PDF, Excel – Links und GET-Formulare (z. B. „PDF exportieren“)

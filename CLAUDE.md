@@ -4071,3 +4071,7 @@ Testadresse.
   Objektnummer leer = Kundennummer + 01. **Rechnungsentwürfe sortierbar** (Auswahl „Sortieren“ + auf-/absteigend):
   Name (Empfänger), Kundennummer, Kostenstelle (kleinste Objektnummer der Rechnung), Objektname, Rechnungsdatum,
   Leistungszeitraum, Betrag netto; gilt zusammen mit dem Monatsfilter.
+- 2026-10-23: **Sortieren per Klick auf die Überschrift auch bei Rechnungsentwürfen und Nachkalkulation** (Ahmed): Tabellen
+  mit Summenzeile über mehrere Spalten („Rechnungsentwürfe (n)“) oder Zwischenüberschrift („Allgemeine Kostenstellen“)
+  waren vom Sortieren ausgenommen. Jetzt bleiben solche Zeilen (und Summe/Gesamt) an ihrer Stelle, sortiert wird der
+  Block dazwischen (`sortable` in `client.ts`) – gilt für alle Tabellen. Kostenstelle der Entwürfe weiter über „Sortieren“.

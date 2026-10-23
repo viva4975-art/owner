@@ -25,4 +25,20 @@ describe('parseDocx', () => {
     expect(a!.kind === 'p' && a!.before).toBeGreaterThan(20);
     expect(b!.kind === 'p' && b!.before).toBe(0);
   });
+
+  it('liest Zellrahmen oben als Unterschriftslinie (gut sichtbar)', () => {
+    const cell = (t: string) =>
+      `<w:tc><w:tcPr><w:tcBorders><w:top w:val="single" w:sz="4" w:color="D8D5D8"/></w:tcBorders></w:tcPr>` +
+      `<w:p><w:r><w:t>${t}</w:t></w:r></w:p></w:tc>`;
+    const [t] = parseDocx(
+      doc(
+        `<w:tbl><w:tblGrid><w:gridCol w:w="4270"/><w:gridCol w:w="4270"/></w:tblGrid><w:tr>${cell('Stempel und Unterschrift Arbeitgeber')}${cell('Bemerkung')}</w:tr></w:tbl>`,
+      ),
+    );
+    if (t!.kind !== 'tbl') throw new Error('Tabelle erwartet');
+    const [sign, other] = t!.rows[0]!.cells;
+    expect(sign!.top![0]).toBeLessThan(0.5);
+    expect(other!.top![0]).toBeGreaterThan(0.8);
+    expect(sign!.bottom).toBeNull();
+  });
 });

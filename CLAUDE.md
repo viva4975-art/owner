@@ -3968,3 +3968,8 @@ Testadresse.
 - 2026-10-23: **Kreuze gerade** (Ahmed: „Kreuze irgendwie schief“): Kästchen in PDFs aus Word-Vorlagen/Formularen werden jetzt
   komplett gezeichnet – Rahmen und „X“ aus derselben Geometrie (`FormDoc.text`), statt ein X über das Schriftzeichen □ zu
   legen. Gleiche Größe/Breite wie vorher, auch leere Kästchen ☐ im selben Strich.
+- 2026-10-23: **Unterschriftslinie Arbeitgeber fehlte** (Ahmed): Im PDF aus Word-Vorlagen wurden Zellrahmen (`w:tcBorders`)
+  nicht gezeichnet – die Linien über „Stempel und Unterschrift Arbeitgeber“ / „Unterschrift Arbeitnehmer/in“ sind in den
+  Vorlagen obere Zellrahmen. Jetzt gezeichnet (oben/unten je Zelle); in Unterschriftszellen dunkelgrau statt des sehr
+  hellen D8D5D8, darüber etwas mehr Platz zum Unterschreiben. Die graue Unterschriftsfläche beim Arbeitnehmer bleibt
+  wie bisher direkt auf der Linie. Test in `src/pdf/docx-render.test.ts`.

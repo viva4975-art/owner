@@ -78,6 +78,9 @@ interface Cell {
   paras: Para[];
   fill: [number, number, number] | null;
   span: number;
+  /** Zellrahmen oben/unten (in den Vorlagen = Unterschriftslinie) */
+  top: [number, number, number] | null;
+  bottom: [number, number, number] | null;
 }
 interface Table {
   kind: 'tbl';
@@ -256,10 +259,24 @@ function parseTable(t: XNode): Table {
       minH: Number(h?.attrs['w:val'] ?? 0) / 20,
       cells: kids(tr, 'w:tc').map((tc) => {
         const tcPr = child(tc, 'w:tcPr');
+        const paras = cellParas(tc);
+        const tb = child(tcPr, 'w:tcBorders');
+        // Unterschriftslinie gut sichtbar (Vorlage: sehr helles Grau D8D5D8 – im PDF kaum zu sehen)
+        const sign = /unterschrift|stempel/i.test(
+          paras.map((p) => p.runs.map((r) => r.text).join('')).join(' '),
+        );
+        const edge = (n: XNode | undefined): [number, number, number] | null =>
+          n && !['nil', 'none'].includes(val(n) ?? '')
+            ? sign
+              ? [0.36, 0.34, 0.36]
+              : tableLine(n.attrs['w:color'])
+            : null;
         return {
-          paras: cellParas(tc),
+          paras,
           fill: hex(child(tcPr, 'w:shd')?.attrs['w:fill']),
           span: Number(val(child(tcPr, 'w:gridSpan')) ?? 1),
+          top: edge(child(tb, 'w:top')),
+          bottom: edge(child(tb, 'w:bottom')),
         };
       }),
     };
@@ -466,7 +483,15 @@ export function renderDocx(d: FormDoc, blocks: (Para | Table)[]) {
         return { c, x0, x1, inner, laid, h };
       });
       const rowH = Math.max(row.minH * F, ...cells.map((c) => c.h + padY * 2), 12);
-      d.ensure(Math.min(rowH, BOTTOM - FORM_Y.TOP - 10));
+      // Unterschriftszeile: genug Platz zum Unterschreiben darüber, Linie nicht vom Text getrennt
+      // (nicht, wenn direkt darüber das graue Unterschriftsfeld steht – Fläche gehört an die Linie)
+      const prev = b.rows[b.rows.indexOf(row) - 1];
+      const prevShaded = !!prev?.cells.some(
+        (c) => c.fill && !(c.fill[0] > 0.99 && c.fill[1] > 0.99 && c.fill[2] > 0.99),
+      );
+      const signGap = !b.border && !prevShaded && cells.some((c) => c.c.top && c.c.top[0] < 0.5) ? 16 : 0;
+      d.ensure(Math.min(rowH + signGap, BOTTOM - FORM_Y.TOP - 10));
+      d.y += signGap;
       for (const c of cells) {
         if (c.c.fill && !(c.c.fill[0] > 0.99 && c.c.fill[1] > 0.99 && c.c.fill[2] > 0.99))
           d.rect(c.x0, d.y, c.x1 - c.x0, rowH, rgb(...c.c.fill));
@@ -479,6 +504,12 @@ export function renderDocx(d: FormDoc, blocks: (Para | Table)[]) {
           y += x.p.before * F * 0.6;
           y = drawLines(d, x.l.lines, c.x0 + pad, c.inner, x.p.align, y);
           y += x.p.after * F * 0.6;
+        }
+      }
+      if (!b.border) {
+        for (const c of cells) {
+          if (c.c.top) d.line(c.x0 + pad, c.x1 - pad, d.y, rgb(...c.c.top), 0.6);
+          if (c.c.bottom) d.line(c.x0 + pad, c.x1 - pad, d.y + rowH, rgb(...c.c.bottom), 0.6);
         }
       }
       if (b.border) {

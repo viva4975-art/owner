@@ -194,12 +194,42 @@ export const TypeSelect: FC<{
   );
 };
 
+/** Abrechnung je Tag/Stunde: Wochentage wählen → Menge = Tage im Leistungszeitraum ohne Feiertage (× Std. je Tag). */
+export const DaysBox: FC<{ unit?: string | null | undefined; from?: string | null; to?: string | null }> = ({
+  unit,
+  from,
+  to,
+}) => (
+  <div
+    class="ln-days"
+    hidden={unit !== 'DAY' && unit !== 'HUR'}
+    data-from={from ?? undefined}
+    data-to={to ?? undefined}
+  >
+    <span class="small mut">Tage:</span>
+    {['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((d, i) => (
+      <label class="ln-wd">
+        <input type="checkbox" data-wd={String(i + 1)} checked={i < 5} />
+        {d}
+      </label>
+    ))}
+    <label class="ln-wd ln-hpd" hidden={unit !== 'HUR'}>
+      Std. je Tag
+      <input class="ln-hpd-i" inputmode="decimal" size={4} style="width:60px" />
+    </label>
+    <button type="button" class="btn sm sec ln-days-calc">
+      Menge berechnen
+    </button>
+    <span class="small mut ln-days-info"></span>
+  </div>
+);
+
 const LineRowInputs: FC<{
   l?: EditorLine;
   recurring?: boolean | undefined;
   types?: ServiceTypeOption[] | undefined;
 }> = ({ l, recurring, types }) => (
-  <tr>
+  <tr class="ln-row">
     <td style="min-width:260px">
       {types ? (
         <TypeSelect types={types} typeId={l?.stype} desc={l?.desc} />
@@ -222,22 +252,7 @@ const LineRowInputs: FC<{
           <input type="date" name="lpe" value={l?.lpe ?? ''} aria-label="Leistungszeitraum bis" />
         </div>
       )}
-      {types && (
-        // Abrechnung je Tag: Wochentage wählen → Menge = Tage im Leistungszeitraum ohne Feiertage (Ahmed 23.10.)
-        <div class="ln-days" hidden={(l?.unit ?? 'LS') !== 'DAY'}>
-          <span class="small mut">Tage:</span>
-          {['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((d, i) => (
-            <label class="ln-wd">
-              <input type="checkbox" data-wd={String(i + 1)} checked={i < 5} />
-              {d}
-            </label>
-          ))}
-          <button type="button" class="btn sm sec ln-days-calc">
-            Menge berechnen
-          </button>
-          <span class="small mut ln-days-info"></span>
-        </div>
-      )}
+      {types && <DaysBox unit={l?.unit} />}
       <input type="hidden" name="src" value={l?.src ?? ''} />
     </td>
     <td style="width:90px">
@@ -389,30 +404,34 @@ export const LineEditor: FC<{
 );
 
 /** Feiertage Bayern (Vorjahr bis +2 Jahre) für die Tagesberechnung im Browser. */
-const daysScript = () => {
+export const daysScript = () => {
   const y = Number(new Date().toISOString().slice(0, 4));
   const hol = [y - 1, y, y + 1, y + 2].flatMap((yy) => [...holidaysBavaria(yy).keys()]);
   return `(function(){var HOL=${JSON.stringify(hol)};
-function rowOf(el){return el.closest('tr');}
-function sync(tr){var u=tr.querySelector('select[name=unit]'),b=tr.querySelector('.ln-days');if(u&&b)b.hidden=u.value!=='DAY';}
+function rowOf(el){return el.closest('.ln-row')||el.closest('tr');}
+function sync(tr){var u=tr.querySelector('select[name=unit]'),b=tr.querySelector('.ln-days');if(!u||!b)return;b.hidden=u.value!=='DAY'&&u.value!=='HUR';var h=b.querySelector('.ln-hpd');if(h)h.hidden=u.value!=='HUR';}
 function iso(d){return d.toISOString().slice(0,10);}
 function calc(tr,manual){var b=tr.querySelector('.ln-days');if(!b||b.hidden)return;
+var u=tr.querySelector('select[name=unit]');var hur=u&&u.value==='HUR';
 var ps=tr.querySelector('[name=lps]'),pe=tr.querySelector('[name=lpe]');
 var gs=document.getElementById('period_start'),ge=document.getElementById('period_end');
-var from=(ps&&ps.value)||(gs&&gs.value)||'';var to=(ps&&ps.value)?((pe&&pe.value)||ps.value):((ge&&ge.value)||from);
+var from=(ps&&ps.value)||(gs&&gs.value)||b.getAttribute('data-from')||'';var to=(ps&&ps.value)?((pe&&pe.value)||ps.value):((ge&&ge.value)||b.getAttribute('data-to')||from);
 var info=b.querySelector('.ln-days-info');
 if(!from||!to||to<from){if(manual&&info)info.textContent='Bitte Leistungszeitraum eintragen';return;}
+var hpd=1;if(hur){var hi=b.querySelector('.ln-hpd-i');hpd=parseFloat(((hi&&hi.value)||'').replace(',','.'));if(!(hpd>0)){if(manual&&info)info.textContent='Bitte Std. je Tag eintragen';if(hi&&manual)hi.focus();return;}}
 var wd={};b.querySelectorAll('[data-wd]').forEach(function(c){if(c.checked)wd[c.getAttribute('data-wd')]=1;});
 var n=0,h=0,d=new Date(from+'T12:00:00Z'),e=new Date(to+'T12:00:00Z');
 for(;d<=e;d.setUTCDate(d.getUTCDate()+1)){var w=String(((d.getUTCDay()+6)%7)+1);if(!wd[w])continue;if(HOL.indexOf(iso(d))>=0){h++;continue;}n++;}
-var q=tr.querySelector('[name=qty]');if(q){q.value=String(n);q.dispatchEvent(new Event('input',{bubbles:true}));q.dispatchEvent(new Event('change',{bubbles:true}));}
-if(info)info.textContent=n+' Tage'+(h?' (ohne '+h+' Feiertag'+(h>1?'e':'')+')':'');}
+var qv=Math.round(n*hpd*1000)/1000;
+var q=tr.querySelector('[name=qty]');if(q){q.value=String(qv).replace('.',',');q.dispatchEvent(new Event('input',{bubbles:true}));q.dispatchEvent(new Event('change',{bubbles:true}));}
+if(info)info.textContent=n+' Tage'+(hur?' × '+String(hpd).replace('.',',')+' Std. = '+String(qv).replace('.',',')+' Std.':'')+(h?' (ohne '+h+' Feiertag'+(h>1?'e':'')+')':'');}
 document.addEventListener('change',function(ev){var t=ev.target;if(!t.closest)return;var tr=rowOf(t);if(!tr||!tr.querySelector('.ln-days'))return;
 if(t.name==='unit'){sync(tr);if(t.value==='DAY')calc(tr,false);}
 else if(t.hasAttribute&&t.hasAttribute('data-wd'))calc(tr,true);
+else if(t.classList&&t.classList.contains('ln-hpd-i'))calc(tr,true);
 else if(t.name==='lps'||t.name==='lpe')calc(tr,false);});
 document.addEventListener('click',function(ev){var t=ev.target.closest&&ev.target.closest('.ln-days-calc');if(t)calc(rowOf(t),true);});
-document.querySelectorAll('#lines tr').forEach(sync);})();`;
+document.querySelectorAll('.ln-row').forEach(sync);})();`;
 };
 
 /** Warnhinweis und Hinweise zur Rechnungsstellung des Kunden (beim Erstellen/Prüfen von Rechnungen). */

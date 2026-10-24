@@ -4075,3 +4075,14 @@ Testadresse.
   mit Summenzeile über mehrere Spalten („Rechnungsentwürfe (n)“) oder Zwischenüberschrift („Allgemeine Kostenstellen“)
   waren vom Sortieren ausgenommen. Jetzt bleiben solche Zeilen (und Summe/Gesamt) an ihrer Stelle, sortiert wird der
   Block dazwischen (`sortable` in `client.ts`) – gilt für alle Tabellen. Kostenstelle der Entwürfe weiter über „Sortieren“.
+- 2026-10-24: Ahmed (4 Punkte):
+  - **Rechnungsentwürfe:** Auswahl „Sortieren / aufsteigend“ wieder entfernt, Entwürfe in der ursprünglichen Reihenfolge;
+    Sortieren nur noch per Klick auf die Spaltenüberschrift.
+  - **Langer Objektname im PDF:** Objekt-Band (Rechnung, Angebot, Briefe) bricht Name und Adresse um, Band wird höher
+    (`P.objBand` in `invoice-design2.ts`); vorher wurden Straße/Ort abgeschnitten. Bereits ausgestellte PDFs bleiben.
+  - **„Objekt“ bei einzelnen Positionen:** Positionen ohne Adresszeile (z. B. „ausgeführt am …“) galten als anderes Objekt
+    → Rechnung wurde wie eine Sammelrechnung mit Objekt-Überschriften gezeigt. Objekt jetzt nur über Name + Nr. erkannt,
+    Adresse wird von der anderen Position übernommen (`withPlaceAddress`).
+  - **Tage-Kästchen auch bei Std.:** Einheit „Std.“ zeigt die Wochentage + „Std. je Tag“ → Menge = Arbeitstage im
+    Leistungszeitraum (ohne Feiertage) × Std. je Tag. Die Kästchen gibt es jetzt auch in der Direktbearbeitung im
+    Rechnungsbrief (vorher nur im vollen Editor); Zeitraum = Position, sonst Rechnung.

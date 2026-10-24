@@ -362,61 +362,11 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     const filtered = monat
       ? allDrafts.filter((i) => (i.period_start ?? '').slice(0, 7) === monat)
       : allDrafts;
-    // Sortierung (Ahmed 23.10.): Name, Kundennr., Kostenstelle (Objektnummer), Datum, Leistungszeitraum, Betrag
-    const SORTS = {
-      datum: 'Rechnungsdatum',
-      leistung: 'Leistungszeitraum',
-      name: 'Name (Empfänger)',
-      kunde: 'Kundennummer',
-      kostenstelle: 'Kostenstelle (Objekt-Nr.)',
-      objekt: 'Objektname',
-      betrag: 'Betrag netto',
-    } as const;
-    const sort = (
-      Object.keys(SORTS).includes(c.req.query('sort') ?? '') ? c.req.query('sort') : 'name'
-    ) as keyof typeof SORTS;
-    const desc = c.req.query('dir') === 'ab';
     const info = await draftListInfo(
       sql,
       filtered.map((d) => d.id),
     );
-    const todayIso = todayBerlin();
-    const cmpNo = (a: string, b: string) => a.localeCompare(b, 'de', { numeric: true, sensitivity: 'base' });
-    const keyOf = (i: (typeof filtered)[number]): string | bigint => {
-      const x = info.get(i.id);
-      const first = [...(x?.places ?? [])].sort((p, q) => cmpNo(p.site_no, q.site_no))[0];
-      switch (sort) {
-        case 'datum':
-          return i.planned_issue_date ?? todayIso;
-        case 'leistung':
-          return i.period_start ?? '';
-        case 'kunde':
-          return i.customer_no ?? '';
-        case 'kostenstelle':
-          return first?.site_no ?? '';
-        case 'objekt':
-          return first?.name ?? i.site_name ?? '';
-        case 'betrag':
-          return i.net_cents;
-        default:
-          return x?.recipient ?? i.customer_name;
-      }
-    };
-    const drafts = [...filtered].sort((a, b) => {
-      const ka = keyOf(a);
-      const kb = keyOf(b);
-      let r =
-        typeof ka === 'bigint' && typeof kb === 'bigint'
-          ? ka < kb
-            ? -1
-            : ka > kb
-              ? 1
-              : 0
-          : cmpNo(String(ka), String(kb));
-      if (r === 0)
-        r = cmpNo(info.get(a.id)?.recipient ?? a.customer_name, info.get(b.id)?.recipient ?? b.customer_name);
-      return desc ? -r : r;
-    });
+    const drafts = filtered;
     const months = [...new Set(allDrafts.map((i) => (i.period_start ?? '').slice(0, 7)).filter(Boolean))]
       .sort()
       .reverse();
@@ -452,30 +402,6 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                     {allDrafts.filter((i) => (i.period_start ?? '').startsWith(m)).length})
                   </option>
                 ))}
-              </select>
-              <label for="ds" style="margin:0 0 0 8px">
-                Sortieren
-              </label>
-              <select id="ds" name="sort" data-nosearch onchange="this.form.submit()" style="max-width:220px">
-                {Object.entries(SORTS).map(([k, l]) => (
-                  <option value={k} selected={k === sort}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-              <select
-                name="dir"
-                data-nosearch
-                aria-label="Reihenfolge"
-                onchange="this.form.submit()"
-                style="max-width:150px"
-              >
-                <option value="auf" selected={!desc}>
-                  aufsteigend
-                </option>
-                <option value="ab" selected={desc}>
-                  absteigend
-                </option>
               </select>
               {drafts.length > 0 && (
                 <a

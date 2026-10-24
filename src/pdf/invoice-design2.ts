@@ -34,6 +34,7 @@ import {
   girocodePayload,
   quantityPdf,
   splitLineDetail,
+  withPlaceAddress,
   wrap,
 } from './render.js';
 
@@ -168,6 +169,30 @@ class P {
   right(s: string, xr: number, y: number, size = 8.6, wt: Weight = 'r', color: Color = INK, sp = 0) {
     this.text(s, xr - this.w(s, size, wt, sp), y, size, wt, color, sp);
   }
+  /** Objekt-Band über der Anrede; langer Name/Adresse brechen um (Ahmed 24.10.) */
+  objBand(title: string, address: string | null) {
+    const tx = L + 52;
+    const tw = R - 8 - tx;
+    const tl = wrap(title, this.f.s, 9, tw);
+    const last = tl[tl.length - 1] ?? '';
+    const inline = !!address && tl.length === 1 && this.w(last, 9, 's') + 10 + this.w(address, 8, 'r') <= tw;
+    const al = address && !inline ? wrap(address, this.f.r, 8, tw) : [];
+    const h = 26 + (tl.length - 1) * 11.5 + al.length * 11;
+    this.rect(L, this.y - 4, R - L, h, SOFT, 4);
+    this.rect(L, this.y - 4, 2.2, h, BRD);
+    this.cap('Objekt', L + 10, this.y + 12, BRD, 6.4);
+    let y = this.y + 12;
+    tl.forEach((t, i) => {
+      this.text(t, tx, y, 9, 's', INK);
+      if (i < tl.length - 1) y += 11.5;
+    });
+    if (inline) this.text(address!, tx + this.w(last, 9, 's') + 10, y, 8, 'r', GREY);
+    for (const t of al) {
+      y += 11;
+      this.text(t, tx, y, 8, 'r', GREY);
+    }
+    this.y += h + 14;
+  }
   /** Kapitälchen-Beschriftung (gesperrt) */
   cap(s: string, x: number, y: number, color: Color = GREY, size = 6.4, right = false) {
     const t = s.toUpperCase();
@@ -264,7 +289,7 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
 
   // ---------------------------------------------------------------- Daten
   // Objekt und Leistungszeitraum stehen im Kopf (ein Objekt) bzw. als Zwischenüberschrift je Objekt (Sammelrechnung)
-  const parsed = doc.lines.map((l) => splitLineDetail(l.detail));
+  const parsed = withPlaceAddress(doc.lines.map((l) => splitLineDetail(l.detail)));
   const subjPlace = o.subject?.startsWith('Objekt: ') ? o.subject.slice(8) : null;
   const sitePlaces = !o.subject;
   const docPeriod = periodText(doc.periodStart, doc.periodEnd);
@@ -435,13 +460,7 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
     if (v === 'edel') {
       if (place && objPos === 'band') {
         // schmales Band über der Anrede
-        p.rect(L, p.y - 4, R - L, 26, SOFT, 4);
-        p.rect(L, p.y - 4, 2.2, 26, BRD);
-        p.cap('Objekt', L + 10, p.y + 12, BRD, 6.4);
-        const tx = L + 52;
-        p.text(subj!, tx, p.y + 12, 9, 's', INK);
-        if (place.address) p.text(place.address, tx + p.w(subj!, 9, 's') + 10, p.y + 12, 8, 'r', GREY);
-        p.y += 40;
+        p.objBand(subj!, place.address);
       }
     } else if (place) {
       p.cap(isOffer ? 'Objekt' : 'Leistungsort', L, p.y);
@@ -814,21 +833,7 @@ export async function renderLetterEdel(lp: LetterPdfInput): Promise<Uint8Array> 
     p.y += 8;
   }
   if (lp.objekt) {
-    // schmales Band wie auf der Rechnung; lange Adresse in eine zweite Zeile
-    const ob = lp.objekt;
-    const tx = L + 52;
-    const tw = p.w(ob.title, 9, 's');
-    const oneLine = !ob.address || tx + tw + 10 + p.w(ob.address, 8, 'r') <= R - 8;
-    const h = oneLine ? 26 : 38;
-    p.rect(L, p.y - 4, R - L, h, SOFT, 4);
-    p.rect(L, p.y - 4, 2.2, h, BRD);
-    p.cap('Objekt', L + 10, p.y + 12, BRD, 6.4);
-    p.text(ob.title, tx, p.y + 12, 9, 's', INK);
-    if (ob.address) {
-      if (oneLine) p.text(ob.address, tx + tw + 10, p.y + 12, 8, 'r', GREY);
-      else p.text(ob.address, tx, p.y + 24, 8, 'r', GREY);
-    }
-    p.y += h + 14;
+    p.objBand(lp.objekt.title, lp.objekt.address ?? null);
   }
   const greeting = lp.greeting === undefined ? contactGreeting(lp.buyer.contactName) : lp.greeting;
   if (greeting) {

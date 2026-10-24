@@ -12,6 +12,7 @@ import {
   girocodePayload,
   quantityPdf,
   splitLineDetail,
+  withPlaceAddress,
   wrap,
 } from './render.js';
 
@@ -198,7 +199,7 @@ export async function renderInvoiceDesign(doc: InvoiceDocument, o: DesignOptions
   const isOffer = !!o.title && !/rechnung/i.test(o.title);
 
   // ------------------------------------------------------------ Angaben sammeln
-  const parsed = doc.lines.map((l) => splitLineDetail(l.detail));
+  const parsed = withPlaceAddress(doc.lines.map((l) => splitLineDetail(l.detail)));
   const place =
     parsed.find((x) => x.place)?.place ??
     (b.site

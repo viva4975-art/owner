@@ -4,7 +4,7 @@ import type { Child, FC } from 'hono/jsx';
 import { formatDateDe } from '../domain/invoice/calc.js';
 import { contactGreeting, stripGreeting } from '../domain/letter/greeting.js';
 import { type InvoiceDocument, KIND_TITLES, UNIT_LABELS } from '../domain/invoice/types.js';
-import { type ServiceTypeOption, TypeSelect } from './pages-invoices.js';
+import { DaysBox, daysScript, type ServiceTypeOption, TypeSelect } from './pages-invoices.js';
 import {
   REVERSE_CHARGE_NOTE,
   isReverseCharge,
@@ -16,6 +16,7 @@ import {
   INVOICE_CLOSING_PAY,
   INVOICE_INTRO_DEFAULT,
   splitLineDetail,
+  withPlaceAddress,
 } from '../pdf/render.js';
 import type { EffectiveBilling } from '../services/masterdata.js';
 import type { InvoiceRow } from '../services/invoices.js';
@@ -124,7 +125,7 @@ export const DraftLetter: FC<{
   const wrSigned = wrs.some((w) => w.status === 'unterschrieben');
   const s = doc.seller;
   const b = doc.buyer;
-  const parsed = doc.lines.map((l) => splitLineDetail(l.detail));
+  const parsed = withPlaceAddress(doc.lines.map((l) => splitLineDetail(l.detail)));
   const keys = [...new Set(parsed.map((p) => p.place?.key ?? ''))];
   const grouped = keys.length > 1;
   const one = !grouped ? parsed.find((p) => p.place)?.place : null;
@@ -162,6 +163,7 @@ export const DraftLetter: FC<{
     <>
       <style dangerouslySetInnerHTML={{ __html: LETTER_CSS }} />
       <script dangerouslySetInnerHTML={{ __html: DIRECT_JS }} />
+      <script dangerouslySetInnerHTML={{ __html: daysScript() }} />
       {notice}
       {locked ? (
         <p class="small mut" style="margin:0 0 8px">
@@ -619,7 +621,7 @@ const LineForm: FC<{
   typeId: string | null;
 }> = ({ inv, index, line, show, types, typeId }) => (
   <div class="lt-f" style="margin:0;border:0;padding:0;background:none">
-    <form method="post" action={`/rechnungen/${inv.id}/direkt`}>
+    <form method="post" action={`/rechnungen/${inv.id}/direkt`} class="ln-row">
       <input type="hidden" name="what" value="position" />
       <input type="hidden" name="index" value={index == null ? '' : String(index)} />
       <input type="hidden" name="version" value={String(inv.version)} />
@@ -667,6 +669,11 @@ const LineForm: FC<{
           aria-label="Einzelpreis €"
         />
       </div>
+      <DaysBox
+        unit={line?.unitCode ?? 'C62'}
+        from={line?.periodStart ?? inv.period_start}
+        to={line?.periodStart ? (line.periodEnd ?? line.periodStart) : inv.period_end}
+      />
       <div class="lt-fb">
         <button class="btn sm">Speichern</button>
         <button
@@ -716,7 +723,7 @@ export const IssuedLetter: FC<{
   const { inv, doc } = p;
   const s = doc.seller;
   const b = doc.buyer;
-  const parsed = doc.lines.map((l) => splitLineDetail(l.detail));
+  const parsed = withPlaceAddress(doc.lines.map((l) => splitLineDetail(l.detail)));
   const keys = [...new Set(parsed.map((x) => x.place?.key ?? ''))];
   const grouped = keys.length > 1;
   const one = !grouped ? parsed.find((x) => x.place)?.place : null;

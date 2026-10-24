@@ -155,7 +155,8 @@ export function splitLineDetail(detail: string | null | undefined): {
     if (m && !place) {
       const next = rows[i + 1]?.trim() ?? '';
       const isAddr = !!next && /\b\d{5}\b/.test(next) && !/^\d{2}\.\d{2}\.\d{4}/.test(next);
-      place = { title: m[1]!, address: isAddr ? next : null, key: `${m[1]}|${isAddr ? next : ''}` };
+      // Schlüssel nur Name + Nr. (Ahmed 24.10.): Positionen ohne Adresszeile (z. B. „ausgeführt am …“) gehören zum selben Objekt
+      place = { title: m[1]!, address: isAddr ? next : null, key: m[1]! };
       if (isAddr) i++;
       continue;
     }
@@ -168,6 +169,17 @@ export function splitLineDetail(detail: string | null | undefined): {
   }
   const t = rest.join('\n').trim();
   return { place, period, rest: t || null };
+}
+
+/** Adresse auf alle Positionen desselben Objekts übertragen (manche Positionen haben keine Adresszeile) */
+export function withPlaceAddress<T extends { place: LinePlace | null }>(parsed: T[]): T[] {
+  const addr = new Map<string, string>();
+  for (const x of parsed)
+    if (x.place?.address && !addr.has(x.place.key)) addr.set(x.place.key, x.place.address);
+  for (const x of parsed)
+    if (x.place && !x.place.address && addr.has(x.place.key))
+      x.place = { ...x.place, address: addr.get(x.place.key)! };
+  return parsed;
 }
 
 export const periodText = (a: string | null | undefined, b: string | null | undefined) =>
@@ -484,7 +496,7 @@ export async function renderInvoicePdfClassic(
   // Objekt und Leistungszeitraum: nicht in jeder Position wiederholen (Ahmed 08.10.), sondern im Kopf bzw. als
   // Zwischenüberschrift je Objekt (Sammelrechnung). Angebote mit eigener Betreffzeile bleiben wie bisher.
   const sitePlaces = !opts.subject;
-  const parsed = doc.lines.map((l) => splitLineDetail(l.detail));
+  const parsed = withPlaceAddress(doc.lines.map((l) => splitLineDetail(l.detail)));
   const docPeriod = periodText(doc.periodStart, doc.periodEnd);
   const linePeriod = (i: number) =>
     parsed[i]!.period ?? periodText(doc.lines[i]!.periodStart, doc.lines[i]!.periodEnd);

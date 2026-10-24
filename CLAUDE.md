@@ -4083,6 +4083,15 @@ Testadresse.
   - **„Objekt“ bei einzelnen Positionen:** Positionen ohne Adresszeile (z. B. „ausgeführt am …“) galten als anderes Objekt
     → Rechnung wurde wie eine Sammelrechnung mit Objekt-Überschriften gezeigt. Objekt jetzt nur über Name + Nr. erkannt,
     Adresse wird von der anderen Position übernommen (`withPlaceAddress`).
-  - **Tage-Kästchen auch bei Std.:** Einheit „Std.“ zeigt die Wochentage + „Std. je Tag“ → Menge = Arbeitstage im
-    Leistungszeitraum (ohne Feiertage) × Std. je Tag. Die Kästchen gibt es jetzt auch in der Direktbearbeitung im
-    Rechnungsbrief (vorher nur im vollen Editor); Zeitraum = Position, sonst Rechnung.
+  - **Tage-Kästchen jetzt an der Leistung am Objekt** (Ahmed: „aus der Rechnung weg, zu Leistungen“; ersetzt die
+    Kästchen im Rechnungs-Editor vom 23.10.): Einheit Tag oder Std. → Häkchen „Menge automatisch nach Arbeitstagen“,
+    Wochentage, bei Std. „Std. je Tag“ (`site_services.work_days/hours_per_day_milli`, Migration `20261221000001`).
+    Monatslauf rechnet je Abrechnungszeitraum: Arbeitstage ohne Feiertage Bayern, nur innerhalb Beginn/Ende
+    (`serviceQuantity`/`countWorkDays` in `calc.ts`), × Std. je Tag; Std. mit Arbeitstagen sind damit auch monatlich
+    abrechenbar (sonst „je Ausführung“). „Leistungen verrichten“: Menge leer = Arbeitstage im gewählten Zeitraum.
+    Plan-Kalkulation rechnet ebenso. Liste zeigt die Menge des laufenden Monats („Mo–Fr × 2,5 Std. · diesen Monat“).
+  - **Fund „Objektname statt Leistung“:** Aus Fortytools übernommene Monatspauschalen hatten den Objektnamen als Titel
+    (Fortytools-Positionstitel). Import und Abgleich nehmen dann die Leistungsart (sonst „Unterhaltsreinigung“,
+    `serviceTitle`); Migration `20261221000002` korrigiert Bestand und offene Entwürfe.
+  - **Entwürfe als ein PDF** war sehr langsam (171 Entwürfe: 59 s, 197 MB – jede Rechnung bettete Schrift und Briefpapier
+    neu ein). Jetzt ein gemeinsames Dokument (`createDesign2Target`, Option `into`): 13 s, 2,7 MB.

@@ -1,5 +1,5 @@
 import type { Sql } from '../db/client.js';
-import { todayBerlin } from '../domain/invoice/calc.js';
+import { serviceTitle, todayBerlin } from '../domain/invoice/calc.js';
 import { BusinessError } from './errors.js';
 import { uuidOf } from './fortytools-export-import.js';
 
@@ -158,7 +158,7 @@ export async function applyReconcile(sql: Sql, siteIds: string[], actor: string)
           id: uuidOf(`ft-abgleich:${r.site_id}:${m}:${k++}`),
           site_id: r.site_id,
           kind: 'monthly_flat',
-          description: l.title.split('\n')[0]!.slice(0, 200),
+          description: serviceTitle(l.title, r.site_name, l.service_type),
           note: l.details,
           unit_code: UNIT[(l.unit ?? '').toLowerCase()] ?? 'LS',
           quantity_milli: l.quantity_milli,

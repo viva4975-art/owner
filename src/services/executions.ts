@@ -1,6 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Sql } from '../db/client.js';
-import { type BillingCycle, formatDateDe, nextDueDate, serviceDetail } from '../domain/invoice/calc.js';
+import {
+  type BillingCycle,
+  countWorkDays,
+  formatDateDe,
+  nextDueDate,
+  serviceDetail,
+} from '../domain/invoice/calc.js';
 import type { Cents, Quantity, VatRate } from '../domain/money/money.js';
 import { BusinessError } from './errors.js';
 import { type BillAddress, billAddressKey, writeLines } from './invoices.js';
@@ -37,6 +43,8 @@ export interface ExecutableService {
   unit_price_cents: bigint;
   valid_from: string;
   valid_to: string | null;
+  work_days: number[] | null;
+  hours_per_day_milli: bigint | null;
   /** einmalige Leistung schon verrichtet */
   done_at: string | null;
   open_count: number;
@@ -49,6 +57,7 @@ export async function executableServices(sql: Sql, siteId: string) {
   const rows = await sql<ExecutableService[]>`
     select v.id, v.description, v.note, v.billing_cycle::text as billing_cycle, v.unit_code, v.quantity_milli,
            v.unit_price_cents, v.valid_from::text as valid_from, v.valid_to::text as valid_to,
+           v.work_days, v.hours_per_day_milli,
            (select max(e.date_from)::text from app.service_executions e where e.service_id = v.id) as done_at,
            (select count(*)::int from app.service_executions e where e.service_id = v.id and e.invoice_id is null)
              as open_count
@@ -125,9 +134,12 @@ export async function executeServices(sql: Sql, p: ExecuteInput, actor: string):
           unit_price_cents: bigint;
           valid_from: string;
           valid_to: string | null;
+          unit_code: string;
+          work_days: number[] | null;
+          hours_per_day_milli: bigint | null;
         }[]
       >`select site_id, description, active, billing_cycle::text as billing_cycle, quantity_milli, unit_price_cents,
-               valid_from::text as valid_from, valid_to::text as valid_to
+               valid_from::text as valid_from, valid_to::text as valid_to, unit_code, work_days, hours_per_day_milli
           from app.site_services where id = ${it.serviceId} for update`;
       if (!sv || sv.site_id !== p.siteId) throw new BusinessError('Leistung gehört nicht zu diesem Objekt');
       if (!sv.active) throw new BusinessError(`„${sv.description}“ ist nicht aktiv`);
@@ -136,7 +148,13 @@ export async function executeServices(sql: Sql, p: ExecuteInput, actor: string):
           `„${sv.description}“ gilt vom ${formatDateDe(sv.valid_from)}${sv.valid_to ? ` bis ${formatDateDe(sv.valid_to)}` : ''} – Datum außerhalb`,
         );
       const id = uuidOf(`exec:${p.token}:${it.serviceId}`);
-      const qty = it.quantity ?? sv.quantity_milli;
+      // Menge nach Arbeitstagen (Leistung je Tag/Stunde mit Wochentagen): leer = aus dem Zeitraum berechnet
+      const qty =
+        it.quantity ??
+        (sv.work_days?.length && (sv.unit_code === 'DAY' || sv.unit_code === 'HUR')
+          ? BigInt(countWorkDays(p.dateFrom, to, sv.work_days).days) *
+            (sv.unit_code === 'HUR' ? BigInt(sv.hours_per_day_milli ?? 0n) : 1000n)
+          : sv.quantity_milli);
       if (qty <= 0n) throw new BusinessError(`„${sv.description}“: Menge muss größer 0 sein`);
       const res = await tx`
         insert into app.service_executions (id, service_id, site_id, date_from, date_to, quantity_milli,

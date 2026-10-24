@@ -87,7 +87,35 @@ const UNITS: Record<string, string> = {
   MTR: 'lfm',
 };
 
+/** Gemeinsames Dokument für viele Rechnungen in einer Datei (Schrift und Briefpapier nur einmal eingebettet) */
+export interface Design2Target {
+  pdf: PDFDocument;
+  f: Record<Weight, PDFFont>;
+  lh: PDFImage;
+}
+
+export async function createDesign2Target(): Promise<Design2Target> {
+  const pdf = await PDFDocument.create();
+  pdf.registerFontkit(fontkit);
+  const [r, m, s, b, lhB] = await Promise.all([
+    readFile(new URL('fonts/inter/Inter-Regular.ttf', ASSETS)),
+    readFile(new URL('fonts/inter/Inter-Medium.ttf', ASSETS)),
+    readFile(new URL('fonts/inter/Inter-SemiBold.ttf', ASSETS)),
+    readFile(new URL('fonts/inter/Inter-Bold.ttf', ASSETS)),
+    readFile(new URL('briefpapier/viva-deluxe-a4.jpg', ASSETS)),
+  ]);
+  const f = {
+    r: await pdf.embedFont(r, { subset: false, features: NOFEAT }),
+    m: await pdf.embedFont(m, { subset: false, features: NOFEAT }),
+    s: await pdf.embedFont(s, { subset: false, features: NOFEAT }),
+    b: await pdf.embedFont(b, { subset: false, features: NOFEAT }),
+  };
+  return { pdf, f, lh: await pdf.embedJpg(lhB) };
+}
+
 export interface Design2Options {
+  /** in ein vorhandenes Dokument zeichnen (Sammel-PDF); dann wird nichts gespeichert */
+  into?: Design2Target;
   variant: Design2;
   title?: string;
   info?: [string, string][];
@@ -253,22 +281,7 @@ class P {
 }
 
 export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Options): Promise<Uint8Array> {
-  const pdf = await PDFDocument.create();
-  pdf.registerFontkit(fontkit);
-  const [r, m, s, b, lhB] = await Promise.all([
-    readFile(new URL('fonts/inter/Inter-Regular.ttf', ASSETS)),
-    readFile(new URL('fonts/inter/Inter-Medium.ttf', ASSETS)),
-    readFile(new URL('fonts/inter/Inter-SemiBold.ttf', ASSETS)),
-    readFile(new URL('fonts/inter/Inter-Bold.ttf', ASSETS)),
-    readFile(new URL('briefpapier/viva-deluxe-a4.jpg', ASSETS)),
-  ]);
-  const f = {
-    r: await pdf.embedFont(r, { subset: false, features: NOFEAT }),
-    m: await pdf.embedFont(m, { subset: false, features: NOFEAT }),
-    s: await pdf.embedFont(s, { subset: false, features: NOFEAT }),
-    b: await pdf.embedFont(b, { subset: false, features: NOFEAT }),
-  };
-  const lh = await pdf.embedJpg(lhB);
+  const { pdf, f, lh } = o.into ?? (await createDesign2Target());
   const v = o.variant;
   const isOffer = !!o.title && !/rechnung/i.test(o.title);
   const kind = o.title ? o.title.replace(/\s+\S+$/, '') : KIND_TITLES[doc.kind];
@@ -760,6 +773,7 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
   }
 
   for (const fn of p.labels) fn(p.pages.length);
+  if (o.into) return new Uint8Array();
   return pdf.save({ useObjectStreams: false });
 }
 

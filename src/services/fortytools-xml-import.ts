@@ -3,7 +3,7 @@ import { create } from 'xmlbuilder2';
 import { unescapeXml } from '../domain/xml.js';
 import { settleOpenItem } from './payments.js';
 import type { Sql, Tx } from '../db/client.js';
-import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
+import { formatDateDe, serviceTitle, todayBerlin } from '../domain/invoice/calc.js';
 import type { BuyerSnapshot, InvoiceDocument } from '../domain/invoice/types.js';
 import type { Cents, Quantity, VatRate } from '../domain/money/money.js';
 import { renderInvoicePdf } from '../pdf/invoice-pdf.js';
@@ -969,6 +969,8 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
       continue;
     }
     let k = 0;
+    const [{ name: siteName } = { name: null }] = await tx<{ name: string | null }[]>`
+      select name from app.sites where id = ${site.id}`;
     for (const p of m.lines) {
       const price = centsOf(get(p, 'price') || '0');
       const q = milliOf(get(p, 'quantity') || '1');
@@ -977,9 +979,7 @@ async function run(tx: Tx, by: Map<FtxKind, Node[]>, res: FtxResult, actor: stri
         id: uuidOf(`ftx-service:${fid}:${k++}`),
         site_id: site.id,
         kind: 'monthly_flat',
-        description: (get(p, 'title') || get(p, 'service-type/name') || 'Unterhaltsreinigung')
-          .split('\n')[0]!
-          .slice(0, 200),
+        description: serviceTitle(get(p, 'title'), siteName, get(p, 'service-type/name')),
         note: get(p, 'details') || null,
         unit_code: 'LS',
         quantity_milli: q,

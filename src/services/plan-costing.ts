@@ -5,7 +5,7 @@ import {
   type PayBand,
   type PlanCostRates,
 } from '../domain/hr/employer-cost.js';
-import { monthBounds, todayBerlin } from '../domain/invoice/calc.js';
+import { countWorkDays, monthBounds, todayBerlin } from '../domain/invoice/calc.js';
 import { type Cents, lineNet, type Quantity } from '../domain/money/money.js';
 import { monthRange, siteCosting, subcontractEstimates } from './costing.js';
 import { BusinessError } from './errors.js';
@@ -149,10 +149,13 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
         billing_cycle: string;
         valid_from: string;
         valid_to: string | null;
+        unit_code: string;
+        work_days: number[] | null;
+        hours_per_day_milli: bigint | null;
       }[]
     >`
       select ss.site_id, ss.quantity_milli, ss.unit_price_cents, ss.billing_cycle::text as billing_cycle,
-             ss.valid_from::text, ss.valid_to::text
+             ss.valid_from::text, ss.valid_to::text, ss.unit_code, ss.work_days, ss.hours_per_day_milli
         from app.site_services ss join app.sites s on s.id = ss.site_id join app.customers c on c.id = s.customer_id
        where ss.active and not c.is_internal
          and (ss.kind = 'monthly_flat'
@@ -208,7 +211,17 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
     const { start, end } = monthBounds(m);
     for (const sv of services) {
       if (sv.valid_from > end || (sv.valid_to && sv.valid_to < start) || !siteMap.has(sv.site_id)) continue;
-      const net = lineNet(BigInt(sv.quantity_milli) as Quantity, BigInt(sv.unit_price_cents) as Cents);
+      // nach Arbeitstagen: Menge des Monats
+      const qty = sv.work_days?.length
+        ? BigInt(
+            countWorkDays(
+              sv.valid_from > start ? sv.valid_from : start,
+              sv.valid_to && sv.valid_to < end ? sv.valid_to : end,
+              sv.work_days,
+            ).days,
+          ) * (sv.unit_code === 'HUR' ? BigInt(sv.hours_per_day_milli ?? 0n) : 1000n)
+        : BigInt(sv.quantity_milli);
+      const net = lineNet(qty as Quantity, BigInt(sv.unit_price_cents) as Cents);
       const cm = BigInt(CYCLE_MONTHS[sv.billing_cycle] ?? 1);
       row(sv.site_id).revenue += (net + cm / 2n) / cm;
     }

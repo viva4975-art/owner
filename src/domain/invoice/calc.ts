@@ -1,6 +1,7 @@
 import { type Cents, type Quantity, type VatRate, divRoundHalfUp, lineNet, sum } from '../money/money.js';
 import type { SkontoTerms } from './types.js';
 import { computeTotals } from '../money/totals.js';
+import { holidayName, isoWeekday } from '../time/holidays.js';
 
 export interface DraftLineInput {
   description: string;
@@ -78,6 +79,33 @@ export interface ServiceForRun {
   note?: string | null;
   /** Abrechnungszyklus (Standard monatlich); fällig ab dem Monat von validFrom im Abstand des Zyklus */
   cycle?: BillingCycle;
+  /** Einheit Tag/Stunde: Menge = Arbeitstage (ISO-Wochentage 1–7) im Zeitraum ohne Feiertage (× Std. je Tag) */
+  workDays?: readonly number[] | null;
+  hoursPerDay?: Quantity | null;
+}
+
+/** Arbeitstage zwischen from und to (einschließlich) an den Wochentagen, ohne Feiertage (Bayern). */
+export function countWorkDays(from: string, to: string, days: readonly number[]) {
+  const set = new Set(days);
+  let n = 0;
+  let holidays = 0;
+  for (let d = from; d <= to; d = addDays(d, 1)) {
+    if (!set.has(isoWeekday(d))) continue;
+    if (holidayName(d)) holidays++;
+    else n++;
+  }
+  return { days: n, holidays };
+}
+
+/** Menge einer Leistung „nach Arbeitstagen“ für den Zeitraum (Gültigkeit beachtet), sonst die feste Menge. */
+export function serviceQuantity(s: ServiceForRun, start: string, end: string): Quantity {
+  if (!s.workDays?.length || (s.unitCode !== 'DAY' && s.unitCode !== 'HUR')) return s.quantity;
+  const from = s.validFrom > start ? s.validFrom : start;
+  const to = s.validTo && s.validTo < end ? s.validTo : end;
+  if (to < from) return 0n as Quantity;
+  const { days } = countWorkDays(from, to, s.workDays);
+  const per = s.unitCode === 'HUR' ? BigInt(s.hoursPerDay ?? 0n) : 1000n;
+  return (BigInt(days) * per) as Quantity;
 }
 
 export type BillingCycle =
@@ -193,11 +221,13 @@ export function monthlyRunLines(
     if (!s.active || s.kind !== 'monthly_flat') return [];
     const p = billingPeriod(s.cycle ?? 'monatlich', s.validFrom, month);
     if (!p || s.validFrom > p.end || (s.validTo && s.validTo < p.start)) return [];
+    const quantity = serviceQuantity(s, p.start, p.end);
+    if (quantity <= 0n) return [];
     return [
       {
         description: s.description,
         detail: serviceDetail(s.note, site, p.start, p.end),
-        quantity: s.quantity,
+        quantity,
         unitCode: s.unitCode,
         unitPrice: s.unitPrice,
         vatRate: s.vatRate,
@@ -279,4 +309,20 @@ export function hourBerlin(now: Date = new Date()): number {
     .formatToParts(now)
     .find((p) => p.type === 'hour')?.value;
   return Number(h ?? 0);
+}
+
+/**
+ * Titel einer übernommenen Leistung: In Fortytools steht als Positionstitel oft der Objektname – dann gilt die
+ * Leistungsart (sonst „Unterhaltsreinigung“), damit auf der Rechnung unter „Leistung“ nicht das Objekt steht.
+ */
+export function serviceTitle(
+  title: string | null | undefined,
+  siteName: string | null | undefined,
+  typeName: string | null | undefined,
+  fallback = 'Unterhaltsreinigung',
+): string {
+  const norm = (x: string) => x.toLowerCase().replace(/\s+/g, ' ').trim();
+  const t = (title ?? '').split('\n')[0]!.trim();
+  const isSite = !!siteName && !!t && norm(t) === norm(siteName);
+  return (!t || isSite ? typeName?.trim() || fallback : t).slice(0, 200);
 }

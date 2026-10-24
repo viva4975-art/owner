@@ -384,6 +384,8 @@ export interface SiteService {
   always_unfinished: boolean;
   /** geschwärzten Stundennachweis des Objekts an die Rechnung hängen */
   attach_timesheet: boolean;
+  work_days: number[] | null;
+  hours_per_day_milli: bigint | null;
   invoice_group_id: string | null;
   separate_invoice: boolean;
   order_reference: string | null;
@@ -439,16 +441,19 @@ export const serviceInput = z.object({
   kind: z.enum(['monthly_flat', 'special', 'hourly']).optional(),
   description: z.string().trim().min(1, 'Leistungsart fehlt – bitte auswählen'),
   unit_code: z.string().trim().min(1),
-  quantity: z.string().transform((v, ctx) => {
-    try {
-      const q = parseQuantity(v);
-      if (q <= 0n) throw new RangeError('Menge muss größer 0 sein');
-      return q;
-    } catch (e) {
-      ctx.addIssue({ code: 'custom', message: (e as Error).message });
-      return z.NEVER;
-    }
-  }),
+  quantity: z
+    .string()
+    .default('1')
+    .transform((v, ctx) => {
+      try {
+        const q = parseQuantity(v);
+        if (q <= 0n) throw new RangeError('Menge muss größer 0 sein');
+        return q;
+      } catch (e) {
+        ctx.addIssue({ code: 'custom', message: (e as Error).message });
+        return z.NEVER;
+      }
+    }),
   unit_price: z.string().transform((v, ctx) => {
     try {
       return parseEuro(v);
@@ -491,6 +496,14 @@ export const serviceInput = z.object({
   attach_timesheet: z
     .preprocess((v) => (typeof v === 'string' ? v === 'on' || v === '1' || v === 'true' : v), z.boolean())
     .optional(),
+  /** Menge nach Arbeitstagen (Einheit Tag/Stunde): Wochentage 1–7, Stunden je Tag */
+  work_days: z
+    .preprocess(
+      (v) => (v == null || v === '' ? [] : Array.isArray(v) ? v : [v]),
+      z.array(z.coerce.number().int().min(1).max(7)),
+    )
+    .default([]),
+  hours_per_day: optMilli,
   // „objekt“ = Rechnungsgruppe/Rechnung des Objekts, „separat“ = eigene Rechnung, sonst ID einer Rechnungsgruppe
   invoice_target: z.preprocess(emptyToNull, z.string().nullable().default(null)),
   version: z.preprocess(
@@ -508,8 +521,9 @@ export function serviceKindOf(
   unitCode: string,
   cycle: BillingCycle,
   auto = false,
+  byDays = false,
 ): 'monthly_flat' | 'special' | 'hourly' {
-  if (unitCode === 'HUR') return 'hourly';
+  if (unitCode === 'HUR' && !byDays) return 'hourly';
   if (cycle === 'einmalig' || cycle === 'je_ausfuehrung') return 'special';
   return cycle === 'monatlich' || auto ? 'monthly_flat' : 'special';
 }
@@ -545,11 +559,20 @@ export async function saveService(
   billAddress: SiteService['bill_address'] = null,
 ) {
   const [site] = await sql<{ site_no: string }[]>`select site_no from app.sites where id = ${siteId}`;
-  // Stunden sind nie Monatspauschale → bei Einheit Stunde immer „je Ausführung“
-  const cycle = input.unit_code === 'HUR' ? 'je_ausfuehrung' : input.billing_cycle;
+  // Menge nach Arbeitstagen nur bei Einheit Tag/Stunde (Ahmed 24.10.)
+  const byDays =
+    (input.unit_code === 'DAY' || input.unit_code === 'HUR') && input.work_days.length > 0
+      ? [...new Set(input.work_days)].sort((a, b) => a - b)
+      : null;
+  if (byDays && input.unit_code === 'HUR' && !input.hours_per_day)
+    throw new BusinessError('Stunden je Tag fehlen (z. B. 2,5)');
+  // Stunden sind sonst nie Monatspauschale → bei Einheit Stunde „je Ausführung“
+  const cycle = input.unit_code === 'HUR' && !byDays ? 'je_ausfuehrung' : input.billing_cycle;
   const row = {
     site_id: siteId,
-    kind: serviceKindOf(input.unit_code, cycle, input.bill_mode === 'automatisch'),
+    kind: serviceKindOf(input.unit_code, cycle, input.bill_mode === 'automatisch', !!byDays),
+    work_days: byDays,
+    hours_per_day_milli: byDays && input.unit_code === 'HUR' ? input.hours_per_day : null,
     description: input.description,
     unit_code: input.unit_code,
     quantity_milli: input.quantity,

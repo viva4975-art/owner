@@ -1,4 +1,4 @@
-import { PDFDocument } from '@cantoo/pdf-lib';
+import { createDesign2Target } from '../pdf/invoice-design2.js';
 import { formatDateDe } from '../domain/invoice/calc.js';
 import { getSeller } from '../services/masterdata.js';
 import { randomUUID } from 'node:crypto';
@@ -969,13 +969,14 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
 
   // Sammel-PDF aller (bzw. der markierten) Entwürfe zur Durchsicht vor dem Ausstellen (Ahmed 08.10.)
   const draftsPdf = async (ids: string[]) => {
-    const out = await PDFDocument.create();
+    // ein Dokument, Schrift und Briefpapier nur einmal (vorher je Entwurf eingebettet → sehr groß und langsam)
+    const into = await createDesign2Target();
     for (const id of ids) {
       const doc = await loadDraftPreview(sql, id);
-      const src = await PDFDocument.load(await renderInvoicePdf(doc, { watermark: 'ENTWURF' }));
-      for (const pg of await out.copyPages(src, src.getPageIndices())) out.addPage(pg);
+      await renderInvoicePdf(doc, { watermark: 'ENTWURF', into });
     }
-    return out.save();
+    into.pdf.setTitle('Rechnungsentwürfe');
+    return into.pdf.save();
   };
   app.get('/rechnungen/entwuerfe.pdf', async (c) => {
     const m = /^\d{4}-\d{2}$/.test(c.req.query('monat') ?? '') ? c.req.query('monat')! : null;

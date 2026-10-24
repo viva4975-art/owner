@@ -441,6 +441,9 @@ export interface RunService {
   billing_cycle: BillingCycle;
   always_unfinished: boolean;
   invoice_group_id: string | null;
+  /** Menge nach Arbeitstagen (Einheit Tag/Stunde) */
+  work_days?: number[] | null;
+  hours_per_day_milli?: bigint | null;
   separate_invoice: boolean;
   /** Bestellnummer des Kunden für diese Leistung */
   order_reference?: string | null;
@@ -717,6 +720,8 @@ export const toRunService = (s: RunService) => ({
   active: s.active,
   note: s.note,
   cycle: s.billing_cycle,
+  workDays: s.work_days ?? null,
+  hoursPerDay: (s.hours_per_day_milli ?? null) as Quantity | null,
 });
 
 const siteForRun = (s: RunSite) => ({

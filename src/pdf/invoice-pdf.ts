@@ -1,5 +1,5 @@
 import type { InvoiceDocument } from '../domain/invoice/types.js';
-import { renderInvoiceDesign2, renderLetterEdel } from './invoice-design2.js';
+import { type Design2Target, renderInvoiceDesign2, renderLetterEdel } from './invoice-design2.js';
 import type { LetterPdfInput } from './render.js';
 
 /*
@@ -10,6 +10,8 @@ import type { LetterPdfInput } from './render.js';
  */
 export interface InvoicePdfOptions {
   watermark?: string;
+  /** in ein gemeinsames Dokument zeichnen (Sammel-PDF der Entwürfe) */
+  into?: Design2Target;
   /** Für Angebote u. Ä.: eigener Titel statt „Rechnung“ */
   title?: string;
   /** Betreffzeile; „Objekt: …“ wird als Objekt-Band gezeigt */

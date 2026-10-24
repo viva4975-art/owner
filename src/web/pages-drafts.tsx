@@ -85,7 +85,11 @@ export const ExecutePanel: FC<{
                     <input
                       name={`qty_${s.id}`}
                       class="right"
-                      value={milliToInput(s.quantity_milli)}
+                      value={s.work_days?.length ? '' : milliToInput(s.quantity_milli)}
+                      placeholder={s.work_days?.length ? 'autom.' : undefined}
+                      title={
+                        s.work_days?.length ? 'leer = Arbeitstage im Zeitraum (ohne Feiertage)' : undefined
+                      }
                       aria-label="Menge"
                     />
                   </td>

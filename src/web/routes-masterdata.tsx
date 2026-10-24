@@ -2177,7 +2177,11 @@ export function registerMasterdataRoutes(ctx: Ctx) {
 
   app.post(`/objekte/:id{${UUID}}/leistungen/:sid{${UUID}}`, async (c) => {
     const id = c.req.param('id');
-    const body = await c.req.parseBody();
+    // mehrere Wochentage (work_days) → alle Werte; sonst je Feld der letzte
+    const all = await c.req.parseBody({ all: true });
+    const body = Object.fromEntries(
+      Object.entries(all).map(([k, v]) => [k, Array.isArray(v) && k !== 'work_days' ? v[v.length - 1] : v]),
+    ) as Record<string, string | File | (string | File)[]>;
     const parsed = serviceInput.safeParse(body);
     if (!parsed.success) throw new BusinessError(parsed.error.issues.map((i) => i.message).join('\n'));
     const billAddress = body.bill_custom === 'on' ? parseBillAddress(body as Record<string, unknown>) : null;

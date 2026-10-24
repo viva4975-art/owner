@@ -5,8 +5,13 @@ import {
   CYCLE_LABEL,
   billsInMonthlyRun,
   isPeriodic,
+  monthBounds,
   monthLabelDe,
+  serviceQuantity,
+  todayBerlin,
 } from '../domain/invoice/calc.js';
+import type { Cents, Quantity, VatRate } from '../domain/money/money.js';
+import { workDaysLabel } from '../services/subcontract-days.js';
 import { UNIT_LABELS, unitLabel } from '../domain/invoice/types.js';
 import type { InvoiceGroupRow } from '../services/invoice-groups.js';
 import type { ServiceType, SiteService, SiteServiceRow } from '../services/masterdata.js';
@@ -24,7 +29,29 @@ const target = (sv: SiteServiceRow) =>
   (sv.separate_invoice ? 'eigene Rechnung' : sv.group_name ? `Gruppe: ${sv.group_name}` : 'wie Objekt') +
   (sv.bill_address ? ` · Rechnung an ${sv.bill_address.name}` : '');
 
-const lineTotal = (sv: SiteServiceRow) => (sv.quantity_milli * sv.unit_price_cents + 500n) / 1000n;
+/** Menge im laufenden Monat (bei „nach Arbeitstagen“ berechnet) */
+const qtyNow = (sv: SiteServiceRow): bigint => {
+  if (!sv.work_days?.length) return sv.quantity_milli;
+  const m = monthBounds(todayBerlin().slice(0, 7));
+  return serviceQuantity(
+    {
+      ...sv,
+      id: sv.id,
+      kind: 'monthly_flat',
+      unitCode: sv.unit_code,
+      quantity: sv.quantity_milli as Quantity,
+      unitPrice: sv.unit_price_cents as Cents,
+      vatRate: sv.vat_rate_bp as VatRate,
+      validFrom: sv.valid_from,
+      validTo: sv.valid_to,
+      workDays: sv.work_days,
+      hoursPerDay: sv.hours_per_day_milli as Quantity | null,
+    },
+    m.start,
+    m.end,
+  );
+};
+const lineTotal = (sv: SiteServiceRow) => (qtyNow(sv) * sv.unit_price_cents + 500n) / 1000n;
 
 /** Leistungen als ruhige Zeilen (Ahmed 08.10.: „übersichtlicher“): Titel + Art, Zeitraum/Zyklus, Menge × Preis, Gesamt. */
 const ServiceGroup: FC<{ title: string; rows: SiteServiceRow[]; siteId: string }> = ({
@@ -76,8 +103,16 @@ const ServiceGroup: FC<{ title: string; rows: SiteServiceRow[]; siteId: string }
                 {sv.last_billed_month && <div class="mut">zuletzt {monthLabelDe(sv.last_billed_month)}</div>}
               </div>
               <div class="svc-qty small">
-                {milliToInput(sv.quantity_milli)} {unitLabel(sv.unit_code, sv.quantity_milli)} ×{' '}
-                {euro(sv.unit_price_cents)}
+                {milliToInput(qtyNow(sv))} {unitLabel(sv.unit_code, qtyNow(sv))} × {euro(sv.unit_price_cents)}
+                {!!sv.work_days?.length && (
+                  <div class="mut">
+                    {workDaysLabel(sv.work_days)}
+                    {sv.unit_code === 'HUR' && sv.hours_per_day_milli
+                      ? ` × ${milliToInput(sv.hours_per_day_milli)} Std.`
+                      : ''}{' '}
+                    · diesen Monat
+                  </div>
+                )}
               </div>
               <div class="svc-total">{euro(lineTotal(sv))}</div>
             </a>
@@ -451,15 +486,66 @@ export const ServiceForm: FC<{
               ))}
             </select>
           </div>
-          <div>
+          <div
+            id="qty-fixed"
+            hidden={!!sv?.work_days?.length && (sv.unit_code === 'DAY' || sv.unit_code === 'HUR')}
+          >
             <label for="quantity">Menge *</label>
-            <input
-              id="quantity"
-              name="quantity"
-              value={sv ? milliToInput(sv.quantity_milli) : '1'}
-              required
-            />
+            <input id="quantity" name="quantity" value={sv ? milliToInput(sv.quantity_milli) : '1'} />
           </div>
+          {/* Ahmed 24.10.: je Tag / je Stunde – Menge je Monat aus den Arbeitstagen ohne Feiertage */}
+          <div
+            id="svc-days"
+            style="grid-column:1/-1"
+            hidden={(sv?.unit_code ?? 'LS') !== 'DAY' && (sv?.unit_code ?? 'LS') !== 'HUR'}
+          >
+            <div class="chk">
+              <input
+                type="checkbox"
+                id="days_auto"
+                checked={!!sv?.work_days?.length}
+                data-reveal="#svc-days-f"
+              />
+              <label for="days_auto">
+                Menge automatisch nach Arbeitstagen berechnen (je Abrechnungszeitraum)
+              </label>
+            </div>
+            <div id="svc-days-f" class="ln-days" hidden={!sv?.work_days?.length}>
+              <span class="small mut">Tage:</span>
+              {['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((d, i) => (
+                <label class="ln-wd">
+                  <input
+                    type="checkbox"
+                    name="work_days"
+                    value={String(i + 1)}
+                    checked={sv?.work_days?.length ? sv.work_days.includes(i + 1) : i < 5}
+                  />
+                  {d}
+                </label>
+              ))}
+              <label class="ln-wd" id="svc-hpd" hidden={sv?.unit_code !== 'HUR'}>
+                Std. je Tag
+                <input
+                  name="hours_per_day"
+                  inputmode="decimal"
+                  style="width:70px"
+                  value={sv?.hours_per_day_milli ? milliToInput(sv.hours_per_day_milli) : ''}
+                  placeholder="2,5"
+                />
+              </label>
+              <span class="small mut">
+                Menge = Arbeitstage im Abrechnungszeitraum (ohne Feiertage Bayern, nur innerhalb Beginn/Ende){' '}
+                × Std. je Tag – im Monatslauf je Monat neu berechnet.
+              </span>
+            </div>
+          </div>
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `(function(){var u=document.getElementById('unit_code'),box=document.getElementById('svc-days'),a=document.getElementById('days_auto'),f=document.getElementById('svc-days-f'),q=document.getElementById('qty-fixed'),h=document.getElementById('svc-hpd');if(!u||!box)return;
+function sync(){var on=u.value==='DAY'||u.value==='HUR';box.hidden=!on;h.hidden=u.value!=='HUR';var auto=on&&a.checked;f.hidden=!auto;q.hidden=auto;f.querySelectorAll('input').forEach(function(i){i.disabled=!auto;});}
+u.addEventListener('change',sync);a.addEventListener('change',sync);sync();})();`,
+            }}
+          />
           <div>
             <label for="unit_price">Preis (netto, €, zzgl. 19 % USt) *</label>
             <input

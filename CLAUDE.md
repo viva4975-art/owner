@@ -4095,3 +4095,7 @@ Testadresse.
     `serviceTitle`); Migration `20261221000002` korrigiert Bestand und offene Entwürfe.
   - **Entwürfe als ein PDF** war sehr langsam (171 Entwürfe: 59 s, 197 MB – jede Rechnung bettete Schrift und Briefpapier
     neu ein). Jetzt ein gemeinsames Dokument (`createDesign2Target`, Option `into`): 13 s, 2,7 MB.
+- 2026-10-25: **„PDF aller Entwürfe“ in der Bildschirm-Reihenfolge** (Ahmed: „Sortierung wird nicht übernommen“): Der Knopf
+  schickt jetzt alle Entwürfe der Liste in der angezeigten Reihenfolge (nach Klick auf eine Spaltenüberschrift) an
+  „PDF der Auswahl“ (`/rechnungen/entwuerfe/auswahl`, aktion pdf); ohne JavaScript bleibt der alte Link. „PDF der
+  Markierten“ folgt ebenfalls der Bildschirm-Reihenfolge. Im Browser geprüft (171 Entwürfe, nach Netto sortiert).

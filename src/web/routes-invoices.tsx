@@ -408,6 +408,9 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                   class="btn sec sm"
                   href={`/rechnungen/entwuerfe.pdf${monat ? `?monat=${monat}` : ''}`}
                   target="_blank"
+                  // Reihenfolge wie auf dem Bildschirm (Sortierung per Spaltenkopf, Ahmed 25.10.): alle Entwürfe der Liste
+                  // in angezeigter Reihenfolge an „PDF der Auswahl“ schicken
+                  onclick="var b=document.querySelectorAll('form[action=&quot;/rechnungen/entwuerfe/auswahl&quot;] input[name=inv]');if(!b.length)return true;var f=document.createElement('form');f.method='post';f.action='/rechnungen/entwuerfe/auswahl';f.target='_blank';var seen={};b.forEach(function(i){if(seen[i.value])return;seen[i.value]=1;var h=document.createElement('input');h.type='hidden';h.name='inv';h.value=i.value;f.appendChild(h)});var a=document.createElement('input');a.type='hidden';a.name='aktion';a.value='pdf';f.appendChild(a);document.body.appendChild(f);f.submit();f.remove();return false"
                 >
                   PDF aller {monat ? 'Entwürfe dieses Monats' : 'Entwürfe'} ({drafts.length})
                 </a>

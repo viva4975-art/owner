@@ -4099,3 +4099,6 @@ Testadresse.
   schickt jetzt alle Entwürfe der Liste in der angezeigten Reihenfolge (nach Klick auf eine Spaltenüberschrift) an
   „PDF der Auswahl“ (`/rechnungen/entwuerfe/auswahl`, aktion pdf); ohne JavaScript bleibt der alte Link. „PDF der
   Markierten“ folgt ebenfalls der Bildschirm-Reihenfolge. Im Browser geprüft (171 Entwürfe, nach Netto sortiert).
+- 2026-10-25: **„‹ Zurück zu …“ an dieselbe Stelle** (Ahmed: „Mitarbeiterübersicht zurück → nicht Seite eins“): Die Brotkrumen-
+  Links öffnen die zuletzt gesehene Fassung der Liste (Seite, Filter, Sortierung, je Tab im sessionStorage gemerkt) und
+  springen an die alte Scrollstelle (`SCROLL_JS` in `layout.tsx`). Gilt für alle Listen (Mitarbeiter, Kunden, Objekte …).

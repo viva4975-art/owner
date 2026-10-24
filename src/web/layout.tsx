@@ -17,11 +17,14 @@ import { canAccess, canOpen } from './permissions.js';
 /**
  * Zurück = an dieselbe Stelle (Ahmed 15.10.): In der App scrollt nur der Inhalt (main), das stellt der Browser beim
  * Zurückgehen nicht wieder her. Position je Seite merken und nur bei Zurück/Vor wiederherstellen.
+ * „‹ Zurück zu …“ (Brotkrumen) öffnet die zuletzt gesehene Fassung der Liste (Seite, Filter) an derselben Stelle.
  */
 export const SCROLL_JS = `document.addEventListener('click',function(e){document.querySelectorAll('details.appswitch[open]').forEach(function(d){if(!d.contains(e.target))d.open=false})});
 (function(){try{var nav=performance.getEntriesByType('navigation')[0];var back=nav&&nav.type==='back_forward';
 var m=document.querySelector('body.shellbar main');var el=m||document.scrollingElement;var k='vd_sc:'+location.pathname+location.search;
 var get=function(){return m?m.scrollTop:window.scrollY};var save=function(){try{sessionStorage.setItem(k,String(get()))}catch(e){}};
+var here=location.pathname+location.search;try{sessionStorage.setItem('vd_ls:'+location.pathname,here);if(sessionStorage.getItem('vd_rs')===here){sessionStorage.removeItem('vd_rs');back=true}}catch(e){}
+document.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('.crumbs a');if(!a||a.origin!==location.origin||a.search)return;try{var l=sessionStorage.getItem('vd_ls:'+a.pathname);if(l&&l.indexOf(a.pathname+'?')===0){a.href=l;sessionStorage.setItem('vd_rs',l)}else if(l===a.pathname){sessionStorage.setItem('vd_rs',l)}}catch(x){}},true);
 if(back){var v=+(sessionStorage.getItem(k)||0);if(v){var go=function(){if(m)m.scrollTop=v;else window.scrollTo(0,v)};go();requestAnimationFrame(go);setTimeout(go,120);}}
 var t;(m||window).addEventListener('scroll',function(){clearTimeout(t);t=setTimeout(save,150)},{passive:true});
 window.addEventListener('pagehide',save);document.addEventListener('click',function(e){if(e.target.closest&&e.target.closest('a'))save()},true);}catch(e){}})();`;

@@ -261,6 +261,7 @@ input::placeholder,textarea::placeholder{color:var(--faint)}
 .files li.error .bar>i{background:var(--err)}
 .files .act{display:flex;gap:4px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
 .files li>div{min-width:0}
+.files details.ren{display:contents}.files details.ren>summary{list-style:none;cursor:pointer}.files details.ren>summary::-webkit-details-marker{display:none}.files details.ren>summary::after{content:none!important}.files details.ren[open]>summary{background:var(--tint-2,#f8eff2)}.files .ren-form{order:99;flex-basis:100%;display:flex;gap:6px;align-items:center;justify-content:flex-end;margin-top:4px}.files .ren-form input[name=name]{flex:1;min-width:160px;max-width:420px;height:30px}
 @media (max-width:1400px){.cols .files li{grid-template-columns:auto 1fr}.cols .files .act{grid-column:2;justify-content:flex-start}}
 /* ---- Moderne Bausteine: Kopfkarte, Fortschritt, Listen ---- */
 .hero{display:flex;flex-wrap:wrap;gap:16px 28px;align-items:center}

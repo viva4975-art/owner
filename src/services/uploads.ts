@@ -239,9 +239,15 @@ const MONATE = [
 
 export async function listFiles(sql: Sql, link: LinkTarget) {
   const rows = await sql<
-    (FileRow & { category: string | null; archived_at: Date | null; archived_by: string | null })[]
+    (FileRow & {
+      category: string | null;
+      archived_at: Date | null;
+      archived_by: string | null;
+      display_name: string | null;
+    })[]
   >`
-    select f.*, l.category, l.archived_at, l.archived_by from app.file_links l join app.files f on f.id = l.file_id
+    select f.*, l.category, l.archived_at, l.archived_by, l.display_name
+      from app.file_links l join app.files f on f.id = l.file_id
      where l.entity_type = ${link.type} and l.entity_id = ${link.id} and f.status = 'complete'
        -- aus Word-Vorlagen erzeugte Entwürfe nicht als Dokument zeigen (Ahmed 10.10.: nur der unterschriebene Scan zählt)
        and l.category is distinct from 'Entwurf (aus Vorlage)'
@@ -252,6 +258,11 @@ export async function listFiles(sql: Sql, link: LinkTarget) {
   // ältere Lohnabrechnungen hießen „Lohnabrechnung_2025-08_1234.pdf“ – Datei ist unveränderbar, nur die Anzeige
   // nennt den Monat ausgeschrieben (Ahmed 11.10.)
   for (const r of rows) {
+    // umbenannt (Ahmed 25.10.): nur der angezeigte Name der Verknüpfung, die Datei bleibt unverändert
+    if (r.display_name) {
+      r.original_name = r.display_name;
+      continue;
+    }
     const m = /^Lohnabrechnung_(\d{4})-(\d\d)_(\d+)\.pdf$/.exec(r.original_name);
     if (m && r.category === 'Lohnabrechnung')
       r.original_name = `Lohnabrechnung ${m[1]}-${m[2]} ${MONATE[Number(m[2]) - 1] ?? ''} ${m[1]} (${m[3]}).pdf`;
@@ -299,6 +310,44 @@ export async function archiveLink(
               values (${actor}, ${archive ? 'file_archive' : 'file_unarchive'}, 'file_links', ${fileId},
                       ${sql.json({ type: link.type, id: link.id })})`;
   return r.length > 0;
+}
+
+/** Endung einer Datei („.pdf“), leer ohne Endung. */
+const extOf = (n: string) => /\.[A-Za-z0-9]{1,8}$/.exec(n)?.[0] ?? '';
+
+/**
+ * Neuer Anzeigename für ein Dokument in einer Akte (Ahmed 25.10.: „Dokumentenname ändern können direkt“). Die Datei
+ * bleibt write-once (Inhalt, Prüfsumme, ursprünglicher Name unverändert) – gespeichert wird der Name an der
+ * Verknüpfung. Die Endung bleibt immer die der Datei; leerer Name = ursprünglicher Name.
+ */
+export function cleanDisplayName(input: string, original: string): string | null {
+  const ext = extOf(original);
+  let n = input
+    // eslint-disable-next-line no-control-regex -- Steuerzeichen gehören in keinen Dateinamen
+    .replace(/[\u0000-\u001f\\/:*?"<>|]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (ext && n.toLowerCase().endsWith(ext.toLowerCase())) n = n.slice(0, -ext.length).trim();
+  if (!n) return null;
+  const full = `${n.slice(0, 250 - ext.length)}${ext}`;
+  return full === original ? null : full;
+}
+
+export async function renameLink(sql: Sql, link: LinkTarget, fileId: string, name: string, actor: string) {
+  return sql.begin(async (tx) => {
+    const [r] = await tx<{ original_name: string; display_name: string | null }[]>`
+      select f.original_name, l.display_name from app.file_links l join app.files f on f.id = l.file_id
+       where l.file_id = ${fileId} and l.entity_type = ${link.type} and l.entity_id = ${link.id} for update of l`;
+    if (!r) throw new BusinessError('Dokument nicht gefunden');
+    const next = cleanDisplayName(name, r.original_name);
+    if (next === r.display_name) return r.display_name ?? r.original_name;
+    await tx`update app.file_links set display_name = ${next}, renamed_at = now(), renamed_by = ${actor}
+              where file_id = ${fileId} and entity_type = ${link.type} and entity_id = ${link.id}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'file_rename', 'file_links', ${fileId},
+                     ${tx.json({ type: link.type, id: link.id, alt: r.display_name ?? r.original_name, neu: next ?? r.original_name })})`;
+    return next ?? r.original_name;
+  });
 }
 
 /**

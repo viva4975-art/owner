@@ -10,6 +10,7 @@ import {
   type UploadConfig,
   completeUpload,
   filePath,
+  renameLink,
   putChunk,
   startUpload,
   uploadStatus,
@@ -235,7 +236,8 @@ export function registerFileRoutes(ctx: Ctx) {
     if (!(LINK_TYPES as readonly string[]).includes(type) || !UUID_RE.test(id)) return c.notFound();
     if (!(await linkAllowed(c, sql, type, id))) return c.text('Kein Zugriff', 403);
     const rows = await sql<(FileRow & { category: string | null; archived_at: Date | null })[]>`
-      select f.*, l.category, l.archived_at from app.file_links l join app.files f on f.id = l.file_id
+      select f.*, coalesce(l.display_name, f.original_name) as original_name, l.category, l.archived_at
+        from app.file_links l join app.files f on f.id = l.file_id
        where l.entity_type = ${type} and l.entity_id = ${id} and f.status = 'complete' order by f.completed_at`;
     const files: Record<string, Uint8Array> = {};
     let total = 0;
@@ -256,6 +258,33 @@ export function registerFileRoutes(ctx: Ctx) {
     });
   });
 
+  // Dokument umbenennen (Ahmed 25.10.): nur der angezeigte Name in dieser Akte, die Datei bleibt write-once
+  app.post(`/dateien/:id{${UUID}}/umbenennen`, async (c) => {
+    const b = await c.req.parseBody();
+    const type = typeof b.typ === 'string' ? b.typ : '';
+    const id = typeof b.eid === 'string' ? b.eid : '';
+    const ref = c.req.header('referer');
+    let backTo = '/';
+    try {
+      const u = new URL(ref ?? '', 'http://x');
+      if (ref && (u.host === 'x' || u.host === new URL(c.req.url).host)) backTo = u.pathname + u.search;
+    } catch {
+      /* Rückweg bleibt Startseite */
+    }
+    if (!(LINK_TYPES as readonly string[]).includes(type) || !UUID_RE.test(id)) return c.notFound();
+    const [l] = await sql<{ category: string | null }[]>`
+      select category from app.file_links where file_id = ${c.req.param('id')} and entity_type = ${type} and entity_id = ${id}`;
+    if (!l || !(await linkAllowed(c, sql, type, id, l.category))) return c.text('Kein Zugriff', 403);
+    const name = await renameLink(
+      sql,
+      { type: type as LinkTarget['type'], id },
+      c.req.param('id'),
+      String(b.name ?? ''),
+      c.get('actor'),
+    );
+    return ctx.back(c, backTo, { ok: `Umbenannt in „${name}“.` });
+  });
+
   app.get(`/dateien/:id{${UUID}}`, async (c) => {
     const [f] = await sql<
       FileRow[]
@@ -263,8 +292,12 @@ export function registerFileRoutes(ctx: Ctx) {
     if (!f) return c.notFound();
     // Nur wer mindestens eine Verknüpfung sehen darf (Personalakten nur Personal/Admin, Objektleitung nur eigene
     // Objekte). Dateien ohne Verknüpfung nur der Hochlader.
-    const links = await sql<{ entity_type: string; entity_id: string; category: string | null }[]>`
-      select entity_type, entity_id, category from app.file_links where file_id = ${f.id}`;
+    const links = await sql<
+      { entity_type: string; entity_id: string; category: string | null; display_name: string | null }[]
+    >`select entity_type, entity_id, category, display_name from app.file_links where file_id = ${f.id}
+       order by renamed_at desc nulls last`;
+    // umbenanntes Dokument: Download unter dem neuen Namen (Name der zuletzt umbenannten Verknüpfung)
+    const shownName = links.find((l) => l.display_name)?.display_name ?? f.original_name;
     let ok = !links.length && f.uploaded_by === c.get('actor');
     for (const l of links)
       if (!ok && (await linkAllowed(c, sql, l.entity_type, l.entity_id, l.category))) ok = true;
@@ -277,7 +310,7 @@ export function registerFileRoutes(ctx: Ctx) {
       headers: {
         'Content-Type': f.content_type,
         'Content-Length': String(st.size),
-        'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(f.original_name)}`,
+        'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(shownName)}`,
         'Cache-Control': 'private, max-age=0',
         'X-Content-SHA256': f.sha256 ?? '',
       },

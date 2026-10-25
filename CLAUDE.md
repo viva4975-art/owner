@@ -4122,3 +4122,9 @@ Testadresse.
     Deutsche Bank, Achenbach Buschhütten, Ernst & Young) und Auswahl „andere Krankenkasse …“ mit freiem Feld.
   - **Mitarbeiter → Einsätze: „Alle Einsätze löschen (n)“** (Admin/Personal, Rückfrage): löscht alle Einsätze der Person
     (auch beendete) über `deleteShiftPlans`; erfasste Zeiten bleiben, nur die Verknüpfung entfällt; Stand im Protokoll.
+- 2026-10-25: **Dokumente direkt umbenennen** (Ahmed): In jeder Dokumentliste (Mitarbeiter, Kunde, Objekt, Lieferant,
+  Fahrzeug, Dokumenteneingang …, gemeinsame `FileArea`) Knopf „Umbenennen“ → Feld klappt in der Zeile auf, Endung bleibt
+  (`cleanDisplayName`). Gespeichert wird nur der Anzeigename an der Verknüpfung (`file_links.display_name/renamed_at/
+  renamed_by`, Migration `20261222000001`); die Datei selbst bleibt write-once (Inhalt, Prüfsumme, ursprünglicher Name).
+  Liste, ZIP-Download und Einzel-Download nutzen den neuen Namen; Protokoll `file_rename` mit altem/neuem Namen. Recht wie
+  der Download (Objektleitung nur ihre Objekte bzw. Team-Unterlagen). Anhänge ausgestellter Rechnungen sind nicht betroffen.

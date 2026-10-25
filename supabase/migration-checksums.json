@@ -194,5 +194,6 @@
  "20261220000001_plankalkulation.sql": "f59e448f3fc2d7b003e28e75210ab450ecc48caea63f55cabf7763f7e0350282",
  "20261220000002_sammel_objekt_abrechnung.sql": "a5527d2ab657ff6035582167af660d078c3d0fb0b5f2122b2b1ff2ca041fa879",
  "20261221000001_leistung_arbeitstage.sql": "f0ed9296ef541dff302e4c0f65c0c0d5aa9317866e7e595a73e7cd881d0e50fe",
- "20261221000002_leistung_titel_objektname.sql": "3c6e5b86e3bf981ffebb3d455abed2100df56ae92c7b27a66e9d54612ccfc763"
+ "20261221000002_leistung_titel_objektname.sql": "3c6e5b86e3bf981ffebb3d455abed2100df56ae92c7b27a66e9d54612ccfc763",
+ "20261222000001_dokument_umbenennen.sql": "0b54041ff5af3a4b5fd6a998ce3e6210d37da73459e8c7229eabdee4abd2a290"
 }

@@ -19,7 +19,9 @@ export const FileArea: FC<{
   listOnly?: boolean;
   /** zusätzliche Aktion je Datei (z. B. „ins Archiv“) */
   action?: (f: FileRow) => Child;
-}> = ({ link, files, category, title, hint, maxBytes, listOnly, action }) => (
+  /** ohne „Umbenennen“ (z. B. Anhänge ausgestellter Rechnungen) */
+  noRename?: boolean;
+}> = ({ link, files, category, title, hint, maxBytes, listOnly, action, noRename }) => (
   <div class="filearea">
     {files.length > 0 && (
       <ul class="files" style="margin:0 0 12px">
@@ -47,6 +49,7 @@ export const FileArea: FC<{
               <a class="btn sm sec" href={`/dateien/${f.id}`}>
                 <Icon name="download" size={14} /> Laden
               </a>
+              {!noRename && <RenameForm link={link} f={f} />}
               {action?.(f)}
             </div>
           </li>
@@ -74,6 +77,32 @@ export const FileArea: FC<{
     <script dangerouslySetInnerHTML={{ __html: UPLOADER_JS }} />
   </div>
 );
+
+/** Endung („.pdf“) bzw. leer. */
+const extOf = (n: string) => /\.[A-Za-z0-9]{1,8}$/.exec(n)?.[0] ?? '';
+
+/**
+ * Dokument direkt umbenennen (Ahmed 25.10.): klappt ein kleines Feld auf. Nur der angezeigte Name in dieser Akte
+ * ändert sich, die Endung bleibt; die Datei selbst bleibt write-once.
+ */
+const RenameForm: FC<{ link: LinkTarget; f: FileRow }> = ({ link, f }) => {
+  const ext = extOf(f.original_name);
+  const base = ext ? f.original_name.slice(0, -ext.length) : f.original_name;
+  return (
+    <details class="ren">
+      <summary class="btn sm ghost" title="Dokument umbenennen">
+        Umbenennen
+      </summary>
+      <form method="post" action={`/dateien/${f.id}/umbenennen`} class="ren-form">
+        <input type="hidden" name="typ" value={link.type} />
+        <input type="hidden" name="eid" value={link.id} />
+        <input name="name" value={base} maxLength={240} aria-label="Neuer Name" required />
+        {ext && <span class="small mut">{ext}</span>}
+        <button class="btn sm">Speichern</button>
+      </form>
+    </details>
+  );
+};
 
 /** Knöpfe „Alle aufklappen / Alle zuklappen“ für die Dokument-Kategorien (details.doc-cat) einer Seite. */
 export const DocFoldAll: FC = () => (

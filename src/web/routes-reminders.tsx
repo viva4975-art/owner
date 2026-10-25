@@ -8,6 +8,8 @@ import {
   composeMail,
   loadSignature,
   loadSignatureSettings,
+  NO_PERSON,
+  withDataUris,
   type SignatureSettings,
 } from '../mail/compose.js';
 import { MAILER_MISSING, resolveRecipients } from '../mail/mailer.js';
@@ -275,10 +277,8 @@ export function registerReminderRoutes({ app, deps, page, back }: Ctx) {
     const preview = composeMail({
       body: 'Sehr geehrte Damen und Herren,\n\nanbei erhalten Sie unsere Rechnung 1038316 vom 09.10.2026.\n\nBetrag: 1.234,56 €, zahlbar bis 23.10.2026.',
       signature: sig,
-    }).html!.replace(/cid:([^"]+)/g, (m, cid: string) => {
-      const im = sig.inline.find((i) => i.cid === cid);
-      return im ? `data:${im.contentType};base64,${Buffer.from(im.content).toString('base64')}` : m;
-    });
+    }).html!;
+    const previewHtml = withDataUris(preview, sig.inline);
     const redirected = isMailRedirected(e);
     const row = (k: string, v: Child) => (
       <>
@@ -416,7 +416,7 @@ export function registerReminderRoutes({ app, deps, page, back }: Ctx) {
           <h3 style="margin-top:0">Vorschau (so sieht der Kunde die Mail)</h3>
           <iframe
             title="Vorschau"
-            srcdoc={preview}
+            srcdoc={previewHtml}
             sandbox=""
             style="width:100%;height:420px;border:1px solid var(--line,#ddd);border-radius:6px;background:#fff"
           ></iframe>
@@ -586,8 +586,9 @@ export function registerReminderRoutes({ app, deps, page, back }: Ctx) {
       years: 0,
       no_greetings: false,
     };
-    const prevB = greetingMail({ ...sample, kind: 'geburtstag' }, s);
-    const prevJ = greetingMail({ ...sample, kind: 'jubilaeum', years: 5 }, s);
+    const gsig = await loadSignature(sql, NO_PERSON);
+    const prevB = greetingMail({ ...sample, kind: 'geburtstag' }, s, gsig);
+    const prevJ = greetingMail({ ...sample, kind: 'jubilaeum', years: 5 }, s, gsig);
     const dd = (d: string) => d.split('-').reverse().join('.');
     return page(
       c,
@@ -696,15 +697,21 @@ export function registerReminderRoutes({ app, deps, page, back }: Ctx) {
           <div class="cols">
             <div>
               <b>{prevB.subject}</b>
-              <pre class="small" style="white-space:pre-wrap;font-family:inherit">
-                {prevB.text}
-              </pre>
+              <iframe
+                title="Vorschau"
+                sandbox=""
+                srcdoc={withDataUris(prevB.html, prevB.inline)}
+                style="width:100%;height:640px;border:1px solid var(--line);border-radius:8px;background:#fff;margin-top:6px"
+              />
             </div>
             <div>
               <b>{prevJ.subject}</b>
-              <pre class="small" style="white-space:pre-wrap;font-family:inherit">
-                {prevJ.text}
-              </pre>
+              <iframe
+                title="Vorschau"
+                sandbox=""
+                srcdoc={withDataUris(prevJ.html, prevJ.inline)}
+                style="width:100%;height:640px;border:1px solid var(--line);border-radius:8px;background:#fff;margin-top:6px"
+              />
             </div>
           </div>
         </section>

@@ -5,6 +5,7 @@ import { addDays } from '../domain/time/holidays.js';
 import type { Mailer } from '../mail/mailer.js';
 import { resolveRecipients } from '../mail/mailer.js';
 import { BusinessError } from './errors.js';
+import { loadSignature, NO_PERSON, type MailSignature } from '../mail/compose.js';
 
 /*
  * Glückwünsche per E-Mail (Ahmed 22.10.): zum Geburtstag und zum Jahrestag des Eintritts, im Namen des ganzen Teams
@@ -152,7 +153,7 @@ const anrede = (g: Pick<GreetingDue, 'salutation' | 'first_name' | 'last_name'>)
       ? `Lieber ${g.first_name},`
       : `Hallo ${g.first_name},`;
 
-export function greetingMail(g: GreetingDue, s: GreetingSettings) {
+export function greetingMail(g: GreetingDue, s: GreetingSettings, sig?: MailSignature) {
   const tpl =
     g.kind === 'geburtstag' ? (s.birthday_text ?? BIRTHDAY_DEFAULT) : (s.jubilee_text ?? JUBILEE_DEFAULT);
   const body = tpl
@@ -179,9 +180,15 @@ export function greetingMail(g: GreetingDue, s: GreetingSettings) {
       : `🎉 ${g.years} ${g.years === 1 ? 'Jahr' : 'Jahre'} Viva-Deluxe`
   }</div>
 <div style="background:#fff;border-radius:0 0 12px 12px;padding:22px">${paras}</div>
-<div style="text-align:center;color:#888;font-size:12px;margin-top:10px">Viva-Deluxe Gebäudereinigung GmbH</div>
+${
+  sig
+    ? `<div style="background:#fff;border-radius:12px;padding:18px 22px;margin-top:14px;font-size:14px">${sig.html}</div>`
+    : '<div style="text-align:center;color:#888;font-size:12px;margin-top:10px">Viva-Deluxe Gebäudereinigung GmbH</div>'
+}
 </div></body></html>`;
-  return { subject, text: `${body}\n\n${signed}`, html };
+  // Signatur wie bei Rechnungs-Mails (Ahmed 25.10.), ohne Kopf „Buchhaltung“ – Pflichtangaben § 35a GmbHG
+  const text = `${body}\n\n${signed}${sig ? `\n\n-- \n${sig.text}` : ''}`;
+  return { subject, text, html, inline: sig?.inline ?? [] };
 }
 
 /**
@@ -197,6 +204,7 @@ export async function sendGreetings(
   if (!s.enabled || mailer.configured === false) return 0;
   if (hourBerlin(now) < s.send_hour) return 0;
   const today = todayBerlin(now);
+  let sig: MailSignature | undefined;
   const due = (await greetingsBetween(sql, today, today)).filter((g) => g.email && !g.no_greetings);
   let n = 0;
   for (const g of due) {
@@ -205,7 +213,8 @@ export async function sendGreetings(
                               values (${g.employee_id}, ${g.kind}, ${year}, ${g.email})
                               on conflict do nothing returning employee_id`;
     if (!claimed.length) continue;
-    const m = greetingMail(g, s);
+    sig ??= await loadSignature(sql, NO_PERSON);
+    const m = greetingMail(g, s, sig);
     const { actual, redirected } = resolveRecipients(env, [g.email!]);
     try {
       await mailer.send({
@@ -214,6 +223,7 @@ export async function sendGreetings(
         subject: `${redirected ? '[TEST] ' : ''}${m.subject}`,
         text: (redirected ? `*** TESTVERSAND – eigentlich an ${g.email} ***\n\n` : '') + m.text,
         html: m.html,
+        inline: m.inline,
         attachments: [],
         messageId: `<gruss-${g.kind}-${year}-${g.employee_id}@viva-deluxe-app>`,
       });

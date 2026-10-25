@@ -204,9 +204,26 @@ export async function loadSignatureSettings(sql: Sql) {
   return { company, settings: parseSignature(c?.mail_signature) };
 }
 
-export async function loadSignature(sql: Sql): Promise<MailSignature> {
+/** Signatur laden; `override` z. B. ohne Personen-Kopf „Buchhaltung“ (Glückwünsche, interne Mails). */
+export async function loadSignature(sql: Sql, override?: Partial<SignatureSettings>): Promise<MailSignature> {
   const { company, settings } = await loadSignatureSettings(sql);
-  return buildSignature(company, settings);
+  return buildSignature(company, { ...settings, ...override });
+}
+
+/** Ohne Absender-Person (Glückwünsche von info@, interne Erinnerungen): Kopf „Buchhaltung“ entfällt. */
+export const NO_PERSON: Partial<SignatureSettings> = {
+  person_name: '',
+  person_title: '',
+  person_mobile: '',
+  person_email: '',
+};
+
+/** Für Vorschauen im Browser: cid-Bilder als data-URI einsetzen. */
+export function withDataUris(html: string, inline: MailSignature['inline']): string {
+  return html.replace(/cid:([^"]+)/g, (m, cid: string) => {
+    const im = inline.find((i) => i.cid === cid);
+    return im ? `data:${im.contentType};base64,${Buffer.from(im.content).toString('base64')}` : m;
+  });
 }
 
 const linkify = (s: string) =>

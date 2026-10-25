@@ -1,6 +1,7 @@
 import type { Sql } from '../db/client.js';
 import { formatDateDe, hourBerlin, todayBerlin } from '../domain/invoice/calc.js';
 import { addDays } from '../domain/time/holidays.js';
+import { composeMail, loadSignature, NO_PERSON } from '../mail/compose.js';
 import { resolveRecipients } from '../mail/mailer.js';
 import { hrReminders } from './employees.js';
 import { ecOverview } from './eigen-compliance.js';
@@ -286,9 +287,13 @@ export async function sendDailyReminders(
     from: env.MAIL_FROM,
     to: actual,
     subject: `${redirected ? '[TEST] ' : ''}Erinnerungen ${formatDateDe(today)}: ${list.filter((r) => r.level === 'rot').length} dringend, ${list.length} gesamt`,
-    text:
-      (redirected ? `*** TESTVERSAND – eigentlich an ${s.emails.join(', ')} ***\n\n` : '') +
-      reminderMailText(list, today),
+    // mit Firmensignatur wie Rechnungs-Mails (Ahmed 25.10.)
+    ...composeMail({
+      notice: redirected ? `TESTVERSAND – eigentlich an ${s.emails.join(', ')}` : null,
+      body: reminderMailText(list, today),
+      greeting: 'Ihre Viva-Deluxe-App',
+      signature: await loadSignature(sql, NO_PERSON),
+    }),
     attachments: [],
     messageId: `<erinnerung-${today}@viva-deluxe-app>`,
   });

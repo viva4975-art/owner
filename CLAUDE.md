@@ -4128,3 +4128,9 @@ Testadresse.
   renamed_by`, Migration `20261222000001`); die Datei selbst bleibt write-once (Inhalt, Prüfsumme, ursprünglicher Name).
   Liste, ZIP-Download und Einzel-Download nutzen den neuen Namen; Protokoll `file_rename` mit altem/neuem Namen. Recht wie
   der Download (Objektleitung nur ihre Objekte bzw. Team-Unterlagen). Anhänge ausgestellter Rechnungen sind nicht betroffen.
+- 2026-10-25: **Signatur auch in Glückwünschen und Erinnerungen** (Ahmed): Glückwunsch-Mails (Geburtstag/Jubiläum) und die
+  tägliche Erinnerungs-Mail tragen jetzt die Firmensignatur wie Rechnungs-/Mahnungs-Mails (Logo, Zentrale, Niederlassung,
+  Siegel, Pflichtangaben § 35a GmbHG, Hinweise) – ohne Kopf „Buchhaltung / buchhaltung@“ (`NO_PERSON` in
+  `src/mail/compose.ts`), da sie von info@ bzw. an das Büro gehen. Vorschau unter Einstellungen → Glückwünsche zeigt die
+  fertige Mail mit Bildern (`withDataUris`). Ausfallmeldungen des Systemwächters bleiben schlichter Text (müssen auch
+  ohne Datenbank rausgehen).

@@ -74,6 +74,17 @@ describe.skipIf(!available)('Geschwärzter Stundennachweis zur Rechnung', () => 
     expect(docs.map((d) => d.filename)).toEqual(['Stundennachweis_2990101_2026-09-01_2026-09-30.pdf']);
   });
 
+  it('berichtigte Fassung kommt zusätzlich dazu, doppelt absenden hängt nichts doppelt an', async () => {
+    expect(await attachRedactedTimesheets(deps, invoiceId, 'test', '2026-10-25_120000')).toBe(1);
+    expect(await attachRedactedTimesheets(deps, invoiceId, 'test', '2026-10-25_120000')).toBe(0);
+    const docs = await sql`select filename from app.invoice_documents
+                            where invoice_id = ${invoiceId} and kind = 'attachment' order by filename`;
+    expect(docs.map((d) => d.filename)).toEqual([
+      'Stundennachweis_2990101_2026-09-01_2026-09-30.pdf',
+      'Stundennachweis_2990101_2026-09-01_2026-09-30_berichtigt_2026-10-25_120000.pdf',
+    ]);
+  });
+
   it('ohne Häkchen kein Stundennachweis', async () => {
     const run = await runMonthly(sql, '2026-10', 'test');
     const other = run.created.find((c) => c.siteName !== 'Grundschule Musterweg');

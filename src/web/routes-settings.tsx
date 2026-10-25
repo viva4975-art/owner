@@ -57,6 +57,11 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
         'Datenbank, E-Rechnungs-Prüfung, Speicherplatz, tägliche Sicherung, Mail und Archiv-Kopie – Störungen kommen per E-Mail.',
       ],
       [
+        'Datenschutz: Verzeichnis der Verarbeitungstätigkeiten',
+        '/einstellungen/datenschutz',
+        'Verzeichnis nach Art. 30 DSGVO aus der App erzeugt (Zeiterfassung, Standort, Fotos, Krankheit, Bank, Push …) – als PDF.',
+      ],
+      [
         'Revisionssicheres Archiv (S3)',
         '/einstellungen/archiv',
         'Gesperrte Kopie aller Belege im S3-Speicher mit Object Lock (10 Jahre, GoBD) – Stand, Fehler, jetzt sichern.',

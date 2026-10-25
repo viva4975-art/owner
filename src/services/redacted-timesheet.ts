@@ -46,14 +46,19 @@ export async function timesheetSitesOf(sql: Sql, invoiceId: string): Promise<Tim
      order by s.site_no`;
 }
 
-export const timesheetFilename = (t: TimesheetSite) =>
-  `Stundennachweis_${t.site_no}_${t.from}_${t.to}.pdf`.replace(/[^\w.-]+/g, '_');
+/** Dateiname je Objekt + Zeitraum; berichtigte Fassung mit Zeitstempel (je Formular fest → nichts doppelt). */
+export const timesheetFilename = (t: TimesheetSite, revision?: string) =>
+  `Stundennachweis_${t.site_no}_${t.from}_${t.to}${revision ? `_berichtigt_${revision}` : ''}.pdf`.replace(
+    /[^\w.-]+/g,
+    '_',
+  );
 
 /** PDF für ein Objekt und einen Zeitraum – nur erfasste/freigegebene Zeiten, Namen geschwärzt. */
 export async function redactedTimesheetPdf(
   sql: Sql,
   t: TimesheetSite,
   invoice: { number: string | null; customer: string },
+  revisedOn?: string,
 ): Promise<Uint8Array> {
   const entries = (await listEntries(sql, { siteId: t.site_id, from: t.from, to: t.to }))
     .filter(countsAsActual)
@@ -65,7 +70,7 @@ export async function redactedTimesheetPdf(
     date: todayBerlin(),
     author: 'Viva-Deluxe Gebäudereinigung GmbH',
   });
-  d.title('Stundennachweis', t.site_no);
+  d.title(revisedOn ? 'Stundennachweis (berichtigt)' : 'Stundennachweis', t.site_no);
   d.infoGrid([
     ['Objekt', t.site_name],
     ['Adresse', t.address || '–'],
@@ -73,6 +78,11 @@ export async function redactedTimesheetPdf(
     ['Kunde', invoice.customer],
     ['Zur Rechnung', invoice.number ?? 'Entwurf'],
     ['Stunden gesamt', `${hm(total)} Std.`],
+    ...(revisedOn
+      ? ([
+          ['Fassung', `berichtigt am ${formatDateDe(revisedOn)} – ersetzt den früher übermittelten Nachweis`],
+        ] as [string, string][])
+      : []),
   ]);
   d.table(
     [
@@ -129,7 +139,13 @@ export async function previewRedactedTimesheet(sql: Sql, invoiceId: string): Pro
  * Stundennachweise als Anlage an die Rechnung hängen (je Objekt eine Datei). Schon angehängte (gleicher Dateiname)
  * bleiben – erneut aufrufen hängt nichts doppelt an. Rückgabe: Anzahl neu angehängter Dateien.
  */
-export async function attachRedactedTimesheets(deps: Deps, invoiceId: string, actor: string) {
+export async function attachRedactedTimesheets(
+  deps: Deps,
+  invoiceId: string,
+  actor: string,
+  /** Berichtigte Fassung (z. B. „2026-10-25_1430“): neue Datei zusätzlich zur alten, alte bleibt (write-once). */
+  revision?: string,
+) {
   const sites = await timesheetSitesOf(deps.sql, invoiceId);
   if (!sites.length) return 0;
   const inv = await invoiceHead(deps.sql, invoiceId);
@@ -141,9 +157,9 @@ export async function attachRedactedTimesheets(deps: Deps, invoiceId: string, ac
   );
   let n = 0;
   for (const t of sites) {
-    const name = timesheetFilename(t);
+    const name = timesheetFilename(t, revision);
     if (have.has(name)) continue;
-    const pdf = await redactedTimesheetPdf(deps.sql, t, inv);
+    const pdf = await redactedTimesheetPdf(deps.sql, t, inv, revision ? todayBerlin() : undefined);
     await addAttachment(deps, invoiceId, name, 'application/pdf', pdf, actor);
     n++;
   }

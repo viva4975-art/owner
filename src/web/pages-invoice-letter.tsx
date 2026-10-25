@@ -30,6 +30,10 @@ import { euro } from './layout.js';
  * Aktionen untereinander, Anhänge und Versand. Daten = dieselbe Vorschau wie das PDF (loadDraftPreview).
  */
 
+/** Zeitstempel Berliner Zeit „JJJJ-MM-TT_HHMMSS“ – feste Kennung je angezeigtem Formular. */
+const revisionStamp = () =>
+  new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).replace(' ', '_').replace(/:/g, '');
+
 const FORMAT: Record<string, string> = { pdf: 'PDF', zugferd: 'ZUGFeRD', xrechnung: 'XRechnung + PDF' };
 
 export const LETTER_CSS = `
@@ -96,6 +100,8 @@ export const DraftLetter: FC<{
   lineTypes?: (string | null)[];
   /** Anzahl Objekte mit „geschwärztem Stundennachweis“ (Leistung angekreuzt) */
   timesheets?: number;
+  /** Letzter Tag der Leistungszeiträume mit Stundennachweis (für die Warnung „Zeitraum noch nicht vorbei“) */
+  timesheetUntil?: string | null;
 }> = ({
   inv,
   doc,
@@ -112,7 +118,10 @@ export const DraftLetter: FC<{
   lastIssued = null,
   today = '',
   timesheets = 0,
+  timesheetUntil = null,
 }) => {
+  // Stundennachweis wird beim Fertigstellen mit den bis dahin erfassten Zeiten erzeugt – vor Ende des Zeitraums fehlen Tage
+  const tsEarly = timesheets > 0 && !!timesheetUntil && !!today && timesheetUntil >= today;
   // Storno/Rechnungskorrektur: Positionen kommen aus der Originalrechnung – gleiche Ansicht, aber nicht bearbeitbar
   const locked = !['invoice', 'partial', 'final'].includes(inv.kind);
   const issueDate = inv.planned_issue_date ?? today;
@@ -120,6 +129,9 @@ export const DraftLetter: FC<{
     `${KIND_TITLES[inv.kind]} jetzt verbindlich mit Datum ${formatDateDe(issueDate)} ausstellen? Danach ist sie unveränderbar und erhält eine fortlaufende Nummer.` +
     (lastIssued && issueDate < lastIssued
       ? `\n\nACHTUNG: Die zuletzt ausgestellte Rechnung hat das Datum ${formatDateDe(lastIssued)} – diese Rechnung wäre älter als ihre Vorgängerin (Nummern und Datum sollten aufsteigend sein). Wirklich zurückdatieren?`
+      : '') +
+    (tsEarly
+      ? `\n\nACHTUNG Stundennachweis: Der Leistungszeitraum läuft noch bis ${formatDateDe(timesheetUntil!)}. Der geschwärzte Stundennachweis enthält nur die bis heute erfassten Zeiten – besser erst nach Ende des Zeitraums fertigstellen.`
       : '');
   const wrs = workReports.filter((w) => !w.cancelled);
   const wrSigned = wrs.some((w) => w.status === 'unterschrieben');
@@ -412,6 +424,13 @@ export const DraftLetter: FC<{
             })}{' '}
             · Format {FORMAT[inv.invoice_format] ?? inv.invoice_format}
           </div>
+          {tsEarly && (
+            <div class="flash warn" style="margin-top:12px">
+              Stundennachweis: Der Leistungszeitraum läuft noch bis {formatDateDe(timesheetUntil!)}. Beim
+              Fertigstellen wird der geschwärzte Stundennachweis mit den bis dahin erfassten Zeiten angehängt
+              – Tage danach fehlen. Besser erst nach Ende des Zeitraums fertigstellen.
+            </div>
+          )}
           {preflight && (
             <div class={`flash ${preflight.valid ? 'ok' : 'err'}`} style="margin-top:12px">
               {preflight.valid
@@ -997,6 +1016,16 @@ export const IssuedLetter: FC<{
             {!!p.timesheets?.missing && !cancelled && (
               <form method="post" action={`/rechnungen/${inv.id}/stundennachweis`}>
                 <button>Stundennachweis als Anlage anhängen</button>
+              </form>
+            )}
+            {!!p.timesheets?.count && !p.timesheets.missing && !cancelled && (
+              <form
+                method="post"
+                action={`/rechnungen/${inv.id}/stundennachweis`}
+                onsubmit="return confirm('Neuen (berichtigten) Stundennachweis mit den jetzt erfassten Zeiten anhängen? Der bisherige bleibt im Archiv.')"
+              >
+                <input type="hidden" name="revision" value={revisionStamp()} />
+                <button>Neuen Stundennachweis anhängen</button>
               </form>
             )}
             {!isCredit && !cancelled && (

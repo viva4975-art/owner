@@ -21,6 +21,7 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/einstellungen\/system(\/|$)/, ['admin']],
   [/^\/einstellungen\/archiv(\/|$)/, ['admin']],
   [/^\/einstellungen\/rechte(\/|$)/, ['admin']],
+  [/^\/einstellungen\/datenschutz(\/|$)/, ['admin']],
   [/^\/transfer\/bank\/rueckkehr$/, ['admin']],
   [/^\/einstellungen\/erinnerungen(\/|$)/, ['admin', 'buchhaltung']],
   [/^\/erinnerungen(\/|$)/, ['admin', 'buchhaltung']],
@@ -238,7 +239,7 @@ const AREAS = PERM_GROUPS.flatMap((g) => g.areas);
 const LOCKED = [
   /^\/(anmelden|abmelden|konto|static|health|m|app|qm)(\/|$)/,
   /^\/benutzer(\/|$)/,
-  /^\/einstellungen\/(firma|nummernkreise|bankabruf|email|system|archiv|rechte)(\/|$)/,
+  /^\/einstellungen\/(firma|nummernkreise|bankabruf|email|system|archiv|rechte|datenschutz)(\/|$)/,
   /^\/transfer\/bank\/rueckkehr$/,
   /^\/transfer\/import\/(dubletten|abgleich)$/,
 ];

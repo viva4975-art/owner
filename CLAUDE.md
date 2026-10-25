@@ -4102,3 +4102,23 @@ Testadresse.
 - 2026-10-25: **„‹ Zurück zu …“ an dieselbe Stelle** (Ahmed: „Mitarbeiterübersicht zurück → nicht Seite eins“): Die Brotkrumen-
   Links öffnen die zuletzt gesehene Fassung der Liste (Seite, Filter, Sortierung, je Tab im sessionStorage gemerkt) und
   springen an die alte Scrollstelle (`SCROLL_JS` in `layout.tsx`). Gilt für alle Listen (Mitarbeiter, Kunden, Objekte …).
+- 2026-10-25: Ahmed (Vorschläge 3–6 + Nachträge):
+  - **Schulferien Bayern bis Sommer 2030** (`school-holidays.ts`, Ferienordnung Schuljahre bis 2029/30; Herbst/Weihnachten
+    2030/31 noch nicht festgelegt → nach Sommer 2030 ergänzen). Schul-Objekte verteilen den Urlaub damit bis 2030.
+    Quelle Drittseiten (kalenderpedia, smart-rechner) mit Verweis auf die amtliche Ferienordnung – bei Abweichung gilt
+    das Kultusministerium.
+  - **Warnung Stundennachweis:** Rechnungsentwurf mit Leistung „geschwärzter Stundennachweis“, deren Leistungszeitraum
+    noch nicht vorbei ist → gelber Hinweis und Zusatz in der Rückfrage beim Fertigstellen.
+  - **„Neuen Stundennachweis anhängen“** an ausgestellten Rechnungen: berichtigte Fassung mit den jetzt erfassten Zeiten
+    (`…_berichtigt_<Zeitstempel>.pdf`, Titel „Stundennachweis (berichtigt)“, Fassung-Zeile), alte bleibt im Archiv;
+    feste Kennung je Formular → doppelt absenden hängt nichts doppelt an. Rechnungs-Mails nehmen je Objekt + Zeitraum
+    nur die neueste Fassung (`currentAttachments`). Schon versendet → „Erneut senden“.
+  - **Datenschutz:** Einstellungen → „Datenschutz: Verzeichnis der Verarbeitungstätigkeiten“ (nur Admin,
+    `/einstellungen/datenschutz`, `src/services/vvt.ts`): 16 Tätigkeiten (Personal, Zeiterfassung, Standort, Krankheit/
+    Verbandbuch, App/Push, Unterschriften, Fotos, Bewerber, Kunden, Rechnungen/Archiv, NU, Bankabruf, Glückwünsche,
+    Fahrzeuge/Geräte, Konten/Sicherung, Kartendienste), TOM, Drittländer; als PDF mit Firmendaten.
+    **Von Datenschutzberater/Anwalt prüfen lassen; DSB-Pflicht (§ 38 BDSG) klären.**
+  - **Krankenkassen:** fehlende Kassen ergänzt (mkk, BKK Miele, Groz-Beckert, Würth, Stadt Augsburg, evm, B. Braun,
+    Deutsche Bank, Achenbach Buschhütten, Ernst & Young) und Auswahl „andere Krankenkasse …“ mit freiem Feld.
+  - **Mitarbeiter → Einsätze: „Alle Einsätze löschen (n)“** (Admin/Personal, Rückfrage): löscht alle Einsätze der Person
+    (auch beendete) über `deleteShiftPlans`; erfasste Zeiten bleiben, nur die Verknüpfung entfällt; Stand im Protokoll.

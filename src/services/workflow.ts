@@ -378,6 +378,25 @@ const testNotice = (redirectedFrom: string[]) =>
 export const invoiceMailSubject = (doc: InvoiceDocument, latest: number, test: boolean, again = false) =>
   `${test ? '[TEST] ' : ''}${again ? 'Erneute Zusendung: ' : ''}${latest ? 'Berichtigte Fassung: ' : ''}${KIND_TITLES[doc.kind]} ${doc.number} – ${doc.seller.legalName}`;
 
+/**
+ * Anlagen ohne überholte Stundennachweise: Gibt es zu einem Objekt + Zeitraum eine berichtigte Fassung
+ * („…_berichtigt_<Zeitstempel>.pdf“), geht nur die neueste mit (die älteren bleiben im Archiv).
+ */
+export function currentAttachments<T extends { filename: string }>(docs: T[]): T[] {
+  const re = /^(Stundennachweis_.+?)(?:_berichtigt_([\d_-]+))?\.pdf$/;
+  const newest = new Map<string, string>();
+  for (const d of docs) {
+    const m = re.exec(d.filename);
+    if (!m) continue;
+    const v = m[2] ?? '';
+    if (!newest.has(m[1]!) || v > newest.get(m[1]!)!) newest.set(m[1]!, v);
+  }
+  return docs.filter((d) => {
+    const m = re.exec(d.filename);
+    return !m || (m[2] ?? '') === newest.get(m[1]!);
+  });
+}
+
 /** Anhänge einer Rechnungs-Mail je Rechnungsformat (aktuelle Fassung) + Anlagen. */
 export function invoiceMailDocs(docs: DocRow[], format: string) {
   const latest = docs.reduce((m, d) => (d.kind !== 'attachment' && d.revision > m ? d.revision : m), 0);
@@ -392,7 +411,7 @@ export function invoiceMailDocs(docs: DocRow[], format: string) {
       throw new BusinessError('E-Rechnung hat die KoSIT-Prüfung nicht bestanden – Versand gesperrt');
     }
   }
-  selected.push(...docs.filter((d) => d.kind === 'attachment'));
+  selected.push(...currentAttachments(docs.filter((d) => d.kind === 'attachment')));
   return { latest, selected };
 }
 

@@ -1185,7 +1185,12 @@ export const EmployeeForm: FC<{
       <Field name="social_security_no" label="SV-Nummer" value={priv.social_security_no} />
       <div>
         <label for="health_insurance">Krankenkasse</label>
-        <select id="health_insurance" name="health_insurance">
+        <select
+          id="health_insurance"
+          name="health_insurance"
+          data-reveal="#kk-andere"
+          data-reveal-value="__andere"
+        >
           <option value="">– bitte wählen –</option>
           {priv.health_insurance && !HEALTH_INSURERS.includes(priv.health_insurance) && (
             <option value={priv.health_insurance} selected>
@@ -1197,7 +1202,16 @@ export const EmployeeForm: FC<{
               {k}
             </option>
           ))}
+          <option value="__andere">andere Krankenkasse …</option>
         </select>
+        <div id="kk-andere" hidden style="margin-top:6px">
+          <input
+            name="health_insurance_other"
+            aria-label="Name der Krankenkasse"
+            placeholder="Name der Krankenkasse"
+            maxLength={200}
+          />
+        </div>
       </div>
       <Field name="iban" label="IBAN" value={priv.iban} />
     </div>

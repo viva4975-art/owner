@@ -264,8 +264,26 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
         if (s.entry && s.entry.status !== 'abgelehnt') r.done++;
         recent.set(s.plan.site_id, r);
       }
+      const role = c.get('user').role;
       return (
         <>
+          {plans.length > 0 && ['admin', 'personal'].includes(role) && (
+            <form
+              method="post"
+              action="/einsatzplanung/loeschen"
+              class="actions"
+              style="margin-top:0;justify-content:flex-end"
+              onsubmit={`return confirm(${JSON.stringify(
+                `Alle ${plans.length} Einsätze dieser Person löschen (auch beendete)? Erfasste Zeiten bleiben erhalten, nur die Verknüpfung zum Einsatz entfällt.`,
+              )})`}
+            >
+              <input type="hidden" name="zurueck" value={ret} />
+              {plans.map((p) => (
+                <input type="hidden" name="ids" value={p.id} />
+              ))}
+              <button class="btn sm danger">Alle Einsätze löschen ({plans.length})</button>
+            </form>
+          )}
           <EmployeePlanList
             employeeId={e.id}
             plans={plans as unknown as PlanRowLite[]}

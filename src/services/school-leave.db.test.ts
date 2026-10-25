@@ -73,10 +73,13 @@ describe.skipIf(!available)('Schulferien automatisch, Urlaubs-Warnung (Datenbank
     // 11 schulfreie Arbeitstage, 10 Tage Urlaub
     expect(y26.reduce((s, p) => s + p.vacation, 0)).toBe(10);
     expect(y26.reduce((s, p) => s + p.unpaid, 0)).toBe(1);
-    // 2027 (Ferien nur bis Sommer bekannt): nur ein Teil des Jahresurlaubs verplant
-    const y27 = mine.filter((p) => p.from >= '2027-01-01');
-    expect(y27.reduce((s, p) => s + p.vacation, 0)).toBeLessThan(30);
+    // 2027 vollständig bekannt: Jahresurlaub verplant, höchstens der Anspruch
+    const y27 = mine.filter((p) => p.from >= '2027-01-01' && p.to <= '2027-12-31');
+    expect(y27.reduce((s, p) => s + p.vacation, 0)).toBeLessThanOrEqual(30);
     expect(y27.reduce((s, p) => s + p.vacation, 0)).toBeGreaterThan(0);
+    // 2030 (Ferien nur bis Sommer bekannt): nur ein Teil des Jahresurlaubs verplant
+    const y30 = mine.filter((p) => p.from >= '2030-01-01');
+    expect(y30.reduce((s, p) => s + p.vacation, 0)).toBeLessThan(30);
     expect(r.skipped.some((x) => x.employee_id === mixed && x.reason.includes('arbeitet auch'))).toBe(true);
     expect(r.planned.some((p) => p.employee_id === mixed)).toBe(false);
   });

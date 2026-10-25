@@ -1571,6 +1571,9 @@ export function registerModuleRoutes(ctx: Ctx) {
         Array.isArray(v) ? (k === 'tags' || k === 'languages' ? v.map(String).join(',') : v[0]) : v,
       ]),
     );
+    // Krankenkasse „andere …“: freier Text statt Auswahl
+    if (flat.health_insurance === '__andere')
+      flat.health_insurance = String(flat.health_insurance_other ?? '').trim();
     const parsed = employeeInput.safeParse(flat);
     if (!parsed.success) throw new BusinessError(parsed.error.issues.map((i) => i.message).join('\n'));
     // Pflicht im Formular (Ahmed 06.10.): Beschäftigungsart, Vergütung, Wochenstunden bei Teilzeit/Minijob

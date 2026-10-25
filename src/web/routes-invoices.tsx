@@ -796,9 +796,19 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
 
   app.post(`/rechnungen/:id{${UUID}}/stundennachweis`, async (c) => {
     const id = c.req.param('id');
-    const n = await attachRedactedTimesheets(deps, id, c.get('actor'));
+    const body = await c.req.parseBody();
+    // „Neuen Stundennachweis anhängen“: berichtigte Fassung (Zeitstempel aus dem Formular → doppelt absenden = nichts doppelt)
+    const rev =
+      typeof body.revision === 'string' && /^\d{4}-\d{2}-\d{2}_\d{6}$/.test(body.revision)
+        ? body.revision
+        : undefined;
+    const n = await attachRedactedTimesheets(deps, id, c.get('actor'), rev);
     return back(c, `/rechnungen/${id}`, {
-      ok: n ? `Stundennachweis angehängt (${n}).` : 'Stundennachweis hing schon an.',
+      ok: n
+        ? rev
+          ? `Berichtigter Stundennachweis angehängt (${n}). Der frühere bleibt im Archiv. Ist die Rechnung schon versendet: „Erneut senden“ schickt die Anlagen noch einmal.`
+          : `Stundennachweis angehängt (${n}).`
+        : 'Stundennachweis hing schon an.',
     });
   });
 
@@ -829,6 +839,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         ? (inv.payable_cents * BigInt(inv.skonto_percent_bp) + 5000n) / 10000n
         : null;
     if (inv.status === 'draft') {
+      const tsSites = await timesheetSitesOf(sql, id);
       return page(
         c,
         'Entwurf',
@@ -854,7 +865,8 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
             await sql<{ t: string | null }[]>`
               select service_type_id::text as t from app.invoice_lines where invoice_id = ${id} order by position`
           ).map((r) => r.t)}
-          timesheets={(await timesheetSitesOf(sql, id)).length}
+          timesheets={tsSites.length}
+          timesheetUntil={tsSites.reduce<string | null>((m, t) => (!m || t.to > m ? t.to : m), null)}
           notice={<CustomerNotice c={customer!} />}
           uploadSlot={
             <FileArea

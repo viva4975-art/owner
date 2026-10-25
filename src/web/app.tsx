@@ -2,6 +2,7 @@ import { registerPayslipRoutes } from './routes-payslips.js';
 import { registerLetterRoutes } from './routes-letters.js';
 import { registerMaterialRoutes } from './routes-material.js';
 import { registerPermissionRoutes } from './routes-permissions.js';
+import { registerPrivacyRoutes } from './routes-privacy.js';
 import { registerTimeAccountRoutes } from './routes-time-account.js';
 import { registerReminderRoutes } from './routes-reminders.js';
 import { registerPriceAdjustmentRoutes } from './routes-price-adjustment.js';
@@ -642,6 +643,7 @@ export function createApp(deps: Deps) {
   registerTimeAccountRoutes(ctx);
   registerLetterRoutes(ctx);
   registerPermissionRoutes(ctx);
+  registerPrivacyRoutes(ctx);
   registerPayslipRoutes(ctx);
   registerCashbookRoutes(ctx);
   registerLegacyRoutes(ctx);

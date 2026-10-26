@@ -21,6 +21,8 @@ describe.skipIf(!available)('Arbeitstage pro Woche: Urlaub anteilig', () => {
     for (const wd of [1, 2, 3])
       await sql`insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes, valid_from)
                 values (${randomUUID()}, ${emp}, ${DEMO.siteSchool}, ${wd}, '06:00', '10:00', 0, '2026-11-01')`;
+    // Reduzierung mit Stichtag in den Stammdaten (fest) – sonst gälte der Plan ab 11/2026 fürs ganze Jahr
+    await sql`update app.employees set days_auto = false where id = ${emp}`;
   });
   afterAll(async () => {
     await sql?.end();
@@ -77,7 +79,7 @@ describe.skipIf(!available)('Arbeitstage pro Woche: Urlaub anteilig', () => {
     expect((await leaveBalance(sql, emp, 2025)).entitlement).toBe(30);
   });
 
-  it('Eintritt/Austritt: anteilig, gesetzlicher Mindesturlaub nach § 5 BUrlG bleibt', async () => {
+  it('Eintritt/Austritt: rein anteilig', async () => {
     const mk = async (no: string, entry: string, exit: string | null, days: number) => {
       const id = randomUUID();
       await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, exit_date, employment_type, weekly_hours, annual_leave_days)
@@ -87,7 +89,7 @@ describe.skipIf(!available)('Arbeitstage pro Woche: Urlaub anteilig', () => {
     // alle 30 Tage laut Rahmentarifvertrag (annual_leave_days wird nicht mehr verwendet)
     expect(await mk('9881', '2026-10-01', null, 24)).toBe(7.5); // Wartezeit im Jahr nicht erfüllt → nur anteilig
     expect(await mk('9882', '2026-03-01', null, 24)).toBe(25); // 10/12 von 30
-    expect(await mk('9883', '2026-06-15', null, 30)).toBe(20); // 6/12 = 15 → gesetzlicher Mindesturlaub 20
+    expect(await mk('9883', '2026-06-15', null, 30)).toBe(15); // 6/12 – ohne Untergrenze (Ahmed 26.10.)
     expect(await mk('9884', '2020-01-01', '2026-05-31', 30)).toBe(12.5); // Austritt 1. Halbjahr → anteilig
     expect(await mk('9885', '2020-01-01', '2026-08-31', 30)).toBe(20); // 8/12 von 30
   });
@@ -123,5 +125,13 @@ describe.skipIf(!available)('Arbeitstage pro Woche: Urlaub anteilig', () => {
     }
     expect((await leaveBalance(sql, gap, 2025)).entitlement).toBe(12); // 30 × 2/5, auch April–Juni ohne Einsatz
     expect((await leaveBalance(sql, mid, 2025)).entitlement).toBe(3); // 30 × 2/5 × 3/12
+    // Plan erst ab Juli: auch Januar–Juni zählen 2 Tage (nicht 5)
+    const late = randomUUID();
+    await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, employment_type, weekly_hours)
+              values (${late}, '9895', 'Spaet', 'Geplant', '2024-01-01', 'teilzeit', 8)`;
+    for (const wd of [2, 4])
+      await sql`insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes, valid_from)
+                values (${randomUUID()}, ${late}, ${DEMO.siteSchool}, ${wd}, '06:00', '10:00', 0, '2025-07-01')`;
+    expect((await leaveBalance(sql, late, 2025)).entitlement).toBe(12);
   });
 });

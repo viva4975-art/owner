@@ -1246,7 +1246,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                   : pv.rest > 0
                     ? 'Resturlaub bis zum Austritt nehmen lassen – sonst muss er ausbezahlt werden (§ 7 Abs. 4 BUrlG).'
                     : 'Passt genau.'}{' '}
-                Anteilig nach § 5 BUrlG (bei Austritt nach dem 30.06. bleibt der gesetzliche Mindesturlaub).
+                Rein anteilig nach Beschäftigungsmonaten und Arbeitstagen.
                 {pv.laterLeave > 0 &&
                   ` ${pv.laterLeave} Urlaub(e) nach dem Austrittstag sind nicht mitgezählt.`}
               </p>

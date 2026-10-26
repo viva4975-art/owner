@@ -70,10 +70,17 @@ async function validateBoth(doc: InvoiceDocument, env: Env): Promise<PreflightRe
  */
 export async function preflight(deps: Deps, id: string): Promise<PreflightResult> {
   const [inv] = await deps.sql<
-    { planned_issue_date: string | null; invoice_format: string; is_internal: boolean }[]
+    {
+      planned_issue_date: string | null;
+      invoice_format: string;
+      is_internal: boolean;
+      customer_id: string;
+      site_id: string | null;
+      invoice_group_id: string | null;
+    }[]
   >`
-    select i.planned_issue_date, i.invoice_format::text, c.is_internal from app.invoices i
-      join app.customers c on c.id = i.customer_id where i.id = ${id}`;
+    select i.planned_issue_date, i.invoice_format::text, c.is_internal, i.customer_id, i.site_id, i.invoice_group_id
+      from app.invoices i join app.customers c on c.id = i.customer_id where i.id = ${id}`;
   if (inv?.is_internal)
     throw new BusinessError(
       'Interner Bereich: dafür werden keine Rechnungen ausgestellt – Entwurf bitte löschen.',
@@ -82,8 +89,18 @@ export async function preflight(deps: Deps, id: string): Promise<PreflightResult
   const doc = await loadDocument(deps.sql, id, { number: 'ENTWURF', issueDate, dueDate: issueDate });
   if (!hasEndpoint(doc)) {
     if (inv?.invoice_format === 'pdf') return PDF_ONLY;
+    // Format inzwischen in der Rechnungsgruppe/beim Kunden auf „PDF“ umgestellt (Entwurf ist älter): übernehmen
+    const now = inv
+      ? await effectiveBilling(deps.sql, inv.customer_id, inv.site_id, inv.invoice_group_id)
+      : null;
+    if (now?.format === 'pdf') {
+      await deps.sql`update app.invoices set invoice_format = 'pdf' where id = ${id} and status = 'draft'`;
+      return PDF_ONLY;
+    }
+    const fmt = { zugferd: 'ZUGFeRD', xrechnung: 'XRechnung', pdf: 'PDF' }[(now?.format ?? 'pdf') as 'pdf'] ?? '';
+    const where = now?.groupName ? `Rechnungsgruppe „${now.groupName}“` : 'Kunde';
     throw new BusinessError(
-      'E-Rechnung nicht möglich: Beim Empfänger fehlt die Rechnungs-E-Mail (bzw. Leitweg-ID). Bitte unter Kunde → Rechnungsgruppen eintragen – oder Format „PDF“ wählen (Versand per Post).',
+      `E-Rechnung nicht möglich: Beim Empfänger fehlt die Rechnungs-E-Mail (bzw. Leitweg-ID). Format laut ${where}: ${fmt}. Bitte unter Kunde → Rechnungsgruppen${now?.groupName ? ` → „${now.groupName}“` : ''} die E-Mail eintragen oder dort Format „PDF“ wählen (Versand per Post) – das Format am Kunden zählt nur ohne Rechnungsgruppe.`,
     );
   }
   try {

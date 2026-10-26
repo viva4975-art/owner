@@ -160,7 +160,7 @@ export async function plannedDaysPerWeek(sql: Sql | Tx, employeeId: string, from
 
 /**
  * Arbeitstage je Abschnitt für den Urlaub: von Hand in den Stammdaten gesetzt (`days_auto = false`) → Verlauf wie
- * bisher; sonst je Kalendermonat aus der Einsatzplanung (Monat ohne Einsatz = wie der vorige geplante Monat, vor dem ersten Einsatz 5).
+ * bisher; sonst je Kalendermonat aus der Einsatzplanung (Monat ohne Einsatz = wie der nächstgelegene geplante Monat, ganz ohne Einsatz 5).
  */
 export async function leaveDaysPeriods(sql: Sql | Tx, employeeId: string, from: string, to: string) {
   if (from > to) return [];
@@ -181,10 +181,11 @@ export async function leaveDaysPeriods(sql: Sql | Tx, employeeId: string, from: 
     });
     ms = next;
   }
-  // Monat ohne Einsatz nach einem geplanten Monat (Lücke, z. B. Schulferien, Plan pausiert): wie der letzte geplante
-  // Monat – sonst bekäme jemand mit 2× wöchentlich dort 5 Tage angerechnet (Ahmed 26.10.). Vor dem ersten Einsatz
-  // (z. B. Stundenreduzierung, Plan erst ab dann) bleibt die 5-Tage-Woche.
-  let last: number | null = null;
+  // Monat ohne Einsatz (Plan fängt später an, Lücke, Schulferien): wie der nächstgelegene geplante Monat – vorher
+  // der erste geplante, danach der letzte (Ahmed 26.10.: „2× wöchentlich hat 25,5 Tage?“). Ganz ohne Einsatz: 5.
+  // Wer vorher wirklich mehr Tage gearbeitet hat, bekommt die Arbeitstage fest in den Stammdaten.
+  const first = months.find((x) => x.days !== null);
+  let last: number | null = first ? first.days : null;
   const out: { from: string; to: string; days: number }[] = [];
   for (const x of months) {
     if (x.days !== null) last = x.days;

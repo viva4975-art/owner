@@ -13,6 +13,7 @@ import { upcomingEvents } from './tenders.js';
 import { remindFrom, vehiclesWithoutRegistration } from './vehicles.js';
 import { plannedShifts } from './time.js';
 import { dueRecurring } from './recurring-payments.js';
+import { missingSofort } from './sv-report.js';
 import type { Deps } from './workflow.js';
 
 /*
@@ -64,6 +65,17 @@ export async function collectReminders(sql: Sql, today = todayBerlin()): Promise
         join app.suppliers s on s.id = i.supplier_id
        where i.status = 'freigegeben' and i.skonto_until between ${today}::date and ${today}::date + 3`,
   ]);
+  for (const m of await missingSofort(sql, { today })) {
+    out.push({
+      area: 'Personal',
+      level: m.worked || m.days <= 1 ? 'rot' : 'gelb',
+      text: `SV-Sofortmeldung fehlt: ${m.name} (${m.personnel_no}) – Beginn ${formatDateDe(m.entry_date)}${
+        m.worked ? ', arbeitet bereits' : m.days < 0 ? ', schon begonnen' : m.days === 0 ? ', heute' : ''
+      }`,
+      href: `/personal/${m.employee_id}#sofortmeldung`,
+      days: m.days,
+    });
+  }
   for (const p of hr.permits) {
     const d = dayDiff(today, p.residence_permit_until);
     out.push({

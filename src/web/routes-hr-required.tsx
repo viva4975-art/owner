@@ -145,13 +145,15 @@ export function registerHrRequiredRoutes({ app, deps, page }: Ctx) {
                             class="badge err"
                             style="margin:0 4px 4px 0;text-decoration:none"
                             href={
-                              m.startsWith('Stundenliste')
-                                ? `/personal/${r.employee_id}/stundenzettel`
-                                : m === 'Schlüssel'
-                                  ? '/schluessel'
-                                  : (REQUIRED_DOCS as readonly string[]).includes(m)
-                                    ? `/personal/${r.employee_id}/dokumente`
-                                    : `/personal/${r.employee_id}/bearbeiten`
+                              m === 'SV-Sofortmeldung'
+                                ? `/personal/${r.employee_id}#sofortmeldung`
+                                : m.startsWith('Stundenliste')
+                                  ? `/personal/${r.employee_id}/stundenzettel`
+                                  : m === 'Schlüssel'
+                                    ? '/schluessel'
+                                    : (REQUIRED_DOCS as readonly string[]).includes(m)
+                                      ? `/personal/${r.employee_id}/dokumente`
+                                      : `/personal/${r.employee_id}/bearbeiten`
                             }
                           >
                             {m}

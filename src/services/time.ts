@@ -1,4 +1,5 @@
 import { type GeoStatus, judgePosition } from '../domain/time/geo.js';
+import { flagWorkWithoutSofort } from './sv-report.js';
 import type { Sql, Tx } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { addDays, holidayName, isoWeekday, mondayOf } from '../domain/time/holidays.js';
@@ -357,7 +358,7 @@ export async function clockIn(
     workDate: todayBerlin(),
     startAt,
   }).catch(() => null);
-  return withActor(sql, p.actor, null, async (tx) => {
+  const id = await withActor(sql, p.actor, null, async (tx) => {
     const [exists] = await tx`select 1 from app.time_entries where id = ${p.id}`;
     if (exists) return p.id; // gleiche Stempelung erneut gesendet
     await assertMaySite(tx, p.employeeId, p.siteId);
@@ -384,6 +385,9 @@ export async function clockIn(
     await recordGeo(tx, p.id, p.siteId, 'start', p.geo);
     return p.id;
   });
+  // ohne SV-Sofortmeldung: Aufgabe fürs Büro (Stempeln selbst wird nie verweigert)
+  await flagWorkWithoutSofort(sql, p.employeeId, p.actor).catch(() => false);
+  return id;
 }
 
 export async function clockOut(

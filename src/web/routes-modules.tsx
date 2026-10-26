@@ -1,10 +1,12 @@
 import { vehiclesWithoutRegistration } from '../services/vehicles.js';
+import { sofortBoxFor } from './routes-sv-report.js';
 import { accountOverview } from '../services/bank-feed.js';
 import { timeAnomalies } from '../services/time-anomalies.js';
 import { siteCosting } from '../services/costing.js';
 import { collectReminders } from '../services/reminders.js';
 import { fullName } from '../services/users.js';
 import { missingDocs } from '../services/hr-required-docs.js';
+import { missingSofort } from '../services/sv-report.js';
 import { hoursHistory, plannedDaysPerWeek } from '../services/employee-hours.js';
 import { absentBetween, leaveBalance } from '../services/absences.js';
 import { permitWarningsForSites } from '../services/employees.js';
@@ -316,6 +318,16 @@ export function registerModuleRoutes(ctx: Ctx) {
           canAccess(role, '/personal/unterlagen')
             ? (await missingDocs(sql, { siteIds: c.get('sites'), limited: false })).length
             : 0
+        }
+        sofort={
+          canAccess(role, '/personal/unterlagen')
+            ? await missingSofort(sql, { siteIds: c.get('sites') }).then((l) => ({
+                n: l.length,
+                started: l.filter((m) => m.worked || m.days <= 0).length,
+                href:
+                  l.length === 1 ? `/personal/${l[0]!.employee_id}#sofortmeldung` : '/personal/unterlagen',
+              }))
+            : { n: 0, href: '', started: 0 }
         }
         noShift={
           canAccess(role, '/einsatzplanung')
@@ -1433,7 +1445,12 @@ export function registerModuleRoutes(ctx: Ctx) {
             showPrivate
             wage={{ level: lvl?.name ?? null, cents: wage }}
             month={await monthBox(e.id)}
-            afterHead={einsaetze}
+            afterHead={
+              <>
+                {await sofortBoxFor(sql, e.id, e.entry_date, c.get('user').role === 'admin')}
+                {einsaetze}
+              </>
+            }
             employment={beschaeftigung}
             hours={await hoursHistory(sql, e.id)}
             plannedDays={await plannedDaysPerWeek(

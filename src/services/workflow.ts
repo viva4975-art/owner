@@ -97,7 +97,8 @@ export async function preflight(deps: Deps, id: string): Promise<PreflightResult
       await deps.sql`update app.invoices set invoice_format = 'pdf' where id = ${id} and status = 'draft'`;
       return PDF_ONLY;
     }
-    const fmt = { zugferd: 'ZUGFeRD', xrechnung: 'XRechnung', pdf: 'PDF' }[(now?.format ?? 'pdf') as 'pdf'] ?? '';
+    const fmt =
+      { zugferd: 'ZUGFeRD', xrechnung: 'XRechnung', pdf: 'PDF' }[(now?.format ?? 'pdf') as 'pdf'] ?? '';
     const where = now?.groupName ? `Rechnungsgruppe „${now.groupName}“` : 'Kunde';
     throw new BusinessError(
       `E-Rechnung nicht möglich: Beim Empfänger fehlt die Rechnungs-E-Mail (bzw. Leitweg-ID). Format laut ${where}: ${fmt}. Bitte unter Kunde → Rechnungsgruppen${now?.groupName ? ` → „${now.groupName}“` : ''} die E-Mail eintragen oder dort Format „PDF“ wählen (Versand per Post) – das Format am Kunden zählt nur ohne Rechnungsgruppe.`,

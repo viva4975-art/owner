@@ -1,4 +1,5 @@
 import { countDays } from './subcontract-days.js';
+import { recurringCosts } from './recurring-payments.js';
 import { sammelMonthCost } from './subcontract-sites.js';
 import type { Sql } from '../db/client.js';
 import { addDays } from '../domain/time/holidays.js';
@@ -390,9 +391,36 @@ export async function siteCosting(
     e.total += g.net;
     gmap.set(g.id, e);
   }
+  // wiederkehrende Zahlungen mit Kostenstelle (Miete, Versicherung, Leasing …; Ahmed 26.10.)
+  if (!siteId) {
+    const rec = await recurringCosts(sql, from, to);
+    if (rec.length) {
+      const ccs = await sql<{ id: string; number: string; name: string }[]>`
+        select id, number, name from app.cost_centers where id in ${sql([...new Set(rec.map((r) => r.cost_center_id))])}`;
+      for (const r of rec) {
+        const cc = ccs.find((x) => x.id === r.cost_center_id);
+        if (!cc) continue;
+        const e = gmap.get(cc.id) ?? {
+          cost_center_id: cc.id,
+          number: cc.number,
+          name: cc.name,
+          material: 0n,
+          subcontractor: 0n,
+          equipment: 0n,
+          other: 0n,
+          total: 0n,
+        };
+        if (r.category === 'material') e.material += r.net;
+        else if (r.category === 'geraete') e.equipment += r.net;
+        else e.other += r.net;
+        e.total += r.net;
+        gmap.set(cc.id, e);
+      }
+    }
+  }
   return {
     rows,
-    general: [...gmap.values()],
+    general: [...gmap.values()].sort((a, b) => a.number.localeCompare(b.number)),
     overhead: {
       minijob: settings.overhead_minijob_bp,
       parttime: settings.overhead_parttime_bp,

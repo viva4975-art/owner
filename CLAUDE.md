@@ -4161,3 +4161,15 @@ Testadresse.
   zählten als 5-Tage-Woche (Lücke im Plan, Schulferien → zu viel Urlaub). Jetzt wie der vorige geplante Monat; nur vor dem
   ersten Einsatz überhaupt bleibt 5. Grenze § 5 BUrlG: bei Eintritt bis 30.06. (Wartezeit im Jahr erfüllt) bleibt der
   gesetzliche Mindesturlaub (4 Wochen × Arbeitstage), nur der Mehrurlaub wird gekürzt. Test in `days-per-week.db.test.ts`.
+- 2026-10-26: **Wiederkehrende Zahlungen, Runde 2** (Ahmed: „mit in die Zahlungsliste, Lieferanten anlegen auch für Finanzamt,
+  Kosten auf Büro – Steuern und BG BAU nicht, Miete schon“): Fälligkeiten stehen jetzt als Zeilen **in der Tabelle der
+  Zahlungsliste** (Schild „wiederkehrend“, fällige vorangekreuzt, wechselnder Betrag als Feld) – „Als bezahlt
+  festhalten“ und **SEPA-Datei** gelten für Rechnungen und wiederkehrende Zahlungen zusammen (`payment_run_recurring`,
+  Fälligkeit dann bezahlt am Ausführungstag, nicht zurücknehmbar). **Empfänger = Lieferant** (Auswahl oder automatisch
+  aus dem Empfänger angelegt, IBAN übernommen) – auch Finanzamt, Krankenkasse, BG BAU, Vermieter (Lieferantenliste,
+  Kontoabgleich über IBAN). **Kostenstelle** je Zahlung (Vorschlag nach Kostenart: Miete/Versicherung/Telefon … →
+  9000 Verwaltung / Büro, Fahrzeuge → 9100; Steuern/Personal → keine) und **„darin USt“** (0/7/19 %): Nachkalkulation
+  zählt den Nettobetrag bei der allgemeinen Kostenstelle, gleichmäßig auf die Monate des Turnus verteilt (Quartalsmiete
+  → je Monat ⅓). **Steuern** (USt, Lohnsteuer) sind durchlaufend und keine Kosten; **Sozialabgaben/BG BAU** stecken
+  schon im Lohnzuschlag (26–32 %) – beide ohne Kostenstelle, sonst doppelt. Migration `20261223000002`. Weiterhin nicht
+  im DATEV-Export (Buchung über den Kontoauszug beim Steuerberater).

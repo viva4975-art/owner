@@ -11,6 +11,7 @@ import {
   type RecurringDue,
   type RecurringMethod,
   type RecurringPayment,
+  defaultCostCenter,
   dueRecurring,
   getRecurring,
   listRecurring,
@@ -37,117 +38,83 @@ const STEP_MONTHS: Record<RecurringCycle, number> = {
 };
 const monthDe = (period: string) => `${period.slice(5, 7)}/${period.slice(0, 4)}`;
 
-/** Abschnitt in der Zahlungsliste: fällige und überfällige wiederkehrende Zahlungen bis Ende des Monats. */
-export const RecurringDueCard: FC<{ due: RecurringDue[]; pay: string; today: string }> = ({
-  due,
-  pay,
-  today,
-}) => (
-  <form method="post" action="/zahlungsliste/wiederkehrend/bezahlt" class="card" id="wiederkehrend">
-    <div class="actions" style="margin-top:0">
-      <h3 style="margin:0">Wiederkehrende Zahlungen (Finanzamt, Miete, BG …)</h3>
-      <a class="btn ghost sm" href="/zahlungsliste/wiederkehrend" style="margin-left:auto">
-        verwalten
-      </a>
-    </div>
-    <input type="hidden" name="datum" value={pay} />
-    <div class="tbl">
-      <table>
-        <thead>
-          <tr>
-            <th></th>
-            <th>Zahlung</th>
-            <th>fällig</th>
-            <th class="r">Betrag</th>
-            <th>Zahlweg</th>
-            <th>IBAN / Verwendungszweck</th>
-          </tr>
-        </thead>
-        <tbody>
-          {due.map((d) => {
-            const p = d.payment;
-            const key = `${p.id}|${d.period}`;
-            const zweck = purposeFor(p.purpose, d.period);
-            return (
-              <tr>
-                <td>
-                  <input type="checkbox" name="rp" value={key} checked={!!d.bank} aria-label="auswählen" />
-                </td>
-                <td>
-                  <a href={`/zahlungsliste/wiederkehrend/${p.id}`}>
-                    <b>{p.name}</b>
-                  </a>
-                  <div class="small mut">
-                    {p.payee} · {RECURRING_CYCLE[p.cycle]} · für {monthDe(d.period)}
-                  </div>
-                  {d.bank && (
-                    <div class="small" style="color:var(--ok)">
-                      Kontoumsatz gefunden: {dateDe(d.bank.date)} · {euro(d.bank.amount_cents)} – bitte
-                      bestätigen
-                    </div>
-                  )}
-                </td>
-                <td style={d.due_date < today ? 'color:var(--err);font-weight:600' : ''}>
-                  {dateDe(d.due_date)}
-                  {d.due_date < today && <div class="small">überfällig</div>}
-                </td>
-                <td class="r">
-                  {p.amount_cents !== null ? (
-                    <b>{euro(p.amount_cents)}</b>
-                  ) : (
-                    <input
-                      name={`betrag_${key}`}
-                      inputmode="decimal"
-                      placeholder="Betrag"
-                      aria-label="gezahlter Betrag"
-                      value={d.bank ? centsToInput(d.bank.amount_cents) : ''}
-                      style="max-width:110px;text-align:right"
-                    />
-                  )}
-                </td>
-                <td class="small">{RECURRING_METHOD[p.method]}</td>
-                <td class="small">
-                  {p.iban ? (
-                    <code style="user-select:all">{p.iban.replace(/(.{4})/g, '$1 ').trim()}</code>
-                  ) : (
-                    <span class="mut">–</span>
-                  )}
-                  {zweck && (
-                    <div class="mut" style="user-select:all">
-                      {zweck}
-                    </div>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-          {!due.length && (
-            <tr>
-              <td colspan={6}>
-                <div class="empty">
-                  Diesen Monat keine wiederkehrende Zahlung offen.{' '}
-                  <a href="/zahlungsliste/wiederkehrend">Wiederkehrende Zahlungen verwalten</a>
-                </div>
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-    {due.length > 0 && (
-      <div class="formfoot" style="flex-wrap:wrap;justify-content:flex-start;gap:10px">
-        <span style="font-weight:600">Ausgewählte am {dateDe(pay)} als bezahlt festhalten</span>
-        <input name="notiz" placeholder="Notiz (optional)" style="max-width:220px" aria-label="Notiz" />
-        <button
-          class="btn"
-          style="margin-left:auto"
-          onclick="return confirm('Ausgewählte wiederkehrende Zahlungen als bezahlt festhalten?')"
-        >
-          Als bezahlt festhalten
-        </button>
-      </div>
-    )}
-  </form>
+/**
+ * Zeilen für die Tabelle der Zahlungsliste (zwischen den Eingangsrechnungen): Häkchen `rp` = „<id>|<Monat>“, bei
+ * wechselndem Betrag ein Feld `betrag_<Schlüssel>`. Gleiche Spalten wie die Rechnungen.
+ */
+export const RecurringRows: FC<{ due: RecurringDue[]; today: string }> = ({ due, today }) => (
+  <>
+    {due.map((d, i) => {
+      const p = d.payment;
+      const key = `${p.id}|${d.period}`;
+      const zweck = purposeFor(p.purpose, d.period) || `${p.name} ${monthDe(d.period)}`;
+      return (
+        <tr id={i === 0 ? 'wiederkehrend' : undefined} class="rp-row">
+          <td>
+            <input
+              type="checkbox"
+              name="rp"
+              value={key}
+              data-amount={String(p.amount_cents ?? d.bank?.amount_cents ?? 0n)}
+              checked={!!d.bank || d.due_date <= today}
+              aria-label="auswählen"
+              onchange="window.vdSum()"
+            />
+          </td>
+          <td>
+            {p.supplier_id ? (
+              <a href={`/lieferanten/${p.supplier_id}`}>{p.supplier_name ?? p.payee}</a>
+            ) : (
+              p.payee
+            )}
+          </td>
+          <td>
+            <a href={`/zahlungsliste/wiederkehrend/${p.id}`}>{p.name}</a>
+            <div class="small mut">
+              <span class="pill">wiederkehrend</span> {RECURRING_CYCLE[p.cycle]} · für {monthDe(d.period)}
+              {p.method !== 'ueberweisung' && ` · ${RECURRING_METHOD[p.method]}`}
+            </div>
+            {d.bank && (
+              <div class="small" style="color:var(--ok)">
+                Kontoumsatz gefunden: {dateDe(d.bank.date)} · {euro(d.bank.amount_cents)}
+              </div>
+            )}
+          </td>
+          <td style={d.due_date < today ? 'color:var(--err);font-weight:600' : ''}>{dateDe(d.due_date)}</td>
+          <td>–</td>
+          <td class="r">
+            {p.amount_cents !== null ? (
+              euro(p.amount_cents)
+            ) : (
+              <input
+                name={`betrag_${key}`}
+                inputmode="decimal"
+                placeholder="Betrag"
+                aria-label="Betrag"
+                value={d.bank ? centsToInput(d.bank.amount_cents) : ''}
+                style="max-width:110px;text-align:right"
+                oninput="var c=this.closest('tr').querySelector('input[name=rp]');c.dataset.amount=String(Math.round(parseFloat(this.value.replace(/\./g,'').replace(',','.'))*100)||0);window.vdSum()"
+              />
+            )}
+          </td>
+          <td class="r">–</td>
+          <td class="r">
+            <b>{p.amount_cents !== null ? euro(p.amount_cents) : 'wechselt'}</b>
+          </td>
+          <td class="small">
+            {p.iban ? (
+              <code style="user-select:all">{p.iban.replace(/(.{4})/g, '$1 ').trim()}</code>
+            ) : (
+              <span class="mut">{p.method === 'ueberweisung' ? 'IBAN fehlt' : 'wird abgebucht'}</span>
+            )}
+            <div class="mut" style="user-select:all">
+              {zweck}
+            </div>
+          </td>
+        </tr>
+      );
+    })}
+  </>
 );
 
 export function registerRecurringRoutes({ app, deps, page, back }: Ctx, tabs: () => Promise<Tab[]>) {
@@ -291,7 +258,18 @@ export function registerRecurringRoutes({ app, deps, page, back }: Ctx, tabs: ()
 
   app.get(`/zahlungsliste/wiederkehrend/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
-    const r: RecurringPayment | null = await getRecurring(sql, id);
+    const [r, suppliers, ccs]: [
+      RecurringPayment | null,
+      { id: string; supplier_no: string; name: string }[],
+      { id: string; number: string; name: string }[],
+    ] = await Promise.all([
+      getRecurring(sql, id),
+      sql<{ id: string; supplier_no: string; name: string }[]>`
+        select id, supplier_no, name from app.suppliers where active order by name`,
+      sql<{ id: string; number: string; name: string }[]>`
+        select id, number, name from app.cost_centers where active order by number`,
+    ]);
+    const ccSel = r ? r.cost_center_id : defaultCostCenter(null);
     const v = (k: keyof RecurringPayment) => (r ? r[k] : null);
     const thisMonth = todayBerlin().slice(0, 7);
     return page(
@@ -326,8 +304,23 @@ export function registerRecurringRoutes({ app, deps, page, back }: Ctx, tabs: ()
                 required
                 maxlength={200}
                 value={(v('payee') as string) ?? ''}
-                placeholder="z. B. Finanzamt München"
+                placeholder="z. B. Finanzamt München, AOK Bayern, Vermieter"
               />
+              <label for="rp-sup">Lieferant</label>
+              <div>
+                <select id="rp-sup" name="supplier_id">
+                  <option value="">+ Empfänger als neuen Lieferanten anlegen</option>
+                  {suppliers.map((x) => (
+                    <option value={x.id} selected={r?.supplier_id === x.id}>
+                      {x.name} ({x.supplier_no})
+                    </option>
+                  ))}
+                </select>
+                <div class="small mut">
+                  Auch Finanzamt, Krankenkasse, BG BAU oder Vermieter werden als Lieferant geführt – der
+                  Kontoabgleich erkennt die Zahlung dann über die IBAN.
+                </div>
+              </div>
               <label for="rp-amount">Betrag</label>
               <div>
                 <input
@@ -418,10 +411,49 @@ export function registerRecurringRoutes({ app, deps, page, back }: Ctx, tabs: ()
                 </div>
               </div>
               <label for="rp-cat">Kostenart</label>
-              <select id="rp-cat" name="category">
+              <select
+                id="rp-cat"
+                name="category"
+                onchange="var m=JSON.parse(this.dataset.cc||'{}'),k=document.getElementById('rp-cc');if(k&&!k.dataset.touched)k.value=m[this.value]||''"
+                data-cc={JSON.stringify(
+                  Object.fromEntries(
+                    Object.keys(EXPENSE_CATEGORY).map((k) => [k, defaultCostCenter(k) ?? '']),
+                  ),
+                )}
+              >
                 <option value="">–</option>
                 {Object.entries(EXPENSE_CATEGORY).map(([k, l]) => (
                   <option value={k} selected={r?.category === k}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+              <label for="rp-cc">Kostenstelle (Nachkalkulation)</label>
+              <div>
+                <select id="rp-cc" name="cost_center_id" onchange="this.dataset.touched='1'">
+                  <option value="" selected={!ccSel}>
+                    keine – zählt nicht in der Nachkalkulation
+                  </option>
+                  {ccs.map((x) => (
+                    <option value={x.id} selected={ccSel === x.id}>
+                      {x.number} {x.name}
+                    </option>
+                  ))}
+                </select>
+                <div class="small mut">
+                  Miete, Versicherungen, Telefon, Leasing → Verwaltung / Büro. <b>Keine Kostenstelle</b> für
+                  Steuern (Umsatzsteuer, Lohnsteuer – durchlaufend, keine Kosten) und Sozialabgaben/BG BAU
+                  (stecken schon im Lohnzuschlag der Nachkalkulation, sonst doppelt).
+                </div>
+              </div>
+              <label for="rp-vat">darin Umsatzsteuer</label>
+              <select id="rp-vat" name="vat_rate_bp" style="max-width:200px">
+                {[
+                  [0, 'keine (0 %)'],
+                  [1900, '19 %'],
+                  [700, '7 %'],
+                ].map(([bp, l]) => (
+                  <option value={String(bp)} selected={(r?.vat_rate_bp ?? 0) === bp}>
                     {l}
                   </option>
                 ))}
@@ -467,6 +499,9 @@ export function registerRecurringRoutes({ app, deps, page, back }: Ctx, tabs: ()
           end_month: str(b, 'end_month'),
           method: str(b, 'method') ?? '',
           category: str(b, 'category'),
+          supplier_id: str(b, 'supplier_id'),
+          cost_center_id: str(b, 'cost_center_id'),
+          vat_rate_bp: Number(str(b, 'vat_rate_bp') ?? 0),
           note: str(b, 'note'),
           active: str(b, 'active') === '1',
         },

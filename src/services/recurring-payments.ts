@@ -1,14 +1,26 @@
-import type { Sql } from '../db/client.js';
+import type { Sql, Tx } from '../db/client.js';
 import { addDays, monthBounds, todayBerlin } from '../domain/invoice/calc.js';
-import { EXPENSE_CATEGORY } from './bank.js';
+import { EXPENSE_CATEGORY, quickSupplier } from './bank.js';
 import { BusinessError } from './errors.js';
 import { validIbanFormat } from './purchasing.js';
 
 /**
  * Wiederkehrende Zahlungen (Ahmed 26.10.): Finanzamt, Miete, BG BAU, Versicherungen … Sie stehen im Fälligkeitsmonat
- * in der Zahlungsliste, bis sie als bezahlt festgehalten sind (überfällige bleiben stehen). Nur eine Merkliste – gebucht
- * wird über den Kontoauszug, daher nichts im DATEV-Export (sonst doppelt).
+ * in der Zahlungsliste (zwischen den Rechnungen, auch in der SEPA-Datei), bis sie bezahlt sind (überfällige bleiben
+ * stehen). Empfänger = Lieferant (auch Finanzamt, Krankenkasse, Vermieter). Kosten mit Kostenstelle (z. B. Miete →
+ * 9000 Verwaltung) zählen netto in der Nachkalkulation; Steuern und Sozialabgaben ohne Kostenstelle (sind keine
+ * Kosten bzw. stecken schon im Lohnzuschlag). Nicht im DATEV-Export – gebucht wird über den Kontoauszug.
  */
+
+/** Vorschlag Kostenstelle je Kostenart: Büro-Kosten auf 9000, Fahrzeuge 9100; Steuern/Personal/Privat keine. */
+export const CC_VERWALTUNG = '00000000-0000-4000-8000-0000000cc001';
+export const CC_FAHRZEUGE = '00000000-0000-4000-8000-0000000cc002';
+export function defaultCostCenter(category: string | null): string | null {
+  if (!category) return CC_VERWALTUNG;
+  if (category === 'fahrzeuge') return CC_FAHRZEUGE;
+  if (['steuern', 'personal', 'privat', 'nachunternehmer'].includes(category)) return null;
+  return CC_VERWALTUNG;
+}
 
 export type RecurringCycle = 'monatlich' | 'quartalsweise' | 'halbjaehrlich' | 'jaehrlich';
 export const RECURRING_CYCLE: Record<RecurringCycle, string> = {
@@ -47,7 +59,22 @@ export interface RecurringPayment {
   note: string | null;
   active: boolean;
   version: number;
+  supplier_id: string | null;
+  supplier_name: string | null;
+  supplier_bic: string | null;
+  cost_center_id: string | null;
+  cost_center_name: string | null;
+  vat_rate_bp: number;
 }
+
+const COLS = (sql: Sql | Tx) => sql`
+  r.id, r.name, r.payee, coalesce(r.iban, s.iban) as iban, r.purpose, r.amount_cents, r.cycle, r.due_day,
+  r.start_month::text, r.end_month::text, r.method, r.category, r.note, r.active, r.version, r.supplier_id,
+  s.name as supplier_name, s.bic as supplier_bic, r.cost_center_id, cc.number || ' ' || cc.name as cost_center_name,
+  r.vat_rate_bp`;
+const FROM = (sql: Sql | Tx) => sql`
+  app.recurring_payments r left join app.suppliers s on s.id = r.supplier_id
+  left join app.cost_centers cc on cc.id = r.cost_center_id`;
 
 export interface RecurringDue {
   payment: RecurringPayment;
@@ -87,17 +114,11 @@ export function periodsOf(
 }
 
 export async function listRecurring(sql: Sql) {
-  return sql<RecurringPayment[]>`
-    select id, name, payee, iban, purpose, amount_cents, cycle, due_day, start_month::text, end_month::text,
-           method, category, note, active, version
-      from app.recurring_payments order by active desc, name`;
+  return sql<RecurringPayment[]>`select ${COLS(sql)} from ${FROM(sql)} order by r.active desc, r.name`;
 }
 
 export async function getRecurring(sql: Sql, id: string) {
-  const [r] = await sql<RecurringPayment[]>`
-    select id, name, payee, iban, purpose, amount_cents, cycle, due_day, start_month::text, end_month::text,
-           method, category, note, active, version
-      from app.recurring_payments where id = ${id}`;
+  const [r] = await sql<RecurringPayment[]>`select ${COLS(sql)} from ${FROM(sql)} where r.id = ${id}`;
   return r ?? null;
 }
 
@@ -115,6 +136,10 @@ export interface RecurringInput {
   category: string | null;
   note: string | null;
   active: boolean;
+  /** vorhandener Lieferant; leer = Empfänger als Lieferant anlegen (bzw. gleichnamigen nehmen) */
+  supplier_id: string | null;
+  cost_center_id: string | null;
+  vat_rate_bp: number;
 }
 
 /** Anlegen (feste ID aus dem Formular → doppelt absenden legt nichts doppelt an) oder ändern (Versionsschutz). */
@@ -148,6 +173,21 @@ export async function saveRecurring(
     throw new BusinessError('Für eine Überweisung von Hand bitte die IBAN des Empfängers angeben');
   const purpose = input.purpose?.trim() || null;
   if (purpose && purpose.length > 140) throw new BusinessError('Verwendungszweck höchstens 140 Zeichen');
+  if (![0, 700, 1900].includes(input.vat_rate_bp)) throw new BusinessError('USt-Satz 0, 7 oder 19 %');
+  if (input.cost_center_id) {
+    const [cc] = await sql`select 1 from app.cost_centers where id = ${input.cost_center_id}`;
+    if (!cc) throw new BusinessError('Kostenstelle unbekannt');
+  }
+  // Empfänger als Lieferant (Ahmed 26.10.) – Finanzamt, Krankenkasse, Vermieter … stehen dann in der Lieferantenliste,
+  // der Kontoabgleich erkennt sie über die IBAN.
+  let supplierId = input.supplier_id;
+  if (supplierId) {
+    const [s0] = await sql`select 1 from app.suppliers where id = ${supplierId}`;
+    if (!s0) throw new BusinessError('Lieferant nicht gefunden');
+  } else {
+    supplierId = await quickSupplier(sql, payee, null, actor);
+  }
+  if (iban) await sql`update app.suppliers set iban = ${iban} where id = ${supplierId} and iban is null`;
   const row = {
     name,
     payee,
@@ -162,6 +202,9 @@ export async function saveRecurring(
     category: input.category || null,
     note: input.note?.trim() || null,
     active: input.active,
+    supplier_id: supplierId,
+    cost_center_id: input.cost_center_id || null,
+    vat_rate_bp: input.vat_rate_bp,
   };
   await sql.begin(async (tx) => {
     const [old] = await tx<
@@ -190,9 +233,7 @@ export async function dueRecurring(sql: Sql, payDate = todayBerlin()): Promise<R
   const until = `${ym(payDate)}-01`;
   const [list, paid] = await Promise.all([
     sql<RecurringPayment[]>`
-      select id, name, payee, iban, purpose, amount_cents, cycle, due_day, start_month::text, end_month::text,
-             method, category, note, active, version
-        from app.recurring_payments where active and start_month <= ${until}::date`,
+      select ${COLS(sql)} from ${FROM(sql)} where r.active and r.start_month <= ${until}::date`,
     sql<{ recurring_id: string; period: string }[]>`
       select recurring_id, period::text from app.recurring_payment_items`,
   ]);
@@ -302,6 +343,8 @@ export async function recentRecurringPaid(sql: Sql, sinceDays = 60) {
 /** Versehentlich festgehalten → wieder offen (Stand im Protokoll). */
 export async function undoRecurringPaid(sql: Sql, itemId: string, actor: string) {
   await sql.begin(async (tx) => {
+    const [run] = await tx`select 1 from app.payment_run_recurring where item_id = ${itemId}`;
+    if (run) throw new BusinessError('In einer SEPA-Datei enthalten – nicht zurücknehmbar');
     const [old] = await tx<{ recurring_id: string; period: string; amount_cents: bigint; paid_at: string }[]>`
       delete from app.recurring_payment_items where id = ${itemId}
       returning recurring_id, period::text, amount_cents, paid_at::text`;
@@ -326,4 +369,87 @@ export function purposeFor(purpose: string | null, period: string): string {
     .replace(/\{quartal\}/gi, `Q${q}/${y}`)
     .replace(/\{vorquartal\}/gi, pq)
     .replace(/\{jahr\}/gi, String(y));
+}
+
+const parseKey = (key: string) => {
+  const m = /^([0-9a-f-]{36})\|(\d{4}-\d{2}-01)$/.exec(key);
+  if (!m) throw new BusinessError('Auswahl ungültig – bitte Seite neu laden');
+  return { id: m[1]!, period: m[2]! };
+};
+
+/**
+ * Wiederkehrende Zahlungen in einen SEPA-Zahlungslauf aufnehmen (in der Transaktion des Laufs): je Fälligkeit wird sie
+ * als bezahlt festgehalten (Datum = Ausführungstag) und mit Empfänger/IBAN/Zweck in `payment_run_recurring` abgelegt.
+ */
+export async function addRecurringToRun(
+  tx: Tx,
+  runId: string,
+  items: { key: string; amount_cents: bigint | null }[],
+  executionDate: string,
+  actor: string,
+) {
+  const out: { amount: bigint; name: string; iban: string; bic: string | null; remittance: string }[] = [];
+  for (const it of items) {
+    const k = parseKey(it.key);
+    const [r] = await tx<RecurringPayment[]>`select ${COLS(tx)} from ${FROM(tx)} where r.id = ${k.id}`;
+    if (!r) throw new BusinessError('Zahlung nicht gefunden');
+    if (!periodsOf(r, k.period).includes(k.period))
+      throw new BusinessError(`${r.name}: in diesem Monat nicht fällig`);
+    const amount = it.amount_cents ?? r.amount_cents;
+    if (amount === null || amount <= 0n)
+      throw new BusinessError(`${r.name}: bitte den Betrag eintragen (Betrag wechselt)`);
+    const iban = r.iban?.replace(/\s/g, '').toUpperCase() ?? '';
+    if (!iban || !validIbanFormat(iban)) throw new BusinessError(`${r.name}: keine gültige IBAN hinterlegt`);
+    const [item] = await tx<{ id: string }[]>`
+      insert into app.recurring_payment_items (id, recurring_id, period, amount_cents, paid_at, method, note, paid_by)
+      values (gen_random_uuid(), ${r.id}, ${k.period}, ${amount}, ${executionDate}, 'sepa', null, ${actor})
+      on conflict (recurring_id, period) do nothing returning id`;
+    if (!item) throw new BusinessError(`${r.name}: für diesen Monat schon bezahlt – bitte Seite neu laden`);
+    const remittance = (
+      purposeFor(r.purpose, k.period) || `${r.name} ${k.period.slice(5, 7)}/${k.period.slice(0, 4)}`
+    ).slice(0, 140);
+    const name = r.supplier_name ?? r.payee;
+    await tx`insert into app.payment_run_recurring (run_id, item_id, amount_cents, creditor_name, creditor_iban, creditor_bic, remittance)
+             values (${runId}, ${item.id}, ${amount}, ${name}, ${iban}, ${r.supplier_bic}, ${remittance})`;
+    out.push({ amount, name, iban, bic: r.supplier_bic, remittance });
+  }
+  return out;
+}
+
+/**
+ * Kosten der wiederkehrenden Zahlungen mit Kostenstelle für die Nachkalkulation: netto (USt herausgerechnet),
+ * gleichmäßig auf die Monate des Turnus verteilt (Quartalsmiete → je Monat ein Drittel), ab dem Fälligkeitsmonat.
+ * Betrag = gezahlter Betrag der Fälligkeit, sonst der feste Betrag.
+ */
+export async function recurringCosts(sql: Sql, from: string, to: string) {
+  const [list, paid] = await Promise.all([
+    sql<RecurringPayment[]>`select ${COLS(sql)} from ${FROM(sql)} where r.cost_center_id is not null`,
+    sql<{ recurring_id: string; period: string; amount_cents: bigint }[]>`
+      select recurring_id, period::text, amount_cents from app.recurring_payment_items`,
+  ]);
+  const amt = new Map(paid.map((p) => [`${p.recurring_id}|${p.period}`, p.amount_cents]));
+  const out: { cost_center_id: string; category: string | null; month: string; net: bigint }[] = [];
+  const fromM = `${from.slice(0, 7)}-01`;
+  for (const r of list) {
+    if (!r.active && !paid.some((p) => p.recurring_id === r.id)) continue;
+    const step = STEP[r.cycle];
+    for (const period of periodsOf(r, `${to.slice(0, 7)}-01`)) {
+      if (addMonths(period, step) <= fromM) continue;
+      const gross = amt.get(`${r.id}|${period}`) ?? (r.active ? r.amount_cents : null);
+      if (gross === null) continue;
+      // netto = brutto ÷ (1 + USt), kaufmännisch gerundet; Verteilung centgenau (Rest auf die ersten Monate)
+      const net =
+        (gross * 10000n * 2n + BigInt(10000 + r.vat_rate_bp)) / (BigInt(10000 + r.vat_rate_bp) * 2n);
+      const base = net / BigInt(step);
+      let rest = net - base * BigInt(step);
+      for (let i = 0; i < step; i++) {
+        const m = addMonths(period, i);
+        const share = base + (rest > 0n ? 1n : 0n);
+        if (rest > 0n) rest--;
+        if (m >= fromM && m <= to && share !== 0n)
+          out.push({ cost_center_id: r.cost_center_id!, category: r.category, month: m, net: share });
+      }
+    }
+  }
+  return out;
 }

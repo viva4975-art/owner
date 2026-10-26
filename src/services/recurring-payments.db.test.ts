@@ -2,7 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import {
+  CC_VERWALTUNG,
   dueDateOf,
+  getRecurring,
+  recurringCosts,
   dueRecurring,
   markRecurringPaid,
   periodsOf,
@@ -12,7 +15,10 @@ import {
   undoRecurringPaid,
 } from './recurring-payments.js';
 import { BusinessError } from './errors.js';
-import { dbAvailable, freshDatabase } from './testing.js';
+import { getSeller } from './masterdata.js';
+import { createPaymentRun, paymentRunXml } from './purchasing.js';
+import { todayBerlin } from '../domain/invoice/calc.js';
+import { dbAvailable, freshDatabase, testDeps } from './testing.js';
 
 const available = await dbAvailable();
 
@@ -54,6 +60,9 @@ describe.skipIf(!available)('Wiederkehrende Zahlungen', () => {
       category: 'miete',
       note: null,
       active: true,
+      supplier_id: null,
+      cost_center_id: null,
+      vat_rate_bp: 0,
     };
     await saveRecurring(
       sql,
@@ -131,5 +140,59 @@ describe.skipIf(!available)('Wiederkehrende Zahlungen', () => {
         't',
       ),
     ).rejects.toBeInstanceOf(BusinessError);
+  });
+
+  it('Empfänger wird Lieferant, SEPA-Datei enthält die Zahlung, Kosten netto auf Verwaltung verteilt', async () => {
+    const id = randomUUID();
+    await saveRecurring(
+      sql,
+      id,
+      {
+        name: 'Büromiete Quartal',
+        payee: 'Hausverwaltung Test',
+        iban: 'DE02 1203 0000 0000 2020 51',
+        purpose: 'Miete {quartal}',
+        amount_cents: 357000n, // 3.000 € netto + 19 %
+        cycle: 'quartalsweise',
+        due_day: 3,
+        start_month: '2026-10',
+        end_month: null,
+        method: 'ueberweisung',
+        category: 'miete',
+        note: null,
+        active: true,
+        supplier_id: null,
+        cost_center_id: CC_VERWALTUNG,
+        vat_rate_bp: 1900,
+      },
+      null,
+      't',
+    );
+    const r = await getRecurring(sql, id);
+    expect(r!.supplier_name).toBe('Hausverwaltung Test');
+    // Nachkalkulation: 3.000 € netto auf Okt/Nov/Dez je 1.000 €
+    const costs = await recurringCosts(sql, '2026-10-01', '2026-12-31');
+    expect(costs.filter((x) => x.month >= '2026-10-01').map((x) => x.net)).toEqual([
+      100000n,
+      100000n,
+      100000n,
+    ]);
+    const deps = await testDeps(sql);
+    const seller = await getSeller(sql);
+    const run = randomUUID();
+    await createPaymentRun(deps, {
+      id: run,
+      invoiceIds: [],
+      recurring: [{ key: `${id}|2026-10-01`, amount_cents: null }],
+      executionDate: todayBerlin(),
+      debtorIban: seller.bankAccounts[0]!.iban,
+      actor: 't',
+    });
+    const xml = await paymentRunXml(sql, run);
+    expect(xml).toContain('Miete Q4/2026');
+    expect(xml).toContain('<InstdAmt Ccy="EUR">3570.00</InstdAmt>');
+    expect((await dueRecurring(sql, '2026-10-15')).some((d) => d.payment.id === id)).toBe(false);
+    const [item] = (await recentRecurringPaid(sql, 9999)).filter((x) => x.recurring_id === id);
+    await expect(undoRecurringPaid(sql, item!.id, 't')).rejects.toBeInstanceOf(BusinessError);
   });
 });

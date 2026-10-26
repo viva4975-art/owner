@@ -16,6 +16,7 @@ import { BusinessError } from './errors.js';
 import { getSeller } from './masterdata.js';
 import { syncAutoAllocation } from './cost-centers.js';
 import type { Deps } from './workflow.js';
+import { addRecurringToRun } from './recurring-payments.js';
 
 /*
  * Einkauf: Bestellungen (BE-JJJJ-NNNN), Rechnungseingang mit Freigabe, SEPA-Zahlungslauf (pain.001.001.09).
@@ -800,12 +801,22 @@ export async function paymentProposal(sql: Sql, executionDate: string) {
  */
 export async function createPaymentRun(
   deps: Deps,
-  p: { id: string; invoiceIds: string[]; executionDate: string; debtorIban: string; actor: string },
+  p: {
+    id: string;
+    invoiceIds: string[];
+    executionDate: string;
+    debtorIban: string;
+    actor: string;
+    /** wiederkehrende Zahlungen (Schlüssel „<id>|<Monat>“) – Ahmed 26.10. */
+    recurring?: { key: string; amount_cents: bigint | null }[];
+  },
 ) {
   const { sql } = deps;
   const [exists] = await sql`select 1 from app.payment_runs where id = ${p.id}`;
   if (exists) return p.id;
-  if (!p.invoiceIds.length) throw new BusinessError('Bitte mindestens eine Rechnung auswählen');
+  const recurring = p.recurring ?? [];
+  if (!p.invoiceIds.length && !recurring.length)
+    throw new BusinessError('Bitte mindestens eine Rechnung oder Zahlung auswählen');
   if (p.executionDate < todayBerlin()) throw new BusinessError('Ausführungstag liegt in der Vergangenheit');
   const seller = await getSeller(sql);
   const acct = seller.bankAccounts.find((b) => b.iban.replace(/\s/g, '') === p.debtorIban.replace(/\s/g, ''));
@@ -826,19 +837,25 @@ export async function createPaymentRun(
     throw new BusinessError(
       `Nichts zu überweisen (Rechnungskorrektur oder durch Vorschuss gedeckt): ${negative.map((x) => x.invoice.invoice_no).join(', ')} – bitte „als bezahlt festhalten“ (Verrechnung)`,
     );
-  const ibanOf = await sql<
-    { id: string; bic: string | null }[]
-  >`select id, bic from app.suppliers where id in ${sql(proposal.map((x) => x.invoice.supplier_id))}`;
+  const ibanOf = proposal.length
+    ? await sql<
+        { id: string; bic: string | null }[]
+      >`select id, bic from app.suppliers where id in ${sql(proposal.map((x) => x.invoice.supplier_id))}`
+    : [];
   const year = p.executionDate.slice(0, 4);
   const xmlPath = `zahlungslaeufe/${year}/${p.id}.xml`;
   let runNumber = '';
   await sql.begin(async (tx) => {
     runNumber = await nextYearNumber(tx, 'payment_run', 'ZL-', year, 3);
     const messageId = `VD-${runNumber}-${p.id.slice(0, 8)}`.slice(0, 35);
-    const total = proposal.reduce((s, x) => s + x.amount, 0n);
+    const total0 = proposal.reduce((s, x) => s + x.amount, 0n);
     await tx`
       insert into app.payment_runs (id, number, execution_date, debtor_iban, debtor_bic, total_cents, item_count, message_id, created_by)
-      values (${p.id}, ${runNumber}, ${p.executionDate}, ${acct.iban.replace(/\s/g, '')}, ${acct.bic}, ${total}, ${proposal.length}, ${messageId}, ${p.actor})`;
+      values (${p.id}, ${runNumber}, ${p.executionDate}, ${acct.iban.replace(/\s/g, '')}, ${acct.bic}, ${total0}, ${proposal.length}, ${messageId}, ${p.actor})`;
+    const rec = await addRecurringToRun(tx, p.id, recurring, p.executionDate, p.actor);
+    const total = total0 + rec.reduce((s, x) => s + x.amount, 0n);
+    if (rec.length)
+      await tx`update app.payment_runs set total_cents = ${total}, item_count = ${proposal.length + rec.length} where id = ${p.id}`;
     for (const x of proposal) {
       const lock = await tx`update app.incoming_invoices set status = 'bezahlt', paid_at = ${p.executionDate}
                               where id = ${x.invoice.id} and status = 'freigegeben' returning id`;
@@ -850,7 +867,7 @@ export async function createPaymentRun(
                        ${`Rechnung ${x.invoice.invoice_no} vom ${formatDateDe(x.invoice.invoice_date)}${x.skonto > 0n ? ` abzgl. Skonto ${eur(x.skonto)}` : ''}${x.invoice.advance_offset_cents > 0n ? ` abzgl. Vorschuss ${eur(x.invoice.advance_offset_cents)}` : ''}`})`;
     }
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
-             values (${p.actor}, 'create', 'payment_run', ${p.id}, ${tx.json({ number: runNumber, items: proposal.length, total: String(total) })})`;
+             values (${p.actor}, 'create', 'payment_run', ${p.id}, ${tx.json({ number: runNumber, items: proposal.length, recurring: rec.length, total: String(total) })})`;
   });
   const xml = await paymentRunXml(sql, p.id);
   const { sha256 } = await deps.archive.put(xmlPath, new TextEncoder().encode(xml));
@@ -881,6 +898,16 @@ export async function paymentRunXml(sql: Sql, id: string): Promise<string> {
     }[]
   >`
     select * from app.payment_run_items where run_id = ${id} order by creditor_name`;
+  const rec = await sql<
+    {
+      item_id: string;
+      amount_cents: bigint;
+      creditor_name: string;
+      creditor_iban: string;
+      creditor_bic: string | null;
+      remittance: string;
+    }[]
+  >`select * from app.payment_run_recurring where run_id = ${id} order by creditor_name`;
   const seller = await getSeller(sql);
   return buildPain001({
     messageId: run.message_id,
@@ -889,14 +916,24 @@ export async function paymentRunXml(sql: Sql, id: string): Promise<string> {
     debtorName: seller.legalName,
     debtorIban: run.debtor_iban,
     debtorBic: run.debtor_bic,
-    items: items.map((i) => ({
-      endToEnd: i.incoming_invoice_id.replace(/-/g, '').slice(0, 35),
-      amount: i.amount_cents,
-      name: i.creditor_name,
-      iban: i.creditor_iban,
-      bic: i.creditor_bic,
-      remittance: i.remittance,
-    })),
+    items: [
+      ...items.map((i) => ({
+        endToEnd: i.incoming_invoice_id.replace(/-/g, '').slice(0, 35),
+        amount: i.amount_cents,
+        name: i.creditor_name,
+        iban: i.creditor_iban,
+        bic: i.creditor_bic,
+        remittance: i.remittance,
+      })),
+      ...rec.map((i) => ({
+        endToEnd: i.item_id.replace(/-/g, '').slice(0, 35),
+        amount: i.amount_cents,
+        name: i.creditor_name,
+        iban: i.creditor_iban,
+        bic: i.creditor_bic,
+        remittance: i.remittance,
+      })),
+    ],
   });
 }
 

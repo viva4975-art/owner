@@ -73,7 +73,8 @@ import { toCsv } from '../services/reports.js';
 import { listFiles } from '../services/uploads.js';
 import { planCostingPdf, siteCostingPdf } from '../services/costing-pdf.js';
 import { EInvoiceRoutes, EInvoiceTable } from './routes-einvoice-in.js';
-import { RecurringDueCard, registerRecurringRoutes } from './routes-recurring.js';
+import { RecurringRows, registerRecurringRoutes } from './routes-recurring.js';
+import { markRecurringPaid } from '../services/recurring-payments.js';
 import { pendingEInvoices } from '../services/einvoice-inbox.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
@@ -2694,6 +2695,12 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
   app.get('/zahlungslauf', (c) => c.redirect('/zahlungsliste'));
 
   const recurring = registerRecurringRoutes(ctx, async () => incomingTabs(await listIncoming(sql)));
+  /** angehakte wiederkehrende Zahlungen der Zahlungsliste (Betrag nur bei wechselndem Betrag) */
+  const recurringPicks = (b: Record<string, string | File | (string | File)[]>) =>
+    arr(b, 'rp').map((key) => {
+      const raw = str(b, `betrag_${key}`);
+      return { key, amount_cents: raw ? (parseEuro(raw) as bigint) : null };
+    });
 
   app.get('/zahlungsliste', async (c) => {
     const today = todayBerlin();
@@ -2784,7 +2791,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                     <input
                       type="checkbox"
                       aria-label="alle"
-                      onchange="document.querySelectorAll('input[name=invoice]').forEach(function(x){x.checked=this.checked}.bind(this));window.vdSum()"
+                      onchange="document.querySelectorAll('input[name=invoice],input[name=rp]').forEach(function(x){x.checked=this.checked}.bind(this));window.vdSum()"
                     />
                   </th>
                   <th>Lieferant</th>
@@ -2855,7 +2862,8 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                     </tr>
                   );
                 })}
-                {!list.length && (
+                <RecurringRows due={rdue} today={today} />
+                {!list.length && !rdue.length && (
                   <tr>
                     <td colspan={9}>
                       <div class="empty">
@@ -2883,7 +2891,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
             <button
               class="btn"
               style="margin-left:auto"
-              disabled={!list.length}
+              disabled={!list.length && !rdue.length}
               onclick="return window.vdNuCheck() && confirm('Ausgewählte Rechnungen als bezahlt festhalten?')"
             >
               Als bezahlt festhalten
@@ -2917,7 +2925,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
               class="btn sec"
               style="margin-left:auto"
               formaction="/zahlungsliste/sepa"
-              disabled={!list.length}
+              disabled={!list.length && !rdue.length}
               onclick="return window.vdNuCheck() && confirm('SEPA-Datei für die ausgewählten Rechnungen erstellen? Die Rechnungen gelten danach als bezahlt.')"
             >
               <Icon name="download" /> SEPA-Datei erstellen
@@ -2925,7 +2933,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
           </div>
           <script
             dangerouslySetInnerHTML={{
-              __html: `window.vdSum=function(){var t=0,n=0;document.querySelectorAll('input[name=invoice]:checked').forEach(function(x){t+=Number(x.dataset.amount);n++});document.getElementById('sel-sum').textContent=n?('Ausgewählt: '+n+' · '+(t/100).toLocaleString('de-DE',{style:'currency',currency:'EUR'})):'';};window.vdSum();window.vdNuCheck=function(){var n=[];document.querySelectorAll('input[name=invoice]:checked').forEach(function(x){if(x.dataset.nachweise&&n.indexOf(x.dataset.nachweise)<0)n.push(x.dataset.nachweise)});return !n.length||confirm('Bei '+n.join(', ')+' fehlen Nachweise (Mindestlohn/Sozialversicherung). Wir haften als Auftraggeber trotzdem (§ 13 MiLoG, § 28e SGB IV) – die Zahlung ändert daran nichts. Trotzdem bezahlen?');};`,
+              __html: `window.vdSum=function(){var t=0,n=0;document.querySelectorAll('input[name=invoice]:checked,input[name=rp]:checked').forEach(function(x){t+=Number(x.dataset.amount);n++});document.getElementById('sel-sum').textContent=n?('Ausgewählt: '+n+' · '+(t/100).toLocaleString('de-DE',{style:'currency',currency:'EUR'})):'';};window.vdSum();window.vdNuCheck=function(){var n=[];document.querySelectorAll('input[name=invoice]:checked').forEach(function(x){if(x.dataset.nachweise&&n.indexOf(x.dataset.nachweise)<0)n.push(x.dataset.nachweise)});return !n.length||confirm('Bei '+n.join(', ')+' fehlen Nachweise (Mindestlohn/Sozialversicherung). Wir haften als Auftraggeber trotzdem (§ 13 MiLoG, § 28e SGB IV) – die Zahlung ändert daran nichts. Trotzdem bezahlen?');};`,
             }}
           />
         </form>
@@ -2935,7 +2943,6 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
           Rechnungen sind dann als bezahlt gebucht. Zahlungen gehen in den DATEV-Export. Skonto mindert die
           Vorsteuer (§ 17 UStG), Buchung übernimmt der Steuerberater.
         </p>
-        <RecurringDueCard due={rdue} pay={pay} today={today} />
         {runs.length > 0 && (
           <div class="card">
             <h3>SEPA-Dateien</h3>
@@ -3021,22 +3028,37 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     const b = await c.req.parseBody({ all: true });
     const date = str(b, 'datum') ?? '';
     try {
-      const n = await markPaid(
-        sql,
-        {
-          ids: arr(b, 'invoice'),
-          date,
-          method: (str(b, 'zahlart') ?? 'ueberweisung') as PaidMethod,
-          note: str(b, 'notiz'),
-          skonto: str(b, 'skonto') === '1',
-        },
-        c.get('actor'),
-      );
+      const ids = arr(b, 'invoice');
+      const rp = recurringPicks(b);
+      if (!ids.length && !rp.length) throw new BusinessError('Bitte mindestens eine Zeile auswählen');
+      const n = ids.length
+        ? await markPaid(
+            sql,
+            {
+              ids,
+              date,
+              method: (str(b, 'zahlart') ?? 'ueberweisung') as PaidMethod,
+              note: str(b, 'notiz'),
+              skonto: str(b, 'skonto') === '1',
+            },
+            c.get('actor'),
+          )
+        : 0;
+      const m = rp.length
+        ? await markRecurringPaid(sql, { items: rp, date, note: str(b, 'notiz') }, c.get('actor'))
+        : 0;
       return back(c, `/zahlungsliste?datum=${date}`, {
-        ok: `${anz(n, 'Rechnung', 'Rechnungen')} als bezahlt festgehalten.`,
+        ok:
+          [
+            n && `${anz(n, 'Rechnung', 'Rechnungen')}`,
+            m && `${anz(m, 'wiederkehrende Zahlung', 'wiederkehrende Zahlungen')}`,
+          ]
+            .filter(Boolean)
+            .join(' und ') + ' als bezahlt festgehalten.',
       });
     } catch (e) {
-      if (e instanceof BusinessError) return back(c, `/zahlungsliste?datum=${date}`, { fehler: e.message });
+      if (e instanceof BusinessError || e instanceof RangeError)
+        return back(c, `/zahlungsliste?datum=${date}`, { fehler: e.message });
       throw e;
     }
   });
@@ -3051,12 +3073,14 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
       await createPaymentRun(deps, {
         id: runId,
         invoiceIds: arr(b, 'invoice'),
+        recurring: recurringPicks(b),
         executionDate: date,
         debtorIban: str(b, 'konto') ?? '',
         actor: c.get('actor'),
       });
     } catch (e) {
-      if (e instanceof BusinessError) return back(c, '/zahlungsliste', { fehler: e.message });
+      if (e instanceof BusinessError || e instanceof RangeError)
+        return back(c, '/zahlungsliste', { fehler: e.message });
       throw e;
     }
     return back(c, `/zahlungslauf/${runId}`, {

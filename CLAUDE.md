@@ -4249,3 +4249,15 @@ Testadresse.
   Migration `20261226000001`, gilt für jeden Weg: Formular, Sammelaktion, Import). Bestand einmal nachgezogen, alter Stand je
   Datensatz im Protokoll (`deactivate`, „automatisch“/„migration“). Wieder aktiv setzen schaltet Objekte/Leistungen
   bewusst nicht zurück – die einzeln wieder aktivieren.
+- 2026-10-26: **Nach- und Plan-Kalkulation aufschlüsseln** (Ahmed: „einzelne Position öffnen und sehen, welche Kosten
+  dahinter stecken, z. B. Bürokosten“): Jede Zeile hat „▸ Kosten aufschlüsseln“, die Beträge der Ist-Zeilen sind
+  anklickbar (Sprung zum Abschnitt). Ist (`/auswertungen/nachkalkulation/detail?objekt=…|kostenstelle=…&von&bis`,
+  `src/services/costing-detail.ts`): Erlös je Rechnung (eigene + vor der Umstellung), Lohn je Person (Ist-Std., Stundenlohn,
+  Zuschlag, Kosten), Material je Materialausgabe/Lagerabgang, Eingangsrechnungen je Kostenart, geschätzte NU-Kosten laut
+  Bestellung; allgemeine Kostenstellen (9000 Büro …) mit Eingangsrechnungen und wiederkehrenden Zahlungen (netto, Monate).
+  Plan (`/auswertungen/plankalkulation/detail`): Erlös je Leistung, Lohn + AG-Kosten je Person, NU-Bestellungen,
+  Material-Ø mit Link auf die Belege. Gleiche Regeln wie die Summenzeilen (Test `costing-detail.db.test.ts`).
+  **Geschäftsführer auch ohne Tag** (Ahmed: „bei Ahmed Chomontek dürfen keine zusätzlichen Kosten entstehen“): Wer als
+  Geschäftsführer in den Firmendaten steht, wird wie der Tag „Geschäftsführer“ behandelt – Nachkalkulation ohne
+  Lohnzuschlag, Plan-Kalkulation ohne Arbeitgeberkosten (`isManagingDirector` mit Name). Sein Lohn/Gehalt selbst zählt
+  weiter; soll er gar nicht in die Kalkulation, Vergütung/Einsätze entsprechend pflegen.

@@ -53,8 +53,15 @@ function midijobEmployerShare(ae: number, r: PlanCostRates): number {
 }
 
 /** Geschäftsführer (Tag „Geschäftsführer“, wie beim Lohnexport) – in der Kalkulation ohne Zusatzkosten (Ahmed 23.10.) */
-export const isManagingDirector = (tags: readonly string[] | null | undefined) =>
-  (tags ?? []).some((t) => /gesch(ä|ae)ftsf(ü|ue)hr/i.test(t));
+export const isManagingDirector = (
+  tags: readonly string[] | null | undefined,
+  /** Vor- und Nachname + Geschäftsführer laut Firmendaten (Ahmed 26.10.: „bei ihm geht nichts weg“) */
+  person?: { name: string; managingDirector: string | null | undefined },
+) =>
+  (tags ?? []).some((t) => /gesch(ä|ae)ftsf(ü|ue)hr/i.test(t)) ||
+  (!!person?.name.trim() &&
+    !!person.managingDirector &&
+    person.managingDirector.toLowerCase().includes(person.name.trim().toLowerCase()));
 
 /** Arbeitgeberkosten über dem Bruttoentgelt eines Monats (Cent, kaufmännisch gerundet). */
 export function employerCost(

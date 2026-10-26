@@ -1338,6 +1338,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--brand)}
 /* ===================================================================================================
    Ruhe (Ahmed 12.10.2026: „Seiten leerer und aufgeräumter, damit sich neue Mitarbeiter gut fühlen“).
    Kurze Listen statt Tabellen, mehr Luft, gedämpfte Summen-Schilder, seltene Dinge zugeklappt.
+a.plain{color:inherit;text-decoration:none;border-bottom:1px dotted var(--line-2,#bbb)}a.plain:hover{color:var(--brand);border-bottom-color:var(--brand)}
    =================================================================================================== */
 .calm-list,.calm-cols{list-style:none;margin:0;padding:0}
 .calm-list li{padding:7px 0;border-bottom:1px solid var(--line)}.calm-list li:last-child{border-bottom:0}

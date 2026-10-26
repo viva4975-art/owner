@@ -297,7 +297,9 @@ export async function siteCosting(
                                      (select min(w.hourly_wage_cents) from app.wage_levels w where w.active))
                           -- Geschäftsführer (Tag) ohne Zuschlag (Ahmed 23.10.)
                           * (10000 + case when exists (select 1 from unnest(coalesce(e.tags, '{}')) t
-                                                        where t ~* 'gesch(ä|ae)ftsf(ü|ue)hr') then 0
+                                                        where t ~* 'gesch(ä|ae)ftsf(ü|ue)hr')
+                    -- Geschäftsführer laut Firmendaten (Ahmed 26.10.: „bei ihm geht nichts weg“)
+                    or (select lower(coalesce(managing_director, '')) from app.company limit 1) like '%' || lower(e.first_name || ' ' || e.last_name) || '%' then 0
                                           when e.employment_type = 'minijob' then ${settings.overhead_minijob_bp}::int
                                           when coalesce(e.weekly_hours, case when e.employment_type = 'vollzeit' then 40 else 0 end) > 30
                                             then ${settings.overhead_fulltime_bp}::int

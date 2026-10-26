@@ -476,7 +476,15 @@ export async function recurringCosts(sql: Sql, from: string, to: string) {
       select recurring_id, period::text, amount_cents from app.recurring_payment_items`,
   ]);
   const amt = new Map(paid.map((p) => [`${p.recurring_id}|${p.period}`, p.amount_cents]));
-  const out: { cost_center_id: string; category: string | null; month: string; net: bigint }[] = [];
+  const out: {
+    cost_center_id: string;
+    category: string | null;
+    month: string;
+    net: bigint;
+    recurring_id: string;
+    name: string;
+    payee: string;
+  }[] = [];
   const fromM = `${from.slice(0, 7)}-01`;
   for (const r of list) {
     if (!r.active && !paid.some((p) => p.recurring_id === r.id)) continue;
@@ -497,7 +505,15 @@ export async function recurringCosts(sql: Sql, from: string, to: string) {
         const share = base + (rest > 0n ? 1n : 0n);
         if (rest > 0n) rest--;
         if (m >= fromM && m <= to && share !== 0n)
-          out.push({ cost_center_id: r.cost_center_id!, category: r.category, month: m, net: share });
+          out.push({
+            cost_center_id: r.cost_center_id!,
+            category: r.category,
+            month: m,
+            net: share,
+            recurring_id: r.id,
+            name: r.name,
+            payee: r.supplier_name ?? r.payee,
+          });
       }
     }
   }

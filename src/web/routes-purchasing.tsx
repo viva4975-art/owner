@@ -3650,6 +3650,12 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                       {r.site_no} · {r.site_name}
                     </a>
                     <div class="small mut">{r.customer_name}</div>
+                    <a
+                      class="small"
+                      href={`/auswertungen/plankalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}`}
+                    >
+                      ▸ Kosten aufschlüsseln
+                    </a>
                     {r.revenue === 0n && r.labor + r.subcontractor + r.material > 0n && (
                       <div class="small" style="color:var(--warn)">
                         Kosten ohne Erlös
@@ -4100,9 +4106,9 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                     <div class="small mut">{r.customer_name}</div>
                     <a
                       class="small"
-                      href={`/auswertungen/nachkalkulation?von=${von}&bis=${bis}&objekt=${r.site_id}#kosten`}
+                      href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}`}
                     >
-                      Kosten im Detail
+                      ▸ Kosten aufschlüsseln
                     </a>
                     {r.revenue === 0n &&
                       r.material + r.subcontractor + r.equipment + r.other + r.labor > 0n && (
@@ -4111,7 +4117,14 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                         </div>
                       )}
                   </td>
-                  <td class="r">{euro(r.revenue)}</td>
+                  <td class="r">
+                    <a
+                      class="plain"
+                      href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#erloes`}
+                    >
+                      {euro(r.revenue)}
+                    </a>
+                  </td>
                   <td class="r">
                     {hm(r.planned_minutes)} / {hm(r.actual_minutes)}
                     {r.missing_wage > 0 && (
@@ -4124,9 +4137,21 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                       </div>
                     )}
                   </td>
-                  <td class="r">{euro(r.labor)}</td>
                   <td class="r">
-                    {euro(r.material)}
+                    <a
+                      class="plain"
+                      href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#lohn`}
+                    >
+                      {euro(r.labor)}
+                    </a>
+                  </td>
+                  <td class="r">
+                    <a
+                      class="plain"
+                      href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#material`}
+                    >
+                      {euro(r.material)}
+                    </a>
                     {r.material > 0n && (
                       <div class="small">
                         <a href={`/materialausgabe?objekt=${r.site_id}${von === bis ? `&monat=${von}` : ''}`}>
@@ -4135,14 +4160,33 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                       </div>
                     )}
                   </td>
-                  <td class="r">{euro(r.equipment)}</td>
                   <td class="r">
-                    {euro(r.subcontractor)}
+                    <a
+                      class="plain"
+                      href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#geraete`}
+                    >
+                      {euro(r.equipment)}
+                    </a>
+                  </td>
+                  <td class="r">
+                    <a
+                      class="plain"
+                      href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#nu`}
+                    >
+                      {euro(r.subcontractor)}
+                    </a>
                     {r.subcontractor_estimated > 0n && (
                       <div class="small mut">davon {euro(r.subcontractor_estimated)} lt. Bestellung</div>
                     )}
                   </td>
-                  <td class="r">{euro(r.other)}</td>
+                  <td class="r">
+                    <a
+                      class="plain"
+                      href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#sonstiges`}
+                    >
+                      {euro(r.other)}
+                    </a>
+                  </td>
                   <td class="r" style={r.margin < 0n ? 'color:var(--err)' : ''}>
                     <b>{euro(r.margin)}</b>
                   </td>
@@ -4168,9 +4212,20 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
               {general.map((g) => (
                 <tr>
                   <td>
-                    <b>
-                      {g.number} · {g.name}
-                    </b>
+                    <a
+                      href={`/auswertungen/nachkalkulation/detail?kostenstelle=${g.cost_center_id}&von=${von}&bis=${bis}`}
+                    >
+                      <b>
+                        {g.number} · {g.name}
+                      </b>
+                    </a>
+                    <div class="small">
+                      <a
+                        href={`/auswertungen/nachkalkulation/detail?kostenstelle=${g.cost_center_id}&von=${von}&bis=${bis}`}
+                      >
+                        ▸ Kosten aufschlüsseln
+                      </a>
+                    </div>
                   </td>
                   <td class="r">–</td>
                   <td class="r">–</td>

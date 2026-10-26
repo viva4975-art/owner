@@ -77,6 +77,7 @@ import { registerEigenComplianceRoutes } from './routes-eigen-compliance.js';
 import { registerCostCenterRoutes } from './routes-costcenters.js';
 import { registerPlanningRoutes } from './routes-planning.js';
 import { registerPlanningBoardRoutes } from './routes-planning-board.js';
+import { registerCostingDetailRoutes } from './routes-costing-detail.js';
 import { registerPurchasingRoutes } from './routes-purchasing.js';
 import { registerTimeRoutes } from './routes-time.js';
 import { registerTimesheetRoutes } from './routes-timesheet.js';
@@ -609,6 +610,7 @@ export function createApp(deps: Deps) {
   registerTimeRoutes(ctx);
   registerPlanningBoardRoutes(ctx);
   registerPlanningRoutes(ctx);
+  registerCostingDetailRoutes(ctx);
   registerPurchasingRoutes(ctx);
   registerOrderRoutes(ctx);
   registerFacilityRoutes(ctx);

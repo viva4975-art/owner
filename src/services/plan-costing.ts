@@ -75,6 +75,25 @@ export interface PlanSiteRow {
   margin_bp: number | null;
 }
 
+/** Aufschlüsselung einer Zeile der Plan-Kalkulation (Ahmed 26.10.). */
+export interface PlanSiteDetail {
+  revenue: { service_id: string; title: string; cycle: string; months: number; amount: bigint }[];
+  labor: {
+    employee_id: string;
+    name: string;
+    personnel_no: string;
+    minutes: number;
+    gross: bigint;
+    employer: bigint;
+    bands: PayBand[];
+    fixed: boolean;
+    wage_cents: bigint;
+    wage_assumed: boolean;
+  }[];
+  /** Material der 3 Vormonate (Ist), daraus der Ø je Monat */
+  material_avg3: bigint;
+}
+
 export interface PlanEmployeeRow {
   employee_id: string;
   name: string;
@@ -152,9 +171,11 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
         unit_code: string;
         work_days: number[] | null;
         hours_per_day_milli: bigint | null;
+        id: string;
+        title: string;
       }[]
     >`
-      select ss.site_id, ss.quantity_milli, ss.unit_price_cents, ss.billing_cycle::text as billing_cycle,
+      select ss.id, ss.description as title, ss.site_id, ss.quantity_milli, ss.unit_price_cents, ss.billing_cycle::text as billing_cycle,
              ss.valid_from::text, ss.valid_to::text, ss.unit_code, ss.work_days, ss.hours_per_day_milli
         from app.site_services ss join app.sites s on s.id = ss.site_id join app.customers c on c.id = s.customer_id
        where ss.active and not c.is_internal
@@ -176,14 +197,26 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
         wage: bigint | null;
         min_wage: bigint | null;
         tags: string[] | null;
+        full_name: string;
+        md: string | null;
       }[]
     >`
-      select e.id, e.last_name || ', ' || e.first_name as name, e.personnel_no, e.employment_type::text,
+      select e.id, e.last_name || ', ' || e.first_name as name, e.first_name || ' ' || e.last_name as full_name,
+             (select managing_director from app.company limit 1) as md, e.personnel_no, e.employment_type::text,
              e.pay_model, e.monthly_salary_cents, app.effective_wage_cents(e)::bigint as wage, e.tags,
              (select min(w.hourly_wage_cents) from app.wage_levels w where w.active)::bigint as min_wage
         from app.employees e`,
   ]);
   const siteMap = new Map(sites.map((s) => [s.id, s]));
+  const details = new Map<string, PlanSiteDetail>();
+  const detail = (siteId: string) => {
+    let d = details.get(siteId);
+    if (!d) {
+      d = { revenue: [], labor: [], material_avg3: 0n };
+      details.set(siteId, d);
+    }
+    return d;
+  };
   const acc = new Map<string, Omit<PlanSiteRow, 'margin' | 'margin_bp' | 'labor'>>();
   const row = (siteId: string) => {
     let r = acc.get(siteId);
@@ -224,7 +257,15 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
         : BigInt(sv.quantity_milli);
       const net = lineNet(qty as Quantity, BigInt(sv.unit_price_cents) as Cents);
       const cm = BigInt(CYCLE_MONTHS[sv.billing_cycle] ?? 1);
-      row(sv.site_id).revenue += (net + cm / 2n) / cm;
+      const share = (net + cm / 2n) / cm;
+      row(sv.site_id).revenue += share;
+      const d = detail(sv.site_id).revenue;
+      const it = d.find((x) => x.service_id === sv.id);
+      if (it) {
+        it.amount += share;
+        it.months += 1;
+      } else
+        d.push({ service_id: sv.id, title: sv.title, cycle: sv.billing_cycle, months: 1, amount: share });
     }
   }
   // Lohn: geplante Minuten je Mitarbeiter, Monat und Objekt
@@ -245,7 +286,7 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
     const minutes = [...bySite.values()].reduce((a, b) => a + b, 0);
     const wage = BigInt(e.wage ?? e.min_wage ?? 0);
     const fixed = e.pay_model === 'festgehalt' && e.monthly_salary_cents;
-    const gf = isManagingDirector(e.tags);
+    const gf = isManagingDirector(e.tags, { name: e.full_name, managingDirector: e.md });
     // Stundenlohn: Minuten × Lohn, kaufmännisch gerundet; Festgehalt: Monatsgehalt. Geschäftsführer ohne Arbeitgeberkosten.
     const gross = fixed ? BigInt(e.monthly_salary_cents!) : (BigInt(minutes) * wage + 30n) / 60n;
     const { band, costCents } = gf
@@ -264,6 +305,26 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
       r.minutes += w[i]!;
       r.gross += g[i]!;
       r.employer += c[i]!;
+      const dl = detail(id).labor;
+      const it = dl.find((x) => x.employee_id === empId);
+      if (it) {
+        it.minutes += w[i]!;
+        it.gross += g[i]!;
+        it.employer += c[i]!;
+        if (!it.bands.includes(band)) it.bands.push(band);
+      } else
+        dl.push({
+          employee_id: empId,
+          name: e.name,
+          personnel_no: e.personnel_no,
+          minutes: w[i]!,
+          gross: g[i]!,
+          employer: c[i]!,
+          bands: [band],
+          fixed: !!fixed,
+          wage_cents: wage,
+          wage_assumed: !fixed && e.wage === null,
+        });
     });
     const ea = empAcc.get(empId) ?? {
       employee_id: empId,
@@ -291,7 +352,10 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
   for (const n of nu) if (siteMap.has(n.site_id)) row(n.site_id).subcontractor += BigInt(n.cost);
   for (const p of past.rows) {
     const avg = p.material / 3n;
-    if (avg > 0n && siteMap.get(p.site_id)?.active) row(p.site_id).material += avg * BigInt(months.length);
+    if (avg > 0n && siteMap.get(p.site_id)?.active) {
+      row(p.site_id).material += avg * BigInt(months.length);
+      detail(p.site_id).material_avg3 = p.material;
+    }
   }
   const rows: PlanSiteRow[] = [...acc.values()]
     .filter((r) => r.revenue || r.minutes || r.subcontractor || r.material)
@@ -307,5 +371,17 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
     })
     .sort((a, b) => a.site_no.localeCompare(b.site_no));
   const employees = [...empAcc.values()].sort((a, b) => a.name.localeCompare(b.name, 'de'));
-  return { rows, employees, rates, months: months.length, materialFrom: prev[0]!, materialTo: prev[2]! };
+  for (const d of details.values()) {
+    d.revenue.sort((a, b) => a.title.localeCompare(b.title, 'de'));
+    d.labor.sort((a, b) => Number(b.gross + b.employer - a.gross - a.employer));
+  }
+  return {
+    rows,
+    employees,
+    details,
+    rates,
+    months: months.length,
+    materialFrom: prev[0]!,
+    materialTo: prev[2]!,
+  };
 }

@@ -69,6 +69,58 @@ export interface OfferLineRow {
   /** Alternativposition: wird angeboten, zählt aber nicht zur Summe und wird nicht übernommen */
   alternative: boolean;
   service_type_id: string | null;
+  /** jährlich (z. B. Grundreinigung 1×/Jahr) – nicht im Monatspreis, zählt einmal im Jahreswert */
+  yearly: boolean;
+  /** Los der Ausschreibung (1, 2, …) oder null */
+  lot_no: number | null;
+}
+
+export type LotStatus = 'offen' | 'angenommen' | 'abgelehnt' | 'aufgehoben';
+export const LOT_STATUS: Record<LotStatus, string> = {
+  offen: 'offen',
+  angenommen: 'Zuschlag',
+  abgelehnt: 'Absage',
+  aufgehoben: 'aufgehoben',
+};
+export interface OfferLotRow {
+  offer_id: string;
+  lot_no: number;
+  title: string | null;
+  status: LotStatus;
+  decided_at: Date | null;
+  decided_by: string | null;
+}
+
+/** Rhythmus einer Position als Text. */
+export const lineCycle = (l: { recurring: boolean; yearly?: boolean }) =>
+  l.recurring ? 'monatlich' : l.yearly ? 'jährlich' : 'einmalig';
+
+/**
+ * Jahreswert (für Wertung und Statistik, Ahmed 26.10.): monatliche Positionen × 12, jährliche und einmalige einmal.
+ * Ohne Alternativpositionen.
+ */
+export function offerYearValue(
+  lines: { recurring: boolean; alternative: boolean; net_cents: bigint }[],
+): bigint {
+  return lines
+    .filter((l) => !l.alternative)
+    .reduce((a, l) => a + (l.recurring ? l.net_cents * 12n : l.net_cents), 0n);
+}
+
+/** Bezeichnung eines Loses („Los 2 – Unterhaltsreinigung Schule“). */
+export const lotLabel = (lot: { lot_no: number; title: string | null }) =>
+  `Los ${lot.lot_no}${lot.title ? ` – ${lot.title}` : ''}`;
+
+/**
+ * Positionen, die übernommen/abgerechnet werden: ohne Alternativen; bei Losen nur Lose mit Zuschlag
+ * (Positionen ohne Los gehören zum ganzen Angebot).
+ */
+export function awardedLines<L extends { alternative: boolean; lot_no: number | null }>(
+  lines: L[],
+  lots: { lot_no: number; status: LotStatus }[],
+): L[] {
+  const won = new Set(lots.filter((x) => x.status === 'angenommen').map((x) => x.lot_no));
+  return lines.filter((l) => !l.alternative && (l.lot_no === null || !lots.length || won.has(l.lot_no)));
 }
 
 export interface OfferInput {
@@ -83,7 +135,14 @@ export interface OfferInput {
   validUntil: string | null;
   introText: string | null;
   closingText: string | null;
-  lines: (DraftLineInput & { recurring: boolean; alternative?: boolean })[];
+  lines: (DraftLineInput & {
+    recurring: boolean;
+    alternative?: boolean;
+    yearly?: boolean;
+    lot?: number | null;
+  })[];
+  /** Bezeichnung je Los (Los-Nr. → Titel) */
+  lotTitles?: Record<number, string>;
   expectedVersion?: number | null;
   predecessorId?: string | null;
 }
@@ -115,10 +174,11 @@ export async function listOffers(
 export async function getOffer(sql: Sql | Tx, id: string) {
   const [o] = await sql<OfferRow[]>`select * from app.offers where id = ${id}`;
   if (!o) return undefined;
-  const lines = await sql<
-    OfferLineRow[]
-  >`select * from app.offer_lines where offer_id = ${id} order by position`;
-  return { offer: o, lines };
+  const [lines, lots] = await Promise.all([
+    sql<OfferLineRow[]>`select * from app.offer_lines where offer_id = ${id} order by position`,
+    sql<OfferLotRow[]>`select * from app.offer_lots where offer_id = ${id} order by lot_no`,
+  ]);
+  return { offer: o, lines, lots };
 }
 
 /** Anlegen/Ändern. Neue Angebote bekommen sofort eine Nummer (wie Fortytools, z. B. 3843). */
@@ -126,6 +186,12 @@ export async function saveOffer(sql: Sql, id: string, input: OfferInput, actor: 
   if (!input.lines.length) throw new BusinessError('Bitte mindestens eine Position erfassen');
   const main = input.lines.filter((l) => !l.alternative);
   if (!main.length) throw new BusinessError('Mindestens eine Position darf keine Alternative sein');
+  for (const l of input.lines) {
+    if (l.recurring && l.yearly)
+      throw new BusinessError('Eine Position ist entweder monatlich oder jährlich');
+    if (l.lot != null && (!Number.isInteger(l.lot) || l.lot < 1 || l.lot > 99))
+      throw new BusinessError('Los-Nummer 1 bis 99');
+  }
   // kein eigener Titel/Betreff mehr (Ahmed 15.10.): Titel = erste Position (für Listen und Suche)
   if (!input.title.trim()) input = { ...input, title: main[0]!.description.slice(0, 200) };
   // Positionen (Nummern, Zeilenbeträge) über alle Zeilen, Summen nur ohne Alternativen
@@ -186,8 +252,18 @@ export async function saveOffer(sql: Sql, id: string, input: OfferInput, actor: 
         recurring: input.lines[i]!.recurring,
         alternative: input.lines[i]!.alternative ?? false,
         service_type_id: input.lines[i]!.serviceTypeId ?? null,
+        yearly: !input.lines[i]!.recurring && (input.lines[i]!.yearly ?? false),
+        lot_no: input.lines[i]!.lot ?? null,
       })),
     )}`;
+    // Lose: jede verwendete Los-Nummer bekommt einen Eintrag (Titel änderbar, Entscheidung später je Los)
+    const used = [...new Set(input.lines.map((l) => l.lot).filter((n): n is number => n != null))];
+    await tx`delete from app.offer_lots where offer_id = ${id} and not (lot_no = any(${used}::int[]))`;
+    for (const n of used) {
+      const title = input.lotTitles?.[n]?.trim().slice(0, 200) || null;
+      await tx`insert into app.offer_lots (offer_id, lot_no, title) values (${id}, ${n}, ${title})
+               on conflict (offer_id, lot_no) do update set title = excluded.title`;
+    }
     await tx`insert into app.audit_log (actor, action, entity, entity_id) values (${actor}, ${cur ? 'update' : 'create'}, 'offer', ${id})`;
   });
   return id;
@@ -209,6 +285,16 @@ export async function setOfferStatus(sql: Sql, id: string, status: OfferStatus, 
       zurueckgezogen: [],
     };
     if (o.status === status) return;
+    // Angebot mit Losen: Entscheidung für das ganze Angebot gilt für alle noch offenen Lose
+    const lots = await tx<{ lot_no: number; status: LotStatus }[]>`
+      select lot_no, status from app.offer_lots where offer_id = ${id} order by lot_no`;
+    if (lots.length && ['angenommen', 'abgelehnt', 'aufgehoben'].includes(status)) {
+      if (o.status === 'entwurf') throw new BusinessError('Angebot zuerst als versendet markieren');
+      await tx`update app.offer_lots set status = ${status}, decided_at = now(), decided_by = ${actor}
+                where offer_id = ${id} and status = 'offen'`;
+      await recomputeLotOffer(tx, id, actor);
+      return;
+    }
     if (!allowed[o.status].includes(status)) {
       throw new BusinessError(
         `Status „${OFFER_STATUS[o.status]}“ kann nicht zu „${OFFER_STATUS[status]}“ wechseln`,
@@ -229,6 +315,64 @@ export async function setOfferStatus(sql: Sql, id: string, status: OfferStatus, 
     }
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
              values (${actor}, 'status', 'offer', ${id}, ${tx.json({ status })})`;
+  });
+}
+
+/** Status des Angebots aus seinen Losen: alle entschieden → Zuschlag, wenn mindestens ein Los gewonnen, sonst
+ *  aufgehoben (alle aufgehoben) bzw. Absage; sonst „versendet“ (Teilentscheidung). */
+async function recomputeLotOffer(tx: Tx, id: string, actor: string) {
+  const lots = await tx<{ status: LotStatus }[]>`select status from app.offer_lots where offer_id = ${id}`;
+  const [o] = await tx<{ status: OfferStatus }[]>`select status from app.offers where id = ${id}`;
+  if (!o || !lots.length) return;
+  const open = lots.some((l) => l.status === 'offen');
+  const next: OfferStatus = open
+    ? 'versendet'
+    : lots.some((l) => l.status === 'angenommen')
+      ? 'angenommen'
+      : lots.every((l) => l.status === 'aufgehoben')
+        ? 'aufgehoben'
+        : 'abgelehnt';
+  if (next === o.status) return;
+  await tx`update app.offers set status = ${next},
+             decided_at = ${next === 'versendet' ? null : tx`now()`} where id = ${id}`;
+  await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+           values (${actor}, 'status', 'offer', ${id}, ${tx.json({ status: next, from_lots: true })})`;
+}
+
+/** Entscheidung je Los (Zuschlag / Absage / aufgehoben / wieder offen); der Angebotsstatus folgt daraus. */
+export async function setLotStatus(
+  sql: Sql,
+  offerId: string,
+  lotNo: number,
+  status: LotStatus,
+  actor: string,
+) {
+  if (!(status in LOT_STATUS)) throw new BusinessError('Unbekannter Status');
+  await sql.begin(async (tx) => {
+    const [o] = await tx<
+      { status: OfferStatus }[]
+    >`select status from app.offers where id = ${offerId} for update`;
+    if (!o) throw new BusinessError('Angebot nicht gefunden');
+    if (o.status === 'entwurf') throw new BusinessError('Angebot zuerst als versendet markieren');
+    if (o.status === 'zurueckgezogen') throw new BusinessError('Angebot ist zurückgezogen');
+    const [lot] = await tx<{ status: LotStatus }[]>`
+      select status from app.offer_lots where offer_id = ${offerId} and lot_no = ${lotNo} for update`;
+    if (!lot) throw new BusinessError('Los nicht gefunden');
+    if (lot.status === status) return;
+    if (lot.status === 'angenommen') {
+      const [taken] = await tx`select 1 from app.audit_log where entity = 'offer' and entity_id = ${offerId}
+                                  and action in ('accept_into_site', 'to_invoice', 'to_order') limit 1`;
+      if (taken)
+        throw new BusinessError(
+          'Zuschlag schon ins Objekt/in eine Rechnung übernommen – nicht mehr änderbar',
+        );
+    }
+    await tx`update app.offer_lots set status = ${status},
+               decided_at = ${status === 'offen' ? null : tx`now()`}, decided_by = ${status === 'offen' ? null : actor}
+             where offer_id = ${offerId} and lot_no = ${lotNo}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'lot_status', 'offer', ${offerId}, ${tx.json({ lot: lotNo, status, before: lot.status })})`;
+    await recomputeLotOffer(tx, offerId, actor);
   });
 }
 
@@ -277,7 +421,10 @@ export async function copyOffer(
         recurring: l.recurring,
         alternative: l.alternative,
         serviceTypeId: l.service_type_id ?? null,
+        yearly: l.yearly,
+        lot: l.lot_no,
       })),
+      lotTitles: Object.fromEntries(data.lots.map((x) => [x.lot_no, x.title ?? ''])),
       ...(opts.followUp ? { predecessorId: id, submissionDeadline: null } : {}),
     },
     actor,
@@ -315,17 +462,19 @@ export async function acceptIntoSite(
     throw new BusinessError('Objekt gehört nicht zum Kunden des Angebots');
   let n = 0;
   await sql.begin(async (tx) => {
-    for (const l of data.lines.filter((x) => !x.alternative)) {
+    for (const l of awardedLines(data.lines, data.lots)) {
       // deterministische ID: Angebot + Position → zweimal übernehmen legt nichts doppelt an
       const [{ id }] = (await tx`select md5(${offerId} || ':' || ${l.position})::uuid as id`) as unknown as [
         { id: string },
       ];
       const res = await tx`
         insert into app.site_services (id, site_id, kind, description, unit_code, quantity_milli, unit_price_cents,
-                                       vat_rate_bp, valid_from, note, sort_order, service_type_id)
+                                       vat_rate_bp, valid_from, note, sort_order, service_type_id, billing_cycle)
         values (${id}, ${siteId}, ${l.recurring ? 'monthly_flat' : 'special'}, ${l.description}, ${l.unit_code},
                 ${l.quantity_milli}, ${l.unit_price_cents}, ${l.vat_rate_bp}, ${validFrom},
-                ${`aus Angebot ${data.offer.number}`}, ${l.position}, ${l.service_type_id ?? null})
+                ${`aus Angebot ${data.offer.number}${l.lot_no ? `, Los ${l.lot_no}` : ''}`}, ${l.position},
+                ${l.service_type_id ?? null},
+                ${l.recurring ? 'monatlich' : l.yearly ? 'jaehrlich' : 'je_ausfuehrung'}::app.billing_cycle)
         on conflict (id) do nothing`;
       n += res.count;
     }
@@ -355,17 +504,15 @@ export async function offerToInvoiceDraft(sql: Sql, offerId: string, actor: stri
       orderReference: data.offer.tender_reference,
       introText: `Gemäß unserem Angebot ${data.offer.number} vom ${formatDateDe(data.offer.offer_date)} berechnen wir:`,
       closingText: null,
-      lines: data.lines
-        .filter((l) => !l.alternative)
-        .map((l) => ({
-          description: l.description,
-          detail: l.detail,
-          quantity: l.quantity_milli as Quantity,
-          unitCode: l.unit_code,
-          unitPrice: l.unit_price_cents as Cents,
-          vatRate: l.vat_rate_bp,
-          serviceTypeId: l.service_type_id ?? null,
-        })),
+      lines: awardedLines(data.lines, data.lots).map((l) => ({
+        description: l.description,
+        detail: l.detail,
+        quantity: l.quantity_milli as Quantity,
+        unitCode: l.unit_code,
+        unitPrice: l.unit_price_cents as Cents,
+        vatRate: l.vat_rate_bp,
+        serviceTypeId: l.service_type_id ?? null,
+      })),
     },
     actor,
   );
@@ -408,37 +555,38 @@ export async function offerContactFull(
   return { name: p?.name || login, phone: p?.phone || null, email: p?.email || null };
 }
 
-/** Summen getrennt nach monatlich wiederkehrend und einmalig (ohne Alternativpositionen). */
+/** Summen getrennt nach monatlich, jährlich und einmalig (ohne Alternativpositionen); null bei nur einer Art. */
 export function offerSplitTotals(
-  lines: { recurring: boolean; alternative: boolean }[],
+  lines: { recurring: boolean; alternative: boolean; yearly?: boolean }[],
   toLine: (i: number) => Parameters<typeof calculateDraft>[0][number],
 ): { label: string; net: bigint; vat: bigint; gross: bigint }[] | null {
   const idx = lines.map((l, i) => ({ l, i })).filter((x) => !x.l.alternative);
-  const rec = idx.filter((x) => x.l.recurring).map((x) => toLine(x.i));
-  const once = idx.filter((x) => !x.l.recurring).map((x) => toLine(x.i));
-  if (!rec.length || !once.length) return null;
-  const r = calculateDraft(rec);
-  const o = calculateDraft(once);
-  return [
-    { label: 'Monatlich', net: r.net, vat: r.vat, gross: r.gross },
-    { label: 'Einmalig', net: o.net, vat: o.vat, gross: o.gross },
-  ];
+  const groups = (
+    [
+      ['Monatlich', idx.filter((x) => x.l.recurring)],
+      ['Jährlich', idx.filter((x) => !x.l.recurring && x.l.yearly)],
+      ['Einmalig', idx.filter((x) => !x.l.recurring && !x.l.yearly)],
+    ] as const
+  ).filter(([, g]) => g.length);
+  if (groups.length < 2) return null;
+  return groups.map(([label, g]) => {
+    const d = calculateDraft(g.map((x) => toLine(x.i)));
+    return { label, net: d.net, vat: d.vat, gross: d.gross };
+  });
 }
 
 export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8Array; filename: string }> {
   const data = await getOffer(sql, id);
   if (!data) throw new BusinessError('Angebot nicht gefunden');
-  const { offer: o, lines } = data;
+  const { offer: o, lots } = data;
+  // Lose zusammenhängend (Positionen ohne Los zuerst), sonst Reihenfolge wie erfasst
+  const lines = [...data.lines].sort((a, b) => (a.lot_no ?? 0) - (b.lot_no ?? 0) || a.position - b.position);
   const seller = await getSeller(sql);
   const buyer = await buildBuyerSnapshot(sql, o.customer_id, o.site_id);
   const toLine = (l: OfferLineRow) => ({
     description: l.alternative ? `Alternativ: ${l.description}` : l.description,
     detail:
-      [
-        l.detail,
-        l.recurring ? 'monatlich' : 'einmalig',
-        l.alternative ? 'Alternativposition – nicht in der Summe enthalten' : null,
-      ]
+      [l.detail, lineCycle(l), l.alternative ? 'Alternativposition – nicht in der Summe enthalten' : null]
         .filter(Boolean)
         .join('\n') || null,
     quantity: l.quantity_milli as Quantity,
@@ -482,10 +630,27 @@ export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8
   ];
   if (o.valid_until) info.push(['Gültig bis', formatDateDe(o.valid_until)]);
   if (o.tender_reference) info.push(['Vergabe-Nr.', o.tender_reference]);
+  const eurTxt = (c: bigint) =>
+    (Number(c) / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
   const monthly =
     o.monthly_net_cents > 0n && !split
-      ? ` Davon monatlich wiederkehrend: ${(Number(o.monthly_net_cents) / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })} netto.`
+      ? ` Davon monatlich wiederkehrend: ${eurTxt(o.monthly_net_cents)} netto.`
       : '';
+  // Jahreswert (Wertung): monatlich × 12 + jährlich + einmalig; bei Losen je Los
+  const yearly =
+    o.monthly_net_cents > 0n || lines.some((l) => l.yearly)
+      ? ` Jahreswert (12 × monatlich + jährliche und einmalige Leistungen): ${eurTxt(offerYearValue(lines))} netto.`
+      : '';
+  const lotValues = lots.length
+    ? ' ' +
+      lots
+        .map(
+          (x) =>
+            `${lotLabel(x)}: ${eurTxt(offerYearValue(lines.filter((l) => l.lot_no === x.lot_no)))} netto/Jahr`,
+        )
+        .join('; ') +
+      '. Die Lose können einzeln vergeben werden.'
+    : '';
   const [site] = o.site_id
     ? await sql<
         {
@@ -519,6 +684,8 @@ export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8
         ? `Dieses Angebot ist gültig bis zum ${formatDateDe(o.valid_until)}.`
         : 'Dieses Angebot ist 30 Tage gültig.') +
       monthly +
+      yearly +
+      lotValues +
       ' Es gelten unsere Allgemeinen Geschäftsbedingungen.',
     // Ansprechpartner als Karte, darunter Feld „Auftragserteilung“ (Gestaltung „edel“)
     ...(contact.name ? { contact: { name: contact.name, phone: contact.phone, email: contact.email } } : {}),
@@ -527,22 +694,31 @@ export async function renderOfferPdf(sql: Sql, id: string): Promise<{ pdf: Uint8
     closing: o.closing_text ?? OFFER_CLOSING_DEFAULT,
     qr: false,
     ...(split ? { totalsSplit: split } : {}),
+    ...(lots.length
+      ? {
+          lineGroups: lines.map((l) => {
+            const lot = lots.find((x) => x.lot_no === l.lot_no);
+            return lot ? lotLabel(lot) : null;
+          }),
+        }
+      : {}),
     // Angebot wie Fortytools: Pauschalen mit Einheit „psch.“ (ausgeschrieben überlappte es lange Preise)
     units: { LS: 'psch.', MON: 'Monat' },
   });
   return { pdf, filename: `Angebot_${o.number}.pdf` };
 }
 
+type StatGroup = { count: number; net: bigint; monthly: bigint; year: bigint };
 export interface OfferStats {
-  open: { count: number; net: bigint; monthly: bigint };
-  accepted: { count: number; net: bigint; monthly: bigint };
-  rejected: { count: number; net: bigint; monthly: bigint };
+  open: StatGroup;
+  accepted: StatGroup;
+  rejected: StatGroup;
   withdrawn: number;
   /** aufgehobene Vergaben – nicht in der Zuschlagsquote */
-  cancelled: { count: number; net: bigint; monthly: bigint };
+  cancelled: StatGroup;
   /** Zuschlagsquote = angenommen ÷ (angenommen + abgelehnt), in Prozent; null ohne Entscheidungen */
   rate: number | null;
-  /** Zuschlagsquote nach Umsatz (netto, monatliche Positionen als Jahreswert ×12): angenommen ÷ entschieden */
+  /** Zuschlagsquote nach Jahreswert (monatlich × 12 + jährlich + einmalig): angenommen ÷ entschieden */
   rateValue: number | null;
 }
 
@@ -584,25 +760,38 @@ export async function offerStats(
   sql: Sql,
   range: { from: string; to: string } = offerPeriodRange('12m', todayBerlin()),
 ): Promise<OfferStats> {
-  const rows = await sql<{ g: string; count: number; net: bigint; monthly: bigint }[]>`
-    select g, count(*)::int as count, coalesce(sum(net_cents), 0)::bigint as net,
-           coalesce(sum(monthly_net_cents), 0)::bigint as monthly
+  // Zähleinheit = Angebot bzw. jedes Los einzeln (Ahmed 26.10.: Lose werden einzeln vergeben)
+  const rows = await sql<{ g: string; count: number; net: bigint; monthly: bigint; year: bigint }[]>`
+    with u as (
+      select o.id, l.lot_no,
+             coalesce(case when lo.status = 'offen' then null else lo.status end, o.status::text) as status,
+             coalesce(lo.decided_at, o.decided_at) as decided_at, o.offer_date,
+             coalesce(sum(l.net_cents), 0)::bigint as net,
+             coalesce(sum(l.net_cents) filter (where l.recurring), 0)::bigint as monthly
+        from app.offers o
+        join app.offer_lines l on l.offer_id = o.id and not l.alternative
+        left join app.offer_lots lo on lo.offer_id = o.id and lo.lot_no = l.lot_no
+       group by o.id, l.lot_no, lo.status, lo.decided_at, o.status, o.decided_at, o.offer_date)
+    select g, count(*)::int as count, coalesce(sum(net), 0)::bigint as net,
+           coalesce(sum(monthly), 0)::bigint as monthly,
+           coalesce(sum(net + 11 * monthly), 0)::bigint as year
       from (select case when status in ('entwurf', 'versendet') then 'open' when status = 'angenommen' then 'accepted'
                         when status = 'abgelehnt' then 'rejected' when status = 'aufgehoben' then 'cancelled'
                         else 'withdrawn' end as g,
                    case when status in ('angenommen', 'abgelehnt', 'aufgehoben')
                         then coalesce((decided_at at time zone 'Europe/Berlin')::date, offer_date) else offer_date end as d,
-                   net_cents, monthly_net_cents
-              from app.offers) x
+                   net, monthly
+              from u) x
      where d between ${range.from}::date and ${range.to}::date
      group by 1`;
-  const get = (g: string) => {
+  const get = (g: string): StatGroup => {
     const r = rows.find((x) => x.g === g);
-    return { count: r?.count ?? 0, net: r?.net ?? 0n, monthly: r?.monthly ?? 0n };
+    return { count: r?.count ?? 0, net: r?.net ?? 0n, monthly: r?.monthly ?? 0n, year: r?.year ?? 0n };
   };
   const accepted = get('accepted');
   const rejected = get('rejected');
   const decided = accepted.count + rejected.count;
+  const tot = accepted.year + rejected.year;
   return {
     open: get('open'),
     accepted,
@@ -610,12 +799,7 @@ export async function offerStats(
     withdrawn: get('withdrawn').count,
     cancelled: get('cancelled'),
     rate: decided ? Math.round((accepted.count * 100) / decided) : null,
-    rateValue: (() => {
-      // Wert eines Angebots: einmalige Summe + monatliche Positionen × 12 (Jahreswert)
-      const val = (x: { net: bigint; monthly: bigint }) => x.net - x.monthly + x.monthly * 12n;
-      const tot = val(accepted) + val(rejected);
-      return tot > 0n ? Number((val(accepted) * 1000n) / tot) / 10 : null;
-    })(),
+    rateValue: tot > 0n ? Number((accepted.year * 1000n) / tot) / 10 : null,
   };
 }
 

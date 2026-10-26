@@ -106,8 +106,10 @@ export interface EditorLine {
   price: string;
   vat: string;
   src: string;
-  /** nur Angebote: '1' = monatlich wiederkehrend */
+  /** nur Angebote: Bits 1 = monatlich, 2 = Alternative, 4 = jährlich */
   rec?: string;
+  /** nur Angebote: Los-Nummer */
+  lot?: string;
   /** Leistungsart (nur Rechnungen) */
   stype?: string;
   /** Leistungszeitraum der Position (nur Rechnungen) */
@@ -249,13 +251,31 @@ const LineRowInputs: FC<{
           <option value="1" selected={l?.rec === '1'}>
             monatlich
           </option>
+          <option value="4" selected={l?.rec === '4'}>
+            jährlich
+          </option>
           <option value="2" selected={l?.rec === '2'}>
             Alternative einmalig
           </option>
           <option value="3" selected={l?.rec === '3'}>
             Alternative monatlich
           </option>
+          <option value="6" selected={l?.rec === '6'}>
+            Alternative jährlich
+          </option>
         </select>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:6px">
+          <span class="small mut">Los</span>
+          <input
+            name="lot"
+            value={l?.lot ?? ''}
+            inputmode="numeric"
+            placeholder="–"
+            aria-label="Los"
+            style="width:56px"
+            title="Nur bei Ausschreibungen mit Losen: Nummer des Loses (1, 2, …)"
+          />
+        </div>
       </td>
     )}
     <td class="r ln" style="width:120px;padding-top:12px"></td>

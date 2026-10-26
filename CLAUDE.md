@@ -4197,3 +4197,18 @@ Testadresse.
   „KoSIT-Prüfung“ am Entwurf). Lokal besteht eine gleich aufgebaute Rechnung (ohne Leitweg-ID, E-Mails in Gruppe
   „Standard“) KoSIT – Ursache liegt in den Server-Daten. **Ahmed: nach dem Update erneut fertigstellen und die neue
   Meldung schicken.** Test `kosit-reason.test.ts`.
+- 2026-10-26: **Angebote mit Losen + jährliche Positionen** (Ahmed: „mehrere Lose bei Ausschreibungen, jeweils Zuschlag oder
+  Absage“, „jährlich ist schlauer – Grundreinigungen gehören nicht in den Monatspreis, für Wertung und Statistik“):
+  - Positionen: Rhythmus **monatlich / jährlich / einmalig** (auch als Alternative) und Feld **„Los“** (1–99); Bezeichnung je
+    Los im Editor („Lose (Ausschreibung) – Bezeichnungen“). Tabellen `offer_lines.yearly/lot_no`, `app.offer_lots`
+    (Migration `20261224000001`).
+  - **Jahreswert** = monatlich × 12 + jährlich + einmalig (ohne Alternativen, `offerYearValue`): in Briefansicht, PDF
+    (gesamt und je Los, „Die Lose können einzeln vergeben werden“), Liste, Kachel „Entscheidung offen“, Statistik und
+    Zuschlagsquote „nach Jahreswert“. PDF/Brief: Überschrift + „Summe Los …“ je Los, Summen getrennt monatlich/jährlich/
+    einmalig.
+  - **Zuschlag/Absage/aufgehoben je Los** (Kasten „Lose“ an der Angebotsseite, nach Abgabe; `setLotStatus`). Angebot =
+    versendet, solange ein Los offen ist; danach angenommen, wenn mind. ein Los den Zuschlag hat, sonst abgelehnt bzw.
+    aufgehoben. Die Knöpfe am Angebot gelten dann für alle offenen Lose. Statistik zählt **jedes Los einzeln**.
+    Ins Objekt/Auftrag/Rechnung nur Lose mit Zuschlag (+ Positionen ohne Los, `awardedLines`); jährliche Positionen
+    werden Leistungen mit Zyklus „jährlich“ (Abrechnung nach Ausführung). Gewonnenes Los nach Übernahme nicht mehr änderbar.
+  - Test `offer-lots.db.test.ts`; `e2e:angebot` grün.

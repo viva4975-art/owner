@@ -24,6 +24,8 @@ import {
   renderOfferPdf,
   saveOffer,
   setOfferStatus,
+  setLotStatus,
+  type LotStatus,
 } from '../services/offers.js';
 import { orderFromOffer } from '../services/orders.js';
 import { listFiles } from '../services/uploads.js';
@@ -235,6 +237,7 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
         recent={recent}
         tenderId={tender?.id ?? null}
         types={await listServiceTypes(sql)}
+        lots={data?.lots ?? []}
       />,
     );
   });
@@ -246,13 +249,21 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
     const desc = arr(body, 'desc');
     // „wiederkehrend“ gehört zur gleichen Zeile wie die Beschreibung; leere Zeilen fallen in parseLines raus.
     const keep = desc.map((d, i) => d.trim() !== '' || (arr(body, 'price')[i] ?? '').trim() !== '');
-    // 0 einmalig, 1 monatlich, 2 Alternative einmalig, 3 Alternative monatlich
+    // Bits: 1 monatlich, 2 Alternative, 4 jährlich (0 = einmalig)
     const kinds = rec.filter((_, i) => keep[i]).map((v) => Number(v) || 0);
+    const lotNos = arr(body, 'lot')
+      .filter((_, i) => keep[i])
+      .map((v) => (v.trim() ? Number(v.trim()) : null));
     const lines = parseLines(body).map((l, i) => ({
       ...l,
       recurring: ((kinds[i] ?? 0) & 1) === 1,
       alternative: ((kinds[i] ?? 0) & 2) === 2,
+      yearly: ((kinds[i] ?? 0) & 4) === 4,
+      lot: lotNos[i] ?? null,
     }));
+    const lotTitles: Record<number, string> = {};
+    for (const [k, v] of Object.entries(body))
+      if (/^lot_title_\d+$/.test(k) && typeof v === 'string') lotTitles[Number(k.slice(10))] = v;
     const offerDate = str(body, 'offer_date');
     if (!offerDate) throw new BusinessError('Angebotsdatum fehlt');
     const deadline = str(body, 'submission_deadline');
@@ -274,6 +285,7 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
         introText: str(body, 'intro_text'),
         closingText: str(body, 'closing_text'),
         lines,
+        lotTitles,
         expectedVersion: versionOf(body.version),
       },
       c.get('actor'),
@@ -313,6 +325,7 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
       <OfferDetail
         o={o}
         lines={lines}
+        lots={data.lots}
         customer={customer!}
         site={site ?? null}
         sites={sites}
@@ -375,6 +388,16 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
       zurueckgezogen: 'Angebot zurückgezogen.',
     };
     return back(c, ret, { ok: msg[status] ?? 'Status geändert.' });
+  });
+
+  app.post(`/angebote/:id{${UUID}}/los`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    const lot = Number(b.lot);
+    const status = String(b.status ?? '') as LotStatus;
+    if (!Number.isInteger(lot)) throw new BusinessError('Ungültiges Los');
+    await setLotStatus(sql, id, lot, status, c.get('actor'));
+    return back(c, `/angebote/${id}`, { ok: `Los ${lot}: Status gespeichert.` });
   });
 
   app.post(`/angebote/:id{${UUID}}/folgeangebot`, async (c) => {

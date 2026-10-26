@@ -127,6 +127,8 @@ export interface Design2Options {
   contact?: { name: string; role?: string; phone?: string | null; email?: string | null };
   acceptance?: boolean;
   validUntil?: string;
+  /** Angebot mit Losen: Überschrift je Position (Los), Zwischensumme je Los */
+  lineGroups?: (string | null)[];
   /** edel: wo das Objekt steht – Kopfblock rechts, links unter der Anschrift oder als Band über der Anrede */
   objPos?: 'kopf' | 'links' | 'band';
   /** Wasserzeichen quer über jede Seite (z. B. ENTWURF) */
@@ -312,6 +314,11 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
     docPeriod && doc.lines.every((_, i) => !linePeriod(i) || linePeriod(i) === docPeriod) ? docPeriod : null;
   const keys = [...new Set(parsed.map((x) => x.place?.key ?? ''))];
   const grouped = sitePlaces && keys.length > 1;
+  // Lose (Angebot): Gruppen statt Objekte
+  const lots = o.lineGroups?.some(Boolean) ? o.lineGroups : null;
+  const gKey = (i: number) => (lots ? (lots[i] ?? '') : (parsed[i]!.place?.key ?? ''));
+  const gTitle = (i: number) => (lots ? (lots[i] ?? 'Ohne Los') : (parsed[i]!.place?.title ?? 'ohne Objekt'));
+  const grp = grouped || !!lots;
   const siteOfBuyer: LinePlace | null = B.site
     ? {
         key: '',
@@ -538,24 +545,28 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
   const multiRate = doc.vatBreakdown.length > 1;
   // Sammelrechnung: Zwischensumme je Objekt (zusammenhängende Positionen gleichen Objekts)
   const groupEnd = new Map<number, { title: string; net: bigint; count: number }>();
-  if (grouped) {
+  if (grp) {
     let start = 0;
     for (let i = 1; i <= doc.lines.length; i++) {
-      if (i === doc.lines.length || parsed[i]!.place?.key !== parsed[start]!.place?.key) {
+      if (i === doc.lines.length || gKey(i) !== gKey(start)) {
         const net = doc.lines.slice(start, i).reduce((a, l) => a + l.netAmount, 0n);
-        groupEnd.set(i - 1, { title: parsed[start]!.place?.title ?? 'ohne Objekt', net, count: i - start });
+        groupEnd.set(i - 1, { title: gTitle(start), net, count: lots ? 2 : i - start });
         start = i;
       }
     }
   }
   doc.lines.forEach((l, i) => {
     const pd = parsed[i]!;
-    if (grouped && (i === 0 || pd.place?.key !== parsed[i - 1]!.place?.key)) {
-      const gh = pd.place ? wrap(pd.place.title, f.s, 9, C.total - C.text) : ['Ohne Objektbezug'];
-      const ga = pd.place?.address ? wrap(pd.place.address, f.r, 7.8, C.total - C.text) : [];
+    if (grp && (i === 0 || gKey(i) !== gKey(i - 1))) {
+      const gh = lots
+        ? wrap(gTitle(i), f.s, 9, C.total - C.text)
+        : pd.place
+          ? wrap(pd.place.title, f.s, 9, C.total - C.text)
+          : ['Ohne Objektbezug'];
+      const ga = !lots && pd.place?.address ? wrap(pd.place.address, f.r, 7.8, C.total - C.text) : [];
       p.ensure(gh.length * 11.5 + ga.length * 10 + 40, () => head());
       p.y += 2;
-      p.cap('Objekt', C.text, p.y, BRD, 6);
+      p.cap(lots ? 'Los' : 'Objekt', C.text, p.y, BRD, 6);
       p.y += 11;
       gh.forEach((t) => {
         p.text(t, C.text, p.y, 9, 's', INK);

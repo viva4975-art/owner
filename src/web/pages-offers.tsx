@@ -13,6 +13,12 @@ import {
   OFFER_PERIODS,
   type OfferPeriod,
   type OfferStatus,
+  type OfferLotRow,
+  LOT_STATUS,
+  awardedLines,
+  lineCycle,
+  lotLabel,
+  offerYearValue,
 } from '../services/offers.js';
 import { centsToInput, milliToInput } from './forms.js';
 import { Icon } from './icons.js';
@@ -146,7 +152,10 @@ export const OfferTable: FC<{ rows: OfferListRow[]; showCustomer?: boolean; ret?
               <td class="r ol-sum">
                 {euro(o.net_cents)}
                 {o.monthly_net_cents > 0n && (
-                  <div class="small mut">davon {euro(o.monthly_net_cents)} mtl.</div>
+                  <div class="small mut">
+                    davon {euro(o.monthly_net_cents)} mtl. · Jahreswert{' '}
+                    {euro(o.net_cents + 11n * o.monthly_net_cents)}
+                  </div>
                 )}
               </td>
               <td class="ol-st">
@@ -241,7 +250,9 @@ export const OfferList: FC<{
     },
     { key: 'alle', label: 'Alle', href: '/angebote?status=alle', count: all.length },
   ];
-  const pipeline = all.filter((o) => o.status === 'versendet').reduce((s, o) => s + o.monthly_net_cents, 0n);
+  const pipeline = all
+    .filter((o) => o.status === 'versendet')
+    .reduce((s, o) => s + o.net_cents + 11n * o.monthly_net_cents, 0n);
   return (
     <>
       <PageHead title={title}>
@@ -265,7 +276,7 @@ export const OfferList: FC<{
         <div class="kpi">
           <div class="l">Abgegeben, Entscheidung offen</div>
           <div class="v">{euro(pipeline)}</div>
-          <div class="s">monatlich netto ({count('versendet')} Angebote)</div>
+          <div class="s">Jahreswert netto ({count('versendet')} Angebote)</div>
         </div>
         <div class="kpi">
           <div class="l">Zuschlagsquote ({plabel})</div>
@@ -273,7 +284,8 @@ export const OfferList: FC<{
           <div class="s">
             nach Anzahl ({stats.accepted.count} von {stats.accepted.count + stats.rejected.count}) ·{' '}
             <b>
-              nach Umsatz {stats.rateValue == null ? '–' : `${String(stats.rateValue).replace('.', ',')} %`}
+              nach Jahreswert{' '}
+              {stats.rateValue == null ? '–' : `${String(stats.rateValue).replace('.', ',')} %`}
             </b>
           </div>
         </div>
@@ -300,7 +312,7 @@ export const OfferList: FC<{
                 <th>Status</th>
                 <th class="r">Anzahl</th>
                 <th class="r">Summe netto</th>
-                <th class="r">davon monatlich</th>
+                <th class="r">Jahreswert</th>
                 <th style="width:35%"></th>
               </tr>
             </thead>
@@ -327,7 +339,7 @@ export const OfferList: FC<{
                     </td>
                     <td class="r">{v.count}</td>
                     <td class="r">{euro(v.net)}</td>
-                    <td class="r">{euro(v.monthly)}</td>
+                    <td class="r">{euro(v.year)}</td>
                     <td>
                       <div
                         style={`height:10px;border-radius:3px;background:${color};width:${Math.round((v.count * 100) / total)}%`}
@@ -396,7 +408,8 @@ export const toOfferEditorLine = (l: OfferLineRow): EditorLine => ({
   price: centsToInput(l.unit_price_cents),
   vat: String(l.vat_rate_bp),
   src: '',
-  rec: String((l.recurring ? 1 : 0) + (l.alternative ? 2 : 0)),
+  rec: String((l.recurring ? 1 : 0) + (l.alternative ? 2 : 0) + (l.yearly ? 4 : 0)),
+  lot: l.lot_no ? String(l.lot_no) : '',
   stype: l.service_type_id ?? '',
 });
 
@@ -410,7 +423,8 @@ export const OfferEditor: FC<{
   isNew: boolean;
   tenderId?: string | null;
   types?: ServiceTypeOption[];
-}> = ({ id, o, lines, customers, sites, isNew, recent = [], tenderId = null, types }) => {
+  lots?: OfferLotRow[];
+}> = ({ id, o, lines, customers, sites, isNew, recent = [], tenderId = null, types, lots = [] }) => {
   const prospects = customers.filter((c) => c.status === 'interessent' && c.active);
   const clients = customers.filter((c) => c.status !== 'interessent' && c.active);
   const former = customers.filter((c) => !c.active);
@@ -580,10 +594,33 @@ export const OfferEditor: FC<{
           </div>
           <div class="hint" style="margin-bottom:12px">
             Positionen mit <b>monatlich</b> werden bei Zuschlag als Monatspauschale ins Objekt übernommen
-            (Monatslauf rechnet sie dann automatisch ab). <b>Einmalig</b> = Sonderleistung, z. B.
-            Grundreinigung.
+            (Monatslauf rechnet sie dann automatisch ab). <b>Jährlich</b> = z. B. Grundreinigung 1×/Jahr –
+            nicht im Monatspreis, wird nach Ausführung abgerechnet. <b>Einmalig</b> = Sonderleistung. Bewertet
+            wird der <b>Jahreswert</b> (12 × monatlich + jährlich + einmalig). Bei Ausschreibungen mit Losen
+            je Position die Los-Nummer eintragen – jedes Los bekommt später seinen eigenen Zuschlag bzw. seine
+            eigene Absage.
           </div>
           <LineEditor lines={lines} recurring types={types} />
+          <details class="card" style="margin-top:12px" open={lots.length > 0}>
+            <summary>Lose (Ausschreibung) – Bezeichnungen</summary>
+            <p class="small mut">
+              Nur nötig, wenn das Angebot in Lose aufgeteilt ist. Die Nummer steht bei jeder Position unter
+              „Los“; hier die Bezeichnung (z. B. „Unterhaltsreinigung Grundschule“).
+            </p>
+            <div class="grid">
+              {Array.from({ length: Math.max(5, ...lots.map((x) => x.lot_no)) }, (_, i) => i + 1).map((n) => (
+                <div>
+                  <label for={`lot_title_${n}`}>Los {n}</label>
+                  <input
+                    id={`lot_title_${n}`}
+                    name={`lot_title_${n}`}
+                    maxlength={200}
+                    value={lots.find((x) => x.lot_no === n)?.title ?? ''}
+                  />
+                </div>
+              ))}
+            </div>
+          </details>
           <div style="margin:14px 0 0">
             <label for="closing_text">Schlusstext</label>
             <textarea id="closing_text" name="closing_text">
@@ -607,6 +644,7 @@ export const OfferEditor: FC<{
 export const OfferDetail: FC<{
   o: OfferRow;
   lines: OfferLineRow[];
+  lots?: OfferLotRow[];
   customer: Customer;
   site: Site | null;
   sites: Site[];
@@ -626,6 +664,7 @@ export const OfferDetail: FC<{
 }> = ({
   o,
   lines,
+  lots = [],
   customer,
   site,
   sites,
@@ -640,8 +679,11 @@ export const OfferDetail: FC<{
   split,
   related,
 }) => {
-  const recurring = lines.filter((l) => l.recurring && !l.alternative);
-  const once = lines.filter((l) => !l.recurring && !l.alternative);
+  const usedLots = lots.filter((x) => lines.some((l) => l.lot_no === x.lot_no));
+  const awarded = awardedLines(lines, usedLots);
+  const recurring = awarded.filter((l) => l.recurring);
+  const once = awarded.filter((l) => !l.recurring);
+  const yearValue = offerYearValue(lines);
   const alternatives = lines.filter((l) => l.alternative);
   const daysLeft = o.submission_deadline
     ? Math.floor((o.submission_deadline.getTime() - Date.now()) / 86400000)
@@ -771,7 +813,10 @@ export const OfferDetail: FC<{
                             {l.detail}
                           </div>
                         )}
-                        <div class="small mut">{l.recurring ? 'monatlich' : 'einmalig'}</div>
+                        <div class="small mut">
+                          {lineCycle(l)}
+                          {l.lot_no != null && ` · Los ${l.lot_no}`}
+                        </div>
                       </td>
                       <td class="r">{milliToInput(l.quantity_milli)}</td>
                       <td>{l.unit_code === 'LS' ? 'pauschal' : (UNIT_LABELS[l.unit_code] ?? l.unit_code)}</td>
@@ -844,6 +889,16 @@ export const OfferDetail: FC<{
                     <td class="r mut small">{euro(o.monthly_net_cents)}</td>
                   </tr>
                 )}
+                {yearValue !== o.net_cents && (
+                  <tr>
+                    <td class="small">
+                      <b>Jahreswert netto (Wertung)</b>
+                    </td>
+                    <td class="r small">
+                      <b>{euro(yearValue)}</b>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
             <p style="white-space:pre-line">{o.closing_text ?? OFFER_CLOSING_DEFAULT}</p>
@@ -858,6 +913,79 @@ export const OfferDetail: FC<{
             </p>
           </div>
 
+          {usedLots.length > 0 && (
+            <div class="card">
+              <h3>Lose</h3>
+              <p class="small mut" style="margin-top:0">
+                Je Los Zuschlag oder Absage erfassen. Das Angebot gilt als angenommen, sobald alle Lose
+                entschieden sind und mindestens eines den Zuschlag hat. Übernommen werden nur Lose mit
+                Zuschlag (und Positionen ohne Los).
+              </p>
+              <div class="tbl">
+                <table class="keep">
+                  <thead>
+                    <tr>
+                      <th>Los</th>
+                      <th class="r">Jahreswert netto</th>
+                      <th>Status</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usedLots.map((lot) => {
+                      const v = offerYearValue(lines.filter((l) => l.lot_no === lot.lot_no));
+                      const btn = (st: string, label: string, confirm?: string) => (
+                        <form
+                          method="post"
+                          action={`/angebote/${o.id}/los`}
+                          style="display:inline"
+                          onsubmit={confirm ? `return confirm(${JSON.stringify(confirm)})` : undefined}
+                        >
+                          <input type="hidden" name="lot" value={String(lot.lot_no)} />
+                          <input type="hidden" name="status" value={st} />
+                          <button class="btn sec sm">{label}</button>
+                        </form>
+                      );
+                      const open = ['versendet', 'angenommen', 'abgelehnt', 'aufgehoben'].includes(o.status);
+                      return (
+                        <tr>
+                          <td>{lotLabel(lot)}</td>
+                          <td class="r">{euro(v)}</td>
+                          <td>
+                            <span
+                              class={`badge ${lot.status === 'angenommen' ? 'ok' : lot.status === 'abgelehnt' ? 'err' : lot.status === 'aufgehoben' ? 'warn' : 'draft'}`}
+                            >
+                              {LOT_STATUS[lot.status]}
+                            </span>
+                            {lot.decided_at && (
+                              <div class="small mut">
+                                {lot.decided_at.toLocaleDateString('de-DE', {
+                                  timeZone: 'Europe/Berlin',
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric',
+                                })}
+                              </div>
+                            )}
+                          </td>
+                          <td style="white-space:nowrap">
+                            {open && lot.status !== 'angenommen' && btn('angenommen', 'Zuschlag')}
+                            {open &&
+                              lot.status !== 'abgelehnt' &&
+                              btn('abgelehnt', 'Absage', 'Absage für dieses Los erfassen?')}
+                            {open && lot.status !== 'aufgehoben' && btn('aufgehoben', 'aufgehoben')}
+                            {open && lot.status !== 'offen' && btn('offen', 'wieder offen')}
+                            {o.status === 'entwurf' && <span class="small mut">erst nach Abgabe</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {accepted && (
             <form method="post" action={`/angebote/${o.id}/objekt`} class="card">
               <h3>Leistungen ins Objekt übernehmen</h3>
@@ -867,8 +995,14 @@ export const OfferDetail: FC<{
                   'monatliche Position wird Monatspauschale',
                   'monatliche Positionen werden Monatspauschalen',
                 )}
-                , {anz(once.length, 'einmalige wird Sonderleistung', 'einmalige werden Sonderleistungen')} im
-                Objekt
+                ,{' '}
+                {anz(
+                  once.length,
+                  'einmalige/jährliche wird Leistung je Ausführung bzw. jährlich',
+                  'einmalige/jährliche werden Leistungen je Ausführung bzw. jährlich',
+                )}{' '}
+                im Objekt
+                {usedLots.length > 0 && ' (nur Lose mit Zuschlag)'}
                 {alternatives.length
                   ? `; ${anz(alternatives.length, 'Alternative wird', 'Alternativen werden')} nicht übernommen`
                   : ''}
@@ -916,8 +1050,12 @@ export const OfferDetail: FC<{
               })}
             {o.status === 'versendet' && (
               <>
-                {post('status', 'Zuschlag erhalten (angenommen)', { hidden: { status: 'angenommen' } })}
-                {post('status', 'Absage (abgelehnt)', {
+                {post(
+                  'status',
+                  usedLots.length ? 'Zuschlag für alle offenen Lose' : 'Zuschlag erhalten (angenommen)',
+                  { hidden: { status: 'angenommen' } },
+                )}
+                {post('status', usedLots.length ? 'Absage für alle offenen Lose' : 'Absage (abgelehnt)', {
                   hidden: { status: 'abgelehnt' },
                   confirm: 'Angebot als abgelehnt markieren?',
                 })}

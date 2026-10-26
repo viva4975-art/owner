@@ -33,6 +33,8 @@ export interface InvoicePdfOptions {
   /** Angebot: Feld „Auftragserteilung“ zum Unterschreiben */
   acceptance?: boolean;
   validUntil?: string;
+  /** Angebot mit Losen: Überschrift je Position (Los), Zwischensumme je Los */
+  lineGroups?: (string | null)[];
 }
 
 export function renderInvoicePdf(doc: InvoiceDocument, opts: InvoicePdfOptions = {}): Promise<Uint8Array> {

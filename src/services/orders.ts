@@ -6,6 +6,7 @@ import { FormDoc } from '../pdf/form-doc.js';
 import { renderInvoicePdf } from '../pdf/invoice-pdf.js';
 import { assertVersion } from './crm.js';
 import { BusinessError } from './errors.js';
+import { type LotStatus, awardedLines } from './offers.js';
 import { type BillAddress, applyBillAddress, loadDraftPreview, saveDraft } from './invoices.js';
 import { buildBuyerSnapshot, getSeller } from './masterdata.js';
 import { ensureGeneralSite } from './fortytools-more-import.js';
@@ -336,9 +337,12 @@ export async function orderFromOffer(sql: Sql, offerId: string, actor: string): 
       recurring: boolean;
       alternative: boolean;
       service_type_id: string | null;
+      lot_no: number | null;
     }[]
   >`
     select * from app.offer_lines where offer_id = ${offerId} order by position`;
+  const lots = await sql<{ lot_no: number; status: LotStatus }[]>`
+    select lot_no, status from app.offer_lots where offer_id = ${offerId}`;
   await saveOrder(
     sql,
     id,
@@ -350,8 +354,8 @@ export async function orderFromOffer(sql: Sql, offerId: string, actor: string): 
       description: `Auftrag gemäß Angebot ${o.number}`,
       orderReference: o.tender_reference,
       plannedDate: null,
-      lines: lines
-        .filter((l) => !l.recurring && !l.alternative)
+      lines: awardedLines(lines, lots)
+        .filter((l) => !l.recurring)
         .map((l) => ({
           description: l.description,
           detail: l.detail,

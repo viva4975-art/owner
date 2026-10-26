@@ -21,7 +21,6 @@ import { countryOf, isFreeMovementCountry } from '../domain/hr/lists.js';
 import { BusinessError } from './errors.js';
 import { validSvNumber, validTaxId } from '../domain/hr/ids.js';
 import { validIban } from './employees.js';
-import { missingSofort } from './sv-report.js';
 
 /** Pflichtunterlagen, die je Mitarbeiter als „nicht nötig“ markiert werden können (z. B. hat keinen Schlüssel). */
 export const OPTIONAL_PER_EMPLOYEE = ['Unterweisung', 'Arbeitskleidung', 'Schlüssel'] as const;
@@ -157,7 +156,6 @@ export async function missingDocs(
 ): Promise<MissingRow[]> {
   const today = opts.today ?? todayBerlin();
   const sheets = await unsignedTimesheets(sql, today);
-  const sofort = new Map((await missingSofort(sql, { today })).map((m) => [m.employee_id, m]));
   const rows = await sql<
     {
       id: string;
@@ -237,7 +235,6 @@ export async function missingDocs(
       else if (until < today)
         missing.push(`Aufenthaltstitel abgelaufen (${until.split('-').reverse().join('.')})`);
     }
-    if (sofort.has(r.id)) missing.unshift('SV-Sofortmeldung');
     missing.push(...(sheets.get(r.id) ?? []));
     if (missing.length)
       out.push({

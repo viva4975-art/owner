@@ -562,8 +562,6 @@ export const Dashboard: FC<{
   signOverdue?: { id: string; title: string; open: number }[];
   /** Anzahl Mitarbeitende mit fehlenden Pflichtunterlagen (null = Rolle sieht es nicht) */
   missingDocs?: number;
-  /** SV-Sofortmeldung fehlt (erste Person verlinkt) */
-  sofort?: { n: number; href: string; started: number };
   /** aktive Mitarbeitende ohne laufenden Einsatz (+ Ziel des Hinweises) */
   noShift?: { n: number; href: string };
   reminders?: { n: number; red: number };
@@ -602,7 +600,6 @@ export const Dashboard: FC<{
   absent = [],
   signOverdue = [],
   missingDocs = 0,
-  sofort = { n: 0, href: '', started: 0 },
   noShift = { n: 0, href: '' },
   reminders = { n: 0, red: 0 },
   ampel = null,
@@ -614,21 +611,6 @@ export const Dashboard: FC<{
   const overdue = balances.filter((b) => b.max_overdue_days > 0);
   const overdueTasks = tasks.filter((t) => t.due_date && t.due_date < kpi.today).length;
   const hints: { tone: string; text: Child; href: string }[] = [
-    ...(sofort.n
-      ? [
-          {
-            tone: 'err',
-            text: (
-              <>
-                SV-Sofortmeldung fehlt bei <b>{sofort.n}</b>{' '}
-                {sofort.n === 1 ? 'neuer Person' : 'neuen Personen'}
-                {sofort.started ? ` – ${sofort.started} arbeitet bereits` : ' – vor Arbeitsbeginn melden'}
-              </>
-            ),
-            href: sofort.href,
-          },
-        ]
-      : []),
     ...(reminders.n
       ? [
           {

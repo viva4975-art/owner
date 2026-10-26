@@ -4270,17 +4270,8 @@ Testadresse.
   - **Nachkalkulation erst ab Oktober 2026** (`COSTING_FROM`; Ahmed: „vorher hat vieles nicht gestimmt“): ältere Monate
     nicht wählbar, Adressen mit früherem von/bis werden auf 10/2026 gesetzt, Schnellwahl ohne Vorjahr/Letzter Monat bis
     es sie gibt. Daten bleiben unverändert. Die Plan-Kalkulation nimmt für den Material-Ø weiter die 3 Vormonate.
-- 2026-10-26: **SV-Sofortmeldung** (Ahmed): Gebäudereinigung muss jede Beschäftigung spätestens bei Arbeitsaufnahme sofort
-  melden (§ 28a Abs. 4 SGB IV, auch Minijobs; Bußgeld bis 25.000 € § 111 SGB IV). **Direkt aus der App übermitteln geht
-  nicht** (nur systemgeprüfte Software, ITSG-Zertifikat) → abgeben über Lexware lohn oder sv.net. Die App
-  (`src/services/sv-report.ts`, `routes-sv-report.tsx`, Migration `20261227000001`): Mitarbeiter → Übersicht → Kasten
-  „SV-Sofortmeldung“ (#sofortmeldung) mit Meldedaten zum Kopieren (Name, Vorname, Versicherungsnummer – fehlt sie,
-  Geburtsdatum/-ort, Geschlecht, Staatsangehörigkeit, Anschrift –, Betriebsnummer, Beschäftigungsbeginn; fehlende
-  Angaben rot), „Sofortmeldung festhalten“ (Zeitpunkt, über Lexware/sv.net/Steuerberater, Übermittlungsnummer, feste ID
-  je Formular; je Beschäftigungsbeginn eine, Wiedereintritt = neue Meldung; entfernen nur Admin mit Protokoll). Neues
-  Feld **Betriebsnummer** unter Einstellungen → Firmendaten (8 Ziffern). Geprüft nur Eintritte ab 08.10.2026 (vorher
-  über Lexware gemeldet). Warnungen: Startseite (oben in den Hinweisen), Erinnerungen + tägliche Mail (ab 14 Tage vor
-  Beginn, rot ab Vortag bzw. wenn schon gearbeitet), Fehlende Unterlagen, Hinweis beim Speichern einer Terminserie,
-  Stempeln ohne Meldung → Aufgabe für Admin/Personal (feste ID, wird mit dem Festhalten erledigt; Stempeln wird nie
-  verweigert). **Ahmed: Betriebsnummer eintragen.** Test `sv-report.db.test.ts`. Hinweis: `time.db.test.ts`
-  „Urlaub … Resturlaub“ schlägt seit Kurzem auch ohne diese Änderung fehl (datumsabhängig, 15 statt 20) – prüfen.
+- 2026-10-26: **SV-Sofortmeldung wieder entfernt** (Ahmed: „lösch das dann wieder“, nachdem klar war, dass die App nicht
+  direkt übermitteln kann): Kasten beim Mitarbeiter, Warnungen (Startseite, Erinnerungen, Fehlende Unterlagen, Planung,
+  Stempeln), Feld Betriebsnummer und Code entfernt. Migration `20261228000001` löscht Tabelle `sv_immediate_reports` und
+  Spalte `company.betriebsnummer` (die Anlage-Migration `20261227000001` bleibt, weil sie schon eingespielt sein kann).
+  Gemeldet wird weiter in Lexware/sv.net – **Pflicht bleibt: spätestens bei Arbeitsaufnahme (§ 28a Abs. 4 SGB IV).**

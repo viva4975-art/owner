@@ -254,11 +254,6 @@ const companyInput = z.object({
   register_court: z.string().trim().nullable(),
   register_number: z.string().trim().nullable(),
   managing_director: z.string().trim().nullable(),
-  betriebsnummer: z
-    .string()
-    .trim()
-    .regex(/^\d{8}$/, 'Betriebsnummer: 8 Ziffern')
-    .nullable(),
   phone: z.string().trim().nullable(),
   fax: z.string().trim().nullable(),
   email: z.email('E-Mail ungültig'),
@@ -706,10 +701,6 @@ export function registerSettingsRoutes({ app, deps, page, back }: Ctx) {
             {field('register_court', 'Registergericht')}
             {field('register_number', 'Handelsregister-Nr.')}
             {field('managing_director', 'Geschäftsführung')}
-            {field(
-              'betriebsnummer',
-              'Betriebsnummer (Agentur für Arbeit, 8 Ziffern – für die SV-Sofortmeldung)',
-            )}
           </div>
           <div class="group-title">Kontakt</div>
           <div class="grid">
@@ -797,7 +788,6 @@ export function registerSettingsRoutes({ app, deps, page, back }: Ctx) {
       register_court: opt('register_court'),
       register_number: opt('register_number'),
       managing_director: opt('managing_director'),
-      betriebsnummer: opt('betriebsnummer')?.replace(/\s/g, '') || null,
       phone: opt('phone'),
       fax: opt('fax'),
       email: opt('email') ?? '',

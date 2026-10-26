@@ -1,5 +1,4 @@
 import { Icon } from './icons.js';
-import { sofortMissingFor } from '../services/sv-report.js';
 import { randomUUID } from 'node:crypto';
 import type { FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
@@ -933,14 +932,6 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
           from app.employees where id = any(${ids}::uuid[]) and entry_date > ${one('valid_from')}::date`;
       for (const e of early)
         notes.push(`Achtung: ${e.name} tritt erst am ${dateDe(e.entry_date)} ein – vorher keine Einsätze.`);
-      for (const id of ids)
-        if (await sofortMissingFor(sql, id)) {
-          const [e] = await sql<{ name: string }[]>`
-            select first_name || ' ' || last_name as name from app.employees where id = ${id}`;
-          notes.push(
-            `Achtung: Für ${e?.name ?? 'diese Person'} fehlt die SV-Sofortmeldung – vor dem ersten Einsatz abgeben (§ 28a Abs. 4 SGB IV).`,
-          );
-        }
     }
     return back(c, ret !== '/einsatzplanung' ? ret : `/einsatzplanung?datum=${one('valid_from')}`, {
       ok: [old ? 'Terminserie gespeichert.' : 'Planung erstellt.', ...notes].join(' '),

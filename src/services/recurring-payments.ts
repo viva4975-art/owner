@@ -398,6 +398,8 @@ export function purposeFor(purpose: string | null, period: string, zeitraum?: st
   if (!purpose) return '';
   const y = Number(period.slice(0, 4));
   const m = Number(period.slice(5, 7));
+  // ohne Platzhalter (Normalfall seit 26.10.): Zeitraum automatisch anhängen
+  if (!purpose.includes('{')) return zeitraum ? `${purpose} ${zeitraum}` : purpose;
   const prev = addMonths(period, -1);
   const q = Math.ceil(m / 3);
   const pq = q === 1 ? `Q4/${y - 1}` : `Q${q - 1}/${y}`;
@@ -408,6 +410,15 @@ export function purposeFor(purpose: string | null, period: string, zeitraum?: st
     .replace(/\{vorquartal\}/gi, pq)
     .replace(/\{jahr\}/gi, String(y))
     .replace(/\{zeitraum\}/gi, zeitraum ?? `${String(m).padStart(2, '0')}/${y}`);
+}
+
+/** Verwendungszweck einer Fälligkeit: fester Teil (z. B. Steuernummer) + Zeitraum, ohne festen Teil Bezeichnung + Zeitraum. */
+export function remittanceFor(
+  p: Pick<RecurringPayment, 'name' | 'purpose' | 'cycle' | 'applies_to'>,
+  period: string,
+): string {
+  const label = coveredPeriod(p, period).label;
+  return purposeFor(p.purpose, period, label) || `${p.name} ${label}`;
 }
 
 const parseKey = (key: string) => {
@@ -444,10 +455,7 @@ export async function addRecurringToRun(
       values (gen_random_uuid(), ${r.id}, ${k.period}, ${amount}, ${executionDate}, 'sepa', null, ${actor})
       on conflict (recurring_id, period) do nothing returning id`;
     if (!item) throw new BusinessError(`${r.name}: für diesen Monat schon bezahlt – bitte Seite neu laden`);
-    const remittance = (
-      purposeFor(r.purpose, k.period, coveredPeriod(r, k.period).label) ||
-      `${r.name} ${coveredPeriod(r, k.period).label}`
-    ).slice(0, 140);
+    const remittance = remittanceFor(r, k.period).slice(0, 140);
     const name = r.supplier_name ?? r.payee;
     await tx`insert into app.payment_run_recurring (run_id, item_id, amount_cents, creditor_name, creditor_iban, creditor_bic, remittance)
              values (${runId}, ${item.id}, ${amount}, ${name}, ${iban}, ${r.supplier_bic}, ${remittance})`;

@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { parseEuro, parseQuantity } from '../domain/money/money.js';
 import { saveDraft } from './invoices.js';
+import { effectiveBilling } from './masterdata.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase, testDeps } from './testing.js';
 import { type Deps, preflight } from './workflow.js';
@@ -58,5 +59,20 @@ describe.skipIf(!available)('Format „PDF“ nachträglich in der Rechnungsgrup
       { invoice_format: string }[]
     >`select invoice_format::text from app.invoices where id = ${id}`;
     expect(i!.invoice_format).toBe('pdf');
+  });
+
+  it('Rechnung ohne Objekt-Gruppe nimmt die Gruppe „Standard“ des Kunden (E-Mails, Format)', async () => {
+    const c = DEMO.company;
+    await sql`update app.sites set invoice_group_id = null where customer_id = ${c}`;
+    await sql`update app.invoice_groups set active = false where customer_id = ${c} and lower(name) <> 'standard'`;
+    const std = randomUUID();
+    await sql`insert into app.invoice_groups (id, customer_id, name, combine, bill_emails, bill_format)
+              values (${std}, ${c}, 'Standard', false, '{rechnung@example.de,buchhaltung@example.de}', 'zugferd')
+              on conflict (customer_id, name) do update set bill_emails = excluded.bill_emails, active = true`;
+    const b = await effectiveBilling(sql, c, null);
+    expect(b.groupName).toBe('Standard');
+    expect(b.emails).toEqual(['rechnung@example.de', 'buchhaltung@example.de']);
+    const b2 = await effectiveBilling(sql, c, DEMO.siteHq);
+    expect(b2.emails).toContain('rechnung@example.de');
   });
 });

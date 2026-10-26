@@ -754,6 +754,20 @@ export function resolveBilling(
 }
 
 /** Rechnungsangaben für Kunde + Objekt; Gruppe = angegebene (z. B. der Rechnung), sonst die des Objekts. */
+/**
+ * Rechnung ohne Objekt-/Entwurfsgruppe (Einzelrechnung, Objekt ohne Gruppe): Gruppe „Standard“ des Kunden bzw. seine
+ * einzige aktive Gruppe – dort stehen Rechnungs-E-Mails und Format (Fund 26.10.: Format/E-Mail wurden sonst am
+ * Kunden gesucht, wo sie seit den Rechnungsgruppen nicht mehr gepflegt werden).
+ */
+export async function fallbackGroupId(sql: Sql, customerId: string): Promise<string | null> {
+  const rows = await sql<{ id: string; name: string }[]>`
+    select id, name from app.invoice_groups where customer_id = ${customerId} and active
+     order by (lower(name) = 'standard') desc, created_at limit 2`;
+  if (!rows.length) return null;
+  if (rows[0]!.name.toLowerCase() === 'standard' || rows.length === 1) return rows[0]!.id;
+  return null;
+}
+
 export async function effectiveBilling(
   sql: Sql,
   customerId: string,
@@ -766,7 +780,7 @@ export async function effectiveBilling(
     ? await sql<(SiteBilling & { invoice_group_id: string | null })[]>`
         select * from app.sites where id = ${siteId} and customer_id = ${customerId}`
     : [];
-  const gid = groupId ?? s?.invoice_group_id ?? null;
+  const gid = groupId ?? s?.invoice_group_id ?? (await fallbackGroupId(sql, customerId));
   const [g] = gid
     ? await sql<
         GroupBilling[]

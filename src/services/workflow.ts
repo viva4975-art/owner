@@ -20,7 +20,7 @@ import {
   issue,
   loadDocument,
 } from './invoices.js';
-import { effectiveBilling } from './masterdata.js';
+import { effectiveBilling, fallbackGroupId } from './masterdata.js';
 
 export interface Deps {
   sql: Sql;
@@ -85,6 +85,20 @@ export async function preflight(deps: Deps, id: string): Promise<PreflightResult
     throw new BusinessError(
       'Interner Bereich: dafür werden keine Rechnungen ausgestellt – Entwurf bitte löschen.',
     );
+  // Entwurf ohne Gruppe (auch über das Objekt keine): Standardgruppe des Kunden festhalten – gilt dann auch beim
+  // Ausstellen (Zahlungsziel, Skonto) und Versand
+  if (inv && !inv.invoice_group_id) {
+    const [s0] = inv.site_id
+      ? await deps.sql<{ invoice_group_id: string | null }[]>`
+          select invoice_group_id from app.sites where id = ${inv.site_id}`
+      : [];
+    const gid = s0?.invoice_group_id ? null : await fallbackGroupId(deps.sql, inv.customer_id);
+    if (gid) {
+      await deps.sql`update app.invoices set invoice_group_id = ${gid} where id = ${id} and status = 'draft'
+                       and invoice_group_id is null`;
+      inv.invoice_group_id = gid;
+    }
+  }
   const issueDate = inv?.planned_issue_date ?? todayBerlin();
   const doc = await loadDocument(deps.sql, id, { number: 'ENTWURF', issueDate, dueDate: issueDate });
   if (!hasEndpoint(doc)) {

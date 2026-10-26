@@ -16,7 +16,7 @@ import {
   getRecurring,
   listRecurring,
   markRecurringPaid,
-  purposeFor,
+  remittanceFor,
   coveredPeriod,
   RECURRING_APPLIES,
   type RecurringApplies,
@@ -51,7 +51,7 @@ export const RecurringRows: FC<{ due: RecurringDue[]; today: string }> = ({ due,
       const p = d.payment;
       const key = `${p.id}|${d.period}`;
       const fuer = coveredPeriod(p, d.period).label;
-      const zweck = purposeFor(p.purpose, d.period, fuer) || `${p.name} ${fuer}`;
+      const zweck = remittanceFor(p, d.period);
       return (
         <tr id={i === 0 ? 'wiederkehrend' : undefined} class="rp-row">
           <td>
@@ -390,7 +390,7 @@ export function registerRecurringRoutes({ app, deps, page, back }: Ctx, tabs: ()
                   ))}
                 </select>
                 <div class="small mut">
-                  Bestimmt {'{zeitraum}'} im Verwendungszweck und auf welche Monate die Kosten in der
+                  Bestimmt den Zeitraum im Verwendungszweck und auf welche Monate die Kosten in der
                   Nachkalkulation verteilt werden. Gewerbesteuer (15.02./05./08./11.) und Körperschaftsteuer
                   (10.03./06./09./12.) sind Vorauszahlungen für das laufende Quartal.
                 </div>
@@ -425,12 +425,11 @@ export function registerRecurringRoutes({ app, deps, page, back }: Ctx, tabs: ()
                   name="purpose"
                   maxlength={140}
                   value={(v('purpose') as string) ?? ''}
-                  placeholder="z. B. StNr 143/190/63154 GewSt-VZ {zeitraum}"
+                  placeholder="z. B. StNr 143/190/63154 GewSt-VZ"
                 />
                 <div class="small mut">
-                  Platzhalter: {'{zeitraum}'} (Zeitraum, für den gezahlt wird: 09/2026, Q2/2026, 2026),{' '}
-                  {'{monat}'} (Fälligkeitsmonat 10/2026), {'{vormonat}'}, {'{quartal}'} (Q4/2026),{' '}
-                  {'{vorquartal}'}, {'{jahr}'}.
+                  Der Zeitraum wird automatisch angehängt („… GewSt-VZ Q2/2026“, „Büromiete 09/2026“). Leer =
+                  Bezeichnung + Zeitraum.
                 </div>
               </div>
               <label for="rp-cat">Kostenart</label>

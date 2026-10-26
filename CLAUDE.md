@@ -4181,3 +4181,12 @@ Testadresse.
   Platzhalter `{zeitraum}` im Verwendungszweck, Zahlungsliste zeigt „für Q2/2026“, Nachkalkulation verteilt die Kosten
   auf die Monate dieses Zeitraums. Beispiele/Hinweise ohne USt/Lohnsteuer/Krankenkassen. Gewerbe-/Körperschaftsteuer
   ohne Kostenstelle (Steuern vom Ertrag; GewSt nicht als Betriebsausgabe abziehbar, § 4 Abs. 5b EStG).
+- 2026-10-26: **Verwendungszweck ohne Platzhalter** (Ahmed: „automatisch, einfacher“): Feld = fester Teil (z. B.
+  „StNr 143/190/63154 GewSt-VZ“), der Zeitraum wird automatisch angehängt („… Q2/2026“, „Büromiete 09/2026“; leer =
+  Bezeichnung + Zeitraum, `remittanceFor`). Alte Einträge mit `{…}` funktionieren weiter.
+  **Fund „Format laut Kunde: ZUGFeRD“ (Schad & Nebauer):** Hatte weder Entwurf noch Objekt eine Rechnungsgruppe
+  (Einzelrechnung ohne Objekt, Objekt ohne Gruppe), galten Format und E-Mails am Kunden – dort sind sie seit den
+  Rechnungsgruppen leer. Jetzt Rückfall auf die Gruppe „Standard“ des Kunden bzw. seine einzige aktive Gruppe
+  (`fallbackGroupId` in `effectiveBilling`); die Vorabprüfung schreibt die Gruppe in den Entwurf (gilt dann für
+  Zahlungsziel/Skonto/Versand). Hat der Kunde mehrere Gruppen ohne „Standard“, bleibt es bei der Meldung → dem Objekt
+  eine Gruppe zuordnen.

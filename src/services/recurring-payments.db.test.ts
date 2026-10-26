@@ -48,6 +48,9 @@ describe('Wiederkehrende Zahlungen – Fälligkeiten', () => {
     );
     expect(coveredPeriod({ cycle: 'jaehrlich', applies_to: 'laufend' }, '2026-03-01').label).toBe('2026');
     expect(purposeFor('GewSt-VZ {zeitraum}', '2026-05-01', 'Q2/2026')).toBe('GewSt-VZ Q2/2026');
+    expect(purposeFor('StNr 143/190/63154 GewSt-VZ', '2026-05-01', 'Q2/2026')).toBe(
+      'StNr 143/190/63154 GewSt-VZ Q2/2026',
+    );
   });
 });
 

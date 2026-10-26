@@ -4215,3 +4215,8 @@ Testadresse.
 - 2026-10-26: **Fund: Grund der Ablehnung fehlte beim Sammel-Fertigstellen** (Ahmed: „immer noch: … ungültig – nicht
   ausgestellt:“ ohne Text): „Ausgewählte fertigstellen“ in der Entwurfsliste übernahm von jeder Fehlermeldung nur die erste
   Zeile – der Grund (KoSIT-Fehler je Syntax) steht ab der zweiten. Jetzt die ganze Meldung (bis 1.500 Zeichen, eingerückt).
+- 2026-10-26: **Fund Schad & Nebauer: PEPPOL-EN16931-R110** („Start date of line period MUST be within invoice period“): Eine
+  Position hatte einen Leistungszeitraum außerhalb des Leistungszeitraums der Rechnung. Die Vorabprüfung (Fertigstellen und
+  „KoSIT-Prüfung“) erweitert jetzt den Leistungszeitraum des Entwurfs auf alle Positionen (frühester Beginn, spätestes
+  Ende) – PDF und E-Rechnung zeigen denselben Zeitraum (Pflichtangabe § 14 Abs. 4 Nr. 6 UStG). Test in
+  `runde23-invoice.db.test.ts`.

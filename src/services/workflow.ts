@@ -99,6 +99,15 @@ export async function preflight(deps: Deps, id: string): Promise<PreflightResult
       inv.invoice_group_id = gid;
     }
   }
+  // PEPPOL-EN16931-R110/R111: Leistungszeiträume der Positionen müssen im Leistungszeitraum der Rechnung liegen →
+  // Rechnungszeitraum auf alle Positionen erweitern (gilt dann für PDF und E-Rechnung gleich)
+  await deps.sql`
+    update app.invoices i
+       set period_start = least(i.period_start, x.s), period_end = greatest(coalesce(i.period_end, i.period_start), x.e)
+      from (select min(period_start) as s, max(coalesce(period_end, period_start)) as e
+              from app.invoice_lines where invoice_id = ${id} and period_start is not null) x
+     where i.id = ${id} and i.status = 'draft' and i.period_start is not null and x.s is not null
+       and (x.s < i.period_start or x.e > coalesce(i.period_end, i.period_start))`;
   const issueDate = inv?.planned_issue_date ?? todayBerlin();
   const doc = await loadDocument(deps.sql, id, { number: 'ENTWURF', issueDate, dueDate: issueDate });
   if (!hasEndpoint(doc)) {

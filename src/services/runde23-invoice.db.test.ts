@@ -90,6 +90,31 @@ describe.skipIf(!available)('Runde 23: Einzelrechnung wie Fortytools', () => {
     expect(xml).not.toMatch(/<cbc:PriceAmount[^>]*>-/);
   });
 
+  it('Position außerhalb des Rechnungszeitraums: Zeitraum wird erweitert (PEPPOL-EN16931-R110)', async () => {
+    const wid = randomUUID();
+    await saveDraft(
+      sql,
+      wid,
+      {
+        customerId: DEMO.company,
+        siteId: null,
+        kind: 'invoice',
+        periodStart: '2026-09-01',
+        periodEnd: '2026-09-30',
+        orderReference: null,
+        introText: null,
+        closingText: null,
+        lines: [line('Sonderreinigung', 1000n, 10000n, '2026-08-28')],
+      },
+      't',
+    );
+    await issueInvoice(deps, wid, 't');
+    const { invoice } = (await getInvoice(sql, wid))!;
+    expect(invoice.status).not.toBe('draft');
+    expect(invoice.period_start).toBe('2026-08-28');
+    expect(invoice.period_end).toBe('2026-09-30');
+  });
+
   it('ausstellen: Zahlungsziel je Rechnung, kein Skonto; Kopie als Entwurf; Anschrift berichtigen', async () => {
     await issueInvoice(deps, id, 't');
     const { invoice } = (await getInvoice(sql, id))!;

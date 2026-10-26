@@ -557,10 +557,16 @@ export class FormDoc {
     rightLabel: string,
     o: { leftText?: string; png?: PDFImage | null; rightText?: string } = {},
   ) {
-    this.ensure(58);
-    this.y += 30;
+    // Ort/Datum steht deutlich über der Linie, dazwischen Platz zum Unterschreiben (Ahmed 26.10.: stand direkt auf der Linie)
+    const withText = !!(o.leftText || o.rightText);
+    this.ensure(withText ? 92 : 58);
     const half = (R - L) / 2;
-    if (o.leftText) this.text(o.leftText, L, this.y - 6, { size: 9.5 });
+    if (withText) {
+      this.y += 18;
+      if (o.leftText) this.text(o.leftText, L, this.y, { size: 9.5 });
+      if (o.rightText) this.text(o.rightText, L + half + 12, this.y, { size: 9.5 });
+      this.y += 46;
+    } else this.y += 30;
     if (o.png) {
       const s = Math.min(150 / o.png.width, 40 / o.png.height);
       this.page.drawImage(o.png, {
@@ -570,7 +576,6 @@ export class FormDoc {
         height: o.png.height * s,
       });
     }
-    if (o.rightText) this.text(o.rightText, L + half + 12, this.y - 6, { size: 8 });
     this.line(L, L + half - 30, this.y, INK, 0.5);
     this.line(L + half + 12, R, this.y, INK, 0.5);
     this.text(leftLabel, L, this.y + 12, { size: 7.5, color: MUT });

@@ -4235,3 +4235,7 @@ Testadresse.
   = frühester Beginn bis spätestes Ende der Positionen (beim Speichern, POST `/rechnungen/:id`), angezeigt als Text im
   Kopf. Ohne Datum an allen Positionen bleibt der bisherige Zeitraum. PDF unverändert (Zeitraum oben, an Positionen nur
   wenn abweichend).
+- 2026-10-26: **Ort/Datum über der Unterschriftslinie** (Ahmed, Vertragsänderung: „München, den …“ stand direkt auf der
+  Linie): `FormDoc.signatures` setzt Ort/Datum (bzw. Name des Unterzeichners) jetzt deutlich über die Linie mit rund 1,5 cm
+  Platz zum Unterschreiben. Gilt für alle Formular-PDFs (Vertragsänderung, Reinigungs-/AÜ-Vertrag, NU-Bestellschein und
+  -Vorlagen, Schlüsselprotokoll, Arbeitsschein, QK-Bericht). Bereits archivierte PDFs bleiben unverändert.

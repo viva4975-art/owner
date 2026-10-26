@@ -540,7 +540,9 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
             select c.name || coalesce(' / ' || s.name, '') as label from app.invoices i
               join app.customers c on c.id = i.customer_id left join app.sites s on s.id = i.site_id
              where i.id = ${id}`;
-          errors.push(`${who?.label ?? id}: ${e.message.split('\n')[0]}`);
+          // ganze Meldung (Grund steht ab der 2. Zeile, z. B. KoSIT-Fehler je Syntax), gekürzt
+          const msg = e.message.length > 1500 ? `${e.message.slice(0, 1500)} …` : e.message;
+          errors.push(`${who?.label ?? id}: ${msg.replace(/\n/g, '\n   ')}`);
         }
       }
       return back(c, '/rechnungen/entwuerfe', {

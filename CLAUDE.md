@@ -4212,3 +4212,6 @@ Testadresse.
     Ins Objekt/Auftrag/Rechnung nur Lose mit Zuschlag (+ Positionen ohne Los, `awardedLines`); jährliche Positionen
     werden Leistungen mit Zyklus „jährlich“ (Abrechnung nach Ausführung). Gewonnenes Los nach Übernahme nicht mehr änderbar.
   - Test `offer-lots.db.test.ts`; `e2e:angebot` grün.
+- 2026-10-26: **Fund: Grund der Ablehnung fehlte beim Sammel-Fertigstellen** (Ahmed: „immer noch: … ungültig – nicht
+  ausgestellt:“ ohne Text): „Ausgewählte fertigstellen“ in der Entwurfsliste übernahm von jeder Fehlermeldung nur die erste
+  Zeile – der Grund (KoSIT-Fehler je Syntax) steht ab der zweiten. Jetzt die ganze Meldung (bis 1.500 Zeichen, eingerückt).

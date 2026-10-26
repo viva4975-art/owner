@@ -508,8 +508,8 @@ export async function leaveBalance(
   if (op && op.taken != null) {
     // Stand aus Fortytools: Anspruch/Resturlaub/genommen bis Stichtag, verfallener Rest so wie dort gerechnet
     const after = await baseBalance(sql, employeeId, year, addDays(op.as_of, 1), exitAt);
-    // Anspruch immer selbst gerechnet (30 Tage RTV, Arbeitstage); der Fortytools-Anspruch dient nur dazu,
-    // den dort verfallenen Resturlaub nachzurechnen
+    // Anspruch immer selbst gerechnet (30 Tage RTV × Arbeitstage laut Einsatzplanung ÷ 5), nie aus Fortytools;
+    // der Fortytools-Anspruch dient nur dazu, den dort verfallenen Resturlaub nachzurechnen
     const entitlement = after.entitlement;
     const ftEntitlement = op.entitlement ?? entitlement;
     const carried = op.carried ?? 0;
@@ -533,8 +533,10 @@ export async function leaveBalance(
   if (e?.carry_over_leave && e.entry_date < `${year}-01-01`) {
     const pop = await leaveOpening(sql, employeeId, year - 1);
     if (pop && pop.taken != null) {
-      const after = await baseBalance(sql, employeeId, year - 1, addDays(pop.as_of, 1));
-      carried = Math.max(0, (pop.entitlement ?? after.entitlement) - pop.taken - after.taken);
+      // Vorjahr mit übernommenem Stand: Anspruch selbst gerechnet (nach Einsätzen), genommen/geplant und Übertrag
+      // aus Fortytools bleiben (Ahmed 26.10.: „nur den Anspruch nicht von Fortytools übernehmen“)
+      const prev = await leaveBalance(sql, employeeId, year - 1);
+      carried = Math.max(0, prev.entitlement + prev.carried - prev.carriedExpired - prev.taken);
     } else {
       const prev = await baseBalance(sql, employeeId, year - 1);
       carried = Math.max(0, prev.entitlement - prev.taken);

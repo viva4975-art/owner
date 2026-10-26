@@ -1259,8 +1259,10 @@ export function registerReportRoutes({ app, deps, page, back }: Ctx) {
           <p class="small mut" style="margin-bottom:0">
             Arbeitstage. Übertrag aus dem Vorjahr nur bei „Resturlaub übertragen“; nicht bis 31.03. genommener
             Übertrag verfällt rechnerisch. Rechtlich nur, wenn rechtzeitig auf Urlaub und Verfall hingewiesen
-            wurde (BAG 9 AZR 541/15). „Stand …“ = Urlaubskonto aus Fortytools übernommen (Anspruch,
-            Resturlaub, genommen bis zum Stichtag); Urlaub in der App zählt ab dem Folgetag dazu.
+            wurde (BAG 9 AZR 541/15). Der Anspruch wird immer selbst gerechnet (30 Tage bei 5-Tage-Woche,
+            anteilig nach den Arbeitstagen laut Einsatzplanung). „Stand …“ = aus Fortytools übernommen sind
+            nur Resturlaub und genommener/geplanter Urlaub bis zum Stichtag; Urlaub in der App zählt ab dem
+            Folgetag dazu.
           </p>
         </div>
       </>,

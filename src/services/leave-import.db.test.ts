@@ -93,6 +93,22 @@ describe.skipIf(!available)('Urlaub/Krankheit übernehmen (Datenbank)', () => {
     expect((await leaveBalance(sql, b, 2026)).rest).toBe(18);
   });
 
+  it('Anspruch immer selbst gerechnet, nicht aus Fortytools – genommene Tage bleiben, auch im Übertrag', async () => {
+    const c = randomUUID();
+    await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, annual_leave_days, carry_over_leave)
+              values (${c}, '7803', 'Udo', 'Uebertrag', '2020-01-01', 30, true)`;
+    const sheet = parseLeaveSheet(
+      csv(
+        'Mitarbeiter;Personalnummer;Resturlaub Vorjahr;Anspruch Aktuell;Genommene Urlaubstage;Verfügbare Urlaubstage\n' +
+          'Uebertrag, Udo;7803;0;20;5;15\n',
+      ),
+    );
+    await applyLeaveImport(sql, sheet, { year: 2026, asOf: '2026-10-08', actor: 't', source: 'test' });
+    const bc = await leaveBalance(sql, c, 2026);
+    expect([bc.entitlement, bc.taken, bc.carriedExpired, bc.rest]).toEqual([30, 5, 0, 25]);
+    expect((await leaveBalance(sql, c, 2027)).carried).toBe(25);
+  });
+
   it('Krankheitstage: übernommen + App ab Folgetag', async () => {
     const sheet = parseLeaveSheet(csv('Mitarbeiter;Personalnummer;Erfasst\nMuster, Max;7801;5\n'));
     await applyLeaveImport(sql, sheet, { year: 2026, asOf: '2026-10-08', actor: 't', source: 'test' });

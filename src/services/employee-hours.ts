@@ -160,7 +160,7 @@ export async function plannedDaysPerWeek(sql: Sql | Tx, employeeId: string, from
 
 /**
  * Arbeitstage je Abschnitt für den Urlaub: von Hand in den Stammdaten gesetzt (`days_auto = false`) → Verlauf wie
- * bisher; Vollzeit → 5; sonst je Kalendermonat aus der Einsatzplanung (Monat ohne Einsatz = 5-Tage-Woche).
+ * bisher; sonst je Kalendermonat aus der Einsatzplanung (Monat ohne Einsatz = 5-Tage-Woche).
  */
 export async function leaveDaysPeriods(sql: Sql | Tx, employeeId: string, from: string, to: string) {
   if (from > to) return [];

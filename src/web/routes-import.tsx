@@ -587,7 +587,8 @@ export function registerImportRoutes({ app, deps, page, back }: Ctx) {
           <p class="small mut" style="margin-top:0">
             Fortytools → Auswertungen → <b>Urlaubskonten</b> bzw. <b>Krankheitstage</b> als Excel. Übernommen
             wird der Stand zum Stichtag (aus dem Dateinamen, z. B. „urlaubskonten_2026_2026-10-08.xlsx“) je
-            Personalnummer: Resturlaub, Anspruch, genommen, verfügbar bzw. Krankheitstage. Urlaub und
+            Personalnummer: Resturlaub, genommen, verfügbar bzw. Krankheitstage. Den Anspruch rechnet die App
+            selbst (30 Tage bei 5-Tage-Woche, anteilig nach den Arbeitstagen laut Einsatzplanung). Urlaub und
             Krankheit, die in der App erfasst sind, zählen erst ab dem Folgetag dazu (nichts doppelt). Erneut
             importieren ersetzt den Stand. Erst Vorschau.
           </p>

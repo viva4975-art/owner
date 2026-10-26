@@ -4148,3 +4148,10 @@ Testadresse.
   einmal, zurücknehmen mit Protokoll). Passender Kontoumsatz (Betrag + IBAN/Name, ±20 Tage) wird als Vorschlag angezeigt
   und vorangekreuzt. Erinnerung ab 3 Tage vor Fälligkeit (auch in der täglichen Mail). **Nur Merkliste:** nicht im
   DATEV-Export und nicht in der SEPA-Datei – gebucht wird über den Kontoauszug beim Steuerberater (sonst doppelt).
+- 2026-10-26: **Urlaubsanspruch nie aus Fortytools** (Ahmed: „nach Einsatz berechnen, geplante/genommene Tage drin lassen,
+  nur den Anspruch nicht übernehmen“): Anspruch = 30 Tage × Arbeitstage laut Einsatzplanung ÷ 5 (je Monat, anteilig bei
+  Ein-/Austritt) – das galt im laufenden Jahr schon; **Fund:** der Übertrag ins Folgejahr rechnete noch mit dem
+  Fortytools-Anspruch (z. B. FT 20 statt 30 → 10 Tage zu wenig übertragen). Jetzt Rest des Vorjahres aus dem eigenen
+  Anspruch + übernommenem Resturlaub − Verfall − genommen. Aus Fortytools bleiben nur Resturlaub Vorjahr und
+  genommene/geplante Tage bis zum Stichtag (der FT-Anspruch dient nur noch zum Nachrechnen des dort verfallenen Rests).
+  Texte am Urlaubskonto/Import angepasst. Test in `leave-import.db.test.ts`.

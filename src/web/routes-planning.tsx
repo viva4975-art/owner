@@ -1164,7 +1164,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
               <div class="v">{String(bal.entitlement).replace('.', ',')}</div>
               <div class="s">
                 {bal.openingAsOf
-                  ? `Stand aus Fortytools vom ${dateDe(bal.openingAsOf)}, danach Urlaub aus der App`
+                  ? `nach Einsätzen gerechnet · genommener Urlaub bis ${dateDe(bal.openingAsOf)} aus Fortytools, danach aus der App`
                   : 'Tage (anteilig bei Ein-/Austritt)'}
                 {bal.extra !== 0 && ` · darin ${bal.extra > 0 ? '+' : ''}${num(bal.extra)} zusätzlich`}
               </div>

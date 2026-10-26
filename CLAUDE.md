@@ -4239,3 +4239,13 @@ Testadresse.
   Linie): `FormDoc.signatures` setzt Ort/Datum (bzw. Name des Unterzeichners) jetzt deutlich über die Linie mit rund 1,5 cm
   Platz zum Unterschreiben. Gilt für alle Formular-PDFs (Vertragsänderung, Reinigungs-/AÜ-Vertrag, NU-Bestellschein und
   -Vorlagen, Schlüsselprotokoll, Arbeitsschein, QK-Bericht). Bereits archivierte PDFs bleiben unverändert.
+- 2026-10-26: **Plan-Kalkulation ohne Arbeiten nach Ausführung** (Ahmed: „Glasreinigung usw. nicht in der Plan-, nur in der
+  Ist-Kalkulation, wenn der Leistungszeitraum im Monat ist“): Plan-Kalkulation zählt als Erlös nur noch laufende
+  Monatspauschalen (`kind = 'monthly_flat'`; automatisch abgerechnete 2-monatliche … jährliche weiter anteilig).
+  Leistungen nach Ausführung (2-monatlich … jährlich, je Ausführung, einmalig) zählen nur in der Nachkalkulation, über die
+  Rechnung im Monat ihres Leistungszeitraums (so rechnete sie schon).
+- 2026-10-26: **Inaktiv wird weitergegeben** (Ahmed): Kunde inaktiv (ehemaliger Kunde) → alle seine Objekte inaktiv;
+  Objekt inaktiv → alle seine Leistungen inaktiv (DB-Trigger `customers_cascade_inactive`/`sites_cascade_inactive`,
+  Migration `20261226000001`, gilt für jeden Weg: Formular, Sammelaktion, Import). Bestand einmal nachgezogen, alter Stand je
+  Datensatz im Protokoll (`deactivate`, „automatisch“/„migration“). Wieder aktiv setzen schaltet Objekte/Leistungen
+  bewusst nicht zurück – die einzeln wieder aktivieren.

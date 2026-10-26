@@ -3744,8 +3744,9 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
           </summary>
           <ul class="small">
             <li>
-              <b>Erlös:</b> laufende Leistungen am Objekt (Monatspauschalen; 2-monatlich … jährlich anteilig
-              je Monat). Einzelleistungen, Regiestunden und Einzelaufträge sind nicht planbar und fehlen hier.
+              <b>Erlös:</b> laufende Leistungen am Objekt (Monatspauschalen). Arbeiten nach Ausführung (z. B.
+              Glasreinigung, Grundreinigung), Einzelleistungen, Regiestunden und Einzelaufträge fehlen hier –
+              sie zählen in der Nachkalkulation im Monat ihres Leistungszeitraums.
             </li>
             <li>
               <b>Lohn:</b> eingeplante Einsätze (Soll, inkl. bezahlter Feiertage, ohne Tage mit eingetragener

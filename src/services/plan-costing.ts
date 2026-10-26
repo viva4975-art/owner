@@ -158,8 +158,9 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
              ss.valid_from::text, ss.valid_to::text, ss.unit_code, ss.work_days, ss.hours_per_day_milli
         from app.site_services ss join app.sites s on s.id = ss.site_id join app.customers c on c.id = s.customer_id
        where ss.active and not c.is_internal
-         and (ss.kind = 'monthly_flat'
-              or ss.billing_cycle in ('zweimonatlich', 'quartalsweise', 'halbjaehrlich', 'jaehrlich'))
+         -- nur laufende Pauschalen; Arbeiten „nach Ausführung“ (Glas, Grundreinigung …) zählen erst in der
+         -- Nachkalkulation, wenn sie abgerechnet sind (Leistungszeitraum im Monat)
+         and ss.kind = 'monthly_flat'
          and ss.valid_from <= ${to} and (ss.valid_to is null or ss.valid_to >= ${from})`,
     plannedShifts(sql, { from, to }),
     subcontractEstimates(sql, from, to, undefined, { plan: true }),

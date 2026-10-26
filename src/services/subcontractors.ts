@@ -1328,9 +1328,15 @@ export async function unsignedSubcontractsPdf(sql: Sql, opts: { supplierId?: str
      order by s.name, sc.number`;
   if (!ids.length) throw new BusinessError('Keine erteilten Bestellungen ohne Unterschrift.');
   const out = await PDFDocument.create();
-  for (const { id } of ids) {
+  for (const [i, { id }] of ids.entries()) {
     const one = await PDFDocument.load(await subcontractPdf(sql, id));
-    for (const pg of await out.copyPages(one, one.getPageIndices())) out.addPage(pg);
+    const pages = await out.copyPages(one, one.getPageIndices());
+    for (const pg of pages) out.addPage(pg);
+    // Duplexdruck (Ahmed): jede Bestellung beginnt auf einer Vorderseite – ungerade Seitenzahl → leere Rückseite
+    if (pages.length % 2 === 1 && i < ids.length - 1) {
+      const { width, height } = pages[pages.length - 1]!.getSize();
+      out.addPage([width, height]);
+    }
   }
   out.setTitle(`Bestellungen ohne Unterschrift (${ids.length})`);
   return { pdf: await out.save({ useObjectStreams: false }), count: ids.length };

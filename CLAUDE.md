@@ -4134,3 +4134,6 @@ Testadresse.
   `src/mail/compose.ts`), da sie von info@ bzw. an das Büro gehen. Vorschau unter Einstellungen → Glückwünsche zeigt die
   fertige Mail mit Bildern (`withDataUris`). Ausfallmeldungen des Systemwächters bleiben schlichter Text (müssen auch
   ohne Datenbank rausgehen).
+- 2026-10-26: **Sammel-PDF „Bestellungen ohne Unterschrift“ für Duplexdruck** (Ahmed: „eine Bestellung landete auf der
+  Rückseite der vorigen“): Hat ein Bestellschein eine ungerade Seitenzahl (z. B. Sammelbestellung mit langer Objektliste,
+  3 Seiten), folgt eine leere Seite – jede Bestellung beginnt auf einer Vorderseite (`unsignedSubcontractsPdf`).

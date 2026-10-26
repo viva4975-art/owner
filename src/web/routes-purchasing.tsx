@@ -73,6 +73,7 @@ import { toCsv } from '../services/reports.js';
 import { listFiles } from '../services/uploads.js';
 import { planCostingPdf, siteCostingPdf } from '../services/costing-pdf.js';
 import { EInvoiceRoutes, EInvoiceTable } from './routes-einvoice-in.js';
+import { RecurringDueCard, registerRecurringRoutes } from './routes-recurring.js';
 import { pendingEInvoices } from '../services/einvoice-inbox.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
@@ -411,7 +412,8 @@ const PdfExport = ({ action, params }: { action: string; params: Record<string, 
   </form>
 );
 
-export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
+export function registerPurchasingRoutes(ctx: Ctx) {
+  const { app, deps, page, back } = ctx;
   const { sql, env } = deps;
   const managersOf = async (ids: (string | null)[]): Promise<Manager[]> => {
     const u = [...new Set(ids.filter((x): x is string => !!x))];
@@ -1394,6 +1396,7 @@ export function registerPurchasingRoutes({ app, deps, page, back }: Ctx) {
       ...(advances !== undefined ? { count: advances } : {}),
     },
     { key: 'zahlung', label: 'Zahlungsliste', href: '/zahlungsliste' },
+    { key: 'wiederkehrend', label: 'Wiederkehrende Zahlungen', href: '/zahlungsliste/wiederkehrend' },
   ];
   const openAdvanceCount = async () => {
     const [r] = await sql<{ n: number }[]>`
@@ -2690,10 +2693,12 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
   // Alter SEPA-Zahlungslauf → Zahlungsliste (frühere Läufe bleiben unter /zahlungslauf/<id> abrufbar)
   app.get('/zahlungslauf', (c) => c.redirect('/zahlungsliste'));
 
+  const recurring = registerRecurringRoutes(ctx, async () => incomingTabs(await listIncoming(sql)));
+
   app.get('/zahlungsliste', async (c) => {
     const today = todayBerlin();
     const pay = isDate(c.req.query('datum')) ? c.req.query('datum')! : today;
-    const [list, crit, seller, runs, recent] = await Promise.all([
+    const [list, crit, seller, runs, recent, rdue] = await Promise.all([
       paymentList(sql, pay),
       criticalSupplierIds(sql),
       getSeller(sql),
@@ -2716,6 +2721,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
           left join app.payment_run_items it on it.incoming_invoice_id = i.id
          where i.status = 'bezahlt' and i.paid_at >= ${addDays(today, -60)}
          order by i.paid_at desc, i.invoice_no limit 50`,
+      recurring.dueRecurring(pay),
     ]);
     const sum = list.reduce((a, p) => a + p.amount, 0n);
     const dueSoon = list.filter((p) => p.invoice.due_date <= addDays(pay, 7) || p.skonto > 0n);
@@ -2929,6 +2935,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
           Rechnungen sind dann als bezahlt gebucht. Zahlungen gehen in den DATEV-Export. Skonto mindert die
           Vorsteuer (§ 17 UStG), Buchung übernimmt der Steuerberater.
         </p>
+        <RecurringDueCard due={rdue} pay={pay} today={today} />
         {runs.length > 0 && (
           <div class="card">
             <h3>SEPA-Dateien</h3>

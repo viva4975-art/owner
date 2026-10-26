@@ -4137,3 +4137,14 @@ Testadresse.
 - 2026-10-26: **Sammel-PDF „Bestellungen ohne Unterschrift“ für Duplexdruck** (Ahmed: „eine Bestellung landete auf der
   Rückseite der vorigen“): Hat ein Bestellschein eine ungerade Seitenzahl (z. B. Sammelbestellung mit langer Objektliste,
   3 Seiten), folgt eine leere Seite – jede Bestellung beginnt auf einer Vorderseite (`unsignedSubcontractsPdf`).
+- 2026-10-26: **Wiederkehrende Zahlungen** (Ahmed: „Finanzamt, Miete, BG BAU, damit wir nichts vergessen“): Rechnungseingang →
+  Reiter **„Wiederkehrende Zahlungen“** (`/zahlungsliste/wiederkehrend`, `src/services/recurring-payments.ts`,
+  `routes-recurring.tsx`, Migration `20261223000001`): Bezeichnung, Empfänger, Betrag (leer = wechselt, z. B. USt-VA →
+  beim Bezahlen eintragen), Turnus monatlich/quartalsweise/halbjährlich/jährlich ab erstem Fälligkeitsmonat, fällig am
+  Tag (31 = letzter), letzter Monat, Zahlweg (Überweisung von Hand → IBAN Pflicht, Lastschrift, Dauerauftrag),
+  Verwendungszweck mit Platzhaltern {monat}/{vormonat}/{quartal}/{vorquartal}/{jahr}, Kostenart, aktiv. Fälligkeiten stehen
+  im jeweiligen Monat in der **Zahlungsliste** (Kasten unter den Rechnungen, bis Ende des Monats des gewählten
+  Zahlungstags), überfällige bleiben stehen, bis „als bezahlt festgehalten“ (`recurring_payment_items`, je Zahlung + Monat
+  einmal, zurücknehmen mit Protokoll). Passender Kontoumsatz (Betrag + IBAN/Name, ±20 Tage) wird als Vorschlag angezeigt
+  und vorangekreuzt. Erinnerung ab 3 Tage vor Fälligkeit (auch in der täglichen Mail). **Nur Merkliste:** nicht im
+  DATEV-Export und nicht in der SEPA-Datei – gebucht wird über den Kontoauszug beim Steuerberater (sonst doppelt).

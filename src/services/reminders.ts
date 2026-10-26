@@ -12,6 +12,7 @@ import { complianceOverview } from './subcontractors.js';
 import { upcomingEvents } from './tenders.js';
 import { remindFrom, vehiclesWithoutRegistration } from './vehicles.js';
 import { plannedShifts } from './time.js';
+import { dueRecurring } from './recurring-payments.js';
 import type { Deps } from './workflow.js';
 
 /*
@@ -193,6 +194,18 @@ export async function collectReminders(sql: Sql, today = todayBerlin()): Promise
       text: `${v.description} – ${v.site_name} (${v.site_no}), ${v.customer_name}: fällig ${d < 0 ? `seit ${-d} Tg.` : d === 0 ? 'heute' : `in ${d} Tg.`} (${formatDateDe(v.next_due)})`,
       href: `/objekte/${v.site_id}/leistungen#verrichten`,
       days: d,
+    });
+  }
+  // Wiederkehrende Zahlungen (Finanzamt, Miete, BG …): ab 3 Tage vor Fälligkeit, solange nicht als bezahlt festgehalten
+  for (const d of await dueRecurring(sql, addDays(today, 3))) {
+    const dd = dayDiff(today, d.due_date);
+    if (dd > 3 || d.bank) continue;
+    out.push({
+      area: 'Rechnungseingang',
+      level: dd < 0 ? 'rot' : 'gelb',
+      text: `${d.payment.name} (${d.payment.payee})${d.payment.amount_cents !== null ? ` ${(Number(d.payment.amount_cents) / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}` : ''}: fällig ${fristText(dd)} (${formatDateDe(d.due_date)})`,
+      href: '/zahlungsliste#wiederkehrend',
+      days: dd,
     });
   }
   // Erlaubnis Arbeitnehmerüberlassung: Verlängerung spätestens 3 Monate vor Ablauf beantragen (§ 2 Abs. 4 AÜG)

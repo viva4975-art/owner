@@ -10,6 +10,7 @@ import {
   markRecurringPaid,
   periodsOf,
   purposeFor,
+  coveredPeriod,
   recentRecurringPaid,
   saveRecurring,
   undoRecurringPaid,
@@ -34,6 +35,19 @@ describe('Wiederkehrende Zahlungen – Fälligkeiten', () => {
     expect(purposeFor('USt {vormonat} / {quartal} / {vorquartal}', '2026-01-01')).toBe(
       'USt 12/2025 / Q1/2026 / Q4/2025',
     );
+    // Gewerbesteuer 15.05. gilt für Q2 (im Voraus), Miete 01.09. für September, nachträglich 10.10. für September
+    expect(coveredPeriod({ cycle: 'quartalsweise', applies_to: 'laufend' }, '2026-05-01')).toEqual({
+      start: '2026-04-01',
+      months: 3,
+      label: 'Q2/2026',
+    });
+    expect(coveredPeriod({ cycle: 'monatlich', applies_to: 'laufend' }, '2026-09-01').label).toBe('09/2026');
+    expect(coveredPeriod({ cycle: 'monatlich', applies_to: 'vorher' }, '2026-10-01').label).toBe('09/2026');
+    expect(coveredPeriod({ cycle: 'quartalsweise', applies_to: 'vorher' }, '2026-02-01').label).toBe(
+      'Q4/2025',
+    );
+    expect(coveredPeriod({ cycle: 'jaehrlich', applies_to: 'laufend' }, '2026-03-01').label).toBe('2026');
+    expect(purposeFor('GewSt-VZ {zeitraum}', '2026-05-01', 'Q2/2026')).toBe('GewSt-VZ Q2/2026');
   });
 });
 

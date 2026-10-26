@@ -17,6 +17,9 @@ import {
   listRecurring,
   markRecurringPaid,
   purposeFor,
+  coveredPeriod,
+  RECURRING_APPLIES,
+  type RecurringApplies,
   recentRecurringPaid,
   saveRecurring,
   undoRecurringPaid,
@@ -47,7 +50,8 @@ export const RecurringRows: FC<{ due: RecurringDue[]; today: string }> = ({ due,
     {due.map((d, i) => {
       const p = d.payment;
       const key = `${p.id}|${d.period}`;
-      const zweck = purposeFor(p.purpose, d.period) || `${p.name} ${monthDe(d.period)}`;
+      const fuer = coveredPeriod(p, d.period).label;
+      const zweck = purposeFor(p.purpose, d.period, fuer) || `${p.name} ${fuer}`;
       return (
         <tr id={i === 0 ? 'wiederkehrend' : undefined} class="rp-row">
           <td>
@@ -71,7 +75,7 @@ export const RecurringRows: FC<{ due: RecurringDue[]; today: string }> = ({ due,
           <td>
             <a href={`/zahlungsliste/wiederkehrend/${p.id}`}>{p.name}</a>
             <div class="small mut">
-              <span class="pill">wiederkehrend</span> {RECURRING_CYCLE[p.cycle]} · für {monthDe(d.period)}
+              <span class="pill">wiederkehrend</span> {RECURRING_CYCLE[p.cycle]} · für {fuer}
               {p.method !== 'ueberweisung' && ` · ${RECURRING_METHOD[p.method]}`}
             </div>
             {d.bank && (
@@ -137,8 +141,9 @@ export function registerRecurringRoutes({ app, deps, page, back }: Ctx, tabs: ()
         </PageHead>
         <Tabs tabs={t} active="wiederkehrend" />
         <p class="small mut" style="max-width:820px">
-          Zahlungen ohne Eingangsrechnung, die regelmäßig anfallen – Finanzamt (USt-Vorauszahlung,
-          Lohnsteuer), Miete, BG BAU, Versicherungen, Leasing … Sie erscheinen im Fälligkeitsmonat in der{' '}
+          Zahlungen ohne Eingangsrechnung, die regelmäßig anfallen – Gewerbesteuer- und
+          Körperschaftsteuer-Vorauszahlungen, Miete, Versicherungen, Leasing … (Umsatzsteuer, Lohnsteuer und
+          Krankenkassen kommen aus der Zahlungsliste von Lexware). Sie erscheinen im Fälligkeitsmonat in der{' '}
           <a href="/zahlungsliste#wiederkehrend">Zahlungsliste</a> und bleiben stehen, bis sie als bezahlt
           festgehalten sind. Das ist eine Merkliste: gebucht wird über den Kontoauszug (DATEV), nicht von
           hier.
@@ -169,7 +174,10 @@ export function registerRecurringRoutes({ app, deps, page, back }: Ctx, tabs: ()
                         {!r.active && ' · inaktiv'}
                       </div>
                     </td>
-                    <td>{RECURRING_CYCLE[r.cycle]}</td>
+                    <td>
+                      {RECURRING_CYCLE[r.cycle]}
+                      <div class="small mut">{r.applies_to === 'vorher' ? 'nachträglich' : 'im Voraus'}</div>
+                    </td>
                     <td>{r.due_day}. des Monats</td>
                     <td class="r">
                       {r.amount_cents !== null ? euro(r.amount_cents) : <span class="mut">wechselt</span>}
@@ -295,7 +303,7 @@ export function registerRecurringRoutes({ app, deps, page, back }: Ctx, tabs: ()
                 required
                 maxlength={200}
                 value={(v('name') as string) ?? ''}
-                placeholder="z. B. Umsatzsteuer-Vorauszahlung, Büromiete, BG BAU Beitrag"
+                placeholder="z. B. Gewerbesteuer-Vorauszahlung, Körperschaftsteuer-Vorauszahlung, Büromiete"
               />
               <label for="rp-payee">Empfänger *</label>
               <input
@@ -304,7 +312,7 @@ export function registerRecurringRoutes({ app, deps, page, back }: Ctx, tabs: ()
                 required
                 maxlength={200}
                 value={(v('payee') as string) ?? ''}
-                placeholder="z. B. Finanzamt München, AOK Bayern, Vermieter"
+                placeholder="z. B. Stadtkasse München, Finanzamt München, Vermieter"
               />
               <label for="rp-sup">Lieferant</label>
               <div>
@@ -317,8 +325,8 @@ export function registerRecurringRoutes({ app, deps, page, back }: Ctx, tabs: ()
                   ))}
                 </select>
                 <div class="small mut">
-                  Auch Finanzamt, Krankenkasse, BG BAU oder Vermieter werden als Lieferant geführt – der
-                  Kontoabgleich erkennt die Zahlung dann über die IBAN.
+                  Auch Finanzamt, Stadtkasse oder Vermieter werden als Lieferant geführt – der Kontoabgleich
+                  erkennt die Zahlung dann über die IBAN.
                 </div>
               </div>
               <label for="rp-amount">Betrag</label>
@@ -332,8 +340,7 @@ export function registerRecurringRoutes({ app, deps, page, back }: Ctx, tabs: ()
                   placeholder="0,00"
                 />
                 <div class="small mut">
-                  Leer lassen, wenn der Betrag jedes Mal anders ist (z. B. USt-VA) – dann beim Bezahlen
-                  eintragen.
+                  Leer lassen, wenn der Betrag jedes Mal anders ist – dann beim Bezahlen eintragen.
                 </div>
               </div>
               <label for="rp-cycle">Turnus *</label>
@@ -373,6 +380,21 @@ export function registerRecurringRoutes({ app, deps, page, back }: Ctx, tabs: ()
                   März, Juni, September, Dezember).
                 </div>
               </div>
+              <label for="rp-applies">Zahlung gilt für *</label>
+              <div>
+                <select id="rp-applies" name="applies_to" required>
+                  {(Object.keys(RECURRING_APPLIES) as RecurringApplies[]).map((k) => (
+                    <option value={k} selected={(r?.applies_to ?? 'laufend') === k}>
+                      {RECURRING_APPLIES[k]}
+                    </option>
+                  ))}
+                </select>
+                <div class="small mut">
+                  Bestimmt {'{zeitraum}'} im Verwendungszweck und auf welche Monate die Kosten in der
+                  Nachkalkulation verteilt werden. Gewerbesteuer (15.02./05./08./11.) und Körperschaftsteuer
+                  (10.03./06./09./12.) sind Vorauszahlungen für das laufende Quartal.
+                </div>
+              </div>
               <label for="rp-end">Letzter Monat</label>
               <input
                 id="rp-end"
@@ -403,10 +425,11 @@ export function registerRecurringRoutes({ app, deps, page, back }: Ctx, tabs: ()
                   name="purpose"
                   maxlength={140}
                   value={(v('purpose') as string) ?? ''}
-                  placeholder="z. B. StNr 143/190/63154 USt {vormonat}"
+                  placeholder="z. B. StNr 143/190/63154 GewSt-VZ {zeitraum}"
                 />
                 <div class="small mut">
-                  Platzhalter: {'{monat}'} (10/2026), {'{vormonat}'}, {'{quartal}'} (Q4/2026),{' '}
+                  Platzhalter: {'{zeitraum}'} (Zeitraum, für den gezahlt wird: 09/2026, Q2/2026, 2026),{' '}
+                  {'{monat}'} (Fälligkeitsmonat 10/2026), {'{vormonat}'}, {'{quartal}'} (Q4/2026),{' '}
                   {'{vorquartal}'}, {'{jahr}'}.
                 </div>
               </div>
@@ -442,8 +465,8 @@ export function registerRecurringRoutes({ app, deps, page, back }: Ctx, tabs: ()
                 </select>
                 <div class="small mut">
                   Miete, Versicherungen, Telefon, Leasing → Verwaltung / Büro. <b>Keine Kostenstelle</b> für
-                  Steuern (Umsatzsteuer, Lohnsteuer – durchlaufend, keine Kosten) und Sozialabgaben/BG BAU
-                  (stecken schon im Lohnzuschlag der Nachkalkulation, sonst doppelt).
+                  Steuern (Gewerbe-/Körperschaftsteuer: Steuern vom Ertrag, keine Objekt-Kosten) und
+                  Sozialabgaben/BG BAU (stecken schon im Lohnzuschlag der Nachkalkulation, sonst doppelt).
                 </div>
               </div>
               <label for="rp-vat">darin Umsatzsteuer</label>
@@ -502,6 +525,7 @@ export function registerRecurringRoutes({ app, deps, page, back }: Ctx, tabs: ()
           supplier_id: str(b, 'supplier_id'),
           cost_center_id: str(b, 'cost_center_id'),
           vat_rate_bp: Number(str(b, 'vat_rate_bp') ?? 0),
+          applies_to: str(b, 'applies_to') ?? 'laufend',
           note: str(b, 'note'),
           active: str(b, 'active') === '1',
         },

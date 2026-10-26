@@ -197,5 +197,6 @@
  "20261221000002_leistung_titel_objektname.sql": "3c6e5b86e3bf981ffebb3d455abed2100df56ae92c7b27a66e9d54612ccfc763",
  "20261222000001_dokument_umbenennen.sql": "0b54041ff5af3a4b5fd6a998ce3e6210d37da73459e8c7229eabdee4abd2a290",
  "20261223000001_wiederkehrende_zahlungen.sql": "1562128f4ad73ae2443c7193a13d1efcd82725c474f13facff3d0804e71d7c4a",
- "20261223000002_wiederkehrend_lieferant_kostenstelle.sql": "ebb04e4ebd410ee3b2f09627eec67f03bfb7e7625023e75d13b6ab62564f5480"
+ "20261223000002_wiederkehrend_lieferant_kostenstelle.sql": "ebb04e4ebd410ee3b2f09627eec67f03bfb7e7625023e75d13b6ab62564f5480",
+ "20261223000003_wiederkehrend_gilt_fuer.sql": "3c067f28e6d3a99cf4549c37d34fdd1f08aa01cbb43988cad5ed52207777c587"
 }

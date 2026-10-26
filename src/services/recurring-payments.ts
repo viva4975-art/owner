@@ -36,6 +36,12 @@ const STEP: Record<RecurringCycle, number> = {
   jaehrlich: 12,
 };
 
+export type RecurringApplies = 'laufend' | 'vorher';
+export const RECURRING_APPLIES: Record<RecurringApplies, string> = {
+  laufend: 'laufenden Zeitraum (im Voraus) – z. B. Miete 01.09. für September, Gewerbesteuer 15.05. für Q2',
+  vorher: 'vorherigen Zeitraum (nachträglich) – z. B. 10.10. für September',
+};
+
 export type RecurringMethod = 'ueberweisung' | 'lastschrift' | 'dauerauftrag';
 export const RECURRING_METHOD: Record<RecurringMethod, string> = {
   ueberweisung: 'Überweisung (von Hand)',
@@ -65,13 +71,14 @@ export interface RecurringPayment {
   cost_center_id: string | null;
   cost_center_name: string | null;
   vat_rate_bp: number;
+  applies_to: RecurringApplies;
 }
 
 const COLS = (sql: Sql | Tx) => sql`
   r.id, r.name, r.payee, coalesce(r.iban, s.iban) as iban, r.purpose, r.amount_cents, r.cycle, r.due_day,
   r.start_month::text, r.end_month::text, r.method, r.category, r.note, r.active, r.version, r.supplier_id,
   s.name as supplier_name, s.bic as supplier_bic, r.cost_center_id, cc.number || ' ' || cc.name as cost_center_name,
-  r.vat_rate_bp`;
+  r.vat_rate_bp, r.applies_to`;
 const FROM = (sql: Sql | Tx) => sql`
   app.recurring_payments r left join app.suppliers s on s.id = r.supplier_id
   left join app.cost_centers cc on cc.id = r.cost_center_id`;
@@ -92,6 +99,32 @@ function addMonths(month01: string, n: number): string {
   const yy = y + Math.floor(m / 12);
   const mm = ((m % 12) + 12) % 12;
   return `${yy}-${String(mm + 1).padStart(2, '0')}-01`;
+}
+
+/**
+ * Zeitraum, für den eine Zahlung gilt: Kalender-Monat/-Quartal/-Halbjahr/-Jahr, in dem sie fällig ist (laufend)
+ * bzw. der davor (vorher). Gewerbesteuer-Vorauszahlung 15.05. → Q2, Miete 01.09. → September.
+ */
+export function coveredPeriod(
+  p: Pick<RecurringPayment, 'cycle' | 'applies_to'>,
+  period: string,
+): { start: string; months: number; label: string } {
+  const step = STEP[p.cycle];
+  const y0 = Number(period.slice(0, 4));
+  const m0 = Number(period.slice(5, 7)) - 1;
+  let start = `${y0}-${String(Math.floor(m0 / step) * step + 1).padStart(2, '0')}-01`;
+  if (p.applies_to === 'vorher') start = addMonths(start, -step);
+  const y = Number(start.slice(0, 4));
+  const m = Number(start.slice(5, 7));
+  const label =
+    step === 1
+      ? `${start.slice(5, 7)}/${y}`
+      : step === 3
+        ? `Q${Math.ceil(m / 3)}/${y}`
+        : step === 6
+          ? `${m === 1 ? 1 : 2}. Halbjahr ${y}`
+          : String(y);
+  return { start, months: step, label };
 }
 
 /** Fälligkeitstag im Monat (31. → letzter Tag). */
@@ -140,6 +173,7 @@ export interface RecurringInput {
   supplier_id: string | null;
   cost_center_id: string | null;
   vat_rate_bp: number;
+  applies_to?: string;
 }
 
 /** Anlegen (feste ID aus dem Formular → doppelt absenden legt nichts doppelt an) oder ändern (Versionsschutz). */
@@ -173,6 +207,9 @@ export async function saveRecurring(
     throw new BusinessError('Für eine Überweisung von Hand bitte die IBAN des Empfängers angeben');
   const purpose = input.purpose?.trim() || null;
   if (purpose && purpose.length > 140) throw new BusinessError('Verwendungszweck höchstens 140 Zeichen');
+  const applies = input.applies_to ?? 'laufend';
+  if (!(applies in RECURRING_APPLIES))
+    throw new BusinessError('Bitte wählen, für welchen Zeitraum die Zahlung gilt');
   if (![0, 700, 1900].includes(input.vat_rate_bp)) throw new BusinessError('USt-Satz 0, 7 oder 19 %');
   if (input.cost_center_id) {
     const [cc] = await sql`select 1 from app.cost_centers where id = ${input.cost_center_id}`;
@@ -205,6 +242,7 @@ export async function saveRecurring(
     supplier_id: supplierId,
     cost_center_id: input.cost_center_id || null,
     vat_rate_bp: input.vat_rate_bp,
+    applies_to: applies,
   };
   await sql.begin(async (tx) => {
     const [old] = await tx<
@@ -356,7 +394,7 @@ export async function undoRecurringPaid(sql: Sql, itemId: string, actor: string)
 }
 
 /** Verwendungszweck mit Platzhaltern {monat} (10/2026), {quartal} (Q4/2026), {jahr} (2026), {vormonat}, {vorquartal}. */
-export function purposeFor(purpose: string | null, period: string): string {
+export function purposeFor(purpose: string | null, period: string, zeitraum?: string): string {
   if (!purpose) return '';
   const y = Number(period.slice(0, 4));
   const m = Number(period.slice(5, 7));
@@ -368,7 +406,8 @@ export function purposeFor(purpose: string | null, period: string): string {
     .replace(/\{vormonat\}/gi, `${prev.slice(5, 7)}/${prev.slice(0, 4)}`)
     .replace(/\{quartal\}/gi, `Q${q}/${y}`)
     .replace(/\{vorquartal\}/gi, pq)
-    .replace(/\{jahr\}/gi, String(y));
+    .replace(/\{jahr\}/gi, String(y))
+    .replace(/\{zeitraum\}/gi, zeitraum ?? `${String(m).padStart(2, '0')}/${y}`);
 }
 
 const parseKey = (key: string) => {
@@ -406,7 +445,8 @@ export async function addRecurringToRun(
       on conflict (recurring_id, period) do nothing returning id`;
     if (!item) throw new BusinessError(`${r.name}: für diesen Monat schon bezahlt – bitte Seite neu laden`);
     const remittance = (
-      purposeFor(r.purpose, k.period) || `${r.name} ${k.period.slice(5, 7)}/${k.period.slice(0, 4)}`
+      purposeFor(r.purpose, k.period, coveredPeriod(r, k.period).label) ||
+      `${r.name} ${coveredPeriod(r, k.period).label}`
     ).slice(0, 140);
     const name = r.supplier_name ?? r.payee;
     await tx`insert into app.payment_run_recurring (run_id, item_id, amount_cents, creditor_name, creditor_iban, creditor_bic, remittance)
@@ -434,7 +474,9 @@ export async function recurringCosts(sql: Sql, from: string, to: string) {
     if (!r.active && !paid.some((p) => p.recurring_id === r.id)) continue;
     const step = STEP[r.cycle];
     for (const period of periodsOf(r, `${to.slice(0, 7)}-01`)) {
-      if (addMonths(period, step) <= fromM) continue;
+      // Kosten auf die Monate des Zeitraums, für den gezahlt wird (Miete Q4 am 01.10. → Okt–Dez)
+      const cover = coveredPeriod(r, period).start;
+      if (addMonths(cover, step) <= fromM) continue;
       const gross = amt.get(`${r.id}|${period}`) ?? (r.active ? r.amount_cents : null);
       if (gross === null) continue;
       // netto = brutto ÷ (1 + USt), kaufmännisch gerundet; Verteilung centgenau (Rest auf die ersten Monate)
@@ -443,7 +485,7 @@ export async function recurringCosts(sql: Sql, from: string, to: string) {
       const base = net / BigInt(step);
       let rest = net - base * BigInt(step);
       for (let i = 0; i < step; i++) {
-        const m = addMonths(period, i);
+        const m = addMonths(cover, i);
         const share = base + (rest > 0n ? 1n : 0n);
         if (rest > 0n) rest--;
         if (m >= fromM && m <= to && share !== 0n)

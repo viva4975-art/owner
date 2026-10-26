@@ -4173,3 +4173,11 @@ Testadresse.
   → je Monat ⅓). **Steuern** (USt, Lohnsteuer) sind durchlaufend und keine Kosten; **Sozialabgaben/BG BAU** stecken
   schon im Lohnzuschlag (26–32 %) – beide ohne Kostenstelle, sonst doppelt. Migration `20261223000002`. Weiterhin nicht
   im DATEV-Export (Buchung über den Kontoauszug beim Steuerberater).
+- 2026-10-26: **Wiederkehrende Zahlungen: „Zahlung gilt für“** (Ahmed: „am 01.09. zahle ich die Miete für September“;
+  USt, Lohnsteuer, Krankenkassen kommen aus der Lexware-Zahlungsliste – hier nur Quartalszahlungen wie Gewerbe- und
+  Körperschaftsteuer, Miete …): je Zahlung **laufender Zeitraum (im Voraus)** (Standard) oder **vorheriger Zeitraum
+  (nachträglich)** (`recurring_payments.applies_to`, Migration `20261223000003`). Zeitraum = Kalender-Monat/-Quartal/
+  -Halbjahr/-Jahr der Fälligkeit (`coveredPeriod`): Gewerbesteuer 15.05. → Q2, Miete 01.09. → September. Neuer
+  Platzhalter `{zeitraum}` im Verwendungszweck, Zahlungsliste zeigt „für Q2/2026“, Nachkalkulation verteilt die Kosten
+  auf die Monate dieses Zeitraums. Beispiele/Hinweise ohne USt/Lohnsteuer/Krankenkassen. Gewerbe-/Körperschaftsteuer
+  ohne Kostenstelle (Steuern vom Ertrag; GewSt nicht als Betriebsausgabe abziehbar, § 4 Abs. 5b EStG).

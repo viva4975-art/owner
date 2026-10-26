@@ -620,7 +620,13 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
       <InvoiceEditor
         id={id}
         inv={inv}
-        lines={(data?.lines ?? []).map(toEditorLine)}
+        lines={(data?.lines ?? []).map((l) => {
+          // Positionen ohne eigenen Zeitraum zeigen den der Rechnung (wird nur noch an den Positionen eingegeben)
+          const e = toEditorLine(l);
+          if (e.lps || !inv.period_start) return e;
+          const end = inv.period_end && inv.period_end !== inv.period_start ? inv.period_end : '';
+          return { ...e, lps: inv.period_start, lpe: end };
+        })}
         customers={customers.filter((x) => x.active)}
         sites={sites}
         services={services}
@@ -660,6 +666,30 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     if (!['invoice', 'partial', 'final'].includes(kind)) throw new BusinessError('Ungültige Rechnungsart');
     const lines = parseLines(body, { allowNegative: kind === 'invoice' });
     if (!lines.length) throw new BusinessError('Bitte mindestens eine Position erfassen');
+    // Leistungszeitraum nur an den Positionen eingeben (Ahmed 26.10.): leere Position = wie die darüber (bzw. die erste
+    // mit Datum), Zeitraum der Rechnung = frühester Beginn bis spätestes Ende der Positionen.
+    let periodStart = str(body, 'period_start');
+    let periodEnd = str(body, 'period_end');
+    if (!('period_start' in body)) {
+      let prev = lines.find((l) => l.periodStart);
+      for (const l of lines) {
+        if (l.periodStart) prev = l;
+        else if (prev) Object.assign(l, { periodStart: prev.periodStart, periodEnd: prev.periodEnd });
+      }
+      const dated = lines.filter((l) => l.periodStart);
+      if (dated.length) {
+        periodStart = dated.map((l) => l.periodStart!).sort()[0]!;
+        periodEnd = dated
+          .map((l) => l.periodEnd ?? l.periodStart!)
+          .sort()
+          .at(-1)!;
+      } else {
+        const [cur] = await sql<{ s: string | null; e: string | null }[]>`
+          select period_start::text as s, period_end::text as e from app.invoices where id = ${id}`;
+        periodStart = cur?.s ?? null;
+        periodEnd = cur?.e ?? null;
+      }
+    }
     const prepayments = body.prepayments;
     const ptd = str(body, 'payment_terms_days');
     await saveDraft(
@@ -669,8 +699,8 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         customerId: str(body, 'customer_id') ?? '',
         siteId: str(body, 'site_id'),
         kind,
-        periodStart: str(body, 'period_start'),
-        periodEnd: str(body, 'period_end'),
+        periodStart,
+        periodEnd,
         orderReference: str(body, 'order_reference'),
         introText: str(body, 'intro_text'),
         closingText: str(body, 'closing_text'),

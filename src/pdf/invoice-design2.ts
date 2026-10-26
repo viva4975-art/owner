@@ -310,9 +310,8 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
   const docPeriod = periodText(doc.periodStart, doc.periodEnd);
   const linePeriod = (i: number) =>
     parsed[i]!.period ?? periodText(doc.lines[i]!.periodStart, doc.lines[i]!.periodEnd);
-  // Leistungszeitraum steht nur an den Positionen (Ahmed 26.10.: „nicht oben und bei der Leistung“; § 14 Abs. 4 Nr. 6
-  // UStG ist damit erfüllt); Positionen ohne eigenen Zeitraum zeigen den der Rechnung.
-  const headPeriod: string | null = null;
+  const headPeriod =
+    docPeriod && doc.lines.every((_, i) => !linePeriod(i) || linePeriod(i) === docPeriod) ? docPeriod : null;
   const keys = [...new Set(parsed.map((x) => x.place?.key ?? ''))];
   const grouped = sitePlaces && keys.length > 1;
   // Lose (Angebot): Gruppen statt Objekte
@@ -581,7 +580,7 @@ export async function renderInvoiceDesign2(doc: InvoiceDocument, o: Design2Optio
     }
     const lp = linePeriod(i);
     const detail = sitePlaces
-      ? [pd.rest, (lp ?? docPeriod) ? `Leistungszeitraum: ${lp ?? docPeriod}` : null]
+      ? [pd.rest, lp && lp !== headPeriod ? `Leistungszeitraum: ${lp}` : null]
       : [
           l.detail ?? null,
           l.periodStart && !(l.detail ?? '').includes(formatDateDe(l.periodStart))

@@ -4229,7 +4229,9 @@ Testadresse.
   Protokoll (`kategorien_zusammengefasst`); Dateien unverändert. Pflichtunterlagen-Prüfung unverändert (Arbeitsvertrag
   zählt jetzt auch mit einer Vertragsänderung). Objektleitung sieht weiter Personalunterlagen, Unterweisung, Kleidung,
   Schlüssel – darin liegen jetzt auch frühere „Sonstiges“, Bescheinigungen, Führerscheinkontrollen, Einwilligungen.
-- 2026-10-26: **Leistungszeitraum nur an der Position** (Ahmed: „zweimal, oben und bei der Leistung“): Rechnungs-PDF,
-  Entwurfs- und Rechnungsbrief zeigen ihn nicht mehr im Kopf, sondern an jeder Position („Leistungszeitraum: …“; ohne
-  eigenen Zeitraum der der Rechnung). Pflichtangabe § 14 Abs. 4 Nr. 6 UStG damit weiter erfüllt; in der E-Rechnung bleibt
-  der Rechnungszeitraum (BG-14). Im Entwurf erscheint oben nur noch der Hinweis, wenn er fehlt. Archivierte PDFs bleiben.
+- 2026-10-26: **Leistungszeitraum nur einmal eingeben** (Ahmed: „im PDF oben ist ok, aber in der Eingabemaske nicht
+  doppelt eingeben“): Rechnungsentwurf ohne Felder „Leistungszeitraum von/bis“ im Kopf – nur noch „Leistung am/von – bis“
+  je Position (vorbelegt mit dem bisherigen Zeitraum der Rechnung). Leere Position = wie die darüber; Zeitraum der Rechnung
+  = frühester Beginn bis spätestes Ende der Positionen (beim Speichern, POST `/rechnungen/:id`), angezeigt als Text im
+  Kopf. Ohne Datum an allen Positionen bleibt der bisherige Zeitraum. PDF unverändert (Zeitraum oben, an Positionen nur
+  wenn abweichend).

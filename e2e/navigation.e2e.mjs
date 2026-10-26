@@ -38,7 +38,7 @@ await a.goto(B + '/neu?typ=rechnung&kunde=00000000-0000-4000-8000-000000000002')
 await a.selectOption('#objekt', { index: 1 });
 await a.waitForURL(/objekt=/);
 const editorUrl = a.url();
-await a.fill('#period_start', '2026-09-15');
+await a.locator('#lines tbody tr').first().locator('[name=lps]').fill('2026-09-15');
 await a.fill('#intro_text', 'Sonderreinigung nach Wasserschaden im Keller');
 const row = a.locator('#lines tbody tr').first();
 await row.locator('[name=desc]').evaluate((e, v) => (e.value = v), 'Trocknung und Reinigung');

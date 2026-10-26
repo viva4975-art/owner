@@ -217,7 +217,7 @@ const LineRowInputs: FC<{
       </textarea>
       {types && (
         <div class="ln-period">
-          <span class="small mut">Leistung am/von</span>
+          <span class="small mut">Leistung am/von *</span>
           <input type="date" name="lps" value={l?.lps ?? ''} aria-label="Leistungszeitraum von" />
           <span class="small mut">bis</span>
           <input type="date" name="lpe" value={l?.lpe ?? ''} aria-label="Leistungszeitraum bis" />
@@ -493,18 +493,17 @@ export const InvoiceEditor: FC<{
         <input type="hidden" name="kind" value={inv.kind ?? 'invoice'} />
         <div class="grid">
           <div>
-            <label for="period_start">Leistungszeitraum von *</label>
-            <input
-              id="period_start"
-              type="date"
-              name="period_start"
-              value={inv.period_start ?? ''}
-              required
-            />
-          </div>
-          <div>
-            <label for="period_end">bis (leer = ein Tag)</label>
-            <input id="period_end" type="date" name="period_end" value={inv.period_end ?? ''} />
+            <label>Leistungszeitraum</label>
+            <div class="small" style="padding-top:8px">
+              {inv.period_start ? (
+                `${dateDe(inv.period_start)} – ${dateDe(inv.period_end)}`
+              ) : (
+                <span class="tag err">fehlt</span>
+              )}
+              <div class="mut">
+                ergibt sich aus den Positionen („Leistung am/von“) – leer = wie die Position darüber
+              </div>
+            </div>
           </div>
           <div>
             <label for="order_reference">Referenznummer / Bestellnummer</label>

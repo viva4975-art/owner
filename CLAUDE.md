@@ -4190,3 +4190,10 @@ Testadresse.
   (`fallbackGroupId` in `effectiveBilling`); die Vorabprüfung schreibt die Gruppe in den Entwurf (gilt dann für
   Zahlungsziel/Skonto/Versand). Hat der Kunde mehrere Gruppen ohne „Standard“, bleibt es bei der Meldung → dem Objekt
   eine Gruppe zuordnen.
+- 2026-10-26: **„E-Rechnung ist ungültig“ ohne Grund** (Ahmed, Schad & Nebauer nach dem Gruppen-Rückfall): Die Meldung
+  listete nur Prüfmeldungen mit Fehlercode – lehnt KoSIT ab, ohne einen Code zu nennen (z. B. kein Prüfszenario gegriffen,
+  Verarbeitungsfehler), blieb sie leer. Jetzt je Syntax (XRechnung UBL / CII) die Fehler bzw. der Grund aus dem Prüfbericht
+  (`rejectReason` in `src/einvoice/kosit.ts`: Szenario, Verarbeitungsfehler, Bewertungstext, Warnungen; sonst Hinweis auf
+  „KoSIT-Prüfung“ am Entwurf). Lokal besteht eine gleich aufgebaute Rechnung (ohne Leitweg-ID, E-Mails in Gruppe
+  „Standard“) KoSIT – Ursache liegt in den Server-Daten. **Ahmed: nach dem Update erneut fertigstellen und die neue
+  Meldung schicken.** Test `kosit-reason.test.ts`.

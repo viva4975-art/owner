@@ -63,3 +63,32 @@ export function parseMessages(reportXml: string): ValidationMessage[] {
   }
   return out;
 }
+
+/**
+ * Grund der Ablehnung in Worten, wenn der Prüfbericht keine Fehlermeldung mit Code enthält (z. B. kein Prüfszenario
+ * gegriffen, Verarbeitungsfehler). Liefert den Bewertungstext aus der Erklärung bzw. die Warnungen.
+ */
+export function rejectReason(r: Pick<ValidationResult, 'reportXml' | 'messages'>): string {
+  const strip = (h: string) =>
+    decode(h.replace(/<[^>]+>/g, ' '))
+      .replace(/\s+/g, ' ')
+      .trim();
+  const parts: string[] = [];
+  if (/noScenarioMatched|kein Pruefszenario|keinem zulässigen Dokumenttyp/i.test(r.reportXml))
+    parts.push('Dokumenttyp nicht erkannt (kein Prüfszenario hat gegriffen)');
+  for (const m of r.reportXml.matchAll(
+    /<(?:rep:)?processingError\b[^>]*>([\s\S]*?)<\/(?:rep:)?processingError>/g,
+  ))
+    parts.push(`Verarbeitungsfehler: ${strip(m[1] ?? '')}`);
+  const explanation = /<rep:explanation\b[^>]*>([\s\S]*?)<\/rep:explanation>/.exec(r.reportXml)?.[1] ?? '';
+  for (const m of explanation.matchAll(/<p class="[^"]*error[^"]*">([\s\S]*?)<\/p>/g)) {
+    const t = strip(m[1] ?? '');
+    if (t) parts.push(t);
+  }
+  for (const w of r.messages.filter((m) => m.level === 'warning').slice(0, 5))
+    parts.push(`${w.code}: ${w.text}`);
+  return (
+    [...new Set(parts)].join('\n') ||
+    'Der Prüfbericht nennt keinen Grund – bitte „KoSIT-Prüfung“ am Entwurf öffnen.'
+  );
+}

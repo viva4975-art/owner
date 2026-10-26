@@ -7,7 +7,7 @@ import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import { type InvoiceDocument, KIND_TITLES } from '../domain/invoice/types.js';
 import { formatEuro } from '../domain/money/money.js';
 import { generateCii, generateXRechnungUbl, generateZugferd } from '../einvoice/generate.js';
-import { type ValidationResult, validateWithKosit } from '../einvoice/kosit.js';
+import { rejectReason, type ValidationResult, validateWithKosit } from '../einvoice/kosit.js';
 import { MAILER_MISSING, type Mailer, notTransmitted, resolveRecipients } from '../mail/mailer.js';
 import { composeMail, loadSignature } from '../mail/compose.js';
 import { renderInvoicePdf } from '../pdf/invoice-pdf.js';
@@ -149,10 +149,18 @@ export async function issueInvoice(deps: Deps, id: string, actor: string) {
     if (data.invoice.work_report_required) await requireSignedWorkReport(deps, id, actor);
     const pre = await preflight(deps, id);
     if (!pre.valid) {
-      const msgs = [...pre.ubl.messages, ...pre.cii.messages].filter((m) => m.level === 'error');
-      throw new BusinessError(
-        `E-Rechnung ist ungültig – nicht ausgestellt:\n${msgs.map((m) => `${m.code}: ${m.text}`).join('\n')}`,
-      );
+      const lines: string[] = [];
+      for (const [name, r] of [
+        ['XRechnung UBL', pre.ubl],
+        ['XRechnung CII', pre.cii],
+      ] as const) {
+        if (r.valid) continue;
+        const errs = r.messages.filter((m) => m.level === 'error');
+        lines.push(
+          `${name}: ${errs.length ? [...new Set(errs.map((m) => `${m.code}: ${m.text}`))].join('\n') : rejectReason(r)}`,
+        );
+      }
+      throw new BusinessError(`E-Rechnung ist ungültig – nicht ausgestellt:\n${lines.join('\n')}`);
     }
     await issue(deps.sql, id, actor);
   }

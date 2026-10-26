@@ -275,20 +275,17 @@ export function nameFromFile(file: string): { code: string | null; name: string 
 export function categoryFor(code: string | null, name: string, audience: Audience): string {
   const c = `${code ?? ''} ${name}`.toUpperCase();
   if (audience === 'mitarbeiter') {
-    if (/(^| )VD-AV|ARBEITSVERTRAG/.test(c) && !/ZUSATZ|NACHTRAG/.test(c)) return 'Arbeitsvertrag';
-    if (/ZV-|ZUSATZVEREINBARUNG|NACHTRAG|VERLÄNGERUNG|VERLAENGERUNG|BEFRISTUNG/.test(c))
-      return 'Vertragsänderung';
-    if (/AUF-|AUFHEBUNG|KUE-|KÜNDIGUNG/.test(c)) return 'Beendigung';
-    if (/ABMAHNUNG/.test(c)) return 'Abmahnung';
+    // Personalakte hat nur noch wenige Kategorien (employeeDocCategory): Vertrag & Änderungen, Personalunterlagen …
     if (/UW-|UNTERWEISUNG|BELEHRUNG/.test(c)) return 'Unterweisung';
     if (/NU-KL|ARBEITSKLEIDUNG/.test(c)) return 'Arbeitskleidung';
     if (/SP-|SCHLÜSSEL/.test(c)) return 'Schlüssel';
-    if (/NU-|ÜBERLASSUNG|DIENSTFAHRZEUG|TANKKARTE|BETRIEBSEIGENTUM/.test(c)) return 'Nutzungsüberlassung';
-    if (/FÜHRERSCHEIN/.test(c)) return 'Führerscheinkontrolle';
-    if (/FB-44|EINWILLIGUNG/.test(c)) return 'Einwilligung';
-    if (/BB-|BESCHÄFTIGUNGSBESTÄTIGUNG/.test(c)) return 'Bescheinigung';
-    if (/PS-|PERSONALSTAMM/.test(c)) return 'Personalunterlagen';
-    return 'Sonstiges';
+    if (
+      /(^| )VD-AV|ARBEITSVERTRAG|ZV-|ZUSATZVEREINBARUNG|NACHTRAG|VERLÄNGERUNG|VERLAENGERUNG|BEFRISTUNG|AUF-|AUFHEBUNG|KUE-|KÜNDIGUNG|ABMAHNUNG|NU-|ÜBERLASSUNG|DIENSTFAHRZEUG|TANKKARTE|BETRIEBSEIGENTUM/.test(
+        c,
+      )
+    )
+      return 'Arbeitsvertrag';
+    return 'Personalunterlagen';
   }
   if (audience === 'objekt') {
     if (/ÜBERNAHME|BEGEHUNG/.test(c)) return 'Objektübernahme';

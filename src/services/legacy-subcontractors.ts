@@ -482,7 +482,7 @@ export async function importLegacyClothing(
         data: bytes,
         // ohne Personalnummer-Treffer in den Dokumenteneingang (dort einer Personalakte zuordnen)
         link: e ? { type: 'employee', id: e.id } : { type: 'inbox', id: inboxId },
-        category: 'Arbeitskleidung (alte App)',
+        category: 'Arbeitskleidung',
       },
       actor,
     );

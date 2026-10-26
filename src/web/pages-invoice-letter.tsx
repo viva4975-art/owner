@@ -155,8 +155,8 @@ export const DraftLetter: FC<{
   else if (grouped) facts.push(['Leistungsort', `${keys.length} Objekte (siehe Positionen)`]);
   if (doc.original)
     facts.push(['Zu Rechnung', `${doc.original.number} vom ${formatDateDe(doc.original.issueDate)}`]);
-  if (period) facts.push(['Leistungszeitraum', period]);
-  else facts.push(['Leistungszeitraum', <span class="tag err">fehlt – bitte eintragen</span>]);
+  // Leistungszeitraum steht an jeder Position (Ahmed 26.10.: „nur bei der Leistung“); oben nur, wenn er fehlt
+  if (!period) facts.push(['Leistungszeitraum', <span class="tag err">fehlt – bitte eintragen</span>]);
   if (b.leitwegId) facts.push(['Leitweg-ID', b.leitwegId]);
   if (b.supplierNo) facts.push(['Unsere Lieferantennr.', b.supplierNo]);
   if (doc.orderReference) facts.push(['Bestellnummer', doc.orderReference]);
@@ -306,7 +306,7 @@ export const DraftLetter: FC<{
                       (l.periodStart
                         ? `${formatDateDe(l.periodStart)}${l.periodEnd && l.periodEnd !== l.periodStart ? ` bis ${formatDateDe(l.periodEnd)}` : ''}`
                         : null);
-                    const det = [p.rest, lp && lp !== period ? `Leistungszeitraum: ${lp}` : null]
+                    const det = [p.rest, (lp ?? period) ? `Leistungszeitraum: ${lp ?? period}` : null]
                       .filter(Boolean)
                       .join('\n');
                     return (
@@ -752,7 +752,6 @@ export const IssuedLetter: FC<{
       <b>{`${b.site.name} (${b.site.siteNo})${b.site.street ? ` · ${b.site.street}, ${b.site.postalCode ?? ''} ${b.site.city ?? ''}` : ''}`}</b>,
     ]);
   else if (grouped) facts.push(['Leistungsort', `${keys.length} Objekte (siehe Positionen)`]);
-  if (period) facts.push(['Leistungszeitraum', period]);
   if (b.leitwegId) facts.push(['Leitweg-ID', b.leitwegId]);
   if (doc.orderReference) facts.push(['Bestellnummer', doc.orderReference]);
   if (doc.customerReference) facts.push(['Ihre Referenz', doc.customerReference]);
@@ -874,7 +873,9 @@ export const IssuedLetter: FC<{
                       (l.periodStart
                         ? `${formatDateDe(l.periodStart)}${l.periodEnd && l.periodEnd !== l.periodStart ? ` bis ${formatDateDe(l.periodEnd)}` : ''}`
                         : null);
-                    const det = [x.rest, lp && lp !== period ? lp : null].filter(Boolean).join('\n');
+                    const det = [x.rest, (lp ?? period) ? `Leistungszeitraum: ${lp ?? period}` : null]
+                      .filter(Boolean)
+                      .join('\n');
                     return (
                       <>
                         {head && (

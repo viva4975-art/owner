@@ -4220,3 +4220,16 @@ Testadresse.
   „KoSIT-Prüfung“) erweitert jetzt den Leistungszeitraum des Entwurfs auf alle Positionen (frühester Beginn, spätestes
   Ende) – PDF und E-Rechnung zeigen denselben Zeitraum (Pflichtangabe § 14 Abs. 4 Nr. 6 UStG). Test in
   `runde23-invoice.db.test.ts`.
+- 2026-10-26: **Personalakte: weniger Kategorien** (Ahmed: „zu viele, zusammenfassen“): nur noch **Arbeitsvertrag &
+  Änderungen** (Vertrag, Zusatzvereinbarung/Nachtrag, Nutzungsüberlassung, Abmahnung, Kündigung/Aufhebung, freie Briefe an
+  Mitarbeitende), **Personalunterlagen** (alles Persönliche: Personalbogen, Ausweis, Aufenthalt, Bescheinigungen,
+  Führerschein, Einwilligungen, Sonstiges), **Lohn**, **Unterweisung**, **Arbeitskleidung**, **Schlüssel**
+  (`DOC_CATEGORIES`, Anzeige über `docCategoryLabel`, alte Werte über `employeeDocCategory`). Migration
+  `20261225000001` stellt Bestand (`file_links` der Mitarbeitenden, Word- und Briefvorlagen) um, alter Wert je Datei im
+  Protokoll (`kategorien_zusammengefasst`); Dateien unverändert. Pflichtunterlagen-Prüfung unverändert (Arbeitsvertrag
+  zählt jetzt auch mit einer Vertragsänderung). Objektleitung sieht weiter Personalunterlagen, Unterweisung, Kleidung,
+  Schlüssel – darin liegen jetzt auch frühere „Sonstiges“, Bescheinigungen, Führerscheinkontrollen, Einwilligungen.
+- 2026-10-26: **Leistungszeitraum nur an der Position** (Ahmed: „zweimal, oben und bei der Leistung“): Rechnungs-PDF,
+  Entwurfs- und Rechnungsbrief zeigen ihn nicht mehr im Kopf, sondern an jeder Position („Leistungszeitraum: …“; ohne
+  eigenen Zeitraum der der Rechnung). Pflichtangabe § 14 Abs. 4 Nr. 6 UStG damit weiter erfüllt; in der E-Rechnung bleibt
+  der Rechnungszeitraum (BG-14). Im Entwurf erscheint oben nur noch der Hinweis, wenn er fehlt. Archivierte PDFs bleiben.

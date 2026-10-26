@@ -680,37 +680,52 @@ export async function effectiveWage(sql: Sql, employeeId: string): Promise<bigin
 // Dokumentvorlagen (Serienbrief, „Neu aus Vorlage“)
 // ---------------------------------------------------------------------------
 
+/**
+ * Kategorien der Personalakte (Ahmed 26.10.: „zu viele, zusammenfassen“): Vertrag mit allen Änderungen, Personalunterlagen
+ * = alles Persönliche, Lohn, dazu die drei Pflicht-Nachweise Unterweisung, Kleidung, Schlüssel. Alte Kategorien werden
+ * über `employeeDocCategory` zugeordnet (Bestand per Migration 20261225000001 umgestellt).
+ */
 export const DOC_CATEGORIES = [
   'Arbeitsvertrag',
-  'Vertragsänderung',
+  'Personalunterlagen',
+  'Lohnabrechnung',
   'Unterweisung',
   'Arbeitskleidung',
   'Schlüssel',
-  'Aufenthalts-/Arbeitserlaubnis',
-  'Personalunterlagen',
-  'Bescheinigung',
-  'Nutzungsüberlassung',
-  'Führerscheinkontrolle',
-  'Einwilligung',
-  'Abmahnung',
-  'Beendigung',
-  'Lohnabrechnung',
   'Entwurf (aus Vorlage)',
-  'Sonstiges',
 ];
+
+/** Anzeige-Name je Kategorie (gespeichert bleibt der kurze Schlüssel). */
+export const DOC_CATEGORY_LABEL: Record<string, string> = {
+  Arbeitsvertrag: 'Arbeitsvertrag & Änderungen',
+  Lohnabrechnung: 'Lohn',
+};
+export const docCategoryLabel = (k: string) => DOC_CATEGORY_LABEL[k] ?? k;
+
+/** Kurzbeschreibung je Kategorie (Hochladen, Kopf der Gruppe). */
+export const DOC_CATEGORY_HINT: Record<string, string> = {
+  Arbeitsvertrag:
+    'Vertrag, Zusatzvereinbarungen, Nutzungsüberlassung, Abmahnung, Kündigung/Aufhebung, Briefe',
+  Personalunterlagen:
+    'Personalbogen, Ausweis, Aufenthalt, Bescheinigungen, Führerschein, Einwilligungen, Sonstiges',
+  Lohnabrechnung: 'Lohnabrechnungen',
+};
+
+const TO_CONTRACT = ['Vertragsänderung', 'Nutzungsüberlassung', 'Abmahnung', 'Beendigung', 'Schriftverkehr'];
+
+/** Alte bzw. fremde Kategorie → Kategorie der Personalakte. */
+export function employeeDocCategory(cat: string | null | undefined): string {
+  if (cat && DOC_CATEGORIES.includes(cat)) return cat;
+  if (cat && TO_CONTRACT.includes(cat)) return 'Arbeitsvertrag';
+  if (cat?.startsWith('Arbeitskleidung')) return 'Arbeitskleidung';
+  return 'Personalunterlagen';
+}
 
 /**
  * Unterlagen, die die Objektleitung bei ihren Leuten sehen und hochladen darf (Ahmed 19.10.: „Personalunterlagen“).
- * Nicht: Arbeitsvertrag, Vertragsänderung, Lohnabrechnung, Abmahnung, Beendigung (Lohn/Vertrag = nur Büro).
+ * Nicht: Arbeitsvertrag & Änderungen (inkl. Abmahnung, Beendigung) und Lohn – nur Büro.
  */
-export const TEAM_DOC_CATEGORIES = [
-  'Personalunterlagen',
-  'Unterweisung',
-  'Arbeitskleidung',
-  'Schlüssel',
-  'Aufenthalts-/Arbeitserlaubnis',
-  'Bescheinigung',
-];
+export const TEAM_DOC_CATEGORIES = ['Personalunterlagen', 'Unterweisung', 'Arbeitskleidung', 'Schlüssel'];
 
 /** Checkliste der Personalakte: Arbeitsvertrag Pflicht, die übrigen empfohlen (wie Pflichtdokumente am Objekt). */
 export const DOC_CHECKLIST: { name: string; required: boolean; hint: string }[] = [

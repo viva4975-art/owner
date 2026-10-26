@@ -255,7 +255,7 @@ export async function writeLetter(
       type: 'application/pdf',
       data: pdf,
       link,
-      category: link ? 'Schriftverkehr' : null,
+      category: link ? (link.type === 'employee' ? 'Arbeitsvertrag' : 'Schriftverkehr') : null,
     },
     p.actor,
   );

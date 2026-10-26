@@ -81,7 +81,7 @@ check(
 console.log('4. Dokument aus Vorlage');
 await p.goto(empUrl + '/dokumente');
 await p.selectOption('select[name=vorlage]', {
-  label: 'Bescheinigung über das Beschäftigungsverhältnis (Bescheinigung)',
+  label: 'Bescheinigung über das Beschäftigungsverhältnis (Personalunterlagen)',
 });
 await p.click('button:has-text("Erstellen und ablegen")');
 await p.waitForLoadState();
@@ -90,7 +90,7 @@ const href = await p.locator('a[href^="/dateien/"]:not([href^="/dateien/zip"])')
 const dl = await p.request.get(B + href);
 const pdfBytes = await dl.body();
 check('Download als PDF', dl.ok() && pdfBytes.subarray(0, 5).toString() === '%PDF-');
-check('unter Kategorie „Bescheinigung“', (await body(p)).includes('Bescheinigung'));
+check('unter Kategorie „Personalunterlagen“', (await body(p)).includes('Personalunterlagen'));
 await p.screenshot({ path: `${out}/p2-dokumente.png`, fullPage: true });
 
 console.log('5. Serienbrief');

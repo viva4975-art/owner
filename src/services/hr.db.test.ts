@@ -119,7 +119,7 @@ describe.skipIf(!available)('Personal wie Fortytools', () => {
     await createFromTemplate(deps, cfg, fid, TEMPLATE, amar, 'test');
     const files = await listFiles(sql, { type: 'employee', id: amar });
     expect(files).toHaveLength(1);
-    expect(files[0]!.category).toBe('Bescheinigung');
+    expect(files[0]!.category).toBe('Personalunterlagen');
     expect(files[0]!.sha256).toMatch(/^[0-9a-f]{64}$/);
     const pdf = await PDFDocument.load(await serialLetter(deps, TEMPLATE, [amar, lena]));
     expect(pdf.getPageCount()).toBe(2);

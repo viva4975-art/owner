@@ -48,9 +48,9 @@ describe('Word-Vorlagen: Platzhalter', () => {
     expect(nameFromFile('VD-KUE-FG-2026-V2_Kuendigung-fristgerecht.docx').name).toBe(
       'Kündigung fristgerecht',
     );
-    expect(categoryFor('VD-KUE-FG-2026-V2', 'Kündigung fristgerecht', 'mitarbeiter')).toBe('Beendigung');
-    expect(categoryFor('VD-ZV-Vorarbeiter-2026-V1', 'Vorarbeiter', 'mitarbeiter')).toBe('Vertragsänderung');
-    expect(categoryFor('VD-NU-TK-2026-V2', 'Tankkarte', 'mitarbeiter')).toBe('Nutzungsüberlassung');
+    expect(categoryFor('VD-KUE-FG-2026-V2', 'Kündigung fristgerecht', 'mitarbeiter')).toBe('Arbeitsvertrag');
+    expect(categoryFor('VD-ZV-Vorarbeiter-2026-V1', 'Vorarbeiter', 'mitarbeiter')).toBe('Arbeitsvertrag');
+    expect(categoryFor('VD-NU-TK-2026-V2', 'Tankkarte', 'mitarbeiter')).toBe('Arbeitsvertrag');
     expect(categoryFor('VD-AVMJ-2026-V2', 'Arbeitsvertrag Minijob', 'mitarbeiter')).toBe('Arbeitsvertrag');
   });
 });

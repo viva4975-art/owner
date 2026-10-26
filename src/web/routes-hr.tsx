@@ -5,6 +5,9 @@ import { todayBerlin } from '../domain/invoice/calc.js';
 import { parseEuro } from '../domain/money/money.js';
 import {
   DOC_CATEGORIES,
+  DOC_CATEGORY_HINT,
+  docCategoryLabel,
+  employeeDocCategory,
   DOC_CHECKLIST,
   DRAFT_CATEGORY,
   EMPLOYMENT_TYPES,
@@ -41,20 +44,11 @@ import { holidayName } from '../domain/time/holidays.js';
 import { uploadConfig, zipHref } from './routes-files.js';
 
 /** Personal wie Fortytools: Dokumente je Mitarbeiter, Vorlagen/Serienbrief, Lohnstufen, Einsatzkalender. */
-/** Kategorien, die oben in der Hochlade-Auswahl stehen; die übrigen unter „Weitere“. */
-const UPLOAD_MAIN = [
-  'Arbeitsvertrag',
-  'Vertragsänderung',
-  'Personalunterlagen',
-  'Unterweisung',
-  'Arbeitskleidung',
-  'Aufenthalts-/Arbeitserlaubnis',
-  'Bescheinigung',
-  'Sonstiges',
-];
+/** Kategorien zum Hochladen (ohne „Entwurf (aus Vorlage)“). */
+const UPLOAD_CATS = DOC_CATEGORIES.filter((k) => k !== DRAFT_CATEGORY);
 /** Kategorie wechseln ohne Neuladen (Seite springt nicht nach oben); Adresse merkt sie für das Neuladen nach dem Upload. */
 const CATEGORY_JS = `var c=this.closest('.card'),u=c&&c.querySelector('[data-uploader]'),k=this.value;
-if(u){u.dataset.category=k;var b=u.querySelector('.drop-zone b');if(b)b.textContent=k+' hierher ziehen';}
+if(u){u.dataset.category=k;var b=u.querySelector('.drop-zone b');if(b)b.textContent=this.options[this.selectedIndex].text+' hierher ziehen';}
 try{var q=new URLSearchParams(location.search);q.set('kategorie',k);history.replaceState(null,'',location.pathname+'?'+q+'#hochladen');}catch(e){}`;
 
 export function registerHrRoutes(ctx: Ctx) {
@@ -66,7 +60,7 @@ export function registerHrRoutes(ctx: Ctx) {
   app.get(`/personal/:id{${UUID}}/dokumente`, (c) =>
     shells.employee!(c, 'dokumente', async (e) => {
       const kat = c.req.query('kategorie');
-      const category = kat && DOC_CATEGORIES.includes(kat) ? kat : 'Personalunterlagen';
+      const category = kat ? employeeDocCategory(kat) : 'Personalunterlagen';
       const [files, templates, signs, wordTemplates] = await Promise.all([
         listFiles(sql, { type: 'employee', id: e.id }),
         listTemplates(sql),
@@ -75,17 +69,14 @@ export function registerHrRoutes(ctx: Ctx) {
       ]);
       // vorne nur aktuelle Unterlagen, ältere Fassungen im Archiv je Kategorie (abrufbar, nie gelöscht)
       const current = files.filter((f) => !f.archived_at);
-      const catOf = (f: (typeof files)[number]) =>
-        f.category && DOC_CATEGORIES.includes(f.category) ? f.category : f.category ? 'Weitere' : 'Sonstiges';
-      const groups = [...DOC_CATEGORIES, 'Weitere']
-        .map((k) => ({
-          k,
-          now: current.filter((f) => catOf(f) === k),
-          old: files
-            .filter((f) => f.archived_at && catOf(f) === k)
-            .sort((a, b) => +b.archived_at! - +a.archived_at!),
-        }))
-        .filter((g) => g.now.length || g.old.length);
+      const catOf = (f: (typeof files)[number]) => employeeDocCategory(f.category);
+      const groups = DOC_CATEGORIES.map((k) => ({
+        k,
+        now: current.filter((f) => catOf(f) === k),
+        old: files
+          .filter((f) => f.archived_at && catOf(f) === k)
+          .sort((a, b) => +b.archived_at! - +a.archived_at!),
+      })).filter((g) => g.now.length || g.old.length);
       const canDelete = ['admin', 'personal'].includes(c.get('user').role);
       const archForm = (fileId: string, aktion: 'archivieren' | 'zurueck', label: string) => (
         <form method="post" action={`/personal/${e.id}/dokumente/archiv`} style="display:inline">
@@ -192,7 +183,7 @@ export function registerHrRoutes(ctx: Ctx) {
                     open={docOpen(now.length) || (k === category && !!c.req.query('kategorie'))}
                   >
                     <summary>
-                      <b>{k}</b>{' '}
+                      <b>{docCategoryLabel(k)}</b>{' '}
                       <span class="mut small">
                         ({now.length}
                         {old.length ? ` + ${old.length} im Archiv` : ''})
@@ -306,22 +297,11 @@ export function registerHrRoutes(ctx: Ctx) {
                     onchange={CATEGORY_JS}
                     style="max-width:260px"
                   >
-                    <optgroup label="Häufig">
-                      {UPLOAD_MAIN.map((k) => (
-                        <option value={k} selected={k === category}>
-                          {k}
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Weitere">
-                      {DOC_CATEGORIES.filter((k) => !UPLOAD_MAIN.includes(k) && k !== DRAFT_CATEGORY).map(
-                        (k) => (
-                          <option value={k} selected={k === category}>
-                            {k}
-                          </option>
-                        ),
-                      )}
-                    </optgroup>
+                    {UPLOAD_CATS.map((k) => (
+                      <option value={k} selected={k === category} title={DOC_CATEGORY_HINT[k] ?? ''}>
+                        {docCategoryLabel(k)}
+                      </option>
+                    ))}
                   </select>
                   <noscript>
                     <button class="btn sm sec">Wählen</button>
@@ -331,7 +311,7 @@ export function registerHrRoutes(ctx: Ctx) {
                   link={{ type: 'employee', id: e.id }}
                   files={[]}
                   category={category}
-                  title={`${category} hierher ziehen`}
+                  title={`${docCategoryLabel(category)} hierher ziehen`}
                   hint="Kategorie oben wechseln – die Seite bleibt hier."
                   maxBytes={env.UPLOAD_MAX_BYTES}
                 />
@@ -422,13 +402,7 @@ export function registerHrRoutes(ctx: Ctx) {
     if (aktion === 'aeltere') {
       const k = str(b, 'kategorie') ?? '';
       const files = (await listFiles(sql, link)).filter((f) => !f.archived_at);
-      const inCat = files.filter((f) =>
-        k === 'Weitere'
-          ? f.category && !DOC_CATEGORIES.includes(f.category)
-          : k === 'Sonstiges'
-            ? (f.category ?? 'Sonstiges') === 'Sonstiges'
-            : f.category === k,
-      );
+      const inCat = files.filter((f) => employeeDocCategory(f.category) === k);
       // listFiles ist nach Fertigstellung absteigend sortiert → die erste ist die neueste
       for (const f of inCat.slice(1)) await archiveLink(sql, link, f.id, true, actor);
       return back(c, `/personal/${id}/dokumente`, {
@@ -952,9 +926,9 @@ export function registerHrRoutes(ctx: Ctx) {
             <input id="title" name="title" value={t?.title ?? ''} required />
             <label for="category">Kategorie</label>
             <select id="category" name="category">
-              {DOC_CATEGORIES.map((k) => (
-                <option value={k} selected={k === (t?.category ?? 'Sonstiges')}>
-                  {k}
+              {UPLOAD_CATS.map((k) => (
+                <option value={k} selected={k === employeeDocCategory(t?.category)}>
+                  {docCategoryLabel(k)}
                 </option>
               ))}
             </select>
@@ -992,10 +966,10 @@ export function registerHrRoutes(ctx: Ctx) {
 
   app.post(`/personal/vorlagen/:tid{${UUID}}`, async (c) => {
     const b = await c.req.parseBody({ all: true });
-    const cat = str(b, 'category') ?? 'Sonstiges';
+    const cat = employeeDocCategory(str(b, 'category'));
     await saveTemplate(sql, c.req.param('tid'), {
       title: str(b, 'title') ?? '',
-      category: DOC_CATEGORIES.includes(cat) ? cat : 'Sonstiges',
+      category: cat,
       body: typeof b.body === 'string' ? b.body : '',
       active: b.active === 'on',
       expectedVersion: typeof b.version === 'string' && b.version ? Number(b.version) : null,

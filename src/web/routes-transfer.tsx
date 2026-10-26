@@ -1,3 +1,4 @@
+import { employeeDocCategory } from '../services/employees.js';
 import { randomUUID } from 'node:crypto';
 import { unlinkFile } from '../services/uploads.js';
 import {
@@ -1796,7 +1797,8 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
     if (type === 'employee' && !canAccess(c.get('user').role, `/personal/${id}`)) {
       throw new BusinessError('Personalakten nur für Personal/Admin');
     }
-    await assignInboxFile(sql, c.req.param('id'), { type, id, category: str(b, 'category') }, c.get('actor'));
+    const category = type === 'employee' ? employeeDocCategory(str(b, 'category')) : str(b, 'category');
+    await assignInboxFile(sql, c.req.param('id'), { type, id, category }, c.get('actor'));
     return back(c, '/transfer/dokumenteneingang', { ok: `Zugeordnet (${INBOX_TARGETS[type]}).` });
   });
 }

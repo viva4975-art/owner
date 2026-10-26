@@ -63,6 +63,7 @@ export interface PlanSiteRow {
   site_name: string;
   customer_id: string;
   customer_name: string;
+  customer_no: string | null;
   manager_user_id: string | null;
   revenue: bigint;
   minutes: number;
@@ -154,11 +155,12 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
         name: string;
         customer_id: string;
         customer_name: string;
+        customer_no: string | null;
         manager_user_id: string | null;
         active: boolean;
       }[]
     >`
-      select s.id, s.site_no, s.name, s.customer_id, s.manager_user_id, s.active, c.name as customer_name
+      select s.id, s.site_no, s.name, s.customer_id, s.manager_user_id, s.active, c.name as customer_name, c.customer_no
         from app.sites s join app.customers c on c.id = s.customer_id order by s.site_no`,
     sql<
       {
@@ -228,6 +230,7 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
         site_name: s.name,
         customer_id: s.customer_id,
         customer_name: s.customer_name,
+        customer_no: s.customer_no,
         manager_user_id: s.manager_user_id,
         revenue: 0n,
         minutes: 0,

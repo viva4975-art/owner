@@ -45,7 +45,7 @@ describe.skipIf(!available)('Nachkalkulation aufschlüsseln', () => {
     const inv = randomUUID();
     await sql`insert into app.incoming_invoices (id, supplier_id, invoice_no, invoice_date, due_date, net_cents, vat_cents, gross_cents, category, created_by)
               values (${inv}, ${sup}, 'B-1', '2026-09-15', '2026-10-15', 4200, 798, 4998, 'sonstiges', 't')`;
-    [{ id: cc }] = await sql<{ id: string }[]>`select id from app.cost_centers where number = '9000'`;
+    cc = (await sql<{ id: string }[]>`select id from app.cost_centers where number = '9000'`)[0]!.id;
     await sql`delete from app.cost_allocations where incoming_invoice_id = ${inv}`;
     await sql`insert into app.cost_allocations (id, incoming_invoice_id, site_id, cost_center_id, month, net_cents, created_by)
               values (${randomUUID()}, ${inv}, null, ${cc}, '2026-09-01', 4200, 't')`;

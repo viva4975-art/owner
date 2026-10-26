@@ -4261,3 +4261,12 @@ Testadresse.
   Geschäftsführer in den Firmendaten steht, wird wie der Tag „Geschäftsführer“ behandelt – Nachkalkulation ohne
   Lohnzuschlag, Plan-Kalkulation ohne Arbeitgeberkosten (`isManagingDirector` mit Name). Sein Lohn/Gehalt selbst zählt
   weiter; soll er gar nicht in die Kalkulation, Vergütung/Einsätze entsprechend pflegen.
+- 2026-10-26: **Nach-/Plan-Kalkulation: Filter und Kacheln** (Ahmed):
+  - Kundenauswahl wie die Objektauswahl: mit Suche und „Kundennr. · Name“ (`customer_no` in `SiteCosting`/`PlanSiteRow`).
+  - **Mehrere Objekte wählbar** (`SiteMulti`): Auswahl mit Suche fügt Chips hinzu (nur Objekte des gewählten Kunden),
+    je Chip ein Feld `objekt` → Liste, Summen und PDF-Export für genau diese Objekte; Filterzeile im PDF nennt alle.
+  - Nachkalkulation mit Kacheln wie die Plan-Kalkulation: Erlös · Lohn inkl. Zuschlag · Nachunternehmer + Material
+    (Geräte/Sonstiges darunter) · Deckungsbeitrag Objekte, dazu Allgemeine Kostenstellen und Ergebnis.
+  - **Nachkalkulation erst ab Oktober 2026** (`COSTING_FROM`; Ahmed: „vorher hat vieles nicht gestimmt“): ältere Monate
+    nicht wählbar, Adressen mit früherem von/bis werden auf 10/2026 gesetzt, Schnellwahl ohne Vorjahr/Letzter Monat bis
+    es sie gibt. Daten bleiben unverändert. Die Plan-Kalkulation nimmt für den Material-Ø weiter die 3 Vormonate.

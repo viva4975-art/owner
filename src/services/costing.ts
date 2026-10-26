@@ -22,6 +22,7 @@ export interface SiteCosting {
   site_name: string;
   customer_id: string;
   customer_name: string;
+  customer_no: string | null;
   manager_user_id: string | null;
   revenue: bigint;
   planned_minutes: number;
@@ -253,11 +254,12 @@ export async function siteCosting(
         name: string;
         customer_id: string;
         customer_name: string;
+        customer_no: string | null;
         manager_user_id: string | null;
       }[]
     >`
       select s.id, s.site_no, s.name, s.street, s.city, s.customer_id, s.manager_user_id,
-             c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id
+             c.name as customer_name, c.customer_no from app.sites s join app.customers c on c.id = s.customer_id
        where ${
          siteId
            ? sql`s.id = ${siteId}`
@@ -357,6 +359,7 @@ export async function siteCosting(
       site_name: s.name,
       customer_id: s.customer_id,
       customer_name: s.customer_name,
+      customer_no: s.customer_no,
       manager_user_id: s.manager_user_id,
       revenue: rev,
       planned_minutes: shifts

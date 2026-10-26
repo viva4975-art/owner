@@ -98,6 +98,8 @@ import { Icon } from './icons.js';
 import { PageHead, Pager, type Tab, Tabs, dateDe, euro, anz } from './layout.js';
 
 const versionOf = (v: unknown) => (typeof v === 'string' && v !== '' ? Number(v) : null);
+/** Nachkalkulation erst ab der Umstellung (Ahmed 26.10.) */
+const COSTING_FROM = '2026-10';
 const isMonth = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}$/.test(v);
 const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const money = (v: string | null, label: string): Cents => {
@@ -155,14 +157,16 @@ const MonthSelect: FC<{
   autosubmit?: boolean;
   /** auch die nächsten 15 Monate (Plan-Kalkulation) */
   future?: boolean;
-}> = ({ id, name, value, label, disabled, autosubmit, future }) => {
+  /** frühester wählbarer Monat (JJJJ-MM) */
+  min?: string;
+}> = ({ id, name, value, label, disabled, autosubmit, future, min }) => {
   const now = todayBerlin().slice(0, 7);
   const add = (m: string, n: number) => {
     const d = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1 + n, 1));
     return d.toISOString().slice(0, 7);
   };
   const months: string[] = [];
-  for (let i = future ? 15 : 3; i >= -24; i--) months.push(add(now, i));
+  for (let i = future ? 15 : 3; i >= -24; i--) if (!min || add(now, i) >= min) months.push(add(now, i));
   if (value && !months.includes(value)) months.push(value);
   return (
     <select
@@ -371,19 +375,52 @@ const calcPeriodLabel = (von: string, bis: string) => {
 type Manager = { user_id: string; name: string };
 const filterLabel = (
   customer: string | undefined,
-  site: { site_no: string; site_name: string } | undefined,
+  sites: { site_no: string; site_name: string }[],
   ol: string,
   managers: Manager[],
   loss: boolean,
 ) =>
   [
     customer && `Kunde: ${customer}`,
-    site && `Objekt: ${site.site_no} ${site.site_name}`,
+    sites.length > 0 &&
+      `Objekt${sites.length > 1 ? 'e' : ''}: ${sites.map((x) => `${x.site_no} ${x.site_name}`).join(', ')}`,
     ol && `Objektleitung: ${ol === 'ohne' ? 'ohne' : (managers.find((m) => m.user_id === ol)?.name ?? '')}`,
     loss && 'nur Verlust',
   ]
     .filter(Boolean)
     .join(' · ');
+/** Mehrere Objekte wählen (Ahmed 26.10.): Auswahl mit Suche fügt Chips hinzu, je Chip ein Feld „objekt“ */
+const SiteMulti = ({
+  sites,
+  chosen,
+}: {
+  sites: { site_id: string; site_no: string; site_name: string }[];
+  chosen: string[];
+}) => (
+  <div data-multi="objekt" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+    <span class="multi-chips" style="display:flex;gap:6px;flex-wrap:wrap">
+      {sites
+        .filter((x) => chosen.includes(x.site_id))
+        .map((x) => (
+          <span class="chip">
+            {x.site_no} · {x.site_name}
+            <button type="button" aria-label="entfernen">
+              ×
+            </button>
+            <input type="hidden" name="objekt" value={x.site_id} />
+          </span>
+        ))}
+    </span>
+    <select aria-label="Objekt" style="max-width:260px">
+      <option value="">{chosen.length ? '+ weiteres Objekt …' : 'Alle Objekte (mehrere wählbar)'}</option>
+      {sites.map((x) => (
+        <option value={x.site_id}>
+          {x.site_no} · {x.site_name}
+        </option>
+      ))}
+    </select>
+  </div>
+);
 const OlSelect = ({ managers, value }: { managers: Manager[]; value: string }) => (
   <select name="ol" aria-label="Objektleitung" style="max-width:200px" data-nosearch>
     <option value="">Alle Objektleitungen</option>
@@ -398,13 +435,11 @@ const OlSelect = ({ managers, value }: { managers: Manager[]; value: string }) =
   </select>
 );
 /** PDF mit den aktuellen Filtern, wahlweise ohne Beträge (nur Stunden und Marge) */
-const PdfExport = ({ action, params }: { action: string; params: Record<string, string> }) => (
+const PdfExport = ({ action, params }: { action: string; params: Record<string, string | string[]> }) => (
   <form method="get" action={action} target="_blank" class="actions" style="margin:-4px 0 12px" data-noback>
-    {Object.entries(params)
-      .filter(([, v]) => v)
-      .map(([k, v]) => (
-        <input type="hidden" name={k} value={v} />
-      ))}
+    {Object.entries(params).flatMap(([k, v]) =>
+      (Array.isArray(v) ? v : [v]).filter(Boolean).map((x) => <input type="hidden" name={k} value={x} />),
+    )}
     <input type="hidden" name="pdf" value="1" />
     <button class="btn sec sm">PDF exportieren</button>
     <label class="small" style="margin:0;display:flex;gap:4px;align-items:center">
@@ -3434,7 +3469,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     const bisQ = isMonth(qm) ? qm! : isMonth(c.req.query('bis')) ? c.req.query('bis')! : von;
     const bis = bisQ < von ? von : bisQ > `${Number(von.slice(0, 4)) + 1}-12` ? von : bisQ;
     const fKunde = c.req.query('kunde') ?? '';
-    const fObjekt = c.req.query('objekt') ?? '';
+    const fObjekte = (c.req.queries('objekt') ?? []).filter((x) => /^[0-9a-f-]{36}$/i.test(x));
     const fOl = c.req.query('ol') ?? '';
     const fVerlust = c.req.query('verlust') === '1';
     const [plan, acct] = await Promise.all([
@@ -3445,7 +3480,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     const rows = all.filter(
       (r) =>
         (!fKunde || r.customer_id === fKunde) &&
-        (!fObjekt || r.site_id === fObjekt) &&
+        (!fObjekte.length || fObjekte.includes(r.site_id)) &&
         (!fOl || (fOl === 'ohne' ? !r.manager_user_id : r.manager_user_id === fOl)) &&
         (!fVerlust || r.margin < 0n),
     );
@@ -3453,22 +3488,31 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     if (c.req.query('pdf') === '1') {
       const filter = filterLabel(
         all.find((r) => r.customer_id === fKunde)?.customer_name,
-        all.find((r) => r.site_id === fObjekt),
+        all.filter((r) => fObjekte.includes(r.site_id)),
         fOl,
         managers,
         fVerlust,
       );
-      const pdf = await planCostingPdf(rows, fKunde || fObjekt || fOl || fVerlust ? null : employees, {
-        title: 'Plan-Kalkulation (Soll)',
-        period: calcPeriodLabel(von, bis),
-        filter,
-        redact: c.req.query('schwaerzen') === '1',
-      });
+      const pdf = await planCostingPdf(
+        rows,
+        fKunde || fObjekte.length || fOl || fVerlust ? null : employees,
+        {
+          title: 'Plan-Kalkulation (Soll)',
+          period: calcPeriodLabel(von, bis),
+          filter,
+          redact: c.req.query('schwaerzen') === '1',
+        },
+      );
       return pdfResponse(pdf, `Plankalkulation_${von}${bis !== von ? `_${bis}` : ''}.pdf`);
     }
-    const customers = [...new Map(all.map((r) => [r.customer_id, r.customer_name])).entries()].sort((a, b) =>
-      a[1].localeCompare(b[1], 'de'),
-    );
+    const customers = [
+      ...new Map(
+        all.map((r) => [
+          r.customer_id,
+          r.customer_no ? `${r.customer_no} · ${r.customer_name}` : r.customer_name,
+        ]),
+      ).entries(),
+    ].sort((a, b) => a[1].localeCompare(b[1], 'de'));
     const sum = (f: (r: (typeof rows)[number]) => bigint) => rows.reduce((a, r) => a + f(r), 0n);
     const rev = sum((r) => r.revenue);
     const margin = sum((r) => r.margin);
@@ -3477,7 +3521,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     const eur = (cents: bigint) => euro(cents);
     const keep = [
       fKunde && `kunde=${fKunde}`,
-      fObjekt && `objekt=${fObjekt}`,
+      ...fObjekte.map((o) => `objekt=${o}`),
       fOl && `ol=${fOl}`,
       fVerlust && 'verlust=1',
     ]
@@ -3531,7 +3575,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
           <span style="flex:0 0 200px;max-width:200px">
             <MonthSelect name="monat" value={von === bis ? von : ''} label="Monat" autosubmit future />
           </span>
-          <select name="kunde" aria-label="Kunde" style="max-width:240px" data-nosearch>
+          <select name="kunde" aria-label="Kunde" style="max-width:260px">
             <option value="">Alle Kunden</option>
             {customers.map(([id, name]) => (
               <option value={id} selected={id === fKunde}>
@@ -3539,16 +3583,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
               </option>
             ))}
           </select>
-          <select name="objekt" aria-label="Objekt" style="max-width:260px">
-            <option value="">Alle Objekte</option>
-            {all
-              .filter((r) => !fKunde || r.customer_id === fKunde)
-              .map((r) => (
-                <option value={r.site_id} selected={r.site_id === fObjekt}>
-                  {r.site_no} · {r.site_name}
-                </option>
-              ))}
-          </select>
+          <SiteMulti sites={all.filter((r) => !fKunde || r.customer_id === fKunde)} chosen={fObjekte} />
           <OlSelect managers={managers} value={fOl} />
           <label class="small" style="margin:0;display:flex;gap:4px;align-items:center">
             <input type="checkbox" name="verlust" value="1" checked={fVerlust} /> nur Verlust
@@ -3557,7 +3592,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         </form>
         <PdfExport
           action="/auswertungen/plankalkulation"
-          params={{ von, bis, kunde: fKunde, objekt: fObjekt, ol: fOl, verlust: fVerlust ? '1' : '' }}
+          params={{ von, bis, kunde: fKunde, objekt: fObjekte, ol: fOl, verlust: fVerlust ? '1' : '' }}
         />
         <div class="kpis">
           <div class="kpi">
@@ -3854,8 +3889,18 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     const last = addDays(`${curM}-01`, -1).slice(0, 7);
     // Monatsauswahl geht vor von/bis (Ahmed 22.10.: „Monatsauswahl und Knöpfe wie bei Rechnungen“)
     const qm = c.req.query('monat');
-    const von = isMonth(qm) ? qm! : isMonth(c.req.query('von')) ? c.req.query('von')! : last;
-    const bisQ = isMonth(qm) ? qm! : isMonth(c.req.query('bis')) ? c.req.query('bis')! : von;
+    // erst ab Oktober 2026 (Ahmed 26.10.: vorher stimmte vieles nicht – Umstellung/Import)
+    const atLeast = (m: string) => (m < COSTING_FROM ? COSTING_FROM : m);
+    const von = atLeast(
+      isMonth(qm)
+        ? qm!
+        : isMonth(c.req.query('von'))
+          ? c.req.query('von')!
+          : last < COSTING_FROM
+            ? curM
+            : last,
+    );
+    const bisQ = atLeast(isMonth(qm) ? qm! : isMonth(c.req.query('bis')) ? c.req.query('bis')! : von);
     const bis = bisQ < von ? von : bisQ;
     const [{ rows, general: allGeneral, overhead, targetBp }, report] = await Promise.all([
       siteCosting(sql, { from: von, to: bis }),
@@ -3863,10 +3908,11 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     ]);
     // Filter wie in den Statistiken (Ahmed 09.10.): Kunde, Objekt, Objektleitung, nur Verlust
     const fKunde = c.req.query('kunde') ?? '';
-    const fObjekt = c.req.query('objekt') ?? '';
+    const fObjekte = (c.req.queries('objekt') ?? []).filter((x) => /^[0-9a-f-]{36}$/i.test(x));
+    const fObjekt = fObjekte.length === 1 ? fObjekte[0]! : '';
     const fOl = c.req.query('ol') ?? '';
     const fVerlust = c.req.query('verlust') === '1';
-    const filtered = !!(fKunde || fObjekt || fOl);
+    const filtered = !!(fKunde || fObjekte.length || fOl);
     const withData = rows.filter(
       (r) =>
         r.revenue !== 0n ||
@@ -3876,14 +3922,19 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     const active = withData.filter(
       (r) =>
         (!fKunde || r.customer_id === fKunde) &&
-        (!fObjekt || r.site_id === fObjekt) &&
+        (!fObjekte.length || fObjekte.includes(r.site_id)) &&
         (!fOl || (fOl === 'ohne' ? !r.manager_user_id : r.manager_user_id === fOl)) &&
         (!fVerlust || r.margin < 0n),
     );
     const general = filtered || fVerlust ? [] : allGeneral;
-    const customers = [...new Map(withData.map((r) => [r.customer_id, r.customer_name])).entries()].sort(
-      (a, b) => a[1].localeCompare(b[1], 'de'),
-    );
+    const customers = [
+      ...new Map(
+        withData.map((r) => [
+          r.customer_id,
+          r.customer_no ? `${r.customer_no} · ${r.customer_name}` : r.customer_name,
+        ]),
+      ).entries(),
+    ].sort((a, b) => a[1].localeCompare(b[1], 'de'));
     const managers = await managersOf(withData.map((r) => r.manager_user_id));
     if (c.req.query('pdf') === '1') {
       const redact = c.req.query('schwaerzen') === '1';
@@ -3892,7 +3943,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         period: calcPeriodLabel(von, bis),
         filter: filterLabel(
           withData.find((r) => r.customer_id === fKunde)?.customer_name,
-          withData.find((r) => r.site_id === fObjekt),
+          withData.filter((r) => fObjekte.includes(r.site_id)),
           fOl,
           managers,
           fVerlust,
@@ -3923,7 +3974,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
           const y = Number(curM.slice(0, 4));
           const keep = [
             fKunde && `kunde=${fKunde}`,
-            fObjekt && `objekt=${fObjekt}`,
+            ...fObjekte.map((o) => `objekt=${o}`),
             fOl && `ol=${fOl}`,
             fVerlust && 'verlust=1',
           ]
@@ -3931,12 +3982,14 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
             .join('&');
           const href = (a: string, b: string) =>
             `/auswertungen/nachkalkulation?von=${a}&bis=${b}${keep ? `&${keep}` : ''}`;
-          const quick: [string, string, string][] = [
-            ['Dieser Monat', curM, curM],
-            ['Letzter Monat', last, last],
-            [String(y), `${y}-01`, curM],
-            [String(y - 1), `${y - 1}-01`, `${y - 1}-12`],
-          ];
+          const quick = (
+            [
+              ['Dieser Monat', curM, curM],
+              ['Letzter Monat', last, last],
+              [String(y), `${y}-01` < COSTING_FROM ? COSTING_FROM : `${y}-01`, curM],
+              [String(y - 1), `${y - 1}-01`, `${y - 1}-12`],
+            ] as [string, string, string][]
+          ).filter(([, , b]) => b >= COSTING_FROM);
           const label =
             von === bis
               ? `${MONTHS_DE[Number(von.slice(5, 7)) - 1]} ${von.slice(0, 4)}`
@@ -3958,9 +4011,15 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
           <input type="hidden" name="von" value={von} />
           <input type="hidden" name="bis" value={bis} />
           <span style="flex:0 0 200px;max-width:200px">
-            <MonthSelect name="monat" value={von === bis ? von : ''} label="Monat" autosubmit />
+            <MonthSelect
+              name="monat"
+              value={von === bis ? von : ''}
+              label="Monat"
+              autosubmit
+              min={COSTING_FROM}
+            />
           </span>
-          <select name="kunde" aria-label="Kunde" style="max-width:240px" data-nosearch>
+          <select name="kunde" aria-label="Kunde" style="max-width:260px">
             <option value="">Alle Kunden</option>
             {customers.map(([id, name]) => (
               <option value={id} selected={id === fKunde}>
@@ -3968,16 +4027,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
               </option>
             ))}
           </select>
-          <select name="objekt" aria-label="Objekt" style="max-width:260px">
-            <option value="">Alle Objekte</option>
-            {withData
-              .filter((r) => !fKunde || r.customer_id === fKunde)
-              .map((r) => (
-                <option value={r.site_id} selected={r.site_id === fObjekt}>
-                  {r.site_no} · {r.site_name}
-                </option>
-              ))}
-          </select>
+          <SiteMulti sites={withData.filter((r) => !fKunde || r.customer_id === fKunde)} chosen={fObjekte} />
           <select name="ol" aria-label="Objektleitung" style="max-width:200px" data-nosearch>
             <option value="">Alle Objektleitungen</option>
             {managers.map((m) => (
@@ -4007,13 +4057,28 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         </form>
         <PdfExport
           action="/auswertungen/nachkalkulation"
-          params={{ von, bis, kunde: fKunde, objekt: fObjekt, ol: fOl, verlust: fVerlust ? '1' : '' }}
+          params={{ von, bis, kunde: fKunde, objekt: fObjekte, ol: fOl, verlust: fVerlust ? '1' : '' }}
         />
         <div class="kpis">
           <div class="kpi">
             <div class="l">Erlös netto</div>
             <div class="v">{euro(totalRev)}</div>
-            <div class="s">{months > 1 ? `${months} Monate` : 'ein Monat'}</div>
+            <div class="s">{months > 1 ? `${months} Monate` : 'ein Monat'} · Rechnungen</div>
+          </div>
+          <div class="kpi">
+            <div class="l">Lohn inkl. Zuschlag</div>
+            <div class="v">{euro(sum((r) => r.labor))}</div>
+            <div class="s">Ist-Stunden × Stundenlohn</div>
+          </div>
+          <div class="kpi">
+            <div class="l">Nachunternehmer + Material</div>
+            <div class="v">{euro(sum((r) => r.subcontractor + r.material + r.equipment + r.other))}</div>
+            <div class="s">
+              NU {euro(sum((r) => r.subcontractor))} · Material {euro(sum((r) => r.material))}
+              {sum((r) => r.equipment + r.other) !== 0n && (
+                <> · Geräte/Sonst. {euro(sum((r) => r.equipment + r.other))}</>
+              )}
+            </div>
           </div>
           <div class="kpi">
             <div class="l">Deckungsbeitrag Objekte</div>

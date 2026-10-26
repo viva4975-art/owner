@@ -4155,3 +4155,9 @@ Testadresse.
   Anspruch + übernommenem Resturlaub − Verfall − genommen. Aus Fortytools bleiben nur Resturlaub Vorjahr und
   genommene/geplante Tage bis zum Stichtag (der FT-Anspruch dient nur noch zum Nachrechnen des dort verfallenen Rests).
   Texte am Urlaubskonto/Import angepasst. Test in `leave-import.db.test.ts`.
+- 2026-10-26: Urlaubsanspruch (Ahmed: „bei allen von 30 Tagen ausgehen und runterrechnen, wenn einer nur 2× wöchentlich
+  arbeitet oder mitten im Jahr begonnen hat“) – so rechnet die App: 30 × Arbeitstage/Woche ÷ 5 je Monat, anteilig ab
+  Eintritt/bis Austritt (z. B. 2× wöchentlich = 12, ab 01.10. mit 2× wöchentlich = 3). **Fund:** Monate ohne Einsatz
+  zählten als 5-Tage-Woche (Lücke im Plan, Schulferien → zu viel Urlaub). Jetzt wie der vorige geplante Monat; nur vor dem
+  ersten Einsatz überhaupt bleibt 5. Grenze § 5 BUrlG: bei Eintritt bis 30.06. (Wartezeit im Jahr erfüllt) bleibt der
+  gesetzliche Mindesturlaub (4 Wochen × Arbeitstage), nur der Mehrurlaub wird gekürzt. Test in `days-per-week.db.test.ts`.

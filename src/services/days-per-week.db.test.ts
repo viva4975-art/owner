@@ -108,4 +108,20 @@ describe.skipIf(!available)('Arbeitstage pro Woche: Urlaub anteilig', () => {
     await sql`update app.employees set days_auto = false, days_per_week = 3 where id = ${fest}`;
     expect((await leaveBalance(sql, fest, 2025)).entitlement).toBe(18);
   });
+
+  it('Lücke ohne Einsatz zählt wie die Monate davor (2× wöchentlich), Eintritt mitten im Jahr anteilig', async () => {
+    const gap = randomUUID();
+    const mid = randomUUID();
+    await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, employment_type, weekly_hours)
+              values (${gap}, '9893', 'Mit', 'Luecke', '2024-01-01', 'teilzeit', 8),
+                     (${mid}, '9894', 'Mitte', 'Jahr', '2025-10-01', 'teilzeit', 8)`;
+    for (const wd of [2, 4]) {
+      await sql`insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes, valid_from, valid_until)
+                values (${randomUUID()}, ${gap}, ${DEMO.siteSchool}, ${wd}, '06:00', '10:00', 0, '2024-01-01', '2025-03-31'),
+                       (${randomUUID()}, ${gap}, ${DEMO.siteSchool}, ${wd}, '06:00', '10:00', 0, '2025-07-01', null),
+                       (${randomUUID()}, ${mid}, ${DEMO.siteSchool}, ${wd}, '06:00', '10:00', 0, '2025-10-01', null)`;
+    }
+    expect((await leaveBalance(sql, gap, 2025)).entitlement).toBe(12); // 30 × 2/5, auch April–Juni ohne Einsatz
+    expect((await leaveBalance(sql, mid, 2025)).entitlement).toBe(3); // 30 × 2/5 × 3/12
+  });
 });

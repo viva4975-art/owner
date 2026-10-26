@@ -160,7 +160,7 @@ export async function plannedDaysPerWeek(sql: Sql | Tx, employeeId: string, from
 
 /**
  * Arbeitstage je Abschnitt für den Urlaub: von Hand in den Stammdaten gesetzt (`days_auto = false`) → Verlauf wie
- * bisher; sonst je Kalendermonat aus der Einsatzplanung (Monat ohne Einsatz = 5-Tage-Woche).
+ * bisher; sonst je Kalendermonat aus der Einsatzplanung (Monat ohne Einsatz = wie der vorige geplante Monat, vor dem ersten Einsatz 5).
  */
 export async function leaveDaysPeriods(sql: Sql | Tx, employeeId: string, from: string, to: string) {
   if (from > to) return [];
@@ -168,19 +168,30 @@ export async function leaveDaysPeriods(sql: Sql | Tx, employeeId: string, from: 
     { days_auto: boolean }[]
   >`select days_auto from app.employees where id = ${employeeId}`;
   if (e && !e.days_auto) return daysPeriods(sql, employeeId, from, to);
-  const out: { from: string; to: string; days: number }[] = [];
+  const months: { from: string; to: string; days: number | null }[] = [];
   let ms = `${from.slice(0, 7)}-01`;
   while (ms <= to) {
     const [y, m] = ms.split('-').map(Number) as [number, number];
     const next = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
     const me = addDays(next, -1);
-    const a = ms < from ? from : ms;
-    const b = me > to ? to : me;
-    const days = (await plannedDaysPerWeek(sql, employeeId, ms, me)) ?? 5;
-    const last = out[out.length - 1];
-    if (last && last.days === days && addDays(last.to, 1) === a) last.to = b;
-    else out.push({ from: a, to: b, days });
+    months.push({
+      from: ms < from ? from : ms,
+      to: me > to ? to : me,
+      days: await plannedDaysPerWeek(sql, employeeId, ms, me),
+    });
     ms = next;
+  }
+  // Monat ohne Einsatz nach einem geplanten Monat (Lücke, z. B. Schulferien, Plan pausiert): wie der letzte geplante
+  // Monat – sonst bekäme jemand mit 2× wöchentlich dort 5 Tage angerechnet (Ahmed 26.10.). Vor dem ersten Einsatz
+  // (z. B. Stundenreduzierung, Plan erst ab dann) bleibt die 5-Tage-Woche.
+  let last: number | null = null;
+  const out: { from: string; to: string; days: number }[] = [];
+  for (const x of months) {
+    if (x.days !== null) last = x.days;
+    const days = x.days ?? last ?? 5;
+    const prev = out[out.length - 1];
+    if (prev && prev.days === days && addDays(prev.to, 1) === x.from) prev.to = x.to;
+    else out.push({ from: x.from, to: x.to, days });
   }
   return out;
 }

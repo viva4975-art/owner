@@ -68,8 +68,8 @@ check('keine eigene Übergaben-Seite mehr (Umleitung)', listRes.status() === 302
 const firstEmp = (await (await p.request.get(B + '/personal')).text()).match(
   /href="\/personal\/([0-9a-f-]{36})"/,
 )[1];
-await p.goto(B + `/personal/${firstEmp}/uebergaben`);
-await p.click('a:has-text("+ Arbeitskleidung")');
+await p.goto(B + `/personal/${firstEmp}/uebergaben/kleidung`);
+await p.click('a:has-text("+ Arbeitskleidung ausgeben")');
 await p.waitForLoadState();
 const empName = (await p.locator('#employee option:checked').innerText()).trim();
 await p.locator('select[name=item_article]').first().selectOption(SHIRT);
@@ -97,8 +97,8 @@ check('Bestand −2', (await shirtStock()) === before + 3);
 console.log('2b. Unterschrift liegt schon vor (Papier) – nur hinterlegen');
 {
   const s0 = await shirtStock();
-  await p.goto(B + `/personal/${firstEmp}/uebergaben`);
-  await p.click('a:has-text("+ Arbeitskleidung")');
+  await p.goto(B + `/personal/${firstEmp}/uebergaben/kleidung`);
+  await p.click('a:has-text("+ Arbeitskleidung ausgeben")');
   await p.waitForLoadState();
   await p.locator('select[name=item_article]').first().selectOption(SHIRT);
   await p.locator('select[name=item_size]').first().selectOption('M');
@@ -144,7 +144,7 @@ console.log('4. Reiter am Mitarbeiter');
 await p.goto(hUrl);
 await p.click(`a:has-text("${empName.split(' (')[0].split(', ')[1]}")`);
 await p.waitForLoadState();
-check('Reiter Übergaben', p.url().endsWith('/uebergaben'));
+check('Reiter Übergaben', p.url().includes('/uebergaben'), p.url());
 check('Kleidung beim Mitarbeiter', (await p.locator('body').innerText()).includes('T-Shirt grau'));
 await p.screenshot({ path: `${out}/u2-mitarbeiter.png`, fullPage: true });
 

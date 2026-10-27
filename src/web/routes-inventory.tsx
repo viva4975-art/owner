@@ -49,7 +49,12 @@ const Check = ({ name, label, checked }: { name: string; label: string; checked:
 
 /** Rücksprung auf die Schlüssel-Seite eines Objekts (nur diese Adresse wird akzeptiert). */
 const siteBack = (v: unknown) =>
-  typeof v === 'string' && /^(\/objekte\/[0-9a-f-]{36}\/schluessel|\/schluessel)$/.test(v) ? v : null;
+  typeof v === 'string' &&
+  /^(\/objekte\/[0-9a-f-]{36}\/schluessel|\/schluessel|\/personal\/[0-9a-f-]{36}\/uebergaben\/schluessel)$/.test(
+    v,
+  )
+    ? v
+    : null;
 
 /** Schlüsselnummer folgt dem Objekt, solange sie nicht von Hand geändert wurde. */
 const KEYNO_JS = `
@@ -855,7 +860,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
                   <select id="issue_to" name="issue_to">
                     <option value="">– noch nicht ausgeben –</option>
                     {employees.map((e) => (
-                      <option value={e.id}>
+                      <option value={e.id} selected={c.req.query('mitarbeiter') === e.id}>
                         {e.last_name}, {e.first_name}
                         {e.personnel_no ? ` (${e.personnel_no})` : ''}
                       </option>
@@ -864,6 +869,9 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
                 </div>
                 <Field name="issue_at" label="Ausgabe am" value={todayBerlin()} type="date" />
               </div>
+            )}
+            {siteBack(c.req.query('zurueck')) && (
+              <input type="hidden" name="back" value={siteBack(c.req.query('zurueck'))!} />
             )}
             <script dangerouslySetInnerHTML={{ __html: KEYNO_JS }} />
             <div class="formfoot">

@@ -38,7 +38,10 @@ import {
   heldKeys,
   listKeyProtocols,
 } from '../services/key-protocol-pdf.js';
-import { type FileRow, filePath, storeFile } from '../services/uploads.js';
+import { type FileRow, filePath, listFiles, storeFile } from '../services/uploads.js';
+import { employeeDocCategory } from '../services/employees.js';
+import { requestsForEmployee } from '../services/sign-documents.js';
+import { FileArea } from './files.js';
 import { uuidFrom } from '../services/photo-stamp.js';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -193,11 +196,17 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
   /** Wohin „zurück“? Übergaben haben keine eigene Seite mehr: Mitarbeiter, Nachunternehmer oder Objekt. */
   function homeOf(
     c: Context<AppEnv>,
-    h: { employee_id?: string | null; supplier_id?: string | null; site_id?: string | null },
+    h: {
+      employee_id?: string | null;
+      supplier_id?: string | null;
+      site_id?: string | null;
+      kind?: string | null;
+    },
   ): [string, string] {
     const role = c.get('user').role;
+    const sub = h.kind === 'kleidung' ? '/kleidung' : h.kind === 'dokument' ? '/unterweisung' : '';
     if (h.employee_id && canAccess(role, `/personal/${h.employee_id}/uebergaben`))
-      return ['Mitarbeiter', `/personal/${h.employee_id}/uebergaben`];
+      return ['Mitarbeiter', `/personal/${h.employee_id}/uebergaben${sub}`];
     if (h.supplier_id && canAccess(role, `/lieferanten/${h.supplier_id}`))
       return ['Nachunternehmer', `/lieferanten/${h.supplier_id}`];
     if (h.site_id) return ['Objekt', `/objekte/${h.site_id}/uebergaben`];
@@ -300,6 +309,7 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
               employee_id: to === 'ma' ? employeeId : null,
               supplier_id: to === 'nu' ? supplierId : null,
               site_id: siteId,
+              kind,
             }),
           ]}
         />
@@ -717,6 +727,7 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
                   employee_id: to === 'ma' ? employeeId : null,
                   supplier_id: to === 'nu' ? supplierId : null,
                   site_id: siteId,
+                  kind,
                 })[1]
               }
             >
@@ -1153,23 +1164,339 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
   });
 
   // ------------------------------------------------------------------ Mitarbeiter: Reiter „Übergaben“
-  app.get(`/personal/:id{${UUID}}/uebergaben`, (c) =>
-    shells.employee!(c, 'uebergaben', async (e) => {
-      const [held, rows, keysNow, protocols] = await Promise.all([
+  type Emp = { id: string; first_name: string; last_name: string; personnel_no: string };
+  /** Unterseiten unter Mitarbeiter → Übergaben (Ahmed 27.10.): Übersicht · Schlüssel · Arbeitskleidung · Unterweisung. */
+  const EQ_TABS = [
+    ['', 'Übersicht'],
+    ['schluessel', 'Schlüssel'],
+    ['kleidung', 'Arbeitskleidung'],
+    ['unterweisung', 'Unterweisung'],
+  ] as const;
+  type EqTab = (typeof EQ_TABS)[number][0];
+  async function eqShell(c: Context<AppEnv>, active: EqTab, body: (e: Emp) => Promise<unknown>) {
+    return shells.employee!(c, 'uebergaben', async (e) => {
+      const [held, nn, signs] = await Promise.all([
         holdings(sql, e.id),
-        listHandovers(sql, { scope: null, employeeId: e.id }),
-        heldKeys(sql, e.id),
-        listKeyProtocols(sql, e.id),
+        sql<{ d: string[] }[]>`select docs_not_needed as d from app.employees where id = ${e.id}`,
+        sql<{ open: number; done: number }[]>`
+          select count(*) filter (where r.status = 'offen')::int as open,
+                 count(*) filter (where r.status = 'unterschrieben')::int as done
+            from app.sign_requests r join app.sign_documents d on d.id = r.document_id
+           where r.employee_id = ${e.id} and d.category = 'unterweisung'`,
       ]);
+      const notNeeded = nn[0]?.d ?? [];
+      const counts: Record<EqTab, string> = {
+        '': '',
+        schluessel: held.keys.length ? String(held.keys.length) : notNeeded.includes('Schlüssel') ? '–' : '0',
+        kleidung: held.clothing.length
+          ? String(held.clothing.reduce((a, x) => a + x.qty, 0))
+          : notNeeded.includes('Arbeitskleidung')
+            ? '–'
+            : '0',
+        unterweisung: signs[0]?.open ? `${signs[0].open} offen` : String(signs[0]?.done ?? 0),
+      };
+      const exit = (e as { exit_date?: string | null }).exit_date;
+      const hasAny = held.keys.length > 0 || held.clothing.length > 0 || held.devices.length > 0;
       return (
         <>
-          <div class="actions" style="margin-top:0">
-            {NEW_KINDS.map((k) => (
-              <a class="btn sm" href={`/uebergaben/${randomUUID()}?art=${k}&an=ma&mitarbeiter=${e.id}`}>
-                + {HANDOVER_KIND[k]}
+          <div class="chips" style="margin:0 0 12px">
+            {EQ_TABS.map(([k, l]) => (
+              <a class={k === active ? 'on' : ''} href={`/personal/${e.id}/uebergaben${k ? '/' + k : ''}`}>
+                {l}
+                {counts[k] && <span class="n">{counts[k]}</span>}
               </a>
             ))}
           </div>
+          {exit && hasAny && (
+            <p class={`flash ${exit <= todayBerlin() ? 'err' : 'warn'}`}>
+              <b>
+                {exit <= todayBerlin() ? 'Ausgetreten am' : 'Austritt am'} {dateDe(exit)}
+              </b>{' '}
+              – noch nicht zurückgegeben:{' '}
+              {[
+                held.keys.length ? `${held.keys.length} Schlüssel` : '',
+                held.clothing.length
+                  ? `${held.clothing.reduce((a, x) => a + x.qty, 0)} Teile Arbeitskleidung`
+                  : '',
+                held.devices.length ? `${held.devices.length} Gerät(e)` : '',
+              ]
+                .filter(Boolean)
+                .join(', ')}
+              . Büro und Objektleitung bekommen dazu eine Aufgabe.
+            </p>
+          )}
+          {(await body(e)) as never}
+        </>
+      );
+    });
+  }
+  /** „Nicht nötig“ / „wieder Pflicht“ für Schlüssel, Arbeitskleidung, Unterweisung (Pflichtunterlagen). */
+  const NeedToggle: FC<{ e: Emp; doc: string; off: boolean; back: string }> = ({ e, doc, off, back: to }) => (
+    <form method="post" action={`/personal/${e.id}/unterlage-noetig`} style="display:inline">
+      <input type="hidden" name="unterlage" value={doc} />
+      <input type="hidden" name="noetig" value={off ? '1' : '0'} />
+      <input type="hidden" name="zurueck" value={to} />
+      <button class="btn sm ghost">
+        {off ? `${doc}: wieder als Pflicht führen` : `${doc} für diese Person nicht nötig`}
+      </button>
+    </form>
+  );
+  const notNeededOf = async (id: string) =>
+    (await sql<{ d: string[] }[]>`select docs_not_needed as d from app.employees where id = ${id}`)[0]?.d ??
+    [];
+  /** Dateien der Personalakte einer Kategorie (aktuelle) + Hochladen. */
+  async function DocsOf(e: Emp, category: string, title: string) {
+    const files = (await listFiles(sql, { type: 'employee', id: e.id })).filter(
+      (f) => !f.archived_at && employeeDocCategory(f.category) === category,
+    );
+    return (
+      <div class="card">
+        <h3 style="margin-top:0">
+          {title} <span class="mut small">({files.length})</span>
+        </h3>
+        <FileArea
+          link={{ type: 'employee', id: e.id }}
+          files={files}
+          category={category}
+          title="Unterschriebenes Protokoll / Scan hierher ziehen"
+          hint={`Wird in der Personalakte unter „${category}“ abgelegt (unveränderbar).`}
+          maxBytes={deps.env.UPLOAD_MAX_BYTES}
+        />
+      </div>
+    );
+  }
+
+  app.get(`/personal/:id{${UUID}}/uebergaben`, (c) =>
+    eqShell(c, '', async (e) => {
+      const [held, rows] = await Promise.all([
+        holdings(sql, e.id),
+        listHandovers(sql, { scope: null, employeeId: e.id }),
+      ]);
+      const other = rows.filter(
+        (r) => r.kind !== 'kleidung' && r.kind !== 'dokument' && r.kind !== 'schluessel',
+      );
+      return (
+        <>
+          <div class="card">
+            <h3 style="margin-top:0">
+              Derzeit bei {e.first_name} {e.last_name}
+            </h3>
+            {!held.keys.length && !held.clothing.length && !held.devices.length && (
+              <p class="mut">Nichts ausgegeben.</p>
+            )}
+            {held.keys.length > 0 && (
+              <p style="margin:4px 0">
+                <a href={`/personal/${e.id}/uebergaben/schluessel`}>
+                  <b>{held.keys.length} Schlüssel</b>
+                </a>
+                : {held.keys.map((k) => `${k.key_no} (${k.site_name})`).join(', ')}
+              </p>
+            )}
+            {held.clothing.length > 0 && (
+              <p style="margin:4px 0">
+                <a href={`/personal/${e.id}/uebergaben/kleidung`}>
+                  <b>Arbeitskleidung</b>
+                </a>
+                : {held.clothing.map((k) => `${k.qty}× ${k.name}${k.size ? ` (${k.size})` : ''}`).join(', ')}
+              </p>
+            )}
+            {held.devices.map((d) => (
+              <p style="margin:4px 0">Gerät {d.label}</p>
+            ))}
+          </div>
+          <div class="card">
+            <h3 style="margin-top:0">Geräte & Sonstiges</h3>
+            <div class="actions" style="margin-top:0">
+              {NEW_KINDS.filter((k) => k !== 'kleidung' && k !== 'dokument').map((k) => (
+                <a class="btn sm" href={`/uebergaben/${randomUUID()}?art=${k}&an=ma&mitarbeiter=${e.id}`}>
+                  + {HANDOVER_KIND[k]}
+                </a>
+              ))}
+            </div>
+            {other.length ? <HandoverTable rows={other} /> : <p class="mut">Keine.</p>}
+          </div>
+          {rows.length > other.length && (
+            <details class="card">
+              <summary>Alle Übergaben ({rows.length})</summary>
+              <HandoverTable rows={rows} />
+            </details>
+          )}
+        </>
+      );
+    }),
+  );
+
+  app.get(`/personal/:id{${UUID}}/uebergaben/schluessel`, (c) =>
+    eqShell(c, 'schluessel', async (e) => {
+      const here = `/personal/${e.id}/uebergaben/schluessel`;
+      const scope = c.get('sites');
+      const [keysNow, protocols, notNeeded, free, log] = await Promise.all([
+        heldKeys(sql, e.id),
+        listKeyProtocols(sql, e.id),
+        notNeededOf(e.id),
+        sql<
+          {
+            id: string;
+            key_no: string;
+            description: string;
+            site_name: string;
+            site_no: string;
+            mine: boolean;
+          }[]
+        >`
+          select k.id, k.key_no, k.description, s.name as site_name, s.site_no,
+                 (exists (select 1 from app.employee_sites es where es.employee_id = ${e.id} and es.site_id = s.id)
+                  or exists (select 1 from app.shift_plans p where p.employee_id = ${e.id} and p.site_id = s.id
+                               and (p.valid_until is null or p.valid_until >= current_date))) as mine
+            from app.keys k join app.sites s on s.id = k.site_id
+           where k.deleted_at is null and k.holder_employee_id is null and k.holder_supplier_id is null
+             and (${scope === null} or s.id = any(${scope ?? []}::uuid[]))
+           order by 6 desc, s.name, k.key_no`,
+        sql<
+          {
+            at: string;
+            action: string;
+            key_no: string;
+            site_name: string;
+            created_by: string;
+            note: string | null;
+          }[]
+        >`
+          select l.at::text, l.action::text, k.key_no, s.name as site_name, l.created_by, l.note
+            from app.key_log l join app.keys k on k.id = l.key_id join app.sites s on s.id = k.site_id
+           where l.employee_id = ${e.id} order by l.at desc, l.created_at desc limit 50`,
+      ]);
+      const off = notNeeded.includes('Schlüssel');
+      return (
+        <>
+          <div class="card">
+            <h3 style="margin-top:0">
+              Schlüssel bei {e.first_name} {e.last_name} ({keysNow.length})
+            </h3>
+            {keysNow.length ? (
+              <div class="tbl">
+                <table class="keep">
+                  <thead>
+                    <tr>
+                      <th>Schlüssel-Nr.</th>
+                      <th>Objekt</th>
+                      <th>Art / Kennung</th>
+                      <th class="r">Anzahl</th>
+                      <th>seit</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {keysNow.map((k) => (
+                      <tr>
+                        <td>
+                          <a href={`/schluessel/${k.key_id}`}>{k.key_no}</a>
+                        </td>
+                        <td>
+                          {k.site_name} <span class="small mut">{k.site_no}</span>
+                        </td>
+                        <td>{k.description}</td>
+                        <td class="r">{k.quantity}</td>
+                        <td>{k.issued_at ? dateDe(k.issued_at) : '–'}</td>
+                        <td style="white-space:nowrap">
+                          <form
+                            method="post"
+                            action={`/schluessel/${k.key_id}/buchen`}
+                            style="display:inline"
+                          >
+                            <input type="hidden" name="action" value="rueckgabe" />
+                            <input type="hidden" name="back" value={here} />
+                            <button
+                              class="btn sm sec"
+                              data-confirm={`Rückgabe von ${k.key_no} heute buchen?`}
+                            >
+                              Rückgabe
+                            </button>
+                          </form>{' '}
+                          <form
+                            method="post"
+                            action={`/schluessel/${k.key_id}/buchen`}
+                            style="display:inline"
+                          >
+                            <input type="hidden" name="action" value="verlust" />
+                            <input type="hidden" name="back" value={here} />
+                            <button class="btn sm ghost" data-confirm={`${k.key_no} als verloren melden?`}>
+                              verloren
+                            </button>
+                          </form>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p class="mut">Laut Schlüsselbuch keine Schlüssel.</p>
+            )}
+            <div class="actions">
+              {!keysNow.length && <NeedToggle e={e} doc="Schlüssel" off={off} back={here} />}
+            </div>
+          </div>
+          <form
+            method="post"
+            class="card"
+            id="ausgeben"
+            onsubmit="this.action='/schluessel/'+this.key.value+'/buchen'"
+          >
+            <h3 style="margin-top:0">Schlüssel ausgeben</h3>
+            <input type="hidden" name="action" value="ausgabe" />
+            <input type="hidden" name="employee_id" value={e.id} />
+            <input type="hidden" name="back" value={here} />
+            {free.length ? (
+              <div class="grid">
+                <div>
+                  <label for="key">Schlüssel (im Büro)</label>
+                  <select id="key" name="key" required>
+                    <option value="">– bitte wählen –</option>
+                    {free.some((k) => k.mine) && (
+                      <optgroup label="Objekte der Person">
+                        {free
+                          .filter((k) => k.mine)
+                          .map((k) => (
+                            <option value={k.id}>
+                              {k.key_no} · {k.site_name} · {k.description}
+                            </option>
+                          ))}
+                      </optgroup>
+                    )}
+                    <optgroup label="Weitere Objekte">
+                      {free
+                        .filter((k) => !k.mine)
+                        .map((k) => (
+                          <option value={k.id}>
+                            {k.key_no} · {k.site_name} · {k.description}
+                          </option>
+                        ))}
+                    </optgroup>
+                  </select>
+                </div>
+                <div>
+                  <label for="k-at">Ausgabe am</label>
+                  <input id="k-at" type="date" name="at" value={todayBerlin()} />
+                </div>
+              </div>
+            ) : (
+              <p class="mut">Kein freier Schlüssel im Schlüsselbuch.</p>
+            )}
+            <div class="formfoot">
+              <a
+                class="btn sec"
+                href={`/schluessel/${randomUUID()}?mitarbeiter=${e.id}&zurueck=${encodeURIComponent(here)}`}
+              >
+                + Neuen Schlüssel anlegen und ausgeben
+              </a>
+              {free.length > 0 && (
+                <button class="btn" data-noback>
+                  Ausgeben
+                </button>
+              )}
+            </div>
+          </form>
           <div class="card" id="schluesselprotokoll">
             <h3 style="margin-top:0">Schlüsselprotokoll erstellen (Ausgabe oder Rückgabe)</h3>
             {keysNow.length ? (
@@ -1239,7 +1566,7 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
             ) : (
               <p class="mut">
                 Laut Schlüsselbuch hat {e.first_name} {e.last_name} keine Schlüssel. Erst Schlüssel ausgeben
-                (Objekt → Schlüssel) oder ein vorhandenes Protokoll einlesen.
+                (oben) oder ein vorhandenes Protokoll einlesen.
               </p>
             )}
             {protocols.length > 0 && (
@@ -1308,37 +1635,201 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
               Objekten.
             </span>
           </form>
+          {await DocsOf(e, 'Schlüssel', 'Unterschriebene Schlüsselprotokolle')}
+          {log.length > 0 && (
+            <details class="card">
+              <summary>Verlauf im Schlüsselbuch ({log.length})</summary>
+              <ul class="small">
+                {log.map((l) => (
+                  <li>
+                    {dateDe(l.at)} ·{' '}
+                    {{ ausgabe: 'Ausgabe', rueckgabe: 'Rückgabe', verlust: 'Verlust' }[l.action] ?? l.action}{' '}
+                    {l.key_no} ({l.site_name}) · {l.created_by}
+                    {l.note ? ` · ${l.note}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </>
+      );
+    }),
+  );
+
+  app.get(`/personal/:id{${UUID}}/uebergaben/kleidung`, (c) =>
+    eqShell(c, 'kleidung', async (e) => {
+      const here = `/personal/${e.id}/uebergaben/kleidung`;
+      const [held, rows, notNeeded] = await Promise.all([
+        holdings(sql, e.id),
+        listHandovers(sql, { scope: null, employeeId: e.id }),
+        notNeededOf(e.id),
+      ]);
+      const mine = rows.filter((r) => r.kind === 'kleidung');
+      const total = held.clothing.reduce((a, k) => a + k.unit_price_cents * BigInt(k.qty), 0n);
+      const off = notNeeded.includes('Arbeitskleidung');
+      return (
+        <>
           <div class="card">
             <h3 style="margin-top:0">
-              Derzeit bei {e.first_name} {e.last_name}
+              Arbeitskleidung bei {e.first_name} {e.last_name}
             </h3>
-            {!held.keys.length && !held.clothing.length && !held.devices.length && (
-              <p class="mut">Nichts ausgegeben.</p>
+            {held.clothing.length ? (
+              <div class="tbl">
+                <table class="keep">
+                  <thead>
+                    <tr>
+                      <th>Artikel</th>
+                      <th>Größe</th>
+                      <th class="r">Anzahl</th>
+                      <th class="r">Wert</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {held.clothing.map((k) => (
+                      <tr>
+                        <td>{k.name}</td>
+                        <td>{k.size || '–'}</td>
+                        <td class="r">{k.qty}</td>
+                        <td class="r">{euro(k.unit_price_cents * BigInt(k.qty))}</td>
+                      </tr>
+                    ))}
+                    <tr>
+                      <td colSpan={3}>
+                        <b>Summe</b>
+                      </td>
+                      <td class="r">
+                        <b>{euro(total)}</b>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p class="mut">Keine Arbeitskleidung ausgegeben.</p>
             )}
-            {held.keys.map((k) => (
-              <div>
-                Schlüssel {k.key_no} – {k.description}{' '}
-                <span class="small mut">
-                  ({k.site_name}, seit {dateDe(k.issued_at)})
-                </span>
-              </div>
-            ))}
-            {held.clothing.map((k) => (
-              <div>
-                {k.qty}× {k.name} {k.size && `(${k.size})`}{' '}
-                <span class="small mut">Wert {euro(k.unit_price_cents * BigInt(k.qty))}</span>
-              </div>
-            ))}
-            {held.devices.map((d) => (
-              <div>Gerät {d.label}</div>
-            ))}
+            <div class="actions">
+              <a class="btn" href={`/uebergaben/${randomUUID()}?art=kleidung&an=ma&mitarbeiter=${e.id}`}>
+                + Arbeitskleidung ausgeben
+              </a>
+              {held.clothing.length > 0 && (
+                <a
+                  class="btn sec"
+                  href={`/uebergaben/${randomUUID()}?art=kleidung&an=ma&richtung=rueckgabe&mitarbeiter=${e.id}`}
+                >
+                  Rückgabe erfassen
+                </a>
+              )}
+              {!held.clothing.length && <NeedToggle e={e} doc="Arbeitskleidung" off={off} back={here} />}
+            </div>
             <p class="small mut">
-              Beim Austritt: Rückgabe je Ausgabe erfassen („Rückgabe erfassen“ in der Übergabe).
+              Ausgabe und Rückgabe am Handy/Tablet unterschreiben lassen – oder „Unterschrift liegt schon vor“
+              ankreuzen und den Zettel als Scan anhängen. Schutzkleidung (PSA) zahlt der Arbeitgeber, kein
+              Lohnabzug.
             </p>
           </div>
           <div class="card">
-            <HandoverTable rows={rows} />
+            <h3 style="margin-top:0">Übergaben Arbeitskleidung ({mine.length})</h3>
+            {mine.length ? <HandoverTable rows={mine} /> : <p class="mut">Noch keine.</p>}
           </div>
+          {await DocsOf(e, 'Arbeitskleidung', 'Unterschriebene Protokolle (Papier/Scan)')}
+        </>
+      );
+    }),
+  );
+
+  app.get(`/personal/:id{${UUID}}/uebergaben/unterweisung`, (c) =>
+    eqShell(c, 'unterweisung', async (e) => {
+      const here = `/personal/${e.id}/uebergaben/unterweisung`;
+      const [reqs, rows, notNeeded] = await Promise.all([
+        requestsForEmployee(sql, e.id),
+        listHandovers(sql, { scope: null, employeeId: e.id }),
+        notNeededOf(e.id),
+      ]);
+      const docs = rows.filter((r) => r.kind === 'dokument');
+      const off = notNeeded.includes('Unterweisung');
+      const office = canAccess(c.get('user').role, '/personal/dokumente');
+      return (
+        <>
+          <div class="card">
+            <h3 style="margin-top:0">Unterweisungen in der App ({reqs.length})</h3>
+            {reqs.length ? (
+              <div class="tbl">
+                <table class="keep">
+                  <thead>
+                    <tr>
+                      <th>Dokument</th>
+                      <th>freigegeben</th>
+                      <th>Frist</th>
+                      <th>Status</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reqs.map((r) => (
+                      <tr>
+                        <td>
+                          {office ? <a href={`/personal/dokumente/${r.document_id}`}>{r.title}</a> : r.title}
+                        </td>
+                        <td>{berlin(r.created_at)}</td>
+                        <td>{r.due_date ? dateDe(r.due_date) : '–'}</td>
+                        <td>
+                          {r.status === 'unterschrieben' ? (
+                            <span class="badge ok">
+                              unterschrieben {r.signed_at ? berlin(r.signed_at) : ''}
+                            </span>
+                          ) : (
+                            <span
+                              class={`badge ${r.due_date && r.due_date < todayBerlin() ? 'err' : 'warn'}`}
+                            >
+                              offen
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          {r.status === 'unterschrieben' && office && (
+                            <a
+                              class="btn sm sec"
+                              href={`/personal/dokumente/nachweis/${r.id}/nachweis.pdf`}
+                              target="_blank"
+                            >
+                              Nachweis
+                            </a>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p class="mut">Noch keine Unterweisung zugewiesen.</p>
+            )}
+            <div class="actions">
+              {office && (
+                <a class="btn" href={`/personal/dokumente?mitarbeiter=${e.id}#neu`}>
+                  + Unterweisung zum Unterschreiben zuweisen
+                </a>
+              )}
+              <a class="btn sec" href={`/uebergaben/${randomUUID()}?art=dokument&an=ma&mitarbeiter=${e.id}`}>
+                + Unterweisung vor Ort unterschreiben lassen
+              </a>
+              {!reqs.some((r) => r.status === 'unterschrieben') && (
+                <NeedToggle e={e} doc="Unterweisung" off={off} back={here} />
+              )}
+            </div>
+            <p class="small mut">
+              Unterweisung jährlich und bei neuen Tätigkeiten (§ 12 ArbSchG). In der App erscheint sie beim
+              Öffnen zum Lesen und Unterschreiben; vor Ort über „Unterschreiben lassen“ am Handy/Tablet oder
+              auf Papier (Scan unten).
+            </p>
+          </div>
+          {docs.length > 0 && (
+            <div class="card">
+              <h3 style="margin-top:0">Unterweisungen vor Ort ({docs.length})</h3>
+              <HandoverTable rows={docs} />
+            </div>
+          )}
+          {await DocsOf(e, 'Unterweisung', 'Unterschriebene Unterweisungen (Papier/Scan)')}
         </>
       );
     }),

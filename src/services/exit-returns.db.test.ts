@@ -70,7 +70,7 @@ describe.skipIf(!available)('Austritt: Arbeitskleidung zurückholen', () => {
     await closeHandoverWithoutSignature(deps, out, 'Auf Papier unterschrieben', 't');
 
     // Austritt weit in der Zukunft → noch keine Aufgabe
-    await sql`update app.employees set exit_date = ${addDays(todayBerlin(), 90)} where id = ${emp}`;
+    await sql`update app.employees set exit_date = ${addDays(todayBerlin(), 400)} where id = ${emp}`;
     expect((await syncExitReturnTasks(sql)).created).toBe(0);
 
     const exit = addDays(todayBerlin(), 20);

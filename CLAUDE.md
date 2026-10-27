@@ -4296,3 +4296,13 @@ Testadresse.
   offenen Aufgaben selbst (von Hand erledigte bleiben erledigt). Abgleich stündlich und sofort nach jedem Speichern unter
   Personal, Übergaben, Schlüssel. Fällige Aufgaben stehen auch unter Erinnerungen. Test `exit-returns.db.test.ts`,
   `e2e:uebergabe` 32 Prüfungen. **Rechtlich:** Lohnabzug bei Nichtrückgabe nur mit Vereinbarung (siehe Übergaben, 05.10.).
+- 2026-10-27: **Übergaben beim Mitarbeiter mit Unterseiten** (Ahmed: „Unterseiten für Schlüssel, Unterweisung und
+  Arbeitskleidung, alles dort eintragen und hinterlegen“): Reiter Übergaben → Übersicht · Schlüssel · Arbeitskleidung ·
+  Unterweisung (`/personal/:id/uebergaben[/schluessel|/kleidung|/unterweisung]`, `routes-handovers.tsx`). Schlüssel:
+  gehaltene Schlüssel mit Rückgabe/verloren, Ausgabe freier Schlüssel (Objekte der Person zuerst), neuen Schlüssel anlegen
+  und ausgeben, Schlüsselprotokoll erstellen/einlesen, Dokumente „Schlüssel“, Verlauf. Arbeitskleidung: aktueller Bestand
+  mit Wert, Ausgabe/Rückgabe, Übergaben, „nicht nötig“, Dokumente. Unterweisung: Unterschrifts-Anforderungen mit
+  Nachweis, zuweisen / vor Ort unterschreiben, „nicht nötig“, Dokumente. Übersicht: „Derzeit bei“, Geräte & Sonstiges,
+  alle Übergaben. Austritt eingetragen und noch etwas offen → Hinweis auf den Unterseiten. **Erinnerung beim Austritt
+  jetzt sofort**, sobald ein Austritt eingetragen ist (bis 1 Jahr voraus, `EXIT_RETURN_LEAD_DAYS = 366`): Aufgabe fürs
+  Büro und je Objektleitung der Person. Speichern/Ausgabe führt auf die passende Unterseite zurück.

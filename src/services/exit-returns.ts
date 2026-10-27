@@ -3,8 +3,11 @@ import { addDays, todayBerlin } from '../domain/invoice/calc.js';
 import { holdings } from './handovers.js';
 import { uuidFrom } from './photo-stamp.js';
 
-/** Vorlauf: so viele Tage vor dem Austritt entsteht die Aufgabe (Ahmed 27.10.: „vorher schon erinnert werden“). */
-export const EXIT_RETURN_LEAD_DAYS = 30;
+/**
+ * Vorlauf: Die Aufgabe entsteht, sobald ein Austritt eingetragen ist (Ahmed 27.10.: „wenn er in Zukunft austreten soll
+ * oder ausgetreten ist“) – bis zu einem Jahr im Voraus.
+ */
+export const EXIT_RETURN_LEAD_DAYS = 366;
 /** Kennung der automatisch angelegten Aufgaben (created_by). */
 const MARK = 'automatisch: Austritt';
 
@@ -40,7 +43,7 @@ export async function syncExitReturnTasks(sql: Sql, today = todayBerlin()) {
     const title = `${what} zurückholen: ${e.name} (Austritt ${de(e.exit_date)})`;
     const description =
       `${e.name} tritt am ${de(e.exit_date)} aus und hat laut App noch:\n${items.join('\n')}\n\n` +
-      'Rückgabe beim Mitarbeiter unter „Übergaben“ erfassen (Rückgabe erfassen) – dann erledigt sich diese Aufgabe von selbst.';
+      'Rückgabe beim Mitarbeiter unter Übergaben → Schlüssel bzw. Arbeitskleidung erfassen – dann erledigt sich diese Aufgabe von selbst.';
     const managers = await sql<{ user_id: string; name: string }[]>`
       select distinct a.id as user_id, coalesce(nullif(p.display_name, ''), a.login) as name
         from app.sites s join app.user_accounts a on a.id = s.manager_user_id and a.active

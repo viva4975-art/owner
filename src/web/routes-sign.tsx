@@ -407,7 +407,12 @@ export function registerSignRoutes({ app, deps, page, back }: Ctx) {
           <div class="grid sign-emps" style="gap:4px 16px;max-height:300px;overflow:auto">
             {emps.map((e) => (
               <label class="chk" style="margin:0">
-                <input type="checkbox" name="employee" value={e.id} checked={c.req.query('alle') === '1'} />
+                <input
+                  type="checkbox"
+                  name="employee"
+                  value={e.id}
+                  checked={c.req.query('alle') === '1' || c.req.query('mitarbeiter') === e.id}
+                />
                 {e.last_name}, {e.first_name} <span class="mut small">{e.personnel_no}</span>
               </label>
             ))}

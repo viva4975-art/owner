@@ -386,7 +386,9 @@ export function registerHrRoutes(ctx: Ctx) {
     const to = str(b, 'zurueck');
     return back(
       c,
-      to && /^\/personal\/unterlagen(\?[\w=&%.-]*)?$/.test(to) ? to : `/personal/${id}/dokumente`,
+      to && /^\/personal\/(unterlagen(\?[\w=&%.-]*)?|[0-9a-f-]{36}\/uebergaben(\/[a-z]+)?)$/.test(to)
+        ? to
+        : `/personal/${id}/dokumente`,
       {
         ok: needed ? `${doc} ist wieder Pflicht.` : `${doc} für diese Person als „nicht nötig“ vermerkt.`,
       },

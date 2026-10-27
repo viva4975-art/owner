@@ -4348,3 +4348,10 @@ Testadresse.
   Nachkommastellen** (184,5 / 38,33 – auch „184.5“ aus PDF/CSV) werden genau übernommen statt als ungültig abgelehnt.
   Migration `20261230000001`: `rooms.visits_per_year` darf leer sein und hat 2 Nachkommastellen (numeric(7,2)). Raum
   bearbeiten: Auswahl „– nicht angegeben –“, „andere Anzahl“ mit Komma. Tests in `room-import-ft.db.test.ts`.
+- 2026-10-27: **Räume im Raumbuch ganz löschen** (Ahmed: „nicht inaktiv setzen, komplett löschen“): „Raum löschen“,
+  „Markierte löschen“, „Alle Räume löschen“ löschen jetzt immer vollständig, auch Räume aus Qualitätskontrollen/Tickets
+  (vorher nur inaktiv). Migration `20261231000001`: Fremdschlüssel von `quality_check_items`/`quality_check_ratings` auf
+  `rooms` entfernt (abgeschlossene Kontrollen sind unveränderbar – dort bleibt die Raum-ID als Kennung, Bereichsname steht
+  in der Position, Ergebnisse bleiben gleich), Tickets verlieren nur den Raum (`on delete set null`). Gelöschte Räume mit
+  Name/Nr./Etage im Protokoll (`rooms_delete`). **Hinweis:** In Auswertungsberichten älterer Kontrollen fehlen gelöschte
+  Räume in der Liste „geprüfte Einheiten“ (Ergebnis, Mängelzahl und Bereichsnamen bleiben).

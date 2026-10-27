@@ -184,37 +184,25 @@ export interface SiteHourTarget {
 }
 
 /**
- * Räume löschen (einzeln, markierte oder alle eines Objekts). Räume, die in Qualitätskontrollen oder Tickets
- * vorkommen, bleiben als Nachweis erhalten und werden nur inaktiv gesetzt; alle übrigen werden gelöscht.
+ * Räume löschen (einzeln, markierte oder alle eines Objekts) – immer vollständig. Qualitätskontrollen
+ * behalten die Raum-ID als Kennung (Bereichsname steht dort), Tickets verlieren nur den Raum.
  */
 export async function deleteRooms(
   sql: Sql,
   siteId: string,
   ids: string[] | 'all',
   actor: string,
-): Promise<{ deleted: number; deactivated: number }> {
+): Promise<{ deleted: number }> {
   return sql.begin(async (tx) => {
     const rooms = await tx<{ id: string; name: string; room_no: string | null; floor: string | null }[]>`
       select id, name, room_no, floor from app.rooms
        where site_id = ${siteId} ${ids === 'all' ? tx`` : tx`and id = any(${ids}::uuid[])`}
        for update`;
-    if (!rooms.length) return { deleted: 0, deactivated: 0 };
-    const all = rooms.map((r) => r.id);
-    const used = await tx<{ id: string }[]>`
-      select distinct room_id as id from (
-        select room_id from app.quality_check_items where room_id = any(${all}::uuid[])
-        union all select room_id from app.quality_check_ratings where room_id = any(${all}::uuid[])
-        union all select room_id from app.site_tickets where room_id = any(${all}::uuid[])
-      ) x`;
-    const keep = new Set(used.map((u) => u.id));
-    const del = all.filter((id) => !keep.has(id));
-    const off = all.filter((id) => keep.has(id));
-    if (del.length) await tx`delete from app.rooms where id = any(${del}::uuid[])`;
-    if (off.length) await tx`update app.rooms set active = false where id = any(${off}::uuid[]) and active`;
+    if (!rooms.length) return { deleted: 0 };
+    await tx`delete from app.rooms where id = any(${rooms.map((r) => r.id)}::uuid[])`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
-             values (${actor}, 'rooms_delete', 'site', ${siteId},
-                     ${tx.json({ deleted: rooms.filter((r) => !keep.has(r.id)), deactivated: off } as never)})`;
-    return { deleted: del.length, deactivated: off.length };
+             values (${actor}, 'rooms_delete', 'site', ${siteId}, ${tx.json({ deleted: rooms } as never)})`;
+    return { deleted: rooms.length };
   });
 }
 

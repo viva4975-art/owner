@@ -118,17 +118,23 @@ describe.skipIf(!available)('Raumbuch im Fortytools-Format + PDF in den Dokument
     expect(l!.archived_at).toBeNull();
   }, 30_000);
 
-  it('Räume löschen: alle eines Objekts; Räume mit Ticket bleiben inaktiv als Nachweis', async () => {
+  it('Räume löschen: immer vollständig, Tickets verlieren nur den Raum', async () => {
     const rooms = await sql<{ id: string }[]>`select id from app.rooms where site_id = ${DEMO.siteSchool}`;
     expect(rooms.length).toBeGreaterThan(1);
-    await sql`insert into app.site_tickets (id, number, site_id, room_id, title, created_by)
-              values (gen_random_uuid(), 'T-TEST-0001', ${DEMO.siteSchool}, ${rooms[0]!.id}, 'Test', 't')`;
+    const [t] = await sql<{ id: string }[]>`
+      insert into app.site_tickets (id, number, site_id, room_id, title, created_by)
+      values (gen_random_uuid(), 'T-TEST-0001', ${DEMO.siteSchool}, ${rooms[0]!.id}, 'Test', 't') returning id`;
     const r1 = await deleteRooms(sql, DEMO.siteSchool, [rooms[1]!.id], 't');
-    expect(r1).toEqual({ deleted: 1, deactivated: 0 });
+    expect(r1).toEqual({ deleted: 1 });
     const r = await deleteRooms(sql, DEMO.siteSchool, 'all', 't');
-    expect(r.deactivated).toBe(1);
-    const left = await sql<{ id: string; active: boolean }[]>`
-      select id, active from app.rooms where site_id = ${DEMO.siteSchool}`;
-    expect(left).toEqual([{ id: rooms[0]!.id, active: false }]);
+    expect(r.deleted).toBe(rooms.length - 1);
+    const [cnt] = await sql<
+      { n: number }[]
+    >`select count(*)::int as n from app.rooms where site_id = ${DEMO.siteSchool}`;
+    expect(cnt!.n).toBe(0);
+    const [tk] = await sql<
+      { room_id: string | null }[]
+    >`select room_id from app.site_tickets where id = ${t!.id}`;
+    expect(tk!.room_id).toBeNull();
   }, 30_000);
 });

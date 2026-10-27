@@ -272,7 +272,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
                 <Icon name="trash" /> Alle Räume löschen ({rooms.length})
               </button>
               <span class="small mut">
-                Räume aus Qualitätskontrollen/Tickets bleiben als Nachweis und werden nur inaktiv.
+                Räume werden ganz gelöscht; Qualitätskontrollen und Tickets bleiben erhalten.
               </span>
             </form>
           )}
@@ -1013,11 +1013,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
     const alle = str(b, 'umfang') === 'alle';
     if (!alle && !ids.length) throw new BusinessError('Bitte zuerst Räume markieren.');
     const r = await deleteRooms(sql, siteId, alle ? 'all' : ids, c.get('actor'));
-    const msg =
-      `${r.deleted} ${r.deleted === 1 ? 'Raum' : 'Räume'} gelöscht.` +
-      (r.deactivated
-        ? ` ${r.deactivated} aus Qualitätskontrollen/Tickets nur inaktiv gesetzt (Nachweis).`
-        : '');
+    const msg = `${r.deleted} ${r.deleted === 1 ? 'Raum' : 'Räume'} gelöscht.`;
     return back(c, `/objekte/${siteId}/raumbuch`, { ok: msg });
   });
 

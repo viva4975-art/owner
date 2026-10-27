@@ -38,6 +38,8 @@ export interface SiteCosting {
   other: bigint;
   margin: bigint;
   margin_bp: number | null; // Marge in Basispunkten vom Erlös
+  /** interner Bereich (Büro, Lager … beim Kunden „intern“, ohne Sonderreinigung): Gemeinkosten, separat gezeigt */
+  internal: boolean;
 }
 
 /**
@@ -256,10 +258,12 @@ export async function siteCosting(
         customer_name: string;
         customer_no: string | null;
         manager_user_id: string | null;
+        internal: boolean;
       }[]
     >`
       select s.id, s.site_no, s.name, s.street, s.city, s.customer_id, s.manager_user_id,
-             c.name as customer_name, c.customer_no from app.sites s join app.customers c on c.id = s.customer_id
+             c.name as customer_name, c.customer_no, coalesce(c.is_internal, false) and s.id <> ${SPECIAL_SITE_ID} as internal
+        from app.sites s join app.customers c on c.id = s.customer_id
        where ${
          siteId
            ? sql`s.id = ${siteId}`
@@ -343,9 +347,12 @@ export async function siteCosting(
     // Cent je Minute × (10000 + Zuschlag in Basispunkten) → / 60 / 10000, kaufmännisch gerundet
     const laborCents = l ? (l.wage_minutes_cents + 300000n) / 600000n : 0n;
     const inc = incoming.filter((r) => r.site_id === s.id);
-    const material =
-      (stock.find((r) => r.site_id === s.id)?.cost ?? 0n) +
-      inc.filter((r) => r.category === 'material').reduce((a, r) => a + r.net, 0n);
+    // Material für Büro/Lager (interne Bereiche) zählt nicht (Ahmed 27.10.): es kommt über die Materialausgabe
+    // beim Objekt an und stünde sonst doppelt in der Kalkulation
+    const material = s.internal
+      ? 0n
+      : (stock.find((r) => r.site_id === s.id)?.cost ?? 0n) +
+        inc.filter((r) => r.category === 'material').reduce((a, r) => a + r.net, 0n);
     const est = nuEst.find((r) => r.site_id === s.id)?.cost ?? 0n;
     const sub = inc.filter((r) => r.category === 'nachunternehmer').reduce((a, r) => a + r.net, 0n) + est;
     const equipment = inc.filter((r) => r.category === 'geraete').reduce((a, r) => a + r.net, 0n);
@@ -375,10 +382,13 @@ export async function siteCosting(
       other,
       margin,
       margin_bp: rev !== 0n ? Number((margin * 10000n) / rev) : null,
+      internal: s.internal,
     };
   });
   const gmap = new Map<string, GeneralCost>();
   for (const g of general) {
+    // Material an allgemeinen Kostenstellen (Lager, Büro) nicht zählen – geht über die Materialausgabe ans Objekt
+    if (g.category === 'material') continue;
     const e = gmap.get(g.id) ?? {
       cost_center_id: g.id,
       number: g.number,
@@ -404,7 +414,7 @@ export async function siteCosting(
         select id, number, name from app.cost_centers where id in ${sql([...new Set(rec.map((r) => r.cost_center_id))])}`;
       for (const r of rec) {
         const cc = ccs.find((x) => x.id === r.cost_center_id);
-        if (!cc) continue;
+        if (!cc || r.category === 'material') continue;
         const e = gmap.get(cc.id) ?? {
           cost_center_id: cc.id,
           number: cc.number,

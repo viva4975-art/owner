@@ -17,6 +17,8 @@ export interface PlanCostRates {
   minijob_limit_cents: bigint;
   midijob_upper_cents: bigint;
   absence_bp: number;
+  /** Material pauschal in % vom Erlös (Plan-Kalkulation) */
+  material_bp: number;
 }
 
 export type PayBand = 'minijob' | 'midijob' | 'regulaer' | 'gf';

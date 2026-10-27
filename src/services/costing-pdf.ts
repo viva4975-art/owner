@@ -35,10 +35,13 @@ const NO_AMOUNTS = 'ohne Beträge – nur Stunden und Marge';
 export async function siteCostingPdf(
   rows: SiteCosting[],
   general: GeneralCost[],
+  internal: SiteCosting[],
   o: CostingPdfOpts,
 ): Promise<Uint8Array> {
+  // Büro/Lager und allgemeine Kostenstellen separat, nicht im Gesamt der Objekte (Ahmed 27.10.)
+  const genTotal = general.reduce((a, g) => a + g.total, 0n) - internal.reduce((a, r) => a + r.margin, 0n);
   if (o.redact) {
-    const margin = rows.reduce((a, r) => a + r.margin, 0n) - general.reduce((a, g) => a + g.total, 0n);
+    const margin = rows.reduce((a, r) => a + r.margin, 0n);
     const rev = rows.reduce((a, r) => a + r.revenue, 0n);
     return renderTablePdf({
       title: o.title,
@@ -63,7 +66,7 @@ export async function siteCostingPdf(
         pct(marginBp(margin, rev)),
       ],
       footnote:
-        'Marge = Deckungsbeitrag in % vom Erlös (Gesamt nach allgemeinen Kostenstellen). Interne Auswertung.',
+        'Marge = Deckungsbeitrag in % vom Erlös (Objekte; Büro- und Gemeinkosten nicht enthalten). Interne Auswertung.',
     });
   }
   const columns: PdfColumn[] = [
@@ -81,7 +84,7 @@ export async function siteCostingPdf(
     { label: 'Marge', width: 38, align: 'right' },
   ];
   const sum = (f: (r: SiteCosting) => bigint) => rows.reduce((a, r) => a + f(r), 0n);
-  const body: PdfRow[] = rows.map((r) => [
+  const line = (r: SiteCosting): PdfRow => [
     r.site_no,
     r.site_name,
     r.customer_name,
@@ -94,10 +97,15 @@ export async function siteCostingPdf(
     eur(r.other),
     red(r.margin),
     pct(r.margin_bp),
-  ]);
-  const genTotal = general.reduce((a, g) => a + g.total, 0n);
-  if (general.length) {
-    body.push({ section: 'Allgemeine Kostenstellen' });
+  ];
+  const body: PdfRow[] = rows.map(line);
+  const margin = sum((r) => r.margin);
+  const rev = sum((r) => r.revenue);
+  if (general.length || internal.length) {
+    body.push({
+      section: 'Büro & Gemeinkosten – separat (nicht im Gesamt der Objekte; Material zählt hier nicht)',
+    });
+    for (const r of internal) body.push(line(r));
     for (const g of general)
       body.push([
         g.number,
@@ -113,9 +121,21 @@ export async function siteCostingPdf(
         eur(-g.total),
         '',
       ]);
+    body.push([
+      { text: 'Summe', bold: true },
+      { text: `Büro & Gemeinkosten (DB Objekte − Gemeinkosten = ${eur(margin - genTotal)})`, bold: true },
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      { text: eur(-genTotal), bold: true },
+      '',
+    ]);
   }
-  const margin = sum((r) => r.margin);
-  const rev = sum((r) => r.revenue);
   return renderTablePdf({
     title: o.title,
     subtitle: [o.period, o.filter].filter(Boolean).join(' · '),
@@ -124,22 +144,22 @@ export async function siteCostingPdf(
     landscape: true,
     fontSize: 7,
     totals: [
-      'Gesamt',
+      'Gesamt Objekte',
       `${rows.length} Objekte`,
       '',
       eur(rev),
       hm(rows.reduce((a, r) => a + r.actual_minutes, 0)),
       eur(sum((r) => r.labor)),
-      eur(sum((r) => r.material) + general.reduce((a, g) => a + g.material, 0n)),
-      eur(sum((r) => r.subcontractor) + general.reduce((a, g) => a + g.subcontractor, 0n)),
-      eur(sum((r) => r.equipment) + general.reduce((a, g) => a + g.equipment, 0n)),
-      eur(sum((r) => r.other) + general.reduce((a, g) => a + g.other, 0n)),
-      eur(margin - genTotal),
-      rev ? pct(Number(((margin - genTotal) * 10000n) / rev)) : '–',
+      eur(sum((r) => r.material)),
+      eur(sum((r) => r.subcontractor)),
+      eur(sum((r) => r.equipment)),
+      eur(sum((r) => r.other)),
+      eur(margin),
+      rev ? pct(Number((margin * 10000n) / rev)) : '–',
     ],
     footnote:
       'DB = Erlös − Lohn (Ist-Stunden × Stundenlohn + Zuschlag) − Material − Nachunternehmer − Geräte − Sonstiges; ' +
-      'Gesamt abzüglich allgemeiner Kostenstellen. Interne Auswertung.',
+      'Gesamt nur Objekte – Büro- und Gemeinkosten stehen separat. Interne Auswertung.',
   });
 }
 
@@ -244,6 +264,6 @@ export async function planCostingPdf(
     ],
     footnote:
       'Plan: Erlös aus laufenden Leistungen, Lohn aus eingeplanten Einsätzen mit Arbeitgeberkosten nach Lohnhöhe ' +
-      '(Minijob/Midijob/regulär), Nachunternehmer laut Bestellung, Material Ø der letzten 3 Monate. Schätzung.',
+      '(Minijob/Midijob/regulär), Nachunternehmer laut Bestellung, Material pauschal in % vom Erlös. Schätzung.',
   });
 }

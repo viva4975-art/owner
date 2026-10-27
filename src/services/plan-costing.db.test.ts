@@ -46,6 +46,8 @@ describe.skipIf(!available)('Plan-Kalkulation (Soll)', () => {
     const { rows, employees } = await planCosting(sql, { from: '2026-11', to: '2026-11' });
     const r = rows.find((x) => x.site_id === site)!;
     expect(r.revenue).toBe(200000n);
+    // Material pauschal 2 % vom Erlös (Ahmed 27.10.)
+    expect(r.material).toBe(4000n);
     const m = employees.find((e) => e.employee_id === mini)!;
     // 600 Min. × 15 € = 150,00 € (kein Zuschlag Urlaub/Krankheit) → Minijob 31,17 % + Unfall 2,5 % = 50,51 €
     expect(m.gross).toBe(15000n);

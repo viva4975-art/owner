@@ -3477,8 +3477,12 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
       getAccountingSettings(sql),
     ]);
     const { rows: all, employees, rates, months } = plan;
+    const planFiltered = !!(fKunde || fObjekte.length || fOl || fVerlust);
+    // Büro/Lager (intern) separat, nicht im Gesamt der Objekte (Ahmed 27.10.)
+    const officeRows = planFiltered ? [] : all.filter((r) => r.internal);
     const rows = all.filter(
       (r) =>
+        (planFiltered || !r.internal) &&
         (!fKunde || r.customer_id === fKunde) &&
         (!fObjekte.length || fObjekte.includes(r.site_id)) &&
         (!fOl || (fOl === 'ohne' ? !r.manager_user_id : r.manager_user_id === fOl)) &&
@@ -3721,6 +3725,24 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                   <td class="r">{r.minutes > 0 ? eur((r.revenue * 60n) / BigInt(r.minutes)) : '–'}</td>
                 </tr>
               ))}
+              {officeRows.length > 0 && (
+                <tr>
+                  <td colspan={10} class="small mut" style="background:var(--head)">
+                    <b>Büro & Gemeinkosten – separat, nicht im Gesamt:</b>{' '}
+                    {officeRows.map((r, k) => (
+                      <>
+                        {k > 0 && ' · '}
+                        <a
+                          href={`/auswertungen/plankalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}`}
+                        >
+                          {r.site_no} {r.site_name}
+                        </a>{' '}
+                        {hm(r.minutes)} Std., Lohn + AG {eur(r.gross + r.employer)}
+                      </>
+                    ))}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -3809,7 +3831,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
               am Umsatz, „je Stunde“ mit max. Stunden) – auch wenn schon eine Rechnung gebucht ist.
             </li>
             <li>
-              <b>Material:</b> Ø der Monate {mLabel(plan.materialFrom)} – {mLabel(plan.materialTo)} (Ist).
+              <b>Material:</b> pauschal {pct(rates.material_bp)} vom Erlös.
             </li>
           </ul>
           <p class="small" style="color:var(--warn)">
@@ -3833,6 +3855,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                     ['minijob_flat', 'Minijob-Pauschalen gesamt %', n(rates.minijob_flat_bp)],
                     ['minijob_limit', 'Minijobgrenze € / Monat', ce(rates.minijob_limit_cents)],
                     ['midijob_upper', 'Midijob-Obergrenze € / Monat', ce(rates.midijob_upper_cents)],
+                    ['material', 'Material % vom Erlös', n(rates.material_bp)],
                   ] as [string, string, string][]
                 ).map(([k, l, v]) => (
                   <>
@@ -3872,6 +3895,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         minijob_limit_cents: BigInt(bp('minijob_limit')),
         midijob_upper_cents: BigInt(bp('midijob_upper')),
         absence_bp: (await getPlanCostRates(sql)).absence_bp,
+        material_bp: bp('material'),
       },
       c.get('actor'),
     );
@@ -3919,14 +3943,18 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         r.actual_minutes > 0 ||
         r.material + r.subcontractor + r.equipment + r.other !== 0n,
     );
+    // Büro/Lager (interne Bereiche) und allgemeine Kostenstellen sind Gemeinkosten: nicht im Gesamt der Objekte,
+    // sondern separat darunter (Ahmed 27.10.) – außer man filtert ausdrücklich danach
     const active = withData.filter(
       (r) =>
+        (filtered || !r.internal) &&
         (!fKunde || r.customer_id === fKunde) &&
         (!fObjekte.length || fObjekte.includes(r.site_id)) &&
         (!fOl || (fOl === 'ohne' ? !r.manager_user_id : r.manager_user_id === fOl)) &&
         (!fVerlust || r.margin < 0n),
     );
     const general = filtered || fVerlust ? [] : allGeneral;
+    const internalRows = filtered || fVerlust ? [] : withData.filter((r) => r.internal);
     const customers = [
       ...new Map(
         withData.map((r) => [
@@ -3938,7 +3966,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     const managers = await managersOf(withData.map((r) => r.manager_user_id));
     if (c.req.query('pdf') === '1') {
       const redact = c.req.query('schwaerzen') === '1';
-      const pdf = await siteCostingPdf(active, general, {
+      const pdf = await siteCostingPdf(active, general, internalRows, {
         title: 'Nachkalkulation & Kostenstellen',
         period: calcPeriodLabel(von, bis),
         filter: filterLabel(
@@ -3955,7 +3983,8 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     const details = fObjekt ? await siteCostDetails(sql, fObjekt, { from: von, to: bis }) : [];
     const sum = (f: (r: (typeof rows)[number]) => bigint) => active.reduce((a, r) => a + f(r), 0n);
     const totalRev = sum((r) => r.revenue);
-    const generalTotal = general.reduce((a, g) => a + g.total, 0n);
+    const generalTotal =
+      general.reduce((a, g) => a + g.total, 0n) - internalRows.reduce((a, r) => a + r.margin, 0n);
     const totalMargin = sum((r) => r.margin);
     const result = totalMargin - generalTotal;
     const pct = (bp: number | null) =>
@@ -3964,6 +3993,108 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
       const [a, b] = [von, bis].map((x) => Number(x.slice(0, 4)) * 12 + Number(x.slice(5, 7)));
       return b! - a! + 1;
     })();
+    const siteRow = (r: (typeof rows)[number]) => (
+      <tr>
+        <td>
+          <a href={`/objekte/${r.site_id}`}>
+            {r.site_no} · {r.site_name}
+          </a>
+          <div class="small mut">{r.customer_name}</div>
+          <a
+            class="small"
+            href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}`}
+          >
+            ▸ Kosten aufschlüsseln
+          </a>
+          {r.revenue === 0n && r.material + r.subcontractor + r.equipment + r.other + r.labor > 0n && (
+            <div class="small" style="color:var(--warn)">
+              Kosten ohne Erlös
+            </div>
+          )}
+        </td>
+        <td class="r">
+          <a
+            class="plain"
+            href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#erloes`}
+          >
+            {euro(r.revenue)}
+          </a>
+        </td>
+        <td class="r">
+          {hm(r.planned_minutes)} / {hm(r.actual_minutes)}
+          {r.missing_wage > 0 && (
+            <div
+              class="small"
+              style="color:var(--warn)"
+              title="Vergütung beim Mitarbeiter fehlt – gerechnet mit dem niedrigsten Tariflohn"
+            >
+              Lohn angenommen (Tariflohn)
+            </div>
+          )}
+        </td>
+        <td class="r">
+          <a
+            class="plain"
+            href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#lohn`}
+          >
+            {euro(r.labor)}
+          </a>
+        </td>
+        <td class="r">
+          <a
+            class="plain"
+            href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#material`}
+          >
+            {euro(r.material)}
+          </a>
+          {r.material > 0n && (
+            <div class="small">
+              <a href={`/materialausgabe?objekt=${r.site_id}${von === bis ? `&monat=${von}` : ''}`}>
+                Materialausgaben
+              </a>
+            </div>
+          )}
+        </td>
+        <td class="r">
+          <a
+            class="plain"
+            href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#geraete`}
+          >
+            {euro(r.equipment)}
+          </a>
+        </td>
+        <td class="r">
+          <a
+            class="plain"
+            href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#nu`}
+          >
+            {euro(r.subcontractor)}
+          </a>
+          {r.subcontractor_estimated > 0n && (
+            <div class="small mut">davon {euro(r.subcontractor_estimated)} lt. Bestellung</div>
+          )}
+        </td>
+        <td class="r">
+          <a
+            class="plain"
+            href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#sonstiges`}
+          >
+            {euro(r.other)}
+          </a>
+        </td>
+        <td class="r" style={r.margin < 0n ? 'color:var(--err)' : ''}>
+          <b>{euro(r.margin)}</b>
+        </td>
+        <td class="r">
+          <span
+            class={`badge ${r.margin_bp === null ? '' : r.margin_bp < 0 ? 'err' : r.margin_bp < targetBp ? 'warn' : 'ok'}`}
+          >
+            {pct(r.margin_bp)}
+          </span>
+        </td>
+        <td class="r">{r.actual_minutes > 0 ? euro((r.revenue * 60n) / BigInt(r.actual_minutes)) : '–'}</td>
+      </tr>
+    );
     return page(
       c,
       'Nachkalkulation & Kostenstellen',
@@ -4090,18 +4221,11 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
             </div>
           </div>
           <div class="kpi">
-            <div class="l">Allgemeine Kostenstellen</div>
+            <div class="l">Büro & Gemeinkosten (separat)</div>
             <div class="v">{euro(generalTotal)}</div>
             <div class="s">
-              {filtered || fVerlust ? 'bei Filter nicht enthalten' : 'Büro, Fahrzeuge, Lager …'}
+              {filtered || fVerlust ? 'bei Filter nicht enthalten' : 'nicht im Deckungsbeitrag · Liste unten'}
             </div>
-          </div>
-          <div class="kpi">
-            <div class="l">Ergebnis</div>
-            <div class="v" style={result < 0n ? 'color:var(--err)' : ''}>
-              {euro(result)}
-            </div>
-            <div class="s">Deckungsbeitrag − allgemeine Kosten</div>
           </div>
         </div>
         <div class="tbl">
@@ -4122,10 +4246,10 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
               </tr>
             </thead>
             <tbody>
-              {(active.length > 0 || general.length > 0) && (
+              {active.length > 0 && (
                 <tr style="background:var(--tint-2)">
                   <td>
-                    <b>Gesamt</b>
+                    <b>Gesamt Objekte</b>
                   </td>
                   <td class="r">
                     <b>{euro(totalRev)}</b>
@@ -4135,145 +4259,42 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                     <b>{euro(sum((r) => r.labor))}</b>
                   </td>
                   <td class="r">
-                    <b>{euro(sum((r) => r.material) + general.reduce((a, g) => a + g.material, 0n))}</b>
+                    <b>{euro(sum((r) => r.material))}</b>
                   </td>
                   <td class="r">
-                    <b>{euro(sum((r) => r.equipment) + general.reduce((a, g) => a + g.equipment, 0n))}</b>
+                    <b>{euro(sum((r) => r.equipment))}</b>
                   </td>
                   <td class="r">
-                    <b>
-                      {euro(sum((r) => r.subcontractor) + general.reduce((a, g) => a + g.subcontractor, 0n))}
-                    </b>
+                    <b>{euro(sum((r) => r.subcontractor))}</b>
                   </td>
                   <td class="r">
-                    <b>{euro(sum((r) => r.other) + general.reduce((a, g) => a + g.other, 0n))}</b>
+                    <b>{euro(sum((r) => r.other))}</b>
                   </td>
-                  <td class="r" style={result < 0n ? 'color:var(--err)' : ''}>
-                    <b>{euro(result)}</b>
+                  <td class="r" style={totalMargin < 0n ? 'color:var(--err)' : ''}>
+                    <b>{euro(totalMargin)}</b>
                   </td>
                   <td class="r" />
                   <td class="r" />
                 </tr>
               )}
-              {active.length === 0 && general.length === 0 && (
+              {active.length === 0 && general.length === 0 && internalRows.length === 0 && (
                 <tr>
                   <td colspan={11}>
                     <div class="empty">Im Zeitraum gibt es keine Erlöse, Zeiten oder Kosten.</div>
                   </td>
                 </tr>
               )}
-              {active.map((r) => (
-                <tr>
-                  <td>
-                    <a href={`/objekte/${r.site_id}`}>
-                      {r.site_no} · {r.site_name}
-                    </a>
-                    <div class="small mut">{r.customer_name}</div>
-                    <a
-                      class="small"
-                      href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}`}
-                    >
-                      ▸ Kosten aufschlüsseln
-                    </a>
-                    {r.revenue === 0n &&
-                      r.material + r.subcontractor + r.equipment + r.other + r.labor > 0n && (
-                        <div class="small" style="color:var(--warn)">
-                          Kosten ohne Erlös
-                        </div>
-                      )}
-                  </td>
-                  <td class="r">
-                    <a
-                      class="plain"
-                      href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#erloes`}
-                    >
-                      {euro(r.revenue)}
-                    </a>
-                  </td>
-                  <td class="r">
-                    {hm(r.planned_minutes)} / {hm(r.actual_minutes)}
-                    {r.missing_wage > 0 && (
-                      <div
-                        class="small"
-                        style="color:var(--warn)"
-                        title="Vergütung beim Mitarbeiter fehlt – gerechnet mit dem niedrigsten Tariflohn"
-                      >
-                        Lohn angenommen (Tariflohn)
-                      </div>
-                    )}
-                  </td>
-                  <td class="r">
-                    <a
-                      class="plain"
-                      href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#lohn`}
-                    >
-                      {euro(r.labor)}
-                    </a>
-                  </td>
-                  <td class="r">
-                    <a
-                      class="plain"
-                      href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#material`}
-                    >
-                      {euro(r.material)}
-                    </a>
-                    {r.material > 0n && (
-                      <div class="small">
-                        <a href={`/materialausgabe?objekt=${r.site_id}${von === bis ? `&monat=${von}` : ''}`}>
-                          Materialausgaben
-                        </a>
-                      </div>
-                    )}
-                  </td>
-                  <td class="r">
-                    <a
-                      class="plain"
-                      href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#geraete`}
-                    >
-                      {euro(r.equipment)}
-                    </a>
-                  </td>
-                  <td class="r">
-                    <a
-                      class="plain"
-                      href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#nu`}
-                    >
-                      {euro(r.subcontractor)}
-                    </a>
-                    {r.subcontractor_estimated > 0n && (
-                      <div class="small mut">davon {euro(r.subcontractor_estimated)} lt. Bestellung</div>
-                    )}
-                  </td>
-                  <td class="r">
-                    <a
-                      class="plain"
-                      href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#sonstiges`}
-                    >
-                      {euro(r.other)}
-                    </a>
-                  </td>
-                  <td class="r" style={r.margin < 0n ? 'color:var(--err)' : ''}>
-                    <b>{euro(r.margin)}</b>
-                  </td>
-                  <td class="r">
-                    <span
-                      class={`badge ${r.margin_bp === null ? '' : r.margin_bp < 0 ? 'err' : r.margin_bp < targetBp ? 'warn' : 'ok'}`}
-                    >
-                      {pct(r.margin_bp)}
-                    </span>
-                  </td>
-                  <td class="r">
-                    {r.actual_minutes > 0 ? euro((r.revenue * 60n) / BigInt(r.actual_minutes)) : '–'}
-                  </td>
-                </tr>
-              ))}
-              {general.length > 0 && (
+              {active.map(siteRow)}
+              {(general.length > 0 || internalRows.length > 0) && (
                 <tr>
                   <td colspan={11} class="small mut" style="background:var(--head)">
-                    <b>Allgemeine Kostenstellen</b> (ohne Erlös)
+                    <b>Büro & Gemeinkosten – separat</b> (Büro, Lager, allgemeine Kostenstellen; nicht im
+                    Gesamt der Objekte, Material zählt hier nicht – es geht über die Materialausgabe ans
+                    Objekt)
                   </td>
                 </tr>
               )}
+              {internalRows.map(siteRow)}
               {general.map((g) => (
                 <tr>
                   <td>
@@ -4306,6 +4327,21 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                   <td class="r" />
                 </tr>
               ))}
+              {(general.length > 0 || internalRows.length > 0) && (
+                <tr style="background:var(--tint-2)">
+                  <td colspan={8}>
+                    <b>Summe Büro & Gemeinkosten</b>
+                    <div class="small mut">
+                      zur Info: Deckungsbeitrag Objekte {euro(totalMargin)} − Gemeinkosten = {euro(result)}
+                    </div>
+                  </td>
+                  <td class="r" style="color:var(--err)">
+                    <b>{euro(-generalTotal)}</b>
+                  </td>
+                  <td class="r" />
+                  <td class="r" />
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

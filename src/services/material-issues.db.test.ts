@@ -62,6 +62,10 @@ describe.skipIf(!available)('Materialausgabe an Objekt (interner Lieferschein)',
     const cost = async () =>
       (await siteCosting(sql, { from: month, to: month })).rows.find((r) => r.site_id === site!.id)
         ?.material ?? 0n;
+    // Büro (interner Bereich): Material zählt nicht in der Nachkalkulation (Ahmed 27.10.)
+    expect(await cost()).toBe(0n);
+    await sql`update app.customers set is_internal = false
+               where id = (select customer_id from app.sites where id = ${site!.id})`;
     expect(await cost()).toBe(1005n);
     // zu wenig Bestand → Fehler, mit Häkchen Fehlbestand zubuchen
     const id2 = randomUUID();

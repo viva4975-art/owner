@@ -18,7 +18,7 @@ import { embedUiFonts, uiText } from './fonts.js';
  * Formular-Dokumente im Stil der alten Viva-App (Ahmed 08.10.: Bestellschein BE-2026-0001, Arbeitsscheine AS-2026-1024/1028):
  * Briefpapier als Hintergrund, Titel in Bordeaux mit Linie, grauer Infokasten mit Bordeaux-Strich links, zweispaltige
  * Anschriften, Abschnittsbalken, Tabellen mit Bordeaux-Kopflinie, Unterschriftslinien und Dokumentkennung
- * „VD-NU-02 Bestellschein … · Seite 1 von 5“ (seit 27.10. waagerecht in einer Zeile, vorher senkrecht am Rand).
+ * „VD-NU-02 Bestellschein … · Seite 1 von 5“ (senkrecht am rechten Rand, immer in einer Zeile).
  * Seit 10.10.2026 in der Gestaltung „edel“ wie die Rechnung: Schrift Inter, dunkle Titel, Kapitälchen-Beschriftungen,
  * Haarlinien, helle graue Flächen mit Bordeaux-Kante.
  */
@@ -613,15 +613,23 @@ export class FormDoc {
   async save(): Promise<Uint8Array> {
     const pages = this.pdf.getPages();
     pages.forEach((pg, i) => {
-      const size = 6.5;
-      const { width } = pg.getSize();
-      // waagerecht in einer Zeile (Ahmed 27.10.: senkrecht am Rand stand sie „schräg über dem Rand“):
-      // Briefpapier oben rechts zwischen Briefkopf und Inhalt, sonst unten rechts
-      const kind = this.kinds.get(pg);
-      const right = kind ? R : width - 28;
-      const t = this.fit(`${this.sideRef} · Seite ${i + 1} von ${pages.length}`, right - L, size);
-      const y = kind === 'bg' ? H - 114 : 16;
-      pg.drawText(uiText(t), { x: right - this.width(t, size), y, size, font: this.reg, color: GREY });
+      const { width, height } = pg.getSize();
+      // senkrecht am rechten Rand wie früher, aber immer in einer Zeile auf dem Blatt (Ahmed 27.10.):
+      // Schrift wird bis 5 pt kleiner, reicht es dann noch nicht, wird gekürzt
+      const y0 = 200;
+      const room = height - y0 - 30;
+      const full = `${this.sideRef} · Seite ${i + 1} von ${pages.length}`;
+      let size = 6.2;
+      while (size > 5 && this.width(full, size) > room) size -= 0.2;
+      const t = this.fit(full, room, size);
+      pg.drawText(uiText(t), {
+        x: width - 22,
+        y: y0,
+        size,
+        font: this.reg,
+        color: GREY,
+        rotate: degrees(90),
+      });
     });
     return this.pdf.save({ useObjectStreams: false });
   }

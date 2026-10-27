@@ -251,6 +251,11 @@ export async function siteCostBreakdown(
       amount: BigInt(estCost.cost),
     });
   for (const k of ['material', 'subcontractor', 'equipment', 'other'] as const) b[k].sort(sortItems);
+  // Büro/Lager (interne Bereiche): Material zählt nicht, wie in siteCosting (Ahmed 27.10.)
+  const [own2] = await sql<{ internal: boolean }[]>`
+    select coalesce(c.is_internal, false) and s.id <> ${SPECIAL_SITE_ID} as internal
+      from app.sites s join app.customers c on c.id = s.customer_id where s.id = ${siteId}`;
+  if (own2?.internal) b.material = [];
   return b;
 }
 
@@ -304,6 +309,8 @@ export async function costCenterBreakdown(
       amount: e.net,
     });
   }
+  // Material an allgemeinen Kostenstellen zählt nicht (geht über die Materialausgabe ans Objekt, Ahmed 27.10.)
+  b.material = [];
   for (const k of ['material', 'subcontractor', 'equipment', 'other'] as const) b[k].sort(sortItems);
   return b;
 }

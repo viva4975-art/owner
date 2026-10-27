@@ -274,7 +274,7 @@ export function registerCostingDetailRoutes(ctx: Ctx) {
     const plan = await planCosting(sql, { from: von, to: bis });
     const r = plan.rows.find((x) => x.site_id === siteId);
     if (!r) return c.notFound();
-    const d = plan.details.get(siteId) ?? { revenue: [], labor: [], material_avg3: 0n };
+    const d = plan.details.get(siteId) ?? { revenue: [], labor: [] };
     const orders = await sql<
       {
         id: string;
@@ -464,16 +464,7 @@ export function registerCostingDetailRoutes(ctx: Ctx) {
             Material <span class="mut small">· {euro(r.material)}</span>
           </h3>
           <p class="small mut">
-            {d.material_avg3 > 0n
-              ? `Ø der Monate ${monthLabel(plan.materialFrom)} – ${monthLabel(plan.materialTo)} (Ist ${euro(d.material_avg3)} ÷ 3) × ${plan.months} Monat${plan.months === 1 ? '' : 'e'}.`
-              : 'Kein Material in den letzten 3 Monaten.'}{' '}
-            {d.material_avg3 > 0n && (
-              <a
-                href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${plan.materialFrom}&bis=${plan.materialTo}#material`}
-              >
-                Belege dazu
-              </a>
-            )}
+            Pauschal {(plan.rates.material_bp / 100).toLocaleString('de-DE')} % vom Erlös ({euro(r.revenue)}).
           </p>
         </div>
       </>,

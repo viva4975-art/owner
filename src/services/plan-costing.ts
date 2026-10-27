@@ -5,9 +5,9 @@ import {
   type PayBand,
   type PlanCostRates,
 } from '../domain/hr/employer-cost.js';
-import { countWorkDays, monthBounds, todayBerlin } from '../domain/invoice/calc.js';
+import { countWorkDays, monthBounds } from '../domain/invoice/calc.js';
 import { type Cents, lineNet, type Quantity } from '../domain/money/money.js';
-import { monthRange, siteCosting, subcontractEstimates } from './costing.js';
+import { monthRange, SPECIAL_SITE_ID, subcontractEstimates } from './costing.js';
 import { BusinessError } from './errors.js';
 import { plannedShifts } from './time.js';
 
@@ -17,7 +17,7 @@ import { plannedShifts } from './time.js';
  * − Lohn   = eingeplante Einsätze (Soll) × Stundenlohn bzw. Festgehalt (kein Zuschlag für Urlaub/Krankheit, Ahmed 23.10.),
  *            + Arbeitgeberkosten je Person und Monat nach Lohnhöhe (Minijob / Midijob / regulär)
  * − Nachunternehmer laut Bestellung (jeder Monat, auch wenn schon eine Rechnung gebucht ist)
- * − Material als Ø der letzten 3 abgeschlossenen Monate
+ * − Material pauschal in % vom Erlös (Standard 2 %, Ahmed 27.10.; vorher Ø der letzten 3 Monate)
  * Feiertage im Plan zählen als bezahlte Stunden; Tage mit eingetragener Abwesenheit nicht.
  */
 
@@ -32,7 +32,7 @@ const CYCLE_MONTHS: Record<string, number> = {
 export async function getPlanCostRates(sql: Sql): Promise<PlanCostRates> {
   const [r] = await sql<PlanCostRates[]>`
     select sv_employer_bp, sv_employee_bp, levies_bp, accident_bp, minijob_flat_bp, minijob_limit_cents,
-           midijob_upper_cents, absence_bp from app.plan_cost_settings where id = 1`;
+           midijob_upper_cents, absence_bp, material_bp from app.plan_cost_settings where id = 1`;
   return {
     ...r!,
     minijob_limit_cents: BigInt(r!.minijob_limit_cents),
@@ -53,6 +53,7 @@ export async function savePlanCostRates(sql: Sql, r: PlanCostRates, actor: strin
     levies_bp = ${bp(r.levies_bp, 2000, 'Umlagen')}, accident_bp = ${bp(r.accident_bp, 2000, 'Unfallversicherung')},
     minijob_flat_bp = ${bp(r.minijob_flat_bp, 6000, 'Minijob-Pauschale')}, minijob_limit_cents = ${r.minijob_limit_cents},
     midijob_upper_cents = ${r.midijob_upper_cents}, absence_bp = ${bp(r.absence_bp, 5000, 'Ausfall')},
+    material_bp = ${bp(r.material_bp, 5000, 'Material')},
     updated_at = now(), updated_by = ${actor} where id = 1`;
   await sql`insert into app.audit_log (actor, action, entity) values (${actor}, 'save', 'plan_cost_settings')`;
 }
@@ -65,6 +66,8 @@ export interface PlanSiteRow {
   customer_name: string;
   customer_no: string | null;
   manager_user_id: string | null;
+  /** Büro/Lager (interner Bereich): Gemeinkosten, nicht im Gesamt der Objekte */
+  internal: boolean;
   revenue: bigint;
   minutes: number;
   gross: bigint;
@@ -91,8 +94,6 @@ export interface PlanSiteDetail {
     wage_cents: bigint;
     wage_assumed: boolean;
   }[];
-  /** Material der 3 Vormonate (Ist), daraus der Ø je Monat */
-  material_avg3: bigint;
 }
 
 export interface PlanEmployeeRow {
@@ -144,10 +145,7 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
   const from = monthRange(period.from).from;
   const to = monthRange(period.to).to;
   const rates = await getPlanCostRates(sql);
-  // Material: Ø der 3 Monate vor dem aktuellen Monat (Ist)
-  const now = todayBerlin().slice(0, 7);
-  const prev = monthsOf('2000-01', now).slice(-4, -1);
-  const [sites, services, shifts, nu, past, emps] = await Promise.all([
+  const [sites, services, shifts, nu, emps] = await Promise.all([
     sql<
       {
         id: string;
@@ -158,9 +156,11 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
         customer_no: string | null;
         manager_user_id: string | null;
         active: boolean;
+        internal: boolean;
       }[]
     >`
-      select s.id, s.site_no, s.name, s.customer_id, s.manager_user_id, s.active, c.name as customer_name, c.customer_no
+      select s.id, s.site_no, s.name, s.customer_id, s.manager_user_id, s.active, c.name as customer_name, c.customer_no,
+             coalesce(c.is_internal, false) and s.id <> ${SPECIAL_SITE_ID} as internal
         from app.sites s join app.customers c on c.id = s.customer_id order by s.site_no`,
     sql<
       {
@@ -187,7 +187,6 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
          and ss.valid_from <= ${to} and (ss.valid_to is null or ss.valid_to >= ${from})`,
     plannedShifts(sql, { from, to }),
     subcontractEstimates(sql, from, to, undefined, { plan: true }),
-    siteCosting(sql, { from: prev[0]!, to: prev[2]! }),
     sql<
       {
         id: string;
@@ -214,7 +213,7 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
   const detail = (siteId: string) => {
     let d = details.get(siteId);
     if (!d) {
-      d = { revenue: [], labor: [], material_avg3: 0n };
+      d = { revenue: [], labor: [] };
       details.set(siteId, d);
     }
     return d;
@@ -232,6 +231,7 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
         customer_name: s.customer_name,
         customer_no: s.customer_no,
         manager_user_id: s.manager_user_id,
+        internal: s.internal,
         revenue: 0n,
         minutes: 0,
         gross: 0n,
@@ -353,13 +353,9 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
     empAcc.set(empId, ea);
   }
   for (const n of nu) if (siteMap.has(n.site_id)) row(n.site_id).subcontractor += BigInt(n.cost);
-  for (const p of past.rows) {
-    const avg = p.material / 3n;
-    if (avg > 0n && siteMap.get(p.site_id)?.active) {
-      row(p.site_id).material += avg * BigInt(months.length);
-      detail(p.site_id).material_avg3 = p.material;
-    }
-  }
+  // Material pauschal: Erlös × Satz, kaufmännisch auf Cent
+  for (const r of acc.values())
+    if (r.revenue > 0n) r.material = (r.revenue * BigInt(rates.material_bp) + 5000n) / 10000n;
   const rows: PlanSiteRow[] = [...acc.values()]
     .filter((r) => r.revenue || r.minutes || r.subcontractor || r.material)
     .map((r) => {
@@ -384,7 +380,5 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
     details,
     rates,
     months: months.length,
-    materialFrom: prev[0]!,
-    materialTo: prev[2]!,
   };
 }

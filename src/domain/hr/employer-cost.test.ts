@@ -10,6 +10,7 @@ const r: PlanCostRates = {
   minijob_limit_cents: 60300n,
   midijob_upper_cents: 200000n,
   absence_bp: 1300,
+  material_bp: 200,
 };
 
 describe('employerCost', () => {

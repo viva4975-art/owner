@@ -4368,3 +4368,16 @@ Testadresse.
   - **Dokumentkennung „… · Seite x von y“** (alle Formular-PDFs) waagerecht in einer Zeile statt senkrecht am rechten
     Rand: auf Briefpapier oben rechts zwischen Briefkopf und Inhalt, auf schlanken/eingefügten Seiten unten rechts; zu
     lange Kennungen werden gekürzt statt umbrochen. Bereits archivierte PDFs bleiben unverändert.
+- 2026-10-27: Rückmeldung (Ahmed, 3 Punkte):
+  - **Dokumentkennung wieder senkrecht am rechten Rand**, aber immer in einer Zeile: Schrift wird bis 5 pt kleiner,
+    reicht das nicht, wird gekürzt (`FormDoc.save`). Ersetzt die waagerechte Kennung vom selben Tag.
+  - **Plan-Kalkulation: Material pauschal 2 % vom Erlös** je Objekt (kaufmännisch auf Cent; vorher Ø der letzten
+    3 Monate). Satz unter „So wird gerechnet“ änderbar (`plan_cost_settings.material_bp`, Migration `20270101000001`).
+  - **Nachkalkulation (Ist): Büro & Gemeinkosten separat.** Material an allgemeinen Kostenstellen (Lager, Büro …) und an
+    internen Objekten (Kunde „intern“, z. B. INT-BUERO; nicht „Sonderreinigung“) zählt nicht mehr – es kommt über die
+    Materialausgabe beim Objekt an und stünde sonst doppelt. Interne Objekte (Bürolohn + Zuschlag) und allgemeine
+    Kostenstellen stehen in einem eigenen Block „Büro & Gemeinkosten – separat“ unter der Liste (mit Summe und „zur
+    Info: DB Objekte − Gemeinkosten“); „Gesamt Objekte“, die Kacheln und die Marge enthalten sie nicht mehr. Kachel
+    „Ergebnis“ entfällt, stattdessen „Büro & Gemeinkosten (separat)“. Gleich im PDF und in „Kosten aufschlüsseln“;
+    Plan-Kalkulation zeigt Büro-Lohn ebenfalls nur separat. Filtert man ausdrücklich nach dem internen Kunden/Objekt,
+    erscheint es normal in der Liste. Startseiten-Ampel unverändert (nur Objekte mit Erlös).

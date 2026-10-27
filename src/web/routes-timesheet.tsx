@@ -1,5 +1,5 @@
 import { addMonths } from '../services/cost-centers.js';
-import { todayBerlin } from '../domain/invoice/calc.js';
+import { addDays, todayBerlin } from '../domain/invoice/calc.js';
 import { SiteOptions } from './site-options.js';
 import {
   ABSENCE_LABEL,
@@ -256,8 +256,13 @@ ${sheetTableHtml(s)}${sigHtml}
     const picked = new Set(c.req.queries('p') ?? []);
     const { from, to } = monthRange(month);
     // Vorab-Abrechnung: Ist bis Stichtag, danach Plan bis Monatsende (Ahmed 09.10.)
+    // Im laufenden Monat automatisch: Ist bis gestern, ab heute Plan (Ahmed 27.10.: Lohn bis zum 23. fertig);
+    // „stichtag=ohne“ = nur erfasste Zeiten
     const st0 = c.req.query('stichtag') ?? '';
-    const cutoff = /^\d{4}-\d{2}-\d{2}$/.test(st0) && st0 >= from && st0 < to ? st0 : null;
+    const today = todayBerlin();
+    const noCut = st0 === 'ohne';
+    const autoCut = !noCut && !st0 && today >= from && today <= to ? addDays(today, -1) : null;
+    const cutoff = /^\d{4}-\d{2}-\d{2}$/.test(st0) && st0 >= addDays(from, -1) && st0 < to ? st0 : autoCut;
     const [all, sigs, pay, siteLinks, sites] = await Promise.all([
       listEmployees(sql),
       signaturesOfMonth(sql, month),
@@ -316,14 +321,30 @@ ${sheetTableHtml(s)}${sigHtml}
       if (onlySite) p.set('nur', '1');
       if (sig !== 'alle') p.set('unterschrift', sig);
       if (view !== 'stunden') p.set('ansicht', view);
-      if (cutoff) p.set('stichtag', cutoff);
+      if (noCut) p.set('stichtag', 'ohne');
+      else if (cutoff) p.set('stichtag', cutoff);
       for (const [k, v] of Object.entries(o)) {
         if (v) p.set(k, v);
         else p.delete(k);
       }
       return p.toString();
     };
-    return { month, q, art, site, sig, view, rows: all2, chosen, onlySite, siteName, sites, qs, cutoff };
+    return {
+      month,
+      q,
+      art,
+      site,
+      sig,
+      view,
+      rows: all2,
+      chosen,
+      onlySite,
+      siteName,
+      sites,
+      qs,
+      cutoff,
+      autoCut: !!autoCut && cutoff === autoCut,
+    };
   };
   const surchargeMin = (p: { minutes: Record<string, number> } | undefined) =>
     p ? SURCHARGES.reduce((a, k) => a + p.minutes[k]!, 0) : 0;
@@ -495,7 +516,9 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                 data-export
                 data-confirm={
                   month >= todayBerlin().slice(0, 7)
-                    ? `Der Monat ${month.slice(5)}/${month.slice(0, 4)} läuft noch. Diesen Stand als Vorab-Abrechnung fürs Lohnprogramm festhalten? Was sich danach noch ändert, kommt im Folgemonat als Korrekturzeile.`
+                    ? d.cutoff
+                      ? `Vorab-Abrechnung ${month.slice(5)}/${month.slice(0, 4)}: erfasste Zeiten bis ${dateDe(d.cutoff)}, danach die geplanten Einsätze bis Monatsende. Stand festhalten? Abweichungen kommen im Folgemonat als Korrekturzeile.`
+                      : `Der Monat ${month.slice(5)}/${month.slice(0, 4)} läuft noch. Nur erfasste Zeiten (ohne Plan) als Vorab-Abrechnung festhalten?`
                     : `Lohnarten ${month.slice(5)}/${month.slice(0, 4)} fürs Lohnprogramm exportieren? Der Stand wird festgehalten; spätere Änderungen erscheinen im Folgemonat als Korrekturzeile.`
                 }
               >
@@ -508,7 +531,9 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                 title="Lexware ASCII-Import: Jahr;Monat;Personalnummer;Lohnartnummer;Wert – Windows-1252 (ANSI), ohne Kopfzeile"
                 data-confirm={
                   month >= todayBerlin().slice(0, 7)
-                    ? `Der Monat ${month.slice(5)}/${month.slice(0, 4)} läuft noch. Diesen Stand als Vorab-Abrechnung für Lexware festhalten? Was sich danach noch ändert, kommt im Folgemonat als Korrekturzeile.`
+                    ? d.cutoff
+                      ? `Vorab-Abrechnung ${month.slice(5)}/${month.slice(0, 4)} für Lexware: erfasste Zeiten bis ${dateDe(d.cutoff)}, danach die geplanten Einsätze bis Monatsende. Stand festhalten? Abweichungen kommen im Folgemonat als Korrekturzeile.`
+                      : `Der Monat ${month.slice(5)}/${month.slice(0, 4)} läuft noch. Nur erfasste Zeiten (ohne Plan) als Vorab-Abrechnung für Lexware festhalten?`
                     : `Lohnarten ${month.slice(5)}/${month.slice(0, 4)} als Lexware-ASCII-Datei exportieren? Der Stand wird festgehalten; spätere Änderungen erscheinen im Folgemonat als Korrekturzeile.`
                 }
               >
@@ -541,7 +566,8 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
             {[...new URLSearchParams(d.qs({ stichtag: '' })).entries()].map(([k, v]) => (
               <input type="hidden" name={k} value={v} />
             ))}
-            <b>Vorab-Abrechnung</b> (Löhne vor Monatsende): erfasste Zeiten bis{' '}
+            <b>Vorab-Abrechnung</b> (Löhne vor Monatsende
+            {d.autoCut ? ', im laufenden Monat automatisch: Ist bis gestern' : ''}): erfasste Zeiten bis{' '}
             <input
               type="date"
               name="stichtag"
@@ -550,8 +576,8 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
             />{' '}
             danach die geplanten Einsätze bis Monatsende. <button class="btn sm sec">Anwenden</button>
             {d.cutoff && (
-              <a class="btn sm sec" href={`/zeiterfassung/stundenzettel?${d.qs({ stichtag: '' })}`}>
-                ohne Stichtag
+              <a class="btn sm sec" href={`/zeiterfassung/stundenzettel?${d.qs({ stichtag: 'ohne' })}`}>
+                nur erfasste Zeiten
               </a>
             )}
             <div class="small mut" style="margin-top:6px">

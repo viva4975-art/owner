@@ -184,8 +184,8 @@ export function proratedSalary(cents: bigint, from: string, to: string, entry: s
 }
 
 /**
- * Lohnarten eines Monats. Mit `cutoff` (Vorab-Abrechnung, Ahmed 09.10.: „Löhne müssen früher gedruckt werden“):
- * erfasste Zeiten bis einschließlich Stichtag, danach die geplanten Einsätze bis Monatsende (ohne Abwesenheit,
+ * Lohnarten eines Monats. Mit `cutoff` (Vorab-Abrechnung, Ahmed 09.10.: „Löhne müssen früher gedruckt werden“;
+ * im laufenden Monat automatisch gestern, Ahmed 27.10.): erfasste Zeiten bis einschließlich Stichtag, danach die geplanten Einsätze bis Monatsende (ohne Abwesenheit,
  * Ausfall, Feiertag). Abwesenheiten zählen für den ganzen Monat. Mehrarbeit nur aus erfassten Zeiten.
  */
 export async function payrollMonth(
@@ -195,7 +195,8 @@ export async function payrollMonth(
   opts: { cutoff?: string | null } = {},
 ): Promise<PayrollRow[]> {
   const { from, to } = monthRange(month);
-  const cutoff = opts.cutoff && opts.cutoff >= from && opts.cutoff < to ? opts.cutoff : null;
+  // Stichtag = Vortag des Monatsbeginns: ganzer Monat nach Plan (Export am 1. eines Monats)
+  const cutoff = opts.cutoff && opts.cutoff >= addDays(from, -1) && opts.cutoff < to ? opts.cutoff : null;
   const settings = await getPayrollSettings(sql);
   const rates = ratesOf(settings);
   const emps = await sql<

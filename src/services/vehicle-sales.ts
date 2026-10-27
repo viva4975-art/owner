@@ -40,14 +40,14 @@ export const DOCS = {
 } as const;
 
 export const WARRANTY = {
-  ausgeschlossen: 'Gewährleistung ausgeschlossen (nur bei Verkauf an Unternehmer)',
+  ausgeschlossen: 'Gekauft wie gesehen – Gewährleistung ausgeschlossen (nur an Unternehmer)',
   einjahr: 'Gewährleistung auf 1 Jahr verkürzt (Privatkäufer, gesondert vereinbart)',
   gesetzlich: 'Gesetzliche Gewährleistung (2 Jahre)',
 } as const;
 
 export const PAYMENT = {
-  ueberweisung: 'Überweisung vor Übergabe',
   bar: 'Barzahlung bei Übergabe',
+  ueberweisung: 'Überweisung vor Übergabe',
 } as const;
 
 export const REGISTRATION = {
@@ -281,7 +281,10 @@ export async function renderSalePdf(
         ],
       },
     );
-    doc.section('1. Fahrzeug');
+    const sz = 8.8;
+    const P = (t: string, o: { bold?: boolean; indent?: number } = {}) => doc.para(t, { size: sz, ...o });
+    const gross = eur(p.amounts.gross);
+    doc.section('§ 1 Kaufgegenstand');
     doc.kvBox([
       { k: 'Fahrzeug', v: vehicleName || '–', strong: true },
       { k: 'Kennzeichen', v: v.plate, k2: 'Erstzulassung', v2: de(v.first_registration) },
@@ -292,34 +295,16 @@ export async function renderSalePdf(
         v2: v.fuel ? (FUEL[v.fuel] ?? v.fuel) : '–',
       },
       {
-        k: 'km-Stand bei Übergabe',
-        v: `${d0.mileageKm.toLocaleString('de-DE')} km (abgelesen)`,
+        k: 'km-Stand (Tacho)',
+        v: `${d0.mileageKm.toLocaleString('de-DE')} km`,
         k2: 'Nächste HU',
         v2: v.hu_due ? v.hu_due.slice(5, 7) + '/' + v.hu_due.slice(0, 4) : '–',
       },
       { k: 'Schlüssel', v: `${d0.keysN} Stück` },
     ]);
-    doc.section('2. Zustand');
-    doc.para(
-      d0.accidentFree === 'ja'
-        ? '☒ Dem Verkäufer sind keine Unfallschäden bekannt (Unfallfreiheit, soweit dem Verkäufer bekannt).'
-        : d0.accidentFree === 'nein'
-          ? `☒ Das Fahrzeug hat folgende Unfallschäden: ${d0.damages ?? ''}`
-          : '☒ Ob das Fahrzeug unfallfrei ist, ist dem Verkäufer nicht bekannt.',
-      { size: 9 },
-    );
-    doc.para(
-      d0.defects?.trim()
-        ? `Bekannte Mängel / Schäden: ${d0.defects.trim()}`
-        : 'Weitere Mängel sind dem Verkäufer nicht bekannt.',
-      { size: 9 },
-    );
-    doc.para(
-      'Das Fahrzeug wurde gewerblich (im Reinigungsbetrieb) genutzt. Der Käufer hatte Gelegenheit, das Fahrzeug zu besichtigen und Probe zu fahren.',
-      { size: 9 },
-    );
-    doc.y += 4;
-    doc.section('3. Kaufpreis und Zahlung');
+    if (d0.accessories?.trim()) P(`Mitverkauftes Zubehör: ${d0.accessories.trim()}`);
+
+    doc.section('§ 2 Kaufpreis und Zahlung');
     doc.kvBox([
       ...(p.amounts.vat > 0n
         ? [
@@ -327,76 +312,107 @@ export async function renderSalePdf(
             { k: 'zzgl. 19 % USt', v: eur(p.amounts.vat) },
           ]
         : []),
-      { k: p.amounts.vat > 0n ? 'Kaufpreis brutto' : 'Kaufpreis', v: eur(p.amounts.gross), strong: true },
+      { k: p.amounts.vat > 0n ? 'Kaufpreis brutto' : 'Kaufpreis', v: gross, strong: true },
       { k: 'Zahlung', v: PAYMENT[d0.payment] },
     ]);
-    if (TAX_NOTE[d0.taxMode]) doc.para(TAX_NOTE[d0.taxMode], { size: 9, bold: true });
-    doc.para(
+    if (TAX_NOTE[d0.taxMode]) P(TAX_NOTE[d0.taxMode], { bold: true });
+    P(
       d0.payment === 'bar'
-        ? 'Der Kaufpreis ist bei Übergabe in bar zu zahlen; der Verkäufer quittiert den Empfang unten.'
+        ? `Der Kaufpreis von ${gross} wird bei Übergabe in bar gezahlt. Der Verkäufer bestätigt den Empfang mit seiner Unterschrift unter der Quittung am Ende dieses Vertrags.`
         : `Der Kaufpreis ist vor Übergabe auf das Konto des Verkäufers zu überweisen${
             bank ? ` (${bank.name} · IBAN ${bank.iban})` : ''
-          }. Übergabe erst nach Zahlungseingang.`,
-      { size: 9 },
+          }. Das Fahrzeug wird erst nach Zahlungseingang übergeben.`,
     );
-    doc.para('Das Fahrzeug bleibt bis zur vollständigen Zahlung des Kaufpreises Eigentum des Verkäufers.', {
-      size: 9,
-    });
-    doc.y += 4;
-    doc.section('4. Gewährleistung');
-    doc.para(
-      d0.warranty === 'ausgeschlossen'
-        ? 'Das Fahrzeug wird unter Ausschluss jeder Gewährleistung verkauft.'
-        : d0.warranty === 'einjahr'
-          ? 'Ansprüche des Käufers wegen Sachmängeln verjähren abweichend vom Gesetz in einem Jahr ab Übergabe. Der Käufer wurde vor Abgabe seiner Vertragserklärung eigens auf diese Verkürzung hingewiesen; sie wurde ausdrücklich und gesondert vereinbart (§ 476 Abs. 2 BGB).'
-          : 'Es gelten die gesetzlichen Gewährleistungsrechte.',
-      { size: 9 },
+    P(
+      'Das Fahrzeug bleibt bis zur vollständigen Zahlung des Kaufpreises Eigentum des Verkäufers (Eigentumsvorbehalt). Nebenabreden bestehen nicht.',
     );
-    if (d0.warranty !== 'gesetzlich')
-      doc.para(
-        'Dies gilt nicht für Schadensersatzansprüche aus der Verletzung von Leben, Körper oder Gesundheit, für vorsätzlich oder grob fahrlässig verursachte Schäden, für arglistig verschwiegene Mängel sowie für übernommene Garantien (Beschaffenheitsangaben in Ziffer 2).',
-        { size: 8.4 },
+
+    doc.section('§ 3 Sachmängelhaftung (Gewährleistung)');
+    if (d0.warranty === 'ausgeschlossen')
+      P(
+        'Das Fahrzeug wird verkauft wie besichtigt und probegefahren („gekauft wie gesehen“) – unter Ausschluss jeglicher Sachmängelhaftung (Gewährleistung).',
+        { bold: true },
       );
+    else if (d0.warranty === 'einjahr')
+      P(
+        'Ansprüche des Käufers wegen Sachmängeln verjähren abweichend vom Gesetz in einem Jahr ab Übergabe des Fahrzeugs. Der Käufer wurde vor Abgabe seiner Vertragserklärung eigens auf diese Verkürzung hingewiesen; sie wird ausdrücklich und gesondert vereinbart (§ 476 Abs. 2 BGB).',
+        { bold: true },
+      );
+    else P('Es gelten die gesetzlichen Rechte des Käufers bei Sachmängeln.');
+    if (d0.warranty !== 'gesetzlich')
+      P(
+        'Der Ausschluss bzw. die Verkürzung gilt nicht für Schadensersatzansprüche aus der Verletzung von Leben, Körper oder Gesundheit, für Schäden, die auf Vorsatz oder grober Fahrlässigkeit des Verkäufers beruhen, sowie für arglistig verschwiegene Mängel.',
+      );
+    P(
+      'Keine Garantie: Der Verkäufer übernimmt keine Garantie (§ 443 BGB) – weder für die Beschaffenheit noch für die Haltbarkeit des Fahrzeugs. Die Angaben in § 4 sind Beschaffenheitsangaben nach bestem Wissen des Verkäufers, keine Garantie.',
+    );
     if (d0.warranty === 'einjahr') {
       doc.y += 2;
-      doc.signatures('Gesondert vereinbart: Unterschrift Käufer', 'Verkäufer', {});
+      doc.signatures('Verkürzung gesondert vereinbart · Unterschrift Käufer', 'Verkäufer', {});
     }
-    doc.y += 4;
-    doc.section('5. Übergabe, Unterlagen und Zulassung');
-    doc.para(
+
+    doc.section('§ 4 Erklärungen des Verkäufers');
+    P('Der Verkäufer erklärt nach bestem Wissen:');
+    P(
+      '☒  Er ist Eigentümer des Fahrzeugs; das Fahrzeug ist frei von Rechten Dritter (z. B. Sicherungsübereignung).',
+      { indent: 8 },
+    );
+    P(
+      d0.accidentFree === 'ja'
+        ? '☒  Das Fahrzeug hat – soweit dem Verkäufer bekannt – keine Unfallschäden.'
+        : d0.accidentFree === 'nein'
+          ? `☒  Das Fahrzeug hat folgende Unfallschäden: ${d0.damages ?? ''}`
+          : '☒  Ob das Fahrzeug Unfallschäden hat, ist dem Verkäufer nicht bekannt.',
+      { indent: 8 },
+    );
+    P(
+      d0.defects?.trim()
+        ? `☒  Bekannte Mängel / Schäden: ${d0.defects.trim()}`
+        : '☒  Weitere Mängel sind dem Verkäufer nicht bekannt.',
+      { indent: 8 },
+    );
+    P(
+      `☒  Der km-Stand wurde bei Übergabe abgelesen (${d0.mileageKm.toLocaleString('de-DE')} km). Die Gesamtlaufleistung ist nur insoweit bekannt, als das Fahrzeug seit ${de(v.first_registration)} im Betrieb bzw. Besitz des Verkäufers ist.`,
+      { indent: 8 },
+    );
+    P('☒  Das Fahrzeug wurde gewerblich genutzt (Reinigungsbetrieb).', { indent: 8 });
+
+    doc.section('§ 5 Erklärungen des Käufers');
+    P(
+      'Der Käufer hatte Gelegenheit, das Fahrzeug zu besichtigen und Probe zu fahren, und hat es in diesem Zustand gekauft.',
+    );
+    P(
+      d0.registration === 'abgemeldet'
+        ? 'Das Fahrzeug ist abgemeldet. Der Käufer lässt es auf eigene Kosten zu.'
+        : `Das Fahrzeug wird zugelassen übergeben. Der Käufer meldet es binnen ${d0.reregisterDays} Tagen auf sich um. Ab Übergabe trägt er Kosten, Steuer, Bußgelder und Schäden aus dem Betrieb und stellt den Verkäufer davon frei. Die Kfz-Haftpflichtversicherung geht nach § 95 VVG auf den Käufer über; beide zeigen den Verkauf dem Versicherer an (§ 97 VVG).`,
+    );
+
+    doc.section('§ 6 Übergabe');
+    P(
       `Übergabe am ${de(d0.handoverDate)}${d0.handoverTime ? ` um ${d0.handoverTime} Uhr` : ''} mit ${d0.keysN} Schlüssel${
         d0.keysN === 1 ? '' : 'n'
       } und folgenden Unterlagen:`,
-      { size: 9 },
     );
-    for (const [k, l] of Object.entries(DOCS))
-      doc.para(`${d0.docs.includes(k) ? '☒' : '☐'}  ${l}`, { size: 9, indent: 10 });
-    if (d0.accessories?.trim()) doc.para(`Zubehör: ${d0.accessories.trim()}`, { size: 9 });
-    doc.para(
-      d0.registration === 'abgemeldet'
-        ? 'Das Fahrzeug ist abgemeldet. Der Käufer lässt es auf eigene Kosten zu.'
-        : `Das Fahrzeug wird zugelassen übergeben. Der Käufer verpflichtet sich, es binnen ${d0.reregisterDays} Tagen auf sich umzumelden. Bis zur Ummeldung trägt er Kosten, Bußgelder und Schäden aus dem Betrieb ab Übergabe; die Kfz-Haftpflichtversicherung geht nach § 95 VVG auf den Käufer über – Verkäufer und Käufer zeigen den Verkauf dem Versicherer an.`,
-      { size: 9 },
+    for (const [k, l] of Object.entries(DOCS)) P(`${d0.docs.includes(k) ? '☒' : '☐'}  ${l}`, { indent: 10 });
+    P('Mit der Übergabe gehen Gefahr, Nutzen und Lasten auf den Käufer über.');
+
+    doc.section('§ 7 Sonstiges');
+    if (d0.note?.trim()) P(`Sonstige Vereinbarungen: ${d0.note.trim()}`);
+    P(
+      'Änderungen und Ergänzungen dieses Vertrags bedürfen der Textform. Sollte eine Bestimmung unwirksam sein, bleibt der Vertrag im Übrigen wirksam.',
     );
-    if (d0.note?.trim()) {
-      doc.y += 2;
-      doc.para(`Sonstige Vereinbarungen: ${d0.note.trim()}`, { size: 9 });
-    }
     doc.y += 4;
     doc.signatures('Verkäufer · Unterschrift / Stempel', 'Käufer · Unterschrift', {
       leftText: `${seller.city}, den ${de(d0.saleDate)}`,
       rightText: 'Ort, Datum',
     });
-    doc.section('Übergabe bestätigt');
-    doc.para(
-      `Fahrzeug, ${d0.keysN} Schlüssel und die angekreuzten Unterlagen erhalten.${
-        d0.payment === 'bar' ? ' Kaufpreis in bar erhalten (Verkäufer).' : ''
-      }`,
-      { size: 9 },
-    );
+    doc.section(d0.payment === 'bar' ? 'Übergabe und Quittung' : 'Übergabe bestätigt');
+    P(`Käufer: Fahrzeug, ${d0.keysN} Schlüssel und die angekreuzten Unterlagen erhalten.`);
+    if (d0.payment === 'bar')
+      P(`Verkäufer: Kaufpreis von ${gross} in bar vollständig erhalten.`, { bold: true });
     doc.signatures(
       'Datum, Uhrzeit · Unterschrift Käufer',
-      d0.payment === 'bar' ? 'Geld erhalten · Verkäufer' : 'Verkäufer',
+      d0.payment === 'bar' ? 'Betrag erhalten · Unterschrift Verkäufer' : 'Verkäufer',
     );
     doc.newPage();
   }

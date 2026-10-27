@@ -728,7 +728,11 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
             </div>
             <div>
               <label for="pay">Zahlung</label>
-              {sel('payment', PAYMENT, 'ueberweisung', 'pay')}
+              {sel('payment', PAYMENT, 'bar', 'pay')}
+              <div class="small mut">
+                Barzahlung: Geld bei Übergabe zählen und auf Echtheit prüfen, Ausweis des Käufers ansehen und
+                die Nummer eintragen; der Vertrag enthält eine Quittung zum Unterschreiben.
+              </div>
             </div>
             <div>
               <label for="nt">Sonstige Vereinbarungen</label>
@@ -756,6 +760,12 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
             </button>
           </div>
         </form>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var t=document.getElementById('bt'),w=document.getElementById('war');if(!t||!w)return;
+t.addEventListener('change',function(){if(t.value==='unternehmen')w.value='ausgeschlossen';else if(w.value==='ausgeschlossen')w.value='einjahr';w.dispatchEvent(new Event('change',{bubbles:true}));});})();`,
+          }}
+        />
       </>,
     );
   });

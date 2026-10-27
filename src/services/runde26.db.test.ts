@@ -130,4 +130,12 @@ describe.skipIf(!available)('Runde 26: Plan-Zeiten als Ist-Zeiten (Datenbank)', 
     const mine = corr.rows.find((x) => x.employee_id === e2!.id)!;
     expect(mine.minutes.normal).toBe(-23 * 60); // es wurde nach dem Stichtag nichts mehr erfasst
   });
+
+  it('Vorab-Lohnabrechnung am Monatsersten: Stichtag = Vortag → ganzer Monat nach Plan', async () => {
+    const [e2] = await sql<{ id: string }[]>`select id from app.employees where personnel_no = '8802'`;
+    const [r] = await payrollMonth(sql, '2026-03', e2!.id, { cutoff: '2026-02-28' });
+    // keine erfassten Zeiten, nur Plan
+    expect(r!.forecastMinutes).toBeGreaterThanOrEqual(23 * 60);
+    expect(r!.minutes.normal).toBe(r!.forecastMinutes);
+  });
 });

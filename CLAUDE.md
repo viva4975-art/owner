@@ -4326,3 +4326,18 @@ Testadresse.
     (Gelangensbestätigung bzw. Ausfuhrnachweis aufbewahren). An Privatpersonen keine Gewährleistung ausschließen – nur auf
     1 Jahr verkürzen und gesondert vereinbaren (§ 476 BGB, eigene Unterschrift im Vertrag). Versicherer über den Verkauf
     informieren (§ 97 VVG). Rechnung nicht im DATEV-Export – **an den Steuerberater geben** (Anlagenabgang, Buchwert).
+- 2026-10-27: **Lohnexport mit Plan bis Monatsende** (Ahmed: „Lohn muss bis ca. 23. fertig sein“): Im laufenden Monat nehmen
+  „CSV Lohnprogramm“ und „Lexware (ASCII)“ automatisch die erfassten Zeiten bis gestern und ab heute die geplanten
+  Einsätze bis Monatsende (mit Zuschlägen, bezahlten Feiertagen); Stichtag frei wählbar (auch Vortag des Monatsbeginns =
+  ganzer Monat aus dem Plan), „nur erfasste Zeiten“ = `stichtag=ohne`. Rückfrage vor dem Export nennt den Stichtag. Der
+  Export wird festgehalten, im Folgemonat kommen Korrekturzeilen mit der Differenz Plan → Ist. **§ 17 MiLoG:** die
+  tatsächlichen Zeiten müssen trotzdem vollständig erfasst werden; Abweichungen landen als Korrektur im Folgemonat.
+- 2026-10-27: **Fahrzeug-Kaufvertrag wie übliche Muster** (Ahmed: bar, Gewährleistungsausschluss, keine Garantie): § 1
+  Kaufgegenstand, § 2 Kaufpreis/Zahlung (Standard **bar bei Übergabe mit Quittung** am Ende; sonst Überweisung vor Übergabe,
+  Eigentumsvorbehalt), § 3 Sachmängelhaftung („gekauft wie gesehen“, Ausschluss – nur an Unternehmer; an Privatpersonen
+  Verkürzung auf 1 Jahr mit eigener Unterschrift), Ausnahmen Leben/Körper/Gesundheit, Vorsatz/grobe Fahrlässigkeit,
+  arglistig verschwiegene Mängel; **keine Garantie (§ 443 BGB)**, § 4 Erklärungen Verkäufer (Eigentum, Unfälle, Mängel,
+  km laut Anzeige), § 5 Käufer (Besichtigung/Probefahrt, Ummeldung), § 6 Übergabe/Gefahrübergang, § 7 Sonstiges.
+  Formular: Käufer „Unternehmen“ setzt den Ausschluss vor, „privat“ die 1-Jahres-Verkürzung. **Rechtlich:** Ausschluss
+  gegenüber Verbrauchern unwirksam (§ 476 BGB); bei Barzahlung Ausweis des Käufers notieren und Scheine prüfen
+  (ab 10.000 € Identifizierung nach GwG für Güterhändler beachten).

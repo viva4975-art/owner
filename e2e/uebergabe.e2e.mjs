@@ -94,6 +94,37 @@ const pdf = await p.request.get(hUrl + '/protokoll.pdf');
 check('Protokoll-PDF', pdf.ok() && (await pdf.body()).subarray(0, 4).toString() === '%PDF');
 check('Bestand −2', (await shirtStock()) === before + 3);
 
+console.log('2b. Unterschrift liegt schon vor (Papier) – nur hinterlegen');
+{
+  const s0 = await shirtStock();
+  await p.goto(B + `/personal/${firstEmp}/uebergaben`);
+  await p.click('a:has-text("+ Arbeitskleidung")');
+  await p.waitForLoadState();
+  await p.locator('select[name=item_article]').first().selectOption(SHIRT);
+  await p.locator('select[name=item_size]').first().selectOption('M');
+  check('Scan-Feld erst nach Häkchen', !(await p.locator('#papier-felder').isVisible()));
+  await p.check('#papier');
+  check('Scan-Feld sichtbar', await p.locator('#papier-felder').isVisible());
+  await p.setInputFiles('#signed_scan', {
+    name: 'scan.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\n%%EOF\n'),
+  });
+  await p.click('button:has-text("Speichern und zur Unterschrift")');
+  await p.waitForLoadState();
+  check(
+    'hinterlegt ohne Unterschriftsseite',
+    (await flash(p)).includes('Hinterlegt'),
+    (await flash(p)) + p.url(),
+  );
+  check('Bestand gebucht', (await shirtStock()) === s0 - 1);
+  await p.goto(B + `/personal/${firstEmp}/dokumente`);
+  check(
+    'Scan in der Personalakte',
+    ((await p.locator('body').textContent()) ?? '').includes('_unterschrieben.pdf'),
+  );
+}
+
 console.log('3. Rückgabe ohne Unterschrift');
 await p.goto(hUrl);
 await p.click('a:has-text("Rückgabe erfassen")');
@@ -107,7 +138,7 @@ await p.click('button:has-text("Ohne Unterschrift abschließen")');
 await p.waitForLoadState();
 check('Rückgabe abgeschlossen', (await flash(p)).includes('Ohne Unterschrift'), await flash(p));
 check('Verweis auf Ausgabe', (await p.locator('body').innerText()).includes('zu Ausgabe'));
-check('Bestand +1', (await shirtStock()) === before + 4);
+check('Bestand +1', (await shirtStock()) === before + 3);
 
 console.log('4. Reiter am Mitarbeiter');
 await p.goto(hUrl);

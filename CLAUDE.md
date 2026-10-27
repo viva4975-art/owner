@@ -4282,3 +4282,17 @@ Testadresse.
   Startseite), bis 8 Anträge + „Alle offenen Anträge“. Ohne offene Anträge erscheint nichts. Bewusst keine zusätzliche
   Aufgabe je Antrag (wäre doppelt und müsste bei jeder Entscheidung mitgepflegt werden). Nachträge zur Zeiterfassung
   stehen weiter als Hinweis „n Nachträge zur Freigabe“.
+- 2026-10-27: **Übergabe „Unterschrift liegt schon vor“** (Ahmed): Im Übergabe-Formular (Kleidung, Geräte, Sonstiges,
+  Dokument) Häkchen „Unterschrift liegt schon vor (auf Papier unterschrieben) – nur hinterlegen“ → Speichern schließt die
+  Übergabe sofort ab und bucht (Kleiderbestand, „hat erhalten“), ohne Handy-Unterschrift; optional Scan/Foto des
+  unterschriebenen Zettels → Personalakte (Kleidung → „Arbeitskleidung“, sonst passende Kategorie; Nachunternehmer →
+  Verträge), feste ID je Übergabe. Grund im Protokoll „Auf Papier unterschrieben (Scan/Original in der Personalakte)“.
+- 2026-10-27: **Austritt: Arbeitskleidung zurückholen** (Ahmed: „vorher erinnern bzw. als Aufgabe bei Objektleitung und
+  allen im Büro“): `src/services/exit-returns.ts`. Steht ein Austritt in den nächsten 30 Tagen an (oder liegt bis 60 Tage
+  zurück) und hat die Person laut Übergaben noch Arbeitskleidung bzw. laut Schlüsselbuch Schlüssel, entsteht je eine
+  Aufgabe „Arbeitskleidung (und Schlüssel) zurückholen: Name (Austritt …)“ – fällig am Austrittstag, mit Liste der Teile:
+  eine ohne Zuständigen (sieht das ganze Büro) und eine je Objektleitung der Objekte der Person (zugeordnet oder
+  eingeplant). Feste IDs, nichts doppelt; ist alles zurück bzw. der Austritt aufgehoben/verschoben, erledigen sich die
+  offenen Aufgaben selbst (von Hand erledigte bleiben erledigt). Abgleich stündlich und sofort nach jedem Speichern unter
+  Personal, Übergaben, Schlüssel. Fällige Aufgaben stehen auch unter Erinnerungen. Test `exit-returns.db.test.ts`,
+  `e2e:uebergabe` 32 Prüfungen. **Rechtlich:** Lohnabzug bei Nichtrückgabe nur mit Vereinbarung (siehe Übergaben, 05.10.).

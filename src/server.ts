@@ -16,6 +16,7 @@ import { schoolLeave } from './services/school-leave.js';
 import { replicate } from './services/archive-replica.js';
 import { runPushNotifier } from './services/push.js';
 import { createApp } from './web/app.js';
+import { syncExitReturnTasks } from './services/exit-returns.js';
 
 const env = loadEnv();
 const sql = createSql(env.DATABASE_URL);
@@ -42,6 +43,11 @@ serve({ fetch: app.fetch, port: env.PORT, hostname }, (info) => {
 const dueHours = () => applyDueHours(sql).catch((e) => console.error('Wochenstunden übernehmen:', e));
 void dueHours();
 setInterval(dueHours, 60 * 60 * 1000).unref();
+
+// Austritt in Sicht, Arbeitskleidung/Schlüssel noch nicht zurück → Aufgabe (stündlich)
+const exitReturns = () => syncExitReturnTasks(sql).catch((e) => console.error('Austritt-Rückgabe:', e));
+setTimeout(exitReturns, 45_000).unref();
+setInterval(exitReturns, 60 * 60 * 1000).unref();
 
 // „Soll als Ist nach N Tagen“ (Zeiterfassung → Einstellungen): stündlich prüfen
 const autoIst = () =>

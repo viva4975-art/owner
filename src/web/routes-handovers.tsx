@@ -154,6 +154,16 @@ export const HandoverTable: FC<{ rows: HandoverRow[]; showSite?: boolean }> = ({
   </div>
 );
 
+/** Ablage des unterschriebenen Scans in der Personalakte je Art der Übergabe. */
+const scanCategory = (kind: HandoverKind) =>
+  kind === 'kleidung'
+    ? 'Arbeitskleidung'
+    : kind === 'schluessel'
+      ? 'Schlüssel'
+      : kind === 'dokument'
+        ? 'Unterweisung'
+        : 'Personalunterlagen';
+
 export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
   const { sql } = deps;
 
@@ -681,6 +691,24 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
           <input id="note" name="note" value={h?.note ?? ''} />
           <p class="small mut">Erklärung über der Unterschrift: „{declaration(kind, direction)}“</p>
           <script dangerouslySetInnerHTML={{ __html: OTHER_JS }} />
+          <h3>Unterschrift</h3>
+          <div class="chk">
+            <input type="checkbox" id="papier" name="papier" value="1" data-reveal="#papier-felder" />
+            <label for="papier">
+              Unterschrift liegt schon vor (auf Papier unterschrieben) – nur hinterlegen
+            </label>
+          </div>
+          <div id="papier-felder" hidden>
+            <p class="small mut" style="margin:6px 0">
+              Die Übergabe wird sofort abgeschlossen und gebucht (Bestand bzw. „hat erhalten“ beim
+              Mitarbeiter), ohne Unterschrift am Handy. Den unterschriebenen Zettel hier als Scan/Foto
+              anhängen – er landet in der Personalakte.
+            </p>
+            <label for="signed_scan">
+              Scan / Foto des unterschriebenen Protokolls (optional, PDF oder Bild)
+            </label>
+            <input id="signed_scan" name="signed_scan" type="file" accept="application/pdf,.pdf,image/*" />
+          </div>
           <div class="formfoot">
             <a
               class="btn sec"
@@ -938,6 +966,51 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
         return back(c, `/uebergaben/${id}?${q}`, { fehler: e.message });
       }
       throw e;
+    }
+    if (str(b, 'papier') === '1') {
+      // Ahmed 27.10.: Unterschrift liegt schon auf Papier vor → nur hinterlegen (abschließen + buchen, Scan in die Akte)
+      const scan = b.signed_scan;
+      const hasScan = scan instanceof File && scan.size > 0;
+      try {
+        await closeHandoverWithoutSignature(
+          deps,
+          id,
+          hasScan
+            ? 'Auf Papier unterschrieben (Scan in der Personalakte)'
+            : 'Auf Papier unterschrieben (Original in der Personalakte)',
+          c.get('actor'),
+        );
+      } catch (e) {
+        if (e instanceof BusinessError) return back(c, `/uebergaben/${id}`, { fehler: e.message });
+        throw e;
+      }
+      if (hasScan) {
+        const data = new Uint8Array(await scan.arrayBuffer());
+        const h = await getHandover(sql, id);
+        const target = h?.employee_id
+          ? ({ type: 'employee', id: h.employee_id } as const)
+          : h?.supplier_id
+            ? ({ type: 'supplier', id: h.supplier_id } as const)
+            : null;
+        await storeFile(
+          sql,
+          filesCfg(),
+          {
+            id: uuidFrom(`uebergabe-scan:${id}`),
+            name: `${h?.number ?? 'Uebergabe'}_unterschrieben${scan.name.match(/\.[a-z0-9]+$/i)?.[0] ?? ''}`,
+            type: scan.type || 'application/octet-stream',
+            data,
+            link: target,
+            category: target?.type === 'employee' ? scanCategory(kind) : 'Verträge',
+          },
+          c.get('actor'),
+        );
+      }
+      return back(c, `/uebergaben/${id}`, {
+        ok: hasScan
+          ? 'Hinterlegt und gebucht – Scan liegt in der Akte.'
+          : 'Hinterlegt und gebucht (auf Papier unterschrieben).',
+      });
     }
     return back(c, `/uebergaben/${id}/unterschrift`, {
       ok: 'Gespeichert – bitte jetzt unterschreiben lassen.',

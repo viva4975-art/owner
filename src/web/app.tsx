@@ -1,4 +1,5 @@
 import { registerPayslipRoutes } from './routes-payslips.js';
+import { syncExitReturnTasks } from '../services/exit-returns.js';
 import { registerLetterRoutes } from './routes-letters.js';
 import { registerMaterialRoutes } from './routes-material.js';
 import { registerPermissionRoutes } from './routes-permissions.js';
@@ -418,6 +419,15 @@ export function createApp(deps: Deps) {
     const ok = target.searchParams.get('ok');
     if (ok) dest.searchParams.set('ok', ok);
     c.res = c.redirect(dest.pathname + dest.search + dest.hash, 303);
+  });
+
+  // Austritt + noch Arbeitskleidung/Schlüssel → Aufgabe für Büro und Objektleitung (Ahmed 27.10.). Nach Änderungen an
+  // Personal, Übergaben, Schlüsseln sofort abgleichen (zusätzlich stündlich im Server).
+  app.use(async (c, next) => {
+    await next();
+    if (c.req.method !== 'POST' || c.res.status >= 500) return;
+    if (/^\/(personal|uebergaben|schluessel|objekte\/[0-9a-f-]{36}\/schluessel)/.test(c.req.path))
+      void syncExitReturnTasks(deps.sql).catch((e) => console.error('Austritt-Rückgabe:', e));
   });
 
   // Objektleitung: keine Links ins Leere (gesperrte Seiten) – siehe stripForbiddenLinks

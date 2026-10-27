@@ -4275,3 +4275,10 @@ Testadresse.
   Stempeln), Feld Betriebsnummer und Code entfernt. Migration `20261228000001` löscht Tabelle `sv_immediate_reports` und
   Spalte `company.betriebsnummer` (die Anlage-Migration `20261227000001` bleibt, weil sie schon eingespielt sein kann).
   Gemeldet wird weiter in Lexware/sv.net – **Pflicht bleibt: spätestens bei Arbeitsaufnahme (§ 28a Abs. 4 SGB IV).**
+- 2026-10-27: **Urlaubsanträge auf der Übersicht** (Ahmed: „in der Übersicht sehen oder als Aufgabe“): Kasten „Anträge zum
+  Genehmigen“ oben auf der Startseite (Büro mit Zugriff auf Urlaub & Abwesenheiten) und auf der Startseite der
+  Objektleitung (nur Personen, die im Antragszeitraum an ihren Objekten eingeplant sind): Person, Art, Zeitraum,
+  Arbeitstage, Bemerkung, **Genehmigen / Ablehnen direkt dort** (gleiche Prüfung wie unter Urlaub, danach zurück auf die
+  Startseite), bis 8 Anträge + „Alle offenen Anträge“. Ohne offene Anträge erscheint nichts. Bewusst keine zusätzliche
+  Aufgabe je Antrag (wäre doppelt und müsste bei jeder Entscheidung mitgepflegt werden). Nachträge zur Zeiterfassung
+  stehen weiter als Hinweis „n Nachträge zur Freigabe“.

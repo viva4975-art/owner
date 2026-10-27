@@ -6,7 +6,7 @@ import { collectReminders } from '../services/reminders.js';
 import { fullName } from '../services/users.js';
 import { missingDocs } from '../services/hr-required-docs.js';
 import { hoursHistory, plannedDaysPerWeek } from '../services/employee-hours.js';
-import { absentBetween, leaveBalance } from '../services/absences.js';
+import { absentBetween, leaveBalance, listAbsences, plannedAtSites } from '../services/absences.js';
 import { permitWarningsForSites } from '../services/employees.js';
 import { AbsentCard } from './pages-crm.js';
 import { followups } from '../services/prospects.js';
@@ -66,6 +66,7 @@ import {
   DASH_CARDS,
   type DashCardKey,
   Dashboard,
+  LeaveRequestsBox,
   normalizeDash,
   type DashboardTodo,
   PlannedPage,
@@ -93,14 +94,32 @@ export function registerModuleRoutes(ctx: Ctx) {
    * Übersicht der Objektleitung (Ahmed 14.10.): Aufenthaltstitel/Arbeitserlaubnis ihrer eingeplanten Leute 6 Wochen
    * vorher, Abwesenheiten (heute, 7 und 14 Tage), eigene Aufgaben und die wichtigsten Wege.
    */
+  /**
+   * Offene Urlaubs-/Abwesenheitsanträge für die Übersicht. Objektleitung: nur Personen, die im Antragszeitraum an
+   * ihren Objekten eingeplant sind (wie unter Urlaub & Abwesenheiten).
+   */
+  async function openLeaveRequests(c: Context<AppEnv>) {
+    const sites = c.get('sites');
+    const rows = await listAbsences(sql, { status: ['beantragt'] });
+    rows.sort((a, b) => a.start_date.localeCompare(b.start_date));
+    if (!sites) return rows;
+    if (!sites.length || !rows.length) return [];
+    const ok = await sql<{ id: string }[]>`
+      select a.id from app.absences a where a.id = any(${rows.map((r) => r.id)}::uuid[])
+         and ${plannedAtSites(sql, sql`a.employee_id`, sites, sql`a.start_date`, sql`a.end_date`)}`;
+    const set = new Set(ok.map((r) => r.id));
+    return rows.filter((r) => set.has(r.id));
+  }
+
   async function olHome(c: Context<AppEnv>) {
     const sites = c.get('sites') ?? [];
     const today = todayBerlin();
-    const [permits, absent, tasks, odd] = await Promise.all([
+    const [permits, absent, tasks, odd, leave] = await Promise.all([
       permitWarningsForSites(sql, sites, 42),
       absentBetween(sql, today, addDays(today, 14), sites),
       listTasks(sql, { status: 'open', withinDays: 14, onlyFor: taskViewerOf(c) }),
       timeAnomalies(sql, { managerUserId: c.get('user').id }),
+      canAccess('objektleitung', '/urlaub') ? openLeaveRequests(c) : Promise.resolve([]),
     ]);
     const days = (d: string) => Math.round((Date.parse(d) - Date.parse(today)) / 86_400_000);
     const LINKS: [string, string][] = [
@@ -124,6 +143,7 @@ export function registerModuleRoutes(ctx: Ctx) {
             </a>
           ))}
         </p>
+        <LeaveRequestsBox rows={leave} />
         {odd.length > 0 && (
           <p class="flash warn">
             <a href="/zeiterfassung/auffaellig">
@@ -292,6 +312,7 @@ export function registerModuleRoutes(ctx: Ctx) {
         showAkquise={canAccess(role, '/akquise')}
         absent={absent}
         absentHref={canAccess(role, '/urlaub/kalender') ? '/urlaub/kalender' : undefined}
+        leaveRequests={canAccess(role, '/urlaub') ? await openLeaveRequests(c) : []}
         signOverdue={signOverdue}
         ampel={await (async () => {
           const m = lastMonth();

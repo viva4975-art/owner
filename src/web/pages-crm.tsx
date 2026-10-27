@@ -6,7 +6,7 @@ import type { SearchResult } from '../services/search.js';
 import { Field } from './pages-masterdata.js';
 import { PageHead, dateDe, euro, initials } from './layout.js';
 import { InvoiceTable } from './pages-invoices.js';
-import { ABSENCE_LABEL, type AbsentNow } from '../services/absences.js';
+import { ABSENCE_LABEL, type AbsenceRow, type AbsentNow } from '../services/absences.js';
 import { hourBerlin } from '../domain/invoice/calc.js';
 
 /** „Abwesend“: heute, nächste 7 Tage und 8–14 Tage (Urlaub zwei Wochen vorher sichtbar), mit Art inkl. „krank“. */
@@ -585,6 +585,8 @@ export const Dashboard: FC<{
   /** Anfragen aus der App der Objektleitung: NU-Aufträge zur Freigabe, neue Personalbögen */
   appRequests?: { nu: number; bogen: number; zeit?: number; auffaellig?: number; fahrzeugschein?: number };
   absentHref?: string | undefined;
+  /** offene Urlaubs-/Abwesenheitsanträge (oben auf der Übersicht) */
+  leaveRequests?: AbsenceRow[];
   layout?: DashItem[] | undefined;
   showAkquise?: boolean;
 }> = ({
@@ -606,6 +608,7 @@ export const Dashboard: FC<{
   bank = null,
   appRequests = { nu: 0, bogen: 0 },
   absentHref,
+  leaveRequests = [],
 }) => {
   const total = balances.reduce((s, b) => s + b.open_cents, 0n);
   const overdue = balances.filter((b) => b.max_overdue_days > 0);
@@ -813,6 +816,8 @@ export const Dashboard: FC<{
           </a>
         </div>
       </div>
+
+      <LeaveRequestsBox rows={leaveRequests} />
 
       {(() => {
         const cards: Record<DashCardKey, Child> = {
@@ -1196,6 +1201,47 @@ export const Mark: FC<{ text: string; q: string }> = ({ text, q }) => {
   const parts = text.split(new RegExp(`(${words.join('|')})`, 'gi'));
   return <>{parts.map((p, i) => (i % 2 === 1 ? <mark>{p}</mark> : p))}</>;
 };
+
+/**
+ * Offene Anträge auf Urlaub/Abwesenheit (Ahmed 27.10.: „Urlaubsanträge muss ich in der Übersicht sehen“): oben auf der
+ * Startseite (Büro und Objektleitung), mit Genehmigen/Ablehnen direkt hier.
+ */
+export const LeaveRequestsBox: FC<{ rows: AbsenceRow[]; href?: string }> = ({ rows, href = '/urlaub' }) =>
+  rows.length === 0 ? null : (
+    <section class="card dash-card" style="border-left:3px solid var(--brand,#7d1435)">
+      <DashHead title="Anträge zum Genehmigen" count={rows.length} href={href} more="Alle offenen Anträge" />
+      <ul class="dash-list">
+        {rows.slice(0, 8).map((a) => (
+          <li>
+            <span class="badge warn">{ABSENCE_LABEL[a.kind]}</span>
+            <div class="dl-main">
+              <a href={`/urlaub/person/${a.employee_id}`}>{a.employee_name}</a>
+              <div class="dl-sub">
+                {dateDe(a.start_date)}
+                {a.end_date !== a.start_date && ` – ${dateDe(a.end_date)}`}
+                {a.half_day && ' (halb)'} · {String(a.days).replace('.', ',')}{' '}
+                {a.days === 1 ? 'Arbeitstag' : 'Arbeitstage'}
+                {a.note ? ` · ${a.note}` : ''}
+              </div>
+            </div>
+            <div class="actions" style="margin:0;flex-wrap:nowrap;gap:6px">
+              <form method="post" action={`/urlaub/${a.id}/status`}>
+                <input type="hidden" name="status" value="genehmigt" />
+                <button class="btn sm">Genehmigen</button>
+              </form>
+              <form method="post" action={`/urlaub/${a.id}/status`}>
+                <input type="hidden" name="status" value="abgelehnt" />
+                <button class="btn sm danger" data-confirm={`Antrag von ${a.employee_name} ablehnen?`}>
+                  Ablehnen
+                </button>
+              </form>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {rows.length > 8 && <div class="dash-more">+ {rows.length - 8} weitere</div>}
+    </section>
+  );
 
 export const SearchResults: FC<{ result: SearchResult; type: string | null }> = ({ result, type }) => {
   const total = result.groups.reduce((n, g) => n + g.hits.length, 0);

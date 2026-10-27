@@ -4355,3 +4355,16 @@ Testadresse.
   in der Position, Ergebnisse bleiben gleich), Tickets verlieren nur den Raum (`on delete set null`). Gelöschte Räume mit
   Name/Nr./Etage im Protokoll (`rooms_delete`). **Hinweis:** In Auswertungsberichten älterer Kontrollen fehlen gelöschte
   Räume in der Liste „geprüfte Einheiten“ (Ergebnis, Mängelzahl und Bereichsnamen bleiben).
+- 2026-10-27: **Unterschrift wieder auf Linie, Name gelb; Schrift wie in Word; Seitenkennung in einer Zeile** (Ahmed):
+  - **Fund Unterweisung ohne Linie:** Im PDF aus Word-Vorlagen wurden Linien unter leeren Absätzen in Tabellenzellen
+    (Unterschriftsfeld der Unterweisung V7) nicht gezeichnet, die Zeilenhöhe der Vorlage fehlte. Jetzt Linie + Platz zum
+    Unterschreiben (Zeilenhöhe der Vorlage, 28–48 pt), auch Absatzlinien unter Text in Zellen (`docx-render.ts`).
+  - **Keine graue Fläche mehr** über der Unterschrift der Person: `markEmployeeSignature` (ersetzt `shadeEmployeeSignature`)
+    markiert nur die Beschriftung unter der Linie gelb („Unterschrift Arbeitnehmer/in – Vorname Nachname“, w:highlight,
+    in Word und PDF); bei „München, den … Unterschrift Arbeitnehmer/in: ____“ nur ab „Unterschrift“. Arbeitgeber bleibt
+    unmarkiert. App-PDFs mit Unterschrift der Person (Vertragsänderung, Schlüsselprotokoll) ebenso
+    (`FormDoc.signatures(..., { mark })`). Wirkt beim nächsten Erzeugen, ohne neues Hochladen.
+  - **Schrift wie vorher:** PDF aus Word-Vorlagen in Originalgröße (Faktor 0,9 → 1,0, Verträge werden dadurch länger).
+  - **Dokumentkennung „… · Seite x von y“** (alle Formular-PDFs) waagerecht in einer Zeile statt senkrecht am rechten
+    Rand: auf Briefpapier oben rechts zwischen Briefkopf und Inhalt, auf schlanken/eingefügten Seiten unten rechts; zu
+    lange Kennungen werden gekürzt statt umbrochen. Bereits archivierte PDFs bleiben unverändert.

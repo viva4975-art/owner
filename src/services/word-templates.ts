@@ -1,6 +1,6 @@
 import { leaveDaysForWeek } from '../domain/time/leave.js';
 import { createHash, randomUUID } from 'node:crypto';
-import { type Gender, genderOf, genderizeXml, salaryClause, shadeEmployeeSignature } from './word-gender.js';
+import { type Gender, genderOf, genderizeXml, salaryClause, markEmployeeSignature } from './word-gender.js';
 import { personGreeting } from '../domain/letter/greeting.js';
 import { customerGreeting } from './letters.js';
 import { readFile } from 'node:fs/promises';
@@ -211,7 +211,7 @@ export function fillDocx(
     // Mitarbeiter-Dokument: „Arbeitnehmer/in“ passend zur Anrede, Unterschriftsfeld der Person hinterlegt
     if (person?.salaried) xml = salaryClause(xml);
     if (person?.gender) xml = genderizeXml(xml, person.gender);
-    if (person && name === 'word/document.xml') xml = shadeEmployeeSignature(xml);
+    if (person && name === 'word/document.xml') xml = markEmployeeSignature(xml);
     files[name] = strToU8(fillXml(xml, value, missing));
   }
   return { data: zipSync(files, { level: 6 }), missing: [...missing] };

@@ -1,6 +1,8 @@
 import { rgb } from '@cantoo/pdf-lib';
 import { FORM_X, FORM_Y, type FormDoc } from './form-doc.js';
 
+const YELLOW = rgb(1, 0.93, 0.35);
+
 /*
  * Word-Dokument (document.xml) als Seiten in ein FormDoc setzen (Objektordner als ein PDF, Ahmed 09.10.:
  * „PDF, die man direkt ausdrucken kann“). Unterstützt, was Ahmeds Vorlagen nutzen: Absätze mit Läufen (fett, Farbe,
@@ -63,6 +65,8 @@ interface Run {
   bold: boolean;
   color: [number, number, number] | null;
   size: number | null;
+  /** gelb markiert (Unterschrift der Person, Ahmed 27.10.) */
+  mark?: boolean;
 }
 interface Para {
   kind: 'p';
@@ -71,6 +75,8 @@ interface Para {
   after: number;
   before: number;
   border: [number, number, number] | null;
+  /** Zeilenhöhe in pt, wenn in der Vorlage gesetzt (leere Absätze mit Linie = Platz zum Unterschreiben) */
+  lineH: number | null;
   bullet: boolean;
   pageBreak: boolean;
 }
@@ -170,6 +176,7 @@ function parsePara(p: XNode): Para {
             bold: !!b && val(b) !== '0' && val(b) !== 'false',
             color: hex(val(child(rPr, 'w:color'))),
             size: sz ? Number(sz) / 2 : null,
+            mark: MARK.test(val(child(rPr, 'w:highlight')) ?? ''),
           });
       } else if (r.name === 'w:sdt' && child(child(r, 'w:sdtPr'), 'w14:checkbox')) {
         // Kontrollkästchen: Zeichen aus dem Zustand (w14:checked), nicht aus dem Text darin – manche Vorlagen
@@ -216,9 +223,20 @@ function parsePara(p: XNode): Para {
       bottom && val(bottom) !== 'nil' && val(bottom) !== 'none'
         ? (hex(bottom.attrs['w:color']) ?? [0.6, 0.6, 0.6])
         : null,
+    lineH: lineHeight(sp),
     bullet: !!child(pPr, 'w:numPr'),
     pageBreak: pageBreak || !!child(pPr, 'w:pageBreakBefore'),
   };
+}
+
+const MARK = /^(yellow|lightYellow|darkYellow)$/;
+
+/** Zeilenabstand aus w:spacing in pt (auto = Vielfaches von 12 pt, exact/atLeast = Twips) */
+function lineHeight(sp: XNode | undefined): number | null {
+  const line = Number(sp?.attrs['w:line'] ?? 0);
+  if (!line) return null;
+  const rule = sp?.attrs['w:lineRule'] ?? 'auto';
+  return rule === 'auto' ? (line / 240) * 12 : line / 20;
 }
 
 function cellParas(tc: XNode): Para[] {
@@ -237,6 +255,7 @@ function cellParas(tc: XNode): Para[] {
         out.push({
           ...parsePara({ name: 'w:p', attrs: {}, children: [] }),
           runs: [{ text: cells.join('  |  '), bold: false, color: null, size: null }],
+          lineH: null,
         });
       }
     }
@@ -320,7 +339,8 @@ export function docxTitle(blocks: (Para | Table)[]): string | null {
   return best?.t ?? null;
 }
 
-const F = 0.9; // Word-Größen etwas kleiner (Inhaltsbereich des Briefpapiers ist kleiner als eine leere A4-Seite)
+// Word-Größen 1:1 (Ahmed 27.10.: mit 0,9 war die Schrift in Verträgen kleiner als in Word)
+const F = 1;
 const DEF = 10;
 
 interface Word {
@@ -331,6 +351,7 @@ interface Word {
   color: [number, number, number] | null;
   space: boolean;
   br?: boolean;
+  mark?: boolean;
 }
 
 /** Absatz in Zeilen setzen (Wörter behalten ihre Formatierung) */
@@ -361,6 +382,7 @@ function layout(d: FormDoc, p: Para, maxW: number) {
         bold: r.bold,
         color: r.color,
         space: /^ +$/.test(part),
+        mark: !!r.mark,
       });
     }
   }
@@ -411,6 +433,7 @@ function drawLines(
   for (const l of ls) {
     let cx = align === 'center' ? x + (maxW - l.w) / 2 : align === 'right' ? x + maxW - l.w : x;
     for (const wd of l.words) {
+      if (wd.mark) d.rect(cx - 0.5, y + l.h * 0.12, wd.w + 1, l.h * 0.86, YELLOW);
       if (!wd.space)
         d.text(wd.t, cx, y + l.h * 0.8, {
           size: wd.size,
@@ -426,6 +449,8 @@ function drawLines(
 
 function paraHeight(d: FormDoc, p: Para, maxW: number) {
   const l = layout(d, p, maxW);
+  // leerer Absatz mit Linie = Unterschriftsfeld: Platz zum Unterschreiben (Zeilenhöhe der Vorlage, mind. 28 pt)
+  if (l.empty && p.border) return { l, h: Math.max(28, Math.min(48, p.lineH ?? 0)) + p.after * F * 0.6 };
   if (l.empty) return { l, h: Math.min(6, l.size * 0.5) + p.after * F * 0.6 };
   return { l, h: l.lines.reduce((a, x) => a + x.h, 0) + (p.before + p.after) * F * 0.6 + (p.border ? 4 : 0) };
 }
@@ -499,10 +524,16 @@ export function renderDocx(d: FormDoc, blocks: (Para | Table)[]) {
         for (const x of c.laid) {
           if (x.l.empty) {
             y += x.h;
+            // Unterschriftslinie (Linie unter leerem Absatz) – fehlte in Zellen (Ahmed 27.10., Unterweisung)
+            if (x.p.border) d.line(c.x0 + pad, c.x1 - pad, y - x.p.after * F * 0.6, rgb(...x.p.border), 0.8);
             continue;
           }
           y += x.p.before * F * 0.6;
           y = drawLines(d, x.l.lines, c.x0 + pad, c.inner, x.p.align, y);
+          if (x.p.border) {
+            d.line(c.x0 + pad, c.x1 - pad, y + 2, rgb(...x.p.border), 0.8);
+            y += 4;
+          }
           y += x.p.after * F * 0.6;
         }
       }

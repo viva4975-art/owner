@@ -17,8 +17,8 @@ import { embedUiFonts, uiText } from './fonts.js';
 /*
  * Formular-Dokumente im Stil der alten Viva-App (Ahmed 08.10.: Bestellschein BE-2026-0001, Arbeitsscheine AS-2026-1024/1028):
  * Briefpapier als Hintergrund, Titel in Bordeaux mit Linie, grauer Infokasten mit Bordeaux-Strich links, zweispaltige
- * Anschriften, Abschnittsbalken, Tabellen mit Bordeaux-Kopflinie, Unterschriftslinien und senkrechter Dokumentkennung
- * rechts („VD-NU-02 Bestellschein … · Seite 1 von 5“).
+ * Anschriften, Abschnittsbalken, Tabellen mit Bordeaux-Kopflinie, Unterschriftslinien und Dokumentkennung
+ * „VD-NU-02 Bestellschein … · Seite 1 von 5“ (seit 27.10. waagerecht in einer Zeile, vorher senkrecht am Rand).
  * Seit 10.10.2026 in der Gestaltung „edel“ wie die Rechnung: Schrift Inter, dunkle Titel, Kapitälchen-Beschriftungen,
  * Haarlinien, helle graue Flächen mit Bordeaux-Kante.
  */
@@ -35,6 +35,7 @@ const BORDEAUX = rgb(125 / 255, 20 / 255, 53 / 255);
 const INK = rgb(0.1, 0.09, 0.1);
 const MUT = rgb(0.47, 0.45, 0.47);
 const GREY = rgb(0.47, 0.45, 0.47);
+const YELLOW = rgb(1, 0.93, 0.35);
 const BOX = rgb(0.972, 0.968, 0.97);
 const BOX_LINE = rgb(0.89, 0.88, 0.89);
 const SECTION = rgb(0.972, 0.968, 0.97);
@@ -67,6 +68,8 @@ export class FormDoc {
   top = TOP;
   bottom = BOTTOM;
   y = TOP;
+  /** Art je Seite für die Dokumentkennung (eingefügte fremde Seiten fehlen hier) */
+  private kinds = new Map<PDFPage, 'bg' | 'plain'>();
   private constructor(
     private sideRef: string,
     private watermark?: string,
@@ -110,6 +113,7 @@ export class FormDoc {
   newPage(o: { plain?: boolean; logoWidth?: number } = {}) {
     this.page = this.pdf.addPage([W, H]);
     const plain = o.plain ?? !this.bg;
+    this.kinds.set(this.page, plain ? 'plain' : 'bg');
     if (plain && !this.logo) throw new Error('Logo nicht geladen (FormDoc.loadLogo)');
     // Logo-Breite schlanker Seiten: 110 pt (Raumbuch, Berichte); Aushänge größer (Ahmed 15.10.)
     const lw = o.logoWidth ?? 110;
@@ -555,7 +559,13 @@ export class FormDoc {
   signatures(
     leftLabel: string,
     rightLabel: string,
-    o: { leftText?: string; png?: PDFImage | null; rightText?: string } = {},
+    o: {
+      leftText?: string;
+      png?: PDFImage | null;
+      rightText?: string;
+      /** Beschriftung der Person, die hier unterschreibt, gelb markieren (Ahmed 27.10.) */
+      mark?: 'left' | 'right';
+    } = {},
   ) {
     // Ort/Datum steht deutlich über der Linie, dazwischen Platz zum Unterschreiben (Ahmed 26.10.: stand direkt auf der Linie)
     const withText = !!(o.leftText || o.rightText);
@@ -578,8 +588,13 @@ export class FormDoc {
     }
     this.line(L, L + half - 30, this.y, INK, 0.5);
     this.line(L + half + 12, R, this.y, INK, 0.5);
-    this.text(leftLabel, L, this.y + 12, { size: 7.5, color: MUT });
-    this.text(rightLabel, L + half + 12, this.y + 12, { size: 7.5, color: MUT });
+    const lx = { left: L, right: L + half + 12 } as const;
+    if (o.mark) {
+      const lab = o.mark === 'left' ? leftLabel : rightLabel;
+      this.rect(lx[o.mark] - 1.5, this.y + 4, this.width(lab, 7.5) + 3, 10.5, YELLOW);
+    }
+    this.text(leftLabel, lx.left, this.y + 12, { size: 7.5, color: o.mark === 'left' ? INK : MUT });
+    this.text(rightLabel, lx.right, this.y + 12, { size: 7.5, color: o.mark === 'right' ? INK : MUT });
     this.y += 26;
   }
 
@@ -598,10 +613,15 @@ export class FormDoc {
   async save(): Promise<Uint8Array> {
     const pages = this.pdf.getPages();
     pages.forEach((pg, i) => {
-      const t = `${this.sideRef} · Seite ${i + 1} von ${pages.length}`;
-      // am rechten Rand der jeweiligen Seite (eingefügte Querseiten sind breiter als A4 hoch)
+      const size = 6.5;
       const { width } = pg.getSize();
-      pg.drawText(t, { x: width - 22, y: 200, size: 6.2, font: this.reg, color: GREY, rotate: degrees(90) });
+      // waagerecht in einer Zeile (Ahmed 27.10.: senkrecht am Rand stand sie „schräg über dem Rand“):
+      // Briefpapier oben rechts zwischen Briefkopf und Inhalt, sonst unten rechts
+      const kind = this.kinds.get(pg);
+      const right = kind ? R : width - 28;
+      const t = this.fit(`${this.sideRef} · Seite ${i + 1} von ${pages.length}`, right - L, size);
+      const y = kind === 'bg' ? H - 114 : 16;
+      pg.drawText(uiText(t), { x: right - this.width(t, size), y, size, font: this.reg, color: GREY });
     });
     return this.pdf.save({ useObjectStreams: false });
   }

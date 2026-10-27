@@ -130,6 +130,7 @@ export async function renderKeyProtocolPdf(p: {
     });
     d.signatures('Rücknahme durch Viva-Deluxe Gebäudereinigung GmbH', `Unterschrift ${p.employee.name}`, {
       leftText: `München, den ${formatDateDe(p.date)}`,
+      mark: 'right',
     });
   } else {
     d.section('Pflichten');
@@ -140,6 +141,7 @@ export async function renderKeyProtocolPdf(p: {
     );
     d.signatures('Viva-Deluxe Gebäudereinigung GmbH', `Unterschrift ${p.employee.name}`, {
       leftText: `München, den ${formatDateDe(p.date)}`,
+      mark: 'right',
     });
   }
   return d.pdf.save();

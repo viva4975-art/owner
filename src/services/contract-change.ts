@@ -213,7 +213,7 @@ export async function contractChangePdf(sql: Sql, employeeId: string, i: Contrac
   );
   for (const t of k.outro) d.para(t, { size: 9 });
   d.y += 6;
-  d.signatures(k.signLeft, k.signRight, { leftText: k.place });
+  d.signatures(k.signLeft, k.signRight, { leftText: k.place, mark: 'right' });
   return { pdf: await d.save(), name: `${k.file}.pdf`, rows: k.rows };
 }
 

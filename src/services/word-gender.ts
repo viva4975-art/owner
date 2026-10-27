@@ -1,11 +1,11 @@
 /*
  * Mitarbeiter-Vorlagen passend zur Person (Ahmed 10.10.: „zwischen Arbeitnehmer und Arbeitnehmerin unterscheiden“,
- * „bei Unterschrift Arbeitnehmer leichte Schattierung drüber“).
+ * „bei Unterschrift Arbeitnehmer leichte Schattierung drüber“; seit 27.10.: „wieder auf Linie, nur den Namen gelb“).
  *
  * - `genderizeXml`: Doppelformen „Der/die Arbeitnehmer/in“, „dem/der“, „er/sie“, „ihm/ihr“ … werden je nach Anrede
  *   (Frau/Herr) zur passenden Form. Ohne Anrede (divers/leer) bleibt die Doppelform stehen.
- * - `shadeEmployeeSignature`: Die leere Unterschriftszeile (Absatz mit Linie unten) über „Unterschrift Arbeitnehmer…“ /
- *   „Mitarbeiter…“ bekommt eine hellgraue Fläche in Unterschriftshöhe – dort unterschreibt die Person.
+ * - `markEmployeeSignature`: Unter der Unterschriftslinie der Person steht „Unterschrift Arbeitnehmer…“ /
+ *   „Mitarbeiter…“ – diese Beschriftung wird gelb markiert (die Linie bleibt wie in der Vorlage, keine Fläche).
  *
  * Gearbeitet wird je Absatz auf dem zusammengesetzten Text der Word-Läufe (Formatierung des ersten Laufs bleibt).
  */
@@ -113,103 +113,96 @@ export function genderizeXml(xml: string, g: Gender): string {
 }
 
 const SIG_LABEL = /(Arbeitnehmer|Mitarbeiter)(in|\/in)?\b/u;
-// beim Drucken sichtbar (Ahmed 12.10.: F6F4F5 war auf Papier nicht zu sehen)
-const FILL = 'E4E0E2';
-const SHADE = `<w:shd w:val="clear" w:color="auto" w:fill="${FILL}"/>`;
+const HL = '<w:highlight w:val="yellow"/>';
+// Elemente, die in w:rPr nach w:highlight kommen müssen (Schema-Reihenfolge, sonst meldet Word „unlesbarer Inhalt“)
+const AFTER_HL =
+  /<w:(u|effect|bdr|shd|fitText|vertAlign|rtl|cs|em|lang|eastAsianLayout|specVanish|oMath)[ />]/;
 
-/** Leere Linie über der Unterschrift der Arbeitnehmerin / des Arbeitnehmers hellgrau hinterlegen, in Unterschriftshöhe. */
-export function shadeEmployeeSignature(xml: string): string {
+/** Alle Läufe eines Absatzes bzw. einer Zelle gelb markieren */
+function highlightRuns(xml: string): string {
+  return xml.replace(/<w:r(?: [^>]*)?>[\s\S]*?<\/w:r>/g, (r) => {
+    if (!/<w:t[ >]/.test(r) || r.includes('<w:highlight ')) return r;
+    if (!r.includes('<w:rPr>')) return r.replace(/^(<w:r(?: [^>]*)?>)/, `$1<w:rPr>${HL}</w:rPr>`);
+    return r.replace(/<w:rPr>([\s\S]*?)<\/w:rPr>/, (_m, inner: string) => {
+      const k = AFTER_HL.exec(inner);
+      const n = k ? inner.slice(0, k.index) + HL + inner.slice(k.index) : inner + HL;
+      return `<w:rPr>${n}</w:rPr>`;
+    });
+  });
+}
+
+/** Ab dem Lauf mit `word` markieren (davor stehendes „München, den …“ nicht); Lauf wird dafür geteilt. */
+function highlightFrom(p: string, word: string): string {
+  let on = false;
+  return p.replace(/<w:r(?: [^>]*)?>[\s\S]*?<\/w:r>/g, (r) => {
+    if (on) return highlightRuns(r);
+    const m = /(<w:t(?:\s[^>]*)?>)([\s\S]*?)<\/w:t>/.exec(r);
+    const k = m ? m[2]!.indexOf(word) : -1;
+    if (!m || k < 0) return r;
+    on = true;
+    if (k === 0) return highlightRuns(r);
+    const head = r.replace(m[0], `<w:t xml:space="preserve">${m[2]!.slice(0, k)}</w:t>`);
+    const tail = r.replace(m[0], `<w:t xml:space="preserve">${m[2]!.slice(k)}</w:t>`);
+    return head + highlightRuns(tail);
+  });
+}
+
+/**
+ * Beschriftung unter der Unterschriftslinie der Arbeitnehmerin / des Arbeitnehmers gelb markieren – dort unterschreibt die
+ * Person. Erkannt wie bisher: Absatz mit Linie darüber (leerer Absatz mit Linie unten bzw. Linie oben an der Beschriftung)
+ * oder Tabellenzelle mit oberer Linie. Arbeitgeber/Geschäftsführung bleiben unmarkiert.
+ */
+export function markEmployeeSignature(xml: string): string {
   const paras = [...xml.matchAll(PARA)];
   const text = (p: string) =>
     xmlUnesc([...p.matchAll(new RegExp(T.source, 'g'))].map((m) => m[2]).join('')).trim();
   const edits: { start: number; end: number; repl: string }[] = [];
   for (let i = 1; i < paras.length; i++) {
-    const label = text(paras[i]![0]);
-    if (!label || label.length > 140 || !SIG_LABEL.test(label)) continue;
+    const lp = paras[i]![0];
+    const label = text(lp);
+    if (!label || label.length > 140 || !SIG_LABEL.test(label) || /arbeitgeber/i.test(label)) continue;
+    // Linie als Unterstriche in derselben Zeile: „Unterschrift Arbeitnehmer/in: ______“
+    if (/Unterschrift[^:_]*(Arbeitnehmer|Mitarbeiter)[^:_]*:\s*_{3,}/u.test(label)) {
+      edits.push({
+        start: paras[i]!.index!,
+        end: paras[i]!.index! + lp.length,
+        repl: highlightFrom(lp, 'Unterschrift'),
+      });
+      continue;
+    }
     const prev = paras[i - 1]!;
     const between = xml.slice(prev.index! + prev[0].length, paras[i]!.index);
     if (between.trim()) continue; // nicht direkt davor (z. B. andere Zelle)
     const p = prev[0];
-    if (text(p) || p.includes('<w:shd ')) continue;
-    // Linie unter dem leeren Absatz – oder Linie über der Beschriftung (leerer Absatz davor = Unterschriftsfeld)
+    if (text(p)) continue;
     const lineBelow = /<w:pBdr>[\s\S]*?<w:bottom /.test(p);
-    const lineAbove = /<w:pBdr>[\s\S]*?<w:top /.test(paras[i]![0]) && !/<w:pBdr>/.test(p);
+    const lineAbove = /<w:pBdr>[\s\S]*?<w:top /.test(lp);
     if (!lineBelow && !lineAbove) continue;
-    let np = lineBelow
-      ? p.replace(/(<w:pBdr>[\s\S]*?<\/w:pBdr>)/, `$1${SHADE}`)
-      : /<w:pPr>/.test(p)
-        ? p.replace(/<w:pPr>(<w:pStyle [^>]*\/>|<w:keepNext\/>|<w:keepLines\/>)*/, (m) => m + SHADE)
-        : p.replace(/^<w:p([ >])/, `<w:p$1`).replace(/^(<w:p[^>]*>)/, `$1<w:pPr>${SHADE}</w:pPr>`);
-    // Höhe für die Unterschrift: genaue Zeilenhöhe (Fläche liegt über der Linie)
-    np = /<w:spacing [^>]*\/>/.test(np)
-      ? np.replace(
-          /<w:spacing [^>]*\/>/,
-          '<w:spacing w:before="120" w:after="34" w:line="640" w:lineRule="exact"/>',
-        )
-      : np.replace(SHADE, `${SHADE}<w:spacing w:before="120" w:after="34" w:line="640" w:lineRule="exact"/>`);
-    edits.push({ start: prev.index!, end: prev.index! + p.length, repl: np });
+    edits.push({ start: paras[i]!.index!, end: paras[i]!.index! + lp.length, repl: highlightRuns(lp) });
   }
   let out = xml;
   for (const e of edits.reverse()) out = out.slice(0, e.start) + e.repl + out.slice(e.end);
-  return alignSignatureRows(shadeSignatureRows(out));
-}
-
-const EXACT = '<w:spacing w:before="120" w:after="34" w:line="640" w:lineRule="exact"/>';
-
-/** In einer Zeile mit hinterlegtem Feld die anderen Unterschriftsfelder gleich hoch machen (Linien auf einer Höhe). */
-function alignSignatureRows(xml: string): string {
-  return xml.replace(TR, (row) => {
-    if (!row.includes(FILL) || !row.includes('w:line="640"')) return row;
-    return row.replace(
-      /(<w:p>(?:<w:pPr>(?:(?!<\/w:pPr>)[\s\S])*<\/w:pPr>)?<\/w:p>)(<w:p><w:pPr><w:pBdr><w:top )/g,
-      (m, empty: string, next: string) => {
-        if (empty.includes('w:line="640"')) return m;
-        const e = /<w:spacing [^>]*\/>/.test(empty)
-          ? empty.replace(/<w:spacing [^>]*\/>/, EXACT)
-          : empty.replace('<w:p>', `<w:p><w:pPr>${EXACT}</w:pPr>`).replace('<w:pPr><w:pPr>', '<w:pPr>');
-        return e + next;
-      },
-    );
-  });
+  return markSignatureCells(out);
 }
 
 const TR = /<w:tr[ >](?:(?!<w:tr[ >])[\s\S])*?<\/w:tr>/g;
 const TC = /<w:tc[ >][\s\S]*?<\/w:tc>/g;
 
-/**
- * Unterschriftsblock als Tabelle (Linie = obere Zellenlinie, Beschriftung darunter): neue Zeile darüber, nur über der
- * Zelle der Arbeitnehmerin / des Arbeitnehmers hellgrau – das Feld zum Unterschreiben.
- */
-function shadeSignatureRows(xml: string): string {
+/** Unterschriftsblock als Tabelle (Linie = obere Zellenlinie, Beschriftung darunter): Beschriftung der Person gelb. */
+function markSignatureCells(xml: string): string {
   const text = (p: string) =>
     xmlUnesc([...p.matchAll(new RegExp(T.source, 'g'))].map((m) => m[2]).join('')).trim();
-  return xml.replace(TR, (row: string, offset: number, whole: string) => {
-    if (row.includes(FILL)) return row;
-    // schon eingefügt (direkt davor steht die hinterlegte Zeile)
-    const before = whole.slice(Math.max(0, offset - 1500), offset);
-    if (before.endsWith('</w:tr>') && before.slice(before.lastIndexOf('<w:tr>')).includes(FILL)) return row;
-    const cells = [...row.matchAll(TC)].map((m) => m[0]);
-    if (!cells.length) return row;
-    const isSig = (c: string) => {
+  return xml.replace(TR, (row: string) =>
+    row.replace(TC, (c) => {
       const t = text(c);
-      return (
+      const sig =
         t.length < 140 &&
         SIG_LABEL.test(t) &&
-        /<w:tcBorders>[\s\S]*?<w:top w:val="(single|thick|double)"/.test(c) &&
-        !/arbeitgeber/i.test(t)
-      );
-    };
-    if (!cells.some(isSig)) return row;
-    const newCells = cells
-      .map((c) => {
-        const w = /<w:tcW [^>]*\/>/.exec(c)?.[0] ?? '';
-        const span = /<w:gridSpan [^>]*\/>/.exec(c)?.[0] ?? '';
-        const shd = isSig(c) ? SHADE : '';
-        return `<w:tc><w:tcPr>${w}${span}${shd}</w:tcPr><w:p><w:pPr><w:keepNext/><w:spacing w:before="0" w:after="0"/></w:pPr></w:p></w:tc>`;
-      })
-      .join('');
-    return `<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val="640" w:hRule="exact"/></w:trPr>${newCells}</w:tr>${row}`;
-  });
+        !/arbeitgeber/i.test(t) &&
+        /<w:tcBorders>[\s\S]*?<w:top w:val="(single|thick|double)"/.test(c);
+      return sig ? highlightRuns(c) : c;
+    }),
+  );
 }
 
 /**

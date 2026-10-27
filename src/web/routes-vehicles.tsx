@@ -2,6 +2,21 @@ import { randomUUID } from 'node:crypto';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { listFiles } from '../services/uploads.js';
 import {
+  DOCS,
+  PAYMENT,
+  REGISTRATION,
+  TAX_MODES,
+  WARRANTY,
+  cancelVehicleSale,
+  checkSale,
+  completeVehicleSale,
+  currentSale,
+  listVehicleSales,
+  renderSalePdf,
+  type SaleInput,
+  type SaleRow,
+} from '../services/vehicle-sales.js';
+import {
   FUEL,
   OWNERSHIP,
   getVehicle,
@@ -114,7 +129,6 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
                 <th>Fahrer/in</th>
                 <th>HU (TÜV)</th>
                 <th>Inspektion</th>
-                <th class="r">km</th>
                 <th>Unterlagen</th>
               </tr>
             </thead>
@@ -163,9 +177,6 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
                     <td data-l="Fahrer/in">{v.driver_name ?? '–'}</td>
                     <td data-l="HU">{due(v.hu_due)}</td>
                     <td data-l="Inspektion">{due(v.service_due)}</td>
-                    <td class="r" data-l="km">
-                      {v.mileage != null ? v.mileage.toLocaleString('de-DE') : '–'}
-                    </td>
                     <td data-l="Unterlagen">
                       {v.files ? (
                         anz(v.files, 'Datei', 'Dateien')
@@ -178,7 +189,7 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
               })}
               {!list.length && (
                 <tr>
-                  <td colspan={7}>
+                  <td colspan={6}>
                     <div class="empty">Noch keine Fahrzeuge erfasst.</div>
                   </td>
                 </tr>
@@ -203,7 +214,11 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
     const d = (v ?? {}) as Partial<Vehicle>;
     const deadlines = v ? vehicleDeadlines(v) : [];
     const scheine = files.filter((f) => (f as { category?: string | null }).category === 'Fahrzeugschein');
-    const other = files.filter((f) => (f as { category?: string | null }).category !== 'Fahrzeugschein');
+    const other = files.filter(
+      (f) => !['Fahrzeugschein', 'Verkauf'].includes((f as { category?: string | null }).category ?? ''),
+    );
+    const sales = v ? await listVehicleSales(sql, id) : [];
+    const sale = v ? await currentSale(sql, id) : null;
     const title = v ? v.plate : 'Neues Fahrzeug';
     return page(
       c,
@@ -317,30 +332,13 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
                 </select>
               </div>
               <div>
-                <label for="km">Kilometerstand</label>
-                <input
-                  id="km"
-                  name="mileage"
-                  inputmode="numeric"
-                  value={d.mileage != null ? String(d.mileage) : ''}
-                />
-              </div>
-              <div>
-                <label for="kmd">Stand vom</label>
-                <input id="kmd" type="date" name="mileage_date" value={d.mileage_date ?? todayBerlin()} />
-              </div>
-              <div>
-                <label for="fc">Tankkarte</label>
-                <input id="fc" name="fuel_card" value={d.fuel_card ?? ''} placeholder="z. B. DKV …1234" />
-              </div>
-              <div>
                 <label for="note">Bemerkung</label>
                 <textarea id="note" name="note" rows={2}>
                   {d.note ?? ''}
                 </textarea>
               </div>
             </div>
-            <h3>Kauf &amp; Verkauf</h3>
+            <h3>Kauf &amp; Wert</h3>
             <div class="grid">
               <div>
                 <label for="pd">Kaufdatum</label>
@@ -368,7 +366,7 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
                 {d.estimated_on && <div class="small mut">geschätzt am {dateDe(d.estimated_on)}</div>}
                 {v && autoEstimate(v) != null && (
                   <div class="small mut">
-                    Automatisch geschätzt: <b>{euro(autoEstimate(v)!)}</b> (aus Kaufpreis, Alter und km –
+                    Automatisch geschätzt: <b>{euro(autoEstimate(v)!)}</b> (aus Kaufpreis und Alter –
                     Faustregel){' '}
                     {d.estimated_value_cents == null
                       ? '· gilt, solange hier nichts eingetragen ist'
@@ -378,43 +376,15 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
               </div>
               <div>
                 <label for="act">aktiv (im Bestand)</label>
-                <input id="act" type="checkbox" name="active" checked={d.active ?? true} />
-              </div>
-              <div>
-                <label for="sold">Verkauft</label>
                 <input
-                  id="sold"
+                  id="act"
                   type="checkbox"
-                  name="sold"
-                  data-reveal="#sale-fields"
-                  checked={!!d.sold_on}
+                  name="active"
+                  checked={d.active ?? true}
+                  disabled={!!d.sold_on}
                 />
+                {d.sold_on && <div class="small mut">verkauft – nicht mehr im Bestand</div>}
               </div>
-            </div>
-            <div class="grid" id="sale-fields" hidden={!d.sold_on}>
-              <div>
-                <label for="so">Verkauft am</label>
-                <input id="so" type="date" name="sold_on" value={d.sold_on ?? ''} />
-              </div>
-              <div>
-                <label for="sp">Verkaufspreis (€)</label>
-                <input
-                  id="sp"
-                  name="sale_price"
-                  inputmode="decimal"
-                  placeholder="z. B. 6.000,00"
-                  value={d.sale_price_cents != null ? centsText(d.sale_price_cents) : ''}
-                />
-              </div>
-              <div>
-                <label for="buyer">Käufer</label>
-                <input id="buyer" name="buyer" value={d.buyer ?? ''} />
-              </div>
-              <p class="small mut" style="grid-column:1/-1">
-                Verkaufte Fahrzeuge sind nicht mehr aktiv. Steuer: Wurde beim Kauf Vorsteuer gezogen, ist der
-                Verkauf umsatzsteuerpflichtig (19 %) – Rechnung an den Käufer stellen und dem Steuerberater
-                melden (Anlagenabgang, Buchwert).
-              </p>
             </div>
             <datalist id="makes">
               {[
@@ -447,6 +417,7 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
             </div>
           </form>
           <div>
+            {v && <SaleCard v={v} sale={sale} sales={sales} />}
             <div class="card">
               <h3>
                 <Icon name="file" size={16} /> Fahrzeugschein
@@ -484,6 +455,7 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
   app.post(`/fahrzeuge/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
     const b = await c.req.parseBody({ all: true });
+    const cur = await getVehicle(sql, id);
     const hu = str(b, 'hu_due');
     await saveVehicle(sql, id, {
       plate: str(b, 'plate') ?? '',
@@ -500,21 +472,338 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
       // HU wird im Monat fällig (Plakette) → letzter Tag des Monats
       hu_due: hu && /^\d{4}-\d{2}$/.test(hu) ? lastOfMonth(hu) : hu,
       service_due: str(b, 'service_due'),
-      mileage: str(b, 'mileage'),
-      mileage_date: str(b, 'mileage_date'),
+      // Kilometerstand und Tankkarte stehen nicht mehr im Formular (Ahmed 27.10.) – alte Werte bleiben gespeichert
+      mileage: cur?.mileage != null ? String(cur.mileage) : null,
+      mileage_date: cur?.mileage_date ?? null,
       driver_employee_id: str(b, 'driver_employee_id'),
-      fuel_card: str(b, 'fuel_card'),
+      fuel_card: cur?.fuel_card ?? null,
       note: str(b, 'note'),
       purchase_date: str(b, 'purchase_date'),
       purchase_price: str(b, 'purchase_price'),
-      sold_on: b.sold === 'on' ? (str(b, 'sold_on') ?? todayBerlin()) : null,
-      sale_price: b.sold === 'on' ? str(b, 'sale_price') : null,
-      buyer: str(b, 'buyer'),
+      // Verkauf nur über „Fahrzeug verkaufen“ (Kaufvertrag + Rechnung) – hier unverändert lassen
+      sold_on: cur?.sold_on ?? null,
+      sale_price: cur?.sale_price_cents != null ? centsText(cur.sale_price_cents) : null,
+      buyer: cur?.buyer ?? null,
       estimated_value: str(b, 'estimated_value'),
-      active: b.active === 'on',
+      active: cur?.sold_on ? false : b.active === 'on',
       expectedVersion: versionOf(b.version),
     });
     return back(c, `/fahrzeuge/${id}`, { ok: 'Fahrzeug gespeichert.' });
+  });
+
+  // ------------------------------------------------------------ Verkauf (Kaufvertrag + Rechnung als PDF)
+  const saleInput = (b: Record<string, unknown>): SaleInput => {
+    const one = (k: string) => str(b as never, k);
+    const docs = b.docs == null ? [] : Array.isArray(b.docs) ? b.docs.map(String) : [String(b.docs)];
+    return {
+      saleDate: one('sale_date') ?? '',
+      handoverDate: one('handover_date') ?? '',
+      handoverTime: one('handover_time'),
+      buyerType: one('buyer_type') === 'unternehmen' ? 'unternehmen' : 'privat',
+      buyerName: one('buyer_name') ?? '',
+      buyerAddress: one('buyer_address') ?? '',
+      buyerCountry: one('buyer_country') ?? 'DE',
+      buyerVatId: one('buyer_vat_id'),
+      buyerId: one('buyer_id'),
+      buyerPhone: one('buyer_phone'),
+      buyerEmail: one('buyer_email'),
+      mileage: one('mileage') ?? '',
+      keys: one('keys') ?? '',
+      docs,
+      accessories: one('accessories'),
+      accidentFree: (['ja', 'nein', 'unbekannt'].includes(one('accident') ?? '')
+        ? one('accident')
+        : 'unbekannt') as SaleInput['accidentFree'],
+      damages: one('damages'),
+      defects: one('defects'),
+      priceInput: one('price') ?? '',
+      priceIs: one('price_is') === 'netto' ? 'netto' : 'brutto',
+      taxMode: (one('tax_mode') ?? 'ust19') as SaleInput['taxMode'],
+      payment: (one('payment') ?? 'ueberweisung') as SaleInput['payment'],
+      warranty: (one('warranty') ?? 'einjahr') as SaleInput['warranty'],
+      registration: (one('registration') ?? 'abgemeldet') as SaleInput['registration'],
+      reregisterDays: one('reregister_days'),
+      note: one('note'),
+    };
+  };
+
+  app.get(`/fahrzeuge/:id{${UUID}}/verkauf`, async (c) => {
+    const id = c.req.param('id');
+    const v = await getVehicle(sql, id);
+    if (!v) return c.notFound();
+    const sale = await currentSale(sql, id);
+    if (sale)
+      return back(c, `/fahrzeuge/${id}`, { fehler: `Schon verkauft (${sale.sale_no}) – erst stornieren.` });
+    const today = todayBerlin();
+    const formId = randomUUID();
+    const sel = (name: string, opts: Record<string, string>, value: string, id2 = name) => (
+      <select id={id2} name={name} data-nosearch>
+        {Object.entries(opts).map(([k, l]) => (
+          <option value={k} selected={k === value}>
+            {l}
+          </option>
+        ))}
+      </select>
+    );
+    return page(
+      c,
+      `Verkauf ${v.plate}`,
+      'inventar',
+      <>
+        <PageHead
+          title={`Fahrzeug verkaufen – ${v.plate}`}
+          crumbs={[
+            ['Fahrzeuge', '/fahrzeuge'],
+            [v.plate, `/fahrzeuge/${id}`],
+          ]}
+        />
+        <p class="mut" style="max-width:820px">
+          Punkte ausfüllen → <b>PDF-Vorschau</b> prüfen → <b>Verkauf abschließen</b>. Es entsteht ein PDF mit
+          Kaufvertrag (inkl. Übergabe) und Rechnung mit Nummer FV-JJJJ-NNN; es liegt danach unter Unterlagen →
+          „Verkauf“, das Fahrzeug ist verkauft.
+        </p>
+        {v.ownership !== 'eigentum' && (
+          <div class="flash err">
+            Das Fahrzeug ist {OWNERSHIP[v.ownership]} – verkaufen kann nur der Eigentümer.
+            Leasing-/Mietfahrzeuge gehen an den Geber zurück.
+          </div>
+        )}
+        <form method="post" action={`/fahrzeuge/${id}/verkauf`} class="card form-card" data-autosave>
+          <input type="hidden" name="form_id" value={formId} />
+          <h3>1. Käufer</h3>
+          <div class="grid">
+            <div>
+              <label for="bt">Käufer ist</label>
+              {sel('buyer_type', { privat: 'Privatperson', unternehmen: 'Unternehmen' }, 'privat', 'bt')}
+            </div>
+            <div>
+              <label for="bn">Name / Firma *</label>
+              <input id="bn" name="buyer_name" required />
+            </div>
+            <div>
+              <label for="ba">Anschrift * (Straße, PLZ Ort)</label>
+              <textarea
+                id="ba"
+                name="buyer_address"
+                rows={3}
+                required
+                placeholder={'Musterstr. 1\n80331 München'}
+              />
+            </div>
+            <div>
+              <label for="bc">Land (Kürzel)</label>
+              <input id="bc" name="buyer_country" value="DE" maxlength={2} style="text-transform:uppercase" />
+            </div>
+            <div>
+              <label for="bv">USt-IdNr. (bei Unternehmen)</label>
+              <input id="bv" name="buyer_vat_id" placeholder="z. B. ATU12345678" />
+            </div>
+            <div>
+              <label for="bid">Ausweis-/Pass-Nr.</label>
+              <input id="bid" name="buyer_id" />
+            </div>
+            <div>
+              <label for="bp">Telefon</label>
+              <input id="bp" name="buyer_phone" />
+            </div>
+            <div>
+              <label for="be">E-Mail</label>
+              <input id="be" name="buyer_email" type="email" />
+            </div>
+          </div>
+          <h3>2. Fahrzeug &amp; Übergabe</h3>
+          <p class="small mut">
+            {[v.make, v.model].filter(Boolean).join(' ') || 'Fahrzeug'} · {v.plate}
+            {v.vin ? ` · FIN ${v.vin}` : ' · FIN fehlt (im Fahrzeug eintragen)'}
+            {v.first_registration ? ` · EZ ${dateDe(v.first_registration)}` : ''}
+          </p>
+          <div class="grid">
+            <div>
+              <label for="sd">Verkaufsdatum *</label>
+              <input id="sd" type="date" name="sale_date" value={today} max={today} required />
+            </div>
+            <div>
+              <label for="hd">Übergabe am *</label>
+              <input id="hd" type="date" name="handover_date" value={today} required />
+            </div>
+            <div>
+              <label for="ht">Uhrzeit Übergabe</label>
+              <input id="ht" type="time" name="handover_time" />
+            </div>
+            <div>
+              <label for="km">km-Stand bei Übergabe *</label>
+              <input id="km" name="mileage" inputmode="numeric" required />
+            </div>
+            <div>
+              <label for="keys">Anzahl Schlüssel *</label>
+              <input id="keys" name="keys" inputmode="numeric" value="2" required />
+            </div>
+            <div>
+              <label>Übergebene Unterlagen</label>
+              <div>
+                {Object.entries(DOCS).map(([k, l]) => (
+                  <label class="chk" style="display:block;font-weight:normal">
+                    <input type="checkbox" name="docs" value={k} checked={k === 'zb1' || k === 'zb2'} /> {l}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label for="acc">Zubehör</label>
+              <input id="acc" name="accessories" placeholder="z. B. Winterreifen auf Felgen, Dachträger" />
+            </div>
+            <div>
+              <label for="reg">Zulassung</label>
+              {sel('registration', REGISTRATION, 'abgemeldet', 'reg')}
+            </div>
+            <div>
+              <label for="rd">Ummelden binnen (Tagen)</label>
+              <input id="rd" name="reregister_days" inputmode="numeric" value="7" />
+              <div class="small mut">nur bei „zugelassen übergeben“</div>
+            </div>
+          </div>
+          <h3>3. Zustand</h3>
+          <div class="grid">
+            <div>
+              <label for="acc2">Unfallschäden</label>
+              {sel(
+                'accident',
+                {
+                  ja: 'keine bekannt (unfallfrei soweit bekannt)',
+                  nein: 'ja – siehe Beschreibung',
+                  unbekannt: 'nicht bekannt',
+                },
+                'ja',
+                'acc2',
+              )}
+            </div>
+            <div>
+              <label for="dmg">Beschreibung Unfallschäden</label>
+              <textarea id="dmg" name="damages" rows={2} />
+            </div>
+            <div>
+              <label for="def">Bekannte Mängel / Schäden</label>
+              <textarea
+                id="def"
+                name="defects"
+                rows={2}
+                placeholder="z. B. Kratzer Heckklappe, Klima ohne Funktion"
+              />
+            </div>
+            <div>
+              <label for="war">Gewährleistung</label>
+              {sel('warranty', WARRANTY, 'einjahr', 'war')}
+              <div class="small mut">
+                An Privatpersonen darf eine GmbH die Gewährleistung nicht ausschließen, nur auf 1 Jahr
+                verkürzen – und nur, wenn das gesondert vereinbart wird (§ 476 BGB; eigene Unterschrift im
+                Vertrag).
+              </div>
+            </div>
+          </div>
+          <h3>4. Preis &amp; Steuer</h3>
+          <div class="grid">
+            <div>
+              <label for="pr">Kaufpreis (€) *</label>
+              <input id="pr" name="price" inputmode="decimal" required placeholder="z. B. 6.000,00" />
+            </div>
+            <div>
+              <label for="pi">Betrag ist</label>
+              {sel(
+                'price_is',
+                { brutto: 'Endpreis (inkl. USt)', netto: 'netto (zzgl. USt)' },
+                'brutto',
+                'pi',
+              )}
+            </div>
+            <div>
+              <label for="tm">Umsatzsteuer</label>
+              {sel('tax_mode', TAX_MODES, 'ust19', 'tm')}
+              <div class="small mut">
+                Der Verkauf eines Firmenfahrzeugs ist <b>immer umsatzsteuerpflichtig (19 %)</b> – auch wenn es
+                von privat ohne Vorsteuer gekauft wurde. Ohne Steuer nur: an ein Unternehmen in einem anderen
+                EU-Land mit USt-IdNr. (Gelangensbestätigung aufbewahren), Ausfuhr außerhalb der EU
+                (Ausfuhrnachweis) oder § 4 Nr. 28 UStG (bei uns praktisch nie). Differenzbesteuerung gibt es
+                nur für Händler.
+              </div>
+            </div>
+            <div>
+              <label for="pay">Zahlung</label>
+              {sel('payment', PAYMENT, 'ueberweisung', 'pay')}
+            </div>
+            <div>
+              <label for="nt">Sonstige Vereinbarungen</label>
+              <textarea id="nt" name="note" rows={2} />
+            </div>
+          </div>
+          <div class="formfoot">
+            <a class="btn ghost" href={`/fahrzeuge/${id}`}>
+              Abbrechen
+            </a>
+            <button
+              class="btn sec"
+              formaction={`/fahrzeuge/${id}/verkauf/vorschau.pdf`}
+              formtarget="_blank"
+              data-noback
+            >
+              PDF-Vorschau
+            </button>
+            <button
+              class="btn"
+              data-noback
+              data-confirm="Verkauf abschließen? Danach ist die Rechnung fest (nur noch Storno möglich)."
+            >
+              Verkauf abschließen
+            </button>
+          </div>
+        </form>
+      </>,
+    );
+  });
+
+  app.post(`/fahrzeuge/:id{${UUID}}/verkauf/vorschau.pdf`, async (c) => {
+    const v = await getVehicle(sql, c.req.param('id'));
+    if (!v) return c.notFound();
+    const b = await c.req.parseBody({ all: true });
+    const { data, amounts } = checkSale(v, saleInput(b));
+    const pdf = await renderSalePdf(sql, { no: null, data, amounts });
+    return c.body(pdf as never, 200, {
+      'content-type': 'application/pdf',
+      'content-disposition': 'inline; filename="Fahrzeugverkauf_Vorschau.pdf"',
+    });
+  });
+
+  app.post(`/fahrzeuge/:id{${UUID}}/verkauf`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    const fid = str(b, 'form_id');
+    const row = await completeVehicleSale(
+      sql,
+      { dir: deps.env.FILES_DIR, maxBytes: deps.env.UPLOAD_MAX_BYTES },
+      { id: fid && /^[0-9a-f-]{36}$/.test(fid) ? fid : randomUUID(), vehicleId: id, input: saleInput(b) },
+      c.get('actor'),
+    );
+    return back(c, `/fahrzeuge/${id}`, {
+      ok: `Verkauf ${row.sale_no} abgeschlossen – Kaufvertrag und Rechnung liegen unter „Verkauf“.`,
+    });
+  });
+
+  app.post(`/fahrzeuge/:id{${UUID}}/verkauf/:sid{${UUID}}/storno`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    const fid = str(b, 'form_id');
+    const row = await cancelVehicleSale(
+      sql,
+      { dir: deps.env.FILES_DIR, maxBytes: deps.env.UPLOAD_MAX_BYTES },
+      {
+        id: fid && /^[0-9a-f-]{36}$/.test(fid) ? fid : randomUUID(),
+        saleId: c.req.param('sid'),
+        reason: str(b, 'reason') ?? '',
+      },
+      c.get('actor'),
+    );
+    return back(c, `/fahrzeuge/${id}`, {
+      ok: `Storno ${row.sale_no} erstellt – Fahrzeug wieder im Bestand.`,
+    });
   });
 
   // ------------------------------------------------------------ Einstellungen: Gegenstände für Übergaben
@@ -602,3 +891,79 @@ function lastOfMonth(ym: string) {
 }
 
 const PLATE_CSS = `.plate{display:inline-block;font-weight:700;letter-spacing:.04em;border:2px solid #1c1a19;border-radius:4px;padding:1px 8px 1px 14px;background:#fff linear-gradient(90deg,#1f4fbf 0,#1f4fbf 8px,#fff 8px);color:#1c1a19;text-decoration:none;white-space:nowrap}`;
+
+/** Kasten „Verkauf“ am Fahrzeug */
+function SaleCard({ v, sale, sales }: { v: Vehicle; sale: SaleRow | null; sales: SaleRow[] }) {
+  return (
+    <div class="card">
+      <h3>Verkauf</h3>
+      {sale ? (
+        <>
+          <p style="margin:0 0 6px">
+            <b>{sale.sale_no}</b> · verkauft am {dateDe(sale.sale_date)} an {sale.buyer_name}
+          </p>
+          <p class="small mut" style="margin:0 0 8px">
+            {sale.vat_cents !== 0n
+              ? `${euro(sale.gross_cents)} brutto (netto ${euro(sale.net_cents)} + 19 % USt ${euro(sale.vat_cents)})`
+              : `${euro(sale.gross_cents)} · ${TAX_MODES[sale.tax_mode]}`}
+          </p>
+          {sale.file_id && (
+            <a class="btn sm" href={`/dateien/${sale.file_id}`} target="_blank">
+              Kaufvertrag &amp; Rechnung (PDF)
+            </a>
+          )}
+          <details style="margin-top:10px">
+            <summary>Verkauf stornieren …</summary>
+            <form method="post" action={`/fahrzeuge/${v.id}/verkauf/${sale.id}/storno`}>
+              <input type="hidden" name="form_id" value={randomUUID()} />
+              <label for="sr">Grund *</label>
+              <input id="sr" name="reason" required placeholder="z. B. Käufer ist vom Kauf zurückgetreten" />
+              <button
+                class="btn sm danger"
+                data-confirm="Stornorechnung erstellen? Das Fahrzeug ist danach wieder im Bestand."
+              >
+                Stornorechnung erstellen
+              </button>
+            </form>
+          </details>
+        </>
+      ) : (
+        <>
+          {v.sold_on && (
+            <p class="small mut">
+              Als verkauft eingetragen am {dateDe(v.sold_on)}
+              {v.sale_price_cents != null && ` für ${euro(v.sale_price_cents)}`}
+              {v.buyer && ` an ${v.buyer}`} (ohne Kaufvertrag aus der App).
+            </p>
+          )}
+          <p class="small mut" style="margin-top:0">
+            Kaufvertrag mit Übergabeangaben und Rechnung (mit 19 % USt oder steuerfrei) als PDF.
+          </p>
+          <a class="btn" href={`/fahrzeuge/${v.id}/verkauf`}>
+            Fahrzeug verkaufen
+          </a>
+        </>
+      )}
+      {sales.length > (sale ? 1 : 0) && (
+        <details style="margin-top:10px">
+          <summary>Belege ({sales.length})</summary>
+          <ul class="small" style="margin:6px 0 0;padding-left:18px">
+            {sales.map((x) => (
+              <li>
+                {x.file_id ? (
+                  <a href={`/dateien/${x.file_id}`} target="_blank">
+                    {x.sale_no}
+                  </a>
+                ) : (
+                  x.sale_no
+                )}{' '}
+                · {x.kind === 'storno' ? `Storno – ${x.reason ?? ''}` : `Verkauf an ${x.buyer_name}`} ·{' '}
+                {dateDe(x.sale_date)} · {euro(x.gross_cents)}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}

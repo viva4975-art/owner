@@ -5,7 +5,7 @@ import { BusinessError } from './errors.js';
 
 /*
  * Fahrzeugliste (Inventar): Kennzeichen, Marke/Modell, FIN, Erstzulassung, Leasing, Versicherung, HU/Inspektion,
- * Kilometerstand, Fahrer, Tankkarte. Fahrzeugschein und weitere Unterlagen als Dateien am Fahrzeug (write-once).
+ * Fahrer. Verkauf mit Kaufvertrag/Rechnung (vehicle-sales.ts). Fahrzeugschein und weitere Unterlagen als Dateien am Fahrzeug (write-once).
  */
 
 export const FUEL: Record<string, string> = {
@@ -71,14 +71,10 @@ export async function getVehicle(sql: Sql, id: string) {
 /**
  * Automatische Wertschätzung (Faustregel, kein Gutachten/DAT-Wert): Restwert-Kurve ab Erstzulassung
  * (1. Jahr −24 %, danach −12 % je Jahr, mindestens 10 %), bezogen auf den Kaufpreis zum Kaufdatum (gebraucht gekauft
- * = Preis enthält das Alter schon), dazu ±1 % je 5.000 km Abweichung von 20.000 km/Jahr (höchstens ±15 %).
- * Nur Eigentum mit Kaufpreis. Gerundet auf 100 €.
+ * = Preis enthält das Alter schon). Nur Eigentum mit Kaufpreis. Gerundet auf 100 €.
  */
 export function autoEstimate(
-  v: Pick<
-    Vehicle,
-    'ownership' | 'purchase_price_cents' | 'purchase_date' | 'first_registration' | 'mileage' | 'sold_on'
-  >,
+  v: Pick<Vehicle, 'ownership' | 'purchase_price_cents' | 'purchase_date' | 'first_registration' | 'sold_on'>,
   today = todayBerlin(),
 ): bigint | null {
   if (
@@ -94,12 +90,8 @@ export function autoEstimate(
   const years = (a: string, b: string) => Math.max(0, (Date.parse(b) - Date.parse(a)) / (365.25 * 86400000));
   const curve = (y: number) => Math.max(0.1, y <= 1 ? 1 - 0.24 * y : 0.76 * Math.pow(0.88, y - 1));
   const ageNow = years(reg, today);
-  let factor = curve(ageNow) / curve(years(reg, bought));
-  if (v.mileage != null && ageNow > 0.25) {
-    const diff = v.mileage - ageNow * 20000;
-    factor *= 1 - Math.max(-0.15, Math.min(0.15, (diff / 5000) * 0.01));
-  }
-  factor = Math.min(1, factor);
+  // km fließen nicht mehr ein: Kilometerstand wird am Fahrzeug nicht mehr gepflegt (Ahmed 27.10.)
+  const factor = Math.min(1, curve(ageNow) / curve(years(reg, bought)));
   const cents = Math.round((Number(v.purchase_price_cents) * factor) / 10000) * 10000;
   return BigInt(cents);
 }

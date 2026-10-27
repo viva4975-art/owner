@@ -4306,3 +4306,23 @@ Testadresse.
   alle Übergaben. Austritt eingetragen und noch etwas offen → Hinweis auf den Unterseiten. **Erinnerung beim Austritt
   jetzt sofort**, sobald ein Austritt eingetragen ist (bis 1 Jahr voraus, `EXIT_RETURN_LEAD_DAYS = 366`): Aufgabe fürs
   Büro und je Objektleitung der Person. Speichern/Ausgabe führt auf die passende Unterseite zurück.
+- 2026-10-27: **Fahrzeug: Kilometerstand und Tankkarte entfernt, Verkauf mit Kaufvertrag + Rechnung** (Ahmed):
+  - Felder Kilometerstand/Stand vom/Tankkarte aus Formular und Liste entfernt (alte Werte bleiben gespeichert, werden
+    nicht mehr überschrieben); automatische Wertschätzung ohne km. Häkchen „Verkauft“ entfällt – verkauft wird nur noch
+    über **„Fahrzeug verkaufen“** (`/fahrzeuge/:id/verkauf`, `src/services/vehicle-sales.ts`).
+  - Punkte zum Ausfüllen: Käufer (privat/Unternehmen, Name, Anschrift, Land, USt-IdNr., Ausweis, Kontakt), Verkaufs- und
+    Übergabedatum/-uhrzeit, km-Stand bei Übergabe, Schlüssel, übergebene Unterlagen (ZB I/II, COC, Serviceheft, HU-Bericht,
+    Bordbuch), Zubehör, Zulassung (abgemeldet / zugelassen + Ummeldefrist), Unfallschäden, Mängel, Gewährleistung, Preis
+    (brutto oder netto), **Umsatzsteuer**: 19 % (Inland) oder steuerfrei als innergemeinschaftliche Lieferung (EU-Unternehmen
+    mit USt-IdNr.), Ausfuhr (Drittland) oder § 4 Nr. 28 UStG; Zahlung (Überweisung vor Übergabe / bar).
+  - **PDF-Vorschau** (ENTWURF), dann **Verkauf abschließen**: Nummer FV-JJJJ-NNN, ein PDF mit Kaufvertrag (Fahrzeug,
+    Zustand, Kaufpreis, Eigentumsvorbehalt, Gewährleistung, Übergabe/Unterlagen/Zulassung, Unterschriften, Übergabe-
+    bestätigung) und Rechnung (§ 14 UStG: Nummer, Datum, Liefertag, unsere USt-IdNr./Steuernummer, netto/USt/brutto bzw.
+    Steuerbefreiungs-Hinweis). Write-once am Fahrzeug (Kategorie „Verkauf“), Fahrzeug verkauft/inaktiv, Verkaufspreis =
+    brutto. **Storno** mit Grund = Stornorechnung mit eigener Nummer und Verweis, Fahrzeug wieder im Bestand. Tabelle
+    `app.vehicle_sales` (nur anhängen, je Verkauf höchstens ein Storno, Migration `20261229000001`), feste ID je Formular.
+  - **Rechtlich/steuerlich:** Verkauf eines Firmenfahrzeugs ist immer umsatzsteuerpflichtig (19 %), auch wenn es von privat
+    ohne Vorsteuer gekauft wurde; Differenzbesteuerung (§ 25a) nur für Händler. Steuerfrei nur mit Nachweis
+    (Gelangensbestätigung bzw. Ausfuhrnachweis aufbewahren). An Privatpersonen keine Gewährleistung ausschließen – nur auf
+    1 Jahr verkürzen und gesondert vereinbaren (§ 476 BGB, eigene Unterschrift im Vertrag). Versicherer über den Verkauf
+    informieren (§ 97 VVG). Rechnung nicht im DATEV-Export – **an den Steuerberater geben** (Anlagenabgang, Buchwert).

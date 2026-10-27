@@ -4386,3 +4386,9 @@ Testadresse.
   (Bürolohn + Zuschlag bzw. AG-Kosten) – nur ihr **Material** zählt weiter nicht. Separat (nicht im Gesamt) bleiben nur
   die **allgemeinen Kostenstellen** (Miete, Fahrzeuge, Versicherung …), ebenfalls ohne Material; Kachel „Allgemeine
   Kostenstellen (separat)“, darunter zur Info „DB Objekte − allgemeine Kosten“. PDF gleich.
+- 2026-10-27: **Apple: Unlisted App Distribution genehmigt** für „Viva-Deluxe Team“ (Fall 102997864805). Nächste Schritte
+  (Ahmed): App Store Connect → App → Preise und Verfügbarkeit → Verteilung „Nicht gelistete App“ wählen, sichern; dann den
+  abgelehnten Build (Guideline 3.2) im Bereich App Review mit Hinweis auf die Genehmigung erneut einreichen (Testzugang
+  Personalnr. 9999 in den Prüfnotizen). Nach der Freigabe steht der direkte Link unter Preise und Verfügbarkeit – nur an
+  Mitarbeitende weitergeben. Schutz vor Fremdzugriff = Anmeldung (Personalnr. + PIN bzw. Benutzer + Passwort, Sperre nach
+  5 Fehlversuchen).

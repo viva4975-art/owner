@@ -7,7 +7,7 @@ import { analyzeRooms, applyRooms } from './room-import.js';
 import { PDFDocument, StandardFonts } from '@cantoo/pdf-lib';
 import { storeRoomBookPdf } from './room-pdf.js';
 import { storeFile } from './uploads.js';
-import { deleteRooms } from './facility.js';
+import { deleteRooms, listRooms } from './facility.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
@@ -34,9 +34,14 @@ describe.skipIf(!available)('Raumbuch im Fortytools-Format + PDF in den Dokument
     expect([flur.floor, flur.areaCenti, flur.covering]).toEqual(['A · UG', 1276n, 'Parkett']);
     expect(a.rows.find((r) => r.roomNo === 'A 0.09')!.errors[0]).toMatch(/0 m²/);
     expect(a.rows.find((r) => r.roomNo === 'B 1.01')!.notes).toBe('Tafel nass wischen');
+    // kein Intervall in der Datei → leer, nichts angenommen
+    expect([flur.visits, flur.intervalDefaulted, flur.errors]).toEqual([null, true, []]);
     expect(a.buildings).toEqual([]); // Gebäudeteile A/B = ein Objekt
     const r = await applyRooms(sql, DEMO.siteSchool, 'ft', a, { update: true }, 't');
     expect([r.created, r.skipped]).toEqual([2, 1]);
+    const [db] = await sql<{ v: number | null }[]>`
+      select visits_per_year as v from app.rooms where site_id = ${DEMO.siteSchool} and room_no = 'A 0.01'`;
+    expect(db!.v).toBeNull();
     const cfg = { dir: await mkdtemp(join(tmpdir(), 'rb-')), maxBytes: 1e8 };
     const f1 = await storeRoomBookPdf(sql, cfg, DEMO.siteSchool, 't');
     const f2 = await storeRoomBookPdf(sql, cfg, DEMO.siteSchool, 't');
@@ -46,6 +51,24 @@ describe.skipIf(!available)('Raumbuch im Fortytools-Format + PDF in den Dokument
                               and category = 'Raumbuch' and archived_at is null`;
     expect(links.length).toBe(1);
   }, 30_000);
+
+  it('Reinigungstage mit Nachkommastellen werden genau übernommen', async () => {
+    const csv = [
+      'Etage;Raum-Nr.;Raum;Raumart;Bodenbelag;Fläche m²;Reinigungstage/Jahr',
+      'DG;305;Gymnastikraum;Turnhalle;Linoleum;78,7;184.5',
+      'DG;304;Vorbereitungsraum;Sonstiges;Linoleum;16,8;38,33',
+      'DG;;Geräteraum;Lager;Linoleum;58;0',
+    ].join('\n');
+    const a = await analyzeRooms(sql, DEMO.siteSchool, new TextEncoder().encode(csv));
+    expect(a.rows.map((r) => [r.visits, r.errors.length])).toEqual([
+      [184.5, 0],
+      [38.33, 0],
+      [0, 0],
+    ]);
+    await applyRooms(sql, DEMO.siteSchool, 'dez', a, { update: true }, 't');
+    const rooms = await listRooms(sql, DEMO.siteSchool);
+    expect(rooms.find((r) => r.room_no === '305')!.visits_per_year).toBe(184.5);
+  });
 
   it('Raumbuch als PDF (Textebene) lesen; hochgeladenes Raumbuch wird von der App-PDF nicht archiviert', async () => {
     const doc = await PDFDocument.create();

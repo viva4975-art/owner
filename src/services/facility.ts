@@ -41,7 +41,8 @@ export interface Room {
   room_type_id: string;
   floor_covering: string | null;
   area_centi: bigint;
-  visits_per_year: number;
+  /** leer = Intervall nicht angegeben (Import ohne Angabe) */
+  visits_per_year: number | null;
   /** Turnus-Kürzel aus der Kalkulation (W5, J2 …) */
   turnus: string | null;
   performance_override: number | null;
@@ -69,7 +70,10 @@ export const FREQUENCIES: [number, string][] = [
   [1, '1× pro Jahr'],
   [0, 'keine Reinigung'],
 ];
-export const frequencyLabel = (v: number) => FREQUENCIES.find(([k]) => k === v)?.[1] ?? `${v}× pro Jahr`;
+export const frequencyLabel = (v: number | null) =>
+  v == null
+    ? 'nicht angegeben'
+    : (FREQUENCIES.find(([k]) => k === v)?.[1] ?? `${String(v).replace('.', ',')}× pro Jahr`);
 
 export async function listRoomTypes(sql: Sql, all = false) {
   return sql<RoomType[]>`
@@ -98,17 +102,24 @@ export async function saveRoomType(
   }
 }
 
+/** numeric → Zahl (Reinigungstage können Nachkommastellen haben, z. B. 184,5) */
+const visitsNum = <T extends { visits_per_year: unknown }>(r: T): T => ({
+  ...r,
+  visits_per_year: r.visits_per_year == null ? null : Number(r.visits_per_year),
+});
+
 export async function listRooms(sql: Sql, siteId: string, includeInactive = false) {
-  return sql<RoomRow[]>`
+  const rows = await sql<RoomRow[]>`
     select r.*, t.name as type_name, coalesce(r.performance_override, t.performance_m2_per_h) as performance
       from app.rooms r join app.room_types t on t.id = r.room_type_id
      where r.site_id = ${siteId} and ${includeInactive ? sql`true` : sql`r.active`}
      order by r.floor nulls first, r.sort_order, r.room_no nulls last, r.name`;
+  return rows.map(visitsNum);
 }
 
 export async function getRoom(sql: Sql, id: string) {
   const [r] = await sql<Room[]>`select * from app.rooms where id = ${id}`;
-  return r;
+  return r ? visitsNum(r) : r;
 }
 
 export interface RoomInput {
@@ -119,7 +130,7 @@ export interface RoomInput {
   roomTypeId: string;
   floorCovering: string | null;
   areaCenti: bigint;
-  visitsPerYear: number;
+  visitsPerYear: number | null;
   notes: string | null;
   active: boolean;
   expectedVersion: number | null;
@@ -128,7 +139,10 @@ export interface RoomInput {
 export async function saveRoom(sql: Sql, id: string, p: RoomInput) {
   if (!p.name.trim()) throw new BusinessError('Bitte Raumbezeichnung angeben');
   if (p.areaCenti <= 0n) throw new BusinessError('Fläche muss größer 0 sein');
-  if (!Number.isInteger(p.visitsPerYear) || p.visitsPerYear < 0 || p.visitsPerYear > 1000) {
+  if (
+    p.visitsPerYear != null &&
+    (!Number.isInteger(p.visitsPerYear) || p.visitsPerYear < 0 || p.visitsPerYear > 1000)
+  ) {
     throw new BusinessError('Reinigungsintervall ungültig');
   }
   const cur = await getRoom(sql, id);

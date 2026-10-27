@@ -4341,3 +4341,10 @@ Testadresse.
   Formular: Käufer „Unternehmen“ setzt den Ausschluss vor, „privat“ die 1-Jahres-Verkürzung. **Rechtlich:** Ausschluss
   gegenüber Verbrauchern unwirksam (§ 476 BGB); bei Barzahlung Ausweis des Käufers notieren und Scheine prüfen
   (ab 10.000 € Identifizierung nach GwG für Güterhändler beachten).
+- 2026-10-27: **Raumbuch-Import ohne ausgedachte Tage** (Ahmed: „die Tage müssen drin stehen, sonst nichts anderes
+  ausdenken“): Steht in der Datei kein Intervall bzw. keine Reinigungstage, bleibt das Intervall **leer**
+  („nicht angegeben“) statt 260 × im Jahr anzunehmen; der Raum wird trotzdem übernommen (Vorschau: „nicht in der Datei –
+  bleibt leer“). Die Auswahl Mo–Fr/Mo–Sa/Mo–So gilt nur noch, wenn in der Datei „täglich“ steht. **Reinigungstage mit
+  Nachkommastellen** (184,5 / 38,33 – auch „184.5“ aus PDF/CSV) werden genau übernommen statt als ungültig abgelehnt.
+  Migration `20261230000001`: `rooms.visits_per_year` darf leer sein und hat 2 Nachkommastellen (numeric(7,2)). Raum
+  bearbeiten: Auswahl „– nicht angegeben –“, „andere Anzahl“ mit Komma. Tests in `room-import-ft.db.test.ts`.

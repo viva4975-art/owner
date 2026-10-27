@@ -120,7 +120,7 @@ describe.skipIf(!available)('Raumbuch aus einer Ausschreibungs-Kalkulation (mehr
     const r = await applyRooms(sql, DEMO.siteSchool, 'kalk', a, { update: false }, 't');
     expect(r.created).toBe(6);
     const [h] = await sql<{ visits_per_year: number; turnus: string }[]>`
-      select visits_per_year, turnus from app.rooms where site_id = ${DEMO.siteSchool} and name = 'Hausmeisterraum'`;
+      select visits_per_year::int as visits_per_year, turnus from app.rooms where site_id = ${DEMO.siteSchool} and name = 'Hausmeisterraum'`;
     expect(h).toEqual({ visits_per_year: 0, turnus: '0' });
     // mehrere Gebäude: je Gebäude ein Objekt, Etage ohne Gebäudename
     expect(a.buildings).toEqual(['Grundschule', 'Sportzentrum']);

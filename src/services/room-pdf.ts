@@ -47,12 +47,12 @@ export async function renderRoomBookPdf(sql: Sql, siteId: string): Promise<Uint8
   ]);
 
   // Übersicht je Nutzungsart
-  const byType = new Map<string, { n: number; area: bigint; visits: bigint }>();
+  const byType = new Map<string, { n: number; area: bigint; visits: number }>();
   for (const r of rooms) {
-    const e = byType.get(r.type_name) ?? { n: 0, area: 0n, visits: 0n };
+    const e = byType.get(r.type_name) ?? { n: 0, area: 0n, visits: 0 };
     e.n++;
     e.area += BigInt(r.area_centi);
-    e.visits += BigInt(r.area_centi) * BigInt(r.visits_per_year);
+    e.visits += Number(r.area_centi) * (r.visits_per_year ?? 0);
     byType.set(r.type_name, e);
   }
   d.section('Übersicht nach Nutzungsart');

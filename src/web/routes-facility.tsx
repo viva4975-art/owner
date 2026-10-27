@@ -656,7 +656,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
               </div>
             )}
             <label for="taeglich" style="display:inline">
-              „täglich“ bzw. ohne Intervall bedeutet:{' '}
+              „täglich“ in der Datei bedeutet:{' '}
             </label>
             <select id="taeglich" name="taeglich" onchange="this.form.submit()" style="width:auto">
               {DAILY_OPTIONS.map(([n, l]) => (
@@ -738,7 +738,9 @@ export function registerFacilityRoutes(ctx: Ctx) {
                       <td>
                         {r.visits != null ? frequencyLabel(r.visits) : '–'}
                         {r.intervalDefaulted ? (
-                          <div class="small mut">nicht angegeben</div>
+                          <div class="small" style="color:#a15c00">
+                            nicht in der Datei – bleibt leer
+                          </div>
                         ) : (
                           r.visits != null &&
                           r.intervalText && <div class="small mut">„{r.intervalText}“</div>
@@ -870,7 +872,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
       const roomId = c.req.param('room');
       const [r, types] = await Promise.all([getRoom(sql, roomId), listRoomTypes(sql)]);
       if (r && r.site_id !== s.id) throw new BusinessError('Raum gehört zu einem anderen Objekt');
-      const custom = r && !FREQUENCIES.some(([k]) => k === r.visits_per_year);
+      const custom = r && r.visits_per_year != null && !FREQUENCIES.some(([k]) => k === r.visits_per_year);
       return (
         <>
           <form
@@ -944,8 +946,11 @@ export function registerFacilityRoutes(ctx: Ctx) {
               <div>
                 <label for="visits">Reinigungsintervall</label>
                 <select id="visits" name="visits">
+                  <option value="" selected={!!r && r.visits_per_year == null}>
+                    – nicht angegeben –
+                  </option>
                   {FREQUENCIES.map(([k, v]) => (
-                    <option value={String(k)} selected={(r?.visits_per_year ?? 260) === k}>
+                    <option value={String(k)} selected={(r ? r.visits_per_year : 260) === k}>
                       {v}
                     </option>
                   ))}
@@ -960,7 +965,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
                   id="visits_custom"
                   name="visits_custom"
                   inputmode="numeric"
-                  value={custom ? String(r!.visits_per_year) : ''}
+                  value={custom ? String(r!.visits_per_year).replace('.', ',') : ''}
                 />
               </div>
             </div>
@@ -1021,7 +1026,12 @@ export function registerFacilityRoutes(ctx: Ctx) {
     assertSite(c, siteId);
     const roomId = c.req.param('room');
     const b = await c.req.parseBody({ all: true });
-    const visits = str(b, 'visits') === 'custom' ? Number(str(b, 'visits_custom')) : Number(str(b, 'visits'));
+    const visits =
+      str(b, 'visits') === 'custom'
+        ? Number((str(b, 'visits_custom') ?? '').replace(',', '.'))
+        : str(b, 'visits')
+          ? Number(str(b, 'visits'))
+          : null;
     await saveRoom(sql, roomId, {
       siteId,
       roomNo: str(b, 'room_no'),

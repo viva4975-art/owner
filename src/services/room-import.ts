@@ -148,7 +148,7 @@ export const ROOM_FIELDS: Record<RoomField, { label: string; aliases: string[] }
   },
 };
 
-/** Was „täglich“ bedeutet: Mo–Fr 260, Mo–Sa 312, Mo–So 365 Reinigungen im Jahr (beim Import wählbar). */
+/** Was „täglich“ in der Datei bedeutet: Mo–Fr 260, Mo–Sa 312, Mo–So 365 (beim Import wählbar). Ohne Angabe bleibt das Intervall leer. */
 export const DAILY_OPTIONS = [
   [260, 'Mo–Fr (260 × im Jahr)'],
   [312, 'Mo–Sa (312 × im Jahr)'],
@@ -260,7 +260,11 @@ export function areaOf(v: string, kind: 'xlsx' | 'csv'): bigint | null {
 const numOf = (v: string, kind: 'xlsx' | 'csv') => {
   const t = v.replace(/\s/g, '');
   if (!t) return null;
-  const x = Number(kind === 'csv' || t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t);
+  // „184.5“ / „38.33“ (Punkt mit 1–2 Nachkommastellen, kein Komma) = Dezimalzahl, nicht Tausenderpunkt
+  const dotDecimal = !t.includes(',') && /^-?\d+\.\d{1,2}$/.test(t);
+  const x = Number(
+    !dotDecimal && (kind === 'csv' || t.includes(',')) ? t.replace(/\./g, '').replace(',', '.') : t,
+  );
   return Number.isFinite(x) ? x : null;
 };
 
@@ -436,12 +440,14 @@ export async function analyzeRooms(
     const days = numOf(daysRaw, kind);
     let visits: number | null;
     let intervalDefaulted = false;
-    if (daysRaw && days != null && Number.isInteger(days) && days >= 0 && days <= 1000) visits = days;
+    // Reinigungstage genau übernehmen, auch mit Nachkommastellen (184,5) – auf 2 Stellen
+    if (daysRaw && days != null && days >= 0 && days <= 1000) visits = Math.round(days * 100) / 100;
     else if (daysRaw) {
       errors.push(`Reinigungstage „${daysRaw}“ ungültig`);
       visits = null;
     } else if (!intervalText) {
-      visits = daily;
+      // nicht angegeben → leer lassen, nichts annehmen (Ahmed: „die Tage müssen drin stehen“)
+      visits = null;
       intervalDefaulted = true;
     } else {
       visits = parseInterval(intervalText, daily);
@@ -513,7 +519,7 @@ export async function analyzeRooms(
       covering: get('covering') || null,
       areaCenti,
       visits,
-      intervalText: visits != null ? (intervalDefaulted ? '' : intervalText || daysRaw) : intervalText,
+      intervalText: intervalDefaulted ? '' : visits != null ? intervalText || daysRaw : intervalText,
       intervalDefaulted,
       turnus,
       performance,
@@ -595,7 +601,7 @@ export async function applyRooms(
         room_type_id: r.typeId ?? typeIds.get(r.typeName)!,
         floor_covering: r.covering,
         area_centi: r.areaCenti!,
-        visits_per_year: r.visits!,
+        visits_per_year: r.visits,
         turnus: r.turnus,
         ...(r.performance ? { performance_override: r.performance } : {}),
         notes: r.notes,

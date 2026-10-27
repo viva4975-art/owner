@@ -3477,12 +3477,8 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
       getAccountingSettings(sql),
     ]);
     const { rows: all, employees, rates, months } = plan;
-    const planFiltered = !!(fKunde || fObjekte.length || fOl || fVerlust);
-    // Büro/Lager (intern) separat, nicht im Gesamt der Objekte (Ahmed 27.10.)
-    const officeRows = planFiltered ? [] : all.filter((r) => r.internal);
     const rows = all.filter(
       (r) =>
-        (planFiltered || !r.internal) &&
         (!fKunde || r.customer_id === fKunde) &&
         (!fObjekte.length || fObjekte.includes(r.site_id)) &&
         (!fOl || (fOl === 'ohne' ? !r.manager_user_id : r.manager_user_id === fOl)) &&
@@ -3725,24 +3721,6 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                   <td class="r">{r.minutes > 0 ? eur((r.revenue * 60n) / BigInt(r.minutes)) : '–'}</td>
                 </tr>
               ))}
-              {officeRows.length > 0 && (
-                <tr>
-                  <td colspan={10} class="small mut" style="background:var(--head)">
-                    <b>Büro & Gemeinkosten – separat, nicht im Gesamt:</b>{' '}
-                    {officeRows.map((r, k) => (
-                      <>
-                        {k > 0 && ' · '}
-                        <a
-                          href={`/auswertungen/plankalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}`}
-                        >
-                          {r.site_no} {r.site_name}
-                        </a>{' '}
-                        {hm(r.minutes)} Std., Lohn + AG {eur(r.gross + r.employer)}
-                      </>
-                    ))}
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
@@ -3943,18 +3921,16 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         r.actual_minutes > 0 ||
         r.material + r.subcontractor + r.equipment + r.other !== 0n,
     );
-    // Büro/Lager (interne Bereiche) und allgemeine Kostenstellen sind Gemeinkosten: nicht im Gesamt der Objekte,
-    // sondern separat darunter (Ahmed 27.10.) – außer man filtert ausdrücklich danach
+    // allgemeine Kostenstellen (Miete, Fahrzeuge …) separat, nicht im Gesamt der Objekte (Ahmed 27.10.);
+    // interne Objekte (Büro mit Bürolohn) bleiben in der Liste – nur ihr Material zählt nicht
     const active = withData.filter(
       (r) =>
-        (filtered || !r.internal) &&
         (!fKunde || r.customer_id === fKunde) &&
         (!fObjekte.length || fObjekte.includes(r.site_id)) &&
         (!fOl || (fOl === 'ohne' ? !r.manager_user_id : r.manager_user_id === fOl)) &&
         (!fVerlust || r.margin < 0n),
     );
     const general = filtered || fVerlust ? [] : allGeneral;
-    const internalRows = filtered || fVerlust ? [] : withData.filter((r) => r.internal);
     const customers = [
       ...new Map(
         withData.map((r) => [
@@ -3966,7 +3942,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     const managers = await managersOf(withData.map((r) => r.manager_user_id));
     if (c.req.query('pdf') === '1') {
       const redact = c.req.query('schwaerzen') === '1';
-      const pdf = await siteCostingPdf(active, general, internalRows, {
+      const pdf = await siteCostingPdf(active, general, {
         title: 'Nachkalkulation & Kostenstellen',
         period: calcPeriodLabel(von, bis),
         filter: filterLabel(
@@ -3983,8 +3959,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     const details = fObjekt ? await siteCostDetails(sql, fObjekt, { from: von, to: bis }) : [];
     const sum = (f: (r: (typeof rows)[number]) => bigint) => active.reduce((a, r) => a + f(r), 0n);
     const totalRev = sum((r) => r.revenue);
-    const generalTotal =
-      general.reduce((a, g) => a + g.total, 0n) - internalRows.reduce((a, r) => a + r.margin, 0n);
+    const generalTotal = general.reduce((a, g) => a + g.total, 0n);
     const totalMargin = sum((r) => r.margin);
     const result = totalMargin - generalTotal;
     const pct = (bp: number | null) =>
@@ -4221,7 +4196,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
             </div>
           </div>
           <div class="kpi">
-            <div class="l">Büro & Gemeinkosten (separat)</div>
+            <div class="l">Allgemeine Kostenstellen (separat)</div>
             <div class="v">{euro(generalTotal)}</div>
             <div class="s">
               {filtered || fVerlust ? 'bei Filter nicht enthalten' : 'nicht im Deckungsbeitrag · Liste unten'}
@@ -4277,7 +4252,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                   <td class="r" />
                 </tr>
               )}
-              {active.length === 0 && general.length === 0 && internalRows.length === 0 && (
+              {active.length === 0 && general.length === 0 && (
                 <tr>
                   <td colspan={11}>
                     <div class="empty">Im Zeitraum gibt es keine Erlöse, Zeiten oder Kosten.</div>
@@ -4285,16 +4260,15 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                 </tr>
               )}
               {active.map(siteRow)}
-              {(general.length > 0 || internalRows.length > 0) && (
+              {general.length > 0 && (
                 <tr>
                   <td colspan={11} class="small mut" style="background:var(--head)">
-                    <b>Büro & Gemeinkosten – separat</b> (Büro, Lager, allgemeine Kostenstellen; nicht im
+                    <b>Allgemeine Kostenstellen – separat</b> (Miete, Fahrzeuge, Versicherung …; nicht im
                     Gesamt der Objekte, Material zählt hier nicht – es geht über die Materialausgabe ans
                     Objekt)
                   </td>
                 </tr>
               )}
-              {internalRows.map(siteRow)}
               {general.map((g) => (
                 <tr>
                   <td>
@@ -4327,12 +4301,13 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                   <td class="r" />
                 </tr>
               ))}
-              {(general.length > 0 || internalRows.length > 0) && (
+              {general.length > 0 && (
                 <tr style="background:var(--tint-2)">
                   <td colspan={8}>
-                    <b>Summe Büro & Gemeinkosten</b>
+                    <b>Summe allgemeine Kostenstellen</b>
                     <div class="small mut">
-                      zur Info: Deckungsbeitrag Objekte {euro(totalMargin)} − Gemeinkosten = {euro(result)}
+                      zur Info: Deckungsbeitrag Objekte {euro(totalMargin)} − allgemeine Kosten ={' '}
+                      {euro(result)}
                     </div>
                   </td>
                   <td class="r" style="color:var(--err)">

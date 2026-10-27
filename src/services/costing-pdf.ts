@@ -35,11 +35,10 @@ const NO_AMOUNTS = 'ohne Beträge – nur Stunden und Marge';
 export async function siteCostingPdf(
   rows: SiteCosting[],
   general: GeneralCost[],
-  internal: SiteCosting[],
   o: CostingPdfOpts,
 ): Promise<Uint8Array> {
-  // Büro/Lager und allgemeine Kostenstellen separat, nicht im Gesamt der Objekte (Ahmed 27.10.)
-  const genTotal = general.reduce((a, g) => a + g.total, 0n) - internal.reduce((a, r) => a + r.margin, 0n);
+  // allgemeine Kostenstellen separat, nicht im Gesamt der Objekte (Ahmed 27.10.)
+  const genTotal = general.reduce((a, g) => a + g.total, 0n);
   if (o.redact) {
     const margin = rows.reduce((a, r) => a + r.margin, 0n);
     const rev = rows.reduce((a, r) => a + r.revenue, 0n);
@@ -66,7 +65,7 @@ export async function siteCostingPdf(
         pct(marginBp(margin, rev)),
       ],
       footnote:
-        'Marge = Deckungsbeitrag in % vom Erlös (Objekte; Büro- und Gemeinkosten nicht enthalten). Interne Auswertung.',
+        'Marge = Deckungsbeitrag in % vom Erlös (Objekte; allgemeine Kostenstellen nicht enthalten). Interne Auswertung.',
     });
   }
   const columns: PdfColumn[] = [
@@ -101,11 +100,10 @@ export async function siteCostingPdf(
   const body: PdfRow[] = rows.map(line);
   const margin = sum((r) => r.margin);
   const rev = sum((r) => r.revenue);
-  if (general.length || internal.length) {
+  if (general.length) {
     body.push({
-      section: 'Büro & Gemeinkosten – separat (nicht im Gesamt der Objekte; Material zählt hier nicht)',
+      section: 'Allgemeine Kostenstellen – separat (nicht im Gesamt der Objekte; Material zählt hier nicht)',
     });
-    for (const r of internal) body.push(line(r));
     for (const g of general)
       body.push([
         g.number,
@@ -123,7 +121,10 @@ export async function siteCostingPdf(
       ]);
     body.push([
       { text: 'Summe', bold: true },
-      { text: `Büro & Gemeinkosten (DB Objekte − Gemeinkosten = ${eur(margin - genTotal)})`, bold: true },
+      {
+        text: `allgemeine Kostenstellen (DB Objekte − allgemeine Kosten = ${eur(margin - genTotal)})`,
+        bold: true,
+      },
       '',
       '',
       '',
@@ -159,7 +160,7 @@ export async function siteCostingPdf(
     ],
     footnote:
       'DB = Erlös − Lohn (Ist-Stunden × Stundenlohn + Zuschlag) − Material − Nachunternehmer − Geräte − Sonstiges; ' +
-      'Gesamt nur Objekte – Büro- und Gemeinkosten stehen separat. Interne Auswertung.',
+      'Gesamt nur Objekte (inkl. Büro) – allgemeine Kostenstellen stehen separat. Interne Auswertung.',
   });
 }
 

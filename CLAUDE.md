@@ -4381,3 +4381,8 @@ Testadresse.
     „Ergebnis“ entfällt, stattdessen „Büro & Gemeinkosten (separat)“. Gleich im PDF und in „Kosten aufschlüsseln“;
     Plan-Kalkulation zeigt Büro-Lohn ebenfalls nur separat. Filtert man ausdrücklich nach dem internen Kunden/Objekt,
     erscheint es normal in der Liste. Startseiten-Ampel unverändert (nur Objekte mit Erlös).
+- 2026-10-27: Nachtrag (Ahmed: „die internen Bürokosten, also die Lohnkosten, sollen dabei sein wie vorher“): Interne
+  Objekte (Büro, INT-BUERO …) stehen wieder normal in der Nach- und Plan-Kalkulation und zählen im Gesamt/Deckungsbeitrag
+  (Bürolohn + Zuschlag bzw. AG-Kosten) – nur ihr **Material** zählt weiter nicht. Separat (nicht im Gesamt) bleiben nur
+  die **allgemeinen Kostenstellen** (Miete, Fahrzeuge, Versicherung …), ebenfalls ohne Material; Kachel „Allgemeine
+  Kostenstellen (separat)“, darunter zur Info „DB Objekte − allgemeine Kosten“. PDF gleich.

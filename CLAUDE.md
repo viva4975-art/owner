@@ -4435,3 +4435,11 @@ Testadresse.
   - **Rechtlich:** Das gedruckte Datum muss dem tatsächlichen Antrag entsprechen – „Beginn − 5 Tage“ ist nur ein
     Vorschlag für alte Einträge ohne Datum; wurde später unterschrieben, Datum vorher am Eintrag korrigieren (sonst
     rückdatierte Urkunde). Tests: `leave-request-print.db.test.ts`; e2e zeit 28, planung 27 grün.
+- 2026-10-28: **Feiertag = Feiertagslohn, außer Feiertagsarbeit festgelegt** (Ahmed): Geplanter Einsatz an einem Feiertag
+  ohne Haken „Auch an Sonn- und Feiertagen arbeiten“ → Lohnart „Feiertag (Entgeltfortzahlung)“ mit der Planzeit – jetzt
+  auch, wenn an dem Tag trotzdem eine Zeit erfasst ist (vorher zählte die als Arbeit ohne Zuschlag); erfasste Zeit an
+  einem Feiertag ganz ohne Einsatz ebenfalls als Feiertagslohn. Nur eine Abwesenheit (Urlaub/Krank) an dem Tag geht vor.
+  Mit Haken → Arbeit + Feiertagszuschlag (erfasste Zeit, bei „Ist, sonst Plan“ sonst die Planzeit). Stundenliste &
+  Lohnarten zeigt „n Std. am Feiertag gearbeitet → Feiertagslohn“ als Hinweis. **Rechtlich:** Wird an einem Feiertag
+  tatsächlich gearbeitet, sind Arbeitslohn + RTV-Zuschlag geschuldet – dann den Einsatz mit Haken anlegen (sonst zahlt
+  der Export zu wenig). Test in `runde32.db.test.ts`.

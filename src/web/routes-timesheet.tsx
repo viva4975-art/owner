@@ -751,12 +751,24 @@ ${absenceCss(
                         <div
                           class="small"
                           style="color:var(--warn)"
-                          title="Zeit an Sonn-/Feiertagen ohne Einsatz „auch an Sonn- und Feiertagen“ – kein Zuschlag berechnet"
+                          title="Zeit an Sonntagen ohne Einsatz „auch an Sonn- und Feiertagen“ – kein Zuschlag berechnet"
                         >
                           {(p.uncoveredSundayHolidayMinutes / 60).toLocaleString('de-DE', {
                             maximumFractionDigits: 2,
                           })}{' '}
                           Std. Sonn-/Feiertag ohne Zuschlag
+                        </div>
+                      )}
+                      {p && p.holidayWorkedAsLfzMinutes > 0 && (
+                        <div
+                          class="small"
+                          style="color:var(--warn)"
+                          title="Zeit an Feiertagen ohne Einsatz „auch an Sonn- und Feiertagen“ – als Feiertagslohn gezählt, nicht als Arbeit mit Zuschlag"
+                        >
+                          {(p.holidayWorkedAsLfzMinutes / 60).toLocaleString('de-DE', {
+                            maximumFractionDigits: 2,
+                          })}{' '}
+                          Std. am Feiertag gearbeitet → Feiertagslohn
                         </div>
                       )}
                       {(s.open.running > 0 || s.open.pending > 0) && (

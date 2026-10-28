@@ -6,7 +6,7 @@ import {
   surchargeCents,
   surchargeMinutes,
 } from '../domain/time/surcharges.js';
-import { addDays, isoWeekday } from '../domain/time/holidays.js';
+import { addDays, holidayName, isoWeekday } from '../domain/time/holidays.js';
 import { listAbsenceHours } from './absences.js';
 import { BusinessError } from './errors.js';
 import { breakRange, listEntries, plannedShifts } from './time.js';
@@ -153,6 +153,8 @@ export interface PayrollRow {
   forecastMinutes: number;
   /** Minuten an Sonn-/Feiertagen ohne Einsatz „auch an Sonn- und Feiertagen“ – kein Zuschlag berechnet */
   uncoveredSundayHolidayMinutes: number;
+  /** an Feiertagen erfasste Zeit ohne Einsatz „auch an Sonn- und Feiertagen“ – als Feiertagslohn gezählt */
+  holidayWorkedAsLfzMinutes: number;
 }
 
 /** Ortszeit Berlin (JJJJ-MM-TT, HH:MM) → Zeitpunkt; Sommer-/Winterzeit über Intl ermittelt. */
@@ -289,16 +291,20 @@ export async function payrollMonth(
     );
   };
   const nightOnly = { ...rates, sunday: 0, sundayRegular: 0, holiday: 0, highHoliday: 0 };
-  // Feiertag (§ 2 EFZG): geplante Einsätze an Feiertagen, die nicht gearbeitet wurden und auf die keine Abwesenheit fällt
+  // Feiertag (§ 2 EFZG): geplante Einsätze an Feiertagen ohne „auch an Sonn- und Feiertagen“ → Feiertagslohn (Ahmed
+  // 28.10.), auch wenn trotzdem eine Zeit erfasst ist; nur eine Abwesenheit an dem Tag geht vor. Einsätze mit Haken
+  // haben kein `holiday` (plannedShifts) und zählen als Arbeit mit Zuschlag.
   const holidayPay = new Map<string, number>();
+  const lfzDays = new Set<string>();
   // Soll-Minuten des Monats laut Einsatzplan (inkl. Feier- und Abwesenheitstage) = Grundlage des Gehaltsabzugs
   const planBase = new Map<string, number>();
   for (const sh of await plannedShifts(sql, { from, to, ...(employeeId ? { employeeId } : {}) })) {
     const emp = sh.plan.employee_id;
     if (!emp || sh.exception?.kind === 'ausfall') continue;
     planBase.set(emp, (planBase.get(emp) ?? 0) + Math.max(0, sh.minutes));
-    if (!sh.holiday || sh.entry || sh.absence) continue;
+    if (!sh.holiday || sh.absence) continue;
     holidayPay.set(emp, (holidayPay.get(emp) ?? 0) + Math.max(0, sh.minutes));
+    lfzDays.add(`${emp}|${sh.date}`);
   }
   for (const h of absHours)
     if (!h.shift_plan_id) planBase.set(h.employee_id, (planBase.get(h.employee_id) ?? 0) + h.minutes);
@@ -394,6 +400,7 @@ export async function payrollMonth(
   for (const e of emps) {
     const m = zero();
     let uncovered = 0;
+    let holidayAsLfz = 0;
     let pending = 0;
     let fc = 0;
     for (const f of forecast) {
@@ -424,9 +431,18 @@ export async function payrollMonth(
       if (cutoff && t.work_date > cutoff) continue;
       if (t.status === 'beantragt' || t.status === 'laeuft') pending++;
       if ((t.status !== 'erfasst' && t.status !== 'freigegeben') || !t.end_at) continue;
-      m.normal += Math.max(0, t.gross_minutes - t.break_minutes);
-      const br = breakRange(t);
       const covered = holidayCovered(e.id, t.site_id, t.work_date);
+      const net = Math.max(0, t.gross_minutes - t.break_minutes);
+      if (!covered && holidayName(t.work_date)) {
+        // Feiertag ohne festgelegte Feiertagsarbeit: Feiertagslohn statt Arbeit + Zuschlag. Steht dafür ein Einsatz im
+        // Plan, zählt dessen Zeit (oben), sonst die erfasste Zeit.
+        const key = `${e.id}|${t.work_date}`;
+        if (!lfzDays.has(key)) holidayPay.set(e.id, (holidayPay.get(e.id) ?? 0) + net);
+        holidayAsLfz += net;
+        continue;
+      }
+      m.normal += net;
+      const br = breakRange(t);
       const sm = surchargeMinutes(
         t.start_at,
         t.end_at,
@@ -497,6 +513,7 @@ export async function payrollMonth(
         pending,
         forecastMinutes: fc,
         uncoveredSundayHolidayMinutes: uncovered,
+        holidayWorkedAsLfzMinutes: holidayAsLfz,
       });
   }
   return rows;

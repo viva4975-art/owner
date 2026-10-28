@@ -140,8 +140,12 @@ describe.skipIf(!available)(
               values (${randomUUID()}, ${EMP}, ${DEMO.siteSchool}, '2026-04-06',
                       '2026-04-06 06:00 Europe/Berlin', '2026-04-06 08:00 Europe/Berlin', 0, 'buero', 'freigegeben', 't')`;
       let p = (await payrollMonth(sql, '2026-04', EMP))[0]!;
+      // Feiertag ohne Haken: Feiertagslohn (§ 2 EFZG) statt Arbeit, auch mit erfasster Zeit (Ahmed 28.10.)
       expect(p.minutes.feiertag).toBe(0);
-      expect(p.uncoveredSundayHolidayMinutes).toBe(120);
+      expect(p.minutes.feiertag_lfz).toBe(120);
+      expect(p.holidayWorkedAsLfzMinutes).toBe(120);
+      expect(p.uncoveredSundayHolidayMinutes).toBe(0);
+      const normalOhne = p.minutes.normal + p.minutes.aushilfslohn;
       // Sonntags-Einsatz (immer mit Haken) und Montag mit Haken → Zuschläge
       await saveShiftSeries(
         sql,
@@ -170,7 +174,11 @@ describe.skipIf(!available)(
       expect(sun!.holiday_work).toBe(true);
       p = (await payrollMonth(sql, '2026-04', EMP))[0]!;
       expect(p.minutes.feiertag + p.minutes.feiertag_hoch).toBe(120);
+      expect(p.minutes.normal + p.minutes.aushilfslohn).toBe(normalOhne + 120);
       expect(p.uncoveredSundayHolidayMinutes).toBe(0);
+      // Ist, sonst Plan: Feiertagseinsatz mit Haken ohne erfasste Zeit = Arbeit + Zuschlag (Ostersonntag 05.04.)
+      const f = (await payrollMonth(sql, '2026-04', EMP, { fillPlan: true }))[0]!;
+      expect(f.minutes.feiertag_hoch).toBeGreaterThanOrEqual(120);
     });
 
     it('Kalender-Abo: ICS mit Einsätzen, falscher Link → nichts', async () => {

@@ -16,7 +16,8 @@ import { monthRange } from './timesheet.js';
  * Lohnarten je Mitarbeiter und Monat für die Lohnabrechnung (Lexware): Normalstunden (gearbeitet, dazu sonstige
  * bezahlte Abwesenheit), Aushilfslohn (Minijob mit Stundenlohn), Urlaub, Krank, Feiertag, Zuschläge nach RTV
  * Gebäudereinigung sowie Gehalt / Aushilfsgehalt (Minijob) / Geschäftsführergehalt als Monatsbetrag bei Festgehalt.
- * Unbezahlte Abwesenheit ist keine Lohnart (Ahmed 11.10.). Nur erfasste/freigegebene Zeiten.
+ * Unbezahlte Abwesenheit: bei Stundenlohn nicht bezahlt (keine Lohnart), bei Festgehalt Abzug vom Gehalt als eigene
+ * Lohnart „Unbezahlte Abwesenheit (Abzug)“ mit Minusbetrag (Ahmed 28.10.). Nur erfasste/freigegebene Zeiten.
  */
 
 /** Lohnarten mit Stunden */
@@ -24,7 +25,9 @@ export type HourType =
   'normal' | 'aushilfslohn' | 'urlaub' | 'krank' | 'feiertag_lfz' | SurchargeKind | 'mehrarbeit';
 /** Lohnarten mit Monatsbetrag (Festgehalt) */
 export type SalaryType = 'gehalt' | 'aushilfsgehalt' | 'gf_gehalt';
-export type WageType = HourType | SalaryType;
+/** Abzug vom Festgehalt für unbezahlte Abwesenheit (Minusbetrag) */
+export type DeductionType = 'unbezahlt';
+export type WageType = HourType | SalaryType | DeductionType;
 
 export const HOUR_TYPE_LABEL: Record<HourType, string> = {
   normal: 'Normalstunden',
@@ -43,7 +46,11 @@ export const SALARY_TYPE_LABEL: Record<SalaryType, string> = {
   aushilfsgehalt: 'Aushilfsgehalt (Minijob)',
   gf_gehalt: 'Geschäftsführergehalt GmbH-Gesellschafter',
 };
-export const WAGE_TYPE_LABEL: Record<WageType, string> = { ...HOUR_TYPE_LABEL, ...SALARY_TYPE_LABEL };
+export const WAGE_TYPE_LABEL: Record<WageType, string> = {
+  ...HOUR_TYPE_LABEL,
+  ...SALARY_TYPE_LABEL,
+  unbezahlt: 'Unbezahlte Abwesenheit (Abzug)',
+};
 export const HOUR_TYPES = Object.keys(HOUR_TYPE_LABEL) as HourType[];
 export const SALARY_TYPES = Object.keys(SALARY_TYPE_LABEL) as SalaryType[];
 export const WAGE_TYPES = Object.keys(WAGE_TYPE_LABEL) as WageType[];
@@ -131,6 +138,10 @@ export interface PayrollRow {
   minutes: Record<HourType, number>;
   /** Festgehalt: Lohnart und Monatsbetrag (anteilig bei Ein-/Austritt im Monat) */
   salary: { type: SalaryType; cents: bigint } | null;
+  /** unbezahlte Abwesenheit in Minuten (Info; bei Festgehalt Grundlage des Abzugs) */
+  unpaidMinutes: number;
+  /** Festgehalt: Abzug für unbezahlte Abwesenheit in Cent (positiv, wird als Minusbetrag exportiert) */
+  unpaidDeductionCents: bigint;
   /** Zuschlagsbeträge in Cent (nur bei bekanntem Stundenlohn) */
   surchargeCents: Record<SurchargeKind, bigint>;
   /** angewandter Satz je Zuschlag (Basispunkte) */
@@ -181,6 +192,27 @@ export function proratedSalary(cents: bigint, from: string, to: string, entry: s
   const worked = Math.max(0, days(s, e));
   if (worked >= total) return cents;
   return (cents * BigInt(worked) * 2n + BigInt(total)) / (2n * BigInt(total));
+}
+
+/**
+ * Gehaltsabzug für unbezahlte Abwesenheit (konkrete Berechnung): Monatsgehalt ÷ Soll-Minuten des Monats laut
+ * Einsatzplan × ausgefallene Minuten, kaufmännisch auf Cent, höchstens das Gehalt. Ohne Einsatzplan: Stundensatz aus
+ * dem Gehalt (Gehalt ÷ 4,33 ÷ Wochenstunden). Beispiel: 585 € bei 43 Std. Soll im Monat, 3 Tage à 2 Std. unbezahlt = 81,63 €.
+ */
+export function unpaidDeduction(
+  salaryCents: bigint,
+  unpaidMinutes: number,
+  baseMinutes: number,
+  hourlyCents: bigint | null,
+): bigint {
+  if (unpaidMinutes <= 0 || salaryCents <= 0n) return 0n;
+  let c: bigint;
+  if (baseMinutes > 0) {
+    if (unpaidMinutes >= baseMinutes) return salaryCents;
+    c = (salaryCents * BigInt(unpaidMinutes) * 2n + BigInt(baseMinutes)) / (2n * BigInt(baseMinutes));
+  } else if (hourlyCents && hourlyCents > 0n) c = (hourlyCents * BigInt(unpaidMinutes) * 2n + 60n) / 120n;
+  else return 0n;
+  return c > salaryCents ? salaryCents : c;
 }
 
 /**
@@ -255,11 +287,24 @@ export async function payrollMonth(
   const nightOnly = { ...rates, sunday: 0, sundayRegular: 0, holiday: 0, highHoliday: 0 };
   // Feiertag (§ 2 EFZG): geplante Einsätze an Feiertagen, die nicht gearbeitet wurden und auf die keine Abwesenheit fällt
   const holidayPay = new Map<string, number>();
+  // Soll-Minuten des Monats laut Einsatzplan (inkl. Feier- und Abwesenheitstage) = Grundlage des Gehaltsabzugs
+  const planBase = new Map<string, number>();
   for (const sh of await plannedShifts(sql, { from, to, ...(employeeId ? { employeeId } : {}) })) {
     const emp = sh.plan.employee_id;
-    if (!emp || !sh.holiday || sh.entry || sh.absence || sh.exception?.kind === 'ausfall') continue;
+    if (!emp || sh.exception?.kind === 'ausfall') continue;
+    planBase.set(emp, (planBase.get(emp) ?? 0) + Math.max(0, sh.minutes));
+    if (!sh.holiday || sh.entry || sh.absence) continue;
     holidayPay.set(emp, (holidayPay.get(emp) ?? 0) + Math.max(0, sh.minutes));
   }
+  for (const h of absHours)
+    if (!h.shift_plan_id) planBase.set(h.employee_id, (planBase.get(h.employee_id) ?? 0) + h.minutes);
+  // Abwesenheitsminuten je Einsatz und Tag (für halbe Tage in der Vorab-Abrechnung)
+  const absOnShift = new Map<string, number>();
+  for (const h of absHours)
+    if (h.shift_plan_id) {
+      const k = `${h.employee_id}|${h.shift_plan_id}|${h.work_date}`;
+      absOnShift.set(k, (absOnShift.get(k) ?? 0) + h.minutes);
+    }
   // Vorab: geplante Einsätze nach dem Stichtag als Zeiten (Beginn/Ende in Berliner Zeit)
   const forecast: {
     employee_id: string;
@@ -267,6 +312,8 @@ export async function payrollMonth(
     end_at: Date;
     break_minutes: number;
     holidayWork: boolean;
+    /** nur Restminuten (Einsatz mit teilweiser Abwesenheit, z. B. halber Urlaubstag) – ohne Zuschläge */
+    restMinutes?: number;
   }[] = [];
   if (cutoff) {
     const shifts = await plannedShifts(sql, {
@@ -277,10 +324,26 @@ export async function payrollMonth(
     for (const sh of shifts) {
       // bei Vertretung/Umplanung enthält plan bereits Vertreter und geänderte Zeit
       const emp = sh.plan.employee_id;
-      if (!emp || sh.absence || sh.holiday || sh.exception?.kind === 'ausfall') continue;
+      if (!emp || sh.holiday || sh.exception?.kind === 'ausfall') continue;
       const st = sh.plan.start_time;
       const en = sh.plan.end_time;
       const endDate = en <= st ? addDays(sh.date, 1) : sh.date;
+      if (sh.absence) {
+        // Abwesenheit zählt über ihre Stunden (Urlaub, Krank …) – Normalstunden nur für den Rest des Einsatzes,
+        // sonst stünde die Zeit doppelt im Export (Ahmed 28.10.: 39 Std. mit 5 Std. Urlaub = 34 + 5)
+        const absMin = absOnShift.get(`${emp}|${sh.plan.id}|${sh.date}`) ?? 0;
+        const rest = Math.max(0, sh.minutes) - absMin;
+        if (absMin > 0 && rest > 0)
+          forecast.push({
+            employee_id: emp,
+            start_at: berlinAt(sh.date, st),
+            end_at: berlinAt(endDate, en),
+            break_minutes: 0,
+            holidayWork: false,
+            restMinutes: rest,
+          });
+        continue;
+      }
       forecast.push({
         employee_id: emp,
         start_at: berlinAt(sh.date, st),
@@ -328,6 +391,11 @@ export async function payrollMonth(
     let fc = 0;
     for (const f of forecast) {
       if (f.employee_id !== e.id) continue;
+      if (f.restMinutes != null) {
+        m.normal += f.restMinutes;
+        fc += f.restMinutes;
+        continue;
+      }
       const net = Math.max(
         0,
         Math.round((f.end_at.getTime() - f.start_at.getTime()) / 60000) - f.break_minutes,
@@ -368,10 +436,14 @@ export async function payrollMonth(
     }
     m.mehrarbeit = overtime.get(e.id) ?? 0;
     m.feiertag_lfz = holidayPay.get(e.id) ?? 0;
+    let unpaid = 0;
     for (const h of absHours) {
       if (h.employee_id !== e.id) continue;
       const k = kindOf.get(h.absence_id);
-      if (!h.paid) continue; // unbezahlt: keine Lohnart
+      if (!h.paid) {
+        unpaid += h.minutes; // Stundenlohn: nicht bezahlt; Festgehalt: Abzug (unten)
+        continue;
+      }
       if (k === 'urlaub') m.urlaub += h.minutes;
       else if (k === 'krank' || k === 'kind_krank') m.krank += h.minutes;
       else m.normal += h.minutes; // sonstige bezahlte Abwesenheit = Normalstunden
@@ -388,6 +460,9 @@ export async function payrollMonth(
             cents: proratedSalary(BigInt(e.monthly_salary_cents), from, to, e.entry_date, e.exit_date),
           }
         : null;
+    const unpaidDeductionCents = salary?.cents
+      ? unpaidDeduction(salary.cents, unpaid, planBase.get(e.id) ?? 0, e.wage_cents)
+      : 0n;
     const bp: Record<SurchargeKind, number> = {
       nacht: rates.night,
       sonntag: e.regular_sunday_work ? rates.sundayRegular : rates.sunday,
@@ -397,7 +472,7 @@ export async function payrollMonth(
     const sc = Object.fromEntries(
       SURCHARGES.map((k) => [k, e.wage_cents ? surchargeCents(m[k], e.wage_cents, bp[k]) : 0n]),
     ) as Record<SurchargeKind, bigint>;
-    if (HOUR_TYPES.some((k) => m[k]) || pending || salary?.cents)
+    if (HOUR_TYPES.some((k) => m[k]) || pending || salary?.cents || unpaid)
       rows.push({
         employee_id: e.id,
         personnel_no: e.personnel_no,
@@ -407,6 +482,8 @@ export async function payrollMonth(
         regular_sunday_work: e.regular_sunday_work,
         minutes: m,
         salary,
+        unpaidMinutes: unpaid,
+        unpaidDeductionCents,
         surchargeCents: sc,
         bp,
         overtimeCents: e.wage_cents ? surchargeCents(m.mehrarbeit, e.wage_cents, settings.overtime_bp) : 0n,
@@ -420,6 +497,8 @@ export async function payrollMonth(
 
 const dec = (minutes: number) => (minutes / 60).toFixed(2).replace('.', ',');
 const eur = (c: bigint) => `${c / 100n},${String(c % 100n).padStart(2, '0')}`;
+/** Cent-Betrag mit Vorzeichen (Abzüge und Korrekturen sind negativ). */
+const eurSigned = (c: bigint) => (c < 0n ? `-${eur(-c)}` : eur(c));
 
 /** CSV für den Lohnimport: je Mitarbeiter und Lohnart eine Zeile (Format vorläufig, an Lexware anpassen). */
 export function payrollCsv(
@@ -443,6 +522,20 @@ export function payrollCsv(
           '',
           '',
           eur(r.salary.cents),
+        ].join(';'),
+      );
+    if (r.unpaidDeductionCents)
+      out.push(
+        [
+          month,
+          safe(r.personnel_no),
+          safe(r.name),
+          safe(s.wage_type_numbers.unbezahlt ?? ''),
+          WAGE_TYPE_LABEL.unbezahlt,
+          dec(r.unpaidMinutes),
+          '',
+          '',
+          eurSigned(-r.unpaidDeductionCents),
         ].join(';'),
       );
     for (const k of HOUR_TYPES) {
@@ -483,15 +576,28 @@ export function payrollCsv(
           dec(v),
           '',
           '',
-          r.cents?.[k] != null ? eur(r.cents[k]!) : '',
+          r.cents?.[k] != null ? eurSigned(r.cents[k]!) : '',
         ].join(';'),
       );
     }
+  for (const r of corrections?.rows ?? [])
+    if (r.unpaidCents)
+      out.push(
+        [
+          `${corrections!.month} Korrektur`,
+          safe(r.personnel_no),
+          safe(r.name),
+          safe(s.wage_type_numbers.unbezahlt ?? ''),
+          WAGE_TYPE_LABEL.unbezahlt,
+          '',
+          '',
+          '',
+          eurSigned(-r.unpaidCents),
+        ].join(';'),
+      );
   return `${out.join('\r\n')}\r\n`;
 }
 
-/** Cent-Betrag mit Vorzeichen (Korrekturen können negativ sein). */
-const eurSigned = (c: bigint) => (c < 0n ? `-${eur(-c)}` : eur(c));
 /** Zuschlag in Cent auch für negative Minuten (Korrektur), kaufmännisch gerundet. */
 const surchargeSigned = (minutes: number, wage: bigint, bp: number) =>
   minutes < 0 ? -surchargeCents(-minutes, wage, bp) : surchargeCents(minutes, wage, bp);
@@ -525,6 +631,7 @@ export function payrollLexwareAscii(
   };
   for (const r of rows) {
     if (r.salary?.cents) push(r.personnel_no, r.salary.type, eurSigned(r.salary.cents));
+    if (r.unpaidDeductionCents) push(r.personnel_no, 'unbezahlt', eurSigned(-r.unpaidDeductionCents));
     for (const k of HOUR_TYPES) {
       const v = r.minutes[k] ?? 0;
       if (!v || (r.salary && BASE_HOURS.includes(k))) continue;
@@ -547,6 +654,8 @@ export function payrollLexwareAscii(
       else if (a == null) noWage.add(r.name);
       else push(r.personnel_no, k, eurSigned(a));
     }
+  for (const r of corrections ?? [])
+    if (r.unpaidCents) push(r.personnel_no, 'unbezahlt', eurSigned(-r.unpaidCents));
   return { text: out.length ? `${out.join('\r\n')}\r\n` : '', missing: [...missing], noWage: [...noWage] };
 }
 
@@ -561,7 +670,11 @@ export async function recordPayrollExport(
   rows: PayrollRow[],
   actor: string,
 ) {
-  const data = rows.map((r) => ({ employee_id: r.employee_id, minutes: r.minutes }));
+  const data = rows.map((r) => ({
+    employee_id: r.employee_id,
+    minutes: r.minutes,
+    unpaid_cents: String(r.unpaidDeductionCents),
+  }));
   await sql`insert into app.payroll_exports (id, month, cutoff, rows, created_by)
             values (gen_random_uuid(), ${month}, ${cutoff}, ${sql.json(data as never)}, ${actor})`;
 }
@@ -576,6 +689,8 @@ export interface PayrollCorrection {
   cents?: Partial<Record<HourType, bigint>>;
   /** Festgehalt: Grundlohn-Stunden sind im Gehalt enthalten */
   salaried?: boolean;
+  /** Differenz des Gehaltsabzugs für unbezahlte Abwesenheit (Cent, positiv = mehr Abzug) */
+  unpaidCents?: bigint;
 }
 
 /**
@@ -587,7 +702,10 @@ export async function payrollCorrections(
   month: string,
 ): Promise<{ cutoff: string | null; rows: PayrollCorrection[] }> {
   const [ex] = await sql<
-    { cutoff: string | null; rows: { employee_id: string; minutes: Record<string, number> }[] }[]
+    {
+      cutoff: string | null;
+      rows: { employee_id: string; minutes: Record<string, number>; unpaid_cents?: string }[];
+    }[]
   >`
     select cutoff::text, rows from app.payroll_exports where month = ${month} order by created_at desc limit 1`;
   if (!ex?.cutoff) return { cutoff: null, rows: [] };
@@ -632,7 +750,9 @@ export async function payrollCorrections(
         );
     }
     const n = names.find((x) => x.id === id);
-    if (Object.keys(diff).length && n)
+    const wasUnpaid = BigInt(ex.rows.find((r) => r.employee_id === id)?.unpaid_cents ?? '0');
+    const unpaidCents = (act?.unpaidDeductionCents ?? 0n) - wasUnpaid;
+    if ((Object.keys(diff).length || unpaidCents) && n)
       out.push({
         employee_id: id,
         personnel_no: n.personnel_no,
@@ -640,6 +760,7 @@ export async function payrollCorrections(
         minutes: diff,
         cents,
         salaried: !!act?.salary,
+        ...(unpaidCents ? { unpaidCents } : {}),
       });
   }
   out.sort((a, b) => a.name.localeCompare(b.name, 'de'));

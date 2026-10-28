@@ -4392,3 +4392,17 @@ Testadresse.
   Personalnr. 9999 in den Prüfnotizen). Nach der Freigabe steht der direkte Link unter Preise und Verfügbarkeit – nur an
   Mitarbeitende weitergeben. Schutz vor Fremdzugriff = Anmeldung (Personalnr. + PIN bzw. Benutzer + Passwort, Sperre nach
   5 Fehlversuchen).
+- 2026-10-28: **Lohnexport: Abwesenheit nicht doppelt, Gehaltsabzug bei unbezahlter Abwesenheit** (Ahmed: „39 Std. mit
+  5 Std. Urlaub“, „Minijobber 585 €, drei Tage gefehlt → abziehen und unter unbezahlter Abwesenheit zeigen“):
+  - Vorab-Export (Plan bis Monatsende): Einsätze mit Urlaub/Krank zählen nur über die Abwesenheitsstunden; bei halben
+    Tagen kommt der Rest des Einsatzes als Normalstunden dazu (vorher fiel der ganze Einsatz weg). Ganze Tage waren
+    schon richtig (nicht doppelt).
+  - **Festgehalt + unbezahlte Abwesenheit:** neue Lohnart **„Unbezahlte Abwesenheit (Abzug)“** mit Minusbetrag neben
+    dem vollen Gehalt (`unpaidDeduction` in `payroll.ts`): Gehalt ÷ Soll-Minuten des Monats laut Einsatzplan (inkl.
+    Feier-/Abwesenheitstage) × ausgefallene Minuten, kaufmännisch auf Cent, höchstens das Gehalt; ohne Einsatzplan
+    Stundensatz aus dem Gehalt (÷ 4,33 ÷ Wochenstunden). Beispiel 585 €, 43 Std. Soll, 3 × 2 Std. → −83,57 €. In
+    Lohnarten-Ansicht (Spalte „Unbezahlt“ mit Stunden und Abzug), CSV, Listen-PDF, CSV Lohnprogramm und Lexware (ASCII);
+    Korrektur im Folgemonat nach Vorab-Export ebenfalls. Bei Stundenlohn nur Anzeige der Stunden (nicht bezahlt, kein
+    Export). **Ahmed: Lohnart-Nummer für „Unbezahlte Abwesenheit (Abzug)“ unter Einstellungen → Zuschläge & Lohnarten
+    eintragen.** **Rechtlich:** unbezahlte Freistellung nur mit Vereinbarung; Minijob über einen Monat ohne Entgelt →
+    Abmeldung (§ 7 Abs. 3 SGB IV); Lexware rechnet SV/Steuer aus dem geminderten Betrag. Test `payroll-absence.db.test.ts`.

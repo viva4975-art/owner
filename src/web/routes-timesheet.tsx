@@ -548,6 +548,7 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
             const used = new Set<WageType>();
             for (const x of d.rows) {
               if (x.p?.salary) used.add(x.p.salary.type);
+              if (x.p?.unpaidDeductionCents) used.add('unbezahlt');
               for (const k of HOUR_TYPES) if (x.p?.minutes[k]) used.add(k);
             }
             const miss = WAGE_TYPES.filter((k) => used.has(k) && !st.wage_type_numbers[k]?.trim());
@@ -657,6 +658,9 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                   ))}
                   <th class="r">Zuschläge €</th>
                   <th class="r">Gehalt €</th>
+                  <th class="r" title="Unbezahlte Abwesenheit: Stunden, bei Festgehalt Abzug vom Gehalt">
+                    Unbezahlt
+                  </th>
                 </tr>
               )}
             </thead>
@@ -744,6 +748,16 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                       <td class="r" title={p?.salary ? WAGE_TYPE_LABEL[p.salary.type] : undefined}>
                         {p?.salary ? euro(p.salary.cents) : ''}
                       </td>
+                      <td class="r" title="Unbezahlte Abwesenheit (Abzug)">
+                        {p?.unpaidMinutes ? h(p.unpaidMinutes) : ''}
+                        {p?.unpaidDeductionCents ? (
+                          <div class="small" style="color:var(--bad)">
+                            − {euro(p.unpaidDeductionCents)}
+                          </div>
+                        ) : (
+                          ''
+                        )}
+                      </td>
                     </>
                   )}
                 </tr>
@@ -793,6 +807,14 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                     <td class="r">
                       <b>{euro(rows.reduce((a, x) => a + (x.p?.salary?.cents ?? 0n), 0n))}</b>
                     </td>
+                    <td class="r">
+                      <b>{h(tot((x) => x.p?.unpaidMinutes ?? 0))}</b>
+                      {rows.some((x) => x.p?.unpaidDeductionCents) && (
+                        <div class="small" style="color:var(--bad)">
+                          − {euro(rows.reduce((a, x) => a + (x.p?.unpaidDeductionCents ?? 0n), 0n))}
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 )}
               </tfoot>
@@ -825,6 +847,8 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
           ...SURCHARGES.map((k) => WAGE_TYPE_LABEL[k]),
           'Zuschläge €',
           'Gehalt €',
+          'Unbezahlt Std.',
+          'Abzug unbezahlt €',
         ]
       : [
           'Personalnummer',
@@ -853,6 +877,8 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
           ...SURCHARGES.map((k) => h(x.p?.minutes[k] ?? 0)),
           euro(surchargeEur(x.p)),
           x.p?.salary ? euro(x.p.salary.cents) : '',
+          x.p?.unpaidMinutes ? h(x.p.unpaidMinutes) : '',
+          x.p?.unpaidDeductionCents ? `-${euro(x.p.unpaidDeductionCents)}` : '',
         ]
       : [
           x.e.personnel_no,
@@ -889,7 +915,7 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
     const lohn = d.view === 'lohnarten';
     const cols = overviewCols(d.view);
     const widths = lohn
-      ? [50, 136, 64, 56, 48, 48, 56, 48, 48, 48, 48, 60, 60]
+      ? [46, 110, 56, 50, 42, 42, 50, 42, 42, 42, 42, 52, 52, 42, 52]
       : [54, 150, 70, 56, 62, 52, 50, 50, 56, 56, 56, 60];
     const tsum = (f: (x: Row) => number) => d.rows.reduce((a, x) => a + f(x), 0);
     const totals = lohn
@@ -904,6 +930,8 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
           ...SURCHARGES.map((k) => h(tsum((x) => x.p?.minutes[k] ?? 0))),
           euro(d.rows.reduce((a, x) => a + surchargeEur(x.p), 0n)),
           euro(d.rows.reduce((a, x) => a + (x.p?.salary?.cents ?? 0n), 0n)),
+          h(tsum((x) => x.p?.unpaidMinutes ?? 0)),
+          `-${euro(d.rows.reduce((a, x) => a + (x.p?.unpaidDeductionCents ?? 0n), 0n))}`,
         ]
       : [
           '',
@@ -1254,8 +1282,11 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
             Sätzen) und Gehältern. Gehalt / Aushilfsgehalt / Geschäftsführergehalt gilt für Vergütung
             „Festgehalt“ (Minijob → Aushilfsgehalt, Tag „Geschäftsführer“ → Geschäftsführergehalt; anteilig
             bei Ein-/Austritt im Monat) – dann keine Grundlohn-Stunden. Minijob mit Stundenlohn → Aushilfslohn
-            statt Normalstunden. Sonstige bezahlte Abwesenheit zählt als Normalstunden, unbezahlte wird nicht
-            exportiert. Lohnarten ohne Nummer werden nicht exportiert.
+            statt Normalstunden. Sonstige bezahlte Abwesenheit zählt als Normalstunden. Unbezahlte
+            Abwesenheit: bei Stundenlohn nicht bezahlt (keine Zeile); bei Festgehalt Lohnart „Unbezahlte
+            Abwesenheit (Abzug)“ mit Minusbetrag = Gehalt ÷ Soll-Stunden des Monats (Einsatzplan) ×
+            ausgefallene Stunden. Im Vorab-Export zählen Einsätze mit Urlaub/Krank nur über die Abwesenheit,
+            nicht zusätzlich als Normalstunden. Lohnarten ohne Nummer werden nicht exportiert.
           </p>
           <div class="grid">
             {WAGE_TYPES.map((k) => (

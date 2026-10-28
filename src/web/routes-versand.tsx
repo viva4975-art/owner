@@ -13,6 +13,7 @@ import {
   recordPortalUpload,
   sendInvoice,
 } from '../services/workflow.js';
+import { dismissSendJob, queuedIds, recentSendJobs, startSendJob } from '../services/send-jobs.js';
 import { PageHead, dateDe, euro, anz } from './layout.js';
 
 /*
@@ -145,6 +146,9 @@ export function registerVersandRoutes({ app, deps, page, back }: Ctx) {
     ]);
     const n = counts[0]!;
     const cnt: Record<string, number> = { rechnungen: n.r, korrekturen: n.k, mahnungen: n.m };
+    const jobs = recentSendJobs();
+    const running = jobs.some((j) => j.running);
+    const queued = new Set(queuedIds());
     const sumNet = rows.reduce((a, r) => a + (r.net ?? 0n), 0n);
     const sumGross = rows.reduce((a, r) => a + r.gross, 0n);
     return page(
@@ -153,6 +157,46 @@ export function registerVersandRoutes({ app, deps, page, back }: Ctx) {
       'rechnungen',
       <>
         <PageHead title="Noch nicht versendete Dokumente" />
+        {running && <meta http-equiv="refresh" content={`4;url=/rechnungen/versand?reiter=${tab}`} />}
+        {jobs.map((j) => (
+          <div
+            class="card"
+            style={`padding:10px 14px;border-left:4px solid ${j.running ? '#7d1435' : j.errors.length ? '#c2410c' : '#15803d'}`}
+          >
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <b>
+                {j.running
+                  ? `Versand läuft: ${j.done} von ${j.ids.length} ${j.label}`
+                  : `Versand fertig: ${j.ok} von ${j.ids.length} ${j.label} per E-Mail versendet`}
+              </b>
+              {j.running && (
+                <span class="small mut">– Seite aktualisiert sich selbst, Sie können weiterarbeiten.</span>
+              )}
+              {!j.running && (
+                <form
+                  method="post"
+                  action={`/rechnungen/versand/auftrag/${j.id}/ausblenden?reiter=${tab}`}
+                  style="margin-left:auto"
+                >
+                  <button class="btn sm ghost">Ausblenden</button>
+                </form>
+              )}
+            </div>
+            {j.running && (
+              <div style="height:6px;background:var(--line,#e5e5e5);border-radius:3px;margin-top:8px;overflow:hidden">
+                <div
+                  style={`height:6px;background:var(--brand,#7d1435);width:${j.ids.length ? Math.round((j.done / j.ids.length) * 100) : 100}%`}
+                />
+              </div>
+            )}
+            {j.errors.length > 0 && (
+              <div class="small" style="margin-top:6px;white-space:pre-line">
+                <b>Nicht versendet:</b>
+                {'\n' + j.errors.join('\n')}
+              </div>
+            )}
+          </div>
+        ))}
         <div class="tabs" style="margin-bottom:0">
           {TABS.map(([k, l]) => (
             <a href={`/rechnungen/versand?reiter=${k}`} class={k === tab ? 'on' : ''}>
@@ -220,7 +264,13 @@ export function registerVersandRoutes({ app, deps, page, back }: Ctx) {
                   {rows.map((r) => (
                     <tr>
                       <td>
-                        <input type="checkbox" name="sel" value={r.id} data-vs-row aria-label={r.number} />
+                        {queued.has(r.id) ? (
+                          <span class="badge info" title="wird gerade versendet">
+                            …
+                          </span>
+                        ) : (
+                          <input type="checkbox" name="sel" value={r.id} data-vs-row aria-label={r.number} />
+                        )}
                       </td>
                       <td>{dateDe(r.date)}</td>
                       <td>
@@ -294,25 +344,42 @@ export function registerVersandRoutes({ app, deps, page, back }: Ctx) {
     if (!sel.length) return back(c, to, { fehler: 'Bitte Dokumente ankreuzen.' });
     if (!['email', 'manuell', 'portal'].includes(art))
       return back(c, to, { fehler: 'Bitte Versandart wählen.' });
+    const describe = async (id: string, e: unknown) => {
+      const [n] = await sql<{ number: string }[]>`
+        select number from app.invoices where id = ${id} union all select number from app.dunnings where id = ${id}`;
+      return `${n?.number ?? id}: ${(e as Error).message}`;
+    };
+    if (art === 'email') {
+      // im Hintergrund: der Mailserver erlaubt nur wenige Mails je Minute
+      const job = startSendJob(
+        tab === 'mahnungen' ? 'Mahnungen' : 'Dokumenten',
+        sel,
+        async (id) => {
+          if (tab === 'mahnungen') await sendDunning(deps, id, actor);
+          else await sendInvoice(deps, id, actor);
+        },
+        describe,
+      );
+      return back(c, to, {
+        ok: job.ids.length
+          ? `Versand von ${anz(job.ids.length, 'Dokument', 'Dokumenten')} gestartet – läuft im Hintergrund weiter.`
+          : 'Diese Dokumente werden bereits versendet.',
+      });
+    }
     let ok = 0;
     const errors: string[] = [];
     for (const id of sel) {
       try {
-        if (tab === 'mahnungen') {
-          if (art === 'email') await sendDunning(deps, id, actor);
-          else await markDunningSent(sql, id, way || 'Post', actor);
-        } else if (art === 'email') await sendInvoice(deps, id, actor);
+        if (tab === 'mahnungen') await markDunningSent(sql, id, way || 'Post', actor);
         else if (art === 'portal') await recordPortalUpload(deps, id, { reference: note, actor });
         else await recordManualDelivery(deps, id, { way: way || 'Post', note, actor });
         ok++;
       } catch (e) {
         if (!(e instanceof BusinessError)) throw e;
-        const [n] = await sql<{ number: string }[]>`
-          select number from app.invoices where id = ${id} union all select number from app.dunnings where id = ${id}`;
-        errors.push(`${n?.number ?? id}: ${e.message}`);
+        errors.push(await describe(id, e));
       }
     }
-    const what = art === 'email' ? 'per E-Mail versendet' : 'als versendet gekennzeichnet';
+    const what = 'als versendet gekennzeichnet';
     return back(
       c,
       to,
@@ -320,6 +387,11 @@ export function registerVersandRoutes({ app, deps, page, back }: Ctx) {
         ? { fehler: `${ok} ${what}. Nicht möglich:\n${errors.join('\n')}` }
         : { ok: `${anz(ok, 'Dokument', 'Dokumente')} ${what}.` },
     );
+  });
+
+  app.post('/rechnungen/versand/auftrag/:id/ausblenden', (c) => {
+    dismissSendJob(c.req.param('id'));
+    return c.redirect(`/rechnungen/versand?reiter=${tabOf(c.req.query('reiter'))}`);
   });
 
   // alle (oder die angekreuzten) als ein PDF – archivierte Belege, nichts wird neu erzeugt

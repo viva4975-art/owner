@@ -45,6 +45,11 @@ export function createMailer(env: Env): Mailer {
     connectionTimeout: 15_000,
     greetingTimeout: 15_000,
     socketTimeout: 60_000,
+    // Eine angemeldete Verbindung für viele Mails (Ahmed 28.10.: „Mailversand dauert ewig“ – vorher je Mail neue
+    // Verbindung mit TLS + Anmeldung bei IONOS). Nur eine Verbindung → Drosselung unten bleibt wirksam.
+    pool: true,
+    maxConnections: 1,
+    maxMessages: 50,
   });
   // Drosselung (Fund 20.10.: IONOS Exchange lehnte den Sammelversand ab – „421 4.4.2 Message submission rate …
   // exceeded“): Mails nacheinander mit Mindestabstand; bei Rate-Limit warten und denselben Versuch wiederholen.

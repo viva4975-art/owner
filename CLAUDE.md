@@ -4451,3 +4451,12 @@ Testadresse.
   Löschen nur über den Server (`app.purge`), sonst bleiben die Tabellen nur anhängbar (Migration `20270103000001`,
   `app.deny_change_unless_purge`, auch für `stock_movements`). Storno bleibt für Fälle, die sichtbar bleiben sollen.
   Test in `material-issues.db.test.ts`.
+- 2026-10-28: **Mailversand schneller** (Ahmed: „dauert ewig“): 1) Der Mailer hält jetzt **eine angemeldete Verbindung**
+  offen (nodemailer `pool`, 1 Verbindung, bis 50 Mails) statt je Mail neu zu verbinden (TLS + Anmeldung bei IONOS).
+  2) **Sammelversand läuft im Hintergrund** (Rechnungen → Noch nicht versendet → E-Mail → „Los“): die Seite antwortet
+  sofort, oben steht „Versand läuft: x von n“ mit Balken (Seite aktualisiert sich alle 4 s), danach „Versand fertig“
+  mit Fehlern je Dokument; Dokumente in der Warteschlange sind nicht ankreuzbar (`src/services/send-jobs.ts`, nur im
+  Speicher). Die Drosselung (≥ 2,5 s je Mail, Warten bei Rate-Limit) bleibt – der Server (IONOS Exchange) lässt nicht
+  mehr zu. Startet der Server mitten im Versand neu (automatisches Update), bleiben die übrigen Dokumente in der Liste;
+  jedes Dokument wird weiterhin genau einmal versendet. Lokal geprüft: 4 Rechnungen, Antwort nach ~1 s, Mails im
+  Abstand von 2,5 s. Test `send-jobs.test.ts`.

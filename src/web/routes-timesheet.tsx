@@ -6,11 +6,14 @@ import {
   type AbsenceKind,
   addAbsenceDay,
   listAbsenceHours,
+  listAbsences,
   saveAbsenceHours,
 } from '../services/absences.js';
 import { BusinessError } from '../services/errors.js';
+import { leaveRequestsHtml, leaveRequestsPage, requestsOf } from './leave-request-print.js';
 import { EMPLOYMENT_TYPES, listEmployees } from '../services/employees.js';
 import { renderTablePdf } from '../pdf/table.js';
+import { ABSENCE_COLORS, absenceCss, rgb01 } from '../domain/time/absence-colors.js';
 import { hm } from '../services/time.js';
 import {
   ABSENCE_SHORT,
@@ -42,6 +45,7 @@ import type { Context } from 'hono';
 import type { AppEnv, Ctx } from './app.js';
 import { arr, str } from './forms.js';
 import { PageHead, dateDe, euro } from './layout.js';
+import { Icon } from './icons.js';
 import type { WageType } from '../services/payroll.js';
 
 const UUID = '[0-9a-f-]{36}';
@@ -63,8 +67,9 @@ export function sheetTableHtml(s: Timesheet): string {
   const body = s.rows
     .map((r) => {
       const abs = r.absence
-        ? `${esc(ABSENCE_SHORT[r.absence])}${r.absenceMinutes ? ` ${h(r.absenceMinutes)}` : ''}${r.absence && !r.absencePaid && r.absenceMinutes ? ' (unbezahlt)' : ''}`
+        ? `<span class="ts-ab ts-ab-${r.absence}">${esc(ABSENCE_SHORT[r.absence])}</span>${r.absenceMinutes ? ` ${h(r.absenceMinutes)}` : ''}${r.absence && !r.absencePaid && r.absenceMinutes && r.absence !== 'unbezahlt' ? ' (unbezahlt)' : ''}`
         : '';
+      const rowCls = r.absence ? `ts-abs-${r.absence}` : r.holiday ? 'ts-hol' : '';
       const st =
         r.status === 'beantragt'
           ? '<span class="ts-warn">Nachtrag in Prüfung</span>'
@@ -73,7 +78,7 @@ export function sheetTableHtml(s: Timesheet): string {
             : r.late
               ? '<span class="ts-warn">nach 7 Tagen erfasst</span>'
               : '';
-      return `<tr${r.holiday ? ' class="ts-hol"' : ''}><td>${dayShort(r.date)} ${dateDe(r.date).slice(0, 6)}</td><td>${esc(r.site)}${r.holiday ? `<div class="ts-sub">${esc(r.holiday)}</div>` : ''}</td>
+      return `<tr${rowCls ? ` class="${rowCls}"` : ''}><td>${dayShort(r.date)} ${dateDe(r.date).slice(0, 6)}</td><td>${esc(r.site)}${r.holiday ? `<div class="ts-sub">${esc(r.holiday)}</div>` : ''}</td>
 <td>${r.planFrom ? `${r.planFrom}–${r.planTo}` : ''}</td><td class="r">${h(r.planMinutes)}</td>
 <td>${r.start ?? ''}</td><td>${r.end ?? ''}</td><td>${r.breakFrom ? `${r.breakFrom}–${r.breakTo}` : ''}</td><td class="r">${r.breakMinutes ? r.breakMinutes : ''}</td>
 <td class="r"><b>${h(r.workMinutes)}</b></td><td>${abs}</td><td>${st}${r.note ? `<div class="ts-sub">${esc(r.note)}</div>` : ''}</td></tr>`;
@@ -84,8 +89,8 @@ export function sheetTableHtml(s: Timesheet): string {
 <tbody>${body || '<tr><td colspan="11" class="ts-empty">Keine Einsätze, Zeiten oder Abwesenheiten in diesem Monat.</td></tr>'}</tbody></table>
 <table class="ts-sum"><tbody>
 <tr><td>Plan (Einsätze)</td><td class="r">${hm(t.plan)}</td><td>Gearbeitet (netto)</td><td class="r"><b>${hm(t.work)}</b></td><td>Pausen</td><td class="r">${hm(t.breaks)}</td></tr>
-<tr><td>Urlaub</td><td class="r">${hm(t.vacation)}</td><td>Krank</td><td class="r">${hm(t.sick)}</td><td>Sonstige bezahlt</td><td class="r">${hm(t.otherPaid)}</td></tr>
-<tr><td>Unbezahlt</td><td class="r">${hm(t.unpaid)}</td><td><b>Bezahlte Stunden gesamt</b></td><td class="r"><b>${hm(t.paid)}</b></td><td>Differenz zum Soll</td><td class="r">${t.diff > 0 ? '+' : ''}${hm(t.diff)}</td></tr>
+<tr><td><span class="ts-ab ts-ab-urlaub">Urlaub</span></td><td class="r">${hm(t.vacation)}</td><td><span class="ts-ab ts-ab-krank">Krank</span></td><td class="r">${hm(t.sick)}</td><td><span class="ts-ab ts-ab-sonstiges">Sonstige bezahlt</span></td><td class="r">${hm(t.otherPaid)}</td></tr>
+<tr><td><span class="ts-ab ts-ab-unbezahlt">Unbezahlt</span></td><td class="r">${hm(t.unpaid)}</td><td><b>Bezahlte Stunden gesamt</b></td><td class="r"><b>${hm(t.paid)}</b></td><td>Differenz zum Soll</td><td class="r">${t.diff > 0 ? '+' : ''}${hm(t.diff)}</td></tr>
 </tbody></table>`;
 }
 
@@ -96,6 +101,15 @@ export const SHEET_CSS = `
 .ts-warn{color:#b45309;font-weight:600;font-size:11.5px}.ts-empty{text-align:center;color:#57534e;padding:18px}
 .ts-sum{margin-top:12px;border-collapse:collapse;font-size:12.5px;min-width:60%;border:1.5px solid #7D1435}.ts-sum td{padding:5px 10px;border:1px solid #cfc9c4}
 .ts-sum .r{text-align:right;font-variant-numeric:tabular-nums}
+.ts-ab{display:inline-block;padding:1px 7px;border-radius:9px;font-weight:700;font-size:11px;color:#fff;white-space:nowrap}
+${absenceCss(
+  (k) => `.ts-ab-${k}`,
+  (c) => `background:${c.solid}`,
+)}
+${absenceCss(
+  (k) => `.ts tbody tr.ts-abs-${k} td`,
+  (c) => `background:${c.tint}!important`,
+)}
 *{-webkit-print-color-adjust:exact;print-color-adjust:exact}`;
 
 function signatureBlock(s: Timesheet, sig: SheetSignature | undefined, imgUrl: string | null) {
@@ -242,6 +256,22 @@ ${sheetTableHtml(s)}${sigHtml}
   });
 
   // ------------------------------------------------------------ Stundenzettel & Lohnarten (eine Seite)
+  type Emp = Awaited<ReturnType<typeof listEmployees>>[number];
+  const filterEmps = (
+    all: Emp[],
+    siteLinks: { employee_id: string; site_id: string }[],
+    f: { from: string; to: string; q: string; art: string; site: string },
+  ) => {
+    const lq = f.q.toLowerCase();
+    return all.filter(
+      (e) =>
+        e.entry_date <= f.to &&
+        (!e.exit_date || e.exit_date >= f.from) &&
+        (!lq || `${e.last_name} ${e.first_name} ${e.personnel_no}`.toLowerCase().includes(lq)) &&
+        (!f.art || e.employment_type === f.art) &&
+        (!f.site || siteLinks.some((l) => l.employee_id === e.id && l.site_id === f.site)),
+    );
+  };
   type SigState = 'alle' | 'unterschrieben' | 'offen' | 'geaendert';
   const listData = async (c: Context<AppEnv>) => {
     const month = monthOf(c.req.query('monat'));
@@ -269,15 +299,7 @@ ${sheetTableHtml(s)}${sigHtml}
       sql<{ id: string; site_no: string; name: string; customer_name: string }[]>`
         select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`,
     ]);
-    const lq = q.toLowerCase();
-    const emps = all.filter(
-      (e) =>
-        e.entry_date <= to &&
-        (!e.exit_date || e.exit_date >= from) &&
-        (!lq || `${e.last_name} ${e.first_name} ${e.personnel_no}`.toLowerCase().includes(lq)) &&
-        (!art || e.employment_type === art) &&
-        (!site || siteLinks.some((l) => l.employee_id === e.id && l.site_id === site)),
-    );
+    const emps = filterEmps(all, siteLinks, { from, to, q, art, site });
     const siteName = sites.find((x) => x.id === site)?.name ?? '';
     const sheets = await Promise.all(
       emps.map(async (e) => {
@@ -327,6 +349,8 @@ ${sheetTableHtml(s)}${sigHtml}
       return p.toString();
     };
     return {
+      emps,
+      picked,
       month,
       q,
       art,
@@ -361,6 +385,8 @@ ${sheetTableHtml(s)}${sigHtml}
       ...(d.view === 'lohnarten' ? await payrollCorrections(sql, corrPrev) : { cutoff: null, rows: [] }),
     };
     const signed = rows.filter((x) => x.state === 'unterschrieben').length;
+    const { from: mFrom, to: mTo } = monthRange(month);
+    const reqCount = (await requestsOf(sql, mFrom, mTo, new Set(d.emps.map((e) => e.id)))).length;
     const tot = (f: (x: (typeof rows)[number]) => number) => rows.reduce((a, x) => a + f(x), 0);
     return page(
       c,
@@ -452,64 +478,76 @@ ${sheetTableHtml(s)}${sigHtml}
           dangerouslySetInnerHTML={{
             __html: `document.addEventListener('change',function(ev){var t=ev.target;if(!t.matches||!(t.matches('[data-pick]')||t.matches('[data-pick-all]')))return;
 var bs=document.querySelectorAll('[data-pick]');if(t.matches('[data-pick-all]'))bs.forEach(function(b){b.checked=t.checked});
-var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector('[data-pick-btn]');if(btn){btn.disabled=!n;btn.textContent='Auswahl drucken'+(n?' ('+n+')':'')}});`,
+var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector('[data-pick-btn]');if(btn){btn.disabled=!n;btn.textContent='Nur markierte Personen drucken'+(n?' ('+n+')':'')}});`,
           }}
         />
         <div class="actions">
           <div class="chips" style="margin:0">
             <a href={`?${d.qs({ ansicht: '' })}`} class={d.view === 'stunden' ? 'on' : ''}>
-              Stundenliste (Ablage, Zoll)
+              Stundenliste
             </a>
             <a href={`?${d.qs({ ansicht: 'lohnarten' })}`} class={d.view === 'lohnarten' ? 'on' : ''}>
-              Lohnarten (Lohnabrechnung)
+              Lohnarten
             </a>
           </div>
+          <a
+            class="btn sm sec"
+            href={`/zeiterfassung/stundenzettel/urlaubsantraege?${d.qs()}`}
+            target="_blank"
+            rel="noopener"
+            title="Urlaub, unbezahlte und sonstige Freistellung im Monat – je Antrag eine Seite, fertig zum Unterschreiben"
+          >
+            <Icon name="calendar" /> Urlaubsanträge drucken ({reqCount})
+          </a>
           <span class="mut small">
             {rows.length} Mitarbeitende · {signed} von {rows.length} unterschrieben
           </span>
           <span style="flex:1" />
-          {d.view === 'stunden' ? (
-            <>
+          <details class="dd ts-export">
+            <summary class="btn sm">
+              <Icon name="download" /> Drucken / Exportieren <Icon name="chevron" size={14} />
+            </summary>
+            <div class="drop right">
+              <div class="ts-ex-h">Stundenliste (Ablage, Zoll)</div>
               <a
-                class="btn sm sec"
-                href={`/zeiterfassung/stundenzettel/uebersicht.pdf?${d.qs()}`}
-                data-export
-                target="_blank"
-              >
-                PDF Übersicht
-              </a>
-              <a
-                class="btn sm"
                 href={`/zeiterfassung/stundenzettel/druck?${d.qs()}`}
                 data-export
                 target="_blank"
                 rel="noopener"
               >
-                Stundenlisten drucken ({rows.length})
+                Je Person ein Blatt – drucken / PDF <span class="cnt">{rows.length}</span>
               </a>
-              <button class="btn sm sec" form="pick" data-pick-btn disabled>
-                Auswahl drucken
-              </button>
-              <a class="btn sm sec" href={`/zeiterfassung/stundenzettel.csv?${d.qs()}`} data-export>
-                CSV
-              </a>
-            </>
-          ) : (
-            <>
+              {d.view === 'stunden' && (
+                <button type="submit" form="pick" data-pick-btn disabled>
+                  Nur markierte Personen drucken
+                </button>
+              )}
               <a
-                class="btn sm sec"
-                href={`/zeiterfassung/stundenzettel/uebersicht.pdf?${d.qs()}`}
+                href={`/zeiterfassung/stundenzettel/uebersicht.pdf?${d.qs({ ansicht: '' })}`}
                 data-export
                 target="_blank"
               >
-                PDF Lohnarten
+                Übersicht als PDF
               </a>
-              <a class="btn sm sec" href={`/zeiterfassung/stundenzettel.csv?${d.qs()}`} data-export>
-                CSV Übersicht
+              <a href={`/zeiterfassung/stundenzettel.csv?${d.qs({ ansicht: '' })}`} data-export>
+                Übersicht als CSV (Excel)
               </a>
+              <div class="sep" />
+              <div class="ts-ex-h">Lohnarten (Lohnabrechnung)</div>
               <a
-                class="btn sm"
-                href={`/zeiterfassung/lohnarten.csv?${d.qs()}`}
+                href={`/zeiterfassung/stundenzettel/uebersicht.pdf?${d.qs({ ansicht: 'lohnarten' })}`}
+                data-export
+                target="_blank"
+              >
+                Übersicht als PDF
+              </a>
+              <a href={`/zeiterfassung/stundenzettel.csv?${d.qs({ ansicht: 'lohnarten' })}`} data-export>
+                Übersicht als CSV (Excel)
+              </a>
+              <div class="sep" />
+              <div class="ts-ex-h">Fürs Lohnprogramm (Stand wird festgehalten)</div>
+              <a
+                href={`/zeiterfassung/lohnarten.csv?${d.qs({ ansicht: 'lohnarten' })}`}
                 data-export
                 data-confirm={
                   d.fillPlan
@@ -520,8 +558,7 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                 CSV Lohnprogramm
               </a>
               <a
-                class="btn sm"
-                href={`/zeiterfassung/lohnarten-lexware.txt?${d.qs()}`}
+                href={`/zeiterfassung/lohnarten-lexware.txt?${d.qs({ ansicht: 'lohnarten' })}`}
                 data-export
                 title="Lexware ASCII-Import: Jahr;Monat;Personalnummer;Lohnartnummer;Wert – Windows-1252 (ANSI), ohne Kopfzeile"
                 data-confirm={
@@ -532,9 +569,36 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
               >
                 Lexware (ASCII)
               </a>
-            </>
-          )}
+              <div class="sep" />
+              <a
+                href={`/zeiterfassung/stundenzettel/urlaubsantraege?${d.qs()}`}
+                target="_blank"
+                rel="noopener"
+              >
+                Urlaubsanträge (je Antrag eine Seite) <span class="cnt">{reqCount}</span>
+              </a>
+            </div>
+          </details>
         </div>
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `.ts-export .drop{min-width:340px;padding:6px;text-align:left}.ts-export .drop a,.ts-export .drop button{padding:7px 10px;border-radius:6px;justify-content:flex-start;white-space:nowrap}
+.ts-export .drop a .cnt{margin-left:auto}
+.ts-export .drop a:hover,.ts-export .drop button:hover:not(:disabled){background:var(--head)}
+.ts-export .drop button{display:block;width:100%;text-align:left;border:0;background:none;font:inherit;color:var(--ink);cursor:pointer}
+.ts-export .drop button:disabled{color:var(--faint);cursor:default}
+.ts-ex-h{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);padding:6px 10px 2px}
+.absdot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:0}
+${absenceCss(
+  (k) => `.absdot.${k}`,
+  (c) => `background:${c.solid}`,
+)}
+${absenceCss(
+  (k) => `td.abscell.${k}`,
+  (c) => `background:${c.tint};color:${c.ink};font-weight:600`,
+)}`,
+          }}
+        />
         {d.view === 'lohnarten' &&
           (() => {
             // nur Lohnarten, die in diesem Monat vorkommen und keine Nummer haben
@@ -556,74 +620,59 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
             );
           })()}
         {d.view === 'lohnarten' && (
-          <form method="get" class="card" style="max-width:960px;padding:12px 16px">
-            {[...new URLSearchParams(d.qs({ stichtag: '' })).entries()].map(([k, v]) => (
-              <input type="hidden" name={k} value={v} />
-            ))}
-            <b>Grundlage:</b>{' '}
-            {d.fillPlan ? (
-              <>
-                je Einsatz die <b>erfasste Zeit</b>, fehlt sie (noch nicht bestätigt, Nachtrag offen, noch
-                nicht gearbeitet) die <b>geplante Zeit</b>; Zeiten ohne Einsatz zählen wie erfasst.{' '}
-                <a class="btn sm sec" href={`/zeiterfassung/stundenzettel?${d.qs({ stichtag: 'ohne' })}`}>
-                  nur erfasste Zeiten
-                </a>
-              </>
-            ) : (
-              <>
-                nur erfasste Zeiten.{' '}
-                <a class="btn sm sec" href={`/zeiterfassung/stundenzettel?${d.qs({ stichtag: '' })}`}>
-                  Ist, sonst Plan
-                </a>
-              </>
-            )}
+          <details class="card" style="max-width:960px;padding:10px 16px">
+            <summary>
+              <b>Grundlage:</b> {d.fillPlan ? 'erfasste Zeit, sonst geplante Zeit' : 'nur erfasste Zeiten'}
+              {corr.rows.length > 0 && ` · Korrektur Vormonat: ${corr.rows.length} Mitarbeitende`} – Details
+            </summary>
+            <div style="margin-top:8px">
+              {d.fillPlan ? (
+                <>
+                  Je Einsatz die <b>erfasste Zeit</b>, fehlt sie (noch nicht bestätigt, Nachtrag offen, noch
+                  nicht gearbeitet) die <b>geplante Zeit</b>; Zeiten ohne Einsatz zählen wie erfasst.{' '}
+                  <a class="btn sm sec" href={`/zeiterfassung/stundenzettel?${d.qs({ stichtag: 'ohne' })}`}>
+                    nur erfasste Zeiten
+                  </a>
+                </>
+              ) : (
+                <>
+                  Nur erfasste Zeiten.{' '}
+                  <a class="btn sm sec" href={`/zeiterfassung/stundenzettel?${d.qs({ stichtag: '' })}`}>
+                    Ist, sonst Plan
+                  </a>
+                </>
+              )}
+            </div>
             <div class="small mut" style="margin-top:6px">
-              Jeder „CSV Lohnprogramm“-Export wird festgehalten. Im Folgemonat enthält die CSV automatisch die
-              Zeilen „Korrektur“ mit der Differenz zwischen exportiertem Stand und jetzigem Stand (Stunden,
-              auch minus) – z. B. wenn statt der geplanten Zeit später eine andere Zeit erfasst wurde.
+              Jeder Export fürs Lohnprogramm wird festgehalten. Im Folgemonat enthält er automatisch die
+              Zeilen „Korrektur“ mit der Differenz zum jetzigen Stand (Stunden, auch minus). Zuschläge nach
+              RTV Gebäudereinigung (§ 10) laut{' '}
+              <a href="/zeiterfassung/lohnarten/einstellungen">Einstellungen</a>: Nacht {st.night_from}–
+              {st.night_to} {st.night_bp / 100} %, Sonntag {st.sunday_bp / 100} %, Feiertag{' '}
+              {st.holiday_bp / 100} %, hohe Feiertage {st.high_holiday_bp / 100} % – je Stunde nur der
+              höchste.
             </div>
             {corr.rows.length > 0 && (
-              <details style="margin-top:8px">
-                <summary>
-                  <b>
-                    Korrektur{' '}
-                    {d.month === corr.month
-                      ? ''
-                      : `Vormonat ${corr.month.slice(5)}/${corr.month.slice(0, 4)}`}
-                    : {corr.rows.length} Mitarbeitende
-                  </b>{' '}
-                  (Stand des Exports)
-                </summary>
-                <table style="margin-top:6px">
-                  <tbody>
-                    {corr.rows.map((r) => (
-                      <tr>
-                        <td>{r.personnel_no}</td>
-                        <td>{r.name}</td>
-                        <td>
-                          {Object.entries(r.minutes)
-                            .map(
-                              ([k, v]) =>
-                                `${WAGE_TYPE_LABEL[k as keyof typeof WAGE_TYPE_LABEL]} ${v! > 0 ? '+' : ''}${(v! / 60).toFixed(2).replace('.', ',')} Std.`,
-                            )
-                            .join(' · ')}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </details>
+              <table style="margin-top:8px">
+                <tbody>
+                  {corr.rows.map((r) => (
+                    <tr>
+                      <td>{r.personnel_no}</td>
+                      <td>{r.name}</td>
+                      <td>
+                        {Object.entries(r.minutes)
+                          .map(
+                            ([k, v]) =>
+                              `${WAGE_TYPE_LABEL[k as keyof typeof WAGE_TYPE_LABEL]} ${v! > 0 ? '+' : ''}${(v! / 60).toFixed(2).replace('.', ',')} Std.`,
+                          )
+                          .join(' · ')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
-          </form>
-        )}
-        {d.view === 'lohnarten' && (
-          <p class="small mut" style="max-width:960px">
-            Zuschläge nach Rahmentarifvertrag Gebäudereinigung (§ 10) laut{' '}
-            <a href="/zeiterfassung/lohnarten/einstellungen">Einstellungen</a>: Nacht {st.night_from}–
-            {st.night_to} {st.night_bp / 100} %, Sonntag {st.sunday_bp / 100} %, Feiertag{' '}
-            {st.holiday_bp / 100} %, hohe Feiertage {st.high_holiday_bp / 100} % – je Stunde nur der höchste.
-            Nur erfasste/freigegebene Zeiten.
-          </p>
+          </details>
         )}
         <div class="tbl">
           <table>
@@ -637,9 +686,18 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                   <th>Mitarbeiter</th>
                   <th class="r">Plan</th>
                   <th class="r">Gearbeitet</th>
-                  <th class="r">Urlaub</th>
-                  <th class="r">Krank</th>
-                  <th class="r">Unbezahlt</th>
+                  <th class="r">
+                    <span class="absdot urlaub" />
+                    Urlaub
+                  </th>
+                  <th class="r">
+                    <span class="absdot krank" />
+                    Krank
+                  </th>
+                  <th class="r">
+                    <span class="absdot unbezahlt" />
+                    Unbezahlt
+                  </th>
                   <th class="r">Bezahlt</th>
                   <th class="r">Zuschl.-Std.</th>
                   <th>Unterschrift</th>
@@ -650,11 +708,15 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                   <th>Pers.-Nr.</th>
                   <th>Mitarbeiter</th>
                   {HOUR_TYPES.map((k) => (
-                    <th class="r">{WAGE_TYPE_LABEL[k].replace('Zuschlag ', 'Zuschl. ')}</th>
+                    <th class="r">
+                      {(k === 'urlaub' || k === 'krank') && <span class={`absdot ${k}`} />}
+                      {WAGE_TYPE_LABEL[k].replace('Zuschlag ', 'Zuschl. ')}
+                    </th>
                   ))}
                   <th class="r">Zuschläge €</th>
                   <th class="r">Gehalt €</th>
                   <th class="r" title="Unbezahlte Abwesenheit: Stunden, bei Festgehalt Abzug vom Gehalt">
+                    <span class="absdot unbezahlt" />
                     Unbezahlt
                   </th>
                 </tr>
@@ -708,9 +770,9 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                       <td class="r">
                         <b>{hm(s.totals.work)}</b>
                       </td>
-                      <td class="r">{h(s.totals.vacation)}</td>
-                      <td class="r">{h(s.totals.sick)}</td>
-                      <td class="r">{h(s.totals.unpaid)}</td>
+                      <td class={`r${s.totals.vacation ? ' abscell urlaub' : ''}`}>{h(s.totals.vacation)}</td>
+                      <td class={`r${s.totals.sick ? ' abscell krank' : ''}`}>{h(s.totals.sick)}</td>
+                      <td class={`r${s.totals.unpaid ? ' abscell unbezahlt' : ''}`}>{h(s.totals.unpaid)}</td>
                       <td class="r">
                         <b>{hm(s.totals.paid)}</b>
                       </td>
@@ -738,13 +800,20 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                   ) : (
                     <>
                       {HOUR_TYPES.map((k) => (
-                        <td class="r">{h(p?.minutes[k] ?? 0)}</td>
+                        <td
+                          class={`r${(k === 'urlaub' || k === 'krank') && p?.minutes[k] ? ` abscell ${k}` : ''}`}
+                        >
+                          {h(p?.minutes[k] ?? 0)}
+                        </td>
                       ))}
                       <td class="r">{euro(surchargeEur(p))}</td>
                       <td class="r" title={p?.salary ? WAGE_TYPE_LABEL[p.salary.type] : undefined}>
                         {p?.salary ? euro(p.salary.cents) : ''}
                       </td>
-                      <td class="r" title="Unbezahlte Abwesenheit (Abzug)">
+                      <td
+                        class={`r${p?.unpaidMinutes ? ' abscell unbezahlt' : ''}`}
+                        title="Unbezahlte Abwesenheit (Abzug)"
+                      >
                         {p?.unpaidMinutes ? h(p.unpaidMinutes) : ''}
                         {p?.unpaidDeductionCents ? (
                           <div class="small" style="color:var(--bad)">
@@ -771,6 +840,7 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                 {d.view === 'stunden' ? (
                   <tr>
                     <td></td>
+                    <td></td>
                     <td>
                       <b>Summe</b>
                     </td>
@@ -789,6 +859,7 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                   </tr>
                 ) : (
                   <tr>
+                    <td></td>
                     <td>
                       <b>Summe</b>
                     </td>
@@ -819,6 +890,42 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
         </div>
       </>,
     );
+  });
+
+  // Alle Urlaubsanträge des Monats (Filter wie die Liste) bzw. einer Abwesenheit (?id=) als Druckseite
+  app.get('/zeiterfassung/stundenzettel/urlaubsantraege', async (c) => {
+    const month = monthOf(c.req.query('monat'));
+    const { from, to } = monthRange(month);
+    const id = c.req.query('id') ?? '';
+    const [all, siteLinks, co] = await Promise.all([
+      listEmployees(sql),
+      sql<{ employee_id: string; site_id: string }[]>`select employee_id, site_id from app.employee_sites`,
+      company(),
+    ]);
+    let reqs;
+    if (/^[0-9a-f-]{36}$/.test(id)) {
+      const [one] = await sql<
+        { employee_id: string }[]
+      >`select employee_id from app.absences where id = ${id}`;
+      reqs = one ? (await listAbsences(sql, { employeeId: one.employee_id })).filter((a) => a.id === id) : [];
+    } else {
+      const emps = filterEmps(all, siteLinks, {
+        from,
+        to,
+        q: (c.req.query('q') ?? '').trim(),
+        art: c.req.query('art') ?? '',
+        site: c.req.query('objekt') ?? '',
+      });
+      const picked = new Set(c.req.queries('p') ?? []);
+      reqs = await requestsOf(
+        sql,
+        from,
+        to,
+        new Set(emps.filter((e) => !picked.size || picked.has(e.id)).map((e) => e.id)),
+      );
+    }
+    const body = await leaveRequestsHtml(sql, reqs, new Map(all.map((e) => [e.id, e])), co);
+    return c.html(leaveRequestsPage(`Urlaubsanträge ${monthLabel(month)}`, body));
   });
 
   app.get('/zeiterfassung/stundenzettel/druck', async (c) => {
@@ -906,6 +1013,13 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
     });
   });
 
+  const ABS_COL: Record<string, AbsenceKind> = {
+    Urlaub: 'urlaub',
+    Krank: 'krank',
+    Unbezahlt: 'unbezahlt',
+    'Unbezahlt Std.': 'unbezahlt',
+    'Abzug unbezahlt €': 'unbezahlt',
+  };
   app.get('/zeiterfassung/stundenzettel/uebersicht.pdf', async (c) => {
     const d = await listData(c);
     const lohn = d.view === 'lohnarten';
@@ -956,7 +1070,13 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
         width: widths[i] ?? 44,
         align: i >= 3 && (lohn || i < cols.length - 1) ? ('right' as const) : ('left' as const),
       })),
-      rows: d.rows.map((x) => overviewRow(x, d.view)),
+      // Abwesenheiten farbig wie im Kalender (Urlaub grün, Krank orange, unbezahlt grau)
+      rows: d.rows.map((x) =>
+        overviewRow(x, d.view).map((v, i) => {
+          const k = ABS_COL[cols[i]!];
+          return k && v ? { text: v, fill: rgb01(ABSENCE_COLORS[k].tint) } : v;
+        }),
+      ),
       totals,
       fontSize: lohn ? 7.5 : 8.5,
       footnote: lohn

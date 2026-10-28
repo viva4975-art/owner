@@ -23,6 +23,7 @@ import {
   listLeaveExtra,
   requestAbsence,
   plannedAtSites,
+  applicationDate,
 } from '../services/absences.js';
 import { isOpen, leaveWarnings, warningText } from '../services/leave-warnings.js';
 import { listEmployees } from '../services/employees.js';
@@ -48,6 +49,7 @@ import {
 } from './pages-site-calendar.js';
 import { PageHead, type Tab, Tabs, dateDe, anz } from './layout.js';
 import { renderTablePdf } from '../pdf/table.js';
+import { ABSENCE_COLORS, ABSENCE_KINDS, absenceCss, rgb01 } from '../domain/time/absence-colors.js';
 
 const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const isMonth = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}$/.test(v);
@@ -82,8 +84,10 @@ table.uk td.r,table.uk th.r{padding:0 8px;text-align:right;min-width:34px}
 .uk-b.s{margin-left:3px;border-top-left-radius:6px;border-bottom-left-radius:6px}
 .uk-b.e{margin-right:3px;border-top-right-radius:6px;border-bottom-right-radius:6px}
 .uk-b.o{opacity:.45}.uk-b.req{opacity:.5;background-image:repeating-linear-gradient(45deg,transparent 0 4px,rgba(255,255,255,.35) 4px 8px)}
-.uk-urlaub{background:#3d72d6}.uk-krank{background:#d0473b}.uk-kind_krank{background:#e08a2c}
-.uk-unbezahlt{background:#7b8191}.uk-sonstiges{background:#8a5cc7}
+${absenceCss(
+  (k) => `.uk-${k}`,
+  (c) => `background:${c.solid}`,
+)}
 @media (max-width:760px){.uk-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.uk-legend{margin-left:0}
 table.uk .uk-name{min-width:130px;max-width:130px;overflow:hidden;text-overflow:ellipsis}}
 `;
@@ -409,6 +413,13 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
         <div class="chk" style="align-self:end;height:38px">
           <input type="checkbox" id="half_day" name="half_day" value="1" />
           <label for="half_day">halber Tag</label>
+        </div>
+        <div>
+          <label for="applied_on">Antragsdatum</label>
+          <input id="applied_on" type="date" name="applied_on" value={todayBerlin()} max={todayBerlin()} />
+          <div class="small mut">
+            Tag, an dem der Antrag gestellt bzw. unterschrieben wurde – steht auf dem gedruckten Antrag.
+          </div>
         </div>
       </div>
       <div class="chk" style="margin-top:8px">
@@ -902,13 +913,10 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
 
   app.get('/urlaub/kalender.pdf', async (c) => {
     const d = await calendarData(c);
-    const COLOR: Record<string, [number, number, number]> = {
-      urlaub: [0.86, 0.92, 0.99],
-      krank: [0.99, 0.88, 0.88],
-      kind_krank: [0.99, 0.88, 0.88],
-      unbezahlt: [0.93, 0.93, 0.93],
-      sonstiges: [0.99, 0.95, 0.85],
-    };
+    const COLOR = Object.fromEntries(ABSENCE_KINDS.map((k) => [k, rgb01(ABSENCE_COLORS[k].tint)])) as Record<
+      string,
+      [number, number, number]
+    >;
     const pdf = await renderTablePdf({
       title: `Urlaubskalender ${d.label}`,
       subtitle: [
@@ -975,6 +983,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
       approved: true,
       replaceVacation: b.replace_vacation === '1',
       allowNoLeave: b.urlaub_ohne_anspruch === '1',
+      appliedOn: typeof b.applied_on === 'string' ? b.applied_on : null,
     });
     return back(c, redirect(employeeId), {
       ok:
@@ -1048,6 +1057,34 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
               <label for="half_day">halber Tag</label>
             </div>
             <div>
+              <label for="applied_on">Antragsdatum</label>
+              <input
+                id="applied_on"
+                type="date"
+                name="applied_on"
+                value={a.applied_on ?? ''}
+                max={todayBerlin()}
+                disabled={!editable}
+              />
+              {!a.applied_on && (
+                <div class="small mut">
+                  nicht erfasst – auf dem gedruckten Antrag steht dann {dateDe(applicationDate(a))} (5 Tage
+                  vor Beginn)
+                </div>
+              )}
+              {['urlaub', 'unbezahlt', 'sonstiges'].includes(a.kind) &&
+                canAccess(c.get('user').role, '/zeiterfassung/stundenzettel/urlaubsantraege') && (
+                  <a
+                    class="small"
+                    href={`/zeiterfassung/stundenzettel/urlaubsantraege?id=${a.id}`}
+                    target="_blank"
+                    rel="noopener"
+                  >
+                    Antrag drucken
+                  </a>
+                )}
+            </div>
+            <div>
               <label for="note">Notiz</label>
               <input id="note" name="note" value={a.note ?? ''} disabled={!editable} />
             </div>
@@ -1094,6 +1131,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
         note: typeof b.note === 'string' && b.note.trim() ? b.note.trim() : null,
         expectedVersion: typeof b.version === 'string' && b.version ? Number(b.version) : null,
         allowNoLeave: b.urlaub_ohne_anspruch === '1',
+        ...(typeof b.applied_on === 'string' ? { appliedOn: b.applied_on } : {}),
       },
       c.get('actor'),
     );

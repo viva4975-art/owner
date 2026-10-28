@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Child, FC } from 'hono/jsx';
 import { addDays, isoWeekday } from '../domain/time/holidays.js';
 import { ABSENCE_LABEL, type AbsenceKind } from '../services/absences.js';
+import { ABSENCE_COLORS, ABSENCE_KINDS, absenceCss } from '../domain/time/absence-colors.js';
 import { type PlannedShift, type TimeEntryRow, clock, hm, netMinutes } from '../services/time.js';
 import { dateDe } from './layout.js';
 import { type CalView, calRange } from './pages-site-calendar.js';
@@ -34,12 +35,7 @@ const stateOf = (s: PlannedShift, today: string): State => {
   if (s.exception?.kind === 'ausfall') return { cls: 'cx', label: 'Ausfall', clock: false };
   if (s.absence)
     return {
-      cls:
-        s.absence === 'urlaub'
-          ? 'abs urlaub'
-          : s.absence === 'krank' || s.absence === 'kind_krank'
-            ? 'abs krank'
-            : 'abs',
+      cls: `abs ${absKind(s.absence)}`,
       label: ABSENCE_LABEL[s.absence as AbsenceKind] ?? 'abwesend',
       clock: false,
     };
@@ -57,8 +53,7 @@ const stateOf = (s: PlannedShift, today: string): State => {
   return { cls: 'plan', label: 'geplant', clock: false };
 };
 
-const absKind = (k: string) =>
-  k === 'urlaub' ? 'urlaub' : k === 'krank' || k === 'kind_krank' ? 'krank' : '';
+const absKind = (k: string) => (k in ABSENCE_COLORS ? k : 'sonstiges');
 
 const CSS = `
 .ec-wrap{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:16px;align-items:start}
@@ -74,9 +69,20 @@ const CSS = `
 .ec .dc.today{background:#fff6c7}
 .ec .dc.hol .n{background:#e7e4e5;color:#3f3a3c}.ec .dc .hn{display:block;text-align:center;font-size:11px;color:#3f3a3c;background:#e7e4e5;font-weight:600;line-height:1.2;padding:0 2px 3px;margin:-4px -2px 3px}
 .ec .dc.absd{background:repeating-linear-gradient(135deg,#f3f4f6 0 6px,#fff 6px 12px)}
-.ec .dc.absd.urlaub{background:repeating-linear-gradient(135deg,#e9f5ed 0 6px,#fff 6px 12px)}.ec .dc.absd.urlaub .ab{color:#1f6b44}
-.ec .dc.absd.krank{background:repeating-linear-gradient(135deg,#fdf3df 0 6px,#fff 6px 12px)}.ec .dc.absd.krank .ab{color:#7a5300}
-.ec .dc .ab{display:block;text-align:center;font-size:11px;font-weight:600;color:#5f6b7a;margin-bottom:3px}
+${absenceCss(
+  (k) => `.ec .dc.absd.${k},.eg .col.absd.${k}`,
+  (c) => `background:repeating-linear-gradient(135deg,${c.tint} 0 6px,#fff 6px 12px)`,
+)}
+.eg .gh small.gab{border-radius:3px;margin:2px 4px 0;color:#fff}
+${absenceCss(
+  (k) => `.eg .gh small.gab.${k}`,
+  (c) => `background:${c.solid}`,
+)}
+.ec .dc .ab{display:block;text-align:center;font-size:11px;font-weight:700;color:#5f6b7a;margin:0 2px 3px;border-radius:3px;padding:1px 0}
+${absenceCss(
+  (k) => `.ec .dc.absd.${k} .ab`,
+  (c) => `background:${c.solid};color:#fff`,
+)}
 .ev{display:flex;align-items:center;gap:4px;padding:3px 6px;margin:0 0 2px;font-size:12.5px;line-height:1.25;text-decoration:none;cursor:pointer;min-width:0;border:1px solid transparent;border-radius:2px}
 .ev .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
 .ev .tm{font-variant-numeric:tabular-nums;opacity:.9}
@@ -86,10 +92,12 @@ const CSS = `
 .ev.ok{background:#7d1435;color:#fff;border-color:#64102a}
 .ev.extra{background:#f6e7ec;color:#7d1435;border:1px dashed #7d1435}
 .ev.miss{background:#fff;color:#b42318;border:1px dashed #d9534f}
-.ev.abs,.ev.cx{background:#eceef1;color:#6b7280;border-color:#dfe2e6;text-decoration:line-through}
-.ev.abs.urlaub,.ev.abs.krank{text-decoration:none}
-.ev.abs.urlaub{background:#e3f1e8;color:#1f6b44;border-color:#a9d3b8}
-.ev.abs.krank{background:#fdf0d5;color:#7a5300;border-color:#ecc77f}
+.ev.cx{background:#eceef1;color:#6b7280;border-color:#dfe2e6;text-decoration:line-through}
+.ev.abs{border-left-width:4px}
+${absenceCss(
+  (k) => `.ev.abs.${k}`,
+  (c) => `background:${c.tint};color:${c.ink};border-color:${c.border};border-left-color:${c.solid}`,
+)}
 /* Woche/Tag als Stundenraster */
 .eg{display:grid;border:1px solid #dfe3e8;background:#fff;max-height:640px;overflow-y:auto;position:relative}
 .eg .gh{position:sticky;top:0;z-index:3;background:#fff;text-align:center;font-weight:700;font-size:14px;padding:8px 2px;border-bottom:1px solid #dfe3e8}
@@ -98,7 +106,7 @@ const CSS = `
 .eg .hr{height:56px;border-bottom:1px solid #e9ecef;font-size:12px;color:#6b7280;padding:2px 6px;background:#f1f3f5}
 .eg .hr:nth-child(odd){background:#e9ecef}
 .eg .col{position:relative;border-left:1px solid #e6e9ed;background:repeating-linear-gradient(180deg,#f7f8f9 0 56px,#eff1f3 56px 112px)}
-.eg .col.absd{background:repeating-linear-gradient(135deg,#f3f4f6 0 6px,#fff 6px 12px)}.eg .col.absd.urlaub{background:repeating-linear-gradient(135deg,#e9f5ed 0 6px,#fff 6px 12px)}.eg .col.absd.krank{background:repeating-linear-gradient(135deg,#fdf3df 0 6px,#fff 6px 12px)}
+.eg .col.absd{background:repeating-linear-gradient(135deg,#f3f4f6 0 6px,#fff 6px 12px)}
 .eg .blk{display:block;position:absolute;left:2px;right:2px;overflow:hidden;padding:5px 7px;font-size:13px;line-height:1.3;text-decoration:none;border-radius:2px}
 .eg .blk b{display:block;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:16px}
 .eg .blk.tiny{padding:2px 20px 2px 6px;font-size:11.5px;white-space:nowrap;text-overflow:ellipsis}.eg .blk.tiny b{display:inline;font-size:12px;padding-right:4px}.eg .blk.tiny div{display:none}.eg .blk.tiny .ic{top:3px;width:13px;height:13px}
@@ -409,7 +417,11 @@ export const EmployeeCalendarView: FC<{
             >
               {WD[isoWeekday(d) - 1]} {Number(d.slice(8))}.{Number(d.slice(5, 7))}.{d.slice(2, 4)}
               {hol && <small>{hol}</small>}
-              {absOn(d) && <small>{ABSENCE_LABEL[absOn(d)!.kind as AbsenceKind] ?? 'abwesend'}</small>}
+              {absOn(d) && (
+                <small class={`gab ${absKind(absOn(d)!.kind)}`}>
+                  {ABSENCE_LABEL[absOn(d)!.kind as AbsenceKind] ?? 'abwesend'}
+                </small>
+              )}
             </a>
           );
         })}
@@ -642,8 +654,10 @@ export const EmployeeCalendarView: FC<{
               ohne Einsatz gearbeitet <Clock />
             </span>
             <span class="ev miss">keine Zeit erfasst</span>
-            <span class="ev abs urlaub">Urlaub</span>
-            <span class="ev abs krank">Krank</span>
+            {ABSENCE_KINDS.map((k) => (
+              <span class={`ev abs ${k}`}>{ABSENCE_LABEL[k]}</span>
+            ))}
+            <span class="ev cx">Ausfall</span>
           </div>
         </div>
         <aside class="ec-side">
@@ -753,7 +767,7 @@ export const EmployeeCalendarView: FC<{
             </div>
             <div class="bar">
               <i
-                style={`width:${(ist / max) * 100}%;background:${ist >= pastPlanned ? '#2f8f5b' : '#d97706'}`}
+                style={`width:${(ist / max) * 100}%;background:${ist >= pastPlanned ? '#7d1435' : '#b42318'}`}
               />
             </div>
             <div class="lbl">

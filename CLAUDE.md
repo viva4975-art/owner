@@ -4415,3 +4415,23 @@ Testadresse.
   **Einsatzkalender** (Ahmed: „geplant 10, erfasst 15 – macht keinen Sinn“): Zeiten ohne Einsatz sahen aus wie bestätigte
   Einsätze. Jetzt eigene Farbe (hell, gestrichelt, Legende „ohne Einsatz gearbeitet“), Kasten Erfasst getrennt
   „n zu Einsätzen“ / „n ohne Einsatz“, Hinweis in Plan/Ist (Einsatz fehlt im Plan → einplanen).
+- 2026-10-28: **Abwesenheiten farbig, Stundenliste aufgeräumt, Urlaubsanträge drucken** (Ahmed, 3 Punkte):
+  - **Eine Farbe je Art, überall gleich** (`src/domain/time/absence-colors.ts`): Urlaub grün, Krank orange, Kind krank
+    gelb, Unbezahlt grau, Sonstiges lila (Rot bleibt „keine Zeit erfasst“, Bordeaux „Zeit bestätigt“). Einsatzkalender
+    (Einsätze, Tageskopf, schraffierte Tage, Legende mit allen Arten – vorher Unbezahlt/Sonstiges grau durchgestrichen),
+    Urlaubskalender (Balken + PDF; vorher Urlaub blau/Krank rot), Stundenliste (Zeile hinterlegt + Schild, Summen),
+    Übersicht Stundenliste/Lohnarten (Spalten Urlaub/Krank/Unbezahlt mit Farbpunkt, Zellen hinterlegt) und deren PDF.
+  - **Stundenliste & Lohnarten:** oben nur noch Umschalter Stundenliste | Lohnarten, „Urlaubsanträge drucken (n)“ und
+    **ein Knopf „Drucken / Exportieren“** mit allen Ausgaben (je Person drucken/PDF, nur markierte, Übersicht PDF/CSV je
+    Ansicht, CSV Lohnprogramm, Lexware ASCII, Urlaubsanträge). Grundlage/Korrektur/Zuschlagssätze eingeklappt.
+    Behoben: Summenzeile beider Tabellen um eine Spalte verschoben.
+  - **Urlaubsanträge drucken** (`/zeiterfassung/stundenzettel/urlaubsantraege`, `src/web/leave-request-print.ts`): je
+    Antrag (Urlaub, unbezahlt, sonstige Freistellung; beantragt/genehmigt, im Monat, Filter der Liste) eine A4-Seite:
+    Person, Zeitraum, Arbeitstage, Urlaubskonto (Anspruch, Rest nach Antrag, Stand heute), Unterschrift Mitarbeiter/in
+    mit Ort + Datum, Entscheidung (genehmigt angekreuzt, wenn genehmigt), Unterschrift Arbeitgeber/Vertretung leer.
+    Einzeln über „Antrag drucken“ an der Abwesenheit. **Unterschriftsdatum = Antragsdatum**, sonst Beginn − 5 Tage.
+  - **Antragsdatum** je Abwesenheit (`absences.applied_on`, Migration `20270102000001`): im Büro-Formular (vorbelegt
+    heute, nicht in der Zukunft) und beim Bearbeiten; App-Anträge (Mitarbeiter, Objektleitung) = Tag des Antrags.
+  - **Rechtlich:** Das gedruckte Datum muss dem tatsächlichen Antrag entsprechen – „Beginn − 5 Tage“ ist nur ein
+    Vorschlag für alte Einträge ohne Datum; wurde später unterschrieben, Datum vorher am Eintrag korrigieren (sonst
+    rückdatierte Urkunde). Tests: `leave-request-print.db.test.ts`; e2e zeit 28, planung 27 grün.

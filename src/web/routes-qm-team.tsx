@@ -447,6 +447,7 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
       approved,
       replaceVacation: b.replace_vacation === '1',
       allowNoLeave: b.urlaub_ohne_anspruch === '1',
+      appliedOn: todayBerlin(),
     });
     return c.redirect(
       `/qm/team/${m.id}?ok=${encodeURIComponent(

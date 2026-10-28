@@ -44,6 +44,8 @@ export interface Absence {
   decided_by: string | null;
   decided_at: Date | null;
   version: number;
+  /** Antragsdatum (Datum der Unterschrift auf dem Urlaubsantrag), leer = nicht erfasst */
+  applied_on?: string | null;
 }
 export type AbsenceRow = Absence & { employee_name: string; personnel_no: string; days: number };
 
@@ -250,8 +252,11 @@ export async function requestAbsence(
     allowNoLeave?: boolean;
     /** automatisch eingetragen für die Schulferien (Objekt „Schule“) */
     autoSchool?: boolean;
+    /** Antragsdatum (JJJJ-MM-TT), leer = nicht erfasst */
+    appliedOn?: string | null;
   },
 ) {
+  checkAppliedOn(p.appliedOn);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.start) || !/^\d{4}-\d{2}-\d{2}$/.test(p.end))
     throw new BusinessError('Datum ungültig', 'bad_date');
   if (p.end < p.start) throw new BusinessError('„bis“ liegt vor „von“', 'bad_range');
@@ -319,9 +324,10 @@ export async function requestAbsence(
       );
     await tx`
       insert into app.absences (id, employee_id, kind, start_date, end_date, half_day, status, note, requested_by,
-                                decided_by, decided_at, auto_school)
+                                decided_by, decided_at, auto_school, applied_on)
       values (${p.id}, ${p.employeeId}, ${p.kind}, ${p.start}, ${p.end}, ${p.halfDay}, ${p.approved ? 'genehmigt' : 'beantragt'},
-              ${p.note}, ${p.actor}, ${p.approved ? p.actor : null}, ${p.approved ? tx`now()` : null}, ${p.autoSchool ?? false})`;
+              ${p.note}, ${p.actor}, ${p.approved ? p.actor : null}, ${p.approved ? tx`now()` : null}, ${p.autoSchool ?? false},
+              ${p.appliedOn || null})`;
     if (p.allowNoLeave && p.kind === 'urlaub' && !p.autoSchool)
       await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
                values (${p.actor}, 'create', 'absence', ${p.id}, ${tx.json({ urlaub_ohne_anspruch: true })})`;
@@ -331,9 +337,19 @@ export async function requestAbsence(
   for (const v of changed) await applyAbsenceHours(sql, v);
 }
 
+function checkAppliedOn(v: string | null | undefined) {
+  if (!v) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new BusinessError('Antragsdatum ungültig', 'bad_date');
+  if (v > todayBerlin()) throw new BusinessError('Antragsdatum liegt in der Zukunft', 'bad_date');
+}
+
+/** Datum für den gedruckten Antrag: erfasstes Antragsdatum, sonst 5 Tage vor Beginn (Ahmed 28.10.). */
+export const applicationDate = (a: { applied_on?: string | null; start_date: string }) =>
+  a.applied_on || addDays(a.start_date, -5);
+
 export async function getAbsence(sql: Sql, id: string) {
   const [a] = await sql<(Absence & { employee_name: string })[]>`
-    select a.*, a.start_date::text, a.end_date::text, e.last_name || ', ' || e.first_name as employee_name
+    select a.*, a.start_date::text, a.end_date::text, a.applied_on::text, e.last_name || ', ' || e.first_name as employee_name
       from app.absences a join app.employees e on e.id = a.employee_id where a.id = ${id}`;
   return a;
 }
@@ -353,9 +369,12 @@ export async function updateAbsence(
     note: string | null;
     expectedVersion: number | null;
     allowNoLeave?: boolean;
+    /** undefined = unverändert, '' / null = leeren */
+    appliedOn?: string | null;
   },
   actor: string,
 ) {
+  checkAppliedOn(p.appliedOn);
   const a = await getAbsence(sql, id);
   if (!a) throw new BusinessError('Abwesenheit nicht gefunden');
   if (!['beantragt', 'genehmigt'].includes(a.status))
@@ -395,11 +414,12 @@ export async function updateAbsence(
          and start_date <= ${p.end} and end_date >= ${p.start}`;
     if (overlap) throw new BusinessError('Für diesen Zeitraum gibt es schon eine andere Abwesenheit');
     await tx`update app.absences set kind = ${p.kind}, start_date = ${p.start}, end_date = ${p.end},
-               half_day = ${p.halfDay}, note = ${p.note} where id = ${id}`;
+               half_day = ${p.halfDay}, note = ${p.note}
+               ${p.appliedOn === undefined ? tx`` : tx`, applied_on = ${p.appliedOn || null}`} where id = ${id}`;
     await tx`delete from app.absence_hours where absence_id = ${id}`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
              values (${actor}, 'update', 'absence', ${id},
-                     ${tx.json({ vorher: { kind: a.kind, start: a.start_date, end: a.end_date, half_day: a.half_day, note: a.note }, ...(p.allowNoLeave && p.kind === 'urlaub' ? { urlaub_ohne_anspruch: true } : {}) })})`;
+                     ${tx.json({ vorher: { kind: a.kind, start: a.start_date, end: a.end_date, half_day: a.half_day, note: a.note, applied_on: a.applied_on ?? null }, ...(p.allowNoLeave && p.kind === 'urlaub' ? { urlaub_ohne_anspruch: true } : {}) })})`;
   });
   invalidateLeaveWarnings();
   await applyAbsenceHours(sql, id);

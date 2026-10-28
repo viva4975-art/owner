@@ -2200,6 +2200,7 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         halfDay: b.half_day === '1',
         note: null,
         actor: `m:${me.personnel_no}`,
+        appliedOn: todayBerlin(), // Antrag in der App = heute gestellt
       });
       return back(c, '/m/abwesenheit', { ok: t(lang, 'msg_absence') });
     });

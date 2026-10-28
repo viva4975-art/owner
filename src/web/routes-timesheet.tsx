@@ -1,5 +1,5 @@
 import { addMonths } from '../services/cost-centers.js';
-import { addDays, todayBerlin } from '../domain/invoice/calc.js';
+import { todayBerlin } from '../domain/invoice/calc.js';
 import { SiteOptions } from './site-options.js';
 import {
   ABSENCE_LABEL,
@@ -255,18 +255,16 @@ ${sheetTableHtml(s)}${sigHtml}
     // Auswahl einzelner Personen (Häkchen in der Liste) für Druck/Export
     const picked = new Set(c.req.queries('p') ?? []);
     const { from, to } = monthRange(month);
-    // Vorab-Abrechnung: Ist bis Stichtag, danach Plan bis Monatsende (Ahmed 09.10.)
-    // Im laufenden Monat automatisch: Ist bis gestern, ab heute Plan (Ahmed 27.10.: Lohn bis zum 23. fertig);
-    // „stichtag=ohne“ = nur erfasste Zeiten
-    const st0 = c.req.query('stichtag') ?? '';
-    const today = todayBerlin();
-    const noCut = st0 === 'ohne';
-    const autoCut = !noCut && !st0 && today >= from && today <= to ? addDays(today, -1) : null;
-    const cutoff = /^\d{4}-\d{2}-\d{2}$/.test(st0) && st0 >= addDays(from, -1) && st0 < to ? st0 : autoCut;
+    // Lohnarten: je Einsatz die erfasste Zeit, fehlt sie die geplante (Ahmed 28.10.: „zuerst Ist, wenn nicht da
+    // Soll, sonst nichts“) – für jeden Monat. „stichtag=ohne“ = nur erfasste Zeiten.
+    const noCut = (c.req.query('stichtag') ?? '') === 'ohne';
+    const fillPlan = !noCut;
+    // als Stand für die Korrektur im Folgemonat festgehalten (Monatsende = ganzer Monat Ist/Plan)
+    const cutoff = fillPlan ? to : null;
     const [all, sigs, pay, siteLinks, sites] = await Promise.all([
       listEmployees(sql),
       signaturesOfMonth(sql, month),
-      payrollMonth(sql, month, undefined, { cutoff }),
+      payrollMonth(sql, month, undefined, { fillPlan }),
       sql<{ employee_id: string; site_id: string }[]>`select employee_id, site_id from app.employee_sites`,
       sql<{ id: string; site_no: string; name: string; customer_name: string }[]>`
         select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`,
@@ -322,7 +320,6 @@ ${sheetTableHtml(s)}${sigHtml}
       if (sig !== 'alle') p.set('unterschrift', sig);
       if (view !== 'stunden') p.set('ansicht', view);
       if (noCut) p.set('stichtag', 'ohne');
-      else if (cutoff) p.set('stichtag', cutoff);
       for (const [k, v] of Object.entries(o)) {
         if (v) p.set(k, v);
         else p.delete(k);
@@ -343,7 +340,7 @@ ${sheetTableHtml(s)}${sigHtml}
       sites,
       qs,
       cutoff,
-      autoCut: !!autoCut && cutoff === autoCut,
+      fillPlan,
     };
   };
   const surchargeMin = (p: { minutes: Record<string, number> } | undefined) =>
@@ -515,11 +512,9 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                 href={`/zeiterfassung/lohnarten.csv?${d.qs()}`}
                 data-export
                 data-confirm={
-                  month >= todayBerlin().slice(0, 7)
-                    ? d.cutoff
-                      ? `Vorab-Abrechnung ${month.slice(5)}/${month.slice(0, 4)}: erfasste Zeiten bis ${dateDe(d.cutoff)}, danach die geplanten Einsätze bis Monatsende. Stand festhalten? Abweichungen kommen im Folgemonat als Korrekturzeile.`
-                      : `Der Monat ${month.slice(5)}/${month.slice(0, 4)} läuft noch. Nur erfasste Zeiten (ohne Plan) als Vorab-Abrechnung festhalten?`
-                    : `Lohnarten ${month.slice(5)}/${month.slice(0, 4)} fürs Lohnprogramm exportieren? Der Stand wird festgehalten; spätere Änderungen erscheinen im Folgemonat als Korrekturzeile.`
+                  d.fillPlan
+                    ? `Lohnarten ${month.slice(5)}/${month.slice(0, 4)} fürs Lohnprogramm exportieren? Je Einsatz die erfasste Zeit, fehlt sie die geplante Zeit. Der Stand wird festgehalten; spätere Änderungen erscheinen im Folgemonat als Korrekturzeile.`
+                    : `Lohnarten ${month.slice(5)}/${month.slice(0, 4)} fürs Lohnprogramm exportieren – nur erfasste Zeiten (ohne Plan)? Der Stand wird festgehalten.`
                 }
               >
                 CSV Lohnprogramm
@@ -530,11 +525,9 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                 data-export
                 title="Lexware ASCII-Import: Jahr;Monat;Personalnummer;Lohnartnummer;Wert – Windows-1252 (ANSI), ohne Kopfzeile"
                 data-confirm={
-                  month >= todayBerlin().slice(0, 7)
-                    ? d.cutoff
-                      ? `Vorab-Abrechnung ${month.slice(5)}/${month.slice(0, 4)} für Lexware: erfasste Zeiten bis ${dateDe(d.cutoff)}, danach die geplanten Einsätze bis Monatsende. Stand festhalten? Abweichungen kommen im Folgemonat als Korrekturzeile.`
-                      : `Der Monat ${month.slice(5)}/${month.slice(0, 4)} läuft noch. Nur erfasste Zeiten (ohne Plan) als Vorab-Abrechnung für Lexware festhalten?`
-                    : `Lohnarten ${month.slice(5)}/${month.slice(0, 4)} als Lexware-ASCII-Datei exportieren? Der Stand wird festgehalten; spätere Änderungen erscheinen im Folgemonat als Korrekturzeile.`
+                  d.fillPlan
+                    ? `Lohnarten ${month.slice(5)}/${month.slice(0, 4)} als Lexware-ASCII-Datei exportieren? Je Einsatz die erfasste Zeit, fehlt sie die geplante Zeit. Der Stand wird festgehalten; spätere Änderungen erscheinen im Folgemonat als Korrekturzeile.`
+                    : `Lohnarten ${month.slice(5)}/${month.slice(0, 4)} als Lexware-ASCII-Datei exportieren – nur erfasste Zeiten (ohne Plan)? Der Stand wird festgehalten.`
                 }
               >
                 Lexware (ASCII)
@@ -567,24 +560,27 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
             {[...new URLSearchParams(d.qs({ stichtag: '' })).entries()].map(([k, v]) => (
               <input type="hidden" name={k} value={v} />
             ))}
-            <b>Vorab-Abrechnung</b> (Löhne vor Monatsende
-            {d.autoCut ? ', im laufenden Monat automatisch: Ist bis gestern' : ''}): erfasste Zeiten bis{' '}
-            <input
-              type="date"
-              name="stichtag"
-              value={d.cutoff ?? ''}
-              style="width:auto;display:inline-block"
-            />{' '}
-            danach die geplanten Einsätze bis Monatsende. <button class="btn sm sec">Anwenden</button>
-            {d.cutoff && (
-              <a class="btn sm sec" href={`/zeiterfassung/stundenzettel?${d.qs({ stichtag: 'ohne' })}`}>
-                nur erfasste Zeiten
-              </a>
+            <b>Grundlage:</b>{' '}
+            {d.fillPlan ? (
+              <>
+                je Einsatz die <b>erfasste Zeit</b>, fehlt sie (noch nicht bestätigt, Nachtrag offen, noch
+                nicht gearbeitet) die <b>geplante Zeit</b>; Zeiten ohne Einsatz zählen wie erfasst.{' '}
+                <a class="btn sm sec" href={`/zeiterfassung/stundenzettel?${d.qs({ stichtag: 'ohne' })}`}>
+                  nur erfasste Zeiten
+                </a>
+              </>
+            ) : (
+              <>
+                nur erfasste Zeiten.{' '}
+                <a class="btn sm sec" href={`/zeiterfassung/stundenzettel?${d.qs({ stichtag: '' })}`}>
+                  Ist, sonst Plan
+                </a>
+              </>
             )}
             <div class="small mut" style="margin-top:6px">
               Jeder „CSV Lohnprogramm“-Export wird festgehalten. Im Folgemonat enthält die CSV automatisch die
-              Zeilen „Korrektur“ mit der Differenz zwischen Vorab-Stand und tatsächlichem Monat (Stunden, auch
-              minus).
+              Zeilen „Korrektur“ mit der Differenz zwischen exportiertem Stand und jetzigem Stand (Stunden,
+              auch minus) – z. B. wenn statt der geplanten Zeit später eine andere Zeit erfasst wurde.
             </div>
             {corr.rows.length > 0 && (
               <details style="margin-top:8px">
@@ -596,7 +592,7 @@ var n=0;bs.forEach(function(b){if(b.checked)n++});var btn=document.querySelector
                       : `Vormonat ${corr.month.slice(5)}/${corr.month.slice(0, 4)}`}
                     : {corr.rows.length} Mitarbeitende
                   </b>{' '}
-                  (Vorab-Stichtag {dateDe(corr.cutoff!)})
+                  (Stand des Exports)
                 </summary>
                 <table style="margin-top:6px">
                   <tbody>

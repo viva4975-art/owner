@@ -4406,3 +4406,12 @@ Testadresse.
     Export). **Ahmed: Lohnart-Nummer für „Unbezahlte Abwesenheit (Abzug)“ unter Einstellungen → Zuschläge & Lohnarten
     eintragen.** **Rechtlich:** unbezahlte Freistellung nur mit Vereinbarung; Minijob über einen Monat ohne Entgelt →
     Abmeldung (§ 7 Abs. 3 SGB IV); Lexware rechnet SV/Steuer aus dem geminderten Betrag. Test `payroll-absence.db.test.ts`.
+- 2026-10-28: **Lohnexport „Ist, sonst Plan“** (Ahmed: „zuerst Ist, wenn nicht da Soll, wenn auch nicht da nichts“): ersetzt
+  den Stichtag/Vorab-Modus. Für jeden Monat zählt je geplantem Einsatz die erfasste Zeit (erfasst/freigegeben, beendet);
+  fehlt sie (nicht bestätigt, Nachtrag offen, läuft, Zukunft) die geplante Zeit; Zeiten ohne Einsatz zählen wie erfasst;
+  Abwesenheit/Feiertag/Ausfall wie bisher (`payrollMonth(..., { fillPlan })`). Umschalter „nur erfasste Zeiten“ bleibt.
+  Export wird festgehalten, Korrektur im Folgemonat = Differenz zum jetzigen Stand nach derselben Regel (z. B. später
+  andere Zeit erfasst). **§ 17 MiLoG:** tatsächliche Zeiten trotzdem vollständig erfassen.
+  **Einsatzkalender** (Ahmed: „geplant 10, erfasst 15 – macht keinen Sinn“): Zeiten ohne Einsatz sahen aus wie bestätigte
+  Einsätze. Jetzt eigene Farbe (hell, gestrichelt, Legende „ohne Einsatz gearbeitet“), Kasten Erfasst getrennt
+  „n zu Einsätzen“ / „n ohne Einsatz“, Hinweis in Plan/Ist (Einsatz fehlt im Plan → einplanen).

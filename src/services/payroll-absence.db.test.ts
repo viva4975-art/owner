@@ -97,4 +97,21 @@ describe.skipIf(!available)('Lohnexport mit Abwesenheiten (Datenbank)', () => {
     );
     expect(text).toBe('2026;11;7702;400;585,00\r\n2026;11;7702;990;-83,57\r\n');
   });
+
+  it('Ist, sonst Plan: erfasste Zeit ersetzt den Plan, ohne Zeit zählt der Plan', async () => {
+    // Do 05.11.: statt 8 Std. Plan nur 6 Std. erfasst; Fr 06.11.: Nachtrag offen → zählt der Plan
+    const add = (day: string, h: number, status: string) =>
+      sql`insert into app.time_entries (id, employee_id, site_id, work_date, start_at, end_at, break_minutes, source, status, created_by)
+          values (${randomUUID()}, ${hourly}, ${DEMO.siteSchool}, ${day},
+                  (${day}::date + time '06:00') at time zone 'Europe/Berlin',
+                  (${day}::date + time '06:00' + make_interval(hours => ${h})) at time zone 'Europe/Berlin', 0, 'buero', ${status}, 't')`;
+    await add('2026-11-05', 6, 'erfasst');
+    await add('2026-11-06', 5, 'beantragt');
+    const [r] = await payrollMonth(sql, '2026-11', hourly, { fillPlan: true });
+    // 168 Std. Plan − 12 Std. Urlaub − 2 Std. weniger am 05.11. (Nachtrag 06.11. zählt noch nicht)
+    expect(r!.minutes.urlaub).toBe(720);
+    expect(r!.minutes.normal).toBe(168 * 60 - 720 - 120);
+    const [ist] = await payrollMonth(sql, '2026-11', hourly);
+    expect(ist!.minutes.normal).toBe(6 * 60);
+  });
 });

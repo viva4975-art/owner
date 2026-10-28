@@ -83,7 +83,8 @@ const CSS = `
 .ev .ic{flex:none;width:14px;height:14px}
 .ev.plan,.ev.run,.ev.req,.ev.hol{background:#fff;color:#3f3a3c;border-color:#d4cfd1}
 .ev.run{border-left:3px solid #7d1435}.ev.req{border-left:3px solid #7d1435;font-style:italic}
-.ev.ok,.ev.extra{background:#7d1435;color:#fff;border-color:#64102a}
+.ev.ok{background:#7d1435;color:#fff;border-color:#64102a}
+.ev.extra{background:#f6e7ec;color:#7d1435;border:1px dashed #7d1435}
 .ev.miss{background:#fff;color:#b42318;border:1px dashed #d9534f}
 .ev.abs,.ev.cx{background:#eceef1;color:#6b7280;border-color:#dfe2e6;text-decoration:line-through}
 .ev.abs.urlaub,.ev.abs.krank{text-decoration:none}
@@ -220,8 +221,8 @@ export const EmployeeCalendarView: FC<{
   const plannedMin = work.reduce((a, s) => a + s.minutes, 0);
   const done = work.filter((s) => s.entry && !['abgelehnt', 'laeuft', 'beantragt'].includes(s.entry.status));
   const extraIn = extra.filter((e) => inScope(e.work_date) && e.end_at);
-  const workedMin =
-    done.reduce((a, s) => a + netMinutes(s.entry!), 0) + extraIn.reduce((a, e) => a + netMinutes(e), 0);
+  const extraMin = extraIn.reduce((a, e) => a + netMinutes(e), 0);
+  const workedMin = done.reduce((a, s) => a + netMinutes(s.entry!), 0) + extraMin;
   const absMin = (kinds: string[]) =>
     scoped.filter((s) => s.absence && kinds.includes(s.absence)).reduce((a, s) => a + s.minutes, 0);
   const absCount = (kinds: string[]) => scoped.filter((s) => s.absence && kinds.includes(s.absence)).length;
@@ -637,6 +638,9 @@ export const EmployeeCalendarView: FC<{
             <span class="ev ok">
               Zeit bestätigt <Clock />
             </span>
+            <span class="ev extra">
+              ohne Einsatz gearbeitet <Clock />
+            </span>
             <span class="ev miss">keine Zeit erfasst</span>
             <span class="ev abs urlaub">Urlaub</span>
             <span class="ev abs krank">Krank</span>
@@ -673,10 +677,20 @@ export const EmployeeCalendarView: FC<{
           <div class="box ist">
             <h4>Erfasst</h4>
             <div class="row">
-              <span>{done.length + extraIn.length} Einsätze</span>
-              <span>{hm(workedMin)}</span>
-              <span>{dec(workedMin)}</span>
+              <span>{done.length} zu Einsätzen</span>
+              <span>{hm(workedMin - extraMin)}</span>
+              <span>{dec(workedMin - extraMin)}</span>
             </div>
+            {extraIn.length > 0 && (
+              <div
+                class="row"
+                title="Zeiten an Tagen bzw. Objekten ohne geplanten Einsatz – nicht im Plan enthalten"
+              >
+                <span>{extraIn.length} ohne Einsatz</span>
+                <span>{hm(extraMin)}</span>
+                <span>{dec(extraMin)}</span>
+              </div>
+            )}
             <div class="row">
               <span>{absCount(['krank', 'kind_krank'])} Krank</span>
               <span>{hm(krank)}</span>
@@ -753,6 +767,12 @@ export const EmployeeCalendarView: FC<{
                 {hm(Math.abs(ist - pastPlanned))} Std.
               </b>
             </div>
+            {extraIn.length > 0 && (
+              <div class="small mut" style="margin-top:6px">
+                Darin {hm(extraMin)} Std. ohne Einsatz ({extraIn.length}) – fehlt der Einsatz im Plan, bitte
+                einplanen (z. B. Serie ab früherem Datum).
+              </div>
+            )}
             {open.length > 0 && (
               <div class="lbl" style="margin-top:6px;color:#b42318">
                 <span>{open.length} vergangene Einsätze ohne Zeit</span>

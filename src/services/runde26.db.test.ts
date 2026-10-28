@@ -128,7 +128,9 @@ describe.skipIf(!available)('Runde 26: Plan-Zeiten als Ist-Zeiten (Datenbank)', 
     const corr = await payrollCorrections(sql, '2026-03');
     expect(corr.cutoff).toBe('2026-03-08');
     const mine = corr.rows.find((x) => x.employee_id === e2!.id)!;
-    expect(mine.minutes.normal).toBe(-23 * 60); // es wurde nach dem Stichtag nichts mehr erfasst
+    // jetzt gilt „Ist, sonst Plan“: Einsätze ohne erfasste Zeit zählen weiter mit dem Plan → keine Minus-Korrektur
+    // für 09.–31.03.; nur die beiden Tage vor dem Stichtag ohne Zeit (01./02.03.) kommen als Plan dazu
+    expect(mine.minutes.normal).toBe(2 * 60);
   });
 
   it('Vorab-Lohnabrechnung am Monatsersten: Stichtag = Vortag → ganzer Monat nach Plan', async () => {

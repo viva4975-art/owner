@@ -216,7 +216,7 @@ export function unpaidDeduction(
 }
 
 /**
- * Lohnarten eines Monats. Mit `cutoff` (Vorab-Abrechnung, Ahmed 09.10.: „Löhne müssen früher gedruckt werden“;
+ * Lohnarten eines Monats. Mit `fillPlan` (Standard der Export-Seite): je Einsatz Ist, sonst Plan. Mit `cutoff` (Vorab-Abrechnung, Ahmed 09.10.: „Löhne müssen früher gedruckt werden“;
  * im laufenden Monat automatisch gestern, Ahmed 27.10.): erfasste Zeiten bis einschließlich Stichtag, danach die geplanten Einsätze bis Monatsende (ohne Abwesenheit,
  * Ausfall, Feiertag). Abwesenheiten zählen für den ganzen Monat. Mehrarbeit nur aus erfassten Zeiten.
  */
@@ -224,11 +224,15 @@ export async function payrollMonth(
   sql: Sql,
   month: string,
   employeeId?: string,
-  opts: { cutoff?: string | null } = {},
+  opts: { cutoff?: string | null; fillPlan?: boolean } = {},
 ): Promise<PayrollRow[]> {
   const { from, to } = monthRange(month);
+  // „Ist, sonst Plan“ (Ahmed 28.10.): je Einsatz die erfasste Zeit, fehlt sie (noch nicht bestätigt, Nachtrag offen,
+  // läuft, Zukunft) die geplante Zeit; ohne Einsatz nur erfasste Zeiten. Ersetzt den Stichtag.
+  const fillPlan = !!opts.fillPlan;
   // Stichtag = Vortag des Monatsbeginns: ganzer Monat nach Plan (Export am 1. eines Monats)
-  const cutoff = opts.cutoff && opts.cutoff >= addDays(from, -1) && opts.cutoff < to ? opts.cutoff : null;
+  const cutoff =
+    !fillPlan && opts.cutoff && opts.cutoff >= addDays(from, -1) && opts.cutoff < to ? opts.cutoff : null;
   const settings = await getPayrollSettings(sql);
   const rates = ratesOf(settings);
   const emps = await sql<
@@ -315,9 +319,9 @@ export async function payrollMonth(
     /** nur Restminuten (Einsatz mit teilweiser Abwesenheit, z. B. halber Urlaubstag) – ohne Zuschläge */
     restMinutes?: number;
   }[] = [];
-  if (cutoff) {
+  if (cutoff || fillPlan) {
     const shifts = await plannedShifts(sql, {
-      from: addDays(cutoff, 1),
+      from: fillPlan ? from : addDays(cutoff!, 1),
       to,
       ...(employeeId ? { employeeId } : {}),
     });
@@ -325,6 +329,9 @@ export async function payrollMonth(
       // bei Vertretung/Umplanung enthält plan bereits Vertreter und geänderte Zeit
       const emp = sh.plan.employee_id;
       if (!emp || sh.holiday || sh.exception?.kind === 'ausfall') continue;
+      // Ist vorhanden (erfasst/freigegeben, beendet) → zählt über die Zeit, nicht über den Plan
+      if (sh.entry && (sh.entry.status === 'erfasst' || sh.entry.status === 'freigegeben') && sh.entry.end_at)
+        continue;
       const st = sh.plan.start_time;
       const en = sh.plan.end_time;
       const endDate = en <= st ? addDays(sh.date, 1) : sh.date;
@@ -709,7 +716,10 @@ export async function payrollCorrections(
   >`
     select cutoff::text, rows from app.payroll_exports where month = ${month} order by created_at desc limit 1`;
   if (!ex?.cutoff) return { cutoff: null, rows: [] };
-  const [actual, settings] = await Promise.all([payrollMonth(sql, month), getPayrollSettings(sql)]);
+  const [actual, settings] = await Promise.all([
+    payrollMonth(sql, month, undefined, { fillPlan: true }),
+    getPayrollSettings(sql),
+  ]);
   // ältere Exporte: „sonstige“ war eine eigene Lohnart (jetzt Normalstunden), „unbezahlt“ gibt es nicht mehr,
   // Minijob-Stunden standen unter Normalstunden (jetzt Aushilfslohn)
   const minijob = new Set(actual.filter((r) => r.minutes.aushilfslohn).map((r) => r.employee_id));

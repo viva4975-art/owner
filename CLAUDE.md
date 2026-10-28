@@ -4443,3 +4443,11 @@ Testadresse.
   Lohnarten zeigt „n Std. am Feiertag gearbeitet → Feiertagslohn“ als Hinweis. **Rechtlich:** Wird an einem Feiertag
   tatsächlich gearbeitet, sind Arbeitslohn + RTV-Zuschlag geschuldet – dann den Einsatz mit Haken anlegen (sonst zahlt
   der Export zu wenig). Test in `runde32.db.test.ts`.
+- 2026-10-28: **Materialausgabe: eine Position, mehrere hinzufügen, löschen** (Ahmed): Formular startet mit einer
+  Artikelzeile, „+ weitere Position“ fügt Zeilen an (mit Suchauswahl), „×“ entfernt eine Zeile. **Lieferschein löschen**
+  (Knopf an der Materialausgabe, Rückfrage): entfernt Ausgabe, Positionen, ggf. Storno und die zugehörigen Lagerbuchungen
+  inkl. Inventurkorrektur „Fehlbestand vor …“ – Bestand zurück, Kosten fallen aus der Nachkalkulation; vollständiger
+  Stand vorher im Protokoll (`audit_log` delete material_issue), Nummer wird nicht neu vergeben (`deleteMaterialIssue`).
+  Löschen nur über den Server (`app.purge`), sonst bleiben die Tabellen nur anhängbar (Migration `20270103000001`,
+  `app.deny_change_unless_purge`, auch für `stock_movements`). Storno bleibt für Fälle, die sichtbar bleiben sollen.
+  Test in `material-issues.db.test.ts`.

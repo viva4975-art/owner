@@ -165,6 +165,41 @@ export async function cancelMaterialIssue(sql: Sql, id: string, reason: string, 
   });
 }
 
+/**
+ * Löschen (Ahmed 28.10.): Materialausgabe ganz entfernen – Bestand zurück, Kosten fallen aus der Nachkalkulation.
+ * Entfernt Positionen, Storno und die zugehörigen Lagerbuchungen (auch die Inventurkorrektur „Fehlbestand vor …“);
+ * der vollständige Stand steht vorher im Protokoll. Die Nummer wird nicht wieder vergeben.
+ */
+export async function deleteMaterialIssue(sql: Sql, id: string, actor: string) {
+  await sql.begin(async (tx) => {
+    const [mi] = await tx<{ issue_no: string }[]>`
+      select issue_no from app.material_issues where id = ${id} for update`;
+    if (!mi) return;
+    const lines = await tx`select * from app.material_issue_lines where issue_id = ${id} order by position`;
+    const [canc] = await tx`select * from app.material_issue_cancellations where issue_id = ${id}`;
+    const fixIds = lines.map((l) => uuidFrom(`material-fix:${id}:${l.position as number}`));
+    const moves = await tx<{ id: string; article_id: string; delta_milli: bigint }[]>`
+      select id, article_id, delta_milli from app.stock_movements
+       where material_issue_id = ${id} or id = any(${fixIds}::uuid[])`;
+    const [head] = await tx`select * from app.material_issues where id = ${id}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'delete', 'material_issue', ${id},
+                     ${tx.json(JSON.parse(JSON.stringify({ issue: head, lines, cancellation: canc ?? null, moves }, (_k, v) => (typeof v === 'bigint' ? String(v) : v))))})`;
+    const back = new Map<string, bigint>();
+    for (const m of moves) back.set(m.article_id, (back.get(m.article_id) ?? 0n) - m.delta_milli);
+    await tx`select set_config('app.purge', 'on', true)`;
+    await tx`delete from app.stock_movements where id = any(${moves.map((m) => m.id)}::uuid[])`;
+    await tx`delete from app.material_issue_cancellations where issue_id = ${id}`;
+    await tx`delete from app.material_issue_lines where issue_id = ${id}`;
+    await tx`delete from app.material_issues where id = ${id}`;
+    await tx`select set_config('app.purge', '', true)`;
+    for (const [aid, d] of back)
+      if (d !== 0n)
+        await tx`update app.articles set stock_milli = greatest(0, stock_milli + ${d}), updated_at = now()
+                  where id = ${aid}`;
+  });
+}
+
 export async function listMaterialIssues(
   sql: Sql,
   f: { siteId?: string | null; from?: string | null; to?: string | null } = {},

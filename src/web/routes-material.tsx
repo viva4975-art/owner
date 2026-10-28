@@ -6,6 +6,7 @@ import { listArticles } from '../services/inventory.js';
 import { listSites } from '../services/masterdata.js';
 import {
   cancelMaterialIssue,
+  deleteMaterialIssue,
   createMaterialIssue,
   getMaterialIssue,
   listMaterialIssues,
@@ -139,7 +140,7 @@ export function registerMaterialRoutes(ctx: Ctx) {
     const [sites, arts] = await Promise.all([listSites(sql), listArticles(sql)]);
     const active = arts.filter((a) => a.active);
     const siteId = q.objekt && /^[0-9a-f-]{36}$/.test(q.objekt) ? q.objekt : '';
-    const ROWS = 6;
+    const ROWS = 1;
     const artOptions = (
       <>
         <option value="">– Artikel wählen –</option>
@@ -199,6 +200,7 @@ export function registerMaterialRoutes(ctx: Ctx) {
                   <tr>
                     <th>Artikel</th>
                     <th style="width:140px">Menge</th>
+                    <th style="width:40px" />
                   </tr>
                 </thead>
                 <tbody>
@@ -217,6 +219,17 @@ export function registerMaterialRoutes(ctx: Ctx) {
                           aria-label={`Menge ${i + 1}`}
                         />
                       </td>
+                      <td>
+                        <button
+                          type="button"
+                          class="btn ghost sm"
+                          title="Position entfernen"
+                          aria-label="Position entfernen"
+                          onclick="var t=this.closest('tbody');if(t.rows.length>1){this.closest('tr').remove()}else{this.closest('tr').querySelectorAll('select,input').forEach(function(e){e.value='';e.dispatchEvent(new Event('change',{bubbles:true}))})}"
+                        >
+                          ×
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -227,9 +240,9 @@ export function registerMaterialRoutes(ctx: Ctx) {
             type="button"
             class="btn sec sm"
             style="margin-top:8px"
-            onclick="var t=document.querySelector('#ma-lines tbody');var r=t.rows[0].cloneNode(true);r.querySelectorAll('select,input').forEach(function(e){e.value=''});t.appendChild(r)"
+            onclick="var t=document.querySelector('#ma-lines tbody');var r=t.rows[0].cloneNode(true);r.querySelectorAll('.cbx').forEach(function(x){var s=x.querySelector('select');if(s){x.parentNode.insertBefore(s,x);delete s.dataset.combo;s.classList.remove('cbx-native');s.removeAttribute('tabindex')}x.remove()});r.querySelectorAll('select,input').forEach(function(e){e.value=''});t.appendChild(r);var b=r.querySelector('.cbx-btn');b&&b.click()"
           >
-            + weitere Zeile
+            + weitere Position
           </button>
           <label class="chk" style="margin-top:12px">
             <input type="checkbox" name="fill_shortage" value="1" />
@@ -391,6 +404,16 @@ export function registerMaterialRoutes(ctx: Ctx) {
                 Nachkalkulation des Objekts
               </a>
             </div>
+            <form
+              method="post"
+              action={`/materialausgabe/${id}/loeschen`}
+              style="margin-top:12px"
+              onsubmit="return confirm('Materialausgabe ganz löschen? Bestand wird zurückgebucht, die Kosten fallen aus der Nachkalkulation. Die Nummer wird nicht wieder vergeben.')"
+            >
+              <button class="btn danger sm">
+                <Icon name="trash" /> Lieferschein löschen
+              </button>
+            </form>
             {!m.cancelled_at && (
               <details class="card" style="margin-top:12px">
                 <summary>Stornieren</summary>
@@ -425,6 +448,11 @@ export function registerMaterialRoutes(ctx: Ctx) {
         'Cache-Control': 'private, no-store',
       },
     });
+  });
+
+  app.post(`/materialausgabe/:id{${UUID}}/loeschen`, async (c) => {
+    await deleteMaterialIssue(sql, c.req.param('id'), c.get('actor'));
+    return back(c, '/materialausgabe', { ok: 'Materialausgabe gelöscht – Bestand zurückgebucht.' });
   });
 
   app.post(`/materialausgabe/:id{${UUID}}/storno`, async (c) => {

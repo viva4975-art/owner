@@ -4,7 +4,12 @@ import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { siteCosting } from './costing.js';
 import { bookStock, saveArticle } from './inventory.js';
-import { cancelMaterialIssue, createMaterialIssue, materialIssuePdf } from './material-issues.js';
+import {
+  cancelMaterialIssue,
+  createMaterialIssue,
+  deleteMaterialIssue,
+  materialIssuePdf,
+} from './material-issues.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
 const available = await dbAvailable();
@@ -97,5 +102,20 @@ describe.skipIf(!available)('Materialausgabe an Objekt (interner Lieferschein)',
     expect(await cost()).toBe(8991n);
     const [c] = await sql<{ stock_milli: bigint }[]>`select stock_milli from app.articles where id = ${art}`;
     expect(c!.stock_milli).toBe(3_000n);
+    // Löschen: Bestand zurück (inkl. Inventurkorrektur), Kosten weg, Datensätze weg, Protokoll bleibt
+    await deleteMaterialIssue(sql, id2, 't');
+    await deleteMaterialIssue(sql, id, 't');
+    await deleteMaterialIssue(sql, id, 't');
+    const [d] = await sql<{ stock_milli: bigint }[]>`select stock_milli from app.articles where id = ${art}`;
+    expect(d!.stock_milli).toBe(10_000n);
+    expect(await cost()).toBe(0n);
+    const [n] = await sql<{ n: number }[]>`
+      select count(*)::int as n from app.material_issues where id in (${id}, ${id2})`;
+    expect(n!.n).toBe(0);
+    const [log] = await sql<{ n: number }[]>`
+      select count(*)::int as n from app.audit_log where entity = 'material_issue' and action = 'delete'`;
+    expect(log!.n).toBe(2);
+    // ohne Server-Freigabe bleibt die Lagerbuchung unveränderbar
+    await expect(sql`delete from app.stock_movements`).rejects.toThrow(/nur anhängbar/);
   });
 });

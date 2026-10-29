@@ -4468,3 +4468,17 @@ Testadresse.
   Abzug), eine Spalte **Gesamt** (bezahlte Stunden) und eine Gesamtzeile. **Festgehalt:** Stunden rot und nur zur Info,
   nicht in Gesamt – bezahlt wird das Gehalt. PDF A4 quer auf einer Seite, Beträge mit eigener Spaltenbreite
   (`lohnCols`/`lohnPdf` in `routes-timesheet.tsx`, `PdfCell.color` in `src/pdf/table.ts`).
+- 2026-10-29: **Urlaub/Krank-Stunden immer nach dem aktuellen Einsatzplan** (Ahmed: „Audi zwei Tage krank, aber nur
+  8,5 Std. statt 17“, „Urlaub, Krankheit – es muss alles richtig gerechnet werden“): **Fund 1:** Die Stunden je
+  Abwesenheitstag wurden nur einmal beim Eintragen/Genehmigen aus dem damaligen Plan berechnet – später geplante,
+  geänderte oder gelöschte Einsätze änderten sie nie. **Fund 2:** Wurde für den Abwesenheitstag eine Vertretung oder ein
+  Ausfall eingetragen („Einsätze für abwesende Mitarbeiter“), fiel der Einsatz für die abwesende Person ganz weg → keine
+  Krank-/Urlaubsstunden für diesen Tag. Jetzt gleicht `syncAbsenceHours` (absences.ts) vor jeder Anzeige/jedem Export
+  (Stundenliste, Lohnarten, CSV, Lexware, Abwesenheit) die Stunden mit dem heutigen Plan ab: je Einsatz die geplanten
+  Stunden der abwesenden Person, auch wenn eine Vertretung/ein Ausfall eingetragen ist (`plannedShifts(…,
+  { originalAssignee })`), halber Tag = Hälfte, Feiertag ausgenommen; ohne Einsatzplan Wochenstunden ÷ 5 je Arbeitstag.
+  Von Hand geänderte Tage und aus Fortytools übernommene Stunden (manual) bleiben unverändert; geschrieben wird nur bei
+  Abweichung. **Rechtlich:** Entgeltfortzahlung nach dem Lohnausfallprinzip (§ 4 EFZG) = Stunden, die ohne Krankheit
+  gearbeitet worden wären; Tage ohne geplanten Einsatz zählen 0. Ein „Ausfall“, der aus anderem Grund ohnehin gewesen
+  wäre (Objekt geschlossen), zählt jetzt ebenfalls – dann am Tag „Stunden je Einsatz“ von Hand auf 0 setzen.
+  Test `absence-sync.db.test.ts`.

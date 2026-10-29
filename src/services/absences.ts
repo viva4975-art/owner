@@ -75,28 +75,35 @@ export interface AbsenceHour {
   version: number;
 }
 
-/**
- * Genehmigte Abwesenheit auf die geplanten Einsätze übertragen: je Einsatz die geplanten Stunden
- * (halber Tag = Hälfte), bezahlt laut Art. Ohne Einsatzplan: Wochenstunden ÷ 5 je Arbeitstag.
- * Von Hand geänderte Zeilen bleiben; storniert/abgelehnt → Stunden entfallen.
- */
-export async function applyAbsenceHours(sql: Sql, absenceId: string) {
-  const [a] = await sql<(Absence & { weekly_hours: string | null })[]>`
-    select a.*, a.start_date::text, a.end_date::text, e.weekly_hours::text
-      from app.absences a join app.employees e on e.id = a.employee_id where a.id = ${absenceId}`;
-  if (!a) return 0;
-  if (a.status !== 'genehmigt') {
-    await sql`delete from app.absence_hours where absence_id = ${absenceId}`;
-    return 0;
-  }
+type AbsenceHourRow = {
+  id: string;
+  absence_id: string;
+  employee_id: string;
+  work_date: string;
+  shift_plan_id: string | null;
+  site_id: string | null;
+  minutes: number;
+  paid: boolean;
+};
+
+/** Soll-Stunden einer genehmigten Abwesenheit je Einsatz und Tag nach dem heutigen Einsatzplan. */
+function expectedAbsenceRows(
+  a: Absence & { weekly_hours: string | null },
+  shifts: Awaited<ReturnType<typeof plannedShifts>>,
+): AbsenceHourRow[] {
   const paid = ABSENCE_PAID[a.kind];
-  const shifts = (
-    await plannedShifts(sql, { from: a.start_date, to: a.end_date, employeeId: a.employee_id })
-  ).filter((s) => !s.holiday && s.minutes > 0);
-  const rows: Record<string, unknown>[] = [];
   const half = (m: number) => (a.half_day ? Math.round(m / 2) : m);
-  if (shifts.length) {
-    for (const s of shifts)
+  const mine = shifts.filter(
+    (s) =>
+      s.plan.employee_id === a.employee_id &&
+      s.date >= a.start_date &&
+      s.date <= a.end_date &&
+      !s.holiday &&
+      s.minutes > 0,
+  );
+  const rows: AbsenceHourRow[] = [];
+  if (mine.length) {
+    for (const s of mine)
       rows.push({
         id: uuidOf(`abs-h:${a.id}:${s.date}:${s.plan.id}`),
         absence_id: a.id,
@@ -123,14 +130,77 @@ export async function applyAbsenceHours(sql: Sql, absenceId: string) {
       });
     }
   }
-  if (rows.length) await sql`insert into app.absence_hours ${sql(rows as never)} on conflict do nothing`;
-  return rows.length;
+  return rows;
+}
+
+/**
+ * Urlaub/Krank-Stunden auf den aktuellen Einsatzplan abgleichen (Ahmed 29.10.: „Audi 2 Tage krank, nur 8,5 Std.“).
+ * Bisher wurden die Stunden nur beim Genehmigen aus dem damaligen Plan berechnet – später geplante, geänderte oder
+ * gelöschte Einsätze und Vertretungen für den Abwesenheitstag fehlten. Jetzt: je Einsatz die geplanten Stunden des
+ * abwesenden Mitarbeiters (auch wenn eine Vertretung/ein Ausfall eingetragen ist), halber Tag = Hälfte, bezahlt laut
+ * Art; ohne Einsatzplan Wochenstunden ÷ 5 je Arbeitstag. Von Hand geänderte und importierte Tage (manual) bleiben.
+ * Schreibt nur, wenn sich etwas ändert.
+ */
+export async function syncAbsenceHours(
+  sql: Sql,
+  f: { from?: string; to?: string; employeeId?: string; absenceId?: string },
+) {
+  const abs = await sql<(Absence & { weekly_hours: string | null })[]>`
+    select a.*, a.start_date::text, a.end_date::text, e.weekly_hours::text
+      from app.absences a join app.employees e on e.id = a.employee_id
+     where a.status = 'genehmigt'
+       and ${f.absenceId ? sql`a.id = ${f.absenceId}` : sql`true`}
+       and ${f.employeeId ? sql`a.employee_id = ${f.employeeId}` : sql`true`}
+       and ${f.to ? sql`a.start_date <= ${f.to}` : sql`true`}
+       and ${f.from ? sql`a.end_date >= ${f.from}` : sql`true`}`;
+  if (!abs.length) return 0;
+  const from = abs.reduce((m, a) => (a.start_date < m ? a.start_date : m), abs[0]!.start_date);
+  const to = abs.reduce((m, a) => (a.end_date > m ? a.end_date : m), abs[0]!.end_date);
+  const emps = [...new Set(abs.map((a) => a.employee_id))];
+  const shifts = await plannedShifts(sql, {
+    from,
+    to,
+    ...(emps.length === 1 ? { employeeId: emps[0]! } : {}),
+    originalAssignee: true,
+  });
+  const existing = await sql<(AbsenceHourRow & { manual: boolean })[]>`
+    select id, absence_id, employee_id, work_date::text, shift_plan_id, site_id, minutes, paid, manual
+      from app.absence_hours where absence_id in ${sql(abs.map((a) => a.id))}`;
+  let changed = 0;
+  for (const a of abs) {
+    const have = existing.filter((h) => h.absence_id === a.id);
+    const manualDays = new Set(have.filter((h) => h.manual).map((h) => h.work_date));
+    const want = expectedAbsenceRows(a, shifts).filter((r) => !manualDays.has(r.work_date));
+    const auto = have.filter((h) => !h.manual);
+    const key = (r: AbsenceHourRow) => `${r.id}|${r.minutes}|${r.paid}|${r.shift_plan_id ?? ''}`;
+    const a1 = new Set(auto.map(key));
+    if (a1.size === want.length && want.every((r) => a1.has(key(r)))) continue;
+    await sql.begin(async (tx) => {
+      if (auto.length) await tx`delete from app.absence_hours where id in ${tx(auto.map((h) => h.id))}`;
+      if (want.length) await tx`insert into app.absence_hours ${tx(want as never)} on conflict do nothing`;
+    });
+    changed++;
+  }
+  return changed;
+}
+
+/** Genehmigte Abwesenheit auf die Einsätze übertragen (storniert/abgelehnt → Stunden entfallen). */
+export async function applyAbsenceHours(sql: Sql, absenceId: string) {
+  const [a] = await sql<{ status: AbsenceStatus }[]>`select status from app.absences where id = ${absenceId}`;
+  if (!a) return 0;
+  if (a.status !== 'genehmigt') {
+    await sql`delete from app.absence_hours where absence_id = ${absenceId}`;
+    return 0;
+  }
+  return syncAbsenceHours(sql, { absenceId });
 }
 
 export async function listAbsenceHours(
   sql: Sql,
   f: { absenceId?: string; employeeId?: string; from?: string; to?: string },
 ) {
+  // vorher auf den aktuellen Einsatzplan abgleichen (Stundenliste, Lohnarten, Export sehen immer den neuen Stand)
+  await syncAbsenceHours(sql, f);
   return sql<AbsenceHour[]>`
     select h.*, h.work_date::text, s.name as site_name,
            to_char(p.start_time, 'HH24:MI') as plan_from, to_char(p.end_time, 'HH24:MI') as plan_to

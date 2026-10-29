@@ -783,16 +783,20 @@ export async function plannedShifts(
     includeCancelled?: boolean;
     /** auch Einsätze ohne Mitarbeiter („zu planende Einsätze“) – nur für die Planungstafel */
     includeOpen?: boolean;
+    /** Für Urlaub/Krank-Stunden: Einsätze bleiben beim eingeplanten Mitarbeiter, auch wenn für den Tag eine Vertretung
+     *  oder ein Ausfall eingetragen ist (der fehlt ja gerade wegen der Abwesenheit – Lohnausfallprinzip § 4 EFZG). */
+    originalAssignee?: boolean;
   },
 ): Promise<PlannedShift[]> {
   // Vertretungen: Einsätze anderer Mitarbeiter, die dieser Mitarbeiter übernimmt
-  const subPlans = f.employeeId
-    ? (
-        await sql<{ id: string }[]>`
+  const subPlans =
+    f.employeeId && !f.originalAssignee
+      ? (
+          await sql<{ id: string }[]>`
           select distinct shift_plan_id as id from app.shift_exceptions
            where substitute_employee_id = ${f.employeeId} and work_date between ${f.from} and ${f.to}`
-      ).map((r) => r.id)
-    : [];
+        ).map((r) => r.id)
+      : [];
   // Soll zählt ab „gültig ab“ (auch rückwirkend geplant, Ahmed 12.10.), nicht vor dem Eintritt.
   // planned_on (Anlagetag) nutzt „Soll als Ist automatisch“: rückwirkend geplante Tage werden nie automatisch bestätigt.
   const plans = await sql<(ShiftPlanRow & { effective_from: string; emp_exit: string | null })[]>`
@@ -848,22 +852,24 @@ export async function plannedShifts(
       if (p0.effective_from > d || (p0.valid_until && p0.valid_until < d) || !occursOn(p0, d)) continue;
       if (p0.emp_exit && p0.emp_exit < d) continue;
       const ex = exOf(p0.id, d);
-      if (ex?.kind === 'ausfall' && !f.includeCancelled) continue;
+      if (ex?.kind === 'ausfall' && !f.includeCancelled && !f.originalAssignee) continue;
       // Vertretung/Umplanung: Einsatz gilt an diesem Tag für den anderen Mitarbeiter bzw. zu anderer Zeit
       const p: typeof p0 =
-        ex && ex.kind !== 'ausfall'
-          ? {
-              ...p0,
-              ...(ex.substitute_employee_id
-                ? {
-                    employee_id: ex.substitute_employee_id,
-                    employee_name: ex.substitute_name ?? p0.employee_name,
-                    personnel_no: ex.substitute_no ?? p0.personnel_no,
-                  }
-                : {}),
-              ...(ex.start_time ? { start_time: ex.start_time, end_time: ex.end_time! } : {}),
-            }
-          : p0;
+        f.originalAssignee && ex && (ex.kind === 'ausfall' || ex.substitute_employee_id)
+          ? p0
+          : ex && ex.kind !== 'ausfall'
+            ? {
+                ...p0,
+                ...(ex.substitute_employee_id
+                  ? {
+                      employee_id: ex.substitute_employee_id,
+                      employee_name: ex.substitute_name ?? p0.employee_name,
+                      personnel_no: ex.substitute_no ?? p0.personnel_no,
+                    }
+                  : {}),
+                ...(ex.start_time ? { start_time: ex.start_time, end_time: ex.end_time! } : {}),
+              }
+            : p0;
       if (f.employeeId && p.employee_id !== f.employeeId) continue;
       const [sh, sm] = p.start_time.split(':').map(Number) as [number, number];
       const [eh, em] = p.end_time.split(':').map(Number) as [number, number];
@@ -873,7 +879,8 @@ export async function plannedShifts(
       out.push({
         plan: p,
         date: d,
-        minutes: ex?.kind === 'ausfall' ? 0 : eh * 60 + em - (sh * 60 + sm) - p.break_minutes,
+        minutes:
+          ex?.kind === 'ausfall' && !f.originalAssignee ? 0 : eh * 60 + em - (sh * 60 + sm) - p.break_minutes,
         absence: abs?.kind ?? null,
         // Feiertag frei (bezahlt), außer der Einsatz ist „auch an Sonn- und Feiertagen“
         holiday: p.holiday_work ? undefined : holidayName(d),

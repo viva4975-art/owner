@@ -4482,3 +4482,7 @@ Testadresse.
   gearbeitet worden wären; Tage ohne geplanten Einsatz zählen 0. Ein „Ausfall“, der aus anderem Grund ohnehin gewesen
   wäre (Objekt geschlossen), zählt jetzt ebenfalls – dann am Tag „Stunden je Einsatz“ von Hand auf 0 setzen.
   Test `absence-sync.db.test.ts`.
+  Nebenbei: Test `time.db.test.ts` erwartete noch den gesetzlichen Mindesturlaub bei Eintritt 01.07. (20 Tage) – seit
+  26.10. rechnet die App auf Ahmeds Wunsch rein anteilig ohne Untergrenze (15 Tage); Test angepasst. **Rechtlich:** Bei
+  Eintritt bis 01.07. ist die Wartezeit (§ 4 BUrlG) im Jahr erfüllt → mindestens der gesetzliche Mindesturlaub (4 Wochen
+  × Arbeitstage, bei 5-Tage-Woche 20) ist geschuldet; die rein anteilige Rechnung unterschreitet das (§ 13 BUrlG).

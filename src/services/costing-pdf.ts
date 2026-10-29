@@ -159,7 +159,7 @@ export async function siteCostingPdf(
       rev ? pct(Number((margin * 10000n) / rev)) : '–',
     ],
     footnote:
-      'DB = Erlös − Lohn (Ist-Stunden × Stundenlohn + Zuschlag) − Material − Nachunternehmer − Geräte − Sonstiges; ' +
+      'DB = Erlös − Lohn (laut Lohnarten + Zuschlag) − Material − Nachunternehmer − Geräte − Sonstiges; ' +
       'Gesamt nur Objekte (inkl. Büro) – allgemeine Kostenstellen stehen separat. Interne Auswertung.',
   });
 }

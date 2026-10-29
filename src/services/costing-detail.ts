@@ -1,8 +1,8 @@
 import type { Sql } from '../db/client.js';
-import { getAccountingSettings } from './datev.js';
 import { monthRange, SPECIAL_SITE_ID, subcontractEstimates } from './costing.js';
 import { COST_CATEGORY, type CostCategory } from './purchasing.js';
 import { recurringCosts } from './recurring-payments.js';
+import { laborFromPayroll } from './costing-labor.js';
 
 /*
  * Aufschlüsselung einer Zeile der Nachkalkulation (Ahmed 26.10.: „die einzelne Position öffnen und sehen, welche Kosten
@@ -25,6 +25,8 @@ export interface LaborItem {
   wage_cents: bigint;
   wage_assumed: boolean;
   overhead_bp: number;
+  /** Lohn laut Lohnarten (ohne Lohnzuschlag) */
+  gross: bigint;
   cost: bigint;
 }
 
@@ -94,7 +96,6 @@ export async function siteCostBreakdown(
 ): Promise<CostBreakdown> {
   const from = monthRange(period.from).from;
   const to = monthRange(period.to).to;
-  const settings = await getAccountingSettings(sql);
   const siteOf = (expr: ReturnType<Sql>) =>
     siteId === SPECIAL_SITE_ID
       ? sql`(st.special_cleaning or ${expr} = ${siteId})`
@@ -123,32 +124,7 @@ export async function siteCostBreakdown(
        where l.site_id is not null and ${siteOf(sql`l.site_id`)}
          and coalesce(l.period_start, i.issue_date) between ${from} and ${to}
        group by 1, 2, 3`,
-    sql<
-      {
-        employee_id: string;
-        name: string;
-        personnel_no: string;
-        minutes: number;
-        wage: bigint | null;
-        min_wage: bigint | null;
-        overhead_bp: number;
-      }[]
-    >`
-      select e.id as employee_id, e.last_name || ', ' || e.first_name as name, e.personnel_no,
-             sum(extract(epoch from (t.end_at - t.start_at)) / 60 - t.break_minutes)::int as minutes,
-             app.effective_wage_cents(e)::bigint as wage,
-             (select min(w.hourly_wage_cents) from app.wage_levels w where w.active)::bigint as min_wage,
-             (case when exists (select 1 from unnest(coalesce(e.tags, '{}')) t where t ~* 'gesch(ä|ae)ftsf(ü|ue)hr')
-                    -- Geschäftsführer laut Firmendaten (Ahmed 26.10.: „bei ihm geht nichts weg“)
-                    or (select lower(coalesce(managing_director, '')) from app.company limit 1) like '%' || lower(e.first_name || ' ' || e.last_name) || '%' then 0
-                   when e.employment_type = 'minijob' then ${settings.overhead_minijob_bp}::int
-                   when coalesce(e.weekly_hours, case when e.employment_type = 'vollzeit' then 40 else 0 end) > 30
-                     then ${settings.overhead_fulltime_bp}::int
-                   else ${settings.overhead_parttime_bp}::int end)::int as overhead_bp
-        from app.time_entries t join app.employees e on e.id = t.employee_id
-       where t.site_id = ${siteId} and t.status in ('erfasst', 'freigegeben')
-         and t.work_date between ${from} and ${to}
-       group by e.id`,
+    laborFromPayroll(sql, from, to),
     sql<
       {
         issue_id: string | null;
@@ -212,21 +188,18 @@ export async function siteCostBreakdown(
     });
   b.revenue.sort(sortItems);
   b.labor = labor
-    .map((l) => {
-      const wage = BigInt(l.wage ?? l.min_wage ?? 0);
-      // gleiche Rechnung wie siteCosting: Minuten × Lohn × (1 + Zuschlag) ÷ 60, kaufmännisch gerundet
-      const cost = (BigInt(l.minutes) * wage * BigInt(10000 + l.overhead_bp) + 300000n) / 600000n;
-      return {
-        employee_id: l.employee_id,
-        name: l.name,
-        personnel_no: l.personnel_no,
-        minutes: l.minutes,
-        wage_cents: wage,
-        wage_assumed: l.wage === null,
-        overhead_bp: l.overhead_bp,
-        cost,
-      };
-    })
+    .filter((l) => l.site_id === siteId && (l.cost || l.minutes))
+    .map((l) => ({
+      employee_id: l.employee_id,
+      name: l.name,
+      personnel_no: l.personnel_no,
+      minutes: l.minutes,
+      wage_cents: l.wage_cents,
+      wage_assumed: l.wage_assumed,
+      overhead_bp: l.overhead_bp,
+      gross: l.gross,
+      cost: l.cost,
+    }))
     .sort((a, b2) => Number(b2.cost - a.cost));
   for (const m of stock) {
     const qty = (Number(m.qty_milli) / 1000).toLocaleString('de-DE', { maximumFractionDigits: 3 });

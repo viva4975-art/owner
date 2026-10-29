@@ -4155,10 +4155,11 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
             </a>
           )}
           <span class="small mut" style="flex-basis:100%">
-            Lohn = Ist-Stunden × Stundenlohn (fehlt die Vergütung: niedrigster Tariflohn) + Zuschlag (Minijob{' '}
-            {pct(overhead.minijob)}, Teilzeit {pct(overhead.parttime)}, über 30 Std. {pct(overhead.fulltime)};
-            Geschäftsführer ohne Zuschlag) · Nachunternehmer = Eingangsrechnungen, sonst Monatspauschale laut
-            Bestellung · Ziel {pct(targetBp)} · <a href="/datev">Werte ändern</a>
+            Lohn = laut Lohnarten (erfasste Zeit, sonst geplante; Urlaub, Krank, Feiertag, Zuschläge;
+            Festgehalt; fehlt die Vergütung: niedrigster Tariflohn), nach Stunden auf die Objekte verteilt, +
+            Zuschlag (Minijob {pct(overhead.minijob)}, Teilzeit {pct(overhead.parttime)}, über 30 Std.{' '}
+            {pct(overhead.fulltime)}; Geschäftsführer ohne Zuschlag) · Nachunternehmer = Eingangsrechnungen,
+            sonst Monatspauschale laut Bestellung · Ziel {pct(targetBp)} · <a href="/datev">Werte ändern</a>
           </span>
         </form>
         <PdfExport
@@ -4174,7 +4175,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
           <div class="kpi">
             <div class="l">Lohn inkl. Zuschlag</div>
             <div class="v">{euro(sum((r) => r.labor))}</div>
-            <div class="s">Ist-Stunden × Stundenlohn</div>
+            <div class="s">laut Lohnarten</div>
           </div>
           <div class="kpi">
             <div class="l">Nachunternehmer + Material</div>

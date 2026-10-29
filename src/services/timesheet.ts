@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { addDays, holidayName, isoWeekday } from '../domain/time/holidays.js';
-import { ABSENCE_LABEL, type AbsenceKind, listAbsenceHours } from './absences.js';
+import { type AbsenceKind, listAbsenceHours } from './absences.js';
 import { BusinessError } from './errors.js';
 import { breakRange, clock, listEntries, plannedShifts } from './time.js';
 import type { Deps } from './workflow.js';
@@ -263,9 +263,14 @@ function markOverridden(rows: SheetRow[], absentDays: Set<string>) {
   for (const r of rows) if (r.start && absentDays.has(r.date)) r.overridden = true;
 }
 
+// ausgeschrieben statt {...ABSENCE_LABEL}: absences.ts und timesheet.ts importieren sich über Umwege gegenseitig –
+// beim Laden über die Nachkalkulation wäre ABSENCE_LABEL hier noch nicht belegt
 export const ABSENCE_SHORT: Record<AbsenceKind, string> = {
-  ...ABSENCE_LABEL,
+  urlaub: 'Urlaub',
+  krank: 'Krank',
+  kind_krank: 'Kind krank',
   unbezahlt: 'Unbezahlt',
+  sonstiges: 'Sonstiges',
 };
 
 // ---------------------------------------------------------------- Unterschrift

@@ -4510,3 +4510,16 @@ Testadresse.
   Tabellen mit Kopfzeile und ab 8 Zeilen (`stickyHeads` in `client.ts`, abschaltbar mit `data-nostick`). Eigene Kopie des
   Kopfs unter der Menüleiste (CSS sticky greift in seitlich scrollenden Tabellen nicht), gleiche Spaltenbreiten, folgt
   dem seitlichen Scrollen, Klick auf die Überschrift sortiert weiter. Gilt am PC und in der App.
+- 2026-10-29: **Nachkalkulation: Lohn aus den Lohnarten** (Ahmed): Lohn je Objekt kommt jetzt aus derselben Berechnung wie
+  Stundenliste & Lohnarten / Lohnexport (`src/services/costing-labor.ts`, `payrollMonth` mit „Ist, sonst Plan“, je Monat des
+  Zeitraums): Normal-/Aushilfsstunden, Urlaub, Krank, Feiertagslohn × Stundenlohn (fehlt die Vergütung: niedrigster
+  Tariflohn) bzw. Festgehalt − Abzug unbezahlt, dazu Nacht-, Sonn-/Feiertags- und Mehrarbeitszuschläge; darauf weiter der
+  Lohnzuschlag je Beschäftigungsart (Geschäftsführer ohne). Verteilt auf die Objekte nach den bezahlten Minuten dort
+  (`PayrollRow.siteMinutes`: Arbeit, Feiertagslohn, bezahlte Abwesenheit am Einsatz-Objekt; centgenau, Rest-Cent an die
+  größten Reste). Festgehalt ohne Zeit/Einsatz fällt auf „ohne Objekt“ und zählt nicht. „Kosten aufschlüsseln“ zeigt je
+  Person bezahlte Std., Lohn laut Lohnarten, Zuschlag, Kosten. Ist-Std. in der Liste bleiben die erfassten Zeiten.
+  Startseiten-Ampel puffert die Berechnung 2 Min. Plan-Kalkulation unverändert. **Hinweis:** Urlaub/Krank/Feiertag
+  zählen jetzt als Lohn (vorher nur gearbeitete Stunden, abgedeckt über den Lohnzuschlag) – enthält der Lohnzuschlag
+  (26–32 %) einen Anteil für Ausfallzeiten, ist das jetzt doppelt → Sätze unter Einstellungen → DATEV/Nachkalkulation
+  auf reine Arbeitgeberanteile prüfen. Fund nebenbei: Kreis-Import absences ↔ timesheet (`ABSENCE_SHORT` jetzt
+  ausgeschrieben).

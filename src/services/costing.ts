@@ -5,11 +5,13 @@ import type { Sql } from '../db/client.js';
 import { addDays } from '../domain/time/holidays.js';
 import { getAccountingSettings } from './datev.js';
 import { plannedShifts } from './time.js';
+import { laborFromPayroll } from './costing-labor.js';
 
 /*
  * Nachkalkulation je Objekt und Monat:
  *   Erlös (netto, ausgestellte Rechnungen inkl. Storno/Korrektur; Leistungszeitraum, sonst Rechnungsdatum)
- * − Lohnkosten (Ist-Stunden × Stundenlohn × (1 + Zuschlag für AG-Anteile, Urlaub, Krankheit, Feiertage));
+ * − Lohnkosten laut Lohnarten (Ist, sonst Plan; Stunden inkl. Urlaub/Krank/Feiertag × Lohn bzw. Gehalt, Zuschläge)
+ *   × (1 + Lohnzuschlag für AG-Anteile);
  *   Zuschlag je Beschäftigungsart: Minijob, Teilzeit bis 30 Std./Woche, darüber (Einstellungen → DATEV)
  * − Material (Lagerabgänge an das Objekt × EK + Eingangsrechnungen „Material“ mit Objekt)
  * − Nachunternehmer und sonstige Eingangsrechnungen mit Objekt (Leistungsmonat)
@@ -241,6 +243,7 @@ export async function siteCosting(
   sql: Sql,
   period: string | { from: string; to: string },
   siteId?: string,
+  opts: { cachedLabor?: boolean } = {},
 ): Promise<{ rows: SiteCosting[]; general: GeneralCost[]; overhead: OverheadRates; targetBp: number }> {
   const pf = typeof period === 'string' ? period : period.from;
   const pt = typeof period === 'string' ? period : period.to;
@@ -248,6 +251,8 @@ export async function siteCosting(
   const to = monthRange(pt).to;
   const settings = await getAccountingSettings(sql);
   const nuEst = await subcontractEstimates(sql, from, to, siteId);
+  const shares = await laborFromPayroll(sql, from, to, { cached: !!opts.cachedLabor });
+  const laborSites = [...new Set(shares.filter((x) => x.site_id && x.cost).map((x) => x.site_id))];
   const [sites, revenue, legacyRevenue, labor, stock, incoming, shifts, general] = await Promise.all([
     sql<
       {
@@ -269,7 +274,8 @@ export async function siteCosting(
            ? sql`s.id = ${siteId}`
            : sql`(s.active or exists (select 1 from app.cost_allocations a where a.site_id = s.id and a.month between ${from} and ${to})
                   or exists (select 1 from app.time_entries t where t.site_id = s.id and t.work_date between ${from} and ${to})
-                  or s.id = any(${nuEst.map((x) => x.site_id)}::uuid[]))`
+                  or s.id = any(${nuEst.map((x) => x.site_id)}::uuid[])
+                  or s.id = any(${laborSites}::uuid[]))`
        }
        order by s.site_no`,
     // je Position: Objekt aus der Leistung (Sammelrechnungen der Rechnungsgruppen haben kein Objekt im Kopf);
@@ -293,25 +299,10 @@ export async function siteCosting(
         left join app.sites sp on sp.id = ${SPECIAL_SITE_ID}
        where l.site_id is not null and coalesce(l.period_start, i.issue_date) between ${from} and ${to}
        group by 1`,
-    // Lohn je Eintrag: Minuten × Stundenlohn / 60 (Cent-genau, kaufmännisch gerundet je Objekt)
-    sql<{ site_id: string; minutes: number; wage_minutes_cents: bigint; missing: number }[]>`
-      select t.site_id,
-             sum(extract(epoch from (t.end_at - t.start_at)) / 60 - t.break_minutes)::int as minutes,
-             -- ohne hinterlegte Vergütung: niedrigster aktiver Tariflohn (als „angenommen“ gekennzeichnet)
-             coalesce(sum(((extract(epoch from (t.end_at - t.start_at)) / 60 - t.break_minutes)::bigint)
-                          * coalesce(app.effective_wage_cents(e),
-                                     (select min(w.hourly_wage_cents) from app.wage_levels w where w.active))
-                          -- Geschäftsführer (Tag) ohne Zuschlag (Ahmed 23.10.)
-                          * (10000 + case when exists (select 1 from unnest(coalesce(e.tags, '{}')) t
-                                                        where t ~* 'gesch(ä|ae)ftsf(ü|ue)hr')
-                    -- Geschäftsführer laut Firmendaten (Ahmed 26.10.: „bei ihm geht nichts weg“)
-                    or (select lower(coalesce(managing_director, '')) from app.company limit 1) like '%' || lower(e.first_name || ' ' || e.last_name) || '%' then 0
-                                          when e.employment_type = 'minijob' then ${settings.overhead_minijob_bp}::int
-                                          when coalesce(e.weekly_hours, case when e.employment_type = 'vollzeit' then 40 else 0 end) > 30
-                                            then ${settings.overhead_fulltime_bp}::int
-                                          else ${settings.overhead_parttime_bp}::int end)), 0)::bigint as wage_minutes_cents,
-             count(*) filter (where app.effective_wage_cents(e) is null)::int as missing
-        from app.time_entries t join app.employees e on e.id = t.employee_id
+    // Ist-Stunden (Anzeige); der Lohn kommt aus den Lohnarten (laborFromPayroll, unten)
+    sql<{ site_id: string; minutes: number }[]>`
+      select t.site_id, sum(extract(epoch from (t.end_at - t.start_at)) / 60 - t.break_minutes)::int as minutes
+        from app.time_entries t
        where t.status in ('erfasst', 'freigegeben') and t.work_date between ${from} and ${to}
        group by t.site_id`,
     sql<{ site_id: string; cost: bigint }[]>`
@@ -344,8 +335,9 @@ export async function siteCosting(
       (revenue.find((r) => r.site_id === s.id)?.net ?? 0n) +
       (legacyRevenue.find((r) => r.site_id === s.id)?.net ?? 0n);
     const l = labor.find((r) => r.site_id === s.id);
-    // Cent je Minute × (10000 + Zuschlag in Basispunkten) → / 60 / 10000, kaufmännisch gerundet
-    const laborCents = l ? (l.wage_minutes_cents + 300000n) / 600000n : 0n;
+    // Lohn laut Lohnarten + Lohnzuschlag, nach bezahlten Minuten auf die Objekte verteilt
+    const mine = shares.filter((x) => x.site_id === s.id);
+    const laborCents = mine.reduce((a, x) => a + x.cost, 0n);
     const inc = incoming.filter((r) => r.site_id === s.id);
     // Material für Büro/Lager (interne Bereiche) zählt nicht (Ahmed 27.10.): es kommt über die Materialausgabe
     // beim Objekt an und stünde sonst doppelt in der Kalkulation
@@ -374,7 +366,7 @@ export async function siteCosting(
         .reduce((a, x) => a + x.minutes, 0),
       actual_minutes: l?.minutes ?? 0,
       labor: laborCents,
-      missing_wage: l?.missing ?? 0,
+      missing_wage: mine.filter((x) => x.wage_assumed).length,
       material,
       subcontractor: sub,
       subcontractor_estimated: est,

@@ -316,7 +316,7 @@ export function registerModuleRoutes(ctx: Ctx) {
         signOverdue={signOverdue}
         ampel={await (async () => {
           const m = lastMonth();
-          const { rows, targetBp } = await siteCosting(sql, m);
+          const { rows, targetBp } = await siteCosting(sql, m, undefined, { cachedLabor: true });
           const withRev = rows.filter((r) => r.revenue !== 0n);
           const red = withRev.filter((r) => r.margin < 0n);
           const yellow = withRev.filter((r) => r.margin >= 0n && (r.margin_bp ?? 0) < targetBp);

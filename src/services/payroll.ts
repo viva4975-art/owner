@@ -157,6 +157,9 @@ export interface PayrollRow {
   holidayWorkedAsLfzMinutes: number;
   /** erfasste Zeit an Tagen mit ganztägiger Abwesenheit – nicht als Arbeit gezählt (Abwesenheit geht vor) */
   absenceConflictMinutes: number;
+  /** bezahlte Minuten je Objekt (Arbeit, Feiertagslohn, bezahlte Abwesenheit) – Verteilung in der Nachkalkulation;
+   * Schlüssel '' = ohne Objekt */
+  siteMinutes: Record<string, number>;
 }
 
 /** Ortszeit Berlin (JJJJ-MM-TT, HH:MM) → Zeitpunkt; Sommer-/Winterzeit über Intl ermittelt. */
@@ -304,6 +307,12 @@ export async function payrollMonth(
   // 28.10.), auch wenn trotzdem eine Zeit erfasst ist; nur eine Abwesenheit an dem Tag geht vor. Einsätze mit Haken
   // haben kein `holiday` (plannedShifts) und zählen als Arbeit mit Zuschlag.
   const holidayPay = new Map<string, number>();
+  const holidaySite = new Map<string, Map<string, number>>();
+  const addSite = (m: Map<string, Map<string, number>>, emp: string, site: string | null, min: number) => {
+    const x = m.get(emp) ?? new Map<string, number>();
+    x.set(site ?? '', (x.get(site ?? '') ?? 0) + min);
+    m.set(emp, x);
+  };
   const lfzDays = new Set<string>();
   // Soll-Minuten des Monats laut Einsatzplan (inkl. Feier- und Abwesenheitstage) = Grundlage des Gehaltsabzugs
   const planBase = new Map<string, number>();
@@ -313,6 +322,7 @@ export async function payrollMonth(
     planBase.set(emp, (planBase.get(emp) ?? 0) + Math.max(0, sh.minutes));
     if (!sh.holiday || sh.absence) continue;
     holidayPay.set(emp, (holidayPay.get(emp) ?? 0) + Math.max(0, sh.minutes));
+    addSite(holidaySite, emp, sh.plan.site_id, Math.max(0, sh.minutes));
     lfzDays.add(`${emp}|${sh.date}`);
   }
   for (const h of absHours)
@@ -327,6 +337,7 @@ export async function payrollMonth(
   // Vorab: geplante Einsätze nach dem Stichtag als Zeiten (Beginn/Ende in Berliner Zeit)
   const forecast: {
     employee_id: string;
+    site_id: string;
     start_at: Date;
     end_at: Date;
     break_minutes: number;
@@ -358,6 +369,7 @@ export async function payrollMonth(
         if (absMin > 0 && rest > 0)
           forecast.push({
             employee_id: emp,
+            site_id: sh.plan.site_id,
             start_at: berlinAt(sh.date, st),
             end_at: berlinAt(endDate, en),
             break_minutes: 0,
@@ -368,6 +380,7 @@ export async function payrollMonth(
       }
       forecast.push({
         employee_id: emp,
+        site_id: sh.plan.site_id,
         start_at: berlinAt(sh.date, st),
         end_at: berlinAt(endDate, en),
         break_minutes: sh.plan.break_minutes ?? 0,
@@ -413,11 +426,16 @@ export async function payrollMonth(
     let absenceConflict = 0;
     let pending = 0;
     let fc = 0;
+    const sites = new Map<string, number>();
+    const site = (id: string | null, min: number) => {
+      if (min > 0) sites.set(id ?? '', (sites.get(id ?? '') ?? 0) + min);
+    };
     for (const f of forecast) {
       if (f.employee_id !== e.id) continue;
       if (f.restMinutes != null) {
         m.normal += f.restMinutes;
         fc += f.restMinutes;
+        site(f.site_id, f.restMinutes);
         continue;
       }
       const net = Math.max(
@@ -426,6 +444,7 @@ export async function payrollMonth(
       );
       m.normal += net;
       fc += net;
+      site(f.site_id, net);
       const sm = surchargeMinutes(
         f.start_at,
         f.end_at,
@@ -451,11 +470,15 @@ export async function payrollMonth(
         // Feiertag ohne festgelegte Feiertagsarbeit: Feiertagslohn statt Arbeit + Zuschlag. Steht dafür ein Einsatz im
         // Plan, zählt dessen Zeit (oben), sonst die erfasste Zeit.
         const key = `${e.id}|${t.work_date}`;
-        if (!lfzDays.has(key)) holidayPay.set(e.id, (holidayPay.get(e.id) ?? 0) + net);
+        if (!lfzDays.has(key)) {
+          holidayPay.set(e.id, (holidayPay.get(e.id) ?? 0) + net);
+          site(t.site_id, net);
+        }
         holidayAsLfz += net;
         continue;
       }
       m.normal += net;
+      site(t.site_id, net);
       const br = breakRange(t);
       const sm = surchargeMinutes(
         t.start_at,
@@ -473,6 +496,7 @@ export async function payrollMonth(
     }
     m.mehrarbeit = overtime.get(e.id) ?? 0;
     m.feiertag_lfz = holidayPay.get(e.id) ?? 0;
+    for (const [sid, min] of holidaySite.get(e.id) ?? []) site(sid, min);
     let unpaid = 0;
     for (const h of absHours) {
       if (h.employee_id !== e.id) continue;
@@ -481,6 +505,7 @@ export async function payrollMonth(
         unpaid += h.minutes; // Stundenlohn: nicht bezahlt; Festgehalt: Abzug (unten)
         continue;
       }
+      site(h.site_id, h.minutes);
       if (k === 'urlaub') m.urlaub += h.minutes;
       else if (k === 'krank' || k === 'kind_krank') m.krank += h.minutes;
       else m.normal += h.minutes; // sonstige bezahlte Abwesenheit = Normalstunden
@@ -529,6 +554,7 @@ export async function payrollMonth(
         uncoveredSundayHolidayMinutes: uncovered,
         holidayWorkedAsLfzMinutes: holidayAsLfz,
         absenceConflictMinutes: absenceConflict,
+        siteMinutes: Object.fromEntries(sites),
       });
   }
   return rows;

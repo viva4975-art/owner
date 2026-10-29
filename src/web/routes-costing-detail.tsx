@@ -204,15 +204,16 @@ export function registerCostingDetailRoutes(ctx: Ctx) {
             Lohn <span class="mut small">· {euro(r.labor)}</span>
           </h3>
           {!b.labor.length ? (
-            <p class="small mut">Keine erfassten Zeiten im Zeitraum.</p>
+            <p class="small mut">Kein Lohn im Zeitraum.</p>
           ) : (
             <div class="tbl">
               <table>
                 <thead>
                   <tr>
                     <th>Mitarbeiter/in</th>
-                    <th class="r">Ist-Std.</th>
+                    <th class="r">Bezahlte Std.</th>
                     <th class="r">Stundenlohn</th>
+                    <th class="r">Lohn (Lohnarten)</th>
                     <th class="r">Zuschlag</th>
                     <th class="r">Kosten</th>
                   </tr>
@@ -231,6 +232,7 @@ export function registerCostingDetailRoutes(ctx: Ctx) {
                       </td>
                       <td class="r">{hm(l.minutes)}</td>
                       <td class="r">{euro(l.wage_cents)}</td>
+                      <td class="r">{euro(l.gross)}</td>
                       <td class="r">{pct(l.overhead_bp)}</td>
                       <td class="r">{euro(l.cost)}</td>
                     </tr>
@@ -242,7 +244,11 @@ export function registerCostingDetailRoutes(ctx: Ctx) {
                     <td class="r">
                       <b>{hm(b.labor.reduce((a, l) => a + l.minutes, 0))}</b>
                     </td>
-                    <td colspan={2} />
+                    <td />
+                    <td class="r">
+                      <b>{euro(b.labor.reduce((a, l) => a + l.gross, 0n))}</b>
+                    </td>
+                    <td />
                     <td class="r">
                       <b>{euro(r.labor)}</b>
                       {laborSum !== r.labor && (
@@ -257,8 +263,11 @@ export function registerCostingDetailRoutes(ctx: Ctx) {
             </div>
           )}
           <p class="small mut">
-            Lohn = Ist-Stunden × Stundenlohn × (1 + Zuschlag je Beschäftigungsart). Die einzelnen Zeiten
-            stehen unter <a href={`/objekte/${r.site_id}/zeiten`}>Objekt → Erfasste Zeiten</a>.
+            Lohn laut Lohnarten (wie Stundenliste & Lohnarten / Lohnexport: erfasste Zeit, sonst geplante;
+            Urlaub, Krank, Feiertag; Nacht-, Sonn-/Feiertags- und Mehrarbeitszuschläge; Festgehalt anteilig
+            nach Stunden) × (1 + Lohnzuschlag je Beschäftigungsart). Bezahlte Std. = Arbeit + bezahlte
+            Abwesenheit an diesem Objekt. Die einzelnen Zeiten stehen unter{' '}
+            <a href={`/objekte/${r.site_id}/zeiten`}>Objekt → Erfasste Zeiten</a>.
           </p>
         </div>
         <CostSections b={b} />

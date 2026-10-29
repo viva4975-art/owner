@@ -64,7 +64,8 @@ describe.skipIf(!available)('Nachkalkulation aufschlüsseln', () => {
     expect(b.labor.reduce((a, l) => a + l.cost, 0n)).toBe(r.labor);
     const c = b.labor.find((l) => l.employee_id === chef)!;
     expect(c.overhead_bp).toBe(0);
-    expect(c.cost).toBe(12000n); // 4 Std. × 30 €, kein Zuschlag
+    // Lohn laut Lohnarten (Ist, sonst Plan): 5 Dienstage × 4 Std. × 30 €, kein Zuschlag
+    expect(c.cost).toBe(60000n);
     expect(b.labor.find((l) => l.employee_id === emp)!.overhead_bp).toBeGreaterThan(0);
   });
 

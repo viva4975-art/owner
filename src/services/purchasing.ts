@@ -12,6 +12,7 @@ import {
 import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import { type SubcontractLink, replaceLinks } from './expected-invoices.js';
 import { invoiceOffsets } from './advances.js';
+import { deductionSums } from './incoming-deductions.js';
 import { BusinessError } from './errors.js';
 import { getSeller } from './masterdata.js';
 import { syncAutoAllocation } from './cost-centers.js';
@@ -370,6 +371,8 @@ export type IncomingRow = IncomingInvoice & {
   file_count: number;
   /** mit Vorschüssen verrechnet (mindert den Zahlbetrag) */
   advance_offset_cents: bigint;
+  /** Abzüge bei der Prüfung (brutto, mindern den Zahlbetrag) */
+  deduction_cents: bigint;
 };
 
 export async function listIncoming(
@@ -380,6 +383,8 @@ export async function listIncoming(
     select i.*, s.name as supplier_name, s.supplier_no, s.kind as supplier_kind, s.iban, st.name as site_name, o.number as po_number,
            (select coalesce(sum(ao.amount_cents), 0)::bigint from app.subcontractor_advance_offsets ao
              where ao.incoming_invoice_id = i.id) as advance_offset_cents,
+           (select coalesce(sum(d.gross_cents), 0)::bigint from app.incoming_deductions d
+             where d.incoming_invoice_id = i.id) as deduction_cents,
            (select count(*)::int from app.file_links l join app.files f on f.id = l.file_id
              where l.entity_type = 'incoming_invoice' and l.entity_id = i.id and f.status = 'complete') as file_count
       from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
@@ -394,7 +399,9 @@ export async function getIncoming(sql: Sql, id: string) {
   const [i] = await sql<IncomingRow[]>`
     select i.*, s.name as supplier_name, s.supplier_no, s.kind as supplier_kind, s.iban, st.name as site_name, o.number as po_number, 0 as file_count,
            (select coalesce(sum(ao.amount_cents), 0)::bigint from app.subcontractor_advance_offsets ao
-             where ao.incoming_invoice_id = i.id) as advance_offset_cents
+             where ao.incoming_invoice_id = i.id) as advance_offset_cents,
+           (select coalesce(sum(d.gross_cents), 0)::bigint from app.incoming_deductions d
+             where d.incoming_invoice_id = i.id) as deduction_cents
       from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
       left join app.sites st on st.id = i.site_id left join app.purchase_orders o on o.id = i.purchase_order_id
      where i.id = ${id}`;
@@ -585,8 +592,12 @@ export async function paymentList(sql: Sql, payDate: string) {
   const list = await listIncoming(sql, { status: ['freigegeben'] });
   return list
     .map((i) => {
-      const skonto = skontoFor(i, payDate);
-      return { invoice: i, skonto, amount: i.gross_cents - skonto - i.advance_offset_cents };
+      const skonto = skontoFor({ ...i, gross_cents: i.gross_cents - i.deduction_cents }, payDate);
+      return {
+        invoice: i,
+        skonto,
+        amount: i.gross_cents - i.deduction_cents - skonto - i.advance_offset_cents,
+      };
     })
     .sort((a, b) =>
       (a.invoice.skonto_until && a.skonto > 0n ? a.invoice.skonto_until : a.invoice.due_date).localeCompare(
@@ -615,8 +626,9 @@ export async function markPaid(
       if (i.status === 'bezahlt') continue;
       if (i.status !== 'freigegeben')
         throw new BusinessError(`${i.invoice_no}: erst freigeben, dann bezahlen`);
-      const sk = p.skonto ? skontoFor(i, p.date) : 0n;
-      const adv = (await invoiceOffsets(tx, [id])).get(id) ?? 0n;
+      const ded = (await deductionSums(tx, [id])).get(id) ?? 0n;
+      const sk = p.skonto ? skontoFor({ ...i, gross_cents: i.gross_cents - ded }, p.date) : 0n;
+      const adv = ((await invoiceOffsets(tx, [id])).get(id) ?? 0n) + ded;
       if (i.gross_cents > 0n && i.gross_cents - sk - adv < 0n)
         throw new BusinessError(`${i.invoice_no}: Vorschuss und Skonto übersteigen den Rechnungsbetrag`);
       await tx`update app.incoming_invoices set status = 'bezahlt', paid_at = ${p.date},
@@ -651,9 +663,10 @@ export async function markPaidDirect(
     if (!i) throw new BusinessError('Rechnung nicht gefunden');
     if (i.status === 'bezahlt') return;
     if (i.status === 'abgelehnt') throw new BusinessError('Abgelehnte Rechnung kann nicht bezahlt werden');
-    const adv = (await invoiceOffsets(tx, [id])).get(id) ?? 0n;
+    const adv =
+      ((await invoiceOffsets(tx, [id])).get(id) ?? 0n) + ((await deductionSums(tx, [id])).get(id) ?? 0n);
     if (i.gross_cents > 0n && i.gross_cents - adv < 0n)
-      throw new BusinessError('Vorschuss übersteigt den Rechnungsbetrag');
+      throw new BusinessError('Vorschuss und Abzüge übersteigen den Rechnungsbetrag');
     const approve = i.status === 'erfasst';
     await tx`update app.incoming_invoices set status = 'bezahlt', paid_at = ${p.date},
                     paid_amount_cents = ${i.gross_cents - adv}, paid_skonto_cents = 0, paid_method = ${p.method},
@@ -790,8 +803,12 @@ ${tx}
 export async function paymentProposal(sql: Sql, executionDate: string) {
   const list = await listIncoming(sql, { status: ['freigegeben'] });
   return list.map((i) => {
-    const skonto = skontoFor(i, executionDate);
-    return { invoice: i, skonto, amount: i.gross_cents - skonto - i.advance_offset_cents };
+    const skonto = skontoFor({ ...i, gross_cents: i.gross_cents - i.deduction_cents }, executionDate);
+    return {
+      invoice: i,
+      skonto,
+      amount: i.gross_cents - i.deduction_cents - skonto - i.advance_offset_cents,
+    };
   });
 }
 
@@ -864,7 +881,7 @@ export async function createPaymentRun(
       await tx`insert into app.payment_run_items (run_id, incoming_invoice_id, amount_cents, skonto_cents, creditor_name, creditor_iban, creditor_bic, remittance)
                values (${p.id}, ${x.invoice.id}, ${x.amount}, ${x.skonto}, ${x.invoice.supplier_name}, ${x.invoice.iban!.replace(/\s/g, '').toUpperCase()},
                        ${ibanOf.find((s) => s.id === x.invoice.supplier_id)?.bic ?? null},
-                       ${`Rechnung ${x.invoice.invoice_no} vom ${formatDateDe(x.invoice.invoice_date)}${x.skonto > 0n ? ` abzgl. Skonto ${eur(x.skonto)}` : ''}${x.invoice.advance_offset_cents > 0n ? ` abzgl. Vorschuss ${eur(x.invoice.advance_offset_cents)}` : ''}`})`;
+                       ${`Rechnung ${x.invoice.invoice_no} vom ${formatDateDe(x.invoice.invoice_date)}${x.skonto > 0n ? ` abzgl. Skonto ${eur(x.skonto)}` : ''}${x.invoice.deduction_cents > 0n ? ` abzgl. Abzug ${eur(x.invoice.deduction_cents)}` : ''}${x.invoice.advance_offset_cents > 0n ? ` abzgl. Vorschuss ${eur(x.invoice.advance_offset_cents)}` : ''}`})`;
     }
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
              values (${p.actor}, 'create', 'payment_run', ${p.id}, ${tx.json({ number: runNumber, items: proposal.length, recurring: rec.length, total: String(total) })})`;

@@ -222,7 +222,7 @@ export async function hourlyRates(sql: Sql, fromMonth: string, toMonth: string):
     plannedShifts(sql, { from, to }),
     sql<{ site_id: string; net: bigint }[]>`
       select a.site_id, sum(a.net_cents)::bigint as net
-        from app.cost_allocations a join app.incoming_invoices i on i.id = a.incoming_invoice_id
+        from app.incoming_cost_lines a join app.incoming_invoices i on i.id = a.incoming_invoice_id
        where a.site_id is not null and i.category = 'nachunternehmer'
          and i.status in ('erfasst', 'freigegeben', 'bezahlt') and a.month between ${from} and ${to}
        group by a.site_id`,

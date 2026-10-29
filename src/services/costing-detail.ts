@@ -64,7 +64,7 @@ async function incomingItems(
     select i.id, s.name as supplier_name, i.invoice_no, i.invoice_date::text as invoice_date,
            i.category::text as category, i.status::text as status, to_char(a.month, 'MM/YYYY') as month,
            sum(a.net_cents)::bigint as net
-      from app.cost_allocations a join app.incoming_invoices i on i.id = a.incoming_invoice_id
+      from app.incoming_cost_lines a join app.incoming_invoices i on i.id = a.incoming_invoice_id
       join app.suppliers s on s.id = i.supplier_id
      where ${target.siteId ? sql`a.site_id = ${target.siteId}` : sql`a.cost_center_id = ${target.costCenterId!}`}
        and i.status in ('erfasst', 'freigegeben', 'bezahlt') and a.month between ${from} and ${to}

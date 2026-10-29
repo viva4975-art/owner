@@ -4562,3 +4562,14 @@ Testadresse.
   `expected-invoices.ts`). Bestehende Vermerke mit diesem Text wirken sofort so. Neu: „Vermerk zurücknehmen“ bei „keine
   Rechnung“ und „wieder anzeigen“ bei ausgeblendeter Rechnung (`unskipExpected`, Protokoll). Test in
   `expected-invoices.db.test.ts`.
+- 2026-10-29: **Abzüge bei der Prüfung von Eingangsrechnungen** (Ahmed: „z. B. wegen nicht erfolgter Reinigung“):
+  Eingangsrechnung → Kasten „Abzüge bei der Prüfung“: Grund (Reinigung nicht erfolgt / mangelhafte Leistung / Menge zu
+  viel / Sonstiges), Begründung Pflicht, Leistung am/von–bis, Betrag netto oder brutto (USt anteilig wie die Rechnung,
+  § 13b = 0), mehrere je Rechnung, entfernen solange nicht bezahlt (`app.incoming_deductions`, Migration
+  `20270107000001`, Trigger sperrt bei „bezahlt“, feste ID je Formular, Protokoll; `src/services/incoming-deductions.ts`).
+  Die Rechnung des Lieferanten bleibt unverändert. Der Abzug mindert den Zahlbetrag (Zahlungsliste, Skonto vom
+  geminderten Betrag, „als bezahlt“, SEPA mit „abzgl. Abzug“, Kontoumsatz-Erkennung, Vorschuss-Verrechnung) und die
+  Kosten des Objekts bzw. der Kostenstelle (Objekt der Rechnung, sonst größter Anteil der Aufteilung; Monat = Leistungs-
+  tag) in Nachkalkulation/Kostenstellen über die View `app.incoming_cost_lines`. DATEV: Gegenbuchung je Abzug (Soll
+  Kreditor, gleiches Aufwandskonto/BU, Datum = Erfassung) + Hinweis. **Steuerlich:** Vorsteuer nur aus dem geminderten
+  Betrag (§ 17 UStG) – Rechnungskorrektur beim Lieferanten anfordern. Test `incoming-deductions.db.test.ts`.

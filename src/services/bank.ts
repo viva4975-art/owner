@@ -408,9 +408,11 @@ interface IncomingRow {
 
 const INCOMING_COLS = (sql: Sql | Tx) => sql`
   i.id, i.supplier_id, s.name as supplier_name, s.iban as supplier_iban, i.invoice_no, i.invoice_date::text,
-  -- abzüglich verrechneter Vorschüsse = noch zu zahlen
+  -- abzüglich verrechneter Vorschüsse und Abzüge = noch zu zahlen
   (i.gross_cents - coalesce((select sum(ao.amount_cents) from app.subcontractor_advance_offsets ao
-                              where ao.incoming_invoice_id = i.id), 0))::bigint as gross_cents, i.skonto_until::text, i.skonto_percent_bp, i.status, i.paid_amount_cents, i.paid_at::text`;
+                              where ao.incoming_invoice_id = i.id), 0)
+                 - coalesce((select sum(d.gross_cents) from app.incoming_deductions d
+                              where d.incoming_invoice_id = i.id), 0))::bigint as gross_cents, i.skonto_until::text, i.skonto_percent_bp, i.status, i.paid_amount_cents, i.paid_at::text`;
 
 const incomingSkonto = (i: IncomingRow, date: string) =>
   !i.skonto_until || !i.skonto_percent_bp || date > addDays(i.skonto_until, SKONTO_GRACE_DAYS)

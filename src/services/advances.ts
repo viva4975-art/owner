@@ -177,7 +177,9 @@ export async function offsetAdvance(sql: Sql, invoiceId: string, amount: bigint 
     if (!['erfasst', 'freigegeben'].includes(i.status))
       throw new BusinessError('Nur offene (nicht bezahlte) Rechnungen können verrechnet werden');
     const done = (await invoiceOffsets(tx, [invoiceId])).get(invoiceId) ?? 0n;
-    const rest = i.gross_cents - done;
+    const [ded] = await tx<{ sum: bigint }[]>`
+      select coalesce(sum(gross_cents), 0)::bigint as sum from app.incoming_deductions where incoming_invoice_id = ${invoiceId}`;
+    const rest = i.gross_cents - done - (ded?.sum ?? 0n);
     let want = amount ?? rest;
     if (want <= 0n) throw new BusinessError('Nichts zu verrechnen');
     if (want > rest) throw new BusinessError('Mehr als der offene Rechnungsbetrag');

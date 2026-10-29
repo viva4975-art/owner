@@ -180,7 +180,7 @@ export async function subcontractEstimates(
       : (
           await sql<{ k: string }[]>`
         select distinct a.site_id || '|' || to_char(a.month, 'YYYY-MM') as k
-          from app.cost_allocations a join app.incoming_invoices i on i.id = a.incoming_invoice_id
+          from app.incoming_cost_lines a join app.incoming_invoices i on i.id = a.incoming_invoice_id
          where i.category = 'nachunternehmer' and i.status in ('erfasst', 'freigegeben', 'bezahlt')
            and a.month between date_trunc('month', ${from}::date) and ${to}::date`
         ).map((r) => r.k),
@@ -315,7 +315,7 @@ export async function siteCosting(
     // Eingangsrechnungen (auch Nachunternehmer) nach Aufteilung auf Kostenstelle = Objekt und Leistungsmonat
     sql<{ site_id: string; category: string; net: bigint }[]>`
       select a.site_id, i.category::text as category, sum(a.net_cents)::bigint as net
-        from app.cost_allocations a join app.incoming_invoices i on i.id = a.incoming_invoice_id
+        from app.incoming_cost_lines a join app.incoming_invoices i on i.id = a.incoming_invoice_id
        where a.site_id is not null and i.status in ('erfasst', 'freigegeben', 'bezahlt')
          and a.month between ${from} and ${to}
        group by a.site_id, i.category`,
@@ -324,7 +324,7 @@ export async function siteCosting(
       ? Promise.resolve([])
       : sql<{ id: string; number: string; name: string; category: string; net: bigint }[]>`
           select cc.id, cc.number, cc.name, i.category::text as category, sum(a.net_cents)::bigint as net
-            from app.cost_allocations a join app.cost_centers cc on cc.id = a.cost_center_id
+            from app.incoming_cost_lines a join app.cost_centers cc on cc.id = a.cost_center_id
             join app.incoming_invoices i on i.id = a.incoming_invoice_id
            where a.cost_center_id is not null and i.status in ('erfasst', 'freigegeben', 'bezahlt')
              and a.month between ${from} and ${to}
@@ -456,7 +456,7 @@ export async function siteCostDetails(sql: Sql, siteId: string, period: { from: 
     select i.id, s.name as supplier_name, i.invoice_no, i.invoice_date::text as invoice_date,
            i.category::text as category, i.status::text as status, to_char(a.month, 'YYYY-MM') as month,
            sum(a.net_cents)::bigint as net
-      from app.cost_allocations a join app.incoming_invoices i on i.id = a.incoming_invoice_id
+      from app.incoming_cost_lines a join app.incoming_invoices i on i.id = a.incoming_invoice_id
       join app.suppliers s on s.id = i.supplier_id
      where a.site_id = ${siteId} and a.month between ${from} and ${to}
      group by 1, 2, 3, 4, 5, 6, 7 order by 7, 4`;

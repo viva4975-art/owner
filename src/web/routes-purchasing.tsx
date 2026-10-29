@@ -71,6 +71,13 @@ import {
 import { hm } from '../services/time.js';
 import { toCsv } from '../services/reports.js';
 import { listFiles } from '../services/uploads.js';
+import {
+  DEDUCTION_KIND,
+  type DeductionKind,
+  addDeduction,
+  deleteDeduction,
+  listDeductions,
+} from '../services/incoming-deductions.js';
 import { planCostingPdf, siteCostingPdf } from '../services/costing-pdf.js';
 import { EInvoiceRoutes, EInvoiceTable } from './routes-einvoice-in.js';
 import { RecurringRows, registerRecurringRoutes } from './routes-recurring.js';
@@ -1838,6 +1845,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       costTargets(sql),
     ]);
     const advOpen = i ? ((await openAdvances(sql, [i.supplier_id])).get(i.supplier_id) ?? 0n) : 0n;
+    const deductions = i ? await listDeductions(sql, id) : [];
     const siteById = new Map(sites.map((x) => [x.id, x]));
     const sammelCount = new Map(
       (
@@ -2016,13 +2024,117 @@ export function registerPurchasingRoutes(ctx: Ctx) {
             </form>
           </details>
         )}
+        {i &&
+          (deductions.length > 0 || ['erfasst', 'freigegeben'].includes(i.status)) &&
+          i.net_cents > 0n && (
+            <details class="card" style="max-width:720px" id="abzuege" open={deductions.length > 0}>
+              <summary>
+                <b>Abzüge bei der Prüfung</b>
+                {deductions.length > 0 && (
+                  <>
+                    {' '}
+                    · {euro(i.deduction_cents)} brutto · noch zu zahlen{' '}
+                    <b>{euro(i.gross_cents - i.deduction_cents - i.advance_offset_cents)}</b>
+                  </>
+                )}
+              </summary>
+              <p class="small muted" style="margin-top:6px">
+                Z. B. Reinigung an einzelnen Tagen nicht erfolgt. Die Rechnung des Lieferanten bleibt
+                unverändert; der Abzug mindert den Zahlbetrag (Zahlungsliste, SEPA, Kontoabgleich) und die
+                Kosten des Objekts in der Nachkalkulation. USt anteilig wie in der Rechnung.{' '}
+                <b>Steuerlich:</b> Vorsteuer nur aus dem geminderten Betrag (§ 17 UStG) – Rechnungskorrektur
+                beim Lieferanten anfordern.
+              </p>
+              {deductions.length > 0 && (
+                <table class="keep">
+                  <thead>
+                    <tr>
+                      <th>Grund</th>
+                      <th>Zeitraum</th>
+                      <th>Kostenstelle</th>
+                      <th class="num">netto</th>
+                      <th class="num">brutto</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deductions.map((d) => (
+                      <tr>
+                        <td>
+                          {DEDUCTION_KIND[d.reason_kind]}
+                          <div class="small">{d.reason}</div>
+                          <div class="small muted">
+                            {d.created_by} · {dateDe(d.created_at.slice(0, 10))}
+                          </div>
+                        </td>
+                        <td class="small">
+                          {d.service_from
+                            ? d.service_to && d.service_to !== d.service_from
+                              ? `${dateDe(d.service_from)} – ${dateDe(d.service_to)}`
+                              : dateDe(d.service_from)
+                            : '–'}
+                        </td>
+                        <td class="small">{d.target_name ?? '–'}</td>
+                        <td class="num">{euro(d.net_cents)}</td>
+                        <td class="num">{euro(d.gross_cents)}</td>
+                        <td>
+                          {i.status !== 'bezahlt' && (
+                            <form
+                              method="post"
+                              action={`/rechnungseingang/${id}/abzug/${d.id}/loeschen`}
+                              data-confirm="Abzug entfernen?"
+                            >
+                              <button class="btn sm ghost">entfernen</button>
+                            </form>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {['erfasst', 'freigegeben'].includes(i.status) && (
+                <form method="post" action={`/rechnungseingang/${id}/abzug`} class="grid">
+                  <input type="hidden" name="key" value={randomUUID()} />
+                  <label for="ab-k">Grund</label>
+                  <select id="ab-k" name="kind">
+                    {Object.entries(DEDUCTION_KIND).map(([k, l]) => (
+                      <option value={k}>{l}</option>
+                    ))}
+                  </select>
+                  <label for="ab-r">Begründung</label>
+                  <input
+                    id="ab-r"
+                    name="reason"
+                    required
+                    placeholder="z. B. 16.10. und 17.10. nicht gereinigt"
+                  />
+                  <label for="ab-f">Leistung am / von</label>
+                  <input id="ab-f" type="date" name="from" />
+                  <label for="ab-t">bis (optional)</label>
+                  <input id="ab-t" type="date" name="to" />
+                  <label for="ab-a">Betrag</label>
+                  <span>
+                    <input id="ab-a" name="amount" inputmode="decimal" required style="max-width:140px" />{' '}
+                    <select name="basis" aria-label="netto oder brutto">
+                      <option value="netto">netto</option>
+                      <option value="brutto">brutto</option>
+                    </select>
+                  </span>
+                  <div class="actions">
+                    <button class="btn">Abzug erfassen</button>
+                  </div>
+                </form>
+              )}
+            </details>
+          )}
         {i && (i.advance_offset_cents > 0n || advOpen > 0n) && (
           <div class="card" style="max-width:720px">
             <h3>Vorschuss</h3>
             {i.advance_offset_cents > 0n && (
               <p style="margin-top:0">
                 Mit Vorschuss verrechnet: <b>{euro(i.advance_offset_cents)}</b> · noch zu zahlen{' '}
-                <b>{euro(i.gross_cents - i.advance_offset_cents)}</b>
+                <b>{euro(i.gross_cents - i.deduction_cents - i.advance_offset_cents)}</b>
                 {i.status !== 'bezahlt' && (
                   <form
                     method="post"
@@ -2046,9 +2158,9 @@ export function registerPurchasingRoutes(ctx: Ctx) {
                   aria-label="Betrag"
                   style="max-width:140px"
                   value={centsToInput(
-                    advOpen < i.gross_cents - i.advance_offset_cents
+                    advOpen < i.gross_cents - i.deduction_cents - i.advance_offset_cents
                       ? advOpen
-                      : i.gross_cents - i.advance_offset_cents,
+                      : i.gross_cents - i.deduction_cents - i.advance_offset_cents,
                   )}
                 />
                 <button class="btn sm">Vorschuss verrechnen</button>
@@ -2705,6 +2817,37 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         ok: `Vorschuss ${euro(done)} verrechnet – der Zahlbetrag ist entsprechend kleiner.`,
       },
     );
+  });
+
+  app.post(`/rechnungseingang/:id{${UUID}}/abzug`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    const key = str(b, 'key') ?? '';
+    if (!/^[0-9a-f-]{36}$/.test(key)) throw new BusinessError('Formular ungültig – Seite neu laden');
+    const amount = parseEuro(str(b, 'amount') ?? '');
+    await addDeduction(
+      sql,
+      key,
+      id,
+      {
+        kind: str(b, 'kind') as DeductionKind,
+        reason: str(b, 'reason') ?? '',
+        from: str(b, 'from') || null,
+        to: str(b, 'to') || null,
+        amount: amount as bigint,
+        isGross: str(b, 'basis') === 'brutto',
+      },
+      c.get('actor'),
+    );
+    return back(c, `/rechnungseingang/${id}#abzuege`, {
+      ok: 'Abzug erfasst – Zahlbetrag und Kosten sind gemindert.',
+    });
+  });
+
+  app.post(`/rechnungseingang/:id{${UUID}}/abzug/:did{${UUID}}/loeschen`, async (c) => {
+    const id = c.req.param('id');
+    await deleteDeduction(sql, c.req.param('did'), c.get('actor'));
+    return back(c, `/rechnungseingang/${id}#abzuege`, { ok: 'Abzug entfernt.' });
   });
 
   app.post(`/rechnungseingang/:id{${UUID}}/vorschuss/zuruecknehmen`, async (c) => {

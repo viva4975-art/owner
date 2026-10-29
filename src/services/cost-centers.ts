@@ -249,7 +249,7 @@ export async function costCenterReport(sql: Sql, from: string, to: string) {
            coalesce(s.site_no || ' · ' || s.name, cc.number || ' · ' || cc.name) as label,
            case when a.site_id is null then 'allgemein' else 'objekt' end as kind, a.site_id,
            i.category::text as category, sum(a.net_cents)::bigint as net
-      from app.cost_allocations a
+      from app.incoming_cost_lines a
       join app.incoming_invoices i on i.id = a.incoming_invoice_id and i.status in ('erfasst', 'freigegeben', 'bezahlt')
       left join app.sites s on s.id = a.site_id
       left join app.cost_centers cc on cc.id = a.cost_center_id

@@ -341,6 +341,58 @@ export async function collectBookings(
         kind: 'eingang',
       });
     }
+    // Abzüge bei der Prüfung (Reinigung nicht erfolgt …): Gegenbuchung zur Eingangsrechnung
+    const ded = await sql<
+      {
+        day: string;
+        gross_cents: bigint;
+        net_cents: bigint;
+        vat_cents: bigint;
+        reason: string;
+        invoice_no: string;
+        reverse_charge: boolean;
+        category: string;
+        supplier_no: string;
+        name: string;
+      }[]
+    >`
+      select (d.created_at at time zone 'Europe/Berlin')::date::text as day, d.gross_cents, d.net_cents, d.vat_cents,
+             d.reason, i.invoice_no, i.reverse_charge, i.category::text, s.supplier_no, s.name
+        from app.incoming_deductions d join app.incoming_invoices i on i.id = d.incoming_invoice_id
+        join app.suppliers s on s.id = i.supplier_id
+       where i.status in ('freigegeben', 'bezahlt')
+         and (d.created_at at time zone 'Europe/Berlin')::date between ${f.from} and ${f.to}
+       order by d.created_at`;
+    for (const d of ded) {
+      const contra =
+        d.category === 'material'
+          ? s.expense_material
+          : d.category === 'nachunternehmer'
+            ? s.expense_subcontractor
+            : s.expense_other;
+      let taxKey = '';
+      if (d.reverse_charge) taxKey = s.rc_tax_key;
+      else if (d.vat_cents !== 0n) {
+        const r = Number(d.vat_cents) / Number(d.net_cents);
+        taxKey = Math.abs(r - 0.07) < 0.002 ? '8' : '9';
+      }
+      bookings.push({
+        amount: d.gross_cents,
+        sh: 'S',
+        account: d.supplier_no,
+        contra,
+        taxKey,
+        date: d.day,
+        doc: d.invoice_no.slice(0, 36),
+        doc2: '',
+        text: `Abzug: ${d.reason}`.slice(0, 60),
+        kind: 'eingang',
+      });
+    }
+    if (ded.length)
+      warnings.push(
+        `${ded.length} Abzug/Abzüge zu Eingangsrechnungen gebucht – Vorsteuer nur aus dem geminderten Betrag (§ 17 UStG); Rechnungskorrektur des Lieferanten anfordern.`,
+      );
     const outPay = await sql<
       {
         amount_cents: bigint;

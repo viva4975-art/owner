@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { SiteOptions } from './site-options.js';
+import { ensureGeneralSite } from '../services/fortytools-more-import.js';
 import type { Context } from 'hono';
 import type { FC } from 'hono/jsx';
 import { getCookie, setCookie } from 'hono/cookie';
@@ -123,10 +124,15 @@ function sh(el,on){if(!el)return;el.hidden=!on;}
 function u(){var v=b.value,sam=m?m.value==='1':false;
 sh(document.getElementById('wd-box'),v==='tag');sh(document.getElementById('maxh-box'),v==='stunde');sh(document.getElementById('margin-box'),v==='umsatz');
 document.querySelectorAll('.sammel-only').forEach(function(e){sh(e,sam)});
-document.querySelectorAll('.single-only').forEach(function(e){sh(e,!m||!sam)});
+var kun=m?m.value==='kunde':false;document.querySelectorAll('.kunde-only').forEach(function(e){sh(e,kun)});
+document.querySelectorAll('.single-only').forEach(function(e){sh(e,!m||(!sam&&!kun))});
+var st=document.getElementById('site');if(st&&m)st.required=!sam&&!kun&&st.required;
+var bk=document.getElementById('bestell-kunde'),ba=document.getElementById('bestell-auftrag');
+if(bk&&ba){Array.prototype.forEach.call(ba.options,function(o){if(o.value)o.hidden=!!bk.value&&o.getAttribute('data-kunde')!==bk.value;});
+if(ba.selectedOptions[0]&&ba.selectedOptions[0].hidden)ba.value='';}
 var pb=document.getElementById('price-box'),pi=document.getElementById('price');
 var hideP=sam&&(v==='qm'||v==='pauschale_monat'||v==='umsatz');sh(pb,!hideP&&v!=='umsatz');if(pi)pi.required=!hideP&&v!=='umsatz'&&!pi.disabled;}
-b.addEventListener('change',u);if(m)m.addEventListener('change',u);window.addEventListener('pageshow',u);u();setTimeout(u,300);})();`;
+b.addEventListener('change',u);if(m)m.addEventListener('change',u);var bk0=document.getElementById('bestell-kunde');if(bk0)bk0.addEventListener('change',u);window.addEventListener('pageshow',u);u();setTimeout(u,300);})();`;
 
 const PORTAL_COOKIE = 'vd_np';
 
@@ -1668,6 +1674,30 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       select c.id, c.customer_no, c.name, count(s.id)::int as n from app.customers c
         join app.sites s on s.customer_id = c.id and s.active
        group by c.id having count(s.id) > 1 order by c.name`;
+    // Bestellung für einen Kunden ohne festes Objekt (Ahmed 29.10.: Einzelaufträge): Kunden + offene Einzelaufträge
+    const allCustomers = await sql<{ id: string; customer_no: string; name: string }[]>`
+      select id, customer_no, name from app.customers
+       where not coalesce(is_internal, false) and (active or id = (select customer_id from app.sites where id = ${sc?.site_id ?? null}))
+       order by name`;
+    const orders = await sql<
+      {
+        id: string;
+        number: string;
+        customer_id: string;
+        title: string;
+        place: string | null;
+        planned_date: string | null;
+      }[]
+    >`select o.id, o.number, o.customer_id, o.title, coalesce(o.place, s.name) as place, o.planned_date::text
+        from app.orders o left join app.sites s on s.id = o.site_id
+       where (o.status in ('offen', 'in_arbeit', 'erledigt') and o.invoice_id is null) or o.id = ${sc?.order_id ?? null}
+       order by o.number desc limit 500`;
+    const scOrder = sc?.order_id ? (orders.find((o) => o.id === sc.order_id) ?? null) : null;
+    const scCustomer = sc
+      ? ((await sql<{ customer_id: string }[]>`select customer_id from app.sites where id = ${sc.site_id}`)[0]
+          ?.customer_id ?? null)
+      : null;
+    const forCustomer = !!scOrder || (draft && c.req.query('kunde') ? true : false);
     const tracking = sc ? ((await billingTracking(sql, [id], { limit: 24 })).get(id) ?? []) : [];
     const hours: SubcontractHourRow[] = sc?.billing === 'stunde' ? await listSubcontractHours(sql, id) : [];
     // „je Tag“: Arbeitstage je Monat (Wochentage ohne Feiertage und Schließzeiten), Ahmed 22.10.
@@ -1770,6 +1800,11 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                     <option value="1" selected={sammel.length > 0}>
                       mehrere Objekte – eine Sammelbestellung (eine Nummer, eine Unterschrift)
                     </option>
+                    {sammel.length === 0 && (
+                      <option value="kunde" selected={forCustomer}>
+                        einen Kunden ohne festes Objekt (z. B. Einzelaufträge)
+                      </option>
+                    )}
                   </select>
                   <div class="small mut sammel-only">
                     Objekte und Preise je Objekt stehen in der Liste „Sammelbestellung“ – der Gesamtpreis
@@ -1801,6 +1836,50 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                   <div class="small mut">
                     Nach dem Speichern erscheinen die Objekte unten in der Liste – dort Preise je Objekt
                     eintragen und weitere hinzufügen.
+                  </div>
+                </div>
+              )}
+              {draft && sammel.length === 0 && (
+                <div class="kunde-only">
+                  <label for="bestell-kunde">Kunde</label>
+                  <select id="bestell-kunde" name="bestell_kunde">
+                    <option value="">– bitte wählen –</option>
+                    {allCustomers.map((k) => (
+                      <option value={k.id} selected={k.id === (scCustomer ?? c.req.query('kunde'))}>
+                        {k.customer_no} · {k.name}
+                      </option>
+                    ))}
+                  </select>
+                  <label for="bestell-auftrag" style="margin-top:8px">
+                    Einzelauftrag (optional)
+                  </label>
+                  <select id="bestell-auftrag" name="order_id">
+                    <option value="">– kein bestimmter Einzelauftrag –</option>
+                    {orders.map((o) => (
+                      <option
+                        value={o.id}
+                        data-kunde={o.customer_id}
+                        selected={o.id === (sc?.order_id ?? c.req.query('auftrag'))}
+                      >
+                        {o.number} · {o.title}
+                        {o.place ? ` · ${o.place}` : ''}
+                        {o.planned_date ? ` · ${dateDe(o.planned_date)}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <div class="small mut">
+                    Die Kosten laufen auf das Objekt des Einzelauftrags, sonst auf das Objekt „Allgemein“ des
+                    Kunden (wird bei Bedarf angelegt).
+                  </div>
+                </div>
+              )}
+              {!draft && scOrder && (
+                <div>
+                  <label>Einzelauftrag</label>
+                  <input type="hidden" name="order_id" value={scOrder.id} />
+                  <div style="padding-top:8px">
+                    {scOrder.number} · {scOrder.title}
+                    {scOrder.place ? ` · ${scOrder.place}` : ''}
                   </div>
                 </div>
               )}
@@ -2799,6 +2878,12 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 {siteRow?.street && (
                   <div class="small mut">{[siteRow.street, siteRow.city].filter(Boolean).join(', ')}</div>
                 )}
+                {scOrder && (
+                  <div class="small">
+                    Einzelauftrag {scOrder.number}
+                    {scOrder.place ? ` · ${scOrder.place}` : ''}
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -2977,6 +3062,29 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
               select id from app.sites where customer_id = ${kunde} and active order by site_no limit 1`
           : [];
         input.siteId = firstMore ?? first?.id ?? '';
+      }
+      // Bestellung für einen Kunden ohne festes Objekt (Ahmed 29.10.): Objekt des Einzelauftrags, sonst „Allgemein“
+      if (str(b, 'sammel') === 'kunde') {
+        const orderId = str(b, 'order_id');
+        const kunde = str(b, 'bestell_kunde');
+        const [o] = orderId
+          ? await sql<{ customer_id: string; site_id: string | null }[]>`
+              select customer_id, site_id from app.orders where id = ${orderId}`
+          : [];
+        if (orderId && !o) throw new BusinessError('Einzelauftrag nicht gefunden');
+        if (o && kunde && o.customer_id !== kunde)
+          throw new BusinessError('Der Einzelauftrag gehört zu einem anderen Kunden');
+        const custId = o?.customer_id ?? kunde;
+        if (!custId) throw new BusinessError('Bitte einen Kunden wählen');
+        const [k] = await sql<
+          { customer_no: string }[]
+        >`select customer_no from app.customers where id = ${custId}`;
+        const siteId = o?.site_id ?? (k ? await ensureGeneralSite(sql, k.customer_no, c.get('actor')) : null);
+        if (!siteId) throw new BusinessError('Kunde nicht gefunden');
+        input.siteId = siteId;
+        (input as typeof input & { orderId?: string | null }).orderId = orderId ?? null;
+      } else if (cur?.contract.status === 'entwurf' || !cur) {
+        (input as typeof input & { orderId?: string | null }).orderId = null;
       }
       if (!input.siteId)
         throw new BusinessError(

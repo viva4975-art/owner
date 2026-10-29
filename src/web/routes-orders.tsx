@@ -784,6 +784,12 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
           <a class="btn sm" href={`/auftraege/neu?kunde=${o.customer_id}`} style="margin-left:auto">
             <Icon name="plus" /> Weiteren Einzelauftrag anlegen
           </a>
+          <a
+            class="btn sm sec"
+            href={`/nachunternehmer/auftraege/${randomUUID()}?kunde=${o.customer_id}&auftrag=${o.id}`}
+          >
+            <Icon name="plus" /> Nachunternehmer beauftragen
+          </a>
         </PageHead>
         <div class="cols">
           <div>

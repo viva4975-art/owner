@@ -4531,3 +4531,11 @@ Testadresse.
   Anwesenheitsliste drucken → Auswahl „nur Kunde (ohne Objekt)“ (Standard, auch bei Kunden ohne aktive Objekte): Kopf mit
   Kundenname, Kundennummer und Anschrift statt Objekt (`attendancePdfForCustomer`). Nur Büro (Objektleitung weiter nur
   ihre Objekte).
+- 2026-10-29: **NU-Bestellung für einen Kunden ohne festes Objekt** (Ahmed: „Bestellung für einen Kunden, wenn die einzelne
+  Aufträge haben“): Bestellentwurf → „Bestellung für“ neu **„einen Kunden ohne festes Objekt (z. B. Einzelaufträge)“** →
+  Kunde wählen, optional einen offenen Einzelauftrag des Kunden (Auswahl nach Kunde gefiltert). Kosten laufen auf das
+  Objekt des Einzelauftrags, sonst auf das Objekt „Allgemein“ des Kunden (wird bei Bedarf angelegt, `ensureGeneralSite`) –
+  Nachkalkulation, Rechnungseingang, „Rechnung erwartet“ funktionieren unverändert. Verweis `subcontracts.order_id`
+  (Migration `20270105000001`); Bestellschein zeigt „Einzelauftrag: AU-… · Titel“ und bei Aufträgen ohne eigenes Objekt den
+  Ort des Auftrags statt „Allgemein“ (ohne Kundennamen). Am Einzelauftrag Knopf **„Nachunternehmer beauftragen“**
+  (Kunde + Auftrag vorbelegt).

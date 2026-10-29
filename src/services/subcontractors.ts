@@ -486,6 +486,8 @@ export interface Subcontract {
   price_cents: bigint;
   max_hours_month: string | null;
   margin_bp: number | null;
+  /** Einzelauftrag des Kunden (Bestellung ohne festes Objekt) */
+  order_id: string | null;
   /** „je Tag“: Arbeitstage (ISO 1 = Mo … 7 = So), null = Mo–Fr */
   work_days: number[] | null;
   valid_from: string;
@@ -558,6 +560,8 @@ export interface SubcontractInput {
   note: string | null;
   /** Bestelldatum (JJJJ-MM-TT), nur bei erteilten/beendeten Bestellungen änderbar (Ahmed 20.10.) */
   issuedOn?: string | null;
+  /** Einzelauftrag des Kunden (Bestellung für einen Kunden ohne festes Objekt); undefined = bleibt */
+  orderId?: string | null;
   version?: number | null;
 }
 
@@ -601,6 +605,7 @@ export async function saveSubcontract(sql: Sql, id: string, p: SubcontractInput,
         valid_to: p.validTo,
         description: p.description?.trim() || null,
         note: p.note?.trim() || null,
+        ...(p.orderId !== undefined ? { order_id: p.orderId || null } : {}),
       } as Record<string, unknown>;
       // Preis korrigierbar (Ahmed 22.10.: „Preis bei Bestellung bearbeiten können“): gilt als Grundpreis ab Beginn;
       // spätere Preisnachträge ab Monat bleiben bestehen. Alter/neuer Preis steht im Protokoll.
@@ -645,6 +650,7 @@ export async function saveSubcontract(sql: Sql, id: string, p: SubcontractInput,
         valid_to: p.validTo,
         description: p.description?.trim() || null,
         note: p.note?.trim() || null,
+        ...(p.orderId !== undefined ? { order_id: p.orderId || null } : {}),
       };
       if (cur) await tx`update app.subcontracts set ${tx(row)} where id = ${id}`;
       else {
@@ -852,12 +858,19 @@ export async function subcontractPdf(sql: Sql, id: string, sig?: SubcontractSign
   }
   d.y += 8;
   const hourly = sc.billing === 'stunde';
+  // Bestellung für einen Einzelauftrag (Ahmed 29.10.): Ort des Auftrags statt Objekt „Allgemein“
+  const [ord] = sc.order_id
+    ? await sql<{ number: string; title: string; place: string | null; own_site: boolean }[]>`
+        select number, title, place, site_id is not null as own_site from app.orders where id = ${sc.order_id}`
+    : [];
+  const orderPlace = ord && !ord.own_site && ord.place ? ord.place : null;
   d.kvBox([
     sammel.length
       ? { k: 'Objekte:', v: `Sammelbestellung – ${sammel.length} Objekte (Liste unten)`, strong: true }
-      : { k: 'Objekt / Auftrag:', v: sc.site_name, strong: true },
+      : { k: 'Objekt / Auftrag:', v: orderPlace ?? sc.site_name, strong: true },
+    ...(ord ? [{ k: 'Einzelauftrag:', v: `${ord.number} · ${ord.title}` }] : []),
     // kein Kundenname auf dem Bestellschein (Ahmed 23.10.) – nur Objekt und Adresse
-    ...(sammel.length
+    ...(sammel.length || orderPlace
       ? []
       : [
           {

@@ -71,8 +71,9 @@ export function sheetTableHtml(s: Timesheet): string {
         ? `<span class="ts-ab ts-ab-${r.absence}">${esc(ABSENCE_SHORT[r.absence])}</span>${r.absenceMinutes ? ` ${h(r.absenceMinutes)}` : ''}${r.absence && !r.absencePaid && r.absenceMinutes && r.absence !== 'unbezahlt' ? ' (unbezahlt)' : ''}`
         : '';
       const rowCls = r.absence ? `ts-abs-${r.absence}` : r.holiday ? 'ts-hol' : '';
-      const st =
-        r.status === 'beantragt'
+      const st = r.overridden
+        ? '<span class="ts-warn">zählt nicht – Abwesenheit eingetragen</span>'
+        : r.status === 'beantragt'
           ? '<span class="ts-warn">Nachtrag in Prüfung</span>'
           : r.status === 'laeuft'
             ? '<span class="ts-warn">läuft</span>'
@@ -82,7 +83,7 @@ export function sheetTableHtml(s: Timesheet): string {
       return `<tr${rowCls ? ` class="${rowCls}"` : ''}><td>${dayShort(r.date)} ${dateDe(r.date).slice(0, 6)}</td><td>${esc(r.site)}${r.holiday ? `<div class="ts-sub">${esc(r.holiday)}</div>` : ''}</td>
 <td>${r.planFrom ? `${r.planFrom}–${r.planTo}` : ''}</td><td class="r">${h(r.planMinutes)}</td>
 <td>${r.start ?? ''}</td><td>${r.end ?? ''}</td><td>${r.breakFrom ? `${r.breakFrom}–${r.breakTo}` : ''}</td><td class="r">${r.breakMinutes ? r.breakMinutes : ''}</td>
-<td class="r"><b>${h(r.workMinutes)}</b></td><td>${abs}</td><td>${st}${r.note ? `<div class="ts-sub">${esc(r.note)}</div>` : ''}</td></tr>`;
+<td class="r">${r.overridden ? `<s>${h(r.workMinutes)}</s>` : `<b>${h(r.workMinutes)}</b>`}</td><td>${abs}</td><td>${st}${r.note ? `<div class="ts-sub">${esc(r.note)}</div>` : ''}</td></tr>`;
     })
     .join('');
   const t = s.totals;
@@ -774,6 +775,18 @@ ${absenceCss(
                               maximumFractionDigits: 2,
                             })}{' '}
                             Std. am Feiertag gearbeitet → Feiertagslohn
+                          </div>
+                        )}
+                        {p && p.absenceConflictMinutes > 0 && (
+                          <div
+                            class="small"
+                            style="color:var(--warn)"
+                            title="An diesen Tagen ist eine ganztägige Abwesenheit eingetragen – die Abwesenheit zählt, die erfasste Zeit nicht. Hat die Person wirklich gearbeitet: Abwesenheit ändern oder löschen; sonst die Zeit entfernen."
+                          >
+                            {(p.absenceConflictMinutes / 60).toLocaleString('de-DE', {
+                              maximumFractionDigits: 2,
+                            })}{' '}
+                            Std. erfasst an Abwesenheitstagen → nicht gezählt
                           </div>
                         )}
                         {(s.open.running > 0 || s.open.pending > 0) && (

@@ -743,6 +743,93 @@ export const CLIENT_JS = String.raw`
     });
     document.addEventListener('click', function (e) { if (!form.contains(e.target)) drop.hidden = true; });
   })();
+  // ---- Tabellenköpfe bleiben beim Scrollen oben stehen (Ahmed 29.10.: „Überschriften sollen mitscrollen“) ----
+  // Eigene Kopie des Tabellenkopfs (position:fixed) statt CSS sticky – viele Tabellen liegen in seitlich scrollenden
+  // Hüllen, dort greift sticky nicht. Spaltenbreiten und seitliches Scrollen werden übernommen, Klick sortiert weiter.
+  (function stickyHeads() {
+    var tables = Array.prototype.filter.call(document.querySelectorAll('table'), function (t) {
+      return t.tHead && t.tBodies.length && t.tBodies[0].rows.length >= 8 && !t.hasAttribute('data-nostick') &&
+        !t.closest('.sticky-clone');
+    });
+    if (!tables.length) return;
+    function topOffset() {
+      var off = 0;
+      document.querySelectorAll('.top, nav.menu, .menu-top .appside, .apphead, .ls-tabs-sticky').forEach(function (el) {
+        var cs = getComputedStyle(el);
+        if (cs.position !== 'sticky' && cs.position !== 'fixed') return;
+        var r = el.getBoundingClientRect();
+        if (r.top <= 1 && r.bottom > off) off = r.bottom;
+      });
+      return off;
+    }
+    function clipBox(el) {
+      var l = -Infinity, r = Infinity;
+      for (var p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+        var ox = getComputedStyle(p).overflowX;
+        if (ox === 'auto' || ox === 'scroll' || ox === 'hidden') {
+          var b = p.getBoundingClientRect();
+          if (b.left > l) l = b.left;
+          if (b.right < r) r = b.right;
+        }
+      }
+      return { l: l, r: r };
+    }
+    var items = tables.map(function (t) {
+      var box = document.createElement('div');
+      box.className = 'sticky-clone';
+      box.setAttribute('aria-hidden', 'true');
+      box.style.cssText = 'position:fixed;z-index:15;overflow:hidden;display:none;pointer-events:auto;background:#fff;box-shadow:0 2px 4px rgba(0,0,0,.08)';
+      var ct = t.cloneNode(false);
+      ct.removeAttribute('id');
+      ct.style.margin = '0';
+      ct.style.tableLayout = 'fixed';
+      box.appendChild(ct);
+      document.body.appendChild(box);
+      return { t: t, box: box, ct: ct, built: false };
+    });
+    function build(it) {
+      var head = it.t.tHead.cloneNode(true);
+      head.querySelectorAll('input,select,textarea,button').forEach(function (x) { x.disabled = true; x.tabIndex = -1; });
+      it.ct.innerHTML = '';
+      it.ct.appendChild(head);
+      var src = it.t.tHead.querySelectorAll('th,td'), dst = head.querySelectorAll('th,td');
+      for (var i = 0; i < src.length; i++) {
+        var w = src[i].getBoundingClientRect().width;
+        dst[i].style.width = w + 'px';
+        dst[i].style.minWidth = w + 'px';
+        dst[i].style.maxWidth = w + 'px';
+        (function (o) {
+          dst[i].addEventListener('click', function (ev) { ev.preventDefault(); o.click(); setTimeout(function () { it.built = false; update(); }, 0); });
+        })(src[i]);
+      }
+      it.ct.style.width = it.t.getBoundingClientRect().width + 'px';
+      it.built = true;
+    }
+    var raf = 0;
+    function update() {
+      raf = 0;
+      var off = topOffset();
+      items.forEach(function (it) {
+        var th = it.t.tHead, r = it.t.getBoundingClientRect(), hr = th.getBoundingClientRect();
+        var show = hr.height > 0 && hr.top < off && r.bottom - hr.height > off;
+        if (!show) { it.box.style.display = 'none'; return; }
+        if (!it.built) build(it);
+        var c = clipBox(it.t);
+        var left = Math.max(r.left, c.l, 0), right = Math.min(r.right, c.r, window.innerWidth);
+        if (right <= left) { it.box.style.display = 'none'; return; }
+        it.box.style.display = 'block';
+        it.box.style.top = off + 'px';
+        it.box.style.left = left + 'px';
+        it.box.style.width = right - left + 'px';
+        it.ct.style.transform = 'translateX(' + (r.left - left) + 'px)';
+      });
+    }
+    function later() { if (!raf) raf = requestAnimationFrame(update); }
+    window.addEventListener('scroll', later, { passive: true, capture: true });
+    window.addEventListener('resize', function () { items.forEach(function (it) { it.built = false; }); later(); });
+    update();
+  })();
+
   // Beschäftigungsart-Chip folgt der Auswahl
   var emp = document.getElementById('employment_type'), ec = document.querySelector('[data-emp-chip]');
   if (emp && ec) emp.addEventListener('change', function () { ec.textContent = emp.options[emp.selectedIndex].text; });

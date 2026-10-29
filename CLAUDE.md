@@ -4496,3 +4496,17 @@ Testadresse.
     Einsatz steht in `app.shift_exit_changes` (Migration `20270104000001`): Austritt verschieben oder zurücknehmen stellt
     erst den alten Stand her und rechnet dann neu (nur wo seitdem nichts von Hand geändert wurde). Wiedereintritt löscht
     nur die Vermerke (alte Einsätze bleiben beendet). Protokoll `exit_shifts`. Test `exit-shifts.db.test.ts`.
+- 2026-10-29: **Abwesenheit hat Vorrang vor erfasster Zeit** (Ahmed: „Mo–Fr 4,5 Std., ein Tag unbezahlt, trotzdem 99
+  Normalstunden“ = 22 Tage × 4,5): Am Tag einer ganztägigen Abwesenheit (Urlaub, Krank, unbezahlt …) war zusätzlich eine
+  Zeit erfasst (z. B. „Soll als Ist“ automatisch übernommen, bevor die Abwesenheit eingetragen wurde) und zählte als
+  Arbeit. Jetzt zählt an solchen Tagen nur die Abwesenheit – in Lohnarten (Ansicht, PDF, CSV, Lohnprogramm-CSV, Lexware)
+  und Stundenliste (Ansicht, Druck/PDF; Zeit durchgestrichen „zählt nicht – Abwesenheit eingetragen“). Halbe Tage
+  unverändert (Rest = Arbeit). Hinweis je Person „n Std. erfasst an Abwesenheitstagen → nicht gezählt“: hat die Person
+  wirklich gearbeitet, Abwesenheit ändern/löschen, sonst die Zeit entfernen. Alles wird bei jedem Aufruf neu gerechnet
+  (Abwesenheitsstunden nach aktuellem Plan, siehe oben) – PDFs sind damit immer aktuell; schon exportierte Monate
+  bekommen die Differenz als Korrektur im Folgemonat. Unterschriebene Stundenlisten bleiben gültig (Prüfsumme der Zeilen
+  unverändert). Test in `payroll-absence.db.test.ts`.
+- 2026-10-29: **Tabellenköpfe bleiben beim Scrollen oben stehen** (Ahmed: „sonst weiß man nicht, was das ist“): alle
+  Tabellen mit Kopfzeile und ab 8 Zeilen (`stickyHeads` in `client.ts`, abschaltbar mit `data-nostick`). Eigene Kopie des
+  Kopfs unter der Menüleiste (CSS sticky greift in seitlich scrollenden Tabellen nicht), gleiche Spaltenbreiten, folgt
+  dem seitlichen Scrollen, Klick auf die Überschrift sortiert weiter. Gilt am PC und in der App.

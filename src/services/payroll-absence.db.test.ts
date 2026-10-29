@@ -114,4 +114,15 @@ describe.skipIf(!available)('Lohnexport mit Abwesenheiten (Datenbank)', () => {
     const [ist] = await payrollMonth(sql, '2026-11', hourly);
     expect(ist!.minutes.normal).toBe(6 * 60);
   });
+
+  it('Zeit an einem Abwesenheitstag zählt nicht zusätzlich (Abwesenheit geht vor)', async () => {
+    // Mi 04.11. unbezahlt, trotzdem „Soll als Ist“ erfasst → Tag nicht doppelt
+    await sql`insert into app.time_entries (id, employee_id, site_id, work_date, start_at, end_at, break_minutes, source, status, created_by)
+              values (${randomUUID()}, ${mini}, ${DEMO.siteSchool}, '2026-11-04',
+                      '2026-11-04 10:00+01', '2026-11-04 12:00+01', 0, 'buero', 'erfasst', 't')`;
+    const [r] = await payrollMonth(sql, '2026-11', mini, { fillPlan: true });
+    expect(r!.minutes.normal).toBe(21 * 120 - 360);
+    expect(r!.unpaidMinutes).toBe(360);
+    expect(r!.absenceConflictMinutes).toBe(120);
+  });
 });

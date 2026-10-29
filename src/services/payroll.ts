@@ -155,6 +155,8 @@ export interface PayrollRow {
   uncoveredSundayHolidayMinutes: number;
   /** an Feiertagen erfasste Zeit ohne Einsatz „auch an Sonn- und Feiertagen“ – als Feiertagslohn gezählt */
   holidayWorkedAsLfzMinutes: number;
+  /** erfasste Zeit an Tagen mit ganztägiger Abwesenheit – nicht als Arbeit gezählt (Abwesenheit geht vor) */
+  absenceConflictMinutes: number;
 }
 
 /** Ortszeit Berlin (JJJJ-MM-TT, HH:MM) → Zeitpunkt; Sommer-/Winterzeit über Intl ermittelt. */
@@ -262,10 +264,17 @@ export async function payrollMonth(
   const [entries, absHours, kinds] = await Promise.all([
     listEntries(sql, { from, to, ...(employeeId ? { employeeId } : {}) }),
     listAbsenceHours(sql, { from, to, ...(employeeId ? { employeeId } : {}) }),
-    sql<{ id: string; kind: string }[]>`
-      select id, kind::text from app.absences where start_date <= ${to} and end_date >= ${from}`,
+    sql<{ id: string; kind: string; half_day: boolean }[]>`
+      select id, kind::text, half_day from app.absences where start_date <= ${to} and end_date >= ${from}`,
   ]);
   const kindOf = new Map(kinds.map((k) => [k.id, k.kind]));
+  // Ganztägige Abwesenheit (Urlaub, Krank, unbezahlt …) geht vor einer am selben Tag erfassten Zeit (z. B. „Soll als
+  // Ist“ automatisch übernommen, bevor die Abwesenheit eingetragen wurde) – sonst stünde der Tag doppelt im Lohn
+  // (Ahmed 29.10.: 22 Tage × 4,5 = 99 Normalstunden trotz eines unbezahlten Tags).
+  const halfDay = new Set(kinds.filter((k) => k.half_day).map((k) => k.id));
+  const absentDays = new Set(
+    absHours.filter((h) => !halfDay.has(h.absence_id)).map((h) => `${h.employee_id}|${h.work_date}`),
+  );
   // Sonn-/Feiertagszuschläge nur für Zeiten zu Einsätzen „auch an Sonn- und Feiertagen“ (Ahmed 09.10.);
   // Nachtzuschlag gilt immer. Zeit ohne solchen Einsatz → Minuten als Hinweis (kein Zuschlag berechnet).
   const flagged = await sql<
@@ -401,6 +410,7 @@ export async function payrollMonth(
     const m = zero();
     let uncovered = 0;
     let holidayAsLfz = 0;
+    let absenceConflict = 0;
     let pending = 0;
     let fc = 0;
     for (const f of forecast) {
@@ -431,8 +441,12 @@ export async function payrollMonth(
       if (cutoff && t.work_date > cutoff) continue;
       if (t.status === 'beantragt' || t.status === 'laeuft') pending++;
       if ((t.status !== 'erfasst' && t.status !== 'freigegeben') || !t.end_at) continue;
-      const covered = holidayCovered(e.id, t.site_id, t.work_date);
       const net = Math.max(0, t.gross_minutes - t.break_minutes);
+      if (absentDays.has(`${e.id}|${t.work_date}`)) {
+        absenceConflict += net;
+        continue;
+      }
+      const covered = holidayCovered(e.id, t.site_id, t.work_date);
       if (!covered && holidayName(t.work_date)) {
         // Feiertag ohne festgelegte Feiertagsarbeit: Feiertagslohn statt Arbeit + Zuschlag. Steht dafür ein Einsatz im
         // Plan, zählt dessen Zeit (oben), sonst die erfasste Zeit.
@@ -514,6 +528,7 @@ export async function payrollMonth(
         forecastMinutes: fc,
         uncoveredSundayHolidayMinutes: uncovered,
         holidayWorkedAsLfzMinutes: holidayAsLfz,
+        absenceConflictMinutes: absenceConflict,
       });
   }
   return rows;

@@ -35,6 +35,8 @@ export interface SheetRow {
   status: string | null;
   late: boolean;
   note: string | null;
+  /** Zeit an einem Tag mit ganztägiger Abwesenheit: wird angezeigt, zählt aber nicht (Abwesenheit geht vor) */
+  overridden?: boolean;
 }
 
 export interface SheetTotals {
@@ -109,7 +111,7 @@ export function sumRows(rows: SheetRow[]): SheetTotals {
   for (const r of rows) {
     t.plan += r.planMinutes;
     // nur erfasste/freigegebene Zeiten zählen; Nachträge in Prüfung nicht
-    if (r.status === 'erfasst' || r.status === 'freigegeben') {
+    if ((r.status === 'erfasst' || r.status === 'freigegeben') && !r.overridden) {
       t.work += r.workMinutes;
       t.breaks += r.breakMinutes;
     }
@@ -145,13 +147,13 @@ export async function timesheet(sql: Sql, employeeId: string, month: string): Pr
     listEntries(sql, { from, to, employeeId }),
     listAbsenceHours(sql, { employeeId, from, to }),
   ]);
-  const kinds = new Map(
-    (
-      await sql<{ id: string; kind: AbsenceKind }[]>`
-        select id, kind::text as kind from app.absences where employee_id = ${employeeId}
-           and start_date <= ${to} and end_date >= ${from}`
-    ).map((a) => [a.id, a.kind]),
-  );
+  const absRows = await sql<{ id: string; kind: AbsenceKind; half_day: boolean }[]>`
+    select id, kind::text as kind, half_day from app.absences where employee_id = ${employeeId}
+       and start_date <= ${to} and end_date >= ${from}`;
+  const kinds = new Map(absRows.map((a) => [a.id, a.kind]));
+  // Ganztägige Abwesenheit geht vor einer am selben Tag erfassten Zeit (wie im Lohnexport, Ahmed 29.10.)
+  const half = new Set(absRows.filter((a) => a.half_day).map((a) => a.id));
+  const absentDays = new Set(absHours.filter((h) => !half.has(h.absence_id)).map((h) => h.work_date));
   const rows: SheetRow[] = [];
   const empty = (date: string): SheetRow => ({
     date,
@@ -214,6 +216,7 @@ export async function timesheet(sql: Sql, employeeId: string, month: string): Pr
       a.date.localeCompare(b.date) ||
       (a.start ?? a.planFrom ?? '99').localeCompare(b.start ?? b.planFrom ?? '99'),
   );
+  markOverridden(rows, absentDays);
   const t = sumRows(rows);
   const open = {
     running: entries.filter((x) => x.status === 'laeuft').length,
@@ -253,6 +256,11 @@ function fillEntry(r: SheetRow, en: Awaited<ReturnType<typeof listEntries>>[numb
   r.late = en.late;
   r.note = en.note;
   if (!r.site) r.site = en.site_name;
+}
+
+/** Zeiten an Tagen mit ganztägiger Abwesenheit kennzeichnen (zählen nicht als Arbeit). */
+function markOverridden(rows: SheetRow[], absentDays: Set<string>) {
+  for (const r of rows) if (r.start && absentDays.has(r.date)) r.overridden = true;
 }
 
 export const ABSENCE_SHORT: Record<AbsenceKind, string> = {

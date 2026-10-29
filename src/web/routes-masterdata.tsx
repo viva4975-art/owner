@@ -1,4 +1,5 @@
 import { AddressBlock } from './address-block.js';
+import { AttendanceForm, attendancePdfForSites, attendanceQuery } from './attendance-form.js';
 import { SchoolCard } from './routes-school-leave.js';
 import { mergeSites } from '../services/site-merge.js';
 import { CustomerOrders } from './routes-orders.js';
@@ -1314,6 +1315,11 @@ export function registerMasterdataRoutes(ctx: Ctx) {
         {await (async () => {
           // Unterteilung wie am Objekt (Ahmed 08.10.); alte Ablage „Kundendokument“ steht unter „Weitere Dateien“
           const files = await listFiles(sql, { type: 'customer', id: cust.id });
+          const allowed = c.get('sites');
+          const attSites = (
+            await sql<{ id: string; site_no: string; name: string }[]>`
+              select id, site_no, name from app.sites where customer_id = ${cust.id} and active order by site_no`
+          ).filter((x) => allowed === null || allowed.includes(x.id));
           const known = new Set(CUSTOMER_DOC_CATEGORIES.map((k) => k.name));
           const other = files.filter((f) => !f.category || !known.has(f.category));
           return (
@@ -1341,6 +1347,15 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                 )}
                 <DocFoldAll />
               </div>
+              {attSites.length > 0 && (
+                <details class="card doc-cat">
+                  <summary>
+                    <b>Anwesenheitsliste drucken</b>{' '}
+                    <span class="mut small">(zwei Monate je Seite, ein Objekt oder alle in einer PDF)</span>
+                  </summary>
+                  <AttendanceForm action={`/kunden/${cust.id}/anwesenheit.pdf`} sites={attSites} />
+                </details>
+              )}
               {CUSTOMER_DOC_CATEGORIES.map((k) => {
                 const list = files.filter((f) => f.category === k.name);
                 return (
@@ -1384,6 +1399,35 @@ export function registerMasterdataRoutes(ctx: Ctx) {
       </>
     )),
   );
+
+  // Anwesenheitsliste für ein oder alle aktiven Objekte des Kunden (Ahmed 29.10.)
+  app.get(`/kunden/:id{${UUID}}/anwesenheit.pdf`, async (c) => {
+    const id = c.req.param('id');
+    const allowed = c.get('sites');
+    const sites = (
+      await sql<{ id: string; site_no: string }[]>`
+        select id, site_no from app.sites where customer_id = ${id} and active order by site_no`
+    ).filter((x) => allowed === null || allowed.includes(x.id));
+    const want = c.req.query('objekt') ?? 'alle';
+    const pick = want === 'alle' ? sites : sites.filter((x) => x.id === want);
+    if (!pick.length) throw new BusinessError('Kein aktives Objekt gewählt');
+    const { month, pages } = attendanceQuery((k) => c.req.query(k));
+    const pdf = await attendancePdfForSites(
+      sql,
+      pick.map((x) => x.id),
+      month,
+      pages,
+    );
+    const [cu] = await sql<
+      { customer_no: string | null }[]
+    >`select customer_no from app.customers where id = ${id}`;
+    const name = pick.length === 1 ? pick[0]!.site_no : (cu?.customer_no ?? 'Kunde');
+    return c.body(pdf as Uint8Array<ArrayBuffer>, 200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="Anwesenheitsliste_${name}_${month}.pdf"`,
+      'Cache-Control': 'private, no-store',
+    });
+  });
 
   // Kunden-Dokumente (z. B. LV) auf mehrere oder alle Objekte übertragen (Ahmed 17.10.) – nur Verknüpfung, keine Kopie
   const SITE_CAT_OF: Record<string, string> = {

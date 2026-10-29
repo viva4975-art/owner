@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { listWordTemplates } from '../services/word-templates.js';
 import { WordTemplateBox } from './routes-word-templates.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
-import { renderAttendancePdf } from '../pdf/attendance.js';
+import { AttendanceForm, attendancePdfForSites, attendanceQuery } from './attendance-form.js';
 import { listKeys, nextKeyNo } from '../services/inventory.js';
 import { listOffers } from '../services/offers.js';
 import { listFiles } from '../services/uploads.js';
@@ -149,30 +149,7 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                 </a>
               </div>
             )}
-            <form
-              method="get"
-              action={`/objekte/${s.id}/anwesenheit.pdf`}
-              target="_blank"
-              class="actions"
-              style="margin-bottom:0;align-items:flex-end"
-            >
-              <label>
-                Anwesenheitsliste ab Monat
-                <input type="month" name="monat" value={todayBerlin().slice(0, 7)} required />
-              </label>
-              <label>
-                Seiten (je 2 Monate)
-                <select name="seiten">
-                  <option value="1">1 – zwei Monate</option>
-                  <option value="2">2 – vier Monate</option>
-                  <option value="3">3 – sechs Monate</option>
-                  <option value="6">6 – ganzes Jahr</option>
-                </select>
-              </label>
-              <button class="btn sec" type="submit">
-                <Icon name="download" /> Anwesenheitsliste (PDF)
-              </button>
-            </form>
+            <AttendanceForm action={`/objekte/${s.id}/anwesenheit.pdf`} />
             {!pkg && (
               <div class="flash warn" style="margin-bottom:0">
                 Das Vorlagenpaket (ZIP „Objektordner-Komplettpaket“) ist noch nicht hochgeladen – unter{' '}
@@ -344,24 +321,12 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
   app.get(`/objekte/:id{${UUID}}/anwesenheit.pdf`, async (c) => {
     const id = c.req.param('id');
     assertSite(c, id);
-    const month = /^\d{4}-\d{2}$/.test(c.req.query('monat') ?? '')
-      ? c.req.query('monat')!
-      : todayBerlin().slice(0, 7);
-    const pages = Math.min(6, Math.max(1, Number(c.req.query('seiten')) || 1));
-    const f = await folderFacts(sql, id);
-    const addr = [f.site.street, [f.site.postal_code, f.site.city].filter(Boolean).join(' ')]
-      .filter(Boolean)
-      .join(', ');
-    const pdf = await renderAttendancePdf({
-      site: { name: f.site.name, site_no: f.site.site_no, address: addr || null },
-      customer: f.customer.name,
-      month,
-      pages,
-      company: 'Viva-Deluxe Gebäudereinigung GmbH',
-    });
+    const { month, pages } = attendanceQuery((k) => c.req.query(k));
+    const pdf = await attendancePdfForSites(sql, [id], month, pages);
+    const [f] = await sql<{ site_no: string }[]>`select site_no from app.sites where id = ${id}`;
     return c.body(pdf as Uint8Array<ArrayBuffer>, 200, {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="Anwesenheitsliste_${f.site.site_no}_${month}.pdf"`,
+      'Content-Disposition': `inline; filename="Anwesenheitsliste_${f?.site_no ?? 'Objekt'}_${month}.pdf"`,
       'Cache-Control': 'private, no-store',
     });
   });
@@ -443,6 +408,13 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
               </>
             )}
           </div>
+          <details class="card doc-cat">
+            <summary>
+              <b>Anwesenheitsliste drucken</b>{' '}
+              <span class="mut small">(zwei Monate je Seite, z. B. für den Kunden)</span>
+            </summary>
+            <AttendanceForm action={`/objekte/${s.id}/anwesenheit.pdf`} />
+          </details>
           {missing.length > 0 ? (
             <div class="flash warn">
               Pflichtdokumente fehlen: <b>{missing.map((m) => m.name).join(', ')}</b>

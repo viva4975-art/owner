@@ -4523,3 +4523,7 @@ Testadresse.
   (26–32 %) einen Anteil für Ausfallzeiten, ist das jetzt doppelt → Sätze unter Einstellungen → DATEV/Nachkalkulation
   auf reine Arbeitgeberanteile prüfen. Fund nebenbei: Kreis-Import absences ↔ timesheet (`ABSENCE_SHORT` jetzt
   ausgeschrieben).
+- 2026-10-29: **Anwesenheitsliste unter Dokumente** (Ahmed: „auch für Kunde drucken können“): Kunde → Dokumente → aufklappbar
+  „Anwesenheitsliste drucken“: Objekt wählen oder „alle aktiven Objekte“ (eine PDF, je Objekt die gewählten Seiten), ab
+  Monat, 1/2/3/6 Seiten à zwei Monate (`/kunden/:id/anwesenheit.pdf`); ebenso Objekt → Dokumente (zusätzlich zum
+  Objektordner). Gemeinsamer Baustein `src/web/attendance-form.tsx` (`AttendanceForm`, `attendancePdfForSites`).

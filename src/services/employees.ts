@@ -6,6 +6,7 @@ import type { Sql } from '../db/client.js';
 import { assertVersion, versionField } from './crm.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { recordHoursChange } from './employee-hours.js';
+import { alignShiftsToExit } from './time.js';
 import { BusinessError } from './errors.js';
 import { appLanguageOf } from '../domain/hr/lists.js';
 
@@ -272,6 +273,8 @@ export async function listEmployees(
   sql: Sql,
   opts: {
     status?: 'aktiv' | 'ausgetreten';
+    /** Einplanen: aktive und in den letzten 12 Monaten Ausgeschiedene (bis zum Austrittstag planbar) */
+    plannable?: boolean;
     q?: string;
     tag?: string;
     withoutShift?: boolean;
@@ -305,6 +308,11 @@ export async function listEmployees(
            ${hasShift(sql)} as has_shift
       from app.employees e left join app.employee_private p on p.employee_id = e.id
      where ${opts.status ? sql`e.status = ${opts.status}` : sql`true`}
+       and ${
+         opts.plannable
+           ? sql`(e.status = 'aktiv' or e.exit_date >= ${addDaysIso(todayBerlin(), -366)})`
+           : sql`true`
+       }
        and ${opts.withoutShift ? sql`not ${hasShift(sql)}` : sql`true`}
        and ${opts.tag ? sql`${opts.tag} = any(e.tags)` : sql`true`}
        and ${
@@ -423,11 +431,13 @@ export async function saveEmployee(sql: Sql, id: string, input: EmployeeInput, a
     priv.work_permit_until = null;
     priv.work_permit_info = null;
   }
+  let exitChanged = false;
   try {
     await sql.begin(async (tx) => {
       const [cur] = await tx<
-        { version: number; weekly_hours: string | null; days_per_week: string }[]
-      >`select version, weekly_hours::text, days_per_week::text from app.employees where id = ${id} for update`;
+        { version: number; weekly_hours: string | null; days_per_week: string; exit_date: string | null }[]
+      >`select version, weekly_hours::text, days_per_week::text, exit_date::text from app.employees where id = ${id} for update`;
+      exitChanged = !!cur && (cur.exit_date ?? null) !== (input.exit_date ?? null);
       assertVersion(cur?.version, input.version, 'Der Mitarbeiter');
       // Wochenstunden und Arbeitstage mit Verlauf: Änderung gilt ab „gültig ab“ (Zukunft → bis dahin der alte Wert)
       const oldHours = cur?.weekly_hours != null ? Number(cur.weekly_hours) : null;
@@ -485,6 +495,8 @@ export async function saveEmployee(sql: Sql, id: string, input: EmployeeInput, a
       throw new BusinessError('Personalnummer ist bereits vergeben');
     throw err;
   }
+  // Austritt geändert → Einsätze zum Austrittstag beenden bzw. vorigen Stand wiederherstellen
+  if (exitChanged) await alignShiftsToExit(sql, id, actor);
 }
 
 export async function setEmployeeSites(sql: Sql, id: string, siteIds: string[]) {
@@ -851,7 +863,11 @@ export async function employmentHistory(sql: Sql, employeeId: string): Promise<E
 }
 
 /** Austritt erfassen: Datum + Grund; ab dem Tag nach dem Austritt gilt der Mitarbeiter als ausgetreten. */
-export async function exitEmployee(sql: Sql, id: string, p: { date: string; reason: string | null }) {
+export async function exitEmployee(
+  sql: Sql,
+  id: string,
+  p: { date: string; reason: string | null; actor?: string },
+) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date)) throw new BusinessError('Austrittsdatum fehlt');
   const [e] = await sql<
     { entry_date: string }[]
@@ -861,6 +877,7 @@ export async function exitEmployee(sql: Sql, id: string, p: { date: string; reas
   await sql`update app.employees set exit_date = ${p.date}, exit_reason = ${p.reason?.trim() || null},
               status = case when ${p.date}::date <= (now() at time zone 'Europe/Berlin')::date then 'ausgetreten'::app.employee_status else 'aktiv'::app.employee_status end
              where id = ${id}`;
+  return alignShiftsToExit(sql, id, p.actor ?? 'system');
 }
 
 /**
@@ -901,13 +918,15 @@ export async function markNotStarted(sql: Sql, id: string, actor: string) {
 }
 
 /** Austritt zurücknehmen (falsch erfasst): Austrittsdatum und Grund weg, Status aktiv. Änderung steht im Protokoll. */
-export async function revokeExit(sql: Sql, id: string) {
+export async function revokeExit(sql: Sql, id: string, actor = 'system') {
   const [e] = await sql<
     { exit_date: string | null }[]
   >`select exit_date::text from app.employees where id = ${id}`;
   if (!e) throw new BusinessError('Mitarbeiter nicht gefunden');
   if (!e.exit_date) throw new BusinessError('Es ist kein Austritt erfasst');
   await sql`update app.employees set exit_date = null, exit_reason = null, status = 'aktiv' where id = ${id}`;
+  // wegen des Austritts beendete Einsätze laufen wieder wie vorher
+  await alignShiftsToExit(sql, id, actor);
 }
 
 /**
@@ -928,6 +947,8 @@ export async function reenterEmployee(sql: Sql, id: string, p: { date: string; a
                      ${e.exit_reason}, ${p.actor}) on conflict do nothing`;
     await tx`update app.employees set entry_date = ${p.date}, exit_date = null, exit_reason = null, status = 'aktiv'
               where id = ${id}`;
+    // neue Beschäftigung: die zum Austritt beendeten Einsätze bleiben beendet (nicht wiederherstellen)
+    await tx`delete from app.shift_exit_changes where employee_id = ${id}`;
   });
 }
 

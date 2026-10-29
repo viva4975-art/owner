@@ -586,6 +586,22 @@ export async function listShiftPlans(
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+/**
+ * Einsätze enden spätestens am Austrittstag (Ahmed 29.10.): Ausgeschiedene sind bis zum Austritt planbar, „bis“
+ * wird auf den Austritt gekürzt, ein Beginn nach dem Austritt wird abgelehnt.
+ */
+async function capToExit(sql: Sql | Tx, employeeId: string, validFrom: string, validUntil: string | null) {
+  const [e] = await sql<{ exit_date: string | null; name: string }[]>`
+    select exit_date::text, first_name || ' ' || last_name as name from app.employees where id = ${employeeId}`;
+  if (!e?.exit_date) return validUntil;
+  if (validFrom > e.exit_date)
+    throw new BusinessError(
+      `${e.name} tritt am ${e.exit_date.split('-').reverse().join('.')} aus – Einsätze danach sind nicht möglich`,
+      'after_exit',
+    );
+  return !validUntil || validUntil > e.exit_date ? e.exit_date : validUntil;
+}
+
 export async function saveShiftPlan(
   sql: Sql,
   id: string,
@@ -629,6 +645,11 @@ export async function saveShiftPlan(
     throw new BusinessError('Wochentag ungültig');
   if (input.validUntil && input.validUntil < input.validFrom) throw new BusinessError('„bis“ liegt vor „ab“');
   const ids: string[] = [];
+  if (input.employeeId)
+    input = {
+      ...input,
+      validUntil: await capToExit(sql, input.employeeId, input.validFrom, input.validUntil),
+    };
   await sql.begin(async (tx) => {
     if (input.employeeId) {
       const emp = input.employeeId;
@@ -661,6 +682,59 @@ export async function saveShiftPlan(
              values (${actor}, 'save', 'shift_plan', ${id}, ${tx.json({ weekdays: input.weekdays })})`;
   });
   return ids;
+}
+
+/**
+ * Einsätze an den Austritt anpassen (Ahmed 29.10.: „wenn einer ausscheidet, zu dem Zeitpunkt die Einsätze beenden“).
+ * Aufruf nach jedem Erfassen/Ändern/Zurücknehmen eines Austritts. Zuerst wird ein früher wegen des Austritts
+ * geänderter Stand zurückgesetzt (nur wo seitdem nichts anderes geändert wurde), dann gilt der neue Austritt:
+ * laufende Einsätze enden am Austrittstag, Einsätze ab dem Tag danach werden offen („zu planende Einsätze“).
+ */
+export async function alignShiftsToExit(sql: Sql, employeeId: string, actor: string) {
+  return sql.begin(async (tx) => {
+    const [e] = await tx<{ exit_date: string | null }[]>`
+      select exit_date::text from app.employees where id = ${employeeId} for update`;
+    if (!e) return { ended: 0, opened: 0 };
+    const prev = await tx<
+      { shift_plan_id: string; kind: string; exit_date: string; old_valid_until: string | null }[]
+    >`
+      select shift_plan_id, kind, exit_date::text, old_valid_until::text
+        from app.shift_exit_changes where employee_id = ${employeeId}`;
+    for (const r of prev) {
+      if (r.kind === 'beendet')
+        await tx`update app.shift_plans set valid_until = ${r.old_valid_until}, updated_at = now()
+                  where id = ${r.shift_plan_id} and employee_id = ${employeeId} and valid_until = ${r.exit_date}`;
+      else
+        await tx`update app.shift_plans set employee_id = ${employeeId}, updated_at = now()
+                  where id = ${r.shift_plan_id} and employee_id is null`;
+    }
+    if (prev.length) await tx`delete from app.shift_exit_changes where employee_id = ${employeeId}`;
+    let ended: { id: string; valid_until: string | null }[] = [];
+    let opened: { id: string }[] = [];
+    if (e.exit_date) {
+      ended = await tx<{ id: string; valid_until: string | null }[]>`
+        select id, valid_until::text from app.shift_plans
+         where employee_id = ${employeeId} and valid_from <= ${e.exit_date}
+           and (valid_until is null or valid_until > ${e.exit_date})`;
+      opened = await tx<{ id: string }[]>`
+        select id from app.shift_plans where employee_id = ${employeeId} and valid_from > ${e.exit_date}`;
+      for (const p of ended) {
+        await tx`insert into app.shift_exit_changes (shift_plan_id, employee_id, kind, exit_date, old_valid_until)
+                 values (${p.id}, ${employeeId}, 'beendet', ${e.exit_date}, ${p.valid_until})`;
+        await tx`update app.shift_plans set valid_until = ${e.exit_date}, updated_at = now() where id = ${p.id}`;
+      }
+      for (const p of opened) {
+        await tx`insert into app.shift_exit_changes (shift_plan_id, employee_id, kind, exit_date)
+                 values (${p.id}, ${employeeId}, 'offen', ${e.exit_date})`;
+        await tx`update app.shift_plans set employee_id = null, updated_at = now() where id = ${p.id}`;
+      }
+    }
+    if (prev.length || ended.length || opened.length)
+      await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+               values (${actor}, 'exit_shifts', 'employee', ${employeeId},
+                       ${tx.json({ austritt: e.exit_date, zurueckgesetzt: prev.length, beendet: ended.map((p) => p.id), offen: opened.map((p) => p.id) })})`;
+    return { ended: ended.length, opened: opened.length };
+  });
 }
 
 /** Einsatz beenden (bleibt für die Vergangenheit erhalten). */
@@ -1582,6 +1656,9 @@ export async function saveShiftSeries(sql: Sql, seriesId: string, p: ShiftSeries
   const existing = await getShiftSeries(sql, seriesId);
   const yesterday = addDays(todayBerlin(), -1);
   const keep = new Set<string>();
+  const untilOf = new Map<string | null, string | null>();
+  for (const emp of employees)
+    untilOf.set(emp, emp ? await capToExit(sql, emp, p.validFrom, validUntil) : validUntil);
   await sql.begin(async (tx) => {
     for (const emp of employees) {
       if (emp) {
@@ -1607,7 +1684,7 @@ export async function saveShiftSeries(sql: Sql, seriesId: string, p: ShiftSeries
                                        valid_until, note, recurrence, every, months, series_id, planning_group,
                                        holiday_work)
           values (${pid}, ${emp}, ${p.siteId}, ${wd}, ${t.start}, ${t.end}, ${t.breakMinutes}, ${p.validFrom},
-                  ${validUntil}, ${p.note}, ${p.recurrence}, ${p.every}, ${p.months?.length ? p.months : null},
+                  ${untilOf.get(emp) ?? null}, ${p.note}, ${p.recurrence}, ${p.every}, ${p.months?.length ? p.months : null},
                   ${seriesId}, ${p.planningGroup?.trim() || null}, ${!!p.holidayWork || wd === 7})
           on conflict (id) do update set employee_id = excluded.employee_id, site_id = excluded.site_id,
             weekday = excluded.weekday, start_time = excluded.start_time, end_time = excluded.end_time,

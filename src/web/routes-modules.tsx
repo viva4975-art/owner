@@ -1623,11 +1623,19 @@ export function registerModuleRoutes(ctx: Ctx) {
   app.post(`/personal/:id{${UUID}}/austritt`, async (c) => {
     const id = c.req.param('id');
     const b = await c.req.parseBody();
-    await exitEmployee(sql, id, {
+    const r = await exitEmployee(sql, id, {
       date: String(b.date ?? ''),
       reason: typeof b.reason === 'string' ? b.reason : null,
+      actor: c.get('actor'),
     });
-    return back(c, `/personal/${id}`, { ok: 'Austritt gespeichert.' });
+    return back(c, `/personal/${id}`, {
+      ok:
+        'Austritt gespeichert.' +
+        (r.ended ? ` ${r.ended} Einsätze enden am Austrittstag.` : '') +
+        (r.opened
+          ? ` ${r.opened} Einsätze beginnen erst danach – sie sind jetzt offen (bitte neu besetzen).`
+          : ''),
+    });
   });
 
   app.post(`/personal/:id{${UUID}}/nicht-angetreten`, async (c) => {
@@ -1644,7 +1652,7 @@ export function registerModuleRoutes(ctx: Ctx) {
 
   app.post(`/personal/:id{${UUID}}/austritt-zuruecknehmen`, async (c) => {
     const id = c.req.param('id');
-    await revokeExit(sql, id);
+    await revokeExit(sql, id, c.get('actor'));
     return back(c, `/personal/${id}`, { ok: 'Austritt zurückgenommen – der Mitarbeiter ist wieder aktiv.' });
   });
 

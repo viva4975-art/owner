@@ -161,7 +161,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
     const scope = c.get('sites');
     const [allShifts, emps, sites, absences] = await Promise.all([
       plannedShifts(sql, { from: r.from, to: r.to, includeOpen: true }),
-      listEmployees(sql, { status: 'aktiv' }),
+      listEmployees(sql, { plannable: true }),
       sql<SiteInfo[]>`
         select s.id, s.street, s.postal_code, s.city, c.name as customer_name, m.name as manager,
                m.phone as manager_phone
@@ -198,6 +198,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
     ]);
     const visible = emps.filter(
       (e) =>
+        (e.status === 'aktiv' || (!!e.exit_date && e.exit_date >= r.from)) &&
         (!group || (e.planning_group ?? '') === (group === '-' ? '' : group)) &&
         (selected.size ? selected.has(e.id) : busy.has(e.id) || q.alle === '1'),
     );
@@ -466,7 +467,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
           from app.sites s join app.customers c on c.id = s.customer_id
          where s.active or s.id = ${series?.siteId ?? null}
          order by c.name, s.site_no`,
-      listEmployees(sql, { status: 'aktiv' }),
+      listEmployees(sql, { plannable: true }),
       sql<{ g: string }[]>`
         select distinct g from (select planning_group as g from app.employees union select planning_group from app.shift_plans) x
          where g is not null order by 1`,
@@ -498,6 +499,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
         {emps.map((e) => (
           <option value={e.id} selected={e.id === sel}>
             {e.last_name}, {e.first_name} ({e.personnel_no})
+            {e.exit_date ? ` – Austritt ${dateDe(e.exit_date)}, planbar bis dahin` : ''}
           </option>
         ))}
       </select>

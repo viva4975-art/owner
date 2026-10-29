@@ -4486,3 +4486,13 @@ Testadresse.
   26.10. rechnet die App auf Ahmeds Wunsch rein anteilig ohne Untergrenze (15 Tage); Test angepasst. **Rechtlich:** Bei
   Eintritt bis 01.07. ist die Wartezeit (§ 4 BUrlG) im Jahr erfüllt → mindestens der gesetzliche Mindesturlaub (4 Wochen
   × Arbeitstage, bei 5-Tage-Woche 20) ist geschuldet; die rein anteilige Rechnung unterschreitet das (§ 13 BUrlG).
+- 2026-10-29: **Einsätze und Austritt** (Ahmed: „bei ausgeschiedenen bis zum Beendigungszeitpunkt die Einsätze noch
+  erstellen können … wenn einer ausscheidet, zu dem Zeitpunkt die Einsätze automatisch beenden“):
+  - Planung (Tafel, „Termin oder Terminserie planen“) bietet auch Ausgetretene der letzten 12 Monate bzw. Mitarbeitende mit
+    eingetragenem künftigem Austritt an („– Austritt TT.MM.JJJJ, planbar bis dahin“). Einsätze/Serien werden auf den
+    Austrittstag gekürzt (`capToExit` in `time.ts`); Beginn nach dem Austritt wird abgelehnt.
+  - **Austritt eintragen/ändern** (Austritt-Formular oder Stammdaten): laufende Einsätze enden am Austrittstag, Einsätze, die
+    erst danach beginnen, werden „offen“ (Zu planende Einsätze, neu besetzen) – `alignShiftsToExit`. Der vorige Stand je
+    Einsatz steht in `app.shift_exit_changes` (Migration `20270104000001`): Austritt verschieben oder zurücknehmen stellt
+    erst den alten Stand her und rechnet dann neu (nur wo seitdem nichts von Hand geändert wurde). Wiedereintritt löscht
+    nur die Vermerke (alte Einsätze bleiben beendet). Protokoll `exit_shifts`. Test `exit-shifts.db.test.ts`.

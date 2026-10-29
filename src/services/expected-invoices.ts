@@ -193,21 +193,26 @@ export async function expectedInvoices(
   const ids = orders.map((o) => o.id);
   const [covered, skipped, prices] = await Promise.all([
     coverInvoices(sql, orders),
-    sql<{ subcontract_id: string; m: string }[]>`
-      select subcontract_id, to_char(period_month, 'YYYY-MM') as m from app.subcontract_expected_skips
+    sql<{ subcontract_id: string; m: string; reason: string }[]>`
+      select subcontract_id, to_char(period_month, 'YYYY-MM') as m, reason from app.subcontract_expected_skips
        where subcontract_id in ${sql(ids)}`,
     sql<{ subcontract_id: string; m: string; price_cents: bigint }[]>`
       select subcontract_id, to_char(valid_from_month, 'YYYY-MM') as m, price_cents from app.subcontract_prices
        where subcontract_id in ${sql(ids)} order by valid_from_month`,
   ]);
-  const has = new Set(skipped.map((r) => `${r.subcontract_id}|${r.m}`));
+  const has = new Set(
+    skipped.filter((r) => r.reason !== OTHER_ORDER).map((r) => `${r.subcontract_id}|${r.m}`),
+  );
+  const notOurs = new Set(
+    skipped.filter((r) => r.reason === OTHER_ORDER).map((r) => `${r.subcontract_id}|${r.m}`),
+  );
   const rows: ExpectedRow[] = [];
   for (const o of orders) {
     if (!isRecurringOrder(o.frequency)) continue;
     for (const p of periodsOf(o.frequency, o.valid_from, o.valid_to, today)) {
       if (p.start < from) continue;
       if (has.has(`${o.id}|${p.start}`)) continue;
-      if (coverFor(covered, o, p).length) continue;
+      if (coverFor(covered, o, p).some((i) => !i.loose || !notOurs.has(`${o.id}|${p.start}`))) continue;
       let price = o.price_cents;
       for (const pr of prices) if (pr.subcontract_id === o.id && pr.m <= p.start) price = pr.price_cents;
       const days = Math.round(
@@ -233,6 +238,23 @@ export async function expectedInvoices(
     }
   }
   return rows;
+}
+
+/**
+ * Vermerk „vermutete Rechnung gehört zu einer anderen Bestellung“: blendet nur die nicht zugeordnete (vermutete)
+ * Rechnung aus – der Zeitraum bleibt offen, eine richtige Rechnung kann weiter zugeordnet werden.
+ */
+export const OTHER_ORDER = 'Rechnung gehört zu einer anderen Bestellung';
+
+/** Vermerk zurücknehmen (Zeitraum wieder offen). */
+export async function unskipExpected(sql: Sql, subcontractId: string, month: string, actor: string) {
+  if (!/^\d{4}-\d{2}$/.test(month)) throw new BusinessError('Zeitraum ungültig');
+  const del = await sql<{ reason: string }[]>`
+    delete from app.subcontract_expected_skips where subcontract_id = ${subcontractId} and period_month = ${`${month}-01`}
+    returning reason`;
+  if (del.length)
+    await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+              values (${actor}, 'unskip_expected', 'subcontract', ${subcontractId}, ${sql.json({ month, reason: del[0]!.reason })})`;
 }
 
 /** Zeitraum „keine Rechnung erwartet“ (mit Grund). */
@@ -308,6 +330,8 @@ export interface BillingPeriod {
   /** loose = nicht zugeordnet, nur über gleichen Nachunternehmer + Objekt erkannt */
   invoices: { id: string; invoice_no: string; net: bigint | null; loose: boolean }[];
   skipReason: string | null;
+  /** von Hand vermerkt (keine Rechnung / gehört zu anderer Bestellung) → zurücknehmbar */
+  noted: string | null;
 }
 
 /**
@@ -364,13 +388,15 @@ export async function billingTracking(
     }
     const list = periods.slice(-(opts.limit ?? 13)).map((p): BillingPeriod => {
       const k = `${o.id}|${p.start}`;
-      const invoices = coverFor(covered, o, p);
+      const other = skip.get(k) === OTHER_ORDER;
+      // „gehört zu einer anderen Bestellung“: vermutete Rechnung ausblenden, Zeitraum bleibt offen
+      const invoices = coverFor(covered, o, p).filter((i) => !(other && i.loose));
       const reason =
-        skip.get(k) ??
+        (other ? null : skip.get(k)) ??
         (p.start < (opts.from ?? EXPECTED_FROM) ? 'vor der Umstellung (bis 30.09.2026)' : null);
       const firm = invoices.some((i) => !i.loose);
       const state: BillingState =
-        firm || (invoices.length && !skip.get(k))
+        firm || (invoices.length && !(skip.get(k) && !other))
           ? 'abgerechnet'
           : reason
             ? 'keine'
@@ -379,7 +405,7 @@ export async function billingTracking(
               : p.end < today
                 ? 'offen'
                 : 'laufend';
-      return { ...p, state, invoices, skipReason: reason };
+      return { ...p, state, invoices, skipReason: reason, noted: skip.get(k) ?? null };
     });
     out.set(o.id, list.reverse());
   }

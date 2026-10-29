@@ -4555,3 +4555,10 @@ Testadresse.
   gesetzt bzw. der Server hatte das Update noch nicht. Jetzt automatisch: geht eine Rechnung (oder Test-Mail/Erneut senden)
   an eine Adresse von deutschebahn.com / bahn.de / db.de, gilt immer „eine Datei je E-Mail“ (`needsSingleFile` in
   `workflow.ts`), auch ohne Häkchen. Bei XRechnung ist das eine XML mit eingebetteter Rechnungs-PDF und Anlagen.
+- 2026-10-29: **Fund „gehört nicht dazu“ sperrte die Bestellung** (Ahmed: „Zuordnung weg gemacht, neue Rechnung kann ich
+  nicht mehr zuordnen“): Der Vermerk legte den Zeitraum als „keine Rechnung“ ab → Bestellung verschwand aus der Auswahl im
+  Rechnungseingang. Jetzt blendet „gehört nicht dazu“ nur die vermutete (nicht zugeordnete) Rechnung aus; der Zeitraum
+  bleibt offen/läuft, die Bestellung ist wieder wählbar, „Rechnung erwartet“ zählt ihn wieder (`OTHER_ORDER` in
+  `expected-invoices.ts`). Bestehende Vermerke mit diesem Text wirken sofort so. Neu: „Vermerk zurücknehmen“ bei „keine
+  Rechnung“ und „wieder anzeigen“ bei ausgeblendeter Rechnung (`unskipExpected`, Protokoll). Test in
+  `expected-invoices.db.test.ts`.

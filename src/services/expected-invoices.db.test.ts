@@ -2,7 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import type { Cents } from '../domain/money/money.js';
-import { billingTracking, expectedInvoices, periodsOf, skipExpected } from './expected-invoices.js';
+import {
+  OTHER_ORDER,
+  billingTracking,
+  expectedInvoices,
+  periodsOf,
+  skipExpected,
+  unskipExpected,
+} from './expected-invoices.js';
 import { saveIncoming } from './purchasing.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
@@ -179,6 +186,17 @@ describe.skipIf(!available)('Rechnung erwartet (Datenbank)', () => {
       },
       't',
     );
+    expect(await open()).toEqual(['2026-09']);
+    // „gehört nicht dazu“ (Ahmed 29.10.): vermutete Rechnung ausblenden – Zeitraum wieder offen, nicht „keine Rechnung“
+    await skipExpected(sql, scC, '2026-08', OTHER_ORDER, 't');
+    expect(await open()).toEqual(['2026-08', '2026-09']);
+    const aug = (await billingTracking(sql, [scC], { today, from: '2000-01' }))
+      .get(scC)!
+      .find((p) => p.start === '2026-08')!;
+    expect(aug.state).toBe('offen');
+    expect(aug.invoices).toEqual([]);
+    expect(aug.noted).toBe(OTHER_ORDER);
+    await unskipExpected(sql, scC, '2026-08', 't');
     expect(await open()).toEqual(['2026-09']);
     // am Auftrag erfasst, ohne Leistungsmonat → Rechnungsdatum zählt
     await saveIncoming(

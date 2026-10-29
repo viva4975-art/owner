@@ -87,7 +87,13 @@ import {
   subcontractSites,
 } from '../services/subcontract-sites.js';
 import { listFiles } from '../services/uploads.js';
-import { billingTracking, isRecurringOrder, skipExpected } from '../services/expected-invoices.js';
+import {
+  OTHER_ORDER,
+  billingTracking,
+  isRecurringOrder,
+  skipExpected,
+  unskipExpected,
+} from '../services/expected-invoices.js';
 import { listServiceTypes } from '../services/masterdata.js';
 import {
   addSubcontractHours,
@@ -2782,6 +2788,18 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                             )}
                           </>
                         ))}
+                        {p.noted === OTHER_ORDER && (
+                          <form
+                            method="post"
+                            action={`/nachunternehmer/auftraege/${id}/keine-rechnung/zuruecknehmen`}
+                            class="small mut"
+                            style="margin:0"
+                          >
+                            <input type="hidden" name="monat" value={p.start} />
+                            vermutete Rechnung ausgeblendet ·{' '}
+                            <button class="linkbtn small">wieder anzeigen</button>
+                          </form>
+                        )}
                         {p.state === 'abgerechnet' && p.invoices.some((i) => !i.loose) && (
                           <div class="small mut">
                             gehört zu einer anderen Bestellung? In der Eingangsrechnung unter „Zuordnung“ die
@@ -2805,15 +2823,22 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                               style="margin-top:6px"
                             >
                               <input type="hidden" name="monat" value={p.start} />
-                              <input
-                                name="grund"
-                                required
-                                value="Rechnung gehört zu einer anderen Bestellung"
-                                style="max-width:260px"
-                              />
-                              <button class="btn sm">Vermerken</button>
+                              <input type="hidden" name="grund" value={OTHER_ORDER} />
+                              <span class="small mut">
+                                Vermutete Rechnung ausblenden – der Zeitraum bleibt offen.
+                              </span>
+                              <button class="btn sm">Ausblenden</button>
                             </form>
                           </details>
+                        ) : p.noted && p.state === 'keine' ? (
+                          <form
+                            method="post"
+                            action={`/nachunternehmer/auftraege/${id}/keine-rechnung/zuruecknehmen`}
+                            style="display:inline"
+                          >
+                            <input type="hidden" name="monat" value={p.start} />
+                            <button class="btn sm ghost">Vermerk zurücknehmen</button>
+                          </form>
                         ) : p.state === 'offen' || p.state === 'laufend' ? (
                           <span class="actions" style="margin:0;flex-wrap:nowrap">
                             <a
@@ -3009,6 +3034,21 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         )}
       </>,
     );
+  });
+
+  app.post(`/nachunternehmer/auftraege/:id{${UUID}}/keine-rechnung/zuruecknehmen`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    try {
+      await unskipExpected(sql, id, String(b.monat ?? ''), c.get('actor'));
+    } catch (e) {
+      if (e instanceof BusinessError)
+        return back(c, `/nachunternehmer/auftraege/${id}`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/nachunternehmer/auftraege/${id}`, {
+      ok: 'Vermerk zurückgenommen – Zeitraum wieder offen.',
+    });
   });
 
   app.post(`/nachunternehmer/auftraege/:id{${UUID}}/keine-rechnung`, async (c) => {

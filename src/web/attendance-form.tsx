@@ -26,6 +26,7 @@ export function AttendanceForm(p: {
         <label>
           Objekt
           <select name="objekt">
+            <option value="kunde">nur Kunde (ohne Objekt)</option>
             {p.sites.length > 1 && <option value="alle">alle aktiven Objekte ({p.sites.length})</option>}
             {p.sites.map((s) => (
               <option value={s.id}>
@@ -53,6 +54,33 @@ export function AttendanceForm(p: {
       </button>
     </form>
   );
+}
+
+/** Anwesenheitsliste nur für den Kunden – Kopf mit Kundenname und Anschrift, ohne Objekt. */
+export async function attendancePdfForCustomer(
+  sql: Sql,
+  customerId: string,
+  month: string,
+  pages: number,
+): Promise<Uint8Array> {
+  const [c] = await sql<
+    {
+      name: string;
+      customer_no: string | null;
+      street: string | null;
+      postal_code: string | null;
+      city: string | null;
+    }[]
+  >`select name, customer_no, street, postal_code, city from app.customers where id = ${customerId}`;
+  if (!c) throw new Error('Kunde nicht gefunden');
+  const addr = [c.street, [c.postal_code, c.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  return renderAttendancePdf({
+    site: { name: c.name, site_no: c.customer_no ?? '', address: addr || null },
+    customer: null,
+    month,
+    pages,
+    company: 'Viva-Deluxe Gebäudereinigung GmbH',
+  });
 }
 
 export function attendanceQuery(q: (k: string) => string | undefined) {

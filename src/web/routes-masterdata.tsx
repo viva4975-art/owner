@@ -1,5 +1,10 @@
 import { AddressBlock } from './address-block.js';
-import { AttendanceForm, attendancePdfForSites, attendanceQuery } from './attendance-form.js';
+import {
+  AttendanceForm,
+  attendancePdfForCustomer,
+  attendancePdfForSites,
+  attendanceQuery,
+} from './attendance-form.js';
 import { SchoolCard } from './routes-school-leave.js';
 import { mergeSites } from '../services/site-merge.js';
 import { CustomerOrders } from './routes-orders.js';
@@ -1347,15 +1352,15 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                 )}
                 <DocFoldAll />
               </div>
-              {attSites.length > 0 && (
-                <details class="card doc-cat">
-                  <summary>
-                    <b>Anwesenheitsliste drucken</b>{' '}
-                    <span class="mut small">(zwei Monate je Seite, ein Objekt oder alle in einer PDF)</span>
-                  </summary>
-                  <AttendanceForm action={`/kunden/${cust.id}/anwesenheit.pdf`} sites={attSites} />
-                </details>
-              )}
+              <details class="card doc-cat">
+                <summary>
+                  <b>Anwesenheitsliste drucken</b>{' '}
+                  <span class="mut small">
+                    (zwei Monate je Seite – nur Kunde, ein Objekt oder alle in einer PDF)
+                  </span>
+                </summary>
+                <AttendanceForm action={`/kunden/${cust.id}/anwesenheit.pdf`} sites={attSites} />
+              </details>
               {CUSTOMER_DOC_CATEGORIES.map((k) => {
                 const list = files.filter((f) => f.category === k.name);
                 return (
@@ -1409,9 +1414,21 @@ export function registerMasterdataRoutes(ctx: Ctx) {
         select id, site_no from app.sites where customer_id = ${id} and active order by site_no`
     ).filter((x) => allowed === null || allowed.includes(x.id));
     const want = c.req.query('objekt') ?? 'alle';
+    const { month, pages } = attendanceQuery((k) => c.req.query(k));
+    if (want === 'kunde') {
+      if (allowed !== null) throw new BusinessError('Nur das Büro');
+      const pdf = await attendancePdfForCustomer(sql, id, month, pages);
+      const [cu0] = await sql<
+        { customer_no: string | null }[]
+      >`select customer_no from app.customers where id = ${id}`;
+      return c.body(pdf as Uint8Array<ArrayBuffer>, 200, {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="Anwesenheitsliste_${cu0?.customer_no ?? 'Kunde'}_${month}.pdf"`,
+        'Cache-Control': 'private, no-store',
+      });
+    }
     const pick = want === 'alle' ? sites : sites.filter((x) => x.id === want);
     if (!pick.length) throw new BusinessError('Kein aktives Objekt gewählt');
-    const { month, pages } = attendanceQuery((k) => c.req.query(k));
     const pdf = await attendancePdfForSites(
       sql,
       pick.map((x) => x.id),

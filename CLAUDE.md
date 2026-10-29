@@ -4527,3 +4527,7 @@ Testadresse.
   „Anwesenheitsliste drucken“: Objekt wählen oder „alle aktiven Objekte“ (eine PDF, je Objekt die gewählten Seiten), ab
   Monat, 1/2/3/6 Seiten à zwei Monate (`/kunden/:id/anwesenheit.pdf`); ebenso Objekt → Dokumente (zusätzlich zum
   Objektordner). Gemeinsamer Baustein `src/web/attendance-form.tsx` (`AttendanceForm`, `attendancePdfForSites`).
+- 2026-10-29: **Anwesenheitsliste nur für den Kunden** (Ahmed: „ohne Objekte, nur für Kunde“): Kunde → Dokumente →
+  Anwesenheitsliste drucken → Auswahl „nur Kunde (ohne Objekt)“ (Standard, auch bei Kunden ohne aktive Objekte): Kopf mit
+  Kundenname, Kundennummer und Anschrift statt Objekt (`attendancePdfForCustomer`). Nur Büro (Objektleitung weiter nur
+  ihre Objekte).

@@ -98,7 +98,7 @@ export async function renderAttendancePdf(p: {
     }
     text(pg, 'Anwesenheitsliste', M, M + 14, 17, bold);
     text(pg, `${monthLabel(months[0]!)} und ${monthLabel(months[1]!)}`, M + 168, M + 14, 11, regular, BRD);
-    const objekt = `${p.site.name} (${p.site.site_no})${p.site.address ? ` · ${p.site.address}` : ''}${p.customer ? ` · Kunde: ${p.customer}` : ''}`;
+    const objekt = `${p.site.name}${p.site.site_no ? ` (${p.site.site_no})` : ''}${p.site.address ? ` · ${p.site.address}` : ''}${p.customer && p.customer !== p.site.name ? ` · Kunde: ${p.customer}` : ''}`;
     text(pg, fit(objekt, regular, 8.6, W - 2 * M - 140), M, M + 30, 8.6, regular, GREY);
     pg.drawLine({
       start: { x: M, y: H - M - 37 },

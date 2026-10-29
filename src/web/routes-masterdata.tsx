@@ -717,6 +717,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                         : x.delivery_channel === 'keiner'
                           ? ' · kein Versand (gilt mit Ausstellen als versendet)'
                           : ' · E-Mail'}
+                      {x.single_file ? ' · eine Datei je E-Mail' : ''}
                     </dd>
                     <dt>E-Mail</dt>
                     <dd>
@@ -966,6 +967,21 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                       Kein Versand – gilt mit dem Ausstellen als versendet
                     </option>
                   </select>
+                </div>
+                <div>
+                  <label for="g-single">Eine Datei je E-Mail</label>
+                  <div>
+                    <label style="font-weight:normal">
+                      <input id="g-single" type="checkbox" name="single_file" checked={!!g?.single_file} />{' '}
+                      Rechnung und Anlagen (Arbeitsscheine, Stundennachweise …) in genau einer Datei senden
+                    </label>
+                    <div class="muted" style="font-size:12px">
+                      Für Empfänger wie die Deutsche Bahn (e-invoicing@deutschebahn.com), die nur einen Anhang
+                      je E-Mail annehmen. PDF: Anlagen als weitere Seiten · ZUGFeRD: Anlagen als Seiten der
+                      PDF · XRechnung: Rechnungs-PDF und Anlagen im XML eingebettet (KoSIT-geprüft). Mail ohne
+                      Logo-Bilder.
+                    </div>
+                  </div>
                 </div>
                 <div id="g-portal-box" hidden={g?.delivery_channel !== 'portal'}>
                   <label for="g-portal">Name / Adresse des Portals</label>

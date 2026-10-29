@@ -21,6 +21,7 @@ import {
   loadDocument,
 } from './invoices.js';
 import { effectiveBilling, fallbackGroupId } from './masterdata.js';
+import { buildMailBundle } from './mail-bundle.js';
 
 export interface Deps {
   sql: Sql;
@@ -465,6 +466,84 @@ export function invoiceMailDocs(docs: DocRow[], format: string) {
 }
 
 /**
+ * Dateien der Rechnungs-Mail. Mit „eine Datei je E-Mail“ (Rechnungsgruppe, z. B. Deutsche Bahn) werden Rechnung und
+ * Anlagen zu genau einer Datei zusammengefasst (siehe mail-bundle.ts) und die Mail ohne eingebettete Bilder versendet.
+ */
+async function mailFiles(
+  deps: Deps,
+  doc: InvoiceDocument,
+  docs: DocRow[],
+  format: string,
+  latest: number,
+  selected: DocRow[],
+  single: boolean,
+) {
+  if (!single) {
+    return {
+      attachments: async () =>
+        Promise.all(
+          selected.map(async (d) => ({
+            filename: d.filename,
+            contentType: d.content_type,
+            content: await deps.archive.get(d.storage_path),
+          })),
+        ),
+      files: selected.map((d) => ({ filename: d.filename, sha256: d.sha256, size: Number(d.size_bytes) })),
+    };
+  }
+  const pdf = docs.find((d) => d.kind === 'pdf' && d.revision === latest);
+  if (!pdf) throw new BusinessError('Rechnungs-PDF fehlt im Archiv');
+  const b = await buildMailBundle({
+    doc,
+    format: doc.buyer.leitwegId || doc.buyer.email ? format : 'pdf',
+    main: selected.filter((d) => d.kind !== 'attachment'),
+    pdf,
+    attachments: selected.filter((d) => d.kind === 'attachment'),
+    baseName: latest ? `${doc.number}_berichtigt-${latest}` : doc.number,
+    archiveBase: `invoices/${doc.issueDate.slice(0, 4)}/${doc.number}`,
+    get: (p) => deps.archive.get(p),
+    put: (p, bytes) => deps.archive.put(p, bytes),
+    kositUrl: deps.env.KOSIT_VALIDATOR_URL,
+  });
+  return {
+    attachments: async () => [{ filename: b.filename, contentType: b.contentType, content: b.content }],
+    files: [
+      {
+        filename: b.filename,
+        sha256: b.sha256,
+        size: b.size,
+        storage_path: b.storage_path,
+        enthaelt: selected.map((d) => d.filename),
+      },
+    ],
+  };
+}
+
+/** Eine Datei je E-Mail: nur Text, keine eingebetteten Bilder (Logo/Siegel zählen beim Empfänger sonst als Anhänge). */
+function plainIf<T extends { text: string; html?: string; inline?: unknown }>(single: boolean, m: T) {
+  return single ? { text: m.text } : m;
+}
+
+/** Rechnungsgruppe verlangt genau eine Datei je E-Mail (z. B. Deutsche Bahn). */
+export async function singleFileOf(sql: Sql, invoiceId: string): Promise<boolean> {
+  const [r] = await sql<{ single_file: boolean | null; gid: string | null; customer_id: string }[]>`
+    select g.single_file, g.id as gid, i.customer_id
+      from app.invoices i
+      left join app.sites s on s.id = i.site_id
+      left join app.invoice_groups g on g.id = coalesce(i.invoice_group_id, s.invoice_group_id)
+     where i.id = ${invoiceId}`;
+  if (!r) return false;
+  if (r.gid) return !!r.single_file;
+  // ohne Gruppe an Rechnung/Objekt: Gruppe „Standard“ bzw. einzige Gruppe des Kunden (wie effectiveBilling)
+  const fb = await fallbackGroupId(sql, r.customer_id);
+  if (!fb) return false;
+  const [g] = await sql<
+    { single_file: boolean }[]
+  >`select single_file from app.invoice_groups where id = ${fb}`;
+  return !!g?.single_file;
+}
+
+/**
  * Test-E-Mail genau wie an den Kunden (Betreff, Text, Signatur, Anhänge) – geht nur an die angegebene Adresse,
  * kein Versandeintrag, die Rechnung gilt nicht als versendet.
  */
@@ -480,28 +559,27 @@ export async function sendInvoiceTestMail(deps: Deps, id: string, to: string, ac
     await effectiveBilling(sql, data.invoice.customer_id, data.invoice.site_id, data.invoice.invoice_group_id)
   ).emails;
   const sig = await loadSignature(sql);
-  const attachments = await Promise.all(
-    selected.map(async (d) => ({
-      filename: d.filename,
-      contentType: d.content_type,
-      content: await deps.archive.get(d.storage_path),
-    })),
-  );
+  const single = await singleFileOf(sql, id);
+  const mf = await mailFiles(deps, doc, docs, data.invoice.invoice_format, latest, selected, single);
+  const attachments = await mf.attachments();
   await deps.mailer.send({
     from: env.MAIL_FROM,
     to: [to],
     subject: invoiceMailSubject(doc, latest, true),
-    ...composeMail({
-      notice: `*** TEST-E-MAIL – so erhält der Kunde die Rechnung. Nicht an den Kunden gegangen, Rechnung gilt nicht als versendet. ***\nEmpfänger beim echten Versand: ${intended.join(', ') || '(keine Rechnungs-E-Mail hinterlegt)'}`,
-      body: invoiceMailBody(doc),
-      signature: sig,
-    }),
+    ...plainIf(
+      single,
+      composeMail({
+        notice: `*** TEST-E-MAIL – so erhält der Kunde die Rechnung. Nicht an den Kunden gegangen, Rechnung gilt nicht als versendet. ***\nEmpfänger beim echten Versand: ${intended.join(', ') || '(keine Rechnungs-E-Mail hinterlegt)'}`,
+        body: invoiceMailBody(doc),
+        signature: sig,
+      }),
+    ),
     attachments,
     messageId: `<test-${randomUUID()}@viva-deluxe-app>`,
   });
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
-            values (${actor}, 'test_mail', 'invoice', ${id}, ${sql.json({ to, files: selected.map((d) => d.filename) })})`;
-  return { files: selected.map((d) => d.filename), intended };
+            values (${actor}, 'test_mail', 'invoice', ${id}, ${sql.json({ to, files: attachments.map((d) => d.filename) })})`;
+  return { files: attachments.map((d) => d.filename), intended };
 }
 
 export type DeliveryWay = 'email' | 'portal' | 'keiner';
@@ -649,7 +727,9 @@ export async function sendInvoice(
   const subject = invoiceMailSubject(doc, latest, redirected, !!resend);
   // berichtigte Fassung: eigener Versand (genau einmal je Fassung); erneuter Versand: genau einmal je Formular
   const key = resend ? `${id}:erneut-${resend.id}` : latest ? `${id}:berichtigt-${latest}` : `${id}:initial`;
-  const files = selected.map((d) => ({ filename: d.filename, sha256: d.sha256, size: Number(d.size_bytes) }));
+  const single = await singleFileOf(sql, id);
+  const mf = await mailFiles(deps, doc, docs, data.invoice.invoice_format, latest, selected, single);
+  const files = mf.files;
 
   await sql`insert into app.invoice_deliveries (invoice_id, idempotency_key, intended_recipients, actual_recipients, subject, files)
             values (${id}, ${key}, ${customer.invoice_emails}, ${actual}, ${subject}, ${sql.json(files)})
@@ -683,25 +763,22 @@ export async function sendInvoice(
   }
 
   try {
-    const attachments = await Promise.all(
-      selected.map(async (d) => ({
-        filename: d.filename,
-        contentType: d.content_type,
-        content: await deps.archive.get(d.storage_path),
-      })),
-    );
+    const attachments = await mf.attachments();
     const { messageId } = await deps.mailer.send({
       from: env.MAIL_FROM,
       to: actual,
       subject,
-      ...composeMail({
-        notice: redirected ? testNotice(customer.invoice_emails) : null,
-        body: resend
-          ? invoiceMailBody(doc).replace(/\n\nanbei erhalten Sie/, '\n\nhiermit senden wir Ihnen erneut') +
-            '\n\nBitte beachten Sie: Es handelt sich um dieselbe Rechnung, keine neue Forderung – bitte nicht doppelt buchen.'
-          : invoiceMailBody(doc),
-        signature: await loadSignature(sql),
-      }),
+      ...plainIf(
+        single,
+        composeMail({
+          notice: redirected ? testNotice(customer.invoice_emails) : null,
+          body: resend
+            ? invoiceMailBody(doc).replace(/\n\nanbei erhalten Sie/, '\n\nhiermit senden wir Ihnen erneut') +
+              '\n\nBitte beachten Sie: Es handelt sich um dieselbe Rechnung, keine neue Forderung – bitte nicht doppelt buchen.'
+            : invoiceMailBody(doc),
+          signature: await loadSignature(sql),
+        }),
+      ),
       attachments,
       messageId: `<${claimed.id}@viva-deluxe-app>`,
     });

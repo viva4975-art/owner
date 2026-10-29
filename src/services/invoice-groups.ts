@@ -18,6 +18,8 @@ export interface InvoiceGroup extends GroupBilling {
   closing_text: string | null;
   delivery_channel: 'email' | 'portal' | 'keiner';
   portal_name: string | null;
+  /** genau eine Datei je E-Mail (z. B. Deutsche Bahn): Anlagen werden in die Rechnungsdatei eingebettet */
+  single_file: boolean;
   active: boolean;
   version: number;
 }
@@ -98,6 +100,7 @@ export const groupBillingInput = z
     bill_skonto_days: optInt(1, 90, 'Skonto-Tage: 1–90'),
     delivery_channel: z.enum(['email', 'portal', 'keiner']).default('email'),
     portal_name: opt.default(null),
+    single_file: z.preprocess((v) => v === 'on' || v === '1' || v === true, z.boolean()),
   })
   .refine((b) => !b.bill_name || (!!b.bill_street && !!b.bill_postal_code && !!b.bill_city), {
     message:

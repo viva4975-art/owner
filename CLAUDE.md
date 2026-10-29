@@ -4539,3 +4539,15 @@ Testadresse.
   (Migration `20270105000001`); Bestellschein zeigt „Einzelauftrag: AU-… · Titel“ und bei Aufträgen ohne eigenes Objekt den
   Ort des Auftrags statt „Allgemein“ (ohne Kundennamen). Am Einzelauftrag Knopf **„Nachunternehmer beauftragen“**
   (Kunde + Auftrag vorbelegt).
+- 2026-10-29: **Eine Datei je E-Mail (Deutsche Bahn)** (Ahmed: DB lehnt ab – „Ihre E-Mail enthält mehr als einen Anhang. Je
+  E-Mail kann nur eine Datei verarbeitet werden …“): Rechnungsgruppe → Häkchen **„Eine Datei je E-Mail“**
+  (`invoice_groups.single_file`, Migration `20270106000001`; ohne Gruppe gilt „Standard“ des Kunden). Dann enthält die Mail
+  genau einen Anhang mit dem ganzen Vorgang (`src/services/mail-bundle.ts`): **PDF** = Rechnung + Anlagen (Arbeitsscheine,
+  Stundennachweise, hochgeladene PDF/JPG/PNG) als weitere Seiten; **ZUGFeRD** = dieselbe zusammengefügte PDF mit dem
+  CII-XML wie bisher; **XRechnung** = UBL-XML mit eingebetteter Rechnungs-PDF und Anlagen (BG-24, BT-125), vor dem Versand
+  gegen KoSIT geprüft (ungültig = kein Versand). Mail nur als Text, ohne Logo/Siegel-Bilder (zählen beim Empfänger sonst als
+  Anhänge). Die versendete Datei liegt write-once im Archiv (`…/versand/`), Versandprotokoll nennt sie mit Prüfsumme und
+  „enthält: …“. Gilt für Versand, „Erneut senden“ und Test-Mail. Nicht einbettbare Anlagen (z. B. Word) → klare Meldung.
+  **Grenze:** Bei ZUGFeRD sind angehängte fremde PDFs/Scans nicht zwingend PDF/A-konform (KoSIT prüft nur das XML).
+  **Ahmed: bei der DB-Rechnungsgruppe Häkchen setzen, abgelehnte Rechnung mit „Erneut senden“ an
+  e-invoicing@deutschebahn.com schicken.** Test `single-file-mail.db.test.ts`.

@@ -5,9 +5,24 @@ import { toEInvoice } from './mapping.js';
 const silentLogger = { log: () => {}, warn: () => {}, error: console.error };
 const service = new InvoiceService(silentLogger);
 
-/** XRechnung 3.0 in UBL-Syntax (reines XML). */
-export async function generateXRechnungUbl(doc: InvoiceDocument): Promise<string> {
-  const out = await service.generate(toEInvoice(doc), { format: 'XRECHNUNG-UBL', lang: 'de-de' });
+/** Eingebettete Anlage (BG-24, BT-122 … BT-125). */
+export interface EmbeddedFile {
+  buffer: Uint8Array;
+  filename: string;
+  mimetype: string;
+  description?: string;
+}
+
+/** XRechnung 3.0 in UBL-Syntax (reines XML); optional mit eingebetteten Anlagen (BG-24). */
+export async function generateXRechnungUbl(
+  doc: InvoiceDocument,
+  attachments: EmbeddedFile[] = [],
+): Promise<string> {
+  const out = await service.generate(toEInvoice(doc), {
+    format: 'XRECHNUNG-UBL',
+    lang: 'de-de',
+    ...(attachments.length ? { attachments: attachments.map((a, i) => ({ ...a, id: `ANL-${i + 1}` })) } : {}),
+  });
   if (typeof out !== 'string') throw new Error('Unerwartete Ausgabe beim Erzeugen der XRechnung');
   return out;
 }

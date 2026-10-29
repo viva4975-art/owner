@@ -4460,3 +4460,11 @@ Testadresse.
   mehr zu. Startet der Server mitten im Versand neu (automatisches Update), bleiben die übrigen Dokumente in der Liste;
   jedes Dokument wird weiterhin genau einmal versendet. Lokal geprüft: 4 Rechnungen, Antwort nach ~1 s, Mails im
   Abstand von 2,5 s. Test `send-jobs.test.ts`.
+- 2026-10-29: **Lohnarten: Einsätze ohne Ist zählen mit Plan, PDF kurz** (Ahmed: „Einsätze ohne Ist werden wieder nicht
+  dazugerechnet“, „PDF wie online, kurz und knapp“): **Fund:** Bildschirm-Tabelle, PDF und CSV der Ansicht Lohnarten
+  nahmen die Stunden aus der Stundenliste (nur erfasste Zeit); nur der Lohnprogramm-Export rechnete „Ist, sonst Plan“.
+  Jetzt alle drei aus der Lohnberechnung (`payrollMonth` mit Plan-Ergänzung). Spalten nur für Lohnarten, die im Monat
+  vorkommen (Normal, Aushilfslohn, Urlaub, Krank, Feiertag LFZ, Zuschlagsstunden, Zuschläge €, Gehalt €, Unbezahlt/
+  Abzug), eine Spalte **Gesamt** (bezahlte Stunden) und eine Gesamtzeile. **Festgehalt:** Stunden rot und nur zur Info,
+  nicht in Gesamt – bezahlt wird das Gehalt. PDF A4 quer auf einer Seite, Beträge mit eigener Spaltenbreite
+  (`lohnCols`/`lohnPdf` in `routes-timesheet.tsx`, `PdfCell.color` in `src/pdf/table.ts`).

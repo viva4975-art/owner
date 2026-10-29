@@ -30,6 +30,7 @@ import {
 import {
   SURCHARGES,
   HOUR_TYPES,
+  type HourType,
   WAGE_TYPES,
   WAGE_TYPE_LABEL,
   getPayrollSettings,
@@ -319,7 +320,14 @@ ${sheetTableHtml(s)}${sigHtml}
           : 'offen';
         return { e, s, sg, state, p: payOf.get(e.id) };
       })
-      .filter((x) => x.s.rows.length > 0 && (sig === 'alle' || x.state === sig));
+      .filter(
+        (x) =>
+          (x.s.rows.length > 0 ||
+            (view === 'lohnarten' &&
+              !!x.p &&
+              (x.p.salary || Object.values(x.p.minutes).some((m) => m > 0)))) &&
+          (sig === 'alle' || x.state === sig),
+      );
     // Sortierung aus der Tabelle (Klick auf Spaltenkopf) gilt auch für Druck/PDF/CSV (Ahmed 07.10.)
     const sortBy = (c.req.query('sort') ?? '').toLowerCase();
     const dir = c.req.query('dir') === 'desc' ? -1 : 1;
@@ -388,6 +396,7 @@ ${sheetTableHtml(s)}${sigHtml}
     const { from: mFrom, to: mTo } = monthRange(month);
     const reqCount = (await requestsOf(sql, mFrom, mTo, new Set(d.emps.map((e) => e.id)))).length;
     const tot = (f: (x: (typeof rows)[number]) => number) => rows.reduce((a, x) => a + f(x), 0);
+    const lc = lohnCols(rows);
     return page(
       c,
       'Stundenliste & Lohnarten',
@@ -707,138 +716,134 @@ ${absenceCss(
                 <tr>
                   <th>Pers.-Nr.</th>
                   <th>Mitarbeiter</th>
-                  {HOUR_TYPES.map((k) => (
+                  {lc.map((col) => (
                     <th class="r">
-                      {(k === 'urlaub' || k === 'krank') && <span class={`absdot ${k}`} />}
-                      {WAGE_TYPE_LABEL[k].replace('Zuschlag ', 'Zuschl. ')}
+                      {col.abs && <span class={`absdot ${col.abs}`} />}
+                      {col.label}
                     </th>
                   ))}
-                  <th class="r">Zuschläge €</th>
-                  <th class="r">Gehalt €</th>
-                  <th class="r" title="Unbezahlte Abwesenheit: Stunden, bei Festgehalt Abzug vom Gehalt">
-                    <span class="absdot unbezahlt" />
-                    Unbezahlt
-                  </th>
                 </tr>
               )}
             </thead>
             <tbody>
-              {rows.map(({ e, s, sg, state, p }) => (
-                <tr>
-                  {d.view === 'stunden' && (
+              {rows.map((x) => {
+                const { e, s, sg, state, p } = x;
+                return (
+                  <tr>
+                    {d.view === 'stunden' && (
+                      <td>
+                        <input
+                          type="checkbox"
+                          name="p"
+                          value={e.id}
+                          form="pick"
+                          aria-label="auswählen"
+                          data-pick
+                        />
+                      </td>
+                    )}
+                    <td class="num">{e.personnel_no}</td>
                     <td>
-                      <input
-                        type="checkbox"
-                        name="p"
-                        value={e.id}
-                        form="pick"
-                        aria-label="auswählen"
-                        data-pick
-                      />
-                    </td>
-                  )}
-                  <td class="num">{e.personnel_no}</td>
-                  <td>
-                    <a
-                      href={`/personal/${e.id}/stundenzettel?monat=${month}${d.onlySite ? `&objekt=${encodeURIComponent(d.siteName)}` : ''}`}
-                    >
-                      {e.last_name}, {e.first_name}
-                    </a>
-                    <div class="small mut">
-                      {EMPLOYMENT_TYPES[e.employment_type]}
-                      {p && !p.wage_cents && <span class="badge warn"> Lohn fehlt</span>}
-                      {p && p.uncoveredSundayHolidayMinutes > 0 && (
-                        <div
-                          class="small"
-                          style="color:var(--warn)"
-                          title="Zeit an Sonntagen ohne Einsatz „auch an Sonn- und Feiertagen“ – kein Zuschlag berechnet"
-                        >
-                          {(p.uncoveredSundayHolidayMinutes / 60).toLocaleString('de-DE', {
-                            maximumFractionDigits: 2,
-                          })}{' '}
-                          Std. Sonn-/Feiertag ohne Zuschlag
-                        </div>
-                      )}
-                      {p && p.holidayWorkedAsLfzMinutes > 0 && (
-                        <div
-                          class="small"
-                          style="color:var(--warn)"
-                          title="Zeit an Feiertagen ohne Einsatz „auch an Sonn- und Feiertagen“ – als Feiertagslohn gezählt, nicht als Arbeit mit Zuschlag"
-                        >
-                          {(p.holidayWorkedAsLfzMinutes / 60).toLocaleString('de-DE', {
-                            maximumFractionDigits: 2,
-                          })}{' '}
-                          Std. am Feiertag gearbeitet → Feiertagslohn
-                        </div>
-                      )}
-                      {(s.open.running > 0 || s.open.pending > 0) && (
-                        <span class="badge warn"> offene Zeiten</span>
-                      )}
-                    </div>
-                  </td>
-                  {d.view === 'stunden' ? (
-                    <>
-                      <td class="r">{hm(s.totals.plan)}</td>
-                      <td class="r">
-                        <b>{hm(s.totals.work)}</b>
-                      </td>
-                      <td class={`r${s.totals.vacation ? ' abscell urlaub' : ''}`}>{h(s.totals.vacation)}</td>
-                      <td class={`r${s.totals.sick ? ' abscell krank' : ''}`}>{h(s.totals.sick)}</td>
-                      <td class={`r${s.totals.unpaid ? ' abscell unbezahlt' : ''}`}>{h(s.totals.unpaid)}</td>
-                      <td class="r">
-                        <b>{hm(s.totals.paid)}</b>
-                      </td>
-                      <td class="r">{h(surchargeMin(p))}</td>
-                      <td>
-                        {state === 'unterschrieben' ? (
-                          <span class="badge ok">✓ {dateDe(sg!.signed_at.toISOString().slice(0, 10))}</span>
-                        ) : state === 'geaendert' ? (
-                          <span class="badge err">geändert</span>
-                        ) : (
-                          <span class="badge">offen</span>
-                        )}
-                      </td>
-                      <td>
-                        <a
-                          class="btn sm sec"
-                          href={`/personal/${e.id}/stundenzettel/druck?monat=${month}${d.onlySite ? `&objekt=${encodeURIComponent(d.siteName)}` : ''}`}
-                          target="_blank"
-                          rel="noopener"
-                        >
-                          Drucken
-                        </a>
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      {HOUR_TYPES.map((k) => (
-                        <td
-                          class={`r${(k === 'urlaub' || k === 'krank') && p?.minutes[k] ? ` abscell ${k}` : ''}`}
-                        >
-                          {h(p?.minutes[k] ?? 0)}
-                        </td>
-                      ))}
-                      <td class="r">{euro(surchargeEur(p))}</td>
-                      <td class="r" title={p?.salary ? WAGE_TYPE_LABEL[p.salary.type] : undefined}>
-                        {p?.salary ? euro(p.salary.cents) : ''}
-                      </td>
-                      <td
-                        class={`r${p?.unpaidMinutes ? ' abscell unbezahlt' : ''}`}
-                        title="Unbezahlte Abwesenheit (Abzug)"
+                      <a
+                        href={`/personal/${e.id}/stundenzettel?monat=${month}${d.onlySite ? `&objekt=${encodeURIComponent(d.siteName)}` : ''}`}
                       >
-                        {p?.unpaidMinutes ? h(p.unpaidMinutes) : ''}
-                        {p?.unpaidDeductionCents ? (
-                          <div class="small" style="color:var(--bad)">
-                            − {euro(p.unpaidDeductionCents)}
+                        {e.last_name}, {e.first_name}
+                      </a>
+                      <div class="small mut">
+                        {EMPLOYMENT_TYPES[e.employment_type]}
+                        {p && !p.wage_cents && <span class="badge warn"> Lohn fehlt</span>}
+                        {p && p.uncoveredSundayHolidayMinutes > 0 && (
+                          <div
+                            class="small"
+                            style="color:var(--warn)"
+                            title="Zeit an Sonntagen ohne Einsatz „auch an Sonn- und Feiertagen“ – kein Zuschlag berechnet"
+                          >
+                            {(p.uncoveredSundayHolidayMinutes / 60).toLocaleString('de-DE', {
+                              maximumFractionDigits: 2,
+                            })}{' '}
+                            Std. Sonn-/Feiertag ohne Zuschlag
                           </div>
-                        ) : (
-                          ''
                         )}
-                      </td>
-                    </>
-                  )}
-                </tr>
-              ))}
+                        {p && p.holidayWorkedAsLfzMinutes > 0 && (
+                          <div
+                            class="small"
+                            style="color:var(--warn)"
+                            title="Zeit an Feiertagen ohne Einsatz „auch an Sonn- und Feiertagen“ – als Feiertagslohn gezählt, nicht als Arbeit mit Zuschlag"
+                          >
+                            {(p.holidayWorkedAsLfzMinutes / 60).toLocaleString('de-DE', {
+                              maximumFractionDigits: 2,
+                            })}{' '}
+                            Std. am Feiertag gearbeitet → Feiertagslohn
+                          </div>
+                        )}
+                        {(s.open.running > 0 || s.open.pending > 0) && (
+                          <span class="badge warn"> offene Zeiten</span>
+                        )}
+                      </div>
+                    </td>
+                    {d.view === 'stunden' ? (
+                      <>
+                        <td class="r">{hm(s.totals.plan)}</td>
+                        <td class="r">
+                          <b>{hm(s.totals.work)}</b>
+                        </td>
+                        <td class={`r${s.totals.vacation ? ' abscell urlaub' : ''}`}>
+                          {h(s.totals.vacation)}
+                        </td>
+                        <td class={`r${s.totals.sick ? ' abscell krank' : ''}`}>{h(s.totals.sick)}</td>
+                        <td class={`r${s.totals.unpaid ? ' abscell unbezahlt' : ''}`}>
+                          {h(s.totals.unpaid)}
+                        </td>
+                        <td class="r">
+                          <b>{hm(s.totals.paid)}</b>
+                        </td>
+                        <td class="r">{h(surchargeMin(p))}</td>
+                        <td>
+                          {state === 'unterschrieben' ? (
+                            <span class="badge ok">✓ {dateDe(sg!.signed_at.toISOString().slice(0, 10))}</span>
+                          ) : state === 'geaendert' ? (
+                            <span class="badge err">geändert</span>
+                          ) : (
+                            <span class="badge">offen</span>
+                          )}
+                        </td>
+                        <td>
+                          <a
+                            class="btn sm sec"
+                            href={`/personal/${e.id}/stundenzettel/druck?monat=${month}${d.onlySite ? `&objekt=${encodeURIComponent(d.siteName)}` : ''}`}
+                            target="_blank"
+                            rel="noopener"
+                          >
+                            Drucken
+                          </a>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        {lc.map((col) => (
+                          <td
+                            class={`r${col.abs && lohnText(col, col.val(x)) ? ` abscell ${col.abs}` : ''}`}
+                            style={
+                              infoOnly(x, col)
+                                ? 'color:var(--bad)'
+                                : col.key === 'gesamt'
+                                  ? 'font-weight:700'
+                                  : undefined
+                            }
+                            title={
+                              infoOnly(x, col)
+                                ? 'Festgehalt – Stunden nur zur Info, bezahlt wird das Gehalt'
+                                : undefined
+                            }
+                          >
+                            {lohnText(col, col.val(x))}
+                          </td>
+                        ))}
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
               {rows.length === 0 && (
                 <tr>
                   <td colspan={12} class="mut">
@@ -873,27 +878,13 @@ ${absenceCss(
                   <tr>
                     <td></td>
                     <td>
-                      <b>Summe</b>
+                      <b>Gesamt</b>
                     </td>
-                    {HOUR_TYPES.map((k) => (
+                    {lc.map((col) => (
                       <td class="r">
-                        <b>{h(tot((x) => x.p?.minutes[k] ?? 0))}</b>
+                        <b>{lohnText(col, lohnTotal(rows, col))}</b>
                       </td>
                     ))}
-                    <td class="r">
-                      <b>{euro(rows.reduce((a, x) => a + surchargeEur(x.p), 0n))}</b>
-                    </td>
-                    <td class="r">
-                      <b>{euro(rows.reduce((a, x) => a + (x.p?.salary?.cents ?? 0n), 0n))}</b>
-                    </td>
-                    <td class="r">
-                      <b>{h(tot((x) => x.p?.unpaidMinutes ?? 0))}</b>
-                      {rows.some((x) => x.p?.unpaidDeductionCents) && (
-                        <div class="small" style="color:var(--bad)">
-                          − {euro(rows.reduce((a, x) => a + (x.p?.unpaidDeductionCents ?? 0n), 0n))}
-                        </div>
-                      )}
-                    </td>
                   </tr>
                 )}
               </tfoot>
@@ -949,74 +940,137 @@ ${absenceCss(
 
   // Stundenliste (Ablage, Zoll): Stunden je Person. Lohnarten (Lohnabrechnung): Stunden je Lohnart + Zuschläge.
   type Row = Awaited<ReturnType<typeof listData>>['rows'][number];
-  const overviewCols = (view: string) =>
-    view === 'lohnarten'
-      ? [
-          'Personalnummer',
-          'Name',
-          'Beschäftigung',
-          'Normalstunden',
-          'Urlaub',
-          'Krank',
-          'Bezahlt gesamt',
-          ...SURCHARGES.map((k) => WAGE_TYPE_LABEL[k]),
-          'Zuschläge €',
-          'Gehalt €',
-          'Unbezahlt Std.',
-          'Abzug unbezahlt €',
-        ]
-      : [
-          'Personalnummer',
-          'Name',
-          'Beschäftigung',
-          'Plan',
-          'Gearbeitet',
-          'Pausen',
-          'Urlaub',
-          'Krank',
-          'Unbezahlt',
-          'Bezahlt',
-          'Differenz',
-          'Unterschrift',
-        ];
-  const overviewRow = (x: Row, view: string) =>
-    view === 'lohnarten'
-      ? [
-          x.e.personnel_no,
-          `${x.e.last_name}, ${x.e.first_name}`,
-          EMPLOYMENT_TYPES[x.e.employment_type],
-          hm(x.s.totals.work),
-          h(x.s.totals.vacation),
-          h(x.s.totals.sick),
-          hm(x.s.totals.paid),
-          ...SURCHARGES.map((k) => h(x.p?.minutes[k] ?? 0)),
-          euro(surchargeEur(x.p)),
-          x.p?.salary ? euro(x.p.salary.cents) : '',
-          x.p?.unpaidMinutes ? h(x.p.unpaidMinutes) : '',
-          x.p?.unpaidDeductionCents ? `-${euro(x.p.unpaidDeductionCents)}` : '',
-        ]
-      : [
-          x.e.personnel_no,
-          `${x.e.last_name}, ${x.e.first_name}`,
-          EMPLOYMENT_TYPES[x.e.employment_type],
-          hm(x.s.totals.plan),
-          hm(x.s.totals.work),
-          hm(x.s.totals.breaks),
-          h(x.s.totals.vacation),
-          h(x.s.totals.sick),
-          h(x.s.totals.unpaid),
-          hm(x.s.totals.paid),
-          `${x.s.totals.diff > 0 ? '+' : ''}${hm(x.s.totals.diff)}`,
-          x.state === 'unterschrieben' ? 'ja' : x.state === 'geaendert' ? 'geändert' : 'offen',
-        ];
+  // Lohnarten kurz und knapp (Ahmed 29.10.): nur Lohnarten, die im Monat vorkommen, eine Summe „Bezahlt gesamt“.
+  // Werte aus der Lohnberechnung (je Einsatz Ist, sonst Plan) – nicht aus der Stundenliste (die zeigt nur Ist).
+  // Festgehalt: Grundstunden nur zur Info (rot), nicht in der Summe – bezahlt wird das Gehalt.
+  type LCol = {
+    key: string;
+    label: string;
+    kind: 'h' | 'eur';
+    abs?: AbsenceKind;
+    neg?: boolean;
+    val: (x: Row) => number | bigint;
+  };
+  const LBASE: HourType[] = ['normal', 'aushilfslohn', 'urlaub', 'krank', 'feiertag_lfz'];
+  const LSHORT: Record<HourType, string> = {
+    normal: 'Normalstunden',
+    aushilfslohn: 'Aushilfslohn',
+    urlaub: 'Urlaub',
+    krank: 'Krank',
+    feiertag_lfz: 'Feiertag',
+    nacht: 'Nacht',
+    sonntag: 'Sonntag',
+    feiertag: 'Feiertagsarbeit',
+    feiertag_hoch: 'Hohe Feiertage',
+    mehrarbeit: 'Mehrarbeit',
+  };
+  const lohnCols = (rows: Row[]): LCol[] => {
+    const any = (f: (x: Row) => boolean) => rows.some(f);
+    const cols: LCol[] = [];
+    for (const k of HOUR_TYPES)
+      if (any((x) => (x.p?.minutes[k] ?? 0) > 0))
+        cols.push({
+          key: k,
+          label: LSHORT[k],
+          kind: 'h',
+          ...(k === 'urlaub' || k === 'krank' ? { abs: k } : {}),
+          val: (x) => x.p?.minutes[k] ?? 0,
+        });
+    cols.push({
+      key: 'gesamt',
+      label: 'Bezahlt gesamt',
+      kind: 'h',
+      val: (x) => LBASE.reduce((a, k) => a + (x.p?.minutes[k] ?? 0), 0),
+    });
+    if (any((x) => surchargeEur(x.p) > 0n))
+      cols.push({ key: 'zuschlag', label: 'Zuschläge €', kind: 'eur', val: (x) => surchargeEur(x.p) });
+    if (any((x) => !!x.p?.salary))
+      cols.push({ key: 'gehalt', label: 'Gehalt €', kind: 'eur', val: (x) => x.p?.salary?.cents ?? 0n });
+    if (any((x) => (x.p?.unpaidMinutes ?? 0) > 0))
+      cols.push({
+        key: 'unbezahlt',
+        label: 'Unbezahlt',
+        kind: 'h',
+        abs: 'unbezahlt',
+        val: (x) => x.p?.unpaidMinutes ?? 0,
+      });
+    if (any((x) => (x.p?.unpaidDeductionCents ?? 0n) > 0n))
+      cols.push({
+        key: 'abzug',
+        label: 'Abzug €',
+        kind: 'eur',
+        neg: true,
+        abs: 'unbezahlt',
+        val: (x) => x.p?.unpaidDeductionCents ?? 0n,
+      });
+    return cols;
+  };
+  /** Festgehalt: Grundstunden und Summe nur zur Info */
+  const infoOnly = (x: Row, c: LCol) =>
+    !!x.p?.salary && (c.key === 'gesamt' || (LBASE as string[]).includes(c.key));
+  const lohnText = (c: LCol, v: number | bigint) =>
+    c.kind === 'eur'
+      ? (v as bigint) > 0n
+        ? `${c.neg ? '− ' : ''}${euro(v as bigint)}`
+        : ''
+      : h(v as number);
+  const lohnTotal = (rows: Row[], c: LCol) =>
+    c.kind === 'eur'
+      ? rows.reduce((a, x) => a + (c.val(x) as bigint), 0n)
+      : rows.reduce((a, x) => a + (infoOnly(x, c) ? 0 : (c.val(x) as number)), 0);
+  const empLabel = (x: Row) =>
+    `${EMPLOYMENT_TYPES[x.e.employment_type]}${x.p?.salary ? ' · Festgehalt' : ''}`;
+
+  const overviewCols = () => [
+    'Personalnummer',
+    'Name',
+    'Beschäftigung',
+    'Plan',
+    'Gearbeitet',
+    'Pausen',
+    'Urlaub',
+    'Krank',
+    'Unbezahlt',
+    'Bezahlt',
+    'Differenz',
+    'Unterschrift',
+  ];
+  const overviewRow = (x: Row) => [
+    x.e.personnel_no,
+    `${x.e.last_name}, ${x.e.first_name}`,
+    EMPLOYMENT_TYPES[x.e.employment_type],
+    hm(x.s.totals.plan),
+    hm(x.s.totals.work),
+    hm(x.s.totals.breaks),
+    h(x.s.totals.vacation),
+    h(x.s.totals.sick),
+    h(x.s.totals.unpaid),
+    hm(x.s.totals.paid),
+    `${x.s.totals.diff > 0 ? '+' : ''}${hm(x.s.totals.diff)}`,
+    x.state === 'unterschrieben' ? 'ja' : x.state === 'geaendert' ? 'geändert' : 'offen',
+  ];
 
   app.get('/zeiterfassung/stundenzettel.csv', async (c) => {
     const d = await listData(c);
     const safe = (v: string) => (/^[=+\-@]/.test(v) ? `'${v}` : v).replace(/;/g, ',');
-    const lines = [
-      overviewCols(d.view).join(';'),
-      ...d.rows.map((x) => overviewRow(x, d.view).map(safe).join(';')),
-    ];
+    const lc = lohnCols(d.rows);
+    const lines =
+      d.view === 'lohnarten'
+        ? [
+            ['Personalnummer', 'Name', 'Beschäftigung', ...lc.map((c) => c.label)].join(';'),
+            ...d.rows.map((x) =>
+              [
+                x.e.personnel_no,
+                `${x.e.last_name}, ${x.e.first_name}`,
+                empLabel(x),
+                ...lc.map((c) => lohnText(c, c.val(x))),
+              ]
+                .map(safe)
+                .join(';'),
+            ),
+            ['', 'Gesamt', '', ...lc.map((c) => lohnText(c, lohnTotal(d.rows, c)))].map(safe).join(';'),
+          ]
+        : [overviewCols().join(';'), ...d.rows.map((x) => overviewRow(x).map(safe).join(';'))];
     return new Response(`\uFEFF${lines.join('\r\n')}\r\n`, {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
@@ -1032,46 +1086,94 @@ ${absenceCss(
     'Unbezahlt Std.': 'unbezahlt',
     'Abzug unbezahlt €': 'unbezahlt',
   };
+  // Lohnarten als PDF wie am Bildschirm: nur vorkommende Lohnarten, eine Gesamtzeile (Ahmed 29.10.)
+  const RED: [number, number, number] = [0.7, 0.15, 0.12];
+  const lohnPdf = async (d: Awaited<ReturnType<typeof listData>>) => {
+    const lc = lohnCols(d.rows);
+    const fixed = [44, 114, 94];
+    // Beträge brauchen mehr Platz als Stunden („12.345,67“), der Rest wird auf die Stundenspalten verteilt
+    const eurW = 66;
+    const nEur = lc.filter((c) => c.kind === 'eur').length;
+    const hW = Math.max(
+      40,
+      Math.min(
+        78,
+        Math.floor((786 - fixed.reduce((a, b) => a + b, 0) - nEur * eurW) / Math.max(1, lc.length - nEur)),
+      ),
+    );
+    const pdfLabel = (c: LCol) =>
+      ({
+        normal: 'Normal',
+        gesamt: 'Gesamt',
+        feiertag: 'Feiertag Arb.',
+        feiertag_hoch: 'Hohe Feiert.',
+        feiertag_lfz: 'Feiertag LFZ',
+      })[c.key] ?? c.label;
+    const pdf = await renderTablePdf({
+      title: `Lohnarten ${monthLabel(d.month)}`,
+      subtitle: `${d.rows.length} Mitarbeitende · Stunden in Std.:Min. · ${d.fillPlan ? 'erfasste Zeit, sonst geplante Zeit' : 'nur erfasste Zeiten'}`,
+      columns: [
+        { label: 'Pers.-Nr.', width: fixed[0]! },
+        { label: 'Name', width: fixed[1]! },
+        { label: 'Beschäftigung', width: fixed[2]! },
+        ...lc.map((c) => ({
+          label: pdfLabel(c),
+          width: c.kind === 'eur' ? eurW : hW,
+          align: 'right' as const,
+        })),
+      ],
+      rows: d.rows.map((x) => [
+        x.e.personnel_no,
+        `${x.e.last_name}, ${x.e.first_name}`,
+        empLabel(x),
+        ...lc.map((c) => {
+          const text = lohnText(c, c.val(x));
+          if (!text) return '';
+          return {
+            text,
+            ...(infoOnly(x, c) ? { color: RED } : {}),
+            ...(c.abs ? { fill: rgb01(ABSENCE_COLORS[c.abs].tint) } : {}),
+            ...(c.key === 'gesamt' ? { bold: true } : {}),
+          };
+        }),
+      ]),
+      totals: ['', 'Gesamt', '', ...lc.map((c) => lohnText(c, lohnTotal(d.rows, c)))],
+      fontSize: 8.5,
+      footnote:
+        'Lohnarten für die Lohnabrechnung (je Einsatz die erfasste Zeit, sonst die geplante). Zuschläge nach RTV laut Einstellungen. ' +
+        'Rot = Festgehalt: Stunden nur zur Info, bezahlt wird das Gehalt; nicht in der Gesamtzeile. Vertraulich – Personaldaten.',
+    });
+    return new Response(pdf, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="lohnarten-${d.month}.pdf"`,
+        'Cache-Control': 'private, no-store',
+      },
+    });
+  };
   app.get('/zeiterfassung/stundenzettel/uebersicht.pdf', async (c) => {
     const d = await listData(c);
-    const lohn = d.view === 'lohnarten';
-    const cols = overviewCols(d.view);
-    const widths = lohn
-      ? [46, 110, 56, 50, 42, 42, 50, 42, 42, 42, 42, 52, 52, 42, 52]
-      : [54, 150, 70, 56, 62, 52, 50, 50, 56, 56, 56, 60];
+    if (d.view === 'lohnarten') return lohnPdf(d);
+    const cols = overviewCols();
+    const widths = [54, 150, 70, 56, 62, 52, 50, 50, 56, 56, 56, 60];
     const tsum = (f: (x: Row) => number) => d.rows.reduce((a, x) => a + f(x), 0);
-    const totals = lohn
-      ? [
-          '',
-          'Summe',
-          '',
-          hm(tsum((x) => x.s.totals.work)),
-          h(tsum((x) => x.s.totals.vacation)),
-          h(tsum((x) => x.s.totals.sick)),
-          hm(tsum((x) => x.s.totals.paid)),
-          ...SURCHARGES.map((k) => h(tsum((x) => x.p?.minutes[k] ?? 0))),
-          euro(d.rows.reduce((a, x) => a + surchargeEur(x.p), 0n)),
-          euro(d.rows.reduce((a, x) => a + (x.p?.salary?.cents ?? 0n), 0n)),
-          h(tsum((x) => x.p?.unpaidMinutes ?? 0)),
-          `-${euro(d.rows.reduce((a, x) => a + (x.p?.unpaidDeductionCents ?? 0n), 0n))}`,
-        ]
-      : [
-          '',
-          'Summe',
-          '',
-          hm(tsum((x) => x.s.totals.plan)),
-          hm(tsum((x) => x.s.totals.work)),
-          hm(tsum((x) => x.s.totals.breaks)),
-          h(tsum((x) => x.s.totals.vacation)),
-          h(tsum((x) => x.s.totals.sick)),
-          h(tsum((x) => x.s.totals.unpaid)),
-          hm(tsum((x) => x.s.totals.paid)),
-          '',
-          '',
-        ];
+    const totals = [
+      '',
+      'Summe',
+      '',
+      hm(tsum((x) => x.s.totals.plan)),
+      hm(tsum((x) => x.s.totals.work)),
+      hm(tsum((x) => x.s.totals.breaks)),
+      h(tsum((x) => x.s.totals.vacation)),
+      h(tsum((x) => x.s.totals.sick)),
+      h(tsum((x) => x.s.totals.unpaid)),
+      hm(tsum((x) => x.s.totals.paid)),
+      '',
+      '',
+    ];
     const pdf = await renderTablePdf({
-      title: `${lohn ? 'Lohnarten' : 'Stundenliste'} ${monthLabel(d.month)}`,
-      subtitle: `${d.rows.length} Mitarbeitende · Stunden in Std.:Min.${lohn ? ' · für die Lohnabrechnung' : ''}`,
+      title: `Stundenliste ${monthLabel(d.month)}`,
+      subtitle: `${d.rows.length} Mitarbeitende · Stunden in Std.:Min.`,
       columns: cols.map((label, i) => ({
         label: label
           .replace('Zuschlag ', 'Zuschl. ')
@@ -1080,25 +1182,24 @@ ${absenceCss(
           .replace(/^Beschäftigung(sart)?$/, 'Beschäft.')
           .replace(/^Unterschrift$/, 'Unterschr.'),
         width: widths[i] ?? 44,
-        align: i >= 3 && (lohn || i < cols.length - 1) ? ('right' as const) : ('left' as const),
+        align: i >= 3 && i < cols.length - 1 ? ('right' as const) : ('left' as const),
       })),
       // Abwesenheiten farbig wie im Kalender (Urlaub grün, Krank orange, unbezahlt grau)
       rows: d.rows.map((x) =>
-        overviewRow(x, d.view).map((v, i) => {
+        overviewRow(x).map((v, i) => {
           const k = ABS_COL[cols[i]!];
           return k && v ? { text: v, fill: rgb01(ABSENCE_COLORS[k].tint) } : v;
         }),
       ),
       totals,
-      fontSize: lohn ? 7.5 : 8.5,
-      footnote: lohn
-        ? 'Lohnarten für die Lohnabrechnung. Zuschläge nach RTV Gebäudereinigung laut Einstellungen; nur erfasste/freigegebene Zeiten. Vertraulich – Personaldaten.'
-        : 'Stundenliste nach § 17 MiLoG (Beginn, Ende, Dauer – Einzelnachweis je Person unter „Stundenlisten drucken“). Vertraulich – Personaldaten.',
+      fontSize: 8.5,
+      footnote:
+        'Stundenliste nach § 17 MiLoG (Beginn, Ende, Dauer – Einzelnachweis je Person unter „Stundenlisten drucken“). Vertraulich – Personaldaten.',
     });
     return new Response(pdf, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="${lohn ? 'lohnarten' : 'stundenliste'}-${d.month}.pdf"`,
+        'Content-Disposition': `inline; filename="stundenliste-${d.month}.pdf"`,
         'Cache-Control': 'private, no-store',
       },
     });

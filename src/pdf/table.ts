@@ -26,6 +26,8 @@ export interface PdfCell {
   text: string;
   fill?: [number, number, number];
   bold?: boolean;
+  /** Schriftfarbe (z. B. rot für „nur zur Info“) */
+  color?: [number, number, number];
 }
 
 export type PdfRow = (string | PdfCell)[] | { section: string };
@@ -143,7 +145,13 @@ export async function renderTablePdf(p: {
         const tw = fnt.widthOfTextAtSize(txt, size);
         const tx =
           c.align === 'right' ? x + c.width - 6 - tw : c.align === 'center' ? x + (c.width - tw) / 2 : x + 2;
-        page.drawText(txt, { x: tx, y: y - fs - li * LINE_GAP, size, font: fnt, color: INK });
+        page.drawText(txt, {
+          x: tx,
+          y: y - fs - li * LINE_GAP,
+          size,
+          font: fnt,
+          color: obj.color ? rgb(...obj.color) : INK,
+        });
       });
       x += c.width;
     });

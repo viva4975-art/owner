@@ -4551,3 +4551,7 @@ Testadresse.
   **Grenze:** Bei ZUGFeRD sind angehängte fremde PDFs/Scans nicht zwingend PDF/A-konform (KoSIT prüft nur das XML).
   **Ahmed: bei der DB-Rechnungsgruppe Häkchen setzen, abgelehnte Rechnung mit „Erneut senden“ an
   e-invoicing@deutschebahn.com schicken.** Test `single-file-mail.db.test.ts`.
+- 2026-10-29: **Deutsche Bahn erneut abgelehnt (XML + PDF = zwei Dateien)**: Häkchen in der Rechnungsgruppe war noch nicht
+  gesetzt bzw. der Server hatte das Update noch nicht. Jetzt automatisch: geht eine Rechnung (oder Test-Mail/Erneut senden)
+  an eine Adresse von deutschebahn.com / bahn.de / db.de, gilt immer „eine Datei je E-Mail“ (`needsSingleFile` in
+  `workflow.ts`), auch ohne Häkchen. Bei XRechnung ist das eine XML mit eingebetteter Rechnungs-PDF und Anlagen.

@@ -524,6 +524,10 @@ function plainIf<T extends { text: string; html?: string; inline?: unknown }>(si
   return single ? { text: m.text } : m;
 }
 
+/** Empfänger, die nur einen Anhang je E-Mail annehmen (Deutsche Bahn: e-invoicing@deutschebahn.com). */
+export const SINGLE_FILE_DOMAINS = /@(?:[a-z0-9-]+\.)*(?:deutschebahn\.com|bahn\.de|db\.de)$/i;
+export const needsSingleFile = (emails: string[]) => emails.some((e) => SINGLE_FILE_DOMAINS.test(e.trim()));
+
 /** Rechnungsgruppe verlangt genau eine Datei je E-Mail (z. B. Deutsche Bahn). */
 export async function singleFileOf(sql: Sql, invoiceId: string): Promise<boolean> {
   const [r] = await sql<{ single_file: boolean | null; gid: string | null; customer_id: string }[]>`
@@ -559,7 +563,7 @@ export async function sendInvoiceTestMail(deps: Deps, id: string, to: string, ac
     await effectiveBilling(sql, data.invoice.customer_id, data.invoice.site_id, data.invoice.invoice_group_id)
   ).emails;
   const sig = await loadSignature(sql);
-  const single = await singleFileOf(sql, id);
+  const single = (await singleFileOf(sql, id)) || needsSingleFile(intended);
   const mf = await mailFiles(deps, doc, docs, data.invoice.invoice_format, latest, selected, single);
   const attachments = await mf.attachments();
   await deps.mailer.send({
@@ -727,7 +731,8 @@ export async function sendInvoice(
   const subject = invoiceMailSubject(doc, latest, redirected, !!resend);
   // berichtigte Fassung: eigener Versand (genau einmal je Fassung); erneuter Versand: genau einmal je Formular
   const key = resend ? `${id}:erneut-${resend.id}` : latest ? `${id}:berichtigt-${latest}` : `${id}:initial`;
-  const single = await singleFileOf(sql, id);
+  // Deutsche Bahn u. ä.: immer genau eine Datei, auch wenn das Häkchen in der Gruppe fehlt
+  const single = (await singleFileOf(sql, id)) || needsSingleFile(customer.invoice_emails);
   const mf = await mailFiles(deps, doc, docs, data.invoice.invoice_format, latest, selected, single);
   const files = mf.files;
 

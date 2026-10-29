@@ -125,3 +125,11 @@ describe.skipIf(!available)('Eine Datei je E-Mail (Deutsche Bahn)', () => {
     ).rejects.toThrow(/nur PDF, JPG oder PNG/);
   });
 });
+
+describe('Deutsche Bahn erkennen', async () => {
+  const { needsSingleFile } = await import('./workflow.js');
+  it('e-invoicing@deutschebahn.com → eine Datei', () => {
+    expect(needsSingleFile(['e-invoicing@deutschebahn.com'])).toBe(true);
+    expect(needsSingleFile(['rechnung@kunde.de'])).toBe(false);
+  });
+});

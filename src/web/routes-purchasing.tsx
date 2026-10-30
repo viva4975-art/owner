@@ -523,10 +523,12 @@ export function registerPurchasingRoutes(ctx: Ctx) {
         status: string;
         cents: bigint;
         net: bigint;
+        month: string;
       }[]
     >`
       with inv as (
         select i.id, i.invoice_no, i.due_date::text, i.status, i.subcontract_id, i.purchase_order_id,
+               to_char(coalesce(i.service_month, i.invoice_date), 'YYYY-MM') as month,
                (i.gross_cents
                  - coalesce((select sum(d.gross_cents) from app.incoming_deductions d where d.incoming_invoice_id = i.id), 0)
                  - coalesce((select sum(ao.amount_cents) from app.subcontractor_advance_offsets ao
@@ -536,7 +538,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
                  - coalesce((select sum(ao.amount_cents) from app.subcontractor_advance_offsets ao
                               where ao.incoming_invoice_id = i.id), 0))::bigint as net
           from app.incoming_invoices i where i.status in ('erfasst', 'freigegeben'))
-      select distinct k.key, inv.id as inv, inv.invoice_no, inv.due_date, inv.status, inv.cents, inv.net
+      select distinct k.key, inv.id as inv, inv.invoice_no, inv.due_date, inv.status, inv.cents, inv.net, inv.month
         from inv
         join lateral (
           select 'nu:' || l.subcontract_id as key from app.incoming_invoice_subcontracts l where l.incoming_invoice_id = inv.id
@@ -579,6 +581,20 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       subcontracts.map((x) => x.id),
       { limit: 13 },
     );
+    // Monatsaufteilung (Ahmed 30.10.): aktueller und nächster Monat – Zeiträume bis Ende des nächsten Monats
+    const nextMonth = (() => {
+      const [y, mo] = curMonth.split('-').map(Number) as [number, number];
+      return mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
+    })();
+    const nextEnd = (() => {
+      const [y, mo] = nextMonth.split('-').map(Number) as [number, number];
+      return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
+    })();
+    const trackingAhead = await billingTracking(
+      sql,
+      subcontracts.map((x) => x.id),
+      { limit: 14, today: nextEnd },
+    );
     const MON = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
     // Noch ausstehende Rechnungen (Ahmed 30.10.): je Zeitraum ohne Rechnung (abgelaufen, laufend oder nach
     // Ausführung, ab der Umstellung) der erwartete Nettobetrag – Pauschale bzw. Summe der Objekte, je Tag ×
@@ -605,10 +621,18 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       }
       return out;
     };
-    const expectedOf = new Map<string, { cents: bigint; periods: number; due: bigint; unknown: number }>();
+    type Expected = {
+      cents: bigint;
+      periods: number;
+      due: bigint;
+      unknown: number;
+      byMonth: Map<string, bigint>;
+    };
+    const expectedOf = new Map<string, Expected>();
+    const today = todayBerlin();
     for (const sc of subcontracts) {
       if (sc.status !== 'erteilt' && sc.status !== 'beendet') continue;
-      const ps = (tracking.get(sc.id) ?? []).filter(
+      const ps = (trackingAhead.get(sc.id) ?? []).filter(
         (p) => p.state === 'offen' || p.state === 'laufend' || p.state === 'bedarf',
       );
       if (!ps.length) continue;
@@ -619,8 +643,14 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       });
       const rec = isRecurringOrder(sc.frequency);
       const hm = hrsBy.get(sc.id) ?? new Map<string, bigint>();
-      const e = { cents: 0n, periods: 0, due: 0n, unknown: 0 };
+      const e: Expected = { cents: 0n, periods: 0, due: 0n, unknown: 0, byMonth: new Map() };
+      // erster Zeitraum, der schon begonnen hat (Stunden nach Ausführung zählen dort)
+      const firstNow = ps.find((p) => p.start <= curMonth);
       for (const p of ps) {
+        // Zeiträume, die erst nächsten Monat beginnen: nur in der Monatsaufteilung, nicht in den Kacheln
+        const ahead = p.start > curMonth;
+        // nach Ausführung: Monat des Endes, solange der Zeitraum noch über den nächsten Monat läuft „Monat offen“
+        const mKey = rec ? p.start : p.end.slice(0, 7) > nextMonth ? 'bedarf' : p.end.slice(0, 7);
         const ms = monthsOf(p.start, p.end);
         let v: bigint | null = 0n;
         if (sc.billing === 'umsatz') v = null;
@@ -641,14 +671,16 @@ export function registerPurchasingRoutes(ctx: Ctx) {
               );
         // Stunden (Stundennachweis) und Regie: monatliche je Monat des Zeitraums, sonst alle bisher erfassten
         // (bei Bestellungen nach Ausführung nur beim ersten offenen Zeitraum, sonst doppelt)
-        if (v !== null) for (const [m, a] of hm) if (rec ? ms.includes(m) : p === ps[0]) v += a;
+        if (v !== null) for (const [m, a] of hm) if (rec ? ms.includes(m) : p === (firstNow ?? ps[0])) v += a;
+        if (v !== null && v !== 0n) e.byMonth.set(mKey, (e.byMonth.get(mKey) ?? 0n) + v);
+        if (ahead) continue;
         e.periods++;
         if (v === null || v === 0n) {
           if (v === null || sc.billing !== 'stunde') e.unknown++;
           continue;
         }
         e.cents += v;
-        if (p.state === 'offen' || (p.state === 'bedarf' && p.end < todayBerlin())) e.due += v;
+        if (p.end < today) e.due += v;
       }
       expectedOf.set(sc.id, e);
     }
@@ -659,6 +691,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
           periods: 1,
           due: o.status === 'geliefert' ? o.net_cents : 0n,
           unknown: 0,
+          byMonth: new Map([[o.order_date.slice(0, 7), o.net_cents]]),
         });
     const billCell = (r: {
       kind: 'material' | 'nu';
@@ -909,6 +942,40 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       for (const u of unpaidOf(r)) tileInv.set(u.inv, u);
     }
     const tileUnpaid = [...tileInv.values()];
+    // Aufteilung nach Monat (Ahmed 30.10.): frühere, aktueller, nächster Monat (danach „später“)
+    const MONTH_NAMES = [
+      'Januar',
+      'Februar',
+      'März',
+      'April',
+      'Mai',
+      'Juni',
+      'Juli',
+      'August',
+      'September',
+      'Oktober',
+      'November',
+      'Dezember',
+    ];
+    const monthName = (m: string) => `${MONTH_NAMES[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
+    const bucketOf = (m: string) =>
+      m === 'bedarf' ? m : m < curMonth ? 'frueher' : m > nextMonth ? 'spaeter' : m;
+    const byBucket = new Map<string, { exp: bigint; inv: bigint }>();
+    const addB = (m: string, k: 'exp' | 'inv', v: bigint) => {
+      const b = bucketOf(m);
+      const x = byBucket.get(b) ?? { exp: 0n, inv: 0n };
+      x[k] += v;
+      byBucket.set(b, x);
+    };
+    for (const r of base) for (const [m, v] of expectedOf.get(r.id)?.byMonth ?? []) addB(m, 'exp', v);
+    for (const u of tileUnpaid) addB(u.month, 'inv', u.net);
+    const monthRows: [string, string][] = [
+      ['frueher', 'frühere Monate'],
+      [curMonth, `${monthName(curMonth)} (aktuell)`],
+      [nextMonth, `${monthName(nextMonth)} (nächster Monat)`],
+      ['spaeter', 'später'],
+      ['bedarf', 'nach Ausführung (Monat noch offen)'],
+    ];
     const unpaidNet = tileUnpaid.reduce((a, u) => a + u.net, 0n);
     const unpaidGross = tileUnpaid.reduce((a, u) => a + u.cents, 0n);
     const unpaidDueNet = tileUnpaid.filter((u) => u.due_date < todayBerlin()).reduce((a, u) => a + u.net, 0n);
@@ -1032,8 +1099,37 @@ export function registerPurchasingRoutes(ctx: Ctx) {
             </div>
           </div>
         </div>
+        <table class="keep" style="max-width:760px;margin:0 0 10px" data-nostick>
+          <thead>
+            <tr>
+              <th>Monat</th>
+              <th class="num">Rechnungen stehen noch aus</th>
+              <th class="num">Eingegangen, unbezahlt</th>
+              <th class="num">Offen gesamt</th>
+            </tr>
+          </thead>
+          <tbody>
+            {monthRows
+              .filter(([k]) => k === curMonth || k === nextMonth || byBucket.has(k))
+              .map(([k, l]) => {
+                const b = byBucket.get(k) ?? { exp: 0n, inv: 0n };
+                return (
+                  <tr>
+                    <td>{k === curMonth || k === nextMonth ? <b>{l}</b> : l}</td>
+                    <td class="num">{euro(b.exp)}</td>
+                    <td class="num">{euro(b.inv)}</td>
+                    <td class="num">
+                      <b>{euro(b.exp + b.inv)}</b>
+                    </td>
+                  </tr>
+                );
+              })}
+          </tbody>
+        </table>
         <p class="small mut" style="margin:-4px 0 10px">
-          Alle Beträge netto (ohne USt), Nachunternehmer ab Oktober 2026. Ausstehend = erwarteter Betrag laut
+          Monat = Leistungsmonat (Rechnungen ohne Leistungsmonat: Rechnungsdatum, Material: Bestelldatum). Der
+          nächste Monat ist eine Vorschau laut Bestellung und zählt in den Kacheln oben noch nicht mit. Alle
+          Beträge netto (ohne USt), Nachunternehmer ab Oktober 2026. Ausstehend = erwarteter Betrag laut
           Bestellung für Zeiträume ohne Rechnung (Pauschale, je Tag × Arbeitstage, erfasste Stunden und
           Regie); eingegangene Rechnungen zählen dort nicht.
         </p>

@@ -4679,3 +4679,9 @@ Testadresse.
   Vorschüssen, darunter „zu zahlen brutto“), **Offen gesamt** (beides) und **Davon überfällig** (unbezahlt fällig +
   Zeitraum vorbei ohne Rechnung). Alles netto, für die gefilterten Bestellungen (Art, Lieferant, Suche), jede Rechnung
   einmal; je Bestellung „Rechnung steht aus: ≈ …“. Schätzung mit dem aktuellen Preis (Preisnachträge je Monat nicht einzeln).
+- 2026-10-30: **Bestellungen nach Monat** (Ahmed: „immer zwei Monate, aktuellen und nächsten“): unter den vier Kacheln
+  Tabelle je Monat – Rechnungen stehen noch aus / Eingegangen, unbezahlt / Offen gesamt für den **aktuellen** und den
+  **nächsten Monat**, dazu Zeilen „frühere Monate“, „später“ und „nach Ausführung (Monat noch offen)“, wenn dort etwas
+  steht. Monat = Leistungsmonat (laufende Bestellungen je Monat, nach Ausführung Monat des Endes; Rechnungen ohne
+  Leistungsmonat nach Rechnungsdatum, Material nach Bestelldatum). Nächster Monat = Vorschau laut Bestellung
+  (`billingTracking` bis Ende des nächsten Monats), zählt in den Kacheln oben nicht mit. Filter wirken mit.

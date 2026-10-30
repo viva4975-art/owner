@@ -829,17 +829,31 @@ export async function assignCustomerPick(
     throw new BusinessError(
       'Das angekreuzte Guthaben wird nicht gebraucht – bitte weitere Rechnungen ankreuzen',
     );
-  const last = items[items.length - 1];
-  if (last) {
-    const lastOpen = open.get(last.invoiceId)!;
-    const covered = paidTotal.get(last.invoiceId)!;
-    if (komplett && covered < lastOpen) {
-      const diff = lastOpen - covered;
-      if (diff * 10_000n > lastOpen * 500n)
+  // „Komplett bezahlt“: Differenz zum Gesamtbetrag als Skonto, anteilig auf alle angekreuzten Rechnungen verteilt
+  if (komplett && items.length) {
+    const needs = items.map((i) => open.get(i.invoiceId)! - (paidTotal.get(i.invoiceId)! - i.amount));
+    const totalNeed = needs.reduce((a, b) => a + b, 0n);
+    const totalPaid = items.reduce((a, i) => a + i.amount, 0n);
+    const diff = totalNeed - totalPaid;
+    if (diff > 0n) {
+      const totalOpen = items.reduce((a, i) => a + open.get(i.invoiceId)!, 0n);
+      if (diff * 10_000n > totalOpen * 500n)
         throw new BusinessError(
-          `Differenz ${fmt(diff)} ist mehr als 5 % – als Teilzahlung buchen (Haken „Komplett bezahlt“ weg)`,
+          `Differenz ${fmt(diff)} ist mehr als 5 % des Gesamtbetrags – als Teilzahlung buchen (Haken „Komplett bezahlt“ weg)`,
         );
-      last.skonto = diff;
+      // Skonto je Rechnung im Verhältnis ihres offenen Betrags, Rest-Cent auf die größte
+      const sk = needs.map((n) => (totalNeed > 0n ? (diff * n) / totalNeed : 0n));
+      let restSk = diff - sk.reduce((a, b) => a + b, 0n);
+      const order = needs.map((n, i) => ({ n, i })).sort((a, b) => (b.n > a.n ? 1 : b.n < a.n ? -1 : 0));
+      for (const { i } of order) {
+        if (restSk <= 0n) break;
+        sk[i]! += 1n;
+        restSk -= 1n;
+      }
+      items.forEach((it, i) => {
+        it.skonto = sk[i]!;
+        it.amount = needs[i]! - sk[i]!;
+      });
     }
   }
   await assignInvoices(sql, t.id, items, actor, { credits: creditIds, uses });

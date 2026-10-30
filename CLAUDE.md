@@ -4573,3 +4573,10 @@ Testadresse.
   tag) in Nachkalkulation/Kostenstellen über die View `app.incoming_cost_lines`. DATEV: Gegenbuchung je Abzug (Soll
   Kreditor, gleiches Aufwandskonto/BU, Datum = Erfassung) + Hinweis. **Steuerlich:** Vorsteuer nur aus dem geminderten
   Betrag (§ 17 UStG) – Rechnungskorrektur beim Lieferanten anfordern. Test `incoming-deductions.db.test.ts`.
+- 2026-10-30: **Fund „Komplett bezahlt“: 5 % je Einzelrechnung statt Gesamtbetrag** (Ahmed: „Differenz 86,72 € mehr als 5 %,
+  obwohl gesamt 0,17 %“): Beim Zuordnen mehrerer Rechnungen zu einer Kundenzahlung wurde die ganze Differenz der letzten
+  Rechnung zugeschlagen und gegen deren Betrag geprüft. Jetzt gilt die 5-%-Grenze für die Summe der angekreuzten
+  Rechnungen, und die Differenz wird als Skonto anteilig nach offenem Betrag auf alle angekreuzten Rechnungen verteilt
+  (Rest-Cent auf die größte; `assignCustomerPick` in `bank.ts`). **Steuerlich:** Skonto/Kürzung mindert die USt (§ 17 UStG);
+  bei einer nicht vereinbarten Differenz ist das eine Kürzung – Restforderung bleibt rechtlich bestehen.
+  Test in `correction-credits.db.test.ts`.

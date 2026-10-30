@@ -981,7 +981,7 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
     </>
   );
 
-  /** Kunde: angekreuzte Rechnungen der Reihe nach bezahlen; „Komplett bezahlt“ = Rest der letzten als Skonto. */
+  /** Kunde: angekreuzte Rechnungen der Reihe nach bezahlen; „Komplett bezahlt“ = Differenz anteilig als Skonto (max. 5 % gesamt). */
   app.post(`/transfer/kontoumsaetze/:id{${UUID}}/auswahl`, async (c) => {
     const id = c.req.param('id');
     const t = await getTransaction(sql, id);

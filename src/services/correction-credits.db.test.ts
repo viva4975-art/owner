@@ -82,4 +82,24 @@ describe.skipIf(!available)('Rechnungskorrektur separat verrechnen', () => {
       assignInvoices(sql, t3, [{ invoiceId: b, legacy: true, amount: 500n, skonto: 0n }], 't'),
     ).rejects.toThrow(/Summe/);
   });
+
+  it('„Komplett bezahlt“: 5 % gelten für die Summe, Differenz anteilig verteilt', async () => {
+    const c = randomUUID();
+    const d = randomUUID();
+    await legacy(c, '1038310', 1000000); // 10.000,00
+    await legacy(d, '1038311', 100000); // 1.000,00
+    // Kunde zahlt 11.000 − 50,00 (0,45 % gesamt, aber 5 % auf die kleinere Rechnung allein)
+    const t = (await getTransaction(sql, await bankTx(1095000)))!;
+    await assignCustomerPick(sql, t, [`L:${c}`, `L:${d}`], true, 't');
+    expect(await open(c)).toBe(0n);
+    expect(await open(d)).toBe(0n);
+    const sk = await sql<{ s: bigint }[]>`
+      select coalesce(sum(amount_cents), 0)::bigint as s from app.legacy_payments
+       where method = 'skonto' and invoice_id in (${c}, ${d})`;
+    expect(sk[0]!.s).toBe(5000n);
+    const t2 = (await getTransaction(sql, await bankTx(50000)))!;
+    const e = randomUUID();
+    await legacy(e, '1038312', 100000);
+    await expect(assignCustomerPick(sql, t2, [`L:${e}`], true, 't')).rejects.toThrow(/mehr als 5 %/);
+  });
 });

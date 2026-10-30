@@ -69,6 +69,20 @@ describe.skipIf(!available)('Plan-Kalkulation (Soll)', () => {
     expect(r.margin).toBe(200000n - r.gross - r.employer - r.subcontractor - r.material);
   });
 
+  it('Ist-Zeit ohne Einsatz zählt mit (wie Lohnarten)', async () => {
+    const extra = randomUUID();
+    await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, employment_type, weekly_hours, pay_model, hourly_wage_cents)
+              values (${extra}, '9884', 'Ohne', 'Plan', '2025-01-01', 'minijob', 2, 'individuell', 1500)`;
+    const d = '2026-11-10';
+    await sql`insert into app.time_entries (id, employee_id, site_id, work_date, start_at, end_at, break_minutes, source, status, created_by)
+              values (${randomUUID()}, ${extra}, ${site}, ${d}, (${d}::date + time '06:00') at time zone 'Europe/Berlin',
+                      (${d}::date + time '08:00') at time zone 'Europe/Berlin', 0, 'buero', 'freigegeben', 't')`;
+    const { employees } = await planCosting(sql, { from: '2026-11', to: '2026-11' });
+    const x = employees.find((e) => e.employee_id === extra)!;
+    expect(x.minutes).toBe(120);
+    expect(x.gross).toBe(3000n);
+  });
+
   it('inaktiver Kunde setzt Objekte und Leistungen inaktiv', async () => {
     const cust = randomUUID();
     const s2 = randomUUID();

@@ -3696,8 +3696,8 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
       <>
         <PageHead title="Plan-Kalkulation (Soll)" crumbs={[['Auswertungen', '/auswertungen']]} />
         <p class="small mut" style="margin-top:-6px">
-          Wie die Nachkalkulation, aber nur mit Plan-Daten: laufende Leistungen, eingeplante Einsätze,
-          Nachunternehmer laut Bestellung. Vergleich mit dem Ist:{' '}
+          Wie die Nachkalkulation, aber mit Plan-Erlös: laufende Leistungen, Lohn wie Lohnarten (Ist, sonst
+          Plan), Nachunternehmer laut Bestellung. Vergleich mit dem Ist:{' '}
           <a href={`/auswertungen/nachkalkulation?von=${von}&bis=${bis}`}>
             Nachkalkulation für diesen Zeitraum
           </a>
@@ -3933,9 +3933,10 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
               sie zählen in der Nachkalkulation im Monat ihres Leistungszeitraums.
             </li>
             <li>
-              <b>Lohn:</b> eingeplante Einsätze (Soll, inkl. bezahlter Feiertage, ohne Tage mit eingetragener
-              Abwesenheit) × Stundenlohn, ohne Zuschlag für Urlaub/Krankheit; Festgehalt = Monatsgehalt,
-              verteilt nach geplanten Stunden. Sonn-/Feiertags- und Nachtzuschläge sind nicht enthalten.
+              <b>Lohn:</b> wie Stundenliste &amp; Lohnarten – je Einsatz die erfasste Zeit, sonst die
+              geplante; Zeiten ohne Einsatz zählen mit, ebenso Urlaub, Krank, Feiertagslohn und Zuschläge
+              (Nacht, Sonn-/Feiertag, Mehrarbeit). Festgehalt = Monatsgehalt, verteilt nach den Stunden je
+              Objekt.
             </li>
             <li>
               <b>Arbeitgeberkosten je Person und Monat</b> nach dem geplanten Entgelt: bis{' '}

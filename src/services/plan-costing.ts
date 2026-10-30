@@ -9,16 +9,15 @@ import { countWorkDays, monthBounds } from '../domain/invoice/calc.js';
 import { type Cents, lineNet, type Quantity } from '../domain/money/money.js';
 import { monthRange, SPECIAL_SITE_ID, subcontractEstimates } from './costing.js';
 import { BusinessError } from './errors.js';
-import { plannedShifts } from './time.js';
+import { laborFromPayroll } from './costing-labor.js';
 
 /*
  * Plan-Kalkulation (Ahmed 23.10.: „wie eine gesamte Nachkalkulation, nur mit Soll-/Plan-Daten“):
  *   Erlös  = laufende Leistungen (Monatspauschalen, Zyklus-Leistungen anteilig je Monat)
- * − Lohn   = eingeplante Einsätze (Soll) × Stundenlohn bzw. Festgehalt (kein Zuschlag für Urlaub/Krankheit, Ahmed 23.10.),
- *            + Arbeitgeberkosten je Person und Monat nach Lohnhöhe (Minijob / Midijob / regulär)
+ * − Lohn   = wie Lohnarten („Ist, sonst Plan“, Ahmed 30.10.): erfasste Zeit, sonst Einsatzplan, dazu Zeiten ohne Einsatz,
+ *            Urlaub/Krank/Feiertagslohn und Zuschläge; + Arbeitgeberkosten je Person und Monat nach Lohnhöhe
  * − Nachunternehmer laut Bestellung (jeder Monat, auch wenn schon eine Rechnung gebucht ist)
  * − Material pauschal in % vom Erlös (Standard 2 %, Ahmed 27.10.; vorher Ø der letzten 3 Monate)
- * Feiertage im Plan zählen als bezahlte Stunden; Tage mit eingetragener Abwesenheit nicht.
  */
 
 const CYCLE_MONTHS: Record<string, number> = {
@@ -145,7 +144,7 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
   const from = monthRange(period.from).from;
   const to = monthRange(period.to).to;
   const rates = await getPlanCostRates(sql);
-  const [sites, services, shifts, nu, emps] = await Promise.all([
+  const [sites, services, nu, emps] = await Promise.all([
     sql<
       {
         id: string;
@@ -185,7 +184,6 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
          -- Nachkalkulation, wenn sie abgerechnet sind (Leistungszeitraum im Monat)
          and ss.kind = 'monthly_flat'
          and ss.valid_from <= ${to} and (ss.valid_to is null or ss.valid_to >= ${from})`,
-    plannedShifts(sql, { from, to }),
     subcontractEstimates(sql, from, to, undefined, { plan: true }),
     sql<
       {
@@ -271,86 +269,90 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
         d.push({ service_id: sv.id, title: sv.title, cycle: sv.billing_cycle, months: 1, amount: share });
     }
   }
-  // Lohn: geplante Minuten je Mitarbeiter, Monat und Objekt
-  const planned = new Map<string, Map<string, number>>(); // emp|month → site → Minuten
-  for (const s of shifts) {
-    if (!s.plan.employee_id || s.absence || s.minutes <= 0 || !siteMap.has(s.plan.site_id)) continue;
-    const k = `${s.plan.employee_id}|${s.date.slice(0, 7)}`;
-    const bySite = planned.get(k) ?? new Map<string, number>();
-    bySite.set(s.plan.site_id, (bySite.get(s.plan.site_id) ?? 0) + s.minutes);
-    planned.set(k, bySite);
-  }
+  // Lohn wie Lohnarten / Nachkalkulation (Ahmed 30.10.): je Einsatz Ist, sonst Plan; Zeiten ohne Einsatz zählen mit,
+  // Urlaub/Krank/Feiertagslohn und Zuschläge wie im Lohnexport. Arbeitgeberkosten je Person und Monat nach Lohnhöhe.
   const empMap = new Map(emps.map((e) => [e.id, e]));
   const empAcc = new Map<string, PlanEmployeeRow>();
-  for (const [k, bySite] of planned) {
-    const [empId] = k.split('|') as [string];
-    const e = empMap.get(empId);
-    if (!e) continue;
-    const minutes = [...bySite.values()].reduce((a, b) => a + b, 0);
-    const wage = BigInt(e.wage ?? e.min_wage ?? 0);
-    const fixed = e.pay_model === 'festgehalt' && e.monthly_salary_cents;
-    const gf = isManagingDirector(e.tags, { name: e.full_name, managingDirector: e.md });
-    // Stundenlohn: Minuten × Lohn, kaufmännisch gerundet; Festgehalt: Monatsgehalt. Geschäftsführer ohne Arbeitgeberkosten.
-    const gross = fixed ? BigInt(e.monthly_salary_cents!) : (BigInt(minutes) * wage + 30n) / 60n;
-    const { band, costCents } = gf
-      ? { band: 'gf' as const, costCents: 0n }
-      : employerCost(
-          gross,
-          e.employment_type === 'minijob' ? 'minijob' : e.employment_type ? 'sv' : null,
-          rates,
-        );
-    const sitesOf = [...bySite.keys()];
-    const w = sitesOf.map((id) => bySite.get(id)!);
-    const g = split(gross, w);
-    const c = split(costCents, w);
-    sitesOf.forEach((id, i) => {
-      const r = row(id);
-      r.minutes += w[i]!;
-      r.gross += g[i]!;
-      r.employer += c[i]!;
-      const dl = detail(id).labor;
-      const it = dl.find((x) => x.employee_id === empId);
-      if (it) {
-        it.minutes += w[i]!;
-        it.gross += g[i]!;
-        it.employer += c[i]!;
-        if (!it.bands.includes(band)) it.bands.push(band);
-      } else
-        dl.push({
-          employee_id: empId,
-          name: e.name,
-          personnel_no: e.personnel_no,
-          minutes: w[i]!,
-          gross: g[i]!,
-          employer: c[i]!,
-          bands: [band],
-          fixed: !!fixed,
-          wage_cents: wage,
-          wage_assumed: !fixed && e.wage === null,
-        });
-    });
-    const ea = empAcc.get(empId) ?? {
-      employee_id: empId,
-      name: e.name,
-      personnel_no: e.personnel_no,
-      employment_type: e.employment_type,
-      pay_model: e.pay_model,
-      minutes: 0,
-      gross: 0n,
-      employer: 0n,
-      bands: [],
-      wage_assumed: !fixed && e.wage === null,
-      minijob_over: false,
-      low_plan: false,
-    };
-    ea.minutes += minutes;
-    ea.gross += gross;
-    ea.employer += costCents;
-    if (!ea.bands.includes(band)) ea.bands.push(band);
-    if (e.employment_type === 'minijob' && gross > rates.minijob_limit_cents) ea.minijob_over = true;
-    if (!gf && e.employment_type && e.employment_type !== 'minijob' && gross <= rates.minijob_limit_cents)
-      ea.low_plan = true;
-    empAcc.set(empId, ea);
+  for (const m of months) {
+    const { start, end } = monthBounds(m);
+    const byEmp = new Map<string, { site: string; minutes: number; gross: bigint }[]>();
+    for (const sh of await laborFromPayroll(sql, start, end)) {
+      const l = byEmp.get(sh.employee_id) ?? [];
+      l.push({ site: sh.site_id, minutes: sh.minutes, gross: sh.gross });
+      byEmp.set(sh.employee_id, l);
+    }
+    for (const [empId, parts] of byEmp) {
+      const e = empMap.get(empId);
+      if (!e) continue;
+      const wage = BigInt(e.wage ?? e.min_wage ?? 0);
+      const fixed = e.pay_model === 'festgehalt' && e.monthly_salary_cents;
+      const gf = isManagingDirector(e.tags, { name: e.full_name, managingDirector: e.md });
+      const gross = parts.reduce((a, p) => a + p.gross, 0n);
+      const { band, costCents } = gf
+        ? { band: 'gf' as const, costCents: 0n }
+        : employerCost(
+            gross,
+            e.employment_type === 'minijob' ? 'minijob' : e.employment_type ? 'sv' : null,
+            rates,
+          );
+      // Arbeitgeberkosten nach Lohnanteil je Objekt; Anteil „ohne Objekt“ fällt weg (wie in der Nachkalkulation)
+      const shown = parts.filter((p) => p.site && siteMap.has(p.site));
+      const minutes = shown.reduce((a, p) => a + p.minutes, 0);
+      const gw = parts.map((p) => Number(p.gross > 0n ? p.gross : 0n));
+      const cAll = split(costCents, gw.some((x) => x > 0) ? gw : parts.map((p) => p.minutes || 1));
+      const sitesOf = shown.map((p) => p.site);
+      const w = shown.map((p) => p.minutes);
+      const g = shown.map((p) => p.gross);
+      const c = shown.map((p) => cAll[parts.indexOf(p)]!);
+      sitesOf.forEach((id, i) => {
+        const r = row(id);
+        r.minutes += w[i]!;
+        r.gross += g[i]!;
+        r.employer += c[i]!;
+        const dl = detail(id).labor;
+        const it = dl.find((x) => x.employee_id === empId);
+        if (it) {
+          it.minutes += w[i]!;
+          it.gross += g[i]!;
+          it.employer += c[i]!;
+          if (!it.bands.includes(band)) it.bands.push(band);
+        } else
+          dl.push({
+            employee_id: empId,
+            name: e.name,
+            personnel_no: e.personnel_no,
+            minutes: w[i]!,
+            gross: g[i]!,
+            employer: c[i]!,
+            bands: [band],
+            fixed: !!fixed,
+            wage_cents: wage,
+            wage_assumed: !fixed && e.wage === null,
+          });
+      });
+      const ea = empAcc.get(empId) ?? {
+        employee_id: empId,
+        name: e.name,
+        personnel_no: e.personnel_no,
+        employment_type: e.employment_type,
+        pay_model: e.pay_model,
+        minutes: 0,
+        gross: 0n,
+        employer: 0n,
+        bands: [],
+        wage_assumed: !fixed && e.wage === null,
+        minijob_over: false,
+        low_plan: false,
+      };
+      ea.minutes += minutes;
+      ea.gross += gross;
+      ea.employer += costCents;
+      if (!ea.bands.includes(band)) ea.bands.push(band);
+      if (e.employment_type === 'minijob' && gross > rates.minijob_limit_cents) ea.minijob_over = true;
+      if (!gf && e.employment_type && e.employment_type !== 'minijob' && gross <= rates.minijob_limit_cents)
+        ea.low_plan = true;
+      empAcc.set(empId, ea);
+    }
   }
   for (const n of nu) if (siteMap.has(n.site_id)) row(n.site_id).subcontractor += BigInt(n.cost);
   // Material pauschal: Erlös × Satz, kaufmännisch auf Cent

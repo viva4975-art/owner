@@ -396,9 +396,7 @@ export function registerCostingDetailRoutes(ctx: Ctx) {
                         <a href={`/personal/${l.employee_id}`}>{l.name}</a>
                         <span class="small mut"> · {l.personnel_no}</span>
                         <div class="small mut">
-                          {l.fixed
-                            ? 'Festgehalt, nach Plan-Stunden verteilt'
-                            : `${euro(l.wage_cents)} / Std.`}
+                          {l.fixed ? 'Festgehalt, nach Stunden verteilt' : `${euro(l.wage_cents)} / Std.`}
                         </div>
                         {l.wage_assumed && (
                           <div class="small" style="color:var(--warn)">

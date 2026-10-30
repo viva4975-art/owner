@@ -4580,3 +4580,10 @@ Testadresse.
   (Rest-Cent auf die größte; `assignCustomerPick` in `bank.ts`). **Steuerlich:** Skonto/Kürzung mindert die USt (§ 17 UStG);
   bei einer nicht vereinbarten Differenz ist das eine Kürzung – Restforderung bleibt rechtlich bestehen.
   Test in `correction-credits.db.test.ts`.
+- 2026-10-30: **Plan-Kalkulation: Lohn wie Lohnarten** (Ahmed: „Ist nehmen, wenn keine da ist die geplante; auch Ist ohne
+  Plan“): Lohn je Person und Monat aus `laborFromPayroll` (gleiche Rechnung wie Stundenliste & Lohnarten und
+  Nachkalkulation): je Einsatz erfasste Zeit, sonst Plan, Zeiten ohne Einsatz zählen mit, dazu Urlaub/Krank/Feiertagslohn
+  und Zuschläge. Arbeitgeberkosten weiter je Person und Monat nach Lohnhöhe (Minijob/Midijob/regulär, Geschäftsführer
+  ohne), verteilt nach Lohnanteil je Objekt. Unterschied zur Nachkalkulation bleibt nur: Erlös = laufende Pauschalen
+  (statt Rechnungen), NU laut Bestellung, Material 2 %, AG-Kosten nach Lohnhöhe statt pauschalem Lohnzuschlag.
+  Test in `plan-costing.db.test.ts`.

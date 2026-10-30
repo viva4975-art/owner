@@ -329,11 +329,18 @@ export async function bankIncome(sql: Sql, from: string, to: string) {
   return r!.cents;
 }
 
-/** Offene Eingangsrechnungen (noch nicht bezahlt), brutto. */
+/** Offene Eingangsrechnungen (noch nicht bezahlt), brutto abzüglich Abzüge und verrechneter Vorschüsse. */
 export async function openIncoming(sql: Sql) {
   const [r] = await sql<{ cents: bigint; n: number; overdue: bigint }[]>`
-    select coalesce(sum(gross_cents), 0)::bigint as cents, count(*)::int as n,
-           coalesce(sum(gross_cents) filter (where due_date < (now() at time zone 'Europe/Berlin')::date), 0)::bigint as overdue
-      from app.incoming_invoices where status in ('erfasst', 'freigegeben')`;
+    with o as (
+      select i.due_date,
+             i.gross_cents
+               - coalesce((select sum(d.gross_cents) from app.incoming_deductions d where d.incoming_invoice_id = i.id), 0)
+               - coalesce((select sum(ao.amount_cents) from app.subcontractor_advance_offsets ao
+                            where ao.incoming_invoice_id = i.id), 0) as cents
+        from app.incoming_invoices i where i.status in ('erfasst', 'freigegeben'))
+    select coalesce(sum(cents), 0)::bigint as cents, count(*)::int as n,
+           coalesce(sum(cents) filter (where due_date < (now() at time zone 'Europe/Berlin')::date), 0)::bigint as overdue
+      from o`;
   return r!;
 }

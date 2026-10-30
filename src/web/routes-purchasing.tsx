@@ -1688,7 +1688,11 @@ export function registerPurchasingRoutes(ctx: Ctx) {
           </div>
           <div class="kpi">
             <div class="l">Freigegeben, offen</div>
-            <div class="v">{euro(open.reduce((s, i) => s + i.gross_cents, 0n))}</div>
+            <div class="v">
+              {euro(
+                open.reduce((s, i) => s + i.gross_cents - i.deduction_cents - i.advance_offset_cents, 0n),
+              )}
+            </div>
             <div class="s">
               <a href="/zahlungsliste">Zur Zahlungsliste →</a>
             </div>

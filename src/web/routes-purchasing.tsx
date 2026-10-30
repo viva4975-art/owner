@@ -515,16 +515,28 @@ export function registerPurchasingRoutes(ctx: Ctx) {
     const invoiced = new Set(billed.map((b) => b.id));
     // Unbezahlte Eingangsrechnungen je Bestellung (Ahmed 30.10.): noch zu zahlen = brutto − Abzüge − Vorschüsse
     const unpaidRows = await sql<
-      { key: string; inv: string; invoice_no: string; due_date: string; status: string; cents: bigint }[]
+      {
+        key: string;
+        inv: string;
+        invoice_no: string;
+        due_date: string;
+        status: string;
+        cents: bigint;
+        net: bigint;
+      }[]
     >`
       with inv as (
         select i.id, i.invoice_no, i.due_date::text, i.status, i.subcontract_id, i.purchase_order_id,
                (i.gross_cents
                  - coalesce((select sum(d.gross_cents) from app.incoming_deductions d where d.incoming_invoice_id = i.id), 0)
                  - coalesce((select sum(ao.amount_cents) from app.subcontractor_advance_offsets ao
-                              where ao.incoming_invoice_id = i.id), 0))::bigint as cents
+                              where ao.incoming_invoice_id = i.id), 0))::bigint as cents,
+               (i.net_cents
+                 - coalesce((select sum(d.net_cents) from app.incoming_deductions d where d.incoming_invoice_id = i.id), 0)
+                 - coalesce((select sum(ao.amount_cents) from app.subcontractor_advance_offsets ao
+                              where ao.incoming_invoice_id = i.id), 0))::bigint as net
           from app.incoming_invoices i where i.status in ('erfasst', 'freigegeben'))
-      select distinct k.key, inv.id as inv, inv.invoice_no, inv.due_date, inv.status, inv.cents
+      select distinct k.key, inv.id as inv, inv.invoice_no, inv.due_date, inv.status, inv.cents, inv.net
         from inv
         join lateral (
           select 'nu:' || l.subcontract_id as key from app.incoming_invoice_subcontracts l where l.incoming_invoice_id = inv.id
@@ -568,6 +580,86 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       { limit: 13 },
     );
     const MON = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
+    // Noch ausstehende Rechnungen (Ahmed 30.10.): je Zeitraum ohne Rechnung (abgelaufen, laufend oder nach
+    // Ausführung, ab der Umstellung) der erwartete Nettobetrag – Pauschale bzw. Summe der Objekte, je Tag ×
+    // Arbeitstage, erfasste Stunden und Regie dieser Monate. „Anteil am Umsatz“ ohne Betrag.
+    const hrsBy = new Map<string, Map<string, bigint>>();
+    for (const h of await hoursByMonth(
+      sql,
+      subcontracts.map((x) => x.id),
+    )) {
+      const m = hrsBy.get(h.id) ?? new Map<string, bigint>();
+      m.set(h.month, (m.get(h.month) ?? 0n) + h.amount);
+      hrsBy.set(h.id, m);
+    }
+    const tagClosures = await orderClosures(
+      sql,
+      subcontracts.filter((x) => x.billing === 'tag').map((x) => x.id),
+    );
+    const monthsOf = (start: string, end: string) => {
+      const out: string[] = [];
+      for (let m = start; m <= end.slice(0, 7) && out.length < 60;) {
+        out.push(m);
+        const [y, mo] = m.split('-').map(Number) as [number, number];
+        m = mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
+      }
+      return out;
+    };
+    const expectedOf = new Map<string, { cents: bigint; periods: number; due: bigint; unknown: number }>();
+    for (const sc of subcontracts) {
+      if (sc.status !== 'erteilt' && sc.status !== 'beendet') continue;
+      const ps = (tracking.get(sc.id) ?? []).filter(
+        (p) => p.state === 'offen' || p.state === 'laufend' || p.state === 'bedarf',
+      );
+      if (!ps.length) continue;
+      const total = subcontractTotal({
+        ...sc,
+        sqm_centi: sqmMap.get(sc.id) ?? null,
+        sammel_total: perObjTotals.get(sc.id),
+      });
+      const rec = isRecurringOrder(sc.frequency);
+      const hm = hrsBy.get(sc.id) ?? new Map<string, bigint>();
+      const e = { cents: 0n, periods: 0, due: 0n, unknown: 0 };
+      for (const p of ps) {
+        const ms = monthsOf(p.start, p.end);
+        let v: bigint | null = 0n;
+        if (sc.billing === 'umsatz') v = null;
+        else if (sc.billing === 'pauschale_monat' || sc.billing === 'qm')
+          v = total === null ? null : total * BigInt(rec ? ms.length : 1);
+        else if (sc.billing === 'pauschale_einsatz') v = total ?? sc.current_price_cents;
+        else if (sc.billing === 'tag')
+          for (const m of ms)
+            v! +=
+              sc.current_price_cents *
+              BigInt(
+                countDays(m, {
+                  workDays: sc.work_days,
+                  validFrom: sc.valid_from,
+                  validTo: sc.valid_to,
+                  closures: tagClosures.filter((c) => c.subcontract_id === sc.id),
+                }).days,
+              );
+        // Stunden (Stundennachweis) und Regie: monatliche je Monat des Zeitraums, sonst alle bisher erfassten
+        // (bei Bestellungen nach Ausführung nur beim ersten offenen Zeitraum, sonst doppelt)
+        if (v !== null) for (const [m, a] of hm) if (rec ? ms.includes(m) : p === ps[0]) v += a;
+        e.periods++;
+        if (v === null || v === 0n) {
+          if (v === null || sc.billing !== 'stunde') e.unknown++;
+          continue;
+        }
+        e.cents += v;
+        if (p.state === 'offen' || (p.state === 'bedarf' && p.end < todayBerlin())) e.due += v;
+      }
+      expectedOf.set(sc.id, e);
+    }
+    for (const o of orders)
+      if ((o.status === 'bestellt' || o.status === 'geliefert') && !invoiced.has(o.id))
+        expectedOf.set(o.id, {
+          cents: o.net_cents,
+          periods: 1,
+          due: o.status === 'geliefert' ? o.net_cents : 0n,
+          unknown: 0,
+        });
     const billCell = (r: {
       kind: 'material' | 'nu';
       id: string;
@@ -802,6 +894,24 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       .filter((r) => !search || [r.number, r.supplier, r.what].some((v) => v.toLowerCase().includes(search)))
       .filter((r) => !onlyUnsigned || r.unsigned);
     const unsignedCount = all.filter((r) => r.unsigned).length;
+    // Kacheln (Ahmed 30.10.): Rechnung steht noch aus / eingegangen, unbezahlt / zusammen offen – alles netto,
+    // für die gefilterten Bestellungen (Art, Lieferant, Suche), jede Rechnung nur einmal
+    const sumExp = { cents: 0n, due: 0n, n: 0, unknown: 0 };
+    const tileInv = new Map<string, Unpaid>();
+    for (const r of base) {
+      const e = expectedOf.get(r.id);
+      if (e) {
+        sumExp.cents += e.cents;
+        sumExp.due += e.due;
+        sumExp.n += e.periods;
+        sumExp.unknown += e.unknown;
+      }
+      for (const u of unpaidOf(r)) tileInv.set(u.inv, u);
+    }
+    const tileUnpaid = [...tileInv.values()];
+    const unpaidNet = tileUnpaid.reduce((a, u) => a + u.net, 0n);
+    const unpaidGross = tileUnpaid.reduce((a, u) => a + u.cents, 0n);
+    const unpaidDueNet = tileUnpaid.filter((u) => u.due_date < todayBerlin()).reduce((a, u) => a + u.net, 0n);
     // Laufend/Einmalig = auch erteilte ohne Unterschrift (stehen zusätzlich unter „Zu erledigen“, Ahmed 22.10.)
     const inView = (r: (typeof base)[number], v: string) =>
       (v === 'unbezahlt' ? unpaidOf(r).length > 0 : r.phase === v) ||
@@ -889,6 +999,44 @@ export function registerPurchasingRoutes(ctx: Ctx) {
             </a>
           </div>
         </div>
+        <div class="kpis kpis-sm">
+          <div class="kpi">
+            <div class="l">Rechnungen stehen noch aus</div>
+            <div class="v">{euro(sumExp.cents)}</div>
+            <div class="s">
+              {sumExp.n} {sumExp.n === 1 ? 'Zeitraum' : 'Zeiträume'} ohne Rechnung · davon Zeitraum vorbei{' '}
+              {euro(sumExp.due)}
+              {sumExp.unknown > 0 && ` · ${sumExp.unknown} ohne Betrag (nach Aufwand)`}
+            </div>
+          </div>
+          <div class="kpi">
+            <div class="l">Eingegangen, unbezahlt</div>
+            <div class="v">{euro(unpaidNet)}</div>
+            <div class="s">
+              {tileUnpaid.length} {tileUnpaid.length === 1 ? 'Rechnung' : 'Rechnungen'} · zu zahlen brutto{' '}
+              {euro(unpaidGross)} · <a href={link({ ansicht: 'unbezahlt', seite: null })}>anzeigen</a>
+            </div>
+          </div>
+          <div class="kpi">
+            <div class="l">Offen gesamt</div>
+            <div class="v">{euro(sumExp.cents + unpaidNet)}</div>
+            <div class="s">ausstehend + unbezahlt</div>
+          </div>
+          <div class="kpi">
+            <div class="l">Davon überfällig</div>
+            <div class="v" style={unpaidDueNet + sumExp.due > 0n ? 'color:var(--bad)' : ''}>
+              {euro(unpaidDueNet + sumExp.due)}
+            </div>
+            <div class="s">
+              unbezahlt fällig {euro(unpaidDueNet)} · Rechnung fehlt {euro(sumExp.due)}
+            </div>
+          </div>
+        </div>
+        <p class="small mut" style="margin:-4px 0 10px">
+          Alle Beträge netto (ohne USt), Nachunternehmer ab Oktober 2026. Ausstehend = erwarteter Betrag laut
+          Bestellung für Zeiträume ohne Rechnung (Pauschale, je Tag × Arbeitstage, erfasste Stunden und
+          Regie); eingegangene Rechnungen zählen dort nicht.
+        </p>
         <div class="ls-tabs">
           {VIEWS.map(([k, l]) => (
             <a
@@ -1026,6 +1174,9 @@ export function registerPurchasingRoutes(ctx: Ctx) {
                     </span>
                   )}
                   {billCell(r)}
+                  {(expectedOf.get(r.id)?.cents ?? 0n) > 0n && (
+                    <span class="bs-sub">Rechnung steht aus: ≈ {euro(expectedOf.get(r.id)!.cents)}</span>
+                  )}
                   {unpaidOf(r).map((u) => (
                     <span class="bs-sub" style={u.due_date < todayBerlin() ? 'color:var(--bad)' : ''}>
                       unbezahlt: {u.invoice_no} · {euro(u.cents)} · fällig {dateDe(u.due_date)}

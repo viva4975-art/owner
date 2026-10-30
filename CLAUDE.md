@@ -4671,3 +4671,11 @@ Testadresse.
   Bestellung „unbezahlt: Nr. · Betrag · fällig …“ (überfällig rot, „nicht freigegeben“), oben und unten die Summe der
   gefilterten Bestellungen (jede Rechnung nur einmal, davon überfällig). Filter Art/Lieferant/Suche wirken mit.
   Eingangsrechnungen ohne Bestellung erscheinen dort nicht (→ Zahlungsliste).
+- 2026-10-30: **Bestellungen: vier Kacheln** (Ahmed: „Summe der Rechnungen, die noch eingehen müssen, ohne die
+  eingegangenen; Summe unbezahlt inkl. denen ohne Rechnung“): oben **Rechnungen stehen noch aus** (je Zeitraum ohne
+  Rechnung – abgelaufen, laufend oder nach Ausführung, NU ab 10/2026 – der erwartete Betrag laut Bestellung: Pauschale
+  bzw. Summe der Objekte × Monate, je Tag × Arbeitstage, erfasste Stunden + Regie; Material-Bestellungen bestellt/
+  geliefert ohne Rechnung; „Anteil am Umsatz“ ohne Betrag gezählt), **Eingegangen, unbezahlt** (netto nach Abzügen/
+  Vorschüssen, darunter „zu zahlen brutto“), **Offen gesamt** (beides) und **Davon überfällig** (unbezahlt fällig +
+  Zeitraum vorbei ohne Rechnung). Alles netto, für die gefilterten Bestellungen (Art, Lieferant, Suche), jede Rechnung
+  einmal; je Bestellung „Rechnung steht aus: ≈ …“. Schätzung mit dem aktuellen Preis (Preisnachträge je Monat nicht einzeln).

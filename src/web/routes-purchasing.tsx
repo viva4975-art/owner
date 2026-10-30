@@ -67,6 +67,7 @@ import {
   saveOrder,
   setOrderStatus,
   deleteOrder,
+  paymentRemittance,
 } from '../services/purchasing.js';
 import { hm } from '../services/time.js';
 import { toCsv } from '../services/reports.js';
@@ -1781,6 +1782,18 @@ export function registerPurchasingRoutes(ctx: Ctx) {
                           </td>
                           <td class="r" data-label="Brutto">
                             <b>{euro(i.gross_cents)}</b>
+                            {i.deduction_cents > 0n && (
+                              <div class="small" style="color:var(--warn)" title={i.deduction_note ?? ''}>
+                                Abzug − {euro(i.deduction_cents)}
+                                {i.status !== 'bezahlt' && (
+                                  <div>
+                                    zu zahlen{' '}
+                                    <b>{euro(i.gross_cents - i.deduction_cents - i.advance_offset_cents)}</b>
+                                  </div>
+                                )}
+                                {i.deduction_note && <div class="mut">{i.deduction_note}</div>}
+                              </div>
+                            )}
                           </td>
                           <td data-label="Status">
                             <span class={`badge ${IN_CLASS[i.status]}`}>{INCOMING_STATUS[i.status]}</span>
@@ -3019,6 +3032,11 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                       <td class="r">{p.skonto > 0n ? `− ${euro(p.skonto)}` : '–'}</td>
                       <td class="r">
                         <b>{euro(p.amount)}</b>
+                        {p.invoice.deduction_cents > 0n && (
+                          <div class="small" style="color:var(--warn)" title={p.invoice.deduction_note ?? ''}>
+                            abzgl. Abzug {euro(p.invoice.deduction_cents)}
+                          </div>
+                        )}
                         {p.invoice.advance_offset_cents > 0n && (
                           <div class="small mut">abzgl. Vorschuss {euro(p.invoice.advance_offset_cents)}</div>
                         )}
@@ -3032,9 +3050,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                           <span style="color:var(--err)">IBAN fehlt</span>
                         )}
                         <div class="mut" style="user-select:all">
-                          Rechnung {p.invoice.invoice_no}
-                          {p.invoice.advance_offset_cents > 0n &&
-                            ` abzgl. Vorschuss ${euro(p.invoice.advance_offset_cents)}`}
+                          {paymentRemittance(p.invoice, p.skonto)}
                         </div>
                       </td>
                     </tr>
@@ -3304,7 +3320,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         (Number(p.skonto) / 100).toFixed(2).replace('.', ','),
         (Number(p.amount) / 100).toFixed(2).replace('.', ','),
         p.invoice.iban ?? '',
-        `Rechnung ${p.invoice.invoice_no}`,
+        paymentRemittance(p.invoice, p.skonto),
       ]),
     );
     return new Response(csv, {

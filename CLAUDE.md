@@ -4587,3 +4587,9 @@ Testadresse.
   ohne), verteilt nach Lohnanteil je Objekt. Unterschied zur Nachkalkulation bleibt nur: Erlös = laufende Pauschalen
   (statt Rechnungen), NU laut Bestellung, Material 2 %, AG-Kosten nach Lohnhöhe statt pauschalem Lohnzuschlag.
   Test in `plan-costing.db.test.ts`.
+- 2026-10-30: **Abzüge sichtbar und im Verwendungszweck** (Ahmed: „bei Nachunternehmer den Abzug in den Verwendungszweck,
+  bei Prüfung/freigegeben direkt sehen“): Verwendungszweck (Zahlungsliste zum Kopieren, CSV, SEPA-Datei) jetzt aus einem
+  Baustein `paymentRemittance`: „Rechnung … vom … abzgl. Skonto … abzgl. Abzug 119,00 € (16.10. nicht gereinigt) abzgl.
+  Vorschuss …“, höchstens 140 Zeichen (SEPA). Rechnungseingang-Liste zeigt unter dem Bruttobetrag „Abzug − …“, „zu zahlen …“
+  und die Gründe; Zahlungsliste unter dem Zahlbetrag „abzgl. Abzug …“. Vorschuss-Verrechnung beim Nachunternehmer rechnet
+  mit dem Betrag nach Abzug. Test in `incoming-deductions.db.test.ts`.

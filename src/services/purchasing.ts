@@ -373,7 +373,25 @@ export type IncomingRow = IncomingInvoice & {
   advance_offset_cents: bigint;
   /** Abzüge bei der Prüfung (brutto, mindern den Zahlbetrag) */
   deduction_cents: bigint;
+  /** Gründe der Abzüge, kurz („16.10. Reinigung nicht erfolgt; …“) */
+  deduction_note: string | null;
 };
+
+/** Verwendungszweck einer Eingangsrechnung (SEPA max. 140 Zeichen): Nummer, Skonto, Abzüge mit Grund, Vorschuss. */
+export function paymentRemittance(
+  i: Pick<
+    IncomingRow,
+    'invoice_no' | 'invoice_date' | 'deduction_cents' | 'deduction_note' | 'advance_offset_cents'
+  >,
+  skonto = 0n,
+) {
+  let t = `Rechnung ${i.invoice_no} vom ${formatDateDe(i.invoice_date)}`;
+  if (skonto > 0n) t += ` abzgl. Skonto ${eur(skonto)}`;
+  if (i.deduction_cents > 0n)
+    t += ` abzgl. Abzug ${eur(i.deduction_cents)}${i.deduction_note ? ` (${i.deduction_note})` : ''}`;
+  if (i.advance_offset_cents > 0n) t += ` abzgl. Vorschuss ${eur(i.advance_offset_cents)}`;
+  return t.length > 140 ? `${t.slice(0, 139)}…` : t;
+}
 
 export async function listIncoming(
   sql: Sql,
@@ -385,6 +403,8 @@ export async function listIncoming(
              where ao.incoming_invoice_id = i.id) as advance_offset_cents,
            (select coalesce(sum(d.gross_cents), 0)::bigint from app.incoming_deductions d
              where d.incoming_invoice_id = i.id) as deduction_cents,
+           (select string_agg(case when d.service_from is null or position(to_char(d.service_from, 'DD.MM.') in d.reason) > 0 then '' else to_char(d.service_from, 'DD.MM.') || ' ' end || d.reason, '; ' order by d.created_at)
+              from app.incoming_deductions d where d.incoming_invoice_id = i.id) as deduction_note,
            (select count(*)::int from app.file_links l join app.files f on f.id = l.file_id
              where l.entity_type = 'incoming_invoice' and l.entity_id = i.id and f.status = 'complete') as file_count
       from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
@@ -401,7 +421,9 @@ export async function getIncoming(sql: Sql, id: string) {
            (select coalesce(sum(ao.amount_cents), 0)::bigint from app.subcontractor_advance_offsets ao
              where ao.incoming_invoice_id = i.id) as advance_offset_cents,
            (select coalesce(sum(d.gross_cents), 0)::bigint from app.incoming_deductions d
-             where d.incoming_invoice_id = i.id) as deduction_cents
+             where d.incoming_invoice_id = i.id) as deduction_cents,
+           (select string_agg(case when d.service_from is null or position(to_char(d.service_from, 'DD.MM.') in d.reason) > 0 then '' else to_char(d.service_from, 'DD.MM.') || ' ' end || d.reason, '; ' order by d.created_at)
+              from app.incoming_deductions d where d.incoming_invoice_id = i.id) as deduction_note
       from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
       left join app.sites st on st.id = i.site_id left join app.purchase_orders o on o.id = i.purchase_order_id
      where i.id = ${id}`;
@@ -881,7 +903,7 @@ export async function createPaymentRun(
       await tx`insert into app.payment_run_items (run_id, incoming_invoice_id, amount_cents, skonto_cents, creditor_name, creditor_iban, creditor_bic, remittance)
                values (${p.id}, ${x.invoice.id}, ${x.amount}, ${x.skonto}, ${x.invoice.supplier_name}, ${x.invoice.iban!.replace(/\s/g, '').toUpperCase()},
                        ${ibanOf.find((s) => s.id === x.invoice.supplier_id)?.bic ?? null},
-                       ${`Rechnung ${x.invoice.invoice_no} vom ${formatDateDe(x.invoice.invoice_date)}${x.skonto > 0n ? ` abzgl. Skonto ${eur(x.skonto)}` : ''}${x.invoice.deduction_cents > 0n ? ` abzgl. Abzug ${eur(x.invoice.deduction_cents)}` : ''}${x.invoice.advance_offset_cents > 0n ? ` abzgl. Vorschuss ${eur(x.invoice.advance_offset_cents)}` : ''}`})`;
+                       ${paymentRemittance(x.invoice, x.skonto)})`;
     }
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
              values (${p.actor}, 'create', 'payment_run', ${p.id}, ${tx.json({ number: runNumber, items: proposal.length, recurring: rec.length, total: String(total) })})`;

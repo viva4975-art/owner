@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { addDeduction, deleteDeduction, listDeductions } from './incoming-deductions.js';
-import { markPaid, paymentList } from './purchasing.js';
+import { markPaid, paymentList, paymentRemittance } from './purchasing.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
 const available = await dbAvailable();
@@ -44,6 +44,9 @@ describe.skipIf(!available)('Abzüge bei der Prüfung einer Eingangsrechnung', (
     expect(d!.site_id).toBe(site!.id);
     const row = (await paymentList(sql, '2026-10-10')).find((x) => x.invoice.id === inv)!;
     expect(row.amount).toBe(107100n);
+    expect(paymentRemittance(row.invoice, row.skonto)).toBe(
+      'Rechnung AB-1 vom 01.10.2026 abzgl. Abzug 119,00 € (16.10. nicht gereinigt)',
+    );
     const [cost] = await sql<{ net: bigint }[]>`
       select sum(net_cents)::bigint as net from app.incoming_cost_lines where incoming_invoice_id = ${inv}`;
     expect(cost!.net).toBe(90000n);

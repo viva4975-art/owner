@@ -1105,7 +1105,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 <div style="display:flex;gap:10px;align-items:center;margin:4px 0">
                   <a href={`/rechnungseingang/${i.id}`}>{i.invoice_no}</a>
                   <span class="small mut">{dateDe(i.invoice_date)}</span>
-                  <span class="num">{euro(i.gross_cents - i.advance_offset_cents)}</span>
+                  <span class="num">{euro(i.gross_cents - i.deduction_cents - i.advance_offset_cents)}</span>
                   <form method="post" action={`/rechnungseingang/${i.id}/vorschuss`} style="margin-left:auto">
                     <input type="hidden" name="zurueck" value={`/lieferanten/${id}/vorschuesse`} />
                     <button class="btn sm sec">Vorschuss verrechnen</button>

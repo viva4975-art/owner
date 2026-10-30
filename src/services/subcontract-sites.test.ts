@@ -15,4 +15,14 @@ describe('Sammelbestellung: Kosten je Objekt', () => {
     expect(objectCosts('pauschale_monat', 100000n, [{ sqm: '10', share_cents: null }])).toBeNull();
     expect(objectCosts('umsatz', 0n, [{ sqm: '10', share_cents: null, mode: 'qm' }])).toBeNull();
   });
+
+  it('Pauschale je Einsatz: Preis je Objekt (Ahmed 30.10.)', () => {
+    expect(objectCosts('pauschale_einsatz', 0n, [{ sqm: null, share_cents: null }])).toBeNull();
+    expect(
+      objectCosts('pauschale_einsatz', 0n, [
+        { sqm: null, share_cents: '120000' },
+        { sqm: null, share_cents: null },
+      ]),
+    ).toEqual([120000n, 0n]);
+  });
 });

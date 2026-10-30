@@ -815,8 +815,8 @@ export async function subcontractPdf(sql: Sql, id: string, sig?: SubcontractSign
   const perObj = sammel.length ? objectCosts(sc.billing, sc.current_price_cents, sammel) : null;
   const perSum = perObj ? perObj.reduce((a, b) => a + b, 0n) : null;
   const price =
-    perSum !== null && sammel.some((r) => r.mode)
-      ? `${formatEuro(perSum as Cents)} / Monat (Summe der Objekte, Liste unten)`
+    perSum !== null && (sc.billing === 'pauschale_einsatz' || sammel.some((r) => r.mode))
+      ? `${formatEuro(perSum as Cents)} / ${sc.billing === 'pauschale_einsatz' ? 'Einsatz' : 'Monat'} (Summe der Objekte, Liste unten)`
       : sc.billing === 'umsatz'
         ? `${String((10000 - (sc.margin_bp ?? 0)) / 100).replace('.', ',')} % unseres Netto-Umsatzes je Objekt`
         : sc.billing === 'qm' && sqmTotal
@@ -934,7 +934,11 @@ export async function subcontractPdf(sql: Sql, id: string, sig?: SubcontractSign
         { label: 'Nr.', width: 62 },
         { label: 'Objekt / Adresse', width: 263 },
         { label: 'Fläche m²', width: 80, align: 'right' },
-        { label: perObj ? 'Betrag / Monat' : '', width: 90, align: 'right' },
+        {
+          label: perObj ? (sc.billing === 'pauschale_einsatz' ? 'Betrag / Einsatz' : 'Betrag / Monat') : '',
+          width: 90,
+          align: 'right',
+        },
       ],
       [
         ...sammel.map((r, i) => {

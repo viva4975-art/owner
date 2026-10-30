@@ -204,10 +204,13 @@ export const siteMode = (billing: string, s: { mode?: string | null }): 'qm' | '
 
 /**
  * Kosten je Objekt und Monat, wenn sie sich je Objekt ergeben (Ahmed 23.10.): je m² = Preis je m² (des Objekts, sonst der
- * Bestellung) × Fläche, Pauschale = Betrag des Objekts. null = Bestellung wird als Ganzes verteilt (alte Pauschale ohne
+ * Bestellung) × Fläche, Pauschale = Betrag des Objekts; Pauschale je Einsatz = Betrag des Objekts je Einsatz. null = Bestellung wird als Ganzes verteilt (alte Pauschale ohne
  * Wahl je Objekt, Anteil am Umsatz, andere Abrechnungsarten).
  */
 export function objectCosts(billing: string, priceCents: bigint, sites: CostSite[]): bigint[] | null {
+  // Pauschale je Einsatz: Preis je Objekt und Einsatz, sobald einer eingetragen ist (Ahmed 30.10.)
+  if (billing === 'pauschale_einsatz')
+    return sites.some((s) => s.share_cents !== null) ? sites.map((s) => BigInt(s.share_cents ?? '0')) : null;
   if (billing !== 'qm' && billing !== 'pauschale_monat') return null;
   if (billing === 'pauschale_monat' && !sites.some((s) => s.mode)) return null;
   return sites.map((s) => {
@@ -225,7 +228,9 @@ export async function sammelTotals(
   orders: { id: string; billing: string; current_price_cents: bigint }[],
 ): Promise<Map<string, bigint>> {
   const out = new Map<string, bigint>();
-  const ids = orders.filter((o) => o.billing === 'qm' || o.billing === 'pauschale_monat').map((o) => o.id);
+  const ids = orders
+    .filter((o) => o.billing === 'qm' || o.billing === 'pauschale_monat' || o.billing === 'pauschale_einsatz')
+    .map((o) => o.id);
   if (!ids.length) return out;
   const rows = await sql<(CostSite & { id: string })[]>`
     select subcontract_id as id, sqm::text as sqm, share_cents::text as share_cents, mode, rate_cents::text as rate_cents

@@ -4610,3 +4610,13 @@ Testadresse.
   `20270108000001`). Die Migration entfernt auch den Hinweis „Los 9 Glasreinigung (Preisblatt …)“ aus den
   Planegg-Leistungen (Ahmed); neue werden ohne ihn angelegt. Fund: Prüfsumme der Migration `20270107000001` war mit
   einem Zwischenstand eingetragen (Datei seit dem Commit unverändert) → korrigiert. Test in `expected-invoices.db.test.ts`.
+- 2026-10-30: **Sammelbestellung „Pauschale je Einsatz“: Preis je Objekt** (Ahmed, Planegg Glasreinigung: „einmalig bzw. je
+  Einsatz, aber hier auf Monat heruntergebrochen – wieso kann ich meinen Preis für die Objekte nicht eintragen?“): Bei
+  Abrechnung „Pauschale je Einsatz“ hat der Kasten „Sammelbestellung“ je Objekt das Feld **„Preis NU je Einsatz €“**
+  (`subcontract_sites.share_cents`); Kosten der Bestellung = Summe der Objekte („… / Einsatz“ im Formular, in den Listen
+  und auf dem Bestellschein, Spalte „Betrag / Einsatz“), Eingangsrechnungen werden nach diesen Beträgen auf die Objekte
+  verteilt (`objectCosts`). Ist die Bestellung je Einsatz oder nicht monatlich/wöchentlich, heißen die Spalten „Kosten NU
+  je Ausführung“ / „Unser Erlös je Ausführung“ und der Erlös ist der volle Preis unserer Leistung je Ausführung (z. B.
+  Rathaus 1.457,20 € statt 242,87 € / Monat), nur Leistungen derselben Leistungsart wie die Bestellung, falls vorhanden.
+  Nachkalkulation schätzt Bestellungen je Einsatz weiterhin nicht (zählt erst die NU-Rechnung). Test in
+  `subcontract-sites.test.ts`.

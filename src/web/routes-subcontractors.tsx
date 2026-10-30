@@ -1646,6 +1646,8 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     const sammel = sc ? await subcontractSites(sql, id) : [];
     // Unser Erlös je Objekt und Monat aus den laufenden Leistungen (Ahmed 23.10.: Preise sehen, die wir erhalten)
     const ourRevenue = new Map<string, bigint>();
+    // Bestellung je Einsatz bzw. nicht monatlich (Ahmed 30.10.: Glasreinigung halbjährlich) → Beträge je Ausführung
+    const perRun = !!sc && (sc.billing === 'pauschale_einsatz' || !isRecurringOrder(sc.frequency));
     /** Objekte, an denen unser Auftrag je m² abgerechnet wird → Vorschlag „je m²“ */
     const ourSqm = new Set<string>();
     if (sammel.length) {
@@ -1662,16 +1664,28 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
           unit_price_cents: bigint;
           billing_cycle: string;
           unit_code: string;
+          description: string;
+          type_name: string | null;
         }[]
       >`
-        select site_id, quantity_milli, unit_price_cents, billing_cycle::text as billing_cycle, unit_code
+        select site_id, quantity_milli, unit_price_cents, billing_cycle::text as billing_cycle, unit_code, description,
+               (select t.name from app.service_types t where t.id = service_type_id) as type_name
           from app.site_services
          where active and site_id = any(${sammel.map((r) => r.site_id)}::uuid[])
-           and (kind = 'monthly_flat' or billing_cycle in ('zweimonatlich','quartalsweise','halbjaehrlich','jaehrlich'))
-           and valid_from <= current_date and (valid_to is null or valid_to >= current_date)`;
-      for (const r of rows) {
+           and ${
+             perRun
+               ? sql`billing_cycle::text <> 'monatlich'`
+               : sql`(kind = 'monthly_flat' or billing_cycle in ('zweimonatlich','quartalsweise','halbjaehrlich','jaehrlich'))`
+           }
+           and (valid_from <= current_date or ${perRun}) and (valid_to is null or valid_to >= current_date)`;
+      // je Ausführung: nur unsere Leistungen derselben Leistungsart wie die Bestellung (z. B. Glasreinigung), falls vorhanden
+      const kind = (sc?.service_kind ?? '').toLowerCase();
+      const sameKind = rows.filter(
+        (r) => kind && (r.type_name ?? r.description).toLowerCase().startsWith(kind),
+      );
+      for (const r of perRun && sameKind.length ? sameKind : rows) {
         if (r.unit_code === 'MTK') ourSqm.add(r.site_id);
-        const n = BigInt(months[r.billing_cycle] ?? 1);
+        const n = perRun ? 1n : BigInt(months[r.billing_cycle] ?? 1);
         const amt = (BigInt(r.quantity_milli) * BigInt(r.unit_price_cents) + 500n) / 1000n;
         ourRevenue.set(r.site_id, (ourRevenue.get(r.site_id) ?? 0n) + (amt + n / 2n) / n);
       }
@@ -1752,7 +1766,9 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       ]),
     ];
     const sammelPerObject =
-      sammel.length > 0 && !!sc && (sc.billing === 'qm' || sc.billing === 'pauschale_monat');
+      sammel.length > 0 &&
+      !!sc &&
+      (sc.billing === 'qm' || sc.billing === 'pauschale_monat' || sc.billing === 'pauschale_einsatz');
     const sammelSum = sammelPerObject ? ((await sammelTotals(sql, [sc!])).get(sc!.id) ?? null) : null;
     const editForm = (
       <>
@@ -1946,7 +1962,13 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                     <input type="hidden" name="price" value={sc ? centsToInput(sc.price_cents) : ''} />
                   )}
                   <div style="padding-top:8px">
-                    {sammelSum !== null ? <b>{euro(sammelSum)} / Monat</b> : '–'}{' '}
+                    {sammelSum !== null ? (
+                      <b>
+                        {euro(sammelSum)} / {sc!.billing === 'pauschale_einsatz' ? 'Einsatz' : 'Monat'}
+                      </b>
+                    ) : (
+                      '–'
+                    )}{' '}
                     <span class="small mut">Summe der Objekte (Liste unten)</span>
                   </div>
                 </div>
@@ -2067,7 +2089,9 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     const perObjectInfo =
       sc && ['qm', 'pauschale_monat'].includes(sc.billing)
         ? ' Je Objekt „je m²“ (Preis leer = Preis der Bestellung) oder „Pauschale“ wählen – vorgeschlagen wie unser Auftrag am Objekt. Kosten NU = Summe der Objekte.'
-        : '';
+        : sc?.billing === 'pauschale_einsatz'
+          ? ' Preis je Objekt und Einsatz eintragen – Kosten NU je Einsatz = Summe der Objekte.'
+          : '';
     const sammelBlock = (
       <>
         {sc && sc.status !== 'storniert' && (sammel.length > 0 || ['qm', 'umsatz'].includes(sc.billing)) && (
@@ -2081,6 +2105,9 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
               const umsatz = sc.billing === 'umsatz';
               // je Objekt wählbar: je m² oder Pauschale (Ahmed 23.10.: wie unser Auftrag am Objekt angelegt ist)
               const perObject = sc.billing === 'qm' || sc.billing === 'pauschale_monat';
+              // Pauschale je Einsatz: nur Preis je Objekt (Ahmed 30.10.)
+              const perRunPrice = sc.billing === 'pauschale_einsatz';
+              const per = perRun ? 'je Ausführung' : '/ Monat';
               const modeOf = (r: (typeof sammel)[number]) =>
                 r.mode ?? (sc.billing === 'qm' ? 'qm' : ourSqm.has(r.site_id) ? 'qm' : 'pauschale');
               const costs = perObject
@@ -2089,7 +2116,9 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                     price,
                     sammel.map((r) => ({ ...r, mode: modeOf(r) })),
                   )
-                : null;
+                : perRunPrice
+                  ? sammel.map((r) => BigInt(r.share_cents ?? '0'))
+                  : null;
               const costSum = costs ? costs.reduce((a, b) => a + b, 0n) : null;
               const centsDe = (v: string | null) =>
                 v === null ? '' : (Number(v) / 100).toFixed(2).replace('.', ',');
@@ -2103,8 +2132,9 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                         {perObject && <th>Abrechnung</th>}
                         <th class="num">Fläche m²</th>
                         {perObject && <th class="num">€ je m² bzw. Pauschale €</th>}
-                        <th class="num">{umsatz ? 'Nachunternehmer' : 'Kosten NU / Monat'}</th>
-                        <th class="num">Unser Erlös / Monat</th>
+                        {perRunPrice && <th class="num">Preis NU je Einsatz €</th>}
+                        <th class="num">{umsatz ? 'Nachunternehmer' : `Kosten NU ${per}`}</th>
+                        <th class="num">Unser Erlös {per}</th>
                         <th>entfernen</th>
                       </tr>
                     </thead>
@@ -2179,13 +2209,25 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                                 />
                               </td>
                             )}
+                            {perRunPrice && (
+                              <td class="num">
+                                <input
+                                  name="betrag"
+                                  inputmode="decimal"
+                                  style="width:100px;text-align:right"
+                                  value={centsDe(r.share_cents)}
+                                  placeholder="0,00"
+                                  aria-label="Preis NU je Einsatz €"
+                                />
+                              </td>
+                            )}
                             <td class="num">
                               {umsatz ? (
                                 `${String((10000 - (sc.margin_bp ?? 0)) / 100).replace('.', ',')} % vom Umsatz`
                               ) : cost !== undefined ? (
                                 m === 'qm' && sqmCenti(r.sqm) === null ? (
                                   <span class="tag warn">m² fehlt</span>
-                                ) : m === 'pauschale' && !r.share_cents ? (
+                                ) : (m === 'pauschale' || perRunPrice) && !r.share_cents ? (
                                   <span class="tag warn">Betrag fehlt</span>
                                 ) : (
                                   euro(cost)
@@ -2212,7 +2254,9 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                                   )}
                                 </>
                               ) : (
-                                <span class="small mut">keine laufende Leistung</span>
+                                <span class="small mut">
+                                  {perRun ? 'keine Leistung je Ausführung' : 'keine laufende Leistung'}
+                                </span>
                               )}
                             </td>
                             <td>
@@ -2228,7 +2272,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                         <td class="num">
                           <b>{(Number(total) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2 })}</b>
                         </td>
-                        {perObject && <td></td>}
+                        {(perObject || perRunPrice) && <td></td>}
                         <td class="num">
                           <b>{costSum !== null ? euro(costSum) : umsatz ? '' : euro(price)}</b>
                         </td>

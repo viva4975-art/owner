@@ -4659,3 +4659,8 @@ Testadresse.
   Summe der Objekte + erfasste Stunden + Regie (monatliche: Monat der Zeile), Aufschlüsselung unter dem Feld, **frei
   änderbar** – ein eigener Betrag wird nicht mehr überschrieben, nur der eigene Vorschlag bei Wechsel von Bestellung/Monat
   (`hoursByMonth`, `hoursOfMonth(..., regie)` in `subcontract-hours.ts`).
+- 2026-10-30: **Rechnung erfassen: Betrag je Zeile, oben die Summe** (Ahmed: „in der Zeile kommt nichts“, „oben soll der
+  Gesamtbetrag von unten zusammengerechnet werden“): Bestellung wählen → Feld „netto“ der Zeile bekommt den Vorschlag
+  (Pauschale bzw. Summe der Objekte + Stunden + Regie; **„je Tag“ = Preis × Arbeitstage des Leistungsmonats** ohne
+  Feiertage/Schließzeiten), überschreibt nur leere bzw. noch vorgeschlagene Werte. Netto oben = Summe aller Zeilenbeträge,
+  rechnet bei jeder Änderung einer Zeile sofort mit; ohne Zeilenbeträge bleibt oben eine eigene Eingabe stehen.

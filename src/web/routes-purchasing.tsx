@@ -3,7 +3,7 @@ import { hoursByMonth, hoursOfMonth } from '../services/subcontract-hours.js';
 import { costCenterReport } from '../services/cost-centers.js';
 import { randomUUID } from 'node:crypto';
 import { SiteOptions } from './site-options.js';
-import { dayAmounts, workDaysLabel } from '../services/subcontract-days.js';
+import { countDays, dayAmounts, orderClosures, workDaysLabel } from '../services/subcontract-days.js';
 import {
   billingTracking,
   subcontractTodo,
@@ -1910,6 +1910,34 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       m[h.month] = e;
       scHours.set(h.id, m);
     }
+    // „je Tag“: Preis × Arbeitstage des Monats (ohne Feiertage/Schließzeiten), 24 Monate zurück bis 3 voraus
+    const scDays = new Map<string, Record<string, string>>();
+    const tagOrders = subcontracts.filter((x) => x.billing === 'tag');
+    if (tagOrders.length) {
+      const cl = await orderClosures(
+        sql,
+        tagOrders.map((x) => x.id),
+      );
+      const now = new Date();
+      const months: string[] = [];
+      for (let k = -24; k <= 3; k++) {
+        const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + k, 1));
+        months.push(d.toISOString().slice(0, 7));
+      }
+      for (const x of tagOrders) {
+        const m: Record<string, string> = {};
+        for (const mo of months) {
+          const { days } = countDays(mo, {
+            workDays: x.work_days,
+            validFrom: x.valid_from,
+            validTo: x.valid_to,
+            closures: cl.filter((c) => c.subcontract_id === x.id),
+          });
+          if (days) m[mo] = String(x.current_price_cents * BigInt(days));
+        }
+        scDays.set(x.id, m);
+      }
+    }
     const scBase = (x: (typeof subcontracts)[number]) =>
       x.billing === 'pauschale_monat' || x.billing === 'pauschale_einsatz' || x.billing === 'qm'
         ? subcontractTotal({ ...x, sqm_centi: scSqm.get(x.id) ?? null, sammel_total: scTotals.get(x.id) })
@@ -2378,6 +2406,11 @@ export function registerPurchasingRoutes(ctx: Ctx) {
                                       data-base={String(scBase(x) ?? '')}
                                       data-hrs={JSON.stringify(scHours.get(x.id) ?? {})}
                                       data-rec={isRecurringOrder(x.frequency) ? '1' : '0'}
+                                      data-days={
+                                        x.billing === 'tag'
+                                          ? JSON.stringify(scDays.get(x.id) ?? {})
+                                          : undefined
+                                      }
                                       hidden={!!v.supplier && x.supplier_id !== v.supplier && x.id !== r.sc}
                                     >
                                       {x.number} · {x.site_name ?? 'ohne Objekt'}
@@ -2466,10 +2499,16 @@ rows.querySelectorAll('tr').forEach(function(tr){var sel=tr.querySelector('selec
 var lm=(tr.querySelector('[name=link_month]')||{}).value||'';var key=o.value+'|'+lm;if(seen[key])return;seen[key]=1;
 var b=+(o.dataset.base||0);var h={};try{h=JSON.parse(o.dataset.hrs||'{}')}catch(e){}var hn=0,hr=0;
 Object.keys(h).forEach(function(m){if(o.dataset.rec!=='1'||m===lm){hn+=+h[m].n;hr+=+h[m].r;}});
-tot+=b+hn+hr;if(b)parts.push('Bestellung '+cents(b));if(hn)parts.push('Stunden '+cents(hn));if(hr)parts.push('Regie '+cents(hr));});
-var hint=document.getElementById('net-suggest');if(!tot){if(hint)hint.textContent='';return;}
-var val=cents(tot);if(hint)hint.textContent='Vorschlag aus der Bestellung: '+val+' € ('+parts.join(' + ')+') – änderbar.';
-if(!n.value||n.value===n.dataset.auto){n.value=val;n.dataset.auto=val;n.dispatchEvent(new Event('change',{bubbles:true}));}}
+var dd={};try{dd=JSON.parse(o.dataset.days||'{}')}catch(e){}if(lm&&dd[lm])b+=+dd[lm];
+var rowSum=b+hn+hr;tot+=rowSum;var rn=tr.querySelector('[name=link_net]');if(rn&&!rn.disabled&&rowSum&&(!rn.value||rn.value===rn.dataset.auto)){rn.value=cents(rowSum);rn.dataset.auto=rn.value;}
+if(b)parts.push('Bestellung '+cents(b));if(hn)parts.push('Stunden '+cents(hn));if(hr)parts.push('Regie '+cents(hr));});
+var hint=document.getElementById('net-suggest');if(hint)hint.textContent=tot?'Vorschlag aus der Bestellung: '+cents(tot)+' € ('+parts.join(' + ')+') – Beträge je Zeile änderbar, oben steht die Summe der Zeilen.':'';
+sumRows(tot);}
+// Netto oben = Summe der Zeilenbeträge (Ahmed 30.10.); ohne Zeilenbeträge der Vorschlag, eigene Eingabe oben bleibt dann
+function num(v){v=String(v||'').trim().replace(/\\s|€/g,'');if(!v)return 0;if(v.indexOf(',')>=0)v=v.replace(/\\./g,'').replace(',','.');var x=Math.round(parseFloat(v)*100);return isFinite(x)?x:0;}
+function sumRows(fb){var n=document.getElementById('net');if(!n)return;var s=0;rows.querySelectorAll('[name=link_net]').forEach(function(x){s+=num(x.value);});
+var v=s?cents(s):(fb?cents(fb):'');if(!v)return;if(s||!n.value||n.value===n.dataset.auto){if(n.value!==v){n.value=v;n.dispatchEvent(new Event('change',{bubbles:true}));}n.dataset.auto=v;}}
+rows.addEventListener('input',function(e){if(e.target.matches&&e.target.matches('[name=link_net]'))sumRows(0);});
 rows.addEventListener('change',function(e){if(e.target.matches&&e.target.matches('[name=link_month]'))suggest();});
 function multi(){var sites={},m=false,label='';rows.querySelectorAll('select[name=link_sc]').forEach(function(x){var o=x.selectedOptions[0];if(!o||!o.value)return;sites[o.dataset.site]=1;if(+o.dataset.multi>1)m=true;if(!label)label=(o.textContent.split(' · ')[1]||'').trim();});var n=Object.keys(sites).length;var any=n>0;m=m||n>1;var bx=document.getElementById('site-box'),au=document.getElementById('site-auto'),si=document.getElementById('site_id'),mb=document.getElementById('month-box'),tx=document.getElementById('site-auto-text');if(!bx||!au)return;bx.hidden=any;au.hidden=!any;if(mb)mb.hidden=any;if(tx)tx.textContent=m?'automatisch – die Kosten werden auf die Objekte der Bestellungen verteilt (Beträge je Zeile, sonst nach Preis; Sammelbestellung nach Fläche bzw. Betrag je Objekt).':'aus der Bestellung: '+label;if(any&&si&&si.value){si.value='';if(si._cbLabel)si._cbLabel();}}
 rows.addEventListener('change',function(e){if(e.target.matches&&e.target.matches('select[name=link_sc]'))setTimeout(multi,0);});multi();

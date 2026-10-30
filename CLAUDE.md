@@ -4645,3 +4645,8 @@ Testadresse.
   Sammelbestellungen das Objekt (`subcontract_hours.regie/site_id`). Betrag = Personen × Std. × Regie-Satz; Regie zählt
   nicht gegen „max. Stunden“. Nachkalkulation: fehlt im Monat die NU-Rechnung, zählen die Regiestunden zusätzlich zur
   Pauschale auf das gewählte Objekt. Test in `runde34.db.test.ts`.
+- 2026-10-30: **Lexware-Lohnabrechnung ohne Urlaub** (Ahmed: Urlaub/Fehlzeiten nur noch in der App pflegen): Formular-Skript
+  aus dem Lexware-Editor angepasst – Zeilen „Urlaub Vorjahr / monatlich genommen / Urlaubsanspruch / Resturlaub“ in
+  `PrintStammdaten` entfernt, sonst unverändert (Datei nur an Ahmed, nicht im Repo). Logo: Das Skript enthält keinen
+  Bild-Befehl; ob Lexware einen hat, steht in `DruckNT.int` bzw. der Editor-Hilfe – offen. Urlaubsangaben sind keine
+  Pflichtangabe der Entgeltbescheinigung (§ 108 GewO, EBV).

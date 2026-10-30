@@ -4593,3 +4593,11 @@ Testadresse.
   Vorschuss …“, höchstens 140 Zeichen (SEPA). Rechnungseingang-Liste zeigt unter dem Bruttobetrag „Abzug − …“, „zu zahlen …“
   und die Gründe; Zahlungsliste unter dem Zahlbetrag „abzgl. Abzug …“. Vorschuss-Verrechnung beim Nachunternehmer rechnet
   mit dem Betrag nach Abzug. Test in `incoming-deductions.db.test.ts`.
+- 2026-10-30: **Glasreinigung Gemeinde Planegg** (Ahmed: Kalkulationsdatei Los 9, „halbjährlich nach Ausführung, Hälfte
+  vom Preis“): beim Start einmalig (`ensurePlaneggGlass`, `src/services/planegg-glass.ts`, Protokoll `planegg_glass`) je
+  der 19 Gebäude des Preisblatts eine Leistung „Glasreinigung“ (Leistungsart Glasreinigung, psch., 19 %), Zyklus
+  halbjährlich, Abrechnung nach Ausführung (Leistungen verrichten), gültig ab 01.08.2026 (Ausführungsbeginn laut
+  Preisblatt), Preis je Ausführung = Jahrespreis ÷ 2 kaufmännisch auf Cent (z. B. Rathaus 2.914,41 → 1.457,20 €; zusammen
+  10.351,20 € je Durchgang, 20.702,40 € im Jahr). Zuordnung über Straße + Hausnummer beim Kunden 20022 (Kinderhort 8a ≠
+  Rathaus 8); vorhandene halbjährliche Glasreinigung am Objekt → nichts doppelt, fehlende Gebäude im Protokoll/Log.
+  Lohnkostenanteil = Vorgabe der Leistungsart (sonst leer → in der Leistung nachtragen). Test `planegg-glass.db.test.ts`.

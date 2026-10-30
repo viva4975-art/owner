@@ -1,6 +1,7 @@
 import { sendGreetings } from './services/greetings.js';
 import { ensureMwServices } from './services/garage-mw.js';
 import { ensureMwSchedule2026 } from './services/garage-mw-schedule.js';
+import { ensurePlaneggGlass } from './services/planegg-glass.js';
 import { serve } from '@hono/node-server';
 import { LocalArchiveStore } from './archive/store.js';
 import { loadEnv } from './config/env.js';
@@ -76,6 +77,21 @@ setTimeout(
       )
       .catch((e) => console.error('Leistungen Münchner Wohnen:', e)),
   90_000,
+).unref();
+
+// Gemeinde Planegg: Glasreinigung halbjährlich nach Ausführung einmalig anlegen (Ahmed 30.10.)
+setTimeout(
+  () =>
+    ensurePlaneggGlass(sql)
+      .then(
+        (r) =>
+          r &&
+          console.log(
+            `Glasreinigung Planegg: ${r.created} angelegt, ${r.existing} vorhanden, fehlt: ${r.missing.join(', ') || '–'}`,
+          ),
+      )
+      .catch((e) => console.error('Glasreinigung Planegg:', e)),
+  100_000,
 ).unref();
 
 // Push-Nachrichten aufs Handy (Unterweisungen, Einsätze, Anträge, Pause) – jede Minute, jede Nachricht nur einmal

@@ -496,7 +496,9 @@ export function registerPurchasingRoutes(ctx: Ctx) {
   app.get('/bestellungen', async (c) => {
     const q = c.req.query();
     const art = q.art === 'material' || q.art === 'nu' ? q.art : '';
-    const view = ['erledigen', 'laufend', 'einmalig', 'abgeschlossen', 'alle'].includes(q.ansicht ?? '')
+    const view = ['erledigen', 'laufend', 'einmalig', 'abgeschlossen', 'unbezahlt', 'alle'].includes(
+      q.ansicht ?? '',
+    )
       ? q.ansicht!
       : 'erledigen';
     const supplierId = q.lieferant && /^[0-9a-f-]{36}$/.test(q.lieferant) ? q.lieferant : '';
@@ -511,6 +513,29 @@ export function registerPurchasingRoutes(ctx: Ctx) {
         select distinct purchase_order_id as id from app.incoming_invoices where purchase_order_id is not null`,
     ]);
     const invoiced = new Set(billed.map((b) => b.id));
+    // Unbezahlte Eingangsrechnungen je Bestellung (Ahmed 30.10.): noch zu zahlen = brutto − Abzüge − Vorschüsse
+    const unpaidRows = await sql<
+      { key: string; inv: string; invoice_no: string; due_date: string; status: string; cents: bigint }[]
+    >`
+      with inv as (
+        select i.id, i.invoice_no, i.due_date::text, i.status, i.subcontract_id, i.purchase_order_id,
+               (i.gross_cents
+                 - coalesce((select sum(d.gross_cents) from app.incoming_deductions d where d.incoming_invoice_id = i.id), 0)
+                 - coalesce((select sum(ao.amount_cents) from app.subcontractor_advance_offsets ao
+                              where ao.incoming_invoice_id = i.id), 0))::bigint as cents
+          from app.incoming_invoices i where i.status in ('erfasst', 'freigegeben'))
+      select distinct k.key, inv.id as inv, inv.invoice_no, inv.due_date, inv.status, inv.cents
+        from inv
+        join lateral (
+          select 'nu:' || l.subcontract_id as key from app.incoming_invoice_subcontracts l where l.incoming_invoice_id = inv.id
+          union select 'nu:' || inv.subcontract_id where inv.subcontract_id is not null
+          union select 'po:' || inv.purchase_order_id where inv.purchase_order_id is not null) k on true
+       order by inv.due_date`;
+    type Unpaid = (typeof unpaidRows)[number];
+    const unpaidBy = new Map<string, Unpaid[]>();
+    for (const u of unpaidRows) unpaidBy.set(u.key, [...(unpaidBy.get(u.key) ?? []), u]);
+    const unpaidOf = (r: { kind: 'material' | 'nu'; id: string }) =>
+      unpaidBy.get(`${r.kind === 'nu' ? 'nu' : 'po'}:${r.id}`) ?? [];
     // Sammelbestellungen: Gesamtfläche + Zahl der Objekte
     const sqmMap = await sammelSqmCenti(
       sql,
@@ -779,7 +804,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
     const unsignedCount = all.filter((r) => r.unsigned).length;
     // Laufend/Einmalig = auch erteilte ohne Unterschrift (stehen zusätzlich unter „Zu erledigen“, Ahmed 22.10.)
     const inView = (r: (typeof base)[number], v: string) =>
-      r.phase === v ||
+      (v === 'unbezahlt' ? unpaidOf(r).length > 0 : r.phase === v) ||
       (r.phase === 'erledigen' &&
         r.unsigned &&
         ((v === 'laufend' && r.recurring) || (v === 'einmalig' && !r.recurring)));
@@ -789,6 +814,27 @@ export function registerPurchasingRoutes(ctx: Ctx) {
     const pages = Math.max(1, Math.ceil(allRows.length / PER_PAGE));
     const cur = Math.min(pages, Math.max(1, Number(q.seite) || 1));
     const rows = allRows.slice((cur - 1) * PER_PAGE, cur * PER_PAGE);
+    // Summe der unbezahlten Rechnungen der gefilterten Bestellungen – jede Rechnung nur einmal
+    const unpaidInv = new Map<string, Unpaid>();
+    for (const r of allRows) for (const u of unpaidOf(r)) unpaidInv.set(u.inv, u);
+    const unpaidSum = [...unpaidInv.values()].reduce((a, u) => a + u.cents, 0n);
+    const unpaidOverdue = [...unpaidInv.values()]
+      .filter((u) => u.due_date < todayBerlin())
+      .reduce((a, u) => a + u.cents, 0n);
+    const unpaidBox = view === 'unbezahlt' && (
+      <div class="ls-hint">
+        <b>{euro(unpaidSum)}</b> unbezahlt in {unpaidInv.size}{' '}
+        {unpaidInv.size === 1 ? 'Rechnung' : 'Rechnungen'}
+        {unpaidOverdue > 0n && (
+          <>
+            {' · '}
+            <span style="color:var(--bad)">davon überfällig {euro(unpaidOverdue)}</span>
+          </>
+        )}{' '}
+        · noch zu zahlen (brutto abzüglich Abzüge und Vorschüsse) ·{' '}
+        <a href="/zahlungsliste">Zur Zahlungsliste →</a>
+      </div>
+    );
     const link = (over: Record<string, string | null>) => {
       const p = new URLSearchParams();
       const st: Record<string, string | null> = {
@@ -808,6 +854,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       ['laufend', 'Laufend (monatlich)'],
       ['einmalig', 'Einmalig / offen'],
       ['abgeschlossen', 'Abgeschlossen'],
+      ['unbezahlt', 'Unbezahlt'],
       ['alle', 'Alle'],
     ];
     const ARTS: [string, string][] = [
@@ -912,6 +959,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
             )}
           </div>
         )}
+        {unpaidBox}
         <form
           id="bs-del"
           method="post"
@@ -978,6 +1026,12 @@ export function registerPurchasingRoutes(ctx: Ctx) {
                     </span>
                   )}
                   {billCell(r)}
+                  {unpaidOf(r).map((u) => (
+                    <span class="bs-sub" style={u.due_date < todayBerlin() ? 'color:var(--bad)' : ''}>
+                      unbezahlt: {u.invoice_no} · {euro(u.cents)} · fällig {dateDe(u.due_date)}
+                      {u.status === 'erfasst' ? ' · nicht freigegeben' : ''}
+                    </span>
+                  ))}
                   {r.canFinish && (
                     <button
                       type="button"
@@ -995,6 +1049,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
           {!rows.length && <div class="bs-tr empty">Keine Bestellungen in dieser Ansicht.</div>}
         </div>
         <Pager cur={cur} pages={pages} url={(n) => link({ seite: n > 1 ? String(n) : null })} />
+        {unpaidBox}
         {rows
           .filter((r) => r.canFinish)
           .map((r) => (

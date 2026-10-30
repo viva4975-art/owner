@@ -4664,3 +4664,10 @@ Testadresse.
   (Pauschale bzw. Summe der Objekte + Stunden + Regie; **„je Tag“ = Preis × Arbeitstage des Leistungsmonats** ohne
   Feiertage/Schließzeiten), überschreibt nur leere bzw. noch vorgeschlagene Werte. Netto oben = Summe aller Zeilenbeträge,
   rechnet bei jeder Änderung einer Zeile sofort mit; ohne Zeilenbeträge bleibt oben eine eigene Eingabe stehen.
+- 2026-10-30: **Abzüge in den offenen Summen** (Ahmed: „bei Freigegeben, offen steht der Betrag ohne die Abzüge“): Kachel
+  „Freigegeben, offen“ im Rechnungseingang und „offene Eingangsrechnungen“ in Auswertungen → Ausgaben rechnen mit dem
+  Betrag, der noch zu zahlen ist (brutto − Abzüge − verrechnete Vorschüsse). **Bestellungen → Reiter „Unbezahlt“**:
+  Bestellungen (NU und Material) mit zugeordneten, noch nicht bezahlten Eingangsrechnungen (erfasst/freigegeben); je
+  Bestellung „unbezahlt: Nr. · Betrag · fällig …“ (überfällig rot, „nicht freigegeben“), oben und unten die Summe der
+  gefilterten Bestellungen (jede Rechnung nur einmal, davon überfällig). Filter Art/Lieferant/Suche wirken mit.
+  Eingangsrechnungen ohne Bestellung erscheinen dort nicht (→ Zahlungsliste).

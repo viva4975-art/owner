@@ -1719,7 +1719,10 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       : null;
     const forCustomer = !!scOrder || (draft && c.req.query('kunde') ? true : false);
     const tracking = sc ? ((await billingTracking(sql, [id], { limit: 24 })).get(id) ?? []) : [];
-    const hours: SubcontractHourRow[] = sc?.billing === 'stunde' ? await listSubcontractHours(sql, id) : [];
+    // Regie (Ahmed 30.10.): Zusatzarbeiten mit eigenem Stundensatz, Stundennachweis auch bei anderen Abrechnungsarten
+    const hasRegie = !!sc && sc.regie_rate_cents != null && sc.regie_rate_cents > 0n;
+    const hours: SubcontractHourRow[] =
+      sc?.billing === 'stunde' || hasRegie ? await listSubcontractHours(sql, id) : [];
     // „je Tag“: Arbeitstage je Monat (Wochentage ohne Feiertage und Schließzeiten), Ahmed 22.10.
     const closures = sc?.billing === 'tag' ? await listClosures(sql, id) : [];
     const dayMonths = (() => {
@@ -1747,11 +1750,15 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
           return { month: m, ...r, price, amount: price * BigInt(r.days), current: m === cur };
         });
     })();
-    const hourMonths = new Map<string, { minutes: number; amount: bigint; rows: typeof hours }>();
+    const hourMonths = new Map<
+      string,
+      { minutes: number; normal: number; amount: bigint; rows: typeof hours }
+    >();
     for (const h of hours) {
       const k = h.work_date.slice(0, 7);
-      const m = hourMonths.get(k) ?? { minutes: 0, amount: 0n, rows: [] as typeof hours };
+      const m = hourMonths.get(k) ?? { minutes: 0, normal: 0, amount: 0n, rows: [] as typeof hours };
       m.minutes += h.total_minutes;
+      if (!h.regie) m.normal += h.total_minutes;
       m.amount += BigInt(h.amount_cents);
       m.rows.push(h);
       hourMonths.set(k, m);
@@ -2013,6 +2020,19 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                   inputmode="decimal"
                   value={sc?.max_hours_month?.replace('.', ',') ?? ''}
                 />
+              </div>
+              <div>
+                <label for="regie">Regie-Stundensatz € (Zusatzarbeiten)</label>
+                <input
+                  id="regie"
+                  name="regie_rate"
+                  inputmode="decimal"
+                  placeholder="optional, z. B. 28,50"
+                  value={sc?.regie_rate_cents != null ? euro(sc.regie_rate_cents).replace(/\s*€$/, '') : ''}
+                />
+                <div class="small mut">
+                  Für Zusatzarbeiten nach Stundennachweis (Betrag = Std. × Satz), steht auf dem Bestellschein.
+                </div>
               </div>
               <div id="margin-box">
                 <label for="margin">Unsere Marge in %</label>
@@ -2647,13 +2667,14 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     );
     const hoursBlock = (
       <>
-        {sc && sc.billing === 'stunde' && sc.status !== 'entwurf' && (
+        {sc && (sc.billing === 'stunde' || hasRegie) && sc.status !== 'entwurf' && (
           <div class="card" id="stunden">
-            <h3 style="margin-top:0">Stundennachweis</h3>
+            <h3 style="margin-top:0">{sc.billing === 'stunde' ? 'Stundennachweis' : 'Regiestunden'}</h3>
             <p class="small mut" style="margin-top:-6px">
               Je Tag: wie viele Leute des Nachunternehmers wie viele Stunden gearbeitet haben. Betrag =
-              Personen × Stunden × Stundensatz des Monats. Zum Prüfen der Rechnung; fehlt die Rechnung,
-              rechnet die Nachkalkulation mit diesen Stunden.
+              Personen × Stunden × {sc.billing === 'stunde' ? 'Stundensatz des Monats' : 'Regie-Stundensatz'}.
+              {hasRegie && <> Regie-Stundensatz: {euro(sc.regie_rate_cents!)} / Std.</>} Zum Prüfen der
+              Rechnung; fehlt die Rechnung, rechnet die Nachkalkulation mit diesen Stunden.
             </p>
             {sc.status !== 'storniert' && (
               <form
@@ -2691,6 +2712,30 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                     style="max-width:120px"
                   />
                 </div>
+                {sc.billing === 'stunde' ? (
+                  hasRegie && (
+                    <div>
+                      <label class="check" style="margin-bottom:8px">
+                        <input type="checkbox" name="regie" value="1" /> Regie (Zusatzarbeit)
+                      </label>
+                    </div>
+                  )
+                ) : (
+                  <input type="hidden" name="regie" value="1" />
+                )}
+                {sammel.length > 0 && (
+                  <div>
+                    <label for="h-site">Objekt</label>
+                    <select id="h-site" name="site_id">
+                      <option value="">– wie Bestellung –</option>
+                      {sammel.map((r) => (
+                        <option value={r.site_id}>
+                          {r.site_no} · {r.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div style="flex:1;min-width:160px">
                   <label for="h-n">Bemerkung</label>
                   <input id="h-n" name="note" placeholder="z. B. Treppenhaus, Sonderreinigung" />
@@ -2700,7 +2745,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
             )}
             {maxMin !== null &&
               !isRecurringOrder(sc.frequency) &&
-              hours.reduce((a, h) => a + h.total_minutes, 0) > maxMin && (
+              hours.reduce((a, h) => a + (h.regie ? 0 : h.total_minutes), 0) > maxMin && (
                 <div class="alert warn">
                   Erfasst sind mehr als die max. {Number(sc.max_hours_month).toLocaleString('de-DE')} Std.
                   dieser Bestellung.
@@ -2730,7 +2775,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                             <b>
                               {mon.slice(5, 7)}/{mon.slice(0, 4)}
                             </b>
-                            {maxMin !== null && isRecurringOrder(sc.frequency) && m.minutes > maxMin && (
+                            {maxMin !== null && isRecurringOrder(sc.frequency) && m.normal > maxMin && (
                               <span class="badge err" style="margin-left:8px">
                                 über max. {Number(sc.max_hours_month).toLocaleString('de-DE')} Std.
                               </span>
@@ -2752,6 +2797,12 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                             <td class="r">{fmtH(h.total_minutes)}</td>
                             <td class="r">{euro(h.amount_cents)}</td>
                             <td class="small">
+                              {h.regie && sc.billing === 'stunde' && (
+                                <span class="badge" style="margin-right:6px">
+                                  Regie
+                                </span>
+                              )}
+                              {h.site_name && <b>{h.site_name} </b>}
                               {h.note}
                               <div class="mut">{fullName({ login: h.created_by })}</div>
                             </td>
@@ -3131,6 +3182,8 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         billing: str(b, 'billing') ?? sc?.billing ?? '',
         priceCents: str(b, 'price') ? parseEuro(str(b, 'price')!) : (sc?.price_cents ?? 0n),
         maxHours: str(b, 'max_hours'),
+        regieRateCents:
+          'regie_rate' in b ? (str(b, 'regie_rate') ? parseEuro(str(b, 'regie_rate')!) : null) : undefined,
         workDays: arr(b, 'work_days').map(Number),
         marginBp: str(b, 'margin') ? Math.round(Number(str(b, 'margin')!.replace(',', '.')) * 100) : null,
         validFrom: str(b, 'valid_from') ?? sc?.valid_from ?? '',
@@ -3340,6 +3393,8 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       workDate: b.work_date ?? '',
       persons: Number(b.persons),
       minutesPerPerson: parseHours(b.hours ?? '', 'Std. je Person'),
+      regie: b.regie === '1',
+      siteId: /^[0-9a-f-]{36}$/i.test(b.site_id ?? '') ? b.site_id! : null,
       note: b.note?.trim() || null,
       actor: c.get('actor'),
     });

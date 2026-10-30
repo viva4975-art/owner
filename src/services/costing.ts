@@ -81,15 +81,18 @@ export async function subcontractEstimates(
              and s.frequency in ('monatlich', 'woechentlich') and s.max_hours_month is not null
              and s.price_cents is not null
              and ${siteId ? sql`s.site_id = ${siteId}` : sql`true`}`
-    : sql`select s.site_id,
-             round(h.persons * h.minutes_per_person * ${priceAt(sql`date_trunc('month', h.work_date)::date`)}::numeric / 60)::bigint as cost,
+    : // erfasste Stunden „je Stunde“ und Regiestunden (Regie-Stundensatz, ggf. auf ein Objekt der Sammelbestellung)
+      sql`select coalesce(h.site_id, s.site_id) as site_id,
+             round(h.persons * h.minutes_per_person * (case when h.regie then coalesce(s.regie_rate_cents, 0)
+                   else ${priceAt(sql`date_trunc('month', h.work_date)::date`)} end)::numeric / 60)::bigint as cost,
              date_trunc('month', h.work_date)::date as mon
         from app.subcontract_hours h join app.subcontracts s on s.id = h.subcontract_id
-       where s.status in ('erteilt', 'beendet') and s.billing = 'stunde' and s.site_id is not null
-         and s.price_cents is not null
+       where s.status in ('erteilt', 'beendet') and (s.billing = 'stunde' or h.regie)
+         and coalesce(h.site_id, s.site_id) is not null
+         and (s.price_cents is not null or h.regie)
          and h.work_date between date_trunc('month', ${from}::date)::date
                              and (date_trunc('month', ${to}::date) + interval '1 month' - interval '1 day')::date
-         and ${siteId ? sql`s.site_id = ${siteId}` : sql`true`}
+         and ${siteId ? sql`coalesce(h.site_id, s.site_id) = ${siteId}` : sql`true`}
          and ${noInvoice(sql`date_trunc('month', h.work_date)::date`)}`;
   const base = await sql<{ site_id: string; cost: bigint; months: number }[]>`
     with m as (

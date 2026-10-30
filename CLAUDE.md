@@ -4637,3 +4637,11 @@ Testadresse.
   eingeplante Mitarbeitende ihren Lohnanspruch, wenn das Objekt schließt (§ 615 BGB, Annahmeverzug) – dann umplanen.
   Rechnungen mit Pauschale (nicht „nach Arbeitstagen“) ändern sich nicht. Nebenbei: Test „immer unfertig“ in
   `services-billing.db.test.ts` schlägt schon ohne diese Änderung fehl (datumsabhängig, offen).
+- 2026-10-30: **Regie in der NU-Bestellung** (Ahmed: „Regie bei der Bestellung hinzufügen mit Stundensatz, damit es direkt
+  dabei ist“): Feld „Regie-Stundensatz € (Zusatzarbeiten)“ in jeder NU-Bestellung (Entwurf und „Bestellung bearbeiten“,
+  `subcontracts.regie_rate_cents`, Migration `20270110000001`, Änderung im Protokoll). Steht auf dem Bestellschein
+  („Regie (Zusatzarbeiten): x € / Std. netto nach Stundennachweis“). Mit Satz erscheint an der erteilten Bestellung die
+  Karte „Regiestunden“ (bei „je Stunde“: Häkchen „Regie“ im Stundennachweis): Datum, Personen, Std., Bemerkung, bei
+  Sammelbestellungen das Objekt (`subcontract_hours.regie/site_id`). Betrag = Personen × Std. × Regie-Satz; Regie zählt
+  nicht gegen „max. Stunden“. Nachkalkulation: fehlt im Monat die NU-Rechnung, zählen die Regiestunden zusätzlich zur
+  Pauschale auf das gewählte Objekt. Test in `runde34.db.test.ts`.

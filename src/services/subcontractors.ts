@@ -485,6 +485,8 @@ export interface Subcontract {
   billing: string;
   price_cents: bigint;
   max_hours_month: string | null;
+  /** Regie-Stundensatz für Zusatzarbeiten (Stundennachweis), null = keine Regie vereinbart */
+  regie_rate_cents: bigint | null;
   margin_bp: number | null;
   /** Einzelauftrag des Kunden (Bestellung ohne festes Objekt) */
   order_id: string | null;
@@ -550,6 +552,8 @@ export interface SubcontractInput {
   billing: string;
   priceCents: bigint;
   maxHours: string | null;
+  /** Regie-Stundensatz (Zusatzarbeiten); undefined = unverändert, null = keine Regie */
+  regieRateCents?: bigint | null | undefined;
   /** unsere Marge in Basispunkten bei Abrechnung „Anteil am Umsatz“ */
   marginBp?: number | null;
   /** „je Tag“: Arbeitstage 1–7 (leer = Mo–Fr) */
@@ -599,6 +603,7 @@ export async function saveSubcontract(sql: Sql, id: string, p: SubcontractInput,
         frequency: p.frequency,
         billing: p.billing,
         max_hours_month: p.maxHours ? p.maxHours.replace(',', '.') : null,
+        ...(p.regieRateCents !== undefined ? { regie_rate_cents: p.regieRateCents } : {}),
         margin_bp: marginBp,
         work_days: workDays,
         valid_from: p.validFrom,
@@ -644,6 +649,7 @@ export async function saveSubcontract(sql: Sql, id: string, p: SubcontractInput,
         billing: p.billing,
         price_cents: p.priceCents,
         max_hours_month: p.maxHours ? p.maxHours.replace(',', '.') : null,
+        ...(p.regieRateCents !== undefined ? { regie_rate_cents: p.regieRateCents } : {}),
         margin_bp: marginBp,
         work_days: workDays,
         valid_from: p.validFrom,
@@ -924,6 +930,14 @@ export async function subcontractPdf(sql: Sql, id: string, sig?: SubcontractSign
             },
           ]
         : [{ k: 'Preis (netto):', v: price, accent: true }]),
+    ...(sc.regie_rate_cents != null && sc.regie_rate_cents > 0n
+      ? [
+          {
+            k: 'Regie (Zusatzarbeiten):',
+            v: `${formatEuro(sc.regie_rate_cents as Cents)} / Std. netto nach Stundennachweis`,
+          },
+        ]
+      : []),
     { k: 'Bestelldatum:', v: formatDateDe(date) },
   ]);
   if (sammel.length) {

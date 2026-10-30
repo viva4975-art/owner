@@ -69,6 +69,29 @@ describe.skipIf(!available)('Objektleitung-Aufgaben, NU-Stundennachweis (Datenba
     await deleteSubcontractHours(sql, id, sc, 'b');
     expect((await listSubcontractHours(sql, sc)).length).toBe(1);
   });
+  it('Regie bei Pauschal-Bestellung: eigener Stundensatz, nur mit Satz, zählt in der Nachkalkulation', async () => {
+    const flat = randomUUID();
+    await sql`insert into app.subcontracts (id, number, supplier_id, site_id, service_kind, frequency, billing, price_cents, valid_from, status, created_by)
+              values (${flat}, 'BE-2026-0992', ${sup}, ${DEMO.siteSchool}, 'Unterhaltsreinigung', 'monatlich', 'pauschale_monat', 100000, '2026-09-01', 'erteilt', 't')`;
+    const p = {
+      id: randomUUID(),
+      subcontractId: flat,
+      workDate: '2026-10-07',
+      persons: 2,
+      minutesPerPerson: 90,
+      note: 'Zusatz',
+      actor: 'b',
+    };
+    await expect(addSubcontractHours(sql, p)).rejects.toThrow(/Regie-Stundensatz/);
+    await sql`update app.subcontracts set regie_rate_cents = 2850 where id = ${flat}`;
+    await addSubcontractHours(sql, p);
+    const [row] = await listSubcontractHours(sql, flat);
+    // 2 × 1,5 Std. × 28,50 € = 85,50 €
+    expect(row!.regie).toBe(true);
+    expect(Number(row!.amount_cents)).toBe(8550);
+    const est = await subcontractEstimates(sql, '2026-10-01', '2026-10-31', DEMO.siteSchool);
+    expect(est.reduce((a, e) => a + Number(e.cost), 0)).toBe(100000 + 8550);
+  });
   it('Krank im Urlaub: Urlaub wird an den Kranktagen gekürzt bzw. geteilt (§ 9 BUrlG)', async () => {
     const emp = randomUUID();
     await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, weekly_hours, annual_leave_days)

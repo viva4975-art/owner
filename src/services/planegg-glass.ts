@@ -83,7 +83,6 @@ export async function ensurePlaneggGlass(sql: Sql, actor = 'automatisch') {
         bill_mode: 'ausfuehrung',
         service_type_id: t?.id ?? '',
         labor_share: t?.labor_share_bp != null ? String(t.labor_share_bp / 100) : '',
-        note: 'Los 9 Glasreinigung (Preisblatt 03.12.25): halber Jahrespreis je Ausführung',
         version: '',
       }),
       actor,

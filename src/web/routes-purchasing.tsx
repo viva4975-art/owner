@@ -1866,6 +1866,11 @@ export function registerPurchasingRoutes(ctx: Ctx) {
           select subcontract_id as id, count(*)::int as n from app.subcontract_sites group by subcontract_id`
       ).map((r) => [r.id, r.n]),
     );
+    // Objekte der Sammelbestellungen – eine Zeile kann nur einem davon gelten (Regie/Zusatzarbeiten, Ahmed 30.10.)
+    const sammelSites = await sql<{ sc: string; site_id: string; name: string; site_no: string | null }[]>`
+      select ss.subcontract_id as sc, s.id as site_id, s.name, s.site_no
+        from app.subcontract_sites ss join app.sites s on s.id = ss.site_id
+       order by s.site_no nulls last, s.name`;
     const q = c.req.query();
     // Zuordnung zu NU-Aufträgen: gespeicherte Zeilen oder aus „Rechnung erwartet“ (?erwartet=<auftrag>:<JJJJ-MM>:<cent>)
     const linkRows = i
@@ -1873,6 +1878,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
           sc: l.subcontract_id,
           m: l.m,
           net: l.net_cents != null ? centsToInput(l.net_cents) : '',
+          site: l.line_site_id ?? '',
         }))
       : (c.req
           .queries('erwartet')
@@ -1882,6 +1888,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
             sc: p[0]!,
             m: p[1]!,
             net: p[2] && /^\d+$/.test(p[2]) ? centsToInput(BigInt(p[2])) : '',
+            site: '',
           })) ?? []);
     // Nur offene Bestellungen anbieten (Ahmed 22.10.): laufende bzw. mit noch nicht abgerechnetem Zeitraum;
     // ganz abgerechnete/erledigte nur, wenn sie an dieser Rechnung schon hängen
@@ -2290,11 +2297,12 @@ export function registerPurchasingRoutes(ctx: Ctx) {
                         <tr>
                           <th style="text-align:left">Bestellung</th>
                           <th style="text-align:left;width:170px">Leistungsmonat</th>
+                          <th style="text-align:left;width:220px">Objekt</th>
                           <th style="text-align:right;width:130px">netto (optional)</th>
                         </tr>
                       </thead>
                       <tbody data-nu-rows>
-                        {[...linkRows, { sc: '', m: '', net: '' }].map((r) => (
+                        {[...linkRows, { sc: '', m: '', net: '', site: '' }].map((r) => (
                           <tr>
                             <td>
                               <select
@@ -2344,6 +2352,27 @@ export function registerPurchasingRoutes(ctx: Ctx) {
                               />
                             </td>
                             <td>
+                              <select
+                                name="link_site"
+                                disabled={dis}
+                                aria-label="Objekt der Zeile"
+                                data-nosearch
+                                data-link-site
+                              >
+                                <option value="">alle Objekte (wie Bestellung)</option>
+                                {sammelSites.map((x) => (
+                                  <option
+                                    value={x.site_id}
+                                    data-sc={x.sc}
+                                    selected={x.sc === r.sc && x.site_id === r.site}
+                                  >
+                                    nur {x.site_no ? `${x.site_no} · ` : ''}
+                                    {x.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td>
                               <input
                                 name="link_net"
                                 value={r.net}
@@ -2366,7 +2395,9 @@ export function registerPurchasingRoutes(ctx: Ctx) {
                   )}
                   <p class="small mut" style="margin:4px 0 0">
                     Objekt und Leistungsmonat kommen aus den Zeilen. Beträge je Zeile sind freiwillig – ohne
-                    Betrag verteilt die App das Netto nach dem Preis der Bestellungen.
+                    Betrag verteilt die App das Netto nach dem Preis der Bestellungen. Bei einer
+                    Sammelbestellung kann eine Zeile nur einem Objekt gelten (z. B. Regie/Zusatzarbeiten):
+                    zweite Zeile mit derselben Bestellung, „nur …“ wählen und den Betrag eintragen.
                   </p>
                   <script
                     dangerouslySetInnerHTML={{
@@ -2385,7 +2416,10 @@ rows.addEventListener('change',function(e){if(e.target.matches&&e.target.matches
 // Eingaben-Wiederherstellung und Safari-Zurück setzen Werte ohne „change“ → nachträglich noch einmal prüfen
 window.addEventListener('load',function(){setTimeout(multi,50);});window.addEventListener('pageshow',function(){setTimeout(multi,50);});setTimeout(multi,400);
 if(sup)sup.addEventListener('change',function(){document.querySelectorAll('select[name=link_sc],#purchase_order_id').forEach(function(x){var o=x.selectedOptions[0];if(o&&o.dataset.sup&&o.dataset.sup!==sup.value)x.value='';});filter();});filter();
-var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',function(){var r=rows.lastElementChild.cloneNode(true);r.querySelectorAll('input').forEach(function(i){i.value=''});r.querySelectorAll('select').forEach(function(x){x.value=''});rows.appendChild(r);filter();});
+var siteAll=(rows.querySelector('select[name=link_site]')||{}).innerHTML||'';
+function siteSel(){rows.querySelectorAll('tr').forEach(function(tr){var sc=tr.querySelector('select[name=link_sc]'),ls=tr.querySelector('select[name=link_site]');if(!sc||!ls)return;var cur=ls.value;var d=document.createElement('select');d.innerHTML=siteAll;var n=0;Array.prototype.slice.call(d.options).forEach(function(o){if(o.dataset.sc&&o.dataset.sc!==sc.value)d.removeChild(o);else if(o.dataset.sc)n++;});ls.innerHTML=d.innerHTML;ls.value=cur;if(ls.value!==cur)ls.value='';ls.style.visibility=n?'':'hidden';});}
+rows.addEventListener('change',function(e){if(e.target.matches&&e.target.matches('select[name=link_sc]'))siteSel();});siteSel();
+var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',function(){var r=rows.lastElementChild.cloneNode(true);r.querySelectorAll('input').forEach(function(i){i.value=''});r.querySelectorAll('select').forEach(function(x){x.value=''});rows.appendChild(r);filter();siteSel();});
 })();`,
                     }}
                   />
@@ -2742,8 +2776,9 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     const scs = many('link_sc');
     const months = many('link_month');
     const nets = many('link_net');
+    const lsites = many('link_site');
     const links = scs
-      .map((sc, k) => ({ sc, m: months[k] ?? '', n: nets[k] ?? '' }))
+      .map((sc, k) => ({ sc, m: months[k] ?? '', n: nets[k] ?? '', s: lsites[k] ?? '' }))
       .filter((r) => r.sc)
       .map((r) => {
         if (!isMonth(r.m)) throw new BusinessError('Bitte je Auftragszeile den Zeitraum (Monat) angeben');
@@ -2751,6 +2786,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
           subcontractId: r.sc,
           month: r.m,
           net: r.n ? (money(r.n, 'Betrag je Auftrag') as bigint) : null,
+          siteId: /^[0-9a-f-]{36}$/.test(r.s) ? r.s : null,
         };
       });
     const one = (k: string) =>

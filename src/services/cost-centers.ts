@@ -164,9 +164,11 @@ export async function syncAutoAllocation(tx: Tx, invoiceId: string, actor: strin
       month: string;
       net_cents: bigint | null;
       price_cents: bigint;
+      line_site: string | null;
     }[]
   >`
-    select l.subcontract_id, sc.site_id, to_char(l.period_month, 'YYYY-MM') as month, l.net_cents, sc.price_cents
+    select l.subcontract_id, sc.site_id, to_char(l.period_month, 'YYYY-MM') as month, l.net_cents, sc.price_cents,
+           l.site_id as line_site
       from app.incoming_invoice_subcontracts l join app.subcontracts sc on sc.id = l.subcontract_id
      where l.incoming_invoice_id = ${invoiceId} order by l.period_month, sc.number`;
   const [head] = await tx<
@@ -183,9 +185,19 @@ export async function syncAutoAllocation(tx: Tx, invoiceId: string, actor: strin
         month: l.month,
         net: l.net_cents == null ? null : BigInt(l.net_cents),
         price: BigInt(l.price_cents),
+        only: l.line_site,
       }))
     : head.subcontract_id
-      ? [{ sc: head.subcontract_id, site: head.site_id ?? '', month: head.month, net: null, price: 0n }]
+      ? [
+          {
+            sc: head.subcontract_id,
+            site: head.site_id ?? '',
+            month: head.month,
+            net: null,
+            price: 0n,
+            only: null as string | null,
+          },
+        ]
       : [];
   if (rows.length && total !== 0n) {
     const given = rows.reduce((a, r) => a + (r.net ?? 0n), 0n);
@@ -212,6 +224,11 @@ export async function syncAutoAllocation(tx: Tx, invoiceId: string, actor: strin
       for (const [i, r] of rows.entries()) {
         const amt = amounts[i]!;
         if (amt === 0n) continue;
+        // Zeile nur für ein Objekt (Regie/Zusatzarbeiten bei Sammelbestellung) → ganz auf dieses Objekt
+        if (r.only) {
+          add(r.only, r.month, amt);
+          continue;
+        }
         const split = await allocateSammel(tx, r.sc, r.month, amt);
         if (split) for (const x of split) add(x.site_id, r.month, x.net);
         // eine einzelne Bestellung: Objekt der Rechnung (falls von Hand geändert), sonst der Bestellung

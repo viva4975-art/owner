@@ -276,6 +276,8 @@ export interface SubcontractLink {
   /** 'JJJJ-MM' */
   month: string;
   net: bigint | null;
+  /** nur dieses Objekt der Sammelbestellung (Regie/Zusatzarbeiten); leer = verteilt */
+  siteId?: string | null;
 }
 
 /** Zuordnung Eingangsrechnung ↔ Aufträge/Zeiträume ersetzen (in der Transaktion des Speicherns). */
@@ -289,8 +291,12 @@ export async function replaceLinks(
   const seen = new Set<string>();
   for (const l of links) {
     if (!/^\d{4}-\d{2}$/.test(l.month)) throw new BusinessError('Zeitraum der Auftragszuordnung ungültig');
-    const k = `${l.subcontractId}|${l.month}`;
+    const k = `${l.subcontractId}|${l.month}|${l.siteId ?? ''}`;
     if (seen.has(k)) throw new BusinessError('Ein Auftrag/Zeitraum ist doppelt zugeordnet');
+    if (l.siteId && l.net == null && links.length > 1)
+      throw new BusinessError(
+        'Zeile für ein einzelnes Objekt (Regie/Zusatzarbeiten): bitte den Betrag netto angeben',
+      );
     seen.add(k);
   }
   if (links.length) {
@@ -298,11 +304,20 @@ export async function replaceLinks(
       select id from app.subcontracts where id in ${tx(links.map((l) => l.subcontractId))} and supplier_id = ${supplierId}`;
     if (new Set(ok.map((r) => r.id)).size !== new Set(links.map((l) => l.subcontractId)).size)
       throw new BusinessError('Nachunternehmer-Auftrag gehört nicht zu diesem Lieferanten');
+    for (const l of links.filter((x) => x.siteId)) {
+      const [hit] = await tx`
+        select 1 from app.subcontracts sc
+         where sc.id = ${l.subcontractId}
+           and (sc.site_id = ${l.siteId!} or exists (select 1 from app.subcontract_sites ss
+                where ss.subcontract_id = sc.id and ss.site_id = ${l.siteId!}))`;
+      if (!hit) throw new BusinessError('Objekt gehört nicht zu dieser Bestellung');
+    }
   }
   await tx`delete from app.incoming_invoice_subcontracts where incoming_invoice_id = ${invoiceId}`;
   for (const l of links)
-    await tx`insert into app.incoming_invoice_subcontracts (incoming_invoice_id, subcontract_id, period_month, net_cents, created_by)
-             values (${invoiceId}, ${l.subcontractId}, ${`${l.month}-01`}, ${l.net}, ${actor})`;
+    await tx`insert into app.incoming_invoice_subcontracts (incoming_invoice_id, subcontract_id, period_month, net_cents,
+                                                            site_id, created_by)
+             values (${invoiceId}, ${l.subcontractId}, ${`${l.month}-01`}, ${l.net}, ${l.siteId ?? null}, ${actor})`;
 }
 
 export async function linksOf(sql: Sql, invoiceId: string) {
@@ -313,12 +328,14 @@ export async function linksOf(sql: Sql, invoiceId: string) {
       net_cents: bigint | null;
       number: string;
       site_name: string | null;
+      line_site_id: string | null;
     }[]
   >`
-    select l.subcontract_id, to_char(l.period_month, 'YYYY-MM') as m, l.net_cents, sc.number, s.name as site_name
+    select l.subcontract_id, to_char(l.period_month, 'YYYY-MM') as m, l.net_cents, sc.number, s.name as site_name,
+           l.site_id as line_site_id
       from app.incoming_invoice_subcontracts l join app.subcontracts sc on sc.id = l.subcontract_id
       left join app.sites s on s.id = sc.site_id
-     where l.incoming_invoice_id = ${invoiceId} order by sc.number, l.period_month`;
+     where l.incoming_invoice_id = ${invoiceId} order by sc.number, l.period_month, l.site_id nulls first`;
 }
 
 /** bedarf = nicht monatlich, Rechnung nach Ausführung (keine Meldung) */

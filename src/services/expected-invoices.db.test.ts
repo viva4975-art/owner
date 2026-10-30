@@ -259,4 +259,79 @@ describe.skipIf(!available)('Rechnung erwartet (Datenbank)', () => {
       [DEMO.siteSchool, 60000n],
     ]);
   });
+  it('Sammelbestellung: Zeile nur für ein Objekt (Regie/Zusatzarbeiten, Ahmed 30.10.)', async () => {
+    const [x] = await sql<{ id: string; a: string }[]>`
+      select supplier_id as id, id::text as a from app.subcontracts where number = 'BE-2026-0901'`;
+    await sql`insert into app.subcontract_sites (subcontract_id, site_id, created_by)
+              values (${x!.a}, ${DEMO.siteOffice}, 't'), (${x!.a}, ${DEMO.siteSchool}, 't') on conflict do nothing`;
+    const base = {
+      supplierId: x!.id,
+      invoiceDate: '2026-11-03',
+      dueDate: null,
+      serviceMonth: '2026-10',
+      vat: 0n as Cents,
+      reverseCharge: true,
+      category: 'nachunternehmer' as const,
+      siteId: null,
+      purchaseOrderId: null,
+      subcontractId: null,
+      skontoUntil: null,
+      skontoPercentBp: null,
+      note: null,
+      expectedVersion: null,
+    };
+    // ohne Betrag bei mehreren Zeilen → Fehler
+    await expect(
+      saveIncoming(
+        sql,
+        randomUUID(),
+        {
+          ...base,
+          invoiceNo: 'R-REGIE-0',
+          net: 90000n as Cents,
+          links: [
+            { subcontractId: x!.a, month: '2026-10', net: null },
+            { subcontractId: x!.a, month: '2026-10', net: null, siteId: DEMO.siteOffice },
+          ],
+        },
+        't',
+      ),
+    ).rejects.toThrow(/Betrag netto/);
+    const inv = randomUUID();
+    await saveIncoming(
+      sql,
+      inv,
+      {
+        ...base,
+        invoiceNo: 'R-REGIE-1',
+        net: 90000n as Cents,
+        links: [
+          { subcontractId: x!.a, month: '2026-10', net: 80000n },
+          { subcontractId: x!.a, month: '2026-10', net: 10000n, siteId: DEMO.siteOffice },
+        ],
+      },
+      't',
+    );
+    const alloc = await sql<{ site_id: string; net_cents: bigint }[]>`
+      select site_id, sum(net_cents)::bigint as net_cents from app.cost_allocations
+       where incoming_invoice_id = ${inv} group by site_id`;
+    const by = new Map(alloc.map((a) => [a.site_id, BigInt(a.net_cents)]));
+    expect((by.get(DEMO.siteOffice) ?? 0n) + (by.get(DEMO.siteSchool) ?? 0n)).toBe(90000n);
+    // Regie-Zeile ganz beim Büro, der Rest wie die Sammelbestellung verteilt
+    expect((by.get(DEMO.siteOffice) ?? 0n) - (by.get(DEMO.siteSchool) ?? 0n)).toBe(10000n);
+    // fremdes Objekt wird abgelehnt
+    await expect(
+      saveIncoming(
+        sql,
+        randomUUID(),
+        {
+          ...base,
+          invoiceNo: 'R-REGIE-2',
+          net: 1000n as Cents,
+          links: [{ subcontractId: x!.a, month: '2026-10', net: null, siteId: randomUUID() }],
+        },
+        't',
+      ),
+    ).rejects.toThrow(/gehört nicht/);
+  });
 });

@@ -4601,3 +4601,12 @@ Testadresse.
   10.351,20 € je Durchgang, 20.702,40 € im Jahr). Zuordnung über Straße + Hausnummer beim Kunden 20022 (Kinderhort 8a ≠
   Rathaus 8); vorhandene halbjährliche Glasreinigung am Objekt → nichts doppelt, fehlende Gebäude im Protokoll/Log.
   Lohnkostenanteil = Vorgabe der Leistungsart (sonst leer → in der Leistung nachtragen). Test `planegg-glass.db.test.ts`.
+- 2026-10-30: **Regie/Zusatzarbeiten bei Sammelbestellungen einem Objekt zuordnen** (Ahmed): Rechnungseingang → Zuordnung →
+  neue Spalte „Objekt“ je Bestellzeile (nur bei Sammelbestellungen sichtbar): „alle Objekte (wie Bestellung)“ oder „nur
+  <Objekt>“. Für Regie/Zusatzarbeiten zweite Zeile mit derselben Bestellung, „nur …“ wählen, Betrag netto eintragen
+  (Pflicht, sobald es mehrere Zeilen gibt) – dieser Betrag geht ganz auf das Objekt (Kostenstelle/Nachkalkulation), der
+  Rest wird wie bisher auf die Objekte der Sammelbestellung verteilt. Objekt muss zur Bestellung gehören.
+  `incoming_invoice_subcontracts.site_id`, Eindeutigkeit jetzt je Bestellung + Monat + Objekt (Migration
+  `20270108000001`). Die Migration entfernt auch den Hinweis „Los 9 Glasreinigung (Preisblatt …)“ aus den
+  Planegg-Leistungen (Ahmed); neue werden ohne ihn angelegt. Fund: Prüfsumme der Migration `20270107000001` war mit
+  einem Zwischenstand eingetragen (Datei seit dem Commit unverändert) → korrigiert. Test in `expected-invoices.db.test.ts`.

@@ -114,6 +114,8 @@ export async function hoursOfMonth(
   ids: string[],
   month: string,
   totalIds: string[] = [],
+  /** true = nur Regiestunden (Zusatzarbeiten zum Regie-Satz), sonst nur normale Stunden */
+  regie = false,
 ): Promise<Map<string, { minutes: number; amount: bigint }>> {
   const out = new Map<string, { minutes: number; amount: bigint }>();
   if (!ids.length) return out;
@@ -126,9 +128,31 @@ export async function hoursOfMonth(
                else coalesce((select p.price_cents from app.subcontract_prices p
                           where p.subcontract_id = s.id and p.valid_from_month <= date_trunc('month', h.work_date)::date
                           order by p.valid_from_month desc limit 1), s.price_cents, 0) end as rate) r
-     where h.subcontract_id = any(${ids}::uuid[]) and not h.regie
+     where h.subcontract_id = any(${ids}::uuid[]) and h.regie = ${regie}
        and (h.subcontract_id = any(${totalIds}::uuid[]) or date_trunc('month', h.work_date) = ${`${month}-01`}::date)
      group by h.subcontract_id`)
     out.set(r.id, { minutes: r.minutes, amount: BigInt(r.amount) });
   return out;
+}
+
+/** Erfasste Stunden je Bestellung, Monat (JJJJ-MM) und Art (normal/Regie) mit Betrag – für den Vorschlag beim
+ * Erfassen der Eingangsrechnung (Ahmed 30.10.: Gesamtbetrag inkl. Regie übernehmen, änderbar). */
+export async function hoursByMonth(
+  sql: Sql,
+  ids: string[],
+): Promise<{ id: string; month: string; regie: boolean; minutes: number; amount: bigint }[]> {
+  if (!ids.length) return [];
+  const rows = await sql<{ id: string; month: string; regie: boolean; minutes: number; amount: string }[]>`
+    select h.subcontract_id as id, to_char(h.work_date, 'YYYY-MM') as month, h.regie,
+           sum(h.persons * h.minutes_per_person)::int as minutes,
+           sum(round(h.persons * h.minutes_per_person * r.rate::numeric / 60))::bigint::text as amount
+      from app.subcontract_hours h join app.subcontracts s on s.id = h.subcontract_id
+      cross join lateral (
+        select case when h.regie then coalesce(s.regie_rate_cents, 0)
+               else coalesce((select p.price_cents from app.subcontract_prices p
+                          where p.subcontract_id = s.id and p.valid_from_month <= date_trunc('month', h.work_date)::date
+                          order by p.valid_from_month desc limit 1), s.price_cents, 0) end as rate) r
+     where h.subcontract_id = any(${ids}::uuid[])
+     group by 1, 2, 3`;
+  return rows.map((r) => ({ ...r, amount: BigInt(r.amount) }));
 }

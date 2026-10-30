@@ -4650,3 +4650,12 @@ Testadresse.
   `PrintStammdaten` entfernt, sonst unverändert (Datei nur an Ahmed, nicht im Repo). Logo: Das Skript enthält keinen
   Bild-Befehl; ob Lexware einen hat, steht in `DruckNT.int` bzw. der Editor-Hilfe – offen. Urlaubsangaben sind keine
   Pflichtangabe der Entgeltbescheinigung (§ 108 GewO, EBV).
+- 2026-10-30: **NU-Bestellung: Betrag oben und Regie** (Ahmed, BE-2026-0056 zeigte „Preis netto 1,00 €“): Kopfkasten der
+  Bestellung zeigt bei Sammelbestellungen je Objekt die **Summe der Objekte** (z. B. „… / Einsatz, Summe der 12 Objekte“)
+  statt des Grundpreises; bei vereinbarter Regie darunter „Regie x € / Std. · n Std. = Betrag“ und **„Gesamt inkl. Regie“**
+  (monatliche Bestellungen: laufender Monat, sonst alle erfassten Regiestunden). Bestellliste und Reiter Bestellungen beim
+  Nachunternehmer rechnen Regie dazu („inkl. Regie“, „+ Regie n Std. = …“); Reiter Bestellungen zeigt bei Sammelbestellungen
+  ebenfalls die Summe der Objekte. **Rechnung erfassen:** Bestellung wählen → Netto wird vorgeschlagen = Pauschale bzw.
+  Summe der Objekte + erfasste Stunden + Regie (monatliche: Monat der Zeile), Aufschlüsselung unter dem Feld, **frei
+  änderbar** – ein eigener Betrag wird nicht mehr überschrieben, nur der eigene Vorschlag bei Wechsel von Bestellung/Monat
+  (`hoursByMonth`, `hoursOfMonth(..., regie)` in `subcontract-hours.ts`).

@@ -941,6 +941,13 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
             )}
             days={await dayAmounts(sql, contracts, todayBerlin().slice(0, 7))}
             totals={await sammelTotals(sql, contracts)}
+            regie={await hoursOfMonth(
+              sql,
+              contracts.filter((x) => x.regie_rate_cents != null && x.regie_rate_cents > 0n).map((x) => x.id),
+              todayBerlin().slice(0, 7),
+              contracts.filter((x) => !isRecurringOrder(x.frequency)).map((x) => x.id),
+              true,
+            )}
             sammelInfo={await sammelSummaries(
               sql,
               contracts.map((x) => x.id),
@@ -1764,6 +1771,19 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       hourMonths.set(k, m);
     }
     const fmtH = (m: number) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
+    // Regiestunden für die Übersicht oben: laufender Monat bei monatlichen, sonst alle (Ahmed 30.10.)
+    const regieSum = (() => {
+      const cur = todayBerlin().slice(0, 7);
+      const monthly = !!sc && isRecurringOrder(sc.frequency);
+      let minutes = 0;
+      let amount = 0n;
+      for (const h of hours)
+        if (h.regie && (!monthly || h.work_date.slice(0, 7) === cur)) {
+          minutes += h.total_minutes;
+          amount += BigInt(h.amount_cents);
+        }
+      return { minutes, amount, month: monthly ? `${cur.slice(5, 7)}/${cur.slice(0, 4)}` : '' };
+    })();
     const maxMin = sc?.max_hours_month ? Math.round(Number(sc.max_hours_month) * 60) : null;
     // Leistung = unsere Leistungsarten (Einstellungen → Leistungsarten), bisheriger Wert bleibt wählbar
     const kindOptions = [
@@ -3022,9 +3042,32 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
           </div>
           <div>
             <div class="l">Preis netto</div>
-            <b>{euro(sc.current_price_cents)}</b>
+            {/* Sammelbestellung je Objekt: Summe der Objekte statt Grundpreis (Ahmed 30.10.) */}
+            <b>{euro(sammelSum ?? sc.current_price_cents)}</b>{' '}
+            <span class="small mut">{BILLING[sc.billing] ?? ''}</span>
+            {sammelSum !== null && (
+              <div class="small mut">Summe der {anz(sammel.length, 'Objekt', 'Objekte')}</div>
+            )}
             {sc.billing === 'stunde' && sc.max_hours_month && (
               <div class="small mut">max. {sc.max_hours_month.replace('.', ',')} Std.</div>
+            )}
+            {hasRegie && (
+              <div class="small" style="margin-top:4px">
+                Regie {euro(sc.regie_rate_cents!)} / Std.
+                {regieSum.minutes > 0 ? (
+                  <>
+                    {' '}
+                    · {fmtH(regieSum.minutes)} Std. = <b>{euro(regieSum.amount)}</b>
+                    {regieSum.month ? ` (${regieSum.month})` : ''}
+                    <div>
+                      Gesamt inkl. Regie:{' '}
+                      <b>{euro((sammelSum ?? sc.current_price_cents) + regieSum.amount)}</b>
+                    </div>
+                  </>
+                ) : (
+                  <span class="mut"> · noch keine Regiestunden</span>
+                )}
+              </div>
             )}
           </div>
           <div>
@@ -3791,7 +3834,10 @@ function SubcontractTable({
   days = new Map(),
   totals = new Map(),
   sammelInfo = new Map(),
+  regie = new Map(),
 }: {
+  /** erfasste Regiestunden (laufender Monat bzw. bisher) */
+  regie?: Map<string, { minutes: number; amount: bigint }>;
   rows: Awaited<ReturnType<typeof listSubcontracts>>;
   /** Sammelbestellungen: Anzahl Objekte + Kunde/erste Objekte */
   sammelInfo?: Map<string, { n: number; text: string }>;
@@ -3843,6 +3889,15 @@ function SubcontractTable({
               </td>
               <td class="r">
                 {(() => {
+                  const rg = regie.get(r.id);
+                  return rg && rg.minutes > 0 ? (
+                    <div class="small" style="float:right;clear:both">
+                      + Regie {(rg.minutes / 60).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Std. ={' '}
+                      {euro(rg.amount)}
+                    </div>
+                  ) : null;
+                })()}
+                {(() => {
                   const total = subcontractTotal({ ...r, sammel_total: totals.get(r.id) });
                   const h = hours.get(r.id);
                   return r.billing === 'stunde' ? (
@@ -3867,7 +3922,8 @@ function SubcontractTable({
                     </>
                   ) : (
                     <>
-                      {euro(r.current_price_cents)} <span class="small mut">{BILLING[r.billing]}</span>
+                      {euro(total ?? r.current_price_cents)}{' '}
+                      <span class="small mut">{BILLING[r.billing]}</span>
                     </>
                   );
                 })()}

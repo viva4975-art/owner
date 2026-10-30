@@ -1,5 +1,5 @@
 import { sammelSqmCenti, sammelSummaries, sammelTotals } from '../services/subcontract-sites.js';
-import { hoursOfMonth } from '../services/subcontract-hours.js';
+import { hoursByMonth, hoursOfMonth } from '../services/subcontract-hours.js';
 import { costCenterReport } from '../services/cost-centers.js';
 import { randomUUID } from 'node:crypto';
 import { SiteOptions } from './site-options.js';
@@ -529,6 +529,14 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       subcontracts.filter((x) => !isRecurringOrder(x.frequency)).map((x) => x.id),
     );
     const daysNow = await dayAmounts(sql, subcontracts, curMonth);
+    // Regie (Zusatzarbeiten zum Regie-Satz) wird mitgerechnet (Ahmed 30.10.)
+    const regieNow = await hoursOfMonth(
+      sql,
+      subcontracts.filter((x) => x.regie_rate_cents != null && x.regie_rate_cents > 0n).map((x) => x.id),
+      curMonth,
+      subcontracts.filter((x) => !isRecurringOrder(x.frequency)).map((x) => x.id),
+      true,
+    );
     const tracking = await billingTracking(
       sql,
       subcontracts.map((x) => x.id),
@@ -641,6 +649,21 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       stunde: '/ Std.',
       qm: '/ m²',
     };
+    /** Regiestunden zum Betrag addieren und darunter ausweisen (Ahmed 30.10.) */
+    const withRegie = (
+      sc: { id: string; frequency: string },
+      v: Pick<Row, 'net' | 'per' | 'unit'>,
+    ): Pick<Row, 'net' | 'per' | 'unit'> => {
+      const r = regieNow.get(sc.id);
+      if (!r || !r.minutes) return v;
+      const hrs = (r.minutes / 60).toLocaleString('de-DE', { maximumFractionDigits: 2 });
+      const reg = `+ Regie ${hrs} Std. = ${euro(r.amount)}${isRecurringOrder(sc.frequency) ? ` (${MON(curMonth)})` : ''}`;
+      return {
+        net: v.net === null ? r.amount : v.net + r.amount,
+        per: v.per ? `${v.per} inkl. Regie` : 'inkl. Regie',
+        unit: [v.unit, reg].filter(Boolean).join(' · '),
+      };
+    };
     const all: Row[] = [
       ...orders.map((o) => ({
         id: o.id,
@@ -682,44 +705,47 @@ export function registerPurchasingRoutes(ctx: Ctx) {
         unsigned: sc.status === 'erteilt' && !sc.signed_file_path && !sc.signed_external,
         recurring: isRecurringOrder(sc.frequency),
         canFinish: sc.status === 'erteilt' && !!(sc.signed_file_path || sc.signed_external),
-        ...((): Pick<Row, 'net' | 'per' | 'unit'> => {
-          // Gesamtbetrag zuerst, Einheitspreis darunter (Ahmed 18.10.)
-          const total = subcontractTotal({
-            ...sc,
-            sqm_centi: sqmMap.get(sc.id) ?? null,
-            sammel_total: perObjTotals.get(sc.id),
-          });
-          if (sc.billing === 'umsatz')
-            return {
-              net: null,
-              per: '',
-              unit: `${String((10000 - (sc.margin_bp ?? 0)) / 100).replace('.', ',')} % vom Umsatz`,
-            };
-          if (sc.billing === 'qm')
-            return total !== null
-              ? { net: total, per: '', unit: `${euro(sc.current_price_cents)} / m²` }
-              : { net: sc.current_price_cents, per: '/ m²', unit: 'Flächen fehlen' };
-          if (sc.billing === 'stunde') {
-            // erfasste Stunden des laufenden Monats (Stundennachweis), max. nur als Hinweis (Ahmed 20.10.)
-            const h = hoursNow.get(sc.id);
-            const hrs = h ? (h.minutes / 60).toLocaleString('de-DE', { maximumFractionDigits: 2 }) : '0';
-            return {
-              net: h?.amount ?? 0n,
-              per: isRecurringOrder(sc.frequency) ? `erfasst ${MON(curMonth)}` : 'erfasst bisher',
-              unit: `${hrs} Std. × ${euro(sc.current_price_cents)}${total !== null ? ` · max. ${euro(total)} (${sc.max_hours_month!.replace('.', ',')} Std.)` : ''}`,
-            };
-          }
-          if (sc.billing === 'tag') {
-            // Preis je Tag × Arbeitstage des laufenden Monats (Ahmed 22.10.)
-            const d = daysNow.get(sc.id);
-            return {
-              net: d?.amount ?? 0n,
-              per: MON(curMonth),
-              unit: `${d?.days ?? 0} Tage (${workDaysLabel(sc.work_days)}) × ${euro(sc.current_price_cents)}`,
-            };
-          }
-          return { net: total ?? sc.current_price_cents, per: PER[sc.billing] ?? '' };
-        })(),
+        ...withRegie(
+          sc,
+          ((): Pick<Row, 'net' | 'per' | 'unit'> => {
+            // Gesamtbetrag zuerst, Einheitspreis darunter (Ahmed 18.10.)
+            const total = subcontractTotal({
+              ...sc,
+              sqm_centi: sqmMap.get(sc.id) ?? null,
+              sammel_total: perObjTotals.get(sc.id),
+            });
+            if (sc.billing === 'umsatz')
+              return {
+                net: null,
+                per: '',
+                unit: `${String((10000 - (sc.margin_bp ?? 0)) / 100).replace('.', ',')} % vom Umsatz`,
+              };
+            if (sc.billing === 'qm')
+              return total !== null
+                ? { net: total, per: '', unit: `${euro(sc.current_price_cents)} / m²` }
+                : { net: sc.current_price_cents, per: '/ m²', unit: 'Flächen fehlen' };
+            if (sc.billing === 'stunde') {
+              // erfasste Stunden des laufenden Monats (Stundennachweis), max. nur als Hinweis (Ahmed 20.10.)
+              const h = hoursNow.get(sc.id);
+              const hrs = h ? (h.minutes / 60).toLocaleString('de-DE', { maximumFractionDigits: 2 }) : '0';
+              return {
+                net: h?.amount ?? 0n,
+                per: isRecurringOrder(sc.frequency) ? `erfasst ${MON(curMonth)}` : 'erfasst bisher',
+                unit: `${hrs} Std. × ${euro(sc.current_price_cents)}${total !== null ? ` · max. ${euro(total)} (${sc.max_hours_month!.replace('.', ',')} Std.)` : ''}`,
+              };
+            }
+            if (sc.billing === 'tag') {
+              // Preis je Tag × Arbeitstage des laufenden Monats (Ahmed 22.10.)
+              const d = daysNow.get(sc.id);
+              return {
+                net: d?.amount ?? 0n,
+                per: MON(curMonth),
+                unit: `${d?.days ?? 0} Tage (${workDaysLabel(sc.work_days)}) × ${euro(sc.current_price_cents)}`,
+              };
+            }
+            return { net: total ?? sc.current_price_cents, per: PER[sc.billing] ?? '' };
+          })(),
+        ),
         ...((): Pick<Row, 'phase' | 'status' | 'tone'> => {
           // zu erledigen (Ahmed 19.10.): nur Entwurf oder unterschriebener Auftrag fehlt
           const todo = subcontractTodo({
@@ -1866,6 +1892,28 @@ export function registerPurchasingRoutes(ctx: Ctx) {
           select subcontract_id as id, count(*)::int as n from app.subcontract_sites group by subcontract_id`
       ).map((r) => [r.id, r.n]),
     );
+    // Betragsvorschlag je Bestellung (Ahmed 30.10.): Pauschale bzw. Summe der Objekte + erfasste Stunden/Regie je Monat
+    const scTotals = await sammelTotals(sql, subcontracts);
+    const scSqm = await sammelSqmCenti(
+      sql,
+      subcontracts.map((x) => x.id),
+    );
+    const scHours = new Map<string, Record<string, { n: string; r: string }>>();
+    for (const h of await hoursByMonth(
+      sql,
+      subcontracts.map((x) => x.id),
+    )) {
+      const m = scHours.get(h.id) ?? {};
+      const e = m[h.month] ?? { n: '0', r: '0' };
+      if (h.regie) e.r = String(BigInt(e.r) + h.amount);
+      else e.n = String(BigInt(e.n) + h.amount);
+      m[h.month] = e;
+      scHours.set(h.id, m);
+    }
+    const scBase = (x: (typeof subcontracts)[number]) =>
+      x.billing === 'pauschale_monat' || x.billing === 'pauschale_einsatz' || x.billing === 'qm'
+        ? subcontractTotal({ ...x, sqm_centi: scSqm.get(x.id) ?? null, sammel_total: scTotals.get(x.id) })
+        : null;
     // Objekte der Sammelbestellungen – eine Zeile kann nur einem davon gelten (Regie/Zusatzarbeiten, Ahmed 30.10.)
     const sammelSites = await sql<{ sc: string; site_id: string; name: string; site_no: string | null }[]>`
       select ss.subcontract_id as sc, s.id as site_id, s.name, s.site_no
@@ -2264,6 +2312,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
                 <div>
                   <label for="net">Netto €</label>
                   <input id="net" name="net" value={v.net} required class="right" />
+                  <small class="mut" id="net-suggest"></small>
                 </div>
                 <div>
                   <label for="vat">USt €</label>
@@ -2326,11 +2375,9 @@ export function registerPurchasingRoutes(ctx: Ctx) {
                                       data-sup={x.supplier_id}
                                       data-site={x.site_id}
                                       data-multi={String(sammelCount.get(x.id) ?? 0)}
-                                      data-net={
-                                        x.billing === 'pauschale_monat'
-                                          ? centsToInput(x.current_price_cents)
-                                          : ''
-                                      }
+                                      data-base={String(scBase(x) ?? '')}
+                                      data-hrs={JSON.stringify(scHours.get(x.id) ?? {})}
+                                      data-rec={isRecurringOrder(x.frequency) ? '1' : '0'}
                                       hidden={!!v.supplier && x.supplier_id !== v.supplier && x.id !== r.sc}
                                     >
                                       {x.number} · {x.site_name ?? 'ohne Objekt'}
@@ -2410,7 +2457,20 @@ rows.addEventListener('change',function(e){var sel=e.target;if(!sel.matches||!se
 var first=rows.querySelector('select[name=link_sc]')===sel;var sm=document.getElementById('service_month');
 var lm=tr.querySelector('[name=link_month]');if(lm&&!lm.value)setSel(lm,(sm&&sm.value)||prevMonth());
 if(first){setSel(document.getElementById('site_id'),o.dataset.site);setSel(document.getElementById('category'),'nachunternehmer');if(sm&&!sm.value)setSel(sm,lm&&lm.value);
-var n=document.getElementById('net');var filled=Array.prototype.filter.call(rows.querySelectorAll('select[name=link_sc]'),function(x){return x.value}).length;if(n&&!n.value&&filled===1&&o.dataset.net){n.value=o.dataset.net;n.dispatchEvent(new Event('change',{bubbles:true}));}}});
+}suggest();});
+// Betragsvorschlag: Summe aller Zeilen = Pauschale/Summe der Objekte + erfasste Stunden + Regie (monatliche: Monat der Zeile,
+// sonst alle). Nur wenn das Feld leer ist oder noch den letzten Vorschlag enthält – eigene Eingaben bleiben (Ahmed 30.10.)
+function cents(v){return (v/100).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function suggest(){var n=document.getElementById('net');if(!n)return;var tot=0,parts=[],seen={};
+rows.querySelectorAll('tr').forEach(function(tr){var sel=tr.querySelector('select[name=link_sc]');var o=sel&&sel.selectedOptions[0];if(!o||!o.value)return;
+var lm=(tr.querySelector('[name=link_month]')||{}).value||'';var key=o.value+'|'+lm;if(seen[key])return;seen[key]=1;
+var b=+(o.dataset.base||0);var h={};try{h=JSON.parse(o.dataset.hrs||'{}')}catch(e){}var hn=0,hr=0;
+Object.keys(h).forEach(function(m){if(o.dataset.rec!=='1'||m===lm){hn+=+h[m].n;hr+=+h[m].r;}});
+tot+=b+hn+hr;if(b)parts.push('Bestellung '+cents(b));if(hn)parts.push('Stunden '+cents(hn));if(hr)parts.push('Regie '+cents(hr));});
+var hint=document.getElementById('net-suggest');if(!tot){if(hint)hint.textContent='';return;}
+var val=cents(tot);if(hint)hint.textContent='Vorschlag aus der Bestellung: '+val+' € ('+parts.join(' + ')+') – änderbar.';
+if(!n.value||n.value===n.dataset.auto){n.value=val;n.dataset.auto=val;n.dispatchEvent(new Event('change',{bubbles:true}));}}
+rows.addEventListener('change',function(e){if(e.target.matches&&e.target.matches('[name=link_month]'))suggest();});
 function multi(){var sites={},m=false,label='';rows.querySelectorAll('select[name=link_sc]').forEach(function(x){var o=x.selectedOptions[0];if(!o||!o.value)return;sites[o.dataset.site]=1;if(+o.dataset.multi>1)m=true;if(!label)label=(o.textContent.split(' · ')[1]||'').trim();});var n=Object.keys(sites).length;var any=n>0;m=m||n>1;var bx=document.getElementById('site-box'),au=document.getElementById('site-auto'),si=document.getElementById('site_id'),mb=document.getElementById('month-box'),tx=document.getElementById('site-auto-text');if(!bx||!au)return;bx.hidden=any;au.hidden=!any;if(mb)mb.hidden=any;if(tx)tx.textContent=m?'automatisch – die Kosten werden auf die Objekte der Bestellungen verteilt (Beträge je Zeile, sonst nach Preis; Sammelbestellung nach Fläche bzw. Betrag je Objekt).':'aus der Bestellung: '+label;if(any&&si&&si.value){si.value='';if(si._cbLabel)si._cbLabel();}}
 rows.addEventListener('change',function(e){if(e.target.matches&&e.target.matches('select[name=link_sc]'))setTimeout(multi,0);});multi();
 // Eingaben-Wiederherstellung und Safari-Zurück setzen Werte ohne „change“ → nachträglich noch einmal prüfen

@@ -2594,15 +2594,21 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 {dateDe(x.date_from)}
                 {x.date_to !== x.date_from && ` – ${dateDe(x.date_to)}`}
                 {x.note && <span class="mut"> · {x.note}</span>}{' '}
-                <form
-                  method="post"
-                  action={`/nachunternehmer/auftraege/${sc.id}/schliesszeit/${x.id}/loeschen`}
-                  style="display:inline"
-                >
-                  <button class="btn ghost sm" data-confirm="Schließzeit entfernen?">
-                    entfernen
-                  </button>
-                </form>
+                {x.at_site ? (
+                  <a class="small" href={`/objekte/${sc.site_id}/schliesszeiten`}>
+                    am Objekt
+                  </a>
+                ) : (
+                  <form
+                    method="post"
+                    action={`/nachunternehmer/auftraege/${sc.id}/schliesszeit/${x.id}/loeschen`}
+                    style="display:inline"
+                  >
+                    <button class="btn ghost sm" data-confirm="Schließzeit entfernen?">
+                      entfernen
+                    </button>
+                  </form>
+                )}
               </li>
             ))}
           </ul>

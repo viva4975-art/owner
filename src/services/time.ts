@@ -1,4 +1,5 @@
 import { type GeoStatus, judgePosition } from '../domain/time/geo.js';
+import { isClosed, siteClosureMap } from './site-closures.js';
 import type { Sql, Tx } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { addDays, holidayName, isoWeekday, mondayOf } from '../domain/time/holidays.js';
@@ -904,6 +905,11 @@ export async function plannedShifts(
      where x.shift_plan_id in ${sql(plans.map((p) => p.id))} and x.work_date between ${f.from} and ${f.to}`;
   const exOf = (planId: string, d: string) =>
     exceptions.find((x) => x.shift_plan_id === planId && x.work_date === d);
+  // Schließzeiten am Objekt (Ahmed 30.10.): Einsätze entfallen an diesen Tagen (kein Soll, nicht in der App)
+  const closedAt = await siteClosureMap(
+    sql,
+    plans.map((p) => p.site_id),
+  );
   const people = [
     ...new Set([
       ...plans.map((p) => p.employee_id).filter((x): x is string => !!x),
@@ -925,6 +931,7 @@ export async function plannedShifts(
     for (const p0 of plans) {
       if (p0.effective_from > d || (p0.valid_until && p0.valid_until < d) || !occursOn(p0, d)) continue;
       if (p0.emp_exit && p0.emp_exit < d) continue;
+      if (isClosed(closedAt.get(p0.site_id), d)) continue;
       const ex = exOf(p0.id, d);
       if (ex?.kind === 'ausfall' && !f.includeCancelled && !f.originalAssignee) continue;
       // Vertretung/Umplanung: Einsatz gilt an diesem Tag für den anderen Mitarbeiter bzw. zu anderer Zeit

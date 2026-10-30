@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { siteClosureMap } from './site-closures.js';
 import type { Sql, Tx } from '../db/client.js';
 import {
   type BillingCycle,
@@ -444,6 +445,8 @@ export interface RunService {
   /** Menge nach Arbeitstagen (Einheit Tag/Stunde) */
   work_days?: number[] | null;
   hours_per_day_milli?: bigint | null;
+  /** Schließzeiten des Objekts (nachgeladen, `siteClosureMap`) */
+  closures?: { from: string; to: string }[] | null;
   separate_invoice: boolean;
   /** Bestellnummer des Kunden für diese Leistung */
   order_reference?: string | null;
@@ -521,8 +524,10 @@ export async function runMonthly(
     }
     const services = await sql<RunService[]>`
       select * from app.site_services where site_id = ${site.id} order by sort_order, description`;
+    const closures = (await siteClosureMap(sql, [site.id])).get(site.id) ?? null;
     let any = false;
-    for (const sv of services) {
+    for (const sv0 of services) {
+      const sv = { ...sv0, closures };
       const [line] = monthlyRunLines([toRunService(sv)], month, siteForRun(site));
       if (!line) continue;
       any = true;
@@ -722,6 +727,7 @@ export const toRunService = (s: RunService) => ({
   cycle: s.billing_cycle,
   workDays: s.work_days ?? null,
   hoursPerDay: (s.hours_per_day_milli ?? null) as Quantity | null,
+  closures: s.closures ?? null,
 });
 
 const siteForRun = (s: RunSite) => ({
@@ -746,8 +752,9 @@ export async function billingPreview(sql: Sql, siteId: string, month: string) {
       left join app.monthly_run_services r on r.service_id = ss.id and r.month = ${month}
       left join app.invoices i on i.id = r.invoice_id
      where ss.site_id = ${siteId} order by ss.sort_order, ss.description`;
+  const closures = (await siteClosureMap(sql, [siteId])).get(siteId) ?? null;
   return services.flatMap((sv) => {
-    const [line] = monthlyRunLines([toRunService(sv)], month, siteForRun(site));
+    const [line] = monthlyRunLines([toRunService({ ...sv, closures })], month, siteForRun(site));
     return line
       ? [{ service: sv, line, billedInvoice: sv.billed_invoice, billedNumber: sv.billed_number }]
       : [];

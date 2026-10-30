@@ -1,4 +1,5 @@
 import { countDays } from './subcontract-days.js';
+import { orderClosures } from './subcontract-days.js';
 import { recurringCosts } from './recurring-payments.js';
 import { sammelMonthCost } from './subcontract-sites.js';
 import type { Sql } from '../db/client.js';
@@ -133,9 +134,7 @@ export async function subcontractEstimates(
        and ${siteId ? sql`s.site_id = ${siteId}` : sql`true`}
        and ${noInvoice(sql`m.mon`)}`;
   if (dayRows.length) {
-    const cl = await sql<{ subcontract_id: string; date_from: string; date_to: string }[]>`
-      select subcontract_id, date_from::text, date_to::text from app.subcontract_closures
-       where subcontract_id in ${sql([...new Set(dayRows.map((r) => r.id))])}`;
+    const cl = await orderClosures(sql, [...new Set(dayRows.map((r) => r.id))]);
     const byId = new Map(base.map((b) => [b.site_id, b]));
     const extraMonths = new Map<string, Set<string>>();
     for (const r of dayRows) {

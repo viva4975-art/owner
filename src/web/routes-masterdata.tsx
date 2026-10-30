@@ -1711,6 +1711,9 @@ export function registerMasterdataRoutes(ctx: Ctx) {
       const [school] = await sql<
         { on: boolean; special: string | null }[]
       >`select school_closure as on, folder_info ->> 'besonderheiten' as special from app.sites where id = ${s.id}`;
+      const [cl] = await sql<{ n: number; next: string | null }[]>`
+        select count(*)::int as n, min(date_from)::text as next from app.site_closures
+         where site_id = ${s.id} and date_to >= current_date`;
       return (
         <SiteOverview
           s={s}
@@ -1721,11 +1724,21 @@ export function registerMasterdataRoutes(ctx: Ctx) {
           special={school?.special ?? null}
           tasksSlot={<TaskBox tasks={tasks} doneLink={`/objekte/${s.id}/aufgaben?status=done`} />}
           docsSlot={
-            <SchoolCard
-              siteId={s.id}
-              on={!!school?.on}
-              canEdit={['admin', 'personal'].includes(c.get('user').role)}
-            />
+            <>
+              <div class="quiet-box" style="margin-bottom:8px">
+                <a href={`/objekte/${s.id}/schliesszeiten`}>Schließzeiten</a>{' '}
+                <span class="small mut">
+                  {cl?.n
+                    ? `${cl.n} kommend, nächste ab ${cl.next!.split('-').reverse().join('.')}`
+                    : 'keine eingetragen'}
+                </span>
+              </div>
+              <SchoolCard
+                siteId={s.id}
+                on={!!school?.on}
+                canEdit={['admin', 'personal'].includes(c.get('user').role)}
+              />
+            </>
           }
         />
       );

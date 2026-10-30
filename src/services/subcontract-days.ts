@@ -18,6 +18,23 @@ export interface Closure {
   date_to: string;
   note: string | null;
   created_by: string;
+  /** Schließzeit des Objekts (Objekt → Schließzeiten), nicht der Bestellung */
+  at_site?: boolean;
+}
+
+/**
+ * Schließzeiten je Bestellung: eigene + die des Objekts der Bestellung (Ahmed 30.10.: Schließzeiten am Objekt gelten
+ * automatisch auch für Nachunternehmer „je Tag“).
+ */
+export async function orderClosures(sql: Sql, ids: string[]) {
+  if (!ids.length) return [] as { subcontract_id: string; date_from: string; date_to: string }[];
+  return sql<{ subcontract_id: string; date_from: string; date_to: string }[]>`
+    select subcontract_id, date_from::text, date_to::text from app.subcontract_closures
+     where subcontract_id in ${sql(ids)}
+    union all
+    select s.id, c.date_from::text, c.date_to::text
+      from app.subcontracts s join app.site_closures c on c.site_id = s.site_id
+     where s.id in ${sql(ids)}`;
 }
 
 /** „Mo–Fr“, „Mo, Mi, Fr“ */
@@ -62,8 +79,13 @@ function nextMonth(m: string) {
 
 export async function listClosures(sql: Sql, subcontractId: string) {
   return sql<Closure[]>`
-    select id, date_from::text, date_to::text, note, created_by from app.subcontract_closures
-     where subcontract_id = ${subcontractId} order by date_from`;
+    select id, date_from::text, date_to::text, note, created_by, false as at_site from app.subcontract_closures
+     where subcontract_id = ${subcontractId}
+    union all
+    select c.id, c.date_from::text, c.date_to::text, c.note, c.created_by, true
+      from app.subcontracts s join app.site_closures c on c.site_id = s.site_id
+     where s.id = ${subcontractId}
+     order by 2`;
 }
 
 /** Arbeitstage und Betrag (Preis je Tag × Tage) für mehrere „je Tag“-Bestellungen in einem Monat. */
@@ -82,9 +104,10 @@ export async function dayAmounts(
   const tag = rows.filter((r) => r.billing === 'tag');
   const out = new Map<string, { days: number; amount: bigint }>();
   if (!tag.length) return out;
-  const cl = await sql<{ subcontract_id: string; date_from: string; date_to: string }[]>`
-    select subcontract_id, date_from::text, date_to::text from app.subcontract_closures
-     where subcontract_id in ${sql(tag.map((r) => r.id))}`;
+  const cl = await orderClosures(
+    sql,
+    tag.map((r) => r.id),
+  );
   for (const r of tag) {
     const { days } = countDays(month, {
       workDays: r.work_days,

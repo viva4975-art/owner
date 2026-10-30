@@ -1092,15 +1092,6 @@ export const EmployeeForm: FC<{
     />
     <input type="hidden" name="planning_group" value={e.planning_group ?? ''} />
     <input type="hidden" name="planning_notes" value={e.planning_notes ?? ''} />
-    <div class="chk" style="margin-top:8px">
-      <input
-        type="checkbox"
-        id="carry_over_leave"
-        name="carry_over_leave"
-        checked={e.carry_over_leave ?? true}
-      />
-      <label for="carry_over_leave">Resturlaub ins Folgejahr übertragen (verfällt zum 31.03.)</label>
-    </div>
     <h3 style="margin-top:20px">
       Vertrauliche Daten <span class="mut small">(nur Geschäftsführung/Personal sichtbar)</span>
     </h3>

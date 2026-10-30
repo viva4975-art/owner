@@ -46,6 +46,7 @@ const qtyNow = (sv: SiteServiceRow): bigint => {
       validTo: sv.valid_to,
       workDays: sv.work_days,
       hoursPerDay: sv.hours_per_day_milli as Quantity | null,
+      closures: sv.closures ?? null,
     },
     m.start,
     m.end,

@@ -50,6 +50,7 @@ import { registerHrRoutes } from './routes-hr.js';
 import { registerPlanningMonthRoutes } from './routes-planning-month.js';
 import { registerReportRoutes } from './routes-reports.js';
 import { registerSchoolLeaveRoutes } from './routes-school-leave.js';
+import { registerSiteClosureRoutes } from './routes-site-closures.js';
 import { registerAbsenceStatsRoutes } from './routes-absence-stats.js';
 import { registerTransferRoutes } from './routes-transfer.js';
 import { registerBankRoutes } from './routes-bank.js';
@@ -632,6 +633,7 @@ export function createApp(deps: Deps) {
   registerReportRoutes(ctx);
   registerAbsenceStatsRoutes(ctx);
   registerSchoolLeaveRoutes(ctx);
+  registerSiteClosureRoutes(ctx);
   registerTransferRoutes(ctx);
   registerBankRoutes(ctx);
   registerImportRoutes(ctx);

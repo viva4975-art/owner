@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { siteClosureMap } from './site-closures.js';
 import type { Sql } from '../db/client.js';
 import {
   type BillingCycle,
@@ -152,8 +153,14 @@ export async function executeServices(sql: Sql, p: ExecuteInput, actor: string):
       const qty =
         it.quantity ??
         (sv.work_days?.length && (sv.unit_code === 'DAY' || sv.unit_code === 'HUR')
-          ? BigInt(countWorkDays(p.dateFrom, to, sv.work_days).days) *
-            (sv.unit_code === 'HUR' ? BigInt(sv.hours_per_day_milli ?? 0n) : 1000n)
+          ? BigInt(
+              countWorkDays(
+                p.dateFrom,
+                to,
+                sv.work_days,
+                (await siteClosureMap(tx, [p.siteId])).get(p.siteId),
+              ).days,
+            ) * (sv.unit_code === 'HUR' ? BigInt(sv.hours_per_day_milli ?? 0n) : 1000n)
           : sv.quantity_milli);
       if (qty <= 0n) throw new BusinessError(`„${sv.description}“: Menge muss größer 0 sein`);
       const res = await tx`

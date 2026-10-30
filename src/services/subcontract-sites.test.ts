@@ -26,3 +26,17 @@ describe('Sammelbestellung: Kosten je Objekt', () => {
     ).toEqual([120000n, 0n]);
   });
 });
+
+import { countWorkDays } from '../domain/invoice/calc.js';
+describe('Schließzeiten am Objekt', () => {
+  it('Tage in der Schließzeit zählen nicht', () => {
+    // 02.11.–06.11.2026 Mo–Fr, 04.–05.11. geschlossen
+    const r = countWorkDays(
+      '2026-11-02',
+      '2026-11-06',
+      [1, 2, 3, 4, 5],
+      [{ from: '2026-11-04', to: '2026-11-05' }],
+    );
+    expect(r).toEqual({ days: 3, holidays: 0, closed: 2 });
+  });
+});

@@ -1,4 +1,5 @@
 import type { Sql } from '../db/client.js';
+import { siteClosureMap } from './site-closures.js';
 import { monthBounds, monthlyRunLines } from '../domain/invoice/calc.js';
 import { lineNet } from '../domain/money/money.js';
 import { addDays, workingDays } from '../domain/time/holidays.js';
@@ -111,9 +112,16 @@ export async function revenueForecast(sql: Sql, fromMonth: string, count = 12) {
             or ss.billing_cycle in ('zweimonatlich', 'quartalsweise', 'halbjaehrlich', 'jaehrlich'))
        and (ss.valid_to is null or ss.valid_to >= ${`${fromMonth}-01`})`;
   const rows = new Map<string, ForecastRow>();
+  const closed = await siteClosureMap(
+    sql,
+    services.map((s) => s.site_id),
+  );
   for (const sv of services) {
     // nach Ausführung abgerechnete Zyklus-Leistungen: erwartet einmal je Zyklus (Schätzung)
-    const run = { ...toRunService(sv), kind: 'monthly_flat' as const };
+    const run = {
+      ...toRunService({ ...sv, closures: closed.get(sv.site_id) ?? null }),
+      kind: 'monthly_flat' as const,
+    };
     months.forEach((m, i) => {
       const [line] = monthlyRunLines([run], m);
       if (!line) return;

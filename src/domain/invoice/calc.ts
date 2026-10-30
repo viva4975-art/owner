@@ -82,19 +82,29 @@ export interface ServiceForRun {
   /** Einheit Tag/Stunde: Menge = Arbeitstage (ISO-Wochentage 1–7) im Zeitraum ohne Feiertage (× Std. je Tag) */
   workDays?: readonly number[] | null;
   hoursPerDay?: Quantity | null;
+  /** Schließzeiten des Objekts – Tage zählen bei „nach Arbeitstagen“ nicht */
+  closures?: readonly { from: string; to: string }[] | null;
 }
 
 /** Arbeitstage zwischen from und to (einschließlich) an den Wochentagen, ohne Feiertage (Bayern). */
-export function countWorkDays(from: string, to: string, days: readonly number[]) {
+export function countWorkDays(
+  from: string,
+  to: string,
+  days: readonly number[],
+  /** Schließzeiten des Objekts (Ahmed 30.10.) – diese Tage zählen nicht */
+  closures?: readonly { from: string; to: string }[] | null,
+) {
   const set = new Set(days);
   let n = 0;
   let holidays = 0;
+  let closed = 0;
   for (let d = from; d <= to; d = addDays(d, 1)) {
     if (!set.has(isoWeekday(d))) continue;
     if (holidayName(d)) holidays++;
+    else if (closures?.some((c) => c.from <= d && d <= c.to)) closed++;
     else n++;
   }
-  return { days: n, holidays };
+  return { days: n, holidays, closed };
 }
 
 /** Menge einer Leistung „nach Arbeitstagen“ für den Zeitraum (Gültigkeit beachtet), sonst die feste Menge. */
@@ -103,7 +113,7 @@ export function serviceQuantity(s: ServiceForRun, start: string, end: string): Q
   const from = s.validFrom > start ? s.validFrom : start;
   const to = s.validTo && s.validTo < end ? s.validTo : end;
   if (to < from) return 0n as Quantity;
-  const { days } = countWorkDays(from, to, s.workDays);
+  const { days } = countWorkDays(from, to, s.workDays, s.closures);
   const per = s.unitCode === 'HUR' ? BigInt(s.hoursPerDay ?? 0n) : 1000n;
   return (BigInt(days) * per) as Quantity;
 }

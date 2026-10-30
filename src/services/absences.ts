@@ -583,8 +583,8 @@ export interface LeaveBalance {
 }
 
 /**
- * Urlaubskonto eines Jahres. Resturlaub des Vorjahres wird übertragen und vorrangig bis 31.03. verbraucht; der Rest
- * verfällt danach (§ 7 Abs. 3 BUrlG). ACHTUNG (BAG 19.02.2019, 9 AZR 541/15): Verfall nur, wenn der Arbeitgeber
+ * Urlaubskonto eines Jahres. Resturlaub verfällt zum 31.12. (Ahmed 30.10., § 7 Abs. 3 S. 1 BUrlG); nur ein aus Fortytools
+ * übernommener Resturlaub des Vorjahres zählt noch (bis 31.03. wie dort gerechnet). ACHTUNG (BAG 19.02.2019, 9 AZR 541/15): Verfall nur, wenn der Arbeitgeber
  * rechtzeitig zum Urlaub aufgefordert und auf den Verfall hingewiesen hat – die Anzeige ist nur ein Rechenwert.
  */
 export async function leaveBalance(
@@ -617,25 +617,10 @@ export async function leaveBalance(
     };
   }
   const base = await baseBalance(sql, employeeId, year, undefined, exitAt);
-  const [e] = await sql<{ carry_over_leave: boolean; entry_date: string }[]>`
-    select carry_over_leave, entry_date from app.employees where id = ${employeeId}`;
-  let carried = 0;
-  if (e?.carry_over_leave && e.entry_date < `${year}-01-01`) {
-    const pop = await leaveOpening(sql, employeeId, year - 1);
-    if (pop && pop.taken != null) {
-      // Vorjahr mit übernommenem Stand: Anspruch selbst gerechnet (nach Einsätzen), genommen/geplant und Übertrag
-      // aus Fortytools bleiben (Ahmed 26.10.: „nur den Anspruch nicht von Fortytools übernehmen“)
-      const prev = await leaveBalance(sql, employeeId, year - 1);
-      carried = Math.max(0, prev.entitlement + prev.carried - prev.carriedExpired - prev.taken);
-    } else {
-      const prev = await baseBalance(sql, employeeId, year - 1);
-      carried = Math.max(0, prev.entitlement - prev.taken);
-    }
-  }
-  // im 1. Quartal genommener Urlaub verbraucht zuerst den Übertrag
-  const q1 = base.takenQ1;
-  const usedCarry = Math.min(carried, q1);
-  const expired = todayBerlin() > `${year}-03-31` ? carried - usedCarry : 0;
+  // Resturlaub verfällt zum 31.12. – kein Übertrag ins Folgejahr (Ahmed 30.10.). Nur ein aus Fortytools übernommener
+  // Resturlaub (Zweig oben) zählt noch.
+  const carried = 0;
+  const expired = 0;
   const rest = base.entitlement + carried - expired - base.taken - base.requested;
   return {
     entitlement: base.entitlement,

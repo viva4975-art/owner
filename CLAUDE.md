@@ -4620,3 +4620,20 @@ Testadresse.
   Rathaus 1.457,20 € statt 242,87 € / Monat), nur Leistungen derselben Leistungsart wie die Bestellung, falls vorhanden.
   Nachkalkulation schätzt Bestellungen je Einsatz weiterhin nicht (zählt erst die NU-Rechnung). Test in
   `subcontract-sites.test.ts`.
+- 2026-10-30: **Resturlaub verfällt zum 31.12.** (Ahmed: „überall“): kein Übertrag ins Folgejahr mehr (`leaveBalance`,
+  Häkchen „Resturlaub übertragen“ aus dem Mitarbeiterformular entfernt, Spalte bleibt ungenutzt); nur ein aus Fortytools
+  übernommener Resturlaub 2025 zählt noch wie dort gerechnet. **Rechtlich:** Verfall zum 31.12. nur, wenn der Arbeitgeber
+  rechtzeitig konkret zum Urlaubnehmen aufgefordert und auf den Verfall hingewiesen hat (BAG 19.02.2019, 9 AZR 541/15);
+  sonst bleibt der Anspruch bestehen. Bei Krankheit/dringenden Gründen Übertrag bis 31.03. (§ 7 Abs. 3 BUrlG), bei
+  Langzeitkrankheit bis 15 Monate (EuGH/BAG). Gesetzlicher Mindesturlaub nie darunter (§ 13 BUrlG).
+- 2026-10-30: **Schließzeiten am Objekt** (Ahmed: „mit Rechnung automatisch, dass diese Tage nicht berechnet werden“):
+  Objekt → Übersicht → „Schließzeiten“ (`/objekte/:id/schliesszeiten`, `app.site_closures`, Migration
+  `20270109000001`, `src/services/site-closures.ts`): von–bis + Grund, entfernen (Protokoll), „Schule: alle Schulferien
+  eintragen“. Wirkt automatisch: Leistungen „Menge nach Arbeitstagen“ (je Tag/Stunde) zählen die Tage nicht – im
+  Monatslauf, Abrechnungsvorschau, „Leistungen verrichten“ (Menge leer), Umsatz-Vorschau, Plan-Kalkulation, Leistungsliste
+  (`countWorkDays(..., closures)`); NU-Bestellungen „je Tag“ am Objekt ebenso (`orderClosures`, in der Bestellung als
+  „am Objekt“ gelistet); eingeplante Einsätze entfallen an diesen Tagen (`plannedShifts`: kein Soll, nicht in der App,
+  keine „Soll als Ist“-Übernahme, kein Plan im Lohnexport). **Rechtlich (Lohn):** Ohne Ruhens-Vereinbarung behalten fest
+  eingeplante Mitarbeitende ihren Lohnanspruch, wenn das Objekt schließt (§ 615 BGB, Annahmeverzug) – dann umplanen.
+  Rechnungen mit Pauschale (nicht „nach Arbeitstagen“) ändern sich nicht. Nebenbei: Test „immer unfertig“ in
+  `services-billing.db.test.ts` schlägt schon ohne diese Änderung fehl (datumsabhängig, offen).

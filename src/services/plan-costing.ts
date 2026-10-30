@@ -1,4 +1,5 @@
 import type { Sql } from '../db/client.js';
+import { siteClosureMap } from './site-closures.js';
 import {
   employerCost,
   isManagingDirector,
@@ -242,6 +243,10 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
     return r;
   };
   // Erlös: Pauschalen je Monat, Zyklus-Leistungen anteilig (Rechnungsbetrag ÷ Monate des Zyklus)
+  const closedMap = await siteClosureMap(
+    sql,
+    services.map((s) => s.site_id),
+  );
   for (const m of months) {
     const { start, end } = monthBounds(m);
     for (const sv of services) {
@@ -253,6 +258,7 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
               sv.valid_from > start ? sv.valid_from : start,
               sv.valid_to && sv.valid_to < end ? sv.valid_to : end,
               sv.work_days,
+              closedMap.get(sv.site_id),
             ).days,
           ) * (sv.unit_code === 'HUR' ? BigInt(sv.hours_per_day_milli ?? 0n) : 1000n)
         : BigInt(sv.quantity_milli);

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { siteClosureMap } from './site-closures.js';
 import { z } from 'zod';
 import type { Sql, Tx } from '../db/client.js';
 import { assertVersion } from './crm.js';
@@ -532,10 +533,13 @@ export type SiteServiceRow = SiteService & {
   type_name: string | null;
   group_name: string | null;
   last_billed_month: string | null;
+  /** Schließzeiten des Objekts (für die Menge „nach Arbeitstagen“) */
+  closures?: { from: string; to: string }[] | null;
 };
 
 export async function listServices(sql: Sql, siteId: string) {
-  return sql<SiteServiceRow[]>`
+  const closures = (await siteClosureMap(sql, [siteId])).get(siteId) ?? null;
+  const rows = await sql<SiteServiceRow[]>`
     select ss.*, t.name as type_name, g.name as group_name,
            (select max(month) from app.monthly_run_services r where r.service_id = ss.id) as last_billed_month
       from app.site_services ss
@@ -543,6 +547,7 @@ export async function listServices(sql: Sql, siteId: string) {
       left join app.invoice_groups g on g.id = ss.invoice_group_id
      where ss.site_id = ${siteId}
      order by ss.active desc, ss.sort_order, ss.kind, ss.description`;
+  return rows.map((r) => ({ ...r, closures }));
 }
 
 export async function getService(sql: Sql, id: string) {

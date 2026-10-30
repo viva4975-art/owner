@@ -106,7 +106,7 @@ describe.skipIf(!available)('Urlaub/Krankheit übernehmen (Datenbank)', () => {
     await applyLeaveImport(sql, sheet, { year: 2026, asOf: '2026-10-08', actor: 't', source: 'test' });
     const bc = await leaveBalance(sql, c, 2026);
     expect([bc.entitlement, bc.taken, bc.carriedExpired, bc.rest]).toEqual([30, 5, 0, 25]);
-    expect((await leaveBalance(sql, c, 2027)).carried).toBe(25);
+    expect((await leaveBalance(sql, c, 2027)).carried).toBe(0); // verfällt zum 31.12. (Ahmed 30.10.)
   });
 
   it('Krankheitstage: übernommen + App ab Folgetag', async () => {

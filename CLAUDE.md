@@ -4685,3 +4685,5 @@ Testadresse.
   steht. Monat = Leistungsmonat (laufende Bestellungen je Monat, nach Ausführung Monat des Endes; Rechnungen ohne
   Leistungsmonat nach Rechnungsdatum, Material nach Bestelldatum). Nächster Monat = Vorschau laut Bestellung
   (`billingTracking` bis Ende des nächsten Monats), zählt in den Kacheln oben nicht mit. Filter wirken mit.
+- 2026-10-30: **Eigene KI (ohne fremde API) vorerst nicht** (Ahmed: „dann lassen“): IONOS-VPS ohne Grafikkarte reicht nicht,
+  eigener GPU-Server (300–1.000 €/Monat gemietet) lohnt derzeit nicht. Code-Änderungen weiter über Claude Code.

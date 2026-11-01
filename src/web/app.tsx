@@ -1,6 +1,7 @@
 import { registerPayslipRoutes } from './routes-payslips.js';
 import { syncExitReturnTasks } from '../services/exit-returns.js';
 import { registerLetterRoutes } from './routes-letters.js';
+import { registerOutlookRoutes } from './routes-outlook.js';
 import { registerMaterialRoutes } from './routes-material.js';
 import { registerPermissionRoutes } from './routes-permissions.js';
 import { registerPrivacyRoutes } from './routes-privacy.js';
@@ -642,6 +643,7 @@ export function createApp(deps: Deps) {
   registerWordTemplateRoutes(ctx);
   registerLegacyInvoiceRoutes(ctx);
   registerCalendarFeedRoutes(ctx);
+  registerOutlookRoutes(ctx);
   registerHrRequiredRoutes(ctx);
   registerFirstAidRoutes(ctx);
   registerTeamRoutes(ctx);

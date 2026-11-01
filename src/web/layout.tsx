@@ -1628,7 +1628,8 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     key: 'verwaltung',
     label: 'Verwaltung',
     items: [
-      { label: 'Kassenbuch', href: '/kassenbuch' },
+      { label: 'Kalender (Outlook)', href: '/kalender' },
+      { label: 'Kassenbuch', href: '/kassenbuch', sep: true },
       { label: 'Briefe', href: '/verwaltung/briefe' },
       { label: 'Eigen-Compliance', href: '/eigen-compliance', sep: true },
     ],

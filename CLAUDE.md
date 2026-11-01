@@ -4687,3 +4687,17 @@ Testadresse.
   (`billingTracking` bis Ende des nächsten Monats), zählt in den Kacheln oben nicht mit. Filter wirken mit.
 - 2026-10-30: **Eigene KI (ohne fremde API) vorerst nicht** (Ahmed: „dann lassen“): IONOS-VPS ohne Grafikkarte reicht nicht,
   eigener GPU-Server (300–1.000 €/Monat gemietet) lohnt derzeit nicht. Code-Änderungen weiter über Claude Code.
+- 2026-11-01: **Outlook-Kalender in der App** (Ahmed: „Kalender einsehen und Termine eintragen wie im Outlook, mit
+  Erinnerung, nichts automatisch“): Verwaltung → **Kalender (Outlook)** (`/kalender`, `routes-outlook.tsx`,
+  `src/services/exchange-calendar.ts`). Jeder Benutzer verbindet sein eigenes Postfach (IONOS Exchange) mit E-Mail +
+  Passwort; Serveradresse per Autodiscover, sonst unter „Erweitert“ selbst eintragen. Zugriff über Exchange Web Services
+  (EWS, Basic-Anmeldung über HTTPS); Passwort AES-256-GCM verschlüsselt (Schlüssel aus SESSION_SECRET – ändert sich
+  SESSION_SECRET, neu verbinden) in `app.exchange_accounts` (Migration `20270111000001`, keine Lese-Policy). Ansicht
+  Woche / Monat / Liste, Termin anlegen, ändern, löschen (in den Papierkorb von Outlook): Betreff, Datum/Uhrzeit oder
+  ganztägig, Ort, Notiz, **Erinnerung** (keine … 1 Woche vorher), frei/beschäftigt/mit Vorbehalt. Es werden keine
+  Einladungen verschickt und nichts automatisch eingetragen. Erinnerungen meldet Outlook bzw. die Mail-App am Handy.
+  Serientermine erscheinen einzeln und lassen sich hier nur als einzelnes Vorkommen ändern. **Nicht gegen den echten
+  IONOS-Server getestet** (von hier nicht erreichbar), nur gegen einen nachgebauten EWS-Server. Lässt IONOS nur NTLM
+  statt Basic zu, schlägt das Verbinden fehl → Fehlermeldung an Claude. **Datenschutz:** Kalenderinhalte (Kunden,
+  Namen) werden nur durchgereicht, nicht gespeichert; Tätigkeit im Verzeichnis der Verarbeitungstätigkeiten ergänzen.
+  Test `exchange-calendar.db.test.ts`.

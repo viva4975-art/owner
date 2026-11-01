@@ -11,6 +11,8 @@ const HR: Role[] = ['admin', 'personal'];
 const RULES: [RegExp, Role[]][] = [
   [/^\/(anmelden|abmelden|konto|static|health|m)(\/|$)/, ALL],
   [/^\/kalender\/(abo|abonnieren)(\/|$)/, ALL],
+  // Outlook-Kalender: jede Person ihr eigenes Postfach (Ahmed 01.11.)
+  [/^\/kalender(\/|$)/, ALL],
   // Suche oben für alle; Treffer werden je Rolle gefiltert (Objektleitung nur eigene Objekte, siehe searchFor)
   [/^\/suche(\.json)?$/, ALL],
   [/^\/benutzer(\/|$)/, ['admin']],

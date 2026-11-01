@@ -84,6 +84,8 @@ Testadresse.
 
 ## Arbeitsweise
 
+- **Git: nur ein Zweig – `claude/new-session-t3lg2s`** (Standardzweig, von dem der Server alle 10 Min. aktualisiert; Ahmed 01.11.). Immer dort committen und pushen, keine weiteren Zweige.
+
 - Schritt für Schritt bauen, nach jedem Schritt kurz zeigen, was läuft und wie Ahmed es testet.
 - Vor allem, was Daten löscht oder Live-Systeme berührt: erst fragen.
 - Offene Fragen gesammelt stellen, nicht einzeln.

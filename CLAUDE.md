@@ -4701,3 +4701,4 @@ Testadresse.
   statt Basic zu, schlägt das Verbinden fehl → Fehlermeldung an Claude. **Datenschutz:** Kalenderinhalte (Kunden,
   Namen) werden nur durchgereicht, nicht gespeichert; Tätigkeit im Verzeichnis der Verarbeitungstätigkeiten ergänzen.
   Test `exchange-calendar.db.test.ts`.
+- 2026-11-01: Kalender (Outlook) zusätzlich als Kachel in der Verwaltungs-App (`/qm`, Bereich Team & Zeiten) – am PC steht er unter Verwaltung → Kalender (Outlook).

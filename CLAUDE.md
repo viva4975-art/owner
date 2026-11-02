@@ -4704,3 +4704,8 @@ Testadresse.
   Namen) werden nur durchgereicht, nicht gespeichert; Tätigkeit im Verzeichnis der Verarbeitungstätigkeiten ergänzen.
   Test `exchange-calendar.db.test.ts`.
 - 2026-11-01: Kalender (Outlook) zusätzlich als Kachel in der Verwaltungs-App (`/qm`, Bereich Team & Zeiten) – am PC steht er unter Verwaltung → Kalender (Outlook).
+- 2026-11-02: **Outlook-Kalender: Server-Adresse einfacher** (Ahmed: „muss mit https:// beginnen“, Server exchange.ionos.eu):
+  Feld „Server-Adresse“ nimmt jetzt auch nur den Rechnernamen (`exchange.ionos.eu`), die SMTP-Adresse
+  (`smtp.exchange2019.ionos.de:587`), eine OWA-Adresse oder die volle EWS-Adresse; daraus wird
+  `https://<rechner>/EWS/Exchange.asmx` (`normalizeEwsUrl`). Klappt die Adresse nicht, probiert die App zusätzlich die
+  bekannten IONOS-Adressen; bei falschem Passwort kommt „Passwort falsch“. Test `exchange-calendar.test.ts`.

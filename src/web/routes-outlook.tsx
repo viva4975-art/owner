@@ -120,7 +120,7 @@ export function registerOutlookRoutes({ app, deps, page, back }: Ctx) {
           <label for="olk-login">Benutzername (falls anders als E-Mail)</label>
           <input id="olk-login" name="login" autocomplete="off" />
           <label for="olk-url">Server-Adresse (EWS)</label>
-          <input id="olk-url" name="url" placeholder="https://…/EWS/Exchange.asmx" autocomplete="off" />
+          <input id="olk-url" name="url" placeholder="z. B. exchange2019.ionos.de" autocomplete="off" />
         </div>
       </details>
       <p class="small mut">

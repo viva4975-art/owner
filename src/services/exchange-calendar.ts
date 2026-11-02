@@ -209,6 +209,26 @@ async function probe(cr: ExchangeCreds) {
   );
 }
 
+/**
+ * Server-Adresse großzügig lesen (Ahmed 02.11.: „muss mit https:// beginnen“): nur Rechnername
+ * („exchange2019.ionos.de“), Postausgang/-eingang („smtp.exchange2019.ionos.de“), OWA-Adresse oder volle EWS-Adresse.
+ */
+export function normalizeEwsUrl(raw: string): string {
+  let s = raw.trim();
+  if (!s) return '';
+  s = s.replace(/^[a-z]+:\/\//i, '');
+  const slash = s.indexOf('/');
+  let host = (slash < 0 ? s : s.slice(0, slash)).replace(/:\d+$/, '').toLowerCase();
+  let path = slash < 0 ? '' : s.slice(slash);
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(host))
+    throw new BusinessError('Server-Adresse ungültig (z. B. exchange2019.ionos.de)');
+  if (!/\/ews\//i.test(path)) {
+    host = host.replace(/^(smtp|imap|pop3?)\./, '');
+    path = '/EWS/Exchange.asmx';
+  }
+  return `https://${host}${path}`;
+}
+
 export async function connectAccount(
   sql: Sql,
   env: Pick<Env, 'SESSION_SECRET' | 'APP_BASIC_AUTH'>,
@@ -218,16 +238,11 @@ export async function connectAccount(
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new BusinessError('E-Mail-Adresse ungültig');
   if (!p.password) throw new BusinessError('Passwort fehlt');
   const login = (p.login ?? '').trim() || email;
-  let url = (p.url ?? '').trim();
-  if (url && !/^https:\/\/[^/\s]+\/.*$/i.test(url))
-    throw new BusinessError('Server-Adresse muss mit https:// beginnen (z. B. https://…/EWS/Exchange.asmx)');
-  if (url && !/\/ews\//i.test(url)) url = url.replace(/\/+$/, '') + '/EWS/Exchange.asmx';
-  let candidates = [url];
-  if (!url) {
-    const found = await autodiscover(email, login, p.password);
-    candidates = [...new Set([...(found ? [found] : []), ...IONOS_GUESSES])];
-  }
+  const url = normalizeEwsUrl(p.url ?? '');
+  const found = url ? url : await autodiscover(email, login, p.password);
+  const candidates = [...new Set([...(found ? [found] : []), ...IONOS_GUESSES])];
   let lastErr: unknown = null;
+  let authErr: BusinessError | null = null;
   for (const u of candidates) {
     try {
       await probe({ url: u, user: login, password: p.password });
@@ -240,11 +255,11 @@ export async function connectAccount(
       return u;
     } catch (e) {
       lastErr = e;
-      // falsches Passwort bei der richtigen Adresse → nicht weiter raten
-      if (e instanceof BusinessError && e.code === 'ews_auth' && candidates.length === 1) break;
+      // falsches Passwort bei einer erreichbaren Adresse → am Ende genau das melden
+      if (e instanceof BusinessError && e.code === 'ews_auth') authErr ??= e;
     }
   }
-  if (lastErr instanceof BusinessError && lastErr.code === 'ews_auth') throw lastErr;
+  if (authErr) throw authErr;
   throw new BusinessError(
     `Verbindung nicht möglich${lastErr instanceof Error ? ` (${lastErr.message})` : ''}. Bitte Server-Adresse aus IONOS eintragen (Exchange → Einstellungen, z. B. https://…/EWS/Exchange.asmx).`,
   );

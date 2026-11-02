@@ -641,11 +641,26 @@ export function registerPurchasingRoutes(ctx: Ctx) {
     };
     const expectedOf = new Map<string, Expected>();
     /** je Bestellung und Monat: Rechnung fehlt (Betrag laut Bestellung, null = nach Aufwand), Zeitraum vorbei? */
-    const missBy = new Map<string, Map<string, { v: bigint | null; due: boolean }>>();
-    const addMiss = (id: string, m: string, v: bigint | null, due: boolean) => {
-      const mm = missBy.get(id) ?? new Map<string, { v: bigint | null; due: boolean }>();
-      const x = mm.get(m) ?? { v: 0n, due: false };
-      mm.set(m, { v: x.v === null || v === null ? (x.v ?? v) : x.v + v, due: x.due || due });
+    // span: Bestellung nach Ausführung, die über mehrere Monate läuft – steht in jedem dieser Monate, zählt aber
+    // in „Alle Monate“ nur einmal (im letzten Monat, primary)
+    type Miss = { v: bigint | null; due: boolean; primary: boolean; span?: string | undefined };
+    const missBy = new Map<string, Map<string, Miss>>();
+    const addMiss = (
+      id: string,
+      m: string,
+      v: bigint | null,
+      due: boolean,
+      primary = true,
+      span?: string,
+    ) => {
+      const mm = missBy.get(id) ?? new Map<string, Miss>();
+      const x = mm.get(m) ?? { v: 0n, due: false, primary };
+      mm.set(m, {
+        v: x.v === null || v === null ? (x.v ?? v) : x.v + v,
+        due: x.due || due,
+        primary: x.primary || primary,
+        span: span ?? x.span,
+      });
       missBy.set(id, mm);
     };
     const today = todayBerlin();
@@ -668,9 +683,17 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       for (const p of ps) {
         // Zeiträume, die erst nächsten Monat beginnen: nur in der Monatsaufteilung, nicht in den Kacheln
         const ahead = p.start > curMonth;
-        // nach Ausführung: Monat des Endes, solange der Zeitraum noch über den nächsten Monat läuft „Monat offen“
-        const mKey = rec ? p.start : p.end.slice(0, 7) > nextMonth ? 'bedarf' : p.end.slice(0, 7);
         const ms = monthsOf(p.start, p.end);
+        // nach Ausführung: in jedem Monat der Laufzeit (höchstens bis nächsten Monat), gezählt im letzten davon
+        const spanMs = rec ? [p.start] : ms.filter((m) => m <= nextMonth);
+        if (!spanMs.length) spanMs.push(p.start);
+        const mKey = spanMs[spanMs.length - 1]!;
+        const spanLabel =
+          !rec && ms.length > 1
+            ? `nach Ausführung, ${MON(p.start)}–${p.end > `${nextMonth}-31` ? 'offen' : MON(p.end.slice(0, 7))}`
+            : !rec
+              ? 'nach Ausführung'
+              : undefined;
         let v: bigint | null = 0n;
         if (sc.billing === 'umsatz') v = null;
         else if (sc.billing === 'pauschale_monat' || sc.billing === 'qm')
@@ -692,15 +715,9 @@ export function registerPurchasingRoutes(ctx: Ctx) {
         // (bei Bestellungen nach Ausführung nur beim ersten offenen Zeitraum, sonst doppelt)
         if (v !== null) for (const [m, a] of hm) if (rec ? ms.includes(m) : p === (firstNow ?? ps[0])) v += a;
         if (v !== null && v !== 0n) e.byMonth.set(mKey, (e.byMonth.get(mKey) ?? 0n) + v);
-        // Monat für „Rechnung fehlt“: regelmäßig = Monat des Zeitraums, nach Ausführung = Monat des Endes,
-        // noch laufend ohne festes Ende = „nach Ausführung (Monat offen)“
+        // Monat für „Rechnung fehlt“: regelmäßig = Monat des Zeitraums, nach Ausführung = jeder Monat der Laufzeit
         if (v !== 0n || sc.billing !== 'stunde')
-          addMiss(
-            sc.id,
-            rec ? p.start : p.state === 'bedarf' ? 'bedarf' : p.end.slice(0, 7),
-            v,
-            p.end < today,
-          );
+          for (const m of spanMs) addMiss(sc.id, m, v, p.end < today, m === mKey, spanLabel);
         if (ahead) continue;
         e.periods++;
         if (v === null || v === 0n) {
@@ -959,7 +976,9 @@ export function registerPurchasingRoutes(ctx: Ctx) {
     const activeIn = (r: Row, m: string) =>
       !m || (m !== 'bedarf' && (r.from ?? '9999') <= monthEndOf(m) && (!r.to || r.to >= `${m}-01`));
     const missIn = (r: Row, m: string) =>
-      [...(missBy.get(r.id) ?? [])].filter(([k]) => !m || k === m).sort(([a], [b]) => a.localeCompare(b));
+      [...(missBy.get(r.id) ?? [])]
+        .filter(([k, x]) => (m ? k === m : x.primary))
+        .sort(([a], [b]) => a.localeCompare(b));
     const unpaidIn = (r: Row, m: string) => unpaidOf(r).filter((u) => !m || u.month === m);
     const unsignedIn = (r: Row, m: string) => r.unsigned && activeIn(r, m);
     const draftIn = (r: Row, m: string) => r.phase === 'erledigen' && !r.unsigned && activeIn(r, m);
@@ -1108,75 +1127,98 @@ export function registerPurchasingRoutes(ctx: Ctx) {
             </a>
           </div>
         </div>
-        <table class="keep bs-months" data-nostick>
-          <thead>
-            <tr>
-              <th>Monat (Leistungsmonat)</th>
-              <th class="num">Rechnung fehlt</th>
-              <th class="num">Unbezahlt</th>
-              <th class="num">Unterschrift fehlt</th>
-              <th class="num">Offen gesamt</th>
-            </tr>
-          </thead>
-          <tbody>
-            {['', ...monthList].map((m) => {
-              const st = m === month ? sel : statOf(m);
-              const inv = [...st.inv.values()];
-              const net = inv.reduce((a, u) => a + u.net, 0n);
-              const due = st.missDue + inv.filter((u) => u.due_date < today).reduce((a, u) => a + u.net, 0n);
-              const on = m === month;
-              const lbl = !m
-                ? 'Alle Monate'
-                : `${monthName(m)}${m === curMonth ? ' (aktuell)' : m === nextMonth ? ' (Vorschau)' : ''}`;
-              const cell = (n: number, v: string | null, ansicht: string) =>
-                n ? (
-                  <a href={link({ monat: m || null, ansicht, stufe: null, seite: null })}>
-                    {n} {v && <span class="small mut">· {v}</span>}
-                  </a>
-                ) : (
-                  <span class="mut">–</span>
-                );
-              return (
-                <tr class={on ? 'on' : ''}>
-                  <td>
-                    <a href={link({ monat: m || null, seite: null })}>{on ? <b>{lbl}</b> : lbl}</a>
-                  </td>
-                  <td class="num">
-                    {cell(st.miss, euro(st.missV) + (st.unknown ? ' + nach Aufwand' : ''), 'rechnung')}
-                  </td>
-                  <td class="num">{cell(inv.length, euro(net), 'unbezahlt')}</td>
-                  <td class="num">{cell(st.uns, null, 'unterschrift')}</td>
-                  <td class="num">
-                    <b>{euro(st.missV + net)}</b>
-                    {due > 0n && (
-                      <span class="bs-sub" style="color:var(--bad)">
-                        überfällig {euro(due)}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        <p class="small mut" style="margin:-4px 0 12px">
-          Monat anklicken = Liste unten nur für diesen Monat; Zahl anklicken = nur diese Punkte. Rechnung
-          fehlt = erwarteter Betrag laut Bestellung für Zeiträume ohne Eingangsrechnung (Pauschale, je Tag ×
-          Arbeitstage, erfasste Stunden und Regie; Nachunternehmer ab Oktober 2026). Unbezahlt = eingegangen,
-          noch nicht bezahlt (netto nach Abzügen und Vorschüssen). Alle Beträge netto.
-        </p>
-        <div class="ls-tabs">
-          {VIEWS.map(([k, l, t]) => (
+        {/* 1. Monat wählen – Leistungsmonat */}
+        <div class="bs-mstrip" role="tablist" aria-label="Monat">
+          {[
+            '',
+            ...monthList.filter((x) => x !== 'bedarf').reverse(),
+            ...monthList.filter((x) => x === 'bedarf'),
+          ].map((m) => {
+            const st = m === month ? sel : statOf(m);
+            const inv = [...st.inv.values()];
+            const n = st.miss + inv.length + st.uns;
+            const late = st.missDue > 0n || inv.some((u) => u.due_date < today);
+            return (
+              <a class={m === month ? 'on' : ''} href={link({ monat: m || null, seite: null })}>
+                <span class="bs-ml">
+                  {!m ? 'Alle Monate' : m === 'bedarf' ? 'nach Ausführung' : monthName(m)}
+                </span>
+                <span class="bs-mh">
+                  {m === curMonth ? 'aktuell' : m === nextMonth ? 'Vorschau' : !m ? 'gesamt' : ''}
+                  {n > 0 ? (
+                    <b class={late ? 'late' : ''}>
+                      {m === curMonth || m === nextMonth || !m ? ' · ' : ''}
+                      {n} offen
+                    </b>
+                  ) : (
+                    <span>{m === curMonth || m === nextMonth || !m ? ' · ' : ''}nichts offen</span>
+                  )}
+                </span>
+              </a>
+            );
+          })}
+        </div>
+        {/* 2. Was ist offen – Kacheln sind zugleich der Filter */}
+        {(() => {
+          const due = sel.missDue + selUnpaidDue;
+          const tile = (k: string, label: string, n: number, main: string | null, sub: Child, tone = '') => (
             <a
-              class={view === k ? 'on' : ''}
-              title={t}
+              class={`bs-kpi${view === k ? ' on' : ''}${tone ? ` ${tone}` : ''}`}
               href={link({ ansicht: k === 'offen' ? null : k, stufe: null, seite: null })}
             >
-              {l} <span>{count(k)}</span>
+              <span class="bs-kl">{label}</span>
+              <span class="bs-kv">{main ?? n}</span>
+              <span class="bs-ks">{sub}</span>
             </a>
-          ))}
-        </div>
-        <form class="ls-bar" method="get" action="/bestellungen">
+          );
+          return (
+            <div class="bs-kpis">
+              {tile(
+                'offen',
+                'Alles Offene',
+                count('offen'),
+                euro(sel.missV + selUnpaidNet),
+                <>
+                  {count('offen')} {count('offen') === 1 ? 'Bestellung' : 'Bestellungen'}
+                  {due > 0n && <b style="color:var(--bad)"> · überfällig {euro(due)}</b>}
+                </>,
+              )}
+              {tile(
+                'rechnung',
+                'Rechnung fehlt',
+                sel.miss,
+                sel.miss ? `≈ ${euro(sel.missV)}` : '–',
+                <>
+                  {sel.miss} {sel.miss === 1 ? 'Bestellung' : 'Bestellungen'}
+                  {sel.unknown > 0 && ` · ${sel.unknown} nach Aufwand`}
+                </>,
+                sel.missDue > 0n ? 'bad' : '',
+              )}
+              {tile(
+                'unbezahlt',
+                'Unbezahlt',
+                selInv.length,
+                selInv.length ? euro(selUnpaidNet) : '–',
+                <>
+                  {selInv.length} {selInv.length === 1 ? 'Rechnung' : 'Rechnungen'}
+                  {selInv.length > 0 && ` · brutto ${euro(selUnpaidGross)}`}
+                </>,
+                selUnpaidDue > 0n ? 'bad' : '',
+              )}
+              {tile(
+                'unterschrift',
+                'Unterschrift fehlt',
+                sel.uns,
+                null,
+                'erteilt, Auftrag nicht unterschrieben',
+                sel.uns ? 'warn' : '',
+              )}
+              {tile('entwurf', 'Entwürfe', count('entwurf'), null, 'noch nicht erteilt / bestellt')}
+            </div>
+          );
+        })()}
+        {/* 3. Filter */}
+        <form class="ls-bar bs-bar" method="get" action="/bestellungen">
           {month && <input type="hidden" name="monat" value={month} />}
           {view !== 'offen' && <input type="hidden" name="ansicht" value={view} />}
           {stage && <input type="hidden" name="stufe" value={stage} />}
@@ -1207,15 +1249,17 @@ export function registerPurchasingRoutes(ctx: Ctx) {
             name="q"
             value={search}
             placeholder="Nummer, Firma, Objekt …"
+            aria-label="Suche"
           />
-          <span class="small mut ls-count">
-            {allRows.length === 0
-              ? 'keine Treffer'
-              : `${(cur - 1) * PER_PAGE + 1}–${(cur - 1) * PER_PAGE + rows.length} von ${allRows.length}`}
-          </span>
+          <a
+            class={`bs-allbtn${view === 'alle' ? ' on' : ''}`}
+            href={link({ ansicht: view === 'alle' ? null : 'alle', stufe: null, seite: null })}
+          >
+            {view === 'alle' ? '× nur Offene zeigen' : `Alle Bestellungen (${count('alle')})`}
+          </a>
         </form>
         {view === 'alle' && (
-          <div class="chips" style="margin:0 0 10px">
+          <div class="chips bs-stages">
             {STAGES.map(([k, l]) => (
               <a class={stage === k ? 'on' : ''} href={link({ stufe: k || null, seite: null })}>
                 {l}
@@ -1223,52 +1267,38 @@ export function registerPurchasingRoutes(ctx: Ctx) {
             ))}
           </div>
         )}
-        {(view === 'unbezahlt' || view === 'rechnung' || view === 'unterschrift') && (
-          <div class="ls-hint">
-            {month ? <b>{monthName(month)}: </b> : <b>Alle Monate: </b>}
-            {view === 'unbezahlt' && (
-              <>
-                {euro(selUnpaidNet)} netto unbezahlt in {selInv.length}{' '}
-                {selInv.length === 1 ? 'Rechnung' : 'Rechnungen'} · zu zahlen brutto {euro(selUnpaidGross)}
-                {selUnpaidDue > 0n && (
-                  <span style="color:var(--bad)"> · davon überfällig {euro(selUnpaidDue)} netto</span>
-                )}{' '}
-                · <a href="/zahlungsliste">Zur Zahlungsliste →</a>
-              </>
+        <div class="bs-listhead">
+          <b>
+            {VIEWS.find(([k]) => k === view)?.[1]}
+            {month ? ` · ${monthName(month)}` : ''}
+          </b>
+          <span class="small mut">
+            {allRows.length === 0
+              ? 'keine Treffer'
+              : `${(cur - 1) * PER_PAGE + 1}–${(cur - 1) * PER_PAGE + rows.length} von ${allRows.length}`}
+          </span>
+          <span class="bs-listacts">
+            {view === 'unbezahlt' && selInv.length > 0 && (
+              <a class="btn sm sec" href="/zahlungsliste">
+                Zur Zahlungsliste →
+              </a>
             )}
-            {view === 'rechnung' && (
-              <>
-                bei {sel.miss} {sel.miss === 1 ? 'Bestellung' : 'Bestellungen'} fehlt die Rechnung, erwartet ≈{' '}
-                {euro(sel.missV)}
-                {sel.unknown > 0 && ` + ${sel.unknown} nach Aufwand`}
-                {sel.missDue > 0n && (
-                  <span style="color:var(--bad)"> · Zeitraum vorbei {euro(sel.missDue)}</span>
-                )}{' '}
-                · erfassen über „+ Rechnung erfassen“ in der Bestellung oder{' '}
-                <a href="/rechnungseingang/erwartet">Rechnung erwartet</a>
-              </>
+            {view === 'rechnung' && sel.miss > 0 && (
+              <a class="btn sm sec" href="/rechnungseingang/erwartet">
+                Rechnung erwartet →
+              </a>
             )}
-            {view === 'unterschrift' && (
-              <>
-                {sel.uns} erteilte {sel.uns === 1 ? 'Bestellung' : 'Bestellungen'} ohne unterschriebenen
-                Auftrag
-                {sel.uns > 0 && (
-                  <>
-                    {' · '}
-                    <a
-                      class="btn sm sec"
-                      href={`/bestellungen/ohne-unterschrift.pdf${supplierId ? `?lieferant=${supplierId}` : ''}`}
-                      target="_blank"
-                      style="margin-left:4px"
-                    >
-                      <Icon name="file" size={14} /> Alle drucken (PDF)
-                    </a>
-                  </>
-                )}
-              </>
+            {(view === 'unterschrift' || view === 'offen') && sel.uns > 0 && (
+              <a
+                class="btn sm sec"
+                href={`/bestellungen/ohne-unterschrift.pdf${supplierId ? `?lieferant=${supplierId}` : ''}`}
+                target="_blank"
+              >
+                <Icon name="file" size={14} /> Ohne Unterschrift drucken (PDF)
+              </a>
             )}
-          </div>
-        )}
+          </span>
+        </div>
         <form
           id="bs-del"
           method="post"
@@ -1297,7 +1327,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
               <span>Nr.</span>
               <span>Lieferant · Objekt · Zeitraum</span>
               <span class="r">Betrag netto</span>
-              <span>Status · Abrechnung</span>
+              <span>Stand · was ist offen</span>
             </div>
           </div>
           {rows.map((r) => (
@@ -1328,34 +1358,34 @@ export function registerPurchasingRoutes(ctx: Ctx) {
                   {r.unit && <span class="bs-sub">{r.unit}</span>}
                 </span>
                 <span class="bs-st">
-                  <span class={`bs-pill bs-${r.tone || 'grey'}`}>{r.status}</span>
-                  {r.unsigned && !r.status.includes('Unterschrift fehlt') && (
-                    <span class="bs-sub" style="color:var(--bad)">
-                      Unterschrift fehlt
-                    </span>
-                  )}
-                  {billCell(r)}
+                  <span class="bs-strow">
+                    <span class={`bs-pill bs-${r.tone || 'grey'}`}>{r.status}</span>
+                    {billCell(r)}
+                  </span>
                   {(() => {
                     const ms = missIn(r, month);
+                    const ups = unpaidIn(r, month);
                     return (
                       <>
+                        {r.unsigned && !r.status.includes('Unterschrift fehlt') && (
+                          <span class="bs-flag warn">Unterschrift fehlt</span>
+                        )}
                         {ms.slice(0, 3).map(([m, x]) => (
-                          <span class="bs-sub" style={x.due ? 'color:var(--bad)' : ''}>
-                            Rechnung fehlt {monLabel(m)}
+                          <span class={`bs-flag ${x.due ? 'bad' : 'warn'}`}>
+                            Rechnung fehlt · {x.span ?? monLabel(m)}
                             {x.v !== null ? ` · ≈ ${euro(x.v)}` : ' · nach Aufwand'}
                           </span>
                         ))}
                         {ms.length > 3 && <span class="bs-sub">+ {ms.length - 3} weitere Monate</span>}
+                        {ups.map((u) => (
+                          <span class={`bs-flag ${u.due_date < today ? 'bad' : 'info'}`}>
+                            unbezahlt · {u.invoice_no} · {euro(u.cents)} · fällig {dateDe(u.due_date)}
+                            {u.status === 'erfasst' ? ' · nicht freigegeben' : ''}
+                          </span>
+                        ))}
                       </>
                     );
                   })()}
-                  {unpaidIn(r, month).map((u) => (
-                    <span class="bs-sub" style={u.due_date < today ? 'color:var(--bad)' : ''}>
-                      unbezahlt: {u.invoice_no} ({monLabel(u.month)}) · {euro(u.cents)} · fällig{' '}
-                      {dateDe(u.due_date)}
-                      {u.status === 'erfasst' ? ' · nicht freigegeben' : ''}
-                    </span>
-                  ))}
                   {r.canFinish && (
                     <button
                       type="button"
@@ -1373,6 +1403,14 @@ export function registerPurchasingRoutes(ctx: Ctx) {
           {!rows.length && <div class="bs-tr empty">Keine Bestellungen in dieser Ansicht.</div>}
         </div>
         <Pager cur={cur} pages={pages} url={(n) => link({ seite: n > 1 ? String(n) : null })} />
+        <details class="small mut bs-explain">
+          <summary>So wird gerechnet</summary>
+          Monat = Leistungsmonat. Rechnung fehlt = erwarteter Betrag laut Bestellung für Zeiträume ohne
+          Eingangsrechnung (Pauschale, je Tag × Arbeitstage, erfasste Stunden und Regie; Nachunternehmer ab
+          Oktober 2026). Bestellungen nach Ausführung stehen in jedem Monat ihrer Laufzeit, in „Alle Monate“
+          zählen sie einmal. Unbezahlt = eingegangen, noch nicht bezahlt (netto nach Abzügen und Vorschüssen).
+          Alle Beträge netto.
+        </details>
         {rows
           .filter((r) => r.canFinish)
           .map((r) => (

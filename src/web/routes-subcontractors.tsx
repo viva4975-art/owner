@@ -3139,7 +3139,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         <PageHead
           title={sc ? `Bestellung ${sc.number}` : 'Neue Bestellung an Nachunternehmer'}
           no={sc ? SC_STATUS[sc.status] : null}
-          crumbs={[['Bestellungen', '/bestellungen?art=nu']]}
+          crumbs={[['Bestellungen', '/bestellungen']]}
         />
         {sc?.requested_by && sc.status === 'entwurf' ? (
           <div class="flash warn">

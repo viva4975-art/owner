@@ -4773,3 +4773,19 @@ Testadresse.
   Endes, ohne Ende „Monat offen“; Material = Bestellmonat. Unterschrift fehlt/Entwurf zählt in jedem Monat, in dem die
   Bestellung läuft. Alte Adressen (`ansicht=laufend|einmalig|abgeschlossen`, `unterschrift=fehlt`) werden umgedeutet.
   Kacheln entfallen (stecken in der Monatstabelle).
+- 2026-11-02: **Bestellungen neu aufgebaut + Zurück behält Filter** (Ahmed: „nach dem Speichern zurück lande ich auf der
+  allgemeinen Seite“, „Design und Aufstellung unlogisch und hässlich“, „nach Ausführung fehlt in den Monaten“):
+  - Seite von oben nach unten: **Monat wählen** (Pillen Alle Monate · Oktober · November (aktuell) · Dezember (Vorschau),
+    je „n offen“, rot bei überfällig) → **fünf Kacheln, zugleich Filter** (Alles Offene € + überfällig, Rechnung fehlt,
+    Unbezahlt netto/brutto, Unterschrift fehlt, Entwürfe) → Filterzeile (Art, Lieferant, Suche, „Alle Bestellungen (n)“
+    mit Stufen) → Liste mit Überschrift „Ansicht · Monat“ und passendem Knopf (Zahlungsliste, Rechnung erwartet,
+    Ohne Unterschrift drucken). Je Zeile farbige Hinweise: rot = überfällig, gelb = Rechnung/Unterschrift fehlt, blau =
+    unbezahlt. Erklärung eingeklappt unter „So wird gerechnet“. Monatstabelle und Reiterleiste entfallen.
+  - **Nach Ausführung in jedem Monat der Laufzeit** (bis nächsten Monat) unter „Rechnung fehlt“, Hinweis „nach
+    Ausführung, 10/2026–12/2026“; in „Alle Monate“ zählt der Betrag einmal (Zeile „nach Ausführung (Monat offen)“ entfällt).
+  - **Fund Zurück:** Die NU-Bestellung verlinkte „‹ Zurück zu Bestellungen“ fest auf `/bestellungen?art=nu` – Links mit
+    Filter wurden nicht durch die zuletzt gesehene Liste ersetzt. Jetzt `/bestellungen` (= letzte Fassung mit Filter);
+    „Speichern & zurück“ nimmt ebenfalls die zuletzt gesehene Liste. **Browser-Zurück nach dem Speichern** überspringt
+    die Seite vor dem Speichern (gleiche Seite, alter Stand) und landet direkt in der Liste (`SCROLL_JS`: Formular-Absenden
+    markiert den Verlaufseintrag `vdSkip`, wird beim Zurückkommen übersprungen; Downloads ohne Seitenwechsel werden nach
+    5 s wieder freigegeben; abschaltbar mit `data-noskip`). Gilt für alle Seiten.

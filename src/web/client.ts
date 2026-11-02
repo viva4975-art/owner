@@ -217,6 +217,13 @@ export const CLIENT_JS = String.raw`
     if (!backA) return;
     var backTo = backA.getAttribute('href');
     if (!backTo || backTo.charAt(0) !== '/') return;
+    // zuletzt gesehene Fassung der Liste (Filter, Seite) – wie der Knopf „‹ Zurück zu …“
+    if (backTo.indexOf('?') < 0) {
+      try {
+        var last = sessionStorage.getItem('vd_ls:' + backTo);
+        if (last && last.indexOf(backTo + '?') === 0) backTo = last;
+      } catch (e) {}
+    }
     Array.prototype.forEach.call(document.querySelectorAll('form'), function (f) {
       if ((f.getAttribute('method') || '').toLowerCase() !== 'post' || f.hasAttribute('data-noback')) return;
       if (f.closest('table')) return;

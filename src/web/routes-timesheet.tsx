@@ -125,6 +125,8 @@ function signatureBlock(s: Timesheet, sig: SheetSignature | undefined, imgUrl: s
 
 const PRINT_CSS = `@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{font-family:Inter,system-ui,Arial,sans-serif;color:#1c1917;margin:0}
 .sheet{page-break-after:always;break-inside:avoid;padding:0;overflow:hidden}.sheet:last-child{page-break-after:auto}
+.sheet.two{break-inside:auto;overflow:visible}.sheet.two tr,.sheet.two .sig-row{break-inside:avoid}
+.sheet-blank{height:1px;page-break-after:always;break-after:page}
 .hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #7D1435;padding-bottom:6px;margin-bottom:8px}
 .hd h1{margin:0 0 3px;font-size:19px;color:#7D1435}.hd .logo{height:42px;margin-bottom:4px}.hd .m{font-size:12px;color:#292524;line-height:1.5}.hd .r{text-align:right}
 .sig-row{display:flex;gap:40px;margin-top:22px}.sig{flex:1}.sig-box{height:54px;border-bottom:1px solid #444;display:flex;align-items:flex-end}.sig-box img{max-height:52px}
@@ -133,10 +135,13 @@ const PRINT_CSS = `@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}bo
 @media print{.bar{display:none}}${SHEET_CSS}`;
 
 /**
- * Jede Stundenliste (eine Person, ein Monat) passt auf genau ein Blatt A4 quer (Ahmed 02.11.): vor dem Drucken in
- * Druckbreite messen und das Blatt verkleinern (8 mm Rand ≈ 1062 × 733 px nutzbar).
+ * Jede Stundenliste (eine Person, ein Monat) belegt beim Drucken genau zwei Seiten A4 quer (Ahmed 02.11., Duplexdruck):
+ * passt sie auf ein Blatt, folgt eine leere Seite; ist sie länger, läuft sie über zwei Seiten (notfalls verkleinert).
+ * So beginnt jede Person auf einer Vorderseite. Gemessen in Druckbreite (8 mm Rand ≈ 1062 × 733 px nutzbar).
  */
-const FIT_JS = `(function(){var W=1062,H=733;function fit(){document.querySelectorAll('.sheet').forEach(function(s){s.style.zoom='';s.style.width=W+'px';var k=Math.min(1,H*0.97/s.scrollHeight);s.style.zoom=k<1?String(Math.floor(k*1000)/1000):'';s.style.width=k<1?Math.floor(W/k)+'px':''})}function unfit(){document.querySelectorAll('.sheet').forEach(function(s){s.style.zoom='';s.style.width=''})}addEventListener('beforeprint',fit);addEventListener('afterprint',unfit)})();`;
+const FIT_JS = `(function(){var W=1062,H=733;function unfit(){document.querySelectorAll('.sheet-blank').forEach(function(b){b.remove()});document.querySelectorAll('.sheet').forEach(function(s){s.style.zoom='';s.style.width='';s.classList.remove('two')})}
+function fit(){unfit();var all=document.querySelectorAll('.sheet');all.forEach(function(s,i){s.style.width=W+'px';var h=s.scrollHeight,k=1;if(h<=H*0.97){if(i<all.length-1){var b=document.createElement('div');b.className='sheet-blank';s.after(b)}}else{s.classList.add('two');k=Math.min(1,H*2*0.88/h)}
+s.style.zoom=k<1?String(Math.floor(k*1000)/1000):'';s.style.width=k<1?Math.floor(W/k)+'px':''})}addEventListener('beforeprint',fit);addEventListener('afterprint',unfit)})();`;
 
 export function registerTimesheetRoutes({ app, deps, page, back, shells }: Ctx) {
   const { sql } = deps;

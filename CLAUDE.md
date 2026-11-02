@@ -4740,3 +4740,12 @@ Testadresse.
   Passwort geändert), erscheinen die anderen trotzdem, oben steht der Fehler. Neuer Termin: Auswahl „Kalender“ (Konto +
   Ordner); Ändern/Löschen im Postfach, aus dem der Termin stammt. Test mit nachgebautem Server: zwei Konten, Unterkalender,
   ein Konto mit falschem Passwort. **Gegen den echten IONOS-Server weiter ungetestet.**
+- 2026-11-02: **Stundenlisten je Person für Duplexdruck** (Ahmed: „max immer zwei Seiten, weiße Seite dazwischen“): Druck
+  „einzeln/alle/Auswahl“ legt jede Person auf genau zwei Seiten A4 quer – passt sie auf ein Blatt, folgt eine leere
+  Seite; längere laufen über zwei Seiten (Zeilen/Unterschrift nicht zerrissen, notfalls verkleinert). Jede Person
+  beginnt so auf einer Vorderseite (`FIT_JS` in `routes-timesheet.tsx`, beim Drucken gesetzt). Ersetzt „je Person auf
+  ein Blatt“. Geprüft: 134 Personen → 268 Seiten. Übersicht bleibt mehrseitig.
+- 2026-11-02: **Stellen automatisch auf die Website** (Ahmed: SEO hat WordPress schon eingerichtet): Häkchen „Auf der
+  Website“ bei neuen Stellen vorbelegt; Migration `20270113000001` setzt es bei allen aktiven Stellen (Protokoll
+  `website_an`). Die Website zeigt die Stellen nur, wenn auf der WordPress-Seite unser Einbau-Code steht (Bewerber &
+  Stellen → „Auf der Website anzeigen“) – eine vom SEO selbst geschriebene Liste wird nicht aktualisiert.

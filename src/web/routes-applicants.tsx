@@ -583,12 +583,13 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
             </div>
             <div class="chk">
               <label>
-                <input type="checkbox" name="website" value="1" checked={!!p?.website} /> Auf der Website
-                veröffentlichen
+                <input type="checkbox" name="website" value="1" checked={p ? !!p.website : true} /> Auf der
+                Website veröffentlichen
               </label>
               <div class="small mut">
                 Erscheint auf der Website (Einbau-Code unter Offene Stellen → „Auf der Website anzeigen“), nur
-                solange die Stelle aktiv ist. Stundenlohn und Straße werden nicht veröffentlicht.
+                solange die Stelle aktiv ist (bei neuen Stellen vorausgewählt). Stundenlohn und Straße werden
+                nicht veröffentlicht.
               </div>
             </div>
           </div>

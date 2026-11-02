@@ -4791,3 +4791,9 @@ Testadresse.
     die Seite vor dem Speichern (gleiche Seite, alter Stand) und landet direkt in der Liste (`SCROLL_JS`: Formular-Absenden
     markiert den Verlaufseintrag `vdSkip`, wird beim Zurückkommen übersprungen; Downloads ohne Seitenwechsel werden nach
     5 s wieder freigegeben; abschaltbar mit `data-noskip`). Gilt für alle Seiten.
+- 2026-11-02: **Nachkalkulation immer nach Leistungszeitraum** (Ahmed): Erlöse werden je Rechnungsposition (eigene und von vor
+  der Umstellung) tageweise auf die Monate ihres Leistungszeitraums verteilt und je Monat auf Cent gerundet, wie die
+  Statistik (`revenueLines` in `costing.ts`). Zeitraum = Position, sonst Rechnung; nur ohne jeden Zeitraum das
+  Rechnungsdatum. Vorher zählte die ganze Rechnung im Monat des Zeitraum-Beginns, bei eigenen Rechnungen wurde der
+  Zeitraum der Position nicht beachtet. Gilt für Nachkalkulation, „Kosten aufschlüsseln“ (zeigt den Anteil im Zeitraum
+  mit Leistungszeitraum) und Ø Stundensätze. Test in `costing-detail.db.test.ts`.

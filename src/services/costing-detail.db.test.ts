@@ -86,4 +86,26 @@ describe.skipIf(!available)('Nachkalkulation aufschlüsseln', () => {
     expect(c.employer).toBe(0n);
     expect(c.bands).toEqual(['gf']);
   });
+
+  it('Erlös nach Leistungszeitraum tageweise auf die Monate verteilt', async () => {
+    const inv = randomUUID();
+    await sql`insert into app.legacy_invoices (id, number, issue_date, customer_id, net_cents, gross_cents, paid)
+              values (${inv}, '1039901', '2026-11-20', ${DEMO.company}, 30000, 35700, false)`;
+    // 17.10.–15.11. = 30 Tage: 15 im Oktober, 15 im November; Rechnungsdatum November zählt nicht
+    await sql`insert into app.legacy_invoice_lines (id, invoice_id, position, title, quantity_milli, unit, unit_price_cents,
+                                                   net_cents, period_start, period_end, site_id)
+              values (${randomUUID()}, ${inv}, 1, 'Sonderleistung', 1000, 'pauschal', 30000, 30000,
+                      '2026-10-17', '2026-11-15', ${site})`;
+    const okt = await siteCosting(sql, { from: '2026-10', to: '2026-10' }, site);
+    const nov = await siteCosting(sql, { from: '2026-11', to: '2026-11' }, site);
+    const both = await siteCosting(sql, { from: '2026-10', to: '2026-11' }, site);
+    const rev = (r: typeof okt) => r.rows.find((x) => x.site_id === site)?.revenue ?? 0n;
+    expect(rev(okt)).toBe(15000n);
+    expect(rev(nov)).toBe(15000n);
+    expect(rev(both)).toBe(30000n);
+    const b = await siteCostBreakdown(sql, site, { from: '2026-10', to: '2026-10' });
+    const item = b.revenue.find((x) => x.label.includes('1039901'));
+    expect(item?.amount).toBe(15000n);
+    expect(item?.sub).toContain('17.10.2026 – 15.11.2026');
+  });
 });

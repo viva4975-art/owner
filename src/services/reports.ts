@@ -4,7 +4,7 @@ import { monthBounds, monthlyRunLines } from '../domain/invoice/calc.js';
 import { lineNet } from '../domain/money/money.js';
 import { addDays, workingDays } from '../domain/time/holidays.js';
 import { type LeaveBalance, leaveBalance } from './absences.js';
-import { subcontractEstimates } from './costing.js';
+import { revenueLines, subcontractEstimates } from './costing.js';
 import { BusinessError } from './errors.js';
 import { sollPlanIst } from './hr-month.js';
 import { type RunService, toRunService } from './invoices.js';
@@ -205,18 +205,8 @@ export async function hourlyRates(sql: Sql, fromMonth: string, toMonth: string):
     sql<{ id: string; site_no: string; name: string; customer_name: string }[]>`
       select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name
         from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.site_no`,
-    sql<{ site_id: string; net: bigint }[]>`
-      select coalesce(ss.site_id, i.site_id) as site_id, sum(l.net_cents)::bigint as net
-        from app.invoices i join app.invoice_lines l on l.invoice_id = i.id
-        left join app.site_services ss on ss.id = l.source_service_id
-       where i.status = 'issued' and coalesce(i.period_start, i.issue_date) between ${from} and ${to}
-       group by 1
-      union all
-      -- Rechnungen von vor der Umstellung: je Position dem Objekt zugeordnet (wie die Nachkalkulation)
-      select l.site_id, sum(l.net_cents)::bigint as net
-        from app.legacy_invoice_lines l join app.legacy_invoices i on i.id = l.invoice_id
-       where l.site_id is not null and coalesce(l.period_start, i.issue_date) between ${from} and ${to}
-       group by 1`,
+    // Erlös nach Leistungszeitraum, tageweise auf die Monate verteilt (wie die Nachkalkulation)
+    revenueLines(sql, from, to),
     sql<{ site_id: string; minutes: number; wage_minutes: bigint; wage_known_minutes: number }[]>`
       select t.site_id,
              sum(extract(epoch from (t.end_at - t.start_at)) / 60 - t.break_minutes)::int as minutes,

@@ -241,6 +241,68 @@ export interface GeneralCost {
  * dem Objekt zugeordnet); Objekte auch inaktiv, sobald im Zeitraum Erlös, Zeiten oder Kosten anfallen; dazu die
  * allgemeinen Kostenstellen.
  */
+export interface RevenueLine {
+  site_id: string;
+  invoice_id: string;
+  legacy: boolean;
+  number: string;
+  kind: string;
+  issue_date: string;
+  period: string | null;
+  net: bigint;
+}
+
+/**
+ * Erlöse nach Leistungszeitraum: jede Rechnungsposition (eigene und von vor der Umstellung) wird tageweise auf die
+ * Monate ihres Leistungszeitraums verteilt (Position, sonst Rechnung, ohne Zeitraum Rechnungsdatum) und je Monat auf
+ * Cent gerundet – wie die Statistik. Gezählt wird nur der Anteil im Bereich von–bis, je Objekt und Rechnung.
+ * Leistungsarten „Sonderreinigung“ → internes Objekt Sonderreinigung (falls vorhanden).
+ */
+export function revenueLines(sql: Sql, from: string, to: string) {
+  return sql<RevenueLine[]>`
+    with src as (
+      select case when st.special_cleaning and sp.id is not null then sp.id
+                  else coalesce(ss.site_id, i.site_id) end as site_id,
+             i.id as invoice_id, false as legacy, i.number, i.kind::text as kind, i.issue_date,
+             l.net_cents,
+             coalesce(l.period_start, i.period_start, i.issue_date) as s,
+             case when l.period_start is not null then coalesce(l.period_end, l.period_start)
+                  else coalesce(i.period_end, i.period_start, i.issue_date) end as e
+        from app.invoices i join app.invoice_lines l on l.invoice_id = i.id
+        left join app.site_services ss on ss.id = l.source_service_id
+        left join app.service_types st on st.id = coalesce(l.service_type_id, ss.service_type_id)
+        left join app.sites sp on sp.id = ${SPECIAL_SITE_ID}
+       where i.status = 'issued' and coalesce(ss.site_id, i.site_id) is not null
+      union all
+      select case when st.special_cleaning and sp.id is not null then sp.id else l.site_id end,
+             i.id, true, i.number, 'invoice', i.issue_date, l.net_cents,
+             coalesce(l.period_start, i.issue_date),
+             coalesce(l.period_end, l.period_start, i.issue_date)
+        from app.legacy_invoice_lines l join app.legacy_invoices i on i.id = l.invoice_id
+        left join app.service_types st on lower(st.name) = lower(trim(l.service_type))
+        left join app.sites sp on sp.id = ${SPECIAL_SITE_ID}
+       where l.site_id is not null
+    ), norm as (
+      select site_id, invoice_id, legacy, number, kind, issue_date, net_cents, s, greatest(e, s) as e from src
+       where s <= ${to}::date and greatest(e, s) >= ${from}::date
+    ), seg as (
+      select n.*, gs::date as ms, (gs + interval '1 month - 1 day')::date as me
+        from norm n, generate_series(date_trunc('month', greatest(n.s, ${from}::date)),
+                                     date_trunc('month', least(n.e, ${to}::date)), interval '1 month') gs
+    ), part as (
+      select site_id, invoice_id, legacy, number, kind, issue_date, s, e, ms,
+             round(sum(net_cents::numeric * ((least(e, me, ${to}::date) - greatest(s, ms, ${from}::date)) + 1)
+                       / ((e - s) + 1)))::bigint as net
+        from seg
+       where greatest(s, ms, ${from}::date) <= least(e, me, ${to}::date)
+       group by 1, 2, 3, 4, 5, 6, 7, 8, 9
+    )
+    select site_id, invoice_id, legacy, number, kind, issue_date::text as issue_date,
+           to_char(min(s), 'DD.MM.YYYY') || case when max(e) > min(s) then ' – ' || to_char(max(e), 'DD.MM.YYYY') else '' end as period,
+           sum(net)::bigint as net
+      from part group by 1, 2, 3, 4, 5, 6`;
+}
+
 export async function siteCosting(
   sql: Sql,
   period: string | { from: string; to: string },
@@ -255,7 +317,7 @@ export async function siteCosting(
   const nuEst = await subcontractEstimates(sql, from, to, siteId);
   const shares = await laborFromPayroll(sql, from, to, { cached: !!opts.cachedLabor });
   const laborSites = [...new Set(shares.filter((x) => x.site_id && x.cost).map((x) => x.site_id))];
-  const [sites, revenue, legacyRevenue, labor, stock, incoming, shifts, general] = await Promise.all([
+  const [sites, revenue, labor, stock, incoming, shifts, general] = await Promise.all([
     sql<
       {
         id: string;
@@ -280,27 +342,7 @@ export async function siteCosting(
                   or s.id = any(${laborSites}::uuid[]))`
        }
        order by s.site_no`,
-    // je Position: Objekt aus der Leistung (Sammelrechnungen der Rechnungsgruppen haben kein Objekt im Kopf);
-    // Leistungsarten „Sonderreinigung“ → internes Objekt Sonderreinigung (falls vorhanden)
-    sql<{ site_id: string; net: bigint }[]>`
-      select case when st.special_cleaning and sp.id is not null then sp.id
-                  else coalesce(ss.site_id, i.site_id) end as site_id, sum(l.net_cents)::bigint as net
-        from app.invoices i join app.invoice_lines l on l.invoice_id = i.id
-        left join app.site_services ss on ss.id = l.source_service_id
-        left join app.service_types st on st.id = coalesce(l.service_type_id, ss.service_type_id)
-        left join app.sites sp on sp.id = ${SPECIAL_SITE_ID}
-       where i.status = 'issued' and coalesce(ss.site_id, i.site_id) is not null
-         and coalesce(i.period_start, i.issue_date) between ${from} and ${to}
-       group by 1`,
-    // übernommene Fortytools-Rechnungen: Position mit Objekt, Leistungszeitraum sonst Rechnungsdatum
-    sql<{ site_id: string; net: bigint }[]>`
-      select case when st.special_cleaning and sp.id is not null then sp.id else l.site_id end as site_id,
-             sum(l.net_cents)::bigint as net
-        from app.legacy_invoice_lines l join app.legacy_invoices i on i.id = l.invoice_id
-        left join app.service_types st on lower(st.name) = lower(trim(l.service_type))
-        left join app.sites sp on sp.id = ${SPECIAL_SITE_ID}
-       where l.site_id is not null and coalesce(l.period_start, i.issue_date) between ${from} and ${to}
-       group by 1`,
+    revenueLines(sql, from, to),
     // Ist-Stunden (Anzeige); der Lohn kommt aus den Lohnarten (laborFromPayroll, unten)
     sql<{ site_id: string; minutes: number }[]>`
       select t.site_id, sum(extract(epoch from (t.end_at - t.start_at)) / 60 - t.break_minutes)::int as minutes
@@ -338,10 +380,10 @@ export async function siteCosting(
              and a.month between ${from} and ${to}
            group by 1, 2, 3, 4 order by cc.number`,
   ]);
+  const revBySite = new Map<string, bigint>();
+  for (const r of revenue) revBySite.set(r.site_id, (revBySite.get(r.site_id) ?? 0n) + r.net);
   const rows = sites.map((s) => {
-    const rev =
-      (revenue.find((r) => r.site_id === s.id)?.net ?? 0n) +
-      (legacyRevenue.find((r) => r.site_id === s.id)?.net ?? 0n);
+    const rev = revBySite.get(s.id) ?? 0n;
     const l = labor.find((r) => r.site_id === s.id);
     // Lohn laut Lohnarten + Lohnzuschlag, nach bezahlten Minuten auf die Objekte verteilt
     const mine = shares.filter((x) => x.site_id === s.id);

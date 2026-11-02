@@ -1,5 +1,5 @@
 import type { Sql } from '../db/client.js';
-import { monthRange, SPECIAL_SITE_ID, subcontractEstimates } from './costing.js';
+import { monthRange, revenueLines, SPECIAL_SITE_ID, subcontractEstimates } from './costing.js';
 import { COST_CATEGORY, type CostCategory } from './purchasing.js';
 import { recurringCosts } from './recurring-payments.js';
 import { laborFromPayroll } from './costing-labor.js';
@@ -96,34 +96,8 @@ export async function siteCostBreakdown(
 ): Promise<CostBreakdown> {
   const from = monthRange(period.from).from;
   const to = monthRange(period.to).to;
-  const siteOf = (expr: ReturnType<Sql>) =>
-    siteId === SPECIAL_SITE_ID
-      ? sql`(st.special_cleaning or ${expr} = ${siteId})`
-      : sql`(${expr} = ${siteId} and not (coalesce(st.special_cleaning, false) and sp.id is not null))`;
-  const [own, legacy, labor, stock, incoming, est, orders] = await Promise.all([
-    sql<
-      { id: string; number: string; kind: string; issue_date: string; period: string | null; net: bigint }[]
-    >`
-      select i.id, i.number, i.kind::text as kind, i.issue_date::text as issue_date,
-             case when i.period_start is null then null
-                  else to_char(i.period_start, 'DD.MM.YYYY') || coalesce(' – ' || to_char(i.period_end, 'DD.MM.YYYY'), '') end as period,
-             sum(l.net_cents)::bigint as net
-        from app.invoices i join app.invoice_lines l on l.invoice_id = i.id
-        left join app.site_services ss on ss.id = l.source_service_id
-        left join app.service_types st on st.id = coalesce(l.service_type_id, ss.service_type_id)
-        left join app.sites sp on sp.id = ${SPECIAL_SITE_ID}
-       where i.status = 'issued' and coalesce(ss.site_id, i.site_id) is not null
-         and ${siteOf(sql`coalesce(ss.site_id, i.site_id)`)}
-         and coalesce(i.period_start, i.issue_date) between ${from} and ${to}
-       group by 1, 2, 3, 4, 5`,
-    sql<{ id: string; number: string; issue_date: string; net: bigint }[]>`
-      select i.id, i.number, i.issue_date::text as issue_date, sum(l.net_cents)::bigint as net
-        from app.legacy_invoice_lines l join app.legacy_invoices i on i.id = l.invoice_id
-        left join app.service_types st on lower(st.name) = lower(trim(l.service_type))
-        left join app.sites sp on sp.id = ${SPECIAL_SITE_ID}
-       where l.site_id is not null and ${siteOf(sql`l.site_id`)}
-         and coalesce(l.period_start, i.issue_date) between ${from} and ${to}
-       group by 1, 2, 3`,
+  const [revenue, labor, stock, incoming, est, orders] = await Promise.all([
+    revenueLines(sql, from, to),
     laborFromPayroll(sql, from, to),
     sql<
       {
@@ -176,22 +150,16 @@ export async function siteCostBreakdown(
     equipment: [],
     other: [],
   };
-  for (const r of own)
+  for (const r of revenue) {
+    if (r.site_id !== siteId) continue;
     b.revenue.push({
       date: r.issue_date,
-      label: `${kindLabel[r.kind] ?? 'Rechnung'} ${r.number}`,
-      ...(r.period ? { sub: `Leistungszeitraum ${r.period}` } : {}),
-      href: `/rechnungen/${r.id}`,
+      label: r.legacy ? `Rechnung ${r.number}` : `${kindLabel[r.kind] ?? 'Rechnung'} ${r.number}`,
+      ...(r.period ? { sub: `Leistungszeitraum ${r.period}${r.legacy ? ' · vor der Umstellung' : ''}` } : {}),
+      href: `/rechnungen/${r.invoice_id}`,
       amount: r.net,
     });
-  for (const r of legacy)
-    b.revenue.push({
-      date: r.issue_date,
-      label: `Rechnung ${r.number}`,
-      sub: 'vor der Umstellung',
-      href: `/rechnungen/${r.id}`,
-      amount: r.net,
-    });
+  }
   b.revenue.sort(sortItems);
   b.labor = labor
     .filter((l) => l.site_id === siteId && (l.cost || l.minutes))

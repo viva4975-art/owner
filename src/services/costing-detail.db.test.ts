@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { siteCosting } from './costing.js';
-import { costCenterBreakdown, siteCostBreakdown } from './costing-detail.js';
+import { costCenterBreakdown, customerRevenueItems, siteCostBreakdown } from './costing-detail.js';
 import { planCosting } from './plan-costing.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
@@ -107,5 +107,35 @@ describe.skipIf(!available)('Nachkalkulation aufschlüsseln', () => {
     const item = b.revenue.find((x) => x.label.includes('1039901'));
     expect(item?.amount).toBe(15000n);
     expect(item?.sub).toContain('17.10.2026 – 15.11.2026');
+  });
+
+  it('Rechnungen an den Kunden ohne Objekt: einziges Objekt, sonst eigene Zeile', async () => {
+    const one = randomUUID();
+    const two = randomUUID();
+    const oneSite = randomUUID();
+    await sql`insert into app.customers (id, customer_no, name, street, postal_code, city)
+              values (${one}, '29981', 'Ein-Objekt GmbH', 'Weg 1', '80331', 'München'),
+                     (${two}, '29982', 'Zwei-Objekte GmbH', 'Weg 2', '80331', 'München')`;
+    await sql`insert into app.sites (id, customer_id, site_no, name) values (${oneSite}, ${one}, '2998101', 'Einziges')`;
+    await sql`insert into app.sites (id, customer_id, site_no, name)
+              values (${randomUUID()}, ${two}, '2998201', 'A'), (${randomUUID()}, ${two}, '2998202', 'B')`;
+    for (const [cust, no] of [
+      [one, '1039911'],
+      [two, '1039912'],
+    ] as const) {
+      const inv = randomUUID();
+      await sql`insert into app.legacy_invoices (id, number, issue_date, customer_id, net_cents, gross_cents, paid)
+                values (${inv}, ${no}, '2026-10-20', ${cust}, 10000, 11900, false)`;
+      await sql`insert into app.legacy_invoice_lines (id, invoice_id, position, title, quantity_milli, unit, unit_price_cents,
+                                                     net_cents, period_start, period_end, site_id)
+                values (${randomUUID()}, ${inv}, 1, 'Sonderleistung', 1000, 'pauschal', 10000, 10000, '2026-10-05', null, null)`;
+    }
+    const { rows } = await siteCosting(sql, { from: '2026-10', to: '2026-10' });
+    expect(rows.find((r) => r.site_id === oneSite)?.revenue).toBe(10000n);
+    const own = rows.find((r) => r.customer_only && r.customer_id === two);
+    expect(own?.revenue).toBe(10000n);
+    expect(own?.site_name).toBe('Kunde – ohne Objekt');
+    const items = await customerRevenueItems(sql, two, { from: '2026-10', to: '2026-10' });
+    expect(items.map((x) => x.label)).toEqual(['Rechnung 1039912']);
   });
 });

@@ -4,6 +4,7 @@ import {
   type CostBreakdown,
   type CostItem,
   costCenterBreakdown,
+  customerRevenueItems,
   siteCostBreakdown,
 } from '../services/costing-detail.js';
 import { planCosting } from '../services/plan-costing.js';
@@ -126,13 +127,35 @@ export function registerCostingDetailRoutes(ctx: Ctx) {
     const bis = isMonth(c.req.query('bis')) && c.req.query('bis')! >= von ? c.req.query('bis')! : von;
     const siteId = c.req.query('objekt') ?? '';
     const ccId = c.req.query('kostenstelle') ?? '';
-    if (!von || (!siteId && !ccId)) return c.redirect('/auswertungen/nachkalkulation');
+    const custId = c.req.query('kunde') ?? '';
+    if (!von || (!siteId && !ccId && !custId)) return c.redirect('/auswertungen/nachkalkulation');
     const back = `/auswertungen/nachkalkulation?von=${von}&bis=${bis}`;
     const crumbs: [string, string][] = [
       ['Auswertungen', '/auswertungen'],
       ['Nachkalkulation', back],
     ];
     const period = { from: von, to: bis };
+    if (custId && !siteId && !ccId) {
+      const [k] = await sql<{ name: string; customer_no: string | null }[]>`
+        select name, customer_no from app.customers where id = ${custId}`;
+      if (!k) return c.notFound();
+      const items = await customerRevenueItems(sql, custId, period);
+      const title = `${k.customer_no ? `${k.customer_no} · ` : ''}${k.name} – ohne Objekt`;
+      return page(
+        c,
+        `Nachkalkulation ${title}`,
+        'auswertungen',
+        <>
+          <PageHead title={title} crumbs={crumbs} />
+          <p class="small mut" style="margin-top:-6px">
+            {periodLabel(von, bis)} · Rechnungen an den Kunden ohne Objekt (der Kunde hat kein Objekt
+            „Allgemein“ und mehr als ein Objekt). Anteil nach Leistungszeitraum. Gesamt{' '}
+            <b>{euro(total(items))}</b> · <a href={`/kunden/${custId}`}>Kunde öffnen</a>
+          </p>
+          <Items id="erloes" title="Erlös" items={items} empty="Keine Rechnung im Zeitraum." />
+        </>,
+      );
+    }
     if (ccId) {
       const [cc] = await sql<{ number: string; name: string }[]>`
         select number, name from app.cost_centers where id = ${ccId}`;

@@ -4797,3 +4797,8 @@ Testadresse.
   Rechnungsdatum. Vorher zählte die ganze Rechnung im Monat des Zeitraum-Beginns, bei eigenen Rechnungen wurde der
   Zeitraum der Position nicht beachtet. Gilt für Nachkalkulation, „Kosten aufschlüsseln“ (zeigt den Anteil im Zeitraum
   mit Leistungszeitraum) und Ø Stundensätze. Test in `costing-detail.db.test.ts`.
+- 2026-11-02: **Nachkalkulation: auch Rechnungen an den Kunden ohne Objekt** (Ahmed): Rechnungspositionen ohne Objekt
+  (eigene und von vor der Umstellung) zählen beim Objekt „Allgemein“ des Kunden, sonst bei seinem einzigen Objekt, sonst
+  in einer eigenen Zeile „Kunde – ohne Objekt“ (Link zum Kunden, „Kosten aufschlüsseln“ = Liste der Rechnungen,
+  `?kunde=`). Ebenfalls nach Leistungszeitraum verteilt. Objekte mit Erlös im Zeitraum erscheinen jetzt auch, wenn sie
+  inaktiv sind. Gilt auch für Ø Stundensätze (nur aktive Objekte). Test in `costing-detail.db.test.ts`.

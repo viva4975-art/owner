@@ -4725,13 +4725,13 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     const siteRow = (r: (typeof rows)[number]) => (
       <tr>
         <td>
-          <a href={`/objekte/${r.site_id}`}>
+          <a href={r.customer_only ? `/kunden/${r.site_id}` : `/objekte/${r.site_id}`}>
             {r.site_no} · {r.site_name}
           </a>
           <div class="small mut">{r.customer_name}</div>
           <a
             class="small"
-            href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}`}
+            href={`/auswertungen/nachkalkulation/detail?${r.customer_only ? 'kunde' : 'objekt'}=${r.site_id}&von=${von}&bis=${bis}`}
           >
             ▸ Kosten aufschlüsseln
           </a>
@@ -4744,7 +4744,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         <td class="r">
           <a
             class="plain"
-            href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#erloes`}
+            href={`/auswertungen/nachkalkulation/detail?${r.customer_only ? 'kunde' : 'objekt'}=${r.site_id}&von=${von}&bis=${bis}#erloes`}
           >
             {euro(r.revenue)}
           </a>
@@ -4764,7 +4764,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         <td class="r">
           <a
             class="plain"
-            href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#lohn`}
+            href={`/auswertungen/nachkalkulation/detail?${r.customer_only ? 'kunde' : 'objekt'}=${r.site_id}&von=${von}&bis=${bis}#lohn`}
           >
             {euro(r.labor)}
           </a>
@@ -4772,7 +4772,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         <td class="r">
           <a
             class="plain"
-            href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#material`}
+            href={`/auswertungen/nachkalkulation/detail?${r.customer_only ? 'kunde' : 'objekt'}=${r.site_id}&von=${von}&bis=${bis}#material`}
           >
             {euro(r.material)}
           </a>
@@ -4787,7 +4787,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         <td class="r">
           <a
             class="plain"
-            href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#geraete`}
+            href={`/auswertungen/nachkalkulation/detail?${r.customer_only ? 'kunde' : 'objekt'}=${r.site_id}&von=${von}&bis=${bis}#geraete`}
           >
             {euro(r.equipment)}
           </a>
@@ -4795,7 +4795,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         <td class="r">
           <a
             class="plain"
-            href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#nu`}
+            href={`/auswertungen/nachkalkulation/detail?${r.customer_only ? 'kunde' : 'objekt'}=${r.site_id}&von=${von}&bis=${bis}#nu`}
           >
             {euro(r.subcontractor)}
           </a>
@@ -4806,7 +4806,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         <td class="r">
           <a
             class="plain"
-            href={`/auswertungen/nachkalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}#sonstiges`}
+            href={`/auswertungen/nachkalkulation/detail?${r.customer_only ? 'kunde' : 'objekt'}=${r.site_id}&von=${von}&bis=${bis}#sonstiges`}
           >
             {euro(r.other)}
           </a>

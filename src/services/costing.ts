@@ -43,6 +43,8 @@ export interface SiteCosting {
   margin_bp: number | null; // Marge in Basispunkten vom Erlös
   /** interner Bereich (Büro, Lager … beim Kunden „intern“, ohne Sonderreinigung): Gemeinkosten, separat gezeigt */
   internal: boolean;
+  /** Zeile für Rechnungen an den Kunden ohne Objekt (site_id = Kunden-ID) */
+  customer_only?: boolean;
 }
 
 /**
@@ -242,7 +244,9 @@ export interface GeneralCost {
  * allgemeinen Kostenstellen.
  */
 export interface RevenueLine {
-  site_id: string;
+  /** null = Rechnung an den Kunden ohne Objekt (Kunde hat weder „Allgemein“ noch genau ein Objekt) */
+  site_id: string | null;
+  customer_id: string | null;
   invoice_id: string;
   legacy: boolean;
   number: string;
@@ -257,13 +261,18 @@ export interface RevenueLine {
  * Monate ihres Leistungszeitraums verteilt (Position, sonst Rechnung, ohne Zeitraum Rechnungsdatum) und je Monat auf
  * Cent gerundet – wie die Statistik. Gezählt wird nur der Anteil im Bereich von–bis, je Objekt und Rechnung.
  * Leistungsarten „Sonderreinigung“ → internes Objekt Sonderreinigung (falls vorhanden).
+ * Rechnungen an den Kunden ohne Objekt (Ahmed 02.11.: „auch Rechnungen zum Kunden beachten“) zählen beim Objekt
+ * „Allgemein“ des Kunden, sonst bei seinem einzigen Objekt, sonst ohne Objekt (site_id null) beim Kunden.
  */
 export function revenueLines(sql: Sql, from: string, to: string) {
   return sql<RevenueLine[]>`
     with src as (
       select case when st.special_cleaning and sp.id is not null then sp.id
-                  else coalesce(ss.site_id, i.site_id) end as site_id,
-             i.id as invoice_id, false as legacy, i.number, i.kind::text as kind, i.issue_date,
+                  else coalesce(ss.site_id, i.site_id,
+                 (select g.id from app.sites g where g.customer_id = i.customer_id
+                    and g.name in ('Allgemein', 'Allgemein (aus Fortytools)') order by g.active desc, g.site_no limit 1),
+                 (select min(g.id::text)::uuid from app.sites g where g.customer_id = i.customer_id having count(*) = 1)) end as site_id,
+             i.customer_id, i.id as invoice_id, false as legacy, i.number, i.kind::text as kind, i.issue_date,
              l.net_cents,
              coalesce(l.period_start, i.period_start, i.issue_date) as s,
              case when l.period_start is not null then coalesce(l.period_end, l.period_start)
@@ -272,35 +281,37 @@ export function revenueLines(sql: Sql, from: string, to: string) {
         left join app.site_services ss on ss.id = l.source_service_id
         left join app.service_types st on st.id = coalesce(l.service_type_id, ss.service_type_id)
         left join app.sites sp on sp.id = ${SPECIAL_SITE_ID}
-       where i.status = 'issued' and coalesce(ss.site_id, i.site_id) is not null
+       where i.status = 'issued'
       union all
-      select case when st.special_cleaning and sp.id is not null then sp.id else l.site_id end,
-             i.id, true, i.number, 'invoice', i.issue_date, l.net_cents,
+      select case when st.special_cleaning and sp.id is not null then sp.id
+                  else coalesce(l.site_id, (select g.id from app.sites g where g.customer_id = i.customer_id
+                    and g.name in ('Allgemein', 'Allgemein (aus Fortytools)') order by g.active desc, g.site_no limit 1),
+                 (select min(g.id::text)::uuid from app.sites g where g.customer_id = i.customer_id having count(*) = 1)) end,
+             i.customer_id, i.id, true, i.number, 'invoice', i.issue_date, l.net_cents,
              coalesce(l.period_start, i.issue_date),
              coalesce(l.period_end, l.period_start, i.issue_date)
         from app.legacy_invoice_lines l join app.legacy_invoices i on i.id = l.invoice_id
         left join app.service_types st on lower(st.name) = lower(trim(l.service_type))
         left join app.sites sp on sp.id = ${SPECIAL_SITE_ID}
-       where l.site_id is not null
     ), norm as (
-      select site_id, invoice_id, legacy, number, kind, issue_date, net_cents, s, greatest(e, s) as e from src
+      select site_id, customer_id, invoice_id, legacy, number, kind, issue_date, net_cents, s, greatest(e, s) as e from src
        where s <= ${to}::date and greatest(e, s) >= ${from}::date
     ), seg as (
       select n.*, gs::date as ms, (gs + interval '1 month - 1 day')::date as me
         from norm n, generate_series(date_trunc('month', greatest(n.s, ${from}::date)),
                                      date_trunc('month', least(n.e, ${to}::date)), interval '1 month') gs
     ), part as (
-      select site_id, invoice_id, legacy, number, kind, issue_date, s, e, ms,
+      select site_id, customer_id, invoice_id, legacy, number, kind, issue_date, s, e, ms,
              round(sum(net_cents::numeric * ((least(e, me, ${to}::date) - greatest(s, ms, ${from}::date)) + 1)
                        / ((e - s) + 1)))::bigint as net
         from seg
        where greatest(s, ms, ${from}::date) <= least(e, me, ${to}::date)
-       group by 1, 2, 3, 4, 5, 6, 7, 8, 9
+       group by 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
     )
-    select site_id, invoice_id, legacy, number, kind, issue_date::text as issue_date,
+    select site_id, customer_id, invoice_id, legacy, number, kind, issue_date::text as issue_date,
            to_char(min(s), 'DD.MM.YYYY') || case when max(e) > min(s) then ' – ' || to_char(max(e), 'DD.MM.YYYY') else '' end as period,
            sum(net)::bigint as net
-      from part group by 1, 2, 3, 4, 5, 6`;
+      from part group by 1, 2, 3, 4, 5, 6, 7`;
 }
 
 export async function siteCosting(
@@ -317,7 +328,9 @@ export async function siteCosting(
   const nuEst = await subcontractEstimates(sql, from, to, siteId);
   const shares = await laborFromPayroll(sql, from, to, { cached: !!opts.cachedLabor });
   const laborSites = [...new Set(shares.filter((x) => x.site_id && x.cost).map((x) => x.site_id))];
-  const [sites, revenue, labor, stock, incoming, shifts, general] = await Promise.all([
+  const revenue = await revenueLines(sql, from, to);
+  const revSites = [...new Set(revenue.flatMap((r) => (r.site_id ? [r.site_id] : [])))];
+  const [sites, labor, stock, incoming, shifts, general] = await Promise.all([
     sql<
       {
         id: string;
@@ -339,10 +352,10 @@ export async function siteCosting(
            : sql`(s.active or exists (select 1 from app.cost_allocations a where a.site_id = s.id and a.month between ${from} and ${to})
                   or exists (select 1 from app.time_entries t where t.site_id = s.id and t.work_date between ${from} and ${to})
                   or s.id = any(${nuEst.map((x) => x.site_id)}::uuid[])
-                  or s.id = any(${laborSites}::uuid[]))`
+                  or s.id = any(${laborSites}::uuid[])
+                  or s.id = any(${revSites}::uuid[]))`
        }
        order by s.site_no`,
-    revenueLines(sql, from, to),
     // Ist-Stunden (Anzeige); der Lohn kommt aus den Lohnarten (laborFromPayroll, unten)
     sql<{ site_id: string; minutes: number }[]>`
       select t.site_id, sum(extract(epoch from (t.end_at - t.start_at)) / 60 - t.break_minutes)::int as minutes
@@ -381,8 +394,13 @@ export async function siteCosting(
            group by 1, 2, 3, 4 order by cc.number`,
   ]);
   const revBySite = new Map<string, bigint>();
-  for (const r of revenue) revBySite.set(r.site_id, (revBySite.get(r.site_id) ?? 0n) + r.net);
-  const rows = sites.map((s) => {
+  const revByCustomer = new Map<string, bigint>();
+  for (const r of revenue) {
+    if (r.site_id) revBySite.set(r.site_id, (revBySite.get(r.site_id) ?? 0n) + r.net);
+    else if (r.customer_id)
+      revByCustomer.set(r.customer_id, (revByCustomer.get(r.customer_id) ?? 0n) + r.net);
+  }
+  const rows: SiteCosting[] = sites.map((s) => {
     const rev = revBySite.get(s.id) ?? 0n;
     const l = labor.find((r) => r.site_id === s.id);
     // Lohn laut Lohnarten + Lohnzuschlag, nach bezahlten Minuten auf die Objekte verteilt
@@ -427,6 +445,38 @@ export async function siteCosting(
       internal: s.internal,
     };
   });
+  // Rechnungen an den Kunden ohne Objekt: eigene Zeile je Kunde (site_id = Kunden-ID, customer_only)
+  if (!siteId && revByCustomer.size) {
+    const custs = await sql<{ id: string; name: string; customer_no: string | null }[]>`
+      select id, name, customer_no from app.customers where id = any(${[...revByCustomer.keys()]}::uuid[])`;
+    for (const k of custs) {
+      const rev = revByCustomer.get(k.id) ?? 0n;
+      if (rev === 0n) continue;
+      rows.push({
+        site_id: k.id,
+        site_no: k.customer_no ?? '',
+        site_name: 'Kunde – ohne Objekt',
+        customer_id: k.id,
+        customer_name: k.name,
+        customer_no: k.customer_no,
+        manager_user_id: null,
+        revenue: rev,
+        planned_minutes: 0,
+        actual_minutes: 0,
+        labor: 0n,
+        missing_wage: 0,
+        material: 0n,
+        subcontractor: 0n,
+        subcontractor_estimated: 0n,
+        equipment: 0n,
+        other: 0n,
+        margin: rev,
+        margin_bp: 10000,
+        internal: false,
+        customer_only: true,
+      });
+    }
+  }
   const gmap = new Map<string, GeneralCost>();
   for (const g of general) {
     // Material an allgemeinen Kostenstellen (Lager, Büro) nicht zählen – geht über die Materialausgabe ans Objekt

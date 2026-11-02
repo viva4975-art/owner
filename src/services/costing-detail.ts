@@ -1,5 +1,11 @@
 import type { Sql } from '../db/client.js';
-import { monthRange, revenueLines, SPECIAL_SITE_ID, subcontractEstimates } from './costing.js';
+import {
+  monthRange,
+  type RevenueLine,
+  revenueLines,
+  SPECIAL_SITE_ID,
+  subcontractEstimates,
+} from './costing.js';
 import { COST_CATEGORY, type CostCategory } from './purchasing.js';
 import { recurringCosts } from './recurring-payments.js';
 import { laborFromPayroll } from './costing-labor.js';
@@ -89,6 +95,35 @@ function bucket(b: CostBreakdown, category: string | null) {
 }
 
 /** Objekt (Kostenstelle = Objekt) im Zeitraum von–bis (JJJJ-MM). */
+const KIND_LABEL: Record<string, string> = {
+  invoice: 'Rechnung',
+  cancellation: 'Stornorechnung',
+  correction: 'Rechnungskorrektur',
+  partial: 'Abschlagsrechnung',
+  final: 'Schlussrechnung',
+};
+
+const revenueItem = (r: RevenueLine): CostItem => ({
+  date: r.issue_date,
+  label: r.legacy ? `Rechnung ${r.number}` : `${KIND_LABEL[r.kind] ?? 'Rechnung'} ${r.number}`,
+  ...(r.period ? { sub: `Leistungszeitraum ${r.period}${r.legacy ? ' · vor der Umstellung' : ''}` } : {}),
+  href: `/rechnungen/${r.invoice_id}`,
+  amount: r.net,
+});
+
+/** Rechnungen an den Kunden ohne Objekt (Zeile „Kunde – ohne Objekt“ der Nachkalkulation) */
+export async function customerRevenueItems(
+  sql: Sql,
+  customerId: string,
+  period: { from: string; to: string },
+): Promise<CostItem[]> {
+  const rows = await revenueLines(sql, monthRange(period.from).from, monthRange(period.to).to);
+  return rows
+    .filter((r) => !r.site_id && r.customer_id === customerId)
+    .map(revenueItem)
+    .sort(sortItems);
+}
+
 export async function siteCostBreakdown(
   sql: Sql,
   siteId: string,
@@ -135,13 +170,6 @@ export async function siteCostBreakdown(
          and (s.site_id = ${siteId} or exists (select 1 from app.subcontract_sites x where x.subcontract_id = s.id and x.site_id = ${siteId}))
        order by s.number`,
   ]);
-  const kindLabel: Record<string, string> = {
-    invoice: 'Rechnung',
-    cancellation: 'Stornorechnung',
-    correction: 'Rechnungskorrektur',
-    partial: 'Abschlagsrechnung',
-    final: 'Schlussrechnung',
-  };
   const b: CostBreakdown = {
     revenue: [],
     labor: [],
@@ -150,16 +178,7 @@ export async function siteCostBreakdown(
     equipment: [],
     other: [],
   };
-  for (const r of revenue) {
-    if (r.site_id !== siteId) continue;
-    b.revenue.push({
-      date: r.issue_date,
-      label: r.legacy ? `Rechnung ${r.number}` : `${kindLabel[r.kind] ?? 'Rechnung'} ${r.number}`,
-      ...(r.period ? { sub: `Leistungszeitraum ${r.period}${r.legacy ? ' · vor der Umstellung' : ''}` } : {}),
-      href: `/rechnungen/${r.invoice_id}`,
-      amount: r.net,
-    });
-  }
+  for (const r of revenue) if (r.site_id === siteId) b.revenue.push(revenueItem(r));
   b.revenue.sort(sortItems);
   b.labor = labor
     .filter((l) => l.site_id === siteId && (l.cost || l.minutes))

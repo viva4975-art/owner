@@ -123,14 +123,20 @@ function signatureBlock(s: Timesheet, sig: SheetSignature | undefined, imgUrl: s
 <div class="sig"><div class="sig-box"></div><div class="sig-l">Datum, Unterschrift Arbeitgeber</div></div></div>`;
 }
 
-const PRINT_CSS = `@page{size:A4 landscape;margin:10mm}*{box-sizing:border-box}body{font-family:Inter,system-ui,Arial,sans-serif;color:#1c1917;margin:0}
-.sheet{page-break-after:always;padding:0}.sheet:last-child{page-break-after:auto}
+const PRINT_CSS = `@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{font-family:Inter,system-ui,Arial,sans-serif;color:#1c1917;margin:0}
+.sheet{page-break-after:always;break-inside:avoid;padding:0;overflow:hidden}.sheet:last-child{page-break-after:auto}
 .hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #7D1435;padding-bottom:6px;margin-bottom:8px}
 .hd h1{margin:0 0 3px;font-size:19px;color:#7D1435}.hd .logo{height:42px;margin-bottom:4px}.hd .m{font-size:12px;color:#292524;line-height:1.5}.hd .r{text-align:right}
 .sig-row{display:flex;gap:40px;margin-top:22px}.sig{flex:1}.sig-box{height:54px;border-bottom:1px solid #444;display:flex;align-items:flex-end}.sig-box img{max-height:52px}
 .sig-l{font-size:11px;color:#57534e;margin-top:3px}.legal{font-size:10px;color:#78716c;margin-top:10px}
 .bar{text-align:center;padding:10px;background:#f4f3f1}.bar button{font:inherit;padding:8px 18px;border-radius:8px;border:0;background:#7D1435;color:#fff;cursor:pointer}
 @media print{.bar{display:none}}${SHEET_CSS}`;
+
+/**
+ * Jede Stundenliste (eine Person, ein Monat) passt auf genau ein Blatt A4 quer (Ahmed 02.11.): vor dem Drucken in
+ * Druckbreite messen und das Blatt verkleinern (8 mm Rand ≈ 1062 × 733 px nutzbar).
+ */
+const FIT_JS = `(function(){var W=1062,H=733;function fit(){document.querySelectorAll('.sheet').forEach(function(s){s.style.zoom='';s.style.width=W+'px';var k=Math.min(1,H*0.97/s.scrollHeight);s.style.zoom=k<1?String(Math.floor(k*1000)/1000):'';s.style.width=k<1?Math.floor(W/k)+'px':''})}function unfit(){document.querySelectorAll('.sheet').forEach(function(s){s.style.zoom='';s.style.width=''})}addEventListener('beforeprint',fit);addEventListener('afterprint',unfit)})();`;
 
 export function registerTimesheetRoutes({ app, deps, page, back, shells }: Ctx) {
   const { sql } = deps;
@@ -159,7 +165,7 @@ ${sheetTableHtml(s)}${sigHtml}
   };
 
   const printHtml = (title: string, sections: string[]) =>
-    `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${PRINT_CSS}</style></head><body><div class="bar"><button onclick="print()">Drucken / als PDF speichern</button></div>${sections.join('')}</body></html>`;
+    `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${PRINT_CSS}</style></head><body><div class="bar"><button onclick="print()">Drucken / als PDF speichern</button></div>${sections.join('')}<script>${FIT_JS}</script></body></html>`;
 
   // ------------------------------------------------------------ je Mitarbeiter (Reiter)
   app.get(`/personal/:id{${UUID}}/stundenzettel`, (c) =>

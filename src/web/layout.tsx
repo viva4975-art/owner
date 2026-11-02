@@ -1532,6 +1532,18 @@ tr.offer-decided td{background:#fcfcfc}
 .crumbs a.crumb-back:hover{border-color:var(--brand);color:var(--brand)}
 .crumb-trail{color:var(--mut)}
 .btn.save-back{margin-left:6px}
+/* Drucken / „Als PDF speichern“ aus dem Browser (Ahmed 02.11.: Listen wurden rechts abgeschnitten):
+   Querformat, Tabellen auf Seitenbreite, nichts mehr seitlich scrollbar, Knöpfe und mitlaufende Kopfzeile weg */
+@page{size:A4 landscape;margin:8mm}
+@media print{
+html,body,.shell,.shell .mainc,main,.wrap{background:#fff!important;width:auto!important;max-width:none!important;min-width:0!important;overflow:visible!important;box-shadow:none!important}
+.tbl,.card,.dash-col>.card,.pb-sec,.sec,[style*="overflow"]{overflow:visible!important;max-height:none!important}
+table{width:100%!important;max-width:100%!important;table-layout:auto!important}
+th,td{font-size:9px!important;line-height:1.25!important;padding:3px 4px!important;white-space:normal!important}
+thead{display:table-header-group}tr{break-inside:avoid}
+.sticky-clone,.bulkbar,.crumbs a.crumb-back,button,.btn,details:not([open])>*:not(summary){display:none!important}
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
 `;
 
 export const euro = (c: bigint) => formatEuro(c as Cents);

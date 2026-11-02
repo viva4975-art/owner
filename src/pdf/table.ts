@@ -59,11 +59,12 @@ export async function renderTablePdf(p: {
   pdf.setLanguage('de-DE');
   const [W, H] = p.landscape === false ? [595.28, 841.89] : [841.89, 595.28];
   const M = 28;
-  const fs = p.fontSize ?? 8;
-  const rowH = fs + 7;
   const totalW = p.columns.reduce((a, c) => a + c.width, 0);
   const scale = Math.min(1, (W - 2 * M) / totalW);
   const cols = p.columns.map((c) => ({ ...c, width: c.width * scale }));
+  // Spalten schmaler → Schrift im gleichen Verhältnis kleiner, sonst würde Text mit „…“ abgeschnitten
+  const fs = (p.fontSize ?? 8) * Math.max(scale, 0.6);
+  const rowH = fs + 7;
   const created = new Date().toLocaleString('de-DE', {
     timeZone: 'Europe/Berlin',
     dateStyle: 'medium',
@@ -99,7 +100,9 @@ export async function renderTablePdf(p: {
     }
     return out.length ? out.map((l) => fit(l, font, size, w)) : [''];
   };
-  const LINE_GAP = fs + 2;
+  const LINE_GAP = fs + Math.min(2, rowH - fs);
+  /** Abstand der Zeilenlinie unter der Schrift-Grundlinie (bei kleiner Schrift enger) */
+  const PAD = Math.max(0, Math.min(3, rowH - fs - 0.25 * fs));
   const cellObj = (cell: string | PdfCell | undefined): PdfCell =>
     typeof cell === 'string' || cell === undefined ? { text: cell ?? '' } : cell;
   const cellLines = (cells: (string | PdfCell)[], font: PDFFont, header: boolean) =>
@@ -127,14 +130,14 @@ export async function renderTablePdf(p: {
     let x = M;
     const lines = cellLines(cells, font, header);
     const h = rowH + (Math.max(1, ...lines.map((l) => l.lines.length)) - 1) * LINE_GAP;
-    if (fill) page.drawRectangle({ x: M, y: y - h + 3, width: W - 2 * M, height: h, color: fill });
+    if (fill) page.drawRectangle({ x: M, y: y - h + PAD, width: W - 2 * M, height: h, color: fill });
     cols.forEach((c, i) => {
       const cell = cells[i];
       const obj = cellObj(cell);
       if (obj.fill)
         page.drawRectangle({
           x,
-          y: y - h + 3,
+          y: y - h + PAD,
           width: c.width,
           height: h,
           color: rgb(...obj.fill),
@@ -156,8 +159,8 @@ export async function renderTablePdf(p: {
       x += c.width;
     });
     page.drawLine({
-      start: { x: M, y: y - h + 3 },
-      end: { x: W - M, y: y - h + 3 },
+      start: { x: M, y: y - h + PAD },
+      end: { x: W - M, y: y - h + PAD },
       thickness: 0.4,
       color: LINE,
     });

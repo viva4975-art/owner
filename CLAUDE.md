@@ -4709,3 +4709,10 @@ Testadresse.
   (`smtp.exchange2019.ionos.de:587`), eine OWA-Adresse oder die volle EWS-Adresse; daraus wird
   `https://<rechner>/EWS/Exchange.asmx` (`normalizeEwsUrl`). Klappt die Adresse nicht, probiert die App zusätzlich die
   bekannten IONOS-Adressen; bei falschem Passwort kommt „Passwort falsch“. Test `exchange-calendar.test.ts`.
+- 2026-11-02: **Drucken ohne Abschneiden, Stundenliste je Person auf einer Seite** (Ahmed): Beim Drucken/„Als PDF
+  speichern“ aus dem Browser fielen rechte Spalten der Listen weg (Hochformat, seitlich scrollende Tabellen). Jetzt für alle
+  App-Seiten: A4 quer, Tabellen auf Seitenbreite, nichts seitlich scrollbar, Knöpfe und mitlaufende Kopfzeile ausgeblendet
+  (Druck-Block am Ende des CSS in `layout.tsx`). Listen-PDFs (`renderTablePdf`): werden Spalten verkleinert, wird die
+  Schrift im gleichen Verhältnis kleiner statt Text mit „…“ abzuschneiden. **Stundenliste je Person** (Druck/PDF, einzeln
+  und alle) wird vor dem Drucken auf genau ein Blatt A4 quer verkleinert, inkl. Summen und Unterschriften (`FIT_JS` in
+  `routes-timesheet.tsx`). Übersicht Stundenliste/Lohnarten bleibt mehrseitig (Ahmed).

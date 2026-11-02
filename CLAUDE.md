@@ -4762,3 +4762,14 @@ Testadresse.
   aufschlüsseln“) wie Lagerartikel auf die Kostenstelle des Objekts im Monat der Ausgabe; Storno/Löschen nehmen sie
   heraus. Lieferschein zeigt sie ohne Artikelnummer. `material_issue_lines.article_id` darf leer sein (Migration
   `20270114000002`). Material-Bestellungen kannten freie Positionen schon. Test in `material-issues.db.test.ts`.
+- 2026-11-02: **Bestellungen nach Monat und „was fehlt“** (Ahmed: „monatlich sehen, z. B. nur Oktober: unbezahlt, Rechnung
+  gar nicht gekommen, fehlende Unterschrift“): Oben Tabelle je Leistungsmonat (Alle Monate, jeder Monat mit offenen
+  Punkten bis zum nächsten Monat, „nach Ausführung (Monat offen)“) mit Spalten **Rechnung fehlt** (Anzahl · erwarteter
+  Betrag), **Unbezahlt** (Anzahl · netto), **Unterschrift fehlt**, Offen gesamt + überfällig. Monat anklicken = Liste
+  unten nur für diesen Monat (`monat=JJJJ-MM`), Zahl anklicken = nur diese Punkte. Reiter jetzt **Alles Offene** (Standard)
+  · Rechnung fehlt · Unbezahlt · Unterschrift fehlt · Entwürfe · Alle Bestellungen (dort Chips Laufend / Einmalig /
+  Abgeschlossen / Storniert, `stufe`). Je Zeile die offenen Punkte des Monats („Rechnung fehlt 10/2026 · ≈ …“, „unbezahlt:
+  Nr. (10/2026) …“). Monat für „Rechnung fehlt“: regelmäßige Bestellungen = Monat des Zeitraums, nach Ausführung = Monat des
+  Endes, ohne Ende „Monat offen“; Material = Bestellmonat. Unterschrift fehlt/Entwurf zählt in jedem Monat, in dem die
+  Bestellung läuft. Alte Adressen (`ansicht=laufend|einmalig|abgeschlossen`, `unterschrift=fehlt`) werden umgedeutet.
+  Kacheln entfallen (stecken in der Monatstabelle).

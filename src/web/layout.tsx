@@ -1468,6 +1468,7 @@ tr.offer-decided td{background:#fcfcfc}
 .ls-due summary{cursor:pointer;list-style:none}.ls-due ul{margin:6px 0 0;padding-left:18px}
 .sup2 td{vertical-align:top;padding-top:10px;padding-bottom:10px}.sup2 .sup-compl{min-width:170px;max-width:220px}.sup2 .badge{margin-top:3px}
 .kpis.kpis-sm .kpi{padding:10px 14px;min-height:0}.kpis.kpis-sm .kpi .v{font-size:20px}.kpis.kpis-sm .kpi .l{font-size:12px}
+.bs-months{max-width:820px;margin:0 0 10px}.bs-months tr.on td{background:var(--tint-2,#f8eff2)}.bs-months td a{text-decoration:none}
 .ls-hint{font-size:13px;color:var(--ink-2);background:var(--warn-50);border-radius:8px;padding:7px 12px;margin:0 0 10px}
 .bs2 .bs-tr{grid-template-columns:118px minmax(0,1fr) 150px 220px;gap:14px;padding:9px 14px}
 .bs2 .bs-nr{display:flex;flex-direction:column;gap:2px}.bs-kind{font-size:10.5px;font-weight:600;color:var(--mut);letter-spacing:.02em;text-transform:uppercase}

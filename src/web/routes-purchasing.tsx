@@ -496,14 +496,25 @@ export function registerPurchasingRoutes(ctx: Ctx) {
   app.get('/bestellungen', async (c) => {
     const q = c.req.query();
     const art = q.art === 'material' || q.art === 'nu' ? q.art : '';
-    const view = ['erledigen', 'laufend', 'einmalig', 'abgeschlossen', 'unbezahlt', 'alle'].includes(
-      q.ansicht ?? '',
-    )
+    // Aufteilung (Ahmed 02.11.): Monat wählen, dann „was fehlt“ – Rechnung fehlt / unbezahlt / Unterschrift fehlt.
+    // Alte Adressen (ansicht=laufend …, unterschrift=fehlt) werden umgedeutet.
+    const OLD_STAGE = ['laufend', 'einmalig', 'abgeschlossen'];
+    const view =
+      q.unterschrift === 'fehlt'
+        ? 'unterschrift'
+        : OLD_STAGE.includes(q.ansicht ?? '')
+          ? 'alle'
+          : ['offen', 'rechnung', 'unbezahlt', 'unterschrift', 'entwurf', 'alle'].includes(q.ansicht ?? '')
+            ? q.ansicht!
+            : 'offen';
+    const stage = OLD_STAGE.includes(q.ansicht ?? '')
       ? q.ansicht!
-      : 'erledigen';
+      : ['laufend', 'einmalig', 'abgeschlossen', 'storniert', 'entwurf'].includes(q.stufe ?? '')
+        ? q.stufe!
+        : '';
+    const month = /^\d{4}-\d{2}$/.test(q.monat ?? '') || q.monat === 'bedarf' ? q.monat! : '';
     const supplierId = q.lieferant && /^[0-9a-f-]{36}$/.test(q.lieferant) ? q.lieferant : '';
     const search = (q.q ?? '').trim().toLowerCase();
-    const onlyUnsigned = q.unterschrift === 'fehlt';
     const [orders, subcontracts, suppliers, billed] = await Promise.all([
       listOrders(sql),
       listSubcontracts(sql),
@@ -629,6 +640,14 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       byMonth: Map<string, bigint>;
     };
     const expectedOf = new Map<string, Expected>();
+    /** je Bestellung und Monat: Rechnung fehlt (Betrag laut Bestellung, null = nach Aufwand), Zeitraum vorbei? */
+    const missBy = new Map<string, Map<string, { v: bigint | null; due: boolean }>>();
+    const addMiss = (id: string, m: string, v: bigint | null, due: boolean) => {
+      const mm = missBy.get(id) ?? new Map<string, { v: bigint | null; due: boolean }>();
+      const x = mm.get(m) ?? { v: 0n, due: false };
+      mm.set(m, { v: x.v === null || v === null ? (x.v ?? v) : x.v + v, due: x.due || due });
+      missBy.set(id, mm);
+    };
     const today = todayBerlin();
     for (const sc of subcontracts) {
       if (sc.status !== 'erteilt' && sc.status !== 'beendet') continue;
@@ -673,6 +692,15 @@ export function registerPurchasingRoutes(ctx: Ctx) {
         // (bei Bestellungen nach Ausführung nur beim ersten offenen Zeitraum, sonst doppelt)
         if (v !== null) for (const [m, a] of hm) if (rec ? ms.includes(m) : p === (firstNow ?? ps[0])) v += a;
         if (v !== null && v !== 0n) e.byMonth.set(mKey, (e.byMonth.get(mKey) ?? 0n) + v);
+        // Monat für „Rechnung fehlt“: regelmäßig = Monat des Zeitraums, nach Ausführung = Monat des Endes,
+        // noch laufend ohne festes Ende = „nach Ausführung (Monat offen)“
+        if (v !== 0n || sc.billing !== 'stunde')
+          addMiss(
+            sc.id,
+            rec ? p.start : p.state === 'bedarf' ? 'bedarf' : p.end.slice(0, 7),
+            v,
+            p.end < today,
+          );
         if (ahead) continue;
         e.periods++;
         if (v === null || v === 0n) {
@@ -685,7 +713,8 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       expectedOf.set(sc.id, e);
     }
     for (const o of orders)
-      if ((o.status === 'bestellt' || o.status === 'geliefert') && !invoiced.has(o.id))
+      if ((o.status === 'bestellt' || o.status === 'geliefert') && !invoiced.has(o.id)) {
+        addMiss(o.id, o.order_date.slice(0, 7), o.net_cents, o.status === 'geliefert');
         expectedOf.set(o.id, {
           cents: o.net_cents,
           periods: 1,
@@ -693,6 +722,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
           unknown: 0,
           byMonth: new Map([[o.order_date.slice(0, 7), o.net_cents]]),
         });
+      }
     const billCell = (r: {
       kind: 'material' | 'nu';
       id: string;
@@ -921,28 +951,24 @@ export function registerPurchasingRoutes(ctx: Ctx) {
         })(),
       })),
     ].sort((x, y) => y.number.localeCompare(x.number, 'de', { numeric: true }));
+    const monthEndOf = (m: string) => {
+      const [y, mo] = m.split('-').map(Number) as [number, number];
+      return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
+    };
+    /** Bestellung läuft im Monat (für Unterschrift/Entwurf) */
+    const activeIn = (r: Row, m: string) =>
+      !m || (m !== 'bedarf' && (r.from ?? '9999') <= monthEndOf(m) && (!r.to || r.to >= `${m}-01`));
+    const missIn = (r: Row, m: string) =>
+      [...(missBy.get(r.id) ?? [])].filter(([k]) => !m || k === m).sort(([a], [b]) => a.localeCompare(b));
+    const unpaidIn = (r: Row, m: string) => unpaidOf(r).filter((u) => !m || u.month === m);
+    const unsignedIn = (r: Row, m: string) => r.unsigned && activeIn(r, m);
+    const draftIn = (r: Row, m: string) => r.phase === 'erledigen' && !r.unsigned && activeIn(r, m);
+    const stageOf = (r: Row) =>
+      r.phase === 'erledigen' ? (r.unsigned ? (r.recurring ? 'laufend' : 'einmalig') : 'entwurf') : r.phase;
     const base = all
       .filter((r) => !art || r.kind === art)
       .filter((r) => !supplierId || r.supplierId === supplierId)
-      .filter((r) => !search || [r.number, r.supplier, r.what].some((v) => v.toLowerCase().includes(search)))
-      .filter((r) => !onlyUnsigned || r.unsigned);
-    const unsignedCount = all.filter((r) => r.unsigned).length;
-    // Kacheln (Ahmed 30.10.): Rechnung steht noch aus / eingegangen, unbezahlt / zusammen offen – alles netto,
-    // für die gefilterten Bestellungen (Art, Lieferant, Suche), jede Rechnung nur einmal
-    const sumExp = { cents: 0n, due: 0n, n: 0, unknown: 0 };
-    const tileInv = new Map<string, Unpaid>();
-    for (const r of base) {
-      const e = expectedOf.get(r.id);
-      if (e) {
-        sumExp.cents += e.cents;
-        sumExp.due += e.due;
-        sumExp.n += e.periods;
-        sumExp.unknown += e.unknown;
-      }
-      for (const u of unpaidOf(r)) tileInv.set(u.inv, u);
-    }
-    const tileUnpaid = [...tileInv.values()];
-    // Aufteilung nach Monat (Ahmed 30.10.): frühere, aktueller, nächster Monat (danach „später“)
+      .filter((r) => !search || [r.number, r.supplier, r.what].some((v) => v.toLowerCase().includes(search)));
     const MONTH_NAMES = [
       'Januar',
       'Februar',
@@ -957,88 +983,103 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       'November',
       'Dezember',
     ];
-    const monthName = (m: string) => `${MONTH_NAMES[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
-    const bucketOf = (m: string) =>
-      m === 'bedarf' ? m : m < curMonth ? 'frueher' : m > nextMonth ? 'spaeter' : m;
-    const byBucket = new Map<string, { exp: bigint; inv: bigint }>();
-    const addB = (m: string, k: 'exp' | 'inv', v: bigint) => {
-      const b = bucketOf(m);
-      const x = byBucket.get(b) ?? { exp: 0n, inv: 0n };
-      x[k] += v;
-      byBucket.set(b, x);
+    const monthName = (m: string) =>
+      m === 'bedarf'
+        ? 'nach Ausführung (Monat offen)'
+        : `${MONTH_NAMES[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
+    // Übersicht je Monat: Rechnung fehlt / unbezahlt / Unterschrift fehlt – jede Rechnung nur einmal
+    type MStat = {
+      miss: number;
+      missV: bigint;
+      missDue: bigint;
+      unknown: number;
+      inv: Map<string, Unpaid>;
+      uns: number;
     };
-    for (const r of base) for (const [m, v] of expectedOf.get(r.id)?.byMonth ?? []) addB(m, 'exp', v);
-    for (const u of tileUnpaid) addB(u.month, 'inv', u.net);
-    const monthRows: [string, string][] = [
-      ['frueher', 'frühere Monate'],
-      [curMonth, `${monthName(curMonth)} (aktuell)`],
-      [nextMonth, `${monthName(nextMonth)} (nächster Monat)`],
-      ['spaeter', 'später'],
-      ['bedarf', 'nach Ausführung (Monat noch offen)'],
-    ];
-    const unpaidNet = tileUnpaid.reduce((a, u) => a + u.net, 0n);
-    const unpaidGross = tileUnpaid.reduce((a, u) => a + u.cents, 0n);
-    const unpaidDueNet = tileUnpaid.filter((u) => u.due_date < todayBerlin()).reduce((a, u) => a + u.net, 0n);
-    // Laufend/Einmalig = auch erteilte ohne Unterschrift (stehen zusätzlich unter „Zu erledigen“, Ahmed 22.10.)
-    const inView = (r: (typeof base)[number], v: string) =>
-      (v === 'unbezahlt' ? unpaidOf(r).length > 0 : r.phase === v) ||
-      (r.phase === 'erledigen' &&
-        r.unsigned &&
-        ((v === 'laufend' && r.recurring) || (v === 'einmalig' && !r.recurring)));
-    const count = (v: string) => (v === 'alle' ? base.length : base.filter((r) => inView(r, v)).length);
-    const allRows = view === 'alle' ? base : base.filter((r) => inView(r, view));
+    const statOf = (m: string): MStat => {
+      const st: MStat = { miss: 0, missV: 0n, missDue: 0n, unknown: 0, inv: new Map(), uns: 0 };
+      for (const r of base) {
+        const ms = missIn(r, m);
+        if (ms.length) st.miss++;
+        for (const [, x] of ms) {
+          if (x.v === null) st.unknown++;
+          else {
+            st.missV += x.v;
+            if (x.due) st.missDue += x.v;
+          }
+        }
+        for (const u of unpaidIn(r, m)) st.inv.set(u.inv, u);
+        if (unsignedIn(r, m)) st.uns++;
+      }
+      return st;
+    };
+    const monthKeys = new Set<string>([curMonth, nextMonth]);
+    for (const r of base) {
+      for (const k of missBy.get(r.id)?.keys() ?? []) monthKeys.add(k);
+      for (const u of unpaidOf(r)) monthKeys.add(u.month);
+    }
+    if (month) monthKeys.add(month);
+    const monthList = [...monthKeys].sort((a, b) =>
+      a === 'bedarf' ? 1 : b === 'bedarf' ? -1 : b.localeCompare(a),
+    );
+    const inView = (r: Row, v: string) => {
+      const miss = missIn(r, month).length > 0;
+      const unp = unpaidIn(r, month).length > 0;
+      if (v === 'rechnung') return miss;
+      if (v === 'unbezahlt') return unp;
+      if (v === 'unterschrift') return unsignedIn(r, month);
+      if (v === 'entwurf') return draftIn(r, month);
+      if (v === 'offen') return miss || unp || unsignedIn(r, month) || draftIn(r, month);
+      return activeIn(r, month) || miss || unp;
+    };
+    const count = (v: string) => base.filter((r) => inView(r, v)).length;
+    const allRows = base
+      .filter((r) => inView(r, view))
+      .filter((r) => view !== 'alle' || !stage || stageOf(r) === stage);
     const PER_PAGE = 25;
     const pages = Math.max(1, Math.ceil(allRows.length / PER_PAGE));
     const cur = Math.min(pages, Math.max(1, Number(q.seite) || 1));
     const rows = allRows.slice((cur - 1) * PER_PAGE, cur * PER_PAGE);
-    // Summe der unbezahlten Rechnungen der gefilterten Bestellungen – jede Rechnung nur einmal
-    const unpaidInv = new Map<string, Unpaid>();
-    for (const r of allRows) for (const u of unpaidOf(r)) unpaidInv.set(u.inv, u);
-    const unpaidSum = [...unpaidInv.values()].reduce((a, u) => a + u.cents, 0n);
-    const unpaidOverdue = [...unpaidInv.values()]
-      .filter((u) => u.due_date < todayBerlin())
-      .reduce((a, u) => a + u.cents, 0n);
-    const unpaidBox = view === 'unbezahlt' && (
-      <div class="ls-hint">
-        <b>{euro(unpaidSum)}</b> unbezahlt in {unpaidInv.size}{' '}
-        {unpaidInv.size === 1 ? 'Rechnung' : 'Rechnungen'}
-        {unpaidOverdue > 0n && (
-          <>
-            {' · '}
-            <span style="color:var(--bad)">davon überfällig {euro(unpaidOverdue)}</span>
-          </>
-        )}{' '}
-        · noch zu zahlen (brutto abzüglich Abzüge und Vorschüsse) ·{' '}
-        <a href="/zahlungsliste">Zur Zahlungsliste →</a>
-      </div>
-    );
     const link = (over: Record<string, string | null>) => {
       const p = new URLSearchParams();
       const st: Record<string, string | null> = {
-        ansicht: view === 'erledigen' ? null : view,
+        monat: month || null,
+        ansicht: view === 'offen' ? null : view,
+        stufe: stage || null,
         art: art || null,
         lieferant: supplierId || null,
         q: search || null,
-        unterschrift: onlyUnsigned ? 'fehlt' : null,
         ...over,
       };
       for (const [k, v] of Object.entries(st)) if (v) p.set(k, v);
       const str = p.toString();
       return `/bestellungen${str ? `?${str}` : ''}`;
     };
-    const VIEWS: [string, string][] = [
-      ['erledigen', 'Zu erledigen'],
+    const VIEWS: [string, string, string][] = [
+      ['offen', 'Alles Offene', 'Rechnung fehlt, unbezahlt, Unterschrift fehlt oder Entwurf'],
+      ['rechnung', 'Rechnung fehlt', 'Zeitraum ohne Eingangsrechnung'],
+      ['unbezahlt', 'Unbezahlt', 'Rechnung da, noch nicht bezahlt'],
+      ['unterschrift', 'Unterschrift fehlt', 'erteilt, unterschriebener Auftrag fehlt'],
+      ['entwurf', 'Entwürfe', 'noch nicht erteilt / bestellt'],
+      ['alle', 'Alle Bestellungen', ''],
+    ];
+    const STAGES: [string, string][] = [
+      ['', 'Alle'],
       ['laufend', 'Laufend (monatlich)'],
-      ['einmalig', 'Einmalig / offen'],
+      ['einmalig', 'Einmalig / nach Ausführung'],
       ['abgeschlossen', 'Abgeschlossen'],
-      ['unbezahlt', 'Unbezahlt'],
-      ['alle', 'Alle'],
+      ['storniert', 'Storniert'],
     ];
     const ARTS: [string, string][] = [
       ['', 'Alle'],
       ['nu', 'Nachunternehmer'],
       ['material', 'Material'],
     ];
+    const sel = statOf(month);
+    const selInv = [...sel.inv.values()];
+    const selUnpaidNet = selInv.reduce((a, u) => a + u.net, 0n);
+    const selUnpaidGross = selInv.reduce((a, u) => a + u.cents, 0n);
+    const selUnpaidDue = selInv.filter((u) => u.due_date < today).reduce((a, u) => a + u.net, 0n);
     const ret = c.req.url.slice(c.req.url.indexOf('/bestellungen'));
     const period = (r: Row) =>
       r.kind === 'material'
@@ -1046,6 +1087,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
         : r.ongoing
           ? `ab ${dateDe(r.from)} · fortlaufend`
           : `${dateDe(r.from)} – ${dateDe(r.to ?? r.from)}`;
+    const monLabel = (m: string) => (m === 'bedarf' ? 'nach Ausführung' : MON(m));
     return page(
       c,
       'Bestellungen',
@@ -1066,89 +1108,82 @@ export function registerPurchasingRoutes(ctx: Ctx) {
             </a>
           </div>
         </div>
-        <div class="kpis kpis-sm">
-          <div class="kpi">
-            <div class="l">Rechnungen stehen noch aus</div>
-            <div class="v">{euro(sumExp.cents)}</div>
-            <div class="s">
-              {sumExp.n} {sumExp.n === 1 ? 'Zeitraum' : 'Zeiträume'} ohne Rechnung · davon Zeitraum vorbei{' '}
-              {euro(sumExp.due)}
-              {sumExp.unknown > 0 && ` · ${sumExp.unknown} ohne Betrag (nach Aufwand)`}
-            </div>
-          </div>
-          <div class="kpi">
-            <div class="l">Eingegangen, unbezahlt</div>
-            <div class="v">{euro(unpaidNet)}</div>
-            <div class="s">
-              {tileUnpaid.length} {tileUnpaid.length === 1 ? 'Rechnung' : 'Rechnungen'} · zu zahlen brutto{' '}
-              {euro(unpaidGross)} · <a href={link({ ansicht: 'unbezahlt', seite: null })}>anzeigen</a>
-            </div>
-          </div>
-          <div class="kpi">
-            <div class="l">Offen gesamt</div>
-            <div class="v">{euro(sumExp.cents + unpaidNet)}</div>
-            <div class="s">ausstehend + unbezahlt</div>
-          </div>
-          <div class="kpi">
-            <div class="l">Davon überfällig</div>
-            <div class="v" style={unpaidDueNet + sumExp.due > 0n ? 'color:var(--bad)' : ''}>
-              {euro(unpaidDueNet + sumExp.due)}
-            </div>
-            <div class="s">
-              unbezahlt fällig {euro(unpaidDueNet)} · Rechnung fehlt {euro(sumExp.due)}
-            </div>
-          </div>
-        </div>
-        <table class="keep" style="max-width:760px;margin:0 0 10px" data-nostick>
+        <table class="keep bs-months" data-nostick>
           <thead>
             <tr>
-              <th>Monat</th>
-              <th class="num">Rechnungen stehen noch aus</th>
-              <th class="num">Eingegangen, unbezahlt</th>
+              <th>Monat (Leistungsmonat)</th>
+              <th class="num">Rechnung fehlt</th>
+              <th class="num">Unbezahlt</th>
+              <th class="num">Unterschrift fehlt</th>
               <th class="num">Offen gesamt</th>
             </tr>
           </thead>
           <tbody>
-            {monthRows
-              .filter(([k]) => k === curMonth || k === nextMonth || byBucket.has(k))
-              .map(([k, l]) => {
-                const b = byBucket.get(k) ?? { exp: 0n, inv: 0n };
-                return (
-                  <tr>
-                    <td>{k === curMonth || k === nextMonth ? <b>{l}</b> : l}</td>
-                    <td class="num">{euro(b.exp)}</td>
-                    <td class="num">{euro(b.inv)}</td>
-                    <td class="num">
-                      <b>{euro(b.exp + b.inv)}</b>
-                    </td>
-                  </tr>
+            {['', ...monthList].map((m) => {
+              const st = m === month ? sel : statOf(m);
+              const inv = [...st.inv.values()];
+              const net = inv.reduce((a, u) => a + u.net, 0n);
+              const due = st.missDue + inv.filter((u) => u.due_date < today).reduce((a, u) => a + u.net, 0n);
+              const on = m === month;
+              const lbl = !m
+                ? 'Alle Monate'
+                : `${monthName(m)}${m === curMonth ? ' (aktuell)' : m === nextMonth ? ' (Vorschau)' : ''}`;
+              const cell = (n: number, v: string | null, ansicht: string) =>
+                n ? (
+                  <a href={link({ monat: m || null, ansicht, stufe: null, seite: null })}>
+                    {n} {v && <span class="small mut">· {v}</span>}
+                  </a>
+                ) : (
+                  <span class="mut">–</span>
                 );
-              })}
+              return (
+                <tr class={on ? 'on' : ''}>
+                  <td>
+                    <a href={link({ monat: m || null, seite: null })}>{on ? <b>{lbl}</b> : lbl}</a>
+                  </td>
+                  <td class="num">
+                    {cell(st.miss, euro(st.missV) + (st.unknown ? ' + nach Aufwand' : ''), 'rechnung')}
+                  </td>
+                  <td class="num">{cell(inv.length, euro(net), 'unbezahlt')}</td>
+                  <td class="num">{cell(st.uns, null, 'unterschrift')}</td>
+                  <td class="num">
+                    <b>{euro(st.missV + net)}</b>
+                    {due > 0n && (
+                      <span class="bs-sub" style="color:var(--bad)">
+                        überfällig {euro(due)}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
-        <p class="small mut" style="margin:-4px 0 10px">
-          Monat = Leistungsmonat (Rechnungen ohne Leistungsmonat: Rechnungsdatum, Material: Bestelldatum). Der
-          nächste Monat ist eine Vorschau laut Bestellung und zählt in den Kacheln oben noch nicht mit. Alle
-          Beträge netto (ohne USt), Nachunternehmer ab Oktober 2026. Ausstehend = erwarteter Betrag laut
-          Bestellung für Zeiträume ohne Rechnung (Pauschale, je Tag × Arbeitstage, erfasste Stunden und
-          Regie); eingegangene Rechnungen zählen dort nicht.
+        <p class="small mut" style="margin:-4px 0 12px">
+          Monat anklicken = Liste unten nur für diesen Monat; Zahl anklicken = nur diese Punkte. Rechnung
+          fehlt = erwarteter Betrag laut Bestellung für Zeiträume ohne Eingangsrechnung (Pauschale, je Tag ×
+          Arbeitstage, erfasste Stunden und Regie; Nachunternehmer ab Oktober 2026). Unbezahlt = eingegangen,
+          noch nicht bezahlt (netto nach Abzügen und Vorschüssen). Alle Beträge netto.
         </p>
         <div class="ls-tabs">
-          {VIEWS.map(([k, l]) => (
+          {VIEWS.map(([k, l, t]) => (
             <a
               class={view === k ? 'on' : ''}
-              href={link({ ansicht: k === 'erledigen' ? null : k, unterschrift: null })}
+              title={t}
+              href={link({ ansicht: k === 'offen' ? null : k, stufe: null, seite: null })}
             >
               {l} <span>{count(k)}</span>
             </a>
           ))}
         </div>
         <form class="ls-bar" method="get" action="/bestellungen">
-          {view !== 'erledigen' && <input type="hidden" name="ansicht" value={view} />}
+          {month && <input type="hidden" name="monat" value={month} />}
+          {view !== 'offen' && <input type="hidden" name="ansicht" value={view} />}
+          {stage && <input type="hidden" name="stufe" value={stage} />}
           {art && <input type="hidden" name="art" value={art} />}
           <div class="chips">
             {ARTS.map(([k, l]) => (
-              <a class={art === k ? 'on' : ''} href={link({ art: k || null })}>
+              <a class={art === k ? 'on' : ''} href={link({ art: k || null, seite: null })}>
                 {l}
               </a>
             ))}
@@ -1179,31 +1214,61 @@ export function registerPurchasingRoutes(ctx: Ctx) {
               : `${(cur - 1) * PER_PAGE + 1}–${(cur - 1) * PER_PAGE + rows.length} von ${allRows.length}`}
           </span>
         </form>
-        {(unsignedCount > 0 || onlyUnsigned) && (
+        {view === 'alle' && (
+          <div class="chips" style="margin:0 0 10px">
+            {STAGES.map(([k, l]) => (
+              <a class={stage === k ? 'on' : ''} href={link({ stufe: k || null, seite: null })}>
+                {l}
+              </a>
+            ))}
+          </div>
+        )}
+        {(view === 'unbezahlt' || view === 'rechnung' || view === 'unterschrift') && (
           <div class="ls-hint">
-            <b>{unsignedCount}</b> erteilte {unsignedCount === 1 ? 'Bestellung' : 'Bestellungen'} ohne
-            unterschriebenen Auftrag –{' '}
-            {onlyUnsigned ? (
-              <a href="/bestellungen?ansicht=alle">alle zeigen</a>
-            ) : (
-              <a href="/bestellungen?ansicht=alle&unterschrift=fehlt">nur diese anzeigen</a>
-            )}
-            {unsignedCount > 0 && (
+            {month ? <b>{monthName(month)}: </b> : <b>Alle Monate: </b>}
+            {view === 'unbezahlt' && (
               <>
-                {' · '}
-                <a
-                  class="btn sm sec"
-                  href={`/bestellungen/ohne-unterschrift.pdf${supplierId ? `?lieferant=${supplierId}` : ''}`}
-                  target="_blank"
-                  style="margin-left:4px"
-                >
-                  <Icon name="file" size={14} /> Alle drucken (PDF)
-                </a>
+                {euro(selUnpaidNet)} netto unbezahlt in {selInv.length}{' '}
+                {selInv.length === 1 ? 'Rechnung' : 'Rechnungen'} · zu zahlen brutto {euro(selUnpaidGross)}
+                {selUnpaidDue > 0n && (
+                  <span style="color:var(--bad)"> · davon überfällig {euro(selUnpaidDue)} netto</span>
+                )}{' '}
+                · <a href="/zahlungsliste">Zur Zahlungsliste →</a>
+              </>
+            )}
+            {view === 'rechnung' && (
+              <>
+                bei {sel.miss} {sel.miss === 1 ? 'Bestellung' : 'Bestellungen'} fehlt die Rechnung, erwartet ≈{' '}
+                {euro(sel.missV)}
+                {sel.unknown > 0 && ` + ${sel.unknown} nach Aufwand`}
+                {sel.missDue > 0n && (
+                  <span style="color:var(--bad)"> · Zeitraum vorbei {euro(sel.missDue)}</span>
+                )}{' '}
+                · erfassen über „+ Rechnung erfassen“ in der Bestellung oder{' '}
+                <a href="/rechnungseingang/erwartet">Rechnung erwartet</a>
+              </>
+            )}
+            {view === 'unterschrift' && (
+              <>
+                {sel.uns} erteilte {sel.uns === 1 ? 'Bestellung' : 'Bestellungen'} ohne unterschriebenen
+                Auftrag
+                {sel.uns > 0 && (
+                  <>
+                    {' · '}
+                    <a
+                      class="btn sm sec"
+                      href={`/bestellungen/ohne-unterschrift.pdf${supplierId ? `?lieferant=${supplierId}` : ''}`}
+                      target="_blank"
+                      style="margin-left:4px"
+                    >
+                      <Icon name="file" size={14} /> Alle drucken (PDF)
+                    </a>
+                  </>
+                )}
               </>
             )}
           </div>
         )}
-        {unpaidBox}
         <form
           id="bs-del"
           method="post"
@@ -1270,12 +1335,24 @@ export function registerPurchasingRoutes(ctx: Ctx) {
                     </span>
                   )}
                   {billCell(r)}
-                  {(expectedOf.get(r.id)?.cents ?? 0n) > 0n && (
-                    <span class="bs-sub">Rechnung steht aus: ≈ {euro(expectedOf.get(r.id)!.cents)}</span>
-                  )}
-                  {unpaidOf(r).map((u) => (
-                    <span class="bs-sub" style={u.due_date < todayBerlin() ? 'color:var(--bad)' : ''}>
-                      unbezahlt: {u.invoice_no} · {euro(u.cents)} · fällig {dateDe(u.due_date)}
+                  {(() => {
+                    const ms = missIn(r, month);
+                    return (
+                      <>
+                        {ms.slice(0, 3).map(([m, x]) => (
+                          <span class="bs-sub" style={x.due ? 'color:var(--bad)' : ''}>
+                            Rechnung fehlt {monLabel(m)}
+                            {x.v !== null ? ` · ≈ ${euro(x.v)}` : ' · nach Aufwand'}
+                          </span>
+                        ))}
+                        {ms.length > 3 && <span class="bs-sub">+ {ms.length - 3} weitere Monate</span>}
+                      </>
+                    );
+                  })()}
+                  {unpaidIn(r, month).map((u) => (
+                    <span class="bs-sub" style={u.due_date < today ? 'color:var(--bad)' : ''}>
+                      unbezahlt: {u.invoice_no} ({monLabel(u.month)}) · {euro(u.cents)} · fällig{' '}
+                      {dateDe(u.due_date)}
                       {u.status === 'erfasst' ? ' · nicht freigegeben' : ''}
                     </span>
                   ))}
@@ -1296,7 +1373,6 @@ export function registerPurchasingRoutes(ctx: Ctx) {
           {!rows.length && <div class="bs-tr empty">Keine Bestellungen in dieser Ansicht.</div>}
         </div>
         <Pager cur={cur} pages={pages} url={(n) => link({ seite: n > 1 ? String(n) : null })} />
-        {unpaidBox}
         {rows
           .filter((r) => r.canFinish)
           .map((r) => (

@@ -40,6 +40,7 @@ import {
 } from '../services/applicants.js';
 import { BusinessError } from '../services/errors.js';
 import { type Ctx, UUID } from './app.js';
+import { EMBED_SNIPPET, publicOrigin } from './routes-public-jobs.js';
 import { arr, centsToInput, str } from './forms.js';
 import { posterHtml } from './job-poster.js';
 import { dateDe, euro, anz } from './layout.js';
@@ -94,6 +95,10 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
     const [posts, pool] = await Promise.all([listPostings(sql), listApplicants(sql)]);
     const open = posts.filter((p) => p.status === 'aktiv');
     const closed = posts.filter((p) => p.status === 'geschlossen');
+    const origin = publicOrigin(
+      c.req.header('x-forwarded-host') ?? c.req.header('host'),
+      c.req.header('x-forwarded-proto'),
+    );
     const card = (p: Posting) => {
       const m = matches(pool, postingCriteria(p));
       return (
@@ -161,6 +166,31 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
         ) : (
           <div class="list-cards">{open.map(card)}</div>
         )}
+        <details class="card" style="margin-top:18px">
+          <summary>
+            <b>Auf der Website anzeigen (WordPress)</b> – {open.filter((p) => p.website).length} Stelle(n) mit
+            Häkchen „Auf der Website“ werden gezeigt
+          </summary>
+          <p class="small">
+            Diesen Code einmal auf der Karriere-Seite einfügen: in WordPress Block <b>„Individuelles HTML“</b>{' '}
+            (nicht „Code“ oder „Absatz“ – die zeigen den Text nur an). Danach erscheinen alle aktiven Stellen
+            mit Häkchen automatisch, Änderungen nach spätestens 5 Minuten. Stundenlohn und Straße werden nie
+            veröffentlicht.
+          </p>
+          <textarea readonly rows={3} style="width:100%;font-family:monospace" onclick="this.select()">
+            {EMBED_SNIPPET(origin)}
+          </textarea>
+          <p class="small mut">
+            Vorschau:{' '}
+            <a href="/oeffentlich/stellen" target="_blank">
+              so sieht es aus
+            </a>{' '}
+            · Daten:{' '}
+            <a href="/oeffentlich/stellen.json" target="_blank">
+              stellen.json
+            </a>
+          </p>
+        </details>
         {closed.length > 0 && (
           <>
             <h3 style="margin-top:24px">Geschlossene Stellen</h3>
@@ -557,8 +587,8 @@ export function registerApplicantRoutes({ app, deps, page, back }: Ctx) {
                 veröffentlichen
               </label>
               <div class="small mut">
-                Erscheint unter viva-deluxe-reinigung.de/karriere (nur solange die Stelle aktiv ist).
-                Stundenlohn und Straße werden nicht veröffentlicht. (Anbindung der Website folgt.)
+                Erscheint auf der Website (Einbau-Code unter Offene Stellen → „Auf der Website anzeigen“), nur
+                solange die Stelle aktiv ist. Stundenlohn und Straße werden nicht veröffentlicht.
               </div>
             </div>
           </div>

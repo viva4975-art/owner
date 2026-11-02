@@ -73,6 +73,7 @@ import { registerCashbookRoutes } from './routes-cashbook.js';
 import { registerLegacyRoutes } from './routes-legacy.js';
 import { registerProspectRoutes } from './routes-prospects.js';
 import { registerApplicantRoutes } from './routes-applicants.js';
+import { registerPublicJobRoutes } from './routes-public-jobs.js';
 import { registerGlassRoutes } from './routes-glass.js';
 import { registerGarageRoutes } from './routes-garage.js';
 import { registerDeepCleaningRoutes } from './routes-deep-cleaning.js';
@@ -231,6 +232,9 @@ export function createApp(deps: Deps) {
     }
   });
 
+  // Offene Stellen für die Website – vor secureHeaders/Anmeldung, damit WordPress sie einbinden darf.
+  registerPublicJobRoutes(app, deps.sql);
+
   // Referer nur innerhalb der App (nötig, um nach einem Eingabefehler ins Formular zurückzukehren).
   app.use(secureHeaders({ referrerPolicy: 'same-origin' }));
   // Schutz gegen fremde Formulare. Hinter Caddy sieht die App „http://…“, der Browser schickt „https://…“ als Origin –
@@ -301,7 +305,8 @@ export function createApp(deps: Deps) {
     path === '/health' ||
     path === '/health/voll' ||
     path === '/health/version' ||
-    path.startsWith('/static/');
+    path.startsWith('/static/') ||
+    path.startsWith('/oeffentlich/');
   app.use(async (c, next) => {
     const path = c.req.path;
     if (open(path)) return next();

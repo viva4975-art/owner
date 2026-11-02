@@ -4722,3 +4722,11 @@ Testadresse.
   MS-NLMP-Prüfwerten und einem nachgebauten Server) und merkt sich das je Adresse. Benutzer „name@firma.de“ als UPN,
   „DOMÄNE\name“ getrennt. Bleibt es bei 401, nennt die Meldung, welche Verfahren der Server anbietet.
   **Gegen den echten IONOS-Server nicht getestet** (von hier nicht erreichbar).
+- 2026-11-02: **Offene Stellen auf der Website (WordPress)** (Ahmed: „veröffentlichen gemacht, aber auf der Website kommt
+  nichts an“): Es gab bisher keine Anbindung – nur das Häkchen. Neu öffentlich ohne Anmeldung (`routes-public-jobs.tsx`,
+  vor secureHeaders registriert, CORS offen, 5 Min. Zwischenspeicher): `/oeffentlich/stellen.json` (aktive Stellen mit
+  Häkchen „Auf der Website“; **ohne Stundenlohn und Straße**), `/oeffentlich/stellen.js` (Einbau-Skript, rendert Karten
+  mit Ort, Std./Woche, Arbeitszeit, Tage, Beginn, Aufgaben, Anforderungen, Knöpfe WhatsApp/E-Mail/Anrufen) und
+  `/oeffentlich/stellen` (Vorschau/iframe). Einbau-Code steht unter Bewerber & Stellen → Offene Stellen → „Auf der
+  Website anzeigen“: `<div id="viva-stellen"></div><script src="https://app.viva-deluxe-reinigung.de/oeffentlich/stellen.js"
+  async></script>` – in WordPress als Block **„Individuelles HTML“**. Von fremder Seite aus geprüft (Playwright).

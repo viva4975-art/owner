@@ -188,13 +188,48 @@ async function call(cr: ExchangeCreds, body: string): Promise<string> {
 
 // ---------------------------------------------------------------- Konto verbinden
 
+/** Angezeigter Kalender eines Kontos: 'calendar' = Hauptkalender, 'mbx:<E-Mail>' = freigegebener Kalender eines
+ *  anderen Postfachs, sonst die EWS-Ordner-ID (Unterkalender). */
+export interface CalRef {
+  id: string;
+  name: string;
+  color: string;
+}
+
 export interface ExchangeAccount {
+  id: string;
   user_id: string;
   email: string;
   login: string;
   ews_url: string;
   last_ok_at: Date | null;
   last_error: string | null;
+  calendars: CalRef[] | null;
+}
+
+export const CAL_COLORS = [
+  '#7D1435',
+  '#1f6feb',
+  '#1a7f37',
+  '#bf8700',
+  '#8250df',
+  '#cf222e',
+  '#0a7ea4',
+  '#6e7781',
+];
+
+/** Angezeigte Kalender eines Kontos; ohne Auswahl nur der Hauptkalender. */
+export function shownCalendars(a: Pick<ExchangeAccount, 'calendars'>, index = 0): CalRef[] {
+  return a.calendars?.length
+    ? a.calendars
+    : [{ id: 'calendar', name: 'Kalender', color: CAL_COLORS[index % CAL_COLORS.length]! }];
+}
+
+function folderXml(cal: string) {
+  if (cal === 'calendar') return '<t:DistinguishedFolderId Id="calendar"/>';
+  if (cal.startsWith('mbx:'))
+    return `<t:DistinguishedFolderId Id="calendar"><t:Mailbox><t:EmailAddress>${esc(cal.slice(4))}</t:EmailAddress></t:Mailbox></t:DistinguishedFolderId>`;
+  return `<t:FolderId Id="${esc(cal)}"/>`;
 }
 
 async function autodiscover(email: string, login: string, password: string): Promise<string | null> {
@@ -271,13 +306,14 @@ export async function connectAccount(
   for (const u of candidates) {
     try {
       await probe({ url: u, user: login, password: p.password });
-      await sql`
+      const [row] = await sql<{ id: string }[]>`
         insert into app.exchange_accounts (user_id, email, login, ews_url, secret_enc, last_ok_at, last_error)
         values (${p.userId}, ${email}, ${login}, ${u}, ${encryptSecret(env, p.password)}, now(), null)
-        on conflict (user_id) do update set email = excluded.email, login = excluded.login,
+        on conflict (user_id, email) do update set login = excluded.login,
           ews_url = excluded.ews_url, secret_enc = excluded.secret_enc, last_ok_at = now(), last_error = null,
-          connected_at = now()`;
-      return u;
+          connected_at = now()
+        returning id`;
+      return { url: u, id: row!.id };
     } catch (e) {
       lastErr = e;
       // falsches Passwort bei einer erreichbaren Adresse → am Ende genau das melden
@@ -290,19 +326,47 @@ export async function connectAccount(
   );
 }
 
-export async function getAccount(sql: Sql, userId: string): Promise<ExchangeAccount | null> {
-  const [a] = await sql<ExchangeAccount[]>`
-    select user_id, email, login, ews_url, last_ok_at, last_error from app.exchange_accounts where user_id = ${userId}`;
-  return a ?? null;
+export async function listAccounts(sql: Sql, userId: string): Promise<ExchangeAccount[]> {
+  return sql<ExchangeAccount[]>`
+    select id, user_id, email, login, ews_url, last_ok_at, last_error, calendars
+      from app.exchange_accounts where user_id = ${userId} order by connected_at, email`;
 }
 
-export async function disconnectAccount(sql: Sql, userId: string) {
-  await sql`delete from app.exchange_accounts where user_id = ${userId}`;
+export async function getAccount(
+  sql: Sql,
+  userId: string,
+  accountId?: string,
+): Promise<ExchangeAccount | null> {
+  const list = await listAccounts(sql, userId);
+  return (accountId ? list.find((a) => a.id === accountId) : list[0]) ?? null;
 }
 
-async function credsOf(sql: Sql, env: Pick<Env, 'SESSION_SECRET' | 'APP_BASIC_AUTH'>, userId: string) {
+export async function disconnectAccount(sql: Sql, userId: string, accountId: string) {
+  await sql`delete from app.exchange_accounts where user_id = ${userId} and id = ${accountId}`;
+}
+
+/** Auswahl der angezeigten Kalender speichern (nur Kalender, die es im Konto gibt bzw. freigegebene). */
+export async function saveCalendars(sql: Sql, userId: string, accountId: string, cals: CalRef[]) {
+  const clean = cals
+    .filter((c) => c.id && c.name)
+    .map((c) => ({
+      id: c.id.slice(0, 400),
+      name: c.name.trim().slice(0, 120),
+      color: /^#[0-9a-f]{6}$/i.test(c.color) ? c.color : CAL_COLORS[0]!,
+    }));
+  const r = await sql`update app.exchange_accounts set calendars = ${clean.length ? sql.json(clean) : null}
+                       where user_id = ${userId} and id = ${accountId}`;
+  if (!r.count) throw new BusinessError('Konto nicht gefunden');
+}
+
+async function credsOf(
+  sql: Sql,
+  env: Pick<Env, 'SESSION_SECRET' | 'APP_BASIC_AUTH'>,
+  userId: string,
+  accountId: string,
+) {
   const [a] = await sql<{ ews_url: string; login: string; secret_enc: string }[]>`
-    select ews_url, login, secret_enc from app.exchange_accounts where user_id = ${userId}`;
+    select ews_url, login, secret_enc from app.exchange_accounts where user_id = ${userId} and id = ${accountId}`;
   if (!a) throw new BusinessError('Kein Outlook-Konto verbunden', 'ews_none');
   let password: string;
   try {
@@ -317,18 +381,95 @@ async function withCreds<T>(
   sql: Sql,
   env: Pick<Env, 'SESSION_SECRET' | 'APP_BASIC_AUTH'>,
   userId: string,
+  accountId: string,
   fn: (cr: ExchangeCreds) => Promise<T>,
 ): Promise<T> {
-  const cr = await credsOf(sql, env, userId);
+  const cr = await credsOf(sql, env, userId, accountId);
   try {
     const r = await fn(cr);
-    await sql`update app.exchange_accounts set last_ok_at = now(), last_error = null where user_id = ${userId}`;
+    await sql`update app.exchange_accounts set last_ok_at = now(), last_error = null where id = ${accountId}`;
     return r;
   } catch (e) {
     if (e instanceof BusinessError && e.code === 'ews_auth')
-      await sql`update app.exchange_accounts set last_error = ${e.message} where user_id = ${userId}`;
+      await sql`update app.exchange_accounts set last_error = ${e.message} where id = ${accountId}`;
     throw e;
   }
+}
+
+export interface FolderInfo {
+  id: string; // 'calendar' für den Hauptkalender
+  name: string;
+  path: string; // „Kalender › Team“
+}
+
+/** Alle Kalenderordner des Postfachs (Hauptkalender, Unterkalender, eigene weitere Kalender). */
+export async function listFolders(
+  sql: Sql,
+  env: Pick<Env, 'SESSION_SECRET' | 'APP_BASIC_AUTH'>,
+  userId: string,
+  accountId: string,
+): Promise<FolderInfo[]> {
+  return withCreds(sql, env, userId, accountId, async (cr) => {
+    const main = await call(
+      cr,
+      '<m:GetFolder><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape></m:FolderShape>' +
+        '<m:FolderIds><t:DistinguishedFolderId Id="calendar"/></m:FolderIds></m:GetFolder>',
+    );
+    const mainId = attr(main, 'FolderId', 'Id');
+    const xml = await call(
+      cr,
+      '<m:FindFolder Traversal="Deep"><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' +
+        '<t:FieldURI FieldURI="folder:DisplayName"/><t:FieldURI FieldURI="folder:FolderClass"/>' +
+        '<t:FieldURI FieldURI="folder:ParentFolderId"/></t:AdditionalProperties></m:FolderShape>' +
+        '<m:ParentFolderIds><t:DistinguishedFolderId Id="msgfolderroot"/></m:ParentFolderIds></m:FindFolder>',
+    );
+    const raw = blocks(xml, 'CalendarFolder')
+      .map((b) => ({
+        id: attr(b, 'FolderId', 'Id') ?? '',
+        parent: attr(b, 'ParentFolderId', 'Id') ?? '',
+        name: text(b, 'DisplayName') ?? '(ohne Namen)',
+        cls: text(b, 'FolderClass') ?? 'IPF.Appointment',
+      }))
+      .filter((f) => f.id && f.cls.startsWith('IPF.Appointment'));
+    const byId = new Map(raw.map((f) => [f.id, f]));
+    const pathOf = (f: (typeof raw)[number]) => {
+      const names = [f.name];
+      let p = byId.get(f.parent);
+      for (let i = 0; p && i < 8; i++, p = byId.get(p.parent)) names.unshift(p.name);
+      return names.join(' › ');
+    };
+    const out = raw.map((f) => ({ id: f.id === mainId ? 'calendar' : f.id, name: f.name, path: pathOf(f) }));
+    if (!out.some((f) => f.id === 'calendar'))
+      out.unshift({ id: 'calendar', name: 'Kalender', path: 'Kalender' });
+    return out.sort((a, b) =>
+      a.id === 'calendar' ? -1 : b.id === 'calendar' ? 1 : a.path.localeCompare(b.path, 'de'),
+    );
+  });
+}
+
+/** Freigegebenen Kalender eines anderen Postfachs prüfen (Leserecht nötig). */
+export async function probeSharedCalendar(
+  sql: Sql,
+  env: Pick<Env, 'SESSION_SECRET' | 'APP_BASIC_AUTH'>,
+  userId: string,
+  accountId: string,
+  mailbox: string,
+) {
+  const m = mailbox.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m)) throw new BusinessError('E-Mail-Adresse des Postfachs ungültig');
+  await withCreds(sql, env, userId, accountId, (cr) =>
+    call(
+      cr,
+      '<m:GetFolder><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape></m:FolderShape>' +
+        `<m:FolderIds>${folderXml(`mbx:${m}`)}</m:FolderIds></m:GetFolder>`,
+    ),
+  ).catch((e: unknown) => {
+    if (e instanceof BusinessError && e.code === 'ews_auth') throw e;
+    throw new BusinessError(
+      `Kalender von ${m} nicht lesbar – in Outlook muss der Kalender für dieses Konto freigegeben sein (${e instanceof Error ? e.message : e})`,
+    );
+  });
+  return `mbx:${m}`;
 }
 
 // ---------------------------------------------------------------- Termine
@@ -346,6 +487,11 @@ export interface CalEvent {
   recurring: boolean;
   organizer: string;
   body?: string;
+  /** Konto und Kalender, aus dem der Termin stammt (bei listEvents gesetzt). */
+  acc?: string;
+  cal?: string;
+  calName?: string;
+  color?: string;
 }
 
 const PROPS = [
@@ -381,35 +527,86 @@ function parseItem(x: string): CalEvent {
   };
 }
 
-/** Termine im Zeitraum [from, to) – Ortszeit Berlin, Serien als einzelne Vorkommen. */
+/** Termine eines Kalenders im Zeitraum [from, to) – Ortszeit Berlin, Serien als einzelne Vorkommen. */
+async function findInFolder(cr: ExchangeCreds, cal: string, from: string, to: string) {
+  const xml = await call(
+    cr,
+    '<m:FindItem Traversal="Shallow"><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape>' +
+      `<t:AdditionalProperties>${PROPS}</t:AdditionalProperties></m:ItemShape>` +
+      `<m:CalendarView MaxEntriesReturned="1000" StartDate="${isoZ(berlinToDate(from))}" EndDate="${isoZ(berlinToDate(to))}"/>` +
+      `<m:ParentFolderIds>${folderXml(cal)}</m:ParentFolderIds></m:FindItem>`,
+  );
+  return blocks(xml, 'CalendarItem').map(parseItem);
+}
+
+export interface CalLoadError {
+  account: string;
+  calendar: string;
+  message: string;
+}
+
+/** Termine aller verbundenen Konten und angezeigten Kalender; Fehler einzelner Kalender halten die anderen nicht auf. */
 export async function listEvents(
   sql: Sql,
   env: Pick<Env, 'SESSION_SECRET' | 'APP_BASIC_AUTH'>,
   userId: string,
   from: string,
   to: string,
-): Promise<CalEvent[]> {
-  return withCreds(sql, env, userId, async (cr) => {
-    const xml = await call(
-      cr,
-      '<m:FindItem Traversal="Shallow"><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape>' +
-        `<t:AdditionalProperties>${PROPS}</t:AdditionalProperties></m:ItemShape>` +
-        `<m:CalendarView MaxEntriesReturned="1000" StartDate="${isoZ(berlinToDate(from))}" EndDate="${isoZ(berlinToDate(to))}"/>` +
-        '<m:ParentFolderIds><t:DistinguishedFolderId Id="calendar"/></m:ParentFolderIds></m:FindItem>',
-    );
-    return blocks(xml, 'CalendarItem')
-      .map(parseItem)
-      .sort((a, b) => a.start.getTime() - b.start.getTime());
-  });
+): Promise<{ events: CalEvent[]; errors: CalLoadError[] }> {
+  const accounts = await listAccounts(sql, userId);
+  const errors: CalLoadError[] = [];
+  const parts = await Promise.all(
+    accounts.map(async (a, i) => {
+      const cals = shownCalendars(a, i);
+      try {
+        return await withCreds(sql, env, userId, a.id, async (cr) => {
+          const res = await Promise.all(
+            cals.map(async (cal) => {
+              try {
+                return (await findInFolder(cr, cal.id, from, to)).map((e) => ({
+                  ...e,
+                  acc: a.id,
+                  cal: cal.id,
+                  calName: cals.length > 1 || accounts.length > 1 ? cal.name : '',
+                  color: cal.color,
+                }));
+              } catch (e) {
+                if (e instanceof BusinessError && e.code === 'ews_auth') throw e;
+                errors.push({
+                  account: a.email,
+                  calendar: cal.name,
+                  message: e instanceof Error ? e.message : String(e),
+                });
+                return [];
+              }
+            }),
+          );
+          return res.flat();
+        });
+      } catch (e) {
+        if (!(e instanceof BusinessError)) throw e;
+        errors.push({ account: a.email, calendar: '', message: e.message });
+        return [];
+      }
+    }),
+  );
+  // gleicher Termin in zwei Kalendern (z. B. eigener + freigegebener) nur einmal
+  const seen = new Set<string>();
+  const events = parts
+    .flat()
+    .filter((e) => (seen.has(`${e.acc}|${e.id}`) ? false : (seen.add(`${e.acc}|${e.id}`), true)))
+    .sort((a, b) => a.start.getTime() - b.start.getTime());
+  return { events, errors };
 }
 
 export async function getEvent(
   sql: Sql,
   env: Pick<Env, 'SESSION_SECRET' | 'APP_BASIC_AUTH'>,
   userId: string,
+  accountId: string,
   id: string,
 ): Promise<CalEvent> {
-  return withCreds(sql, env, userId, async (cr) => {
+  return withCreds(sql, env, userId, accountId, async (cr) => {
     const xml = await call(
       cr,
       '<m:GetItem><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:BodyType>Text</t:BodyType>' +
@@ -490,14 +687,16 @@ export async function createEvent(
   sql: Sql,
   env: Pick<Env, 'SESSION_SECRET' | 'APP_BASIC_AUTH'>,
   userId: string,
+  accountId: string,
   e: EventInput,
+  cal = 'calendar',
 ): Promise<string> {
   const t = normalizeEvent(e);
-  return withCreds(sql, env, userId, async (cr) => {
+  return withCreds(sql, env, userId, accountId, async (cr) => {
     const xml = await call(
       cr,
       '<m:CreateItem SendMeetingInvitations="SendToNone"><m:SavedItemFolderId>' +
-        '<t:DistinguishedFolderId Id="calendar"/></m:SavedItemFolderId>' +
+        `${folderXml(cal)}</m:SavedItemFolderId>` +
         `<m:Items><t:CalendarItem>${itemXml(e, t)}</t:CalendarItem></m:Items></m:CreateItem>`,
     );
     return attr(xml, 'ItemId', 'Id') ?? '';
@@ -508,6 +707,7 @@ export async function updateEvent(
   sql: Sql,
   env: Pick<Env, 'SESSION_SECRET' | 'APP_BASIC_AUTH'>,
   userId: string,
+  accountId: string,
   id: string,
   changeKey: string,
   e: EventInput,
@@ -536,7 +736,7 @@ export async function updateEvent(
       ? set('calendar:Location', `<t:Location>${esc(e.location.trim())}</t:Location>`)
       : del('calendar:Location'),
   ].join('');
-  await withCreds(sql, env, userId, (cr) =>
+  await withCreds(sql, env, userId, accountId, (cr) =>
     call(
       cr,
       '<m:UpdateItem ConflictResolution="AlwaysOverwrite" SendMeetingInvitationsOrCancellations="SendToNone">' +
@@ -550,9 +750,10 @@ export async function deleteEvent(
   sql: Sql,
   env: Pick<Env, 'SESSION_SECRET' | 'APP_BASIC_AUTH'>,
   userId: string,
+  accountId: string,
   id: string,
 ) {
-  await withCreds(sql, env, userId, (cr) =>
+  await withCreds(sql, env, userId, accountId, (cr) =>
     call(
       cr,
       '<m:DeleteItem DeleteType="MoveToDeletedItems" SendMeetingCancellations="SendToNone">' +

@@ -8,6 +8,9 @@ import {
   dateToBerlin,
   deleteEvent,
   getAccount,
+  listAccounts,
+  listFolders,
+  saveCalendars,
   getEvent,
   listEvents,
   normalizeEvent,
@@ -54,7 +57,7 @@ describe.skipIf(!available)('Exchange-Kalender: Konto und Termine', () => {
   let sql: Sql;
   const userId = randomUUID();
   // kleiner nachgebauter Exchange-Server
-  const items = new Map<string, { xml: string; ck: number }>();
+  const items = new Map<string, { xml: string; ck: number; folder: string }>();
   const requests: string[] = [];
   const ok = (inner: string) =>
     new Response(
@@ -79,14 +82,31 @@ describe.skipIf(!available)('Exchange-Kalender: Konto und Termine', () => {
         );
       }
       if (url !== EWS) return new Response('', { status: 404 });
-      if (auth !== 'ahmed@viva.test:geheim') return new Response('', { status: 401 });
+      if (auth !== 'ahmed@viva.test:geheim' && auth !== 'info@viva.test:geheim2')
+        return new Response('', { status: 401 });
+      const box = auth.split('@')[0]!;
+      // Ordner einer Anfrage: Hauptkalender des Postfachs oder Ordner-ID
+      const folderOf = (x: string) =>
+        /<t:FolderId Id="([^"]+)"/.exec(x)?.[1] ??
+        `${/<t:EmailAddress>([^<]+)</.exec(x)?.[1]?.split('@')[0] ?? box}:calendar`;
       requests.push(body);
       if (body.includes('<m:GetFolder>'))
-        return ok('<m:GetFolderResponseMessage ResponseClass="Success"></m:GetFolderResponseMessage>');
+        return ok(
+          `<m:GetFolderResponseMessage ResponseClass="Success"><m:Folders><t:CalendarFolder><t:FolderId Id="${box}-MAIN"/></t:CalendarFolder></m:Folders></m:GetFolderResponseMessage>`,
+        );
+      if (body.includes('<m:FindFolder'))
+        return ok(
+          `<m:FindFolderResponseMessage ResponseClass="Success"><m:RootFolder><t:Folders>` +
+            `<t:CalendarFolder><t:FolderId Id="${box}-MAIN"/><t:ParentFolderId Id="ROOT"/><t:DisplayName>Kalender</t:DisplayName><t:FolderClass>IPF.Appointment</t:FolderClass></t:CalendarFolder>` +
+            `<t:CalendarFolder><t:FolderId Id="${box}-TEAM"/><t:ParentFolderId Id="${box}-MAIN"/><t:DisplayName>Team &amp; Objekte</t:DisplayName><t:FolderClass>IPF.Appointment</t:FolderClass></t:CalendarFolder>` +
+            `<t:ContactsFolder><t:FolderId Id="${box}-KONT"/><t:DisplayName>Kontakte</t:DisplayName><t:FolderClass>IPF.Contact</t:FolderClass></t:ContactsFolder>` +
+            `</t:Folders></m:RootFolder></m:FindFolderResponseMessage>`,
+        );
       if (body.includes('<m:CreateItem')) {
         const id = `AAMk${items.size + 1}/+=`;
         const xml = /<t:CalendarItem>([\s\S]*)<\/t:CalendarItem>/.exec(body)![1]!;
-        items.set(id, { xml, ck: 1 });
+        const fx = /<m:SavedItemFolderId>([\s\S]*?)<\/m:SavedItemFolderId>/.exec(body)![1]!;
+        items.set(id, { xml, ck: 1, folder: folderOf(fx) });
         return ok(
           `<m:CreateItemResponseMessage ResponseClass="Success"><m:Items><t:CalendarItem><t:ItemId Id="${id.replace(/&/g, '&amp;')}" ChangeKey="ck1"/></t:CalendarItem></m:Items></m:CreateItemResponseMessage>`,
         );
@@ -96,7 +116,9 @@ describe.skipIf(!available)('Exchange-Kalender: Konto und Termine', () => {
       if (body.includes('<m:FindItem')) {
         const from = /StartDate="([^"]+)"/.exec(body)![1]!;
         const to = /EndDate="([^"]+)"/.exec(body)![1]!;
+        const folder = folderOf(/<m:ParentFolderIds>([\s\S]*?)<\/m:ParentFolderIds>/.exec(body)![1]!);
         const list = [...items]
+          .filter(([, it]) => it.folder === folder)
           .filter(([, it]) => field(it.xml, 'Start')! < to && field(it.xml, 'End')! > from)
           .map(([id, it]) => render(id, it))
           .join('');
@@ -143,7 +165,7 @@ describe.skipIf(!available)('Exchange-Kalender: Konto und Termine', () => {
       connectAccount(sql, env, { userId, email: 'ahmed@viva.test', password: 'falsch', url: EWS }),
     ).rejects.toThrow(/Passwort falsch/);
     expect(await getAccount(sql, userId)).toBeNull();
-    const url = await connectAccount(sql, env, { userId, email: 'Ahmed@Viva.test', password: 'geheim' });
+    const { url } = await connectAccount(sql, env, { userId, email: 'Ahmed@Viva.test', password: 'geheim' });
     expect(url).toBe(EWS);
     const acc = await getAccount(sql, userId);
     expect(acc?.email).toBe('ahmed@viva.test');
@@ -152,7 +174,8 @@ describe.skipIf(!available)('Exchange-Kalender: Konto und Termine', () => {
   });
 
   it('Termin anlegen, im Zeitraum finden, ändern, löschen', async () => {
-    const id = await createEvent(sql, env, userId, {
+    const accId = (await getAccount(sql, userId))!.id;
+    const id = await createEvent(sql, env, userId, accId, {
       subject: 'Begehung Grundschule <A&B>',
       date: '2026-11-03',
       start: '10:00',
@@ -171,17 +194,17 @@ describe.skipIf(!available)('Exchange-Kalender: Konto und Termine', () => {
     expect(create).toContain('<t:ReminderMinutesBeforeStart>30</t:ReminderMinutesBeforeStart>');
     expect(create).toContain('SendMeetingInvitations="SendToNone"');
 
-    const week = await listEvents(sql, env, userId, '2026-11-02', '2026-11-09');
+    const { events: week } = await listEvents(sql, env, userId, '2026-11-02', '2026-11-09');
     expect(week).toHaveLength(1);
     expect(week[0]!.subject).toBe('Begehung Grundschule <A&B>');
     expect(dateToBerlin(week[0]!.start)).toEqual({ date: '2026-11-03', time: '10:00' });
     expect(week[0]!.reminder).toBe(30);
-    expect(await listEvents(sql, env, userId, '2026-11-09', '2026-11-16')).toHaveLength(0);
+    expect((await listEvents(sql, env, userId, '2026-11-09', '2026-11-16')).events).toHaveLength(0);
 
-    const ev = await getEvent(sql, env, userId, id);
+    const ev = await getEvent(sql, env, userId, accId, id);
     expect(ev.body).toBe('Schlüssel mitnehmen');
     expect(ev.organizer).toBe('Ahmed');
-    await updateEvent(sql, env, userId, id, ev.changeKey, {
+    await updateEvent(sql, env, userId, accId, id, ev.changeKey, {
       subject: 'Begehung verschoben',
       date: '2026-11-04',
       start: '08:00',
@@ -193,20 +216,68 @@ describe.skipIf(!available)('Exchange-Kalender: Konto und Termine', () => {
       reminder: null,
       busy: 'Tentative',
     });
-    const after = await getEvent(sql, env, userId, id);
+    const after = await getEvent(sql, env, userId, accId, id);
     expect(after.subject).toBe('Begehung verschoben');
     expect(dateToBerlin(after.start)).toEqual({ date: '2026-11-04', time: '08:00' });
     expect(after.reminder).toBeNull();
     expect(after.location).toBe('');
     expect(after.busy).toBe('Tentative');
 
-    await deleteEvent(sql, env, userId, id);
-    await expect(getEvent(sql, env, userId, id)).rejects.toThrow(/nicht gefunden/);
+    await deleteEvent(sql, env, userId, accId, id);
+    await expect(getEvent(sql, env, userId, accId, id)).rejects.toThrow(/nicht gefunden/);
   });
 
-  it('ohne verbundenes Konto: klare Meldung', async () => {
-    await expect(listEvents(sql, env, randomUUID(), '2026-11-01', '2026-11-02')).rejects.toThrow(
-      /Kein Outlook-Konto/,
-    );
+  it('mehrere Konten und Unterkalender: Ordnerliste, Auswahl, Termine je Kalender mit Farbe', async () => {
+    await connectAccount(sql, env, {
+      userId,
+      email: 'info@viva.test',
+      login: 'info@viva.test',
+      password: 'geheim2',
+      url: EWS,
+    });
+    const accs = await listAccounts(sql, userId);
+    expect(accs.map((a) => a.email)).toEqual(['ahmed@viva.test', 'info@viva.test']);
+    const [ahmed, info] = accs as [(typeof accs)[0], (typeof accs)[0]];
+    const folders = await listFolders(sql, env, userId, ahmed.id);
+    expect(folders.map((f) => [f.id, f.path])).toEqual([
+      ['calendar', 'Kalender'],
+      ['ahmed-TEAM', 'Kalender › Team & Objekte'],
+    ]);
+    await saveCalendars(sql, userId, ahmed.id, [
+      { id: 'calendar', name: 'Kalender', color: '#7d1435' },
+      { id: 'ahmed-TEAM', name: 'Team & Objekte', color: '#1a7f37' },
+    ]);
+    const base = {
+      date: '2026-11-05',
+      start: '09:00',
+      endDate: '2026-11-05',
+      end: '10:00',
+      allDay: false,
+      location: '',
+      body: '',
+      reminder: null,
+      busy: 'Busy' as const,
+    };
+    await createEvent(sql, env, userId, ahmed.id, { ...base, subject: 'Haupt' });
+    await createEvent(sql, env, userId, ahmed.id, { ...base, subject: 'Unterkalender' }, 'ahmed-TEAM');
+    await createEvent(sql, env, userId, info.id, { ...base, subject: 'Info-Postfach' });
+    const { events, errors } = await listEvents(sql, env, userId, '2026-11-02', '2026-11-09');
+    expect(errors).toEqual([]);
+    const got = Object.fromEntries(events.map((e) => [e.subject, [e.acc, e.cal, e.color]]));
+    expect(got.Haupt).toEqual([ahmed.id, 'calendar', '#7d1435']);
+    expect(got.Unterkalender).toEqual([ahmed.id, 'ahmed-TEAM', '#1a7f37']);
+    expect(got['Info-Postfach']?.[0]).toBe(info.id);
+    // falsches Passwort bei einem Konto hält das andere nicht auf
+    await sql`update app.exchange_accounts set login = 'info@viva.test-alt' where id = ${info.id}`;
+    const r2 = await listEvents(sql, env, userId, '2026-11-02', '2026-11-09');
+    expect(r2.events.map((e) => e.subject).sort()).toEqual(['Haupt', 'Unterkalender']);
+    expect(r2.errors[0]?.account).toBe('info@viva.test');
+  });
+
+  it('ohne verbundenes Konto: keine Termine', async () => {
+    expect(await listEvents(sql, env, randomUUID(), '2026-11-01', '2026-11-02')).toEqual({
+      events: [],
+      errors: [],
+    });
   });
 });

@@ -4730,3 +4730,13 @@ Testadresse.
   `/oeffentlich/stellen` (Vorschau/iframe). Einbau-Code steht unter Bewerber & Stellen → Offene Stellen → „Auf der
   Website anzeigen“: `<div id="viva-stellen"></div><script src="https://app.viva-deluxe-reinigung.de/oeffentlich/stellen.js"
   async></script>` – in WordPress als Block **„Individuelles HTML“**. Von fremder Seite aus geprüft (Playwright).
+- 2026-11-02: **Outlook-Kalender: mehrere Konten und Unterkalender** (Ahmed): je Benutzer beliebig viele Exchange-Postfächer
+  (`app.exchange_accounts` jetzt mit eigener `id`, eindeutig je Benutzer + E-Mail; Migration `20270112000001`). Kalender →
+  **„Konten & Kalender“** (`/kalender/konten`): je Konto alle Kalenderordner des Postfachs (Hauptkalender, Unterkalender,
+  weitere eigene Kalender – EWS FindFolder über das ganze Postfach, `listFolders`) zum Anhaken mit eigener Farbe
+  (`exchange_accounts.calendars`, leer = nur Hauptkalender), dazu **freigegebene Kalender anderer Postfächer** per E-Mail
+  (Leserecht in Outlook nötig, `mbx:<E-Mail>`), Konto trennen, weiteres Konto verbinden (gleiche E-Mail = neu verbinden).
+  Woche/Monat/Liste zeigen alle angehakten Kalender farbig mit Legende und Kalendername; fällt ein Konto aus (z. B.
+  Passwort geändert), erscheinen die anderen trotzdem, oben steht der Fehler. Neuer Termin: Auswahl „Kalender“ (Konto +
+  Ordner); Ändern/Löschen im Postfach, aus dem der Termin stammt. Test mit nachgebautem Server: zwei Konten, Unterkalender,
+  ein Konto mit falschem Passwort. **Gegen den echten IONOS-Server weiter ungetestet.**

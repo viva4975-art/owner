@@ -4781,8 +4781,10 @@ Testadresse.
     mit Stufen) → Liste mit Überschrift „Ansicht · Monat“ und passendem Knopf (Zahlungsliste, Rechnung erwartet,
     Ohne Unterschrift drucken). Je Zeile farbige Hinweise: rot = überfällig, gelb = Rechnung/Unterschrift fehlt, blau =
     unbezahlt. Erklärung eingeklappt unter „So wird gerechnet“. Monatstabelle und Reiterleiste entfallen.
-  - **Nach Ausführung in jedem Monat der Laufzeit** (bis nächsten Monat) unter „Rechnung fehlt“, Hinweis „nach
-    Ausführung, 10/2026–12/2026“; in „Alle Monate“ zählt der Betrag einmal (Zeile „nach Ausführung (Monat offen)“ entfällt).
+  - **Nach Ausführung in jedem Monat der Laufzeit** unter „Rechnung fehlt“, Hinweis „nach Ausführung, 10/2026–11/2026“,
+    **anteilig** (Ahmed: „in den Oktober fließen Tage vom November ein“): je Tag = Preis × Arbeitstage des Monats,
+    Pauschalen nach Kalendertagen der Laufzeit (Rest-Cent im letzten Monat), Stunden/Regie im Monat der Erfassung;
+    „Alle Monate“ = Summe der Anteile (Zeile „nach Ausführung (Monat offen)“ entfällt).
   - **Fund Zurück:** Die NU-Bestellung verlinkte „‹ Zurück zu Bestellungen“ fest auf `/bestellungen?art=nu` – Links mit
     Filter wurden nicht durch die zuletzt gesehene Liste ersetzt. Jetzt `/bestellungen` (= letzte Fassung mit Filter);
     „Speichern & zurück“ nimmt ebenfalls die zuletzt gesehene Liste. **Browser-Zurück nach dem Speichern** überspringt

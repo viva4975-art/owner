@@ -623,6 +623,10 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       sql,
       subcontracts.filter((x) => x.billing === 'tag').map((x) => x.id),
     );
+    const monthEndOf = (m: string) => {
+      const [y, mo] = m.split('-').map(Number) as [number, number];
+      return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
+    };
     const monthsOf = (start: string, end: string) => {
       const out: string[] = [];
       for (let m = start; m <= end.slice(0, 7) && out.length < 60;) {
@@ -684,40 +688,79 @@ export function registerPurchasingRoutes(ctx: Ctx) {
         // Zeiträume, die erst nächsten Monat beginnen: nur in der Monatsaufteilung, nicht in den Kacheln
         const ahead = p.start > curMonth;
         const ms = monthsOf(p.start, p.end);
-        // nach Ausführung: in jedem Monat der Laufzeit (höchstens bis nächsten Monat), gezählt im letzten davon
-        const spanMs = rec ? [p.start] : ms.filter((m) => m <= nextMonth);
-        if (!spanMs.length) spanMs.push(p.start);
-        const mKey = spanMs[spanMs.length - 1]!;
-        const spanLabel =
-          !rec && ms.length > 1
-            ? `nach Ausführung, ${MON(p.start)}–${p.end > `${nextMonth}-31` ? 'offen' : MON(p.end.slice(0, 7))}`
-            : !rec
-              ? 'nach Ausführung'
-              : undefined;
+        const spanLabel = rec
+          ? undefined
+          : ms.length > 1
+            ? `nach Ausführung, ${MON(ms[0]!)}–${MON(ms[ms.length - 1]!)}`
+            : 'nach Ausführung';
+        // Betrag je Monat: regelmäßig alles im Monat des Zeitraums; nach Ausführung anteilig auf die Monate der
+        // Laufzeit (je Tag = Arbeitstage des Monats, Pauschalen nach Kalendertagen, Stunden im Monat der Erfassung)
+        const parts = new Map<string, bigint>();
+        const put = (m: string, x: bigint) => parts.set(m, (parts.get(m) ?? 0n) + x);
         let v: bigint | null = 0n;
         if (sc.billing === 'umsatz') v = null;
-        else if (sc.billing === 'pauschale_monat' || sc.billing === 'qm')
-          v = total === null ? null : total * BigInt(rec ? ms.length : 1);
-        else if (sc.billing === 'pauschale_einsatz') v = total ?? sc.current_price_cents;
         else if (sc.billing === 'tag')
           for (const m of ms)
-            v! +=
+            put(
+              rec ? p.start : m,
               sc.current_price_cents *
-              BigInt(
-                countDays(m, {
-                  workDays: sc.work_days,
-                  validFrom: sc.valid_from,
-                  validTo: sc.valid_to,
-                  closures: tagClosures.filter((c) => c.subcontract_id === sc.id),
-                }).days,
-              );
+                BigInt(
+                  countDays(m, {
+                    workDays: sc.work_days,
+                    validFrom: sc.valid_from,
+                    validTo: sc.valid_to,
+                    closures: tagClosures.filter((c) => c.subcontract_id === sc.id),
+                  }).days,
+                ),
+            );
+        else {
+          const flat =
+            sc.billing === 'pauschale_monat' || sc.billing === 'qm'
+              ? total === null
+                ? null
+                : total * BigInt(rec ? ms.length : 1)
+              : sc.billing === 'pauschale_einsatz'
+                ? (total ?? sc.current_price_cents)
+                : 0n;
+          if (flat === null) v = null;
+          else if (rec || ms.length < 2) put(ms[0] ?? p.start, flat);
+          else {
+            // Kalendertage der Laufzeit je Monat, Rest-Cent in den letzten Monat
+            const from = sc.valid_from > `${p.start}-01` ? sc.valid_from : `${p.start}-01`;
+            const dayMs = 86_400_000;
+            const dOf = (x: string) => Date.parse(`${x}T00:00:00Z`);
+            const totalDays = BigInt(Math.max(1, Math.round((dOf(p.end) - dOf(from)) / dayMs) + 1));
+            let rest = flat;
+            ms.forEach((m, i) => {
+              if (i === ms.length - 1) return put(m, rest);
+              const s0 = m === ms[0] ? from : `${m}-01`;
+              const e0 = monthEndOf(m);
+              const days = BigInt(Math.round((dOf(e0) - dOf(s0)) / dayMs) + 1);
+              const x = (flat * days * 2n + totalDays) / (totalDays * 2n);
+              rest -= x;
+              put(m, x);
+            });
+          }
+        }
         // Stunden (Stundennachweis) und Regie: monatliche je Monat des Zeitraums, sonst alle bisher erfassten
-        // (bei Bestellungen nach Ausführung nur beim ersten offenen Zeitraum, sonst doppelt)
-        if (v !== null) for (const [m, a] of hm) if (rec ? ms.includes(m) : p === (firstNow ?? ps[0])) v += a;
-        if (v !== null && v !== 0n) e.byMonth.set(mKey, (e.byMonth.get(mKey) ?? 0n) + v);
-        // Monat für „Rechnung fehlt“: regelmäßig = Monat des Zeitraums, nach Ausführung = jeder Monat der Laufzeit
-        if (v !== 0n || sc.billing !== 'stunde')
-          for (const m of spanMs) addMiss(sc.id, m, v, p.end < today, m === mKey, spanLabel);
+        // (bei Bestellungen nach Ausführung nur beim ersten offenen Zeitraum, im Monat der Erfassung innerhalb der Laufzeit)
+        if (v !== null)
+          for (const [m, a] of hm) {
+            if (rec) {
+              if (ms.includes(m)) put(p.start, a);
+            } else if (p === (firstNow ?? ps[0]) && ms.length)
+              put(m < ms[0]! ? ms[0]! : m > ms[ms.length - 1]! ? ms[ms.length - 1]! : m, a);
+          }
+        if (v !== null) v = [...parts.values()].reduce((x, y) => x + y, 0n);
+        for (const [m, x] of parts) if (x !== 0n) e.byMonth.set(m, (e.byMonth.get(m) ?? 0n) + x);
+        // „Rechnung fehlt“ je Monat mit dem Anteil dieses Monats
+        if (v === null) {
+          if (sc.billing !== 'stunde')
+            addMiss(sc.id, rec ? p.start : (ms[0] ?? p.start), null, p.end < today, true, spanLabel);
+        } else if (v !== 0n || sc.billing !== 'stunde') {
+          if (!parts.size) parts.set(rec ? p.start : (ms[0] ?? p.start), 0n);
+          for (const [m, x] of parts) addMiss(sc.id, m, x, p.end < today, true, spanLabel);
+        }
         if (ahead) continue;
         e.periods++;
         if (v === null || v === 0n) {
@@ -968,10 +1011,6 @@ export function registerPurchasingRoutes(ctx: Ctx) {
         })(),
       })),
     ].sort((x, y) => y.number.localeCompare(x.number, 'de', { numeric: true }));
-    const monthEndOf = (m: string) => {
-      const [y, mo] = m.split('-').map(Number) as [number, number];
-      return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
-    };
     /** Bestellung läuft im Monat (für Unterschrift/Entwurf) */
     const activeIn = (r: Row, m: string) =>
       !m || (m !== 'bedarf' && (r.from ?? '9999') <= monthEndOf(m) && (!r.to || r.to >= `${m}-01`));

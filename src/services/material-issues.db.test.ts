@@ -115,6 +115,40 @@ describe.skipIf(!available)('Materialausgabe an Objekt (interner Lieferschein)',
     const [log] = await sql<{ n: number }[]>`
       select count(*)::int as n from app.audit_log where entity = 'material_issue' and action = 'delete'`;
     expect(log!.n).toBe(2);
+    // freier Artikel (nicht angelegt): kein Bestand, Kosten EK × Menge, mit Lagerartikel gemischt
+    const id3 = randomUUID();
+    await createMaterialIssue(
+      sql,
+      id3,
+      {
+        siteId: site!.id,
+        date: today,
+        lines: [
+          { articleId: art, quantityMilli: 1_000n },
+          { quantityMilli: 2_500n, description: 'Baumarkt Silikon', unit: 'Kartusche', priceCents: 799n },
+        ],
+      },
+      't',
+    );
+    const [e] = await sql<{ stock_milli: bigint }[]>`select stock_milli from app.articles where id = ${art}`;
+    expect(e!.stock_milli).toBe(9_000n);
+    expect(await cost()).toBe(999n + 1998n);
+    expect((await materialIssuePdf(sql, id3, true))!.length).toBeGreaterThan(1000);
+    await expect(
+      createMaterialIssue(
+        sql,
+        randomUUID(),
+        {
+          siteId: site!.id,
+          date: today,
+          lines: [{ quantityMilli: 1_000n, description: ' ', priceCents: 1n }],
+        },
+        't',
+      ),
+    ).rejects.toThrow(/Bezeichnung/);
+    await cancelMaterialIssue(sql, id3, 'Test', 't');
+    expect(await cost()).toBe(0n);
+    await deleteMaterialIssue(sql, id3, 't');
     // ohne Server-Freigabe bleibt die Lagerbuchung unveränderbar
     await expect(sql`delete from app.stock_movements`).rejects.toThrow(/nur anhängbar/);
   });

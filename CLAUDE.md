@@ -4755,3 +4755,10 @@ Testadresse.
   und Tests. Migration `20270114000001` löscht `app.exchange_accounts` (gespeicherte, verschlüsselte Postfach-Passwörter)
   und `app.calendar_feeds` (Abo-Links). Bereits abonnierte Kalender in Handys/Outlook bekommen keine Daten mehr – dort
   das Abo entfernen. Termine in Outlook selbst bleiben unberührt. Einsatzkalender (Mitarbeiter, Objekt, App) bleibt.
+- 2026-11-02: **Materialausgabe mit freien Artikeln** (Ahmed: „freien Artikel angeben, der nicht angelegt ist“): Inventar →
+  Materialausgabe → neben „Artikel aus dem Lager“ Abschnitt **„Freie Artikel (nicht angelegt)“**: Bezeichnung, Menge,
+  Einheit, EK netto je Einheit, beliebig viele Zeilen („+ freier Artikel“); auch ohne Lagerartikel möglich. Kein Bestand,
+  keine Lagerbuchung; Kosten = EK × Menge (kaufmännisch auf Cent) zählen in der Nachkalkulation (und „Kosten
+  aufschlüsseln“) wie Lagerartikel auf die Kostenstelle des Objekts im Monat der Ausgabe; Storno/Löschen nehmen sie
+  heraus. Lieferschein zeigt sie ohne Artikelnummer. `material_issue_lines.article_id` darf leer sein (Migration
+  `20270114000002`). Material-Bestellungen kannten freie Positionen schon. Test in `material-issues.db.test.ts`.

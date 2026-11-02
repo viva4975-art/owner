@@ -308,12 +308,18 @@ export async function siteCosting(
        where t.status in ('erfasst', 'freigegeben') and t.work_date between ${from} and ${to}
        group by t.site_id`,
     sql<{ site_id: string; cost: bigint }[]>`
-      select m.site_id,
-             coalesce(sum(round(-m.delta_milli * coalesce(m.unit_cost_cents, a.purchase_price_cents, 0) / 1000.0)), 0)::bigint as cost
-        from app.stock_movements m join app.articles a on a.id = m.article_id
-       where m.site_id is not null and (m.delta_milli < 0 or m.material_issue_id is not null)
-         and coalesce(m.booked_on, (m.created_at at time zone 'Europe/Berlin')::date) between ${from} and ${to}
-       group by m.site_id`,
+      select site_id, coalesce(sum(cost), 0)::bigint as cost from (
+        select m.site_id, round(-m.delta_milli * coalesce(m.unit_cost_cents, a.purchase_price_cents, 0) / 1000.0) as cost
+          from app.stock_movements m join app.articles a on a.id = m.article_id
+         where m.site_id is not null and (m.delta_milli < 0 or m.material_issue_id is not null)
+           and coalesce(m.booked_on, (m.created_at at time zone 'Europe/Berlin')::date) between ${from} and ${to}
+        union all
+        -- freie Artikel der Materialausgabe (ohne Lager), stornierte zählen nicht
+        select mi.site_id, l.net_cents
+          from app.material_issue_lines l join app.material_issues mi on mi.id = l.issue_id
+         where l.article_id is null and mi.issue_date between ${from} and ${to}
+           and not exists (select 1 from app.material_issue_cancellations x where x.issue_id = mi.id)
+      ) mat group by site_id`,
     // Eingangsrechnungen (auch Nachunternehmer) nach Aufteilung auf Kostenstelle = Objekt und Leistungsmonat
     sql<{ site_id: string; category: string; net: bigint }[]>`
       select a.site_id, i.category::text as category, sum(a.net_cents)::bigint as net

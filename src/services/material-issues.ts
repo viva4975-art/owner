@@ -15,8 +15,13 @@ import { nextYearNumber } from './purchasing.js';
  */
 
 export interface MaterialLineInput {
-  articleId: string;
+  /** Lagerartikel; leer = freier Artikel (nicht angelegt, kein Bestand) */
+  articleId?: string | null;
   quantityMilli: bigint;
+  /** nur freier Artikel */
+  description?: string;
+  unit?: string;
+  priceCents?: bigint;
 }
 
 export interface MaterialIssue {
@@ -67,9 +72,11 @@ export async function createMaterialIssue(
     const [again] = await tx<{ issue_no: string }[]>`
       select issue_no from app.material_issues where id = ${id}`;
     if (again) return again.issue_no;
-    // gleiche Artikel zusammenfassen, Artikel sperren (Bestand)
+    // gleiche Artikel zusammenfassen, Artikel sperren (Bestand); freie Artikel einzeln
     const qty = new Map<string, bigint>();
-    for (const l of lines) qty.set(l.articleId, (qty.get(l.articleId) ?? 0n) + l.quantityMilli);
+    for (const l of lines)
+      if (l.articleId) qty.set(l.articleId, (qty.get(l.articleId) ?? 0n) + l.quantityMilli);
+    const free = lines.filter((l) => !l.articleId);
     const arts = await tx<
       {
         id: string;
@@ -97,6 +104,11 @@ export async function createMaterialIssue(
             '„Fehlenden Bestand zubuchen“ ankreuzen, wenn der Bestand nicht erfasst war',
         );
     }
+    for (const f of free) {
+      if (!f.description?.trim()) problems.push('Freier Artikel: Bezeichnung fehlt');
+      if (f.priceCents === undefined || f.priceCents < 0n)
+        problems.push(`${f.description?.trim() || 'Freier Artikel'}: Einkaufspreis fehlt`);
+    }
     if (problems.length) throw new BusinessError(problems.join('\n'));
 
     const number = await nextYearNumber(tx, 'material', 'MA-', p.date.slice(0, 4), 4);
@@ -106,6 +118,18 @@ export async function createMaterialIssue(
       const net = lineNet(q, a.purchase_price_cents!);
       total += net;
       return { a, q, net, pos: i + 1 };
+    });
+    const freeRows = free.map((f, i) => {
+      const net = lineNet(f.quantityMilli, f.priceCents!);
+      total += net;
+      return {
+        pos: rows.length + i + 1,
+        description: f.description!.trim().slice(0, 300),
+        unit: (f.unit ?? '').trim().slice(0, 20) || 'Stk.',
+        q: f.quantityMilli,
+        price: f.priceCents!,
+        net,
+      };
     });
     await tx`insert into app.material_issues (id, issue_no, site_id, issue_date, received_by, note, total_cents, created_by)
              values (${id}, ${number}, ${p.siteId}, ${p.date}, ${p.receivedBy?.trim() || null},
@@ -128,6 +152,10 @@ export async function createMaterialIssue(
       await tx`update app.articles set stock_milli = greatest(stock_milli, ${r.q}) - ${r.q}, updated_at = now()
                 where id = ${r.a.id}`;
     }
+    for (const r of freeRows)
+      await tx`insert into app.material_issue_lines
+                 (issue_id, position, article_id, description, unit, quantity_milli, unit_cost_cents, net_cents)
+               values (${id}, ${r.pos}, null, ${r.description}, ${r.unit}, ${r.q}, ${r.price}, ${r.net})`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
              values (${actor}, 'create', 'material_issue', ${id},
                      ${tx.json({ number, site_id: p.siteId, total_cents: String(total) })})`;
@@ -150,7 +178,7 @@ export async function cancelMaterialIssue(sql: Sql, id: string, reason: string, 
       { position: number; article_id: string; quantity_milli: bigint; unit_cost_cents: bigint }[]
     >`
       select position, article_id, quantity_milli, unit_cost_cents from app.material_issue_lines
-       where issue_id = ${id} order by position`;
+       where issue_id = ${id} and article_id is not null order by position`;
     for (const l of lines) {
       await tx`insert into app.stock_movements
                  (id, article_id, delta_milli, reason, site_id, created_by, unit_cost_cents, booked_on, material_issue_id)
@@ -229,15 +257,15 @@ export async function getMaterialIssue(sql: Sql, id: string) {
   const lines = await sql<
     {
       position: number;
-      article_id: string;
-      article_no: string;
+      article_id: string | null;
+      article_no: string | null;
       description: string;
       unit: string;
       quantity_milli: bigint;
       unit_cost_cents: bigint;
       net_cents: bigint;
     }[]
-  >`select l.*, a.article_no from app.material_issue_lines l join app.articles a on a.id = l.article_id
+  >`select l.*, a.article_no from app.material_issue_lines l left join app.articles a on a.id = l.article_id
      where l.issue_id = ${id} order by l.position`;
   return { issue: mi, lines };
 }
@@ -314,13 +342,18 @@ export async function materialIssuePdf(
       withPrices
         ? [
             String(l.position),
-            `${l.description} (${l.article_no})`,
+            l.article_no ? `${l.description} (${l.article_no})` : l.description,
             fmtQty(l.quantity_milli),
             l.unit,
             eur(l.unit_cost_cents),
             eur(l.net_cents),
           ]
-        : [String(l.position), `${l.description} (${l.article_no})`, fmtQty(l.quantity_milli), l.unit],
+        : [
+            String(l.position),
+            l.article_no ? `${l.description} (${l.article_no})` : l.description,
+            fmtQty(l.quantity_milli),
+            l.unit,
+          ],
     ),
     sums: [],
     total: withPrices ? ['Materialkosten (netto, EK)', eur(m.total_cents)] : null,

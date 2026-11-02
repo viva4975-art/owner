@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { todayBerlin } from '../domain/invoice/calc.js';
-import { parseQuantity } from '../domain/money/money.js';
+import { parseEuro, parseQuantity } from '../domain/money/money.js';
 import { BusinessError } from '../services/errors.js';
 import { listArticles } from '../services/inventory.js';
 import { listSites } from '../services/masterdata.js';
@@ -9,6 +9,7 @@ import {
   deleteMaterialIssue,
   createMaterialIssue,
   getMaterialIssue,
+  type MaterialLineInput,
   listMaterialIssues,
   materialIssuePdf,
 } from '../services/material-issues.js';
@@ -188,61 +189,127 @@ export function registerMaterialRoutes(ctx: Ctx) {
               <input id="note" name="note" maxlength={500} />
             </div>
           </div>
-          <h3 style="margin:16px 0 6px">Artikel</h3>
+          <h3 style="margin:16px 0 6px">Artikel aus dem Lager</h3>
           {active.length === 0 ? (
             <div class="empty">
-              Noch keine Artikel – zuerst unter <a href="/artikel">Inventar → Artikel</a> anlegen.
+              Noch keine Artikel angelegt (<a href="/artikel">Inventar → Artikel</a>) – unten freie Artikel
+              eintragen.
             </div>
           ) : (
-            <div class="tbl">
-              <table class="keep" id="ma-lines">
-                <thead>
-                  <tr>
-                    <th>Artikel</th>
-                    <th style="width:140px">Menge</th>
-                    <th style="width:40px" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {Array.from({ length: ROWS }, (_, i) => (
+            <>
+              <div class="tbl">
+                <table class="keep" id="ma-lines">
+                  <thead>
                     <tr>
-                      <td>
-                        <select name="article" aria-label={`Artikel ${i + 1}`}>
-                          {artOptions}
-                        </select>
-                      </td>
-                      <td>
-                        <input
-                          name="qty"
-                          inputmode="decimal"
-                          placeholder="z. B. 6"
-                          aria-label={`Menge ${i + 1}`}
-                        />
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          class="btn ghost sm"
-                          title="Position entfernen"
-                          aria-label="Position entfernen"
-                          onclick="var t=this.closest('tbody');if(t.rows.length>1){this.closest('tr').remove()}else{this.closest('tr').querySelectorAll('select,input').forEach(function(e){e.value='';e.dispatchEvent(new Event('change',{bubbles:true}))})}"
-                        >
-                          ×
-                        </button>
-                      </td>
+                      <th>Artikel</th>
+                      <th style="width:140px">Menge</th>
+                      <th style="width:40px" />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: ROWS }, (_, i) => (
+                      <tr>
+                        <td>
+                          <select name="article" aria-label={`Artikel ${i + 1}`}>
+                            {artOptions}
+                          </select>
+                        </td>
+                        <td>
+                          <input
+                            name="qty"
+                            inputmode="decimal"
+                            placeholder="z. B. 6"
+                            aria-label={`Menge ${i + 1}`}
+                          />
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            class="btn ghost sm"
+                            title="Position entfernen"
+                            aria-label="Position entfernen"
+                            onclick="var t=this.closest('tbody');if(t.rows.length>1){this.closest('tr').remove()}else{this.closest('tr').querySelectorAll('select,input').forEach(function(e){e.value='';e.dispatchEvent(new Event('change',{bubbles:true}))})}"
+                          >
+                            ×
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <button
+                type="button"
+                class="btn sec sm"
+                style="margin-top:8px"
+                onclick="var t=document.querySelector('#ma-lines tbody');var r=t.rows[0].cloneNode(true);r.querySelectorAll('.cbx').forEach(function(x){var s=x.querySelector('select');if(s){x.parentNode.insertBefore(s,x);delete s.dataset.combo;s.classList.remove('cbx-native');s.removeAttribute('tabindex')}x.remove()});r.querySelectorAll('select,input').forEach(function(e){e.value=''});t.appendChild(r);var b=r.querySelector('.cbx-btn');b&&b.click()"
+              >
+                + weiterer Lagerartikel
+              </button>
+            </>
           )}
+          <h3 style="margin:18px 0 4px">Freie Artikel (nicht angelegt)</h3>
+          <p class="small mut" style="margin:0 0 6px">
+            Für Material, das nicht als Artikel geführt wird (z. B. im Baumarkt gekauft). Es wird kein Bestand
+            gebucht; die Kosten (EK × Menge) zählen wie Lagerartikel auf die Kostenstelle des Objekts.
+          </p>
+          <div class="tbl">
+            <table class="keep" id="ma-free">
+              <thead>
+                <tr>
+                  <th>Bezeichnung</th>
+                  <th style="width:110px">Menge</th>
+                  <th style="width:100px">Einheit</th>
+                  <th style="width:130px">EK netto je Einheit €</th>
+                  <th style="width:40px" />
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <input
+                      name="free_desc"
+                      maxlength={300}
+                      placeholder="z. B. Mülltüten 120 l"
+                      aria-label="Bezeichnung"
+                    />
+                  </td>
+                  <td>
+                    <input name="free_qty" inputmode="decimal" placeholder="z. B. 2" aria-label="Menge" />
+                  </td>
+                  <td>
+                    <input name="free_unit" maxlength={20} value="Stk." aria-label="Einheit" />
+                  </td>
+                  <td>
+                    <input
+                      name="free_price"
+                      inputmode="decimal"
+                      placeholder="z. B. 12,50"
+                      aria-label="EK netto je Einheit"
+                    />
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      class="btn ghost sm"
+                      title="Position entfernen"
+                      aria-label="Position entfernen"
+                      onclick="var t=this.closest('tbody');if(t.rows.length>1){this.closest('tr').remove()}else{this.closest('tr').querySelectorAll('input').forEach(function(e){e.value=e.name==='free_unit'?'Stk.':''})}"
+                    >
+                      ×
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <button
             type="button"
             class="btn sec sm"
             style="margin-top:8px"
-            onclick="var t=document.querySelector('#ma-lines tbody');var r=t.rows[0].cloneNode(true);r.querySelectorAll('.cbx').forEach(function(x){var s=x.querySelector('select');if(s){x.parentNode.insertBefore(s,x);delete s.dataset.combo;s.classList.remove('cbx-native');s.removeAttribute('tabindex')}x.remove()});r.querySelectorAll('select,input').forEach(function(e){e.value=''});t.appendChild(r);var b=r.querySelector('.cbx-btn');b&&b.click()"
+            onclick="var t=document.querySelector('#ma-free tbody');var r=t.rows[0].cloneNode(true);r.querySelectorAll('input').forEach(function(e){e.value=e.name==='free_unit'?'Stk.':''});t.appendChild(r);r.querySelector('input').focus()"
           >
-            + weitere Position
+            + freier Artikel
           </button>
           <label class="chk" style="margin-top:12px">
             <input type="checkbox" name="fill_shortage" value="1" />
@@ -278,8 +345,33 @@ export function registerMaterialRoutes(ctx: Ctx) {
         } catch {
           throw new BusinessError(`Menge „${x.q}“ ungültig`);
         }
-        return { articleId: x.a, quantityMilli: q };
+        return { articleId: x.a, quantityMilli: q } as MaterialLineInput;
       });
+    const fd = list('free_desc');
+    const fq = list('free_qty');
+    const fu = list('free_unit');
+    const fp = list('free_price');
+    fd.forEach((desc, i) => {
+      const qs = (fq[i] ?? '').trim();
+      const ps = (fp[i] ?? '').trim();
+      if (!desc.trim() && !qs && !ps) return;
+      if (!desc.trim()) throw new BusinessError(`Freier Artikel ${i + 1}: Bezeichnung fehlt`);
+      if (!qs) throw new BusinessError(`${desc.trim()}: Menge fehlt`);
+      if (!ps) throw new BusinessError(`${desc.trim()}: Einkaufspreis fehlt`);
+      let q: bigint;
+      let price: bigint;
+      try {
+        q = parseQuantity(qs);
+      } catch {
+        throw new BusinessError(`Menge „${qs}“ ungültig`);
+      }
+      try {
+        price = BigInt(parseEuro(ps));
+      } catch {
+        throw new BusinessError(`Preis „${ps}“ ungültig`);
+      }
+      lines.push({ quantityMilli: q, description: desc, unit: fu[i] ?? 'Stk.', priceCents: price });
+    });
     const str = (k: string) => (typeof b[k] === 'string' ? (b[k] as string) : '');
     await createMaterialIssue(
       sql,
@@ -294,7 +386,7 @@ export function registerMaterialRoutes(ctx: Ctx) {
       },
       c.get('actor'),
     );
-    return back(c, `/materialausgabe/${id}`, { ok: 'Material ausgegeben, Bestand abgebucht.' });
+    return back(c, `/materialausgabe/${id}`, { ok: 'Material ausgegeben.' });
   });
 
   app.get(`/materialausgabe/:id{${UUID}}`, async (c) => {
@@ -364,8 +456,12 @@ export function registerMaterialRoutes(ctx: Ctx) {
                       <tr>
                         <td>{l.position}</td>
                         <td>
-                          <a href={`/artikel/${l.article_id}`}>{l.description}</a>{' '}
-                          <span class="small mut">{l.article_no}</span>
+                          {l.article_id ? (
+                            <a href={`/artikel/${l.article_id}`}>{l.description}</a>
+                          ) : (
+                            l.description
+                          )}{' '}
+                          <span class="small mut">{l.article_no ?? 'freier Artikel'}</span>
                         </td>
                         <td class="r">
                           {milliToInput(l.quantity_milli)} {l.unit}

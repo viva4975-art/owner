@@ -129,7 +129,7 @@ export async function siteCostBreakdown(
       {
         issue_id: string | null;
         issue_no: string | null;
-        article_id: string;
+        article_id: string | null;
         article: string;
         unit: string;
         day: string;
@@ -145,7 +145,13 @@ export async function siteCostBreakdown(
         left join app.material_issues mi on mi.id = m.material_issue_id
        where m.site_id = ${siteId} and (m.delta_milli < 0 or m.material_issue_id is not null)
          and coalesce(m.booked_on, (m.created_at at time zone 'Europe/Berlin')::date) between ${from} and ${to}
-       group by 1, 2, 3, 4, 5, 6`,
+       group by 1, 2, 3, 4, 5, 6
+      union all
+      select mi.id, mi.issue_no, null::uuid, l.description, l.unit, mi.issue_date::text,
+             l.quantity_milli, l.net_cents
+        from app.material_issue_lines l join app.material_issues mi on mi.id = l.issue_id
+       where l.article_id is null and mi.site_id = ${siteId} and mi.issue_date between ${from} and ${to}
+         and not exists (select 1 from app.material_issue_cancellations x where x.issue_id = mi.id)`,
     incomingItems(sql, { siteId }, from, to),
     subcontractEstimates(sql, from, to, siteId),
     sql<{ id: string; number: string; supplier: string; billing: string; frequency: string }[]>`

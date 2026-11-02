@@ -1640,8 +1640,7 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     key: 'verwaltung',
     label: 'Verwaltung',
     items: [
-      { label: 'Kalender (Outlook)', href: '/kalender' },
-      { label: 'Kassenbuch', href: '/kassenbuch', sep: true },
+      { label: 'Kassenbuch', href: '/kassenbuch' },
       { label: 'Briefe', href: '/verwaltung/briefe' },
       { label: 'Eigen-Compliance', href: '/eigen-compliance', sep: true },
     ],
@@ -1998,7 +1997,6 @@ export const Layout: FC<{
                       </summary>
                       <div class="drop right">
                         <a href="/konto">Mein Konto / Passwort</a>
-                        <a href="/kalender/abonnieren">Kalender abonnieren (iPhone/Outlook)</a>
                         <form method="post" action="/konto/menue" style="margin:0" class="menu-pos">
                           <input type="hidden" name="pos" value={menuTop ? 'links' : 'oben'} />
                           <input type="hidden" name="zurueck" value="" data-here />

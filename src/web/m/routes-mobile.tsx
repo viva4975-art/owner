@@ -61,7 +61,6 @@ import {
 import { type AppEnv, type Ctx, OFFICE_COOKIE, UUID, officeSecret } from '../app.js';
 import { getUser, linkedEmployee } from '../../services/users.js';
 import { SIGN_JS } from '../routes-orders.js';
-import { feedToken } from '../../services/calendar-feed.js';
 import { getWorkReport, signWorkReport, workReportPdf } from '../../services/orders.js';
 import { unitLabel } from '../../domain/invoice/types.js';
 import { milliToInput } from '../forms.js';
@@ -1868,12 +1867,6 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
             </div>
           );
         })}
-        <a
-          class="big sec"
-          href={`webcal://${c.req.header('x-forwarded-host') ?? c.req.header('host')}/kalender/abo/${await feedToken(sql, { employeeId: me.id })}.ics`}
-        >
-          {t(lang, 'cal_subscribe')}
-        </a>
       </>,
     );
   });

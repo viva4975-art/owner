@@ -679,9 +679,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                     ))}
                   </select>
                 </div>
-                <div class="small mut">
-                  Der Termin erscheint in der App der Eingeteilten und im Kalender-Abo.
-                </div>
+                <div class="small mut">Der Termin erscheint in der App der Eingeteilten.</div>
               </div>
               <div style="grid-column:1/-1">
                 <label style="font-weight:400">

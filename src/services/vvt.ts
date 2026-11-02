@@ -80,7 +80,7 @@ export const VVT_ACTIVITIES: VvtActivity[] = [
   {
     title: 'Einsatzplanung, Mitarbeiter-App und Push-Nachrichten',
     zweck:
-      'Planung der Einsätze, Anzeige von Einsätzen, Dokumenten, Lohnabrechnungen und Anträgen in der App, Benachrichtigungen (neue Dokumente, Planänderung, Anträge, Pausen-Erinnerung), Kalender-Abo.',
+      'Planung der Einsätze, Anzeige von Einsätzen, Dokumenten, Lohnabrechnungen und Anträgen in der App, Benachrichtigungen (neue Dokumente, Planänderung, Anträge, Pausen-Erinnerung).',
     rechtsgrundlage:
       'Art. 6 Abs. 1 lit. b DSGVO, § 26 BDSG; Benachrichtigungen nur nach Einwilligung im Browser/Gerät.',
     betroffene: 'Beschäftigte, Büro und Objektleitung.',

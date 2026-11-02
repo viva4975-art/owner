@@ -3,7 +3,6 @@ import QRCode from 'qrcode';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { parseEuro, parseQuantity } from '../domain/money/money.js';
-import { feedIcs, feedToken } from './calendar-feed.js';
 import { siteCosting } from './costing.js';
 import { deleteDraft, getInvoice, saveDraft } from './invoices.js';
 import {
@@ -187,7 +186,7 @@ describe.skipIf(!available)(
       expect(await getWorkReport(sql, wr)).toBeUndefined();
     });
 
-    it('Einzelauftrag ohne Objekt: Termin im Kalender-Abo, Arbeitsschein für das Team, in „Aus Einzelleistungen“', async () => {
+    it('Einzelauftrag ohne Objekt: Arbeitsschein für das Team, in „Aus Einzelleistungen“', async () => {
       const [st] = await sql<{ id: string }[]>`select id from app.service_types order by name limit 1`;
       const STYPE = st!.id;
       const oid = randomUUID();
@@ -245,12 +244,6 @@ describe.skipIf(!available)(
       expect(reports[0]!.site_name).toBe('Allgemein');
       const bill = await billableOrders(sql);
       expect(bill.find((o) => o.id === oid)?.place).toBe('Hansastr. 12, 80686 München');
-      // Kalender-Abo der Mitarbeiterin (Zeitraum relativ zu heute → Termin passend legen)
-      const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
-      await sql`update app.orders set planned_date = ${today} where id = ${oid}`;
-      const ics = (await feedIcs(sql, await feedToken(sql, { employeeId: EMP })))!.ics;
-      expect(ics).toContain(`UID:auftrag-${oid}`);
-      expect(ics).toContain('Hansastr. 12');
       // Rechnung: Entwurf entsteht, Ausstellen erst mit unterschriebenem Arbeitsschein
       const inv = await orderToInvoice(deps, oid, 't');
       const full = (await getInvoice(sql, inv))!;

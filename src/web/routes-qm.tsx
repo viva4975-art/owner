@@ -530,7 +530,6 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
             ['/qm/zeiten', 'clock', 'Zeiten heute', 'Wer ist da, Nachträge freigeben'],
             ['/qm/abwesenheit/neu', 'sun', 'Urlaub / Krank', 'für Mitarbeitende eintragen'],
             ['/einsatzplanung', 'cal', 'Planung', 'Einsätze, Vertretung'],
-            ['/kalender', 'cal', 'Kalender (Outlook)', 'Termine mit Erinnerung'],
           ]}
         />
         <Section

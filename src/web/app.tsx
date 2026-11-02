@@ -1,7 +1,6 @@
 import { registerPayslipRoutes } from './routes-payslips.js';
 import { syncExitReturnTasks } from '../services/exit-returns.js';
 import { registerLetterRoutes } from './routes-letters.js';
-import { registerOutlookRoutes } from './routes-outlook.js';
 import { registerMaterialRoutes } from './routes-material.js';
 import { registerPermissionRoutes } from './routes-permissions.js';
 import { registerPrivacyRoutes } from './routes-privacy.js';
@@ -60,7 +59,6 @@ import { registerHandoverRoutes } from './routes-handovers.js';
 import { registerVehicleRoutes } from './routes-vehicles.js';
 import { registerWordTemplateRoutes } from './routes-word-templates.js';
 import { registerLegacyInvoiceRoutes } from './routes-legacy-invoices.js';
-import { registerCalendarFeedRoutes } from './routes-calendar-feed.js';
 import { registerFirstAidRoutes } from './routes-first-aid.js';
 import { registerTeamRoutes } from './routes-team.js';
 import { registerHrRequiredRoutes } from './routes-hr-required.js';
@@ -297,7 +295,6 @@ export function createApp(deps: Deps) {
     path.startsWith('/m/') ||
     path.startsWith('/np/') ||
     /^\/g\/[0-9a-f]{32}$/.test(path) ||
-    path.startsWith('/kalender/abo/') ||
     path === '/anmelden' ||
     path === '/app' ||
     path === '/app/anmelden' ||
@@ -647,8 +644,6 @@ export function createApp(deps: Deps) {
   registerVehicleRoutes(ctx);
   registerWordTemplateRoutes(ctx);
   registerLegacyInvoiceRoutes(ctx);
-  registerCalendarFeedRoutes(ctx);
-  registerOutlookRoutes(ctx);
   registerHrRequiredRoutes(ctx);
   registerFirstAidRoutes(ctx);
   registerTeamRoutes(ctx);

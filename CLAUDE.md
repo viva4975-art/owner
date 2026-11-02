@@ -4749,3 +4749,9 @@ Testadresse.
   Website“ bei neuen Stellen vorbelegt; Migration `20270113000001` setzt es bei allen aktiven Stellen (Protokoll
   `website_an`). Die Website zeigt die Stellen nur, wenn auf der WordPress-Seite unser Einbau-Code steht (Bewerber &
   Stellen → „Auf der Website anzeigen“) – eine vom SEO selbst geschriebene Liste wird nicht aktualisiert.
+- 2026-11-02: **Outlook-Kalender und Kalender-Abo komplett entfernt** (Ahmed: „lösch Kalender komplett raus, auch
+  Kalender abonnieren“): Seiten `/kalender…`, Menüpunkt Verwaltung → Kalender (Outlook), Kachel in der Verwaltungs-App,
+  „Kalender abonnieren“ im Benutzermenü und in der Mitarbeiter-App, Code (`exchange-calendar`, `ntlm`, `calendar-feed`)
+  und Tests. Migration `20270114000001` löscht `app.exchange_accounts` (gespeicherte, verschlüsselte Postfach-Passwörter)
+  und `app.calendar_feeds` (Abo-Links). Bereits abonnierte Kalender in Handys/Outlook bekommen keine Daten mehr – dort
+  das Abo entfernen. Termine in Outlook selbst bleiben unberührt. Einsatzkalender (Mitarbeiter, Objekt, App) bleibt.

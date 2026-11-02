@@ -4716,3 +4716,9 @@ Testadresse.
   Schrift im gleichen Verhältnis kleiner statt Text mit „…“ abzuschneiden. **Stundenliste je Person** (Druck/PDF, einzeln
   und alle) wird vor dem Drucken auf genau ein Blatt A4 quer verkleinert, inkl. Summen und Unterschriften (`FIT_JS` in
   `routes-timesheet.tsx`). Übersicht Stundenliste/Lohnarten bleibt mehrseitig (Ahmed).
+- 2026-11-02: **Outlook-Kalender: Anmeldung mit NTLM** (Ahmed: „Anmeldung bei Exchange abgelehnt“ an exchange.ionos.eu):
+  Die App meldete sich nur mit Basic an. Antwortet der Server mit 401 und bietet NTLM/Negotiate an, meldet sie sich jetzt
+  mit NTLMv2 an (`src/services/ntlm.ts`: eigenes MD4, drei Schritte auf einer Verbindung; geprüft mit den
+  MS-NLMP-Prüfwerten und einem nachgebauten Server) und merkt sich das je Adresse. Benutzer „name@firma.de“ als UPN,
+  „DOMÄNE\name“ getrennt. Bleibt es bei 401, nennt die Meldung, welche Verfahren der Server anbietet.
+  **Gegen den echten IONOS-Server nicht getestet** (von hier nicht erreichbar).

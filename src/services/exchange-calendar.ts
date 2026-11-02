@@ -3,13 +3,14 @@ import type { Env } from '../config/env.js';
 import type { Sql } from '../db/client.js';
 import { unescapeXml } from '../domain/xml.js';
 import { BusinessError } from './errors.js';
+import { ntlmPost } from './ntlm.js';
 
 /*
  * Outlook-Kalender (IONOS Exchange) in der App (Ahmed 01.11.): Jede Person verbindet ihr eigenes Postfach (E-Mail +
  * Passwort, verschlüsselt auf dem Server gespeichert) und sieht/pflegt danach ihren Exchange-Kalender in der App –
  * Termine mit Ort, Notiz und Erinnerung. Es wird nichts automatisch eingetragen; die App spricht nur, wenn jemand den
  * Kalender öffnet oder einen Termin speichert. Schnittstelle: Exchange Web Services (EWS, SOAP), Anmeldung per Basic
- * über HTTPS. Erinnerungen löst Exchange selbst aus (Outlook, Handy).
+ * über HTTPS, sonst NTLM (IONOS, `ntlm.ts`). Erinnerungen löst Exchange selbst aus (Outlook, Handy).
  */
 
 export const TZ_ID = 'W. Europe Standard Time';
@@ -123,26 +124,50 @@ export interface ExchangeCreds {
   password: string;
 }
 
+/** Adressen, die nur NTLM annehmen (IONOS), damit nicht jede Anfrage erst an Basic scheitert. */
+const ntlmOnly = new Set<string>();
+
 async function call(cr: ExchangeCreds, body: string): Promise<string> {
-  let res: Response;
+  const key = `${cr.url}|${cr.user}`;
+  let status = 0;
+  let xml = '';
+  let offered = '';
+  const viaNtlm = async () => {
+    const r = await ntlmPost(cr.url, cr.user, cr.password, envelope(body), 'text/xml; charset=utf-8');
+    status = r.status;
+    xml = r.body;
+    if (status !== 401) ntlmOnly.add(key);
+  };
   try {
-    res = await fetcher(cr.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/xml; charset=utf-8',
-        Authorization: `Basic ${Buffer.from(`${cr.user}:${cr.password}`, 'utf8').toString('base64')}`,
-      },
-      body: envelope(body),
-    });
+    if (ntlmOnly.has(key)) await viaNtlm();
+    else {
+      const res = await fetcher(cr.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/xml; charset=utf-8',
+          Authorization: `Basic ${Buffer.from(`${cr.user}:${cr.password}`, 'utf8').toString('base64')}`,
+        },
+        body: envelope(body),
+      });
+      status = res.status;
+      xml = await res.text();
+      offered = res.headers?.get?.('www-authenticate') ?? '';
+      // IONOS Exchange nimmt oft nur NTLM an (Ahmed 02.11.) – dann damit noch einmal
+      if (status === 401 && /\b(NTLM|Negotiate)\b/i.test(offered)) await viaNtlm();
+    }
   } catch (e) {
     throw new BusinessError(
       `Exchange-Server nicht erreichbar (${(e as Error).name === 'TimeoutError' ? 'Zeitüberschreitung' : (e as Error).message})`,
     );
   }
-  const xml = await res.text();
+  const res = { status, ok: status >= 200 && status < 300 };
   if (res.status === 401)
     throw new BusinessError(
-      'Anmeldung bei Exchange abgelehnt – E-Mail-Adresse oder Passwort falsch',
+      `Anmeldung bei Exchange abgelehnt – E-Mail-Adresse oder Passwort falsch${
+        offered
+          ? ` (Server ${new URL(cr.url).host} bietet: ${offered.replace(/\s+[A-Za-z0-9+/=]{20,}/g, '').slice(0, 80)})`
+          : ''
+      }`,
       'ews_auth',
     );
   if (res.status === 404) throw new BusinessError('Exchange-Adresse nicht gefunden (EWS)', 'ews_url');

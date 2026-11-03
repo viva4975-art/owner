@@ -4835,3 +4835,11 @@ Testadresse.
 - 2026-11-03: **Stundennachweis-PDF geschwärzt** (Ahmed): Spalte „Mitarbeiter/in“ im PDF als schwarzer Balken (der Text
   wird gar nicht ins PDF geschrieben, `redact` in `FormDoc.table`) – auch für die Nachunternehmer-Personen. In der App
   bleiben „Person 1, 2 …“ / „Nachunternehmer – Person n“ zur Unterscheidung sichtbar. Hinweis im PDF: „Namen … geschwärzt.“
+- 2026-11-03: **Stundennachweis: abweichende Tage beim Nachunternehmer** (Ahmed: „wenn an einem Tag anders gearbeitet oder
+  etwas nicht ausgeführt wurde“): je NU-Person aufklappbar „Abweichende Tage“ – Datum + **anders gearbeitet** (Beginn,
+  Ende, Pause; vorbelegt mit der üblichen Zeit, auch an einem sonst freien Tag/Feiertag) oder **nicht ausgeführt** (Tag
+  fällt weg), Bemerkung intern (nicht im PDF). Je Person und Tag ein Eintrag (erneut speichern ersetzt), „Entfernen“ =
+  wieder wie geplant; nur innerhalb ab–bis der Person. `app.site_timesheet_extra_days` (Migration `20270116000003`,
+  löscht mit der Person mit), `setExtraDay`/`deleteExtraDay` mit Protokoll. Gilt sofort für Seite, PDF und den
+  Stundennachweis an der Rechnung (beim Fertigstellen; schon ausgestellte → „Neuen Stundennachweis anhängen“). Eigene
+  Leute weiter über die Einsatzplanung (Ausfall/Umplanen). Test in `redacted-timesheet.db.test.ts`.

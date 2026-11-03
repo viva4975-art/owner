@@ -13,6 +13,9 @@ import { DEMO } from './seed.js';
 import {
   addExtra,
   deleteExtra,
+  deleteExtraDay,
+  listExtraDays,
+  setExtraDay,
   listExtras,
   planPersons,
   setExtraEnd,
@@ -133,6 +136,35 @@ describe.skipIf(!available)('Geschwärzter Stundennachweis zur Rechnung', () => 
     expect(text).toContain('00:30 (+1)');
     expect(text).not.toContain('Geheimname');
     expect(text).toContain('26:00'); // 8:00 + 18:00
+    // Abweichende Tage: Mi 09.09. nicht ausgeführt, Fr 11.09. 19:00–21:00, Sa 12.09. liegt nach dem Ende → abgelehnt
+    await setExtraDay(sql, { siteId: site, extraId: x!.id, day: '2026-09-09', kind: 'entfaellt' }, 't');
+    await setExtraDay(
+      sql,
+      {
+        siteId: site,
+        extraId: x!.id,
+        day: '2026-09-11',
+        kind: 'anders',
+        start: '19:00',
+        end: '21:00',
+        breakMinutes: 15,
+      },
+      't',
+    );
+    await expect(
+      setExtraDay(sql, { siteId: site, extraId: x!.id, day: '2026-09-12', kind: 'entfaellt' }, 't'),
+    ).rejects.toThrow(/außerhalb/);
+    rows = await timesheetRows(sql, site, '2026-09-01', '2026-09-30');
+    const nu = rows.filter((r) => r.source === 'nu');
+    expect(nu.map((r) => r.date)).toEqual(['2026-09-07', '2026-09-11']);
+    expect(nu[1]).toMatchObject({ start: '19:00', end: '21:00', brk: 15, minutes: 105, overnight: false });
+    // gleicher Tag erneut = ersetzt; Entfernen = wieder wie geplant
+    await setExtraDay(sql, { siteId: site, extraId: x!.id, day: '2026-09-11', kind: 'entfaellt' }, 't');
+    const days = (await listExtraDays(sql, site)).get(x!.id)!;
+    expect(days.size).toBe(2);
+    expect(await deleteExtraDay(sql, site, days.get('2026-09-09')!.id, 't')).toBe(1);
+    rows = await timesheetRows(sql, site, '2026-09-01', '2026-09-30');
+    expect(rows.filter((r) => r.source === 'nu').map((r) => r.date)).toEqual(['2026-09-07', '2026-09-09']);
     expect(await deleteExtra(sql, site, x!.id, 't')).toBe(1);
     expect(await timesheetRows(sql, site, '2026-09-01', '2026-09-30')).toHaveLength(2);
   });

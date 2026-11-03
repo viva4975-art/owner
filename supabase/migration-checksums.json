@@ -224,5 +224,6 @@
  "20270114000002_materialausgabe_frei.sql": "67b914b5575a54873e456d64794978f5e2c51bc65139d143d953a02d53d45f12",
  "20270115000001_stundennachweis_zeilen.sql": "68b4bfe70c7155e486be6f7081e8fb563ad266d2d049a73fbddf88c90b47ca5c",
  "20270116000001_stundennachweis_mitternacht.sql": "bbff2ab5add9ac3029061222ae919bb8ec40f37c80d55b55f39cfebaf931d7bb",
- "20270116000002_stundennachweis_nu_personen.sql": "fdc36f22a993f54ea4f2d9cf1aa6745fab5311c88209169e3efd5b92867ba93d"
+ "20270116000002_stundennachweis_nu_personen.sql": "fdc36f22a993f54ea4f2d9cf1aa6745fab5311c88209169e3efd5b92867ba93d",
+ "20270116000003_stundennachweis_nu_tage.sql": "4edea0d21832a452bc3aa93d62bb0b382b4e6f06e6d3c0aba16a8a059eb27839"
 }

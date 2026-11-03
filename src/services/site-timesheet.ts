@@ -35,6 +35,18 @@ export interface TimesheetExtra {
   valid_until: string | null;
 }
 
+/** Abweichender Tag einer Nachunternehmer-Person: anders gearbeitet oder nicht ausgeführt. */
+export interface TimesheetExtraDay {
+  id: string;
+  extra_id: string;
+  day: string;
+  kind: 'anders' | 'entfaellt';
+  start_time: string | null;
+  end_time: string | null;
+  break_minutes: number;
+  note: string | null;
+}
+
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
@@ -110,31 +122,129 @@ export async function listExtras(sql: Sql, siteId: string) {
      order by valid_until is not null, valid_from, person`;
 }
 
-/** Tageszeilen eines Nachunternehmer-Eintrags im Zeitraum (ohne Feiertage und Schließzeiten des Objekts). */
-function extraDays(x: TimesheetExtra, from: string, to: string, closures: { from: string; to: string }[]) {
+export async function listExtraDays(sql: Sql, siteId: string) {
+  const rows = await sql<TimesheetExtraDay[]>`
+    select d.id, d.extra_id, d.day::text as day, d.kind,
+           to_char(d.start_time, 'HH24:MI') as start_time, to_char(d.end_time, 'HH24:MI') as end_time,
+           d.break_minutes, d.note
+      from app.site_timesheet_extra_days d join app.site_timesheet_extras x on x.id = d.extra_id
+     where x.site_id = ${siteId} order by d.day`;
+  const by = new Map<string, Map<string, TimesheetExtraDay>>();
+  for (const r of rows) {
+    if (!by.has(r.extra_id)) by.set(r.extra_id, new Map());
+    by.get(r.extra_id)!.set(r.day, r);
+  }
+  return by;
+}
+
+const line = (d: string, person: string, start: string, end: string, brk: number): TimesheetLine => ({
+  date: d,
+  person,
+  start,
+  end,
+  brk,
+  minutes: spanMinutes(start, end) - brk,
+  overnight: toMin(end) <= toMin(start),
+  source: 'nu',
+});
+
+/**
+ * Tageszeilen eines Nachunternehmer-Eintrags im Zeitraum (ohne Feiertage und Schließzeiten des Objekts).
+ * Abweichende Tage gehen vor: „nicht ausgeführt“ fällt weg, „anders gearbeitet“ nimmt die Zeit des Tages – auch an
+ * einem sonst freien Tag (ausdrücklich eingetragen).
+ */
+function extraDays(
+  x: TimesheetExtra,
+  from: string,
+  to: string,
+  closures: { from: string; to: string }[],
+  days?: Map<string, TimesheetExtraDay>,
+) {
   const out: TimesheetLine[] = [];
   const a = x.valid_from > from ? x.valid_from : from;
   const b = x.valid_until && x.valid_until < to ? x.valid_until : to;
-  const span = spanMinutes(x.start_time, x.end_time);
   for (let d = a; d <= b; d = addDays(d, 1)) {
+    const ex = days?.get(d);
+    if (ex) {
+      if (ex.kind === 'anders' && ex.start_time && ex.end_time)
+        out.push(line(d, x.person, ex.start_time, ex.end_time, ex.break_minutes));
+      continue;
+    }
     if (!x.weekdays.includes(isoWeekday(d)) || holidayName(d) || isClosed(closures, d)) continue;
-    out.push({
-      date: d,
-      person: x.person,
-      start: x.start_time,
-      end: x.end_time,
-      brk: x.break_minutes,
-      minutes: span - x.break_minutes,
-      overnight: toMin(x.end_time) <= toMin(x.start_time),
-      source: 'nu',
-    });
+    out.push(line(d, x.person, x.start_time, x.end_time, x.break_minutes));
   }
   return out;
 }
 
 export async function extraLines(sql: Sql, siteId: string, from: string, to: string) {
-  const [extras, closures] = await Promise.all([listExtras(sql, siteId), siteClosureMap(sql, [siteId])]);
-  return extras.flatMap((x) => extraDays(x, from, to, closures.get(siteId) ?? []));
+  const [extras, closures, days] = await Promise.all([
+    listExtras(sql, siteId),
+    siteClosureMap(sql, [siteId]),
+    listExtraDays(sql, siteId),
+  ]);
+  return extras.flatMap((x) => extraDays(x, from, to, closures.get(siteId) ?? [], days.get(x.id)));
+}
+
+/** Einzelnen Tag abweichend festhalten (ersetzt einen vorhandenen Eintrag für denselben Tag). */
+export async function setExtraDay(
+  sql: Sql,
+  p: {
+    siteId: string;
+    extraId: string;
+    day: string;
+    kind: 'anders' | 'entfaellt';
+    start?: string;
+    end?: string;
+    breakMinutes?: number;
+    note?: string;
+  },
+  actor: string,
+) {
+  const [x] = await sql<{ person: string; valid_from: string; valid_until: string | null }[]>`
+    select person, valid_from::text, valid_until::text from app.site_timesheet_extras
+     where id = ${p.extraId} and site_id = ${p.siteId}`;
+  if (!x) throw new BusinessError('Eintrag nicht gefunden');
+  if (!ISO.test(p.day)) throw new BusinessError('Datum fehlt');
+  if (p.day < x.valid_from || (x.valid_until && p.day > x.valid_until))
+    throw new BusinessError(
+      `Datum liegt außerhalb des Zeitraums von ${x.person} – vorher „ab“ bzw. Ende anpassen`,
+    );
+  const note = (p.note ?? '').trim().slice(0, 300) || null;
+  let start: string | null = null;
+  let end: string | null = null;
+  let brk = 0;
+  if (p.kind === 'anders') {
+    start = p.start ?? '';
+    end = p.end ?? '';
+    brk = p.breakMinutes ?? 0;
+    if (!HHMM.test(start) || !HHMM.test(end))
+      throw new BusinessError('Zeit von/bis als Uhrzeit, z. B. 18:30');
+    if (start === end) throw new BusinessError('Beginn und Ende sind gleich');
+    if (!Number.isInteger(brk) || brk < 0 || brk >= spanMinutes(start, end))
+      throw new BusinessError('Pause ist länger als die Arbeitszeit');
+  }
+  const id = uuidOf(`sts-extra-day:${p.extraId}:${p.day}`);
+  await sql`
+    insert into app.site_timesheet_extra_days (id, extra_id, day, kind, start_time, end_time, break_minutes, note, created_by)
+    values (${id}, ${p.extraId}, ${p.day}, ${p.kind}, ${start}, ${end}, ${brk}, ${note}, ${actor})
+    on conflict (extra_id, day) do update set kind = excluded.kind, start_time = excluded.start_time,
+      end_time = excluded.end_time, break_minutes = excluded.break_minutes, note = excluded.note,
+      created_by = excluded.created_by, created_at = now()`;
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${actor}, 'timesheet_extra_day', 'site', ${p.siteId},
+                    ${sql.json({ person: x.person, tag: p.day, art: p.kind, beginn: start, ende: end, pause: brk, notiz: note })})`;
+  return x.person;
+}
+
+export async function deleteExtraDay(sql: Sql, siteId: string, dayId: string, actor: string) {
+  const gone = await sql<{ person: string; day: string; kind: string }[]>`
+    delete from app.site_timesheet_extra_days d using app.site_timesheet_extras x
+     where d.id = ${dayId} and x.id = d.extra_id and x.site_id = ${siteId}
+    returning x.person, d.day::text as day, d.kind`;
+  if (gone.length)
+    await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+              values (${actor}, 'timesheet_extra_day_delete', 'site', ${siteId}, ${sql.json(gone[0]!)})`;
+  return gone.length;
 }
 
 /** Alle Tageszeilen des Nachweises (PDF): Einsatzplanung + Nachunternehmer, nach Tag und Beginn. */

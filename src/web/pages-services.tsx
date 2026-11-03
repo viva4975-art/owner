@@ -594,8 +594,8 @@ u.addEventListener('change',sync);a.addEventListener('change',sync);sync();})();
           />
           <label for="attach_timesheet">
             Stundennachweis an die Rechnung anhängen (Stunden je Tag mit „Person 1, 2 …“ statt Namen – z. B.
-            für die Unterhaltsreinigung). Personen/Stunden, auch Nachunternehmer, unter Objekt → Erfasste
-            Zeiten → „Stundennachweis für Kunden“ eintragen; sonst gelten die erfassten Zeiten.
+            für die Unterhaltsreinigung). Die Stunden kommen aus der Einsatzplanung; Nachunternehmer unter
+            Objekt → Erfasste Zeiten → „Stundennachweis für Kunden“ ergänzen.
           </label>
         </div>
 

@@ -118,10 +118,7 @@ export const DraftLetter: FC<{
   lastIssued = null,
   today = '',
   timesheets = 0,
-  timesheetUntil = null,
 }) => {
-  // Stundennachweis wird beim Fertigstellen mit den bis dahin erfassten Zeiten erzeugt – vor Ende des Zeitraums fehlen Tage
-  const tsEarly = timesheets > 0 && !!timesheetUntil && !!today && timesheetUntil >= today;
   // Storno/Rechnungskorrektur: Positionen kommen aus der Originalrechnung – gleiche Ansicht, aber nicht bearbeitbar
   const locked = !['invoice', 'partial', 'final'].includes(inv.kind);
   const issueDate = inv.planned_issue_date ?? today;
@@ -130,9 +127,7 @@ export const DraftLetter: FC<{
     (lastIssued && issueDate < lastIssued
       ? `\n\nACHTUNG: Die zuletzt ausgestellte Rechnung hat das Datum ${formatDateDe(lastIssued)} – diese Rechnung wäre älter als ihre Vorgängerin (Nummern und Datum sollten aufsteigend sein). Wirklich zurückdatieren?`
       : '') +
-    (tsEarly
-      ? `\n\nACHTUNG Stundennachweis: Der Leistungszeitraum läuft noch bis ${formatDateDe(timesheetUntil!)}. Der geschwärzte Stundennachweis enthält nur die bis heute erfassten Zeiten – besser erst nach Ende des Zeitraums fertigstellen.`
-      : '');
+    '';
   const wrs = workReports.filter((w) => !w.cancelled);
   const wrSigned = wrs.some((w) => w.status === 'unterschrieben');
   const s = doc.seller;
@@ -424,13 +419,6 @@ export const DraftLetter: FC<{
             })}{' '}
             · Format {FORMAT[inv.invoice_format] ?? inv.invoice_format}
           </div>
-          {tsEarly && (
-            <div class="flash warn" style="margin-top:12px">
-              Stundennachweis: Der Leistungszeitraum läuft noch bis {formatDateDe(timesheetUntil!)}. Beim
-              Fertigstellen wird der geschwärzte Stundennachweis mit den bis dahin erfassten Zeiten angehängt
-              – Tage danach fehlen. Besser erst nach Ende des Zeitraums fertigstellen.
-            </div>
-          )}
           {preflight && (
             <div class={`flash ${preflight.valid ? 'ok' : 'err'}`} style="margin-top:12px">
               {preflight.valid

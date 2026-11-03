@@ -2,16 +2,15 @@ import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import { FormDoc } from '../pdf/form-doc.js';
 import { BusinessError } from './errors.js';
-import { countsAsActual } from './site-times.js';
-import { clock, hm, listEntries, netMinutes } from './time.js';
-import { listTimesheetRows } from './site-timesheet.js';
+import { hm } from './time.js';
+import { timesheetRows } from './site-timesheet.js';
 import { type Deps, addAttachment } from './workflow.js';
 
 /*
  * Geschwärzter Stundennachweis zur Rechnung (Ahmed 20.10.: „bei manchen Objekten muss eine geschwärzte
  * Stundenaufzeichnung mit der Rechnung übermittelt werden“). Je Leistung ankreuzbar (site_services.attach_timesheet,
  * z. B. Unterhaltsreinigung). Beim Ausstellen hängt je Objekt ein PDF an der Rechnung: Datum, Beginn, Ende, Pause,
- * Stunden; statt Namen „Person 1, 2 …“ (Ahmed 03.11.). Von Hand gepflegte Zeilen je Objekt (site-timesheet.ts) gehen vor. Am Ende der Hinweis, dass Quartals-/Jahresarbeiten von Sonderreinigern erledigt werden.
+ * Stunden aus der Einsatzplanung, statt Namen „Person 1, 2 …“, dazu von Hand ergänzte Nachunternehmer (Ahmed 03.11., site-timesheet.ts). Am Ende der Hinweis, dass Quartals-/Jahresarbeiten von Sonderreinigern erledigt werden.
  */
 
 export const SPECIAL_STAFF_NOTE =
@@ -54,39 +53,9 @@ export const timesheetFilename = (t: TimesheetSite, revision?: string) =>
     '_',
   );
 
-/** Zeilen des Nachweises: von Hand gepflegte (Objekt → Stundennachweis), sonst erfasste Zeiten mit „Person n“. */
+/** Zeilen des Nachweises: Einsatzplanung (Person 1, 2 …) + von Hand ergänzte Nachunternehmer. */
 export async function timesheetLines(sql: Sql, t: Pick<TimesheetSite, 'site_id' | 'from' | 'to'>) {
-  const own = await listTimesheetRows(sql, t.site_id, t.from, t.to);
-  if (own.length)
-    return {
-      manual: true,
-      lines: own.map((r) => ({
-        date: r.work_date,
-        person: r.person,
-        start: r.start_time,
-        end: r.end_time,
-        brk: r.break_minutes,
-        minutes: r.minutes,
-      })),
-    };
-  const entries = (await listEntries(sql, { siteId: t.site_id, from: t.from, to: t.to }))
-    .filter(countsAsActual)
-    .sort((a, b) => a.work_date.localeCompare(b.work_date) || a.start_at.getTime() - b.start_at.getTime());
-  const no = new Map<string, number>();
-  return {
-    manual: false,
-    lines: entries.map((e) => {
-      if (!no.has(e.employee_id)) no.set(e.employee_id, no.size + 1);
-      return {
-        date: e.work_date,
-        person: `Person ${no.get(e.employee_id)}`,
-        start: clock(e.start_at),
-        end: clock(e.end_at),
-        brk: e.break_minutes,
-        minutes: netMinutes(e),
-      };
-    }),
-  };
+  return { lines: await timesheetRows(sql, t.site_id, t.from, t.to) };
 }
 
 /** PDF für ein Objekt und einen Zeitraum – Personen nummeriert statt Namen. */
@@ -133,15 +102,18 @@ export async function redactedTimesheetPdf(
             `${weekday(e.date)} ${formatDateDe(e.date)}`,
             e.person,
             e.start,
-            e.end,
+            e.overnight ? `${e.end} (+1)` : e.end,
             e.brk ? hm(e.brk) : '–',
             hm(e.minutes),
           ]),
           { sum: ['Summe', '', '', '', '', hm(total)], strong: true },
         ]
-      : [['Keine erfassten Zeiten im Zeitraum', '', '', '', '', '']],
+      : [['Keine Einsätze im Zeitraum', '', '', '', '', '']],
   );
-  d.muted('Namen der eingesetzten Personen aus Datenschutzgründen nicht genannt (Person 1, 2 …).');
+  d.muted(
+    'Namen der eingesetzten Personen aus Datenschutzgründen nicht genannt (Person 1, 2 …).' +
+      (lines.some((e) => e.overnight) ? ' „(+1)“ = Ende am Folgetag.' : ''),
+  );
   d.para(SPECIAL_STAFF_NOTE, { size: 8.5 });
   return d.save();
 }

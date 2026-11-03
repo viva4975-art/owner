@@ -508,7 +508,8 @@ export async function savePosting(sql: Sql, id: string, p: PostingInput, actor: 
   if (p.postalCode && !/^\d{5}$/.test(p.postalCode)) throw new BusinessError('PLZ muss 5-stellig sein');
   for (const [d, v] of Object.entries(p.workdays)) {
     if (!DAYS.includes(d as never)) throw new BusinessError('Arbeitstag ungültig');
-    if (v.mode === 'fest' && (!v.from || !v.to || v.from >= v.to))
+    // Ende vor Beginn = über Mitternacht (z. B. 22:00–02:00, Ahmed 03.11.)
+    if (v.mode === 'fest' && (!v.from || !v.to || v.from === v.to))
       throw new BusinessError(`${d}: Uhrzeit von/bis prüfen`);
   }
   const row = {

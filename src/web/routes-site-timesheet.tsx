@@ -5,11 +5,15 @@ import { addDays } from '../domain/time/holidays.js';
 import { BusinessError } from '../services/errors.js';
 import { redactedTimesheetPdf, timesheetSitesOf } from '../services/redacted-timesheet.js';
 import {
-  addTimesheetRows,
-  deleteTimesheetRows,
-  importTimesheetRows,
-  listTimesheetRows,
-  suggestPerson,
+  addExtra,
+  deleteExtra,
+  extraLines,
+  listExtras,
+  planPersons,
+  setExtraEnd,
+  suggestExtraPerson,
+  WEEKDAY_SHORT,
+  weekdaysLabel,
 } from '../services/site-timesheet.js';
 import { hm } from '../services/time.js';
 import type { AppEnv, Ctx } from './app.js';
@@ -18,8 +22,6 @@ import { dateDe } from './layout.js';
 const UUID = '[0-9a-f-]{36}';
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const mayEdit = (c: Context<AppEnv>) => c.get('user').role !== 'objektleitung';
-const WD = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
-const wd = (d: string) => WD[new Date(`${d}T12:00:00Z`).getUTCDay()]!;
 const monthStart = (d: string) => `${d.slice(0, 7)}-01`;
 const monthEnd = (d: string) => {
   const [y, m] = d.split('-').map(Number) as [number, number];
@@ -35,8 +37,8 @@ function periodOf(c: Context<AppEnv>) {
 }
 
 /**
- * Objekt → Stundennachweis für den Kunden (Ahmed 03.11.): Stunden je Tag mit „Person 1, 2 …“, aus Ist oder Plan
- * übernommen oder von Hand (z. B. Nachunternehmer). Geht als Anlage mit der Rechnung, wenn die Leistung
+ * Objekt → Stundennachweis für den Kunden (Ahmed 03.11.): kommt aus der Einsatzplanung („Person 1, 2 …“), von Hand
+ * nur zusätzliche Leute vom Nachunternehmer. Geht als Anlage mit der Rechnung, wenn die Leistung
  * „Stundennachweis anhängen“ hat.
  */
 export function registerSiteTimesheetRoutes({ app, deps, shells, back, page }: Ctx) {
@@ -82,207 +84,247 @@ export function registerSiteTimesheetRoutes({ app, deps, shells, back, page }: C
   app.get(`/objekte/:id{${UUID}}/stundennachweis`, (c) =>
     shells.site!(c, 'zeiten', async (s) => {
       const { von, bis } = periodOf(c);
-      const rows = await listTimesheetRows(sql, s.id, von, bis);
       const edit = mayEdit(c);
-      const total = rows.reduce((a, r) => a + r.minutes, 0);
-      const persons = [...new Set(rows.map((r) => r.person))];
-      const next = await suggestPerson(sql, s.id, von, bis);
+      const [persons, extras, nuLines, next] = await Promise.all([
+        planPersons(sql, s.id, von, bis),
+        listExtras(sql, s.id),
+        extraLines(sql, s.id, von, bis),
+        suggestExtraPerson(sql, s.id),
+      ]);
+      const nuMin = new Map<string, { days: number; min: number }>();
+      for (const l of nuLines) {
+        const k = l.person;
+        const v = nuMin.get(k) ?? { days: 0, min: 0 };
+        v.days++;
+        v.min += l.minutes;
+        nuMin.set(k, v);
+      }
+      const planTotal = persons.reduce((a, p) => a + p.minutes, 0);
+      const nuTotal = nuLines.reduce((a, l) => a + l.minutes, 0);
       const prev = addDays(von, -1);
       const nextM = addDays(monthEnd(von), 1);
-      const back2 = c.req.query('rechnung');
+      const inv = c.req.query('rechnung');
+      const invOk = !!inv && /^[0-9a-f-]{36}$/.test(inv);
+      const today = todayBerlin();
       return (
         <>
           <div class="card">
             <h3 style="margin-top:0">Stundennachweis für den Kunden</h3>
-            <p class="small mut">
-              Stunden je Tag, mit „Person 1, Person 2 …“ statt Namen. Ist bei einer Leistung „Stundennachweis
-              an die Rechnung anhängen“ angekreuzt, geht <b>diese Liste</b> mit der Rechnung an den Kunden.
-              Ist für den Zeitraum nichts eingetragen, nimmt die Rechnung automatisch die erfassten Zeiten.
-            </p>
-            <form method="get" class="actions" style="align-items:flex-end;flex-wrap:wrap">
-              <div>
-                <label for="st-von">von</label>
-                <input id="st-von" type="date" name="von" value={von} />
-              </div>
-              <div>
-                <label for="st-bis">bis</label>
-                <input id="st-bis" type="date" name="bis" value={bis} />
-              </div>
-              <button class="btn sec sm">Anzeigen</button>
+            <form method="get" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              {invOk && <input type="hidden" name="rechnung" value={inv} />}
               <a class="btn ghost sm" href={url(s.id, monthStart(prev), monthEnd(prev))}>
-                ‹ Vormonat
+                ‹
               </a>
+              <input aria-label="von" type="date" name="von" value={von} style="width:auto" />
+              <input aria-label="bis" type="date" name="bis" value={bis} style="width:auto" />
               <a class="btn ghost sm" href={url(s.id, nextM, monthEnd(nextM))}>
-                Folgemonat ›
+                ›
               </a>
+              <button class="btn sec sm">Anzeigen</button>
               <a
-                class="btn sec sm"
+                class="btn sm"
                 href={`/objekte/${s.id}/stundennachweis.pdf?von=${von}&bis=${bis}`}
                 target="_blank"
               >
-                PDF-Vorschau
+                PDF erstellen
               </a>
-              {back2 && /^[0-9a-f-]{36}$/.test(back2) && (
-                <a class="btn ghost sm" href={`/rechnungen/${back2}`}>
+              {invOk && (
+                <a class="btn ghost sm" href={`/rechnungen/${inv}`}>
                   ‹ Zur Rechnung
                 </a>
               )}
             </form>
-            {edit && (
-              <div class="actions" style="margin-top:10px;flex-wrap:wrap">
-                <form method="post" action={`/objekte/${s.id}/stundennachweis/uebernehmen`}>
-                  <input type="hidden" name="von" value={von} />
-                  <input type="hidden" name="bis" value={bis} />
-                  <input type="hidden" name="quelle" value="ist" />
-                  <button class="btn sec sm">Aus erfassten Zeiten übernehmen</button>
-                </form>
-                <form method="post" action={`/objekte/${s.id}/stundennachweis/uebernehmen`}>
-                  <input type="hidden" name="von" value={von} />
-                  <input type="hidden" name="bis" value={bis} />
-                  <input type="hidden" name="quelle" value="plan" />
-                  <button class="btn sec sm">Aus Einsatzplanung übernehmen</button>
-                </form>
-                <span class="small mut" style="align-self:center">
-                  Tage, an denen eine Person schon eingetragen ist, werden nicht doppelt übernommen.
-                </span>
-              </div>
-            )}
+            <p class="small mut" style="margin:8px 0 0">
+              {dateDe(von)} – {dateDe(bis)}: <b>{hm(planTotal + nuTotal)} Std.</b> · Das PDF hängt beim
+              Fertigstellen automatisch an der Rechnung (Leistung mit „Stundennachweis anhängen“). Namen
+              erscheinen als „Person 1, 2 …“.
+            </p>
           </div>
 
           <div class="card">
             <h3 style="margin-top:0">
-              {dateDe(von)} – {dateDe(bis)} · {rows.length} Zeilen · {hm(total)} Std.
-              {persons.length > 0 && <span class="small mut"> · {persons.length} Personen</span>}
+              Eingesetzte Leute (aus der Einsatzplanung)
+              <span class="small mut"> · {hm(planTotal)} Std.</span>
             </h3>
-            {rows.length === 0 ? (
+            {persons.length === 0 ? (
               <div class="empty-line">
-                Noch nichts eingetragen – die Rechnung nimmt dann die erfassten Zeiten des Objekts.
+                Keine Einsätze im Zeitraum – <a href={`/objekte/${s.id}/einsaetze`}>Einsätze planen</a>.
               </div>
             ) : (
-              <form method="post" action={`/objekte/${s.id}/stundennachweis/loeschen`}>
-                <input type="hidden" name="von" value={von} />
-                <input type="hidden" name="bis" value={bis} />
-                <table>
-                  <thead>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Person</th>
+                    <th>Tage und Zeit</th>
+                    <th class="r">Einsätze</th>
+                    <th class="r">Stunden</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {persons.map((p) => (
                     <tr>
-                      {edit && <th></th>}
-                      <th>Datum</th>
-                      <th>Person</th>
-                      <th class="r">Beginn</th>
-                      <th class="r">Ende</th>
-                      <th class="r">Pause</th>
-                      <th class="r">Stunden</th>
-                      <th>Quelle</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r) => (
-                      <tr>
-                        {edit && (
-                          <td>
-                            <input type="checkbox" name="id" value={r.id} aria-label="markieren" />
-                          </td>
-                        )}
-                        <td class="nowrap">
-                          {wd(r.work_date)} {dateDe(r.work_date)}
-                        </td>
-                        <td>{r.person}</td>
-                        <td class="r">{r.start_time}</td>
-                        <td class="r">{r.end_time}</td>
-                        <td class="r">{r.break_minutes ? hm(r.break_minutes) : '–'}</td>
-                        <td class="r">{hm(r.minutes)}</td>
-                        <td class="small mut">
-                          {r.source === 'ist'
-                            ? 'erfasst'
-                            : r.source === 'plan'
-                              ? 'Einsatzplanung'
-                              : 'von Hand'}
-                        </td>
-                      </tr>
-                    ))}
-                    <tr>
-                      {edit && <td></td>}
-                      <td colspan={5}>
-                        <b>Summe</b>
+                      <td>{p.person}</td>
+                      <td>
+                        {p.times.map((t) => (
+                          <div>{t}</div>
+                        ))}
                       </td>
-                      <td class="r">
-                        <b>{hm(total)}</b>
-                      </td>
-                      <td></td>
+                      <td class="r">{p.shifts}</td>
+                      <td class="r">{hm(p.minutes)}</td>
                     </tr>
-                  </tbody>
-                </table>
-                {edit && (
-                  <div class="actions" style="margin-top:8px">
-                    <button class="btn ghost sm" data-confirm="Markierte Zeilen löschen?">
-                      Markierte löschen
-                    </button>
-                    <button
-                      class="btn ghost sm"
-                      name="alle"
-                      value="1"
-                      data-confirm={`Alle ${rows.length} Zeilen im Zeitraum löschen? Danach nimmt die Rechnung wieder die erfassten Zeiten.`}
-                    >
-                      Alle Zeilen löschen
-                    </button>
-                  </div>
-                )}
-              </form>
+                  ))}
+                </tbody>
+              </table>
             )}
+            <p class="small mut" style="margin:8px 0 0">
+              Ändern über die <a href={`/objekte/${s.id}/einsaetze`}>Einsatzplanung</a> (Urlaub, Krankheit,
+              Ausfall und freie Feiertage fallen automatisch weg).
+            </p>
           </div>
 
-          {edit && (
-            <div class="card">
-              <h3 style="margin-top:0">Person / Stunden hinzufügen</h3>
-              <p class="small mut">
-                Für einen Tag: nur „von“ ausfüllen. Für mehrere Tage: „von“ und „bis“ und die Wochentage – es
-                entsteht je Tag eine Zeile. Nachunternehmer z. B. als „Nachunternehmer – Person 1“.
-              </p>
-              <form method="post" action={`/objekte/${s.id}/stundennachweis`} data-noback>
-                <input type="hidden" name="token" value={randomUUID()} />
-                <input type="hidden" name="p_von" value={von} />
-                <input type="hidden" name="p_bis" value={bis} />
-                <div class="grid">
-                  <label for="sn-person">Person</label>
-                  <input
-                    id="sn-person"
-                    name="person"
-                    value={next}
-                    list="sn-persons"
-                    required
-                    maxlength={120}
-                  />
-                  <datalist id="sn-persons">
-                    {[...persons, next, 'Nachunternehmer – Person 1'].map((p) => (
-                      <option value={p} />
-                    ))}
-                  </datalist>
-                  <label for="sn-von">Datum von</label>
-                  <input id="sn-von" type="date" name="von" value={von} required />
-                  <label for="sn-bis">bis (leer = ein Tag)</label>
-                  <input id="sn-bis" type="date" name="bis" />
-                  <label>Wochentage (bei mehreren Tagen)</label>
-                  <div class="actions" style="gap:10px;flex-wrap:wrap">
-                    {[1, 2, 3, 4, 5, 6, 0].map((d) => (
-                      <label class="chk">
-                        <input type="checkbox" name="wt" value={String(d)} checked={d >= 1 && d <= 5} />{' '}
-                        {WD[d]}
-                      </label>
-                    ))}
+          <div class="card">
+            <h3 style="margin-top:0">
+              Leute vom Nachunternehmer
+              {nuTotal > 0 && <span class="small mut"> · {hm(nuTotal)} Std. im Zeitraum</span>}
+            </h3>
+            {extras.length === 0 ? (
+              <div class="empty-line">Noch niemand eingetragen.</div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Person</th>
+                    <th>Tage und Zeit</th>
+                    <th>Zeitraum</th>
+                    <th class="r">im Zeitraum</th>
+                    {edit && <th></th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {extras.map((x) => {
+                    const m = nuMin.get(x.person);
+                    const ended = !!x.valid_until && x.valid_until < today;
+                    return (
+                      <tr style={ended ? 'opacity:.6' : ''}>
+                        <td>{x.person}</td>
+                        <td>
+                          {weekdaysLabel(x.weekdays)} {x.start_time}–{x.end_time}
+                          {x.end_time <= x.start_time && <span class="small mut"> (+1)</span>}
+                          {x.break_minutes > 0 && (
+                            <span class="small mut"> · Pause {x.break_minutes} Min.</span>
+                          )}
+                        </td>
+                        <td class="nowrap">
+                          ab {dateDe(x.valid_from)}
+                          {x.valid_until ? ` bis ${dateDe(x.valid_until)}` : ''}
+                        </td>
+                        <td class="r nowrap">{m ? `${m.days} Tage · ${hm(m.min)} Std.` : '–'}</td>
+                        {edit && (
+                          <td class="r">
+                            <div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:wrap">
+                              <form
+                                method="post"
+                                action={`/objekte/${s.id}/stundennachweis/nu/${x.id}/ende`}
+                                style="display:flex;gap:4px;align-items:center"
+                              >
+                                <input type="hidden" name="von" value={von} />
+                                <input type="hidden" name="bis" value={bis} />
+                                <input
+                                  aria-label="Ende"
+                                  type="date"
+                                  name="ende"
+                                  value={x.valid_until ?? ''}
+                                  min={x.valid_from}
+                                  style="width:auto"
+                                />
+                                <button class="btn sec sm">
+                                  {x.valid_until ? 'Ende ändern' : 'Ende setzen'}
+                                </button>
+                              </form>
+                              <form
+                                method="post"
+                                action={`/objekte/${s.id}/stundennachweis/nu/${x.id}/loeschen`}
+                              >
+                                <input type="hidden" name="von" value={von} />
+                                <input type="hidden" name="bis" value={bis} />
+                                <button
+                                  class="btn ghost sm"
+                                  data-confirm={`${x.person} löschen? Die Person fällt aus allen Stundennachweisen heraus, die neu erstellt werden.`}
+                                >
+                                  Löschen
+                                </button>
+                              </form>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+
+            {edit && (
+              <details style="margin-top:12px" open={extras.length === 0}>
+                <summary>
+                  <b>+ Person vom Nachunternehmer hinzufügen</b>
+                </summary>
+                <form
+                  method="post"
+                  action={`/objekte/${s.id}/stundennachweis`}
+                  data-noback
+                  style="margin-top:10px"
+                >
+                  <input type="hidden" name="token" value={randomUUID()} />
+                  <input type="hidden" name="p_von" value={von} />
+                  <input type="hidden" name="p_bis" value={bis} />
+                  <div class="grid">
+                    <label for="sn-person">Person</label>
+                    <input id="sn-person" name="person" value={next} required maxlength={120} />
+                    <label for="sn-beg">Zeit</label>
+                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                      <input id="sn-beg" type="time" name="beginn" required style="width:auto" />
+                      <span class="small mut">bis</span>
+                      <input aria-label="Ende" type="time" name="ende" required style="width:auto" />
+                      <span class="small mut">Pause</span>
+                      <input
+                        aria-label="Pause (Min.)"
+                        type="number"
+                        name="pause"
+                        min="0"
+                        step="5"
+                        value="0"
+                        style="width:80px"
+                      />
+                      <span class="small mut">Min.</span>
+                    </div>
+                    <label>Wochentage</label>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap">
+                      {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+                        <label class="chk">
+                          <input type="checkbox" name="wt" value={String(d)} checked={d <= 5} />{' '}
+                          {WEEKDAY_SHORT[d]}
+                        </label>
+                      ))}
+                    </div>
+                    <label for="sn-ab">ab</label>
+                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                      <input id="sn-ab" type="date" name="ab" value={von} required style="width:auto" />
+                      <span class="small mut">bis (leer = offen)</span>
+                      <input aria-label="bis" type="date" name="bis_datum" style="width:auto" />
+                    </div>
                   </div>
-                  <label for="sn-beg">Beginn</label>
-                  <input id="sn-beg" type="time" name="beginn" required />
-                  <label for="sn-end">Ende</label>
-                  <input id="sn-end" type="time" name="ende" required />
-                  <label for="sn-pause">Pause (Min.)</label>
-                  <input id="sn-pause" type="number" name="pause" min="0" step="5" value="0" />
-                </div>
-                <div class="form-foot">
-                  <button class="btn">Hinzufügen</button>
-                </div>
-              </form>
-            </div>
-          )}
+                  <p class="small mut">
+                    Über Mitternacht einfach eintragen, z. B. 18:30 bis 00:30 = 6 Std. Feiertage und
+                    Schließzeiten des Objekts werden ausgelassen.
+                  </p>
+                  <div class="form-foot">
+                    <button class="btn">Hinzufügen</button>
+                  </div>
+                </form>
+              </details>
+            )}
+          </div>
         </>
       );
     }),
@@ -313,15 +355,11 @@ export function registerSiteTimesheetRoutes({ app, deps, shells, back, page }: C
     const id = c.req.param('id');
     const b = await c.req.parseBody({ all: true });
     const one = (k: string) => (typeof b[k] === 'string' ? (b[k] as string) : '');
-    const pv = ISO.test(one('p_von')) ? one('p_von') : one('von');
-    const pb = ISO.test(one('p_bis')) ? one('p_bis') : pv;
+    const pv = ISO.test(one('p_von')) ? one('p_von') : monthStart(todayBerlin());
+    const pb = ISO.test(one('p_bis')) ? one('p_bis') : monthEnd(pv);
     try {
       if (!mayEdit(c)) throw new BusinessError('Nur das Büro darf den Stundennachweis ändern');
-      const wt = ([] as unknown[])
-        .concat(b.wt ?? [])
-        .map(Number)
-        .filter((n) => n >= 0 && n <= 6);
-      const n = await addTimesheetRows(
+      const n = await addExtra(
         sql,
         {
           token: /^[0-9a-f-]{36}$/.test(one('token')) ? one('token') : randomUUID(),
@@ -330,51 +368,40 @@ export function registerSiteTimesheetRoutes({ app, deps, shells, back, page }: C
           start: one('beginn'),
           end: one('ende'),
           breakMinutes: Number(one('pause') || 0),
-          from: one('von'),
-          to: one('bis'),
-          weekdays: wt,
+          weekdays: ([] as unknown[]).concat(b.wt ?? []).map(Number),
+          from: one('ab'),
+          to: one('bis_datum') || null,
         },
         c.get('actor'),
       );
-      return back(c, url(id, pv, pb), { ok: n ? `${n} Zeile(n) hinzugefügt.` : 'Schon eingetragen.' });
+      return back(c, url(id, pv, pb), {
+        ok: n ? `${one('person').trim()} hinzugefügt.` : 'Schon eingetragen.',
+      });
     } catch (e) {
       if (e instanceof BusinessError) return back(c, url(id, pv, pb), { fehler: e.message });
       throw e;
     }
   });
 
-  app.post(`/objekte/:id{${UUID}}/stundennachweis/uebernehmen`, async (c) => {
+  app.post(`/objekte/:id{${UUID}}/stundennachweis/nu/:x{${UUID}}/:what{ende|loeschen}`, async (c) => {
     const id = c.req.param('id');
     const b = await c.req.parseBody();
-    const von = String(b.von ?? '');
-    const bis = String(b.bis ?? '');
-    if (!ISO.test(von) || !ISO.test(bis))
-      return back(c, `/objekte/${id}/stundennachweis`, { fehler: 'Zeitraum fehlt' });
-    if (!mayEdit(c))
-      return back(c, url(id, von, bis), { fehler: 'Nur das Büro darf den Stundennachweis ändern' });
-    const src = b.quelle === 'plan' ? 'plan' : 'ist';
-    const r = await importTimesheetRows(sql, { siteId: id, from: von, to: bis, source: src }, c.get('actor'));
-    return back(c, url(id, von, bis), {
-      ok: `${r.added} Zeile(n) aus ${src === 'plan' ? 'der Einsatzplanung' : 'den erfassten Zeiten'} übernommen${
-        r.skipped ? `, ${r.skipped} übersprungen (schon eingetragen bzw. über Mitternacht)` : ''
-      }.`,
-    });
-  });
-
-  app.post(`/objekte/:id{${UUID}}/stundennachweis/loeschen`, async (c) => {
-    const id = c.req.param('id');
-    const b = await c.req.parseBody({ all: true });
-    const von = String(b.von ?? '');
-    const bis = String(b.bis ?? '');
-    if (!mayEdit(c))
-      return back(c, url(id, von, bis), { fehler: 'Nur das Büro darf den Stundennachweis ändern' });
-    let ids = ([] as unknown[])
-      .concat(b.id ?? [])
-      .map(String)
-      .filter((x) => /^[0-9a-f-]{36}$/.test(x));
-    if (b.alle === '1' && ISO.test(von) && ISO.test(bis))
-      ids = (await listTimesheetRows(sql, id, von, bis)).map((r) => r.id);
-    const n = await deleteTimesheetRows(sql, id, ids, c.get('actor'));
-    return back(c, url(id, von, bis), { ok: `${n} Zeile(n) gelöscht.` });
+    const von = ISO.test(String(b.von ?? '')) ? String(b.von) : monthStart(todayBerlin());
+    const bis = ISO.test(String(b.bis ?? '')) ? String(b.bis) : monthEnd(von);
+    try {
+      if (!mayEdit(c)) throw new BusinessError('Nur das Büro darf den Stundennachweis ändern');
+      if (c.req.param('what') === 'loeschen') {
+        await deleteExtra(sql, id, c.req.param('x'), c.get('actor'));
+        return back(c, url(id, von, bis), { ok: 'Gelöscht.' });
+      }
+      const end = String(b.ende ?? '');
+      await setExtraEnd(sql, id, c.req.param('x'), ISO.test(end) ? end : null, c.get('actor'));
+      return back(c, url(id, von, bis), {
+        ok: ISO.test(end) ? `Ende ${dateDe(end)} gesetzt.` : 'Ende entfernt (offen).',
+      });
+    } catch (e) {
+      if (e instanceof BusinessError) return back(c, url(id, von, bis), { fehler: e.message });
+      throw e;
+    }
   });
 }

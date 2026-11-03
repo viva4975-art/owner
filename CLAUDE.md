@@ -4815,3 +4815,20 @@ Testadresse.
   Rechnung aus „Stundennachweis bearbeiten“ (springt zu Objekt + Leistungszeitraum). Über Mitternacht: zwei Zeilen.
   **Hinweis:** Der Nachweis ist eine Erklärung gegenüber dem Kunden – eingetragene Stunden müssen tatsächlich geleistet
   sein; die Zeiterfassung der eigenen Leute (§ 17 MiLoG) bleibt davon unberührt. Test in `redacted-timesheet.db.test.ts`.
+- 2026-11-03: **Stundennachweis neu, einfacher** (Ahmed: „sehr unübersichtlich, soll aus der Einsatzplanung bestehen, nur
+  Leute vom NU hinzufügen“, „einzelne Zeiten will ich da gar nicht sehen“; ersetzt den Eintrag von heute):
+  Objekt → Erfasste Zeiten → „Stundennachweis für Kunden“ zeigt nur noch **Eingesetzte Leute aus der Einsatzplanung**
+  (je Person „Person n“, Tage + Zeit, Anzahl Einsätze, Stunden im Zeitraum; Urlaub/Krank/Ausfall/freie Feiertage fallen
+  weg, Vertretung zählt) und **Leute vom Nachunternehmer** als Dauereintrag: Person, Zeit von–bis, Pause, Wochentage,
+  ab Datum, optional bis – „Ende setzen/ändern“ und „Löschen“ je Person (`app.site_timesheet_extras`, Migration
+  `20270116000002`, feste ID je Formular, Protokoll). „PDF erstellen“ = Tageszeilen aus Plan + NU (NU ohne Feiertage und
+  Schließzeiten des Objekts); dasselbe PDF hängt wie bisher beim Fertigstellen automatisch an der Rechnung. Erfasste
+  Zeiten (Ist) zählen im Nachweis nicht mehr; Übernahme-Knöpfe und Einzelzeilen entfallen, die gestern/heute von Hand
+  angelegten Tageszeilen (`site_timesheet_rows`) werden nicht mehr verwendet (Tabelle bleibt, nichts gelöscht).
+  Warnung „Leistungszeitraum läuft noch“ beim Fertigstellen entfällt (Plan ist auch für künftige Tage da).
+  **Über Mitternacht in einer Zeile:** 18:30–00:30 = 6 Std. (Ende vor Beginn = Folgetag, im PDF „00:30 (+1)“).
+  **Hinweis:** Der Nachweis zeigt den Plan, nicht die tatsächliche Arbeitszeit – weicht es ab (Ausfall, Umplanung),
+  in der Einsatzplanung eintragen, damit dem Kunden keine falschen Stunden bescheinigt werden.
+  **Stellen:** Arbeitszeit über Mitternacht (z. B. 22:00–02:00) wird nicht mehr abgelehnt.
+  Test `redacted-timesheet.db.test.ts`. Bekannt rot (schon vorher, datumsabhängig): hr Resturlaub-Übertrag,
+  invoice-groups, services-billing „immer unfertig“, work-days.

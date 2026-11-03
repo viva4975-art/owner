@@ -11,10 +11,12 @@ import {
 } from './redacted-timesheet.js';
 import { DEMO } from './seed.js';
 import {
-  addTimesheetRows,
-  deleteTimesheetRows,
-  importTimesheetRows,
-  listTimesheetRows,
+  addExtra,
+  deleteExtra,
+  listExtras,
+  planPersons,
+  setExtraEnd,
+  timesheetRows,
 } from './site-timesheet.js';
 import { dbAvailable, freshDatabase, testDeps } from './testing.js';
 import type { Deps } from './workflow.js';
@@ -32,16 +34,15 @@ describe.skipIf(!available)('Geschwärzter Stundennachweis zur Rechnung', () => 
     deps = await testDeps(sql);
     await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, employment_type)
               values (${EMP}, '7791', 'Erika', 'Geheimname', '2026-01-01', 'vollzeit')`;
-    for (const [day, status] of [
-      ['2026-09-07', 'erfasst'],
-      ['2026-09-08', 'freigegeben'],
-      ['2026-09-09', 'abgelehnt'],
-      ['2026-10-01', 'erfasst'],
-    ] as const)
-      await sql`insert into app.time_entries (id, employee_id, site_id, work_date, start_at, end_at, break_minutes, source, status, created_by)
-                values (${randomUUID()}, ${EMP}, ${DEMO.siteSchool}, ${day},
-                        (${day}::date + time '06:00') at time zone 'Europe/Berlin',
-                        (${day}::date + time '10:30') at time zone 'Europe/Berlin', 30, 'buero', ${status}, 'buero')`;
+    // Einsatzplanung: Mo + Di 06:00–10:30, 30 Min. Pause, nur 07./08.09. (= 2 × 4:00 Std.)
+    for (const wd of [1, 2])
+      await sql`insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes, valid_from, valid_until)
+                values (${randomUUID()}, ${EMP}, ${DEMO.siteSchool}, ${wd}, '06:00', '10:30', 30, '2026-09-07', '2026-09-08')`;
+    // erfasste Zeit zählt nicht (Nachweis = Einsatzplanung)
+    await sql`insert into app.time_entries (id, employee_id, site_id, work_date, start_at, end_at, break_minutes, source, status, created_by)
+              values (${randomUUID()}, ${EMP}, ${DEMO.siteSchool}, '2026-09-09',
+                      ('2026-09-09'::date + time '06:00') at time zone 'Europe/Berlin',
+                      ('2026-09-09'::date + time '10:30') at time zone 'Europe/Berlin', 30, 'buero', 'erfasst', 'buero')`;
     // Unterhaltsreinigung der Schule: Stundennachweis anhängen
     await sql`update app.site_services set attach_timesheet = true
                where id = '00000000-0000-4000-8000-000000000101'`;
@@ -66,7 +67,7 @@ describe.skipIf(!available)('Geschwärzter Stundennachweis zur Rechnung', () => 
     expect(text).not.toContain('Erika');
     expect(text).toContain('07.09.2026');
     expect(text).toContain('08.09.2026');
-    expect(text).not.toContain('09.09.2026'); // abgelehnt
+    expect(text).not.toContain('09.09.2026'); // nur erfasst, nicht geplant
     expect(text).not.toContain('01.10.2026'); // außerhalb
     expect(text).toContain('8:00'); // 2 × 4:00 Std.
     expect(text.replace(/\s+/g, ' ')).toContain(SPECIAL_STAFF_NOTE.slice(0, 40));
@@ -97,65 +98,42 @@ describe.skipIf(!available)('Geschwärzter Stundennachweis zur Rechnung', () => 
     if (other) expect(await timesheetSitesOf(sql, other.invoiceId)).toHaveLength(0);
   });
 
-  it('eigene Zeilen: aus Ist übernehmen (Person 1), Nachunternehmer dazu, gehen vor den erfassten Zeiten', async () => {
+  it('Einsatzplanung + Nachunternehmer als Dauereintrag, auch über Mitternacht', async () => {
     const site = DEMO.siteSchool;
-    const r1 = await importTimesheetRows(
-      sql,
-      { siteId: site, from: '2026-09-01', to: '2026-09-30', source: 'ist' },
-      't',
-    );
-    expect(r1.added).toBe(2);
-    // erneut: nichts doppelt
-    expect(
-      (
-        await importTimesheetRows(
-          sql,
-          { siteId: site, from: '2026-09-01', to: '2026-09-30', source: 'ist' },
-          't',
-        )
-      ).added,
-    ).toBe(0);
-    const token = randomUUID();
+    const persons = await planPersons(sql, site, '2026-09-01', '2026-09-30');
+    expect(persons).toEqual([
+      { person: 'Person 1', times: ['Mo, Di 06:00–10:30 (Pause 30 Min.)'], shifts: 2, minutes: 480 },
+    ]);
     const add = {
-      token,
+      token: randomUUID(),
       siteId: site,
-      person: 'Nachunternehmer – Person 2',
-      start: '17:00',
-      end: '19:30',
+      person: 'Nachunternehmer – Person 1',
+      start: '18:30',
+      end: '00:30',
       breakMinutes: 0,
-      from: '2026-09-07',
-      to: '2026-09-11',
       weekdays: [1, 3, 5],
+      from: '2026-09-07',
+      to: null,
     };
-    expect(await addTimesheetRows(sql, add, 't')).toBe(3); // Mo, Mi, Fr
-    expect(await addTimesheetRows(sql, add, 't')).toBe(0); // gleiches Formular doppelt
-    await expect(addTimesheetRows(sql, { ...add, token: randomUUID(), end: '16:00' }, 't')).rejects.toThrow(
-      /Ende/,
-    );
-    const rows = await listTimesheetRows(sql, site, '2026-09-01', '2026-09-30');
-    expect(rows.filter((r) => r.person === 'Person 1')).toHaveLength(2);
-    expect(rows.reduce((a, r) => a + r.minutes, 0)).toBe(2 * 240 + 3 * 150);
+    expect(await addExtra(sql, add, 't')).toBe(1);
+    expect(await addExtra(sql, add, 't')).toBe(0); // gleiches Formular doppelt
+    await expect(addExtra(sql, { ...add, token: randomUUID(), end: '18:30' }, 't')).rejects.toThrow(/gleich/);
+    const [x] = await listExtras(sql, site);
+    // ab 07.09. Mo/Mi/Fr bis 30.09. = 11 Tage; Ende 11.09. → 3 Tage
+    let rows = await timesheetRows(sql, site, '2026-09-01', '2026-09-30');
+    expect(rows.filter((r) => r.source === 'nu')).toHaveLength(11);
+    await setExtraEnd(sql, site, x!.id, '2026-09-11', 't');
+    rows = await timesheetRows(sql, site, '2026-09-01', '2026-09-30');
+    expect(rows.filter((r) => r.overnight)).toHaveLength(3);
+    expect(rows.reduce((a, r) => a + r.minutes, 0)).toBe(2 * 240 + 3 * 360);
     const pdf = (await previewRedactedTimesheet(sql, invoiceId))!;
     const text = (await extractText(await getDocumentProxy(pdf), { mergePages: true })).text;
     expect(text).toContain('Person 1');
-    expect(text).toContain('Nachunternehmer – Person 2');
+    expect(text).toContain('Nachunternehmer – Person 1');
+    expect(text).toContain('00:30 (+1)');
     expect(text).not.toContain('Geheimname');
-    expect(text).toContain('15:30'); // 8:00 + 7:30
-    // alles löschen → wieder die erfassten Zeiten
-    expect(
-      await deleteTimesheetRows(
-        sql,
-        site,
-        rows.map((r) => r.id),
-        't',
-      ),
-    ).toBe(5);
-    const text2 = (
-      await extractText(await getDocumentProxy((await previewRedactedTimesheet(sql, invoiceId))!), {
-        mergePages: true,
-      })
-    ).text;
-    expect(text2).toContain('Person 1');
-    expect(text2).not.toContain('Nachunternehmer');
+    expect(text).toContain('26:00'); // 8:00 + 18:00
+    expect(await deleteExtra(sql, site, x!.id, 't')).toBe(1);
+    expect(await timesheetRows(sql, site, '2026-09-01', '2026-09-30')).toHaveLength(2);
   });
 });

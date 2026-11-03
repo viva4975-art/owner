@@ -4832,3 +4832,6 @@ Testadresse.
   **Stellen:** Arbeitszeit über Mitternacht (z. B. 22:00–02:00) wird nicht mehr abgelehnt.
   Test `redacted-timesheet.db.test.ts`. Bekannt rot (schon vorher, datumsabhängig): hr Resturlaub-Übertrag,
   invoice-groups, services-billing „immer unfertig“, work-days.
+- 2026-11-03: **Stundennachweis-PDF geschwärzt** (Ahmed): Spalte „Mitarbeiter/in“ im PDF als schwarzer Balken (der Text
+  wird gar nicht ins PDF geschrieben, `redact` in `FormDoc.table`) – auch für die Nachunternehmer-Personen. In der App
+  bleiben „Person 1, 2 …“ / „Nachunternehmer – Person n“ zur Unterscheidung sichtbar. Hinweis im PDF: „Namen … geschwärzt.“

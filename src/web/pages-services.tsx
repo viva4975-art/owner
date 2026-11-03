@@ -593,9 +593,9 @@ u.addEventListener('change',sync);a.addEventListener('change',sync);sync();})();
             checked={sv?.attach_timesheet ?? false}
           />
           <label for="attach_timesheet">
-            Stundennachweis an die Rechnung anhängen (Stunden je Tag mit „Person 1, 2 …“ statt Namen – z. B.
-            für die Unterhaltsreinigung). Die Stunden kommen aus der Einsatzplanung; Nachunternehmer unter
-            Objekt → Erfasste Zeiten → „Stundennachweis für Kunden“ ergänzen.
+            Stundennachweis an die Rechnung anhängen (Stunden je Tag, Namen geschwärzt – z. B. für die
+            Unterhaltsreinigung). Die Stunden kommen aus der Einsatzplanung; Nachunternehmer unter Objekt →
+            Erfasste Zeiten → „Stundennachweis für Kunden“ ergänzen.
           </label>
         </div>
 

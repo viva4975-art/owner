@@ -136,8 +136,8 @@ export function registerSiteTimesheetRoutes({ app, deps, shells, back, page }: C
             </form>
             <p class="small mut" style="margin:8px 0 0">
               {dateDe(von)} – {dateDe(bis)}: <b>{hm(planTotal + nuTotal)} Std.</b> · Das PDF hängt beim
-              Fertigstellen automatisch an der Rechnung (Leistung mit „Stundennachweis anhängen“). Namen
-              erscheinen als „Person 1, 2 …“.
+              Fertigstellen automatisch an der Rechnung (Leistung mit „Stundennachweis anhängen“). Namen sind
+              im PDF geschwärzt.
             </p>
           </div>
 

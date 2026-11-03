@@ -58,7 +58,7 @@ export async function timesheetLines(sql: Sql, t: Pick<TimesheetSite, 'site_id' 
   return { lines: await timesheetRows(sql, t.site_id, t.from, t.to) };
 }
 
-/** PDF für ein Objekt und einen Zeitraum – Personen nummeriert statt Namen. */
+/** PDF für ein Objekt und einen Zeitraum – Namen geschwärzt (Ahmed 03.11.), Text wird gar nicht erst geschrieben. */
 export async function redactedTimesheetPdf(
   sql: Sql,
   t: TimesheetSite,
@@ -90,7 +90,7 @@ export async function redactedTimesheetPdf(
   d.table(
     [
       { label: 'Datum', width: 92 },
-      { label: 'Person', width: 140 },
+      { label: 'Mitarbeiter/in', width: 140, redact: true },
       { label: 'Beginn', width: 62, align: 'right' },
       { label: 'Ende', width: 62, align: 'right' },
       { label: 'Pause', width: 62, align: 'right' },
@@ -111,7 +111,7 @@ export async function redactedTimesheetPdf(
       : [['Keine Einsätze im Zeitraum', '', '', '', '', '']],
   );
   d.muted(
-    'Namen der eingesetzten Personen aus Datenschutzgründen nicht genannt (Person 1, 2 …).' +
+    'Namen der eingesetzten Personen aus Datenschutzgründen geschwärzt.' +
       (lines.some((e) => e.overnight) ? ' „(+1)“ = Ende am Folgetag.' : ''),
   );
   d.para(SPECIAL_STAFF_NOTE, { size: 8.5 });

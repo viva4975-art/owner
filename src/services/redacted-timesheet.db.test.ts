@@ -128,8 +128,8 @@ describe.skipIf(!available)('Geschwärzter Stundennachweis zur Rechnung', () => 
     expect(rows.reduce((a, r) => a + r.minutes, 0)).toBe(2 * 240 + 3 * 360);
     const pdf = (await previewRedactedTimesheet(sql, invoiceId))!;
     const text = (await extractText(await getDocumentProxy(pdf), { mergePages: true })).text;
-    expect(text).toContain('Person 1');
-    expect(text).toContain('Nachunternehmer – Person 1');
+    expect(text).not.toContain('Person 1'); // geschwärzt
+    expect(text).not.toContain('Nachunternehmer');
     expect(text).toContain('00:30 (+1)');
     expect(text).not.toContain('Geheimname');
     expect(text).toContain('26:00'); // 8:00 + 18:00

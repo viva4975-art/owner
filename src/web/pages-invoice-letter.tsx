@@ -481,7 +481,12 @@ export const DraftLetter: FC<{
                 target="_blank"
                 title="Wird beim Fertigstellen automatisch als Anlage angehängt"
               >
-                Stundennachweis (geschwärzt) – Vorschau
+                Stundennachweis – Vorschau
+              </a>
+            )}
+            {timesheets > 0 && !locked && (
+              <a class="sec" href={`/rechnungen/${inv.id}/stundennachweis/bearbeiten`}>
+                Stundennachweis bearbeiten (Personen/Stunden)
               </a>
             )}
             {wrs.length === 0 && !locked && (
@@ -1010,8 +1015,11 @@ export const IssuedLetter: FC<{
             </a>
             {!!p.timesheets?.count && (
               <a href={`/rechnungen/${inv.id}/stundennachweis.pdf`} target="_blank">
-                Stundennachweis (geschwärzt)
+                Stundennachweis
               </a>
+            )}
+            {!!p.timesheets?.count && !cancelled && (
+              <a href={`/rechnungen/${inv.id}/stundennachweis/bearbeiten`}>Stundennachweis bearbeiten</a>
             )}
             {!!p.timesheets?.missing && !cancelled && (
               <form method="post" action={`/rechnungen/${inv.id}/stundennachweis`}>
@@ -1022,7 +1030,7 @@ export const IssuedLetter: FC<{
               <form
                 method="post"
                 action={`/rechnungen/${inv.id}/stundennachweis`}
-                onsubmit="return confirm('Neuen (berichtigten) Stundennachweis mit den jetzt erfassten Zeiten anhängen? Der bisherige bleibt im Archiv.')"
+                onsubmit="return confirm('Neuen (berichtigten) Stundennachweis mit dem jetzigen Stand anhängen? Der bisherige bleibt im Archiv.')"
               >
                 <input type="hidden" name="revision" value={revisionStamp()} />
                 <button>Neuen Stundennachweis anhängen</button>

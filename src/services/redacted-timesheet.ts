@@ -4,13 +4,14 @@ import { FormDoc } from '../pdf/form-doc.js';
 import { BusinessError } from './errors.js';
 import { countsAsActual } from './site-times.js';
 import { clock, hm, listEntries, netMinutes } from './time.js';
+import { listTimesheetRows } from './site-timesheet.js';
 import { type Deps, addAttachment } from './workflow.js';
 
 /*
  * Geschwärzter Stundennachweis zur Rechnung (Ahmed 20.10.: „bei manchen Objekten muss eine geschwärzte
  * Stundenaufzeichnung mit der Rechnung übermittelt werden“). Je Leistung ankreuzbar (site_services.attach_timesheet,
  * z. B. Unterhaltsreinigung). Beim Ausstellen hängt je Objekt ein PDF an der Rechnung: Datum, Beginn, Ende, Pause,
- * Stunden; Namen geschwärzt. Am Ende der Hinweis, dass Quartals-/Jahresarbeiten von Sonderreinigern erledigt werden.
+ * Stunden; statt Namen „Person 1, 2 …“ (Ahmed 03.11.). Von Hand gepflegte Zeilen je Objekt (site-timesheet.ts) gehen vor. Am Ende der Hinweis, dass Quartals-/Jahresarbeiten von Sonderreinigern erledigt werden.
  */
 
 export const SPECIAL_STAFF_NOTE =
@@ -53,17 +54,50 @@ export const timesheetFilename = (t: TimesheetSite, revision?: string) =>
     '_',
   );
 
-/** PDF für ein Objekt und einen Zeitraum – nur erfasste/freigegebene Zeiten, Namen geschwärzt. */
+/** Zeilen des Nachweises: von Hand gepflegte (Objekt → Stundennachweis), sonst erfasste Zeiten mit „Person n“. */
+export async function timesheetLines(sql: Sql, t: Pick<TimesheetSite, 'site_id' | 'from' | 'to'>) {
+  const own = await listTimesheetRows(sql, t.site_id, t.from, t.to);
+  if (own.length)
+    return {
+      manual: true,
+      lines: own.map((r) => ({
+        date: r.work_date,
+        person: r.person,
+        start: r.start_time,
+        end: r.end_time,
+        brk: r.break_minutes,
+        minutes: r.minutes,
+      })),
+    };
+  const entries = (await listEntries(sql, { siteId: t.site_id, from: t.from, to: t.to }))
+    .filter(countsAsActual)
+    .sort((a, b) => a.work_date.localeCompare(b.work_date) || a.start_at.getTime() - b.start_at.getTime());
+  const no = new Map<string, number>();
+  return {
+    manual: false,
+    lines: entries.map((e) => {
+      if (!no.has(e.employee_id)) no.set(e.employee_id, no.size + 1);
+      return {
+        date: e.work_date,
+        person: `Person ${no.get(e.employee_id)}`,
+        start: clock(e.start_at),
+        end: clock(e.end_at),
+        brk: e.break_minutes,
+        minutes: netMinutes(e),
+      };
+    }),
+  };
+}
+
+/** PDF für ein Objekt und einen Zeitraum – Personen nummeriert statt Namen. */
 export async function redactedTimesheetPdf(
   sql: Sql,
   t: TimesheetSite,
   invoice: { number: string | null; customer: string },
   revisedOn?: string,
 ): Promise<Uint8Array> {
-  const entries = (await listEntries(sql, { siteId: t.site_id, from: t.from, to: t.to }))
-    .filter(countsAsActual)
-    .sort((a, b) => a.work_date.localeCompare(b.work_date) || a.start_at.getTime() - b.start_at.getTime());
-  const total = entries.reduce((s, e) => s + netMinutes(e), 0);
+  const { lines } = await timesheetLines(sql, t);
+  const total = lines.reduce((s, e) => s + e.minutes, 0);
   const d = await FormDoc.create({
     title: `Stundennachweis ${t.site_name}`,
     sideRef: `Stundennachweis · ${t.site_name} (${t.site_no}) · ${formatDateDe(t.from)}–${formatDateDe(t.to)}`,
@@ -87,27 +121,27 @@ export async function redactedTimesheetPdf(
   d.table(
     [
       { label: 'Datum', width: 92 },
-      { label: 'Mitarbeiter/in', width: 140, redact: true },
+      { label: 'Person', width: 140 },
       { label: 'Beginn', width: 62, align: 'right' },
       { label: 'Ende', width: 62, align: 'right' },
       { label: 'Pause', width: 62, align: 'right' },
       { label: 'Stunden', width: 80, align: 'right' },
     ],
-    entries.length
+    lines.length
       ? [
-          ...entries.map((e) => [
-            `${weekday(e.work_date)} ${formatDateDe(e.work_date)}`,
-            'x',
-            clock(e.start_at),
-            clock(e.end_at),
-            e.break_minutes ? hm(e.break_minutes) : '–',
-            hm(netMinutes(e)),
+          ...lines.map((e) => [
+            `${weekday(e.date)} ${formatDateDe(e.date)}`,
+            e.person,
+            e.start,
+            e.end,
+            e.brk ? hm(e.brk) : '–',
+            hm(e.minutes),
           ]),
           { sum: ['Summe', '', '', '', '', hm(total)], strong: true },
         ]
       : [['Keine erfassten Zeiten im Zeitraum', '', '', '', '', '']],
   );
-  d.muted('Namen der Mitarbeitenden aus Datenschutzgründen geschwärzt.');
+  d.muted('Namen der eingesetzten Personen aus Datenschutzgründen nicht genannt (Person 1, 2 …).');
   d.para(SPECIAL_STAFF_NOTE, { size: 8.5 });
   return d.save();
 }

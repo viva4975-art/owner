@@ -4802,3 +4802,16 @@ Testadresse.
   in einer eigenen Zeile „Kunde – ohne Objekt“ (Link zum Kunden, „Kosten aufschlüsseln“ = Liste der Rechnungen,
   `?kunde=`). Ebenfalls nach Leistungszeitraum verteilt. Objekte mit Erlös im Zeitraum erscheinen jetzt auch, wenn sie
   inaktiv sind. Gilt auch für Ø Stundensätze (nur aktive Objekte). Test in `costing-detail.db.test.ts`.
+- 2026-11-03: **Stundennachweis für den Kunden selbst pflegen** (Ahmed: „Stunden für jeweilige Tage mit Person 1, Person 2
+  eintragen, auch Nachunternehmer; aus Einsatzplanung auswählen oder Leute dazuschreiben“): Objekt → Erfasste Zeiten →
+  „Stundennachweis für Kunden“ (`/objekte/:id/stundennachweis?von&bis`, `routes-site-timesheet.tsx`,
+  `src/services/site-timesheet.ts`, Tabelle `app.site_timesheet_rows`, Migration `20270115000001`; Büro, nicht
+  Objektleitung). Zeilen je Tag: Person (frei, Vorschlag „Person n“), Beginn, Ende, Pause; **„Aus erfassten Zeiten
+  übernehmen“** / **„Aus Einsatzplanung übernehmen“** (je Mitarbeiter gleichbleibend „Person n“, ohne Abwesenheit/
+  Ausfall/freie Feiertage, Tage mit schon eingetragener Person werden übersprungen, feste IDs → nichts doppelt) und
+  **von Hand** für einen Tag oder von–bis mit Wochentagen (z. B. „Nachunternehmer – Person 1“), markierte/alle löschen,
+  PDF-Vorschau, Protokoll. Gibt es für das Objekt im Leistungszeitraum Zeilen, nimmt der Stundennachweis zur Rechnung
+  diese, sonst wie bisher die erfassten Zeiten – jetzt ebenfalls mit „Person 1, 2 …“ statt schwarzer Balken. Von der
+  Rechnung aus „Stundennachweis bearbeiten“ (springt zu Objekt + Leistungszeitraum). Über Mitternacht: zwei Zeilen.
+  **Hinweis:** Der Nachweis ist eine Erklärung gegenüber dem Kunden – eingetragene Stunden müssen tatsächlich geleistet
+  sein; die Zeiterfassung der eigenen Leute (§ 17 MiLoG) bleibt davon unberührt. Test in `redacted-timesheet.db.test.ts`.

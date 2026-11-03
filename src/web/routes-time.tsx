@@ -1523,7 +1523,12 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
               </a>{' '}
               <a class="btn sm sec" href={`/zeiterfassung/${randomUUID()}?objekt=${s.id}`}>
                 + Zeit erfassen
-              </a>
+              </a>{' '}
+              {canConfirm && (
+                <a class="btn sm sec" href={`/objekte/${s.id}/stundennachweis?von=${from}&bis=${to}`}>
+                  Stundennachweis für Kunden
+                </a>
+              )}
             </span>
           </div>
           <p class="small mut" style="margin-top:0">

@@ -4843,3 +4843,14 @@ Testadresse.
   löscht mit der Person mit), `setExtraDay`/`deleteExtraDay` mit Protokoll. Gilt sofort für Seite, PDF und den
   Stundennachweis an der Rechnung (beim Fertigstellen; schon ausgestellte → „Neuen Stundennachweis anhängen“). Eigene
   Leute weiter über die Einsatzplanung (Ausfall/Umplanen). Test in `redacted-timesheet.db.test.ts`.
+- 2026-11-04: **QK-Auswertungsbericht: je Raum alle Punkte und alle Fotos** (Ahmed: „bei jedem Raum die Punkte sehen“, „es
+  werden nicht alle Bilder hinzugefügt“): Abschnitt „Mängelliste“ ersetzt durch **„Einheiten im Detail“** – je Raum
+  Ergebnis + Anzahl Mängel, Tabelle aller Kontrollgegenstände (Bewertung mit %, übersprungen, Gewicht, Bemerkung, Spalte
+  „Mangel“ bzw. „n Fotos“) und darunter **alle Fotos des Raums** mit Kontrollgegenstand und Aufnahme-Kennzeichen
+  (`ReportRoom.items` in `qm-report.ts`). **Fund:** Fotos erschienen nur an Mängeln (Bewertung unter Schwellwert) und
+  höchstens 60 je Bericht; jetzt alle, auf 900 px verkleinert (sharp, auch andere Bildformate), damit der Bericht klein
+  bleibt. **Fund 2:** In der QM-App ging ein Foto still verloren, wenn der Kontrollgegenstand nicht bewertet wurde – jetzt
+  Meldung „bitte bewerten oder überspringen“. Bereits so verlorene Fotos sind nicht gespeichert.
+  **Objektleitung am PC:** Menü Disposition → „Qualitätsberichte“ (`/qualitaet`, nur ihre Objekte); Liste der
+  Qualitätskontrollen (auch Objekt → Qualität) mit Spalte „Berichte“: Auswertung (PDF), Prüfprotokoll. „Kontrolle
+  starten“ steht nur noch am Handy/Tablet (am PC wird das Starten ohnehin abgelehnt). Test in `qm-report.db.test.ts`.

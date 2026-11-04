@@ -1,6 +1,7 @@
 import { GEO_LABEL, type GeoStatus } from '../domain/time/geo.js';
 import { readFile } from 'node:fs/promises';
 import { rgb } from '@cantoo/pdf-lib';
+import sharp from 'sharp';
 import type { Sql } from '../db/client.js';
 import { formatDateDe } from '../domain/invoice/calc.js';
 import { FORM_COLORS, FORM_X, FORM_Y, FormDoc } from '../pdf/form-doc.js';
@@ -96,6 +97,8 @@ export interface ReportRoom {
   group: string;
   score: number | null;
   defects: ReportDefect[];
+  /** alle Bewertungen des Raums (auch ohne Mangel, übersprungen) – für „Einheiten im Detail“ */
+  items: (ReportDefect & { skipped: boolean; defect: boolean })[];
   first: Date | null;
   last: Date | null;
 }
@@ -306,11 +309,24 @@ export async function auditReport(sql: Sql, id: string): Promise<AuditReport> {
               weight: x.weight,
               photos: x.photo_ids,
             })),
+          items: rs.map((x) => ({
+            item: x.item,
+            description: x.description,
+            note: x.note,
+            label: x.skipped
+              ? 'übersprungen'
+              : (QM_SCALE[x.kind].find((o) => o.v === x.value)?.label ?? String(x.value ?? '–')),
+            pct: x.percent ?? 0,
+            weight: x.weight,
+            photos: x.photo_ids,
+            skipped: x.skipped,
+            defect: !x.skipped && x.percent != null && x.percent < low,
+          })),
           first: times.length ? new Date(Math.min(...times)) : null,
           last: times.length ? new Date(Math.max(...times)) : null,
         };
       })
-      .filter((r) => r.score != null);
+      .filter((r) => r.score != null || r.items.some((x) => x.photos.length));
   } else {
     // ältere Kontrollen ohne Noten: Bereich in Ordnung = 100 %, Mangel = 0 %
     const items = await sql<
@@ -344,19 +360,21 @@ export async function auditReport(sql: Sql, id: string): Promise<AuditReport> {
               },
             ]
           : [],
+      items: [],
       first: null,
       last: null,
     }));
+    for (const r of reportRooms) r.items = r.defects.map((x) => ({ ...x, skipped: false, defect: true }));
   }
   const score =
     q.status === 'abgeschlossen'
-      ? (all[idx]?.score ?? avg(reportRooms.map((r) => r.score!)))
-      : avg(reportRooms.map((r) => r.score!));
+      ? (all[idx]?.score ?? avg(reportRooms.filter((r) => r.score != null).map((r) => r.score!)))
+      : avg(reportRooms.filter((r) => r.score != null).map((r) => r.score!));
   const target = settings.threshold_target;
   const ampel = {
-    low: reportRooms.filter((r) => r.score! < low).length,
-    mid: reportRooms.filter((r) => r.score! >= low && r.score! < target).length,
-    high: reportRooms.filter((r) => r.score! >= target).length,
+    low: reportRooms.filter((r) => r.score != null && r.score < low).length,
+    mid: reportRooms.filter((r) => r.score != null && r.score >= low && r.score < target).length,
+    high: reportRooms.filter((r) => r.score != null && r.score >= target).length,
   };
 
   let groups: ReportRow[];
@@ -375,7 +393,7 @@ export async function auditReport(sql: Sql, id: string): Promise<AuditReport> {
       name,
       units: rs.length,
       defects: rs.reduce((s, r) => s + r.defects.length, 0),
-      score: avg(rs.map((r) => r.score!)),
+      score: avg(rs.filter((r) => r.score != null).map((r) => r.score!)),
       prev: null,
     }));
     areas = [];
@@ -405,7 +423,7 @@ export async function auditReport(sql: Sql, id: string): Promise<AuditReport> {
     date: h.date,
     score: h.id === id ? (score ?? 0) : (h.score ?? 0),
     inspector: h.inspector,
-    units: h.id === id ? reportRooms.length : (units.get(h.id) ?? 0),
+    units: h.id === id ? reportRooms.filter((r) => r.score != null).length : (units.get(h.id) ?? 0),
   }));
 
   return {
@@ -691,7 +709,7 @@ export async function renderAuditReportPdf(deps: Deps, cfg: UploadConfig, id: st
   ]);
   d.tiles([
     { label: 'Ergebnis', value: pctText(r.score), sub: `Ziel ab ${st.threshold_target} %`, accent: true },
-    { label: 'Geprüfte Einheiten', value: String(r.rooms.length) },
+    { label: 'Geprüfte Einheiten', value: String(r.rooms.filter((x) => x.score != null).length) },
     { label: 'Mängel', value: String(r.defectCount), sub: `Bewertung unter ${st.threshold_low} %` },
     { label: 'Änderung', value: deltaText(r.score, r.prevScore), sub: 'zum letzten Audit' },
   ]);
@@ -796,11 +814,11 @@ export async function renderAuditReportPdf(deps: Deps, cfg: UploadConfig, id: st
     { size: 8 },
   );
 
-  const withDefects = r.rooms.filter((x) => x.defects.length);
-  if (withDefects.length) {
-    d.section('Mängelliste');
+  // Einheiten im Detail (Ahmed 04.11.): je Raum alle Punkte, alle Fotos – nicht nur Mängel
+  if (r.rooms.length) {
+    d.section('Einheiten im Detail');
     const files = new Map<string, FileRow>();
-    const ids = [...new Set(withDefects.flatMap((x) => x.defects.flatMap((y) => y.photos)))];
+    const ids = [...new Set(r.rooms.flatMap((x) => x.items.flatMap((y) => y.photos)))];
     if (ids.length)
       for (const f of await deps.sql<
         FileRow[]
@@ -817,62 +835,71 @@ export async function renderAuditReportPdf(deps: Deps, cfg: UploadConfig, id: st
           t.file_id,
           `${t.taken} · ${GEO_LABEL[t.geo]}${t.geo_m != null && t.geo !== 'am_objekt' ? ` (${t.geo_m} m)` : ''}`,
         );
-    let photoBudget = 60;
-    for (const room of withDefects) {
-      d.heading(`${room.label}${room.meta ? ` · ${room.meta}` : ''} – ${pctText(room.score)}`, 9.5);
+    for (const room of r.rooms) {
+      const nDef = room.items.filter((x) => x.defect).length;
+      d.heading(
+        `${room.label}${room.meta ? ` · ${room.meta}` : ''} – ${pctText(room.score)}${nDef ? ` · ${nDef} ${nDef === 1 ? 'Mangel' : 'Mängel'}` : ''}`,
+        9.5,
+      );
       d.table(
         [
           { label: 'Kontrollgegenstand', width: 120 },
-          { label: 'Beschreibung', width: 150 },
-          { label: 'Bemerkung', width: 120 },
-          { label: 'Gewicht', width: 50 },
-          { label: 'Bewertung', width: 58, align: 'right' },
+          { label: 'Bewertung', width: 82 },
+          { label: 'Gewicht', width: 64 },
+          { label: 'Bemerkung', width: 176 },
+          { label: 'Mangel', width: 56, align: 'right' },
         ],
-        room.defects.map((x) => [
+        room.items.map((x) => [
           x.item,
-          x.description ?? '',
-          x.note ?? '',
+          x.skipped ? 'übersprungen' : `${x.label} (${x.pct} %)`,
           WEIGHT_LABEL[x.weight] ?? '',
-          `${x.label} (${x.pct} %)`,
+          [x.defect ? x.description : null, x.note].filter(Boolean).join(' – '),
+          x.defect
+            ? 'Mangel'
+            : x.photos.length
+              ? `${x.photos.length} Foto${x.photos.length > 1 ? 's' : ''}`
+              : '',
         ]),
         { size: 8 },
       );
-      // Fotos klein darunter (nur JPG/PNG)
-      const photos = room.defects
-        .flatMap((x) => x.photos)
-        .map((p) => files.get(p))
-        .filter((f): f is FileRow => !!f);
+      // alle Fotos des Raums (JPG/PNG), mit Kontrollgegenstand
+      const photos = room.items.flatMap((x) =>
+        x.photos.map((p) => ({ f: files.get(p), item: x.item })).filter((y) => !!y.f),
+      ) as { f: FileRow; item: string }[];
       let px = L;
-      const ph = 70;
-      for (const f of photos) {
-        if (photoBudget <= 0) break;
-        const isJpg = /jpe?g/i.test(f.content_type);
-        const isPng = /png/i.test(f.content_type);
-        if (!isJpg && !isPng) continue;
+      const ph = 110;
+      for (const { f, item } of photos) {
+        if (!/^image\//i.test(f.content_type)) continue;
         let img;
         try {
-          const bytes = new Uint8Array(await readFile(filePath(cfg, f)));
-          img = isJpg ? await d.pdf.embedJpg(bytes) : await d.pdf.embedPng(bytes);
+          // verkleinert (900 px, JPEG) – sonst wird der Bericht bei vielen Fotos sehr groß; jedes Bildformat
+          const small = await sharp(await readFile(filePath(cfg, f)))
+            .rotate()
+            .resize({ width: 900, height: 900, fit: 'inside', withoutEnlargement: true })
+            .jpeg({ quality: 78 })
+            .toBuffer();
+          img = await d.pdf.embedJpg(new Uint8Array(small));
         } catch {
           continue;
         }
-        photoBudget--;
-        const w = (img.width / img.height) * ph;
-        if (px + w > R) {
+        const w = Math.min((img.width / img.height) * ph, R - L);
+        const h = (w / img.width) * img.height;
+        const cell = Math.max(w, 110);
+        if (px + cell > R) {
           px = L;
-          d.y += ph + 6;
+          d.y += ph + 22;
         }
-        if (d.y + ph > d.bottom) {
+        if (d.y + ph + 20 > d.bottom) {
           d.newPage();
           px = L;
         }
-        d.page.drawImage(img, { x: px, y: H - d.y - ph, width: w, height: ph });
+        d.page.drawImage(img, { x: px, y: H - d.y - h, width: w, height: h });
+        d.text(d.fit(item, cell, 6.5), px, d.y + ph + 8, { size: 6.5 });
         const tag = tags.get(f.id);
-        if (tag)
-          d.text(d.fit(tag, Math.max(w, 90), 6), px, d.y + ph + 7, { size: 6, color: rgb(0.4, 0.4, 0.4) });
-        px += Math.max(w, tag ? 90 : 0) + 6;
+        if (tag) d.text(d.fit(tag, cell, 6), px, d.y + ph + 16, { size: 6, color: rgb(0.4, 0.4, 0.4) });
+        px += cell + 8;
       }
-      if (px > L) d.y += ph + 18;
+      if (px > L) d.y += ph + 26;
     }
   }
 

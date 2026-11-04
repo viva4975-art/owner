@@ -126,6 +126,7 @@ export const QcTable: FC<{
           <th class="right">Bereiche</th>
           <th class="right">Mängel</th>
           <th>Ergebnis</th>
+          <th>Berichte</th>
           {del && <th />}
         </tr>
       </thead>
@@ -151,6 +152,16 @@ export const QcTable: FC<{
                 <span class={`badge ${scoreClass(q.score_percent)}`}>{q.score_percent} %</span>
               )}
             </td>
+            <td class="nowrap">
+              <a class="btn sm sec" href={`/qualitaet/${q.id}/auswertung.pdf`} target="_blank">
+                Auswertung (PDF)
+              </a>{' '}
+              {q.status !== 'entwurf' && (
+                <a class="btn sm ghost" href={`/qualitaet/${q.id}/bericht.pdf`} target="_blank">
+                  Prüfprotokoll
+                </a>
+              )}
+            </td>
             {del && (
               <td class="right">
                 {(q.status === 'entwurf' || del.admin) && (
@@ -171,7 +182,7 @@ export const QcTable: FC<{
         ))}
         {!rows.length && (
           <tr>
-            <td colspan={7} class="mut">
+            <td colspan={8} class="mut">
               Noch keine Qualitätskontrollen.
             </td>
           </tr>
@@ -1326,14 +1337,16 @@ f.addEventListener('change',show);f.addEventListener('input',sum);show();})();`,
             QM-App (Audit am Handy) öffnen
           </a>
         </PageHead>
-        <form method="post" action="/qualitaet/neu" class="card actions" style="max-width:780px">
-          <input type="hidden" name="id" value={randomUUID()} />
-          <select name="site_id" required aria-label="Objekt" style="flex:1;min-width:220px">
-            <option value="">Objekt wählen …</option>
-            <SiteOptions sites={siteList} />
-          </select>
-          <button class="btn">+ Kontrolle starten</button>
-        </form>
+        {isTouchDevice(c) && (
+          <form method="post" action="/qualitaet/neu" class="card actions" style="max-width:780px">
+            <input type="hidden" name="id" value={randomUUID()} />
+            <select name="site_id" required aria-label="Objekt" style="flex:1;min-width:220px">
+              <option value="">Objekt wählen …</option>
+              <SiteOptions sites={siteList} />
+            </select>
+            <button class="btn">+ Kontrolle starten</button>
+          </form>
+        )}
         <QcTable rows={rows} site del={{ admin: c.get('user').role === 'admin', ret: '/qualitaet' }} />
         <p class="small mut">
           Bewertung: Anteil der geprüften Bereiche ohne Mangel. Grün ab {QC_GOOD} %, gelb ab {QC_FAIR} %.

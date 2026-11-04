@@ -82,8 +82,15 @@ describe.skipIf(!available)('Qualitätskontrolle: Auswertungsbericht, Statistik,
     expect(rep.top[0]!.weight).toBe(4);
     expect(rep.groups[0]!.prev).toBe(100);
     expect(rep.areas.length).toBeGreaterThan(0);
+    // je Raum alle Punkte, auch ohne Mangel
+    expect(rep.rooms.map((r) => r.items.length)).toEqual([2, 2]);
+    expect(rep.rooms.flatMap((r) => r.items).filter((x) => x.defect)).toHaveLength(1);
     const pdf = await renderAuditReportPdf(deps, { dir, maxBytes: 1e7 }, id);
     expect(new TextDecoder().decode(pdf.slice(0, 5))).toBe('%PDF-');
+    const { extractText, getDocumentProxy } = await import('unpdf');
+    const text = (await extractText(await getDocumentProxy(pdf), { mergePages: true })).text;
+    expect(text.replace(/\s+/g, '')).toContain('EINHEITENIMDETAIL');
+    expect(text).toContain('Flur QM');
 
     const s = await qmStatistics(sql, { from: '2026-01-01', to: '2026-12-31', siteIds: null });
     expect(s.checks).toBe(2);

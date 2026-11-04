@@ -1147,11 +1147,15 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
       const raw = str(b, `v_${it.id}`);
       const value = raw && QM_SCALE[it.kind].some((o) => String(o.v) === raw) ? Number(raw) : null;
       const note = str(b, `n_${it.id}`);
-      if (!skipped && value == null && !note) continue; // nicht bewertet
-      if (!skipped && value == null) throw new BusinessError(`${it.name}: bitte bewerten oder überspringen`);
       const files = ([] as unknown[])
         .concat(b[`f_${it.id}`] ?? [])
         .filter((f): f is File => f instanceof File && f.size > 0);
+      if (!skipped && value == null && !note && !files.length) continue; // nicht bewertet
+      // Foto ohne Bewertung ging früher still verloren (Ahmed 04.11.: „nicht alle Bilder im Bericht“)
+      if (!skipped && value == null)
+        throw new BusinessError(
+          `${it.name}: bitte bewerten oder überspringen (Foto/Bemerkung wird sonst nicht gespeichert)`,
+        );
       if (files.length > 5) throw new BusinessError(`${it.name}: höchstens 5 Fotos`);
       const photoIds: string[] = [];
       for (const f of files) {

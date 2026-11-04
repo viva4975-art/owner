@@ -1655,6 +1655,8 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Grundreinigung', href: '/grundreinigung' },
       // Objektleitung: Termine ohne Preise (Büro sieht die volle Planung oben)
       { label: 'Grundreinigung', href: '/grundreinigung/objektleitung', olOnly: true },
+      // Objektleitung: Audits ihrer Objekte mit Auswertungsbericht am PC (Ahmed 04.11.)
+      { label: 'Qualitätsberichte', href: '/qualitaet', olOnly: true },
     ],
   },
   {

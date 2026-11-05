@@ -14,11 +14,11 @@ import type { Deps } from './workflow.js';
 
 export const DOSSIER_PARTS = [
   { key: 'kontakte', label: 'Ansprechpartner (Viva-Deluxe und Kunde) mit Telefon und E-Mail' },
+  { key: 'personal', label: 'Eingesetzte Mitarbeitende mit Funktion und Schlüsseln/Transpondern' },
   {
-    key: 'personal',
-    label: 'Eingesetzte Mitarbeitende mit Funktion, Schlüsseln/Transpondern, erster Einweisung',
+    key: 'nachweise',
+    label: 'Einweisung, Schweigepflicht, Unterweisung (Vertragsbeginn), Führungszeugnis (nur „liegt vor“)',
   },
-  { key: 'nachweise', label: 'Nachweise: Schweigepflicht, Unterweisung, Führungszeugnis (nur „liegt vor“)' },
   { key: 'vertretung', label: 'Vertretung / Stellvertretung' },
   { key: 'sicherheit', label: 'Notfall (Ersthelfer, Krankenhaus), Sicherheits- und Hygieneregeln' },
   { key: 'schulung', label: 'Ausbildung und Schulungen der Objektleitung' },
@@ -26,7 +26,6 @@ export const DOSSIER_PARTS = [
 ] as const;
 export type DossierPart = (typeof DOSSIER_PARTS)[number]['key'];
 
-const CONFIDENTIAL = /verschwieg|schweige|vertraulich|datengeheim|datenschutz/i;
 const CERT = /f(ü|ue)hrungszeugnis/i;
 const TRAINING =
   /schulung|zertifikat|lehrgang|fortbildung|ausbildung|meister|qualifikation|seminar|sachkunde/i;
@@ -35,10 +34,9 @@ interface Person {
   id: string;
   name: string;
   role: string;
-  since: string | null;
+  /** Vertragsbeginn = Einweisung, Schweigepflicht und Unterweisung (Ahmed 05.11.2026) */
+  entry: string | null;
   keys: string[];
-  confidential: string | null;
-  instruction: string | null;
   certificate: string | null;
 }
 
@@ -73,43 +71,19 @@ async function loadSite(sql: Sql, siteId: string, today: string): Promise<SiteBl
               where e.status = 'aktiv' and lower(trim(e.first_name || ' ' || e.last_name)) = lower(trim(p.display_name))
               order by e.personnel_no limit 1)) as employee_id
       from app.sites s left join app.profiles p on p.user_id = s.manager_user_id where s.id = ${siteId}`;
-  const plans = await sql<
-    {
-      employee_id: string;
-      name: string;
-      tags: string[];
-      weekday: number;
-      t: string;
-      since: string;
-    }[]
-  >`
-    select p.employee_id, e.first_name || ' ' || e.last_name as name, e.tags, p.weekday,
-           to_char(p.start_time, 'HH24:MI') || '–' || to_char(p.end_time, 'HH24:MI') as t,
-           to_char(min(p.valid_from) over (partition by p.employee_id), 'YYYY-MM-DD') as since
+  const plans = await sql<{ employee_id: string }[]>`
+    select distinct p.employee_id, e.last_name, e.first_name
       from app.shift_plans p join app.employees e on e.id = p.employee_id
      where p.site_id = ${siteId} and p.employee_id is not null
        and (p.valid_until is null or p.valid_until >= ${today}::date)
        and (e.exit_date is null or e.exit_date >= ${today}::date)
-     order by e.last_name, e.first_name, p.weekday`;
-  // „seit“ = erster Einsatz am Objekt überhaupt (auch beendete Einsätze)
-  const first = new Map(
-    (
-      await sql<{ employee_id: string; d: string }[]>`
-        select employee_id, to_char(min(valid_from), 'YYYY-MM-DD') as d from app.shift_plans
-         where site_id = ${siteId} and employee_id is not null group by employee_id`
-    ).map((x) => [x.employee_id, x.d]),
-  );
-  const ids = [...new Set(plans.map((p) => p.employee_id))];
+     order by e.last_name, e.first_name`;
+  const ids = plans.map((p) => p.employee_id);
   if (mp?.employee_id && !ids.includes(mp.employee_id)) ids.push(mp.employee_id);
   const keys = await sql<{ holder: string; k: string }[]>`
     select holder_employee_id as holder, key_no || ' (' || description || ')' as k from app.keys
      where site_id = ${siteId} and deleted_at is null and holder_employee_id = any(${ids}::uuid[])
      order by key_no`;
-  const signed = await sql<{ employee_id: string; title: string; category: string; d: string }[]>`
-    select r.employee_id, d.title, d.category::text as category, to_char(r.signed_at at time zone 'Europe/Berlin', 'YYYY-MM-DD') as d
-      from app.sign_requests r join app.sign_documents d on d.id = r.document_id
-     where r.status = 'unterschrieben' and r.employee_id = any(${ids}::uuid[])
-     order by r.signed_at`;
   const files = await sql<{ employee_id: string; name: string; d: string }[]>`
     select l.entity_id as employee_id, coalesce(l.display_name, f.original_name) as name,
            to_char(l.linked_at at time zone 'Europe/Berlin', 'YYYY-MM-DD') as d
@@ -117,34 +91,21 @@ async function loadSite(sql: Sql, siteId: string, today: string): Promise<SiteBl
      where l.entity_type = 'employee' and l.entity_id = any(${ids}::uuid[]) and l.archived_at is null
        and f.status = 'complete'
      order by l.linked_at`;
+  const emps = await sql<{ id: string; name: string; tags: string[]; entry: string | null }[]>`
+    select id, first_name || ' ' || last_name as name, tags, to_char(entry_date, 'YYYY-MM-DD') as entry
+      from app.employees where id = any(${ids}::uuid[])`;
   const people: Person[] = [];
   for (const id of ids) {
-    const own = plans.filter((p) => p.employee_id === id);
-    let name = own[0]?.name;
-    let tags = own[0]?.tags ?? [];
-    if (!name) {
-      const [e] = await sql<{ name: string; tags: string[] }[]>`
-        select first_name || ' ' || last_name as name, tags from app.employees where id = ${id}`;
-      if (!e) continue;
-      name = e.name;
-      tags = e.tags;
-    }
-    const sig = signed.filter((s) => s.employee_id === id);
-    const fil = files.filter((x) => x.employee_id === id);
-    const conf =
-      sig.find((s) => s.category === 'datenschutz' || CONFIDENTIAL.test(s.title))?.d ??
-      fil.find((x) => CONFIDENTIAL.test(x.name))?.d ??
-      null;
+    const e = emps.find((x) => x.id === id);
+    if (!e) continue;
     const isMgr = id === mp?.employee_id;
     people.push({
       id,
-      name,
-      role: isMgr ? 'Objektleitung' : roleOf(tags),
-      since: first.get(id) ?? null,
+      name: e.name,
+      role: isMgr ? 'Objektleitung' : roleOf(e.tags),
+      entry: e.entry,
       keys: keys.filter((k) => k.holder === id).map((k) => k.k),
-      confidential: conf,
-      instruction: sig.find((s) => s.category === 'unterweisung')?.d ?? sig[0]?.d ?? null,
-      certificate: fil.find((x) => CERT.test(x.name))?.d ?? null,
+      certificate: files.find((x) => x.employee_id === id && CERT.test(x.name))?.d ?? null,
     });
   }
   people.sort((a, b) => Number(b.role === 'Objektleitung') - Number(a.role === 'Objektleitung'));
@@ -171,10 +132,6 @@ async function loadSite(sql: Sql, siteId: string, today: string): Promise<SiteBl
     substitutes: subs,
   };
 }
-
-const d8 = (s: string | null) => (s ? formatDateDe(s) : 'nicht hinterlegt');
-const contactOf = (m: { name: string; phone: string | null; email: string | null } | null) =>
-  m ? [m.name, m.phone, m.email].filter(Boolean).join(' · ') : 'nicht zugeordnet';
 
 /**
  * PDF: Objekt- und Personalübersicht für einen Kunden (alle bzw. gewählte aktive Objekte). A4 quer und kompakt
@@ -203,7 +160,15 @@ export async function buildCustomerDossierPdf(
   // Nächstes Krankenhaus fehlt → aus Adresse/PLZ selbst ermitteln und am Objekt speichern (ohne Internet bleibt es leer)
   if (parts.has('sicherheit') && o.findHospital !== false) {
     const { fillHospital } = await import('./hospital.js');
-    for (const id of siteIds) await fillHospital(sql, id, 'automatisch').catch(() => null);
+    const until = Date.now() + 90_000;
+    for (const id of siteIds) {
+      if (Date.now() > until) break;
+      const [x] = await sql<{ h: string | null }[]>`
+        select folder_info ->> 'krankenhaus' as h from app.sites where id = ${id}`;
+      if (x?.h) continue;
+      await fillHospital(sql, id, 'automatisch').catch(() => null);
+      await new Promise((r) => setTimeout(r, 1100)); // Nominatim: höchstens 1 Anfrage je Sekunde
+    }
   }
   const sites: SiteBlock[] = [];
   for (const id of siteIds) sites.push(await loadSite(sql, id, today));
@@ -242,12 +207,14 @@ export async function buildCustomerDossierPdf(
     'Vertraulich – nur für den Reinigungsauftrag (Zutritt, Schlüssel-/Transponderverwaltung). Personenbezogene Angaben auf das Nötige beschränkt (Art. 5 Abs. 1 c DSGVO); Führungszeugnisse werden nicht weitergegeben, nur ob sie vorliegen.',
   );
 
+  // bei nur einem Objekt ohne Spalte „Objekte“ (übersichtlicher)
+  const multi = sites.length > 1;
   const contactCols = [
-    { label: 'Name', width: 170 },
-    { label: 'Funktion', width: 170 },
-    { label: 'Telefon', width: 120 },
-    { label: 'E-Mail', width: 180 },
-    { label: 'Objekte', width: W - 640 },
+    { label: 'Name', width: 165 },
+    { label: 'Funktion', width: 175 },
+    { label: 'Telefon', width: 115 },
+    { label: 'E-Mail', width: multi ? 175 : W - 455 },
+    ...(multi ? [{ label: 'Objekte', width: W - 630 }] : []),
   ];
   if (parts.has('kontakte')) {
     d.section('Ansprechpartner');
@@ -299,24 +266,22 @@ export async function buildCustomerDossierPdf(
       if (s.info.hausmeister)
         rows.push([s.info.hausmeister, 'Hausmeister / Haustechnik', '–', '–', s.site_no]);
     }
-    d.table(contactCols, rows, { size: 7.8 });
+    d.table(
+      contactCols,
+      rows.map((r) => (multi ? r : r.slice(0, 4))),
+      { size: 8 },
+    );
   }
 
   const showPeople = parts.has('personal') || parts.has('nachweise');
   const pCols = [
     { label: 'Name', width: 150 },
-    { label: 'Funktion', width: 95 },
-    ...(parts.has('personal')
-      ? [
-          { label: 'Schlüssel / Transponder', width: 160 },
-          { label: 'Erste Einweisung', width: 75 },
-        ]
-      : []),
+    { label: 'Funktion', width: 100 },
+    ...(parts.has('personal') ? [{ label: 'Schlüssel / Transponder', width: 180 }] : []),
     ...(parts.has('nachweise')
       ? [
-          { label: 'Schweigepflicht', width: 80 },
-          { label: 'Unterweisung', width: 80 },
-          { label: 'Führungszeugnis', width: 85 },
+          { label: 'Einweisung, Schweigepflicht, Unterweisung', width: 210 },
+          { label: 'Führungszeugnis', width: 90 },
         ]
       : []),
   ];
@@ -326,26 +291,27 @@ export async function buildCustomerDossierPdf(
 
   d.section('Objekte und eingesetzte Mitarbeitende');
   for (const s of sites) {
-    d.ensure(110);
-    d.heading(`${s.site_no} · ${s.name}`, 10);
-    d.y += 13;
-    d.muted(s.address || 'Adresse nicht hinterlegt');
-    const head: { label: string; width: number }[] = [{ label: 'Objektleitung', width: 0 }];
-    const row: string[] = [contactOf(s.manager)];
-    if (parts.has('vertretung')) {
-      head.push({ label: 'Stellvertretung', width: 0 });
-      row.push(
+    d.ensure(120);
+    d.heading(`${s.site_no} · ${s.name}${s.address ? `  –  ${s.address}` : ''}`, 10.5);
+    d.y += 8;
+    const cells: [string, string][] = [
+      ['Objektleitung', s.manager?.name ?? 'nicht zugeordnet'],
+      ['Telefon', s.manager?.phone ?? '–'],
+      ['E-Mail', s.manager?.email ?? '–'],
+    ];
+    if (parts.has('vertretung'))
+      cells.push([
+        'Stellvertretung',
         s.info.bereichsleitung
           ? [s.info.bereichsleitung, s.info.bereichsleitung_tel].filter(Boolean).join(' · ')
           : `Büro Viva-Deluxe${co?.phone ? ` · ${co.phone}` : ''}`,
+      ]);
+    if (parts.has('sicherheit'))
+      cells.push(
+        ['Ersthelfer', s.firstAider ?? 'nicht hinterlegt'],
+        ['Nächstes Krankenhaus', s.info.krankenhaus ?? 'nicht ermittelt'],
       );
-    }
-    if (parts.has('sicherheit')) {
-      head.push({ label: 'Ersthelfer', width: 0 }, { label: 'Nächstes Krankenhaus', width: 0 });
-      row.push(s.firstAider ?? 'nicht hinterlegt', s.info.krankenhaus ?? 'nicht hinterlegt');
-    }
-    head.forEach((h) => (h.width = Math.floor(W / head.length)));
-    d.table(head, [row], { size: 7.8 });
+    d.infoGrid(cells, 3);
     if (showPeople) {
       if (s.people.length)
         d.table(
@@ -353,16 +319,15 @@ export async function buildCustomerDossierPdf(
           s.people.map((p) => [
             p.name,
             p.role,
-            ...(parts.has('personal') ? [p.keys.join('\n') || '–', d8(p.since)] : []),
+            ...(parts.has('personal') ? [p.keys.join('\n') || '–'] : []),
             ...(parts.has('nachweise')
               ? [
-                  d8(p.confidential),
-                  d8(p.instruction),
-                  p.certificate ? `liegt vor (${formatDateDe(p.certificate)})` : 'nicht hinterlegt',
+                  p.entry ? `${formatDateDe(p.entry)} (Vertragsbeginn)` : 'nicht hinterlegt',
+                  p.certificate ? 'liegt vor' : 'nicht hinterlegt',
                 ]
               : []),
           ]),
-          { size: 7.8 },
+          { size: 8 },
         );
       else d.muted('Derzeit keine Mitarbeitenden eingeplant.');
     }
@@ -373,11 +338,20 @@ export async function buildCustomerDossierPdf(
           .map((x) => `${formatDateDe(x.date)} ${x.by} für ${x.for}`)
           .join(' · ')}${s.substitutes.length > 8 ? ` · + ${s.substitutes.length - 8} weitere` : ''}`,
       );
-    if (parts.has('sicherheit') && s.info.besonderheiten) d.muted(`Besonderheiten: ${s.info.besonderheiten}`);
+    d.y += 8;
   }
-  if (parts.has('personal'))
+  if (showPeople)
     d.muted(
-      'Schlüssel/Transponder laut Schlüsselbuch (quittiert ausgegeben, bei Austritt zurückgenommen). Erste Einweisung = erster Einsatz im Objekt laut Einsatzplanung, Einweisung vor Ort durch die Objektleitung.',
+      [
+        parts.has('personal')
+          ? 'Schlüssel/Transponder laut Schlüsselbuch (quittiert ausgegeben, bei Austritt zurückgenommen).'
+          : '',
+        parts.has('nachweise')
+          ? 'Einweisung ins Objekt, Verpflichtung zur Verschwiegenheit und Arbeitsschutz-Unterweisung erfolgen mit Vertragsbeginn; die Unterweisung wird jährlich wiederholt.'
+          : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
     );
 
   if (parts.has('sicherheit')) {

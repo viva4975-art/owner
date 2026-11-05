@@ -99,7 +99,8 @@ describe.skipIf(!ok)('Objektordner als ein PDF', () => {
       expect(text[1]).toContain('Gefährdungsbeurteilung');
       expect(all).toContain('Allgemeine Reinigungstätigkeiten');
       expect(all.replace(/\s+/g, ' ')).toContain('Schulen und Kindertagesstätten');
-      expect(all).toContain('Begehung am:');
+      expect(all).toContain('Wirksamkeitskontrolle noch nicht eingetragen');
+      expect(all).not.toContain('Begehung am:');
       // Gefährdungsbeurteilung im Querformat, mit Mutterschutz-Beurteilung (§ 10 MuSchG); Ordner danach wieder hoch
       const firstQ = sizes.indexOf(true);
       expect(firstQ).toBeGreaterThan(0);

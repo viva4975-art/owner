@@ -35,8 +35,11 @@ export interface FolderInfo {
   bereichsleitung?: string;
   bereichsleitung_tel?: string;
   ersthelfer?: string;
-  /** „1“ = die Objektleitung ist Ersthelfer (Ahmed 05.11.2026) */
+  /** veraltet: die Objektleitung ist jetzt immer Ersthelfer (Ahmed 05.11.2026) */
   ersthelfer_ol?: string;
+  /** Wirksamkeitskontrolle der Gefährdungsbeurteilung: Datum (JJJJ-MM-TT) und durchgeführt von */
+  gbu_am?: string;
+  gbu_durch?: string;
   ansprechpartner?: string;
   ansprechpartner_tel?: string;
   hausmeister?: string;
@@ -68,9 +71,9 @@ export const FOLDER_QUESTIONS: {
   { key: 'bereichsleitung_tel', label: 'Telefon Bereichsleitung', hint: 'z. B. 0176 …', required: true },
   {
     key: 'ersthelfer',
-    label: 'Ersthelfer im Objekt',
-    // § 26 DGUV Vorschrift 1: ab 2 anwesenden Beschäftigten mind. 1 Ersthelfer (bis 20), darüber 10 % (Verwaltung 5 %)
-    hint: 'Name (Notruf-Aushang) – freiwillig; Pflicht ab 2 gleichzeitig Anwesenden (§ 26 DGUV V1)',
+    label: 'Weitere Ersthelfer (optional)',
+    // Objektleitung ist immer Ersthelfer (Ahmed 05.11.2026); hier nur zusätzliche Personen
+    hint: 'nur falls außer der Objektleitung noch jemand Ersthelfer ist',
     required: false,
   },
   {
@@ -224,10 +227,11 @@ export async function folderFacts(sql: Sql, siteId: string): Promise<FolderFacts
   // Sammelplatz, Notausgang, Putzraum nicht mehr gebraucht (Ahmed 05.11.2026): alte Werte werden nirgends mehr gedruckt
   const { sammelplatz: _a, notausgang: _b, putzraum: _c, ...rest } = s.folder_info ?? {};
   const info: FolderInfo = rest;
+  // Ersthelfer ist immer die Objektleitung (Ahmed 05.11.2026), weitere eingetragene dahinter
   const firstAider =
-    info.ersthelfer_ol === '1' && mgr
-      ? [mgr.name, mgr.phone].filter(Boolean).join(', ') + (info.ersthelfer ? `; ${info.ersthelfer}` : '')
-      : info.ersthelfer || null;
+    [mgr ? [mgr.name, mgr.phone].filter(Boolean).join(', ') : '', info.ersthelfer ?? '']
+      .filter(Boolean)
+      .join('; ') || null;
   const defaults = await getFolderDefaults(sql);
   const missing: FolderFacts['missing'] = [];
   if (!s.street || !s.city) missing.push({ label: 'Objektadresse', href: `/objekte/${siteId}/bearbeiten` });
@@ -284,9 +288,26 @@ export async function saveFolderInfo(sql: Sql, siteId: string, info: FolderInfo,
     const v = info[q.key]?.trim();
     if (v) clean[q.key] = v.slice(0, q.key === 'besonderheiten' ? 2000 : 500);
   }
-  if (info.ersthelfer_ol === '1') clean.ersthelfer_ol = '1';
+  // Wirksamkeitskontrolle der GBU wird separat gepflegt und bleibt erhalten
+  const [old] = await sql<{ am: string | null; durch: string | null }[]>`
+    select folder_info ->> 'gbu_am' as am, folder_info ->> 'gbu_durch' as durch from app.sites where id = ${siteId}`;
+  if (old?.am) clean.gbu_am = old.am;
+  if (old?.durch) clean.gbu_durch = old.durch;
   await sql`update app.sites set folder_info = ${sql.json(clean as never)} where id = ${siteId}`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id) values (${actor}, 'folder_info', 'site', ${siteId})`;
+}
+
+/** Wirksamkeitskontrolle der Gefährdungsbeurteilung festhalten (Ahmed 05.11.2026: „Datum und von wem, ohne Unterschrift“). */
+export async function saveRiskCheck(sql: Sql, siteId: string, am: string, durch: string, actor: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(am)) throw new BusinessError('Bitte das Datum der Kontrolle angeben');
+  if (am > todayBerlin()) throw new BusinessError('Das Datum der Kontrolle darf nicht in der Zukunft liegen');
+  const who = durch.trim().slice(0, 200);
+  if (!who) throw new BusinessError('Bitte angeben, wer die Kontrolle durchgeführt hat');
+  await sql`update app.sites
+               set folder_info = coalesce(folder_info, '{}'::jsonb) || jsonb_build_object('gbu_am', ${am}::text, 'gbu_durch', ${who}::text)
+             where id = ${siteId}`;
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${actor}, 'gbu_kontrolle', 'site', ${siteId}, ${sql.json({ am, durch: who })})`;
 }
 
 /** Nur „Besonderheiten“ ändern (Kasten in der Objekt-Übersicht, auch Objektleitung; Ahmed 19.10.). */

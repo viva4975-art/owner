@@ -4967,3 +4967,22 @@ Testadresse.
   aus dem Inhalt) – dann zählt er in der Kundenübersicht als Schulungsnachweis. **Rechtlich:** interner Nachweis, keine
   öffentlich-rechtliche Qualifikation und kein Arbeitszeugnis nach § 109 GewO (steht im PDF); Beurteilung wahr und
   wohlwollend halten, Person hat Auskunftsrecht (Art. 15 DSGVO). Test `training-cert.db.test.ts`.
+- 2026-11-05: **Kundenübersicht und Gefährdungsbeurteilung nachgeschärft** (Ahmed, 8 Punkte):
+  - Kundenübersicht übersichtlicher: je Objekt Überschrift mit Adresse, darunter Kasten (Objektleitung, Telefon, E-Mail,
+    Stellvertretung, Ersthelfer, Krankenhaus), dann die Tabelle; Ansprechpartner ohne Spalte „Objekte“, wenn es nur ein
+    Objekt gibt. **Einweisung, Schweigepflicht und Unterweisung = Vertragsbeginn** (Eintrittsdatum) in einer Spalte;
+    Führungszeugnis nur „liegt vor“. „Besonderheiten“ aus der Kundenübersicht entfernt. **Rechtlich:** Das Datum
+    bescheinigt dem Kunden, dass Einweisung, Verschwiegenheitsverpflichtung und Unterweisung bei Vertragsbeginn erfolgt
+    sind – das muss auch so passieren (Arbeitsvertrag mit Verschwiegenheit, Unterweisung VD-UW unterschrieben).
+  - **Krankenhaus:** Suche wartete nur 8 s und nur auf overpass-api.de (oft überlastet). Jetzt 25 s, zwei Spiegel-Server
+    und als Rückfall die Nominatim-Suche nach Krankenhäusern im Umkreis; Geokodierung zusätzlich nur mit Ort; in der
+    Kundenübersicht höchstens 1 Anfrage/s (Nominatim-Regel), insgesamt max. 90 s. Hier ohne Internet nicht gegen die
+    echten Dienste prüfbar.
+  - **Ersthelfer ist immer die Objektleitung** (Häkchen entfällt); Feld im Objektordner heißt „Weitere Ersthelfer
+    (optional)“.
+  - **Gefährdungsbeurteilung ohne Eintragslinien/Unterschrift:** Objekt → Objektordner → Kasten Gefährdungsbeurteilung:
+    „Wirksamkeitskontrolle am“ + „durchgeführt von“ (vorbelegt Objektleitung, `folder_info.gbu_am/gbu_durch`,
+    `saveRiskCheck`, nicht in der Zukunft, Protokoll `gbu_kontrolle`). Im PDF: Geltungsbereich + Abschnitt 9 „Kontrolle
+    am … durch …, Maßnahmen umgesetzt und wirksam, nächste Überprüfung = Kontrolle + 1 Jahr“, Spalte „Wirksam“ = ja
+    (sonst „offen“ bzw. Hinweis „noch nicht eingetragen“). **Rechtlich:** Nur eintragen, wenn die Begehung wirklich
+    stattgefunden hat (Dokumentation § 6 ArbSchG).

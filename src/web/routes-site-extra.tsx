@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { listWordTemplates } from '../services/word-templates.js';
 import { WordTemplateBox } from './routes-word-templates.js';
-import { todayBerlin } from '../domain/invoice/calc.js';
+import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import { AttendanceForm, attendancePdfForSites, attendanceQuery } from './attendance-form.js';
 import { listKeys, nextKeyNo } from '../services/inventory.js';
 import { listOffers } from '../services/offers.js';
@@ -18,6 +18,7 @@ import {
   folderFacts,
   packageInfo,
   saveFolderInfo,
+  saveRiskCheck,
   saveSiteSpecial,
 } from '../services/site-folder.js';
 import { DocFoldAll, FileArea, docOpen } from './files.js';
@@ -167,6 +168,39 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                   <Icon name="download" /> Gefährdungsbeurteilung (PDF)
                 </a>
               </div>
+              <form
+                method="post"
+                action={`/objekte/${s.id}/gefaehrdungsbeurteilung/kontrolle`}
+                class="row"
+                style="gap:8px;align-items:end;flex-wrap:wrap;margin-top:10px"
+              >
+                <div>
+                  <label for="gbu-am" class="small">
+                    Wirksamkeitskontrolle am
+                  </label>
+                  <input id="gbu-am" type="date" name="am" value={f.info.gbu_am ?? ''} required />
+                </div>
+                <div style="flex:1;min-width:200px">
+                  <label for="gbu-durch" class="small">
+                    durchgeführt von
+                  </label>
+                  <input
+                    id="gbu-durch"
+                    name="durch"
+                    value={f.info.gbu_durch ?? f.manager?.name ?? ''}
+                    required
+                    maxlength={200}
+                  />
+                </div>
+                <button class="btn sm" data-noback>
+                  Speichern
+                </button>
+                <div class="small mut" style="flex-basis:100%">
+                  {f.info.gbu_am
+                    ? `Steht so in der Gefährdungsbeurteilung: Kontrolle am ${formatDateDe(f.info.gbu_am)} durch ${f.info.gbu_durch ?? '–'}, Maßnahmen umgesetzt und wirksam.`
+                    : 'Noch nicht eingetragen – nach der Begehung Datum und Person eintragen, dann steht es in der Gefährdungsbeurteilung (ohne Unterschrift).'}
+                </div>
+              </form>
             </div>
             <AttendanceForm action={`/objekte/${s.id}/anwesenheit.pdf`} />
             {!pkg && (
@@ -233,17 +267,10 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                         </button>
                       )}
                       {q.key === 'ersthelfer' && (
-                        <label class="small" style="display:flex;gap:6px;align-items:center;font-weight:400">
-                          <input
-                            type="checkbox"
-                            name="ersthelfer_ol"
-                            value="1"
-                            checked={f.info.ersthelfer_ol === '1'}
-                          />
-                          Objektleitung ist Ersthelfer
-                          {f.manager ? ` (${f.manager.name})` : ' (keine Objektleitung zugeordnet)'} – oben
-                          dann nur weitere Ersthelfer eintragen
-                        </label>
+                        <div class="small">
+                          Ersthelfer ist automatisch die Objektleitung
+                          {f.manager ? ` (${f.manager.name})` : ' – noch keine Objektleitung zugeordnet'}.
+                        </div>
                       )}
                       {q.key === 'ersthelfer' && (
                         <div class="small mut">
@@ -278,7 +305,6 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
     const b = await c.req.parseBody();
     const info: FolderInfo = {};
     for (const q of FOLDER_QUESTIONS) if (typeof b[q.key] === 'string') info[q.key] = b[q.key] as string;
-    if (b.ersthelfer_ol === '1') info.ersthelfer_ol = '1';
     await saveFolderInfo(sql, id, info, c.get('actor'));
     return back(c, `/objekte/${id}/objektordner`, { ok: 'Angaben gespeichert.' });
   });
@@ -348,6 +374,20 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
       'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(r.name)}`,
       'Cache-Control': 'private, no-store',
     });
+  });
+
+  app.post(`/objekte/:id{${UUID}}/gefaehrdungsbeurteilung/kontrolle`, async (c) => {
+    const id = c.req.param('id');
+    assertSite(c, id);
+    const b = await c.req.parseBody();
+    await saveRiskCheck(
+      sql,
+      id,
+      typeof b.am === 'string' ? b.am : '',
+      typeof b.durch === 'string' ? b.durch : '',
+      c.get('actor'),
+    );
+    return back(c, `/objekte/${id}/objektordner`, { ok: 'Wirksamkeitskontrolle gespeichert.' });
   });
 
   /** Gefährdungsbeurteilung des Objekts (Ahmed 05.11.2026) – auch im Objektordner-PDF/ZIP enthalten */

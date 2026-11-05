@@ -85,8 +85,11 @@ const MAT: Record<'ok' | 'limited' | 'no', string> = {
 export function drawRiskAssessment(d: FormDoc, f: FolderFacts, r: RiskFacts, today: string) {
   const values = folderValues(f);
   const L = FORM_X.L;
-  const R = d.R;
-  const width = R - L;
+  const width = d.R - L;
+  // Wirksamkeitskontrolle aus Objekt → Objektordner (Datum + Person, ohne Unterschrift; Ahmed 05.11.2026)
+  const checkAm = f.info.gbu_am && /^\d{4}-\d{2}-\d{2}$/.test(f.info.gbu_am) ? f.info.gbu_am : null;
+  const checkBy = f.info.gbu_durch || f.manager?.name || '–';
+  const nextCheck = addDays(checkAm ?? today, 365);
   const bullets = (lines: string[], size = 8.3) => d.para(lines.map((l) => `• ${l}`).join('\n'), { size });
   let sec = 0;
   const section = (t: string) => {
@@ -111,7 +114,8 @@ export function drawRiskAssessment(d: FormDoc, f: FolderFacts, r: RiskFacts, tod
       ['Beschäftigte am Objekt', r.workers ? `${r.workers} laut Einsatzplanung` : '–'],
       ['Arbeitszeiten', r.times.length ? r.times.join(', ') : '–'],
       ['Erstellt am', formatDateDe(today)],
-      ['Nächste Überprüfung', `spätestens ${formatDateDe(addDays(today, 365))}`],
+      ['Wirksamkeitskontrolle', checkAm ? `${formatDateDe(checkAm)} durch ${checkBy}` : 'noch nicht erfolgt'],
+      ['Nächste Überprüfung', `spätestens ${formatDateDe(nextCheck)}`],
       ['Beurteilte Tätigkeiten', String(r.modules.length)],
       ['Grundlage', 'ArbSchG · GefStoffV · BetrSichV · MuSchG'],
     ],
@@ -162,7 +166,7 @@ export function drawRiskAssessment(d: FormDoc, f: FolderFacts, r: RiskFacts, tod
   d.ensure(170); // Überschrift nicht allein am Seitenende
   section('Gefährdungen und Schutzmaßnahmen je Tätigkeit');
   d.muted(
-    'Maßnahmen: T = technisch · O = organisatorisch · P = persönlich (Schutzausrüstung). Spalte „Wirksam“ füllt die Objektleitung bei der Begehung aus.',
+    `Maßnahmen: T = technisch · O = organisatorisch · P = persönlich (Schutzausrüstung). Wirksam = Ergebnis der Kontrolle${checkAm ? ` vom ${formatDateDe(checkAm)}` : ' (noch nicht erfolgt)'}.`,
   );
   const fixed = 30 + 95 + 165 + 62 + 62 + 64;
   const cols = [
@@ -192,7 +196,7 @@ export function drawRiskAssessment(d: FormDoc, f: FolderFacts, r: RiskFacts, tod
           .map((x) => (x.kind ? `${x.kind}  ${x.text}` : x.text))
           .join('\n'),
         RISK_TXT[h.rest ?? 'gering'],
-        '☐ ja  ☐ nein',
+        checkAm ? 'ja' : 'offen',
       ]),
       { size: 7.6 },
     );
@@ -280,42 +284,29 @@ export function drawRiskAssessment(d: FormDoc, f: FolderFacts, r: RiskFacts, tod
   d.para(
     f.info.besonderheiten
       ? f.info.besonderheiten
-      : 'Keine Besonderheiten hinterlegt (Objekt → Übersicht → Besonderheiten). Zusätzliche Gefährdungen vor Ort bei der Begehung unten eintragen.',
+      : 'Keine Besonderheiten hinterlegt. Zusätzliche Gefährdungen aus dem Objekt werden bei der Begehung mit dem Auftraggeber abgestimmt.',
     { size: 8.3 },
   );
 
-  d.ensure(170); // Abschnitt mit den Eintragszeilen zusammenhalten
   section('Wirksamkeitskontrolle und Fortschreibung');
+  if (checkAm)
+    d.infoGrid(
+      [
+        ['Kontrolle durchgeführt am', formatDateDe(checkAm)],
+        ['durch', checkBy],
+        ['Ergebnis', 'Maßnahmen umgesetzt und wirksam'],
+        ['Nächste Überprüfung', `spätestens ${formatDateDe(nextCheck)}`],
+      ],
+      4,
+    );
+  else
+    d.noteBox('Wirksamkeitskontrolle noch nicht eingetragen', [
+      'Nach der Begehung Datum und Person unter Objekt → Objektordner eintragen – dann steht die Kontrolle hier.',
+    ]);
   bullets([
     'Überprüfung bei jeder Begehung, spätestens jährlich, und sofort bei neuer Leistung oder Tätigkeit, neuen Reinigungsmitteln oder Geräten, nach Unfällen bzw. Beinaheunfällen und bei Hinweisen der Beschäftigten.',
-    'Die Beurteilung wird aus den aktuellen Daten der App erzeugt; diese Fassung gilt mit dem Erstellungsdatum oben (Dokumentation § 6 ArbSchG).',
+    'Die Beurteilung wird aus den aktuellen Daten der App erzeugt und bei Änderungen fortgeschrieben; diese Fassung gilt mit dem Erstellungsdatum oben (Dokumentation § 6 ArbSchG).',
   ]);
-  // Zeilen zum Eintragen bei der Begehung: Beschriftung + gezeichnete Linie (keine Unterstriche)
-  const fill = (parts: [string, number][]) => {
-    d.ensure(26);
-    const y = d.y + 18;
-    let x = L;
-    for (const [label, w] of parts) {
-      if (label) d.text(label, x, y, { size: 9 });
-      const lx = x + (label ? d.width(label, 9) + 4 : 0);
-      const end = w ? Math.min(R, lx + w) : R;
-      d.line(lx, end, y + 2);
-      x = end + 14;
-    }
-    d.y += 26;
-  };
-  fill([
-    ['Begehung am:', 120],
-    ['durch:', 260],
-    ['nächste Überprüfung:', 0],
-  ]);
-  d.ensure(26);
-  d.text('☐ Maßnahmen umgesetzt und wirksam', L, d.y + 18, { size: 9 });
-  d.text('☐ Ergänzung nötig:', L + 230, d.y + 18, { size: 9 });
-  d.line(L + 230 + d.width('☐ Ergänzung nötig:', 9) + 4, R, d.y + 20);
-  d.y += 26;
-  fill([['Zusätzliche Gefährdungen / Maßnahmen / verantwortlich / bis:', 0]]);
-  fill([['', 0]]);
 }
 
 /** Eigenständiges PDF der Gefährdungsbeurteilung (ohne Objektordner). */

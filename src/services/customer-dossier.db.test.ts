@@ -38,7 +38,7 @@ describe.skipIf(!ok)('Objekt- und Personalübersicht für Kunden', () => {
       const all = (await extractText(doc, { mergePages: true })).text.replace(/\s+/g, ' ');
       expect(all).toContain('Anna Beispiel');
       expect(all).not.toContain('17:00');
-      expect(all).toContain('01.02.2026');
+      expect(all).toContain('01.01.2026 (Vertragsbeginn)');
       expect(all).toContain('S-2990101-01');
       expect(all).toContain('Karl Kunde');
       expect(all).toContain('nicht hinterlegt');

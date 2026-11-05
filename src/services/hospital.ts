@@ -10,7 +10,13 @@ import type { Sql } from '../db/client.js';
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 const UA = 'Viva-Deluxe-App/1.0 (info@viva-deluxe-reinigung.de)';
-const TIMEOUT = 8_000;
+const TIMEOUT = 25_000;
+/** Overpass-Server: der Hauptserver ist oft überlastet (429/504) → Spiegel nacheinander probieren */
+const OVERPASS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+];
 
 export interface Hospital {
   name: string;
@@ -70,10 +76,12 @@ async function getJson(fetcher: Fetch, url: string, init?: RequestInit): Promise
     const r = await fetcher(url, {
       ...init,
       signal: ctl.signal,
-      headers: { 'User-Agent': UA, ...init?.headers },
+      headers: { 'User-Agent': UA, Accept: 'application/json', ...init?.headers },
     });
     if (!r.ok) return null;
     return await r.json();
+  } catch {
+    return null; // Zeitüberschreitung/Verbindung – nächste Quelle probieren
   } finally {
     clearTimeout(t);
   }
@@ -88,6 +96,7 @@ export async function geocode(
   if (a.street && (a.postal_code || a.city))
     tries.push({ street: a.street, postalcode: a.postal_code ?? '', city: a.city ?? '' });
   if (a.postal_code) tries.push({ postalcode: a.postal_code });
+  if (a.city) tries.push({ city: a.city });
   for (const q of tries) {
     const p = new URLSearchParams({ ...q, country: 'de', format: 'json', limit: '1' });
     const j = (await getJson(fetcher, `https://nominatim.openstreetmap.org/search?${p}`)) as
@@ -101,12 +110,53 @@ export async function nearestHospital(
   fetcher: Fetch,
   origin: { lat: number; lng: number },
 ): Promise<Hospital | null> {
-  const q = `[out:json][timeout:20];nwr["amenity"="hospital"](around:30000,${origin.lat},${origin.lng});out center tags 80;`;
-  const j = (await getJson(fetcher, 'https://overpass-api.de/api/interpreter', {
-    method: 'POST',
-    body: new URLSearchParams({ data: q }),
-  })) as { elements?: OsmElement[] } | null;
-  return j?.elements ? pickHospital(origin, j.elements) : null;
+  const q = `[out:json][timeout:25];nwr["amenity"="hospital"](around:30000,${origin.lat},${origin.lng});out center tags 80;`;
+  for (const url of OVERPASS) {
+    const j = (await getJson(fetcher, url, {
+      method: 'POST',
+      body: new URLSearchParams({ data: q }),
+    })) as { elements?: OsmElement[] } | null;
+    const h = j?.elements ? pickHospital(origin, j.elements) : null;
+    if (h) return h;
+  }
+  // Rückfall ohne Overpass: Nominatim-Suche nach Krankenhäusern im Umkreis (ca. 25 km)
+  const p = new URLSearchParams({
+    amenity: 'hospital',
+    viewbox: [origin.lng - 0.35, origin.lat + 0.23, origin.lng + 0.35, origin.lat - 0.23].join(','),
+    bounded: '1',
+    countrycodes: 'de',
+    format: 'jsonv2',
+    addressdetails: '1',
+    extratags: '1',
+    limit: '40',
+  });
+  const n = (await getJson(fetcher, `https://nominatim.openstreetmap.org/search?${p}`)) as
+    | {
+        lat: string;
+        lon: string;
+        name?: string;
+        extratags?: Record<string, string> | null;
+        address?: Record<string, string>;
+      }[]
+    | null;
+  if (!n?.length) return null;
+  return pickHospital(
+    origin,
+    n.map((x) => ({
+      lat: Number(x.lat),
+      lon: Number(x.lon),
+      tags: {
+        ...(x.extratags ?? {}),
+        ...(x.name ? { name: x.name } : {}),
+        ...(x.address?.road ? { 'addr:street': x.address.road } : {}),
+        ...(x.address?.house_number ? { 'addr:housenumber': x.address.house_number } : {}),
+        ...(x.address?.postcode ? { 'addr:postcode': x.address.postcode } : {}),
+        ...(x.address?.city || x.address?.town || x.address?.village
+          ? { 'addr:city': x.address.city ?? x.address.town ?? x.address.village ?? '' }
+          : {}),
+      },
+    })),
+  );
 }
 
 /**

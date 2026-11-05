@@ -4854,3 +4854,15 @@ Testadresse.
   **Objektleitung am PC:** Menü Disposition → „Qualitätsberichte“ (`/qualitaet`, nur ihre Objekte); Liste der
   Qualitätskontrollen (auch Objekt → Qualität) mit Spalte „Berichte“: Auswertung (PDF), Prüfprotokoll. „Kontrolle
   starten“ steht nur noch am Handy/Tablet (am PC wird das Starten ohnehin abgelehnt). Test in `qm-report.db.test.ts`.
+- 2026-11-05: **Lohnabrechnungen per E-Mail** (Ahmed: „Leute auswählen, Passwort automatisch ddmmjj, von der Buchhaltungsmail“):
+  Transfer → Lohnabrechnungen einlesen → Liste des Monats mit Häkchen je Person (+ alle), Spalten E-Mail und Versand →
+  „Markierte per E-Mail senden“ (Hintergrund, Fortschritt oben; `send-jobs` jetzt mit Bereich `kind`, damit Rechnungs- und
+  Lohnversand getrennt angezeigt werden). Je Abrechnung wird das PDF mit dem **Geburtsdatum TTMMJJ** als Passwort
+  verschlüsselt (AES-256, `@cantoo/pdf-lib`, Besitzer-Passwort zufällig, Drucken erlaubt) und von `MAIL_FROM`
+  (buchhaltung@) als „Viva-Deluxe Buchhaltung“ gesendet, mit Anrede und Signatur; in der Mail steht nur die Regel, nie
+  das Passwort (`src/services/payslip-mail.ts`). Ohne E-Mail oder Geburtsdatum nicht wählbar (Hinweis, Link Stammdaten).
+  Jede Abrechnung höchstens einmal (feste ID, `app.payslip_mails`, Migration `20270117000001`); „auch schon gesendete
+  noch einmal senden“ ausdrücklich; Fehler → erneut wählbar; Protokoll `payslip_mail`. Passwort wird nicht gespeichert.
+  **Datenschutz:** Das Geburtsdatum ist ein schwaches Passwort (Kollegen kennen es oft) – für Lohndaten nur zusammen
+  mit der richtigen, persönlichen E-Mail-Adresse vertretbar; Mitarbeitende informieren, private Adressen prüfen.
+  Test `payslip-mail.db.test.ts`.

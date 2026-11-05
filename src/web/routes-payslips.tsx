@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { BusinessError } from '../services/errors.js';
 import { importPayslips, listPayslips, monthLabel, releasePayslips } from '../services/payslips.js';
+import { payslipMailStatus, payslipRecipients, sendPayslip } from '../services/payslip-mail.js';
+import { dismissSendJob, queuedIds, recentSendJobs, startSendJob } from '../services/send-jobs.js';
 import { filePath, type FileRow } from '../services/uploads.js';
 import type { Ctx } from './app.js';
 import { PageHead } from './layout.js';
@@ -24,6 +26,21 @@ export function registerPayslipRoutes(ctx: Ctx) {
     const month = q && /^\d{4}-(0[1-9]|1[0-2])$/.test(q) ? q : prevMonth();
     const rows = await listPayslips(sql, { month });
     const open = rows.filter((r) => !r.released).length;
+    const ids = rows.map((r) => r.file_id);
+    const [mails, rcpt] = await Promise.all([payslipMailStatus(sql, ids), payslipRecipients(sql, ids)]);
+    const jobs = recentSendJobs('lohn');
+    const running = jobs.some((j) => j.running);
+    const queued = new Set(queuedIds('lohn'));
+    const fmt = (d: Date) =>
+      d.toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'short', timeStyle: 'short' });
+    const sendable = rows.filter((r) => {
+      const x = rcpt.get(r.file_id);
+      return x?.email && x.has_birth && !queued.has(r.file_id);
+    });
+    const unsent = sendable.filter((r) => {
+      const m = mails.get(r.file_id);
+      return !m || m.status === 'fehler';
+    }).length;
     return page(
       c,
       'Lohnabrechnungen',
@@ -59,6 +76,38 @@ export function registerPayslipRoutes(ctx: Ctx) {
             </span>
           </div>
         </form>
+        {running && <meta http-equiv="refresh" content={`4;url=/personal/lohnabrechnungen?monat=${month}`} />}
+        {jobs.map((j) => (
+          <div
+            class="card"
+            style={`padding:10px 14px;border-left:4px solid ${j.running ? '#7d1435' : j.errors.length ? '#c2410c' : '#15803d'}`}
+          >
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <b>
+                {j.running
+                  ? `Versand läuft: ${j.done} von ${j.ids.length} Lohnabrechnungen`
+                  : `Versand fertig: ${j.ok} von ${j.ids.length} Lohnabrechnungen per E-Mail gesendet`}
+              </b>
+              {j.running && <span class="small mut">– Seite aktualisiert sich selbst.</span>}
+              {!j.running && (
+                <form
+                  method="post"
+                  action={`/personal/lohnabrechnungen/auftrag/${j.id}/ausblenden?monat=${month}`}
+                  style="margin-left:auto"
+                >
+                  <button class="btn sm ghost">Ausblenden</button>
+                </form>
+              )}
+            </div>
+            {j.errors.length > 0 && (
+              <ul class="small" style="margin:6px 0 0;color:#b91c1c">
+                {j.errors.map((e) => (
+                  <li>{e}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
         <div class="card">
           <div class="actions" style="margin-top:0">
             <h3 style="margin:0">
@@ -75,51 +124,135 @@ export function registerPayslipRoutes(ctx: Ctx) {
               </form>
             )}
           </div>
-          <div class="tbl">
-            <table>
-              <thead>
-                <tr>
-                  <th>Pers.-Nr.</th>
-                  <th>Name</th>
-                  <th>App</th>
-                  <th>gelesen</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
+          <form method="post" action={`/personal/lohnabrechnungen/senden?monat=${month}`} id="lohnmail">
+            <input type="hidden" name="formid" value={randomUUID()} />
+            <div class="actions" style="margin:8px 0">
+              <button
+                class="btn sm"
+                data-confirm="Markierte Lohnabrechnungen jetzt per E-Mail senden? Das PDF ist mit dem Geburtsdatum (TTMMJJ) geschützt."
+              >
+                Markierte per E-Mail senden
+              </button>
+              <label class="small" style="display:flex;gap:6px;align-items:center">
+                <input type="checkbox" name="erneut" /> auch schon gesendete noch einmal senden
+              </label>
+              <span class="small mut" style="margin-left:auto">
+                {unsent} noch nicht gesendet · Absender Buchhaltung
+              </span>
+            </div>
+            <div class="tbl">
+              <table>
+                <thead>
                   <tr>
-                    <td>{r.personnel_no}</td>
-                    <td>
-                      <a href={`/personal/${r.employee_id}/dokumente`}>{r.name}</a>
-                    </td>
-                    <td>
-                      {r.released ? (
-                        <span class="badge ok">freigegeben</span>
-                      ) : (
-                        <span class="badge">nicht freigegeben</span>
-                      )}
-                    </td>
-                    <td class="small">
-                      {r.viewed_at ? r.viewed_at.toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) : '–'}
-                    </td>
-                    <td>
-                      <a class="btn sec sm" href={`/dateien/${r.file_id}`} target="_blank">
-                        PDF
-                      </a>
-                    </td>
+                    <th style="width:30px">
+                      <input
+                        type="checkbox"
+                        aria-label="alle markieren"
+                        onclick="for(const x of this.closest('table').querySelectorAll('input[name=sel]:not(:disabled)'))x.checked=this.checked"
+                      />
+                    </th>
+                    <th>Pers.-Nr.</th>
+                    <th>Name</th>
+                    <th>E-Mail</th>
+                    <th>Versand</th>
+                    <th>App</th>
+                    <th>gelesen</th>
+                    <th></th>
                   </tr>
-                ))}
-                {rows.length === 0 && (
-                  <tr>
-                    <td colspan={5}>
-                      <div class="empty">Für diesen Monat noch nichts eingelesen.</div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {rows.map((r) => {
+                    const x = rcpt.get(r.file_id);
+                    const m = mails.get(r.file_id);
+                    const ok = !!(x?.email && x.has_birth);
+                    const q = queued.has(r.file_id);
+                    return (
+                      <tr>
+                        <td>
+                          <input
+                            type="checkbox"
+                            name="sel"
+                            value={r.file_id}
+                            aria-label={`${r.name} auswählen`}
+                            disabled={!ok || q}
+                            title={
+                              !x?.email
+                                ? 'keine E-Mail-Adresse'
+                                : !x.has_birth
+                                  ? 'Geburtsdatum fehlt (Passwort)'
+                                  : undefined
+                            }
+                          />
+                        </td>
+                        <td>{r.personnel_no}</td>
+                        <td>
+                          <a href={`/personal/${r.employee_id}/dokumente`}>{r.name}</a>
+                        </td>
+                        <td class="small">
+                          {x?.email ?? <span class="badge warn">keine E-Mail</span>}
+                          {x?.email && !x.has_birth && (
+                            <>
+                              {' '}
+                              <a class="badge warn" href={`/personal/${r.employee_id}/bearbeiten`}>
+                                Geburtsdatum fehlt
+                              </a>
+                            </>
+                          )}
+                        </td>
+                        <td class="small">
+                          {q ? (
+                            <span class="badge">wird gesendet …</span>
+                          ) : !m ? (
+                            '–'
+                          ) : m.status === 'gesendet' ? (
+                            <span class="badge ok" title={m.sent_to ?? ''}>
+                              gesendet {fmt(m.at)}
+                            </span>
+                          ) : m.status === 'fehler' ? (
+                            <span class="badge err" title={m.error ?? ''}>
+                              Fehler {fmt(m.at)}
+                            </span>
+                          ) : (
+                            <span class="badge">läuft</span>
+                          )}
+                        </td>
+                        <td>
+                          {r.released ? (
+                            <span class="badge ok">freigegeben</span>
+                          ) : (
+                            <span class="badge">nicht freigegeben</span>
+                          )}
+                        </td>
+                        <td class="small">
+                          {r.viewed_at
+                            ? r.viewed_at.toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })
+                            : '–'}
+                        </td>
+                        <td>
+                          <a class="btn sec sm" href={`/dateien/${r.file_id}`} target="_blank">
+                            PDF
+                          </a>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {rows.length === 0 && (
+                    <tr>
+                      <td colspan={8}>
+                        <div class="empty">Für diesen Monat noch nichts eingelesen.</div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </form>
+          <p class="small mut">
+            E-Mail: Das PDF ist mit dem Geburtsdatum der Person im Format TTMMJJ geschützt (z. B. 05.03.1985 →
+            050385); das Passwort steht nicht in der Mail, nur die Regel. Gesendet wird von der
+            Buchhaltungs-Adresse, nacheinander (der Mailserver erlaubt nur wenige Mails je Minute). Jede
+            Abrechnung geht nur einmal raus, außer „noch einmal senden“ ist angehakt.
+          </p>
           <p class="small mut">
             Rechtlich: Die Abrechnung ist in Textform zu erteilen (§ 108 GewO); die Bereitstellung im
             digitalen Mitarbeiter-Postfach genügt (BAG 28.01.2025 – 9 AZR 48/24). Wer kein Handy nutzt,
@@ -156,6 +289,34 @@ export function registerPayslipRoutes(ctx: Ctx) {
       `/personal/lohnabrechnungen?monat=${shown}`,
       r.unassigned.length ? { fehler: msg } : { ok: msg },
     );
+  });
+
+  app.post('/personal/lohnabrechnungen/senden', async (c) => {
+    const month = String(c.req.query('monat') ?? '');
+    const to = `/personal/lohnabrechnungen?monat=${month}`;
+    const b = await c.req.parseBody({ all: true });
+    const sel = [...new Set(([] as unknown[]).concat(b.sel ?? []).map(String))];
+    if (!sel.length) return back(c, to, { fehler: 'Bitte Personen ankreuzen.' });
+    const again = b.erneut === 'on' ? String(b.formid ?? randomUUID()) : undefined;
+    const actor = c.get('actor');
+    const cfg = uploadConfig(ctx);
+    const job = startSendJob(
+      'Lohnabrechnungen',
+      sel,
+      (id) => sendPayslip(deps, cfg, id, actor, again),
+      async (_id, e) => (e as Error).message,
+      'lohn',
+    );
+    return back(c, to, {
+      ok: job.ids.length
+        ? `Versand von ${job.ids.length} Lohnabrechnungen gestartet – läuft im Hintergrund.`
+        : 'Die markierten Abrechnungen werden schon gesendet.',
+    });
+  });
+
+  app.post('/personal/lohnabrechnungen/auftrag/:id/ausblenden', (c) => {
+    dismissSendJob(c.req.param('id'));
+    return back(c, `/personal/lohnabrechnungen?monat=${c.req.query('monat') ?? ''}`, {});
   });
 
   app.post('/personal/lohnabrechnungen/freigeben', async (c) => {

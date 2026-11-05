@@ -15,6 +15,8 @@ export interface SendJob {
   running: boolean;
   startedAt: number;
   finishedAt: number | null;
+  /** Bereich: 'beleg' (Rechnungen/Mahnungen) oder 'lohn' (Lohnabrechnungen) – je Seite nur die eigenen */
+  kind: string;
 }
 
 const jobs: SendJob[] = [];
@@ -34,6 +36,7 @@ export function startSendJob(
   ids: string[],
   run: (id: string) => Promise<void>,
   describe: (id: string, err: unknown) => Promise<string>,
+  kind = 'beleg',
 ): SendJob {
   prune();
   const queued = new Set(queuedIds());
@@ -48,6 +51,7 @@ export function startSendJob(
     running: true,
     startedAt: Date.now(),
     finishedAt: null,
+    kind,
   };
   jobs.push(job);
   void (async () => {
@@ -67,14 +71,14 @@ export function startSendJob(
 }
 
 /** Versandaufträge der letzten 30 Minuten, neueste zuerst */
-export function recentSendJobs(): SendJob[] {
+export function recentSendJobs(kind = 'beleg'): SendJob[] {
   prune();
-  return [...jobs].reverse();
+  return jobs.filter((j) => j.kind === kind).reverse();
 }
 
 /** Dokumente, die gerade in einem laufenden Versand noch warten bzw. gesendet werden */
-export function queuedIds(): string[] {
-  return jobs.filter((j) => j.running).flatMap((j) => j.ids.slice(j.done));
+export function queuedIds(kind?: string): string[] {
+  return jobs.filter((j) => j.running && (!kind || j.kind === kind)).flatMap((j) => j.ids.slice(j.done));
 }
 
 export function dismissSendJob(id: string) {

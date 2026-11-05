@@ -762,6 +762,12 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
       /* Datei fehlt im Archiv – überspringen */
     }
   }
+  {
+    const { buildRiskAssessmentPdf } = await import('./risk-assessment.js');
+    out[`00_Gefaehrdungsbeurteilung/Gefaehrdungsbeurteilung_${safeName(f.site.site_no)}.pdf`] = (
+      await buildRiskAssessmentPdf(deps, siteId)
+    ).pdf;
+  }
   try {
     out['01_Aushaenge_Putzraum/Aushaenge_Putzraum.pdf'] = (await buildPostersPdf(deps, siteId)).pdf;
   } catch {
@@ -788,7 +794,7 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
  * Aushänge werden aus den Word-Quellen erzeugt).
  */
 const SKIP_IN_FOLDER =
-  /revierplan_muster|muster[ _-]?revierplan|anwesenheitsliste|VD-ANW-|VD-FB-0?3_|VD-FB-0?7_|VD-AZN-|VD-SN-|VD-FB-34_|abfallkonzept|A_Aushaenge|fertig-zum-Ausdrucken|reklamation|(ü|ue)bernahmeprotokoll|kontaktkarten/i;
+  /revierplan_muster|muster[ _-]?revierplan|anwesenheitsliste|VD-ANW-|VD-FB-0?3_|VD-FB-0?7_|VD-AZN-|VD-SN-|VD-FB-34_|abfallkonzept|A_Aushaenge|fertig-zum-Ausdrucken|reklamation|(ü|ue)bernahmeprotokoll|kontaktkarten|gef(ä|ae)hrdungsbeurteilung/i;
 
 /**
  * Aushänge aus dem Paket, die die App selbst (mit Piktogrammen und Objektdaten) erzeugt – nicht doppelt aufnehmen.
@@ -963,6 +969,13 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
     { label: 'GIFTNOTRUF MÜNCHEN', value: '089 19240' },
     { label: 'BÜRO VIVA-DELUXE', value: '089 63855496' },
   ]);
+
+  // 1b. Gefährdungsbeurteilung je Objekt, aus den Leistungsarten erzeugt (Ahmed 05.11.2026)
+  {
+    const { riskFacts, drawRiskAssessment } = await import('./risk-assessment.js');
+    chapter('Gefährdungsbeurteilung', 'Gefährdungsbeurteilung');
+    drawRiskAssessment(d, f, await riskFacts(sql, siteId), today);
+  }
 
   // 2.–4. Revierplan, Leistungsverzeichnis, Raumbuch: eingescannte Unterlagen des Objekts (keine eigene Vorlage)
   const { embedImageFile } = await import('../pdf/image-page.js');

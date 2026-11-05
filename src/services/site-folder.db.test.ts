@@ -91,6 +91,11 @@ describe.skipIf(!ok)('Objektordner als ein PDF', () => {
       expect(all).not.toContain('Leeres Reklamationsformular');
       expect(all).not.toContain('Stundennachweis');
       expect(all).toContain('Anwesenheitsliste');
+      // Gefährdungsbeurteilung als eigener Abschnitt, Bausteine aus Leistungen/Objekt
+      expect(text[1]).toContain('Gefährdungsbeurteilung');
+      expect(all).toContain('Allgemeine Reinigungstätigkeiten');
+      expect(all.replace(/\s+/g, ' ')).toContain('Schulen und Kindertagesstätten');
+      expect(all).toContain('Begehung am:');
     },
   );
 });

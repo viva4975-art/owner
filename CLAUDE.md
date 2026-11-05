@@ -4900,3 +4900,18 @@ Testadresse.
   DATEV-Export** (Hinweis: Buchung über den Kontoauszug). **Steuerlich:** USt-Voranmeldung ist am 10. fällig; die
   3 Tage Zahlungsschonfrist (§ 240 Abs. 3 AO) gelten nur bei Überweisung – Gutschrift beim Finanzamt spätestens am 13.,
   sonst Säumniszuschlag; bei Lastschrift (SEPA-Mandat) zieht das Finanzamt selbst ein.
+- 2026-11-05: **Gefährdungsbeurteilung je Objekt, automatisch** (Ahmed: „zu jedem Objekt, abhängig von der Leistungsart,
+  bei Objektordner, Vorlage muss gemacht werden“, „automatisch zum Objektordner-PDF“): Vorlage aus Bausteinen
+  (`src/domain/safety/risk-assessment.ts`): Grundbaustein „Allgemeine Reinigungstätigkeiten“ immer, dazu je nach
+  Leistungsart/-titel, Nutzungsarten im Raumbuch und Objekt: Alleinarbeit (Einsätze vor 7 / nach 18 Uhr), Sanitär,
+  Treppenhaus, Glas/Fenster, Grund-/Sonderreinigung mit Maschinen, Bau-/Bauendreinigung, Tiefgarage, Desinfektion/
+  Gesundheitsbereich, Küche/Spülen, Außenanlagen/Hausmeister, Winterdienst, Hochdruck/Fassade, Schule/Kita. Je Gefährdung
+  Faktor, Maßnahmen nach STOP (T/O/P), Risiko vor → nach; dazu PSA-Liste, Reinigungsmittel/Sicherheitsdatenblätter
+  (aus Einstellungen → Objektordner-Vorlagen), Unterweisung/Vorsorge, Objektbesonderheiten und Eintragszeilen für die
+  Begehung (gezeichnete Linien). Steht als eigener Abschnitt „Gefährdungsbeurteilung“ im Objektordner-PDF (nach dem
+  Objektstammblatt), im ZIP (`00_Gefaehrdungsbeurteilung/`) und einzeln unter Objekt → Objektordner
+  (`/objekte/:id/gefaehrdungsbeurteilung.pdf`, mit Liste der Bausteine und Grund); eine GBU aus dem Paket wird nicht
+  doppelt übernommen. Immer aus dem aktuellen Stand erzeugt (neue Leistung = beim nächsten Druck dabei).
+  **Rechtlich:** Die Gefährdungsbeurteilung bleibt Pflicht des Arbeitgebers (§§ 5, 6 ArbSchG) – die Vorlage ist der
+  Ausgangspunkt; Begehung je Objekt durch die Objektleitung (Eintragszeilen ausfüllen) und Texte einmal mit der
+  Fachkraft für Arbeitssicherheit/Betriebsarzt abstimmen. Tests `risk-assessment.test.ts`, `site-folder.db.test.ts`.

@@ -22,6 +22,7 @@ import {
 } from '../services/site-folder.js';
 import { DocFoldAll, FileArea, docOpen } from './files.js';
 import { fillHospital } from '../services/hospital.js';
+import { buildRiskAssessmentPdf, riskFacts } from '../services/risk-assessment.js';
 import { listSafetySheets } from '../services/safety-sheets.js';
 import { zipHref } from './routes-files.js';
 import { Icon } from './icons.js';
@@ -66,6 +67,7 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
         select count(distinct employee_id)::int as workers from app.shift_plans
          where site_id = ${s.id} and employee_id is not null and (valid_until is null or valid_until >= current_date)`;
       const links = f.missing.filter((m) => !m.key);
+      const risk = await riskFacts(sql, s.id);
       return (
         <>
           <div class="card">
@@ -74,10 +76,11 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                 <h3 style="margin:0">Objektordner für {s.name}</h3>
                 <div class="small mut">
                   Ein PDF zum Ausdrucken: Deckblatt, Inhaltsverzeichnis, Objektstammblatt mit Kontakten,
-                  Revierplan, Leistungsverzeichnis und Raumbuch aus den eingescannten Unterlagen (Reiter
-                  „Dokumente“), die Aushänge für den Putzraum (mit Piktogrammen), die Anweisungen aus dem
-                  Objektordner-Paket – fertig ausgefüllt, ohne Unterschriftsfelder –, Sicherheitsdatenblätter
-                  und die Anwesenheitsliste. Register-Nummern am Rand wie bei einem Ordner.
+                  Gefährdungsbeurteilung, Revierplan, Leistungsverzeichnis und Raumbuch aus den eingescannten
+                  Unterlagen (Reiter „Dokumente“), die Aushänge für den Putzraum (mit Piktogrammen), die
+                  Anweisungen aus dem Objektordner-Paket – fertig ausgefüllt, ohne Unterschriftsfelder –,
+                  Sicherheitsdatenblätter und die Anwesenheitsliste. Register-Nummern am Rand wie bei einem
+                  Ordner.
                 </div>
               </div>
               <div class="actions" style="margin:0">
@@ -149,6 +152,22 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                 </a>
               </div>
             )}
+            <div class="poster-box">
+              <div class="poster-head">
+                <div>
+                  <b>Gefährdungsbeurteilung</b>
+                  <div class="small mut">
+                    Automatisch aus den Leistungen des Objekts – steht als eigener Abschnitt im
+                    Objektordner-PDF. Beurteilte Tätigkeiten:{' '}
+                    {risk.modules.map((m) => `${m.module.title} (${m.reason})`).join(' · ')}. Neue
+                    Leistungsart am Objekt = beim nächsten Erstellen automatisch dabei.
+                  </div>
+                </div>
+                <a class="btn sec" href={`/objekte/${s.id}/gefaehrdungsbeurteilung.pdf`} target="_blank">
+                  <Icon name="download" /> Gefährdungsbeurteilung (PDF)
+                </a>
+              </div>
+            </div>
             <AttendanceForm action={`/objekte/${s.id}/anwesenheit.pdf`} />
             {!pkg && (
               <div class="flash warn" style="margin-bottom:0">
@@ -310,6 +329,18 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
     assertSite(c, id);
     await fillHospital(sql, id, c.get('actor'));
     const r = await buildFolderPdf(deps, id);
+    return c.body(r.pdf as Uint8Array<ArrayBuffer>, 200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(r.name)}`,
+      'Cache-Control': 'private, no-store',
+    });
+  });
+
+  /** Gefährdungsbeurteilung des Objekts (Ahmed 05.11.2026) – auch im Objektordner-PDF/ZIP enthalten */
+  app.get(`/objekte/:id{${UUID}}/gefaehrdungsbeurteilung.pdf`, async (c) => {
+    const id = c.req.param('id');
+    assertSite(c, id);
+    const r = await buildRiskAssessmentPdf(deps, id);
     return c.body(r.pdf as Uint8Array<ArrayBuffer>, 200, {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(r.name)}`,

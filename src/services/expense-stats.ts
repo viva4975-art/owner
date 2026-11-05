@@ -28,6 +28,13 @@ const CATEGORY_NAME: Record<string, string> = {
 /** Kostenart: automatisch aus Empfänger/Verwendungszweck (Ahmed: „DEVK ist klar Versicherung“) oder nach Zuordnung. */
 export type CategoryMode = 'auto' | 'zuordnung';
 
+const TAX_KEYWORDS: [string, string[]][] = [
+  ['umsatzsteuer', [' UMSATZSTEUER', ' UST ', ' USTVA ', ' UST VA ', 'UMSATZSTEUERVORAUSZAHLUNG', ' USTV ']],
+  [
+    'koerperschaftsteuer',
+    ['KÖRPERSCHAFTSTEUER', 'KOERPERSCHAFTSTEUER', 'KÖRPERSCHAFTSSTEUER', 'KOERPERSCHAFTSSTEUER', ' KST '],
+  ],
+];
 const KEYWORDS: [string, string[]][] = [
   [
     'versicherung',
@@ -208,6 +215,8 @@ const norm = (s: string) =>
 export function guessCategory(name: string | null, purpose: string | null): string | null {
   const who = norm(name ?? '');
   const all = norm(`${name ?? ''} ${purpose ?? ''}`);
+  // Steuerart steht im Verwendungszweck (Empfänger ist meist nur „Finanzamt“)
+  for (const [cat, words] of TAX_KEYWORDS) if (words.some((w) => all.includes(w))) return cat;
   // zuerst der Name der Gegenseite (eindeutiger), dann der Verwendungszweck
   for (const hay of [who, all])
     for (const [cat, words] of KEYWORDS) if (words.some((w) => hay.includes(w))) return cat;

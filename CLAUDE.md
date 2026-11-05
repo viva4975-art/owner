@@ -4885,3 +4885,9 @@ Testadresse.
     beschäftigt waren – vor dem Monat Ausgetretene fallen raus (Hinweis mit Anzahl, Server lehnt Versand ab, zählen nicht
     als offen). Austritt im Monat oder später = letzte Abrechnung geht noch raus. **Rechtlich:** Auch Ausgeschiedene haben
     Anspruch auf ihre Abrechnung (§ 108 GewO) – Nachzahlungen dann per Post bzw. aus der Personalakte.
+- 2026-11-05: **Kostenarten Umsatzsteuer und Körperschaftsteuer** (Ahmed): zusätzlich zu „Steuern / Abgaben /
+  Sozialversicherung“ in der Liste der Kostenarten (Kontoumsätze „Nicht zuordnen“/„Lieferant ohne Rechnung“,
+  Wiederkehrende Zahlungen, Auswertungen → Ausgaben; `EXPENSE_CATEGORY`, Migration `20270118000001` erweitert die
+  Prüfregel). Automatische Erkennung über den Verwendungszweck (USt/USt-VA/Umsatzsteuer bzw. KSt/Körperschaftsteuer) vor
+  dem Empfänger („Finanzamt“ allein bleibt „Steuern“). Ohne Kostenstelle-Vorschlag (keine Kosten in der Nachkalkulation:
+  USt ist durchlaufend, KSt Steuer vom Ertrag). Bereits zugeordnete Umsätze bleiben unverändert.

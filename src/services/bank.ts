@@ -1193,6 +1193,8 @@ export const EXPENSE_CATEGORY: Record<string, string> = {
   fahrzeuge: 'Fahrzeuge / Tanken',
   miete: 'Miete / Büro',
   personal: 'Personal (Lohn, Vorschuss, Auslagen)',
+  umsatzsteuer: 'Umsatzsteuer',
+  koerperschaftsteuer: 'Körperschaftsteuer',
   steuern: 'Steuern / Abgaben / Sozialversicherung',
   versicherung: 'Versicherungen',
   bank: 'Bankgebühren / Zinsen',

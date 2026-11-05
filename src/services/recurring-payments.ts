@@ -18,7 +18,12 @@ export const CC_FAHRZEUGE = '00000000-0000-4000-8000-0000000cc002';
 export function defaultCostCenter(category: string | null): string | null {
   if (!category) return CC_VERWALTUNG;
   if (category === 'fahrzeuge') return CC_FAHRZEUGE;
-  if (['steuern', 'personal', 'privat', 'nachunternehmer'].includes(category)) return null;
+  if (
+    ['steuern', 'umsatzsteuer', 'koerperschaftsteuer', 'personal', 'privat', 'nachunternehmer'].includes(
+      category,
+    )
+  )
+    return null;
   return CC_VERWALTUNG;
 }
 

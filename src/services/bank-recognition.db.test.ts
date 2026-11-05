@@ -40,7 +40,9 @@ describe('Kostenart automatisch erkennen', () => {
   it('Name/Verwendungszweck → Kostenart', () => {
     expect(guessCategory('DEVK Versicherungen', 'Beitrag 10/2026')).toBe('versicherung');
     expect(guessCategory('ARAL Station 1234', null)).toBe('fahrzeuge');
-    expect(guessCategory('Finanzamt München', 'USt-VA 09/2026')).toBe('steuern');
+    expect(guessCategory('Finanzamt München', 'USt-VA 09/2026')).toBe('umsatzsteuer');
+    expect(guessCategory('Finanzamt München', 'KSt-Vorauszahlung III/2026')).toBe('koerperschaftsteuer');
+    expect(guessCategory('Finanzamt München', 'Lohnsteuer 09/2026')).toBe('steuern');
     expect(guessCategory('HORNBACH MUENCHEN-FREIHAM', 'HORNBACH BAUMARKT')).toBe('material');
     expect(guessCategory('Münchner Bank', 'Entgelt Kontoführung')).toBe('bank');
     expect(guessCategory('Max Muster', 'Lohn 09/2026')).toBe('personal');

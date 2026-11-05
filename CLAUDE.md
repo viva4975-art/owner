@@ -4956,3 +4956,14 @@ Testadresse.
   **Objektordner-Angaben:** Sammelplatz, Notausgang, Lage Putzraum entfallen (Formular und alle Ausdrucke; alte Werte
   werden nicht mehr gedruckt). **Ersthelfer:** Häkchen „Objektleitung ist Ersthelfer“ (`folder_info.ersthelfer_ol`) –
   dann steht die Objektleitung mit Telefon als Ersthelfer (zusätzlich eingetragene dahinter), `FolderFacts.firstAider`.
+- 2026-11-05: **Schulungsnachweis Objektleitung / internes Zeugnis** (Ahmed: „Vorlage für die Schulung des Objektleiters von
+  mir als Gebäudereinigermeister, oder internes Zeugnis“): Mitarbeiter → Dokumente → Knopf „Schulungsnachweis
+  Objektleitung“ (`/personal/:id/schulungsnachweis`, Admin/Personal, `src/services/training-cert.ts`): Datum/Zeitraum,
+  Stunden, Ort, Schulungsleitung (vorbelegt Geschäftsführung, Titel „Gebäudereinigermeister“), Ergebnis („mit Erfolg
+  teilgenommen“ …), 10 Module zum Ankreuzen (Reinigungstechnik, Hygiene, Arbeitsschutz/Gefahrstoffe, LV/Raumbuch/Planung,
+  Qualitätssicherung, Personalführung, Arbeitszeit & Recht, Kundenbetreuung, Umwelt, App) + weitere Themen; optional
+  **interne Beurteilung** (6 Bereiche sehr gut … ausreichend + Bemerkung) → Titel „Schulungsnachweis und interne
+  Beurteilung“. PDF auf Briefpapier mit zwei Unterschriften; „in der Personalakte ablegen“ (Personalunterlagen, feste ID
+  aus dem Inhalt) – dann zählt er in der Kundenübersicht als Schulungsnachweis. **Rechtlich:** interner Nachweis, keine
+  öffentlich-rechtliche Qualifikation und kein Arbeitszeugnis nach § 109 GewO (steht im PDF); Beurteilung wahr und
+  wohlwollend halten, Person hat Auskunftsrecht (Art. 15 DSGVO). Test `training-cert.db.test.ts`.

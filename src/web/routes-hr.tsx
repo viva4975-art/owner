@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { listWordTemplates } from '../services/word-templates.js';
 import { WordTemplateBox } from './routes-word-templates.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
@@ -42,6 +42,16 @@ import { EmployeeCalendarView } from './pages-employee-calendar.js';
 import { employeeCalendarData } from './employee-calendar-data.js';
 import { holidayName } from '../domain/time/holidays.js';
 import { uploadConfig, zipHref } from './routes-files.js';
+import {
+  RATINGS,
+  RATING_TOPICS,
+  TRAINING_MODULES,
+  TRAINING_RESULTS,
+  type TrainingCertInput,
+  trainingCertPdf,
+} from '../services/training-cert.js';
+import { storeFile } from '../services/uploads.js';
+import { uuidFrom } from '../services/photo-stamp.js';
 
 /** Personal wie Fortytools: Dokumente je Mitarbeiter, Vorlagen/Serienbrief, Lohnstufen, Einsatzkalender. */
 /** Kategorien zum Hochladen (ohne „Entwurf (aus Vorlage)“). */
@@ -347,6 +357,11 @@ export function registerHrRoutes(ctx: Ctx) {
                           label: 'Vertragsänderung',
                           href: `/personal/${e.id}/vertragsaenderung`,
                           hint: 'nur was sich ändert · bisher → neu',
+                        },
+                        {
+                          label: 'Schulungsnachweis Objektleitung',
+                          href: `/personal/${e.id}/schulungsnachweis`,
+                          hint: 'Schulung durch den Gebäudereinigermeister · optional interne Beurteilung',
                         },
                       ]
                     : []
@@ -680,6 +695,155 @@ export function registerHrRoutes(ctx: Ctx) {
       );
     }),
   );
+
+  // Schulungsnachweis Objektleitung / internes Zeugnis (Ahmed 05.11.2026)
+  app.get(`/personal/:id{${UUID}}/schulungsnachweis`, (c) =>
+    shells.employee!(c, 'dokumente', async (head) => {
+      ccGuard(c);
+      const [co] = await sql<{ managing_director: string | null }[]>`
+        select managing_director from app.company where id = 1`;
+      const today = todayBerlin();
+      return (
+        <div class="card" style="max-width:900px">
+          <h3 style="margin-top:0">Schulungsnachweis Objektleitung</h3>
+          <p class="small mut" style="margin-top:-4px">
+            Bescheinigt die interne Schulung durch den Gebäudereinigermeister. Mit Bewertungen wird daraus ein
+            internes Zeugnis. Ausdrucken, unterschreiben; abgelegt in der Personalakte zählt er in der
+            Kundenübersicht als Schulungsnachweis der Objektleitung.
+          </p>
+          <form method="post" action={`/personal/${head.id}/schulungsnachweis`} target="_blank">
+            <div class="grid">
+              <label for="sn-from">Schulung am / von</label>
+              <input id="sn-from" type="date" name="from" value={today} required />
+              <label for="sn-to">bis (leer = ein Tag)</label>
+              <input id="sn-to" type="date" name="to" />
+              <label for="sn-h">Umfang (Stunden)</label>
+              <input id="sn-h" name="hours" placeholder="z. B. 16" />
+              <label for="sn-place">Ort</label>
+              <input id="sn-place" name="place" placeholder="leer = Firmensitz" />
+              <label for="sn-tr">Schulungsleitung</label>
+              <input id="sn-tr" name="trainer" value={co?.managing_director ?? ''} />
+              <label for="sn-trt">Titel</label>
+              <input id="sn-trt" name="trainer_title" value="Gebäudereinigermeister" />
+              <label for="sn-res">Ergebnis</label>
+              <select id="sn-res" name="result">
+                {TRAINING_RESULTS.map((r, i) => (
+                  <option value={r} selected={i === 2}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+              <label for="sn-date">Ausgestellt am</label>
+              <input id="sn-date" type="date" name="date" value={today} />
+            </div>
+            <div class="group-title">Schulungsinhalte</div>
+            <div style="display:grid;gap:6px">
+              {TRAINING_MODULES.map((m) => (
+                <label style="display:flex;gap:8px;align-items:flex-start;font-weight:400">
+                  <input type="checkbox" name="module" value={m.key} checked />
+                  <span>
+                    <b>{m.title}</b>
+                    <br />
+                    <span class="small mut">{m.content}</span>
+                  </span>
+                </label>
+              ))}
+              <label for="sn-extra">Weitere Themen (je Zeile eins)</label>
+              <textarea id="sn-extra" name="extra" rows={2}></textarea>
+            </div>
+            <details style="margin-top:12px">
+              <summary>
+                <b>Interne Beurteilung (internes Zeugnis)</b> <span class="small mut">– optional</span>
+              </summary>
+              <div class="grid" style="margin-top:8px">
+                {RATING_TOPICS.map((t, i) => (
+                  <>
+                    <label for={`sn-r${i}`}>{t}</label>
+                    <select id={`sn-r${i}`} name={`rating_${i}`}>
+                      <option value="">– nicht bewerten –</option>
+                      {RATINGS.map((r) => (
+                        <option value={r}>{r}</option>
+                      ))}
+                    </select>
+                  </>
+                ))}
+                <label for="sn-rem">Bemerkung</label>
+                <textarea
+                  id="sn-rem"
+                  name="remark"
+                  rows={3}
+                  placeholder="z. B. übernimmt eigenständig die Objekte …"
+                ></textarea>
+              </div>
+            </details>
+            <div class="formfoot">
+              <button class="btn" name="aktion" value="pdf" data-noback>
+                PDF erstellen
+              </button>
+              <button class="btn sec" name="aktion" value="ablegen" formtarget="_self" data-noback>
+                PDF erstellen und in der Personalakte ablegen
+              </button>
+            </div>
+          </form>
+        </div>
+      );
+    }),
+  );
+
+  app.post(`/personal/:id{${UUID}}/schulungsnachweis`, async (c) => {
+    ccGuard(c);
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    const list = (k: string) => {
+      const v = b[k];
+      return (Array.isArray(v) ? v : v === undefined ? [] : [v]).filter(
+        (x): x is string => typeof x === 'string',
+      );
+    };
+    const input: TrainingCertInput = {
+      from: str(b, 'from') ?? '',
+      to: str(b, 'to') ?? '',
+      hours: str(b, 'hours') ?? '',
+      place: str(b, 'place') ?? '',
+      trainer: str(b, 'trainer') ?? '',
+      trainerTitle: str(b, 'trainer_title') ?? '',
+      modules: list('module'),
+      extra: str(b, 'extra') ?? '',
+      result: str(b, 'result') ?? '',
+      ratings: Object.fromEntries(RATING_TOPICS.map((t, i) => [t, str(b, `rating_${i}`) ?? ''])),
+      remark: str(b, 'remark') ?? '',
+      date: str(b, 'date') ?? '',
+    };
+    const { pdf, name } = await trainingCertPdf(sql, id, input);
+    if (str(b, 'aktion') === 'ablegen') {
+      const fileId = uuidFrom(`${id}:schulungsnachweis:${createHash('sha256').update(pdf).digest('hex')}`);
+      await storeFile(
+        sql,
+        cfg,
+        {
+          id: fileId,
+          name,
+          type: 'application/pdf',
+          data: pdf,
+          link: { type: 'employee', id },
+          category: 'Personalunterlagen',
+        },
+        c.get('actor'),
+      );
+      return back(c, `/personal/${id}/dokumente`, {
+        ok: `${name} unter Personalunterlagen abgelegt – unterschriebene Fassung bitte zusätzlich als Scan hochladen.`,
+      });
+    }
+    await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+              values (${c.get('actor')}, 'training_cert_pdf', 'employee', ${id}, ${sql.json({ from: input.from })})`;
+    return new Response(pdf, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="${name}"`,
+        'Cache-Control': 'private, no-store',
+      },
+    });
+  });
 
   app.post(`/personal/:id{${UUID}}/vertragsaenderung`, async (c) => {
     ccGuard(c);

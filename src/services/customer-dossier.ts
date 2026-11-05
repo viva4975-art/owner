@@ -13,20 +13,19 @@ import { type FolderInfo, folderFacts } from './site-folder.js';
 import type { Deps } from './workflow.js';
 
 export const DOSSIER_PARTS = [
-  { key: 'kontakte', label: 'Ansprechpartner (Viva-Deluxe und Kunde)' },
+  { key: 'kontakte', label: 'Ansprechpartner (Viva-Deluxe und Kunde) mit Telefon und E-Mail' },
   {
     key: 'personal',
-    label: 'Eingesetzte Mitarbeitende mit Einsatzzeiten, Schlüsseln/Transpondern, erstem Einsatz',
+    label: 'Eingesetzte Mitarbeitende mit Funktion, Schlüsseln/Transpondern, erster Einweisung',
   },
   { key: 'nachweise', label: 'Nachweise: Schweigepflicht, Unterweisung, Führungszeugnis (nur „liegt vor“)' },
-  { key: 'vertretung', label: 'Vertretungen / Stellvertretungen' },
-  { key: 'sicherheit', label: 'Sicherheits- und Hygieneregeln, Notfallkontakte, Zugang' },
+  { key: 'vertretung', label: 'Vertretung / Stellvertretung' },
+  { key: 'sicherheit', label: 'Notfall (Ersthelfer, Krankenhaus), Sicherheits- und Hygieneregeln' },
   { key: 'schulung', label: 'Ausbildung und Schulungen der Objektleitung' },
   { key: 'gbu', label: 'Gefährdungsbeurteilung je Objekt anhängen (Querformat)' },
 ] as const;
 export type DossierPart = (typeof DOSSIER_PARTS)[number]['key'];
 
-const DAYS = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const CONFIDENTIAL = /verschwieg|schweige|vertraulich|datengeheim|datenschutz/i;
 const CERT = /f(ü|ue)hrungszeugnis/i;
 const TRAINING =
@@ -36,7 +35,6 @@ interface Person {
   id: string;
   name: string;
   role: string;
-  times: string;
   since: string | null;
   keys: string[];
   confidential: string | null;
@@ -51,6 +49,8 @@ interface SiteBlock {
   address: string;
   manager: { name: string; phone: string | null; email: string | null; employee_id: string | null } | null;
   info: FolderInfo;
+  firstAider: string | null;
+  keysTotal: number;
   people: Person[];
   substitutes: { date: string; for: string; by: string }[];
 }
@@ -63,21 +63,6 @@ function roleOf(tags: string[]): string {
   if (t.some((x) => x.includes('glas'))) return 'Glasreiniger/in';
   if (t.some((x) => x.includes('hausmeister'))) return 'Hausmeister/in';
   return 'Reinigungskraft';
-}
-
-/** „Mo, Mi, Fr 17:00–21:30“ – gleiche Zeiten zusammengefasst */
-function timesOf(rows: { weekday: number; t: string }[]): string {
-  const byTime = new Map<string, Set<number>>();
-  for (const r of rows) byTime.set(r.t, (byTime.get(r.t) ?? new Set()).add(r.weekday));
-  return [...byTime]
-    .map(
-      ([t, ds]) =>
-        `${[...ds]
-          .sort()
-          .map((d) => DAYS[d])
-          .join(', ')} ${t}`,
-    )
-    .join('; ');
 }
 
 async function loadSite(sql: Sql, siteId: string, today: string): Promise<SiteBlock> {
@@ -155,7 +140,6 @@ async function loadSite(sql: Sql, siteId: string, today: string): Promise<SiteBl
       id,
       name,
       role: isMgr ? 'Objektleitung' : roleOf(tags),
-      times: own.length ? timesOf(own) : isMgr ? 'Betreuung des Objekts' : '–',
       since: first.get(id) ?? null,
       keys: keys.filter((k) => k.holder === id).map((k) => k.k),
       confidential: conf,
@@ -181,18 +165,26 @@ async function loadSite(sql: Sql, siteId: string, today: string): Promise<SiteBl
       .join(', '),
     manager: f.manager ? { ...f.manager, employee_id: mp?.employee_id ?? null } : null,
     info: f.info,
+    firstAider: f.firstAider,
+    keysTotal: f.keys,
     people,
     substitutes: subs,
   };
 }
 
 const d8 = (s: string | null) => (s ? formatDateDe(s) : 'nicht hinterlegt');
+const contactOf = (m: { name: string; phone: string | null; email: string | null } | null) =>
+  m ? [m.name, m.phone, m.email].filter(Boolean).join(' · ') : 'nicht zugeordnet';
 
-/** PDF: Objekt- und Personalübersicht für einen Kunden (alle bzw. gewählte aktive Objekte). */
+/**
+ * PDF: Objekt- und Personalübersicht für einen Kunden (alle bzw. gewählte aktive Objekte). A4 quer und kompakt
+ * (Ahmed 05.11.2026: „kürzer, quer, nicht zu viele Infos, keine Tage/Zeiten“): oben Ansprechpartner, je Objekt eine Zeile
+ * mit Objektleitung (Telefon, E-Mail), Stellvertretung, Ersthelfer, Krankenhaus, dann die Tabelle der Mitarbeitenden.
+ */
 export async function buildCustomerDossierPdf(
   deps: Deps,
   customerId: string,
-  o: { siteIds?: string[] | undefined; parts?: DossierPart[] | undefined } = {},
+  o: { siteIds?: string[] | undefined; parts?: DossierPart[] | undefined; findHospital?: boolean } = {},
 ) {
   const { sql } = deps;
   const today = todayBerlin();
@@ -208,6 +200,11 @@ export async function buildCustomerDossierPdf(
     >`select id from app.sites where customer_id = ${customerId} and active order by site_no`
   ).map((x) => x.id);
   if (o.siteIds?.length) siteIds = siteIds.filter((x) => o.siteIds!.includes(x));
+  // Nächstes Krankenhaus fehlt → aus Adresse/PLZ selbst ermitteln und am Objekt speichern (ohne Internet bleibt es leer)
+  if (parts.has('sicherheit') && o.findHospital !== false) {
+    const { fillHospital } = await import('./hospital.js');
+    for (const id of siteIds) await fillHospital(sql, id, 'automatisch').catch(() => null);
+  }
   const sites: SiteBlock[] = [];
   for (const id of siteIds) sites.push(await loadSite(sql, id, today));
   const contacts = await sql<
@@ -216,39 +213,52 @@ export async function buildCustomerDossierPdf(
     select trim(coalesce(salutation || ' ', '') || coalesce(first_name || ' ', '') || last_name) as name, position,
            coalesce(nullif(phone, ''), mobile) as phone, email
       from app.contacts where customer_id = ${customerId} order by created_at`;
-  const [co] = await sql<{ managing_director: string | null; phone: string | null; email: string }[]>`
-    select managing_director, phone, email from app.company limit 1`;
+  const [co] = await sql<
+    {
+      managing_director: string | null;
+      managing_director_email: string | null;
+      phone: string | null;
+      email: string;
+    }[]
+  >`select managing_director, managing_director_email, phone, email from app.company limit 1`;
 
   const { FormDoc, FORM_X } = await import('../pdf/form-doc.js');
   const tag = `${cu.customer_no} ${cu.name}`;
   const d = await FormDoc.create({
+    landscape: true,
     title: `Objekt- und Personalübersicht ${tag}`,
     sideRef: `Objekt- und Personalübersicht ${tag} · Stand ${formatDateDe(today)}`,
     date: today,
     author: 'Viva-Deluxe Gebäudereinigung GmbH',
   });
-  const W = FORM_X.R - FORM_X.L;
+  const W = d.R - FORM_X.L;
+  const people = new Set(sites.flatMap((s) => s.people.map((p) => p.id))).size;
   d.title('Objekt- und Personalübersicht', `Stand ${formatDateDe(today)}`);
-  d.infoGrid(
-    [
-      ['Auftraggeber', `${cu.name} (${cu.customer_no})`],
-      [
-        'Umfang',
-        `${sites.length} ${sites.length === 1 ? 'Objekt' : 'Objekte'} · ${
-          new Set(sites.flatMap((s) => s.people.map((p) => p.id))).size
-        } eingesetzte Mitarbeitende`,
-      ],
-    ],
-    2,
+  d.para(
+    `Auftraggeber: ${cu.name} (${cu.customer_no}) · ${sites.length} ${sites.length === 1 ? 'Objekt' : 'Objekte'} · ${people} eingesetzte Mitarbeitende`,
+    { size: 9, bold: true },
   );
   d.muted(
-    'Vertraulich – nur zur Verwendung für den Reinigungsauftrag (Zutritt, Schlüssel-/Transponderverwaltung). Personenbezogene Angaben auf das Nötige beschränkt (Art. 5 Abs. 1 c DSGVO); Führungszeugnisse werden nicht weitergegeben, nur ob sie vorliegen.',
+    'Vertraulich – nur für den Reinigungsauftrag (Zutritt, Schlüssel-/Transponderverwaltung). Personenbezogene Angaben auf das Nötige beschränkt (Art. 5 Abs. 1 c DSGVO); Führungszeugnisse werden nicht weitergegeben, nur ob sie vorliegen.',
   );
 
+  const contactCols = [
+    { label: 'Name', width: 170 },
+    { label: 'Funktion', width: 170 },
+    { label: 'Telefon', width: 120 },
+    { label: 'E-Mail', width: 180 },
+    { label: 'Objekte', width: W - 640 },
+  ];
   if (parts.has('kontakte')) {
     d.section('Ansprechpartner');
     const rows: string[][] = [
-      [co?.managing_director ?? '–', 'Geschäftsführung', co?.phone ?? '–', co?.email ?? '–', 'alle'],
+      [
+        co?.managing_director ?? '–',
+        'Geschäftsführung',
+        co?.phone ?? '–',
+        co?.managing_director_email ?? co?.email ?? '–',
+        'alle',
+      ],
       ['Büro Viva-Deluxe', 'Zentrale / Disposition', co?.phone ?? '–', co?.email ?? '–', 'alle'],
     ];
     const mgrs = new Map<string, { m: NonNullable<SiteBlock['manager']>; nos: string[] }>();
@@ -269,199 +279,172 @@ export async function buildCustomerDossierPdf(
       }
     for (const [n, e] of bls)
       rows.push([n, 'Bereichsleitung (Stellvertretung)', e.tel, '–', e.nos.join(', ')]);
-    d.heading('Viva-Deluxe Gebäudereinigung GmbH', 10);
-    d.y += 14;
-    d.table(
-      [
-        { label: 'Name', width: 120 },
-        { label: 'Funktion', width: 110 },
-        { label: 'Telefon', width: 85 },
-        { label: 'E-Mail', width: 125 },
-        { label: 'Objekte', width: W - 440 },
-      ],
-      rows,
-      { size: 7.8 },
-    );
-    const kRows: string[][] = contacts.map((c) => [
-      c.name,
-      c.position ?? '–',
-      c.phone ?? '–',
-      c.email ?? '–',
-      'alle',
-    ]);
+    for (const c of contacts)
+      rows.push([
+        c.name,
+        `${c.position ?? 'Ansprechpartner'} (Kunde)`,
+        c.phone ?? '–',
+        c.email ?? '–',
+        'alle',
+      ]);
     for (const s of sites) {
       if (s.info.ansprechpartner)
-        kRows.push([
+        rows.push([
           s.info.ansprechpartner,
-          'Ansprechpartner Objekt',
+          'Ansprechpartner Objekt (Kunde)',
           s.info.ansprechpartner_tel ?? '–',
           '–',
           s.site_no,
         ]);
       if (s.info.hausmeister)
-        kRows.push([s.info.hausmeister, 'Hausmeister / Haustechnik', '–', '–', s.site_no]);
+        rows.push([s.info.hausmeister, 'Hausmeister / Haustechnik', '–', '–', s.site_no]);
     }
-    d.heading(`Auftraggeber ${cu.name}`, 10);
-    d.y += 14;
-    if (kRows.length)
-      d.table(
-        [
-          { label: 'Name', width: 120 },
-          { label: 'Funktion', width: 110 },
-          { label: 'Telefon', width: 85 },
-          { label: 'E-Mail', width: 125 },
-          { label: 'Objekte', width: W - 440 },
-        ],
-        kRows,
-        { size: 7.8 },
-      );
-    else d.muted('Keine Ansprechpartner hinterlegt (Kunde → Kontakte bzw. Objekt → Objektordner).');
+    d.table(contactCols, rows, { size: 7.8 });
   }
 
+  const showPeople = parts.has('personal') || parts.has('nachweise');
+  const pCols = [
+    { label: 'Name', width: 150 },
+    { label: 'Funktion', width: 95 },
+    ...(parts.has('personal')
+      ? [
+          { label: 'Schlüssel / Transponder', width: 160 },
+          { label: 'Erste Einweisung', width: 75 },
+        ]
+      : []),
+    ...(parts.has('nachweise')
+      ? [
+          { label: 'Schweigepflicht', width: 80 },
+          { label: 'Unterweisung', width: 80 },
+          { label: 'Führungszeugnis', width: 85 },
+        ]
+      : []),
+  ];
+  // letzte Spalte füllt die Breite
+  const used = pCols.reduce((a, c) => a + c.width, 0);
+  pCols[pCols.length - 1]!.width = Math.max(70, pCols[pCols.length - 1]!.width + W - used);
+
+  d.section('Objekte und eingesetzte Mitarbeitende');
   for (const s of sites) {
-    d.newPage();
-    d.title(`${s.name}`, s.site_no);
+    d.ensure(110);
+    d.heading(`${s.site_no} · ${s.name}`, 10);
+    d.y += 13;
     d.muted(s.address || 'Adresse nicht hinterlegt');
-    if (parts.has('personal')) {
-      d.section('Eingesetzte Mitarbeitende und Einsatzorte');
-      if (s.people.length)
-        d.table(
-          [
-            { label: 'Name', width: 115 },
-            { label: 'Funktion', width: 80 },
-            { label: 'Einsatztage / -zeiten', width: 112 },
-            { label: 'Erster Einsatz', width: 72 },
-            { label: 'Schlüssel / Transponder', width: W - 379 },
-          ],
-          s.people.map((p) => [p.name, p.role, p.times, d8(p.since), p.keys.join('\n') || '–']),
-          { size: 7.8 },
-        );
-      else d.muted('Derzeit keine Einsätze geplant.');
-      d.muted(
-        'Erster Einsatz = erster Tag laut Einsatzplanung; die Einweisung vor Ort erfolgt durch die Objektleitung vor bzw. am ersten Einsatz im Objekt.',
-      );
-    }
-    if (parts.has('nachweise') && s.people.length) {
-      d.section('Nachweise');
-      d.table(
-        [
-          { label: 'Name', width: 125 },
-          { label: 'Schweigepflicht am', width: 125 },
-          { label: 'Unterweisung am', width: 125 },
-          { label: 'Führungszeugnis', width: W - 375 },
-        ],
-        s.people.map((p) => [
-          p.name,
-          d8(p.confidential),
-          d8(p.instruction),
-          p.certificate ? `liegt vor (seit ${formatDateDe(p.certificate)})` : 'nicht hinterlegt',
-        ]),
-        { size: 7.8 },
-      );
-      d.muted(
-        'Schweigepflicht/Unterweisung: digital unterschrieben in der App bzw. als Scan in der Personalakte. Führungszeugnisse werden nur mit Einwilligung der Person eingeholt und nicht weitergegeben.',
-      );
-    }
+    const head: { label: string; width: number }[] = [{ label: 'Objektleitung', width: 0 }];
+    const row: string[] = [contactOf(s.manager)];
     if (parts.has('vertretung')) {
-      d.section('Vertretung / Stellvertretung');
-      const lines = [
-        `Stellvertretung der Objektleitung: ${
-          s.info.bereichsleitung
-            ? [s.info.bereichsleitung, s.info.bereichsleitung_tel].filter(Boolean).join(', ')
-            : `Büro Viva-Deluxe${co?.phone ? `, ${co.phone}` : ''}`
-        }`,
-        'Bei Urlaub oder Krankheit plant die Objektleitung eine eingewiesene Vertretung ein.',
-      ];
-      d.para(lines.join('\n'), { size: 8.5 });
-      if (s.substitutes.length)
-        d.table(
-          [
-            { label: 'Datum', width: 80 },
-            { label: 'Vertretung für', width: 200 },
-            { label: 'durch', width: W - 280 },
-          ],
-          s.substitutes.map((x) => [formatDateDe(x.date), x.for, x.by]),
-          { size: 7.8 },
-        );
+      head.push({ label: 'Stellvertretung', width: 0 });
+      row.push(
+        s.info.bereichsleitung
+          ? [s.info.bereichsleitung, s.info.bereichsleitung_tel].filter(Boolean).join(' · ')
+          : `Büro Viva-Deluxe${co?.phone ? ` · ${co.phone}` : ''}`,
+      );
     }
     if (parts.has('sicherheit')) {
-      d.section('Sicherheit, Hygiene, Notfall und Zugang');
-      const i = s.info;
-      const kv: [string, string][] = [
-        ['Notruf / Feuerwehr', '112 · Polizei 110 · Giftnotruf 089 19240'],
-        ['Büro Viva-Deluxe', co?.phone ?? '–'],
-        ['Objektleitung', s.manager ? [s.manager.name, s.manager.phone].filter(Boolean).join(', ') : '–'],
-        ['Ersthelfer', i.ersthelfer || 'nicht hinterlegt'],
-        ['Nächstes Krankenhaus', i.krankenhaus || 'nicht hinterlegt'],
-        ['Sammelplatz', i.sammelplatz || 'nicht hinterlegt'],
-        ['Notausgang', i.notausgang || 'nicht hinterlegt'],
-        ['Zugang / Schlüssel', i.zugang || 'nicht hinterlegt'],
-        ['Putzraum', i.putzraum || 'nicht hinterlegt'],
-      ];
-      d.table(
-        [
-          { label: 'Angabe', width: 140 },
-          { label: '', width: W - 140 },
-        ],
-        kv.map(([k, v]) => [k, v]),
-        { size: 8 },
-      );
-      d.para(
-        [
-          '• Zutritt nur für eingewiesene, eingeplante Mitarbeitende; Schlüssel/Transponder werden quittiert ausgegeben (Schlüsselbuch) und bei Austritt zurückgenommen.',
-          '• Bereiche mit Zugangsbeschränkung nur nach Vorgabe des Auftraggebers betreten; Türen und Fenster nach der Reinigung verschließen, Alarmanlage nach Absprache.',
-          '• Hygiene: Farbsystem für Tücher (rot WC/Urinal, gelb Sanitär, blau Büro, grün Küche), Handschuhe und Hautschutz, Reinigungsmittel nur aus gekennzeichneten Originalgebinden nach Dosierplan.',
-          '• Arbeitsschutz nach Gefährdungsbeurteilung; Unterweisung vor Aufnahme der Tätigkeit und jährlich (§ 12 ArbSchG).',
-          ...(i.besonderheiten ? [`• Besonderheiten im Objekt: ${i.besonderheiten}`] : []),
-        ].join('\n'),
-        { size: 8.3 },
-      );
+      head.push({ label: 'Ersthelfer', width: 0 }, { label: 'Nächstes Krankenhaus', width: 0 });
+      row.push(s.firstAider ?? 'nicht hinterlegt', s.info.krankenhaus ?? 'nicht hinterlegt');
     }
-    if (parts.has('schulung') && s.manager?.employee_id) {
-      const { manager } = s;
+    head.forEach((h) => (h.width = Math.floor(W / head.length)));
+    d.table(head, [row], { size: 7.8 });
+    if (showPeople) {
+      if (s.people.length)
+        d.table(
+          pCols,
+          s.people.map((p) => [
+            p.name,
+            p.role,
+            ...(parts.has('personal') ? [p.keys.join('\n') || '–', d8(p.since)] : []),
+            ...(parts.has('nachweise')
+              ? [
+                  d8(p.confidential),
+                  d8(p.instruction),
+                  p.certificate ? `liegt vor (${formatDateDe(p.certificate)})` : 'nicht hinterlegt',
+                ]
+              : []),
+          ]),
+          { size: 7.8 },
+        );
+      else d.muted('Derzeit keine Mitarbeitenden eingeplant.');
+    }
+    if (parts.has('vertretung') && s.substitutes.length)
+      d.muted(
+        `Geplante Vertretungen: ${s.substitutes
+          .slice(0, 8)
+          .map((x) => `${formatDateDe(x.date)} ${x.by} für ${x.for}`)
+          .join(' · ')}${s.substitutes.length > 8 ? ` · + ${s.substitutes.length - 8} weitere` : ''}`,
+      );
+    if (parts.has('sicherheit') && s.info.besonderheiten) d.muted(`Besonderheiten: ${s.info.besonderheiten}`);
+  }
+  if (parts.has('personal'))
+    d.muted(
+      'Schlüssel/Transponder laut Schlüsselbuch (quittiert ausgegeben, bei Austritt zurückgenommen). Erste Einweisung = erster Einsatz im Objekt laut Einsatzplanung, Einweisung vor Ort durch die Objektleitung.',
+    );
+
+  if (parts.has('sicherheit')) {
+    d.ensure(80);
+    d.section('Sicherheit, Hygiene und Notfall');
+    d.para(
+      [
+        `• Notruf 112 · Polizei 110 · Giftnotruf 089 19240 · Büro Viva-Deluxe ${co?.phone ?? ''}`.trim(),
+        '• Zutritt nur für eingewiesene, eingeplante Mitarbeitende; Bereiche mit Zugangsbeschränkung nur nach Vorgabe des Auftraggebers. Türen/Fenster nach der Reinigung verschließen.',
+        '• Hygiene: Farbsystem für Tücher (rot WC/Urinal, gelb Sanitär, blau Büro, grün Küche), Handschuhe und Hautschutz, Reinigungsmittel nur aus gekennzeichneten Originalgebinden nach Dosierplan.',
+        '• Arbeitsschutz nach Gefährdungsbeurteilung; Unterweisung vor Aufnahme der Tätigkeit und jährlich (§ 12 ArbSchG).',
+      ].join('\n'),
+      { size: 8.3 },
+    );
+  }
+
+  if (parts.has('schulung')) {
+    const seen = new Set<string>();
+    const rows: string[][] = [];
+    for (const s of sites) {
+      const m = s.manager;
+      if (!m?.employee_id || seen.has(m.employee_id)) continue;
+      seen.add(m.employee_id);
       const sig = await sql<{ title: string; d: string }[]>`
         select d.title, to_char(r.signed_at at time zone 'Europe/Berlin', 'YYYY-MM-DD') as d
           from app.sign_requests r join app.sign_documents d on d.id = r.document_id
-         where r.employee_id = ${manager.employee_id} and r.status = 'unterschrieben' order by r.signed_at`;
+         where r.employee_id = ${m.employee_id} and r.status = 'unterschrieben' order by r.signed_at`;
       const fil = (
         await sql<{ name: string; d: string }[]>`
           select coalesce(l.display_name, f.original_name) as name,
                  to_char(l.linked_at at time zone 'Europe/Berlin', 'YYYY-MM-DD') as d
             from app.file_links l join app.files f on f.id = l.file_id
-           where l.entity_type = 'employee' and l.entity_id = ${manager.employee_id} and l.archived_at is null
+           where l.entity_type = 'employee' and l.entity_id = ${m.employee_id} and l.archived_at is null
              and f.status = 'complete' order by l.linked_at`
       ).filter((x) => TRAINING.test(x.name));
-      d.section(`Ausbildung und Schulungen der Objektleitung (${manager.name})`);
-      const rows = [
-        ...fil.map((x) => [
+      for (const x of fil)
+        rows.push([
+          m.name,
           x.name.replace(/\.[a-z0-9]{2,4}$/i, ''),
           'Nachweis in der Personalakte',
           formatDateDe(x.d),
-        ]),
-        ...sig.map((x) => [x.title, 'Unterweisung, unterschrieben', formatDateDe(x.d)]),
-      ];
-      if (rows.length)
-        d.table(
-          [
-            { label: 'Schulung / Nachweis', width: 260 },
-            { label: 'Art', width: 150 },
-            { label: 'Datum', width: W - 410 },
-          ],
-          rows,
-          { size: 7.8 },
-        );
-      else d.muted('Keine Schulungsnachweise hinterlegt (Personalakte der Objektleitung).');
+        ]);
+      for (const x of sig) rows.push([m.name, x.title, 'Unterweisung, unterschrieben', formatDateDe(x.d)]);
+      if (!fil.length && !sig.length) rows.push([m.name, 'keine Nachweise hinterlegt', '–', '–']);
+    }
+    if (rows.length) {
+      d.ensure(90);
+      d.section('Ausbildung und Schulungen der Objektleitung');
+      d.table(
+        [
+          { label: 'Objektleitung', width: 170 },
+          { label: 'Schulung / Nachweis', width: 300 },
+          { label: 'Art', width: 170 },
+          { label: 'Datum', width: W - 640 },
+        ],
+        rows,
+        { size: 7.8 },
+      );
     }
   }
 
   if (parts.has('gbu') && sites.length) {
     const { riskFacts, drawRiskAssessment } = await import('./risk-assessment.js');
-    await d.loadLogo();
     for (const s of sites) {
       d.newPage({ landscape: true });
       drawRiskAssessment(d, await folderFacts(sql, s.id), await riskFacts(sql, s.id), today);
     }
-    d.landscape = false;
   }
   const safe = (t: string) => t.replace(/[^\w.-]+/g, '_');
   return { pdf: await d.save(), name: `Objekt-Personaluebersicht_${safe(cu.customer_no)}_${today}.pdf` };

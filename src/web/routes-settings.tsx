@@ -254,6 +254,7 @@ const companyInput = z.object({
   register_court: z.string().trim().nullable(),
   register_number: z.string().trim().nullable(),
   managing_director: z.string().trim().nullable(),
+  managing_director_email: z.email('E-Mail der Geschäftsführung ungültig').nullable(),
   phone: z.string().trim().nullable(),
   fax: z.string().trim().nullable(),
   email: z.email('E-Mail ungültig'),
@@ -701,6 +702,7 @@ export function registerSettingsRoutes({ app, deps, page, back }: Ctx) {
             {field('register_court', 'Registergericht')}
             {field('register_number', 'Handelsregister-Nr.')}
             {field('managing_director', 'Geschäftsführung')}
+            {field('managing_director_email', 'E-Mail Geschäftsführung')}
           </div>
           <div class="group-title">Kontakt</div>
           <div class="grid">
@@ -788,6 +790,7 @@ export function registerSettingsRoutes({ app, deps, page, back }: Ctx) {
       register_court: opt('register_court'),
       register_number: opt('register_number'),
       managing_director: opt('managing_director'),
+      managing_director_email: opt('managing_director_email'),
       phone: opt('phone'),
       fax: opt('fax'),
       email: opt('email') ?? '',

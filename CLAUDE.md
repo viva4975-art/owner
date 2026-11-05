@@ -4943,3 +4943,16 @@ Testadresse.
   erster Einsatztag laut Plan mit Hinweis (ein eigenes Datum/Ort der Einweisung gibt es in der App nicht).
   **Datenschutz:** an den Kunden nur Name, Funktion, Einsatz – keine Anschrift, Geburtsdatum, private Telefonnummer;
   Führungszeugnisse nie weitergeben (nur mit Einwilligung einholen, § 32 BDSG / Art. 6, 10 DSGVO).
+- 2026-11-05: **Kundenübersicht kompakt im Querformat** (Ahmed: „kürzer, quer, nicht zu viele Infos, Tage/Zeiten braucht man
+  nicht, Name und Objektleitung“; „Kontaktdaten der Objektleitung“; „Geschäftsführung-Mail a.chomontek“): A4 quer, keine
+  Seite je Objekt mehr – oben eine Ansprechpartner-Tabelle (Geschäftsführung mit eigener E-Mail, Büro, Objektleitungen
+  mit Telefon + E-Mail, Bereichsleitung, Kontakte/Hausmeister des Kunden), dann je Objekt eine Zeile Objektleitung
+  (Name · Telefon · E-Mail) · Stellvertretung · Ersthelfer · nächstes Krankenhaus und die Tabelle Name · Funktion ·
+  Schlüssel/Transponder (aus dem Schlüsselbuch) · erste Einweisung · Schweigepflicht · Unterweisung · Führungszeugnis;
+  Einsatztage/-zeiten entfallen. Sicherheits-/Hygieneregeln einmal am Ende. **Nächstes Krankenhaus** wird beim Erstellen
+  automatisch aus Adresse/PLZ ermittelt und am Objekt gespeichert, wenn es fehlt (`fillHospital`). Neues Feld
+  **E-Mail Geschäftsführung** unter Einstellungen → Firmendaten (`company.managing_director_email`, Migration
+  `20270119000001`, vorbelegt a.chomontek@viva-deluxe-reinigung.de).
+  **Objektordner-Angaben:** Sammelplatz, Notausgang, Lage Putzraum entfallen (Formular und alle Ausdrucke; alte Werte
+  werden nicht mehr gedruckt). **Ersthelfer:** Häkchen „Objektleitung ist Ersthelfer“ (`folder_info.ersthelfer_ol`) –
+  dann steht die Objektleitung mit Telefon als Ersthelfer (zusätzlich eingetragene dahinter), `FolderFacts.firstAider`.

@@ -33,11 +33,11 @@ describe.skipIf(!ok)('Objekt- und Personalübersicht für Kunden', () => {
               values ('00000000-0000-4000-8000-00000000d004', 'S-2990101-01', ${DEMO.siteSchool}, 'Transponder Haupteingang', ${emp}, '2026-02-01')`;
       await sql`insert into app.contacts (customer_id, first_name, last_name, position, email)
               values (${DEMO.authority}, 'Karl', 'Kunde', 'Hausverwaltung', 'karl@example.org')`;
-      const r = await buildCustomerDossierPdf(deps, DEMO.authority);
+      const r = await buildCustomerDossierPdf(deps, DEMO.authority, { findHospital: false });
       const doc = await getDocumentProxy(r.pdf.slice());
       const all = (await extractText(doc, { mergePages: true })).text.replace(/\s+/g, ' ');
       expect(all).toContain('Anna Beispiel');
-      expect(all).toContain('Mo, Mi 17:00–21:30');
+      expect(all).not.toContain('17:00');
       expect(all).toContain('01.02.2026');
       expect(all).toContain('S-2990101-01');
       expect(all).toContain('Karl Kunde');

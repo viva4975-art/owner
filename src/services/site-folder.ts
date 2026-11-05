@@ -35,6 +35,8 @@ export interface FolderInfo {
   bereichsleitung?: string;
   bereichsleitung_tel?: string;
   ersthelfer?: string;
+  /** „1“ = die Objektleitung ist Ersthelfer (Ahmed 05.11.2026) */
+  ersthelfer_ol?: string;
   ansprechpartner?: string;
   ansprechpartner_tel?: string;
   hausmeister?: string;
@@ -92,32 +94,11 @@ export const FOLDER_QUESTIONS: {
     group: 'Notfall- und Meldeplan',
   },
   {
-    key: 'sammelplatz',
-    label: 'Sammelplatz (Evakuierung)',
-    hint: 'z. B. Parkplatz vor dem Haupteingang',
-    required: true,
-    group: 'Notfall- und Meldeplan',
-  },
-  {
-    key: 'notausgang',
-    label: 'Nächster Notausgang',
-    hint: 'z. B. Treppenhaus Nord',
-    required: true,
-    group: 'Notfall- und Meldeplan',
-  },
-  {
     key: 'abfall_platz',
     label: 'Müll-Sammelplatz im Objekt',
     hint: 'z. B. Hof, Tonnenhäuschen',
     required: true,
     group: 'Abfall',
-  },
-  {
-    key: 'putzraum',
-    label: 'Lage Putzraum',
-    hint: 'z. B. UG, Raum 0.12',
-    required: false,
-    group: 'Sonstiges',
   },
   {
     key: 'zugang',
@@ -196,6 +177,8 @@ export interface FolderFacts {
   customer: { name: string; customer_no: string };
   manager: { name: string; phone: string | null; email: string | null } | null;
   info: FolderInfo;
+  /** Ersthelfer: eingetragen bzw. Objektleitung (mit Telefon), sonst null */
+  firstAider: string | null;
   defaults: FolderDefaults;
   contact: { name: string; phone: string | null } | null;
   rooms: number;
@@ -238,7 +221,13 @@ export async function folderFacts(sql: Sql, siteId: string): Promise<FolderFacts
            (select count(*) from app.shift_plans where site_id = ${siteId}
               and (valid_until is null or valid_until >= current_date))::int as plans,
            (select count(*) from app.keys where site_id = ${siteId} and deleted_at is null)::int as keys`;
-  const info = s.folder_info ?? {};
+  // Sammelplatz, Notausgang, Putzraum nicht mehr gebraucht (Ahmed 05.11.2026): alte Werte werden nirgends mehr gedruckt
+  const { sammelplatz: _a, notausgang: _b, putzraum: _c, ...rest } = s.folder_info ?? {};
+  const info: FolderInfo = rest;
+  const firstAider =
+    info.ersthelfer_ol === '1' && mgr
+      ? [mgr.name, mgr.phone].filter(Boolean).join(', ') + (info.ersthelfer ? `; ${info.ersthelfer}` : '')
+      : info.ersthelfer || null;
   const defaults = await getFolderDefaults(sql);
   const missing: FolderFacts['missing'] = [];
   if (!s.street || !s.city) missing.push({ label: 'Objektadresse', href: `/objekte/${siteId}/bearbeiten` });
@@ -277,6 +266,7 @@ export async function folderFacts(sql: Sql, siteId: string): Promise<FolderFacts
     customer: { name: s.customer_name, customer_no: s.customer_no },
     manager: mgr ?? null,
     info,
+    firstAider,
     defaults,
     contact: contact?.name ? contact : null,
     rooms: n!.rooms,
@@ -294,6 +284,7 @@ export async function saveFolderInfo(sql: Sql, siteId: string, info: FolderInfo,
     const v = info[q.key]?.trim();
     if (v) clean[q.key] = v.slice(0, q.key === 'besonderheiten' ? 2000 : 500);
   }
+  if (info.ersthelfer_ol === '1') clean.ersthelfer_ol = '1';
   await sql`update app.sites set folder_info = ${sql.json(clean as never)} where id = ${siteId}`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id) values (${actor}, 'folder_info', 'site', ${siteId})`;
 }
@@ -356,14 +347,12 @@ export function folderValues(f: FolderFacts): Record<string, string> {
   const i = f.info;
   if (i.bereichsleitung) v.bereichsleitung = i.bereichsleitung;
   if (i.bereichsleitung_tel) v['bereichsleitung|tel'] = i.bereichsleitung_tel;
-  if (i.ersthelfer) v.ersthelfer = i.ersthelfer;
+  if (f.firstAider) v.ersthelfer = f.firstAider;
   const ap = i.ansprechpartner || f.contact?.name;
   const apTel = i.ansprechpartner_tel || f.contact?.phone;
   if (ap) v.ansprechpartner = ap;
   if (apTel) v['ansprechpartner|tel'] = apTel;
-  if (i.putzraum) v.putzraum = i.putzraum;
-  for (const k of ['hausmeister', 'krankenhaus', 'sammelplatz', 'notausgang', 'abfall_platz'] as const)
-    if (i[k]) v[k] = i[k];
+  for (const k of ['hausmeister', 'krankenhaus', 'abfall_platz'] as const) if (i[k]) v[k] = i[k];
   // Stand des Ordners = heute (er wird aus den aktuellen Daten erzeugt)
   v['letzte überprüfung'] = today;
   const d = f.defaults;
@@ -722,15 +711,12 @@ export async function buildFolderZip(deps: Deps, siteId: string) {
       'Ansprechpartner Kunde',
       [values.ansprechpartner, values['ansprechpartner|tel']].filter(Boolean).join(', ') || '– fehlt –',
     ],
-    ['Ersthelfer im Objekt', f.info.ersthelfer ?? '– fehlt –'],
-    ['Lage Putzraum', f.info.putzraum ?? ''],
+    ['Ersthelfer im Objekt', f.firstAider ?? '– fehlt –'],
     ['Zugang / Schließung', f.info.zugang ?? ''],
     ['Reinigungsmittel', f.info.produkte ?? ''],
     ['Besonderheiten', f.info.besonderheiten ?? ''],
     ['Hausmeister / Haustechnik', f.info.hausmeister ?? ''],
     ['Nächstes Krankenhaus', f.info.krankenhaus ?? ''],
-    ['Sammelplatz', f.info.sammelplatz ?? ''],
-    ['Notausgang', f.info.notausgang ?? ''],
     ['Müll-Sammelplatz', f.info.abfall_platz ?? ''],
     ['Schlüssel im Schlüsselbuch', String(f.keys)],
     ['Notruf / Polizei / Giftnotruf', '112 / 110 / 089 19240'],
@@ -912,8 +898,7 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
       { k: 'Objektleitung', v: mgr, strong: true },
       { k: 'Bereichsleitung', v: bl },
       { k: 'Ansprechpartner Kunde', v: ap },
-      ...(f.info.ersthelfer ? [{ k: 'Ersthelfer im Objekt', v: f.info.ersthelfer }] : []),
-      { k: 'Lage Putzraum', v: f.info.putzraum ?? '–' },
+      ...(f.firstAider ? [{ k: 'Ersthelfer im Objekt', v: f.firstAider }] : []),
     ]);
     d.tiles([
       { label: 'NOTRUF / FEUERWEHR', value: '112', accent: true },
@@ -940,8 +925,7 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
     { k: 'Objektleitung', v: mgr },
     { k: 'Bereichsleitung', v: bl },
     { k: 'Ansprechpartner Kunde', v: ap },
-    { k: 'Ersthelfer im Objekt', v: f.info.ersthelfer ?? '–' },
-    { k: 'Lage Putzraum', v: f.info.putzraum ?? '–' },
+    { k: 'Ersthelfer im Objekt', v: f.firstAider ?? '–' },
     { k: 'Zugang / Schließung', v: f.info.zugang ?? '–' },
     { k: 'Reinigungsmittel', v: f.info.produkte ?? '–' },
     { k: 'Schlüssel', v: String(f.keys) },
@@ -950,8 +934,6 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
     [
       ['Hausmeister / Haustechnik', f.info.hausmeister],
       ['Nächstes Krankenhaus', f.info.krankenhaus],
-      ['Sammelplatz', f.info.sammelplatz],
-      ['Nächster Notausgang', f.info.notausgang],
       ['Müll-Sammelplatz', f.info.abfall_platz],
     ] as [string, string | undefined][]
   )
@@ -1265,10 +1247,8 @@ function posterContext(f: FolderFacts, values: Record<string, string>, date: str
       value: join(values.bereichsleitung, values['bereichsleitung|tel']),
       icon: 'user',
     },
-    { label: 'Ersthelfer im Objekt', value: f.info.ersthelfer ?? '', icon: 'cross' },
+    { label: 'Ersthelfer im Objekt', value: f.firstAider ?? '', icon: 'cross' },
     { label: 'Nächstes Krankenhaus', value: f.info.krankenhaus ?? '', icon: 'house' },
-    { label: 'Sammelplatz', value: f.info.sammelplatz ?? '', icon: 'people' },
-    { label: 'Nächster Notausgang', value: f.info.notausgang ?? '', icon: 'exit' },
     { label: 'Hausmeister / Haustechnik', value: f.info.hausmeister ?? '', icon: 'key' },
     {
       label: 'Ansprechpartner Kunde',
@@ -1288,7 +1268,6 @@ function posterContext(f: FolderFacts, values: Record<string, string>, date: str
       adresse: addr,
       objektleitung: values.objektleitung,
       objektleitung_tel: values['objektleitung|tel'],
-      putzraum: f.info.putzraum,
       abfall_platz: f.info.abfall_platz,
       hautschutz: f.defaults.hautschutz,
       hautreinigung: f.defaults.hautreinigung,

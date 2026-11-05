@@ -233,6 +233,19 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                         </button>
                       )}
                       {q.key === 'ersthelfer' && (
+                        <label class="small" style="display:flex;gap:6px;align-items:center;font-weight:400">
+                          <input
+                            type="checkbox"
+                            name="ersthelfer_ol"
+                            value="1"
+                            checked={f.info.ersthelfer_ol === '1'}
+                          />
+                          Objektleitung ist Ersthelfer
+                          {f.manager ? ` (${f.manager.name})` : ' (keine Objektleitung zugeordnet)'} – oben
+                          dann nur weitere Ersthelfer eintragen
+                        </label>
+                      )}
+                      {q.key === 'ersthelfer' && (
                         <div class="small mut">
                           {anz(workers, 'Reinigungskraft', 'Reinigungskräfte')} eingeplant. Ein Ersthelfer ist
                           Pflicht, sobald 2 oder mehr Beschäftigte gleichzeitig arbeiten (bis 20 Personen 1,
@@ -265,6 +278,7 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
     const b = await c.req.parseBody();
     const info: FolderInfo = {};
     for (const q of FOLDER_QUESTIONS) if (typeof b[q.key] === 'string') info[q.key] = b[q.key] as string;
+    if (b.ersthelfer_ol === '1') info.ersthelfer_ol = '1';
     await saveFolderInfo(sql, id, info, c.get('actor'));
     return back(c, `/objekte/${id}/objektordner`, { ok: 'Angaben gespeichert.' });
   });

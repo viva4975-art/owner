@@ -43,7 +43,15 @@ export const INCOMING_STATUS: Record<IncomingStatus, string> = {
   bezahlt: 'bezahlt',
   abgelehnt: 'abgelehnt',
 };
-export type CostCategory = 'material' | 'nachunternehmer' | 'geraete' | 'fahrzeuge' | 'miete' | 'sonstiges';
+export type CostCategory =
+  | 'material'
+  | 'nachunternehmer'
+  | 'geraete'
+  | 'fahrzeuge'
+  | 'miete'
+  | 'sonstiges'
+  | 'umsatzsteuer'
+  | 'koerperschaftsteuer';
 export const COST_CATEGORY: Record<CostCategory, string> = {
   material: 'Material / Reinigungsmittel',
   nachunternehmer: 'Nachunternehmer',
@@ -51,7 +59,13 @@ export const COST_CATEGORY: Record<CostCategory, string> = {
   fahrzeuge: 'Fahrzeuge',
   miete: 'Miete / Büro',
   sonstiges: 'Sonstiges',
+  umsatzsteuer: 'Umsatzsteuer (Zahlung ans Finanzamt)',
+  koerperschaftsteuer: 'Körperschaftsteuer (Zahlung ans Finanzamt)',
 };
+/** Steuerzahlungen als „Eingangsrechnung“ (Ahmed 05.11.: zur Erinnerung in der Zahlungsliste): keine Kosten in
+ *  Nachkalkulation/Kostenstellen, nicht im DATEV-Export (Buchung über den Kontoauszug), ohne USt. */
+export const TAX_CATEGORIES: readonly string[] = ['umsatzsteuer', 'koerperschaftsteuer'];
+export const isTaxCategory = (c: string | null | undefined) => !!c && TAX_CATEGORIES.includes(c);
 
 const eur = (c: bigint) => formatEuro(c as Cents);
 

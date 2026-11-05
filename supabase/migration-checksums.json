@@ -228,5 +228,6 @@
  "20270116000003_stundennachweis_nu_tage.sql": "4edea0d21832a452bc3aa93d62bb0b382b4e6f06e6d3c0aba16a8a059eb27839",
  "20270117000001_lohnabrechnung_versand.sql": "c3d5a5a60485759ee8758d0207eaf38e647687ee7ed9cc2a933eaf0d1fa555ba",
  "20270117000002_lohnabrechnung_ausblenden.sql": "e8407ae51d598748131b7ebe6a0cedc11e4b88d2c8c4c89e39af1b242ffa5f69",
- "20270118000001_kostenart_steuern.sql": "a00f79c57139939eee0c23f682cbdf06bec0a3fc8574aa607b988ca3707dff6e"
+ "20270118000001_kostenart_steuern.sql": "a00f79c57139939eee0c23f682cbdf06bec0a3fc8574aa607b988ca3707dff6e",
+ "20270118000002_eingangsrechnung_steuern.sql": "07e9edbdc44b8e5e2ef789fc3651cfaa4b66bffb74f81c95a03bcbd01f5f4a4c"
 }

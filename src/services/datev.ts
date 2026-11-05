@@ -307,6 +307,12 @@ export async function collectBookings(
         from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
        where i.status in ('freigegeben', 'bezahlt') and i.invoice_date between ${f.from} and ${f.to} order by i.invoice_date`;
     for (const i of inc) {
+      if (i.category === 'umsatzsteuer' || i.category === 'koerperschaftsteuer') {
+        warnings.push(
+          `${i.name} ${i.invoice_no}: Steuerzahlung (${i.category === 'umsatzsteuer' ? 'Umsatzsteuer' : 'Körperschaftsteuer'}) nicht exportiert – Buchung über den Kontoauszug.`,
+        );
+        continue;
+      }
       const contra =
         i.category === 'material'
           ? s.expense_material

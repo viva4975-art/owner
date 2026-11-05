@@ -4891,3 +4891,12 @@ Testadresse.
   Prüfregel). Automatische Erkennung über den Verwendungszweck (USt/USt-VA/Umsatzsteuer bzw. KSt/Körperschaftsteuer) vor
   dem Empfänger („Finanzamt“ allein bleibt „Steuern“). Ohne Kostenstelle-Vorschlag (keine Kosten in der Nachkalkulation:
   USt ist durchlaufend, KSt Steuer vom Ertrag). Bereits zugeordnete Umsätze bleiben unverändert.
+- 2026-11-05: **Umsatz-/Körperschaftsteuer als Eingangsrechnung** (Ahmed: „damit ich nicht vergesse, am 13. zu zahlen“):
+  Kostenart der Eingangsrechnung um „Umsatzsteuer“ und „Körperschaftsteuer (Zahlung ans Finanzamt)“ erweitert
+  (`app.cost_category`, Migration `20270118000002`, `TAX_CATEGORIES` in `purchasing.ts`). Erfassen mit Lieferant
+  „Finanzamt“, Betrag als Netto, fällig am 13. → steht nach Freigabe in der Zahlungsliste wie jede Rechnung. Dabei:
+  USt wird nicht vorbelegt/immer 0, kein § 13b, kein Objekt, keine Kostenstellen-Verteilung (zählt nicht in
+  Nachkalkulation/Kostenstellen, nicht unter „nicht zugeordnet“), keine Rückfrage „USt 0 €“ beim Freigeben, **nicht im
+  DATEV-Export** (Hinweis: Buchung über den Kontoauszug). **Steuerlich:** USt-Voranmeldung ist am 10. fällig; die
+  3 Tage Zahlungsschonfrist (§ 240 Abs. 3 AO) gelten nur bei Überweisung – Gutschrift beim Finanzamt spätestens am 13.,
+  sonst Säumniszuschlag; bei Lastschrift (SEPA-Mandat) zieht das Finanzamt selbst ein.

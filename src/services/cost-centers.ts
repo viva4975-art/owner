@@ -155,6 +155,11 @@ export async function syncAutoAllocation(tx: Tx, invoiceId: string, actor: strin
     await tx`select 1 from app.cost_allocations where incoming_invoice_id = ${invoiceId} and not auto limit 1`;
   if (own.length) return;
   await tx`delete from app.cost_allocations where incoming_invoice_id = ${invoiceId} and auto`;
+  // Steuerzahlungen (Umsatz-/Körperschaftsteuer) sind keine Kosten – nicht verteilen
+  const [taxRow] = await tx<
+    { c: string }[]
+  >`select category::text as c from app.incoming_invoices where id = ${invoiceId}`;
+  if (taxRow && ['umsatzsteuer', 'koerperschaftsteuer'].includes(taxRow.c)) return;
   // Nachunternehmer-Bestellungen (Ahmed 20.10.: „bei mehreren Objekten automatisch“): Netto auf die Zeilen verteilen
   // (eigene Beträge, Rest nach Preis der Bestellung), Sammelbestellungen weiter auf ihre Objekte (Fläche/Betrag/Umsatz).
   const links = await tx<
@@ -311,6 +316,7 @@ export async function costCenterReport(sql: Sql, from: string, to: string) {
            coalesce((select sum(a.net_cents) from app.cost_allocations a where a.incoming_invoice_id = i.id), 0)::bigint as allocated
       from app.incoming_invoices i join app.suppliers s on s.id = i.supplier_id
      where i.status in ('erfasst', 'freigegeben', 'bezahlt')
+       and i.category::text not in ('umsatzsteuer', 'koerperschaftsteuer')
        and date_trunc('month', coalesce(i.service_month, i.invoice_date))::date between ${`${from}-01`}::date and ${`${to}-01`}::date
        and i.net_cents <> coalesce((select sum(a.net_cents) from app.cost_allocations a where a.incoming_invoice_id = i.id), 0)
      order by i.invoice_date desc`;

@@ -43,6 +43,7 @@ import {
   type IncomingStatus,
   type PoStatus,
   COST_CATEGORY,
+  isTaxCategory,
   INCOMING_STATUS,
   PO_STATUS,
   decideIncoming,
@@ -2494,7 +2495,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
                   onsubmit={(() => {
                     const w: string[] = [];
                     if (files.length === 0) w.push('Es ist kein Beleg hochgeladen.');
-                    if (Number(i.vat_cents) === 0 && !i.reverse_charge)
+                    if (Number(i.vat_cents) === 0 && !i.reverse_charge && !isTaxCategory(i.category))
                       w.push('USt ist 0 € und § 13b ist nicht angehakt.');
                     return w.length
                       ? `return confirm(${JSON.stringify(w.join(' ') + ' Trotzdem freigeben?')})`
@@ -3000,6 +3001,10 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                       </option>
                     ))}
                   </select>
+                  <small class="mut">
+                    Umsatz-/Körperschaftsteuer: Lieferant „Finanzamt“, Betrag als Netto, USt 0 – erscheint in
+                    der Zahlungsliste, zählt nicht als Kosten.
+                  </small>
                 </div>
                 <div id="site-box" hidden={linkRows.length > 0}>
                   <label for="site_id">Objekt (für Nachkalkulation)</label>
@@ -3115,7 +3120,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
           </form>
           <script
             dangerouslySetInnerHTML={{
-              __html: `(function(){var n=document.getElementById('net'),v=document.getElementById('vat'),r=document.getElementById('reverse_charge'),o=document.getElementById('gross-out');if(!n||!v)return;function p(x){x=(x||'').trim().replace(/\\./g,'').replace(',','.');var f=Number(x);return x===''||isNaN(f)?null:Math.round(f*100);}function fm(c){return (c/100).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});}function upd(){var a=p(n.value),b=p(v.value);o.textContent=a==null?'':'Brutto '+fm(a+(b||0))+' €';}n.addEventListener('change',function(){var a=p(n.value);if(a!=null&&v.value.trim()===''&&!(r&&r.checked)){v.value=fm(Math.round(a*19/100));}upd();});v.addEventListener('input',upd);n.addEventListener('input',upd);if(r)r.addEventListener('change',function(){if(r.checked)v.value='0,00';upd();});upd();})();`,
+              __html: `(function(){var n=document.getElementById('net'),v=document.getElementById('vat'),r=document.getElementById('reverse_charge'),o=document.getElementById('gross-out');if(!n||!v)return;function p(x){x=(x||'').trim().replace(/\\./g,'').replace(',','.');var f=Number(x);return x===''||isNaN(f)?null:Math.round(f*100);}function fm(c){return (c/100).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});}function upd(){var a=p(n.value),b=p(v.value);o.textContent=a==null?'':'Brutto '+fm(a+(b||0))+' €';}n.addEventListener('change',function(){var a=p(n.value);var cg=document.getElementById('category');var tx=cg&&/^(umsatzsteuer|koerperschaftsteuer)$/.test(cg.value);if(a!=null&&v.value.trim()===''&&!(r&&r.checked)&&!tx){v.value=fm(Math.round(a*19/100));}upd();});v.addEventListener('input',upd);n.addEventListener('input',upd);if(r)r.addEventListener('change',function(){if(r.checked)v.value='0,00';upd();});var cg2=document.getElementById('category');if(cg2)cg2.addEventListener('change',function(){if(/^(umsatzsteuer|koerperschaftsteuer)$/.test(cg2.value)){v.value='0,00';if(r)r.checked=false;}upd();});upd();})();`,
             }}
           />
           <div class="card">
@@ -3354,6 +3359,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     if (sk && (!Number.isFinite(bp) || bp! <= 0 || bp! > 1000)) throw new BusinessError('Skonto % ungültig');
     const cat = (one('category') ?? 'sonstiges') as CostCategory;
     if (!(cat in COST_CATEGORY)) throw new BusinessError('Kostenart ungültig');
+    const tax = isTaxCategory(cat);
     await saveIncoming(
       sql,
       id,
@@ -3364,10 +3370,10 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         dueDate: one('due_date'),
         serviceMonth: isMonth(one('service_month')) ? one('service_month') : null,
         net: money(one('net'), 'Netto'),
-        vat: one('vat') ? money(one('vat'), 'USt') : (0n as Cents),
-        reverseCharge: b.reverse_charge === 'on',
+        vat: !tax && one('vat') ? money(one('vat'), 'USt') : (0n as Cents),
+        reverseCharge: !tax && b.reverse_charge === 'on',
         category: cat,
-        siteId: one('site_id'),
+        siteId: tax ? null : one('site_id'),
         subcontractId: null,
         links,
         purchaseOrderId: one('purchase_order_id'),

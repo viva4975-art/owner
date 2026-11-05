@@ -4,7 +4,7 @@ import type { Sql } from '../db/client.js';
 import { type Cents, parseEuro } from '../domain/money/money.js';
 import { costCenterReport, getAllocations, saveAllocations, splitEvenly } from './cost-centers.js';
 import { SPECIAL_SITE_ID, siteCostDetails, siteCosting } from './costing.js';
-import { saveIncoming } from './purchasing.js';
+import { paymentList, saveIncoming } from './purchasing.js';
 import { DEMO } from './seed.js';
 import { saveSubcontract } from './subcontractors.js';
 import { dbAvailable, freshDatabase } from './testing.js';
@@ -159,5 +159,22 @@ describe.skipIf(!available)('Kostenstellen', () => {
     await sql`update app.service_types set special_cleaning = false where name = 'Sonderreinigung'`;
     const again = (await siteCosting(sql, '2026-07')).rows;
     expect(again.find((r) => r.site_id === DEMO.siteSchool)?.revenue).toBe(30000n);
+  });
+
+  it('Umsatzsteuer als Eingangsrechnung: Zahlungsliste ja, Kosten nein', async () => {
+    const id = randomUUID();
+    await incoming(id, {
+      category: 'umsatzsteuer',
+      reverseCharge: false,
+      siteId: DEMO.siteSchool,
+      dueDate: '2026-10-13',
+      serviceMonth: '2026-09',
+    });
+    expect(await getAllocations(sql, id)).toHaveLength(0);
+    await sql`update app.incoming_invoices set status = 'freigegeben' where id = ${id}`;
+    const list = await paymentList(sql, '2026-10-13');
+    expect(list.some((r) => r.invoice.id === id)).toBe(true);
+    const rep = await costCenterReport(sql, '2026-09', '2026-09');
+    expect(rep.unallocated.some((u) => u.id === id)).toBe(false);
   });
 });

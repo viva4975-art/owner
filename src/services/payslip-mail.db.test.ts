@@ -9,7 +9,8 @@ import type { Env } from '../config/env.js';
 import type { Sql } from '../db/client.js';
 import type { Mailer, OutgoingMail } from '../mail/mailer.js';
 import { birthPassword, encryptPdf, payslipMailStatus, sendPayslip } from './payslip-mail.js';
-import { importPayslips } from './payslips.js';
+import { importPayslips, listPayslips, monthFromName, syncPayslipsFromFiles } from './payslips.js';
+import { storeFile } from './uploads.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
 const available = await dbAvailable();
@@ -33,6 +34,16 @@ describe('Passwort und Verschlüsselung', () => {
     const doc = await getDocumentProxy(enc.slice(), { password: '050385' });
     const { text } = await extractText(doc, { mergePages: true });
     expect(text).toContain('Lohn Oktober 7701');
+  });
+});
+
+describe('Monat aus dem Dateinamen', () => {
+  it('erkennt die üblichen Schreibweisen', () => {
+    expect(monthFromName('Lohnabrechnung_2025_August_1234_Ozog_Jakub.pdf')).toBe('2025-08');
+    expect(monthFromName('Lohnabrechnung 2026-10 Oktober 2026 – Ana Eins (7701).pdf')).toBe('2026-10');
+    expect(monthFromName('Abrechnung_10.2026.pdf')).toBe('2026-10');
+    expect(monthFromName('Lohn Maerz 2026.pdf')).toBe('2026-03');
+    expect(monthFromName('Scan0001.pdf')).toBeNull();
   });
 });
 
@@ -93,5 +104,59 @@ describe.skipIf(!available)('Lohnabrechnung per E-Mail (Datenbank)', () => {
     expect((await payslipMailStatus(sql, [fa])).get(fa)?.status).toBe('gesendet');
     await expect(sendPayslip({ sql, env, mailer }, cfg, fb, 't')).rejects.toThrow(/Geburtsdatum fehlt/);
     expect(sent).toHaveLength(2);
+  });
+
+  it('nimmt Abrechnungen aus der Personalakte (Dokumente → Lohn) in die Liste', async () => {
+    const cfg = { dir, maxBytes: 5e7 };
+    const named = randomUUID();
+    const byText = randomUUID();
+    const unknown = randomUUID();
+    await storeFile(
+      sql,
+      cfg,
+      {
+        id: named,
+        name: 'Lohnabrechnung_2026_November_7701_Eins_Ana.pdf',
+        type: 'application/pdf',
+        data: await pdf('Pers.-Nr. 7701'),
+        link: { type: 'employee', id: a },
+        category: 'Lohnabrechnung',
+      },
+      't',
+    );
+    await storeFile(
+      sql,
+      cfg,
+      {
+        id: byText,
+        name: 'Scan1.pdf',
+        type: 'application/pdf',
+        data: await pdf('Abrechnungsmonat: November 2026'),
+        link: { type: 'employee', id: b },
+        category: 'Lohnabrechnung',
+      },
+      't',
+    );
+    await storeFile(
+      sql,
+      cfg,
+      {
+        id: unknown,
+        name: 'Scan2.pdf',
+        type: 'application/pdf',
+        data: await pdf('ohne Monat'),
+        link: { type: 'employee', id: b },
+        category: 'Lohnabrechnung',
+      },
+      't',
+    );
+    const r = await syncPayslipsFromFiles(sql, cfg);
+    expect(r.added).toBe(2);
+    expect(r.unknown.map((u) => u.file_id)).toEqual([unknown]);
+    const list = await listPayslips(sql, { month: '2026-11' });
+    expect(list.map((x) => x.file_id).sort()).toEqual([named, byText].sort());
+    expect((await syncPayslipsFromFiles(sql, cfg)).added).toBe(0);
+    await sendPayslip({ sql, env, mailer }, cfg, named, 't');
+    expect(sent.at(-1)!.subject).toBe('Ihre Lohnabrechnung November 2026');
   });
 });

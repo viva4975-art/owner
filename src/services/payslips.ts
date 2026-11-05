@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { PDFDocument } from '@cantoo/pdf-lib';
 import { unzipSync } from 'fflate';
 import { extractText, getDocumentProxy } from 'unpdf';
 import type { Sql } from '../db/client.js';
 import { BusinessError } from './errors.js';
-import { storeFile, type UploadConfig } from './uploads.js';
+import { filePath, storeFile, type FileRow, type UploadConfig } from './uploads.js';
 
 /*
  * Lohnabrechnungen (Ahmed 08.10.: „jede einzeln einzufügen wäre zu kompliziert – automatisch aus einer ZIP?“):
@@ -258,4 +259,74 @@ export async function releasePayslips(sql: Sql, month: string, actor: string) {
   await sql`insert into app.audit_log (actor, action, entity, details)
             values (${actor}, 'payslip_release', 'payslips', ${sql.json({ month, count: r.length })})`;
   return r.length;
+}
+
+/**
+ * Abrechnungsmonat aus einem Dateinamen: Lexware („Lohnabrechnung_2025_August_1234_…“), unser Ablagename
+ * („Lohnabrechnung 2025-08 …“), „2025-08“/„2025_08“, „08-2025“/„08.2025“ oder „August 2025“.
+ */
+export function monthFromName(name: string): string | null {
+  const lex = lexwareName(name);
+  if (lex) return lex.month;
+  const base = (name.split('/').pop() ?? name).replace(/\.[a-z0-9]+$/i, '');
+  const iso = /(?:^|\D)(20\d\d)[-_. ](0[1-9]|1[0-2])(?:\D|$)/.exec(base);
+  if (iso) return `${iso[1]}-${iso[2]}`;
+  const rev = /(?:^|\D)(0?[1-9]|1[0-2])[-_./](20\d\d)(?:\D|$)/.exec(base);
+  if (rev) return `${rev[2]}-${rev[1]!.padStart(2, '0')}`;
+  const named = new RegExp(`(${MONTHS_DE.join('|')}|maerz)[\\s_-]*(20\\d\\d)`, 'i').exec(base);
+  if (named) {
+    const w = named[1]!.toLowerCase() === 'maerz' ? 'märz' : named[1]!.toLowerCase();
+    return `${named[2]}-${String(MONTHS_DE.indexOf(w) + 1).padStart(2, '0')}`;
+  }
+  return null;
+}
+
+/** Dateien ohne erkennbaren Monat nicht bei jedem Aufruf neu lesen */
+const noMonth = new Set<string>();
+
+/**
+ * Lohnabrechnungen aus den Personalakten (Dokumente → Lohn) in die Liste übernehmen – auch solche, die direkt beim
+ * Mitarbeiter hochgeladen wurden. Monat aus dem Dateinamen, sonst aus dem Text der ersten Seite. Nur Verknüpfungen,
+ * die nicht im Archiv liegen; nichts wird freigegeben oder gesendet. Gibt die Dateien ohne erkennbaren Monat zurück.
+ */
+export async function syncPayslipsFromFiles(
+  sql: Sql,
+  cfg: UploadConfig,
+): Promise<{ added: number; unknown: { file_id: string; employee_id: string; name: string }[] }> {
+  const rows = await sql<
+    { file_id: string; employee_id: string; name: string; storage_path: string; content_type: string }[]
+  >`
+    select l.file_id, l.entity_id as employee_id, coalesce(l.display_name, f.original_name) as name,
+           f.storage_path, f.content_type
+      from app.file_links l join app.files f on f.id = l.file_id
+      join app.employees e on e.id = l.entity_id
+     where l.entity_type = 'employee' and l.category = 'Lohnabrechnung' and l.archived_at is null
+       and f.status = 'complete'
+       and (f.content_type = 'application/pdf' or f.original_name ~* '\\.pdf$')
+       and not exists (select 1 from app.payslips p where p.file_id = l.file_id)`;
+  let added = 0;
+  const unknown: { file_id: string; employee_id: string; name: string }[] = [];
+  for (const r of rows) {
+    let month = monthFromName(r.name);
+    if (!month && !noMonth.has(r.file_id)) {
+      try {
+        const [first] = await pageTexts(
+          new Uint8Array(await readFile(filePath(cfg, r as unknown as FileRow))),
+        );
+        month = first ? monthFromText(first) : null;
+      } catch {
+        month = null;
+      }
+      if (!month) noMonth.add(r.file_id);
+    }
+    if (!month) {
+      unknown.push({ file_id: r.file_id, employee_id: r.employee_id, name: r.name });
+      continue;
+    }
+    const ins = await sql`insert into app.payslips (file_id, employee_id, month, released, imported_by)
+                          values (${r.file_id}, ${r.employee_id}, ${month}, false, 'Personalakte')
+                          on conflict (file_id) do nothing returning file_id`;
+    added += ins.length;
+  }
+  return { added, unknown };
 }

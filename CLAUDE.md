@@ -4866,3 +4866,8 @@ Testadresse.
   **Datenschutz:** Das Geburtsdatum ist ein schwaches Passwort (Kollegen kennen es oft) – für Lohndaten nur zusammen
   mit der richtigen, persönlichen E-Mail-Adresse vertretbar; Mitarbeitende informieren, private Adressen prüfen.
   Test `payslip-mail.db.test.ts`.
+  - Nachtrag (Ahmed: „soll es sich aus den Dokumenten ziehen“): Die Liste nimmt jetzt auch Abrechnungen, die direkt in der
+    Personalakte unter Dokumente → Lohn liegen (`syncPayslipsFromFiles` beim Öffnen der Seite; nicht archivierte PDFs).
+    Monat aus dem Dateinamen (Lexware, „Lohnabrechnung 2026-10 …“, „10.2026“, „Oktober 2026“; `monthFromName`), sonst
+    aus „Abrechnungsmonat …“ auf Seite 1; ohne erkennbaren Monat Hinweis mit Link zum Umbenennen. Nichts wird dabei
+    freigegeben oder gesendet.

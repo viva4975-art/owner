@@ -2,12 +2,18 @@ import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { BusinessError } from '../services/errors.js';
-import { importPayslips, listPayslips, monthLabel, releasePayslips } from '../services/payslips.js';
+import {
+  importPayslips,
+  listPayslips,
+  monthLabel,
+  releasePayslips,
+  syncPayslipsFromFiles,
+} from '../services/payslips.js';
 import { payslipMailStatus, payslipRecipients, sendPayslip } from '../services/payslip-mail.js';
 import { dismissSendJob, queuedIds, recentSendJobs, startSendJob } from '../services/send-jobs.js';
 import { filePath, type FileRow } from '../services/uploads.js';
 import type { Ctx } from './app.js';
-import { PageHead } from './layout.js';
+import { PageHead, anz } from './layout.js';
 import { uploadConfig } from './routes-files.js';
 
 const prevMonth = () => {
@@ -24,6 +30,8 @@ export function registerPayslipRoutes(ctx: Ctx) {
   app.get('/personal/lohnabrechnungen', async (c) => {
     const q = c.req.query('monat');
     const month = q && /^\d{4}-(0[1-9]|1[0-2])$/.test(q) ? q : prevMonth();
+    // Abrechnungen, die direkt in der Personalakte (Dokumente → Lohn) liegen, gehören auch in die Liste
+    const synced = await syncPayslipsFromFiles(sql, uploadConfig(ctx));
     const rows = await listPayslips(sql, { month });
     const open = rows.filter((r) => !r.released).length;
     const ids = rows.map((r) => r.file_id);
@@ -124,6 +132,25 @@ export function registerPayslipRoutes(ctx: Ctx) {
               </form>
             )}
           </div>
+          <p class="small mut" style="margin:6px 0 0">
+            Die Liste nimmt alle Lohnabrechnungen aus den Personalakten (Dokumente → Lohn) – auch dort direkt
+            hochgeladene. Der Monat kommt aus dem Dateinamen bzw. aus „Abrechnungsmonat“ auf der Abrechnung.
+          </p>
+          {synced.unknown.length > 0 && (
+            <details class="warn" style="margin-top:8px">
+              <summary>
+                {anz(synced.unknown.length, 'Datei', 'Dateien')} unter Lohn ohne erkennbaren Monat – nicht in der Liste
+              </summary>
+              <ul class="small" style="margin:6px 0 0">
+                {synced.unknown.slice(0, 50).map((u) => (
+                  <li>
+                    <a href={`/personal/${u.employee_id}/dokumente`}>{u.name}</a> – Datei umbenennen, z. B.
+                    „Lohnabrechnung 2026-10 …“
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
           <form method="post" action={`/personal/lohnabrechnungen/senden?monat=${month}`} id="lohnmail">
             <input type="hidden" name="formid" value={randomUUID()} />
             <div class="actions" style="margin:8px 0">

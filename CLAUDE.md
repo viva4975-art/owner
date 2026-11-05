@@ -4871,3 +4871,7 @@ Testadresse.
     Monat aus dem Dateinamen (Lexware, „Lohnabrechnung 2026-10 …“, „10.2026“, „Oktober 2026“; `monthFromName`), sonst
     aus „Abrechnungsmonat …“ auf Seite 1; ohne erkennbaren Monat Hinweis mit Link zum Umbenennen. Nichts wird dabei
     freigegeben oder gesendet.
+  - Nachtrag (Ahmed: „wie sieht die Mail aus“, „gesendete separat“): Liste mit Reitern **Noch nicht gesendet** (Standard)
+    und **Mit schon gesendeten (erneut senden)** – nur dort sind gesendete wählbar und gehen beim Senden noch einmal raus
+    (Häkchen „noch einmal senden“ entfällt). Knopf **„So sieht die E-Mail aus“** (`/personal/lohnabrechnungen/mail-vorschau`,
+    `payslipMailPreview`): Von, An, Betreff, Anhang und die fertige Mail mit Signatur, wie sie versendet wird.

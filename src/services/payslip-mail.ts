@@ -4,7 +4,7 @@ import { PDFDocument } from '@cantoo/pdf-lib';
 import type { Sql } from '../db/client.js';
 import type { Env } from '../config/env.js';
 import { personGreeting } from '../domain/letter/greeting.js';
-import { composeMail, loadSignature } from '../mail/compose.js';
+import { composeMail, loadSignature, withDataUris, type MailSignature } from '../mail/compose.js';
 import { MAILER_MISSING, resolveRecipients, type Mailer } from '../mail/mailer.js';
 import { BusinessError } from './errors.js';
 import { monthLabel } from './payslips.js';
@@ -56,6 +56,64 @@ const fromAddress = (env: Pick<Env, 'MAIL_FROM'>) => {
   const addr = /<([^>]+)>/.exec(env.MAIL_FROM)?.[1] ?? env.MAIL_FROM.trim();
   return `Viva-Deluxe Buchhaltung <${addr}>`;
 };
+
+export const payslipSubject = (label: string) => `Ihre Lohnabrechnung ${label}`;
+
+/** Text der Lohn-Mail (Versand und Vorschau gleich). `testFor` = Testversand, eigentlicher Empfänger. */
+export function payslipMailText(
+  p: { salutation: string | null; first_name: string; last_name: string },
+  label: string,
+  signature: MailSignature,
+  testFor?: string | null,
+) {
+  const body = [
+    personGreeting(p),
+    '',
+    `anbei erhalten Sie Ihre Lohnabrechnung für ${label}.`,
+    '',
+    'Die PDF-Datei ist mit einem Passwort geschützt. Das Passwort ist Ihr Geburtsdatum im Format TTMMJJ ' +
+      '(Tag, Monat, Jahr – jeweils zweistellig, ohne Punkte). Beispiel: Geburtstag 05.03.1985 → 050385.',
+    '',
+    'Bei Fragen zur Abrechnung melden Sie sich bitte bei der Buchhaltung.',
+  ].join('\n');
+  return composeMail({ notice: testFor ? `TESTVERSAND – eigentlich an ${testFor}` : null, body, signature });
+}
+
+/** Vorschau für eine Abrechnung bzw. eine Beispielperson: Kopfzeilen + HTML mit eingebetteten Bildern. */
+export async function payslipMailPreview(sql: Sql, env: Env, fileId?: string) {
+  const [p] = fileId
+    ? await sql<
+        {
+          salutation: string | null;
+          first_name: string;
+          last_name: string;
+          email: string | null;
+          month: string;
+          personnel_no: string;
+        }[]
+      >`select e.salutation, e.first_name, e.last_name, nullif(trim(e.email), '') as email, p.month, e.personnel_no
+          from app.payslips p join app.employees e on e.id = p.employee_id where p.file_id = ${fileId}`
+    : [];
+  const person = p ?? {
+    salutation: 'Frau',
+    first_name: 'Maria',
+    last_name: 'Beispiel',
+    email: 'maria.beispiel@example.org',
+    month: new Date().toISOString().slice(0, 7),
+    personnel_no: '1001',
+  };
+  const label = monthLabel(person.month);
+  const sig = await loadSignature(sql);
+  const m = payslipMailText(person, label, sig);
+  return {
+    from: fromAddress(env),
+    to: person.email ?? '(keine E-Mail-Adresse)',
+    subject: payslipSubject(label),
+    attachment: `Lohnabrechnung_${person.month}_${person.personnel_no}.pdf (mit Passwort)`,
+    html: withDataUris(m.html ?? '', m.inline ?? []),
+    example: !p,
+  };
+}
 
 export interface PayslipMailRow {
   file_id: string;
@@ -121,12 +179,12 @@ export async function sendPayslip(
   if (!p.email) throw new BusinessError(`${name}: keine E-Mail-Adresse in den Stammdaten`);
   const pw = birthPassword(p.birth_date);
   if (!pw) throw new BusinessError(`${name}: Geburtsdatum fehlt – ohne Passwort wird nicht gesendet`);
-  if (!again) {
-    const [prev] = await sql<{ status: string }[]>`
-      select status from app.payslip_mails where file_id = ${fileId} order by created_at desc limit 1`;
-    if (prev && prev.status !== 'fehler')
-      throw new BusinessError(`${name}: ${monthLabel(p.month)} wurde schon gesendet`);
-  }
+  const [prev] = await sql<{ status: string }[]>`
+    select status from app.payslip_mails where file_id = ${fileId} order by created_at desc limit 1`;
+  const sentBefore = !!prev && prev.status !== 'fehler';
+  // „noch einmal senden“ gilt nur für schon gesendete; alles andere ist der erste Versand
+  if (!sentBefore) again = undefined;
+  else if (!again) throw new BusinessError(`${name}: ${monthLabel(p.month)} wurde schon gesendet`);
   const [f] = await sql<FileRow[]>`select * from app.files where id = ${fileId} and status = 'complete'`;
   if (!f) throw new BusinessError(`${name}: Datei nicht gefunden`);
   const pdf = await encryptPdf(new Uint8Array(await readFile(filePath(cfg, f))), pw);
@@ -145,26 +203,12 @@ export async function sendPayslip(
 
   const label = monthLabel(p.month);
   const { actual, redirected } = resolveRecipients(env, [p.email]);
-  const body = [
-    personGreeting(p),
-    '',
-    `anbei erhalten Sie Ihre Lohnabrechnung für ${label}.`,
-    '',
-    'Die PDF-Datei ist mit einem Passwort geschützt. Das Passwort ist Ihr Geburtsdatum im Format TTMMJJ ' +
-      '(Tag, Monat, Jahr – jeweils zweistellig, ohne Punkte). Beispiel: Geburtstag 05.03.1985 → 050385.',
-    '',
-    'Bei Fragen zur Abrechnung melden Sie sich bitte bei der Buchhaltung.',
-  ].join('\n');
-  const mail = composeMail({
-    notice: redirected ? `TESTVERSAND – eigentlich an ${p.email}` : null,
-    body,
-    signature: await loadSignature(sql),
-  });
+  const mail = payslipMailText(p, label, await loadSignature(sql), redirected ? p.email : null);
   try {
     await mailer.send({
       from: fromAddress(env),
       to: actual,
-      subject: `${redirected ? '[TEST] ' : ''}Ihre Lohnabrechnung ${label}`,
+      subject: `${redirected ? '[TEST] ' : ''}${payslipSubject(label)}`,
       ...mail,
       attachments: [
         {

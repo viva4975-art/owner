@@ -8,7 +8,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Env } from '../config/env.js';
 import type { Sql } from '../db/client.js';
 import type { Mailer, OutgoingMail } from '../mail/mailer.js';
-import { birthPassword, encryptPdf, payslipMailStatus, sendPayslip } from './payslip-mail.js';
+import {
+  birthPassword,
+  encryptPdf,
+  payslipMailPreview,
+  payslipMailStatus,
+  sendPayslip,
+} from './payslip-mail.js';
 import { importPayslips, listPayslips, monthFromName, syncPayslipsFromFiles } from './payslips.js';
 import { storeFile } from './uploads.js';
 import { dbAvailable, freshDatabase } from './testing.js';
@@ -101,6 +107,7 @@ describe.skipIf(!available)('Lohnabrechnung per E-Mail (Datenbank)', () => {
     await sendPayslip({ sql, env, mailer }, cfg, fa, 't', 'form-1');
     await sendPayslip({ sql, env, mailer }, cfg, fa, 't', 'form-1'); // doppelt abgeschickt
     expect(sent).toHaveLength(2);
+    // „erneut senden“ bei einer noch nie gesendeten = erster Versand (danach nicht noch einmal ohne Absicht)
     expect((await payslipMailStatus(sql, [fa])).get(fa)?.status).toBe('gesendet');
     await expect(sendPayslip({ sql, env, mailer }, cfg, fb, 't')).rejects.toThrow(/Geburtsdatum fehlt/);
     expect(sent).toHaveLength(2);
@@ -158,5 +165,10 @@ describe.skipIf(!available)('Lohnabrechnung per E-Mail (Datenbank)', () => {
     expect((await syncPayslipsFromFiles(sql, cfg)).added).toBe(0);
     await sendPayslip({ sql, env, mailer }, cfg, named, 't');
     expect(sent.at(-1)!.subject).toBe('Ihre Lohnabrechnung November 2026');
+    await expect(sendPayslip({ sql, env, mailer }, cfg, named, 't')).rejects.toThrow(/schon gesendet/);
+    const pv = await payslipMailPreview(sql, env, named);
+    expect(pv.subject).toBe('Ihre Lohnabrechnung November 2026');
+    expect(pv.to).toBe('ana@example.org');
+    expect(pv.html).toContain('TTMMJJ');
   });
 });

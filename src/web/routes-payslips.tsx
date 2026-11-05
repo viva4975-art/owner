@@ -9,7 +9,12 @@ import {
   releasePayslips,
   syncPayslipsFromFiles,
 } from '../services/payslips.js';
-import { payslipMailStatus, payslipRecipients, sendPayslip } from '../services/payslip-mail.js';
+import {
+  payslipMailPreview,
+  payslipMailStatus,
+  payslipRecipients,
+  sendPayslip,
+} from '../services/payslip-mail.js';
 import { dismissSendJob, queuedIds, recentSendJobs, startSendJob } from '../services/send-jobs.js';
 import { filePath, type FileRow } from '../services/uploads.js';
 import type { Ctx } from './app.js';
@@ -45,10 +50,16 @@ export function registerPayslipRoutes(ctx: Ctx) {
       const x = rcpt.get(r.file_id);
       return x?.email && x.has_birth && !queued.has(r.file_id);
     });
-    const unsent = sendable.filter((r) => {
-      const m = mails.get(r.file_id);
-      return !m || m.status === 'fehler';
-    }).length;
+    const isSent = (id: string) => {
+      const m = mails.get(id);
+      return !!m && m.status !== 'fehler';
+    };
+    const unsent = sendable.filter((r) => !isSent(r.file_id)).length;
+    const sentCount = rows.filter((r) => isSent(r.file_id)).length;
+    // Gesendete standardmäßig ausblenden; nur wer sie noch einmal senden will, blendet sie ein
+    const showSent = c.req.query('gesendet') === '1';
+    const visible = showSent ? rows : rows.filter((r) => !isSent(r.file_id));
+    const self = (extra = '') => `/personal/lohnabrechnungen?monat=${month}${extra}`;
     return page(
       c,
       'Lohnabrechnungen',
@@ -84,7 +95,7 @@ export function registerPayslipRoutes(ctx: Ctx) {
             </span>
           </div>
         </form>
-        {running && <meta http-equiv="refresh" content={`4;url=/personal/lohnabrechnungen?monat=${month}`} />}
+        {running && <meta http-equiv="refresh" content={`4;url=${self(showSent ? '&gesendet=1' : '')}`} />}
         {jobs.map((j) => (
           <div
             class="card"
@@ -139,7 +150,8 @@ export function registerPayslipRoutes(ctx: Ctx) {
           {synced.unknown.length > 0 && (
             <details class="warn" style="margin-top:8px">
               <summary>
-                {anz(synced.unknown.length, 'Datei', 'Dateien')} unter Lohn ohne erkennbaren Monat – nicht in der Liste
+                {anz(synced.unknown.length, 'Datei', 'Dateien')} unter Lohn ohne erkennbaren Monat – nicht in
+                der Liste
               </summary>
               <ul class="small" style="margin:6px 0 0">
                 {synced.unknown.slice(0, 50).map((u) => (
@@ -151,20 +163,43 @@ export function registerPayslipRoutes(ctx: Ctx) {
               </ul>
             </details>
           )}
-          <form method="post" action={`/personal/lohnabrechnungen/senden?monat=${month}`} id="lohnmail">
+          <form
+            method="post"
+            action={`/personal/lohnabrechnungen/senden?monat=${month}${showSent ? '&gesendet=1' : ''}`}
+            id="lohnmail"
+          >
             <input type="hidden" name="formid" value={randomUUID()} />
+            {showSent && <input type="hidden" name="erneut" value="on" />}
+            <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
+              <nav class="ls-tabs" style="flex:1;margin-bottom:0">
+                <a class={showSent ? '' : 'on'} href={self()}>
+                  Noch nicht gesendet<span>{rows.length - sentCount}</span>
+                </a>
+                <a class={showSent ? 'on' : ''} href={self('&gesendet=1')}>
+                  Mit schon gesendeten (erneut senden)<span>{sentCount}</span>
+                </a>
+              </nav>
+              <a
+                class="btn sec sm"
+                href={`/personal/lohnabrechnungen/mail-vorschau${visible[0] ? `?datei=${visible[0].file_id}` : ''}`}
+                target="_blank"
+              >
+                So sieht die E-Mail aus
+              </a>
+            </div>
             <div class="actions" style="margin:8px 0">
               <button
                 class="btn sm"
-                data-confirm="Markierte Lohnabrechnungen jetzt per E-Mail senden? Das PDF ist mit dem Geburtsdatum (TTMMJJ) geschützt."
+                data-confirm={
+                  showSent
+                    ? 'Markierte Lohnabrechnungen per E-Mail senden? Schon gesendete gehen damit noch einmal raus.'
+                    : 'Markierte Lohnabrechnungen jetzt per E-Mail senden? Das PDF ist mit dem Geburtsdatum (TTMMJJ) geschützt.'
+                }
               >
                 Markierte per E-Mail senden
               </button>
-              <label class="small" style="display:flex;gap:6px;align-items:center">
-                <input type="checkbox" name="erneut" /> auch schon gesendete noch einmal senden
-              </label>
               <span class="small mut" style="margin-left:auto">
-                {unsent} noch nicht gesendet · Absender Buchhaltung
+                {unsent} bereit zum Senden · Absender Buchhaltung
               </span>
             </div>
             <div class="tbl">
@@ -188,7 +223,7 @@ export function registerPayslipRoutes(ctx: Ctx) {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => {
+                  {visible.map((r) => {
                     const x = rcpt.get(r.file_id);
                     const m = mails.get(r.file_id);
                     const ok = !!(x?.email && x.has_birth);
@@ -263,10 +298,14 @@ export function registerPayslipRoutes(ctx: Ctx) {
                       </tr>
                     );
                   })}
-                  {rows.length === 0 && (
+                  {visible.length === 0 && (
                     <tr>
                       <td colspan={8}>
-                        <div class="empty">Für diesen Monat noch nichts eingelesen.</div>
+                        <div class="empty">
+                          {rows.length === 0
+                            ? 'Für diesen Monat noch nichts eingelesen.'
+                            : 'Alle Abrechnungen dieses Monats sind schon gesendet.'}
+                        </div>
                       </td>
                     </tr>
                   )}
@@ -320,7 +359,7 @@ export function registerPayslipRoutes(ctx: Ctx) {
 
   app.post('/personal/lohnabrechnungen/senden', async (c) => {
     const month = String(c.req.query('monat') ?? '');
-    const to = `/personal/lohnabrechnungen?monat=${month}`;
+    const to = `/personal/lohnabrechnungen?monat=${month}${c.req.query('gesendet') === '1' ? '&gesendet=1' : ''}`;
     const b = await c.req.parseBody({ all: true });
     const sel = [...new Set(([] as unknown[]).concat(b.sel ?? []).map(String))];
     if (!sel.length) return back(c, to, { fehler: 'Bitte Personen ankreuzen.' });
@@ -339,6 +378,56 @@ export function registerPayslipRoutes(ctx: Ctx) {
         ? `Versand von ${job.ids.length} Lohnabrechnungen gestartet – läuft im Hintergrund.`
         : 'Die markierten Abrechnungen werden schon gesendet.',
     });
+  });
+
+  app.get('/personal/lohnabrechnungen/mail-vorschau', async (c) => {
+    const v = await payslipMailPreview(sql, deps.env, c.req.query('datei') || undefined);
+    return page(
+      c,
+      'Vorschau Lohn-E-Mail',
+      'transfer',
+      <>
+        <PageHead
+          title="So sieht die E-Mail aus"
+          crumbs={[['Lohnabrechnungen', '/personal/lohnabrechnungen']]}
+        />
+        <section class="card" style="max-width:820px">
+          {v.example && (
+            <p class="small mut" style="margin-top:0">
+              Beispiel – für diesen Monat ist noch keine Abrechnung da.
+            </p>
+          )}
+          <table class="kv keep">
+            <tbody>
+              <tr>
+                <th>Von</th>
+                <td>{v.from}</td>
+              </tr>
+              <tr>
+                <th>An</th>
+                <td>{v.to}</td>
+              </tr>
+              <tr>
+                <th>Betreff</th>
+                <td>
+                  <b>{v.subject}</b>
+                </td>
+              </tr>
+              <tr>
+                <th>Anhang</th>
+                <td>{v.attachment}</td>
+              </tr>
+            </tbody>
+          </table>
+          <iframe
+            title="Vorschau der E-Mail"
+            sandbox=""
+            srcdoc={v.html}
+            style="width:100%;height:760px;border:1px solid var(--line);border-radius:8px;background:#fff;margin-top:10px"
+          />
+        </section>
+      </>,
+    );
   });
 
   app.post('/personal/lohnabrechnungen/auftrag/:id/ausblenden', (c) => {

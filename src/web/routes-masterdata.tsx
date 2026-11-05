@@ -105,6 +105,8 @@ import { FORMAT_LABEL, PageHead, dateDe, euro, anz } from './layout.js';
 import { OfferTable } from './pages-offers.js';
 import { ContactsPanel, TaskBox, TaskForm } from './pages-crm.js';
 import { registerNoteRoutes } from './routes-notes.js';
+import { DOSSIER_PARTS, buildCustomerDossierPdf } from '../services/customer-dossier.js';
+import { Icon } from './icons.js';
 import { OpenItemsTable } from './pages-hr-finance.js';
 import { ServiceForm, ServicesPanel } from './pages-services.js';
 import { ExecutePanel } from './pages-drafts.js';
@@ -1370,6 +1372,43 @@ export function registerMasterdataRoutes(ctx: Ctx) {
               </div>
               <details class="card doc-cat">
                 <summary>
+                  <b>Objekt- und Personalübersicht für den Kunden (PDF)</b>{' '}
+                  <span class="mut small">
+                    (eingesetzte Mitarbeitende, Ansprechpartner, Schlüssel, Vertretung, Nachweise, Notfall)
+                  </span>
+                </summary>
+                <form method="get" action={`/kunden/${cust.id}/uebersicht.pdf`} target="_blank">
+                  <label>
+                    Objekt
+                    <select name="objekt">
+                      <option value="alle">alle aktiven Objekte ({attSites.length})</option>
+                      {attSites.map((s) => (
+                        <option value={s.id}>
+                          {s.site_no} · {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div style="display:grid;gap:4px;margin:10px 0">
+                    {DOSSIER_PARTS.map((x) => (
+                      <label style="display:flex;gap:8px;align-items:center;font-weight:400">
+                        <input type="checkbox" name="teil" value={x.key} checked={x.key !== 'gbu'} />
+                        {x.label}
+                      </label>
+                    ))}
+                  </div>
+                  <p class="small mut" style="margin:4px 0 10px">
+                    Nur Angaben, die in der App hinterlegt sind; Fehlendes steht als „nicht hinterlegt“. An
+                    den Kunden gehen nur Name, Funktion und Einsatz der Mitarbeitenden – Führungszeugnisse nur
+                    als „liegt vor“.
+                  </p>
+                  <button class="btn sec" type="submit">
+                    <Icon name="download" /> Übersicht als PDF
+                  </button>
+                </form>
+              </details>
+              <details class="card doc-cat">
+                <summary>
                   <b>Anwesenheitsliste drucken</b>{' '}
                   <span class="mut small">
                     (zwei Monate je Seite – nur Kunde, ein Objekt oder alle in einer PDF)
@@ -1458,6 +1497,23 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     return c.body(pdf as Uint8Array<ArrayBuffer>, 200, {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="Anwesenheitsliste_${name}_${month}.pdf"`,
+      'Cache-Control': 'private, no-store',
+    });
+  });
+
+  // Objekt- und Personalübersicht für den Kunden (Ahmed 05.11.2026) – nur Büro
+  app.get(`/kunden/:id{${UUID}}/uebersicht.pdf`, async (c) => {
+    if (c.get('sites') !== null) throw new BusinessError('Nur das Büro');
+    const want = c.req.query('objekt') ?? 'alle';
+    const teile = c.req.queries('teil') ?? [];
+    const parts = DOSSIER_PARTS.map((x) => x.key).filter((k) => teile.includes(k));
+    const { pdf, name } = await buildCustomerDossierPdf(deps, c.req.param('id'), {
+      siteIds: want === 'alle' ? undefined : [want],
+      parts: c.req.query('teil') === undefined ? undefined : parts.length ? parts : ['kontakte'],
+    });
+    return c.body(pdf as Uint8Array<ArrayBuffer>, 200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${name}"`,
       'Cache-Control': 'private, no-store',
     });
   });

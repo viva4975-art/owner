@@ -4927,3 +4927,19 @@ Testadresse.
   Zusammenarbeit mit dem Auftraggeber (§ 8 ArbSchG), Unterweisung (§ 12 ArbSchG, § 14 GefStoffV), Prüfung Arbeitsmittel
   (BetrSichV, DGUV V3), ArbMedVV, Erste Hilfe · 8 Objektbesonderheiten · 9 Wirksamkeitskontrolle und Fortschreibung
   (Anlässe, Dokumentation § 6 ArbSchG, Eintragszeilen). **Mutterschutz-Texte mit Betriebsarzt/Fachkraft abstimmen.**
+- 2026-11-05: **Objekt- und Personalübersicht für Kunden (PDF)** (Ahmed: Kunden verlangen Listen der eingesetzten Kräfte,
+  Ansprechpartner, Schlüssel/Transponder, Vertretungen, Schweigepflicht, Schulung Objektleitung, Sicherheits-/Hygieneregeln,
+  Notfall, Zugang, erste Einweisung – „die Sachen, die da sind“): Kunde → Dokumente → „Objekt- und Personalübersicht für den
+  Kunden (PDF)“ (`/kunden/:id/uebersicht.pdf`, nur Büro, `src/services/customer-dossier.ts`). Objekt wählbar (alle aktiven
+  oder eins), Teile ankreuzen: Ansprechpartner (Geschäftsführung, Büro, Objektleitungen, Bereichsleitung als
+  Stellvertretung; Kunde: Kontakte + Ansprechpartner/Hausmeister aus dem Objektordner) · je Objekt eingesetzte
+  Mitarbeitende (laufende/künftige Einsätze + Objektleitung) mit Funktion (aus Tags), Einsatztagen/-zeiten, erstem Einsatz
+  laut Plan, Schlüsseln/Transpondern aus dem Schlüsselbuch · Nachweise: Schweigepflicht (unterschriebene Unterweisung
+  Kategorie „Datenschutz/Verschwiegenheit“ oder Datei mit „Verschwiegenheit/Vertraulichkeit…“ in der Akte), Unterweisung,
+  Führungszeugnis nur „liegt vor (Datum)“ (Datei mit „Führungszeugnis“ im Namen) · Vertretung (Stellvertretung der
+  Objektleitung, geplante Vertretungen 60 Tage) · Sicherheit/Hygiene/Notfall/Zugang (Objektordner-Angaben, feste Regeln) ·
+  Schulungen der Objektleitung (Dateien mit Schulung/Zertifikat/Lehrgang… + unterschriebene Unterweisungen) · optional die
+  Gefährdungsbeurteilung je Objekt (Querformat). Fehlt etwas: „nicht hinterlegt“, nichts erfunden. „Erste Einweisung“ =
+  erster Einsatztag laut Plan mit Hinweis (ein eigenes Datum/Ort der Einweisung gibt es in der App nicht).
+  **Datenschutz:** an den Kunden nur Name, Funktion, Einsatz – keine Anschrift, Geburtsdatum, private Telefonnummer;
+  Führungszeugnisse nie weitergeben (nur mit Einwilligung einholen, § 32 BDSG / Art. 6, 10 DSGVO).

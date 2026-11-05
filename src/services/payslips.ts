@@ -242,10 +242,12 @@ export async function listPayslips(
       released: boolean;
       viewed_at: Date | null;
       imported_at: Date;
+      mail_skip_reason: string | null;
+      mail_skip_at: Date | null;
     }[]
   >`
     select p.file_id, p.employee_id, e.first_name || ' ' || e.last_name as name, e.personnel_no, p.month, p.released,
-           p.viewed_at, p.imported_at
+           p.viewed_at, p.imported_at, p.mail_skip_reason, p.mail_skip_at
       from app.payslips p join app.employees e on e.id = p.employee_id
      where ${f.employeeId ? sql`p.employee_id = ${f.employeeId}` : sql`true`}
        and ${f.month ? sql`p.month = ${f.month}` : sql`true`}

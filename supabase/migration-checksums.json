@@ -226,5 +226,6 @@
  "20270116000001_stundennachweis_mitternacht.sql": "bbff2ab5add9ac3029061222ae919bb8ec40f37c80d55b55f39cfebaf931d7bb",
  "20270116000002_stundennachweis_nu_personen.sql": "fdc36f22a993f54ea4f2d9cf1aa6745fab5311c88209169e3efd5b92867ba93d",
  "20270116000003_stundennachweis_nu_tage.sql": "4edea0d21832a452bc3aa93d62bb0b382b4e6f06e6d3c0aba16a8a059eb27839",
- "20270117000001_lohnabrechnung_versand.sql": "c3d5a5a60485759ee8758d0207eaf38e647687ee7ed9cc2a933eaf0d1fa555ba"
+ "20270117000001_lohnabrechnung_versand.sql": "c3d5a5a60485759ee8758d0207eaf38e647687ee7ed9cc2a933eaf0d1fa555ba",
+ "20270117000002_lohnabrechnung_ausblenden.sql": "e8407ae51d598748131b7ebe6a0cedc11e4b88d2c8c4c89e39af1b242ffa5f69"
 }

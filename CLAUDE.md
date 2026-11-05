@@ -4875,3 +4875,8 @@ Testadresse.
     und **Mit schon gesendeten (erneut senden)** – nur dort sind gesendete wählbar und gehen beim Senden noch einmal raus
     (Häkchen „noch einmal senden“ entfällt). Knopf **„So sieht die E-Mail aus“** (`/personal/lohnabrechnungen/mail-vorschau`,
     `payslipMailPreview`): Von, An, Betreff, Anhang und die fertige Mail mit Signatur, wie sie versendet wird.
+  - Nachtrag (Ahmed: „manche ausblenden, die bekommen keine“): „Markierte ausblenden …“ mit optionalem Grund (z. B. auf
+    Papier / schon erhalten) → Reiter **Ausgeblendet (kein Versand)**, dort „wieder einblenden“ (`payslips.mail_skip_*`,
+    Migration `20270117000002`, Protokoll; Server lehnt den Versand ausgeblendeter ab). Ankreuzen geht jetzt auch ohne
+    E-Mail/Geburtsdatum (zum Ausblenden); beim Senden werden solche übersprungen und gezählt. Monat oben als Auswahl mit
+    „n offen von m“ und Knöpfen für die letzten 6 Monate (`payslipMonths`).

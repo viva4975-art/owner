@@ -13,7 +13,9 @@ import {
   encryptPdf,
   payslipMailPreview,
   payslipMailStatus,
+  payslipMonths,
   sendPayslip,
+  setPayslipMailSkip,
 } from './payslip-mail.js';
 import { importPayslips, listPayslips, monthFromName, syncPayslipsFromFiles } from './payslips.js';
 import { storeFile } from './uploads.js';
@@ -170,5 +172,37 @@ describe.skipIf(!available)('Lohnabrechnung per E-Mail (Datenbank)', () => {
     expect(pv.subject).toBe('Ihre Lohnabrechnung November 2026');
     expect(pv.to).toBe('ana@example.org');
     expect(pv.html).toContain('TTMMJJ');
+  });
+
+  it('ausgeblendete bekommen keine Mail, Monate mit offen/gesamt', async () => {
+    const cfg = { dir, maxBytes: 5e7 };
+    const f = randomUUID();
+    await storeFile(
+      sql,
+      cfg,
+      {
+        id: f,
+        name: 'Lohnabrechnung 2026-12 Dezember 2026.pdf',
+        type: 'application/pdf',
+        data: await pdf('x'),
+        link: { type: 'employee', id: a },
+        category: 'Lohnabrechnung',
+      },
+      't',
+    );
+    await syncPayslipsFromFiles(sql, cfg);
+    expect((await payslipMonths(sql)).find((m) => m.month === '2026-12')).toEqual({
+      month: '2026-12',
+      total: 1,
+      open: 1,
+    });
+    expect(await setPayslipMailSkip(sql, [f], true, 't', 'auf Papier')).toBe(1);
+    await expect(sendPayslip({ sql, env, mailer }, cfg, f, 't')).rejects.toThrow(/ausgeblendet.*auf Papier/);
+    expect((await payslipMonths(sql)).find((m) => m.month === '2026-12')!.open).toBe(0);
+    expect(await setPayslipMailSkip(sql, [f], false, 't')).toBe(1);
+    const n = sent.length;
+    await sendPayslip({ sql, env, mailer }, cfg, f, 't');
+    expect(sent).toHaveLength(n + 1);
+    expect((await payslipMonths(sql)).find((m) => m.month === '2026-12')!.open).toBe(0);
   });
 });

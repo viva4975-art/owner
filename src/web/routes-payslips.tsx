@@ -11,13 +11,16 @@ import {
 } from '../services/payslips.js';
 import {
   payslipMailPreview,
+  payslipMonths,
   payslipMailStatus,
   payslipRecipients,
   sendPayslip,
+  setPayslipMailSkip,
 } from '../services/payslip-mail.js';
 import { dismissSendJob, queuedIds, recentSendJobs, startSendJob } from '../services/send-jobs.js';
 import { filePath, type FileRow } from '../services/uploads.js';
-import type { Ctx } from './app.js';
+import type { Context } from 'hono';
+import type { AppEnv, Ctx } from './app.js';
 import { PageHead, anz } from './layout.js';
 import { uploadConfig } from './routes-files.js';
 
@@ -38,6 +41,9 @@ export function registerPayslipRoutes(ctx: Ctx) {
     // Abrechnungen, die direkt in der Personalakte (Dokumente → Lohn) liegen, gehören auch in die Liste
     const synced = await syncPayslipsFromFiles(sql, uploadConfig(ctx));
     const rows = await listPayslips(sql, { month });
+    const months = await payslipMonths(sql);
+    if (!months.some((m) => m.month === month)) months.push({ month, total: 0, open: 0 });
+    months.sort((a, b) => b.month.localeCompare(a.month));
     const open = rows.filter((r) => !r.released).length;
     const ids = rows.map((r) => r.file_id);
     const [mails, rcpt] = await Promise.all([payslipMailStatus(sql, ids), payslipRecipients(sql, ids)]);
@@ -54,11 +60,17 @@ export function registerPayslipRoutes(ctx: Ctx) {
       const m = mails.get(id);
       return !!m && m.status !== 'fehler';
     };
-    const unsent = sendable.filter((r) => !isSent(r.file_id)).length;
-    const sentCount = rows.filter((r) => isSent(r.file_id)).length;
+    const unsent = sendable.filter((r) => !r.mail_skip_at && !isSent(r.file_id)).length;
+    const sentCount = rows.filter((r) => !r.mail_skip_at && isSent(r.file_id)).length;
     // Gesendete standardmäßig ausblenden; nur wer sie noch einmal senden will, blendet sie ein
-    const showSent = c.req.query('gesendet') === '1';
-    const visible = showSent ? rows : rows.filter((r) => !isSent(r.file_id));
+    // Ansicht: offen (Standard) / mit gesendeten / ausgeblendet
+    const view =
+      c.req.query('ausgeblendet') === '1' ? 'skip' : c.req.query('gesendet') === '1' ? 'sent' : 'open';
+    const showSent = view === 'sent';
+    const active = rows.filter((r) => !r.mail_skip_at);
+    const skipped = rows.filter((r) => r.mail_skip_at);
+    const visible = view === 'skip' ? skipped : showSent ? active : active.filter((r) => !isSent(r.file_id));
+    const viewQ = view === 'skip' ? '&ausgeblendet=1' : showSent ? '&gesendet=1' : '';
     const self = (extra = '') => `/personal/lohnabrechnungen?monat=${month}${extra}`;
     return page(
       c,
@@ -95,7 +107,7 @@ export function registerPayslipRoutes(ctx: Ctx) {
             </span>
           </div>
         </form>
-        {running && <meta http-equiv="refresh" content={`4;url=${self(showSent ? '&gesendet=1' : '')}`} />}
+        {running && <meta http-equiv="refresh" content={`4;url=${self(viewQ)}`} />}
         {jobs.map((j) => (
           <div
             class="card"
@@ -133,8 +145,20 @@ export function registerPayslipRoutes(ctx: Ctx) {
               {monthLabel(month)}: {rows.length} Abrechnungen
             </h3>
             <form method="get" style="margin:0 0 0 auto" class="actions">
-              <input type="month" name="monat" value={month} style="max-width:170px" />
-              <button class="btn sec sm">Anzeigen</button>
+              <label for="lm" class="small mut">
+                Monat
+              </label>
+              <select id="lm" name="monat" data-autosubmit style="min-width:220px">
+                {months.map((m) => (
+                  <option value={m.month} selected={m.month === month}>
+                    {monthLabel(m.month)}
+                    {m.total ? ` – ${m.open} offen von ${m.total}` : ' – keine Abrechnungen'}
+                  </option>
+                ))}
+              </select>
+              <noscript>
+                <button class="btn sec sm">Anzeigen</button>
+              </noscript>
             </form>
             {open > 0 && (
               <form method="post" action="/personal/lohnabrechnungen/freigeben" style="margin:0">
@@ -142,6 +166,17 @@ export function registerPayslipRoutes(ctx: Ctx) {
                 <button class="btn sm">{open} in der App freigeben</button>
               </form>
             )}
+          </div>
+          <div class="actions" style="margin:10px 0 0;gap:6px">
+            {months.slice(0, 6).map((m) => (
+              <a
+                class={`btn sm ${m.month === month ? '' : 'sec'}`}
+                href={`/personal/lohnabrechnungen?monat=${m.month}`}
+              >
+                {monthLabel(m.month)}
+                {m.open ? ` · ${m.open} offen` : m.total ? ' · erledigt' : ''}
+              </a>
+            ))}
           </div>
           <p class="small mut" style="margin:6px 0 0">
             Die Liste nimmt alle Lohnabrechnungen aus den Personalakten (Dokumente → Lohn) – auch dort direkt
@@ -165,18 +200,21 @@ export function registerPayslipRoutes(ctx: Ctx) {
           )}
           <form
             method="post"
-            action={`/personal/lohnabrechnungen/senden?monat=${month}${showSent ? '&gesendet=1' : ''}`}
+            action={`/personal/lohnabrechnungen/senden?monat=${month}${viewQ}`}
             id="lohnmail"
           >
             <input type="hidden" name="formid" value={randomUUID()} />
             {showSent && <input type="hidden" name="erneut" value="on" />}
             <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
               <nav class="ls-tabs" style="flex:1;margin-bottom:0">
-                <a class={showSent ? '' : 'on'} href={self()}>
-                  Noch nicht gesendet<span>{rows.length - sentCount}</span>
+                <a class={view === 'open' ? 'on' : ''} href={self()}>
+                  Noch nicht gesendet<span>{active.length - sentCount}</span>
                 </a>
                 <a class={showSent ? 'on' : ''} href={self('&gesendet=1')}>
-                  Mit schon gesendeten (erneut senden)<span>{sentCount}</span>
+                  Mit schon gesendeten (erneut senden)<span>{active.length}</span>
+                </a>
+                <a class={view === 'skip' ? 'on' : ''} href={self('&ausgeblendet=1')}>
+                  Ausgeblendet (kein Versand)<span>{skipped.length}</span>
                 </a>
               </nav>
               <a
@@ -188,16 +226,45 @@ export function registerPayslipRoutes(ctx: Ctx) {
               </a>
             </div>
             <div class="actions" style="margin:8px 0">
-              <button
-                class="btn sm"
-                data-confirm={
-                  showSent
-                    ? 'Markierte Lohnabrechnungen per E-Mail senden? Schon gesendete gehen damit noch einmal raus.'
-                    : 'Markierte Lohnabrechnungen jetzt per E-Mail senden? Das PDF ist mit dem Geburtsdatum (TTMMJJ) geschützt.'
-                }
-              >
-                Markierte per E-Mail senden
-              </button>
+              {view === 'skip' ? (
+                <button
+                  class="btn sm"
+                  formaction={`/personal/lohnabrechnungen/einblenden?monat=${month}${viewQ}`}
+                >
+                  Markierte wieder einblenden
+                </button>
+              ) : (
+                <>
+                  <button
+                    class="btn sm"
+                    data-confirm={
+                      showSent
+                        ? 'Markierte Lohnabrechnungen per E-Mail senden? Schon gesendete gehen damit noch einmal raus.'
+                        : 'Markierte Lohnabrechnungen jetzt per E-Mail senden? Das PDF ist mit dem Geburtsdatum (TTMMJJ) geschützt.'
+                    }
+                  >
+                    Markierte per E-Mail senden
+                  </button>
+                  <details class="inline-pop">
+                    <summary class="btn sec sm">Markierte ausblenden …</summary>
+                    <div class="actions" style="margin-top:6px">
+                      <input
+                        name="grund"
+                        maxlength={200}
+                        placeholder="Grund (optional), z. B. auf Papier / schon erhalten"
+                        aria-label="Grund für das Ausblenden"
+                        style="min-width:280px"
+                      />
+                      <button
+                        class="btn sec sm"
+                        formaction={`/personal/lohnabrechnungen/ausblenden?monat=${month}${viewQ}`}
+                      >
+                        Ausblenden – kein Versand
+                      </button>
+                    </div>
+                  </details>
+                </>
+              )}
               <span class="small mut" style="margin-left:auto">
                 {unsent} bereit zum Senden · Absender Buchhaltung
               </span>
@@ -226,7 +293,6 @@ export function registerPayslipRoutes(ctx: Ctx) {
                   {visible.map((r) => {
                     const x = rcpt.get(r.file_id);
                     const m = mails.get(r.file_id);
-                    const ok = !!(x?.email && x.has_birth);
                     const q = queued.has(r.file_id);
                     return (
                       <tr>
@@ -236,7 +302,7 @@ export function registerPayslipRoutes(ctx: Ctx) {
                             name="sel"
                             value={r.file_id}
                             aria-label={`${r.name} auswählen`}
-                            disabled={!ok || q}
+                            disabled={q}
                             title={
                               !x?.email
                                 ? 'keine E-Mail-Adresse'
@@ -262,7 +328,11 @@ export function registerPayslipRoutes(ctx: Ctx) {
                           )}
                         </td>
                         <td class="small">
-                          {q ? (
+                          {r.mail_skip_at ? (
+                            <span class="badge" title={r.mail_skip_reason ?? ''}>
+                              ausgeblendet{r.mail_skip_reason ? `: ${r.mail_skip_reason}` : ''}
+                            </span>
+                          ) : q ? (
                             <span class="badge">wird gesendet …</span>
                           ) : !m ? (
                             '–'
@@ -304,7 +374,9 @@ export function registerPayslipRoutes(ctx: Ctx) {
                         <div class="empty">
                           {rows.length === 0
                             ? 'Für diesen Monat noch nichts eingelesen.'
-                            : 'Alle Abrechnungen dieses Monats sind schon gesendet.'}
+                            : view === 'skip'
+                              ? 'Keine ausgeblendeten Abrechnungen in diesem Monat.'
+                              : 'Alle Abrechnungen dieses Monats sind schon gesendet oder ausgeblendet.'}
                         </div>
                       </td>
                     </tr>
@@ -364,22 +436,64 @@ export function registerPayslipRoutes(ctx: Ctx) {
     const b = await c.req.parseBody({ all: true });
     const sel = [...new Set(([] as unknown[]).concat(b.sel ?? []).map(String))];
     if (!sel.length) return back(c, to, { fehler: 'Bitte Personen ankreuzen.' });
+    // ohne E-Mail/Geburtsdatum oder ausgeblendet: nicht in den Versand (nur zum Ausblenden ankreuzbar)
+    const rc = await payslipRecipients(sql, sel);
+    const skippedRows = await sql<{ file_id: string }[]>`
+      select file_id from app.payslips where file_id = any(${sel}::uuid[]) and mail_skip_at is not null`;
+    const skipSet = new Set(skippedRows.map((x) => x.file_id));
+    const ready = sel.filter((id) => rc.get(id)?.email && rc.get(id)?.has_birth && !skipSet.has(id));
+    const notReady = sel.length - ready.length;
+    if (!ready.length)
+      return back(c, to, {
+        fehler:
+          'Keine der markierten Personen kann eine E-Mail bekommen (E-Mail-Adresse oder Geburtsdatum fehlt).',
+      });
     const again = b.erneut === 'on' ? String(b.formid ?? randomUUID()) : undefined;
     const actor = c.get('actor');
     const cfg = uploadConfig(ctx);
     const job = startSendJob(
       'Lohnabrechnungen',
-      sel,
+      ready,
       (id) => sendPayslip(deps, cfg, id, actor, again),
       async (_id, e) => (e as Error).message,
       'lohn',
     );
     return back(c, to, {
       ok: job.ids.length
-        ? `Versand von ${job.ids.length} Lohnabrechnungen gestartet – läuft im Hintergrund.`
+        ? `Versand von ${job.ids.length} Lohnabrechnungen gestartet – läuft im Hintergrund.${
+            notReady ? ` ${notReady} ohne E-Mail-Adresse/Geburtsdatum übersprungen.` : ''
+          }`
         : 'Die markierten Abrechnungen werden schon gesendet.',
     });
   });
+
+  const skipRoute = (skip: boolean) => async (c: Context<AppEnv>) => {
+    const month = String(c.req.query('monat') ?? '');
+    const q =
+      c.req.query('ausgeblendet') === '1'
+        ? '&ausgeblendet=1'
+        : c.req.query('gesendet') === '1'
+          ? '&gesendet=1'
+          : '';
+    const to = `/personal/lohnabrechnungen?monat=${month}${q}`;
+    const b = await c.req.parseBody({ all: true });
+    const sel = [...new Set(([] as unknown[]).concat(b.sel ?? []).map(String))];
+    if (!sel.length) return back(c, to, { fehler: 'Bitte Personen ankreuzen.' });
+    const n = await setPayslipMailSkip(
+      sql,
+      sel,
+      skip,
+      c.get('actor'),
+      typeof b.grund === 'string' ? b.grund : null,
+    );
+    return back(c, to, {
+      ok: skip
+        ? `${anz(n, 'Abrechnung', 'Abrechnungen')} ausgeblendet – keine E-Mail.`
+        : `${anz(n, 'Abrechnung', 'Abrechnungen')} wieder eingeblendet.`,
+    });
+  };
+  app.post('/personal/lohnabrechnungen/ausblenden', skipRoute(true));
+  app.post('/personal/lohnabrechnungen/einblenden', skipRoute(false));
 
   app.get('/personal/lohnabrechnungen/mail-vorschau', async (c) => {
     const v = await payslipMailPreview(sql, deps.env, c.req.query('datei') || undefined);

@@ -167,16 +167,23 @@ export async function sendPayslip(
       personnel_no: string;
       email: string | null;
       birth_date: string | null;
+      mail_skip_reason: string | null;
+      mail_skip_at: Date | null;
     }[]
   >`
     select p.employee_id, p.month, e.first_name, e.last_name, e.salutation, e.personnel_no,
-           nullif(trim(e.email), '') as email, to_char(ep.birth_date, 'YYYY-MM-DD') as birth_date
+           nullif(trim(e.email), '') as email, to_char(ep.birth_date, 'YYYY-MM-DD') as birth_date,
+           p.mail_skip_reason, p.mail_skip_at
       from app.payslips p join app.employees e on e.id = p.employee_id
       left join app.employee_private ep on ep.employee_id = e.id
      where p.file_id = ${fileId}`;
   if (!p) throw new BusinessError('Lohnabrechnung nicht gefunden');
   const name = `${p.first_name} ${p.last_name}`;
   if (!p.email) throw new BusinessError(`${name}: keine E-Mail-Adresse in den Stammdaten`);
+  if (p.mail_skip_at)
+    throw new BusinessError(
+      `${name}: ausgeblendet – kein E-Mail-Versand${p.mail_skip_reason ? ` (${p.mail_skip_reason})` : ''}`,
+    );
   const pw = birthPassword(p.birth_date);
   if (!pw) throw new BusinessError(`${name}: Geburtsdatum fehlt – ohne Passwort wird nicht gesendet`);
   const [prev] = await sql<{ status: string }[]>`
@@ -228,4 +235,37 @@ export async function sendPayslip(
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
             values (${actor}, 'payslip_mail', 'employee', ${p.employee_id},
                     ${sql.json({ month: p.month, file_id: fileId, to: p.email, again: !!again })})`;
+}
+
+/** Abrechnungen vom Versand ausnehmen bzw. wieder einblenden (Grund optional, Protokoll). */
+export async function setPayslipMailSkip(
+  sql: Sql,
+  fileIds: string[],
+  skip: boolean,
+  actor: string,
+  reason?: string | null,
+): Promise<number> {
+  if (!fileIds.length) return 0;
+  const why = reason?.trim().slice(0, 200) || null;
+  const r = skip
+    ? await sql`update app.payslips set mail_skip_reason = ${why}, mail_skip_at = now(), mail_skip_by = ${actor}
+                 where file_id = any(${fileIds}::uuid[]) and mail_skip_at is null returning file_id`
+    : await sql`update app.payslips set mail_skip_reason = null, mail_skip_at = null, mail_skip_by = null
+                 where file_id = any(${fileIds}::uuid[]) and mail_skip_at is not null returning file_id`;
+  if (r.length)
+    await sql`insert into app.audit_log (actor, action, entity, details)
+              values (${actor}, ${skip ? 'payslip_mail_skip' : 'payslip_mail_unskip'}, 'payslips',
+                      ${sql.json({ files: r.map((x) => x.file_id), reason: why })})`;
+  return r.length;
+}
+
+/** Monate mit Lohnabrechnungen: gesamt, noch offen (nicht gesendet, nicht ausgeblendet), neueste zuerst. */
+export async function payslipMonths(sql: Sql) {
+  return sql<{ month: string; total: number; open: number }[]>`
+    select p.month, count(*)::int as total,
+           count(*) filter (where p.mail_skip_at is null and coalesce(m.status, 'fehler') = 'fehler')::int as open
+      from app.payslips p
+      left join lateral (select status from app.payslip_mails x where x.file_id = p.file_id
+                          order by x.created_at desc limit 1) m on true
+     group by p.month order by p.month desc`;
 }

@@ -49,4 +49,16 @@ describe.skipIf(!ok)('Objekt- und Personalübersicht für Kunden', () => {
       }
     },
   );
+  it('Wirksamkeitskontrolle für alle Objekte des Kunden', async () => {
+    const { saveRiskCheckForCustomer } = await import('./site-folder.js');
+    const n = await saveRiskCheckForCustomer(sql, DEMO.authority, null, '2026-10-01', 'Erna Prüf', 'test');
+    const rows = await sql<{ am: string | null; durch: string | null }[]>`
+      select folder_info ->> 'gbu_am' as am, folder_info ->> 'gbu_durch' as durch
+        from app.sites where customer_id = ${DEMO.authority} and active`;
+    expect(n).toBe(rows.length);
+    expect(rows.every((r) => r.am === '2026-10-01' && r.durch === 'Erna Prüf')).toBe(true);
+    await expect(
+      saveRiskCheckForCustomer(sql, DEMO.authority, null, '2999-01-01', 'X', 'test'),
+    ).rejects.toThrow(/Zukunft/);
+  });
 });

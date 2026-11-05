@@ -27,7 +27,7 @@ import {
 } from '../services/crm.js';
 import { BusinessError } from '../services/errors.js';
 import { assigneeOptions } from '../services/crm.js';
-import { monthBounds, todayBerlin } from '../domain/invoice/calc.js';
+import { formatDateDe, monthBounds, todayBerlin } from '../domain/invoice/calc.js';
 import { billingPreview, parseBillAddress, runMonthly } from '../services/invoices.js';
 import {
   groupBillingInput,
@@ -106,6 +106,7 @@ import { OfferTable } from './pages-offers.js';
 import { ContactsPanel, TaskBox, TaskForm } from './pages-crm.js';
 import { registerNoteRoutes } from './routes-notes.js';
 import { DOSSIER_PARTS, buildCustomerDossierPdf } from '../services/customer-dossier.js';
+import { saveRiskCheckForCustomer } from '../services/site-folder.js';
 import { Icon } from './icons.js';
 import { OpenItemsTable } from './pages-hr-finance.js';
 import { ServiceForm, ServicesPanel } from './pages-services.js';
@@ -1340,9 +1341,13 @@ export function registerMasterdataRoutes(ctx: Ctx) {
           const files = await listFiles(sql, { type: 'customer', id: cust.id });
           const allowed = c.get('sites');
           const attSites = (
-            await sql<{ id: string; site_no: string; name: string }[]>`
-              select id, site_no, name from app.sites where customer_id = ${cust.id} and active order by site_no`
+            await sql<
+              { id: string; site_no: string; name: string; gbu_am: string | null; gbu_durch: string | null }[]
+            >`
+              select id, site_no, name, folder_info ->> 'gbu_am' as gbu_am, folder_info ->> 'gbu_durch' as gbu_durch
+                from app.sites where customer_id = ${cust.id} and active order by site_no`
           ).filter((x) => allowed === null || allowed.includes(x.id));
+          const gbuDone = attSites.filter((x) => x.gbu_am).length;
           const known = new Set(CUSTOMER_DOC_CATEGORIES.map((k) => k.name));
           const other = files.filter((f) => !f.category || !known.has(f.category));
           return (
@@ -1407,6 +1412,55 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                   </button>
                 </form>
               </details>
+              {allowed === null && attSites.length > 0 && (
+                <details class="card doc-cat">
+                  <summary>
+                    <b>Gefährdungsbeurteilung: Wirksamkeitskontrolle eintragen</b>{' '}
+                    <span class="mut small">
+                      ({gbuDone} von {attSites.length} Objekten eingetragen)
+                    </span>
+                  </summary>
+                  <form method="post" action={`/kunden/${cust.id}/gbu-kontrolle`}>
+                    <label>
+                      Objekt
+                      <select name="objekt">
+                        <option value="alle">alle aktiven Objekte ({attSites.length})</option>
+                        {attSites.map((s) => (
+                          <option value={s.id}>
+                            {s.site_no} · {s.name}
+                            {s.gbu_am ? ` – zuletzt ${formatDateDe(s.gbu_am)}` : ' – noch keine'}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Kontrolle durchgeführt am
+                      <input type="date" name="am" value={todayBerlin()} max={todayBerlin()} required />
+                    </label>
+                    <label>
+                      durchgeführt von
+                      <input
+                        name="durch"
+                        maxlength={200}
+                        placeholder="leer = jeweilige Objektleitung des Objekts"
+                      />
+                    </label>
+                    <p class="small mut" style="margin:4px 0 10px">
+                      Steht danach in der Gefährdungsbeurteilung jedes gewählten Objekts als „Kontrolle am …
+                      durch …, Maßnahmen umgesetzt und wirksam“ (ohne Unterschrift). Nur eintragen, wenn die
+                      Begehung tatsächlich stattgefunden hat.
+                    </p>
+                    <button
+                      class="btn sec"
+                      type="submit"
+                      data-noback
+                      data-confirm="Wirksamkeitskontrolle für die gewählten Objekte eintragen?"
+                    >
+                      Für die gewählten Objekte speichern
+                    </button>
+                  </form>
+                </details>
+              )}
               <details class="card doc-cat">
                 <summary>
                   <b>Anwesenheitsliste drucken</b>{' '}
@@ -1499,6 +1553,31 @@ export function registerMasterdataRoutes(ctx: Ctx) {
       'Content-Disposition': `inline; filename="Anwesenheitsliste_${name}_${month}.pdf"`,
       'Cache-Control': 'private, no-store',
     });
+  });
+
+  // Wirksamkeitskontrolle der GBU für alle bzw. ein Objekt des Kunden (Ahmed 05.11.2026) – nur Büro
+  app.post(`/kunden/:id{${UUID}}/gbu-kontrolle`, async (c) => {
+    const id = c.req.param('id');
+    const target = `/kunden/${id}/dokumente`;
+    if (c.get('sites') !== null) return back(c, target, { fehler: 'Nur das Büro' });
+    const b = await c.req.parseBody();
+    const want = typeof b.objekt === 'string' ? b.objekt : 'alle';
+    try {
+      const n = await saveRiskCheckForCustomer(
+        sql,
+        id,
+        want === 'alle' ? null : [want],
+        typeof b.am === 'string' ? b.am : '',
+        typeof b.durch === 'string' ? b.durch : '',
+        c.get('actor'),
+      );
+      return back(c, target, {
+        ok: `Wirksamkeitskontrolle für ${n} Objekt${n === 1 ? '' : 'e'} gespeichert.`,
+      });
+    } catch (e) {
+      if (e instanceof BusinessError) return back(c, target, { fehler: e.message });
+      throw e;
+    }
   });
 
   // Objekt- und Personalübersicht für den Kunden (Ahmed 05.11.2026) – nur Büro

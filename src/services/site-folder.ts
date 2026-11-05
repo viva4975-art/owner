@@ -310,6 +310,34 @@ export async function saveRiskCheck(sql: Sql, siteId: string, am: string, durch:
             values (${actor}, 'gbu_kontrolle', 'site', ${siteId}, ${sql.json({ am, durch: who })})`;
 }
 
+/**
+ * Wirksamkeitskontrolle für mehrere Objekte eines Kunden auf einmal (Ahmed 05.11.2026: „beim Kunden für alle einmal
+ * hinterlegen“). Leeres „durch“ = jeweilige Objektleitung des Objekts. Gibt die Anzahl der Objekte zurück.
+ */
+export async function saveRiskCheckForCustomer(
+  sql: Sql,
+  customerId: string,
+  siteIds: string[] | null,
+  am: string,
+  durch: string,
+  actor: string,
+) {
+  const sites = await sql<{ id: string; mgr: string | null }[]>`
+    select s.id, m.name as mgr from app.sites s
+      left join app.manager_contacts m on m.user_id = s.manager_user_id
+     where s.customer_id = ${customerId} and s.active
+       and (${siteIds === null} or s.id = any(${siteIds ?? []}::uuid[]))`;
+  if (!sites.length) throw new BusinessError('Keine aktiven Objekte gewählt');
+  const who = durch.trim();
+  const missing = sites.filter((x) => !who && !x.mgr);
+  if (missing.length)
+    throw new BusinessError(
+      `Bei ${missing.length} Objekt(en) ist keine Objektleitung zugeordnet – bitte „durchgeführt von“ eintragen`,
+    );
+  for (const x of sites) await saveRiskCheck(sql, x.id, am, who || x.mgr!, actor);
+  return sites.length;
+}
+
 /** Nur „Besonderheiten“ ändern (Kasten in der Objekt-Übersicht, auch Objektleitung; Ahmed 19.10.). */
 export async function saveSiteSpecial(sql: Sql, siteId: string, text: string, actor: string) {
   const v = text.trim().slice(0, 2000);

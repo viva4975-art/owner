@@ -4988,3 +4988,8 @@ Testadresse.
     stattgefunden hat (Dokumentation § 6 ArbSchG).
   - Nachtrag (Ahmed): Abschnitt „Objektbesonderheiten“ auch aus der Gefährdungsbeurteilung entfernt (PDF einzeln und im
     Objektordner); Wirksamkeitskontrolle ist jetzt Abschnitt 8.
+- 2026-11-05: **Wirksamkeitskontrolle beim Kunden für alle Objekte** (Ahmed): Kunde → Dokumente → „Gefährdungsbeurteilung:
+  Wirksamkeitskontrolle eintragen“ (nur Büro, zeigt „n von m Objekten eingetragen“): Objekt (alle aktiven oder eins),
+  Datum (nicht in der Zukunft), durchgeführt von (leer = jeweilige Objektleitung des Objekts) → `saveRiskCheckForCustomer`
+  setzt `folder_info.gbu_am/gbu_durch` je Objekt (Protokoll je Objekt). Erscheint in jeder Gefährdungsbeurteilung (einzeln,
+  Objektordner, Kundenübersicht). Am Objekt bleibt die Einzeleingabe. Test in `customer-dossier.db.test.ts`.

@@ -694,8 +694,8 @@ export function registerPurchasingRoutes(ctx: Ctx) {
           : ms.length > 1
             ? `nach Ausführung, ${MON(ms[0]!)}–${MON(ms[ms.length - 1]!)}`
             : 'nach Ausführung';
-        // Betrag je Monat: regelmäßig alles im Monat des Zeitraums; nach Ausführung anteilig auf die Monate der
-        // Laufzeit (je Tag = Arbeitstage des Monats, Pauschalen nach Kalendertagen, Stunden im Monat der Erfassung)
+        // Betrag je Monat: regelmäßig alles im Monat des Zeitraums; nach Ausführung je Tag = Arbeitstage des Monats,
+        // Stunden im Monat der Erfassung, Pauschalen ganz im Monat des Endes
         const parts = new Map<string, bigint>();
         const put = (m: string, x: bigint) => parts.set(m, (parts.get(m) ?? 0n) + x);
         let v: bigint | null = 0n;
@@ -723,25 +723,9 @@ export function registerPurchasingRoutes(ctx: Ctx) {
               : sc.billing === 'pauschale_einsatz'
                 ? (total ?? sc.current_price_cents)
                 : 0n;
+          // Pauschale nach Ausführung nicht auf Monate aufteilen (Ahmed 05.11.): voller Betrag im Monat des Endes
           if (flat === null) v = null;
-          else if (rec || ms.length < 2) put(ms[0] ?? p.start, flat);
-          else {
-            // Kalendertage der Laufzeit je Monat, Rest-Cent in den letzten Monat
-            const from = sc.valid_from > `${p.start}-01` ? sc.valid_from : `${p.start}-01`;
-            const dayMs = 86_400_000;
-            const dOf = (x: string) => Date.parse(`${x}T00:00:00Z`);
-            const totalDays = BigInt(Math.max(1, Math.round((dOf(p.end) - dOf(from)) / dayMs) + 1));
-            let rest = flat;
-            ms.forEach((m, i) => {
-              if (i === ms.length - 1) return put(m, rest);
-              const s0 = m === ms[0] ? from : `${m}-01`;
-              const e0 = monthEndOf(m);
-              const days = BigInt(Math.round((dOf(e0) - dOf(s0)) / dayMs) + 1);
-              const x = (flat * days * 2n + totalDays) / (totalDays * 2n);
-              rest -= x;
-              put(m, x);
-            });
-          }
+          else put(rec ? (ms[0] ?? p.start) : (ms[ms.length - 1] ?? p.start), flat);
         }
         // Stunden (Stundennachweis) und Regie: monatliche je Monat des Zeitraums, sonst alle bisher erfassten
         // (bei Bestellungen nach Ausführung nur beim ersten offenen Zeitraum, im Monat der Erfassung innerhalb der Laufzeit)

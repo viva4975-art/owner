@@ -4993,3 +4993,8 @@ Testadresse.
   Datum (nicht in der Zukunft), durchgeführt von (leer = jeweilige Objektleitung des Objekts) → `saveRiskCheckForCustomer`
   setzt `folder_info.gbu_am/gbu_durch` je Objekt (Protokoll je Objekt). Erscheint in jeder Gefährdungsbeurteilung (einzeln,
   Objektordner, Kundenübersicht). Am Objekt bleibt die Einzeleingabe. Test in `customer-dossier.db.test.ts`.
+- 2026-11-05: **Bestellungen: Pauschale nach Ausführung nicht aufteilen** (Ahmed, BE-2026-0004 6.500 € / Einsatz,
+  27.10.–06.11.: „≈ 2.954,55 €“ im Oktober): Bei Pauschalen (je Einsatz, und Pauschale/m² bei nicht regelmäßiger
+  Häufigkeit) steht unter „Rechnung fehlt“ der volle Betrag im Monat des Endes der Laufzeit (Hinweis „nach Ausführung,
+  10/2026–11/2026“ bleibt), nicht mehr anteilig nach Kalendertagen. „Je Tag“ weiter nach Arbeitstagen je Monat, Stunden/
+  Regie im Monat der Erfassung (ersetzt die Aufteilung der Pauschalen vom 02.11.).

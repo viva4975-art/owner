@@ -4986,3 +4986,5 @@ Testadresse.
     am … durch …, Maßnahmen umgesetzt und wirksam, nächste Überprüfung = Kontrolle + 1 Jahr“, Spalte „Wirksam“ = ja
     (sonst „offen“ bzw. Hinweis „noch nicht eingetragen“). **Rechtlich:** Nur eintragen, wenn die Begehung wirklich
     stattgefunden hat (Dokumentation § 6 ArbSchG).
+  - Nachtrag (Ahmed): Abschnitt „Objektbesonderheiten“ auch aus der Gefährdungsbeurteilung entfernt (PDF einzeln und im
+    Objektordner); Wirksamkeitskontrolle ist jetzt Abschnitt 8.

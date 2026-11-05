@@ -80,7 +80,7 @@ const MAT: Record<'ok' | 'limited' | 'no', string> = {
  * Gefährdungsbeurteilung ab der aktuellen Seite in ein FormDoc zeichnen (Objektordner oder eigenes PDF).
  * Querformat (Ahmed 05.11.2026), Aufbau nach den 7 Schritten der DGUV/GDA: Geltungsbereich → Vorgehen und Maßstab →
  * Gefährdungen und Maßnahmen → Gefahrstoffe → PSA → besondere Personengruppen (§ 10 MuSchG) → Organisation →
- * Objektbesonderheiten → Wirksamkeitskontrolle und Fortschreibung (§ 6 ArbSchG).
+ * Wirksamkeitskontrolle und Fortschreibung (§ 6 ArbSchG).
  */
 export function drawRiskAssessment(d: FormDoc, f: FolderFacts, r: RiskFacts, today: string) {
   const values = folderValues(f);
@@ -279,14 +279,6 @@ export function drawRiskAssessment(d: FormDoc, f: FolderFacts, r: RiskFacts, tod
     'Arbeitsmedizinische Vorsorge nach ArbMedVV durch den Betriebsarzt anbieten (z. B. Feuchtarbeit, Biostoffe); Impfangebote nach dessen Beurteilung.',
     'Erste Hilfe (DGUV Vorschrift 1 §§ 24–26): Ersthelfer, Verbandkasten und Notrufnummern laut Objektstammblatt; jede Erste-Hilfe-Leistung ins Verbandbuch.',
   ]);
-
-  section('Objektbesonderheiten');
-  d.para(
-    f.info.besonderheiten
-      ? f.info.besonderheiten
-      : 'Keine Besonderheiten hinterlegt. Zusätzliche Gefährdungen aus dem Objekt werden bei der Begehung mit dem Auftraggeber abgestimmt.',
-    { size: 8.3 },
-  );
 
   section('Wirksamkeitskontrolle und Fortschreibung');
   if (checkAm)

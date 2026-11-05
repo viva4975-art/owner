@@ -68,6 +68,12 @@ export class FormDoc {
   top = TOP;
   bottom = BOTTOM;
   y = TOP;
+  /** Seitenmaße und rechter Rand der aktuellen Seite (Hochformat; Querformat über `landscape`) */
+  W = W;
+  H = H;
+  R = R;
+  /** Querformat (A4 quer, schlank mit Logo) – gilt auch für automatische Folgeseiten, bis es abgeschaltet wird */
+  landscape = false;
   /** Art je Seite für die Dokumentkennung (eingefügte fremde Seiten fehlen hier) */
   private kinds = new Map<PDFPage, 'bg' | 'plain'>();
   private constructor(
@@ -83,6 +89,8 @@ export class FormDoc {
     watermark?: string;
     /** ohne Briefpapier (kein Briefkopf, keine Fußzeile), nur Logo oben links */
     plain?: boolean;
+    /** A4 quer (schlank mit Logo), z. B. Gefährdungsbeurteilung */
+    landscape?: boolean;
   }) {
     const d = new FormDoc(p.sideRef, p.watermark);
     d.pdf = await PDFDocument.create();
@@ -90,7 +98,7 @@ export class FormDoc {
     const f = await embedUiFonts(d.pdf);
     d.reg = f.regular;
     d.bold = f.bold;
-    if (p.plain) {
+    if (p.plain || p.landscape) {
       await d.loadLogo();
     } else {
       letterheadBytes ??= await readFile(new URL('briefpapier/viva-deluxe-a4.jpg', ASSETS));
@@ -102,7 +110,7 @@ export class FormDoc {
     d.pdf.setCreator('Viva-Deluxe Betriebs-App');
     d.pdf.setCreationDate(new Date(`${p.date}T12:00:00Z`));
     d.pdf.setModificationDate(new Date(`${p.date}T12:00:00Z`));
-    d.newPage();
+    d.newPage({ landscape: !!p.landscape });
     return d;
   }
 
@@ -110,22 +118,28 @@ export class FormDoc {
    * Neue Seite. `plain` = ohne Briefpapier, nur Logo (z. B. Aushänge im Objektordner); gilt nur für diese Seite –
    * die nächste normale Seite hat wieder Briefpapier und den üblichen Inhaltsbereich.
    */
-  newPage(o: { plain?: boolean; logoWidth?: number } = {}) {
-    this.page = this.pdf.addPage([W, H]);
-    const plain = o.plain ?? !this.bg;
+  newPage(o: { plain?: boolean; logoWidth?: number; landscape?: boolean } = {}) {
+    if (o.landscape !== undefined) this.landscape = o.landscape;
+    const q = this.landscape;
+    this.W = q ? H : W;
+    this.H = q ? W : H;
+    this.R = this.W - L - (q ? 10 : 0);
+    this.page = this.pdf.addPage([this.W, this.H]);
+    const plain = q || (o.plain ?? !this.bg);
     this.kinds.set(this.page, plain ? 'plain' : 'bg');
     if (plain && !this.logo) throw new Error('Logo nicht geladen (FormDoc.loadLogo)');
     // Logo-Breite schlanker Seiten: 110 pt (Raumbuch, Berichte); Aushänge größer (Ahmed 15.10.)
     const lw = o.logoWidth ?? 110;
     const lh = this.logo ? (this.logo.height / this.logo.width) * lw : 0;
     this.top = plain ? Math.max(74, Math.round(22 + lh + 18)) : TOP;
-    this.bottom = plain ? 806 : BOTTOM;
-    if (this.bg && !plain) this.page.drawImage(this.bg, { x: 0, y: 0, width: W, height: H });
-    if (this.logo && plain) this.page.drawImage(this.logo, { x: L, y: H - 22 - lh, width: lw, height: lh });
+    this.bottom = q ? this.H - 36 : plain ? 806 : BOTTOM;
+    if (this.bg && !plain) this.page.drawImage(this.bg, { x: 0, y: 0, width: this.W, height: this.H });
+    if (this.logo && plain)
+      this.page.drawImage(this.logo, { x: L, y: this.H - 22 - lh, width: lw, height: lh });
     if (this.watermark)
       this.page.drawText(this.watermark, {
-        x: 140,
-        y: 300,
+        x: q ? 260 : 140,
+        y: q ? 150 : 300,
         size: 72,
         font: this.bold,
         color: rgb(0.85, 0.85, 0.85),
@@ -177,7 +191,7 @@ export class FormDoc {
     const color = o.color ?? INK;
     const font = o.bold ? this.bold : this.reg;
     if (!/[☐☑☒]/.test(t)) {
-      this.page.drawText(uiText(t), { x, y: H - y, size, font, color });
+      this.page.drawText(uiText(t), { x, y: this.H - y, size, font, color });
       return;
     }
     // Kästchen selbst zeichnen (Rahmen + „X“ aus derselben Geometrie) – Inter hat kein ☒, und ein X über dem
@@ -187,7 +201,7 @@ export class FormDoc {
     const side = (2048 / 2816) * size;
     const left = (264 / 2816) * size;
     const lw = Math.max(0.5, size * 0.075);
-    const y0 = H - y;
+    const y0 = this.H - y;
     let cx = x;
     for (const part of t.split(/([☐☑☒])/)) {
       if (!part) continue;
@@ -269,7 +283,7 @@ export class FormDoc {
   ) {
     this.page.drawRectangle({
       x,
-      y: H - y - h,
+      y: this.H - y - h,
       width: w,
       height: h,
       color,
@@ -278,24 +292,24 @@ export class FormDoc {
   }
 
   line(x1: number, x2: number, y: number, color = RULE, thickness = 0.6) {
-    this.page.drawLine({ start: { x: x1, y: H - y }, end: { x: x2, y: H - y }, thickness, color });
+    this.page.drawLine({ start: { x: x1, y: this.H - y }, end: { x: x2, y: this.H - y }, thickness, color });
   }
 
   /** „Arbeitsschein … Nr. AS-2026-1024“ mit Bordeaux-Linie */
   title(left: string, right?: string) {
     this.text(left, L, this.y + 14, { size: 17, bold: true, color: INK });
-    if (right) this.right(right, R, this.y + 12, { size: 11, bold: true, color: BORDEAUX });
+    if (right) this.right(right, this.R, this.y + 12, { size: 11, bold: true, color: BORDEAUX });
     this.y += 22;
-    this.line(L, R, this.y, INK, 0.5);
+    this.line(L, this.R, this.y, INK, 0.5);
     this.y += 12;
   }
 
   /** Großer Titel rechtsbündig (Bestellung) mit Hinweis darunter */
   titleRight(t: string, sub?: string) {
-    this.right(t, R, this.y + 14, { size: 13, bold: true, color: INK });
+    this.right(t, this.R, this.y + 14, { size: 13, bold: true, color: INK });
     this.y += 20;
     if (sub) {
-      this.right(sub, R, this.y + 6, { size: 7.5, color: MUT });
+      this.right(sub, this.R, this.y + 6, { size: 7.5, color: MUT });
       this.y += 14;
     }
   }
@@ -304,9 +318,9 @@ export class FormDoc {
   infoGrid(cells: [string, string][], cols = 3) {
     const rows = Math.ceil(cells.length / cols);
     const h = rows * 26 + 10;
-    this.rect(L, this.y, R - L, h, BOX);
+    this.rect(L, this.y, this.R - L, h, BOX);
     this.rect(L, this.y, 2.2, h, BORDEAUX);
-    const cw = (R - L - 20) / cols;
+    const cw = (this.R - L - 20) / cols;
     cells.forEach(([k, v], i) => {
       const x = L + 14 + (i % cols) * cw;
       const y = this.y + 14 + Math.floor(i / cols) * 26;
@@ -321,11 +335,11 @@ export class FormDoc {
     const lh = 17.5;
     const h = rows.length * lh + 14;
     this.ensure(h);
-    this.rect(L, this.y, R - L, h, rgb(1, 1, 1), BOX_LINE);
+    this.rect(L, this.y, this.R - L, h, rgb(1, 1, 1), BOX_LINE);
     let y = this.y + 18;
     for (const r of rows) {
       this.cap(r.k, L + 14, y, { size: 6 });
-      const vw = r.k2 ? 170 : R - L - 190;
+      const vw = r.k2 ? 170 : this.R - L - 190;
       this.text(this.fit(r.v, vw, r.strong ? 10.5 : 9), L + 120, y, {
         size: r.strong ? 10.5 : 9,
         bold: !!r.strong || !!r.accent,
@@ -342,7 +356,7 @@ export class FormDoc {
 
   /** Zwei Spalten mit Bordeaux-Beschriftung (Kunden-/Objektanschrift) */
   twoCols(a: { label: string; lines: string[] }, b: { label: string; lines: string[] }) {
-    const half = (R - L) / 2;
+    const half = (this.R - L) / 2;
     const wrapAll = (ls: string[]) => ls.flatMap((l) => this.wrap(l, half - 16, 9));
     const la = wrapAll(a.lines);
     const lb = wrapAll(b.lines);
@@ -359,7 +373,7 @@ export class FormDoc {
   /** Abschnittsbalken (hell-Bordeaux) */
   section(t: string) {
     this.ensure(40);
-    this.rect(L, this.y, R - L, 18, SECTION);
+    this.rect(L, this.y, this.R - L, 18, SECTION);
     this.rect(L, this.y, 2.2, 18, BORDEAUX);
     this.cap(t, L + 10, this.y + 12, { size: 6.6, color: BORDEAUX });
     this.y += 28;
@@ -377,7 +391,7 @@ export class FormDoc {
   ) {
     const size = o.size ?? 9;
     const x = L + (o.indent ?? 0);
-    for (const l of this.wrap(t, R - x, size, o.bold)) {
+    for (const l of this.wrap(t, this.R - x, size, o.bold)) {
       this.ensure(size + 4);
       this.text(l, x, this.y + size, { size, color: o.color ?? INK, bold: !!o.bold });
       this.y += size + 3.6;
@@ -391,7 +405,7 @@ export class FormDoc {
    */
   columns(blocks: { title: string; paragraphs: string[] }[], size = 7.4) {
     const gap = 16;
-    const cw = (R - L - gap) / 2;
+    const cw = (this.R - L - gap) / 2;
     const lh = size + 2.4;
     // erst alle Zeilen bilden, dann seitenweise auf zwei Spalten verteilen (letzte Seite ausgeglichen)
     const lines: { t: string; title?: boolean; gapAfter?: number }[] = [];
@@ -474,7 +488,7 @@ export class FormDoc {
           : this.cap(c.label, xs[i]!, this.y + 8, { size: 6 }),
       );
       this.y += 12;
-      this.line(L, R, this.y, INK, 0.5);
+      this.line(L, this.R, this.y, INK, 0.5);
       this.y += 4;
     };
     this.ensure(40);
@@ -507,7 +521,7 @@ export class FormDoc {
         });
       });
       this.y += h;
-      this.line(L, R, this.y - 1, RULE, 0.4);
+      this.line(L, this.R, this.y - 1, RULE, 0.4);
     }
     this.y += 8;
   }
@@ -516,7 +530,7 @@ export class FormDoc {
   tiles(items: { label: string; value: string; sub?: string; accent?: boolean }[]) {
     const gap = 8;
     const h = 46;
-    const w = (R - L - gap * (items.length - 1)) / items.length;
+    const w = (this.R - L - gap * (items.length - 1)) / items.length;
     this.ensure(h + 12);
     items.forEach((t, i) => {
       const x = L + i * (w + gap);
@@ -537,12 +551,12 @@ export class FormDoc {
   noteBox(title: string, lines: string[], boldLines: string[] = []) {
     const size = 8;
     const all = [
-      ...lines.flatMap((l) => this.wrap(l, R - L - 24, size).map((t) => ({ t, b: false }))),
-      ...boldLines.flatMap((l) => this.wrap(l, R - L - 24, size, true).map((t) => ({ t, b: true }))),
+      ...lines.flatMap((l) => this.wrap(l, this.R - L - 24, size).map((t) => ({ t, b: false }))),
+      ...boldLines.flatMap((l) => this.wrap(l, this.R - L - 24, size, true).map((t) => ({ t, b: true }))),
     ];
     const h = 24 + all.length * (size + 3.5) + 6;
     this.ensure(h);
-    this.rect(L, this.y, R - L, h, BOX);
+    this.rect(L, this.y, this.R - L, h, BOX);
     this.rect(L, this.y, 2.2, h, BORDEAUX);
     this.text(title, L + 12, this.y + 15, { size: 8.5, bold: true, color: BORDEAUX });
     all.forEach((l, i) =>
@@ -570,7 +584,7 @@ export class FormDoc {
     // Ort/Datum steht deutlich über der Linie, dazwischen Platz zum Unterschreiben (Ahmed 26.10.: stand direkt auf der Linie)
     const withText = !!(o.leftText || o.rightText);
     this.ensure(withText ? 92 : 58);
-    const half = (R - L) / 2;
+    const half = (this.R - L) / 2;
     if (withText) {
       this.y += 18;
       if (o.leftText) this.text(o.leftText, L, this.y, { size: 9.5 });
@@ -581,13 +595,13 @@ export class FormDoc {
       const s = Math.min(150 / o.png.width, 40 / o.png.height);
       this.page.drawImage(o.png, {
         x: L + half + 12,
-        y: H - this.y + 2,
+        y: this.H - this.y + 2,
         width: o.png.width * s,
         height: o.png.height * s,
       });
     }
     this.line(L, L + half - 30, this.y, INK, 0.5);
-    this.line(L + half + 12, R, this.y, INK, 0.5);
+    this.line(L + half + 12, this.R, this.y, INK, 0.5);
     const lx = { left: L, right: L + half + 12 } as const;
     if (o.mark) {
       const lab = o.mark === 'left' ? leftLabel : rightLabel;

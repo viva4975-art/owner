@@ -4915,3 +4915,15 @@ Testadresse.
   **Rechtlich:** Die Gefährdungsbeurteilung bleibt Pflicht des Arbeitgebers (§§ 5, 6 ArbSchG) – die Vorlage ist der
   Ausgangspunkt; Begehung je Objekt durch die Objektleitung (Eintragszeilen ausfüllen) und Texte einmal mit der
   Fachkraft für Arbeitssicherheit/Betriebsarzt abstimmen. Tests `risk-assessment.test.ts`, `site-folder.db.test.ts`.
+- 2026-11-05: **Gefährdungsbeurteilung im Querformat, neu gegliedert** (Ahmed: „Querformat, alles Gesetzliche, logischerer
+  Aufbau“): A4 quer (FormDoc kann Querseiten: `landscape` bei `create`/`newPage`, gilt für Folgeseiten; im Objektordner nur
+  dieser Abschnitt quer). Aufbau nach den 7 Schritten (DGUV/GDA): 1 Geltungsbereich (Objekt, Auftraggeber + Ansprechpartner,
+  Objektleitung, Beschäftigte, Arbeitszeiten laut Plan, Erstellt/nächste Überprüfung, Grundlagen) · 2 Vorgehen und
+  Bewertungsmaßstab (STOP-Rangfolge § 4 ArbSchG, Risiko hoch/mittel/gering mit Handlungsbedarf) · 3 Gefährdungen je
+  Tätigkeit nummeriert (3.1.1 …) mit Risiko vor/nach und Spalte „Wirksam ☐ ja ☐ nein“ für die Begehung ·
+  4 Gefahrstoffverzeichnis (§ 6 Abs. 12 GefStoffV, Hersteller, SDB) · 5 PSA mit „erforderlich bei“ · 6 **Besondere
+  Personengruppen: Mutterschutz je Tätigkeit** (§ 10 MuSchG – anlassunabhängig Pflicht; `MATERNITY`: ohne Einschränkung /
+  nur mit Umgestaltung / unzulässig + Maßnahme), Jugendliche (§ 28a JArbSchG), Einschränkungen · 7 Organisation:
+  Zusammenarbeit mit dem Auftraggeber (§ 8 ArbSchG), Unterweisung (§ 12 ArbSchG, § 14 GefStoffV), Prüfung Arbeitsmittel
+  (BetrSichV, DGUV V3), ArbMedVV, Erste Hilfe · 8 Objektbesonderheiten · 9 Wirksamkeitskontrolle und Fortschreibung
+  (Anlässe, Dokumentation § 6 ArbSchG, Eintragszeilen). **Mutterschutz-Texte mit Betriebsarzt/Fachkraft abstimmen.**

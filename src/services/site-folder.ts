@@ -973,8 +973,11 @@ export async function buildFolderPdf(deps: Deps, siteId: string) {
   // 1b. Gefährdungsbeurteilung je Objekt, aus den Leistungsarten erzeugt (Ahmed 05.11.2026)
   {
     const { riskFacts, drawRiskAssessment } = await import('./risk-assessment.js');
+    // im Querformat (Ahmed 05.11.); danach geht der Ordner im Hochformat weiter
+    d.landscape = true;
     chapter('Gefährdungsbeurteilung', 'Gefährdungsbeurteilung');
     drawRiskAssessment(d, f, await riskFacts(sql, siteId), today);
+    d.landscape = false;
   }
 
   // 2.–4. Revierplan, Leistungsverzeichnis, Raumbuch: eingescannte Unterlagen des Objekts (keine eigene Vorlage)

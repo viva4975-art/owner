@@ -551,3 +551,60 @@ export function splitMeasure(m: string): { kind: 'T' | 'O' | 'P' | ''; text: str
   const r = /^([TOP]) (.*)$/s.exec(m);
   return r ? { kind: r[1] as 'T' | 'O' | 'P', text: r[2]! } : { kind: '', text: m };
 }
+
+/**
+ * Beurteilung für Schwangere und Stillende je Baustein (§ 10 MuSchG: anlassunabhängig für jede Tätigkeit, ob und welche
+ * Schutzmaßnahmen nötig wären). `ok` = ohne Einschränkung möglich, `limited` = nur mit Umgestaltung, `no` = unzulässig.
+ */
+export const MATERNITY: Record<string, { verdict: 'ok' | 'limited' | 'no'; text: string }> = {
+  allgemein: {
+    verdict: 'limited',
+    text: 'Möglich mit Umgestaltung: kein regelmäßiges Heben über 5 kg bzw. gelegentlich über 10 kg (§ 11 Abs. 5 MuSchG), Sitzgelegenheit/Pausen, nur Reinigungsmittel ohne reproduktionstoxische Einstufung (H360/H361/H362), keine Arbeit auf Tritten/Leitern.',
+  },
+  alleinarbeit: {
+    verdict: 'limited',
+    text: 'Alleinarbeit nur, wenn jederzeit Hilfe erreichbar ist (§ 2 Abs. 4 MuSchG); keine Arbeit zwischen 20 und 6 Uhr ohne behördliche Genehmigung (§ 5 MuSchG), Sonn-/Feiertag nur mit Einverständnis (§ 6 MuSchG).',
+  },
+  sanitaer: {
+    verdict: 'limited',
+    text: 'Möglich, wenn kein Kontakt zu Ausscheidungen/Blut (Biostoffe, § 11 Abs. 2 MuSchG) und keine stark sauren/ätzenden Reiniger; sonst andere Tätigkeit.',
+  },
+  treppen: { verdict: 'limited', text: 'Ohne Leitern und schwere Eimer; Treppen nur in kurzen Abschnitten.' },
+  glas: {
+    verdict: 'no',
+    text: 'Unzulässig: Arbeit auf Leitern/Tritten und mit Absturzgefahr (§ 11 Abs. 5 Nr. 6 MuSchG).',
+  },
+  grund: {
+    verdict: 'no',
+    text: 'Unzulässig: Gefahrstoffe (Grundreiniger, Entschichter), Vibration/Lärm und Heben von Maschinen (§ 11 MuSchG).',
+  },
+  bau: {
+    verdict: 'no',
+    text: 'Unzulässig: Staub, Absturz- und Stolpergefahr auf der Baustelle, schweres Heben (§ 11 MuSchG).',
+  },
+  tiefgarage: {
+    verdict: 'no',
+    text: 'Unzulässig: Abgase, Fahrzeugverkehr, Kehrmaschine (Vibration/Lärm) (§ 11 MuSchG).',
+  },
+  desinfektion: {
+    verdict: 'no',
+    text: 'Unzulässig: Infektionsgefahr durch Biostoffe und Desinfektionsmittel (§ 11 Abs. 1, 2 MuSchG) – andere Tätigkeit.',
+  },
+  kueche: {
+    verdict: 'limited',
+    text: 'Möglich ohne heiße Spülmaschinen-Chemie und ohne schweres Heben; rutschhemmende Schuhe.',
+  },
+  aussen: {
+    verdict: 'limited',
+    text: 'Ohne Motorgeräte (Lärm, Vibration), ohne schweres Heben und ohne Arbeit bei Hitze.',
+  },
+  winter: {
+    verdict: 'no',
+    text: 'Unzulässig: Sturzgefahr auf Glätte, Kälte, Arbeit früh am Morgen (§ 11 Abs. 5 MuSchG).',
+  },
+  hochdruck: { verdict: 'no', text: 'Unzulässig: Rückstoß, Lärm, Nässe und Absturzgefahr (§ 11 MuSchG).' },
+  schule: {
+    verdict: 'limited',
+    text: 'Immunität gegen Röteln, Ringelröteln, Windpocken, Zytomegalie durch den Betriebsarzt prüfen lassen (Kinderkontakt).',
+  },
+};

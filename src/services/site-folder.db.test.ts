@@ -1,3 +1,4 @@
+import { PDFDocument } from '@cantoo/pdf-lib';
 import { strToU8, zipSync } from 'fflate';
 import { extractText, getDocumentProxy } from 'unpdf';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -67,6 +68,9 @@ describe.skipIf(!ok)('Objektordner als ein PDF', () => {
       );
       const r = await buildFolderPdf(deps, DEMO.siteSchool);
       expect(r.name).toMatch(/^Objektordner_.*\.pdf$/);
+      const sizes = (await PDFDocument.load(r.pdf.slice()))
+        .getPages()
+        .map((p) => p.getWidth() > p.getHeight());
       const doc = await getDocumentProxy(r.pdf);
       const { text } = await extractText(doc, { mergePages: false });
       const all = text.join('\n');
@@ -96,6 +100,16 @@ describe.skipIf(!ok)('Objektordner als ein PDF', () => {
       expect(all).toContain('Allgemeine Reinigungstätigkeiten');
       expect(all.replace(/\s+/g, ' ')).toContain('Schulen und Kindertagesstätten');
       expect(all).toContain('Begehung am:');
+      // Gefährdungsbeurteilung im Querformat, mit Mutterschutz-Beurteilung (§ 10 MuSchG); Ordner danach wieder hoch
+      const firstQ = sizes.indexOf(true);
+      expect(firstQ).toBeGreaterThan(0);
+      expect(sizes.slice(firstQ).includes(false)).toBe(true);
+      expect(all).toContain('Mutterschutz');
+      if (process.env.GBU_OUT) {
+        const { buildRiskAssessmentPdf } = await import('./risk-assessment.js');
+        const { writeFile } = await import('node:fs/promises');
+        await writeFile(process.env.GBU_OUT, (await buildRiskAssessmentPdf(deps, DEMO.siteSchool)).pdf);
+      }
     },
   );
 });

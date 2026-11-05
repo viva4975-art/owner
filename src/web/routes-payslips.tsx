@@ -317,7 +317,8 @@ export function registerPayslipRoutes(ctx: Ctx) {
             E-Mail: Das PDF ist mit dem Geburtsdatum der Person im Format TTMMJJ geschützt (z. B. 05.03.1985 →
             050385); das Passwort steht nicht in der Mail, nur die Regel. Gesendet wird von der
             Buchhaltungs-Adresse, nacheinander (der Mailserver erlaubt nur wenige Mails je Minute). Jede
-            Abrechnung geht nur einmal raus, außer „noch einmal senden“ ist angehakt.
+            Abrechnung geht nur einmal raus; schon gesendete gehen nur über den Reiter „Mit schon gesendeten“
+            noch einmal raus.
           </p>
           <p class="small mut">
             Rechtlich: Die Abrechnung ist in Textform zu erteilen (§ 108 GewO); die Bereitstellung im

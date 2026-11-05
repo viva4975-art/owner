@@ -244,10 +244,13 @@ export async function listPayslips(
       imported_at: Date;
       mail_skip_reason: string | null;
       mail_skip_at: Date | null;
+      /** vor dem Abrechnungsmonat ausgetreten (nicht mehr im Betrieb) */
+      left_before: boolean;
     }[]
   >`
     select p.file_id, p.employee_id, e.first_name || ' ' || e.last_name as name, e.personnel_no, p.month, p.released,
-           p.viewed_at, p.imported_at, p.mail_skip_reason, p.mail_skip_at
+           p.viewed_at, p.imported_at, p.mail_skip_reason, p.mail_skip_at,
+           (e.exit_date is not null and e.exit_date < (p.month || '-01')::date) as left_before
       from app.payslips p join app.employees e on e.id = p.employee_id
      where ${f.employeeId ? sql`p.employee_id = ${f.employeeId}` : sql`true`}
        and ${f.month ? sql`p.month = ${f.month}` : sql`true`}

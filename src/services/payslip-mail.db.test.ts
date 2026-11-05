@@ -205,4 +205,35 @@ describe.skipIf(!available)('Lohnabrechnung per E-Mail (Datenbank)', () => {
     expect(sent).toHaveLength(n + 1);
     expect((await payslipMonths(sql)).find((m) => m.month === '2026-12')!.open).toBe(0);
   });
+
+  it('vor dem Monat Ausgetretene bekommen keine Mail, im Monat Ausgetretene schon', async () => {
+    const cfg = { dir, maxBytes: 5e7 };
+    const c1 = randomUUID();
+    await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, exit_date, status, email)
+              values (${c1}, '7703', 'Cem', 'Drei', '2024-01-01', '2026-09-30', 'ausgetreten', 'cem@example.org')`;
+    await sql`insert into app.employee_private (employee_id, birth_date) values (${c1}, '1980-01-01')`;
+    const f = randomUUID();
+    await storeFile(
+      sql,
+      cfg,
+      {
+        id: f,
+        name: 'Lohnabrechnung 2026-10 Oktober 2026.pdf',
+        type: 'application/pdf',
+        data: await pdf('x'),
+        link: { type: 'employee', id: c1 },
+        category: 'Lohnabrechnung',
+      },
+      't',
+    );
+    await syncPayslipsFromFiles(sql, cfg);
+    expect((await listPayslips(sql, { month: '2026-10' })).find((r) => r.file_id === f)!.left_before).toBe(
+      true,
+    );
+    await expect(sendPayslip({ sql, env, mailer }, cfg, f, 't')).rejects.toThrow(/ausgetreten/);
+    await sql`update app.employees set exit_date = '2026-10-15' where id = ${c1}`;
+    expect((await listPayslips(sql, { month: '2026-10' })).find((r) => r.file_id === f)!.left_before).toBe(
+      false,
+    );
+  });
 });

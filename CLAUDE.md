@@ -4880,3 +4880,8 @@ Testadresse.
     Migration `20270117000002`, Protokoll; Server lehnt den Versand ausgeblendeter ab). Ankreuzen geht jetzt auch ohne
     E-Mail/Geburtsdatum (zum Ausblenden); beim Senden werden solche übersprungen und gezählt. Monat oben als Auswahl mit
     „n offen von m“ und Knöpfen für die letzten 6 Monate (`payslipMonths`).
+  - Nachtrag (Ahmed: „wer keine Abrechnung für Oktober hat, wird nicht geschickt; nur Mitarbeiter, die noch da sind“):
+    Liste und Versand je Monat nur mit vorhandener Abrechnung (war schon so) und nur für Mitarbeitende, die im Monat noch
+    beschäftigt waren – vor dem Monat Ausgetretene fallen raus (Hinweis mit Anzahl, Server lehnt Versand ab, zählen nicht
+    als offen). Austritt im Monat oder später = letzte Abrechnung geht noch raus. **Rechtlich:** Auch Ausgeschiedene haben
+    Anspruch auf ihre Abrechnung (§ 108 GewO) – Nachzahlungen dann per Post bzw. aus der Personalakte.

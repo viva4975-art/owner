@@ -169,17 +169,21 @@ export async function sendPayslip(
       birth_date: string | null;
       mail_skip_reason: string | null;
       mail_skip_at: Date | null;
+      left_before: boolean;
     }[]
   >`
     select p.employee_id, p.month, e.first_name, e.last_name, e.salutation, e.personnel_no,
            nullif(trim(e.email), '') as email, to_char(ep.birth_date, 'YYYY-MM-DD') as birth_date,
-           p.mail_skip_reason, p.mail_skip_at
+           p.mail_skip_reason, p.mail_skip_at,
+           (e.exit_date is not null and e.exit_date < (p.month || '-01')::date) as left_before
       from app.payslips p join app.employees e on e.id = p.employee_id
       left join app.employee_private ep on ep.employee_id = e.id
      where p.file_id = ${fileId}`;
   if (!p) throw new BusinessError('Lohnabrechnung nicht gefunden');
   const name = `${p.first_name} ${p.last_name}`;
   if (!p.email) throw new BusinessError(`${name}: keine E-Mail-Adresse in den Stammdaten`);
+  if (p.left_before)
+    throw new BusinessError(`${name}: vor ${monthLabel(p.month)} ausgetreten – kein E-Mail-Versand`);
   if (p.mail_skip_at)
     throw new BusinessError(
       `${name}: ausgeblendet – kein E-Mail-Versand${p.mail_skip_reason ? ` (${p.mail_skip_reason})` : ''}`,
@@ -264,8 +268,9 @@ export async function payslipMonths(sql: Sql) {
   return sql<{ month: string; total: number; open: number }[]>`
     select p.month, count(*)::int as total,
            count(*) filter (where p.mail_skip_at is null and coalesce(m.status, 'fehler') = 'fehler')::int as open
-      from app.payslips p
+      from app.payslips p join app.employees e on e.id = p.employee_id
       left join lateral (select status from app.payslip_mails x where x.file_id = p.file_id
                           order by x.created_at desc limit 1) m on true
+     where not (e.exit_date is not null and e.exit_date < (p.month || '-01')::date)
      group by p.month order by p.month desc`;
 }

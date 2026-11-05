@@ -40,7 +40,10 @@ export function registerPayslipRoutes(ctx: Ctx) {
     const month = q && /^\d{4}-(0[1-9]|1[0-2])$/.test(q) ? q : prevMonth();
     // Abrechnungen, die direkt in der Personalakte (Dokumente → Lohn) liegen, gehören auch in die Liste
     const synced = await syncPayslipsFromFiles(sql, uploadConfig(ctx));
-    const rows = await listPayslips(sql, { month });
+    // nur Mitarbeitende, die im Monat noch beschäftigt waren (Austritt im Monat oder später bzw. kein Austritt)
+    const allRows = await listPayslips(sql, { month });
+    const rows = allRows.filter((r) => !r.left_before);
+    const leftCount = allRows.length - rows.length;
     const months = await payslipMonths(sql);
     if (!months.some((m) => m.month === month)) months.push({ month, total: 0, open: 0 });
     months.sort((a, b) => b.month.localeCompare(a.month));
@@ -178,9 +181,17 @@ export function registerPayslipRoutes(ctx: Ctx) {
               </a>
             ))}
           </div>
+          {leftCount > 0 && (
+            <p class="small mut" style="margin:6px 0 0">
+              {anz(leftCount, 'Abrechnung', 'Abrechnungen')} von schon vor {monthLabel(month)} Ausgetretenen
+              nicht in der Liste.
+            </p>
+          )}
           <p class="small mut" style="margin:6px 0 0">
-            Die Liste nimmt alle Lohnabrechnungen aus den Personalakten (Dokumente → Lohn) – auch dort direkt
-            hochgeladene. Der Monat kommt aus dem Dateinamen bzw. aus „Abrechnungsmonat“ auf der Abrechnung.
+            Nur Mitarbeitende, die im Monat noch beschäftigt waren; wer keine Abrechnung für den Monat hat,
+            steht nicht in der Liste. Die Liste nimmt alle Lohnabrechnungen aus den Personalakten (Dokumente →
+            Lohn) – auch dort direkt hochgeladene. Der Monat kommt aus dem Dateinamen bzw. aus
+            „Abrechnungsmonat“ auf der Abrechnung.
           </p>
           {synced.unknown.length > 0 && (
             <details class="warn" style="margin-top:8px">
@@ -439,7 +450,9 @@ export function registerPayslipRoutes(ctx: Ctx) {
     // ohne E-Mail/Geburtsdatum oder ausgeblendet: nicht in den Versand (nur zum Ausblenden ankreuzbar)
     const rc = await payslipRecipients(sql, sel);
     const skippedRows = await sql<{ file_id: string }[]>`
-      select file_id from app.payslips where file_id = any(${sel}::uuid[]) and mail_skip_at is not null`;
+      select p.file_id from app.payslips p join app.employees e on e.id = p.employee_id
+       where p.file_id = any(${sel}::uuid[])
+         and (p.mail_skip_at is not null or (e.exit_date is not null and e.exit_date < (p.month || '-01')::date))`;
     const skipSet = new Set(skippedRows.map((x) => x.file_id));
     const ready = sel.filter((id) => rc.get(id)?.email && rc.get(id)?.has_birth && !skipSet.has(id));
     const notReady = sel.length - ready.length;
@@ -461,7 +474,7 @@ export function registerPayslipRoutes(ctx: Ctx) {
     return back(c, to, {
       ok: job.ids.length
         ? `Versand von ${job.ids.length} Lohnabrechnungen gestartet – läuft im Hintergrund.${
-            notReady ? ` ${notReady} ohne E-Mail-Adresse/Geburtsdatum übersprungen.` : ''
+            notReady ? ` ${notReady} ohne E-Mail-Adresse/Geburtsdatum bzw. ausgetreten übersprungen.` : ''
           }`
         : 'Die markierten Abrechnungen werden schon gesendet.',
     });

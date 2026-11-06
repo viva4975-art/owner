@@ -580,17 +580,23 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
               <select id="f-arbeitstage" name="arbeitstage" required style="max-width:260px">
                 <option value="">– bitte wählen –</option>
                 {DAY_CHOICES.map((n) => (
-                  <option value={String(n)}>
+                  <option
+                    value={String(n)}
+                    selected={String(n).replace('.', ',') === values['Mitarbeiter.Arbeitstage']}
+                  >
                     {String(n).replace('.', ',')} {n === 1 ? 'Tag' : 'Tage'} ·{' '}
                     {String(leaveDaysForWeek(n)).replace('.', ',')} Urlaubstage
                   </option>
                 ))}
               </select>
               <div class="small" style="margin-top:4px">
-                Urlaub laut Vertrag = 30 Tage × Arbeitstage ÷ 5.{' '}
-                {values['Mitarbeiter.Arbeitstage']
-                  ? `In den Stammdaten stehen ${values['Mitarbeiter.Arbeitstage']} Tage/Woche.`
-                  : 'In den Stammdaten ist noch nichts eingetragen.'}
+                {values['Mitarbeiter.ArbeitstageQuelle'] === 'plan'
+                  ? `Vorbelegt laut Einsatzplanung: ${values['Mitarbeiter.Arbeitstage']} Tage/Woche. `
+                  : values['Mitarbeiter.Arbeitstage']
+                    ? `Noch keine Einsätze geplant – vorbelegt aus den Stammdaten (${values['Mitarbeiter.Arbeitstage']} Tage/Woche). `
+                    : 'Noch keine Einsätze geplant – bitte wählen. '}
+                Im Vertrag: Urlaub = 30 Tage × Arbeitstage ÷ 5. Das Urlaubskonto rechnet weiter automatisch
+                nach der Einsatzplanung – diese Auswahl ändert nur den Vertragstext.
               </div>
               <input type="hidden" name="urlaub_default" value={values['Mitarbeiter.Urlaubstage'] ?? ''} />
               <script

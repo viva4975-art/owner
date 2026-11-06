@@ -5010,3 +5010,9 @@ Testadresse.
     (ohne Leerabsätze, kleinerer Abstand über den Linien); reicht das nicht, wandern die zwei Absätze davor mit auf die
     neue Seite (`signatureGroups`). Schriftgröße bleibt wie in Word. Wirkt beim nächsten Erstellen; „Als Word
     herunterladen“ bleibt wie die Vorlage (Umbruch macht dort Word). Test in `docx-render.test.ts`.
+- 2026-11-06: Arbeitsvertrag, Nachtrag (Ahmed: „Urlaub soll weiter laut Einsatzplanung automatisch berechnet werden“): Das
+  Urlaubskonto rechnet unverändert automatisch nach der Einsatzplanung – die Auswahl beim Arbeitsvertrag ändert nur den
+  Vertragstext, nie Stammdaten oder Urlaubskonto. Neu: Die Auswahl „Arbeitstage pro Woche“ und `${Mitarbeiter.Arbeitstage}`/
+  `${Mitarbeiter.Urlaubstage}` sind mit den Arbeitstagen laut Einsatzplanung der nächsten 3 Monate vorbelegt
+  (`plannedDaysPerWeek`, nur bei „automatisch aus der Einsatzplanung“; ohne Einsätze bzw. bei festen Tagen aus den
+  Stammdaten), Hinweis nennt die Quelle. Ohne Einsätze und ohne Stammdaten-Wert bleibt die Pflichtauswahl leer.

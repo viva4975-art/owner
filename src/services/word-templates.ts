@@ -6,7 +6,8 @@ import { customerGreeting } from './letters.js';
 import { readFile } from 'node:fs/promises';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import type { Sql } from '../db/client.js';
-import { todayBerlin } from '../domain/invoice/calc.js';
+import { addDays, todayBerlin } from '../domain/invoice/calc.js';
+import { plannedDaysPerWeek } from './employee-hours.js';
 import { BusinessError } from './errors.js';
 import { type FormField, applyFormFields, defaultBoxes, formFieldsOf } from './word-form.js';
 import { type FileRow, type UploadConfig, filePath, storeFile } from './uploads.js';
@@ -509,6 +510,7 @@ async function employeeValues(
       level_wage_cents: bigint | null;
       wage_level: string | null;
       days_per_week: string | null;
+      days_auto: boolean;
       nationality: string | null;
       birth_place: string | null;
       marital_status: string | null;
@@ -522,13 +524,17 @@ async function employeeValues(
     select e.salutation, e.first_name, e.last_name, e.personnel_no, e.entry_date::text, e.exit_date::text,
            e.weekly_hours::text, e.employment_type, e.phone, e.mobile, e.email,
            p.street, p.postal_code, p.city, p.birth_date::text, e.monthly_salary_cents, p.nationality,
-           e.days_per_week::text, p.birth_place, p.marital_status, p.tax_id, p.social_security_no,
+           e.days_per_week::text, e.days_auto, p.birth_place, p.marital_status, p.tax_id, p.social_security_no,
            p.health_insurance, p.iban, e.tags,
            e.pay_model, e.hourly_wage_cents,
            (select w.name from app.wage_levels w where w.id = e.wage_level_id and e.pay_model is distinct from 'individuell') as wage_level,
            (select w.hourly_wage_cents from app.wage_levels w where w.id = e.wage_level_id) as level_wage_cents
       from app.employees e left join app.employee_private p on p.employee_id = e.id where e.id = ${id}`;
   if (!e) throw new BusinessError('Mitarbeiter nicht gefunden');
+  // Arbeitstage wie der Urlaub im System: automatisch aus der Einsatzplanung (nächste 3 Monate), sonst Stammdaten
+  const today = todayBerlin();
+  const planned = e.days_auto ? await plannedDaysPerWeek(sql, id, today, addDays(today, 90)) : null;
+  const workDays = planned ?? (e.days_per_week ? Number(e.days_per_week) : null);
   const sites = await sql<{ name: string; manager: string | null }[]>`
     select s.name, (select concat_ws(' · ', mc.name, mc.phone) from app.manager_contacts mc
                      where mc.user_id = s.manager_user_id) as manager
@@ -619,8 +625,10 @@ async function employeeValues(
     'Mitarbeiter.Stundenlohn': wage,
     'Mitarbeiter.Lohngruppe': level ?? '',
     // Urlaub laut Rahmentarifvertrag: 30 Tage bei 5-Tage-Woche, anteilig nach Arbeitstagen
-    'Mitarbeiter.Urlaubstage': String(leaveDaysForWeek(Number(e.days_per_week ?? 5))).replace('.', ','),
-    'Mitarbeiter.Arbeitstage': e.days_per_week ? String(Number(e.days_per_week)).replace('.', ',') : '',
+    'Mitarbeiter.Urlaubstage': String(leaveDaysForWeek(workDays ?? 5)).replace('.', ','),
+    'Mitarbeiter.Arbeitstage': workDays ? String(workDays).replace('.', ',') : '',
+    // nur intern für die Ausfüll-Seite: woher die Arbeitstage stammen
+    'Mitarbeiter.ArbeitstageQuelle': planned !== null ? 'plan' : e.days_per_week ? 'stamm' : '',
     'Mitarbeiter.Beschäftigungsart': EMPLOYMENT[e.employment_type] ?? e.employment_type,
     'Mitarbeiter.Objekte': sites.map((s) => s.name).join(', '),
     // nur intern für Kästchen-Vorbelegung: 'ja' / 'nein' / '' (noch kein Objekt bekannt)

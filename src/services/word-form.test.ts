@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { applyFormFields, defaultBlanks, defaultBoxes, defaultCells, formFieldsOf } from './word-form.js';
+import {
+  applyFormFields,
+  defaultBlanks,
+  defaultBoxes,
+  defaultCells,
+  formFieldsOf,
+  isWorkDaysBlank,
+} from './word-form.js';
 
 const box = (checked: boolean, attr = 'w:val') =>
   `<w:sdt><w:sdtPr><w14:checkbox><w14:checked ${attr}="${checked ? 1 : 0}"/><w14:checkedState w:val="2612"/></w14:checkbox></w:sdtPr><w:sdtContent><w:r><w:t>${checked ? '☒' : '☐'}</w:t></w:r></w:sdtContent></w:sdt>`;
@@ -146,5 +153,20 @@ describe('leere Felder neben Beschriftungen (Ahmed 12.10.)', () => {
     expect(out).toContain('w:char="F0FE"');
     expect(out).toContain('w:char="2612"');
     expect(out.match(/w14:val="1"/g)?.length).toBe(3);
+  });
+});
+
+describe('Arbeitstage im Arbeitsvertrag (Ahmed 06.11.)', () => {
+  const blank = (before: string, label: string) => ({ kind: 'blank' as const, index: 0, before, label });
+  it('erkennt die Lücke für die Arbeitstage, nicht Urlaub oder Stunden', () => {
+    expect(isWorkDaysBlank(blank('Die Arbeitszeit verteilt sich auf', 'Arbeitstage pro Woche.'))).toBe(true);
+    expect(isWorkDaysBlank(blank('Gearbeitet wird an', 'Tagen pro Woche'))).toBe(true);
+    expect(isWorkDaysBlank(blank('Urlaub:', 'Arbeitstage im Jahr'))).toBe(false);
+    expect(isWorkDaysBlank(blank('Wochenarbeitszeit:', 'Stunden'))).toBe(false);
+    expect(
+      defaultBlanks([blank('verteilt auf', 'Arbeitstage pro Woche')], { 'Mitarbeiter.Arbeitstage': '3' }),
+    ).toEqual({
+      0: '3',
+    });
   });
 });

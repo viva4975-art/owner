@@ -373,11 +373,21 @@ export function defaultBoxes(fields: FormField[], v: Record<string, string>): Re
 }
 
 /** Lücken-Vorbelegung: „befristet bis ____“ → Austrittsdatum. */
+/** Lücke für die Zahl der Arbeitstage („verteilt auf ___ Tage“, „Arbeitstage pro Woche: ___“) */
+export const isWorkDaysBlank = (f: FormField) => {
+  if (f.kind !== 'blank') return false;
+  const near = `${f.before.slice(-40)} ${f.label.slice(0, 40)}`;
+  return /(arbeitstag|tagen? (pro|je|in der) woche)/i.test(near) && !/urlaub|stunden/i.test(near);
+};
+
 export function defaultBlanks(fields: FormField[], v: Record<string, string>): Record<number, string> {
   const out: Record<number, string> = {};
   const exit = v['Mitarbeiter.Austrittsdatum'] ?? '';
-  for (const f of fields)
+  const days = v['Mitarbeiter.Arbeitstage'] ?? '';
+  for (const f of fields) {
     if (f.kind === 'blank' && exit && /(befristet bis|gekündigt zum)$/i.test(f.before)) out[f.index] = exit;
+    if (days && isWorkDaysBlank(f)) out[f.index] = days;
+  }
   return out;
 }
 

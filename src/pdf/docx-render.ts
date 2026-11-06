@@ -455,16 +455,133 @@ function paraHeight(d: FormDoc, p: Para, maxW: number) {
   return { l, h: l.lines.reduce((a, x) => a + x.h, 0) + (p.before + p.after) * F * 0.6 + (p.border ? 4 : 0) };
 }
 
+type Block = Para | Table;
+const paraText = (p: Para) =>
+  p.runs
+    .map((r) => r.text)
+    .join('')
+    .trim();
+const blockText = (b: Block) =>
+  b.kind === 'p'
+    ? paraText(b)
+    : b.rows.flatMap((r) => r.cells.flatMap((c) => c.paras.map(paraText))).join(' ');
+const emptyPara = (b: Block) => b.kind === 'p' && !paraText(b) && !b.border;
+
+/** Unterschriftsbereich: Linie zum Unterschreiben, „Ort, Datum“, „Unterschrift …“ (Absatz oder Layout-Tabelle) */
+function isSignature(b: Block): boolean {
+  if (b.kind === 'p') {
+    const t = paraText(b);
+    if (!t) return !!b.border;
+    return t.length < 160 && /(^ort,? ?datum|unterschrift|, den\b|^datum[:,]?\s*$)/i.test(t);
+  }
+  if (b.border || b.rows.length > 8) return false;
+  const lines = b.rows.some((r) =>
+    r.cells.some((c) => (c.top && c.top[0] < 0.6) || c.paras.some((p) => !paraText(p) && p.border)),
+  );
+  return lines || /unterschrift|ort,? ?datum/i.test(blockText(b));
+}
+
+/** Zeilen einer Tabelle setzen (Spalten, Zellen, Höhe) – fürs Zeichnen und fürs Vorausmessen */
+function tableRows(d: FormDoc, b: Table, compact: boolean) {
+  const { L, R } = FORM_X;
+  const full = R - L;
+  const total = b.grid.reduce((a, x) => a + x, 0) || 1;
+  const scale = full / total;
+  const colX: number[] = [];
+  let acc = L;
+  for (const g of b.grid) {
+    colX.push(acc);
+    acc += g * scale;
+  }
+  colX.push(R);
+  const pad = Math.min(6, b.marX * F);
+  const padY = Math.min(4, b.marY * F + 1);
+  return b.rows.map((row, ri) => {
+    let gi = 0;
+    const cells = row.cells.map((c) => {
+      const x0 = colX[Math.min(gi, colX.length - 1)]!;
+      gi += c.span;
+      const x1 = colX[Math.min(gi, colX.length - 1)]!;
+      const inner = Math.max(10, x1 - x0 - pad * 2);
+      const laid = c.paras.map((p) => ({ p, ...paraHeight(d, p, inner) }));
+      const h = laid.reduce((a, x) => a + x.h, 0);
+      return { c, x0, x1, inner, laid, h };
+    });
+    const rowH = Math.max(row.minH * F, ...cells.map((c) => c.h + padY * 2), 12);
+    // Unterschriftszeile: genug Platz zum Unterschreiben darüber, Linie nicht vom Text getrennt
+    // (nicht, wenn direkt darüber das graue Unterschriftsfeld steht – Fläche gehört an die Linie)
+    const prev = b.rows[ri - 1];
+    const prevShaded = !!prev?.cells.some(
+      (c) => c.fill && !(c.fill[0] > 0.99 && c.fill[1] > 0.99 && c.fill[2] > 0.99),
+    );
+    const gap = !b.border && !prevShaded && cells.some((c) => c.c.top && c.c.top[0] < 0.5) ? 16 : 0;
+    return { cells, rowH, signGap: compact ? Math.min(gap, 8) : gap, gap, pad, padY };
+  });
+}
+
+/** Höhe eines Blocks, wie renderDocx ihn setzt (compact: ohne Leerabsätze, kleinerer Abstand über Linien) */
+function blockHeight(d: FormDoc, b: Block, compact: boolean) {
+  if (b.kind === 'p') {
+    const { l, h } = paraHeight(d, b, FORM_X.R - FORM_X.L);
+    if (l.empty && !b.border && compact) return 0;
+    return h;
+  }
+  return tableRows(d, b, compact).reduce((a, r) => a + r.rowH + r.signGap, 0) + 6;
+}
+
+/**
+ * Unterschriften nicht allein auf eine Seite (Ahmed 06.11.): je Unterschriftsbereich die zwei Absätze davor mit dazu.
+ * Liefert je Startblock das Ende der Gruppe und wie viel sich durch kompakten Satz sparen lässt.
+ */
+export function signatureGroups(blocks: Block[]) {
+  const out = new Map<number, number>();
+  for (let i = 0; i < blocks.length; i++) {
+    if (!isSignature(blocks[i]!) || (i > 0 && isSignature(blocks[i - 1]!))) continue;
+    let e = i;
+    while (e + 1 < blocks.length && (isSignature(blocks[e + 1]!) || emptyPara(blocks[e + 1]!))) e++;
+    let g = i;
+    let text = 0;
+    while (g > 0 && text < 2) {
+      const cur = blocks[g]!;
+      if (cur.kind === 'p' && cur.pageBreak) break;
+      const pb = blocks[g - 1]!;
+      if (pb.kind !== 'p') break;
+      g--;
+      if (paraText(pb)) text++;
+    }
+    if (!out.has(g)) out.set(g, e);
+    i = e;
+  }
+  return out;
+}
+
 /** Dokument in das FormDoc setzen (ab der aktuellen Position; Seitenumbrüche automatisch). */
 export function renderDocx(d: FormDoc, blocks: (Para | Table)[]) {
   const { L, R } = FORM_X;
   const { BOTTOM } = FORM_Y;
   const full = R - L;
-  for (const b of blocks) {
+  const groups = signatureGroups(blocks);
+  let compactUntil = -1;
+  for (let bi = 0; bi < blocks.length; bi++) {
+    const b = blocks[bi]!;
+    const end = groups.get(bi);
+    if (end !== undefined && d.y > FORM_Y.TOP + 20) {
+      const part = blocks.slice(bi, end + 1);
+      const avail = BOTTOM - d.y;
+      const h = part.reduce((a, x) => a + blockHeight(d, x, false), 0);
+      if (h > avail) {
+        // erst enger setzen (Leerabsätze, Abstand über den Linien), sonst mit den Absätzen davor auf die neue Seite
+        const hc = part.reduce((a, x) => a + blockHeight(d, x, true), 0);
+        if (hc <= avail) compactUntil = end;
+        else if (h <= BOTTOM - FORM_Y.TOP - 10) d.newPage();
+      }
+    }
+    const compact = bi <= compactUntil;
     if (b.kind === 'p') {
       if (b.pageBreak && d.y > FORM_Y.TOP + 20) d.newPage();
       const { l, h } = paraHeight(d, b, full);
       if (l.empty) {
+        if (compact && !b.border) continue;
         if (d.y > FORM_Y.TOP) d.y += h;
         if (b.border) d.line(L, R, d.y, rgb(...b.border), 1);
         continue;
@@ -485,36 +602,8 @@ export function renderDocx(d: FormDoc, blocks: (Para | Table)[]) {
       continue;
     }
     // Tabelle
-    const total = b.grid.reduce((a, x) => a + x, 0) || 1;
-    const scale = full / total;
-    const colX: number[] = [];
-    let acc = L;
-    for (const g of b.grid) {
-      colX.push(acc);
-      acc += g * scale;
-    }
-    colX.push(R);
-    const pad = Math.min(6, b.marX * F);
-    const padY = Math.min(4, b.marY * F + 1);
-    for (const row of b.rows) {
-      let gi = 0;
-      const cells = row.cells.map((c) => {
-        const x0 = colX[Math.min(gi, colX.length - 1)]!;
-        gi += c.span;
-        const x1 = colX[Math.min(gi, colX.length - 1)]!;
-        const inner = Math.max(10, x1 - x0 - pad * 2);
-        const laid = c.paras.map((p) => ({ p, ...paraHeight(d, p, inner) }));
-        const h = laid.reduce((a, x) => a + x.h, 0);
-        return { c, x0, x1, inner, laid, h };
-      });
-      const rowH = Math.max(row.minH * F, ...cells.map((c) => c.h + padY * 2), 12);
-      // Unterschriftszeile: genug Platz zum Unterschreiben darüber, Linie nicht vom Text getrennt
-      // (nicht, wenn direkt darüber das graue Unterschriftsfeld steht – Fläche gehört an die Linie)
-      const prev = b.rows[b.rows.indexOf(row) - 1];
-      const prevShaded = !!prev?.cells.some(
-        (c) => c.fill && !(c.fill[0] > 0.99 && c.fill[1] > 0.99 && c.fill[2] > 0.99),
-      );
-      const signGap = !b.border && !prevShaded && cells.some((c) => c.c.top && c.c.top[0] < 0.5) ? 16 : 0;
+    const laidRows = tableRows(d, b, compact);
+    for (const { cells, rowH, signGap, pad, padY } of laidRows) {
       d.ensure(Math.min(rowH + signGap, BOTTOM - FORM_Y.TOP - 10));
       d.y += signGap;
       for (const c of cells) {

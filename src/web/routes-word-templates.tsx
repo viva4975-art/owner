@@ -6,8 +6,10 @@ import {
   type Audience,
   PLACEHOLDERS,
   PLACEHOLDER_HINT,
+  asksWorkDays,
   getTemplateFor,
   isDateKey,
+  parseWorkDays,
   isoOfDe,
   templateFormFields,
   templateValues,
@@ -21,11 +23,18 @@ import {
   updateWordTemplate,
 } from '../services/word-templates.js';
 import type { Context } from 'hono';
-import { type FormField, defaultBlanks, defaultBoxes, defaultCells } from '../services/word-form.js';
+import {
+  type FormField,
+  defaultBlanks,
+  defaultBoxes,
+  defaultCells,
+  isWorkDaysBlank,
+} from '../services/word-form.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { PageHead, anz } from './layout.js';
 import { canAccess } from './permissions.js';
 import { uploadConfig } from './routes-files.js';
+import { leaveDaysForWeek } from '../domain/time/leave.js';
 
 const TARGET_PAGE: Record<WordTarget['type'], (id: string) => string> = {
   employee: (id) => `/personal/${id}/dokumente`,
@@ -209,6 +218,7 @@ const FormFields: FC<{
               </span>
               <input
                 name={`blank:${f.index}`}
+                data-workdays={isWorkDaysBlank(f) ? '1' : undefined}
                 value={blanks[f.index] ?? ''}
                 maxlength={200}
                 aria-label="Lücke"
@@ -240,6 +250,8 @@ const FormFields: FC<{
     />
   </div>
 );
+
+const DAY_CHOICES = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6];
 
 const GroupFields: FC<{
   g: string;
@@ -479,6 +491,8 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
       { type, id },
       { actorName: c.get('user')!.name, fileId },
     );
+    // Arbeitsvertrag: Arbeitstage pro Woche immer abfragen (Ahmed 06.11.) – bestimmen den Urlaubsanspruch
+    const askDays = type === 'employee' && asksWorkDays(t);
     const payKeys = /^Mitarbeiter\.(Stundenlohn|Gehalt|Monatsgehalt|Lohngruppe|Wochenstunden)$/;
     const payNotes = t.placeholders.some((k) => payKeys.test(k)) ? notes : [];
     const keys = t.placeholders;
@@ -557,6 +571,36 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
           )}
           {keys.length === 0 && formFields.length === 0 && (
             <div class="empty">Diese Vorlage hat keine Platzhalter – sie wird unverändert erstellt.</div>
+          )}
+          {askDays && (
+            <div class="flash warn" style="margin:0 0 12px">
+              <label for="f-arbeitstage" style="font-weight:600">
+                Arbeitstage pro Woche – bitte wählen
+              </label>
+              <select id="f-arbeitstage" name="arbeitstage" required style="max-width:260px">
+                <option value="">– bitte wählen –</option>
+                {DAY_CHOICES.map((n) => (
+                  <option value={String(n)}>
+                    {String(n).replace('.', ',')} {n === 1 ? 'Tag' : 'Tage'} ·{' '}
+                    {String(leaveDaysForWeek(n)).replace('.', ',')} Urlaubstage
+                  </option>
+                ))}
+              </select>
+              <div class="small" style="margin-top:4px">
+                Urlaub laut Vertrag = 30 Tage × Arbeitstage ÷ 5.{' '}
+                {values['Mitarbeiter.Arbeitstage']
+                  ? `In den Stammdaten stehen ${values['Mitarbeiter.Arbeitstage']} Tage/Woche.`
+                  : 'In den Stammdaten ist noch nichts eingetragen.'}
+              </div>
+              <input type="hidden" name="urlaub_default" value={values['Mitarbeiter.Urlaubstage'] ?? ''} />
+              <script
+                dangerouslySetInnerHTML={{
+                  // gewählte Tage in passende Lücken des Vertrags übernehmen („verteilt auf ___ Tage“)
+                  __html:
+                    "document.getElementById('f-arbeitstage').addEventListener('change',function(){var v=this.value.replace('.',',');document.querySelectorAll('input[data-workdays]').forEach(function(i){i.value=v})})",
+                }}
+              />
+            </div>
           )}
           {groups.map((g) => (
             <GroupFields g={g} keys={keys} values={values} choices={choices} />
@@ -755,6 +799,18 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
     const overrides: Record<string, string> = {};
     for (const [k, v] of Object.entries(b))
       if (k.startsWith('v:') && typeof v === 'string' && k.length < 90) overrides[k.slice(2)] = v;
+    if (
+      type === 'employee' &&
+      asksWorkDays(await getTemplateFor(sql, String(b.template_id ?? ''), { type, id }))
+    ) {
+      const days = parseWorkDays(String(b.arbeitstage ?? ''));
+      if (days === null) throw new BusinessError('Bitte die Arbeitstage pro Woche wählen');
+      overrides['Mitarbeiter.Arbeitstage'] = String(days).replace('.', ',');
+      // Urlaubstage folgen den Arbeitstagen, außer sie wurden unten von Hand geändert
+      const shown = overrides['Mitarbeiter.Urlaubstage'];
+      if (shown === undefined || shown === String(b.urlaub_default ?? ''))
+        overrides['Mitarbeiter.Urlaubstage'] = String(leaveDaysForWeek(days)).replace('.', ',');
+    }
     const { name, data } = await fillWordTemplate(
       sql,
       cfg,

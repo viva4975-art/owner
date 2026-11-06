@@ -58,6 +58,7 @@ export const PLACEHOLDERS: Record<string, string[]> = {
     'Gehalt',
     'Lohngruppe',
     'Urlaubstage',
+    'Arbeitstage',
     'Beschäftigungsart',
     'Objekte',
     'Einsatzgebiet',
@@ -619,6 +620,7 @@ async function employeeValues(
     'Mitarbeiter.Lohngruppe': level ?? '',
     // Urlaub laut Rahmentarifvertrag: 30 Tage bei 5-Tage-Woche, anteilig nach Arbeitstagen
     'Mitarbeiter.Urlaubstage': String(leaveDaysForWeek(Number(e.days_per_week ?? 5))).replace('.', ','),
+    'Mitarbeiter.Arbeitstage': e.days_per_week ? String(Number(e.days_per_week)).replace('.', ',') : '',
     'Mitarbeiter.Beschäftigungsart': EMPLOYMENT[e.employment_type] ?? e.employment_type,
     'Mitarbeiter.Objekte': sites.map((s) => s.name).join(', '),
     // nur intern für Kästchen-Vorbelegung: 'ja' / 'nein' / '' (noch kein Objekt bekannt)
@@ -787,6 +789,18 @@ export const isoOfDe = (v: string) => {
   const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(v);
   return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
 };
+
+/** Arbeitsvertrag (nicht Änderung/Nachtrag): beim Ausfüllen werden die Arbeitstage pro Woche abgefragt (Ahmed 06.11.). */
+export const asksWorkDays = (t: { name: string; code?: string | null; audience: string }) =>
+  t.audience === 'mitarbeiter' &&
+  (/arbeitsvertrag/i.test(t.name) || /^VD-AV-/i.test(t.code ?? '')) &&
+  !/änderung|nachtrag|zusatz/i.test(t.name);
+
+/** Arbeitstage-Eingabe „2,5“ → 2.5 (0,5–7 in halben Tagen), sonst null */
+export function parseWorkDays(v: string): number | null {
+  const n = Number(v.trim().replace(',', '.'));
+  return Number.isFinite(n) && n >= 0.5 && n <= 7 && Number.isInteger(n * 2) ? n : null;
+}
 
 export async function getTemplateFor(sql: Sql, templateId: string, target: WordTarget) {
   return loadTemplate(sql, templateId, target);

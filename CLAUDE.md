@@ -4998,3 +4998,15 @@ Testadresse.
   Häufigkeit) steht unter „Rechnung fehlt“ der volle Betrag im Monat des Endes der Laufzeit (Hinweis „nach Ausführung,
   10/2026–11/2026“ bleibt), nicht mehr anteilig nach Kalendertagen. „Je Tag“ weiter nach Arbeitstagen je Monat, Stunden/
   Regie im Monat der Erfassung (ersetzt die Aufteilung der Pauschalen vom 02.11.).
+- 2026-11-06: Ahmed (2 Punkte):
+  - **Arbeitsvertrag fragt nach den Arbeitstagen**: Beim Ausfüllen eines Arbeitsvertrags (Vorlage „Arbeitsvertrag …“ bzw.
+    Code VD-AV-…, nicht Änderung/Nachtrag; `asksWorkDays`) steht oben die Pflichtauswahl „Arbeitstage pro Woche“
+    (1–6, halbe Tage, ohne Vorauswahl, Hinweis auf den Stammdaten-Wert). Ohne Auswahl wird nichts erstellt. Die Wahl
+    setzt `${Mitarbeiter.Arbeitstage}` (neuer Platzhalter) und `${Mitarbeiter.Urlaubstage}` = 30 × Tage ÷ 5 (außer unten
+    von Hand geändert) und füllt Lücken wie „verteilt sich auf ___ Arbeitstage pro Woche“ (`isWorkDaysBlank`). Die
+    Stammdaten bleiben unverändert.
+  - **Unterschriften nicht allein auf einer Seite** (PDF aus Word-Vorlagen, `renderDocx`): Passt ein
+    Unterschriftsbereich (Linien, „Ort, Datum“, „Unterschrift …“) nicht mehr auf die Seite, wird er erst enger gesetzt
+    (ohne Leerabsätze, kleinerer Abstand über den Linien); reicht das nicht, wandern die zwei Absätze davor mit auf die
+    neue Seite (`signatureGroups`). Schriftgröße bleibt wie in Word. Wirkt beim nächsten Erstellen; „Als Word
+    herunterladen“ bleibt wie die Vorlage (Umbruch macht dort Word). Test in `docx-render.test.ts`.

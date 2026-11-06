@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseDocx } from './docx-render.js';
+import { parseDocx, renderDocx, signatureGroups } from './docx-render.js';
+import { FormDoc } from './form-doc.js';
 
 const doc = (body: string) => `<w:document xmlns:w="w" xmlns:w14="w14"><w:body>${body}</w:body></w:document>`;
 const box = (checked: string, glyph: string) =>
@@ -40,5 +41,48 @@ describe('parseDocx', () => {
     expect(sign!.top![0]).toBeLessThan(0.5);
     expect(other!.top![0]).toBeGreaterThan(0.8);
     expect(sign!.bottom).toBeNull();
+  });
+});
+
+describe('Unterschriften nicht allein auf einer Seite (Ahmed 06.11.)', () => {
+  const p = (t: string) => `<w:p><w:r><w:t>${t}</w:t></w:r></w:p>`;
+  const sig =
+    '<w:tbl><w:tblGrid><w:gridCol w:w="4270"/><w:gridCol w:w="4270"/></w:tblGrid><w:tr>' +
+    ['Unterschrift Arbeitgeber', 'Unterschrift Arbeitnehmer']
+      .map(
+        (t) =>
+          `<w:tc><w:tcPr><w:tcBorders><w:top w:val="single" w:sz="4" w:color="000000"/></w:tcBorders></w:tcPr>${p(t)}</w:tc>`,
+      )
+      .join('') +
+    '</w:tr></w:tbl>';
+
+  it('nimmt die zwei Absätze vor dem Unterschriftsbereich mit', () => {
+    const blocks = parseDocx(doc(p('Text 1') + p('Text 2') + p('Schluss A') + p('Schluss B') + sig));
+    expect([...signatureGroups(blocks)]).toEqual([[2, 4]]);
+  });
+
+  it('setzt Unterschriften nie allein auf die letzte Seite', async () => {
+    let wrapped = 0;
+    for (let n = 30; n < 60; n++) {
+      const body =
+        Array.from({ length: n }, (_, i) => p(`Absatz ${i + 1}`)).join('') +
+        p('Schluss A') +
+        p('Schluss B') +
+        sig;
+      const d = await FormDoc.create({ title: 't', sideRef: 't', date: '2026-11-06', author: 't' });
+      const seen: Record<string, number> = {};
+      const orig = d.text.bind(d);
+      d.text = ((
+        t: string,
+        ...rest: Parameters<FormDoc['text']> extends [string, ...infer R] ? R : never
+      ) => {
+        seen[t] = d.pdf.getPageCount();
+        return orig(t, ...rest);
+      }) as FormDoc['text'];
+      renderDocx(d, parseDocx(doc(body)));
+      expect(seen['Unterschrift'], `n=${n}`).toBe(seen['B']);
+      if ((seen['Unterschrift'] ?? 0) > 1) wrapped++;
+    }
+    expect(wrapped).toBeGreaterThan(0);
   });
 });

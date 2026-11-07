@@ -5022,3 +5022,8 @@ Testadresse.
   Kopfzeile und Menüleiste als schwebendes Glas (Menü als Bordeaux-Pille), Pillen-Knöpfe, Reiter als Segment-Steuerung,
   in den Apps schwebende Leiste unten. Ohne Einschalten unverändert; „Transparenz reduzieren“ (iOS) und Druck ohne Glas.
   Noch nicht Standard – Ahmed entscheidet nach dem Test.
+- 2026-11-07: **Glas Fassung 2 „wie auf Apple“** (Ahmed): hell und klar wie iOS/macOS 26 statt Bordeaux-Flächen –
+  Apple-Systemschrift (SF auf Apple-Geräten, sonst Inter), heller Hintergrund mit Pastell-Farbflächen, neutrales Glas mit
+  Lichtkante (innere Glanzlinien + Haarlinie), Menü als helle schwebende Glas-Kapsel (aktiver Punkt Bordeaux-getönt),
+  Hauptknopf getöntes Glas, Nebenknöpfe klares Glas, Eingabefelder grau gefüllt ohne Linie, Reiter als Segment-Steuerung,
+  Leiste unten als Glas-Kapsel. Weiter nur per `/design/glas`.

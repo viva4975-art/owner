@@ -50,7 +50,7 @@ const skip = (k) =>
   /^\/(api|static|dateien|abmelden|anmelden|health)(\/|$)/.test(k) ||
   /\.(csv|zip|ics|xml|docx|xlsx|webmanifest|js)(\?|$)/.test(k) ||
   /\/zip(\/|$)/.test(k.split('?')[0]) ||
-  /download=1|pruefen=1|\/m\/sprache|\/kalender\/abo\//.test(k);
+  /download=1|format=(csv|xlsx|zip)|pruefen=1|\/m\/sprache|\/kalender\/abo\//.test(k);
 const patternOf = (k) =>
   k
     .replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, ':id')
@@ -166,6 +166,79 @@ async function inspect(p, k, view) {
       if (h && h.startsWith('/') && !h.startsWith('//')) out.links.push(h.split('#')[0]);
     }
     out.h1 = document.querySelector('h1')?.innerText ?? '';
+    // Gestaltung: zu hohe „Pillen“ (z. B. umbrechende Reiter, Menü als Kapsel) und schlechter Kontrast
+    out.blobs = [];
+    out.contrast = [];
+    const rgba = (c) => {
+      const k = /color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)(?: \/ ([\d.]+))?\)/.exec(c || '');
+      if (k) return [k[1] * 255, k[2] * 255, k[3] * 255, k[4] === undefined ? 1 : Number(k[4])];
+      const m = /rgba?\(([^)]+)\)/.exec(c || '');
+      if (!m) return null;
+      const v = m[1]
+        .split(/[ ,/]+/)
+        .filter(Boolean)
+        .map(Number);
+      return [v[0], v[1], v[2], v.length > 3 ? v[3] : 1];
+    };
+    const lum = ([r, g, b]) => {
+      const f = (x) => ((x /= 255) <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+    };
+    const bgOf = (el) => {
+      // Hintergrund von innen nach außen mischen (Verlauf: erste Farbe), Seite = hell
+      const layers = [];
+      for (let q = el; q && q.nodeType === 1; q = q.parentElement) {
+        const cs = getComputedStyle(q);
+        let c = rgba(cs.backgroundColor);
+        if ((!c || c[3] === 0) && cs.backgroundImage.includes('gradient')) c = rgba(cs.backgroundImage);
+        if (c && c[3] > 0) {
+          layers.push(c);
+          if (c[3] >= 0.98) break;
+        }
+      }
+      let acc = [240, 240, 244];
+      for (const c of layers.reverse()) acc = acc.map((v, i) => v * (1 - c[3]) + c[i] * c[3]);
+      return acc;
+    };
+    for (const el of document.querySelectorAll(
+      'nav, .tabs, .ls-tabs, .seg, .actstack, .appside, .card, .btn, details, form',
+    )) {
+      if (el.offsetParent === null && getComputedStyle(el).position !== 'fixed') continue;
+      const b = el.getBoundingClientRect();
+      const r = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
+      if (b.height > 90 && b.width > 120 && r >= Math.min(b.height, b.width) / 2 - 2)
+        out.blobs.push(
+          `${el.tagName.toLowerCase()}.${[...el.classList].join('.')} ${Math.round(b.width)}×${Math.round(b.height)}`,
+        );
+    }
+    out.dark = [];
+    for (const el of document.querySelectorAll('main *')) {
+      if (el.offsetParent === null) continue;
+      const c = rgba(getComputedStyle(el).backgroundColor);
+      if (!c || c[3] < 0.9) continue;
+      const b = el.getBoundingClientRect();
+      if (b.width * b.height > 30000 && lum(c) < 0.06 && !el.closest('.dark-ok'))
+        out.dark.push(
+          `${el.tagName.toLowerCase()}.${[...el.classList].join('.')}: „${el.innerText.trim().slice(0, 30)}“ ${Math.round(b.width)}×${Math.round(b.height)}`,
+        );
+    }
+    for (const el of document.querySelectorAll(
+      '.btn, button, .tabs a, .seg a, a.item, summary, h1, h2, h3, td, th, label, .small',
+    )) {
+      if (el.offsetParent === null || !el.innerText.trim()) continue;
+      const cs = getComputedStyle(el);
+      const fg = rgba(cs.color);
+      if (!fg) continue;
+      const bg = bgOf(el);
+      const f = fg.slice(0, 3).map((v, i) => v * fg[3] + bg[i] * (1 - fg[3]));
+      const L1 = lum(f),
+        L2 = lum(bg);
+      const ratio = (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
+      if (ratio < 2.5)
+        out.contrast.push(
+          `${el.tagName.toLowerCase()}.${[...el.classList].join('.')}: „${el.innerText.trim().slice(0, 30)}“ ${ratio.toFixed(1)}`,
+        );
+    }
     return out;
   });
   for (const w of r.words) add(k, `${view}: Text`, w);
@@ -175,6 +248,9 @@ async function inspect(p, k, view) {
     add(k, 'pc: Querscrollen', `${r.overflow}px ${(r.wide ?? []).join(' | ')}`);
   for (const c of r.clipped.slice(0, 5)) add(k, `${view}: abgeschnitten`, c);
   for (const i of r.brokenImg) add(k, `${view}: Bild fehlt`, i);
+  for (const x of r.blobs.slice(0, 3)) add(k, `${view}: Pille zu hoch`, x);
+  for (const x of r.contrast.slice(0, 3)) add(k, `${view}: Kontrast`, x);
+  for (const x of r.dark.slice(0, 3)) add(k, `${view}: dunkle Fläche`, x);
   if (view === 'pc') for (const u of r.unlabeled.slice(0, 5)) add(k, 'pc: Feld ohne Beschriftung', u);
   if (SHOTS) {
     const f = `${OUT}/${view}/${String(n).padStart(3, '0')}_${k.replace(/[^a-z0-9]+/gi, '_').slice(0, 80)}.png`;
@@ -208,8 +284,11 @@ while (queue.length && n < MAX) {
   n++;
   let links = [];
   try {
-    links = await inspect(pc, k, 'pc');
-    await inspect(handy, k, 'handy');
+    if (process.env.VIEWS === 'handy') links = await inspect(handy, k, 'handy');
+    else {
+      links = await inspect(pc, k, 'pc');
+      if (process.env.VIEWS !== 'pc') await inspect(handy, k, 'handy');
+    }
   } catch (e) {
     add(k, 'Prüfung abgebrochen', String(e.message ?? e).slice(0, 200));
   }

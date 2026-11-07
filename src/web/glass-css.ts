@@ -28,6 +28,7 @@ export const GLASS_CSS = `
 html.glas{--g-acc:#7d1435;--g-a1:.32;--g-a2:.1;--g-fill:linear-gradient(135deg,rgba(255,255,255,var(--g-a1)),rgba(255,255,255,var(--g-a2)));--g-fill-2:rgba(255,255,255,.5);--g-rim:inset 0 1px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(255,255,255,.35),inset 1px 0 0 rgba(255,255,255,.45),inset -1px 0 0 rgba(255,255,255,.45);--g-ring:0 0 0 .5px rgba(0,0,0,.08);--g-drop:0 8px 32px -8px rgba(0,0,0,.14),0 2px 6px rgba(0,0,0,.04);--g-bl:14px;--g-blur:saturate(190%) blur(var(--g-bl)) brightness(1.04);--g-tint:color-mix(in srgb,var(--g-acc) 88%,transparent);--ink:#1d1d1f;--mut:#6e6e73}
 html.glas body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",Inter,"Helvetica Neue",Arial,sans-serif!important;-webkit-font-smoothing:antialiased;color:#1d1d1f;letter-spacing:-.01em}
 html.glas h1,html.glas h2,html.glas h3{letter-spacing:-.022em}
+html.glas .faint{color:#86868b!important}html.glas .mut,html.glas .muted{color:#6e6e73}
 /* Logo ohne weißen Kasten (transparent), wie in den Apps */
 html.glas .top .logo img,html.glas .top-logo img{content:url(/static/logo-transparent.png)}
 /* Hintergrund: hell, wie ein iOS-Hintergrundbild mit sanften Farben */
@@ -82,6 +83,20 @@ html.glas .tabs,html.glas .ls-tabs{background:rgba(118,118,128,.12);border:0!imp
 html.glas .tabs a,html.glas .ls-tabs a{border:0!important;border-radius:999px!important;padding:6px 14px!important;color:#1d1d1f!important;box-shadow:none!important}
 html.glas .tabs .badge,html.glas .tabs .cnt{background:rgba(255,255,255,.7)!important}
 html.glas .tabs a.on,html.glas .ls-tabs a.on,html.glas .tabs a[aria-current]{background:#fff!important;box-shadow:0 3px 8px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)!important;color:#1d1d1f!important;font-weight:600}
+/* Aktionsblock rechts (Angebot, Rechnung, Arbeitsschein …): helle Glas-Karte mit Zeilen, erste Aktion getönt */
+html.glas .actstack{background:var(--g-fill)!important;-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur);border-radius:22px!important;padding:6px;gap:3px;box-shadow:var(--g-rim),var(--g-ring),var(--g-drop)!important}
+html.glas .actstack.actstack>:is(a,button),html.glas .actstack.actstack>form>button,html.glas .actstack.actstack>details>summary{background:transparent!important;color:#1d1d1f!important;border:0!important;border-radius:14px!important;box-shadow:none!important;-webkit-backdrop-filter:none;backdrop-filter:none;min-height:44px;font-weight:600}
+html.glas .actstack.actstack>:is(a,button):hover,html.glas .actstack.actstack>form>button:hover,html.glas .actstack.actstack>details>summary:hover{background:rgba(0,0,0,.05)!important;color:#1d1d1f!important}
+html.glas .actstack.actstack>:first-child:is(a,button),html.glas .actstack.actstack>form:first-child>button{background:var(--g-tint)!important;color:#fff!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 6px 16px -6px color-mix(in srgb,var(--g-acc) 50%,transparent)!important}
+html.glas .actstack.actstack>:not(:first-child):not(:last-child):is(a,button,form,details){box-shadow:0 .5px 0 rgba(0,0,0,.08)!important}
+html.glas .actstack.actstack :is(a,button,summary) .ic{color:inherit!important}
+html.glas .actstack.actstack>:is(.del,.ghost,.quiet),html.glas .actstack.actstack>form>button:is(.del,.ghost,.quiet){color:#6e6e73!important;font-weight:500}
+html.glas .actstack.actstack>:is(.del,.danger),html.glas .actstack.actstack>form>button:is(.del,.danger){color:#c4001a!important}
+html.glas .actstack>details>:not(summary){background:rgba(255,255,255,.6)!important;border-radius:14px!important}
+/* Planungstafel: Kopf „Zu planende Einsätze“ hell statt Bordeaux-Balken, Tafel als Glas */
+html.glas .pb-sec{background:var(--g-fill)!important;-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur);border:0!important;border-radius:22px!important;box-shadow:var(--g-rim),var(--g-ring),var(--g-drop)!important}
+html.glas .pb-bar,html.glas .pb-bar.light{background:transparent!important;color:#1d1d1f!important;border-bottom:.5px solid rgba(0,0,0,.08)!important}
+html.glas .pb-bar:not(.light) b{color:var(--g-acc)}
 /* Umschalter (Tag/Woche/Monat, Kalender/Liste, ← →) als Segment-Steuerung wie iOS */
 html.glas .seg{background:rgba(118,118,128,.12)!important;border:0!important;border-radius:12px!important;padding:3px;gap:2px;overflow:visible}
 html.glas .seg>a,html.glas .seg>label>span{border:0!important;border-radius:9px;background:transparent;color:#1d1d1f;padding:6px 12px}

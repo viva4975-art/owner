@@ -1060,8 +1060,8 @@ h2{font-size:15px;color:#6b1a21;margin:14px 0 4px}.ls{width:100%;border-collapse
 .ls td{border-bottom:1px solid #ddd;padding:4px;vertical-align:top}.ls tr{page-break-inside:avoid}.box{display:inline-block;width:120px;border-bottom:1px solid #999;height:12px}
 @media print{.bar{display:none}}</style></head><body>
 <form class="bar" method="get"><label>von <input type="date" name="von" value="${from}"></label><label>bis <input type="date" name="bis" value="${to}"></label>
-<select name="zeige">${sel('alle', 'Bestätigte und unbestätigte')}${sel('offen', 'Nur unbestätigte')}${sel('bestaetigt', 'Nur bestätigte')}</select>
-<select name="kunde"><option value="">Alle Kunden</option>${opts}</select><button type="submit" style="background:#555">Anzeigen</button><button type="button" onclick="print()">Drucken / als PDF speichern</button></form>
+<select name="zeige" aria-label="Anzeigen">${sel('alle', 'Bestätigte und unbestätigte')}${sel('offen', 'Nur unbestätigte')}${sel('bestaetigt', 'Nur bestätigte')}</select>
+<select name="kunde" aria-label="Kunde"><option value="">Alle Kunden</option>${opts}</select><button type="submit" style="background:#555">Anzeigen</button><button type="button" onclick="print()">Drucken / als PDF speichern</button></form>
 <div class="hd"><div><img src="/static/logo-transparent.png" alt="Viva-Deluxe" style="height:36px;display:block;margin-bottom:4px"><b>Glasreinigung – Terminbestätigungen</b><div class="k">${esc(kname ?? 'Alle Kunden')} · offene Termine ${dateDe(from)} – ${dateDe(to)}</div></div>
 <div class="k" style="text-align:right">${open.length} unbestätigt · ${ok.length} bestätigt<br>Stand ${dateDe(today)}</div></div>
 ${zeige !== 'bestaetigt' ? table('Noch nicht bestätigt', open, false) : ''}${zeige !== 'offen' ? table('Bestätigt', ok, true) : ''}

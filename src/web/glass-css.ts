@@ -20,7 +20,7 @@ export const GLASS_PRESETS = [
 export const GLASS_APPLY_JS = `function vdGlasApply(c,t){var r=document.documentElement.style;t=Math.max(0,Math.min(100,+t||0))/100;if(/^[0-9a-f]{6}$/i.test(c))r.setProperty('--g-acc','#'+c);r.setProperty('--g-a1',(.32+.66*t).toFixed(3));r.setProperty('--g-a2',(.1+.6*t).toFixed(3));r.setProperty('--g-bl',Math.round(14+16*t)+'px')}`;
 
 /** Setzt Klasse und Werte vor dem ersten Zeichnen (kein Aufblitzen der alten Gestaltung). */
-export const GLASS_HEAD_JS = `(function(){try{var k=document.cookie;if(/(?:^|; )vd_design=standard(?:;|$)/.test(k))return;document.documentElement.classList.add('glas');var m=/(?:^|; )vd_glas=([^;]*)/.exec(k);var q=m?decodeURIComponent(m[1]):'',c=/c=([0-9a-fA-F]{6})/.exec(q),t=/t=(\\d{1,3})/.exec(q);${GLASS_APPLY_JS};vdGlasApply(c?c[1]:'${GLASS_DEFAULT.color}',t?t[1]:${GLASS_DEFAULT.tint})}catch(e){}})();`;
+export const GLASS_HEAD_JS = `(function(){try{var k=document.cookie;if(/(?:^|; )vd_design=standard(?:;|$)/.test(k))return;document.documentElement.classList.add('glas');var de=document.documentElement,sc=function(){de.classList.toggle('scrolled',(window.scrollY||0)>6)};addEventListener('scroll',sc,{passive:true});sc();var m=/(?:^|; )vd_glas=([^;]*)/.exec(k);var q=m?decodeURIComponent(m[1]):'',c=/c=([0-9a-fA-F]{6})/.exec(q),t=/t=(\\d{1,3})/.exec(q);${GLASS_APPLY_JS};vdGlasApply(c?c[1]:'${GLASS_DEFAULT.color}',t?t[1]:${GLASS_DEFAULT.tint})}catch(e){}})();`;
 
 export const GLASS_CSS = `
 /* Fassung 2 (Ahmed 07.11.: „wie auf Apple“): hell und klar wie iOS/macOS 26 – Systemschrift, neutrales Glas mit
@@ -189,7 +189,7 @@ html.glas .menu-top .appside nav.menu a.item.on,html.glas .menu-top .appside nav
 /* Liquid Glass: Suche, Suchvorschläge, Klappmenüs, Popover, Dialoge */
 html.glas .search{background:rgba(118,118,128,.1)!important;border:1px solid transparent!important;border-radius:12px!important;transition:background .16s ease,border-color .16s ease,box-shadow .16s ease}
 html.glas .search:focus-within{background:#fff!important;border-color:color-mix(in srgb,var(--g-acc) 40%,#e5e5ea)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--g-acc) 14%,transparent)!important}
-html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas .menu-top .appside nav.menu .sub,html.glas dialog,html.glas .ev-dlg .box,html.glas details.dd>.drop{background:rgba(255,255,255,.93)!important;-webkit-backdrop-filter:var(--lg-blur)!important;backdrop-filter:var(--lg-blur)!important;border:1px solid var(--lg-line)!important;outline:1px solid rgba(229,229,234,.7);outline-offset:-1px;border-radius:14px!important;box-shadow:var(--lg-shadow),0 16px 40px -12px rgba(20,20,30,.16)!important}
+html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas .menu-top .appside nav.menu .sub,html.glas dialog,html.glas .ev-dlg .box,html.glas details.dd>.drop{background:rgba(252,252,253,.8)!important;-webkit-backdrop-filter:blur(26px) saturate(170%)!important;backdrop-filter:blur(26px) saturate(170%)!important;border:1px solid var(--lg-line)!important;outline:1px solid rgba(229,229,234,.7);outline-offset:-1px;border-radius:14px!important;box-shadow:var(--lg-shadow),0 16px 40px -12px rgba(20,20,30,.16)!important}
 html.glas .sdrop a:hover,html.glas .drop a:hover,html.glas .cbx-pop .on,html.glas .cbx-pop [aria-selected=true]{background:var(--acc-soft)!important;color:var(--g-acc)!important}
 html.glas dialog::backdrop{background:rgba(20,20,30,.18);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
 /* Karten: weiß, Radius 16, sehr dezente Linie und Schatten – kein Glas */
@@ -222,6 +222,23 @@ html.glas .info-col .sc{padding:20px 0 0!important}
 html.glas .info-col .sc>*{margin-left:20px!important;margin-right:20px!important}
 html.glas .info-col .sc>.sc-foot{padding:12px 20px 14px!important;border-radius:0 0 16px 16px!important;background:#fafafb!important}
 .sc-cap{color:#86868b}.sc-addr{color:#6e6e73}.sc-kv{border-top-color:#efeff2}.sc-kv>div{border-bottom-color:#efeff2}
+/* Ahmed 07.11. Nachtrag: Kopf/Menü oben deckend, beim Scrollen leicht durchsichtig mit feinem Schatten; ausgewählte Karten
+   mit 2-px-Bordeaux-Kante; sanftes Hover (180 ms) für Karten und Knöpfe. */
+html.glas .shell .top,html.glas .menu-top .top,html.glas .menu-top .appside{transition:background-color .2s ease,box-shadow .2s ease}
+html.glas:not(.scrolled) .shell .top,html.glas:not(.scrolled) .menu-top .top{background:rgba(255,255,255,.96)!important}
+@media (min-width:1025px){html.glas:not(.scrolled) .menu-top .appside{background:rgba(255,255,255,.96)!important;box-shadow:0 1px 0 rgba(229,229,234,.9)!important}
+html.glas.scrolled .menu-top .appside{background:rgba(255,255,255,.7)!important;box-shadow:0 1px 0 rgba(229,229,234,.6),0 8px 24px -12px rgba(20,20,30,.14)!important}}
+html.glas.scrolled .shell .top,html.glas.scrolled .menu-top .top{background:rgba(255,255,255,.7)!important}
+html.glas.scrolled body:not(.menu-top) .top{box-shadow:0 1px 0 rgba(229,229,234,.6),0 8px 24px -12px rgba(20,20,30,.14)!important}
+html.glas .card.accent,html.glas .info-col .sc:first-child{box-shadow:inset 0 2px 0 var(--g-acc),var(--card-shadow)!important}
+html.glas .card.accent .dash-head h2,html.glas .card.accent h2{color:var(--ink)}
+html.glas .card.accent .ic,html.glas .card.accent svg{color:var(--g-acc)}
+html.glas .card,html.glas .tile,html.glas .vw-grid a,html.glas .kpi,html.glas .bs-kpi{transition:box-shadow .18s ease,border-color .18s ease,background-color .18s ease}
+html.glas .card:hover,html.glas .tile:hover,html.glas .kpi:hover,html.glas .bs-kpi:hover{border-color:#dcdce2!important;box-shadow:0 2px 10px -4px rgba(20,20,30,.1),var(--card-shadow)!important}
+html.glas .card.accent:hover,html.glas .info-col .sc:first-child:hover{box-shadow:inset 0 2px 0 var(--g-acc),0 2px 10px -4px rgba(20,20,30,.1)!important}
+html.glas a.card:hover,html.glas .vw-grid a:hover,html.glas a.tile:hover{background:#fdfcfd!important;border-color:color-mix(in srgb,var(--g-acc) 22%,#e5e5ea)!important}
+html.glas .btn,html.glas button.btn,html.glas .tabs a,html.glas .ls-tabs a,html.glas .chip,html.glas .chips a{transition:background-color .18s ease,box-shadow .18s ease,border-color .18s ease,color .18s ease!important}
+html.glas table tbody tr td{transition:background-color .15s ease}
 /* Ohne backdrop-filter: deckend weiß */
 @supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important}}
 @media (prefers-reduced-transparency:reduce){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}

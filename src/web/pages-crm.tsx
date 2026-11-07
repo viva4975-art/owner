@@ -1208,7 +1208,7 @@ export const Mark: FC<{ text: string; q: string }> = ({ text, q }) => {
  */
 export const LeaveRequestsBox: FC<{ rows: AbsenceRow[]; href?: string }> = ({ rows, href = '/urlaub' }) =>
   rows.length === 0 ? null : (
-    <section class="card dash-card" style="border-left:3px solid var(--brand,#7d1435)">
+    <section class="card dash-card accent">
       <DashHead title="Anträge zum Genehmigen" count={rows.length} href={href} more="Alle offenen Anträge" />
       <ul class="dash-list">
         {rows.slice(0, 8).map((a) => (

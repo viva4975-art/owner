@@ -5097,3 +5097,8 @@ Testadresse.
   aktiver Menüpunkt mit Bordeaux-Unterstrich; aktive Filter hell-bordeaux. Rückfall ohne backdrop-filter und bei
   „Transparenz reduzieren“ deckend weiß, „Bewegung reduzieren“ ohne Übergänge. Schrift bleibt Inter (bereits vorhanden,
   auf allen Geräten gleich). Keine neuen Bibliotheken, keine Änderung an Routen/Rechten/Logik.
+- 2026-11-07: Nachtrag Gestaltung (Ahmed, 4 Punkte): Klappmenüs/Suchvorschau/Auswahllisten als dezentes Glas (Weiß 80 %,
+  Blur 26 px – Hintergrund nur verschwommen); Kopfzeile + Menüleiste oben deckend, ab 6 px Scrollen leicht durchsichtig mit
+  feinem Schatten (Klasse `scrolled` am `<html>`, Kopf-Skript); **ausgewählte Karten** mit 2-px-Bordeaux-Kante oben und
+  getönten Symbolen (Klasse `accent`: „Anträge zum Genehmigen“, Objekt-Infokarte) – nicht bei allen Karten; Karten/Kacheln/
+  Knöpfe/Reiter ändern beim Darüberfahren sanft Rand/Schatten (180 ms; bei „Bewegung reduzieren“ ohne Übergang).

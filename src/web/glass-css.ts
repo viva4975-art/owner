@@ -3,13 +3,13 @@
 // Alles ist auf `html.glas` beschränkt – ohne die Klasse ändert sich nichts.
 
 /** Farbe (Hex ohne #) und Durchsichtigkeit (0 = ganz klar … 100 = milchig) je Browser, Cookie vd_glas="c=7d1435&t=60". */
-export const GLASS_DEFAULT = { color: '7d1435', tint: 0 } as const;
+export const GLASS_DEFAULT = { color: '811d40', tint: 0 } as const;
 
 /** Farbvorschläge (Bordeaux = Hausfarbe). */
 export const GLASS_PRESETS = [
-  { c: '7d1435', label: 'Bordeaux' },
+  { c: '811d40', label: 'Bordeaux' },
   { c: '8b2332', label: 'Bordeaux hell' },
-  { c: '5a0f26', label: 'Bordeaux dunkel' },
+  { c: '64152f', label: 'Bordeaux dunkel' },
   { c: '1d1d1f', label: 'Graphit' },
   { c: '0071e3', label: 'Blau' },
   { c: '1f7a5a', label: 'Grün' },
@@ -170,6 +170,62 @@ html.glas .info-col .sc>.sc-foot,.info-col .sc>.sc-foot{display:flex;gap:8px;fle
 .sc-foot form{margin:0}
 html.glas .tag{border-radius:999px;font-weight:600}
 @media (max-width:1024px){html.glas body.menu-top .burger-cb:not(:checked)~.appside{box-shadow:none!important}}
+/* Fassung 4 „Apple Business“ (Ahmed 07.11., Vorgabe mit Palette): 85–90 % ruhige neutrale Fläche, Bordeaux #811D40 nur als
+   Akzent, dezentes Liquid Glass nur für Kopfzeile, Menüleiste, Suche, Klappmenüs, Popover und Dialoge – nie hinter Tabellen.
+   Karten weiß, Radius 16, Knöpfe Radius 10, Übergänge 160 ms, Fokus deutlich sichtbar. Steht zuletzt. */
+html.glas{--g-acc:#811d40;--acc-d:#64152f;--acc-soft:#f7edf1;--ink:#1d1d1f;--mut:#6e6e73;--line-c:#e5e5ea;
+  --lg-bg:rgba(255,255,255,.78);--lg-blur:blur(18px) saturate(150%);--lg-line:rgba(255,255,255,.65);
+  --lg-shadow:0 4px 24px rgba(20,20,30,.045),inset 0 1px 0 rgba(255,255,255,.65);
+  --card-shadow:0 1px 2px rgba(20,20,30,.04),0 1px 0 rgba(20,20,30,.02)}
+html.glas body,html.glas body.shell,html.glas body.appmode,html.glas body.mshell,html.glas body.bare{background:#f8f9fa!important;background-image:none!important;color:var(--ink)}
+html.glas .faint{color:#86868b!important}
+/* Liquid Glass: Kopfzeile + Menüleiste (schweben über dem Inhalt) */
+html.glas .shell .top,html.glas .menu-top .top{background:var(--lg-bg)!important;-webkit-backdrop-filter:var(--lg-blur)!important;backdrop-filter:var(--lg-blur)!important;box-shadow:0 1px 0 rgba(229,229,234,.9)!important;border-bottom:0!important}
+@media (min-width:1025px){
+html.glas .menu-top .appside{background:var(--lg-bg)!important;-webkit-backdrop-filter:var(--lg-blur)!important;backdrop-filter:var(--lg-blur)!important;box-shadow:0 1px 0 rgba(229,229,234,.9),0 4px 24px rgba(20,20,30,.03)!important}
+html.glas .menu-top .appside nav.menu a.item,html.glas .menu-top .appside nav.menu .grp>summary{color:#3a3a3c!important;transition:color .16s ease,box-shadow .16s ease}
+html.glas .menu-top .appside nav.menu a.item.on,html.glas .menu-top .appside nav.menu .grp.on>summary{color:var(--g-acc)!important;box-shadow:inset 0 -2.5px 0 var(--g-acc)!important}
+}
+/* Liquid Glass: Suche, Suchvorschläge, Klappmenüs, Popover, Dialoge */
+html.glas .search{background:rgba(118,118,128,.1)!important;border:1px solid transparent!important;border-radius:12px!important;transition:background .16s ease,border-color .16s ease,box-shadow .16s ease}
+html.glas .search:focus-within{background:#fff!important;border-color:color-mix(in srgb,var(--g-acc) 40%,#e5e5ea)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--g-acc) 14%,transparent)!important}
+html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas .menu-top .appside nav.menu .sub,html.glas dialog,html.glas .ev-dlg .box,html.glas details.dd>.drop{background:rgba(255,255,255,.93)!important;-webkit-backdrop-filter:var(--lg-blur)!important;backdrop-filter:var(--lg-blur)!important;border:1px solid var(--lg-line)!important;outline:1px solid rgba(229,229,234,.7);outline-offset:-1px;border-radius:14px!important;box-shadow:var(--lg-shadow),0 16px 40px -12px rgba(20,20,30,.16)!important}
+html.glas .sdrop a:hover,html.glas .drop a:hover,html.glas .cbx-pop .on,html.glas .cbx-pop [aria-selected=true]{background:var(--acc-soft)!important;color:var(--g-acc)!important}
+html.glas dialog::backdrop{background:rgba(20,20,30,.18);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
+/* Karten: weiß, Radius 16, sehr dezente Linie und Schatten – kein Glas */
+html.glas .card,html.glas .panel,html.glas .kpi,html.glas .bs-kpi,html.glas .tile,html.glas details.box,html.glas .vw-grid a,html.glas .vw-stats .vs,html.glas body.mshell .shift,html.glas .qm-audit,html.glas .pb-sec,html.glas .actstack{background:#fff!important;border:1px solid var(--line-c)!important;box-shadow:var(--card-shadow)!important;border-radius:16px!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+html.glas .card h2,html.glas .panel h2{font-size:18px;font-weight:650;letter-spacing:-.015em}
+html.glas table td,html.glas table th{border-color:#efeff2!important}
+html.glas table tbody tr:hover td{background:#fafafb}
+/* Knöpfe: primär Bordeaux, sekundär weiß mit Linie; ruhige Übergänge */
+html.glas .btn,html.glas button.btn{border-radius:10px!important;background:var(--g-acc)!important;color:#fff!important;border:1px solid transparent!important;transition:background-color .16s ease,box-shadow .16s ease,border-color .16s ease,color .16s ease;filter:none!important}
+html.glas .btn:hover{background:var(--acc-d)!important;box-shadow:0 2px 8px -2px color-mix(in srgb,var(--g-acc) 45%,transparent)!important}
+html.glas .btn:active{transform:none}
+html.glas .btn.secondary,html.glas .btn.ghost,html.glas .btn.sec,html.glas a.btn.light,html.glas .btn.outline,html.glas .btn.subtle{background:#fff!important;color:var(--ink)!important;border:1px solid var(--line-c)!important;box-shadow:0 1px 1px rgba(20,20,30,.03)!important}
+html.glas .btn.secondary:hover,html.glas .btn.sec:hover,html.glas a.btn.light:hover,html.glas .btn.outline:hover,html.glas .btn.subtle:hover{background:#f5f5f7!important;border-color:#d8d8de!important}
+html.glas .btn.ghost{border-color:transparent!important;background:transparent!important;color:var(--mut)!important}
+html.glas .btn.ghost:hover{background:#f2f2f4!important;color:var(--ink)!important}
+/* Fokus immer sichtbar (Tastatur) */
+html.glas :is(a,button,summary,.btn,input,select,textarea,[tabindex]):focus-visible{outline:2px solid var(--g-acc)!important;outline-offset:2px!important}
+html.glas input:focus,html.glas select:focus,html.glas textarea:focus{border-color:var(--g-acc)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--g-acc) 14%,transparent)!important}
+html.glas input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),html.glas select,html.glas textarea{border-color:#dcdce1!important;transition:border-color .16s ease,box-shadow .16s ease}
+/* Reiter: Unterstrich in Bordeaux, leicht */
+html.glas .tabs a.on,html.glas .ls-tabs a.on,html.glas .tabs a[aria-current]{box-shadow:inset 0 -2px 0 var(--g-acc)!important;color:var(--g-acc)!important}
+html.glas .tabs,html.glas .ls-tabs{border-bottom-color:var(--line-c)!important}
+/* Aktive Filter/Chips */
+html.glas .chip.on,html.glas .chips a.on,html.glas .pill.on,html.glas .seg>a.on{color:var(--g-acc)!important}
+html.glas .chip.on,html.glas .chips a.on,html.glas .pill.on{background:var(--acc-soft)!important;border-color:color-mix(in srgb,var(--g-acc) 30%,#e5e5ea)!important}
+/* Status ruhiger: kritische Hinweise klar, aber nicht grell */
+html.glas .flash.err,html.glas .warnbox,html.glas .alert{border-radius:12px!important}
+/* Infokarten am Objekt: Abstand 20–24 px */
+html.glas .info-col .sc{padding:20px 0 0!important}
+html.glas .info-col .sc>*{margin-left:20px!important;margin-right:20px!important}
+html.glas .info-col .sc>.sc-foot{padding:12px 20px 14px!important;border-radius:0 0 16px 16px!important;background:#fafafb!important}
+.sc-cap{color:#86868b}.sc-addr{color:#6e6e73}.sc-kv{border-top-color:#efeff2}.sc-kv>div{border-bottom-color:#efeff2}
+/* Ohne backdrop-filter: deckend weiß */
+@supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important}}
+@media (prefers-reduced-transparency:reduce){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}
+@media (prefers-reduced-motion:reduce){html.glas *{transition:none!important;animation:none!important}}
 @media (prefers-reduced-transparency:reduce){html.glas .card,html.glas .panel,html.glas .kpi,html.glas .shell .top,html.glas .menu-top .appside,html.glas .apptabs,html.glas .tabbar{background:rgba(255,255,255,.96)!important;-webkit-backdrop-filter:none;backdrop-filter:none}}
 @media print{html.glas body{background:#fff!important}html.glas .card,html.glas .panel{background:#fff!important;box-shadow:none!important;backdrop-filter:none!important}}
 `;

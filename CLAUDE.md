@@ -5088,3 +5088,12 @@ Testadresse.
     und Rechte unverändert. Menüleiste oben als ruhige weiße Leiste mit Unterstrich.
   - **Infokarten am Objekt** neu: Kopf „OBJEKT 2990101“ + Status-Badge, Name groß, Adresse grau, Angaben untereinander
     mit Trennlinien, Aktionen (Bearbeiten, Inaktiv setzen) im Fuß; Kundenkarte gleich aufgebaut.
+- 2026-11-07: **Gestaltung „Apple Business“** (Ahmed, Vorgabe mit Palette, keine neue Struktur): Block „Fassung 4“ am Ende von
+  `src/web/glass-css.ts`. Farben: Bordeaux #811D40 (Standard-Akzent, `GLASS_DEFAULT`), dunkel #64152F, hell #F7EDF1,
+  Hintergrund #F8F9FA, Karten weiß, Text #1D1D1F/#6E6E73, Linien #E5E5EA. **Liquid Glass nur** für Kopfzeile, Menüleiste
+  (Blur 18 px, Sättigung 150 %, Weiß 78 %) sowie Suche/Suchvorschau, Klappmenüs, Auswahllisten, Dialoge (Weiß 93 %, damit
+  Text darunter nicht durchscheint) – nie hinter Tabellen/Karten. Karten Radius 16, dezente Linie/Schatten; Knöpfe Radius 10,
+  primär Bordeaux, sekundär weiß mit Linie, Übergänge 160 ms, kein Zoom; Fokus immer sichtbar (2 px Bordeaux); Reiter und
+  aktiver Menüpunkt mit Bordeaux-Unterstrich; aktive Filter hell-bordeaux. Rückfall ohne backdrop-filter und bei
+  „Transparenz reduzieren“ deckend weiß, „Bewegung reduzieren“ ohne Übergänge. Schrift bleibt Inter (bereits vorhanden,
+  auf allen Geräten gleich). Keine neuen Bibliotheken, keine Änderung an Routen/Rechten/Logik.

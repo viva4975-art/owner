@@ -235,7 +235,7 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
           </p>
           <div class="formfoot">
             <button class="btn">Übernehmen</button>
-            <a class="btn ghost" href="/konto/darstellung/speichern?art=glas&c=7d1435&t=0">
+            <a class="btn ghost" href="/konto/darstellung/speichern?art=glas&c=811d40&t=0">
               Auf Bordeaux zurücksetzen
             </a>
           </div>

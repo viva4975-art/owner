@@ -46,12 +46,21 @@ html.glas .search{background:rgba(118,118,128,.12)!important;border:0!important;
 html.glas .search input{background:transparent!important;border:0!important;box-shadow:none!important}
 html.glas .search kbd{background:rgba(255,255,255,.7);border:0;box-shadow:var(--g-ring)}
 /* Menü oben: helle Glas-Kapsel, aktiver Punkt als Bordeaux-getönte Pille */
+@media (min-width:1025px){
 html.glas .menu-top .appside{top:72px!important;margin:10px auto 0;width:max-content!important;max-width:calc(100% - 32px);border-radius:999px;padding:5px!important;background:var(--g-fill)!important;-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur);border:0;box-shadow:var(--g-rim),var(--g-ring),var(--g-drop)!important;--side-ink:#1d1d1f;--side-mut:#6e6e73;--side-2:rgba(0,0,0,.05)}
 html.glas .menu-top .appside nav.menu{padding:0!important;gap:0;flex-wrap:nowrap!important}
 html.glas .menu-top .appside nav.menu a.item,html.glas .menu-top .appside nav.menu .grp>summary{min-height:38px!important;border-radius:999px!important;color:#1d1d1f!important;padding:0 9px!important;font-size:13px!important;box-shadow:none!important}
 html.glas .menu-top .appside nav.menu a.item:hover,html.glas .menu-top .appside nav.menu .grp>summary:hover{background:rgba(0,0,0,.05)!important}
 html.glas .menu-top .appside nav.menu a.item.on,html.glas .menu-top .appside nav.menu .grp.on>summary{background:var(--g-tint)!important;color:#fff!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 4px 12px -4px color-mix(in srgb,var(--g-acc) 55%,transparent)!important}
 html.glas .menu-top .appside .ic{color:inherit!important}
+}
+/* Handy/Tablet: Menü als Glas-Schublade (nicht als Kapsel – Ahmed 07.11., Bild „Menü als Riesen-Pille“) */
+@media (max-width:1024px){html.glas body.menu-top .appside{background:rgba(250,250,252,.82)!important;-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur);border-radius:0 24px 24px 0!important;border:0!important;box-shadow:var(--g-rim),0 24px 60px -12px rgba(0,0,0,.35)!important;--side-ink:#1d1d1f;--side-mut:#6e6e73;--side-2:rgba(0,0,0,.05)}
+html.glas body.menu-top .appside nav.menu a.item,html.glas body.menu-top .appside nav.menu .grp>summary{border-radius:14px!important;color:#1d1d1f!important}
+html.glas body.menu-top .appside nav.menu a.item.on,html.glas body.menu-top .appside nav.menu .grp.on>summary{background:var(--g-tint)!important;color:#fff!important}
+html.glas body.menu-top .appside .sub a{color:#1d1d1f!important;border-radius:10px}html.glas body.menu-top .appside .sub a.on{background:color-mix(in srgb,var(--g-acc) 12%,transparent)!important;color:var(--g-acc)!important}
+html.glas body.menu-top .appside .side-logo img{content:url(/static/logo-transparent.png)}
+html.glas body.menu-top .scrim{background:rgba(20,16,20,.22)!important;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}}
 html.glas body.shell:not(.menu-top) .appside{background:linear-gradient(180deg,rgba(130,21,56,.86),rgba(100,14,42,.9))!important;-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur)}
 /* Knöpfe: Hauptaktion = getöntes Glas, sonst klares Glas */
 html.glas .btn,html.glas button.btn{border-radius:999px!important;border:0!important;background:var(--g-tint)!important;color:#fff!important;-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur);box-shadow:inset 0 1px 0 rgba(255,255,255,.4),inset 0 -1px 0 rgba(0,0,0,.12),0 6px 16px -6px color-mix(in srgb,var(--g-acc) 50%,transparent)!important;font-weight:600}
@@ -69,9 +78,16 @@ html.glas .empty,html.glas .empty-line{background:rgba(118,118,128,.07)!importan
 html.glas table td,html.glas table th{border-color:rgba(0,0,0,.06)!important}
 html.glas table tbody tr:hover td{background:rgba(255,255,255,.4)}
 /* Reiter als Segment-Steuerung */
-html.glas .tabs,html.glas .ls-tabs{background:rgba(118,118,128,.12);border:0!important;border-radius:999px;padding:3px!important;gap:2px;width:max-content;max-width:100%}
+html.glas .tabs,html.glas .ls-tabs{background:rgba(118,118,128,.12);border:0!important;border-radius:22px;padding:3px!important;gap:2px;width:max-content;max-width:100%}
 html.glas .tabs a,html.glas .ls-tabs a{border:0!important;border-radius:999px!important;padding:6px 14px!important;color:#1d1d1f!important;box-shadow:none!important}
+html.glas .tabs .badge,html.glas .tabs .cnt{background:rgba(255,255,255,.7)!important}
 html.glas .tabs a.on,html.glas .ls-tabs a.on,html.glas .tabs a[aria-current]{background:#fff!important;box-shadow:0 3px 8px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)!important;color:#1d1d1f!important;font-weight:600}
+/* Umschalter (Tag/Woche/Monat, Kalender/Liste, ← →) als Segment-Steuerung wie iOS */
+html.glas .seg{background:rgba(118,118,128,.12)!important;border:0!important;border-radius:12px!important;padding:3px;gap:2px;overflow:visible}
+html.glas .seg>a,html.glas .seg>label>span{border:0!important;border-radius:9px;background:transparent;color:#1d1d1f;padding:6px 12px}
+html.glas .seg>a:hover{background:rgba(255,255,255,.5)}
+html.glas .seg>a.on,html.glas .seg>label>input:checked+span{background:#fff!important;box-shadow:0 3px 8px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)!important;color:#1d1d1f!important;border-bottom:0!important}
+html.glas .rng{background:rgba(255,255,255,.6);border:0!important;border-radius:12px;box-shadow:var(--g-ring)}
 /* App-Rahmen und Handy-Apps */
 html.glas .appmode .apphead,html.glas body.mshell>header,html.glas body>header{background:rgba(246,247,250,.55)!important;-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur);border-bottom:0!important;box-shadow:0 .5px 0 rgba(0,0,0,.08)!important}
 html.glas .apptabs,html.glas .tabbar{margin:0 16px calc(8px + env(safe-area-inset-bottom));padding:4px!important;border-radius:999px;background:var(--g-fill)!important;-webkit-backdrop-filter:saturate(200%) blur(28px);backdrop-filter:saturate(200%) blur(28px);border:0!important;box-shadow:var(--g-rim),var(--g-ring),0 16px 40px -10px rgba(0,0,0,.28)!important}

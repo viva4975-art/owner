@@ -496,14 +496,65 @@ export const TimesDetails: FC<{ entries: (TimeEntryRow & { planned: number | nul
   );
 };
 
+/** Monatsübersicht: offen/geändert/aktuell sichtbar, bestätigte und leere Monate eingeklappt (Ahmed 07.11.). */
 export const MonthOverview: FC<{
   rows: MonthRow[];
   base: string;
   canConfirm: boolean;
   current: string;
-}> = ({ rows, base, canConfirm, current }) => (
-  <section style="margin-top:18px">
-    <h3 class="panel-title">Monatsübersicht</h3>
+}> = ({ rows, base, canConfirm, current }) => {
+  const changed = (r: MonthRow) => !!r.confirmed && r.confirmed.minutes !== r.actual;
+  const empty = (r: MonthRow) => r.actual === 0 && r.planned === 0;
+  const show = rows.filter((r) => r.month === current || changed(r) || (!r.confirmed && !empty(r)));
+  const rest = rows.filter((r) => !show.includes(r));
+  const Row: FC<{ r: MonthRow }> = ({ r }) => (
+    <tr style={r.month === current ? 'background:var(--brand-50)' : ''}>
+      <td>
+        <a href={`${base}?monat=${r.month}`}>{monthName(r.month)}</a>
+      </td>
+      <td class="right">{hm(r.actual)}</td>
+      <td class="right">{hm(r.planned)}</td>
+      {diffCell(r.actual, r.planned)}
+      <td>
+        {r.confirmed ? (
+          <>
+            <span class="tag ok">✓ bestätigt</span>{' '}
+            <span class="small mut">
+              {r.confirmed.by},{' '}
+              {r.confirmed.at.toLocaleDateString('de-DE', {
+                timeZone: 'Europe/Berlin',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+              })}
+            </span>
+            {r.confirmed.minutes !== r.actual && (
+              <div class="small" style="color:var(--err)">
+                seit Bestätigung geändert (bestätigt {hm(r.confirmed.minutes)})
+              </div>
+            )}
+          </>
+        ) : (
+          <span class="faint">nein</span>
+        )}
+        {canConfirm && (
+          <form method="post" action={`${base}/bestaetigen`} style="display:inline;margin-left:8px">
+            <input type="hidden" name="monat" value={r.month} />
+            {r.confirmed && r.confirmed.minutes === r.actual ? (
+              <button class="btn sm ghost" name="bestaetigt" value="0">
+                zurücknehmen
+              </button>
+            ) : (
+              <button class="btn sm sec" name="bestaetigt" value="1">
+                {r.confirmed ? 'erneut bestätigen' : 'bestätigen'}
+              </button>
+            )}
+          </form>
+        )}
+      </td>
+    </tr>
+  );
+  const Table: FC<{ list: MonthRow[] }> = ({ list }) => (
     <div class="tbl">
       <table>
         <thead>
@@ -516,55 +567,23 @@ export const MonthOverview: FC<{
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
-            <tr style={r.month === current ? 'background:var(--brand-50)' : ''}>
-              <td>
-                <a href={`${base}?monat=${r.month}`}>{monthName(r.month)}</a>
-              </td>
-              <td class="right">{hm(r.actual)}</td>
-              <td class="right">{hm(r.planned)}</td>
-              {diffCell(r.actual, r.planned)}
-              <td>
-                {r.confirmed ? (
-                  <>
-                    <span class="tag ok">✓ bestätigt</span>{' '}
-                    <span class="small mut">
-                      {r.confirmed.by},{' '}
-                      {r.confirmed.at.toLocaleDateString('de-DE', {
-                        timeZone: 'Europe/Berlin',
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                      })}
-                    </span>
-                    {r.confirmed.minutes !== r.actual && (
-                      <div class="small" style="color:var(--err)">
-                        seit Bestätigung geändert (bestätigt {hm(r.confirmed.minutes)})
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <span class="faint">nein</span>
-                )}
-                {canConfirm && (
-                  <form method="post" action={`${base}/bestaetigen`} style="display:inline;margin-left:8px">
-                    <input type="hidden" name="monat" value={r.month} />
-                    {r.confirmed && r.confirmed.minutes === r.actual ? (
-                      <button class="btn sm ghost" name="bestaetigt" value="0">
-                        zurücknehmen
-                      </button>
-                    ) : (
-                      <button class="btn sm sec" name="bestaetigt" value="1">
-                        {r.confirmed ? 'erneut bestätigen' : 'bestätigen'}
-                      </button>
-                    )}
-                  </form>
-                )}
-              </td>
-            </tr>
+          {list.map((r) => (
+            <Row r={r} />
           ))}
         </tbody>
       </table>
     </div>
-  </section>
-);
+  );
+  return (
+    <section style="margin-top:18px">
+      <h3 class="panel-title">Monatsübersicht</h3>
+      <Table list={show} />
+      {rest.length > 0 && (
+        <details style="margin-top:8px">
+          <summary class="small">Weitere {rest.length} Monate (bestätigt oder ohne Zeiten)</summary>
+          <Table list={rest} />
+        </details>
+      )}
+    </section>
+  );
+};

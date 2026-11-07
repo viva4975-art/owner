@@ -487,7 +487,10 @@ ${sheetTableHtml(s)}${sigHtml}
             </label>
           )}
           {d.view !== 'stunden' && <input type="hidden" name="ansicht" value={d.view} />}
-          <button class="btn sm sec">Filtern</button>
+          {/* Auswahl filtert sofort; Knopf nur für Enter im Namensfeld (unsichtbar) */}
+          <button class="btn sm sec" style="position:absolute;left:-9999px" tabindex={-1} aria-hidden="true">
+            Filtern
+          </button>
         </form>
         {/* Auswahl einzelner Personen: Häkchen in der Tabelle gehören zu diesem Formular */}
         <form id="pick" method="get" action="/zeiterfassung/stundenzettel/druck" target="_blank">

@@ -248,6 +248,13 @@ export const CLIENT_JS = String.raw`
     });
   })();
 
+  // ---- Handy: kurzer Platzhalter im Suchfeld (langer Text wurde abgeschnitten) ----
+  try {
+    if (window.matchMedia('(max-width:640px)').matches)
+      document.querySelectorAll('input[data-short]').forEach(function (el) {
+        el.setAttribute('placeholder', el.getAttribute('data-short') || '');
+      });
+  } catch (e) {}
   // ---- Auswahl mit data-autosubmit schickt das Formular sofort ab (z. B. Monatsauswahl) ----
   document.addEventListener('change', function (e) {
     var el = e.target;

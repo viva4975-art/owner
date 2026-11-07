@@ -5039,3 +5039,19 @@ Testadresse.
   Hintergrund wie vorher“): Ohne Einstellung gilt Glas in Bordeaux mit voller Durchlässigkeit (Stufe 0 = „Klar“); wer
   Standard will, wählt es unter Mein Konto → Darstellung (Cookie `vd_design=standard`). Logo in der Kopfzeile ohne
   weißen Kasten (`logo-transparent.png`, wie in den Apps). Druck und „Transparenz reduzieren“ bleiben ohne Glas.
+- 2026-11-07: **Durchsicht Design/Struktur** (Ahmed: „Menüpunkte machen wir später, Rest kannst du machen“):
+  - Handy (Glas): Menü-Schublade war eine Riesen-Pille → abgerundete Glas-Schublade mit transparentem Logo; Reiterleisten,
+    die umbrechen, sind abgerundete Flächen statt Pille. Suchfeld am Handy mit kurzem Platzhalter „Suchen …“.
+  - Umschalter (Tag/5 Tage/Woche/Monat, Kalender/Liste, ← →, Übersicht/Details) als Segment-Steuerung wie iOS (`.seg`).
+  - **Farben der Planung wie Einsatzkalender:** weiß = geplant, Bordeaux = Zeit erfasst, Bordeaux gestrichelt =
+    Vertretung/umgeplant, grau = unbesetzt (vorher blau/grün/lila – Grün hieß dort „erfasst“, im Kalender „Urlaub“).
+  - Einsatzkalender: „+ Einsatz planen“ als Neben-Knopf (Haupt-Knopf oben bleibt „+ Zeit erfassen“).
+  - Stundenliste & Lohnarten: Knopf „Filtern“ entfällt (Auswahl filtert sofort, Enter im Namensfeld).
+  - Objekt → Erfasste Zeiten: Monat schaltet sofort um, „Zeitraum …“ klappt auf, Übersicht/Details als Umschalter,
+    Monatsübersicht zeigt nur aktuellen, offene und geänderte Monate (Rest eingeklappt).
+  - Einstellungen: „Import & Export“ und „Vorlagen ausfüllen (Word)“ entfernt (stehen unter Transfer bzw. bei Person/
+    Kunde/Objekt → Dokumente).
+  - **Offen für später (Ahmed):** Menü „Zeit & Planung“ mit vier Seiten (Planung, Zeiterfassung, Urlaub, Monat & Lohn),
+    „Je Mitarbeiter“/„Auffällige Zeiten“/„Plan/Ist je Monat“ zusammenlegen, Mitarbeiter-Reiter 9 → 7.
+  - Browser-Tests `e2e:zeit` und `e2e:objektseiten` scheitern schon vor dieser Änderung (Stempeln am Handy zeigt im Test
+    „Keine Verbindung“; Schlüssel-Ausgabe-Auswahl) – noch zu klären.

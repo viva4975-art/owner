@@ -624,7 +624,7 @@ export const EmployeeCalendarView: FC<{
         </span>
         {canEdit && !self && (
           <a
-            class="btn sm"
+            class="btn sm sec"
             style="margin-left:auto"
             href={`/einsatzplanung/${randomUUID()}?mitarbeiter=${employeeId}&zurueck=${encodeURIComponent(back)}`}
           >

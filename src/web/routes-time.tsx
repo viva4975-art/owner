@@ -1487,43 +1487,60 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
       const canConfirm = c.get('user').role !== 'objektleitung';
       return (
         <>
-          <div class="calbar" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:12px">
-            <form method="get" action={base} style="display:flex;gap:8px;align-items:end;margin:0">
-              <div>
-                <label for="monat" class="small">
-                  Monat
-                </label>
-                <input type="month" id="monat" name="monat" value={custom ? '' : month} />
-              </div>
+          {/* Kopf aufgeräumt (Ahmed 07.11.): Monat schaltet sofort um, Zeitraum aufklappbar, Ansicht links, Aktionen rechts */}
+          <div
+            class="calbar"
+            style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px"
+          >
+            <form method="get" action={base} style="display:flex;gap:8px;align-items:center;margin:0">
+              <input
+                type="month"
+                id="monat"
+                name="monat"
+                value={custom ? '' : month}
+                aria-label="Monat"
+                onchange="this.form.submit()"
+              />
               {details && <input type="hidden" name="ansicht" value="details" />}
-              <button class="btn sm sec">Anzeigen</button>
             </form>
-            <form method="get" action={base} style="display:flex;gap:8px;align-items:end;margin:0">
-              <div>
-                <label for="von" class="small">
-                  oder von
-                </label>
-                <input type="date" id="von" name="von" value={custom ? from : ''} />
-              </div>
-              <div>
-                <label for="bis" class="small">
-                  bis
-                </label>
-                <input type="date" id="bis" name="bis" value={custom ? to : ''} />
-              </div>
-              {details && <input type="hidden" name="ansicht" value="details" />}
-              <button class="btn sm sec">Zeitraum</button>
-            </form>
-            <span style="margin-left:auto" class="seg-links">
-              <a class={`btn sm ${details ? 'sec' : ''}`} href={qs({ ansicht: 'uebersicht' })}>
+            <details class="dd">
+              <summary class="btn sm ghost">
+                {custom ? `${dateDe(from)} – ${dateDe(to)}` : 'Zeitraum …'}
+              </summary>
+              <form
+                method="get"
+                action={base}
+                class="drop"
+                style="display:flex;gap:8px;align-items:end;padding:10px"
+              >
+                <div>
+                  <label for="von" class="small">
+                    von
+                  </label>
+                  <input type="date" id="von" name="von" value={custom ? from : ''} />
+                </div>
+                <div>
+                  <label for="bis" class="small">
+                    bis
+                  </label>
+                  <input type="date" id="bis" name="bis" value={custom ? to : ''} />
+                </div>
+                {details && <input type="hidden" name="ansicht" value="details" />}
+                <button class="btn sm">Anzeigen</button>
+              </form>
+            </details>
+            <span class="seg">
+              <a class={details ? '' : 'on'} href={qs({ ansicht: 'uebersicht' })}>
                 Übersicht
-              </a>{' '}
-              <a class={`btn sm ${details ? '' : 'sec'}`} href={qs({ ansicht: 'details' })}>
+              </a>
+              <a class={details ? 'on' : ''} href={qs({ ansicht: 'details' })}>
                 Details
-              </a>{' '}
+              </a>
+            </span>
+            <span style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
               <a class="btn sm sec" href={`/zeiterfassung/${randomUUID()}?objekt=${s.id}`}>
                 + Zeit erfassen
-              </a>{' '}
+              </a>
               {canConfirm && (
                 <a class="btn sm sec" href={`/objekte/${s.id}/stundennachweis?von=${from}&bis=${to}`}>
                   Stundennachweis für Kunden

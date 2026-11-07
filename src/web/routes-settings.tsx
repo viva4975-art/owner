@@ -176,11 +176,6 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
         'Arbeitsverträge, Nutzungsüberlassungen, Protokolle als Word-Datei mit Platzhaltern (wie Fortytools) – ZIP hochladen, beim Mitarbeiter/Kunden/Objekt ausfüllen.',
       ],
       [
-        'Vorlagen ausfüllen (Word)',
-        '/vorlagen',
-        'Person, Kunde oder Objekt wählen und eine Word-Vorlage ausfüllen (zuletzt erstellte Dokumente).',
-      ],
-      [
         'Objektordner-Vorlagen',
         '/einstellungen/objektordner',
         'Paket „Objektordner-Komplettpaket“ (ZIP) – wird je Objekt automatisch mit den Objektdaten ausgefüllt.',
@@ -216,24 +211,6 @@ const SECTIONS: { id: string; title: string; items: [string, string, string][] }
         '/einstellungen/uebergabe-gegenstaende',
         'Auswahlliste für Übergaben: Diensthandy, Tankkarte, Transponder …',
       ],
-    ],
-  },
-  {
-    id: 'import-export',
-    title: 'Import & Export',
-    items: [
-      [
-        'Import aus Fortytools',
-        '/transfer/import',
-        'Kunden, Objekte, Leistungen und Mitarbeiter aus den Fortytools-Exporten übernehmen.',
-      ],
-      [
-        'Import aus der alten App',
-        '/transfer/altdaten',
-        'Backup der alten App hochladen: Kassenbuch, Eigen-Compliance und weitere Bereiche übernehmen.',
-      ],
-      ['DATEV-Export', '/datev', 'Buchungsstapel für den Steuerberater.'],
-      ['Export Lexware Lohn', '/personal/export.csv', 'Mitarbeiter-Stammdaten als CSV für Lexware Lohn.'],
     ],
   },
 ];

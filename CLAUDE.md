@@ -5069,3 +5069,5 @@ Testadresse.
     Bestellungen → „Rechnung erwartet →“ (404); zwei Auswahlfelder ohne Beschriftung (Glas-Bestätigungen).
   - Browser-Tests `e2e:menu` (Menü jetzt Kapsel) und `e2e:rechte` (Kontrolle starten nur am Handy) an den Stand angepasst;
     `e2e:zeit`/`e2e:objektseiten` scheitern weiter wie vorher (noch zu klären).
+- 2026-11-07: Glas-Hintergrund ohne Gelb (Ahmed: „unten kommt immer so gelb“): die Farbflächen unten (Pfirsich, Mint) und oben rechts
+  (Hellblau) sind jetzt helle Töne der gewählten Farbe (Standard Bordeaux), Grundfläche #f2eff2.

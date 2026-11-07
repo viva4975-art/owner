@@ -2022,6 +2022,7 @@ export const Layout: FC<{
                       </summary>
                       <div class="drop right">
                         <a href="/konto">Mein Konto / Passwort</a>
+                        <a href="/konto/darstellung">Darstellung (Glas, Farbe)</a>
                         <form method="post" action="/konto/menue" style="margin:0" class="menu-pos">
                           <input type="hidden" name="pos" value={menuTop ? 'links' : 'oben'} />
                           <input type="hidden" name="zurueck" value="" data-here />

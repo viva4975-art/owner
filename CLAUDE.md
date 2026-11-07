@@ -5027,3 +5027,11 @@ Testadresse.
   Lichtkante (innere Glanzlinien + Haarlinie), Menü als helle schwebende Glas-Kapsel (aktiver Punkt Bordeaux-getönt),
   Hauptknopf getöntes Glas, Nebenknöpfe klares Glas, Eingabefelder grau gefüllt ohne Linie, Reiter als Segment-Steuerung,
   Leiste unten als Glas-Kapsel. Weiter nur per `/design/glas`.
+- 2026-11-07: **Glas: Farbe und Durchsichtigkeit selbst wählen** (Ahmed: „Bordeaux gut oder Farben selber auswählen, wie
+  durchsichtig wie bei Apple“): Mein Konto → **Darstellung** (`/konto/darstellung`, auch im Benutzermenü): Glas/Standard,
+  Farbe (Bordeaux, Bordeaux hell/dunkel, Graphit, Blau, Grün, Bronze oder eigene Farbe) und Schieberegler Klar ↔ Getönt
+  (0–100, Standard 60); Wirkung sofort sichtbar, „Übernehmen“ speichert je Browser (Cookies `vd_design`, `vd_glas`).
+  Glas-CSS nutzt `--g-acc` (Akzent über color-mix), `--g-a1/--g-a2` (Füllung), `--g-bl` (Unschärfe), gesetzt vom
+  Kopf-Skript (`GLASS_APPLY_JS`). Schrift: auf iPhone/iPad/Mac schon die Apple-Systemschrift (SF Pro, `-apple-system`);
+  auf Windows/Android bleibt Inter – SF Pro darf laut Apple-Lizenz nicht auf anderen Geräten ausgeliefert werden.
+  Grenze: Farben innerhalb der Handy-Apps (Symbole, Kopfknopf) bleiben Bordeaux, nur Glasflächen/Knöpfe folgen der Wahl.

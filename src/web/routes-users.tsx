@@ -23,6 +23,7 @@ import {
 import { type AppEnv, type Ctx, OFFICE_COOKIE, UUID, inAppFrame, officeSecret } from './app.js';
 import { arr } from './forms.js';
 import { Icon } from './icons.js';
+import { GLASS_APPLY_JS, GLASS_DEFAULT, GLASS_PRESETS } from './glass-css.js';
 import { PageHead, initials } from './layout.js';
 import { homeFor } from './permissions.js';
 
@@ -148,6 +149,16 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
             </form>
           </div>
           <div class="card">
+            <h3>Darstellung</h3>
+            <p class="small mut" style="margin-top:0">
+              Gestaltung „Glas“ (wie iPhone) mit eigener Farbe und Durchsichtigkeit – zum Ausprobieren, gilt
+              nur in diesem Browser.
+            </p>
+            <a class="btn sec" href="/konto/darstellung">
+              Darstellung einstellen
+            </a>
+          </div>
+          <div class="card">
             <div class="person">
               <span class="avatar">{initials(u.name)}</span>
               <div>
@@ -162,6 +173,103 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
         </div>
       </>,
     );
+  });
+
+  // Gestaltung „Glas“: Farbe + Durchsichtigkeit je Browser (Cookie vd_design/vd_glas, Ahmed 07.11.)
+  app.get('/konto/darstellung', (c) => {
+    const ck = c.req.header('cookie') ?? '';
+    const on = /(?:^|; )vd_design=glas(?:;|$)/.test(ck);
+    const q = decodeURIComponent(/(?:^|; )vd_glas=([^;]*)/.exec(ck)?.[1] ?? '');
+    const color = (/c=([0-9a-fA-F]{6})/.exec(q)?.[1] ?? GLASS_DEFAULT.color).toLowerCase();
+    const tint = Math.min(100, Math.max(0, Number(/t=(\d{1,3})/.exec(q)?.[1] ?? GLASS_DEFAULT.tint)));
+    return page(
+      c,
+      'Darstellung',
+      '',
+      <>
+        <PageHead title="Darstellung" crumbs={[['Mein Konto', '/konto']]} />
+        <form method="get" action="/konto/darstellung/speichern" class="card" style="max-width:640px">
+          <h3>Gestaltung</h3>
+          <div class="actions" style="margin-top:0">
+            <label class="chk">
+              <input type="radio" name="art" value="glas" checked={on} /> Glas (wie iPhone)
+            </label>
+            <label class="chk">
+              <input type="radio" name="art" value="standard" checked={!on} /> Standard
+            </label>
+          </div>
+          <h3 style="margin-top:18px">Farbe</h3>
+          <div class="actions" style="margin-top:0;flex-wrap:wrap" id="gl-presets">
+            {GLASS_PRESETS.map((p) => (
+              <button type="button" class="btn sec" data-c={p.c} title={p.label} style={`gap:8px`}>
+                <span
+                  style={`display:inline-block;width:16px;height:16px;border-radius:50%;background:#${p.c}`}
+                />
+                {p.label}
+              </button>
+            ))}
+            <label class="chk" style="gap:8px">
+              Eigene Farbe{' '}
+              <input type="color" id="gl-c" value={`#${color}`} style="width:44px;height:32px;padding:0" />
+            </label>
+          </div>
+          <input type="hidden" name="c" id="gl-cv" value={color} />
+          <h3 style="margin-top:18px">Durchsichtigkeit</h3>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span class="small">Klar</span>
+            <input
+              type="range"
+              name="t"
+              id="gl-t"
+              min="0"
+              max="100"
+              step="5"
+              value={String(tint)}
+              style="flex:1"
+            />
+            <span class="small">Getönt</span>
+          </div>
+          <p class="small mut">
+            Klar = mehr Hintergrund scheint durch (wie iOS „Klar“), Getönt = milchiger und besser lesbar. Die
+            Seite zeigt die Wirkung sofort; gespeichert wird mit „Übernehmen“.
+          </p>
+          <div class="formfoot">
+            <button class="btn">Übernehmen</button>
+            <a class="btn ghost" href="/konto/darstellung/speichern?art=glas&c=7d1435&t=60">
+              Auf Bordeaux zurücksetzen
+            </a>
+          </div>
+        </form>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `${GLASS_APPLY_JS};(function(){var h=document.documentElement,c=document.getElementById('gl-c'),v=document.getElementById('gl-cv'),t=document.getElementById('gl-t');function art(){return (document.querySelector('input[name=art]:checked')||{}).value}function upd(){h.classList.toggle('glas',art()==='glas');vdGlasApply(v.value,t.value)}c.addEventListener('input',function(){v.value=c.value.slice(1);upd()});t.addEventListener('input',upd);document.querySelectorAll('input[name=art]').forEach(function(r){r.addEventListener('change',upd)});document.querySelectorAll('#gl-presets [data-c]').forEach(function(b){b.addEventListener('click',function(){v.value=b.dataset.c;c.value='#'+b.dataset.c;upd()})});})();`,
+          }}
+        />
+      </>,
+    );
+  });
+  app.get('/konto/darstellung/speichern', (c) => {
+    const glas = c.req.query('art') !== 'standard';
+    const col = /^[0-9a-fA-F]{6}$/.test(c.req.query('c') ?? '')
+      ? c.req.query('c')!.toLowerCase()
+      : GLASS_DEFAULT.color;
+    const t = Math.min(100, Math.max(0, Math.round(Number(c.req.query('t') ?? GLASS_DEFAULT.tint)) || 0));
+    const year = 31536000;
+    c.header(
+      'Set-Cookie',
+      `vd_design=${glas ? 'glas' : ''}; Path=/; Max-Age=${glas ? year : 0}; SameSite=Lax`,
+      {
+        append: true,
+      },
+    );
+    c.header(
+      'Set-Cookie',
+      `vd_glas=${encodeURIComponent(`c=${col}&t=${t}`)}; Path=/; Max-Age=${year}; SameSite=Lax`,
+      {
+        append: true,
+      },
+    );
+    return c.redirect('/konto/darstellung', 303);
   });
 
   // Menü oben oder links – je Benutzerkonto gespeichert (gilt auf allen Geräten)

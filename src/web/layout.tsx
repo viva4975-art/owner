@@ -1,4 +1,5 @@
 import type { Child, FC } from 'hono/jsx';
+import { GLASS_CSS, GLASS_HEAD_JS } from './glass-css.js';
 import { formatEuro, type Cents } from '../domain/money/money.js';
 import { formatDateDe } from '../domain/invoice/calc.js';
 import { CLIENT_JS } from './client.js';
@@ -1841,7 +1842,8 @@ export const Layout: FC<{
           type="font/woff2"
           crossorigin="anonymous"
         />
-        <style dangerouslySetInnerHTML={{ __html: CSS }} />
+        <script dangerouslySetInnerHTML={{ __html: GLASS_HEAD_JS }} />
+        <style dangerouslySetInnerHTML={{ __html: CSS + GLASS_CSS }} />
       </head>
       {app ? (
         <body class="appmode shellbar">

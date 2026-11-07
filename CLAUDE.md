@@ -5016,3 +5016,9 @@ Testadresse.
   `${Mitarbeiter.Urlaubstage}` sind mit den Arbeitstagen laut Einsatzplanung der nächsten 3 Monate vorbelegt
   (`plannedDaysPerWeek`, nur bei „automatisch aus der Einsatzplanung“; ohne Einsätze bzw. bei festen Tagen aus den
   Stammdaten), Hinweis nennt die Quelle. Ohne Einsätze und ohne Stammdaten-Wert bleibt die Pflichtauswahl leer.
+- 2026-11-07: **Vorschau Gestaltung „Glas“** (Ahmed: „Liquid Glass wie beim iPhone, zum Testen zeigen“): nur zum Ausprobieren,
+  je Browser einschaltbar über `/design/glas` (zurück: `/design/standard`, Cookie `vd_design`, Klasse `glas` am `<html>`,
+  `src/web/glass-css.ts`). Durchscheinende Karten mit Unschärfe und Lichtkante, weiche Farbflächen im Hintergrund,
+  Kopfzeile und Menüleiste als schwebendes Glas (Menü als Bordeaux-Pille), Pillen-Knöpfe, Reiter als Segment-Steuerung,
+  in den Apps schwebende Leiste unten. Ohne Einschalten unverändert; „Transparenz reduzieren“ (iOS) und Druck ohne Glas.
+  Noch nicht Standard – Ahmed entscheidet nach dem Test.

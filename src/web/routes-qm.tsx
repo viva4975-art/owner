@@ -1,4 +1,5 @@
 import { PushCard } from './push-ui.js';
+import { GLASS_CSS, GLASS_HEAD_JS } from './glass-css.js';
 import { timeAnomalies } from '../services/time-anomalies.js';
 import { appVersion } from '../services/app-version.js';
 import {
@@ -210,7 +211,8 @@ export const QmLayout: FC<{
       <link rel="manifest" href="/m/manifest.webmanifest" />
       <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=2" />
       <meta name="apple-mobile-web-app-capable" content="yes" />
-      <style dangerouslySetInnerHTML={{ __html: MCSS + QM_CSS + APP_TAB_CSS + PROFILE_CSS }} />
+      <script dangerouslySetInnerHTML={{ __html: GLASS_HEAD_JS }} />
+      <style dangerouslySetInnerHTML={{ __html: MCSS + QM_CSS + APP_TAB_CSS + PROFILE_CSS + GLASS_CSS }} />
       <script src="/m/push.js" defer />
     </head>
     <body class="shellbar mshell">

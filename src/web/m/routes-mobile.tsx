@@ -1,4 +1,5 @@
 import { parseBody } from '../../services/instructions.js';
+import { GLASS_CSS, GLASS_HEAD_JS } from '../glass-css.js';
 import { Icon } from '../icons.js';
 import { PDF_JS, PUSH_JS, PushCard, SCOPE_JS, SW_PUSH } from '../push-ui.js';
 import { savePushSubscription, vapidKeys } from '../../services/push.js';
@@ -407,7 +408,8 @@ const MLayout: FC<{
       <meta name="apple-mobile-web-app-capable" content="yes" />
       <meta name="mobile-web-app-capable" content="yes" />
       <meta name="apple-mobile-web-app-title" content="Viva-Deluxe" />
-      <style dangerouslySetInnerHTML={{ __html: CSS + APP_TAB_CSS + PROFILE_CSS }} />
+      <script dangerouslySetInnerHTML={{ __html: GLASS_HEAD_JS }} />
+      <style dangerouslySetInnerHTML={{ __html: CSS + APP_TAB_CSS + PROFILE_CSS + GLASS_CSS }} />
     </head>
     {/* Leiste unten immer sichtbar: Seite als Spalte, nur der Inhalt scrollt (Ahmed 15.10.: „Leiste erst beim Scrollen“) */}
     <body class={me && !full ? 'shellbar mshell' : undefined}>

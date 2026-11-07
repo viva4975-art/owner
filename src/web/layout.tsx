@@ -1588,19 +1588,20 @@ interface MenuEntry {
 /** Hauptmenü wie Fortytools. `soon` = geplant (Seite erklärt, was kommt). */
 export const MENU: { key: string; label: string; href?: string; items?: MenuEntry[] }[] = [
   { key: 'home', label: 'Übersicht', href: '/' },
+  // Ahmed 07.11.: Menü vereinfacht – 8 statt 11 Hauptpunkte (Angebote zu Kunden, Inventar zu Betrieb, Transfer zu
+  // Verwaltung, Planung/Urlaub zu Personal & Zeit). Alte nav-Schlüssel der Seiten laufen über NAV_ALIAS.
   {
     key: 'kunden',
     label: 'Kunden',
     items: [
       { label: 'Kundenliste', href: '/kunden' },
       { label: 'Objekte', href: '/objekte' },
-      { label: 'Aufgaben', href: '/aufgaben' },
-      { label: 'Akquise', href: '/akquise', sep: true },
+      { label: 'Angebote & Ausschreibungen', href: '/angebote' },
+      { label: 'Aufgaben', href: '/aufgaben', sep: true },
+      { label: 'Akquise', href: '/akquise' },
       { label: 'Preisanpassung', href: '/preisanpassung' },
     ],
   },
-  // ein Menüpunkt: Übersicht mit „Angebot anlegen“ (dort auch Ausschreibung vormerken); Fristen auf der Startseite
-  { key: 'angebote', label: 'Angebote', href: '/angebote' },
   {
     key: 'rechnungen',
     label: 'Rechnungen',
@@ -1613,34 +1614,44 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
   },
   {
     key: 'lieferanten',
-    label: 'Einkauf & Nachunternehmer',
+    label: 'Einkauf',
     items: [
-      { label: 'Nachunternehmer', href: '/nachunternehmer' },
-      { label: 'Lieferanten', href: '/lieferanten' },
       { label: 'Bestellungen', href: '/bestellungen' },
       { label: 'Rechnungseingang', href: '/rechnungseingang' },
+      { label: 'Nachunternehmer', href: '/nachunternehmer', sep: true },
+      { label: 'Lieferanten', href: '/lieferanten' },
     ],
   },
   {
     key: 'personal',
-    label: 'Personal',
+    label: 'Personal & Zeit',
     items: [
       // Unterseiten als Reiter auf der Seite (SECTION_TABS), nicht im Menü (Ahmed 18.10.)
       { label: 'Mitarbeiter', href: '/personal' },
-      { label: 'Bewerber & Stellen', href: '/bewerber' },
       { label: 'Mein Team', href: '/team', olOnly: true },
+      { label: 'Zeiterfassung', href: '/zeiterfassung' },
+      { label: 'Planung', href: '/einsatzplanung' },
+      { label: 'Urlaub & Abwesenheiten', href: '/urlaub' },
+      { label: 'Bewerber & Stellen', href: '/bewerber', sep: true },
       { label: 'Fehlende Unterlagen', href: '/personal/unterlagen', olOnly: true },
       { label: 'Verbandbuch', href: '/verbandbuch', olOnly: true },
       { label: 'Offene Stellen', href: '/stellen', olOnly: true },
       { label: 'Personalbogen ausfüllen', href: '/qm/personalbogen', olOnly: true },
-      { label: 'Zeiterfassung', href: '/zeiterfassung', sep: true },
     ],
   },
   {
-    key: 'inventar',
-    label: 'Inventar',
+    key: 'disposition',
+    label: 'Betrieb',
     items: [
-      { label: 'Artikel', href: '/artikel' },
+      { label: 'Arbeitsscheine', href: '/arbeitsscheine' },
+      // Objektleitung: Audits ihrer Objekte mit Auswertungsbericht am PC (Ahmed 04.11.)
+      { label: 'Qualitätsberichte', href: '/qualitaet', olOnly: true },
+      { label: 'Glasreinigung', href: '/glasreinigung' },
+      { label: 'Tiefgaragenreinigung', href: '/tiefgarage' },
+      { label: 'Grundreinigung', href: '/grundreinigung' },
+      // Objektleitung: Termine ohne Preise (Büro sieht die volle Planung oben)
+      { label: 'Grundreinigung', href: '/grundreinigung/objektleitung', olOnly: true },
+      { label: 'Artikel', href: '/artikel', sep: true },
       { label: 'Materialausgabe', href: '/materialausgabe' },
       { label: 'Geräte', href: '/geraete' },
       { label: 'Schlüsselbuch', href: '/schluessel' },
@@ -1648,38 +1659,16 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     ],
   },
   {
-    key: 'disposition',
-    label: 'Disposition',
-    items: [
-      { label: 'Planung', href: '/einsatzplanung' },
-      { label: 'Urlaub & Abwesenheiten', href: '/urlaub' },
-      { label: 'Arbeitsscheine', href: '/arbeitsscheine' },
-      { label: 'Glasreinigung', href: '/glasreinigung', sep: true },
-      { label: 'Tiefgaragenreinigung', href: '/tiefgarage' },
-      { label: 'Grundreinigung', href: '/grundreinigung' },
-      // Objektleitung: Termine ohne Preise (Büro sieht die volle Planung oben)
-      { label: 'Grundreinigung', href: '/grundreinigung/objektleitung', olOnly: true },
-      // Objektleitung: Audits ihrer Objekte mit Auswertungsbericht am PC (Ahmed 04.11.)
-      { label: 'Qualitätsberichte', href: '/qualitaet', olOnly: true },
-    ],
-  },
-  {
     key: 'verwaltung',
     label: 'Verwaltung',
     items: [
-      { label: 'Kassenbuch', href: '/kassenbuch' },
-      { label: 'Briefe', href: '/verwaltung/briefe' },
-      { label: 'Eigen-Compliance', href: '/eigen-compliance', sep: true },
-    ],
-  },
-  {
-    key: 'transfer',
-    label: 'Transfer',
-    items: [
       { label: 'Bank', href: '/transfer/kontoumsaetze' },
-      { label: 'Dokumente', href: '/transfer/dokumenteneingang' },
+      { label: 'Kassenbuch', href: '/kassenbuch' },
       { label: 'Lohn & DATEV', href: '/datev' },
-      { label: 'Importe', href: '/transfer/import' },
+      { label: 'Dokumente', href: '/transfer/dokumenteneingang', sep: true },
+      { label: 'Briefe', href: '/verwaltung/briefe' },
+      { label: 'Eigen-Compliance', href: '/eigen-compliance' },
+      { label: 'Importe', href: '/transfer/import', sep: true },
     ],
   },
   {
@@ -1693,6 +1682,13 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
     ],
   },
 ];
+
+/** Alte Bereichs-Schlüssel der Seiten → neuer Hauptpunkt (Menü vom 07.11.). */
+const NAV_ALIAS: Record<string, string> = {
+  angebote: 'kunden',
+  inventar: 'disposition',
+  transfer: 'verwaltung',
+};
 
 /**
  * Zusammengefasste Bereiche (Ahmed 18.10.: „weniger Unterseiten“): ein Menüpunkt, die Seiten darunter als Reiter oben
@@ -1776,10 +1772,8 @@ const MENU_ICON: Record<string, string> = {
   rechnungen: 'euro',
   lieferanten: 'clip',
   personal: 'user',
-  inventar: 'zip',
   disposition: 'calendar',
   verwaltung: 'shield',
-  transfer: 'upload',
   auswertungen: 'clock',
 };
 
@@ -1810,7 +1804,8 @@ export const Layout: FC<{
   path?: string;
   flash?: { ok?: string | undefined; err?: string | undefined };
   children?: Child;
-}> = ({ title, nav, env, user, role, bare, app, noTabs, menuTop, path, flash, children }) => {
+}> = ({ title, nav: navIn, env, user, role, bare, app, noTabs, menuTop, path, flash, children }) => {
+  const nav = NAV_ALIAS[navIn] ?? navIn;
   const menu = role
     ? MENU.map((m) => ({
         ...m,
@@ -1936,7 +1931,7 @@ export const Layout: FC<{
               </nav>
               <script
                 dangerouslySetInnerHTML={{
-                  __html: `(function(){var p=location.pathname,best=null,len=0,top=document.body.classList.contains('menu-top');document.querySelectorAll('.appside .sub a[href]').forEach(function(a){var h=a.getAttribute('href').split('?')[0];if((p===h||p.indexOf(h+'/')===0)&&h.length>len){best=a;len=h.length}var al=(a.getAttribute('data-also')||'').split(' ');if(al.indexOf(p)>=0&&p.length>len){best=a;len=p.length}});if(best){best.classList.add('on');var d=best.closest('details');if(d&&!top)d.open=true}if(top){var g=[].slice.call(document.querySelectorAll('.appside .grp'));var mq=window.matchMedia('(min-width:1025px)');g.forEach(function(d){d.querySelector('summary').addEventListener('click',function(){if(mq.matches)g.forEach(function(o){if(o!==d)o.open=false})})});document.addEventListener('click',function(e){if(mq.matches&&!e.target.closest('.appside .grp'))g.forEach(function(o){o.open=false})});document.addEventListener('keydown',function(e){if(e.key==='Escape')g.forEach(function(o){o.open=false})})}})();`,
+                  __html: `(function(){var p=location.pathname,best=null,len=0,top=document.body.classList.contains('menu-top');document.querySelectorAll('.appside .sub a[href]').forEach(function(a){var h=a.getAttribute('href').split('?')[0];if((p===h||p.indexOf(h+'/')===0)&&h.length>len){best=a;len=h.length}var al=(a.getAttribute('data-also')||'').split(' ');if(al.indexOf(p)>=0&&p.length>len){best=a;len=p.length}});if(best){best.classList.add('on');var d=best.closest('details');if(d){document.querySelectorAll('.appside .item.on').forEach(function(o){o.classList.remove('on')});d.classList.add('on');if(!top)d.open=true}}if(top){var g=[].slice.call(document.querySelectorAll('.appside .grp'));var mq=window.matchMedia('(min-width:1025px)');g.forEach(function(d){d.querySelector('summary').addEventListener('click',function(){if(mq.matches)g.forEach(function(o){if(o!==d)o.open=false})})});document.addEventListener('click',function(e){if(mq.matches&&!e.target.closest('.appside .grp'))g.forEach(function(o){o.open=false})});document.addEventListener('keydown',function(e){if(e.key==='Escape')g.forEach(function(o){o.open=false})})}})();`,
                 }}
               />
               {env !== 'live' && (

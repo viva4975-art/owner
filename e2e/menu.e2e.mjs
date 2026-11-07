@@ -50,7 +50,7 @@ check(
   await p.locator('.appside .grp:has(> summary span:text-is("Rechnungen")) .sub').isVisible(),
 );
 await p.screenshot({ path: `${OUT}/menu-oben.png` });
-await p.click('.appside .grp:has(> summary span:text-is("Personal")) > summary');
+await p.click('.appside .grp:has(> summary span:text-is("Personal & Zeit")) > summary');
 check(
   'nur ein Menü offen',
   !(await p.locator('.appside .grp:has(> summary span:text-is("Rechnungen")) .sub').isVisible()),
@@ -58,7 +58,7 @@ check(
 await p.click('main');
 check(
   'Klick daneben schließt',
-  !(await p.locator('.appside .grp:has(> summary span:text-is("Personal")) .sub').isVisible()),
+  !(await p.locator('.appside .grp:has(> summary span:text-is("Personal & Zeit")) .sub').isVisible()),
 );
 await p.click('.appside .grp:has(> summary span:text-is("Rechnungen")) > summary');
 await p.click('.appside .grp:has(> summary span:text-is("Rechnungen")) .sub a:has-text("Offene Posten")');

@@ -109,6 +109,67 @@ html.glas .apptabs,html.glas .tabbar{margin:0 16px calc(8px + env(safe-area-inse
 html.glas .apptabs a,html.glas .tabbar a{border-radius:999px;padding:6px 2px 7px!important;color:#1d1d1f}
 html.glas .apptabs a.on,html.glas .tabbar a.on{background:color-mix(in srgb,var(--g-acc) 12%,transparent);color:var(--g-acc)}
 html.glas .apptabs a.on i,html.glas .tabbar a.on i{background:transparent!important;box-shadow:none}
+/* Fassung 3 „ruhig“ (Ahmed 07.11.: weniger Farbverläufe, neutraler Hintergrund, Bordeaux gezielt, größere klare Schrift
+   Inter, hochwertigere Infokarten mit weniger Effekten). Steht zuletzt und gilt vor den Glas-Regeln oben. */
+html.glas{--ink:#1c1a1d;--mut:#666069;--line-c:#e6e3e7}
+html.glas body{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif!important;font-size:15px;line-height:1.55;letter-spacing:-.006em;color:var(--ink)}
+html.glas h1{font-size:26px;font-weight:700;letter-spacing:-.02em}html.glas h2{font-size:19px;font-weight:650}html.glas h3{font-size:16px;font-weight:650}
+html.glas .faint{color:#7c7680!important}html.glas .mut,html.glas .muted{color:var(--mut)}
+html.glas body,html.glas body.shell,html.glas body.appmode,html.glas body.mshell,html.glas body.bare{background:#f6f6f7!important;background-image:none!important}
+html.glas .card,html.glas .panel,html.glas .kpi,html.glas .bs-kpi,html.glas .tile,html.glas details.box,html.glas dialog,html.glas .vw-grid a,html.glas .vw-stats .vs,html.glas body.mshell .shift,html.glas .qm-audit,html.glas .pb-sec,html.glas .actstack{background:#fff!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;border:1px solid var(--line-c)!important;box-shadow:0 1px 2px rgba(20,10,15,.04)!important;border-radius:14px!important}
+html.glas .flash{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:none!important;border-radius:12px!important}
+html.glas .card .card,html.glas .panel .card,html.glas .card .kpi{background:#fafafa!important;box-shadow:none!important;border:1px solid var(--line-c)!important;border-radius:12px!important}
+html.glas .drop,html.glas .cbx-pop,html.glas .menu-top .appside nav.menu .sub{background:#fff!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;border:1px solid var(--line-c)!important;border-radius:12px!important;box-shadow:0 12px 32px -10px rgba(20,10,15,.18)!important}
+html.glas .menu-top .appside nav.menu .sub a{font-size:14.5px;padding:8px 12px}
+html.glas .menu-top .appside nav.menu .sub a:hover,html.glas .menu-top .appside nav.menu .sub a.on{background:#f7edf1!important;color:var(--g-acc)!important}
+html.glas .shell .top,html.glas .menu-top .top{background:#fff!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:0 1px 0 var(--line-c)!important}
+html.glas .search{background:#f3f2f4!important}
+@media (min-width:1025px){
+html.glas .menu-top .appside{position:sticky!important;top:64px!important;margin:0!important;width:auto!important;max-width:none!important;border-radius:0!important;padding:0 24px!important;background:#fff!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:0 1px 0 var(--line-c)!important}
+html.glas .menu-top .appside nav.menu{justify-content:flex-start;gap:4px}
+html.glas .menu-top .appside nav.menu a.item,html.glas .menu-top .appside nav.menu .grp>summary{min-height:48px!important;border-radius:0!important;padding:0 14px!important;font-size:15px!important;font-weight:550;color:#3b363d!important;background:transparent!important;box-shadow:inset 0 -2px 0 transparent!important}
+html.glas .menu-top .appside nav.menu a.item:hover,html.glas .menu-top .appside nav.menu .grp>summary:hover{background:transparent!important;color:var(--g-acc)!important}
+html.glas .menu-top .appside nav.menu a.item.on,html.glas .menu-top .appside nav.menu .grp.on>summary{background:transparent!important;color:var(--g-acc)!important;font-weight:650;box-shadow:inset 0 -3px 0 var(--g-acc)!important}
+}
+@media (max-width:1024px){html.glas body.menu-top .appside{background:#fff!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+html.glas body.menu-top .appside nav.menu a.item.on,html.glas body.menu-top .appside nav.menu .grp.on>summary{background:#f7edf1!important;color:var(--g-acc)!important}}
+html.glas .btn,html.glas button.btn{border-radius:10px!important;background:var(--g-acc)!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:none!important;font-weight:600}
+html.glas .btn:hover{filter:brightness(1.08)}
+html.glas .btn.secondary,html.glas .btn.ghost,html.glas .btn.sec,html.glas a.btn.light,html.glas .btn.outline,html.glas .btn.subtle{background:#fff!important;color:var(--ink)!important;border:1px solid #d9d5da!important;box-shadow:none!important;filter:none}
+html.glas .btn.ghost{border-color:transparent!important;color:var(--mut)!important}
+html.glas .btn.danger{background:#b4142a!important}
+html.glas input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),html.glas select,html.glas textarea{background:#fff!important;border:1px solid #d9d5da!important;border-radius:10px!important;font-size:15px}
+html.glas input:focus,html.glas select:focus,html.glas textarea:focus{border-color:var(--g-acc)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--g-acc) 15%,transparent)!important}
+html.glas table td{font-size:14.5px}
+html.glas .tbl thead th,html.glas table thead th{font-size:13px!important;font-weight:600!important;color:var(--mut)!important}
+html.glas .tabs,html.glas .ls-tabs{background:transparent!important;border-radius:0!important;padding:0!important;gap:4px;border-bottom:1px solid var(--line-c)!important;width:auto}
+html.glas .tabs a,html.glas .ls-tabs a{border-radius:0!important;padding:10px 12px!important;font-size:15px!important;color:var(--mut)!important;background:transparent!important}
+html.glas .tabs a:hover,html.glas .ls-tabs a:hover{color:var(--ink)!important}
+html.glas .tabs a.on,html.glas .ls-tabs a.on,html.glas .tabs a[aria-current]{background:transparent!important;color:var(--g-acc)!important;font-weight:650;box-shadow:inset 0 -2px 0 var(--g-acc)!important}
+html.glas .tabs .badge,html.glas .tabs .cnt{background:#f0eef1!important;color:var(--mut)}
+html.glas .seg{background:#f0eef1!important}
+html.glas .actstack{padding:6px}
+html.glas .actstack.actstack>:first-child:is(a,button),html.glas .actstack.actstack>form:first-child>button{background:var(--g-acc)!important;box-shadow:none!important}
+html.glas .pb-bar,html.glas .pb-bar.light{border-bottom:1px solid var(--line-c)!important}
+html.glas .appmode .apphead,html.glas body.mshell>header,html.glas body>header{background:#fff!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:0 1px 0 var(--line-c)!important}
+html.glas .apptabs,html.glas .tabbar{background:rgba(255,255,255,.96)!important;border:1px solid var(--line-c)!important;box-shadow:0 8px 24px -10px rgba(20,10,15,.2)!important}
+/* Infokarten links (Objekt): Kopfzeile mit Nummer + Status, Name groß, Angaben untereinander, Aktionen unten */
+html.glas .info-col>.panel{margin-bottom:16px}
+html.glas .info-col .sc{padding:18px 0 0!important}
+html.glas .info-col .sc>*{margin-left:18px!important;margin-right:18px!important}
+.sc-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+.sc-cap{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#7c7680}
+.sc-title{display:block;font-size:17px;font-weight:650;line-height:1.35;letter-spacing:-.01em}
+.sc-title a{color:inherit}.sc-title a:hover{color:var(--g-acc,#7d1435)}
+.sc-addr{color:#666069;margin-top:4px;line-height:1.5}
+.sc-kv{margin:14px 0 0;padding:0;border-top:1px solid #eeecef}
+.sc-kv>div{padding:10px 0;border-bottom:1px solid #eeecef}.sc-kv>div:last-child{border-bottom:0}
+.sc-kv dt{font-size:12.5px;color:#7c7680;margin:0}.sc-kv dd{margin:2px 0 0;font-weight:500}
+html.glas .info-col .sc>.sc-foot,.info-col .sc>.sc-foot{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0!important;padding:12px 18px 14px;border-top:1px solid #eeecef;background:#fafafa;border-radius:0 0 14px 14px}
+.info-col .sc>:last-child:not(.sc-foot){margin-bottom:18px!important}
+.sc-foot form{margin:0}
+html.glas .tag{border-radius:999px;font-weight:600}
+@media (max-width:1024px){html.glas body.menu-top .burger-cb:not(:checked)~.appside{box-shadow:none!important}}
 @media (prefers-reduced-transparency:reduce){html.glas .card,html.glas .panel,html.glas .kpi,html.glas .shell .top,html.glas .menu-top .appside,html.glas .apptabs,html.glas .tabbar{background:rgba(255,255,255,.96)!important;-webkit-backdrop-filter:none;backdrop-filter:none}}
 @media print{html.glas body{background:#fff!important}html.glas .card,html.glas .panel{background:#fff!important;box-shadow:none!important;backdrop-filter:none!important}}
 `;

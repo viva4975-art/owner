@@ -5073,3 +5073,18 @@ Testadresse.
   (Hellblau) sind jetzt helle Töne der gewählten Farbe (Standard Bordeaux), Grundfläche #f2eff2.
 - 2026-11-07: Glas-Hintergrund blasser (Ahmed): Bordeaux-Farbflächen etwa halb so stark (30/12/16/9 % → 15/6/8/5 %),
   Grundfläche heller (#f6f4f6).
+- 2026-11-07: **Gestaltung „ruhig“ + Menü vereinfacht** (Ahmed, 4 Punkte):
+  - Hintergrund einfarbig hell-neutral (#f6f6f7), keine Farbverläufe/Glas-Unschärfe mehr; Karten weiß mit feiner Linie;
+    Bordeaux nur noch für Hauptknopf, aktiven Menüpunkt/Reiter (Unterstrich), Links, Fokus.
+  - Schrift überall Inter (auch auf Apple-Geräten), Grundgröße 15 px, Tabellen 14,5 px, Reiter/Menü 15 px, klare
+    Überschriften 26/19/16 px. Reiter als Unterstreichung statt Pillen. Block „Fassung 3 ruhig“ am Ende von
+    `src/web/glass-css.ts` (gilt vor den Glas-Regeln); Farbe aus Mein Konto → Darstellung wirkt weiter als Akzent.
+  - **Menü 8 statt 11 Punkte:** Übersicht · Kunden (Kundenliste, Objekte, Angebote & Ausschreibungen, Aufgaben,
+    Akquise, Preisanpassung) · Rechnungen · Einkauf (Bestellungen, Rechnungseingang, Nachunternehmer, Lieferanten) ·
+    Personal & Zeit (Mitarbeiter, Zeiterfassung, Planung, Urlaub & Abwesenheiten, Bewerber & Stellen) · Betrieb
+    (Arbeitsscheine, Glas, Tiefgarage, Grundreinigung, Artikel, Materialausgabe, Geräte, Schlüsselbuch, Fahrzeuge) ·
+    Verwaltung (Bank, Kassenbuch, Lohn & DATEV, Dokumente, Briefe, Eigen-Compliance, Importe) · Auswertungen.
+    Alte nav-Schlüssel der Seiten über `NAV_ALIAS`; der aktive Hauptpunkt folgt dem passenden Unterpunkt. Adressen
+    und Rechte unverändert. Menüleiste oben als ruhige weiße Leiste mit Unterstrich.
+  - **Infokarten am Objekt** neu: Kopf „OBJEKT 2990101“ + Status-Badge, Name groß, Adresse grau, Angaben untereinander
+    mit Trennlinien, Aktionen (Bearbeiten, Inaktiv setzen) im Fuß; Kundenkarte gleich aufgebaut.

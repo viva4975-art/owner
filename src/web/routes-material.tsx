@@ -192,7 +192,7 @@ export function registerMaterialRoutes(ctx: Ctx) {
           <h3 style="margin:16px 0 6px">Artikel aus dem Lager</h3>
           {active.length === 0 ? (
             <div class="empty">
-              Noch keine Artikel angelegt (<a href="/artikel">Inventar → Artikel</a>) – unten freie Artikel
+              Noch keine Artikel angelegt (<a href="/artikel">Betrieb → Artikel</a>) – unten freie Artikel
               eintragen.
             </div>
           ) : (

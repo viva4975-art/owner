@@ -980,81 +980,86 @@ export const SiteShell: FC<{
       />
       <div class="entity-layout">
         <aside class="info-col">
-          <section class="panel side-card">
-            {canAccess(role, `${base}/bearbeiten`) && (
-              <div class="side-actions">
+          <section class="panel side-card sc">
+            <div class="sc-head">
+              <span class="sc-cap">Objekt {s.site_no}</span>
+              {s.active ? <span class="tag ok">aktiv</span> : <span class="tag err">inaktiv</span>}
+            </div>
+            <b class="sc-title">{s.name}</b>
+            {(s.street || s.postal_code || s.city) && (
+              <div class="sc-addr">
+                {s.street && <div>{s.street}</div>}
+                {(s.postal_code || s.city) && (
+                  <div>
+                    {s.postal_code} {s.city}
+                  </div>
+                )}
+              </div>
+            )}
+            <dl class="sc-kv">
+              <div>
+                <dt>Objektleitung</dt>
+                <dd>
+                  {info.manager ? (
+                    <>
+                      {info.manager.name}
+                      {info.manager.phone && (
+                        <div>
+                          <a href={`tel:${info.manager.phone.replace(/\s/g, '')}`}>{info.manager.phone}</a>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <span class="mut">keine</span>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>Reinigungskräfte</dt>
+                <dd>{info.cleaners} aktiv</dd>
+              </div>
+            </dl>
+            <div class="sc-foot">
+              {canAccess(role, `${base}/bearbeiten`) && (
                 <a class="btn sec sm" href={`${base}/bearbeiten`}>
                   Bearbeiten
                 </a>
-              </div>
-            )}
-            <div class="addr">
-              <b>{s.name}</b>
-              {s.street && <div>{s.street}</div>}
-              {(s.postal_code || s.city) && (
-                <div>
-                  {s.postal_code} {s.city}
-                </div>
+              )}
+              {role !== 'objektleitung' && (
+                <form method="post" action="/objekte/status">
+                  <input type="hidden" name="ids" value={s.id} />
+                  <input type="hidden" name="zurueck" value={base} />
+                  {s.active ? (
+                    <button
+                      class="btn ghost sm"
+                      name="aktion"
+                      value="inaktiv"
+                      data-confirm="Objekt inaktiv setzen? Kein Monatslauf, keine Planung/Stempeln mehr; Daten bleiben erhalten."
+                    >
+                      Inaktiv setzen
+                    </button>
+                  ) : (
+                    <button class="btn sm" name="aktion" value="aktiv">
+                      Wieder aktiv setzen
+                    </button>
+                  )}
+                </form>
               )}
             </div>
-            <dl class="kv small">
-              <dt>Objektleitung</dt>
-              <dd>
-                {info.manager ? (
-                  <>
-                    {info.manager.name}
-                    {info.manager.phone && (
-                      <div>
-                        <a href={`tel:${info.manager.phone.replace(/\s/g, '')}`}>{info.manager.phone}</a>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <span class="mut">keine</span>
-                )}
-              </dd>
-              <dt>Reinigungskräfte</dt>
-              <dd>{info.cleaners} aktiv</dd>
-              <dt>Status</dt>
-              <dd>{s.active ? <span class="tag ok">aktiv</span> : <span class="tag err">inaktiv</span>}</dd>
-            </dl>
-            {role !== 'objektleitung' && (
-              <form method="post" action="/objekte/status" style="margin-top:8px">
-                <input type="hidden" name="ids" value={s.id} />
-                <input type="hidden" name="zurueck" value={base} />
-                {s.active ? (
-                  <button
-                    class="btn sec sm"
-                    name="aktion"
-                    value="inaktiv"
-                    data-confirm="Objekt inaktiv setzen? Kein Monatslauf, keine Planung/Stempeln mehr; Daten bleiben erhalten."
-                  >
-                    Objekt inaktiv setzen
-                  </button>
-                ) : (
-                  <button class="btn sm" name="aktion" value="aktiv">
-                    Objekt wieder aktiv setzen
-                  </button>
-                )}
-              </form>
-            )}
           </section>
-          <section class="panel">
-            <h3 class="panel-head">Kunde / Verwaltung</h3>
-            <div style="margin-top:10px">
-              <span class="mut">{c.customer_no}</span>{' '}
+          <section class="panel side-card sc">
+            <div class="sc-head">
+              <span class="sc-cap">Kunde {c.customer_no}</span>
               <span class={`tag ${st === 'kunde' ? 'ok' : st === 'interessent' ? 'warn' : 'err'}`}>
                 {CUSTOMER_STATUS[st]}
               </span>
             </div>
-            <div style="margin-top:4px">
-              {canAccess(role, `/kunden/${c.id}`) ? (
-                <a href={`/kunden/${c.id}`}>{c.name}</a>
-              ) : (
-                <b>{c.name}</b>
-              )}
-              {c.name2 && <div class="small">{c.name2}</div>}
-              <div>{c.street}</div>
+            <b class="sc-title">
+              {canAccess(role, `/kunden/${c.id}`) ? <a href={`/kunden/${c.id}`}>{c.name}</a> : c.name}
+            </b>
+            <div class="sc-addr">
+              {c.name2 && <div>{c.name2}</div>}
+              {c.street && <div>{c.street}</div>}
               <div>
                 {c.postal_code} {c.city}
               </div>

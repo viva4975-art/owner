@@ -5102,3 +5102,15 @@ Testadresse.
   feinem Schatten (Klasse `scrolled` am `<html>`, Kopf-Skript); **ausgewählte Karten** mit 2-px-Bordeaux-Kante oben und
   getönten Symbolen (Klasse `accent`: „Anträge zum Genehmigen“, Objekt-Infokarte) – nicht bei allen Karten; Karten/Kacheln/
   Knöpfe/Reiter ändern beim Darüberfahren sanft Rand/Schatten (180 ms; bei „Bewegung reduzieren“ ohne Übergang).
+- 2026-11-07: Gestaltung, Runde 3 (Ahmed, 4 Punkte):
+  - **Menü:** aktive Seite = Bordeaux-Unterstrich; nur geöffnetes Klappmenü = Bordeaux-Text + gedrehter Pfeil, kein Strich.
+  - **Bordeaux-Kante (Klasse `accent`) an wichtigen Stellen, nicht überall:** Startseite (Anträge zum Genehmigen, Offene
+    Posten, Hinweise), Objekt- und Kundenkarte, Mitarbeiter-Kopfkarte, Zahlungsübersicht der Rechnung, Offene Posten
+    „offen gesamt“, Deckungsbeitrag in Nach-/Plan-Kalkulation, gewählte Kachel in Bestellungen (`.bs-kpi.on`).
+  - **Einheitlich** (Tokens in `glass-css.ts`): Karten 16 px, Klappmenüs/Popover 14 px, Knöpfe/Felder 10 px (kleine 8 px),
+    Menüeinträge 8 px, Schilder rund; Schatten in 3 Stufen (Karte, Hover, schwebend); Hover 180 ms. Mit einem
+    Mess-Skript über 23 Seiten geprüft (Radien/Schatten/Hintergründe gleich, keine Ausreißer).
+  - **Lesbarkeit:** Grauer Hinweistext dunkler (#7d7d84 statt #a1a1aa, Kontrast > 3,2 auf allen geprüften Seiten); Zähler in
+    aktiven Filter-Chips wieder sichtbar. **Fund:** Klappmenüs in Kopf/Menüleiste ließen den Text darunter scharf
+    durchscheinen – verschachteltes backdrop-filter wirkt nicht. Glas von Kopf/Leiste liegt jetzt auf `::before`, die
+    Menüs verwischen den Hintergrund (Weiß 88 %). Mitlaufende Tabellenköpfe fast deckend. Suchfeld ohne doppelten Rahmen.

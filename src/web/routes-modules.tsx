@@ -927,7 +927,7 @@ export function registerModuleRoutes(ctx: Ctx) {
           </a>
         </PageHead>
         <div class="kpis">
-          <div class="kpi">
+          <div class="kpi accent">
             <div class="l">offen gesamt</div>
             <div class="v">{euro(total)}</div>
             <div class="s">

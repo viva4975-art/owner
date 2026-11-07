@@ -61,7 +61,7 @@ export const AbsentCard: FC<{ absent: AbsentNow[]; today: string; href?: string 
       </>
     );
   return (
-    <section class="card dash-card">
+    <section class="card dash-card accent">
       {href ? (
         <DashHead title="Abwesend" count={absent.length} href={href} more="Urlaubskalender" />
       ) : (
@@ -910,7 +910,7 @@ export const Dashboard: FC<{
             </section>
           ),
           akquise: (
-            <section class="card dash-card">
+            <section class="card dash-card accent">
               <DashHead
                 title="Wiedervorlagen Akquise"
                 count={todo.followups.due.length + todo.followups.week.length}

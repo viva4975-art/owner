@@ -489,7 +489,7 @@ export const EmployeeOverview: FC<{
           <b>Warnhinweis:</b> {e.warning_note}
         </div>
       )}
-      <section class="card emp-hero">
+      <section class="card emp-hero accent">
         <div class="eh-top">
           <span class="eh-av">{initials(`${e.first_name} ${e.last_name}`)}</span>
           <div class="eh-name">

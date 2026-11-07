@@ -4357,7 +4357,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
               NU {eur(sum((r) => r.subcontractor))} · Material {eur(sum((r) => r.material))}
             </div>
           </div>
-          <div class="kpi">
+          <div class="kpi accent">
             <div class="l">Deckungsbeitrag (Plan)</div>
             <div class="v" style={margin < 0n ? 'color:var(--err)' : ''}>
               {eur(margin)}
@@ -4931,7 +4931,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
               )}
             </div>
           </div>
-          <div class="kpi">
+          <div class="kpi accent">
             <div class="l">Deckungsbeitrag Objekte</div>
             <div class="v" style={totalMargin < 0n ? 'color:var(--err)' : ''}>
               {euro(totalMargin)}

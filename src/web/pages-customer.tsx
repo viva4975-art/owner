@@ -295,7 +295,7 @@ export const CustomerSide: FC<{ c: Customer; groups: InvoiceGroupRow[] }> = ({ c
   const emails = [...new Set(groups.filter((g) => g.active).flatMap((g) => g.bill_emails))];
   const since = c.customer_since ?? (c.created_at ? new Date(c.created_at).toISOString().slice(0, 10) : null);
   return (
-    <div class="panel side-card">
+    <div class="panel side-card accent">
       <div class="side-actions">
         <a class="btn sec sm" href={`/kunden/${c.id}/bearbeiten`}>
           Bearbeiten

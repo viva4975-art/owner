@@ -1151,7 +1151,7 @@ export const IssuedLetter: FC<{
               </details>
             )}
           </div>
-          <div class="card">
+          <div class="card accent">
             <h3>Zahlungsübersicht</h3>
             <table class="lt-pay">
               {overview.map((o) => (

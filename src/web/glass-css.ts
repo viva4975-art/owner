@@ -230,15 +230,51 @@ html.glas:not(.scrolled) .shell .top,html.glas:not(.scrolled) .menu-top .top{bac
 html.glas.scrolled .menu-top .appside{background:rgba(255,255,255,.7)!important;box-shadow:0 1px 0 rgba(229,229,234,.6),0 8px 24px -12px rgba(20,20,30,.14)!important}}
 html.glas.scrolled .shell .top,html.glas.scrolled .menu-top .top{background:rgba(255,255,255,.7)!important}
 html.glas.scrolled body:not(.menu-top) .top{box-shadow:0 1px 0 rgba(229,229,234,.6),0 8px 24px -12px rgba(20,20,30,.14)!important}
-html.glas .card.accent,html.glas .info-col .sc:first-child{box-shadow:inset 0 2px 0 var(--g-acc),var(--card-shadow)!important}
+html.glas .accent:is(.card,.panel,.kpi),html.glas .bs-kpi.on,html.glas .info-col .sc:first-child{box-shadow:inset 0 2px 0 var(--g-acc),var(--card-shadow)!important}
 html.glas .card.accent .dash-head h2,html.glas .card.accent h2{color:var(--ink)}
-html.glas .card.accent .ic,html.glas .card.accent svg{color:var(--g-acc)}
+html.glas .accent:is(.card,.panel,.kpi) :is(h2,h3)>.ic,html.glas .accent:is(.card,.panel,.kpi) .dash-head .ic{color:var(--g-acc)}
 html.glas .card,html.glas .tile,html.glas .vw-grid a,html.glas .kpi,html.glas .bs-kpi{transition:box-shadow .18s ease,border-color .18s ease,background-color .18s ease}
 html.glas .card:hover,html.glas .tile:hover,html.glas .kpi:hover,html.glas .bs-kpi:hover{border-color:#dcdce2!important;box-shadow:0 2px 10px -4px rgba(20,20,30,.1),var(--card-shadow)!important}
-html.glas .card.accent:hover,html.glas .info-col .sc:first-child:hover{box-shadow:inset 0 2px 0 var(--g-acc),0 2px 10px -4px rgba(20,20,30,.1)!important}
+html.glas .accent:is(.card,.panel,.kpi):hover,html.glas .bs-kpi.on:hover,html.glas .info-col .sc:first-child:hover{box-shadow:inset 0 2px 0 var(--g-acc),0 2px 10px -4px rgba(20,20,30,.1)!important}
 html.glas a.card:hover,html.glas .vw-grid a:hover,html.glas a.tile:hover{background:#fdfcfd!important;border-color:color-mix(in srgb,var(--g-acc) 22%,#e5e5ea)!important}
 html.glas .btn,html.glas button.btn,html.glas .tabs a,html.glas .ls-tabs a,html.glas .chip,html.glas .chips a{transition:background-color .18s ease,box-shadow .18s ease,border-color .18s ease,color .18s ease!important}
 html.glas table tbody tr td{transition:background-color .15s ease}
+/* Einheitlich (Ahmed 07.11.): Radien 16 Karten · 14 Klappmenüs/Popover · 10 Knöpfe/Felder · 8 Einträge in Menüs ·
+   999 Schilder/Chips; Schatten 3 Stufen (Karte, Karte-Hover, Schwebend); Hover überall 180 ms. */
+html.glas{--r-card:16px;--r-pop:14px;--r-ctl:10px;--r-item:8px;--sh-card:0 1px 2px rgba(20,20,30,.04);--sh-hover:0 2px 10px -4px rgba(20,20,30,.1),0 1px 2px rgba(20,20,30,.04);--sh-float:0 4px 24px rgba(20,20,30,.05),0 16px 40px -12px rgba(20,20,30,.16)}
+html.glas :is(.card,.panel,.kpi,.bs-kpi,.tile,details.box,.vw-grid a,.qm-audit,.pb-sec,.actstack){border-radius:var(--r-card)!important}
+html.glas .card .card,html.glas .panel .card,html.glas .card .kpi{border-radius:12px!important}
+html.glas :is(.sdrop,.drop,.cbx-pop,dialog,details.dd>.drop),html.glas .menu-top .appside nav.menu .sub{border-radius:var(--r-pop)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.7),var(--sh-float)!important;background:rgba(252,252,253,.88)!important;-webkit-backdrop-filter:blur(26px) saturate(170%)!important;backdrop-filter:blur(26px) saturate(170%)!important}
+html.glas :is(.sdrop,.drop,.cbx-pop,details.dd>.drop) :is(a,button,li,.opt),html.glas .menu-top .appside nav.menu .sub a{border-radius:var(--r-item)!important;transition:background-color .18s ease,color .18s ease}
+html.glas :is(.btn,button.btn,select,textarea,.search){border-radius:var(--r-ctl)!important}
+html.glas input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]){border-radius:var(--r-ctl)!important}
+html.glas .btn.sm{border-radius:8px!important}
+html.glas :is(.tag,.badge,.chip,.pill,.cnt){border-radius:999px!important}
+html.glas :is(.card,.panel,.kpi,.tile):hover{box-shadow:var(--sh-hover)!important}
+html.glas .accent:is(.card,.panel,.kpi):hover,html.glas .bs-kpi.on:hover,html.glas .info-col .sc:first-child:hover{box-shadow:inset 0 2px 0 var(--g-acc),var(--sh-hover)!important}
+html.glas .accent:is(.card,.panel,.kpi),html.glas .bs-kpi.on,html.glas .info-col .sc:first-child{box-shadow:inset 0 2px 0 var(--g-acc),var(--sh-card)!important}
+/* Menü: aktive Seite = Unterstrich; nur geöffnet = Bordeaux-Text + Pfeil gedreht, ohne Unterstrich */
+@media (min-width:1025px){
+html.glas .menu-top .appside nav.menu .grp>summary .ic:last-child{transition:transform .18s ease,color .18s ease}
+html.glas .menu-top .appside nav.menu .grp[open]>summary .ic:last-child{transform:rotate(180deg);color:var(--g-acc)}
+html.glas .menu-top .appside nav.menu .grp[open]:not(.on)>summary{color:var(--g-acc)!important;box-shadow:none!important;background:transparent!important}
+html.glas .menu-top .appside nav.menu .grp.on[open]>summary{box-shadow:inset 0 -2.5px 0 var(--g-acc)!important}
+}
+html.glas{--faint:#7d7d84}
+html.glas .faint{color:#7d7d84!important}
+html.glas .pill.on span,html.glas .chips a.on span,html.glas .chip.on span{color:var(--g-acc)!important}
+/* Lesbarkeit: sekundärer Text nie heller als #6e6e73 auf Weiß; schwebende Flächen über Tabellen deckend genug */
+html.glas :is(.mut,.muted,.small.mut,.sc-addr){color:#6e6e73}
+html.glas .sticky-clone{background:rgba(255,255,255,.97)!important}
+html.glas .search input:focus-visible{outline:0!important;box-shadow:none!important}
+/* Verschachteltes backdrop-filter wirkt nicht: hätten Kopf/Menüleiste selbst den Filter, könnten die Klappmenüs darin den
+   Inhalt darunter nicht verwischen (Text schien scharf durch). Deshalb liegt das Glas von Kopf und Leiste auf ::before. */
+html.glas .shell .top,html.glas .menu-top .top{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;isolation:isolate}
+html.glas .shell .top::before,html.glas .menu-top .top::before{content:"";position:absolute;inset:0;z-index:-1;background:inherit;-webkit-backdrop-filter:var(--lg-blur);backdrop-filter:var(--lg-blur);pointer-events:none}
+@media (min-width:1025px){
+html.glas .menu-top .appside{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;isolation:isolate}
+html.glas .menu-top .appside::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;background:inherit;-webkit-backdrop-filter:var(--lg-blur);backdrop-filter:var(--lg-blur);pointer-events:none}
+}
 /* Ohne backdrop-filter: deckend weiß */
 @supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important}}
 @media (prefers-reduced-transparency:reduce){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}

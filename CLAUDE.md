@@ -5055,3 +5055,17 @@ Testadresse.
     „Je Mitarbeiter“/„Auffällige Zeiten“/„Plan/Ist je Monat“ zusammenlegen, Mitarbeiter-Reiter 9 → 7.
   - Browser-Tests `e2e:zeit` und `e2e:objektseiten` scheitern schon vor dieser Änderung (Stempeln am Handy zeigt im Test
     „Keine Verbindung“; Schlüssel-Ausgabe-Auswahl) – noch zu klären.
+- 2026-11-07: **Alle Seiten durchgesehen (PC + Handy)** (Ahmed: Aktionsblock am Angebot „sieht komisch aus“, „jede einzelne Seite
+  und Unterseite“): Seiten-Rundgang mit Demo-Daten (486 Seiten Handy, 433 PC) plus Bildschirmfotos aller Seiten.
+  - Neu im Rundgang (`npm run check:seiten`): zu hohe Pillen, Kontrast < 2,5, große dunkle Flächen, Handy-Seite breiter als
+    der Bildschirm (Handy zoomt heraus).
+  - Behoben: Aktionsblock (Angebot, Rechnung, Arbeitsschein …) im Glas als helle Karte mit Zeilen, erste Aktion getönt;
+    Planungskopf „Zu planende Einsätze“ hell statt Bordeaux; blasser Hinweistext lesbarer; 12 Seiten waren am Handy zu
+    breit (Lieferant, Mahnung, E-Mail-Versand: lange Werte in Angabe-Listen; Terminserie; Rechte; Aushänge; Objekt →
+    Einsätze; Mitarbeiter → Zeiten; Kürzungsbelege; Mail-Vorschau) → Angabe-Listen brechen um, zu breite Tabellen bekommen
+    automatisch eine eigene Scroll-Hülle (`client.ts`); Objektliste: Häkchen oben rechts statt allein mittig;
+    Handy-Kartenlisten (Nachunternehmer, Lieferanten …) ragten über die Karte und zeigten Werte ohne Beschriftung
+    (`data-label` wird jetzt wie `data-l` angezeigt); Rechnungsliste: Monatskopf bricht sauber um; toter Link
+    Bestellungen → „Rechnung erwartet →“ (404); zwei Auswahlfelder ohne Beschriftung (Glas-Bestätigungen).
+  - Browser-Tests `e2e:menu` (Menü jetzt Kapsel) und `e2e:rechte` (Kontrolle starten nur am Handy) an den Stand angepasst;
+    `e2e:zeit`/`e2e:objektseiten` scheitern weiter wie vorher (noch zu klären).

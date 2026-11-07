@@ -1308,7 +1308,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
               </a>
             )}
             {view === 'rechnung' && sel.miss > 0 && (
-              <a class="btn sm sec" href="/rechnungseingang/erwartet">
+              <a class="btn sm sec" href="/rechnungseingang?status=erwartet">
                 Rechnung erwartet →
               </a>
             )}

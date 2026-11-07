@@ -218,7 +218,8 @@ check('Raumbuch fremdes Objekt gesperrt', fq.status() === 403, String(fq.status(
 await o.goto(B + '/qualitaet');
 check(
   'QK-Liste ohne fremde Objekte',
-  !(await o.locator('select[name=site_id]').innerText()).includes('Verwaltungsgebäude'),
+  // „Kontrolle starten“ gibt es seit 04.11. nur am Handy – die Liste darf keine fremden Objekte zeigen
+  !(await o.locator('main').innerText()).includes('Verwaltungsgebäude'),
 );
 // Auswertungen: Objektleitung nur Dienste-Liste (eigene Objekte), keine Umsätze/Personalauswertungen
 const rs = await o.request.get(B + '/auswertungen/statistik', { maxRedirects: 0 });

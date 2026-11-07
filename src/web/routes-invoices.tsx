@@ -219,14 +219,17 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
         })()}
         {months.map((m, i) => (
           <details class="card" open={i === 0 || months.length <= 2 || !!q}>
-            <summary style="display:flex;align-items:center;gap:14px;cursor:pointer;list-style:none">
-              <b style="font-size:16px">
+            <summary
+              class="arch-sum"
+              style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;cursor:pointer;list-style:none"
+            >
+              <b style="font-size:16px;white-space:nowrap">
                 {MONTHS[Number(m.month.slice(5)) - 1]} {m.month.slice(0, 4)}
               </b>
               <span class="badge">
                 {m.rows.length} {m.rows.length === 1 ? 'Beleg' : 'Belege'}
               </span>
-              <span class="mut small">
+              <span class="mut small" style="white-space:nowrap">
                 netto {euro(m.net)} · brutto {euro(m.gross)}
               </span>
               {by === 'leistung' && m.rows.some((r) => !r.legacy) && (

@@ -113,7 +113,7 @@ a.sh{display:block;color:inherit;text-decoration:none;cursor:pointer}a.sh:hover{
 .cal-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin:8px 0 0}
 .cal-legend .sh{display:inline-block;margin:0;padding:0 8px}
 .cal-side{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:18px;margin-top:18px}
-@media (max-width:900px){.cal-side{grid-template-columns:1fr}
+@media (max-width:900px){.cal-side{grid-template-columns:minmax(0,1fr)}
   .cal.wk{display:block}.cal.wk .wkd{display:block}.cal.wk .dc{min-height:0;border-right:0}
   .cal .dc{padding:4px;min-height:84px}.cal .dc .sh{padding:2px 4px;font-size:11.5px}
 }

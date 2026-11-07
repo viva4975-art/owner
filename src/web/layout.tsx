@@ -125,7 +125,7 @@ nav.menu{position:sticky;top:0;z-index:20}
 nav.menu .in{max-width:1360px;margin:0 auto;display:flex;flex-wrap:wrap}
 nav.menu .item>summary,nav.menu a.item{display:flex;align-items:center;gap:4px;cursor:pointer;list-style:none;white-space:nowrap;text-decoration:none;font-size:14px}
 nav.menu .item>summary::-webkit-details-marker{display:none}
-details.dd{position:relative}
+details.dd{position:relative}details.dd:not([open])>.drop{display:none}details.dd>.drop{max-width:calc(100vw - 24px)}
 details.dd>summary{list-style:none}details.dd>summary::-webkit-details-marker{display:none}
 details.dd>.drop{position:absolute;left:0;top:100%;min-width:280px;background:#fff;z-index:30}
 details.dd>.drop.right{left:auto;right:0}
@@ -236,7 +236,7 @@ input::placeholder,textarea::placeholder{color:var(--faint)}
 .totals tr.sum td{font-weight:700;color:var(--ink);border-top:1px solid var(--line);padding-top:8px}
 .help{font-size:12.5px;color:var(--mut);margin-top:2px}
 .hint{background:var(--info-50);border:1px solid #bfdbfe;color:#1e3a8a;padding:12px 14px;border-radius:var(--r);font-size:13.5px}
-.kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 18px;margin:0}.kv dt{color:var(--mut)}.kv dd{margin:0}
+.kv{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 18px;margin:0}.kv dd{min-width:0;overflow-wrap:anywhere}.kv dd .badge{white-space:normal}.kv dt{color:var(--mut)}.kv dd{margin:0}
 /* ---- Diagramm ---- */
 .bars{display:flex;align-items:flex-end;gap:6px;height:160px;border-bottom:1px solid var(--line);padding-top:8px}
 .bars div{flex:1;background:var(--brand-100);border-radius:3px 3px 0 0;min-width:6px}
@@ -714,8 +714,8 @@ a.bs-tr:hover{text-decoration:none;background:var(--head)}
 .tp-main{display:flex;flex-direction:column;gap:12px;min-width:0}
 .tp-main>select{max-width:640px}
 .tp-line{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
-.tp-time{display:inline-flex;gap:8px;align-items:center}
-.tp-days{display:block}.tp-days summary{cursor:pointer;color:var(--accent,#7D1435);font-size:13px}.tp-daytab{margin-top:6px;border-collapse:collapse;width:auto!important}.tp-daytab tr{background:none!important}.tp-daytab th{text-align:left;padding:3px 10px 3px 0;font-weight:600;width:34px;vertical-align:middle;border:0}.tp-daytab td{border:0}.tp-daytab td{padding:3px 12px 3px 0;white-space:nowrap}.tp-daytab input[type=time]{width:auto}
+.tp-time{display:inline-flex;flex-wrap:wrap;gap:8px;align-items:center;max-width:100%}
+.tp-days{display:block}.tp-days summary{cursor:pointer;color:var(--accent,#7D1435);font-size:13px}.tp-daytab{margin-top:6px;border-collapse:collapse;width:auto!important;max-width:100%}.tp-daytab tr{background:none!important}.tp-daytab th{text-align:left;padding:3px 10px 3px 0;font-weight:600;width:34px;vertical-align:middle;border:0}.tp-daytab td{border:0}.tp-daytab td{padding:3px 12px 3px 0;white-space:nowrap}.tp-daytab input[type=time]{width:auto}
 .tp-time input[type=date]{width:150px}.tp-time input[type=time]{width:110px}
 .tp-dur{font-weight:600;color:var(--ink-2);background:var(--head);border:1px solid var(--line-2);border-radius:6px;padding:6px 10px}
 .tp-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
@@ -1069,12 +1069,15 @@ td .btn.icon{min-height:34px;width:34px;height:34px;padding:0;justify-content:ce
   .person-head .ph-edit{width:100%;justify-content:center}
   /* Tabellen als Karten */
   .tbl.stack-m thead{display:none}
+  .card .tbl.stack-m{margin:0}
+  .list.sites .row{position:relative}.list.sites .row>input[type=checkbox]{position:absolute;right:14px;top:14px;margin:0!important}
   .tbl.stack-m table,.tbl.stack-m tbody,.tbl.stack-m tr,.tbl.stack-m td{display:block;width:100%}
   .tbl.stack-m tr{padding:10px 0;border-bottom:1px solid var(--line)}
-  .tbl.stack-m td{border:0!important;padding:2px 12px!important}
+  .tbl.stack-m td{border:0!important;padding:2px 12px!important;box-sizing:border-box;text-align:left!important}
   .tbl.stack-m td[data-l]::before{content:attr(data-l) ": ";color:var(--mut);font-size:13px}
+  .tbl.stack-m td[data-label]:not(:empty)::before{content:attr(data-label) ": ";color:var(--mut);font-size:13px}
   .cols{grid-template-columns:1fr!important}
-  dl.kv{grid-template-columns:minmax(110px,40%) 1fr}
+  dl.kv{grid-template-columns:minmax(110px,45%) minmax(0,1fr)}dl.kv dt{min-width:0;overflow-wrap:anywhere;hyphens:auto}
 }
 /* Menüs oben rechts: Text dunkel (sonst weiß auf weiß) */
 .top .right .drop{display:flex;flex-direction:column;align-items:stretch}

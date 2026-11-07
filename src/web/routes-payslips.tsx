@@ -525,7 +525,11 @@ export function registerPayslipRoutes(ctx: Ctx) {
               Beispiel – für diesen Monat ist noch keine Abrechnung da.
             </p>
           )}
-          <table class="kv keep">
+          <table class="keep" style="width:100%;table-layout:fixed;overflow-wrap:anywhere">
+            <colgroup>
+              <col style="width:90px" />
+              <col />
+            </colgroup>
             <tbody>
               <tr>
                 <th>Von</th>

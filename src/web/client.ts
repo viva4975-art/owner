@@ -248,6 +248,33 @@ export const CLIENT_JS = String.raw`
     });
   })();
 
+  // ---- Zu breite Tabellen bekommen eine eigene Scroll-Hülle (sonst zoomt das Handy die ganze Seite heraus) ----
+  (function () {
+    function scrolls(el) {
+      for (var q = el.parentElement; q && q !== document.body; q = q.parentElement) {
+        var ox = getComputedStyle(q).overflowX;
+        if (ox === 'auto' || ox === 'scroll' || ox === 'hidden') return true;
+      }
+      return false;
+    }
+    function fix(root) {
+      Array.prototype.forEach.call((root || document).querySelectorAll('table'), function (t) {
+        var p = t.parentElement;
+        if (!p || t.closest('.pdfv,.print-only') || !t.offsetWidth || scrolls(t)) return;
+        var vw = Math.min(window.innerWidth, (window.screen && screen.width) || window.innerWidth);
+        if (t.offsetWidth <= p.clientWidth + 2 && t.getBoundingClientRect().right <= vw + 2) return;
+        var w = document.createElement('div');
+        w.className = 'tbl-scroll';
+        w.style.cssText = 'overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch';
+        p.insertBefore(w, t);
+        w.appendChild(t);
+      });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { fix(); });
+    else fix();
+    document.addEventListener('toggle', function (e) { if (e.target && e.target.open) fix(e.target); }, true);
+  })();
+
   // ---- Handy: kurzer Platzhalter im Suchfeld (langer Text wurde abgeschnitten) ----
   try {
     if (window.matchMedia('(max-width:640px)').matches)

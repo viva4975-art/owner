@@ -40,8 +40,9 @@ await p.waitForLoadState();
 check('Menü oben aktiv', await p.evaluate(() => document.body.classList.contains('menu-top')));
 const box = await p.locator('.appside').boundingBox();
 check(
-  'Menüleiste einzeilig über die ganze Breite, unter der Kopfzeile',
-  !!box && box.y >= 50 && box.y <= 80 && box.width > 1300 && box.height <= 64,
+  // Glas-Gestaltung: Menü als einzeilige Kapsel unter der Kopfzeile (nicht mehr volle Breite)
+  'Menüleiste einzeilig unter der Kopfzeile',
+  !!box && box.y >= 50 && box.y <= 100 && box.width > 900 && box.height <= 64,
 );
 await p.click('.appside .grp:has(> summary span:text-is("Rechnungen")) > summary');
 check(

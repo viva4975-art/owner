@@ -113,6 +113,8 @@ async function inspect(p, k, view) {
         out.words.push(`${w.trim()}: …${text.slice(Math.max(0, i - 40), i + 40).replace(/\s+/g, ' ')}…`);
     }
     out.overflow = document.documentElement.scrollWidth - window.innerWidth;
+    out.vw = window.innerWidth;
+    out.printPage = !document.querySelector('meta[name=viewport]');
     for (const el of document.querySelectorAll('button, .btn, .badge, .pill, .tabs a, th, .kpi, label')) {
       const s = getComputedStyle(el);
       // Auswahlfelder kürzen lange Einträge bewusst mit „…“ (voller Text im title)
@@ -244,6 +246,8 @@ async function inspect(p, k, view) {
   for (const w of r.words) add(k, `${view}: Text`, w);
   if (view === 'handy' && r.overflow > 2)
     add(k, 'handy: Querscrollen', `${r.overflow}px ${(r.wide ?? []).join(' | ')}`);
+  if (view === 'handy' && r.vw > 400 && !r.printPage)
+    add(k, 'handy: Seite breiter als Handy', `${r.vw}px (Handy zoomt heraus)`);
   if (view === 'pc' && r.overflow > 2)
     add(k, 'pc: Querscrollen', `${r.overflow}px ${(r.wide ?? []).join(' | ')}`);
   for (const c of r.clipped.slice(0, 5)) add(k, `${view}: abgeschnitten`, c);

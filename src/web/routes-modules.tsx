@@ -850,7 +850,7 @@ export function registerModuleRoutes(ctx: Ctx) {
             Alle PDFs (ZIP)
           </a>
         </form>
-        <div class="card" style="padding:0">
+        <div class="card" style="padding:0;overflow-x:auto">
           <table>
             <thead>
               <tr>

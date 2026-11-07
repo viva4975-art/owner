@@ -178,7 +178,7 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
   // Gestaltung „Glas“: Farbe + Durchsichtigkeit je Browser (Cookie vd_design/vd_glas, Ahmed 07.11.)
   app.get('/konto/darstellung', (c) => {
     const ck = c.req.header('cookie') ?? '';
-    const on = /(?:^|; )vd_design=glas(?:;|$)/.test(ck);
+    const on = !/(?:^|; )vd_design=standard(?:;|$)/.test(ck);
     const q = decodeURIComponent(/(?:^|; )vd_glas=([^;]*)/.exec(ck)?.[1] ?? '');
     const color = (/c=([0-9a-fA-F]{6})/.exec(q)?.[1] ?? GLASS_DEFAULT.color).toLowerCase();
     const tint = Math.min(100, Math.max(0, Number(/t=(\d{1,3})/.exec(q)?.[1] ?? GLASS_DEFAULT.tint)));
@@ -235,7 +235,7 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
           </p>
           <div class="formfoot">
             <button class="btn">Übernehmen</button>
-            <a class="btn ghost" href="/konto/darstellung/speichern?art=glas&c=7d1435&t=60">
+            <a class="btn ghost" href="/konto/darstellung/speichern?art=glas&c=7d1435&t=0">
               Auf Bordeaux zurücksetzen
             </a>
           </div>
@@ -255,13 +255,9 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
       : GLASS_DEFAULT.color;
     const t = Math.min(100, Math.max(0, Math.round(Number(c.req.query('t') ?? GLASS_DEFAULT.tint)) || 0));
     const year = 31536000;
-    c.header(
-      'Set-Cookie',
-      `vd_design=${glas ? 'glas' : ''}; Path=/; Max-Age=${glas ? year : 0}; SameSite=Lax`,
-      {
-        append: true,
-      },
-    );
+    c.header('Set-Cookie', `vd_design=${glas ? 'glas' : 'standard'}; Path=/; Max-Age=${year}; SameSite=Lax`, {
+      append: true,
+    });
     c.header(
       'Set-Cookie',
       `vd_glas=${encodeURIComponent(`c=${col}&t=${t}`)}; Path=/; Max-Age=${year}; SameSite=Lax`,

@@ -1,9 +1,9 @@
-// Vorschau „Glas“ (Ahmed 07.11.: „Liquid Glass wie beim iPhone“). Nur aktiv, wenn der Benutzer sie über /design/glas
-// einschaltet (Cookie vd_design=glas → Klasse `glas` am <html>). Wirkt am PC (Layout), im App-Rahmen, in /m und /qm.
+// Gestaltung „Glas“ (Ahmed 07.11.: „Liquid Glass wie beim iPhone“). Seit 07.11. Standard für alle; aus nur mit
+// Cookie vd_design=standard (Mein Konto → Darstellung). Klasse `glas` am <html>. Wirkt am PC (Layout), im App-Rahmen, in /m und /qm.
 // Alles ist auf `html.glas` beschränkt – ohne die Klasse ändert sich nichts.
 
 /** Farbe (Hex ohne #) und Durchsichtigkeit (0 = ganz klar … 100 = milchig) je Browser, Cookie vd_glas="c=7d1435&t=60". */
-export const GLASS_DEFAULT = { color: '7d1435', tint: 60 } as const;
+export const GLASS_DEFAULT = { color: '7d1435', tint: 0 } as const;
 
 /** Farbvorschläge (Bordeaux = Hausfarbe). */
 export const GLASS_PRESETS = [
@@ -20,14 +20,16 @@ export const GLASS_PRESETS = [
 export const GLASS_APPLY_JS = `function vdGlasApply(c,t){var r=document.documentElement.style;t=Math.max(0,Math.min(100,+t||0))/100;if(/^[0-9a-f]{6}$/i.test(c))r.setProperty('--g-acc','#'+c);r.setProperty('--g-a1',(.32+.66*t).toFixed(3));r.setProperty('--g-a2',(.1+.6*t).toFixed(3));r.setProperty('--g-bl',Math.round(14+16*t)+'px')}`;
 
 /** Setzt Klasse und Werte vor dem ersten Zeichnen (kein Aufblitzen der alten Gestaltung). */
-export const GLASS_HEAD_JS = `(function(){try{var k=document.cookie;if(!/(?:^|; )vd_design=glas(?:;|$)/.test(k))return;document.documentElement.classList.add('glas');var m=/(?:^|; )vd_glas=([^;]*)/.exec(k);if(!m)return;var q=decodeURIComponent(m[1]),c=/c=([0-9a-fA-F]{6})/.exec(q),t=/t=(\\d{1,3})/.exec(q);${GLASS_APPLY_JS};vdGlasApply(c?c[1]:'${GLASS_DEFAULT.color}',t?t[1]:${GLASS_DEFAULT.tint})}catch(e){}})();`;
+export const GLASS_HEAD_JS = `(function(){try{var k=document.cookie;if(/(?:^|; )vd_design=standard(?:;|$)/.test(k))return;document.documentElement.classList.add('glas');var m=/(?:^|; )vd_glas=([^;]*)/.exec(k);var q=m?decodeURIComponent(m[1]):'',c=/c=([0-9a-fA-F]{6})/.exec(q),t=/t=(\\d{1,3})/.exec(q);${GLASS_APPLY_JS};vdGlasApply(c?c[1]:'${GLASS_DEFAULT.color}',t?t[1]:${GLASS_DEFAULT.tint})}catch(e){}})();`;
 
 export const GLASS_CSS = `
 /* Fassung 2 (Ahmed 07.11.: „wie auf Apple“): hell und klar wie iOS/macOS 26 – Systemschrift, neutrales Glas mit
    Lichtkante, schwebende Glas-Kapseln für Menü und Leiste, Farbe (Bordeaux) nur als Tönung aktiver Elemente. */
-html.glas{--g-acc:#7d1435;--g-a1:.72;--g-a2:.46;--g-fill:linear-gradient(135deg,rgba(255,255,255,var(--g-a1)),rgba(255,255,255,var(--g-a2)));--g-fill-2:rgba(255,255,255,.5);--g-rim:inset 0 1px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(255,255,255,.35),inset 1px 0 0 rgba(255,255,255,.45),inset -1px 0 0 rgba(255,255,255,.45);--g-ring:0 0 0 .5px rgba(0,0,0,.08);--g-drop:0 8px 32px -8px rgba(0,0,0,.14),0 2px 6px rgba(0,0,0,.04);--g-bl:24px;--g-blur:saturate(190%) blur(var(--g-bl)) brightness(1.04);--g-tint:color-mix(in srgb,var(--g-acc) 88%,transparent);--ink:#1d1d1f;--mut:#6e6e73}
+html.glas{--g-acc:#7d1435;--g-a1:.32;--g-a2:.1;--g-fill:linear-gradient(135deg,rgba(255,255,255,var(--g-a1)),rgba(255,255,255,var(--g-a2)));--g-fill-2:rgba(255,255,255,.5);--g-rim:inset 0 1px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(255,255,255,.35),inset 1px 0 0 rgba(255,255,255,.45),inset -1px 0 0 rgba(255,255,255,.45);--g-ring:0 0 0 .5px rgba(0,0,0,.08);--g-drop:0 8px 32px -8px rgba(0,0,0,.14),0 2px 6px rgba(0,0,0,.04);--g-bl:14px;--g-blur:saturate(190%) blur(var(--g-bl)) brightness(1.04);--g-tint:color-mix(in srgb,var(--g-acc) 88%,transparent);--ink:#1d1d1f;--mut:#6e6e73}
 html.glas body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",Inter,"Helvetica Neue",Arial,sans-serif!important;-webkit-font-smoothing:antialiased;color:#1d1d1f;letter-spacing:-.01em}
 html.glas h1,html.glas h2,html.glas h3{letter-spacing:-.022em}
+/* Logo ohne weißen Kasten (transparent), wie in den Apps */
+html.glas .top .logo img,html.glas .top-logo img{content:url(/static/logo-transparent.png)}
 /* Hintergrund: hell, wie ein iOS-Hintergrundbild mit sanften Farben */
 html.glas body,html.glas body.shell,html.glas body.appmode,html.glas body.mshell,html.glas body.bare{background-color:#eef0f5!important;background-image:radial-gradient(1100px 700px at 0% 0%,color-mix(in srgb,var(--g-acc) 30%,rgba(255,255,255,.4)),transparent 60%),radial-gradient(900px 700px at 100% 0%,rgba(190,214,255,.55),transparent 60%),radial-gradient(1000px 800px at 85% 100%,rgba(255,226,190,.45),transparent 60%),radial-gradient(800px 700px at 0% 100%,rgba(206,232,226,.5),transparent 60%)!important;background-attachment:fixed!important}
 html.glas .shell .mainc,html.glas main{background:transparent!important}

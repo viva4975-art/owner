@@ -686,15 +686,12 @@ export function createApp(deps: Deps) {
 
   app.get('/health', (c) => c.text('ok'));
   app.get('/health/version', (c) => c.text(appVersion()));
-  // Gestaltung „Glas“ zum Ausprobieren (Ahmed 07.11.): nur für diesen Browser, per Cookie; /design/standard schaltet zurück
+  // Gestaltung „Glas“ ist Standard (Ahmed 07.11.); /design/standard schaltet für diesen Browser zurück
   app.get('/design/:art{glas|standard}', (c) => {
     const glas = c.req.param('art') === 'glas';
     const back = c.req.query('zurueck') ?? '/';
     const to = back.startsWith('/') && !back.startsWith('//') ? back : '/';
-    c.header(
-      'Set-Cookie',
-      `vd_design=${glas ? 'glas' : ''}; Path=/; Max-Age=${glas ? 31536000 : 0}; SameSite=Lax`,
-    );
+    c.header('Set-Cookie', `vd_design=${glas ? 'glas' : 'standard'}; Path=/; Max-Age=31536000; SameSite=Lax`);
     return c.redirect(to);
   });
   // Für den externen Wächter (UptimeRobot o. ä.): 200 „ok“ nur, wenn alle Störungs-Prüfungen bestehen; sonst 503 mit

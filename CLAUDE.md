@@ -5035,3 +5035,7 @@ Testadresse.
   Kopf-Skript (`GLASS_APPLY_JS`). Schrift: auf iPhone/iPad/Mac schon die Apple-Systemschrift (SF Pro, `-apple-system`);
   auf Windows/Android bleibt Inter – SF Pro darf laut Apple-Lizenz nicht auf anderen Geräten ausgeliefert werden.
   Grenze: Farben innerhalb der Handy-Apps (Symbole, Kopfknopf) bleiben Bordeaux, nur Glasflächen/Knöpfe folgen der Wahl.
+- 2026-11-07: **Glas ist Standard für alle** (Ahmed: „bei jedem Bordeaux und am höchsten mit der Durchlässigkeit“, „Logo im
+  Hintergrund wie vorher“): Ohne Einstellung gilt Glas in Bordeaux mit voller Durchlässigkeit (Stufe 0 = „Klar“); wer
+  Standard will, wählt es unter Mein Konto → Darstellung (Cookie `vd_design=standard`). Logo in der Kopfzeile ohne
+  weißen Kasten (`logo-transparent.png`, wie in den Apps). Druck und „Transparenz reduzieren“ bleiben ohne Glas.

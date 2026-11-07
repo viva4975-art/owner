@@ -275,6 +275,60 @@ html.glas .shell .top::before,html.glas .menu-top .top::before{content:"";positi
 html.glas .menu-top .appside{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;isolation:isolate}
 html.glas .menu-top .appside::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;background:inherit;-webkit-backdrop-filter:var(--lg-blur);backdrop-filter:var(--lg-blur);pointer-events:none}
 }
+/* Fassung 5 „Feinschliff“ (Ahmed 07.11.): gemeinsame Tokens für Typografie, Kennzahlen, Tabellen, Leer-Hinweise, Meldungen
+   und ruhigere Kalender. Gemessen über 71 Seiten (Ausreißer: Titel 24/26 px, Kennzahlen 12,5–28 px, Tabellenköpfe,
+   vier Stile für Leer-Hinweise). Nur Darstellung. */
+html.glas{--fs-h1:26px;--fs-h2:18px;--fs-h3:16px;--fs-kpi:24px;--fs-label:12.5px;--c-soft:#f7f7f9;--c-ok:#1f7a4d;--c-warn:#8a5a00;--c-err:#b42318}
+html.glas main h1{font-size:var(--fs-h1)!important;font-weight:700!important;letter-spacing:-.02em}
+html.glas main h2{font-size:var(--fs-h2)!important;font-weight:650!important;letter-spacing:-.015em}
+html.glas main h3{font-size:var(--fs-h3)!important;font-weight:650!important}
+html.glas main td,html.glas main .kpi,html.glas main .bs-kpi{font-variant-numeric:tabular-nums}
+/* Kennzahlen: ein Maß für Wert und Beschriftung */
+html.glas main .kpi .v,html.glas main .bs-kpi .bs-kv{font-size:var(--fs-kpi)!important;font-weight:700!important;letter-spacing:-.02em;line-height:1.2;color:var(--ink)}
+html.glas main .kpi .l,html.glas main .bs-kpi .bs-kl{font-size:var(--fs-label)!important;font-weight:600;color:#6e6e73;text-transform:none!important;letter-spacing:.01em}
+/* Tabellenköpfe überall gleich: ruhig, ohne Fläche, feine Linie */
+html.glas main table th{font-size:13px!important;font-weight:600!important;color:#6e6e73!important;background:transparent!important;text-transform:none!important;border-bottom:1px solid var(--line-c)!important}
+html.glas main table tfoot td,html.glas main table tr.sum td,html.glas main table tr.total td{font-weight:650;border-top:1px solid #d9d9df!important}
+/* Leer-Hinweise: ein Stil */
+html.glas main :is(.empty,.empty-line,.dash-empty){background:var(--c-soft)!important;border:1px dashed #e0e0e6!important;border-radius:12px!important;padding:14px 16px!important;color:#6e6e73!important;font-size:14.5px!important;text-align:left}
+/* Meldungen: weiche Fläche, feine Linie, farbige Kante links */
+html.glas .flash{border-radius:12px!important;border:1px solid!important;border-left-width:3px!important;padding:12px 16px!important;box-shadow:none!important;background-image:none!important}
+html.glas .flash.ok{background:#f1f8f4!important;color:#14532d!important;border-color:#cfe8da!important;border-left-color:var(--c-ok)!important}
+html.glas .flash.warn{background:#fdf8ee!important;color:#6b4600!important;border-color:#f0dfb6!important;border-left-color:#c58a12!important}
+html.glas .flash.err{background:#fdf3f2!important;color:#7a271a!important;border-color:#f6d2ce!important;border-left-color:var(--c-err)!important}
+html.glas .flash.info{background:#f4f6fb!important;color:#2b3a55!important;border-color:#dbe2f0!important;border-left-color:#5b6b8c!important}
+/* Ruhigere Kalender und Planung: erfasste Einsätze hell-bordeaux mit Kante statt Vollfläche, „Heute“ hell statt gelb */
+html.glas .ev.ok,html.glas .pb-ev.done,html.glas .sh.done{background:#f7edf1!important;color:#5a1229!important;border-color:#ead2db!important;box-shadow:inset 3px 0 0 var(--g-acc)!important}
+html.glas .sh.done :is(.mut,small,.s){color:#7a4a5a!important}
+html.glas .ev.ok .ic,html.glas .ev.ok svg{color:var(--g-acc)!important}
+html.glas .pb-ev{border-radius:6px!important;transition:box-shadow .18s ease,background-color .18s ease}
+html.glas .pb-ev:hover{filter:none!important;box-shadow:inset 0 0 0 1px #b9b3b6,0 2px 6px -2px rgba(20,20,30,.12)!important}
+html.glas .pb-ev.done:hover{box-shadow:inset 3px 0 0 var(--g-acc),0 2px 6px -2px rgba(20,20,30,.12)!important}
+html.glas .pb-ev.open{background:#eceef1!important;color:#3a4049!important;box-shadow:inset 0 0 0 1px #d6d9de!important}
+html.glas .ec .dc.today,html.glas .eg .gh.today,html.glas .pb-dh.today{background:#fbf3f6!important;color:var(--g-acc)!important}
+html.glas .pb-c.today{background:#fdf9fa!important}
+html.glas .today:not(.dc):not(.gh):not(.pb-dh):not(.pb-c){background:#fbf3f6}
+html.glas .pl-days span.on{background:var(--g-acc)!important}
+/* Listenzeilen: sanftes Hover */
+html.glas main :is(.list>li,.emp-card,.dash-list>li){transition:background-color .18s ease}
+html.glas main :is(.list>li,.emp-card):hover{background:#fafafb}
+/* Kennzahl-Kacheln ruhig: keine Farbkante links (.kpi::before) und keine bunten Kanten oben (.skpi c1–c5);
+   nur die erste Kachel einer Reihe bzw. .accent trägt die feine Bordeaux-Linie. */
+html.glas .kpi::before{display:none!important}
+html.glas .skpi{background:#fff!important;border:1px solid var(--line-c)!important;border-top-width:1px!important;border-radius:var(--r-card)!important;box-shadow:var(--sh-card)!important;transition:box-shadow .18s ease,border-color .18s ease}
+html.glas .skpi.c1{box-shadow:inset 0 2px 0 var(--g-acc),var(--sh-card)!important}
+html.glas a.skpi:hover{box-shadow:var(--sh-hover)!important;border-color:#dcdce2!important}
+html.glas .skpi .l{text-transform:none!important;letter-spacing:.01em!important;font-weight:600;font-size:var(--fs-label)!important;color:#6e6e73!important}
+html.glas .skpi .v{font-size:var(--fs-kpi)!important;letter-spacing:-.02em}
+/* Gefahr-Knöpfe (Löschen, Ablehnen, Stornieren): roter Umriss statt roter Fläche – erkennbar, aber nicht das lauteste
+   Element der Seite; beim Darüberfahren hellrot. Die Rückfrage vor dem Löschen bleibt. */
+html.glas .btn.danger,html.glas button.btn.danger,html.glas .btn.del{background:#fff!important;color:var(--c-err)!important;border:1px solid #efc4bf!important;box-shadow:none!important}
+html.glas .btn.danger:hover,html.glas button.btn.danger:hover,html.glas .btn.del:hover{background:#fdf3f2!important;border-color:#e3a39b!important;color:#912018!important}
+@media (max-width:760px){html.glas{--fs-kpi:19px}
+html.glas main .kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+html.glas main :is(.kpi,.skpi,.bs-kpi){min-width:0;overflow-wrap:anywhere}
+html.glas main form[method=get] :is(select,input[type=text],input[type=search],input[type=date],input:not([type])):not(.mpick-s){width:100%!important;max-width:none!important;margin-left:0!important;margin-right:0!important}
+html.glas main form[method=get] .cbx{width:100%!important;max-width:none!important;margin-left:0!important}}
 /* Ohne backdrop-filter: deckend weiß */
 @supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important}}
 @media (prefers-reduced-transparency:reduce){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}

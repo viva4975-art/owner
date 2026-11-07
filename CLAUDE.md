@@ -5114,3 +5114,27 @@ Testadresse.
     aktiven Filter-Chips wieder sichtbar. **Fund:** Klappmenüs in Kopf/Menüleiste ließen den Text darunter scharf
     durchscheinen – verschachteltes backdrop-filter wirkt nicht. Glas von Kopf/Leiste liegt jetzt auf `::before`, die
     Menüs verwischen den Hintergrund (Weiß 88 %). Mitlaufende Tabellenköpfe fast deckend. Suchfeld ohne doppelten Rahmen.
+- 2026-11-07: **Feinschliff über alle Module** (Ahmed: „kein Redesign, eleganter, ruhiger, einheitlicher“). Vorgehen: Messung
+  über 71 Seiten (Schriftgrößen, Knopf-/Feldhöhen, Ausrichtung der Beträge, Schilder, Leer-Hinweise, Meldungen) und
+  Seiten-Rundgang PC + Handy (484 Seiten). Befund: Grundlage schon einheitlich (Felder 38 px, Knöpfe 36/30 px, Beträge
+  rechtsbündig, Schilder rund). Umgesetzt im Block „Fassung 5 Feinschliff“ in `src/web/glass-css.ts` (Tokens `--fs-*`,
+  `--c-*`), nur Darstellung:
+  - Seitentitel überall 26 px (11 Seiten hatten 24), Abschnitte 18/16 px; Kennzahlen einheitlich 24 px / Beschriftung
+    12,5 px (vorher 12,5–28 px), am Handy 19 px und zwei Kacheln je Zeile.
+  - Kennzahl-Kacheln ruhig: keine Bordeaux-Kante links (`.kpi::before`) und keine bunten Kanten oben (Rechnungen/
+    Statistik `.skpi c1–c5`); nur die erste Kachel trägt die feine Bordeaux-Linie.
+  - Tabellenköpfe überall gleich (13 px, grau, ohne Fläche); Zahlen in Tabellen/Kacheln mit gleich breiten Ziffern.
+  - Leer-Hinweise in einem Stil (hellgrau, gestrichelter Rand); Meldungen (ok/Hinweis/Fehler) mit weicher Fläche und
+    farbiger Kante links.
+  - **Kalender & Planung ruhiger:** erfasste/bestätigte Einsätze hell-bordeaux mit Bordeaux-Kante statt vollflächig
+    Bordeaux (Einsatzkalender, Objekt-Kalender, Planungstafel; Legende angepasst), unbesetzte Termine hellgrau,
+    „Heute“ hell-bordeaux statt gelb, Abwesenheits-Schilder (Krank, Urlaub …) hell mit farbiger Kante statt kräftig,
+    Schraffur feiner.
+  - Gefahr-Knöpfe (Löschen, Ablehnen) als roter Umriss statt roter Fläche.
+  - Handy: Filterfelder (Suchformulare) volle Breite. **Fund:** Kennzahlen liefen am Handy aus den Kacheln (Angebote,
+    Nachkalkulation, Stundenvorgabe: Seite breiter als der Bildschirm) – behoben.
+  - Geprüft: TypeScript, Lint, Prettier, Browser-Tests menu, rechte (48), planung (26), auswertung (14) grün; Rundgang ohne
+    Fehlerseiten/JS-Fehler. `e2e` (navigation) scheitert auch ohne diese Änderung (Testdaten Dev-DB: Kunde ohne Objekt).
+  - **Offen/Vorschläge:** Dashboard-Reihenfolge nach Dringlichkeit (z. B. überfällige Aufgaben vor Hinweisen) wäre eine
+    inhaltliche Änderung – nicht gemacht; Ladeanzeigen gibt es nur beim Hochladen (Fortschrittsbalken), Seiten werden
+    serverseitig fertig ausgeliefert; Häkchen „erledigt“ an Aufgaben erscheint bewusst erst beim Darüberfahren.

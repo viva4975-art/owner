@@ -71,17 +71,17 @@ const CSS = `
 .ec .dc.absd{background:repeating-linear-gradient(135deg,#f3f4f6 0 6px,#fff 6px 12px)}
 ${absenceCss(
   (k) => `.ec .dc.absd.${k},.eg .col.absd.${k}`,
-  (c) => `background:repeating-linear-gradient(135deg,${c.tint} 0 6px,#fff 6px 12px)`,
+  (c) => `background:repeating-linear-gradient(135deg,${c.tint} 0 3px,#fff 3px 12px)`,
 )}
-.eg .gh small.gab{border-radius:3px;margin:2px 4px 0;color:#fff}
+.eg .gh small.gab{border-radius:4px;margin:2px 4px 0}
 ${absenceCss(
   (k) => `.eg .gh small.gab.${k}`,
-  (c) => `background:${c.solid}`,
+  (c) => `background:${c.tint};color:${c.ink};box-shadow:inset 3px 0 0 ${c.solid}`,
 )}
 .ec .dc .ab{display:block;text-align:center;font-size:11px;font-weight:700;color:#5f6b7a;margin:0 2px 3px;border-radius:3px;padding:1px 0}
 ${absenceCss(
   (k) => `.ec .dc.absd.${k} .ab`,
-  (c) => `background:${c.solid};color:#fff`,
+  (c) => `background:${c.tint};color:${c.ink};box-shadow:inset 3px 0 0 ${c.solid}`,
 )}
 .ev{display:flex;align-items:center;gap:4px;padding:3px 6px;margin:0 0 2px;font-size:12.5px;line-height:1.25;text-decoration:none;cursor:pointer;min-width:0;border:1px solid transparent;border-radius:2px}
 .ev .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}

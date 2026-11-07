@@ -430,10 +430,10 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
           )}
         </section>
         <p class="small mut">
-          Grau = noch niemand eingeplant · Weiß = geplant · Bordeaux = Zeit erfasst · Bordeaux gestrichelt =
-          Vertretung/umgeplant · Rot = Mitarbeiter abwesend. Feiertage (Bayern) farbig. Klick auf einen Termin
-          zeigt alle Angaben mit „Vertretung einplanen“, „Umplanen / Ausfall“ und „Serie bearbeiten“.
-          Monatsansicht: mit gedrückter Maustaste nach links/rechts ziehen.
+          Grau = noch niemand eingeplant · Weiß = geplant · hell-bordeaux mit Kante = Zeit erfasst · Bordeaux
+          gestrichelt = Vertretung/umgeplant · Rot = Mitarbeiter abwesend. Feiertage (Bayern) farbig. Klick
+          auf einen Termin zeigt alle Angaben mit „Vertretung einplanen“, „Umplanen / Ausfall“ und „Serie
+          bearbeiten“. Monatsansicht: mit gedrückter Maustaste nach links/rechts ziehen.
         </p>
         <dialog id="ev-dlg" class="ev-dlg" />
         <script dangerouslySetInnerHTML={{ __html: FILTER_JS }} />

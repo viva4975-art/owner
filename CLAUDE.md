@@ -5071,3 +5071,5 @@ Testadresse.
     `e2e:zeit`/`e2e:objektseiten` scheitern weiter wie vorher (noch zu klären).
 - 2026-11-07: Glas-Hintergrund ohne Gelb (Ahmed: „unten kommt immer so gelb“): die Farbflächen unten (Pfirsich, Mint) und oben rechts
   (Hellblau) sind jetzt helle Töne der gewählten Farbe (Standard Bordeaux), Grundfläche #f2eff2.
+- 2026-11-07: Glas-Hintergrund blasser (Ahmed): Bordeaux-Farbflächen etwa halb so stark (30/12/16/9 % → 15/6/8/5 %),
+  Grundfläche heller (#f6f4f6).

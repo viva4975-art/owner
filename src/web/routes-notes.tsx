@@ -4,7 +4,8 @@ import type { Child, FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { type EntityType, type Note, getNote, listNotes, saveNote } from '../services/crm.js';
 import { listFiles } from '../services/uploads.js';
-import { type AppEnv, type Ctx, UUID } from './app.js';
+import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
+import { HTTPException } from 'hono/http-exception';
 import { FileArea } from './files.js';
 import { str } from './forms.js';
 import { Icon } from './icons.js';
@@ -197,7 +198,12 @@ export function registerNoteRoutes(ctx: Ctx, base: string, type: EntityType, she
     const nid = c.req.param('nid');
     const body = await c.req.parseBody({ all: true });
     const v = str(body, 'version');
-    const existed = !!(await getNote(sql, nid));
+    // Objektleitung nur an eigenen Objekten; Notiz darf nicht an einen anderen Datensatz umgehängt werden
+    if (type === 'site') assertSite(c, id);
+    const prev = await getNote(sql, nid);
+    if (prev && (prev.entity_type !== type || prev.entity_id !== id))
+      throw new HTTPException(403, { message: 'Notiz gehört zu einem anderen Datensatz' });
+    const existed = !!prev;
     await saveNote(
       sql,
       nid,

@@ -51,6 +51,12 @@ describe.skipIf(!available)('Vorschüsse an Nachunternehmer', () => {
 
     const inv = await invoice('NU-1', 400000n);
     await expect(offsetAdvance(sql, inv, 200000n, 't')).rejects.toThrow(/offene Vorschuss/);
+    // gleiches Formular zweimal → nur einmal verrechnet
+    const key = randomUUID();
+    expect(await offsetAdvance(sql, inv, 20000n, 't', key)).toBe(20000n);
+    expect(await offsetAdvance(sql, inv, 20000n, 't', key)).toBe(20000n);
+    expect((await openAdvances(sql, [SUP])).get(SUP)).toBe(130000n);
+    await undoOffsets(sql, inv, 't');
     expect(await offsetAdvance(sql, inv, null, 't')).toBe(150000n);
     expect((await openAdvances(sql, [SUP])).get(SUP)).toBeUndefined();
     const row = (await paymentList(sql, '2026-10-10')).find((x) => x.invoice.id === inv)!;

@@ -170,8 +170,11 @@ export const ServicesPanel: FC<{
   const isRun = (s: SiteServiceRow) => !billsInMonthlyRun(s.kind, s.billing_cycle);
   const regular = active.filter((s) => !isRun(s));
   const perRun = active.filter(isRun);
+  // Nur heute gültige Leistungen zählen – nach einer Preisanpassung nicht alte + neue Fassung
+  const today = todayBerlin();
   const monthly = regular
     .filter((s) => s.billing_cycle === 'monatlich')
+    .filter((s) => s.valid_from <= today && (!s.valid_to || s.valid_to >= today))
     .reduce((a, s) => a + lineTotal(s), 0n);
   return (
     <>
@@ -557,6 +560,28 @@ u.addEventListener('change',sync);a.addEventListener('change',sync);sync();})();
               required
             />
           </div>
+          {existing && (
+            <div>
+              <label for="change_reason">Grund der Änderung</label>
+              <input
+                id="change_reason"
+                name="change_reason"
+                maxlength={300}
+                placeholder="z. B. Nachtrag Kunde vom …, Flächenänderung"
+              />
+              <div class="small mut">
+                Pflicht, wenn Preis, Menge oder Zeitraum geändert wird – alter und neuer Wert werden mit Grund
+                im Protokoll festgehalten. Bereits ausgestellte Rechnungen ändern sich nicht.
+              </div>
+              <script
+                dangerouslySetInnerHTML={{
+                  __html: `(function(){var r=document.getElementById('change_reason');if(!r)return;var ids=['unit_price','quantity','valid_from','valid_to'],o={};ids.forEach(function(i){var e=document.getElementById(i);if(e)o[i]=e.value;});
+function chk(){var ch=ids.some(function(i){var e=document.getElementById(i);return e&&e.value!==o[i];});r.required=ch;}
+ids.forEach(function(i){var e=document.getElementById(i);if(e){e.addEventListener('input',chk);e.addEventListener('change',chk);}});})();`,
+                }}
+              />
+            </div>
+          )}
           <div>
             <label for="labor_share">Lohnkostenanteil (%) *</label>
             <input

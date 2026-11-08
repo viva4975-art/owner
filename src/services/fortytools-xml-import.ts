@@ -1039,16 +1039,20 @@ export async function markLegacyPaid(
   date: string,
   actor: string,
   amountCents?: bigint,
+  formId?: string | null,
 ) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new BusinessError('Datum fehlt');
   const [o] = await sql<
     { open_cents: bigint }[]
   >`select open_cents from app.legacy_open_items where invoice_id = ${id}`;
+  // Schon mit diesem Formular gebucht? (settleOpenItem prüft die feste Zahlungs-ID) → nicht als Fehler melden
+  if (!o && formId) return;
   if (!o) throw new BusinessError('Rechnung ist nicht (mehr) offen');
   const amount = amountCents ?? o.open_cents;
   if (amount <= 0n) throw new BusinessError('Betrag muss größer als 0 sein');
   await settleOpenItem(sql, {
-    batchId: randomUUID(),
+    // Feste ID je Formular: doppelt absenden bucht nichts doppelt (auch nicht bei Teilzahlung)
+    batchId: formId ?? randomUUID(),
     invoiceId: id,
     legacy: true,
     amount,

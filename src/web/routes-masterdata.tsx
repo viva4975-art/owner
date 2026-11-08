@@ -98,6 +98,7 @@ import { listTemplates, saveTemplate } from '../services/employees.js';
 import { uploadConfig, zipHref } from './routes-files.js';
 import { filteredSites, managers, parseSiteFilter, sitesCsv, SITE_PAGE_SIZE } from '../services/site-list.js';
 import { type AppEnv, type Ctx, UUID, assertSite, taskViewerOf } from './app.js';
+import { HTTPException } from 'hono/http-exception';
 import { DocFoldAll, FileArea, docOpen } from './files.js';
 import { parseQuantity } from '../domain/money/money.js';
 import { arr, str } from './forms.js';
@@ -2114,6 +2115,9 @@ export function registerMasterdataRoutes(ctx: Ctx) {
 
   app.post(`/objekte/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
+    // Objekt-Stammdaten nur Büro (Admin, Buchhaltung) – Objektleitung/Personal dürfen die Übersicht sehen, nicht speichern
+    if (!['admin', 'buchhaltung'].includes(c.get('user').role))
+      throw new HTTPException(403, { message: 'Objekt-Stammdaten darf nur das Büro ändern' });
     const body = await c.req.parseBody();
     const parsed = siteInput.safeParse(body);
     if (!parsed.success) throw new BusinessError(parsed.error.issues.map((i) => i.message).join('\n'));
@@ -2428,7 +2432,10 @@ export function registerMasterdataRoutes(ctx: Ctx) {
       parsed.data.labor_share = t.labor_share_bp;
     }
     if (body.attach_timesheet_field === '1') parsed.data.attach_timesheet = body.attach_timesheet === 'on';
-    await saveService(sql, c.req.param('sid'), id, parsed.data, c.get('actor'), billAddress);
+    await saveService(sql, c.req.param('sid'), id, parsed.data, c.get('actor'), billAddress, {
+      reason: typeof body.change_reason === 'string' ? body.change_reason : null,
+      requireReason: true,
+    });
     return back(c, `/objekte/${id}/leistungen`, { ok: 'Leistung gespeichert.' });
   });
 

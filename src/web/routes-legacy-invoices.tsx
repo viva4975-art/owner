@@ -163,6 +163,7 @@ export async function legacyInvoicePage(sql: Sql, page: Ctx['page'], c: Context<
                 </form>
               )}
               <form method="post" action={`/rechnungen/fortytools/${id}/neu`} style="margin-top:8px">
+                <input type="hidden" name="key" value={randomUUID()} />
                 <button class="btn sec" style="width:100%">
                   Als neue Rechnung kopieren
                 </button>
@@ -182,6 +183,7 @@ export async function legacyInvoicePage(sql: Sql, page: Ctx['page'], c: Context<
           )}
           {open && open.open_cents > 0n && (
             <form method="post" action={`/rechnungen/fortytools/${id}/bezahlt`} class="card">
+              <input type="hidden" name="key" value={randomUUID()} />
               <h3 style="margin-top:0">Zahlung festhalten</h3>
               <label>bezahlt am</label>
               <input type="date" name="datum" value={todayBerlin()} required />
@@ -228,7 +230,9 @@ export function registerLegacyInvoiceRoutes(ctx: Ctx) {
     });
   });
   app.post(`/rechnungen/fortytools/:id{${UUID}}/neu`, async (c) => {
-    const nid = await copyLegacyToDraft(sql, c.req.param('id'), c.get('actor'));
+    const b = await c.req.parseBody();
+    const key = /^[0-9a-f-]{36}$/.test(String(b.key ?? '')) ? String(b.key) : null;
+    const nid = await copyLegacyToDraft(sql, c.req.param('id'), c.get('actor'), key);
     return back(c, `/rechnungen/${nid}`, {
       ok: 'Neuer Rechnungsentwurf mit den Positionen der alten Rechnung.',
     });
@@ -387,7 +391,8 @@ export function registerLegacyInvoiceRoutes(ctx: Ctx) {
     } catch {
       return back(c, '/offene-posten', { fehler: `Betrag „${betrag}“ ist ungültig` });
     }
-    await markLegacyPaid(sql, c.req.param('id'), String(b.datum ?? ''), c.get('actor'), cents);
+    const key = /^[0-9a-f-]{36}$/.test(String(b.key ?? '')) ? String(b.key) : null;
+    await markLegacyPaid(sql, c.req.param('id'), String(b.datum ?? ''), c.get('actor'), cents, key);
     return back(c, '/offene-posten', { ok: 'Zahlung festgehalten.' });
   });
 }

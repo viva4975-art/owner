@@ -1178,7 +1178,15 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
   app.post(`/rechnungen/:id{${UUID}}/korrektur`, async (c) => {
     const body = await c.req.parseBody({ all: true });
     const lines = parseLines(body, { allowNegative: true });
-    const id = await createCorrection(sql, c.req.param('id'), lines, str(body, 'intro_text'), c.get('actor'));
+    const formId = str(body, 'new_id');
+    const id = await createCorrection(
+      sql,
+      c.req.param('id'),
+      lines,
+      str(body, 'intro_text'),
+      c.get('actor'),
+      formId && /^[0-9a-f-]{36}$/i.test(formId) ? formId : null,
+    );
     return back(c, `/rechnungen/${id}`, { ok: 'Korrekturentwurf angelegt. Bitte prüfen und ausstellen.' });
   });
 

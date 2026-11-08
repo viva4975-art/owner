@@ -87,6 +87,7 @@ async function activeServices(sql: Sql, siteId: string, onDate: string) {
       from app.site_services ss
       left join app.service_types st on st.id = ss.service_type_id
      where ss.site_id = ${siteId} and ss.active
+       and ss.valid_from <= ${onDate}::date
        and (ss.valid_to is null or ss.valid_to >= ${onDate}::date)
      order by ss.billing_cycle = 'monatlich' desc, ss.sort_order, ss.description`;
 }
@@ -197,7 +198,9 @@ export async function siteContractPdf(
   const sellerLines = [seller.legalName, seller.street, `${seller.postalCode} ${seller.city}`];
 
   if (kind === 'reinigung') {
-    const services = await activeServices(sql, siteId, start);
+    // Preise am Vertragsbeginn, bei rückwirkendem Beginn die heute gültigen (sonst fehlten später angelegte Fassungen)
+    const today = todayBerlin();
+    const services = await activeServices(sql, siteId, start > today ? start : today);
     const monthly = services.filter((r) => r.billing_cycle === 'monatlich');
     const monthSum = monthly.reduce((s, r) => s + lineNet(r), 0n);
     const labor = (i.laborPercent ?? '').trim().replace(',', '.');

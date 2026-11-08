@@ -181,6 +181,19 @@ describe.skipIf(!available)('Rechnungen in der Datenbank', () => {
       expect(inv.kind).toBe('correction');
       expect(inv.gross_cents).toBe(-11900n);
     });
+
+    it('Rechnungskorrektur doppelt abgeschickt (gleiche Formular-ID) → ein Entwurf', async () => {
+      const id = await draft([line('500,00')]);
+      await issue(sql, id, 'test', '2026-10-01');
+      const form = randomUUID();
+      const l = [{ ...line('50,00', '-1'), description: 'Minderung' }];
+      const a = await createCorrection(sql, id, l, null, 'test', form);
+      const b = await createCorrection(sql, id, l, null, 'test', form);
+      expect(b).toBe(a);
+      const [n] = await sql<{ n: number }[]>`
+        select count(*)::int as n from app.invoices where original_invoice_id = ${id} and kind = 'correction'`;
+      expect(n!.n).toBe(1);
+    });
   });
 
   describe('Abschlag & Schlussrechnung', () => {

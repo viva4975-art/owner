@@ -118,17 +118,11 @@ check(
 console.log('4. Bearbeiten');
 await p.click(`a:has-text("Glasreinigung E2E ${tag}")`);
 await p.fill('#unit_price', '1.250,00');
+check('Grund der Änderung wird Pflicht', await p.$eval('#change_reason', (e) => e.required));
+await p.fill('#change_reason', 'Nachtrag Kunde (Test)');
 await p.click('button:has-text("Leistung aktualisieren")');
 await p.waitForLoadState();
-check(
-  'Preis geändert',
-  (
-    await p
-      .locator('tr', { hasText: `Glasreinigung E2E ${tag}` })
-      .first()
-      .innerText()
-  ).includes('1.250,00'),
-);
+check('Preis geändert', (await body(p)).includes('1.250,00'));
 
 console.log('5. Ausführungshinweis auf dem Arbeitsschein');
 await p.goto(B + `/arbeitsscheine/${randomUUID()}?objekt=${SITE}`);

@@ -1771,6 +1771,7 @@ h1{font-size:34px;margin:10px 0 4px}.n{color:#666;font-size:16px}
 
   app.post(`/objekte/:id{${UUID}}/qr/neu`, async (c) => {
     const id = c.req.param('id');
+    assertSite(c, id);
     await sql`update app.sites set clock_token = replace(gen_random_uuid()::text, '-', '') where id = ${id}`;
     await sql`insert into app.audit_log (actor, action, entity, entity_id) values (${c.get('actor')}, 'new_clock_token', 'site', ${id})`;
     return back(c, `/objekte/${id}/qr`, { ok: 'Neuer QR-Code erzeugt. Bitte neu ausdrucken und aufhängen.' });

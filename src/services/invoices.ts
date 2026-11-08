@@ -820,11 +820,22 @@ export async function createCorrection(
   lines: DraftLineInput[],
   introText: string | null,
   actor: string,
+  formId?: string | null,
 ) {
   if (!lines.length) throw new BusinessError('Korrektur ohne Positionen');
   return sql.begin(async (tx) => {
+    // Feste ID je Formular: doppelt absenden legt keinen zweiten Korrekturentwurf an
+    if (formId) {
+      const [had] = await tx<{ id: string; original_invoice_id: string | null }[]>`
+        select id, original_invoice_id from app.invoices where id = ${formId}`;
+      if (had) {
+        if (had.original_invoice_id !== originalId)
+          throw new BusinessError('Formular gehört zu einer anderen Rechnung');
+        return had.id;
+      }
+    }
     const orig = await loadIssuedOriginal(tx, originalId);
-    const id = randomUUID();
+    const id = formId ?? randomUUID();
     await tx`insert into app.invoices ${tx({
       id,
       kind: 'correction',
@@ -1453,10 +1464,20 @@ export async function createReductionCorrection(
 }
 
 /** „Neu ausstellen“: neuer Rechnungsentwurf mit den Positionen der alten Rechnung (zum Ändern vor dem Ausstellen). */
-export async function copyLegacyToDraft(sql: Sql, legacyId: string, actor: string): Promise<string> {
+export async function copyLegacyToDraft(
+  sql: Sql,
+  legacyId: string,
+  actor: string,
+  formId?: string | null,
+): Promise<string> {
+  // Feste ID je Formular: doppelt absenden legt keinen zweiten Entwurf an
+  if (formId) {
+    const [had] = await sql<{ id: string }[]>`select id from app.invoices where id = ${formId}`;
+    if (had) return had.id;
+  }
   const d = await legacyLines(sql, legacyId);
   if (!d.inv.customer_id) throw new BusinessError('Rechnung ist keinem Kunden zugeordnet');
-  const id = randomUUID();
+  const id = formId ?? randomUUID();
   await saveDraft(
     sql,
     id,

@@ -5212,3 +5212,23 @@ Testadresse.
   - Tests: tsc/eslint/prettier; e2e einkauf, angebot, planung, auswertung, transfer, rechte 48, nachunternehmer, login,
     uebergabe, kasse, leistungen, auftrag grün. `e2e:vorfaktura` bricht auch mit dem alten Stand ab (Zurück/Vor-Test),
     `e2e:menu` ist fest auf Port 3000; vitest: nur die bekannten roten Resturlaub-Übertrag und Arbeitstage.
+- 2026-11-08: **Audit (Funktionen, Automatisierung, UX) + Schritt 1 umgesetzt** (Ahmed: Arbeitszeitkonto wie vorher,
+  Grund bei Preisänderung ja, Aufgaben/Erinnerungen wie vorher, Personal darf Objekte nicht ändern). Bericht mit allen
+  Funden (A–D, Maßnahmenplan) an Ahmed als PDF. Umgesetzt:
+  - **Rechte:** `POST /objekte/:id` (Stammdaten inkl. Objektleitung) nur noch Admin/Buchhaltung – vorher konnte eine
+    Objektleitung bzw. Personal per Formular jedes Objekt speichern und sich selbst als Objektleitung eintragen.
+    `POST /objekte/:id/qr/neu` und Objekt-Notizen prüfen jetzt das Objekt (`assertSite`); eine Notiz kann nicht an einen
+    anderen Datensatz umgehängt werden.
+  - **Doppelklick:** Rechnungskorrektur (Formular-ID `new_id` wird jetzt genutzt), Teilzahlung an alten Rechnungen,
+    „Als neue Rechnung kopieren“ (alte Rechnung) und Vorschuss-Verrechnung (Schlüssel im Protokoll) legen bei doppeltem
+    Absenden nichts doppelt an.
+  - **Nach Preisanpassung nicht doppelt:** Summe „regelmäßig je Monat“ zählt nur heute gültige Leistungen; Reinigungs-
+    vertrag nimmt die Leistungen gültig am Vertragsbeginn (bei rückwirkendem Beginn: heute).
+  - **Grund bei Preisänderung (Pflicht):** Leistung bearbeiten → ändern sich Preis, Menge oder Zeitraum, ist „Grund der
+    Änderung“ Pflicht; alt/neu und Grund stehen im Protokoll (`audit_log` details `aenderungen`, `grund`). Ausgestellte
+    Rechnungen bleiben unverändert (Trigger).
+  - Offen aus dem Bericht (noch nicht freigegeben): Arbeitszeitkonto ohne Feiertagslohn (Ahmed: „lassen wir wie vorher“),
+    Schlüssel „verloren“, NU-Bestellung mit Preisnachtrag löschen, Preisverlauf-Ansicht, Stunden aus einer Quelle,
+    Glas „erledigt“ → Leistung verrichtet, Grundreinigung → NU-Bestellung.
+  - Tests: Idempotenz in `invoices`, `advances`, `runde22`, Grund-Pflicht in `services-billing`; `e2e:rechte` 48,
+    `e2e:leistungen` 17 grün. `e2e:objekt` (Zurück/Vor) und `e2e:objektseiten` scheitern wie schon vorher.

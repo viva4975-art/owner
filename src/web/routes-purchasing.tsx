@@ -2745,6 +2745,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
             )}
             {advOpen > 0n && ['erfasst', 'freigegeben'].includes(i.status) && (
               <form method="post" action={`/rechnungseingang/${id}/vorschuss`} class="actions">
+                <input type="hidden" name="key" value={randomUUID()} />
                 <span>
                   Offener Vorschuss bei {i.supplier_name}: <b>{euro(advOpen)}</b> –{' '}
                   <a href={`/lieferanten/${i.supplier_id}/vorschuesse`}>ansehen</a>
@@ -3462,7 +3463,14 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     const id = c.req.param('id');
     const b = await c.req.parseBody({ all: true });
     const raw = str(b, 'amount');
-    const done = await offsetAdvance(sql, id, raw ? (parseEuro(raw) as bigint) : null, c.get('actor'));
+    const key = str(b, 'key');
+    const done = await offsetAdvance(
+      sql,
+      id,
+      raw ? (parseEuro(raw) as bigint) : null,
+      c.get('actor'),
+      key && /^[0-9a-f-]{36}$/i.test(key) ? key : null,
+    );
     const z = str(b, 'zurueck');
     return back(
       c,

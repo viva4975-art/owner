@@ -44,7 +44,9 @@ describe.skipIf(!available)(
       await legacy('9800004', -35181n, { root: 'r2', due: addDays(today, 10) });
       // C: noch nicht fällig, Teilzahlung 100,00
       const c = await legacy('9800005', 30000n, { root: 'r3', due: addDays(today, 8) });
-      await markLegacyPaid(sql, c, today, 't', 10000n);
+      const form = randomUUID();
+      await markLegacyPaid(sql, c, today, 't', 10000n, form);
+      await markLegacyPaid(sql, c, today, 't', 10000n, form); // doppelt abgeschickt → nur einmal gebucht
 
       const [bal] = (await listBalances(sql)).filter((x) => x.customer_id === cust);
       expect(bal).toMatchObject({ overdue_cents: 14990n, due_cents: 20000n, open_cents: 34990n, days: -30 });

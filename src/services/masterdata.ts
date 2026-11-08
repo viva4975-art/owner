@@ -562,6 +562,7 @@ export async function saveService(
   input: z.infer<typeof serviceInput>,
   actor: string,
   billAddress: SiteService['bill_address'] = null,
+  opts?: { reason?: string | null; requireReason?: boolean },
 ) {
   const [site] = await sql<{ site_no: string }[]>`select site_no from app.sites where id = ${siteId}`;
   // Menge nach Arbeitstagen nur bei Einheit Tag/Stunde (Ahmed 24.10.)
@@ -602,9 +603,35 @@ export async function saveService(
     bill_address: billAddress ? sql.json(billAddress as never) : null,
   };
   await sql.begin(async (tx) => {
-    const [cur] = await tx<{ version: number; site_id: string }[]>`
-      select version, site_id from app.site_services where id = ${id} for update`;
+    const [cur] = await tx<
+      {
+        version: number;
+        site_id: string;
+        unit_price_cents: bigint;
+        quantity_milli: bigint;
+        valid_from: string;
+        valid_to: string | null;
+      }[]
+    >`
+      select version, site_id, unit_price_cents, quantity_milli, valid_from::text, valid_to::text
+        from app.site_services where id = ${id} for update`;
     if (cur && cur.site_id !== siteId) throw new BusinessError('Leistung gehört zu einem anderen Objekt');
+    // Preisverlauf (Ahmed 08.11.): Preis-, Mengen- oder Zeitraumänderung nur mit Grund, alt/neu ins Protokoll
+    const changes: Record<string, { alt: string | null; neu: string | null }> = {};
+    if (cur) {
+      const cmp = (k: string, a: string | null, b: string | null) => {
+        if ((a ?? null) !== (b ?? null)) changes[k] = { alt: a ?? null, neu: b ?? null };
+      };
+      cmp('preis_cent', String(cur.unit_price_cents), String(row.unit_price_cents));
+      cmp('menge_milli', String(cur.quantity_milli), String(row.quantity_milli));
+      cmp('gueltig_ab', cur.valid_from, row.valid_from as string);
+      cmp('gueltig_bis', cur.valid_to, (row.valid_to as string | null) ?? null);
+      const reason = opts?.reason?.trim() || null;
+      if (Object.keys(changes).length && opts?.requireReason && !reason)
+        throw new BusinessError(
+          'Preis, Menge oder Zeitraum geändert – bitte einen Grund der Änderung eintragen',
+        );
+    }
     assertVersion(cur?.version, input.version, 'Die Leistung');
     const [pos] = await tx<{ next: number }[]>`
       select coalesce(max(sort_order), 0) + 1 as next from app.site_services where site_id = ${siteId}`;
@@ -615,7 +642,12 @@ export async function saveService(
     await tx`insert into app.site_services ${tx({ id, ...row, sort_order: sortOrder } as Record<string, unknown>)}
              on conflict (id) do update set ${tx({ ...row, updated_at: new Date() } as Record<string, unknown>)}`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
-             values (${actor}, 'save', 'site_service', ${id}, ${tx.json({ description: input.description })})`;
+             values (${actor}, 'save', 'site_service', ${id}, ${tx.json({
+               description: input.description,
+               ...(Object.keys(changes).length
+                 ? { aenderungen: changes, grund: opts?.reason?.trim() || null }
+                 : {}),
+             } as never)})`;
   });
 }
 

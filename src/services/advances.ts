@@ -168,12 +168,25 @@ export async function deleteAdvance(sql: Sql, id: string, actor: string) {
  * Vorschuss mit einer Eingangsrechnung verrechnen: offene Vorschüsse des Lieferanten der Reihe nach (älteste zuerst)
  * bis zum Betrag bzw. höchstens bis zum offenen Rechnungsbetrag. Nur für nicht bezahlte Rechnungen.
  */
-export async function offsetAdvance(sql: Sql, invoiceId: string, amount: bigint | null, actor: string) {
+export async function offsetAdvance(
+  sql: Sql,
+  invoiceId: string,
+  amount: bigint | null,
+  actor: string,
+  formKey?: string | null,
+) {
   return sql.begin(async (tx) => {
     const [i] = await tx<{ supplier_id: string; gross_cents: bigint; status: string; invoice_no: string }[]>`
       select supplier_id, gross_cents, status::text as status, invoice_no from app.incoming_invoices
        where id = ${invoiceId} for update`;
     if (!i) throw new BusinessError('Rechnung nicht gefunden');
+    // Feste ID je Formular: dasselbe Formular noch einmal abgeschickt → nichts zusätzlich verrechnen
+    if (formKey) {
+      const [had] = await tx<{ amount: string }[]>`
+        select details->>'amount' as amount from app.audit_log
+         where action = 'advance_offset' and entity_id = ${invoiceId} and details->>'key' = ${formKey} limit 1`;
+      if (had) return BigInt(had.amount);
+    }
     if (!['erfasst', 'freigegeben'].includes(i.status))
       throw new BusinessError('Nur offene (nicht bezahlte) Rechnungen können verrechnet werden');
     const done = (await invoiceOffsets(tx, [invoiceId])).get(invoiceId) ?? 0n;
@@ -203,7 +216,7 @@ export async function offsetAdvance(sql: Sql, invoiceId: string, amount: bigint 
       left -= take;
     }
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
-             values (${actor}, 'advance_offset', 'incoming_invoice', ${invoiceId}, ${tx.json({ amount: String(want) })})`;
+             values (${actor}, 'advance_offset', 'incoming_invoice', ${invoiceId}, ${tx.json({ amount: String(want), ...(formKey ? { key: formKey } : {}) })})`;
     return want;
   });
 }

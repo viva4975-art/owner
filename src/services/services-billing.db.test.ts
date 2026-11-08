@@ -214,3 +214,82 @@ describe.skipIf(!available)('Leistungen wie Fortytools im Abrechnungslauf', () =
     await expect(issueInvoice(deps, id, 't')).rejects.toThrow(/in der Zukunft/);
   });
 });
+
+describe.skipIf(!(await dbAvailable()))('Preisänderung an Leistungen nur mit Grund (Ahmed 08.11.)', () => {
+  let sql: Sql;
+  beforeAll(async () => {
+    sql = await freshDatabase();
+  });
+  afterAll(async () => {
+    await sql?.end();
+  });
+
+  it('Preis geändert ohne Grund → Fehler; mit Grund → alt/neu und Grund im Protokoll', async () => {
+    const id = randomUUID();
+    const base = {
+      kind: 'monthly_flat',
+      description: 'Unterhaltsreinigung Test',
+      unit_code: 'LS',
+      quantity: '1',
+      unit_price: '1.000,00',
+      vat_rate_bp: '1900',
+      valid_from: '2026-01-01',
+      valid_to: '',
+      note: '',
+      billing_cycle: 'monatlich',
+      labor_share: '80',
+    };
+    await saveService(sql, id, DEMO.siteHq, serviceInput.parse({ ...base, version: '' }), 't', null, {
+      requireReason: true,
+    });
+    const v = async () =>
+      String(
+        (await sql<{ version: number }[]>`select version from app.site_services where id = ${id}`)[0]!
+          .version,
+      );
+    await expect(
+      saveService(
+        sql,
+        id,
+        DEMO.siteHq,
+        serviceInput.parse({ ...base, unit_price: '1.100,00', version: await v() }),
+        't',
+        null,
+        {
+          requireReason: true,
+        },
+      ),
+    ).rejects.toThrow(/Grund/);
+    // nur Text geändert → kein Grund nötig
+    await saveService(
+      sql,
+      id,
+      DEMO.siteHq,
+      serviceInput.parse({ ...base, note: 'neu', version: await v() }),
+      't',
+      null,
+      {
+        requireReason: true,
+      },
+    );
+    await saveService(
+      sql,
+      id,
+      DEMO.siteHq,
+      serviceInput.parse({ ...base, unit_price: '1.100,00', version: await v() }),
+      't',
+      null,
+      {
+        reason: 'Nachtrag Kunde',
+        requireReason: true,
+      },
+    );
+    const [log] = await sql<
+      { details: { aenderungen: Record<string, { alt: string; neu: string }>; grund: string } }[]
+    >`
+      select details from app.audit_log where entity = 'site_service' and entity_id = ${id}
+       and details ? 'aenderungen' order by id desc limit 1`;
+    expect(log!.details.grund).toBe('Nachtrag Kunde');
+    expect(log!.details.aenderungen.preis_cent).toEqual({ alt: '100000', neu: '110000' });
+  });
+});

@@ -5248,3 +5248,5 @@ Testadresse.
   und demselben Filter (Kachel/Status) wie die Liste: Firma, Ansprechpartner, Telefon, E-Mail, Ort, Objekt, Quelle, Status,
   Wiedervorlage + Grund, Anzahl Aktivitäten, letzte Aktivität (Art, Zeitpunkt, Notiz), angelegt am. Semikolon, UTF-8 mit
   BOM (Excel), Formel-Schutz wie die übrigen CSV-Exporte (`toCsv`). Recht wie die Akquise-Seite.
+  Nachtrag (Ahmed): Kachel **„Ohne Aktivität“** (Filter `ohne`) = offene Leads (nicht gewonnen/verloren/kein Interesse) ohne
+  eine einzige Aktivität; in der Liste gelbes Schild „noch keine Aktivität“. Der CSV-Export übernimmt auch diesen Filter.

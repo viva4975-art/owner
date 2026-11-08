@@ -27,6 +27,11 @@ const nowLocal = () =>
 const dtDe = (d: Date) =>
   d.toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'short' });
 
+/** Offener Lead ohne eine einzige Aktivität (Ahmed 08.11.: „die ohne Aktivität direkt sehen“). */
+const noActivity = (p: Prospect) => p.activity_count === 0 && !isClosed(p.status);
+const matchFilter = (p: Prospect, f: string, isDue: (p: Prospect) => boolean) =>
+  f === 'due' ? isDue(p) : f === 'ohne' ? noActivity(p) : f ? p.status === f : true;
+
 const Badge = ({ s }: { s: ProspectStatus }) => (
   <span class={`badge ${PROSPECT_STATUS[s].tone}`}>{PROSPECT_STATUS[s].label}</span>
 );
@@ -46,7 +51,7 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
         (p) =>
           !q || [p.company, p.contact, p.city, p.object].some((v) => (v ?? '').toLowerCase().includes(q)),
       )
-      .filter((p) => (f === 'due' ? isDue(p) : f ? p.status === f : true));
+      .filter((p) => matchFilter(p, f, isDue));
     const body = toCsv(
       [
         'Firma',
@@ -102,7 +107,8 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
     const overdue = all.filter((p) => dueState(p, today) === 'overdue').length;
     const todayN = all.filter((p) => dueState(p, today) === 'today').length;
     const isDue = (p: Prospect) => !!p.followup_on && p.followup_on <= today && !isClosed(p.status);
-    const list = all.filter((p) => (f === 'due' ? isDue(p) : f ? p.status === f : true));
+    const list = all.filter((p) => matchFilter(p, f, isDue));
+    const noAct = all.filter((p) => noActivity(p)).length;
     const shown = list.slice((pg - 1) * PAGE, pg * PAGE);
     const won = n('gewonnen');
     const lost = n('verloren');
@@ -160,6 +166,7 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
         <div class="stat-grid">
           {tile('', all.length, 'In Pipeline')}
           {tile('due', overdue + todayN, 'Heute / überfällig', 'err')}
+          {tile('ohne', noAct, 'Ohne Aktivität', 'warn')}
           {tile('gewonnen', won, 'Gewonnen', 'ok')}
         </div>
         <form class="toolbar" method="get" action="/akquise">
@@ -237,6 +244,7 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
                     {p.city && <span>{p.city}</span>}
                     {p.phone && <span>{p.phone}</span>}
                     {p.object && <span>{p.object}</span>}
+                    {noActivity(p) && <span class="badge warn">noch keine Aktivität</span>}
                     {p.activity_count > 0 && (
                       <span>
                         {p.activity_count} Aktivität{p.activity_count === 1 ? '' : 'en'}

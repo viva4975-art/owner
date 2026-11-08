@@ -370,7 +370,7 @@ html.glas main tr.sum td.neg,html.glas main tr:first-child td.neg{box-shadow:ins
 html.glas table.perm input[type=checkbox]{width:18px;height:18px;cursor:pointer}
 html.glas table.perm td.perm-c label{justify-content:center;padding:4px 8px;border-radius:6px}
 /* Lesbarkeit vor Glas: schwebende Listen fast deckend, Hintergrund nur noch als Unschärfe */
-html.glas :is(.sdrop,.drop,.cbx-pop,details.dd>.drop),html.glas .menu-top .appside nav.menu .sub{background:rgba(253,253,254,.96)!important}
+html.glas :is(.drop,.cbx-pop,details.dd>.drop),html.glas .menu-top .appside nav.menu .sub{background:rgba(253,253,254,.96)!important}
 /* Ohne backdrop-filter: deckend weiß */
 @supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important}}
 @media (prefers-reduced-transparency:reduce){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}

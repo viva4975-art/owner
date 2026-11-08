@@ -5175,8 +5175,8 @@ Testadresse.
     Deckungsbeitrag zusätzlich hell-rot hinterlegt mit roter Kante (Zeilen und Gesamt, auch Plan-Kalkulation).
   - **Rechte:** Häkchen größer und mittig, Tastatur (Tab/Leertaste) mit sichtbarem Fokus; Meldung nach dem Speichern nennt
     die Änderungen („2 Änderungen … Objektleitung: erlaubt“) bzw. „keine Änderung“.
-  - **Glas:** Klappmenüs, Suchvorschau, Auswahllisten jetzt fast deckend (96 % statt 88 %) – Text dahinter schien in der
-    Suchvorschau noch durch; Unschärfe bleibt. Fixierte Kopf-/Menüleiste unverändert.
+  - **Glas:** Klappmenüs und Auswahllisten jetzt fast deckend (96 % statt 88 %); Unschärfe bleibt. Die Suchvorschau bleibt
+    auf Ahmeds Wunsch wie vorher (88 %, leicht durchscheinend). Fixierte Kopf-/Menüleiste unverändert.
   - Reduzierte Animationen (`prefers-reduced-motion`) und Fokusring waren schon vorhanden.
   - Tests: tsc, eslint, prettier; e2e menu, rechte 48, planung 26, auswertung 14, zeit 28, nachunternehmer 32, einkauf 21;
     Seiten-Rundgang 484 Seiten ohne Fehler (9 Kontrast-Meldungen = Häkchen „erledigt“, erscheint gewollt erst beim Darüberfahren).

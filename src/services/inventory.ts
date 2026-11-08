@@ -393,6 +393,10 @@ export interface KeyRow {
   issued_at: string | null;
   notes: string | null;
   version: number;
+  /** Als verloren gemeldet (nicht ausgebbar, bis „gefunden“ gebucht ist) */
+  lost_at: string | null;
+  lost_note: string | null;
+  lost_by: string | null;
 }
 
 export const keyInput = z.object({
@@ -489,24 +493,33 @@ export async function saveKey(
   await upsert(sql, 'keys', id, data, expectedVersion, 'Der Schlüssel', actor);
 }
 
-/** Ausgabe / Rückgabe / Verlust – immer mit Protokolleintrag (unveränderbar). */
+export type KeyAction = 'ausgabe' | 'rueckgabe' | 'verlust' | 'gefunden';
+export const KEY_ACTION_LABEL: Record<string, string> = {
+  ausgabe: 'Ausgabe an',
+  rueckgabe: 'Rückgabe von',
+  verlust: 'Verlust',
+  gefunden: 'Wiedergefunden',
+};
+
+/** Ausgabe / Rückgabe / Verlust / Wiedergefunden – immer mit Protokolleintrag (unveränderbar). */
 export async function keyAction(
   sql: Sql,
   keyId: string,
-  action: 'ausgabe' | 'rueckgabe' | 'verlust',
+  action: KeyAction,
   employeeId: string | null,
   at: string,
   note: string | null,
   actor: string,
+  supplierId: string | null = null,
 ) {
-  await sql.begin((tx) => keyActionTx(tx, keyId, action, employeeId, at, note, actor));
+  await sql.begin((tx) => keyActionTx(tx, keyId, action, employeeId, at, note, actor, supplierId));
 }
 
 /** Wie keyAction, innerhalb einer laufenden Transaktion (z. B. Übergabe mit Unterschrift). */
 export async function keyActionTx(
   tx: Tx,
   keyId: string,
-  action: 'ausgabe' | 'rueckgabe' | 'verlust',
+  action: KeyAction,
   employeeId: string | null,
   at: string,
   note: string | null,
@@ -518,16 +531,33 @@ export async function keyActionTx(
     throw new BusinessError('Schlüssel nicht gefunden');
   if (action === 'ausgabe') {
     if (!employeeId && !supplierId) throw new BusinessError('Bitte Mitarbeiter wählen');
+    if (k.lost_at)
+      throw new BusinessError(
+        `Schlüssel ${k.key_no} ist als verloren gemeldet – erst „Wiedergefunden“ buchen`,
+      );
     if (k.holder_employee_id || k.holder_supplier_id)
       throw new BusinessError(`Schlüssel ${k.key_no} ist bereits ausgegeben – zuerst Rückgabe buchen`);
     await tx`update app.keys set holder_employee_id = ${employeeId}, holder_supplier_id = ${employeeId ? null : supplierId},
                     issued_at = ${at} where id = ${keyId}`;
+  } else if (action === 'gefunden') {
+    if (!k.lost_at) throw new BusinessError(`Schlüssel ${k.key_no} ist nicht als verloren gemeldet`);
+    employeeId = null;
+    supplierId = null;
+    await tx`update app.keys set lost_at = null, lost_note = null, lost_by = null where id = ${keyId}`;
+  } else if (action === 'verlust' && !k.holder_employee_id && !k.holder_supplier_id) {
+    // Verlust im Büro/Tresor (kein Inhaber)
+    if (k.lost_at) throw new BusinessError(`Schlüssel ${k.key_no} ist bereits als verloren gemeldet`);
+    employeeId = null;
+    supplierId = null;
+    await tx`update app.keys set lost_at = ${at}, lost_note = ${note}, lost_by = ${actor} where id = ${keyId}`;
   } else {
     if (!k.holder_employee_id && !k.holder_supplier_id)
       throw new BusinessError(`Schlüssel ${k.key_no} ist nicht ausgegeben`);
     employeeId = k.holder_employee_id;
     supplierId = k.holder_supplier_id;
     await tx`update app.keys set holder_employee_id = null, holder_supplier_id = null, issued_at = null where id = ${keyId}`;
+    if (action === 'verlust')
+      await tx`update app.keys set lost_at = ${at}, lost_note = ${note}, lost_by = ${actor} where id = ${keyId}`;
   }
   await tx`insert into app.key_log (key_id, action, employee_id, supplier_id, at, note, created_by)
            values (${keyId}, ${action}, ${employeeId}, ${employeeId ? null : supplierId}, ${at}, ${note}, ${actor})`;
@@ -545,7 +575,9 @@ export async function keyLog(sql: Sql, keyId: string) {
     }[]
   >`
     select l.action, l.at, l.note, l.created_by, l.created_at,
-           case when e.id is null then null else e.last_name || ', ' || e.first_name end as employee_name
+           case when e.id is not null then e.last_name || ', ' || e.first_name
+                when sp.id is not null then sp.name || ' (Nachunternehmer)' end as employee_name
       from app.key_log l left join app.employees e on e.id = l.employee_id
+      left join app.suppliers sp on sp.id = l.supplier_id
      where l.key_id = ${keyId} order by l.created_at desc`;
 }

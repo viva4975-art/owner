@@ -5232,3 +5232,15 @@ Testadresse.
     Glas „erledigt“ → Leistung verrichtet, Grundreinigung → NU-Bestellung.
   - Tests: Idempotenz in `invoices`, `advances`, `runde22`, Grund-Pflicht in `services-billing`; `e2e:rechte` 48,
     `e2e:leistungen` 17 grün. `e2e:objekt` (Zurück/Vor) und `e2e:objektseiten` scheitern wie schon vorher.
+- 2026-11-08: **Schlüssel „verloren“** (Ahmed: „mach noch Schlüssel“, aus dem Audit): Verlust ist jetzt ein eigener Stand
+  (`keys.lost_at/lost_note/lost_by`, Migration `20270120000001`; Bestand aus dem Schlüssel-Protokoll übernommen, wenn die
+  letzte Buchung ein Verlust war). Verlorene Schlüssel stehen rot „verloren seit …“ (Schlüsselbuch, Objekt → Schlüssel,
+  Detailseite), zählen nicht als „im Büro“, werden nicht zur Ausgabe angeboten (auch nicht unter Mitarbeiter →
+  Übergaben) und können nicht ausgegeben werden, bis „Wiedergefunden“ gebucht ist (neue Protokoll-Aktion `gefunden`).
+  Verlust auch ohne Inhaber meldbar (im Büro nicht auffindbar). Word-Protokoll-Import: verlorener Schlüssel → „als
+  verloren gemeldet“, wird nicht still neu ausgegeben; ein gelöschter Schlüssel mit derselben festen ID bricht den
+  Import nicht mehr ab. Schlüsselbuch/Detailseite: Ausgabe auch an Nachunternehmer (nur Büro), Protokoll zeigt den
+  Namen des Nachunternehmers; Detailseite zeigte NU-Schlüssel vorher fälschlich als „Im Büro“. Rückgabeprotokoll ohne
+  „zurückbuchen“: Meldung sagt, dass die Schlüssel weiter bei der Person stehen. **Hinweis:** Bei Verlust prüfen, ob
+  Schloss/Schließanlage getauscht und der Kunde informiert werden muss (Haftung). Tests: `key-protocol.db.test.ts`,
+  `e2e:uebergabe` 32, `e2e:rechte` 48.

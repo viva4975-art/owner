@@ -608,11 +608,18 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
       const back = `/objekte/${s.id}/schluessel`;
       const nextNo = await nextKeyNo(sql, s.id);
       const out = keys.filter((k) => k.holder_employee_id || k.holder_supplier_id).length;
+      const lost = keys.filter((k) => k.lost_at).length;
       return (
         <>
           <p class="mut" style="margin-top:0">
-            {keys.length} Schlüssel, davon {out} ausgegeben. Jede Ausgabe und Rückgabe wird unveränderbar
-            protokolliert.
+            {keys.length} Schlüssel, davon {out} ausgegeben
+            {lost > 0 && (
+              <>
+                {' '}
+                und <b style="color:var(--danger,#b42318)">{lost} verloren</b>
+              </>
+            )}
+            . Jede Ausgabe, Rückgabe und jeder Verlust wird unveränderbar protokolliert.
           </p>
           <div class="tbl">
             <table>
@@ -639,7 +646,12 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                     </td>
                     <td class="r">{k.quantity}</td>
                     <td>
-                      {k.holder_name ? (
+                      {k.lost_at ? (
+                        <>
+                          <span class="tag err">verloren</span>
+                          <div class="small mut">seit {dateDe(k.lost_at)}</div>
+                        </>
+                      ) : k.holder_name ? (
                         <>
                           <span class="tag warn">{k.holder_name}</span>
                           <div class="small mut">seit {dateDe(k.issued_at)}</div>
@@ -656,7 +668,11 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                       >
                         <input type="hidden" name="back" value={back} />
                         <input type="hidden" name="at" value={todayBerlin()} />
-                        {k.holder_employee_id || k.holder_supplier_id ? (
+                        {k.lost_at ? (
+                          <a class="btn sm sec" href={`/schluessel/${k.id}`}>
+                            Wiedergefunden …
+                          </a>
+                        ) : k.holder_employee_id || k.holder_supplier_id ? (
                           <button class="btn sm sec" name="action" value="rueckgabe">
                             Rückgabe heute
                           </button>

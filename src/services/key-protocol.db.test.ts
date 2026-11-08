@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { importKeyProtocol, parseKeyProtocol, planKeyProtocol, siteNoCandidates } from './key-protocol.js';
 import { createKeyProtocol, listKeyProtocols } from './key-protocol-pdf.js';
-import { deleteKey, keyAction, nextKeyNo, saveKey } from './inventory.js';
+import { deleteKey, keyAction, keyLog, nextKeyNo, saveKey } from './inventory.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
@@ -185,5 +185,30 @@ describe.skipIf(!available)('Schlüsselprotokoll einlesen', () => {
     const [d] = await sql`select deleted_at from app.keys where id = ${b}`;
     expect(d!.deleted_at).not.toBeNull();
     expect(await nextKeyNo(sql, DEMO.siteSchool)).toBe('S-2990101-04');
+  });
+
+  it('Verlust: Schlüssel gilt als verloren, nicht ausgebbar, bis „gefunden“; auch an Nachunternehmer', async () => {
+    const k = '00000000-0000-4000-8000-00000000ce40';
+    await saveKey(sql, k, { site_id: DEMO.siteSchool, description: 'Tor', quantity: '1' }, null, 't');
+    await keyAction(sql, k, 'ausgabe', EMP, '2026-10-21', null, 't');
+    await keyAction(sql, k, 'verlust', null, '2026-10-22', 'in der S-Bahn', 't');
+    const [l] = await sql<{ lost_at: string; holder_employee_id: string | null }[]>`
+      select lost_at::text, holder_employee_id from app.keys where id = ${k}`;
+    expect(l).toEqual({ lost_at: '2026-10-22', holder_employee_id: null });
+    await expect(keyAction(sql, k, 'ausgabe', EMP, '2026-10-23', null, 't')).rejects.toThrow(/verloren/);
+    await expect(keyAction(sql, k, 'verlust', null, '2026-10-23', null, 't')).rejects.toThrow(/bereits/);
+    await keyAction(sql, k, 'gefunden', null, '2026-10-24', null, 't');
+    // an Nachunternehmer ausgeben, Name im Protokoll
+    const sup = '00000000-0000-4000-8000-00000000ce41';
+    await sql`insert into app.suppliers (id, supplier_no, name, kind) values (${sup}, '79841', 'Schlüssel Sub', 'nachunternehmer')`;
+    await keyAction(sql, k, 'ausgabe', null, '2026-10-25', null, 't', sup);
+    const log = await keyLog(sql, k);
+    expect(log.map((x) => x.action)).toEqual(['ausgabe', 'gefunden', 'verlust', 'ausgabe']);
+    expect(log[0]!.employee_name).toContain('Schlüssel Sub');
+    // Verlust im Büro (ohne Inhaber)
+    await keyAction(sql, k, 'rueckgabe', null, '2026-10-26', null, 't');
+    await keyAction(sql, k, 'verlust', null, '2026-10-27', 'nicht auffindbar', 't');
+    const [m] = await sql<{ lost_at: string }[]>`select lost_at::text from app.keys where id = ${k}`;
+    expect(m!.lost_at).toBe('2026-10-27');
   });
 });

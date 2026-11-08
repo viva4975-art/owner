@@ -105,7 +105,7 @@ export interface KeyProtocolPlan {
   rows: (KeyProtocolRow & {
     site: { id: string; site_no: string; name: string } | null;
     keyId: string | null;
-    status: 'neu' | 'vorhanden' | 'schon_bei_ihm' | 'bei_anderem' | 'kein_objekt';
+    status: 'neu' | 'vorhanden' | 'schon_bei_ihm' | 'bei_anderem' | 'verloren' | 'kein_objekt';
     note: string | null;
   })[];
 }
@@ -141,12 +141,20 @@ export async function planKeyProtocol(
       continue;
     }
     const desc = `${r.art}: ${r.kennung}`;
-    const fixed = protocolKeyId(employee.id, site.id, r.nr, r.kennung);
+    let fixed = protocolKeyId(employee.id, site.id, r.nr, r.kennung);
+    // Feste ID schon von einem gelöschten Schlüssel belegt → eigene ID für den neu anzulegenden (sonst bräche der Import ab)
+    const [gone] = await sql`select 1 from app.keys where id = ${fixed} and deleted_at is not null`;
+    if (gone) fixed = uuidFrom(`schluesselprotokoll:${employee.id}:${site.id}:${r.nr}:${r.kennung}:neu`);
     // Schon eingelesen (feste ID) oder vorher von Hand mit gleicher Beschreibung erfasst
     const [k] = await sql<
-      { id: string; holder_employee_id: string | null; holder_supplier_id: string | null }[]
+      {
+        id: string;
+        holder_employee_id: string | null;
+        holder_supplier_id: string | null;
+        lost_at: string | null;
+      }[]
     >`
-      select id, holder_employee_id, holder_supplier_id from app.keys
+      select id, holder_employee_id, holder_supplier_id, lost_at::text from app.keys
        where (id = ${fixed} and deleted_at is null) or (site_id = ${site.id} and deleted_at is null and lower(description) in (lower(${desc}), lower(${r.kennung})))
        order by (id = ${fixed}) desc limit 1`;
     const status: KeyProtocolPlan['rows'][number]['status'] = !k
@@ -155,7 +163,9 @@ export async function planKeyProtocol(
         ? 'schon_bei_ihm'
         : k.holder_employee_id || k.holder_supplier_id
           ? 'bei_anderem'
-          : 'vorhanden';
+          : k.lost_at
+            ? 'verloren'
+            : 'vorhanden';
     rows.push({
       ...r,
       site,
@@ -164,9 +174,11 @@ export async function planKeyProtocol(
       note:
         status === 'bei_anderem'
           ? 'Schlüssel ist bei jemand anderem ausgegeben – zuerst Rückgabe buchen'
-          : status === 'schon_bei_ihm'
-            ? 'bereits ausgegeben'
-            : null,
+          : status === 'verloren'
+            ? 'Schlüssel ist als verloren gemeldet – erst „Wiedergefunden“ buchen'
+            : status === 'schon_bei_ihm'
+              ? 'bereits ausgegeben'
+              : null,
     });
   }
   return { proto, employee: employee ?? null, rows };
@@ -221,7 +233,7 @@ export async function importKeyProtocol(
   return {
     created,
     issued,
-    skipped: plan.rows.filter((r) => r.status === 'kein_objekt' || r.status === 'bei_anderem').length,
+    skipped: plan.rows.filter((r) => ['kein_objekt', 'bei_anderem', 'verloren'].includes(r.status)).length,
     sites: siteIds.size,
   };
 }

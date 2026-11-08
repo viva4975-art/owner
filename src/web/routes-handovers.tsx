@@ -1350,6 +1350,7 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
                                and (p.valid_until is null or p.valid_until >= current_date))) as mine
             from app.keys k join app.sites s on s.id = k.site_id
            where k.deleted_at is null and k.holder_employee_id is null and k.holder_supplier_id is null
+             and k.lost_at is null
              and (${scope === null} or s.id = any(${scope ?? []}::uuid[]))
            order by 6 desc, s.name, k.key_no`,
         sql<
@@ -1643,7 +1644,12 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
                 {log.map((l) => (
                   <li>
                     {dateDe(l.at)} ·{' '}
-                    {{ ausgabe: 'Ausgabe', rueckgabe: 'Rückgabe', verlust: 'Verlust' }[l.action] ?? l.action}{' '}
+                    {{
+                      ausgabe: 'Ausgabe',
+                      rueckgabe: 'Rückgabe',
+                      verlust: 'Verlust',
+                      gefunden: 'Wiedergefunden',
+                    }[l.action] ?? l.action}{' '}
                     {l.key_no} ({l.site_name}) · {l.created_by}
                     {l.note ? ` · ${l.note}` : ''}
                   </li>
@@ -1897,6 +1903,7 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
       vorhanden: ['info', 'vorhanden – ausgeben'],
       schon_bei_ihm: ['mut', 'schon ausgegeben'],
       bei_anderem: ['err', 'bei jemand anderem'],
+      verloren: ['err', 'als verloren gemeldet'],
       kein_objekt: ['err', 'Objekt fehlt'],
     };
     return page(
@@ -2035,7 +2042,7 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
     return back(c, `/personal/${id}/uebergaben#schluesselprotokoll`, {
       ok:
         p.kind === 'rueckgabe'
-          ? `Rückgabeprotokoll ${p.protocol_no} erstellt (${p.items.length} Schlüssel)${str(b, 'buchen') === '1' ? ', im Schlüsselbuch zurückgebucht' : ''} – PDF unten in der Liste.`
+          ? `Rückgabeprotokoll ${p.protocol_no} erstellt (${p.items.length} Schlüssel)${str(b, 'buchen') === '1' ? ', im Schlüsselbuch zurückgebucht' : ' – Schlüssel stehen weiter bei der Person, nach der Rückgabe hier „Rückgabe“ buchen'} – PDF unten in der Liste.`
           : `Schlüsselübergabeprotokoll ${p.protocol_no} erstellt (${p.items.length} Schlüssel) – PDF unten in der Liste.`,
     });
   });

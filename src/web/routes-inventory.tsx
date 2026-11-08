@@ -20,6 +20,8 @@ import {
   listKeys,
   listMovements,
   listSuppliers,
+  KEY_ACTION_LABEL,
+  type KeyAction,
   saveArticle,
   saveDevice,
   saveKey,
@@ -687,6 +689,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
       ...(c.get('sites') ? { siteIds: c.get('sites')! } : {}),
     });
     const out = rows.filter((k) => k.holder_employee_id || k.holder_supplier_id).length;
+    const lost = rows.filter((k) => k.lost_at).length;
     return page(
       c,
       'Schlüsselbuch',
@@ -698,8 +701,14 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
           </a>
         </PageHead>
         <p class="mut" style="margin-top:-8px">
-          {rows.length} Schlüssel, davon {out} ausgegeben. Jede Ausgabe und Rückgabe wird unveränderbar
-          protokolliert.
+          {rows.length} Schlüssel, davon {out} ausgegeben
+          {lost > 0 && (
+            <>
+              {' '}
+              und <b style="color:var(--danger,#b42318)">{lost} verloren</b>
+            </>
+          )}
+          . Jede Ausgabe, Rückgabe und jeder Verlust wird unveränderbar protokolliert.
         </p>
         <div class="tbl">
           <table>
@@ -735,7 +744,12 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
                   <td>{k.description}</td>
                   <td class="r">{k.quantity}</td>
                   <td>
-                    {k.holder_name ? (
+                    {k.lost_at ? (
+                      <>
+                        <span class="badge err">verloren</span>
+                        <div class="small mut">seit {dateDe(k.lost_at)}</div>
+                      </>
+                    ) : k.holder_name ? (
                       <>
                         <span class="badge warn">{k.holder_name}</span>
                         <div class="small mut">seit {dateDe(k.issued_at)}</div>
@@ -752,7 +766,11 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
                     >
                       <input type="hidden" name="back" value="/schluessel" />
                       <input type="hidden" name="at" value={todayBerlin()} />
-                      {k.holder_employee_id || k.holder_supplier_id ? (
+                      {k.lost_at ? (
+                        <a class="btn sm sec" href={`/schluessel/${k.id}`}>
+                          Wiedergefunden …
+                        </a>
+                      ) : k.holder_employee_id || k.holder_supplier_id ? (
                         <button class="btn sm sec" name="action" value="rueckgabe">
                           Rückgabe heute
                         </button>
@@ -801,6 +819,12 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
     if (k) assertSite(c, k.site_id);
     const preSite = !k && typeof c.req.query('objekt') === 'string' ? c.req.query('objekt') : undefined;
     const holder = k?.holder_employee_id ? employees.find((e) => e.id === k.holder_employee_id) : undefined;
+    // Nachunternehmer: Ausgabe nur durch das Büro (Objektleitung über Übergaben an NU ihrer Objekte)
+    const allSup = c.get('sites') ? [] : await listSuppliers(sql);
+    const nus = allSup.filter((x) => x.active && x.kind === 'nachunternehmer');
+    const holderSupplier = k?.holder_supplier_id
+      ? (await listSuppliers(sql)).find((x) => x.id === k.holder_supplier_id)
+      : undefined;
     return page(
       c,
       k ? `Schlüssel ${k.key_no}` : 'Neuer Schlüssel',
@@ -885,27 +909,55 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
             <div>
               <form method="post" action={`/schluessel/${id}/buchen`} class="card">
                 <h3>
-                  {holder ? `Ausgegeben an ${holder.last_name}, ${holder.first_name ?? ''}` : 'Im Büro'}
+                  {k.lost_at ? (
+                    <span style="color:var(--danger,#b42318)">Verloren seit {dateDe(k.lost_at)}</span>
+                  ) : holder ? (
+                    `Ausgegeben an ${holder.last_name}, ${holder.first_name ?? ''}`
+                  ) : k.holder_supplier_id ? (
+                    `Ausgegeben an ${holderSupplier?.name ?? 'Nachunternehmer'} (Nachunternehmer)`
+                  ) : (
+                    'Im Büro'
+                  )}
                 </h3>
+                {k.lost_at && (
+                  <p class="small mut" style="margin-top:0">
+                    {k.lost_note ? `${k.lost_note} · ` : ''}gemeldet von {k.lost_by ?? '–'}. Ein verlorener
+                    Schlüssel kann nicht ausgegeben werden. Prüfen, ob das Schloss/die Schließanlage getauscht
+                    werden muss und der Kunde informiert ist.
+                  </p>
+                )}
                 <div class="grid">
-                  {!holder && (
+                  {!k.lost_at && !holder && !k.holder_supplier_id && (
                     <div>
-                      <label for="employee_id">An Mitarbeiter</label>
+                      <label for="employee_id">Ausgeben an</label>
                       <select id="employee_id" name="employee_id" required>
                         <option value="">– bitte wählen –</option>
-                        {employees.map((e) => (
-                          <option value={e.id}>
-                            {e.last_name}, {e.first_name}
-                          </option>
-                        ))}
+                        <optgroup label="Mitarbeitende">
+                          {employees.map((e) => (
+                            <option value={e.id}>
+                              {e.last_name}, {e.first_name}
+                            </option>
+                          ))}
+                        </optgroup>
+                        {nus.length > 0 && (
+                          <optgroup label="Nachunternehmer">
+                            {nus.map((n) => (
+                              <option value={`nu:${n.id}`}>{n.name}</option>
+                            ))}
+                          </optgroup>
+                        )}
                       </select>
                     </div>
                   )}
                   <Field name="at" label="Datum" value={todayBerlin()} type="date" required />
-                  <Field name="note" label="Notiz" />
+                  <Field name="note" label={k.lost_at ? 'Notiz' : 'Notiz (bei Verlust: wo/wie)'} />
                 </div>
                 <div class="actions" style="margin-bottom:0">
-                  {holder ? (
+                  {k.lost_at ? (
+                    <button class="btn" name="action" value="gefunden">
+                      Wiedergefunden buchen
+                    </button>
+                  ) : holder || k.holder_supplier_id ? (
                     <>
                       <button class="btn" name="action" value="rueckgabe">
                         Rückgabe buchen
@@ -914,15 +966,27 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
                         class="btn danger"
                         name="action"
                         value="verlust"
-                        onclick="return confirm('Schlüssel als verloren melden?')"
+                        formnovalidate
+                        data-confirm="Schlüssel als verloren melden? Er kann dann nicht mehr ausgegeben werden, bis er wiedergefunden ist."
                       >
                         Verlust melden
                       </button>
                     </>
                   ) : (
-                    <button class="btn" name="action" value="ausgabe">
-                      Ausgabe buchen
-                    </button>
+                    <>
+                      <button class="btn" name="action" value="ausgabe">
+                        Ausgabe buchen
+                      </button>
+                      <button
+                        class="btn danger"
+                        name="action"
+                        value="verlust"
+                        formnovalidate
+                        data-confirm="Schlüssel als verloren melden (im Büro nicht auffindbar)?"
+                      >
+                        Verlust melden
+                      </button>
+                    </>
                   )}
                 </div>
               </form>
@@ -931,9 +995,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
                 {log.length === 0 && <div class="mut small">Noch keine Bewegungen.</div>}
                 {log.map((l) => (
                   <div class="small" style="padding:4px 0;border-bottom:1px solid var(--line)">
-                    <b>{dateDe(l.at)}</b> ·{' '}
-                    {{ ausgabe: 'Ausgabe an', rueckgabe: 'Rückgabe von', verlust: 'Verlust bei' }[l.action]}{' '}
-                    {l.employee_name}
+                    <b>{dateDe(l.at)}</b> · {KEY_ACTION_LABEL[l.action] ?? l.action} {l.employee_name}
                     {l.note && ` – ${l.note}`} <span class="mut">({l.created_by})</span>
                   </div>
                 ))}
@@ -1002,12 +1064,19 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
   app.post(`/schluessel/:id{${UUID}}/buchen`, async (c) => {
     const id = c.req.param('id');
     const b = await c.req.parseBody();
-    const action = String(b.action) as 'ausgabe' | 'rueckgabe' | 'verlust';
-    if (!['ausgabe', 'rueckgabe', 'verlust'].includes(action)) throw new BusinessError('Ungültige Aktion');
+    const action = String(b.action) as KeyAction;
+    if (!['ausgabe', 'rueckgabe', 'verlust', 'gefunden'].includes(action))
+      throw new BusinessError('Ungültige Aktion');
+    const to = typeof b.employee_id === 'string' ? b.employee_id : '';
+    const supplierId = to.startsWith('nu:') ? to.slice(3) : null;
+    if (supplierId && c.get('sites'))
+      throw new BusinessError(
+        'Schlüssel an Nachunternehmer gibt das Büro aus (oder Übergabe beim Nachunternehmer)',
+      );
     const at = typeof b.at === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.at) ? b.at : todayBerlin();
     assertSite(c, (await getKey(sql, id))?.site_id);
     const scope = c.get('sites');
-    if (scope && action === 'ausgabe' && typeof b.employee_id === 'string' && b.employee_id) {
+    if (scope && action === 'ausgabe' && to && !supplierId) {
       const mine = await listEmployees(sql, { status: 'aktiv', siteIds: scope });
       if (!mine.some((e) => e.id === b.employee_id))
         throw new BusinessError('Schlüssel nur an Mitarbeitende Ihrer Objekte ausgeben');
@@ -1016,10 +1085,11 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
       sql,
       id,
       action,
-      typeof b.employee_id === 'string' && b.employee_id ? b.employee_id : null,
+      !supplierId && to ? to : null,
       at,
       typeof b.note === 'string' && b.note.trim() ? b.note.trim() : null,
       c.get('actor'),
+      supplierId,
     );
     return back(c, siteBack(b.back) ?? `/schluessel/${id}`, { ok: 'Gebucht.' });
   });

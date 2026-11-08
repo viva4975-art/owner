@@ -358,6 +358,19 @@ html.glas main :is(input,select,textarea):user-invalid{border-color:#d9534f!impo
 /* Leere Zustände: Hinweis mit kleinem Symbol */
 html.glas main div:is(.empty,.empty-line),html.glas main p:is(.empty,.empty-line){position:relative;padding-left:44px!important}
 html.glas main div:is(.empty,.empty-line)::before,html.glas main p:is(.empty,.empty-line)::before{content:'';position:absolute;left:16px;top:calc(50% - 9px);width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 50% 50%,#fff 0 3px,transparent 3.5px),#c7c7cc;box-shadow:inset 0 0 0 1px #b8b8bf}
+/* Fassung 7 – letzter Feinschliff (08.11.) */
+html.glas .card[style*="padding:0"]>.tbl{margin:0!important}
+html.glas select.cbx-native{min-width:0!important}
+html.glas main td.r .hh{display:block;white-space:nowrap;font-variant-numeric:tabular-nums;line-height:1.35}
+html.glas main td.r .hh-l{display:inline-block;min-width:30px;text-align:left;font-size:11.5px;color:var(--mut);font-weight:500}
+html.glas main td.r .hh:not(.hh-ist){color:var(--mut)}
+html.glas main td.r .hh-ist{font-weight:600;color:var(--ink)}
+html.glas main td.neg{color:var(--c-err)!important;background:#fdf3f2!important;box-shadow:inset 3px 0 0 #e3a39b}
+html.glas main tr.sum td.neg,html.glas main tr:first-child td.neg{box-shadow:inset 3px 0 0 #e3a39b}
+html.glas table.perm input[type=checkbox]{width:18px;height:18px;cursor:pointer}
+html.glas table.perm td.perm-c label{justify-content:center;padding:4px 8px;border-radius:6px}
+/* Lesbarkeit vor Glas: schwebende Listen fast deckend, Hintergrund nur noch als Unschärfe */
+html.glas :is(.sdrop,.drop,.cbx-pop,details.dd>.drop),html.glas .menu-top .appside nav.menu .sub{background:rgba(253,253,254,.96)!important}
 /* Ohne backdrop-filter: deckend weiß */
 @supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important}}
 @media (prefers-reduced-transparency:reduce){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}

@@ -4405,7 +4405,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                   <td class="r">
                     <b>{eur(sum((r) => r.material))}</b>
                   </td>
-                  <td class="r" style={margin < 0n ? 'color:var(--err)' : ''}>
+                  <td class={margin < 0n ? 'r neg' : 'r'}>
                     <b>{eur(margin)}</b>
                   </td>
                   <td class="r" />
@@ -4447,7 +4447,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                   <td class="r">{eur(r.employer)}</td>
                   <td class="r">{eur(r.subcontractor)}</td>
                   <td class="r">{eur(r.material)}</td>
-                  <td class="r" style={r.margin < 0n ? 'color:var(--err)' : ''}>
+                  <td class={r.margin < 0n ? 'r neg' : 'r'}>
                     <b>{eur(r.margin)}</b>
                   </td>
                   <td class="r">
@@ -4740,7 +4740,12 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
           </a>
         </td>
         <td class="r">
-          {hm(r.planned_minutes)} / {hm(r.actual_minutes)}
+          <span class="hh">
+            <span class="hh-l">Plan</span> {hm(r.planned_minutes)}
+          </span>
+          <span class="hh hh-ist">
+            <span class="hh-l">Ist</span> {hm(r.actual_minutes)}
+          </span>
           {r.missing_wage > 0 && (
             <div
               class="small"
@@ -4801,7 +4806,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
             {euro(r.other)}
           </a>
         </td>
-        <td class="r" style={r.margin < 0n ? 'color:var(--err)' : ''}>
+        <td class={r.margin < 0n ? 'r neg' : 'r'}>
           <b>{euro(r.margin)}</b>
         </td>
         <td class="r">
@@ -4959,7 +4964,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
               <tr>
                 <th>Kostenstelle / Objekt</th>
                 <th class="r">Erlös</th>
-                <th class="r">Std. Soll / Ist</th>
+                <th class="r">Stunden Plan / Ist</th>
                 <th class="r">Lohn</th>
                 <th class="r">Material</th>
                 <th class="r">Geräte</th>
@@ -4995,7 +5000,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                   <td class="r">
                     <b>{euro(sum((r) => r.other))}</b>
                   </td>
-                  <td class="r" style={totalMargin < 0n ? 'color:var(--err)' : ''}>
+                  <td class={totalMargin < 0n ? 'r neg' : 'r'}>
                     <b>{euro(totalMargin)}</b>
                   </td>
                   <td class="r" />

@@ -5165,3 +5165,18 @@ Testadresse.
   - **Leere Zustände** mit kleinem Symbol links. Geprüft: tsc, eslint, prettier, e2e menu, rechte (48), planung (26),
     auswertung (14), zeit (28), nachunternehmer (32); Seiten-Rundgang PC + Handy. `e2e:objektseiten` scheitert wie
     vorher (Zurück nach Raumbuch-Import, Folge des Zurück-Sprungs vom 02.11.) – noch zu klären.
+- 2026-11-08: **Letzter Feinschliff** (Ahmed, 6 Punkte, kein Redesign). Zuerst geprüft (73 Ansichten + 3 Kalender-
+  Monatsansichten bei 1366 / 820 / 390 px): kein abgeschnittener Kalendertext ohne Tooltip (Einsätze haben `title`,
+  Antippen öffnet die Detailansicht), keine überlappenden Termine im Stundenraster, Ladezeit Median 48 ms, max. 307 ms.
+  Nur echte Funde korrigiert (Block „Fassung 7“ in `src/web/glass-css.ts`):
+  - **Tablet zu breit:** Rechnungseingang, Nachunternehmer, Lieferanten (Tabelle in Karte ohne Innenabstand ragte 22 px
+    heraus) und Geräte (versteckte Auswahlliste mit Mindestbreite 180 px) – behoben, alle 76 Ansichten ohne Querscrollen.
+  - **Nachkalkulation:** Spalte „Stunden Plan / Ist“ zweizeilig mit Beschriftung (Plan grau, Ist fett); negativer
+    Deckungsbeitrag zusätzlich hell-rot hinterlegt mit roter Kante (Zeilen und Gesamt, auch Plan-Kalkulation).
+  - **Rechte:** Häkchen größer und mittig, Tastatur (Tab/Leertaste) mit sichtbarem Fokus; Meldung nach dem Speichern nennt
+    die Änderungen („2 Änderungen … Objektleitung: erlaubt“) bzw. „keine Änderung“.
+  - **Glas:** Klappmenüs, Suchvorschau, Auswahllisten jetzt fast deckend (96 % statt 88 %) – Text dahinter schien in der
+    Suchvorschau noch durch; Unschärfe bleibt. Fixierte Kopf-/Menüleiste unverändert.
+  - Reduzierte Animationen (`prefers-reduced-motion`) und Fokusring waren schon vorhanden.
+  - Tests: tsc, eslint, prettier; e2e menu, rechte 48, planung 26, auswertung 14, zeit 28, nachunternehmer 32, einkauf 21;
+    Seiten-Rundgang 484 Seiten ohne Fehler (9 Kontrast-Meldungen = Häkchen „erledigt“, erscheint gewollt erst beim Darüberfahren).

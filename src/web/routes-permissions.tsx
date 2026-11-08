@@ -124,6 +124,7 @@ export function registerPermissionRoutes(ctx: Ctx) {
   app.post('/einstellungen/rechte', async (c) => {
     const b = await c.req.parseBody({ all: true });
     const actor = c.get('actor');
+    const changes: string[] = [];
     await sql.begin(async (tx) => {
       for (const g of PERM_GROUPS)
         for (const a of g.areas)
@@ -141,13 +142,18 @@ export function registerPermissionRoutes(ctx: Ctx) {
                        on conflict (role, area) do update set allowed = excluded.allowed,
                          updated_by = excluded.updated_by, updated_at = now()`;
             if (before !== want)
+              changes.push(`${a.label} – ${ROLE_LABEL[r]}: ${want ? 'erlaubt' : 'gesperrt'}`);
+            if (before !== want)
               await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
                        values (${actor}, 'role_permission', 'role', null,
                                ${tx.json({ role: r, area: a.key, allowed: want })})`;
           }
     });
     await loadRolePermissions(sql);
-    return ctx.back(c, '/einstellungen/rechte', { ok: 'Rechte gespeichert – gelten sofort.' });
+    const msg = changes.length
+      ? `Rechte gespeichert – ${changes.length === 1 ? '1 Änderung' : `${changes.length} Änderungen`}, gelten sofort: ${changes.slice(0, 6).join('; ')}${changes.length > 6 ? ' …' : ''}`
+      : 'Gespeichert – keine Änderung.';
+    return ctx.back(c, '/einstellungen/rechte', { ok: msg });
   });
 
   app.post('/einstellungen/rechte/zuruecksetzen', async (c) => {

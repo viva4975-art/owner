@@ -15,6 +15,7 @@ import {
   listProspects,
   saveProspect,
 } from '../services/prospects.js';
+import { toCsv } from '../services/reports.js';
 import { type Ctx, UUID } from './app.js';
 import { str } from './forms.js';
 import { dateDe } from './layout.js';
@@ -33,6 +34,61 @@ const Badge = ({ s }: { s: ProspectStatus }) => (
 /** Akquise wie die alte App: Pipeline, Funnel, Wiedervorlage, Aktivitäten. */
 export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
   const { sql } = deps;
+
+  // CSV-Export (Ahmed 08.11.): gleiche Suche und gleicher Filter wie die Liste
+  app.get('/akquise.csv', async (c) => {
+    const today = todayBerlin();
+    const q = (c.req.query('q') ?? '').trim().toLowerCase();
+    const f = c.req.query('filter') ?? '';
+    const isDue = (p: Prospect) => !!p.followup_on && p.followup_on <= today && !isClosed(p.status);
+    const rows = (await listProspects(sql))
+      .filter(
+        (p) =>
+          !q || [p.company, p.contact, p.city, p.object].some((v) => (v ?? '').toLowerCase().includes(q)),
+      )
+      .filter((p) => (f === 'due' ? isDue(p) : f ? p.status === f : true));
+    const body = toCsv(
+      [
+        'Firma',
+        'Ansprechpartner',
+        'Telefon',
+        'E-Mail',
+        'Ort',
+        'Objekt',
+        'Quelle',
+        'Status',
+        'Wiedervorlage',
+        'Grund Wiedervorlage',
+        'Aktivitäten',
+        'Letzte Aktivität',
+        'Letzte Aktivität am',
+        'Letzte Notiz',
+        'Angelegt am',
+      ],
+      rows.map((p) => [
+        p.company,
+        p.contact ?? '',
+        p.phone ?? '',
+        p.email ?? '',
+        p.city ?? '',
+        p.object ?? '',
+        p.source ?? '',
+        PROSPECT_STATUS[p.status]?.label ?? p.status,
+        p.followup_on ? dateDe(p.followup_on) : '',
+        p.followup_reason ?? '',
+        p.activity_count,
+        p.last_kind ? ACTIVITY_KIND[p.last_kind] : '',
+        p.last_at ? dtDe(p.last_at) : '',
+        (p.last_note ?? '').replace(/\s+/g, ' ').trim(),
+        dtDe(p.created_at),
+      ]),
+    );
+    return c.body(body, 200, {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="akquise_${today}.csv"`,
+      'Cache-Control': 'no-store',
+    });
+  });
 
   app.get('/akquise', async (c) => {
     const today = todayBerlin();
@@ -93,6 +149,9 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
             </div>
           </div>
           <div class="acts">
+            <a class="btn sec" href={link({ filter: f }).replace('/akquise', '/akquise.csv')}>
+              CSV exportieren
+            </a>
             <a class="btn" href={`/akquise/${randomUUID()}`}>
               + Neue Akquise
             </a>

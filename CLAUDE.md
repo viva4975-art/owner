@@ -5244,3 +5244,7 @@ Testadresse.
   „zurückbuchen“: Meldung sagt, dass die Schlüssel weiter bei der Person stehen. **Hinweis:** Bei Verlust prüfen, ob
   Schloss/Schließanlage getauscht und der Kunde informiert werden muss (Haftung). Tests: `key-protocol.db.test.ts`,
   `e2e:uebergabe` 32, `e2e:rechte` 48.
+- 2026-11-08: **Akquise als CSV** (Ahmed): Kunden → Akquise → Knopf „CSV exportieren“ (`/akquise.csv`) mit derselben Suche
+  und demselben Filter (Kachel/Status) wie die Liste: Firma, Ansprechpartner, Telefon, E-Mail, Ort, Objekt, Quelle, Status,
+  Wiedervorlage + Grund, Anzahl Aktivitäten, letzte Aktivität (Art, Zeitpunkt, Notiz), angelegt am. Semikolon, UTF-8 mit
+  BOM (Excel), Formel-Schutz wie die übrigen CSV-Exporte (`toCsv`). Recht wie die Akquise-Seite.
